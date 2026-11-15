@@ -6,6 +6,7 @@ import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:flutter_test/flutter_test.dart';
 
+import 'package:atlas_mobile/core/protocol/protocol_version.dart';
 import 'package:atlas_mobile/core/connection/connection_notifier.dart';
 import 'package:atlas_mobile/core/protocol/models.dart';
 import 'package:atlas_mobile/core/storage/mac_storage.dart';
@@ -43,7 +44,10 @@ class _Computer implements Transport {
     final cmd = req['cmd'] as String;
     final args = (req['args'] as Map?)?.cast<String, dynamic>() ?? const {};
     calls.add((cmd, args));
-    final r = replies[cmd]?.call(args) ?? <String, Object?>{};
+    // A current hostd: the connect-time check reads `proto` from `info`.
+    final r =
+        replies[cmd]?.call(args) ??
+        (cmd == 'info' ? {'proto': kAppProto} : <String, Object?>{});
     scheduleMicrotask(
       () => _lines.add(
         jsonEncode(

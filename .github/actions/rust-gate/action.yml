@@ -19,9 +19,19 @@ runs:
       run: rustup show active-toolchain || rustup toolchain install
 
     - name: Install nextest
+      if: ${{ runner.os != 'Windows' }}
       uses: taiki-e/install-action@1168f6810a3cb30a3514bf5756a3b7f0422c6df8 # v2.87.28
       with:
         tool: nextest
+
+    # On windows-2025 runners install-action fails to start its own bash ("bash startup failure",
+    # actions/partner-runner-images#169) on every run, while Git Bash itself works (the step above).
+    # nextest's official installer runs in Git Bash and verifies the archive's SHA-256 before installing
+    # (https://nexte.st/docs/installation/pre-built-binaries/); 0.9 is the stable series.
+    - name: Install nextest (Windows)
+      if: ${{ runner.os == 'Windows' }}
+      shell: bash
+      run: curl -LsSf https://get.nexte.st/install.sh | sh -s -- --version 0.9
 
     # Caches are saved only from main and release branches: a pull request's cache is visible to that pull
     # request alone and would evict the main cache every pull request restores (10 GB per repository).

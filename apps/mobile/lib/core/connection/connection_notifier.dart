@@ -8,6 +8,7 @@ import 'package:flutter_riverpod/legacy.dart';
 import 'package:atlas_mobile/core/demo/demo_computer.dart';
 import 'package:atlas_mobile/core/protocol/models.dart';
 import 'package:atlas_mobile/core/protocol/multiplexer.dart';
+import 'package:atlas_mobile/core/protocol/protocol_version.dart';
 import 'package:atlas_mobile/core/storage/mac_storage.dart';
 import 'package:atlas_mobile/core/transport/frb_transport.dart';
 import 'package:atlas_mobile/core/transport/crew_transport.dart';
@@ -48,6 +49,13 @@ final pairedDevicesProvider = FutureProvider.autoDispose<List<MacDevice>>(
 /// Showing the in-app demo computer instead of the paired ones. Not saved: a relaunch
 /// leaves the demo.
 final demoModeProvider = StateProvider<bool>((ref) => false);
+
+/// Why a computer is not connected although it answered: its hostd and this app disagree on the
+/// protocol (#302). Null when they agree or nothing has been checked. Set by [ConnectionNotifier] on
+/// every connect, which never retries on its own for this: only a foreground, a pull to refresh
+/// or "Try again" checks again.
+final protocolMismatchProvider =
+    StateProvider.family<ProtocolMismatch?, MacDevice>((ref, device) => null);
 
 /// Manages the [Multiplexer] lifecycle for a single paired Mac.
 ///
@@ -93,7 +101,11 @@ class ConnectionNotifier extends AsyncNotifier<Multiplexer?> {
       final Transport transport;
       if (parent != null) {
         final mac = await parent;
-        if (mac == null) return null;
+        if (mac == null) {
+          // Its Mac answered but is too old or too new: the crew server shows that, not "offline".
+          await _setMismatch(ref.read(protocolMismatchProvider(via!)));
+          return null;
+        }
         transport = CrewTransport(mac, _device.crewServer!);
       } else {
         final secretKey =
@@ -104,6 +116,15 @@ class ConnectionNotifier extends AsyncNotifier<Multiplexer?> {
         );
       }
       final mux = Multiplexer(transport);
+      final mismatch = await _checkProto(mux);
+      if (mismatch != null) {
+        // The computer is up and answering: a reconnect loop would only repeat this. The next
+        // foreground, pull to refresh or "Try again" checks it again.
+        mux.close().ignore();
+        await _setMismatch(mismatch);
+        return null;
+      }
+      await _setMismatch(null);
       _mux = mux;
       _backoffSeconds = 1;
 
@@ -121,6 +142,24 @@ class ConnectionNotifier extends AsyncNotifier<Multiplexer?> {
       return null;
     }
   }
+
+  /// Asks `info` once and compares its `proto`. No reply within [probeTimeout] or one that is not
+  /// `ok` (a refused key, a link that died) says nothing about the protocol: it is let through, and
+  /// the existing reconnect and foreground probe deal with a dead link as before.
+  Future<ProtocolMismatch?> _checkProto(Multiplexer mux) async {
+    final resp = await mux
+        .call('info')
+        .timeout(probeTimeout, onTimeout: () => const {});
+    if (resp['ok'] != true) return null;
+    return checkHostProto(resp['data'] as Map<String, dynamic>?, _device);
+  }
+
+  /// Not inside `build`: Riverpod forbids changing another provider while one is building.
+  Future<void> _setMismatch(ProtocolMismatch? m) => Future.microtask(() {
+    if (ref.mounted) {
+      ref.read(protocolMismatchProvider(_device).notifier).state = m;
+    }
+  });
 
   void _scheduleReconnect() {
     // Never reconnect while backgrounded: the background timer handles that path.

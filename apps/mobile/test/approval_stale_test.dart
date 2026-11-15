@@ -26,9 +26,9 @@ class _FakeStorage extends MacStorage {
   Future<void> removeDevice(String _) async {}
 }
 
-// Reply injected for agent_status_all (id=1, the first mux call).
+// Reply injected for agent_status_all (id=2: id 1 is the connect-time `info`).
 const _statusAllReply =
-    '{"id":1,"ok":true,"data":{"panes":{},"pending_approvals":'
+    '{"id":2,"ok":true,"data":{"panes":{},"pending_approvals":'
     '[{"pane_key":"p1","agent":"a","req":"r1","tool_name":"Bash","tool_input":"ls"}]}}';
 
 void main() {
@@ -39,7 +39,7 @@ void main() {
     late ProviderContainer container;
 
     setUp(() {
-      ft = FakeTransport();
+      ft = FakeTransport(answerInfo: true);
       container = ProviderContainer(
         overrides: [
           transportFactoryProvider.overrideWithValue((_, _) async => ft),
@@ -67,7 +67,7 @@ void main() {
 
       await waitForMuxReady();
 
-      // id=1 is the first call — agent_status_all from _seed().
+      // id=2: agent_status_all from _seed(); id 1 was the connect-time `info`.
       ft.injectLine(_statusAllReply);
 
       await Future<void>.delayed(const Duration(milliseconds: 10));

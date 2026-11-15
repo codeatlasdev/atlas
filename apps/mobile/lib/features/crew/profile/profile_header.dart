@@ -39,16 +39,17 @@ class ProfileHeader extends StatelessWidget {
         const SizedBox(height: Space.sm),
         Text(
           crewmate.name,
-          style: TextStyle(
-            fontSize: 28,
-            fontWeight: FontWeight.w700,
-            color: c.text,
-          ),
+          style: Theme.of(context).textTheme.headlineMedium!
+              .copyWith(fontWeight: FontWeight.w700, color: c.text),
           textAlign: TextAlign.center,
         ),
         if (tag.isNotEmpty) ...[
           const SizedBox(height: 2),
-          Text(tag, style: TextStyle(color: c.muted, fontSize: 15)),
+          Text(
+            tag,
+            style: Theme.of(context).textTheme.bodyLarge!
+                .copyWith(color: c.muted),
+          ),
         ],
         const SizedBox(height: Space.md),
         Wrap(
@@ -95,7 +96,10 @@ class ProfileChip extends StatelessWidget {
   Widget build(BuildContext context) {
     final c = AtlasColors.of(context);
     return Container(
-      padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 7),
+      padding: const EdgeInsets.symmetric(
+        horizontal: Space.md,
+        vertical: Space.sm,
+      ),
       decoration: BoxDecoration(
         color: (color ?? c.text).withValues(alpha: .08),
         borderRadius: BorderRadius.circular(999),
@@ -106,16 +110,15 @@ class ProfileChip extends StatelessWidget {
           if (dot != null) StatusDot(color: dot!, size: 6, pulse: pulse),
           if (icon != null) ...[
             Icon(icon, size: 14, color: c.muted),
-            const SizedBox(width: 6),
+            const SizedBox(width: Space.sm),
           ],
-          if (child != null) ...[child!, const SizedBox(width: 6)],
+          if (child != null) ...[child!, const SizedBox(width: Space.sm)],
           ConstrainedBox(
             constraints: const BoxConstraints(maxWidth: 180),
             child: Text(
               label,
               overflow: TextOverflow.ellipsis,
-              style: TextStyle(
-                fontSize: 13,
+              style: Theme.of(context).textTheme.bodyMedium!.copyWith(
                 fontWeight: FontWeight.w600,
                 color: color ?? c.muted,
               ),

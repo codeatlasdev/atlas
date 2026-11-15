@@ -80,6 +80,44 @@ class _ChatAppearState extends State<ChatAppear>
   }
 }
 
+/// The room of an exchange that arrives while the thread is open: it opens from the newest edge (the bottom), so the
+/// messages above slide up to make way instead of jumping by a whole bubble on one frame.
+class ChatGrow extends StatefulWidget {
+  const ChatGrow({super.key, required this.child});
+
+  final Widget child;
+
+  @override
+  State<ChatGrow> createState() => _ChatGrowState();
+}
+
+class _ChatGrowState extends State<ChatGrow>
+    with SingleTickerProviderStateMixin {
+  late final AnimationController _c = AnimationController(
+    vsync: this,
+    duration: Motion.slow,
+  )..forward();
+
+  @override
+  void didChangeDependencies() {
+    super.didChangeDependencies();
+    if (Motion.reduced(context)) _c.value = 1;
+  }
+
+  @override
+  void dispose() {
+    _c.dispose();
+    super.dispose();
+  }
+
+  @override
+  Widget build(BuildContext context) => SizeTransition(
+    sizeFactor: CurvedAnimation(parent: _c, curve: Motion.ease),
+    alignment: Alignment.bottomCenter,
+    child: widget.child,
+  );
+}
+
 /// Gives under the finger: scales down while pressed, springs back on release.
 class Pressable extends StatefulWidget {
   const Pressable({super.key, required this.child, required this.onTap});

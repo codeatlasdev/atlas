@@ -254,7 +254,7 @@ class _AutomationEditorSheetState extends State<_AutomationEditorSheet> {
         crossAxisAlignment: CrossAxisAlignment.start,
         children: [
           _label('Cron expression', c),
-          const SizedBox(height: 6),
+          const SizedBox(height: Space.sm),
           Row(
             children: [
               Expanded(
@@ -279,21 +279,25 @@ class _AutomationEditorSheetState extends State<_AutomationEditorSheet> {
       crossAxisAlignment: CrossAxisAlignment.start,
       children: [
         _label('Days', c),
-        const SizedBox(height: 6),
+        const SizedBox(height: Space.sm),
         // Preset chips
         Wrap(
           spacing: 6,
           children: [
             for (final (label, days) in _presets)
               FilterChip(
-                label: Text(label, style: const TextStyle(fontSize: 12)),
+                label: Text(
+                  label,
+                  style: Theme.of(context).textTheme.bodySmall!
+                      .copyWith(color: AtlasColors.of(context).text),
+                ),
                 selected:
                     _days.length == days.length && days.every(_days.contains),
                 onSelected: (_) => setState(() => _days = List.of(days)),
               ),
           ],
         ),
-        const SizedBox(height: 8),
+        const SizedBox(height: Space.sm),
         // Weekday chips
         Wrap(
           spacing: 4,
@@ -302,41 +306,52 @@ class _AutomationEditorSheetState extends State<_AutomationEditorSheet> {
               FilterChip(
                 label: Text(
                   ['Su', 'M', 'Tu', 'W', 'Th', 'F', 'Sa'][i],
-                  style: const TextStyle(fontSize: 11),
+                  style: Theme.of(context).textTheme.labelSmall!
+                      .copyWith(color: AtlasColors.of(context).text),
                 ),
                 selected: _days.contains(i),
                 onSelected: (on) => setState(() {
                   on ? _days.add(i) : _days.remove(i);
                   _days.sort();
                 }),
-                visualDensity: VisualDensity.compact,
+                materialTapTargetSize: MaterialTapTargetSize.padded,
                 padding: EdgeInsets.zero,
               ),
           ],
         ),
-        const SizedBox(height: 12),
+        const SizedBox(height: Space.md),
         _label('Time', c),
-        const SizedBox(height: 6),
-        Row(
+        const SizedBox(height: Space.sm),
+        Wrap(
+          crossAxisAlignment: WrapCrossAlignment.center,
+          spacing: 6,
           children: [
-            _timeDropdown(
-              value: _hour,
-              max: 23,
-              label: (v) => v.toString().padLeft(2, '0'),
-              onChanged: (v) => setState(() => _hour = v),
+            Row(
+              mainAxisSize: MainAxisSize.min,
+              children: [
+                _timeDropdown(
+                  value: _hour,
+                  max: 23,
+                  label: (v) => v.toString().padLeft(2, '0'),
+                  onChanged: (v) => setState(() => _hour = v),
+                ),
+                Padding(
+                  padding: const EdgeInsets.symmetric(horizontal: Space.sm),
+                  child: Text(
+                    ':',
+                    style: Theme.of(context).textTheme.titleMedium!
+                        .copyWith(color: c.muted, fontWeight: FontWeight.w400),
+                  ),
+                ),
+                _timeDropdown(
+                  value: _minute,
+                  max: 59,
+                  step: 5,
+                  label: (v) => v.toString().padLeft(2, '0'),
+                  onChanged: (v) => setState(() => _minute = v),
+                ),
+              ],
             ),
-            Padding(
-              padding: const EdgeInsets.symmetric(horizontal: 6),
-              child: Text(':', style: TextStyle(color: c.muted, fontSize: 18)),
-            ),
-            _timeDropdown(
-              value: _minute,
-              max: 59,
-              step: 5,
-              label: (v) => v.toString().padLeft(2, '0'),
-              onChanged: (v) => setState(() => _minute = v),
-            ),
-            const Spacer(),
             TextButton(
               onPressed: () => setState(() => _useCustomCron = true),
               child: const Text('Custom cron'),
@@ -361,14 +376,19 @@ class _AutomationEditorSheetState extends State<_AutomationEditorSheet> {
         ..add(value)
         ..sort();
     }
-    return DropdownButton<int>(
-      value: value,
-      items: values
-          .map((v) => DropdownMenuItem(value: v, child: Text(label(v))))
-          .toList(),
-      onChanged: (v) => onChanged(v!),
-      underline: const SizedBox(),
-      isDense: true,
+    // The dropdown is a 24 dp line of text; the box around it is the 48 dp a thumb needs.
+    return ConstrainedBox(
+      constraints: const BoxConstraints(minHeight: 48, minWidth: 48),
+      child: DropdownButtonHideUnderline(
+        child: DropdownButton<int>(
+          value: value,
+          items: values
+              .map((v) => DropdownMenuItem(value: v, child: Text(label(v))))
+              .toList(),
+          onChanged: (v) => onChanged(v!),
+          isDense: true,
+        ),
+      ),
     );
   }
 
@@ -376,41 +396,45 @@ class _AutomationEditorSheetState extends State<_AutomationEditorSheet> {
 
   Widget _intervalBuilder(BuildContext context) {
     final c = AtlasColors.of(context);
-    return Row(
+    return Wrap(
+      crossAxisAlignment: WrapCrossAlignment.center,
+      spacing: 8,
+      runSpacing: 4,
       children: [
-        SizedBox(
-          width: 80,
-          child: TextField(
-            controller: _intervalCtrl,
-            keyboardType: TextInputType.number,
-            decoration: InputDecoration(
-              hintText: '60',
-              hintStyle: TextStyle(color: c.faint),
-              isDense: true,
-            ),
-            onChanged: (_) => setState(() {}),
-          ),
-        ),
-        const SizedBox(width: 8),
-        Text('minutes', style: TextStyle(color: c.muted)),
-        const Spacer(),
-        ...[15, 30, 60, 120].map(
-          (m) => Padding(
-            padding: const EdgeInsets.only(left: 4),
-            child: ActionChip(
-              label: Text(
-                m < 60 ? '${m}m' : '${m ~/ 60}h',
-                style: const TextStyle(fontSize: 11),
+        Row(
+          mainAxisSize: MainAxisSize.min,
+          children: [
+            SizedBox(
+              width: 80,
+              child: TextField(
+                controller: _intervalCtrl,
+                keyboardType: TextInputType.number,
+                decoration: InputDecoration(
+                  hintText: '60',
+                  hintStyle: TextStyle(color: c.faint),
+                  isDense: true,
+                ),
+                onChanged: (_) => setState(() {}),
               ),
-              onPressed: () => setState(() {
-                _intervalSecs = m * 60;
-                _intervalCtrl.text = '$m';
-              }),
-              visualDensity: VisualDensity.compact,
-              padding: EdgeInsets.zero,
             ),
-          ),
+            const SizedBox(width: Space.sm),
+            Text('minutes', style: TextStyle(color: c.muted)),
+          ],
         ),
+        for (final m in [15, 30, 60, 120])
+          ActionChip(
+            label: Text(
+              m < 60 ? '${m}m' : '${m ~/ 60}h',
+              style: Theme.of(context).textTheme.labelSmall!
+                  .copyWith(color: AtlasColors.of(context).text),
+            ),
+            onPressed: () => setState(() {
+              _intervalSecs = m * 60;
+              _intervalCtrl.text = '$m';
+            }),
+            materialTapTargetSize: MaterialTapTargetSize.padded,
+            padding: EdgeInsets.zero,
+          ),
       ],
     );
   }
@@ -434,7 +458,7 @@ class _AutomationEditorSheetState extends State<_AutomationEditorSheet> {
       crossAxisAlignment: CrossAxisAlignment.start,
       children: [
         _label('Repository (owner/repo)', c),
-        const SizedBox(height: 6),
+        const SizedBox(height: Space.sm),
         TextField(
           controller: _githubRepoCtrl,
           decoration: const InputDecoration(
@@ -443,21 +467,25 @@ class _AutomationEditorSheetState extends State<_AutomationEditorSheet> {
           ),
           onChanged: (_) => setState(() {}),
         ),
-        const SizedBox(height: 12),
+        const SizedBox(height: Space.md),
         _label('Events', c),
-        const SizedBox(height: 6),
+        const SizedBox(height: Space.sm),
         Wrap(
           spacing: 4,
           runSpacing: 4,
           children: [
             for (final (key, label) in _githubEventOptions)
               FilterChip(
-                label: Text(label, style: const TextStyle(fontSize: 12)),
+                label: Text(
+                  label,
+                  style: Theme.of(context).textTheme.bodySmall!
+                      .copyWith(color: AtlasColors.of(context).text),
+                ),
                 selected: _githubEvents.contains(key),
                 onSelected: (on) => setState(() {
                   on ? _githubEvents.add(key) : _githubEvents.remove(key);
                 }),
-                visualDensity: VisualDensity.compact,
+                materialTapTargetSize: MaterialTapTargetSize.padded,
               ),
           ],
         ),
@@ -473,15 +501,15 @@ class _AutomationEditorSheetState extends State<_AutomationEditorSheet> {
       crossAxisAlignment: CrossAxisAlignment.start,
       children: [
         _label('Path', c),
-        const SizedBox(height: 6),
+        const SizedBox(height: Space.sm),
         TextField(
           controller: _filePathCtrl,
           decoration: const InputDecoration(hintText: '/src', isDense: true),
           onChanged: (_) => setState(() {}),
         ),
-        const SizedBox(height: 10),
+        const SizedBox(height: Space.md),
         _label('Glob (optional)', c),
-        const SizedBox(height: 6),
+        const SizedBox(height: Space.sm),
         TextField(
           controller: _fileGlobCtrl,
           decoration: const InputDecoration(hintText: '**/*.ts', isDense: true),
@@ -498,7 +526,7 @@ class _AutomationEditorSheetState extends State<_AutomationEditorSheet> {
       crossAxisAlignment: CrossAxisAlignment.start,
       children: [
         _label('Crewmate name', c),
-        const SizedBox(height: 6),
+        const SizedBox(height: Space.sm),
         TextField(
           controller: _fromCrewmateCtrl,
           decoration: const InputDecoration(
@@ -507,7 +535,7 @@ class _AutomationEditorSheetState extends State<_AutomationEditorSheet> {
           ),
           onChanged: (_) => setState(() {}),
         ),
-        const SizedBox(height: 10),
+        const SizedBox(height: Space.md),
         SegmentedButton<String>(
           segments: const [
             ButtonSegment(value: 'done', label: Text('When it finishes')),
@@ -529,13 +557,13 @@ class _AutomationEditorSheetState extends State<_AutomationEditorSheet> {
       crossAxisAlignment: CrossAxisAlignment.start,
       children: [
         _label('Service name', c),
-        const SizedBox(height: 6),
+        const SizedBox(height: Space.sm),
         TextField(
           controller: _serviceCtrl,
           decoration: const InputDecoration(hintText: 'api', isDense: true),
           onChanged: (_) => setState(() {}),
         ),
-        const SizedBox(height: 10),
+        const SizedBox(height: Space.md),
         SegmentedButton<String>(
           segments: const [
             ButtonSegment(value: 'failed', label: Text('When it fails')),
@@ -573,11 +601,12 @@ class _AutomationEditorSheetState extends State<_AutomationEditorSheet> {
               padding: const EdgeInsets.symmetric(vertical: Space.md),
               child: Row(
                 children: [
-                  Text(
-                    isNew ? 'New automation' : 'Edit automation',
-                    style: Theme.of(context).textTheme.titleMedium,
+                  Expanded(
+                    child: Text(
+                      isNew ? 'New automation' : 'Edit automation',
+                      style: Theme.of(context).textTheme.titleMedium,
+                    ),
                   ),
-                  const Spacer(),
                   TextButton(
                     onPressed: () => Navigator.of(context).pop(),
                     child: const Text('Cancel'),
@@ -588,17 +617,21 @@ class _AutomationEditorSheetState extends State<_AutomationEditorSheet> {
 
             // Kind picker
             _label('Trigger', c),
-            const SizedBox(height: 8),
+            const SizedBox(height: Space.sm),
             Wrap(
               spacing: 6,
               runSpacing: 6,
               children: [
                 for (final k in _Kind.values)
                   ChoiceChip(
-                    label: Text(k.label, style: const TextStyle(fontSize: 12)),
+                    label: Text(
+                      k.label,
+                      style: Theme.of(context).textTheme.bodySmall!
+                          .copyWith(color: AtlasColors.of(context).text),
+                    ),
                     selected: _kind == k,
                     onSelected: (_) => setState(() => _kind = k),
-                    visualDensity: VisualDensity.compact,
+                    materialTapTargetSize: MaterialTapTargetSize.padded,
                   ),
               ],
             ),
@@ -618,7 +651,7 @@ class _AutomationEditorSheetState extends State<_AutomationEditorSheet> {
 
             // Prompt
             _label('Prompt', c),
-            const SizedBox(height: 6),
+            const SizedBox(height: Space.sm),
             TextField(
               controller: _promptCtrl,
               minLines: 2,
@@ -648,6 +681,7 @@ class _AutomationEditorSheetState extends State<_AutomationEditorSheet> {
 
   Widget _label(String text, AtlasColors c) => Text(
     text,
-    style: TextStyle(fontSize: 12, color: c.muted, fontWeight: FontWeight.w500),
+    style: Theme.of(context).textTheme.bodySmall!
+        .copyWith(color: c.muted, fontWeight: FontWeight.w500),
   );
 }

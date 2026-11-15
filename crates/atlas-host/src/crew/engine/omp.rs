@@ -16,9 +16,9 @@ use std::collections::BTreeMap;
 use serde_json::Value;
 use tokio::io::{AsyncBufReadExt, AsyncWriteExt, BufReader};
 
-use crate::crew::store::{CrewmateSession, EngineConfig, UsageRecord};
+use crate::crew::store::{CrewmateSession, UsageRecord};
 
-use super::{TurnCancel, TurnProc, TurnResult, program, turn_timeout};
+use super::{TurnCtx, TurnResult, launch, program, turn_timeout};
 
 /// Settings every crewmate's omp runs with, as a `--config` overlay. A crew server is a headless server: omp's sleep
 /// prevention asks systemd-logind over D-Bus, which a server or container often lacks, and every start then waited
@@ -34,64 +34,77 @@ pub(crate) fn overlay_args(crewmate_dir: &std::path::Path) -> Vec<String> {
     vec!["--config".to_string(), path.to_string_lossy().into_owned()]
 }
 
-#[allow(clippy::too_many_arguments)]
-pub(super) async fn run(
-    _engine: &EngineConfig,
-    session: CrewmateSession,
-    prompt: &str,
-    extra_env: &BTreeMap<String, String>,
-    work_dir: &str,
-    crewmate_dir: &std::path::Path,
-    hook_port: u16,
-    hook_token: &str,
-    pane_key: &str,
-    yolo: bool,
-    tools: Option<&super::ToolSink<'_>>,
-    cancel: &TurnCancel,
-) -> Result<TurnResult, String> {
-    let mut cmd = tokio::process::Command::new(program("omp"));
+/// What ended an omp turn: the RPC itself (a reply, or the stream failing), or hostd (cancel, timeout).
+enum End<T> {
+    Rpc(Result<T, String>),
+    Stopped(&'static str),
+}
+
+type RpcOut = (String, Option<String>, Option<UsageRecord>);
+
+impl End<RpcOut> {
+    /// The process died under the RPC: the stream ended without a reply, or writing/reading it failed (the
+    /// kernel can kill omp before hostd even writes the prompt: "Broken pipe"). Only then may the end be a
+    /// memory kill (#296) to report as such. A cancel or a timeout is hostd's own doing, never an OOM.
+    fn process_died(&self) -> bool {
+        match self {
+            End::Rpc(Ok((reply, ..))) => reply.is_empty(),
+            End::Rpc(Err(_)) => true,
+            End::Stopped(_) => false,
+        }
+    }
+}
+
+pub(super) async fn run(ctx: TurnCtx<'_>) -> Result<TurnResult, String> {
+    let mut cmd = ctx.command(&program("omp"));
     cmd.arg("--mode")
         .arg("rpc")
-        .args(overlay_args(crewmate_dir));
+        .args(overlay_args(ctx.crewmate_dir));
 
-    if yolo {
+    if ctx.yolo {
         cmd.arg("--auto-approve");
     } else {
-        // Write the approval extension and load it.
-        let ext_path = crewmate_dir.join("omp-approval.ts");
-        write_approval_extension(&ext_path, hook_port, hook_token, pane_key)?;
+        // Write the approval extension and load it; it reaches hostd through the ATLAS_* env.
+        let ext_path = ctx.crewmate_dir.join("omp-approval.ts");
+        write_approval_extension(&ext_path, ctx.hook_port, ctx.hook_token, ctx.pane_key)?;
         cmd.arg("--extension").arg(&ext_path);
-        // Inject env so the extension can reach hostd.
-        cmd.env("ATLAS_HOOK_PORT", hook_port.to_string());
-        cmd.env("ATLAS_HOOK_TOKEN", hook_token);
-        cmd.env("ATLAS_PANE_KEY", pane_key);
     }
 
-    if let Some(session_file) = &session.session_file {
+    if let Some(session_file) = &ctx.session.session_file {
         cmd.arg("--resume").arg(session_file);
     }
 
-    cmd.current_dir(work_dir);
-    for (k, v) in extra_env {
-        cmd.env(k, v);
+    let launch::Rpc {
+        mut writer,
+        reader,
+        guard,
+        oom,
+    } = launch::rpc(ctx.exec, cmd, "omp").await?;
+
+    let end = tokio::select! {
+        r = drive_rpc(&mut writer, reader, ctx.prompt, ctx.tools) => End::Rpc(r),
+        () = ctx.cancel.fired() => End::Stopped("cancelled"),
+        () = tokio::time::sleep(turn_timeout()) => End::Stopped("timed out after 2 h"),
+    };
+    let died = end.process_died();
+    if died
+        && let Some(oom) = oom
+        && let Ok(Some(cap)) = tokio::task::spawn_blocking(oom).await
+    {
+        drop(guard);
+        return Err(format!(
+            "omp: {}",
+            crate::crew::spawn::cgroup::oom_reason(cap)
+        ));
     }
-    cmd.stdin(std::process::Stdio::piped());
-    cmd.stdout(std::process::Stdio::piped());
-    cmd.stderr(std::process::Stdio::null());
-    let mut proc = TurnProc::spawn(&mut cmd).map_err(|e| format!("omp: spawn failed: {e}"))?;
-
-    let mut stdin = proc.child().stdin.take().ok_or("omp: no stdin pipe")?;
-    let stdout = proc.child().stdout.take().ok_or("omp: no stdout pipe")?;
-
-    let result = tokio::select! {
-        r = drive_rpc(&mut stdin, stdout, prompt, tools) => r.map_err(|e| format!("omp: {e}")),
-        () = cancel.fired() => Err("omp: cancelled".to_string()),
-        () = tokio::time::sleep(turn_timeout()) => Err("omp: timed out after 2 h".to_string()),
+    let result = match end {
+        End::Rpc(r) => r.map_err(|e| format!("omp: {e}")),
+        End::Stopped(why) => Err(format!("omp: {why}")),
     };
 
-    // Always kill the whole tree: the process is not expected to exit on its own, and the tools it
+    // Always end the whole tree: the process is not expected to exit on its own, and the tools it
     // started must not outlive the turn.
-    proc.kill().await;
+    drop(guard);
 
     let (reply, new_session_file, usage) = result?;
 
@@ -99,8 +112,8 @@ pub(super) async fn run(
         reply,
         session: CrewmateSession {
             session_id: None,
-            session_file: new_session_file.or(session.session_file),
-            created_at: session.created_at,
+            session_file: new_session_file.or(ctx.session.session_file),
+            created_at: ctx.session.created_at,
         },
         usage,
     })
@@ -351,6 +364,27 @@ mod tests {
 
     use super::*;
 
+    // #385 CI (plain Linux): the kernel killed the fake omp before hostd wrote the prompt, the write failed with
+    // "Broken pipe", and the turn reported the pipe error instead of the memory cap, because only an empty
+    // reply was checked for an OOM. Every way the process can die under the RPC is checked now; hostd's own
+    // stops never are (a cancel during a memory spike is still a cancel).
+    #[test]
+    fn every_rpc_death_is_checked_for_a_memory_kill_and_hostds_own_stops_never_are() {
+        let out = |reply: &str| -> RpcOut { (reply.to_string(), None, None) };
+        assert!(End::Rpc(Err("write prompt: Broken pipe (os error 32)".into())).process_died());
+        assert!(End::Rpc(Err("flush: Broken pipe".into())).process_died());
+        assert!(
+            End::Rpc(Ok(out(""))).process_died(),
+            "stream ended without a reply"
+        );
+        assert!(
+            !End::Rpc(Ok(out("done"))).process_died(),
+            "a reply is a reply"
+        );
+        assert!(!End::<RpcOut>::Stopped("cancelled").process_died());
+        assert!(!End::<RpcOut>::Stopped("timed out after 2 h").process_died());
+    }
+
     /// An omp RPC stream as the protocol sends it (same shapes as `apps/desktop/src/lib/rpc.test.ts`): a bash call
     /// whose result is text blocks, a read whose result is a plain string, and one failed call.
     const STREAM: &str = concat!(
@@ -427,6 +461,7 @@ mod kill_tests {
 
     use super::*;
     use crate::crew::engine::TurnCancel;
+    use crate::crew::store::EngineConfig;
 
     fn gone(pid: u32) -> bool {
         match std::fs::read_to_string(format!("/proc/{pid}/stat")) {
@@ -469,25 +504,29 @@ mod kill_tests {
         let turn = {
             let (dir, cancel) = (tmp.path().to_path_buf(), cancel.clone());
             tokio::spawn(async move {
-                run(
-                    &EngineConfig {
-                        kind: "omp".into(),
-                        provider: None,
-                        base_url: None,
-                        model: None,
-                    },
-                    CrewmateSession::default(),
-                    "go",
-                    &BTreeMap::new(),
-                    dir.to_str().unwrap(),
-                    &dir,
-                    0,
-                    "",
-                    "",
-                    true,
-                    None,
-                    &cancel,
-                )
+                let engine = EngineConfig {
+                    kind: "omp".into(),
+                    provider: None,
+                    base_url: None,
+                    model: None,
+                };
+                let env = BTreeMap::new();
+                run(TurnCtx {
+                    engine: &engine,
+                    session: CrewmateSession::default(),
+                    prompt: "go",
+                    crewmate_dir: &dir,
+                    crewmate_id: "c1",
+                    hook_port: 0,
+                    hook_token: "",
+                    pane_key: "",
+                    extra_env: &env,
+                    work_dir: dir.to_str().unwrap(),
+                    yolo: true,
+                    tools: None,
+                    cancel: &cancel,
+                    exec: &crate::crew::engine::Exec::local(),
+                })
                 .await
             })
         };

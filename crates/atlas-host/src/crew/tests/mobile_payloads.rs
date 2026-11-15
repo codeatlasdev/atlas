@@ -227,3 +227,84 @@ async fn usage_limits_and_settings_fixtures_are_real_payloads() {
 
     client.call("shutdown", json!({})).await.ok();
 }
+
+// Guards PhoneCrewAudit gap 3: `ask_user` blocks the agent for up to 30 min on a question only the phone
+// could answer, and the phone's `CrewmateTask` never parsed `ask`. The fixture is the task as hostd really
+// reports it while the agent waits (a real `POST /crew/<id>/ask` from the agent's MCP server, read back
+// with `crewmate_tasks`), the answer goes in with `crewmate_answer` exactly as the phone sends it, and
+// the agent's call returns it. Regenerate: UPDATE_FIXTURES=1 cargo test -p atlas-host crew::tests::mobile_payloads
+#[tokio::test(flavor = "multi_thread")]
+async fn ask_user_fixtures_are_real_payloads_and_the_phones_answer_wakes_the_agent() {
+    use super::prove_ui::{post_hook, send, task_of};
+    let _bin_lock = lock_agent_bin().await;
+    let tmp = tempfile::tempdir().unwrap();
+    let dir = tmp.path().join("hostd");
+    use_agent_bin(&fake_agent(tmp.path(), "claude", "sleep 30"));
+    let client = daemon(&dir).await;
+    let id = create_crewmate(&client, "Asker").await;
+    let task = send(&client, &id, "pick a deploy target", false).await;
+    wait_task_state(&client, &id, &task, "running", Duration::from_secs(20)).await;
+    let pane = crate::crew::pane::key(&id, &task);
+
+    // The agent asks and blocks, as `tool_ask_user` does.
+    let (d2, id2, pane2) = (dir.clone(), id.clone(), pane.clone());
+    let asked = tokio::spawn(async move {
+        post_hook(
+            &d2,
+            &id2,
+            "ask",
+            json!({"pane_key": pane2, "ask_id": "ask-fixture-1",
+                   "question": "Deploy to which environment?",
+                   "options": [{"key": "stg", "title": "Staging", "subtitle": "safe"},
+                               {"key": "prod", "title": "Production"}],
+                   "allow_text": true}),
+        )
+        .await
+    });
+    let mut open = Value::Null;
+    for _ in 0..100 {
+        open = task_of(&client, &id, &task).await;
+        if open["ask"].is_object() {
+            break;
+        }
+        tokio::time::sleep(Duration::from_millis(50)).await;
+    }
+    assert_eq!(open["ask"]["id"], "ask-fixture-1", "{open}");
+    assert!(open["ask"].get("answered").is_none(), "unanswered: {open}");
+
+    let mut waiting = json!({"tasks": [open.clone()]});
+    waiting["tasks"][0]["id"] = json!("task-asking");
+    waiting["tasks"][0]["ts"] = json!(1700000000);
+    waiting["tasks"][0]["started_at"] = json!(1700000005);
+    waiting["tasks"][0]["pane"] = json!("crew:crewmate-fixture:task-asking");
+    waiting["tasks"][0]["steps"] = json!([]);
+    waiting["tasks"][0]["tz"] = Value::Null;
+    if let Some(o) = waiting["tasks"][0].as_object_mut() {
+        o.remove("tz");
+    }
+
+    // The phone's answer, as `crewmate_answer {id, ask_id, key}` (Act scope) carries it.
+    client
+        .call(
+            "crewmate_answer",
+            json!({"id": id, "ask_id": "ask-fixture-1", "key": "stg"}),
+        )
+        .await
+        .unwrap();
+    let (status, reply) = tokio::time::timeout(Duration::from_secs(10), asked)
+        .await
+        .expect("the agent's ask never returned")
+        .unwrap();
+    assert!(status.contains("200"), "{status} {reply}");
+    assert_eq!(reply["answer"], "stg", "{reply}");
+    let after = task_of(&client, &id, &task).await;
+    assert_eq!(
+        after["ask"]["answered"],
+        json!({"kind": "key", "value": "stg"}),
+        "{after}"
+    );
+
+    fixture("crewmate_task_ask.json", &waiting);
+    client.call("shutdown", json!({})).await.ok();
+    crate::crew::runner::set_test_agent_bin(None);
+}

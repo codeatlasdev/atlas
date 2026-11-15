@@ -96,9 +96,13 @@ fn check(
     }
 }
 
+/// How much of the end of a log `detect` reads.
+const TAIL_BYTES: u64 = 64 * 1024;
+
 /// Classify the last meaningful log line.
 fn detect(log_path: &Path) -> State {
-    let Ok(content) = std::fs::read_to_string(log_path) else {
+    // Only the end of the log tells the state: a service log can be gigabytes.
+    let Ok(content) = crate::crew::store::jsonl::read_tail(log_path, TAIL_BYTES) else {
         return State::Unknown;
     };
     let last = content
@@ -113,5 +117,39 @@ fn detect(log_path: &Path) -> State {
         State::Running
     } else {
         State::Unknown
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use std::io::{Seek, SeekFrom, Write};
+
+    // #295: `detect` read the whole log every 30 s. Only the end can matter: this log is 256 MiB (sparse)
+    // and starts with a byte that is not UTF-8, which the old whole-file read could not even decode.
+    #[test]
+    fn detect_reads_only_the_end_of_a_huge_log() {
+        let t = tempfile::tempdir().unwrap();
+        let p = t.path().join("api.log");
+        let mut f = std::fs::File::create(&p).unwrap();
+        f.write_all(b"\xff").unwrap();
+        let len = 256u64 << 20;
+        f.set_len(len).unwrap();
+        f.seek(SeekFrom::Start(len - 24)).unwrap();
+        f.write_all(b"\n12:00:01 [stdout] ready\n").unwrap();
+        drop(f);
+
+        assert_eq!(detect(&p), State::Running);
+    }
+
+    #[test]
+    fn detect_reads_the_last_meaningful_line_of_a_small_log() {
+        let t = tempfile::tempdir().unwrap();
+        let p = t.path().join("api.log");
+        std::fs::write(&p, "listening on 3000\ncrash: boom\n\n").unwrap();
+        assert_eq!(detect(&p), State::Failed);
+        std::fs::write(&p, "crash: boom\nlistening on 3000\n").unwrap();
+        assert_eq!(detect(&p), State::Running);
+        assert_eq!(detect(&t.path().join("none.log")), State::Unknown);
     }
 }

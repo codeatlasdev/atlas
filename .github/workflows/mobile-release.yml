@@ -20,8 +20,30 @@ concurrency:
   cancel-in-progress: false
 
 jobs:
+  # Nothing reaches testers or the stores from a commit CI did not pass (#311), the same gate as
+  # release.yml. `github.sha` is the tagged commit on a tag push and the chosen ref on a dispatch.
+  gate:
+    name: CI gate
+    runs-on: ubuntu-latest
+    timeout-minutes: 130
+    permissions:
+      contents: read
+      actions: read
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+
+      - name: CI passed on this commit
+        env:
+          GH_TOKEN: ${{ github.token }}
+          REPO: ${{ github.repository }}
+          SHA: ${{ github.sha }}
+        run: scripts/ci-passed.sh "$REPO" "$SHA"
+
   number:
     name: Version and build number
+    needs: gate
     runs-on: ubuntu-latest
     timeout-minutes: 2
     outputs:

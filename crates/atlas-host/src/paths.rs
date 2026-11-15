@@ -77,21 +77,32 @@ pub fn ensure_token(dir: &Path) -> std::io::Result<String> {
 }
 
 /// Replace `p` with `data`, readable by this user only, atomically: a reader sees
-/// the old file or the new one, never half of it.
+/// the old file or the new one, never half of it, and after a crash it is still
+/// one of the two (the data is flushed before the rename, the directory after it).
 pub fn write_private(p: &Path, data: &[u8]) -> std::io::Result<()> {
     if let Some(d) = p.parent() {
         std::fs::create_dir_all(d)?;
     }
     let tmp = p.with_extension("tmp~");
-    atlas_core::sys::owner_only(
+    let mut f = atlas_core::sys::owner_only(
         std::fs::OpenOptions::new()
             .write(true)
             .create(true)
             .truncate(true),
     )
-    .open(&tmp)?
-    .write_all(data)?;
-    std::fs::rename(tmp, p)
+    .open(&tmp)?;
+    f.write_all(data)?;
+    f.sync_all()?;
+    drop(f);
+    std::fs::rename(tmp, p)?;
+    // Best effort: the rename is only durable once its directory is. Not every filesystem can sync one.
+    #[cfg(unix)]
+    if let Some(d) = p.parent()
+        && let Ok(d) = std::fs::File::open(d)
+    {
+        let _ = d.sync_all();
+    }
+    Ok(())
 }
 
 pub fn read_token(dir: &Path) -> std::io::Result<String> {

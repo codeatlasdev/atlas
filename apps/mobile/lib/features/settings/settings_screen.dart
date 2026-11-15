@@ -6,7 +6,9 @@ import 'package:atlas_mobile/core/connection/connection_notifier.dart';
 import 'package:atlas_mobile/core/demo/demo_transport.dart';
 import 'package:atlas_mobile/core/demo/demo_computer.dart';
 import 'package:atlas_mobile/core/protocol/models.dart';
+import 'package:atlas_mobile/core/push/push_provider.dart';
 import 'package:atlas_mobile/core/ui/atlas_theme.dart';
+import 'package:atlas_mobile/core/ui/motion_size.dart';
 import 'package:atlas_mobile/core/ui/components.dart';
 import 'package:atlas_mobile/core/ui/floating_tab_bar.dart';
 import 'package:atlas_mobile/features/home/home_screen.dart';
@@ -52,9 +54,13 @@ class SettingsScreen extends ConsumerWidget {
   Widget build(BuildContext context, WidgetRef ref) {
     final c = AtlasColors.of(context);
     final demo = ref.watch(demoModeProvider);
+    final paired = ref.watch(pairedDevicesProvider);
     final devices = demo
         ? const [demoDevice]
-        : ref.watch(pairedDevicesProvider).value ?? const <MacDevice>[];
+        : paired.value ?? const <MacDevice>[];
+    // Storage has not answered yet: one card's room is held (a person with a computer has at least one), so
+    // the rows below do not jump down when the list arrives.
+    final loading = !demo && paired.isLoading && !paired.hasValue;
     return Scaffold(
       body: SafeArea(
         bottom: false,
@@ -66,13 +72,13 @@ class SettingsScreen extends ConsumerWidget {
             Space.xxl + kFloatingBarScrollPad,
           ),
           children: [
-            Text(
-              'Settings',
-              style: Theme.of(context).textTheme.titleMedium
-                  ?.copyWith(fontSize: 20, fontWeight: FontWeight.w600),
-            ),
+            Text('Settings', style: Theme.of(context).textTheme.titleLarge),
             const SizedBox(height: Space.lg),
             SectionHeader('Computers', count: devices.length),
+            if (loading)
+              const AtlasCard(
+                child: SizedBox(height: kMinInteractiveDimension),
+              ),
             for (final d in devices)
               AtlasCard(
                 child: Row(
@@ -115,6 +121,23 @@ class SettingsScreen extends ConsumerWidget {
               onTap: () => context.push('/pair'),
             ),
             const Divider(height: Space.xl),
+            // One line on why notifications work or not; no row when there is nothing to say
+            // (a build without Firebase config, or no computer connected yet). It opens its room
+            // downward when the answer arrives, so nothing above it moves.
+            MotionSize(
+              child: switch (ref.watch(pushRegistrationProvider).value) {
+                final status? => ListTile(
+                  contentPadding: EdgeInsets.zero,
+                  leading: Icon(
+                    Icons.notifications_none_rounded,
+                    color: c.muted,
+                  ),
+                  title: const Text('Notifications'),
+                  subtitle: Text(status),
+                ),
+                null => const SizedBox(width: double.infinity),
+              },
+            ),
             ListTile(
               contentPadding: EdgeInsets.zero,
               leading: Icon(Icons.privacy_tip_outlined, color: c.muted),

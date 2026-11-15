@@ -37,14 +37,14 @@ class LinesChart extends StatelessWidget {
       children: [
         Text(
           'max ${max.toStringAsFixed(max < 10 ? 1 : 0)} $unit',
-          style: TextStyle(fontSize: 11, color: muted),
+          style: Theme.of(context).textTheme.labelSmall!.copyWith(color: muted),
         ),
-        const SizedBox(height: 4),
+        const SizedBox(height: Space.xs),
         CustomPaint(
           size: const Size(double.infinity, 140),
           painter: _LinesPainter([for (final n in names) series[n]!], colors),
         ),
-        const SizedBox(height: 8),
+        const SizedBox(height: Space.sm),
         LayoutBuilder(
           builder: (context, box) => Wrap(
             spacing: 12,
@@ -65,13 +65,14 @@ class LinesChart extends StatelessWidget {
                           shape: BoxShape.circle,
                         ),
                       ),
-                      const SizedBox(width: 4),
+                      const SizedBox(width: Space.xs),
                       Flexible(
                         child: Text(
                           names[i],
                           maxLines: 1,
                           overflow: TextOverflow.ellipsis,
-                          style: TextStyle(fontSize: 11, color: muted),
+                          style: Theme.of(context).textTheme.labelSmall!
+                              .copyWith(color: muted),
                         ),
                       ),
                     ],
@@ -158,7 +159,8 @@ class HealthTimeline extends StatelessWidget {
                   width: 72,
                   child: Text(
                     e.key,
-                    style: TextStyle(fontSize: 11, color: muted),
+                    style: Theme.of(context).textTheme.labelSmall!
+                        .copyWith(color: muted),
                     overflow: TextOverflow.ellipsis,
                   ),
                 ),

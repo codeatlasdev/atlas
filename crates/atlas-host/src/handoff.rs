@@ -47,6 +47,9 @@ pub struct SessionState {
     pub exit_code: Option<i32>,
     /// Index into the fd list of the message, when a master travels.
     pub fd: Option<usize>,
+    /// Set for a crewmate's session that runs as its own Linux user (driven through the spawn helper).
+    #[serde(default)]
+    pub iso: Option<crate::pty::IsoRef>,
 }
 
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
@@ -343,6 +346,7 @@ mod tests {
             exited: false,
             exit_code: None,
             fd,
+            iso: None,
         }
     }
 

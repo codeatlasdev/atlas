@@ -1,7 +1,7 @@
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 
-import 'package:atlas_mobile/core/connection/connection_notifier.dart';
+import 'package:atlas_mobile/core/connection/require_mux.dart';
 import 'package:atlas_mobile/core/protocol/models.dart';
 import 'package:atlas_mobile/core/ui/atlas_theme.dart';
 import 'package:atlas_mobile/features/crew/crew_provider.dart';
@@ -69,8 +69,7 @@ class _NewCrewmateSheetState extends ConsumerState<NewCrewmateSheet> {
       _error = null;
     });
     try {
-      final mux = await ref.read(connectionNotifierProvider(_device).future);
-      if (mux == null) throw Exception('Not connected to ${_device.name}');
+      final mux = await requireMuxOf(ref, _device);
       final resp = await mux.call('crewmate_create', {
         'name': name,
         'role': _roleCtrl.text.trim(),
@@ -96,10 +95,10 @@ class _NewCrewmateSheetState extends ConsumerState<NewCrewmateSheet> {
 
     return Padding(
       padding: EdgeInsets.only(
-        left: 24,
-        right: 24,
-        top: 8,
-        bottom: MediaQuery.of(context).viewInsets.bottom + 24,
+        left: Space.xl,
+        right: Space.xl,
+        top: Space.sm,
+        bottom: MediaQuery.of(context).viewInsets.bottom + Space.xl,
       ),
       child: Column(
         mainAxisSize: MainAxisSize.min,
@@ -109,12 +108,16 @@ class _NewCrewmateSheetState extends ConsumerState<NewCrewmateSheet> {
             'Recruit a crewmate',
             style: Theme.of(context).textTheme.titleLarge,
           ),
-          const SizedBox(height: 20),
+          const SizedBox(height: Space.xl),
 
           // Device picker (only when more than one device).
           if (widget.devices.length > 1) ...[
-            Text('Computer', style: TextStyle(color: c.muted, fontSize: 13)),
-            const SizedBox(height: 6),
+            Text(
+              'Computer',
+              style: Theme.of(context).textTheme.bodyMedium!
+                  .copyWith(color: c.muted),
+            ),
+            const SizedBox(height: Space.sm),
             DropdownButtonFormField<MacDevice>(
               initialValue: _device,
               decoration: const InputDecoration(isDense: true),
@@ -126,7 +129,7 @@ class _NewCrewmateSheetState extends ConsumerState<NewCrewmateSheet> {
                 if (d != null) setState(() => _device = d);
               },
             ),
-            const SizedBox(height: 16),
+            const SizedBox(height: Space.lg),
           ],
 
           // Name field.
@@ -138,7 +141,7 @@ class _NewCrewmateSheetState extends ConsumerState<NewCrewmateSheet> {
             ),
             textCapitalization: TextCapitalization.sentences,
           ),
-          const SizedBox(height: 12),
+          const SizedBox(height: Space.md),
 
           // Role field.
           TextField(
@@ -151,11 +154,15 @@ class _NewCrewmateSheetState extends ConsumerState<NewCrewmateSheet> {
             maxLines: 4,
             textCapitalization: TextCapitalization.sentences,
           ),
-          const SizedBox(height: 16),
+          const SizedBox(height: Space.lg),
 
           // Agent picker.
-          Text('Agent', style: TextStyle(color: c.muted, fontSize: 13)),
-          const SizedBox(height: 6),
+          Text(
+            'Agent',
+            style: Theme.of(context).textTheme.bodyMedium!
+                .copyWith(color: c.muted),
+          ),
+          const SizedBox(height: Space.sm),
           DropdownButtonFormField<String>(
             initialValue: _agent,
             decoration: const InputDecoration(isDense: true),
@@ -167,11 +174,15 @@ class _NewCrewmateSheetState extends ConsumerState<NewCrewmateSheet> {
               if (a != null) _onAgentChanged(a);
             },
           ),
-          const SizedBox(height: 16),
+          const SizedBox(height: Space.lg),
 
           // Approval mode.
-          Text('Approval', style: TextStyle(color: c.muted, fontSize: 13)),
-          const SizedBox(height: 6),
+          Text(
+            'Approval',
+            style: Theme.of(context).textTheme.bodyMedium!
+                .copyWith(color: c.muted),
+          ),
+          const SizedBox(height: Space.sm),
           SegmentedButton<String>(
             selected: {_approval},
             onSelectionChanged: isOpencode
@@ -183,25 +194,30 @@ class _NewCrewmateSheetState extends ConsumerState<NewCrewmateSheet> {
             ],
           ),
           if (isOpencode) ...[
-            const SizedBox(height: 6),
+            const SizedBox(height: Space.sm),
             Text(
               'OpenCode crewmates run without approval prompts.',
-              style: TextStyle(color: c.muted, fontSize: 12),
+              style: Theme.of(context).textTheme.bodySmall!
+                  .copyWith(color: c.muted),
             ),
           ],
 
           if (_error != null) ...[
-            const SizedBox(height: 12),
-            Text(_error!, style: TextStyle(color: c.error, fontSize: 13)),
+            const SizedBox(height: Space.md),
+            Text(
+              _error!,
+              style: Theme.of(context).textTheme.bodyMedium!
+                  .copyWith(color: c.error),
+            ),
           ],
 
-          const SizedBox(height: 20),
+          const SizedBox(height: Space.xl),
           FilledButton(
             onPressed: _submitting ? null : _submit,
             child: _submitting
                 ? const SizedBox(
-                    width: 18,
-                    height: 18,
+                    width: Space.lg,
+                    height: Space.lg,
                     child: CircularProgressIndicator(strokeWidth: 2),
                   )
                 : const Text('Create crewmate'),

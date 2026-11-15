@@ -13,7 +13,7 @@ use super::prompt::{Prepared, load_agent_env, prepare_task};
 use super::recover::recovered_wait;
 use super::summary::maybe_summarize;
 #[cfg(test)]
-use super::testing::{TEST_AGENT_BIN, TEST_PAUSE_AFTER_SPAWN};
+use super::testing::{TEST_AGENT_BIN, TEST_PAUSE_AFTER_SPAWN, TEST_PAUSE_BEFORE_SPAWN};
 use crate::crew::store::{Crewmate, Step, Task, TaskState};
 use crate::crew::{now_s, pane, triggers};
 use crate::paths;
@@ -117,14 +117,32 @@ async fn run_pty_inner(
     pane_key: &str,
     work_dir: &str,
 ) -> (Result<String, String>, Vec<Step>) {
+    let ctx = super::isolation::Ctx::of(hub, &crewmate.id);
+    if let Err(e) = ctx.prepare(hub, &crewmate.id) {
+        return (
+            Err(format!("cannot prepare the crewmate's runtime files: {e}")),
+            vec![],
+        );
+    }
     // Resolve the agent definition.
     let Some(agent_def) = atlas_core::agents::get(&crewmate.agent) else {
         return (Err(format!("unknown agent '{}'", crewmate.agent)), vec![]);
     };
 
+    // A slot for the agent (a task waiting for a person holds none), and the store's word before anything starts: a
+    // task cancelled while it was preparing or waiting for a slot never gets its agent (#292). `finish_task` records
+    // it as cancelled, the store's state winning over this error. The slot is held until the agent has ended.
+    let Some(_slot) = super::slots::take(hub, crewmate, task).await else {
+        return (Err("cancelled before the agent started".into()), vec![]);
+    };
     // In tests a fake binary can be injected; production always uses the agent def.
     #[cfg(test)]
-    let argv = match TEST_AGENT_BIN.lock().clone() {
+    let argv = match TEST_AGENT_BIN
+        .lock()
+        .clone()
+        .filter(|_| ctx.isolated().is_none())
+    {
+        // An isolated agent is an engine by name, found by the helper in its own directories.
         Some(bin) => vec![bin],
         None => agent_def.argv(
             triggers::yolo_for(crewmate.approval, task),
@@ -139,7 +157,7 @@ async fn run_pty_inner(
         );
         if crewmate.agent == "omp" {
             let overlay =
-                crate::crew::engine::omp::overlay_args(&hub.crew.store.crewmate_dir(&crewmate.id));
+                crate::crew::engine::omp::overlay_args(&ctx.runtime_dir(hub, &crewmate.id));
             argv.splice(1..1, overlay);
         }
         argv
@@ -163,6 +181,9 @@ async fn run_pty_inner(
     // Per-agent env overrides from <dir>/agent-env/<agent>.env.
     req.env.extend(load_agent_env(&hub.dir, &crewmate.agent));
 
+    // An isolated agent reports to its own endpoint (a token that opens only its routes); the
+    // request's values win over `hook_env`'s defaults, which name the crew user's global endpoint.
+    req.env.extend(ctx.agent_env(hub, &crewmate.id));
     // Inject hook endpoint env vars (must come after crewmate env so ATLAS_* always wins).
     crate::server::hook_env(hub, &mut req);
 
@@ -182,9 +203,26 @@ async fn run_pty_inner(
     }
     audit_task(hub, &crewmate.id, "task_started", task);
     broadcast_task(hub, &crewmate.id, task);
+    // The store's word right before the agent exists: `persist` keeps a stored cancel (the runner's `running` is not
+    // written over it), so a task cancelled while it prepared or waited for a slot is still cancelled here and no
+    // agent is spawned for it (#292).
+    if super::outcome::was_cancelled(hub, &crewmate.id, &task.id) {
+        return (Err("cancelled before the agent started".into()), vec![]);
+    }
+    #[cfg(test)]
+    let pause = *TEST_PAUSE_BEFORE_SPAWN.lock();
+    #[cfg(test)]
+    if let Some(pause) = pause {
+        tokio::time::sleep(pause).await;
+    }
 
     // Spawn the pty.
-    let session = match Session::spawn(req, &paths::scrollback_dir(&hub.dir)) {
+    let scroll = paths::scrollback_dir(&hub.dir);
+    #[cfg(unix)]
+    let spawned = Session::spawn_as(req, &scroll, ctx.as_user());
+    #[cfg(not(unix))]
+    let spawned = Session::spawn(req, &scroll);
+    let session = match spawned {
         Ok(s) => s,
         Err(e) => return (Err(format!("spawn failed: {e:#}")), vec![]),
     };
@@ -196,6 +234,13 @@ async fn run_pty_inner(
     #[cfg(test)]
     if let Some(pause) = pause {
         tokio::time::sleep(pause).await;
+    }
+    // A cancel that landed between the check above and the session's registration found nothing to kill: the
+    // store has it, so the agent is stopped here rather than left running over a cancelled task.
+    if super::outcome::was_cancelled(hub, &crewmate.id, &task.id) {
+        session.kill().await;
+        hub.sessions.lock().remove(&pty_id);
+        return (Err("cancelled before the agent started".into()), vec![]);
     }
 
     // Wait for completion.

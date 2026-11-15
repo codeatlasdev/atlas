@@ -14,12 +14,15 @@
 //! | `projects`    | Git/path projects, checkout before the first task                        |
 //! | `engines`     | conversational engines: sessions, secrets, approvals, omp extension      |
 //! | `engine_stop` | pause, cancel and the task timeout end an engine turn and its child process |
+//! | `engine_login`| `crew_engine_login` / `crew_engine_status`: sign an engine in from a phone, expired sign-ins |
 //! | `actions`     | `ATLAS_ACTION` parsing, `waiting_action`, GitHub login                   |
 //! | `approvals`   | approval prompts of a crewmate's pane                                    |
 //! | `audit`       | the append-only audit: tool calls, approvals, lifecycle, config, restart  |
 //! | `telegram`    | setting Telegram up from a client, the status payload                     |
 //! | `payloads`    | payloads that are pure values: summarized task, the push event (Windows too) |
 //! | `guards`      | the guards against the agent: refusal parks the task, override and retry |
+//! | `isolation`   | crewmates as their own Linux users (#200): create/delete, files, hooks, engines |
+//! | `hygiene`     | chain loops, GitHub dedupe and baseline, a delete with a turn still running |
 //! | `limits`      | name/role/prompt limits (characters, not bytes)                          |
 //! | `mobile_payloads` | the audit, usage, engine-limits and settings replies the phone's crew screens read |
 //! | `push`        | `push_register`: the token and its relay grant, the phone's wire shape   |
@@ -53,6 +56,8 @@ mod capture;
 #[cfg(unix)]
 mod crewmates;
 #[cfg(unix)]
+mod engine_login;
+#[cfg(unix)]
 mod engine_stop;
 #[cfg(unix)]
 mod engines;
@@ -63,6 +68,10 @@ mod github_e2e;
 #[cfg(unix)]
 mod guards;
 #[cfg(unix)]
+mod hygiene;
+#[cfg(unix)]
+mod isolation;
+#[cfg(unix)]
 mod limits;
 #[cfg(unix)]
 mod locate;
@@ -70,6 +79,8 @@ mod locate;
 mod mobile_payloads;
 #[cfg(unix)]
 mod pause;
+#[cfg(unix)]
+mod prepare;
 #[cfg(unix)]
 mod projects;
 #[cfg(unix)]

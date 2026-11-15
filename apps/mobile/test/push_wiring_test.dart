@@ -7,9 +7,11 @@ import 'dart:convert';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:flutter_test/flutter_test.dart';
 
+import 'package:atlas_mobile/core/protocol/protocol_version.dart';
 import 'package:atlas_mobile/core/connection/connection_notifier.dart';
 import 'package:atlas_mobile/core/protocol/models.dart';
 import 'package:atlas_mobile/core/push/push_provider.dart';
+import 'package:atlas_mobile/core/push/push_result.dart';
 import 'package:atlas_mobile/core/push/push_service.dart';
 import 'package:atlas_mobile/core/storage/mac_storage.dart';
 
@@ -40,7 +42,7 @@ class _Computer implements Transport {
     final req = jsonDecode(line) as Map<String, dynamic>;
     final cmd = req['cmd'];
     if (cmd == 'push_register') registered.add((req['args'] as Map).cast());
-    Object data = cmd == 'info' ? {'caps': caps} : {};
+    Object data = cmd == 'info' ? {'proto': kAppProto, 'caps': caps} : {};
     if (cmd == 'crew_servers') {
       data = {
         'servers': [
@@ -80,6 +82,7 @@ void main() {
   const mac = MacDevice(nodeId: 'mac-1', name: 'Mac');
   late _Computer computer;
   late List<String> asked;
+  PushResult<String> Function(String token)? grantFor;
 
   ProviderContainer container(List<MacDevice> devices) {
     final c = ProviderContainer(
@@ -88,7 +91,7 @@ void main() {
         transportFactoryProvider.overrideWithValue((_, _) async => computer),
         pushGrantFetcherProvider.overrideWithValue((token) async {
           asked.add(token);
-          return 'grant:$token';
+          return grantFor?.call(token) ?? PushOk('grant:$token');
         }),
       ],
     );
@@ -99,6 +102,7 @@ void main() {
   setUp(() {
     computer = _Computer();
     asked = [];
+    grantFor = null;
   });
 
   test('registers the token and its grant with a connected computer', () async {
@@ -202,5 +206,83 @@ void main() {
     await _settle();
     expect(asked, isEmpty);
     expect(computer.registered, isEmpty);
+  });
+
+  // The user could never tell why push did not work: every failure above was a silent null/false.
+  // Now the app root's provider ends in one line that says the first reason.
+  group('push status line', () {
+    String? line(ProviderContainer c) => c.read(pushRegistrationProvider).value;
+
+    test(
+      'is null while there is no token (no Firebase config), nothing to say',
+      () async {
+        final c = container([mac]);
+        c.listen(pushRegistrationProvider, (_, _) {});
+        await _settle();
+        expect(line(c), isNull);
+      },
+    );
+
+    test(
+      'says notifications are on once a computer took the registration',
+      () async {
+        final c = container([mac]);
+        c.listen(pushRegistrationProvider, (_, _) {});
+        c.read(fcmTokenProvider.notifier).state = 'fcm-1';
+        await _settle();
+        expect(line(c), contains('on'));
+      },
+    );
+
+    test('says why when the relay refuses the grant', () async {
+      grantFor = (_) => const PushFail('The push relay is down (HTTP 503)');
+      final c = container([mac]);
+      c.listen(pushRegistrationProvider, (_, _) {});
+      c.read(fcmTokenProvider.notifier).state = 'fcm-1';
+      await _settle();
+      expect(line(c), contains('HTTP 503'));
+      expect(computer.registered, isEmpty);
+    });
+
+    test('says a computer needs an update when it has no push cap', () async {
+      computer.caps = ['mobile', 'agents'];
+      final c = container([mac]);
+      c.listen(pushRegistrationProvider, (_, _) {});
+      c.read(fcmTokenProvider.notifier).state = 'fcm-1';
+      await _settle();
+      expect(line(c)!.toLowerCase(), contains('update atlas'));
+    });
+
+    // One working computer is enough for the phone to be notified; a failing one must not
+    // hide that, but it is not "everything fine" either.
+    test(
+      'a failing computer does not stop the next one from registering',
+      () async {
+        computer.caps = ['mobile'];
+        computer.server = _Computer();
+        final c = container([mac]);
+        c.listen(pushRegistrationProvider, (_, _) {});
+        c.read(fcmTokenProvider.notifier).state = 'fcm-1';
+        await _settle();
+        expect(computer.server!.registered, hasLength(1));
+        expect(line(c), contains('on'));
+      },
+    );
+
+    test(
+      'registers again, and the line follows, when the token rotates',
+      () async {
+        grantFor = (_) => const PushFail('relay unreachable');
+        final c = container([mac]);
+        c.listen(pushRegistrationProvider, (_, _) {});
+        c.read(fcmTokenProvider.notifier).state = 'fcm-1';
+        await _settle();
+        expect(line(c), contains('relay unreachable'));
+        grantFor = null;
+        c.read(fcmTokenProvider.notifier).state = 'fcm-2';
+        await _settle();
+        expect(line(c), contains('on'));
+      },
+    );
   });
 }

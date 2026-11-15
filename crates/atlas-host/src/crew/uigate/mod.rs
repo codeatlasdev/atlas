@@ -428,12 +428,18 @@ impl Drop for RemoveOnDrop {
 }
 
 /// The checkout the crewmate's change is in: its own work dir, else its project's.
-fn root_of(hostd_dir: &Path, crewmate: &Crewmate) -> PathBuf {
+fn root_of(hostd_dir: &Path, store: &CrewStore, crewmate: &Crewmate) -> PathBuf {
     crewmate
         .workdir
         .as_ref()
         .map(PathBuf::from)
-        .unwrap_or_else(|| super::project::work_dir(hostd_dir, &crewmate.id))
+        .unwrap_or_else(|| {
+            super::project::work_dir_for(
+                hostd_dir,
+                &crewmate.id,
+                store.isolated(&crewmate.id).as_ref(),
+            )
+        })
 }
 
 /// What the `ui_gate` hook route does: `Err` is the message the agent sees as the tool's error.
@@ -448,7 +454,7 @@ pub async fn handle(
     let crewmate = store
         .load_crewmate(crewmate_id)
         .map_err(|e| format!("ui_gate: cannot read the crewmate: {e}"))?;
-    let root = root_of(hostd_dir, &crewmate);
+    let root = root_of(hostd_dir, store, &crewmate);
     if !root.is_dir() {
         return Err(format!(
             "ui_gate: the work folder {} does not exist yet",

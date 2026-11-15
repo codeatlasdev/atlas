@@ -18,6 +18,7 @@
 //! | `events`    | the push events broadcast to clients                                        |
 //! | `pane`      | the `crew:<crewmate>:<task>` pane key                                       |
 //! | `project`   | Git/path project checkout                                                   |
+//! | `spawn`     | the root helper protocol that starts each crewmate as its own Linux user    |
 //! | `telegram`, `push` | delivery channels                                                    |
 //! | `mcp`       | the MCP server an engine's agent talks to (`atlas mcp --crewmate <id>`)     |
 //! | `relay`     | the Mac's relay to crew servers, for Atlas Mobile (runs on the Mac)         |
@@ -26,18 +27,22 @@ pub(crate) mod attachments;
 pub(crate) mod audit;
 pub mod capture;
 pub(crate) mod engine;
+pub(crate) mod engine_login;
 pub(crate) mod events;
 pub(crate) mod github;
 mod handlers;
 mod hub;
 pub mod locate;
 pub mod mcp;
+pub(crate) mod memory_cap;
 pub(crate) mod pane;
+pub(crate) mod proc;
 pub(crate) mod project;
 pub(crate) mod push;
 pub mod relay;
 pub(crate) mod runner;
 pub(crate) mod schedule;
+pub mod spawn;
 pub(crate) mod store;
 pub(crate) mod telegram;
 #[cfg(test)]
@@ -122,7 +127,7 @@ pub(crate) async fn handle(hub: &Hub, cmd: HostCmd) -> Result<Value, String> {
             setup_step,
             short_replies,
         ),
-        HostCmd::CrewmateDelete { id } => c::delete(hub, id),
+        HostCmd::CrewmateDelete { id } => c::delete(hub, id).await,
 
         HostCmd::CrewmateTask {
             id,
@@ -181,10 +186,23 @@ pub(crate) async fn handle(hub: &Hub, cmd: HostCmd) -> Result<Value, String> {
         HostCmd::CrewSettingsSet {
             short_replies,
             short_replies_model,
-        } => s::set(hub, short_replies, short_replies_model),
+            max_agents,
+            agent_memory_max,
+        } => s::set(
+            hub,
+            s::SettingsIn {
+                short_replies,
+                short_replies_model,
+                max_agents,
+                agent_memory_max,
+            },
+        ),
         HostCmd::CrewPause {} => hub.crew.set_paused(hub, true).map(|()| json!({})),
         HostCmd::CrewResume {} => hub.crew.set_paused(hub, false).map(|()| json!({})),
         HostCmd::EngineLimits {} => s::engine_limits(),
+        HostCmd::CrewEngineStatus { refresh, crewmate } => {
+            engine_login::status(hub, refresh, crewmate.as_deref()).await
+        }
 
         HostCmd::CrewGithubStatus {} => github::status().await,
         HostCmd::CrewGithubLoginStart {} => github::login_start(hub).await,

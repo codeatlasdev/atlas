@@ -17,6 +17,7 @@
 
 mod addrs;
 mod session;
+pub(crate) mod shell;
 // Unix like the daemon's other end-to-end tests: they spawn `sh` and `cat` in ptys.
 #[cfg(all(test, unix))]
 mod push_tests;
@@ -192,7 +193,8 @@ impl Mobile {
             .cloned()
     }
 
-    /// New one-time code (replaces any previous one).
+    /// New one-time code (replaces any previous one, and with it the pending invites made for that one:
+    /// their link would fail with "bad code").
     /// Fails rather than hand out a guessable code when the system has no randomness.
     pub fn pair_start(&self) -> Result<Value, String> {
         let mut n = [0u8; 4];
@@ -203,6 +205,13 @@ impl Mobile {
             expires: std::time::Instant::now() + CODE_TTL,
             bad: 0,
         });
+        {
+            let mut invites = self.invites.lock();
+            if !invites.is_empty() {
+                invites.clear();
+                self.save_invites(&invites);
+            }
+        }
         let addr = self.endpoint.lock().as_ref().map(|e| e.addr());
         let direct: Vec<std::net::SocketAddr> =
             addr.iter().flat_map(|a| a.ip_addrs().copied()).collect();
@@ -296,18 +305,12 @@ impl Mobile {
         self.save(&all)
     }
 
-    /// Append one line to `audit.log`. `pty_write` data is never logged, only its size.
+    /// Append one line to `audit.log`. What a person typed or sent is logged as its size only, at any depth
+    /// (a relayed `crew_call` carries the real command's arguments inside `args`): `pty_write` data, a
+    /// prompt, a commit message, a PR title or body, and `value`, which is a secret the phone provided.
     pub fn audit(&self, node_id: &str, cmd: &str, args: &Value) {
         let mut args = args.clone();
-        if let Some(d) = args.get("data").and_then(Value::as_str) {
-            args["data"] = json!(format!("<{} bytes base64>", d.len()));
-        }
-        // Typed text (a prompt, a commit message, a PR title or body) is logged as its length only.
-        for k in ["text", "message", "title", "body"] {
-            if let Some(t) = args.get(k).and_then(Value::as_str) {
-                args[k] = json!(format!("<{} chars>", t.chars().count()));
-            }
-        }
+        redact(&mut args);
         let line = json!({"ts": now_s(), "node_id": node_id, "cmd": cmd, "args": args});
         if let Ok(mut f) =
             atlas_core::sys::owner_only(std::fs::OpenOptions::new().create(true).append(true))
@@ -357,6 +360,54 @@ impl Mobile {
         invites.retain(|i| i.url != url);
         self.save_invites(&invites);
     }
+}
+
+/// Replace what a person typed or sent, at any depth, with its size: `data` is base64 (bytes), the rest chars.
+fn redact(v: &mut Value) {
+    match v {
+        Value::Object(m) => {
+            for (k, x) in m.iter_mut() {
+                match (k.as_str(), &*x) {
+                    ("data", Value::String(d)) => *x = json!(format!("<{} bytes base64>", d.len())),
+                    ("text" | "message" | "title" | "body" | "value", Value::String(t)) => {
+                        *x = json!(format!("<{} chars>", t.chars().count()));
+                    }
+                    _ => redact(x),
+                }
+            }
+        }
+        Value::Array(a) => a.iter_mut().for_each(redact),
+        _ => {}
+    }
+}
+
+/// The pairing link a phone scans, from a `mobile_pair_start` reply:
+/// `atlas-mobile://pair?node=<id>&code=<code>&name=<host>[&addr=ip:port…][&relay=url]`. The code is not what
+/// protects the link (the iroh keys are); it proves the phone was in front of the screen that showed it. The
+/// desktop's `pairUrl` (`apps/desktop/src/lib/settings/mobile.ts`) builds the same link; a fixture pins both.
+pub fn pair_url(start: &Value) -> Result<String, String> {
+    let field = |k: &str| {
+        start[k]
+            .as_str()
+            .filter(|s| !s.is_empty())
+            .ok_or_else(|| format!("pairing reply has no {k}"))
+    };
+    let mut q = url::form_urlencoded::Serializer::new(String::new());
+    q.append_pair("node", field("node_id")?)
+        .append_pair("code", field("code")?)
+        .append_pair("name", start["hostname"].as_str().unwrap_or_default());
+    for a in start["addrs"]
+        .as_array()
+        .into_iter()
+        .flatten()
+        .filter_map(Value::as_str)
+    {
+        q.append_pair("addr", a);
+    }
+    if let Some(r) = start["relay_url"].as_str() {
+        q.append_pair("relay", r);
+    }
+    Ok(format!("atlas-mobile://pair?{}", q.finish()))
 }
 
 /// The scope a push needs to reach a phone; `None` = never sent to one (the desktop's
@@ -418,6 +469,9 @@ pub fn required_scope(cmd: &HostCmd) -> Result<Scope, &'static str> {
         | C::AgentSend { .. }
         | C::AgentInterrupt { .. }
         | C::AgentLaunch { .. }
+        // A new shell is a process on the computer: `act`, and typing into it still needs `term_write`
+        // (and the phone's Face ID gate). It takes registry ids, never a path (`pty_create` stays refused).
+        | C::PtyOpen { .. }
         | C::WorktreeCreate { .. }
         | C::WorktreeRemove { .. } => Scope::Act,
         C::GitStatus { .. } | C::GitDiff { .. } => Scope::Read,
@@ -463,12 +517,25 @@ pub fn required_scope(cmd: &HostCmd) -> Result<Scope, &'static str> {
         C::CrewPause {} | C::CrewResume {} => Scope::Act,
         C::CrewSettingsGet {} => Scope::Read,
         C::CrewSettingsSet { .. } => Scope::Act,
+        // Reading a status runs the engine's own status command; the sign-in terminal starts a login: Act (and
+        // the phone's Face ID gate). Both are for the crew server itself: through a Mac's relay a terminal
+        // cannot be attached (`CrewCall` below), so the phone pairs with the crew server for this.
+        C::CrewEngineStatus { .. } => Scope::Read,
+        C::CrewEngineLogin { .. } => Scope::Act,
         C::CrewServers {} => Scope::Read,
         // What the relayed command needs here. Terminals stay out: their output streams to the
         // relaying connection, not to one phone.
         C::CrewCall { cmd, args, .. } => {
             let inner = HostCmd::crew_inner(cmd, args).map_err(|_| "bad crew request")?;
-            if matches!(inner, C::CrewCall { .. } | C::CrewServers {}) {
+            // A sign-in or a new shell is a terminal on the crew server: relayed, the phone could never attach to
+            // it (a Mac's relay holds that connection). Pair the phone with the crew server itself.
+            if matches!(
+                inner,
+                C::CrewCall { .. }
+                    | C::CrewServers {}
+                    | C::CrewEngineLogin { .. }
+                    | C::PtyOpen { .. }
+            ) {
                 return Err("not available on mobile");
             }
             match required_scope(&inner)? {

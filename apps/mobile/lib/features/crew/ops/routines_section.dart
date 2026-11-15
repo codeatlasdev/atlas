@@ -42,7 +42,8 @@ class RoutinesSection extends StatelessWidget {
               padding: const EdgeInsets.symmetric(vertical: Space.md),
               child: Text(
                 'A routine gives $crewmateName a prompt to run on a cron schedule.',
-                style: TextStyle(color: c.faint, fontSize: 13, height: 1.4),
+                style: Theme.of(context).textTheme.bodyMedium!
+                    .copyWith(color: c.muted, height: 1.4),
               ),
             )
           else
@@ -97,17 +98,14 @@ class _RoutineRow extends StatelessWidget {
                     routine.prompt,
                     maxLines: 2,
                     overflow: TextOverflow.ellipsis,
-                    style: TextStyle(
-                      color: routine.enabled ? c.text : c.faint,
-                      fontSize: 14,
-                    ),
+                    style: Theme.of(context).textTheme.bodyLarge!
+                        .copyWith(color: routine.enabled ? c.text : c.faint),
                   ),
                   const SizedBox(height: 2),
                   Text(
                     routine.cron,
-                    style: TextStyle(
+                    style: Theme.of(context).textTheme.bodySmall!.copyWith(
                       color: c.muted,
-                      fontSize: 12,
                       fontFamily: monoFamily,
                       fontFamilyFallback: monoFallback,
                     ),
@@ -255,7 +253,11 @@ class _RoutineSheetState extends State<_RoutineSheet> {
           ),
           if (_error != null) ...[
             const SizedBox(height: Space.sm),
-            Text(_error!, style: TextStyle(color: c.error, fontSize: 13)),
+            Text(
+              _error!,
+              style: Theme.of(context).textTheme.bodyMedium!
+                  .copyWith(color: c.error),
+            ),
           ],
           const SizedBox(height: Space.md),
           Row(

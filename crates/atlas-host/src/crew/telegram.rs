@@ -68,11 +68,7 @@ fn card_images_of(
     crewmate_id: &str,
     task_id: &str,
 ) -> Vec<(String, Vec<u8>)> {
-    let Some(task) = store
-        .read_tasks(crewmate_id, usize::MAX)
-        .into_iter()
-        .find(|t| t.id == task_id)
-    else {
+    let Some(task) = store.task(crewmate_id, task_id) else {
         return vec![];
     };
     let agent: Vec<_> = task

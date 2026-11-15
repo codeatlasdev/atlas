@@ -1,5 +1,6 @@
 import 'package:flutter/material.dart';
 
+import 'package:atlas_mobile/core/ui/route_page.dart';
 import 'package:atlas_mobile/core/protocol/models.dart';
 import 'package:atlas_mobile/core/ui/atlas_theme.dart';
 import 'package:atlas_mobile/core/ui/components.dart';
@@ -19,10 +20,9 @@ class ChangesTile extends StatelessWidget {
       padding: const EdgeInsets.only(top: Space.md),
       child: AtlasCard(
         key: const ValueKey('changes-tile'),
-        onTap: () => Navigator.of(context).push(
-          MaterialPageRoute<void>(
-            builder: (_) => ChangesScreen(device: device, project: project),
-          ),
+        onTap: () => pushScreen<void>(
+          context,
+          ChangesScreen(device: device, project: project),
         ),
         padding: const EdgeInsets.all(Space.md),
         child: Row(

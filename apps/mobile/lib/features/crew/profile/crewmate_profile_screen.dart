@@ -5,6 +5,7 @@ library;
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 
+import 'package:atlas_mobile/core/ui/route_page.dart';
 import 'package:atlas_mobile/core/protocol/multiplexer.dart';
 import 'package:atlas_mobile/core/connection/require_mux.dart';
 import 'package:atlas_mobile/core/protocol/models.dart';
@@ -222,9 +223,7 @@ class _CrewmateProfileScreenState extends ConsumerState<CrewmateProfileScreen> {
     if (err != null && mounted) _toast(err);
   }
 
-  void _open(Widget screen) =>
-      Navigator.of(context)
-          .push(MaterialPageRoute<void>(builder: (_) => screen));
+  void _open(Widget screen) => pushScreen<void>(context, screen);
 
   // ── github ────────────────────────────────────────────────────────────────
 

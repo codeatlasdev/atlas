@@ -8,6 +8,8 @@ import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 
+import 'package:atlas_mobile/core/ui/chat_reader.dart';
+import 'package:atlas_mobile/core/ui/route_page.dart';
 import 'package:atlas_mobile/core/connection/require_mux.dart';
 import 'package:atlas_mobile/core/connection/connection_notifier.dart';
 import 'package:atlas_mobile/core/protocol/crew_models.dart';
@@ -59,7 +61,11 @@ class _CrewmateChatScreenState extends ConsumerState<CrewmateChatScreen> {
   final _msg = TextEditingController();
   bool _sending = false;
   final Set<String> _expanded = {};
-  final _scrollController = ScrollController();
+
+  /// Where the reader is above the end of the thread, and the thread as they left it.
+  late final _reader = ChatReader<List<CrewmateTask>>(
+    onChanged: () => setState(() {}),
+  );
   // Task id → GlobalKey for scroll-to-task from the board.
   final Map<String, GlobalKey> _taskKeys = {};
 
@@ -107,7 +113,7 @@ class _CrewmateChatScreenState extends ConsumerState<CrewmateChatScreen> {
   void dispose() {
     _arrivedTimer?.cancel();
     _msg.dispose();
-    _scrollController.dispose();
+    _reader.dispose();
     super.dispose();
   }
 
@@ -200,12 +206,11 @@ class _CrewmateChatScreenState extends ConsumerState<CrewmateChatScreen> {
   }
 
   void _openProfile(CrewmateEntry crewmate, String hostName) {
-    Navigator.of(context).push(
-      MaterialPageRoute<void>(
-        builder: (_) => CrewmateProfileScreen(
-          device: widget.device,
-          crewmateId: widget.crewmateId,
-        ),
+    pushScreen<void>(
+      context,
+      CrewmateProfileScreen(
+        device: widget.device,
+        crewmateId: widget.crewmateId,
       ),
     );
   }
@@ -237,6 +242,8 @@ class _CrewmateChatScreenState extends ConsumerState<CrewmateChatScreen> {
     final loadingTasks = tasksAsync.isLoading && !tasksAsync.hasValue;
     if (tasksAsync.hasValue) _noteArrivals(tasks);
     final tasksError = tasksAsync.hasValue ? null : tasksAsync.error;
+    // What the list draws: the thread as the reader left it while they are above its end.
+    final shown = _reader.view(tasks, tasks.length);
     final online =
         ref.watch(connectionNotifierProvider(widget.device)).value != null;
     final pa = crewmate?.pendingApproval;
@@ -390,7 +397,7 @@ class _CrewmateChatScreenState extends ConsumerState<CrewmateChatScreen> {
                   )
                 : ListView.builder(
                     reverse: true,
-                    controller: _scrollController,
+                    controller: _reader.scroll,
                     physics: const BouncingScrollPhysics(
                       parent: AlwaysScrollableScrollPhysics(),
                     ),
@@ -407,9 +414,9 @@ class _CrewmateChatScreenState extends ConsumerState<CrewmateChatScreen> {
                           MediaQuery.paddingOf(context).bottom +
                           _workingRow,
                     ),
-                    itemCount: tasks.length,
+                    itemCount: shown.length,
                     itemBuilder: (_, i) {
-                      final task = tasks[i];
+                      final task = shown[i];
                       final key = _taskKeys.putIfAbsent(task.id, GlobalKey.new);
                       final isApprovalTask =
                           approvalTaskId != null &&
@@ -417,8 +424,8 @@ class _CrewmateChatScreenState extends ConsumerState<CrewmateChatScreen> {
                           pa != null;
                       // Newest first: a day's label goes above its oldest message.
                       final day =
-                          i == tasks.length - 1 ||
-                          crewDayOf(task.ts) != crewDayOf(tasks[i + 1].ts);
+                          i == shown.length - 1 ||
+                          crewDayOf(task.ts) != crewDayOf(shown[i + 1].ts);
                       return CrewmateTaskPair(
                         key: key,
                         task: task,
@@ -482,6 +489,11 @@ class _CrewmateChatScreenState extends ConsumerState<CrewmateChatScreen> {
                 child: Column(
                   mainAxisSize: MainAxisSize.min,
                   children: [
+                    if (_reader.hasNew)
+                      Padding(
+                        padding: const EdgeInsets.only(bottom: Space.sm),
+                        child: NewActivityButton(onPressed: _reader.jumpToEnd),
+                      ),
                     // ── global approval banner (if not matched to a task) ──────────
                     if (pa != null && approvalTaskId == null)
                       Padding(

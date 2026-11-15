@@ -7,6 +7,7 @@ import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:go_router/go_router.dart';
 
+import 'package:atlas_mobile/core/ui/route_page.dart';
 import 'package:atlas_mobile/core/connection/connection_notifier.dart';
 import 'package:atlas_mobile/core/connection/require_mux.dart';
 import 'package:atlas_mobile/core/protocol/crew_models.dart';
@@ -517,12 +518,11 @@ class _CrewOpsMenu extends StatelessWidget {
           key: const Key('crew-ops-menu'),
           tooltip: showServer ? 'Crew options · $serverName' : 'Crew options',
           icon: Icon(Icons.tune_rounded, size: 20, color: c.muted),
-          onSelected: (v) => Navigator.of(context).push(
-            MaterialPageRoute<void>(
-              builder: (_) => v == 'settings'
-                  ? CrewSettingsScreen(device: device)
-                  : CrewAuditScreen(device: device, title: serverName),
-            ),
+          onSelected: (v) => pushScreen<void>(
+            context,
+            v == 'settings'
+                ? CrewSettingsScreen(device: device)
+                : CrewAuditScreen(device: device, title: serverName),
           ),
           itemBuilder: (_) => const [
             PopupMenuItem(value: 'settings', child: Text('Crew settings')),

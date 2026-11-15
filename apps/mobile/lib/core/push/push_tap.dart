@@ -4,6 +4,7 @@ import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:flutter_riverpod/legacy.dart';
 
+import 'package:atlas_mobile/core/ui/route_page.dart';
 import 'package:atlas_mobile/core/connection/connection_notifier.dart';
 import 'package:atlas_mobile/core/demo/demo_computer.dart';
 import 'package:atlas_mobile/core/protocol/models.dart';
@@ -145,8 +146,9 @@ class _PushTapHostState extends ConsumerState<PushTapHost> {
     if (target == null) return;
     unawaited(
       nav.push(
-        MaterialPageRoute<void>(
-          builder: (_) => AgentChatScreen(
+        screenRoute<void>(
+          nav.context,
+          (_) => AgentChatScreen(
             device: target.device,
             paneKey: target.paneKey,
             initial: target.status,

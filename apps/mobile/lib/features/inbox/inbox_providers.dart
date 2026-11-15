@@ -2,6 +2,7 @@ import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:go_router/go_router.dart';
 
+import 'package:atlas_mobile/core/ui/route_page.dart';
 import 'package:atlas_mobile/core/connection/connection_notifier.dart';
 import 'package:atlas_mobile/core/protocol/models.dart';
 import 'package:atlas_mobile/core/protocol/crew_models.dart';
@@ -257,15 +258,15 @@ int unreadCount(List<Activity> recent, DateTime? seen) => seen == null
 /// Opens where an inbox item is answered or fixed.
 void openAttention(BuildContext context, Attention item) => switch (item) {
   AgentAttention(:final device, :final project, :final pane, :final status) =>
-    Navigator.of(context, rootNavigator: true).push(
-      MaterialPageRoute<void>(
-        builder: (_) => AgentChatScreen(
-          device: device,
-          paneKey: pane,
-          initial: status,
-          title: '${status.agent} · ${project.name}',
-        ),
+    pushScreen<void>(
+      context,
+      AgentChatScreen(
+        device: device,
+        paneKey: pane,
+        initial: status,
+        title: '${status.agent} · ${project.name}',
       ),
+      root: true,
     ),
   ServiceAttention(:final device, :final project) => context.push(
     '/project',

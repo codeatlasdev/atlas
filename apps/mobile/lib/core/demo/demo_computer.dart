@@ -6,6 +6,7 @@ import 'package:atlas_mobile/core/demo/demo_crew.dart';
 import 'package:atlas_mobile/core/protocol/image_rules.dart';
 import 'package:atlas_mobile/core/demo/demo_git.dart';
 import 'package:atlas_mobile/core/protocol/models.dart';
+import 'package:atlas_mobile/core/protocol/protocol_version.dart';
 import 'package:atlas_mobile/core/transport/transport.dart';
 
 /// The demo computer's identity. Never dialled: [demoTransport] answers for it.
@@ -685,6 +686,7 @@ class _DemoComputer implements Transport {
         data = <String, Object?>{};
       case 'info':
         data = {
+          'proto': kAppProto,
           'caps': ['mobile', 'crew'],
           'version': '1.0.0',
           'hostname': 'Demo MacBook',

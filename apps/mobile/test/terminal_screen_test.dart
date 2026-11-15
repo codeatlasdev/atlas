@@ -5,6 +5,7 @@ import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:flutter_test/flutter_test.dart';
 
+import 'package:atlas_mobile/core/protocol/protocol_version.dart';
 import 'package:atlas_mobile/core/connection/connection_notifier.dart';
 
 import 'package:atlas_mobile/core/demo/demo_computer.dart';
@@ -65,7 +66,13 @@ class _SplitUtf8 implements Transport {
     }
     scheduleMicrotask(() {
       if (!_closed) {
-        _lines.add(jsonEncode({'id': m['id'], 'ok': true, 'data': {}}));
+        _lines.add(
+          jsonEncode({
+            'id': m['id'],
+            'ok': true,
+            'data': m['cmd'] == 'info' ? {'proto': kAppProto} : {},
+          }),
+        );
       }
     });
   }
@@ -112,6 +119,18 @@ class _DelayedAttach implements Transport {
                 'id': id,
                 'ok': true,
                 'data': {'cols': 80, 'rows': 24},
+              }),
+            );
+          }
+        });
+      case 'info':
+        scheduleMicrotask(() {
+          if (!_closed) {
+            _lines.add(
+              jsonEncode({
+                'id': id,
+                'ok': true,
+                'data': {'proto': kAppProto},
               }),
             );
           }

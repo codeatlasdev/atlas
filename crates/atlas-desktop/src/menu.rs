@@ -15,10 +15,10 @@ use std::collections::HashMap;
 
 use parking_lot::Mutex;
 use serde::Deserialize;
-#[cfg(not(windows))]
+#[cfg(target_os = "macos")]
 use tauri::Manager;
 use tauri::menu::MenuItem;
-#[cfg(not(windows))]
+#[cfg(target_os = "macos")]
 use tauri::menu::{IsMenuItem, Menu, PredefinedMenuItem, Submenu};
 use tauri::{AppHandle, Emitter, Wry};
 
@@ -29,7 +29,7 @@ const PREFIX: &str = "cmd:";
 pub struct Items(Mutex<HashMap<String, MenuItem<Wry>>>);
 
 /// A disabled command item (enabled by the first [`menu_sync`]: a key must not fire early).
-#[cfg(not(windows))]
+#[cfg(target_os = "macos")]
 fn command(app: &AppHandle, id: &str, label: &str) -> tauri::Result<MenuItem<Wry>> {
     let item = MenuItem::with_id(app, format!("{PREFIX}{id}"), label, false, None::<&str>)?;
     app.state::<Items>()
@@ -40,10 +40,10 @@ fn command(app: &AppHandle, id: &str, label: &str) -> tauri::Result<MenuItem<Wry
 }
 
 /// `(command id, label)` per submenu; `None` is a separator.
-#[cfg(not(windows))]
+#[cfg(target_os = "macos")]
 type Entries = &'static [Option<(&'static str, &'static str)>];
 
-#[cfg(not(windows))]
+#[cfg(target_os = "macos")]
 const FILE: Entries = &[
     Some(("atlas::NewWorktree", "New Worktree…")),
     Some(("workspace::NewTerminal", "New Terminal")),
@@ -59,7 +59,7 @@ const FILE: Entries = &[
     Some(("pane::ReopenClosedItem", "Reopen Closed Tab")),
 ];
 
-#[cfg(not(windows))]
+#[cfg(target_os = "macos")]
 const GO: Entries = &[
     Some(("atlas::Jump", "Jump to Worktree or Terminal…")),
     Some(("file_finder::Toggle", "Go to File…")),
@@ -76,7 +76,7 @@ const GO: Entries = &[
     Some(("atlas::RestartService", "Restart Focused Service")),
 ];
 
-#[cfg(not(windows))]
+#[cfg(target_os = "macos")]
 const VIEW: Entries = &[
     Some(("shell::ToggleSidebar", "Toggle Sidebar")),
     Some(("workspace::ToggleLeftDock", "Toggle Left Dock")),
@@ -92,7 +92,7 @@ const VIEW: Entries = &[
     Some(("pane::SplitDown", "Split Down")),
 ];
 
-#[cfg(not(windows))]
+#[cfg(target_os = "macos")]
 fn submenu(
     app: &AppHandle,
     title: &str,
@@ -113,7 +113,7 @@ fn submenu(
 }
 
 /// The app menu bar (macOS and Linux; Windows has none). Close Window is deliberately absent: ⌘W is "Close Tab".
-#[cfg(not(windows))]
+#[cfg(target_os = "macos")]
 pub fn build(app: &AppHandle) -> tauri::Result<Menu<Wry>> {
     let settings = command(app, "zed::OpenSettings", "Settings…")?;
     let help = command(app, "atlas::Help", "Keyboard Shortcuts")?;

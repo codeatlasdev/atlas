@@ -594,9 +594,10 @@ fn main() {
             let handle = app.handle().clone();
             app.manage(menu::Items::default());
             app.manage(tray::CaptureMenus::default());
-            // Windows: no menu bar. The window has no native frame (tauri.windows.conf.json), the page owns
-            // every key there (lib/menu.ts gives no accelerators off macOS) and the palette lists every command.
-            #[cfg(not(windows))]
+            // Only macOS has a native menu bar (at the top of the screen). Windows and Linux have no native frame
+            // (tauri.{windows,linux}.conf.json): the page draws one title row, owns every key there (lib/menu.ts
+            // gives no accelerators off macOS) and the palette lists every command (#269).
+            #[cfg(target_os = "macos")]
             app.set_menu(menu::build(&handle)?)?;
             app.manage(live::LiveHub::new(&handle));
             app.manage(cmds::Discovery::default());

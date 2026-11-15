@@ -362,6 +362,9 @@
 	{#if session.plan?.large.notice && showCm}
 		<p class="notice" role="note">{session.plan.large.notice}</p>
 	{/if}
+	{#if session.watchError}
+		<p class="notice" role="status">{session.watchError}</p>
+	{/if}
 	{#if session.conflict}
 		<div class="banner" role="alert">
 			<span>This file changed on disk and you have unsaved edits.</span>

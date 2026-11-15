@@ -42,6 +42,76 @@ async fn paused(client: &HostClient) -> bool {
         .expect("crewmate_list has `paused`")
 }
 
+/// Wait until the crewmate's runner is idle: the running task's agent has exited and the runner
+/// has recorded how the task ended.
+async fn until_idle(client: &HostClient, crewmate: &str) {
+    for _ in 0..150 {
+        let list = client.call("crewmate_list", json!({})).await.unwrap();
+        let me = list["crewmates"]
+            .as_array()
+            .unwrap()
+            .iter()
+            .find(|c| c["id"] == crewmate)
+            .cloned()
+            .unwrap_or(Value::Null);
+        if me["state"] == "idle" {
+            return;
+        }
+        tokio::time::sleep(Duration::from_millis(100)).await;
+    }
+    panic!("the runner never went idle");
+}
+
+// Regression (#324): a cancel wrote `cancelled` and killed the agent, then the runner saw the agent
+// die and recorded the task as `failed: agent exited (code 1)` over it (from its own copy of the
+// task, still `running`), and Telegram and GitHub heard "failed". The test used to look only before
+// the runner finished, so it passed unless the runner was faster than its first poll.
+#[tokio::test(flavor = "multi_thread")]
+async fn a_cancelled_task_is_still_cancelled_after_its_agent_has_exited() {
+    let _bin_lock = lock_agent_bin().await;
+    let tmp = tempfile::tempdir().unwrap();
+    let dir = tmp.path().join("hostd");
+    use_agent_bin(&fake_agent(tmp.path(), "claude", "sleep 60\nexit 0"));
+    let client = daemon(&dir).await;
+    let id = create_crewmate(&client, "Canceller").await;
+    let task = send(&client, &id, "long").await;
+    wait_task_state(&client, &id, &task, "running", Duration::from_secs(15)).await;
+
+    client
+        .call("crewmate_cancel", json!({"id": id, "task": task}))
+        .await
+        .unwrap();
+    until_idle(&client, &id).await;
+    let t = task_state(&client, &id, &task).await;
+    assert_eq!(t["state"], "cancelled", "{t}");
+
+    crate::crew::runner::set_test_agent_bin(None);
+    client.call("shutdown", json!({})).await.ok();
+}
+
+// The same for the kill switch: a paused task keeps its reason once the agent is gone.
+#[tokio::test(flavor = "multi_thread")]
+async fn a_task_cancelled_by_pause_keeps_its_reason_after_its_agent_has_exited() {
+    let _bin_lock = lock_agent_bin().await;
+    let tmp = tempfile::tempdir().unwrap();
+    let dir = tmp.path().join("hostd");
+    use_agent_bin(&fake_agent(tmp.path(), "claude", "sleep 60\nexit 0"));
+    let client = daemon(&dir).await;
+    let id = create_crewmate(&client, "Paused").await;
+    let task = send(&client, &id, "long").await;
+    wait_task_state(&client, &id, &task, "running", Duration::from_secs(15)).await;
+
+    client.call("crew_pause", json!({})).await.unwrap();
+    until_idle(&client, &id).await;
+    let t = task_state(&client, &id, &task).await;
+    assert_eq!(t["state"], "cancelled", "{t}");
+    assert_eq!(t["error"], "paused", "{t}");
+
+    client.call("crew_resume", json!({})).await.unwrap();
+    crate::crew::runner::set_test_agent_bin(None);
+    client.call("shutdown", json!({})).await.ok();
+}
+
 // Crew review P0, PR #106 comment 6874910355: nothing could stop every crewmate at once (only a
 // per-task cancel or uninstalling the server). Pausing must cancel what runs, hold what is queued
 // (a new task still queues), and resuming must start the queue.

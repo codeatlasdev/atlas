@@ -58,13 +58,25 @@ export function plan(files: string[], graph: Graph): Plan {
 	return { crates, workspace, steps: [...steps].sort() };
 }
 
+/** Options for [`commands`]: `windows` adds clippy for the Windows target through cargo-xwin (a Linux/macOS
+ * machine catching what only the Windows CI job used to: `cfg(windows)` code, dead code there). */
+export interface Opts {
+	windows?: boolean;
+}
+
 /** The shell commands that check `p`, in the order `check:changed` runs them. */
-export function commands(p: Plan): string[] {
+export function commands(p: Plan, opts: Opts = {}): string[] {
 	const cmds: string[] = [];
 	const rust = p.workspace || p.crates.length > 0;
 	if (rust) cmds.push("cargo fmt --all -- --check");
 	const pk = p.workspace ? "--workspace" : p.crates.map((c) => `-p ${c}`).join(" ");
 	if (rust) cmds.push(`cargo clippy ${pk} --all-targets --locked -- -D warnings`, `cargo nextest run ${pk} --locked`);
+	// Own target dir: a Windows build would otherwise evict the host's from the shared cache.
+	if (rust && opts.windows) {
+		cmds.push(
+			`CARGO_TARGET_DIR=target/xwin cargo xwin clippy ${pk} --all-targets --locked --target x86_64-pc-windows-msvc -- -D warnings`,
+		);
+	}
 	cmds.push(...p.steps);
 	return cmds;
 }
@@ -107,7 +119,12 @@ async function main() {
 		await $`git ls-files --others --exclude-standard`.quiet().text(),
 	];
 	const files = [...new Set(lines.join("\n").split("\n").filter(Boolean))];
-	const cmds = commands(plan(files, await workspaceGraph()));
+	// cargo-xwin present and not on Windows (which runs the real thing): also lint the Windows target.
+	const windows = process.platform !== "win32" && Bun.which("cargo-xwin") !== null && !args.includes("--no-windows");
+	const cmds = commands(plan(files, await workspaceGraph()), { windows });
+	if (process.platform !== "win32" && !windows && !args.includes("--no-windows")) {
+		console.log("(no Windows lint: install cargo-xwin, plus clang and lld, to catch Windows-only errors here)");
+	}
 	console.log(`${files.length} changed file(s) since ${base}`);
 	if (cmds.length === 0) return console.log("nothing to check");
 	for (const c of cmds) {

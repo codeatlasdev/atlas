@@ -1,6 +1,12 @@
 // @ts-nocheck
 import { describe, test, expect } from "bun:test";
-import { parseInstallLine, parseInstallUser, INSTALL_STEPS, type InstallPhase } from "./installSteps.ts";
+import {
+	parseInstallLine,
+	parseInstallUser,
+	INSTALL_STEPS,
+	installSteps,
+	type InstallPhase,
+} from "./installSteps.ts";
 
 describe("parseInstallLine", () => {
 	test("returns null for non-marker lines", () => {
@@ -11,7 +17,7 @@ describe("parseInstallLine", () => {
 	});
 
 	test("parses all known phase keys", () => {
-		const keys: InstallPhase[] = ["check", "install", "user", "service", "ssh", "done"];
+		const keys: InstallPhase[] = ["check", "install", "user", "service", "ssh", "browsers", "done"];
 		for (const key of keys) {
 			expect(parseInstallLine(`step: ${key}`)).toBe(key);
 		}
@@ -32,6 +38,14 @@ describe("parseInstallLine", () => {
 		const phases = INSTALL_STEPS.map((s) => s.phase);
 		expect(phases).toContain("check");
 		expect(phases).toContain("done");
+	});
+
+	// `atlas crew install --browsers` prints `step: browsers` after `ssh` and before `done`; the checklist shows that
+	// step only when the user opted in.
+	test("the browsers step is in the checklist only when asked for, between ssh and done", () => {
+		expect(installSteps(false)).toBe(INSTALL_STEPS);
+		const phases = installSteps(true).map((s) => s.phase);
+		expect(phases).toEqual(["check", "install", "user", "service", "ssh", "browsers", "done"]);
 	});
 });
 

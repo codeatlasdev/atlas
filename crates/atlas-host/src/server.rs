@@ -493,7 +493,6 @@ pub async fn serve_with(dir: &Path, opts: ServeOpts) -> Result<()> {
     });
     crate::mobile::start(&hub);
     hub.crew_relay.start(&hub);
-    hub.crew.start(Arc::downgrade(&hub));
     // Plain agents push to the phones' tokens (not on a lab: it mirrors the real hostd's agents,
     // which notifies for them). Subscribed here, before any hook can arrive.
     if hub.lab.is_none() {
@@ -530,6 +529,11 @@ pub async fn serve_with(dir: &Path, opts: ServeOpts) -> Result<()> {
     {
         eprintln!("hostd: agent hook server: {e}");
     }
+    // Only now the crew: it starts agents (tasks resumed after a restart, schedules and triggers due at
+    // once), and an agent reads the hook endpoint the moment it starts. Before the hook server above had
+    // bound and rewritten it, a resumed agent posted its `done` to the previous daemon's dead port and the
+    // task ended `failed: agent exited (code 0)`.
+    hub.crew.start(Arc::downgrade(&hub));
     if let Some((l, first)) = lab {
         tokio::spawn(l.follow(Arc::downgrade(&hub), first));
     }

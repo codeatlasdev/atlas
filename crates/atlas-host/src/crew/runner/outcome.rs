@@ -145,17 +145,26 @@ pub(super) fn finish_task(
     if !steps.is_empty() {
         task.steps = steps;
     }
-    match outcome {
-        Ok(result) => {
-            task.state = TaskState::Done;
-            // Every path ends here, so the machine line never reaches what people read (desktop, phone, Telegram).
-            task.result = Some(visible_reply(&result));
-        }
-        Err(e) => {
-            // Don't overwrite Cancelled state.
-            if task.state != TaskState::Cancelled {
-                task.state = TaskState::Failed;
-                task.error = Some(e);
+    // A cancel (or a pause) records `cancelled` in the store and then ends the agent, so the run that
+    // reaches here holds a copy of the task that still says `running`. The store's word wins, with its
+    // reason: otherwise the agent's death overwrote it as `failed` (#324) and Telegram and GitHub
+    // heard "failed" for a task the owner stopped.
+    if let Some(stored) = cancelled_in_store(hub, &crewmate.id, &task.id) {
+        task.state = TaskState::Cancelled;
+        task.error = stored.error;
+    } else {
+        match outcome {
+            Ok(result) => {
+                task.state = TaskState::Done;
+                // Every path ends here, so the machine line never reaches what people read (desktop, phone, Telegram).
+                task.result = Some(visible_reply(&result));
+            }
+            Err(e) => {
+                // Don't overwrite Cancelled state.
+                if task.state != TaskState::Cancelled {
+                    task.state = TaskState::Failed;
+                    task.error = Some(e);
+                }
             }
         }
     }
@@ -216,20 +225,24 @@ pub(super) fn finish_task(
     }
 }
 
-/// Append `task`'s current state to the crewmate's task log. A failure is never silent: it is logged
+/// Append `task`'s current state to the crewmate's task log, keeping what hook routes recorded on the
+/// stored task meanwhile (`CrewStore::append_runner_state`). A failure is never silent: it is logged
 /// with the crewmate and task id (`atlas crew logs`) and returned as the message a failed task shows.
 pub(super) fn persist(hub: &Hub, crewmate_id: &str, task: &Task) -> Result<(), String> {
-    hub.crew.store.append_task(crewmate_id, task).map_err(|e| {
-        let msg = format!(
-            "cannot record task state to {}: {e}",
-            hub.crew.store.tasks_path(crewmate_id).display()
-        );
-        eprintln!(
-            "atlas crew: crewmate {crewmate_id} task {}: {msg} (state {:?})",
-            task.id, task.state
-        );
-        msg
-    })
+    hub.crew
+        .store
+        .append_runner_state(crewmate_id, task)
+        .map_err(|e| {
+            let msg = format!(
+                "cannot record task state to {}: {e}",
+                hub.crew.store.tasks_path(crewmate_id).display()
+            );
+            eprintln!(
+                "atlas crew: crewmate {crewmate_id} task {}: {msg} (state {:?})",
+                task.id, task.state
+            );
+            msg
+        })
 }
 
 /// Record that `task` is now running. When that cannot be stored the task fails with the error
@@ -251,11 +264,17 @@ pub(super) fn persist_running(hub: &Hub, crewmate_id: &str, task: &mut Task) -> 
 
 /// Whether the user cancelled this task (a cancel records `Cancelled` in the store while a waiter sleeps).
 pub(super) fn was_cancelled(hub: &Hub, crewmate_id: &str, task_id: &str) -> bool {
+    cancelled_in_store(hub, crewmate_id, task_id).is_some()
+}
+
+/// The stored task when its last recorded state is `Cancelled` (the log's last line for an id wins).
+fn cancelled_in_store(hub: &Hub, crewmate_id: &str, task_id: &str) -> Option<Task> {
     hub.crew
         .store
         .read_tasks(crewmate_id, 10_000)
-        .iter()
-        .any(|t| t.id == task_id && t.state == TaskState::Cancelled)
+        .into_iter()
+        .find(|t| t.id == task_id)
+        .filter(|t| t.state == TaskState::Cancelled)
 }
 
 pub(super) fn broadcast_task(hub: &Hub, crewmate_id: &str, task: &Task) {

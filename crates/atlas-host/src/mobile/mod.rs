@@ -17,6 +17,7 @@
 
 mod addrs;
 mod session;
+pub(crate) mod shell;
 // Unix like the daemon's other end-to-end tests: they spawn `sh` and `cat` in ptys.
 #[cfg(all(test, unix))]
 mod push_tests;
@@ -468,6 +469,9 @@ pub fn required_scope(cmd: &HostCmd) -> Result<Scope, &'static str> {
         | C::AgentSend { .. }
         | C::AgentInterrupt { .. }
         | C::AgentLaunch { .. }
+        // A new shell is a process on the computer: `act`, and typing into it still needs `term_write`
+        // (and the phone's Face ID gate). It takes registry ids, never a path (`pty_create` stays refused).
+        | C::PtyOpen { .. }
         | C::WorktreeCreate { .. }
         | C::WorktreeRemove { .. } => Scope::Act,
         C::GitStatus { .. } | C::GitDiff { .. } => Scope::Read,
@@ -523,10 +527,14 @@ pub fn required_scope(cmd: &HostCmd) -> Result<Scope, &'static str> {
         // relaying connection, not to one phone.
         C::CrewCall { cmd, args, .. } => {
             let inner = HostCmd::crew_inner(cmd, args).map_err(|_| "bad crew request")?;
-            // A sign-in is a terminal on the crew server: relayed, the phone could never attach to it.
+            // A sign-in or a new shell is a terminal on the crew server: relayed, the phone could never attach to
+            // it (a Mac's relay holds that connection). Pair the phone with the crew server itself.
             if matches!(
                 inner,
-                C::CrewCall { .. } | C::CrewServers {} | C::CrewEngineLogin { .. }
+                C::CrewCall { .. }
+                    | C::CrewServers {}
+                    | C::CrewEngineLogin { .. }
+                    | C::PtyOpen { .. }
             ) {
                 return Err("not available on mobile");
             }

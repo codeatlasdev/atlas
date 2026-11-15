@@ -4,6 +4,7 @@ import 'package:flutter/material.dart';
 
 import 'package:atlas_mobile/core/protocol/models.dart';
 import 'package:atlas_mobile/core/ui/atlas_theme.dart';
+import 'package:atlas_mobile/core/ui/attention_card.dart';
 
 class ApprovalBanner extends StatelessWidget {
   const ApprovalBanner({
@@ -20,78 +21,74 @@ class ApprovalBanner extends StatelessWidget {
     final detail = input is Map && input['command'] is String
         ? input['command'] as String
         : const JsonEncoder.withIndent('  ').convert(input);
-    return Container(
+    return SizedBox(
       width: double.infinity,
-      margin: const EdgeInsets.fromLTRB(12, 0, 12, 8),
-      padding: const EdgeInsets.all(14),
-      decoration: BoxDecoration(
-        color: AtlasColors.of(context).warning.withValues(alpha: .12),
-        border: Border.all(
-          color: AtlasColors.of(context).warning.withValues(alpha: .6),
-        ),
-        borderRadius: BorderRadius.circular(Space.radius),
-      ),
-      child: Column(
-        crossAxisAlignment: CrossAxisAlignment.start,
-        children: [
-          Row(
-            children: [
-              Icon(
-                Icons.shield_outlined,
-                size: 18,
-                color: AtlasColors.of(context).warning,
-              ),
-              const SizedBox(width: 6),
-              Expanded(
-                child: Text(
-                  'Wants to run ${approval.toolName ?? 'a tool'}',
-                  maxLines: 2,
-                  overflow: TextOverflow.ellipsis,
-                  style: const TextStyle(fontWeight: FontWeight.w600),
-                ),
-              ),
-            ],
-          ),
-          const SizedBox(height: 6),
-          // The command can be long: it scrolls inside a box that never takes more than
-          // a quarter of the screen, so Deny and Allow stay in reach.
-          ConstrainedBox(
-            constraints: BoxConstraints(
-              maxHeight: (MediaQuery.sizeOf(context).height * .25).clamp(
-                48.0,
-                120.0,
-              ),
-            ),
-            child: SingleChildScrollView(
-              child: SelectableText(
-                detail,
-                style: const TextStyle(
-                  fontFamily: monoFamily,
-                  fontFamilyFallback: monoFallback,
-                  fontSize: 12,
-                ),
-              ),
-            ),
-          ),
-          const SizedBox(height: 8),
-          Align(
-            alignment: Alignment.centerRight,
-            child: Wrap(
-              spacing: 8,
-              runSpacing: 8,
+      child: AttentionCard(
+        strength: AttentionStrength.loud,
+        radius: BorderRadius.circular(Space.radius),
+        margin: const EdgeInsets.fromLTRB(12, 0, 12, 8),
+        child: Column(
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: [
+            Row(
               children: [
-                OutlinedButton(
-                  onPressed: () => onAnswer(false),
-                  child: const Text('Deny'),
+                Icon(
+                  Icons.shield_outlined,
+                  size: 18,
+                  color: AtlasColors.of(context).warning,
                 ),
-                FilledButton(
-                  onPressed: () => onAnswer(true),
-                  child: const Text('Allow'),
+                const SizedBox(width: 6),
+                Expanded(
+                  child: Text(
+                    'Wants to run ${approval.toolName ?? 'a tool'}',
+                    maxLines: 2,
+                    overflow: TextOverflow.ellipsis,
+                    style: const TextStyle(fontWeight: FontWeight.w600),
+                  ),
                 ),
               ],
             ),
-          ),
-        ],
+            const SizedBox(height: 6),
+            // The command can be long: it scrolls inside a box that never takes more than
+            // a quarter of the screen, so Deny and Allow stay in reach.
+            ConstrainedBox(
+              constraints: BoxConstraints(
+                maxHeight: (MediaQuery.sizeOf(context).height * .25).clamp(
+                  48.0,
+                  120.0,
+                ),
+              ),
+              child: SingleChildScrollView(
+                child: SelectableText(
+                  detail,
+                  style: const TextStyle(
+                    fontFamily: monoFamily,
+                    fontFamilyFallback: monoFallback,
+                    fontSize: 12,
+                  ),
+                ),
+              ),
+            ),
+            const SizedBox(height: 8),
+            Align(
+              alignment: Alignment.centerRight,
+              child: Wrap(
+                spacing: 8,
+                runSpacing: 8,
+                children: [
+                  OutlinedButton(
+                    onPressed: () => onAnswer(false),
+                    child: const Text('Deny'),
+                  ),
+                  FilledButton(
+                    onPressed: () => onAnswer(true),
+                    child: const Text('Allow'),
+                  ),
+                ],
+              ),
+            ),
+          ],
+        ),
       ),
     );
   }

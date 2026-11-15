@@ -672,7 +672,7 @@ class _ActivityRow extends StatelessWidget {
                           ),
                           style: TextStyle(
                             fontSize: 12.5,
-                            color: unread ? c.accent : c.faint,
+                            color: unread ? c.accent : c.muted,
                           ),
                         ),
                       ],

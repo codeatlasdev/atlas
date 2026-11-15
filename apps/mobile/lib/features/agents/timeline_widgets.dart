@@ -101,7 +101,7 @@ class _ThinkingRowState extends State<ThinkingRow> {
                 Text(
                   'Thought',
                   style: TextStyle(
-                    color: c.faint,
+                    color: c.muted,
                     fontSize: 12.5,
                     fontStyle: FontStyle.italic,
                   ),
@@ -124,7 +124,7 @@ class _ThinkingRowState extends State<ThinkingRow> {
             ),
             child: Text(
               widget.text,
-              style: TextStyle(color: c.faint, fontSize: 13, height: 1.45),
+              style: TextStyle(color: c.muted, fontSize: 13, height: 1.45),
             ),
           ),
       ],
@@ -246,7 +246,7 @@ class _ToolGroupCardState extends State<ToolGroupCard> {
                     ),
                   ),
                   if (g.errors > 0) ...[
-                    Pill('${g.errors} failed', color: c.error),
+                    AtlasChip('${g.errors} failed', tone: c.error),
                     const SizedBox(width: 4),
                   ],
                   Icon(
@@ -486,7 +486,7 @@ class _SubagentRow extends StatelessWidget {
                       ),
                       if (spawned.agent != null) ...[
                         const SizedBox(width: Space.sm),
-                        Pill(spawned.agent!, color: c.muted),
+                        AtlasChip(spawned.agent!, tone: c.muted),
                       ],
                       const SizedBox(width: Space.sm),
                       Text(
@@ -628,7 +628,7 @@ class RecapCard extends StatelessWidget {
             if (files > 4)
               Text(
                 '+${files - 4} more',
-                style: TextStyle(fontSize: 12, color: c.faint),
+                style: TextStyle(fontSize: 12, color: c.muted),
               ),
           ],
         ],
@@ -735,7 +735,7 @@ class _CompactionDividerState extends State<CompactionDivider> {
                   'context compacted',
                   style: TextStyle(
                     fontSize: 11.5,
-                    color: c.faint,
+                    color: c.muted,
                     fontStyle: FontStyle.italic,
                   ),
                 ),
@@ -749,7 +749,7 @@ class _CompactionDividerState extends State<CompactionDivider> {
             padding: const EdgeInsets.only(top: 4),
             child: Text(
               widget.text,
-              style: TextStyle(fontSize: 12.5, color: c.faint, height: 1.4),
+              style: TextStyle(fontSize: 12.5, color: c.muted, height: 1.4),
             ),
           ),
       ],
@@ -853,7 +853,7 @@ class _NoticeRowState extends State<NoticeRow> {
                 overflow: _open ? null : TextOverflow.ellipsis,
                 style: TextStyle(
                   fontSize: 12.5,
-                  color: c.faint,
+                  color: c.muted,
                   fontStyle: FontStyle.italic,
                   height: 1.35,
                 ),

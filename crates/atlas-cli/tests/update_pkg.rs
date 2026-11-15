@@ -162,11 +162,31 @@ exit 22
             .collect()
     }
 
+    /// Take `name` off the whole `PATH`, the stub and the host's own: `run` then uses a copy of
+    /// `/usr/bin` and `/bin` (symlinks) without it. A Linux desktop has a real `/usr/bin/pkexec`
+    /// (polkit), which a removed stub alone does not hide.
+    fn hide(&self, name: &str) {
+        let _ = std::fs::remove_file(self.bin().join(name));
+        let sys = self.root.path().join("sys");
+        std::fs::create_dir_all(&sys).unwrap();
+        for dir in ["/usr/bin", "/bin"] {
+            for e in std::fs::read_dir(dir).into_iter().flatten().flatten() {
+                let to = sys.join(e.file_name());
+                if e.file_name() != name && !to.exists() {
+                    let _ = std::os::unix::fs::symlink(e.path(), to);
+                }
+            }
+        }
+    }
+
     fn run(&self, args: &[&str], env: &[(&str, &str)]) -> Output {
-        let path = format!(
-            "{}:/usr/bin:/bin",
-            self.bin().display() // stubs first, then only the base system tools
-        );
+        let sys = self.root.path().join("sys");
+        // Stubs first, then only the base system tools (minus anything `hide` took away).
+        let path = if sys.is_dir() {
+            format!("{}:{}", self.bin().display(), sys.display())
+        } else {
+            format!("{}:/usr/bin:/bin", self.bin().display())
+        };
         let mut cmd = Command::new(BIN);
         cmd.args(args)
             .env_clear()
@@ -241,8 +261,8 @@ fn stage_deb(sb: &Sandbox) -> String {
 #[test]
 fn package_update_downloads_verifies_then_installs_through_sudo_and_refreshes() {
     let sb = Sandbox::new("dpkg");
-    // No terminal in a test, so pkexec would win when present: leave only sudo.
-    std::fs::remove_file(sb.bin().join("pkexec")).unwrap();
+    // No terminal in a test, so pkexec would win when present: leave only sudo (also the host's).
+    sb.hide("pkexec");
     let name = stage_deb(&sb);
     let o = sb.run(&["update", "--yes"], &[]);
     let out = text(&o);

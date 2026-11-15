@@ -74,6 +74,10 @@ Atlas Desktop on Linux paints through WebKitGTK and draws terminals with xterm.j
 ```bash
 # 0. What Atlas saw: session, display servers, NVIDIA driver and every WEBKIT_/GDK_/GSK_ variable set.
 grep "linux graphics" ~/.atlas/desktop/app.log | tail -1
+# What GTK, WebKit and its web processes printed (blank window, EGL, GStreamer), also in "Copy details".
+# Kept when Atlas starts from the launcher or `atlas desktop` (2 MiB, then the previous one is stderr.log.1);
+# from a terminal it prints there instead.
+tail -50 ~/.atlas/desktop/stderr.log
 
 # 1. Wayland + NVIDIA ("Error 71 (Protocol error)", blank window): costs nothing in speed.
 __NV_DISABLE_EXPLICIT_SYNC=1 atlas desktop
@@ -97,6 +101,6 @@ atlas desktop debug shot /tmp/x.png
 
 ## Reporting a bug
 
-If the CLI panics it prints a path such as `crash-<timestamp>.toml` under `~/Library/Application Support/atlas/crashes/` (`$XDG_DATA_HOME/atlas/crashes` on Linux). Crash reports stay on your machine and are never uploaded; review one for private data before attaching it.
+If the CLI panics it prints a path such as `crash-<unix_ms>-<pid>.toml` (the newest 20 are kept) under `~/Library/Application Support/atlas/crashes/` (`$XDG_DATA_HOME/atlas/crashes` on Linux). Crash reports stay on your machine and are never uploaded. Tokens are redacted and your home directory is written as `~`, but review one before attaching it.
 
 Open an issue at [github.com/codeatlasdev/atlas/issues](https://github.com/codeatlasdev/atlas/issues) with `atlas version`, your OS, what you ran and the relevant lines of `.logs/<service>.log` (redact secrets). Security problems go through [SECURITY.md](https://github.com/codeatlasdev/atlas/blob/main/SECURITY.md), not public issues.

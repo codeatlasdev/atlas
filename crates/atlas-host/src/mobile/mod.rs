@@ -60,6 +60,10 @@ pub enum Scope {
     TermWrite,
 }
 
+/// How much of `audit.log` (its end) the Settings list and activity read.
+const AUDIT_TAIL: u64 = 512 * 1024;
+const MAX_ACTIVITY: usize = 200;
+
 pub const ALL_SCOPES: [Scope; 5] = [
     Scope::Read,
     Scope::Act,
@@ -76,6 +80,9 @@ pub struct Device {
     pub scopes: Vec<Scope>,
     #[serde(default)]
     pub revoked: bool,
+    /// When the phone last connected or disconnected (unix seconds); absent until it first connects.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub last_seen: Option<u64>,
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
@@ -258,6 +265,7 @@ impl Mobile {
             paired_at: now_s(),
             scopes: ALL_SCOPES.to_vec(),
             revoked: false,
+            last_seen: None,
         };
         // Trusted only once it is on disk: a phone told "failed" must not be paired.
         let mut all = self.devices.lock();
@@ -318,6 +326,21 @@ impl Mobile {
         {
             let _ = writeln!(f, "{line}");
         }
+    }
+
+    /// Rename a phone (the name it sent when pairing is the same for every Atlas Mobile).
+    pub fn rename(&self, node_id: &str, name: &str) -> Result<(), String> {
+        let name: String = name.trim().chars().take(64).collect();
+        if name.is_empty() {
+            return Err("name is empty".into());
+        }
+        let mut all = self.devices.lock();
+        let d = all
+            .iter_mut()
+            .find(|d| d.node_id == node_id && !d.revoked)
+            .ok_or("unknown device")?;
+        d.name = name;
+        self.save(&all)
     }
 
     fn save_invites(&self, invites: &[Invite]) {
@@ -619,16 +642,92 @@ impl Mobile {
             .entry(node.to_string())
             .or_default()
             .push(c.clone());
+        self.touch(node);
     }
 
     fn untrack(&self, node: &str, c: &Connection) {
-        let mut l = self.live.lock();
-        if let Some(v) = l.get_mut(node) {
-            v.retain(|x| x.stable_id() != c.stable_id());
-            if v.is_empty() {
-                l.remove(node);
+        {
+            let mut l = self.live.lock();
+            if let Some(v) = l.get_mut(node) {
+                v.retain(|x| x.stable_id() != c.stable_id());
+                if v.is_empty() {
+                    l.remove(node);
+                }
             }
         }
+        self.touch(node);
+    }
+
+    /// Remember that the phone was here now (a connection opened or closed). Informational: a failed save is
+    /// logged, never a reason to refuse the phone.
+    pub(crate) fn touch(&self, node: &str) {
+        let mut all = self.devices.lock();
+        if let Some(d) = all.iter_mut().find(|d| d.node_id == node && !d.revoked) {
+            d.last_seen = Some(now_s());
+            if let Err(e) = self.save(&all) {
+                eprintln!("hostd: mobile: saving last seen: {e}");
+            }
+        }
+    }
+
+    /// The paired phones as Settings shows them: every `Device` field plus `connected` (a stream is open
+    /// now) and `last_seen`: when the phone last connected or disconnected, or acted (`audit.log`) if later.
+    pub fn devices_view(&self) -> Vec<Value> {
+        let audit = self.audit_tail();
+        let live = self.live_node_ids();
+        self.devices()
+            .into_iter()
+            .map(|d| {
+                let acted = audit
+                    .iter()
+                    .filter(|e| e["node_id"] == d.node_id.as_str())
+                    .filter_map(|e| e["ts"].as_u64())
+                    .max();
+                let seen = d.last_seen.max(acted);
+                let mut v = json!(d);
+                v["connected"] = json!(!d.revoked && live.contains(&d.node_id));
+                if let Some(s) = seen {
+                    v["last_seen"] = json!(s);
+                }
+                v
+            })
+            .collect()
+    }
+
+    /// What a phone did, newest first: `{ts, cmd, args}` from `audit.log` (typed text is only a length there).
+    pub fn activity(&self, node_id: &str, limit: usize) -> Vec<Value> {
+        self.audit_tail()
+            .into_iter()
+            .rev()
+            .filter(|e| e["node_id"] == node_id)
+            .take(limit.min(MAX_ACTIVITY))
+            .map(|e| json!({"ts": e["ts"], "cmd": e["cmd"], "args": e["args"]}))
+            .collect()
+    }
+
+    /// The last [`AUDIT_TAIL`] bytes of `audit.log`, parsed (a cut first line and unreadable lines are skipped).
+    fn audit_tail(&self) -> Vec<Value> {
+        use std::io::{Read, Seek, SeekFrom};
+        let Ok(mut f) = std::fs::File::open(mobile_dir(&self.dir).join("audit.log")) else {
+            return Vec::new();
+        };
+        let cut = f
+            .metadata()
+            .map(|m| m.len())
+            .unwrap_or(0)
+            .saturating_sub(AUDIT_TAIL);
+        let mut buf = Vec::new();
+        if f.seek(SeekFrom::Start(cut)).is_err() || f.read_to_end(&mut buf).is_err() {
+            return Vec::new();
+        }
+        let text = String::from_utf8_lossy(&buf);
+        let mut lines = text.lines();
+        if cut > 0 {
+            lines.next();
+        }
+        lines
+            .filter_map(|l| serde_json::from_str::<Value>(l).ok())
+            .collect()
     }
 
     /// This endpoint's dialable address (tests, `mobile_pair_start`).

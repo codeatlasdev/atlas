@@ -11,10 +11,14 @@ It works while the Atlas window is closed, because hostd keeps running. The comp
 
 ## Pairing
 
-1. On your computer: **Settings → Integrations → Mobile → Pair a phone**. A QR code and a 6-digit code appear for two minutes.
-2. In Atlas Mobile: **Add a computer**, then scan the code.
+1. On your computer: **Settings → Integrations → Mobile**. The pair card lists the three steps (get Atlas Mobile, open it and tap **Scan pairing code**, scan the code); **Show pairing code** makes a QR and a 6-digit code that work once, for two minutes, with a countdown bar. When it runs out the card says **Code expired** and **New code** makes another.
+2. In Atlas Mobile: **Scan pairing code** (or **Settings → Pair another computer**), then scan the code (or **Paste link**, after **Copy link** on the card).
 
-The code works once. Five wrong attempts cancel it. After pairing, the phone is recognised by its own key. Each paired phone is listed under **Paired phones** with what it may do:
+The phone does not need to be on the same Wi-Fi: it connects through an encrypted relay, or straight to the computer when both are on one network. The computer must stay awake with Atlas running. The card's **Pairing doesn't work?** folds those two notes and the VPN one below. Until Atlas Mobile has a public store listing the card links this page ("still in testing"); the store URLs belong in one constant, `MOBILE_APP` in `apps/desktop/src/lib/settings/mobile.ts`.
+
+The code works once. Five wrong attempts cancel it. After pairing, the phone is recognised by its own key, and it appears under **Paired phones** by itself while the code is on screen (the pane reads the list every second then, and every 5 s otherwise).
+
+Each paired phone is one row: **Phone A3F9** (the app sends the same name, "Atlas Mobile", for every phone, so the pane titles an unnamed phone by the start of its key; **Rename** gives it a name of your own, kept in `devices.json`), a status line (**Connected now**, or **Last seen 3 min ago**, then the pairing date in your locale), a one-line summary of its access (**Full access**, **View only**, **Custom: 3 of 5**) and **Rename**, **Activity** and **Unpair** in the row's header. **Activity** lists what the phone changed lately, read from `audit.log` (typed text only as a length). **Edit permissions** folds out the five permissions in a View group and a Control group, each with what granting it risks:
 
 | Permission                                  | Allows                                                                                                                                              |
 | ------------------------------------------- | --------------------------------------------------------------------------------------------------------------------------------------------------- |
@@ -24,7 +28,7 @@ The code works once. Five wrong attempts cancel it. After pairing, the phone is 
 | Watch terminals                             | live terminal output                                                                                                                                |
 | Type in terminals                           | keystrokes; the app also asks for Face ID / biometrics before each session                                                                          |
 
-**Revoke** cuts the phone off immediately and forgets it, and takes its push tokens with it: on this computer, and on every crew server behind it (the Mac sends each one `push_forget` with the phone's node id; a crew server that is unreachable at that moment keeps the phone on a list saved on the Mac, `mobile/pending-forget.json`, and gets the `push_forget` the next time it connects, also after a Mac restart; a server removed from the desktop's registry drops off the list; the phone is cut off from the Mac either way). A token the phone registered on a crew server through the Mac is stored there under the phone's own node id (the Mac stamps it from the phone's connection; whatever the phone puts in `node` is overwritten), so revoking the phone on the crew server itself clears it too. A phone can never run shell commands through `exec`, read or write files, change its own permissions or manage devices.
+**Unpair** (it asks first; the host command is still `mobile_revoke`) cuts the phone off immediately and forgets it, and takes its push tokens with it: on this computer, and on every crew server behind it (the Mac sends each one `push_forget` with the phone's node id; a crew server that is unreachable at that moment keeps the phone on a list saved on the Mac, `mobile/pending-forget.json`, and gets the `push_forget` the next time it connects, also after a Mac restart; a server removed from the desktop's registry drops off the list; the phone is cut off from the Mac either way). A token the phone registered on a crew server through the Mac is stored there under the phone's own node id (the Mac stamps it from the phone's connection; whatever the phone puts in `node` is overwritten), so revoking the phone on the crew server itself clears it too. A phone can never run shell commands through `exec`, read or write files, change its own permissions or manage devices.
 
 **No computer at hand?** Under the scanner, **Explore a demo** opens a computer that lives in the app (`apps/mobile/lib/core/demo/demo_computer.dart`): sample projects, services, logs, agents with a permission prompt to answer, a crew. It answers the same protocol as hostd, connects to nothing and is not saved; **Settings → Leave demo**, pairing a real computer or relaunching ends it. It is how App Review and Play review use the app (their review notes point to it), and the tests run every screen against it.
 
@@ -36,7 +40,7 @@ What this does **not** settle: whether a phone on the same Wi-Fi reaches the com
 
 1. Make sure `ATLAS_MOBILE_RELAY=0` is **not** set (it turns the relay off, so only the LAN addresses remain).
 2. Pause the VPN, or add the LAN (`192.168.0.0/16`, your Wi-Fi subnet) to its split-tunnel exclusions, then pair again.
-3. Check what is published: Settings → Integrations → Mobile shows the addresses in the pairing link (`addr=` parameters).
+3. Check what is published: Settings → Integrations → Mobile lists the addresses in the pairing link under **Pairing doesn't work?** while a code is showing (`addr=` parameters).
 
 ### The app and the computer disagree on the protocol
 
@@ -253,3 +257,7 @@ Once per store, by hand: create the app record (`br.com.codeatlas.atlas.mobile` 
 ### Store dashboards from an agent (optional)
 
 To see and manage both stores without opening them (testers, build status, review state), a maintainer can add the [app-publish-mcp](https://github.com/mikusnuz/app-publish-mcp) server to their agent. It was read at commit `9d52fb86` (v0.7.0): no telemetry or install scripts; it talks only to `api.appstoreconnect.apple.com` and Google's APIs. Conditions: pin that version (`npx -y app-publish-mcp@0.7.0`); use a dedicated App Store Connect key with the **App Manager** role and a Play service account limited to this app; set every variable in the MCP config (it also reads a `.env` from its working folder); start with `APP_PUBLISH_READ_ONLY=true`. Read-only only hides write tools from the agent, and the report tools can still write files. Without it the agent can submit for review, release to production or delete testers. Keys stay on the maintainer's machine, never in this repo.
+
+### What hostd records for the pane
+
+`mobile_devices` returns each `Device` plus `connected` (a stream from that phone is open now) and `last_seen` (unix seconds: when it last connected or disconnected, kept in `devices.json`, or its newest line in `audit.log` if later; absent until it first connects). `mobile_activity {node_id, limit?}` returns `{activity: [{ts, cmd, args}]}`, newest first, at most 200, read from the end of `audit.log` (the last 512 KiB). `mobile_rename {node_id, name}` renames a phone. All three are desktop-only: a phone gets "not available on mobile". The app still sends no device model or OS, so the pane cannot show them; they need the phone to put them in `pair` (`args.name` today).

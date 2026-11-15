@@ -515,6 +515,17 @@ pub enum HostCmd {
         node_id: String,
         scopes: Vec<crate::mobile::Scope>,
     },
+    /// Give a paired phone a name of the owner's choosing (desktop only).
+    MobileRename {
+        node_id: String,
+        name: String,
+    },
+    /// What a paired phone did lately, newest first: `{activity: [{ts, cmd, args}]}` (desktop only).
+    MobileActivity {
+        node_id: String,
+        #[serde(default)]
+        limit: Option<usize>,
+    },
     CrewmateList {},
     CrewmateCreate {
         name: String,

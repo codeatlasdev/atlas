@@ -57,6 +57,7 @@ pub(super) async fn run(ctx: TurnCtx<'_>) -> Result<TurnResult, String> {
         mut writer,
         reader,
         guard,
+        oom,
     } = launch::rpc(ctx.exec, cmd, "omp").await?;
 
     let result = tokio::select! {
@@ -64,6 +65,19 @@ pub(super) async fn run(ctx: TurnCtx<'_>) -> Result<TurnResult, String> {
         () = ctx.cancel.fired() => Err("omp: cancelled".to_string()),
         () = tokio::time::sleep(turn_timeout()) => Err("omp: timed out after 2 h".to_string()),
     };
+
+    // The stream ended without a reply: the process may have been killed for memory (#296), which would
+    // otherwise read as a turn that simply said nothing.
+    if let (Ok((reply, ..)), Some(oom)) = (&result, oom)
+        && reply.is_empty()
+        && let Ok(Some(cap)) = tokio::task::spawn_blocking(oom).await
+    {
+        drop(guard);
+        return Err(format!(
+            "omp: {}",
+            crate::crew::spawn::cgroup::oom_reason(cap)
+        ));
+    }
 
     // Always end the whole tree: the process is not expected to exit on its own, and the tools it
     // started must not outlive the turn.

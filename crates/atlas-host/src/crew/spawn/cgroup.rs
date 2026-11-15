@@ -13,7 +13,7 @@
 //! The pure parts (cap arithmetic, leaf names, file parsing) compile everywhere and are unit tested;
 //! the cgroup file work is `#[cfg(target_os = "linux")]`.
 
-use std::path::{Path, PathBuf};
+use std::path::PathBuf;
 
 use serde::{Deserialize, Serialize};
 
@@ -339,6 +339,9 @@ pub fn unit_cgroup_path(unit: &str) -> PathBuf {
 
 #[cfg(test)]
 mod tests {
+    #[cfg(target_os = "linux")]
+    use std::path::Path;
+
     use super::*;
 
     const GIB: u64 = 1 << 30;

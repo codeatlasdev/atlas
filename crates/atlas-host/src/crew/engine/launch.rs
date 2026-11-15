@@ -242,6 +242,9 @@ pub struct Rpc {
     pub reader: Box<dyn AsyncRead + Unpin + Send>,
     /// Ends the process tree when dropped.
     pub guard: Box<dyn Send>,
+    /// Asked once the stream has ended (the process is gone): the memory cap the kernel killed it under
+    /// (#296), if it did. Only a process started through the helper has one.
+    pub oom: Option<Box<dyn FnOnce() -> Option<u64> + Send>>,
 }
 
 /// Start `cmd` with its stdin and stdout connected to the caller. The process is not expected to exit
@@ -272,6 +275,7 @@ pub async fn rpc(exec: &Exec, cmd: Cmd, name: &str) -> Result<Rpc, String> {
         reader: Box::new(stdout),
         // `TurnProc` kills the whole group when dropped.
         guard: Box::new(proc),
+        oom: None,
     })
 }
 
@@ -421,14 +425,31 @@ async fn output_isolated(
     }
 }
 
+/// The cap session `sid` was OOM-killed under, once the helper has collected its exit (it does that every
+/// 100 ms, so right after the stream ended it may still be "running"; a process that is really still alive
+/// is never OOM-killed, so waiting about a second is enough to tell). Blocking.
+#[cfg(unix)]
+fn oom_cap_of(client: &Client, sid: u64) -> Option<u64> {
+    for _ in 0..10 {
+        match client.wait_oom(sid) {
+            Ok((true, _, cap)) => return cap,
+            Ok((false, _, _)) => std::thread::sleep(std::time::Duration::from_millis(100)),
+            Err(_) => return None,
+        }
+    }
+    None
+}
+
 #[cfg(unix)]
 async fn rpc_isolated(client: &Client, user: &str, cmd: &Cmd, name: &str) -> Result<Rpc, String> {
     let (session, s) = spawn_isolated(client, user, cmd, name).await?;
     let (r, w) = s.into_split();
+    let (client, sid) = (session.client.clone(), session.session);
     Ok(Rpc {
         writer: Box::new(w),
         reader: Box::new(r),
         guard: Box::new(session),
+        oom: Some(Box::new(move || oom_cap_of(&client, sid))),
     })
 }
 

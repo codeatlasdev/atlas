@@ -6,7 +6,6 @@
 //! If `gh` is missing or errors, it logs to stderr and tries again next time.
 
 use std::collections::HashSet;
-use std::io::{BufRead, Write};
 use std::sync::{Arc, Weak};
 use std::time::Duration;
 
@@ -16,6 +15,8 @@ use crate::crew::store::{Crewmate, Trigger, TriggerKind};
 use crate::server::Hub;
 
 const POLL_EVERY: Duration = Duration::from_secs(120);
+/// The seen file is cut back to its newest ids once it passes this (the events API lists recent events only).
+pub(super) const SEEN_MAX_BYTES: u64 = 256 * 1024;
 
 /// Test-only: how often the poller runs instead of every 2 minutes.
 #[cfg(test)]
@@ -133,23 +134,65 @@ async fn poll_trigger(hub: &Arc<Hub>, api: &dyn GithubApi, crewmate: &Crewmate, 
 }
 
 fn load_seen(path: &std::path::Path) -> HashSet<String> {
-    let Ok(f) = std::fs::File::open(path) else {
-        return HashSet::new();
-    };
-    std::io::BufReader::new(f)
-        .lines()
-        .map_while(Result::ok)
+    crate::crew::store::jsonl::read_lines(path)
+        .into_iter()
         .map(|l| l.trim().to_string())
         .filter(|l| !l.is_empty())
         .collect()
 }
 
 fn append_seen(path: &std::path::Path, id: &str) {
-    if let Ok(mut f) = std::fs::OpenOptions::new()
-        .create(true)
-        .append(true)
-        .open(path)
-    {
-        let _ = writeln!(f, "{id}");
+    use crate::crew::store::jsonl;
+    if jsonl::append_line(path, id, false).is_ok() {
+        // Newest ids kept: the events API only lists recent events, so older ids can never come back.
+        let _ = jsonl::trim_to_tail(path, SEEN_MAX_BYTES, SEEN_MAX_BYTES / 2);
+    }
+}
+
+#[cfg(test)]
+mod seen_tests {
+    use super::*;
+    use std::io::Write;
+
+    // #293: a bad byte stopped `load_seen` there, so every later id was "new" again and its event fired
+    // a second time; a torn last id (no newline) glued the next id onto it.
+    #[test]
+    fn the_seen_file_survives_invalid_utf8_and_a_torn_tail() {
+        let t = tempfile::tempdir().unwrap();
+        let p = t.path().join("trig_seen.jsonl");
+        append_seen(&p, "100");
+        std::fs::OpenOptions::new()
+            .append(true)
+            .open(&p)
+            .unwrap()
+            .write_all(b"\xff\xfe\n20")
+            .unwrap(); // a bad line, then a torn id
+        append_seen(&p, "300");
+        append_seen(&p, "400");
+
+        let seen = load_seen(&p);
+        for id in ["100", "300", "400"] {
+            assert!(seen.contains(id), "{id} lost: {seen:?}");
+        }
+    }
+
+    // #295: the file is capped, newest ids kept (the events API only lists recent ones).
+    #[test]
+    fn the_seen_file_is_capped_and_keeps_the_newest_ids() {
+        let t = tempfile::tempdir().unwrap();
+        let p = t.path().join("trig_seen.jsonl");
+        let total = 60_000u64;
+        for n in 0..total {
+            append_seen(&p, &format!("{:012}", 10_000_000_000 + n));
+        }
+        let len = std::fs::metadata(&p).unwrap().len();
+        assert!(
+            len <= super::SEEN_MAX_BYTES + 32,
+            "seen file grew to {len} bytes"
+        );
+        let seen = load_seen(&p);
+        assert!(seen.contains(&format!("{:012}", 10_000_000_000 + total - 1)));
+        assert!(seen.contains(&format!("{:012}", 10_000_000_000 + total - 1000)));
+        assert!(!seen.contains(&format!("{:012}", 10_000_000_000u64)));
     }
 }

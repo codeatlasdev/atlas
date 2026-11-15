@@ -165,6 +165,7 @@ pub(crate) fn get(hub: &Hub) -> Result<Value, String> {
     Ok(json!({
         "short_replies": settings.short_replies,
         "short_replies_model": settings.short_replies_model,
+        "max_agents": settings.max_agents,
     }))
 }
 
@@ -173,15 +174,23 @@ pub(crate) fn set(
     hub: &Hub,
     short_replies: bool,
     short_replies_model: Option<String>,
+    max_agents: Option<usize>,
 ) -> Result<Value, String> {
+    if max_agents == Some(0) {
+        return Err("max_agents must be at least 1: 0 would stop every task".into());
+    }
     // Load, change, save: the file also holds `paused`, which this command must never reset.
     let mut settings = hub.crew.store.load_crew_settings();
     settings.short_replies = short_replies;
     settings.short_replies_model = short_replies_model;
+    if let Some(n) = max_agents {
+        settings.max_agents = n;
+    }
     hub.crew
         .store
         .save_crew_settings(&settings)
         .map_err(|e| format!("save_crew_settings: {e}"))?;
+    hub.crew.agent_slots.set_limit(settings.max_agents);
     Ok(json!({}))
 }
 

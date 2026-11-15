@@ -709,6 +709,9 @@ pub enum HostCmd {
         short_replies: bool,
         #[serde(default)]
         short_replies_model: Option<String>,
+        /// Agents the server runs at once (at least 1); absent leaves it as it is.
+        #[serde(default)]
+        max_agents: Option<usize>,
     },
     /// The crew servers this Mac's desktop knows (`~/.atlas/desktop/crew-servers.json`), which
     /// Atlas Mobile reaches through this hostd (`crate::crew`).

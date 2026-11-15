@@ -146,9 +146,16 @@ impl EngineAuth {
     }
 }
 
-/// The PATH the engine CLIs are found on for the crew user: where their installers put them. The same entries
-/// as the desktop's agent check (`atlas-desktop/src/crew.rs check_script`) and the crew service unit.
-const USER_BINS: [&str; 4] = [".bun/bin", ".local/bin", ".opencode/bin", ".npm-global/bin"];
+/// The directories the engine CLIs live in for the crew user, in the order every ssh call to a crew server puts
+/// them (`atlas_core::ssh::PATH_EXPORT`, the one list: the desktop check, the CLI's `crew login`, the install).
+/// Read from that string so hostd has no second copy of it: each `$HOME/<dir>` entry, relative to `$HOME`.
+fn user_bins() -> Vec<&'static str> {
+    atlas_core::ssh::PATH_EXPORT
+        .split(':')
+        .filter_map(|e| e.trim_start_matches(|c| c != '$').strip_prefix("$HOME/"))
+        .map(|d| d.trim_end_matches('"'))
+        .collect()
+}
 
 /// `PATH` for an engine command: the user's bin directories first.
 fn engine_path() -> std::ffi::OsString {
@@ -161,7 +168,7 @@ fn engine_path() -> std::ffi::OsString {
     }
     let mut dirs: Vec<std::path::PathBuf> = vec![];
     let home = atlas_core::paths::home_dir();
-    dirs.extend(USER_BINS.iter().map(|d| home.join(d)));
+    dirs.extend(user_bins().into_iter().map(|d| home.join(d)));
     dirs.extend(std::env::split_paths(&atlas_core::login_env::path_var()));
     std::env::join_paths(dirs).unwrap_or_else(|_| atlas_core::login_env::path_var())
 }
@@ -346,4 +353,23 @@ pub(crate) fn note_task_failure(hub: &Hub, engine: &str, error: &str) {
 #[test]
 fn engines_table_has_four_entries() {
     assert_eq!(ENGINES.len(), 4, "status() joins exactly these four probes");
+}
+
+// Hostd must search where every ssh call to a crew server searches (`atlas_core::ssh::PATH_EXPORT`): a second list
+// would let the desktop find `codex` where hostd, signing it in for a phone, does not.
+#[cfg(test)]
+#[test]
+fn hostd_searches_the_directories_every_ssh_call_to_a_crew_server_searches() {
+    assert_eq!(
+        user_bins(),
+        [
+            ".atlas/bin",
+            ".local/bin",
+            ".bun/bin",
+            ".opencode/bin",
+            ".npm-global/bin"
+        ],
+        "{}",
+        atlas_core::ssh::PATH_EXPORT
+    );
 }

@@ -81,10 +81,15 @@ pub(super) async fn wait_for_outcome(
                                 Some(t) => format!("{tool_name} {t}"),
                                 None => tool_name.to_string(),
                             };
-                            steps.push(Step { ts: now_s(), text, group: task.title.clone() });
+                            let step = Step { ts: now_s(), text, group: task.title.clone() };
+                            steps.push(step.clone());
                             // Live, not only at the end: the working line shows the latest step while it runs.
+                            // Stored as the step alone: the whole task again for each of 50 steps was 50 copies of
+                            // its prompt. A task with no record yet is stored whole.
                             task.steps = steps.clone();
-                            let _ = persist(hub, crewmate_id, task);
+                            if hub.crew.store.append_step(crewmate_id, &task.id, &step).is_err() {
+                                let _ = persist(hub, crewmate_id, task);
+                            }
                             broadcast_task(hub, crewmate_id, task);
                             reporting::progress(hub, &task.id, &steps).await;
                         }
@@ -278,9 +283,7 @@ pub(super) fn was_cancelled(hub: &Hub, crewmate_id: &str, task_id: &str) -> bool
 fn cancelled_in_store(hub: &Hub, crewmate_id: &str, task_id: &str) -> Option<Task> {
     hub.crew
         .store
-        .read_tasks(crewmate_id, 10_000)
-        .into_iter()
-        .find(|t| t.id == task_id)
+        .task(crewmate_id, task_id)
         .filter(|t| t.state == TaskState::Cancelled)
 }
 
@@ -296,8 +299,7 @@ pub(super) fn update_task(
     f: impl FnOnce(&mut Task),
 ) {
     // Find the task in the store (last state).
-    let tasks = store.read_tasks(crewmate_id, 10_000);
-    if let Some(mut t) = tasks.into_iter().find(|t| t.id == task_id) {
+    if let Some(mut t) = store.task(crewmate_id, task_id) {
         f(&mut t);
         if let Err(msg) = persist(hub, crewmate_id, &t) {
             t.error.get_or_insert(msg);

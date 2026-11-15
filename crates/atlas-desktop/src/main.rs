@@ -237,6 +237,7 @@ macro_rules! handlers {
             crew::ssh_authorize_key,
             crew::crew_agent_check,
             crew::crew_agent_install,
+            crew::crew_signin_argv,
             crew::provider_probe,
             github_auth::project_git_info,
             menu::menu_sync,

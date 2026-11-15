@@ -670,7 +670,7 @@ class _Banner extends StatelessWidget {
                 style: const TextStyle(fontWeight: FontWeight.w600),
               ),
             ),
-            Pill(action, color: color),
+            AtlasChip(action, tone: color),
           ],
         ),
       ),
@@ -1149,9 +1149,9 @@ class _ServiceSheet extends StatelessWidget {
                 ),
                 const Spacer(),
                 if (svc.port != null)
-                  Pill(
+                  AtlasChip(
                     ':${svc.port}',
-                    color: c.accent,
+                    tone: c.accent,
                     mono: true,
                     onTap: () {
                       Clipboard.setData(

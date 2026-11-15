@@ -401,11 +401,8 @@ class _AgentStrip extends ConsumerWidget {
               StatusDot(color: k, pulse: a.state == 'working', size: 6),
               Text(
                 agentStateLabel(a.state),
-                style: TextStyle(
-                  color: k,
-                  fontSize: 12,
-                  fontWeight: FontWeight.w700,
-                ),
+                style: Theme.of(context).textTheme.bodySmall!
+                    .copyWith(color: k, fontWeight: FontWeight.w700),
               ),
             ],
           ),
@@ -415,7 +412,8 @@ class _AgentStrip extends ConsumerWidget {
               task.replaceAll('\n', ' '),
               maxLines: 2,
               overflow: TextOverflow.ellipsis,
-              style: TextStyle(color: c.text, fontSize: 13, height: 1.3),
+              style: Theme.of(context).textTheme.bodyMedium!
+                  .copyWith(color: c.text, height: 1.3),
             ),
           ],
         ],
@@ -471,10 +469,9 @@ class _KeyBarState extends State<KeyBar> {
           shape: RoundedRectangleBorder(
             borderRadius: BorderRadius.circular(Space.radiusSm),
           ),
-          textStyle: const TextStyle(
+          textStyle: Theme.of(context).textTheme.bodyMedium!.copyWith(
             fontFamily: monoFamily,
             fontFamilyFallback: monoFallback,
-            fontSize: 13,
           ),
         ),
         onPressed: widget.enabled ? () => _tap(seq) : null,
@@ -574,10 +571,9 @@ class _LineInputState extends State<LineInput> {
               autocorrect: false,
               enableSuggestions: false,
               textCapitalization: TextCapitalization.none,
-              style: const TextStyle(
+              style: Theme.of(context).textTheme.bodyLarge!.copyWith(
                 fontFamily: monoFamily,
                 fontFamilyFallback: monoFallback,
-                fontSize: 14,
               ),
               decoration: const InputDecoration(
                 hintText: 'Type, then return',

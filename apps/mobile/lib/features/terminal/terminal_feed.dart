@@ -314,7 +314,8 @@ class _BlockCardState extends State<_BlockCard> {
                         ? Text.rich(_span(b.command!, size: 14))
                         : Text(
                             b.screen ? 'Full-screen app · live view' : 'Output',
-                            style: TextStyle(color: c.muted, fontSize: 11),
+                            style: Theme.of(context).textTheme.labelSmall!
+                                .copyWith(color: c.muted),
                           ),
                   ),
                   copyBtn,

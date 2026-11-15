@@ -35,10 +35,10 @@ class ProjectSetupRow extends StatelessWidget {
               snap.setupCommand ?? '',
               maxLines: 1,
               overflow: TextOverflow.ellipsis,
-              style: const TextStyle(
+              style: Theme.of(context).textTheme.bodySmall!.copyWith(
+                color: AtlasColors.of(context).text,
                 fontFamily: monoFamily,
                 fontFamilyFallback: monoFallback,
-                fontSize: 12,
               ),
             ),
           ),
@@ -48,7 +48,8 @@ class ProjectSetupRow extends StatelessWidget {
               snap.setupState!,
               maxLines: 1,
               overflow: TextOverflow.ellipsis,
-              style: const TextStyle(fontSize: 12),
+              style: Theme.of(context).textTheme.bodySmall!
+                  .copyWith(color: AtlasColors.of(context).text),
             ),
           ),
         ],

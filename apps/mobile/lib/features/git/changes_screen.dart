@@ -382,11 +382,16 @@ class _BranchBar extends StatelessWidget {
           const SizedBox(width: Space.sm),
           Text(
             '${status.ahead > 0 ? '↑${status.ahead} ' : ''}${status.upstream}',
-            style: TextStyle(color: c.muted, fontSize: 12),
+            style: Theme.of(context).textTheme.bodySmall!
+                .copyWith(color: c.muted),
           ),
         ] else ...[
           const SizedBox(width: Space.sm),
-          Text('not pushed', style: TextStyle(color: c.muted, fontSize: 12)),
+          Text(
+            'not pushed',
+            style: Theme.of(context).textTheme.bodySmall!
+                .copyWith(color: c.muted),
+          ),
         ],
       ],
     );

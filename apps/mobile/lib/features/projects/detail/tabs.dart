@@ -71,13 +71,13 @@ class ProjectTabs extends StatelessWidget {
                                 duration: Motion.normal,
                                 maxLines: 1,
                                 overflow: TextOverflow.ellipsis,
-                                style: TextStyle(
-                                  color: i == index ? c.text : c.muted,
-                                  fontWeight: i == index
-                                      ? FontWeight.w600
-                                      : FontWeight.w500,
-                                  fontSize: 14,
-                                ),
+                                style: Theme.of(context).textTheme.bodyLarge!
+                                    .copyWith(
+                                      color: i == index ? c.text : c.muted,
+                                      fontWeight: i == index
+                                          ? FontWeight.w600
+                                          : FontWeight.w500,
+                                    ),
                                 child: Text(labels[i]),
                               ),
                             ),

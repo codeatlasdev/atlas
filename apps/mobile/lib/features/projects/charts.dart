@@ -37,7 +37,7 @@ class LinesChart extends StatelessWidget {
       children: [
         Text(
           'max ${max.toStringAsFixed(max < 10 ? 1 : 0)} $unit',
-          style: TextStyle(fontSize: 11, color: muted),
+          style: Theme.of(context).textTheme.labelSmall!.copyWith(color: muted),
         ),
         const SizedBox(height: 4),
         CustomPaint(
@@ -71,7 +71,8 @@ class LinesChart extends StatelessWidget {
                           names[i],
                           maxLines: 1,
                           overflow: TextOverflow.ellipsis,
-                          style: TextStyle(fontSize: 11, color: muted),
+                          style: Theme.of(context).textTheme.labelSmall!
+                              .copyWith(color: muted),
                         ),
                       ),
                     ],
@@ -158,7 +159,8 @@ class HealthTimeline extends StatelessWidget {
                   width: 72,
                   child: Text(
                     e.key,
-                    style: TextStyle(fontSize: 11, color: muted),
+                    style: Theme.of(context).textTheme.labelSmall!
+                        .copyWith(color: muted),
                     overflow: TextOverflow.ellipsis,
                   ),
                 ),

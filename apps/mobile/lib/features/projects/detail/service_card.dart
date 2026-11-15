@@ -52,10 +52,8 @@ class ServiceCard extends StatelessWidget {
                 child: Text(
                   svc.name,
                   overflow: TextOverflow.ellipsis,
-                  style: const TextStyle(
-                    fontWeight: FontWeight.w600,
-                    fontSize: 15,
-                  ),
+                  style: Theme.of(context).textTheme.bodyLarge!
+                      .copyWith(fontWeight: FontWeight.w600),
                 ),
               ),
               if (busy)
@@ -73,7 +71,8 @@ class ServiceCard extends StatelessWidget {
                     : svc.state),
             maxLines: 1,
             overflow: TextOverflow.ellipsis,
-            style: TextStyle(fontSize: 12, color: failed ? c.error : c.muted),
+            style: Theme.of(context).textTheme.bodySmall!
+                .copyWith(color: failed ? c.error : c.muted),
           ),
           const SizedBox(height: Space.sm),
           SizedBox(
@@ -88,8 +87,7 @@ class ServiceCard extends StatelessWidget {
           const SizedBox(height: 4),
           Text(
             svc.up ? '${svc.memMb.round()} MB · ${svc.cpu.round()}%' : '—',
-            style: TextStyle(
-              fontSize: 11,
+            style: Theme.of(context).textTheme.labelSmall!.copyWith(
               color: c.muted,
               fontFeatures: const [FontFeature.tabularFigures()],
             ),
@@ -178,7 +176,8 @@ class ServiceSheet extends StatelessWidget {
               Text(
                 '${svc.memMb.round()} MB · ${svc.cpu.round()}% CPU'
                 '${svc.restarts > 0 ? ' · ${svc.restarts} restarts' : ''}',
-                style: TextStyle(color: c.muted, fontSize: 12),
+                style: Theme.of(context).textTheme.bodySmall!
+                    .copyWith(color: c.muted),
               ),
             ],
             if (svc.lastLine.isNotEmpty) ...[
@@ -194,10 +193,9 @@ class ServiceSheet extends StatelessWidget {
                   svc.lastLine,
                   maxLines: 3,
                   overflow: TextOverflow.ellipsis,
-                  style: TextStyle(
+                  style: Theme.of(context).textTheme.bodySmall!.copyWith(
                     fontFamily: monoFamily,
                     fontFamilyFallback: monoFallback,
-                    fontSize: 12,
                     color: failed ? c.error : c.muted,
                   ),
                 ),
@@ -207,7 +205,8 @@ class ServiceSheet extends StatelessWidget {
               const SizedBox(height: Space.sm),
               Text(
                 'Needs ${svc.dependsOn.join(', ')}',
-                style: TextStyle(color: c.muted, fontSize: 12),
+                style: Theme.of(context).textTheme.bodySmall!
+                    .copyWith(color: c.muted),
               ),
             ],
             const SizedBox(height: Space.lg),

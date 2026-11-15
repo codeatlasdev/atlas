@@ -50,10 +50,8 @@ class ProjectTopBar extends StatelessWidget {
                       'Reconnecting…',
                       maxLines: 1,
                       overflow: TextOverflow.ellipsis,
-                      style: TextStyle(
-                        fontSize: 12,
-                        color: AtlasColors.of(context).muted,
-                      ),
+                      style: Theme.of(context).textTheme.bodySmall!
+                          .copyWith(color: AtlasColors.of(context).muted),
                     ),
                   ),
                 ],

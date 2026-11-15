@@ -435,7 +435,8 @@ class _ProjectDetailScreenState extends ConsumerState<ProjectDetailScreen> {
         padding: const EdgeInsets.only(top: Space.xs, left: 2),
         child: Text(
           'Collected while this screen is open, every ${_poll.inSeconds} s.',
-          style: TextStyle(color: AtlasColors.of(context).muted, fontSize: 12),
+          style: Theme.of(context).textTheme.bodySmall!
+              .copyWith(color: AtlasColors.of(context).muted),
         ),
       ),
     ],

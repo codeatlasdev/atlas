@@ -156,7 +156,8 @@ class _WorktreesSectionState extends ConsumerState<WorktreesSection> {
             padding: const EdgeInsets.only(top: Space.sm),
             child: Text(
               _notice!,
-              style: TextStyle(color: c.warning, fontSize: 13),
+              style: Theme.of(context).textTheme.bodyMedium!
+                  .copyWith(color: c.warning),
             ),
           ),
       ],
@@ -204,7 +205,8 @@ class _WorktreeRow extends StatelessWidget {
                   ].join(' · '),
                   maxLines: 1,
                   overflow: TextOverflow.ellipsis,
-                  style: TextStyle(color: c.muted, fontSize: 12),
+                  style: Theme.of(context).textTheme.bodySmall!
+                      .copyWith(color: c.muted),
                 ),
               ],
             ),
@@ -214,7 +216,8 @@ class _WorktreeRow extends StatelessWidget {
               padding: const EdgeInsets.only(right: Space.sm),
               child: Text(
                 'changes',
-                style: TextStyle(color: c.warning, fontSize: 12),
+                style: Theme.of(context).textTheme.bodySmall!
+                    .copyWith(color: c.warning),
               ),
             ),
           if (!w.main)

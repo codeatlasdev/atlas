@@ -84,8 +84,7 @@ class _SkeletonState extends State<ProjectSkeleton>
                   Text(
                     p.root.replaceFirst(RegExp(r'^/Users/[^/]+'), '~'),
                     overflow: TextOverflow.ellipsis,
-                    style: TextStyle(
-                      fontSize: 12,
+                    style: Theme.of(context).textTheme.bodySmall!.copyWith(
                       color: c.muted,
                       fontFamily: monoFamily,
                       fontFamilyFallback: monoFallback,

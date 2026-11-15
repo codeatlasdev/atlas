@@ -618,19 +618,15 @@ pub(crate) fn add(
 
 /// Store the agent's `files` (PNGs a capture wrote) as images of the task `task_id`, source
 /// [`SOURCE_AGENT`], and return the names they are kept under. Runs from the hook route while the runner
-/// holds its own copy of the task, so it records on the task as the log last has it and the runner
-/// re-reads the attachments before it judges (`runner::gate`).
+/// holds its own copy of the task: it records on the stored task in one locked step
+/// (`CrewStore::update_task`), and the runner's own writes keep the attachments it finds there
+/// (`CrewStore::append_runner_state`).
 pub(crate) fn store_agent(
     store: &CrewStore,
     crewmate_id: &str,
     task_id: &str,
     files: &[PathBuf],
 ) -> Result<Vec<String>, String> {
-    let mut task = store
-        .read_tasks(crewmate_id, usize::MAX)
-        .into_iter()
-        .find(|t| t.id == task_id)
-        .ok_or_else(|| format!("task {task_id} not found"))?;
     let incoming = files
         .iter()
         .map(|f| {
@@ -644,15 +640,17 @@ pub(crate) fn store_agent(
             })
         })
         .collect::<Result<Vec<_>, String>>()?;
-    let before = task.attachments.len();
-    add(store, crewmate_id, &mut task, &incoming, SOURCE_AGENT)?;
     store
-        .append_task(crewmate_id, &task)
-        .map_err(|e| format!("append_task: {e}"))?;
-    Ok(task.attachments[before..]
-        .iter()
-        .map(|a| a.name.clone())
-        .collect())
+        .update_task(crewmate_id, task_id, |task| {
+            let before = task.attachments.len();
+            add(store, crewmate_id, task, &incoming, SOURCE_AGENT)?;
+            Ok(task.attachments[before..]
+                .iter()
+                .map(|a| a.name.clone())
+                .collect())
+        })?
+        .map(|(_, names)| names)
+        .ok_or_else(|| format!("task {task_id} not found"))
 }
 
 #[cfg(test)]

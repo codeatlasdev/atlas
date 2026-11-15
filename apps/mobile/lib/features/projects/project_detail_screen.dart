@@ -459,7 +459,7 @@ class _ProjectDetailScreenState extends ConsumerState<ProjectDetailScreen> {
         padding: const EdgeInsets.only(top: Space.xs, left: 2),
         child: Text(
           'Collected while this screen is open, every ${_poll.inSeconds} s.',
-          style: TextStyle(color: AtlasColors.of(context).faint, fontSize: 12),
+          style: TextStyle(color: AtlasColors.of(context).muted, fontSize: 12),
         ),
       ),
     ],
@@ -720,7 +720,7 @@ class _ActionTile extends StatelessWidget {
                 if (action.confirm != null)
                   Text(
                     'Asks before running',
-                    style: TextStyle(color: c.faint, fontSize: 12),
+                    style: TextStyle(color: c.muted, fontSize: 12),
                   ),
               ],
             ),
@@ -733,7 +733,7 @@ class _ActionTile extends StatelessWidget {
               maxLines: 1,
               overflow: TextOverflow.ellipsis,
               style: TextStyle(
-                color: c.faint,
+                color: c.muted,
                 fontFamily: monoFamily,
                 fontFamilyFallback: monoFallback,
                 fontSize: 12,
@@ -765,7 +765,7 @@ class _Header extends StatelessWidget {
     final c = AtlasColors.of(context);
     final failed = snap.services.where((s) => s.state == 'failed').length;
     final (label, color) = !snap.running
-        ? ('Stopped', c.faint)
+        ? ('Stopped', c.muted)
         : failed > 0
         ? ('$failed failed', c.error)
         : ('Running', c.success);
@@ -804,7 +804,7 @@ class _Header extends StatelessWidget {
                       overflow: TextOverflow.ellipsis,
                       style: TextStyle(
                         fontSize: 12,
-                        color: c.faint,
+                        color: c.muted,
                         fontFamily: monoFamily,
                         fontFamilyFallback: monoFallback,
                       ),
@@ -861,7 +861,7 @@ class _Header extends StatelessWidget {
                             meta,
                             maxLines: 1,
                             overflow: TextOverflow.ellipsis,
-                            style: TextStyle(color: c.faint, fontSize: 12),
+                            style: TextStyle(color: c.muted, fontSize: 12),
                           ),
                         ),
                       ],
@@ -991,7 +991,7 @@ class _Kpis extends StatelessWidget {
                     const SizedBox(height: 2),
                     Text(
                       items[i].$1,
-                      style: TextStyle(fontSize: 11, color: c.faint),
+                      style: TextStyle(fontSize: 11, color: c.muted),
                     ),
                   ],
                 ),
@@ -1069,7 +1069,7 @@ class _ServiceCard extends StatelessWidget {
                     : svc.state),
             maxLines: 1,
             overflow: TextOverflow.ellipsis,
-            style: TextStyle(fontSize: 12, color: failed ? c.error : c.faint),
+            style: TextStyle(fontSize: 12, color: failed ? c.error : c.muted),
           ),
           const SizedBox(height: Space.sm),
           SizedBox(
@@ -1086,7 +1086,7 @@ class _ServiceCard extends StatelessWidget {
             svc.up ? '${svc.memMb.round()} MB · ${svc.cpu.round()}%' : '—',
             style: TextStyle(
               fontSize: 11,
-              color: c.faint,
+              color: c.muted,
               fontFeatures: const [FontFeature.tabularFigures()],
             ),
           ),
@@ -1174,7 +1174,7 @@ class _ServiceSheet extends StatelessWidget {
               Text(
                 '${svc.memMb.round()} MB · ${svc.cpu.round()}% CPU'
                 '${svc.restarts > 0 ? ' · ${svc.restarts} restarts' : ''}',
-                style: TextStyle(color: c.faint, fontSize: 12),
+                style: TextStyle(color: c.muted, fontSize: 12),
               ),
             ],
             if (svc.lastLine.isNotEmpty) ...[
@@ -1203,7 +1203,7 @@ class _ServiceSheet extends StatelessWidget {
               const SizedBox(height: Space.sm),
               Text(
                 'Needs ${svc.dependsOn.join(', ')}',
-                style: TextStyle(color: c.faint, fontSize: 12),
+                style: TextStyle(color: c.muted, fontSize: 12),
               ),
             ],
             const SizedBox(height: Space.lg),
@@ -1467,7 +1467,7 @@ class _LogRow extends StatelessWidget {
           children: [
             TextSpan(
               text: '$time ',
-              style: TextStyle(color: c.faint),
+              style: TextStyle(color: c.muted),
             ),
             if (showService)
               TextSpan(
@@ -1636,7 +1636,7 @@ class _SkeletonState extends State<_Skeleton>
                     overflow: TextOverflow.ellipsis,
                     style: TextStyle(
                       fontSize: 12,
-                      color: c.faint,
+                      color: c.muted,
                       fontFamily: monoFamily,
                       fontFamilyFallback: monoFallback,
                     ),

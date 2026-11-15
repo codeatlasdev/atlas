@@ -368,7 +368,7 @@ class _CrewmateProfileScreenState extends ConsumerState<CrewmateProfileScreen> {
                               style: TextStyle(
                                 color: crewmate.role.isNotEmpty
                                     ? c.text
-                                    : c.faint,
+                                    : c.muted,
                                 height: 1.45,
                                 fontSize: 15,
                               ),

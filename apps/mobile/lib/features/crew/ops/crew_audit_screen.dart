@@ -92,7 +92,7 @@ class _CrewAuditScreenState extends ConsumerState<CrewAuditScreen> {
                         ? 'Nothing recorded yet.'
                         : 'Nothing recorded under ${_group!.label}.',
                     textAlign: TextAlign.center,
-                    style: TextStyle(color: c.faint),
+                    style: TextStyle(color: c.muted),
                   ),
                 )
               else
@@ -177,7 +177,7 @@ class _EntryRow extends StatelessWidget {
           const SizedBox(height: 4),
           Text(
             '${_time(entry.ts)} · ${auditKindLabel(entry.kind)}',
-            style: TextStyle(color: c.faint, fontSize: 12),
+            style: TextStyle(color: c.muted, fontSize: 12),
           ),
         ],
       ),
@@ -203,7 +203,7 @@ class _EntrySheet extends StatelessWidget {
             style: Theme.of(context).textTheme.titleMedium,
           ),
           const SizedBox(height: 2),
-          Text(_time(entry.ts), style: TextStyle(color: c.faint, fontSize: 12)),
+          Text(_time(entry.ts), style: TextStyle(color: c.muted, fontSize: 12)),
           const SizedBox(height: Space.md),
           Flexible(
             child: SingleChildScrollView(

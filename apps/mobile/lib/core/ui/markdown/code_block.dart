@@ -64,7 +64,7 @@ class _AtlasCodeBlockState extends State<AtlasCodeBlock> {
                   child: Text(
                     widget.language.isEmpty ? 'text' : widget.language,
                     style: TextStyle(
-                      color: c.faint,
+                      color: c.muted,
                       fontSize: 11,
                       letterSpacing: .3,
                     ),
@@ -228,7 +228,7 @@ TextSpan highlight(
         '',
       };
       if (hash && !hashLangs.contains(lang)) continue;
-      color = c.faint;
+      color = c.muted;
     } else if (m.namedGroup('string') != null) {
       color = c.success;
     } else if (m.namedGroup('number') != null) {

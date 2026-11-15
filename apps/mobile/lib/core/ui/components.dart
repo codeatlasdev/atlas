@@ -198,7 +198,7 @@ class SectionHeader extends StatelessWidget {
                     const SizedBox(width: 6),
                     Text(
                       '$count',
-                      style: TextStyle(color: c.faint, fontSize: 13),
+                      style: TextStyle(color: c.muted, fontSize: 13),
                     ),
                   ],
                 ],

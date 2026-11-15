@@ -333,7 +333,7 @@ jobs:
   duplication:
     name: Duplication (jscpd, <= 1.5%)
     needs: plan
-    if: ${{ needs.plan.outputs.tested != 'true' && (needs.plan.outputs.rust == 'true' || needs.plan.outputs.front == 'true') }}
+    if: ${{ needs.plan.outputs.tested != 'true' && (needs.plan.outputs.rust == 'true' || needs.plan.outputs.front == 'true' || needs.plan.outputs.mobile == 'true') }}
     runs-on: ubuntu-latest
     timeout-minutes: 10
     steps:

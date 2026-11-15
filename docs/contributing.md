@@ -85,7 +85,7 @@ Every command is a root `package.json` script, so `bun run <name>` from the repo
 | `bun run check` | **the gate**, above |
 | `bun run sweep` | free `target/build` (intermediate artifacts; the next build recreates them), see [Build performance](build-perf.md) |
 | `bun run fmt` | `cargo fmt` and prettier for the desktop frontend |
-| `bun run dup` | jscpd duplication over Rust, TypeScript, Svelte and Astro; keep it at or below 1.5% (config: `.jscpd.json`) |
+| `bun run dup` | jscpd duplication over Rust, TypeScript, Svelte, Astro and Dart (the phone app's `lib/`, generated bindings left out); keep it at or below 1.5% (config: `.jscpd.json`) |
 | `bun run lint:workflows` | actionlint and zizmor over `.github/` (also part of `bun run check`) |
 | `bun run desktop:dev` / `desktop:build` / `desktop:build:app` / `desktop:check` / `desktop:link` | run the app with hot reload, build the bundle, build a debug `.app` only, check the frontend, link the debug bundle |
 | `bun run mobile:check` | `scripts/mobile-check.sh` — Flutter analyze and test for `apps/mobile` (also part of `bun run check`; skipped when Flutter is absent) |

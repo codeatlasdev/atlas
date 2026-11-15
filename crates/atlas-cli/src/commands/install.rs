@@ -275,40 +275,25 @@ pub async fn handle(dir: Option<String>) -> Result<()> {
         ),
     }
 
-    let already_in_path = std::env::var_os("PATH")
-        .is_some_and(|path| std::env::split_paths(&path).any(|p| p == install_dir));
-
-    if already_in_path {
-        println!("\x1b[32m✓\x1b[0m Already in PATH");
-    } else if cfg!(windows) {
-        #[cfg(windows)]
-        match add_user_path(&install_dir) {
-            Ok(_) => println!("\x1b[32m✓\x1b[0m Added to PATH  [user environment]"),
-            Err(e) => println!(
-                "\x1b[33m◆\x1b[0m Add {} to your PATH manually ({e:#})",
-                install_dir.display()
-            ),
-        }
-    } else {
-        let written = setup_path_all_shells(&install_dir);
-        if written.is_empty() {
-            println!(
-                "\x1b[33m◆\x1b[0m Add to PATH manually:\n  export PATH=\"{}:$PATH\"",
-                install_dir.display()
-            );
+    #[cfg(windows)]
+    {
+        let already_in_path = std::env::var_os("PATH")
+            .is_some_and(|path| std::env::split_paths(&path).any(|p| p == install_dir));
+        if already_in_path {
+            println!("\x1b[32m✓\x1b[0m Already in PATH");
         } else {
-            for shell in &written {
-                println!("\x1b[32m✓\x1b[0m Added to PATH  [{shell}]");
+            match add_user_path(&install_dir) {
+                Ok(_) => println!("\x1b[32m✓\x1b[0m Added to PATH  [user environment]"),
+                Err(e) => println!(
+                    "\x1b[33m◆\x1b[0m Add {} to your PATH manually ({e:#})",
+                    install_dir.display()
+                ),
             }
         }
-    }
-
-    if cfg!(windows) {
         println!("\x1b[1;32m✓\x1b[0m Done! Open a new terminal to use `atlas`.");
-    } else {
-        println!("\x1b[1;32m✓\x1b[0m Done! Restart your shell or run:");
-        println!("  export PATH=\"{}:$PATH\"", install_dir.display());
     }
+    #[cfg(not(windows))]
+    setup_path_unix(&install_dir, &dest);
     println!();
 
     // Install the skills bundled in this binary into ~/.agents/skills
@@ -326,6 +311,107 @@ pub async fn handle(dir: Option<String>) -> Result<()> {
     );
 
     Ok(())
+}
+
+/// The warning for an installer run through `sudo`, which writes into `home` as `euid`. When
+/// `home` belongs to the user who ran sudo (`sudo -E`, or a sudoers that keeps `HOME`) the files
+/// land root-owned inside that user's home, which later breaks their own shell and updates.
+#[cfg(not(windows))]
+fn sudo_warning(
+    sudo_user: Option<&str>,
+    sudo_uid: Option<u32>,
+    euid: u32,
+    home: &Path,
+) -> Option<String> {
+    use std::os::unix::fs::MetadataExt as _;
+    let user = sudo_user.filter(|u| !u.is_empty() && *u != "root")?;
+    let mut msg = format!(
+        "Running under sudo: this installs into {} as uid {euid}, not as {user}.",
+        home.display()
+    );
+    if sudo_uid.is_some_and(|u| std::fs::metadata(home).is_ok_and(|m| m.uid() == u)) {
+        msg.push_str(&format!(
+            " That is {user}'s own home (sudo -E / HOME kept), so the files written there will be owned by root."
+        ));
+    }
+    msg.push_str(" Run the installer without sudo.");
+    Some(msg)
+}
+
+/// Unix: write every shell's startup file (always, even when this process already has the dir on
+/// `PATH`: an Atlas terminal adds it, other terminals do not), link `~/.local/bin/atlas` when that
+/// dir is on `PATH`, report each outcome, and end with what makes `atlas` work in this shell.
+#[cfg(not(windows))]
+fn setup_path_unix(install_dir: &Path, dest: &Path) {
+    if let Some(w) = sudo_warning(
+        std::env::var("SUDO_USER").ok().as_deref(),
+        std::env::var("SUDO_UID").ok().and_then(|u| u.parse().ok()),
+        // SAFETY: `geteuid` has no preconditions and cannot fail.
+        unsafe { libc::geteuid() },
+        &ShellEnv::current().home,
+    ) {
+        println!("\x1b[33m◆\x1b[0m {w}");
+    }
+    let env = ShellEnv::current();
+    for (shell, outcome) in setup_path_all_shells(&env, install_dir) {
+        match outcome {
+            Ok(PathSetup::NoFile) => println!(
+                "\x1b[33m◆\x1b[0m {shell}: no startup file to add to; create ~/.bash_profile with:\n  {}",
+                shellrc::path_line(install_dir)
+            ),
+            Ok(s) => {
+                if let Some(label) = setup_label(shell, &s) {
+                    println!("\x1b[32m✓\x1b[0m Added to PATH  [{label}]");
+                }
+            }
+            Err(e) => println!("\x1b[33m◆\x1b[0m {shell}: {e:#}"),
+        }
+    }
+    let path = std::env::var_os("PATH");
+    let ready_now = match link_local_bin(&env, dest, path.as_deref()) {
+        Ok(LocalLink::Linked(link)) => {
+            println!(
+                "\x1b[32m✓\x1b[0m Linked {} → {}",
+                link.display(),
+                dest.display()
+            );
+            true
+        }
+        Ok(LocalLink::Taken(link)) => {
+            println!(
+                "\x1b[33m◆\x1b[0m {} exists and is not Atlas's link; left alone",
+                link.display()
+            );
+            false
+        }
+        Ok(LocalLink::NotOnPath) => false,
+        Err(e) => {
+            println!("\x1b[33m◆\x1b[0m {e:#}");
+            false
+        }
+    } || path.is_some_and(|p| std::env::split_paths(&p).any(|e| e == install_dir));
+
+    let (shell, _) = atlas_core::login_env::resolve_shell();
+    let name = Path::new(&shell)
+        .file_name()
+        .map(|n| n.to_string_lossy().into_owned())
+        .unwrap_or_default();
+    let line = shellrc::line_for_shell(&name, install_dir);
+    if line.is_none() {
+        println!(
+            "\x1b[33m◆\x1b[0m Atlas does not write {name}'s startup file: add {} to PATH there",
+            install_dir.display()
+        );
+    }
+    if ready_now {
+        println!("\x1b[1;32m✓\x1b[0m Done! `atlas` works in this shell now.");
+    } else {
+        println!("\x1b[1;32m✓\x1b[0m Done! Open a new terminal, or run this in the current one:");
+        match line {
+            Some(l) => println!("  {l}"),
+            None => println!("  (add {} to PATH)", install_dir.display()),
+        }
+    }
 }
 
 /// Windows: put `dir` on the user's `Path` (registry, `HKCU\Environment`), the way installers do,
@@ -400,28 +486,33 @@ fn setup_label(shell: &str, s: &PathSetup) -> Option<String> {
     }
 }
 
-/// Put `install_dir` on `PATH` for every shell on this machine. Returns the report lines of the
-/// shells that now have it; empty means the user must do it by hand.
+/// Put `install_dir` on `PATH` for every shell on this machine: each shell's outcome, an error
+/// included (a read-only rc, a file of the user's under Atlas's name), so none goes unreported.
 #[cfg_attr(windows, allow(dead_code))]
-fn setup_path_all_shells(install_dir: &Path) -> Vec<String> {
-    let env = ShellEnv::current();
-    let mut written = Vec::new();
-    for (name, setup) in [
-        (
-            "fish",
-            setup_fish as fn(&ShellEnv, &Path) -> Result<PathSetup>,
-        ),
+fn setup_path_all_shells(
+    env: &ShellEnv,
+    install_dir: &Path,
+) -> Vec<(&'static str, Result<PathSetup>)> {
+    type Setup = fn(&ShellEnv, &Path) -> Result<PathSetup>;
+    let shells: [(&str, Setup); 4] = [
+        ("fish", setup_fish),
+        ("nu", setup_nu),
         ("zsh", setup_zsh),
         ("bash", setup_bash),
-    ] {
-        if shell_exists(name)
-            && let Ok(s) = setup(&env, install_dir)
-            && let Some(label) = setup_label(name, &s)
+    ];
+    let mut out = Vec::new();
+    for (name, setup) in shells {
+        if !shell_exists(name) {
+            continue;
+        }
+        out.push((name, setup(env, install_dir)));
+        if name == "bash"
+            && let Some(login) = setup_bash_login(env, install_dir)
         {
-            written.push(label);
+            out.push(("bash (login file)", login));
         }
     }
-    written
+    out
 }
 
 #[cfg_attr(windows, allow(dead_code))]
@@ -442,27 +533,107 @@ fn which_exists(cmd: &str) -> bool {
     atlas_core::paths::which(cmd).is_some()
 }
 
-/// fish: `conf.d/atlas.fish`, a file of Atlas's own. One that is not what Atlas writes is the
-/// user's (their own `atlas` wrapper, say): it is left alone and `PATH` is reported as not set.
+/// Write a startup file that is all Atlas's own (fish `conf.d`, nushell `autoload`). One that
+/// `ours` does not recognize is the user's (their own `atlas` wrapper, say): left alone, an error
+/// naming `line`. One of ours with older contents is rewritten.
+#[cfg_attr(windows, allow(dead_code))]
+fn write_owned_file(
+    file: PathBuf,
+    contents: &str,
+    ours: impl Fn(&str) -> bool,
+    line: &str,
+) -> Result<PathSetup> {
+    if let Ok(existing) = std::fs::read_to_string(&file) {
+        if existing == contents {
+            return Ok(PathSetup::AlreadySet(file));
+        }
+        if !ours(&existing) {
+            bail!(
+                "{} exists and is not the file Atlas writes; add `{line}` to it yourself",
+                file.display()
+            );
+        }
+    }
+    if let Some(dir) = file.parent() {
+        std::fs::create_dir_all(dir)
+            .with_context(|| format!("Could not create {}", dir.display()))?;
+    }
+    std::fs::write(&file, contents)
+        .with_context(|| format!("Could not write {}", file.display()))?;
+    Ok(PathSetup::Written(file))
+}
+
+/// fish: `conf.d/atlas.fish`. Replacing the file an older install wrote also takes the dir out of
+/// the universal `fish_user_paths` that file's line had stored.
 #[cfg_attr(windows, allow(dead_code))]
 fn setup_fish(env: &ShellEnv, install_dir: &Path) -> Result<PathSetup> {
-    let rc = env.fish_file();
-    if let Ok(existing) = std::fs::read_to_string(&rc) {
-        if shellrc::is_fish_file_ours(&existing, install_dir) {
-            return Ok(PathSetup::AlreadySet(rc));
-        }
-        bail!(
-            "{} exists and is not the file Atlas writes; add `{}` to it yourself",
-            rc.display(),
-            shellrc::fish_line(install_dir)
-        );
+    let file = env.fish_file();
+    let had_legacy = std::fs::read_to_string(&file).is_ok_and(|c| {
+        shellrc::is_fish_file_ours(&c, install_dir) && c != shellrc::fish_contents(install_dir)
+    });
+    let s = write_owned_file(
+        file,
+        &shellrc::fish_contents(install_dir),
+        |c| shellrc::is_fish_file_ours(c, install_dir),
+        &shellrc::fish_line(install_dir),
+    )?;
+    if had_legacy {
+        // Best effort: the new file works either way; a stale universal entry only outlives uninstall.
+        let _ = shellrc::fish_forget_universal(env, install_dir);
     }
-    let conf_d = env.fish_conf_d();
-    std::fs::create_dir_all(&conf_d)
-        .with_context(|| format!("Could not create {}", conf_d.display()))?;
-    std::fs::write(&rc, shellrc::fish_contents(install_dir))
-        .with_context(|| format!("Could not write {}", rc.display()))?;
-    Ok(PathSetup::Written(rc))
+    Ok(s)
+}
+
+/// nushell: `autoload/atlas.nu` (nushell 0.102+ loads it on every start).
+#[cfg_attr(windows, allow(dead_code))]
+fn setup_nu(env: &ShellEnv, install_dir: &Path) -> Result<PathSetup> {
+    write_owned_file(
+        env.nu_file(),
+        &shellrc::nu_contents(install_dir),
+        |c| shellrc::is_nu_file_ours(c, install_dir),
+        &shellrc::nu_line(install_dir),
+    )
+}
+
+/// What linking `atlas` into `~/.local/bin` did.
+#[derive(Debug, PartialEq, Eq)]
+#[cfg_attr(windows, allow(dead_code))]
+enum LocalLink {
+    /// Made the link (or it already pointed at `dest`).
+    Linked(PathBuf),
+    /// `~/.local/bin` is not on `PATH`: a link there would not help.
+    NotOnPath,
+    /// Something else is already at `~/.local/bin/atlas`: the user's, left alone.
+    Taken(PathBuf),
+}
+
+/// Link `~/.local/bin/atlas` -> `dest` when `~/.local/bin` is on `path` (the installer's own
+/// `PATH`, so the session's). `atlas` then resolves in this very shell and in non-interactive
+/// ones that never read an rc file (`bash -c`, agents, GUI-launched tools).
+#[cfg_attr(windows, allow(dead_code))]
+fn link_local_bin(
+    env: &ShellEnv,
+    dest: &Path,
+    path: Option<&std::ffi::OsStr>,
+) -> Result<LocalLink> {
+    let link = env.local_bin_link();
+    let Some(dir) = link.parent() else {
+        return Ok(LocalLink::NotOnPath);
+    };
+    if !path.is_some_and(|p| std::env::split_paths(p).any(|e| e == dir)) {
+        return Ok(LocalLink::NotOnPath);
+    }
+    match std::fs::read_link(&link) {
+        Ok(to) if to == dest => return Ok(LocalLink::Linked(link)),
+        Ok(_) => return Ok(LocalLink::Taken(link)),
+        Err(_) if link.symlink_metadata().is_ok() => return Ok(LocalLink::Taken(link)),
+        Err(_) => {}
+    }
+    std::fs::create_dir_all(dir).with_context(|| format!("Could not create {}", dir.display()))?;
+    #[cfg(unix)]
+    std::os::unix::fs::symlink(dest, &link)
+        .with_context(|| format!("Could not link {}", link.display()))?;
+    Ok(LocalLink::Linked(link))
 }
 
 /// zsh: `$ZDOTDIR/.zshenv` (else `~/.zshenv`), which every zsh reads.
@@ -471,13 +642,32 @@ fn setup_zsh(env: &ShellEnv, install_dir: &Path) -> Result<PathSetup> {
     append_block(env.zsh_file(), install_dir)
 }
 
-/// bash: the first login file that exists. None is not an error, but not a success either.
+/// bash: [`ShellEnv::bash_file`]. On macOS with none of the login files that is not an error, but
+/// not a success either.
 #[cfg_attr(windows, allow(dead_code))]
 fn setup_bash(env: &ShellEnv, install_dir: &Path) -> Result<PathSetup> {
-    match env.bash_file() {
-        Some(rc) => append_block(rc, install_dir),
-        None => Ok(PathSetup::NoFile),
+    let Some(rc) = env.bash_file() else {
+        return Ok(PathSetup::NoFile);
+    };
+    append_block(rc, install_dir)
+}
+
+/// bash on Linux: a login file (ssh, `bash -l`) that does not source `~/.bashrc` gets the block
+/// too, so login shells find `atlas` as well. `None` when there is no such file. Reported apart
+/// from [`setup_bash`]: a failure here must not say `~/.bashrc` failed when it was written.
+#[cfg_attr(windows, allow(dead_code))]
+fn setup_bash_login(env: &ShellEnv, install_dir: &Path) -> Option<Result<PathSetup>> {
+    if cfg!(target_os = "macos") {
+        return None;
     }
+    let login = [".bash_profile", ".bash_login", ".profile"]
+        .iter()
+        .map(|f| env.home.join(f))
+        .find(|p| p.is_file())?;
+    if std::fs::read_to_string(&login).is_ok_and(|c| c.contains(".bashrc")) {
+        return None;
+    }
+    Some(append_block(login, install_dir))
 }
 
 /// Append the PATH block to `rc` unless it already has the exact line.
@@ -532,13 +722,18 @@ mod tests {
     fn path_setup_is_idempotent_for_every_shell() {
         let (_t, env, bin) = shell_home();
         std::fs::write(env.home.join(".bashrc"), "alias ll='ls -l'\n").unwrap();
-        for setup in [setup_zsh, setup_bash, setup_fish] {
+        for setup in [setup_zsh, setup_bash, setup_fish, setup_nu] {
             let first = setup(&env, &bin).unwrap();
             assert!(matches!(first, PathSetup::Written(_)), "{first:?}");
         }
-        let files = [env.zsh_file(), env.bash_file().unwrap(), env.fish_file()];
+        let files = [
+            env.zsh_file(),
+            env.bash_file().unwrap(),
+            env.fish_file(),
+            env.nu_file(),
+        ];
         let before: Vec<_> = files.iter().map(|f| std::fs::read(f).unwrap()).collect();
-        for setup in [setup_zsh, setup_bash, setup_fish] {
+        for setup in [setup_zsh, setup_bash, setup_fish, setup_nu] {
             let again = setup(&env, &bin).unwrap();
             assert!(matches!(again, PathSetup::AlreadySet(_)), "{again:?}");
         }
@@ -616,6 +811,7 @@ mod tests {
     /// Incident class: with none of bash's login files the installer printed `Added to PATH [bash
     /// (no rc file found)]` as if it had worked. It is not a success and must not be reported as one.
     #[test]
+    #[cfg(target_os = "macos")]
     fn bash_without_a_login_file_is_not_reported_as_set() {
         let (_t, env, bin) = shell_home();
         let s = setup_bash(&env, &bin).unwrap();
@@ -634,6 +830,43 @@ mod tests {
         assert!(had.contains("already set"), "{had}");
     }
 
+    /// Incident (#265, Omarchy): `~/.bash_profile` existed, the line went there, and the terminal's
+    /// non-login bash never read it. A real interactive non-login bash must see `atlas` on PATH.
+    #[test]
+    #[cfg(target_os = "linux")]
+    fn linux_interactive_bash_sees_the_path_even_with_a_bash_profile() {
+        let (_t, env, bin) = shell_home();
+        std::fs::write(env.home.join(".bash_profile"), "export FROM_PROFILE=1\n").unwrap();
+        let s = setup_bash(&env, &bin).unwrap();
+        assert_eq!(s, PathSetup::Written(env.home.join(".bashrc")));
+        assert!(setup_bash_login(&env, &bin).unwrap().is_ok());
+        let out = std::process::Command::new("bash")
+            .args(["-i", "-c", "echo \"$PATH\""])
+            .env("HOME", &env.home)
+            .env("PATH", "/usr/bin:/bin")
+            .stdin(std::process::Stdio::null())
+            .output()
+            .unwrap();
+        let path = String::from_utf8_lossy(&out.stdout);
+        assert!(
+            path.split(':').any(|p| p.trim() == bin.to_str().unwrap()),
+            "{path}"
+        );
+        // ssh / `bash -l` read only the login file, which here does not source ~/.bashrc.
+        let login = std::process::Command::new("bash")
+            .args(["-l", "-c", "echo \"$PATH\""])
+            .env("HOME", &env.home)
+            .env("PATH", "/usr/bin:/bin")
+            .stdin(std::process::Stdio::null())
+            .output()
+            .unwrap();
+        let lp = String::from_utf8_lossy(&login.stdout);
+        assert!(
+            lp.split(':').any(|p| p.trim() == bin.to_str().unwrap()),
+            "{lp}"
+        );
+    }
+
     /// fish's file is Atlas's own: one the user wrote under that name is never overwritten.
     #[test]
     fn fish_never_overwrites_a_file_it_did_not_write() {
@@ -645,6 +878,203 @@ mod tests {
         let e = setup_fish(&env, &bin).unwrap_err().to_string();
         assert!(e.contains("not the file Atlas writes"), "{e}");
         assert_eq!(std::fs::read_to_string(&rc).unwrap(), mine);
+    }
+
+    /// The nushell file follows the same rule: a user's own `atlas.nu` is never replaced.
+    #[test]
+    fn nu_never_overwrites_a_file_it_did_not_write() {
+        let (_t, env, bin) = shell_home();
+        let f = env.nu_file();
+        std::fs::create_dir_all(f.parent().unwrap()).unwrap();
+        std::fs::write(&f, "alias a = atlas\n").unwrap();
+        assert!(setup_nu(&env, &bin).is_err());
+        assert_eq!(std::fs::read_to_string(&f).unwrap(), "alias a = atlas\n");
+    }
+
+    /// Up to 1.5.0-alpha.25 the fish file used `fish_add_path <dir>` (universal: fish stored the dir
+    /// on disk, so it outlived uninstall). Re-installing replaces it with the global, quoted line.
+    #[test]
+    fn an_older_fish_file_is_rewritten_with_the_global_line() {
+        let (_t, env, bin) = shell_home();
+        let f = env.fish_file();
+        std::fs::create_dir_all(f.parent().unwrap()).unwrap();
+        std::fs::write(
+            &f,
+            format!("# Atlas CLI\nfish_add_path {}\n", bin.display()),
+        )
+        .unwrap();
+        assert_eq!(
+            setup_fish(&env, &bin).unwrap(),
+            PathSetup::Written(f.clone())
+        );
+        let text = std::fs::read_to_string(&f).unwrap();
+        assert!(text.contains("fish_add_path -gP \""), "{text}");
+    }
+
+    /// The `~/.local/bin` link: only when that dir is on PATH, never over something else, and a
+    /// second run is a no-op.
+    #[test]
+    #[cfg(unix)]
+    fn local_bin_link_only_when_on_path_and_never_over_another_file() {
+        let (_t, env, bin) = shell_home();
+        let dest = bin.join("atlas");
+        let link = env.local_bin_link();
+        let local = link.parent().unwrap().to_path_buf();
+        let off = std::ffi::OsString::from("/usr/bin:/bin");
+        assert_eq!(
+            link_local_bin(&env, &dest, Some(&off)).unwrap(),
+            LocalLink::NotOnPath
+        );
+        assert!(
+            link.symlink_metadata().is_err(),
+            "nothing made when it would not help"
+        );
+
+        let on = std::env::join_paths([local.as_path(), Path::new("/usr/bin")]).unwrap();
+        assert_eq!(
+            link_local_bin(&env, &dest, Some(&on)).unwrap(),
+            LocalLink::Linked(link.clone())
+        );
+        assert_eq!(std::fs::read_link(&link).unwrap(), dest);
+        assert_eq!(
+            link_local_bin(&env, &dest, Some(&on)).unwrap(),
+            LocalLink::Linked(link.clone())
+        );
+
+        std::fs::remove_file(&link).unwrap();
+        std::fs::write(&link, "#!/bin/sh\necho mine\n").unwrap();
+        assert_eq!(
+            link_local_bin(&env, &dest, Some(&on)).unwrap(),
+            LocalLink::Taken(link.clone())
+        );
+        assert_eq!(
+            std::fs::read_to_string(&link).unwrap(),
+            "#!/bin/sh\necho mine\n"
+        );
+    }
+
+    /// Incident class (found by hand while fixing #265): the cleanup ran `fish --no-config`, which
+    /// does not load universal variables, then `fish -c`, where the new `-g` line in `conf.d`
+    /// shadowed them; either way the stale universal entry survived. Real fish, temp home;
+    /// skipped where fish is not installed.
+    #[test]
+    #[cfg(unix)]
+    fn reinstall_takes_the_old_universal_fish_path_away() {
+        if !which_exists("fish") {
+            eprintln!("fish not installed: skipped");
+            return;
+        }
+        let (_t, env, bin) = shell_home();
+        // `fish_add_path` skips a dir that does not exist: without it there is no global shadow.
+        std::fs::create_dir_all(&bin).unwrap();
+        let st = std::process::Command::new("fish")
+            .env("HOME", &env.home)
+            .env_remove("XDG_CONFIG_HOME")
+            .args(["-c", "set -U fish_user_paths $argv[1]"])
+            .arg(&bin)
+            .status()
+            .unwrap();
+        assert!(st.success());
+        assert!(shellrc::fish_universal_has(&env, &bin), "seeded");
+        let f = env.fish_file();
+        std::fs::create_dir_all(f.parent().unwrap()).unwrap();
+        std::fs::write(
+            &f,
+            format!("# Atlas CLI\nfish_add_path {}\n", bin.display()),
+        )
+        .unwrap();
+        setup_fish(&env, &bin).unwrap();
+        assert!(!shellrc::fish_universal_has(&env, &bin));
+    }
+
+    /// Incident (PR #326 review, fish 4.9.3): a plain `fish_add_path -g` in `conf.d` created a
+    /// global `fish_user_paths` shadowing the universal one, so a `fish_add_path ~/y` the user ran
+    /// later was lost when that shell exited. Real fish, temp home; skipped where fish is absent.
+    #[test]
+    #[cfg(unix)]
+    fn the_fish_line_does_not_swallow_the_users_own_fish_add_path() {
+        if !which_exists("fish") {
+            eprintln!("fish not installed: skipped");
+            return;
+        }
+        let (_t, env, bin) = shell_home();
+        let mine = env.home.join("y");
+        std::fs::create_dir_all(&bin).unwrap();
+        std::fs::create_dir_all(&mine).unwrap();
+        setup_fish(&env, &bin).unwrap();
+        let fish = |script: &str| {
+            let out = std::process::Command::new("fish")
+                .env("HOME", &env.home)
+                .env_remove("XDG_CONFIG_HOME")
+                .args(["-c", script])
+                .arg(&bin)
+                .arg(&mine)
+                .output()
+                .unwrap();
+            assert!(
+                out.status.success(),
+                "{script}: {}",
+                String::from_utf8_lossy(&out.stderr)
+            );
+            String::from_utf8_lossy(&out.stdout).into_owned()
+        };
+        fish("fish_add_path $argv[2]");
+        // A brand-new shell: both the user's dir (universal) and Atlas's (conf.d) are on PATH.
+        let paths = fish("string join \\n $PATH");
+        let on_path = |d: &Path| paths.lines().any(|l| l == d.to_str().unwrap());
+        assert!(on_path(&mine), "user's fish_add_path was lost:\n{paths}");
+        assert!(on_path(&bin), "atlas dir missing:\n{paths}");
+    }
+
+    /// A login file that cannot be written is reported as its own failure; `~/.bashrc`, already
+    /// written, is not reported as failed.
+    #[test]
+    #[cfg(target_os = "linux")]
+    fn a_login_file_failure_is_reported_apart_from_bashrc() {
+        use std::os::unix::fs::PermissionsExt as _;
+        let (_t, env, bin) = shell_home();
+        let login = env.home.join(".bash_profile");
+        std::fs::write(&login, "export A=1\n").unwrap();
+        std::fs::set_permissions(&login, std::fs::Permissions::from_mode(0o444)).unwrap();
+        if std::fs::OpenOptions::new()
+            .append(true)
+            .open(&login)
+            .is_ok()
+        {
+            eprintln!("running with privileges that ignore file modes: skipped");
+            return;
+        }
+        assert_eq!(
+            setup_bash(&env, &bin).unwrap(),
+            PathSetup::Written(env.home.join(".bashrc"))
+        );
+        assert!(setup_bash_login(&env, &bin).unwrap().is_err());
+        assert_eq!(
+            std::fs::read_to_string(&login).unwrap(),
+            "export A=1\n",
+            "login file untouched"
+        );
+    }
+
+    /// The sudo warning names the home it writes into and the uid it writes as, and says when
+    /// that home is the caller's own (root-owned files inside it).
+    #[test]
+    #[cfg(unix)]
+    fn sudo_warning_names_home_and_uid() {
+        use std::os::unix::fs::MetadataExt as _;
+        let t = tempfile::tempdir().unwrap();
+        let owner = std::fs::metadata(t.path()).unwrap().uid();
+        assert_eq!(sudo_warning(None, None, 0, t.path()), None);
+        assert_eq!(sudo_warning(Some("root"), Some(0), 0, t.path()), None);
+        let own = sudo_warning(Some("ana"), Some(owner), 0, t.path()).unwrap();
+        assert!(own.contains(&t.path().display().to_string()), "{own}");
+        assert!(own.contains("as uid 0"), "{own}");
+        assert!(own.contains("owned by root"), "{own}");
+        let other = sudo_warning(Some("ana"), Some(owner + 1), 0, t.path()).unwrap();
+        assert!(
+            other.contains("as uid 0") && !other.contains("owned by root"),
+            "{other}"
+        );
     }
 
     fn judge(own: &str, installed: Option<&str>) -> Upgrade {

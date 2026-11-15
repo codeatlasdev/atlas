@@ -1,5 +1,8 @@
 use serde_json::{Value, json};
 
+use atlas_core::ipc;
+use tokio::io::{AsyncBufReadExt, AsyncWriteExt};
+
 use super::*;
 use crate::config::ProjectConfig;
 
@@ -455,4 +458,88 @@ fn audit_args_are_summarized_without_the_target_and_long_values_are_cut() {
         !line.contains('\n') && line.len() < 1000,
         "one short line per call"
     );
+}
+
+// Regression #304: the request queue was unbounded, so a stuck run loop let requests pile up
+// without limit. A full queue now answers "busy" at once and recovers when the loop drains it.
+#[tokio::test]
+async fn a_full_request_queue_answers_busy_and_recovers_when_the_loop_drains() {
+    let dir = tempfile::TempDir::new().unwrap();
+    let (_server, mut rx) =
+        ControlServer::bind(dir.path(), Guard::new(&cfg(), dir.path())).unwrap();
+    // The run loop is stuck: nobody reads `rx`, so every accepted request waits in the queue.
+    let root = dir.path().to_path_buf();
+    let parked: Vec<_> = (0..server::REQUEST_QUEUE)
+        .map(|_| {
+            let root = root.clone();
+            tokio::spawn(
+                async move { call(&root, "restart_service", json!({"service": "api"})).await },
+            )
+        })
+        .collect();
+    let mut busy = None;
+    for _ in 0..20 {
+        // Until the queue is full a call is queued, not answered: it times out here.
+        if let Ok(Ok(r)) = tokio::time::timeout(
+            Duration::from_millis(500),
+            call(dir.path(), "restart_service", json!({"service": "api"})),
+        )
+        .await
+        {
+            busy = Some(r);
+            break;
+        }
+    }
+    let busy = busy.expect("a full queue was never answered busy");
+    assert!(!busy.ok);
+    assert_eq!(busy.error.as_deref(), Some(server::BUSY));
+
+    // The loop wakes up and answers what is queued; the server takes requests again.
+    tokio::spawn(async move {
+        while let Some(req) = rx.recv().await {
+            let _ = req.reply.send(ControlResponse::ok(json!({})));
+        }
+    });
+    let r = call(dir.path(), "restart_service", json!({"service": "api"}))
+        .await
+        .unwrap();
+    assert!(r.ok, "{r:?}");
+    drop(parked);
+}
+
+// Regression #304: connections were not capped. One over the limit is told "busy" and closed; the
+// ones already served are untouched.
+#[tokio::test]
+async fn a_connection_over_the_limit_is_told_busy_and_closed() {
+    let dir = tempfile::TempDir::new().unwrap();
+    let (_server, mut rx) =
+        ControlServer::bind(dir.path(), Guard::new(&cfg(), dir.path())).unwrap();
+    let mut held = Vec::new();
+    for _ in 0..server::MAX_CONNECTIONS {
+        held.push(ipc::connect(&socket_path(dir.path())).await.unwrap());
+    }
+    // Served in order: let the accept loop register all of them before the next one arrives.
+    tokio::time::sleep(Duration::from_millis(300)).await;
+    let over = ipc::connect(&socket_path(dir.path())).await.unwrap();
+    let mut line = String::new();
+    tokio::time::timeout(
+        Duration::from_secs(5),
+        tokio::io::BufReader::new(over).read_line(&mut line),
+    )
+    .await
+    .expect("no answer to a connection over the limit")
+    .unwrap();
+    assert!(line.contains(server::BUSY), "{line:?}");
+
+    // A connection that was already in keeps working.
+    let mut first = held.remove(0);
+    first
+        .write_all(b"{\"cmd\":\"restart_service\",\"args\":{\"service\":\"api\"}}\n")
+        .await
+        .unwrap();
+    let req = tokio::time::timeout(Duration::from_secs(5), rx.recv())
+        .await
+        .unwrap()
+        .unwrap();
+    assert_eq!(req.cmd, ControlCmd::RestartService("api".into()));
 }

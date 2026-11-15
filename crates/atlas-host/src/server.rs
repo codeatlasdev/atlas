@@ -8,7 +8,7 @@ use std::os::unix::io::AsRawFd;
 use std::path::{Path, PathBuf};
 use std::sync::Arc;
 use std::sync::atomic::{AtomicU64, Ordering};
-use std::time::Instant;
+use std::time::{Duration, Instant};
 
 use anyhow::{Context, Result, anyhow};
 use atlas_core::ipc;
@@ -18,7 +18,7 @@ use notify::{RecursiveMode, Watcher};
 use parking_lot::Mutex;
 use serde_json::{Value, json};
 use tokio::io::{AsyncBufRead, AsyncBufReadExt, AsyncReadExt, AsyncWriteExt, BufReader};
-use tokio::sync::{Notify, mpsc};
+use tokio::sync::{Notify, mpsc, oneshot};
 
 use crate::paths;
 use crate::protocol::{self, Hello, HostCmd, MAX_LINE_BYTES, Request};
@@ -33,6 +33,36 @@ const OWNER_CHECK_EVERY: std::time::Duration = std::time::Duration::from_secs(2)
 /// root: about once a minute. The first check is full too (a restart after a crash).
 const FULL_SWEEP_EVERY: u32 = 30;
 
+/// How long a new connection gets to send its hello. A client sends it at once; a socket that
+/// stays silent is closed, so idle connections cannot pile up (#304).
+const HELLO_TIMEOUT: Duration = Duration::from_secs(5);
+/// Connections allowed to wait for their hello at once. A newer one closes the oldest waiting, so a
+/// real client is always admitted however many idle sockets are open (#304).
+const MAX_PENDING_HELLOS: usize = 64;
+
+/// Connections that have not authenticated yet, oldest first.
+#[derive(Default)]
+struct Pending(Mutex<std::collections::VecDeque<(u64, oneshot::Sender<()>)>>);
+
+impl Pending {
+    /// Register connection `id`; the receiver fires when a newer connection pushed it out.
+    fn enter(&self, id: u64) -> oneshot::Receiver<()> {
+        let (tx, rx) = oneshot::channel();
+        let mut q = self.0.lock();
+        q.push_back((id, tx));
+        if q.len() > MAX_PENDING_HELLOS
+            && let Some((_, oldest)) = q.pop_front()
+        {
+            let _ = oldest.send(());
+        }
+        rx
+    }
+
+    fn leave(&self, id: u64) {
+        self.0.lock().retain(|(i, _)| *i != id);
+    }
+}
+
 pub(crate) struct Hub {
     pub(crate) sessions: Mutex<HashMap<String, Arc<Session>>>,
     scroll_dir: PathBuf,
@@ -42,6 +72,8 @@ pub(crate) struct Hub {
     started: Instant,
     token: String,
     next_conn: AtomicU64,
+    pending: Pending,
+    hello_timeout: Duration,
     stop: Notify,
     /// Signalled once the successor has taken the ptys: `serve` returns without killing.
     handed_off: Arc<Notify>,
@@ -232,16 +264,45 @@ pub(crate) fn hostname() -> String {
 /// close-on-exec, every child of a daemon that had taken over) keeps it after the daemon dies.
 /// Then no hostd is behind the lock and it is orphaned: rather than refusing forever
 /// (1.5.0-alpha.8, "another atlas hostd is running" on every start), we move that pid file aside
-/// and lock a fresh one. A live atlas hostd named by the pid file is never bypassed.
+/// and lock a fresh one. A held lock is orphaned only when the pid file stably names a process that
+/// is no atlas hostd ([`lock_is_orphaned`]); anything unclear counts as a running hostd (#300).
 pub(crate) fn lock_pid(dir: &Path) -> Result<std::fs::File> {
     let path = paths::pid(dir);
     if let Some(f) = try_lock(&path)? {
         return write_pid(f);
     }
-    if crate::client::live_hostd_pid(dir).is_some() {
+    if !lock_is_orphaned(dir) {
         return Err(another_running(dir));
     }
     recover_orphaned_lock(dir, &path)
+}
+
+/// Pid file reads before an unclear state is taken for a live owner, and the wait between them.
+const PID_READS: u32 = 5;
+const PID_READ_EVERY: Duration = Duration::from_millis(40);
+
+/// The pid file of a held lock names no atlas hostd. The pid lives in the locked file itself
+/// ([`write_pid`] truncates it, then writes), so the file is briefly empty or still names the previous
+/// owner while a daemon that just took the lock starts up: an empty or unparsable file is never read
+/// as "orphaned", and a dead pid must be read twice in a row before it counts. Unclear for
+/// [`PID_READS`] reads: the owner is alive.
+fn lock_is_orphaned(dir: &Path) -> bool {
+    let mut dead = None;
+    for read in 0..PID_READS {
+        if read > 0 {
+            std::thread::sleep(PID_READ_EVERY);
+        }
+        let pid: Option<u32> = std::fs::read_to_string(paths::pid(dir))
+            .ok()
+            .and_then(|t| t.trim().parse().ok());
+        match pid {
+            Some(_) if crate::client::live_hostd_pid(dir).is_some() => return false,
+            Some(p) if dead == Some(p) => return true,
+            Some(p) => dead = Some(p),
+            None => dead = None,
+        }
+    }
+    false
 }
 
 /// Unix: the lock fd can be inherited by a process that outlives its daemon, so a held lock with no live
@@ -260,7 +321,7 @@ fn recover_orphaned_lock(dir: &Path, path: &Path) -> Result<std::fs::File> {
     if let Some(f) = try_lock(path)? {
         return write_pid(f);
     }
-    if crate::client::live_hostd_pid(dir).is_some() {
+    if !lock_is_orphaned(dir) {
         return Err(another_running(dir));
     }
     std::fs::rename(path, dir.join("hostd.pid.orphaned"))?;
@@ -326,6 +387,8 @@ pub struct ServeOpts {
     pub desktop: Option<atlas_core::desktop_ctl::Endpoint>,
     /// Where plain-agent pushes go ([`crate::agents::push`]); `None`: the push relay. Tests capture them.
     pub agent_push: Option<crate::agents::push::Sender>,
+    /// How long a connection gets to send its hello; `None`: [`HELLO_TIMEOUT`] (tests shorten it).
+    pub hello_timeout: Option<Duration>,
 }
 
 /// The registry dir every real daemon uses: the desktop's, `~/.atlas`.
@@ -487,6 +550,8 @@ pub async fn serve_with(dir: &Path, opts: ServeOpts) -> Result<()> {
         started: Instant::now(),
         token,
         next_conn: AtomicU64::new(1),
+        pending: Pending::default(),
+        hello_timeout: opts.hello_timeout.unwrap_or(HELLO_TIMEOUT),
         stop: Notify::new(),
         handed_off: Arc::new(Notify::new()),
         lock,
@@ -722,7 +787,18 @@ async fn conn(hub: Arc<Hub>, stream: ipc::Stream) {
     // Returns the write half so `pty_attach_raw` can take the socket over.
     let writer = tokio::spawn(protocol::write_lines(rx, w));
 
-    let authed = match read_line(&mut lines, LongLine::Skip).await {
+    let evicted = hub.pending.enter(conn_id);
+    let hello = tokio::time::timeout(hub.hello_timeout, async {
+        tokio::select! {
+            l = read_line(&mut lines, LongLine::Skip) => l,
+            _ = evicted => None,
+        }
+    })
+    .await
+    .ok()
+    .flatten();
+    hub.pending.leave(conn_id);
+    let authed = match hello {
         Some(l) => serde_json::from_str::<Value>(&l)
             .ok()
             .and_then(|v| serde_json::from_value::<Hello>(v.get("hello")?.clone()).ok())
@@ -1471,6 +1547,62 @@ async fn agent_launch(
     Ok(json!({"pane": pane, "pty": pty}))
 }
 
+/// The singleton lock on every OS (#300): `atlas_core::sys::try_lock` is `flock` on Unix and
+/// `LockFileEx` on Windows, so a held lock is simulated the same way everywhere.
+#[cfg(test)]
+mod lock_tests {
+    use super::*;
+
+    /// A daemon that holds the pid lock, with `pid_text` in the pid file: what a starter sees while
+    /// the owner is between `set_len(0)` and writing its pid (`""`), or has left garbage.
+    fn owner(dir: &Path, pid_text: &str) -> std::fs::File {
+        let f = try_lock(&paths::pid(dir)).unwrap().expect("free lock");
+        f.set_len(0).unwrap();
+        std::io::Write::write_all(&mut &f, pid_text.as_bytes()).unwrap();
+        f
+    }
+
+    /// Regression #300: `write_pid` truncates before it writes, and a starter that read the empty
+    /// file took the live lock for orphaned: it moved `hostd.pid` aside and rebound `hostd.sock`
+    /// under the running daemon. A held lock with an empty or unparsable pid file is alive.
+    #[tokio::test]
+    async fn a_held_lock_with_an_empty_or_garbled_pid_file_is_refused_and_nothing_is_touched() {
+        for text in ["", "   \n", "not a pid"] {
+            let tmp = tempfile::tempdir().unwrap();
+            let dir = tmp.path();
+            let _owner = owner(dir, text);
+            let sock = paths::socket(dir);
+            let live = ipc::Listener::bind(&sock).unwrap();
+
+            let err = serve_with(dir, ServeOpts::default())
+                .await
+                .expect_err("a second hostd must not start");
+            assert!(
+                err.to_string().contains("another atlas hostd is running"),
+                "{text:?}: {err:#}"
+            );
+            assert!(paths::pid(dir).exists(), "{text:?}: pid file moved aside");
+            assert!(!dir.join("hostd.pid.orphaned").exists(), "{text:?}");
+            assert_eq!(std::fs::read_to_string(paths::pid(dir)).unwrap(), text);
+            // The socket is still the first daemon's: a connection reaches ITS listener.
+            let _c = ipc::connect(&sock).await.expect("socket rebound");
+            tokio::time::timeout(Duration::from_secs(2), live.accept())
+                .await
+                .unwrap_or_else(|_| panic!("{text:?}: the first daemon's socket was replaced"))
+                .unwrap();
+        }
+    }
+
+    /// Windows has no recovery, Unix only recovers a lock whose pid file names no hostd: a held lock
+    /// is refused either way. #300 asks for this on every OS.
+    #[test]
+    fn a_held_lock_refuses_a_second_starter() {
+        let tmp = tempfile::tempdir().unwrap();
+        let _owner = owner(tmp.path(), "");
+        assert!(lock_pid(tmp.path()).is_err());
+    }
+}
+
 #[cfg(all(test, unix))]
 mod tests {
     use super::*;
@@ -1673,5 +1805,76 @@ mod tests {
             }
         }
         assert!(seen_error, "no error event for the dropped request");
+    }
+
+    /// A hostd on a temp dir with a short hello deadline and nothing else running.
+    async fn hostd_with_hello_timeout(
+        hello_timeout: Duration,
+    ) -> (tempfile::TempDir, std::path::PathBuf) {
+        let tmp = tempfile::tempdir().unwrap();
+        let dir = tmp.path().join("hostd");
+        let d2 = dir.clone();
+        tokio::spawn(async move {
+            let opts = ServeOpts {
+                hello_timeout: Some(hello_timeout),
+                ..Default::default()
+            };
+            serve_with(&d2, opts).await
+        });
+        for _ in 0..250 {
+            if paths::socket(&dir).exists() {
+                break;
+            }
+            tokio::time::sleep(Duration::from_millis(20)).await;
+        }
+        (tmp, dir)
+    }
+
+    /// Whether `s` is closed by the peer within `within` (a reply line, then EOF, counts).
+    async fn closed_within(s: ipc::Stream, within: Duration) -> bool {
+        let mut lines = BufReader::new(s).lines();
+        tokio::time::timeout(within, async {
+            while let Ok(Some(_)) = lines.next_line().await {}
+        })
+        .await
+        .is_ok()
+    }
+
+    /// Regression #304: a socket that never sent its hello was served forever. It is closed once the
+    /// hello deadline passes (5 s in production, shortened here).
+    #[tokio::test]
+    async fn an_idle_unauthenticated_connection_is_closed_after_the_hello_deadline() {
+        let (_tmp, dir) = hostd_with_hello_timeout(Duration::from_millis(300)).await;
+        let idle = ipc::connect(&paths::socket(&dir)).await.unwrap();
+        assert!(
+            closed_within(idle, Duration::from_secs(3)).await,
+            "an idle socket stayed open past the hello deadline"
+        );
+    }
+
+    /// Regression #304: idle sockets must not starve a real client. 65 silent connections exceed the
+    /// cap: the oldest is closed at once (well before its deadline), and a real client still gets in.
+    #[tokio::test]
+    async fn sixty_five_idle_sockets_do_not_block_a_real_client() {
+        let (_tmp, dir) = hostd_with_hello_timeout(Duration::from_secs(60)).await;
+        let mut idle = Vec::new();
+        for _ in 0..=MAX_PENDING_HELLOS {
+            idle.push(ipc::connect(&paths::socket(&dir)).await.unwrap());
+            // Accepted in order, so the first is the one that gets pushed out.
+            tokio::time::sleep(Duration::from_millis(5)).await;
+        }
+        let client = tokio::time::timeout(
+            Duration::from_secs(5),
+            crate::client::HostClient::connect_dir(&dir, "real"),
+        )
+        .await
+        .expect("a real client was starved by idle sockets")
+        .unwrap();
+        client.call("info", json!({})).await.unwrap();
+        let oldest = idle.remove(0);
+        assert!(
+            closed_within(oldest, Duration::from_secs(3)).await,
+            "the oldest idle socket was not closed to make room"
+        );
     }
 }

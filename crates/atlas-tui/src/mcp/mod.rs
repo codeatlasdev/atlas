@@ -45,6 +45,13 @@ const PARSE_ERROR: i64 = -32700;
 const INVALID_REQUEST: i64 = -32600;
 const METHOD_NOT_FOUND: i64 = -32601;
 const INVALID_PARAMS: i64 = -32602;
+/// Implementation-defined server error (JSON-RPC reserves -32000..-32099): too many requests at once.
+const SERVER_BUSY: i64 = -32000;
+
+/// Requests running at once; the next one is answered with [`SERVER_BUSY`] (#304).
+const MAX_IN_FLIGHT: usize = 32;
+/// Replies waiting for stdout. A client that stops reading stalls the reader instead of growing it.
+const WRITE_QUEUE: usize = 64;
 
 pub struct Server {
     root: PathBuf,
@@ -293,7 +300,7 @@ where
     W: AsyncWrite + Unpin + Send + 'static,
 {
     let server = std::sync::Arc::new(Server::new(root));
-    let (tx, mut rx) = tokio::sync::mpsc::unbounded_channel::<Value>();
+    let (tx, mut rx) = tokio::sync::mpsc::channel::<Value>(WRITE_QUEUE);
     let writer = tokio::spawn(async move {
         let mut output = output;
         while let Some(v) = rx.recv().await {
@@ -329,7 +336,9 @@ where
         let msg: Value = match serde_json::from_str(&line) {
             Ok(v) => v,
             Err(e) => {
-                let _ = tx.send(error(Value::Null, PARSE_ERROR, format!("parse error: {e}")));
+                let _ = tx
+                    .send(error(Value::Null, PARSE_ERROR, format!("parse error: {e}")))
+                    .await;
                 continue;
             }
         };
@@ -337,7 +346,22 @@ where
         // so it is handled in arrival order; everything else runs concurrently.
         if msg.get("method").and_then(Value::as_str) == Some("initialize") {
             if let Some(resp) = server.handle_message(msg).await {
-                let _ = tx.send(resp);
+                let _ = tx.send(resp).await;
+            }
+            continue;
+        }
+        while inflight.try_join_next().is_some() {}
+        if inflight.len() >= MAX_IN_FLIGHT {
+            // A notification or a batch has no single id to answer: a batch gets one error, a
+            // notification none.
+            if msg.is_array() || msg.get("id").is_some() {
+                let id = msg.get("id").cloned().unwrap_or(Value::Null);
+                let busy = error(
+                    id,
+                    SERVER_BUSY,
+                    format!("busy: {MAX_IN_FLIGHT} requests already running"),
+                );
+                let _ = tx.send(busy).await;
             }
             continue;
         }
@@ -345,7 +369,7 @@ where
         let tx = tx.clone();
         inflight.spawn(async move {
             if let Some(resp) = server.handle_message(msg).await {
-                let _ = tx.send(resp);
+                let _ = tx.send(resp).await;
             }
         });
     }
@@ -607,5 +631,46 @@ mod tests {
         let (_client, server_out) = tokio::io::duplex(4096);
         let r = serve_io(d.path(), &input[..], server_out).await;
         assert!(r.is_err());
+    }
+
+    // Regression #304: in-flight requests were uncapped, so a stuck control socket let a chatty
+    // client pile up tasks without limit. Past the cap a request is answered "busy" at once.
+    #[tokio::test]
+    async fn requests_past_the_in_flight_cap_are_answered_busy() {
+        let d = tempfile::TempDir::new().unwrap();
+        let cfg: crate::config::ProjectConfig =
+            serde_norway::from_str("name: p\nservices:\n  api: { command: x }\n").unwrap();
+        // A run loop that never answers: every control call stays in flight.
+        let (_server, _rx) = crate::control::ControlServer::bind(
+            d.path(),
+            crate::control::Guard::new(&cfg, d.path()),
+        )
+        .unwrap();
+        let (mut stdin, input) = tokio::io::duplex(1 << 20);
+        let (output, stdout) = tokio::io::duplex(1 << 20);
+        let root = d.path().to_path_buf();
+        let serving = tokio::spawn(async move { serve_io(&root, input, output).await });
+        let total = MAX_IN_FLIGHT + 3;
+        for id in 1..=total {
+            let call = json!({"jsonrpc":"2.0","id":id,"method":"tools/call","params":{"name":"atlas_restart_service","arguments":{"service":"api"}}});
+            stdin
+                .write_all(format!("{call}\n").as_bytes())
+                .await
+                .unwrap();
+        }
+        let mut lines = BufReader::new(stdout).lines();
+        let mut busy = Vec::new();
+        while busy.len() < 3 {
+            let line = tokio::time::timeout(std::time::Duration::from_secs(10), lines.next_line())
+                .await
+                .expect("no busy answer: requests past the cap were not refused")
+                .unwrap()
+                .unwrap();
+            let v: Value = serde_json::from_str(&line).unwrap();
+            assert_eq!(v["error"]["code"], SERVER_BUSY, "{v}");
+            busy.push(v["id"].as_u64().unwrap());
+        }
+        assert_eq!(busy, [33, 34, 35]);
+        serving.abort();
     }
 }

@@ -95,27 +95,6 @@ pub(super) fn now_ms() -> u64 {
         .map_or(0, |d| d.as_millis() as u64)
 }
 
-/// Write `bytes` to `path` through a uniquely named sibling and a rename, so a reader never sees
-/// half a file and two writers never share a temp name.
-fn write_atomic(path: &Path, bytes: &[u8]) -> io::Result<()> {
-    let tmp = path.with_extension(format!("tmp-{}-{}", std::process::id(), tmp_seq()));
-    let r = (|| {
-        let mut f = File::create(&tmp)?;
-        f.write_all(bytes)?;
-        fs::rename(&tmp, path)
-    })();
-    if r.is_err() {
-        let _ = fs::remove_file(&tmp);
-    }
-    r
-}
-
-fn tmp_seq() -> u64 {
-    use std::sync::atomic::{AtomicU64, Ordering};
-    static SEQ: AtomicU64 = AtomicU64::new(0);
-    SEQ.fetch_add(1, Ordering::Relaxed)
-}
-
 /// The cap: a positive `env` value wins, then a positive `config` one, else [`DEFAULT_MAX_BYTES`].
 pub(super) fn resolve_max(env: Option<&str>, config: Option<u64>) -> u64 {
     env.and_then(|v| v.trim().parse::<u64>().ok())
@@ -215,7 +194,7 @@ impl Cache {
             return Ok(sha);
         }
         fs::create_dir_all(path.parent().expect("blob has a parent"))?;
-        write_atomic(&path, bytes)?;
+        crate::fs::write_atomic(&path, bytes, crate::fs::Mode::Default)?;
         Ok(sha)
     }
 
@@ -367,7 +346,11 @@ impl Cache {
             outputs,
             log_blob: self.put_blob(&log_bytes)?,
         };
-        write_atomic(&self.entry_path(key.as_str()), &serde_json::to_vec(&entry)?)?;
+        crate::fs::write_atomic(
+            &self.entry_path(key.as_str()),
+            &serde_json::to_vec(&entry)?,
+            crate::fs::Mode::Default,
+        )?;
         // The cap holds after every insert; the new entry is the newest so it goes last.
         self.evict_locked();
         Ok(if self.entry_path(key.as_str()).is_file() {
@@ -542,9 +525,10 @@ impl Cache {
     }
 
     fn write_stats(&self, st: &Stats) -> io::Result<()> {
-        write_atomic(
+        crate::fs::write_atomic(
             &self.root.join("stats.json"),
             &serde_json::to_vec_pretty(st)?,
+            crate::fs::Mode::Default,
         )
     }
 
@@ -638,7 +622,11 @@ impl Cache {
         let excess = recent.len().saturating_sub(stats::RECENT_KEEP);
         recent.drain(..excess);
         if let Ok(b) = serde_json::to_vec(&recent) {
-            let _ = write_atomic(&self.root.join("recent.json"), &b);
+            let _ = crate::fs::write_atomic(
+                &self.root.join("recent.json"),
+                &b,
+                crate::fs::Mode::Default,
+            );
         }
     }
 

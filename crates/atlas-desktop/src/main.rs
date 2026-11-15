@@ -58,6 +58,7 @@ mod shell_env;
 // Capture: the pure, tested parts are driven only by the macOS side; elsewhere the commands answer "not available".
 #[cfg_attr(not(target_os = "macos"), allow(dead_code))]
 mod shots;
+mod stderr_log;
 #[cfg(target_os = "macos")]
 mod swipe_clock;
 // Pure, tested decision code driven only by the AppKit side: unused outside macOS, still built so its tests run.
@@ -173,6 +174,7 @@ macro_rules! handlers {
             cmds::open_in_editor,
             cmds::open_url,
             cmds::reveal,
+            cmds::reveal_path,
             cmds::theme_unpack,
             cmds::theme_unpack_cleanup,
             cmds::theme_read_packed,
@@ -542,6 +544,8 @@ fn wait_for_predecessor() {
 fn main() {
     #[cfg(windows)]
     wait_for_predecessor();
+    // First, so GTK/WebKit messages printed while starting (and by every web process) are kept.
+    stderr_log::install();
     diag::install_panic_hook();
     #[cfg(target_os = "linux")]
     linux_gfx::log_startup();
@@ -595,9 +599,10 @@ fn main() {
             let handle = app.handle().clone();
             app.manage(menu::Items::default());
             app.manage(tray::CaptureMenus::default());
-            // Windows: no menu bar. The window has no native frame (tauri.windows.conf.json), the page owns
-            // every key there (lib/menu.ts gives no accelerators off macOS) and the palette lists every command.
-            #[cfg(not(windows))]
+            // Only macOS has a native menu bar (at the top of the screen). Windows and Linux have no native frame
+            // (tauri.{windows,linux}.conf.json): the page draws one title row, owns every key there (lib/menu.ts
+            // gives no accelerators off macOS) and the palette lists every command (#269).
+            #[cfg(target_os = "macos")]
             app.set_menu(menu::build(&handle)?)?;
             app.manage(live::LiveHub::new(&handle));
             app.manage(cmds::Discovery::default());

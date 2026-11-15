@@ -174,6 +174,7 @@ macro_rules! handlers {
             cmds::open_in_editor,
             cmds::open_url,
             cmds::reveal,
+            cmds::reveal_path,
             cmds::theme_unpack,
             cmds::theme_unpack_cleanup,
             cmds::theme_read_packed,

@@ -78,6 +78,9 @@ mod term;
 mod term;
 mod tray;
 mod updates;
+// The ready watch runs everywhere; the reload/give-up decision only on Linux so far (#350).
+#[cfg_attr(not(target_os = "linux"), allow(dead_code))]
+mod webview_guard;
 #[cfg(windows)]
 mod webview_win;
 mod workspace;
@@ -624,6 +627,8 @@ fn main() {
             // First: WebKit's WebContent process spawns while the rest of setup runs. Nothing can
             // reach managed state before `setup` returns (the page's scripts need the event loop).
             create_main_window(app)?;
+            // Before the page can die: a dead web process must reload or say so, never a blank window.
+            webview_guard::install(app);
             let handle = app.handle().clone();
             app.manage(menu::Items::default());
             app.manage(tray::CaptureMenus::default());

@@ -573,7 +573,9 @@ pub async fn serve_client(app: &AppHandle, host: &str, c: HostClient) {
     let mut gate = LagGate::new(LAG_WINDOW);
     loop {
         let due = gate.due();
+        // Events first: a closed connection must end the loop before a deferred resync runs against it.
         let received = tokio::select! {
+            biased;
             r = rx.recv() => r,
             () = async {
                 match due {

@@ -29,6 +29,10 @@ const PROBE_EVERY: Duration = Duration::from_secs(10);
 /// connection on its own task, so a long handler never delays `info`, and silence means a wedged daemon.
 const PROBE_DEADLINE: Duration = Duration::from_secs(5);
 
+/// A daemon that streams output but answers no `info` for this many probes in a row (about five minutes) is
+/// wedged on its command path (a lock its readers do not need): output alone does not prove it alive forever.
+const PROBE_MISSES: u32 = 20;
+
 /// What "no deadline" means for a call that runs a user's own command: a day.
 const NO_DEADLINE: Duration = Duration::from_secs(24 * 3600);
 
@@ -215,6 +219,16 @@ impl std::fmt::Display for Unusable {
 
 impl std::error::Error for Unusable {}
 
+/// Does failing to connect with `kind` prove nothing serves the socket? Only "no such socket" and "refused" do. A
+/// busy listener (Windows: one pipe instance, a stalled accept loop answers "pipe busy" as `TimedOut`; Unix: a full
+/// backlog is `WouldBlock`) belongs to a live daemon, which is not ours to kill.
+fn proves_dead_socket(kind: std::io::ErrorKind) -> bool {
+    matches!(
+        kind,
+        std::io::ErrorKind::NotFound | std::io::ErrorKind::ConnectionRefused
+    )
+}
+
 /// Did `connect` fail in a way that proves the daemon unusable by us (see [`Unusable`])?
 pub fn is_unusable(e: &CallError) -> bool {
     e.downcast_ref::<Unusable>().is_some()
@@ -232,6 +246,15 @@ enum Waited {
     Dropped,
     /// The liveness probe found the daemon silent.
     Silent,
+}
+
+/// What one liveness probe found.
+enum Probed {
+    Answered,
+    /// No reply and nothing received at all.
+    Quiet,
+    /// No reply, but the daemon kept sending (output, events).
+    Streaming,
 }
 
 /// A call's entry in `pending`, removed when the call ends however it ends (reply, deadline, probe, or the
@@ -272,6 +295,8 @@ pub struct HostClient {
     /// `(interval, deadline)` of the liveness probe of long calls; a field so a test can shorten it. `None` on a
     /// lab daemon, which answers its forwarded commands inline in its read loop, so it cannot answer a probe.
     probe: Option<(Duration, Duration)>,
+    /// Consecutive unanswered probes, while output keeps arriving, before the call fails.
+    probe_misses: u32,
     /// Lines received so far, any kind: a daemon that is streaming is alive however slowly it answers.
     received: Arc<AtomicU64>,
 }
@@ -290,9 +315,14 @@ impl HostClient {
         handshake: Duration,
         log: Option<Arc<Path>>,
     ) -> Result<Self> {
-        let stream = ipc::connect(socket)
-            .await
-            .map_err(|e| Unusable(format!("connect {}: {e}", socket.display())))?;
+        let stream = ipc::connect(socket).await.map_err(|e| {
+            let why = format!("connect {}: {e}", socket.display());
+            if proves_dead_socket(e.kind()) {
+                CallError::new(Unusable(why))
+            } else {
+                anyhow!(why)
+            }
+        })?;
         let (r, mut w) = ipc::split(stream);
         let mut lines = BufReader::new(r).lines();
         let hello = crate::protocol::hello_line(token, client);
@@ -367,6 +397,7 @@ impl HostClient {
             closed,
             log,
             probe: (!lab).then_some((PROBE_EVERY, PROBE_DEADLINE)),
+            probe_misses: PROBE_MISSES,
             received,
         })
     }
@@ -394,16 +425,22 @@ impl HostClient {
         Ok((slot, orx))
     }
 
-    /// Did hostd go silent: no reply to an `info` within `deadline` AND nothing at all received meanwhile? A
-    /// daemon that is streaming (hostd queues replies behind up to 8 MiB of pty output, minutes on a slow tunnel)
-    /// is alive. A dropped connection is not silence either: the call being waited for reports that itself.
-    async fn silent(&self, deadline: Duration) -> bool {
+    /// One liveness probe: an `info` that must be answered within `deadline`. No answer is [`Probed::Quiet`] when
+    /// nothing at all arrived meanwhile (dead), [`Probed::Streaming`] when output kept arriving: hostd queues
+    /// replies behind up to 8 MiB of pty output (minutes on a slow tunnel), so that is slow, not yet wedged. A
+    /// dropped connection counts as answered: the call being waited for reports that itself.
+    async fn probe_once(&self, deadline: Duration) -> Probed {
         let before = self.received.load(Ordering::Relaxed);
         let Ok((_slot, rx)) = self.send("info", json!({})) else {
-            return false;
+            return Probed::Answered;
         };
-        tokio::time::timeout(deadline, rx).await.is_err()
-            && self.received.load(Ordering::Relaxed) == before
+        if tokio::time::timeout(deadline, rx).await.is_ok() {
+            Probed::Answered
+        } else if self.received.load(Ordering::Relaxed) == before {
+            Probed::Quiet
+        } else {
+            Probed::Streaming
+        }
     }
 
     /// [`call`](Self::call) with an explicit deadline. A daemon that never answers (wedged, or
@@ -415,11 +452,17 @@ impl HostClient {
         let (_slot, mut orx) = self.send(cmd, args)?;
         let probe = self.probe.filter(|_| deadline > CALL_DEADLINE);
         let wait = async {
+            let mut missed = 0;
             loop {
                 tokio::select! {
                     r = &mut orx => return r.map_or(Waited::Dropped, Waited::Reply),
                     () = tokio::time::sleep(probe.map_or(Duration::MAX, |p| p.0)), if probe.is_some() => {
-                        if self.silent(probe.map_or(Duration::ZERO, |p| p.1)).await {
+                        match self.probe_once(probe.map_or(Duration::ZERO, |p| p.1)).await {
+                            Probed::Answered => missed = 0,
+                            Probed::Streaming => missed += 1,
+                            Probed::Quiet => missed = u32::MAX,
+                        }
+                        if missed >= self.probe_misses {
                             // A reply that landed while the probe waited wins over the verdict.
                             return match orx.try_recv() {
                                 Ok(r) => Waited::Reply(r),
@@ -436,8 +479,7 @@ impl HostClient {
             Ok(Waited::Reply(Err(e))) => Err(anyhow!(e)),
             Ok(Waited::Dropped) => Err(anyhow!("hostd disconnected")),
             Ok(Waited::Silent) => Err(Unanswered(format!(
-                "hostd stopped answering while `{cmd}` was running: nothing received for {}s{}",
-                probe.map_or(0, |p| p.1.as_secs()),
+                "hostd stopped answering while `{cmd}` was running: no reply to its liveness probes{}",
                 see_log(self.log.as_deref())
             ))
             .into()),
@@ -530,7 +572,15 @@ async fn ensure_in_within(
         Ok(c) => return Ok(c),
         // A live daemon that is slow to say hello (a busy box, a lock held) or wedged is not ours to kill: its
         // terminals and crew agents would die with it. Report it; the user restarts it knowingly.
-        Err(e) if !is_unusable(&e) && live_hostd_pid(dir).is_some() => return Err(e),
+        Err(e) if !is_unusable(&e) => {
+            // ...but a daemon that is on its way out (a normal restart) is given a moment to finish, so the caller
+            // starts the next one instead of reporting an outage.
+            if let Some(pid) = live_hostd_pid(dir)
+                && !wait_gone(pid, EXIT_GRACE).await
+            {
+                return Err(e);
+            }
+        }
         Err(_) => {}
     }
     retire_unusable(dir).await;
@@ -607,25 +657,46 @@ async fn retire_unusable(dir: &Path) {
 /// an atlas hostd; never a port, never a name. The desktop's "Restart terminal host" uses it for a daemon that
 /// does not answer `shutdown`.
 pub async fn retire_hostd(dir: &Path, grace: Duration) {
-    let Some(pid) = live_hostd_pid(dir) else {
-        return;
-    };
-    let until = tokio::time::Instant::now() + grace;
-    while atlas_core::sys::pid_alive(pid) && tokio::time::Instant::now() < until {
-        tokio::time::sleep(Duration::from_millis(100)).await;
-    }
-    if !atlas_core::sys::pid_alive(pid) {
-        return;
-    }
-    // `pid` was just verified to be this dir's atlas hostd. Windows ends it outright: its
-    // terminals' pseudo consoles close with it.
-    atlas_core::sys::terminate(pid);
-    for _ in 0..50 {
-        if !atlas_core::sys::pid_alive(pid) {
-            return;
+    retire_hostd_within(dir, grace, TERM_WAIT).await;
+}
+
+/// How long a daemon that is going away on its own is waited for before it is called unusable.
+const EXIT_GRACE: Duration = Duration::from_secs(1);
+
+/// How long a `SIGTERM`ed daemon is waited for before it is killed outright.
+const TERM_WAIT: Duration = Duration::from_secs(5);
+
+/// Wait up to `d` for `pid` to end; `true` when it did.
+async fn wait_gone(pid: u32, d: Duration) -> bool {
+    let until = tokio::time::Instant::now() + d;
+    while atlas_core::sys::pid_alive(pid) {
+        if tokio::time::Instant::now() >= until {
+            return false;
         }
         tokio::time::sleep(Duration::from_millis(100)).await;
     }
+    true
+}
+
+async fn retire_hostd_within(dir: &Path, grace: Duration, term_wait: Duration) {
+    let Some(pid) = live_hostd_pid(dir) else {
+        return;
+    };
+    // Every signal is preceded by a fresh check that `pid` is still this dir's atlas hostd: after a wait the
+    // process may be gone and its pid reused.
+    let ours = || live_hostd_pid(dir) == Some(pid);
+    if wait_gone(pid, grace).await || !ours() {
+        return;
+    }
+    // Windows ends it outright: its terminals' pseudo consoles close with it.
+    atlas_core::sys::terminate(pid);
+    if wait_gone(pid, term_wait).await || !ours() {
+        return;
+    }
+    // A runtime that is blocked never runs its `SIGTERM` handler (it shares the `select!` of the accept loop).
+    // The caller chose to lose the terminals.
+    atlas_core::sys::force_kill(pid);
+    wait_gone(pid, term_wait).await;
 }
 
 /// A `pty_attach_raw` connection: `read` yields the pty's raw output (replay first);
@@ -921,6 +992,130 @@ mod tests {
             .await
             .expect("a streaming daemon is alive: its slow `info` must not fail the call");
         assert_eq!(v["done"], 1);
+    }
+
+    // #298 review: output alone must not keep a long call alive for an hour. A daemon whose command path is stuck
+    // (`info` blocked on a lock) while its readers stream pty output answers no probe: after `probe_misses` in a
+    // row the call fails.
+    #[tokio::test]
+    async fn a_hostd_that_streams_but_never_answers_info_is_declared_silent() {
+        let tmp = tempfile::tempdir().unwrap();
+        let sock = tmp.path().join("h.sock");
+        let listener = ipc::Listener::bind(&sock).unwrap();
+        tokio::spawn(async move {
+            let (r, mut w) = ipc::split(listener.accept().await.unwrap());
+            let mut r = BufReader::new(r).lines();
+            r.next_line().await.unwrap();
+            w.write_all(b"{\"ok\":true}\n").await.unwrap();
+            // Reads requests (never answers) and keeps streaming output, as a hostd with a blocked command path.
+            tokio::spawn(async move { while let Ok(Some(_)) = r.next_line().await {} });
+            loop {
+                let line = b"{\"ev\":\"pty_output\",\"pty\":\"p\",\"data\":\"eA==\"}\n";
+                if w.write_all(line).await.is_err() {
+                    return;
+                }
+                tokio::time::sleep(Duration::from_millis(20)).await;
+            }
+        });
+        let mut c = HostClient::connect(&sock, "t", "test").await.unwrap();
+        c.probe = Some((Duration::from_millis(50), Duration::from_millis(50)));
+        c.probe_misses = 3;
+        let t = std::time::Instant::now();
+        let e = tokio::time::timeout(
+            Duration::from_secs(5),
+            c.call_within("project_action", json!({}), Duration::from_secs(3600)),
+        )
+        .await
+        .expect(
+            "streaming must not keep a call that gets no probe reply alive for its class deadline",
+        )
+        .unwrap_err();
+        assert!(e.downcast_ref::<super::Unanswered>().is_some());
+        assert!(t.elapsed() < Duration::from_secs(2), "{:?}", t.elapsed());
+        assert!(c.pending.lock().as_ref().unwrap().is_empty());
+    }
+
+    // #298 review: on Windows a stalled accept loop answers "pipe busy" (`TimedOut`) while the daemon is alive.
+    #[test]
+    fn only_a_missing_or_refusing_socket_proves_the_daemon_dead() {
+        use std::io::ErrorKind::*;
+        assert!(super::proves_dead_socket(NotFound));
+        assert!(super::proves_dead_socket(ConnectionRefused));
+        for busy in [TimedOut, WouldBlock, PermissionDenied, Interrupted, Other] {
+            assert!(!super::proves_dead_socket(busy), "{busy:?}");
+        }
+    }
+
+    // #298 review: a forced restart must end a hostd whose runtime is blocked: it never runs its SIGTERM handler.
+    #[cfg(target_os = "linux")]
+    #[tokio::test]
+    async fn retire_kills_a_hostd_that_ignores_sigterm() {
+        let tmp = tempfile::tempdir().unwrap();
+        let dir = tmp.path();
+        // SIGTERM ignored before `exec`, so the `atlas hostd` process inherits it.
+        let mut hostd = std::process::Command::new("bash")
+            .args(["-c", "trap '' TERM; exec -a 'atlas hostd' sleep 60"])
+            .spawn()
+            .unwrap();
+        std::fs::write(crate::paths::pid(dir), hostd.id().to_string()).unwrap();
+        tokio::time::timeout(Duration::from_secs(5), async {
+            while super::live_hostd_pid(dir).is_none() {
+                tokio::time::sleep(Duration::from_millis(20)).await;
+            }
+        })
+        .await
+        .expect("the fake hostd never showed an `atlas hostd` command line");
+
+        super::retire_hostd_within(dir, Duration::from_millis(100), Duration::from_millis(400))
+            .await;
+        let ended = (0..50).any(|_| {
+            std::thread::sleep(Duration::from_millis(20));
+            hostd.try_wait().unwrap().is_some()
+        });
+        let _ = hostd.kill();
+        let _ = hostd.wait();
+        assert!(ended, "a hostd that ignores SIGTERM was left running");
+    }
+
+    // #298 review: during an ordinary restart the old daemon refuses the handshake for a moment while it exits;
+    // `ensure_in` waits for that and starts the next one instead of reporting an outage.
+    #[cfg(target_os = "linux")]
+    #[tokio::test]
+    async fn a_hostd_that_exits_during_the_handshake_is_replaced_not_reported() {
+        let tmp = tempfile::tempdir().unwrap();
+        let dir = tmp.path();
+        std::fs::write(crate::paths::token(dir), "t").unwrap();
+        let listener = ipc::Listener::bind(&crate::paths::socket(dir)).unwrap();
+        tokio::spawn(async move {
+            let _held = listener.accept().await.unwrap();
+            std::future::pending::<()>().await;
+        });
+        let mut hostd = std::process::Command::new("bash")
+            .args(["-c", "exec -a 'atlas hostd' sleep 0.6"])
+            .spawn()
+            .unwrap();
+        std::fs::write(crate::paths::pid(dir), hostd.id().to_string()).unwrap();
+        tokio::time::timeout(Duration::from_secs(5), async {
+            while super::live_hostd_pid(dir).is_none() {
+                tokio::time::sleep(Duration::from_millis(20)).await;
+            }
+        })
+        .await
+        .expect("the fake hostd never showed an `atlas hostd` command line");
+        let reaper = std::thread::spawn(move || hostd.wait());
+
+        let e = super::ensure_in_within(
+            dir,
+            std::path::Path::new("/nonexistent/atlas"),
+            "test",
+            Duration::from_millis(300),
+        )
+        .await
+        .err()
+        .unwrap();
+        let _ = reaper.join();
+        // It got as far as starting a new daemon (which cannot be spawned here): not the handshake error.
+        assert!(e.to_string().contains("spawn"), "{e:#}");
     }
 
     // #298 review: a lab daemon answers its forwarded commands inline in its read loop, so it cannot answer a

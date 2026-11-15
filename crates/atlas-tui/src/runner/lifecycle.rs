@@ -61,7 +61,7 @@ struct RunnerLoop {
     manager: ServiceManager,
     hub: Hub,
     event_rx: mpsc::UnboundedReceiver<ManagerEvent>,
-    control_rx: Option<mpsc::UnboundedReceiver<ControlRequest>>,
+    control_rx: Option<mpsc::Receiver<ControlRequest>>,
     sigterm: Signal,
     sighup: Signal,
     /// Watches the docker daemon and alerts when it dies or recovers; aborted on shutdown.
@@ -76,7 +76,7 @@ impl RunnerLoop {
         selection: &config::Selection,
         adhoc_names: Vec<String>,
         foreground: bool,
-        control_rx: Option<mpsc::UnboundedReceiver<ControlRequest>>,
+        control_rx: Option<mpsc::Receiver<ControlRequest>>,
     ) -> Result<Self> {
         println!(
             "\x1b[1;34m●\x1b[0m atlas dev ({})",

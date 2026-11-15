@@ -11,7 +11,7 @@ use crate::host::HostHub;
 use crate::worktree::git;
 
 use atlas_core::git_review::{
-    FileDiff, Hunk, Line, STATUS_ARGS, UNTRACKED_MAX, parse, parse_status,
+    FileDiff, Hunk, Line, REVIEW_DIFF, STATUS_ARGS, UNTRACKED_MAX, parse, parse_status,
 };
 
 /// An untracked file as an all-added diff; read through hostd so SSH checkouts work.
@@ -80,7 +80,7 @@ pub async fn git_diff(
     base: Option<String>,
 ) -> Result<Value, String> {
     let dir = root(&id)?;
-    let args = ["diff", "--no-color", "-U3", "--no-ext-diff", "-M"];
+    let args = REVIEW_DIFF;
     let mut files = Vec::new();
     let mut base_used = None;
     match mode.as_str() {

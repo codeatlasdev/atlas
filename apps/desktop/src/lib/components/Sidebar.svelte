@@ -278,7 +278,7 @@
 		justify-content: flex-end;
 		padding-right: 10px;
 	}
-	/* Windows and Linux: a native title bar above, no traffic lights to clear. */
+	/* Windows and Linux: the page's own title row above, no traffic lights to clear. */
 	:global(html.opaque-window) .drag {
 		height: 36px;
 		padding-top: 0;

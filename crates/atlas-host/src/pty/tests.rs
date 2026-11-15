@@ -959,3 +959,168 @@ mod isolated {
         assert_eq!(until_exited(&s2).await, Some(9));
     }
 }
+
+/// A session that stays quiet, with `old` already in its scrollback file.
+#[cfg(unix)]
+fn quiet_session_with_scrollback(dir: &std::path::Path, old: &[u8]) -> std::sync::Arc<Session> {
+    use std::io::Write;
+    let s = Session::spawn(shell_req("sleep 30"), dir).unwrap();
+    let mut b = s.buf.lock();
+    b.file.as_mut().unwrap().write_all(old).unwrap();
+    b.file_len = old.len() as u64;
+    drop(b);
+    s
+}
+
+/// #301: past `FILE_MAX` the scrollback was rewritten with `fs::write`, truncating the file a cold restore
+/// reads, under the output lock. A rewrite that fails (here: no write access to the directory, so no temp
+/// file) must leave the previous `.bin` whole, keep appending to it, and ask again later.
+#[cfg(unix)]
+#[tokio::test(flavor = "multi_thread")]
+async fn a_failed_scrollback_rewrite_leaves_the_previous_file_intact() {
+    use std::os::unix::fs::PermissionsExt;
+    let dir = tempfile::tempdir().unwrap();
+    let s = quiet_session_with_scrollback(dir.path(), b"old-output;");
+    let bin = super::bin_path(dir.path(), &s.id);
+    std::fs::set_permissions(dir.path(), std::fs::Permissions::from_mode(0o555)).unwrap();
+    if std::fs::File::create(dir.path().join("probe")).is_ok() {
+        std::fs::set_permissions(dir.path(), std::fs::Permissions::from_mode(0o755)).unwrap();
+        s.signal("KILL").unwrap();
+        return; // root ignores directory modes: the failure cannot be injected
+    }
+    // Output that arrives while the rewrite runs sits in `trim`.
+    s.buf.lock().trim = Some(b"mid;".to_vec());
+    let epoch = s.buf.lock().epoch;
+    s.rewrite_scrollback(b"snapshot", epoch);
+    std::fs::set_permissions(dir.path(), std::fs::Permissions::from_mode(0o755)).unwrap();
+    s.signal("KILL").unwrap();
+
+    assert_eq!(std::fs::read(&bin).unwrap(), b"old-output;mid;");
+    let b = s.buf.lock();
+    assert!(b.trim.is_none(), "the rewrite is over");
+    assert!(
+        b.file_len < super::stream::FILE_MAX,
+        "retry later, not on every chunk"
+    );
+}
+
+/// A rewrite that lands replaces the file with the snapshot plus what arrived meanwhile (the old file
+/// would have lost it with the unlinked inode), and later output keeps appending to the new file.
+#[cfg(unix)]
+#[tokio::test(flavor = "multi_thread")]
+async fn a_scrollback_rewrite_keeps_the_output_that_arrived_during_it() {
+    use std::io::Write;
+    let dir = tempfile::tempdir().unwrap();
+    let s = quiet_session_with_scrollback(dir.path(), b"old-output;");
+    let bin = super::bin_path(dir.path(), &s.id);
+    s.buf.lock().trim = Some(b"mid;".to_vec());
+    let epoch = s.buf.lock().epoch;
+    s.rewrite_scrollback(b"snapshot;", epoch);
+    s.buf
+        .lock()
+        .file
+        .as_mut()
+        .unwrap()
+        .write_all(b"later;")
+        .unwrap();
+    s.signal("KILL").unwrap();
+    assert_eq!(std::fs::read(&bin).unwrap(), b"snapshot;mid;later;");
+    assert_eq!(s.buf.lock().file_len, "snapshot;mid;".len() as u64);
+
+    // `clear` during a rewrite: the snapshot is stale and must not come back.
+    let s = quiet_session_with_scrollback(dir.path(), b"old-output;");
+    let bin = super::bin_path(dir.path(), &s.id);
+    let epoch = s.buf.lock().epoch;
+    s.buf.lock().trim = Some(Vec::new());
+    s.clear();
+    s.buf
+        .lock()
+        .trim
+        .as_mut()
+        .unwrap()
+        .extend_from_slice(b"after;");
+    s.rewrite_scrollback(b"stale-snapshot;", epoch);
+    s.signal("KILL").unwrap();
+    assert_eq!(std::fs::read(&bin).unwrap(), b"after;");
+}
+
+/// #301, end to end: output past `FILE_MAX` triggers the rewrite off the lock; the lock is free while it runs
+/// and the file ends as the ring tail, never longer than the cap plus what arrived after.
+#[cfg(unix)]
+#[tokio::test(flavor = "multi_thread")]
+async fn output_past_the_file_cap_trims_the_scrollback_to_the_ring() {
+    let dir = tempfile::tempdir().unwrap();
+    let s = quiet_session_with_scrollback(dir.path(), b"");
+    let bin = super::bin_path(dir.path(), &s.id);
+    s.buf.lock().file_len = super::stream::FILE_MAX;
+    let _ = s.output(b"fresh-output");
+    for _ in 0..200 {
+        if s.buf.lock().trim.is_none() {
+            break;
+        }
+        tokio::time::sleep(Duration::from_millis(10)).await;
+    }
+    s.signal("KILL").unwrap();
+    assert_eq!(std::fs::read(&bin).unwrap(), b"fresh-output");
+    assert_eq!(s.buf.lock().file_len, "fresh-output".len() as u64);
+}
+
+/// Review of #413: `PtyKill` removes `<id>.bin` while a scrollback rewrite is in flight; the rewrite's rename
+/// (and `open_append`) then recreated it and the next hostd start cold-restored a ghost terminal. The rewrite
+/// is paused here between its write and its locked finish, which is where the kill lands.
+#[cfg(unix)]
+#[tokio::test(flavor = "multi_thread")]
+async fn killing_a_terminal_during_a_scrollback_rewrite_leaves_no_files_behind() {
+    let dir = tempfile::tempdir().unwrap();
+    let s = quiet_session_with_scrollback(dir.path(), b"old-output;");
+    let bin = super::bin_path(dir.path(), &s.id);
+    let epoch = {
+        let mut b = s.buf.lock();
+        b.trim = Some(Vec::new());
+        b.epoch
+    };
+    // The rewrite wrote its file and waits for the lock...
+    let written = atlas_core::fs::write_atomic(&bin, b"snapshot;", atlas_core::fs::Mode::Default);
+    // ...the kill removes the session's files...
+    s.signal("KILL").unwrap();
+    s.remove_files();
+    // ...and the rewrite finishes.
+    s.finish_rewrite("snapshot;".len(), epoch, written);
+    assert!(!bin.exists(), "a ghost scrollback file came back");
+    let _ = s.output(b"late output");
+    tokio::time::sleep(Duration::from_millis(100)).await;
+    assert!(!bin.exists(), "output after the kill brought it back");
+    assert!(!super::meta_path(dir.path(), &s.id).exists());
+}
+
+/// Review of #413: a slow rewrite (fsync under writeback pressure) must not buffer the whole stream. Only the
+/// last `RING_MAX` bytes matter (cold restore reads the file's tail), so `trim` holds at most that, and what the
+/// file ends with is still the end of the stream.
+#[cfg(unix)]
+#[tokio::test(flavor = "multi_thread")]
+async fn output_during_a_slow_scrollback_rewrite_is_buffered_up_to_the_ring_size_and_ends_the_file()
+{
+    let dir = tempfile::tempdir().unwrap();
+    let s = quiet_session_with_scrollback(dir.path(), b"");
+    let bin = super::bin_path(dir.path(), &s.id);
+    let epoch = {
+        let mut b = s.buf.lock();
+        b.trim = Some(Vec::new());
+        b.epoch
+    };
+    let mut all = Vec::new();
+    for i in 0..(3 * super::RING_MAX / 65_536) {
+        let chunk = vec![b'a' + (i % 26) as u8; 65_536];
+        all.extend_from_slice(&chunk);
+        let _ = s.output(&chunk);
+        let held = s.buf.lock().trim.as_ref().unwrap().len();
+        assert!(held <= super::RING_MAX, "{held} bytes held");
+    }
+    // Trimmed in 64 KiB steps (not a memmove per chunk): a little under the cap, never a lot.
+    let held = s.buf.lock().trim.as_ref().unwrap().len();
+    assert!(held > super::RING_MAX - 2 * 65_536, "{held} bytes held");
+    s.rewrite_scrollback(b"snapshot;", epoch);
+    s.signal("KILL").unwrap();
+    let file = std::fs::read(&bin).unwrap();
+    assert_eq!(file[file.len() - held..], all[all.len() - held..]);
+}

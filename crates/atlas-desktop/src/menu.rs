@@ -112,7 +112,7 @@ fn submenu(
     Ok(menu)
 }
 
-/// The app menu bar (macOS and Linux; Windows has none). Close Window is deliberately absent: ⌘W is "Close Tab".
+/// The app menu bar (macOS only: Windows and Linux have none, the palette lists every command). Close Window is deliberately absent: ⌘W is "Close Tab".
 #[cfg(target_os = "macos")]
 pub fn build(app: &AppHandle) -> tauri::Result<Menu<Wry>> {
     let settings = command(app, "zed::OpenSettings", "Settings…")?;
@@ -167,16 +167,10 @@ pub fn build(app: &AppHandle) -> tauri::Result<Menu<Wry>> {
     let help_menu = Submenu::with_items(app, "Help", true, &[&help])?;
     let go = submenu(app, "Go", GO, &[])?;
     let file = submenu(app, "File", FILE, &[])?;
-    // Capture exists on macOS only (every other platform answers "not available yet").
-    #[cfg(target_os = "macos")]
     let capture = crate::tray::capture_submenu(app)?;
-    #[cfg(target_os = "macos")]
     let menus: Vec<&dyn IsMenuItem<Wry>> = vec![
         &app_menu, &file, &edit, &view, &go, &capture, &window, &help_menu,
     ];
-    #[cfg(not(target_os = "macos"))]
-    let menus: Vec<&dyn IsMenuItem<Wry>> =
-        vec![&app_menu, &file, &edit, &view, &go, &window, &help_menu];
     Menu::with_items(app, &menus)
 }
 

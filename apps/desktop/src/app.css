@@ -36,8 +36,8 @@ html.ground-holes .window-ground {
 	background: var(--ca-surface-sunken);
 }
 
-/* Linux: an opaque window with native decorations and no vibrancy to show through; the page
-   paints the backdrop the sidebar would otherwise get from NSVisualEffectView. */
+/* Windows and Linux: an opaque window with no vibrancy to show through; the page paints the backdrop the sidebar
+   would otherwise get from NSVisualEffectView. */
 html.opaque-window,
 html.opaque-window body {
 	background: var(--ca-surface-sunken) !important;

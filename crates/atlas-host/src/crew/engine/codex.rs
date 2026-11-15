@@ -4,12 +4,11 @@ use std::collections::BTreeMap;
 use std::path::Path;
 
 use serde_json::Value;
-use tokio::time::timeout;
 
 use crate::crew::store::{CrewmateSession, EngineConfig, UsageRecord};
 use crate::paths;
 
-use super::{TASK_TIMEOUT, TurnResult};
+use super::{TurnCancel, TurnProc, TurnResult, program};
 
 /// Build the codex argv (excluding the binary name) for one turn.
 ///
@@ -37,6 +36,7 @@ pub(super) async fn run(
     crewmate_dir: &Path,
     extra_env: &BTreeMap<String, String>,
     work_dir: &str,
+    cancel: &TurnCancel,
 ) -> Result<TurnResult, String> {
     std::fs::create_dir_all(crewmate_dir)
         .map_err(|e| format!("codex: create crewmate_dir: {e}"))?;
@@ -44,7 +44,7 @@ pub(super) async fn run(
     // codex writes the last agent message to this file.
     let result_file = crewmate_dir.join(format!("codex-out-{}.txt", paths::new_id()));
 
-    let mut cmd = tokio::process::Command::new("codex");
+    let mut cmd = tokio::process::Command::new(program("codex"));
     for arg in exec_args(session.session_id.as_deref(), &result_file, prompt) {
         cmd.arg(arg);
     }
@@ -56,10 +56,10 @@ pub(super) async fn run(
     cmd.stdout(std::process::Stdio::piped());
     cmd.stderr(std::process::Stdio::piped());
 
-    let out = timeout(TASK_TIMEOUT, cmd.output())
-        .await
-        .map_err(|_| "codex: timed out after 2 h".to_string())?
-        .map_err(|e| format!("codex: spawn failed: {e}"))?;
+    let out = TurnProc::spawn(&mut cmd)
+        .map_err(|e| format!("codex: spawn failed: {e}"))?
+        .output(cancel, "codex")
+        .await?;
 
     if !out.status.success() {
         let stderr = String::from_utf8_lossy(&out.stderr);

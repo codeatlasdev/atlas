@@ -6,7 +6,8 @@ import 'package:flutter/material.dart';
 
 import 'package:atlas_mobile/core/ui/atlas_theme.dart';
 
-/// Tight pill: no minimum size, shrink-wrapped tap target, fully rounded.
+/// Tight pill: no minimum size, fully rounded. It looks small but is still hit at 48 dp: the
+/// padded tap target grows the touch area around it without drawing anything.
 ButtonStyle _pill({
   required EdgeInsets padding,
   Color? foreground,
@@ -22,7 +23,7 @@ ButtonStyle _pill({
   side: side == null ? null : WidgetStatePropertyAll(side),
   padding: WidgetStatePropertyAll(padding),
   minimumSize: const WidgetStatePropertyAll(Size.zero),
-  tapTargetSize: MaterialTapTargetSize.shrinkWrap,
+  tapTargetSize: MaterialTapTargetSize.padded,
   shape: WidgetStatePropertyAll(
     RoundedRectangleBorder(borderRadius: BorderRadius.circular(20)),
   ),

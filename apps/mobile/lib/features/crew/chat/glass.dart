@@ -24,13 +24,19 @@ class GlassRoundButton extends StatelessWidget {
   Widget build(BuildContext context) => Semantics(
     button: true,
     label: label,
+    // The circle is drawn at 44; the hit area around it is the 48 dp a thumb needs.
     child: Pressable(
       onTap: onTap,
-      child: GlassPill(
-        circle: true,
-        child: SizedBox.square(
-          dimension: 44,
-          child: Icon(icon, size: 18, color: AtlasColors.of(context).text),
+      child: SizedBox.square(
+        dimension: 48,
+        child: Center(
+          child: GlassPill(
+            circle: true,
+            child: SizedBox.square(
+              dimension: 44,
+              child: Icon(icon, size: 18, color: AtlasColors.of(context).text),
+            ),
+          ),
         ),
       ),
     ),

@@ -382,7 +382,7 @@ class AttentionHero extends StatelessWidget {
                   style: FilledButton.styleFrom(
                     backgroundColor: color,
                     foregroundColor: c.onAccent,
-                    minimumSize: const Size(0, 40),
+                    minimumSize: const Size(0, 48),
                   ),
                   onPressed: () => onOpen(item),
                   child: Text(action),
@@ -623,93 +623,99 @@ class _ActivityRow extends StatelessWidget {
         c.success,
       ),
     };
-    return InkWell(
+    return Semantics(
+      button: true,
+      label: '$title. $line',
+      excludeSemantics: true,
       onTap: () => _open(context),
-      child: Padding(
-        padding: const EdgeInsets.only(left: Space.lg),
-        child: Row(
-          children: [
-            avatar,
-            const SizedBox(width: 12),
-            Expanded(
-              child: Container(
-                padding: const EdgeInsets.fromLTRB(0, 11, Space.lg, 11),
-                decoration: BoxDecoration(
-                  border: last
-                      ? null
-                      : Border(bottom: BorderSide(color: c.borderSubtle)),
-                ),
-                child: Column(
-                  crossAxisAlignment: CrossAxisAlignment.start,
-                  children: [
-                    Row(
-                      children: [
-                        Icon(
-                          color == c.error
-                              ? Icons.error_rounded
-                              : Icons.check_circle_rounded,
-                          size: 14,
-                          color: color,
-                        ),
-                        const SizedBox(width: 5),
-                        Expanded(
-                          child: Text(
-                            title,
-                            overflow: TextOverflow.ellipsis,
-                            style: TextStyle(
-                              fontSize: 15,
-                              fontWeight: unread
-                                  ? FontWeight.w700
-                                  : FontWeight.w500,
-                              color: c.text,
+      child: InkWell(
+        onTap: () => _open(context),
+        child: Padding(
+          padding: const EdgeInsets.only(left: Space.lg),
+          child: Row(
+            children: [
+              avatar,
+              const SizedBox(width: 12),
+              Expanded(
+                child: Container(
+                  padding: const EdgeInsets.fromLTRB(0, 11, Space.lg, 11),
+                  decoration: BoxDecoration(
+                    border: last
+                        ? null
+                        : Border(bottom: BorderSide(color: c.borderSubtle)),
+                  ),
+                  child: Column(
+                    crossAxisAlignment: CrossAxisAlignment.start,
+                    children: [
+                      Row(
+                        children: [
+                          Icon(
+                            color == c.error
+                                ? Icons.error_rounded
+                                : Icons.check_circle_rounded,
+                            size: 14,
+                            color: color,
+                          ),
+                          const SizedBox(width: 5),
+                          Expanded(
+                            child: Text(
+                              title,
+                              overflow: TextOverflow.ellipsis,
+                              style: TextStyle(
+                                fontSize: 15,
+                                fontWeight: unread
+                                    ? FontWeight.w700
+                                    : FontWeight.w500,
+                                color: c.text,
+                              ),
                             ),
                           ),
-                        ),
-                        Text(
-                          crewTimeAgo(
-                            item.at.millisecondsSinceEpoch ~/ 1000,
-                            DateTime.now(),
-                          ),
-                          style: TextStyle(
-                            fontSize: 12.5,
-                            color: unread ? c.accent : c.muted,
-                          ),
-                        ),
-                      ],
-                    ),
-                    const SizedBox(height: 3),
-                    Row(
-                      children: [
-                        Expanded(
-                          child: Text(
-                            line,
-                            maxLines: 2,
-                            overflow: TextOverflow.ellipsis,
-                            style: TextStyle(
-                              fontSize: 14,
-                              height: 1.3,
-                              color: c.muted,
+                          Text(
+                            crewTimeAgo(
+                              item.at.millisecondsSinceEpoch ~/ 1000,
+                              DateTime.now(),
                             ),
-                          ),
-                        ),
-                        if (unread) ...[
-                          const SizedBox(width: 8),
-                          Container(
-                            width: 9,
-                            height: 9,
-                            decoration: BoxDecoration(
-                              color: c.accent,
-                              shape: BoxShape.circle,
+                            style: TextStyle(
+                              fontSize: 12.5,
+                              color: unread ? c.accent : c.muted,
                             ),
                           ),
                         ],
-                      ],
-                    ),
-                  ],
+                      ),
+                      const SizedBox(height: 3),
+                      Row(
+                        children: [
+                          Expanded(
+                            child: Text(
+                              line,
+                              maxLines: 2,
+                              overflow: TextOverflow.ellipsis,
+                              style: TextStyle(
+                                fontSize: 14,
+                                height: 1.3,
+                                color: c.muted,
+                              ),
+                            ),
+                          ),
+                          if (unread) ...[
+                            const SizedBox(width: 8),
+                            Container(
+                              width: 9,
+                              height: 9,
+                              decoration: BoxDecoration(
+                                color: c.accent,
+                                shape: BoxShape.circle,
+                              ),
+                            ),
+                          ],
+                        ],
+                      ),
+                    ],
+                  ),
                 ),
               ),
-            ),
-          ],
+            ],
+          ),
         ),
       ),
     );

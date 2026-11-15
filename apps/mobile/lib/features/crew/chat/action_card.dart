@@ -374,7 +374,7 @@ class _TaskActionCardState extends ConsumerState<TaskActionCard> {
                     vertical: 4,
                   ),
                   minimumSize: Size.zero,
-                  tapTargetSize: MaterialTapTargetSize.shrinkWrap,
+                  tapTargetSize: MaterialTapTargetSize.padded,
                   shape: RoundedRectangleBorder(
                     borderRadius: BorderRadius.circular(8),
                   ),
@@ -420,8 +420,8 @@ class _TaskActionCardState extends ConsumerState<TaskActionCard> {
             foregroundColor: c.text,
             side: BorderSide(color: c.borderSubtle),
             padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 8),
-            minimumSize: const Size(double.infinity, 0),
-            tapTargetSize: MaterialTapTargetSize.shrinkWrap,
+            minimumSize: const Size(double.infinity, 48),
+            tapTargetSize: MaterialTapTargetSize.padded,
             shape: RoundedRectangleBorder(
               borderRadius: BorderRadius.circular(10),
             ),

@@ -213,7 +213,7 @@ ThemeData atlasTheme() {
       style: FilledButton.styleFrom(
         backgroundColor: c.accent,
         foregroundColor: c.onAccent,
-        minimumSize: const Size(0, 44),
+        minimumSize: const Size(0, 48),
         padding: const EdgeInsets.symmetric(horizontal: Space.lg),
         shape: RoundedRectangleBorder(
           borderRadius: BorderRadius.circular(Space.radiusSm),
@@ -225,7 +225,7 @@ ThemeData atlasTheme() {
       style: OutlinedButton.styleFrom(
         foregroundColor: c.text,
         side: BorderSide(color: c.border),
-        minimumSize: const Size(0, 40),
+        minimumSize: const Size(0, 48),
         shape: RoundedRectangleBorder(
           borderRadius: BorderRadius.circular(Space.radiusSm),
         ),
@@ -292,7 +292,8 @@ ThemeData atlasTheme() {
         selectedForegroundColor: c.text,
         foregroundColor: c.muted,
         side: BorderSide(color: c.border),
-        visualDensity: VisualDensity.compact,
+        // Compact density would shave the padded tap target below 48.
+        tapTargetSize: MaterialTapTargetSize.padded,
       ),
     ),
     progressIndicatorTheme: ProgressIndicatorThemeData(color: c.accent),

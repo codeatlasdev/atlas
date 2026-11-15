@@ -273,7 +273,7 @@ class _CrewmateChatScreenState extends ConsumerState<CrewmateChatScreen> {
                         )
                       : const SizedBox.square(
                           key: ValueKey('none'),
-                          dimension: 44,
+                          dimension: 48,
                         ),
                 ),
               ],

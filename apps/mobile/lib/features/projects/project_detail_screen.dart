@@ -475,7 +475,6 @@ class _ProjectDetailScreenState extends ConsumerState<ProjectDetailScreen> {
           selected: {_cpuChart},
           showSelectedIcon: false,
           onSelectionChanged: (v) => setState(() => _cpuChart = v.first),
-          style: const ButtonStyle(visualDensity: VisualDensity.compact),
         ),
       ),
       AtlasCard(
@@ -675,34 +674,40 @@ class _Banner extends StatelessWidget {
   @override
   Widget build(BuildContext context) => Padding(
     padding: const EdgeInsets.only(top: Space.sm),
-    child: GestureDetector(
+    child: Semantics(
+      button: true,
+      label: '$title, $action',
+      excludeSemantics: true,
       onTap: onTap,
-      child: Container(
-        constraints: const BoxConstraints(minHeight: 48),
-        alignment: Alignment.centerLeft,
-        padding: const EdgeInsets.fromLTRB(
-          Space.md,
-          Space.sm,
-          Space.sm,
-          Space.sm,
-        ),
-        decoration: BoxDecoration(
-          color: color.withValues(alpha: .12),
-          borderRadius: BorderRadius.circular(Space.radius),
-          border: Border.all(color: color.withValues(alpha: .45)),
-        ),
-        child: Row(
-          children: [
-            Icon(icon, color: color, size: 18),
-            const SizedBox(width: Space.sm),
-            Expanded(
-              child: Text(
-                title,
-                style: const TextStyle(fontWeight: FontWeight.w600),
+      child: GestureDetector(
+        onTap: onTap,
+        child: Container(
+          constraints: const BoxConstraints(minHeight: 48),
+          alignment: Alignment.centerLeft,
+          padding: const EdgeInsets.fromLTRB(
+            Space.md,
+            Space.sm,
+            Space.sm,
+            Space.sm,
+          ),
+          decoration: BoxDecoration(
+            color: color.withValues(alpha: .12),
+            borderRadius: BorderRadius.circular(Space.radius),
+            border: Border.all(color: color.withValues(alpha: .45)),
+          ),
+          child: Row(
+            children: [
+              Icon(icon, color: color, size: 18),
+              const SizedBox(width: Space.sm),
+              Expanded(
+                child: Text(
+                  title,
+                  style: const TextStyle(fontWeight: FontWeight.w600),
+                ),
               ),
-            ),
-            AtlasChip(action, tone: color),
-          ],
+              AtlasChip(action, tone: color),
+            ],
+          ),
         ),
       ),
     ),
@@ -1550,60 +1555,63 @@ class _AgentLine extends StatelessWidget {
       ?status.model,
       if (since.isNotEmpty) since,
     ];
-    return InkWell(
-      onTap: onTap,
-      child: Padding(
-        padding: const EdgeInsets.symmetric(
-          horizontal: Space.md,
-          vertical: Space.sm + 2,
-        ),
-        child: Row(
-          children: [
-            AgentLogo(status.agent, size: 34),
-            const SizedBox(width: Space.md),
-            Expanded(
-              child: Column(
-                crossAxisAlignment: CrossAxisAlignment.start,
-                children: [
-                  Text(
-                    agentTitle(status),
-                    maxLines: 1,
-                    overflow: TextOverflow.ellipsis,
-                    style: const TextStyle(fontWeight: FontWeight.w600),
-                  ),
-                  Row(
-                    children: [
-                      StatusDot(
-                        color: k,
-                        pulse: status.state == 'working' || needsYou(status),
-                        size: 6,
-                      ),
-                      Flexible(
-                        child: Text(
-                          meta.join(' · '),
-                          maxLines: 1,
-                          overflow: TextOverflow.ellipsis,
-                          style: TextStyle(
-                            color: k,
-                            fontSize: 12,
-                            fontWeight: FontWeight.w600,
-                          ),
-                        ),
-                      ),
-                    ],
-                  ),
-                  if (line.isNotEmpty)
+    return Semantics(
+      button: true,
+      child: InkWell(
+        onTap: onTap,
+        child: Padding(
+          padding: const EdgeInsets.symmetric(
+            horizontal: Space.md,
+            vertical: Space.sm + 2,
+          ),
+          child: Row(
+            children: [
+              AgentLogo(status.agent, size: 34),
+              const SizedBox(width: Space.md),
+              Expanded(
+                child: Column(
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: [
                     Text(
-                      line.replaceAll('\n', ' '),
+                      agentTitle(status),
                       maxLines: 1,
                       overflow: TextOverflow.ellipsis,
-                      style: TextStyle(fontSize: 12, color: c.muted),
+                      style: const TextStyle(fontWeight: FontWeight.w600),
                     ),
-                ],
+                    Row(
+                      children: [
+                        StatusDot(
+                          color: k,
+                          pulse: status.state == 'working' || needsYou(status),
+                          size: 6,
+                        ),
+                        Flexible(
+                          child: Text(
+                            meta.join(' · '),
+                            maxLines: 1,
+                            overflow: TextOverflow.ellipsis,
+                            style: TextStyle(
+                              color: k,
+                              fontSize: 12,
+                              fontWeight: FontWeight.w600,
+                            ),
+                          ),
+                        ),
+                      ],
+                    ),
+                    if (line.isNotEmpty)
+                      Text(
+                        line.replaceAll('\n', ' '),
+                        maxLines: 1,
+                        overflow: TextOverflow.ellipsis,
+                        style: TextStyle(fontSize: 12, color: c.muted),
+                      ),
+                  ],
+                ),
               ),
-            ),
-            Icon(Icons.chevron_right, color: c.faint),
-          ],
+              Icon(Icons.chevron_right, color: c.faint),
+            ],
+          ),
         ),
       ),
     );
@@ -1626,7 +1634,19 @@ class _SkeletonState extends State<_Skeleton>
   late final AnimationController _a = AnimationController(
     vsync: this,
     duration: const Duration(milliseconds: 1200),
-  )..repeat(reverse: true);
+  );
+
+  @override
+  void didChangeDependencies() {
+    super.didChangeDependencies();
+    if (Motion.reduced(context)) {
+      _a
+        ..stop()
+        ..value = 1;
+    } else if (!_a.isAnimating) {
+      _a.repeat(reverse: true);
+    }
+  }
 
   @override
   void dispose() {

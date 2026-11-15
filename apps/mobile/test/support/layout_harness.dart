@@ -163,7 +163,8 @@ Future<void> expectNoLayoutProblems(
   }
 }
 
-/// Tappable things that are not 48 dp are reported with where they are on screen.
+/// Tappable things that are not 48 dp (Android) / 44 pt (iOS), or that have no label,
+/// are reported with where they are on screen.
 Future<void> _checkTapTargets(
   WidgetTester tester,
   String where,
@@ -183,6 +184,19 @@ Future<void> _checkTapTargets(
           'tap target "${label.length > 40 ? label.substring(0, 40) : label}" '
           '${double.parse(m.group(2)!).round()}x${double.parse(m.group(3)!).round()}',
         );
+      }
+    }
+    // The iOS size and the label are looser or different checks: a failure here is
+    // reported as the guideline's own message, one line per node.
+    for (final (name, guideline) in [
+      ('iOS tap target', iOSTapTargetGuideline),
+      ('tappable without a label', labeledTapTargetGuideline),
+    ]) {
+      final r = await guideline.evaluate(tester);
+      if (!r.passed) {
+        for (final line in (r.reason ?? name).split('\n')) {
+          if (line.trim().isNotEmpty) problems.add('$name: ${line.trim()}');
+        }
       }
     }
   } finally {

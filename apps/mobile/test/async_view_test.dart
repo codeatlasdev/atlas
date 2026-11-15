@@ -1,7 +1,10 @@
 // AsyncView is the one rendering of a screen's async states: loading, error + "Try again", empty, offline,
 // protocol mismatch, data. A golden pins the whole set so a change to any of them is seen.
+import 'dart:async';
+
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
+import 'package:flutter_riverpod/legacy.dart';
 import 'package:flutter_test/flutter_test.dart';
 
 import 'package:atlas_mobile/core/connection/require_mux.dart';
@@ -38,6 +41,58 @@ void main() {
     await t.pumpWidget(_view(const AsyncLoading()));
     expect(find.byType(CircularProgressIndicator), findsOneWidget);
     expect(find.text('Nothing yet'), findsNothing);
+  });
+
+  // A reconnect rebuilds every provider behind requireMux: the value is kept and `isLoading` is set (a
+  // reload, not a refresh). Riverpod's `when` shows the loader for that unless told not to. Built the way
+  // the app builds it: a screen watching a provider that watches another one, whose new build is pending.
+  testWidgets('a reload keeps showing the data it has, not the spinner', (
+    t,
+  ) async {
+    final source = StateProvider<int>((_) => 0);
+    final gate = <Completer<List<String>>>[];
+    final watching = FutureProvider<List<String>>((ref) {
+      ref.watch(source);
+      final c = Completer<List<String>>();
+      gate.add(c);
+      return c.future;
+    });
+    late ProviderContainer container;
+    await t.pumpWidget(
+      ProviderScope(
+        child: MaterialApp(
+          theme: atlasTheme(),
+          home: Consumer(
+            builder: (context, ref, _) {
+              container = ProviderScope.containerOf(context);
+              return AsyncView<List<String>>(
+                value: ref.watch(watching),
+                errorTitle: "Couldn't read the list",
+                data: (l) => ListView(children: [for (final s in l) Text(s)]),
+              );
+            },
+          ),
+        ),
+      ),
+    );
+    gate.single.complete(['a']);
+    await t.pump();
+    await t.pump(const Duration(milliseconds: 10));
+    expect(find.text('a'), findsOneWidget);
+
+    container.read(source.notifier).state = 1; // what a reconnect does
+    await t.pump(
+      const Duration(milliseconds: 10),
+    ); // Riverpod rebuilds on its own scheduler tick
+    expect(container.read(watching).isReloading, isTrue);
+    expect(find.text('a'), findsOneWidget);
+    expect(find.byType(CircularProgressIndicator), findsNothing);
+
+    gate.last.complete(['b']);
+    await t.pump();
+    await t.pump(const Duration(milliseconds: 10));
+    expect(find.text('b'), findsOneWidget);
+    await t.pumpWidget(const SizedBox());
   });
 
   testWidgets('data: the builder, not the empty state', (t) async {

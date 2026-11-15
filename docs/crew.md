@@ -385,6 +385,41 @@ A headless engine gets the same server, described once (`crew/engine/launch.rs`)
 
 The hook routes live on the same local HTTP server as the agent hooks and need its token.
 
+## One Linux user per crewmate
+
+Issue [#200](https://github.com/codeatlasdev/atlas/issues/200). `atlas crew install` (re-run it on an existing server) sets up two socket-activated root services, both `atlas crew-spawn`, both reachable only by the crew user (socket mode 0660, group = crew user, and a `SO_PEERCRED` check):
+
+| service | does | limits |
+|---|---|---|
+| `atlas-crew-spawn` | starts an engine binary (`claude`, `codex`, `omp`, `opencode`, by bare name, from a pinned directory) as `atlas-cm-<id>`, hands hostd the pty or a socketpair, signals it, reports its exit and working directory, ends its leftovers | `CAP_SETUID/SETGID/CHOWN/KILL/DAC_OVERRIDE`, read-only filesystem except `/var/lib/atlas-cm`; every request is validated (user shape, binary, cwd inside the crewmate's directory, no `LD_*`/`PATH`/`HOME` in env, signal list) |
+| `atlas-crew-provision` | creates and removes a crewmate's user and directories, rewrites the egress rules | two operations, no free text (a user of the exact `atlas-cm-<12 hex>` shape); writes `/etc` and `/var/lib/atlas-cm` only |
+
+hostd stays the unprivileged crew user under `NoNewPrivileges`. It asks the helper for each process and gets the pty master back over `SCM_RIGHTS`.
+
+Layout under `/var/lib/atlas-cm/<id>/`:
+
+| path | owner | holds |
+|---|---|---|
+| `home/` | crewmate, 0700 | `$HOME`: the agents' sign-ins |
+| `work/` | crewmate, 2770 (setgid) | the checkout (a full clone, since a worktree would point into the crew home); hostd writes it through the group |
+| `crew-runtime/` | crew user, group crewmate, 0750 | what the agent reads and cannot change: MCP config, omp approval extension, hook endpoint file, git config |
+| `memory.md` | crewmate, 0660 | the agent appends, hostd edits it for the apps |
+
+Other behavior with isolation on:
+
+- **Hook endpoint.** The hook server listens on one loopback port the firewall names (47631; random when taken, and isolated crewmates then cannot report). Each crewmate has its own token (`<crewmate dir>/hook-token`, in its environment and `crew-runtime/hook-endpoint.env`) that opens only its own routes: every agent-facing route of its own id (`ask`, `set_profile`, `capture`, `locate`, `ui_gate`, `set_ui`: the one list `AGENT_ROUTES` in `agents/hook_auth.rs`), and hook events for its own panes. Another crewmate's route is `403`, the webhook route is never open to an agent, a wrong token is `401`. The global token is unchanged and is not given to isolated agents.
+- **Egress.** One nftables chain per crewmate user (`meta skuid`): replies, DNS, the hook port on loopback, then a drop for the rest of loopback, `10/8`, `172.16/12`, `192.168/16`, `169.254/16` (cloud metadata), `100.64/10`, `fc00::/7`, `fe80::/10`, then TCP 22/80/443, then drop. The file is `/etc/atlas-crew/egress.nft`, replayed at boot by `atlas-crew-egress.service`. The policy is the same for every crewmate today (`Policy` supports per-user ports and extra destinations; there is no setting for it yet).
+- **Engines** are installed system-wide with each vendor's own install line under `/usr/local/lib/atlas-crew/engine-home` and linked into `/usr/local/lib/atlas-crew/engines`, the first directory the helper searches. Updating an engine is the vendor's own update, run as root there.
+- **Create and delete.** `crewmate_create` creates the user first and saves nothing if that fails (for example out of system uids: `useradd --system` has about 900). `crewmate_delete` ends its processes and removes the user and directory. A crewmate that exists without a user (imported, or made before the install) gets one when its first task starts.
+- **Sign in** as the crewmate: `atlas crew login <server> <agent> --crewmate <id>` (over ssh as your admin user, then `sudo -u atlas-cm-<id>`). Hook registration (`atlas setup <agent> --apply`) is also per user.
+- **Sign in from the phone, per crewmate.** `crew_engine_login {engine, crewmate}` opens the engine's login terminal as that crewmate through the helper (in its own home), and `crew_engine_status {refresh?, crewmate}` runs the engine's status command as it. Without `crewmate` they are the crew user's, as before. On a server without the helper a `crewmate` is refused (never answered with the crew user's sign-in), and a task that fails with the engine's own auth error flips that crewmate's row, with `{"ev":"crew_engine_auth","engine","state","crewmate"}`.
+- **One launcher.** A headless turn (`claude`, `codex`, `opencode`, `omp`, and the reply summarizer) is built once in `engine/launch.rs` (`TurnCtx::command`: work dir, crewmate secrets, then hostd's `ATLAS_*`, which win) and started by `launch::output` / `launch::rpc`, which run it as the crew user or, through the helper, as the crewmate. Cancel, pause and the 2 h timeout end the process tree either way: the helper's `signal` goes to the session's process group (every spawn is its own session), and it never uses `reap`, which ends every process of the crewmate, a terminal agent included.
+- **git in the agent's tree.** The checkout belongs to the crewmate, so hostd's own git calls in it (the guards, the attachments exclude, the branch for the GitHub reply, the repo check) run with that crewmate's `GIT_CONFIG_GLOBAL` (`CrewStore::git_env_in`); deleting a crewmate removes its clone with its user, not through a shared clone's worktree list.
+- **Migration.** Existing crewmates get users during the install. Old checkouts are renamed `work.pre-isolation` (they were worktrees of a clone in the crew home that the crewmate's user cannot read; the next task clones again), `memory.md` moves on the first task (the old file is kept as `memory.md.pre-isolation`), and agents must be signed in again per crewmate (their shared sign-in stays with the crew user). Nothing is deleted.
+- **Export** follows the memory into the crewmate's directory. Agent sign-ins and checkouts were never exported.
+
+Not covered: the GitHub login (`gh`) is still the crew user's and shared; per-crewmate egress allowlists have no setting; the engines in `engine-home` are shared and root-installed.
+
 ## Captures
 
 The `capture` tool lets a crewmate look at a UI instead of guessing: it opens a URL in **Playwright's chromium and webkit**, at several widths and in light and dark, and hands back one PNG per combination. A capture that returns is complete: if any requested combination is missing or failed, the tool returns an error that names each one (`webkit/390px/dark`), never a partial set.
@@ -537,7 +572,8 @@ Until then, a threshold that needs to change is changed in `detectors.mjs` and r
 ## Security model
 
 - **Dedicated user.** The crew user (`atlas-crew`, or the reused `atlas-bot`) has no sudo; it writes only its home and what agents create in `workdir`.
-- **Systemd hardening.** `NoNewPrivileges=true`, `ProtectSystem=strict`, `ProtectHome=read-only` with `ReadWritePaths=<crew home>`, `PrivateTmp=true`, `ProtectKernelTunables=true`, `ProtectControlGroups=true`, `RestrictSUIDSGID=true`, `MemoryMax=80%`, `TasksMax=4096` ([the unit](#the-systemd-unit)). The crewmates still share one user: they are not isolated from each other.
+- **Systemd hardening.** `NoNewPrivileges=true`, `ProtectSystem=strict`, `ProtectHome=read-only` with `ReadWritePaths=<crew home>`, `PrivateTmp=true`, `ProtectKernelTunables=true`, `ProtectControlGroups=true`, `RestrictSUIDSGID=true`, `MemoryMax=80%`, `TasksMax=4096` ([the unit](#the-systemd-unit)). With the helper installed each crewmate has its own user ([below](#one-linux-user-per-crewmate)); without it they still share the crew user.
+- **One Linux user per crewmate** ([details](#one-linux-user-per-crewmate)). Each crewmate runs as `atlas-cm-<id>`: the others cannot read its `secrets.json`, sign-ins or checkout, and an egress policy limits where it connects. Active only on a server where `atlas crew install` set up the helper; otherwise every crewmate shares the crew user as before.
 - **Scoped SSH key.** `atlas crew install` appends your key to the crew user's `authorized_keys` only, never to the admin user's.
 - **sudo once.** Install and uninstall need sudo; the running service never does. The sudo password, when Desktop passes it, comes over stdin and is dropped after the credential cache is primed.
 - **No npm code as root.** `atlas crew browsers install` runs `npm ci` (from a lock embedded in atlas, integrity-checked), the browser download and Playwright's dependency report as the crew user. Only one command runs as root: `apt-get install -y --no-install-recommends <names>` that atlas builds itself from package names that matched `^[a-z0-9][a-z0-9.+-]*$` in the report; anything else in the report is an error and nothing runs as root. See [Captures](#captures).

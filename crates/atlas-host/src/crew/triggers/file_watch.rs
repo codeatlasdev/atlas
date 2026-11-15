@@ -119,8 +119,14 @@ fn never() -> globset::GlobMatcher {
 /// The folders the crewmate's agent writes in: its `work/` (a Git project's worktree) and the
 /// directory it runs in, resolved the way the runner does it.
 fn own_trees(hub: &Hub, crewmate: &crate::crew::store::Crewmate) -> Vec<PathBuf> {
-    let mut trees = vec![crate::crew::project::work_dir(&hub.crew.dir, &crewmate.id)];
-    if let Ok(dir) = crate::crew::project::current_work_dir(&hub.crew.dir, crewmate) {
+    // A crewmate that runs as its own Linux user works in its own folder, not in the crew home.
+    let iso = hub.crew.store.isolated(&crewmate.id);
+    let mut trees = vec![crate::crew::project::work_dir_for(
+        &hub.crew.dir,
+        &crewmate.id,
+        iso.as_ref(),
+    )];
+    if let Ok(dir) = crate::crew::project::current_work_dir(&hub.crew.dir, crewmate, iso.as_ref()) {
         trees.push(dir);
     }
     trees

@@ -12,11 +12,14 @@
 //! - [`lifecycle`]: cold restore, handoff adoption, freeze/thaw
 //! - [`control`]: write/resize/signal/kill, scrollback maintenance, inspection
 //! - [`master`]: the pty master (spawned or adopted fd)
+//! - [`isolation`]: a session whose process runs as a crewmate's own user, driven through the spawn helper
 //! - [`title`]: OSC 0/2 window-title parser
 //! - [`out`]: a connection's outgoing queue, bounded in bytes (a client that stops reading is dropped, not buffered)
 
 mod attach;
 mod control;
+#[cfg(unix)]
+mod isolation;
 mod lifecycle;
 mod master;
 mod out;
@@ -39,6 +42,10 @@ use serde::{Deserialize, Serialize};
 use tokio::sync::mpsc;
 
 use crate::protocol::Scope;
+#[cfg(unix)]
+pub use isolation::IsoRef;
+#[cfg(unix)]
+use isolation::Isolation;
 use master::Master;
 
 const RING_MAX: usize = 2 * 1024 * 1024;
@@ -138,6 +145,9 @@ pub struct Session {
     /// coalescer flushes and signals `frozen` instead of finishing the session.
     stop: Arc<AtomicBool>,
     frozen: Mutex<Option<tokio::sync::oneshot::Sender<()>>>,
+    /// Set when the process runs as a crewmate's own user: it is reached through the spawn helper.
+    #[cfg(unix)]
+    iso: Option<Isolation>,
 }
 
 /// Everything that differs between a fresh, a cold and an adopted session.
@@ -150,6 +160,8 @@ struct Init {
     size: (u16, u16),
     io: Option<Io>,
     buf: Buf,
+    #[cfg(unix)]
+    iso: Option<Isolation>,
 }
 
 impl Session {
@@ -166,6 +178,8 @@ impl Session {
             dir: dir.to_path_buf(),
             stop: Arc::default(),
             frozen: Mutex::new(None),
+            #[cfg(unix)]
+            iso: init.iso,
         })
     }
 

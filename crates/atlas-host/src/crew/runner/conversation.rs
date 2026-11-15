@@ -8,8 +8,9 @@ use super::action::{
     finish_unanswered, park_task, parse_atlas_action, resolve_action, user_answer,
 };
 use super::gate::{Gate, gate_success};
+use super::isolation::Ctx;
 use super::outcome::{finish_task, persist_running, was_cancelled};
-use super::prompt::{Prepared, load_agent_env, load_hook_endpoint, prepare_task};
+use super::prompt::{Prepared, load_agent_env, prepare_task};
 use super::recover::{recovered_wait, resume_prompt};
 use super::summary::maybe_summarize;
 use crate::crew::store::{Crewmate, EngineConfig, Task, TaskState};
@@ -31,7 +32,15 @@ pub(super) async fn run_one_conversational(
         return;
     };
 
-    let (hook_port, hook_token) = load_hook_endpoint(&hub.dir);
+    // How this crewmate runs: its own Linux user or the crew user. One answer for the whole task.
+    let ctx = Ctx::of(hub, &crewmate.id);
+    if let Err(e) = ctx.prepare(hub, &crewmate.id) {
+        let msg = format!("cannot prepare the crewmate's runtime files: {e}");
+        finish_task(hub, crewmate, &mut task, Err(msg), vec![]);
+        triggers::on_task_finished(hub, &crewmate.id, &task.id, task.state);
+        return;
+    }
+    let (hook_port, hook_token) = ctx.hook_endpoint(hub, &crewmate.id);
 
     // A stranger's text (GitHub, webhook) never runs with the bypass flags unless its trigger said
     // `allow_auto`. An engine that cannot ask has no other mode, so such a task is refused.
@@ -86,11 +95,7 @@ pub(super) async fn run_one_conversational(
     // For omp with approval==ask: write the extension file before engine::run_turn
     // (even if TEST_ENGINE_BIN bypasses the real omp, the file must exist for the test).
     if engine_cfg.kind == "omp" && !yolo {
-        let ext_path = hub
-            .crew
-            .store
-            .crewmate_dir(&crewmate.id)
-            .join("omp-approval.ts");
+        let ext_path = ctx.runtime_dir(hub, &crewmate.id).join("omp-approval.ts");
         let _ =
             engine::omp::write_approval_extension_pub(&ext_path, hook_port, &hook_token, &pane_key);
     }
@@ -103,6 +108,7 @@ pub(super) async fn run_one_conversational(
         pane_key: &pane_key,
         hook: (hook_port, &hook_token),
         yolo,
+        ctx: &ctx,
     };
     // A task parked on an action when hostd stopped goes straight back to waiting for the answer;
     // one a restart interrupted mid-turn continues the stored session instead of starting over.
@@ -154,6 +160,7 @@ struct Turn<'a> {
     pane_key: &'a str,
     hook: (u16, &'a str),
     yolo: bool,
+    ctx: &'a Ctx,
 }
 
 impl Turn<'_> {
@@ -204,7 +211,9 @@ impl Turn<'_> {
                 }
             }
         };
-        let crewmate_dir = hub.crew.store.crewmate_dir(&crewmate.id);
+        // Where the agent reads what the engine writes for it, and who runs the process: one answer per task.
+        let crewmate_dir = self.ctx.runtime_dir(hub, &crewmate.id);
+        let exec = self.ctx.exec();
         let turn = engine::run_turn(engine::TurnCtx {
             engine: self.engine_cfg,
             session,
@@ -219,6 +228,7 @@ impl Turn<'_> {
             yolo: self.yolo,
             tools: Some(&tools),
             cancel: &cancel,
+            exec: &exec,
         })
         .await?;
         if let Err(e) = hub.crew.store.save_session(&crewmate.id, &turn.session) {

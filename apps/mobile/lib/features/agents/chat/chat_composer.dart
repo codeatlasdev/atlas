@@ -69,12 +69,11 @@ class ChatComposer extends StatelessWidget {
                 IconButton(
                   tooltip: 'Commands',
                   onPressed: canSendChat(status) && !sending ? onCommand : null,
-                  icon: const Text(
+                  icon: Text(
                     '/',
-                    style: TextStyle(
+                    style: Theme.of(context).textTheme.titleLarge!.copyWith(
                       fontFamily: monoFamily,
                       fontFamilyFallback: monoFallback,
-                      fontSize: 20,
                       fontWeight: FontWeight.w600,
                     ),
                   ),

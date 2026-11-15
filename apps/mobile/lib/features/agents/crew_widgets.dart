@@ -363,18 +363,16 @@ class _CrewChipState extends State<_CrewChip> {
                           name,
                           maxLines: 1,
                           overflow: TextOverflow.ellipsis,
-                          style: TextStyle(
-                            fontSize: 13,
-                            fontWeight: FontWeight.w600,
-                            color: focused ? c.text : c.muted,
-                          ),
+                          style: Theme.of(context).textTheme.bodyMedium!
+                              .copyWith(
+                                fontWeight: FontWeight.w600,
+                                color: focused ? c.text : c.muted,
+                              ),
                         ),
                         Text(
                           nodeStatusLabel(node),
-                          style: TextStyle(
-                            fontSize: 11,
-                            color: nodeColor(c, node),
-                          ),
+                          style: Theme.of(context).textTheme.labelSmall!
+                              .copyWith(color: nodeColor(c, node)),
                         ),
                       ],
                     ),
@@ -466,8 +464,7 @@ class _Crumb extends StatelessWidget {
                 ],
                 Text(
                   label,
-                  style: TextStyle(
-                    fontSize: 12.5,
+                  style: Theme.of(context).textTheme.bodySmall!.copyWith(
                     fontWeight: current || home
                         ? FontWeight.w700
                         : FontWeight.w500,
@@ -596,10 +593,8 @@ class _NowStripState extends State<NowStrip>
                 text,
                 maxLines: 1,
                 overflow: TextOverflow.ellipsis,
-                style: TextStyle(
-                  fontSize: 13,
-                  color: running ? c.text : c.muted,
-                ),
+                style: Theme.of(context).textTheme.bodyMedium!
+                    .copyWith(color: running ? c.text : c.muted),
               ),
             ),
           ),
@@ -613,8 +608,7 @@ class _NowStripState extends State<NowStrip>
                 ].join(' · '),
                 maxLines: 1,
                 overflow: TextOverflow.ellipsis,
-                style: TextStyle(
-                  fontSize: 11.5,
+                style: Theme.of(context).textTheme.bodySmall!.copyWith(
                   color: c.muted,
                   fontFeatures: const [FontFeature.tabularFigures()],
                 ),
@@ -661,11 +655,8 @@ class JobsStrip extends StatelessWidget {
           Text(
             'Waiting on ${jobs.length} ${jobs.length == 1 ? 'job' : 'jobs'}',
             key: const ValueKey('jobs-title'),
-            style: TextStyle(
-              fontSize: 12.5,
-              fontWeight: FontWeight.w700,
-              color: c.accent,
-            ),
+            style: Theme.of(context).textTheme.bodySmall!
+                .copyWith(fontWeight: FontWeight.w700, color: c.accent),
           ),
           for (final j in jobs.take(5))
             InkWell(
@@ -684,7 +675,8 @@ class JobsStrip extends StatelessWidget {
                         ].join(' · '),
                         maxLines: 1,
                         overflow: TextOverflow.ellipsis,
-                        style: TextStyle(fontSize: 12.5, color: c.muted),
+                        style: Theme.of(context).textTheme.bodySmall!
+                            .copyWith(color: c.muted),
                       ),
                     ),
                     const SizedBox(width: Space.sm),
@@ -707,7 +699,8 @@ class JobsStrip extends StatelessWidget {
           if (jobs.length > 5)
             Text(
               '+${jobs.length - 5} more',
-              style: TextStyle(fontSize: 11.5, color: c.muted),
+              style: Theme.of(context).textTheme.bodySmall!
+                  .copyWith(color: c.muted),
             ),
         ],
       ),
@@ -756,11 +749,8 @@ class _TodoCardState extends State<TodoCard> {
                   const SizedBox(width: 6),
                   Text(
                     '${t.done}/${t.total}',
-                    style: TextStyle(
-                      fontSize: 12.5,
-                      fontWeight: FontWeight.w700,
-                      color: c.text,
-                    ),
+                    style: Theme.of(context).textTheme.bodySmall!
+                        .copyWith(fontWeight: FontWeight.w700, color: c.text),
                   ),
                   const SizedBox(width: Space.sm),
                   Expanded(
@@ -768,7 +758,8 @@ class _TodoCardState extends State<TodoCard> {
                       current?.content ?? 'Todos',
                       maxLines: 1,
                       overflow: TextOverflow.ellipsis,
-                      style: TextStyle(fontSize: 12.5, color: c.muted),
+                      style: Theme.of(context).textTheme.bodySmall!
+                          .copyWith(color: c.muted),
                     ),
                   ),
                   Icon(
@@ -800,11 +791,11 @@ class _TodoCardState extends State<TodoCard> {
                         padding: const EdgeInsets.only(top: 4),
                         child: Text(
                           p.name,
-                          style: TextStyle(
-                            fontSize: 12,
-                            fontWeight: FontWeight.w700,
-                            color: c.muted,
-                          ),
+                          style: Theme.of(context).textTheme.bodySmall!
+                              .copyWith(
+                                fontWeight: FontWeight.w700,
+                                color: c.muted,
+                              ),
                         ),
                       ),
                       for (final k in p.tasks) _TodoRow(k),
@@ -843,8 +834,7 @@ class _TodoRow extends StatelessWidget {
           Expanded(
             child: Text(
               task.content,
-              style: TextStyle(
-                fontSize: 12.5,
+              style: Theme.of(context).textTheme.bodySmall!.copyWith(
                 height: 1.3,
                 color: task.done || task.status == 'abandoned'
                     ? c.faint

@@ -117,7 +117,8 @@ class _Row extends StatelessWidget {
               ].join(' · '),
               maxLines: 1,
               overflow: TextOverflow.ellipsis,
-              style: TextStyle(color: color, fontSize: 12),
+              style: Theme.of(context).textTheme.bodySmall!
+                  .copyWith(color: color),
             ),
           ),
         ],

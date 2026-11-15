@@ -550,10 +550,8 @@ class _AgentChatScreenState extends ConsumerState<AgentChatScreen> {
                             title,
                             maxLines: 1,
                             overflow: TextOverflow.ellipsis,
-                            style: const TextStyle(
-                              fontSize: 16,
-                              fontWeight: FontWeight.w600,
-                            ),
+                            style: Theme.of(context).textTheme.titleMedium!
+                                .copyWith(fontWeight: FontWeight.w600),
                           ),
                         ),
                         if (canSwitch)
@@ -575,7 +573,8 @@ class _AgentChatScreenState extends ConsumerState<AgentChatScreen> {
                             subtitle,
                             maxLines: 1,
                             overflow: TextOverflow.ellipsis,
-                            style: TextStyle(fontSize: 12, color: c.muted),
+                            style: Theme.of(context).textTheme.bodySmall!
+                                .copyWith(color: c.muted),
                           ),
                         ),
                       ],
@@ -783,7 +782,8 @@ class _AgentChatScreenState extends ConsumerState<AgentChatScreen> {
                             child: Center(
                               child: Text(
                                 'older messages not shown',
-                                style: TextStyle(fontSize: 11, color: c.muted),
+                                style: Theme.of(context).textTheme.labelSmall!
+                                    .copyWith(color: c.muted),
                               ),
                             ),
                           );
@@ -831,7 +831,8 @@ class _AgentChatScreenState extends ConsumerState<AgentChatScreen> {
                           padding: const EdgeInsets.symmetric(horizontal: 12),
                           child: Text(
                             _error!,
-                            style: TextStyle(color: c.error, fontSize: 12),
+                            style: Theme.of(context).textTheme.bodySmall!
+                                .copyWith(color: c.error),
                           ),
                         ),
                     ],

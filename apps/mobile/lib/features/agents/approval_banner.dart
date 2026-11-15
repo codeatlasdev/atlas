@@ -61,10 +61,10 @@ class ApprovalBanner extends StatelessWidget {
               child: SingleChildScrollView(
                 child: SelectableText(
                   detail,
-                  style: const TextStyle(
+                  style: Theme.of(context).textTheme.bodySmall!.copyWith(
+                    color: AtlasColors.of(context).text,
                     fontFamily: monoFamily,
                     fontFamilyFallback: monoFallback,
-                    fontSize: 12,
                   ),
                 ),
               ),

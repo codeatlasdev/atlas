@@ -7,7 +7,7 @@
 //! eats the key before the page. They are plain `edit::*` items; the frontend routes them
 //! (`lib/edit.ts`). Atlas commands are plain items with id `cmd:<command id>`; the frontend
 //! pushes the effective keymap through [`menu_sync`] and this module sets each item's
-//! accelerator, so the menu owns those keys (they work with focus in the GPU terminal, an
+//! accelerator, so on macOS the menu owns those keys (they work with focus in the GPU terminal, an
 //! embedded browser page or a native field) and the webview never sees them twice. A click
 //! or key emits `menu://command`.
 

@@ -127,22 +127,28 @@ pub(crate) fn answer(
     } else {
         return Err("key or text required".into());
     };
-    let tasks = hub.crew.store.read_tasks(&id, usize::MAX);
-    let mut updated = false;
-    for mut task in tasks {
-        if task.ask.as_ref().map(|a| a.id == ask_id).unwrap_or(false) {
-            if let Some(ask) = &mut task.ask {
-                ask.answered = Some(answer.clone());
-            }
-            hub.crew
-                .store
-                .append_task(&id, &task)
-                .map_err(|e| format!("append_task: {e}"))?;
-            updated = true;
-            break;
-        }
-    }
-    if !updated {
+    let holder = hub
+        .crew
+        .store
+        .read_tasks(&id, usize::MAX)
+        .into_iter()
+        .find(|t| t.ask.as_ref().is_some_and(|a| a.id == ask_id))
+        .map(|t| t.id);
+    let recorded = match holder {
+        // Recorded on the task as it stands now: the runner may have written it since the read above.
+        Some(task_id) => hub
+            .crew
+            .store
+            .update_task(&id, &task_id, |t| match &mut t.ask {
+                Some(ask) if ask.id == ask_id => {
+                    ask.answered = Some(answer.clone());
+                    Ok(())
+                }
+                _ => Err(format!("ask {ask_id} is no longer open on task {task_id}")),
+            })?,
+        None => None,
+    };
+    if recorded.is_none() {
         return Err(format!("ask {ask_id} not found for crewmate {id}"));
     }
     hub.crew.answer_ask(&ask_id, answer);

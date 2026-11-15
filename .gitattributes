@@ -3,3 +3,6 @@
 * text=auto eol=lf
 *.bat text eol=crlf
 *.cmd text eol=crlf
+# Every PR adds lines at the top of `## [Unreleased]`; git's built-in union driver keeps both sides
+# instead of a conflict on every merge of main into a branch. Review the order after a merge.
+CHANGELOG.md merge=union

@@ -699,12 +699,12 @@ jobs:
           - name: Arch Linux
             slug: arch
             image: archlinux:latest
-            setup: pacman -Syu --noconfirm --needed git sway grim mesa dbus ttf-dejavu xorg-xwayland procps-ng
+            setup: pacman -Syu --noconfirm --needed git sway grim mesa dbus ttf-dejavu xorg-xwayland procps-ng && cp "$(command -v sway)" /usr/local/bin/sway
             install: pacman -U --noconfirm dist/*.pkg.tar.zst
           - name: Fedora
             slug: fedora
             image: fedora:latest
-            setup: dnf install -y git sway grim mesa-dri-drivers dbus-daemon dejavu-sans-fonts xorg-x11-server-Xwayland procps-ng findutils
+            setup: dnf install -y git sway grim mesa-dri-drivers dbus-daemon dejavu-sans-fonts xorg-x11-server-Xwayland procps-ng findutils && cp "$(command -v sway)" /usr/local/bin/sway
             install: dnf install -y dist/*.rpm
           - name: Ubuntu 24.04
             slug: ubuntu
@@ -720,6 +720,8 @@ jobs:
     env:
       DEBIAN_FRONTEND: noninteractive
     steps:
+      # Arch and Fedora ship sway with file capabilities (cap_sys_nice); a container without that capability cannot exec
+      # it ("Operation not permitted"). A copy has no xattrs, so it runs, and /usr/local/bin comes first on PATH.
       - name: Tools and the headless display
         run: ${{ matrix.setup }}
 

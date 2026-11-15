@@ -10,7 +10,7 @@
 	import { fileIcon, folderIcon } from "#lib/icons.ts";
 	import { prefs } from "#lib/stores/prefs.svelte.ts";
 	import { host, type FsEntry } from "#lib/host.ts";
-	import { git, errText } from "#lib/api.ts";
+	import { api, git, errText } from "#lib/api.ts";
 	import { duplicateName, menuItems, type MenuAction, type MenuTarget } from "#lib/stores/explorerMenu.ts";
 	import { uid, ws } from "#lib/stores/workspace.svelte.ts";
 	import { openFile, openFileToSide } from "#lib/stores/files.svelte.ts";
@@ -288,7 +288,8 @@
 			case "copy-relative-path":
 				return copy(rel);
 			case "reveal":
-				return host.exec(root, ["open", "-R", rel ? `${root}/${rel}` : root]);
+				// The desktop command picks the OS's file manager (and refuses an SSH checkout); `open -R` is macOS only.
+				return api.revealPath(rel ? `${root}/${rel}` : root).catch((e) => toast.error(errText(e)));
 			case "stage":
 				return gitDo(["add", "--", rel]);
 			case "discard":

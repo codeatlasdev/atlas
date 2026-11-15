@@ -240,6 +240,7 @@ fn show_now(app: &AppHandle, why: &str) {
 /// is queued to the event loop instead.
 #[tauri::command]
 pub async fn app_ready(app: AppHandle) {
+    crate::webview_guard::mark_ready();
     show_now(&app, "ready");
 }
 

@@ -74,6 +74,10 @@ atlas-term = { path = "../atlas-term" }
 # Already in the graph through wry/gtk (same 0.18 line); used to ask the session bus whether a StatusNotifier host
 # exists (tray.rs), because a tray icon with no host is silently invisible.
 gio = "0.22"
+# Same versions wry already resolves: WebKitGTK's `web-process-terminated` and a native dialog when the page
+# cannot show anything (webview_guard.rs).
+webkit2gtk = "2.0"
+gtk = "0.18"
 
 [target.'cfg(not(target_os = "macos"))'.dependencies]
 tauri-plugin-single-instance = "2"

@@ -4,9 +4,9 @@
  * No imports — stays bun-testable without Svelte/Tauri.
  */
 
-export type InstallPhase = "check" | "install" | "user" | "service" | "ssh" | "done";
+export type InstallPhase = "check" | "install" | "user" | "service" | "ssh" | "browsers" | "done";
 
-const PHASES: InstallPhase[] = ["check", "install", "user", "service", "ssh", "done"];
+const PHASES: InstallPhase[] = ["check", "install", "user", "service", "ssh", "browsers", "done"];
 
 /**
  * If `line` is a step-marker line (`step: <key>`), return the phase key.
@@ -35,3 +35,14 @@ export const INSTALL_STEPS: InstallStep[] = [
 	{ phase: "ssh", label: "Configuring SSH access" },
 	{ phase: "done", label: "Connecting" },
 ];
+
+/** The checklist of an install: `browsers` (the capture browsers, `--browsers`) is a step only when it was asked for. */
+export function installSteps(withBrowsers: boolean): InstallStep[] {
+	if (!withBrowsers) return INSTALL_STEPS;
+	const at = INSTALL_STEPS.findIndex((s) => s.phase === "done");
+	return [
+		...INSTALL_STEPS.slice(0, at),
+		{ phase: "browsers", label: "Installing screenshot browsers" },
+		...INSTALL_STEPS.slice(at),
+	];
+}

@@ -6,7 +6,7 @@ import {
 	completeInstall,
 	initialInstallProgress,
 } from "./installProgress.ts";
-import { INSTALL_STEPS } from "#lib/crew/installSteps.ts";
+import { INSTALL_STEPS, installSteps } from "#lib/crew/installSteps.ts";
 import { crewServerTarget } from "#lib/crew/sshTarget.ts";
 
 const fold = (lines: string[]) => lines.reduce(applyInstallLine, initialInstallProgress());
@@ -32,6 +32,18 @@ describe("applyInstallLine", () => {
 		const p = fold(["step: check", "step: install", "step: done"]);
 		expect(p.active).toBeNull();
 		expect([...p.done].sort()).toEqual(INSTALL_STEPS.map((s) => s.phase).sort());
+	});
+
+	test("with --browsers the phase spins after ssh and ticks when `done` arrives", () => {
+		const during = fold(["step: ssh", "step: browsers"]);
+		expect(during.active).toBe("browsers");
+		expect(during.done.has("ssh")).toBe(true);
+		const p = fold(["step: ssh", "step: browsers", "step: done"]);
+		expect([...p.done].sort()).toEqual(
+			installSteps(true)
+				.map((s) => s.phase)
+				.sort(),
+		);
 	});
 
 	test("progress output and unknown markers change nothing", () => {

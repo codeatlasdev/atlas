@@ -31,6 +31,9 @@ function fakeAtlas(dir: string, name: string, log: string, { code = 0, queue = t
 const bare = "/usr/bin:/bin";
 const run = (args: string[], env: Record<string, string>) =>
 	Bun.spawnSync(shArgv(script, ...args), { env: { PATH: bare, HOME: env.HOME ?? "/nonexistent", ...env }, timeout: 10_000 });
+/** A path as Git Bash reads it in PATH (`C:\x` → `/c/x`); unchanged elsewhere. */
+const posix = (p: string) =>
+	process.platform === "win32" ? p.replace(/^([A-Za-z]):/, (_, d: string) => `/${d.toLowerCase()}`).replaceAll("\\", "/") : p;
 
 /** Env that keeps the fallback away from the real machine: its own lock, no load gate, a memory reading of its own. */
 const fallbackEnv = (dir: string) => ({
@@ -122,18 +125,40 @@ describe("heavy.sh with an atlas that predates the queue, or none", () => {
 		expect(lines[2].startsWith("start-")).toBe(true);
 	});
 
+	// Ubuntu 26.04 (GitHub's ubuntu-latest since image 20261111) ships uutils coreutils, whose `mkdir` 0.10.0 tells
+	// two racing callers that both created the directory (69 of 200 races in ubuntu:26.04), and the lock was a mkdir:
+	// two heavy jobs ran at once (CI of #337 and #338, 2026-11-14). The lock must rest on the shell's own
+	// O_CREAT|O_EXCL, not on an external tool's word, so here every lock tool says yes.
+	test("two jobs still run one after the other when mkdir and shlock claim every lock", async () => {
+		const dir = mkdtempSync(join(tmpdir(), "heavy-"));
+		const liar = join(dir, "bin");
+		mkdirSync(liar);
+		for (const tool of ["mkdir", "shlock"]) {
+			writeFileSync(join(liar, tool), "#!/bin/sh\nexit 0\n");
+			chmodSync(join(liar, tool), 0o755);
+		}
+		const log = posix(join(dir, "log"));
+		const env = { ...fallbackEnv(dir), PATH: `${posix(liar)}:${bare}` };
+		const job = (n: string) =>
+			Bun.spawn([...shArgv(script), "sh", "-c", `echo start-${n} >> ${log}; sleep 1; echo end-${n} >> ${log}`], { env });
+		const [a, b] = [job("a"), job("b")];
+		expect([await a.exited, await b.exited]).toEqual([0, 0]);
+		const lines = readFileSync(join(dir, "log"), "utf8").trim().split("\n");
+		expect(lines).toHaveLength(4);
+		expect(lines[1]).toBe(lines[0].replace("start", "end"));
+	});
+
 	test("a finished job releases the lock, so the next one starts without waiting for a dead owner", () => {
 		const dir = mkdtempSync(join(tmpdir(), "heavy-"));
 		const env = fallbackEnv(dir);
 		expect(run(["true"], env).exitCode).toBe(0);
-		// shlock keeps a pid file, the mkdir fallback a directory: either way nothing may remain.
-		expect(existsSync(env.ATLAS_HEAVY_LOCK) || existsSync(`${env.ATLAS_HEAVY_LOCK}.d`)).toBe(false);
+		expect(existsSync(env.ATLAS_HEAVY_LOCK)).toBe(false);
 	});
 
 	test("a lock left by a job that died does not block the next one, and the exit code passes through", () => {
 		const dir = mkdtempSync(join(tmpdir(), "heavy-"));
 		const env = fallbackEnv(dir);
-		writeFileSync(env.ATLAS_HEAVY_LOCK, "999999\n"); // shlock's pid file of a process that no longer exists
+		writeFileSync(env.ATLAS_HEAVY_LOCK, "999999\n"); // the pid file of a process that no longer exists
 		const p = run(["sh", "-c", "exit 3"], env);
 		expect(p.exitCode).toBe(3);
 	});

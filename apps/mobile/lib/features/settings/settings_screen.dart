@@ -5,6 +5,7 @@ import 'package:go_router/go_router.dart';
 import 'package:atlas_mobile/core/connection/connection_notifier.dart';
 import 'package:atlas_mobile/core/demo/demo_transport.dart';
 import 'package:atlas_mobile/core/demo/demo_computer.dart';
+import 'package:atlas_mobile/core/protocol/host_info.dart';
 import 'package:atlas_mobile/core/protocol/models.dart';
 import 'package:atlas_mobile/core/push/push_provider.dart';
 import 'package:atlas_mobile/core/ui/atlas_theme.dart';
@@ -80,38 +81,11 @@ class SettingsScreen extends ConsumerWidget {
                 child: SizedBox(height: kMinInteractiveDimension),
               ),
             for (final d in devices)
-              AtlasCard(
-                child: Row(
-                  children: [
-                    Icon(Icons.laptop_mac_rounded, color: c.accent),
-                    const SizedBox(width: Space.md),
-                    Expanded(
-                      flex: 2,
-                      child: Text(
-                        friendlyDeviceName(d.name),
-                        maxLines: 2,
-                        overflow: TextOverflow.ellipsis,
-                        style: const TextStyle(fontWeight: FontWeight.w600),
-                      ),
-                    ),
-                    // The demo is not stored: leaving it is the only thing to forget.
-                    // The label gives way at large text sizes instead of overflowing.
-                    Flexible(
-                      child: TextButton(
-                        style: TextButton.styleFrom(foregroundColor: c.error),
-                        onPressed: isDemo(d)
-                            ? () => ref.read(demoModeProvider.notifier).state =
-                                  false
-                            : () => _forget(context, ref, d),
-                        child: Text(
-                          isDemo(d) ? 'Leave demo' : 'Forget',
-                          maxLines: 1,
-                          overflow: TextOverflow.ellipsis,
-                        ),
-                      ),
-                    ),
-                  ],
-                ),
+              _ComputerCard(
+                device: d,
+                onForget: isDemo(d)
+                    ? () => ref.read(demoModeProvider.notifier).state = false
+                    : () => _forget(context, ref, d),
               ),
             const SizedBox(height: Space.sm),
             ListTile(
@@ -146,6 +120,131 @@ class SettingsScreen extends ConsumerWidget {
             ),
           ],
         ),
+      ),
+    );
+  }
+}
+
+/// One paired computer: its name, whether it is reachable, and the Atlas it runs (with an update when its
+/// channel offers one). Forgetting it is in the menu, not a red button on every card.
+class _ComputerCard extends ConsumerWidget {
+  const _ComputerCard({required this.device, required this.onForget});
+  final MacDevice device;
+  final VoidCallback onForget;
+
+  @override
+  Widget build(BuildContext context, WidgetRef ref) {
+    final c = AtlasColors.of(context);
+    final t = Theme.of(context).textTheme;
+    final demo = isDemo(device);
+    final conn = ref.watch(connectionNotifierProvider(device));
+    final online = conn.value != null;
+    final info = online ? ref.watch(hostInfoProvider(device)).value : null;
+    final (dot, status) = online
+        ? (c.success, 'Connected')
+        : conn.isLoading
+        ? (c.warning, 'Connecting…')
+        : (c.faint, 'Offline');
+    final version = info == null ? null : 'Atlas ${info.version}';
+    return AtlasCard(
+      padding: const EdgeInsets.fromLTRB(
+        Space.md,
+        Space.md,
+        Space.xs,
+        Space.md,
+      ),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          Row(
+            children: [
+              Container(
+                width: 44,
+                height: 44,
+                decoration: BoxDecoration(
+                  color: c.accent.withValues(alpha: .12),
+                  borderRadius: BorderRadius.circular(12),
+                ),
+                child: Icon(
+                  Icons.laptop_mac_rounded,
+                  color: c.accent,
+                  size: 22,
+                ),
+              ),
+              const SizedBox(width: Space.md),
+              Expanded(
+                child: Column(
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: [
+                    Text(
+                      friendlyDeviceName(device.name),
+                      maxLines: 1,
+                      overflow: TextOverflow.ellipsis,
+                      style: t.titleMedium,
+                    ),
+                    const SizedBox(height: 3),
+                    Row(
+                      children: [
+                        StatusDot(color: dot, size: 7),
+                        const SizedBox(width: 6),
+                        Flexible(
+                          child: Text(
+                            [status, ?version].join(' · '),
+                            maxLines: 1,
+                            overflow: TextOverflow.ellipsis,
+                            style: t.bodySmall,
+                          ),
+                        ),
+                      ],
+                    ),
+                  ],
+                ),
+              ),
+              PopupMenuButton<String>(
+                tooltip: 'More',
+                icon: Icon(Icons.more_horiz_rounded, color: c.muted),
+                onSelected: (_) => onForget(),
+                itemBuilder: (_) => [
+                  PopupMenuItem(
+                    value: 'forget',
+                    child: Text(
+                      demo ? 'Leave demo' : 'Forget this computer',
+                      style: TextStyle(color: c.error),
+                    ),
+                  ),
+                ],
+              ),
+            ],
+          ),
+          if (info != null && info.updateAvailable) ...[
+            const SizedBox(height: Space.md),
+            Container(
+              padding: const EdgeInsets.all(Space.md),
+              margin: const EdgeInsets.only(right: Space.sm),
+              decoration: BoxDecoration(
+                color: c.accent.withValues(alpha: .08),
+                borderRadius: BorderRadius.circular(Space.radiusSm),
+                border: Border.all(color: c.accent.withValues(alpha: .25)),
+              ),
+              child: Row(
+                children: [
+                  Icon(
+                    Icons.system_update_alt_rounded,
+                    color: c.accent,
+                    size: 20,
+                  ),
+                  const SizedBox(width: Space.sm),
+                  Expanded(
+                    child: Text(
+                      'Atlas ${info.offered} is available',
+                      style: t.bodyMedium!.copyWith(color: c.text),
+                    ),
+                  ),
+                ],
+              ),
+            ),
+          ],
+        ],
       ),
     );
   }

@@ -2,21 +2,20 @@ import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:go_router/go_router.dart';
 
+import 'package:atlas_mobile/core/connection/connection_notifier.dart';
 import 'package:atlas_mobile/core/demo/demo_transport.dart';
 import 'package:atlas_mobile/core/ui/atlas_logo.dart';
 import 'package:atlas_mobile/core/ui/atlas_theme.dart';
 import 'package:atlas_mobile/features/home/home_screen.dart';
 import 'package:atlas_mobile/features/home/onboarding_art.dart';
 
-/// First run (no Mac paired yet): three short pages, then how to pair.
-class Onboarding extends StatefulWidget {
-  const Onboarding({super.key, this.paired = false});
-
-  /// A computer is already paired (debug: onboarding shown anyway): offer to skip pairing.
-  final bool paired;
+/// First run (no computer paired yet, or debug before finishing it this launch): three short pages, then
+/// how to pair. The shell shows it full screen, over the tabs.
+class Onboarding extends ConsumerStatefulWidget {
+  const Onboarding({super.key});
 
   @override
-  State<Onboarding> createState() => _OnboardingState();
+  ConsumerState<Onboarding> createState() => _OnboardingState();
 }
 
 class _Page {
@@ -26,7 +25,7 @@ class _Page {
   final Widget Function(BuildContext) art;
 }
 
-class _OnboardingState extends State<Onboarding> {
+class _OnboardingState extends ConsumerState<Onboarding> {
   final _pages = PageController();
   int _i = 0;
 
@@ -58,16 +57,15 @@ class _OnboardingState extends State<Onboarding> {
     super.dispose();
   }
 
-  void _finish() {
-    final c = ProviderScope.containerOf(context);
-    c.read(onboardingSeenProvider.notifier).state = true;
-  }
+  void _finish() => ref.read(onboardingSeenProvider.notifier).state = true;
 
   void _next() => _pages.nextPage(duration: Motion.slow, curve: Motion.ease);
 
   @override
   Widget build(BuildContext context) {
     final c = AtlasColors.of(context);
+    // A computer is already paired (debug shows the onboarding anyway): the last page opens it.
+    final paired = ref.watch(pairedDevicesProvider).value?.isNotEmpty ?? false;
     return SafeArea(
       child: Column(
         children: [
@@ -119,14 +117,13 @@ class _OnboardingState extends State<Onboarding> {
                   width: double.infinity,
                   child: FilledButton(
                     onPressed: _last
-                        ? () =>
-                              widget.paired ? _finish() : context.push('/pair')
+                        ? () => paired ? _finish() : context.push('/pair')
                         : _next,
                     child: AnimatedSwitcher(
                       duration: Motion.normal,
                       child: Text(
                         _last
-                            ? (widget.paired
+                            ? (paired
                                   ? 'Open my computer'
                                   : 'Scan pairing code')
                             : 'Continue',

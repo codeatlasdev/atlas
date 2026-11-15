@@ -1,6 +1,7 @@
 import 'package:flutter/material.dart';
 
 import 'atlas_theme.dart';
+import 'backdrop.dart';
 
 /// Both tab stacks stay alive (each keeps its navigation and scroll); a switch shows exactly one page on every
 /// frame: the page being left is gone on the first frame, the page being entered fades in over the app ground
@@ -47,8 +48,7 @@ class _FadeBranchesState extends State<FadeBranches>
 
   @override
   Widget build(BuildContext context) {
-    return ColoredBox(
-      color: Theme.of(context).scaffoldBackgroundColor,
+    return AtlasBackdrop(
       child: Stack(
         fit: StackFit.expand,
         children: [

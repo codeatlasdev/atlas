@@ -15,9 +15,9 @@ void main() {
   late Map<String, dynamic> fixture;
 
   setUpAll(() {
-    fixture =
-        jsonDecode(File('test/fixtures/github_origin.json').readAsStringSync())
-            as Map<String, dynamic>;
+    fixture = jsonDecode(
+      File('test/fixtures/github_origin.json').readAsStringSync(),
+    ) as Map<String, dynamic>;
   });
 
   test('CrewmateTask parses the GitHub origin', () {

@@ -34,16 +34,6 @@ Future<void> _settle(WidgetTester t) async {
   }
 }
 
-// Navigate through the three-page onboarding when a device is already paired.
-Future<void> _throughOnboarding(WidgetTester t) async {
-  for (var i = 0; i < 3; i++) {
-    await t.tap(find.text('Continue'));
-    await _settle(t);
-  }
-  await t.tap(find.text('Open my computer'));
-  await _settle(t);
-}
-
 void main() {
   // ── 1. Pure unit tests for friendlyDeviceName ──────────────────────────────
 
@@ -140,9 +130,6 @@ void main() {
     );
     await _settle(t);
 
-    // Debug builds show onboarding first; tap through it.
-    await _throughOnboarding(t);
-
     expect(
       find.text('shop'),
       findsOneWidget,
@@ -181,7 +168,6 @@ void main() {
       ),
     );
     await _settle(t);
-    await _throughOnboarding(t);
 
     expect(find.text('No projects yet'), findsNothing);
     expect(find.text('app'), findsOneWidget);
@@ -239,7 +225,6 @@ void main() {
         ),
       );
       await _settle(t);
-      await _throughOnboarding(t);
 
       await t.tap(find.textContaining('migrate the firestore data'));
       await _settle(t);

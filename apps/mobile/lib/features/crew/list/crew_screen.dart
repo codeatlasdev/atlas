@@ -22,6 +22,7 @@ import 'package:atlas_mobile/core/ui/floating_tab_bar.dart';
 import 'package:atlas_mobile/core/ui/protocol_banner.dart';
 import 'package:atlas_mobile/features/crew/crew_provider.dart';
 import 'package:atlas_mobile/features/crew/invite_sheet.dart';
+import 'package:atlas_mobile/features/crew/list/crew_skeleton.dart';
 import 'package:atlas_mobile/features/crew/list/crew_deck.dart';
 import 'package:atlas_mobile/features/crew/list/crewmate_row.dart';
 import 'package:atlas_mobile/features/crew/list/needs_you_card.dart';
@@ -175,30 +176,10 @@ class _CrewScreenState extends ConsumerState<CrewScreen> {
     return Scaffold(
       body: Stack(
         children: [
-          // The crew's lantern: a glow behind the crew that starts above the status
-          // bar, so it never meets the screen's top edge as a hard line.
-          Positioned(
-            top: -200,
-            left: -80,
-            right: -80,
-            height: 520,
-            child: IgnorePointer(
-              child: DecoratedBox(
-                decoration: BoxDecoration(
-                  gradient: RadialGradient(
-                    colors: [
-                      c.accent.withValues(alpha: .18),
-                      c.accent.withValues(alpha: 0),
-                    ],
-                  ),
-                ),
-              ),
-            ),
-          ),
           SafeArea(
             bottom: false,
             child: allEntries.isEmpty && loading && failed.isEmpty
-                ? const Center(child: CircularProgressIndicator())
+                ? const CrewSkeleton()
                 : allEntries.isEmpty && devicesAsync.hasError
                 ? _CrewError(
                     title: "Couldn't list your computers",

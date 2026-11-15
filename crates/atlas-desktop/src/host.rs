@@ -468,8 +468,16 @@ fn report_unreachable(app: &AppHandle, hub: &HostHub, host: &str, why: &str) {
 
 /// What a (re)connect and a lag of the event stream both do: re-learn what the daemon runs (a `pty_exit` among
 /// dropped events must not leave its terminal listed as running), tell the webview to re-read and re-attach.
+/// `reattach` also rebuilds the native (GPU) terminals: right after a connect, never after a lag (it replays every
+/// terminal, which is load on a host that just proved it cannot keep up; the webview's xterm re-attach is enough).
 /// `false` when the daemon did not answer: it is reported and the caller drops the connection.
-async fn resync(app: &AppHandle, hub: &HostHub, host: &str, c: &HostClient) -> bool {
+async fn resync(
+    app: &AppHandle,
+    hub: &HostHub,
+    host: &str,
+    c: &HostClient,
+    reattach: bool,
+) -> bool {
     match hub.sync_ptys(host, c).await {
         Ok(Some(state)) => {
             let _ = app.emit("host://status", state);
@@ -483,10 +491,74 @@ async fn resync(app: &AppHandle, hub: &HostHub, host: &str, c: &HostClient) -> b
         Err(_) => {}
     }
     let _ = app.emit("host://reconnected", json!({"host": host}));
-    if host == LOCAL {
+    if host == LOCAL && reattach {
         crate::term::reattach_all().await;
     }
     true
+}
+
+/// One resync, one notice and one incident per this long, however many times the event stream lags: each resync
+/// asks the host for more and makes the webview re-attach, which is exactly the load that causes the next lag.
+const LAG_WINDOW: Duration = Duration::from_secs(5);
+
+/// Coalesces lags: the first acts at once, later ones inside the window are counted and acted on together when it
+/// closes (events lost in between may hold a `pty_exit`, so they are never just ignored).
+struct LagGate {
+    window: Duration,
+    quiet_until: Option<std::time::Instant>,
+    lost: u64,
+    deferred: bool,
+}
+
+impl LagGate {
+    fn new(window: Duration) -> Self {
+        Self {
+            window,
+            quiet_until: None,
+            lost: 0,
+            deferred: false,
+        }
+    }
+
+    /// `n` events were dropped at `now`: `Some(total dropped since the last action)` when to resync now.
+    fn lagged(&mut self, now: std::time::Instant, n: u64) -> Option<u64> {
+        self.lost += n;
+        if self.quiet_until.is_none_or(|q| now >= q) {
+            return Some(self.fire(now));
+        }
+        self.deferred = true;
+        None
+    }
+
+    /// When the deferred resync is due, if one is waiting.
+    fn due(&self) -> Option<std::time::Instant> {
+        self.deferred.then_some(self.quiet_until).flatten()
+    }
+
+    /// The deferred resync, once its time came.
+    fn flush(&mut self, now: std::time::Instant) -> Option<u64> {
+        (self.deferred && self.due().is_some_and(|d| now >= d)).then(|| self.fire(now))
+    }
+
+    fn fire(&mut self, now: std::time::Instant) -> u64 {
+        self.quiet_until = Some(now + self.window);
+        self.deferred = false;
+        std::mem::take(&mut self.lost)
+    }
+}
+
+/// The event stream of `host` lagged by `lost` events: leave a trace the user can see and a report carries, and
+/// resync as a reconnect does. `false` when the daemon did not answer.
+async fn lag_resync(app: &AppHandle, hub: &HostHub, host: &str, c: &HostClient, lost: u64) -> bool {
+    crate::diag::incident(
+        "events-lagged",
+        &format!("host {host}: {lost} events were dropped; terminals were resynced"),
+    );
+    let _ = app.emit(
+        "host://toast",
+        json!({"kind": "warning", "text": "Terminal events were dropped under load. Terminals were resynced."}),
+    );
+    resync(app, hub, host, c, false).await
 }
 
 /// Register a connected client and pump its events until it disconnects.
@@ -494,25 +566,37 @@ pub async fn serve_client(app: &AppHandle, host: &str, c: HostClient) {
     let hub = app.state::<Arc<HostHub>>().inner().clone();
     let mut rx = c.events();
     hub.set(host, Some(c.clone())).await;
-    if !resync(app, &hub, host, &c).await {
+    if !resync(app, &hub, host, &c, true).await {
         hub.set(host, None).await;
         return;
     }
+    let mut gate = LagGate::new(LAG_WINDOW);
     loop {
-        let ev = match rx.recv().await {
+        let due = gate.due();
+        let received = tokio::select! {
+            r = rx.recv() => r,
+            () = async {
+                match due {
+                    Some(t) => tokio::time::sleep_until(tokio::time::Instant::from_std(t)).await,
+                    None => std::future::pending().await,
+                }
+            } => {
+                if let Some(lost) = gate.flush(std::time::Instant::now())
+                    && !lag_resync(app, &hub, host, &c, lost).await
+                {
+                    break;
+                }
+                continue;
+            }
+        };
+        let ev = match received {
             Ok(ev) => ev,
             // A slow consumer lags; that is not a disconnect, but the dropped events may have held a `pty_exit`
-            // (#299): resync as a reconnect does, and leave a trace the user can see and a report carries.
+            // (#299): resync as a reconnect does, at most once per window.
             Err(tokio::sync::broadcast::error::RecvError::Lagged(n)) => {
-                crate::diag::incident(
-                    "events-lagged",
-                    &format!("host {host}: {n} events were dropped; terminals were resynced"),
-                );
-                let _ = app.emit(
-                    "host://toast",
-                    json!({"kind": "warning", "text": "Terminal events were dropped under load. Terminals were resynced."}),
-                );
-                if !resync(app, &hub, host, &c).await {
+                if let Some(lost) = gate.lagged(std::time::Instant::now(), n)
+                    && !lag_resync(app, &hub, host, &c, lost).await
+                {
                     break;
                 }
                 continue;
@@ -1077,8 +1161,7 @@ pub async fn host_restart(
 }
 
 /// "Restart terminal host" from an error: works when the daemon answers (graceful shutdown) and
-/// when it does not (a wedged or unauthenticable one): the connect loop's `ensure_in` retires
-/// that daemon by its exact pid. Ends the terminals it hosts; the frontend asked first.
+/// when it does not (a wedged one): it is retired by its exact pid (`retire_hostd`). Ends the terminals it hosts; the frontend asked first.
 #[tauri::command]
 pub async fn host_restart_force(
     app: AppHandle,
@@ -1086,6 +1169,9 @@ pub async fn host_restart_force(
 ) -> Result<(), String> {
     crate::diag::incident("restarted", "restart requested from the error toast");
     restart_local(&app, &hub).await;
+    // A daemon that did not act on `shutdown` (wedged) is ended by its exact pid, which `ensure_in` no longer does
+    // for one that is only unresponsive: the user asked for this.
+    atlas_host::client::retire_hostd(&atlas_host::paths::base(), Duration::from_secs(2)).await;
     // Drop the dead client so the next call waits for the new daemon instead of failing on it.
     hub.set(LOCAL, None).await;
     Ok(())
@@ -1268,6 +1354,29 @@ mod tests {
             hub.pty_host.lock().get("p1").map(String::as_str),
             Some(LOCAL)
         );
+    }
+
+    // #299 review: every lag used to toast, record an incident, resync and rebuild the GPU terminals, which is the
+    // load that causes the next lag. One action per window, the dropped events counted, the tail never lost.
+    #[test]
+    fn a_lag_storm_acts_once_per_window_and_never_loses_the_tail() {
+        let t0 = std::time::Instant::now();
+        let s = Duration::from_secs;
+        let mut g = LagGate::new(s(5));
+        assert_eq!(g.lagged(t0, 100), Some(100));
+        assert_eq!(g.lagged(t0 + s(1), 50), None);
+        assert_eq!(g.lagged(t0 + s(2), 25), None);
+        // The deferred resync is due when the window closes, and carries what was lost since.
+        assert_eq!(g.due(), Some(t0 + s(5)));
+        assert_eq!(g.flush(t0 + s(4)), None);
+        assert_eq!(g.flush(t0 + s(5)), Some(75));
+        assert_eq!(g.due(), None);
+        assert_eq!(g.flush(t0 + s(6)), None, "nothing deferred: nothing to do");
+        // That action opened a new window.
+        assert_eq!(g.lagged(t0 + s(7), 10), None);
+        assert_eq!(g.lagged(t0 + s(10), 5), Some(15));
+        // A lag long after the last one acts at once.
+        assert_eq!(g.lagged(t0 + s(60), 1), Some(1));
     }
 
     #[test]

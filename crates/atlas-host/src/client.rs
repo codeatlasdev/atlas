@@ -32,6 +32,9 @@ const PROBE_DEADLINE: Duration = Duration::from_secs(5);
 /// What "no deadline" means for a call that runs a user's own command: a day.
 const NO_DEADLINE: Duration = Duration::from_secs(24 * 3600);
 
+/// The cap of a call that is not provably quick (see [`LONG`]).
+const LONG_CALL_DEADLINE: Duration = Duration::from_secs(3600);
+
 /// Commands that answer from memory or one small local read/write: [`CALL_DEADLINE`] (what an unlisted name gets;
 /// the list exists so the test can tell "decided" from "forgotten").
 #[cfg(test)]
@@ -93,7 +96,6 @@ const QUICK: &[&str] = &[
     "pty_attach",
     "pty_attach_raw",
     "pty_clear",
-    "pty_create",
     "pty_detach",
     "pty_info",
     "pty_list",
@@ -107,63 +109,51 @@ const QUICK: &[&str] = &[
     "shutdown",
 ];
 
-/// Commands that legitimately outlast [`CALL_DEADLINE`], each with the bound its handler has plus a margin of
-/// 10 s (so the handler's own error, not this deadline, is what the caller sees). Seconds, and why:
-const SLOW: &[(&str, u64)] = &[
-    // Session files read and parsed; integrations run the agents' own `status` (10 s each).
-    ("agent_history", 30),
-    ("agent_tree", 30),
-    ("agent_integrations", 30),
-    // Worktree list (70) + the desktop's `terminal_create` (60).
-    ("agent_launch", 140),
-    // `gh auth status` and `gh --version` are 120 s each (`crew::proc`); `login_start` also downloads gh
-    // (once) and waits 30 s for the device code; `login_poll` sets up git credentials and asks again.
-    ("crew_github_status", 250),
-    ("crew_github_login_start", 360),
-    ("crew_github_login_poll", 250),
-    ("crew_github_logout", 60),
-    // Probes of the four engines run together, 20 s each; the login only spawns its terminal.
-    ("crew_engine_status", 40),
-    ("crew_engine_login", 30),
-    // A running turn is waited for 30 s, then four git calls (120 s each).
-    ("crewmate_delete", 300),
-    // Large reads and writes; a recursive remove of a tree such as node_modules.
-    ("fs_read", 30),
-    ("fs_write", 30),
-    ("fs_remove", 120),
-    // `GIT_TIMEOUT` 60 s per git call. Network (push, `gh pr create`): `NET_TIMEOUT` 120 s.
-    ("git_status", 70),
-    ("git_diff", 70),
-    ("git_stage", 70),
-    ("git_unstage", 70),
-    ("git_commit", 70),
-    ("git_push", 130),
-    ("git_pr_create", 130),
-    // Runs the user's chosen agent CLI on the diff: no bound of its own, so a quarter of an hour.
-    ("git_commit_message", 900),
-    // Server start (`init_timeout` 120 s) then the request (`request_timeout` 60 s); install downloads.
-    ("lsp_open", 130),
-    ("lsp_restart", 130),
-    ("lsp_request", 190),
-    ("lsp_install", 600),
-    ("lsp_uninstall", 30),
-    ("lsp_catalog", 30),
-    // Binds the iroh endpoint.
-    ("mobile_pair_start", 30),
-    // `wait_exit` 30 s + 10 s; `pty_open` lists worktrees first (70 s).
-    ("pty_kill", 60),
-    ("pty_open", 80),
-    // atlas tool calls (status, logs) per project; `service` starts and stops a stack and waits for it.
-    ("project_list", 120),
-    ("project_detail", 120),
-    ("project_logs", 60),
-    ("project_service", 600),
-    // Git calls of 60 s; `create` runs the project's setup (`setup_timeout`, 600 s by default, per project).
-    ("worktree_list", 70),
-    ("worktree_create", 3600),
-    ("worktree_remove", 300),
-    // Accept 20 s + ack 20 s of the handoff, plus spawning the new daemon.
-    ("upgrade", 60),
+/// Everything not provably quick: its handler spawns a process, reads or writes files of unbounded size, waits for
+/// another process, or loops over worktrees/projects (each git call up to 60 s). The handlers' own bounds are not
+/// hugged (they multiply, and drift): [`LONG_CALL_DEADLINE`] only caps a call, and the liveness probe (below) is what
+/// notices a wedged daemon. The note says why a command is not [`QUICK`].
+const LONG: &[&str] = &[
+    "agent_history",
+    "agent_tree",
+    "agent_integrations",
+    "agent_launch",
+    "crew_github_status",
+    "crew_github_login_start",
+    "crew_github_login_poll",
+    "crew_github_logout",
+    "crew_engine_status",
+    "crew_engine_login",
+    "crewmate_delete",
+    "fs_read",
+    "fs_write",
+    "fs_remove",
+    "git_status",
+    "git_diff",
+    "git_stage",
+    "git_unstage",
+    "git_commit",
+    "git_push",
+    "git_pr_create",
+    "git_commit_message",
+    "lsp_open",
+    "lsp_restart",
+    "lsp_request",
+    "lsp_install",
+    "lsp_uninstall",
+    "lsp_catalog",
+    "mobile_pair_start",
+    "pty_create",
+    "pty_kill",
+    "pty_open",
+    "project_list",
+    "project_detail",
+    "project_logs",
+    "project_service",
+    "worktree_list",
+    "worktree_create",
+    "worktree_remove",
+    "upgrade",
 ];
 
 /// Commands whose deadline depends on the call (see [`deadline_for`]) or that have none.
@@ -190,10 +180,8 @@ pub fn deadline_for(cmd: &str, args: &Value) -> Duration {
             deadline_for(args["cmd"].as_str().unwrap_or_default(), &args["args"])
                 + Duration::from_secs(30)
         }
-        _ => match SLOW.iter().find(|(c, _)| *c == cmd) {
-            Some((_, secs)) => Duration::from_secs(*secs),
-            None => CALL_DEADLINE,
-        },
+        c if LONG.contains(&c) => LONG_CALL_DEADLINE,
+        _ => CALL_DEADLINE,
     }
 }
 
@@ -213,10 +201,59 @@ impl std::fmt::Display for Unanswered {
 
 impl std::error::Error for Unanswered {}
 
+/// The daemon cannot be used by this client, whatever it is doing: nothing listens on its socket, its token
+/// cannot be read, or it refused ours (`unauthorized`). Only this (never [`Unanswered`], never any other error
+/// of a daemon that did answer) lets [`ensure_in`] retire a live daemon: a slow or wedged one is not ours to kill.
+#[derive(Debug)]
+pub struct Unusable(String);
+
+impl std::fmt::Display for Unusable {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        f.write_str(&self.0)
+    }
+}
+
+impl std::error::Error for Unusable {}
+
+/// Did `connect` fail in a way that proves the daemon unusable by us (see [`Unusable`])?
+pub fn is_unusable(e: &CallError) -> bool {
+    e.downcast_ref::<Unusable>().is_some()
+}
+
 /// A pushed event: `{"ev": "...", ...}`.
 pub type HostEvent = Arc<Value>;
 
 type ReplyRx = oneshot::Receiver<Result<Value, String>>;
+
+/// How a wait for a reply ended.
+enum Waited {
+    Reply(Result<Value, String>),
+    /// The connection went away with the call unanswered.
+    Dropped,
+    /// The liveness probe found the daemon silent.
+    Silent,
+}
+
+/// A call's entry in `pending`, removed when the call ends however it ends (reply, deadline, probe, or the
+/// caller dropping the future mid-wait).
+struct Slot<'a> {
+    client: &'a HostClient,
+    id: u64,
+}
+
+impl Drop for Slot<'_> {
+    fn drop(&mut self) {
+        if let Some(m) = self.client.pending.lock().as_mut() {
+            m.remove(&self.id);
+        }
+    }
+}
+
+/// ` (see <hostd.log>)` for a local daemon, nothing for a tunnel or relay (that log is not on this machine).
+fn see_log(log: Option<&Path>) -> String {
+    log.map(|l| format!(" (see {})", l.display()))
+        .unwrap_or_default()
+}
 
 /// Calls waiting for their reply. `None` once the connection dropped: the reader closes it as it
 /// exits, so a call can never register after the last moment anyone would answer it (#226).
@@ -229,28 +266,33 @@ pub struct HostClient {
     next: Arc<AtomicU64>,
     events: broadcast::Sender<HostEvent>,
     closed: Arc<tokio::sync::Notify>,
-    /// `hostd.log` next to the socket, named in the error of a call that got no answer.
-    log: Arc<Path>,
-    /// `(interval, deadline)` of the liveness probe of long calls; a field so a test can shorten it.
-    probe: (Duration, Duration),
+    /// `hostd.log` of the local daemon this client was opened on ([`connect_dir`](Self::connect_dir)), named in the
+    /// error of a call that got no answer. `None` for a tunnel or relay: that log is not on this machine.
+    log: Option<Arc<Path>>,
+    /// `(interval, deadline)` of the liveness probe of long calls; a field so a test can shorten it. `None` on a
+    /// lab daemon, which answers its forwarded commands inline in its read loop, so it cannot answer a probe.
+    probe: Option<(Duration, Duration)>,
+    /// Lines received so far, any kind: a daemon that is streaming is alive however slowly it answers.
+    received: Arc<AtomicU64>,
 }
 
 impl HostClient {
+    /// Connect with a token. The handshake is bounded by [`HANDSHAKE_DEADLINE`].
     pub async fn connect(socket: &Path, token: &str, client: &str) -> Result<Self> {
-        Self::connect_within(socket, token, client, HANDSHAKE_DEADLINE).await
+        Self::connect_within(socket, token, client, HANDSHAKE_DEADLINE, None).await
     }
 
-    /// [`connect`](Self::connect) with an explicit handshake deadline.
+    /// [`connect`](Self::connect) with an explicit handshake deadline; `log` is the daemon's log when it is local.
     async fn connect_within(
         socket: &Path,
         token: &str,
         client: &str,
         handshake: Duration,
+        log: Option<Arc<Path>>,
     ) -> Result<Self> {
-        let log: Arc<Path> = paths::log(socket.parent().unwrap_or(Path::new("."))).into();
         let stream = ipc::connect(socket)
             .await
-            .with_context(|| format!("connect {}", socket.display()))?;
+            .map_err(|e| Unusable(format!("connect {}: {e}", socket.display())))?;
         let (r, mut w) = ipc::split(stream);
         let mut lines = BufReader::new(r).lines();
         let hello = crate::protocol::hello_line(token, client);
@@ -264,27 +306,37 @@ impl HostClient {
         .await
         .map_err(|_| {
             Unanswered(format!(
-                "hostd did not answer the handshake within {}s (see {})",
+                "hostd did not answer the handshake within {}s{}",
                 handshake.as_secs(),
-                log.display()
+                see_log(log.as_deref())
             ))
         })??;
         let v: Value = serde_json::from_str(&first)?;
         if v["ok"] != true {
-            return Err(anyhow!(
-                "hostd: {}",
-                v["error"].as_str().unwrap_or("handshake failed")
-            ));
+            let why = v["error"].as_str().unwrap_or("handshake failed");
+            // Only a refused token proves the daemon unusable; any other answer is a daemon that is alive.
+            return Err(match why {
+                "unauthorized" => Unusable(format!("hostd: {why}")).into(),
+                _ => anyhow!("hostd: {why}"),
+            });
         }
+        let lab = !v["data"]["lab"].is_null();
 
         let (tx, rx) = crate::pty::out_channel();
         tokio::spawn(crate::protocol::write_lines(rx, w));
         let pending: Pending = Arc::new(Mutex::new(Some(HashMap::new())));
         let (events, _) = broadcast::channel(4096);
         let closed = Arc::new(tokio::sync::Notify::new());
-        let (p, ev, cl) = (pending.clone(), events.clone(), closed.clone());
+        let received = Arc::new(AtomicU64::new(0));
+        let (p, ev, cl, rx_lines) = (
+            pending.clone(),
+            events.clone(),
+            closed.clone(),
+            received.clone(),
+        );
         tokio::spawn(async move {
             while let Ok(Some(line)) = lines.next_line().await {
+                rx_lines.fetch_add(1, Ordering::Relaxed);
                 let Ok(v) = serde_json::from_str::<Value>(&line) else {
                     continue;
                 };
@@ -314,7 +366,8 @@ impl HostClient {
             events,
             closed,
             log,
-            probe: (PROBE_EVERY, PROBE_DEADLINE),
+            probe: (!lab).then_some((PROBE_EVERY, PROBE_DEADLINE)),
+            received,
         })
     }
 
@@ -324,84 +377,76 @@ impl HostClient {
         self.call_within(cmd, args, deadline).await
     }
 
-    /// Register a call and send it: its id and the receiver of its reply. `Err` when the connection is gone.
-    fn send(&self, cmd: &str, args: Value) -> Result<(u64, ReplyRx)> {
+    /// Register a call and send it: its pending slot (freed when dropped) and the receiver of its reply. `Err`
+    /// when the connection is gone.
+    fn send(&self, cmd: &str, args: Value) -> Result<(Slot<'_>, ReplyRx)> {
         let id = self.next.fetch_add(1, Ordering::Relaxed);
         let (otx, orx) = oneshot::channel();
         match self.pending.lock().as_mut() {
             Some(m) => m.insert(id, otx),
             None => return Err(anyhow!("hostd disconnected")),
         };
+        let slot = Slot { client: self, id };
         let line = json!({"id": id, "cmd": cmd, "args": args}).to_string();
         if self.tx.force(line).is_err() {
-            self.forget(id);
             return Err(anyhow!("hostd disconnected"));
         }
-        Ok((id, orx))
+        Ok((slot, orx))
     }
 
-    /// Drop the pending slot of a call nobody waits for any more.
-    fn forget(&self, id: u64) {
-        if let Some(m) = self.pending.lock().as_mut() {
-            m.remove(&id);
-        }
-    }
-
-    /// Did hostd fail to answer an `info` within the probe deadline? A dropped connection is not "unanswered":
-    /// the call being waited for reports that itself.
-    async fn unanswered_probe(&self) -> bool {
-        let Ok((id, rx)) = self.send("info", json!({})) else {
+    /// Did hostd go silent: no reply to an `info` within `deadline` AND nothing at all received meanwhile? A
+    /// daemon that is streaming (hostd queues replies behind up to 8 MiB of pty output, minutes on a slow tunnel)
+    /// is alive. A dropped connection is not silence either: the call being waited for reports that itself.
+    async fn silent(&self, deadline: Duration) -> bool {
+        let before = self.received.load(Ordering::Relaxed);
+        let Ok((_slot, rx)) = self.send("info", json!({})) else {
             return false;
         };
-        let silent = tokio::time::timeout(self.probe.1, rx).await.is_err();
-        if silent {
-            self.forget(id);
-        }
-        silent
+        tokio::time::timeout(deadline, rx).await.is_err()
+            && self.received.load(Ordering::Relaxed) == before
     }
 
     /// [`call`](Self::call) with an explicit deadline. A daemon that never answers (wedged, or
     /// the reply lost) fails the call and frees its `pending` slot instead of hanging the caller (#298).
     ///
     /// A call allowed more than [`CALL_DEADLINE`] also probes hostd while it waits, so a daemon that wedges
-    /// mid-call is noticed within one probe interval and deadline, not after a quarter of an hour (or a day).
+    /// mid-call is noticed within one probe interval and deadline, not after the class deadline (an hour, or a day).
     pub async fn call_within(&self, cmd: &str, args: Value, deadline: Duration) -> Result<Value> {
-        let (id, mut orx) = self.send(cmd, args)?;
-        let long = deadline > CALL_DEADLINE;
+        let (_slot, mut orx) = self.send(cmd, args)?;
+        let probe = self.probe.filter(|_| deadline > CALL_DEADLINE);
         let wait = async {
             loop {
                 tokio::select! {
-                    r = &mut orx => return Some(r),
-                    () = tokio::time::sleep(self.probe.0), if long => {
-                        if self.unanswered_probe().await {
-                            return None;
+                    r = &mut orx => return r.map_or(Waited::Dropped, Waited::Reply),
+                    () = tokio::time::sleep(probe.map_or(Duration::MAX, |p| p.0)), if probe.is_some() => {
+                        if self.silent(probe.map_or(Duration::ZERO, |p| p.1)).await {
+                            // A reply that landed while the probe waited wins over the verdict.
+                            return match orx.try_recv() {
+                                Ok(r) => Waited::Reply(r),
+                                Err(oneshot::error::TryRecvError::Closed) => Waited::Dropped,
+                                Err(oneshot::error::TryRecvError::Empty) => Waited::Silent,
+                            };
                         }
                     }
                 }
             }
         };
         match tokio::time::timeout(deadline, wait).await {
-            Ok(Some(Ok(Ok(v)))) => Ok(v),
-            Ok(Some(Ok(Err(e)))) => Err(anyhow!(e)),
-            Ok(Some(Err(_))) => Err(anyhow!("hostd disconnected")),
-            Ok(None) => {
-                self.forget(id);
-                Err(Unanswered(format!(
-                    "hostd stopped answering while `{cmd}` was running: no reply to `info` within {}s (see {})",
-                    self.probe.1.as_secs(),
-                    self.log.display()
-                ))
-                .into())
-            }
-            Err(_) => {
-                self.forget(id);
-                Err(Unanswered(format!(
-                    "hostd did not answer `{cmd}` within {}s (see {})",
-                    deadline.as_secs(),
-                    self.log.display()
-                ))
-                .into())
-            }
+            Ok(Waited::Reply(Ok(v))) => Ok(v),
+            Ok(Waited::Reply(Err(e))) => Err(anyhow!(e)),
+            Ok(Waited::Dropped) => Err(anyhow!("hostd disconnected")),
+            Ok(Waited::Silent) => Err(Unanswered(format!(
+                "hostd stopped answering while `{cmd}` was running: nothing received for {}s{}",
+                probe.map_or(0, |p| p.1.as_secs()),
+                see_log(self.log.as_deref())
+            ))
+            .into()),
+            Err(_) => Err(Unanswered(format!(
+                "hostd did not answer `{cmd}` within {}s{}",
+                deadline.as_secs(),
+                see_log(self.log.as_deref())
+            ))
+            .into()),
         }
     }
 
@@ -423,8 +468,13 @@ impl HostClient {
 
     /// Connect to the hostd at `dir` (default `~/.atlas`).
     pub async fn connect_dir(dir: &Path, client: &str) -> Result<Self> {
-        let token = paths::read_token(dir).context("hostd token")?;
-        Self::connect(&paths::socket(dir), &token, client).await
+        Self::connect_dir_within(dir, client, HANDSHAKE_DEADLINE).await
+    }
+
+    async fn connect_dir_within(dir: &Path, client: &str, handshake: Duration) -> Result<Self> {
+        let token = paths::read_token(dir).map_err(|e| Unusable(format!("hostd token: {e}")))?;
+        let log: Arc<Path> = paths::log(dir).into();
+        Self::connect_within(&paths::socket(dir), &token, client, handshake, Some(log)).await
     }
 }
 
@@ -462,12 +512,26 @@ pub async fn ensure_local(atlas: &Path, client: &str) -> Result<HostClient> {
 
 /// [`ensure_local`] for the hostd at `dir`.
 ///
-/// A daemon that holds the singleton lock but cannot be talked to (its token file was replaced,
-/// it is wedged) would make every spawn below die with "another atlas hostd is running", so
-/// the caller never connected (1.5.0-alpha.5). [`retire_unusable`] ends exactly that daemon first.
+/// A daemon that holds the singleton lock but is unusable by us (its token file was replaced, so it refuses ours)
+/// would make every spawn below die with "another atlas hostd is running", so the caller never connected
+/// (1.5.0-alpha.5). [`retire_unusable`] ends exactly that daemon first. One that is merely slow to answer or
+/// wedged is NOT ended (its terminals would die with it): the error is returned and the user restarts it.
 pub async fn ensure_in(dir: &Path, atlas: &Path, client: &str) -> Result<HostClient> {
-    if let Ok(c) = HostClient::connect_dir(dir, client).await {
-        return Ok(c);
+    ensure_in_within(dir, atlas, client, HANDSHAKE_DEADLINE).await
+}
+
+async fn ensure_in_within(
+    dir: &Path,
+    atlas: &Path,
+    client: &str,
+    handshake: Duration,
+) -> Result<HostClient> {
+    match HostClient::connect_dir_within(dir, client, handshake).await {
+        Ok(c) => return Ok(c),
+        // A live daemon that is slow to say hello (a busy box, a lock held) or wedged is not ours to kill: its
+        // terminals and crew agents would die with it. Report it; the user restarts it knowingly.
+        Err(e) if !is_unusable(&e) && live_hostd_pid(dir).is_some() => return Err(e),
+        Err(_) => {}
     }
     retire_unusable(dir).await;
     std::fs::create_dir_all(dir)?;
@@ -522,22 +586,37 @@ fn is_hostd_command(cmd: &str) -> bool {
 }
 
 /// The pid of a live atlas hostd in `dir` that this client cannot use (it holds the lock but
-/// `connect_dir` fails): what `ensure_in` is about to retire. `None` when nothing runs or it answers.
+/// `connect_dir` fails in a way that proves it unusable, see [`Unusable`]): what `ensure_in` is about to retire.
+/// `None` when nothing runs, it answers, or it is merely slow.
 pub async fn unusable_hostd_pid(dir: &Path) -> Option<u32> {
     let pid = live_hostd_pid(dir)?;
     HostClient::connect_dir(dir, "probe")
         .await
         .err()
+        .filter(is_unusable)
         .map(|_| pid)
 }
 
-/// The daemon of `dir` is alive but `connect_dir` fails: ask it to stop with `SIGTERM` (its
-/// handler ends its terminals cleanly) and wait for its pid lock to free. Exact pid only, and
-/// only after [`live_hostd_pid`] confirmed it is an atlas hostd; never a port, never a name.
+/// The daemon of `dir` is alive but unusable ([`Unusable`]): end it now. See [`retire_hostd`].
 async fn retire_unusable(dir: &Path) {
+    retire_hostd(dir, Duration::ZERO).await;
+}
+
+/// End the atlas hostd of `dir` if it is still alive after `grace`: `SIGTERM` (its handler ends its terminals
+/// cleanly), then wait for its pid lock to free. Exact pid only, and only after [`live_hostd_pid`] confirmed it is
+/// an atlas hostd; never a port, never a name. The desktop's "Restart terminal host" uses it for a daemon that
+/// does not answer `shutdown`.
+pub async fn retire_hostd(dir: &Path, grace: Duration) {
     let Some(pid) = live_hostd_pid(dir) else {
         return;
     };
+    let until = tokio::time::Instant::now() + grace;
+    while atlas_core::sys::pid_alive(pid) && tokio::time::Instant::now() < until {
+        tokio::time::sleep(Duration::from_millis(100)).await;
+    }
+    if !atlas_core::sys::pid_alive(pid) {
+        return;
+    }
     // `pid` was just verified to be this dir's atlas hostd. Windows ends it outright: its
     // terminals' pseudo consoles close with it.
     atlas_core::sys::terminate(pid);
@@ -614,8 +693,8 @@ mod tests {
         tokio::sync::oneshot::Sender<()>,
     ) {
         let tmp = tempfile::tempdir().unwrap();
-        let sock = tmp.path().join("h.sock");
-        let listener = ipc::Listener::bind(&sock).unwrap();
+        std::fs::write(crate::paths::token(tmp.path()), "t").unwrap();
+        let listener = ipc::Listener::bind(&crate::paths::socket(tmp.path())).unwrap();
         let (hang_up, go) = tokio::sync::oneshot::channel::<()>();
         tokio::spawn(async move {
             let (r, mut w) = ipc::split(listener.accept().await.unwrap());
@@ -627,7 +706,7 @@ mod tests {
             }
             let _ = go.await;
         });
-        let c = HostClient::connect(&sock, "t", "test").await.unwrap();
+        let c = HostClient::connect_dir(tmp.path(), "test").await.unwrap();
         (tmp, c, hang_up)
     }
 
@@ -701,7 +780,7 @@ mod tests {
     #[tokio::test]
     async fn a_long_call_fails_at_the_first_unanswered_probe_not_at_its_class_deadline() {
         let (_tmp, mut c, _h) = fake_hostd(1).await;
-        c.probe = (Duration::from_millis(200), Duration::from_millis(200));
+        c.probe = Some((Duration::from_millis(200), Duration::from_millis(200)));
         let t = std::time::Instant::now();
         let r = tokio::time::timeout(
             Duration::from_secs(5),
@@ -753,7 +832,7 @@ mod tests {
             }
         });
         let mut c = HostClient::connect(&sock, "t", "test").await.unwrap();
-        c.probe = (Duration::from_millis(100), Duration::from_millis(500));
+        c.probe = Some((Duration::from_millis(100), Duration::from_millis(500)));
         let v = c
             .call_within("project_action", json!({}), Duration::from_secs(3600))
             .await
@@ -766,21 +845,192 @@ mod tests {
     #[tokio::test]
     async fn connect_to_a_daemon_that_never_says_hello_fails_at_the_handshake_deadline() {
         let tmp = tempfile::tempdir().unwrap();
-        let sock = tmp.path().join("h.sock");
-        let listener = ipc::Listener::bind(&sock).unwrap();
+        std::fs::write(crate::paths::token(tmp.path()), "t").unwrap();
+        let listener = ipc::Listener::bind(&crate::paths::socket(tmp.path())).unwrap();
         tokio::spawn(async move {
             let _held = listener.accept().await.unwrap();
             std::future::pending::<()>().await;
         });
         let t = std::time::Instant::now();
-        let e = HostClient::connect_within(&sock, "t", "test", Duration::from_millis(300))
+        let e = HostClient::connect_dir_within(tmp.path(), "test", Duration::from_millis(300))
             .await
             .err()
-            .expect("a silent daemon must not connect")
-            .to_string();
+            .expect("a silent daemon must not connect");
         assert!(t.elapsed() < Duration::from_secs(2));
-        assert!(e.contains("handshake") && e.contains("hostd.log"), "{e}");
+        assert!(e.to_string().contains("handshake") && e.to_string().contains("hostd.log"));
+        assert!(!super::is_unusable(&e), "slow is not unusable");
         assert!(super::HANDSHAKE_DEADLINE <= Duration::from_secs(5));
+    }
+
+    /// A listener that answers the hello line with `reply`, then holds the connection.
+    async fn hello_replying(reply: &'static str) -> (tempfile::TempDir, std::path::PathBuf) {
+        let tmp = tempfile::tempdir().unwrap();
+        let sock = tmp.path().join("h.sock");
+        let listener = ipc::Listener::bind(&sock).unwrap();
+        tokio::spawn(async move {
+            let (r, mut w) = ipc::split(listener.accept().await.unwrap());
+            let mut r = BufReader::new(r).lines();
+            r.next_line().await.unwrap();
+            w.write_all(format!("{reply}\n").as_bytes()).await.unwrap();
+            std::future::pending::<()>().await;
+        });
+        (tmp, sock)
+    }
+
+    // #298 review: hostd queues replies behind up to 8 MiB of pty output, so on a slow tunnel `info` can take
+    // longer than the probe deadline while the daemon is perfectly healthy and streaming. Only silence counts.
+    #[tokio::test]
+    async fn a_long_call_survives_a_slow_info_reply_while_the_daemon_streams() {
+        let tmp = tempfile::tempdir().unwrap();
+        let sock = tmp.path().join("h.sock");
+        let listener = ipc::Listener::bind(&sock).unwrap();
+        tokio::spawn(async move {
+            let (r, w) = ipc::split(listener.accept().await.unwrap());
+            let w = std::sync::Arc::new(tokio::sync::Mutex::new(w));
+            let mut r = BufReader::new(r).lines();
+            r.next_line().await.unwrap();
+            w.lock().await.write_all(b"{\"ok\":true}\n").await.unwrap();
+            let ws = w.clone();
+            tokio::spawn(async move {
+                loop {
+                    let line = b"{\"ev\":\"pty_output\",\"pty\":\"p\",\"data\":\"eA==\"}\n";
+                    if ws.lock().await.write_all(line).await.is_err() {
+                        return;
+                    }
+                    tokio::time::sleep(Duration::from_millis(30)).await;
+                }
+            });
+            while let Ok(Some(line)) = r.next_line().await {
+                let v: serde_json::Value = serde_json::from_str(&line).unwrap();
+                let (id, delay) = (
+                    v["id"].clone(),
+                    if v["cmd"] == "info" { 1500 } else { 1200 },
+                );
+                let w = w.clone();
+                tokio::spawn(async move {
+                    tokio::time::sleep(Duration::from_millis(delay)).await;
+                    let reply = format!("{{\"id\":{id},\"ok\":true,\"data\":{{\"done\":1}}}}\n");
+                    let _ = w.lock().await.write_all(reply.as_bytes()).await;
+                });
+            }
+        });
+        let mut c = HostClient::connect(&sock, "t", "test").await.unwrap();
+        c.probe = Some((Duration::from_millis(100), Duration::from_millis(200)));
+        let v = c
+            .call_within("project_action", json!({}), Duration::from_secs(3600))
+            .await
+            .expect("a streaming daemon is alive: its slow `info` must not fail the call");
+        assert_eq!(v["done"], 1);
+    }
+
+    // #298 review: a lab daemon answers its forwarded commands inline in its read loop, so it cannot answer a
+    // probe while one runs; its hello says `lab` and its calls are not probed.
+    #[tokio::test]
+    async fn a_lab_daemon_is_not_probed() {
+        let (_t, sock) = hello_replying(r#"{"ok":true,"data":{"lab":"/main"}}"#).await;
+        let c = HostClient::connect(&sock, "t", "test").await.unwrap();
+        assert!(c.probe.is_none());
+        let (_t, sock) = hello_replying(r#"{"ok":true,"data":{"lab":null}}"#).await;
+        assert!(
+            HostClient::connect(&sock, "t", "test")
+                .await
+                .unwrap()
+                .probe
+                .is_some()
+        );
+    }
+
+    // #298 review: a call dropped mid-wait (the caller's own timeout, a closed window) must not leave its entry,
+    // nor the probe's, in `pending`.
+    #[tokio::test]
+    async fn a_call_dropped_mid_probe_leaves_nothing_pending() {
+        let (_tmp, mut c, _h) = fake_hostd(2).await;
+        c.probe = Some((Duration::from_millis(50), Duration::from_secs(5)));
+        let r = tokio::time::timeout(
+            Duration::from_millis(200),
+            c.call_within("project_action", json!({}), Duration::from_secs(3600)),
+        )
+        .await;
+        assert!(
+            r.is_err(),
+            "the fake never answers: only the caller's timeout ends this"
+        );
+        assert!(c.pending.lock().as_ref().unwrap().is_empty());
+    }
+
+    // #298 review: only errors that PROVE a daemon unusable by us may lead to its retirement.
+    #[tokio::test]
+    async fn only_a_dead_socket_or_a_refused_token_is_unusable() {
+        let (_t, sock) = hello_replying(r#"{"ok":false,"error":"unauthorized"}"#).await;
+        let e = HostClient::connect(&sock, "t", "test").await.err().unwrap();
+        assert!(super::is_unusable(&e), "{e:#}");
+
+        // Any other answer is a live daemon speaking, e.g. the ones a loaded hostd gives (`hello timeout`, an
+        // eviction from its pending cap, `hostd busy`): not ours to kill.
+        for why in ["hello timeout", "hostd busy", "too many clients"] {
+            let (_t, sock) = hello_replying(match why {
+                "hello timeout" => r#"{"ok":false,"error":"hello timeout"}"#,
+                "hostd busy" => r#"{"ok":false,"error":"hostd busy"}"#,
+                _ => r#"{"ok":false,"error":"too many clients"}"#,
+            })
+            .await;
+            let e = HostClient::connect(&sock, "t", "test").await.err().unwrap();
+            assert!(!super::is_unusable(&e), "{why}: {e:#}");
+        }
+
+        let tmp = tempfile::tempdir().unwrap();
+        let e = HostClient::connect(&tmp.path().join("none.sock"), "t", "test")
+            .await
+            .err()
+            .unwrap();
+        assert!(super::is_unusable(&e), "{e:#}");
+    }
+
+    // #298 review (blocker): the 5 s handshake made a live-but-slow hostd look "unusable", and `ensure_in` ended it
+    // by SIGTERM: every terminal and crew agent died. A verified live atlas hostd that never says hello must be
+    // reported, not killed.
+    #[cfg(target_os = "linux")]
+    #[tokio::test]
+    async fn a_live_hostd_that_never_says_hello_is_reported_not_killed() {
+        let tmp = tempfile::tempdir().unwrap();
+        let dir = tmp.path();
+        std::fs::write(crate::paths::token(dir), "t").unwrap();
+        let listener = ipc::Listener::bind(&crate::paths::socket(dir)).unwrap();
+        tokio::spawn(async move {
+            let _held = listener.accept().await.unwrap();
+            std::future::pending::<()>().await;
+        });
+        // A real process whose command line is `atlas hostd`, so `live_hostd_pid` verifies it.
+        let mut hostd = std::process::Command::new("bash")
+            .args(["-c", "exec -a 'atlas hostd' sleep 60"])
+            .spawn()
+            .unwrap();
+        std::fs::write(crate::paths::pid(dir), hostd.id().to_string()).unwrap();
+        let verified = async {
+            while super::live_hostd_pid(dir).is_none() {
+                tokio::time::sleep(Duration::from_millis(20)).await;
+            }
+        };
+        tokio::time::timeout(Duration::from_secs(5), verified)
+            .await
+            .expect("the fake hostd never showed an `atlas hostd` command line");
+
+        let r = super::ensure_in_within(
+            dir,
+            std::path::Path::new("/nonexistent/atlas"),
+            "test",
+            Duration::from_millis(300),
+        )
+        .await;
+        let alive = hostd.try_wait().unwrap().is_none();
+        let _ = hostd.kill();
+        let _ = hostd.wait();
+        let e = r.err().expect("a daemon that never says hello is an error");
+        assert!(e.to_string().contains("handshake"), "{e:#}");
+        assert!(
+            alive,
+            "ensure_in ended a live hostd that was only slow to answer"
+        );
     }
 
     // #298: a command added to hostd without a decision here would silently get the 10 s deadline and
@@ -801,7 +1051,7 @@ mod tests {
         let classes: Vec<&str> = super::QUICK
             .iter()
             .copied()
-            .chain(super::SLOW.iter().map(|(c, _)| *c))
+            .chain(super::LONG.iter().copied())
             .chain(super::SPECIAL.iter().copied())
             .collect();
         let known: std::collections::BTreeSet<&str> = classes.iter().copied().collect();
@@ -809,7 +1059,7 @@ mod tests {
         let unclassified: Vec<_> = wire.difference(&known).collect();
         assert!(
             unclassified.is_empty(),
-            "classify these in client.rs (QUICK, SLOW or SPECIAL): {unclassified:?}"
+            "classify these in client.rs (QUICK, LONG or SPECIAL): {unclassified:?}"
         );
         let stale: Vec<_> = known.difference(&wire).collect();
         assert!(stale.is_empty(), "no longer hostd commands: {stale:?}");
@@ -819,8 +1069,16 @@ mod tests {
     fn deadlines_follow_the_class_and_the_call() {
         let none = json!({});
         assert_eq!(deadline_for("info", &none), super::CALL_DEADLINE);
-        assert_eq!(deadline_for("upgrade", &none), Duration::from_secs(60));
-        assert_eq!(deadline_for("lsp_install", &none), Duration::from_secs(600));
+        // Not provably quick: a generous cap, the liveness probe notices a wedge sooner.
+        for c in [
+            "pty_create",
+            "worktree_list",
+            "crewmate_delete",
+            "lsp_install",
+            "fs_remove",
+        ] {
+            assert_eq!(deadline_for(c, &none), Duration::from_secs(3600), "{c}");
+        }
         assert!(deadline_for("project_action", &none) >= Duration::from_secs(3600));
         // `exec` outlives its own timeout by the plain deadline, so hostd's answer is not raced.
         assert_eq!(
@@ -830,7 +1088,7 @@ mod tests {
         // A relayed command gets the remote command's deadline plus the relay's connect wait.
         assert_eq!(
             deadline_for("crew_call", &json!({"cmd": "git_push", "args": {}})),
-            Duration::from_secs(160)
+            Duration::from_secs(3630)
         );
         assert_eq!(
             deadline_for("crew_call", &json!({"cmd": "crewmate_list"})),

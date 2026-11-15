@@ -28,7 +28,9 @@ pub const STATUS_ARGS: [&str; 6] = [
 
 // The parsers below expect `a/` and `b/`. The user's own git config changes them (`diff.mnemonicPrefix` prints
 // `c/ w/ i/`, `diff.noprefix` none), which hid an untracked `.env` from the secret filter (#414): every `git diff`
-// Atlas parses by path comes from the args below and nowhere else.
+// Atlas parses by path comes from the args below and nowhere else. They also carry `--no-ext-diff`: a `diff.external`
+// driver (difftastic and friends) prints no `diff --git` header, so an untracked file's content would be filed under
+// the previous file's section and a `.env` would slip past the secret filter.
 
 /// Args of the diff behind the Changes view (add `--cached`, or a base, after them).
 pub const REVIEW_DIFF: [&str; 7] = [
@@ -65,11 +67,12 @@ pub const ALL_CHANGES: [&str; 7] = [
 
 /// Args of `git diff --no-index /dev/null <path>`, which shows an untracked file as an addition without touching the
 /// index. It exits 1 when the files differ: the normal case.
-pub fn new_file_args(path: &str) -> [&str; 8] {
+pub fn new_file_args(path: &str) -> [&str; 9] {
     [
         "diff",
         "--no-index",
         "--no-color",
+        "--no-ext-diff",
         "--src-prefix=a/",
         "--dst-prefix=b/",
         "--",
@@ -284,6 +287,18 @@ fn header_path(rest: &str) -> String {
         .to_string()
 }
 
+/// The old path of a renamed or copied file section (its lines may be the old file's content as context).
+fn renamed_from(section: &str) -> Option<&str> {
+    section
+        .lines()
+        .take_while(|l| !l.starts_with("@@ "))
+        .find_map(|l| {
+            l.strip_prefix("rename from ")
+                .or_else(|| l.strip_prefix("copy from "))
+        })
+        .map(|p| p.trim_matches('"'))
+}
+
 /// True for paths whose content must never leave the machine.
 pub fn is_secret(path: &str) -> bool {
     let name = path.rsplit('/').next().unwrap_or(path).to_ascii_lowercase();
@@ -385,7 +400,7 @@ pub fn digest(diff: &str, scope: &'static str) -> Digest {
     };
     let mut shown: Vec<(String, String)> = Vec::new();
     for (path, section) in split_files(diff) {
-        if is_secret(&path) {
+        if is_secret(&path) || renamed_from(&section).is_some_and(is_secret) {
             d.withheld.push(path);
         } else if is_noise(&path) || is_binary(&section) {
             d.summarized.push(path);
@@ -1819,5 +1834,58 @@ mod commit_msg_tests {
             assert_eq!(staged[0].status, "renamed", "{key}");
             assert_eq!(staged[0].old_path.as_deref(), Some("src/a.rs"), "{key}");
         }
+    }
+
+    // Regression (#414): with `diff.external` (difftastic and friends) git prints an untracked file's `--no-index`
+    // diff with NO `diff --git` header, so its content was filed under the PREVIOUS file's section and a `.env`
+    // reached the commit-message agent. The driver here prints the new file's raw content, like one that ignores
+    // the header.
+    #[cfg(unix)]
+    #[test]
+    fn an_external_diff_driver_in_the_users_git_config_cannot_hide_a_secret_from_the_filter() {
+        let d = repo_with("diff.external", "cat \"$5\" #");
+        std::fs::write(d.path().join("src/a.rs"), "fn a() { changed() }\n").unwrap();
+        std::fs::write(d.path().join(".env"), "TOKEN=external-secret\n").unwrap();
+        let mut all = git(d.path(), &ALL_CHANGES);
+        all.push_str(&new_file_diff(d.path(), ".env"));
+        let paths: Vec<_> = split_files(&all).into_iter().map(|(p, _)| p).collect();
+        assert_eq!(paths, ["src/a.rs", ".env"], "{all}");
+        let dg = digest(&all, "all");
+        assert_eq!(dg.withheld, [".env"], "{all}");
+        assert!(dg.text.contains("changed()"), "{}", dg.text);
+        assert!(!dg.text.contains("external-secret"), "{}", dg.text);
+
+        // The staged diff is read by the same rules.
+        git(d.path(), &["add", "-A"]);
+        let staged = git(d.path(), &STAGED_CHANGES);
+        let dg = digest(&staged, "staged");
+        assert_eq!(dg.withheld, [".env"], "{staged}");
+        assert!(!dg.text.contains("external-secret"), "{}", dg.text);
+    }
+
+    // Regression (#414): moving a secret out of `.env` (`git mv .env notes.txt`) names the new path in the header
+    // and shows the old lines as context; the section is the secret's content, so the old path counts too.
+    #[test]
+    fn a_file_renamed_out_of_a_secret_name_is_withheld() {
+        let d = repo_with("diff.noprefix", "false");
+        std::fs::write(
+            d.path().join(".env"),
+            "TOKEN=renamed-secret\nHOST=localhost\nPORT=8080\n",
+        )
+        .unwrap();
+        git(d.path(), &["add", "."]);
+        git(d.path(), &["commit", "-qm", "env"]);
+        git(d.path(), &["mv", ".env", "notes.txt"]);
+        std::fs::write(
+            d.path().join("notes.txt"),
+            "TOKEN=renamed-secret\nHOST=localhost\nPORT=9090\n",
+        )
+        .unwrap();
+        git(d.path(), &["add", "-A"]);
+        let diff = git(d.path(), &STAGED_CHANGES);
+        assert!(diff.contains("rename from .env"), "{diff}");
+        let dg = digest(&diff, "staged");
+        assert_eq!(dg.withheld, ["notes.txt"], "{diff}");
+        assert!(!dg.text.contains("renamed-secret"), "{}", dg.text);
     }
 }

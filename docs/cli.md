@@ -195,10 +195,18 @@ Stops the atlas that owns the project: asks it over the control socket to stop e
 ## `atlas doctor`
 
 ```text
+atlas doctor [--json]
 atlas doctor --hygiene [--dry-run | --fix] [--json]
 ```
 
-What Atlas and the agents it runs left behind, and the disk it owns. `--hygiene` is required (the only check so far). **Look-only by default** (`--dry-run`); `--fix` changes things.
+Plain `atlas doctor` checks the install, each with the one command that fixes it, and exits 1 when something is broken:
+
+- **new terminal**: starts your account's shell the way a terminal does (Linux: interactive, not login; macOS: login) and asks which `atlas` it runs. Fails when there is none (re-run the installer), warns when another `atlas` comes first on `PATH` or the shell does not answer in 6 s.
+- **this terminal**: whether `~/.atlas/bin` is on this shell's `PATH` (prints the `export` line).
+- **desktop app**: installed, and on the CLI's version (`atlas update`); missing with a graphical session suggests `atlas desktop`.
+- **terminal host**: whether hostd answers (it starts on demand, so only a warning).
+
+`--hygiene` looks instead at what Atlas and the agents it runs left behind, and the disk it owns. **Look-only by default** (`--dry-run`); `--fix` changes things.
 
 It lists:
 

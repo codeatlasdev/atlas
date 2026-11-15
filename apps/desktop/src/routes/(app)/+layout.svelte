@@ -52,6 +52,8 @@
 	let { children }: { children: Snippet } = $props();
 	// Windows: no native title bar (app.html sets the class before first paint).
 	const customChrome = document.documentElement.classList.contains("custom-chrome");
+	// A tiling WM (Hyprland, Sway, i3) owns move, resize and close: no caption buttons there (#269).
+	const captionButtons = customChrome && !document.documentElement.classList.contains("tiling-wm");
 
 	onMount(() => {
 		bootMark("layout:mounted");
@@ -146,4 +148,4 @@
 <TabSwitcher />
 <CornerStack />
 <ErrorToasts />
-{#if customChrome}<WindowControls />{/if}
+{#if captionButtons}<WindowControls />{/if}

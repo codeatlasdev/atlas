@@ -62,9 +62,34 @@ pub fn log_startup() {
     crate::diag::log(&describe(&env, nvidia.as_deref()));
 }
 
+/// Whether the desktop is a tiling window manager, from `XDG_CURRENT_DESKTOP` (a `:`-separated list,
+/// case-insensitive). There the WM owns the window (focus, size, close), so Atlas draws no caption
+/// buttons and no band for them (#269).
+pub fn is_tiling(current_desktop: Option<&str>) -> bool {
+    const TILING: &[&str] = &[
+        "hyprland", "sway", "i3", "niri", "river", "qtile", "bspwm", "awesome", "dwm", "xmonad",
+    ];
+    current_desktop.is_some_and(|d| {
+        d.split(':')
+            .any(|part| TILING.contains(&part.trim().to_ascii_lowercase().as_str()))
+    })
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    /// #269: Hyprland (Omarchy) showed caption buttons the WM already owns; GNOME and KDE need them.
+    #[test]
+    fn tiling_desktops_are_recognized_and_stacking_ones_are_not() {
+        for d in ["Hyprland", "sway", "i3", "niri", "XFCE:i3"] {
+            assert!(is_tiling(Some(d)), "{d}");
+        }
+        for d in ["GNOME", "ubuntu:GNOME", "KDE", "X-Cinnamon", "XFCE", ""] {
+            assert!(!is_tiling(Some(d)), "{d}");
+        }
+        assert!(!is_tiling(None));
+    }
 
     fn env(pairs: &[(&str, &str)]) -> BTreeMap<String, String> {
         pairs

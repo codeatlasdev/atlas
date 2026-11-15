@@ -83,10 +83,28 @@ impl AtlasCommand for CrewArgs {
 
 // ── uninstall ─────────────────────────────────────────────────────────────────
 
+/// The port every crew command reaches its server on, flattened into each command's arguments.
+#[derive(Debug, Clone, Copy, Args)]
+pub struct SshPort {
+    /// SSH port (default 22). Used when the server listens on a non-standard port.
+    #[arg(long, default_value_t = 22)]
+    pub port: u16,
+}
+
+impl SshPort {
+    /// The crew server `target` over ssh: the one constructor every command here uses, so the port
+    /// and the agents' `PATH` apply to all of them (issue #355).
+    fn remote(self, target: &str) -> Remote {
+        Remote::crew(target, self.port)
+    }
+}
+
 #[derive(Debug, Args)]
 pub struct UninstallArgs {
     /// SSH target for the host (e.g. user@hostname or hostname)
     pub ssh_target: String,
+    #[command(flatten)]
+    pub ssh: SshPort,
     /// Delete without asking (for scripts). The data is still listed before and after, and is gone
     #[arg(short, long)]
     pub yes: bool,
@@ -94,7 +112,7 @@ pub struct UninstallArgs {
 
 impl AtlasCommand for UninstallArgs {
     async fn run(self) -> Result<()> {
-        let r = Remote::new(&self.ssh_target);
+        let r = self.ssh.remote(&self.ssh_target);
         // What will be deleted is always printed first, whatever the flags.
         let inv = match r.exec(transfer::INVENTORY_SCRIPT).await {
             Ok(o) if o.code == 255 => bail!(
@@ -118,7 +136,9 @@ impl AtlasCommand for UninstallArgs {
                     && ask_yes_no("Export a copy first? [Y/n] ", true)?
                 {
                     // A failed export stops the uninstall: never delete after a backup that did not happen.
-                    ExportArgs::for_uninstall(&self.ssh_target).run().await?;
+                    ExportArgs::for_uninstall(&self.ssh_target, self.ssh)
+                        .run()
+                        .await?;
                 }
                 eprint!(
                     "Type the server name ({}) to delete it: ",
@@ -169,6 +189,8 @@ fn ask_yes_no(question: &str, default: bool) -> Result<bool> {
 pub struct ExportArgs {
     /// SSH target for the host (e.g. user@hostname or hostname)
     pub ssh_target: String,
+    #[command(flatten)]
+    pub ssh: SshPort,
     /// File to write (default: atlas-crew-<host>-<date>.tar.gz here). Never overwritten
     #[arg(short, long, value_name = "FILE")]
     pub output: Option<PathBuf>,
@@ -182,11 +204,12 @@ pub struct ExportArgs {
 
 impl ExportArgs {
     /// The export an interactive uninstall offers: everything, secrets included only when asked there.
-    fn for_uninstall(target: &str) -> Self {
+    fn for_uninstall(target: &str, ssh: SshPort) -> Self {
         let with_secrets = ask_yes_no("Include secrets (API keys, webhook tokens)? [y/N] ", false)
             .unwrap_or(false);
         Self {
             ssh_target: target.to_string(),
+            ssh,
             output: None,
             crewmates: vec![],
             with_secrets,
@@ -203,7 +226,9 @@ impl AtlasCommand for ExportArgs {
             ))
         });
         transfer::check_output_free(&dest)?;
-        let (code, stderr) = Remote::new(&self.ssh_target)
+        let (code, stderr) = self
+            .ssh
+            .remote(&self.ssh_target)
             .exec_to_file(
                 &transfer::export_script(&self.crewmates, self.with_secrets),
                 &dest,
@@ -253,6 +278,8 @@ impl AtlasCommand for ExportArgs {
 pub struct ImportArgs {
     /// SSH target for the host (e.g. user@hostname or hostname)
     pub ssh_target: String,
+    #[command(flatten)]
+    pub ssh: SshPort,
     /// Archive made by `atlas crew export`
     pub file: PathBuf,
     /// A crewmate whose id already exists gets a new id instead of refusing the import
@@ -274,7 +301,9 @@ impl AtlasCommand for ImportArgs {
             m.atlas_version,
             if m.secrets { ", with secrets" } else { "" }
         );
-        let o = Remote::new(&self.ssh_target)
+        let o = self
+            .ssh
+            .remote(&self.ssh_target)
             .exec_with_file(&transfer::import_script(self.rename), &self.file)
             .await?;
         if o.code != 0 {
@@ -300,11 +329,13 @@ impl AtlasCommand for ImportArgs {
 pub struct StatusArgs {
     /// SSH target for the host (e.g. user@hostname or hostname)
     pub ssh_target: String,
+    #[command(flatten)]
+    pub ssh: SshPort,
 }
 
 impl AtlasCommand for StatusArgs {
     async fn run(self) -> Result<()> {
-        let r = Remote::new(&self.ssh_target);
+        let r = self.ssh.remote(&self.ssh_target);
 
         // systemd status
         let o = r.exec(&layout::status_script()).await?;
@@ -342,11 +373,15 @@ impl AtlasCommand for StatusArgs {
 pub struct PauseArgs {
     /// SSH target for the host (e.g. user@hostname or hostname)
     pub ssh_target: String,
+    #[command(flatten)]
+    pub ssh: SshPort,
 }
 
 impl PauseArgs {
     async fn run(self, pause: bool) -> Result<()> {
-        let o = Remote::new(&self.ssh_target)
+        let o = self
+            .ssh
+            .remote(&self.ssh_target)
             .exec(&layout::pause_script(pause))
             .await?;
         if o.code != 0 {
@@ -376,6 +411,8 @@ impl PauseArgs {
 pub struct LogsArgs {
     /// SSH target for the host (e.g. user@hostname or hostname)
     pub ssh_target: String,
+    #[command(flatten)]
+    pub ssh: SshPort,
     /// Follow new log entries (like journalctl -f)
     #[arg(short, long)]
     pub follow: bool,
@@ -383,7 +420,7 @@ pub struct LogsArgs {
 
 impl AtlasCommand for LogsArgs {
     async fn run(self) -> Result<()> {
-        let r = Remote::new(&self.ssh_target);
+        let r = self.ssh.remote(&self.ssh_target);
         let code = r.stream(&layout::logs_script(self.follow)).await?;
         if code != 0 {
             std::process::exit(code);
@@ -410,6 +447,8 @@ fn agent_install_hint(id: &str) -> Option<&'static str> {
 pub struct LoginArgs {
     /// SSH target for the crew server (e.g. user@hostname or hostname)
     pub ssh_target: String,
+    #[command(flatten)]
+    pub ssh: SshPort,
     /// Agent to sign in: omp, claude, codex, opencode
     pub agent: String,
 }
@@ -426,7 +465,9 @@ impl AtlasCommand for LoginArgs {
             })?;
         let host = host_from_target(&self.ssh_target).to_owned();
         // The crew user differs on a server installed as "Atlas Bot": ask the host which one it has.
-        let user = Remote::new(&self.ssh_target)
+        let user = self
+            .ssh
+            .remote(&self.ssh_target)
             .exec(layout::WHICH_USER)
             .await
             .ok()
@@ -444,9 +485,16 @@ impl AtlasCommand for LoginArgs {
             println!();
         }
 
-        println!("\x1b[36m▸\x1b[0m Opening sign-in session: ssh -t {user}@{host} {bin}");
-        let status = std::process::Command::new("ssh")
-            .args(["-t", &format!("{user}@{host}"), bin])
+        // The same ssh helper as every other crew call: the port, and the agents' PATH (a bare
+        // `ssh host claude` runs in a shell that does not have ~/.local/bin).
+        let crew = atlas_core::ssh::SshTarget::new(format!("{user}@{host}"), Some(self.ssh.port));
+        let argv = crew.terminal_argv(bin);
+        println!(
+            "\x1b[36m▸\x1b[0m Opening sign-in session: {}",
+            argv.join(" ")
+        );
+        let status = std::process::Command::new(&argv[0])
+            .args(&argv[1..])
             .status()
             .context("could not launch ssh")?;
 

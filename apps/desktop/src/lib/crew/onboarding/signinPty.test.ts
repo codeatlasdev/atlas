@@ -1,6 +1,6 @@
 // @ts-nocheck
 import { describe, test, expect } from "bun:test";
-import { stripAnsi } from "./signinPty.ts";
+import { signinPtyRequest, stripAnsi } from "./signinPty.ts";
 
 describe("stripAnsi", () => {
 	test("removes color and cursor escapes", () => {
@@ -22,5 +22,13 @@ describe("stripAnsi", () => {
 		expect(stripAnsi("Open https://example.com/device and enter the code")).toBe(
 			"Open https://example.com/device and enter the code",
 		);
+	});
+});
+
+describe("signinPtyRequest", () => {
+	// Issue #355: the terminal runs the argv Rust built for the server (its port, the agents' PATH), untouched.
+	test("opens the pty with exactly the argv it was given, at the root", () => {
+		const argv = ["ssh", "-p", "2222", "-t", "atlas-crew@srv", "--", "bash -c 'claude'"];
+		expect(signinPtyRequest(argv)).toEqual({ argv, cwd: "/" });
 	});
 });

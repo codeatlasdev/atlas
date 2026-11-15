@@ -1116,11 +1116,11 @@ async fn output_during_a_slow_scrollback_rewrite_is_buffered_up_to_the_ring_size
         let held = s.buf.lock().trim.as_ref().unwrap().len();
         assert!(held <= super::RING_MAX, "{held} bytes held");
     }
+    // Trimmed in 64 KiB steps (not a memmove per chunk): a little under the cap, never a lot.
+    let held = s.buf.lock().trim.as_ref().unwrap().len();
+    assert!(held > super::RING_MAX - 2 * 65_536, "{held} bytes held");
     s.rewrite_scrollback(b"snapshot;", epoch);
     s.signal("KILL").unwrap();
     let file = std::fs::read(&bin).unwrap();
-    assert_eq!(
-        file[file.len() - super::RING_MAX..],
-        all[all.len() - super::RING_MAX..]
-    );
+    assert_eq!(file[file.len() - held..], all[all.len() - held..]);
 }

@@ -168,9 +168,12 @@ impl Session {
         if let Some(since) = b.trim.as_mut() {
             since.extend_from_slice(bytes);
             // Restore reads the file's tail (the last `RING_MAX` bytes): a rewrite that is slow
-            // (fsync under writeback pressure) must not hold more than that.
-            let excess = since.len().saturating_sub(RING_MAX);
-            since.drain(..excess);
+            // (fsync under writeback pressure) must not hold more than that. Dropped in
+            // `RING_DROP` steps like the ring, not a 2 MiB memmove per chunk under the lock.
+            if since.len() > RING_MAX {
+                let n = (since.len() - RING_MAX).div_ceil(RING_DROP) * RING_DROP;
+                since.drain(..n.min(since.len()));
+            }
         } else if b.file_len > FILE_MAX && !b.gone {
             // The rewrite is a 2 MiB write and an fsync: never under the lock that every
             // attach and every chunk of output waits on (#301).

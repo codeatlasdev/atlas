@@ -98,19 +98,20 @@ impl Drop for Spawned {
     }
 }
 
-/// A daemon of the display: no environment but `env`, no terminal, its own process group, output to `log`.
+/// A daemon of the display: no environment but `env`, no terminal, its own process group, output to `log`, and no
+/// new privileges (sway's file capabilities would hide its `ATLAS_SESSION` tag from the hygiene sweep).
 fn spawn(prog: &str, args: &[&str], env: &[(&str, String)], log: &Path) -> Result<Child> {
     let out = std::fs::File::create(log)?;
-    Command::new(prog)
-        .args(args)
+    let mut cmd = Command::new(prog);
+    cmd.args(args)
         .env_clear()
         .envs(env.iter().map(|(k, v)| (*k, v)))
         .stdin(Stdio::null())
         .stdout(out.try_clone()?)
         .stderr(out)
-        .process_group(0)
-        .spawn()
-        .with_context(|| format!("starting {prog}"))
+        .process_group(0);
+    atlas_core::sys::no_new_privs(&mut cmd);
+    cmd.spawn().with_context(|| format!("starting {prog}"))
 }
 
 fn wait_for<T>(
@@ -123,6 +124,9 @@ fn wait_for<T>(
     loop {
         if let Some(v) = ready() {
             return Ok(v);
+        }
+        if atlas_core::sys::interrupted() {
+            bail!("interrupted while starting {what}");
         }
         if let Some(status) = child.try_wait()? {
             let tail = std::fs::read_to_string(log).unwrap_or_default();

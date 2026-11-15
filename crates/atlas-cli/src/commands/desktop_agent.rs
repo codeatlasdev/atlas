@@ -207,6 +207,12 @@ pub fn repo_of_exe(exe: &Path) -> Option<PathBuf> {
     .then(|| repo.to_path_buf())
 }
 
+/// Create `dir` (its parent must exist) with mode 0700; fails with `AlreadyExists` if anything is there already.
+fn create_private_dir(dir: &Path) -> std::io::Result<()> {
+    use std::os::unix::fs::DirBuilderExt;
+    std::fs::DirBuilder::new().mode(0o700).create(dir)
+}
+
 fn temp_root() -> Result<PathBuf> {
     // /tmp -> /private/tmp: canonical and short.
     Ok(std::fs::canonicalize("/tmp")?)
@@ -312,18 +318,27 @@ pub fn start(o: StartOpts) -> Result<()> {
             );
         },
     )?;
+    // Linux: Ctrl-C or SIGTERM while the display and the app come up stops what is already running, then exits.
+    #[cfg(target_os = "linux")]
+    atlas_core::sys::watch_interrupts();
     let name = o.name.unwrap_or_else(|| next_name(&root));
     let s = session_in(&root, &name)?;
-    if s.dir.exists() {
-        bail!(
-            "agent instance {name:?} already exists ({}); `atlas desktop --agent --stop {name}` first, or pick another --name",
-            s.dir.display()
-        );
-    }
     let app = find_app(&o.repo)?;
     // `/proc/<pid>/exe` is the resolved path: record that one, or `--stop` would not recognise its own process.
     #[cfg(target_os = "linux")]
     let app = std::fs::canonicalize(app)?;
+    // Atomic and private: the check and the creation are one call, so two starts (or a planted symlink) cannot both
+    // win, and `app.log`, HOME and the sockets inside are closed to other users.
+    create_private_dir(&s.dir).map_err(|e| {
+        if e.kind() == std::io::ErrorKind::AlreadyExists {
+            anyhow::anyhow!(
+                "agent instance {name:?} already exists ({}); `atlas desktop --agent --stop {name}` first, or pick another --name",
+                s.dir.display()
+            )
+        } else {
+            anyhow::Error::new(e).context(format!("creating {}", s.dir.display()))
+        }
+    })?;
     std::fs::create_dir_all(s.home().join(".atlas/desktop"))?;
     std::fs::create_dir_all(s.hostd())?;
     if o.scratch {
@@ -449,6 +464,11 @@ pub fn start(o: StartOpts) -> Result<()> {
                 s.log().display()
             );
         }
+        #[cfg(target_os = "linux")]
+        if atlas_core::sys::interrupted() {
+            let _ = stop_one(&s);
+            bail!("interrupted before the instance was ready; stopped it");
+        }
         if t0.elapsed() > READY_TIMEOUT {
             let _ = stop_one(&s);
             bail!(
@@ -462,6 +482,15 @@ pub fn start(o: StartOpts) -> Result<()> {
     // The window is shown (the lock is held until now), but give the display a moment to settle before the next
     // instance reconfigures the layout.
     std::thread::sleep(START_SETTLE);
+    // An interrupt (Ctrl-C reaches the app too: same process group) or a crash during the settle is not "ready".
+    #[cfg(target_os = "linux")]
+    let interrupted = atlas_core::sys::interrupted();
+    #[cfg(not(target_os = "linux"))]
+    let interrupted = false;
+    if interrupted || child.try_wait()?.is_some() {
+        let _ = stop_one(&s);
+        bail!("the instance ended while it was settling (interrupted or crashed); stopped it");
+    }
     println!("{}", ready_line(&s, pid));
     Ok(())
 }
@@ -632,12 +661,29 @@ pub fn gc() -> Result<()> {
     Ok(())
 }
 
-/// Names of the instances that exist.
+/// Whether `path` is a real directory (not a symlink) owned by `uid`. The temp root is shared: another local user can
+/// make `atlas-agent-x` with an `agent.json` naming any pid, and `--stop` would signal it.
+fn is_ours(path: &Path, uid: u32) -> bool {
+    use std::os::unix::fs::MetadataExt;
+    std::fs::symlink_metadata(path).is_ok_and(|m| m.is_dir() && m.uid() == uid)
+}
+
+fn my_uid() -> u32 {
+    // SAFETY: geteuid(2) has no preconditions.
+    unsafe { libc::geteuid() }
+}
+
+/// Names of the instances that exist (and are ours, see [`is_ours`]).
 fn existing(root: &Path) -> Vec<String> {
+    existing_of(root, my_uid())
+}
+
+fn existing_of(root: &Path, uid: u32) -> Vec<String> {
     let mut v: Vec<String> = std::fs::read_dir(root)
         .into_iter()
         .flatten()
         .flatten()
+        .filter(|e| is_ours(&e.path(), uid))
         .filter_map(|e| {
             e.file_name()
                 .to_str()?
@@ -664,6 +710,12 @@ pub fn stop(name: Option<&str>) -> Result<()> {
         let s = session_in(&root, &n)?;
         if !s.dir.exists() {
             bail!("no agent instance {n:?}");
+        }
+        if !is_ours(&s.dir, my_uid()) {
+            bail!(
+                "{} is not a directory of yours; refusing to stop what it names",
+                s.dir.display()
+            );
         }
         stop_one(&s)?;
         println!("stopped {n}");
@@ -724,6 +776,43 @@ mod tests {
         let got = forwarded_env(vars);
         let keys: Vec<_> = got.iter().map(|(k, _)| k.to_str().unwrap()).collect();
         assert_eq!(keys, ["PATH", "TERM"]);
+    }
+
+    /// Another local user can make `/tmp/atlas-agent-x/agent.json` naming any pid of ours; `--stop` walks the temp root
+    /// and would signal it. Only real directories we own count as instances.
+    #[test]
+    fn instances_are_only_real_directories_owned_by_the_caller() {
+        let root = tempfile::tempdir().unwrap();
+        let mine = my_uid();
+        std::fs::create_dir(root.path().join("atlas-agent-ok")).unwrap();
+        let elsewhere = tempfile::tempdir().unwrap();
+        std::os::unix::fs::symlink(elsewhere.path(), root.path().join("atlas-agent-link")).unwrap();
+        std::fs::write(root.path().join("atlas-agent-file"), "").unwrap();
+        assert_eq!(existing_of(root.path(), mine), ["ok"]);
+        // The same directory seen by someone else is not an instance.
+        assert!(existing_of(root.path(), mine + 1).is_empty());
+        assert!(!is_ours(&root.path().join("atlas-agent-link"), mine));
+    }
+
+    /// The instance directory is made in one atomic call with mode 0700, whatever the umask, and a second start on the
+    /// same name fails instead of sharing it.
+    #[test]
+    fn the_instance_dir_is_private_and_created_exactly_once() {
+        use std::os::unix::fs::PermissionsExt;
+        let root = tempfile::tempdir().unwrap();
+        let dir = root.path().join("atlas-agent-p");
+        // SAFETY: umask(2) only changes this process's mask; restored right after.
+        let old = unsafe { libc::umask(0) };
+        let made = create_private_dir(&dir);
+        // SAFETY: same call, restoring the saved mask.
+        unsafe { libc::umask(old) };
+        made.unwrap();
+        assert_eq!(
+            std::fs::metadata(&dir).unwrap().permissions().mode() & 0o777,
+            0o700
+        );
+        let again = create_private_dir(&dir).unwrap_err();
+        assert_eq!(again.kind(), std::io::ErrorKind::AlreadyExists);
     }
 
     /// The dry-run switch must reach the app too, or "prove it before a real start" proves nothing.

@@ -246,11 +246,16 @@ pub async fn run(root_dir: &Path, select: &config::SelectionRequest) -> Result<(
         // The lock is held but the socket may still be coming up: give it a moment.
         let mut info = crate::control::info(root_dir).await;
         for _ in 0..15 {
+            // Any answer, "busy" included, proves the socket is up.
             if info.is_some() {
                 break;
             }
             tokio::time::sleep(std::time::Duration::from_millis(200)).await;
             info = crate::control::info(root_dir).await;
+        }
+        if info.as_ref().is_some_and(|i| i.is_busy()) {
+            // Alive, only loaded: never offer to kill it.
+            anyhow::bail!("atlas dev is running but busy; try again in a moment");
         }
         if info.as_ref().is_some_and(|i| i.mode == "runner") {
             return attach(root_dir, select, info.map_or(0, |i| i.pid)).await;

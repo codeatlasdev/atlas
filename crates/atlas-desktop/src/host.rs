@@ -15,7 +15,7 @@
 //! of an empty host, or - when terminals run and features are missing - ask the user. The
 //! result is a [`HostState`], kept in the hub and pushed as `host://status` (camelCase);
 //! `host://prompt {ptys, reason}` asks once per daemon pid, `host://toast {kind, text}` reports
-//! a finished upgrade. Commands: `host_status`, `host_restart`, `host_postpone`,
+//! a finished upgrade (`warning`: the event stream lagged and the terminals were resynced). Commands: `host_status`, `host_restart`, `host_postpone`,
 //! `host_restart_when_idle`.
 
 use std::collections::HashMap;
@@ -261,19 +261,37 @@ impl HostHub {
         Ok(res)
     }
 
-    /// Learn which host owns each existing pty (after (re)connecting).
-    pub async fn index_ptys(&self, host: &str) {
-        let Ok(c) = self.client(host).await else {
-            return;
-        };
-        if let Ok(v) = c.call("pty_list", json!({})).await {
+    /// Re-learn what `host` runs (after (re)connecting, and after its events lagged): which host owns each existing
+    /// pty and, for the local daemon, which terminals the restart state still lists as running. Returns the new
+    /// state when it changed, for the caller to publish.
+    async fn sync_ptys(
+        &self,
+        host: &str,
+        c: &HostClient,
+    ) -> Result<Option<HostState>, atlas_host::client::CallError> {
+        let list = c.call("pty_list", json!({})).await?;
+        {
             let mut m = self.pty_host.lock();
-            for p in v["ptys"].as_array().into_iter().flatten() {
+            for p in list["ptys"].as_array().into_iter().flatten() {
                 if let Some(id) = p["pty"].as_str() {
                     m.insert(id.to_string(), host.to_string());
                 }
             }
         }
+        if host != LOCAL {
+            return Ok(None);
+        }
+        let live = live_list(&list);
+        let state = {
+            let mut g = self.ctl.lock();
+            g.state.as_mut().and_then(|s| {
+                let before = s.ptys.len();
+                s.ptys.retain(|p| live.iter().any(|l| l.id == p.id));
+                (s.ptys.len() != before).then(|| s.clone())
+            })
+        };
+        self.ptys_changed.notify_one();
+        Ok(state)
     }
 
     /// Run `cmd` on every connected host; failures (e.g. an older host) are skipped.
@@ -433,22 +451,156 @@ fn forward(app: &AppHandle, ev: &Value) {
     }
 }
 
+/// A host that is connected but does not answer (or whose events cannot be trusted any more): one incident per
+/// outage, and the webview's "Terminal host not reachable" toast with its restart action. `why` is redacted here.
+fn report_unreachable(app: &AppHandle, hub: &HostHub, host: &str, why: &str) {
+    let why = crate::diag::redact(why);
+    if host != LOCAL {
+        hub.set_remote_error(host, &why);
+        return;
+    }
+    let first = hub.ctl.lock().last_error.replace(why.clone()).is_none();
+    if first {
+        crate::diag::incident("unreachable", &why);
+    }
+    let _ = app.emit("host://error", unreachable_message(Some(&why)));
+}
+
+/// What a (re)connect and a lag of the event stream both do: re-learn what the daemon runs (a `pty_exit` among
+/// dropped events must not leave its terminal listed as running), tell the webview to re-read and re-attach.
+/// `reattach` also rebuilds the native (GPU) terminals: right after a connect, never after a lag (it replays every
+/// terminal, which is load on a host that just proved it cannot keep up; the webview's xterm re-attach is enough).
+/// `false` when the daemon did not answer: it is reported and the caller drops the connection.
+async fn resync(
+    app: &AppHandle,
+    hub: &HostHub,
+    host: &str,
+    c: &HostClient,
+    reattach: bool,
+) -> bool {
+    match hub.sync_ptys(host, c).await {
+        Ok(Some(state)) => {
+            let _ = app.emit("host://status", state);
+        }
+        Ok(None) => {}
+        Err(e) if e.downcast_ref::<atlas_host::client::Unanswered>().is_some() => {
+            report_unreachable(app, hub, host, &format!("{e:#}"));
+            return false;
+        }
+        // An older daemon without `pty_list`: nothing to learn.
+        Err(_) => {}
+    }
+    let _ = app.emit("host://reconnected", json!({"host": host}));
+    if host == LOCAL && reattach {
+        crate::term::reattach_all().await;
+    }
+    true
+}
+
+/// One resync, one notice and one incident per this long, however many times the event stream lags: each resync
+/// asks the host for more and makes the webview re-attach, which is exactly the load that causes the next lag.
+const LAG_WINDOW: Duration = Duration::from_secs(5);
+
+/// Coalesces lags: the first acts at once, later ones inside the window are counted and acted on together when it
+/// closes (events lost in between may hold a `pty_exit`, so they are never just ignored).
+struct LagGate {
+    window: Duration,
+    quiet_until: Option<std::time::Instant>,
+    lost: u64,
+    deferred: bool,
+}
+
+impl LagGate {
+    fn new(window: Duration) -> Self {
+        Self {
+            window,
+            quiet_until: None,
+            lost: 0,
+            deferred: false,
+        }
+    }
+
+    /// `n` events were dropped at `now`: `Some(total dropped since the last action)` when to resync now.
+    fn lagged(&mut self, now: std::time::Instant, n: u64) -> Option<u64> {
+        self.lost += n;
+        if self.quiet_until.is_none_or(|q| now >= q) {
+            return Some(self.fire(now));
+        }
+        self.deferred = true;
+        None
+    }
+
+    /// When the deferred resync is due, if one is waiting.
+    fn due(&self) -> Option<std::time::Instant> {
+        self.deferred.then_some(self.quiet_until).flatten()
+    }
+
+    /// The deferred resync, once its time came.
+    fn flush(&mut self, now: std::time::Instant) -> Option<u64> {
+        (self.deferred && self.due().is_some_and(|d| now >= d)).then(|| self.fire(now))
+    }
+
+    fn fire(&mut self, now: std::time::Instant) -> u64 {
+        self.quiet_until = Some(now + self.window);
+        self.deferred = false;
+        std::mem::take(&mut self.lost)
+    }
+}
+
+/// The event stream of `host` lagged by `lost` events: leave a trace the user can see and a report carries, and
+/// resync as a reconnect does. `false` when the daemon did not answer.
+async fn lag_resync(app: &AppHandle, hub: &HostHub, host: &str, c: &HostClient, lost: u64) -> bool {
+    crate::diag::incident(
+        "events-lagged",
+        &format!("host {host}: {lost} events were dropped; terminals were resynced"),
+    );
+    let _ = app.emit(
+        "host://toast",
+        json!({"kind": "warning", "text": "Terminal events were dropped under load. Terminals were resynced."}),
+    );
+    resync(app, hub, host, c, false).await
+}
+
 /// Register a connected client and pump its events until it disconnects.
 pub async fn serve_client(app: &AppHandle, host: &str, c: HostClient) {
     let hub = app.state::<Arc<HostHub>>().inner().clone();
     let mut rx = c.events();
-    hub.set(host, Some(c)).await;
-    hub.index_ptys(host).await;
-    let _ = app.emit("host://reconnected", json!({"host": host}));
-    if host == LOCAL {
-        crate::term::reattach_all().await;
+    hub.set(host, Some(c.clone())).await;
+    if !resync(app, &hub, host, &c, true).await {
+        hub.set(host, None).await;
+        return;
     }
+    let mut gate = LagGate::new(LAG_WINDOW);
     loop {
-        // A slow consumer lags; that is not a disconnect (it used to end the pump).
-        let ev = match rx.recv().await {
+        let due = gate.due();
+        // Events first: a closed connection must end the loop before a deferred resync runs against it.
+        let received = tokio::select! {
+            biased;
+            r = rx.recv() => r,
+            () = async {
+                match due {
+                    Some(t) => tokio::time::sleep_until(tokio::time::Instant::from_std(t)).await,
+                    None => std::future::pending().await,
+                }
+            } => {
+                if let Some(lost) = gate.flush(std::time::Instant::now())
+                    && !lag_resync(app, &hub, host, &c, lost).await
+                {
+                    break;
+                }
+                continue;
+            }
+        };
+        let ev = match received {
             Ok(ev) => ev,
+            // A slow consumer lags; that is not a disconnect, but the dropped events may have held a `pty_exit`
+            // (#299): resync as a reconnect does, at most once per window.
             Err(tokio::sync::broadcast::error::RecvError::Lagged(n)) => {
-                eprintln!("host {host}: dropped {n} events");
+                if let Some(lost) = gate.lagged(std::time::Instant::now(), n)
+                    && !lag_resync(app, &hub, host, &c, lost).await
+                {
+                    break;
+                }
                 continue;
             }
             Err(tokio::sync::broadcast::error::RecvError::Closed) => break,
@@ -583,13 +735,17 @@ enum Outcome {
     Serve,
     /// The daemon was replaced or is going away: drop the connection and connect again.
     Reconnect,
+    /// The daemon accepted the connection but did not answer `info` / `pty_list` (wedged): nothing to reconcile
+    /// against. Carries why; the connect loop reports it and retries with backoff.
+    Degraded(String),
 }
 
 /// Compare the daemon we connected to with this app and act (see the module docs). Runs on
 /// every (re)connect of the local daemon.
 async fn reconcile(app: &AppHandle, hub: &HostHub, c: &HostClient, bin: &Path) -> Outcome {
-    let Some((info, list)) = probe(hub, c).await else {
-        return Outcome::Serve;
+    let (info, list) = match probe(hub, c).await {
+        Ok(p) => p,
+        Err(e) => return Outcome::Degraded(format!("{e:#}")),
     };
     let ptys = live_list(&list);
     let pid = info["pid"].as_u64().unwrap_or(0);
@@ -649,18 +805,25 @@ async fn reconcile(app: &AppHandle, hub: &HostHub, c: &HostClient, bin: &Path) -
     Outcome::Serve
 }
 
-/// `info` + `pty_list` of the local daemon (the debug fake replaces both).
-async fn probe(hub: &HostHub, c: &HostClient) -> Option<(Value, Value)> {
+/// `info` + `pty_list` of the local daemon (the debug fake replaces both). A daemon that does not answer in time is
+/// an error, never an empty list: no terminals listed would read as "nothing to lose" and restart it.
+async fn probe(
+    hub: &HostHub,
+    c: &HostClient,
+) -> Result<(Value, Value), atlas_host::client::CallError> {
     #[cfg(debug_assertions)]
     if let Some(f) = hub.fake.lock().as_ref() {
-        return Some((f.info(), f.list()));
+        return Ok((f.info(), f.list()));
     }
     #[cfg(not(debug_assertions))]
     let _ = hub;
-    let info = c.call("info", json!({})).await.ok()?;
+    let info = c.call("info", json!({})).await?;
     // Always listed: the prompt names the terminals, and a proto 1 daemon has no `live_ptys`.
-    let list = c.call("pty_list", json!({})).await.unwrap_or(json!({}));
-    Some((info, list))
+    let list = match c.call("pty_list", json!({})).await {
+        Err(e) if e.downcast_ref::<atlas_host::client::Unanswered>().is_some() => return Err(e),
+        r => r.unwrap_or(json!({})),
+    };
+    Ok((info, list))
 }
 
 /// After a reconnect that followed an `upgrade`: the new daemon is this app's version.
@@ -803,16 +966,26 @@ pub fn start(app: &AppHandle) {
             }
             match atlas_host::client::ensure_local(&bin, "desktop").await {
                 Ok(c) => {
-                    hub.ctl.lock().last_error = None;
                     // Every (re)connect is reconciled; the loop guard in `plan` keeps an
                     // installed CLI older than the app from looping.
-                    if let Outcome::Reconnect = reconcile(&app, &hub, &c, &bin).await {
-                        // Replaced: drop this connection and connect to the new daemon
-                        // (`serve_client` then emits `host://reconnected`).
-                        drop(c);
-                        tokio::time::sleep(Duration::from_millis(300)).await;
-                        continue;
+                    match reconcile(&app, &hub, &c, &bin).await {
+                        Outcome::Serve => {}
+                        Outcome::Reconnect => {
+                            // Replaced: drop this connection and connect to the new daemon
+                            // (`serve_client` then emits `host://reconnected`).
+                            drop(c);
+                            tokio::time::sleep(Duration::from_millis(300)).await;
+                            continue;
+                        }
+                        Outcome::Degraded(why) => {
+                            report_unreachable(&app, &hub, LOCAL, &why);
+                            drop(c);
+                            tokio::time::sleep(backoff).await;
+                            backoff = (backoff * 2).min(Duration::from_secs(10));
+                            continue;
+                        }
                     }
+                    hub.ctl.lock().last_error = None;
                     verify_upgrade(&app, &hub);
                     let since = tokio::time::Instant::now();
                     serve_client(&app, LOCAL, c).await;
@@ -822,13 +995,8 @@ pub fn start(app: &AppHandle) {
                     tokio::time::sleep(wait).await;
                 }
                 Err(e) => {
-                    let why = crate::diag::redact(&format!("{e:#}"));
-                    let first = hub.ctl.lock().last_error.replace(why.clone()).is_none();
                     // One incident per outage, not one per retry.
-                    if first {
-                        crate::diag::incident("unreachable", &why);
-                    }
-                    let _ = app.emit("host://error", unreachable_message(Some(&why)));
+                    report_unreachable(&app, &hub, LOCAL, &format!("{e:#}"));
                     tokio::time::sleep(backoff).await;
                     backoff = (backoff * 2).min(Duration::from_secs(10));
                 }
@@ -995,8 +1163,7 @@ pub async fn host_restart(
 }
 
 /// "Restart terminal host" from an error: works when the daemon answers (graceful shutdown) and
-/// when it does not (a wedged or unauthenticable one): the connect loop's `ensure_in` retires
-/// that daemon by its exact pid. Ends the terminals it hosts; the frontend asked first.
+/// when it does not (a wedged one): it is retired by its exact pid (`retire_hostd`). Ends the terminals it hosts; the frontend asked first.
 #[tauri::command]
 pub async fn host_restart_force(
     app: AppHandle,
@@ -1004,6 +1171,9 @@ pub async fn host_restart_force(
 ) -> Result<(), String> {
     crate::diag::incident("restarted", "restart requested from the error toast");
     restart_local(&app, &hub).await;
+    // A daemon that did not act on `shutdown` (wedged) is ended by its exact pid, which `ensure_in` no longer does
+    // for one that is only unresponsive: the user asked for this.
+    atlas_host::client::retire_hostd(&atlas_host::paths::base(), Duration::from_secs(2)).await;
     // Drop the dead client so the next call waits for the new daemon instead of failing on it.
     hub.set(LOCAL, None).await;
     Ok(())
@@ -1107,6 +1277,108 @@ mod tests {
     fn pty(id: &str, exited: bool) -> Value {
         json!({"pty": id, "title": "zsh", "cwd": "/w", "argv": ["zsh", "-l"],
                "exited": if exited { json!({"code": 0}) } else { Value::Null }})
+    }
+
+    /// A hostd that says hello, then on its first `info` pushes `flood` output events and a `pty_exit` for `p1`
+    /// BEFORE replying (same stream, so a client whose `info` returned has broadcast them all), and lists `p1`
+    /// as exited in `pty_list`.
+    async fn hostd_that_floods(flood: usize) -> (tempfile::TempDir, HostClient) {
+        use tokio::io::{AsyncBufReadExt, AsyncWriteExt, BufReader};
+        let tmp = tempfile::tempdir().unwrap();
+        let sock = tmp.path().join("h.sock");
+        let listener = atlas_core::ipc::Listener::bind(&sock).unwrap();
+        tokio::spawn(async move {
+            let (r, mut w) = atlas_core::ipc::split(listener.accept().await.unwrap());
+            let mut r = BufReader::new(r).lines();
+            r.next_line().await.unwrap();
+            w.write_all(b"{\"ok\":true}\n").await.unwrap();
+            while let Ok(Some(line)) = r.next_line().await {
+                let v: Value = serde_json::from_str(&line).unwrap();
+                let data = match v["cmd"].as_str() {
+                    Some("info") => {
+                        let mut out = String::new();
+                        for _ in 0..flood {
+                            out.push_str(
+                                "{\"ev\":\"pty_output\",\"pty\":\"p1\",\"data\":\"eA==\"}\n",
+                            );
+                        }
+                        out.push_str("{\"ev\":\"pty_exit\",\"pty\":\"p1\",\"code\":0}\n");
+                        w.write_all(out.as_bytes()).await.unwrap();
+                        json!({})
+                    }
+                    Some("pty_list") => json!({"ptys": [pty("p1", true)]}),
+                    _ => json!({}),
+                };
+                let reply = json!({"id": v["id"], "ok": true, "data": data});
+                w.write_all(format!("{reply}\n").as_bytes()).await.unwrap();
+            }
+        });
+        let c = HostClient::connect(&sock, "t", "test").await.unwrap();
+        (tmp, c)
+    }
+
+    // Regression: #299. `serve_client` answered `RecvError::Lagged` with an `eprintln!` and went on: a
+    // `pty_exit` among the dropped events left the terminal in the restart prompt (and the pty index) as
+    // running until the next reconnect. The resync every lag now runs is the reconnect's own.
+    #[tokio::test]
+    async fn a_pty_exit_lost_to_event_lag_is_found_by_the_resync() {
+        let (_tmp, c) = hostd_that_floods(5000).await;
+        let mut rx = c.events();
+        c.call("info", json!({})).await.unwrap();
+        // 5000 events + the exit overflowed the 4096 slots: the receiver learns it lagged, not what it missed.
+        assert!(matches!(
+            rx.recv().await,
+            Err(tokio::sync::broadcast::error::RecvError::Lagged(_))
+        ));
+        let hub = HostHub::default();
+        let running = HostPty {
+            id: "p1".into(),
+            title: "zsh".into(),
+            cwd: "/w".into(),
+            argv: vec![],
+        };
+        hub.ctl.lock().state = Some(state_for(
+            &json!({"version": APP_VERSION, "pid": 7}),
+            vec![running],
+            Decision::Current,
+            Choice::Ask,
+        ));
+
+        let state = hub
+            .sync_ptys(LOCAL, &c)
+            .await
+            .unwrap()
+            .expect("the state changed: p1 is no longer running");
+        assert!(state.ptys.is_empty());
+        assert!(hub.ctl.lock().state.as_ref().unwrap().ptys.is_empty());
+        // The pty is still routed to its host (it exists, exited): attach and reads keep working.
+        assert_eq!(
+            hub.pty_host.lock().get("p1").map(String::as_str),
+            Some(LOCAL)
+        );
+    }
+
+    // #299 review: every lag used to toast, record an incident, resync and rebuild the GPU terminals, which is the
+    // load that causes the next lag. One action per window, the dropped events counted, the tail never lost.
+    #[test]
+    fn a_lag_storm_acts_once_per_window_and_never_loses_the_tail() {
+        let t0 = std::time::Instant::now();
+        let s = Duration::from_secs;
+        let mut g = LagGate::new(s(5));
+        assert_eq!(g.lagged(t0, 100), Some(100));
+        assert_eq!(g.lagged(t0 + s(1), 50), None);
+        assert_eq!(g.lagged(t0 + s(2), 25), None);
+        // The deferred resync is due when the window closes, and carries what was lost since.
+        assert_eq!(g.due(), Some(t0 + s(5)));
+        assert_eq!(g.flush(t0 + s(4)), None);
+        assert_eq!(g.flush(t0 + s(5)), Some(75));
+        assert_eq!(g.due(), None);
+        assert_eq!(g.flush(t0 + s(6)), None, "nothing deferred: nothing to do");
+        // That action opened a new window.
+        assert_eq!(g.lagged(t0 + s(7), 10), None);
+        assert_eq!(g.lagged(t0 + s(10), 5), Some(15));
+        // A lag long after the last one acts at once.
+        assert_eq!(g.lagged(t0 + s(60), 1), Some(1));
     }
 
     #[test]

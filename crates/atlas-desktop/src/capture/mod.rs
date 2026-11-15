@@ -7,13 +7,15 @@
 
 #[cfg(target_os = "macos")]
 mod chrome;
+#[cfg(target_os = "linux")]
+mod linux;
 #[cfg(target_os = "macos")]
 mod live;
 #[cfg(target_os = "macos")]
 pub(crate) mod occlusion;
 #[cfg(target_os = "macos")]
 mod png;
-// Parsing is pure and tested everywhere; only the ScreenCaptureKit side uses it.
+// Parsing is pure and tested everywhere; only the ScreenCaptureKit side uses all of it (Linux: stills only).
 #[cfg_attr(not(target_os = "macos"), allow(dead_code))]
 pub mod request;
 #[cfg(target_os = "macos")]
@@ -69,20 +71,37 @@ pub fn snapshot_to(
     snapshot::region_png(&view, region, out)
 }
 
-/// Non-macOS: no `WKWebView.takeSnapshot`; the region is kept as (x, y, w, h, scale) only so the
-/// debug bridge (debug builds) type-checks, and [`snapshot_to`] refuses.
-#[cfg(all(not(target_os = "macos"), debug_assertions))]
+/// Linux: read from the agent instance's private compositor, never from the user's session (`linux.rs`).
+#[cfg(target_os = "linux")]
+#[cfg_attr(not(debug_assertions), allow(dead_code))]
+pub fn snapshot_region(x: f64, y: f64, w: f64, h: f64, scale: f64) -> linux::Region {
+    (x, y, w, h, scale)
+}
+
+#[cfg(target_os = "linux")]
+#[cfg_attr(not(debug_assertions), allow(dead_code))]
+pub fn snapshot_to(
+    app: &AppHandle,
+    region: Option<linux::Region>,
+    out: &std::path::Path,
+) -> Result<(), String> {
+    linux::snapshot_to(app, region, out)
+}
+
+/// Windows: no page snapshot; the region is kept as (x, y, w, h, scale) only so the debug bridge (debug builds)
+/// type-checks, and [`snapshot_to`] refuses.
+#[cfg(all(not(any(target_os = "macos", target_os = "linux")), debug_assertions))]
 pub fn snapshot_region(x: f64, y: f64, w: f64, h: f64, scale: f64) -> (f64, f64, f64, f64, f64) {
     (x, y, w, h, scale)
 }
 
-#[cfg(all(not(target_os = "macos"), debug_assertions))]
+#[cfg(all(not(any(target_os = "macos", target_os = "linux")), debug_assertions))]
 pub fn snapshot_to(
     _: &AppHandle,
     _: Option<(f64, f64, f64, f64, f64)>,
     _: &std::path::Path,
 ) -> Result<(), String> {
-    Err("page snapshots need macOS (WKWebView.takeSnapshot)".into())
+    Err("page snapshots need macOS (WKWebView.takeSnapshot) or a Linux agent instance".into())
 }
 
 #[derive(Default)]
@@ -115,9 +134,29 @@ pub async fn capture_cmd(app: AppHandle, cmd: String, args: Value) -> Result<Val
     handle(&app, &cmd, &args).await
 }
 
-#[cfg(not(target_os = "macos"))]
+#[cfg(not(any(target_os = "macos", target_os = "linux")))]
 pub async fn handle(_: &AppHandle, _: &str, _: &Value) -> Result<Value, String> {
-    Err("capture needs macOS (ScreenCaptureKit)".into())
+    Err("capture needs macOS (ScreenCaptureKit) or a Linux agent instance (grim)".into())
+}
+
+/// Linux: stills of an agent instance (`linux.rs`); recording and the live view are not there yet (#282).
+#[cfg(target_os = "linux")]
+pub async fn handle(app: &AppHandle, cmd: &str, args: &Value) -> Result<Value, String> {
+    match cmd {
+        "capture_shot" => {
+            let req = request::parse_shot(args)?;
+            let app = app.clone();
+            tauri::async_runtime::spawn_blocking(move || linux::shot(&app, req))
+                .await
+                .map_err(|e| e.to_string())?
+        }
+        "capture_status" => Ok(serde_json::json!({ "recording": false })),
+        "capture_start" | "capture_stop" => Err(
+            "recording needs macOS (ScreenCaptureKit); on Linux only stills (capture_shot) work, in an agent instance"
+                .into(),
+        ),
+        other => Err(format!("unknown capture command {other:?}")),
+    }
 }
 
 #[cfg(target_os = "macos")]

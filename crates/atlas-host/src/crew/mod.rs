@@ -34,6 +34,7 @@ mod handlers;
 mod hub;
 pub mod locate;
 pub mod mcp;
+pub(crate) mod memory_cap;
 pub(crate) mod pane;
 pub(crate) mod proc;
 pub(crate) mod project;
@@ -186,7 +187,16 @@ pub(crate) async fn handle(hub: &Hub, cmd: HostCmd) -> Result<Value, String> {
             short_replies,
             short_replies_model,
             max_agents,
-        } => s::set(hub, short_replies, short_replies_model, max_agents),
+            agent_memory_max,
+        } => s::set(
+            hub,
+            s::SettingsIn {
+                short_replies,
+                short_replies_model,
+                max_agents,
+                agent_memory_max,
+            },
+        ),
         HostCmd::CrewPause {} => hub.crew.set_paused(hub, true).map(|()| json!({})),
         HostCmd::CrewResume {} => hub.crew.set_paused(hub, false).map(|()| json!({})),
         HostCmd::EngineLimits {} => s::engine_limits(),

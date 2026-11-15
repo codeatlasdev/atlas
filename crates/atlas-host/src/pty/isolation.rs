@@ -32,6 +32,16 @@ impl Isolation {
         self.client.signal(self.iso.session, sig)
     }
 
+    /// The cap the kernel killed this session's agent under, when it did (the helper compares the
+    /// crewmate's `oom_kill` count with the one at the start). `None` when unknown, for a helper that
+    /// restarted, or one without a cap.
+    pub(super) fn oom_cap(&self) -> Option<u64> {
+        self.client
+            .wait_oom(self.iso.session)
+            .ok()
+            .and_then(|(exited, _, cap)| exited.then_some(cap).flatten())
+    }
+
     pub(super) fn cwd(&self) -> std::io::Result<String> {
         self.client.cwd(self.iso.session)
     }

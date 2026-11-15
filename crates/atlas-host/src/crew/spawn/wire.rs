@@ -106,6 +106,8 @@ mod tests {
             Request::Reap {
                 user: "atlas-cm-3f2a9c1e5b7d".into(),
             },
+            Request::SetMemoryCap { bytes: 3 << 30 },
+            Request::MemoryCap,
         ];
         for r in &reqs {
             send(&a, r, &[]).unwrap();
@@ -122,11 +124,20 @@ mod tests {
             Response::Exit {
                 exited: true,
                 code: Some(3),
+                oom_cap: None,
+            },
+            Response::Exit {
+                exited: true,
+                code: Some(137),
+                oom_cap: Some(64 << 20),
             },
             Response::Exit {
                 exited: true,
                 code: None,
+                oom_cap: None,
             },
+            Response::MemoryCap(crate::crew::spawn::cgroup::Status::on(1 << 30)),
+            Response::MemoryCap(crate::crew::spawn::cgroup::Status::off("no cgroup v2")),
             Response::Cwd {
                 path: "/var/lib/atlas-cm/x/work".into(),
             },

@@ -398,6 +398,18 @@ async fn output_isolated(
             let code = tokio::task::spawn_blocking(move || c.wait_exit(sid))
                 .await
                 .map_err(|e| e.to_string())?;
+            // The kernel killed the engine for memory: whatever it printed before is a partial turn, and
+            // "exited 137" does not say which setting to raise (#296).
+            let c = session.client.clone();
+            if let Ok(Ok((_, _, Some(cap)))) =
+                tokio::task::spawn_blocking(move || c.wait_oom(sid)).await
+            {
+                session.end();
+                return Err(format!(
+                    "{name}: {}",
+                    crate::crew::spawn::cgroup::oom_reason(cap)
+                ));
+            }
             // The CLI is done, but a tool it left behind must not outlive the turn.
             session.end();
             Ok(Output {

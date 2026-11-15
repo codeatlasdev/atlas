@@ -108,8 +108,22 @@ fn drop_for(have: Ids, want: Ids) -> io::Result<Identity> {
     ))
 }
 
-/// [`spawn_as`] with explicit directories.
+/// [`spawn_as`] with explicit directories and no memory cap.
 pub fn spawn_in(w: &Where<'_>, req: &SpawnReq, ids: Ids, home: &str) -> io::Result<Started> {
+    spawn_capped(w, req, ids, home, None)
+}
+
+/// [`spawn_in`] under a memory cap. `leaf` is the fd of the crewmate's leaf `cgroup.procs`
+/// (see `cgroup::Leaf::procs_fd`): the child writes itself into it in `pre_exec`, before `setuid`, so
+/// it never runs outside its memory cap. The fd stays open in the parent (the leaf owns it); the child
+/// only writes to it.
+pub fn spawn_capped(
+    w: &Where<'_>,
+    req: &SpawnReq,
+    ids: Ids,
+    home: &str,
+    leaf: Option<RawFd>,
+) -> io::Result<Started> {
     let dirs = w.engines;
     check_spawn_in(w.cm_root, req)
         .map_err(|e| io::Error::new(io::ErrorKind::PermissionDenied, e))?;
@@ -147,9 +161,16 @@ pub fn spawn_in(w: &Where<'_>, req: &SpawnReq, ids: Ids, home: &str) -> io::Resu
         ids,
     )?;
     // SAFETY: the hook runs between fork and exec and calls only async-signal-safe libc functions
-    // (setsid, ioctl, setgroups, setgid, setuid); it allocates nothing.
+    // (write, setsid, ioctl, setgroups, setgid, setuid); it allocates nothing.
     unsafe {
         cmd.pre_exec(move || {
+            // First thing, as root: the cgroup file is only writable before the uid changes.
+            #[cfg(target_os = "linux")]
+            if let Some(fd) = leaf {
+                super::cgroup::join(fd)?;
+            }
+            #[cfg(not(target_os = "linux"))]
+            let _ = leaf;
             if libc::setsid() < 0 {
                 return Err(io::Error::last_os_error());
             }

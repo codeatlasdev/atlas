@@ -452,6 +452,66 @@ async fn the_agent_limit_is_a_crew_setting() {
     client.call("shutdown", json!({})).await.ok();
 }
 
+// #296: the per-agent memory cap is a crew setting too: `agent_memory_max` is stored, read back, kept by a
+// client that does not send it, `0` clears it, a value no agent could run under is refused, and a server
+// with no helper reports `memory_cap.available: false` with a reason instead of pretending.
+#[tokio::test(flavor = "multi_thread")]
+async fn the_agent_memory_cap_is_a_crew_setting_and_reports_when_there_is_none() {
+    let tmp = tempfile::tempdir().unwrap();
+    let client = daemon(&tmp.path().join("hostd")).await;
+    let before = client.call("crew_settings_get", json!({})).await.unwrap();
+    assert!(
+        before["agent_memory_max"].is_null(),
+        "unset by default: {before}"
+    );
+    // No helper in this daemon: said, with the reason.
+    assert_eq!(before["memory_cap"]["available"], false, "{before}");
+    assert!(
+        before["memory_cap"]["reason"]
+            .as_str()
+            .is_some_and(|r| !r.is_empty()),
+        "{before}"
+    );
+    let gib = 1u64 << 30;
+    client
+        .call(
+            "crew_settings_set",
+            json!({"short_replies": true, "agent_memory_max": 2 * gib}),
+        )
+        .await
+        .unwrap();
+    let after = client.call("crew_settings_get", json!({})).await.unwrap();
+    assert_eq!(after["agent_memory_max"], 2 * gib, "{after}");
+    // A client that does not send it leaves it alone.
+    client
+        .call("crew_settings_set", json!({"short_replies": false}))
+        .await
+        .unwrap();
+    let kept = client.call("crew_settings_get", json!({})).await.unwrap();
+    assert_eq!(kept["agent_memory_max"], 2 * gib, "{kept}");
+    // Too small to run an agent: refused, and the stored value stays.
+    let tiny = client
+        .call(
+            "crew_settings_set",
+            json!({"short_replies": true, "agent_memory_max": 1024}),
+        )
+        .await;
+    assert!(tiny.is_err(), "1 KiB must be refused");
+    let still = client.call("crew_settings_get", json!({})).await.unwrap();
+    assert_eq!(still["agent_memory_max"], 2 * gib, "{still}");
+    // 0 goes back to the computed default.
+    client
+        .call(
+            "crew_settings_set",
+            json!({"short_replies": true, "agent_memory_max": 0}),
+        )
+        .await
+        .unwrap();
+    let cleared = client.call("crew_settings_get", json!({})).await.unwrap();
+    assert!(cleared["agent_memory_max"].is_null(), "{cleared}");
+    client.call("shutdown", json!({})).await.ok();
+}
+
 // #296: a task that waits for the user (an action card) holds no agent slot: with a limit of 1, a
 // second crewmate runs while the first waits for an answer.
 #[tokio::test(flavor = "multi_thread")]

@@ -6,6 +6,10 @@ All notable changes to Atlas (CLI, TUI, MCP server and Atlas Desktop). Versions 
 
 ## [Unreleased]
 
+### Added
+
+- **Atlas Crew: a memory cap per agent, so one runaway agent dies alone ([#296](https://github.com/codeatlasdev/atlas/issues/296)).** On a server with per-crewmate users, each crewmate now runs in its own cgroup with `memory.max` = `agent_memory_max` (a new crew setting in bytes, at least 64 MiB; unset = 75 % of the server's memory divided by `max_agents`, never under 1 GiB) and the kernel kills the whole agent tree when it goes past it, instead of the service's `MemoryMax=80%` taking hostd and every other crewmate down. The task fails with "ran out of memory (cap 3 GiB); raise agent_memory_max". `crew_settings_get` reports `memory_cap` (`{available, bytes}` or `{available: false, reason}`); without cgroup v2 or delegation agents run uncapped and it says why. `atlas crew install` now `try-restart`s a running spawn helper so an existing server picks up its new unit. See [docs/crew.md](docs/crew.md#one-linux-user-per-crewmate).
+
 ## [1.5.0-alpha.26] — 2026-11-15
 
 Atlas is in **alpha**: expect bugs and breaking changes. Please [report what breaks](https://github.com/codeatlasdev/atlas/issues/new).

@@ -3,7 +3,7 @@
     {
       "finished_at": 1761213000,
       "id": "task-done",
-      "pane": "crew:7576833b-5157-0dbd-02fd-79edf1f9f905:9b382508-43e0-8e2e-dbba-a493d5c376a0",
+      "pane": "crew:crewmate-1:task-done",
       "prompt": "review the PR",
       "result": "LGTM",
       "source": "desktop",

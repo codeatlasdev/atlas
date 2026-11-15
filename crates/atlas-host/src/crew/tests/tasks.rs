@@ -672,6 +672,8 @@ async fn crewmate_tasks_json_contract() {
     fix["finished_at"] = json!(1761213000u64);
     fix["prompt"] = json!("review the PR");
     fix["result"] = json!("LGTM");
+    // The pane embeds random UUIDs; pin it so regenerating yields byte-identical fixtures.
+    fix["pane"] = json!("crew:crewmate-1:task-done");
 
     // running task: static shape with all new fields (title, preparing, tz, step.group, add_trigger)
     let running_fix = json!({

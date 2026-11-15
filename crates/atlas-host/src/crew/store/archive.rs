@@ -8,7 +8,7 @@
 //! manifest.json                 [`Manifest`]: format version, atlas version, crewmates, created_at
 //! crew.json                     crew-wide settings (never `paused`)
 //! crew/<id>/crewmate.json       definition + automations (a pre-rename `bot.json` is written under this name)
-//! crew/<id>/memory.md  tasks.jsonl  usage.jsonl
+//! crew/<id>/memory.md  tasks.jsonl  usage.jsonl  usage-<date>.jsonl.gz
 //! crew/<id>/secrets.json        only with `secrets: true`
 //! ```
 //!
@@ -118,7 +118,7 @@ pub fn is_exported(name: &str, with_secrets: bool) -> bool {
     match name {
         DEFINITION | super::LEGACY_FILE | "memory.md" | "tasks.jsonl" | "usage.jsonl" => true,
         "secrets.json" => with_secrets,
-        _ => false,
+        n => super::usage::is_rotated_name(n),
     }
 }
 
@@ -262,11 +262,15 @@ pub fn export(
             &serde_json::to_vec_pretty(&c)?,
             true,
         )?;
-        for file in ["memory.md", "tasks.jsonl", "usage.jsonl", "secrets.json"] {
-            if !is_exported(file, with_secrets) {
+        let files = ["memory.md", "tasks.jsonl", "usage.jsonl", "secrets.json"]
+            .map(String::from)
+            .into_iter()
+            .chain(super::usage::rotated_names(&dir));
+        for file in files {
+            if !is_exported(&file, with_secrets) {
                 continue;
             }
-            match std::fs::read(dir.join(file)) {
+            match std::fs::read(dir.join(&file)) {
                 Ok(data) => append(
                     &mut b,
                     &format!("crew/{id}/{file}"),
@@ -423,8 +427,13 @@ pub fn import(store: &CrewStore, r: impl Read, rename: bool) -> Result<ImportRep
         let new_id = c.id.clone();
         store.save_crewmate(&c)?;
         let dir = store.crewmate_dir(&new_id);
-        for file in ["memory.md", "tasks.jsonl", "usage.jsonl", "secrets.json"] {
-            if let Some(data) = parsed.files.get(&(old_id.clone(), file.to_string())) {
+        // Every file the archive holds for it: `classify` let in only allowed names (rotated usage included).
+        let own = parsed
+            .files
+            .range((old_id.clone(), String::new())..)
+            .take_while(|((id, _), _)| *id == old_id);
+        for ((_, file), data) in own {
+            if file != DEFINITION && file != super::LEGACY_FILE {
                 paths::write_private(&dir.join(file), data)?;
             }
         }

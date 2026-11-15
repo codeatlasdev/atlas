@@ -10,12 +10,21 @@ if [[ -n $want && $(printf '%s\n%s\n' "$want" "$have" | sort -V | head -1) != "$
   exit 1
 fi
 # Native crate: format check, clippy, and verify bindings are in sync.
+# The generator must be the version native/Cargo.toml pins (another version writes different code, a
+# false drift). In CI a missing or wrong generator fails: a skipped check let Rust/Dart drift pass.
 if command -v cargo >/dev/null; then
   rustup run stable cargo fmt --manifest-path native/Cargo.toml --check
   rustup run stable cargo clippy --manifest-path native/Cargo.toml -- -D warnings
-  if command -v flutter_rust_bridge_codegen >/dev/null; then
+  frb=$(sed -n 's/^flutter_rust_bridge = "=\([0-9.]*\)"$/\1/p' native/Cargo.toml)
+  got=$(flutter_rust_bridge_codegen --version 2>/dev/null | awk '{print $NF}')
+  if [[ $got == "$frb" ]]; then
     flutter_rust_bridge_codegen generate
     git diff --exit-code lib/src/rust || { echo "lib/src/rust is out of sync with api.rs — run flutter_rust_bridge_codegen generate"; exit 1; }
+  elif [[ -n ${CI:-} ]]; then
+    echo "✗ flutter_rust_bridge_codegen ${got:-missing}, need $frb (native/Cargo.toml): the bindings check cannot run"
+    exit 1
+  else
+    echo "ℹ bindings check skipped: flutter_rust_bridge_codegen ${got:-missing}, need $frb (cargo install flutter_rust_bridge_codegen@$frb --locked)"
   fi
 fi
 flutter pub get

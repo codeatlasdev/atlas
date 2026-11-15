@@ -53,15 +53,15 @@ pub(super) async fn run(ctx: TurnCtx<'_>) -> Result<TurnResult, String> {
         &ctx.mcp_server(),
     ));
 
-    let out = launch::output(cmd, ctx.cancel, "codex").await?;
+    let out = launch::output(ctx.exec, cmd, ctx.cancel, "codex").await?;
     let (engine, session) = (ctx.engine, ctx.session);
 
-    if !out.status.success() {
+    if !out.success() {
         return Err(launch::exit_error("codex", &out));
     }
 
     // Parse JSONL stdout for session id and usage.
-    let stdout = String::from_utf8_lossy(&out.stdout);
+    let stdout = out.stdout.as_str();
     let mut thread_id: Option<String> = session.session_id.clone();
     let mut usage_in: Option<u64> = None;
     let mut usage_out: Option<u64> = None;

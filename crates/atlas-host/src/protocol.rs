@@ -745,17 +745,23 @@ pub enum HostCmd {
     },
     /// A terminal that runs only `engine`'s login command as the crew user (`crew::engine_login`); the reply is
     /// `{engine, pty}` and the phone attaches with its terminal screen. `engine` is one of `claude`, `codex`,
-    /// `omp`, `opencode`; anything else is refused.
+    /// `omp`, `opencode`; anything else is refused. With `crewmate` (a server where crewmates run as their own
+    /// Linux users) it runs as that crewmate, whose sign-in it is; never a fallback to the crew user.
     #[serde(rename = "crew_engine_login")]
     CrewEngineLogin {
         engine: String,
+        #[serde(default)]
+        crewmate: Option<String>,
     },
     /// Per engine `signed_in` / `needs_signin` / `not_installed` / `unknown`; `refresh` runs each engine's own
     /// status command, without it the last answer (and what failed tasks reported) comes back at once.
+    /// With `crewmate` it is that crewmate's own sign-in (its Linux user's), see `crew_engine_login`.
     #[serde(rename = "crew_engine_status")]
     CrewEngineStatus {
         #[serde(default)]
         refresh: bool,
+        #[serde(default)]
+        crewmate: Option<String>,
     },
     /// The crew servers this Mac's desktop knows (`~/.atlas/desktop/crew-servers.json`), which
     /// Atlas Mobile reaches through this hostd (`crate::crew`).

@@ -528,6 +528,8 @@ static DELETED: parking_lot::Mutex<Vec<(PathBuf, String)>> = parking_lot::Mutex:
 
 pub struct CrewStore {
     base: PathBuf,
+    /// Where isolation lives, when crewmates run as their own users (`spawn::layout::Setup`).
+    isolation: Option<super::spawn::layout::Setup>,
     /// The task log size below which it is never compacted (see `tasklog`); tests lower it.
     compact_min: u64,
     /// The size of `usage.jsonl` that rotates it ([`USAGE_MAX_BYTES`]); tests lower it.
@@ -551,10 +553,37 @@ impl CrewStore {
         }
         Self {
             base: base.to_path_buf(),
+            isolation: None,
             compact_min: tasklog::COMPACT_MIN,
             usage_max: USAGE_MAX_BYTES,
             usage_keep: USAGE_KEEP_ROTATED,
         }
+    }
+
+    /// This store with isolation set up (`None` leaves every crewmate where it always was).
+    pub fn with_isolation(mut self, setup: Option<super::spawn::layout::Setup>) -> Self {
+        self.isolation = setup;
+        self
+    }
+
+    /// Where isolation lives, if it is on.
+    pub fn isolation(&self) -> Option<&super::spawn::layout::Setup> {
+        self.isolation.as_ref()
+    }
+
+    /// The isolated layout of crewmate `id`: `None` without a helper, and for anything that is not a
+    /// crewmate id.
+    pub fn isolated(&self, id: &str) -> Option<super::spawn::layout::Isolated> {
+        self.isolation.as_ref()?.of(id)
+    }
+
+    /// git's environment for running git in `dir` as hostd: an isolated crewmate's tree belongs to
+    /// another user, and git opens it only with that crewmate's config. Empty for any other directory.
+    pub fn git_env_in(&self, dir: &Path) -> Vec<(String, String)> {
+        self.isolation
+            .as_ref()
+            .map(|s| super::spawn::layout::git_env_in(&s.root, dir))
+            .unwrap_or_default()
     }
 
     /// `<base>/crew/<id>/`
@@ -562,9 +591,13 @@ impl CrewStore {
         crewmate_dir_in(&self.base, id)
     }
 
-    /// `<crewmate_dir>/memory.md`
+    /// `<crewmate_dir>/memory.md`, or under isolation the file in the crewmate's own directory: the
+    /// agent appends to it (the prompt names it), and it cannot enter the crew home.
     pub fn memory_path(&self, id: &str) -> PathBuf {
-        self.crewmate_dir(id).join("memory.md")
+        match self.isolated(id) {
+            Some(iso) => iso.memory(),
+            None => self.crewmate_dir(id).join("memory.md"),
+        }
     }
 
     /// `<crewmate_dir>/tasks.jsonl`
@@ -781,7 +814,13 @@ impl CrewStore {
         } else {
             bytes
         };
-        paths::write_private(&self.memory_path(crewmate_id), data)
+        let path = self.memory_path(crewmate_id);
+        if self.isolated(crewmate_id).is_some() {
+            // Written in place: replacing the file would make hostd its owner, and the agent (the
+            // owner, writing through the group bit) could no longer append to it.
+            return std::fs::write(&path, data);
+        }
+        paths::write_private(&path, data)
     }
 
     /// `<crewmate_dir>/session.json`
@@ -985,6 +1024,8 @@ enum Secrets {
 pub mod archive;
 #[cfg(test)]
 mod archive_tests;
+mod hooktoken;
+pub(crate) use hooktoken::constant_time_eq;
 #[cfg(test)]
 mod log_tests;
 #[cfg(test)]

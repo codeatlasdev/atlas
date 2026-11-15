@@ -18,6 +18,7 @@ use crate::commands::AtlasCommand;
 use crate::commands::deploy::remote::{Remote, shq};
 
 use super::binary;
+use super::isolation;
 use super::layout::{self, Account, INSTALL_DIR, Probe, SERVICE};
 use super::privileged::Priv;
 
@@ -220,6 +221,29 @@ async fn run_install(args: InstallArgs) -> Result<()> {
         bail!("writing the service failed: {}", o.stderr.trim());
     }
 
+    // --- One Linux user per crewmate ---
+    // The helpers, the engines every crewmate user runs, and a user for each crewmate that already
+    // exists. All before hostd is swapped in and restarted: it looks for the helper's socket when it starts.
+    let ids = list_crewmates(&p, &account).await?;
+    step(&format!(
+        "setting up one Linux user per crewmate ({} existing)",
+        ids.len()
+    ));
+    let engines = isolation_engines();
+    for action in isolation::install_actions(
+        &account,
+        &ids,
+        &engines
+            .iter()
+            .map(|(a, c)| (*a, c.as_str()))
+            .collect::<Vec<_>>(),
+    ) {
+        run_action(&p, &action).await?;
+    }
+    if let Some(n) = isolation::migration_notice(ids.len()) {
+        step(&n);
+    }
+
     // --- Swap in, restart and wait for hostd (rolls back to the binary that was there) ---
     step(&format!(
         "starting {SERVICE} and waiting for hostd (up to {}s)",
@@ -360,6 +384,53 @@ pub(super) async fn stage_upload(p: &Priv<'_>, local_bin: &std::path::Path) -> R
         .await?;
     if o.code != 0 {
         bail!("binary upload failed: {}", o.stderr.trim());
+    }
+    Ok(())
+}
+
+/// The ids of the crewmates the crew user already has (their directories under its home).
+async fn list_crewmates(p: &Priv<'_>, a: &Account) -> Result<Vec<String>> {
+    let o = p.exec(&isolation::list_crewmates_script(a)).await?;
+    if o.code != 0 {
+        bail!("listing the crewmates failed: {}", o.stderr.trim());
+    }
+    Ok(o.stdout
+        .lines()
+        .map(str::trim)
+        .filter(|l| !l.is_empty())
+        .map(str::to_string)
+        .collect())
+}
+
+/// The engines installed system-wide: each agent with the vendor's own install line
+/// (`agent_install_hint`, the lines `atlas crew login` prints).
+fn isolation_engines() -> Vec<(&'static str, String)> {
+    ["omp", "claude", "codex", "opencode"]
+        .into_iter()
+        .filter_map(|a| super::agent_install_hint(a).map(|c| (a, c.to_string())))
+        .collect()
+}
+
+/// Run one isolation action on the server. Through [`Priv`], like every privileged step of the install:
+/// a server whose sudo asks for a password (Atlas Desktop sends it) gets it with each of these too.
+async fn run_action(p: &Priv<'_>, action: &isolation::Action) -> Result<()> {
+    let (what, o) = match action {
+        isolation::Action::Run(sh) => (sh.clone(), p.exec(sh).await?),
+        isolation::Action::Write { file, contents } => (
+            format!("writing {file}"),
+            p.exec_stdin(
+                &format!("sudo tee {} > /dev/null", shq(file)),
+                Some(contents.as_bytes()),
+            )
+            .await?,
+        ),
+    };
+    if o.code != 0 {
+        bail!(
+            "`{}` failed: {}",
+            what.chars().take(120).collect::<String>(),
+            o.stderr.trim()
+        );
     }
     Ok(())
 }

@@ -45,6 +45,10 @@ impl Session {
         if self.exited().is_some() {
             return Ok(());
         }
+        // Another user's process: only the helper may signal it.
+        if let Some(iso) = &self.iso {
+            return Ok(iso.signal(s)?);
+        }
         let pid = self.pid.ok_or_else(|| anyhow!("no pid"))?;
         // SAFETY: plain kill(2) on a positive pid we spawned.
         if unsafe { libc::kill(pid as libc::pid_t, s) } != 0 {
@@ -99,12 +103,24 @@ impl Session {
     /// [`reap_tagged`](Self::reap_tagged) from a synchronous, non-async context (the session
     /// ended by itself): a detached blocking thread, never the caller's.
     pub(super) fn reap_leftovers(&self) {
+        #[cfg(unix)]
+        if let Some(iso) = self.iso.clone() {
+            std::thread::spawn(move || {
+                let _ = iso.reap();
+            });
+            return;
+        }
         let (id, dir) = (self.id.clone(), self.dir.clone());
         std::thread::spawn(move || reap_session_tree(&dir, &id));
     }
 
     /// End every process tagged with this session, off the runtime.
     async fn reap_tagged(&self) {
+        #[cfg(unix)]
+        if let Some(iso) = self.iso.clone() {
+            let _ = tokio::task::spawn_blocking(move || iso.reap()).await;
+            return;
+        }
         let (id, dir) = (self.id.clone(), self.dir.clone());
         let _ = tokio::task::spawn_blocking(move || reap_session_tree(&dir, &id)).await;
     }
@@ -208,6 +224,12 @@ impl Session {
 
     #[cfg(unix)]
     pub async fn cwd_now(&self) -> Option<String> {
+        if let Some(iso) = self.iso.clone() {
+            return tokio::task::spawn_blocking(move || iso.cwd().ok())
+                .await
+                .ok()
+                .flatten();
+        }
         let pid = self.pid?;
         let fut = tokio::process::Command::new("lsof")
             .args(["-a", "-p", &pid.to_string(), "-d", "cwd", "-Fn"])

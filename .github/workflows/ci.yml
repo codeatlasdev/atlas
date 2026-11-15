@@ -154,6 +154,32 @@ jobs:
         with:
           tests: ${{ needs.plan.outputs.tested != 'true' }}
 
+  # The tests that need root (crew isolation, issue #200): a real cross-uid spawn and a real useradd. GitHub's
+  # Ubuntu runners have passwordless sudo, and the runner is thrown away, so creating system users is fine. The
+  # tests are `#[ignore]`d in every other job (docs/contributing.md, "Tests that need root").
+  rust-linux-root:
+    name: Rust (Linux, root tests)
+    needs: plan
+    if: ${{ needs.plan.outputs.tested != 'true' && needs.plan.outputs.rust == 'true' }}
+    runs-on: ubuntu-latest
+    timeout-minutes: 40
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+
+      - name: Install Rust
+        run: rustup show active-toolchain || rustup toolchain install
+
+      # No cargo cache here on purpose: a job that later runs as root should not restore build
+      # outputs another run produced (zizmor cache-poisoning), and atlas-host alone builds in minutes.
+      # Build as the runner user, run as root: root never writes the target dir it did not build.
+      - name: Build the root tests
+        run: cargo test -p atlas-host --lib --locked --no-run
+
+      - name: Run the root tests
+        run: sudo -E env "PATH=$PATH" cargo test -p atlas-host --lib --locked crew::spawn -- --ignored
+
   frontend:
     name: Desktop frontend + skills
     needs: plan
@@ -373,7 +399,7 @@ jobs:
   # plus this explicit check is what keeps a broken run from going green.
   ci:
     name: CI
-    needs: [plan, rust-macos, rust-linux, rust-linux-arm64, rust-windows, frontend, scripts, mobile, push-relay, site, duplication, deny, workflows]
+    needs: [plan, rust-macos, rust-linux, rust-linux-root, rust-linux-arm64, rust-windows, frontend, scripts, mobile, push-relay, site, duplication, deny, workflows]
     if: ${{ !cancelled() }}
     runs-on: ubuntu-latest
     timeout-minutes: 5

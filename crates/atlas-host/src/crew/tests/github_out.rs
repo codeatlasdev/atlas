@@ -323,17 +323,17 @@ async fn the_branch_of_a_git_work_dir_is_read() {
         "-m",
         "i",
     ]);
-    assert_eq!(current_branch(d).await.as_deref(), Some("main"));
+    assert_eq!(current_branch(d, &[]).await.as_deref(), Some("main"));
     git(&["checkout", "-q", "-b", "nami/fix"]);
-    assert_eq!(current_branch(d).await.as_deref(), Some("nami/fix"));
+    assert_eq!(current_branch(d, &[]).await.as_deref(), Some("nami/fix"));
     git(&["checkout", "-q", "--detach"]);
     assert_eq!(
-        current_branch(d).await,
+        current_branch(d, &[]).await,
         None,
         "a detached HEAD has no branch"
     );
     assert_eq!(
-        current_branch(&d.join("missing")).await,
+        current_branch(&d.join("missing"), &[]).await,
         None,
         "not a repo, no panic"
     );

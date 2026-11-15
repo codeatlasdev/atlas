@@ -1792,6 +1792,24 @@ mod tests {
         assert_eq!(ctl.connected(12), Some(11));
     }
 
+    /// The silence itself, through the state `reconcile` and the restart commands drive: the daemon the app asked to
+    /// leave (an upgrade, a shutdown, the user's Restart) is replaced without an incident, and a daemon that stayed
+    /// after being asked (the restart did nothing) is not excused for the death after it.
+    #[test]
+    fn the_daemon_the_app_asked_to_leave_is_replaced_without_an_incident() {
+        let mut ctl = HostCtl::default();
+        ctl.connected(10);
+        ctl.expect_exit(10);
+        assert_eq!(ctl.connected(11), None, "handover or restart");
+        ctl.expect_exit(11);
+        assert_eq!(ctl.connected(11), None, "asked, but it stayed");
+        assert_eq!(
+            ctl.connected(12),
+            Some(11),
+            "its later death is not excused"
+        );
+    }
+
     #[test]
     fn the_incident_names_both_pids_and_the_crash_report_of_the_old_one() {
         let d = hostd_exit_detail(10, 11, Some("crash-1-10.toml"));

@@ -13,7 +13,6 @@ import 'package:go_router/go_router.dart';
 import 'package:atlas_mobile/core/demo/demo_computer.dart';
 import 'package:atlas_mobile/core/protocol/models.dart';
 import 'package:atlas_mobile/core/connection/connection_notifier.dart';
-import 'package:atlas_mobile/core/storage/mac_storage.dart';
 import 'package:atlas_mobile/core/transport/transport.dart';
 import 'package:atlas_mobile/core/ui/atlas_theme.dart';
 import 'package:atlas_mobile/features/agents/agent_chat_screen.dart';
@@ -66,7 +65,7 @@ Future<({GoRouter router, _Slow link})> _app(
   Size size = const Size(393, 852),
 }) async {
   await t.binding.setSurfaceSize(size);
-  final router = buildRouter(GlobalKey<NavigatorState>());
+  final router = buildRouter();
   addTearDown(router.dispose);
   late _Slow link;
   await t.pumpWidget(
@@ -396,7 +395,8 @@ void main() {
       });
       await probe.record(const Duration(milliseconds: 3500));
       probe.expectNeverBothVisible('splash', 'dashboard');
-      probe.expectOpaqueWhenPresent('tile');
+      // The page fades in over the ground (a short fade, not the tiles': they are already there with it).
+      _expectNoOwnFade(probe, 'tile', 'dashboard');
       await _leave(t);
     },
   );

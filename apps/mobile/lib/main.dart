@@ -1,4 +1,3 @@
-import 'package:flutter/foundation.dart';
 import 'package:flutter/material.dart';
 
 import 'package:atlas_mobile/src/rust/frb_generated.dart';
@@ -25,12 +24,13 @@ import 'package:atlas_mobile/features/terminal/terminal_screen.dart';
 
 final _rootNavigatorKey = GlobalKey<NavigatorState>();
 
-final _router = buildRouter(_rootNavigatorKey);
+final _router = buildRouter();
 
-/// The app's routes on [rootNavigator]. Tests build their own to drive the real shell.
+/// The app's routes. Tests build their own router to drive the real shell (one at a time: the root navigator's
+/// key is shared).
 @visibleForTesting
-GoRouter buildRouter(GlobalKey<NavigatorState> rootNavigator) => GoRouter(
-  navigatorKey: rootNavigator,
+GoRouter buildRouter() => GoRouter(
+  navigatorKey: _rootNavigatorKey,
   routes: [
     // ── Shell: one branch per tab; the bar is visible here ─────────────────
     StatefulShellRoute(
@@ -68,13 +68,13 @@ GoRouter buildRouter(GlobalKey<NavigatorState> rootNavigator) => GoRouter(
 
     // ── Detail routes on the root navigator: bar hides while these are open
     GoRoute(
-      parentNavigatorKey: rootNavigator,
+      parentNavigatorKey: _rootNavigatorKey,
       path: '/pair',
       pageBuilder: (context, state) =>
           routePage(context, state, const PairScreen()),
     ),
     GoRoute(
-      parentNavigatorKey: rootNavigator,
+      parentNavigatorKey: _rootNavigatorKey,
       path: '/project',
       pageBuilder: (context, state) {
         final args = state.extra! as Map<String, dynamic>;
@@ -89,7 +89,7 @@ GoRouter buildRouter(GlobalKey<NavigatorState> rootNavigator) => GoRouter(
       },
     ),
     GoRoute(
-      parentNavigatorKey: rootNavigator,
+      parentNavigatorKey: _rootNavigatorKey,
       path: '/terminal',
       pageBuilder: (context, state) {
         final args = state.extra! as Map<String, dynamic>;
@@ -106,7 +106,7 @@ GoRouter buildRouter(GlobalKey<NavigatorState> rootNavigator) => GoRouter(
       },
     ),
     GoRoute(
-      parentNavigatorKey: rootNavigator,
+      parentNavigatorKey: _rootNavigatorKey,
       path: '/crew/:nodeId/:crewmateId',
       pageBuilder: (context, state) {
         final args = (state.extra ?? {}) as Map<String, dynamic>;

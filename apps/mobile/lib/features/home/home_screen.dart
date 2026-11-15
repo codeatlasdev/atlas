@@ -130,27 +130,32 @@ class _HomeScreenState extends ConsumerState<HomeScreen> {
     final splash = loading != null || _splashSince != null;
     if (!splash && target?.device != null) _ready.add(target!.device!.nodeId);
 
-    // One page at a time: the splash is cut for the dashboard (a cross-fade drew both at once).
     return Scaffold(
-      body: splash
-          ? HomeSplash(key: const ValueKey('splash'), caption: _caption)
-          : devices.hasError
-          ? EmptyState(
-              title: 'Could not read paired computers',
-              message: '${devices.error}',
-              action: OutlinedButton(
-                onPressed: () => ref.invalidate(pairedDevicesProvider),
-                child: const Text('Try again'),
+      // One screen at a time: the loading screen (or the other computer's dashboard) is gone on the first
+      // frame and the next one fades in over the ground, never both superimposed.
+      body: AnimatedSwitcher(
+        duration: Motion.reduced(context) ? Duration.zero : Motion.fast,
+        switchOutCurve: const Threshold(1),
+        child: splash
+            ? HomeSplash(key: const ValueKey('splash'), caption: _caption)
+            : devices.hasError
+            ? EmptyState(
+                title: 'Could not read paired computers',
+                message: '${devices.error}',
+                action: OutlinedButton(
+                  onPressed: () => ref.invalidate(pairedDevicesProvider),
+                  child: const Text('Try again'),
+                ),
+              )
+            : target!.onboard
+            ? Onboarding(paired: devices.value!.isNotEmpty)
+            : HomeDashboard(
+                key: ValueKey(target.device!.nodeId),
+                device: target.device!,
+                others: target.others,
+                onSwitch: (d) => setState(() => _nodeId = d.nodeId),
               ),
-            )
-          : target!.onboard
-          ? Onboarding(paired: devices.value!.isNotEmpty)
-          : HomeDashboard(
-              key: ValueKey(target.device!.nodeId),
-              device: target.device!,
-              others: target.others,
-              onSwitch: (d) => setState(() => _nodeId = d.nodeId),
-            ),
+      ),
     );
   }
 }

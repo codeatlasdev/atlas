@@ -3,7 +3,7 @@
 //! Servers that ran Atlas Crew as "Atlas Bot" keep their data under `<dir>/bots/<id>/bot.json`:
 //! [`CrewStore::new`] adopts that directory and `load_crewmate` still reads a `bot.json`.
 
-use std::io::{self, BufRead, Write};
+use std::io;
 use std::path::{Path, PathBuf};
 use std::time::{SystemTime, UNIX_EPOCH};
 
@@ -11,7 +11,9 @@ use serde::{Deserialize, Serialize};
 
 use crate::paths::{self, Loaded};
 
+pub(crate) mod jsonl;
 mod origin;
+mod tasklog;
 pub use origin::{GithubOrigin, GithubOriginKind};
 
 /// `<hostd dir>/crew/<id>/`: where a crewmate keeps everything (definition, tasks, memory, work tree).
@@ -511,17 +513,18 @@ impl Default for CrewSettings {
     }
 }
 
-/// Held by every write to a `tasks.jsonl`, so a read-modify-append ([`CrewStore::update_task`],
-/// [`CrewStore::append_runner_state`]) is never split by another write. Process-wide, not per
-/// [`CrewStore`]: handlers build their own instances over the same files.
-static TASK_WRITES: parking_lot::Mutex<()> = parking_lot::Mutex::new(());
+/// `usage.jsonl` is cut back to its newest half once it passes this: totals cover the recent past, and the
+/// file is read whole by `crewmate_usage`.
+const USAGE_MAX_BYTES: u64 = 1024 * 1024;
 
-/// Crewmates deleted by this process. Shared like `TASK_WRITES`, because handlers build their own
+/// Crewmates deleted by this process. Shared like the task logs (`tasklog::LOGS`), because handlers build their own
 /// stores over the same files. Ids are never reused, so it only grows by one per delete.
 static DELETED: parking_lot::Mutex<Vec<(PathBuf, String)>> = parking_lot::Mutex::new(Vec::new());
 
 pub struct CrewStore {
     base: PathBuf,
+    /// The task log size below which it is never compacted (see `tasklog`); tests lower it.
+    compact_min: u64,
 }
 
 impl CrewStore {
@@ -539,6 +542,7 @@ impl CrewStore {
         }
         Self {
             base: base.to_path_buf(),
+            compact_min: tasklog::COMPACT_MIN,
         }
     }
 
@@ -613,6 +617,10 @@ impl CrewStore {
     pub fn delete_crewmate_dir(&self, id: &str) -> io::Result<()> {
         let mut deleted = DELETED.lock();
         deleted.push((self.base.clone(), id.to_string()));
+        // The index of its task log goes with it (its lock is taken after `DELETED`, as by every write).
+        if let Some(logs) = tasklog::LOGS.lock().as_mut() {
+            logs.remove(&self.tasks_path(id));
+        }
         match std::fs::remove_dir_all(self.crewmate_dir(id)) {
             Err(e) if e.kind() != io::ErrorKind::NotFound => Err(e),
             _ => Ok(()),
@@ -643,31 +651,57 @@ impl CrewStore {
         Ok(dir)
     }
 
+    /// Run `f` on the task log of `crewmate_id`, brought up to date with the file, holding the one lock
+    /// every task write takes. `create`: a log that does not exist yet is started (a write); a read of a
+    /// crewmate with no log gets `None` and leaves nothing behind.
+    fn with_log<R>(
+        &self,
+        crewmate_id: &str,
+        create: bool,
+        f: impl FnOnce(&Path, &mut tasklog::TaskLog) -> R,
+    ) -> Option<R> {
+        let path = self.tasks_path(crewmate_id);
+        let mut guard = tasklog::LOGS.lock();
+        let logs = guard.get_or_insert_with(Default::default);
+        if !create && !logs.contains_key(&path) && !path.exists() {
+            return None;
+        }
+        let log = logs.entry(path.clone()).or_default();
+        log.sync(&path);
+        Some(f(&path, log))
+    }
+
     /// Append a JSON line to `tasks.jsonl`: `task` as it stands, the last line of an id wins.
     /// For a task that is already stored and may be changing under you, use [`Self::update_task`]
     /// (a change from a hook route or a handler) or [`Self::append_runner_state`] (the runner's copy).
     pub fn append_task(&self, crewmate_id: &str, task: &Task) -> io::Result<()> {
-        let _guard = TASK_WRITES.lock();
-        self.append_unlocked(crewmate_id, task)
+        self.writable_dir(crewmate_id)?;
+        self.with_log(crewmate_id, true, |path, log| {
+            log.push_task(path, task, self.compact_min)
+        })
+        .expect("a log is created on write")
     }
 
     /// Change the stored task `task_id` with `f` and append it, as one step: nothing else writes a task
     /// between the read and the append, so a change made meanwhile is never overwritten by a stale copy.
     /// `Ok(None)` when there is no such task (nothing is written); `f`'s error writes nothing either.
+    /// `f` runs under the task-log lock: it must not call the store.
     pub fn update_task<R>(
         &self,
         crewmate_id: &str,
         task_id: &str,
         f: impl FnOnce(&mut Task) -> Result<R, String>,
     ) -> Result<Option<(Task, R)>, String> {
-        let _guard = TASK_WRITES.lock();
-        let Some(mut task) = self.stored_task(crewmate_id, task_id) else {
-            return Ok(None);
-        };
-        let out = f(&mut task)?;
-        self.append_unlocked(crewmate_id, &task)
-            .map_err(|e| format!("cannot record task {task_id}: {e}"))?;
-        Ok(Some((task, out)))
+        self.with_log(crewmate_id, false, |path, log| {
+            let Some(mut task) = log.get(task_id).cloned() else {
+                return Ok(None);
+            };
+            let out = f(&mut task)?;
+            log.push_task(path, &task, self.compact_min)
+                .map_err(|e| format!("cannot record task {task_id}: {e}"))?;
+            Ok(Some((task, out)))
+        })
+        .unwrap_or(Ok(None))
     }
 
     /// Append the runner's copy of a running task. The runner holds that copy for the whole run, while
@@ -676,64 +710,50 @@ impl CrewStore {
     /// stored task, so the runner's next title or step never takes them back (a `ui` task once ended
     /// `done` without its captures that way). Everything else is the runner's.
     pub fn append_runner_state(&self, crewmate_id: &str, task: &Task) -> io::Result<()> {
-        let _guard = TASK_WRITES.lock();
-        let mut snapshot = task.clone();
-        if let Some(stored) = self.stored_task(crewmate_id, &task.id) {
-            // The store is the arbiter of a cancel: the runner's copy still says queued, preparing or running
-            // (it was made before the cancel), and appending it would un-cancel the task and let its agent
-            // start (#292). Only the runner's own end (`finish_task`) restates a cancelled task, as cancelled.
-            if stored.state == TaskState::Cancelled && snapshot.state != TaskState::Cancelled {
-                return Ok(());
-            }
-            snapshot.ui |= stored.ui;
-            snapshot.attachments = stored.attachments;
-            snapshot.ask = stored.ask;
-        }
-        self.append_unlocked(crewmate_id, &snapshot)
-    }
-
-    fn stored_task(&self, crewmate_id: &str, task_id: &str) -> Option<Task> {
-        self.read_tasks(crewmate_id, usize::MAX)
-            .into_iter()
-            .find(|t| t.id == task_id)
-    }
-
-    fn append_unlocked(&self, crewmate_id: &str, task: &Task) -> io::Result<()> {
         self.writable_dir(crewmate_id)?;
-        let mut line = serde_json::to_string(task)
-            .map_err(|e| io::Error::new(io::ErrorKind::InvalidData, e))?;
-        line.push('\n');
-        let mut f = std::fs::OpenOptions::new()
-            .create(true)
-            .append(true)
-            .open(self.tasks_path(crewmate_id))?;
-        f.write_all(line.as_bytes())
+        self.with_log(crewmate_id, true, |path, log| {
+            let mut snapshot = task.clone();
+            if let Some(stored) = log.get(&task.id) {
+                // The store is the arbiter of a cancel: the runner's copy still says queued, preparing or running
+                // (it was made before the cancel), and appending it would un-cancel the task and let its agent
+                // start (#292). Only the runner's own end (`finish_task`) restates a cancelled task, as cancelled.
+                if stored.state == TaskState::Cancelled && snapshot.state != TaskState::Cancelled {
+                    return Ok(());
+                }
+                snapshot.ui |= stored.ui;
+                snapshot.attachments = stored.attachments.clone();
+                snapshot.ask = stored.ask.clone();
+            }
+            log.push_task(path, &snapshot, self.compact_min)
+        })
+        .expect("a log is created on write")
     }
 
-    /// Read `tasks.jsonl`: last state per id, newest-first, up to `limit`.
+    /// Record one more step of a task that already has a record: a line of the step alone, not the
+    /// task again with every step so far (a 50-step task wrote 50 copies of its prompt). `NotFound`
+    /// when the task has no record: the caller records it whole with [`Self::append_runner_state`].
+    pub fn append_step(&self, crewmate_id: &str, task_id: &str, step: &Step) -> io::Result<()> {
+        self.with_log(crewmate_id, false, |path, log| {
+            log.push_step(path, task_id, step, self.compact_min)
+        })
+        .unwrap_or_else(|| {
+            Err(io::Error::new(
+                io::ErrorKind::NotFound,
+                format!("crewmate {crewmate_id} has no task log"),
+            ))
+        })
+    }
+
+    /// The stored state of one task. Reads the index, never the file.
+    pub fn task(&self, crewmate_id: &str, task_id: &str) -> Option<Task> {
+        self.with_log(crewmate_id, false, |_, log| log.get(task_id).cloned())
+            .flatten()
+    }
+
+    /// The tasks of a crewmate: last state per id, newest first (by creation), up to `limit`.
     pub fn read_tasks(&self, crewmate_id: &str, limit: usize) -> Vec<Task> {
-        let Ok(f) = std::fs::File::open(self.tasks_path(crewmate_id)) else {
-            return vec![];
-        };
-        // Build a map of id → latest Task (last write wins).
-        let mut by_id: std::collections::HashMap<String, Task> = std::collections::HashMap::new();
-        let mut order: Vec<String> = vec![];
-        for line in io::BufReader::new(f).lines().map_while(Result::ok) {
-            if let Ok(t) = serde_json::from_str::<Task>(&line) {
-                let is_new = !by_id.contains_key(&t.id);
-                by_id.insert(t.id.clone(), t.clone());
-                if is_new {
-                    order.push(t.id);
-                }
-            }
-        }
-        // Newest-first: reverse insertion order, take up to limit.
-        order
-            .iter()
-            .rev()
-            .filter_map(|id| by_id.get(id).cloned())
-            .take(limit)
-            .collect()
+        self.with_log(crewmate_id, false, |_, log| log.newest(limit))
+            .unwrap_or_default()
     }
 
     pub fn read_memory(&self, crewmate_id: &str) -> String {
@@ -820,7 +840,8 @@ impl CrewStore {
         })
     }
 
-    /// Append a usage record to `<crewmate_dir>/usage.jsonl` with engine_kind + timestamp.
+    /// Append a usage record to `<crewmate_dir>/usage.jsonl` with engine_kind + timestamp. The file is
+    /// cut back to its newest records once it passes [`USAGE_MAX_BYTES`].
     pub fn append_usage(
         &self,
         crewmate_id: &str,
@@ -832,13 +853,12 @@ impl CrewStore {
         let mut rec = serde_json::to_value(usage).unwrap_or_default();
         rec["engine"] = serde_json::json!(engine_kind);
         rec["ts"] = serde_json::json!(ts);
-        let mut line = rec.to_string();
-        line.push('\n');
-        let mut f = std::fs::OpenOptions::new()
-            .create(true)
-            .append(true)
-            .open(dir.join("usage.jsonl"))?;
-        f.write_all(line.as_bytes())
+        let path = dir.join("usage.jsonl");
+        jsonl::append_line(&path, &rec.to_string(), false)?;
+        if let Err(e) = jsonl::trim_to_tail(&path, USAGE_MAX_BYTES, USAGE_MAX_BYTES / 2) {
+            eprintln!("atlas crew: cannot trim {}: {e}", path.display());
+        }
+        Ok(())
     }
 
     /// Read usage records for aggregation. `crewmate_id = None` → all crewmates.
@@ -853,16 +873,12 @@ impl CrewStore {
             rd.filter_map(|e| e.ok().map(|e| e.path())).collect()
         };
         for d in dirs {
-            let Ok(f) = std::fs::File::open(d.join("usage.jsonl")) else {
-                continue;
-            };
-            for line in io::BufReader::new(f).lines().map_while(Result::ok) {
-                if let Ok(v) = serde_json::from_str::<serde_json::Value>(&line)
-                    && v["ts"].as_u64().unwrap_or(0) >= since
+            let id_from_dir = d.file_name().map(|n| n.to_string_lossy().to_string());
+            for line in jsonl::read_lines(&d.join("usage.jsonl")) {
+                if let Ok(mut rec) = serde_json::from_str::<serde_json::Value>(&line)
+                    && rec["ts"].as_u64().unwrap_or(0) >= since
                 {
-                    let id_from_dir = d.file_name().map(|n| n.to_string_lossy().to_string());
-                    let mut rec = v;
-                    if let Some(id) = id_from_dir {
+                    if let Some(id) = &id_from_dir {
                         rec["crewmate_id"] = serde_json::json!(id);
                     }
                     out.push(rec);
@@ -956,5 +972,7 @@ enum Secrets {
 pub mod archive;
 #[cfg(test)]
 mod archive_tests;
+#[cfg(test)]
+mod log_tests;
 #[cfg(test)]
 mod tests;

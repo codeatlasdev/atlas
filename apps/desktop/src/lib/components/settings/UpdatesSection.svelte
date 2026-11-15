@@ -6,6 +6,7 @@
 		ArrowRight,
 		CheckCircle2,
 		CircleAlert,
+		Copy,
 		Download,
 		ExternalLink,
 		FlaskConical,
@@ -18,7 +19,7 @@
 	import { api } from "#lib/api.ts";
 	import { tilde } from "#lib/format.ts";
 	import { updates as u } from "#lib/stores/updates.svelte.ts";
-	import { DEFAULT_CHANNEL } from "#lib/updates.ts";
+	import { DEFAULT_CHANNEL, managedView } from "#lib/updates.ts";
 	import HostStatusRow from "./HostStatusRow.svelte";
 	import SectionTitle from "./SectionTitle.svelte";
 	import Tile from "./Tile.svelte";
@@ -55,6 +56,8 @@
 	let channelLabel = $derived(
 		(u.channelState?.channel ?? DEFAULT_CHANNEL).replace(/^./, (c) => c.toUpperCase()),
 	);
+
+	let managed = $derived(u.outcome === "managed" && u.available ? managedView(u.progress.managed) : null);
 
 	async function copy(text: string) {
 		await navigator.clipboard.writeText(text);
@@ -122,6 +125,20 @@
 		>
 	</div>
 </div>
+
+{#if managed?.command}
+	<Alert severity="info" title={managed.title}>
+		Run this in a terminal to update it:
+		<code class="mono ca-selectable">{managed.command}</code>
+		<Button variant="outlined" onclick={() => copy(managed.command!)}>
+			{#snippet leading()}<Copy size={13} />{/snippet}
+			Copy command
+		</Button>
+		{#if managed.installable}
+			<Button disabled={!!u.running} onclick={u.installPackage}>Install now (asks for your password)</Button>
+		{/if}
+	</Alert>
+{/if}
 
 {#if u.error}
 	<Alert severity="error" title="Could not check for updates">{u.error}</Alert>

@@ -39,7 +39,7 @@ impl Phase {
     }
 }
 
-fn enabled() -> bool {
+pub fn enabled() -> bool {
     std::env::var_os(PROGRESS_ENV).is_some_and(|v| v == "1")
 }
 
@@ -83,6 +83,21 @@ pub fn managed_event(how: &str) {
 
 fn managed_line(how: &str) -> String {
     format!("@@atlas managed {how}")
+}
+
+/// `@@atlas managed package <manager> <install|manual> <command…>`: a package manager owns this
+/// Atlas and `command` updates it. `installable` (`install`): the app may offer to run the
+/// update itself after its own confirmation (`atlas update --yes`); `manual` means only the
+/// user can, in a terminal.
+pub fn managed_package_event(manager: &str, installable: bool, command: &str) {
+    if enabled() {
+        println!("{}", managed_package_line(manager, installable, command));
+    }
+}
+
+fn managed_package_line(manager: &str, installable: bool, command: &str) -> String {
+    let mode = if installable { "install" } else { "manual" };
+    format!("{} {manager} {mode} {command}", managed_line("package"))
 }
 
 /// The path the install method and the dev-build rule are judged on: `current_exe()`, except
@@ -387,6 +402,20 @@ mod helper_tests {
     fn managed_event_is_gated_on_progress_env_and_names_the_method() {
         assert_eq!(managed_line("homebrew"), "@@atlas managed homebrew");
         assert_eq!(managed_line("package"), "@@atlas managed package");
+    }
+
+    /// Contract with `atlas-desktop`'s `parse_progress` (its test parses this exact line):
+    /// `managed package <manager> <install|manual> <command…>`.
+    #[test]
+    fn managed_package_line_carries_the_manager_the_mode_and_the_command() {
+        assert_eq!(
+            managed_package_line("apt", true, "sudo apt install ./atlas_1.6.0_amd64.deb"),
+            "@@atlas managed package apt install sudo apt install ./atlas_1.6.0_amd64.deb"
+        );
+        assert_eq!(
+            managed_package_line("pacman", false, "sudo pacman -U x.pkg.tar.zst"),
+            "@@atlas managed package pacman manual sudo pacman -U x.pkg.tar.zst"
+        );
     }
 
     #[cfg(unix)]

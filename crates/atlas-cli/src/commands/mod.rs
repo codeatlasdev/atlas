@@ -8,6 +8,8 @@ pub mod deploy;
 pub mod desktop;
 #[cfg(unix)]
 pub mod desktop_agent;
+#[cfg(target_os = "linux")]
+pub(crate) mod desktop_agent_linux;
 pub mod desktop_capture;
 pub mod desktop_debug;
 #[cfg(target_os = "linux")]

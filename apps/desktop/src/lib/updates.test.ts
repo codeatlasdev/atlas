@@ -21,6 +21,7 @@ import {
 	formatBytes,
 	finishOutcome,
 	finishToast,
+	managedView,
 	isSkipped,
 	justUpdated,
 	parseNotes,
@@ -39,6 +40,7 @@ import {
 } from "./updates.ts";
 import { searchSettings } from "./settings/index.ts";
 import fixture from "./__fixtures__/channel-views.json";
+import managedFixture from "./__fixtures__/managed-progress.json";
 
 const rel = (version) => ({ version, url: "", published_at: "", notes: "" });
 const prefs = (p = {}) => ({ ...EMPTY_PREFS, ...p });
@@ -388,8 +390,8 @@ describe("progress reducer", () => {
 		expect(phaseFromLog("hello")).toBeNull();
 	});
 	test("a managed install is remembered with who manages it", () => {
-		expect(run({ kind: "managed", how: "homebrew" }).managed).toBe("homebrew");
-		expect(run({ kind: "managed", how: "package" }).managed).toBe("package");
+		expect(run({ kind: "managed", how: "homebrew" }).managed?.how).toBe("homebrew");
+		expect(run({ kind: "managed", how: "package" }).managed?.how).toBe("package");
 		expect(EMPTY_PROGRESS.managed).toBeNull();
 	});
 	test("a managed event does not move the phases", () => {
@@ -410,11 +412,11 @@ describe("how a finished install ends", () => {
 		expect(finishOutcome(run({ kind: "phase", id: "install-cli" }))).toBe("done");
 	});
 	test("the toast never says `up to date` for a managed install", () => {
-		const managed = finishToast("update", "managed", "homebrew");
+		const managed = finishToast("update", "managed", { how: "homebrew" });
 		expect(managed.text).not.toMatch(/up to date/i);
 		expect(managed.text).toMatch(/brew upgrade atlas/);
 		expect(managed.level).toBe("info");
-		expect(finishToast("update", "managed", "package").text).toMatch(/package manager/i);
+		expect(finishToast("update", "managed", { how: "package" }).text).toMatch(/package manager/i);
 		expect(finishToast("update", "done", null)).toEqual({ level: "success", text: "Atlas is up to date" });
 		expect(finishToast("unlink", "done", null).text).toBe("Back on the release build");
 	});
@@ -570,5 +572,44 @@ describe("settings search", () => {
 		for (const q of ["update channel", "beta", "alpha", "stable", "prerelease"]) {
 			expect(searchSettings(q).some((e) => e.id === "update-channel" && e.section === "general")).toBe(true);
 		}
+	});
+});
+
+// #278: the fixture is written by the real Rust serializer
+// (`managed_package_progress_is_the_real_serialization_the_frontend_reads`): the in-app Update of a
+// package install ends in the managed state with the package manager's exact command.
+describe("managed package state (#278)", () => {
+	test("the real event renders the command, its manager and an Install now when allowed", () => {
+		const p = reduceProgress(EMPTY_PROGRESS, managedFixture.apt);
+		expect(finishOutcome(p)).toBe("managed");
+		expect(managedView(p.managed)).toEqual({
+			title: "Atlas is managed by apt",
+			command: "sudo apt install ./atlas_1.6.0_amd64.deb",
+			installable: true,
+		});
+	});
+	test("a manual one has the command but no Install now", () => {
+		const v = managedView(reduceProgress(EMPTY_PROGRESS, managedFixture.pacman_manual).managed);
+		expect(v.title).toBe("Atlas is managed by pacman");
+		expect(v.command).toBe(managedFixture.pacman_manual.command);
+		expect(v.installable).toBe(false);
+	});
+	test("Homebrew keeps its one-line command and can not be installed from the app", () => {
+		const v = managedView(reduceProgress(EMPTY_PROGRESS, managedFixture.homebrew).managed);
+		expect(v).toEqual({
+			title: "Atlas is managed by Homebrew",
+			command: "brew upgrade atlas",
+			installable: false,
+		});
+	});
+	test("a package with no known manager has no command to copy", () => {
+		const v = managedView({ how: "package" });
+		expect(v.command).toBeNull();
+		expect(v.installable).toBe(false);
+	});
+	test("the toast for a package install with a command points at the sheet's command", () => {
+		const t = finishToast("update", "managed", reduceProgress(EMPTY_PROGRESS, managedFixture.apt).managed);
+		expect(t.level).toBe("info");
+		expect(t.text).toContain("sudo apt install ./atlas_1.6.0_amd64.deb");
 	});
 });

@@ -80,11 +80,12 @@ fn reveal_argv(os: Os, target: &Path) -> Argv {
     }
 }
 
-/// Editors a Linux desktop starts as a window: tried in this order on `PATH`.
-const LINUX_EDITORS: [&str; 3] = ["code", "codium", "zed"];
+/// Editors a Linux desktop starts as a window: tried in this order on `PATH` (`zeditor` is the only name Arch's
+/// Zed package installs).
+const LINUX_EDITORS: [&str; 4] = ["code", "codium", "zed", "zeditor"];
 
 /// Programs `$VISUAL`/`$EDITOR` may name and still count as a window editor (no terminal to run vim in).
-const GUI_EDITORS: [&str; 16] = [
+const GUI_EDITORS: [&str; 20] = [
     "code",
     "code-insiders",
     "codium",
@@ -101,6 +102,10 @@ const GUI_EDITORS: [&str; 16] = [
     "mousepad",
     "xed",
     "pluma",
+    "gvim",
+    "geany",
+    "neovide",
+    "nvim-qt",
 ];
 
 /// The window editor to start on Linux: the first of [`LINUX_EDITORS`] on `PATH`, then `$VISUAL` and `$EDITOR`
@@ -518,6 +523,15 @@ mod tests {
             linux_editor(&found(&["zed"]), None, None).unwrap(),
             PathBuf::from("/opt/bin/zed")
         );
+        // Arch's pacman Zed installs only /usr/bin/zeditor.
+        assert_eq!(
+            linux_editor(&found(&["zeditor"]), None, None).unwrap(),
+            PathBuf::from("/opt/bin/zeditor")
+        );
+        assert_eq!(
+            linux_editor(&found(&["zeditor", "zed"]), None, None).unwrap(),
+            PathBuf::from("/opt/bin/zed")
+        );
         assert_eq!(
             editor_argvs(Os::Linux, Path::new("/p"), &all, None, None).unwrap(),
             vec![argv(&["/opt/bin/code", "/p"])]
@@ -555,6 +569,12 @@ mod tests {
         );
         // A window editor that is named but not installed is no editor either.
         assert!(linux_editor(&found(&[]), Some("kate"), None).is_err());
+        // The terminal front ends of vim are window editors; plain vim and nvim are not.
+        let all = found(&["gvim", "geany", "neovide", "nvim-qt", "nvim"]);
+        for gui in ["gvim", "geany", "neovide", "nvim-qt"] {
+            assert!(linux_editor(&all, Some(gui), None).is_ok(), "{gui}");
+        }
+        assert!(linux_editor(&all, Some("nvim"), None).is_err());
         assert!(linux_editor(&found(&[]), Some("   "), Some("")).is_err());
         assert!(
             editor_argvs(Os::Linux, Path::new("/p"), &found(&[]), None, None).is_err(),

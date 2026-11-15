@@ -1,8 +1,29 @@
+import 'dart:async';
+
+import 'package:fake_async/fake_async.dart';
 import 'package:flutter_test/flutter_test.dart';
 
 import 'fake_transport.dart';
 
 import 'package:atlas_mobile/core/protocol/multiplexer.dart';
+import 'package:atlas_mobile/core/transport/transport.dart';
+
+/// A transport whose reply to a request arrives before `sendLine` returns: a fast link, where the
+/// answer is read while the write is still being acknowledged.
+class _ReplyDuringSend implements Transport {
+  final _lines = StreamController<String>.broadcast();
+  @override
+  Stream<String> get incomingLines => _lines.stream;
+  @override
+  Future<void> sendLine(String line) async {
+    // The mux has registered the call by now; the reply lands while the write is still open.
+    scheduleMicrotask(() => _lines.add('{"id":1,"ok":true,"data":{}}'));
+    await Future<void>.delayed(Duration.zero);
+  }
+
+  @override
+  Future<void> close() async => _lines.close();
+}
 
 void main() {
   group('Multiplexer', () {
@@ -233,6 +254,33 @@ void main() {
         ft.injectLine('{"id":1,"ok":true,"data":{}}');
         await Future<void>.delayed(Duration.zero);
       },
+    );
+
+    // Guards the stray deadline: the 20 s timer was started AFTER `await sendLine`, so a reply
+    // delivered while the line was still being sent found no timer to cancel, and the timer that
+    // was then started fired against a call that had already finished.
+    test(
+      'a reply delivered during sendLine leaves no pending deadline timer',
+      () => fakeAsync((async) {
+        final m = Multiplexer(
+          _ReplyDuringSend(),
+          timeout: const Duration(seconds: 20),
+        );
+        Map<String, dynamic>? resp;
+        m.call('ping').then((r) => resp = r);
+        async.elapse(
+          Duration.zero,
+        ); // the send's own zero delay, then the reply
+        async.flushMicrotasks();
+        expect(resp?['ok'], isTrue, reason: 'the reply was delivered');
+        expect(
+          async.pendingTimers,
+          isEmpty,
+          reason: 'a deadline outlived its call',
+        );
+        m.close();
+        async.flushMicrotasks();
+      }),
     );
 
     // Guards the disabled send button: when the transport was closed, call() was

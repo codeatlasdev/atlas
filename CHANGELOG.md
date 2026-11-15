@@ -8,6 +8,7 @@ All notable changes to Atlas (CLI, TUI, MCP server and Atlas Desktop). Versions 
 
 ### Fixed
 
+- **Atlas Mobile: the terminal comes back after the app was in the background, and says why it is blank.** After the app sat in the background for 30 seconds the phone closes the link; coming back, the terminal kept showing the old, dead one and never moved again. A terminal opened while the computer was off stayed empty even once it came up. Now it re-attaches on every new link and shows a line above the screen ("<computer> is offline", "Reconnecting…"); it also stops asking the computer for its size while there is no link. A reply that arrives while a request is still being sent no longer leaves a stray 20-second timer behind.
 - **Atlas Crew: a hung `gh` call no longer holds a task forever ([#296](https://github.com/codeatlasdev/atlas/issues/296)).** `git` got a 120 s deadline in 1.5.0-alpha.26 but the crew's `gh` calls did not: a GitHub API call (a comment, a pull request) or `gh auth status` that never returned (a stalled network, a credential prompt) held the task that made it, and the Settings GitHub row, forever. Every bounded `gh` call now goes through the same deadline and kills its whole process tree; `gh auth login` stays interactive. A missing `git` or `gh` now says it is not on `PATH`.
 
 ## [1.5.0-alpha.26] — 2026-11-15

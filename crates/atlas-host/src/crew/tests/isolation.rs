@@ -8,7 +8,7 @@ use std::time::Duration;
 use serde_json::json;
 
 use super::fixture::{daemon_with, lock_agent_bin, wait_task_state};
-use crate::crew::spawn::testing::{Rig, rig};
+use crate::crew::spawn::testing::{Rig, rig, rig_with};
 
 async fn create(client: &crate::HostClient, name: &str) -> String {
     let v = client
@@ -581,6 +581,9 @@ async fn engine_status_for_a_crewmate_asks_the_engine_as_that_crewmate() {
         "claude",
         r#"if [ "$1 $2" = "auth status" ]; then [ -f "$HOME/token" ] && exit 0; exit 1; fi; exit 0"#,
     );
+    // The crew user's status runs the same fake, not whatever claude is on this machine's PATH: on a developer
+    // Mac signed in to claude the last assertion failed (CI has no claude, so it passed there).
+    let _path = crate::crew::engine_login::TestPath::set(r.engines.clone());
     let tmp = tempfile::tempdir().unwrap();
     let client = daemon_with(&tmp.path().join("hostd"), Some(r.setup())).await;
     let id = create(&client, "Ana").await;
@@ -711,5 +714,142 @@ async fn every_agent_route_reaches_its_handler_with_the_crewmates_own_token() {
         let other = post(&port, &ta, &format!("/crew/{b}/{sub}"), &json!({})).await;
         assert_eq!(other, 403, "{sub}: another crewmate's route");
     }
+    client.call("shutdown", json!({})).await.ok();
+}
+
+/// An isolated engine crewmate whose fake `claude` runs `script`, one task through the real helper.
+/// Returns the finished task's `(state, error)`.
+async fn isolated_engine_task_that_dies(r: Rig) -> (String, String) {
+    isolated_task_that_dies(r, "claude", "echo partial; kill -9 $$").await
+}
+
+/// [`isolated_engine_task_that_dies`] for engine `kind` whose fake binary runs `script`.
+async fn isolated_task_that_dies(r: Rig, kind: &str, script: &str) -> (String, String) {
+    let _bin_lock = lock_agent_bin().await;
+    crate::crew::engine::set_test_engine_bin(None);
+    // SIGKILL itself: what the kernel's OOM killer does to the engine.
+    r.engine(kind, script);
+    let tmp = tempfile::tempdir().unwrap();
+    let client = daemon_with(&tmp.path().join("hostd"), Some(r.setup())).await;
+    let v = client
+        .call(
+            "crewmate_create",
+            json!({"name": "M", "role": "r", "agent": kind, "approval": "auto",
+                   "engine": {"kind": kind}}),
+        )
+        .await
+        .unwrap();
+    let id = v["id"].as_str().unwrap().to_string();
+    let t = client
+        .call(
+            "crewmate_task",
+            json!({"id": id, "prompt": "hi", "source": "test"}),
+        )
+        .await
+        .unwrap();
+    let task_id = t["task"]["id"].as_str().unwrap().to_string();
+    let task = wait_task_state(&client, &id, &task_id, "failed", Duration::from_secs(20)).await;
+    client.call("shutdown", json!({})).await.ok();
+    (
+        task["state"].as_str().unwrap_or("").to_string(),
+        task["error"].as_str().unwrap_or("").to_string(),
+    )
+}
+
+// #296: when the helper says the kernel killed the agent for memory, the task says so and names the
+// setting to raise, instead of a bare "exited 137" the owner cannot act on.
+#[tokio::test(flavor = "multi_thread")]
+async fn an_agent_the_kernel_killed_for_memory_fails_its_task_with_the_cap_and_the_setting() {
+    let (state, error) = isolated_engine_task_that_dies(rig_with(
+        crate::crew::spawn::server::Memory::Verdict(3 << 30),
+    ))
+    .await;
+    assert_eq!(state, "failed");
+    assert!(
+        error.contains("ran out of memory (cap 3 GiB); raise agent_memory_max"),
+        "{error}"
+    );
+    assert!(!error.contains("exited 137"), "{error}");
+}
+
+// The other half of the contract: a kill that was not the memory cap's is reported as the engine reports
+// it (here: no result in what it printed), so a crash is never blamed on memory.
+#[tokio::test(flavor = "multi_thread")]
+async fn a_kill_that_was_not_the_memory_cap_keeps_its_exit_code() {
+    let (state, error) = isolated_engine_task_that_dies(rig()).await;
+    assert_eq!(state, "failed");
+    assert!(!error.contains("ran out of memory"), "{error}");
+    assert!(error.contains("no result JSON in output"), "{error}");
+}
+
+// omp talks to hostd over stdin/stdout for the whole turn and does not exit by itself, so an OOM kill used to
+// end the stream and look like a turn that said nothing: the task must fail with the cap instead.
+#[tokio::test(flavor = "multi_thread")]
+async fn an_omp_turn_the_kernel_killed_for_memory_fails_with_the_cap() {
+    let (state, error) = isolated_task_that_dies(
+        rig_with(crate::crew::spawn::server::Memory::Verdict(2 << 30)),
+        "omp",
+        "kill -9 $$",
+    )
+    .await;
+    assert_eq!(state, "failed");
+    assert!(
+        error.contains("ran out of memory (cap 2 GiB); raise agent_memory_max"),
+        "{error}"
+    );
+}
+
+// The control for omp: a kill that was not the memory cap's is never reported as an OOM, whatever the
+// stream looked like.
+#[tokio::test(flavor = "multi_thread")]
+async fn an_omp_turn_that_dies_for_another_reason_is_not_blamed_on_memory() {
+    // No verdict from the helper: whatever the task says, it is not about memory.
+    let _bin_lock = lock_agent_bin().await;
+    crate::crew::engine::set_test_engine_bin(None);
+    let r = rig();
+    r.engine("omp", "kill -9 $$");
+    let tmp = tempfile::tempdir().unwrap();
+    let client = daemon_with(&tmp.path().join("hostd"), Some(r.setup())).await;
+    let v = client
+        .call(
+            "crewmate_create",
+            json!({"name": "M", "role": "r", "agent": "omp", "approval": "auto",
+                   "engine": {"kind": "omp"}}),
+        )
+        .await
+        .unwrap();
+    let id = v["id"].as_str().unwrap().to_string();
+    let t = client
+        .call(
+            "crewmate_task",
+            json!({"id": id, "prompt": "hi", "source": "test"}),
+        )
+        .await
+        .unwrap();
+    let task_id = t["task"]["id"].as_str().unwrap().to_string();
+    // It may end done (an empty reply) or failed: both are the engine's story, neither mentions memory.
+    let deadline = std::time::Instant::now() + Duration::from_secs(20);
+    let task = loop {
+        let l = client
+            .call("crewmate_tasks", json!({"id": id, "limit": 20}))
+            .await
+            .unwrap();
+        let found = l["tasks"]
+            .as_array()
+            .and_then(|a| a.iter().find(|t| t["id"] == task_id.as_str()))
+            .cloned();
+        if let Some(t) = found
+            && matches!(t["state"].as_str(), Some("done" | "failed"))
+        {
+            break t;
+        }
+        assert!(
+            std::time::Instant::now() < deadline,
+            "the task never finished"
+        );
+        tokio::time::sleep(Duration::from_millis(100)).await;
+    };
+    let said = format!("{} {}", task["error"], task["result"]);
+    assert!(!said.contains("out of memory"), "{said}");
     client.call("shutdown", json!({})).await.ok();
 }

@@ -78,8 +78,33 @@ impl Client {
     /// `(exited, code)` of a session. An unknown session (the helper restarted) is an error the
     /// caller answers by watching the pid.
     pub fn wait(&self, session: u64) -> io::Result<(bool, Option<i32>)> {
+        self.wait_oom(session).map(|(e, c, _)| (e, c))
+    }
+
+    /// [`Client::wait`] plus the cap the session was OOM-killed under, if it was.
+    pub fn wait_oom(&self, session: u64) -> io::Result<(bool, Option<i32>, Option<u64>)> {
         match self.call(&Request::Wait { session })?.0 {
-            Response::Exit { exited, code } => Ok((exited, code)),
+            Response::Exit {
+                exited,
+                code,
+                oom_cap,
+            } => Ok((exited, code, oom_cap)),
+            other => Err(unexpected(other)),
+        }
+    }
+
+    /// Whether agents run under a memory cap.
+    pub fn memory_cap(&self) -> io::Result<super::cgroup::Status> {
+        match self.call(&Request::MemoryCap)?.0 {
+            Response::MemoryCap(s) => Ok(s),
+            other => Err(unexpected(other)),
+        }
+    }
+
+    /// Set the cap of every agent, in bytes.
+    pub fn set_memory_cap(&self, bytes: u64) -> io::Result<super::cgroup::Status> {
+        match self.call(&Request::SetMemoryCap { bytes })?.0 {
+            Response::MemoryCap(s) => Ok(s),
             other => Err(unexpected(other)),
         }
     }

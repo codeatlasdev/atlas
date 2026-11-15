@@ -110,7 +110,10 @@ pub fn check_in(root: &str, req: &Request, body_len: usize) -> Result<(), Refuse
             .then_some(())
             .ok_or(Refused::BadSignal(*sig)),
         Request::Reap { user } => slug_of(user).map(|_| ()),
-        Request::Wait { .. } | Request::Cwd { .. } => Ok(()),
+        Request::Wait { .. }
+        | Request::Cwd { .. }
+        | Request::MemoryCap
+        | Request::SetMemoryCap { .. } => Ok(()),
     }
 }
 

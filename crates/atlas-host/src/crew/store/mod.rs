@@ -493,6 +493,10 @@ pub struct CrewSettings {
     /// How many agents the crew server runs at once; a task past that waits queued ("server busy").
     #[serde(default = "default_max_agents")]
     pub max_agents: usize,
+    /// Memory one agent may use, in bytes, before the kernel kills it alone (#296). `None` computes it:
+    /// 75 % of the machine's memory shared by `max_agents`, at least 1 GiB (`spawn::cgroup::compute_cap`).
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub agent_memory_max: Option<u64>,
 }
 
 /// Agents at once when `crew.json` says nothing: a handful, so one busy server is not swamped by every crewmate
@@ -510,6 +514,7 @@ impl Default for CrewSettings {
             short_replies_model: None,
             paused: false,
             max_agents: DEFAULT_MAX_AGENTS,
+            agent_memory_max: None,
         }
     }
 }

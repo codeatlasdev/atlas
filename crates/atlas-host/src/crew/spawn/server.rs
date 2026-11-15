@@ -18,6 +18,7 @@ use std::time::{Duration, Instant};
 
 use parking_lot::Mutex;
 
+use super::cgroup;
 use super::exec::{self, ENGINE_DIRS, Ids, Where};
 use super::peer::{self, Peer};
 use super::protocol::{Request, Response};
@@ -43,6 +44,66 @@ pub struct Config {
     /// `atlas-cm-*` users do not exist, answer with the current user. The only seam: validation,
     /// framing, spawning and signalling are all the real code.
     pub resolve: fn(&str) -> io::Result<Ids>,
+    /// How agents are capped: production detects its delegated cgroup at start ([`cgroup::Pool::detect`]);
+    /// tests give a pool under a scratch cgroup, or `None`.
+    pub memory: Arc<Memory>,
+}
+
+/// Where the memory cap stands.
+pub enum Memory {
+    /// Capped: leaves live in this pool.
+    #[cfg(target_os = "linux")]
+    On(cgroup::Pool),
+    /// Not capped, and why (also what hostd reports).
+    Off(String),
+    /// Test-only seam: no cgroup, but every session that was killed by SIGKILL is reported as an OOM kill
+    /// under this cap. A kernel OOM kill cannot be made on a developer's machine; everything on hostd's
+    /// side of the verdict (wire, client, runner, task text) stays real, and the kernel half has its own
+    /// root test (`cgroup::tests`).
+    #[cfg(test)]
+    Verdict(u64),
+}
+
+impl std::fmt::Debug for Memory {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        write!(f, "Memory({:?})", self.status())
+    }
+}
+
+impl Memory {
+    /// The helper's own cgroup, with the default cap for this machine (`agent_memory_max` unset,
+    /// 4 agents until hostd says otherwise). One log line when there is none.
+    pub fn detect() -> Self {
+        #[cfg(target_os = "linux")]
+        {
+            let total = std::fs::read_to_string("/proc/meminfo")
+                .ok()
+                .and_then(|t| cgroup::mem_total_of(&t))
+                .unwrap_or(0);
+            let cap = cgroup::compute_cap(None, total, crate::crew::store::DEFAULT_MAX_AGENTS);
+            match cgroup::Pool::detect(cap) {
+                Ok(p) => Self::On(p),
+                Err(why) => {
+                    eprintln!("atlas crew-spawn: no per-agent memory cap: {why}");
+                    Self::Off(why)
+                }
+            }
+        }
+        #[cfg(not(target_os = "linux"))]
+        {
+            Self::Off("per-agent memory caps need Linux with cgroup v2".into())
+        }
+    }
+
+    fn status(&self) -> cgroup::Status {
+        match self {
+            #[cfg(target_os = "linux")]
+            Self::On(p) => p.status(),
+            Self::Off(why) => cgroup::Status::off(why.clone()),
+            #[cfg(test)]
+            Self::Verdict(cap) => cgroup::Status::on(*cap),
+        }
+    }
 }
 
 impl Config {
@@ -52,18 +113,39 @@ impl Config {
             cm_root: CM_ROOT.to_string(),
             engines: ENGINE_DIRS.iter().map(|s| s.to_string()).collect(),
             resolve: exec::lookup,
+            memory: Arc::new(Memory::detect()),
         }
     }
 }
 
 enum State {
     Running(Child),
-    Exited { code: Option<i32>, at: Instant },
+    /// `oom_cap` is decided once, when the exit is collected: a later session of the same crewmate
+    /// shares the leaf and its counter, and must not be able to turn this one into an OOM kill.
+    Exited {
+        code: Option<i32>,
+        at: Instant,
+        oom_cap: Option<u64>,
+    },
 }
 
 struct Entry {
     pid: u32,
     state: State,
+    /// What the memory cap needs to tell, at the exit, whether the kernel killed this session.
+    #[cfg(target_os = "linux")]
+    watch: Option<OomWatch>,
+    /// The cap a test's [`Memory::Verdict`] reports for this session if it dies by SIGKILL.
+    #[cfg(test)]
+    verdict: Option<u64>,
+}
+
+/// The leaf a session ran in, with its `oom_kill` count and the cap when it started.
+#[cfg(target_os = "linux")]
+struct OomWatch {
+    leaf: std::sync::Arc<cgroup::Leaf>,
+    before: u64,
+    cap: u64,
 }
 
 /// The helper: configuration plus the sessions it started.
@@ -119,14 +201,7 @@ impl Server {
     fn reap_once(&self, now: Instant) {
         let mut s = self.sessions.lock();
         for e in s.values_mut() {
-            if let State::Running(child) = &mut e.state
-                && let Ok(Some(st)) = child.try_wait()
-            {
-                e.state = State::Exited {
-                    code: exit_code(st),
-                    at: now,
-                };
-            }
+            e.collect(now);
         }
         s.retain(|_, e| match &e.state {
             State::Exited { at, .. } => now.duration_since(*at) < KEEP_EXITED,
@@ -174,6 +249,8 @@ impl Server {
             Request::Wait { session } => (self.wait(session), None),
             Request::Cwd { session } => (self.cwd(session), None),
             Request::Reap { user } => (self.reap_user(&user), None),
+            Request::SetMemoryCap { bytes } => (self.set_memory_cap(bytes), None),
+            Request::MemoryCap => (Response::MemoryCap(self.cfg.memory.status()), None),
         }
     }
 
@@ -186,6 +263,35 @@ impl Server {
             engines: &engines,
             cm_root: &self.cfg.cm_root,
         };
+        #[cfg(target_os = "linux")]
+        let leaf = match &*self.cfg.memory {
+            Memory::On(pool) => Some(pool.leaf(&s.user)?),
+            Memory::Off(_) => None,
+            #[cfg(test)]
+            Memory::Verdict(_) => None,
+        };
+        #[cfg(target_os = "linux")]
+        let (started, watch) = {
+            // Counted before the child exists: a kill that happened during an earlier session of the
+            // same crewmate is not this one's.
+            let watch = leaf.as_ref().map(|l| OomWatch {
+                leaf: l.clone(),
+                before: l.oom_kills(),
+                cap: match &*self.cfg.memory {
+                    Memory::On(p) => p.cap(),
+                    _ => 0,
+                },
+            });
+            let started = exec::spawn_capped(
+                &w,
+                s,
+                ids,
+                &format!("{dir}/home"),
+                leaf.as_ref().map(|l| l.procs_fd()),
+            )?;
+            (started, watch)
+        };
+        #[cfg(not(target_os = "linux"))]
         let started = exec::spawn_in(&w, s, ids, &format!("{dir}/home"))?;
         let pid = started.child.id();
         let session = self.next.fetch_add(1, Ordering::Relaxed);
@@ -194,6 +300,13 @@ impl Server {
             Entry {
                 pid,
                 state: State::Running(started.child),
+                #[cfg(target_os = "linux")]
+                watch,
+                #[cfg(test)]
+                verdict: match &*self.cfg.memory {
+                    Memory::Verdict(c) => Some(*c),
+                    _ => None,
+                },
             },
         );
         Ok((Response::Spawned { session, pid }, started.fd))
@@ -206,14 +319,7 @@ impl Server {
         };
         // Reap first: signalling the pid of a child that already exited and was collected could hit
         // whoever got that pid next.
-        if let State::Running(child) = &mut e.state
-            && let Ok(Some(st)) = child.try_wait()
-        {
-            e.state = State::Exited {
-                code: exit_code(st),
-                at: Instant::now(),
-            };
-        }
+        e.collect(Instant::now());
         match &e.state {
             State::Exited { .. } => Response::Done,
             State::Running(_) => {
@@ -243,14 +349,35 @@ impl Server {
             }) => Response::Exit {
                 exited: false,
                 code: None,
+                oom_cap: None,
             },
             Some(Entry {
-                state: State::Exited { code, .. },
+                state: State::Exited { code, oom_cap, .. },
                 ..
             }) => Response::Exit {
                 exited: true,
                 code: *code,
+                oom_cap: *oom_cap,
             },
+        }
+    }
+
+    /// A new cap for every agent: the leaves that exist are rewritten, new ones start with it.
+    fn set_memory_cap(&self, bytes: u64) -> Response {
+        match &*self.cfg.memory {
+            #[cfg(target_os = "linux")]
+            Memory::On(pool) => match pool.set_cap(bytes) {
+                Ok(()) => Response::MemoryCap(pool.status()),
+                Err(e) => Response::Error {
+                    reason: format!("cannot change memory.max: {e}"),
+                },
+            },
+            Memory::Off(_) => {
+                let _ = bytes;
+                Response::MemoryCap(self.cfg.memory.status())
+            }
+            #[cfg(test)]
+            Memory::Verdict(_) => Response::MemoryCap(self.cfg.memory.status()),
         }
     }
 
@@ -287,6 +414,40 @@ impl Server {
             Err(e) => Response::Error {
                 reason: e.to_string(),
             },
+        }
+    }
+}
+
+impl Entry {
+    /// If the child has exited, record how, and whether the kernel killed it for memory (the `oom_kill`
+    /// count of its leaf grew since it started; a crewmate runs one session at a time, so the leaf's
+    /// count is this session's).
+    fn collect(&mut self, now: Instant) {
+        if let State::Running(child) = &mut self.state
+            && let Ok(Some(st)) = child.try_wait()
+        {
+            let code = exit_code(st);
+            #[cfg(test)]
+            let fake = self.verdict.filter(|_| code == Some(137));
+            #[cfg(not(test))]
+            let fake = None;
+            self.state = State::Exited {
+                code,
+                at: now,
+                oom_cap: fake.or_else(|| self.oom_cap()),
+            };
+        }
+    }
+
+    fn oom_cap(&self) -> Option<u64> {
+        #[cfg(target_os = "linux")]
+        {
+            let w = self.watch.as_ref()?;
+            (w.leaf.oom_kills() > w.before).then_some(w.cap)
+        }
+        #[cfg(not(target_os = "linux"))]
+        {
+            None
         }
     }
 }
@@ -666,6 +827,24 @@ mod tests {
             std::thread::sleep(Duration::from_millis(20));
         }
         panic!("the tool process {tool} outlived the session's SIGKILL");
+    }
+
+    // #296 "degrade, never break": a helper with no cgroup to cap in (a Mac, no delegation, cgroup v1) still
+    // spawns, says there is no cap and why, and an exit carries no OOM verdict.
+    #[test]
+    fn without_a_cgroup_the_helper_spawns_uncapped_and_says_why() {
+        let r = rig();
+        let st = r.client.memory_cap().unwrap();
+        assert!(!st.available, "{st:?}");
+        assert_eq!(st.reason.as_deref(), Some("tests run without a cgroup"));
+        // Setting a cap changes nothing and answers the same, not an error.
+        assert_eq!(r.client.set_memory_cap(1 << 30).unwrap(), st);
+        let (sp, _fd) = r.client.spawn(&req(&r, Mode::Pipe, "exit 3")).unwrap();
+        assert_eq!(r.client.wait_exit(sp.session), Some(3));
+        assert_eq!(
+            r.client.wait_oom(sp.session).unwrap(),
+            (true, Some(3), None)
+        );
     }
 
     #[test]

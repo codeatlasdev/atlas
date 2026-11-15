@@ -75,6 +75,13 @@ pub enum Request {
     Reap {
         user: String,
     },
+    /// Set the memory cap of every agent (bytes; the `agent_memory_max` setting, or the computed
+    /// default). The helper rewrites `memory.max` of the leaves that exist and uses it for new ones.
+    SetMemoryCap {
+        bytes: u64,
+    },
+    /// Whether agents run under a memory cap, and which.
+    MemoryCap,
 }
 
 /// The helper's answer. A successful `Spawn` carries one fd next to this message.
@@ -89,7 +96,13 @@ pub enum Response {
     Exit {
         exited: bool,
         code: Option<i32>,
+        /// The kernel killed this session's crewmate for memory while it ran (`memory.events`
+        /// `oom_kill` grew), with `cap` the limit it ran under. Absent from an older helper.
+        #[serde(default, skip_serializing_if = "Option::is_none")]
+        oom_cap: Option<u64>,
     },
+    /// Answer to `MemoryCap` and `SetMemoryCap`.
+    MemoryCap(super::cgroup::Status),
     Cwd {
         path: String,
     },

@@ -34,6 +34,27 @@ pub(crate) fn overlay_args(crewmate_dir: &std::path::Path) -> Vec<String> {
     vec!["--config".to_string(), path.to_string_lossy().into_owned()]
 }
 
+/// What ended an omp turn: the RPC itself (a reply, or the stream failing), or hostd (cancel, timeout).
+enum End<T> {
+    Rpc(Result<T, String>),
+    Stopped(&'static str),
+}
+
+type RpcOut = (String, Option<String>, Option<UsageRecord>);
+
+impl End<RpcOut> {
+    /// The process died under the RPC: the stream ended without a reply, or writing/reading it failed (the
+    /// kernel can kill omp before hostd even writes the prompt: "Broken pipe"). Only then may the end be a
+    /// memory kill (#296) to report as such. A cancel or a timeout is hostd's own doing, never an OOM.
+    fn process_died(&self) -> bool {
+        match self {
+            End::Rpc(Ok((reply, ..))) => reply.is_empty(),
+            End::Rpc(Err(_)) => true,
+            End::Stopped(_) => false,
+        }
+    }
+}
+
 pub(super) async fn run(ctx: TurnCtx<'_>) -> Result<TurnResult, String> {
     let mut cmd = ctx.command(&program("omp"));
     cmd.arg("--mode")
@@ -57,12 +78,28 @@ pub(super) async fn run(ctx: TurnCtx<'_>) -> Result<TurnResult, String> {
         mut writer,
         reader,
         guard,
+        oom,
     } = launch::rpc(ctx.exec, cmd, "omp").await?;
 
-    let result = tokio::select! {
-        r = drive_rpc(&mut writer, reader, ctx.prompt, ctx.tools) => r.map_err(|e| format!("omp: {e}")),
-        () = ctx.cancel.fired() => Err("omp: cancelled".to_string()),
-        () = tokio::time::sleep(turn_timeout()) => Err("omp: timed out after 2 h".to_string()),
+    let end = tokio::select! {
+        r = drive_rpc(&mut writer, reader, ctx.prompt, ctx.tools) => End::Rpc(r),
+        () = ctx.cancel.fired() => End::Stopped("cancelled"),
+        () = tokio::time::sleep(turn_timeout()) => End::Stopped("timed out after 2 h"),
+    };
+    let died = end.process_died();
+    if died
+        && let Some(oom) = oom
+        && let Ok(Some(cap)) = tokio::task::spawn_blocking(oom).await
+    {
+        drop(guard);
+        return Err(format!(
+            "omp: {}",
+            crate::crew::spawn::cgroup::oom_reason(cap)
+        ));
+    }
+    let result = match end {
+        End::Rpc(r) => r.map_err(|e| format!("omp: {e}")),
+        End::Stopped(why) => Err(format!("omp: {why}")),
     };
 
     // Always end the whole tree: the process is not expected to exit on its own, and the tools it
@@ -326,6 +363,27 @@ mod tests {
     use std::sync::Mutex;
 
     use super::*;
+
+    // #385 CI (plain Linux): the kernel killed the fake omp before hostd wrote the prompt, the write failed with
+    // "Broken pipe", and the turn reported the pipe error instead of the memory cap, because only an empty
+    // reply was checked for an OOM. Every way the process can die under the RPC is checked now; hostd's own
+    // stops never are (a cancel during a memory spike is still a cancel).
+    #[test]
+    fn every_rpc_death_is_checked_for_a_memory_kill_and_hostds_own_stops_never_are() {
+        let out = |reply: &str| -> RpcOut { (reply.to_string(), None, None) };
+        assert!(End::Rpc(Err("write prompt: Broken pipe (os error 32)".into())).process_died());
+        assert!(End::Rpc(Err("flush: Broken pipe".into())).process_died());
+        assert!(
+            End::Rpc(Ok(out(""))).process_died(),
+            "stream ended without a reply"
+        );
+        assert!(
+            !End::Rpc(Ok(out("done"))).process_died(),
+            "a reply is a reply"
+        );
+        assert!(!End::<RpcOut>::Stopped("cancelled").process_died());
+        assert!(!End::<RpcOut>::Stopped("timed out after 2 h").process_died());
+    }
 
     /// An omp RPC stream as the protocol sends it (same shapes as `apps/desktop/src/lib/rpc.test.ts`): a bash call
     /// whose result is text blocks, a read whose result is a plain string, and one failed call.

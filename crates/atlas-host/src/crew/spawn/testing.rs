@@ -131,6 +131,11 @@ impl Rig {
 }
 
 pub fn rig() -> Rig {
+    rig_with(server::Memory::Off("tests run without a cgroup".into()))
+}
+
+/// [`rig`] whose helper reports `memory` (see [`server::Memory::Verdict`]).
+pub fn rig_with(memory: server::Memory) -> Rig {
     let dir = tempfile::tempdir().unwrap();
     let engines = dir.path().join("engines");
     let cm = dir.path().join("cm/3f2a9c1e5b7d");
@@ -140,6 +145,7 @@ pub fn rig() -> Rig {
         cm_root: dir.path().join("cm").to_string_lossy().into(),
         engines: vec![engines.to_string_lossy().into()],
         resolve: me,
+        memory: Arc::new(memory),
     });
     let sock = dir.path().join("spawn.sock");
     let listener = server::bind(&sock).unwrap();

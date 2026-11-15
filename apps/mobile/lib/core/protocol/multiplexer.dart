@@ -169,17 +169,8 @@ class Multiplexer {
     final request = jsonEncode({'id': id, 'cmd': cmd, 'args': args ?? {}});
     final completer = Completer<Map<String, dynamic>>();
     _pending[id] = completer;
-    try {
-      await _transport.sendLine(request);
-    } catch (e) {
-      _pending.remove(id);
-      return {'id': id, 'ok': false, 'error': e.toString()};
-    }
-    // Closed while sending: nothing will answer, and a deadline now would outlive us.
-    if (_closed) {
-      _pending.remove(id);
-      return {'id': id, 'ok': false, 'error': 'connection closed'};
-    }
+    // The deadline runs from the send, not after it: a reply that arrives while the line is still
+    // being written cancels this timer, where one started afterwards would outlive the call.
     _deadlines[id] = Timer(timeout, () {
       _deadlines.remove(id);
       _pending.remove(id)?.complete({
@@ -188,6 +179,19 @@ class Multiplexer {
         'error': 'Your Mac did not answer in ${timeout.inSeconds}s',
       });
     });
+    try {
+      await _transport.sendLine(request);
+    } catch (e) {
+      _deadlines.remove(id)?.cancel();
+      _pending.remove(id);
+      return {'id': id, 'ok': false, 'error': e.toString()};
+    }
+    // Closed while sending: nothing will answer ([_onDone] already ended the call).
+    if (_closed) {
+      _deadlines.remove(id)?.cancel();
+      _pending.remove(id);
+      return {'id': id, 'ok': false, 'error': 'connection closed'};
+    }
     return completer.future;
   }
 

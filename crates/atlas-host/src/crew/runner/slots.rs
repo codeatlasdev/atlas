@@ -88,6 +88,11 @@ pub(super) async fn take(hub: &Hub, crewmate: &Crewmate, task: &mut Task) -> Opt
         }
         if let Some(slot) = slots.try_take() {
             clear_busy(hub, crewmate, task, told);
+            // A helper that restarted forgot the cap hostd set; the agent about to start runs under
+            // the current one. Only isolated servers have anyone to tell.
+            if hub.crew.store.isolation().is_some() {
+                crate::crew::memory_cap::apply_async(hub).await;
+            }
             return Some(slot);
         }
         if !told {

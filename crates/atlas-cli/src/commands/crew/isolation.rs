@@ -66,7 +66,13 @@ pub fn provision_socket_unit(a: &Account) -> String {
 /// - `KillMode=process`: restarting the helper must not kill the agents it started.
 ///   Uninstall stops it with `--kill-who=all` semantics (see [`uninstall_script`]).
 /// - `ProtectSystem=strict` with only `/var/lib/atlas-cm` writable.
+/// - A memory cap per crewmate (#296): `Delegate=memory pids` gives the helper its own cgroup subtree,
+///   `DelegateSubgroup=helper` (systemd 254; older versions ignore it and the helper moves itself down)
+///   keeps the helper process out of the unit's cgroup so that cgroup can have one leaf per crewmate.
+///   `ProtectControlGroups=yes` stays, with only the unit's own cgroup writable again ([`cgroup_path`]);
+///   the `-` prefix makes a missing path a no-op instead of a unit that cannot start.
 pub fn service_unit() -> String {
+    let cg = cgroup_path();
     format!(
         "[Unit]\n\
 Description=Atlas Crew spawn helper (starts each crewmate as its own user)\n\
@@ -81,7 +87,9 @@ Restart=on-failure\n\
 NoNewPrivileges=yes\n\
 CapabilityBoundingSet=CAP_SETUID CAP_SETGID CAP_CHOWN CAP_KILL CAP_DAC_OVERRIDE\n\
 ProtectSystem=strict\n\
-ReadWritePaths={CM_ROOT}\n\
+ReadWritePaths={CM_ROOT} -{cg}\n\
+Delegate=memory pids\n\
+DelegateSubgroup=helper\n\
 ProtectHome=yes\n\
 PrivateTmp=yes\n\
 ProtectKernelTunables=yes\n\
@@ -92,6 +100,13 @@ RestrictAddressFamilies=AF_UNIX\n\
 LockPersonality=yes\n\
 MemoryDenyWriteExecute=yes\n"
     )
+}
+
+/// The helper's own cgroup, the one place it may write under `/sys/fs/cgroup` (`ReadWritePaths=`).
+pub fn cgroup_path() -> String {
+    atlas_host::crew::spawn::cgroup::unit_cgroup_path(&format!("{SPAWN_UNIT}.service"))
+        .to_string_lossy()
+        .into_owned()
 }
 
 /// `atlas-crew-provision.service`: the one root process that may create and remove accounts.
@@ -190,7 +205,8 @@ pub fn unit_files(a: &Account) -> [(String, String); 5] {
 }
 
 /// Steps that start the helpers after their units are written. The sockets are enabled, never the
-/// services: systemd starts a service on the first connection. The egress oneshot is enabled and only
+/// services: systemd starts a service on the first connection (a service that is already running is
+/// `try-restart`ed, so it picks up a rewritten unit). The egress oneshot is enabled and only
 /// replays a rules file the provisioning service has written (`ConditionPathExists`).
 pub fn start_steps() -> Vec<String> {
     let mut v = vec!["sudo systemctl daemon-reload".to_string()];
@@ -203,6 +219,10 @@ pub fn start_steps() -> Vec<String> {
     for u in [SPAWN_UNIT, PROVISION_UNIT] {
         v.push(format!("sudo systemctl restart {u}.socket"));
     }
+    // Restarting a socket leaves a running service alone, so a re-install would keep the old helper (and
+    // its old unit: no cgroup delegation, no memory cap, #296). `try-restart` is a no-op for a service that
+    // is not running (a fresh install: the socket starts it on the first connection); agents survive it.
+    v.push(format!("sudo systemctl try-restart {SPAWN_UNIT}.service"));
     v
 }
 
@@ -481,13 +501,45 @@ mod tests {
         }
         for want in [
             "ProtectSystem=strict\n",
-            "ReadWritePaths=/var/lib/atlas-cm\n",
+            "ReadWritePaths=/var/lib/atlas-cm -/sys/fs/cgroup/system.slice/atlas-crew-spawn.service\n",
             "ProtectHome=yes\n",
             "RestrictAddressFamilies=AF_UNIX\n",
             "RestrictSUIDSGID=yes\n",
         ] {
             assert!(u.contains(want), "missing {want:?}");
         }
+    }
+
+    // #296: the helper owns a cgroup subtree to cap each agent in. `Delegate=memory pids` hands it over
+    // (systemd 236), `DelegateSubgroup=helper` (254) keeps the helper process out of the unit's own cgroup so
+    // that one can have children; older systemd ignores the line and the helper moves itself down
+    // (`cgroup::Pool::detect`). `ProtectControlGroups=yes` stays: only the unit's own subtree is writable.
+    #[test]
+    fn the_service_delegates_its_cgroup_and_may_write_only_that_subtree() {
+        let u = service_unit();
+        for want in [
+            "Delegate=memory pids\n",
+            "DelegateSubgroup=helper\n",
+            "ProtectControlGroups=yes\n",
+        ] {
+            assert!(u.contains(want), "missing {want:?}");
+        }
+        let rw = u
+            .lines()
+            .find(|l| l.starts_with("ReadWritePaths="))
+            .unwrap();
+        assert!(rw.contains("/var/lib/atlas-cm"), "{rw}");
+        assert!(
+            rw.contains(" -/sys/fs/cgroup/system.slice/atlas-crew-spawn.service"),
+            "the helper writes only its own cgroup, never the whole hierarchy: {rw}"
+        );
+        // `-`: a cgroup path that does not exist (a layout this assumes wrong) must not stop the helper
+        // from starting; it then runs without the cap (`Pool::detect` says why).
+        // Not the hierarchy root, not a sibling service's cgroup.
+        assert!(!rw.contains("/sys/fs/cgroup "), "{rw}");
+        assert!(!rw.ends_with("/sys/fs/cgroup"), "{rw}");
+        // The provisioning service has no use for it.
+        assert!(!provision_service_unit().contains("Delegate"));
     }
 
     // Every directive must exist in systemd 245 (Ubuntu 20.04), the install floor. Listing them
@@ -517,6 +569,8 @@ mod tests {
             "RestrictAddressFamilies",
             "LockPersonality",
             "MemoryDenyWriteExecute",
+            // 236; `DelegateSubgroup` is 254 and listed apart (see `delegate_subgroup_is_the_only_newer_directive`).
+            "Delegate",
             "ListenStream",
             "SocketUser",
             "SocketGroup",
@@ -536,12 +590,32 @@ mod tests {
         ] {
             for line in unit.lines().filter(|l| l.contains('=')) {
                 let key = line.split('=').next().unwrap();
+                // Unknown directives are ignored with a warning by older systemd, and the helper does not
+                // need this one there: it moves itself into `helper` (`cgroup::Pool::detect`).
+                if key == "DelegateSubgroup" {
+                    continue;
+                }
                 assert!(
                     KNOWN_245.contains(&key),
                     "{key} is not known to exist in systemd 245"
                 );
             }
         }
+    }
+
+    // The one directive newer than the install floor, kept deliberately: without it (systemd < 254) the
+    // helper starts in the unit's cgroup and moves itself down, which `Pool::detect` covers and tests.
+    #[test]
+    fn delegate_subgroup_is_the_only_newer_directive_and_matches_the_helpers_subgroup() {
+        let u = service_unit();
+        let sub = format!(
+            "DelegateSubgroup={}\n",
+            atlas_host::crew::spawn::cgroup::HELPER_SUBGROUP
+        );
+        assert!(
+            u.contains(&sub),
+            "the unit and the helper disagree on the subgroup name"
+        );
     }
 
     const USER: &str = "atlas-cm-3f2a9c1e5b7d";
@@ -681,6 +755,22 @@ mod tests {
         ] {
             assert!(steps.iter().all(|s| !s.ends_with(never)), "{never}");
         }
+        // #296: restarting a socket does not restart a service that is already running, so a re-install
+        // over a running helper kept the old unit (no cgroup delegation, no memory cap) until it died.
+        // `try-restart` does nothing for a service that is not running (a fresh install: the socket
+        // starts it on the first connection), and agents survive it (`KillMode=process`).
+        let socket = steps
+            .iter()
+            .position(|s| s.ends_with("restart atlas-crew-spawn.socket"))
+            .unwrap();
+        let service = steps
+            .iter()
+            .position(|s| s.ends_with("try-restart atlas-crew-spawn.service"))
+            .expect("a running helper must pick up its new unit");
+        assert!(
+            socket < service,
+            "the socket first: the new helper inherits it"
+        );
         // Everything is enabled before anything is restarted.
         let last_enable = steps.iter().rposition(|s| s.contains(" enable ")).unwrap();
         let first_restart = steps.iter().position(|s| s.contains(" restart ")).unwrap();

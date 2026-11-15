@@ -191,9 +191,26 @@ case "$(channel_step "${ATLAS_CHANNEL:-}")" in
     ;;
 esac
 
+# Linux with a graphical session: install Atlas Desktop too, so the app is in the launcher
+# right away (#265: "the desktop app did not install"). ATLAS_NO_DESKTOP=1 skips it; a server
+# (no display) and macOS keep the hint. Failure never fails the CLI install.
+desktop_done=""
+if [ "$os" = Linux ] && [ -z "${ATLAS_NO_DESKTOP:-}" ] && { [ -n "${WAYLAND_DISPLAY:-}" ] || [ -n "${DISPLAY:-}" ]; }; then
+  say "installing Atlas Desktop (skip with ATLAS_NO_DESKTOP=1)"
+  if "$HOME/.atlas/bin/atlas" desktop --no-open; then
+    desktop_done=1
+  else
+    say "could not install Atlas Desktop now; run later: atlas desktop"
+  fi
+fi
+
 say ""
 say "Next:"
 say "  open a new shell, then:  atlas version"
-say "  atlas desktop            install the desktop app"
+if [ -n "$desktop_done" ]; then
+  say "  Atlas Desktop            in your app launcher, or: atlas desktop"
+else
+  say "  atlas desktop            install the desktop app"
+fi
 say "  atlas setup omp          wire an agent: omp | claude-code | codex (add --apply to write)"
 say "  docs: https://atlas.codeatlas.com.br/docs/getting-started/"

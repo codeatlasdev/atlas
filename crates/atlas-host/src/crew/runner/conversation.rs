@@ -8,7 +8,7 @@ use super::action::{
     finish_unanswered, park_task, parse_atlas_action, resolve_action, user_answer,
 };
 use super::gate::{Gate, gate_success};
-use super::outcome::{finish_task, persist_running};
+use super::outcome::{finish_task, persist_running, was_cancelled};
 use super::prompt::{Prepared, load_agent_env, load_hook_endpoint, prepare_task};
 use super::recover::{recovered_wait, resume_prompt};
 use super::summary::maybe_summarize;
@@ -168,6 +168,14 @@ impl Turn<'_> {
             .next()
             .unwrap_or_default()
             .to_string();
+        // Registered for the length of the turn: a cancel or a pause fires it (`runner::cancel_with`).
+        // `cancel_with` stores `Cancelled` before it looks the handle up, so one that landed before
+        // this registration is seen here instead of being lost.
+        let cancel = engine::TurnCancel::new();
+        let _registered = TurnRegistration::new(hub, &task_id, cancel.clone());
+        if was_cancelled(hub, &crewmate.id, &task_id) {
+            cancel.fire();
+        }
         let tools = {
             let hub_w = hub.crew.hub_arc().map(|h| std::sync::Arc::downgrade(&h));
             move |tool: &str, args: &serde_json::Value, output: &str, is_error: bool| {
@@ -191,6 +199,7 @@ impl Turn<'_> {
             self.work_dir,
             self.yolo,
             Some(&tools),
+            &cancel,
         )
         .await?;
         if let Err(e) = hub.crew.store.save_session(&crewmate.id, &turn.session) {
@@ -264,4 +273,29 @@ async fn settle_reply(
     task.reply_full = reply_full;
     task.summarized = was_summarized;
     finish_task(hub, crewmate, task, final_outcome, vec![]);
+}
+
+/// A running turn's cancel handle in `CrewHub::turn_cancels`, removed when the turn ends.
+struct TurnRegistration<'a> {
+    hub: &'a Hub,
+    task_id: String,
+}
+
+impl<'a> TurnRegistration<'a> {
+    fn new(hub: &'a Hub, task_id: &str, cancel: engine::TurnCancel) -> Self {
+        hub.crew
+            .turn_cancels
+            .lock()
+            .insert(task_id.to_string(), cancel);
+        Self {
+            hub,
+            task_id: task_id.to_string(),
+        }
+    }
+}
+
+impl Drop for TurnRegistration<'_> {
+    fn drop(&mut self) {
+        self.hub.crew.turn_cancels.lock().remove(&self.task_id);
+    }
 }

@@ -219,7 +219,7 @@ pub(crate) fn resume_all(hub: &Hub) {
     }
 }
 
-/// Cancel a task: remove from queue if pending, kill pty if running.
+/// Cancel a task: remove from queue if pending, kill its pty or end its engine turn if running.
 pub(crate) fn cancel(
     hub: &Hub,
     store: &CrewStore,
@@ -265,8 +265,12 @@ fn cancel_with(
         audit_task(hub, crewmate_id, "task_finished", t);
     });
 
-    // Kill the pty if the task is currently running.
+    // Kill the pty if the task is currently running; an engine turn has no pty, its handle ends the
+    // turn's process tree instead.
     if is_running {
+        if let Some(cancel) = hub.crew.turn_cancels.lock().get(task_id) {
+            cancel.fire();
+        }
         let pane_key = pane::key(crewmate_id, task_id);
         let sessions: Vec<Arc<Session>> = hub.sessions.lock().values().cloned().collect();
         if let Some(s) = sessions

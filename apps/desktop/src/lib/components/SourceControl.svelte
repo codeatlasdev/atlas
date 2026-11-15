@@ -4,7 +4,6 @@
 	import { kbd, primaryKey } from "#lib/keys.ts";
 	import { Button, DropdownMenu, DropdownMenuItem, Spinner, TextArea, toast } from "@codeatlasdev/ui";
 	import { Plus, Minus, Undo2, Sparkles, Ellipsis, GitPullRequest, Square, RefreshCw } from "@lucide/svelte";
-	import { listen } from "@tauri-apps/api/event";
 	import { git, errText, type GitEntry, type GitStatus } from "#lib/api.ts";
 	import { ws } from "#lib/stores/workspace.svelte.ts";
 	import { agents } from "#lib/stores/agents.svelte.ts";
@@ -14,6 +13,7 @@
 	import { pr } from "#lib/stores/pr.svelte.ts";
 	import { confirmDialog } from "#lib/stores/ask.svelte.ts";
 	import { statusGroups } from "#lib/stores/tree.ts";
+	import { gitStatus } from "#lib/stores/gitStatus.ts";
 	import PathText from "./PathText.svelte";
 
 	/** Porcelain status letter → `.code` class (anything else reads as modified). */
@@ -45,25 +45,24 @@
 	let ahead = $derived(st?.ab ? Number(st.ab.split(" ")[0].slice(1)) : 0);
 	let behind = $derived(st?.ab ? Number(st.ab.split(" ")[1].slice(1)) : 0);
 
-	async function refresh() {
-		st = await git.status(worktreeId).catch((e) => {
-			toast.error(errText(e));
-			return null;
-		});
-	}
+	const refresh = () => gitStatus.refresh(worktreeId);
 
 	usePoll(5000, () => true, refresh);
 
 	onMount(() => {
-		void refresh();
 		void commitMessages.loadProvider();
 		const detach = commitMessages.attach(worktreeId, (text) => (message = text));
-		const off = listen<{ ev: string }>("host://event", (e) => {
-			if (e.payload.ev === "fs_event") void refresh();
+		// Fed on mount and on every fs event inside this worktree, debounced and shared with the Explorer (#307).
+		const off = gitStatus.watch(worktreeId, ws.worktree(worktreeId)?.path ?? "", {
+			status: (s) => (st = s),
+			error: (e) => {
+				toast.error(errText(e));
+				st = null;
+			},
 		});
 		return () => {
 			detach();
-			void off.then((u) => u());
+			off();
 		};
 	});
 

@@ -15,7 +15,7 @@ Atlas Crew runs AI agents around the clock on a Linux server you own, without yo
 | **task** | one prompt a crewmate works on, one at a time per crewmate |
 | **automation** | something that starts a task by itself: a schedule, an interval, a webhook, a GitHub event, a file change, another crewmate or a service (`triggers` on the wire) |
 
-Sections: [Install a crew server](#install-a-crew-server) · [Back up and move crewmates](#back-up-and-move-crewmates) · [Sign agents in](#sign-agents-in) · [Crewmates](#crewmates) · [Tasks and approvals](#tasks-and-approvals) · [Automations](#automations) · [GitHub](#github) · [Telegram](#telegram) · [Push notifications](#push-notifications) · [Desktop](#atlas-desktop) · [Mobile](#atlas-mobile) · [MCP tools](#mcp-tools-for-the-agent) · [Security model](#security-model) · [Troubleshooting](#troubleshooting) · [Crewmate look](#crewmate-look) · [Code map](#code-map) · [Reference](#reference)
+Sections: [Install a crew server](#install-a-crew-server) · [Back up and move crewmates](#back-up-and-move-crewmates) · [Sign agents in](#sign-agents-in) · [Crewmates](#crewmates) · [Tasks and approvals](#tasks-and-approvals) · [Automations](#automations) · [GitHub](#github) · [Telegram](#telegram) · [Push notifications](#push-notifications) · [Desktop](#atlas-desktop) · [Mobile](#atlas-mobile) · [MCP tools](#mcp-tools-for-the-agent) · [Security model](#security-model) · [Troubleshooting](#troubleshooting) · [Crewmate look](#crewmate-look) · [End-to-end test](#end-to-end-test-on-real-systemd) · [Code map](#code-map) · [Reference](#reference)
 
 ## Install a crew server
 
@@ -648,6 +648,24 @@ Editor layout: a large live preview that pops on every pick, preview-state butto
 - Tools and outfits draw from 40 px up; list icons stay a clean face. Eyewear follows the gaze at every size. While working, each tool has its own gesture (the wrench turns, the quill scribbles, the spyglass sweeps), driven by a spring rig (`rig.ts`). Preview: `/crew-demo` in dev.
 - Persisted and remote looks are untrusted: `normalizeLook` keeps every valid field and replaces each invalid one with the default for that crewmate. Clients own the catalogue, so an unknown id renders as the default.
 - hostd stores the look on the crew server and returns every field in `crewmate_list` (`color` as `#rrggbb`; `eyes`, `hat`, `tool`, `outfit`, `face` as `[a-z0-9_-]`, 1 to 24 characters), so a look picked on one client shows on all of them.
+
+## End-to-end test on real systemd
+
+`crates/atlas-cli/tests/crew_install.rs` runs `atlas crew install` against a simulated server (fake `ssh`, `sudo`, `systemctl`), which pins what the CLI sends. It cannot say that the units start, that `useradd` and `nft` do what the scripts expect, or that a cancelled task leaves no process behind. `scripts/crew-e2e.sh` does, on a real systemd Linux, and the workflow `.github/workflows/crew-e2e.yml` runs it (by hand, nightly, on pull requests that touch `crates/atlas-host/src/crew/**`, `crates/atlas-cli/src/commands/crew/**` or the test itself, and as a reusable workflow for `release.yml`).
+
+The server is a privileged Ubuntu 24.04 container with systemd as PID 1 and sshd on a non-default port (`scripts/crew-e2e/Dockerfile`: sudo, curl, tar, git, nftables, an admin user with passwordless sudo, nothing of Atlas). The client is the `atlas` CLI built from the commit plus hostd's own protocol over an `ssh -L` socket tunnel as the crew user, the path Atlas Desktop uses. The only fake is the agent: `scripts/crew-e2e/fake-claude.sh` stands in for `claude` in `/usr/local/lib/atlas-crew/engines` and prints the JSON result the engine module reads, so no API key is needed. In order:
+
+| Step | Asserts |
+|---|---|
+| `atlas crew install --port … --yes --binary` (twice) | reports the crew server ready; `atlas-crew.service` and both helper sockets are active; `atlas.prev` exists after the second run; `atlas crew status` says up to date; the caller's key lets ssh in as `atlas-crew`; hostd answers `info` with the `crew` capability |
+| a crewmate and a task | the crewmate gets its own Linux user and work dir; the task ends `done` with the fake engine's result, timestamps and no error; the result is in `tasks.jsonl` and the audit log is not empty |
+| an engine that exits 1 | the task ends `failed` with an error |
+| a hanging task, `crewmate_cancel` | the engine's child (`sleep`) runs as the crewmate's user, then the task is `cancelled` and no process of its tree is left (#290) |
+| a hanging task, `atlas crew pause` | the task is `cancelled` with error `paused` and its tree is gone; a task sent meanwhile stays `queued`; after `atlas crew resume` it runs to `done` |
+| `systemctl restart atlas-crew` in the middle of a task | the task finishes `done`, marked `resumed` with one restart, and the run the restart cut is not left running (#199) |
+| `atlas crew export`, then `atlas crew uninstall` | the archive starts with `manifest.json` and holds the crewmate and its history, no `secrets.json`; uninstall with no terminal and no `--yes` refuses and changes nothing; with `--yes` it reports what it deleted and leaves no user, group, unit, file, socket, firewall table or process of the crew server |
+
+Any failed check fails the job. The server's journal, `hostd.log`, process list, `nft` ruleset and crewmate files are uploaded as the `crew-e2e-server-logs` artifact, also on failure. Locally you need docker, ssh, jq and python3: `cargo build -p atlas-cli && scripts/crew-e2e.sh` (`CREW_E2E_KEEP=1` leaves the container to poke at). The test never touches `~/.ssh/config`: ssh runs through a shim that adds its own config and key.
 
 ## Code map
 

@@ -44,18 +44,7 @@ pub(crate) trait GithubApi: Send + Sync {
 pub(crate) struct GhCli;
 
 async fn gh(args: &[&str]) -> Result<String, String> {
-    let out = tokio::process::Command::new("gh")
-        .args(args)
-        .stdin(std::process::Stdio::null())
-        .output()
-        .await
-        .map_err(|e| {
-            if e.kind() == std::io::ErrorKind::NotFound {
-                "gh CLI not found".to_string()
-            } else {
-                format!("gh: {e}")
-            }
-        })?;
+    let out = crate::crew::proc::gh_output(args, "gh").await?;
     if !out.status.success() {
         return Err(format!(
             "gh {}: {}",

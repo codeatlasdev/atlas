@@ -82,7 +82,6 @@ impl World {
             "true",
             "false",
             "printenv",
-            "chown",
             "ln",
             "uname",
         ] {
@@ -103,6 +102,13 @@ impl World {
             "useradd",
             "for a; do u=$a; done; mkdir -p \"$ROOT/var/lib/$u\"; echo \"useradd $*\" >> \"$ROOT/log/useradd\"",
         );
+        // The simulated server's users exist only under $ROOT, so the real chown would refuse them (it did on
+        // Linux CI; on macOS `chown` is in /usr/sbin and used to fall back to a no-op fake). Like the real one,
+        // it refuses an owner that was never created, so a chown before useradd still fails.
+        w.fake(
+            "chown",
+            "[ \"$1\" = -R ] && shift; u=${1%%:*}; shift; [ -d \"$ROOT/var/lib/$u\" ] || [ -f \"$ROOT/users/$u\" ] || { echo \"chown: invalid user: '$u'\" >&2; exit 1; }; echo \"chown $u $*\" >> \"$ROOT/log/chown\"",
+        );
         for t in ["curl", "git", "npm", "pgrep"] {
             w.fake(t, "exit 0");
         }
@@ -119,7 +125,16 @@ impl World {
     }
 
     fn link_real(&self, name: &str) {
-        for dir in ["/usr/bin", "/bin", "/usr/local/bin", "/opt/homebrew/bin"] {
+        // sbin too: macOS keeps some of these there (chown), Linux in /usr/bin. A tool found on one OS and
+        // faked on the other made these tests pass on macOS by accident and fail on Linux.
+        for dir in [
+            "/usr/bin",
+            "/bin",
+            "/usr/sbin",
+            "/sbin",
+            "/usr/local/bin",
+            "/opt/homebrew/bin",
+        ] {
             let src = Path::new(dir).join(name);
             if src.exists() {
                 let _ = std::os::unix::fs::symlink(&src, self.root().join("bin").join(name));

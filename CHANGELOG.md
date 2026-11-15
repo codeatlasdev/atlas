@@ -8,6 +8,7 @@ All notable changes to Atlas (CLI, TUI, MCP server and Atlas Desktop). Versions 
 
 ### Fixed
 
+- **Atlas Mobile: a long agent chat no longer re-lays out every message every two seconds.** While an agent works, the chat re-read its timeline and crew every 2 s and rebuilt all of it even when nothing had changed, so a 200-message chat stuttered while you scrolled or typed. A reply that is the same as the last one now changes nothing on screen, the grouping of messages is computed once per change, and only the messages near the viewport are built.
 - **Atlas Crew: a hung `gh` call no longer holds a task forever ([#296](https://github.com/codeatlasdev/atlas/issues/296)).** `git` got a 120 s deadline in 1.5.0-alpha.26 but the crew's `gh` calls did not: a GitHub API call (a comment, a pull request) or `gh auth status` that never returned (a stalled network, a credential prompt) held the task that made it, and the Settings GitHub row, forever. Every bounded `gh` call now goes through the same deadline and kills its whole process tree; `gh auth login` stays interactive. A missing `git` or `gh` now says it is not on `PATH`.
 
 ## [1.5.0-alpha.26] — 2026-11-15

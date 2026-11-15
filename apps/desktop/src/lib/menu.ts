@@ -1,8 +1,9 @@
 /**
- * Native menu bridge. The menu (crates/atlas-desktop/src/menu.rs) owns the key equivalents of the
- * commands it lists, so macOS delivers them even when focus is in the GPU terminal, an
- * embedded browser page or a native text field. The webview never sees those keys, so nothing
- * fires twice. We push the effective keymap (user remaps included) and each command's
+ * Native menu bridge (macOS only: Windows and Linux have no native menu bar). The menu
+ * (crates/atlas-desktop/src/menu.rs) owns the key equivalents of the commands it lists, so macOS
+ * delivers them even when focus is in the GPU terminal, an embedded browser page or a native text
+ * field. The webview never sees those keys, so nothing fires twice. Off macOS no accelerator is
+ * set (below): the page's keymap handles the keys, and the palette and tooltips label them (`keys.ts` `label`). We push the effective keymap (user remaps included) and each command's
  * availability; a click or key sends `menu://command` back.
  */
 import { IS_MAC, bindingsOf } from "#lib/keys.ts";

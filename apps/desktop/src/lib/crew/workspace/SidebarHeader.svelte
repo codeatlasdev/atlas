@@ -1,6 +1,7 @@
 <script lang="ts">
 	/** SidebarHeader — the sidebar's window drag band and the search / new-crewmate buttons. */
 	import { Plus, Search } from "@lucide/svelte";
+	import { kbd } from "#lib/keys.ts";
 	import { palettes } from "#lib/shell/palettes.svelte.ts";
 	import { recruit } from "#lib/crew/workspace/actions.svelte.ts";
 </script>
@@ -10,7 +11,7 @@
 
 <!-- Top bar: search + add -->
 <div class="top-bar">
-	<button class="icon-btn-round" onclick={() => (palettes.crew = true)} aria-label="Search (⌘K)">
+	<button class="icon-btn-round" onclick={() => (palettes.crew = true)} aria-label="Search ({kbd('cmd-k')})">
 		<Search size={16} />
 	</button>
 	<button

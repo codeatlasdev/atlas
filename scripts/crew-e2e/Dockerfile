@@ -7,7 +7,7 @@ ENV DEBIAN_FRONTEND=noninteractive container=docker
 
 RUN apt-get update \
  && apt-get install -y --no-install-recommends \
-      systemd systemd-sysv dbus openssh-server sudo curl ca-certificates tar git gawk passwd procps nftables nodejs npm \
+      systemd systemd-sysv dbus openssh-server sudo curl ca-certificates tar git gawk passwd procps nftables \
  && rm -rf /var/lib/apt/lists/* \
  # Units a container has no use for, or that stall its boot.
  && systemctl mask getty.target console-getty.service systemd-logind.service systemd-udevd.service \

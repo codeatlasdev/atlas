@@ -96,13 +96,7 @@ fn prove_ui_retry_prompt(prompt: &str, reason: &str) -> String {
 /// Pull what hook routes wrote while the runner held its own copy of the task: the agent's captures
 /// (`capture`) and a `ui` mark (`set_ui`) land on the stored task, not on this one.
 fn refresh_from_store(hub: &Hub, crewmate: &Crewmate, task: &mut Task) {
-    if let Some(stored) = hub
-        .crew
-        .store
-        .read_tasks(&crewmate.id, usize::MAX)
-        .into_iter()
-        .find(|t| t.id == task.id)
-    {
+    if let Some(stored) = hub.crew.store.task(&crewmate.id, &task.id) {
         task.attachments = stored.attachments;
         task.ui = task.ui || stored.ui;
     }

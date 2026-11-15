@@ -477,6 +477,11 @@ void main() {
           reason: 'the arrival takes at most half a second: $seen',
         );
         expect(t.getRect(find.text('from the desktop')).bottom, lessThan(852));
+        expect(
+          find.text('New activity'),
+          findsNothing,
+          reason: 'the reader is at the end: nothing is new to them',
+        );
       },
     );
 
@@ -493,6 +498,56 @@ void main() {
         final probe = FrameProbe(t, {'page': _Rig.page, ...read});
         await probe.record(_long);
         _expectStillInPage(probe, read.keys);
+      },
+    );
+
+    // Regression: the agent chat froze its thread and showed "New activity" for a reader above the end; this chat
+    // kept their place but said nothing, so the reply could sit below them unseen. One behaviour for both chats.
+    testWidgets(
+      'a reply that arrives while the reader is scrolled up never moves what they read, says "New activity", and one tap goes to it',
+      (t) async {
+        final server = _Server();
+        final rig = await openSettled(t, server);
+        rig.controller!.jumpTo(700);
+        await t.pump();
+        final read = onScreen(t);
+        expect(read, isNotEmpty);
+        expect(
+          find.text('New activity'),
+          findsNothing,
+          reason: 'nothing has arrived yet',
+        );
+
+        server.addFromDesktop('from the desktop');
+        final probe = FrameProbe(t, {'page': _Rig.page, ...read});
+        await probe.record(_long, sample: {'offset': rig.offset});
+        _expectStillInPage(probe, read.keys);
+        probe.expectSampleWithin('offset', 700, 700);
+        expect(find.text('New activity'), findsOneWidget);
+
+        await t.tap(find.text('New activity'));
+        await settle(t);
+        expect(rig.offset(), lessThan(1), reason: 'the tap goes to the end');
+        expect(find.text('from the desktop'), findsOneWidget);
+        expect(find.text('New activity'), findsNothing);
+      },
+    );
+
+    testWidgets(
+      'a reader who is back at the end by scrolling gets the thread and no button',
+      (t) async {
+        final server = _Server();
+        final rig = await openSettled(t, server);
+        rig.controller!.jumpTo(700);
+        await t.pump();
+        server.addFromDesktop('from the desktop');
+        await settle(t);
+        expect(find.text('New activity'), findsOneWidget);
+
+        rig.controller!.jumpTo(0);
+        await settle(t);
+        expect(find.text('New activity'), findsNothing);
+        expect(find.text('from the desktop'), findsOneWidget);
       },
     );
 

@@ -3,6 +3,7 @@ import 'dart:async';
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 
+import 'package:atlas_mobile/core/ui/route_page.dart';
 import 'package:atlas_mobile/core/connection/connection_notifier.dart';
 import 'package:atlas_mobile/core/connection/require_mux.dart';
 import 'package:atlas_mobile/core/protocol/latest_only.dart';
@@ -180,28 +181,26 @@ class _ProjectDetailScreenState extends ConsumerState<ProjectDetailScreen> {
   }
 
   void _openLogs({String? service}) {
-    Navigator.of(context).push(
-      MaterialPageRoute<void>(
-        builder: (_) => LogsPage(
-          device: widget.device,
-          projectId: widget.project.id,
-          services: [
-            for (final s in _snap?.services ?? const <ServiceRow>[]) s.name,
-          ],
-          service: service,
-        ),
+    pushScreen<void>(
+      context,
+      LogsPage(
+        device: widget.device,
+        projectId: widget.project.id,
+        services: [
+          for (final s in _snap?.services ?? const <ServiceRow>[]) s.name,
+        ],
+        service: service,
       ),
     );
   }
 
-  void _openAgent(String pane, AgentStatus a) => Navigator.of(context).push(
-    MaterialPageRoute<void>(
-      builder: (_) => AgentChatScreen(
-        device: widget.device,
-        paneKey: pane,
-        initial: a,
-        title: agentTitle(a),
-      ),
+  void _openAgent(String pane, AgentStatus a) => pushScreen<void>(
+    context,
+    AgentChatScreen(
+      device: widget.device,
+      paneKey: pane,
+      initial: a,
+      title: agentTitle(a),
     ),
   );
 

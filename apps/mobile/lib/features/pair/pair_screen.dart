@@ -7,9 +7,9 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:mobile_scanner/mobile_scanner.dart';
 
 import 'package:atlas_mobile/core/protocol/models.dart';
+import 'package:atlas_mobile/core/ui/computer_state.dart';
 import 'package:atlas_mobile/core/ui/components.dart';
 import 'package:atlas_mobile/core/ui/atlas_theme.dart';
-import 'package:atlas_mobile/core/ui/atlas_logo.dart';
 import 'package:atlas_mobile/core/storage/mac_storage.dart';
 import 'package:atlas_mobile/core/connection/connection_notifier.dart';
 import 'package:atlas_mobile/core/protocol/multiplexer.dart';
@@ -201,13 +201,7 @@ class _PairScreenState extends ConsumerState<PairScreen> {
               ],
             ),
           ),
-          _ => const EmptyState(
-            key: ValueKey('busy'),
-            icon: AtlasLogo(size: 96, animated: true),
-            title: 'Reaching your computer…',
-            message:
-                'Directly when possible, through an encrypted relay otherwise.',
-          ),
+          _ => const ReachingView(key: ValueKey('busy'), connecting: true),
         },
       ),
     );
@@ -241,14 +235,11 @@ class _Scanner extends StatelessWidget {
                   color: Colors.black.withValues(alpha: .6),
                   borderRadius: BorderRadius.circular(Space.radius),
                 ),
-                child: const Text(
+                child: Text(
                   'On your computer: Atlas Desktop → Settings → Mobile → Pair a phone',
                   textAlign: TextAlign.center,
-                  style: TextStyle(
-                    color: Colors.white,
-                    fontSize: 15,
-                    height: 1.4,
-                  ),
+                  style: Theme.of(context).textTheme.bodyLarge!
+                      .copyWith(color: Colors.white, height: 1.4),
                 ),
               ),
               const SizedBox(height: Space.sm),

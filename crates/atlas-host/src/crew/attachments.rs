@@ -266,7 +266,7 @@ pub(crate) fn stage(
         }
     }
     if !staged.is_empty() {
-        keep_out_of_git(work_dir);
+        keep_out_of_git(work_dir, &store.git_env_in(work_dir));
     }
     staged
 }
@@ -274,10 +274,11 @@ pub(crate) fn stage(
 /// Add `.atlas/attachments/` to the checkout's local `info/exclude`, so an agent's `git add -A` never commits
 /// the user's screenshots (the project's own `.gitignore` is never touched). Best effort: a work dir that is
 /// not a git checkout has nothing to exclude from.
-fn keep_out_of_git(work_dir: &Path) {
+fn keep_out_of_git(work_dir: &Path, git_env: &[(String, String)]) {
     let Ok(out) = std::process::Command::new("git")
         .args(["rev-parse", "--git-path", "info/exclude"])
         .current_dir(work_dir)
+        .envs(git_env.iter().map(|(k, v)| (k, v)))
         .output()
     else {
         return;

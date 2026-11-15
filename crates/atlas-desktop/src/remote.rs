@@ -22,15 +22,6 @@ use tokio::process::{Child, Command};
 
 use crate::host::HostHub;
 
-const SSH_OPTS: [&str; 6] = [
-    "-o",
-    "BatchMode=yes",
-    "-o",
-    "ConnectTimeout=10",
-    "-o",
-    "ServerAliveInterval=15",
-];
-
 #[derive(Default)]
 pub struct Remotes {
     tunnels: Mutex<std::collections::HashMap<String, Child>>,
@@ -45,9 +36,7 @@ pub fn host_id(alias: &str) -> String {
 async fn ssh(alias: &str, script: &str, timeout: Duration) -> Result<String, String> {
     let fut = Command::new("ssh")
         .no_window()
-        .args(SSH_OPTS)
-        .arg(alias)
-        .arg(script)
+        .args(crate::crew::server_ssh(alias).raw_argv(script))
         .stdin(Stdio::null())
         .output();
     let out = tokio::time::timeout(timeout, fut)
@@ -111,9 +100,7 @@ async fn prepare(alias: &str) -> Result<(String, String), String> {
         ssh(alias, "mkdir -p ~/.atlas/bin", Duration::from_secs(15)).await?;
         let st = Command::new("scp")
             .no_window()
-            .args(["-q", "-o", "BatchMode=yes"])
-            .arg(&bin)
-            .arg(format!("{alias}:.atlas/bin/atlas"))
+            .args(crate::crew::server_ssh(alias).scp_argv(&bin, ".atlas/bin/atlas"))
             .status()
             .await
             .map_err(|e| e.to_string())?;
@@ -145,17 +132,10 @@ async fn connect_once(app: &AppHandle, alias: &str) -> Result<HostClient, String
     let _ = std::fs::remove_file(&sock);
     let child = Command::new("ssh")
         .no_window()
-        .args(SSH_OPTS)
-        .args([
-            "-N",
-            "-o",
-            "ExitOnForwardFailure=yes",
-            "-o",
-            "StreamLocalBindUnlink=yes",
-        ])
-        .arg("-L")
-        .arg(format!("{}:{home}/.atlas/hostd.sock", sock.display()))
-        .arg(alias)
+        .args(
+            crate::crew::server_ssh(alias)
+                .tunnel_argv(&format!("{}:{home}/.atlas/hostd.sock", sock.display())),
+        )
         .stdin(Stdio::null())
         .stdout(Stdio::null())
         .stderr(Stdio::null())
@@ -388,10 +368,10 @@ pub async fn ssh_forward(
         .port();
     let child = Command::new("ssh")
         .no_window()
-        .args(SSH_OPTS)
-        .args(["-N", "-o", "ExitOnForwardFailure=yes", "-L"])
-        .arg(format!("127.0.0.1:{local}:localhost:{port}"))
-        .arg(&alias)
+        .args(
+            crate::crew::server_ssh(&alias)
+                .tunnel_argv(&format!("127.0.0.1:{local}:localhost:{port}")),
+        )
         .stdin(Stdio::null())
         .stdout(Stdio::null())
         .stderr(Stdio::null())

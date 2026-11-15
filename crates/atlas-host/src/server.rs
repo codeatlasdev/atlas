@@ -170,6 +170,11 @@ impl Hub {
         self.lsp.shutdown().await;
     }
 
+    /// A connection id that is on no connection: what an in-process listener (a pty watcher) attaches as.
+    pub(crate) fn fresh_conn_id(&self) -> u64 {
+        self.next_conn.fetch_add(1, Ordering::Relaxed)
+    }
+
     /// Register a push receiver (mobile sessions); returns its connection id.
     pub(crate) fn add_subscriber(&self, tx: Out) -> u64 {
         let id = self.next_conn.fetch_add(1, Ordering::Relaxed);
@@ -313,6 +318,10 @@ pub struct ServeOpts {
     pub registry: Option<PathBuf>,
     /// How to reach the crew servers relayed to phones (`crate::crew`); `None`: ssh.
     pub crew_relay: Option<crate::crew::relay::Connector>,
+    /// Where crewmates' own Linux users are driven from (`crate::crew::spawn`). `atlas hostd` passes
+    /// what the machine has (`Setup::detect`, the helper's socket); `None` runs every crewmate as the
+    /// crew user, which is also what tests get unless they run a helper of their own.
+    pub isolation: Option<crate::crew::spawn::layout::Setup>,
     /// Another desktop control socket than `~/.atlas/desktop.sock` (tests); `None`: the user's.
     pub desktop: Option<atlas_core::desktop_ctl::Endpoint>,
     /// Where plain-agent pushes go ([`crate::agents::push`]); `None`: the push relay. Tests capture them.
@@ -331,6 +340,9 @@ pub async fn serve(dir: &Path) -> Result<()> {
         ServeOpts {
             crew_host,
             registry: Some(desktop_registry()),
+            isolation: crew_host
+                .then(crate::crew::spawn::layout::Setup::detect)
+                .flatten(),
             ..Default::default()
         },
     )
@@ -426,7 +438,11 @@ pub async fn serve_with(dir: &Path, opts: ServeOpts) -> Result<()> {
         .flatten()
     {
         let id = st.id.clone();
-        match Session::adopt(st, fd, &scroll_dir) {
+        let helper = opts
+            .isolation
+            .as_ref()
+            .map(|i| crate::crew::spawn::client::Client::at(&i.socket));
+        match Session::adopt(st, fd, &scroll_dir, helper.as_ref()) {
             Ok(s) => {
                 adopted += 1;
                 sessions.insert(id, s);
@@ -458,7 +474,7 @@ pub async fn serve_with(dir: &Path, opts: ServeOpts) -> Result<()> {
     let (lsp_tx, lsp_rx) = mpsc::channel(512);
     let agents = Arc::new(crate::agents::AgentHub::default());
     let mobile = Arc::new(crate::mobile::Mobile::load(dir, !opts.no_mobile_relay)?);
-    let crew = crate::crew::CrewHub::new(dir);
+    let crew = crate::crew::CrewHub::new(dir, opts.isolation.clone());
     let registry = opts
         .registry
         .clone()
@@ -524,6 +540,8 @@ pub async fn serve_with(dir: &Path, opts: ServeOpts) -> Result<()> {
             hub.agents.clone(),
             hub.mobile.clone(),
             Some(Arc::downgrade(&hub)),
+            // Crewmates behind their own users reach hostd on one loopback port the firewall names.
+            hub.crew.store.isolation().map(|i| i.hook_port),
         )
         .await
     {
@@ -918,14 +936,12 @@ fn watch(
 
 /// When the program in an agent's pane exits, the agent goes idle: hostd sees the exit
 /// itself, so this holds with the app closed (phones would otherwise show a dead agent
-/// as working). Listens like a client that wants no output.
+/// as working). Listens like a client that wants no output; a program that already ended
+/// is announced to the listener at once (`Session::attach`), so it goes idle too.
 fn idle_agent_on_exit(hub: &Hub, s: &Arc<Session>) {
     let Some(pane) = s.meta.scope.pane_key.clone() else {
         return;
     };
-    if s.exited().is_some() {
-        return;
-    }
     let (tx, mut rx) = crate::pty::out_channel();
     s.attach(
         hub.next_conn.fetch_add(1, Ordering::Relaxed),
@@ -1086,6 +1102,11 @@ pub(crate) async fn handle(hub: &Hub, cmd: HostCmd, conn_id: u64) -> Result<Valu
             prompt,
             worktree,
         } => agent_launch(hub, &project, &agent, prompt, worktree).await,
+        HostCmd::PtyOpen {
+            project,
+            worktree,
+            crewmate,
+        } => crate::mobile::shell::open(hub, conn_id, project, worktree, crewmate).await,
         HostCmd::WorktreeList { project } => {
             crate::worktrees::local::list(hub.data_dir(), &project).await
         }
@@ -1152,6 +1173,9 @@ pub(crate) async fn handle(hub: &Hub, cmd: HostCmd, conn_id: u64) -> Result<Valu
         HostCmd::MobileDevices {} => Ok(json!({"devices": hub.mobile.devices()})),
         HostCmd::MobileRevoke { node_id } => {
             hub.crew.revoke_device_tokens(&node_id);
+            // The crew servers behind this Mac hold the phone's tokens too (it registered through
+            // `crew_call`): taking trust away must reach them, not only this Mac's own store.
+            hub.crew_relay.forget_phone(&node_id);
             hub.mobile.revoke(&node_id).map(|()| json!({}))
         }
         HostCmd::MobileSetScopes { node_id, scopes } => {
@@ -1163,10 +1187,17 @@ pub(crate) async fn handle(hub: &Hub, cmd: HostCmd, conn_id: u64) -> Result<Valu
             token,
             platform,
             grant,
+            node,
         } => {
             let origin = hub.origin_of(conn_id);
-            let node = origin.strip_prefix("phone:").unwrap_or("");
+            // A phone's own connection names it. Otherwise the registration came through the Mac's relay,
+            // which names the phone it relayed for; a client that names none stays a token with no phone.
+            let node = origin.strip_prefix("phone:").unwrap_or(&node);
             hub.crew.register_token(node, &token, &platform, grant);
+            Ok(json!({}))
+        }
+        HostCmd::PushForget { node } => {
+            hub.crew.revoke_device_tokens(&node);
             Ok(json!({}))
         }
         HostCmd::PushUnregister { token } => {
@@ -1215,9 +1246,19 @@ pub(crate) async fn handle(hub: &Hub, cmd: HostCmd, conn_id: u64) -> Result<Valu
         | HostCmd::CrewPause {}
         | HostCmd::CrewResume {}
         | HostCmd::CrewSettingsGet {}
+        | HostCmd::CrewEngineStatus { .. }
         | HostCmd::CrewSettingsSet { .. }) => crate::crew::handle(hub, crewmate).await,
+        HostCmd::CrewEngineLogin { engine, crewmate } => {
+            if !hub.crew_host {
+                return Err("this computer is not a crew server (atlas crew install)".into());
+            }
+            crate::crew::engine_login::login(hub, conn_id, &engine, crewmate.as_deref()).await
+        }
         HostCmd::CrewServers {} => Ok(hub.crew_relay.servers()),
-        HostCmd::CrewCall { server, cmd, args } => hub.crew_relay.call(&server, &cmd, args).await,
+        HostCmd::CrewCall { server, cmd, args } => {
+            let args = stamp_phone(&hub.origin_of(conn_id), &cmd, args);
+            hub.crew_relay.call(&server, &cmd, args).await
+        }
         HostCmd::MobileInvite { url, name } => {
             hub.mobile.mobile_invite(url, name, hub);
             Ok(json!({}))
@@ -1251,6 +1292,18 @@ pub(crate) async fn handle(hub: &Hub, cmd: HostCmd, conn_id: u64) -> Result<Valu
         | HostCmd::FsUnwatch { .. }
         | HostCmd::Shutdown {} => Err("handled by connection".into()),
     }
+}
+
+/// What a phone's `crew_call` carries to the crew server: its own node id on a `push_register`, so the crew
+/// server files the token under that phone (the relay's connection is no phone, and the token used to land
+/// with no owner that revoking could find). Whatever the phone put in `node` is overwritten, never trusted.
+fn stamp_phone(origin: &str, cmd: &str, mut args: Value) -> Value {
+    if cmd == "push_register"
+        && let (Some(node), Some(o)) = (origin.strip_prefix("phone:"), args.as_object_mut())
+    {
+        o.insert("node".into(), json!(node));
+    }
+    args
 }
 
 /// Serve a `pty_attach_raw` connection: reply line, then raw bytes until the pty
@@ -1510,6 +1563,36 @@ mod tests {
         let hello = protocol::hello_line(&token, "raw");
         s.write_all(format!("{hello}\n").as_bytes()).await.unwrap();
         (tmp, client, s)
+    }
+
+    /// The keys of `info`, from a real hostd, pinned next to the commands (#302): a phone or desktop
+    /// reads them to decide what this daemon can do. Values vary per run (pid, uptime, hostname); the
+    /// golden keeps the key set and the type of each.
+    #[tokio::test]
+    async fn info_keys_are_pinned_to_proto() {
+        let (_tmp, client, _s) = wire().await;
+        let info = client.call("info", json!({})).await.unwrap();
+        let keys: serde_json::Map<String, Value> = info
+            .as_object()
+            .unwrap()
+            .iter()
+            .map(|(k, v)| {
+                let t = match v {
+                    Value::Null => "null",
+                    Value::Bool(_) => "bool",
+                    Value::Number(_) => "number",
+                    Value::String(_) => "string",
+                    Value::Array(_) => "array",
+                    Value::Object(_) => "object",
+                };
+                (k.clone(), json!(t))
+            })
+            .collect();
+        assert_eq!(info["proto"], json!(protocol::PROTO), "info reports PROTO");
+        crate::protocol_golden::check_golden(
+            "info.json",
+            &json!({"proto": protocol::PROTO, "keys": keys}),
+        );
     }
 
     /// Incident: every request was handled on its own task, so two writes of one connection

@@ -117,6 +117,7 @@ describe("the capture browsers row on a crew server's settings", () => {
 		const items = [...t.querySelectorAll(".problems li")].map((li) => li.textContent);
 		expect(items).toEqual([
 			"runner: missing",
+			"detectors: missing (the runner imports it)",
 			"playwright: package missing",
 			"browsers: chromium missing",
 			"browsers: webkit missing",

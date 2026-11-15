@@ -140,7 +140,8 @@ class _OnboardingState extends State<Onboarding> {
                   onPressed: openPrivacy,
                   child: Text(
                     'Privacy',
-                    style: TextStyle(color: c.faint, fontSize: 12),
+                    style: Theme.of(context).textTheme.bodySmall!
+                        .copyWith(color: c.muted),
                   ),
                 ),
               ],
@@ -250,7 +251,11 @@ class _PageText extends StatelessWidget {
         Text(
           page.body,
           textAlign: TextAlign.center,
-          style: TextStyle(color: c.muted, fontSize: 16, height: 1.45),
+          style: Theme.of(context).textTheme.titleMedium!.copyWith(
+            color: c.muted,
+            height: 1.45,
+            fontWeight: FontWeight.w400,
+          ),
         ),
       ],
     );
@@ -321,13 +326,11 @@ class _HowToPair extends StatelessWidget {
             child: Column(
               crossAxisAlignment: CrossAxisAlignment.start,
               children: [
-                const SizedBox(height: 4),
+                const SizedBox(height: Space.xs),
                 Text(
                   text,
-                  style: const TextStyle(
-                    fontSize: 16,
-                    fontWeight: FontWeight.w600,
-                  ),
+                  style: Theme.of(context).textTheme.titleMedium!
+                      .copyWith(fontWeight: FontWeight.w600),
                 ),
                 if (detail != null) ...[
                   const SizedBox(height: 2),

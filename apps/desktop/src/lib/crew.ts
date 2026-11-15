@@ -23,6 +23,8 @@ export interface CrewServer {
 	host: string;
 	/** Human-readable label. */
 	name: string;
+	/** The ssh port; absent for 22 and for servers added before the field existed. */
+	port?: number;
 	/** The admin address it was installed with; absent for servers added before it was kept. */
 	admin?: AdminAddress;
 }
@@ -239,6 +241,8 @@ export interface CrewmateTask {
 	restarts?: number;
 	/** Set while the task waits for the crewmate's project to download ("codeatlasdev/ui"); gone once it can start. */
 	preparing?: string;
+	/** Why a queued task is not starting yet ("server busy": every agent slot of the crew server is taken); gone once it starts. */
+	waiting_for?: string;
 	/** The GitHub issue, PR or comment this task answers; hostd posts and edits its progress comment there. */
 	origin?: GithubOrigin;
 	/** Images sent with the prompt; the bytes are fetched with `crewmate_attachment` (`lib/crew/attachments.ts`). */

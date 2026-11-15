@@ -14,7 +14,7 @@ use anyhow::{Context, Result};
 use super::master::{Master, Waiter};
 use super::{Buf, Init, Meta, Session, bin_path, meta_path, ring_tail};
 #[cfg(unix)]
-use super::{Io, open_append};
+use super::{Io, Isolation, open_append};
 #[cfg(unix)]
 use crate::handoff::{ExitWatch, SessionState};
 use crate::protocol::Scope;
@@ -47,6 +47,8 @@ impl Session {
                 size: (80, 24),
                 io: None,
                 buf: Buf::new(ring, None, file_len),
+                #[cfg(unix)]
+                iso: None,
             },
             scroll_dir,
         ))
@@ -60,6 +62,7 @@ impl Session {
         st: SessionState,
         fd: Option<std::os::fd::OwnedFd>,
         scroll_dir: &Path,
+        helper: Option<&crate::crew::spawn::client::Client>,
     ) -> Result<Arc<Session>> {
         let data = std::fs::read(bin_path(scroll_dir, &st.id)).unwrap_or_default();
         let (ring, file_len) = ring_tail(&data);
@@ -70,6 +73,19 @@ impl Session {
             created_at: st.created_at,
         };
         let mut buf = Buf::new(ring, None, file_len);
+        // An isolated session keeps being driven through the helper after an upgrade. When the helper
+        // is gone (isolation removed) the session cannot be signalled any more: it is adopted as a
+        // plain one and ends with its pty.
+        let iso = st
+            .iso
+            .clone()
+            .zip(st.pid)
+            .zip(helper)
+            .map(|((r, pid), client)| Isolation {
+                client: client.clone(),
+                iso: r,
+                pid,
+            });
         let mut io = None;
         let mut run = None;
         if let (Some(fd), false) = (fd, st.exited) {
@@ -98,6 +114,7 @@ impl Session {
                 size: (st.cols, st.rows),
                 io,
                 buf,
+                iso,
             },
             scroll_dir,
         );
@@ -113,6 +130,9 @@ impl Session {
     /// handoff). The watch is registered here, not when the waiter runs.
     #[cfg(unix)]
     fn exit_waiter(&self) -> Waiter {
+        if let Some(iso) = &self.iso {
+            return iso.waiter();
+        }
         let watch = self.pid.map(ExitWatch::new);
         Box::new(move || watch.and_then(ExitWatch::wait))
     }
@@ -154,6 +174,7 @@ impl Session {
                 exited: exited.is_some(),
                 exit_code: exited.flatten(),
                 fd: None,
+                iso: self.iso.as_ref().map(|i| i.iso.clone()),
             },
             if exited.is_none() { fd } else { None },
         ))

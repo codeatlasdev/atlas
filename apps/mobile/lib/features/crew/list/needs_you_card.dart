@@ -8,6 +8,7 @@ import 'package:flutter/material.dart';
 
 import 'package:atlas_mobile/core/protocol/crew_models.dart';
 import 'package:atlas_mobile/core/ui/atlas_theme.dart';
+import 'package:atlas_mobile/core/ui/attention_card.dart';
 import 'package:atlas_mobile/features/crew/avatar/crewmate_avatar.dart';
 import 'package:atlas_mobile/features/crew/avatar/crewmate_look.dart';
 import 'package:atlas_mobile/features/crew/chat/task_images.dart';
@@ -43,57 +44,71 @@ class NeedsYouCard extends StatelessWidget {
     final cmd = approvalCommand(pa);
     final task = entry.crewmate.waitingTask;
 
-    return InkWell(
+    // One button for the whole card, named for what it asks; Deny / Allow / Retry stay their own buttons
+    // inside it. The InkWell's own tap node is dropped so the card is not announced twice.
+    final label = pa != null
+        ? '${entry.crewmate.name} wants to run ${pa.toolName ?? 'a tool'}'
+        : '${entry.crewmate.name} needs you';
+    return Semantics(
+      container: true,
+      explicitChildNodes: true,
+      button: true,
+      label: label,
       onTap: onTap,
-      child: Container(
-        margin: const EdgeInsets.symmetric(horizontal: 12, vertical: 3),
-        padding: const EdgeInsets.all(14),
-        decoration: BoxDecoration(
-          color: c.warning.withValues(alpha: .08),
-          border: Border.all(color: c.warning.withValues(alpha: .35)),
-          borderRadius: BorderRadius.circular(14),
-        ),
-        child: Column(
-          crossAxisAlignment: CrossAxisAlignment.start,
-          children: [
-            Row(
-              children: [
-                Crewmate(
-                  seed: entry.crewmate.id,
-                  look: entry.crewmate.look,
-                  state: CrewState.needsYou,
-                  size: 32,
-                ),
-                const SizedBox(width: 8),
-                Text(
-                  entry.crewmate.name,
-                  style: TextStyle(
-                    fontWeight: FontWeight.w700,
-                    fontSize: 14,
-                    color: c.text,
+      child: InkWell(
+        onTap: onTap,
+        excludeFromSemantics: true,
+        child: AttentionCard(
+          margin: const EdgeInsets.symmetric(horizontal: Space.md, vertical: 3),
+          child: Column(
+            crossAxisAlignment: CrossAxisAlignment.start,
+            children: [
+              Row(
+                children: [
+                  Crewmate(
+                    seed: entry.crewmate.id,
+                    look: entry.crewmate.look,
+                    state: CrewState.needsYou,
+                    size: 32,
                   ),
+                  const SizedBox(width: Space.sm),
+                  Expanded(
+                    child: Text(
+                      entry.crewmate.name,
+                      style: Theme.of(context).textTheme.bodyLarge!
+                          .copyWith(fontWeight: FontWeight.w700, color: c.text),
+                    ),
+                  ),
+                ],
+              ),
+              const SizedBox(height: Space.sm),
+              if (pa != null) ...[
+                ApprovalToolLine(
+                  approval: pa,
+                  weight: FontWeight.w500,
+                  flexible: true,
                 ),
-              ],
-            ),
-            const SizedBox(height: 8),
-            if (pa != null) ...[
-              ApprovalToolLine(approval: pa, weight: FontWeight.w500),
-              if (cmd != null) ...[
-                const SizedBox(height: 6),
-                ApprovalCommandPreview(cmd),
-              ],
-              const SizedBox(height: 10),
-              ApprovalButtons(onAnswer: onAnswer, hPad: 16, vPad: 6, gap: 8),
-            ] else if (task != null && task.retryable)
-              ..._waiting(c, task),
-          ],
+                if (cmd != null) ...[
+                  const SizedBox(height: Space.sm),
+                  ApprovalCommandPreview(cmd),
+                ],
+                const SizedBox(height: Space.md),
+                ApprovalButtons(onAnswer: onAnswer, hPad: 16, vPad: 6, gap: 8),
+              ] else if (task != null && task.retryable)
+                ..._waiting(context, c, task),
+            ],
+          ),
         ),
       ),
     );
   }
 
   /// The card of a parked task: what it is, the agent's captures, the reasons, Retry / Override.
-  List<Widget> _waiting(AtlasColors c, CrewmateWaitingTask task) {
+  List<Widget> _waiting(
+    BuildContext context,
+    AtlasColors c,
+    CrewmateWaitingTask task,
+  ) {
     final unproven = task.action.kind == 'prove_ui';
     final reasons = unproven
         ? [if (task.action.reason != null) task.action.reason!]
@@ -101,11 +116,8 @@ class NeedsYouCard extends StatelessWidget {
     return [
       Text(
         unproven ? 'Could not prove this UI work' : 'This work was refused',
-        style: TextStyle(
-          fontSize: 13,
-          fontWeight: FontWeight.w600,
-          color: c.text,
-        ),
+        style: Theme.of(context).textTheme.bodyMedium!
+            .copyWith(fontWeight: FontWeight.w600, color: c.text),
       ),
       TaskImageRow(
         images: task.attachments,
@@ -114,23 +126,26 @@ class NeedsYouCard extends StatelessWidget {
         crewmateId: entry.crewmate.id,
         alignEnd: false,
       ),
-      const SizedBox(height: 6),
+      const SizedBox(height: Space.sm),
       for (final r in reasons)
         Padding(
           padding: const EdgeInsets.only(bottom: 2),
-          child: Text('• $r', style: TextStyle(fontSize: 12, color: c.muted)),
+          child: Text(
+            '• $r',
+            style: Theme.of(context).textTheme.bodySmall!
+                .copyWith(color: c.muted),
+          ),
         ),
-      const SizedBox(height: 10),
+      const SizedBox(height: Space.md),
       Row(
         children: [
           WarnPillButton(
             label: 'Retry',
             onPressed: () => onAnswerTask('retry'),
           ),
-          const SizedBox(width: 8),
+          const SizedBox(width: Space.sm),
           OutlinePillButton(
             label: 'Override',
-            fontSize: 13,
             onPressed: () => onAnswerTask('override'),
           ),
         ],

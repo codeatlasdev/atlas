@@ -7,8 +7,10 @@ import 'package:flutter/material.dart';
 import 'package:atlas_mobile/core/protocol/crew_models.dart';
 import 'package:atlas_mobile/core/protocol/models.dart';
 import 'package:atlas_mobile/core/ui/atlas_theme.dart';
+import 'package:atlas_mobile/core/ui/motion_size.dart';
 import 'package:atlas_mobile/core/ui/markdown/atlas_markdown.dart';
 import 'package:atlas_mobile/features/crew/chat/action_card.dart';
+import 'package:atlas_mobile/features/crew/chat/ask_card.dart';
 import 'package:atlas_mobile/features/crew/chat/approval_bubble.dart';
 import 'package:atlas_mobile/features/crew/chat/step_views.dart';
 import 'package:atlas_mobile/features/crew/chat/task_images.dart';
@@ -26,7 +28,6 @@ class CrewmateTaskPair extends StatelessWidget {
     super.key,
     required this.task,
     this.enter = false,
-    this.delay = Duration.zero,
     this.day,
     required this.crewmateId,
     required this.device,
@@ -39,9 +40,9 @@ class CrewmateTaskPair extends StatelessWidget {
 
   final CrewmateTask task;
 
-  /// First time on screen: the exchange arrives (ChatAppear) instead of just being there.
+  /// It turned up while the thread was open: the exchange arrives (ChatAppear, and its space opens up) instead
+  /// of just being there. History is never `enter`.
   final bool enter;
-  final Duration delay;
 
   /// The day separator to show above this exchange, when it starts a day.
   final String? day;
@@ -55,7 +56,7 @@ class CrewmateTaskPair extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    return Column(
+    final exchange = Column(
       crossAxisAlignment: CrossAxisAlignment.stretch,
       children: [
         if (day != null)
@@ -64,15 +65,14 @@ class CrewmateTaskPair extends StatelessWidget {
             child: Center(
               child: Text(
                 day!,
-                style: TextStyle(
-                  fontSize: 13,
-                  color: AtlasColors.of(context).faint,
+                style: Theme.of(context).textTheme.bodyMedium!.copyWith(
+                  color: AtlasColors.of(context).muted,
                   fontWeight: FontWeight.w500,
                 ),
               ),
             ),
           ),
-        _UserBubble(task: task, enter: enter, delay: delay),
+        _UserBubble(task: task, enter: enter),
         TaskImageRow(
           images: task.ownerImages,
           taskId: task.id,
@@ -82,7 +82,7 @@ class CrewmateTaskPair extends StatelessWidget {
         _CrewmateBubble(
           task: task,
           enter: enter,
-          delay: delay + const Duration(milliseconds: 110),
+          delay: const Duration(milliseconds: 110),
           expanded: expanded,
           onToggle: onToggle,
         ),
@@ -98,7 +98,7 @@ class CrewmateTaskPair extends StatelessWidget {
 
         // ── approval bubble (inline with task) ─────────────────────────
         if (pendingApproval != null) ...[
-          const SizedBox(height: 4),
+          const SizedBox(height: Space.xs),
           CrewmateApprovalBubble(
             look: look,
             approval: pendingApproval!,
@@ -108,8 +108,14 @@ class CrewmateTaskPair extends StatelessWidget {
 
         // ── action card (waiting_action state) ─────────────────────────
         if (task.state == 'waiting_action' && task.action != null) ...[
-          const SizedBox(height: 4),
+          const SizedBox(height: Space.xs),
           TaskActionCard(task: task, device: device, crewmateId: crewmateId),
+        ],
+
+        // ── ask_user: the agent is blocked on a question ───────────────
+        if (task.ask?.isOpen ?? false) ...[
+          const SizedBox(height: Space.xs),
+          TaskAskCard(task: task, device: device, crewmateId: crewmateId),
         ],
 
         // ── add_trigger resolved note ──────────────────────────────────
@@ -117,43 +123,42 @@ class CrewmateTaskPair extends StatelessWidget {
         // an add_trigger action, show the one-line resolution note.
         if (task.state != 'waiting_action' &&
             task.action?.kind == 'add_trigger') ...[
-          const SizedBox(height: 4),
+          const SizedBox(height: Space.xs),
           _AddTriggerNote(added: task.state != 'cancelled'),
         ],
 
-        const SizedBox(height: 8),
+        const SizedBox(height: Space.sm),
       ],
     );
+    return enter ? ChatGrow(child: exchange) : exchange;
   }
 }
 
 class _UserBubble extends StatelessWidget {
-  const _UserBubble({
-    required this.task,
-    this.enter = false,
-    this.delay = Duration.zero,
-  });
+  const _UserBubble({required this.task, this.enter = false});
   final CrewmateTask task;
   final bool enter;
-  final Duration delay;
 
   @override
   Widget build(BuildContext context) {
     final c = AtlasColors.of(context);
     return Padding(
-      padding: const EdgeInsets.only(top: 8, left: 64),
+      padding: const EdgeInsets.only(top: Space.sm, left: 64),
       child: Align(
         alignment: Alignment.centerRight,
         child: ChatAppear(
           fromRight: true,
           play: enter,
-          delay: delay,
           child: _Bubble(
             mine: true,
             tag: task.source == 'mobile' ? null : _sourceLabel(task.source),
             child: Text(
               task.prompt,
-              style: TextStyle(color: c.onAccent, height: 1.4, fontSize: 16),
+              style: Theme.of(context).textTheme.titleMedium!.copyWith(
+                color: c.onAccent,
+                height: 1.4,
+                fontWeight: FontWeight.w400,
+              ),
             ),
           ),
         ),
@@ -184,8 +189,11 @@ class _CrewmateBubble extends StatelessWidget {
     switch (task.state) {
       case 'queued':
         content = Text(
-          task.preparing != null ? 'Downloading ${task.preparing}…' : 'Queued…',
-          style: TextStyle(color: c.faint, fontSize: 15),
+          task.preparing != null
+              ? 'Downloading ${task.preparing}…'
+              : '${task.queuedLabel}…',
+          style: Theme.of(context).textTheme.bodyLarge!
+              .copyWith(color: c.muted),
         );
 
       case 'running':
@@ -206,19 +214,22 @@ class _CrewmateBubble extends StatelessWidget {
       case 'failed':
         content = Text(
           task.error ?? 'Task failed',
-          style: TextStyle(color: c.error, fontSize: 15),
+          style: Theme.of(context).textTheme.bodyLarge!
+              .copyWith(color: c.error),
         );
 
       case 'cancelled':
         content = Text(
           'Cancelled',
-          style: TextStyle(color: c.faint, fontSize: 15),
+          style: Theme.of(context).textTheme.bodyLarge!
+              .copyWith(color: c.muted),
         );
 
       case 'waiting_action':
         content = Text(
           'Waiting for input…',
-          style: TextStyle(color: c.faint, fontSize: 15),
+          style: Theme.of(context).textTheme.bodyLarge!
+              .copyWith(color: c.muted),
         );
 
       default: // done
@@ -239,7 +250,7 @@ class _CrewmateBubble extends StatelessWidget {
                 expanded: expanded,
                 onToggle: onToggle,
               ),
-              const SizedBox(height: 8),
+              const SizedBox(height: Space.sm),
             ],
             _CrewmateBubbleResult(task: task),
           ],
@@ -249,7 +260,7 @@ class _CrewmateBubble extends StatelessWidget {
     // The crewmate's bubble: left, soft surface, its face beside the last line. The
     // content changes size smoothly as the task runs, steps come in and the reply lands.
     return Padding(
-      padding: const EdgeInsets.only(top: 8),
+      padding: const EdgeInsets.only(top: Space.sm),
       child: ChatAppear(
         fromRight: false,
         play: enter,
@@ -260,9 +271,8 @@ class _CrewmateBubble extends StatelessWidget {
             Flexible(
               child: _Bubble(
                 mine: false,
-                child: AnimatedSize(
+                child: MotionSize(
                   duration: Motion.slow,
-                  curve: Motion.ease,
                   alignment: Alignment.topLeft,
                   child: AnimatedSwitcher(
                     duration: Motion.normal,
@@ -300,7 +310,10 @@ class _Bubble extends StatelessWidget {
   Widget build(BuildContext context) {
     final c = AtlasColors.of(context);
     return Container(
-      padding: const EdgeInsets.symmetric(horizontal: 18, vertical: 13),
+      padding: const EdgeInsets.symmetric(
+        horizontal: Space.lg,
+        vertical: Space.md,
+      ),
       decoration: BoxDecoration(
         color: mine ? c.accent : c.raised,
         borderRadius: BorderRadius.circular(24),
@@ -312,7 +325,7 @@ class _Bubble extends StatelessWidget {
               mainAxisSize: MainAxisSize.min,
               children: [
                 child,
-                const SizedBox(height: 4),
+                const SizedBox(height: Space.xs),
                 Icon(
                   tag == 'routine'
                       ? Icons.schedule_rounded
@@ -349,15 +362,20 @@ class _CrewmateBubbleResultState extends State<_CrewmateBubbleResult> {
       children: [
         AtlasMarkdown(
           shown,
-          style: TextStyle(color: c.text, fontSize: 16, height: 1.45),
+          style: Theme.of(context).textTheme.titleMedium!.copyWith(
+            color: c.text,
+            height: 1.45,
+            fontWeight: FontWeight.w400,
+          ),
         ),
         if (isSummarized) ...[
-          const SizedBox(height: 6),
+          const SizedBox(height: Space.sm),
           GestureDetector(
             onTap: () => setState(() => _showFull = !_showFull),
             child: Text(
               _showFull ? 'Show summary' : 'See full reply',
-              style: TextStyle(color: c.accent, fontSize: 12),
+              style: Theme.of(context).textTheme.bodySmall!
+                  .copyWith(color: c.accent),
             ),
           ),
         ],
@@ -384,10 +402,11 @@ class _AddTriggerNote extends StatelessWidget {
             size: 13,
             color: added ? c.success : c.faint,
           ),
-          const SizedBox(width: 4),
+          const SizedBox(width: Space.xs),
           Text(
             added ? 'Automation added' : 'Not added',
-            style: TextStyle(fontSize: 12, color: added ? c.success : c.faint),
+            style: Theme.of(context).textTheme.bodySmall!
+                .copyWith(color: added ? c.success : c.muted),
           ),
         ],
       ),

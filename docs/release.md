@@ -56,6 +56,7 @@ bun scripts/release-version.ts diff-guard --from v1.4.0-beta.2   # lists files a
 - `gh` logged in with write access to `codeatlasdev/atlas` (`gh auth login`): it reads the CI result, dispatches and watches the Release run. The publish itself uses the workflow's own `GITHUB_TOKEN`, so no token is stored anywhere.
 - `bun`, `cargo` and `git`. Nothing is built on your machine.
 - A **green `CI` run on `HEAD`**: push the branch (or merge the pull request) and let CI finish first. `--skip-checks` skips this requirement.
+- **A full run, not a skipped one.** On a push, CI skips what the change does not touch: a docs-only `HEAD` (the release-notes commit) reports success with every job skipped, and a run on `main` is cancelled when the next push arrives, so the code merged just before may never have had a full run on `main`. Before releasing, run `gh workflow run CI --ref main` (a dispatch has no base, so every job runs on every OS) and read every job. On 2026-11-15 this found three bugs that per-PR runs had missed (#375).
 - Write the `## [X.Y.Z[-pre.N]]` section of `CHANGELOG.md` **before** you run the command: the release notes come from it.
 
 ## What `bun run release` does

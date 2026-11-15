@@ -24,13 +24,19 @@ class GlassRoundButton extends StatelessWidget {
   Widget build(BuildContext context) => Semantics(
     button: true,
     label: label,
+    // The circle is drawn at 44; the hit area around it is the 48 dp a thumb needs.
     child: Pressable(
       onTap: onTap,
-      child: GlassPill(
-        circle: true,
-        child: SizedBox.square(
-          dimension: 44,
-          child: Icon(icon, size: 18, color: AtlasColors.of(context).text),
+      child: SizedBox.square(
+        dimension: 48,
+        child: Center(
+          child: GlassPill(
+            circle: true,
+            child: SizedBox.square(
+              dimension: 44,
+              child: Icon(icon, size: 18, color: AtlasColors.of(context).text),
+            ),
+          ),
         ),
       ),
     ),
@@ -66,6 +72,27 @@ class GlassPill extends StatelessWidget {
                 : StadiumBorder(side: BorderSide(color: c.border)),
           ),
           child: child,
+        ),
+      ),
+    );
+  }
+}
+
+/// The ground of the header over the thread: the app's ground, almost opaque, blurred behind, from the top of the
+/// screen (the status bar included) down to the bottom of the header row. The thread scrolls under it and never
+/// shows through as text under the clock.
+class GlassHeaderGround extends StatelessWidget {
+  const GlassHeaderGround({super.key});
+
+  @override
+  Widget build(BuildContext context) {
+    final c = AtlasColors.of(context);
+    return ClipRect(
+      key: const ValueKey('chat-header-background'),
+      child: BackdropFilter(
+        filter: ImageFilter.blur(sigmaX: 18, sigmaY: 18),
+        child: DecoratedBox(
+          decoration: BoxDecoration(color: c.ground.withValues(alpha: .9)),
         ),
       ),
     );

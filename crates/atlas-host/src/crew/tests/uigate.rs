@@ -7,7 +7,7 @@ use std::time::Duration;
 
 use serde_json::{Value, json};
 
-use crate::crew::capture::tests::{fake_runner, full_report};
+use crate::crew::capture::tests::{fake_runner, full_report_with_findings};
 use crate::crew::capture::{self, TEST_RUNNER};
 use crate::crew::uigate::TEST_CACHE;
 
@@ -27,7 +27,12 @@ async fn the_ui_gate_round_trip_plans_captures_hits_the_cache_and_replays_a_regr
     let dir = tmp.path().join("hostd");
     // The runner counts its own invocations in a file: a hit must not start it.
     let counter = tmp.path().join("runs");
-    let body = format!("echo x >> {}\n{}", counter.display(), full_report(&[]));
+    // The gate asks the runner for the detectors' findings: this one finds nothing.
+    let body = format!(
+        "echo x >> {}\n{}",
+        counter.display(),
+        full_report_with_findings(&[], "[]")
+    );
     use_runner(&fake_runner(tmp.path(), &body));
     *TEST_CACHE.lock() = Some(tmp.path().join("cache"));
     let runs = || {
@@ -139,4 +144,68 @@ async fn the_ui_gate_round_trip_plans_captures_hits_the_cache_and_replays_a_regr
 
     *TEST_RUNNER.lock() = None;
     *TEST_CACHE.lock() = None;
+}
+
+// An error finding of the detectors fails the scenario through the whole stack: the hook route, the
+// runner's report, the findings file in the scratch dir, the check, the verdict the agent reads.
+// Fixing the page (a runner that finds nothing) and asking for `rerun_failed` turns it green.
+#[tokio::test(flavor = "multi_thread")]
+async fn a_detector_error_fails_the_scenario_through_hostd_and_a_fixed_page_passes_the_rerun() {
+    let _g = capture::TEST_LOCK.lock().await;
+    let tmp = tempfile::tempdir().unwrap();
+    let dir = tmp.path().join("hostd");
+    let band = r#"[{"detector":"empty-band","severity":"error","message":"554 px of the page hold no content","rect":{"x":0,"y":81,"width":390,"height":554}},{"detector":"cls","severity":"warn","message":"layout shifted 0.04"}]"#;
+    use_runner(&fake_runner(
+        tmp.path(),
+        &full_report_with_findings(&[], band),
+    ));
+    *TEST_CACHE.lock() = Some(tmp.path().join("cache"));
+
+    let client = super::fixture::daemon(&dir).await;
+    let id = super::fixture::create_crewmate(&client, "GateDet").await;
+    let pane = crate::crew::pane::key(&id, "task10");
+    let work = crate::crew::project::work_dir(&dir, &id);
+    std::fs::create_dir_all(work.join("src")).unwrap();
+    std::fs::write(work.join("src/docs.svelte"), "v1").unwrap();
+    std::fs::write(
+        work.join("atlas.yaml"),
+        "name: shop\nservices:\n  web:\n    command: echo web\n    port: 5173\n\
+         affected:\n  rules:\n    - match: ['src/docs.svelte']\n      routes: ['/docs']\n",
+    )
+    .unwrap();
+
+    let v = gate(
+        &dir,
+        &id,
+        &pane,
+        json!({"action": "run", "base_url": "http://localhost:5173", "files": ["src/docs.svelte"]}),
+    )
+    .await
+    .unwrap();
+    assert_eq!(v["passed"], false, "{v}");
+    let problems = v["scenarios"][0]["problems"].as_array().unwrap();
+    assert_eq!(
+        problems.len(),
+        8,
+        "one problem per cell, the warning is not one: {v}"
+    );
+    assert!(
+        problems[0]
+            .as_str()
+            .unwrap()
+            .contains("empty-band: 554 px of the page hold no content"),
+        "{v}"
+    );
+
+    // The page is fixed: the same runner now finds nothing.
+    use_runner(&fake_runner(
+        tmp.path(),
+        &full_report_with_findings(&[], "[]"),
+    ));
+    let v = gate(&dir, &id, &pane, json!({"action": "rerun_failed"}))
+        .await
+        .unwrap();
+    assert_eq!(v["passed"], true, "{v}");
+    *TEST_CACHE.lock() = None;
+    *TEST_RUNNER.lock() = None;
 }

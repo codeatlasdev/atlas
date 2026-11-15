@@ -178,7 +178,7 @@ class _TerminalFeedState extends State<TerminalFeed> {
       return Center(
         child: Text(
           'Nothing on this terminal yet',
-          style: TextStyle(color: AtlasColors.of(context).faint),
+          style: TextStyle(color: AtlasColors.of(context).muted),
         ),
       );
     }
@@ -306,7 +306,7 @@ class _BlockCardState extends State<_BlockCard> {
           children: [
             Container(
               color: b.command != null ? c.raised : null,
-              padding: const EdgeInsets.only(left: 12),
+              padding: const EdgeInsets.only(left: Space.md),
               child: Row(
                 children: [
                   Expanded(
@@ -314,7 +314,8 @@ class _BlockCardState extends State<_BlockCard> {
                         ? Text.rich(_span(b.command!, size: 14))
                         : Text(
                             b.screen ? 'Full-screen app · live view' : 'Output',
-                            style: TextStyle(color: c.faint, fontSize: 11),
+                            style: Theme.of(context).textTheme.labelSmall!
+                                .copyWith(color: c.muted),
                           ),
                   ),
                   copyBtn,
@@ -335,7 +336,7 @@ class _BlockCardState extends State<_BlockCard> {
   }
 
   Widget _body(List<FeedLine> lines) => Padding(
-    padding: const EdgeInsets.fromLTRB(12, 8, 12, 10),
+    padding: const EdgeInsets.fromLTRB(Space.md, Space.sm, Space.md, Space.md),
     child: SelectableText.rich(
       TextSpan(
         children: [

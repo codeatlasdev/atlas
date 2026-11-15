@@ -24,7 +24,7 @@
     "mobile:e2e:android": "bun scripts/mobile-e2e.ts --android",
     "mobile:watch:android": "bun scripts/mobile-e2e.ts --android --watch",
     "mobile:lab": "bun scripts/mobile-lab.ts",
-    "mobile:lab:icons": "bun scripts/sh.ts scripts/mobile-lab-icons.sh",
+    "mobile:dev:icons": "bun scripts/sh.ts scripts/mobile-dev-icons.sh",
     "mobile:beta": "cd apps/mobile && bundle exec fastlane beta",
     "mobile:release": "bun scripts/sh.ts scripts/mobile-release.sh",
     "desktop:check": "cd apps/desktop && bun install --frozen-lockfile && bun run check",

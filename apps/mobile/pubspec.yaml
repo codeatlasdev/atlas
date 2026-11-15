@@ -71,6 +71,11 @@ dev_dependencies:
 # The following section is specific to Flutter packages.
 flutter:
 
+  # Plain `flutter run` / `flutter build` make the Atlas Dev app (own id, name and orange icon), never
+  # the store app, so a local build cannot replace it. Store builds say `--flavor prod`
+  # (fastlane does; docs/mobile.md "Dev and store apps").
+  default-flavor: dev
+
   # The following line ensures that the Material Icons font is
   # included with your application, so that you can use the icons in
   # the material Icons class.

@@ -77,6 +77,8 @@ pub(crate) struct Hub {
     pub(crate) crew_relay: Arc<crate::crew::relay::CrewRelay>,
     /// The desktop's control socket: an agent a phone starts opens a tab there when the app is running.
     desktop: atlas_core::desktop_ctl::Endpoint,
+    /// `atlas update` driven from a phone (`crate::update`).
+    pub(crate) update: crate::update::Update,
 }
 
 impl Hub {
@@ -116,7 +118,7 @@ impl Hub {
 
     fn info(&self) -> Value {
         let all = self.sessions.lock();
-        json!({
+        let mut info = json!({
             "version": env!("CARGO_PKG_VERSION"),
             "proto": protocol::PROTO,
             "caps": protocol::caps(self.crew_host),
@@ -130,7 +132,12 @@ impl Hub {
             "lab": self.lab.as_ref().map(|l| l.main_dir().to_string_lossy().into_owned()),
             "hostname": hostname(),
             "queued": self.queued(),
-        })
+        });
+        // What the last update check found; absent until one is on record (`atlas_update_check` makes one).
+        if let Some(update) = crate::update::cached(&self.registry) {
+            info["update"] = update;
+        }
+        info
     }
 
     #[cfg(unix)]
@@ -138,16 +145,20 @@ impl Hub {
         self.lock.as_raw_fd()
     }
 
-    /// (running ptys, connected clients) for the idle-exit check. A raw-attach connection is
-    /// not a subscriber but implies a running pty, so it is covered by the first number.
-    fn activity(&self) -> (usize, usize) {
+    /// (running ptys, connected clients, paired phones) for the idle-exit check. A raw-attach connection
+    /// is not a subscriber but implies a running pty, so it is covered by the first number.
+    fn activity(&self) -> (usize, usize, usize) {
         let live = self
             .sessions
             .lock()
             .values()
             .filter(|s| s.exited().is_none())
             .count();
-        (live, self.subscribers.lock().len())
+        (
+            live,
+            self.subscribers.lock().len(),
+            self.mobile.paired_count(),
+        )
     }
 
     pub(crate) fn sessions_snapshot(&self) -> Vec<Arc<Session>> {
@@ -326,6 +337,11 @@ pub struct ServeOpts {
     pub desktop: Option<atlas_core::desktop_ctl::Endpoint>,
     /// Where plain-agent pushes go ([`crate::agents::push`]); `None`: the push relay. Tests capture them.
     pub agent_push: Option<crate::agents::push::Sender>,
+    /// The `atlas` that `atlas_update_check` and `atlas_update` run; `None`: this process's own binary
+    /// (tests stand a fake in).
+    pub atlas_exe: Option<PathBuf>,
+    /// The quiet period before an idle daemon exits; `None`: `ATLAS_HOSTD_IDLE_SECS`, else the default.
+    pub idle: Option<std::time::Duration>,
 }
 
 /// The registry dir every real daemon uses: the desktop's, `~/.atlas`.
@@ -500,6 +516,7 @@ pub async fn serve_with(dir: &Path, opts: ServeOpts) -> Result<()> {
         crew_host: opts.crew_host,
         registry: registry.clone(),
         desktop: opts.desktop.clone().unwrap_or_default(),
+        update: crate::update::Update::new(opts.atlas_exe.clone()),
         crew_relay: Arc::new(crate::crew::relay::CrewRelay::new(
             &registry,
             dir,
@@ -591,7 +608,7 @@ pub async fn serve_with(dir: &Path, opts: ServeOpts) -> Result<()> {
         t.confirm()?;
     }
     let mut term = Terminate::new()?;
-    let limit = crate::idle::limit_from_env();
+    let limit = opts.idle.or_else(crate::idle::limit_from_env);
     let tick_interval = limit.unwrap_or(crate::idle::IDLE_EXIT);
     let mut ticker = tokio::time::interval(crate::idle::tick(tick_interval));
     let mut idle_since: Option<Instant> = None;
@@ -648,16 +665,16 @@ pub async fn serve_with(dir: &Path, opts: ServeOpts) -> Result<()> {
                 });
             }
             _ = ticker.tick() => {
-                let (live, clients) = hub.activity();
-                if live > 0 || clients > 0 {
+                let (live, clients, phones) = hub.activity();
+                if crate::idle::busy(live, clients, phones) {
                     idle_since = None;
                 } else if hub.lab.is_none() {
                     // A lab has no terminal by design, so "idle" is its resting state between
                     // phone sessions: it stops with `--stop`, never on a timer.
                     if let Some(lim) = limit {
                         let since = *idle_since.get_or_insert_with(Instant::now);
-                        if crate::idle::idle_expired(live, clients, since.elapsed(), lim) {
-                            eprintln!("atlas hostd: idle for {}s, no terminals and no clients: exiting", lim.as_secs());
+                        if crate::idle::idle_expired(live, clients, phones, since.elapsed(), lim) {
+                            eprintln!("atlas hostd: idle for {}s, no terminals, no clients and no paired phone: exiting", lim.as_secs());
                             break;
                         }
                     }
@@ -974,7 +991,7 @@ pub(crate) fn hook_env(hub: &Hub, req: &mut crate::protocol::PtyCreate) {
     }
 }
 
-pub(crate) async fn handle(hub: &Hub, cmd: HostCmd, conn_id: u64) -> Result<Value, String> {
+pub(crate) async fn handle(hub: &Arc<Hub>, cmd: HostCmd, conn_id: u64) -> Result<Value, String> {
     let e = |e: anyhow::Error| format!("{e:#}");
     match cmd {
         HostCmd::PtyCreate(mut req) => {
@@ -1060,6 +1077,8 @@ pub(crate) async fn handle(hub: &Hub, cmd: HostCmd, conn_id: u64) -> Result<Valu
         HostCmd::FsRename { from, to } => crate::fs::rename(&from, &to),
         HostCmd::FsRemove { path, recursive } => crate::fs::remove(&path, recursive),
         HostCmd::Info {} => Ok(hub.info()),
+        HostCmd::AtlasUpdateCheck {} => crate::update::check(hub).await,
+        HostCmd::AtlasUpdate {} => crate::update::start(hub, &hub.origin_of(conn_id)).await,
         HostCmd::AgentBind { pane, agent, cwd } => {
             hub.agents.bind(&pane, &agent, &cwd);
             Ok(json!({}))
@@ -1546,12 +1565,30 @@ mod tests {
     }
 
     /// A hostd on a temp dir and a hand-driven connection to it (requests are written in
-    /// one go, without waiting for replies, the way a fast typist or a paste arrives).
+    /// one go, without waiting for replies, the way a fast typist or a paste arrives). Its registry is
+    /// the temp dir too (never the user's `~/.atlas`), holding one update check, so `info` is the same
+    /// on every machine.
     async fn wire() -> (tempfile::TempDir, crate::client::HostClient, ipc::Stream) {
         let tmp = tempfile::tempdir().unwrap();
         let dir = tmp.path().join("hostd");
+        let registry = tmp.path().join("registry");
+        std::fs::create_dir_all(&registry).unwrap();
+        let followed = atlas_core::channel::effective(
+            std::env::var(atlas_core::channel::ENV).ok().as_deref(),
+            atlas_core::channel::Channel::default(),
+        );
+        std::fs::write(
+            registry.join(atlas_core::update_cache::FILE),
+            json!({"last_checked": 1_700_000_000u64, "available_version": null, "channel": followed})
+                .to_string(),
+        )
+        .unwrap();
         let d2 = dir.clone();
-        tokio::spawn(async move { serve(&d2).await });
+        let opts = ServeOpts {
+            registry: Some(registry),
+            ..Default::default()
+        };
+        tokio::spawn(async move { serve_with(&d2, opts).await });
         let client = loop {
             if let Ok(c) = crate::client::HostClient::connect_dir(&dir, "test").await {
                 break c;

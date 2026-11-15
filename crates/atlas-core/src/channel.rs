@@ -258,8 +258,11 @@ pub fn view(
 
 // ── Persistence (one word in ~/.atlas/update-channel, shared by the CLI and the app) ──────────
 
+/// The channel file's name inside `~/.atlas`.
+pub const FILE: &str = "update-channel";
+
 pub fn file() -> PathBuf {
-    crate::paths::atlas_home().join("update-channel")
+    crate::paths::atlas_home().join(FILE)
 }
 
 /// The channel stored in `path`; absent or unreadable content is the default ([`Channel::default`]).

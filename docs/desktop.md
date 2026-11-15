@@ -96,7 +96,7 @@ The terminal host outlives the app and `atlas update`, so it can be older than t
 - `atlas hostd --reconcile [--choice ask|idle|later]`: acts on it. A host that can hand over (`upgrade` capability) is replaced live and verified (new version, no terminal lost); one that cannot is restarted when no terminal runs; otherwise it asks (`ask`), waits (`idle`) or leaves it (`later`). Exit `0` also when it is not running.
 - `atlas hostd --restart`: explicit consent: stop it (ending its terminals), start a fresh one from this binary and verify it.
 
-An idle host does not linger forever: with **no running terminal and no connected client for 10 minutes** (`ATLAS_HOSTD_IDLE_SECS` overrides, in seconds) it exits and removes its socket and pid file, and it also exits if its own directory disappears. A running terminal always keeps it alive. The app starts a host when it needs one, and remote hosts are started again by the app on every connect, so an exited one comes back current.
+An idle host does not linger forever: with **no running terminal, no connected client and no paired phone for 10 minutes** (`ATLAS_HOSTD_IDLE_SECS` overrides, in seconds) it exits and removes its socket and pid file, and it also exits if its own directory disappears. A running terminal always keeps it alive, and so does a paired Atlas Mobile phone (not revoked), even while the phone is away: it only ever dials a host that is already there. The app starts a host when it needs one, and remote hosts are started again by the app on every connect, so an exited one comes back current.
 
 ### How an update stays safe
 

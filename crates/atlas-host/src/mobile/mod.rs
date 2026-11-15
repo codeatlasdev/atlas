@@ -23,6 +23,8 @@ pub(crate) mod shell;
 mod push_tests;
 #[cfg(all(test, unix))]
 pub(crate) mod tests;
+#[cfg(all(test, unix))]
+mod update_tests;
 
 use std::collections::HashMap;
 use std::io::Write;
@@ -276,6 +278,11 @@ impl Mobile {
         self.devices.lock().clone()
     }
 
+    /// Phones that may still connect (not revoked): what keeps an otherwise idle daemon up.
+    pub fn paired_count(&self) -> usize {
+        self.devices.lock().iter().filter(|d| !d.revoked).count()
+    }
+
     /// Takes effect at once, even when saving fails (the error is still returned): taking
     /// trust away must never wait on the disk.
     pub fn revoke(&self, node_id: &str) -> Result<(), String> {
@@ -421,6 +428,7 @@ pub fn push_scope(ev: &str) -> Option<Scope> {
         "agent_approval" | "agent_approval_done" => Scope::Approve,
         "agent_status" => Scope::Read,
         "crewmate_task" => Scope::Read,
+        "atlas_update" => Scope::Read,
         "computer_invite" => Scope::Read,
         _ => return None,
     })
@@ -464,6 +472,9 @@ pub fn required_scope(cmd: &HostCmd) -> Result<Scope, &'static str> {
             Scope::Read
         }
         C::WorktreeList { .. } => Scope::Read,
+        C::AtlasUpdateCheck {} => Scope::Read,
+        // Replaces the binary on the computer and restarts the terminal host: a change, not a read.
+        C::AtlasUpdate {} => Scope::Act,
         C::ProjectService { .. }
         | C::ProjectAction { .. }
         | C::AgentSend { .. }
@@ -535,6 +546,9 @@ pub fn required_scope(cmd: &HostCmd) -> Result<Scope, &'static str> {
                     | C::CrewServers {}
                     | C::CrewEngineLogin { .. }
                     | C::PtyOpen { .. }
+                    // Announced and audited by who asked: through the relay that is the Mac, so a phone
+                    // updates a crew server from its own pairing with it.
+                    | C::AtlasUpdate {}
             ) {
                 return Err("not available on mobile");
             }

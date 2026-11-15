@@ -86,6 +86,19 @@ collect() {
   srv_sh "cat $HOME_DIR/.atlas/hostd.log" >"$OUT/hostd.log" 2>&1 || true
   srv_sh "ps -eo pid,ppid,user:20,pgid,args --forest" >"$OUT/ps.txt" 2>&1 || true
   srv_sh "id atlas-crew; ls -ldn /run/atlas-crew /run/atlas-crew/* /var/lib/atlas-cm /usr/local/lib/atlas-crew/engines/*; sudo -u atlas-crew stat /run/atlas-crew/spawn.sock" >"$OUT/isolation.txt" 2>&1 || true
+  # TEMPORARY-DEBUG
+  {
+    base="-p User=root -p NoNewPrivileges=yes -p PrivateTmp=yes -p ProtectKernelTunables=yes -p ProtectKernelModules=yes -p ProtectControlGroups=yes -p RestrictSUIDSGID=yes"
+    caps="-p CapabilityBoundingSet='CAP_CHOWN CAP_FOWNER CAP_DAC_OVERRIDE CAP_SETUID CAP_SETGID CAP_KILL CAP_NET_ADMIN'"
+    fs="-p ProtectSystem=full -p ReadWritePaths='/etc /var/lib/atlas-cm /var/log /run' -p ProtectHome=yes"
+    misc="-p RestrictAddressFamilies='AF_UNIX AF_NETLINK' -p LockPersonality=yes -p MemoryDenyWriteExecute=yes"
+    n=0
+    for v in "none:" "base:$base" "caps:$base $caps" "fs:$base $fs" "misc:$base $misc" "all:$base $caps $fs $misc"; do
+      n=$((n+1)); name=${v%%:*}; props=${v#*:}
+      echo "--- $name"
+      srv_sh "systemd-run --wait --collect -P $props useradd --system --no-create-home --shell /usr/sbin/nologin dbg$n 2>&1; echo rc=\$?; ls -la /etc/passwd* /etc/.pwd.lock 2>&1 | head; sysctl fs.protected_hardlinks"
+    done
+  } >"$OUT/useradd-debug.txt" 2>&1 || true
   srv_sh "nft list ruleset; cat /etc/atlas-crew/egress.nft" >"$OUT/nft.txt" 2>&1 || true
   srv_sh "tar -C $HOME_DIR/.atlas -cf - crew" 2>/dev/null | tar -C "$OUT" -xf - 2>/dev/null || true
 }

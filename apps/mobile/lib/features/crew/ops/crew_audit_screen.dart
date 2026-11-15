@@ -11,6 +11,7 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 
 import 'package:atlas_mobile/core/protocol/crew_ops_models.dart';
 import 'package:atlas_mobile/core/protocol/models.dart';
+import 'package:atlas_mobile/core/ui/async_view.dart';
 import 'package:atlas_mobile/core/ui/atlas_theme.dart';
 import 'package:atlas_mobile/core/ui/components.dart';
 import 'package:atlas_mobile/features/crew/ops/crew_ops_provider.dart';
@@ -53,16 +54,10 @@ class _CrewAuditScreenState extends ConsumerState<CrewAuditScreen> {
           ),
         ],
       ),
-      body: audit.when(
-        loading: () => const Center(child: CircularProgressIndicator()),
-        error: (e, _) => EmptyState(
-          title: "Couldn't read the audit",
-          message: '${e is StateError ? e.message : e}',
-          action: OutlinedButton(
-            onPressed: () => ref.invalidate(auditProvider(scope)),
-            child: const Text('Try again'),
-          ),
-        ),
+      body: AsyncView(
+        value: audit,
+        errorTitle: "Couldn't read the audit",
+        onRetry: () => ref.invalidate(auditProvider(scope)),
         data: (entries) {
           final shown = filterAudit(entries, _group);
           // The crew-wide log has none of the crewmate kinds to filter by.
@@ -127,54 +122,29 @@ class _Filters extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
+    final c = AtlasColors.of(context);
     return SingleChildScrollView(
       scrollDirection: Axis.horizontal,
       child: Row(
         children: [
-          _Chip('All', selected: value == null, onTap: () => onChanged(null)),
+          AtlasChip(
+            'All',
+            tone: c.accent,
+            outlined: true,
+            selected: value == null,
+            onTap: () => onChanged(null),
+          ),
           for (final g in AuditGroup.values) ...[
             const SizedBox(width: Space.sm),
-            _Chip(g.label, selected: value == g, onTap: () => onChanged(g)),
+            AtlasChip(
+              g.label,
+              tone: c.accent,
+              outlined: true,
+              selected: value == g,
+              onTap: () => onChanged(g),
+            ),
           ],
         ],
-      ),
-    );
-  }
-}
-
-class _Chip extends StatelessWidget {
-  const _Chip(this.label, {required this.selected, required this.onTap});
-  final String label;
-  final bool selected;
-  final VoidCallback onTap;
-
-  @override
-  Widget build(BuildContext context) {
-    final c = AtlasColors.of(context);
-    return Semantics(
-      button: true,
-      selected: selected,
-      child: GestureDetector(
-        behavior: HitTestBehavior.opaque,
-        onTap: onTap,
-        child: Container(
-          constraints: const BoxConstraints(minHeight: 36),
-          alignment: Alignment.center,
-          padding: const EdgeInsets.symmetric(horizontal: 14),
-          decoration: BoxDecoration(
-            color: selected ? c.accent.withValues(alpha: .16) : c.base,
-            borderRadius: BorderRadius.circular(999),
-            border: Border.all(color: selected ? c.accent : c.borderSubtle),
-          ),
-          child: Text(
-            label,
-            style: TextStyle(
-              fontSize: 13,
-              fontWeight: FontWeight.w600,
-              color: selected ? c.accent : c.muted,
-            ),
-          ),
-        ),
       ),
     );
   }

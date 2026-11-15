@@ -220,6 +220,25 @@ async fn a_program_that_exits_ends_its_session_with_its_code_and_output() {
     assert!(s.signal("TERM").is_ok());
 }
 
+/// Incident (main CI, 2026-11-15, `a_finished_sign_in_terminal_is_removed_after_the_grace_...`): an exit
+/// listener (`attach` with `output: false`) attached after the program already ended was put in a map that
+/// never fires again, so the watcher waited forever. A sign-in whose command exits at once (engine not
+/// installed) then stayed in `pty_list` until hostd restarted. A late listener gets `pty_exit` right away.
+#[tokio::test(flavor = "multi_thread")]
+async fn an_exit_listener_attached_after_the_exit_still_gets_pty_exit() {
+    let dir = tempfile::tempdir().unwrap();
+    let s = Session::spawn(shell_req("exit 4"), dir.path()).unwrap();
+    assert_eq!(until_exited(&s).await, Some(4));
+    let (tx, mut rx) = crate::pty::out_channel();
+    s.attach(1, tx, false, false);
+    let line = tokio::time::timeout(Duration::from_secs(5), rx.recv())
+        .await
+        .expect("a late listener never heard the exit")
+        .expect("the listener closed without the exit");
+    assert!(line.contains(r#""ev":"pty_exit""#), "{line}");
+    assert!(line.contains(r#""code":4"#), "{line}");
+}
+
 /// `KILL` ends a running program (and on Windows everything it started).
 #[tokio::test(flavor = "multi_thread")]
 async fn kill_ends_a_running_program() {

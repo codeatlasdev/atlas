@@ -10,6 +10,7 @@ import 'package:atlas_mobile/core/connection/connection_notifier.dart';
 import 'package:atlas_mobile/core/demo/demo_computer.dart';
 import 'package:atlas_mobile/core/protocol/models.dart';
 import 'package:atlas_mobile/core/protocol/pty_open.dart';
+import 'package:atlas_mobile/core/ui/computer_state.dart';
 import 'package:atlas_mobile/core/ui/agent_logo.dart';
 import 'package:atlas_mobile/core/ui/atlas_logo.dart';
 import 'package:atlas_mobile/core/ui/atlas_theme.dart';
@@ -346,9 +347,12 @@ class _DashboardState extends ConsumerState<_Dashboard> {
                 // EmptyState scrolls itself (a LayoutBuilder: no intrinsic sizes), so the
                 // sliver hands it all the room that is left.
                 SliverFillRemaining(
-                  child: _Offline(
-                    device: widget.device,
-                    connecting: conn.isLoading,
+                  child: Padding(
+                    padding: const EdgeInsets.only(top: Space.xxl),
+                    child: ReachingView(
+                      device: widget.device,
+                      connecting: conn.isLoading,
+                    ),
                   ),
                 )
               else ...[
@@ -515,34 +519,12 @@ class _Header extends ConsumerWidget {
                     alignment: Alignment.centerLeft,
                     children: [...previous, ?current],
                   ),
-                  child: Container(
+                  child: AtlasChip(
+                    label,
                     key: ValueKey(label),
-                    padding: const EdgeInsets.fromLTRB(2, 2, 10, 2),
-                    decoration: BoxDecoration(
-                      color: color.withValues(alpha: .12),
-                      borderRadius: BorderRadius.circular(999),
-                    ),
-                    child: Row(
-                      mainAxisSize: MainAxisSize.min,
-                      children: [
-                        StatusDot(
-                          color: color,
-                          pulse: label != 'All clear' && label != 'Connected',
-                          size: 6,
-                        ),
-                        Flexible(
-                          child: Text(
-                            label,
-                            maxLines: 1,
-                            overflow: TextOverflow.ellipsis,
-                            style: TextStyle(
-                              color: color,
-                              fontSize: 12,
-                              fontWeight: FontWeight.w600,
-                            ),
-                          ),
-                        ),
-                      ],
+                    tone: color,
+                    leading: ChipDot(
+                      pulse: label != 'All clear' && label != 'Connected',
                     ),
                   ),
                 ),
@@ -736,43 +718,6 @@ class _AgentLine extends StatelessWidget {
           ),
         ],
       ],
-    );
-  }
-}
-
-class _Offline extends ConsumerWidget {
-  const _Offline({required this.device, required this.connecting});
-  final MacDevice device;
-  final bool connecting;
-
-  @override
-  Widget build(BuildContext context, WidgetRef ref) {
-    // The computer answered but speaks another protocol: one state with its fix, not "can't reach".
-    final mismatch = connecting
-        ? null
-        : ref.watch(protocolMismatchProvider(device));
-    return Padding(
-      padding: const EdgeInsets.only(top: Space.xxl),
-      child: EmptyState(
-        icon: connecting ? const AtlasLogo(size: 80, animated: true) : null,
-        title:
-            mismatch?.title ??
-            (connecting
-                ? 'Reaching ${device.name}…'
-                : "Can't reach ${device.name}"),
-        message:
-            mismatch?.message ??
-            (connecting
-                ? 'Directly when possible, through an encrypted relay otherwise.'
-                : 'Check that it is on and awake, and that Atlas is installed there.'),
-        action: connecting
-            ? null
-            : FilledButton(
-                onPressed: () =>
-                    ref.invalidate(connectionNotifierProvider(device)),
-                child: const Text('Try again'),
-              ),
-      ),
     );
   }
 }

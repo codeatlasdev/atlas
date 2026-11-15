@@ -6,10 +6,11 @@ library;
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 
-import 'package:atlas_mobile/core/connection/connection_notifier.dart';
+import 'package:atlas_mobile/core/connection/require_mux.dart';
 import 'package:atlas_mobile/core/protocol/crew_models.dart';
 import 'package:atlas_mobile/core/protocol/models.dart';
 import 'package:atlas_mobile/core/ui/atlas_theme.dart';
+import 'package:atlas_mobile/core/ui/attention_card.dart';
 import 'package:atlas_mobile/features/crew/crew_provider.dart';
 import 'package:atlas_mobile/features/crew/widgets/pill_buttons.dart';
 
@@ -43,16 +44,12 @@ class _TaskAskCardState extends ConsumerState<TaskAskCard> {
   Future<void> _answer({String? key, String? text}) async {
     final ask = widget.task.ask;
     if (ask == null || _sending) return;
-    final mux = ref.read(connectionNotifierProvider(widget.device)).value;
-    if (mux == null) {
-      setState(() => _error = '${widget.device.name} is offline');
-      return;
-    }
     setState(() {
       _sending = true;
       _error = null;
     });
     try {
+      final mux = await requireMuxOf(ref, widget.device);
       final resp = await mux.call(
         'crewmate_answer',
         ask.answerArgs(widget.crewmateId, key: key, text: text),
@@ -64,7 +61,7 @@ class _TaskAskCardState extends ConsumerState<TaskAskCard> {
       ref.invalidate(crewmateTasksProvider((widget.device, widget.crewmateId)));
     } on Object catch (e) {
       // The card stays, with what the server said: the agent is still waiting.
-      if (mounted) setState(() => _error = e.toString());
+      if (mounted) setState(() => _error = errorText(e));
     } finally {
       if (mounted) setState(() => _sending = false);
     }
@@ -80,7 +77,6 @@ class _TaskAskCardState extends ConsumerState<TaskAskCard> {
     final ask = widget.task.ask;
     if (ask == null || !ask.isOpen) return const SizedBox.shrink();
     final c = AtlasColors.of(context);
-    const r = Radius.circular(18);
     return Padding(
       padding: const EdgeInsets.symmetric(vertical: 4),
       child: Row(
@@ -88,21 +84,8 @@ class _TaskAskCardState extends ConsumerState<TaskAskCard> {
         children: [
           const SizedBox(width: 36), // avatar placeholder alignment
           Flexible(
-            child: Container(
-              constraints: BoxConstraints(
-                maxWidth: MediaQuery.of(context).size.width * 0.80,
-              ),
-              padding: const EdgeInsets.all(12),
-              decoration: BoxDecoration(
-                color: c.warning.withValues(alpha: .08),
-                border: Border.all(color: c.warning.withValues(alpha: .35)),
-                borderRadius: const BorderRadius.only(
-                  topLeft: Radius.circular(4),
-                  topRight: r,
-                  bottomLeft: r,
-                  bottomRight: r,
-                ),
-              ),
+            child: AttentionCard(
+              bubble: true,
               child: Column(
                 crossAxisAlignment: CrossAxisAlignment.start,
                 children: [

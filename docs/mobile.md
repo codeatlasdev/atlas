@@ -24,7 +24,7 @@ The code works once. Five wrong attempts cancel it. After pairing, the phone is 
 | Watch terminals                             | live terminal output                                                                                                                                |
 | Type in terminals                           | keystrokes; the app also asks for Face ID / biometrics before each session                                                                          |
 
-**Revoke** cuts the phone off immediately and forgets it, and takes its push tokens with it: on this computer, and on every crew server behind it (the Mac sends each one `push_forget` with the phone's node id; a crew server that is unreachable at that moment logs it, and the phone is cut off from the Mac either way). A token the phone registered on a crew server through the Mac is stored there under the phone's own node id (the Mac stamps it from the phone's connection; whatever the phone puts in `node` is overwritten), so revoking the phone on the crew server itself clears it too. A phone can never run shell commands through `exec`, read or write files, change its own permissions or manage devices.
+**Revoke** cuts the phone off immediately and forgets it, and takes its push tokens with it: on this computer, and on every crew server behind it (the Mac sends each one `push_forget` with the phone's node id; a crew server that is unreachable at that moment keeps the phone on a list saved on the Mac, `mobile/pending-forget.json`, and gets the `push_forget` the next time it connects, also after a Mac restart; a server removed from the desktop's registry drops off the list; the phone is cut off from the Mac either way). A token the phone registered on a crew server through the Mac is stored there under the phone's own node id (the Mac stamps it from the phone's connection; whatever the phone puts in `node` is overwritten), so revoking the phone on the crew server itself clears it too. A phone can never run shell commands through `exec`, read or write files, change its own permissions or manage devices.
 
 **No computer at hand?** Under the scanner, **Explore a demo** opens a computer that lives in the app (`apps/mobile/lib/core/demo/demo_computer.dart`): sample projects, services, logs, agents with a permission prompt to answer, a crew. It answers the same protocol as hostd, connects to nothing and is not saved; **Settings → Leave demo**, pairing a real computer or relaunching ends it. It is how App Review and Play review use the app (their review notes point to it), and the tests run every screen against it.
 
@@ -46,6 +46,14 @@ On every connect the phone asks hostd's `info` once and compares its `proto` wit
 - **hostd newer than the app**: only when its `info` carries `min_client_proto` above `kAppProto` (hostd does not send it today): **Update Atlas Mobile**. Without that field a newer hostd is assumed additive.
 
 A mismatch is not an outage, so the phone does not retry it in a loop: it checks again when the app comes to the foreground, on pull to refresh and on **Try again**, and the state clears as soon as the versions agree.
+
+### How a screen says what is going on
+
+One path for the connection and one for the states, so a new screen does not invent either:
+
+- **Getting a connection:** `requireMux(ref, device)` in a provider, `requireMuxOf(ref, device)` in a widget handler (`lib/core/connection/require_mux.dart`). Both wait while the link opens and return the live connection, or throw `DeviceOffline` (the computer is off) or `DeviceProtocolMismatch` (the section above). `errorText(e)` turns a caught error into the one sentence to show. A background refresh that must not wait uses `liveMux(ref, device)` and skips when it is null.
+- **Rendering an `AsyncValue`:** `AsyncView` (`lib/core/ui/async_view.dart`) draws loading (the one spinner), the error with **Try again**, the empty state, the offline state and the protocol-mismatch state; the screen only supplies the data builder and the copy. A list that reads `value ?? []` shows "empty" while it is still loading: never do that.
+- **A computer that is not connected:** `ReachingView` (full screen: reaching, can't reach, or the update message) and `OfflineStrip` (one line over a screen that keeps showing history). `test/goldens/<os>/async_view_states.png` pins the set.
 
 ## Review and ship from the phone
 

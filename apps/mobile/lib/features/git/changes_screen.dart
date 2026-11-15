@@ -1,6 +1,7 @@
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 
+import 'package:atlas_mobile/core/connection/require_mux.dart';
 import 'package:atlas_mobile/core/connection/connection_notifier.dart';
 import 'package:atlas_mobile/core/protocol/models.dart';
 import 'package:atlas_mobile/core/protocol/multiplexer.dart';
@@ -34,8 +35,7 @@ class _ChangesScreenState extends ConsumerState<ChangesScreen> {
 
   String get _root => widget.project.root;
 
-  Multiplexer? get _mux =>
-      ref.read(connectionNotifierProvider(widget.device)).value;
+  Multiplexer? get _mux => liveMux(ref, widget.device);
 
   @override
   void initState() {

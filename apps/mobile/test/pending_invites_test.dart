@@ -43,6 +43,9 @@ class _Computer implements Transport {
         ? <String, Object?>{'proto': kAppProto}
         : <String, Object?>{};
     switch (m['cmd']) {
+      // The connection check on connect: a current hostd names its protocol.
+      case 'info':
+        data = {'proto': kAppProto};
       case 'mobile_invites':
         asks++;
         data = {'invites': invites};

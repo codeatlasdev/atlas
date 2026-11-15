@@ -20,6 +20,28 @@ pub(crate) fn call_deadline() -> Duration {
     CALL_DEADLINE
 }
 
+/// Test-only: the program started in place of `gh` (a fake that hangs, or records its calls).
+#[cfg(test)]
+pub(crate) static TEST_GH_PROGRAM: parking_lot::Mutex<Option<String>> =
+    parking_lot::Mutex::new(None);
+
+/// A `gh` command (the crew user's `gh` on PATH). Every crew `gh` call starts here.
+pub(crate) fn gh_command() -> tokio::process::Command {
+    #[cfg(test)]
+    if let Some(p) = TEST_GH_PROGRAM.lock().clone() {
+        return tokio::process::Command::new(p);
+    }
+    tokio::process::Command::new("gh")
+}
+
+/// `gh <args>` to the end, bounded by [`call_deadline`] with its process tree killed (a hung API call
+/// or a credential prompt used to hold the task that made it forever). `label` names the call in errors.
+pub(crate) async fn gh_output(args: &[&str], label: &str) -> Result<std::process::Output, String> {
+    let mut cmd = gh_command();
+    cmd.args(args);
+    run_bounded(&mut cmd, label, call_deadline()).await
+}
+
 /// Run `cmd` to the end and return its output, or an error naming `label` when it could not start
 /// or ran past `deadline`. The child leads its own process group (Unix) and the whole tree is killed
 /// on the deadline and when this future is dropped (a cancelled task), so nothing it started
@@ -35,7 +57,10 @@ pub(crate) async fn run_bounded(
         .stdout(std::process::Stdio::piped())
         .stderr(std::process::Stdio::piped())
         .kill_on_drop(true);
-    let child = cmd.spawn().map_err(|e| format!("{label}: {e}"))?;
+    let child = cmd.spawn().map_err(|e| match e.kind() {
+        std::io::ErrorKind::NotFound => format!("{label}: not found on PATH"),
+        _ => format!("{label}: {e}"),
+    })?;
     let mut tree = Tree {
         pid: child.id(),
         done: false,

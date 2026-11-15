@@ -52,17 +52,19 @@ impl Scenario {
         }
     }
 
-    /// The `capture` request for this scenario; validates it the way the tool does.
-    pub fn spec(&self) -> Result<Spec, String> {
+    /// The `capture` request for this scenario; validates it the way the tool does. `checks` asks
+    /// the runner to run the UI detectors in each page (the gate's detectors need it).
+    pub fn spec(&self, checks: bool) -> Result<Spec, String> {
         Spec::from_args(&serde_json::json!({
             "url": self.url, "widths": self.widths, "themes": self.themes, "engines": self.engines,
+            "checks": checks,
         }))
     }
 
     /// Every cell, sorted: two scenarios that ask for the same cells have the same [`id`](Self::id)
     /// however their lists were written.
     pub fn combos(&self) -> Result<Vec<Combo>, String> {
-        self.spec().map(|s| s.combos())
+        self.spec(false).map(|s| s.combos())
     }
 
     /// A short stable name: 12 hex digits of sha256 over the URL and the sorted cells.

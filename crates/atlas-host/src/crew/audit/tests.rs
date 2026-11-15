@@ -292,6 +292,36 @@ fn an_unreadable_line_is_skipped_not_fatal() {
     assert_eq!(got.len(), 2);
 }
 
+// #293: a torn final line (no newline) glued the next entry onto it, and a line that is not UTF-8 stopped
+// every reader (`read` and the `seq` restart scan) at that line.
+#[test]
+fn a_torn_tail_and_invalid_utf8_cost_one_entry_each() {
+    use std::io::Write;
+    let f = fx();
+    let a = Audit::new(&f.base);
+    a.record(Some("c1"), "tool_call", json!({"n": 1}));
+    let p = f.store.crewmate_dir("c1").join("audit.jsonl");
+    let mut file = std::fs::OpenOptions::new().append(true).open(&p).unwrap();
+    file.write_all(b"\xff\xfe not utf8\n").unwrap();
+    file.write_all(b"{\"kind\":\"tool_ca").unwrap(); // torn: no newline
+    drop(file);
+    a.record(Some("c1"), "tool_call", json!({"n": 2}));
+    a.record(Some("c1"), "tool_call", json!({"n": 3}));
+
+    let got: Vec<Value> = a.read(Some("c1"), &all());
+    let ns: Vec<u64> = got.iter().map(|e| e["n"].as_u64().unwrap()).collect();
+    assert_eq!(ns, vec![3, 2, 1], "newest first, nothing hidden");
+    // After a restart the sequence continues past the last valid entry, not from the bad line.
+    let again = Audit::new(&f.base);
+    again.record(Some("c1"), "tool_call", json!({"n": 4}));
+    let seqs: Vec<u64> = again
+        .read(Some("c1"), &all())
+        .iter()
+        .map(|e| e["seq"].as_u64().unwrap())
+        .collect();
+    assert_eq!(seqs, vec![4, 3, 2, 1]);
+}
+
 // The file holds tool inputs and approvals: owner-only like secrets.json.
 #[cfg(unix)]
 #[test]

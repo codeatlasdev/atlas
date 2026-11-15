@@ -12,7 +12,6 @@
 //! enabling one never answers the ~30 old events the feed still lists.
 
 use std::collections::{HashMap, HashSet};
-use std::io::{BufRead, Write};
 use std::sync::{Arc, Weak};
 use std::time::{Duration, Instant};
 
@@ -22,6 +21,8 @@ use crate::crew::store::{Crewmate, Trigger, TriggerKind};
 use crate::server::Hub;
 
 const POLL_EVERY: Duration = Duration::from_secs(120);
+/// The seen file is cut back to its newest ids once it passes this (the events API lists recent events only).
+pub(super) const SEEN_MAX_BYTES: u64 = 256 * 1024;
 
 /// How long a trigger whose seen file cannot be written is left alone.
 const BACKOFF: Duration = Duration::from_secs(15 * 60);
@@ -192,26 +193,86 @@ async fn poll_trigger(hub: &Arc<Hub>, api: &dyn GithubApi, crewmate: &Crewmate, 
 }
 
 fn load_seen(path: &std::path::Path) -> HashSet<String> {
-    let Ok(f) = std::fs::File::open(path) else {
-        return HashSet::new();
-    };
-    std::io::BufReader::new(f)
-        .lines()
-        .map_while(Result::ok)
+    crate::crew::store::jsonl::read_lines(path)
+        .into_iter()
         .map(|l| l.trim().to_string())
         .filter(|l| !l.is_empty())
         .collect()
 }
 
 /// Append `ids` to the seen file and flush them to disk. The error is the caller's to act on:
-/// a record that is not durable means the event is not yet safe to fire.
+/// a record that is not durable means the event is not yet safe to fire. A torn final line is ended
+/// first (#293), and the file is cut back to its newest ids once it passes [`SEEN_MAX_BYTES`]: the
+/// events API only lists recent events, so an older id can never come back.
 fn append_seen(path: &std::path::Path, ids: &[&str]) -> std::io::Result<()> {
-    let mut f = std::fs::OpenOptions::new()
+    use crate::crew::store::jsonl;
+    // Created even for no ids: an empty feed's baseline is the file existing (see `is_new`).
+    let f = std::fs::OpenOptions::new()
         .create(true)
         .append(true)
         .open(path)?;
     for id in ids {
-        writeln!(f, "{id}")?;
+        jsonl::append_line(path, id, false)?;
     }
-    f.sync_all()
+    f.sync_all()?;
+    let _ = jsonl::trim_to_tail(path, SEEN_MAX_BYTES, SEEN_MAX_BYTES / 2);
+    Ok(())
+}
+
+#[cfg(test)]
+mod seen_tests {
+    use super::*;
+    use std::io::Write;
+
+    // #293: a bad byte stopped `load_seen` there, so every later id was "new" again and its event fired
+    // a second time; a torn last id (no newline) glued the next id onto it.
+    #[test]
+    fn the_seen_file_survives_invalid_utf8_and_a_torn_tail() {
+        let t = tempfile::tempdir().unwrap();
+        let p = t.path().join("trig_seen.jsonl");
+        append_seen(&p, &["100"]).unwrap();
+        std::fs::OpenOptions::new()
+            .append(true)
+            .open(&p)
+            .unwrap()
+            .write_all(b"\xff\xfe\n20")
+            .unwrap(); // a bad line, then a torn id
+        append_seen(&p, &["300"]).unwrap();
+        append_seen(&p, &["400"]).unwrap();
+
+        let seen = load_seen(&p);
+        for id in ["100", "300", "400"] {
+            assert!(seen.contains(id), "{id} lost: {seen:?}");
+        }
+    }
+
+    // The baseline of a trigger whose feed is empty is the file existing: an empty batch must create it.
+    #[test]
+    fn an_empty_batch_still_creates_the_seen_file() {
+        let t = tempfile::tempdir().unwrap();
+        let p = t.path().join("trig_seen.jsonl");
+        append_seen(&p, &[]).unwrap();
+        assert!(p.exists());
+        assert!(load_seen(&p).is_empty());
+    }
+
+    // #295: the file is capped, newest ids kept (the events API only lists recent ones).
+    #[test]
+    fn the_seen_file_is_capped_and_keeps_the_newest_ids() {
+        let t = tempfile::tempdir().unwrap();
+        let p = t.path().join("trig_seen.jsonl");
+        let total = 60_000u64;
+        for n in 0..total {
+            append_seen(&p, &[&format!("{:012}", 10_000_000_000 + n)]).unwrap();
+        }
+        let len = std::fs::metadata(&p).unwrap().len();
+        assert!(
+            len <= super::SEEN_MAX_BYTES + 32,
+            "seen file grew to {len} bytes"
+        );
+        let seen = load_seen(&p);
+        assert!(seen.contains(&format!("{:012}", 10_000_000_000 + total - 1)));
+        assert!(seen.contains(&format!("{:012}", 10_000_000_000 + total - 1000)));
+        assert!(!seen.contains(&format!("{:012}", 10_000_000_000u64)));
+    }
 }

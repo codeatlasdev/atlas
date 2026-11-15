@@ -1,0 +1,73 @@
+name: Crew server E2E
+
+# Installs a crew server on a REAL systemd Linux and runs tasks on it, end to end (scripts/crew-e2e.sh): the
+# server is a privileged Ubuntu 24.04 container with systemd as PID 1 and sshd, `atlas crew install` reaches it
+# over ssh like any VPS, and the agent is a fake `claude` (no API key). It covers what the simulated server of
+# crates/atlas-cli/tests/crew_install.rs cannot: real systemd units and sockets, real useradd and nftables,
+# the isolation helpers, cancel/pause killing a process tree, a hostd restart in the middle of a task, uninstall.
+#
+# Runs by hand, nightly, on pull requests that touch the crew, and as a reusable workflow: release.yml can
+# call it before `publish` (`uses: ./.github/workflows/crew-e2e.yml`, then add the job to `publish`'s needs).
+on:
+  workflow_dispatch:
+  workflow_call:
+  schedule:
+    - cron: "23 4 * * *"
+  pull_request:
+    paths:
+      - "crates/atlas-host/src/crew/**"
+      - "crates/atlas-cli/src/commands/crew/**"
+      - "crates/atlas-cli/src/commands/crew_spawn.rs"
+      - "scripts/crew-e2e.sh"
+      - "scripts/crew-e2e/**"
+      - ".github/workflows/crew-e2e.yml"
+
+permissions:
+  contents: read
+
+concurrency:
+  group: crew-e2e-${{ github.workflow }}-${{ github.event.pull_request.number || github.ref }}
+  cancel-in-progress: ${{ github.event_name == 'pull_request' }}
+
+env:
+  CARGO_TERM_COLOR: always
+  CARGO_INCREMENTAL: "0"
+
+jobs:
+  crew-e2e:
+    name: Crew server on real systemd
+    runs-on: ubuntu-24.04
+    timeout-minutes: 60
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+
+      - name: Install Rust
+        run: rustup show active-toolchain || rustup toolchain install
+
+      # The CLI under test, uploaded to the server with `atlas crew install --binary`. A debug build: the
+      # release profile is not what this checks. Caches are saved from main only (the nightly run), like CI.
+      - name: Cache cargo
+        uses: Swatinem/rust-cache@6323deb102c322ba6fcbdcafc7e3dddab59af2b6 # v2.9.2
+        with:
+          save-if: ${{ github.ref == 'refs/heads/main' }}
+
+      - name: Build the CLI
+        run: cargo build --locked -p atlas-cli
+
+      - name: Crew server end to end
+        env:
+          ATLAS: ${{ github.workspace }}/target/debug/atlas
+          CREW_E2E_OUT: ${{ runner.temp }}/crew-e2e-out
+        run: scripts/crew-e2e.sh
+
+      # The server's journal, hostd.log, process list, firewall and crewmate files, also when it failed.
+      - name: Server logs
+        if: ${{ always() }}
+        uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
+        with:
+          name: crew-e2e-server-logs
+          path: ${{ runner.temp }}/crew-e2e-out/
+          if-no-files-found: ignore
+          retention-days: 14

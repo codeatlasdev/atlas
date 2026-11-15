@@ -10,6 +10,7 @@ import 'package:atlas_mobile/core/protocol/models.dart';
 import 'package:atlas_mobile/core/ui/atlas_theme.dart';
 import 'package:atlas_mobile/core/ui/components.dart';
 import 'package:atlas_mobile/features/crew/ops/crew_ops_provider.dart';
+import 'package:atlas_mobile/features/crew/ops/engine_signin.dart';
 
 class CrewSettingsScreen extends ConsumerWidget {
   const CrewSettingsScreen({super.key, required this.device});
@@ -91,6 +92,7 @@ class _FormState extends ConsumerState<_Form> {
     return ListView(
       padding: const EdgeInsets.all(Space.lg),
       children: [
+        _EngineSignin(device: widget.device),
         AtlasCard(
           child: Column(
             crossAxisAlignment: CrossAxisAlignment.start,
@@ -166,6 +168,97 @@ class _FormState extends ConsumerState<_Form> {
           ],
         ),
       ],
+    );
+  }
+}
+
+/// One row per engine the crew server can run: whether it is signed in, and Sign in (a terminal on the server that
+/// runs only that engine's login command). Needs the `act` scope, like the other writes on this screen.
+class _EngineSignin extends ConsumerWidget {
+  const _EngineSignin({required this.device});
+  final MacDevice device;
+
+  @override
+  Widget build(BuildContext context, WidgetRef ref) {
+    final c = AtlasColors.of(context);
+    final engines = ref.watch(engineStatusProvider(device));
+    return AtlasCard(
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          Row(
+            children: [
+              const Expanded(
+                child: Text(
+                  'Engine sign-in',
+                  style: TextStyle(fontSize: 15, fontWeight: FontWeight.w600),
+                ),
+              ),
+              IconButton(
+                key: const Key('engines-refresh'),
+                tooltip: 'Check again',
+                icon: const Icon(Icons.refresh_rounded, size: 20),
+                onPressed: () => ref.invalidate(engineStatusProvider(device)),
+              ),
+            ],
+          ),
+          Text(
+            'The sign-in each crewmate engine uses on this server. When one expires its tasks fail until you sign in again.',
+            style: TextStyle(color: c.muted, fontSize: 13, height: 1.4),
+          ),
+          const SizedBox(height: Space.sm),
+          engines.when(
+            loading: () => const Padding(
+              padding: EdgeInsets.all(Space.md),
+              child: Center(child: CircularProgressIndicator()),
+            ),
+            error: (e, _) => Text(
+              "Couldn't check the engines: ${e is StateError ? e.message : e}",
+              style: TextStyle(color: c.error, fontSize: 13),
+            ),
+            data: (rows) => Column(
+              children: [for (final s in rows) _row(context, ref, c, s)],
+            ),
+          ),
+        ],
+      ),
+    );
+  }
+
+  Widget _row(
+    BuildContext context,
+    WidgetRef ref,
+    AtlasColors c,
+    EngineStatus s,
+  ) {
+    final color = switch (s.state) {
+      'signed_in' => c.success,
+      'needs_signin' => c.warning,
+      _ => c.muted,
+    };
+    return Padding(
+      key: Key('engine-${s.engine}'),
+      padding: const EdgeInsets.symmetric(vertical: 4),
+      child: Row(
+        children: [
+          Expanded(
+            child: Column(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                Text(s.label, style: const TextStyle(fontSize: 14)),
+                Text(s.text, style: TextStyle(color: color, fontSize: 12)),
+              ],
+            ),
+          ),
+          // Not installed: nothing to sign in (install it from the desktop's Crew settings).
+          if (s.state != 'not_installed')
+            OutlinedButton(
+              key: Key('engine-signin-${s.engine}'),
+              onPressed: () => openEngineSignin(context, ref, device, s.engine),
+              child: Text(s.state == 'signed_in' ? 'Sign in again' : 'Sign in'),
+            ),
+        ],
+      ),
     );
   }
 }

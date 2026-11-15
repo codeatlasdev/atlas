@@ -138,6 +138,19 @@ Agents are installed and signed in as the crew user. `atlas crew login <ssh-targ
 
 The unit's `PATH` already includes `~/.atlas/bin`, `~/.bun/bin`, `~/.local/bin`, `~/.opencode/bin` and `~/.npm-global/bin`. A crewmate can also use a custom provider (your own gateway) set in its settings; keys go to its `secrets.json` ([Security model](#security-model)).
 
+### Signing in from the phone
+
+With no PC on, a phone paired to the crew server signs an engine in itself (Crew settings → **Engine sign-in**, or **Sign in here** on a "Sign in to …" card). `crew_engine_login {engine}` opens a terminal as the crew user that runs only that engine's login command, and `crew_engine_status {refresh?}` says per engine `signed_in`, `needs_signin`, `not_installed` or `unknown`:
+
+| Engine | Login terminal | Status check (run as the crew user) | An expired sign-in shows up as |
+|---|---|---|---|
+| Claude Code | `claude auth login` | `claude auth status` (exit 1 = signed out) | `Please run /login`, `Not logged in`, `Login expired`, `OAuth token has expired`, `Invalid API key` |
+| Codex | `codex login --device-auth` (a code to enter on the phone: the server has no browser) | `codex login status` (exit 1, `Not logged in`) | `Please log out and sign in again` (refresh token expired, reused or revoked) |
+| omp | `omp login` (provider picker) | `omp auth export` (credential rows) | `No API key for provider: …` |
+| OpenCode | `opencode auth login` | `opencode auth list` | `ProviderAuthError`, `Unauthorized` |
+
+Sources: the CLIs' own docs and source (`code.claude.com/docs/en/cli-reference` and `/errors`, `openai/codex` `codex-rs/cli` and `codex-rs/login`, `omp.sh/docs` and `oh-my-pi` `docs/providers.md`, `opencode.ai/docs/cli/providers`). The table is `crew/engine_login.rs` (`ENGINES`), the only list of what a phone may start: any other name is refused (`unknown engine`), so the scope the phone has (`act`) cannot be turned into a shell. A task that fails with the engine's own text flips it to `needs_signin` without running anything, and every client gets `{"ev":"crew_engine_auth","engine","state"}`. The login terminal is audited (`engine_login_started`, with who asked), never its keystrokes. Behind a Mac's relay the status works and the login does not (terminals are never relayed): pair the phone to the crew server.
+
 ## Crewmates
 
 You manage crewmates from Atlas Desktop, Atlas Mobile, Telegram or the hostd protocol ([Reference](#reference)). A crewmate has:
@@ -649,7 +662,7 @@ For contributors. One concept per file; the module doc comment at the top of eac
 ~/.atlas/desktop/crew-servers.json     Atlas Desktop's list of crew servers ([{host, name, admin?: {target, port?}}])
 ```
 
-Tests that pin the contract: Rust tests write the JSON fixtures from the real serializers (`UPDATE_FIXTURES=1 cargo test -p atlas-host`) into `apps/mobile/test/fixtures/` (`crewmate_list.json`, `crewmate_tasks.json`, `crewmate_task_summarized.json`, `crewmate_task_resumed.json`, `crewmate_task_event.json`, `crewmate_task_attachments.json`, `crewmate_task_prove_ui.json`, `task_actions.json`, `crew_github_status.json`) and `apps/desktop/src/__fixtures__/` (`crewmate_tasks.json`, `crewmate_task_attachments.json`, `crewmate_task_prove_ui.json`, `crew_telegram_status.json`); the desktop and mobile tests read them, so a field renamed on one side fails on the other. Never edit a fixture by hand.
+Tests that pin the contract: Rust tests write the JSON fixtures from the real serializers (`UPDATE_FIXTURES=1 cargo test -p atlas-host`) into `apps/mobile/test/fixtures/` (`crewmate_list.json`, `crewmate_tasks.json`, `crewmate_task_summarized.json`, `crewmate_task_resumed.json`, `crewmate_task_event.json`, `crewmate_task_attachments.json`, `crewmate_task_prove_ui.json`, `task_actions.json`, `crew_github_status.json`, `crew_engine_status.json`, `crew_engine_login.json`) and `apps/desktop/src/__fixtures__/` (`crewmate_tasks.json`, `crewmate_task_attachments.json`, `crewmate_task_prove_ui.json`, `crew_telegram_status.json`); the desktop and mobile tests read them, so a field renamed on one side fails on the other. Never edit a fixture by hand.
 
 ## Reference
 
@@ -735,6 +748,7 @@ Same NDJSON socket as every hostd command (`~/.atlas/hostd.sock`, or the crew se
 | `crew_audit` | `{since?, limit?, kind?}` | the crew-wide log, same shape |
 | `crew_telegram_status`, `crew_telegram_set`, `crew_telegram_link` | `{}`, `{token?}`, `{}` | `{configured, chats}`, `{}`, `{code}` (desktop only; the token is never returned) |
 | `crew_settings_get`, `crew_settings_set` | `{short_replies, short_replies_model?}` | crew settings |
+| `crew_engine_status`, `crew_engine_login` | `{refresh?}`, `{engine}` | `{engines:[{engine, state, reason?}]}` with `state` `signed_in` / `needs_signin` / `not_installed` / `unknown`; `{engine, pty}` (a terminal that runs only that engine's login; `unknown engine` for any name off the allowlist). Mobile scope `read` / `act`; the login is never relayed. Push `{"ev":"crew_engine_auth","engine","state"}`. See [Signing in from the phone](#signing-in-from-the-phone) |
 | `crew_github_status`, `_login_start`, `_login_poll`, `_logout`, `_connect_resume` | `{}` | see [GitHub](#github) |
 | `push_register`, `push_unregister` | `{token, platform:"fcm", grant}`, `{token}` | `{}`; `grant` is what the relay issued for the token (optional on the wire for apps older than relay auth, which are then not notified) |
 | `mobile_invite`, `mobile_invites`, `mobile_invite_dismiss` | `{url, name}`, `{}`, `{url}` | desktop-only invites to phones (TTL 120 s) |

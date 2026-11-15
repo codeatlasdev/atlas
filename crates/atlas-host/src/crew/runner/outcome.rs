@@ -163,6 +163,13 @@ pub(super) fn finish_task(
                 // Don't overwrite Cancelled state.
                 if task.state != TaskState::Cancelled {
                     task.state = TaskState::Failed;
+                    // The engine saying its sign-in is gone flips it to needs_signin (`engine_login`), so the
+                    // phone's settings row and the action card offer "Sign in here" before the next task.
+                    let engine = crewmate
+                        .engine
+                        .as_ref()
+                        .map_or(crewmate.agent.as_str(), |e| e.kind.as_str());
+                    super::super::engine_login::note_task_failure(hub, engine, &e);
                     task.error = Some(e);
                 }
             }

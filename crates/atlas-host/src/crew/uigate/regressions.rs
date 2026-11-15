@@ -84,7 +84,7 @@ pub fn add(root: &Path, scenario: Scenario, note: &str) -> Result<Vec<Regression
     })
     .map_err(|e| e.to_string())?;
     // Atomic: a crash mid-write must not leave a file `load` refuses.
-    atlas_core::fs::write_atomic(&p, (body + "\n").as_bytes(), false)
+    atlas_core::fs::write_atomic(&p, (body + "\n").as_bytes(), atlas_core::fs::Mode::Default)
         .map_err(|e| format!("ui gate: cannot write {}: {e}", p.display()))?;
     Ok(all)
 }

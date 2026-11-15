@@ -101,7 +101,11 @@ impl EmbeddedSkill {
         }
         let base = dir.join(&self.name);
         for f in &self.files {
-            atlas_core::fs::write_atomic(&base.join(f.path), f.content.as_bytes(), false)?;
+            atlas_core::fs::write_atomic(
+                &base.join(f.path),
+                f.content.as_bytes(),
+                atlas_core::fs::Mode::Default,
+            )?;
         }
         Ok(())
     }

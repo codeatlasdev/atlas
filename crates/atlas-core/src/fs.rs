@@ -20,23 +20,53 @@ fn tmp_sibling(path: &Path) -> PathBuf {
     path.with_file_name(name)
 }
 
+/// Who may read the replaced file.
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+pub enum Mode {
+    /// What the umask gives a new file.
+    Default,
+    /// This user alone: 0600 on Unix. On Windows the folder's per-user ACL applies.
+    OwnerOnly,
+    /// Exactly these permission bits on Unix (a group that must read the file), whatever the umask;
+    /// ignored on Windows.
+    Exact(u32),
+}
+
+impl Mode {
+    fn bits(self) -> Option<u32> {
+        match self {
+            Mode::Default => None,
+            Mode::OwnerOnly => Some(0o600),
+            Mode::Exact(bits) => Some(bits),
+        }
+    }
+}
+
 /// Replace `path` with `data`: written to a unique sibling, flushed, renamed over the target, then
 /// the directory is flushed (Unix) so the rename survives a crash. Missing parent directories are
-/// created. `owner_only` makes the file readable by this user alone (0600 on Unix, set when the
-/// temp file is created, so never wider at any moment; on Windows the folder's per-user ACL
-/// applies). On any error the target is untouched and the temp file is removed.
-pub fn write_atomic(path: &Path, data: &[u8], owner_only: bool) -> io::Result<()> {
+/// created. `mode` is set on the temp file before the rename (given at creation, so a secret is
+/// never wider at any moment, then set again because the umask may have narrowed it). On any error
+/// the target is untouched and the temp file is removed.
+pub fn write_atomic(path: &Path, data: &[u8], mode: Mode) -> io::Result<()> {
     if let Some(dir) = path.parent().filter(|d| !d.as_os_str().is_empty()) {
         fs::create_dir_all(dir)?;
     }
     let tmp = tmp_sibling(path);
     let written = (|| {
+        let bits = mode.bits();
         let mut opts = OpenOptions::new();
         opts.write(true).create_new(true);
-        if owner_only {
-            crate::sys::owner_only(&mut opts);
+        #[cfg(unix)]
+        if let Some(bits) = bits {
+            std::os::unix::fs::OpenOptionsExt::mode(&mut opts, bits);
         }
         let mut f = opts.open(&tmp)?;
+        #[cfg(unix)]
+        if let Some(bits) = bits {
+            f.set_permissions(std::os::unix::fs::PermissionsExt::from_mode(bits))?;
+        }
+        #[cfg(not(unix))]
+        let _ = bits; // Windows: the folder's ACL decides.
         f.write_all(data)?;
         f.sync_all()?;
         drop(f);
@@ -79,7 +109,7 @@ mod tests {
         let dir = tempfile::tempdir().unwrap();
         let path = dir.path().join("f");
         let (short, long) = ("a".repeat(10), "b".repeat(300_000));
-        write_atomic(&path, short.as_bytes(), false).unwrap();
+        write_atomic(&path, short.as_bytes(), Mode::Default).unwrap();
         let done = Arc::new(AtomicBool::new(false));
         let reader = {
             let (path, done, short, long) =
@@ -100,7 +130,7 @@ mod tests {
         };
         for i in 0..200 {
             let v = if i % 2 == 0 { &long } else { &short };
-            write_atomic(&path, v.as_bytes(), false).unwrap();
+            write_atomic(&path, v.as_bytes(), Mode::Default).unwrap();
         }
         done.store(true, Ordering::Relaxed);
         assert!(reader.join().unwrap() > 0);
@@ -119,7 +149,7 @@ mod tests {
                 let path = &path;
                 s.spawn(move || {
                     for _ in 0..1000 {
-                        write_atomic(path, v.as_bytes(), false).unwrap();
+                        write_atomic(path, v.as_bytes(), Mode::Default).unwrap();
                     }
                 });
             }
@@ -131,23 +161,25 @@ mod tests {
 
     #[cfg(unix)]
     #[test]
-    fn owner_only_files_are_0600_even_when_replaced_and_others_follow_the_umask() {
+    fn modes_are_set_even_when_replacing_a_wider_file_and_default_follows_the_umask() {
         use std::os::unix::fs::PermissionsExt;
         let dir = tempfile::tempdir().unwrap();
         let path = dir.path().join("token");
         fs::write(&path, "old").unwrap();
         fs::set_permissions(&path, fs::Permissions::from_mode(0o644)).unwrap();
-        write_atomic(&path, b"secret", true).unwrap();
+        write_atomic(&path, b"secret", Mode::OwnerOnly).unwrap();
         let mode = |p: &Path| fs::metadata(p).unwrap().permissions().mode() & 0o777;
         assert_eq!(mode(&path), 0o600);
         assert_eq!(fs::read(&path).unwrap(), b"secret");
-        let open = dir.path().join("open");
-        write_atomic(&open, b"x", false).unwrap();
-        assert_ne!(
-            mode(&open) & 0o044,
-            0,
-            "a plain write keeps the default mode"
-        );
+        // `Default` is what the umask gives any new file here, whatever the umask is.
+        let (open, plain) = (dir.path().join("open"), dir.path().join("plain"));
+        write_atomic(&open, b"x", Mode::Default).unwrap();
+        fs::write(&plain, b"x").unwrap();
+        assert_eq!(mode(&open), mode(&plain));
+        // `Exact` survives a narrowing umask: the group bit is the point.
+        let group = dir.path().join("group");
+        write_atomic(&group, b"x", Mode::Exact(0o640)).unwrap();
+        assert_eq!(mode(&group), 0o640);
     }
 
     #[test]
@@ -156,7 +188,7 @@ mod tests {
         // The target is a directory: the rename fails after the data was written.
         let target = dir.path().join("d");
         fs::create_dir(&target).unwrap();
-        assert!(write_atomic(&target, b"x", false).is_err());
+        assert!(write_atomic(&target, b"x", Mode::Default).is_err());
         assert!(target.is_dir());
         assert_eq!(leftovers(dir.path()), Vec::<String>::new());
     }
@@ -165,7 +197,7 @@ mod tests {
     fn missing_parent_directories_are_created() {
         let dir = tempfile::tempdir().unwrap();
         let path = dir.path().join("a/b/f");
-        write_atomic(&path, b"x", false).unwrap();
+        write_atomic(&path, b"x", Mode::Default).unwrap();
         assert_eq!(fs::read(&path).unwrap(), b"x");
     }
 }

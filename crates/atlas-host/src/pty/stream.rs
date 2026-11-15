@@ -167,7 +167,11 @@ impl Session {
         b.file_len += bytes.len() as u64;
         if let Some(since) = b.trim.as_mut() {
             since.extend_from_slice(bytes);
-        } else if b.file_len > FILE_MAX {
+            // Restore reads the file's tail (the last `RING_MAX` bytes): a rewrite that is slow
+            // (fsync under writeback pressure) must not hold more than that.
+            let excess = since.len().saturating_sub(RING_MAX);
+            since.drain(..excess);
+        } else if b.file_len > FILE_MAX && !b.gone {
             // The rewrite is a 2 MiB write and an fsync: never under the lock that every
             // attach and every chunk of output waits on (#301).
             let (snapshot, epoch) = (b.ring_bytes(), b.epoch);
@@ -193,8 +197,25 @@ impl Session {
     /// growing until a later chunk tries again.
     pub(super) fn rewrite_scrollback(&self, snapshot: &[u8], epoch: u64) {
         let p = bin_path(&self.dir, &self.id);
-        let written = atlas_core::fs::write_atomic(&p, snapshot, false);
+        let written = atlas_core::fs::write_atomic(&p, snapshot, atlas_core::fs::Mode::Default);
+        self.finish_rewrite(snapshot.len(), epoch, written);
+    }
+
+    /// The locked half of [`rewrite_scrollback`](Self::rewrite_scrollback): install the new file's
+    /// handle and the output that arrived while it was written.
+    pub(super) fn finish_rewrite(
+        &self,
+        snapshot_len: usize,
+        epoch: u64,
+        written: std::io::Result<()>,
+    ) {
+        let p = bin_path(&self.dir, &self.id);
         let mut b = self.buf.lock();
+        if b.gone {
+            // Closed while the file was written: the rename recreated it.
+            let _ = std::fs::remove_file(&p);
+            return;
+        }
         let since = b.trim.take().unwrap_or_default();
         let cleared = b.epoch != epoch;
         if written.is_ok() {
@@ -207,7 +228,7 @@ impl Session {
         if let Some(f) = b.file.as_mut() {
             let _ = f.write_all(&since);
         }
-        let kept = if cleared { 0 } else { snapshot.len() as u64 };
+        let kept = if cleared { 0 } else { snapshot_len as u64 };
         b.file_len = match written {
             Ok(()) => kept + since.len() as u64,
             // The old file is still the file: try again after another `FILE_MAX / 2` of output.

@@ -1064,3 +1064,63 @@ async fn output_past_the_file_cap_trims_the_scrollback_to_the_ring() {
     assert_eq!(std::fs::read(&bin).unwrap(), b"fresh-output");
     assert_eq!(s.buf.lock().file_len, "fresh-output".len() as u64);
 }
+
+/// Review of #413: `PtyKill` removes `<id>.bin` while a scrollback rewrite is in flight; the rewrite's rename
+/// (and `open_append`) then recreated it and the next hostd start cold-restored a ghost terminal. The rewrite
+/// is paused here between its write and its locked finish, which is where the kill lands.
+#[cfg(unix)]
+#[tokio::test(flavor = "multi_thread")]
+async fn killing_a_terminal_during_a_scrollback_rewrite_leaves_no_files_behind() {
+    let dir = tempfile::tempdir().unwrap();
+    let s = quiet_session_with_scrollback(dir.path(), b"old-output;");
+    let bin = super::bin_path(dir.path(), &s.id);
+    let epoch = {
+        let mut b = s.buf.lock();
+        b.trim = Some(Vec::new());
+        b.epoch
+    };
+    // The rewrite wrote its file and waits for the lock...
+    let written = atlas_core::fs::write_atomic(&bin, b"snapshot;", atlas_core::fs::Mode::Default);
+    // ...the kill removes the session's files...
+    s.signal("KILL").unwrap();
+    s.remove_files();
+    // ...and the rewrite finishes.
+    s.finish_rewrite("snapshot;".len(), epoch, written);
+    assert!(!bin.exists(), "a ghost scrollback file came back");
+    let _ = s.output(b"late output");
+    tokio::time::sleep(Duration::from_millis(100)).await;
+    assert!(!bin.exists(), "output after the kill brought it back");
+    assert!(!super::meta_path(dir.path(), &s.id).exists());
+}
+
+/// Review of #413: a slow rewrite (fsync under writeback pressure) must not buffer the whole stream. Only the
+/// last `RING_MAX` bytes matter (cold restore reads the file's tail), so `trim` holds at most that, and what the
+/// file ends with is still the end of the stream.
+#[cfg(unix)]
+#[tokio::test(flavor = "multi_thread")]
+async fn output_during_a_slow_scrollback_rewrite_is_buffered_up_to_the_ring_size_and_ends_the_file()
+{
+    let dir = tempfile::tempdir().unwrap();
+    let s = quiet_session_with_scrollback(dir.path(), b"");
+    let bin = super::bin_path(dir.path(), &s.id);
+    let epoch = {
+        let mut b = s.buf.lock();
+        b.trim = Some(Vec::new());
+        b.epoch
+    };
+    let mut all = Vec::new();
+    for i in 0..(3 * super::RING_MAX / 65_536) {
+        let chunk = vec![b'a' + (i % 26) as u8; 65_536];
+        all.extend_from_slice(&chunk);
+        let _ = s.output(&chunk);
+        let held = s.buf.lock().trim.as_ref().unwrap().len();
+        assert!(held <= super::RING_MAX, "{held} bytes held");
+    }
+    s.rewrite_scrollback(b"snapshot;", epoch);
+    s.signal("KILL").unwrap();
+    let file = std::fs::read(&bin).unwrap();
+    assert_eq!(
+        file[file.len() - super::RING_MAX..],
+        all[all.len() - super::RING_MAX..]
+    );
+}

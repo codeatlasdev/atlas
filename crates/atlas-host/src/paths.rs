@@ -69,7 +69,7 @@ pub fn ensure_token(dir: &Path) -> std::io::Result<String> {
 
 /// Replace `p` with `data`, readable by this user only, atomically (`atlas_core::fs::write_atomic`).
 pub fn write_private(p: &Path, data: &[u8]) -> std::io::Result<()> {
-    atlas_core::fs::write_atomic(p, data, true)
+    atlas_core::fs::write_atomic(p, data, atlas_core::fs::Mode::OwnerOnly)
 }
 
 pub fn read_token(dir: &Path) -> std::io::Result<String> {

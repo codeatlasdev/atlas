@@ -289,7 +289,7 @@ impl Registry {
         crate::fs::write_atomic(
             &self.file(),
             &serde_json::to_vec_pretty(store).unwrap_or_default(),
-            false,
+            crate::fs::Mode::Default,
         )
     }
 

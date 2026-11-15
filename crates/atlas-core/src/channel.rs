@@ -271,7 +271,11 @@ pub fn read_from(path: &Path) -> Channel {
 }
 
 pub fn write_to(path: &Path, channel: Channel) -> std::io::Result<()> {
-    crate::fs::write_atomic(path, format!("{channel}\n").as_bytes(), false)
+    crate::fs::write_atomic(
+        path,
+        format!("{channel}\n").as_bytes(),
+        crate::fs::Mode::Default,
+    )
 }
 
 /// `override_` (the [`ENV`] value) when valid, else `stored`.

@@ -241,7 +241,8 @@ pub fn execute(actions: &[Action], exec: &dyn Exec, log: &Log) -> usize {
 }
 
 fn write_atomic(p: &Path, text: &str) -> Result<(), String> {
-    atlas_core::fs::write_atomic(p, text.as_bytes(), false).map_err(|e| e.to_string())
+    atlas_core::fs::write_atomic(p, text.as_bytes(), atlas_core::fs::Mode::Default)
+        .map_err(|e| e.to_string())
 }
 
 fn remove(p: &Path) -> Result<(), String> {

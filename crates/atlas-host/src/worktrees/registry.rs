@@ -201,7 +201,7 @@ pub fn edit_at<T>(
 
 /// A crash never leaves a half-written file (`atlas_core::fs::write_atomic`); the error names the file.
 pub fn write_atomic(p: &Path, text: &str) -> Result<(), String> {
-    atlas_core::fs::write_atomic(p, text.as_bytes(), false)
+    atlas_core::fs::write_atomic(p, text.as_bytes(), atlas_core::fs::Mode::Default)
         .map_err(|e| format!("{}: {e}", p.display()))
 }
 

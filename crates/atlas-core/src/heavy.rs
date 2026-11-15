@@ -553,7 +553,7 @@ impl Dir {
         let excess = runs.len().saturating_sub(HISTORY_KEEP);
         runs.drain(..excess);
         if let Ok(b) = serde_json::to_vec(&h) {
-            let _ = crate::fs::write_atomic(&self.history_path(), &b, false);
+            let _ = crate::fs::write_atomic(&self.history_path(), &b, crate::fs::Mode::Default);
         }
     }
 }
@@ -575,7 +575,11 @@ impl Ticket {
 
     fn write(&self) -> io::Result<()> {
         let path = self.dir.jobs().join(format!("{}.json", self.job.id));
-        crate::fs::write_atomic(&path, &serde_json::to_vec(&self.job)?, false)
+        crate::fs::write_atomic(
+            &path,
+            &serde_json::to_vec(&self.job)?,
+            crate::fs::Mode::Default,
+        )
     }
 
     /// One attempt to get a slot. `true` once this job runs (its record says so), `false` while it

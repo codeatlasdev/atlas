@@ -413,7 +413,11 @@ impl Host for System {
                 .map(|u| (u, Policy::default()))
                 .collect::<Vec<_>>(),
         );
-        atlas_core::fs::write_atomic(Path::new(EGRESS_FILE), rules.as_bytes(), false)?;
+        atlas_core::fs::write_atomic(
+            Path::new(EGRESS_FILE),
+            rules.as_bytes(),
+            atlas_core::fs::Mode::Default,
+        )?;
         // `nft -c` first: a broken file must not replace working rules.
         let nft = self.bin("nft")?;
         let check: &[&str] = &["-c", "-f", EGRESS_FILE];

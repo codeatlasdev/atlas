@@ -626,7 +626,11 @@ fn write_status_atomic(dir: &std::path::Path, text: &str) {
 
 /// The same tmp-then-rename write for any file of the log dir (`.tui-metrics.json` too).
 pub(super) fn write_atomic(dir: &std::path::Path, file: &str, text: &str) {
-    let _ = atlas_core::fs::write_atomic(&dir.join(file), text.as_bytes(), false);
+    let _ = atlas_core::fs::write_atomic(
+        &dir.join(file),
+        text.as_bytes(),
+        atlas_core::fs::Mode::Default,
+    );
 }
 
 #[cfg(test)]

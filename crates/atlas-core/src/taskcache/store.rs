@@ -194,7 +194,7 @@ impl Cache {
             return Ok(sha);
         }
         fs::create_dir_all(path.parent().expect("blob has a parent"))?;
-        crate::fs::write_atomic(&path, bytes, false)?;
+        crate::fs::write_atomic(&path, bytes, crate::fs::Mode::Default)?;
         Ok(sha)
     }
 
@@ -349,7 +349,7 @@ impl Cache {
         crate::fs::write_atomic(
             &self.entry_path(key.as_str()),
             &serde_json::to_vec(&entry)?,
-            false,
+            crate::fs::Mode::Default,
         )?;
         // The cap holds after every insert; the new entry is the newest so it goes last.
         self.evict_locked();
@@ -528,7 +528,7 @@ impl Cache {
         crate::fs::write_atomic(
             &self.root.join("stats.json"),
             &serde_json::to_vec_pretty(st)?,
-            false,
+            crate::fs::Mode::Default,
         )
     }
 
@@ -622,7 +622,11 @@ impl Cache {
         let excess = recent.len().saturating_sub(stats::RECENT_KEEP);
         recent.drain(..excess);
         if let Ok(b) = serde_json::to_vec(&recent) {
-            let _ = crate::fs::write_atomic(&self.root.join("recent.json"), &b, false);
+            let _ = crate::fs::write_atomic(
+                &self.root.join("recent.json"),
+                &b,
+                crate::fs::Mode::Default,
+            );
         }
     }
 

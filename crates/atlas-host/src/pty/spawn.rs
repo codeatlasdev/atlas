@@ -379,7 +379,7 @@ impl Session {
         let _ = atlas_core::fs::write_atomic(
             &meta_path(scroll_dir, &id),
             &serde_json::to_vec(&meta).unwrap_or_default(),
-            false,
+            atlas_core::fs::Mode::Default,
         );
         let file_path = bin_path(scroll_dir, &id);
         let _ = std::fs::remove_file(&file_path);

@@ -214,7 +214,7 @@ pub(crate) fn save_cache(cache: &UpdateCache) {
 /// Best-effort and atomic: `atlas dev` and `atlas update` may run at once.
 pub(crate) fn save_cache_at(path: &std::path::Path, cache: &UpdateCache) {
     if let Ok(json) = serde_json::to_string(cache) {
-        let _ = atlas_core::fs::write_atomic(path, json.as_bytes(), false);
+        let _ = atlas_core::fs::write_atomic(path, json.as_bytes(), atlas_core::fs::Mode::Default);
     }
 }
 

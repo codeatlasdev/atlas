@@ -171,6 +171,18 @@ async fn run_pty_inner(
     // would then fail a finished task as "agent exited (code 0)".
     let agent_rx = hub.agents.subscribe();
 
+    // Running, and audited as started, before the agent exists: its first tool call can reach the audit
+    // within milliseconds of the spawn, and must come after `task_started`. If that cannot be stored
+    // there is no honest "running" to show, and no agent is started.
+    task.state = TaskState::Running;
+    task.started_at = Some(now_s());
+    task.pane = Some(pane_key.to_string());
+    if let Err(msg) = persist(hub, &crewmate.id, task) {
+        return (Err(msg), vec![]);
+    }
+    audit_task(hub, &crewmate.id, "task_started", task);
+    broadcast_task(hub, &crewmate.id, task);
+
     // Spawn the pty.
     let session = match Session::spawn(req, &paths::scrollback_dir(&hub.dir)) {
         Ok(s) => s,
@@ -185,19 +197,6 @@ async fn run_pty_inner(
     if let Some(pause) = pause {
         tokio::time::sleep(pause).await;
     }
-
-    // Mark task as running and record start time. If that cannot be stored there is no honest
-    // "running" to show: stop the agent and fail the task with the store error.
-    task.state = TaskState::Running;
-    task.started_at = Some(now_s());
-    task.pane = Some(pane_key.to_string());
-    if let Err(msg) = persist(hub, &crewmate.id, task) {
-        session.kill().await;
-        hub.sessions.lock().remove(&pty_id);
-        return (Err(msg), vec![]);
-    }
-    audit_task(hub, &crewmate.id, "task_started", task);
-    broadcast_task(hub, &crewmate.id, task);
 
     // Wait for completion.
     let (outcome, steps) =

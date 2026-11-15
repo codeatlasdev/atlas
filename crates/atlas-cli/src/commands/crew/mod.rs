@@ -18,8 +18,13 @@ mod apt;
 mod binary;
 mod browsers;
 pub mod install;
+#[cfg(all(test, unix))]
+mod install_tests;
 mod layout;
 mod pair;
+mod privileged;
+#[cfg(all(test, unix))]
+mod server_sim;
 mod transfer;
 mod update;
 

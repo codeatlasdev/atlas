@@ -876,15 +876,22 @@ async fn a_task_whose_state_cannot_be_stored_fails_with_the_error_instead_of_sta
 
     let tmp = tempfile::tempdir().unwrap();
     let dir = tmp.path().join("hostd");
-    // The agent outlives the test's patience: only a failed store write can end the task.
-    let fake_bin = fake_agent(tmp.path(), "claude", "sleep 30\nexit 0");
+    // The agent would outlive the test's patience, and leaves a mark if it ever runs: since #349 the
+    // `running` record is written before the spawn, so a store that cannot take it starts no agent.
+    let ran = tmp.path().join("agent-ran");
+    let fake_bin = fake_agent(
+        tmp.path(),
+        "claude",
+        &format!("touch '{}'\nsleep 30\nexit 0", ran.display()),
+    );
     use_agent_bin(&fake_bin);
-    // After the spawn the runner pauses; that is when the disk "fills up".
-    *crate::crew::runner::TEST_PAUSE_AFTER_SPAWN.lock() = Some(Duration::from_millis(1500));
 
     let client = daemon(&dir).await;
     let mut events = client.events();
     let id = super::fixture::create_crewmate(&client, "FullDisk").await;
+    // Paused, the task is recorded `queued` and waits: the disk "fills up" before the runner's first
+    // write, whatever the timing (this used to race the runner, which wrote `running` first since #349).
+    client.call("crew_pause", json!({})).await.unwrap();
     let v = client
         .call(
             "crewmate_task",
@@ -894,13 +901,14 @@ async fn a_task_whose_state_cannot_be_stored_fails_with_the_error_instead_of_sta
         .unwrap();
     let task_id = v["task"]["id"].as_str().unwrap().to_string();
 
-    // Read-only crewmate dir: the `running` record cannot be appended any more.
+    // Read-only task log: the `running` record cannot be appended any more.
     let crewmate_dir = crate::crew::store::crewmate_dir_in(&dir, &id);
     std::fs::set_permissions(
         crewmate_dir.join("tasks.jsonl"),
         std::fs::Permissions::from_mode(0o444),
     )
     .unwrap();
+    client.call("crew_resume", json!({})).await.unwrap();
 
     // The event the clients get for this task must say failed, with a reason that names the store.
     let failed = tokio::time::timeout(Duration::from_secs(15), async {
@@ -921,13 +929,17 @@ async fn a_task_whose_state_cannot_be_stored_fails_with_the_error_instead_of_sta
         error.contains("cannot record") && error.contains("tasks.jsonl"),
         "the failure must name what could not be stored, got: {error:?}"
     );
+    tokio::time::sleep(Duration::from_millis(500)).await;
+    assert!(
+        !ran.exists(),
+        "no agent may start behind a task whose `running` state could not be stored"
+    );
 
     std::fs::set_permissions(
         crewmate_dir.join("tasks.jsonl"),
         std::fs::Permissions::from_mode(0o644),
     )
     .unwrap();
-    *crate::crew::runner::TEST_PAUSE_AFTER_SPAWN.lock() = None;
     crate::crew::runner::set_test_agent_bin(None);
     client.call("shutdown", json!({})).await.ok();
 }

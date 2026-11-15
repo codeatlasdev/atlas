@@ -1,11 +1,19 @@
 import 'dart:async';
+import 'dart:convert';
 
+import 'package:atlas_mobile/core/protocol/protocol_version.dart';
 import 'package:atlas_mobile/core/transport/transport.dart';
 
 /// In-memory [Transport] for unit tests.
 ///
 /// Inject lines with [injectLine]; inspect sent lines via [sentLines].
 final class FakeTransport implements Transport {
+  /// Answers the first `info` request like a current hostd (`proto` = the app's), as the connection
+  /// check on connect needs; every other request stays for the test to answer with [injectLine],
+  /// and a later `info` (the foreground probe) too.
+  FakeTransport({this.answerInfo = false});
+  bool answerInfo;
+
   final StreamController<String> _controller =
       StreamController<String>.broadcast();
 
@@ -33,6 +41,15 @@ final class FakeTransport implements Transport {
   Future<void> sendLine(String line) async {
     if (!_open) throw StateError('FakeTransport is closed');
     sentLines.add(line);
+    if (answerInfo && line.contains('"cmd":"info"')) {
+      answerInfo = false;
+      final id = jsonDecode(line)['id'];
+      scheduleMicrotask(() {
+        if (_open) {
+          _controller.add('{"id":$id,"ok":true,"data":{"proto":$kAppProto}}');
+        }
+      });
+    }
   }
 
   @override

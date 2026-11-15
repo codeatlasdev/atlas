@@ -13,6 +13,7 @@ import 'package:atlas_mobile/core/providers/push_events_provider.dart';
 import 'package:atlas_mobile/core/ui/atlas_theme.dart';
 import 'package:atlas_mobile/features/crew/chat_motion.dart';
 import 'package:atlas_mobile/core/ui/components.dart';
+import 'package:atlas_mobile/core/ui/protocol_banner.dart';
 import 'package:atlas_mobile/features/crew/chat/approval_bubble.dart';
 import 'package:atlas_mobile/features/crew/chat/attachments.dart';
 import 'package:atlas_mobile/features/crew/chat/composer.dart';
@@ -276,8 +277,10 @@ class _CrewmateChatScreenState extends ConsumerState<CrewmateChatScreen> {
       ),
       body: Column(
         children: [
+          ProtocolBanner(devices: [widget.device]),
           // ── offline banner ─────────────────────────────────────────────
-          if (!online)
+          if (!online &&
+              ref.watch(protocolMismatchProvider(widget.device)) == null)
             Container(
               width: double.infinity,
               color: c.warning.withValues(alpha: .12),

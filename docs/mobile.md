@@ -38,6 +38,15 @@ What this does **not** settle: whether a phone on the same Wi-Fi reaches the com
 2. Pause the VPN, or add the LAN (`192.168.0.0/16`, your Wi-Fi subnet) to its split-tunnel exclusions, then pair again.
 3. Check what is published: Settings → Integrations → Mobile shows the addresses in the pairing link (`addr=` parameters).
 
+### The app and the computer disagree on the protocol
+
+On every connect the phone asks hostd's `info` once and compares its `proto` with the two constants in `apps/mobile/lib/core/protocol/protocol_version.dart`: `kAppProto` (what this app speaks, mirrors `PROTO` in `crates/atlas-host/src/protocol.rs`) and `kMinHostProto` (the oldest hostd it works with). Bump `PROTO` and `kAppProto` together on any non-additive wire change (a renamed or removed command or field, a changed meaning); a new command or an optional field is additive and needs no bump. Raise `kMinHostProto` only when the app starts to need something an older hostd lacks.
+
+- **hostd older than the app** (`proto` below `kMinHostProto`, or no `proto` at all, which is protocol 1): the home screen says **Update Atlas on <computer>** and to run `atlas update` there; the Crew tab and a crewmate's chat show the same one line. Nothing else is asked of that computer, so there is no `bad request` per command.
+- **hostd newer than the app**: only when its `info` carries `min_client_proto` above `kAppProto` (hostd does not send it today): **Update Atlas Mobile**. Without that field a newer hostd is assumed additive.
+
+A mismatch is not an outage, so the phone does not retry it in a loop: it checks again when the app comes to the foreground, on pull to refresh and on **Try again**, and the state clears as soon as the versions agree.
+
 ## Review and ship from the phone
 
 A project's page has **Review changes**: the changed files (staged and not), the diff of each (the same code block the chat uses, `diff` mode), a stage toggle per file, **Commit** (type a message or **Write with AI**, which runs the agent CLI of Settings → Git on the staged diff exactly as the desktop does: secrets withheld, lockfiles named), **Push** and **Open a pull request** (`gh pr create`). It is a fixed set of hostd commands, never a git command line: `root` must be a registered project or one of its worktrees (compared after canonicalization), paths must be relative and stay inside it (a symlink out is refused), the commit message goes on stdin, a push is never forced and only sends the current branch (`--set-upstream origin` the first time). Reading needs the first permission; everything that changes a repo or reaches GitHub needs the second. The audit log records the call but only the length of the message, title and body. hostd does the work itself (`crates/atlas-host/src/git.rs`, parsers and the commit-message logic shared with the desktop in `atlas_core::git_review`), so it works with the Atlas window closed; `gh` must be signed in on the computer.

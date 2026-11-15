@@ -7,6 +7,7 @@ import 'dart:convert';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:flutter_test/flutter_test.dart';
 
+import 'package:atlas_mobile/core/protocol/protocol_version.dart';
 import 'package:atlas_mobile/core/connection/connection_notifier.dart';
 import 'package:atlas_mobile/core/protocol/models.dart';
 import 'package:atlas_mobile/core/push/push_provider.dart';
@@ -41,7 +42,7 @@ class _Computer implements Transport {
     final req = jsonDecode(line) as Map<String, dynamic>;
     final cmd = req['cmd'];
     if (cmd == 'push_register') registered.add((req['args'] as Map).cast());
-    Object data = cmd == 'info' ? {'caps': caps} : {};
+    Object data = cmd == 'info' ? {'proto': kAppProto, 'caps': caps} : {};
     if (cmd == 'crew_servers') {
       data = {
         'servers': [

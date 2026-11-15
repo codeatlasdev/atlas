@@ -138,15 +138,11 @@ void main() {
     );
   });
 
-  // The two rows are 46 dp high at every width: "Nightly needs you · Crew" and "payments failed · orbit-shop"
-  // (AttentionHero rows in inbox.dart). inbox.dart is being split (S7c): unskip and fix after that lands.
-  testWidgets(
-    'inbox with items',
-    skip: true, // inbox rows 46dp, fixed after the inbox split (S7c)
-    (t) async {
-      await _check(t, 'inbox', (_) => const InboxScreen());
-    },
-  );
+  // Every attention row is a 48 dp target: "Nightly needs you · Crew" and "payments failed · orbit-shop" (the
+  // extra rows, `AttentionMore`) were 46 dp at every width.
+  testWidgets('inbox with items', (t) async {
+    await _check(t, 'inbox', (_) => const InboxScreen());
+  });
 
   // Every trigger kind builds its own fields; the kind chips switch between them.
   for (final kind in const [

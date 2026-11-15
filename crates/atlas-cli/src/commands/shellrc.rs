@@ -122,16 +122,18 @@ pub(crate) fn path_line(dir: &Path) -> String {
     format!("export PATH=\"{}:$PATH\"", dir.display())
 }
 
-/// The fish line. `-g` (global, this session) because the default is the *universal*
-/// `fish_user_paths`, which fish keeps on disk: deleting the file would leave the dir on `PATH`
-/// forever. Quoted with fish's double-quote escapes so a path with a space or `$` survives.
+/// The fish line. `-g` (this session) because the default is the *universal* `fish_user_paths`,
+/// which fish keeps on disk: deleting the file would leave the dir on `PATH` forever. `-P`
+/// (`--path`) changes `$PATH` directly: plain `-g` would create a global `fish_user_paths` that
+/// shadows the universal one, and the user's own later `fish_add_path` would die with the shell.
+/// Quoted with fish's double-quote escapes so a path with a space or `$` survives.
 pub(crate) fn fish_line(dir: &Path) -> String {
     let d = dir.display().to_string();
     let q = d
         .replace('\\', "\\\\")
         .replace('"', "\\\"")
         .replace('$', "\\$");
-    format!("fish_add_path -g \"{q}\"")
+    format!("fish_add_path -gP \"{q}\"")
 }
 
 /// The line install wrote up to 1.5.0-alpha.25 (universal, unquoted). A file with it is still
@@ -244,28 +246,17 @@ fn fish_run(env: &ShellEnv, script: &str, dir: &Path) -> anyhow::Result<bool> {
     Ok(st.success())
 }
 
-/// Erases the global `fish_user_paths` first: the `-g` line in `conf.d` (loaded by `fish -c`)
-/// makes a global copy that shadows the universal one these two read and change.
-const FISH_UNSHADOW: &str = "set -eg fish_user_paths 2>/dev/null;";
-
-/// Whether fish's universal `fish_user_paths` holds `dir` (put there by the pre-`-g` fish line).
+/// Whether fish's universal `fish_user_paths` holds `dir` (put there by the older fish line).
 pub(crate) fn fish_universal_has(env: &ShellEnv, dir: &Path) -> bool {
-    fish_run(
-        env,
-        &format!("{FISH_UNSHADOW} contains -- $argv[1] $fish_user_paths"),
-        dir,
-    )
-    .unwrap_or(false)
+    fish_run(env, "contains -- $argv[1] $fish_user_paths", dir).unwrap_or(false)
 }
 
 /// Take `dir` out of fish's universal `fish_user_paths`. `Ok(true)` when it was there.
 pub(crate) fn fish_forget_universal(env: &ShellEnv, dir: &Path) -> anyhow::Result<bool> {
     fish_run(
         env,
-        &format!(
-            "{FISH_UNSHADOW} contains -- $argv[1] $fish_user_paths; or exit 1; \
-             set -U fish_user_paths (string match -v -- $argv[1] $fish_user_paths)"
-        ),
+        "contains -- $argv[1] $fish_user_paths; or exit 1; \
+         set -U fish_user_paths (string match -v -- $argv[1] $fish_user_paths)",
         dir,
     )
 }
@@ -280,7 +271,7 @@ mod tests {
         let d = PathBuf::from("/home/a b/$x\"/.atlas/bin");
         assert_eq!(
             fish_line(&d),
-            "fish_add_path -g \"/home/a b/\\$x\\\"/.atlas/bin\""
+            "fish_add_path -gP \"/home/a b/\\$x\\\"/.atlas/bin\""
         );
         // The file an older install wrote is still recognized as ours, a user edit is not.
         let legacy = format!("{MARKER}\nfish_add_path {}\n", dir().display());
@@ -293,7 +284,7 @@ mod tests {
         assert!(
             line_for_shell("fish", &dir())
                 .unwrap()
-                .starts_with("fish_add_path -g")
+                .starts_with("fish_add_path -gP")
         );
         assert!(
             line_for_shell("nu", &dir())

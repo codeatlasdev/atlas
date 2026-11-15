@@ -108,7 +108,7 @@ SemanticsNode _button(WidgetTester t, Pattern name) {
     });
   }
 
-  walk(t.binding.rootPipelineOwner.semanticsOwner!.rootSemanticsNode!);
+  walk(t.binding.renderViews.first.owner!.semanticsOwner!.rootSemanticsNode!);
   expect(
     nodes,
     hasLength(1),

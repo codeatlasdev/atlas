@@ -3,6 +3,7 @@
 // then: pumpAndSettle only returns once no frame is scheduled, so a loop left running makes it
 // time out. Each case also runs with animations ON first, so the check proves it can fail.
 import 'dart:async';
+import 'dart:convert';
 
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
@@ -11,11 +12,13 @@ import 'package:flutter_test/flutter_test.dart';
 import 'package:atlas_mobile/core/connection/connection_notifier.dart';
 import 'package:atlas_mobile/core/protocol/models.dart';
 import 'package:atlas_mobile/core/storage/mac_storage.dart';
+import 'package:atlas_mobile/core/protocol/protocol_version.dart';
 import 'package:atlas_mobile/core/transport/transport.dart';
 import 'package:atlas_mobile/core/ui/atlas_logo.dart';
 import 'package:atlas_mobile/core/ui/atlas_theme.dart';
 import 'package:atlas_mobile/core/ui/typing_dots.dart';
 import 'package:atlas_mobile/features/agents/crew_widgets.dart';
+import 'package:atlas_mobile/features/agents/agent_chat_screen.dart';
 import 'package:atlas_mobile/features/projects/project_detail_screen.dart';
 
 Widget _app(Widget child, {required bool reduced}) => MaterialApp(
@@ -73,6 +76,32 @@ class _Silent implements Transport {
   Stream<String> get incomingLines => _in.stream;
   @override
   Future<void> sendLine(String line) async {}
+  @override
+  Future<void> close() => _in.close();
+}
+
+/// A computer that answers every command with an empty ok (`info` with the app's protocol), so
+/// nothing is left waiting on a deadline when the screen goes away.
+class _Answering implements Transport {
+  final _in = StreamController<String>.broadcast();
+  @override
+  Stream<String> get incomingLines => _in.stream;
+  @override
+  Future<void> sendLine(String line) async {
+    final req = jsonDecode(line) as Map<String, dynamic>;
+    scheduleMicrotask(() {
+      if (!_in.isClosed) {
+        _in.add(
+          jsonEncode({
+            'id': req['id'],
+            'ok': true,
+            'data': req['cmd'] == 'info' ? {'proto': kAppProto} : {},
+          }),
+        );
+      }
+    });
+  }
+
   @override
   Future<void> close() => _in.close();
 }
@@ -145,4 +174,58 @@ void main() {
     await t.pumpWidget(const SizedBox());
     await t.pump(const Duration(seconds: 4));
   });
+
+  testWidgets(
+    'the agent chat typing indicator holds still under reduced motion',
+    (t) async {
+      Future<void> mount(bool reduced) => t.pumpWidget(
+        ProviderScope(
+          overrides: [
+            macStorageProvider.overrideWithValue(_Storage()),
+            transportFactoryProvider.overrideWithValue(
+              (_, _) async => _Answering(),
+            ),
+          ],
+          child: MaterialApp(
+            theme: atlasTheme(),
+            builder: (context, home) => MediaQuery(
+              data: MediaQuery.of(context).copyWith(disableAnimations: reduced),
+              child: home!,
+            ),
+            home: AgentChatScreen(
+              device: const MacDevice(nodeId: 'n1', name: 'My Mac'),
+              paneKey: 'p1',
+              initial: AgentStatus.fromJson({
+                'state': 'working',
+                'agent': 'omp',
+                'updated_at': 1000,
+                'state_started_at': 1000,
+              }),
+              title: 'agent',
+            ),
+          ),
+        ),
+      );
+
+      await mount(false);
+      await t.pump(const Duration(milliseconds: 500));
+      expect(
+        await _settles(t),
+        isFalse,
+        reason: 'the dots bounce when motion is on',
+      );
+      await t.pumpWidget(const SizedBox());
+      await t.pump(const Duration(seconds: 4));
+
+      await mount(true);
+      await t.pump(const Duration(milliseconds: 500));
+      expect(
+        await _settles(t),
+        isTrue,
+        reason: 'the chat indicator must hold still under reduced motion',
+      );
+      await t.pumpWidget(const SizedBox());
+      await t.pump(const Duration(seconds: 4));
+    },
+  );
 }

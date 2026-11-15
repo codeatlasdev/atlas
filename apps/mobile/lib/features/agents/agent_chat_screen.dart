@@ -20,6 +20,7 @@ import 'package:atlas_mobile/features/agents/agent_hub_screen.dart';
 import 'package:atlas_mobile/features/agents/crew_widgets.dart';
 import 'package:atlas_mobile/features/agents/timeline_widgets.dart';
 import 'package:atlas_mobile/features/agents/approval_banner.dart';
+import 'package:atlas_mobile/core/ui/typing_dots.dart';
 
 export 'package:atlas_mobile/features/agents/agent_info.dart'
     show agentStateLabel;
@@ -1068,24 +1069,8 @@ class _CappedStrips extends StatelessWidget {
   }
 }
 
-class _Typing extends StatefulWidget {
+class _Typing extends StatelessWidget {
   const _Typing();
-
-  @override
-  State<_Typing> createState() => _TypingState();
-}
-
-class _TypingState extends State<_Typing> with SingleTickerProviderStateMixin {
-  late final AnimationController _a = AnimationController(
-    vsync: this,
-    duration: const Duration(milliseconds: 1100),
-  )..repeat();
-
-  @override
-  void dispose() {
-    _a.dispose();
-    super.dispose();
-  }
 
   @override
   Widget build(BuildContext context) {
@@ -1097,33 +1082,7 @@ class _TypingState extends State<_Typing> with SingleTickerProviderStateMixin {
         border: Border.all(color: c.borderSubtle),
         borderRadius: BorderRadius.circular(18),
       ),
-      child: AnimatedBuilder(
-        animation: _a,
-        builder: (_, _) => Row(
-          mainAxisSize: MainAxisSize.min,
-          children: [
-            for (var i = 0; i < 3; i++)
-              Transform.translate(
-                offset: Offset(
-                  0,
-                  -3 *
-                      math
-                          .sin(((_a.value - i * .18) % 1) * math.pi)
-                          .clamp(0, 1),
-                ),
-                child: Container(
-                  margin: const EdgeInsets.symmetric(horizontal: 2),
-                  width: 6,
-                  height: 6,
-                  decoration: BoxDecoration(
-                    color: c.muted,
-                    shape: BoxShape.circle,
-                  ),
-                ),
-              ),
-          ],
-        ),
-      ),
+      child: TypingDots(color: c.muted, size: 6, gap: 2, stagger: .18),
     );
   }
 }

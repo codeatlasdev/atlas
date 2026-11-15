@@ -750,7 +750,25 @@ mod tests {
         );
         let path = std::path::Path::new(env!("CARGO_MANIFEST_DIR"))
             .join("../../apps/desktop/src/lib/__fixtures__/managed-progress.json");
-        std::fs::write(path, serde_json::to_string_pretty(&fixture).unwrap() + "\n").unwrap();
+        // Same convention as git_review's fixture: tab-indented (the frontend's prettier style), compared
+        // with the committed file, rewritten only with UPDATE_FIXTURES=1.
+        let mut buf = Vec::new();
+        let mut ser = serde_json::Serializer::with_formatter(
+            &mut buf,
+            serde_json::ser::PrettyFormatter::with_indent(b"\t"),
+        );
+        serde::Serialize::serialize(&fixture, &mut ser).unwrap();
+        let fresh = String::from_utf8(buf).unwrap() + "\n";
+        if std::env::var_os("UPDATE_FIXTURES").is_some() {
+            std::fs::write(&path, &fresh).unwrap();
+        }
+        let committed = std::fs::read_to_string(&path)
+            .expect("fixture missing: run with UPDATE_FIXTURES=1 to create it");
+        let committed: serde_json::Value = serde_json::from_str(&committed).unwrap();
+        assert_eq!(
+            committed, fixture,
+            "stale fixture: re-run with UPDATE_FIXTURES=1"
+        );
     }
 
     #[test]

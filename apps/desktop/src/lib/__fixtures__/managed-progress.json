@@ -1,19 +1,19 @@
 {
-  "apt": {
-    "command": "sudo apt install ./atlas_1.6.0_amd64.deb",
-    "how": "package",
-    "installable": true,
-    "kind": "managed",
-    "manager": "apt"
-  },
-  "homebrew": {
-    "how": "homebrew",
-    "kind": "managed"
-  },
-  "pacman_manual": {
-    "command": "sudo pacman -U codeatlas-atlas-bin-1.6.0-1-x86_64.pkg.tar.zst",
-    "how": "package",
-    "kind": "managed",
-    "manager": "pacman"
-  }
+	"apt": {
+		"command": "sudo apt install ./atlas_1.6.0_amd64.deb",
+		"how": "package",
+		"installable": true,
+		"kind": "managed",
+		"manager": "apt"
+	},
+	"homebrew": {
+		"how": "homebrew",
+		"kind": "managed"
+	},
+	"pacman_manual": {
+		"command": "sudo pacman -U codeatlas-atlas-bin-1.6.0-1-x86_64.pkg.tar.zst",
+		"how": "package",
+		"kind": "managed",
+		"manager": "pacman"
+	}
 }

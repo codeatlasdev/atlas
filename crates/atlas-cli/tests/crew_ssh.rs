@@ -71,6 +71,7 @@ fn every_crew_command_passes_the_port_to_every_ssh_call() {
         &["crew", "pause", "atlas-crew@srv", "--port", "2222"],
         &["crew", "resume", "atlas-crew@srv", "--port", "2222"],
         &["crew", "logs", "atlas-crew@srv", "--port", "2222"],
+        &["crew", "pair", "atlas-crew@srv", "--port", "2222"],
         &[
             "crew",
             "uninstall",
@@ -137,4 +138,62 @@ fn no_port_means_no_dash_p() {
         seen.iter().all(|c| !c.iter().any(|a| a == "-p")),
         "{seen:?}"
     );
+}
+
+// #356: `atlas crew pair` prints the invite the crew server's hostd answered. The fake ssh answers the
+// way `atlas hostd --mobile-pair` does (one JSON object after a banner); the real binary turns it into
+// the link, the code and a QR, and asks the server as the crew user in its data dir.
+#[test]
+fn pair_prints_the_servers_invite_as_a_qr_a_code_and_a_link() {
+    let dir = tempfile::tempdir().unwrap();
+    fake_ssh(dir.path());
+    // The fake answers `--mobile-pair` with a real-shaped invite, after a banner, like the server does.
+    let invite = r#"{"node_id":"NODEID","code":"123456","expires_in_s":120,"addrs":["10.0.0.5:4433"],"relay_url":"https://relay.example/","hostname":"srv"}"#;
+    let ssh = dir.path().join("bin/ssh");
+    std::fs::write(
+        &ssh,
+        format!(
+            "#!/bin/sh\nfor a in \"$@\"; do printf '%s\\037' \"$a\"; done >> '{calls}'\necho >> '{calls}'\n\
+             case \"$*\" in *mobile-pair*) echo 'Welcome to srv'; echo '{invite}';; *atlas-crew*) echo atlas-crew;; esac\nexit 0\n",
+            calls = dir.path().join("calls").display()
+        ),
+    )
+    .unwrap();
+    let out = atlas(dir.path(), &["crew", "pair", "atlas-crew@srv"]);
+    let stdout = String::from_utf8_lossy(&out.stdout);
+    assert!(
+        out.status.success(),
+        "{stdout}{}",
+        String::from_utf8_lossy(&out.stderr)
+    );
+    assert!(stdout.contains("123456"), "the code: {stdout}");
+    assert!(
+        stdout.contains("atlas-mobile://pair?node=NODEID&code=123456"),
+        "the link: {stdout}"
+    );
+    assert!(stdout.contains("addr=10.0.0.5%3A4433"), "{stdout}");
+    assert!(
+        stdout.contains('\u{2580}') || stdout.contains('\u{2584}') || stdout.contains('\u{2588}'),
+        "a QR: {stdout}"
+    );
+    let script = calls(dir.path())
+        .into_iter()
+        .find(|c| c.iter().any(|a| a.contains("mobile-pair")))
+        .expect("the ssh call");
+    let cmd = script.last().unwrap();
+    assert!(
+        cmd.contains("sudo -u") && cmd.contains("/var/lib/$u/.atlas"),
+        "{cmd}"
+    );
+}
+
+// A server that answers nothing useful is an error that names the server, never an empty QR.
+#[test]
+fn pair_against_a_server_with_no_invite_fails_and_says_where() {
+    let dir = tempfile::tempdir().unwrap();
+    fake_ssh(dir.path());
+    let out = atlas(dir.path(), &["crew", "pair", "atlas-crew@srv"]);
+    assert!(!out.status.success());
+    let err = String::from_utf8_lossy(&out.stderr);
+    assert!(err.contains("pairing invite"), "{err}");
 }

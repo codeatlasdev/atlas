@@ -7,6 +7,7 @@ library;
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 
+import 'package:atlas_mobile/core/auth/device_auth.dart';
 import 'package:atlas_mobile/core/connection/connection_notifier.dart';
 import 'package:atlas_mobile/core/protocol/crew_models.dart';
 import 'package:atlas_mobile/core/protocol/crew_ops_models.dart';
@@ -60,6 +61,12 @@ class _TaskActionCardState extends ConsumerState<TaskActionCard> {
       _error = null;
     });
     try {
+      // A secret is typed on the phone and stored on the crew server for good: prove it is the owner first,
+      // and send nothing when they do not (or the device cannot ask).
+      final action = widget.task.action;
+      if (action?.kind == 'provide_secret' && !await _confirmSecret(action!)) {
+        throw 'Face ID is needed to send a secret';
+      }
       // Images only ride on a retry (hostd refuses them on an override); big ones go up in pieces first.
       var n = 0;
       final stamp = DateTime.now().microsecondsSinceEpoch;
@@ -87,6 +94,18 @@ class _TaskActionCardState extends ConsumerState<TaskActionCard> {
       if (mounted) setState(() => _error = e.toString());
     } finally {
       if (mounted) setState(() => _submitting = false);
+    }
+  }
+
+  /// Face ID (or the device passcode) before a secret is sent. A device that cannot ask says why, and
+  /// nothing is sent.
+  Future<bool> _confirmSecret(TaskAction action) async {
+    try {
+      return await ref.read(deviceAuthProvider)(
+        'Send ${action.name ?? 'this secret'} to your crew server',
+      );
+    } on Object catch (e) {
+      throw 'Face ID is unavailable ($e): the secret was not sent';
     }
   }
 
@@ -328,6 +347,10 @@ class _TaskActionCardState extends ConsumerState<TaskActionCard> {
               }
             : null,
       ),
+      if (_error != null) ...[
+        const SizedBox(height: 6),
+        Text(_error!, style: TextStyle(fontSize: 12, color: c.error)),
+      ],
       const SizedBox(height: 8),
       _actions('Submit', busy ? null : _submitText),
     ],

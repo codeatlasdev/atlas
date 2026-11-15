@@ -10,6 +10,7 @@
 //! - `logs`      stream journalctl output
 //! - `pause`     stop every crewmate's work and hold the queues; `resume` starts them again
 //! - `login`     open an interactive agent sign-in session as the crew user
+//! - `pair`      pair a phone directly with a crew server (QR + code, no desktop or Mac needed)
 //!
 //! `layout` has the names on the server and the migration of one installed as "Atlas Bot".
 
@@ -20,6 +21,7 @@ pub mod install;
 #[cfg(all(test, unix))]
 mod install_tests;
 mod layout;
+mod pair;
 mod privileged;
 #[cfg(all(test, unix))]
 mod server_sim;
@@ -64,6 +66,8 @@ pub enum CrewCommands {
     Resume(PauseArgs),
     /// Open an interactive agent sign-in session as the crew user on a server
     Login(LoginArgs),
+    /// Pair a phone with a crew server: prints a QR code and a code; the phone then reaches the server directly
+    Pair(pair::PairArgs),
     /// Install or check the browsers behind the crewmates' `capture` tool (Playwright chromium + webkit)
     Browsers(browsers::BrowsersArgs),
 }
@@ -81,6 +85,7 @@ impl AtlasCommand for CrewArgs {
             CrewCommands::Pause(a) => a.run(true).await,
             CrewCommands::Resume(a) => a.run(false).await,
             CrewCommands::Login(a) => a.run().await,
+            CrewCommands::Pair(a) => a.run().await,
             CrewCommands::Browsers(a) => a.run().await,
         }
     }

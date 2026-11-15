@@ -153,6 +153,7 @@ pub fn route(cmd: &HostCmd) -> Route {
         | C::CrewTelegramStatus {}
         | C::PushRegister { .. }
         | C::PushUnregister { .. }
+        | C::PushForget { .. }
         | C::MobileInvite { .. }
         | C::MobileInvites {}
         | C::MobileInviteDismiss { .. }

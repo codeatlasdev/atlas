@@ -24,7 +24,7 @@ fn b64(bytes: &[u8]) -> String {
     B64.encode(bytes)
 }
 
-async fn send(client: &HostClient, id: &str, prompt: &str, ui: bool) -> String {
+pub(super) async fn send(client: &HostClient, id: &str, prompt: &str, ui: bool) -> String {
     client
         .call(
             "crewmate_task",
@@ -37,7 +37,7 @@ async fn send(client: &HostClient, id: &str, prompt: &str, ui: bool) -> String {
         .to_string()
 }
 
-async fn task_of(client: &HostClient, id: &str, task: &str) -> Value {
+pub(super) async fn task_of(client: &HostClient, id: &str, task: &str) -> Value {
     client
         .call("crewmate_tasks", json!({"id": id, "limit": 20}))
         .await
@@ -51,7 +51,7 @@ async fn task_of(client: &HostClient, id: &str, task: &str) -> Value {
 }
 
 /// `POST /crew/<id>/<route>` to the hook server of the hostd in `dir`, as the agent's MCP server does.
-async fn post_hook(dir: &Path, id: &str, route: &str, body: Value) -> (String, Value) {
+pub(super) async fn post_hook(dir: &Path, id: &str, route: &str, body: Value) -> (String, Value) {
     use tokio::io::{AsyncReadExt, AsyncWriteExt};
     let env = std::fs::read_to_string(crate::paths::hook_endpoint(dir)).unwrap();
     let get = |k: &str| {

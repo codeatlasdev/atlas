@@ -1,0 +1,31 @@
+{
+  "tasks": [
+    {
+      "ask": {
+        "allow_text": true,
+        "id": "ask-fixture-1",
+        "options": [
+          {
+            "key": "stg",
+            "subtitle": "safe",
+            "title": "Staging"
+          },
+          {
+            "key": "prod",
+            "title": "Production"
+          }
+        ],
+        "question": "Deploy to which environment?"
+      },
+      "id": "task-asking",
+      "pane": "crew:crewmate-fixture:task-asking",
+      "prompt": "pick a deploy target",
+      "source": "test",
+      "started_at": 1700000005,
+      "state": "running",
+      "steps": [],
+      "summarized": false,
+      "ts": 1700000000
+    }
+  ]
+}

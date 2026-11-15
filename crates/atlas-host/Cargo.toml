@@ -38,6 +38,7 @@ croner = "2"
 chrono = { workspace = true }
 chrono-tz = { workspace = true }
 sha1_smol = "1"
+url = "2"
 
 [target.'cfg(unix)'.dependencies]
 libc = { workspace = true }

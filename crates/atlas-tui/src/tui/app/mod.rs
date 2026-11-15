@@ -130,7 +130,7 @@ pub struct App {
     /// The user accepted "update when you quit" (brand/footer show `⬆ update on exit`).
     pub update_on_exit: bool,
     /// Requests from `atlas mcp` over `.logs/atlas.sock` (None = control disabled).
-    pub control_rx: Option<mpsc::UnboundedReceiver<crate::control::ControlRequest>>,
+    pub control_rx: Option<mpsc::Receiver<crate::control::ControlRequest>>,
     /// True while a control-socket request is being applied: the server audited it already,
     /// so the keyboard-action audit in the reducer stays quiet.
     pub from_socket: bool,

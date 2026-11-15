@@ -26,6 +26,61 @@ pub const STATUS_ARGS: [&str; 6] = [
     "--untracked-files=all",
 ];
 
+// The parsers below expect `a/` and `b/`. The user's own git config changes them (`diff.mnemonicPrefix` prints
+// `c/ w/ i/`, `diff.noprefix` none), which hid an untracked `.env` from the secret filter (#414): every `git diff`
+// Atlas parses by path comes from the args below and nowhere else. They also carry `--no-ext-diff`: a `diff.external`
+// driver (difftastic and friends) prints no `diff --git` header, so an untracked file's content would be filed under
+// the previous file's section and a `.env` would slip past the secret filter.
+
+/// Args of the diff behind the Changes view (add `--cached`, or a base, after them).
+pub const REVIEW_DIFF: [&str; 7] = [
+    "diff",
+    "--no-color",
+    "-U3",
+    "--no-ext-diff",
+    "-M",
+    "--src-prefix=a/",
+    "--dst-prefix=b/",
+];
+
+/// Args of the staged diff the commit message is written from.
+pub const STAGED_CHANGES: [&str; 7] = [
+    "diff",
+    "--cached",
+    "--no-color",
+    "-M",
+    "--no-ext-diff",
+    "--src-prefix=a/",
+    "--dst-prefix=b/",
+];
+
+/// Args of the "nothing is staged" fallback: tracked changes (new files come through [`new_file_args`]).
+pub const ALL_CHANGES: [&str; 7] = [
+    "diff",
+    "HEAD",
+    "--no-color",
+    "-M",
+    "--no-ext-diff",
+    "--src-prefix=a/",
+    "--dst-prefix=b/",
+];
+
+/// Args of `git diff --no-index /dev/null <path>`, which shows an untracked file as an addition without touching the
+/// index. It exits 1 when the files differ: the normal case.
+pub fn new_file_args(path: &str) -> [&str; 9] {
+    [
+        "diff",
+        "--no-index",
+        "--no-color",
+        "--no-ext-diff",
+        "--src-prefix=a/",
+        "--dst-prefix=b/",
+        "--",
+        "/dev/null",
+        path,
+    ]
+}
+
 #[derive(Serialize, Debug, PartialEq)]
 pub struct Line {
     pub kind: &'static str,
@@ -232,6 +287,18 @@ fn header_path(rest: &str) -> String {
         .to_string()
 }
 
+/// The old path of a renamed or copied file section (its lines may be the old file's content as context).
+fn renamed_from(section: &str) -> Option<&str> {
+    section
+        .lines()
+        .take_while(|l| !l.starts_with("@@ "))
+        .find_map(|l| {
+            l.strip_prefix("rename from ")
+                .or_else(|| l.strip_prefix("copy from "))
+        })
+        .map(|p| p.trim_matches('"'))
+}
+
 /// True for paths whose content must never leave the machine.
 pub fn is_secret(path: &str) -> bool {
     let name = path.rsplit('/').next().unwrap_or(path).to_ascii_lowercase();
@@ -333,7 +400,7 @@ pub fn digest(diff: &str, scope: &'static str) -> Digest {
     };
     let mut shown: Vec<(String, String)> = Vec::new();
     for (path, section) in split_files(diff) {
-        if is_secret(&path) {
+        if is_secret(&path) || renamed_from(&section).is_some_and(is_secret) {
             d.withheld.push(path);
         } else if is_noise(&path) || is_binary(&section) {
             d.summarized.push(path);
@@ -1068,7 +1135,7 @@ mod commit_msg_tests {
             std::fs::write(p, body).unwrap();
         }
         git(d.path(), &["add", "-A"]);
-        let diff = git(d.path(), &["diff", "--cached", "--no-color"]);
+        let diff = git(d.path(), &STAGED_CHANGES);
         (d, diff)
     }
 
@@ -1097,7 +1164,7 @@ mod commit_msg_tests {
         git(d.path(), &["add", "."]);
         git(d.path(), &["commit", "-qm", "init"]);
         git(d.path(), &["mv", "old.txt", "new name.txt"]);
-        let diff = git(d.path(), &["diff", "--cached", "--no-color", "-M"]);
+        let diff = git(d.path(), &STAGED_CHANGES);
         let files = split_files(&diff);
         assert_eq!(files.len(), 1, "{diff}");
         assert_eq!(files[0].0, "new name.txt");
@@ -1661,25 +1728,7 @@ mod commit_msg_tests {
         git(d.path(), &["commit", "-qm", "init"]);
         std::fs::create_dir_all(d.path().join("src")).unwrap();
         std::fs::write(d.path().join("src/new file.rs"), "fn brand_new() {}\n").unwrap();
-        let o = Command::new("git")
-            .arg("-C")
-            .arg(d.path())
-            .args([
-                "diff",
-                "--no-index",
-                "--no-color",
-                "--",
-                "/dev/null",
-                "src/new file.rs",
-            ])
-            .output()
-            .unwrap();
-        assert_eq!(
-            o.status.code(),
-            Some(1),
-            "--no-index exits 1 when the files differ"
-        );
-        let diff = String::from_utf8_lossy(&o.stdout).into_owned();
+        let diff = new_file_diff(d.path(), "src/new file.rs");
         let files = split_files(&diff);
         assert_eq!(files.len(), 1, "{diff}");
         assert_eq!(files[0].0, "src/new file.rs");
@@ -1694,21 +1743,149 @@ mod commit_msg_tests {
         let d = tempfile::tempdir().unwrap();
         git(d.path(), &["init", "-q", "."]);
         std::fs::write(d.path().join(".env"), "TOKEN=abc123\n").unwrap();
-        let o = Command::new("git")
-            .arg("-C")
-            .arg(d.path())
-            .args([
-                "diff",
-                "--no-index",
-                "--no-color",
-                "--",
-                "/dev/null",
-                ".env",
-            ])
-            .output()
-            .unwrap();
-        let dg = digest(&String::from_utf8_lossy(&o.stdout), "all");
+        let dg = digest(&new_file_diff(d.path(), ".env"), "all");
         assert_eq!(dg.withheld, [".env"]);
         assert!(!dg.text.contains("abc123"));
+    }
+
+    /// The real product diff of an untracked file (`--no-index` exits 1 when the files differ: the normal case).
+    fn new_file_diff(dir: &Path, path: &str) -> String {
+        let o = Command::new("git")
+            .arg("-C")
+            .arg(dir)
+            .args(new_file_args(path))
+            .output()
+            .unwrap();
+        assert_eq!(
+            o.status.code(),
+            Some(1),
+            "{}",
+            String::from_utf8_lossy(&o.stderr)
+        );
+        String::from_utf8_lossy(&o.stdout).into_owned()
+    }
+
+    /// The user's own git config that renames the diff prefixes: `c/ w/ i/` (`1/ 2/` for `--no-index`) and none.
+    const PREFIX_CONFIGS: [(&str, &str); 2] =
+        [("diff.mnemonicPrefix", "true"), ("diff.noprefix", "true")];
+
+    /// A repo with one commit and `key=value` in ITS OWN config, whatever the machine's config says.
+    fn repo_with(key: &str, value: &str) -> tempfile::TempDir {
+        let d = tempfile::tempdir().unwrap();
+        git(d.path(), &["init", "-q", "."]);
+        git(d.path(), &["config", key, value]);
+        std::fs::create_dir_all(d.path().join("src")).unwrap();
+        std::fs::write(d.path().join("src/a.rs"), "fn a() {}\n").unwrap();
+        git(d.path(), &["add", "."]);
+        git(d.path(), &["commit", "-qm", "init"]);
+        d
+    }
+
+    // Regression (#414): with `diff.mnemonicPrefix` or `diff.noprefix` in the user's git config the digest misread
+    // every path, so a `.env` was not withheld and its content went to the commit-message agent. These run the real
+    // args the app uses (the constants above), not a hand-written copy.
+    #[test]
+    fn the_secret_filter_holds_whatever_prefix_the_users_git_config_asks_for() {
+        for (key, value) in PREFIX_CONFIGS {
+            // 1. Staged.
+            let d = repo_with(key, value);
+            std::fs::write(d.path().join(".env"), "TOKEN=staged-secret\n").unwrap();
+            std::fs::write(d.path().join("src/ok.rs"), "fn ok() {}\n").unwrap();
+            git(d.path(), &["add", "-A"]);
+            let diff = git(d.path(), &STAGED_CHANGES);
+            let paths: Vec<_> = split_files(&diff).into_iter().map(|(p, _)| p).collect();
+            assert_eq!(paths, [".env", "src/ok.rs"], "{key}: {diff}");
+            let dg = digest(&diff, "staged");
+            assert_eq!(dg.withheld, [".env"], "{key}");
+            assert!(dg.text.contains("fn ok()"), "{key}: {}", dg.text);
+            assert!(!dg.text.contains("staged-secret"), "{key}: {}", dg.text);
+
+            // 2. Nothing staged: tracked changes, then an untracked file through `--no-index`.
+            let d = repo_with(key, value);
+            std::fs::write(d.path().join("src/a.rs"), "fn a() { changed() }\n").unwrap();
+            std::fs::write(d.path().join(".env"), "TOKEN=untracked-secret\n").unwrap();
+            let mut all = git(d.path(), &ALL_CHANGES);
+            all.push_str(&new_file_diff(d.path(), ".env"));
+            let paths: Vec<_> = split_files(&all).into_iter().map(|(p, _)| p).collect();
+            assert_eq!(paths, ["src/a.rs", ".env"], "{key}: {all}");
+            let dg = digest(&all, "all");
+            assert_eq!(dg.withheld, [".env"], "{key}");
+            assert!(dg.text.contains("changed()"), "{key}: {}", dg.text);
+            assert!(!dg.text.contains("untracked-secret"), "{key}: {}", dg.text);
+        }
+    }
+
+    // Regression (#414): the Changes view parses the same output by path; the prefix must not rename its files.
+    #[test]
+    fn the_changes_view_names_files_whatever_prefix_the_users_git_config_asks_for() {
+        for (key, value) in PREFIX_CONFIGS {
+            let d = repo_with(key, value);
+            std::fs::write(d.path().join("src/a.rs"), "fn a() { changed() }\n").unwrap();
+            let unstaged = parse(&git(d.path(), &REVIEW_DIFF), false);
+            assert_eq!(unstaged.len(), 1, "{key}");
+            assert_eq!(unstaged[0].path, "src/a.rs", "{key}");
+            assert_eq!(unstaged[0].status, "modified", "{key}");
+
+            git(d.path(), &["mv", "src/a.rs", "src/b c.rs"]);
+            let staged_args = [&REVIEW_DIFF[..], &["--cached"]].concat();
+            let staged = parse(&git(d.path(), &staged_args), true);
+            assert_eq!(staged.len(), 1, "{key}");
+            assert_eq!(staged[0].path, "src/b c.rs", "{key}");
+            assert_eq!(staged[0].status, "renamed", "{key}");
+            assert_eq!(staged[0].old_path.as_deref(), Some("src/a.rs"), "{key}");
+        }
+    }
+
+    // Regression (#414): with `diff.external` (difftastic and friends) git prints an untracked file's `--no-index`
+    // diff with NO `diff --git` header, so its content was filed under the PREVIOUS file's section and a `.env`
+    // reached the commit-message agent. The driver here prints the new file's raw content, like one that ignores
+    // the header.
+    #[cfg(unix)]
+    #[test]
+    fn an_external_diff_driver_in_the_users_git_config_cannot_hide_a_secret_from_the_filter() {
+        let d = repo_with("diff.external", "cat \"$5\" #");
+        std::fs::write(d.path().join("src/a.rs"), "fn a() { changed() }\n").unwrap();
+        std::fs::write(d.path().join(".env"), "TOKEN=external-secret\n").unwrap();
+        let mut all = git(d.path(), &ALL_CHANGES);
+        all.push_str(&new_file_diff(d.path(), ".env"));
+        let paths: Vec<_> = split_files(&all).into_iter().map(|(p, _)| p).collect();
+        assert_eq!(paths, ["src/a.rs", ".env"], "{all}");
+        let dg = digest(&all, "all");
+        assert_eq!(dg.withheld, [".env"], "{all}");
+        assert!(dg.text.contains("changed()"), "{}", dg.text);
+        assert!(!dg.text.contains("external-secret"), "{}", dg.text);
+
+        // The staged diff is read by the same rules.
+        git(d.path(), &["add", "-A"]);
+        let staged = git(d.path(), &STAGED_CHANGES);
+        let dg = digest(&staged, "staged");
+        assert_eq!(dg.withheld, [".env"], "{staged}");
+        assert!(!dg.text.contains("external-secret"), "{}", dg.text);
+    }
+
+    // Regression (#414): moving a secret out of `.env` (`git mv .env notes.txt`) names the new path in the header
+    // and shows the old lines as context; the section is the secret's content, so the old path counts too.
+    #[test]
+    fn a_file_renamed_out_of_a_secret_name_is_withheld() {
+        let d = repo_with("diff.noprefix", "false");
+        std::fs::write(
+            d.path().join(".env"),
+            "TOKEN=renamed-secret\nHOST=localhost\nPORT=8080\n",
+        )
+        .unwrap();
+        git(d.path(), &["add", "."]);
+        git(d.path(), &["commit", "-qm", "env"]);
+        git(d.path(), &["mv", ".env", "notes.txt"]);
+        std::fs::write(
+            d.path().join("notes.txt"),
+            "TOKEN=renamed-secret\nHOST=localhost\nPORT=9090\n",
+        )
+        .unwrap();
+        git(d.path(), &["add", "-A"]);
+        let diff = git(d.path(), &STAGED_CHANGES);
+        assert!(diff.contains("rename from .env"), "{diff}");
+        let dg = digest(&diff, "staged");
+        assert_eq!(dg.withheld, ["notes.txt"], "{diff}");
+        assert!(!dg.text.contains("renamed-secret"), "{}", dg.text);
     }
 }

@@ -25,7 +25,6 @@
 //! not recorded under a session (or tagged on Linux) or a file outside a registered directory.
 
 use std::collections::{BTreeMap, HashMap, HashSet};
-use std::io::Write;
 use std::path::{Path, PathBuf};
 use std::time::{Duration, SystemTime, UNIX_EPOCH};
 
@@ -287,14 +286,11 @@ impl Registry {
     }
 
     fn save(&self, store: &Store) -> std::io::Result<()> {
-        let tmp = self
-            .dir
-            .join(format!("registry.json.{}", std::process::id()));
-        let mut f = std::fs::File::create(&tmp)?;
-        f.write_all(&serde_json::to_vec_pretty(store).unwrap_or_default())?;
-        f.sync_all()?;
-        drop(f);
-        std::fs::rename(&tmp, self.file())
+        crate::fs::write_atomic(
+            &self.file(),
+            &serde_json::to_vec_pretty(store).unwrap_or_default(),
+            crate::fs::Mode::Default,
+        )
     }
 
     /// Record a started root. A repeat of the same `(pid, start)` replaces the old record.

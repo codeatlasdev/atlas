@@ -85,22 +85,6 @@ fn managed_line(how: &str) -> String {
     format!("@@atlas managed {how}")
 }
 
-/// Write `bytes` to `path` through a sibling `.tmp` and a rename: a concurrent reader (or a
-/// crash mid-write) sees the old file or the whole new one, never a truncated one.
-pub fn write_atomic(path: &Path, bytes: &[u8]) -> std::io::Result<()> {
-    if let Some(dir) = path.parent() {
-        std::fs::create_dir_all(dir)?;
-    }
-    let mut tmp = path.as_os_str().to_owned();
-    tmp.push(format!(".{}.tmp", std::process::id()));
-    let tmp = PathBuf::from(tmp);
-    let write = std::fs::write(&tmp, bytes).and_then(|()| std::fs::rename(&tmp, path));
-    if write.is_err() {
-        let _ = std::fs::remove_file(&tmp);
-    }
-    write
-}
-
 /// The path the install method and the dev-build rule are judged on: `current_exe()`, except
 /// that debug builds honour `ATLAS_UPDATE_EXE` so the sandbox tests can stand a stub install
 /// in a temp dir. Release builds ignore it. It never redirects what an update overwrites:
@@ -373,39 +357,6 @@ mod tests {
 #[cfg(test)]
 mod helper_tests {
     use super::*;
-
-    #[test]
-    fn write_atomic_replaces_whole_file_and_leaves_no_temp() {
-        let dir = tempfile::tempdir().unwrap();
-        let p = dir.path().join("cache");
-        write_atomic(&p, b"old").unwrap();
-        write_atomic(&p, b"newer content").unwrap();
-        assert_eq!(std::fs::read(&p).unwrap(), b"newer content");
-        let names: Vec<_> = std::fs::read_dir(dir.path())
-            .unwrap()
-            .map(|e| e.unwrap().file_name().to_string_lossy().into_owned())
-            .collect();
-        assert_eq!(names, ["cache"], "no .tmp left behind: {names:?}");
-    }
-
-    #[test]
-    fn write_atomic_creates_missing_parents() {
-        let dir = tempfile::tempdir().unwrap();
-        let p = dir.path().join("a/b/cache");
-        write_atomic(&p, b"x").unwrap();
-        assert_eq!(std::fs::read(&p).unwrap(), b"x");
-    }
-
-    /// A failed atomic write must not clobber the previous file (the reader sees old or new,
-    /// never a truncated one).
-    #[test]
-    fn write_atomic_keeps_the_old_file_when_the_target_is_a_directory() {
-        let dir = tempfile::tempdir().unwrap();
-        let p = dir.path().join("cache");
-        std::fs::create_dir(&p).unwrap();
-        assert!(write_atomic(&p, b"x").is_err());
-        assert!(p.is_dir());
-    }
 
     #[test]
     fn dev_binary_is_a_debug_build_or_a_symlinked_exe() {

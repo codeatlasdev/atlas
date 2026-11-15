@@ -38,7 +38,10 @@ class _Computer implements Transport {
   Future<void> sendLine(String line) async {
     final m = jsonDecode(line) as Map<String, dynamic>;
     final id = m['id'];
-    Object? data = <String, Object?>{};
+    // `info` like a current hostd: the app checks `proto` on connect (#302).
+    Object? data = m['cmd'] == 'info'
+        ? <String, Object?>{'proto': kAppProto}
+        : <String, Object?>{};
     switch (m['cmd']) {
       // The connection check on connect: a current hostd names its protocol.
       case 'info':

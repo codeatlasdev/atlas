@@ -192,7 +192,7 @@ Agent instances keep a WebKit store each (WKWebView ignores `HOME`); `--stop` de
 |---|---|---|---|
 | Isolated instance (own HOME, hostd, bridge; `--stop`, `--gc`) | yes (private virtual display) | yes: own headless sway + own D-Bus session under `/tmp/atlas-agent-<name>/run`; never your Wayland/X11/D-Bus session | no |
 | `debug info\|state\|eval\|logs\|wait\|click\|type\|a11y\|perf\|resize` | yes | yes | no |
-| `debug shot` page, `--selector`, `--rect`, `--window` | yes (WKWebView snapshot, ScreenCaptureKit) | yes: `grim` reads the instance's own compositor (needs `sway`, `grim`); `--full` too. Rects are the page's CSS px, so they can be a few px short where WebKitGTK reports a smaller viewport than the window | no |
+| `debug shot` page, `--selector`, `--rect`, `--window` | yes (WKWebView snapshot, ScreenCaptureKit) | yes: `grim` reads the instance's own compositor (needs `sway`, `grim`); `--full` too; rects are the page's CSS px | no |
 | `debug record`, `desktop:mirror`, flicker sweep, selection bench, `debug hide`, gesture record/replay | yes | no (#282) | no |
 | Atlas Lab (`desktop:lab`) | yes | no | no |
 

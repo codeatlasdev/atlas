@@ -4,11 +4,10 @@ use std::collections::BTreeMap;
 use std::path::Path;
 
 use serde_json::Value;
-use tokio::time::timeout;
 
 use crate::crew::store::{CrewmateSession, EngineConfig, UsageRecord};
 
-use super::{TASK_TIMEOUT, TurnResult};
+use super::{TurnCancel, TurnProc, TurnResult, program};
 
 #[allow(clippy::too_many_arguments)]
 pub(super) async fn run(
@@ -23,12 +22,13 @@ pub(super) async fn run(
     extra_env: &BTreeMap<String, String>,
     work_dir: &str,
     yolo: bool,
+    cancel: &TurnCancel,
 ) -> Result<TurnResult, String> {
     write_mcp_config(crewmate_dir, crewmate_id, hook_port, hook_token, pane_key)?;
 
     let mcp_config_path = crewmate_dir.join("mcp-config.json");
 
-    let mut cmd = tokio::process::Command::new("claude");
+    let mut cmd = tokio::process::Command::new(program("claude"));
     cmd.arg("-p")
         .arg("--output-format")
         .arg("json")
@@ -61,10 +61,10 @@ pub(super) async fn run(
     cmd.stdout(std::process::Stdio::piped());
     cmd.stderr(std::process::Stdio::piped());
 
-    let out = timeout(TASK_TIMEOUT, cmd.output())
-        .await
-        .map_err(|_| "claude: timed out after 2 h".to_string())?
-        .map_err(|e| format!("claude: spawn failed: {e}"))?;
+    let out = TurnProc::spawn(&mut cmd)
+        .map_err(|e| format!("claude: spawn failed: {e}"))?
+        .output(cancel, "claude")
+        .await?;
 
     let stdout = String::from_utf8_lossy(&out.stdout);
 

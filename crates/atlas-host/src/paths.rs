@@ -128,3 +128,49 @@ pub fn new_id() -> String {
         &h[20..32]
     )
 }
+
+/// What reading a state file found.
+pub enum Loaded<T> {
+    /// The file does not exist (first run): not an incident.
+    Missing,
+    Ok(T),
+    /// The file exists but is not valid for `T`; it was renamed to `.0` and the original path is free.
+    Corrupt(PathBuf),
+}
+
+/// Move `p` to `<name>.corrupt-<unix_ms>` beside it and return the new path. The bytes stay recoverable by
+/// hand; the original path is free for a clean file.
+pub fn set_aside_corrupt(p: &Path) -> std::io::Result<PathBuf> {
+    let ms = std::time::SystemTime::now()
+        .duration_since(std::time::UNIX_EPOCH)
+        .unwrap_or_default()
+        .as_millis();
+    let mut aside = p.as_os_str().to_os_string();
+    aside.push(format!(".corrupt-{ms}"));
+    let aside = PathBuf::from(aside);
+    std::fs::rename(p, &aside)?;
+    Ok(aside)
+}
+
+/// Read JSON state at `p`. A missing file is [`Loaded::Missing`]; one that cannot be parsed is moved aside
+/// ([`set_aside_corrupt`]), logged, and reported as [`Loaded::Corrupt`], never read as defaults. An I/O
+/// error other than NotFound (permissions, a directory in the way) is an error and the file is left alone.
+pub fn read_json_or_aside<T: serde::de::DeserializeOwned>(p: &Path) -> std::io::Result<Loaded<T>> {
+    let bytes = match std::fs::read(p) {
+        Ok(b) => b,
+        Err(e) if e.kind() == std::io::ErrorKind::NotFound => return Ok(Loaded::Missing),
+        Err(e) => return Err(e),
+    };
+    match serde_json::from_slice(&bytes) {
+        Ok(v) => Ok(Loaded::Ok(v)),
+        Err(e) => {
+            let aside = set_aside_corrupt(p)?;
+            eprintln!(
+                "atlas crew: {} is unreadable ({e}); kept as {}",
+                p.display(),
+                aside.display()
+            );
+            Ok(Loaded::Corrupt(aside))
+        }
+    }
+}

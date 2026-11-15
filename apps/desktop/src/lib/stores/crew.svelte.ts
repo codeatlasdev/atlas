@@ -19,6 +19,7 @@ import { pairUrl, type PairStart } from "#lib/settings/mobile.ts";
 import type { AgentIntegration } from "#lib/stores/agentIntegration.ts";
 import type {
 	Crewmate,
+	AdminAddress,
 	CrewServer,
 	CrewmateProject,
 	CrewmateSelection,
@@ -44,6 +45,8 @@ interface ServerEntry {
 	/** `""` for local, `"ssh:atlas-crew@server"` for remote. */
 	key: string;
 	name: string;
+	/** The admin address the server was installed with (`crew-servers.json`), when known. */
+	admin?: AdminAddress;
 	crewmates: Crewmate[];
 	/** The crew server is paused (`crewmate_list.paused`, `crew_paused`): nothing runs, queues are held. */
 	paused?: boolean;
@@ -90,7 +93,13 @@ class CrewStore {
 		const remote = await invoke<CrewServer[]>("crew_servers_list").catch(() => [] as CrewServer[]);
 		this.servers = [
 			this.servers[0],
-			...remote.map((h) => ({ key: `ssh:${h.host}`, name: h.name, crewmates: [] as Crewmate[], ok: true })),
+			...remote.map((h) => ({
+				key: `ssh:${h.host}`,
+				name: h.name,
+				admin: h.admin,
+				crewmates: [] as Crewmate[],
+				ok: true,
+			})),
 		];
 
 		this.#lastSeen = loadSeen(localStorage);
@@ -117,11 +126,15 @@ class CrewStore {
 
 	// ─── host management ──────────────────────────────────────────────────────
 
-	async addServer(host: string, name: string): Promise<void> {
-		await invoke("crew_servers_add", { host, name });
+	/** `admin` is the address the install ran against; it is kept in the registry for Settings. */
+	async addServer(host: string, name: string, admin?: AdminAddress): Promise<void> {
+		await invoke("crew_servers_add", { host, name, admin: admin ?? null });
 		const key = `ssh:${host}`;
-		if (!this.servers.find((h) => h.key === key)) {
-			this.servers = [...this.servers, { key, name, crewmates: [], ok: true }];
+		const known = this.servers.find((h) => h.key === key);
+		if (known) {
+			if (admin) known.admin = admin;
+		} else {
+			this.servers = [...this.servers, { key, name, admin, crewmates: [], ok: true }];
 		}
 		await this.refreshHost(key);
 		// Mac→phone invite: push a computer_invite event to paired phones so they can
@@ -133,6 +146,13 @@ class CrewStore {
 		} catch {
 			// User can pair manually via Settings → Atlas Crew.
 		}
+	}
+
+	/** Keep (or with `null` forget) the admin address of a crew server, in the registry file. */
+	async setAdmin(key: string, admin: AdminAddress | null): Promise<void> {
+		await invoke("crew_servers_set_admin", { host: key.replace(/^ssh:/, ""), admin });
+		const entry = this.servers.find((h) => h.key === key);
+		if (entry) entry.admin = admin ?? undefined;
 	}
 
 	async removeServer(key: string): Promise<void> {

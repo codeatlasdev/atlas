@@ -105,6 +105,37 @@ async fn a_running_terminal_task_runs_again_after_a_restart() {
     client.call("shutdown", json!({})).await.ok();
 }
 
+// Incident (CI of #339, 2026-11-14): a resumed task whose agent finished at once ended `failed: agent exited
+// (code 0)`. The new daemon resumed it before its hook server had bound and rewritten the endpoint file, so
+// the agent posted `done` to the previous daemon's dead port and token. Whatever the hook server's start
+// costs, an agent must never be started before the endpoint it reports to is this daemon's.
+#[tokio::test(flavor = "multi_thread")]
+async fn a_resumed_task_reports_to_the_new_daemon_even_when_its_hook_server_is_slow_to_start() {
+    let _bin_lock = lock_agent_bin().await;
+    let tmp = tempfile::tempdir().unwrap();
+    let dir = tmp.path().join("hostd");
+    let hang = fake_agent(tmp.path(), "claude", "sleep 60\nexit 0");
+    use_agent_bin(&hang);
+    let client = daemon(&dir).await;
+    let id = create_crewmate(&client, "Early bird").await;
+    let task = send(&client, &id, "quick one").await;
+    wait_task_state(&client, &id, &task, "running", Duration::from_secs(15)).await;
+    stop(client).await;
+    strand(&dir, &id, &task, running);
+
+    let quick = fake_agent(tmp.path(), "claude", &Hooks::new().done("on time").script());
+    use_agent_bin(&quick);
+    *crate::agents::hook_server::TEST_DELAY_START.lock() =
+        Some((dir.clone(), Duration::from_secs(1)));
+    let client = daemon(&dir).await;
+    let ended = wait_task_state(&client, &id, &task, "done", Duration::from_secs(20)).await;
+    *crate::agents::hook_server::TEST_DELAY_START.lock() = None;
+
+    assert_eq!(ended["result"], "on time", "{ended}");
+    crate::crew::runner::set_test_agent_bin(None);
+    client.call("shutdown", json!({})).await.ok();
+}
+
 // The interrupted task goes back to the HEAD of its crewmate's queue: the task the user sent after it
 // must not overtake it.
 #[tokio::test(flavor = "multi_thread")]

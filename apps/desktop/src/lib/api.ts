@@ -229,6 +229,7 @@ export const api = {
 	openEditor: (id: string) => invoke<void>("open_in_editor", { id }),
 	openUrl: (url: string) => invoke<void>("open_url", { url }),
 	reveal: (id: string) => invoke<void>("reveal", { id }),
+	revealPath: (path: string) => invoke<void>("reveal_path", { path }),
 	shellInfo: () => invoke<ShellInfo>("shell_info"),
 	shellSet: (shell: string | null) => invoke<ShellInfo>("shell_set", { shell }),
 	settings: () => invoke<Record<string, unknown>>("settings_get"),

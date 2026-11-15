@@ -12,8 +12,8 @@ use serde_json::{Value, json};
 use tauri::{AppHandle, Emitter, Manager, State};
 
 use atlas_core::git_review::{
-    Event, Provider, build_prompt, commit_rules, digest, provider_argv, resolve_provider,
-    run_provider,
+    ALL_CHANGES, Event, Provider, STAGED_CHANGES, build_prompt, commit_rules, digest,
+    new_file_args, provider_argv, resolve_provider, run_provider,
 };
 
 use crate::host::HostHub;
@@ -70,20 +70,12 @@ async fn recent_subjects(hub: &HostHub, dir: &std::path::Path) -> Vec<String> {
         .unwrap_or_default()
 }
 
-/// Git args for the "nothing is staged" fallback: tracked changes and, through intent-to-add, new files.
-pub const ALL_CHANGES: [&str; 5] = ["diff", "HEAD", "--no-color", "-M", "--no-ext-diff"];
-
 /// The staged diff, or every uncommitted change when nothing is staged: `(diff, scope)`.
 async fn collect_diff(
     hub: &HostHub,
     dir: &std::path::Path,
 ) -> Result<(String, &'static str), String> {
-    let staged = git(
-        hub,
-        dir,
-        &["diff", "--cached", "--no-color", "-M", "--no-ext-diff"],
-    )
-    .await?;
+    let staged = git(hub, dir, &STAGED_CHANGES).await?;
     if !staged.trim().is_empty() {
         return Ok((staged, "staged"));
     }
@@ -113,17 +105,7 @@ async fn new_file_diff(hub: &HostHub, dir: &std::path::Path, path: &str) -> Opti
     let o = crate::worktree::exec(
         hub,
         dir,
-        &[
-            "git",
-            "-C",
-            &dir_s,
-            "diff",
-            "--no-index",
-            "--no-color",
-            "--",
-            "/dev/null",
-            path,
-        ],
+        &[&["git", "-C", &dir_s][..], &new_file_args(path)].concat(),
         60_000,
     )
     .await

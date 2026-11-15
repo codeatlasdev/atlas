@@ -73,10 +73,8 @@ impl TaskResults {
         std::fs::create_dir_all(captures_dir)
             .map_err(|e| format!("ui gate: cannot create {}: {e}", captures_dir.display()))?;
         let p = Self::path(captures_dir);
-        let tmp = p.with_extension("json.tmp");
         let body = serde_json::to_string_pretty(self).map_err(|e| e.to_string())?;
-        std::fs::write(&tmp, body)
-            .and_then(|()| std::fs::rename(&tmp, &p))
+        atlas_core::fs::write_atomic(&p, body.as_bytes(), atlas_core::fs::Mode::Default)
             .map_err(|e| format!("ui gate: cannot write {}: {e}", p.display()))
     }
 

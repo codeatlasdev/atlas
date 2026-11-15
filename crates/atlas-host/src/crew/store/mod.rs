@@ -488,6 +488,11 @@ impl Default for CrewSettings {
     }
 }
 
+/// Held by every write to a `tasks.jsonl`, so a read-modify-append ([`CrewStore::update_task`],
+/// [`CrewStore::append_runner_state`]) is never split by another write. Process-wide, not per
+/// [`CrewStore`]: handlers build their own instances over the same files.
+static TASK_WRITES: parking_lot::Mutex<()> = parking_lot::Mutex::new(());
+
 pub struct CrewStore {
     base: PathBuf,
 }
@@ -580,8 +585,56 @@ impl CrewStore {
         std::fs::remove_dir_all(self.crewmate_dir(id))
     }
 
-    /// Append a JSON line to `tasks.jsonl`.
+    /// Append a JSON line to `tasks.jsonl`: `task` as it stands, the last line of an id wins.
+    /// For a task that is already stored and may be changing under you, use [`Self::update_task`]
+    /// (a change from a hook route or a handler) or [`Self::append_runner_state`] (the runner's copy).
     pub fn append_task(&self, crewmate_id: &str, task: &Task) -> io::Result<()> {
+        let _guard = TASK_WRITES.lock();
+        self.append_unlocked(crewmate_id, task)
+    }
+
+    /// Change the stored task `task_id` with `f` and append it, as one step: nothing else writes a task
+    /// between the read and the append, so a change made meanwhile is never overwritten by a stale copy.
+    /// `Ok(None)` when there is no such task (nothing is written); `f`'s error writes nothing either.
+    pub fn update_task<R>(
+        &self,
+        crewmate_id: &str,
+        task_id: &str,
+        f: impl FnOnce(&mut Task) -> Result<R, String>,
+    ) -> Result<Option<(Task, R)>, String> {
+        let _guard = TASK_WRITES.lock();
+        let Some(mut task) = self.stored_task(crewmate_id, task_id) else {
+            return Ok(None);
+        };
+        let out = f(&mut task)?;
+        self.append_unlocked(crewmate_id, &task)
+            .map_err(|e| format!("cannot record task {task_id}: {e}"))?;
+        Ok(Some((task, out)))
+    }
+
+    /// Append the runner's copy of a running task. The runner holds that copy for the whole run, while
+    /// hook routes record on the stored task what only they write: the `ui` mark (it only ever turns
+    /// on), the agent's captures (`attachments`) and the open question (`ask`). Those are taken from the
+    /// stored task, so the runner's next title or step never takes them back (a `ui` task once ended
+    /// `done` without its captures that way). Everything else is the runner's.
+    pub fn append_runner_state(&self, crewmate_id: &str, task: &Task) -> io::Result<()> {
+        let _guard = TASK_WRITES.lock();
+        let mut snapshot = task.clone();
+        if let Some(stored) = self.stored_task(crewmate_id, &task.id) {
+            snapshot.ui |= stored.ui;
+            snapshot.attachments = stored.attachments;
+            snapshot.ask = stored.ask;
+        }
+        self.append_unlocked(crewmate_id, &snapshot)
+    }
+
+    fn stored_task(&self, crewmate_id: &str, task_id: &str) -> Option<Task> {
+        self.read_tasks(crewmate_id, usize::MAX)
+            .into_iter()
+            .find(|t| t.id == task_id)
+    }
+
+    fn append_unlocked(&self, crewmate_id: &str, task: &Task) -> io::Result<()> {
         let dir = self.crewmate_dir(crewmate_id);
         std::fs::create_dir_all(&dir)?;
         let mut line = serde_json::to_string(task)

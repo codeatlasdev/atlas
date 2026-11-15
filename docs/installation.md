@@ -21,6 +21,8 @@ The installer downloads the latest stable release binary from GitHub, verifies i
 curl -fsSL https://atlas.codeatlas.com.br/install.sh | sh
 ```
 
+On Linux with a graphical session (`WAYLAND_DISPLAY` or `DISPLAY` set), the script also installs Atlas Desktop (`atlas desktop --no-open`: the AppImage in `~/.local/bin/atlas-desktop` and a launcher entry), so the app is in your launcher when it finishes. Skip it with `ATLAS_NO_DESKTOP=1`; a failed download never fails the CLI install and says to run `atlas desktop` later. Servers (no display) and macOS get only the CLI, as before.
+
 On Windows, in PowerShell (see [Windows](#windows)):
 
 ```powershell

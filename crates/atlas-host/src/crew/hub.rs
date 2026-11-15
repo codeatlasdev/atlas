@@ -43,6 +43,9 @@ pub(crate) struct CrewHub {
         parking_lot::Mutex<std::collections::HashMap<String, runner::ReportingLive>>,
     /// What each running task ran, for the guards (`runner::guard`).
     pub(crate) tape: runner::Tape,
+    /// The cancel handle of each running engine turn, by task id: `runner::cancel_with` fires it, which
+    /// kills the turn's process tree (an engine turn has no pty session to kill).
+    pub(crate) turn_cancels: Mutex<std::collections::HashMap<String, super::engine::TurnCancel>>,
     /// The kill switch, mirrored from `crew.json` (`paused`): no task runs, no automation fires.
     paused: std::sync::atomic::AtomicBool,
 }
@@ -67,6 +70,7 @@ impl CrewHub {
             action_waiters: parking_lot::Mutex::new(std::collections::HashMap::new()),
             reporters: parking_lot::Mutex::new(std::collections::HashMap::new()),
             tape: runner::Tape::default(),
+            turn_cancels: Mutex::new(std::collections::HashMap::new()),
             paused: std::sync::atomic::AtomicBool::new(paused),
         })
     }

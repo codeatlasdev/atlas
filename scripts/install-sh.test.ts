@@ -37,6 +37,8 @@ interface Opts {
 	checksum?: (digest: string) => string;
 	/** The fake `atlas update` exits with this (an offline machine: 1). */
 	updateExit?: number;
+	/** The fake `atlas desktop` exits with this (download failed: 1). */
+	desktopExit?: number;
 	env?: Record<string, string>;
 }
 
@@ -60,6 +62,7 @@ function install(opts: Opts = {}) {
 		`echo "atlas $* [channel=\${ATLAS_UPDATE_CHANNEL:-}]" >> '${calls}'
 if [ "$1" = install ]; then mkdir -p "$HOME/.atlas/bin" && cp "$0" "$HOME/.atlas/bin/atlas"; fi
 if [ "$1" = update ]; then exit ${opts.updateExit ?? 0}; fi
+if [ "$1" = desktop ]; then exit ${opts.desktopExit ?? 0}; fi
 exit 0`,
 	);
 	const version = TAG.slice(1);
@@ -156,6 +159,31 @@ describe.skipIf(process.platform === "win32")("install.sh", () => {
 		expect(r.code).toBe(0);
 		expect(r.installed).toBe(true);
 		expect(r.out).toContain("could not update now; run later: atlas update");
+	});
+
+	// #265: on Omarchy the CLI installed but the app never did; a desktop user had to know the next command.
+	test("a Linux graphical session also gets Atlas Desktop, without opening it", () => {
+		for (const display of [{ WAYLAND_DISPLAY: "wayland-1" }, { DISPLAY: ":0" }]) {
+			const r = install({ env: display });
+			expect(r.code).toBe(0);
+			expect(r.calls).toContain("atlas desktop --no-open [channel=]");
+			expect(r.out).toContain("in your app launcher");
+		}
+	});
+
+	test("no display, or ATLAS_NO_DESKTOP, installs only the CLI", () => {
+		for (const env of [{}, { WAYLAND_DISPLAY: "w", ATLAS_NO_DESKTOP: "1" }]) {
+			const r = install({ env });
+			expect(r.calls.some((c) => c.startsWith("atlas desktop"))).toBe(false);
+			expect(r.out).toContain("atlas desktop            install the desktop app");
+		}
+	});
+
+	test("a failed desktop download leaves the CLI installed and says how to finish", () => {
+		const r = install({ env: { DISPLAY: ":0" }, desktopExit: 1 });
+		expect(r.code).toBe(0);
+		expect(r.installed).toBe(true);
+		expect(r.out).toContain("could not install Atlas Desktop now; run later: atlas desktop");
 	});
 
 	test("ATLAS_CHANNEL is saved with --channel (stable included)", () => {

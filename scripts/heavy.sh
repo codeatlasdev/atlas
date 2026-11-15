@@ -40,21 +40,22 @@ memfree() {
 	else sysctl -n kern.memorystatus_level 2>/dev/null
 	fi
 }
-# shlock (macOS, BSD) or a mkdir lock elsewhere; both treat a lock whose pid is gone as stale.
+# The lock is a pid file the shell itself creates with noclobber (`set -C`: open with O_CREAT|O_EXCL), so of two jobs
+# exactly one wins on every OS and shell (dash, bash, Git Bash). Never an external tool's word: uutils `mkdir`
+# (Ubuntu 26.04) reports success to both racers of a `mkdir`, which once let two heavy jobs run at once.
+# A lock whose pid is gone is stale: it is removed, after checking it still names that pid (another job may have
+# replaced it meanwhile).
 take() {
-	if command -v shlock >/dev/null; then
-		shlock -p $$ -f "$lock"
-	elif mkdir "$lock.d" 2>/dev/null; then
-		echo $$ >"$lock.d/pid"
-	else
-		owner=$(cat "$lock.d/pid" 2>/dev/null)
-		if [ -n "$owner" ] && ! kill -0 "$owner" 2>/dev/null; then rm -rf "$lock.d"; fi
-		return 1
+	(set -C; echo $$ >"$lock") 2>/dev/null && return 0
+	owner=$(cat "$lock" 2>/dev/null)
+	if [ -n "$owner" ] && ! kill -0 "$owner" 2>/dev/null && [ "$(cat "$lock" 2>/dev/null)" = "$owner" ]; then
+		rm -f "$lock"
 	fi
+	return 1
 }
-release() { rm -f "$lock"; rm -rf "$lock.d"; }
+release() { rm -f "$lock"; }
 while ! take; do
-	[ $waited = 0 ] && echo "heavy: waiting for $(cat "$lock" "$lock.d/pid" 2>/dev/null | head -1) to finish ($*)" >&2
+	[ $waited = 0 ] && echo "heavy: waiting for $(cat "$lock" 2>/dev/null) to finish ($*)" >&2
 	waited=1
 	sleep 2
 done

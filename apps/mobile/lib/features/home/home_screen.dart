@@ -9,6 +9,7 @@ import 'package:go_router/go_router.dart';
 import 'package:atlas_mobile/core/connection/connection_notifier.dart';
 import 'package:atlas_mobile/core/demo/demo_computer.dart';
 import 'package:atlas_mobile/core/protocol/models.dart';
+import 'package:atlas_mobile/core/protocol/pty_open.dart';
 import 'package:atlas_mobile/core/ui/agent_logo.dart';
 import 'package:atlas_mobile/core/ui/atlas_logo.dart';
 import 'package:atlas_mobile/core/ui/atlas_theme.dart';
@@ -16,6 +17,7 @@ import 'package:atlas_mobile/core/ui/components.dart';
 import 'package:atlas_mobile/features/agents/agents_provider.dart';
 import 'package:atlas_mobile/features/home/onboarding.dart';
 import 'package:atlas_mobile/features/inbox/inbox.dart';
+import 'package:atlas_mobile/features/terminal/new_terminal.dart';
 import 'package:atlas_mobile/features/projects/projects_provider.dart';
 import 'package:atlas_mobile/features/projects/project_avatar.dart';
 import 'package:atlas_mobile/core/ui/floating_tab_bar.dart';
@@ -362,7 +364,25 @@ class _DashboardState extends ConsumerState<_Dashboard> {
                     children: [
                       for (final a in missing) _IntegrationOff(agent: a),
                       if (missing.isNotEmpty) const SizedBox(height: Space.md),
-                      SectionHeader('Projects', count: list.length),
+                      SectionHeader(
+                        'Projects',
+                        count: list.length,
+                        trailing: canOpenTerminal(widget.device)
+                            ? TextButton.icon(
+                                key: const Key('new-terminal-computer'),
+                                onPressed: () => newTerminalOnComputer(
+                                  context,
+                                  ref,
+                                  widget.device,
+                                ),
+                                icon: const Icon(
+                                  Icons.terminal_rounded,
+                                  size: 18,
+                                ),
+                                label: const Text('New terminal'),
+                              )
+                            : null,
+                      ),
                     ],
                   ),
                 ),

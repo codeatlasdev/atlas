@@ -480,8 +480,46 @@ class _DemoComputer implements Transport {
             args['prompt'] as String?,
           );
         }
+      case 'pty_open':
+        // Same rules as hostd's `pty_open`: ids of the registry only (a path is never a project), and a worktree
+        // must be one of THIS project's. The terminal is a plain shell: unlock to type, nothing runs.
+        final project = args['project'] as String?;
+        final wt = args['worktree'] as String?;
+        if (args['crewmate'] != null) {
+          error = 'crewmates live on a crew server';
+        } else if (project == null || project.isEmpty) {
+          error = 'name a project to open a terminal in';
+        } else if (project != 'demo-shop' &&
+            !_others.any((p) => p['id'] == project)) {
+          error = 'unknown project $project';
+        } else if (wt != null &&
+            (project != 'demo-shop' || !_worktrees.any((w) => w['id'] == wt))) {
+          error = 'unknown worktree $wt in this project';
+        } else {
+          _seq++;
+          data = {'pty': 'pty-shell-$_seq'};
+        }
       case 'worktree_list':
-        data = {'repoId': 'demo-shop', 'worktrees': _worktrees};
+        final p = args['project'] as String?;
+        final other = _others.where((o) => o['id'] == p).firstOrNull;
+        data = other == null
+            ? {'repoId': 'demo-shop', 'worktrees': _worktrees}
+            : {
+                // A project with no linked worktrees lists only its own folder, main first, like hostd.
+                'repoId': p,
+                'worktrees': [
+                  {
+                    'id': p,
+                    'path': other['root'],
+                    'name': other['name'],
+                    'branch': 'main',
+                    'main': true,
+                    'dirty': false,
+                    'exists': true,
+                    'portOffset': 0,
+                  },
+                ],
+              };
       case 'worktree_create':
         final made = _createWorktree(args['name'] as String?);
         data = {'worktree': made, 'setup': null, 'seed': null};

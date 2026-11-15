@@ -1091,6 +1091,11 @@ pub(crate) async fn handle(hub: &Hub, cmd: HostCmd, conn_id: u64) -> Result<Valu
             prompt,
             worktree,
         } => agent_launch(hub, &project, &agent, prompt, worktree).await,
+        HostCmd::PtyOpen {
+            project,
+            worktree,
+            crewmate,
+        } => crate::mobile::shell::open(hub, conn_id, project, worktree, crewmate).await,
         HostCmd::WorktreeList { project } => {
             crate::worktrees::local::list(hub.data_dir(), &project).await
         }

@@ -10,6 +10,7 @@ import 'package:atlas_mobile/core/protocol/multiplexer.dart';
 import 'package:atlas_mobile/features/agents/agent_chat_screen.dart';
 import 'package:atlas_mobile/features/agents/agent_info.dart';
 import 'package:atlas_mobile/features/agents/agent_launcher.dart';
+import 'package:atlas_mobile/core/protocol/pty_open.dart';
 import 'package:atlas_mobile/features/git/changes_tile.dart';
 import 'package:atlas_mobile/core/ui/agent_logo.dart';
 import 'package:atlas_mobile/features/projects/charts.dart';
@@ -18,6 +19,7 @@ import 'package:atlas_mobile/core/ui/components.dart';
 import 'package:atlas_mobile/core/ui/atlas_theme.dart';
 import 'package:atlas_mobile/features/projects/project_metrics.dart';
 import 'package:atlas_mobile/features/projects/worktrees_section.dart';
+import 'package:atlas_mobile/features/terminal/new_terminal.dart';
 
 /// A project's panel, like the desktop's: header, KPIs, service cards, resources and
 /// health over time. Polls `project_detail` every [_poll] while open.
@@ -371,6 +373,20 @@ class _ProjectDetailScreenState extends ConsumerState<ProjectDetailScreen> {
             icon: const Icon(Icons.add_rounded, size: 20),
             label: const Text('New agent'),
           ),
+          if (canOpenTerminal(widget.device)) ...[
+            const SizedBox(height: Space.sm),
+            OutlinedButton.icon(
+              key: const Key('new-terminal'),
+              onPressed: () => newTerminalInProject(
+                context,
+                ref,
+                widget.device,
+                widget.project,
+              ),
+              icon: const Icon(Icons.terminal_rounded, size: 20),
+              label: const Text('New terminal'),
+            ),
+          ],
           const SizedBox(height: Space.md),
           if (list.isEmpty)
             Padding(

@@ -31,7 +31,6 @@ impl AtlasCommand for CrewSpawnArgs {
     #[cfg(unix)]
     async fn run(self) -> Result<()> {
         use atlas_host::crew::spawn::{exec, provision, server};
-        use std::os::fd::AsRawFd;
 
         // SAFETY: plain getter.
         if unsafe { libc::geteuid() } != 0 {
@@ -50,7 +49,7 @@ impl AtlasCommand for CrewSpawnArgs {
                         "no socket from systemd (LISTEN_FDS): start atlas-crew-spawn.socket, or pass --socket and --crew-user"
                     )
                 })?;
-                let (user, uid) = server::crew_user_of_socket(l.as_raw_fd())?;
+                let (user, uid) = server::crew_user_of_socket(&l)?;
                 (l, user, uid)
             }
         };

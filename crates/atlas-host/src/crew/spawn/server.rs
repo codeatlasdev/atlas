@@ -585,14 +585,20 @@ pub fn group_name(gid: u32) -> io::Result<String> {
 /// The crew user the helper serves, from the group of the socket it was given: the socket unit sets
 /// `SocketGroup=<crew user>` (the group of `atlas-crew`, or of a migrated `atlas-bot`), so the group's
 /// name is the user's. Returns `(user, uid)`.
-pub fn crew_user_of_socket(fd: std::os::fd::RawFd) -> io::Result<(String, u32)> {
-    // SAFETY: zeroed stat is a valid out-parameter; fd is a live socket.
-    let mut st: libc::stat = unsafe { std::mem::zeroed() };
-    // SAFETY: fstat on a live fd with a valid out pointer.
-    if unsafe { libc::fstat(fd, &mut st) } != 0 {
-        return Err(io::Error::last_os_error());
-    }
-    let name = group_name(st.st_gid)?;
+///
+/// The group is the one of the socket's FILE, found by the path it is bound to: systemd chowns that file, while
+/// `fstat` on the descriptor it hands over is the kernel's own socket inode, owned by root.
+pub fn crew_user_of_socket(l: &UnixListener) -> io::Result<(String, u32)> {
+    use std::os::unix::fs::MetadataExt;
+    let addr = l.local_addr()?;
+    let path = addr.as_pathname().ok_or_else(|| {
+        io::Error::new(
+            io::ErrorKind::InvalidInput,
+            "the helper's socket has no path in the file system",
+        )
+    })?;
+    let gid = std::fs::metadata(path)?.gid();
+    let name = group_name(gid)?;
     let ids = exec::lookup(&name)?;
     if ids.uid == 0 {
         // A socket group of root would serve root only; the helper refuses to start rather than
@@ -996,12 +1002,11 @@ mod tests {
     // crew user, and the helper must refuse to start instead of serving nobody in particular.
     #[test]
     fn a_socket_in_a_group_with_no_crew_user_is_refused() {
-        use std::os::fd::AsRawFd;
         let t = tempfile::tempdir().unwrap();
         let l = bind(&t.path().join("s.sock")).unwrap();
         // The socket belongs to our primary group, whose name is not a user of this machine (or is
         // a real user: either way the answer is a clean Ok or an error, never a panic or uid 0).
-        match crew_user_of_socket(l.as_raw_fd()) {
+        match crew_user_of_socket(&l) {
             Ok((name, uid)) => assert!(uid != 0 && !name.is_empty()),
             Err(e) => assert!(
                 matches!(
@@ -1011,7 +1016,48 @@ mod tests {
                 "{e}"
             ),
         }
-        assert!(crew_user_of_socket(-1).is_err());
+    }
+
+    // Incident (found by the real-systemd end-to-end test): systemd chowns the socket's FILE to
+    // `SocketGroup=`, but `fstat` on the fd it hands over is the kernel's own socket inode, owned by whoever
+    // created it (root). The helper read root there and refused to start ("the socket's group root is not a
+    // crew user"), so no crewmate user was ever created on a real server. The group is the file's.
+    #[test]
+    fn the_crew_user_is_read_from_the_socket_file_not_from_the_descriptor() {
+        use std::os::unix::fs::MetadataExt;
+        // A group of ours that is not our primary one: the file can be given to it without privileges.
+        let primary = unsafe { libc::getegid() };
+        let mut groups = [0 as libc::gid_t; 64];
+        let n = unsafe { libc::getgroups(groups.len() as i32, groups.as_mut_ptr()) };
+        let Some(other) = groups[..n.max(0) as usize]
+            .iter()
+            .copied()
+            .find(|g| *g != primary)
+        else {
+            eprintln!("skipped: this account has no group besides its primary one");
+            return;
+        };
+        let t = tempfile::tempdir().unwrap();
+        let path = t.path().join("s.sock");
+        let l = bind(&path).unwrap();
+        std::os::unix::fs::chown(&path, None, Some(other)).unwrap();
+        assert_eq!(std::fs::metadata(&path).unwrap().gid(), other);
+        let want = group_name(other).unwrap();
+        let primary_name = group_name(primary).unwrap();
+        assert_ne!(
+            want, primary_name,
+            "the test needs two differently named groups"
+        );
+        // Whatever the answer for these groups (no user of that name here, usually), it must be about the
+        // file's group.
+        let said = match crew_user_of_socket(&l) {
+            Ok((name, _)) => name,
+            Err(e) => e.to_string(),
+        };
+        assert!(
+            said.contains(&want) && !said.contains(&primary_name),
+            "the group read is not the socket file's ({want}): {said}"
+        );
     }
 
     #[cfg(target_os = "linux")]

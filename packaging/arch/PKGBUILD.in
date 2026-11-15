@@ -11,9 +11,8 @@ pkgdesc="Atlas, the developer platform for everyone: one atlas.yaml runs your st
 arch=('x86_64')
 url="https://atlas.codeatlas.com.br"
 license=('MIT OR Apache-2.0')
-depends=('webkit2gtk-4.1' 'gtk3' 'libsoup3' 'cairo' 'gdk-pixbuf2' 'glib2' 'hicolor-icon-theme' 'git')
+depends=('webkit2gtk-4.1' 'gtk3' 'libsoup3' 'cairo' 'gdk-pixbuf2' 'glib2' 'hicolor-icon-theme' 'git' 'libayatana-appindicator')
 optdepends=(
-  'libayatana-appindicator: tray icon'
   'docker: infra: services in atlas.yaml'
   'github-cli: pull requests and checks in Atlas Desktop'
 )

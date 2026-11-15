@@ -57,11 +57,7 @@ pub struct TargetArgs {
 
 impl TargetArgs {
     fn remote(&self) -> Remote {
-        if self.port == 22 {
-            Remote::new(&self.ssh_target)
-        } else {
-            Remote::with_port(&self.ssh_target, self.port)
-        }
+        Remote::crew(&self.ssh_target, self.port)
     }
 
     /// `sudo -u <crew user>` runs in `install` and `status`: make sudo work before either, with the

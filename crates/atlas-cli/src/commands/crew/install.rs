@@ -114,11 +114,9 @@ Look at: atlas crew logs {target}",
 
 async fn run_install(args: InstallArgs) -> Result<()> {
     let host = host_from_target(&args.ssh_target).to_owned();
-    let r = if args.port == 22 {
-        Remote::new(&args.ssh_target)
-    } else {
-        Remote::with_port(&args.ssh_target, args.port)
-    };
+    let r = Remote::crew(&args.ssh_target, args.port);
+    // The key is looked up first: a person without one is told before anything is installed.
+    let pubkey = local_public_key(&args.ssh_target, args.port)?;
 
     // --- Preflight: reads only, names everything that is missing ---
     step_marker("check");
@@ -245,7 +243,7 @@ async fn run_install(args: InstallArgs) -> Result<()> {
     // --- SSH authorized_keys ---
     step_marker("ssh");
     step(&format!("configuring SSH access for {}", account.user));
-    add_ssh_key(&p, &account).await?;
+    add_ssh_key(&p, &account, &pubkey).await?;
 
     if args.browsers {
         step_marker("browsers");
@@ -366,23 +364,21 @@ pub(super) async fn stage_upload(p: &Priv<'_>, local_bin: &std::path::Path) -> R
     Ok(())
 }
 
-/// Append the caller's local SSH public key to the crew user's authorized_keys.
-async fn add_ssh_key(p: &Priv<'_>, account: &Account) -> Result<()> {
-    let home = dirs::home_dir().context("no home directory")?;
-    let key_path = ["id_ed25519.pub", "id_rsa.pub"]
-        .iter()
-        .map(|n| home.join(".ssh").join(n))
-        .find(|p| p.exists())
-        .context(
-            "no SSH public key found at ~/.ssh/id_ed25519.pub or ~/.ssh/id_rsa.pub; \
-create one with: ssh-keygen -t ed25519",
-        )?;
+/// The public key `ssh` itself would offer to `ssh_target` (`ssh -G`: `~/.ssh/config` identities and the default
+/// key names, so a key called anything is found), read before the install changes anything on the server.
+fn local_public_key(ssh_target: &str, port: u16) -> Result<String> {
+    let target = atlas_core::ssh::SshTarget::new(ssh_target, Some(port));
+    let path = atlas_core::ssh::find_public_key(&target).with_context(|| {
+        "no SSH public key found (ssh -G lists none that exists as <identity>.pub); \
+create one with: ssh-keygen -t ed25519"
+    })?;
+    let key =
+        std::fs::read_to_string(&path).with_context(|| format!("reading {}", path.display()))?;
+    Ok(key.trim().to_owned())
+}
 
-    let pubkey = std::fs::read_to_string(&key_path)
-        .with_context(|| format!("reading {}", key_path.display()))?;
-    let pubkey = pubkey.trim();
-
-    // Append idempotently, then lock down the file
+/// Append `pubkey` to the crew user's authorized_keys (idempotent), then lock the file down.
+async fn add_ssh_key(p: &Priv<'_>, account: &Account, pubkey: &str) -> Result<()> {
     let script = format!(
         r#"f={home}/.ssh/authorized_keys
 sudo grep -qxF {key_q} "$f" 2>/dev/null || printf '%s\n' {key_q} | sudo tee -a "$f" > /dev/null

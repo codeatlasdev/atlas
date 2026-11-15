@@ -81,6 +81,7 @@ impl World {
             "grep",
             "true",
             "false",
+            "printenv",
             "chown",
             "ln",
             "uname",
@@ -108,9 +109,7 @@ impl World {
         // The fake ssh: run the last argument (`bash -c '<script>'`) on the simulated server.
         w.write_exec(
             "bin-ssh/ssh",
-            &format!(
-                "#!/bin/sh\nfor a; do last=$a; done\n[ -f \"$ROOT/ssh-down\" ] && {{ echo 'ssh: connect refused' >&2; exit 255; }}\nR=\"$ROOT\"\nexport PATH=\"$R/bin\"\nscript=$(printf '%s' \"$last\" | sed -e \"s#/usr/local/lib/atlas-crew#$R/lib/atlas-crew#g\" -e \"s#/usr/local/lib/atlas-bot#$R/lib/atlas-bot#g\" -e \"s#/etc/systemd/system#$R/etc/systemd/system#g\" -e \"s#/run/systemd/system#$R/run/systemd/system#g\" -e \"s#/var/lib#$R/var/lib#g\")\nif [ -f \"$R/ssh-drop-after\" ] && printf '%s' \"$script\" | grep -q \"$(cat \"$R/ssh-drop-after\")\"; then\n  /bin/sh -c \"$script\"; echo run >> \"$R/log/dropped-runs\"; echo 'ssh: connection reset' >&2; exit 255\nfi\nexec /bin/sh -c \"$script\"\n"
-            ),
+                "#!/bin/sh\n[ \"$1\" = -G ] && { if [ -f \"$ROOT/identity\" ]; then echo \"identityfile $(cat \"$ROOT/identity\")\"; else echo 'identityfile ~/.ssh/id_ed25519'; fi; exit 0; }\nfor a; do last=$a; done\n[ -f \"$ROOT/ssh-down\" ] && { echo 'ssh: connect refused' >&2; exit 255; }\nR=\"$ROOT\"\nexport PATH=\"$R/bin\"\nscript=$(printf '%s' \"$last\" | sed -e \"s#/usr/local/lib/atlas-crew#$R/lib/atlas-crew#g\" -e \"s#/usr/local/lib/atlas-bot#$R/lib/atlas-bot#g\" -e \"s#/etc/systemd/system#$R/etc/systemd/system#g\" -e \"s#/run/systemd/system#$R/run/systemd/system#g\" -e \"s#/var/lib#$R/var/lib#g\")\nif [ -f \"$R/ssh-drop-after\" ] && printf '%s' \"$script\" | grep -q \"$(cat \"$R/ssh-drop-after\")\"; then\n  /bin/sh -c \"$script\"; echo run >> \"$R/log/dropped-runs\"; echo 'ssh: connection reset' >&2; exit 255\nfi\nexec /bin/sh -c \"$script\"\n"
         );
         w
     }
@@ -515,4 +514,42 @@ fn an_update_retried_after_a_dropped_link_keeps_the_real_previous_binary() {
         w.read("lib/atlas-crew/atlas.prev")
     );
     assert!(w.read("lib/atlas-crew/atlas").contains("2.0.0"));
+}
+
+// The key is the one `ssh -G` says ssh would offer, whatever its name (not only id_ed25519 / id_rsa), and a person
+// with no key is told before anything on the server changes.
+#[test]
+fn install_authorizes_the_key_ssh_would_use_even_with_a_custom_name() {
+    let w = World::new();
+    std::fs::write(
+        w.root().join("home/.ssh/work_key.pub"),
+        "ssh-ed25519 WORKKEY me@work\n",
+    )
+    .unwrap();
+    std::fs::remove_file(w.root().join("home/.ssh/id_ed25519.pub")).unwrap();
+    std::fs::write(w.root().join("identity"), "~/.ssh/work_key").unwrap();
+    let bin = w.atlas_file("9.9.9", true);
+    let o = w.atlas(
+        &["install", "me@srv", "--binary", bin.to_str().unwrap()],
+        "",
+    );
+    let t = text(&o);
+    assert!(o.status.success(), "{t}");
+    let keys = w.read("var/lib/atlas-crew/.ssh/authorized_keys");
+    assert!(keys.contains("ssh-ed25519 WORKKEY me@work"), "{keys}");
+}
+
+#[test]
+fn install_without_any_key_stops_before_touching_the_server() {
+    let w = World::new();
+    std::fs::remove_file(w.root().join("home/.ssh/id_ed25519.pub")).unwrap();
+    let bin = w.atlas_file("9.9.9", true);
+    let o = w.atlas(
+        &["install", "me@srv", "--binary", bin.to_str().unwrap()],
+        "",
+    );
+    let t = text(&o);
+    assert!(!o.status.success(), "{t}");
+    assert!(t.contains("no SSH public key found"), "{t}");
+    assert!(!w.exists("log/sudo"), "the server was touched: {t}");
 }

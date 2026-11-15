@@ -85,11 +85,7 @@ Look at: atlas crew logs {target}"
 impl AtlasCommand for UpdateArgs {
     async fn run(self) -> Result<()> {
         let plan = plan(&self, env!("CARGO_PKG_VERSION"))?;
-        let r = if self.port == 22 {
-            Remote::new(&self.ssh_target)
-        } else {
-            Remote::with_port(&self.ssh_target, self.port)
-        };
+        let r = Remote::crew(&self.ssh_target, self.port);
         let host = host_from_target(&self.ssh_target);
         let target = install::preflight(&r, &self.ssh_target).await?;
         let p = Priv::prepare(

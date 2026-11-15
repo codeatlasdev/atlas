@@ -61,6 +61,7 @@ impl Sim {
             "grep",
             "true",
             "false",
+            "printenv",
         ] {
             s.link_real(t);
         }

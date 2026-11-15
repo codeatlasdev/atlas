@@ -32,8 +32,8 @@ atlas crew login ubuntu@myserver.example.com claude
 Requirements:
 
 - A Linux server, x86_64 or aarch64 (arm64: Graviton, Oracle A1, Hetzner CAX), with `systemd` and `sudo` (passwordless sudo when you run the command from a terminal). Any other architecture is refused with a message saying so.
-- An SSH public key at `~/.ssh/id_ed25519.pub` or `~/.ssh/id_rsa.pub` on your machine.
-- Internet access on the server, or a Linux `atlas` of the server's architecture on your machine (see [Offline install](#offline-install)).
+- An SSH public key on your machine: the one `ssh` itself would offer for that host (`ssh -G` lists the `IdentityFile`s of `~/.ssh/config` and the default names; a key with any name works). It is looked up before anything on the server changes.
+- Internet access on the server **or** on your machine (the release is then downloaded here and sent over ssh), or a Linux `atlas` of the server's architecture (see [Offline install](#offline-install)).
 
 `atlas crew install <ssh-target>` does, in order: one preflight probe that changes nothing and names **every** missing piece at once (systemd running as PID 1, sudo, curl, tar, git, sha256sum, awk, useradd, ... each with the package that has it); stages `atlas` as `/usr/local/lib/atlas-crew/atlas.new`; creates the `atlas-crew` system user (home `/var/lib/atlas-crew`); links the binary at `<home>/.atlas/bin/atlas`; writes and enables `/etc/systemd/system/atlas-crew.service`; swaps the binary in (a binary that was already there stays as `atlas.prev`), starts the service and **waits up to 60 s for hostd to answer**, rolling back to `atlas.prev` when it does not (a dead binary fails the install and points at `atlas crew logs`, it is never reported as ready); appends your SSH public key to the crew user's `authorized_keys`. The service starts on boot and restarts on failure.
 

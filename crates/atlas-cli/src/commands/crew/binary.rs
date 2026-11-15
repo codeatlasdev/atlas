@@ -49,19 +49,21 @@ pub fn offline_cache_path(target: &str) -> &'static str {
 }
 
 /// Shell (run on the host) that downloads `version` for `target`, checks its `.sha256` and leaves the
-/// verified binary at `<INSTALL_DIR>/atlas.new`. Nothing replaces `atlas` here.
+/// verified binary at `<INSTALL_DIR>/atlas.new`. Nothing replaces `atlas` here. The temp file template ends in
+/// the X's (BSD and busybox `mktemp` refuse a suffix after them, and macOS leaves a literal file behind that
+/// makes the next call fail) and is removed however the script ends.
 pub fn download_script(version: &str, target: &str) -> String {
     let url = asset_url(version, target);
     format!(
         r#"sudo mkdir -p {d} &&
-tmpf=$(mktemp /tmp/atlas-crew-XXXXXX.tar.gz) &&
+tmpf=$(mktemp /tmp/atlas-crew-XXXXXX) &&
+trap 'rm -f "$tmpf"' EXIT &&
 curl -fsSL {url_q} -o "$tmpf" &&
 WANT=$(curl -fsSL {sha_q} | awk '{{print $1}}') &&
 GOT=$(sha256sum "$tmpf" | awk '{{print $1}}') &&
-{{ [ "$WANT" = "$GOT" ] || {{ echo 'checksum mismatch' >&2; rm -f "$tmpf"; exit 1; }}; }} &&
+{{ [ "$WANT" = "$GOT" ] || {{ echo 'checksum mismatch' >&2; exit 1; }}; }} &&
 sudo tar -xzf "$tmpf" -O atlas | sudo tee {d}/atlas.new > /dev/null &&
-sudo chmod +x {d}/atlas.new &&
-rm -f "$tmpf""#,
+sudo chmod +x {d}/atlas.new"#,
         d = INSTALL_DIR,
         url_q = shq(&url),
         sha_q = shq(&format!("{url}.sha256")),
@@ -177,17 +179,45 @@ pub fn preflight_error(target: &str, p: &Preflight) -> anyhow::Error {
 /// `script` for a host whose sudo asks for a password. With `tty_tickets` (the Debian and Ubuntu default) the
 /// credential `sudo -v` caches belongs to one tty, and every ssh exec has its own, so a password given once
 /// is lost by the next call. Each call instead reads the password from the FIRST line of its stdin (never
-/// argv, never in the script text) and answers every `sudo` in it through `sudo -A`: an askpass helper that
-/// prints the password from the environment of this one shell. The password never goes through the stdin of
-/// `sudo`, so the rest of the call's stdin stays untouched for the command that reads it (`sudo tee file` of
-/// an upload), whichever `sudo` comes first. The helper is a temp file made here, removed on exit.
+/// argv, never in the script text) and answers every `sudo` in it with `sudo -A`: a temp dir at the front of
+/// `PATH` holds an askpass helper (it prints the password from this shell's environment) and a `sudo` shim that
+/// adds `-A`. The password never goes through the stdin of `sudo`, so the rest of the call's stdin stays
+/// untouched for the command that reads it (`sudo tee file` of an upload), whichever `sudo` comes first. The
+/// temp dir is removed on exit.
+///
+/// The returned text never contains a `"`, whatever `script` holds: `script` itself is written to a file in
+/// that temp dir from octal escapes ([`octal`]) and run from there, with the caller's stdin. A Windows client
+/// sends a script that has a `"` as `printf … | bash` (`atlas_core::ssh::windows_safe`), which would make bash
+/// read its script from the very stdin that carries the password and the upload.
 pub fn with_sudo_password(script: &str) -> String {
     format!(
-        "IFS= read -r ATLAS_SUDO_PW; export ATLAS_SUDO_PW; \
-         ATLAS_ASKPASS=$(mktemp) && printf '%s\\n' '#!/bin/sh' 'printf \"%s\\n\" \"$ATLAS_SUDO_PW\"' > \"$ATLAS_ASKPASS\" && chmod 700 \"$ATLAS_ASKPASS\" || exit 1; \
-         trap 'rm -f \"$ATLAS_ASKPASS\"' EXIT; export SUDO_ASKPASS=\"$ATLAS_ASKPASS\"; \
-         sudo() {{ command sudo -A \"$@\"; }}\n{script}"
+        r"IFS= read -r ATLAS_SUDO_PW; export ATLAS_SUDO_PW; \
+ATLAS_SHIM=$(mktemp -d) || exit 1; trap 'rm -rf '$ATLAS_SHIM EXIT; \
+real=$(command -v sudo) || exit 1; \
+printf '%b\n' '#!/bin/sh' 'exec printenv ATLAS_SUDO_PW' > $ATLAS_SHIM/askpass; \
+printf '%b\n' '#!/bin/sh' 'exec '$real' -A \042$@\042' > $ATLAS_SHIM/sudo; \
+printf %b '{body}' > $ATLAS_SHIM/run; \
+chmod 700 $ATLAS_SHIM/askpass $ATLAS_SHIM/sudo; \
+export SUDO_ASKPASS=$ATLAS_SHIM/askpass PATH=$ATLAS_SHIM:$PATH; \
+bash $ATLAS_SHIM/run; exit $?",
+        body = octal(script)
     )
+}
+
+/// `s` as text for `printf %b` that has no quote, no `$` and no raw backslash: every byte outside a small safe
+/// set becomes `\0NNN`, so the remote `printf` gives back exactly `s`. The leading `0` matters: `printf %b` reads
+/// `\0` followed by up to three octal digits, so a literal digit after the escape (`$0`) is never swallowed.
+fn octal(s: &str) -> String {
+    use std::fmt::Write as _;
+    s.bytes()
+        .fold(String::with_capacity(s.len() * 2), |mut o, b| {
+            if b.is_ascii_alphanumeric() || b" ./_:=-".contains(&b) {
+                o.push(b as char);
+            } else {
+                let _ = write!(o, "\\0{b:03o}");
+            }
+            o
+        })
 }
 
 /// What the hostd health wait saw.

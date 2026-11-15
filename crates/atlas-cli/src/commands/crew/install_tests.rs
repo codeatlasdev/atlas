@@ -19,6 +19,53 @@ fn version_of(sim: &Sim, rel: &str) -> String {
 }
 
 // ---------------------------------------------------------------------------------------------
+// The host download (the first step of install and update). Found while testing the offline fallback: macOS and
+// BSD/busybox `mktemp` refuse a template with a suffix after the X's, so the host download failed for a reason that
+// had nothing to do with the network; and a download that failed halfway left its temp file behind on every try.
+// ---------------------------------------------------------------------------------------------
+
+/// A `mktemp` like BSD's and busybox's: the X's must end the template; files go under `$ROOT/tmp`.
+const STRICT_MKTEMP: &str = r#"
+case "$1" in *XXXXXX) ;; *) echo "mktemp: bad template $1" >&2; exit 1;; esac
+mkdir -p "$ROOT/tmp"; f="$ROOT/tmp/f$$"; : > "$f"; echo "$f"
+"#;
+
+#[test]
+fn the_host_download_uses_a_mktemp_template_every_mktemp_accepts() {
+    let sim = Sim::new();
+    sim.fake("mktemp", STRICT_MKTEMP);
+    sim.fake("curl", "echo \"curl $*\" >> \"$ROOT/log/curl\"; exit 6");
+    let r = sim.run(
+        &binary::download_script("1.0.0", "x86_64-unknown-linux-gnu"),
+        b"",
+    );
+    // curl was reached (and failed like an offline host): mktemp did not stop the script first.
+    assert!(
+        sim.read("log/curl").contains("releases/download"),
+        "{}\n{}",
+        r.stdout,
+        r.stderr
+    );
+    assert_eq!(r.code, Some(6), "{}\n{}", r.stdout, r.stderr);
+}
+
+#[test]
+fn a_failed_host_download_leaves_no_temp_file_behind() {
+    let sim = Sim::new();
+    sim.fake("mktemp", STRICT_MKTEMP);
+    sim.fake("curl", "exit 6");
+    let r = sim.run(
+        &binary::download_script("1.0.0", "x86_64-unknown-linux-gnu"),
+        b"",
+    );
+    assert_ne!(r.code, Some(0));
+    let left = std::fs::read_dir(sim.path("tmp"))
+        .map(|d| d.count())
+        .unwrap_or(0);
+    assert_eq!(left, 0, "temp files left behind in $ROOT/tmp");
+}
+
+// ---------------------------------------------------------------------------------------------
 // Gap 3: a reinstall over a running server kept no rollback; a failed new binary destroyed the only good one.
 // ---------------------------------------------------------------------------------------------
 
@@ -177,6 +224,74 @@ fn a_script_with_a_sudo_password_authenticates_every_sudo_it_runs() {
     assert_eq!(sim.read("log/sudo").lines().count(), 3);
     // The password is on stdin only: the script text carries none.
     assert!(!script.contains("hunter2"));
+}
+
+// A Windows client sends a script that has a `"` as `printf … | bash` (atlas_core::ssh::windows_safe), so bash would
+// read its script from the stdin that carries the password and the upload. Whatever the script holds (the swap and
+// the key script are full of `"$u"`), the wrapped text must have no `"`: then it travels as plain `bash -c '…'`.
+#[test]
+fn a_wrapped_script_has_no_double_quote_whatever_the_script_holds() {
+    let real_scripts = [
+        binary::swap_script(60),
+        binary::rollback_script(60),
+        layout::uninstall_script(),
+        "f=\"$HOME/x\"; sudo tee -a \"$f\" > /dev/null; echo 'it'\\''s' \\ \"q\"".to_owned(),
+    ];
+    for script in real_scripts {
+        let w = binary::with_sudo_password(&script);
+        assert!(!w.contains('"'), "double quote in the wrapped text: {w}");
+        assert_eq!(atlas_core::ssh::windows_safe(&w), w);
+    }
+    assert!(!binary::stage_upload_script().contains('"'));
+}
+
+// The wrapper runs the script exactly as written (quotes, backslashes, `$`) and hands back its exit code: the swap
+// answers 3 for a rollback and 4 for a dead hostd, and the caller tells them apart.
+#[test]
+fn the_wrapped_script_runs_unchanged_and_keeps_its_exit_code() {
+    let sim = Sim::new();
+    sim.write("sudo-password", b"hunter2\n");
+    let script = "x=\"a b\"; printf '%s|' \"$x\" 'it'\\''s' \\\\ ; sudo true; exit 7";
+    let r = sim.run(&binary::with_sudo_password(script), b"hunter2\n");
+    assert_eq!(r.code, Some(7), "{}\n{}", r.stdout, r.stderr);
+    assert_eq!(r.stdout, "a b|it's|\\|", "{}", r.stderr);
+}
+
+// Found by the password tests: an escaped byte followed by a digit (`$0`, `-p 22`) was read by `printf %b` as one
+// longer octal number (`\0440` is not `$` and `0`), so the script that ran was not the script that was sent.
+#[test]
+fn the_script_survives_the_wrapper_byte_for_byte_even_with_digits_after_an_escape() {
+    let sim = Sim::new();
+    sim.write("sudo-password", b"pw\n");
+    for script in [
+        "x0=v; y9=w; printf '%s' $x0$y9",
+        "printf '%s' \"$1$2\" 'a0\\0b1'",
+        "echo '09 $1 \"7\" \\1'",
+        "printf '%s' \u{e9}\u{4e2d}'x9'",
+    ] {
+        let direct = sim.run(script, b"");
+        let wrapped = sim.run(&binary::with_sudo_password(script), b"pw\n");
+        assert_eq!(wrapped.stdout, direct.stdout, "script: {script}");
+        assert_eq!(wrapped.code, direct.code, "script: {script}");
+    }
+}
+
+// The shim and the askpass helper pass the password and the arguments through exactly: spaces, `$`, quotes.
+#[test]
+fn a_password_with_spaces_dollars_and_quotes_authenticates() {
+    let sim = Sim::new();
+    let pw = "p w$d'\"x`y";
+    sim.write("sudo-password", format!("{pw}\n").as_bytes());
+    let script = binary::with_sudo_password("sudo sh -c 'echo ok $0' a_b");
+    let r = sim.run(&script, format!("{pw}\n").as_bytes());
+    assert_eq!(r.code, Some(0), "{}\n{}", r.stdout, r.stderr);
+    assert_eq!(
+        r.stdout.trim(),
+        "ok a_b",
+        "stdout={:?} stderr={:?}",
+        r.stdout,
+        r.stderr
+    );
 }
 
 #[test]

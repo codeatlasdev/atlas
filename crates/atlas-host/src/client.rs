@@ -16,6 +16,46 @@ use tokio::sync::{broadcast, oneshot};
 
 use crate::paths;
 
+/// How long a call waits for hostd's reply unless [`deadline_for`] says it legitimately takes longer (#298).
+pub const CALL_DEADLINE: Duration = Duration::from_secs(10);
+
+/// The hello (and the first reply of an attach) of a daemon that is listening but not answering (#298).
+pub const HANDSHAKE_DEADLINE: Duration = Duration::from_secs(5);
+
+/// Commands that run a subprocess, a download or a handoff: they get minutes, not [`CALL_DEADLINE`].
+const SLOW_CALL_DEADLINE: Duration = Duration::from_secs(600);
+
+/// How long `cmd` may take before hostd counts as wedged. `exec` carries its own `timeout_ms`.
+pub fn deadline_for(cmd: &str, args: &Value) -> Duration {
+    match cmd {
+        "exec" => {
+            Duration::from_millis(args["timeout_ms"].as_u64().unwrap_or(60_000)) + CALL_DEADLINE
+        }
+        "upgrade" => Duration::from_secs(60),
+        "lsp_install" | "lsp_uninstall" | "worktree_create" | "worktree_remove"
+        | "project_action" | "git_commit" | "git_commit_message" | "git_push" | "git_pr_create"
+        | "crew_engine_login" | "crew_call" | "crewmate_create" | "agent_launch"
+        | "engine_limits" => SLOW_CALL_DEADLINE,
+        _ => CALL_DEADLINE,
+    }
+}
+
+/// The error of a call; [`Unanswered`] inside when hostd was too slow.
+pub use anyhow::Error as CallError;
+
+/// hostd did not answer in time (a call's deadline or the handshake's): the daemon is wedged, or the reply was lost.
+/// Callers that can tell "slow" from "refused" check it with `err.downcast_ref::<Unanswered>()`.
+#[derive(Debug)]
+pub struct Unanswered(String);
+
+impl std::fmt::Display for Unanswered {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        f.write_str(&self.0)
+    }
+}
+
+impl std::error::Error for Unanswered {}
+
 /// A pushed event: `{"ev": "...", ...}`.
 pub type HostEvent = Arc<Value>;
 
@@ -30,21 +70,44 @@ pub struct HostClient {
     next: Arc<AtomicU64>,
     events: broadcast::Sender<HostEvent>,
     closed: Arc<tokio::sync::Notify>,
+    /// `hostd.log` next to the socket, named in the error of a call that got no answer.
+    log: Arc<Path>,
 }
 
 impl HostClient {
     pub async fn connect(socket: &Path, token: &str, client: &str) -> Result<Self> {
+        Self::connect_within(socket, token, client, HANDSHAKE_DEADLINE).await
+    }
+
+    /// [`connect`](Self::connect) with an explicit handshake deadline.
+    async fn connect_within(
+        socket: &Path,
+        token: &str,
+        client: &str,
+        handshake: Duration,
+    ) -> Result<Self> {
+        let log: Arc<Path> = paths::log(socket.parent().unwrap_or(Path::new("."))).into();
         let stream = ipc::connect(socket)
             .await
             .with_context(|| format!("connect {}", socket.display()))?;
         let (r, mut w) = ipc::split(stream);
         let mut lines = BufReader::new(r).lines();
         let hello = crate::protocol::hello_line(token, client);
-        w.write_all(format!("{hello}\n").as_bytes()).await?;
-        let first = lines
-            .next_line()
-            .await?
-            .ok_or_else(|| anyhow!("hostd closed the connection"))?;
+        let first = tokio::time::timeout(handshake, async {
+            w.write_all(format!("{hello}\n").as_bytes()).await?;
+            lines
+                .next_line()
+                .await?
+                .ok_or_else(|| anyhow!("hostd closed the connection"))
+        })
+        .await
+        .map_err(|_| {
+            Unanswered(format!(
+                "hostd did not answer the handshake within {}s (see {})",
+                handshake.as_secs(),
+                log.display()
+            ))
+        })??;
         let v: Value = serde_json::from_str(&first)?;
         if v["ok"] != true {
             return Err(anyhow!(
@@ -89,11 +152,19 @@ impl HostClient {
             next: Arc::new(AtomicU64::new(1)),
             events,
             closed,
+            log,
         })
     }
 
-    /// Send a command and wait for its reply.
+    /// Send a command and wait for its reply, at most [`deadline_for`] it.
     pub async fn call(&self, cmd: &str, args: Value) -> Result<Value> {
+        let deadline = deadline_for(cmd, &args);
+        self.call_within(cmd, args, deadline).await
+    }
+
+    /// [`call`](Self::call) with an explicit deadline. A daemon that never answers (wedged, or
+    /// the reply lost) fails the call and frees its `pending` slot instead of hanging the caller (#298).
+    pub async fn call_within(&self, cmd: &str, args: Value, deadline: Duration) -> Result<Value> {
         let id = self.next.fetch_add(1, Ordering::Relaxed);
         let (otx, orx) = oneshot::channel();
         match self.pending.lock().as_mut() {
@@ -107,10 +178,21 @@ impl HostClient {
             }
             return Err(anyhow!("hostd disconnected"));
         }
-        match orx.await {
-            Ok(Ok(v)) => Ok(v),
-            Ok(Err(e)) => Err(anyhow!(e)),
-            Err(_) => Err(anyhow!("hostd disconnected")),
+        match tokio::time::timeout(deadline, orx).await {
+            Ok(Ok(Ok(v))) => Ok(v),
+            Ok(Ok(Err(e))) => Err(anyhow!(e)),
+            Ok(Err(_)) => Err(anyhow!("hostd disconnected")),
+            Err(_) => {
+                if let Some(m) = self.pending.lock().as_mut() {
+                    m.remove(&id);
+                }
+                Err(Unanswered(format!(
+                    "hostd did not answer `{cmd}` within {}s (see {})",
+                    deadline.as_secs(),
+                    self.log.display()
+                ))
+                .into())
+            }
         }
     }
 
@@ -284,10 +366,18 @@ pub async fn attach_raw(dir: &Path, pty: &str, replay: bool) -> Result<RawPty> {
     })
 }
 
-/// One `{"ok":..}` line from hostd, as its `data`.
+/// One `{"ok":..}` line from hostd, as its `data`; [`HANDSHAKE_DEADLINE`] at most.
 async fn reply_line(r: &mut BufReader<ipc::ReadHalf>) -> Result<Value> {
     let mut line = String::new();
-    if r.read_line(&mut line).await? == 0 {
+    let n = tokio::time::timeout(HANDSHAKE_DEADLINE, r.read_line(&mut line))
+        .await
+        .map_err(|_| {
+            Unanswered(format!(
+                "hostd did not answer within {}s",
+                HANDSHAKE_DEADLINE.as_secs()
+            ))
+        })??;
+    if n == 0 {
         return Err(anyhow!("hostd closed the connection"));
     }
     let v: Value = serde_json::from_str(&line)?;
@@ -299,7 +389,7 @@ async fn reply_line(r: &mut BufReader<ipc::ReadHalf>) -> Result<Value> {
 
 #[cfg(test)]
 mod tests {
-    use super::{HostClient, is_hostd_command};
+    use super::{HostClient, deadline_for, is_hostd_command};
     use atlas_core::ipc;
     use serde_json::json;
     use std::time::Duration;
@@ -376,6 +466,60 @@ mod tests {
             .await
             .expect("an unanswered call must fail when the connection drops");
         assert!(r.unwrap_err().to_string().contains("disconnected"));
+    }
+
+    // Regression: #298. A daemon that answered hello and then never replies hung the caller for
+    // good and left its entry in `pending`.
+    #[tokio::test]
+    async fn a_call_the_daemon_never_answers_fails_at_its_deadline_and_frees_its_slot() {
+        let (_tmp, c, _h) = fake_hostd(1).await;
+        let t = std::time::Instant::now();
+        let r = tokio::time::timeout(
+            Duration::from_secs(5),
+            c.call_within("info", json!({}), Duration::from_millis(300)),
+        )
+        .await
+        .expect("the deadline must end the call, not the test's own timeout");
+        let e = r.unwrap_err();
+        assert!(t.elapsed() < Duration::from_secs(2));
+        assert!(e.to_string().contains("hostd.log") && e.to_string().contains("`info`"));
+        assert!(e.downcast_ref::<super::Unanswered>().is_some());
+        assert!(c.pending.lock().as_ref().unwrap().is_empty());
+    }
+
+    // Regression: #298. A listener that accepts and never says hello hung `connect` (and the
+    // desktop's whole start-up) for good.
+    #[tokio::test]
+    async fn connect_to_a_daemon_that_never_says_hello_fails_at_the_handshake_deadline() {
+        let tmp = tempfile::tempdir().unwrap();
+        let sock = tmp.path().join("h.sock");
+        let listener = ipc::Listener::bind(&sock).unwrap();
+        tokio::spawn(async move {
+            let _held = listener.accept().await.unwrap();
+            std::future::pending::<()>().await;
+        });
+        let t = std::time::Instant::now();
+        let e = HostClient::connect_within(&sock, "t", "test", Duration::from_millis(300))
+            .await
+            .err()
+            .expect("a silent daemon must not connect")
+            .to_string();
+        assert!(t.elapsed() < Duration::from_secs(2));
+        assert!(e.contains("handshake") && e.contains("hostd.log"), "{e}");
+        assert!(super::HANDSHAKE_DEADLINE <= Duration::from_secs(5));
+    }
+
+    #[test]
+    fn long_commands_get_longer_deadlines_than_a_plain_call() {
+        let plain = deadline_for("info", &json!({}));
+        assert_eq!(plain, super::CALL_DEADLINE);
+        assert!(deadline_for("upgrade", &json!({})) > plain);
+        assert!(deadline_for("lsp_install", &json!({})) > plain);
+        // `exec` outlives its own timeout by the plain deadline, so hostd's answer is not raced.
+        assert_eq!(
+            deadline_for("exec", &json!({"timeout_ms": 120_000})),
+            Duration::from_secs(130)
+        );
     }
 
     #[test]

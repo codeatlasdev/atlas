@@ -73,7 +73,7 @@ class DemoCrewmate {
 /// usage (`crewmate_usage`), engine limits and the crew settings. The audit grows with what the app
 /// does on the demo (a routine saved, the crew paused), like hostd's.
 class DemoCrewOps {
-  DemoCrewOps(this._crewmates) {
+  DemoCrewOps(this._crewmates, {this.clock = DateTime.now}) {
     final now = demoNowSeconds();
     // Reviewer's seeded history: a task, a tool call, an approval, a setting.
     _log(now - 600, 'crewmate-1', 'task_queued', {
@@ -174,15 +174,27 @@ class DemoCrewOps {
     return {'entries': rows};
   }
 
+  /// The device clock the usage seed is placed against (a test pins it; the demo uses the real one).
+  final DateTime Function() clock;
+
   /// Usage records of one crewmate (or all): a few days of the demo crew's turns.
   Map<String, Object?> usage(String? crewmate, {int since = 0}) {
-    final now = demoNowSeconds();
+    final at = clock();
+    final now = at.millisecondsSinceEpoch ~/ 1000;
+    // "Today" is counted from local midnight (`usageTotals`), so today's turn is an hour ago but never before
+    // the first minute of today: at 00:30 an hour ago is yesterday, and the screen showed "Today: 0".
+    final midnight = DateTime(at.year, at.month, at.day);
+    final todayTurn = (midnight.millisecondsSinceEpoch ~/ 1000 + 60).clamp(
+      now - 3600,
+      now,
+    );
     final out = <Map<String, Object?>>[];
     for (final id in _crewmates.keys) {
       if (crewmate != null && crewmate != id) continue;
       for (var d = 0; d < 6; d++) {
         out.add({
-          'ts': now - d * 86400 - 3600,
+          // The older days stay whole days back: each is before today's midnight at any hour.
+          'ts': d == 0 ? todayTurn : now - d * 86400 - 3600,
           'engine': id == 'crewmate-1' ? 'claude' : 'codex',
           'model': id == 'crewmate-1' ? 'claude-sonnet-4' : 'gpt-5',
           'input_tokens': 1800 + d * 450,

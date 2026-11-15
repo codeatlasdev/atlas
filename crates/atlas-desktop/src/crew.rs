@@ -43,6 +43,10 @@ pub struct CrewServer {
     pub host: String,
     /// Human-readable label shown in the sidebar.
     pub name: String,
+    /// The ssh port of the server; absent for the default 22 and for servers added before the field existed
+    /// (a port from `~/.ssh/config` still applies to those).
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub port: Option<u16>,
     /// The admin address the server was installed with. Absent for servers added before this field existed
     /// (and for servers added by hand, until the user types one in Settings).
     #[serde(default, skip_serializing_if = "Option::is_none")]
@@ -87,19 +91,35 @@ fn with_server(
     admin: Option<AdminAddress>,
 ) -> (CrewServer, bool) {
     let admin = admin.map(AdminAddress::normalized);
+    // The crew user is reached over the sshd the install ran against: that port is the server's.
+    let port = admin.as_ref().and_then(|a| a.port);
     if let Some(e) = hosts.iter_mut().find(|h| h.host == host) {
         if admin.is_some() {
             e.admin = admin;
+            e.port = port;
         }
         return (e.clone(), false);
     }
     let entry = CrewServer {
         host: host.to_string(),
         name,
+        port,
         admin,
     };
     hosts.push(entry.clone());
     (entry, true)
+}
+
+/// How to ssh to the crew server `host` (a registry host, or an `ssh:`-prefixed hostd key): its
+/// registered port, or the default. The one place the desktop turns a server into an ssh address.
+pub fn server_ssh(host: &str) -> atlas_core::ssh::SshTarget {
+    server_ssh_in(&load(), host)
+}
+
+fn server_ssh_in(hosts: &[CrewServer], host: &str) -> atlas_core::ssh::SshTarget {
+    let host = host.strip_prefix("ssh:").unwrap_or(host);
+    let port = hosts.iter().find(|h| h.host == host).and_then(|h| h.port);
+    atlas_core::ssh::SshTarget::new(host, port)
 }
 
 /// List all registered crew servers.
@@ -150,6 +170,7 @@ fn set_admin(
         .find(|h| h.host == host)
         .ok_or_else(|| format!("{host} is not a registered crew server"))?;
     e.admin = admin.map(AdminAddress::normalized);
+    e.port = e.admin.as_ref().and_then(|a| a.port);
     Ok(())
 }
 
@@ -399,18 +420,11 @@ async fn pump_install<R: tokio::io::AsyncRead + Unpin>(
 
 // ─── SSH key helpers ─────────────────────────────────────────────────────────
 
-/// Return the path of the Mac's SSH public key, or null if none exists.
-/// Checks ~/.ssh/id_ed25519.pub first, then id_rsa.pub.
+/// Return the path of the SSH public key `ssh` would use, or null if none exists. Asks `ssh -G` (the
+/// `IdentityFile`s of ~/.ssh/config and the default names), so a key named anything is found.
 #[tauri::command]
 pub fn ssh_key_find() -> Option<String> {
-    let home = dirs::home_dir()?;
-    for name in ["id_ed25519.pub", "id_rsa.pub"] {
-        let p = home.join(".ssh").join(name);
-        if p.exists() {
-            return Some(p.to_string_lossy().into_owned());
-        }
-    }
-    None
+    atlas_core::ssh::find_default_public_key().map(|p| p.to_string_lossy().into_owned())
 }
 
 /// Generate an ed25519 key pair at `~/.ssh/id_ed25519`.
@@ -457,11 +471,9 @@ pub async fn ssh_authorize_key(
     port: Option<u16>,
     password: String,
 ) -> Result<(), String> {
-    let home = dirs::home_dir().ok_or("no home directory")?;
-    let pub_key_path = ["id_ed25519.pub", "id_rsa.pub"]
-        .iter()
-        .map(|n| home.join(".ssh").join(n))
-        .find(|p| p.exists())
+    let st = atlas_core::ssh::SshTarget::new(target.clone(), port);
+    st.valid()?;
+    let pub_key_path = atlas_core::ssh::find_public_key(&st)
         .ok_or("no SSH public key found; generate one first")?;
     let pubkey =
         std::fs::read_to_string(&pub_key_path).map_err(|e| format!("reading public key: {e}"))?;
@@ -593,27 +605,19 @@ pub async fn crew_agent_check(
     host_key: String,
     agent_id: String,
 ) -> Result<AgentShipStatus, String> {
-    let ssh_target = host_key.strip_prefix("ssh:").unwrap_or(&host_key);
+    let target = server_ssh(&host_key);
+    target.valid()?;
     let script = check_script(&agent_id).ok_or_else(|| format!("unknown agent {agent_id:?}"))?;
     let ssh = tokio::process::Command::new("ssh")
         .no_window()
-        .args([
-            "-o",
-            "BatchMode=yes",
-            "-o",
-            "ConnectTimeout=15",
-            "-o",
-            "ServerAliveInterval=15",
-        ])
-        .arg(ssh_target)
-        .arg(&script)
+        .args(target.exec_argv(&script))
         .stdin(std::process::Stdio::null())
         .kill_on_drop(true)
         .output();
     // A check that never answers must not leave the row on "Checking…": give up and say so.
     let out = tokio::time::timeout(std::time::Duration::from_secs(45), ssh)
         .await
-        .map_err(|_| format!("{ssh_target} did not answer in 45 s"))?
+        .map_err(|_| format!("{} did not answer in 45 s", target.target))?
         .map_err(|e| format!("ssh: {e}"))?;
     if !out.status.success() && out.stdout.is_empty() {
         return Err(String::from_utf8_lossy(&out.stderr).trim().to_string());
@@ -636,22 +640,14 @@ pub async fn crew_agent_install(
     host_key: String,
     agent_id: String,
 ) -> Result<(), String> {
-    let ssh_target = host_key.strip_prefix("ssh:").unwrap_or(&host_key);
+    let target = server_ssh(&host_key);
+    target.valid()?;
     let script =
         install_script(&agent_id).ok_or_else(|| format!("no installer for {agent_id:?}"))?;
-    // Wrap in an interactive-login shell so ~/.bashrc / installers that source it work.
-    let full_cmd = format!("bash -lc {}", shq(&script));
+    let full_cmd = install_command(&script);
     let mut child = tokio::process::Command::new("ssh")
-        .args([
-            "-o",
-            "BatchMode=yes",
-            "-o",
-            "ConnectTimeout=15",
-            "-o",
-            "ServerAliveInterval=15",
-        ])
-        .arg(ssh_target)
-        .arg(&full_cmd)
+        .no_window()
+        .args(target.exec_argv(&full_cmd))
         .stdin(std::process::Stdio::null())
         .stdout(std::process::Stdio::piped())
         .stderr(std::process::Stdio::piped())
@@ -696,7 +692,7 @@ fn check_script(agent_id: &str) -> Option<String> {
     };
     Some(format!(
         concat!(
-            r#"export PATH="$HOME/.bun/bin:$HOME/.local/bin:$HOME/.opencode/bin:$HOME/.npm-global/bin:$PATH"; "#,
+            // The agents' `PATH` is exported by the ssh helper (`SshTarget::exec_argv`).
             r#"bin=0; command -v {bin} >/dev/null 2>&1 && bin=1; "#,
             r#"signed_in=0; "#,
             r#"if [ "$bin" = "1" ]; then {auth_check}; "#,
@@ -709,6 +705,12 @@ fn check_script(agent_id: &str) -> Option<String> {
         auth_check = auth_check,
         id = agent_id,
     ))
+}
+
+/// The remote command of an agent install: `script` in an interactive-login shell, so `~/.bashrc` and installers
+/// that source it work.
+fn install_command(script: &str) -> String {
+    format!("bash -lc {}", atlas_core::ssh::shq(script))
 }
 
 /// The agent's own installer, then `atlas setup <agent> --apply`: without Atlas's hooks the agent never reports
@@ -733,14 +735,21 @@ fn install_script(agent_id: &str) -> Option<String> {
         ),
         _ => return None,
     };
+    // The installer may have created new dirs: export the agents' PATH again before `atlas setup`.
     Some(format!(
-        r#"{install} && export PATH="$HOME/.atlas/bin:$HOME/.bun/bin:$HOME/.local/bin:$HOME/.opencode/bin:$HOME/.npm-global/bin:$PATH" && atlas setup {setup} --apply </dev/null"#
+        "{install} && {} && atlas setup {setup} --apply </dev/null",
+        atlas_core::ssh::PATH_EXPORT
     ))
 }
 
-/// Shell-quote a string for use as a single argument.
-fn shq(s: &str) -> String {
-    format!("'{}'", s.replace('\'', r"'\''"))
+/// The `ssh -t` argv of an engine's sign-in terminal on crew server `host_key`: its registered port
+/// and the agents' `PATH`, the same helper every other ssh call here goes through. The page opens
+/// the pty with it, so the sign-in cannot reach a server another way than the check does.
+#[tauri::command]
+pub fn crew_signin_argv(host_key: String, command: String) -> Result<Vec<String>, String> {
+    let t = server_ssh(&host_key);
+    t.valid()?;
+    Ok(t.terminal_argv(&command))
 }
 
 // ─── provider probe ──────────────────────────────────────────────────────────
@@ -895,7 +904,7 @@ mod tests {
         assert_eq!(
             written,
             serde_json::json!([
-                {"host": "atlas-crew@srv", "name": "srv", "admin": {"target": "ubuntu@srv", "port": 2222}},
+                {"host": "atlas-crew@srv", "name": "srv", "port": 2222, "admin": {"target": "ubuntu@srv", "port": 2222}},
                 {"host": "atlas-crew@b", "name": "b", "admin": {"target": "ubuntu@b"}},
                 {"host": "atlas-crew@c", "name": "c"},
             ])
@@ -1138,11 +1147,13 @@ mod tests {
             CrewServer {
                 host: "atlas-bot@server".into(),
                 name: "My Server".into(),
+                port: None,
                 admin: None,
             },
             CrewServer {
                 host: "atlas-bot@192.168.1.5".into(),
                 name: "Local VM".into(),
+                port: Some(2222),
                 admin: Some(AdminAddress {
                     target: "ubuntu@192.168.1.5".into(),
                     port: Some(2222),
@@ -1151,15 +1162,143 @@ mod tests {
         ]);
     }
 
+    // Issue #355: the registry kept no port, so check, install, sign-in and the relay all dialled 22. A server
+    // registered with an admin address on 2222 is reached on 2222 by every ssh call, and 22 is no port.
+    #[test]
+    fn a_registered_port_reaches_the_ssh_address_of_every_call() {
+        let mut hosts = vec![];
+        with_server(
+            &mut hosts,
+            "atlas-crew@srv",
+            "srv".into(),
+            admin("ubuntu@srv", Some(2222)),
+        );
+        with_server(
+            &mut hosts,
+            "atlas-crew@plain",
+            "plain".into(),
+            admin("ubuntu@plain", Some(22)),
+        );
+        with_server(&mut hosts, "atlas-crew@hand", "hand".into(), None);
+        assert_eq!(server_ssh_in(&hosts, "atlas-crew@srv").port, Some(2222));
+        assert_eq!(
+            server_ssh_in(&hosts, "ssh:atlas-crew@srv").port,
+            Some(2222),
+            "a hostd key is a registry host with a prefix"
+        );
+        assert_eq!(server_ssh_in(&hosts, "atlas-crew@plain").port, None);
+        assert_eq!(server_ssh_in(&hosts, "atlas-crew@hand").port, None);
+        assert_eq!(server_ssh_in(&hosts, "atlas-crew@unknown").port, None);
+        // Re-installing against the default port clears a stale one.
+        with_server(
+            &mut hosts,
+            "atlas-crew@srv",
+            "srv".into(),
+            admin("ubuntu@srv", None),
+        );
+        assert_eq!(server_ssh_in(&hosts, "atlas-crew@srv").port, None);
+    }
+
+    // A registry written before `port` existed keeps loading (the pre-admin fixture has neither field), and a
+    // file with a port reads back the same value, written only when it is not the default.
+    #[test]
+    fn the_port_is_optional_in_the_file_and_never_written_for_22() {
+        let old: Vec<CrewServer> = serde_json::from_str(
+            r#"[{"host":"atlas-crew@a","name":"A","admin":{"target":"u@a","port":2222}}]"#,
+        )
+        .unwrap();
+        assert_eq!(
+            old[0].port, None,
+            "an old entry has no port until it is re-registered"
+        );
+        let dir = tempfile::tempdir().unwrap();
+        let file = dir.path().join("crew-servers.json");
+        let mut hosts = vec![];
+        with_server(
+            &mut hosts,
+            "atlas-crew@b",
+            "b".into(),
+            admin("u@b", Some(2200)),
+        );
+        with_server(
+            &mut hosts,
+            "atlas-crew@c",
+            "c".into(),
+            admin("u@c", Some(22)),
+        );
+        save_to(&file, &hosts).unwrap();
+        let v: serde_json::Value =
+            serde_json::from_str(&std::fs::read_to_string(&file).unwrap()).unwrap();
+        assert_eq!(v[0]["port"], 2200);
+        assert!(v[1].get("port").is_none(), "{v}");
+        assert_eq!(load_from(&file), hosts);
+    }
+
+    // The engine check, the agent install and the sign-in terminal are one ssh helper: each has the port before
+    // the target and the agents' PATH in the remote command (audit #5: sign-in had neither).
+    #[test]
+    fn check_install_and_signin_share_the_port_and_the_agents_path() {
+        let t = atlas_core::ssh::SshTarget::new("atlas-crew@srv", Some(2222));
+        let check = t.exec_argv(&check_script("claude").unwrap());
+        let install = t.exec_argv(&install_command(&install_script("claude").unwrap()));
+        let signin = t.terminal_argv("claude");
+        for (what, a) in [
+            ("check", &check),
+            ("install", &install),
+            ("signin", &signin),
+        ] {
+            let p = a
+                .iter()
+                .position(|x| x == "-p")
+                .unwrap_or_else(|| panic!("{what}: no -p {a:?}"));
+            assert_eq!(a[p + 1], "2222", "{what}");
+            assert!(
+                p < a.iter().position(|x| x == "atlas-crew@srv").unwrap(),
+                "{what}"
+            );
+            let cmd = a.last().unwrap();
+            for d in [".local/bin", ".bun/bin", ".npm-global/bin"] {
+                assert!(cmd.contains(d), "{what}: {d} missing from {cmd}");
+            }
+        }
+        assert!(signin.contains(&"-t".to_string()));
+    }
+
     #[test]
     fn check_script_covers_all_agents() {
         for id in ["omp", "claude", "codex", "opencode"] {
             let s = check_script(id).unwrap();
-            assert!(s.contains(".bun/bin"), "{id}: missing .bun/bin in PATH");
-            assert!(s.contains(".local/bin"), "{id}: missing .local/bin in PATH");
             assert!(s.contains(id), "{id}: missing bin name in script");
+            let full = atlas_core::ssh::with_path(&s);
+            assert!(full.contains(".bun/bin"), "{id}: missing .bun/bin in PATH");
+            assert!(
+                full.contains(".local/bin"),
+                "{id}: missing .local/bin in PATH"
+            );
         }
         assert!(check_script("unknown").is_none());
+    }
+
+    // The sign-in argv the page opens its pty with is the helper's, for a registered port, and refuses an
+    // address ssh could read as an option.
+    #[test]
+    fn the_signin_terminal_argv_comes_from_the_registry() {
+        let hosts = [CrewServer {
+            host: "atlas-crew@srv".into(),
+            name: "srv".into(),
+            port: Some(2222),
+            admin: None,
+        }];
+        let t = server_ssh_in(&hosts, "ssh:atlas-crew@srv");
+        let a = t.terminal_argv("codex");
+        assert_eq!(a[0], "ssh");
+        assert!(a.contains(&"-t".to_string()));
+        assert!(a.windows(2).any(|w| w[0] == "-p" && w[1] == "2222"));
+        assert!(
+            server_ssh_in(&hosts, "ssh:-oProxyCommand=x")
+                .valid()
+                .is_err()
+        );
     }
 
     // Incident: omp installed on a ship without Atlas's hooks never reported "done", so the crewmate's task showed

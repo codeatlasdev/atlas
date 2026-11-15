@@ -124,10 +124,30 @@ final crewDevicesProvider = FutureProvider.autoDispose<List<MacDevice>>((
   return out;
 });
 
-/// Loads crewmates from a device. Returns isCrewServer=false when crewmate_list errors
-/// with the 'not a crew server' message (hostd without ATLAS_CREW_HOST=1).
+/// Riverpod retries a provider that threw (10 times, 0.2 s to 6.4 s) and reports it as loading meanwhile. A
+/// computer that is off or on another protocol is not a one-off: the connection already retries on its own
+/// backoff and `requireMux` waits for it, so a retry here only keeps the tab on a spinner for about 45 s
+/// before it says why (and a protocol mismatch would never be fixed by one). Say it at once.
+Duration? noRetryWhenUnavailable(int count, Object error) =>
+    error is DeviceUnavailable
+    ? null
+    : ProviderContainer.defaultRetry(count, error);
+
+/// hostd's own answer to a crew command on a computer that is no crew server (`crew::handle` in
+/// crates/atlas-host, the `!hub.crew_host` branch; a crew server reached through a Mac relays it unchanged).
+/// The ONE error that means "this computer has no crew"; any other failure is a failure.
+const notCrewServerError =
+    'this computer is not a crew server (atlas crew install)';
+
+/// Loads crewmates from a device. `isCrewServer: false` only when hostd answers [notCrewServerError] (a hostd
+/// without ATLAS_CREW_HOST=1). A computer that is not reachable yet, is offline, speaks another protocol, or
+/// refuses is an `AsyncError` ([DeviceUnavailable] or a [StateError] with the server's text), never an empty
+/// crew: a screen shows "Reaching…", "Can't reach" or the error, not "No crew yet".
 final crewProvider = AsyncNotifierProvider.autoDispose
-    .family<CrewNotifier, CrewListResult, MacDevice>(CrewNotifier.new);
+    .family<CrewNotifier, CrewListResult, MacDevice>(
+      CrewNotifier.new,
+      retry: noRetryWhenUnavailable,
+    );
 
 class CrewNotifier extends AsyncNotifier<CrewListResult> {
   CrewNotifier(this.device);
@@ -140,23 +160,19 @@ class CrewNotifier extends AsyncNotifier<CrewListResult> {
       if (!ev.hasValue) return;
       if (isCrewListPush(ev.value!)) ref.invalidateSelf();
     });
-    final mux = ref.watch(connectionNotifierProvider(device)).value;
-    if (mux == null) {
-      return (
-        isCrewServer: false,
-        hostName: device.name,
-        crewmates: const <CrewmateEntry>[],
-        paused: false,
-      );
-    }
+    final mux = await requireMux(ref, device);
     final resp = await mux.call('crewmate_list', {});
     if (resp['ok'] != true) {
-      return (
-        isCrewServer: false,
-        hostName: device.name,
-        crewmates: const <CrewmateEntry>[],
-        paused: false,
-      );
+      final error = resp['error'] as String?;
+      if (error == notCrewServerError) {
+        return (
+          isCrewServer: false,
+          hostName: device.name,
+          crewmates: const <CrewmateEntry>[],
+          paused: false,
+        );
+      }
+      throw StateError(error ?? 'the server refused');
     }
     return parseCrewList(
       (resp['data'] as Map).cast<String, dynamic>(),
@@ -174,26 +190,30 @@ bool isTaskPushFor(Map<String, dynamic> e, String crewmateId) =>
 
 /// Loads tasks for a single crewmate.
 final crewmateTasksProvider = FutureProvider.autoDispose
-    .family<List<CrewmateTask>, (MacDevice, String)>((ref, arg) async {
-      final (device, crewmateId) = arg;
-      ref.listen(devicePushEventsProvider(device), (_, ev) {
-        if (ev.hasValue && isTaskPushFor(ev.value!, crewmateId)) {
-          ref.invalidateSelf();
+    .family<List<CrewmateTask>, (MacDevice, String)>(
+      retry: noRetryWhenUnavailable,
+      (ref, arg) async {
+        final (device, crewmateId) = arg;
+        ref.listen(devicePushEventsProvider(device), (_, ev) {
+          if (ev.hasValue && isTaskPushFor(ev.value!, crewmateId)) {
+            ref.invalidateSelf();
+          }
+        });
+        final mux = await requireMux(ref, device);
+        final resp = await mux.call('crewmate_tasks', {
+          'id': crewmateId,
+          'limit': 50,
+        });
+        if (resp['ok'] != true) {
+          throw StateError(resp['error'] as String? ?? 'the server refused');
         }
-      });
-      final mux = ref.watch(connectionNotifierProvider(device)).value;
-      if (mux == null) return const [];
-      final resp = await mux.call('crewmate_tasks', {
-        'id': crewmateId,
-        'limit': 50,
-      });
-      if (resp['ok'] != true) return const [];
-      final data = (resp['data'] as Map).cast<String, dynamic>();
-      return [
-        for (final t in (data['tasks'] as List<dynamic>?) ?? const [])
-          CrewmateTask.fromJson((t as Map).cast()),
-      ];
-    });
+        final data = (resp['data'] as Map).cast<String, dynamic>();
+        return [
+          for (final t in (data['tasks'] as List<dynamic>?) ?? const [])
+            CrewmateTask.fromJson((t as Map).cast()),
+        ];
+      },
+    );
 
 /// The bytes of one image sent with a task, fetched from the crew server (`crewmate_attachment`, in pieces) and
 /// kept for the session: the thread rebuilds on every push and an image is up to ten round trips. Not

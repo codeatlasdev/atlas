@@ -9,6 +9,7 @@ import 'package:flutter_test/flutter_test.dart';
 
 import 'package:atlas_mobile/core/connection/connection_notifier.dart';
 import 'package:atlas_mobile/core/protocol/models.dart';
+import 'package:atlas_mobile/core/protocol/protocol_version.dart';
 import 'package:atlas_mobile/core/transport/transport.dart';
 import 'package:atlas_mobile/features/crew/crew_provider.dart';
 
@@ -37,7 +38,10 @@ class _Computer implements Transport {
   Future<void> sendLine(String line) async {
     final m = jsonDecode(line) as Map<String, dynamic>;
     final id = m['id'];
-    Object? data = <String, Object?>{};
+    // `info` like a current hostd: the app checks `proto` on connect (#302).
+    Object? data = m['cmd'] == 'info'
+        ? <String, Object?>{'proto': kAppProto}
+        : <String, Object?>{};
     switch (m['cmd']) {
       case 'mobile_invites':
         asks++;

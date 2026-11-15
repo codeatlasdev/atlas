@@ -7,8 +7,8 @@ library;
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 
+import 'package:atlas_mobile/core/connection/require_mux.dart';
 import 'package:atlas_mobile/core/auth/device_auth.dart';
-import 'package:atlas_mobile/core/connection/connection_notifier.dart';
 import 'package:atlas_mobile/core/protocol/crew_models.dart';
 import 'package:atlas_mobile/core/protocol/crew_ops_models.dart';
 import 'package:atlas_mobile/core/protocol/models.dart';
@@ -54,7 +54,7 @@ class _TaskActionCardState extends ConsumerState<TaskActionCard> {
 
   Future<void> _submit(String value) async {
     if (value.isEmpty || _submitting) return;
-    final mux = ref.read(connectionNotifierProvider(widget.device)).value;
+    final mux = liveMux(ref, widget.device);
     if (mux == null) return;
     setState(() {
       _submitting = true;
@@ -156,7 +156,7 @@ class _TaskActionCardState extends ConsumerState<TaskActionCard> {
   }
 
   Future<void> _cancel() async {
-    final mux = ref.read(connectionNotifierProvider(widget.device)).value;
+    final mux = liveMux(ref, widget.device);
     if (mux == null) return;
     await mux.call('crewmate_cancel', {
       'id': widget.crewmateId,
@@ -168,13 +168,13 @@ class _TaskActionCardState extends ConsumerState<TaskActionCard> {
   }
 
   Future<void> _startGithubLogin() async {
-    final mux = ref.read(connectionNotifierProvider(widget.device)).value;
+    final mux = liveMux(ref, widget.device);
     if (mux == null) return;
     await _login.start(mux, _pollGithubLogin);
   }
 
   Future<void> _pollGithubLogin() async {
-    final mux = ref.read(connectionNotifierProvider(widget.device)).value;
+    final mux = liveMux(ref, widget.device);
     if (mux == null) return;
     final (result, _) = await _login.pollOnce(mux);
     // Wake the runner once the user has authorized.

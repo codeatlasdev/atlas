@@ -62,7 +62,8 @@ class _CrewScreenState extends ConsumerState<CrewScreen> {
   @override
   Widget build(BuildContext context) {
     final c = AtlasColors.of(context);
-    final devices = ref.watch(crewDevicesProvider).value ?? [];
+    final devicesAsync = ref.watch(crewDevicesProvider);
+    final devices = devicesAsync.value ?? [];
 
     // Listen for computer_invite pushes.
     for (final device in devices) {
@@ -99,8 +100,12 @@ class _CrewScreenState extends ConsumerState<CrewScreen> {
     final pausable = <({MacDevice device, String name, bool paused})>[];
     // The computer's name only matters when crewmates live on more than one.
 
+    // Nothing to list yet: the computers, or any computer's crew, are still loading. Not "No crew yet".
+    var loading = devicesAsync.isLoading && !devicesAsync.hasValue;
     for (final device in devices) {
-      final data = ref.watch(crewProvider(device)).value;
+      final crew = ref.watch(crewProvider(device));
+      if (crew.isLoading && !crew.hasValue) loading = true;
+      final data = crew.value;
       final online =
           ref.watch(connectionNotifierProvider(device)).value != null;
       if (data != null) {
@@ -174,7 +179,9 @@ class _CrewScreenState extends ConsumerState<CrewScreen> {
           ),
           SafeArea(
             bottom: false,
-            child: allEntries.isEmpty
+            child: allEntries.isEmpty && loading
+                ? const Center(child: CircularProgressIndicator())
+                : allEntries.isEmpty
                 ? Padding(
                     padding: const EdgeInsets.only(
                       bottom: kFloatingBarScrollPad,

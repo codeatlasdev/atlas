@@ -1,7 +1,7 @@
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 
-import 'package:atlas_mobile/core/connection/connection_notifier.dart';
+import 'package:atlas_mobile/core/connection/require_mux.dart';
 import 'package:atlas_mobile/core/protocol/models.dart';
 import 'package:atlas_mobile/core/ui/atlas_theme.dart';
 import 'package:atlas_mobile/features/crew/crew_provider.dart';
@@ -69,8 +69,7 @@ class _NewCrewmateSheetState extends ConsumerState<NewCrewmateSheet> {
       _error = null;
     });
     try {
-      final mux = await ref.read(connectionNotifierProvider(_device).future);
-      if (mux == null) throw Exception('Not connected to ${_device.name}');
+      final mux = await requireMuxOf(ref, _device);
       final resp = await mux.call('crewmate_create', {
         'name': name,
         'role': _roleCtrl.text.trim(),

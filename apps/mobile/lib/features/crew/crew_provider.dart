@@ -3,7 +3,9 @@ import 'package:flutter_riverpod/legacy.dart';
 import 'package:atlas_mobile/features/crew/chat/attachments.dart';
 import 'package:atlas_mobile/core/protocol/crew_models.dart';
 import 'package:atlas_mobile/core/protocol/models.dart';
+import 'package:atlas_mobile/core/protocol/multiplexer.dart';
 import 'package:atlas_mobile/core/connection/connection_notifier.dart';
+import 'package:atlas_mobile/core/connection/require_mux.dart';
 import 'package:atlas_mobile/core/demo/demo_computer.dart';
 import 'package:atlas_mobile/core/providers/push_events_provider.dart';
 
@@ -41,8 +43,7 @@ bool isCrewListPush(Map<String, dynamic> e) {
 /// Pauses (cancels running tasks, holds the queues) or resumes a crew server (`crew_pause` /
 /// `crew_resume`, `Act` scope). Throws with the server's message when it refuses.
 Future<void> setCrewPaused(WidgetRef ref, MacDevice device, bool paused) async {
-  final mux = ref.read(connectionNotifierProvider(device)).value;
-  if (mux == null) throw StateError('${device.name} is offline');
+  final mux = await requireMuxOf(ref, device);
   final resp = await mux.call(paused ? 'crew_pause' : 'crew_resume', {});
   if (resp['ok'] != true) {
     throw StateError(resp['error'] as String? ?? 'the server refused');
@@ -65,8 +66,13 @@ Future<void> answerApproval(
   CrewmatePendingApproval approval,
   bool allow,
 ) async {
-  final mux = ref.read(connectionNotifierProvider(device)).value;
-  if (mux == null) return;
+  // The buttons call this without awaiting: a computer that is off leaves the approval pending, as before.
+  final Multiplexer mux;
+  try {
+    mux = await requireMuxOf(ref, device);
+  } on DeviceUnavailable {
+    return;
+  }
   await mux.call('agent_approve', {
     'pane': approval.paneKey,
     'req': approval.req,
@@ -83,8 +89,7 @@ Future<void> answerWaitingAction(
   CrewmateWaitingTask task,
   String value,
 ) async {
-  final mux = ref.read(connectionNotifierProvider(device)).value;
-  if (mux == null) throw StateError('${device.name} is offline');
+  final mux = await requireMuxOf(ref, device);
   final resp = await mux.call('crewmate_action_answer', {
     'id': crewmateId,
     'task': task.id,
@@ -200,9 +205,8 @@ final taskImageProvider =
       (MacDevice device, String crewmateId, String taskId, String name)
     >((ref, arg) async {
       final (device, crewmateId, taskId, name) = arg;
-      final mux = await ref.watch(connectionNotifierProvider(device).future);
       // Offline: an error the bubble shows with a retry, not a crash or a hole.
-      if (mux == null) throw StateError('${device.name} is offline');
+      final mux = await requireMux(ref, device);
       return fetchAttachment(
         mux.call,
         crewmateId: crewmateId,

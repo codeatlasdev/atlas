@@ -42,13 +42,7 @@ fn verify_gh_checksum(data: &[u8], checksums: &str, filename: &str) -> Result<()
 
 /// Configure git to use `gh` as the HTTPS credential helper for github.com.
 pub(super) async fn gh_auth_setup_git() -> Result<(), String> {
-    let out = tokio::process::Command::new("gh")
-        .args(["auth", "setup-git"])
-        .stdout(std::process::Stdio::null())
-        .stderr(std::process::Stdio::piped())
-        .output()
-        .await
-        .map_err(|e| format!("gh auth setup-git: {e}"))?;
+    let out = crate::crew::proc::gh_output(&["auth", "setup-git"], "gh auth setup-git").await?;
     if !out.status.success() {
         let stderr = String::from_utf8_lossy(&out.stderr);
         return Err(format!("gh auth setup-git failed: {stderr}"));
@@ -61,14 +55,9 @@ pub(super) async fn gh_auth_setup_git() -> Result<(), String> {
 /// Verifies the SHA-256 checksum before extracting.
 pub(super) async fn ensure_gh_installed(home: &std::path::Path) -> Result<(), String> {
     // Fast path: already on PATH.
-    if tokio::process::Command::new("gh")
-        .arg("--version")
-        .stdout(std::process::Stdio::null())
-        .stderr(std::process::Stdio::null())
-        .status()
+    if crate::crew::proc::gh_output(&["--version"], "gh --version")
         .await
-        .map(|s| s.success())
-        .unwrap_or(false)
+        .is_ok_and(|o| o.status.success())
     {
         return Ok(());
     }

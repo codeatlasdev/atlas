@@ -400,6 +400,15 @@ pub fn desktop_registry() -> PathBuf {
     atlas_core::paths::atlas_home()
 }
 
+/// Isolation for a daemon that is a crew host: what the machine has (`Setup::detect`, the helper's socket),
+/// `None` anywhere else. Every real entry point passes this as [`ServeOpts::isolation`]; leaving it at its
+/// default silently runs every crewmate as the crew user.
+pub fn detect_isolation(crew_host: bool) -> Option<crate::crew::spawn::layout::Setup> {
+    crew_host
+        .then(crate::crew::spawn::layout::Setup::detect)
+        .flatten()
+}
+
 pub async fn serve(dir: &Path) -> Result<()> {
     let crew_host = std::env::var("ATLAS_CREW_HOST").as_deref() == Ok("1");
     serve_with(
@@ -407,9 +416,7 @@ pub async fn serve(dir: &Path) -> Result<()> {
         ServeOpts {
             crew_host,
             registry: Some(desktop_registry()),
-            isolation: crew_host
-                .then(crate::crew::spawn::layout::Setup::detect)
-                .flatten(),
+            isolation: detect_isolation(crew_host),
             ..Default::default()
         },
     )

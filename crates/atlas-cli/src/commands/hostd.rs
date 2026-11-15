@@ -130,6 +130,7 @@ impl AtlasCommand for HostdArgs {
                     lab: None,
                     no_mobile_relay,
                     crew_host,
+                    isolation: atlas_host::server::detect_isolation(crew_host),
                     registry: Some(atlas_host::server::desktop_registry()),
                     ..Default::default()
                 },
@@ -249,6 +250,7 @@ impl AtlasCommand for HostdArgs {
                 takeover: None,
                 no_mobile_relay,
                 crew_host,
+                isolation: atlas_host::server::detect_isolation(crew_host),
                 lab: self.lab.then_some(main_dir),
                 registry: Some(atlas_host::server::desktop_registry()),
                 ..Default::default()

@@ -1733,3 +1733,62 @@ async fn hostd_mobile_pair_prints_the_daemons_live_invite() {
         String::from_utf8_lossy(&down.stderr)
     );
 }
+
+// Incident (found by the real-systemd end-to-end test, scripts/crew-e2e.sh): `atlas hostd` never told the
+// daemon about the helper (`ServeOpts::isolation` was left at its default), so on a real crew server with both
+// helper sockets up every crewmate still ran as the crew user, with no Linux user of its own. The daemon must
+// be isolated exactly when the helper's socket exists: with it, creating a crewmate goes to the provisioning
+// service (here a path nobody listens on, so the create fails saying so); without it, it works as before.
+#[tokio::test]
+async fn hostd_runs_crewmates_as_their_own_users_when_the_helpers_socket_exists() {
+    let create = |client: HostClient| async move {
+        client
+            .call(
+                "crewmate_create",
+                json!({"name": "Iso", "role": "r", "agent": "claude", "approval": "auto"}),
+            )
+            .await
+    };
+    let tmp = tempfile::tempdir().unwrap();
+
+    // The helper's socket exists (bound, never served); the provisioning service is not there.
+    let _spawn = std::os::unix::net::UnixListener::bind(tmp.path().join("spawn.sock")).unwrap();
+    let dir = tmp.path().join("with-helper");
+    let _d = spawn_with(
+        &dir,
+        &[
+            ("ATLAS_CREW_HOST", "1"),
+            (
+                "ATLAS_CREW_SPAWN_SOCK",
+                tmp.path().join("spawn.sock").to_str().unwrap(),
+            ),
+            (
+                "ATLAS_CREW_PROVISION_SOCK",
+                tmp.path().join("no-such.sock").to_str().unwrap(),
+            ),
+        ],
+    );
+    let err = create(connect_when_up(&dir).await)
+        .await
+        .unwrap_err()
+        .to_string();
+    assert!(
+        err.contains("cannot create the crewmate's Linux user"),
+        "with the helper's socket present the crewmate must be provisioned as its own user: {err}"
+    );
+
+    // No helper socket: the crewmate is the crew user's, as on a developer's machine.
+    let dir = tmp.path().join("without-helper");
+    let _d = spawn_with(
+        &dir,
+        &[
+            ("ATLAS_CREW_HOST", "1"),
+            (
+                "ATLAS_CREW_SPAWN_SOCK",
+                tmp.path().join("absent.sock").to_str().unwrap(),
+            ),
+        ],
+    );
+    let made = create(connect_when_up(&dir).await).await.unwrap();
+    assert!(made["id"].is_string(), "{made}");
+}

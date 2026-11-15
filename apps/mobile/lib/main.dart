@@ -23,7 +23,12 @@ import 'package:atlas_mobile/features/terminal/terminal_screen.dart';
 
 final _rootNavigatorKey = GlobalKey<NavigatorState>();
 
-final _router = GoRouter(
+final _router = buildRouter();
+
+/// The app's routes. Tests build their own router to drive the real shell (one at a time: the root navigator's
+/// key is shared).
+@visibleForTesting
+GoRouter buildRouter() => GoRouter(
   navigatorKey: _rootNavigatorKey,
   routes: [
     // ── Shell: one branch per tab; the bar is visible here ─────────────────

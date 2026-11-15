@@ -131,8 +131,11 @@ class _HomeScreenState extends ConsumerState<HomeScreen> {
     if (!splash && target?.device != null) _ready.add(target!.device!.nodeId);
 
     return Scaffold(
+      // One screen at a time: the loading screen (or the other computer's dashboard) is gone on the first
+      // frame and the next one fades in over the ground, never both superimposed.
       body: AnimatedSwitcher(
-        duration: Motion.slow,
+        duration: Motion.reduced(context) ? Duration.zero : Motion.fast,
+        switchOutCurve: const Threshold(1),
         child: splash
             ? HomeSplash(key: const ValueKey('splash'), caption: _caption)
             : devices.hasError

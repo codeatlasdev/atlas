@@ -39,6 +39,7 @@ atlas-host = { path = "../atlas-host" }
 base64 = { workspace = true }
 dirs = { workspace = true }
 tempfile = { workspace = true }
+qrcode = { version = "0.14", default-features = false }
 toml_edit = { version = "0.25.17", default-features = false, features = ["parse", "display"] }
 
 [build-dependencies]

@@ -261,6 +261,66 @@ class TaskAttachment {
   );
 }
 
+/// One choice of an `ask_user` question.
+class AskOption {
+  final String key;
+  final String title;
+  final String? subtitle;
+  const AskOption({required this.key, required this.title, this.subtitle});
+
+  factory AskOption.fromJson(Map<String, dynamic> j) => AskOption(
+    key: j['key'] as String? ?? '',
+    title: j['title'] as String? ?? '',
+    subtitle: j['subtitle'] as String?,
+  );
+}
+
+/// The question an agent is blocked on (`ask_user`, hostd `AskRequest`): answered with `crewmate_answer`.
+class AskRequest {
+  final String id;
+  final String question;
+  final List<AskOption> options;
+  final bool allowText;
+
+  /// The answer once given (`{kind: key|text, value}`): the question is closed.
+  final String? answeredWith;
+
+  const AskRequest({
+    required this.id,
+    required this.question,
+    this.options = const [],
+    this.allowText = false,
+    this.answeredWith,
+  });
+
+  bool get isOpen => answeredWith == null;
+
+  factory AskRequest.fromJson(Map<String, dynamic> j) => AskRequest(
+    id: j['id'] as String? ?? '',
+    question: j['question'] as String? ?? '',
+    options: [
+      for (final o in (j['options'] as List<dynamic>?) ?? const [])
+        AskOption.fromJson((o as Map).cast<String, dynamic>()),
+    ],
+    allowText: j['allow_text'] as bool? ?? false,
+    answeredWith: j['answered'] == null
+        ? null
+        : (j['answered'] as Map)['value'] as String?,
+  );
+
+  /// The `crewmate_answer` args: exactly one of [key] (an option) or [text] (free text).
+  Map<String, dynamic> answerArgs(
+    String crewmateId, {
+    String? key,
+    String? text,
+  }) {
+    if ((key == null) == (text == null)) {
+      throw ArgumentError('give exactly one of key or text');
+    }
+    return {'id': crewmateId, 'ask_id': id, 'key': ?key, 'text': ?text};
+  }
+}
+
 /// A task enqueued or completed on a crewmate.
 class CrewmateTask {
   final String id;
@@ -303,6 +363,9 @@ class CrewmateTask {
   /// The task changes what people see: it needs two captures the agent took to be done (`prove_ui`).
   final bool ui;
 
+  /// The question the agent is blocked on (`ask_user`), while the task runs.
+  final AskRequest? ask;
+
   const CrewmateTask({
     required this.id,
     required this.ts,
@@ -326,6 +389,7 @@ class CrewmateTask {
     this.restarts = 0,
     this.attachments = const [],
     this.ui = false,
+    this.ask,
   });
 
   /// The images the owner sent with the prompt (shown under it).
@@ -373,6 +437,9 @@ class CrewmateTask {
         TaskAttachment.fromJson((a as Map).cast<String, dynamic>()),
     ],
     ui: j['ui'] as bool? ?? false,
+    ask: j['ask'] == null
+        ? null
+        : AskRequest.fromJson((j['ask'] as Map).cast<String, dynamic>()),
   );
 }
 

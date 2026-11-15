@@ -11,7 +11,7 @@ use crate::crew::store::{Crewmate, Task, TaskState};
 use crate::server::Hub;
 
 /// What a task shows while every slot is taken.
-const BUSY: &str = "server busy";
+pub(crate) const BUSY: &str = "server busy";
 
 /// How often a task waiting for a slot looks at the store for a cancel.
 const CANCEL_POLL: Duration = Duration::from_millis(500);

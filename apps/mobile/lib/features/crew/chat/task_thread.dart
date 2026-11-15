@@ -191,7 +191,9 @@ class _CrewmateBubble extends StatelessWidget {
     switch (task.state) {
       case 'queued':
         content = Text(
-          task.preparing != null ? 'Downloading ${task.preparing}…' : 'Queued…',
+          task.preparing != null
+              ? 'Downloading ${task.preparing}…'
+              : '${task.queuedLabel}…',
           style: TextStyle(color: c.faint, fontSize: 15),
         );
 

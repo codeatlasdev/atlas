@@ -344,6 +344,10 @@ class CrewmateTask {
   /// Repo being downloaded before the task can start (e.g. "codeatlasdev/ui").
   final String? preparing;
 
+  /// Why a queued task is not starting yet ("server busy": every agent slot of the crew server is
+  /// taken); gone once it starts.
+  final String? waitingFor;
+
   /// IANA timezone stamped when the task was created.
   final String? tz;
 
@@ -383,6 +387,7 @@ class CrewmateTask {
     this.summarized = false,
     this.title,
     this.preparing,
+    this.waitingFor,
     this.tz,
     this.origin,
     this.resumed = false,
@@ -391,6 +396,10 @@ class CrewmateTask {
     this.ui = false,
     this.ask,
   });
+
+  /// The line of a queued task: a bare "Queued", or why it is not starting ("Queued · server busy").
+  String get queuedLabel =>
+      waitingFor == null ? 'Queued' : 'Queued · $waitingFor';
 
   /// The images the owner sent with the prompt (shown under it).
   List<TaskAttachment> get ownerImages => [
@@ -426,6 +435,7 @@ class CrewmateTask {
     summarized: j['summarized'] as bool? ?? false,
     title: j['title'] as String?,
     preparing: j['preparing'] as String?,
+    waitingFor: j['waiting_for'] as String?,
     tz: j['tz'] as String?,
     origin: j['origin'] == null
         ? null

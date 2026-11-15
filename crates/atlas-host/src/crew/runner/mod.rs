@@ -35,6 +35,8 @@ pub(crate) use reporting::Live as ReportingLive;
 #[cfg(test)]
 pub(crate) use reporting::branch_to_report;
 pub(crate) use slots::AgentSlots;
+#[cfg(test)]
+pub(crate) use slots::BUSY as SERVER_BUSY;
 // Only the unix-only crew tests (tests/prepare.rs) set it: a plain cfg(test) re-export is unused on Windows.
 #[cfg(all(test, unix))]
 pub(crate) use slots::TEST_MAX_AGENTS;

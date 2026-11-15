@@ -1,6 +1,7 @@
 // @ts-nocheck bun test runtime types are not part of the app tsconfig
 import { describe, expect, test } from "bun:test";
 import fixture from "../../__fixtures__/crewmate_tasks.json" with { type: "json" };
+import { queuedLabel } from "./board/boardText.ts";
 import { normalizeCrewmate, normalizeTask } from "./wire.ts";
 
 // The fixture is what hostd serializes for `crewmate_tasks` (the Rust contract test writes it), so these run the real
@@ -46,6 +47,16 @@ describe("normalizeTask: hostd seconds become milliseconds", () => {
 		expect(out.action).toEqual(raw.action);
 		expect(out.id).toBe(raw.id);
 		expect(out.preparing).toBe(raw.preparing);
+	});
+
+	// #296: hostd marks a task waiting for a server-wide agent slot; the apps showed a bare "Queued".
+	test("a queued task waiting for a slot keeps waiting_for through the boundary", () => {
+		const busy = fixture.tasks.find((t) => t.state === "queued");
+		expect(busy).toBeDefined();
+		expect(busy.waiting_for).toBe("server busy");
+		const out = normalizeTask(busy);
+		expect(out.waiting_for).toBe("server busy");
+		expect(queuedLabel(out)).toBe("Queued · server busy");
 	});
 });
 

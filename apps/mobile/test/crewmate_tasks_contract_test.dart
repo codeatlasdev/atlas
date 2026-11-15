@@ -102,6 +102,25 @@ void main() {
       expect(task.action!.triggerPrompt, 'Review open PRs');
     });
 
+    // ── queued task waiting for a slot: waiting_for parses ────────────────────
+    test('queued task waiting for a slot: waiting_for parses and labels', () {
+      // Incident #296: hostd marks a task waiting for a server-wide agent slot
+      // ("server busy"); the app showed a bare "Queued", so a full server looked
+      // like a normal queue.
+      final raw = tasks.firstWhere(
+        (t) => (t as Map)['state'] == 'queued',
+      ) as Map<String, dynamic>;
+      final task = CrewmateTask.fromJson(raw);
+
+      expect(task.id, 'task-busy');
+      expect(
+        task.waitingFor,
+        'server busy',
+        reason: 'waiting_for must parse from Rust Task.waiting_for',
+      );
+      expect(task.queuedLabel, 'Queued · server busy');
+    });
+
     // ── CrewmateTask missing optional fields: defaults gracefully ─────────────────
     test('CrewmateTask with no new fields uses null defaults', () {
       final j = <String, dynamic>{
@@ -114,6 +133,8 @@ void main() {
       final t = CrewmateTask.fromJson(j);
       expect(t.title, isNull);
       expect(t.preparing, isNull);
+      expect(t.waitingFor, isNull);
+      expect(t.queuedLabel, 'Queued', reason: 'a plain queue stays "Queued"');
       expect(t.tz, isNull);
       expect(t.steps, isEmpty);
       expect(t.action, isNull);

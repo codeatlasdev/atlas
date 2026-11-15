@@ -6,6 +6,10 @@ All notable changes to Atlas (CLI, TUI, MCP server and Atlas Desktop). Versions 
 
 ## [Unreleased]
 
+### Fixed
+
+- **Atlas Desktop and Atlas Mobile: a task waiting for a free agent slot says "Queued · server busy" instead of a bare "Queued" ([#296](https://github.com/codeatlasdev/atlas/issues/296)).** hostd already marked such a task (`waiting_for`), but the chat line and the board card showed the same "Queued" as a normal queue, so a full crew server looked like nothing was wrong. Both apps now read `waiting_for` from the task exactly as hostd serializes it (the shared `crewmate_tasks` fixture gained a queued task written by the real serializer).
+
 ## [1.5.0-alpha.26] — 2026-11-15
 
 Atlas is in **alpha**: expect bugs and breaking changes. Please [report what breaks](https://github.com/codeatlasdev/atlas/issues/new).

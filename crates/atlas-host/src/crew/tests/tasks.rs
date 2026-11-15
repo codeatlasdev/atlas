@@ -696,7 +696,17 @@ async fn crewmate_tasks_json_contract() {
         }
     });
 
-    let fixture = json!({ "tasks": [fix, running_fix] });
+    // queued task waiting for a server-wide agent slot: the REAL serializer, with the REAL constant
+    // the runner stamps (#296), so the apps parse what hostd sends and not a hand-written string.
+    let mut busy = crate::crew::store::Task::new("desktop", "run the linter");
+    busy.id = "task-busy".into();
+    busy.ts = 1761213200;
+    busy.waiting_for = Some(crate::crew::runner::SERVER_BUSY.to_string());
+    let busy_fix = serde_json::to_value(&busy).unwrap();
+    assert_eq!(busy_fix["state"], "queued");
+    assert_eq!(busy_fix["waiting_for"], "server busy");
+
+    let fixture = json!({ "tasks": [fix, running_fix, busy_fix] });
 
     let desktop_fixture_path = std::path::Path::new(env!("CARGO_MANIFEST_DIR"))
         .join("../../apps/desktop/src/__fixtures__/crewmate_tasks.json");
@@ -785,6 +795,15 @@ async fn crewmate_tasks_json_contract() {
     assert_eq!(
         running_fix_stored["action"]["trigger"]["type"].as_str(),
         Some("schedule")
+    );
+    let busy_stored = stored_tasks
+        .iter()
+        .find(|t| t["state"] == "queued")
+        .expect("queued task in fixture");
+    assert_eq!(
+        busy_stored["waiting_for"].as_str(),
+        Some(crate::crew::runner::SERVER_BUSY),
+        "queued task must carry waiting_for"
     );
 
     crate::crew::runner::set_test_agent_bin(None);

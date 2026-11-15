@@ -123,7 +123,6 @@ class _AgentHubScreenState extends State<AgentHubScreen> {
 
   @override
   Widget build(BuildContext context) {
-    final c = AtlasColors.of(context);
     return Scaffold(
       appBar: AppBar(title: const Text('Agent hub')),
       body: ValueListenableBuilder<AgentTree>(
@@ -161,13 +160,13 @@ class _AgentHubScreenState extends State<AgentHubScreen> {
                 ),
                 Expanded(
                   child: rows.isEmpty
-                      ? Center(
-                          child: Text(
-                            t.nodes.isEmpty
-                                ? 'No agents yet'
-                                : 'No agents match this filter',
-                            style: TextStyle(color: c.faint),
-                          ),
+                      ? EmptyState(
+                          title: t.nodes.isEmpty
+                              ? 'No agents yet'
+                              : 'No agents match this filter',
+                          message: t.nodes.isEmpty
+                              ? 'Start one from a project.'
+                              : 'Pick another filter to see the rest.',
                         )
                       : ListView.builder(
                           padding: const EdgeInsets.fromLTRB(

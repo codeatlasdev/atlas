@@ -3,6 +3,7 @@ import 'dart:convert';
 
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
+import 'package:atlas_mobile/core/connection/require_mux.dart';
 import 'package:atlas_mobile/core/ui/atlas_theme.dart';
 import 'package:local_auth/local_auth.dart';
 import 'package:xterm/xterm.dart';
@@ -75,10 +76,13 @@ class _TerminalScreenState extends ConsumerState<TerminalScreen> {
   Multiplexer? _mux;
 
   Future<void> _attach() async {
-    final mux = await ref.read(
-      connectionNotifierProvider(widget.device).future,
-    );
-    if (mux == null || !mounted) return;
+    final Multiplexer mux;
+    try {
+      mux = await requireMuxOf(ref, widget.device);
+    } on DeviceUnavailable {
+      return;
+    }
+    if (!mounted) return;
     _mux = mux;
     // Size the grid like the Mac's before the replay is drawn into it: hostd
     // sends the replay ahead of the attach reply, and a full-screen app drawn into
@@ -170,8 +174,12 @@ class _TerminalScreenState extends ConsumerState<TerminalScreen> {
 
   Future<void> _sendRaw(String data) async {
     if (!_writeEnabled) return;
-    final mux = ref.read(connectionNotifierProvider(widget.device)).value;
-    if (mux == null) return _toast('Not connected to your Mac');
+    final Multiplexer mux;
+    try {
+      mux = await requireMuxOf(ref, widget.device);
+    } on DeviceUnavailable catch (e) {
+      return _toast(e.message);
+    }
     final resp = await mux.call('pty_write', {
       'pty': widget.pty,
       'data': base64.encode(utf8.encode(data)),

@@ -7,6 +7,7 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 
 import 'package:atlas_mobile/core/protocol/crew_ops_models.dart';
 import 'package:atlas_mobile/core/protocol/models.dart';
+import 'package:atlas_mobile/core/ui/async_view.dart';
 import 'package:atlas_mobile/core/ui/atlas_theme.dart';
 import 'package:atlas_mobile/core/ui/components.dart';
 import 'package:atlas_mobile/features/crew/ops/crew_ops_provider.dart';
@@ -21,16 +22,10 @@ class CrewSettingsScreen extends ConsumerWidget {
     final settings = ref.watch(crewSettingsProvider(device));
     return Scaffold(
       appBar: AppBar(title: const Text('Crew settings')),
-      body: settings.when(
-        loading: () => const Center(child: CircularProgressIndicator()),
-        error: (e, _) => EmptyState(
-          title: "Couldn't read the crew settings",
-          message: '${e is StateError ? e.message : e}',
-          action: OutlinedButton(
-            onPressed: () => ref.invalidate(crewSettingsProvider(device)),
-            child: const Text('Try again'),
-          ),
-        ),
+      body: AsyncView(
+        value: settings,
+        errorTitle: "Couldn't read the crew settings",
+        onRetry: () => ref.invalidate(crewSettingsProvider(device)),
         data: (s) => _Form(device: device, initial: s),
       ),
     );

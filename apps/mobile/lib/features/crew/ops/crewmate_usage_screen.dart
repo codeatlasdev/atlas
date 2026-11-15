@@ -7,6 +7,7 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 
 import 'package:atlas_mobile/core/protocol/crew_ops_models.dart';
 import 'package:atlas_mobile/core/protocol/models.dart';
+import 'package:atlas_mobile/core/ui/async_view.dart';
 import 'package:atlas_mobile/core/ui/atlas_theme.dart';
 import 'package:atlas_mobile/core/ui/components.dart';
 import 'package:atlas_mobile/features/crew/ops/crew_ops_provider.dart';
@@ -43,16 +44,10 @@ class CrewmateUsageScreen extends ConsumerWidget {
           ),
         ],
       ),
-      body: usage.when(
-        loading: () => const Center(child: CircularProgressIndicator()),
-        error: (e, _) => EmptyState(
-          title: "Couldn't read the usage",
-          message: '${e is StateError ? e.message : e}',
-          action: OutlinedButton(
-            onPressed: () => ref.invalidate(usageProvider(key)),
-            child: const Text('Try again'),
-          ),
-        ),
+      body: AsyncView(
+        value: usage,
+        errorTitle: "Couldn't read the usage",
+        onRetry: () => ref.invalidate(usageProvider(key)),
         data: (records) {
           final now = DateTime.now();
           final totals = usageTotals(records, now);

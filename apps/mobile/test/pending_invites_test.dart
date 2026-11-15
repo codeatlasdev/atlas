@@ -9,6 +9,7 @@ import 'package:flutter_test/flutter_test.dart';
 
 import 'package:atlas_mobile/core/connection/connection_notifier.dart';
 import 'package:atlas_mobile/core/protocol/models.dart';
+import 'package:atlas_mobile/core/protocol/protocol_version.dart';
 import 'package:atlas_mobile/core/transport/transport.dart';
 import 'package:atlas_mobile/features/crew/crew_provider.dart';
 
@@ -39,6 +40,9 @@ class _Computer implements Transport {
     final id = m['id'];
     Object? data = <String, Object?>{};
     switch (m['cmd']) {
+      // The connection check on connect: a current hostd names its protocol.
+      case 'info':
+        data = {'proto': kAppProto};
       case 'mobile_invites':
         asks++;
         data = {'invites': invites};

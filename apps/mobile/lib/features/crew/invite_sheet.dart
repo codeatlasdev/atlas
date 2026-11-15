@@ -1,6 +1,7 @@
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 
+import 'package:atlas_mobile/core/connection/require_mux.dart';
 import 'package:atlas_mobile/core/connection/connection_notifier.dart';
 import 'package:atlas_mobile/core/protocol/models.dart';
 import 'package:atlas_mobile/core/protocol/crew_models.dart';
@@ -36,7 +37,7 @@ class _InviteSheetState extends ConsumerState<InviteSheet> {
 
   Future<void> _dismiss() async {
     // Tell the Mac we dismissed so it stops waiting.
-    final mux = ref.read(connectionNotifierProvider(widget.fromDevice)).value;
+    final mux = liveMux(ref, widget.fromDevice);
     if (mux != null) {
       await mux.call('mobile_invite_dismiss', {'url': widget.invite.url});
     }
@@ -58,7 +59,7 @@ class _InviteSheetState extends ConsumerState<InviteSheet> {
 
     if (pairState.status == PairStatus.success) {
       // Dismiss on the Mac.
-      final mux = ref.read(connectionNotifierProvider(widget.fromDevice)).value;
+      final mux = liveMux(ref, widget.fromDevice);
       if (mux != null) {
         await mux.call('mobile_invite_dismiss', {'url': widget.invite.url});
       }

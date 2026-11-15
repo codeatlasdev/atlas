@@ -1,0 +1,20 @@
+{
+  "engines": [
+    {
+      "engine": "claude",
+      "state": "signed_in"
+    },
+    {
+      "engine": "codex",
+      "state": "needs_signin"
+    },
+    {
+      "engine": "omp",
+      "state": "not_installed"
+    },
+    {
+      "engine": "opencode",
+      "state": "not_installed"
+    }
+  ]
+}

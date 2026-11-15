@@ -167,6 +167,8 @@ pub fn route(cmd: &HostCmd) -> Route {
         | C::CrewPause {}
         | C::CrewResume {}
         | C::CrewSettingsGet {}
+        | C::CrewEngineLogin { .. }
+        | C::CrewEngineStatus { .. }
         | C::CrewSettingsSet { .. } => Route::Refuse("lab hostd does not run crewmates"),
     }
 }

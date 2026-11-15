@@ -1,34 +1,15 @@
 //! Claude engine — headless `-p` mode with JSON output.
 
-use std::collections::BTreeMap;
-use std::path::Path;
-
 use serde_json::Value;
 
-use crate::crew::store::{CrewmateSession, EngineConfig, UsageRecord};
+use crate::crew::store::{CrewmateSession, UsageRecord};
 
-use super::{TurnCancel, TurnProc, TurnResult, program};
+use super::{TurnCtx, TurnResult, launch, program};
 
-#[allow(clippy::too_many_arguments)]
-pub(super) async fn run(
-    engine: &EngineConfig,
-    session: CrewmateSession,
-    prompt: &str,
-    crewmate_dir: &Path,
-    crewmate_id: &str,
-    hook_port: u16,
-    hook_token: &str,
-    pane_key: &str,
-    extra_env: &BTreeMap<String, String>,
-    work_dir: &str,
-    yolo: bool,
-    cancel: &TurnCancel,
-) -> Result<TurnResult, String> {
-    write_mcp_config(crewmate_dir, crewmate_id, hook_port, hook_token, pane_key)?;
+pub(super) async fn run(ctx: TurnCtx<'_>) -> Result<TurnResult, String> {
+    let mcp_config_path = write_mcp_config(&ctx)?;
 
-    let mcp_config_path = crewmate_dir.join("mcp-config.json");
-
-    let mut cmd = tokio::process::Command::new(program("claude"));
+    let mut cmd = ctx.command(&program("claude"));
     cmd.arg("-p")
         .arg("--output-format")
         .arg("json")
@@ -37,43 +18,24 @@ pub(super) async fn run(
         .arg("--permission-prompt-tool")
         .arg("atlas:approve");
 
-    if yolo {
+    if ctx.yolo {
         cmd.arg("--dangerously-skip-permissions");
     }
 
-    if let Some(ref sid) = session.session_id {
+    if let Some(sid) = &ctx.session.session_id {
         cmd.arg("--resume").arg(sid);
     }
 
-    cmd.arg(prompt);
-    cmd.current_dir(work_dir);
+    cmd.arg(ctx.prompt);
 
-    for (k, v) in extra_env {
-        cmd.env(k, v);
-    }
-    // ATLAS_* always win over crewmate secrets.
-    cmd.env("ATLAS_HOOK_PORT", hook_port.to_string());
-    cmd.env("ATLAS_HOOK_TOKEN", hook_token);
-    cmd.env("ATLAS_CREWMATE_ID", crewmate_id);
-    cmd.env("ATLAS_PANE_KEY", pane_key);
-    cmd.env("ATLAS_HOOK_DECISION_SECS", "1800");
-
-    cmd.stdout(std::process::Stdio::piped());
-    cmd.stderr(std::process::Stdio::piped());
-
-    let out = TurnProc::spawn(&mut cmd)
-        .map_err(|e| format!("claude: spawn failed: {e}"))?
-        .output(cancel, "claude")
-        .await?;
+    let out = launch::output(cmd, ctx.cancel, "claude").await?;
+    let (engine, session) = (ctx.engine, ctx.session);
 
     let stdout = String::from_utf8_lossy(&out.stdout);
 
+    // A non-zero exit that still printed a result is parsed below; one that printed nothing is the error.
     if !out.status.success() && stdout.trim().is_empty() {
-        let stderr = String::from_utf8_lossy(&out.stderr);
-        return Err(format!(
-            "claude: exited {}: {stderr}",
-            out.status.code().unwrap_or(-1)
-        ));
+        return Err(launch::exit_error("claude", &out));
     }
 
     // Claude `-p --output-format json` emits a single JSON object on stdout.
@@ -127,40 +89,15 @@ pub(super) async fn run(
     })
 }
 
-/// Write `<crewmate_dir>/mcp-config.json` for the claude `--mcp-config` flag.
-/// The atlas binary path is resolved from the current executable.
-fn write_mcp_config(
-    crewmate_dir: &Path,
-    crewmate_id: &str,
-    hook_port: u16,
-    hook_token: &str,
-    pane_key: &str,
-) -> Result<(), String> {
-    std::fs::create_dir_all(crewmate_dir)
+/// Write `<crewmate_dir>/mcp-config.json` for the claude `--mcp-config` flag and return its path.
+fn write_mcp_config(ctx: &TurnCtx<'_>) -> Result<std::path::PathBuf, String> {
+    std::fs::create_dir_all(ctx.crewmate_dir)
         .map_err(|e| format!("claude: create crewmate_dir: {e}"))?;
 
-    let atlas_bin = std::env::current_exe()
-        .map(|p| p.to_string_lossy().to_string())
-        .unwrap_or_else(|_| "atlas".to_string());
-
-    let config = serde_json::json!({
-        "mcpServers": {
-            "atlas": {
-                "command": atlas_bin,
-                "args": ["mcp", "--crewmate", crewmate_id],
-                "env": {
-                    "ATLAS_HOOK_PORT": hook_port.to_string(),
-                    "ATLAS_HOOK_TOKEN": hook_token,
-                    "ATLAS_CREWMATE_ID": crewmate_id,
-                    "ATLAS_PANE_KEY": pane_key,
-                }
-            }
-        }
-    });
-
-    let json = serde_json::to_string_pretty(&config)
+    let json = serde_json::to_string_pretty(&ctx.mcp_server().claude_json())
         .map_err(|e| format!("claude: serialize mcp config: {e}"))?;
 
-    std::fs::write(crewmate_dir.join("mcp-config.json"), json)
-        .map_err(|e| format!("claude: write mcp-config.json: {e}"))
+    let path = ctx.crewmate_dir.join("mcp-config.json");
+    std::fs::write(&path, json).map_err(|e| format!("claude: write mcp-config.json: {e}"))?;
+    Ok(path)
 }

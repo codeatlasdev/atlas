@@ -1956,3 +1956,104 @@ async fn an_invite_whose_code_was_replaced_is_not_offered() {
     );
     c.call("shutdown", json!({})).await.ok();
 }
+
+// The sign-in of an engine from a phone (`crew_engine_login`): reading the status is `read`; starting the login is
+// `act`; typing the code into its terminal is `term_write`, a scope of its own; and what is typed is never logged,
+// not by the mobile audit and not by the crew audit.
+#[cfg(unix)]
+#[tokio::test(flavor = "multi_thread")]
+async fn a_phone_signs_an_engine_in_by_scope_and_what_it_types_is_never_logged() {
+    use base64::Engine as _;
+    let tmp = tempfile::tempdir().unwrap();
+    // Only a fake codex on the engine PATH: a login that waits for a code, like `codex login --device-auth`.
+    let bin = tmp.path().join("bin");
+    std::fs::create_dir_all(&bin).unwrap();
+    let codex = bin.join("codex");
+    std::fs::write(
+        &codex,
+        "#!/bin/sh\nif [ \"$1 $2\" = \"login status\" ]; then exit 1; fi\ncat\n",
+    )
+    .unwrap();
+    {
+        use std::os::unix::fs::PermissionsExt;
+        std::fs::set_permissions(&codex, std::fs::Permissions::from_mode(0o755)).unwrap();
+    }
+    let _path = crate::crew::engine_login::TestPath::set(bin);
+    let (c, mut phone, node) = paired(tmp.path()).await;
+    let scopes = |s: Value| json!({"node_id": node, "scopes": s});
+
+    c.call("mobile_set_scopes", scopes(json!(["read"])))
+        .await
+        .unwrap();
+    let r = phone.call("crew_engine_status", json!({})).await.unwrap();
+    assert_eq!(r["ok"], true, "reading the status needs only read: {r}");
+    let r = phone
+        .call("crew_engine_login", json!({"engine": "codex"}))
+        .await
+        .unwrap();
+    assert_eq!(r["error"], "forbidden: act", "{r}");
+    let r = phone.call("pty_list", json!({})).await.unwrap();
+    assert!(
+        r["data"]["ptys"].as_array().unwrap().is_empty(),
+        "a refused sign-in starts nothing: {r}"
+    );
+
+    c.call(
+        "mobile_set_scopes",
+        scopes(json!(["read", "act", "term_read"])),
+    )
+    .await
+    .unwrap();
+    let r = phone
+        .call("crew_engine_login", json!({"engine": "bash"}))
+        .await
+        .unwrap();
+    assert!(
+        r["error"].as_str().unwrap().contains("unknown engine"),
+        "act is not a shell: {r}"
+    );
+    let r = phone
+        .call("crew_engine_login", json!({"engine": "codex"}))
+        .await
+        .unwrap();
+    assert_eq!(r["ok"], true, "{r}");
+    let pty = r["data"]["pty"].as_str().unwrap().to_string();
+    // Act and term_read start and watch the login; the code still cannot be typed without term_write.
+    let code = base64::engine::general_purpose::STANDARD.encode("WXYZ-9876-DEVICE-CODE\n");
+    let r = phone
+        .call("pty_write", json!({"pty": pty, "data": code}))
+        .await
+        .unwrap();
+    assert_eq!(r["error"], "forbidden: term_write", "{r}");
+
+    c.call(
+        "mobile_set_scopes",
+        scopes(json!(["read", "act", "term_read", "term_write"])),
+    )
+    .await
+    .unwrap();
+    let r = phone
+        .call("pty_write", json!({"pty": pty, "data": code}))
+        .await
+        .unwrap();
+    assert_eq!(r["ok"], true, "{r}");
+
+    let mobile_audit = std::fs::read_to_string(tmp.path().join("mobile/audit.log")).unwrap();
+    assert!(
+        mobile_audit.contains("\"cmd\":\"crew_engine_login\""),
+        "the sign-in is in the mobile audit: {mobile_audit}"
+    );
+    assert!(
+        !mobile_audit.contains("DEVICE-CODE"),
+        "typed text must not be logged: {mobile_audit}"
+    );
+    let crew_audit = c.call("crew_audit", json!({})).await.unwrap().to_string();
+    assert!(crew_audit.contains("engine_login_started"), "{crew_audit}");
+    assert!(
+        crew_audit.contains(&format!("phone:{node}")),
+        "the crew audit names the phone: {crew_audit}"
+    );
+    assert!(!crew_audit.contains("DEVICE-CODE"), "{crew_audit}");
+    c.call("pty_kill", json!({"pty": pty})).await.unwrap();
+    c.call("shutdown", json!({})).await.ok();
+}

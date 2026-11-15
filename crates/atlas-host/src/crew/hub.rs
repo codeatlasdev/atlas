@@ -50,6 +50,10 @@ pub(crate) struct CrewHub {
     paused: std::sync::atomic::AtomicBool,
     /// How many agents run at once (`max_agents` in `crew.json`); a task past that waits "server busy".
     pub(crate) agent_slots: Arc<runner::AgentSlots>,
+    /// Engines whose sign-in a failed task reported gone (`engine_login`).
+    pub(crate) engine_auth: super::engine_login::EngineAuth,
+    /// The last `signed_in` / `needs_signin` / ... answer per engine, for `crew_engine_status` without refresh.
+    pub(crate) engine_auth_seen: Mutex<std::collections::HashMap<String, String>>,
 }
 
 impl CrewHub {
@@ -76,6 +80,8 @@ impl CrewHub {
             turn_cancels: Mutex::new(std::collections::HashMap::new()),
             paused: std::sync::atomic::AtomicBool::new(paused),
             agent_slots: runner::AgentSlots::new(max_agents),
+            engine_auth: Default::default(),
+            engine_auth_seen: Mutex::new(std::collections::HashMap::new()),
         })
     }
 

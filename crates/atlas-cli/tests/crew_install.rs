@@ -13,12 +13,24 @@ struct World {
 }
 
 /// A server's `curl` for the vendor installers of the engines (`curl -fsSL <url> | sh`, issue #200): prints an
-/// installer that leaves the agent's binary in `~/.local/bin`. Any other URL succeeds silently.
+/// installer that behaves like the vendor's real one (read from claude.ai/install.sh, opencode.ai/install and
+/// omp.sh/install on 2026-11-15), so a green test means the install works against what the vendors ship:
+/// - claude installs to `~/.local/bin` and refuses to run under sudo (`SUDO_USER` set to a non-root user)
+///   unless `CLAUDE_INSTALL_ALLOW_SUDO` is set;
+/// - opencode installs to `~/.opencode/bin`;
+/// - omp installs to `${PI_INSTALL_DIR:-~/.local/bin}`.
+///
+/// Any other URL succeeds silently.
 const VENDOR_INSTALLER_CURL: &str = concat!(
     "for a; do url=$a; done\n",
-    "case \"$url\" in *omp.sh*) b=omp;; *claude.ai*) b=claude;; *opencode.ai*) b=opencode;; *) exit 0;; esac\n",
-    "echo 'mkdir -p \"$HOME/.local/bin\"'\n",
-    "echo \"printf '#!/bin/sh\\\\n' > \\\"\\$HOME/.local/bin/$b\\\"; chmod +x \\\"\\$HOME/.local/bin/$b\\\"\"\n",
+    "case \"$url\" in\n",
+    "  *claude.ai*) b=claude; d='$HOME/.local/bin'\n",
+    "    echo 'if [ \"$(id -u)\" -eq 0 ] && [ -n \"${SUDO_USER:-}\" ] && [ \"$SUDO_USER\" != root ] && [ -z \"${CLAUDE_INSTALL_ALLOW_SUDO:-}\" ]; then echo \"Error: do not run this installer with sudo.\" >&2; exit 1; fi';;\n",
+    "  *opencode.ai*) b=opencode; d='$HOME/.opencode/bin';;\n",
+    "  *omp.sh*) b=omp; d='${PI_INSTALL_DIR:-$HOME/.local/bin}';;\n",
+    "  *) exit 0;;\n",
+    "esac\n",
+    "echo \"mkdir -p \\\"$d\\\"; printf '#!/bin/sh\\\\n' > \\\"$d/$b\\\"; chmod +x \\\"$d/$b\\\"\"\n",
 );
 
 const FAKE_SUDO: &str = r#"
@@ -38,6 +50,8 @@ if [ -f "$ROOT/sudo-password" ]; then
 fi
 echo "sudo $*" >> "$ROOT/log/sudo"
 [ -n "$validate" ] && exit 0
+# Like the real sudo: the command runs as root and sees who invoked it (the admin).
+export SUDO_USER=admin SIM_UID=0
 exec "$@"
 "#;
 
@@ -108,7 +122,7 @@ impl World {
         );
         w.fake(
             "id",
-            "[ -d \"$ROOT/var/lib/$1\" ] || [ -f \"$ROOT/users/$1\" ]",
+            "[ \"$1\" = -u ] && { echo \"${SIM_UID:-1000}\"; exit 0; }\n[ -d \"$ROOT/var/lib/$1\" ] || [ -f \"$ROOT/users/$1\" ]",
         );
         w.fake(
             "useradd",
@@ -291,6 +305,33 @@ fn install_of_a_healthy_binary_reports_ready_and_leaves_it_in_place() {
         w.read("var/lib/atlas-crew/.ssh/authorized_keys")
             .contains("ssh-ed25519 AAAA")
     );
+}
+
+// #223 review: the engine installers are the vendors' real behaviour (claude refuses sudo unless told it is
+// fine, opencode writes to ~/.opencode/bin), so every engine must end up linked for the crewmate users,
+// pointing into the vendor's own directory under the shared engine home.
+#[test]
+fn install_links_every_engine_from_where_its_vendor_put_it() {
+    let w = World::new();
+    let bin = w.atlas_file("9.9.9", true);
+    let o = w.atlas(
+        &["install", "me@srv", "--binary", bin.to_str().unwrap()],
+        "",
+    );
+    let t = text(&o);
+    assert!(o.status.success(), "{t}");
+    let home = w.root().join("lib/atlas-crew/engine-home");
+    for (engine, dir) in [
+        ("claude", ".local/bin"),
+        ("omp", ".local/bin"),
+        ("opencode", ".opencode/bin"),
+        ("codex", ".npm-global/bin"),
+    ] {
+        let link = w.root().join("lib/atlas-crew/engines").join(engine);
+        let target =
+            std::fs::read_link(&link).unwrap_or_else(|e| panic!("{engine} not linked: {e}\n{t}"));
+        assert_eq!(target, home.join(dir).join(engine), "{engine}");
+    }
 }
 
 // Gap 3: a reinstall over a working server with a dead binary restores the old one.

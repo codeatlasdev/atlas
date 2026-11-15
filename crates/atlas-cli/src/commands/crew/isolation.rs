@@ -284,9 +284,14 @@ pub fn engine_install_script(agent: &str, install_cmd: &str) -> Option<String> {
         .map(|d| format!("{ENGINE_HOME}/{d}/{bin}"))
         .collect::<Vec<_>>()
         .join(" ");
+    // `CLAUDE_INSTALL_ALLOW_SUDO`: claude.ai/install.sh refuses to run under sudo from a user's shell
+    // (`SUDO_USER` set), because sudo usually leaves `$HOME` at root's home. Here `$HOME` is set to
+    // [`ENGINE_HOME`] on purpose, which is the case its guard does not cover; without it every
+    // `atlas crew install` failed on a real server (the review of #223 caught it; the fake installers now
+    // mirror the vendor's check).
     Some(format!(
         "set -e; sudo install -d -m 0755 {ENGINE_HOME} {ENGINES_DIR}; \
-sudo env HOME={ENGINE_HOME} npm_config_prefix={ENGINE_HOME}/.npm-global sh -c '{cmd}'; \
+sudo env HOME={ENGINE_HOME} npm_config_prefix={ENGINE_HOME}/.npm-global CLAUDE_INSTALL_ALLOW_SUDO=1 sh -c '{cmd}'; \
 found=''; for p in {search}; do [ -x \"$p\" ] && found=$p && break; done; \
 [ -n \"$found\" ] || {{ echo 'installed {bin} but could not find its binary under {ENGINE_HOME}' >&2; exit 1; }}; \
 sudo ln -sfn \"$found\" {ENGINES_DIR}/{bin}; \
@@ -755,7 +760,7 @@ mod tests {
         for want in [
             "set -e",
             "install -d -m 0755 /usr/local/lib/atlas-crew/engine-home /usr/local/lib/atlas-crew/engines",
-            "sudo env HOME=/usr/local/lib/atlas-crew/engine-home npm_config_prefix=/usr/local/lib/atlas-crew/engine-home/.npm-global sh -c 'curl -fsSL https://claude.ai/install.sh | bash'",
+            "sudo env HOME=/usr/local/lib/atlas-crew/engine-home npm_config_prefix=/usr/local/lib/atlas-crew/engine-home/.npm-global CLAUDE_INSTALL_ALLOW_SUDO=1 sh -c 'curl -fsSL https://claude.ai/install.sh | bash'",
             "/usr/local/lib/atlas-crew/engine-home/.local/bin/claude",
             "ln -sfn \"$found\" /usr/local/lib/atlas-crew/engines/claude",
             "chmod -R a+rX /usr/local/lib/atlas-crew/engine-home",

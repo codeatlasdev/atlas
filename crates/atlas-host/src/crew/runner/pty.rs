@@ -13,7 +13,7 @@ use super::prompt::{Prepared, load_agent_env, prepare_task};
 use super::recover::recovered_wait;
 use super::summary::maybe_summarize;
 #[cfg(test)]
-use super::testing::{TEST_AGENT_BIN, TEST_PAUSE_AFTER_SPAWN};
+use super::testing::{TEST_AGENT_BIN, TEST_PAUSE_AFTER_SPAWN, TEST_PAUSE_BEFORE_SPAWN};
 use crate::crew::store::{Crewmate, Step, Task, TaskState};
 use crate::crew::{now_s, pane, triggers};
 use crate::paths;
@@ -193,6 +193,12 @@ async fn run_pty_inner(
     // agent is spawned for it (#292).
     if super::outcome::was_cancelled(hub, &crewmate.id, &task.id) {
         return (Err("cancelled before the agent started".into()), vec![]);
+    }
+    #[cfg(test)]
+    let pause = *TEST_PAUSE_BEFORE_SPAWN.lock();
+    #[cfg(test)]
+    if let Some(pause) = pause {
+        tokio::time::sleep(pause).await;
     }
 
     // Spawn the pty.

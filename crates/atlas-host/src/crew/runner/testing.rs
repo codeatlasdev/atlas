@@ -26,12 +26,21 @@ pub(crate) fn set_test_agent_bin(bin: Option<&str>) {
 pub(crate) static TEST_PAUSE_AFTER_SPAWN: parking_lot::Mutex<Option<Duration>> =
     parking_lot::Mutex::new(None);
 
+/// A pause after the task is stored `running` and before its agent is spawned (after the store check that
+/// precedes the spawn), the window in which a cancel finds no session to kill.
+pub(crate) static TEST_PAUSE_BEFORE_SPAWN: parking_lot::Mutex<Option<Duration>> =
+    parking_lot::Mutex::new(None);
+
 /// If set, forces the GitHub auth pre-check to return Some(reason).
 pub(crate) static TEST_FORCE_GITHUB_AUTH: parking_lot::Mutex<Option<String>> =
     parking_lot::Mutex::new(None);
 
 /// Override the result of is_github_logged_in().
 pub(crate) static TEST_GITHUB_LOGGED_IN: parking_lot::Mutex<Option<bool>> =
+    parking_lot::Mutex::new(None);
+
+/// Absolute path to a fake `gh` the login check runs in place of the real one.
+pub(super) static TEST_GH_PROGRAM: parking_lot::Mutex<Option<String>> =
     parking_lot::Mutex::new(None);
 
 /// Absolute path to a fake summarizer binary.

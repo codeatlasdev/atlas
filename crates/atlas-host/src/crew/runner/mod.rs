@@ -70,7 +70,7 @@ pub(crate) use action::parse_atlas_action;
 #[cfg(all(test, unix))]
 pub(crate) use testing::{
     TEST_BIN_LOCK, TEST_FORCE_GITHUB_AUTH, TEST_GITHUB_LOGGED_IN, TEST_PAUSE_AFTER_SPAWN,
-    set_test_agent_bin,
+    TEST_PAUSE_BEFORE_SPAWN, set_test_agent_bin,
 };
 
 /// 2-hour hard timeout per task.

@@ -1,5 +1,8 @@
 use serde_json::{Value, json};
 
+use atlas_core::ipc;
+use tokio::io::{AsyncBufReadExt, AsyncWriteExt};
+
 use super::*;
 use crate::config::ProjectConfig;
 
@@ -455,4 +458,249 @@ fn audit_args_are_summarized_without_the_target_and_long_values_are_cut() {
         !line.contains('\n') && line.len() < 1000,
         "one short line per call"
     );
+}
+
+/// A served project whose run loop is stuck: `REQUEST_QUEUE` requests are parked in the queue and
+/// nobody reads it, so the next one finds it full. `rx` is the run loop's end.
+async fn full_queue(
+    queue_wait: Duration,
+) -> (
+    tempfile::TempDir,
+    ControlServer,
+    tokio::sync::mpsc::Receiver<ControlRequest>,
+    Vec<tokio::task::JoinHandle<Result<ControlResponse, String>>>,
+) {
+    let dir = tempfile::TempDir::new().unwrap();
+    let (server, rx) =
+        ControlServer::bind_with(dir.path(), Guard::new(&cfg(), dir.path()), queue_wait).unwrap();
+    let parked = (0..server::REQUEST_QUEUE)
+        .map(|_| {
+            let root = dir.path().to_path_buf();
+            tokio::spawn(
+                async move { call(&root, "restart_service", json!({"service": "api"})).await },
+            )
+        })
+        .collect();
+    // Until every parked request is in the queue the next one would be queued too, not refused. A
+    // fixed pause is a race on Windows, where a burst of clients is let in one pipe instance at a
+    // time (`ERROR_PIPE_BUSY`, retried every 10 ms): wait for the queue itself to be full.
+    let deadline = std::time::Instant::now() + Duration::from_secs(20);
+    while rx.len() < server::REQUEST_QUEUE {
+        assert!(
+            std::time::Instant::now() < deadline,
+            "only {} of {} requests reached the queue",
+            rx.len(),
+            server::REQUEST_QUEUE
+        );
+        tokio::time::sleep(Duration::from_millis(10)).await;
+    }
+    (dir, server, rx, parked)
+}
+
+// Regression #304: the request queue was unbounded, so a stuck run loop let requests pile up
+// without limit. A request that finds it full still waiting after the queue wait gets "busy".
+#[tokio::test]
+async fn a_request_that_finds_the_queue_full_for_too_long_is_answered_busy() {
+    let (dir, _server, mut rx, _parked) = full_queue(Duration::from_millis(300)).await;
+    let busy = call(dir.path(), "restart_service", json!({"service": "api"}))
+        .await
+        .unwrap();
+    assert!(!busy.ok);
+    assert_eq!(busy.error.as_deref(), Some(server::BUSY));
+
+    // The loop wakes up and answers what is queued; the server takes requests again.
+    tokio::spawn(async move {
+        while let Some(req) = rx.recv().await {
+            let _ = req.reply.send(ControlResponse::ok(json!({})));
+        }
+    });
+    let r = call(dir.path(), "restart_service", json!({"service": "api"}))
+        .await
+        .unwrap();
+    assert!(r.ok, "{r:?}");
+}
+
+// A run loop that is only briefly busy (a restart grace, a health check) must delay a request, not
+// refuse it: `atlas down` and `atlas dev --detach` read a refusal as "nothing is running".
+#[tokio::test]
+async fn a_request_waits_for_a_briefly_busy_run_loop_instead_of_being_refused() {
+    let (dir, _server, mut rx, _parked) = full_queue(Duration::from_secs(5)).await;
+    let root = dir.path().to_path_buf();
+    let late =
+        tokio::spawn(
+            async move { call(&root, "restart_service", json!({"service": "api"})).await },
+        );
+    tokio::time::sleep(Duration::from_millis(200)).await;
+    // The loop frees up: it answers everything, the queued requests and the one that waited.
+    tokio::spawn(async move {
+        while let Some(req) = rx.recv().await {
+            let _ = req.reply.send(ControlResponse::ok(json!({"served": true})));
+        }
+    });
+    let r = tokio::time::timeout(Duration::from_secs(5), late)
+        .await
+        .expect("the waiting request was never answered")
+        .unwrap()
+        .unwrap();
+    assert!(r.ok, "refused instead of waiting: {r:?}");
+}
+
+// A run that answers "busy" is running. `info()` returning `None` for it made `atlas down` say "not
+// running" and `atlas dev --detach` / `atlas -- cmd` start a second runner over it.
+#[tokio::test]
+async fn info_of_a_busy_atlas_is_running_not_absent() {
+    let (dir, _server, _rx, _parked) = full_queue(Duration::from_millis(300)).await;
+    let info = info(dir.path())
+        .await
+        .expect("a busy atlas was reported absent");
+    assert!(info.is_busy(), "{info:?}");
+}
+
+/// A live process whose executable is named `atlas` (the singleton lock only trusts a pid that is an
+/// atlas) with its pid in `.logs/.tui.lock`: a runner as far as `existing_pid` can tell.
+#[cfg(unix)]
+fn fake_runner(root: &Path) -> FakeRunner {
+    let exe = root.join("atlas");
+    std::fs::copy("/bin/sleep", &exe).unwrap();
+    let child = std::process::Command::new(&exe).arg("60").spawn().unwrap();
+    std::fs::create_dir_all(root.join(".logs")).unwrap();
+    std::fs::write(root.join(".logs/.tui.lock"), child.id().to_string()).unwrap();
+    FakeRunner(child)
+}
+
+/// Killed when the test ends, a failed one included.
+#[cfg(unix)]
+struct FakeRunner(std::process::Child);
+
+#[cfg(unix)]
+impl Drop for FakeRunner {
+    fn drop(&mut self) {
+        let _ = self.0.kill();
+        let _ = self.0.wait();
+    }
+}
+
+// Regression (review of #410): a busy run came back with pid 0. Its details are unknown, but its pid
+// is in the singleton lock, and that is the pid `down()` has to wait for.
+#[cfg(unix)]
+#[tokio::test]
+async fn info_of_a_busy_atlas_names_the_pid_in_its_lock() {
+    let (dir, _server, _rx, _parked) = full_queue(Duration::from_millis(300)).await;
+    let runner = fake_runner(dir.path());
+    let info = info(dir.path())
+        .await
+        .expect("a busy atlas was reported absent");
+    assert!(info.is_busy(), "{info:?}");
+    assert_eq!(info.pid, i64::from(runner.0.id()));
+}
+
+// Regression (review of #410): `down()` waited for pid 0, which is "gone" at once: "stopped" while the
+// runner lived, and a worktree deleted under it. It waits for the runner's real pid, and says so when
+// it cannot know it.
+#[cfg(unix)]
+#[tokio::test]
+async fn down_of_a_busy_run_waits_for_its_real_pid_never_pid_zero() {
+    let (dir, _server, mut rx, _parked) = full_queue(Duration::from_millis(300)).await;
+    // No pid to be found for the busy run: down() cannot tell when it is gone, so it does not claim to.
+    let err = crate::runner::down(dir.path(), Duration::from_secs(1))
+        .await
+        .expect_err("down() claimed an outcome for a run whose pid it does not know");
+    assert!(err.contains("busy"), "{err}");
+
+    // Pid known; the run loop frees up while `down()` waits for a slot, so the shutdown is accepted.
+    let runner = fake_runner(dir.path());
+    let root = dir.path().to_path_buf();
+    let down =
+        tokio::spawn(async move { crate::runner::down(&root, Duration::from_secs(1)).await });
+    tokio::time::sleep(Duration::from_millis(450)).await;
+    tokio::spawn(async move {
+        while let Some(req) = rx.recv().await {
+            let _ = req.reply.send(ControlResponse::ok(json!({})));
+        }
+    });
+    // The fake runner ignores the shutdown and lives: the outcome is a timeout on ITS pid.
+    let out = down.await.unwrap().unwrap();
+    assert!(
+        matches!(out, crate::runner::DownOutcome::Timeout { pid } if pid == i64::from(runner.0.id())),
+        "{out:?}"
+    );
+}
+
+// Regression (review of #410): `atlas dev` retried while the run answered "busy" (16 tries of a 4 s
+// wait each, a minute of silence before the terminal is set up). "Busy" proves the socket is up: it
+// bails at once, and never offers to kill the run.
+#[cfg(unix)]
+#[tokio::test]
+async fn atlas_dev_against_a_busy_run_says_so_at_once_and_does_not_offer_to_kill_it() {
+    let (dir, _server, _rx, _parked) = full_queue(Duration::from_millis(300)).await;
+    std::fs::write(
+        dir.path().join("atlas.yaml"),
+        "name: demo\nservices:\n  api: { command: \"sleep 1\" }\n",
+    )
+    .unwrap();
+    let _runner = fake_runner(dir.path());
+    let out = tokio::time::timeout(
+        Duration::from_secs(3),
+        crate::tui::run(dir.path(), &crate::config::SelectionRequest::default()),
+    )
+    .await
+    .expect("atlas dev kept retrying against a busy run");
+    let err = out.expect_err("atlas dev started over a busy run");
+    assert!(err.to_string().contains("busy"), "{err:#}");
+}
+
+#[tokio::test]
+async fn wait_gone_never_treats_pid_zero_as_gone() {
+    let dir = tempfile::TempDir::new().unwrap();
+    let out = crate::runner::wait_gone(dir.path(), 0, Duration::from_millis(300)).await;
+    assert!(
+        matches!(out, crate::runner::DownOutcome::Timeout { pid: 0 }),
+        "{out:?}"
+    );
+}
+
+// Regression #304: connections were not capped. One over the limit is told "busy" and closed; the
+// ones already served are untouched.
+#[tokio::test]
+async fn a_connection_over_the_limit_is_told_busy_and_closed() {
+    let dir = tempfile::TempDir::new().unwrap();
+    let (server, mut rx) = ControlServer::bind(dir.path(), Guard::new(&cfg(), dir.path())).unwrap();
+    let mut held = Vec::new();
+    for _ in 0..server::MAX_CONNECTIONS {
+        held.push(ipc::connect(&socket_path(dir.path())).await.unwrap());
+    }
+    // Until the accept loop has registered all of them the next one would be served, not refused. A
+    // fixed pause is a race on Windows (one pipe instance is accepted at a time): wait for the count.
+    let deadline = std::time::Instant::now() + Duration::from_secs(20);
+    while server.served() < server::MAX_CONNECTIONS {
+        assert!(
+            std::time::Instant::now() < deadline,
+            "only {} of {} connections were accepted",
+            server.served(),
+            server::MAX_CONNECTIONS
+        );
+        tokio::time::sleep(Duration::from_millis(10)).await;
+    }
+    let over = ipc::connect(&socket_path(dir.path())).await.unwrap();
+    let mut line = String::new();
+    tokio::time::timeout(
+        Duration::from_secs(5),
+        tokio::io::BufReader::new(over).read_line(&mut line),
+    )
+    .await
+    .expect("no answer to a connection over the limit")
+    .unwrap();
+    assert!(line.contains(server::BUSY), "{line:?}");
+
+    // A connection that was already in keeps working.
+    let mut first = held.remove(0);
+    first
+        .write_all(b"{\"cmd\":\"restart_service\",\"args\":{\"service\":\"api\"}}\n")
+        .await
+        .unwrap();
+    let req = tokio::time::timeout(Duration::from_secs(5), rx.recv())
+        .await
+        .unwrap()
+        .unwrap();
+    assert_eq!(req.cmd, ControlCmd::RestartService("api".into()));
 }

@@ -629,10 +629,15 @@ async fn a_failed_sign_in_of_an_isolated_crewmate_flips_its_own_row_only() {
     let _g = lock_agent_bin().await;
     crate::crew::engine::set_test_engine_bin(None);
     let r = rig();
+    // `auth status` says signed in, a turn fails with claude's own auth error. The crew user's status runs
+    // this same fake (not the developer's real `claude`, signed in on one machine and not on another),
+    // so its row starts `signed_in` everywhere.
     r.engine(
         "claude",
-        r#"echo '{"type":"result","is_error":true,"result":"Please run /login","session_id":"s"}'"#,
+        r#"if [ "$1 $2" = "auth status" ]; then echo '{"loggedIn":true}'; exit 0; fi
+echo '{"type":"result","is_error":true,"result":"Please run /login","session_id":"s"}'"#,
     );
+    let _path = crate::crew::engine_login::TestPath::set(r.engines.clone());
     let tmp = tempfile::tempdir().unwrap();
     let client = daemon_with(&tmp.path().join("hostd"), Some(r.setup())).await;
     let id = create(&client, "Ana").await;

@@ -2,6 +2,7 @@
 //! and the subscription stream.
 
 use std::path::{Path, PathBuf};
+use std::time::Duration;
 
 use atlas_core::ipc;
 use tokio::io::{AsyncBufReadExt, AsyncReadExt, AsyncWriteExt, BufReader};
@@ -11,11 +12,26 @@ use super::guard::Guard;
 use super::protocol::{ControlCmd, ControlRequest, ControlResponse, WireRequest};
 use super::{MAX_LINE_BYTES, REPLY_TIMEOUT, SUBSCRIBER_BUFFER, socket_path};
 
+/// Requests waiting for the run loop (#304). A request that finds the queue full waits for a slot
+/// up to [`QUEUE_WAIT`] (the run loop is only briefly busy: a restart grace, a health check, a log
+/// flood), then gets [`BUSY`].
+pub(crate) const REQUEST_QUEUE: usize = 32;
+/// How long a request waits for a queue slot. With the reply wait it stays within what a client
+/// waits (`REPLY_TIMEOUT` plus 5 s), so the client sees "busy", not its own timeout.
+const QUEUE_WAIT: Duration = Duration::from_secs(4);
+/// Connections served at once; one more is answered [`BUSY`] and closed (#304).
+pub(crate) const MAX_CONNECTIONS: usize = 64;
+/// The error a client gets when the queue or the connection limit is full.
+pub(crate) const BUSY: &str = "atlas dev is busy; try again";
+
 /// Owns the socket file: removed on drop. Hold it for the life of the run.
 #[derive(Debug)]
 pub struct ControlServer {
     path: PathBuf,
     task: tokio::task::JoinHandle<()>,
+    /// Connections being served, kept current by the accept task (tests wait on it).
+    #[cfg(test)]
+    served: std::sync::Arc<std::sync::atomic::AtomicUsize>,
 }
 
 impl Drop for ControlServer {
@@ -32,7 +48,16 @@ impl ControlServer {
     pub fn bind(
         root_dir: &Path,
         guard: Guard,
-    ) -> std::io::Result<(Self, mpsc::UnboundedReceiver<ControlRequest>)> {
+    ) -> std::io::Result<(Self, mpsc::Receiver<ControlRequest>)> {
+        Self::bind_with(root_dir, guard, QUEUE_WAIT)
+    }
+
+    /// [`bind`](Self::bind) with another wait for a queue slot (tests shorten it).
+    pub(crate) fn bind_with(
+        root_dir: &Path,
+        guard: Guard,
+        queue_wait: Duration,
+    ) -> std::io::Result<(Self, mpsc::Receiver<ControlRequest>)> {
         let path = socket_path(root_dir);
         std::fs::create_dir_all(crate::runtime::log_dir(root_dir))?;
         let _ = ipc::remove_stale(&path);
@@ -46,7 +71,11 @@ impl ControlServer {
         // Bound under the singleton lock, so this is the one live run: it starts a fresh audit
         // file (the previous run's becomes `atlas-audit.prev.log`).
         guard.start_run();
-        let (tx, rx) = mpsc::unbounded_channel();
+        let (tx, rx) = mpsc::channel(REQUEST_QUEUE);
+        #[cfg(test)]
+        let served = std::sync::Arc::new(std::sync::atomic::AtomicUsize::new(0));
+        #[cfg(test)]
+        let served_by_task = served.clone();
         let task = tokio::spawn(async move {
             // Connections live in a JoinSet owned by the accept task: aborting the
             // accept task drops the set, which aborts every in-flight connection.
@@ -55,13 +84,33 @@ impl ControlServer {
                 tokio::select! {
                     accepted = listener.accept() => {
                         let Ok(stream) = accepted else { break };
-                        conns.spawn(serve_conn(stream, tx.clone(), guard.clone()));
+                        if conns.len() >= MAX_CONNECTIONS {
+                            refuse_busy(stream).await;
+                            continue;
+                        }
+                        conns.spawn(serve_conn(stream, tx.clone(), guard.clone(), queue_wait));
                     }
                     Some(_) = conns.join_next(), if !conns.is_empty() => {}
                 }
+                #[cfg(test)]
+                served_by_task.store(conns.len(), std::sync::atomic::Ordering::SeqCst);
             }
         });
-        Ok((Self { path, task }, rx))
+        Ok((
+            Self {
+                path,
+                task,
+                #[cfg(test)]
+                served,
+            },
+            rx,
+        ))
+    }
+
+    /// Connections being served right now.
+    #[cfg(test)]
+    pub(crate) fn served(&self) -> usize {
+        self.served.load(std::sync::atomic::Ordering::SeqCst)
     }
 }
 
@@ -119,7 +168,23 @@ pub(crate) async fn read_bounded_line<R: tokio::io::AsyncBufRead + Unpin>(
     Ok(terminated.then_some(()))
 }
 
-async fn serve_conn(stream: ipc::Stream, tx: mpsc::UnboundedSender<ControlRequest>, guard: Guard) {
+/// Tell a connection over the limit why it is closed. One short line into a fresh socket's buffer;
+/// the timeout keeps the accept loop from ever waiting on a peer.
+async fn refuse_busy(stream: ipc::Stream) {
+    let (_rd, mut wr) = ipc::split(stream);
+    if let Ok(mut line) = serde_json::to_string(&ControlResponse::err(BUSY)) {
+        line.push('\n');
+        let _ =
+            tokio::time::timeout(Duration::from_millis(100), wr.write_all(line.as_bytes())).await;
+    }
+}
+
+async fn serve_conn(
+    stream: ipc::Stream,
+    tx: mpsc::Sender<ControlRequest>,
+    guard: Guard,
+    queue_wait: Duration,
+) {
     let (rd, mut wr) = ipc::split(stream);
     let mut rd = BufReader::new(rd);
     let mut buf = Vec::new();
@@ -135,7 +200,7 @@ async fn serve_conn(stream: ipc::Stream, tx: mpsc::UnboundedSender<ControlReques
             (ControlResponse::err("request too large"), None)
         } else {
             let line = String::from_utf8_lossy(&buf);
-            handle_line(line.trim_end_matches(['\n', '\r']), &tx, &guard).await
+            handle_line(line.trim_end_matches(['\n', '\r']), &tx, &guard, queue_wait).await
         };
         let Ok(mut text) = serde_json::to_string(&resp.0) else {
             break;
@@ -158,8 +223,9 @@ type LineReply = (ControlResponse, Option<mpsc::Receiver<String>>);
 
 async fn handle_line(
     line: &str,
-    tx: &mpsc::UnboundedSender<ControlRequest>,
+    tx: &mpsc::Sender<ControlRequest>,
     guard: &Guard,
+    queue_wait: Duration,
 ) -> LineReply {
     if line.len() > MAX_LINE_BYTES {
         return (ControlResponse::err("request too large"), None);
@@ -187,8 +253,10 @@ async fn handle_line(
     } else {
         (None, None)
     };
-    if tx.send(ControlRequest { cmd, reply, stream }).is_err() {
-        return (ControlResponse::err("atlas dev is shutting down"), None);
+    match tokio::time::timeout(queue_wait, tx.send(ControlRequest { cmd, reply, stream })).await {
+        Ok(Ok(())) => {}
+        Ok(Err(_)) => return (ControlResponse::err("atlas dev is shutting down"), None),
+        Err(_) => return (ControlResponse::err(BUSY), None),
     }
     let resp = match tokio::time::timeout(REPLY_TIMEOUT, rx).await {
         Ok(Ok(resp)) => resp,

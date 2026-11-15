@@ -62,9 +62,71 @@ pub fn log_startup() {
     crate::diag::log(&describe(&env, nvidia.as_deref()));
 }
 
+/// Whether the desktop is a tiling window manager, from `XDG_CURRENT_DESKTOP` (a `:`-separated list,
+/// case-insensitive) or the socket variable the WM exports. `var` looks up an environment variable. There the WM owns the
+/// window (focus, size, close), so Atlas draws no caption buttons and no band for them (#269).
+pub fn is_tiling(var: impl Fn(&str) -> Option<String>) -> bool {
+    const TILING: &[&str] = &[
+        "hyprland", "sway", "i3", "niri", "river", "qtile", "bspwm", "awesome", "dwm", "xmonad",
+    ];
+    // sway, i3, Hyprland and niri export their own socket to every client, also when started from a TTY (no display
+    // manager, so no XDG_CURRENT_DESKTOP).
+    const SOCKETS: &[&str] = &[
+        "SWAYSOCK",
+        "I3SOCK",
+        "HYPRLAND_INSTANCE_SIGNATURE",
+        "NIRI_SOCKET",
+    ];
+    SOCKETS
+        .iter()
+        .any(|k| var(k).is_some_and(|v| !v.is_empty()))
+        || var("XDG_CURRENT_DESKTOP").is_some_and(|d| {
+            d.split(':')
+                .any(|part| TILING.contains(&part.trim().to_ascii_lowercase().as_str()))
+        })
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    fn lookup<'a>(pairs: &'a [(&'a str, &'a str)]) -> impl Fn(&str) -> Option<String> + 'a {
+        move |k| {
+            pairs
+                .iter()
+                .find(|(n, _)| *n == k)
+                .map(|(_, v)| v.to_string())
+        }
+    }
+
+    /// #269: Hyprland (Omarchy) showed caption buttons the WM already owns; GNOME and KDE need them.
+    #[test]
+    fn tiling_desktops_are_recognized_and_stacking_ones_are_not() {
+        for d in ["Hyprland", "sway", "i3", "niri", "XFCE:i3"] {
+            assert!(is_tiling(lookup(&[("XDG_CURRENT_DESKTOP", d)])), "{d}");
+        }
+        for d in ["GNOME", "ubuntu:GNOME", "KDE", "X-Cinnamon", "XFCE", ""] {
+            assert!(!is_tiling(lookup(&[("XDG_CURRENT_DESKTOP", d)])), "{d}");
+        }
+        assert!(!is_tiling(lookup(&[])));
+    }
+
+    /// sway/i3 started from a TTY (`exec sway`) or a bare `startx` have no display manager to set
+    /// XDG_CURRENT_DESKTOP, but they export their own socket; so do Hyprland and niri.
+    #[test]
+    fn a_wm_started_without_a_display_manager_is_recognized_by_its_own_variables() {
+        for v in [
+            "SWAYSOCK",
+            "I3SOCK",
+            "HYPRLAND_INSTANCE_SIGNATURE",
+            "NIRI_SOCKET",
+        ] {
+            assert!(is_tiling(lookup(&[(v, "/run/user/1000/wm.sock")])), "{v}");
+        }
+        // An empty variable is "unset" for this purpose; a GNOME session that merely inherited nothing stays stacking.
+        assert!(!is_tiling(lookup(&[("SWAYSOCK", "")])));
+        assert!(!is_tiling(lookup(&[("XDG_CURRENT_DESKTOP", "GNOME")])));
+    }
 
     fn env(pairs: &[(&str, &str)]) -> BTreeMap<String, String> {
         pairs

@@ -36,8 +36,8 @@ html.ground-holes .window-ground {
 	background: var(--ca-surface-sunken);
 }
 
-/* Linux: an opaque window with native decorations and no vibrancy to show through; the page
-   paints the backdrop the sidebar would otherwise get from NSVisualEffectView. */
+/* Windows and Linux: an opaque window with no vibrancy to show through; the page paints the backdrop the sidebar
+   would otherwise get from NSVisualEffectView. */
 html.opaque-window,
 html.opaque-window body {
 	background: var(--ca-surface-sunken) !important;
@@ -46,9 +46,13 @@ html.opaque-window body {
 html.opaque-window .peek-panel {
 	top: 8px;
 }
-/* Windows: the page's own caption buttons (lib/shell/WindowControls.svelte) sit over the title row's right end. */
+/* Windows and Linux: the page's own caption buttons (lib/shell/WindowControls.svelte) sit over the title row's right
+   end. A Linux tiling WM owns the window: no buttons, and no band reserved for them (#269). */
 html.custom-chrome {
 	--caption-controls: 138px;
+}
+html.custom-chrome.tiling-wm {
+	--caption-controls: 0px;
 }
 
 :root {

@@ -111,10 +111,30 @@ pub fn logs_script(follow: bool) -> String {
 }
 
 /// Shell that removes the crew service, binaries and user(s) from a host, both the current names
-/// and the pre-rename ones. `userdel` refuses while the user has processes; the caller reports it
-/// (uninstall never kills processes on someone's server).
+/// and the pre-rename ones. It first checks that no crew user is busy (an ssh session, a running task of
+/// someone logged in as it; the unit's own hostd and its children do not count, stopping the unit ends
+/// them) and, if one is, changes NOTHING and exits 1: `userdel` refuses a user with processes, and
+/// finding that out after the unit and the binary are gone left a half-removed server. Uninstall never
+/// kills processes on someone's server.
 pub fn uninstall_script() -> String {
     let mut s = String::new();
+    for user in [USER, LEGACY_USER] {
+        let unit = if user == USER {
+            SERVICE
+        } else {
+            LEGACY_SERVICE
+        };
+        s.push_str(&format!(
+            "if id {user} >/dev/null 2>&1; then \
+             main=$(systemctl show -p MainPID --value {unit} 2>/dev/null); \
+             [ \"${{main:-0}}\" -gt 0 ] 2>/dev/null || main=; \
+             own=\" $main $([ -n \"$main\" ] && pgrep -P \"$main\" 2>/dev/null | tr '\\n' ' ') \"; \
+             for p in $(pgrep -u {user} 2>/dev/null); do \
+             case \"$own\" in *\" $p \"*) ;; *) busy={user};; esac; done; \
+             if [ -n \"$busy\" ]; then \
+             echo \"{user} is still in use (an ssh session or a process runs as it): close Atlas Desktop and any ssh session as {user}, then run uninstall again. Nothing was removed.\" >&2; exit 1; fi; fi; "
+        ));
+    }
     for unit in [SERVICE, LEGACY_SERVICE] {
         s.push_str(&format!(
             "sudo systemctl stop {unit} 2>/dev/null || true; \
@@ -133,7 +153,7 @@ pub fn uninstall_script() -> String {
         .map(|u| format!("id {u} >/dev/null 2>&1"))
         .join(" || ");
     s.push_str(&format!(
-        "if {still}; then echo 'the crew user is still logged in (close Atlas Desktop and any ssh session as it), then run uninstall again' >&2; exit 1; fi"
+        "if {still}; then echo 'the crew user could not be removed (a process started as it after the check), then run uninstall again' >&2; exit 1; fi"
     ));
     s
 }

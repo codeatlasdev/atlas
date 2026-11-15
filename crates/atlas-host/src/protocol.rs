@@ -55,6 +55,14 @@ where
     T::deserialize(d).map(Some)
 }
 
+/// The wire protocol version, reported by `info` and sent in the `hello`.
+///
+/// Bump it on any NON-ADDITIVE change: a command or argument removed or renamed, a required argument
+/// added, a reply key removed or given another meaning. A new command, a new optional argument or a new
+/// reply key is additive and needs no bump. Atlas Mobile checks `info.proto` against its own
+/// minimum (`kMinHostProto` in `apps/mobile/lib/core/protocol/protocol_version.dart`) and shows an
+/// update state instead of per-command `bad request`: bump `kAppProto` there too. The golden tests
+/// (`protocol_golden.rs`, `testdata/hostd/*.json`) fail when the shape changes without this moving.
 pub const PROTO: u32 = 2;
 /// Capabilities reported by `info`; the desktop gates features on these. `push`: the daemon takes a
 /// phone's `push_register` and pushes about its plain agents (the phone registers only where it is).
@@ -602,9 +610,19 @@ pub enum HostCmd {
         /// notify. Absent from an app older than relay auth: it registers but is not notified.
         #[serde(default)]
         grant: String,
+        /// The phone this token belongs to, named by the Mac that relays the registration (`crew_call`
+        /// stamps the real node id of the phone's connection). Honoured only from a connection that is
+        /// not itself a phone: a phone's own node id always comes from its connection.
+        #[serde(default)]
+        node: String,
     },
     PushUnregister {
         token: String,
+    },
+    /// Drop every push token of phone `node`. Sent by the Mac to its crew servers when it revokes that phone
+    /// (never available to a phone: `mobile::required_scope` refuses it).
+    PushForget {
+        node: String,
     },
     CrewTelegramSet {
         #[serde(default)]

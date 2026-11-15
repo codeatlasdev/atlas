@@ -9,6 +9,7 @@ import 'package:atlas_mobile/core/protocol/models.dart';
 import 'package:atlas_mobile/core/ui/atlas_theme.dart';
 import 'package:atlas_mobile/core/ui/markdown/atlas_markdown.dart';
 import 'package:atlas_mobile/features/crew/chat/action_card.dart';
+import 'package:atlas_mobile/features/crew/chat/ask_card.dart';
 import 'package:atlas_mobile/features/crew/chat/approval_bubble.dart';
 import 'package:atlas_mobile/features/crew/chat/step_views.dart';
 import 'package:atlas_mobile/features/crew/chat/task_images.dart';
@@ -110,6 +111,12 @@ class CrewmateTaskPair extends StatelessWidget {
         if (task.state == 'waiting_action' && task.action != null) ...[
           const SizedBox(height: 4),
           TaskActionCard(task: task, device: device, crewmateId: crewmateId),
+        ],
+
+        // ── ask_user: the agent is blocked on a question ───────────────
+        if (task.ask?.isOpen ?? false) ...[
+          const SizedBox(height: 4),
+          TaskAskCard(task: task, device: device, crewmateId: crewmateId),
         ],
 
         // ── add_trigger resolved note ──────────────────────────────────

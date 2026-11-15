@@ -1,0 +1,779 @@
+{
+  "commands": {
+    "agent_approve": {
+      "optional": [],
+      "required": [
+        "allow",
+        "pane",
+        "req"
+      ]
+    },
+    "agent_bind": {
+      "optional": [],
+      "required": [
+        "agent",
+        "cwd",
+        "pane"
+      ]
+    },
+    "agent_history": {
+      "optional": [
+        "limit",
+        "sub"
+      ],
+      "required": [
+        "pane"
+      ]
+    },
+    "agent_integrations": {
+      "optional": [],
+      "required": []
+    },
+    "agent_interrupt": {
+      "optional": [],
+      "required": [
+        "pane"
+      ]
+    },
+    "agent_launch": {
+      "optional": [
+        "prompt",
+        "worktree"
+      ],
+      "required": [
+        "agent",
+        "project"
+      ]
+    },
+    "agent_pane_exited": {
+      "optional": [],
+      "required": [
+        "pane"
+      ]
+    },
+    "agent_send": {
+      "optional": [
+        "steer"
+      ],
+      "required": [
+        "pane",
+        "text"
+      ]
+    },
+    "agent_status_all": {
+      "optional": [],
+      "required": []
+    },
+    "agent_tree": {
+      "optional": [],
+      "required": [
+        "pane"
+      ]
+    },
+    "crew_audit": {
+      "optional": [
+        "kind",
+        "limit",
+        "since"
+      ],
+      "required": []
+    },
+    "crew_call": {
+      "optional": [
+        "args"
+      ],
+      "required": [
+        "cmd",
+        "server"
+      ]
+    },
+    "crew_engine_login": {
+      "optional": [],
+      "required": [
+        "engine"
+      ]
+    },
+    "crew_engine_status": {
+      "optional": [
+        "refresh"
+      ],
+      "required": []
+    },
+    "crew_github_connect_resume": {
+      "optional": [],
+      "required": []
+    },
+    "crew_github_login_poll": {
+      "optional": [],
+      "required": []
+    },
+    "crew_github_login_start": {
+      "optional": [],
+      "required": []
+    },
+    "crew_github_logout": {
+      "optional": [],
+      "required": []
+    },
+    "crew_github_status": {
+      "optional": [],
+      "required": []
+    },
+    "crew_pause": {
+      "optional": [],
+      "required": []
+    },
+    "crew_resume": {
+      "optional": [],
+      "required": []
+    },
+    "crew_servers": {
+      "optional": [],
+      "required": []
+    },
+    "crew_settings_get": {
+      "optional": [],
+      "required": []
+    },
+    "crew_settings_set": {
+      "optional": [
+        "max_agents",
+        "short_replies_model"
+      ],
+      "required": [
+        "short_replies"
+      ]
+    },
+    "crew_telegram_link": {
+      "optional": [],
+      "required": []
+    },
+    "crew_telegram_set": {
+      "optional": [
+        "token"
+      ],
+      "required": []
+    },
+    "crew_telegram_status": {
+      "optional": [],
+      "required": []
+    },
+    "crewmate_action_answer": {
+      "optional": [
+        "attachments"
+      ],
+      "required": [
+        "id",
+        "task",
+        "value"
+      ]
+    },
+    "crewmate_answer": {
+      "optional": [
+        "key",
+        "text"
+      ],
+      "required": [
+        "ask_id",
+        "id"
+      ]
+    },
+    "crewmate_attachment": {
+      "optional": [
+        "limit",
+        "offset"
+      ],
+      "required": [
+        "id",
+        "name",
+        "task"
+      ]
+    },
+    "crewmate_attachment_put": {
+      "optional": [
+        "last"
+      ],
+      "required": [
+        "data_b64",
+        "id",
+        "seq",
+        "upload"
+      ]
+    },
+    "crewmate_audit": {
+      "optional": [
+        "kind",
+        "limit",
+        "since"
+      ],
+      "required": [
+        "id"
+      ]
+    },
+    "crewmate_cancel": {
+      "optional": [],
+      "required": [
+        "id",
+        "task"
+      ]
+    },
+    "crewmate_create": {
+      "optional": [
+        "engine",
+        "look",
+        "project",
+        "setup_step",
+        "workdir"
+      ],
+      "required": [
+        "agent",
+        "approval",
+        "name",
+        "role"
+      ]
+    },
+    "crewmate_delete": {
+      "optional": [],
+      "required": [
+        "id"
+      ]
+    },
+    "crewmate_list": {
+      "optional": [],
+      "required": []
+    },
+    "crewmate_memory": {
+      "optional": [],
+      "required": [
+        "id"
+      ]
+    },
+    "crewmate_memory_set": {
+      "optional": [],
+      "required": [
+        "id",
+        "text"
+      ]
+    },
+    "crewmate_routine_set": {
+      "optional": [],
+      "required": [
+        "id",
+        "routines"
+      ]
+    },
+    "crewmate_secret_set": {
+      "optional": [],
+      "required": [
+        "id",
+        "key",
+        "value"
+      ]
+    },
+    "crewmate_task": {
+      "optional": [
+        "attachments",
+        "tz",
+        "ui"
+      ],
+      "required": [
+        "id",
+        "prompt",
+        "source"
+      ]
+    },
+    "crewmate_tasks": {
+      "optional": [
+        "limit"
+      ],
+      "required": [
+        "id"
+      ]
+    },
+    "crewmate_triggers_set": {
+      "optional": [],
+      "required": [
+        "id",
+        "triggers"
+      ]
+    },
+    "crewmate_update": {
+      "optional": [
+        "agent",
+        "approval",
+        "engine",
+        "look",
+        "name",
+        "project",
+        "role",
+        "setup_step",
+        "short_replies"
+      ],
+      "required": [
+        "id"
+      ]
+    },
+    "crewmate_usage": {
+      "optional": [
+        "id",
+        "since"
+      ],
+      "required": []
+    },
+    "engine_limits": {
+      "optional": [],
+      "required": []
+    },
+    "exec": {
+      "optional": [
+        "env",
+        "stdin",
+        "timeout_ms"
+      ],
+      "required": [
+        "argv",
+        "cwd"
+      ]
+    },
+    "fs_list": {
+      "optional": [],
+      "required": [
+        "path"
+      ]
+    },
+    "fs_mkdir": {
+      "optional": [],
+      "required": [
+        "path"
+      ]
+    },
+    "fs_read": {
+      "optional": [
+        "max",
+        "offset"
+      ],
+      "required": [
+        "path"
+      ]
+    },
+    "fs_remove": {
+      "optional": [
+        "recursive"
+      ],
+      "required": [
+        "path"
+      ]
+    },
+    "fs_rename": {
+      "optional": [],
+      "required": [
+        "from",
+        "to"
+      ]
+    },
+    "fs_stat": {
+      "optional": [],
+      "required": [
+        "path"
+      ]
+    },
+    "fs_unwatch": {
+      "optional": [],
+      "required": [
+        "id"
+      ]
+    },
+    "fs_watch": {
+      "optional": [],
+      "required": [
+        "id",
+        "path"
+      ]
+    },
+    "fs_write": {
+      "optional": [
+        "mode"
+      ],
+      "required": [
+        "data",
+        "path"
+      ]
+    },
+    "git_commit": {
+      "optional": [],
+      "required": [
+        "message",
+        "root"
+      ]
+    },
+    "git_commit_message": {
+      "optional": [],
+      "required": [
+        "root"
+      ]
+    },
+    "git_diff": {
+      "optional": [
+        "path",
+        "staged"
+      ],
+      "required": [
+        "root"
+      ]
+    },
+    "git_pr_create": {
+      "optional": [
+        "base"
+      ],
+      "required": [
+        "body",
+        "root",
+        "title"
+      ]
+    },
+    "git_push": {
+      "optional": [],
+      "required": [
+        "root"
+      ]
+    },
+    "git_stage": {
+      "optional": [],
+      "required": [
+        "paths",
+        "root"
+      ]
+    },
+    "git_status": {
+      "optional": [],
+      "required": [
+        "root"
+      ]
+    },
+    "git_unstage": {
+      "optional": [],
+      "required": [
+        "paths",
+        "root"
+      ]
+    },
+    "info": {
+      "optional": [],
+      "required": []
+    },
+    "lsp_apply_edit_result": {
+      "optional": [],
+      "required": [
+        "applied",
+        "id"
+      ]
+    },
+    "lsp_cancel": {
+      "optional": [],
+      "required": [
+        "id"
+      ]
+    },
+    "lsp_catalog": {
+      "optional": [],
+      "required": []
+    },
+    "lsp_change": {
+      "optional": [],
+      "required": [
+        "changes",
+        "path",
+        "version"
+      ]
+    },
+    "lsp_close": {
+      "optional": [],
+      "required": [
+        "path"
+      ]
+    },
+    "lsp_install": {
+      "optional": [
+        "reinstall"
+      ],
+      "required": [
+        "name"
+      ]
+    },
+    "lsp_log": {
+      "optional": [
+        "lines"
+      ],
+      "required": [
+        "name"
+      ]
+    },
+    "lsp_open": {
+      "optional": [
+        "overrides",
+        "root",
+        "version"
+      ],
+      "required": [
+        "language_id",
+        "path",
+        "text"
+      ]
+    },
+    "lsp_request": {
+      "optional": [
+        "params",
+        "rid"
+      ],
+      "required": [
+        "method",
+        "path"
+      ]
+    },
+    "lsp_restart": {
+      "optional": [
+        "root"
+      ],
+      "required": [
+        "name"
+      ]
+    },
+    "lsp_save": {
+      "optional": [
+        "text"
+      ],
+      "required": [
+        "path"
+      ]
+    },
+    "lsp_status": {
+      "optional": [],
+      "required": []
+    },
+    "lsp_uninstall": {
+      "optional": [],
+      "required": [
+        "name"
+      ]
+    },
+    "mobile_devices": {
+      "optional": [],
+      "required": []
+    },
+    "mobile_invite": {
+      "optional": [],
+      "required": [
+        "name",
+        "url"
+      ]
+    },
+    "mobile_invite_dismiss": {
+      "optional": [],
+      "required": [
+        "url"
+      ]
+    },
+    "mobile_invites": {
+      "optional": [],
+      "required": []
+    },
+    "mobile_pair_start": {
+      "optional": [],
+      "required": []
+    },
+    "mobile_revoke": {
+      "optional": [],
+      "required": [
+        "node_id"
+      ]
+    },
+    "mobile_set_scopes": {
+      "optional": [],
+      "required": [
+        "node_id",
+        "scopes"
+      ]
+    },
+    "project_action": {
+      "optional": [
+        "confirmed"
+      ],
+      "required": [
+        "id",
+        "key"
+      ]
+    },
+    "project_detail": {
+      "optional": [],
+      "required": [
+        "id"
+      ]
+    },
+    "project_list": {
+      "optional": [],
+      "required": []
+    },
+    "project_logs": {
+      "optional": [
+        "lines",
+        "query",
+        "service"
+      ],
+      "required": [
+        "id"
+      ]
+    },
+    "project_service": {
+      "optional": [
+        "service"
+      ],
+      "required": [
+        "id",
+        "op"
+      ]
+    },
+    "pty_attach": {
+      "optional": [
+        "output",
+        "replay"
+      ],
+      "required": [
+        "pty"
+      ]
+    },
+    "pty_attach_raw": {
+      "optional": [
+        "replay"
+      ],
+      "required": [
+        "pty"
+      ]
+    },
+    "pty_clear": {
+      "optional": [],
+      "required": [
+        "pty"
+      ]
+    },
+    "pty_create": {
+      "optional": [
+        "argv",
+        "cols",
+        "env",
+        "mode",
+        "rows",
+        "scope",
+        "title"
+      ],
+      "required": [
+        "cwd"
+      ]
+    },
+    "pty_detach": {
+      "optional": [],
+      "required": [
+        "pty"
+      ]
+    },
+    "pty_info": {
+      "optional": [],
+      "required": [
+        "pty"
+      ]
+    },
+    "pty_kill": {
+      "optional": [],
+      "required": [
+        "pty"
+      ]
+    },
+    "pty_list": {
+      "optional": [],
+      "required": []
+    },
+    "pty_read": {
+      "optional": [
+        "lines"
+      ],
+      "required": [
+        "pty"
+      ]
+    },
+    "pty_resize": {
+      "optional": [],
+      "required": [
+        "cols",
+        "pty",
+        "rows"
+      ]
+    },
+    "pty_signal": {
+      "optional": [],
+      "required": [
+        "pty",
+        "signal"
+      ]
+    },
+    "pty_write": {
+      "optional": [],
+      "required": [
+        "data",
+        "pty"
+      ]
+    },
+    "push_forget": {
+      "optional": [],
+      "required": [
+        "node"
+      ]
+    },
+    "push_register": {
+      "optional": [
+        "grant",
+        "node"
+      ],
+      "required": [
+        "platform",
+        "token"
+      ]
+    },
+    "push_unregister": {
+      "optional": [],
+      "required": [
+        "token"
+      ]
+    },
+    "shutdown": {
+      "optional": [],
+      "required": []
+    },
+    "upgrade": {
+      "optional": [],
+      "required": [
+        "exe"
+      ]
+    },
+    "worktree_create": {
+      "optional": [
+        "base",
+        "name"
+      ],
+      "required": [
+        "project"
+      ]
+    },
+    "worktree_list": {
+      "optional": [],
+      "required": [
+        "project"
+      ]
+    },
+    "worktree_remove": {
+      "optional": [],
+      "required": [
+        "id"
+      ]
+    }
+  },
+  "proto": 2
+}

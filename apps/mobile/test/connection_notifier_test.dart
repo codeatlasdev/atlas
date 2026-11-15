@@ -40,7 +40,7 @@ void main() {
 
   group('ConnectionNotifier', () {
     test('connects successfully when transport factory succeeds', () async {
-      final fakeTransport = FakeTransport();
+      final fakeTransport = FakeTransport(answerInfo: true);
 
       final container = ProviderContainer(
         overrides: [
@@ -78,7 +78,7 @@ void main() {
     });
 
     test('transitions through loading then delivers mux', () async {
-      final fakeTransport = FakeTransport();
+      final fakeTransport = FakeTransport(answerInfo: true);
       final container = ProviderContainer(
         overrides: [
           transportFactoryProvider.overrideWithValue(
@@ -110,7 +110,8 @@ void main() {
     // the connection could be dead without closing; the first request waited out
     // its full deadline before anything reconnected.
     test('coming back to the foreground replaces a connection that does not answer', () async {
-      final dead = FakeTransport(), fresh = FakeTransport();
+      final dead = FakeTransport(answerInfo: true),
+          fresh = FakeTransport(answerInfo: true);
       var made = 0;
       final container = ProviderContainer(
         overrides: [
@@ -133,11 +134,13 @@ void main() {
       expect(made, 2, reason: 'a silent connection is replaced');
       expect(identical(first, second), isFalse);
       expect(sw.elapsed, lessThan(const Duration(seconds: 2)));
-      expect(dead.sentLines.single, contains('"cmd":"info"'));
+      // The connect-time check was answered; the foreground probe was not.
+      expect(dead.sentLines, hasLength(2));
+      expect(dead.sentLines.every((l) => l.contains('"cmd":"info"')), isTrue);
     });
 
     test('a connection that answers the probe is kept', () async {
-      final live = FakeTransport();
+      final live = FakeTransport(answerInfo: true);
       var made = 0;
       final container = ProviderContainer(
         overrides: [
@@ -155,7 +158,7 @@ void main() {
       await container.read(p.future);
       final probing = container.read(p.notifier).onForegrounded();
       await Future<void>.delayed(Duration.zero);
-      live.injectLine('{"id":1,"ok":true,"data":{}}');
+      live.injectLine('{"id":2,"ok":true,"data":{}}');
       await probing;
       expect(made, 1);
     });
@@ -163,7 +166,7 @@ void main() {
     // Guards Minor 5: a reconnect timer that was scheduled before the app was
     // backgrounded must not fire and open a new connection in the background.
     test('backgrounding cancels the reconnect timer', () async {
-      final fakeTransport = FakeTransport();
+      final fakeTransport = FakeTransport(answerInfo: true);
       var made = 0;
       final container = ProviderContainer(
         overrides: [
@@ -194,7 +197,7 @@ void main() {
     // count as proof the link is alive (the id field is present), not trigger
     // a reconnect.
     test('a forbidden probe reply keeps the connection', () async {
-      final live = FakeTransport();
+      final live = FakeTransport(answerInfo: true);
       var made = 0;
       final container = ProviderContainer(
         overrides: [
@@ -213,7 +216,7 @@ void main() {
       final probing = container.read(p.notifier).onForegrounded();
       await Future<void>.delayed(Duration.zero);
       // "forbidden" is a real reply: the id field is present, so the link is alive.
-      live.injectLine('{"id":1,"ok":false,"error":"forbidden"}');
+      live.injectLine('{"id":2,"ok":false,"error":"forbidden"}');
       await probing;
       expect(made, 1, reason: 'forbidden counts as alive; no reconnect');
     });

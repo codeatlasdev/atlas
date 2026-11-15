@@ -32,10 +32,10 @@ atlas crew login ubuntu@myserver.example.com claude
 Requirements:
 
 - A Linux server, x86_64 or aarch64 (arm64: Graviton, Oracle A1, Hetzner CAX), with `systemd` and `sudo` (passwordless sudo when you run the command from a terminal). Any other architecture is refused with a message saying so.
-- An SSH public key at `~/.ssh/id_ed25519.pub` or `~/.ssh/id_rsa.pub` on your machine.
-- Internet access on the server, or a Linux `atlas` of the server's architecture on your machine (see [Offline install](#offline-install)).
+- An SSH public key on your machine: the one `ssh` itself would offer for that host (`ssh -G` lists the `IdentityFile`s of `~/.ssh/config` and the default names; a key with any name works). It is looked up before anything on the server changes.
+- Internet access on the server **or** on your machine (the release is then downloaded here and sent over ssh), or a Linux `atlas` of the server's architecture (see [Offline install](#offline-install)).
 
-`atlas crew install <ssh-target>` does, in order: checks the host is Linux (x86_64 or aarch64) with systemd and sudo; installs `atlas` to `/usr/local/lib/atlas-crew/`; creates the `atlas-crew` system user (home `/var/lib/atlas-crew`); links the binary at `<home>/.atlas/bin/atlas`; writes and enables `/etc/systemd/system/atlas-crew.service`; appends your SSH public key to the crew user's `authorized_keys`. The service starts on boot and restarts on failure.
+`atlas crew install <ssh-target>` does, in order: one preflight probe that changes nothing and names **every** missing piece at once (systemd running as PID 1, sudo, curl, tar, git, sha256sum, awk, useradd, ... each with the package that has it); stages `atlas` as `/usr/local/lib/atlas-crew/atlas.new`; creates the `atlas-crew` system user (home `/var/lib/atlas-crew`); links the binary at `<home>/.atlas/bin/atlas`; writes and enables `/etc/systemd/system/atlas-crew.service`; swaps the binary in (a binary that was already there stays as `atlas.prev`), starts the service and **waits up to 60 s for hostd to answer**, rolling back to `atlas.prev` when it does not (a dead binary fails the install and points at `atlas crew logs`, it is never reported as ready); appends your SSH public key to the crew user's `authorized_keys`. The service starts on boot and restarts on failure.
 
 ### On a server that already runs crewmates
 
@@ -62,6 +62,7 @@ Run `atlas crew status <ssh-target>` afterwards to check.
 | `atlas crew resume <ssh-target> [--port N]` | starts the queues again (`atlas hostd --crew-resume`) |
 | `atlas crew logs <ssh-target> [-f] [--port N]` | last 200 lines of `journalctl -u atlas-crew`; `-f` follows |
 | `atlas crew login <ssh-target> <agent> [--port N]` | opens `ssh -t <crew-user>@<host> <agent-binary>` (with the same `PATH` the Desktop's engine check uses: `~/.local/bin`, `~/.bun/bin`, `~/.npm-global/bin`, so an agent installed there is found) so you finish the agent's own sign-in. `<agent>` is `omp`, `claude`, `codex` or `opencode`; the command prints the install line for that agent first |
+| `atlas crew pair <ssh-target> [--port N]` | pairs a phone with this crew server directly, from any machine that can SSH to it: prints a QR code, a 6-digit code and the link (`atlas hostd --mobile-pair` as the crew user; one code, 120 s). The phone keeps the server in its computers, so the crew works with your own computer off ([Atlas Mobile](mobile.md#pair-a-crew-server-with-no-computer-in-the-loop)) |
 | `atlas crew browsers install <ssh-target> [--port N]` | installs Playwright's chromium and webkit for the `capture` tool ([Captures](#captures)); idempotent. Nothing from npm runs as root: sudo is used only for one `apt-get install` that atlas builds itself |
 | `atlas crew browsers status <ssh-target> [--port N]` | one line per missing piece (node older than 20 or missing, npm, runner, Playwright package or version, each browser, a browser that cannot start for lack of libraries); says it is ready and exits 0 when nothing is missing, exits 1 otherwise |
 
@@ -73,7 +74,7 @@ Windows clients: OpenSSH for Windows has no connection sharing, so `ControlMaste
 
 ### Offline install
 
-If the server has no internet, put a Linux `atlas` of the server's architecture on your machine at `~/.atlas/remote/atlas-x86_64-linux` (x86_64) or `~/.atlas/remote/atlas-aarch64-linux` (arm64), or pass it with `--binary`, then run `atlas crew install`. When `curl` fails on the server, the command uploads that cached binary. The downloaded release is checked against its `.sha256` before it is installed.
+If the server cannot download the release (no internet, or behind a proxy it has no settings for), `atlas crew install` and `atlas crew update` download it **on your machine** (with your `https_proxy` and curl settings), check its `.sha256`, and send the binary over ssh. Only if that fails too does it use a Linux `atlas` you put at `~/.atlas/remote/atlas-x86_64-linux` (x86_64) or `~/.atlas/remote/atlas-aarch64-linux` (arm64); `--binary` always wins. The downloaded release is checked against its `.sha256` before it is installed.
 
 ## Update a crew server
 
@@ -339,7 +340,8 @@ Telegram sees your bot token and the messages above. Nothing goes to CodeAtlas.
 
 When a task ends or a crewmate needs your approval, the crew server pushes to your phone.
 
-- After pairing, push is automatic: the app gets a **grant** for its FCM token from the relay (`POST /v1/register`) and registers `{token, grant}` with each crew server (`push_register`, `push_unregister`). It does so on every launch and connect and whenever FCM refreshes the token.
+- **Not live yet:** the push relay is not deployed and the app is built without Firebase, so no phone gets a push today; the code below is what runs once they are (status and the steps to switch it on: [Atlas Mobile → Push notifications](mobile.md#push-notifications)).
+- After pairing, with a build that has push config, registration is automatic: the app gets a **grant** for its FCM token from the relay (`POST /v1/register`) and registers `{token, grant}` with each crew server (`push_register`, `push_unregister`). It does so on every launch and connect and whenever FCM refreshes the token.
 - The relay at `push.codeatlas.com.br` gets the token, the grant and the event kind (`task_done` or `needs_you`), never content. Phones that are connected at that moment are skipped.
 - The relay only notifies a caller that holds the token's grant, so knowing a token is not enough to ping a phone. A crew server drops a token the relay refuses (`403`) or that FCM no longer has (`410`).
 - **Updating from an earlier alpha:** a token registered before grants existed has no grant. The crew server keeps it but sends nothing for it; open the updated app once and it registers again with a grant. Until then that phone gets no push.
@@ -616,8 +618,8 @@ Read it with `crewmate_audit` and `crew_audit` (Mobile scope `read`); Atlas Desk
 | Approval prompt is denied at once | nobody can answer right now: no connected desktop client or phone, and no linked Telegram chat ([Approvals](#approvals)) |
 | An `ask` crewmate never asks | check its approval really is `ask` (a GitHub or webhook task asks too, see [Automations](#automations)), and that someone can answer ([Approvals](#approvals)). `codex` and `opencode` engines cannot ask, so `ask` is refused for them |
 | `could not connect … over SSH` | SSH itself failed (refused, timeout, key rejected), not the server's OS; fix SSH first |
-| `sudo … asks for a password` | grant passwordless sudo, or run the install from Atlas Desktop |
-| Uninstall says the user is still logged in | close Atlas Desktop and any ssh session as the crew user, run it again |
+| `sudo … asks for a password` | grant passwordless sudo, or run the install from Atlas Desktop (it sends the password with every privileged call, so Ubuntu's per-terminal sudo cache cannot lose it) |
+| Uninstall says a crew user is still in use | uninstall checks first and removed nothing: close Atlas Desktop and any ssh session or process running as the crew user, run it again |
 | Uninstall says it needs a decision | no terminal and no `--yes`: run it in a terminal, or pass `--yes` after `atlas crew export` |
 | Export or import says the server's atlas is too old | `atlas crew install <ssh-target>` updates the server's binary, then retry |
 | A first task shows `Downloading <repo>…` | the project clones before the task starts; a missing folder is refused when you set it |

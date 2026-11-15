@@ -6,6 +6,7 @@ import 'package:atlas_mobile/core/demo/demo_crew.dart';
 import 'package:atlas_mobile/core/protocol/image_rules.dart';
 import 'package:atlas_mobile/core/demo/demo_git.dart';
 import 'package:atlas_mobile/core/protocol/models.dart';
+import 'package:atlas_mobile/core/protocol/protocol_version.dart';
 import 'package:atlas_mobile/core/transport/transport.dart';
 
 /// The demo computer's identity. Never dialled: [demoTransport] answers for it.
@@ -594,6 +595,9 @@ class _DemoComputer implements Transport {
                 'task': {'id': 'task-$_seq', 'state': 'queued'},
               }
             : null;
+      case 'crewmate_answer':
+        error = _answerAsk(args);
+        data = error == null ? <String, Object?>{} : null;
       case 'crewmate_action_answer':
         error = _answerAction(args);
         data = error == null ? <String, Object?>{} : null;
@@ -709,6 +713,7 @@ class _DemoComputer implements Transport {
         data = <String, Object?>{};
       case 'info':
         data = {
+          'proto': kAppProto,
           'caps': ['mobile', 'crew'],
           'version': '1.0.0',
           'hostname': 'Demo MacBook',
@@ -1189,6 +1194,27 @@ class _DemoComputer implements Transport {
     crewmate.state = 'idle';
     crewmate.waiting = task;
     _pushCrewmateTask(crewmate, task);
+  }
+
+  /// `crewmate_answer`: records the answer on the task whose open `ask` has that id, with hostd's own
+  /// messages for what it refuses (neither key nor text; an ask that is not there or already answered).
+  String? _answerAsk(Map<String, dynamic> args) {
+    final key = args['key'] as String?;
+    final text = args['text'] as String?;
+    if (key == null && text == null) return 'key or text required';
+    final id = args['id'] as String?;
+    final askId = args['ask_id'] as String?;
+    for (final task
+        in _crewmates[id]?.tasks ?? const <Map<String, Object?>>[]) {
+      final ask = task['ask'];
+      if (ask is Map && ask['id'] == askId && ask['answered'] == null) {
+        ask['answered'] = key != null
+            ? {'kind': 'key', 'value': key}
+            : {'kind': 'text', 'value': text};
+        return null;
+      }
+    }
+    return 'ask $askId not found for crewmate $id';
   }
 
   /// `crewmate_action_answer` for the cards the demo raises: `override` accepts the work, `retry` runs it

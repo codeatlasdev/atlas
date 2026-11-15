@@ -13,7 +13,7 @@ use super::prompt::{Prepared, load_agent_env, prepare_task};
 use super::recover::recovered_wait;
 use super::summary::maybe_summarize;
 #[cfg(test)]
-use super::testing::{TEST_AGENT_BIN, TEST_PAUSE_AFTER_SPAWN};
+use super::testing::{TEST_AGENT_BIN, TEST_PAUSE_AFTER_SPAWN, TEST_PAUSE_BEFORE_SPAWN};
 use crate::crew::store::{Crewmate, Step, Task, TaskState};
 use crate::crew::{now_s, pane, triggers};
 use crate::paths;
@@ -129,6 +129,12 @@ async fn run_pty_inner(
         return (Err(format!("unknown agent '{}'", crewmate.agent)), vec![]);
     };
 
+    // A slot for the agent (a task waiting for a person holds none), and the store's word before anything starts: a
+    // task cancelled while it was preparing or waiting for a slot never gets its agent (#292). `finish_task` records
+    // it as cancelled, the store's state winning over this error. The slot is held until the agent has ended.
+    let Some(_slot) = super::slots::take(hub, crewmate, task).await else {
+        return (Err("cancelled before the agent started".into()), vec![]);
+    };
     // In tests a fake binary can be injected; production always uses the agent def.
     #[cfg(test)]
     let argv = match TEST_AGENT_BIN
@@ -186,6 +192,30 @@ async fn run_pty_inner(
     // would then fail a finished task as "agent exited (code 0)".
     let agent_rx = hub.agents.subscribe();
 
+    // Running, and audited as started, before the agent exists: its first tool call can reach the audit
+    // within milliseconds of the spawn, and must come after `task_started`. If that cannot be stored
+    // there is no honest "running" to show, and no agent is started.
+    task.state = TaskState::Running;
+    task.started_at = Some(now_s());
+    task.pane = Some(pane_key.to_string());
+    if let Err(msg) = persist(hub, &crewmate.id, task) {
+        return (Err(msg), vec![]);
+    }
+    audit_task(hub, &crewmate.id, "task_started", task);
+    broadcast_task(hub, &crewmate.id, task);
+    // The store's word right before the agent exists: `persist` keeps a stored cancel (the runner's `running` is not
+    // written over it), so a task cancelled while it prepared or waited for a slot is still cancelled here and no
+    // agent is spawned for it (#292).
+    if super::outcome::was_cancelled(hub, &crewmate.id, &task.id) {
+        return (Err("cancelled before the agent started".into()), vec![]);
+    }
+    #[cfg(test)]
+    let pause = *TEST_PAUSE_BEFORE_SPAWN.lock();
+    #[cfg(test)]
+    if let Some(pause) = pause {
+        tokio::time::sleep(pause).await;
+    }
+
     // Spawn the pty.
     let scroll = paths::scrollback_dir(&hub.dir);
     #[cfg(unix)]
@@ -205,19 +235,13 @@ async fn run_pty_inner(
     if let Some(pause) = pause {
         tokio::time::sleep(pause).await;
     }
-
-    // Mark task as running and record start time. If that cannot be stored there is no honest
-    // "running" to show: stop the agent and fail the task with the store error.
-    task.state = TaskState::Running;
-    task.started_at = Some(now_s());
-    task.pane = Some(pane_key.to_string());
-    if let Err(msg) = persist(hub, &crewmate.id, task) {
+    // A cancel that landed between the check above and the session's registration found nothing to kill: the
+    // store has it, so the agent is stopped here rather than left running over a cancelled task.
+    if super::outcome::was_cancelled(hub, &crewmate.id, &task.id) {
         session.kill().await;
         hub.sessions.lock().remove(&pty_id);
-        return (Err(msg), vec![]);
+        return (Err("cancelled before the agent started".into()), vec![]);
     }
-    audit_task(hub, &crewmate.id, "task_started", task);
-    broadcast_task(hub, &crewmate.id, task);
 
     // Wait for completion.
     let (outcome, steps) =

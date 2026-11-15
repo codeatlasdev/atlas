@@ -15,6 +15,7 @@ use parking_lot::Mutex;
 use serde::{Deserialize, Serialize};
 use serde_json::{Value, json};
 
+use crate::paths::Loaded;
 use crate::server::Hub;
 
 // ─── config ──────────────────────────────────────────────────────────────────
@@ -67,11 +68,7 @@ fn card_images_of(
     crewmate_id: &str,
     task_id: &str,
 ) -> Vec<(String, Vec<u8>)> {
-    let Some(task) = store
-        .read_tasks(crewmate_id, usize::MAX)
-        .into_iter()
-        .find(|t| t.id == task_id)
-    else {
+    let Some(task) = store.task(crewmate_id, task_id) else {
         return vec![];
     };
     let agent: Vec<_> = task
@@ -156,6 +153,8 @@ enum LinkAttempt {
 
 pub(crate) struct TelegramBridge {
     dir: PathBuf,
+    /// Where an unreadable `telegram.json` was kept at start, if there was one.
+    corrupt_aside: Option<PathBuf>,
     api_base: String,
     hub_weak: OnceLock<Weak<Hub>>,
     config: Mutex<TelegramConfig>,
@@ -170,11 +169,19 @@ impl TelegramBridge {
     }
 
     pub(crate) fn new_with_api(dir: PathBuf, api_base: impl Into<String>) -> Self {
-        let config = std::fs::read(dir.join("telegram.json"))
-            .ok()
-            .and_then(|b| serde_json::from_slice(&b).ok())
-            .unwrap_or_default();
+        // A telegram.json that cannot be parsed is set aside (never overwritten by the next `set_token`) and
+        // named in `status`, so the client can say why Telegram went quiet.
+        let (config, corrupt_aside) = match crate::paths::read_json_or_aside(&config_path(&dir)) {
+            Ok(Loaded::Ok(c)) => (c, None),
+            Ok(Loaded::Missing) => (TelegramConfig::default(), None),
+            Ok(Loaded::Corrupt(aside)) => (TelegramConfig::default(), Some(aside)),
+            Err(e) => {
+                eprintln!("atlas crew: cannot read telegram.json: {e}");
+                (TelegramConfig::default(), None)
+            }
+        };
         Self {
+            corrupt_aside,
             dir,
             api_base: api_base.into(),
             hub_weak: OnceLock::new(),
@@ -230,7 +237,11 @@ impl TelegramBridge {
     /// are linked. The token is never part of it.
     pub(crate) fn status(&self) -> Value {
         let cfg = self.config.lock();
-        json!({"configured": !cfg.token.is_empty(), "chats": cfg.chats.len()})
+        let mut status = json!({"configured": !cfg.token.is_empty(), "chats": cfg.chats.len()});
+        if let Some(aside) = &self.corrupt_aside {
+            status["corrupt_aside"] = json!(aside.display().to_string());
+        }
+        status
     }
 
     /// True if at least one chat is linked.

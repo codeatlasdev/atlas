@@ -67,7 +67,9 @@ impl Rig {
         std::fs::write(
             home.join("desktop/crew-servers.json"),
             json!([
-                {"host": "atlas-crew@box", "name": "Ship"},
+                // `admin` is the desktop's own field (the address the install ran against): the relay must keep
+                // reading an entry that has it.
+                {"host": "atlas-crew@box", "name": "Ship", "admin": {"target": "ubuntu@box", "port": 2222}},
                 {"host": "-oProxyCommand=evil", "name": "never dialled"},
             ])
             .to_string(),
@@ -259,4 +261,72 @@ async fn a_registry_still_under_its_old_name_is_adopted() {
     assert_eq!(servers["servers"][0]["id"], "atlas-bot@box", "{servers}");
     assert!(home.join("desktop/crew-servers.json").exists());
     assert!(!home.join("desktop/bot-hosts.json").exists());
+}
+
+// Issue #355: the relay dialled every crew server on port 22. The real `ssh_link` runs against a fake `ssh` that
+// records its argv: the probe and the tunnel of a server registered on 2222 both carry `-p 2222` before the
+// target, and a server without a port gets no `-p` (a port in ~/.ssh/config still applies).
+#[cfg(unix)]
+#[tokio::test(flavor = "multi_thread")]
+async fn the_relay_dials_a_crew_server_on_its_registered_port() {
+    use std::os::unix::fs::PermissionsExt as _;
+    let tmp = tempfile::tempdir().unwrap();
+    let bin = tmp.path().join("bin");
+    std::fs::create_dir_all(&bin).unwrap();
+    let calls = tmp.path().join("calls");
+    let fake = bin.join("ssh");
+    std::fs::write(
+        &fake,
+        format!(
+            "#!/bin/sh\nfor a in \"$@\"; do printf '%s\\037' \"$a\"; done >> '{c}'\necho >> '{c}'\n\
+             case \"$*\" in *' -N '*|*'-N'*) exit 0;; esac\nprintf '/home/u\\ntok\\n'\n",
+            c = calls.display()
+        ),
+    )
+    .unwrap();
+    std::fs::set_permissions(&fake, std::fs::Permissions::from_mode(0o755)).unwrap();
+    let registry = tmp.path().join("crew-servers.json");
+    std::fs::write(
+        &registry,
+        json!([
+            {"host": "atlas-crew@alt", "name": "Alt", "port": 2222},
+            {"host": "atlas-crew@plain", "name": "Plain"},
+        ])
+        .to_string(),
+    )
+    .unwrap();
+    // The fake is found through PATH, as the real ssh is; this test is the only one that sets it.
+    let old = std::env::var("PATH").unwrap_or_default();
+    // SAFETY: no other test in this binary reads PATH while this one runs its two connects.
+    unsafe { std::env::set_var("PATH", format!("{}:{old}", bin.display())) };
+    for host in ["atlas-crew@alt", "atlas-crew@plain"] {
+        let _ = super::ssh_link(registry.clone(), tmp.path().join("links"), host.to_string()).await;
+    }
+    unsafe { std::env::set_var("PATH", old) };
+    let seen: Vec<Vec<String>> = std::fs::read_to_string(&calls)
+        .unwrap()
+        .lines()
+        .map(|l| {
+            l.split('\x1f')
+                .filter(|s| !s.is_empty())
+                .map(String::from)
+                .collect()
+        })
+        .collect();
+    let for_host = |h: &str| -> Vec<&Vec<String>> {
+        seen.iter().filter(|c| c.iter().any(|a| a == h)).collect()
+    };
+    let alt = for_host("atlas-crew@alt");
+    assert_eq!(alt.len(), 2, "a probe and a tunnel: {seen:?}");
+    for c in alt {
+        let p = c
+            .iter()
+            .position(|a| a == "-p")
+            .expect("-p on every call to the alt server");
+        assert_eq!(c[p + 1], "2222");
+        assert!(p < c.iter().position(|a| a == "atlas-crew@alt").unwrap());
+    }
+    for c in for_host("atlas-crew@plain") {
+        assert!(!c.iter().any(|a| a == "-p"), "{c:?}");
+    }
 }

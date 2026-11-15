@@ -73,6 +73,10 @@ pub struct Spec {
     /// Also write the element boxes of the page next to each PNG (`*.dom.json`), for `locate`.
     #[serde(skip_serializing_if = "std::ops::Not::not")]
     pub dom: bool,
+    /// Also run the UI detectors on each page and write their findings next to each PNG
+    /// (`*.findings.json`, see `detectors.mjs`). The UI gate asks for it; a plain capture does not.
+    #[serde(skip_serializing_if = "std::ops::Not::not")]
+    pub checks: bool,
 }
 
 /// One (engine, width, theme) cell of the matrix.
@@ -109,6 +113,7 @@ impl Spec {
             full_page: Option<bool>,
             steps: Option<Vec<Step>>,
             dom: Option<bool>,
+            checks: Option<bool>,
         }
         let raw: Raw = serde_json::from_value(args.clone())
             .map_err(|e| format!("capture: bad arguments: {e}"))?;
@@ -125,6 +130,7 @@ impl Spec {
             full_page: raw.full_page.unwrap_or(true),
             steps: raw.steps.unwrap_or_default(),
             dom: raw.dom.unwrap_or(false),
+            checks: raw.checks.unwrap_or(false),
         };
         spec.validate()?;
         Ok(spec)
@@ -207,6 +213,9 @@ pub struct Shot {
     /// The element boxes of the page, when the spec asked for `dom`.
     #[serde(default)]
     pub dom: Option<String>,
+    /// The detectors' findings, when the spec asked for `checks`.
+    #[serde(default)]
+    pub findings: Option<String>,
     #[serde(default)]
     pub error: Option<String>,
 }
@@ -221,8 +230,15 @@ impl Shot {
     }
 }
 
-/// One checked cell of a report: the combination, its PNG and, when asked for, its DOM file.
-pub type Cell = (Combo, String, Option<String>);
+/// One checked cell of a report: the combination, its PNG and, when asked for, its DOM and
+/// findings files.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct Cell {
+    pub combo: Combo,
+    pub png: String,
+    pub dom: Option<String>,
+    pub findings: Option<String>,
+}
 
 /// The runner's JSON report.
 #[derive(Debug, Clone, PartialEq, Eq, Deserialize)]
@@ -241,8 +257,9 @@ pub fn parse_report(stdout: &str) -> Result<Report, String> {
 
 /// The rule of the tool: every requested combination is in the report with a PNG. A missing
 /// combination, a failed one, or a path-less entry is an error that names each of them. With `dom`
-/// asked for, a cell without its DOM file is a failed cell too. Returns `(combination, png path,
-/// dom path)` of every cell, in matrix order.
+/// asked for, a cell without its DOM file is a failed cell too, and so is one without its findings
+/// file when `checks` was asked for (a gate that could not look must not pass). Returns every cell,
+/// in matrix order.
 pub fn check_report(spec: &Spec, report: &Report) -> Result<Vec<Cell>, String> {
     let mut found: std::collections::BTreeMap<Combo, &Shot> = Default::default();
     for s in &report.shots {
@@ -251,16 +268,26 @@ pub fn check_report(spec: &Spec, report: &Report) -> Result<Vec<Cell>, String> {
     let mut missing = vec![];
     let mut failed = vec![];
     let mut out = vec![];
+    let mut no_findings = false;
     for c in spec.combos() {
         match found.get(&c) {
             None => missing.push(c.to_string()),
             Some(s) => match (&s.path, &s.error) {
                 (Some(p), None) if !p.is_empty() => {
                     let dom = s.dom.clone().filter(|d| !d.is_empty());
+                    let findings = s.findings.clone().filter(|d| !d.is_empty());
                     if spec.dom && dom.is_none() {
                         failed.push(format!("{c}: no DOM report written"));
+                    } else if spec.checks && findings.is_none() {
+                        no_findings = true;
+                        failed.push(format!("{c}: no findings written"));
                     } else {
-                        out.push((c, p.clone(), dom));
+                        out.push(Cell {
+                            combo: c,
+                            png: p.clone(),
+                            dom,
+                            findings,
+                        });
                     }
                 }
                 (_, Some(e)) => failed.push(format!("{c}: {e}")),
@@ -277,6 +304,9 @@ pub fn check_report(spec: &Spec, report: &Report) -> Result<Vec<Cell>, String> {
     }
     if !failed.is_empty() {
         msg.push_str(&format!(" Failed: {}.", failed.join("; ")));
+    }
+    if no_findings {
+        msg.push_str(&format!(" {}.", super::detectors::OLD_RUNNER_HINT));
     }
     Err(msg)
 }
@@ -410,9 +440,9 @@ mod tests {
         assert_eq!(got.len(), 8);
         assert!(
             got.iter()
-                .any(|(c, p, d)| c.to_string() == "webkit/390px/dark"
-                    && p == "/c/webkit-390-dark.png"
-                    && d.is_none())
+                .any(|c| c.combo.to_string() == "webkit/390px/dark"
+                    && c.png == "/c/webkit-390-dark.png"
+                    && c.dom.is_none())
         );
     }
 
@@ -447,7 +477,7 @@ mod tests {
         let r = parse_report(&json!({"shots": [light, dark]}).to_string()).unwrap();
         let got = check_report(&s, &r).unwrap();
         assert_eq!(got.len(), 2);
-        assert!(got.iter().all(|(_, _, d)| d.is_some()));
+        assert!(got.iter().all(|c| c.dom.is_some()));
     }
 
     #[test]
@@ -487,6 +517,27 @@ mod tests {
             e.contains("webkit/390px/dark: no screenshot written"),
             "{e}"
         );
+    }
+
+    // An old runner (installed before the detectors) ignores `checks` and reports shots without
+    // findings. The error says why and how to fix it, and the capture still fails: a gate that could
+    // not look must not pass.
+    #[test]
+    fn checks_asked_of_a_runner_that_predates_them_fail_and_name_the_fix() {
+        let s = spec(json!({"url": "http://x/", "engines": ["webkit"], "widths": [390], "themes": ["light"], "checks": true})).unwrap();
+        let r =
+            parse_report(&json!({"shots": [shot("webkit", 390, "light")]}).to_string()).unwrap();
+        let e = check_report(&s, &r).unwrap_err();
+        assert!(e.contains("webkit/390px/light: no findings written"), "{e}");
+        assert!(
+            e.contains("predates the UI detectors")
+                && e.contains("atlas crew browsers install")
+                && e.contains("atlas crew update"),
+            "{e}"
+        );
+        // Asked for nothing, the hint is not noise.
+        let s = spec(json!({"url": "http://x/", "engines": ["webkit"], "widths": [390], "themes": ["light"]})).unwrap();
+        assert!(check_report(&s, &r).is_ok());
     }
 
     #[test]

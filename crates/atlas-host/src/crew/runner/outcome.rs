@@ -81,10 +81,15 @@ pub(super) async fn wait_for_outcome(
                                 Some(t) => format!("{tool_name} {t}"),
                                 None => tool_name.to_string(),
                             };
-                            steps.push(Step { ts: now_s(), text, group: task.title.clone() });
+                            let step = Step { ts: now_s(), text, group: task.title.clone() };
+                            steps.push(step.clone());
                             // Live, not only at the end: the working line shows the latest step while it runs.
+                            // Stored as the step alone: the whole task again for each of 50 steps was 50 copies of
+                            // its prompt. A task with no record yet is stored whole.
                             task.steps = steps.clone();
-                            let _ = persist(hub, crewmate_id, task);
+                            if hub.crew.store.append_step(crewmate_id, &task.id, &step).is_err() {
+                                let _ = persist(hub, crewmate_id, task);
+                            }
                             broadcast_task(hub, crewmate_id, task);
                             reporting::progress(hub, &task.id, &steps).await;
                         }
@@ -163,6 +168,13 @@ pub(super) fn finish_task(
                 // Don't overwrite Cancelled state.
                 if task.state != TaskState::Cancelled {
                     task.state = TaskState::Failed;
+                    // The engine saying its sign-in is gone flips it to needs_signin (`engine_login`), so the
+                    // phone's settings row and the action card offer "Sign in here" before the next task.
+                    let engine = crewmate
+                        .engine
+                        .as_ref()
+                        .map_or(crewmate.agent.as_str(), |e| e.kind.as_str());
+                    super::super::engine_login::note_task_failure(hub, &crewmate.id, engine, &e);
                     task.error = Some(e);
                 }
             }
@@ -225,20 +237,24 @@ pub(super) fn finish_task(
     }
 }
 
-/// Append `task`'s current state to the crewmate's task log. A failure is never silent: it is logged
+/// Append `task`'s current state to the crewmate's task log, keeping what hook routes recorded on the
+/// stored task meanwhile (`CrewStore::append_runner_state`). A failure is never silent: it is logged
 /// with the crewmate and task id (`atlas crew logs`) and returned as the message a failed task shows.
 pub(super) fn persist(hub: &Hub, crewmate_id: &str, task: &Task) -> Result<(), String> {
-    hub.crew.store.append_task(crewmate_id, task).map_err(|e| {
-        let msg = format!(
-            "cannot record task state to {}: {e}",
-            hub.crew.store.tasks_path(crewmate_id).display()
-        );
-        eprintln!(
-            "atlas crew: crewmate {crewmate_id} task {}: {msg} (state {:?})",
-            task.id, task.state
-        );
-        msg
-    })
+    hub.crew
+        .store
+        .append_runner_state(crewmate_id, task)
+        .map_err(|e| {
+            let msg = format!(
+                "cannot record task state to {}: {e}",
+                hub.crew.store.tasks_path(crewmate_id).display()
+            );
+            eprintln!(
+                "atlas crew: crewmate {crewmate_id} task {}: {msg} (state {:?})",
+                task.id, task.state
+            );
+            msg
+        })
 }
 
 /// Record that `task` is now running. When that cannot be stored the task fails with the error
@@ -267,9 +283,7 @@ pub(super) fn was_cancelled(hub: &Hub, crewmate_id: &str, task_id: &str) -> bool
 fn cancelled_in_store(hub: &Hub, crewmate_id: &str, task_id: &str) -> Option<Task> {
     hub.crew
         .store
-        .read_tasks(crewmate_id, 10_000)
-        .into_iter()
-        .find(|t| t.id == task_id)
+        .task(crewmate_id, task_id)
         .filter(|t| t.state == TaskState::Cancelled)
 }
 
@@ -285,8 +299,7 @@ pub(super) fn update_task(
     f: impl FnOnce(&mut Task),
 ) {
     // Find the task in the store (last state).
-    let tasks = store.read_tasks(crewmate_id, 10_000);
-    if let Some(mut t) = tasks.into_iter().find(|t| t.id == task_id) {
+    if let Some(mut t) = store.task(crewmate_id, task_id) {
         f(&mut t);
         if let Err(msg) = persist(hub, crewmate_id, &t) {
             t.error.get_or_insert(msg);

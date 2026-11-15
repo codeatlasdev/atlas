@@ -1,17 +1,24 @@
 <!-- Right panel of the connect step: the crew-server install checklist (ticked / spinning / failed phases). -->
 <script lang="ts">
 	import { Check } from "@lucide/svelte";
-	import { INSTALL_STEPS, type InstallPhase } from "#lib/crew/installSteps.ts";
+	import { installSteps, type InstallPhase } from "#lib/crew/installSteps.ts";
 
 	let {
 		done,
 		active,
 		failed,
-	}: { done: Set<InstallPhase>; active: InstallPhase | null; failed: InstallPhase | null } = $props();
+		browsers = false,
+	}: {
+		done: Set<InstallPhase>;
+		active: InstallPhase | null;
+		failed: InstallPhase | null;
+		/** The install also sets up the capture browsers: show that step. */
+		browsers?: boolean;
+	} = $props();
 </script>
 
 <div class="install-checklist">
-	{#each INSTALL_STEPS as s (s.phase)}
+	{#each installSteps(browsers) as s (s.phase)}
 		{@const isDone = done.has(s.phase)}
 		{@const isActive = active === s.phase}
 		{@const isFailed = failed === s.phase}

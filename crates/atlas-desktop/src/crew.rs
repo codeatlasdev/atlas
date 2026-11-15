@@ -12,6 +12,30 @@ use serde::{Deserialize, Serialize};
 use tauri::{AppHandle, Emitter};
 use tokio::io::{AsyncBufReadExt, AsyncWriteExt as _, BufReader};
 
+/// The SSH address the user installed a crew server with (`ubuntu@host`, plus the port when it is not 22).
+///
+/// This is an address, like a `Host` entry in `~/.ssh/config`: never a password, key or any other credential
+/// (the SSH key is the Mac's own, the sudo password goes to the CLI's stdin once and is not kept). The crew
+/// service user in [`CrewServer::host`] cannot `sudo`, and `atlas crew browsers install|status` need an account
+/// that can, so Settings reads it from here instead of asking every time.
+#[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Eq)]
+pub struct AdminAddress {
+    pub target: String,
+    /// Absent for the default port 22.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub port: Option<u16>,
+}
+
+impl AdminAddress {
+    /// The port 22 and "no port" are the same address: keep one spelling in the file.
+    fn normalized(self) -> Self {
+        Self {
+            port: self.port.filter(|&p| p != 22),
+            ..self
+        }
+    }
+}
+
 /// An entry in the crew-servers registry.
 #[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Eq)]
 pub struct CrewServer {
@@ -19,6 +43,14 @@ pub struct CrewServer {
     pub host: String,
     /// Human-readable label shown in the sidebar.
     pub name: String,
+    /// The ssh port of the server; absent for the default 22 and for servers added before the field existed
+    /// (a port from `~/.ssh/config` still applies to those).
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub port: Option<u16>,
+    /// The admin address the server was installed with. Absent for servers added before this field existed
+    /// (and for servers added by hand, until the user types one in Settings).
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub admin: Option<AdminAddress>,
 }
 
 fn path() -> PathBuf {
@@ -28,20 +60,68 @@ fn path() -> PathBuf {
 }
 
 pub fn load() -> Vec<CrewServer> {
-    let Ok(data) = std::fs::read_to_string(path()) else {
+    load_from(&path())
+}
+
+fn load_from(p: &std::path::Path) -> Vec<CrewServer> {
+    let Ok(data) = std::fs::read_to_string(p) else {
         return vec![];
     };
     serde_json::from_str(&data).unwrap_or_default()
 }
 
 fn save(hosts: &[CrewServer]) -> Result<(), String> {
-    let p = path();
+    save_to(&path(), hosts)
+}
+
+fn save_to(p: &std::path::Path, hosts: &[CrewServer]) -> Result<(), String> {
     if let Some(parent) = p.parent() {
         std::fs::create_dir_all(parent).map_err(|e| e.to_string())?;
     }
     let data = serde_json::to_string_pretty(hosts).map_err(|e| e.to_string())?;
-    std::fs::write(&p, data).map_err(|e| e.to_string())
+    std::fs::write(p, data).map_err(|e| e.to_string())
 }
+
+/// The registry after registering `host`. An entry that exists keeps its name; a given `admin` replaces its admin
+/// address (a re-install with another account) and `None` leaves what is there. `true` when the host is new.
+fn with_server(
+    hosts: &mut Vec<CrewServer>,
+    host: &str,
+    name: String,
+    admin: Option<AdminAddress>,
+) -> (CrewServer, bool) {
+    let admin = admin.map(AdminAddress::normalized);
+    // The crew user is reached over the sshd the install ran against: that port is the server's.
+    let port = admin.as_ref().and_then(|a| a.port);
+    if let Some(e) = hosts.iter_mut().find(|h| h.host == host) {
+        if admin.is_some() {
+            e.admin = admin;
+            e.port = port;
+        }
+        return (e.clone(), false);
+    }
+    let entry = CrewServer {
+        host: host.to_string(),
+        name,
+        port,
+        admin,
+    };
+    hosts.push(entry.clone());
+    (entry, true)
+}
+
+/// How to ssh to the crew server `host` (a registry host, or an `ssh:`-prefixed hostd key): its
+/// registered port, or the default. The one place the desktop turns a server into an ssh address.
+pub fn server_ssh(host: &str) -> atlas_core::ssh::SshTarget {
+    server_ssh_in(&load(), host)
+}
+
+fn server_ssh_in(hosts: &[CrewServer], host: &str) -> atlas_core::ssh::SshTarget {
+    let host = host.strip_prefix("ssh:").unwrap_or(host);
+    let port = hosts.iter().find(|h| h.host == host).and_then(|h| h.port);
+    atlas_core::ssh::SshTarget::new(host, port)
+}
+
 /// List all registered crew servers.
 #[tauri::command]
 pub fn crew_servers_list() -> Vec<CrewServer> {
@@ -52,22 +132,46 @@ pub fn crew_servers_list() -> Vec<CrewServer> {
 ///
 /// The `host` is an SSH target (`user@hostname` or a `~/.ssh/config` alias). It is added
 /// to `settings.sshHosts` so `remote::keep` reconnects it on every startup. When the
-/// host is already registered, the existing entry is returned unchanged.
+/// host is already registered, its name is kept; `admin` (the address the install ran
+/// against) is stored when given.
 #[tauri::command]
-pub fn crew_servers_add(app: AppHandle, host: String, name: String) -> Result<CrewServer, String> {
+pub fn crew_servers_add(
+    app: AppHandle,
+    host: String,
+    name: String,
+    admin: Option<AdminAddress>,
+) -> Result<CrewServer, String> {
     let mut hosts = load();
-    if let Some(existing) = hosts.iter().find(|h| h.host == host).cloned() {
-        return Ok(existing);
+    let (entry, is_new) = with_server(&mut hosts, &host, name, admin);
+    if is_new {
+        // Persist in sshHosts so remote::keep reconnects on startup.
+        crate::remote::ssh_add(app, host)?;
     }
-    // Persist in sshHosts so remote::keep reconnects on startup.
-    crate::remote::ssh_add(app, host.clone())?;
-    let entry = CrewServer {
-        host: host.clone(),
-        name,
-    };
-    hosts.push(entry.clone());
     save(&hosts)?;
     Ok(entry)
+}
+
+/// Store (or with `None` forget) the admin address of a registered crew server. Same file and write path as the
+/// registry itself.
+#[tauri::command]
+pub fn crew_servers_set_admin(host: String, admin: Option<AdminAddress>) -> Result<(), String> {
+    let mut hosts = load();
+    set_admin(&mut hosts, &host, admin)?;
+    save(&hosts)
+}
+
+fn set_admin(
+    hosts: &mut [CrewServer],
+    host: &str,
+    admin: Option<AdminAddress>,
+) -> Result<(), String> {
+    let e = hosts
+        .iter_mut()
+        .find(|h| h.host == host)
+        .ok_or_else(|| format!("{host} is not a registered crew server"))?;
+    e.admin = admin.map(AdminAddress::normalized);
+    e.port = e.admin.as_ref().and_then(|a| a.port);
+    Ok(())
 }
 
 /// Remove a crew server from the registry and disconnect it.
@@ -85,41 +189,76 @@ pub struct CrewInstallLine {
     pub is_err: bool,
 }
 
-/// Run `atlas crew install <target> --yes`, streaming each output line as
-/// `crew://install-line` to the frontend. Returns the error message on failure.
-/// When `sudo_password` is provided the install runs with `--sudo-password-stdin`;
-/// the password is piped to the child's stdin and never placed on argv.
-#[tauri::command]
-pub async fn crew_server_install(
-    app: AppHandle,
-    target: String,
+/// argv of `atlas crew install <target> --yes [--sudo-password-stdin] [--port N] [--browsers]`. A password is read
+/// from stdin by the CLI, never from argv; port 22 is the CLI's default and is left out.
+fn install_argv(
+    target: &str,
     port: Option<u16>,
-    sudo_password: Option<String>,
-) -> Result<(), String> {
+    with_password: bool,
+    browsers: bool,
+) -> Vec<String> {
+    let mut a: Vec<String> = ["crew", "install", target, "--yes"]
+        .map(String::from)
+        .into();
+    if with_password {
+        a.push("--sudo-password-stdin".into());
+    }
+    push_port(&mut a, port);
+    if browsers {
+        a.push("--browsers".into());
+    }
+    a
+}
+
+/// argv of `atlas crew browsers <verb> <target> [--sudo-password-stdin] [--port N]`.
+fn browsers_argv(verb: &str, target: &str, port: Option<u16>, with_password: bool) -> Vec<String> {
+    let mut a: Vec<String> = ["crew", "browsers", verb, target].map(String::from).into();
+    if with_password {
+        a.push("--sudo-password-stdin".into());
+    }
+    push_port(&mut a, port);
+    a
+}
+
+fn push_port(a: &mut Vec<String>, port: Option<u16>) {
+    if let Some(p) = port.filter(|&p| p != 22) {
+        a.extend(["--port".into(), p.to_string()]);
+    }
+}
+
+/// The `atlas` child for `argv`, with the user's shell environment and no colour.
+async fn atlas_command(argv: &[String], stdin: Stdio) -> Result<tokio::process::Command, String> {
     let bin = crate::cmds::atlas_bin()?;
     let mut cmd = tokio::process::Command::new(bin);
     cmd.no_window()
         .envs(crate::shell_env::vars_async().await)
         .env("NO_COLOR", "1")
+        .args(argv)
+        .stdin(stdin)
         .stdout(Stdio::piped())
         .stderr(Stdio::piped());
-    let port_s = port.filter(|&p| p != 22).map(|p| p.to_string());
-    if sudo_password.is_some() {
-        let mut a = vec!["crew", "install", &target, "--yes", "--sudo-password-stdin"];
-        if let Some(ps) = &port_s {
-            a.extend(["--port", ps]);
-        }
-        cmd.args(a).stdin(Stdio::piped());
+    Ok(cmd)
+}
+
+/// Run `atlas <argv>`, streaming each output line as `crew://install-line`. When `sudo_password` is given it is
+/// piped to the child's stdin (the argv carries `--sudo-password-stdin`), never placed on argv. Returns the last
+/// output line as the error on failure.
+async fn run_streamed(
+    app: AppHandle,
+    argv: Vec<String>,
+    sudo_password: Option<String>,
+    what: &str,
+) -> Result<(), String> {
+    let stdin = if sudo_password.is_some() {
+        Stdio::piped()
     } else {
-        let mut a = vec!["crew", "install", &target, "--yes"];
-        if let Some(ps) = &port_s {
-            a.extend(["--port", ps]);
-        }
-        cmd.args(a).stdin(Stdio::null());
-    }
-    let mut child = cmd.spawn().map_err(|e| format!("cannot run atlas: {e}"))?;
-    // Pipe sudo password to stdin, then close it so the child can proceed
-    // stdin and the password are dropped at the end of the block, closing the pipe.
+        Stdio::null()
+    };
+    let mut child = atlas_command(&argv, stdin)
+        .await?
+        .spawn()
+        .map_err(|e| format!("cannot run atlas: {e}"))?;
+    // Pipe the sudo password to stdin, then drop it, closing the pipe so the child can proceed.
     if let Some(pw) = sudo_password
         && let Some(mut stdin) = child.stdin.take()
     {
@@ -138,9 +277,122 @@ pub async fn crew_server_install(
         let msg = [last_err, last_out]
             .into_iter()
             .find(|s| !s.is_empty())
-            .unwrap_or_else(|| format!("atlas crew install failed ({st})"));
+            .unwrap_or_else(|| format!("{what} failed ({st})"));
         Err(msg)
     }
+}
+
+/// Run `atlas crew install <target> --yes`, streaming each output line as
+/// `crew://install-line` to the frontend. Returns the error message on failure.
+/// When `sudo_password` is provided the install runs with `--sudo-password-stdin`;
+/// the password is piped to the child's stdin and never placed on argv. `browsers` adds
+/// `--browsers` (Playwright's chromium and webkit for the `capture` tool).
+#[tauri::command]
+pub async fn crew_server_install(
+    app: AppHandle,
+    target: String,
+    port: Option<u16>,
+    sudo_password: Option<String>,
+    browsers: Option<bool>,
+) -> Result<(), String> {
+    let argv = install_argv(
+        &target,
+        port,
+        sudo_password.is_some(),
+        browsers.unwrap_or(false),
+    );
+    run_streamed(app, argv, sudo_password, "atlas crew install").await
+}
+
+/// What `atlas crew browsers status` found: `ready` when nothing is missing, else one `problems` line per
+/// missing piece, as the CLI wrote them (`node: Node 18.19.1 found, need >= 20 …`).
+#[derive(Debug, Clone, Serialize, PartialEq, Eq)]
+pub struct CrewBrowsersStatus {
+    pub ready: bool,
+    pub problems: Vec<String>,
+}
+
+/// Read `atlas crew browsers status` output: exit 0 is ready, exit 1 lists the missing pieces on stdout (each
+/// prefixed `✗ `, colour already off); anything else (ssh refused, sudo asks for a password) is the error.
+fn parse_browsers_status(
+    code: Option<i32>,
+    stdout: &str,
+    stderr: &str,
+) -> Result<CrewBrowsersStatus, String> {
+    let lines = |s: &str| -> Vec<String> {
+        s.lines()
+            .map(|l| l.trim().trim_start_matches('✗').trim().to_string())
+            .filter(|l| !l.is_empty())
+            .collect()
+    };
+    match code {
+        Some(0) => Ok(CrewBrowsersStatus {
+            ready: true,
+            problems: vec![],
+        }),
+        Some(1) if !lines(stdout).is_empty() => Ok(CrewBrowsersStatus {
+            ready: false,
+            problems: lines(stdout),
+        }),
+        _ => {
+            let why = lines(stderr)
+                .pop()
+                .or_else(|| lines(stdout).pop())
+                .unwrap_or_else(|| "atlas crew browsers status failed".into());
+            Err(why)
+        }
+    }
+}
+
+/// `atlas crew browsers status <target>`: needs the admin SSH target (the one that can `sudo`), not the crew
+/// service user.
+#[tauri::command]
+pub async fn crew_browsers_status(
+    target: String,
+    port: Option<u16>,
+    sudo_password: Option<String>,
+) -> Result<CrewBrowsersStatus, String> {
+    let argv = browsers_argv("status", &target, port, sudo_password.is_some());
+    let stdin = if sudo_password.is_some() {
+        Stdio::piped()
+    } else {
+        Stdio::null()
+    };
+    let mut child = atlas_command(&argv, stdin)
+        .await?
+        .kill_on_drop(true)
+        .spawn()
+        .map_err(|e| format!("cannot run atlas: {e}"))?;
+    if let Some(pw) = sudo_password
+        && let Some(mut stdin) = child.stdin.take()
+    {
+        let _ = stdin.write_all(format!("{pw}\n").as_bytes()).await;
+    }
+    // A server that never answers must not leave the row on "Checking…".
+    let out = tokio::time::timeout(
+        std::time::Duration::from_secs(120),
+        child.wait_with_output(),
+    )
+    .await
+    .map_err(|_| format!("{target} did not answer in 120 s"))?
+    .map_err(|e| e.to_string())?;
+    parse_browsers_status(
+        out.status.code(),
+        &atlas_tui::runtime::text::strip_ansi(&String::from_utf8_lossy(&out.stdout)),
+        &atlas_tui::runtime::text::strip_ansi(&String::from_utf8_lossy(&out.stderr)),
+    )
+}
+
+/// `atlas crew browsers install <target>`, streaming each line as `crew://install-line` like the server install.
+#[tauri::command]
+pub async fn crew_browsers_install(
+    app: AppHandle,
+    target: String,
+    port: Option<u16>,
+    sudo_password: Option<String>,
+) -> Result<(), String> {
+    let argv = browsers_argv("install", &target, port, sudo_password.is_some());
+    run_streamed(app, argv, sudo_password, "atlas crew browsers install").await
 }
 
 async fn pump_install<R: tokio::io::AsyncRead + Unpin>(
@@ -168,18 +420,11 @@ async fn pump_install<R: tokio::io::AsyncRead + Unpin>(
 
 // ─── SSH key helpers ─────────────────────────────────────────────────────────
 
-/// Return the path of the Mac's SSH public key, or null if none exists.
-/// Checks ~/.ssh/id_ed25519.pub first, then id_rsa.pub.
+/// Return the path of the SSH public key `ssh` would use, or null if none exists. Asks `ssh -G` (the
+/// `IdentityFile`s of ~/.ssh/config and the default names), so a key named anything is found.
 #[tauri::command]
 pub fn ssh_key_find() -> Option<String> {
-    let home = dirs::home_dir()?;
-    for name in ["id_ed25519.pub", "id_rsa.pub"] {
-        let p = home.join(".ssh").join(name);
-        if p.exists() {
-            return Some(p.to_string_lossy().into_owned());
-        }
-    }
-    None
+    atlas_core::ssh::find_default_public_key().map(|p| p.to_string_lossy().into_owned())
 }
 
 /// Generate an ed25519 key pair at `~/.ssh/id_ed25519`.
@@ -226,11 +471,9 @@ pub async fn ssh_authorize_key(
     port: Option<u16>,
     password: String,
 ) -> Result<(), String> {
-    let home = dirs::home_dir().ok_or("no home directory")?;
-    let pub_key_path = ["id_ed25519.pub", "id_rsa.pub"]
-        .iter()
-        .map(|n| home.join(".ssh").join(n))
-        .find(|p| p.exists())
+    let st = atlas_core::ssh::SshTarget::new(target.clone(), port);
+    st.valid()?;
+    let pub_key_path = atlas_core::ssh::find_public_key(&st)
         .ok_or("no SSH public key found; generate one first")?;
     let pubkey =
         std::fs::read_to_string(&pub_key_path).map_err(|e| format!("reading public key: {e}"))?;
@@ -362,27 +605,19 @@ pub async fn crew_agent_check(
     host_key: String,
     agent_id: String,
 ) -> Result<AgentShipStatus, String> {
-    let ssh_target = host_key.strip_prefix("ssh:").unwrap_or(&host_key);
+    let target = server_ssh(&host_key);
+    target.valid()?;
     let script = check_script(&agent_id).ok_or_else(|| format!("unknown agent {agent_id:?}"))?;
     let ssh = tokio::process::Command::new("ssh")
         .no_window()
-        .args([
-            "-o",
-            "BatchMode=yes",
-            "-o",
-            "ConnectTimeout=15",
-            "-o",
-            "ServerAliveInterval=15",
-        ])
-        .arg(ssh_target)
-        .arg(&script)
+        .args(target.exec_argv(&script))
         .stdin(std::process::Stdio::null())
         .kill_on_drop(true)
         .output();
     // A check that never answers must not leave the row on "Checking…": give up and say so.
     let out = tokio::time::timeout(std::time::Duration::from_secs(45), ssh)
         .await
-        .map_err(|_| format!("{ssh_target} did not answer in 45 s"))?
+        .map_err(|_| format!("{} did not answer in 45 s", target.target))?
         .map_err(|e| format!("ssh: {e}"))?;
     if !out.status.success() && out.stdout.is_empty() {
         return Err(String::from_utf8_lossy(&out.stderr).trim().to_string());
@@ -405,22 +640,14 @@ pub async fn crew_agent_install(
     host_key: String,
     agent_id: String,
 ) -> Result<(), String> {
-    let ssh_target = host_key.strip_prefix("ssh:").unwrap_or(&host_key);
+    let target = server_ssh(&host_key);
+    target.valid()?;
     let script =
         install_script(&agent_id).ok_or_else(|| format!("no installer for {agent_id:?}"))?;
-    // Wrap in an interactive-login shell so ~/.bashrc / installers that source it work.
-    let full_cmd = format!("bash -lc {}", shq(&script));
+    let full_cmd = install_command(&script);
     let mut child = tokio::process::Command::new("ssh")
-        .args([
-            "-o",
-            "BatchMode=yes",
-            "-o",
-            "ConnectTimeout=15",
-            "-o",
-            "ServerAliveInterval=15",
-        ])
-        .arg(ssh_target)
-        .arg(&full_cmd)
+        .no_window()
+        .args(target.exec_argv(&full_cmd))
         .stdin(std::process::Stdio::null())
         .stdout(std::process::Stdio::piped())
         .stderr(std::process::Stdio::piped())
@@ -465,7 +692,7 @@ fn check_script(agent_id: &str) -> Option<String> {
     };
     Some(format!(
         concat!(
-            r#"export PATH="$HOME/.bun/bin:$HOME/.local/bin:$HOME/.opencode/bin:$HOME/.npm-global/bin:$PATH"; "#,
+            // The agents' `PATH` is exported by the ssh helper (`SshTarget::exec_argv`).
             r#"bin=0; command -v {bin} >/dev/null 2>&1 && bin=1; "#,
             r#"signed_in=0; "#,
             r#"if [ "$bin" = "1" ]; then {auth_check}; "#,
@@ -478,6 +705,12 @@ fn check_script(agent_id: &str) -> Option<String> {
         auth_check = auth_check,
         id = agent_id,
     ))
+}
+
+/// The remote command of an agent install: `script` in an interactive-login shell, so `~/.bashrc` and installers
+/// that source it work.
+fn install_command(script: &str) -> String {
+    format!("bash -lc {}", atlas_core::ssh::shq(script))
 }
 
 /// The agent's own installer, then `atlas setup <agent> --apply`: without Atlas's hooks the agent never reports
@@ -502,14 +735,21 @@ fn install_script(agent_id: &str) -> Option<String> {
         ),
         _ => return None,
     };
+    // The installer may have created new dirs: export the agents' PATH again before `atlas setup`.
     Some(format!(
-        r#"{install} && export PATH="$HOME/.atlas/bin:$HOME/.bun/bin:$HOME/.local/bin:$HOME/.opencode/bin:$HOME/.npm-global/bin:$PATH" && atlas setup {setup} --apply </dev/null"#
+        "{install} && {} && atlas setup {setup} --apply </dev/null",
+        atlas_core::ssh::PATH_EXPORT
     ))
 }
 
-/// Shell-quote a string for use as a single argument.
-fn shq(s: &str) -> String {
-    format!("'{}'", s.replace('\'', r"'\''"))
+/// The `ssh -t` argv of an engine's sign-in terminal on crew server `host_key`: its registered port
+/// and the agents' `PATH`, the same helper every other ssh call here goes through. The page opens
+/// the pty with it, so the sign-in cannot reach a server another way than the check does.
+#[tauri::command]
+pub fn crew_signin_argv(host_key: String, command: String) -> Result<Vec<String>, String> {
+    let t = server_ssh(&host_key);
+    t.valid()?;
+    Ok(t.terminal_argv(&command))
 }
 
 // ─── provider probe ──────────────────────────────────────────────────────────
@@ -588,6 +828,305 @@ pub async fn provider_probe(base_url: String, api_key: String) -> Result<Vec<Str
 mod tests {
     use super::*;
 
+    fn admin(target: &str, port: Option<u16>) -> Option<AdminAddress> {
+        Some(AdminAddress {
+            target: target.into(),
+            port,
+        })
+    }
+
+    /// `crew-servers.json` exactly as the desktop wrote it before `admin` existed: the old two-field struct,
+    /// serialized the way `save` always did. `UPDATE_FIXTURES=1` rewrites it.
+    fn pre_admin_registry() -> std::path::PathBuf {
+        #[derive(Serialize)]
+        struct Before {
+            host: String,
+            name: String,
+        }
+        let path = std::path::Path::new(env!("CARGO_MANIFEST_DIR"))
+            .join("src/fixtures/crew-servers-before-admin.json");
+        if std::env::var_os("UPDATE_FIXTURES").is_some() {
+            let old = [
+                Before {
+                    host: "atlas-crew@10.0.0.5".into(),
+                    name: "Ship".into(),
+                },
+                Before {
+                    host: "atlas-bot@legacy.example.com".into(),
+                    name: "Old Atlas Bot server".into(),
+                },
+            ];
+            std::fs::create_dir_all(path.parent().unwrap()).unwrap();
+            std::fs::write(&path, serde_json::to_string_pretty(&old).unwrap()).unwrap();
+        }
+        path
+    }
+
+    // Servers added before `admin` existed keep loading, keep their names, and have no admin address (Settings
+    // asks once). Nothing is rewritten by loading.
+    #[test]
+    fn a_registry_from_before_admin_loads_and_has_no_admin() {
+        let hosts = load_from(&pre_admin_registry());
+        assert_eq!(
+            hosts.len(),
+            2,
+            "the old file must load, not fall back to empty"
+        );
+        assert_eq!(hosts[0].host, "atlas-crew@10.0.0.5");
+        assert_eq!(hosts[1].name, "Old Atlas Bot server");
+        assert!(hosts.iter().all(|h| h.admin.is_none()));
+    }
+
+    // The install records the address the user typed, on the real registry serializer: `admin` is
+    // `{target, port?}`, port 22 is spelled as none, and the file holds nothing else about the install.
+    #[test]
+    fn adding_a_server_records_the_admin_address_in_the_file() {
+        let dir = tempfile::tempdir().unwrap();
+        let file = dir.path().join("crew-servers.json");
+        let mut hosts = load_from(&file);
+        with_server(
+            &mut hosts,
+            "atlas-crew@srv",
+            "srv".into(),
+            admin("ubuntu@srv", Some(2222)),
+        );
+        with_server(
+            &mut hosts,
+            "atlas-crew@b",
+            "b".into(),
+            admin("ubuntu@b", Some(22)),
+        );
+        with_server(&mut hosts, "atlas-crew@c", "c".into(), None);
+        save_to(&file, &hosts).unwrap();
+
+        let written: serde_json::Value =
+            serde_json::from_str(&std::fs::read_to_string(&file).unwrap()).unwrap();
+        assert_eq!(
+            written,
+            serde_json::json!([
+                {"host": "atlas-crew@srv", "name": "srv", "port": 2222, "admin": {"target": "ubuntu@srv", "port": 2222}},
+                {"host": "atlas-crew@b", "name": "b", "admin": {"target": "ubuntu@b"}},
+                {"host": "atlas-crew@c", "name": "c"},
+            ])
+        );
+        assert_eq!(load_from(&file), hosts, "what was written loads back");
+    }
+
+    // A re-install against another account replaces the address; adding again without one leaves it.
+    #[test]
+    fn registering_a_known_server_updates_admin_only_when_given() {
+        let mut hosts = vec![];
+        with_server(
+            &mut hosts,
+            "atlas-crew@srv",
+            "srv".into(),
+            admin("ubuntu@srv", None),
+        );
+        let (e, is_new) = with_server(&mut hosts, "atlas-crew@srv", "other".into(), None);
+        assert!(!is_new);
+        assert_eq!(e.admin, admin("ubuntu@srv", None));
+        assert_eq!(e.name, "srv", "an existing entry keeps its name");
+        let (e, _) = with_server(
+            &mut hosts,
+            "atlas-crew@srv",
+            "x".into(),
+            admin("root@srv", Some(2200)),
+        );
+        assert_eq!(e.admin, admin("root@srv", Some(2200)));
+        assert_eq!(hosts.len(), 1);
+    }
+
+    // Editing the address in Settings persists through the same file; clearing it removes the key; an unknown
+    // server is an error, never a silent no-op.
+    #[test]
+    fn set_admin_edits_one_entry_and_refuses_an_unknown_one() {
+        let dir = tempfile::tempdir().unwrap();
+        let file = dir.path().join("crew-servers.json");
+        let mut hosts = load_from(&pre_admin_registry());
+        set_admin(
+            &mut hosts,
+            "atlas-crew@10.0.0.5",
+            admin("ubuntu@10.0.0.5", Some(2222)),
+        )
+        .unwrap();
+        save_to(&file, &hosts).unwrap();
+        let back = load_from(&file);
+        assert_eq!(back[0].admin, admin("ubuntu@10.0.0.5", Some(2222)));
+        assert_eq!(back[1].admin, None, "the other server is untouched");
+
+        let mut hosts = back;
+        set_admin(&mut hosts, "atlas-crew@10.0.0.5", None).unwrap();
+        save_to(&file, &hosts).unwrap();
+        assert!(!std::fs::read_to_string(&file).unwrap().contains("admin"));
+        assert!(set_admin(&mut hosts, "atlas-crew@nope", None).is_err());
+    }
+
+    // The file holds an address, never a credential: whatever the install was given besides the address (the sudo
+    // password goes to the CLI's stdin) cannot reach it, and `AdminAddress` has no field that could carry one.
+    #[test]
+    fn the_registry_file_never_holds_a_password() {
+        let dir = tempfile::tempdir().unwrap();
+        let file = dir.path().join("crew-servers.json");
+        let secret = "s3cret-sudo-password";
+        let mut hosts = vec![];
+        with_server(
+            &mut hosts,
+            "atlas-crew@srv",
+            "srv".into(),
+            admin("ubuntu@srv", Some(2222)),
+        );
+        // The install command takes the password as an argument of its own; the registry call never sees it.
+        let argv = install_argv("ubuntu@srv", Some(2222), true, true);
+        assert!(argv.iter().all(|a| !a.contains(secret)));
+        save_to(&file, &hosts).unwrap();
+        let text = std::fs::read_to_string(&file).unwrap();
+        assert!(!text.contains(secret));
+        let v: serde_json::Value = serde_json::from_str(&text).unwrap();
+        // A set: serde_json orders keys by insertion only with its `preserve_order` feature, which feature
+        // unification turns on in some builds and not others (CI on Linux and Windows read the other order).
+        let mut keys: Vec<&String> = v[0]["admin"].as_object().unwrap().keys().collect();
+        keys.sort();
+        assert_eq!(
+            keys,
+            ["port", "target"],
+            "an address has a target and a port, nothing else"
+        );
+    }
+
+    fn argv(a: &[&str]) -> Vec<String> {
+        a.iter().map(|s| s.to_string()).collect()
+    }
+
+    // The opt-in must reach the CLI: `--browsers` only when asked, next to `--yes`, with the sudo password
+    // flag and the port exactly as before (22 is the CLI's default and stays off argv).
+    #[test]
+    fn install_passes_browsers_only_when_the_user_opted_in() {
+        assert_eq!(
+            install_argv("ubuntu@srv", None, false, false),
+            argv(&["crew", "install", "ubuntu@srv", "--yes"])
+        );
+        assert_eq!(
+            install_argv("ubuntu@srv", Some(22), false, true),
+            argv(&["crew", "install", "ubuntu@srv", "--yes", "--browsers"])
+        );
+        assert_eq!(
+            install_argv("ubuntu@srv", Some(2222), true, true),
+            argv(&[
+                "crew",
+                "install",
+                "ubuntu@srv",
+                "--yes",
+                "--sudo-password-stdin",
+                "--port",
+                "2222",
+                "--browsers"
+            ])
+        );
+    }
+
+    #[test]
+    fn browsers_commands_target_the_admin_ssh_address_with_port_and_password_flags() {
+        assert_eq!(
+            browsers_argv("status", "ubuntu@srv", None, false),
+            argv(&["crew", "browsers", "status", "ubuntu@srv"])
+        );
+        assert_eq!(
+            browsers_argv("install", "ubuntu@srv", Some(2222), true),
+            argv(&[
+                "crew",
+                "browsers",
+                "install",
+                "ubuntu@srv",
+                "--sudo-password-stdin",
+                "--port",
+                "2222"
+            ])
+        );
+        // The password is never an argument.
+        let a = browsers_argv("install", "ubuntu@srv", None, true);
+        assert!(a.iter().all(|s| !s.contains("secret")));
+    }
+
+    /// What `atlas crew browsers status` printed, as the CLI's own test wrote it (`UPDATE_FIXTURES=1` there).
+    fn cli_fixture(name: &str) -> String {
+        let p = std::path::Path::new(env!("CARGO_MANIFEST_DIR"))
+            .join("../atlas-cli/src/commands/crew/fixtures")
+            .join(name);
+        std::fs::read_to_string(&p).unwrap_or_else(|e| panic!("{}: {e}", p.display()))
+    }
+
+    // Incident class: the screen reads the CLI's printed text. The real output for a host with Node 18 and
+    // nothing installed lists each missing piece; the real output for a ready host says ready.
+    #[test]
+    fn status_reads_the_real_cli_output() {
+        let missing =
+            atlas_tui::runtime::text::strip_ansi(&cli_fixture("browsers-status-missing.txt"));
+        let s = parse_browsers_status(Some(1), &missing, "").unwrap();
+        assert!(!s.ready);
+        assert!(
+            s.problems[0].starts_with("node: Node 18.19.1 found, need >= 20"),
+            "{:?}",
+            s.problems
+        );
+        assert!(
+            s.problems
+                .iter()
+                .any(|p| p.starts_with("browsers: webkit missing"))
+        );
+        assert!(
+            s.problems
+                .iter()
+                .all(|p| !p.contains('✗') && !p.contains('\x1b'))
+        );
+
+        let ready = atlas_tui::runtime::text::strip_ansi(&cli_fixture("browsers-status-ready.txt"));
+        assert_eq!(
+            parse_browsers_status(Some(0), &ready, "").unwrap(),
+            CrewBrowsersStatus {
+                ready: true,
+                problems: vec![]
+            }
+        );
+
+        // Contract with the screen: `apps/desktop/src/__fixtures__/crew_browsers_status.json` is what
+        // `crew_browsers_status` really serializes; `browsers.test.ts` feeds it to the frontend's own reader.
+        // `UPDATE_FIXTURES=1` regenerates it.
+        let fresh = serde_json::json!({
+            "missing": s,
+            "ready": parse_browsers_status(Some(0), &ready, "").unwrap(),
+        });
+        let path = std::path::Path::new(env!("CARGO_MANIFEST_DIR"))
+            .join("../../apps/desktop/src/__fixtures__/crew_browsers_status.json");
+        if std::env::var_os("UPDATE_FIXTURES").is_some() {
+            // Tab-indented, as `prettier --check src` (useTabs) wants the committed file.
+            let mut buf = Vec::new();
+            let mut ser = serde_json::Serializer::with_formatter(
+                &mut buf,
+                serde_json::ser::PrettyFormatter::with_indent(b"\t"),
+            );
+            serde::Serialize::serialize(&fresh, &mut ser).unwrap();
+            std::fs::write(&path, String::from_utf8(buf).unwrap() + "\n").unwrap();
+        }
+        let committed: serde_json::Value = serde_json::from_str(
+            &std::fs::read_to_string(&path)
+                .expect("fixture missing: run with UPDATE_FIXTURES=1 to create it"),
+        )
+        .unwrap();
+        assert_eq!(
+            committed, fresh,
+            "stale fixture: re-run with UPDATE_FIXTURES=1"
+        );
+    }
+
+    // A failure that is not "pieces missing" is an error with the reason, never an empty "missing" list.
+    #[test]
+    fn status_failures_are_errors_not_empty_lists() {
+        let e = parse_browsers_status(Some(1), "", "Error: cannot reach ubuntu@srv: refused\n")
+            .unwrap_err();
+        assert_eq!(e, "Error: cannot reach ubuntu@srv: refused");
+        assert!(parse_browsers_status(None, "", "").is_err());
+    }
+
     fn roundtrip(hosts: &[CrewServer]) {
         let tmp = tempfile::NamedTempFile::new().unwrap();
         let data = serde_json::to_string_pretty(hosts).unwrap();
@@ -608,23 +1147,158 @@ mod tests {
             CrewServer {
                 host: "atlas-bot@server".into(),
                 name: "My Server".into(),
+                port: None,
+                admin: None,
             },
             CrewServer {
                 host: "atlas-bot@192.168.1.5".into(),
                 name: "Local VM".into(),
+                port: Some(2222),
+                admin: Some(AdminAddress {
+                    target: "ubuntu@192.168.1.5".into(),
+                    port: Some(2222),
+                }),
             },
         ]);
+    }
+
+    // Issue #355: the registry kept no port, so check, install, sign-in and the relay all dialled 22. A server
+    // registered with an admin address on 2222 is reached on 2222 by every ssh call, and 22 is no port.
+    #[test]
+    fn a_registered_port_reaches_the_ssh_address_of_every_call() {
+        let mut hosts = vec![];
+        with_server(
+            &mut hosts,
+            "atlas-crew@srv",
+            "srv".into(),
+            admin("ubuntu@srv", Some(2222)),
+        );
+        with_server(
+            &mut hosts,
+            "atlas-crew@plain",
+            "plain".into(),
+            admin("ubuntu@plain", Some(22)),
+        );
+        with_server(&mut hosts, "atlas-crew@hand", "hand".into(), None);
+        assert_eq!(server_ssh_in(&hosts, "atlas-crew@srv").port, Some(2222));
+        assert_eq!(
+            server_ssh_in(&hosts, "ssh:atlas-crew@srv").port,
+            Some(2222),
+            "a hostd key is a registry host with a prefix"
+        );
+        assert_eq!(server_ssh_in(&hosts, "atlas-crew@plain").port, None);
+        assert_eq!(server_ssh_in(&hosts, "atlas-crew@hand").port, None);
+        assert_eq!(server_ssh_in(&hosts, "atlas-crew@unknown").port, None);
+        // Re-installing against the default port clears a stale one.
+        with_server(
+            &mut hosts,
+            "atlas-crew@srv",
+            "srv".into(),
+            admin("ubuntu@srv", None),
+        );
+        assert_eq!(server_ssh_in(&hosts, "atlas-crew@srv").port, None);
+    }
+
+    // A registry written before `port` existed keeps loading (the pre-admin fixture has neither field), and a
+    // file with a port reads back the same value, written only when it is not the default.
+    #[test]
+    fn the_port_is_optional_in_the_file_and_never_written_for_22() {
+        let old: Vec<CrewServer> = serde_json::from_str(
+            r#"[{"host":"atlas-crew@a","name":"A","admin":{"target":"u@a","port":2222}}]"#,
+        )
+        .unwrap();
+        assert_eq!(
+            old[0].port, None,
+            "an old entry has no port until it is re-registered"
+        );
+        let dir = tempfile::tempdir().unwrap();
+        let file = dir.path().join("crew-servers.json");
+        let mut hosts = vec![];
+        with_server(
+            &mut hosts,
+            "atlas-crew@b",
+            "b".into(),
+            admin("u@b", Some(2200)),
+        );
+        with_server(
+            &mut hosts,
+            "atlas-crew@c",
+            "c".into(),
+            admin("u@c", Some(22)),
+        );
+        save_to(&file, &hosts).unwrap();
+        let v: serde_json::Value =
+            serde_json::from_str(&std::fs::read_to_string(&file).unwrap()).unwrap();
+        assert_eq!(v[0]["port"], 2200);
+        assert!(v[1].get("port").is_none(), "{v}");
+        assert_eq!(load_from(&file), hosts);
+    }
+
+    // The engine check, the agent install and the sign-in terminal are one ssh helper: each has the port before
+    // the target and the agents' PATH in the remote command (audit #5: sign-in had neither).
+    #[test]
+    fn check_install_and_signin_share_the_port_and_the_agents_path() {
+        let t = atlas_core::ssh::SshTarget::new("atlas-crew@srv", Some(2222));
+        let check = t.exec_argv(&check_script("claude").unwrap());
+        let install = t.exec_argv(&install_command(&install_script("claude").unwrap()));
+        let signin = t.terminal_argv("claude");
+        for (what, a) in [
+            ("check", &check),
+            ("install", &install),
+            ("signin", &signin),
+        ] {
+            let p = a
+                .iter()
+                .position(|x| x == "-p")
+                .unwrap_or_else(|| panic!("{what}: no -p {a:?}"));
+            assert_eq!(a[p + 1], "2222", "{what}");
+            assert!(
+                p < a.iter().position(|x| x == "atlas-crew@srv").unwrap(),
+                "{what}"
+            );
+            let cmd = a.last().unwrap();
+            for d in [".local/bin", ".bun/bin", ".npm-global/bin"] {
+                assert!(cmd.contains(d), "{what}: {d} missing from {cmd}");
+            }
+        }
+        assert!(signin.contains(&"-t".to_string()));
     }
 
     #[test]
     fn check_script_covers_all_agents() {
         for id in ["omp", "claude", "codex", "opencode"] {
             let s = check_script(id).unwrap();
-            assert!(s.contains(".bun/bin"), "{id}: missing .bun/bin in PATH");
-            assert!(s.contains(".local/bin"), "{id}: missing .local/bin in PATH");
             assert!(s.contains(id), "{id}: missing bin name in script");
+            let full = atlas_core::ssh::with_path(&s);
+            assert!(full.contains(".bun/bin"), "{id}: missing .bun/bin in PATH");
+            assert!(
+                full.contains(".local/bin"),
+                "{id}: missing .local/bin in PATH"
+            );
         }
         assert!(check_script("unknown").is_none());
+    }
+
+    // The sign-in argv the page opens its pty with is the helper's, for a registered port, and refuses an
+    // address ssh could read as an option.
+    #[test]
+    fn the_signin_terminal_argv_comes_from_the_registry() {
+        let hosts = [CrewServer {
+            host: "atlas-crew@srv".into(),
+            name: "srv".into(),
+            port: Some(2222),
+            admin: None,
+        }];
+        let t = server_ssh_in(&hosts, "ssh:atlas-crew@srv");
+        let a = t.terminal_argv("codex");
+        assert_eq!(a[0], "ssh");
+        assert!(a.contains(&"-t".to_string()));
+        assert!(a.windows(2).any(|w| w[0] == "-p" && w[1] == "2222"));
+        assert!(
+            server_ssh_in(&hosts, "ssh:-oProxyCommand=x")
+                .valid()
+                .is_err()
+        );
     }
 
     // Incident: omp installed on a ship without Atlas's hooks never reported "done", so the crewmate's task showed

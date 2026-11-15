@@ -43,8 +43,17 @@ pub(crate) struct CrewHub {
         parking_lot::Mutex<std::collections::HashMap<String, runner::ReportingLive>>,
     /// What each running task ran, for the guards (`runner::guard`).
     pub(crate) tape: runner::Tape,
+    /// The cancel handle of each running engine turn, by task id: `runner::cancel_with` fires it, which
+    /// kills the turn's process tree (an engine turn has no pty session to kill).
+    pub(crate) turn_cancels: Mutex<std::collections::HashMap<String, super::engine::TurnCancel>>,
     /// The kill switch, mirrored from `crew.json` (`paused`): no task runs, no automation fires.
     paused: std::sync::atomic::AtomicBool,
+    /// How many agents run at once (`max_agents` in `crew.json`); a task past that waits "server busy".
+    pub(crate) agent_slots: Arc<runner::AgentSlots>,
+    /// Engines whose sign-in a failed task reported gone (`engine_login`).
+    pub(crate) engine_auth: super::engine_login::EngineAuth,
+    /// The last `signed_in` / `needs_signin` / ... answer per engine, for `crew_engine_status` without refresh.
+    pub(crate) engine_auth_seen: Mutex<std::collections::HashMap<String, String>>,
 }
 
 impl CrewHub {
@@ -54,7 +63,8 @@ impl CrewHub {
     ) -> Arc<Self> {
         let push_tokens = push::load_tokens(dir);
         let store = CrewStore::new(dir).with_isolation(isolation);
-        let paused = store.load_crew_settings().paused;
+        let settings = store.load_crew_settings();
+        let (paused, max_agents) = (settings.paused, settings.max_agents);
         let telegram = Arc::new(TelegramBridge::new(dir.to_path_buf()));
         Arc::new(Self {
             store,
@@ -70,7 +80,11 @@ impl CrewHub {
             action_waiters: parking_lot::Mutex::new(std::collections::HashMap::new()),
             reporters: parking_lot::Mutex::new(std::collections::HashMap::new()),
             tape: runner::Tape::default(),
+            turn_cancels: Mutex::new(std::collections::HashMap::new()),
             paused: std::sync::atomic::AtomicBool::new(paused),
+            agent_slots: runner::AgentSlots::new(max_agents),
+            engine_auth: Default::default(),
+            engine_auth_seen: Mutex::new(std::collections::HashMap::new()),
         })
     }
 
@@ -83,6 +97,11 @@ impl CrewHub {
     /// clients. Pausing cancels every running task (`cancelled`, error "paused") and keeps the
     /// queues; resuming starts them. Doing either twice changes nothing.
     pub(crate) fn set_paused(&self, hub: &Hub, paused: bool) -> Result<(), String> {
+        // An unreadable crew.json holds the crew paused. Pausing again is safe to write; resuming is the
+        // user's explicit decision to leave that state: keep the old bytes aside and start from a clean file.
+        self.store
+            .recover_crew_settings()
+            .map_err(|e| format!("recover_crew_settings: {e}"))?;
         let mut settings = self.store.load_crew_settings();
         settings.paused = paused;
         self.store

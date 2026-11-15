@@ -1,0 +1,6 @@
+[31m✗[0m node: Node 18.19.1 found, need >= 20 (install a newer Node.js, for example from nodesource)
+[31m✗[0m runner: missing, run atlas crew browsers install
+[31m✗[0m detectors: missing (the runner imports it), run atlas crew browsers install
+[31m✗[0m playwright: package missing, run atlas crew browsers install
+[31m✗[0m browsers: chromium missing, run atlas crew browsers install
+[31m✗[0m browsers: webkit missing, run atlas crew browsers install

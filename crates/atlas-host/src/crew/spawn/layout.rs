@@ -182,6 +182,30 @@ pub fn git_env(iso: Option<&Isolated>) -> Vec<(String, String)> {
     .unwrap_or_default()
 }
 
+/// [`git_env`] for whichever crewmate's directory `dir` is in (under `<root>/<slug>/`): what hostd
+/// needs to run git inside an agent's tree, whose owner is another user. Empty for any other path.
+pub fn git_env_in(root: &str, dir: &std::path::Path) -> Vec<(String, String)> {
+    let Ok(rest) = dir.strip_prefix(root) else {
+        return vec![];
+    };
+    let Some(slug) = rest
+        .components()
+        .next()
+        .and_then(|c| c.as_os_str().to_str())
+    else {
+        return vec![];
+    };
+    // `slug_of` is the one place that knows what a slug looks like.
+    let user = format!("{}{slug}", super::validate::USER_PREFIX);
+    if super::validate::slug_of(&user).is_err() {
+        return vec![];
+    }
+    git_env(Some(&Isolated {
+        user,
+        root: root.to_string(),
+    }))
+}
+
 /// The contents of [`Isolated::gitconfig`].
 pub const GITCONFIG: &str = "[safe]\n\tdirectory = *\n[core]\n\tsharedRepository = group\n";
 
@@ -284,5 +308,40 @@ mod tests {
         );
         assert!(GITCONFIG.contains("directory = *"));
         assert!(GITCONFIG.contains("sharedRepository = group"));
+    }
+
+    // Regression (merging #200 with the guards of #214 and the attachments of #209): hostd runs git in
+    // the agent's tree for the guards and the exclude file, and git refuses a tree owned by another
+    // user ("dubious ownership") unless the crewmate's gitconfig is in effect. The tree alone says whose
+    // it is.
+    #[test]
+    fn git_env_in_names_the_config_of_whichever_crewmate_owns_the_directory() {
+        let i = Isolated::under("/r", ID).unwrap();
+        let want = git_env(Some(&i));
+        for inside in [
+            "/r/3f2a9c1e5b7d/work",
+            "/r/3f2a9c1e5b7d/work/crates/x/src",
+            "/r/3f2a9c1e5b7d",
+        ] {
+            assert_eq!(
+                git_env_in("/r", std::path::Path::new(inside)),
+                want,
+                "{inside}"
+            );
+        }
+        for outside in [
+            "/r",
+            "/r/not-a-slug/work",
+            "/r/3f2a9c1e5b7/work", // 11 digits
+            "/r/3f2a9c1e5b7dx/work",
+            "/other/3f2a9c1e5b7d/work",
+            "/r2/3f2a9c1e5b7d/work",
+            "/home/me/project",
+        ] {
+            assert!(
+                git_env_in("/r", std::path::Path::new(outside)).is_empty(),
+                "{outside}"
+            );
+        }
     }
 }

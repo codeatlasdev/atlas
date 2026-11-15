@@ -455,3 +455,261 @@ async fn an_export_of_an_isolated_crewmate_carries_its_current_memory() {
     assert_eq!(found.as_deref(), Some("likes tabs"));
     client.call("shutdown", json!({})).await.ok();
 }
+
+// ── Engine sign-in per crewmate (#364 meets #200) ───────────────────────────────────────────────────
+// A crewmate's engine runs as its own user with its own $HOME, so its sign-in is a file in that home: a
+// terminal or a status probe run as the crew user would sign in (or report) the wrong account. The phone
+// names the crewmate; the terminal and the probe then run through the helper as that user.
+
+/// What the terminal `pty` of the hostd at `dir` printed, read (replay included) until `needle` shows up.
+async fn read_pty(dir: &std::path::Path, pty: &str, needle: &str) -> String {
+    use tokio::io::AsyncReadExt;
+    let mut raw = crate::client::attach_raw(dir, pty, true).await.unwrap();
+    let mut out = String::new();
+    let mut buf = [0u8; 4096];
+    let read = async {
+        while !out.contains(needle) {
+            match raw.reader.read(&mut buf).await {
+                Ok(0) | Err(_) => break,
+                Ok(n) => out.push_str(&String::from_utf8_lossy(&buf[..n])),
+            }
+        }
+    };
+    let _ = tokio::time::timeout(Duration::from_secs(15), read).await;
+    out
+}
+
+/// The pty ids and argv of the terminals hostd lists.
+async fn ptys(client: &crate::HostClient) -> Vec<serde_json::Value> {
+    client.call("pty_list", json!({})).await.unwrap()["ptys"]
+        .as_array()
+        .unwrap()
+        .clone()
+}
+
+// The login terminal of an isolated crewmate is the engine's allowlisted login argv, started as that
+// crewmate by the helper, in its own home: what it prints proves the user, the home and the directory.
+#[tokio::test(flavor = "multi_thread")]
+async fn an_engine_login_for_an_isolated_crewmate_runs_as_that_crewmate_in_its_home() {
+    let _g = lock_agent_bin().await;
+    let r = rig();
+    // `/bin/echo`: the helper pins the PATH to the engine directory.
+    r.engine(
+        "claude",
+        r#"/bin/echo "login:$* home=$HOME user=$USER cwd=$(/bin/pwd)"; /bin/sleep 30"#,
+    );
+    let tmp = tempfile::tempdir().unwrap();
+    let hostd = tmp.path().join("hostd");
+    let client = daemon_with(&hostd, Some(r.setup())).await;
+    let id = create(&client, "Ana").await;
+    let v = client
+        .call(
+            "crew_engine_login",
+            json!({"engine": "claude", "crewmate": id}),
+        )
+        .await
+        .unwrap();
+    let pty = v["pty"].as_str().unwrap().to_string();
+    let listed = ptys(&client).await;
+    let p = listed.iter().find(|p| p["pty"] == pty).expect("listed");
+    // Not an agent pane: it must never report to the hook server as a crewmate.
+    assert!(p["scope"]["pane_key"].is_null(), "{p}");
+    // What the terminal printed (read through the real pty attach).
+    let dir = slug_dir(&r, &id);
+    // `$HOME` is the path the helper was given; `pwd` is the resolved one (a temp dir is a symlink on macOS).
+    let home = dir.join("home");
+    let real_home = std::fs::canonicalize(&home).unwrap();
+    let out = read_pty(&hostd, &pty, "cwd=").await;
+    assert!(out.contains("login:auth login"), "{out}");
+    assert!(out.contains(&format!("home={}", home.display())), "{out}");
+    assert!(out.contains(&format!("user={}", user_of(&id))), "{out}");
+    assert!(
+        out.contains(&format!("cwd={}", real_home.display())),
+        "{out}"
+    );
+    client.call("pty_kill", json!({"pty": pty})).await.unwrap();
+    client.call("shutdown", json!({})).await.ok();
+}
+
+// Never a silent fallback to the crew user: signing the wrong account in is worse than an error.
+#[tokio::test(flavor = "multi_thread")]
+async fn an_engine_login_for_a_crewmate_that_is_not_isolated_is_refused_and_opens_nothing() {
+    let _g = lock_agent_bin().await;
+    let r = rig();
+    r.engine("claude", "/bin/sleep 30");
+    let tmp = tempfile::tempdir().unwrap();
+    let client = daemon_with(&tmp.path().join("hostd"), Some(r.setup())).await;
+    for (why, crewmate) in [
+        ("not a crewmate id", "nobody"),
+        (
+            "a crewmate id without a definition",
+            "9a2a9c1e-5b7d-4e8f-9a0b-1c2d3e4f5a6b",
+        ),
+    ] {
+        let e = client
+            .call(
+                "crew_engine_login",
+                json!({"engine": "claude", "crewmate": crewmate}),
+            )
+            .await
+            .expect_err(why);
+        assert!(format!("{e:#}").contains("crewmate"), "{why}: {e:#}");
+    }
+    // A server without a helper has no per-crewmate sign-in at all.
+    let plain = daemon_with(&tmp.path().join("plain"), None).await;
+    let e = plain
+        .call(
+            "crew_engine_login",
+            json!({"engine": "claude", "crewmate": "3f2a9c1e-5b7d-4e8f-9a0b-1c2d3e4f5a6b"}),
+        )
+        .await
+        .expect_err("no helper");
+    assert!(format!("{e:#}").contains("own Linux user"), "{e:#}");
+    assert!(ptys(&client).await.is_empty() && ptys(&plain).await.is_empty());
+    client.call("shutdown", json!({})).await.ok();
+    plain.call("shutdown", json!({})).await.ok();
+}
+
+// The status of an engine is the crewmate's own: two crewmates of one server can differ (one signed in,
+// the other not), and neither is the crew user's.
+#[tokio::test(flavor = "multi_thread")]
+async fn engine_status_for_a_crewmate_asks_the_engine_as_that_crewmate() {
+    let _g = lock_agent_bin().await;
+    let r = rig();
+    // Signed in exactly when a token file exists in the caller's own $HOME.
+    r.engine(
+        "claude",
+        r#"if [ "$1 $2" = "auth status" ]; then [ -f "$HOME/token" ] && exit 0; exit 1; fi; exit 0"#,
+    );
+    let tmp = tempfile::tempdir().unwrap();
+    let client = daemon_with(&tmp.path().join("hostd"), Some(r.setup())).await;
+    let id = create(&client, "Ana").await;
+    let state = |s: &serde_json::Value| {
+        s["engines"]
+            .as_array()
+            .unwrap()
+            .iter()
+            .find(|e| e["engine"] == "claude")
+            .unwrap()["state"]
+            .clone()
+    };
+    let before = client
+        .call(
+            "crew_engine_status",
+            json!({"refresh": true, "crewmate": id}),
+        )
+        .await
+        .unwrap();
+    assert_eq!(state(&before), "needs_signin", "{before}");
+    std::fs::write(slug_dir(&r, &id).join("home/token"), "x").unwrap();
+    let after = client
+        .call(
+            "crew_engine_status",
+            json!({"refresh": true, "crewmate": id}),
+        )
+        .await
+        .unwrap();
+    assert_eq!(state(&after), "signed_in", "{after}");
+    // Another subject keeps its own answer: asking for the crew user's does not see the token.
+    let crew = client
+        .call("crew_engine_status", json!({"refresh": true}))
+        .await
+        .unwrap();
+    assert_ne!(state(&crew), "signed_in", "{crew}");
+    client.call("shutdown", json!({})).await.ok();
+}
+
+// A task of an isolated crewmate that fails with the engine's own auth error flips THAT crewmate's
+// sign-in, not the crew user's (which may be fine), and the push says whose.
+#[tokio::test(flavor = "multi_thread")]
+async fn a_failed_sign_in_of_an_isolated_crewmate_flips_its_own_row_only() {
+    let _g = lock_agent_bin().await;
+    crate::crew::engine::set_test_engine_bin(None);
+    let r = rig();
+    r.engine(
+        "claude",
+        r#"echo '{"type":"result","is_error":true,"result":"Please run /login","session_id":"s"}'"#,
+    );
+    let tmp = tempfile::tempdir().unwrap();
+    let client = daemon_with(&tmp.path().join("hostd"), Some(r.setup())).await;
+    let id = create(&client, "Ana").await;
+    // The create above defaulted to `claude` with no engine config: make it a headless claude crewmate.
+    client
+        .call(
+            "crewmate_update",
+            json!({"id": id, "engine": {"kind": "claude"}}),
+        )
+        .await
+        .unwrap();
+    let t = client
+        .call(
+            "crewmate_task",
+            json!({"id": id, "prompt": "hi", "source": "test"}),
+        )
+        .await
+        .unwrap();
+    let task_id = t["task"]["id"].as_str().unwrap().to_string();
+    wait_task_state(&client, &id, &task_id, "failed", Duration::from_secs(20)).await;
+    let row = |s: &serde_json::Value| {
+        s["engines"]
+            .as_array()
+            .unwrap()
+            .iter()
+            .find(|e| e["engine"] == "claude")
+            .unwrap()
+            .clone()
+    };
+    let hers = client
+        .call("crew_engine_status", json!({"crewmate": id}))
+        .await
+        .unwrap();
+    assert_eq!(row(&hers)["state"], "needs_signin", "{hers}");
+    let crew = client.call("crew_engine_status", json!({})).await.unwrap();
+    assert_ne!(
+        row(&crew)["state"],
+        "needs_signin",
+        "the crew user's sign-in did not fail: {crew}"
+    );
+    client.call("shutdown", json!({})).await.ok();
+}
+
+// The auth list and the dispatcher are two places that must agree, over the real hook server: every
+// route an agent's MCP server posts to must reach its handler with the crewmate's own token (never 403,
+// never 404), and the same route for another crewmate must be refused. `ask` blocks until answered, so
+// it is left out of the live call and covered by the pure test.
+#[tokio::test(flavor = "multi_thread")]
+async fn every_agent_route_reaches_its_handler_with_the_crewmates_own_token() {
+    let r = rig();
+    let tmp = tempfile::tempdir().unwrap();
+    let hostd = tmp.path().join("hostd");
+    let client = daemon_with(&hostd, Some(r.setup())).await;
+    let (a, b) = (create(&client, "A").await, create(&client, "B").await);
+    let store = crate::crew::store::CrewStore::new(&hostd);
+    let ta = store.ensure_hook_token(&a).unwrap();
+    let endpoint = std::fs::read_to_string(hostd.join("desktop/hook-endpoint.env")).unwrap();
+    let port = endpoint
+        .lines()
+        .find_map(|l| l.strip_prefix("ATLAS_HOOK_PORT="))
+        .unwrap()
+        .to_string();
+    let pane = format!("crew:{a}:no-such-task");
+    for sub in crate::agents::hook_auth::AGENT_ROUTES {
+        if sub == "ask" {
+            continue;
+        }
+        let own = post(
+            &port,
+            &ta,
+            &format!("/crew/{a}/{sub}"),
+            &json!({"pane_key": pane}),
+        )
+        .await;
+        assert!(
+            own != 403 && own != 404 && own != 401,
+            "{sub}: the crewmate's own token got {own}"
+        );
+        let other = post(&port, &ta, &format!("/crew/{b}/{sub}"), &json!({})).await;
+        assert_eq!(other, 403, "{sub}: another crewmate's route");
+    }
+    client.call("shutdown", json!({})).await.ok();
+}

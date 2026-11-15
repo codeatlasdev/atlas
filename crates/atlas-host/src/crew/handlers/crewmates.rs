@@ -314,9 +314,14 @@ pub(crate) fn update(
     serde_json::to_value(&crewmate).map_err(|e| e.to_string())
 }
 
-/// `CrewmateDelete`
-pub(crate) fn delete(hub: &Hub, id: String) -> Result<Value, String> {
-    // Cancel all queued/running tasks first.
+/// How long delete waits for a cancelled turn to end before it removes the files anyway (the
+/// store then refuses what the turn still writes).
+const DELETE_WAITS: std::time::Duration = std::time::Duration::from_secs(30);
+
+/// `CrewmateDelete`: cancel the queued and running tasks, wait for the running turn to end, take the
+/// Git checkout out of the shared clone, then remove the directory. What a turn writes after that is
+/// refused by the store, so `crew/<id>/` is not recreated.
+pub(crate) async fn delete(hub: &Hub, id: String) -> Result<Value, String> {
     let tasks = hub.crew.store.read_tasks(&id, usize::MAX);
     for t in tasks {
         if matches!(
@@ -326,7 +331,24 @@ pub(crate) fn delete(hub: &Hub, id: String) -> Result<Value, String> {
             let _ = runner::cancel(hub, &hub.crew.store, &id, &t.id);
         }
     }
+    // The cancelled turn ends asynchronously: its process group is killed and its last write lands.
+    let waited = tokio::time::timeout(DELETE_WAITS, async {
+        while hub.crew.runners.running_task(&id).is_some() {
+            tokio::time::sleep(std::time::Duration::from_millis(25)).await;
+        }
+    })
+    .await;
+    if waited.is_err() {
+        eprintln!("atlas crew: delete {id}: a turn is still running after {DELETE_WAITS:?}");
+    }
     let name = hub.crew.store.load_crewmate(&id).ok().map(|c| c.name);
+    // An isolated crewmate's checkout is a full clone in its own directory: it goes with the Linux user
+    // (`deprovision`, purge), not out of a shared clone's worktree list.
+    if hub.crew.store.isolated(&id).is_none()
+        && let Err(e) = project::remove_checkout(&hub.crew.dir, &id).await
+    {
+        eprintln!("atlas crew: delete {id}: checkout not fully removed: {e}");
+    }
     // The Linux user first, while the definition still exists: a failure leaves a crewmate that can be
     // deleted again, not an orphan account nobody lists.
     deprovision(hub, &id, true)?;
@@ -334,6 +356,7 @@ pub(crate) fn delete(hub: &Hub, id: String) -> Result<Value, String> {
         .store
         .delete_crewmate_dir(&id)
         .map_err(|e| format!("delete: {e}"))?;
+    hub.crew.runners.forget(&id);
     // The crewmate's own log goes with its directory; the crew-level one keeps that it existed and who it was.
     hub.crew
         .audit

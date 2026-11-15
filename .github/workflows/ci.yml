@@ -255,6 +255,17 @@ jobs:
       - name: Native crate builds
         run: cargo build --locked --manifest-path apps/mobile/native/Cargo.toml
 
+      # The bindings generator at the version native/Cargo.toml pins, so mobile-check.sh can prove
+      # lib/src/rust matches api.rs (it fails in CI without it).
+      - name: Bindings generator version
+        id: frb
+        run: echo "v=$(sed -n 's/^flutter_rust_bridge = "=\([0-9.]*\)"$/\1/p' apps/mobile/native/Cargo.toml)" >> "$GITHUB_OUTPUT"
+
+      - name: Install flutter_rust_bridge_codegen
+        uses: taiki-e/install-action@c509219cf42fba86913069efd0ade2458c59337b # v2.90.1
+        with:
+          tool: flutter_rust_bridge_codegen@${{ steps.frb.outputs.v }}
+
       - name: analyze, flutter test
         run: scripts/mobile-check.sh
 

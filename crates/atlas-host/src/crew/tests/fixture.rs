@@ -190,8 +190,14 @@ impl Hooks {
 
     /// The whole script: waits for the hook endpoint file, runs the steps, exits 0.
     pub(super) fn script(&self) -> String {
+        self.script_after("")
+    }
+
+    /// [`script`](Self::script) with `before` (shell) run first, whether or not the hook endpoint exists: how a fake
+    /// agent leaves a marker or counts itself before it reports.
+    pub(super) fn script_after(&self, before: &str) -> String {
         format!(
-            "if [ -f \"$ATLAS_HOOK_ENDPOINT\" ]; then\n. \"$ATLAS_HOOK_ENDPOINT\"\n{}fi\nexit 0",
+            "{before}\nif [ -f \"$ATLAS_HOOK_ENDPOINT\" ]; then\n. \"$ATLAS_HOOK_ENDPOINT\"\n{}fi\nexit 0",
             self.sh
         )
     }

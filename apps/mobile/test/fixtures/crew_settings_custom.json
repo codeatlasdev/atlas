@@ -1,4 +1,5 @@
 {
+  "max_agents": 4,
   "short_replies": false,
   "short_replies_model": "haiku"
 }

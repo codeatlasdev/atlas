@@ -1,21 +1,26 @@
 //! Codex engine — `codex exec` with JSONL output.
 
-use std::collections::BTreeMap;
 use std::path::Path;
 
 use serde_json::Value;
 
-use crate::crew::store::{CrewmateSession, EngineConfig, UsageRecord};
+use crate::crew::store::{CrewmateSession, UsageRecord};
 use crate::paths;
 
-use super::proc::{Cmd, Runner};
-use super::{TASK_TIMEOUT, TurnResult};
+use super::launch::McpServer;
+use super::{TurnCtx, TurnResult, launch, program};
 
 /// Build the codex argv (excluding the binary name) for one turn.
 ///
 /// `session_id` is the prior `thread_id`; `None` for first turn.
 /// `result_file` receives the final assistant message text.
-pub(crate) fn exec_args(session_id: Option<&str>, result_file: &Path, prompt: &str) -> Vec<String> {
+/// `mcp` is the atlas MCP server, given to this run only as `-c mcp_servers.atlas.*` overrides.
+pub(crate) fn exec_args(
+    session_id: Option<&str>,
+    result_file: &Path,
+    prompt: &str,
+    mcp: &McpServer,
+) -> Vec<String> {
     let mut v = vec!["exec".to_string()];
     if let Some(id) = session_id {
         v.push("resume".to_string());
@@ -26,41 +31,33 @@ pub(crate) fn exec_args(session_id: Option<&str>, result_file: &Path, prompt: &s
     v.push(result_file.to_string_lossy().to_string());
     v.push("--dangerously-bypass-hook-trust".to_string());
     v.push("--skip-git-repo-check".to_string());
+    v.extend(mcp.codex_overrides());
     v.push(prompt.to_string());
     v
 }
 
-pub(super) async fn run(
-    engine: &EngineConfig,
-    session: CrewmateSession,
-    prompt: &str,
-    runner: &Runner,
-    crewmate_dir: &Path,
-    extra_env: &BTreeMap<String, String>,
-    work_dir: &str,
-) -> Result<TurnResult, String> {
-    std::fs::create_dir_all(crewmate_dir)
+pub(super) async fn run(ctx: TurnCtx<'_>) -> Result<TurnResult, String> {
+    std::fs::create_dir_all(ctx.crewmate_dir)
         .map_err(|e| format!("codex: create crewmate_dir: {e}"))?;
 
     // codex writes the last agent message to this file.
-    let result_file = crewmate_dir.join(format!("codex-out-{}.txt", paths::new_id()));
+    let result_file = ctx
+        .crewmate_dir
+        .join(format!("codex-out-{}.txt", paths::new_id()));
 
-    let mut cmd = Cmd::new("codex", work_dir);
+    let mut cmd = ctx.command(&program("codex"));
     cmd.args(exec_args(
-        session.session_id.as_deref(),
+        ctx.session.session_id.as_deref(),
         &result_file,
-        prompt,
+        ctx.prompt,
+        &ctx.mcp_server(),
     ));
-    cmd.envs(extra_env);
 
-    let out = runner.output(cmd, TASK_TIMEOUT).await?;
+    let out = launch::output(ctx.exec, cmd, ctx.cancel, "codex").await?;
+    let (engine, session) = (ctx.engine, ctx.session);
 
     if !out.success() {
-        return Err(format!(
-            "codex: exited {}: {}",
-            out.code.unwrap_or(-1),
-            out.error_text()
-        ));
+        return Err(launch::exit_error("codex", &out));
     }
 
     // Parse JSONL stdout for session id and usage.

@@ -86,24 +86,17 @@ fn parse_probe(s: &str) -> Probe {
     }
 }
 
-async fn run_install(args: InstallArgs) -> Result<()> {
-    let host = host_from_target(&args.ssh_target).to_owned();
-    let r = if args.port == 22 {
-        Remote::new(&args.ssh_target)
-    } else {
-        Remote::with_port(&args.ssh_target, args.port)
-    };
-
-    // --- Preflight ---
-    step_marker("check");
-    step(&format!("preflight {}", args.ssh_target));
-    let target = preflight(&r, &args.ssh_target).await?;
-
-    // --- Sudo check / credential cache ---
-    if args.sudo_password_stdin {
-        // Desktop GUI pipes the password via stdin. Read one line and use it to
-        // prime the sudo credential cache (15-min window covers the full install).
-        // The password is NEVER passed on argv or logged.
+/// Make `sudo` work for the rest of the run: with `from_stdin` (Atlas Desktop) read one line from stdin and use it to
+/// prime the server's sudo credential cache (the 15-minute window covers a whole install); otherwise require
+/// passwordless sudo and point at `terminal_cmd`. The password is NEVER passed on argv or logged. Shared by
+/// `install` and `browsers install`.
+pub(super) async fn prime_sudo(
+    r: &Remote,
+    ssh_target: &str,
+    from_stdin: bool,
+    terminal_cmd: &str,
+) -> Result<()> {
+    if from_stdin {
         use tokio::io::AsyncBufReadExt as _;
         let mut pw = String::new();
         tokio::io::BufReader::new(tokio::io::stdin())
@@ -121,13 +114,35 @@ async fn run_install(args: InstallArgs) -> Result<()> {
         let sudo_check = r.exec("sudo -n true").await?;
         if sudo_check.code != 0 {
             bail!(
-                "sudo on {} asks for a password — grant passwordless sudo to this user, \
-or run the install from a terminal: atlas crew install {}",
-                args.ssh_target,
-                args.ssh_target
+                "sudo on {ssh_target} asks for a password — grant passwordless sudo to this user, \
+or run it from a terminal: {terminal_cmd}"
             );
         }
     }
+    Ok(())
+}
+
+async fn run_install(args: InstallArgs) -> Result<()> {
+    let host = host_from_target(&args.ssh_target).to_owned();
+    let r = if args.port == 22 {
+        Remote::new(&args.ssh_target)
+    } else {
+        Remote::with_port(&args.ssh_target, args.port)
+    };
+
+    // --- Preflight ---
+    step_marker("check");
+    step(&format!("preflight {}", args.ssh_target));
+    let target = preflight(&r, &args.ssh_target).await?;
+
+    // --- Sudo check / credential cache ---
+    prime_sudo(
+        &r,
+        &args.ssh_target,
+        args.sudo_password_stdin,
+        &format!("atlas crew install {}", args.ssh_target),
+    )
+    .await?;
 
     // What an earlier install left (pre-rename "Atlas Bot" servers keep their user and data).
     let probe = probe_host(&r).await?;
@@ -480,7 +495,9 @@ mod tests {
     fn step_marker_output_is_stable() {
         // step_marker writes to stdout; capture by asserting the format we produce.
         // The frontend's parseInstallLine depends on this exact format.
-        for key in ["check", "install", "user", "service", "ssh", "done"] {
+        for key in [
+            "check", "install", "user", "service", "ssh", "browsers", "done",
+        ] {
             // Verify the function compiles and the key is a valid str literal
             let expected = format!("step: {key}");
             assert!(

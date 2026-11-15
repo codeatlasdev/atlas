@@ -14,6 +14,7 @@
 //! | `action`       | `ATLAS_ACTION` lines: parse, park, wait for the answer            |
 //! | `github`       | GitHub login a project needs                                      |
 //! | `reporting`    | a GitHub task's reply comment: posted, edited, finished           |
+//! | `slots`        | how many agents run at once on the server                          |
 //! | `outcome`      | waiting for the agent, recording and announcing the result        |
 //! | `guard`, `tape`| refusing work that weakens tests, strays, invents or overclaims   |
 //! | `summary`      | short replies                                                     |
@@ -30,9 +31,14 @@ mod prompt;
 mod pty;
 mod recover;
 mod reporting;
+mod slots;
 pub(crate) use reporting::Live as ReportingLive;
 #[cfg(test)]
 pub(crate) use reporting::branch_to_report;
+pub(crate) use slots::AgentSlots;
+// Only the unix-only crew tests (tests/prepare.rs) set it: a plain cfg(test) re-export is unused on Windows.
+#[cfg(all(test, unix))]
+pub(crate) use slots::TEST_MAX_AGENTS;
 mod summary;
 mod tape;
 #[cfg(test)]
@@ -66,7 +72,7 @@ pub(crate) use action::parse_atlas_action;
 #[cfg(all(test, unix))]
 pub(crate) use testing::{
     TEST_BIN_LOCK, TEST_FORCE_GITHUB_AUTH, TEST_GITHUB_LOGGED_IN, TEST_PAUSE_AFTER_SPAWN,
-    set_test_agent_bin,
+    TEST_PAUSE_BEFORE_SPAWN, set_test_agent_bin,
 };
 
 /// 2-hour hard timeout per task.
@@ -106,6 +112,18 @@ impl RunnerMap {
     /// Return the task_id currently running for `crewmate_id`, if any.
     pub fn running_task(&self, crewmate_id: &str) -> Option<String> {
         self.0.lock().get(crewmate_id)?.running.clone()
+    }
+
+    /// Drop the runner of a deleted crewmate once its worker has ended (`run_worker` expects its
+    /// entry for as long as it lives); a worker still alive ends by itself with an empty queue.
+    pub fn forget(&self, crewmate_id: &str) {
+        let mut map = self.0.lock();
+        if let Some(r) = map.get_mut(crewmate_id) {
+            r.queue.clear();
+            if !r.worker_active {
+                map.remove(crewmate_id);
+            }
+        }
     }
 
     /// Count of tasks waiting in the queue for `crewmate_id` (not including the running one).
@@ -220,7 +238,7 @@ pub(crate) fn resume_all(hub: &Hub) {
     }
 }
 
-/// Cancel a task: remove from queue if pending, kill pty if running.
+/// Cancel a task: remove from queue if pending, kill its pty or end its engine turn if running.
 pub(crate) fn cancel(
     hub: &Hub,
     store: &CrewStore,
@@ -266,8 +284,12 @@ fn cancel_with(
         audit_task(hub, crewmate_id, "task_finished", t);
     });
 
-    // Kill the pty if the task is currently running.
+    // Kill the pty if the task is currently running; an engine turn has no pty, its handle ends the
+    // turn's process tree instead.
     if is_running {
+        if let Some(cancel) = hub.crew.turn_cancels.lock().get(task_id) {
+            cancel.fire();
+        }
         let pane_key = pane::key(crewmate_id, task_id);
         let sessions: Vec<Arc<Session>> = hub.sessions.lock().values().cloned().collect();
         if let Some(s) = sessions

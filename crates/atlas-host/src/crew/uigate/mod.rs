@@ -8,7 +8,7 @@
 //! | `plan.rs`        | the change's routes (`atlas_core::affected`) + regressions -> scenarios |
 //! | `regressions.rs` | `.atlas/ui-regressions.json`: load, add, clear errors on a bad file     |
 //! | `results.rs`     | per task: scenario -> pass/fail + capture names (`ui-gate.json`)        |
-//! | `check.rs`       | the [`Check`] trait the detectors (#215) implement; none registered yet |
+//! | `check.rs`       | the [`Check`] trait, and the UI detectors (#215, temporary) as one check     |
 //! | this file        | running a plan through the task cache and a [`Capturer`], the tool entry |
 //!
 //! **Cache.** A scenario's key is the task cache's key (`atlas_core::taskcache`) of "ui-gate, this
@@ -122,7 +122,10 @@ async fn capture_one<C: Capturer>(
     ctx: &Ctx<'_, C>,
     planned: &Planned,
 ) -> Result<Vec<String>, Vec<String>> {
-    let spec = planned.scenario.spec().map_err(|e| vec![e])?;
+    let spec = planned
+        .scenario
+        .spec(check::wants_detectors(ctx.checks))
+        .map_err(|e| vec![e])?;
     let out = ctx.scratch.join(&planned.id);
     std::fs::create_dir_all(&out)
         .map_err(|e| vec![format!("cannot make {}: {e}", out.display())])?;
@@ -425,12 +428,18 @@ impl Drop for RemoveOnDrop {
 }
 
 /// The checkout the crewmate's change is in: its own work dir, else its project's.
-fn root_of(hostd_dir: &Path, crewmate: &Crewmate) -> PathBuf {
+fn root_of(hostd_dir: &Path, store: &CrewStore, crewmate: &Crewmate) -> PathBuf {
     crewmate
         .workdir
         .as_ref()
         .map(PathBuf::from)
-        .unwrap_or_else(|| super::project::work_dir(hostd_dir, &crewmate.id))
+        .unwrap_or_else(|| {
+            super::project::work_dir_for(
+                hostd_dir,
+                &crewmate.id,
+                store.isolated(&crewmate.id).as_ref(),
+            )
+        })
 }
 
 /// What the `ui_gate` hook route does: `Err` is the message the agent sees as the tool's error.
@@ -445,7 +454,7 @@ pub async fn handle(
     let crewmate = store
         .load_crewmate(crewmate_id)
         .map_err(|e| format!("ui_gate: cannot read the crewmate: {e}"))?;
-    let root = root_of(hostd_dir, &crewmate);
+    let root = root_of(hostd_dir, store, &crewmate);
     if !root.is_dir() {
         return Err(format!(
             "ui_gate: the work folder {} does not exist yet",

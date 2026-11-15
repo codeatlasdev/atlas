@@ -463,12 +463,21 @@ pub fn required_scope(cmd: &HostCmd) -> Result<Scope, &'static str> {
         C::CrewPause {} | C::CrewResume {} => Scope::Act,
         C::CrewSettingsGet {} => Scope::Read,
         C::CrewSettingsSet { .. } => Scope::Act,
+        // Reading a status runs the engine's own status command; the sign-in terminal starts a login: Act (and
+        // the phone's Face ID gate). Both are for the crew server itself: through a Mac's relay a terminal
+        // cannot be attached (`CrewCall` below), so the phone pairs with the crew server for this.
+        C::CrewEngineStatus { .. } => Scope::Read,
+        C::CrewEngineLogin { .. } => Scope::Act,
         C::CrewServers {} => Scope::Read,
         // What the relayed command needs here. Terminals stay out: their output streams to the
         // relaying connection, not to one phone.
         C::CrewCall { cmd, args, .. } => {
             let inner = HostCmd::crew_inner(cmd, args).map_err(|_| "bad crew request")?;
-            if matches!(inner, C::CrewCall { .. } | C::CrewServers {}) {
+            // A sign-in is a terminal on the crew server: relayed, the phone could never attach to it.
+            if matches!(
+                inner,
+                C::CrewCall { .. } | C::CrewServers {} | C::CrewEngineLogin { .. }
+            ) {
                 return Err("not available on mobile");
             }
             match required_scope(&inner)? {

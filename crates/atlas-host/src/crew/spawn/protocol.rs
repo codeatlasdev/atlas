@@ -55,7 +55,8 @@ fn default_rows() -> u16 {
 #[serde(tag = "op", rename_all = "snake_case")]
 pub enum Request {
     Spawn(SpawnReq),
-    /// Signal a session this helper started. `sig` is one of [`super::validate::SIGNALS`].
+    /// Signal a session this helper started: its whole process group (every spawn is its own session,
+    /// so that is the tree it started). `sig` is one of [`super::validate::SIGNALS`].
     Signal {
         session: u64,
         sig: i32,

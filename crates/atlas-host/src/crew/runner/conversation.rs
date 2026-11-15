@@ -9,7 +9,7 @@ use super::action::{
 };
 use super::gate::{Gate, gate_success};
 use super::isolation::Ctx;
-use super::outcome::{finish_task, persist_running};
+use super::outcome::{finish_task, persist_running, was_cancelled};
 use super::prompt::{Prepared, load_agent_env, prepare_task};
 use super::recover::{recovered_wait, resume_prompt};
 use super::summary::maybe_summarize;
@@ -66,8 +66,23 @@ pub(super) async fn run_one_conversational(
 
     // A task parked on an action when hostd stopped keeps waiting (it is not running again).
     let waiting = recovered_wait(&task);
-    // Mark running. If that cannot be stored the task is failed (clients told) and nothing starts.
+    // A slot for the agent, then mark running. A task cancelled while it prepared or waited for a slot never gets
+    // its agent: the store has the cancel (#292). If running cannot be stored the task is failed (clients told) and
+    // nothing starts.
+    let mut slot: Option<super::slots::Slot> = None;
     if !waiting {
+        let Some(s) = super::slots::take(hub, crewmate, &mut task).await else {
+            finish_task(
+                hub,
+                crewmate,
+                &mut task,
+                Err("cancelled before the agent started".into()),
+                vec![],
+            );
+            triggers::on_task_finished(hub, &crewmate.id, &task.id, task.state);
+            return;
+        };
+        slot = Some(s);
         task.state = TaskState::Running;
         task.started_at = Some(now_s());
         task.pane = Some(pane_key.clone());
@@ -121,6 +136,8 @@ pub(super) async fn run_one_conversational(
             let action = parse_atlas_action(&reply);
             match (action, hub.crew.hub_arc()) {
                 (Some(action), Some(_)) => {
+                    // Parked on a person: the slot goes back so another crewmate's agent can run meanwhile.
+                    drop(slot.take());
                     park_task(hub, crewmate, &mut task, action.clone());
                     answer_action_turn(&turn, &mut task, &action).await;
                 }
@@ -129,6 +146,7 @@ pub(super) async fn run_one_conversational(
         }
         Err(e) => finish_task(hub, crewmate, &mut task, Err(e), vec![]),
     }
+    drop(slot);
     triggers::on_task_finished(hub, &crewmate.id, &task.id, task.state);
 }
 
@@ -175,6 +193,14 @@ impl Turn<'_> {
             .next()
             .unwrap_or_default()
             .to_string();
+        // Registered for the length of the turn: a cancel or a pause fires it (`runner::cancel_with`).
+        // `cancel_with` stores `Cancelled` before it looks the handle up, so one that landed before
+        // this registration is seen here instead of being lost.
+        let cancel = engine::TurnCancel::new();
+        let _registered = TurnRegistration::new(hub, &task_id, cancel.clone());
+        if was_cancelled(hub, &crewmate.id, &task_id) {
+            cancel.fire();
+        }
         let tools = {
             let hub_w = hub.crew.hub_arc().map(|h| std::sync::Arc::downgrade(&h));
             move |tool: &str, args: &serde_json::Value, output: &str, is_error: bool| {
@@ -185,21 +211,25 @@ impl Turn<'_> {
                 }
             }
         };
-        let turn = engine::run_turn(
-            self.engine_cfg,
+        // Where the agent reads what the engine writes for it, and who runs the process: one answer per task.
+        let crewmate_dir = self.ctx.runtime_dir(hub, &crewmate.id);
+        let exec = self.ctx.exec();
+        let turn = engine::run_turn(engine::TurnCtx {
+            engine: self.engine_cfg,
             session,
             prompt,
-            &self.ctx.runner(),
-            &self.ctx.runtime_dir(hub, &crewmate.id),
-            &crewmate.id,
-            self.hook.0,
-            self.hook.1,
-            self.pane_key,
-            &env,
-            self.work_dir,
-            self.yolo,
-            Some(&tools),
-        )
+            crewmate_dir: &crewmate_dir,
+            crewmate_id: &crewmate.id,
+            hook_port: self.hook.0,
+            hook_token: self.hook.1,
+            pane_key: self.pane_key,
+            extra_env: &env,
+            work_dir: self.work_dir,
+            yolo: self.yolo,
+            tools: Some(&tools),
+            cancel: &cancel,
+            exec: &exec,
+        })
         .await?;
         if let Err(e) = hub.crew.store.save_session(&crewmate.id, &turn.session) {
             // The next turn would start a new conversation instead of continuing this one.
@@ -238,7 +268,12 @@ async fn answer_action_turn(
             // The action stays on the task (cards only show while waiting): with `answer` it lets the
             // chat show what was asked and what the user picked.
             task.answer = user_answer(action, &follow_up);
-            // The env is read again: it may include secrets written while waiting.
+            // The env is read again: it may include secrets written while waiting. The answer starts an agent
+            // again, so it needs a slot again (the wait for the person held none).
+            let Some(_slot) = super::slots::take(hub, crewmate, task).await else {
+                finish_unanswered(hub, crewmate, task);
+                return;
+            };
             match turn.run(&follow_up).await {
                 Ok((reply2, usage2, env2)) => settle_reply(turn, task, reply2, usage2, &env2).await,
                 Err(e) => finish_task(hub, crewmate, task, Err(e), vec![]),
@@ -272,4 +307,29 @@ async fn settle_reply(
     task.reply_full = reply_full;
     task.summarized = was_summarized;
     finish_task(hub, crewmate, task, final_outcome, vec![]);
+}
+
+/// A running turn's cancel handle in `CrewHub::turn_cancels`, removed when the turn ends.
+struct TurnRegistration<'a> {
+    hub: &'a Hub,
+    task_id: String,
+}
+
+impl<'a> TurnRegistration<'a> {
+    fn new(hub: &'a Hub, task_id: &str, cancel: engine::TurnCancel) -> Self {
+        hub.crew
+            .turn_cancels
+            .lock()
+            .insert(task_id.to_string(), cancel);
+        Self {
+            hub,
+            task_id: task_id.to_string(),
+        }
+    }
+}
+
+impl Drop for TurnRegistration<'_> {
+    fn drop(&mut self) {
+        self.hub.crew.turn_cancels.lock().remove(&self.task_id);
+    }
 }

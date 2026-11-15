@@ -1,7 +1,7 @@
 // check:changed decides which checks an edit skips. Skipping a crate that depends on the changed one ships an
 // untested break; the full `bun run check` before a push is the safety net, this is about not lying in the loop.
 import { describe, expect, test } from "bun:test";
-import { type Graph, impact, plan } from "./check-changed.ts";
+import { type Graph, commands, impact, plan } from "./check-changed.ts";
 
 const graph: Graph = {
 	"atlas-core": [],
@@ -47,6 +47,23 @@ describe("plan", () => {
 
 	test("a path that merely looks like a crate is ignored", () => {
 		expect(plan(["crates/not-a-crate/x.rs", "mycrates/atlas-core/x.rs"], graph).crates).toEqual([]);
+	});
+});
+
+// A `cfg(windows)` break (a function only Unix calls became dead code there, #326) passed every Linux check and
+// failed only in CI's Windows job. With cargo-xwin, the loop lints the Windows target too.
+describe("windows lane", () => {
+	test("lints the same crates for the Windows target, in its own target dir, only when asked", () => {
+		const p = plan(["crates/atlas-cli/src/main.rs"], graph);
+		expect(commands(p).some((c) => c.includes("xwin"))).toBe(false);
+		const win = commands(p, { windows: true }).find((c) => c.includes("cargo xwin clippy"));
+		expect(win).toContain("--target x86_64-pc-windows-msvc");
+		expect(win).toContain("-p atlas-cli");
+		expect(win).toContain("-D warnings");
+		expect(win).toStartWith("CARGO_TARGET_DIR=target/xwin ");
+	});
+	test("nothing Rust changed: no Windows lint either", () => {
+		expect(commands(plan(["docs/cli.md"], graph), { windows: true })).toEqual([]);
 	});
 });
 

@@ -14,13 +14,11 @@
 use std::collections::BTreeMap;
 
 use serde_json::Value;
-use tokio::io::{AsyncBufReadExt, AsyncRead, AsyncWrite, AsyncWriteExt, BufReader};
-use tokio::time::timeout;
+use tokio::io::{AsyncBufReadExt, AsyncWriteExt, BufReader};
 
-use crate::crew::store::{CrewmateSession, EngineConfig, UsageRecord};
+use crate::crew::store::{CrewmateSession, UsageRecord};
 
-use super::proc::{Cmd, Rpc, Runner};
-use super::{TASK_TIMEOUT, TurnResult};
+use super::{TurnCtx, TurnResult, launch, program, turn_timeout};
 
 /// Settings every crewmate's omp runs with, as a `--config` overlay. A crew server is a headless server: omp's sleep
 /// prevention asks systemd-logind over D-Bus, which a server or container often lacks, and every start then waited
@@ -36,65 +34,49 @@ pub(crate) fn overlay_args(crewmate_dir: &std::path::Path) -> Vec<String> {
     vec!["--config".to_string(), path.to_string_lossy().into_owned()]
 }
 
-#[allow(clippy::too_many_arguments)]
-pub(super) async fn run(
-    _engine: &EngineConfig,
-    session: CrewmateSession,
-    prompt: &str,
-    extra_env: &BTreeMap<String, String>,
-    runner: &Runner,
-    work_dir: &str,
-    crewmate_dir: &std::path::Path,
-    hook_port: u16,
-    hook_token: &str,
-    pane_key: &str,
-    yolo: bool,
-    tools: Option<&super::ToolSink<'_>>,
-) -> Result<TurnResult, String> {
-    let mut cmd = Cmd::new("omp", work_dir);
+pub(super) async fn run(ctx: TurnCtx<'_>) -> Result<TurnResult, String> {
+    let mut cmd = ctx.command(&program("omp"));
     cmd.arg("--mode")
         .arg("rpc")
-        .args(overlay_args(crewmate_dir));
+        .args(overlay_args(ctx.crewmate_dir));
 
-    if yolo {
+    if ctx.yolo {
         cmd.arg("--auto-approve");
     } else {
-        // Write the approval extension and load it.
-        let ext_path = crewmate_dir.join("omp-approval.ts");
-        write_approval_extension(&ext_path, hook_port, hook_token, pane_key)?;
-        cmd.arg("--extension").arg(ext_path.to_string_lossy());
-        // Inject env so the extension can reach hostd.
-        cmd.env("ATLAS_HOOK_PORT", hook_port.to_string());
-        cmd.env("ATLAS_HOOK_TOKEN", hook_token);
-        cmd.env("ATLAS_PANE_KEY", pane_key);
+        // Write the approval extension and load it; it reaches hostd through the ATLAS_* env.
+        let ext_path = ctx.crewmate_dir.join("omp-approval.ts");
+        write_approval_extension(&ext_path, ctx.hook_port, ctx.hook_token, ctx.pane_key)?;
+        cmd.arg("--extension").arg(&ext_path);
     }
 
-    if let Some(session_file) = &session.session_file {
+    if let Some(session_file) = &ctx.session.session_file {
         cmd.arg("--resume").arg(session_file);
     }
 
-    cmd.envs(extra_env);
-    let Rpc {
+    let launch::Rpc {
         mut writer,
         reader,
-        killer,
-    } = runner.rpc(cmd).await?;
+        guard,
+    } = launch::rpc(ctx.exec, cmd, "omp").await?;
 
-    let result = timeout(TASK_TIMEOUT, drive_rpc(&mut writer, reader, prompt, tools)).await;
+    let result = tokio::select! {
+        r = drive_rpc(&mut writer, reader, ctx.prompt, ctx.tools) => r.map_err(|e| format!("omp: {e}")),
+        () = ctx.cancel.fired() => Err("omp: cancelled".to_string()),
+        () = tokio::time::sleep(turn_timeout()) => Err("omp: timed out after 2 h".to_string()),
+    };
 
-    // Always kill — the process is not expected to exit on its own.
-    killer.kill();
+    // Always end the whole tree: the process is not expected to exit on its own, and the tools it
+    // started must not outlive the turn.
+    drop(guard);
 
-    let (reply, new_session_file, usage) = result
-        .map_err(|_| "omp: timed out after 2 h".to_string())?
-        .map_err(|e| format!("omp: {e}"))?;
+    let (reply, new_session_file, usage) = result?;
 
     Ok(TurnResult {
         reply,
         session: CrewmateSession {
             session_id: None,
-            session_file: new_session_file.or(session.session_file),
-            created_at: session.created_at,
+            session_file: new_session_file.or(ctx.session.session_file),
+            created_at: ctx.session.created_at,
         },
         usage,
     })
@@ -102,8 +84,8 @@ pub(super) async fn run(
 
 /// Send the prompt, collect the reply, obtain the session file path.
 async fn drive_rpc(
-    stdin: &mut (impl AsyncWrite + Unpin),
-    stdout: impl AsyncRead + Unpin,
+    stdin: &mut (impl tokio::io::AsyncWrite + Unpin),
+    stdout: impl tokio::io::AsyncRead + Unpin,
     prompt: &str,
     tools: Option<&super::ToolSink<'_>>,
 ) -> Result<(String, Option<String>, Option<UsageRecord>), String> {
@@ -412,5 +394,114 @@ mod tests {
         // Only the failed run: nothing proves it.
         let (kept, removed) = guard_strip_unproven("All tests pass.", &ran[1..]);
         assert!(kept.is_empty() && removed.len() == 1);
+    }
+}
+
+#[cfg(all(test, unix))]
+mod kill_tests {
+    use std::time::{Duration, Instant};
+
+    use super::*;
+    use crate::crew::engine::TurnCancel;
+    use crate::crew::store::EngineConfig;
+
+    fn gone(pid: u32) -> bool {
+        match std::fs::read_to_string(format!("/proc/{pid}/stat")) {
+            Ok(stat) => stat
+                .rsplit(')')
+                .next()
+                .is_some_and(|r| r.trim_start().starts_with('Z')),
+            Err(_) => !atlas_core::sys::pid_alive(pid),
+        }
+    }
+
+    // #290: omp killed only its direct child, so the tool process omp had started (here a `bash` call's
+    // `sleep`, a grandchild) outlived the turn. A fake omp speaks the RPC (a tool call starts, and
+    // never ends), starts that tool process, and the turn is cancelled: nothing may be left.
+    #[tokio::test]
+    async fn cancelling_an_omp_turn_also_kills_the_tool_process_omp_started() {
+        let tmp = tempfile::tempdir().unwrap();
+        let pidfile = tmp.path().join("tool.pid");
+        let bin = tmp.path().join("omp");
+        std::fs::write(
+            &bin,
+            format!(
+                "#!/bin/sh\nread -r _prompt\n\
+                 printf '{{\"type\":\"tool_execution_start\",\"toolCallId\":\"c1\",\"toolName\":\"bash\",\"args\":{{}}}}\\n'\n\
+                 (sleep 60 & echo $! > \"{}\"; wait) &\nwait\n",
+                pidfile.display()
+            ),
+        )
+        .unwrap();
+        use std::os::unix::fs::PermissionsExt;
+        std::fs::set_permissions(&bin, std::fs::Permissions::from_mode(0o755)).unwrap();
+
+        let _lock = crate::crew::runner::TEST_BIN_LOCK
+            .get_or_init(|| tokio::sync::Mutex::new(()))
+            .lock()
+            .await;
+        *crate::crew::engine::TEST_ENGINE_PROGRAM.lock() =
+            Some(("omp".into(), bin.to_string_lossy().into_owned()));
+        let cancel = TurnCancel::new();
+        let turn = {
+            let (dir, cancel) = (tmp.path().to_path_buf(), cancel.clone());
+            tokio::spawn(async move {
+                let engine = EngineConfig {
+                    kind: "omp".into(),
+                    provider: None,
+                    base_url: None,
+                    model: None,
+                };
+                let env = BTreeMap::new();
+                run(TurnCtx {
+                    engine: &engine,
+                    session: CrewmateSession::default(),
+                    prompt: "go",
+                    crewmate_dir: &dir,
+                    crewmate_id: "c1",
+                    hook_port: 0,
+                    hook_token: "",
+                    pane_key: "",
+                    extra_env: &env,
+                    work_dir: dir.to_str().unwrap(),
+                    yolo: true,
+                    tools: None,
+                    cancel: &cancel,
+                    exec: &crate::crew::engine::Exec::local(),
+                })
+                .await
+            })
+        };
+        let start = Instant::now();
+        let tool = loop {
+            if let Ok(s) = std::fs::read_to_string(&pidfile)
+                && let Ok(pid) = s.trim().parse::<u32>()
+            {
+                break pid;
+            }
+            assert!(
+                start.elapsed() < Duration::from_secs(15),
+                "omp never ran its tool"
+            );
+            tokio::time::sleep(Duration::from_millis(50)).await;
+        };
+        assert!(!gone(tool));
+
+        cancel.fire();
+        let err = turn
+            .await
+            .unwrap()
+            .err()
+            .expect("a cancelled turn is an error");
+        *crate::crew::engine::TEST_ENGINE_PROGRAM.lock() = None;
+        assert!(err.contains("cancel"), "{err}");
+        let start = Instant::now();
+        while !gone(tool) && start.elapsed() < Duration::from_secs(5) {
+            tokio::time::sleep(Duration::from_millis(50)).await;
+        }
+        assert!(
+            gone(tool),
+            "the tool process {tool} outlived the cancelled omp turn"
+        );
     }
 }

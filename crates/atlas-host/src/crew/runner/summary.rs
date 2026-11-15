@@ -7,7 +7,8 @@ use super::action::visible_reply;
 #[cfg(test)]
 use super::testing::TEST_SUMMARIZER_BIN;
 use crate::crew::Crewmate;
-use crate::crew::engine::proc::{Cmd, Output, Runner};
+use crate::crew::engine::launch::{self, Cmd, Output};
+use crate::crew::engine::{Exec, TurnCancel};
 use crate::server::Hub;
 
 fn default_cheap_model(engine_kind: &str) -> &'static str {
@@ -23,7 +24,7 @@ async fn summarize(
     model: &str,
     agent_env: &BTreeMap<String, String>,
     crewmate_dir: &std::path::Path,
-    runner: &Runner,
+    exec: &Exec,
     work_dir: &str,
 ) -> Option<String> {
     const TIMEOUT: tokio::time::Duration = tokio::time::Duration::from_secs(25);
@@ -92,10 +93,23 @@ async fn summarize(
     };
     cmd.envs(agent_env);
     // Every failure is logged: a silent fallback hid for days that every summary timed out (omp waited 25 s on D-Bus).
-    let out = match runner.output(cmd, TIMEOUT).await {
-        Ok(out) => out,
-        Err(e) => {
-            eprintln!("atlas crew: summary: {engine_kind}: {e}");
+    // Dropping the call at the deadline ends the process tree (the turn executor's guards).
+    let out = match tokio::time::timeout(
+        TIMEOUT,
+        launch::output(exec, cmd, &TurnCancel::new(), engine_kind),
+    )
+    .await
+    {
+        Ok(Ok(out)) => out,
+        Ok(Err(e)) => {
+            eprintln!("atlas crew: summary: {e}");
+            return None;
+        }
+        Err(_) => {
+            eprintln!(
+                "atlas crew: summary: {engine_kind} took over {}s, sending the full reply",
+                TIMEOUT.as_secs()
+            );
             return None;
         }
     };
@@ -159,7 +173,7 @@ pub(super) async fn maybe_summarize(
         model,
         agent_env,
         &runtime,
-        &ctx.runner(),
+        &ctx.exec(),
         &ctx.work_dir(hub, &crewmate.id),
     )
     .await
@@ -204,7 +218,7 @@ mod tests {
             "model",
             &env,
             std::path::Path::new("/tmp"),
-            &Runner::local(),
+            &Exec::local(),
             "/tmp",
         )
         .await;
@@ -234,7 +248,7 @@ mod tests {
             "model",
             &env,
             std::path::Path::new("/tmp"),
-            &Runner::local(),
+            &Exec::local(),
             "/tmp",
         )
         .await;
@@ -267,7 +281,7 @@ mod tests {
             "model",
             &env,
             std::path::Path::new("/tmp"),
-            &Runner::local(),
+            &Exec::local(),
             "/tmp",
         )
         .await;
@@ -302,7 +316,7 @@ mod tests {
             "model",
             &env,
             std::path::Path::new("/tmp"),
-            &Runner::local(),
+            &Exec::local(),
             "/tmp",
         )
         .await;

@@ -11,16 +11,16 @@ use super::AtlasCommand;
 
 #[derive(Debug, Args)]
 pub struct DoctorArgs {
-    /// Orphaned processes and disk use per project
-    #[arg(long, required = true)]
+    /// Orphaned processes and disk use per project (without it: the install checks)
+    #[arg(long)]
     pub hygiene: bool,
 
     /// Show what would be freed and change nothing (the default)
-    #[arg(long, conflicts_with = "fix")]
+    #[arg(long, conflicts_with = "fix", requires = "hygiene")]
     pub dry_run: bool,
 
     /// End the orphaned processes and free the disk Atlas owns
-    #[arg(long)]
+    #[arg(long, requires = "hygiene")]
     pub fix: bool,
 
     /// Machine-readable output
@@ -30,6 +30,19 @@ pub struct DoctorArgs {
 
 impl AtlasCommand for DoctorArgs {
     async fn run(self) -> Result<()> {
+        if !self.hygiene {
+            use super::doctor_checks as dc;
+            let checks = dc::evaluate(&dc::Facts::gather().await);
+            if self.json {
+                println!("{}", serde_json::to_string_pretty(&checks)?);
+            } else {
+                print!("{}", dc::render(&checks));
+            }
+            if checks.iter().any(|c| c.status == dc::Status::Fail) {
+                std::process::exit(1);
+            }
+            return Ok(());
+        }
         let registry = Registry::open();
         let base = atlas_core::paths::atlas_home();
         // The scan reads every process's environment and sizes directory trees: not on the runtime.

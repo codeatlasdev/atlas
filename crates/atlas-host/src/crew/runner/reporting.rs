@@ -10,7 +10,7 @@ use std::path::PathBuf;
 
 use super::outcome::persist;
 use crate::crew::github::reply::Reporter;
-use crate::crew::project::{current_branch, work_dir};
+use crate::crew::project::{current_branch, work_dir_for};
 use crate::crew::store::{Step, Task, TaskState};
 use crate::server::Hub;
 
@@ -19,6 +19,8 @@ pub(crate) struct Live {
     reporter: Reporter,
     /// Where the agent works, and the branch it was on when the task started.
     work_dir: PathBuf,
+    /// git's environment in `work_dir` (an isolated crewmate's tree needs that crewmate's config).
+    git_env: Vec<(String, String)>,
     started_on: Option<String>,
 }
 
@@ -42,7 +44,13 @@ pub(super) async fn start(hub: &Hub, crewmate_id: &str, task: &mut Task) {
     let Some(origin) = task.origin.clone() else {
         return;
     };
-    let dir = work_dir(&hub.crew.dir, crewmate_id);
+    // Where the agent works: an isolated crewmate's own folder, not the crew home.
+    let dir = work_dir_for(
+        &hub.crew.dir,
+        crewmate_id,
+        hub.crew.store.isolated(crewmate_id).as_ref(),
+    );
+    let git_env = hub.crew.store.git_env_in(&dir);
     let mut reporter = Reporter::new(hub.crew.github(), origin);
     if let Some(id) = reporter.start().await {
         if let Some(o) = task.origin.as_mut() {
@@ -52,8 +60,9 @@ pub(super) async fn start(hub: &Hub, crewmate_id: &str, task: &mut Task) {
     }
     let live = Live {
         reporter,
-        started_on: current_branch(&dir).await,
+        started_on: current_branch(&dir, &git_env).await,
         work_dir: dir,
+        git_env,
     };
     hub.crew.reporters.lock().insert(task.id.clone(), live);
 }
@@ -83,7 +92,7 @@ pub(super) fn finish(hub: &Hub, task: &Task) {
     tokio::spawn(async move {
         match state {
             TaskState::Done => {
-                let ended_on = current_branch(&live.work_dir).await;
+                let ended_on = current_branch(&live.work_dir, &live.git_env).await;
                 live.reporter
                     .set_branch(branch_to_report(live.started_on.take(), ended_on));
                 live.reporter.finish_ok(&result, &steps).await;

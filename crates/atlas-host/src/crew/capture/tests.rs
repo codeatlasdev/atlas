@@ -31,6 +31,16 @@ pub(crate) fn fake_runner(dir: &Path, body: &str) -> PathBuf {
 /// Shell that writes a fake PNG for every combination and prints the report listing them all,
 /// except the ones in `skip` (`engine-width-theme`).
 pub(crate) fn full_report(skip: &[&str]) -> String {
+    report(skip, None)
+}
+
+/// As [`full_report`], and also a `<key>.findings.json` with `findings` (JSON text) next to every
+/// PNG, listed in the report: the runner when the spec asks for `checks`, which the UI gate does.
+pub(crate) fn full_report_with_findings(skip: &[&str], findings: &str) -> String {
+    report(skip, Some(findings))
+}
+
+fn report(skip: &[&str], findings: Option<&str>) -> String {
     let mut sh = String::new();
     let mut entries = vec![];
     for e in ["chromium", "webkit"] {
@@ -43,8 +53,15 @@ pub(crate) fn full_report(skip: &[&str]) -> String {
                 sh.push_str(&format!(
                     "printf '\\211PNG\\r\\n\\032\\n{key}' > \"$OUT/{key}.png\"\n"
                 ));
+                let mut extra = String::new();
+                if let Some(f) = findings {
+                    sh.push_str(&format!(
+                        "cat > \"$OUT/{key}.findings.json\" <<'EOF'\n{f}\nEOF\n"
+                    ));
+                    extra = format!(",\"findings\":\"'\"$OUT\"'/{key}.findings.json\"");
+                }
                 entries.push(format!(
-                    "{{\"engine\":\"{e}\",\"width\":{w},\"theme\":\"{t}\",\"path\":\"'\"$OUT\"'/{key}.png\"}}"
+                    "{{\"engine\":\"{e}\",\"width\":{w},\"theme\":\"{t}\",\"path\":\"'\"$OUT\"'/{key}.png\"{extra}}}"
                 ));
             }
         }
@@ -341,6 +358,7 @@ fn install_runner_package(dir: &Path) -> Result<(), String> {
     std::fs::write(dir.join("package.json"), package_json()).map_err(|e| e.to_string())?;
     std::fs::write(dir.join("package-lock.json"), PACKAGE_LOCK).map_err(|e| e.to_string())?;
     std::fs::write(dir.join("runner.mjs"), RUNNER_MJS).map_err(|e| e.to_string())?;
+    std::fs::write(dir.join("detectors.mjs"), DETECTORS_MJS).map_err(|e| e.to_string())?;
     let out = std::process::Command::new("npm")
         .args(["ci", "--no-audit", "--no-fund", "--silent"])
         .env("PLAYWRIGHT_SKIP_BROWSER_DOWNLOAD", "1")
@@ -487,4 +505,263 @@ async fn a_real_playwright_run_captures_the_matrix() {
         }
         Err(e) => panic!("real capture failed: {e}"),
     }
+}
+
+// ── The UI detectors (TEMPORARY, #215): every fixture, failing and fixed, in both engines ───────
+
+const FIXTURES: &str = concat!(env!("CARGO_MANIFEST_DIR"), "/src/crew/capture/fixtures");
+
+/// `(fixture name, detector it must trip)`: each has `<name>.fail.html` and `<name>.fixed.html`.
+const DETECTOR_FIXTURES: [(&str, &str); 7] = [
+    ("empty-band", "empty-band"),
+    ("gutter", "gutter"),
+    ("sibling-overlap", "sibling-overlap"),
+    ("raw-text", "raw-text"),
+    ("action-hierarchy", "action-hierarchy"),
+    ("cls", "cls"),
+    ("focus-after-tap", "focus-after-tap"),
+];
+
+/// How long the server holds a `.svg` back: the image that arrives after the page laid out (the
+/// classic layout-shift cause) in `cls.*.html`.
+const SLOW_IMAGE: Duration = Duration::from_millis(300);
+
+/// Serve `FIXTURES` on a free port: `GET /<file>` is `<FIXTURES>/<file>` (a real navigation, so
+/// the layout-shift observer registered before it sees the load). `.svg` files are slow.
+fn serve_fixtures() -> u16 {
+    let listener = std::net::TcpListener::bind("127.0.0.1:0").unwrap();
+    let port = listener.local_addr().unwrap().port();
+    std::thread::spawn(move || {
+        for s in listener.incoming().flatten() {
+            // One thread per connection: a held-back image must not hold the page back too.
+            std::thread::spawn(move || serve_one(s));
+        }
+    });
+    port
+}
+
+fn serve_one(mut s: std::net::TcpStream) {
+    use std::io::{Read, Write};
+    let mut buf = [0u8; 2048];
+    let n = s.read(&mut buf).unwrap_or(0);
+    let req = String::from_utf8_lossy(&buf[..n]);
+    let name = req
+        .split_whitespace()
+        .nth(1)
+        .unwrap_or("/")
+        .trim_start_matches('/')
+        .to_string();
+    // Fixtures are flat files: nothing with a path in it is served.
+    let body = if name.contains('/') || name.contains("..") {
+        None
+    } else {
+        std::fs::read_to_string(Path::new(FIXTURES).join(&name)).ok()
+    };
+    let _ = match body {
+        Some(b) => {
+            let svg = name.ends_with(".svg");
+            if svg {
+                std::thread::sleep(SLOW_IMAGE);
+            }
+            write!(
+                s,
+                "HTTP/1.1 200 OK\r\nContent-Type: {}; charset=utf-8\r\nContent-Length: {}\r\nConnection: close\r\n\r\n{b}",
+                if svg { "image/svg+xml" } else { "text/html" },
+                b.len()
+            )
+        }
+        None => write!(
+            s,
+            "HTTP/1.1 404 Not Found\r\nContent-Length: 0\r\nConnection: close\r\n\r\n"
+        ),
+    };
+}
+
+/// A runner installed under a temp dir with the browsers cache linked in, or why not.
+fn real_runner(tmp: &Path, who: &str) -> Result<PathBuf, String> {
+    if let Some(why) = real_run_blocker() {
+        return Err(why);
+    }
+    let dir = tmp.join("hostd");
+    install_runner_package(&capture_dir(&dir))?;
+    std::os::unix::fs::symlink(
+        browsers_cache().unwrap(),
+        capture_dir(&dir).join("browsers"),
+    )
+    .map_err(|e| format!("{who}: {e}"))?;
+    Ok(dir)
+}
+
+/// Capture `file` with the detectors in `engines` at `width` and return each engine's findings.
+async fn findings_of(
+    dir: &Path,
+    out: &Path,
+    port: u16,
+    file: &str,
+    width: u32,
+    engines: &Value,
+) -> Result<Vec<(String, Vec<detectors::Finding>)>, String> {
+    let s = Spec::from_args(&json!({
+        "url": format!("http://127.0.0.1:{port}/{file}"), "engines": engines,
+        "widths": [width], "themes": ["light"], "checks": true,
+    }))?;
+    let got = run(dir, &s, &out.join(file)).await?;
+    assert_eq!(
+        got.findings.len(),
+        got.files.len(),
+        "{file}: one findings file per shot"
+    );
+    got.findings
+        .iter()
+        .map(|(c, p)| Ok((c.to_string(), detectors::read(p)?)))
+        .collect()
+}
+
+#[tokio::test(flavor = "multi_thread")]
+async fn every_detector_fixture_fails_and_its_fixed_twin_passes_in_chromium_and_webkit() {
+    const T: &str = "every_detector_fixture_fails_and_its_fixed_twin_passes_in_chromium_and_webkit";
+    let _g = TEST_LOCK.lock().await;
+    clear_runner();
+    let tmp = tempfile::tempdir().unwrap();
+    let dir = match real_runner(tmp.path(), T) {
+        Ok(d) => d,
+        Err(why) => return eprintln!("SKIP {T}: {why}"),
+    };
+    let cache = browsers_cache().unwrap();
+    if !has_browser(&cache, "webkit") {
+        // The acceptance is both engines: half of it is not a pass.
+        return eprintln!("SKIP {T}: no webkit in {}", cache.display());
+    }
+    let engines = json!(["chromium", "webkit"]);
+    let port = serve_fixtures();
+    let out = tmp.path().join("out");
+
+    for (name, detector) in DETECTOR_FIXTURES {
+        for (file, want) in [
+            (format!("{name}.fail.html"), true),
+            (format!("{name}.fixed.html"), false),
+        ] {
+            let per_engine = match findings_of(&dir, &out, port, &file, 390, &engines).await {
+                Ok(f) => f,
+                Err(e) if e.contains("Executable doesn't exist") => {
+                    return eprintln!(
+                        "SKIP {T}: pinned {PLAYWRIGHT_VERSION} browsers not installed: {e}"
+                    );
+                }
+                Err(e) => panic!("{file}: {e}"),
+            };
+            assert_eq!(per_engine.len(), 2, "{file}: both engines ran");
+            for (cell, found) in per_engine {
+                let errors: Vec<_> = found
+                    .iter()
+                    .filter(|f| f.severity == detectors::Severity::Error)
+                    .collect();
+                if want {
+                    assert!(
+                        errors.iter().any(|f| f.detector == detector),
+                        "{file} on {cell}: expected an error from `{detector}`, got {found:?}"
+                    );
+                    assert!(
+                        errors.iter().all(|f| f.detector == detector),
+                        "{file} on {cell}: a fixture trips only its own detector, got {found:?}"
+                    );
+                } else {
+                    assert!(
+                        found.is_empty(),
+                        "{file} on {cell}: the fixed page is clean, got {found:?}"
+                    );
+                }
+            }
+        }
+    }
+
+    // The 490 px band is #215's acceptance: it reports the band's size and where it is.
+    let found = findings_of(&dir, &out, port, "empty-band.fail.html", 390, &engines)
+        .await
+        .unwrap();
+    for (cell, f) in found {
+        let band = f.iter().find(|f| f.detector == "empty-band").unwrap();
+        assert!(band.rect.unwrap().height >= 490.0, "{cell}: {band:?}");
+    }
+    // The CLS finding names the element that moved, not just a number.
+    let found = findings_of(&dir, &out, port, "cls.fail.html", 390, &engines)
+        .await
+        .unwrap();
+    for (cell, f) in found {
+        let cls = f.iter().find(|f| f.detector == "cls").unwrap();
+        assert_eq!(
+            cls.selector.as_deref(),
+            Some("[data-testid=\"article\"]"),
+            "{cell}: {cls:?}"
+        );
+    }
+}
+
+#[tokio::test(flavor = "multi_thread")]
+async fn a_clean_page_has_no_finding_at_phone_and_desktop_widths_in_both_engines() {
+    const T: &str = "a_clean_page_has_no_finding_at_phone_and_desktop_widths_in_both_engines";
+    let _g = TEST_LOCK.lock().await;
+    clear_runner();
+    let tmp = tempfile::tempdir().unwrap();
+    let dir = match real_runner(tmp.path(), T) {
+        Ok(d) => d,
+        Err(why) => return eprintln!("SKIP {T}: {why}"),
+    };
+    if !has_browser(&browsers_cache().unwrap(), "webkit") {
+        return eprintln!("SKIP {T}: no webkit");
+    }
+    let engines = json!(["chromium", "webkit"]);
+    let port = serve_fixtures();
+    let out = tmp.path().join("out");
+    // A detector that cries wolf on an ordinary page (nav, hero with one primary, cards, a form with
+    // its own primary, footer) gets switched off: this is the guard against that.
+    for width in [390, 1440] {
+        match findings_of(&dir, &out, port, "clean.fixed.html", width, &engines).await {
+            Ok(per_engine) => {
+                for (cell, found) in per_engine {
+                    assert!(
+                        found.is_empty(),
+                        "clean page at {width} on {cell}: {found:?}"
+                    );
+                }
+            }
+            Err(e) if e.contains("Executable doesn't exist") => {
+                return eprintln!(
+                    "SKIP {T}: pinned {PLAYWRIGHT_VERSION} browsers not installed: {e}"
+                );
+            }
+            Err(e) => panic!("clean page: {e}"),
+        }
+    }
+}
+
+#[test]
+fn every_detector_has_a_failing_and_a_fixed_fixture_and_the_names_match_the_package() {
+    // The names are ui#1290's: the swap to the package must not rename a finding.
+    let in_js = std::fs::read_to_string(Path::new(FIXTURES).join("../detectors.mjs")).unwrap();
+    let listed: Vec<String> = in_js
+        .split("export const DETECTORS = [")
+        .nth(1)
+        .and_then(|r| r.split(']').next())
+        .unwrap()
+        .split(',')
+        .map(|n| n.trim().trim_matches('"').to_string())
+        .filter(|n| !n.is_empty())
+        .collect();
+    assert_eq!(
+        listed,
+        detectors::NAMES,
+        "detectors.mjs and detectors.rs list the same detectors"
+    );
+    for (name, _) in DETECTOR_FIXTURES {
+        for kind in ["fail", "fixed"] {
+            assert!(
+                Path::new(FIXTURES)
+                    .join(format!("{name}.{kind}.html"))
+                    .is_file(),
+                "{name}.{kind}.html is missing"
+            );
+        }
+    }
+    assert_eq!(DETECTOR_FIXTURES.len(), detectors::NAMES.len());
 }

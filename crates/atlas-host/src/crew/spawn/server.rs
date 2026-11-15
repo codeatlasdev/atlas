@@ -217,8 +217,12 @@ impl Server {
         match &e.state {
             State::Exited { .. } => Response::Done,
             State::Running(_) => {
-                // SAFETY: kill(2) on the exact pid of a child we own and have not reaped.
-                if unsafe { libc::kill(e.pid as libc::pid_t, sig) } == 0 {
+                // The child called `setsid` before exec, so its pid is its process group id: `-pid` is its
+                // whole tree (what an engine started), like `TurnProc` for the crew user. Not `Reap`: that
+                // ends every process of the crewmate, including its other sessions.
+                // SAFETY: kill(2) on the process group of a child we own and have not reaped; its pid is
+                // positive and in i32 range (a `pid_t`).
+                if unsafe { libc::kill(-(e.pid as libc::pid_t), sig) } == 0 {
                     Response::Done
                 } else {
                     Response::Error {
@@ -574,6 +578,57 @@ mod tests {
         assert_eq!(r.client.wait_exit(sp.session), Some(42));
         // Signalling what already ended must not hit a recycled pid, and must not fail.
         r.client.signal(sp.session, libc::SIGKILL).unwrap();
+    }
+
+    // Merging #200 with the engine launcher of #359: a cancelled turn must end what the engine started
+    // (a tool, a dev server), as `TurnProc` does for the crew user with `kill(-pgid)`. Every spawn is
+    // its own session (`setsid`), so the group is the tree; signalling one pid left the grandchild
+    // running, and `Reap` is no substitute: it ends every process of the user, a concurrent terminal
+    // agent of the same crewmate included.
+    #[test]
+    fn a_signal_reaches_the_whole_process_group_of_the_session_not_only_its_leader() {
+        let r = rig();
+        let pidfile = r.cm.join("tool.pid");
+        let (sp, _fd) = r
+            .client
+            .spawn(&req(
+                &r,
+                Mode::Pipe,
+                &format!(
+                    "(/bin/sleep 60 & echo $! > {}; wait) &\nwait",
+                    pidfile.display()
+                ),
+            ))
+            .unwrap();
+        let tool = loop {
+            if let Ok(t) = std::fs::read_to_string(&pidfile)
+                && let Ok(pid) = t.trim().parse::<i32>()
+            {
+                break pid;
+            }
+            std::thread::sleep(Duration::from_millis(20));
+        };
+        // SAFETY: signal 0 only tests that the pid exists.
+        assert_eq!(unsafe { libc::kill(tool, 0) }, 0, "the tool is running");
+        r.client.signal(sp.session, libc::SIGKILL).unwrap();
+        r.client.wait_exit(sp.session);
+        let start = Instant::now();
+        // A killed process whose parent is gone is reaped by init at once; a zombie only waits for that.
+        while start.elapsed() < Duration::from_secs(5) {
+            let dead = std::fs::read_to_string(format!("/proc/{tool}/stat"))
+                .map(|s| {
+                    s.rsplit(')')
+                        .next()
+                        .is_some_and(|r| r.trim_start().starts_with('Z'))
+                })
+                // No /proc (macOS): kill(pid, 0) says whether the pid is still there.
+                .unwrap_or_else(|_| unsafe { libc::kill(tool, 0) } != 0);
+            if dead {
+                return;
+            }
+            std::thread::sleep(Duration::from_millis(20));
+        }
+        panic!("the tool process {tool} outlived the session's SIGKILL");
     }
 
     #[test]

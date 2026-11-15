@@ -170,6 +170,11 @@ impl Hub {
         self.lsp.shutdown().await;
     }
 
+    /// A connection id that is on no connection: what an in-process listener (a pty watcher) attaches as.
+    pub(crate) fn fresh_conn_id(&self) -> u64 {
+        self.next_conn.fetch_add(1, Ordering::Relaxed)
+    }
+
     /// Register a push receiver (mobile sessions); returns its connection id.
     pub(crate) fn add_subscriber(&self, tx: Out) -> u64 {
         let id = self.next_conn.fetch_add(1, Ordering::Relaxed);
@@ -504,7 +509,6 @@ pub async fn serve_with(dir: &Path, opts: ServeOpts) -> Result<()> {
     });
     crate::mobile::start(&hub);
     hub.crew_relay.start(&hub);
-    hub.crew.start(Arc::downgrade(&hub));
     // Plain agents push to the phones' tokens (not on a lab: it mirrors the real hostd's agents,
     // which notifies for them). Subscribed here, before any hook can arrive.
     if hub.lab.is_none() {
@@ -543,6 +547,11 @@ pub async fn serve_with(dir: &Path, opts: ServeOpts) -> Result<()> {
     {
         eprintln!("hostd: agent hook server: {e}");
     }
+    // Only now the crew: it starts agents (tasks resumed after a restart, schedules and triggers due at
+    // once), and an agent reads the hook endpoint the moment it starts. Before the hook server above had
+    // bound and rewritten it, a resumed agent posted its `done` to the previous daemon's dead port and the
+    // task ended `failed: agent exited (code 0)`.
+    hub.crew.start(Arc::downgrade(&hub));
     if let Some((l, first)) = lab {
         tokio::spawn(l.follow(Arc::downgrade(&hub), first));
     }
@@ -1224,7 +1233,14 @@ pub(crate) async fn handle(hub: &Hub, cmd: HostCmd, conn_id: u64) -> Result<Valu
         | HostCmd::CrewPause {}
         | HostCmd::CrewResume {}
         | HostCmd::CrewSettingsGet {}
+        | HostCmd::CrewEngineStatus { .. }
         | HostCmd::CrewSettingsSet { .. }) => crate::crew::handle(hub, crewmate).await,
+        HostCmd::CrewEngineLogin { engine, crewmate } => {
+            if !hub.crew_host {
+                return Err("this computer is not a crew server (atlas crew install)".into());
+            }
+            crate::crew::engine_login::login(hub, conn_id, &engine, crewmate.as_deref()).await
+        }
         HostCmd::CrewServers {} => Ok(hub.crew_relay.servers()),
         HostCmd::CrewCall { server, cmd, args } => hub.crew_relay.call(&server, &cmd, args).await,
         HostCmd::MobileInvite { url, name } => {

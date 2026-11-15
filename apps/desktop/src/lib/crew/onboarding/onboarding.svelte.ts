@@ -60,6 +60,8 @@ export class Onboarding {
 	// ─── connect step ─────────────────────────────────────────────────────────
 	sshTarget = $state("");
 	sshPort = $state(22);
+	/** Opt-in: also install the capture browsers (`atlas crew install --browsers`). Off for a first install. */
+	browsers = $state(false);
 	install = $state<InstallProgress>(initialInstallProgress());
 	/** Phase that failed (shown in red). */
 	failedPhase = $state<InstallPhase | null>(null);
@@ -87,7 +89,6 @@ export class Onboarding {
 	readonly launchedKey = $derived(
 		this.launchedNow || crew.servers.find((h) => isCrewServerKey(h.key))?.key || "",
 	);
-	readonly serverSshTarget = $derived(this.launchedKey ? this.launchedKey.replace(/^ssh:/, "") : "");
 	readonly targetValid = $derived(
 		this.sshTarget.trim() === "" ? false : parseSSHTarget(`${this.sshTarget.trim()}:${this.sshPort}`).ok,
 	);
@@ -204,12 +205,20 @@ export class Onboarding {
 		});
 
 		try {
-			const args: Record<string, unknown> = { target, port: this.sshPort !== 22 ? this.sshPort : null };
+			const args: Record<string, unknown> = {
+				target,
+				port: this.sshPort !== 22 ? this.sshPort : null,
+				browsers: this.browsers,
+			};
 			if (sudoPassword !== undefined) args.sudoPassword = sudoPassword;
 			await invoke("crew_server_install", args);
 			// hostd runs as the service user the installer reported (a server that kept `atlas-bot` keeps it).
 			const server = crewServerTarget(target, this.install.user || undefined);
-			await crew.addServer(server, server);
+			// Keep the address the install ran against: the browsers' status and install need an account that can sudo.
+			await crew.addServer(server, server, {
+				target,
+				...(this.sshPort !== 22 ? { port: this.sshPort } : {}),
+			});
 			this.launchedNow = `ssh:${server}`;
 			this.install = completeInstall(this.install);
 			this.installDone = true;
@@ -261,7 +270,7 @@ export class Onboarding {
 		this.promoting = true;
 		const server = crewServerTarget(old.key.slice(4));
 		void crew
-			.addServer(server, server)
+			.addServer(server, server, { target: old.key.slice(4) })
 			.then(() => (this.launchedNow = `ssh:${server}`))
 			.catch((e) => toast.error(errText(e)))
 			.finally(() => (this.promoting = false));
@@ -365,7 +374,7 @@ export class Onboarding {
 	}
 
 	async openSignInTerminal(agentId: string) {
-		if (!this.serverSshTarget || this.signinPtyId) return;
+		if (!this.launchedKey || this.signinPtyId) return;
 		this.signinActive = agentId;
 		this.apiKeyMode = false;
 		this.signinOutput = "";
@@ -373,7 +382,7 @@ export class Onboarding {
 		this.signinPtyId = null;
 		try {
 			await openSigninPty(
-				this.serverSshTarget,
+				this.launchedKey,
 				AGENT_SIGNIN_CMD[agentId] ?? agentId,
 				(pty) => (this.signinPtyId = pty),
 			);

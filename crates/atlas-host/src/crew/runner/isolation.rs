@@ -7,7 +7,7 @@
 
 use std::path::{Path, PathBuf};
 
-use crate::crew::engine::proc::Runner;
+use crate::crew::engine::Exec;
 use crate::crew::project;
 #[cfg(unix)]
 use crate::crew::spawn::client::Client;
@@ -53,12 +53,12 @@ impl Ctx {
     }
 
     /// Where engine processes run.
-    pub(crate) fn runner(&self) -> Runner {
+    pub(crate) fn exec(&self) -> Exec {
         #[cfg(unix)]
         if let Some((client, iso)) = &self.iso {
-            return Runner::isolated(client.clone(), iso.user.clone());
+            return Exec::isolated(client.clone(), iso.user.clone());
         }
-        Runner::local()
+        Exec::local()
     }
 
     /// The helper and user to start a terminal agent as, when isolated.
@@ -244,7 +244,7 @@ mod tests {
         let store = crate::crew::store::CrewStore::new(t.path());
         let c = Ctx::from_store(&store, "3f2a9c1e-5b7d-4e8f-9a0b-1c2d3e4f5a6b");
         assert!(c.isolated().is_none() && c.as_user().is_none());
-        assert!(!c.runner().is_isolated());
+        assert!(!c.exec().is_isolated());
     }
 
     #[test]
@@ -259,9 +259,36 @@ mod tests {
         let store = crate::crew::store::CrewStore::new(t.path()).with_isolation(Some(setup));
         let c = Ctx::from_store(&store, "3f2a9c1e-5b7d-4e8f-9a0b-1c2d3e4f5a6b");
         assert_eq!(c.isolated().unwrap().user, "atlas-cm-3f2a9c1e5b7d");
-        assert!(c.runner().is_isolated());
+        assert!(c.exec().is_isolated());
         // Test crewmates with short ids (and any id that is not a UUID) stay unisolated.
         let plain = Ctx::from_store(&store, "crewmate-a");
-        assert!(plain.isolated().is_none() && !plain.runner().is_isolated());
+        assert!(plain.isolated().is_none() && !plain.exec().is_isolated());
+    }
+
+    // Regression (merging #200 with the guards of #214 and the attachments of #209): hostd runs git in
+    // the agent's tree, which another uid owns, so every such call needs that crewmate's gitconfig;
+    // without it the guards read "could not list the new files" and the repo check was silently skipped.
+    #[test]
+    fn hostds_git_in_an_agents_tree_uses_that_crewmates_config_only_when_isolated() {
+        let t = tempfile::tempdir().unwrap();
+        let root = t.path().join("cm").to_string_lossy().into_owned();
+        let setup = layout::Setup {
+            socket: t.path().join("s.sock"),
+            provision_socket: t.path().join("p.sock"),
+            root: root.clone(),
+            hook_port: 0,
+        };
+        let id = "3f2a9c1e-5b7d-4e8f-9a0b-1c2d3e4f5a6b";
+        let isolated = crate::crew::store::CrewStore::new(t.path()).with_isolation(Some(setup));
+        let work = isolated.isolated(id).unwrap().work();
+        assert_eq!(
+            isolated.git_env_in(&work),
+            layout::git_env(isolated.isolated(id).as_ref())
+        );
+        // A tree outside any crewmate directory (a Path project on the server) needs nothing.
+        assert!(isolated.git_env_in(&t.path().join("projects/x")).is_empty());
+        // No helper, no isolation: the same path is not special.
+        let plain = crate::crew::store::CrewStore::new(t.path());
+        assert!(plain.git_env_in(&work).is_empty());
     }
 }

@@ -46,18 +46,28 @@ pub(super) async fn needs_github_auth(crewmate: &Crewmate) -> Option<String> {
     Some(format!("to clone {slug}"))
 }
 
-async fn is_github_logged_in() -> bool {
+/// The program that asks GitHub for the login: `gh`, or a fake in a test.
+fn gh_program() -> String {
+    #[cfg(test)]
+    if let Some(p) = super::testing::TEST_GH_PROGRAM.lock().clone() {
+        return p;
+    }
+    "gh".to_string()
+}
+
+/// Whether `gh` is logged in to github.com (`pub(super)` for the test that gives it a `gh` that hangs).
+pub(super) async fn is_github_logged_in() -> bool {
     #[cfg(test)]
     if let Some(v) = *TEST_GITHUB_LOGGED_IN.lock() {
         return v;
     }
-    tokio::process::Command::new("gh")
-        .args(["auth", "status", "--hostname", "github.com"])
-        .stdout(std::process::Stdio::null())
-        .stderr(std::process::Stdio::null())
-        .status()
+    // A deadline and a tree kill like every git call of a checkout: this runs before any task prepares, so a
+    // `gh` that never answers would hold the whole queue (#296). Not logged in is the safe reading of a timeout.
+    let mut cmd = tokio::process::Command::new(gh_program());
+    cmd.args(["auth", "status", "--hostname", "github.com"]);
+    crate::crew::proc::run_bounded(&mut cmd, "gh", crate::crew::proc::call_deadline())
         .await
-        .map(|s| s.success())
+        .map(|o| o.status.success())
         .unwrap_or(false)
 }
 
@@ -84,5 +94,43 @@ pub(super) async fn wait_for_github_connect(
         if is_github_logged_in().await {
             return WaitResult::Connected;
         }
+    }
+}
+
+#[cfg(all(test, unix))]
+mod tests {
+    use std::os::unix::fs::PermissionsExt;
+    use std::time::{Duration, Instant};
+
+    use super::super::testing::TEST_GH_PROGRAM;
+    use super::*;
+    use crate::crew::proc::TEST_CALL_DEADLINE;
+
+    // #296: `gh auth status` runs before every task prepares; a `gh` that never answers held the whole queue. It is
+    // killed at the deadline and reads as "not logged in" (the task then waits for a GitHub connect, which a cancel
+    // can end), instead of hanging.
+    #[tokio::test]
+    async fn a_gh_that_never_answers_reads_as_not_logged_in_at_the_deadline() {
+        // The overrides are process-wide: serialised with the tests that set the agent binary.
+        let _bin_lock = super::super::TEST_BIN_LOCK
+            .get_or_init(|| tokio::sync::Mutex::new(()))
+            .lock()
+            .await;
+        let tmp = tempfile::tempdir().unwrap();
+        let gh = tmp.path().join("gh");
+        std::fs::write(&gh, "#!/bin/sh\nsleep 300\n").unwrap();
+        std::fs::set_permissions(&gh, std::fs::Permissions::from_mode(0o755)).unwrap();
+        *TEST_GH_PROGRAM.lock() = Some(gh.to_string_lossy().into_owned());
+        *TEST_CALL_DEADLINE.lock() = Some(Duration::from_secs(1));
+        let start = Instant::now();
+        let logged_in = is_github_logged_in().await;
+        *TEST_GH_PROGRAM.lock() = None;
+        *TEST_CALL_DEADLINE.lock() = None;
+        assert!(!logged_in);
+        assert!(
+            start.elapsed() < Duration::from_secs(10),
+            "the check outlived its deadline: {:?}",
+            start.elapsed()
+        );
     }
 }

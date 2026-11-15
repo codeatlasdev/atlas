@@ -1,43 +1,36 @@
 //! OpenCode engine — `opencode run --format json --standalone`.
 
-use std::collections::BTreeMap;
-
 use serde_json::Value;
 
-use crate::crew::store::{CrewmateSession, EngineConfig, UsageRecord};
+use crate::crew::store::{CrewmateSession, UsageRecord};
 
-use super::proc::{Cmd, Runner};
-use super::{TASK_TIMEOUT, TurnResult};
+use super::{TurnCtx, TurnResult, launch, program};
 
-pub(super) async fn run(
-    engine: &EngineConfig,
-    session: CrewmateSession,
-    prompt: &str,
-    runner: &Runner,
-    extra_env: &BTreeMap<String, String>,
-    work_dir: &str,
-) -> Result<TurnResult, String> {
-    let mut cmd = Cmd::new("opencode", work_dir);
+pub(super) async fn run(ctx: TurnCtx<'_>) -> Result<TurnResult, String> {
+    let mut cmd = ctx.command(&program("opencode"));
     cmd.arg("run")
         .arg("--format")
         .arg("json")
         .arg("--standalone");
 
-    if let Some(ses_id) = &session.session_id {
+    if let Some(ses_id) = &ctx.session.session_id {
         cmd.arg("--session").arg(ses_id);
     }
 
-    cmd.arg("--auto").arg(prompt);
-    cmd.envs(extra_env);
+    cmd.arg("--auto").arg(ctx.prompt);
 
-    let out = runner.output(cmd, TASK_TIMEOUT).await?;
+    // The crew tools, for this run only and never written into the user's repo. Set after the
+    // crewmate's secrets (`ctx.command`), so a secret of this name cannot replace it.
+    cmd.env(
+        "OPENCODE_CONFIG_CONTENT",
+        ctx.mcp_server().opencode_config().to_string(),
+    );
+
+    let out = launch::output(ctx.exec, cmd, ctx.cancel, "opencode").await?;
+    let (engine, session) = (ctx.engine, ctx.session);
 
     if !out.success() {
-        return Err(format!(
-            "opencode: exited {}: {}",
-            out.code.unwrap_or(-1),
-            out.error_text()
-        ));
+        return Err(launch::exit_error("opencode", &out));
     }
 
     let stdout = out.stdout.as_str();

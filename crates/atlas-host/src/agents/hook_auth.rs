@@ -10,6 +10,18 @@ use serde_json::Value;
 
 use crate::crew::pane;
 
+/// The crew routes (`POST /crew/<id>/<route>`) an agent's MCP server calls with its own token: the one
+/// list, read by [`authorize`]; `hook_server::route_crew` dispatches the same names (a test over a real
+/// socket keeps the two in step). The webhook route is not here: it is for outsiders.
+pub(crate) const AGENT_ROUTES: [&str; 6] = [
+    "ask",
+    "set_profile",
+    "capture",
+    "locate",
+    "ui_gate",
+    "set_ui",
+];
+
 /// Who the presented token says is calling.
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub(crate) enum Caller {
@@ -41,8 +53,7 @@ pub(crate) fn authorize(caller: &Caller, path: &str, body: &Value) -> Verdict {
         let Some((target, sub)) = rest.split_once('/') else {
             return Verdict::Forbidden;
         };
-        let routable = matches!(sub, "ask" | "set_profile");
-        return verdict(target == id && routable);
+        return verdict(target == id && AGENT_ROUTES.contains(&sub));
     }
     let Some(rest) = path.strip_prefix("/hook/") else {
         return Verdict::Forbidden;
@@ -92,6 +103,48 @@ mod tests {
                 authorize(&Caller::Global, path, &Value::Null),
                 Verdict::Allow,
                 "{path}"
+            );
+        }
+    }
+
+    // Regression (merging #200 with the crew tools of #211, #213, #215, #216 and #367): the crew routes an
+    // agent's MCP server posts to are one list, `AGENT_ROUTES`. #223 listed only `ask` and `set_profile`,
+    // so with its own token an isolated crewmate got a 403 from `capture`, `locate`, `ui_gate` and
+    // `set_ui`: no UI task could ever prove itself.
+    #[test]
+    fn a_crewmate_may_call_every_agent_route_only_as_itself() {
+        // The names the MCP server posts to (`crew/mcp.rs`): written out, so shrinking the constant fails here.
+        let mut routes = AGENT_ROUTES.to_vec();
+        routes.sort_unstable();
+        assert_eq!(
+            routes,
+            [
+                "ask",
+                "capture",
+                "locate",
+                "set_profile",
+                "set_ui",
+                "ui_gate"
+            ]
+        );
+        for sub in AGENT_ROUTES {
+            assert_eq!(
+                authorize(&me(), &format!("/crew/{A}/{sub}"), &Value::Null),
+                Verdict::Allow,
+                "{sub}"
+            );
+            assert_eq!(
+                authorize(&me(), &format!("/crew/{B}/{sub}"), &Value::Null),
+                Verdict::Forbidden,
+                "{sub} as another"
+            );
+        }
+        // A route that is not an agent's (and does not exist) stays closed.
+        for sub in ["hook", "delete", "capture2", "Capture", ""] {
+            assert_eq!(
+                authorize(&me(), &format!("/crew/{A}/{sub}"), &Value::Null),
+                Verdict::Forbidden,
+                "{sub:?}"
             );
         }
     }

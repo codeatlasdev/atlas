@@ -307,23 +307,33 @@ async fn stop_and_quit_cancel_scheduled_restart() {
     assert!(!m.scheduling_pending(), "stop_all cancels pending restarts");
 }
 
-/// Audit #1: a `ready_log` service with no port must stay Starting while the
-/// child is alive but silent, and turn Running only on the match.
-#[tokio::test]
-async fn ready_log_service_stays_starting_until_regex_matches() {
-    let dir = tempfile::tempdir().unwrap();
-    let (mut m, mut rx) = manager(
-        &dir,
+/// A port-less service whose readiness is its `ready_log`, running `cmd`.
+fn ready_log_service(
+    dir: &tempfile::TempDir,
+    cmd: &str,
+) -> (ServiceManager, mpsc::UnboundedReceiver<ManagerEvent>) {
+    manager(
+        dir,
         vec![(
             "slow",
             ServiceDef {
                 ready_log: Some("Server ready".into()),
-                ..svc("echo compiling; sleep 3; echo Server ready; sleep 30")
+                ..svc(cmd)
             },
         )],
-    );
+    )
+}
+
+// Audit #1: a `ready_log` service with no port must stay Starting while the child is alive but silent, and turn
+// Running only on the match. Flake (Windows CI, 2026-11-15, `Some(Running)` vs `Some(Starting)`): this used to
+// print the line after `sleep 3` and check "still Starting" 2 s into the loop, a race when starting the service
+// took over a second on the runner. Each half is deterministic now (same fix as #391).
+#[tokio::test]
+async fn ready_log_service_stays_starting_while_the_line_never_comes() {
+    let dir = tempfile::tempdir().unwrap();
+    let (mut m, mut rx) = ready_log_service(&dir, "echo compiling; sleep 30");
     m.start_app_services(&names(&["slow"])).await;
-    // Several health ticks across > MIN_UPTIME while the log is still silent.
+    // Several health ticks across > MIN_UPTIME while the log never matches.
     drive(&mut m, &mut rx, 2, |_| false).await;
     assert_eq!(
         m.get_state("slow"),
@@ -338,6 +348,14 @@ async fn ready_log_service_stays_starting_until_regex_matches() {
         "{:?}",
         m.service_note("slow")
     );
+    m.stop_all().await;
+}
+
+#[tokio::test]
+async fn ready_log_service_turns_running_on_the_matching_line() {
+    let dir = tempfile::tempdir().unwrap();
+    let (mut m, mut rx) = ready_log_service(&dir, "echo compiling; echo Server ready; sleep 30");
+    m.start_app_services(&names(&["slow"])).await;
     drive(&mut m, &mut rx, 8, |m| {
         m.get_state("slow") == Some(ServiceState::Running)
     })

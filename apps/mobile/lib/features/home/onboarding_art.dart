@@ -3,6 +3,7 @@ import 'dart:math' as math;
 import 'package:flutter/material.dart';
 
 import 'package:atlas_mobile/core/ui/atlas_theme.dart';
+import 'package:atlas_mobile/core/ui/motion_size.dart';
 
 /// A looping clock for an illustration; still (at [still]) under reduced motion.
 mixin _Loop<T extends StatefulWidget>
@@ -315,10 +316,8 @@ class _AgentStoryArtState extends State<AgentStoryArt>
                   ],
                 ),
                 const SizedBox(height: Space.sm),
-                AnimatedSize(
+                MotionSize(
                   duration: Motion.slow,
-                  curve: Motion.ease,
-                  alignment: Alignment.topCenter,
                   child: AnimatedSwitcher(
                     duration: Motion.slow,
                     switchInCurve: Motion.ease,

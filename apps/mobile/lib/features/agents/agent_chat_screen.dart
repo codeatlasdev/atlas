@@ -14,6 +14,7 @@ import 'package:atlas_mobile/core/connection/connection_notifier.dart';
 import 'package:atlas_mobile/core/protocol/models.dart';
 import 'package:atlas_mobile/core/ui/agent_logo.dart';
 import 'package:atlas_mobile/core/ui/atlas_theme.dart';
+import 'package:atlas_mobile/core/ui/motion_size.dart';
 import 'package:atlas_mobile/core/ui/components.dart';
 import 'package:atlas_mobile/features/agents/agent_info.dart';
 import 'package:atlas_mobile/features/agents/agent_switcher.dart';
@@ -516,17 +517,12 @@ class _AgentChatScreenState extends ConsumerState<AgentChatScreen> {
   }
 
   /// The room above the composer for what waits for an answer: it grows from the composer's edge when something
-  /// arrives, instead of shoving the thread in one frame, and just is there under Reduce motion (an `AnimatedSize`
-  /// with no duration re-dirties itself while it lays out).
-  Widget _grow(Widget child) => Motion.reduced(context)
-      ? child
-      : AnimatedSize(
-          duration: Motion.slow,
-          // Eases in too (the app's ease starts almost at once): a size change must not jump in its first frame.
-          curve: Curves.easeInOut,
-          alignment: Alignment.bottomCenter,
-          child: child,
-        );
+  /// arrives, instead of shoving the thread in one frame, and just is there under Reduce motion.
+  Widget _grow(Widget child) => MotionSize(
+    duration: Motion.slow,
+    alignment: Alignment.bottomCenter,
+    child: child,
+  );
 
   String _firstPrompt() {
     for (final i in _history.items) {

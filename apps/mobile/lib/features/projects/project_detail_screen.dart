@@ -1,26 +1,35 @@
 import 'dart:async';
 
 import 'package:flutter/material.dart';
-import 'package:flutter/services.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 
-import 'package:atlas_mobile/core/connection/require_mux.dart';
 import 'package:atlas_mobile/core/connection/connection_notifier.dart';
+import 'package:atlas_mobile/core/connection/require_mux.dart';
 import 'package:atlas_mobile/core/protocol/latest_only.dart';
 import 'package:atlas_mobile/core/protocol/models.dart';
 import 'package:atlas_mobile/core/protocol/multiplexer.dart';
+import 'package:atlas_mobile/core/protocol/pty_open.dart';
+import 'package:atlas_mobile/core/ui/atlas_theme.dart';
+import 'package:atlas_mobile/core/ui/components.dart';
 import 'package:atlas_mobile/features/agents/agent_chat_screen.dart';
 import 'package:atlas_mobile/features/agents/agent_info.dart';
 import 'package:atlas_mobile/features/agents/agent_launcher.dart';
-import 'package:atlas_mobile/core/protocol/pty_open.dart';
 import 'package:atlas_mobile/features/git/changes_tile.dart';
-import 'package:atlas_mobile/core/ui/agent_logo.dart';
 import 'package:atlas_mobile/features/projects/charts.dart';
+import 'package:atlas_mobile/features/projects/detail/action_tile.dart';
+import 'package:atlas_mobile/features/projects/detail/agents_tab.dart';
+import 'package:atlas_mobile/features/projects/detail/banner.dart';
+import 'package:atlas_mobile/features/projects/detail/glow.dart';
+import 'package:atlas_mobile/features/projects/detail/header.dart';
+import 'package:atlas_mobile/features/projects/detail/kpis.dart';
+import 'package:atlas_mobile/features/projects/detail/service_card.dart';
+import 'package:atlas_mobile/features/projects/detail/setup_row.dart';
+import 'package:atlas_mobile/features/projects/detail/skeleton.dart';
+import 'package:atlas_mobile/features/projects/detail/tabs.dart';
+import 'package:atlas_mobile/features/projects/detail/top_bar.dart';
+import 'package:atlas_mobile/features/projects/logs_page.dart';
 import 'package:atlas_mobile/features/projects/project_avatar.dart';
-import 'package:atlas_mobile/core/ui/components.dart';
-import 'package:atlas_mobile/core/ui/atlas_theme.dart';
 import 'package:atlas_mobile/features/projects/project_metrics.dart';
-import 'package:atlas_mobile/features/projects/worktrees_section.dart';
 import 'package:atlas_mobile/features/terminal/new_terminal.dart';
 
 /// A project's panel, like the desktop's: header, KPIs, service cards, resources and
@@ -158,7 +167,7 @@ class _ProjectDetailScreenState extends ConsumerState<ProjectDetailScreen> {
   void _openLogs({String? service}) {
     Navigator.of(context).push(
       MaterialPageRoute<void>(
-        builder: (_) => _LogsPage(
+        builder: (_) => LogsPage(
           device: widget.device,
           projectId: widget.project.id,
           services: [
@@ -217,31 +226,13 @@ class _ProjectDetailScreenState extends ConsumerState<ProjectDetailScreen> {
     return Scaffold(
       body: Stack(
         children: [
-          // The project's colour as a faint glow behind its header.
-          Positioned(
-            top: -180,
-            left: -100,
-            right: -100,
-            height: 440,
-            child: IgnorePointer(
-              child: DecoratedBox(
-                decoration: BoxDecoration(
-                  gradient: RadialGradient(
-                    colors: [
-                      tint.withValues(alpha: .2),
-                      tint.withValues(alpha: 0),
-                    ],
-                  ),
-                ),
-              ),
-            ),
-          ),
+          ProjectGlow(tint: tint),
           if (s == null)
             SafeArea(
               child: Column(
                 children: [
                   // Same top bar as the loaded page: the header below names it.
-                  _TopBar(
+                  ProjectTopBar(
                     reconnecting: reconnecting,
                     onLogs: null,
                     title: _error != null ? widget.project.name : null,
@@ -256,7 +247,7 @@ class _ProjectDetailScreenState extends ConsumerState<ProjectDetailScreen> {
                               child: const Text('Try again'),
                             ),
                           )
-                        : _Skeleton(project: widget.project),
+                        : ProjectSkeleton(project: widget.project),
                   ),
                 ],
               ),
@@ -270,7 +261,7 @@ class _ProjectDetailScreenState extends ConsumerState<ProjectDetailScreen> {
                   SliverSafeArea(
                     bottom: false,
                     sliver: SliverToBoxAdapter(
-                      child: _TopBar(
+                      child: ProjectTopBar(
                         onLogs: () => _openLogs(),
                         title: null,
                         reconnecting: reconnecting,
@@ -286,19 +277,19 @@ class _ProjectDetailScreenState extends ConsumerState<ProjectDetailScreen> {
                     ),
                     sliver: SliverList.list(
                       children: [
-                        _Header(
+                        ProjectHeader(
                           snap: s,
                           onUp: _busy.contains('up')
                               ? null
                               : () => _serviceOp('up'),
                         ),
                         if (s.setupState != null && s.setupState != 'ok')
-                          _SetupRow(snap: s),
+                          ProjectSetupRow(snap: s),
                         ..._attention(s),
                         const SizedBox(height: Space.sm),
-                        _Kpis(snap: s),
+                        ProjectKpis(snap: s),
                         const SizedBox(height: Space.md),
-                        _Tabs(
+                        ProjectTabs(
                           index: _tab,
                           labels: [
                             'Overview',
@@ -349,7 +340,7 @@ class _ProjectDetailScreenState extends ConsumerState<ProjectDetailScreen> {
       for (final (pane, a) in s.agents.where(
         (x) => x.$2.state == 'blocked' || x.$2.state == 'waiting',
       ))
-        _Banner(
+        ProjectBanner(
           color: c.warning,
           icon: Icons.front_hand_rounded,
           title: a.state == 'blocked'
@@ -360,7 +351,7 @@ class _ProjectDetailScreenState extends ConsumerState<ProjectDetailScreen> {
         ),
       if (s.running)
         for (final svc in s.services.where((x) => x.state == 'failed'))
-          _Banner(
+          ProjectBanner(
             color: c.error,
             icon: Icons.error_outline_rounded,
             title: '${svc.name} stopped working',
@@ -370,63 +361,18 @@ class _ProjectDetailScreenState extends ConsumerState<ProjectDetailScreen> {
     ];
   }
 
-  /// Every agent of the project, one line each; the ones waiting on you first. A
-  /// prominent button starts a new one.
-  Widget _agents(ProjectSnapshot s) {
-    final c = AtlasColors.of(context);
-    final list = [
-      ...s.agents.where((e) => needsYou(e.$2)),
-      ...s.agents.where((e) => !needsYou(e.$2)),
-    ];
-    return Padding(
-      padding: const EdgeInsets.only(top: Space.md),
-      child: Column(
-        crossAxisAlignment: CrossAxisAlignment.stretch,
-        children: [
-          FilledButton.icon(
-            onPressed: _newAgent,
-            icon: const Icon(Icons.add_rounded, size: 20),
-            label: const Text('New agent'),
-          ),
-          if (canOpenTerminal(widget.device)) ...[
-            const SizedBox(height: Space.sm),
-            OutlinedButton.icon(
-              key: const Key('new-terminal'),
-              onPressed: () => newTerminalInProject(
-                context,
-                ref,
-                widget.device,
-                widget.project,
-              ),
-              icon: const Icon(Icons.terminal_rounded, size: 20),
-              label: const Text('New terminal'),
-            ),
-          ],
-          const SizedBox(height: Space.md),
-          if (list.isEmpty)
-            Padding(
-              padding: const EdgeInsets.symmetric(vertical: Space.lg),
-              child: Text(
-                'No agent running in this project.',
-                textAlign: TextAlign.center,
-                style: TextStyle(color: c.muted),
-              ),
-            )
-          else
-            AtlasCard(
-              padding: EdgeInsets.zero,
-              child: Column(
-                children: [
-                  for (final (pane, a) in list)
-                    _AgentLine(status: a, onTap: () => _openAgent(pane, a)),
-                ],
-              ),
-            ),
-          WorktreesSection(device: widget.device, projectId: widget.project.id),
-        ],
-      ),
-    );
-  }
+  /// Every agent of the project, one line each; the ones waiting on you first.
+  Widget _agents(ProjectSnapshot s) => ProjectAgentsTab(
+    device: widget.device,
+    projectId: widget.project.id,
+    agents: s.agents,
+    onNewAgent: _newAgent,
+    onNewTerminal: canOpenTerminal(widget.device)
+        ? () =>
+              newTerminalInProject(context, ref, widget.device, widget.project)
+        : null,
+    onOpenAgent: _openAgent,
+  );
 
   Widget _overview(ProjectSnapshot s) => Column(
     crossAxisAlignment: CrossAxisAlignment.stretch,
@@ -441,7 +387,7 @@ class _ProjectDetailScreenState extends ConsumerState<ProjectDetailScreen> {
             for (var i = 0; i < s.services.length; i++)
               SizedBox(
                 width: (box.maxWidth - Space.sm) / 2,
-                child: _ServiceCard(
+                child: ServiceCard(
                   svc: s.services[i],
                   mem: _history.mem[s.services[i].name] ?? const [],
                   color: AtlasColors.of(context)
@@ -457,7 +403,7 @@ class _ProjectDetailScreenState extends ConsumerState<ProjectDetailScreen> {
       if (s.actions.isNotEmpty) ...[
         SectionHeader('Actions', count: s.actions.length),
         for (final a in s.actions)
-          _ActionTile(action: a, onRun: () => _runAction(a)),
+          ProjectActionTile(action: a, onRun: () => _runAction(a)),
       ],
     ],
   );
@@ -494,1255 +440,4 @@ class _ProjectDetailScreenState extends ConsumerState<ProjectDetailScreen> {
       ),
     ],
   );
-}
-
-/// Back, and the logs shortcut; the title only while there is no header to carry it.
-class _TopBar extends StatelessWidget {
-  const _TopBar({
-    required this.onLogs,
-    required this.title,
-    this.reconnecting = false,
-  });
-  final VoidCallback? onLogs;
-  final String? title;
-
-  /// The connection to the Mac is being re-established.
-  final bool reconnecting;
-
-  @override
-  Widget build(BuildContext context) => Padding(
-    padding: const EdgeInsets.symmetric(horizontal: Space.xs),
-    child: Row(
-      children: [
-        const BackButton(),
-        if (title != null)
-          Expanded(
-            child: Text(
-              title!,
-              maxLines: 1,
-              overflow: TextOverflow.ellipsis,
-              style: Theme.of(context).textTheme.titleMedium,
-            ),
-          )
-        else
-          const Spacer(),
-        if (reconnecting)
-          Flexible(
-            child: Padding(
-              padding: const EdgeInsets.only(right: Space.sm),
-              child: Row(
-                mainAxisSize: MainAxisSize.min,
-                children: [
-                  const SizedBox.square(
-                    dimension: 12,
-                    child: CircularProgressIndicator(strokeWidth: 1.6),
-                  ),
-                  const SizedBox(width: 6),
-                  Flexible(
-                    child: Text(
-                      'Reconnecting…',
-                      maxLines: 1,
-                      overflow: TextOverflow.ellipsis,
-                      style: TextStyle(
-                        fontSize: 12,
-                        color: AtlasColors.of(context).muted,
-                      ),
-                    ),
-                  ),
-                ],
-              ),
-            ),
-          ),
-        if (onLogs != null)
-          TextButton.icon(
-            onPressed: onLogs,
-            icon: const Icon(Icons.subject_rounded, size: 18),
-            label: const Text('Logs'),
-          ),
-      ],
-    ),
-  );
-}
-
-/// Pill tabs; the selected one slides under the labels.
-class _Tabs extends StatelessWidget {
-  const _Tabs({
-    required this.index,
-    required this.labels,
-    required this.onChanged,
-  });
-  final int index;
-  final List<String> labels;
-  final void Function(int) onChanged;
-
-  @override
-  Widget build(BuildContext context) {
-    final c = AtlasColors.of(context);
-    return Container(
-      constraints: const BoxConstraints(minHeight: 48),
-      padding: const EdgeInsets.symmetric(horizontal: 3),
-      decoration: BoxDecoration(
-        color: c.base,
-        borderRadius: BorderRadius.circular(12),
-        border: Border.all(color: c.borderSubtle),
-      ),
-      child: LayoutBuilder(
-        builder: (context, box) {
-          final w = box.maxWidth / labels.length;
-          return Stack(
-            children: [
-              // The pill behind the selected label: as tall as the row, whatever the text size.
-              Positioned.fill(
-                child: AnimatedAlign(
-                  duration: Motion.slow,
-                  curve: Motion.ease,
-                  alignment: Alignment(
-                    labels.length == 1
-                        ? 0
-                        : -1 + 2 * index / (labels.length - 1),
-                    0,
-                  ),
-                  child: FractionallySizedBox(
-                    widthFactor: 1 / labels.length,
-                    heightFactor: 1,
-                    child: Container(
-                      width: w,
-                      decoration: BoxDecoration(
-                        color: c.raised,
-                        borderRadius: BorderRadius.circular(9),
-                      ),
-                    ),
-                  ),
-                ),
-              ),
-              Row(
-                children: [
-                  for (var i = 0; i < labels.length; i++)
-                    Expanded(
-                      child: Semantics(
-                        button: true,
-                        selected: i == index,
-                        child: GestureDetector(
-                          behavior: HitTestBehavior.opaque,
-                          onTap: () => onChanged(i),
-                          child: ConstrainedBox(
-                            constraints: const BoxConstraints(minHeight: 48),
-                            child: Center(
-                              child: AnimatedDefaultTextStyle(
-                                duration: Motion.normal,
-                                maxLines: 1,
-                                overflow: TextOverflow.ellipsis,
-                                style: TextStyle(
-                                  color: i == index ? c.text : c.muted,
-                                  fontWeight: i == index
-                                      ? FontWeight.w600
-                                      : FontWeight.w500,
-                                  fontSize: 14,
-                                ),
-                                child: Text(labels[i]),
-                              ),
-                            ),
-                          ),
-                        ),
-                      ),
-                    ),
-                ],
-              ),
-            ],
-          );
-        },
-      ),
-    );
-  }
-}
-
-/// One thing in this project that waits on the user, with its action.
-class _Banner extends StatelessWidget {
-  const _Banner({
-    required this.color,
-    required this.icon,
-    required this.title,
-    required this.action,
-    required this.onTap,
-  });
-  final Color color;
-  final IconData icon;
-  final String title;
-  final String action;
-  final VoidCallback onTap;
-
-  @override
-  Widget build(BuildContext context) => Padding(
-    padding: const EdgeInsets.only(top: Space.sm),
-    child: Semantics(
-      button: true,
-      label: '$title, $action',
-      excludeSemantics: true,
-      onTap: onTap,
-      child: GestureDetector(
-        onTap: onTap,
-        child: Container(
-          constraints: const BoxConstraints(minHeight: 48),
-          alignment: Alignment.centerLeft,
-          padding: const EdgeInsets.fromLTRB(
-            Space.md,
-            Space.sm,
-            Space.sm,
-            Space.sm,
-          ),
-          decoration: BoxDecoration(
-            color: color.withValues(alpha: .12),
-            borderRadius: BorderRadius.circular(Space.radius),
-            border: Border.all(color: color.withValues(alpha: .45)),
-          ),
-          child: Row(
-            children: [
-              Icon(icon, color: color, size: 18),
-              const SizedBox(width: Space.sm),
-              Expanded(
-                child: Text(
-                  title,
-                  style: const TextStyle(fontWeight: FontWeight.w600),
-                ),
-              ),
-              AtlasChip(action, tone: color),
-            ],
-          ),
-        ),
-      ),
-    ),
-  );
-}
-
-/// An atlas.yaml action: what it is, whether it asks first, one tap to run.
-class _ActionTile extends StatelessWidget {
-  const _ActionTile({required this.action, required this.onRun});
-  final ProjectAction action;
-  final VoidCallback onRun;
-
-  @override
-  Widget build(BuildContext context) {
-    final c = AtlasColors.of(context);
-    return AtlasCard(
-      onTap: onRun,
-      padding: const EdgeInsets.fromLTRB(
-        Space.md,
-        Space.sm + 2,
-        Space.md,
-        Space.sm + 2,
-      ),
-      child: Row(
-        children: [
-          Container(
-            width: 32,
-            height: 32,
-            decoration: BoxDecoration(
-              color: c.accent.withValues(alpha: .14),
-              borderRadius: BorderRadius.circular(Space.radiusSm),
-            ),
-            child: Icon(Icons.play_arrow_rounded, color: c.accent, size: 20),
-          ),
-          const SizedBox(width: Space.md),
-          Expanded(
-            child: Column(
-              crossAxisAlignment: CrossAxisAlignment.start,
-              children: [
-                Text(
-                  action.label,
-                  maxLines: 2,
-                  overflow: TextOverflow.ellipsis,
-                  style: const TextStyle(fontWeight: FontWeight.w600),
-                ),
-                if (action.confirm != null)
-                  Text(
-                    'Asks before running',
-                    style: TextStyle(color: c.muted, fontSize: 12),
-                  ),
-              ],
-            ),
-          ),
-          const SizedBox(width: Space.sm),
-          ConstrainedBox(
-            constraints: const BoxConstraints(maxWidth: 96),
-            child: Text(
-              action.key,
-              maxLines: 1,
-              overflow: TextOverflow.ellipsis,
-              style: TextStyle(
-                color: c.muted,
-                fontFamily: monoFamily,
-                fontFamilyFallback: monoFallback,
-                fontSize: 12,
-              ),
-            ),
-          ),
-        ],
-      ),
-    );
-  }
-}
-
-String _dur(int s) {
-  final h = s ~/ 3600, m = (s % 3600) ~/ 60;
-  return h > 0
-      ? '${h}h ${m}m'
-      : m > 0
-      ? '${m}m'
-      : '${s}s';
-}
-
-class _Header extends StatelessWidget {
-  const _Header({required this.snap, required this.onUp});
-  final ProjectSnapshot snap;
-  final VoidCallback? onUp;
-
-  @override
-  Widget build(BuildContext context) {
-    final c = AtlasColors.of(context);
-    final failed = snap.services.where((s) => s.state == 'failed').length;
-    final (label, color) = !snap.running
-        ? ('Stopped', c.muted)
-        : failed > 0
-        ? ('$failed failed', c.error)
-        : ('Running', c.success);
-    final meta = [
-      if (snap.running && snap.uptimeS != null) 'up ${_dur(snap.uptimeS!)}',
-      if (snap.pid != null) 'pid ${snap.pid}',
-    ].join(' · ');
-    return Padding(
-      padding: const EdgeInsets.only(bottom: Space.sm),
-      child: Column(
-        crossAxisAlignment: CrossAxisAlignment.start,
-        children: [
-          Row(
-            children: [
-              Hero(
-                tag: 'project-${snap.id}',
-                child: ProjectAvatar(name: snap.name, size: 56),
-              ),
-              const SizedBox(width: Space.md),
-              Expanded(
-                child: Column(
-                  crossAxisAlignment: CrossAxisAlignment.start,
-                  children: [
-                    Text(
-                      snap.name,
-                      overflow: TextOverflow.ellipsis,
-                      style: Theme.of(context).textTheme.headlineSmall
-                          ?.copyWith(
-                            fontWeight: FontWeight.w700,
-                            letterSpacing: -.5,
-                          ),
-                    ),
-                    const SizedBox(height: 2),
-                    Text(
-                      snap.root.replaceFirst(RegExp(r'^/Users/[^/]+'), '~'),
-                      overflow: TextOverflow.ellipsis,
-                      style: TextStyle(
-                        fontSize: 12,
-                        color: c.muted,
-                        fontFamily: monoFamily,
-                        fontFamilyFallback: monoFallback,
-                      ),
-                    ),
-                  ],
-                ),
-              ),
-            ],
-          ),
-          const SizedBox(height: Space.md),
-          // Status and uptime on the left, Start on the right; on a narrow phone or large
-          // text the Start button drops to its own line instead of pushing them off screen.
-          Wrap(
-            alignment: WrapAlignment.spaceBetween,
-            crossAxisAlignment: WrapCrossAlignment.center,
-            spacing: Space.sm,
-            runSpacing: Space.sm,
-            children: [
-              LayoutBuilder(
-                builder: (context, box) => ConstrainedBox(
-                  constraints: BoxConstraints(maxWidth: box.maxWidth),
-                  child: Row(
-                    mainAxisSize: MainAxisSize.min,
-                    children: [
-                      Container(
-                        padding: const EdgeInsets.fromLTRB(2, 2, 10, 2),
-                        decoration: BoxDecoration(
-                          color: color.withValues(alpha: .12),
-                          borderRadius: BorderRadius.circular(999),
-                        ),
-                        child: Row(
-                          mainAxisSize: MainAxisSize.min,
-                          children: [
-                            StatusDot(
-                              color: color,
-                              pulse: snap.running && failed == 0,
-                              size: 6,
-                            ),
-                            Text(
-                              label,
-                              style: TextStyle(
-                                color: color,
-                                fontSize: 12,
-                                fontWeight: FontWeight.w600,
-                              ),
-                            ),
-                          ],
-                        ),
-                      ),
-                      if (meta.isNotEmpty) ...[
-                        const SizedBox(width: Space.sm),
-                        Flexible(
-                          child: Text(
-                            meta,
-                            maxLines: 1,
-                            overflow: TextOverflow.ellipsis,
-                            style: TextStyle(color: c.muted, fontSize: 12),
-                          ),
-                        ),
-                      ],
-                    ],
-                  ),
-                ),
-              ),
-              if (!snap.running)
-                FilledButton.icon(
-                  onPressed: onUp,
-                  icon: const Icon(Icons.play_arrow_rounded),
-                  label: const Text('Start'),
-                ),
-            ],
-          ),
-        ],
-      ),
-    );
-  }
-}
-
-class _SetupRow extends StatelessWidget {
-  const _SetupRow({required this.snap});
-  final ProjectSnapshot snap;
-
-  @override
-  Widget build(BuildContext context) {
-    final ok = snap.setupState == 'ok';
-    return AtlasCard(
-      child: Row(
-        children: [
-          Icon(
-            ok
-                ? Icons.check
-                : snap.setupState == 'running'
-                ? Icons.hourglass_top
-                : Icons.error_outline,
-            size: 16,
-            color: ok
-                ? AtlasColors.of(context).success
-                : AtlasColors.of(context).error,
-          ),
-          const SizedBox(width: 8),
-          const Text('Setup', style: TextStyle(fontWeight: FontWeight.w600)),
-          const SizedBox(width: 8),
-          Expanded(
-            flex: 3,
-            child: Text(
-              snap.setupCommand ?? '',
-              maxLines: 1,
-              overflow: TextOverflow.ellipsis,
-              style: const TextStyle(
-                fontFamily: monoFamily,
-                fontFamilyFallback: monoFallback,
-                fontSize: 12,
-              ),
-            ),
-          ),
-          const SizedBox(width: 8),
-          Flexible(
-            child: Text(
-              snap.setupState!,
-              maxLines: 1,
-              overflow: TextOverflow.ellipsis,
-              style: const TextStyle(fontSize: 12),
-            ),
-          ),
-        ],
-      ),
-    );
-  }
-}
-
-class _Kpis extends StatelessWidget {
-  const _Kpis({required this.snap});
-  final ProjectSnapshot snap;
-
-  @override
-  Widget build(BuildContext context) {
-    final c = AtlasColors.of(context);
-    final mem = snap.memMb >= 1024
-        ? '${(snap.memMb / 1024).toStringAsFixed(1)} GB'
-        : '${snap.memMb.round()} MB';
-    final allUp = snap.upCount == snap.services.length;
-    // (label, value, colour when it needs attention)
-    final items = [
-      (
-        'running',
-        '${snap.upCount}/${snap.services.length}',
-        allUp ? null : c.error,
-      ),
-      ('errors · 5m', '${snap.errors5m}', snap.errors5m > 0 ? c.warning : null),
-      ('restarts', '${snap.restarts}', snap.restarts > 0 ? c.warning : null),
-      ('memory', mem, null),
-      ('cpu', '${snap.cpu.round()}%', null),
-    ];
-    // One strip, scrollable on narrow phones, like the desktop's KPI row.
-    return AtlasCard(
-      padding: const EdgeInsets.symmetric(vertical: Space.md),
-      child: SingleChildScrollView(
-        scrollDirection: Axis.horizontal,
-        padding: const EdgeInsets.symmetric(horizontal: Space.md),
-        child: IntrinsicHeight(
-          child: Row(
-            children: [
-              for (var i = 0; i < items.length; i++) ...[
-                if (i > 0)
-                  VerticalDivider(color: c.borderSubtle, width: Space.xl),
-                Column(
-                  crossAxisAlignment: CrossAxisAlignment.start,
-                  children: [
-                    AnimatedSwitcher(
-                      duration: Motion.normal,
-                      transitionBuilder: (w, a) =>
-                          FadeTransition(opacity: a, child: w),
-                      child: Text(
-                        items[i].$2,
-                        key: ValueKey(items[i].$2),
-                        style: TextStyle(
-                          fontSize: 20,
-                          fontWeight: FontWeight.w700,
-                          color: items[i].$3 ?? c.text,
-                          fontFeatures: const [FontFeature.tabularFigures()],
-                        ),
-                      ),
-                    ),
-                    const SizedBox(height: 2),
-                    Text(
-                      items[i].$1,
-                      style: TextStyle(fontSize: 11, color: c.muted),
-                    ),
-                  ],
-                ),
-              ],
-            ],
-          ),
-        ),
-      ),
-    );
-  }
-}
-
-class _ServiceCard extends StatelessWidget {
-  const _ServiceCard({
-    required this.svc,
-    required this.mem,
-    required this.color,
-    required this.busy,
-    required this.onOp,
-    required this.onLogs,
-  });
-
-  final ServiceRow svc;
-  final List<double> mem;
-  final Color color;
-  final bool busy;
-  final void Function(String op) onOp;
-  final VoidCallback onLogs;
-
-  @override
-  Widget build(BuildContext context) {
-    final c = AtlasColors.of(context);
-    final failed = svc.state == 'failed';
-    return AtlasCard(
-      padding: const EdgeInsets.fromLTRB(
-        Space.md,
-        Space.sm + 2,
-        Space.md,
-        Space.sm + 2,
-      ),
-      accent: failed ? c.error : null,
-      onTap: () => _ServiceSheet.show(context, this),
-      child: Column(
-        crossAxisAlignment: CrossAxisAlignment.start,
-        children: [
-          Row(
-            children: [
-              StatusDot(
-                color: c.serviceState(svc.state),
-                pulse: svc.state == 'starting',
-                size: 6,
-              ),
-              Expanded(
-                child: Text(
-                  svc.name,
-                  overflow: TextOverflow.ellipsis,
-                  style: const TextStyle(
-                    fontWeight: FontWeight.w600,
-                    fontSize: 15,
-                  ),
-                ),
-              ),
-              if (busy)
-                const SizedBox.square(
-                  dimension: 14,
-                  child: CircularProgressIndicator(strokeWidth: 2),
-                ),
-            ],
-          ),
-          const SizedBox(height: 2),
-          Text(
-            svc.note ??
-                (svc.port != null && svc.up
-                    ? '${svc.state} · :${svc.port}'
-                    : svc.state),
-            maxLines: 1,
-            overflow: TextOverflow.ellipsis,
-            style: TextStyle(fontSize: 12, color: failed ? c.error : c.muted),
-          ),
-          const SizedBox(height: Space.sm),
-          SizedBox(
-            height: 22,
-            child: svc.up
-                ? Sparkline(values: mem, color: color)
-                : Align(
-                    alignment: Alignment.centerLeft,
-                    child: Container(height: 1, color: c.borderSubtle),
-                  ),
-          ),
-          const SizedBox(height: 4),
-          Text(
-            svc.up ? '${svc.memMb.round()} MB · ${svc.cpu.round()}%' : '—',
-            style: TextStyle(
-              fontSize: 11,
-              color: c.muted,
-              fontFeatures: const [FontFeature.tabularFigures()],
-            ),
-          ),
-        ],
-      ),
-    );
-  }
-}
-
-/// A service's details and controls, from its tile: state, port, last log line,
-/// dependencies, and restart / stop / start / logs.
-class _ServiceSheet extends StatelessWidget {
-  const _ServiceSheet(this.card);
-  final _ServiceCard card;
-
-  static Future<void> show(BuildContext context, _ServiceCard card) =>
-      showModalBottomSheet<void>(
-        context: context,
-        builder: (_) => _ServiceSheet(card),
-      );
-
-  @override
-  Widget build(BuildContext context) {
-    final c = AtlasColors.of(context);
-    final svc = card.svc;
-    final failed = svc.state == 'failed';
-    void run(String op) {
-      Navigator.pop(context);
-      card.onOp(op);
-    }
-
-    return SafeArea(
-      child: SingleChildScrollView(
-        padding: const EdgeInsets.fromLTRB(Space.lg, 0, Space.lg, Space.lg),
-        child: Column(
-          mainAxisSize: MainAxisSize.min,
-          crossAxisAlignment: CrossAxisAlignment.start,
-          children: [
-            Row(
-              children: [
-                StatusDot(color: c.serviceState(svc.state), size: 8),
-                Flexible(
-                  flex: 3,
-                  child: Text(
-                    svc.name,
-                    maxLines: 2,
-                    overflow: TextOverflow.ellipsis,
-                    style: Theme.of(context).textTheme.titleLarge,
-                  ),
-                ),
-                const SizedBox(width: Space.sm),
-                Flexible(
-                  flex: 2,
-                  child: Text(
-                    svc.note ?? svc.state,
-                    maxLines: 1,
-                    overflow: TextOverflow.ellipsis,
-                    style: TextStyle(color: failed ? c.error : c.muted),
-                  ),
-                ),
-                const Spacer(),
-                if (svc.port != null)
-                  AtlasChip(
-                    ':${svc.port}',
-                    tone: c.accent,
-                    mono: true,
-                    onTap: () {
-                      Clipboard.setData(
-                        ClipboardData(text: 'http://localhost:${svc.port}'),
-                      );
-                      ScaffoldMessenger.of(context).showSnackBar(
-                        SnackBar(content: Text('localhost:${svc.port} copied')),
-                      );
-                    },
-                  ),
-              ],
-            ),
-            if (svc.up) ...[
-              const SizedBox(height: Space.md),
-              SizedBox(
-                height: 40,
-                child: Sparkline(values: card.mem, color: card.color),
-              ),
-              const SizedBox(height: 4),
-              Text(
-                '${svc.memMb.round()} MB · ${svc.cpu.round()}% CPU'
-                '${svc.restarts > 0 ? ' · ${svc.restarts} restarts' : ''}',
-                style: TextStyle(color: c.muted, fontSize: 12),
-              ),
-            ],
-            if (svc.lastLine.isNotEmpty) ...[
-              const SizedBox(height: Space.md),
-              Container(
-                width: double.infinity,
-                padding: const EdgeInsets.all(Space.sm + 2),
-                decoration: BoxDecoration(
-                  color: c.ground,
-                  borderRadius: BorderRadius.circular(Space.radiusSm),
-                ),
-                child: Text(
-                  svc.lastLine,
-                  maxLines: 3,
-                  overflow: TextOverflow.ellipsis,
-                  style: TextStyle(
-                    fontFamily: monoFamily,
-                    fontFamilyFallback: monoFallback,
-                    fontSize: 12,
-                    color: failed ? c.error : c.muted,
-                  ),
-                ),
-              ),
-            ],
-            if (svc.dependsOn.isNotEmpty) ...[
-              const SizedBox(height: Space.sm),
-              Text(
-                'Needs ${svc.dependsOn.join(', ')}',
-                style: TextStyle(color: c.muted, fontSize: 12),
-              ),
-            ],
-            const SizedBox(height: Space.lg),
-            Wrap(
-              spacing: Space.sm,
-              runSpacing: Space.sm,
-              children: [
-                if (svc.up) ...[
-                  FilledButton.icon(
-                    onPressed: () => run('restart'),
-                    icon: const Icon(Icons.refresh_rounded, size: 18),
-                    label: const Text('Restart'),
-                  ),
-                  OutlinedButton.icon(
-                    onPressed: () => run('stop'),
-                    icon: const Icon(Icons.stop_rounded, size: 18),
-                    label: const Text('Stop'),
-                  ),
-                ] else
-                  FilledButton.icon(
-                    onPressed: () => run('start'),
-                    icon: const Icon(Icons.play_arrow_rounded, size: 18),
-                    label: const Text('Start'),
-                  ),
-                OutlinedButton.icon(
-                  onPressed: () {
-                    Navigator.pop(context);
-                    card.onLogs();
-                  },
-                  icon: const Icon(Icons.subject_rounded, size: 18),
-                  label: const Text('Logs'),
-                ),
-              ],
-            ),
-          ],
-        ),
-      ),
-    );
-  }
-}
-
-/// Logs, full screen: filter by service, search, and follow live. Lines are split into
-/// service tag, time and text; stderr and error lines stand out.
-class _LogsPage extends ConsumerStatefulWidget {
-  const _LogsPage({
-    required this.device,
-    required this.projectId,
-    required this.services,
-    this.service,
-  });
-  final MacDevice device;
-  final String projectId;
-  final List<String> services;
-  final String? service;
-
-  @override
-  ConsumerState<_LogsPage> createState() => _LogsPageState();
-}
-
-/// `[api:12] 12:01:02 [stderr] text` → (service, time, stderr, text).
-final _logLine = RegExp(
-  r'^\[([^:\]]+)(?::\d+)?\]\s+(\d\d:\d\d:\d\d)\s+\[(stdout|stderr)\]\s?(.*)$',
-);
-
-class _LogsPageState extends ConsumerState<_LogsPage> {
-  final _search = TextEditingController();
-  late String? _service = widget.service;
-  List<String> _lines = const [];
-  String? _error;
-  bool _loading = true;
-  bool _live = true;
-  Timer? _timer;
-  final _latest = LatestOnly();
-
-  @override
-  void initState() {
-    super.initState();
-    _load();
-    _timer = Timer.periodic(const Duration(seconds: 3), (_) {
-      if (_live && _search.text.trim().isEmpty) _load(poll: true);
-    });
-  }
-
-  @override
-  void dispose() {
-    _latest.close();
-    _timer?.cancel();
-    _search.dispose();
-    super.dispose();
-  }
-
-  /// Loads `project_logs` for the current service and search. A live poll ([poll]) skips while the
-  /// app is in the background, while the computer is not connected, and while its previous request is
-  /// unanswered. A search or a service pick always asks and supersedes anything in flight: only the
-  /// newest question's reply is applied, so a slow reply for `a` cannot overwrite the lines for `ab`.
-  Future<void> _load({bool poll = false}) async {
-    final mux = liveMux(ref, widget.device);
-    if (mux == null) return;
-    if (poll && !appInForeground()) return;
-    final ticket = poll ? _latest.tryBegin() : _latest.begin();
-    if (ticket == null) return;
-    try {
-      if (!poll) setState(() => _loading = true);
-      final q = _search.text.trim();
-      final resp = await mux.call('project_logs', {
-        'id': widget.projectId,
-        'service': ?_service,
-        'lines': 300,
-        if (q.isNotEmpty) 'query': q,
-      });
-      if (!mounted || !ticket.isCurrent) return;
-      setState(() {
-        _loading = false;
-        if (resp['ok'] == true) {
-          _error = null;
-          _lines = (resp['data']?['text'] as String? ?? '')
-              .split('\n')
-              .where((l) => l.trim().isNotEmpty)
-              .toList();
-        } else {
-          _error = resp['error'] as String? ?? 'error';
-        }
-      });
-    } finally {
-      ticket.done();
-    }
-  }
-
-  void _pick(String? service) {
-    setState(() => _service = service);
-    _load();
-  }
-
-  @override
-  Widget build(BuildContext context) {
-    final c = AtlasColors.of(context);
-    return Scaffold(
-      appBar: AppBar(
-        title: Text(
-          _service == null ? 'Logs' : 'Logs · $_service',
-          maxLines: 1,
-          overflow: TextOverflow.ellipsis,
-        ),
-        actions: [
-          TextButton.icon(
-            onPressed: () => setState(() => _live = !_live),
-            icon: StatusDot(
-              color: _live ? c.success : c.faint,
-              pulse: _live,
-              size: 6,
-            ),
-            label: Text(
-              _live ? 'Live' : 'Paused',
-              style: TextStyle(color: _live ? c.success : c.muted),
-            ),
-          ),
-        ],
-      ),
-      body: Column(
-        children: [
-          SizedBox(
-            height: 56,
-            child: ListView(
-              scrollDirection: Axis.horizontal,
-              padding: const EdgeInsets.symmetric(horizontal: Space.md),
-              children: [
-                for (final s in [null, ...widget.services])
-                  Padding(
-                    padding: const EdgeInsets.only(right: 6, top: 4, bottom: 4),
-                    child: ChoiceChip(
-                      label: Text(s ?? 'All'),
-                      selected: _service == s,
-                      showCheckmark: false,
-                      onSelected: (_) => _pick(s),
-                      side: BorderSide(color: c.borderSubtle),
-                      selectedColor: c.raised,
-                      backgroundColor: c.base,
-                      labelStyle: TextStyle(
-                        color: _service == s ? c.text : c.muted,
-                        fontSize: 13,
-                      ),
-                    ),
-                  ),
-              ],
-            ),
-          ),
-          Padding(
-            padding: const EdgeInsets.fromLTRB(
-              Space.md,
-              Space.xs,
-              Space.md,
-              Space.sm,
-            ),
-            child: TextField(
-              controller: _search,
-              textInputAction: TextInputAction.search,
-              decoration: InputDecoration(
-                hintText: 'Search (text or /regex/)',
-                prefixIcon: Icon(Icons.search_rounded, color: c.faint),
-              ),
-              onSubmitted: (_) => _load(),
-            ),
-          ),
-          Expanded(
-            child: _loading && _lines.isEmpty
-                ? const Center(child: CircularProgressIndicator())
-                : _error != null
-                ? EmptyState(title: 'Could not read logs', message: _error!)
-                : _lines.isEmpty
-                ? EmptyState(
-                    icon: Icon(Icons.subject_rounded, size: 48, color: c.faint),
-                    title: 'No log lines yet',
-                    message: 'Lines show up here as the services write them.',
-                  )
-                : ListView.builder(
-                    reverse: true,
-                    padding: const EdgeInsets.fromLTRB(
-                      Space.md,
-                      0,
-                      Space.md,
-                      Space.lg,
-                    ),
-                    itemCount: _lines.length,
-                    itemBuilder: (_, i) => _LogRow(
-                      line: _lines[_lines.length - 1 - i],
-                      showService: _service == null,
-                      services: widget.services,
-                    ),
-                  ),
-          ),
-        ],
-      ),
-    );
-  }
-}
-
-class _LogRow extends StatelessWidget {
-  const _LogRow({
-    required this.line,
-    required this.showService,
-    required this.services,
-  });
-  final String line;
-  final bool showService;
-  final List<String> services;
-
-  @override
-  Widget build(BuildContext context) {
-    final c = AtlasColors.of(context);
-    const mono = TextStyle(
-      fontFamily: monoFamily,
-      fontFamilyFallback: monoFallback,
-      fontSize: 12,
-      height: 1.4,
-    );
-    final m = _logLine.firstMatch(line);
-    if (m == null) {
-      return SelectableText(line, style: mono.copyWith(color: c.muted));
-    }
-    final service = m[1]!, time = m[2]!, err = m[3] == 'stderr', text = m[4]!;
-    final bad =
-        err ||
-        RegExp(
-          r'\b(error|panic|fatal|exception)\b',
-          caseSensitive: false,
-        ).hasMatch(text);
-    final i = services.indexOf(service);
-    final tag = c.series[(i < 0 ? service.length : i) % c.series.length];
-    return Padding(
-      padding: const EdgeInsets.symmetric(vertical: 1),
-      child: SelectableText.rich(
-        TextSpan(
-          style: mono,
-          children: [
-            TextSpan(
-              text: '$time ',
-              style: TextStyle(color: c.muted),
-            ),
-            if (showService)
-              TextSpan(
-                text: '$service ',
-                style: TextStyle(color: tag, fontWeight: FontWeight.w600),
-              ),
-            TextSpan(
-              text: text,
-              style: TextStyle(color: bad ? c.error : c.text),
-            ),
-          ],
-        ),
-      ),
-    );
-  }
-}
-
-/// One agent as a row: logo, session title, state, model, time in state, last message.
-class _AgentLine extends StatelessWidget {
-  const _AgentLine({required this.status, required this.onTap});
-  final AgentStatus status;
-  final VoidCallback onTap;
-
-  @override
-  Widget build(BuildContext context) {
-    final c = AtlasColors.of(context);
-    final k = c.agentState(status.state);
-    final line = status.state == 'working'
-        ? (status.prompt ?? '')
-        : (status.lastMessage ?? status.prompt ?? '');
-    final since = agentActive(status.state) || status.state == 'done'
-        ? elapsed(status.stateStartedAt)
-        : '';
-    final meta = [
-      agentStateLabel(status.state),
-      ?status.model,
-      if (since.isNotEmpty) since,
-    ];
-    return Semantics(
-      button: true,
-      child: InkWell(
-        onTap: onTap,
-        child: Padding(
-          padding: const EdgeInsets.symmetric(
-            horizontal: Space.md,
-            vertical: Space.sm + 2,
-          ),
-          child: Row(
-            children: [
-              AgentLogo(status.agent, size: 34),
-              const SizedBox(width: Space.md),
-              Expanded(
-                child: Column(
-                  crossAxisAlignment: CrossAxisAlignment.start,
-                  children: [
-                    Text(
-                      agentTitle(status),
-                      maxLines: 1,
-                      overflow: TextOverflow.ellipsis,
-                      style: const TextStyle(fontWeight: FontWeight.w600),
-                    ),
-                    Row(
-                      children: [
-                        StatusDot(
-                          color: k,
-                          pulse: status.state == 'working' || needsYou(status),
-                          size: 6,
-                        ),
-                        Flexible(
-                          child: Text(
-                            meta.join(' · '),
-                            maxLines: 1,
-                            overflow: TextOverflow.ellipsis,
-                            style: TextStyle(
-                              color: k,
-                              fontSize: 12,
-                              fontWeight: FontWeight.w600,
-                            ),
-                          ),
-                        ),
-                      ],
-                    ),
-                    if (line.isNotEmpty)
-                      Text(
-                        line.replaceAll('\n', ' '),
-                        maxLines: 1,
-                        overflow: TextOverflow.ellipsis,
-                        style: TextStyle(fontSize: 12, color: c.muted),
-                      ),
-                  ],
-                ),
-              ),
-              Icon(Icons.chevron_right, color: c.faint),
-            ],
-          ),
-        ),
-      ),
-    );
-  }
-}
-
-/// The panel while the first `project_detail` is on its way: the real header (the
-/// list already knows the name, folder and services), then the screen's own blocks
-/// shimmering in place, one tile per service, so nothing jumps when data lands.
-class _Skeleton extends StatefulWidget {
-  const _Skeleton({required this.project});
-  final ProjectInfo project;
-
-  @override
-  State<_Skeleton> createState() => _SkeletonState();
-}
-
-class _SkeletonState extends State<_Skeleton>
-    with SingleTickerProviderStateMixin {
-  late final AnimationController _a = AnimationController(
-    vsync: this,
-    duration: const Duration(milliseconds: 1200),
-  );
-
-  @override
-  void didChangeDependencies() {
-    super.didChangeDependencies();
-    if (Motion.reduced(context)) {
-      _a
-        ..stop()
-        ..value = 1;
-    } else if (!_a.isAnimating) {
-      _a.repeat(reverse: true);
-    }
-  }
-
-  @override
-  void dispose() {
-    _a.dispose();
-    super.dispose();
-  }
-
-  @override
-  Widget build(BuildContext context) {
-    final c = AtlasColors.of(context);
-    final p = widget.project;
-    Widget bar(double h, {double? w, double r = Space.radius}) => Container(
-      height: h,
-      width: w,
-      decoration: BoxDecoration(
-        color: c.base,
-        borderRadius: BorderRadius.circular(r),
-      ),
-    );
-    Widget pulse(Widget w) => FadeTransition(
-      opacity: Tween(begin: .45, end: 1.0).animate(_a),
-      child: w,
-    );
-    final tiles = p.services.isEmpty ? 2 : p.services.length;
-    return ListView(
-      physics: const NeverScrollableScrollPhysics(),
-      padding: const EdgeInsets.fromLTRB(Space.lg, 0, Space.lg, Space.xxl),
-      children: [
-        Row(
-          children: [
-            Hero(
-              tag: 'project-${p.id}',
-              child: ProjectAvatar(name: p.name, size: 56),
-            ),
-            const SizedBox(width: Space.md),
-            Expanded(
-              child: Column(
-                crossAxisAlignment: CrossAxisAlignment.start,
-                children: [
-                  Text(
-                    p.name,
-                    overflow: TextOverflow.ellipsis,
-                    style: Theme.of(context).textTheme.headlineSmall?.copyWith(
-                      fontWeight: FontWeight.w700,
-                      letterSpacing: -.5,
-                    ),
-                  ),
-                  const SizedBox(height: 2),
-                  Text(
-                    p.root.replaceFirst(RegExp(r'^/Users/[^/]+'), '~'),
-                    overflow: TextOverflow.ellipsis,
-                    style: TextStyle(
-                      fontSize: 12,
-                      color: c.muted,
-                      fontFamily: monoFamily,
-                      fontFamilyFallback: monoFallback,
-                    ),
-                  ),
-                ],
-              ),
-            ),
-          ],
-        ),
-        const SizedBox(height: Space.md),
-        pulse(
-          Column(
-            crossAxisAlignment: CrossAxisAlignment.stretch,
-            children: [
-              Align(
-                alignment: Alignment.centerLeft,
-                child: bar(24, w: 110, r: 999),
-              ),
-              const SizedBox(height: Space.md + Space.sm),
-              bar(76),
-              const SizedBox(height: Space.md),
-              bar(40, r: 999),
-              const SizedBox(height: Space.lg),
-              Align(alignment: Alignment.centerLeft, child: bar(12, w: 80)),
-              const SizedBox(height: Space.sm + 2),
-              LayoutBuilder(
-                builder: (_, box) => Wrap(
-                  spacing: Space.sm,
-                  runSpacing: Space.sm,
-                  children: [
-                    for (var i = 0; i < tiles; i++)
-                      SizedBox(
-                        width: (box.maxWidth - Space.sm) / 2,
-                        child: bar(104),
-                      ),
-                  ],
-                ),
-              ),
-            ],
-          ),
-        ),
-      ],
-    );
-  }
 }

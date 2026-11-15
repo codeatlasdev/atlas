@@ -624,80 +624,89 @@ class _ProjectTile extends StatelessWidget {
         : project.services.isEmpty
         ? ('running', c.success)
         : ('$up/${project.services.length} up', c.success);
-    return InkWell(
+    return Semantics(
+      button: true,
+      label: [
+        '${project.name}, $stateText',
+        if (lead != null) '${lead.$2.agent}, ${lead.$2.state}',
+      ].join('. '),
+      excludeSemantics: true,
       onTap: onOpen,
-      child: Padding(
-        padding: const EdgeInsets.only(left: Space.lg),
-        child: Row(
-          children: [
-            // Flies into the project screen's header; the dot says if it runs.
-            Stack(
-              clipBehavior: Clip.none,
-              children: [
-                Hero(
-                  tag: 'project-${project.id}',
-                  child: ProjectAvatar(name: project.name, size: 50),
-                ),
-                if (project.running)
-                  Positioned(
-                    right: -2,
-                    bottom: -2,
-                    child: Container(
-                      width: 15,
-                      height: 15,
-                      decoration: BoxDecoration(
-                        color: failed > 0 ? c.error : c.success,
-                        shape: BoxShape.circle,
-                        border: Border.all(color: c.ground, width: 2.5),
+      child: InkWell(
+        onTap: onOpen,
+        child: Padding(
+          padding: const EdgeInsets.only(left: Space.lg),
+          child: Row(
+            children: [
+              // Flies into the project screen's header; the dot says if it runs.
+              Stack(
+                clipBehavior: Clip.none,
+                children: [
+                  Hero(
+                    tag: 'project-${project.id}',
+                    child: ProjectAvatar(name: project.name, size: 50),
+                  ),
+                  if (project.running)
+                    Positioned(
+                      right: -2,
+                      bottom: -2,
+                      child: Container(
+                        width: 15,
+                        height: 15,
+                        decoration: BoxDecoration(
+                          color: failed > 0 ? c.error : c.success,
+                          shape: BoxShape.circle,
+                          border: Border.all(color: c.ground, width: 2.5),
+                        ),
                       ),
                     ),
+                ],
+              ),
+              const SizedBox(width: 12),
+              Expanded(
+                child: Container(
+                  padding: const EdgeInsets.fromLTRB(0, 12, Space.lg, 12),
+                  decoration: BoxDecoration(
+                    border: last
+                        ? null
+                        : Border(bottom: BorderSide(color: c.borderSubtle)),
                   ),
-              ],
-            ),
-            const SizedBox(width: 12),
-            Expanded(
-              child: Container(
-                padding: const EdgeInsets.fromLTRB(0, 12, Space.lg, 12),
-                decoration: BoxDecoration(
-                  border: last
-                      ? null
-                      : Border(bottom: BorderSide(color: c.borderSubtle)),
-                ),
-                child: Column(
-                  crossAxisAlignment: CrossAxisAlignment.start,
-                  children: [
-                    Row(
-                      children: [
-                        Expanded(
-                          child: Text(
-                            project.name,
-                            overflow: TextOverflow.ellipsis,
-                            style: TextStyle(
-                              fontSize: 16,
-                              fontWeight: FontWeight.w600,
-                              color: c.text,
+                  child: Column(
+                    crossAxisAlignment: CrossAxisAlignment.start,
+                    children: [
+                      Row(
+                        children: [
+                          Expanded(
+                            child: Text(
+                              project.name,
+                              overflow: TextOverflow.ellipsis,
+                              style: TextStyle(
+                                fontSize: 16,
+                                fontWeight: FontWeight.w600,
+                                color: c.text,
+                              ),
                             ),
                           ),
-                        ),
+                          Text(
+                            stateText,
+                            style: TextStyle(fontSize: 13, color: stateColor),
+                          ),
+                        ],
+                      ),
+                      const SizedBox(height: 3),
+                      if (lead == null)
                         Text(
-                          stateText,
-                          style: TextStyle(fontSize: 13, color: stateColor),
-                        ),
-                      ],
-                    ),
-                    const SizedBox(height: 3),
-                    if (lead == null)
-                      Text(
-                        project.running ? 'No agent here' : 'Tap to open',
-                        style: TextStyle(fontSize: 14.5, color: c.muted),
-                      )
-                    else
-                      _AgentLine(status: lead.$2, more: agents.length - 1),
-                  ],
+                          project.running ? 'No agent here' : 'Tap to open',
+                          style: TextStyle(fontSize: 14.5, color: c.muted),
+                        )
+                      else
+                        _AgentLine(status: lead.$2, more: agents.length - 1),
+                    ],
+                  ),
                 ),
               ),
-            ),
-          ],
+            ],
+          ),
         ),
       ),
     );

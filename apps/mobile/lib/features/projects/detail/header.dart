@@ -62,8 +62,7 @@ class ProjectHeader extends StatelessWidget {
                     Text(
                       snap.root.replaceFirst(RegExp(r'^/Users/[^/]+'), '~'),
                       overflow: TextOverflow.ellipsis,
-                      style: TextStyle(
-                        fontSize: 12,
+                      style: Theme.of(context).textTheme.bodySmall!.copyWith(
                         color: c.muted,
                         fontFamily: monoFamily,
                         fontFamilyFallback: monoFallback,
@@ -90,7 +89,7 @@ class ProjectHeader extends StatelessWidget {
                     mainAxisSize: MainAxisSize.min,
                     children: [
                       Container(
-                        padding: const EdgeInsets.fromLTRB(2, 2, 10, 2),
+                        padding: const EdgeInsets.fromLTRB(2, 2, Space.md, 2),
                         decoration: BoxDecoration(
                           color: color.withValues(alpha: .12),
                           borderRadius: BorderRadius.circular(999),
@@ -105,11 +104,11 @@ class ProjectHeader extends StatelessWidget {
                             ),
                             Text(
                               label,
-                              style: TextStyle(
-                                color: color,
-                                fontSize: 12,
-                                fontWeight: FontWeight.w600,
-                              ),
+                              style: Theme.of(context).textTheme.bodySmall!
+                                  .copyWith(
+                                    color: color,
+                                    fontWeight: FontWeight.w600,
+                                  ),
                             ),
                           ],
                         ),
@@ -121,7 +120,8 @@ class ProjectHeader extends StatelessWidget {
                             meta,
                             maxLines: 1,
                             overflow: TextOverflow.ellipsis,
-                            style: TextStyle(color: c.muted, fontSize: 12),
+                            style: Theme.of(context).textTheme.bodySmall!
+                                .copyWith(color: c.muted),
                           ),
                         ),
                       ],

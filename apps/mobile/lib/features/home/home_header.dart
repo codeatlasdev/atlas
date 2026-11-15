@@ -48,8 +48,7 @@ class HomeHeader extends ConsumerWidget {
           child: Text(
             friendlyDeviceName(device.name),
             overflow: TextOverflow.ellipsis,
-            style: Theme.of(context).textTheme.titleMedium
-                ?.copyWith(fontSize: 20, fontWeight: FontWeight.w600),
+            style: Theme.of(context).textTheme.titleLarge,
           ),
         ),
         if (others.isNotEmpty)
@@ -91,7 +90,7 @@ class HomeHeader extends ConsumerWidget {
                     ],
                     child: MinTapTarget(child: name),
                   ),
-                const SizedBox(height: 4),
+                const SizedBox(height: Space.xs),
                 AnimatedSwitcher(
                   duration: Motion.normal,
                   layoutBuilder: (current, previous) => Stack(

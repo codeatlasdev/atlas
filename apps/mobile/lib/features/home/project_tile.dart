@@ -92,10 +92,15 @@ class ProjectTile extends StatelessWidget {
                     ),
                 ],
               ),
-              const SizedBox(width: 12),
+              const SizedBox(width: Space.md),
               Expanded(
                 child: Container(
-                  padding: const EdgeInsets.fromLTRB(0, 12, Space.lg, 12),
+                  padding: const EdgeInsets.fromLTRB(
+                    0,
+                    Space.md,
+                    Space.lg,
+                    Space.md,
+                  ),
                   decoration: BoxDecoration(
                     border: last
                         ? null
@@ -110,16 +115,17 @@ class ProjectTile extends StatelessWidget {
                             child: Text(
                               project.name,
                               overflow: TextOverflow.ellipsis,
-                              style: TextStyle(
-                                fontSize: 16,
-                                fontWeight: FontWeight.w600,
-                                color: c.text,
-                              ),
+                              style: Theme.of(context).textTheme.titleMedium!
+                                  .copyWith(
+                                    fontWeight: FontWeight.w600,
+                                    color: c.text,
+                                  ),
                             ),
                           ),
                           Text(
                             stateText,
-                            style: TextStyle(fontSize: 13, color: stateColor),
+                            style: Theme.of(context).textTheme.bodyMedium!
+                                .copyWith(color: stateColor),
                           ),
                         ],
                       ),
@@ -127,7 +133,8 @@ class ProjectTile extends StatelessWidget {
                       if (lead == null)
                         Text(
                           project.running ? 'No agent here' : 'Tap to open',
-                          style: TextStyle(fontSize: 14.5, color: c.muted),
+                          style: Theme.of(context).textTheme.bodyLarge!
+                              .copyWith(color: c.muted),
                         )
                       else
                         AgentLine(status: lead.$2, more: agents.length - 1),
@@ -161,7 +168,7 @@ class AgentLine extends StatelessWidget {
     return Row(
       children: [
         AgentLogo(s.agent, size: 15),
-        const SizedBox(width: 6),
+        const SizedBox(width: Space.sm),
         Expanded(
           child: Text(
             busy
@@ -171,8 +178,7 @@ class AgentLine extends StatelessWidget {
                 : text,
             maxLines: 1,
             overflow: TextOverflow.ellipsis,
-            style: TextStyle(
-              fontSize: 14.5,
+            style: Theme.of(context).textTheme.bodyLarge!.copyWith(
               color: busy
                   ? c.accent
                   : asks
@@ -182,16 +188,20 @@ class AgentLine extends StatelessWidget {
           ),
         ),
         if (more > 0) ...[
-          const SizedBox(width: 6),
+          const SizedBox(width: Space.sm),
           Container(
-            padding: const EdgeInsets.symmetric(horizontal: 6, vertical: 1),
+            padding: const EdgeInsets.symmetric(
+              horizontal: Space.sm,
+              vertical: 1,
+            ),
             decoration: BoxDecoration(
               color: c.raised,
               borderRadius: BorderRadius.circular(8),
             ),
             child: Text(
               '+$more',
-              style: TextStyle(fontSize: 11.5, color: c.muted),
+              style: Theme.of(context).textTheme.bodySmall!
+                  .copyWith(color: c.muted),
             ),
           ),
         ],

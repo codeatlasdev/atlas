@@ -60,9 +60,8 @@ class HomeNoProjects extends StatelessWidget {
         ),
         child: Text(
           'Atlas Desktop: File → Open Folder\nor run `atlas .` in a project',
-          style: TextStyle(
+          style: Theme.of(context).textTheme.bodySmall!.copyWith(
             color: c.muted,
-            fontSize: 12,
             fontFamily: monoFamily,
             fontFamilyFallback: monoFallback,
           ),

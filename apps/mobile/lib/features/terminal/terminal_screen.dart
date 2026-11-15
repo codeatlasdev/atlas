@@ -313,7 +313,10 @@ class _TerminalScreenState extends ConsumerState<TerminalScreen> {
             Container(
               color: c.raised,
               width: double.infinity,
-              padding: const EdgeInsets.symmetric(vertical: 8, horizontal: 16),
+              padding: const EdgeInsets.symmetric(
+                vertical: Space.sm,
+                horizontal: Space.lg,
+              ),
               child: Text(
                 'The process exited',
                 style: TextStyle(color: c.muted),
@@ -326,7 +329,12 @@ class _TerminalScreenState extends ConsumerState<TerminalScreen> {
             SafeArea(
               top: false,
               child: Padding(
-                padding: const EdgeInsets.fromLTRB(12, 8, 12, 8),
+                padding: const EdgeInsets.fromLTRB(
+                  Space.md,
+                  Space.sm,
+                  Space.md,
+                  Space.sm,
+                ),
                 child: SizedBox(
                   width: double.infinity,
                   child: FilledButton.tonalIcon(
@@ -366,7 +374,10 @@ class _LinkNotice extends StatelessWidget {
     return Container(
       color: c.raised,
       width: double.infinity,
-      padding: const EdgeInsets.symmetric(vertical: 6, horizontal: 16),
+      padding: const EdgeInsets.symmetric(
+        vertical: Space.sm,
+        horizontal: Space.lg,
+      ),
       child: Text(text, style: TextStyle(color: c.muted)),
     );
   }
@@ -388,7 +399,12 @@ class _AgentStrip extends ConsumerWidget {
     final task = a.state == 'working' ? a.prompt : (a.lastMessage ?? a.prompt);
     return Container(
       width: double.infinity,
-      padding: const EdgeInsets.fromLTRB(14, 8, 14, 10),
+      padding: const EdgeInsets.fromLTRB(
+        Space.md,
+        Space.sm,
+        Space.md,
+        Space.md,
+      ),
       decoration: BoxDecoration(
         color: c.raised,
         border: Border(bottom: BorderSide(color: c.borderSubtle)),
@@ -401,11 +417,8 @@ class _AgentStrip extends ConsumerWidget {
               StatusDot(color: k, pulse: a.state == 'working', size: 6),
               Text(
                 agentStateLabel(a.state),
-                style: TextStyle(
-                  color: k,
-                  fontSize: 12,
-                  fontWeight: FontWeight.w700,
-                ),
+                style: Theme.of(context).textTheme.bodySmall!
+                    .copyWith(color: k, fontWeight: FontWeight.w700),
               ),
             ],
           ),
@@ -415,7 +428,8 @@ class _AgentStrip extends ConsumerWidget {
               task.replaceAll('\n', ' '),
               maxLines: 2,
               overflow: TextOverflow.ellipsis,
-              style: TextStyle(color: c.text, fontSize: 13, height: 1.3),
+              style: Theme.of(context).textTheme.bodyMedium!
+                  .copyWith(color: c.text, height: 1.3),
             ),
           ],
         ],
@@ -464,17 +478,16 @@ class _KeyBarState extends State<KeyBar> {
       child: TextButton(
         style: TextButton.styleFrom(
           minimumSize: const Size(48, 48),
-          padding: const EdgeInsets.symmetric(horizontal: 10),
+          padding: const EdgeInsets.symmetric(horizontal: Space.md),
           backgroundColor: c.raised,
           foregroundColor: c.text,
           disabledForegroundColor: c.faint,
           shape: RoundedRectangleBorder(
             borderRadius: BorderRadius.circular(Space.radiusSm),
           ),
-          textStyle: const TextStyle(
+          textStyle: Theme.of(context).textTheme.bodyMedium!.copyWith(
             fontFamily: monoFamily,
             fontFamilyFallback: monoFallback,
-            fontSize: 13,
           ),
         ),
         onPressed: widget.enabled ? () => _tap(seq) : null,
@@ -489,7 +502,7 @@ class _KeyBarState extends State<KeyBar> {
       TextButton(
         style: TextButton.styleFrom(
           minimumSize: const Size(48, 48),
-          padding: const EdgeInsets.symmetric(horizontal: 10),
+          padding: const EdgeInsets.symmetric(horizontal: Space.md),
           backgroundColor: _ctrlActive ? c.accent : c.raised,
           foregroundColor: _ctrlActive ? c.onAccent : c.text,
           disabledForegroundColor: c.faint,
@@ -521,7 +534,7 @@ class _KeyBarState extends State<KeyBar> {
       ),
       child: SingleChildScrollView(
         scrollDirection: Axis.horizontal,
-        padding: const EdgeInsets.symmetric(horizontal: 4, vertical: 2),
+        padding: const EdgeInsets.symmetric(horizontal: Space.xs, vertical: 2),
         child: Row(children: _ctrlActive ? ctrlKeys : baseKeys),
       ),
     );
@@ -574,10 +587,9 @@ class _LineInputState extends State<LineInput> {
               autocorrect: false,
               enableSuggestions: false,
               textCapitalization: TextCapitalization.none,
-              style: const TextStyle(
+              style: Theme.of(context).textTheme.bodyLarge!.copyWith(
                 fontFamily: monoFamily,
                 fontFamilyFallback: monoFallback,
-                fontSize: 14,
               ),
               decoration: const InputDecoration(
                 hintText: 'Type, then return',

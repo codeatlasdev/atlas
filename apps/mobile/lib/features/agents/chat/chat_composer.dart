@@ -61,7 +61,12 @@ class ChatComposer extends StatelessWidget {
         // The home indicator is under the keyboard when it is up: no inset then.
         bottom: MediaQuery.viewInsetsOf(context).bottom == 0,
         child: Padding(
-          padding: const EdgeInsets.fromLTRB(4, 8, 12, 8),
+          padding: const EdgeInsets.fromLTRB(
+            Space.xs,
+            Space.sm,
+            Space.md,
+            Space.sm,
+          ),
           child: Row(
             crossAxisAlignment: CrossAxisAlignment.end,
             children: [
@@ -69,18 +74,17 @@ class ChatComposer extends StatelessWidget {
                 IconButton(
                   tooltip: 'Commands',
                   onPressed: canSendChat(status) && !sending ? onCommand : null,
-                  icon: const Text(
+                  icon: Text(
                     '/',
-                    style: TextStyle(
+                    style: Theme.of(context).textTheme.titleLarge!.copyWith(
                       fontFamily: monoFamily,
                       fontFamilyFallback: monoFallback,
-                      fontSize: 20,
                       fontWeight: FontWeight.w600,
                     ),
                   ),
                 )
               else
-                const SizedBox(width: 8),
+                const SizedBox(width: Space.sm),
               Expanded(
                 child: TextField(
                   controller: controller,
@@ -112,7 +116,7 @@ class ChatComposer extends StatelessWidget {
                   ),
                 ),
               ),
-              const SizedBox(width: 8),
+              const SizedBox(width: Space.sm),
               if (steer) ...[
                 IconButton.filled(
                   tooltip: 'Steer',
@@ -124,7 +128,7 @@ class ChatComposer extends StatelessWidget {
                         )
                       : const Icon(Icons.send_rounded, size: 18),
                 ),
-                const SizedBox(width: 6),
+                const SizedBox(width: Space.sm),
               ],
               if (working)
                 IconButton.filled(

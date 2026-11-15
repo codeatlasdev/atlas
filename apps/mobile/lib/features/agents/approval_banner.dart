@@ -37,7 +37,7 @@ class ApprovalBanner extends StatelessWidget {
                   size: 18,
                   color: AtlasColors.of(context).warning,
                 ),
-                const SizedBox(width: 6),
+                const SizedBox(width: Space.sm),
                 Expanded(
                   child: Text(
                     'Wants to run ${approval.toolName ?? 'a tool'}',
@@ -48,7 +48,7 @@ class ApprovalBanner extends StatelessWidget {
                 ),
               ],
             ),
-            const SizedBox(height: 6),
+            const SizedBox(height: Space.sm),
             // The command can be long: it scrolls inside a box that never takes more than
             // a quarter of the screen, so Deny and Allow stay in reach.
             ConstrainedBox(
@@ -61,15 +61,15 @@ class ApprovalBanner extends StatelessWidget {
               child: SingleChildScrollView(
                 child: SelectableText(
                   detail,
-                  style: const TextStyle(
+                  style: Theme.of(context).textTheme.bodySmall!.copyWith(
+                    color: AtlasColors.of(context).text,
                     fontFamily: monoFamily,
                     fontFamilyFallback: monoFallback,
-                    fontSize: 12,
                   ),
                 ),
               ),
             ),
-            const SizedBox(height: 8),
+            const SizedBox(height: Space.sm),
             Align(
               alignment: Alignment.centerRight,
               child: Wrap(

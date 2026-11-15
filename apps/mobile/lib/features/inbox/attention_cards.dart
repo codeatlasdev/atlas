@@ -65,28 +65,21 @@ class AttentionHero extends StatelessWidget {
               Row(
                 children: [
                   Icon(icon, color: color, size: 18),
-                  const SizedBox(width: 6),
+                  const SizedBox(width: Space.sm),
                   Expanded(
                     child: Text(
                       kicker,
                       overflow: TextOverflow.ellipsis,
-                      style: TextStyle(
-                        color: color,
-                        fontSize: 13,
-                        fontWeight: FontWeight.w600,
-                      ),
+                      style: Theme.of(context).textTheme.bodyMedium!
+                          .copyWith(color: color, fontWeight: FontWeight.w600),
                     ),
                   ),
                 ],
               ),
               const SizedBox(height: Space.sm),
-              Text(
-                title,
-                style: Theme.of(context).textTheme.titleLarge
-                    ?.copyWith(fontSize: 20),
-              ),
+              Text(title, style: Theme.of(context).textTheme.titleLarge),
               if (detail != null) ...[
-                const SizedBox(height: 4),
+                const SizedBox(height: Space.xs),
                 Text(
                   detail.replaceAll('\n', ' '),
                   maxLines: 2,

@@ -74,7 +74,7 @@ class _LiveScreenState extends State<LiveScreen> {
           minScale: 1,
           maxScale: 5,
           child: Padding(
-            padding: const EdgeInsets.symmetric(horizontal: 4),
+            padding: const EdgeInsets.symmetric(horizontal: Space.xs),
             child: TerminalView(
               widget.terminal,
               // The size is the Mac's; the phone never resizes the pty.

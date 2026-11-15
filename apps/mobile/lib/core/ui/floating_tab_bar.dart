@@ -360,7 +360,7 @@ class _TabItemState extends State<_TabItem> {
                     child: Container(
                       constraints: const BoxConstraints(minWidth: 18),
                       height: 18,
-                      padding: const EdgeInsets.symmetric(horizontal: 5),
+                      padding: const EdgeInsets.symmetric(horizontal: Space.xs),
                       decoration: BoxDecoration(
                         color: c.accent,
                         borderRadius: BorderRadius.circular(9),
@@ -373,9 +373,8 @@ class _TabItemState extends State<_TabItem> {
                             : widget.count > 99
                             ? '99+'
                             : '${widget.count}',
-                        style: TextStyle(
+                        style: Theme.of(context).textTheme.labelSmall!.copyWith(
                           color: c.onAccent,
-                          fontSize: 10.5,
                           fontWeight: FontWeight.w800,
                           height: 1,
                         ),

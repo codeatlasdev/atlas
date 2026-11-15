@@ -67,11 +67,7 @@ class SettingsScreen extends ConsumerWidget {
             Space.xxl + kFloatingBarScrollPad,
           ),
           children: [
-            Text(
-              'Settings',
-              style: Theme.of(context).textTheme.titleMedium
-                  ?.copyWith(fontSize: 20, fontWeight: FontWeight.w600),
-            ),
+            Text('Settings', style: Theme.of(context).textTheme.titleLarge),
             const SizedBox(height: Space.lg),
             SectionHeader('Computers', count: devices.length),
             for (final d in devices)

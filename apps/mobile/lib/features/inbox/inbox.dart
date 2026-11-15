@@ -100,8 +100,7 @@ class _InboxScreenState extends ConsumerState<InboxScreen> {
               padding: const EdgeInsets.symmetric(horizontal: Space.lg),
               child: Text(
                 'Inbox',
-                style: Theme.of(context).textTheme.titleMedium
-                    ?.copyWith(fontSize: 20, fontWeight: FontWeight.w600),
+                style: Theme.of(context).textTheme.titleLarge,
               ),
             ),
             if (items.isNotEmpty) ...[

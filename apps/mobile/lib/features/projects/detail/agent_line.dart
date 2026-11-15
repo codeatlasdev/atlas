@@ -66,11 +66,11 @@ class ProjectAgentLine extends StatelessWidget {
                             meta.join(' · '),
                             maxLines: 1,
                             overflow: TextOverflow.ellipsis,
-                            style: TextStyle(
-                              color: k,
-                              fontSize: 12,
-                              fontWeight: FontWeight.w600,
-                            ),
+                            style: Theme.of(context).textTheme.bodySmall!
+                                .copyWith(
+                                  color: k,
+                                  fontWeight: FontWeight.w600,
+                                ),
                           ),
                         ),
                       ],
@@ -80,7 +80,8 @@ class ProjectAgentLine extends StatelessWidget {
                         line.replaceAll('\n', ' '),
                         maxLines: 1,
                         overflow: TextOverflow.ellipsis,
-                        style: TextStyle(fontSize: 12, color: c.muted),
+                        style: Theme.of(context).textTheme.bodySmall!
+                            .copyWith(color: c.muted),
                       ),
                   ],
                 ),

@@ -382,11 +382,16 @@ class _BranchBar extends StatelessWidget {
           const SizedBox(width: Space.sm),
           Text(
             '${status.ahead > 0 ? '↑${status.ahead} ' : ''}${status.upstream}',
-            style: TextStyle(color: c.muted, fontSize: 12),
+            style: Theme.of(context).textTheme.bodySmall!
+                .copyWith(color: c.muted),
           ),
         ] else ...[
           const SizedBox(width: Space.sm),
-          Text('not pushed', style: TextStyle(color: c.muted, fontSize: 12)),
+          Text(
+            'not pushed',
+            style: Theme.of(context).textTheme.bodySmall!
+                .copyWith(color: c.muted),
+          ),
         ],
       ],
     );
@@ -413,7 +418,7 @@ class _DiffPanel extends StatelessWidget {
               padding: EdgeInsets.all(Space.md),
               child: Text('No text changes to show (binary or empty).'),
             )
-          : AtlasCodeBlock(code: d.asPatch(), language: 'diff', fontSize: 12),
+          : AtlasCodeBlock(code: d.asPatch(), language: 'diff'),
     );
   }
 }
@@ -487,8 +492,8 @@ class _CommitSheetState extends State<_CommitSheet> {
               onPressed: _writing ? null : _ai,
               icon: _writing
                   ? const SizedBox(
-                      width: 16,
-                      height: 16,
+                      width: Space.lg,
+                      height: Space.lg,
                       child: CircularProgressIndicator(strokeWidth: 2),
                     )
                   : const Icon(Icons.auto_awesome),

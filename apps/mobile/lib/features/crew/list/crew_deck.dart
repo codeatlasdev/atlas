@@ -129,7 +129,7 @@ class DeckMate extends StatelessWidget {
                 state: state,
                 size: 92,
               ),
-              const SizedBox(height: 4),
+              const SizedBox(height: Space.xs),
               Text(
                 crewmate.name,
                 maxLines: 1,
@@ -180,7 +180,7 @@ class RecruitSlot extends StatelessWidget {
                 ),
                 child: Icon(Icons.add_rounded, color: c.accent, size: 30),
               ),
-              const SizedBox(height: 18),
+              const SizedBox(height: Space.lg),
               Text(
                 'Recruit',
                 maxLines: 1,
@@ -211,11 +211,8 @@ class StateDot extends StatelessWidget {
             state.word,
             maxLines: 1,
             overflow: TextOverflow.ellipsis,
-            style: TextStyle(
-              fontSize: 11,
-              color: color,
-              fontWeight: FontWeight.w600,
-            ),
+            style: Theme.of(context).textTheme.labelSmall!
+                .copyWith(color: color, fontWeight: FontWeight.w600),
           ),
         ),
       ],

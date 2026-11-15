@@ -39,7 +39,8 @@ class AutomationsSection extends StatelessWidget {
               padding: const EdgeInsets.symmetric(vertical: Space.md),
               child: Text(
                 'Or just ask ${crewmate.name}: "every weekday at 9, review the open PRs".',
-                style: TextStyle(color: c.muted, fontSize: 13, height: 1.4),
+                style: Theme.of(context).textTheme.bodyMedium!
+                    .copyWith(color: c.muted, height: 1.4),
               ),
             )
           else
@@ -109,16 +110,21 @@ class TriggerRow extends StatelessWidget {
                 onTap: onEdit,
                 borderRadius: BorderRadius.circular(Space.radiusSm),
                 child: Padding(
-                  padding: const EdgeInsets.symmetric(vertical: 4),
+                  padding: const EdgeInsets.symmetric(vertical: Space.xs),
                   child: Column(
                     crossAxisAlignment: CrossAxisAlignment.start,
                     children: [
-                      Text(desc, style: TextStyle(color: c.text, fontSize: 14)),
+                      Text(
+                        desc,
+                        style: Theme.of(context).textTheme.bodyLarge!
+                            .copyWith(color: c.text),
+                      ),
                       if (nextStr != null) ...[
                         const SizedBox(height: 2),
                         Text(
                           'Next: $nextStr',
-                          style: TextStyle(color: c.muted, fontSize: 12),
+                          style: Theme.of(context).textTheme.bodySmall!
+                              .copyWith(color: c.muted),
                         ),
                       ],
                     ],

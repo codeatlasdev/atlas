@@ -119,30 +119,38 @@ class _ChatComposerState extends ConsumerState<ChatComposer> {
           children: [
             if (queued > 0)
               Padding(
-                padding: const EdgeInsets.only(left: Space.lg, bottom: 6),
+                padding: const EdgeInsets.only(
+                  left: Space.lg,
+                  bottom: Space.sm,
+                ),
                 child: Text(
                   queued == 1 ? '1 task queued' : '$queued tasks queued',
-                  style: TextStyle(fontSize: 12, color: c.muted),
+                  style: Theme.of(context).textTheme.bodySmall!
+                      .copyWith(color: c.muted),
                 ),
               ),
             if (_error != null)
               Padding(
-                padding: const EdgeInsets.only(left: Space.lg, bottom: 6),
+                padding: const EdgeInsets.only(
+                  left: Space.lg,
+                  bottom: Space.sm,
+                ),
                 child: Text(
                   _error!,
-                  style: TextStyle(fontSize: 12, color: c.error),
+                  style: Theme.of(context).textTheme.bodySmall!
+                      .copyWith(color: c.error),
                 ),
               ),
             if (_images.isNotEmpty)
               Padding(
-                padding: const EdgeInsets.only(bottom: 8),
+                padding: const EdgeInsets.only(bottom: Space.sm),
                 child: SizedBox(
                   height: 64,
                   child: ListView.separated(
                     scrollDirection: Axis.horizontal,
                     padding: const EdgeInsets.symmetric(horizontal: 4),
                     itemCount: _images.length,
-                    separatorBuilder: (_, _) => const SizedBox(width: 8),
+                    separatorBuilder: (_, _) => const SizedBox(width: Space.sm),
                     itemBuilder: (_, i) {
                       final image = _images[i];
                       return _PendingThumb(
@@ -165,7 +173,7 @@ class _ChatComposerState extends ConsumerState<ChatComposer> {
                   children: [
                     // Attach: the camera or the photo library; the picked images wait above the field.
                     Padding(
-                      padding: const EdgeInsets.only(right: 8),
+                      padding: const EdgeInsets.only(right: Space.sm),
                       child: GlassRoundButton(
                         icon: Icons.add_photo_alternate_outlined,
                         label: 'Attach image',
@@ -184,16 +192,21 @@ class _ChatComposerState extends ConsumerState<ChatComposer> {
                           maxLines: 6,
                           cursorColor: c.text,
                           textCapitalization: TextCapitalization.sentences,
-                          style: TextStyle(
-                            fontSize: 16,
-                            color: c.text,
-                            height: 1.35,
-                          ),
+                          style: Theme.of(context).textTheme.titleMedium!
+                              .copyWith(
+                                color: c.text,
+                                height: 1.35,
+                                fontWeight: FontWeight.w400,
+                              ),
                           decoration: InputDecoration(
                             hintText: online
                                 ? 'Message'
                                 : 'Offline — queued when back',
-                            hintStyle: TextStyle(color: c.faint, fontSize: 16),
+                            hintStyle: Theme.of(context).textTheme.titleMedium!
+                                .copyWith(
+                                  color: c.faint,
+                                  fontWeight: FontWeight.w400,
+                                ),
                             border: InputBorder.none,
                             isCollapsed: true,
                             // The app theme gives every field a filled box; the pill is it.

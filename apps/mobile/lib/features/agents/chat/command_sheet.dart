@@ -38,11 +38,11 @@ Future<(String, bool)?> showOmpCommands(BuildContext context) =>
                         tooltip: hint,
                         backgroundColor: c.base,
                         side: BorderSide(color: c.borderSubtle),
-                        labelStyle: const TextStyle(
-                          fontFamily: monoFamily,
-                          fontFamilyFallback: monoFallback,
-                          fontSize: 13,
-                        ),
+                        labelStyle: Theme.of(context).textTheme.bodyMedium!
+                            .copyWith(
+                              fontFamily: monoFamily,
+                              fontFamilyFallback: monoFallback,
+                            ),
                         onPressed: () => Navigator.pop(ctx, (cmd, arg)),
                       ),
                   ],

@@ -66,7 +66,7 @@ class OutlinePillButton extends StatelessWidget {
     required this.label,
     required this.onPressed,
     this.danger = false,
-    this.fontSize,
+    this.small = false,
     this.hPad = 14,
     this.vPad = 6,
   });
@@ -75,8 +75,8 @@ class OutlinePillButton extends StatelessWidget {
   final VoidCallback? onPressed;
   final bool danger;
 
-  /// Null: the button's default label size.
-  final double? fontSize;
+  /// The quieter size (`small` step) for a button that sits alone, not in an answer row.
+  final bool small;
   final double hPad;
   final double vPad;
 
@@ -90,9 +90,9 @@ class OutlinePillButton extends StatelessWidget {
         foreground: danger ? c.error : null,
         side: danger ? BorderSide(color: c.error.withValues(alpha: .5)) : null,
       ),
-      child: fontSize == null
-          ? Text(label)
-          : Text(label, style: TextStyle(fontSize: fontSize)),
+      child: small
+          ? Text(label, style: Theme.of(context).textTheme.labelMedium)
+          : Text(label),
     );
   }
 }

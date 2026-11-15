@@ -74,7 +74,8 @@ class _CrewAuditScreenState extends ConsumerState<CrewAuditScreen> {
                 widget.crewmateId == null
                     ? '${widget.title}: every change to the crew.'
                     : '${widget.title}: everything it ran or asked to run.',
-                style: TextStyle(color: c.muted, fontSize: 13),
+                style: Theme.of(context).textTheme.bodyMedium!
+                    .copyWith(color: c.muted),
               ),
               if (filterable) ...[
                 const SizedBox(height: Space.md),
@@ -172,12 +173,14 @@ class _EntryRow extends StatelessWidget {
         children: [
           Text(
             entry.summary,
-            style: TextStyle(color: c.text, fontSize: 14, height: 1.35),
+            style: Theme.of(context).textTheme.bodyLarge!
+                .copyWith(color: c.text, height: 1.35),
           ),
-          const SizedBox(height: 4),
+          const SizedBox(height: Space.xs),
           Text(
             '${_time(entry.ts)} · ${auditKindLabel(entry.kind)}',
-            style: TextStyle(color: c.muted, fontSize: 12),
+            style: Theme.of(context).textTheme.bodySmall!
+                .copyWith(color: c.muted),
           ),
         ],
       ),
@@ -203,16 +206,19 @@ class _EntrySheet extends StatelessWidget {
             style: Theme.of(context).textTheme.titleMedium,
           ),
           const SizedBox(height: 2),
-          Text(_time(entry.ts), style: TextStyle(color: c.muted, fontSize: 12)),
+          Text(
+            _time(entry.ts),
+            style: Theme.of(context).textTheme.bodySmall!
+                .copyWith(color: c.muted),
+          ),
           const SizedBox(height: Space.md),
           Flexible(
             child: SingleChildScrollView(
               child: SelectableText(
                 const JsonEncoder.withIndent('  ').convert(entry.raw),
-                style: TextStyle(
+                style: Theme.of(context).textTheme.bodySmall!.copyWith(
                   fontFamily: monoFamily,
                   fontFamilyFallback: monoFallback,
-                  fontSize: 12,
                   color: c.text,
                   height: 1.4,
                 ),

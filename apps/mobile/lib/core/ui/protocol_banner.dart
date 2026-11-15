@@ -22,7 +22,10 @@ class ProtocolBanner extends ConsumerWidget {
     return Container(
       width: double.infinity,
       color: c.warning.withValues(alpha: .12),
-      padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 8),
+      padding: const EdgeInsets.symmetric(
+        horizontal: Space.lg,
+        vertical: Space.sm,
+      ),
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.start,
         children: [
@@ -30,11 +33,12 @@ class ProtocolBanner extends ConsumerWidget {
             Row(
               children: [
                 Icon(Icons.system_update_rounded, size: 14, color: c.warning),
-                const SizedBox(width: 6),
+                const SizedBox(width: Space.sm),
                 Flexible(
                   child: Text(
                     l,
-                    style: TextStyle(fontSize: 12, color: c.warning),
+                    style: Theme.of(context).textTheme.bodySmall!
+                        .copyWith(color: c.warning),
                   ),
                 ),
               ],

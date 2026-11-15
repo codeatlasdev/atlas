@@ -94,13 +94,11 @@ class _FormState extends ConsumerState<_Form> {
             children: [
               Row(
                 children: [
-                  const Expanded(
+                  Expanded(
                     child: Text(
                       'Short replies',
-                      style: TextStyle(
-                        fontSize: 15,
-                        fontWeight: FontWeight.w600,
-                      ),
+                      style: Theme.of(context).textTheme.bodyLarge!
+                          .copyWith(fontWeight: FontWeight.w600),
                     ),
                   ),
                   Switch(
@@ -116,7 +114,8 @@ class _FormState extends ConsumerState<_Form> {
               ),
               Text(
                 'Summarize long crewmate replies with a cheap model. A crewmate can override this on its own profile.',
-                style: TextStyle(color: c.muted, fontSize: 13, height: 1.4),
+                style: Theme.of(context).textTheme.bodyMedium!
+                    .copyWith(color: c.muted, height: 1.4),
               ),
             ],
           ),
@@ -125,9 +124,10 @@ class _FormState extends ConsumerState<_Form> {
           child: Column(
             crossAxisAlignment: CrossAxisAlignment.start,
             children: [
-              const Text(
+              Text(
                 'Summary model',
-                style: TextStyle(fontSize: 15, fontWeight: FontWeight.w600),
+                style: Theme.of(context).textTheme.bodyLarge!
+                    .copyWith(fontWeight: FontWeight.w600),
               ),
               const SizedBox(height: Space.sm),
               TextField(
@@ -148,11 +148,10 @@ class _FormState extends ConsumerState<_Form> {
             Expanded(
               child: Text(
                 _status ?? '',
-                style: TextStyle(
+                style: Theme.of(context).textTheme.bodyMedium!.copyWith(
                   color: (_status ?? '').startsWith('Saved')
                       ? c.success
                       : c.error,
-                  fontSize: 13,
                 ),
               ),
             ),
@@ -183,10 +182,11 @@ class _EngineSignin extends ConsumerWidget {
         children: [
           Row(
             children: [
-              const Expanded(
+              Expanded(
                 child: Text(
                   'Engine sign-in',
-                  style: TextStyle(fontSize: 15, fontWeight: FontWeight.w600),
+                  style: Theme.of(context).textTheme.bodyLarge!
+                      .copyWith(fontWeight: FontWeight.w600),
                 ),
               ),
               IconButton(
@@ -199,7 +199,8 @@ class _EngineSignin extends ConsumerWidget {
           ),
           Text(
             'The sign-in each crewmate engine uses on this server. When one expires its tasks fail until you sign in again.',
-            style: TextStyle(color: c.muted, fontSize: 13, height: 1.4),
+            style: Theme.of(context).textTheme.bodyMedium!
+                .copyWith(color: c.muted, height: 1.4),
           ),
           const SizedBox(height: Space.sm),
           engines.when(
@@ -209,7 +210,8 @@ class _EngineSignin extends ConsumerWidget {
             ),
             error: (e, _) => Text(
               "Couldn't check the engines: ${e is StateError ? e.message : e}",
-              style: TextStyle(color: c.error, fontSize: 13),
+              style: Theme.of(context).textTheme.bodyMedium!
+                  .copyWith(color: c.error),
             ),
             data: (rows) => Column(
               children: [for (final s in rows) _row(context, ref, c, s)],
@@ -233,15 +235,19 @@ class _EngineSignin extends ConsumerWidget {
     };
     return Padding(
       key: Key('engine-${s.engine}'),
-      padding: const EdgeInsets.symmetric(vertical: 4),
+      padding: const EdgeInsets.symmetric(vertical: Space.xs),
       child: Row(
         children: [
           Expanded(
             child: Column(
               crossAxisAlignment: CrossAxisAlignment.start,
               children: [
-                Text(s.label, style: const TextStyle(fontSize: 14)),
-                Text(s.text, style: TextStyle(color: color, fontSize: 12)),
+                Text(s.label, style: Theme.of(context).textTheme.bodyLarge!),
+                Text(
+                  s.text,
+                  style: Theme.of(context).textTheme.bodySmall!
+                      .copyWith(color: color),
+                ),
               ],
             ),
           ),

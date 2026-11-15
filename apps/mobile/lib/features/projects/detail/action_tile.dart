@@ -50,7 +50,8 @@ class ProjectActionTile extends StatelessWidget {
                 if (action.confirm != null)
                   Text(
                     'Asks before running',
-                    style: TextStyle(color: c.muted, fontSize: 12),
+                    style: Theme.of(context).textTheme.bodySmall!
+                        .copyWith(color: c.muted),
                   ),
               ],
             ),
@@ -62,11 +63,10 @@ class ProjectActionTile extends StatelessWidget {
               action.key,
               maxLines: 1,
               overflow: TextOverflow.ellipsis,
-              style: TextStyle(
+              style: Theme.of(context).textTheme.bodySmall!.copyWith(
                 color: c.muted,
                 fontFamily: monoFamily,
                 fontFamilyFallback: monoFallback,
-                fontSize: 12,
               ),
             ),
           ),

@@ -146,10 +146,8 @@ class _LogsPageState extends ConsumerState<LogsPage> {
                       side: BorderSide(color: c.borderSubtle),
                       selectedColor: c.raised,
                       backgroundColor: c.base,
-                      labelStyle: TextStyle(
-                        color: _service == s ? c.text : c.muted,
-                        fontSize: 13,
-                      ),
+                      labelStyle: Theme.of(context).textTheme.bodyMedium!
+                          .copyWith(color: _service == s ? c.text : c.muted),
                     ),
                   ),
               ],
@@ -218,10 +216,10 @@ class _LogRow extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     final c = AtlasColors.of(context);
-    const mono = TextStyle(
+    final mono = Theme.of(context).textTheme.bodySmall!.copyWith(
+      color: AtlasColors.of(context).text,
       fontFamily: monoFamily,
       fontFamilyFallback: monoFallback,
-      fontSize: 12,
       height: 1.4,
     );
     final m = _logLine.firstMatch(line);

@@ -34,7 +34,7 @@ class TaskImageRow extends StatelessWidget {
   Widget build(BuildContext context) {
     if (images.isEmpty) return const SizedBox.shrink();
     return Padding(
-      padding: EdgeInsets.only(top: 6, left: alignEnd ? 64 : 0),
+      padding: EdgeInsets.only(top: Space.sm, left: alignEnd ? 64 : 0),
       child: Align(
         alignment: alignEnd ? Alignment.centerRight : Alignment.centerLeft,
         child: Wrap(
@@ -100,11 +100,12 @@ class _TaskImage extends ConsumerWidget {
                 mainAxisAlignment: MainAxisAlignment.center,
                 children: [
                   Icon(Icons.refresh_rounded, color: c.faint),
-                  const SizedBox(height: 4),
+                  const SizedBox(height: Space.xs),
                   ExcludeSemantics(
                     child: Text(
                       'Tap to retry',
-                      style: TextStyle(fontSize: 11, color: c.muted),
+                      style: Theme.of(context).textTheme.labelSmall!
+                          .copyWith(color: c.muted),
                     ),
                   ),
                 ],
@@ -123,7 +124,7 @@ class _TaskImage extends ConsumerWidget {
             context: context,
             builder: (_) => Dialog(
               backgroundColor: Colors.black,
-              insetPadding: const EdgeInsets.all(12),
+              insetPadding: const EdgeInsets.all(Space.md),
               child: InteractiveViewer(
                 child: Image.memory(img.bytes, fit: BoxFit.contain),
               ),

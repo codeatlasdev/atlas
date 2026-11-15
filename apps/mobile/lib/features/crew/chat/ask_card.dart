@@ -78,7 +78,7 @@ class _TaskAskCardState extends ConsumerState<TaskAskCard> {
     if (ask == null || !ask.isOpen) return const SizedBox.shrink();
     final c = AtlasColors.of(context);
     return Padding(
-      padding: const EdgeInsets.symmetric(vertical: 4),
+      padding: const EdgeInsets.symmetric(vertical: Space.xs),
       child: Row(
         crossAxisAlignment: CrossAxisAlignment.end,
         children: [
@@ -91,27 +91,26 @@ class _TaskAskCardState extends ConsumerState<TaskAskCard> {
                 children: [
                   Text(
                     ask.question,
-                    style: TextStyle(
-                      fontSize: 13,
-                      fontWeight: FontWeight.w600,
-                      color: c.text,
-                    ),
+                    style: Theme.of(context).textTheme.bodyMedium!
+                        .copyWith(fontWeight: FontWeight.w600, color: c.text),
                   ),
                   for (final o in ask.options) ...[
-                    const SizedBox(height: 8),
+                    const SizedBox(height: Space.sm),
                     _option(c, o),
                   ],
                   if (ask.allowText) ...[
-                    const SizedBox(height: 10),
+                    const SizedBox(height: Space.md),
                     TextField(
                       controller: _controller,
-                      style: TextStyle(fontSize: 14, color: c.text),
+                      style: Theme.of(context).textTheme.bodyLarge!
+                          .copyWith(color: c.text),
                       decoration: InputDecoration(
                         hintText: 'Or type an answer',
-                        hintStyle: TextStyle(color: c.faint, fontSize: 14),
+                        hintStyle: Theme.of(context).textTheme.bodyLarge!
+                            .copyWith(color: c.faint),
                         contentPadding: const EdgeInsets.symmetric(
-                          horizontal: 12,
-                          vertical: 8,
+                          horizontal: Space.md,
+                          vertical: Space.sm,
                         ),
                         border: OutlineInputBorder(
                           borderRadius: BorderRadius.circular(8),
@@ -124,17 +123,18 @@ class _TaskAskCardState extends ConsumerState<TaskAskCard> {
                       ),
                       onSubmitted: (_) => _sendText(),
                     ),
-                    const SizedBox(height: 8),
+                    const SizedBox(height: Space.sm),
                     WarnPillButton(
                       label: 'Send',
                       onPressed: _sending ? null : _sendText,
                     ),
                   ],
                   if (_error != null) ...[
-                    const SizedBox(height: 6),
+                    const SizedBox(height: Space.sm),
                     Text(
                       _error!,
-                      style: TextStyle(fontSize: 12, color: c.error),
+                      style: Theme.of(context).textTheme.bodySmall!
+                          .copyWith(color: c.error),
                     ),
                   ],
                 ],
@@ -151,7 +151,10 @@ class _TaskAskCardState extends ConsumerState<TaskAskCard> {
     onTap: _sending ? null : () => _answer(key: o.key),
     child: Container(
       width: double.infinity,
-      padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 10),
+      padding: const EdgeInsets.symmetric(
+        horizontal: Space.md,
+        vertical: Space.md,
+      ),
       decoration: BoxDecoration(
         border: Border.all(color: c.borderSubtle),
         borderRadius: BorderRadius.circular(10),
@@ -159,9 +162,17 @@ class _TaskAskCardState extends ConsumerState<TaskAskCard> {
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.start,
         children: [
-          Text(o.title, style: TextStyle(fontSize: 14, color: c.text)),
+          Text(
+            o.title,
+            style: Theme.of(context).textTheme.bodyLarge!
+                .copyWith(color: c.text),
+          ),
           if (o.subtitle != null)
-            Text(o.subtitle!, style: TextStyle(fontSize: 12, color: c.muted)),
+            Text(
+              o.subtitle!,
+              style: Theme.of(context).textTheme.bodySmall!
+                  .copyWith(color: c.muted),
+            ),
         ],
       ),
     ),

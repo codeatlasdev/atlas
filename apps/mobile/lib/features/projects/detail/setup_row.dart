@@ -26,29 +26,30 @@ class ProjectSetupRow extends StatelessWidget {
                 ? AtlasColors.of(context).success
                 : AtlasColors.of(context).error,
           ),
-          const SizedBox(width: 8),
+          const SizedBox(width: Space.sm),
           const Text('Setup', style: TextStyle(fontWeight: FontWeight.w600)),
-          const SizedBox(width: 8),
+          const SizedBox(width: Space.sm),
           Expanded(
             flex: 3,
             child: Text(
               snap.setupCommand ?? '',
               maxLines: 1,
               overflow: TextOverflow.ellipsis,
-              style: const TextStyle(
+              style: Theme.of(context).textTheme.bodySmall!.copyWith(
+                color: AtlasColors.of(context).text,
                 fontFamily: monoFamily,
                 fontFamilyFallback: monoFallback,
-                fontSize: 12,
               ),
             ),
           ),
-          const SizedBox(width: 8),
+          const SizedBox(width: Space.sm),
           Flexible(
             child: Text(
               snap.setupState!,
               maxLines: 1,
               overflow: TextOverflow.ellipsis,
-              style: const TextStyle(fontSize: 12),
+              style: Theme.of(context).textTheme.bodySmall!
+                  .copyWith(color: AtlasColors.of(context).text),
             ),
           ),
         ],

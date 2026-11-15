@@ -61,7 +61,8 @@ class CrewmateUsageScreen extends ConsumerWidget {
             children: [
               Text(
                 '$name: tokens (input + output) its engine reported.',
-                style: TextStyle(color: c.muted, fontSize: 13),
+                style: Theme.of(context).textTheme.bodyMedium!
+                    .copyWith(color: c.muted),
               ),
               const SizedBox(height: Space.lg),
               Row(
@@ -77,7 +78,8 @@ class CrewmateUsageScreen extends ConsumerWidget {
                 const SizedBox(height: Space.md),
                 Text(
                   'Reported cost, 30 days: \$${totals.cost.toStringAsFixed(2)}',
-                  style: TextStyle(color: c.muted, fontSize: 13),
+                  style: Theme.of(context).textTheme.bodyMedium!
+                      .copyWith(color: c.muted),
                 ),
               ],
               if (records.isEmpty)
@@ -85,7 +87,8 @@ class CrewmateUsageScreen extends ConsumerWidget {
                   padding: const EdgeInsets.only(top: Space.lg),
                   child: Text(
                     'No usage recorded yet. Only engines that report tokens show here.',
-                    style: TextStyle(color: c.muted, fontSize: 13),
+                    style: Theme.of(context).textTheme.bodyMedium!
+                        .copyWith(color: c.muted),
                   ),
                 ),
               const SectionHeader('Engine limits'),
@@ -93,7 +96,8 @@ class CrewmateUsageScreen extends ConsumerWidget {
                 loading: () => const LinearProgressIndicator(),
                 error: (e, _) => Text(
                   '${e is StateError ? e.message : e}',
-                  style: TextStyle(color: c.muted, fontSize: 13),
+                  style: Theme.of(context).textTheme.bodyMedium!
+                      .copyWith(color: c.muted),
                 ),
                 data: (l) => Column(
                   crossAxisAlignment: CrossAxisAlignment.start,
@@ -101,11 +105,8 @@ class CrewmateUsageScreen extends ConsumerWidget {
                     if (l.message.isNotEmpty)
                       Text(
                         l.message,
-                        style: TextStyle(
-                          color: c.muted,
-                          fontSize: 13,
-                          height: 1.4,
-                        ),
+                        style: Theme.of(context).textTheme.bodyMedium!
+                            .copyWith(color: c.muted, height: 1.4),
                       ),
                     for (final e in l.limits.entries)
                       AtlasCard(
@@ -119,15 +120,15 @@ class CrewmateUsageScreen extends ConsumerWidget {
                                 fontWeight: FontWeight.w600,
                               ),
                             ),
-                            const SizedBox(height: 4),
+                            const SizedBox(height: Space.xs),
                             SelectableText(
                               e.value,
-                              style: TextStyle(
-                                fontFamily: monoFamily,
-                                fontFamilyFallback: monoFallback,
-                                fontSize: 12,
-                                color: c.muted,
-                              ),
+                              style: Theme.of(context).textTheme.bodySmall!
+                                  .copyWith(
+                                    fontFamily: monoFamily,
+                                    fontFamilyFallback: monoFallback,
+                                    color: c.muted,
+                                  ),
                             ),
                           ],
                         ),
@@ -159,10 +160,15 @@ class _Stat extends StatelessWidget {
           children: [
             Text(
               value,
-              style: const TextStyle(fontSize: 20, fontWeight: FontWeight.w700),
+              style: Theme.of(context).textTheme.titleLarge!
+                  .copyWith(fontWeight: FontWeight.w700),
             ),
             const SizedBox(height: 2),
-            Text(label, style: TextStyle(color: c.muted, fontSize: 12)),
+            Text(
+              label,
+              style: Theme.of(context).textTheme.bodySmall!
+                  .copyWith(color: c.muted),
+            ),
           ],
         ),
       ),

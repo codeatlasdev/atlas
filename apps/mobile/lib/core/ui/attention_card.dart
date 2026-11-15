@@ -89,15 +89,16 @@ class AttentionCard extends StatelessWidget {
         if (title != null)
           Text(
             title!,
-            style: TextStyle(
-              fontWeight: FontWeight.w700,
-              fontSize: 14,
-              color: c.text,
-            ),
+            style: Theme.of(context).textTheme.bodyLarge!
+                .copyWith(fontWeight: FontWeight.w700, color: c.text),
           ),
         if (body != null) ...[
           if (title != null) const SizedBox(height: 2),
-          Text(body!, style: TextStyle(fontSize: 12, color: c.muted)),
+          Text(
+            body!,
+            style: Theme.of(context).textTheme.bodySmall!
+                .copyWith(color: c.muted),
+          ),
         ],
       ],
     );
@@ -112,12 +113,12 @@ class AttentionCard extends StatelessWidget {
                     children: [
                       if (icon != null) ...[
                         Icon(icon, color: color, size: 22),
-                        const SizedBox(width: 10),
+                        const SizedBox(width: Space.md),
                       ],
                       Expanded(child: text),
                     ],
                   ),
-                  const SizedBox(height: 8),
+                  const SizedBox(height: Space.sm),
                   Wrap(spacing: 10, runSpacing: 4, children: actions),
                 ],
               )
@@ -125,11 +126,11 @@ class AttentionCard extends StatelessWidget {
                 children: [
                   if (icon != null) ...[
                     Icon(icon, color: color, size: 22),
-                    const SizedBox(width: 10),
+                    const SizedBox(width: Space.md),
                   ],
                   Expanded(child: text),
                   if (actions.isNotEmpty) ...[
-                    const SizedBox(width: 10),
+                    const SizedBox(width: Space.md),
                     ...actions,
                   ],
                 ],

@@ -172,7 +172,11 @@ class _LauncherState extends ConsumerState<_Launcher> {
                 ),
                 if (worktrees != null && worktrees.length > 1) ...[
                   const SizedBox(height: Space.md),
-                  Text('Where', style: TextStyle(color: c.muted, fontSize: 12)),
+                  Text(
+                    'Where',
+                    style: Theme.of(context).textTheme.bodySmall!
+                        .copyWith(color: c.muted),
+                  ),
                   const SizedBox(height: Space.xs),
                   Wrap(
                     spacing: Space.sm,
@@ -214,7 +218,8 @@ class _LauncherState extends ConsumerState<_Launcher> {
                   padding: const EdgeInsets.only(top: Space.md),
                   child: Text(
                     _error!,
-                    style: TextStyle(color: c.error, fontSize: 13),
+                    style: Theme.of(context).textTheme.bodyMedium!
+                        .copyWith(color: c.error),
                   ),
                 ),
               const SizedBox(height: Space.lg),
@@ -299,7 +304,8 @@ class _AgentChoice extends StatelessWidget {
                       if (!ok)
                         Text(
                           'hooks off',
-                          style: TextStyle(fontSize: 11, color: c.warning),
+                          style: Theme.of(context).textTheme.labelSmall!
+                              .copyWith(color: c.warning),
                         ),
                     ],
                   ),

@@ -18,7 +18,7 @@ class HomeSplash extends StatelessWidget {
           const AtlasLogo(size: 96, animated: true),
           const SizedBox(height: Space.xl),
           SizedBox(
-            height: 20,
+            height: Space.xl,
             child: AnimatedSwitcher(
               duration: Motion.normal,
               child: Text(

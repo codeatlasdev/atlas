@@ -65,8 +65,7 @@ class CrewmateTaskPair extends StatelessWidget {
             child: Center(
               child: Text(
                 day!,
-                style: TextStyle(
-                  fontSize: 13,
+                style: Theme.of(context).textTheme.bodyMedium!.copyWith(
                   color: AtlasColors.of(context).muted,
                   fontWeight: FontWeight.w500,
                 ),
@@ -99,7 +98,7 @@ class CrewmateTaskPair extends StatelessWidget {
 
         // ── approval bubble (inline with task) ─────────────────────────
         if (pendingApproval != null) ...[
-          const SizedBox(height: 4),
+          const SizedBox(height: Space.xs),
           CrewmateApprovalBubble(
             look: look,
             approval: pendingApproval!,
@@ -109,13 +108,13 @@ class CrewmateTaskPair extends StatelessWidget {
 
         // ── action card (waiting_action state) ─────────────────────────
         if (task.state == 'waiting_action' && task.action != null) ...[
-          const SizedBox(height: 4),
+          const SizedBox(height: Space.xs),
           TaskActionCard(task: task, device: device, crewmateId: crewmateId),
         ],
 
         // ── ask_user: the agent is blocked on a question ───────────────
         if (task.ask?.isOpen ?? false) ...[
-          const SizedBox(height: 4),
+          const SizedBox(height: Space.xs),
           TaskAskCard(task: task, device: device, crewmateId: crewmateId),
         ],
 
@@ -124,11 +123,11 @@ class CrewmateTaskPair extends StatelessWidget {
         // an add_trigger action, show the one-line resolution note.
         if (task.state != 'waiting_action' &&
             task.action?.kind == 'add_trigger') ...[
-          const SizedBox(height: 4),
+          const SizedBox(height: Space.xs),
           _AddTriggerNote(added: task.state != 'cancelled'),
         ],
 
-        const SizedBox(height: 8),
+        const SizedBox(height: Space.sm),
       ],
     );
   }
@@ -148,7 +147,7 @@ class _UserBubble extends StatelessWidget {
   Widget build(BuildContext context) {
     final c = AtlasColors.of(context);
     return Padding(
-      padding: const EdgeInsets.only(top: 8, left: 64),
+      padding: const EdgeInsets.only(top: Space.sm, left: 64),
       child: Align(
         alignment: Alignment.centerRight,
         child: ChatAppear(
@@ -160,7 +159,11 @@ class _UserBubble extends StatelessWidget {
             tag: task.source == 'mobile' ? null : _sourceLabel(task.source),
             child: Text(
               task.prompt,
-              style: TextStyle(color: c.onAccent, height: 1.4, fontSize: 16),
+              style: Theme.of(context).textTheme.titleMedium!.copyWith(
+                color: c.onAccent,
+                height: 1.4,
+                fontWeight: FontWeight.w400,
+              ),
             ),
           ),
         ),
@@ -194,7 +197,8 @@ class _CrewmateBubble extends StatelessWidget {
           task.preparing != null
               ? 'Downloading ${task.preparing}…'
               : '${task.queuedLabel}…',
-          style: TextStyle(color: c.muted, fontSize: 15),
+          style: Theme.of(context).textTheme.bodyLarge!
+              .copyWith(color: c.muted),
         );
 
       case 'running':
@@ -215,19 +219,22 @@ class _CrewmateBubble extends StatelessWidget {
       case 'failed':
         content = Text(
           task.error ?? 'Task failed',
-          style: TextStyle(color: c.error, fontSize: 15),
+          style: Theme.of(context).textTheme.bodyLarge!
+              .copyWith(color: c.error),
         );
 
       case 'cancelled':
         content = Text(
           'Cancelled',
-          style: TextStyle(color: c.muted, fontSize: 15),
+          style: Theme.of(context).textTheme.bodyLarge!
+              .copyWith(color: c.muted),
         );
 
       case 'waiting_action':
         content = Text(
           'Waiting for input…',
-          style: TextStyle(color: c.muted, fontSize: 15),
+          style: Theme.of(context).textTheme.bodyLarge!
+              .copyWith(color: c.muted),
         );
 
       default: // done
@@ -248,7 +255,7 @@ class _CrewmateBubble extends StatelessWidget {
                 expanded: expanded,
                 onToggle: onToggle,
               ),
-              const SizedBox(height: 8),
+              const SizedBox(height: Space.sm),
             ],
             _CrewmateBubbleResult(task: task),
           ],
@@ -258,7 +265,7 @@ class _CrewmateBubble extends StatelessWidget {
     // The crewmate's bubble: left, soft surface, its face beside the last line. The
     // content changes size smoothly as the task runs, steps come in and the reply lands.
     return Padding(
-      padding: const EdgeInsets.only(top: 8),
+      padding: const EdgeInsets.only(top: Space.sm),
       child: ChatAppear(
         fromRight: false,
         play: enter,
@@ -309,7 +316,10 @@ class _Bubble extends StatelessWidget {
   Widget build(BuildContext context) {
     final c = AtlasColors.of(context);
     return Container(
-      padding: const EdgeInsets.symmetric(horizontal: 18, vertical: 13),
+      padding: const EdgeInsets.symmetric(
+        horizontal: Space.lg,
+        vertical: Space.md,
+      ),
       decoration: BoxDecoration(
         color: mine ? c.accent : c.raised,
         borderRadius: BorderRadius.circular(24),
@@ -321,7 +331,7 @@ class _Bubble extends StatelessWidget {
               mainAxisSize: MainAxisSize.min,
               children: [
                 child,
-                const SizedBox(height: 4),
+                const SizedBox(height: Space.xs),
                 Icon(
                   tag == 'routine'
                       ? Icons.schedule_rounded
@@ -358,15 +368,20 @@ class _CrewmateBubbleResultState extends State<_CrewmateBubbleResult> {
       children: [
         AtlasMarkdown(
           shown,
-          style: TextStyle(color: c.text, fontSize: 16, height: 1.45),
+          style: Theme.of(context).textTheme.titleMedium!.copyWith(
+            color: c.text,
+            height: 1.45,
+            fontWeight: FontWeight.w400,
+          ),
         ),
         if (isSummarized) ...[
-          const SizedBox(height: 6),
+          const SizedBox(height: Space.sm),
           GestureDetector(
             onTap: () => setState(() => _showFull = !_showFull),
             child: Text(
               _showFull ? 'Show summary' : 'See full reply',
-              style: TextStyle(color: c.accent, fontSize: 12),
+              style: Theme.of(context).textTheme.bodySmall!
+                  .copyWith(color: c.accent),
             ),
           ),
         ],
@@ -393,10 +408,11 @@ class _AddTriggerNote extends StatelessWidget {
             size: 13,
             color: added ? c.success : c.faint,
           ),
-          const SizedBox(width: 4),
+          const SizedBox(width: Space.xs),
           Text(
             added ? 'Automation added' : 'Not added',
-            style: TextStyle(fontSize: 12, color: added ? c.success : c.muted),
+            style: Theme.of(context).textTheme.bodySmall!
+                .copyWith(color: added ? c.success : c.muted),
           ),
         ],
       ),

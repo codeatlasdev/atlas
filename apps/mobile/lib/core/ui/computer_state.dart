@@ -79,16 +79,20 @@ class OfflineStrip extends ConsumerWidget {
     return Container(
       width: double.infinity,
       color: c.warning.withValues(alpha: .12),
-      padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 8),
+      padding: const EdgeInsets.symmetric(
+        horizontal: Space.lg,
+        vertical: Space.sm,
+      ),
       child: Row(
         children: [
           Icon(Icons.wifi_off_rounded, size: 14, color: c.warning),
-          const SizedBox(width: 6),
+          const SizedBox(width: Space.sm),
           Flexible(
             child: Text(
               '${DeviceOffline(device).message}$suffix',
               overflow: TextOverflow.ellipsis,
-              style: TextStyle(fontSize: 12, color: c.warning),
+              style: Theme.of(context).textTheme.bodySmall!
+                  .copyWith(color: c.warning),
             ),
           ),
         ],

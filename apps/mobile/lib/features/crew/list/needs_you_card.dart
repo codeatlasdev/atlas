@@ -59,7 +59,7 @@ class NeedsYouCard extends StatelessWidget {
         onTap: onTap,
         excludeFromSemantics: true,
         child: AttentionCard(
-          margin: const EdgeInsets.symmetric(horizontal: 12, vertical: 3),
+          margin: const EdgeInsets.symmetric(horizontal: Space.md, vertical: 3),
           child: Column(
             crossAxisAlignment: CrossAxisAlignment.start,
             children: [
@@ -71,20 +71,17 @@ class NeedsYouCard extends StatelessWidget {
                     state: CrewState.needsYou,
                     size: 32,
                   ),
-                  const SizedBox(width: 8),
+                  const SizedBox(width: Space.sm),
                   Expanded(
                     child: Text(
                       entry.crewmate.name,
-                      style: TextStyle(
-                        fontWeight: FontWeight.w700,
-                        fontSize: 14,
-                        color: c.text,
-                      ),
+                      style: Theme.of(context).textTheme.bodyLarge!
+                          .copyWith(fontWeight: FontWeight.w700, color: c.text),
                     ),
                   ),
                 ],
               ),
-              const SizedBox(height: 8),
+              const SizedBox(height: Space.sm),
               if (pa != null) ...[
                 ApprovalToolLine(
                   approval: pa,
@@ -92,13 +89,13 @@ class NeedsYouCard extends StatelessWidget {
                   flexible: true,
                 ),
                 if (cmd != null) ...[
-                  const SizedBox(height: 6),
+                  const SizedBox(height: Space.sm),
                   ApprovalCommandPreview(cmd),
                 ],
-                const SizedBox(height: 10),
+                const SizedBox(height: Space.md),
                 ApprovalButtons(onAnswer: onAnswer, hPad: 16, vPad: 6, gap: 8),
               ] else if (task != null && task.retryable)
-                ..._waiting(c, task),
+                ..._waiting(context, c, task),
             ],
           ),
         ),
@@ -107,7 +104,11 @@ class NeedsYouCard extends StatelessWidget {
   }
 
   /// The card of a parked task: what it is, the agent's captures, the reasons, Retry / Override.
-  List<Widget> _waiting(AtlasColors c, CrewmateWaitingTask task) {
+  List<Widget> _waiting(
+    BuildContext context,
+    AtlasColors c,
+    CrewmateWaitingTask task,
+  ) {
     final unproven = task.action.kind == 'prove_ui';
     final reasons = unproven
         ? [if (task.action.reason != null) task.action.reason!]
@@ -115,11 +116,8 @@ class NeedsYouCard extends StatelessWidget {
     return [
       Text(
         unproven ? 'Could not prove this UI work' : 'This work was refused',
-        style: TextStyle(
-          fontSize: 13,
-          fontWeight: FontWeight.w600,
-          color: c.text,
-        ),
+        style: Theme.of(context).textTheme.bodyMedium!
+            .copyWith(fontWeight: FontWeight.w600, color: c.text),
       ),
       TaskImageRow(
         images: task.attachments,
@@ -128,23 +126,26 @@ class NeedsYouCard extends StatelessWidget {
         crewmateId: entry.crewmate.id,
         alignEnd: false,
       ),
-      const SizedBox(height: 6),
+      const SizedBox(height: Space.sm),
       for (final r in reasons)
         Padding(
           padding: const EdgeInsets.only(bottom: 2),
-          child: Text('• $r', style: TextStyle(fontSize: 12, color: c.muted)),
+          child: Text(
+            '• $r',
+            style: Theme.of(context).textTheme.bodySmall!
+                .copyWith(color: c.muted),
+          ),
         ),
-      const SizedBox(height: 10),
+      const SizedBox(height: Space.md),
       Row(
         children: [
           WarnPillButton(
             label: 'Retry',
             onPressed: () => onAnswerTask('retry'),
           ),
-          const SizedBox(width: 8),
+          const SizedBox(width: Space.sm),
           OutlinePillButton(
             label: 'Override',
-            fontSize: 13,
             onPressed: () => onAnswerTask('override'),
           ),
         ],

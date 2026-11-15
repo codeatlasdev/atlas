@@ -254,10 +254,8 @@ class _HubHeader extends StatelessWidget {
               Text(
                 '$running running · $parked parked',
                 key: const ValueKey('hub-counts'),
-                style: const TextStyle(
-                  fontSize: 15,
-                  fontWeight: FontWeight.w700,
-                ),
+                style: Theme.of(context).textTheme.bodyLarge!
+                    .copyWith(fontWeight: FontWeight.w700),
               ),
               SegmentedButton<HubLayout>(
                 showSelectedIcon: false,
@@ -277,11 +275,12 @@ class _HubHeader extends StatelessWidget {
             ],
           ),
           if (totals.line.isNotEmpty) ...[
-            const SizedBox(height: 4),
+            const SizedBox(height: Space.xs),
             Text(
               totals.line,
               key: const ValueKey('hub-totals'),
-              style: TextStyle(fontSize: 12.5, color: c.muted),
+              style: Theme.of(context).textTheme.bodySmall!
+                  .copyWith(color: c.muted),
             ),
           ],
           const SizedBox(height: Space.sm),
@@ -354,7 +353,7 @@ class HubRow extends StatelessWidget {
     final stats = hubStats(n);
     final last = hubLastActivity(n);
     return Padding(
-      padding: EdgeInsets.only(left: depth * 16.0, top: 6),
+      padding: EdgeInsets.only(left: depth * Space.lg, top: Space.sm),
       child: Material(
         color: focused ? c.accent.withValues(alpha: .10) : c.base,
         shape: RoundedRectangleBorder(
@@ -381,24 +380,24 @@ class HubRow extends StatelessWidget {
                         n.isRoot ? 'Main' : n.id,
                         maxLines: 1,
                         overflow: TextOverflow.ellipsis,
-                        style: const TextStyle(
-                          fontSize: 14.5,
-                          fontWeight: FontWeight.w700,
-                        ),
+                        style: Theme.of(context).textTheme.bodyLarge!
+                            .copyWith(fontWeight: FontWeight.w700),
                       ),
                       if (showParent && parent != null)
                         Text(
                           '↳ ${parent.isRoot ? 'Main' : parent.id}',
                           maxLines: 1,
                           overflow: TextOverflow.ellipsis,
-                          style: TextStyle(fontSize: 12, color: c.muted),
+                          style: Theme.of(context).textTheme.bodySmall!
+                              .copyWith(color: c.muted),
                         ),
                       if (meta.isNotEmpty)
                         Text(
                           meta,
                           maxLines: 1,
                           overflow: TextOverflow.ellipsis,
-                          style: TextStyle(fontSize: 12, color: c.muted),
+                          style: Theme.of(context).textTheme.bodySmall!
+                              .copyWith(color: c.muted),
                         ),
                       if (hubTask(n).isNotEmpty)
                         Padding(
@@ -407,12 +406,13 @@ class HubRow extends StatelessWidget {
                             hubTask(n),
                             maxLines: 1,
                             overflow: TextOverflow.ellipsis,
-                            style: TextStyle(fontSize: 13, color: c.text),
+                            style: Theme.of(context).textTheme.bodyMedium!
+                                .copyWith(color: c.text),
                           ),
                         ),
                       if (stats.isNotEmpty || last.isNotEmpty)
                         Padding(
-                          padding: const EdgeInsets.only(top: 4),
+                          padding: const EdgeInsets.only(top: Space.xs),
                           child: Text(
                             [
                               stats,
@@ -420,7 +420,8 @@ class HubRow extends StatelessWidget {
                             ].where((s) => s.isNotEmpty).join(' · '),
                             maxLines: 2,
                             overflow: TextOverflow.ellipsis,
-                            style: TextStyle(fontSize: 12, color: c.muted),
+                            style: Theme.of(context).textTheme.bodySmall!
+                                .copyWith(color: c.muted),
                           ),
                         ),
                     ],
@@ -560,7 +561,7 @@ class AgentDetail extends StatelessWidget {
         crossAxisAlignment: CrossAxisAlignment.start,
         children: [
           Text(title, style: theme.titleSmall),
-          const SizedBox(height: 4),
+          const SizedBox(height: Space.xs),
           child,
         ],
       ),
@@ -600,10 +601,8 @@ class AgentDetail extends StatelessWidget {
                                   nodeStatusLabel(n),
                                   hubMeta(n, fallbackAgent),
                                 ].where((s) => s.isNotEmpty).join(' · '),
-                                style: TextStyle(
-                                  fontSize: 12.5,
-                                  color: c.muted,
-                                ),
+                                style: Theme.of(context).textTheme.bodySmall!
+                                    .copyWith(color: c.muted),
                               ),
                             ],
                           ),
@@ -683,10 +682,8 @@ class AgentDetail extends StatelessWidget {
                                 padding: const EdgeInsets.only(top: 2),
                                 child: Text(
                                   '${kids.length} ${kids.length == 1 ? 'child' : 'children'}',
-                                  style: TextStyle(
-                                    fontSize: 12.5,
-                                    color: c.muted,
-                                  ),
+                                  style: Theme.of(context).textTheme.bodySmall!
+                                      .copyWith(color: c.muted),
                                 ),
                               ),
                             for (final k in kids)
@@ -806,17 +803,18 @@ class _LineageLink extends StatelessWidget {
         child: Row(
           mainAxisSize: MainAxisSize.min,
           children: [
-            Text(prefix, style: TextStyle(fontSize: 12.5, color: c.muted)),
-            const SizedBox(width: 6),
+            Text(
+              prefix,
+              style: Theme.of(context).textTheme.bodySmall!
+                  .copyWith(color: c.muted),
+            ),
+            const SizedBox(width: Space.sm),
             Flexible(
               child: Text(
                 label,
                 overflow: TextOverflow.ellipsis,
-                style: TextStyle(
-                  fontSize: 13.5,
-                  fontWeight: FontWeight.w600,
-                  color: c.accent,
-                ),
+                style: Theme.of(context).textTheme.bodyMedium!
+                    .copyWith(fontWeight: FontWeight.w600, color: c.accent),
               ),
             ),
           ],
@@ -848,8 +846,7 @@ class _RecentRow extends StatelessWidget {
             width: 56,
             child: Text(
               at,
-              style: TextStyle(
-                fontSize: 11.5,
+              style: Theme.of(context).textTheme.bodySmall!.copyWith(
                 color: c.muted,
                 fontFamily: monoFamily,
                 fontFamilyFallback: monoFallback,
@@ -857,7 +854,7 @@ class _RecentRow extends StatelessWidget {
             ),
           ),
           Icon(icon, size: 14, color: color),
-          const SizedBox(width: 6),
+          const SizedBox(width: Space.sm),
           Expanded(
             child: Text.rich(
               TextSpan(
@@ -876,7 +873,8 @@ class _RecentRow extends StatelessWidget {
                     ),
                 ],
               ),
-              style: const TextStyle(fontSize: 12.5, height: 1.3),
+              style: Theme.of(context).textTheme.bodySmall!
+                  .copyWith(color: AtlasColors.of(context).text, height: 1.3),
             ),
           ),
         ],
@@ -907,9 +905,10 @@ class ContextBar extends StatelessWidget {
         Text(
           'context ${windowText(tokens)}/${windowText(window)}  $pct%',
           key: const ValueKey('context-label'),
-          style: TextStyle(fontSize: 12.5, color: c.muted),
+          style: Theme.of(context).textTheme.bodySmall!
+              .copyWith(color: c.muted),
         ),
-        const SizedBox(height: 4),
+        const SizedBox(height: Space.xs),
         ClipRRect(
           borderRadius: BorderRadius.circular(3),
           child: LinearProgressIndicator(

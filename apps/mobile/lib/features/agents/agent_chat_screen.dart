@@ -154,7 +154,7 @@ class _AgentChatScreenState extends ConsumerState<AgentChatScreen> {
     }
     final b = shown[i];
     return _built[b] ??= Padding(
-      padding: const EdgeInsets.only(top: 10),
+      padding: const EdgeInsets.only(top: Space.md),
       child: Builder(
         builder: (context) => timelineBlock(
           context,
@@ -533,7 +533,10 @@ class _AgentChatScreenState extends ConsumerState<AgentChatScreen> {
         borderRadius: BorderRadius.circular(Space.radiusSm),
         onTap: canSwitch ? () => _switch(all) : null,
         child: Padding(
-          padding: const EdgeInsets.symmetric(vertical: 4, horizontal: 4),
+          padding: const EdgeInsets.symmetric(
+            vertical: Space.xs,
+            horizontal: Space.xs,
+          ),
           child: Row(
             children: [
               AgentLogo(status.agent, size: 30),
@@ -550,10 +553,8 @@ class _AgentChatScreenState extends ConsumerState<AgentChatScreen> {
                             title,
                             maxLines: 1,
                             overflow: TextOverflow.ellipsis,
-                            style: const TextStyle(
-                              fontSize: 16,
-                              fontWeight: FontWeight.w600,
-                            ),
+                            style: Theme.of(context).textTheme.titleMedium!
+                                .copyWith(fontWeight: FontWeight.w600),
                           ),
                         ),
                         if (canSwitch)
@@ -575,7 +576,8 @@ class _AgentChatScreenState extends ConsumerState<AgentChatScreen> {
                             subtitle,
                             maxLines: 1,
                             overflow: TextOverflow.ellipsis,
-                            style: TextStyle(fontSize: 12, color: c.muted),
+                            style: Theme.of(context).textTheme.bodySmall!
+                                .copyWith(color: c.muted),
                           ),
                         ),
                       ],
@@ -763,7 +765,7 @@ class _AgentChatScreenState extends ConsumerState<AgentChatScreen> {
                         itemBuilder: (context, i) {
                           if (typing && i == 0) {
                             return const Padding(
-                              padding: EdgeInsets.only(top: 10),
+                              padding: EdgeInsets.only(top: Space.md),
                               child: Align(
                                 alignment: Alignment.centerLeft,
                                 child: TypingBubble(),
@@ -779,11 +781,12 @@ class _AgentChatScreenState extends ConsumerState<AgentChatScreen> {
                             );
                           }
                           return Padding(
-                            padding: const EdgeInsets.only(top: 10),
+                            padding: const EdgeInsets.only(top: Space.md),
                             child: Center(
                               child: Text(
                                 'older messages not shown',
-                                style: TextStyle(fontSize: 11, color: c.muted),
+                                style: Theme.of(context).textTheme.labelSmall!
+                                    .copyWith(color: c.muted),
                               ),
                             ),
                           );
@@ -828,10 +831,13 @@ class _AgentChatScreenState extends ConsumerState<AgentChatScreen> {
                         ),
                       if (_error != null)
                         Padding(
-                          padding: const EdgeInsets.symmetric(horizontal: 12),
+                          padding: const EdgeInsets.symmetric(
+                            horizontal: Space.md,
+                          ),
                           child: Text(
                             _error!,
-                            style: TextStyle(color: c.error, fontSize: 12),
+                            style: Theme.of(context).textTheme.bodySmall!
+                                .copyWith(color: c.error),
                           ),
                         ),
                     ],

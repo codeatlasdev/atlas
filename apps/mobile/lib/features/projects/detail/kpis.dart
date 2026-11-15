@@ -50,8 +50,7 @@ class ProjectKpis extends StatelessWidget {
                       child: Text(
                         items[i].$2,
                         key: ValueKey(items[i].$2),
-                        style: TextStyle(
-                          fontSize: 20,
+                        style: Theme.of(context).textTheme.titleLarge!.copyWith(
                           fontWeight: FontWeight.w700,
                           color: items[i].$3 ?? c.text,
                           fontFeatures: const [FontFeature.tabularFigures()],
@@ -61,7 +60,8 @@ class ProjectKpis extends StatelessWidget {
                     const SizedBox(height: 2),
                     Text(
                       items[i].$1,
-                      style: TextStyle(fontSize: 11, color: c.muted),
+                      style: Theme.of(context).textTheme.labelSmall!
+                          .copyWith(color: c.muted),
                     ),
                   ],
                 ),

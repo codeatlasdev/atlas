@@ -67,10 +67,15 @@ class ActivityRow extends StatelessWidget {
           child: Row(
             children: [
               avatar,
-              const SizedBox(width: 12),
+              const SizedBox(width: Space.md),
               Expanded(
                 child: Container(
-                  padding: const EdgeInsets.fromLTRB(0, 11, Space.lg, 11),
+                  padding: const EdgeInsets.fromLTRB(
+                    0,
+                    Space.md,
+                    Space.lg,
+                    Space.md,
+                  ),
                   decoration: BoxDecoration(
                     border: last
                         ? null
@@ -88,18 +93,18 @@ class ActivityRow extends StatelessWidget {
                             size: 14,
                             color: color,
                           ),
-                          const SizedBox(width: 5),
+                          const SizedBox(width: Space.xs),
                           Expanded(
                             child: Text(
                               title,
                               overflow: TextOverflow.ellipsis,
-                              style: TextStyle(
-                                fontSize: 15,
-                                fontWeight: unread
-                                    ? FontWeight.w700
-                                    : FontWeight.w500,
-                                color: c.text,
-                              ),
+                              style: Theme.of(context).textTheme.bodyLarge!
+                                  .copyWith(
+                                    fontWeight: unread
+                                        ? FontWeight.w700
+                                        : FontWeight.w500,
+                                    color: c.text,
+                                  ),
                             ),
                           ),
                           Text(
@@ -107,10 +112,8 @@ class ActivityRow extends StatelessWidget {
                               item.at.millisecondsSinceEpoch ~/ 1000,
                               DateTime.now(),
                             ),
-                            style: TextStyle(
-                              fontSize: 12.5,
-                              color: unread ? c.accent : c.muted,
-                            ),
+                            style: Theme.of(context).textTheme.bodySmall!
+                                .copyWith(color: unread ? c.accent : c.muted),
                           ),
                         ],
                       ),
@@ -122,15 +125,12 @@ class ActivityRow extends StatelessWidget {
                               line,
                               maxLines: 2,
                               overflow: TextOverflow.ellipsis,
-                              style: TextStyle(
-                                fontSize: 14,
-                                height: 1.3,
-                                color: c.muted,
-                              ),
+                              style: Theme.of(context).textTheme.bodyLarge!
+                                  .copyWith(height: 1.3, color: c.muted),
                             ),
                           ),
                           if (unread) ...[
-                            const SizedBox(width: 8),
+                            const SizedBox(width: Space.sm),
                             Container(
                               width: 9,
                               height: 9,

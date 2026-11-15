@@ -117,6 +117,25 @@ Future<ProviderContainer> _pump(
   return container;
 }
 
+const _macB = MacDevice(nodeId: 'mac-2', name: 'Studio');
+
+/// The tab against real providers whose paired computers are [by] (each answers on its own transport).
+Future<void> _pumpMany(WidgetTester t, Map<MacDevice, _Computer> by) async {
+  await t.binding.setSurfaceSize(const Size(393, 852));
+  await t.pumpWidget(
+    ProviderScope(
+      overrides: [
+        macStorageProvider.overrideWithValue(DemoStorage(by.keys.toList())),
+        transportFactoryProvider.overrideWithValue(
+          (d, _) async =>
+              by.entries.firstWhere((e) => e.key.nodeId == d.nodeId).value,
+        ),
+      ],
+      child: MaterialApp(theme: atlasTheme(), home: const CrewScreen()),
+    ),
+  );
+}
+
 /// Pumps long enough for microtasks and the connect + request round trips, not for the 30 s backoff.
 Future<void> _settleShort(WidgetTester t) async {
   for (var i = 0; i < 10; i++) {
@@ -496,5 +515,115 @@ void main() {
       await t.pumpWidget(const SizedBox());
       await computer.close();
     });
+  });
+
+  // Gap of the first fix: with several computers, when all failed and nothing had loaded the tab named only the
+  // first computer's error, and "Try again" re-asked every computer. Each computer owns its state.
+  group('several computers', () {
+    int listCalls(_Computer c) =>
+        c.asked.where((x) => x == 'crewmate_list').length;
+
+    testWidgets(
+      'two computers failing differently: each error shown, each named',
+      (t) async {
+        final a = _Computer(
+          (cmd) => cmd == 'crewmate_list' ? _err('forbidden') : _ok({}),
+        );
+        final b = _Computer(
+          (cmd) => cmd == 'crewmate_list' ? _err('queue is full') : _ok({}),
+        );
+        await _pumpMany(t, {_mac: a, _macB: b});
+        await _settleShort(t);
+
+        expect(find.text('No crew yet'), findsNothing);
+        expect(find.text('forbidden'), findsOneWidget);
+        expect(find.text('queue is full'), findsOneWidget);
+        expect(find.textContaining('Mac'), findsWidgets);
+        expect(find.textContaining('Studio'), findsWidgets);
+        expect(find.text('Try again'), findsNWidgets(2));
+        await t.pumpWidget(const SizedBox());
+        await a.close();
+        await b.close();
+      },
+    );
+
+    testWidgets('Try again on one computer asks only that computer', (t) async {
+      final a = _Computer(
+        (cmd) => cmd == 'crewmate_list' ? _err('forbidden') : _ok({}),
+      );
+      final b = _Computer(
+        (cmd) => cmd == 'crewmate_list' ? _err('queue is full') : _ok({}),
+      );
+      await _pumpMany(t, {_mac: a, _macB: b});
+      await _settleShort(t);
+      final (beforeA, beforeB) = (listCalls(a), listCalls(b));
+
+      // The first card is Mac's (paired order).
+      await t.tap(find.text('Try again').first);
+      await _settleShort(t);
+
+      expect(listCalls(a), beforeA + 1);
+      expect(listCalls(b), beforeB);
+      await t.pumpWidget(const SizedBox());
+      await a.close();
+      await b.close();
+    });
+
+    testWidgets('a computer that loaded keeps its crew while another fails', (
+      t,
+    ) async {
+      final a = _Computer(
+        (cmd) => cmd == 'crewmate_list' ? _oneCrewmate() : _ok({}),
+      );
+      final b = _Computer(
+        (cmd) => cmd == 'crewmate_list' ? _err('forbidden') : _ok({}),
+      );
+      await _pumpMany(t, {_mac: a, _macB: b});
+      await _settleShort(t);
+
+      expect(find.text('Reviewer'), findsWidgets);
+      expect(find.text('forbidden'), findsOneWidget);
+      expect(find.textContaining('Studio'), findsWidgets);
+      expect(find.text('No crew yet'), findsNothing);
+      await t.pumpWidget(const SizedBox());
+      await a.close();
+      await b.close();
+    });
+
+    testWidgets('both answering with no crew is "No crew yet"', (t) async {
+      final a = _Computer(
+        (cmd) => cmd == 'crewmate_list' ? _err(_notCrewServer) : _ok({}),
+      );
+      final b = _Computer(
+        (cmd) => cmd == 'crewmate_list' ? _err(_notCrewServer) : _ok({}),
+      );
+      await _pumpMany(t, {_mac: a, _macB: b});
+      await _settleShort(t);
+
+      expect(find.text('No crew yet'), findsOneWidget);
+      expect(find.text('Try again'), findsNothing);
+      await t.pumpWidget(const SizedBox());
+      await a.close();
+      await b.close();
+    });
+
+    testWidgets(
+      'one computer still loading and one failed: its error is shown, the other keeps its spinner',
+      (t) async {
+        final a = _Computer((cmd) => cmd == 'crewmate_list' ? null : _ok({}));
+        final b = _Computer(
+          (cmd) => cmd == 'crewmate_list' ? _err('forbidden') : _ok({}),
+        );
+        await _pumpMany(t, {_mac: a, _macB: b});
+        await _settleShort(t);
+
+        expect(find.text('No crew yet'), findsNothing);
+        expect(find.text('forbidden'), findsOneWidget);
+        expect(find.byType(CircularProgressIndicator), findsOneWidget);
+        await t.pumpWidget(const SizedBox());
+        await a.close();
+        await b.close();
+      },
+    );
   });
 }

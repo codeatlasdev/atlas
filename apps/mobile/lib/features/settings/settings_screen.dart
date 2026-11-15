@@ -10,6 +10,7 @@ import 'package:atlas_mobile/core/protocol/host_info.dart';
 import 'package:atlas_mobile/core/protocol/models.dart';
 import 'package:atlas_mobile/core/push/push_provider.dart';
 import 'package:atlas_mobile/core/ui/atlas_theme.dart';
+import 'package:atlas_mobile/core/ui/components.dart';
 import 'package:atlas_mobile/core/ui/floating_tab_bar.dart';
 import 'package:atlas_mobile/core/ui/grouped_list.dart';
 import 'package:atlas_mobile/core/ui/motion_size.dart';
@@ -68,120 +69,115 @@ class SettingsScreen extends ConsumerWidget {
       body: SafeArea(
         bottom: false,
         child: ListView(
-          padding: const EdgeInsets.fromLTRB(
-            Space.lg,
-            Space.md,
-            Space.lg,
-            Space.xxl + kFloatingBarScrollPad,
+          padding: const EdgeInsets.only(
+            bottom: Space.xxl + kFloatingBarScrollPad,
           ),
           children: [
+            const TabTitle('Settings'),
             Padding(
-              padding: const EdgeInsets.fromLTRB(
-                Space.xs,
-                0,
-                Space.xs,
-                Space.xl,
-              ),
-              child: Text(
-                'Settings',
-                style: Theme.of(context).textTheme.titleLarge,
-              ),
-            ),
-            RowGroup(
-              title: 'Computers',
-              footer: 'This phone talks to each computer directly, end-to-end encrypted.',
-              children: [
-                if (loading) const _ComputerRowPlaceholder(),
-                for (final d in devices)
-                  _ComputerRow(
-                    device: d,
-                    onForget: isDemo(d)
-                        ? () =>
-                              ref.read(demoModeProvider.notifier).state = false
-                        : () => _forget(context, ref, d),
-                  ),
-                GroupRow(
-                  icon: Icons.qr_code_scanner_rounded,
-                  // While storage answers the room of one computer is held, so this already reads as the row
-                  // after it: a title that changed (and could wrap differently) would move what is below.
-                  title: devices.isEmpty && !loading
-                      ? 'Pair a computer'
-                      : 'Pair another computer',
-                  subtitle: 'Atlas Desktop → Settings → Mobile',
-                  onTap: () => context.push('/pair'),
-                ),
-              ],
-            ),
-            // A notifications row only when there is something true to say (a build without Firebase, or no
-            // computer connected yet, has nothing). It opens its room downward when the answer arrives, so
-            // nothing above it moves and the groups below glide, never jump (Reduce motion: one step).
-            MotionSize(
-              child: push == null
-                  ? const SizedBox(width: double.infinity)
-                  : RowGroup(
-                      title: 'This phone',
-                      children: [
-                        GroupRow(
-                          icon: push.startsWith('Notifications are on')
-                              ? Icons.notifications_active_outlined
-                              : Icons.notifications_off_outlined,
-                          title: 'Notifications',
-                          subtitle: push,
-                          kind: RowKind.info,
+              padding: const EdgeInsets.symmetric(horizontal: Space.lg),
+              child: Column(
+                crossAxisAlignment: CrossAxisAlignment.stretch,
+                children: [
+                  RowGroup(
+                    title: 'Computers',
+                    footer: 'This phone talks to each computer directly, end-to-end encrypted.',
+                    children: [
+                      if (loading) const _ComputerRowPlaceholder(),
+                      for (final d in devices)
+                        _ComputerRow(
+                          device: d,
+                          onForget: isDemo(d)
+                              ? () =>
+                                    ref.read(demoModeProvider.notifier).state =
+                                        false
+                              : () => _forget(context, ref, d),
                         ),
-                      ],
-                    ),
-            ),
-            RowGroup(
-              title: 'Help',
-              children: [
-                GroupRow(
-                  icon: Icons.menu_book_outlined,
-                  title: 'Atlas Mobile guide',
-                  subtitle: 'Pairing, agents, approvals, the crew',
-                  kind: RowKind.external,
-                  onTap: () => openLink(AtlasLinks.pairing),
-                ),
-                GroupRow(
-                  icon: Icons.vpn_lock_outlined,
-                  title: 'Pairing fails on a VPN',
-                  subtitle: 'WARP, Tailscale and other tunnels',
-                  kind: RowKind.external,
-                  onTap: () => openLink(AtlasLinks.pairingBehindVpn),
-                ),
-                GroupRow(
-                  icon: Icons.dns_outlined,
-                  title: 'Set up Atlas Crew',
-                  subtitle: 'Agents that run on your own server',
-                  kind: RowKind.external,
-                  onTap: () => openLink(AtlasLinks.crewSetup),
-                ),
-              ],
-            ),
-            RowGroup(
-              title: 'About',
-              children: [
-                GroupRow(
-                  icon: Icons.info_outline_rounded,
-                  title: 'Atlas Mobile',
-                  subtitle: version ?? '…',
-                  kind: RowKind.info,
-                ),
-                GroupRow(
-                  icon: Icons.privacy_tip_outlined,
-                  title: 'Privacy policy',
-                  subtitle: 'No account, no tracking',
-                  kind: RowKind.external,
-                  onTap: () => openLink(AtlasLinks.privacy),
-                ),
-                GroupRow(
-                  icon: Icons.code_rounded,
-                  title: 'Source code',
-                  subtitle: 'Open source, MIT or Apache-2.0',
-                  kind: RowKind.external,
-                  onTap: () => openLink(AtlasLinks.source),
-                ),
-              ],
+                      GroupRow(
+                        icon: Icons.qr_code_scanner_rounded,
+                        // While storage answers the room of one computer is held, so this already reads as the row
+                        // after it: a title that changed (and could wrap differently) would move what is below.
+                        title: devices.isEmpty && !loading
+                            ? 'Pair a computer'
+                            : 'Pair another computer',
+                        subtitle: 'Atlas Desktop → Settings → Mobile',
+                        onTap: () => context.push('/pair'),
+                      ),
+                    ],
+                  ),
+                  // A notifications row only when there is something true to say (a build without Firebase, or no
+                  // computer connected yet, has nothing). It opens its room downward when the answer arrives, so
+                  // nothing above it moves and the groups below glide, never jump (Reduce motion: one step).
+                  MotionSize(
+                    child: push == null
+                        ? const SizedBox(width: double.infinity)
+                        : RowGroup(
+                            title: 'This phone',
+                            children: [
+                              GroupRow(
+                                icon: push.startsWith('Notifications are on')
+                                    ? Icons.notifications_active_outlined
+                                    : Icons.notifications_off_outlined,
+                                title: 'Notifications',
+                                subtitle: push,
+                                kind: RowKind.info,
+                              ),
+                            ],
+                          ),
+                  ),
+                  RowGroup(
+                    title: 'Help',
+                    children: [
+                      GroupRow(
+                        icon: Icons.menu_book_outlined,
+                        title: 'Atlas Mobile guide',
+                        subtitle: 'Pairing, agents, approvals, the crew',
+                        kind: RowKind.external,
+                        onTap: () => openLink(AtlasLinks.pairing),
+                      ),
+                      GroupRow(
+                        icon: Icons.vpn_lock_outlined,
+                        title: 'Pairing fails on a VPN',
+                        subtitle: 'WARP, Tailscale and other tunnels',
+                        kind: RowKind.external,
+                        onTap: () => openLink(AtlasLinks.pairingBehindVpn),
+                      ),
+                      GroupRow(
+                        icon: Icons.dns_outlined,
+                        title: 'Set up Atlas Crew',
+                        subtitle: 'Agents that run on your own server',
+                        kind: RowKind.external,
+                        onTap: () => openLink(AtlasLinks.crewSetup),
+                      ),
+                    ],
+                  ),
+                  RowGroup(
+                    title: 'About',
+                    children: [
+                      GroupRow(
+                        icon: Icons.info_outline_rounded,
+                        title: 'Atlas Mobile',
+                        subtitle: version ?? '…',
+                        kind: RowKind.info,
+                      ),
+                      GroupRow(
+                        icon: Icons.privacy_tip_outlined,
+                        title: 'Privacy policy',
+                        subtitle: 'No account, no tracking',
+                        kind: RowKind.external,
+                        onTap: () => openLink(AtlasLinks.privacy),
+                      ),
+                      GroupRow(
+                        icon: Icons.code_rounded,
+                        title: 'Source code',
+                        subtitle: 'Open source, MIT or Apache-2.0',
+                        kind: RowKind.external,
+                        onTap: () => openLink(AtlasLinks.source),
+                      ),
+                    ],
+                  ),
+                ],
+              ),
             ),
           ],
         ),

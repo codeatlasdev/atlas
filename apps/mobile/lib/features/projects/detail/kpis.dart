@@ -28,47 +28,65 @@ class ProjectKpis extends StatelessWidget {
       ('memory', mem, null),
       ('cpu', '${snap.cpu.round()}%', null),
     ];
-    // One strip, scrollable on narrow phones, like the desktop's KPI row.
+    // Every number in sight, never scrolled sideways: each at its own width, spread across the card, wrapping
+    // to a second line only when they do not fit (a narrow phone, large text).
     return AtlasCard(
-      padding: const EdgeInsets.symmetric(vertical: Space.md),
-      child: SingleChildScrollView(
-        scrollDirection: Axis.horizontal,
-        padding: const EdgeInsets.symmetric(horizontal: Space.md),
-        child: IntrinsicHeight(
-          child: Row(
-            children: [
-              for (var i = 0; i < items.length; i++) ...[
-                if (i > 0)
-                  VerticalDivider(color: c.borderSubtle, width: Space.xl),
-                Column(
-                  crossAxisAlignment: CrossAxisAlignment.start,
-                  children: [
-                    AnimatedSwitcher(
-                      duration: Motion.normal,
-                      transitionBuilder: (w, a) =>
-                          FadeTransition(opacity: a, child: w),
-                      child: Text(
-                        items[i].$2,
-                        key: ValueKey(items[i].$2),
-                        style: Theme.of(context).textTheme.titleLarge!.copyWith(
-                          fontWeight: FontWeight.w700,
-                          color: items[i].$3 ?? c.text,
-                          fontFeatures: const [FontFeature.tabularFigures()],
-                        ),
-                      ),
-                    ),
-                    const SizedBox(height: 2),
-                    Text(
-                      items[i].$1,
-                      style: Theme.of(context).textTheme.labelSmall!
-                          .copyWith(color: c.muted),
-                    ),
-                  ],
-                ),
-              ],
-            ],
-          ),
+      padding: const EdgeInsets.all(Space.md),
+      child: SizedBox(
+        width: double.infinity,
+        child: Wrap(
+          alignment: WrapAlignment.spaceBetween,
+          spacing: Space.md,
+          runSpacing: Space.md,
+          children: [
+            for (final (label, value, alert) in items)
+              _Kpi(label: label, value: value, alert: alert),
+          ],
         ),
+      ),
+    );
+  }
+}
+
+class _Kpi extends StatelessWidget {
+  const _Kpi({required this.label, required this.value, this.alert});
+  final String label;
+  final String value;
+
+  /// The value's colour when it needs attention.
+  final Color? alert;
+
+  @override
+  Widget build(BuildContext context) {
+    final c = AtlasColors.of(context);
+    final t = Theme.of(context).textTheme;
+    return Semantics(
+      label: '$label: $value',
+      excludeSemantics: true,
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          AnimatedSwitcher(
+            duration: Motion.reduced(context) ? Duration.zero : Motion.normal,
+            transitionBuilder: (w, a) => FadeTransition(opacity: a, child: w),
+            child: Text(
+              value,
+              key: ValueKey(value),
+              maxLines: 1,
+              style: t.titleLarge!.copyWith(
+                fontWeight: FontWeight.w700,
+                color: alert ?? c.text,
+                fontFeatures: const [FontFeature.tabularFigures()],
+              ),
+            ),
+          ),
+          const SizedBox(height: 2),
+          Text(
+            label,
+            maxLines: 1,
+            style: t.labelSmall!.copyWith(color: c.muted),
+          ),
+        ],
       ),
     );
   }

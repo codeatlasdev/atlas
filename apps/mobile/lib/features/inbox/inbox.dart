@@ -92,20 +92,14 @@ class _InboxScreenState extends ConsumerState<InboxScreen> {
         bottom: false,
         child: ListView(
           padding: const EdgeInsets.only(
-            top: Space.md,
             bottom: Space.xxl + kFloatingBarScrollPad,
           ),
           children: [
-            Padding(
-              padding: const EdgeInsets.symmetric(horizontal: Space.lg),
-              child: Text(
-                'Inbox',
-                style: Theme.of(context).textTheme.titleLarge,
-              ),
-            ),
+            const TabTitle('Inbox'),
             if (items.isNotEmpty) ...[
+              // The section header brings its own space above; the title line already ends with one.
               const Padding(
-                padding: EdgeInsets.fromLTRB(Space.lg, Space.lg, Space.lg, 0),
+                padding: EdgeInsets.symmetric(horizontal: Space.lg),
                 child: SectionHeader('Needs you'),
               ),
               Padding(

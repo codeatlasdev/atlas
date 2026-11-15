@@ -32,6 +32,9 @@ import 'package:atlas_mobile/features/crew/new_crewmate_sheet.dart';
 import 'package:atlas_mobile/features/crew/ops/crew_audit_screen.dart';
 import 'package:atlas_mobile/features/crew/ops/crew_settings_screen.dart';
 
+/// A crew server with crewmates: what its pause control needs.
+typedef _Pausable = ({MacDevice device, String name, bool paused});
+
 class CrewScreen extends ConsumerStatefulWidget {
   const CrewScreen({super.key});
   @override
@@ -65,6 +68,17 @@ class _CrewScreenState extends ConsumerState<CrewScreen> {
       });
     }
   }
+
+  /// One crew server's controls for a title line: "Pause all" while it runs (a paused one has its banner with
+  /// Resume below), then its options.
+  List<Widget> _serverControls(_Pausable p, bool showServer) => [
+    if (!p.paused)
+      PauseAllButton(
+        serverName: p.name,
+        onSet: (v) => setCrewPaused(ref, p.device, v),
+      ),
+    _CrewOpsMenu(device: p.device, serverName: p.name, showServer: showServer),
+  ];
 
   @override
   Widget build(BuildContext context) {
@@ -106,7 +120,7 @@ class _CrewScreenState extends ConsumerState<CrewScreen> {
     final allEntries = <CrewEntry>[];
     final crewServerDevices = <MacDevice>[];
     // Each crew server with something to pause, and whether it is paused.
-    final pausable = <({MacDevice device, String name, bool paused})>[];
+    final pausable = <_Pausable>[];
 
     // Nothing to list yet: the computers, or any computer's crew, are still loading. Not "No crew yet".
     var loading = devicesAsync.isLoading && !devicesAsync.hasValue;
@@ -278,27 +292,51 @@ class _CrewScreenState extends ConsumerState<CrewScreen> {
                   )
                 : CustomScrollView(
                     slivers: [
+                      // One crew server: its controls sit on the title line. Several: a line per server,
+                      // named, under the title.
+                      SliverToBoxAdapter(
+                        child: TabTitle(
+                          'Crew',
+                          actions: pausable.length == 1
+                              ? _serverControls(pausable.single, false)
+                              : const [],
+                        ),
+                      ),
                       SliverToBoxAdapter(
                         child: ProtocolBanner(devices: devices),
                       ),
-                      for (final p in pausable)
-                        SliverToBoxAdapter(
-                          child: Column(
-                            children: [
-                              PauseCard(
-                                serverName: p.name,
-                                paused: p.paused,
-                                showServer: pausable.length > 1,
-                                onSet: (v) => setCrewPaused(ref, p.device, v),
+                      for (final p in pausable) ...[
+                        if (pausable.length > 1)
+                          SliverToBoxAdapter(
+                            child: Padding(
+                              padding: const EdgeInsets.only(left: Space.lg),
+                              child: Row(
+                                children: [
+                                  Expanded(
+                                    child: Text(
+                                      p.name,
+                                      maxLines: 1,
+                                      overflow: TextOverflow.ellipsis,
+                                      style: Theme.of(context)
+                                          .textTheme
+                                          .titleSmall!
+                                          .copyWith(color: c.muted),
+                                    ),
+                                  ),
+                                  ..._serverControls(p, true),
+                                ],
                               ),
-                              _CrewOpsMenu(
-                                device: p.device,
-                                serverName: p.name,
-                                showServer: pausable.length > 1,
-                              ),
-                            ],
+                            ),
                           ),
-                        ),
+                        if (p.paused)
+                          SliverToBoxAdapter(
+                            child: PausedBanner(
+                              serverName: p.name,
+                              showServer: pausable.length > 1,
+                              onSet: (v) => setCrewPaused(ref, p.device, v),
+                            ),
+                          ),
+                      ],
                       // A computer that has not answered (or failed) says so on its own, above the crew of
                       // the computers that did; its "Try again" asks only that computer.
                       for (final d in reaching)
@@ -517,7 +555,7 @@ class _CrewError extends StatelessWidget {
   );
 }
 
-/// Crew settings and the crew-wide audit of one crew server, under its pause switch.
+/// Crew settings and the crew-wide audit of one crew server: an options button for a title line.
 class _CrewOpsMenu extends StatelessWidget {
   const _CrewOpsMenu({
     required this.device,
@@ -531,26 +569,20 @@ class _CrewOpsMenu extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     final c = AtlasColors.of(context);
-    return Padding(
-      padding: const EdgeInsets.fromLTRB(Space.lg, 0, Space.lg, 0),
-      child: Align(
-        alignment: Alignment.centerRight,
-        child: PopupMenuButton<String>(
-          key: const Key('crew-ops-menu'),
-          tooltip: showServer ? 'Crew options · $serverName' : 'Crew options',
-          icon: Icon(Icons.tune_rounded, size: 20, color: c.muted),
-          onSelected: (v) => pushScreen<void>(
-            context,
-            v == 'settings'
-                ? CrewSettingsScreen(device: device)
-                : CrewAuditScreen(device: device, title: serverName),
-          ),
-          itemBuilder: (_) => const [
-            PopupMenuItem(value: 'settings', child: Text('Crew settings')),
-            PopupMenuItem(value: 'audit', child: Text('Crew audit')),
-          ],
-        ),
+    return PopupMenuButton<String>(
+      key: const Key('crew-ops-menu'),
+      tooltip: showServer ? 'Crew options · $serverName' : 'Crew options',
+      icon: Icon(Icons.tune_rounded, size: 20, color: c.muted),
+      onSelected: (v) => pushScreen<void>(
+        context,
+        v == 'settings'
+            ? CrewSettingsScreen(device: device)
+            : CrewAuditScreen(device: device, title: serverName),
       ),
+      itemBuilder: (_) => const [
+        PopupMenuItem(value: 'settings', child: Text('Crew settings')),
+        PopupMenuItem(value: 'audit', child: Text('Crew audit')),
+      ],
     );
   }
 }

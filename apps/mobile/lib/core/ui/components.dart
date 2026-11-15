@@ -164,6 +164,36 @@ class _StatusDotState extends State<StatusDot>
   }
 }
 
+/// A tab's title ("Crew", "Inbox", "Settings") with its controls on the same line: every tab opens the same
+/// way, at the same height. It sits at the top of the tab's scroll view, under the status bar.
+class TabTitle extends StatelessWidget {
+  const TabTitle(this.title, {super.key, this.actions = const []});
+
+  final String title;
+
+  /// Small controls at the end of the line (a pill button, an options menu).
+  final List<Widget> actions;
+
+  @override
+  Widget build(BuildContext context) => Padding(
+    padding: const EdgeInsets.fromLTRB(Space.lg, Space.md, Space.sm, Space.md),
+    child: ConstrainedBox(
+      constraints: const BoxConstraints(minHeight: kMinInteractiveDimension),
+      child: Row(
+        children: [
+          Expanded(
+            child: Semantics(
+              header: true,
+              child: Text(title, style: Theme.of(context).textTheme.titleLarge),
+            ),
+          ),
+          ...actions,
+        ],
+      ),
+    ),
+  );
+}
+
 /// Uppercase-free section title with an optional count and trailing control.
 class SectionHeader extends StatelessWidget {
   const SectionHeader(this.title, {super.key, this.count, this.trailing});

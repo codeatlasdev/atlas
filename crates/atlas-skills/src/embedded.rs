@@ -3,7 +3,7 @@
 
 use anyhow::{Context, Result, bail};
 use chrono::Utc;
-use std::path::{Path, PathBuf};
+use std::path::Path;
 
 use crate::manifest::{InstalledSkill, SkillsManifest};
 
@@ -101,7 +101,7 @@ impl EmbeddedSkill {
         }
         let base = dir.join(&self.name);
         for f in &self.files {
-            write_atomic(&base.join(f.path), f.content)?;
+            atlas_core::fs::write_atomic(&base.join(f.path), f.content.as_bytes(), false)?;
         }
         Ok(())
     }
@@ -207,22 +207,6 @@ pub fn uninstall(dir: &Path, manifest_path: &Path) -> Result<Vec<String>> {
     Ok(removed)
 }
 
-/// Atomic text write: tmp file in the same directory + rename.
-pub fn write_atomic(path: &Path, content: &str) -> Result<()> {
-    let parent = path.parent().context("path has no parent")?;
-    std::fs::create_dir_all(parent)?;
-    let tmp: PathBuf = parent.join(format!(
-        ".{}.atlas-tmp-{}",
-        path.file_name().unwrap_or_default().to_string_lossy(),
-        std::process::id()
-    ));
-    std::fs::write(&tmp, content)?;
-    std::fs::rename(&tmp, path).inspect_err(|_| {
-        let _ = std::fs::remove_file(&tmp);
-    })?;
-    Ok(())
-}
-
 #[derive(Debug)]
 struct Frontmatter {
     name: String,
@@ -282,6 +266,7 @@ fn parse_frontmatter(content: &str) -> Result<Frontmatter> {
 #[cfg(test)]
 mod tests {
     use super::*;
+    use std::path::PathBuf;
 
     fn skills_root() -> PathBuf {
         Path::new(env!("CARGO_MANIFEST_DIR")).join("../../skills")

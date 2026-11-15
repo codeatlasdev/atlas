@@ -241,12 +241,7 @@ pub fn execute(actions: &[Action], exec: &dyn Exec, log: &Log) -> usize {
 }
 
 fn write_atomic(p: &Path, text: &str) -> Result<(), String> {
-    let tmp = p.with_extension("atlas-setup.tmp");
-    std::fs::write(&tmp, text).map_err(|e| e.to_string())?;
-    std::fs::rename(&tmp, p).map_err(|e| {
-        let _ = std::fs::remove_file(&tmp);
-        e.to_string()
-    })
+    atlas_core::fs::write_atomic(p, text.as_bytes(), false).map_err(|e| e.to_string())
 }
 
 fn remove(p: &Path) -> Result<(), String> {

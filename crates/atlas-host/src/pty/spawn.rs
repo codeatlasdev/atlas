@@ -376,9 +376,10 @@ impl Session {
             scope: req.scope.clone(),
             created_at: now_s(),
         };
-        let _ = std::fs::write(
-            meta_path(scroll_dir, &id),
-            serde_json::to_vec(&meta).unwrap_or_default(),
+        let _ = atlas_core::fs::write_atomic(
+            &meta_path(scroll_dir, &id),
+            &serde_json::to_vec(&meta).unwrap_or_default(),
+            false,
         );
         let file_path = bin_path(scroll_dir, &id);
         let _ = std::fs::remove_file(&file_path);

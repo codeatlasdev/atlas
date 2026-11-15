@@ -7,6 +7,7 @@ pub mod crew;
 pub mod desktop_ctl;
 pub mod domain;
 pub mod error;
+pub mod fs;
 pub mod git_review;
 pub mod github;
 pub mod heavy;

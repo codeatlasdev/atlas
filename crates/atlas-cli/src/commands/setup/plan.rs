@@ -148,8 +148,10 @@ pub fn apply(plan: &Plan, skills: &SkillsTarget) -> Result<()> {
         }
         match &item.op {
             Op::None => {}
-            Op::WriteFile(content) => embedded::write_atomic(&item.path, content)
-                .with_context(|| format!("writing {}", item.path.display()))?,
+            Op::WriteFile(content) => {
+                atlas_core::fs::write_atomic(&item.path, content.as_bytes(), false)
+                    .with_context(|| format!("writing {}", item.path.display()))?
+            }
             Op::RemoveFile { boundary } => {
                 std::fs::remove_file(&item.path)
                     .with_context(|| format!("removing {}", item.path.display()))?;

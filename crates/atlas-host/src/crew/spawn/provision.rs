@@ -413,7 +413,7 @@ impl Host for System {
                 .map(|u| (u, Policy::default()))
                 .collect::<Vec<_>>(),
         );
-        write_atomic(Path::new(EGRESS_FILE), rules.as_bytes())?;
+        atlas_core::fs::write_atomic(Path::new(EGRESS_FILE), rules.as_bytes(), false)?;
         // `nft -c` first: a broken file must not replace working rules.
         let nft = self.bin("nft")?;
         let check: &[&str] = &["-c", "-f", EGRESS_FILE];
@@ -455,16 +455,6 @@ fn apply(path: &Path, mode: u32, (uid, gid): &(u32, u32)) -> io::Result<()> {
         return Err(io::Error::last_os_error());
     }
     std::fs::set_permissions(path, std::fs::Permissions::from_mode(mode))
-}
-
-/// Replace `path` with `data` in one rename (a reader sees the old rules or the new, never half).
-fn write_atomic(path: &Path, data: &[u8]) -> io::Result<()> {
-    if let Some(d) = path.parent() {
-        std::fs::create_dir_all(d)?;
-    }
-    let tmp = path.with_extension("tmp~");
-    std::fs::write(&tmp, data)?;
-    std::fs::rename(tmp, path)
 }
 
 /// The crewmate users that exist, from the passwd database.
@@ -918,16 +908,6 @@ atlas-cm-AAAAAAAAAAAA:x:994:994::/x:/bin/false\n";
         apply(&d, 0o2770, &ids).unwrap();
         let mode = std::fs::metadata(&d).unwrap().permissions().mode();
         assert_eq!(mode & 0o7777, 0o2770, "{mode:o}");
-    }
-
-    #[test]
-    fn write_atomic_replaces_the_whole_file() {
-        let t = tempfile::tempdir().unwrap();
-        let p = t.path().join("etc/atlas-crew/egress.nft");
-        write_atomic(&p, b"one").unwrap();
-        write_atomic(&p, b"two").unwrap();
-        assert_eq!(std::fs::read_to_string(&p).unwrap(), "two");
-        assert!(!p.with_extension("tmp~").exists());
     }
 
     // Needs root on Linux: the real `useradd`/`userdel`/`chown` path of the provisioning service. Run by

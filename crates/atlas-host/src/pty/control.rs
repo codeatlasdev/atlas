@@ -135,6 +135,10 @@ impl Session {
         let mut b = self.buf.lock();
         b.ring.clear();
         b.file_len = 0;
+        b.epoch += 1;
+        if let Some(t) = b.trim.as_mut() {
+            t.clear();
+        }
         let p = bin_path(&self.dir, &self.id);
         let _ = std::fs::write(&p, b"");
         if b.file.is_some() {

@@ -387,7 +387,7 @@ impl ServiceManager {
         if pids.is_empty() {
             let _ = std::fs::remove_file(&pid_path);
         } else {
-            let _ = std::fs::write(&pid_path, pids.join("\n"));
+            let _ = atlas_core::fs::write_atomic(&pid_path, pids.join("\n").as_bytes(), false);
         }
     }
 }

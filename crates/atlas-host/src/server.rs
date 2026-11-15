@@ -1524,6 +1524,36 @@ mod tests {
         (tmp, client, s)
     }
 
+    /// The keys of `info`, from a real hostd, pinned next to the commands (#302): a phone or desktop
+    /// reads them to decide what this daemon can do. Values vary per run (pid, uptime, hostname); the
+    /// golden keeps the key set and the type of each.
+    #[tokio::test]
+    async fn info_keys_are_pinned_to_proto() {
+        let (_tmp, client, _s) = wire().await;
+        let info = client.call("info", json!({})).await.unwrap();
+        let keys: serde_json::Map<String, Value> = info
+            .as_object()
+            .unwrap()
+            .iter()
+            .map(|(k, v)| {
+                let t = match v {
+                    Value::Null => "null",
+                    Value::Bool(_) => "bool",
+                    Value::Number(_) => "number",
+                    Value::String(_) => "string",
+                    Value::Array(_) => "array",
+                    Value::Object(_) => "object",
+                };
+                (k.clone(), json!(t))
+            })
+            .collect();
+        assert_eq!(info["proto"], json!(protocol::PROTO), "info reports PROTO");
+        crate::protocol_golden::check_golden(
+            "info.json",
+            &json!({"proto": protocol::PROTO, "keys": keys}),
+        );
+    }
+
     /// Incident: every request was handled on its own task, so two writes of one connection
     /// (paste then ⏎, two keys) could reach the pty swapped.
     #[tokio::test(flavor = "multi_thread", worker_threads = 4)]

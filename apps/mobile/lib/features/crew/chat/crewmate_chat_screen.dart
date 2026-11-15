@@ -10,6 +10,7 @@ import 'package:atlas_mobile/core/connection/require_mux.dart';
 import 'package:atlas_mobile/core/connection/connection_notifier.dart';
 import 'package:atlas_mobile/core/protocol/crew_models.dart';
 import 'package:atlas_mobile/core/protocol/models.dart';
+import 'package:atlas_mobile/core/protocol/multiplexer.dart';
 import 'package:atlas_mobile/core/providers/push_events_provider.dart';
 import 'package:atlas_mobile/core/ui/async_view.dart';
 import 'package:atlas_mobile/core/ui/computer_state.dart';
@@ -91,11 +92,10 @@ class _CrewmateChatScreenState extends ConsumerState<CrewmateChatScreen> {
   Future<bool> _send(List<PendingImage> images) async {
     final text = _msg.text.trim();
     if (text.isEmpty) return false;
-    final mux = liveMux(ref, widget.device);
-    if (mux == null) return false;
     setState(() => _sending = true);
     String? failure;
     try {
+      final mux = await requireMuxOf(ref, widget.device);
       final attachments = await toSent(
         images,
         mux.call,
@@ -112,6 +112,8 @@ class _CrewmateChatScreenState extends ConsumerState<CrewmateChatScreen> {
         failure = resp['error'] as String? ?? 'the server refused the task';
       }
     } on StateError catch (e) {
+      failure = e.message;
+    } on DeviceUnavailable catch (e) {
       failure = e.message;
     }
     if (!mounted) return failure == null;
@@ -131,10 +133,30 @@ class _CrewmateChatScreenState extends ConsumerState<CrewmateChatScreen> {
     return failure == null;
   }
 
+  /// Allow / Deny on a pending tool approval. Offline, the approval stays pending and this says why.
+  Future<void> _approve(CrewmatePendingApproval pa, bool allow) async {
+    try {
+      await answerApproval(ref, widget.device, pa, allow);
+    } on DeviceUnavailable catch (e) {
+      if (mounted) {
+        ScaffoldMessenger.of(context)
+            .showSnackBar(SnackBar(content: Text(e.message)));
+      }
+    }
+  }
+
   Future<void> _cancel(String taskId) async {
-    final mux = liveMux(ref, widget.device);
-    if (mux == null) return;
     HapticFeedback.mediumImpact();
+    final Multiplexer mux;
+    try {
+      mux = await requireMuxOf(ref, widget.device);
+    } on DeviceUnavailable catch (e) {
+      if (mounted) {
+        ScaffoldMessenger.of(context)
+            .showSnackBar(SnackBar(content: Text(e.message)));
+      }
+      return;
+    }
     await mux.call('crewmate_cancel', {
       'id': widget.crewmateId,
       'task': taskId,
@@ -380,12 +402,7 @@ class _CrewmateChatScreenState extends ConsumerState<CrewmateChatScreen> {
                                     : _expanded.add(task.id);
                               }),
                               onApprove: isApprovalTask
-                                  ? (allow) => answerApproval(
-                                      ref,
-                                      widget.device,
-                                      pa,
-                                      allow,
-                                    )
+                                  ? (allow) => _approve(pa, allow)
                                   : null,
                             );
                           },
@@ -422,12 +439,7 @@ class _CrewmateChatScreenState extends ConsumerState<CrewmateChatScreen> {
                               child: CrewmateApprovalBubble(
                                 look: crewmate?.look,
                                 approval: pa,
-                                onApprove: (allow) => answerApproval(
-                                  ref,
-                                  widget.device,
-                                  pa,
-                                  allow,
-                                ),
+                                onApprove: (allow) => _approve(pa, allow),
                               ),
                             ),
 

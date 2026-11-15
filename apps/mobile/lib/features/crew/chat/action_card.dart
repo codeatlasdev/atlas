@@ -55,13 +55,12 @@ class _TaskActionCardState extends ConsumerState<TaskActionCard> {
 
   Future<void> _submit(String value) async {
     if (value.isEmpty || _submitting) return;
-    final mux = liveMux(ref, widget.device);
-    if (mux == null) return;
     setState(() {
       _submitting = true;
       _error = null;
     });
     try {
+      final mux = await requireMuxOf(ref, widget.device);
       // A secret is typed on the phone and stored on the crew server for good: prove it is the owner first,
       // and send nothing when they do not (or the device cannot ask).
       final action = widget.task.action;
@@ -92,7 +91,7 @@ class _TaskActionCardState extends ConsumerState<TaskActionCard> {
       _images.clear();
     } on Object catch (e) {
       // The card stays: what the server said, not a silent nothing.
-      if (mounted) setState(() => _error = e.toString());
+      if (mounted) setState(() => _error = errorText(e));
     } finally {
       if (mounted) setState(() => _submitting = false);
     }
@@ -157,21 +156,30 @@ class _TaskActionCardState extends ConsumerState<TaskActionCard> {
   }
 
   Future<void> _cancel() async {
-    final mux = liveMux(ref, widget.device);
-    if (mux == null) return;
-    await mux.call('crewmate_cancel', {
-      'id': widget.crewmateId,
-      'task': widget.task.id,
-    });
+    setState(() => _error = null);
+    try {
+      final mux = await requireMuxOf(ref, widget.device);
+      await mux.call('crewmate_cancel', {
+        'id': widget.crewmateId,
+        'task': widget.task.id,
+      });
+    } on DeviceUnavailable catch (e) {
+      if (mounted) setState(() => _error = e.message);
+      return;
+    }
     if (mounted) {
       ref.invalidate(crewmateTasksProvider((widget.device, widget.crewmateId)));
     }
   }
 
   Future<void> _startGithubLogin() async {
-    final mux = liveMux(ref, widget.device);
-    if (mux == null) return;
-    await _login.start(mux, _pollGithubLogin);
+    setState(() => _error = null);
+    try {
+      final mux = await requireMuxOf(ref, widget.device);
+      await _login.start(mux, _pollGithubLogin);
+    } on DeviceUnavailable catch (e) {
+      if (mounted) setState(() => _error = e.message);
+    }
   }
 
   Future<void> _pollGithubLogin() async {
@@ -235,7 +243,26 @@ class _TaskActionCardState extends ConsumerState<TaskActionCard> {
         crossAxisAlignment: CrossAxisAlignment.end,
         children: [
           const SizedBox(width: 36), // avatar placeholder alignment
-          Flexible(child: AttentionCard(bubble: true, child: cardContent)),
+          Flexible(
+            child: AttentionCard(
+              bubble: true,
+              child: Column(
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: [
+                  cardContent,
+                  // What went wrong with the last tap (offline, refused): one line for every kind of card.
+                  if (_error != null) ...[
+                    const SizedBox(height: Space.sm),
+                    Text(
+                      _error!,
+                      style: Theme.of(context).textTheme.bodySmall!
+                          .copyWith(color: c.error),
+                    ),
+                  ],
+                ],
+              ),
+            ),
+          ),
         ],
       ),
     );
@@ -334,14 +361,6 @@ class _TaskActionCardState extends ConsumerState<TaskActionCard> {
               }
             : null,
       ),
-      if (_error != null) ...[
-        const SizedBox(height: Space.sm),
-        Text(
-          _error!,
-          style: Theme.of(context).textTheme.bodySmall!
-              .copyWith(color: c.error),
-        ),
-      ],
       const SizedBox(height: Space.sm),
       _actions('Submit', busy ? null : _submitText),
     ],
@@ -566,14 +585,6 @@ class _TaskActionCardState extends ConsumerState<TaskActionCard> {
         label: 'Add a screenshot',
         onPressed: busy ? null : _addImages,
       ),
-      if (_error != null) ...[
-        const SizedBox(height: Space.sm),
-        Text(
-          _error!,
-          style: Theme.of(context).textTheme.bodySmall!
-              .copyWith(color: c.error),
-        ),
-      ],
       const SizedBox(height: Space.sm),
       Row(
         children: [

@@ -114,8 +114,18 @@ class _ProjectDetailScreenState extends ConsumerState<ProjectDetailScreen> {
     ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text(text)));
   }
 
+  /// The live connection for something the user just pressed: when there is none, says why instead of doing nothing.
+  Future<Multiplexer?> _liveOrSay() async {
+    try {
+      return await requireMuxOf(ref, widget.device);
+    } on DeviceUnavailable catch (e) {
+      _toast(e.message);
+      return null;
+    }
+  }
+
   Future<void> _serviceOp(String op, {String? service}) async {
-    final mux = _mux;
+    final mux = await _liveOrSay();
     if (mux == null) return;
     final tag = service ?? op;
     setState(() => _busy.add(tag));
@@ -131,8 +141,6 @@ class _ProjectDetailScreenState extends ConsumerState<ProjectDetailScreen> {
   }
 
   Future<void> _runAction(ProjectAction a) async {
-    final mux = _mux;
-    if (mux == null) return;
     if (a.confirm != null) {
       final go = await showDialog<bool>(
         context: context,
@@ -153,6 +161,8 @@ class _ProjectDetailScreenState extends ConsumerState<ProjectDetailScreen> {
       );
       if (go != true) return;
     }
+    final mux = await _liveOrSay();
+    if (mux == null) return;
     final resp = await mux.call('project_action', {
       'id': widget.project.id,
       'key': a.key,

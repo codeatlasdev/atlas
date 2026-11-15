@@ -3,7 +3,6 @@ import 'package:flutter_riverpod/legacy.dart';
 import 'package:atlas_mobile/features/crew/chat/attachments.dart';
 import 'package:atlas_mobile/core/protocol/crew_models.dart';
 import 'package:atlas_mobile/core/protocol/models.dart';
-import 'package:atlas_mobile/core/protocol/multiplexer.dart';
 import 'package:atlas_mobile/core/connection/connection_notifier.dart';
 import 'package:atlas_mobile/core/connection/require_mux.dart';
 import 'package:atlas_mobile/core/demo/demo_computer.dart';
@@ -59,20 +58,15 @@ typedef CrewEntry = ({
   bool online,
 });
 
-/// Answers a pending tool approval of a crewmate (`agent_approve` on its pane).
+/// Answers a pending tool approval of a crewmate (`agent_approve` on its pane). Throws [DeviceUnavailable] when the
+/// computer cannot be reached: the approval stays pending and the caller says so.
 Future<void> answerApproval(
   WidgetRef ref,
   MacDevice device,
   CrewmatePendingApproval approval,
   bool allow,
 ) async {
-  // The buttons call this without awaiting: a computer that is off leaves the approval pending, as before.
-  final Multiplexer mux;
-  try {
-    mux = await requireMuxOf(ref, device);
-  } on DeviceUnavailable {
-    return;
-  }
+  final mux = await requireMuxOf(ref, device);
   await mux.call('agent_approve', {
     'pane': approval.paneKey,
     'req': approval.req,

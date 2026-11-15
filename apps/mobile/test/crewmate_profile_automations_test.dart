@@ -9,6 +9,7 @@ import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:flutter_test/flutter_test.dart';
 
+import 'package:atlas_mobile/core/protocol/protocol_version.dart';
 import 'package:atlas_mobile/core/connection/connection_notifier.dart';
 import 'package:atlas_mobile/core/protocol/models.dart';
 import 'package:atlas_mobile/core/storage/mac_storage.dart';
@@ -40,6 +41,7 @@ class _CrewmateTransport implements Transport {
       'crewmate_list' => _crewmateList,
       'crew_github_status' => {'installed': false},
       'info' => {
+        'proto': kAppProto,
         'caps': <String>['crewmates'],
         'version': '1.0.0',
         'hostname': 'Test Mac',

@@ -14,6 +14,7 @@ import 'package:atlas_mobile/core/providers/push_events_provider.dart';
 import 'package:atlas_mobile/core/ui/atlas_theme.dart';
 import 'package:atlas_mobile/core/ui/components.dart';
 import 'package:atlas_mobile/core/ui/floating_tab_bar.dart';
+import 'package:atlas_mobile/core/ui/protocol_banner.dart';
 import 'package:atlas_mobile/features/crew/crew_provider.dart';
 import 'package:atlas_mobile/features/crew/invite_sheet.dart';
 import 'package:atlas_mobile/features/crew/list/crew_deck.dart';
@@ -144,6 +145,9 @@ class _CrewScreenState extends ConsumerState<CrewScreen> {
     });
 
     final needsYou = allEntries.where(needsCaptain).toList();
+    final mismatch = [
+      for (final d in devices) ?ref.watch(protocolMismatchProvider(d)),
+    ].firstOrNull;
 
     return Scaffold(
       body: Stack(
@@ -181,8 +185,9 @@ class _CrewScreenState extends ConsumerState<CrewScreen> {
                         accentColor: c.accent,
                         size: 64,
                       ),
-                      title: 'No crew yet',
-                      message: 'Set up a crew server first, then recruit crewmates from Atlas Desktop.',
+                      // A computer too old to list its crew shows none: say why, not "No crew yet".
+                      title: mismatch?.title ?? 'No crew yet',
+                      message: mismatch?.message ?? 'Set up a crew server first, then recruit crewmates from Atlas Desktop.',
                       action: crewServerDevices.isEmpty
                           ? null
                           : FilledButton(
@@ -196,6 +201,9 @@ class _CrewScreenState extends ConsumerState<CrewScreen> {
                   )
                 : CustomScrollView(
                     slivers: [
+                      SliverToBoxAdapter(
+                        child: ProtocolBanner(devices: devices),
+                      ),
                       for (final p in pausable)
                         SliverToBoxAdapter(
                           child: Column(

@@ -408,7 +408,7 @@ class _DashboardState extends ConsumerState<_Dashboard> {
 }
 
 /// Logo, computer name (tap to switch), and one status pill that says it all.
-class _Header extends StatelessWidget {
+class _Header extends ConsumerWidget {
   const _Header({
     required this.device,
     required this.conn,
@@ -426,14 +426,17 @@ class _Header extends StatelessWidget {
   final (String, Color)? status;
 
   @override
-  Widget build(BuildContext context) {
+  Widget build(BuildContext context, WidgetRef ref) {
     final c = AtlasColors.of(context);
+    final mismatch = ref.watch(protocolMismatchProvider(device));
     final (label, color) =
         status ??
         (conn.value != null
             ? ('Connected', c.success)
             : conn.isLoading
             ? ('Connecting…', c.warning)
+            : mismatch != null
+            ? ('Needs an update', c.warning)
             : ('Unreachable', c.faint));
     final name = Row(
       mainAxisSize: MainAxisSize.min,
@@ -723,25 +726,35 @@ class _Offline extends ConsumerWidget {
   final bool connecting;
 
   @override
-  Widget build(BuildContext context, WidgetRef ref) => Padding(
-    padding: const EdgeInsets.only(top: Space.xxl),
-    child: EmptyState(
-      icon: connecting ? const AtlasLogo(size: 80, animated: true) : null,
-      title: connecting
-          ? 'Reaching ${device.name}…'
-          : "Can't reach ${device.name}",
-      message: connecting
-          ? 'Directly when possible, through an encrypted relay otherwise.'
-          : 'Check that it is on and awake, and that Atlas is installed there.',
-      action: connecting
-          ? null
-          : FilledButton(
-              onPressed: () =>
-                  ref.invalidate(connectionNotifierProvider(device)),
-              child: const Text('Try again'),
-            ),
-    ),
-  );
+  Widget build(BuildContext context, WidgetRef ref) {
+    // The computer answered but speaks another protocol: one state with its fix, not "can't reach".
+    final mismatch = connecting
+        ? null
+        : ref.watch(protocolMismatchProvider(device));
+    return Padding(
+      padding: const EdgeInsets.only(top: Space.xxl),
+      child: EmptyState(
+        icon: connecting ? const AtlasLogo(size: 80, animated: true) : null,
+        title:
+            mismatch?.title ??
+            (connecting
+                ? 'Reaching ${device.name}…'
+                : "Can't reach ${device.name}"),
+        message:
+            mismatch?.message ??
+            (connecting
+                ? 'Directly when possible, through an encrypted relay otherwise.'
+                : 'Check that it is on and awake, and that Atlas is installed there.'),
+        action: connecting
+            ? null
+            : FilledButton(
+                onPressed: () =>
+                    ref.invalidate(connectionNotifierProvider(device)),
+                child: const Text('Try again'),
+              ),
+      ),
+    );
+  }
 }
 
 /// An installed agent whose hooks are off: its tabs never show here until it is turned on.

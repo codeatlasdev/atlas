@@ -178,7 +178,7 @@ class _TerminalFeedState extends State<TerminalFeed> {
       return Center(
         child: Text(
           'Nothing on this terminal yet',
-          style: TextStyle(color: AtlasColors.of(context).faint),
+          style: TextStyle(color: AtlasColors.of(context).muted),
         ),
       );
     }
@@ -314,7 +314,7 @@ class _BlockCardState extends State<_BlockCard> {
                         ? Text.rich(_span(b.command!, size: 14))
                         : Text(
                             b.screen ? 'Full-screen app · live view' : 'Output',
-                            style: TextStyle(color: c.faint, fontSize: 11),
+                            style: TextStyle(color: c.muted, fontSize: 11),
                           ),
                   ),
                   copyBtn,

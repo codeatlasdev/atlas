@@ -5,10 +5,13 @@ library;
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 
+import 'package:atlas_mobile/core/protocol/multiplexer.dart';
+import 'package:atlas_mobile/core/connection/require_mux.dart';
 import 'package:atlas_mobile/core/connection/connection_notifier.dart';
 import 'package:atlas_mobile/core/protocol/models.dart';
 import 'package:atlas_mobile/core/protocol/crew_models.dart';
 import 'package:atlas_mobile/core/protocol/crew_ops_models.dart';
+import 'package:atlas_mobile/core/ui/async_view.dart';
 import 'package:atlas_mobile/core/ui/atlas_theme.dart';
 import 'package:atlas_mobile/core/ui/components.dart';
 import 'package:atlas_mobile/features/crew/automations.dart';
@@ -54,10 +57,12 @@ class _CrewmateProfileScreenState extends ConsumerState<CrewmateProfileScreen> {
   }
 
   Future<void> _loadGithub() async {
-    final mux = await ref.read(
-      connectionNotifierProvider(widget.device).future,
-    );
-    if (mux == null) return;
+    final Multiplexer mux;
+    try {
+      mux = await requireMuxOf(ref, widget.device);
+    } on DeviceUnavailable {
+      return; // background load: the card just stays empty while the computer is off
+    }
     final ghResp = await mux.call('crew_github_status', {});
     if (mounted && ghResp['ok'] == true) {
       final ghData = (ghResp['data'] as Map?)?.cast<String, dynamic>() ?? {};
@@ -67,12 +72,20 @@ class _CrewmateProfileScreenState extends ConsumerState<CrewmateProfileScreen> {
     }
   }
 
+  /// The live connection for something the user just pressed: when there is none, says why instead of doing nothing.
+  Future<Multiplexer?> _mux() async {
+    try {
+      return await requireMuxOf(ref, widget.device);
+    } on DeviceUnavailable catch (e) {
+      if (mounted) _toast(e.message);
+      return null;
+    }
+  }
+
   Future<void> _editRole(String current) async {
     final result = await askRole(context, current);
     if (result == null || !mounted) return;
-    final mux = await ref.read(
-      connectionNotifierProvider(widget.device).future,
-    );
+    final mux = await _mux();
     if (mux == null) return;
     await mux.call('crewmate_update', {
       'id': widget.crewmateId,
@@ -82,9 +95,7 @@ class _CrewmateProfileScreenState extends ConsumerState<CrewmateProfileScreen> {
   }
 
   Future<void> _editMemory() async {
-    final mux = await ref.read(
-      connectionNotifierProvider(widget.device).future,
-    );
+    final mux = await _mux();
     if (mux == null) return;
 
     final resp = await mux.call('crewmate_memory', {'id': widget.crewmateId});
@@ -100,9 +111,7 @@ class _CrewmateProfileScreenState extends ConsumerState<CrewmateProfileScreen> {
 
   Future<void> _deleteCrewmate() async {
     if (!await confirmDeleteCrewmate(context) || !mounted) return;
-    final mux = await ref.read(
-      connectionNotifierProvider(widget.device).future,
-    );
+    final mux = await _mux();
     if (mux == null) return;
     final resp = await mux.call('crewmate_delete', {'id': widget.crewmateId});
     if (!mounted) return;
@@ -117,9 +126,7 @@ class _CrewmateProfileScreenState extends ConsumerState<CrewmateProfileScreen> {
   // ── automations ───────────────────────────────────────────────────────────
 
   Future<void> _saveTriggers(List<Trigger> triggers) async {
-    final mux = await ref.read(
-      connectionNotifierProvider(widget.device).future,
-    );
+    final mux = await _mux();
     if (mux == null) return;
     await mux.call('crewmate_triggers_set', {
       'id': widget.crewmateId,
@@ -224,9 +231,7 @@ class _CrewmateProfileScreenState extends ConsumerState<CrewmateProfileScreen> {
   // ── github ────────────────────────────────────────────────────────────────
 
   Future<void> _startLogin() async {
-    final mux = await ref.read(
-      connectionNotifierProvider(widget.device).future,
-    );
+    final mux = await _mux();
     if (mux == null) return;
     setState(() => _githubLoading = true);
     try {
@@ -238,7 +243,7 @@ class _CrewmateProfileScreenState extends ConsumerState<CrewmateProfileScreen> {
   }
 
   Future<void> _pollLogin() async {
-    final mux = ref.read(connectionNotifierProvider(widget.device)).value;
+    final mux = liveMux(ref, widget.device);
     if (mux == null) return;
     final (result, data) = await _login.pollOnce(mux);
     if (!mounted) return;
@@ -260,9 +265,7 @@ class _CrewmateProfileScreenState extends ConsumerState<CrewmateProfileScreen> {
       ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text(text)));
 
   Future<void> _logout() async {
-    final mux = await ref.read(
-      connectionNotifierProvider(widget.device).future,
-    );
+    final mux = await _mux();
     if (mux == null) return;
     await mux.call('crew_github_logout', {});
     if (!mounted) return;
@@ -283,7 +286,8 @@ class _CrewmateProfileScreenState extends ConsumerState<CrewmateProfileScreen> {
   @override
   Widget build(BuildContext context) {
     final c = AtlasColors.of(context);
-    final crewData = ref.watch(crewProvider(widget.device)).value;
+    final crew = ref.watch(crewProvider(widget.device));
+    final crewData = crew.value;
     final crewmate = crewData?.crewmates
         .where((b) => b.id == widget.crewmateId)
         .firstOrNull;
@@ -294,13 +298,14 @@ class _CrewmateProfileScreenState extends ConsumerState<CrewmateProfileScreen> {
         : CrewState.of(crewmate.state);
     return Scaffold(
       body: crewmate == null
-          ? Center(
-              child: crewData == null
-                  ? const CircularProgressIndicator()
-                  : Text(
-                      'Crewmate not found',
-                      style: TextStyle(color: c.faint),
-                    ),
+          ? AsyncView(
+              value: crew,
+              errorTitle: "Couldn't read the crewmate",
+              onRetry: () => ref.invalidate(crewProvider(widget.device)),
+              isEmpty: (_) => true,
+              emptyTitle: 'Crewmate not found',
+              emptyMessage: 'It may have been removed from its crew server.',
+              data: (_) => const SizedBox.shrink(),
             )
           : Stack(
               children: [
@@ -363,7 +368,7 @@ class _CrewmateProfileScreenState extends ConsumerState<CrewmateProfileScreen> {
                               style: TextStyle(
                                 color: crewmate.role.isNotEmpty
                                     ? c.text
-                                    : c.faint,
+                                    : c.muted,
                                 height: 1.45,
                                 fontSize: 15,
                               ),

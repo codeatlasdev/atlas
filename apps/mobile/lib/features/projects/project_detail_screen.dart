@@ -4,7 +4,9 @@ import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 
+import 'package:atlas_mobile/core/connection/require_mux.dart';
 import 'package:atlas_mobile/core/connection/connection_notifier.dart';
+import 'package:atlas_mobile/core/protocol/latest_only.dart';
 import 'package:atlas_mobile/core/protocol/models.dart';
 import 'package:atlas_mobile/core/protocol/multiplexer.dart';
 import 'package:atlas_mobile/features/agents/agent_chat_screen.dart';
@@ -40,6 +42,7 @@ const _poll = Duration(seconds: 3);
 
 class _ProjectDetailScreenState extends ConsumerState<ProjectDetailScreen> {
   final _history = ProjectHistory();
+  final _latest = LatestOnly();
   ProjectSnapshot? _snap;
   String? _error;
   Timer? _timer;
@@ -49,38 +52,50 @@ class _ProjectDetailScreenState extends ConsumerState<ProjectDetailScreen> {
   int _tab = 0;
   final Set<String> _busy = {};
 
-  Multiplexer? get _mux =>
-      ref.read(connectionNotifierProvider(widget.device)).value;
+  Multiplexer? get _mux => liveMux(ref, widget.device);
 
   @override
   void initState() {
     super.initState();
     _refresh();
-    _timer = Timer.periodic(_poll, (_) => _refresh());
+    _timer = Timer.periodic(_poll, (_) => _refresh(poll: true));
   }
 
   @override
   void dispose() {
+    _latest.close();
     _timer?.cancel();
     super.dispose();
   }
 
-  Future<void> _refresh() async {
+  /// Loads `project_detail`. A poll tick ([poll]) skips while the app is in the background, while the
+  /// computer is not connected, and while its previous request is still unanswered, so a slow link
+  /// carries one request, not a queue. Any other call (opening, pull to refresh, after an action)
+  /// always asks. Only the newest question's reply is applied: a late older one must not roll the
+  /// screen back or add a sample to the history.
+  Future<void> _refresh({bool poll = false}) async {
     final mux = _mux;
     if (mux == null) return;
-    final resp = await mux.call('project_detail', {'id': widget.project.id});
-    if (!mounted) return;
-    setState(() {
-      if (resp['ok'] == true) {
-        _snap = ProjectSnapshot.fromDetail(
-          (resp['data'] as Map).cast<String, dynamic>(),
-        );
-        _history.add(_snap!);
-        _error = null;
-      } else {
-        _error = resp['error'] as String? ?? 'error';
-      }
-    });
+    if (poll && !appInForeground()) return;
+    final ticket = poll ? _latest.tryBegin() : _latest.begin();
+    if (ticket == null) return;
+    try {
+      final resp = await mux.call('project_detail', {'id': widget.project.id});
+      if (!mounted || !ticket.isCurrent) return;
+      setState(() {
+        if (resp['ok'] == true) {
+          _snap = ProjectSnapshot.fromDetail(
+            (resp['data'] as Map).cast<String, dynamic>(),
+          );
+          _history.add(_snap!);
+          _error = null;
+        } else {
+          _error = resp['error'] as String? ?? 'error';
+        }
+      });
+    } finally {
+      ticket.done();
+    }
   }
 
   void _toast(String text) {
@@ -459,7 +474,7 @@ class _ProjectDetailScreenState extends ConsumerState<ProjectDetailScreen> {
         padding: const EdgeInsets.only(top: Space.xs, left: 2),
         child: Text(
           'Collected while this screen is open, every ${_poll.inSeconds} s.',
-          style: TextStyle(color: AtlasColors.of(context).faint, fontSize: 12),
+          style: TextStyle(color: AtlasColors.of(context).muted, fontSize: 12),
         ),
       ),
     ],
@@ -670,7 +685,7 @@ class _Banner extends StatelessWidget {
                 style: const TextStyle(fontWeight: FontWeight.w600),
               ),
             ),
-            Pill(action, color: color),
+            AtlasChip(action, tone: color),
           ],
         ),
       ),
@@ -720,7 +735,7 @@ class _ActionTile extends StatelessWidget {
                 if (action.confirm != null)
                   Text(
                     'Asks before running',
-                    style: TextStyle(color: c.faint, fontSize: 12),
+                    style: TextStyle(color: c.muted, fontSize: 12),
                   ),
               ],
             ),
@@ -733,7 +748,7 @@ class _ActionTile extends StatelessWidget {
               maxLines: 1,
               overflow: TextOverflow.ellipsis,
               style: TextStyle(
-                color: c.faint,
+                color: c.muted,
                 fontFamily: monoFamily,
                 fontFamilyFallback: monoFallback,
                 fontSize: 12,
@@ -765,7 +780,7 @@ class _Header extends StatelessWidget {
     final c = AtlasColors.of(context);
     final failed = snap.services.where((s) => s.state == 'failed').length;
     final (label, color) = !snap.running
-        ? ('Stopped', c.faint)
+        ? ('Stopped', c.muted)
         : failed > 0
         ? ('$failed failed', c.error)
         : ('Running', c.success);
@@ -804,7 +819,7 @@ class _Header extends StatelessWidget {
                       overflow: TextOverflow.ellipsis,
                       style: TextStyle(
                         fontSize: 12,
-                        color: c.faint,
+                        color: c.muted,
                         fontFamily: monoFamily,
                         fontFamilyFallback: monoFallback,
                       ),
@@ -861,7 +876,7 @@ class _Header extends StatelessWidget {
                             meta,
                             maxLines: 1,
                             overflow: TextOverflow.ellipsis,
-                            style: TextStyle(color: c.faint, fontSize: 12),
+                            style: TextStyle(color: c.muted, fontSize: 12),
                           ),
                         ),
                       ],
@@ -991,7 +1006,7 @@ class _Kpis extends StatelessWidget {
                     const SizedBox(height: 2),
                     Text(
                       items[i].$1,
-                      style: TextStyle(fontSize: 11, color: c.faint),
+                      style: TextStyle(fontSize: 11, color: c.muted),
                     ),
                   ],
                 ),
@@ -1069,7 +1084,7 @@ class _ServiceCard extends StatelessWidget {
                     : svc.state),
             maxLines: 1,
             overflow: TextOverflow.ellipsis,
-            style: TextStyle(fontSize: 12, color: failed ? c.error : c.faint),
+            style: TextStyle(fontSize: 12, color: failed ? c.error : c.muted),
           ),
           const SizedBox(height: Space.sm),
           SizedBox(
@@ -1086,7 +1101,7 @@ class _ServiceCard extends StatelessWidget {
             svc.up ? '${svc.memMb.round()} MB · ${svc.cpu.round()}%' : '—',
             style: TextStyle(
               fontSize: 11,
-              color: c.faint,
+              color: c.muted,
               fontFeatures: const [FontFeature.tabularFigures()],
             ),
           ),
@@ -1149,9 +1164,9 @@ class _ServiceSheet extends StatelessWidget {
                 ),
                 const Spacer(),
                 if (svc.port != null)
-                  Pill(
+                  AtlasChip(
                     ':${svc.port}',
-                    color: c.accent,
+                    tone: c.accent,
                     mono: true,
                     onTap: () {
                       Clipboard.setData(
@@ -1174,7 +1189,7 @@ class _ServiceSheet extends StatelessWidget {
               Text(
                 '${svc.memMb.round()} MB · ${svc.cpu.round()}% CPU'
                 '${svc.restarts > 0 ? ' · ${svc.restarts} restarts' : ''}',
-                style: TextStyle(color: c.faint, fontSize: 12),
+                style: TextStyle(color: c.muted, fontSize: 12),
               ),
             ],
             if (svc.lastLine.isNotEmpty) ...[
@@ -1203,7 +1218,7 @@ class _ServiceSheet extends StatelessWidget {
               const SizedBox(height: Space.sm),
               Text(
                 'Needs ${svc.dependsOn.join(', ')}',
-                style: TextStyle(color: c.faint, fontSize: 12),
+                style: TextStyle(color: c.muted, fontSize: 12),
               ),
             ],
             const SizedBox(height: Space.lg),
@@ -1276,47 +1291,60 @@ class _LogsPageState extends ConsumerState<_LogsPage> {
   bool _loading = true;
   bool _live = true;
   Timer? _timer;
+  final _latest = LatestOnly();
 
   @override
   void initState() {
     super.initState();
     _load();
     _timer = Timer.periodic(const Duration(seconds: 3), (_) {
-      if (_live && _search.text.trim().isEmpty) _load(quiet: true);
+      if (_live && _search.text.trim().isEmpty) _load(poll: true);
     });
   }
 
   @override
   void dispose() {
+    _latest.close();
     _timer?.cancel();
     _search.dispose();
     super.dispose();
   }
 
-  Future<void> _load({bool quiet = false}) async {
-    final mux = ref.read(connectionNotifierProvider(widget.device)).value;
+  /// Loads `project_logs` for the current service and search. A live poll ([poll]) skips while the
+  /// app is in the background, while the computer is not connected, and while its previous request is
+  /// unanswered. A search or a service pick always asks and supersedes anything in flight: only the
+  /// newest question's reply is applied, so a slow reply for `a` cannot overwrite the lines for `ab`.
+  Future<void> _load({bool poll = false}) async {
+    final mux = liveMux(ref, widget.device);
     if (mux == null) return;
-    if (!quiet) setState(() => _loading = true);
-    final q = _search.text.trim();
-    final resp = await mux.call('project_logs', {
-      'id': widget.projectId,
-      'service': ?_service,
-      'lines': 300,
-      if (q.isNotEmpty) 'query': q,
-    });
-    if (!mounted) return;
-    setState(() {
-      _loading = false;
-      if (resp['ok'] == true) {
-        _error = null;
-        _lines = (resp['data']?['text'] as String? ?? '')
-            .split('\n')
-            .where((l) => l.trim().isNotEmpty)
-            .toList();
-      } else {
-        _error = resp['error'] as String? ?? 'error';
-      }
-    });
+    if (poll && !appInForeground()) return;
+    final ticket = poll ? _latest.tryBegin() : _latest.begin();
+    if (ticket == null) return;
+    try {
+      if (!poll) setState(() => _loading = true);
+      final q = _search.text.trim();
+      final resp = await mux.call('project_logs', {
+        'id': widget.projectId,
+        'service': ?_service,
+        'lines': 300,
+        if (q.isNotEmpty) 'query': q,
+      });
+      if (!mounted || !ticket.isCurrent) return;
+      setState(() {
+        _loading = false;
+        if (resp['ok'] == true) {
+          _error = null;
+          _lines = (resp['data']?['text'] as String? ?? '')
+              .split('\n')
+              .where((l) => l.trim().isNotEmpty)
+              .toList();
+        } else {
+          _error = resp['error'] as String? ?? 'error';
+        }
+      });
+    } finally {
+      ticket.done();
+    }
   }
 
   void _pick(String? service) {
@@ -1467,7 +1495,7 @@ class _LogRow extends StatelessWidget {
           children: [
             TextSpan(
               text: '$time ',
-              style: TextStyle(color: c.faint),
+              style: TextStyle(color: c.muted),
             ),
             if (showService)
               TextSpan(
@@ -1636,7 +1664,7 @@ class _SkeletonState extends State<_Skeleton>
                     overflow: TextOverflow.ellipsis,
                     style: TextStyle(
                       fontSize: 12,
-                      color: c.faint,
+                      color: c.muted,
                       fontFamily: monoFamily,
                       fontFamilyFallback: monoFallback,
                     ),

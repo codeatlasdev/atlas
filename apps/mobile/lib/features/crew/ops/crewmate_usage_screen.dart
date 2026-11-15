@@ -7,6 +7,7 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 
 import 'package:atlas_mobile/core/protocol/crew_ops_models.dart';
 import 'package:atlas_mobile/core/protocol/models.dart';
+import 'package:atlas_mobile/core/ui/async_view.dart';
 import 'package:atlas_mobile/core/ui/atlas_theme.dart';
 import 'package:atlas_mobile/core/ui/components.dart';
 import 'package:atlas_mobile/features/crew/ops/crew_ops_provider.dart';
@@ -43,16 +44,10 @@ class CrewmateUsageScreen extends ConsumerWidget {
           ),
         ],
       ),
-      body: usage.when(
-        loading: () => const Center(child: CircularProgressIndicator()),
-        error: (e, _) => EmptyState(
-          title: "Couldn't read the usage",
-          message: '${e is StateError ? e.message : e}',
-          action: OutlinedButton(
-            onPressed: () => ref.invalidate(usageProvider(key)),
-            child: const Text('Try again'),
-          ),
-        ),
+      body: AsyncView(
+        value: usage,
+        errorTitle: "Couldn't read the usage",
+        onRetry: () => ref.invalidate(usageProvider(key)),
         data: (records) {
           final now = DateTime.now();
           final totals = usageTotals(records, now);
@@ -90,7 +85,7 @@ class CrewmateUsageScreen extends ConsumerWidget {
                   padding: const EdgeInsets.only(top: Space.lg),
                   child: Text(
                     'No usage recorded yet. Only engines that report tokens show here.',
-                    style: TextStyle(color: c.faint, fontSize: 13),
+                    style: TextStyle(color: c.muted, fontSize: 13),
                   ),
                 ),
               const SectionHeader('Engine limits'),
@@ -98,7 +93,7 @@ class CrewmateUsageScreen extends ConsumerWidget {
                 loading: () => const LinearProgressIndicator(),
                 error: (e, _) => Text(
                   '${e is StateError ? e.message : e}',
-                  style: TextStyle(color: c.faint, fontSize: 13),
+                  style: TextStyle(color: c.muted, fontSize: 13),
                 ),
                 data: (l) => Column(
                   crossAxisAlignment: CrossAxisAlignment.start,
@@ -167,7 +162,7 @@ class _Stat extends StatelessWidget {
               style: const TextStyle(fontSize: 20, fontWeight: FontWeight.w700),
             ),
             const SizedBox(height: 2),
-            Text(label, style: TextStyle(color: c.faint, fontSize: 12)),
+            Text(label, style: TextStyle(color: c.muted, fontSize: 12)),
           ],
         ),
       ),

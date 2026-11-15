@@ -14,7 +14,7 @@ Color nodeColor(AtlasColors c, AgentNode n) => switch (n.status) {
   'running' => c.accent,
   'completed' => c.success,
   'failed' || 'aborted' => c.error,
-  _ => c.faint,
+  _ => c.muted,
 };
 
 String nodeStatusLabel(AgentNode n) => switch (n.status) {
@@ -615,7 +615,7 @@ class _NowStripState extends State<NowStrip>
                 overflow: TextOverflow.ellipsis,
                 style: TextStyle(
                   fontSize: 11.5,
-                  color: c.faint,
+                  color: c.muted,
                   fontFeatures: const [FontFeature.tabularFigures()],
                 ),
               ),
@@ -707,7 +707,7 @@ class JobsStrip extends StatelessWidget {
           if (jobs.length > 5)
             Text(
               '+${jobs.length - 5} more',
-              style: TextStyle(fontSize: 11.5, color: c.faint),
+              style: TextStyle(fontSize: 11.5, color: c.muted),
             ),
         ],
       ),

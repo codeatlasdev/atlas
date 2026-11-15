@@ -36,12 +36,12 @@ class _Computer implements Transport {
     if (asleep) {
       return;
     }
-    // `info` like a current hostd: the app checks `proto` on connect (#302).
-    final data = m['cmd'] == 'crew_servers'
-        ? {'servers': relayed}
-        : m['cmd'] == 'info'
-        ? <String, Object?>{'proto': kAppProto}
-        : <String, Object?>{};
+    final data = switch (m['cmd']) {
+      'crew_servers' => {'servers': relayed},
+      // The connection check on connect: a current hostd names its protocol.
+      'info' => {'proto': kAppProto},
+      _ => <String, Object?>{},
+    };
     scheduleMicrotask(
       () => _in.add(jsonEncode({'id': m['id'], 'ok': true, 'data': data})),
     );

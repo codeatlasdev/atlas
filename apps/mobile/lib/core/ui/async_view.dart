@@ -19,8 +19,10 @@ import 'package:atlas_mobile/core/ui/computer_state.dart';
 /// - data for which [isEmpty] says so: [EmptyState] with [emptyTitle] / [emptyMessage];
 /// - else [data].
 ///
-/// Data that is being refreshed keeps showing (the spinner is for "nothing yet"), as Riverpod's
-/// `AsyncValue.when` does by default.
+/// Data that is being reloaded keeps showing (the spinner is for "nothing yet"). Riverpod's `when` only does
+/// that for a refresh (`invalidate`/`refresh`) by default; a reload (a provider rebuilt because something it
+/// watches changed, which is what a reconnect does to everything behind `requireMux`) shows the loader unless
+/// `skipLoadingOnReload` is set, so it is set here.
 class AsyncView<T> extends ConsumerWidget {
   const AsyncView({
     super.key,
@@ -54,6 +56,7 @@ class AsyncView<T> extends ConsumerWidget {
   @override
   Widget build(BuildContext context, WidgetRef ref) {
     return value.when(
+      skipLoadingOnReload: true,
       loading: () => const Center(child: CircularProgressIndicator()),
       error: (e, _) => switch (e) {
         DeviceOffline(:final device) => ReachingView(

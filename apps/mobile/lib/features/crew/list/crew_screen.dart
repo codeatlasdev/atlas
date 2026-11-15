@@ -11,6 +11,7 @@ import 'package:atlas_mobile/core/connection/connection_notifier.dart';
 import 'package:atlas_mobile/core/protocol/crew_models.dart';
 import 'package:atlas_mobile/core/protocol/models.dart';
 import 'package:atlas_mobile/core/providers/push_events_provider.dart';
+import 'package:atlas_mobile/core/ui/async_view.dart';
 import 'package:atlas_mobile/core/ui/atlas_theme.dart';
 import 'package:atlas_mobile/core/ui/components.dart';
 import 'package:atlas_mobile/core/ui/floating_tab_bar.dart';
@@ -63,7 +64,9 @@ class _CrewScreenState extends ConsumerState<CrewScreen> {
   Widget build(BuildContext context) {
     final c = AtlasColors.of(context);
     final devicesAsync = ref.watch(crewDevicesProvider);
-    final devices = devicesAsync.value ?? [];
+    // `.value` is null until the computers are listed (a spinner below) or when listing failed (an error below):
+    // never an empty list that reads as "no computers, no crew".
+    final devices = devicesAsync.value ?? const <MacDevice>[];
 
     // Listen for computer_invite pushes.
     for (final device in devices) {
@@ -102,9 +105,16 @@ class _CrewScreenState extends ConsumerState<CrewScreen> {
 
     // Nothing to list yet: the computers, or any computer's crew, are still loading. Not "No crew yet".
     var loading = devicesAsync.isLoading && !devicesAsync.hasValue;
+    // Computers whose crew could not be read and that have nothing to show from before: why, per computer.
+    final failed = <({MacDevice device, Object error})>[];
     for (final device in devices) {
       final crew = ref.watch(crewProvider(device));
       if (crew.isLoading && !crew.hasValue) loading = true;
+      if (crew.hasError && !crew.hasValue) {
+        failed.add((device: device, error: crew.error!));
+      }
+      // `value` of an `AsyncValue` that is reloading or in error keeps the last answer: the crew stays on
+      // screen while the link comes back.
       final data = crew.value;
       final online =
           ref.watch(connectionNotifierProvider(device)).value != null;
@@ -181,6 +191,22 @@ class _CrewScreenState extends ConsumerState<CrewScreen> {
             bottom: false,
             child: allEntries.isEmpty && loading
                 ? const Center(child: CircularProgressIndicator())
+                : allEntries.isEmpty && devicesAsync.hasError
+                ? _CrewError(
+                    title: "Couldn't list your computers",
+                    error: devicesAsync.error!,
+                    onRetry: () => ref.invalidate(crewDevicesProvider),
+                  )
+                : allEntries.isEmpty && failed.isNotEmpty
+                ? _CrewError(
+                    title: "Couldn't read the crew",
+                    error: failed.first.error,
+                    onRetry: () {
+                      for (final f in failed) {
+                        ref.invalidate(crewProvider(f.device));
+                      }
+                    },
+                  )
                 : allEntries.isEmpty
                 ? Padding(
                     padding: const EdgeInsets.only(
@@ -329,6 +355,30 @@ class _CrewScreenState extends ConsumerState<CrewScreen> {
       extra: {'device': e.device},
     );
   }
+}
+
+/// The Crew tab when no crew could be read: the shared offline / update / error state with "Try again"
+/// (`AsyncView`'s words), under the tab's floating bar.
+class _CrewError extends StatelessWidget {
+  const _CrewError({
+    required this.title,
+    required this.error,
+    required this.onRetry,
+  });
+  final String title;
+  final Object error;
+  final VoidCallback onRetry;
+
+  @override
+  Widget build(BuildContext context) => Padding(
+    padding: const EdgeInsets.only(bottom: kFloatingBarScrollPad),
+    child: AsyncView<void>(
+      value: AsyncError<void>(error, StackTrace.empty),
+      data: (_) => const SizedBox.shrink(),
+      errorTitle: title,
+      onRetry: onRetry,
+    ),
+  );
 }
 
 /// Crew settings and the crew-wide audit of one crew server, under its pause switch.

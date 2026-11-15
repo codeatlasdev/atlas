@@ -112,7 +112,11 @@ class _NewCrewmateSheetState extends ConsumerState<NewCrewmateSheet> {
 
           // Device picker (only when more than one device).
           if (widget.devices.length > 1) ...[
-            Text('Computer', style: TextStyle(color: c.muted, fontSize: 13)),
+            Text(
+              'Computer',
+              style: Theme.of(context).textTheme.bodyMedium!
+                  .copyWith(color: c.muted),
+            ),
             const SizedBox(height: 6),
             DropdownButtonFormField<MacDevice>(
               initialValue: _device,
@@ -153,7 +157,11 @@ class _NewCrewmateSheetState extends ConsumerState<NewCrewmateSheet> {
           const SizedBox(height: 16),
 
           // Agent picker.
-          Text('Agent', style: TextStyle(color: c.muted, fontSize: 13)),
+          Text(
+            'Agent',
+            style: Theme.of(context).textTheme.bodyMedium!
+                .copyWith(color: c.muted),
+          ),
           const SizedBox(height: 6),
           DropdownButtonFormField<String>(
             initialValue: _agent,
@@ -169,7 +177,11 @@ class _NewCrewmateSheetState extends ConsumerState<NewCrewmateSheet> {
           const SizedBox(height: 16),
 
           // Approval mode.
-          Text('Approval', style: TextStyle(color: c.muted, fontSize: 13)),
+          Text(
+            'Approval',
+            style: Theme.of(context).textTheme.bodyMedium!
+                .copyWith(color: c.muted),
+          ),
           const SizedBox(height: 6),
           SegmentedButton<String>(
             selected: {_approval},
@@ -185,13 +197,18 @@ class _NewCrewmateSheetState extends ConsumerState<NewCrewmateSheet> {
             const SizedBox(height: 6),
             Text(
               'OpenCode crewmates run without approval prompts.',
-              style: TextStyle(color: c.muted, fontSize: 12),
+              style: Theme.of(context).textTheme.bodySmall!
+                  .copyWith(color: c.muted),
             ),
           ],
 
           if (_error != null) ...[
             const SizedBox(height: 12),
-            Text(_error!, style: TextStyle(color: c.error, fontSize: 13)),
+            Text(
+              _error!,
+              style: Theme.of(context).textTheme.bodyMedium!
+                  .copyWith(color: c.error),
+            ),
           ],
 
           const SizedBox(height: 20),

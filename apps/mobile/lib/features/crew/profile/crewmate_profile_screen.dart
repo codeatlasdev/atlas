@@ -365,13 +365,13 @@ class _CrewmateProfileScreenState extends ConsumerState<CrewmateProfileScreen> {
                               crewmate.role.isNotEmpty
                                   ? crewmate.role
                                   : 'Tap to describe its job.',
-                              style: TextStyle(
-                                color: crewmate.role.isNotEmpty
-                                    ? c.text
-                                    : c.muted,
-                                height: 1.45,
-                                fontSize: 15,
-                              ),
+                              style: Theme.of(context).textTheme.bodyLarge!
+                                  .copyWith(
+                                    color: crewmate.role.isNotEmpty
+                                        ? c.text
+                                        : c.muted,
+                                    height: 1.45,
+                                  ),
                             ),
                           ),
                         ],

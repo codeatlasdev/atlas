@@ -75,11 +75,8 @@ class NeedsYouCard extends StatelessWidget {
                   Expanded(
                     child: Text(
                       entry.crewmate.name,
-                      style: TextStyle(
-                        fontWeight: FontWeight.w700,
-                        fontSize: 14,
-                        color: c.text,
-                      ),
+                      style: Theme.of(context).textTheme.bodyLarge!
+                          .copyWith(fontWeight: FontWeight.w700, color: c.text),
                     ),
                   ),
                 ],
@@ -98,7 +95,7 @@ class NeedsYouCard extends StatelessWidget {
                 const SizedBox(height: 10),
                 ApprovalButtons(onAnswer: onAnswer, hPad: 16, vPad: 6, gap: 8),
               ] else if (task != null && task.retryable)
-                ..._waiting(c, task),
+                ..._waiting(context, c, task),
             ],
           ),
         ),
@@ -107,7 +104,11 @@ class NeedsYouCard extends StatelessWidget {
   }
 
   /// The card of a parked task: what it is, the agent's captures, the reasons, Retry / Override.
-  List<Widget> _waiting(AtlasColors c, CrewmateWaitingTask task) {
+  List<Widget> _waiting(
+    BuildContext context,
+    AtlasColors c,
+    CrewmateWaitingTask task,
+  ) {
     final unproven = task.action.kind == 'prove_ui';
     final reasons = unproven
         ? [if (task.action.reason != null) task.action.reason!]
@@ -115,11 +116,8 @@ class NeedsYouCard extends StatelessWidget {
     return [
       Text(
         unproven ? 'Could not prove this UI work' : 'This work was refused',
-        style: TextStyle(
-          fontSize: 13,
-          fontWeight: FontWeight.w600,
-          color: c.text,
-        ),
+        style: Theme.of(context).textTheme.bodyMedium!
+            .copyWith(fontWeight: FontWeight.w600, color: c.text),
       ),
       TaskImageRow(
         images: task.attachments,
@@ -132,7 +130,11 @@ class NeedsYouCard extends StatelessWidget {
       for (final r in reasons)
         Padding(
           padding: const EdgeInsets.only(bottom: 2),
-          child: Text('• $r', style: TextStyle(fontSize: 12, color: c.muted)),
+          child: Text(
+            '• $r',
+            style: Theme.of(context).textTheme.bodySmall!
+                .copyWith(color: c.muted),
+          ),
         ),
       const SizedBox(height: 10),
       Row(
@@ -144,7 +146,6 @@ class NeedsYouCard extends StatelessWidget {
           const SizedBox(width: 8),
           OutlinePillButton(
             label: 'Override',
-            fontSize: 13,
             onPressed: () => onAnswerTask('override'),
           ),
         ],

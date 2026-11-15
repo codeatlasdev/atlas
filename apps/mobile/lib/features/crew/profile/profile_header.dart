@@ -39,16 +39,17 @@ class ProfileHeader extends StatelessWidget {
         const SizedBox(height: Space.sm),
         Text(
           crewmate.name,
-          style: TextStyle(
-            fontSize: 28,
-            fontWeight: FontWeight.w700,
-            color: c.text,
-          ),
+          style: Theme.of(context).textTheme.headlineMedium!
+              .copyWith(fontWeight: FontWeight.w700, color: c.text),
           textAlign: TextAlign.center,
         ),
         if (tag.isNotEmpty) ...[
           const SizedBox(height: 2),
-          Text(tag, style: TextStyle(color: c.muted, fontSize: 15)),
+          Text(
+            tag,
+            style: Theme.of(context).textTheme.bodyLarge!
+                .copyWith(color: c.muted),
+          ),
         ],
         const SizedBox(height: Space.md),
         Wrap(
@@ -114,8 +115,7 @@ class ProfileChip extends StatelessWidget {
             child: Text(
               label,
               overflow: TextOverflow.ellipsis,
-              style: TextStyle(
-                fontSize: 13,
+              style: Theme.of(context).textTheme.bodyMedium!.copyWith(
                 fontWeight: FontWeight.w600,
                 color: color ?? c.muted,
               ),

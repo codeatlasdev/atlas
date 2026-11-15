@@ -244,11 +244,11 @@ class _CrewmateChatScreenState extends ConsumerState<CrewmateChatScreen> {
                             child: Text(
                               crewmateName,
                               overflow: TextOverflow.ellipsis,
-                              style: TextStyle(
-                                fontSize: 17,
-                                fontWeight: FontWeight.w600,
-                                color: c.text,
-                              ),
+                              style: Theme.of(context).textTheme.titleMedium!
+                                  .copyWith(
+                                    fontWeight: FontWeight.w600,
+                                    color: c.text,
+                                  ),
                             ),
                           ),
                         ],

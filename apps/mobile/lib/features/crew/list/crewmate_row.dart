@@ -76,17 +76,18 @@ class CrewmateRow extends StatelessWidget {
                             child: Text(
                               crewmate.name,
                               overflow: TextOverflow.ellipsis,
-                              style: TextStyle(
-                                fontWeight: FontWeight.w600,
-                                fontSize: 16,
-                                color: entry.online ? c.text : c.muted,
-                              ),
+                              style: Theme.of(context).textTheme.titleMedium!
+                                  .copyWith(
+                                    fontWeight: FontWeight.w600,
+                                    color: entry.online ? c.text : c.muted,
+                                  ),
                             ),
                           ),
                           if (when.isNotEmpty)
                             Text(
                               when,
-                              style: TextStyle(fontSize: 13, color: c.muted),
+                              style: Theme.of(context).textTheme.bodyMedium!
+                                  .copyWith(color: c.muted),
                             ),
                         ],
                       ),
@@ -99,11 +100,8 @@ class CrewmateRow extends StatelessWidget {
                               preview,
                               maxLines: 2,
                               overflow: TextOverflow.ellipsis,
-                              style: TextStyle(
-                                fontSize: 14.5,
-                                height: 1.3,
-                                color: previewColor,
-                              ),
+                              style: Theme.of(context).textTheme.bodyLarge!
+                                  .copyWith(height: 1.3, color: previewColor),
                             ),
                           ),
                           if (state == CrewState.needsYou) ...[
@@ -119,11 +117,11 @@ class CrewmateRow extends StatelessWidget {
                               alignment: Alignment.center,
                               child: Text(
                                 '!',
-                                style: TextStyle(
-                                  color: c.ground,
-                                  fontSize: 12,
-                                  fontWeight: FontWeight.w800,
-                                ),
+                                style: Theme.of(context).textTheme.bodySmall!
+                                    .copyWith(
+                                      color: c.ground,
+                                      fontWeight: FontWeight.w800,
+                                    ),
                               ),
                             ),
                           ],
@@ -134,7 +132,8 @@ class CrewmateRow extends StatelessWidget {
                           padding: const EdgeInsets.only(top: 2),
                           child: Text(
                             entry.hostName,
-                            style: TextStyle(fontSize: 12, color: c.muted),
+                            style: Theme.of(context).textTheme.bodySmall!
+                                .copyWith(color: c.muted),
                           ),
                         ),
                     ],

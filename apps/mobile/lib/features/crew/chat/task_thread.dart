@@ -65,8 +65,7 @@ class CrewmateTaskPair extends StatelessWidget {
             child: Center(
               child: Text(
                 day!,
-                style: TextStyle(
-                  fontSize: 13,
+                style: Theme.of(context).textTheme.bodyMedium!.copyWith(
                   color: AtlasColors.of(context).muted,
                   fontWeight: FontWeight.w500,
                 ),
@@ -160,7 +159,11 @@ class _UserBubble extends StatelessWidget {
             tag: task.source == 'mobile' ? null : _sourceLabel(task.source),
             child: Text(
               task.prompt,
-              style: TextStyle(color: c.onAccent, height: 1.4, fontSize: 16),
+              style: Theme.of(context).textTheme.titleMedium!.copyWith(
+                color: c.onAccent,
+                height: 1.4,
+                fontWeight: FontWeight.w400,
+              ),
             ),
           ),
         ),
@@ -194,7 +197,8 @@ class _CrewmateBubble extends StatelessWidget {
           task.preparing != null
               ? 'Downloading ${task.preparing}…'
               : '${task.queuedLabel}…',
-          style: TextStyle(color: c.muted, fontSize: 15),
+          style: Theme.of(context).textTheme.bodyLarge!
+              .copyWith(color: c.muted),
         );
 
       case 'running':
@@ -215,19 +219,22 @@ class _CrewmateBubble extends StatelessWidget {
       case 'failed':
         content = Text(
           task.error ?? 'Task failed',
-          style: TextStyle(color: c.error, fontSize: 15),
+          style: Theme.of(context).textTheme.bodyLarge!
+              .copyWith(color: c.error),
         );
 
       case 'cancelled':
         content = Text(
           'Cancelled',
-          style: TextStyle(color: c.muted, fontSize: 15),
+          style: Theme.of(context).textTheme.bodyLarge!
+              .copyWith(color: c.muted),
         );
 
       case 'waiting_action':
         content = Text(
           'Waiting for input…',
-          style: TextStyle(color: c.muted, fontSize: 15),
+          style: Theme.of(context).textTheme.bodyLarge!
+              .copyWith(color: c.muted),
         );
 
       default: // done
@@ -358,7 +365,11 @@ class _CrewmateBubbleResultState extends State<_CrewmateBubbleResult> {
       children: [
         AtlasMarkdown(
           shown,
-          style: TextStyle(color: c.text, fontSize: 16, height: 1.45),
+          style: Theme.of(context).textTheme.titleMedium!.copyWith(
+            color: c.text,
+            height: 1.45,
+            fontWeight: FontWeight.w400,
+          ),
         ),
         if (isSummarized) ...[
           const SizedBox(height: 6),
@@ -366,7 +377,8 @@ class _CrewmateBubbleResultState extends State<_CrewmateBubbleResult> {
             onTap: () => setState(() => _showFull = !_showFull),
             child: Text(
               _showFull ? 'Show summary' : 'See full reply',
-              style: TextStyle(color: c.accent, fontSize: 12),
+              style: Theme.of(context).textTheme.bodySmall!
+                  .copyWith(color: c.accent),
             ),
           ),
         ],
@@ -396,7 +408,8 @@ class _AddTriggerNote extends StatelessWidget {
           const SizedBox(width: 4),
           Text(
             added ? 'Automation added' : 'Not added',
-            style: TextStyle(fontSize: 12, color: added ? c.success : c.muted),
+            style: Theme.of(context).textTheme.bodySmall!
+                .copyWith(color: added ? c.success : c.muted),
           ),
         ],
       ),

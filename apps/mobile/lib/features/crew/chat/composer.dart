@@ -122,7 +122,8 @@ class _ChatComposerState extends ConsumerState<ChatComposer> {
                 padding: const EdgeInsets.only(left: Space.lg, bottom: 6),
                 child: Text(
                   queued == 1 ? '1 task queued' : '$queued tasks queued',
-                  style: TextStyle(fontSize: 12, color: c.muted),
+                  style: Theme.of(context).textTheme.bodySmall!
+                      .copyWith(color: c.muted),
                 ),
               ),
             if (_error != null)
@@ -130,7 +131,8 @@ class _ChatComposerState extends ConsumerState<ChatComposer> {
                 padding: const EdgeInsets.only(left: Space.lg, bottom: 6),
                 child: Text(
                   _error!,
-                  style: TextStyle(fontSize: 12, color: c.error),
+                  style: Theme.of(context).textTheme.bodySmall!
+                      .copyWith(color: c.error),
                 ),
               ),
             if (_images.isNotEmpty)
@@ -184,16 +186,21 @@ class _ChatComposerState extends ConsumerState<ChatComposer> {
                           maxLines: 6,
                           cursorColor: c.text,
                           textCapitalization: TextCapitalization.sentences,
-                          style: TextStyle(
-                            fontSize: 16,
-                            color: c.text,
-                            height: 1.35,
-                          ),
+                          style: Theme.of(context).textTheme.titleMedium!
+                              .copyWith(
+                                color: c.text,
+                                height: 1.35,
+                                fontWeight: FontWeight.w400,
+                              ),
                           decoration: InputDecoration(
                             hintText: online
                                 ? 'Message'
                                 : 'Offline — queued when back',
-                            hintStyle: TextStyle(color: c.faint, fontSize: 16),
+                            hintStyle: Theme.of(context).textTheme.titleMedium!
+                                .copyWith(
+                                  color: c.faint,
+                                  fontWeight: FontWeight.w400,
+                                ),
                             border: InputBorder.none,
                             isCollapsed: true,
                             // The app theme gives every field a filled box; the pill is it.

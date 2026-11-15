@@ -36,7 +36,8 @@ class ApprovalToolLine extends StatelessWidget {
     final c = AtlasColors.of(context);
     final text = Text(
       'Wants to run ${approval?.toolName ?? 'a tool'}',
-      style: TextStyle(color: c.warning, fontSize: 13, fontWeight: weight),
+      style: Theme.of(context).textTheme.bodyMedium!
+          .copyWith(color: c.warning, fontWeight: weight),
     );
     return Row(
       children: [
@@ -65,10 +66,9 @@ class ApprovalCommandPreview extends StatelessWidget {
       ),
       child: Text(
         command,
-        style: TextStyle(
+        style: Theme.of(context).textTheme.bodySmall!.copyWith(
           fontFamily: monoFamily,
           fontFamilyFallback: monoFallback,
-          fontSize: 12,
           color: c.text,
         ),
       ),

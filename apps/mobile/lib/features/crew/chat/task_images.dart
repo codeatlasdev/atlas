@@ -104,7 +104,8 @@ class _TaskImage extends ConsumerWidget {
                   ExcludeSemantics(
                     child: Text(
                       'Tap to retry',
-                      style: TextStyle(fontSize: 11, color: c.muted),
+                      style: Theme.of(context).textTheme.labelSmall!
+                          .copyWith(color: c.muted),
                     ),
                   ),
                 ],

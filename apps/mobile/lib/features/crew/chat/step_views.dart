@@ -46,7 +46,10 @@ class StepGroupsView extends StatelessWidget {
                       ? 'Working · ${crewElapsed(startedAt!, DateTime.now())}'
                       : 'Working…')
                 : 'Done',
-            style: TextStyle(color: running ? c.accent : c.muted, fontSize: 16),
+            style: Theme.of(context).textTheme.titleMedium!.copyWith(
+              color: running ? c.accent : c.muted,
+              fontWeight: FontWeight.w400,
+            ),
           ),
         ],
       );
@@ -71,7 +74,8 @@ class StepGroupsView extends StatelessWidget {
                 startedAt != null
                     ? 'Working · ${crewElapsed(startedAt!, DateTime.now())}'
                     : 'Working…',
-                style: TextStyle(color: c.accent, fontSize: 16),
+                style: Theme.of(context).textTheme.titleMedium!
+                    .copyWith(color: c.accent, fontWeight: FontWeight.w400),
               ),
             ],
           ),
@@ -130,7 +134,8 @@ class _StepGroupRow extends StatelessWidget {
                     title != null
                         ? '$title · ${group.steps.length} step${group.steps.length == 1 ? '' : 's'}'
                         : '${group.steps.length} step${group.steps.length == 1 ? '' : 's'}',
-                    style: TextStyle(fontSize: 12, color: c.muted),
+                    style: Theme.of(context).textTheme.bodySmall!
+                        .copyWith(color: c.muted),
                     overflow: TextOverflow.ellipsis,
                   ),
                 ),
@@ -166,22 +171,16 @@ class _StepGroupRow extends StatelessWidget {
         if (title != null) ...[
           Text(
             title,
-            style: TextStyle(
-              fontSize: 12,
-              fontWeight: FontWeight.w600,
-              color: c.muted,
-            ),
+            style: Theme.of(context).textTheme.bodySmall!
+                .copyWith(fontWeight: FontWeight.w600, color: c.muted),
           ),
           const SizedBox(height: 4),
         ],
         if (earlier > 0) ...[
           Text(
             '+$earlier earlier',
-            style: TextStyle(
-              fontSize: 11,
-              color: c.muted,
-              fontStyle: FontStyle.italic,
-            ),
+            style: Theme.of(context).textTheme.labelSmall!
+                .copyWith(color: c.muted, fontStyle: FontStyle.italic),
           ),
           const SizedBox(height: 2),
         ],
@@ -208,8 +207,7 @@ class _StepList extends StatelessWidget {
             padding: const EdgeInsets.only(bottom: 2),
             child: Text(
               '· ${stepPhrase(step.text)}',
-              style: TextStyle(
-                fontSize: 12,
+              style: Theme.of(context).textTheme.bodySmall!.copyWith(
                 color: c.muted,
                 fontFamily: 'Menlo',
                 fontFamilyFallback: const [

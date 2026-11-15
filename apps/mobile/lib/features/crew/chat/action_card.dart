@@ -245,14 +245,18 @@ class _TaskActionCardState extends ConsumerState<TaskActionCard> {
 
   Widget _title(AtlasColors c, String text) => Text(
     text,
-    style: TextStyle(fontSize: 13, fontWeight: FontWeight.w600, color: c.text),
+    style: Theme.of(context).textTheme.bodyMedium!
+        .copyWith(fontWeight: FontWeight.w600, color: c.text),
   );
 
   /// The agent's reason under a title, when it gave one.
   List<Widget> _reason(AtlasColors c, TaskAction action) => [
     if (action.reason != null) ...[
       const SizedBox(height: 4),
-      Text(action.reason!, style: TextStyle(fontSize: 12, color: c.muted)),
+      Text(
+        action.reason!,
+        style: Theme.of(context).textTheme.bodySmall!.copyWith(color: c.muted),
+      ),
     ],
   ];
 
@@ -268,7 +272,6 @@ class _TaskActionCardState extends ConsumerState<TaskActionCard> {
       const SizedBox(width: 8),
       OutlinePillButton(
         label: cancel,
-        fontSize: 13,
         onPressed: _submitting ? null : (onCancel ?? _cancel),
       ),
     ],
@@ -282,10 +285,11 @@ class _TaskActionCardState extends ConsumerState<TaskActionCard> {
   }) => TextField(
     controller: _controller,
     obscureText: obscure,
-    style: TextStyle(fontSize: 14, color: c.text),
+    style: Theme.of(context).textTheme.bodyLarge!.copyWith(color: c.text),
     decoration: InputDecoration(
       hintText: hint,
-      hintStyle: TextStyle(color: c.faint, fontSize: 14),
+      hintStyle: Theme.of(context).textTheme.bodyLarge!
+          .copyWith(color: c.faint),
       contentPadding: const EdgeInsets.symmetric(horizontal: 12, vertical: 8),
       border: OutlineInputBorder(
         borderRadius: BorderRadius.circular(8),
@@ -329,7 +333,11 @@ class _TaskActionCardState extends ConsumerState<TaskActionCard> {
       ),
       if (_error != null) ...[
         const SizedBox(height: 6),
-        Text(_error!, style: TextStyle(fontSize: 12, color: c.error)),
+        Text(
+          _error!,
+          style: Theme.of(context).textTheme.bodySmall!
+              .copyWith(color: c.error),
+        ),
       ],
       const SizedBox(height: 8),
       _actions('Submit', busy ? null : _submitText),
@@ -347,15 +355,15 @@ class _TaskActionCardState extends ConsumerState<TaskActionCard> {
         if (flow != null) ...[
           Text(
             'Enter this code at ${flow.verificationUri}',
-            style: TextStyle(fontSize: 12, color: c.muted),
+            style: Theme.of(context).textTheme.bodySmall!
+                .copyWith(color: c.muted),
           ),
           const SizedBox(height: 6),
           Row(
             children: [
               Text(
                 flow.userCode,
-                style: TextStyle(
-                  fontSize: 20,
+                style: Theme.of(context).textTheme.titleLarge!.copyWith(
                   fontWeight: FontWeight.w700,
                   letterSpacing: 2,
                   fontFamily: monoFamily,
@@ -379,7 +387,11 @@ class _TaskActionCardState extends ConsumerState<TaskActionCard> {
                     borderRadius: BorderRadius.circular(8),
                   ),
                 ),
-                child: const Text('Copy', style: TextStyle(fontSize: 12)),
+                child: Text(
+                  'Copy',
+                  style: Theme.of(context).textTheme.bodySmall!
+                      .copyWith(color: AtlasColors.of(context).text),
+                ),
               ),
             ],
           ),
@@ -387,13 +399,13 @@ class _TaskActionCardState extends ConsumerState<TaskActionCard> {
             const SizedBox(height: 6),
             Text(
               'Waiting for authorization…',
-              style: TextStyle(fontSize: 12, color: c.muted),
+              style: Theme.of(context).textTheme.bodySmall!
+                  .copyWith(color: c.muted),
             ),
           ],
           const SizedBox(height: 8),
           OutlinePillButton(
             label: 'Cancel',
-            fontSize: 13,
             hPad: 12,
             vPad: 4,
             onPressed: _login.cancel,
@@ -440,18 +452,16 @@ class _TaskActionCardState extends ConsumerState<TaskActionCard> {
                 ),
                 child: Text(
                   String.fromCharCode(65 + i),
-                  style: TextStyle(
-                    fontSize: 11,
-                    fontWeight: FontWeight.w600,
-                    color: c.muted,
-                  ),
+                  style: Theme.of(context).textTheme.labelSmall!
+                      .copyWith(fontWeight: FontWeight.w600, color: c.muted),
                 ),
               ),
               const SizedBox(width: 10),
               Flexible(
                 child: Text(
                   action.options[i],
-                  style: TextStyle(fontSize: 14, color: c.text),
+                  style: Theme.of(context).textTheme.bodyLarge!
+                      .copyWith(color: c.text),
                 ),
               ),
             ],
@@ -460,11 +470,7 @@ class _TaskActionCardState extends ConsumerState<TaskActionCard> {
         if (i < action.options.length - 1) const SizedBox(height: 4),
       ],
       const SizedBox(height: 8),
-      OutlinePillButton(
-        label: 'Cancel task',
-        fontSize: 13,
-        onPressed: busy ? null : _cancel,
-      ),
+      OutlinePillButton(label: 'Cancel task', onPressed: busy ? null : _cancel),
     ],
   );
 
@@ -481,7 +487,8 @@ class _TaskActionCardState extends ConsumerState<TaskActionCard> {
           canSignInHere
               ? 'Tap Sign in here to open its sign-in on the crew server, finish it, then tap Done.'
               : 'Sign in to $engine on the crew server, then tap Done.',
-          style: TextStyle(fontSize: 12, color: c.muted),
+          style: Theme.of(context).textTheme.bodySmall!
+              .copyWith(color: c.muted),
         ),
         const SizedBox(height: 10),
         if (canSignInHere) ...[
@@ -525,7 +532,8 @@ class _TaskActionCardState extends ConsumerState<TaskActionCard> {
           padding: const EdgeInsets.only(bottom: 2),
           child: Text(
             '• $reason',
-            style: TextStyle(fontSize: 12, color: c.muted),
+            style: Theme.of(context).textTheme.bodySmall!
+                .copyWith(color: c.muted),
           ),
         ),
       const SizedBox(height: 8),
@@ -538,7 +546,8 @@ class _TaskActionCardState extends ConsumerState<TaskActionCard> {
               InputChip(
                 label: Text(
                   _images[i].name,
-                  style: const TextStyle(fontSize: 12),
+                  style: Theme.of(context).textTheme.bodySmall!
+                      .copyWith(color: AtlasColors.of(context).text),
                 ),
                 onDeleted: busy
                     ? null
@@ -549,12 +558,15 @@ class _TaskActionCardState extends ConsumerState<TaskActionCard> {
         ),
       OutlinePillButton(
         label: 'Add a screenshot',
-        fontSize: 13,
         onPressed: busy ? null : _addImages,
       ),
       if (_error != null) ...[
         const SizedBox(height: 6),
-        Text(_error!, style: TextStyle(fontSize: 12, color: c.error)),
+        Text(
+          _error!,
+          style: Theme.of(context).textTheme.bodySmall!
+              .copyWith(color: c.error),
+        ),
       ],
       const SizedBox(height: 8),
       Row(
@@ -566,7 +578,6 @@ class _TaskActionCardState extends ConsumerState<TaskActionCard> {
           const SizedBox(width: 8),
           OutlinePillButton(
             label: 'Override',
-            fontSize: 13,
             onPressed: busy ? null : () => _submit('override'),
           ),
         ],
@@ -589,11 +600,8 @@ class _TaskActionCardState extends ConsumerState<TaskActionCard> {
             Flexible(
               child: Text(
                 '${action.name ?? widget.crewmateId} wants to add an automation',
-                style: TextStyle(
-                  fontSize: 13,
-                  fontWeight: FontWeight.w600,
-                  color: c.warning,
-                ),
+                style: Theme.of(context).textTheme.bodyMedium!
+                    .copyWith(fontWeight: FontWeight.w600, color: c.warning),
                 overflow: TextOverflow.ellipsis,
               ),
             ),
@@ -603,21 +611,27 @@ class _TaskActionCardState extends ConsumerState<TaskActionCard> {
         if (triggerKind != null) ...[
           Text(
             _describeTriggerKind(triggerKind),
-            style: TextStyle(fontSize: 13, color: c.text),
+            style: Theme.of(context).textTheme.bodyMedium!
+                .copyWith(color: c.text),
           ),
           const SizedBox(height: 2),
         ],
         if (triggerPrompt != null && triggerPrompt.isNotEmpty) ...[
           Text(
             triggerPrompt,
-            style: TextStyle(fontSize: 12, color: c.muted),
+            style: Theme.of(context).textTheme.bodySmall!
+                .copyWith(color: c.muted),
             maxLines: 2,
             overflow: TextOverflow.ellipsis,
           ),
           const SizedBox(height: 2),
         ],
         if (resolved != null) ...[
-          Text(resolved, style: TextStyle(fontSize: 12, color: c.muted)),
+          Text(
+            resolved,
+            style: Theme.of(context).textTheme.bodySmall!
+                .copyWith(color: c.muted),
+          ),
           const SizedBox(height: 6),
         ] else
           const SizedBox(height: 6),
@@ -630,7 +644,6 @@ class _TaskActionCardState extends ConsumerState<TaskActionCard> {
             const SizedBox(width: 8),
             OutlinePillButton(
               label: 'Not now',
-              fontSize: 13,
               onPressed: busy ? null : () => _submit('skip'),
             ),
           ],

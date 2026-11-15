@@ -286,7 +286,11 @@ class _AutomationEditorSheetState extends State<_AutomationEditorSheet> {
           children: [
             for (final (label, days) in _presets)
               FilterChip(
-                label: Text(label, style: const TextStyle(fontSize: 12)),
+                label: Text(
+                  label,
+                  style: Theme.of(context).textTheme.bodySmall!
+                      .copyWith(color: AtlasColors.of(context).text),
+                ),
                 selected:
                     _days.length == days.length && days.every(_days.contains),
                 onSelected: (_) => setState(() => _days = List.of(days)),
@@ -302,7 +306,8 @@ class _AutomationEditorSheetState extends State<_AutomationEditorSheet> {
               FilterChip(
                 label: Text(
                   ['Su', 'M', 'Tu', 'W', 'Th', 'F', 'Sa'][i],
-                  style: const TextStyle(fontSize: 11),
+                  style: Theme.of(context).textTheme.labelSmall!
+                      .copyWith(color: AtlasColors.of(context).text),
                 ),
                 selected: _days.contains(i),
                 onSelected: (on) => setState(() {
@@ -334,7 +339,8 @@ class _AutomationEditorSheetState extends State<_AutomationEditorSheet> {
                   padding: const EdgeInsets.symmetric(horizontal: 6),
                   child: Text(
                     ':',
-                    style: TextStyle(color: c.muted, fontSize: 18),
+                    style: Theme.of(context).textTheme.titleMedium!
+                        .copyWith(color: c.muted, fontWeight: FontWeight.w400),
                   ),
                 ),
                 _timeDropdown(
@@ -419,7 +425,8 @@ class _AutomationEditorSheetState extends State<_AutomationEditorSheet> {
           ActionChip(
             label: Text(
               m < 60 ? '${m}m' : '${m ~/ 60}h',
-              style: const TextStyle(fontSize: 11),
+              style: Theme.of(context).textTheme.labelSmall!
+                  .copyWith(color: AtlasColors.of(context).text),
             ),
             onPressed: () => setState(() {
               _intervalSecs = m * 60;
@@ -469,7 +476,11 @@ class _AutomationEditorSheetState extends State<_AutomationEditorSheet> {
           children: [
             for (final (key, label) in _githubEventOptions)
               FilterChip(
-                label: Text(label, style: const TextStyle(fontSize: 12)),
+                label: Text(
+                  label,
+                  style: Theme.of(context).textTheme.bodySmall!
+                      .copyWith(color: AtlasColors.of(context).text),
+                ),
                 selected: _githubEvents.contains(key),
                 onSelected: (on) => setState(() {
                   on ? _githubEvents.add(key) : _githubEvents.remove(key);
@@ -613,7 +624,11 @@ class _AutomationEditorSheetState extends State<_AutomationEditorSheet> {
               children: [
                 for (final k in _Kind.values)
                   ChoiceChip(
-                    label: Text(k.label, style: const TextStyle(fontSize: 12)),
+                    label: Text(
+                      k.label,
+                      style: Theme.of(context).textTheme.bodySmall!
+                          .copyWith(color: AtlasColors.of(context).text),
+                    ),
                     selected: _kind == k,
                     onSelected: (_) => setState(() => _kind = k),
                     materialTapTargetSize: MaterialTapTargetSize.padded,
@@ -666,6 +681,7 @@ class _AutomationEditorSheetState extends State<_AutomationEditorSheet> {
 
   Widget _label(String text, AtlasColors c) => Text(
     text,
-    style: TextStyle(fontSize: 12, color: c.muted, fontWeight: FontWeight.w500),
+    style: Theme.of(context).textTheme.bodySmall!
+        .copyWith(color: c.muted, fontWeight: FontWeight.w500),
   );
 }

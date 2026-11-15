@@ -91,11 +91,8 @@ class _TaskAskCardState extends ConsumerState<TaskAskCard> {
                 children: [
                   Text(
                     ask.question,
-                    style: TextStyle(
-                      fontSize: 13,
-                      fontWeight: FontWeight.w600,
-                      color: c.text,
-                    ),
+                    style: Theme.of(context).textTheme.bodyMedium!
+                        .copyWith(fontWeight: FontWeight.w600, color: c.text),
                   ),
                   for (final o in ask.options) ...[
                     const SizedBox(height: 8),
@@ -105,10 +102,12 @@ class _TaskAskCardState extends ConsumerState<TaskAskCard> {
                     const SizedBox(height: 10),
                     TextField(
                       controller: _controller,
-                      style: TextStyle(fontSize: 14, color: c.text),
+                      style: Theme.of(context).textTheme.bodyLarge!
+                          .copyWith(color: c.text),
                       decoration: InputDecoration(
                         hintText: 'Or type an answer',
-                        hintStyle: TextStyle(color: c.faint, fontSize: 14),
+                        hintStyle: Theme.of(context).textTheme.bodyLarge!
+                            .copyWith(color: c.faint),
                         contentPadding: const EdgeInsets.symmetric(
                           horizontal: 12,
                           vertical: 8,
@@ -134,7 +133,8 @@ class _TaskAskCardState extends ConsumerState<TaskAskCard> {
                     const SizedBox(height: 6),
                     Text(
                       _error!,
-                      style: TextStyle(fontSize: 12, color: c.error),
+                      style: Theme.of(context).textTheme.bodySmall!
+                          .copyWith(color: c.error),
                     ),
                   ],
                 ],
@@ -159,9 +159,17 @@ class _TaskAskCardState extends ConsumerState<TaskAskCard> {
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.start,
         children: [
-          Text(o.title, style: TextStyle(fontSize: 14, color: c.text)),
+          Text(
+            o.title,
+            style: Theme.of(context).textTheme.bodyLarge!
+                .copyWith(color: c.text),
+          ),
           if (o.subtitle != null)
-            Text(o.subtitle!, style: TextStyle(fontSize: 12, color: c.muted)),
+            Text(
+              o.subtitle!,
+              style: Theme.of(context).textTheme.bodySmall!
+                  .copyWith(color: c.muted),
+            ),
         ],
       ),
     ),

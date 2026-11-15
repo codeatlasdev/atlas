@@ -68,7 +68,7 @@ class _PauseCardState extends State<PauseCard> {
             onPressed: _busy ? null : () => _set(true),
             hPad: 12,
             vPad: 4,
-            fontSize: 12,
+            small: true,
           ),
         ),
       );

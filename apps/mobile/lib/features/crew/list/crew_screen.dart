@@ -411,7 +411,8 @@ class _ComputerReaching extends StatelessWidget {
           const SizedBox(width: Space.sm),
           Text(
             'Reaching ${device.name}…',
-            style: TextStyle(fontSize: 13, color: c.muted),
+            style: Theme.of(context).textTheme.bodyMedium!
+                .copyWith(color: c.muted),
           ),
         ],
       ),

@@ -140,7 +140,8 @@ class _InviteSheetState extends ConsumerState<InviteSheet> {
               if (_error != null) ...[
                 Text(
                   _error!,
-                  style: TextStyle(color: c.error, fontSize: 13),
+                  style: Theme.of(context).textTheme.bodyMedium!
+                      .copyWith(color: c.error),
                   textAlign: TextAlign.center,
                 ),
                 const SizedBox(height: Space.sm),

@@ -332,7 +332,9 @@ pub use linux::join;
 
 /// The path of the cgroup the helper's unit owns, for `ReadWritePaths=` in the unit file.
 pub fn unit_cgroup_path(unit: &str) -> PathBuf {
-    Path::new(CGROUP_MOUNT).join("system.slice").join(unit)
+    // Joined as text: the CLI writes this into a unit file on whatever OS it runs, and a Windows
+    // `Path::join` would put backslashes in a systemd unit.
+    PathBuf::from(format!("{CGROUP_MOUNT}/system.slice/{unit}"))
 }
 
 #[cfg(test)]
@@ -438,6 +440,16 @@ mod tests {
         assert_eq!(
             delegated_root_of("/system.slice/atlas-crew-spawn.service"),
             "/system.slice/atlas-crew-spawn.service"
+        );
+    }
+
+    // Incident (#385 CI): the CLI writes this path into a systemd unit; built with `Path::join` it had
+    // backslashes when `atlas crew install` ran on Windows.
+    #[test]
+    fn the_unit_cgroup_path_is_a_unix_path_on_every_os() {
+        assert_eq!(
+            unit_cgroup_path("atlas-crew-spawn.service").to_str(),
+            Some("/sys/fs/cgroup/system.slice/atlas-crew-spawn.service")
         );
     }
 

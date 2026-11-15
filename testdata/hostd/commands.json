@@ -140,6 +140,7 @@
     },
     "crew_settings_set": {
       "optional": [
+        "agent_memory_max",
         "max_agents",
         "short_replies_model"
       ],

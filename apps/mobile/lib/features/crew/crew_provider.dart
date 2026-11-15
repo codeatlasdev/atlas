@@ -1,3 +1,5 @@
+import 'dart:async';
+
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:flutter_riverpod/legacy.dart';
 import 'package:atlas_mobile/features/crew/chat/attachments.dart';
@@ -182,6 +184,10 @@ class CrewNotifier extends AsyncNotifier<CrewListResult> {
 bool isTaskPushFor(Map<String, dynamic> e, String crewmateId) =>
     e['ev'] == 'crewmate_task' && e['crewmate_id'] == crewmateId;
 
+/// How long a crewmate's thread stays loaded after its chat closes: opening it again shows it on the first frame
+/// (and the screen reads it again behind it) instead of a spinner.
+const crewThreadKeepAlive = Duration(minutes: 5);
+
 /// Loads tasks for a single crewmate.
 final crewmateTasksProvider = FutureProvider.autoDispose
     .family<List<CrewmateTask>, (MacDevice, String)>(
@@ -193,19 +199,30 @@ final crewmateTasksProvider = FutureProvider.autoDispose
             ref.invalidateSelf();
           }
         });
-        final mux = await requireMux(ref, device);
-        final resp = await mux.call('crewmate_tasks', {
-          'id': crewmateId,
-          'limit': 50,
-        });
-        if (resp['ok'] != true) {
-          throw StateError(resp['error'] as String? ?? 'the server refused');
+        // Kept after the chat closes, for a while; a failed read is not kept (the next open tries again).
+        final link = ref.keepAlive();
+        Timer? expiry;
+        ref.onCancel(() => expiry = Timer(crewThreadKeepAlive, link.close));
+        ref.onResume(() => expiry?.cancel());
+        ref.onDispose(() => expiry?.cancel());
+        try {
+          final mux = await requireMux(ref, device);
+          final resp = await mux.call('crewmate_tasks', {
+            'id': crewmateId,
+            'limit': 50,
+          });
+          if (resp['ok'] != true) {
+            throw StateError(resp['error'] as String? ?? 'the server refused');
+          }
+          final data = (resp['data'] as Map).cast<String, dynamic>();
+          return [
+            for (final t in (data['tasks'] as List<dynamic>?) ?? const [])
+              CrewmateTask.fromJson((t as Map).cast()),
+          ];
+        } catch (_) {
+          link.close();
+          rethrow;
         }
-        final data = (resp['data'] as Map).cast<String, dynamic>();
-        return [
-          for (final t in (data['tasks'] as List<dynamic>?) ?? const [])
-            CrewmateTask.fromJson((t as Map).cast()),
-        ];
       },
     );
 

@@ -77,3 +77,24 @@ class GlassPill extends StatelessWidget {
     );
   }
 }
+
+/// The ground of the header over the thread: the app's ground, almost opaque, blurred behind, from the top of the
+/// screen (the status bar included) down to the bottom of the header row. The thread scrolls under it and never
+/// shows through as text under the clock.
+class GlassHeaderGround extends StatelessWidget {
+  const GlassHeaderGround({super.key});
+
+  @override
+  Widget build(BuildContext context) {
+    final c = AtlasColors.of(context);
+    return ClipRect(
+      key: const ValueKey('chat-header-background'),
+      child: BackdropFilter(
+        filter: ImageFilter.blur(sigmaX: 18, sigmaY: 18),
+        child: DecoratedBox(
+          decoration: BoxDecoration(color: c.ground.withValues(alpha: .9)),
+        ),
+      ),
+    );
+  }
+}

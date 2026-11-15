@@ -79,37 +79,61 @@ class AttentionCard extends StatelessWidget {
   Widget build(BuildContext context) {
     final c = AtlasColors.of(context);
     final color = _color(c);
+    // Past this text scale an icon, two lines of text and a button no longer fit one row: the
+    // actions go under the text instead of squeezing it to nothing.
+    final stacked =
+        actions.isNotEmpty && MediaQuery.textScalerOf(context).scale(14) > 18;
+    final text = Column(
+      crossAxisAlignment: CrossAxisAlignment.start,
+      children: [
+        if (title != null)
+          Text(
+            title!,
+            style: TextStyle(
+              fontWeight: FontWeight.w700,
+              fontSize: 14,
+              color: c.text,
+            ),
+          ),
+        if (body != null) ...[
+          if (title != null) const SizedBox(height: 2),
+          Text(body!, style: TextStyle(fontSize: 12, color: c.muted)),
+        ],
+      ],
+    );
     final content =
         child ??
-        Row(
-          children: [
-            if (icon != null) ...[
-              Icon(icon, color: color, size: 22),
-              const SizedBox(width: 10),
-            ],
-            Expanded(
-              child: Column(
+        (stacked
+            ? Column(
                 crossAxisAlignment: CrossAxisAlignment.start,
                 children: [
-                  if (title != null)
-                    Text(
-                      title!,
-                      style: TextStyle(
-                        fontWeight: FontWeight.w700,
-                        fontSize: 14,
-                        color: c.text,
-                      ),
-                    ),
-                  if (body != null) ...[
-                    if (title != null) const SizedBox(height: 2),
-                    Text(body!, style: TextStyle(fontSize: 12, color: c.muted)),
+                  Row(
+                    crossAxisAlignment: CrossAxisAlignment.start,
+                    children: [
+                      if (icon != null) ...[
+                        Icon(icon, color: color, size: 22),
+                        const SizedBox(width: 10),
+                      ],
+                      Expanded(child: text),
+                    ],
+                  ),
+                  const SizedBox(height: 8),
+                  Wrap(spacing: 10, runSpacing: 4, children: actions),
+                ],
+              )
+            : Row(
+                children: [
+                  if (icon != null) ...[
+                    Icon(icon, color: color, size: 22),
+                    const SizedBox(width: 10),
+                  ],
+                  Expanded(child: text),
+                  if (actions.isNotEmpty) ...[
+                    const SizedBox(width: 10),
+                    ...actions,
                   ],
                 ],
-              ),
-            ),
-            if (actions.isNotEmpty) ...[const SizedBox(width: 10), ...actions],
-          ],
-        );
+              ));
     return Semantics(
       container: true,
       liveRegion: true,

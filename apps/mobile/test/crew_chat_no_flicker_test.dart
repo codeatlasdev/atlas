@@ -352,8 +352,11 @@ void main() {
       final probe = FrameProbe(t, _tracked());
       await probe.record(_long, sample: {'offset': rig.offset});
 
+      // The first frame the chat exists on (the route's own push may need a frame to install it) already has
+      // the whole thread: no spinner, then the thread.
+      final first = probe.frames.firstWhere((f) => f['page']!.rect != null);
       expect(
-        probe.frames.first['q39']!.rect,
+        first['q39']!.rect,
         isNotNull,
         reason: 'the thread was not there on the first frame of the chat (a spinner, then the thread)',
       );

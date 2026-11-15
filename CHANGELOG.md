@@ -8,6 +8,7 @@ All notable changes to Atlas (CLI, TUI, MCP server and Atlas Desktop). Versions 
 
 ### Fixed
 
+- **Atlas Mobile: a phone revoked on the Mac no longer keeps receiving crew pushes from a crew server that was unreachable at that moment ([#363](https://github.com/codeatlasdev/atlas/issues/363)).** Revoke sent `push_forget` to each crew server once and only logged a failure, so a server that was down, asleep or behind a broken ssh kept the phone's push tokens for good. The Mac now saves the forget (`mobile/pending-forget.json`, next to the paired devices) before it tries, takes each server off it once that server confirms, and sends it again whenever the server connects and when hostd starts, so it survives a Mac restart. A server the desktop removes from its registry drops out of it. Revoke itself still never waits for a server.
 - **Atlas Crew: a hung `gh` call no longer holds a task forever ([#296](https://github.com/codeatlasdev/atlas/issues/296)).** `git` got a 120 s deadline in 1.5.0-alpha.26 but the crew's `gh` calls did not: a GitHub API call (a comment, a pull request) or `gh auth status` that never returned (a stalled network, a credential prompt) held the task that made it, and the Settings GitHub row, forever. Every bounded `gh` call now goes through the same deadline and kills its whole process tree; `gh auth login` stays interactive. A missing `git` or `gh` now says it is not on `PATH`.
 
 ## [1.5.0-alpha.26] — 2026-11-15

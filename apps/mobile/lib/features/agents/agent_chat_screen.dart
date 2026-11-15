@@ -27,6 +27,26 @@ export 'package:atlas_mobile/features/agents/agent_info.dart'
 /// How often the timeline is re-read while the agent can still add to it.
 const historyPoll = Duration(seconds: 2);
 
+/// Whether two decoded JSON values (maps, lists, scalars) are equal by value.
+bool sameJson(Object? a, Object? b) {
+  if (identical(a, b)) return true;
+  if (a is Map && b is Map) {
+    if (a.length != b.length) return false;
+    for (final k in a.keys) {
+      if (!b.containsKey(k) || !sameJson(a[k], b[k])) return false;
+    }
+    return true;
+  }
+  if (a is List && b is List) {
+    if (a.length != b.length) return false;
+    for (var i = 0; i < a.length; i++) {
+      if (!sameJson(a[i], b[i])) return false;
+    }
+    return true;
+  }
+  return a == b;
+}
+
 /// omp's slash commands the phone can send; `/goal` needs text.
 const _ompCommands = <(String, String, bool)>[
   ('/compact', 'Compact the context', false),
@@ -77,6 +97,20 @@ class _AgentChatScreenState extends ConsumerState<AgentChatScreen> {
   AgentHistory _history = const AgentHistory();
   bool _loaded = false;
   String? _historyKey;
+
+  /// The last payloads as hostd sent them, to tell a poll that changed nothing.
+  Object? _historyRaw;
+  Object? _treeRaw;
+
+  /// `groupTimeline` of [_history], and the widget built for each block, kept while
+  /// their inputs stay the same: a rebuild of the screen (status push, scroll flag,
+  /// composer) reuses them, so Flutter skips the unchanged blocks instead of laying
+  /// out and re-parsing every message again.
+  List<TimelineBlock>? _grouped;
+  AgentHistory? _groupedOf;
+  (bool, Duration?)? _groupedWith;
+  final _built = <TimelineBlock, Widget>{};
+  String? _builtParent;
   Timer? _timer;
   bool _inFlight = false;
 
@@ -105,6 +139,54 @@ class _AgentChatScreenState extends ConsumerState<AgentChatScreen> {
   void initState() {
     super.initState();
     _scroll.addListener(_onScroll);
+    // The crew moves the strips, the polling and the hub button; a poll that brought
+    // the same crew never fires this.
+    _tree.addListener(_onTree);
+  }
+
+  void _onTree() {
+    if (mounted) setState(() {});
+  }
+
+  /// [groupTimeline] of the current history, recomputed only when its inputs change.
+  List<TimelineBlock> _blocks({
+    required bool recapLast,
+    required Duration? lastDuration,
+  }) {
+    final with_ = (recapLast, lastDuration);
+    if (!identical(_groupedOf, _history) || _groupedWith != with_) {
+      _grouped = groupTimeline(
+        _history.items,
+        recapLast: recapLast,
+        lastDuration: lastDuration,
+      );
+      _groupedOf = _history;
+      _groupedWith = with_;
+      _built.clear();
+    }
+    return _grouped!;
+  }
+
+  /// The padded widget of block [i] of [shown], built once per block. Blocks are the
+  /// keys: identical blocks of a new grouping are new objects, so [_blocks] clears this.
+  Widget _blockAt(List<TimelineBlock> shown, int i, String? parentId) {
+    if (_builtParent != parentId) {
+      _built.clear();
+      _builtParent = parentId;
+    }
+    final b = shown[i];
+    return _built[b] ??= Padding(
+      padding: const EdgeInsets.only(top: 10),
+      child: Builder(
+        builder: (context) => timelineBlock(
+          context,
+          b,
+          history: _history,
+          onOpenSubagent: _focusNode,
+          parentId: parentId,
+        ),
+      ),
+    );
   }
 
   void _onScroll() {
@@ -125,11 +207,14 @@ class _AgentChatScreenState extends ConsumerState<AgentChatScreen> {
         'sub': ?_sub,
       });
       if (!mounted || resp['ok'] != true) return;
-      final h = AgentHistory.fromJson(
-        (resp['data'] as Map).cast<String, dynamic>(),
-      );
       // The user focused another agent while this was in flight: its reply is stale.
       if (asked != _focus) return;
+      final raw = resp['data'];
+      // hostd sends no revision or cursor, so "new" means "differs by value". Nothing
+      // new: no parse, no rebuild.
+      if (_loaded && sameJson(raw, _historyRaw)) return;
+      final h = AgentHistory.fromJson((raw as Map).cast<String, dynamic>());
+      _historyRaw = raw;
       setState(() {
         _history = h;
         _loaded = true;
@@ -150,12 +235,13 @@ class _AgentChatScreenState extends ConsumerState<AgentChatScreen> {
       final resp = await mux.call('agent_tree', {'pane': widget.paneKey});
       // An older hostd has no `agent_tree`: the crew stays empty, the chat works.
       if (!mounted || resp['ok'] != true) return;
-      final t = AgentTree.fromJson(
-        (resp['data'] as Map).cast<String, dynamic>(),
-      );
+      final raw = resp['data'];
+      if (sameJson(raw, _treeRaw)) return;
+      final t = AgentTree.fromJson((raw as Map).cast<String, dynamic>());
+      _treeRaw = raw;
       _buzzOnTransitions(t);
+      // Everything that shows the crew listens to this notifier.
       _tree.value = t;
-      if (mounted) setState(() {});
     } finally {
       _treeInFlight = false;
     }
@@ -188,6 +274,7 @@ class _AgentChatScreenState extends ConsumerState<AgentChatScreen> {
     setState(() {
       _focus = id;
       _history = const AgentHistory();
+      _historyRaw = null;
       _loaded = false;
       _seenBlocks = 0;
       _atBottom = true;
@@ -269,6 +356,7 @@ class _AgentChatScreenState extends ConsumerState<AgentChatScreen> {
   void dispose() {
     _timer?.cancel();
     _treeTimer?.cancel();
+    _tree.removeListener(_onTree);
     _tree.dispose();
     _msg.dispose();
     _composerFocus.dispose();
@@ -636,8 +724,7 @@ class _AgentChatScreenState extends ConsumerState<AgentChatScreen> {
           );
     final c = AtlasColors.of(context);
     final turnOver = !agentActive(status.state);
-    final blocks = groupTimeline(
-      _history.items,
+    final blocks = _blocks(
       recapLast: turnOver || _sub != null && !(focusNode?.running ?? false),
       lastDuration: _sub == null && status.stateStartedAt > 0 && turnOver
           ? Duration(
@@ -660,6 +747,9 @@ class _AgentChatScreenState extends ConsumerState<AgentChatScreen> {
     final shown = blocks.isEmpty ? fallback : blocks;
     if (_atBottom) _seenBlocks = shown.length;
     final fresh = !_atBottom && shown.length > _seenBlocks;
+    final typing = status.state == 'working' && !_readOnly;
+    final slots =
+        (typing ? 1 : 0) + shown.length + (_history.truncated ? 1 : 0);
 
     return Scaffold(
       appBar: _appBar(status, all),
@@ -728,46 +818,43 @@ class _AgentChatScreenState extends ConsumerState<AgentChatScreen> {
                       behavior: HitTestBehavior.translucent,
                       onHorizontalDragEnd: (d) =>
                           _swipe(d.primaryVelocity ?? 0),
-                      child: ListView(
+                      child: ListView.builder(
                         controller: _scroll,
                         // Newest at the bottom, scrolled there on open.
                         reverse: true,
                         physics: const AlwaysScrollableScrollPhysics(),
                         padding: const EdgeInsets.all(Space.lg),
-                        children: [
-                          if (status.state == 'working' && !_readOnly)
-                            const Padding(
+                        // Only the blocks near the viewport are built: a 200-item chat
+                        // costs what it shows.
+                        itemCount: slots,
+                        itemBuilder: (context, i) {
+                          if (typing && i == 0) {
+                            return const Padding(
                               padding: EdgeInsets.only(top: 10),
                               child: Align(
                                 alignment: Alignment.centerLeft,
                                 child: _Typing(),
                               ),
-                            ),
-                          for (final b in shown.reversed)
-                            Padding(
-                              padding: const EdgeInsets.only(top: 10),
-                              child: timelineBlock(
-                                context,
-                                b,
-                                history: _history,
-                                onOpenSubagent: _focusNode,
-                                parentId: focusNode?.parent,
+                            );
+                          }
+                          final at = i - (typing ? 1 : 0);
+                          if (at < shown.length) {
+                            return _blockAt(
+                              shown,
+                              shown.length - 1 - at,
+                              focusNode?.parent,
+                            );
+                          }
+                          return Padding(
+                            padding: const EdgeInsets.only(top: 10),
+                            child: Center(
+                              child: Text(
+                                'older messages not shown',
+                                style: TextStyle(fontSize: 11, color: c.muted),
                               ),
                             ),
-                          if (_history.truncated)
-                            Padding(
-                              padding: const EdgeInsets.only(top: 10),
-                              child: Center(
-                                child: Text(
-                                  'older messages not shown',
-                                  style: TextStyle(
-                                    fontSize: 11,
-                                    color: c.muted,
-                                  ),
-                                ),
-                              ),
-                            ),
-                        ],
+                          );
+                        },
                       ),
                     ),
                   ),

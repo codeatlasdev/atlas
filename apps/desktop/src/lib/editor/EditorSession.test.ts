@@ -1,5 +1,6 @@
 // @ts-nocheck bun test runtime types are not part of the app tsconfig
-import { afterAll, beforeAll, beforeEach, describe, expect, mock, test } from "bun:test";
+import { afterAll, beforeAll, beforeEach, describe, expect, mock, spyOn, test } from "bun:test";
+import { toast } from "@codeatlasdev/ui";
 import { b64encode } from "#lib/b64.ts";
 import { host } from "#lib/host.ts";
 
@@ -19,6 +20,7 @@ let disk: Disk;
 let clock: number;
 let writes: string[];
 let watchFails: boolean;
+let unreadable: boolean;
 
 const touch = (text: string) => {
 	disk = { text, mtime: ++clock };
@@ -30,7 +32,10 @@ await (await import("../../../test/uiKit.ts")).installUiKit();
 
 const fake = {
 	fsStat: async () => ({ kind: "file", size: size(), mtime: disk.mtime }),
-	fsRead: async () => ({ data: b64encode(disk.text), truncated: false }),
+	fsRead: async () => {
+		if (unreadable) throw new Error("stream did not contain valid UTF-8");
+		return { data: b64encode(disk.text), truncated: false };
+	},
 	fsWrite: async (_path: string, text: string) => {
 		writes.push(text);
 		touch(text);
@@ -76,6 +81,8 @@ const settle = async () => {
 	for (let i = 0; i < 10; i++) await Promise.resolve();
 };
 
+const toastError = spyOn(toast, "error");
+
 const type = (s, text: string) =>
 	s.view.dispatch({ changes: { from: 0, to: s.view.state.doc.length, insert: text } });
 
@@ -83,6 +90,8 @@ beforeEach(() => {
 	clock = 1000;
 	writes = [];
 	watchFails = false;
+	unreadable = false;
+	toastError.mockClear();
 });
 
 // Regression #306: autosave wrote over an external edit whenever the watcher had not (yet) reported it.
@@ -157,6 +166,89 @@ describe("save precondition: the file on disk is what we last read or wrote", ()
 		await s.save();
 		expect(writes).toEqual(["mine\n", "mine 2\n"]);
 		await s.dispose();
+	});
+});
+
+describe("a save the disk does not actually contradict still goes through", () => {
+	// Same bytes, newer mtime: `touch`, git restoring the content, a formatter writing identical output.
+	test("same text with a newer mtime: the save writes and the buffer is clean afterwards", async () => {
+		const s = await open("one\n");
+		type(s, "mine\n");
+		touch("one\n");
+
+		await s.save();
+
+		expect(writes).toEqual(["mine\n"]);
+		expect(s.conflict).toBeNull();
+		expect(s.dirty).toBe(false);
+		type(s, "mine again\n");
+		await s.save(); // the baseline is now our own write
+		expect(writes).toEqual(["mine\n", "mine again\n"]);
+		await s.dispose();
+	});
+
+	test("closing the tab after a touch still writes the user's text", async () => {
+		const s = await open("one\n");
+		type(s, "mine\n");
+		touch("one\n");
+
+		await s.dispose();
+
+		expect(writes).toEqual(["mine\n"]);
+		expect(toastError).not.toHaveBeenCalled();
+	});
+
+	test("a file that cannot be read is not overwritten blind: the user is told", async () => {
+		const s = await open("one\n");
+		type(s, "mine\n");
+		touch("changed\n");
+		unreadable = true; // non-UTF-8 or permissions: `#readDisk` has nothing to compare
+
+		await s.save();
+
+		expect(writes).toEqual([]);
+		expect(s.dirty).toBe(true);
+		expect(toastError).toHaveBeenCalledTimes(1);
+		expect(toastError.mock.calls[0][0]).toMatch(/src\/a\.ts.*cannot be read/);
+		await s.dispose();
+	});
+});
+
+// Regression #306 review: closing the tab dropped the unsaved text without a word when the file had changed.
+describe("closing with unsaved text the disk contradicts", () => {
+	test("external change: nothing is written and a toast names the file", async () => {
+		const s = await open("one\n");
+		type(s, "mine\n");
+		touch("theirs, longer\n");
+
+		await s.dispose();
+
+		expect(writes).toEqual([]);
+		expect(disk.text).toBe("theirs, longer\n");
+		expect(conflicts).toBe(0); // the editor is going away: no conflict prompt
+		expect(toastError).toHaveBeenCalledTimes(1);
+		expect(toastError).toHaveBeenCalledWith("Not saved: src/a.ts changed on disk");
+	});
+
+	test("a conflict still open when the tab closes is announced too", async () => {
+		const s = await open("one\n");
+		type(s, "mine\n");
+		touch("theirs, longer\n");
+		await s.save();
+		expect(s.conflict).not.toBeNull();
+		toastError.mockClear();
+
+		await s.dispose();
+
+		expect(writes).toEqual([]);
+		expect(toastError).toHaveBeenCalledWith("Not saved: src/a.ts changed on disk");
+	});
+
+	test("a clean buffer closes quietly", async () => {
+		const s = await open("one\n");
+		touch("theirs, longer\n");
+		await s.dispose();
+		expect(toastError).not.toHaveBeenCalled();
 	});
 });
 

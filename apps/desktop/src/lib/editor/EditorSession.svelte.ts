@@ -249,12 +249,12 @@ export class EditorSession {
 
 	async #save(beforeWrite?: () => Promise<void>, force = false) {
 		clearTimeout(this.#saveTimer);
-		if (this.conflict && !force) return;
+		if (this.conflict && !force) return this.#notSaved();
 		if (beforeWrite && !this.#closing) await beforeWrite();
 		const out = this.diskText();
 		if (out === undefined || (out === this.lastSaved && !this.deleted)) return;
 		try {
-			if (!force && (await this.#changedOnDisk())) return;
+			if (!force && (await this.#blockedByDisk())) return;
 			await host.fsWrite(this.abs, out);
 			const st = await host.fsStat(this.abs).catch(() => null);
 			this.#disk = st ? { mtime: st.mtime, size: st.size } : null;
@@ -270,16 +270,29 @@ export class EditorSession {
 	}
 
 	/**
-	 * The file differs from what this editor last read or wrote: hand the disk text to the external
-	 * change path (conflict for a dirty buffer, reload for a clean one) and tell the caller not to
-	 * write. A file that is gone is not a change: saving recreates it.
+	 * The file differs from what this editor last read or wrote: look at it (`#diskChanged`) and tell
+	 * the caller whether writing would lose the other change. Only a real conflict blocks (the disk text
+	 * differs from the buffer's baseline: a dirty buffer asks, a clean one reloads) or a file that
+	 * cannot be read to compare; the same text with a newer mtime (`touch`, git, a formatter) is just
+	 * re-baselined, and the write goes ahead. A file that is gone is not a change: saving recreates it.
 	 */
-	async #changedOnDisk(): Promise<boolean> {
+	async #blockedByDisk(): Promise<boolean> {
 		const known = this.#disk;
 		const st = await host.fsStat(this.abs).catch(() => null);
 		if (!known || !st || (st.mtime === known.mtime && st.size === known.size)) return false;
-		await this.#diskChanged();
+		const effect = await this.#diskChanged();
+		if (effect === "unreadable") {
+			toast.error(`Not saved: ${this.relPath} changed on disk and cannot be read`);
+			return true;
+		}
+		if (effect !== "reload" && effect !== "prompt-conflict") return false;
+		this.#notSaved();
 		return true;
+	}
+
+	/** A save was refused because of someone else's change: on close that is the user's last chance to hear it. */
+	#notSaved() {
+		if (this.#closing && this.dirty) toast.error(`Not saved: ${this.relPath} changed on disk`);
 	}
 
 	/** Discard the buffer and show what is on disk (Revert file). */
@@ -366,29 +379,35 @@ export class EditorSession {
 			const p = e.payload;
 			if (p.ev !== "fs_event" || p.id !== this.#watchId || !p.paths?.includes(this.abs)) return;
 			clearTimeout(timer);
-			timer = window.setTimeout(() => void this.#diskChanged(), 120);
+			timer = window.setTimeout(() => {
+				if (!this.#closing) void this.#diskChanged();
+			}, 120);
 		});
 	}
 
-	async #diskChanged() {
-		if (this.#closing) return;
-		let st: { mtime: number; size: number } | null = null;
+	/**
+	 * Read the file and feed it to the external-change reducer; returns the effect (applied to the
+	 * editor unless it is closing). `#disk` is re-baselined to the stat this read saw, so a later save
+	 * compares against what is on disk now. `unreadable`: the text could not be read or decoded.
+	 */
+	async #diskChanged(): Promise<ExternalEffect | "unreadable"> {
+		let st: { mtime: number; size: number };
 		try {
 			st = await host.fsStat(this.abs);
 		} catch {
-			this.#feed({ kind: "disk-deleted" });
-			return;
+			return this.#feed({ kind: "disk-deleted" });
 		}
 		const text = await this.#readDisk();
-		if (text === null) return;
+		if (text === null) return "unreadable";
 		this.#disk = { mtime: st.mtime, size: st.size };
-		this.#feed({ kind: "disk-changed", text, mtime: st.mtime }, text);
+		return this.#feed({ kind: "disk-changed", text, mtime: st.mtime }, text);
 	}
 
-	#feed(ev: ExternalEvent, diskText?: string) {
+	#feed(ev: ExternalEvent, diskText?: string): ExternalEffect {
 		const r = reduceExternal(this.#ext, ev);
 		this.#ext = r.state;
-		this.#apply(r.effect, diskText);
+		if (!this.#closing) this.#apply(r.effect, diskText);
+		return r.effect;
 	}
 
 	// ---- status bar ---------------------------------------------------------------------------

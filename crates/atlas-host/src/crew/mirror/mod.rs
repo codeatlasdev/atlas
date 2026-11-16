@@ -60,7 +60,6 @@ impl Mirror {
         }
     }
 
-    #[cfg(all(test, unix))]
     pub fn dir(&self) -> &Path {
         &self.dir
     }
@@ -69,6 +68,13 @@ impl Mirror {
     /// The project's own URL (where the crewmate's pushes go).
     pub fn url(&self) -> &str {
         &self.url
+    }
+
+    /// The `--upload-pack` of every git of the crewmate that reads the mirror. The mirror is the crew user's, and git
+    /// before 2.45 refuses to serve a repository another uid owns ("dubious ownership"); the environment cannot say
+    /// otherwise (git strips it for a local transport), so the command that serves it trusts exactly this directory.
+    pub fn upload_pack(&self) -> String {
+        format!("git -c safe.directory={} upload-pack", self.dir.display())
     }
 
     pub fn local_url(&self) -> String {

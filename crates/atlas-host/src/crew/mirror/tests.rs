@@ -314,10 +314,14 @@ async fn a_private_repository_reaches_a_crewmate_through_hostds_mirror_and_the_t
         !seen.contains(LOGIN_TOKEN) && !seen.contains("ATLAS_GIT_TOKEN"),
         "the crew user's token is in a crewmate's git process:\n{seen}"
     );
-    // git < 2.45 refuses to serve a repository another uid owns (the mirror is the crew user's): the helper names it.
-    assert!(
-        seen.contains(&format!("GIT_CONFIG_VALUE_0={}", mirror.dir().display())),
-        "the mirror is not a safe.directory of the crewmate's git:\n{seen}"
+    // git < 2.45 refuses to serve a repository another uid owns (the mirror is the crew user's): every read of it names
+    // an upload-pack that trusts that one directory (the real-systemd E2E, Ubuntu 24.04's git 2.43, runs it).
+    assert_eq!(
+        mirror.upload_pack(),
+        format!(
+            "git -c safe.directory={} upload-pack",
+            mirror.dir().display()
+        )
     );
 }
 

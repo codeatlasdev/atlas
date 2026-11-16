@@ -104,6 +104,7 @@ pub async fn prepare(
 /// `git` runs every command: the crewmate itself for an isolated checkout (its `.git/config` is the
 /// crewmate's), hostd otherwise.
 pub async fn fetch(work_dir: &Path, git: &Git, mirror: Option<&Mirror>) -> Result<(), String> {
+    let upload_pack = mirror.map(Mirror::upload_pack);
     if git.is_crewmate() {
         if let Some(m) = mirror
             && let Err(e) = m.refresh().await
@@ -131,7 +132,13 @@ pub async fn fetch(work_dir: &Path, git: &Git, mirror: Option<&Mirror>) -> Resul
             )
             .await;
         }
-        let _ = git_out(git, Some(work_dir), &["fetch", "--quiet"], true).await;
+        let _ = git_out(
+            git,
+            Some(work_dir),
+            &fetch_args("fetch", &upload_pack),
+            true,
+        )
+        .await;
     } else {
         // Find the shared (main) worktree via `git worktree list --porcelain`.
         let list = git_out(
@@ -156,10 +163,22 @@ pub async fn fetch(work_dir: &Path, git: &Git, mirror: Option<&Mirror>) -> Resul
         .await
         .unwrap_or_default();
     if status.is_empty() {
-        let _ = git_out(git, Some(work_dir), &["pull", "--ff-only", "--quiet"], true).await;
+        let mut args = fetch_args("pull", &upload_pack);
+        args.insert(1, "--ff-only");
+        let _ = git_out(git, Some(work_dir), &args, true).await;
     }
 
     Ok(())
+}
+
+/// `<sub> --quiet [--upload-pack=<cmd>]`: the crewmate's reads of hostd's mirror name the command that may serve it.
+fn fetch_args<'a>(sub: &'a str, upload_pack: &'a Option<String>) -> Vec<&'a str> {
+    let mut args = vec![sub, "--quiet"];
+    if let Some(u) = upload_pack {
+        args.push("--upload-pack");
+        args.push(u);
+    }
+    args
 }
 
 /// Take a deleted crewmate's checkout out of the shared clone: `git worktree remove --force` (the
@@ -473,6 +492,7 @@ async fn prepare_isolated(
         }
         None => url.clone(),
     };
+    let upload_pack = mirror.as_ref().map(Mirror::upload_pack);
     let mut args: Vec<&str> = vec![
         "clone",
         "--filter=blob:none",
@@ -480,6 +500,10 @@ async fn prepare_isolated(
         // What git writes in the checkout stays group-writable: hostd (the crew group) adds attachments.
         "core.sharedRepository=group",
     ];
+    if let Some(u) = &upload_pack {
+        args.push("--upload-pack");
+        args.push(u);
+    }
     if let Some(b) = branch {
         args.push("--branch");
         args.push(b);

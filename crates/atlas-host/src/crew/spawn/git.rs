@@ -86,28 +86,6 @@ fn run_inner(cfg: &Config, req: &GitReq) -> io::Result<(Response, OwnedFd)> {
     if let Some(t) = &req.token {
         cmd.env("ATLAS_GIT_TOKEN", t);
     }
-    // hostd's mirrors in `crew-runtime/` belong to the crew user, and git before 2.45 refuses to serve a repository
-    // another uid owns (`upload-pack` of the crewmate's own clone: "dubious ownership"). Each is named a safe
-    // directory through the environment (protected config, which a repository's own cannot give). `crew-runtime/` is the
-    // crew user's and unwritable by the crewmate, so only hostd's mirrors can be in the list.
-    let mirrors: Vec<String> = std::fs::read_dir(format!("{dir}/crew-runtime"))
-        .map(|rd| {
-            rd.flatten()
-                .filter(|e| {
-                    e.file_name().to_string_lossy().ends_with(".git")
-                        && e.file_type().is_ok_and(|t| t.is_dir())
-                })
-                .map(|e| e.path().to_string_lossy().into_owned())
-                .collect()
-        })
-        .unwrap_or_default();
-    if !mirrors.is_empty() {
-        cmd.env("GIT_CONFIG_COUNT", mirrors.len().to_string());
-        for (i, m) in mirrors.iter().enumerate() {
-            cmd.env(format!("GIT_CONFIG_KEY_{i}"), "safe.directory")
-                .env(format!("GIT_CONFIG_VALUE_{i}"), m);
-        }
-    }
     // The crewmate's memory cap applies to its git too: a hook that eats memory is killed with the leaf, not the helper.
     #[cfg(target_os = "linux")]
     let leaf = cfg.memory.leaf(&req.user)?;

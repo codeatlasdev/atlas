@@ -86,7 +86,7 @@ impl Host for TreeHost {
 /// A shell snippet that prints what the process running it looks like from the inside: `ls -l` of its open
 /// descriptors (no pipe or substitution: the shell would hold one of its own while it lists), its `NoNewPrivs:` line and
 /// its `/proc/self/cgroup`. Run as `exec sh -c '<PROBE>'`: the script's own descriptor for itself (dash keeps
-/// one) is not the process's, and `$$` is that shell.
+/// one, not close-on-exec) is not the process's, and `$$` is that shell: callers add `10<&-` to close that one too.
 pub const PROBE: &str =
     r#"ls -l /proc/$$/fd; grep NoNewPrivs /proc/$$/status; cat /proc/$$/cgroup"#;
 
@@ -289,7 +289,7 @@ impl Rig {
     /// A planted repo whose command writes, to the returned file, what its own process looks like: [`PROBE`].
     pub fn probe_repo(&self) -> PathBuf {
         let out = self.cm.join("probe");
-        self.planted_repo(&format!("exec sh -c '{PROBE}' > {}\n", out.display()));
+        self.planted_repo(&format!("exec sh -c '{PROBE}' 10<&- > {}\n", out.display()));
         out
     }
 

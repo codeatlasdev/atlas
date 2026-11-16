@@ -332,7 +332,7 @@ mod tests {
         std::fs::write(
             &hook,
             format!(
-                "#!/bin/sh\nid -u > {}\nsh -c '{PROBE}' > {}\nexit 1\n",
+                "#!/bin/sh\nid -u > {}\nsh -c '{PROBE}' 10<&- > {}\nexit 1\n",
                 marker.display(),
                 probe.display()
             ),

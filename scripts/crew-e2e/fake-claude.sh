@@ -32,7 +32,7 @@ case "$prompt" in
   *E2E_PROBE*)
     # A child `sh`, listing the fds of ITS shell with a redirect that only the `ls` child sees (a pipe or a
     # command substitution would put a descriptor of its own in the shell).
-    sh -c 'ls /proc/$$/fd >"$HOME/e2e-probe"; grep NoNewPrivs /proc/$$/status >>"$HOME/e2e-probe"; cat /proc/$$/cgroup >>"$HOME/e2e-probe"'
+    sh -c 'ls /proc/$$/fd >"$HOME/e2e-probe"; grep NoNewPrivs /proc/$$/status >>"$HOME/e2e-probe"; cat /proc/$$/cgroup >>"$HOME/e2e-probe"' 10<&-
     # Node's V8 aborts at start under a seccomp MemoryDenyWriteExecute= that the agent inherited from the helper's unit.
     node=$(node -e 'let s=0;for(let i=0;i<1e6;i++)s+=i;console.log(s)' 2>&1 | tail -n 1 | tr -cd 'A-Za-z0-9 ')
     reply "probe: $(tr '\n\t' ' ;' <"$HOME/e2e-probe" | tr -d '"\\') node=$node"

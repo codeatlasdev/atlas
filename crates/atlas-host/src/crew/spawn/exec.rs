@@ -773,7 +773,7 @@ mod tests {
         // SAFETY: plain getter.
         assert_eq!(unsafe { libc::geteuid() }, 0, "this test must run as root");
         let f = fixture();
-        let user = "atlas-cm-eeeeeeeeeeee";
+        let user = "atlas-cm-cccccccccccc";
         let sh = |cmd: &str| C::new("sh").args(["-c", cmd]).status().unwrap().success();
         assert!(sh(&format!(
             "useradd --system --no-create-home --shell /usr/sbin/nologin {user}"
@@ -787,14 +787,14 @@ mod tests {
             .parent()
             .unwrap()
             .to_path_buf();
-        let dir = format!("{}/eeeeeeeeeeee", f.root);
+        let dir = format!("{}/cccccccccccc", f.root);
         let secret = t.join("secret");
         std::fs::create_dir_all(format!("{dir}/work")).unwrap();
         std::fs::create_dir_all(&secret).unwrap();
         std::fs::write(secret.join("flag"), "other user's file\n").unwrap();
         std::fs::write(
             format!("{}/claude", f.engines),
-            format!("#!/bin/sh\nexec sh -c '{PROBE}'\n"),
+            format!("#!/bin/sh\nexec sh -c '{PROBE}' 10<&-\n"),
         )
         .unwrap();
         assert!(sh(&format!(

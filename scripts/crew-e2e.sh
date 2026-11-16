@@ -431,7 +431,7 @@ FSM=$(
 #!/bin/sh
 id -u >> "$WORKA/marker"
 cp "$HOME_DIR/.atlas/hostd.token" "$WORKA/stolen" 2>/dev/null
-sh -c 'ls /proc/\$\$/fd >"\$1"; grep NoNewPrivs /proc/\$\$/status >>"\$1"; cat /proc/\$\$/cgroup >>"\$1"' sh "$WORKA/probe"
+sh -c 'ls /proc/\$\$/fd >"\$1"; grep NoNewPrivs /proc/\$\$/status >>"\$1"; cat /proc/\$\$/cgroup >>"\$1"' sh "$WORKA/probe" 10<&-
 exit 0
 EOF
 )

@@ -12,7 +12,8 @@ plan changes, re-check the terms before redistributing the files outside Atlas.
 Post-processing of the feedback earcons: leading/trailing silence cut at -45 dBFS (3 ms kept before the attack), the tail
 cut where the note has decayed 30 dB below its peak, gain set so the RMS of the finished file is -22 dBFS with
 the peak under -3 dBFS, 5 ms fade in and out (30 ms, or a quarter of the cap, when a take is cut at
-its length cap), mono, 48 kHz, AAC 48 kb/s in an .m4a container (WebKit decodes it natively; only the .m4a files ship).
+its length cap), mono, 48 kHz, shipped twice: AAC 48 kb/s in an .m4a container (WKWebView and WebKitGTK with an AAC decoder) and
+Vorbis 48 kb/s in an .ogg (WebKitGTK on a GStreamer without AAC: the AppImage's plugins, a bare Arch install); the app picks one by `canPlayType` and falls back to the other.
 
 The `boot` signature differs in one way: its tail is cut at 40 dB of decay (a bell rings on quietly and that is part of it).
 

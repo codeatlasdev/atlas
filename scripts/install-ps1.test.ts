@@ -123,12 +123,15 @@ async function install(shell: string, rel: Release, env: Record<string, string> 
 	});
 	try {
 		const drive = /^[A-Za-z]:/.test(home) ? home.slice(0, 2) : "";
+		// The runner's step shell is pwsh, whose PSModulePath would make a child powershell.exe (5.1) miss its own
+		// built-in modules (Get-FileHash): each shell gets the default it has on a user's machine.
+		const { PSModulePath: _inherited, ...inherited } = process.env;
 		const p = Bun.spawn(
 			[shell, "-NoProfile", "-NonInteractive", "-Command", `irm http://127.0.0.1:${server.port}/install.ps1 | iex`],
 			{
 				cwd: sandbox,
 				env: {
-					...process.env,
+					...inherited,
 					USERPROFILE: home,
 					HOME: home,
 					...(drive ? { HOMEDRIVE: drive, HOMEPATH: home.slice(2) } : {}),

@@ -413,15 +413,20 @@ docker exec -i "$NAME" setpriv --reuid="$CMUSER" --regid="$CMUSER" --clear-group
   cat > '$DIRA/home/.claude/e2e-hook.sh' && chmod +x '$DIRA/home/.claude/e2e-hook.sh'" <<'HOOK'
 #!/bin/sh
 grep NoNewPrivs /proc/$$/status > "$HOME/e2e-hook-nnp"
-setsid sh -c 'sleep 3; for d in /proc/[0-9]*; do tr "\0" " " <"$d/cmdline" 2>/dev/null; echo; done | grep -c "sleep 3134[2]" > "$HOME/e2e-hook-seen"' </dev/null >/dev/null 2>&1 &
+setsid sh -c 'echo started > "$HOME/e2e-hook-started"; sleep 3; for d in /proc/[0-9]*; do tr "\0" " " <"$d/cmdline" 2>/dev/null; echo; done | grep -c "sleep 3134[2]" > "$HOME/e2e-hook-seen"' </dev/null >"$HOME/e2e-hook-log" 2>&1 &
 HOOK
 atlas crew login "$TARGET" --port "$PORT" claude --crewmate "$CM" </dev/null 2>&1 | tee "$OUT/login-crewmate.log"
 grep -q 'Logged in (fake claude)' "$OUT/login-crewmate.log" || fail "the crewmate's sign-in did not reach the engine through hostd"
-until_true 30 "the process the hook detached to report" srv test -s "$DIRA/home/e2e-hook-seen"
+for _ in $(seq 30); do hook_reported=; srv test -s "$DIRA/home/e2e-hook-seen" && hook_reported=1 && break; sleep 1; done
+if [[ -z $hook_reported ]]; then
+  srv ls -la "$DIRA/home" "$DIRA/home/.claude" >&2 || true
+  srv sh -c "cat $DIRA/home/e2e-hook-log $DIRA/home/e2e-hook-nnp 2>&1; ps -eo pid,user:20,args | grep -v ' ps ' | tail -n 20" >&2 || true
+  fail "the process the hook detached never reported (the files above say how far it got)"
+fi
 [[ $(srv cat "$DIRA/home/e2e-hook-nnp") == *1 ]] || fail "the login ran A's hook without no_new_privs: it did not go through the helper"
 [[ $(srv cat "$DIRA/home/e2e-hook-seen") == 0 ]] || fail "a process A's hook detached during the login sees B's processes"
 has_sleeper 31342 || fail "control: B's sleep 31342 was gone when the detached process looked, so the check proves nothing"
-srv rm -f "$DIRA/home/e2e-hook-seen" "$DIRA/home/e2e-hook-nnp" "$DIRA/home/.claude/e2e-hook.sh"
+srv rm -f "$DIRA/home/e2e-hook-seen" "$DIRA/home/e2e-hook-nnp" "$DIRA/home/e2e-hook-started" "$DIRA/home/e2e-hook-log" "$DIRA/home/.claude/e2e-hook.sh"
 hostd crewmate_cancel "$(jq -nc --arg id "$CMB" --arg t "$TBH" '{id: $id, task: $t}')" >/dev/null
 wait_task "$CMB" "$TBH" cancelled 30
 until_true 20 "B's sleep 31342 to be gone" no_sleeper 31342

@@ -217,7 +217,7 @@ pub(super) struct Becoming<'a> {
 
 /// Run `cmd` as a crewmate: in the order the module documents, with every step named in the error if it fails.
 /// Join the leaf (root only), `setsid`, take the terminal, `RLIMIT_FSIZE`, groups, gid, uid, `no_new_privs`,
-/// `chdir`. The helper's unit cannot have `NoNewPrivileges=` (it takes the helper's own `CAP_SETUID` away on
+/// `umask(007)`, `chdir`. The helper's unit cannot have `NoNewPrivileges=` (it takes the helper's own `CAP_SETUID` away on
 /// systemd 255), so what that option gave every crewmate process is set here, as the crewmate.
 pub(super) fn spawn_becoming(cmd: &mut Command, b: Becoming<'_>) -> io::Result<Child> {
     let Becoming {
@@ -239,7 +239,7 @@ pub(super) fn spawn_becoming(cmd: &mut Command, b: Becoming<'_>) -> io::Result<C
     let (step_rd, step_wr) = step_pipe()?;
     let step_fd = step_wr.as_raw_fd();
     // SAFETY: the hook runs between fork and exec and calls only async-signal-safe libc functions
-    // (write, setsid, ioctl, setrlimit, setgroups, setgid, setuid, prctl, chdir); it allocates nothing.
+    // (write, setsid, ioctl, setrlimit, setgroups, setgid, setuid, prctl, umask, chdir); it allocates nothing.
     unsafe {
         cmd.pre_exec(move || {
             let failed = |step: u8| {
@@ -282,6 +282,9 @@ pub(super) fn spawn_becoming(cmd: &mut Command, b: Becoming<'_>) -> io::Result<C
             if libc::prctl(libc::PR_SET_NO_NEW_PRIVS, 1, 0, 0, 0) != 0 {
                 return Err(failed(STEP_NO_NEW_PRIVS));
             }
+            // What a crewmate process creates is for its owner and its group (hostd's way in), never for another
+            // crewmate: agents write straight to `/tmp/x`, which every crewmate shares. Cannot fail.
+            libc::umask(0o007);
             if libc::chdir(cwd.as_ptr()) != 0 {
                 return Err(failed(STEP_CHDIR));
             }
@@ -507,7 +510,7 @@ mod tests {
         let bin = engines.join("claude");
         std::fs::write(
             &bin,
-            "#!/bin/sh\necho \"uid=$(/usr/bin/id -u) cwd=$(pwd) home=$HOME user=$USER path=$PATH secret=$SECRET ld=${LD_PRELOAD:-none} args=$*\"\nwhile read k v; do [ \"$k\" = NoNewPrivs: ] && echo nnp=$v; done < /proc/self/status\n[ -t 0 ] && echo tty=yes || echo tty=no\nread line; echo got=$line\n",
+            "#!/bin/sh\necho \"uid=$(/usr/bin/id -u) cwd=$(pwd) home=$HOME user=$USER path=$PATH secret=$SECRET ld=${LD_PRELOAD:-none} args=$*\"\nwhile read k v; do [ \"$k\" = NoNewPrivs: ] && echo nnp=$v; done < /proc/self/status\n[ -t 0 ] && echo tty=yes || echo tty=no\nread line; echo got=$line\n: > made; /bin/mkdir madedir\n",
         )
         .unwrap();
         std::fs::set_permissions(&bin, std::fs::Permissions::from_mode(0o755)).unwrap();
@@ -533,6 +536,30 @@ mod tests {
             out.contains("nnp=1"),
             "the child must set no_new_privs on itself: {out}"
         );
+    }
+
+    // Security review 4, S-B: agents write straight to `/tmp/x` and to their checkout with whatever umask the helper
+    // has (022), so another crewmate (the helper's `/tmp` is shared, and so is `/dev/shm`) could read what an agent
+    // wrote. Every crewmate process starts with 007: its files are for its owner and its group (hostd's way in).
+    #[test]
+    fn a_file_an_agent_creates_is_closed_to_other_users() {
+        use std::os::unix::fs::MetadataExt;
+        let f = fixture();
+        // The helper's own umask is the permissive one the incident had.
+        // SAFETY: plain umask; this test's process is the helper here.
+        let before = unsafe { libc::umask(0o022) };
+        let out = run(&f, Mode::Pipe);
+        // SAFETY: restores the value read above.
+        unsafe { libc::umask(before) };
+        assert!(out.contains("got=hello"), "{out}");
+        let mode = |name: &str| {
+            std::fs::metadata(format!("{}/{name}", f.work))
+                .unwrap()
+                .mode()
+                & 0o777
+        };
+        assert_eq!(mode("made"), 0o660, "a file the agent made");
+        assert_eq!(mode("madedir"), 0o770, "a directory the agent made");
     }
 
     // Incident (real-systemd end-to-end test): a spawn failed with a bare "Operation not permitted" and nothing

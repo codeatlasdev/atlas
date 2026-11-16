@@ -298,6 +298,28 @@ mod tests {
         assert!(seen.contains("NoNewPrivs:\t1"), "{seen}");
     }
 
+    // Security review 4, S-B: a hook (or a git that writes into the tree, the pack files of a fetch) is crewmate
+    // code like an agent and gets the same umask: what it creates is closed to other crewmates.
+    #[cfg(target_os = "linux")]
+    #[test]
+    fn a_file_a_git_hook_creates_is_closed_to_other_users() {
+        use std::os::unix::fs::MetadataExt;
+        let rig = rig();
+        let made = rig.cm.join("made-by-hook");
+        rig.planted_repo(&format!(": > {}\nexit 1\n", made.display()));
+        // SAFETY: plain umask; this test's process is the helper here.
+        let before = unsafe { libc::umask(0o022) };
+        let out = rig.client.git(&req(&rig, &["status"])).unwrap();
+        // SAFETY: restores the value read above.
+        unsafe { libc::umask(before) };
+        assert_eq!(out.code, Some(0), "{}", out.stderr);
+        assert_eq!(
+            std::fs::metadata(&made).unwrap().mode() & 0o777,
+            0o660,
+            "a file the hook made"
+        );
+    }
+
     // Needs root on Linux: the real identity switch. The planted `core.fsmonitor` of a crewmate's repo must
     // run with that crewmate's uid, not root's and not the crew user's (CI's root job runs `crew::spawn --ignored`).
     #[test]

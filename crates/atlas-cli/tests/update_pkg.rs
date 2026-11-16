@@ -540,3 +540,31 @@ fn a_failed_check_is_stamped_so_offline_starts_do_not_retry() {
         "failure stamped: {cache}"
     );
 }
+
+/// A phone's "check now" is `atlas update --check --json` run by hostd, and hostd later reads
+/// the cache for the version it shows (`info.update`). A check that leaves the cache as it was
+/// would tell the phone the old answer for up to six hours.
+#[test]
+fn a_check_records_what_it_found_in_the_cache_hostd_reads() {
+    for args in [
+        &["update", "--check", "--json"][..],
+        &["update", "--check"][..],
+    ] {
+        let sb = Sandbox::new("none");
+        let o = sb.run(args, &[]);
+        assert!(o.status.success(), "{args:?}: {}", text(&o));
+        let cache: serde_json::Value = serde_json::from_str(
+            &std::fs::read_to_string(sb.home().join(".atlas/.update_check"))
+                .unwrap_or_else(|e| panic!("{args:?}: no cache written: {e}")),
+        )
+        .unwrap();
+        assert_eq!(cache["available_version"], LATEST, "{args:?}: {cache}");
+        assert_eq!(cache["channel"], "alpha", "{args:?}: {cache}");
+        assert!(
+            cache["last_checked"]
+                .as_u64()
+                .is_some_and(|t| t > 1_000_000_000),
+            "{args:?}: {cache}"
+        );
+    }
+}

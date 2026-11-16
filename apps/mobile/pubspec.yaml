@@ -49,6 +49,8 @@ dependencies:
   firebase_messaging: ^17.0.0
   markdown: ^7.3.1
   image_picker: ^1.2.4
+  package_info_plus: ^10.2.2
+  device_info_plus: ^13.3.0
 dev_dependencies:
   flutter_test:
     sdk: flutter

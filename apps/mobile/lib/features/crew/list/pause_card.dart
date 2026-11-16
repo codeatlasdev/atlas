@@ -1,6 +1,6 @@
-/// The Crew tab's kill switch for one crew server: a quiet "Pause all" while it runs, and a
-/// "Crew paused" banner with Resume while it is paused (running tasks were cancelled, queues
-/// are held, automations are skipped).
+/// The Crew tab's kill switch for one crew server: a quiet "Pause all" on the tab's title line while it runs,
+/// and a "Crew paused" banner with Resume while it is paused (running tasks were cancelled, queues are held,
+/// automations are skipped).
 library;
 
 import 'package:flutter/material.dart';
@@ -9,83 +9,103 @@ import 'package:atlas_mobile/core/ui/atlas_theme.dart';
 import 'package:atlas_mobile/core/ui/attention_card.dart';
 import 'package:atlas_mobile/features/crew/widgets/pill_buttons.dart';
 
-class PauseCard extends StatefulWidget {
-  const PauseCard({
-    super.key,
-    required this.serverName,
-    required this.paused,
-    required this.onSet,
-    this.showServer = false,
-  });
+/// Pauses (`true`) or resumes (`false`) a crew server; throws when it refuses.
+typedef SetPaused = Future<void> Function(bool paused);
 
-  final String serverName;
-  final bool paused;
+/// Runs [onSet] once at a time and says why it failed; the two widgets below share it.
+mixin _PauseAction<T extends StatefulWidget> on State<T> {
+  bool busy = false;
 
-  /// Pauses (`true`) or resumes (`false`) the server; throws when it refuses.
-  final Future<void> Function(bool paused) onSet;
-
-  /// Name the server (more than one crew server on the tab).
-  final bool showServer;
-
-  @override
-  State<PauseCard> createState() => _PauseCardState();
-}
-
-class _PauseCardState extends State<PauseCard> {
-  bool _busy = false;
-
-  Future<void> _set(bool paused) async {
-    setState(() => _busy = true);
+  Future<void> setPaused(
+    SetPaused onSet,
+    String serverName,
+    bool paused,
+  ) async {
+    setState(() => busy = true);
     try {
-      await widget.onSet(paused);
+      await onSet(paused);
     } catch (e) {
       if (mounted) {
         ScaffoldMessenger.of(context).showSnackBar(
           SnackBar(
             content: Text(
-              "Couldn't ${paused ? 'pause' : 'resume'} ${widget.serverName}: "
+              "Couldn't ${paused ? 'pause' : 'resume'} $serverName: "
               '${e is StateError ? e.message : e}',
             ),
           ),
         );
       }
     } finally {
-      if (mounted) setState(() => _busy = false);
+      if (mounted) setState(() => busy = false);
     }
   }
+}
+
+/// "Pause all" for a running crew server, sized for a title line.
+class PauseAllButton extends StatefulWidget {
+  const PauseAllButton({
+    super.key,
+    required this.serverName,
+    required this.onSet,
+  });
+
+  final String serverName;
+  final SetPaused onSet;
 
   @override
-  Widget build(BuildContext context) {
-    if (!widget.paused) {
-      return Padding(
-        padding: const EdgeInsets.fromLTRB(Space.lg, Space.sm, Space.lg, 0),
-        child: Align(
-          alignment: Alignment.centerRight,
-          child: OutlinePillButton(
-            label: widget.showServer
-                ? 'Pause all · ${widget.serverName}'
-                : 'Pause all',
-            onPressed: _busy ? null : () => _set(true),
-            hPad: 12,
-            vPad: 4,
-            small: true,
-          ),
-        ),
-      );
-    }
-    return AttentionCard(
-      margin: const EdgeInsets.fromLTRB(Space.lg, Space.sm, Space.lg, 0),
-      icon: Icons.pause_circle_outline,
-      title: 'Crew paused',
-      body: widget.showServer
-          ? '${widget.serverName}: nothing runs until you resume.'
-          : 'Nothing runs until you resume. Queued tasks wait.',
-      actions: [
-        WarnPillButton(
-          label: 'Resume',
-          onPressed: _busy ? null : () => _set(false),
-        ),
-      ],
-    );
-  }
+  State<PauseAllButton> createState() => _PauseAllButtonState();
+}
+
+class _PauseAllButtonState extends State<PauseAllButton>
+    with _PauseAction<PauseAllButton> {
+  @override
+  Widget build(BuildContext context) => OutlinePillButton(
+    label: 'Pause all',
+    onPressed: busy
+        ? null
+        : () => setPaused(widget.onSet, widget.serverName, true),
+    hPad: 12,
+    vPad: 4,
+    small: true,
+  );
+}
+
+/// The banner of a paused crew server, with Resume.
+class PausedBanner extends StatefulWidget {
+  const PausedBanner({
+    super.key,
+    required this.serverName,
+    required this.onSet,
+    this.showServer = false,
+  });
+
+  final String serverName;
+  final SetPaused onSet;
+
+  /// Name the server (more than one crew server on the tab).
+  final bool showServer;
+
+  @override
+  State<PausedBanner> createState() => _PausedBannerState();
+}
+
+class _PausedBannerState extends State<PausedBanner>
+    with _PauseAction<PausedBanner> {
+  @override
+  Widget build(BuildContext context) => AttentionCard(
+    margin: const EdgeInsets.fromLTRB(Space.lg, 0, Space.lg, Space.md),
+    icon: Icons.pause_circle_outline,
+    title: 'Crew paused',
+    body: widget.showServer
+        ? '${widget.serverName}: nothing runs until you resume.'
+        : 'Nothing runs until you resume. Queued tasks wait.',
+    actions: [
+      WarnPillButton(
+        label: 'Resume',
+        onPressed: busy
+            ? null
+            : () => setPaused(widget.onSet, widget.serverName, false),
+      ),
+    ],
+  );
 }

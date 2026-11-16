@@ -1,5 +1,3 @@
-// `requireMux` is the one way a command gets its connection: the live Multiplexer, or ONE typed error
-// that says why there is none (offline, or a protocol the app cannot speak). The sentence is defined once.
 import 'dart:async';
 import 'dart:convert';
 
@@ -13,6 +11,9 @@ import 'package:atlas_mobile/core/protocol/multiplexer.dart';
 import 'package:atlas_mobile/core/transport/transport.dart';
 
 import 'support/demo_harness.dart';
+
+// `requireMux` is the one way a command gets its connection: the live Multiplexer, or ONE typed error
+// that says why there is none (offline, or a protocol the app cannot speak). The sentence is defined once.
 
 const _device = MacDevice(nodeId: 'mac-1', name: 'Studio');
 

@@ -1,9 +1,9 @@
 import 'package:flutter/material.dart';
 
-import 'package:atlas_mobile/core/ui/route_page.dart';
 import 'package:atlas_mobile/core/protocol/models.dart';
 import 'package:atlas_mobile/core/ui/atlas_theme.dart';
 import 'package:atlas_mobile/core/ui/components.dart';
+import 'package:atlas_mobile/core/ui/route_page.dart';
 import 'package:atlas_mobile/features/git/changes_screen.dart';
 
 /// Entry point on the project page: opens the project's [ChangesScreen].

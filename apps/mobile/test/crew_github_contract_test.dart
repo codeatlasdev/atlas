@@ -2,7 +2,8 @@ import 'dart:convert';
 import 'dart:io';
 
 import 'package:flutter_test/flutter_test.dart';
-import 'package:atlas_mobile/core/protocol/crew_models.dart';
+
+import 'package:atlas_mobile/core/protocol/crew_github.dart';
 
 void main() {
   test('CrewGithubStatus parses crew_github_status fixture', () {

@@ -1,7 +1,3 @@
-// Content that grows into place (a status line arriving, a prompt above a composer) must not jump in one frame
-// with motion on, and must just be there with Reduce motion: an `AnimatedSize` given `Duration.zero` re-dirties
-// itself while it lays out (found by #405 in the agent chat; Settings had the same code), and an `AnimatedSize`
-// with a fixed duration ignored Reduce motion (crew thread, onboarding).
 import 'dart:async';
 import 'dart:io';
 
@@ -18,6 +14,11 @@ import 'package:atlas_mobile/core/ui/motion_size.dart';
 import 'package:atlas_mobile/features/settings/settings_screen.dart';
 
 import 'support/frame_probe.dart';
+
+// Content that grows into place (a status line arriving, a prompt above a composer) must not jump in one frame
+// with motion on, and must just be there with Reduce motion: an `AnimatedSize` given `Duration.zero` re-dirties
+// itself while it lays out (found by #405 in the agent chat; Settings had the same code), and an `AnimatedSize`
+// with a fixed duration ignored Reduce motion (crew thread, onboarding).
 
 class _Storage extends MacStorage {
   _Storage() : super(storage: null);
@@ -56,13 +57,13 @@ Future<Completer<String?>> _settings(
 }
 
 void main() {
-  final privacy = {'privacy': find.text('Privacy')};
+  final privacy = {'privacy': find.text('Privacy policy')};
 
   testWidgets(
-    'Reduce motion: the notification line is there in the frame it arrives, Privacy moves once',
+    'Reduce motion: the notification line is there in the frame it arrives, the rows below move once',
     (t) async {
       final status = await _settings(t, reduce: true);
-      final before = t.getTopLeft(find.text('Privacy')).dy;
+      final before = t.getTopLeft(find.text('Privacy policy')).dy;
       status.complete('Notifications are on');
       final probe = FrameProbe(t, privacy);
       await probe.record(const Duration(milliseconds: 300));
@@ -78,7 +79,7 @@ void main() {
       expect(
         tops.toSet(),
         hasLength(1),
-        reason: 'Privacy kept moving after the first frame: $tops',
+        reason: 'Privacy policy kept moving after the first frame: $tops',
       );
     },
   );
@@ -87,7 +88,7 @@ void main() {
     'motion on: the notification line opens over frames, never one jump',
     (t) async {
       final status = await _settings(t, reduce: false);
-      final before = t.getTopLeft(find.text('Privacy')).dy;
+      final before = t.getTopLeft(find.text('Privacy policy')).dy;
       status.complete('Notifications are on');
       final probe = FrameProbe(t, privacy);
       await probe.record(const Duration(milliseconds: 400));

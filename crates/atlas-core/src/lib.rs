@@ -28,6 +28,7 @@ pub mod ssh;
 pub mod sys;
 mod sys_clone;
 pub mod taskcache;
+pub mod update_cache;
 pub mod util;
 
 pub use error::AtlasError;

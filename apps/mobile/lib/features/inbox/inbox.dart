@@ -9,9 +9,8 @@ import 'package:atlas_mobile/core/ui/floating_tab_bar.dart';
 import 'package:atlas_mobile/features/crew/crew_provider.dart';
 import 'package:atlas_mobile/features/inbox/activity_row.dart';
 import 'package:atlas_mobile/features/inbox/attention_cards.dart';
-import 'package:atlas_mobile/features/inbox/inbox_providers.dart';
-
 export 'package:atlas_mobile/features/inbox/inbox_providers.dart';
+import 'package:atlas_mobile/features/inbox/inbox_providers.dart';
 
 /// Inbox tab: everything that needs you, on every paired computer.
 class InboxScreen extends ConsumerStatefulWidget {
@@ -92,20 +91,14 @@ class _InboxScreenState extends ConsumerState<InboxScreen> {
         bottom: false,
         child: ListView(
           padding: const EdgeInsets.only(
-            top: Space.md,
             bottom: Space.xxl + kFloatingBarScrollPad,
           ),
           children: [
-            Padding(
-              padding: const EdgeInsets.symmetric(horizontal: Space.lg),
-              child: Text(
-                'Inbox',
-                style: Theme.of(context).textTheme.titleLarge,
-              ),
-            ),
+            const TabTitle('Inbox'),
             if (items.isNotEmpty) ...[
+              // The section header brings its own space above; the title line already ends with one.
               const Padding(
-                padding: EdgeInsets.fromLTRB(Space.lg, Space.lg, Space.lg, 0),
+                padding: EdgeInsets.symmetric(horizontal: Space.lg),
                 child: SectionHeader('Needs you'),
               ),
               Padding(

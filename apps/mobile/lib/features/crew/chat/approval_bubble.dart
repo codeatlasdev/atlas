@@ -4,11 +4,11 @@ library;
 import 'package:flutter/material.dart';
 
 import 'package:atlas_mobile/core/protocol/crew_models.dart';
+import 'package:atlas_mobile/core/ui/atlas_theme.dart';
 import 'package:atlas_mobile/core/ui/attention_card.dart';
 import 'package:atlas_mobile/features/crew/avatar/crewmate_avatar.dart';
 import 'package:atlas_mobile/features/crew/avatar/crewmate_look.dart';
 import 'package:atlas_mobile/features/crew/widgets/approval_parts.dart';
-import 'package:atlas_mobile/core/ui/atlas_theme.dart';
 
 class CrewmateApprovalBubble extends StatelessWidget {
   const CrewmateApprovalBubble({

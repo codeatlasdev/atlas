@@ -2,7 +2,7 @@ import 'package:flutter_test/flutter_test.dart';
 import 'package:xterm/xterm.dart';
 
 import 'package:atlas_mobile/features/terminal/terminal_feed.dart';
-import 'package:atlas_mobile/features/terminal/terminal_screen.dart';
+import 'package:atlas_mobile/features/terminal/terminal_theme.dart';
 
 List<FeedBlock> _feed(String out, {int cols = 20}) {
   final t = Terminal()..resize(cols, 10);

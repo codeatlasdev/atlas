@@ -39,6 +39,13 @@ pub fn open_log(dir: &Path) -> std::io::Result<std::fs::File> {
         .append(true)
         .open(log(dir))
 }
+
+/// Where the output of the `atlas update` this daemon started goes (a file, not a pipe: the update
+/// ends this daemon in its last step, and a pipe whose reader is gone makes the update's own
+/// prints fail).
+pub fn update_log(dir: &Path) -> PathBuf {
+    dir.join("update.log")
+}
 pub fn scrollback_dir(dir: &Path) -> PathBuf {
     dir.join("hostd").join("scrollback")
 }

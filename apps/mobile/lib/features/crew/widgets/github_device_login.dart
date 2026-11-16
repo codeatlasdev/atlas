@@ -6,7 +6,7 @@ library;
 
 import 'dart:async';
 
-import 'package:atlas_mobile/core/protocol/crew_models.dart';
+import 'package:atlas_mobile/core/protocol/crew_github.dart';
 import 'package:atlas_mobile/core/protocol/multiplexer.dart';
 
 /// How a polled login ended.

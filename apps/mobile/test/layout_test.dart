@@ -5,24 +5,25 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:flutter_test/flutter_test.dart';
 
 import 'package:atlas_mobile/core/connection/connection_notifier.dart';
+import 'package:atlas_mobile/core/demo/demo_computer.dart';
+import 'package:atlas_mobile/core/lab/lab.dart';
 import 'package:atlas_mobile/core/protocol/models.dart';
 import 'package:atlas_mobile/core/storage/mac_storage.dart';
 import 'package:atlas_mobile/core/transport/transport.dart';
+import 'package:atlas_mobile/core/ui/atlas_logo.dart';
+import 'package:atlas_mobile/core/ui/components.dart';
+import 'package:atlas_mobile/core/ui/markdown/atlas_markdown.dart';
 import 'package:atlas_mobile/features/agents/agent_chat_screen.dart';
 import 'package:atlas_mobile/features/agents/agent_launcher.dart';
 import 'package:atlas_mobile/features/agents/agent_switcher.dart';
 import 'package:atlas_mobile/features/home/home_screen.dart';
 import 'package:atlas_mobile/features/home/onboarding.dart';
 import 'package:atlas_mobile/features/pair/pair_screen.dart';
-import 'package:atlas_mobile/features/settings/settings_screen.dart';
 import 'package:atlas_mobile/features/projects/project_detail_screen.dart';
+import 'package:atlas_mobile/features/settings/settings_screen.dart';
+import 'package:atlas_mobile/features/terminal/key_bar.dart';
+import 'package:atlas_mobile/features/terminal/line_input.dart';
 import 'package:atlas_mobile/features/terminal/terminal_screen.dart';
-import 'package:atlas_mobile/core/ui/atlas_logo.dart';
-import 'package:atlas_mobile/core/lab/lab.dart';
-import 'package:atlas_mobile/core/ui/components.dart';
-import 'package:atlas_mobile/core/ui/markdown/atlas_markdown.dart';
-
-import 'package:atlas_mobile/core/demo/demo_computer.dart';
 
 import 'support/layout_harness.dart';
 import 'support/stress_computer.dart';
@@ -104,19 +105,8 @@ Future<void> _check(
   }
 }
 
-/// Past the splash and the onboarding (debug builds show it on every launch) to the
-/// paired computer's dashboard.
-Future<void> _openDashboard(WidgetTester t) async {
-  for (var i = 0; i < 60 && find.text('Continue').evaluate().isEmpty; i++) {
-    await t.pump(const Duration(milliseconds: 100));
-  }
-  for (var i = 0; i < 3; i++) {
-    await t.tap(find.text('Continue'));
-    await settle(t, 700);
-  }
-  await t.tap(find.text('Open my computer'));
-  await settle(t, 3500);
-}
+/// Past the splash to the paired computer's dashboard (the onboarding is the shell's, not Home's).
+Future<void> _openDashboard(WidgetTester t) => settle(t, 3500);
 
 void main() {
   const device = demoDevice;
@@ -418,21 +408,7 @@ void main() {
         (_) => const HomeScreen(),
         computer: () => throw StateError('no route to $longHost'),
         devices: const [stressDevice],
-        prepare: (t) async {
-          for (
-            var i = 0;
-            i < 60 && find.text('Continue').evaluate().isEmpty;
-            i++
-          ) {
-            await t.pump(const Duration(milliseconds: 100));
-          }
-          for (var i = 0; i < 3; i++) {
-            await t.tap(find.text('Continue'));
-            await settle(t, 700);
-          }
-          await t.tap(find.text('Open my computer'));
-          await settle(t, 2500);
-        },
+        prepare: (t) => settle(t, 2500),
         settleMs: 100,
       );
     });

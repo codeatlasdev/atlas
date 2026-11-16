@@ -1,5 +1,3 @@
-// Guards 2026-11-12: the Inbox said "All clear" while carlos, on a crew server behind
-// the paired Mac, had finished a task minutes before.
 import 'dart:async';
 import 'dart:convert';
 
@@ -13,6 +11,9 @@ import 'package:atlas_mobile/core/storage/mac_storage.dart';
 import 'package:atlas_mobile/core/transport/transport.dart';
 import 'package:atlas_mobile/core/ui/atlas_theme.dart';
 import 'package:atlas_mobile/features/inbox/inbox.dart';
+
+// Guards 2026-11-12: the Inbox said "All clear" while carlos, on a crew server behind
+// the paired Mac, had finished a task minutes before.
 
 /// A paired Mac that is no crew server itself and relays one, like hostd does.
 class _Mac implements Transport {

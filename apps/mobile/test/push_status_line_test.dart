@@ -1,5 +1,3 @@
-// Settings shows, in one line, why notifications work or do not: the user could never tell before
-// (every failure on the way was a silent null/false).
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:flutter_test/flutter_test.dart';
@@ -10,6 +8,9 @@ import 'package:atlas_mobile/core/push/push_provider.dart';
 import 'package:atlas_mobile/core/storage/mac_storage.dart';
 import 'package:atlas_mobile/core/ui/atlas_theme.dart';
 import 'package:atlas_mobile/features/settings/settings_screen.dart';
+
+// Settings shows, in one line, why notifications work or do not: the user could never tell before
+// (every failure on the way was a silent null/false).
 
 class _Storage extends MacStorage {
   _Storage() : super(storage: null);

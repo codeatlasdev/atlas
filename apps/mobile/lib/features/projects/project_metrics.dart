@@ -137,13 +137,7 @@ class ProjectSnapshot {
             confirm: a['confirm'] as String?,
           ),
       ],
-      agents: [
-        for (final a in (d['agents'] as List?) ?? const [])
-          (
-            (a as Map)['pane_key'] as String,
-            AgentStatus.fromJson((a['status'] as Map).cast<String, dynamic>()),
-          ),
-      ],
+      agents: AgentStatus.paneList(d['agents']),
     );
   }
 }

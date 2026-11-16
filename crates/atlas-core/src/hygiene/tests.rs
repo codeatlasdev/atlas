@@ -496,9 +496,35 @@ fn a_writer_waits_out_a_lock_held_longer_than_two_seconds() {
     assert_eq!(reg.roots().len(), 2);
 }
 
+// A writer that cannot get the lock inside its budget fails with TimedOut and writes nothing.
+#[test]
+fn a_writer_gives_up_with_timed_out_when_the_lock_is_never_released() {
+    let (d, reg) = registry();
+    let reg = reg.with_lock_wait(Duration::from_millis(100));
+    reg.add_root(root("first", Owner::current(), 1, 1)).unwrap();
+    let lock = std::fs::OpenOptions::new()
+        .write(true)
+        .open(d.path().join("hygiene/registry.lock"))
+        .unwrap();
+    assert!(crate::sys::try_lock(&lock).unwrap());
+    let started = Instant::now();
+    let err = reg
+        .add_root(root("second", Owner::current(), 2, 1))
+        .expect_err("the lock is held by someone else");
+    assert_eq!(err.kind(), std::io::ErrorKind::TimedOut);
+    assert!(started.elapsed() >= Duration::from_millis(100), "gave up early");
+    drop(lock);
+    assert_eq!(reg.roots().len(), 1, "the refused write left no record");
+}
+
+// Windows CI flaked on this with "hygiene registry is locked" (a runner where each save, with its
+// fsync, took ~180 ms: the last of 80 queued saves outwaited the 10 s production budget; a writer
+// that has just saved takes the lock again before a sleeping one polls, so the queue is not fair).
+// What this test pins is that the lock loses no update, so it gets a budget no queue can spend.
 #[test]
 fn the_registry_survives_concurrent_writers_and_replaces_a_repeated_root_or_dir() {
     let (d, reg) = registry();
+    let reg = reg.with_lock_wait(Duration::from_secs(150));
     let threads: Vec<_> = (0..8u32)
         .map(|i| {
             let r = reg.clone();

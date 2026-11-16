@@ -9,9 +9,8 @@ import 'package:atlas_mobile/core/ui/floating_tab_bar.dart';
 import 'package:atlas_mobile/features/crew/crew_provider.dart';
 import 'package:atlas_mobile/features/inbox/activity_row.dart';
 import 'package:atlas_mobile/features/inbox/attention_cards.dart';
-import 'package:atlas_mobile/features/inbox/inbox_providers.dart';
-
 export 'package:atlas_mobile/features/inbox/inbox_providers.dart';
+import 'package:atlas_mobile/features/inbox/inbox_providers.dart';
 
 /// Inbox tab: everything that needs you, on every paired computer.
 class InboxScreen extends ConsumerStatefulWidget {

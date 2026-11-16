@@ -1,21 +1,21 @@
-// Issue #205: the phone must (re-)register its FCM token, with the relay's grant, with every
-// connected computer that can notify it: on first connect, when FCM rotates the token, and after
-// an upgrade (a token a pre-grant app registered has no grant and is never notified until this runs).
 import 'dart:async';
 import 'dart:convert';
 
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:flutter_test/flutter_test.dart';
 
-import 'package:atlas_mobile/core/protocol/protocol_version.dart';
 import 'package:atlas_mobile/core/connection/connection_notifier.dart';
 import 'package:atlas_mobile/core/protocol/models.dart';
+import 'package:atlas_mobile/core/protocol/protocol_version.dart';
 import 'package:atlas_mobile/core/push/push_provider.dart';
 import 'package:atlas_mobile/core/push/push_result.dart';
 import 'package:atlas_mobile/core/push/push_service.dart';
 import 'package:atlas_mobile/core/storage/mac_storage.dart';
-
 import 'package:atlas_mobile/core/transport/transport.dart';
+
+// Issue #205: the phone must (re-)register its FCM token, with the relay's grant, with every
+// connected computer that can notify it: on first connect, when FCM rotates the token, and after
+// an upgrade (a token a pre-grant app registered has no grant and is never notified until this runs).
 
 class _Storage extends MacStorage {
   _Storage(this.devices) : super(storage: null);

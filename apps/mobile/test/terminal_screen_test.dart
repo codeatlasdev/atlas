@@ -4,19 +4,17 @@ import 'dart:convert';
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:flutter_test/flutter_test.dart';
+import 'package:xterm/xterm.dart';
 
-import 'package:atlas_mobile/core/protocol/protocol_version.dart';
 import 'package:atlas_mobile/core/connection/connection_notifier.dart';
-
 import 'package:atlas_mobile/core/demo/demo_computer.dart';
-
+import 'package:atlas_mobile/core/protocol/protocol_version.dart';
 import 'package:atlas_mobile/core/storage/mac_storage.dart';
 import 'package:atlas_mobile/core/transport/transport.dart';
 import 'package:atlas_mobile/core/ui/atlas_theme.dart';
 import 'package:atlas_mobile/features/terminal/live_screen.dart';
 import 'package:atlas_mobile/features/terminal/terminal_feed.dart';
 import 'package:atlas_mobile/features/terminal/terminal_screen.dart';
-import 'package:xterm/xterm.dart';
 
 class _Storage extends MacStorage {
   _Storage() : super(storage: null);

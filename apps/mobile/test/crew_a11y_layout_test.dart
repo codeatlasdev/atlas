@@ -1,7 +1,3 @@
-// The tap-target and label guidelines (`expectNoLayoutProblems`, tapTargets on) for the screens
-// layout_test.dart does not reach: the Crew tab (crewmates, and a computer that failed next to one that
-// loaded), a crewmate's profile, the Inbox with items, and the automation editor sheet. Every phone size
-// at text scale 1.0 and 2.0, Android 48 dp, iOS 44 pt and a label on everything tappable.
 import 'dart:async';
 import 'dart:convert';
 
@@ -21,6 +17,11 @@ import 'package:atlas_mobile/features/inbox/inbox.dart';
 
 import 'support/demo_harness.dart' show DemoStorage;
 import 'support/layout_harness.dart';
+
+// The tap-target and label guidelines (`expectNoLayoutProblems`, tapTargets on) for the screens
+// layout_test.dart does not reach: the Crew tab (crewmates, and a computer that failed next to one that
+// loaded), a crewmate's profile, the Inbox with items, and the automation editor sheet. Every phone size
+// at text scale 1.0 and 2.0, Android 48 dp, iOS 44 pt and a label on everything tappable.
 
 const _studio = MacDevice(nodeId: 'studio', name: 'Studio');
 

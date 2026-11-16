@@ -7,10 +7,11 @@ import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 
 import 'package:atlas_mobile/core/connection/require_mux.dart';
-import 'package:atlas_mobile/core/protocol/crew_models.dart';
+import 'package:atlas_mobile/core/protocol/ask_request.dart';
+import 'package:atlas_mobile/core/protocol/crew_task.dart';
 import 'package:atlas_mobile/core/protocol/models.dart';
 import 'package:atlas_mobile/core/ui/atlas_theme.dart';
-import 'package:atlas_mobile/core/ui/attention_card.dart';
+import 'package:atlas_mobile/features/crew/chat/crewmate_card_frame.dart';
 import 'package:atlas_mobile/features/crew/crew_provider.dart';
 import 'package:atlas_mobile/features/crew/widgets/pill_buttons.dart';
 
@@ -77,72 +78,32 @@ class _TaskAskCardState extends ConsumerState<TaskAskCard> {
     final ask = widget.task.ask;
     if (ask == null || !ask.isOpen) return const SizedBox.shrink();
     final c = AtlasColors.of(context);
-    return Padding(
-      padding: const EdgeInsets.symmetric(vertical: Space.xs),
-      child: Row(
-        crossAxisAlignment: CrossAxisAlignment.end,
-        children: [
-          const SizedBox(width: 36), // avatar placeholder alignment
-          Flexible(
-            child: AttentionCard(
-              bubble: true,
-              child: Column(
-                crossAxisAlignment: CrossAxisAlignment.start,
-                children: [
-                  Text(
-                    ask.question,
-                    style: Theme.of(context).textTheme.bodyMedium!
-                        .copyWith(fontWeight: FontWeight.w600, color: c.text),
-                  ),
-                  for (final o in ask.options) ...[
-                    const SizedBox(height: Space.sm),
-                    _option(c, o),
-                  ],
-                  if (ask.allowText) ...[
-                    const SizedBox(height: Space.md),
-                    TextField(
-                      controller: _controller,
-                      style: Theme.of(context).textTheme.bodyLarge!
-                          .copyWith(color: c.text),
-                      decoration: InputDecoration(
-                        hintText: 'Or type an answer',
-                        hintStyle: Theme.of(context).textTheme.bodyLarge!
-                            .copyWith(color: c.faint),
-                        contentPadding: const EdgeInsets.symmetric(
-                          horizontal: Space.md,
-                          vertical: Space.sm,
-                        ),
-                        border: OutlineInputBorder(
-                          borderRadius: BorderRadius.circular(8),
-                          borderSide: BorderSide(color: c.borderSubtle),
-                        ),
-                        enabledBorder: OutlineInputBorder(
-                          borderRadius: BorderRadius.circular(8),
-                          borderSide: BorderSide(color: c.borderSubtle),
-                        ),
-                      ),
-                      onSubmitted: (_) => _sendText(),
-                    ),
-                    const SizedBox(height: Space.sm),
-                    WarnPillButton(
-                      label: 'Send',
-                      onPressed: _sending ? null : _sendText,
-                    ),
-                  ],
-                  if (_error != null) ...[
-                    const SizedBox(height: Space.sm),
-                    Text(
-                      _error!,
-                      style: Theme.of(context).textTheme.bodySmall!
-                          .copyWith(color: c.error),
-                    ),
-                  ],
-                ],
-              ),
-            ),
-          ),
+    return CrewmateCardFrame(
+      children: [
+        Text(
+          ask.question,
+          style: Theme.of(context).textTheme.bodyMedium!
+              .copyWith(fontWeight: FontWeight.w600, color: c.text),
+        ),
+        for (final o in ask.options) ...[
+          const SizedBox(height: Space.sm),
+          _option(c, o),
         ],
-      ),
+        if (ask.allowText) ...[
+          const SizedBox(height: Space.md),
+          AnswerField(
+            controller: _controller,
+            hint: 'Or type an answer',
+            onSubmitted: (_) => _sendText(),
+          ),
+          const SizedBox(height: Space.sm),
+          WarnPillButton(label: 'Send', onPressed: _sending ? null : _sendText),
+        ],
+        if (_error != null) ...[
+          const SizedBox(height: Space.sm),
+          CardError(_error!),
+        ],
+      ],
     );
   }
 

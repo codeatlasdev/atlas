@@ -1,9 +1,3 @@
-// The home project list and the agent launcher on a bad network day. Real providers, real
-// connection, real screens: the computer is a scripted host (`_Host`) whose `project_list` /
-// `agent_integrations` replies the test chooses (ok, error, held back).
-//
-// Before: a null connection or `ok:false` became `[]`, so "No projects yet" (or "No agent found")
-// replaced a list that was merely unreachable, and the 5 s poll kept asking while the phone slept.
 import 'dart:async';
 import 'dart:convert';
 
@@ -19,6 +13,13 @@ import 'package:atlas_mobile/core/transport/transport.dart';
 import 'package:atlas_mobile/core/ui/atlas_theme.dart';
 import 'package:atlas_mobile/features/agents/agent_launcher.dart';
 import 'package:atlas_mobile/features/home/home_screen.dart';
+
+// The home project list and the agent launcher on a bad network day. Real providers, real
+// connection, real screens: the computer is a scripted host (`_Host`) whose `project_list` /
+// `agent_integrations` replies the test chooses (ok, error, held back).
+//
+// Before: a null connection or `ok:false` became `[]`, so "No projects yet" (or "No agent found")
+// replaced a list that was merely unreachable, and the 5 s poll kept asking while the phone slept.
 
 class _Storage extends MacStorage {
   _Storage(this._devices) : super(storage: null);

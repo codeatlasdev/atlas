@@ -1,7 +1,3 @@
-// A slow link answers out of order. The project panel and its logs page must show the reply to the
-// NEWEST question, never roll back to a late one, and never stack requests behind a slow one.
-// Real screens and a real connection; the computer is a FakeTransport-style host whose replies the
-// test holds back and releases (gated completers), so the order of delivery is the test's.
 import 'dart:async';
 import 'dart:convert';
 import 'dart:io';
@@ -18,6 +14,11 @@ import 'package:atlas_mobile/core/transport/transport.dart';
 import 'package:atlas_mobile/core/ui/atlas_theme.dart';
 import 'package:atlas_mobile/features/projects/charts.dart';
 import 'package:atlas_mobile/features/projects/project_detail_screen.dart';
+
+// A slow link answers out of order. The project panel and its logs page must show the reply to the
+// NEWEST question, never roll back to a late one, and never stack requests behind a slow one.
+// Real screens and a real connection; the computer is a FakeTransport-style host whose replies the
+// test holds back and releases (gated completers), so the order of delivery is the test's.
 
 class _Storage extends MacStorage {
   _Storage() : super(storage: null);

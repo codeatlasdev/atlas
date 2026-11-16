@@ -1,7 +1,3 @@
-// Regression: the Crew tab showed its empty state (and a Recruit-less empty screen) for as long as the
-// computers' crew lists were still loading, because it read `value ?? []`. A slow link looked like a
-// crew that did not exist. While anything is loading the tab shows a loader; the empty states are for a
-// settled, empty answer.
 import 'dart:async';
 import 'dart:convert';
 import 'dart:io';
@@ -10,13 +6,13 @@ import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:flutter_test/flutter_test.dart';
 
-import 'package:atlas_mobile/core/protocol/crew_models.dart';
+import 'package:atlas_mobile/core/connection/connection_notifier.dart';
+import 'package:atlas_mobile/core/protocol/crew_task.dart';
 import 'package:atlas_mobile/core/protocol/models.dart';
 import 'package:atlas_mobile/core/protocol/protocol_version.dart';
 import 'package:atlas_mobile/core/transport/transport.dart';
 import 'package:atlas_mobile/core/ui/atlas_theme.dart';
 import 'package:atlas_mobile/core/ui/computer_state.dart';
-import 'package:atlas_mobile/core/connection/connection_notifier.dart';
 import 'package:atlas_mobile/features/crew/chat/crewmate_chat_screen.dart';
 import 'package:atlas_mobile/features/crew/crew_provider.dart';
 import 'package:atlas_mobile/features/crew/list/crew_screen.dart';
@@ -24,6 +20,11 @@ import 'package:atlas_mobile/features/crew/list/crew_skeleton.dart';
 import 'package:atlas_mobile/features/inbox/inbox.dart';
 
 import 'support/demo_harness.dart';
+
+// Regression: the Crew tab showed its empty state (and a Recruit-less empty screen) for as long as the
+// computers' crew lists were still loading, because it read `value ?? []`. A slow link looked like a
+// crew that did not exist. While anything is loading the tab shows a loader; the empty states are for a
+// settled, empty answer.
 
 const _mac = MacDevice(nodeId: 'mac-1', name: 'Mac');
 

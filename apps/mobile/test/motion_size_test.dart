@@ -1,7 +1,3 @@
-// Content that grows into place (a status line arriving, a prompt above a composer) must not jump in one frame
-// with motion on, and must just be there with Reduce motion: an `AnimatedSize` given `Duration.zero` re-dirties
-// itself while it lays out (found by #405 in the agent chat; Settings had the same code), and an `AnimatedSize`
-// with a fixed duration ignored Reduce motion (crew thread, onboarding).
 import 'dart:async';
 import 'dart:io';
 
@@ -18,6 +14,11 @@ import 'package:atlas_mobile/core/ui/motion_size.dart';
 import 'package:atlas_mobile/features/settings/settings_screen.dart';
 
 import 'support/frame_probe.dart';
+
+// Content that grows into place (a status line arriving, a prompt above a composer) must not jump in one frame
+// with motion on, and must just be there with Reduce motion: an `AnimatedSize` given `Duration.zero` re-dirties
+// itself while it lays out (found by #405 in the agent chat; Settings had the same code), and an `AnimatedSize`
+// with a fixed duration ignored Reduce motion (crew thread, onboarding).
 
 class _Storage extends MacStorage {
   _Storage() : super(storage: null);

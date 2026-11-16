@@ -1,7 +1,3 @@
-// Regression (phone screenshots 2026-11-15): the first-run onboarding was the Home tab's content, so the shell's
-// floating tab bar sat on top of it, covering its Continue button and offering tabs with nothing to show yet.
-// Through the REAL shell (the app's own routes): with nothing paired, the onboarding is the whole screen, no bar,
-// and every step is reachable; once a computer is paired the tabs come back.
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:flutter_test/flutter_test.dart';
@@ -17,6 +13,11 @@ import 'package:atlas_mobile/features/home/onboarding.dart';
 import 'package:atlas_mobile/main.dart';
 
 import 'support/demo_harness.dart';
+
+// Regression (phone screenshots 2026-11-15): the first-run onboarding was the Home tab's content, so the shell's
+// floating tab bar sat on top of it, covering its Continue button and offering tabs with nothing to show yet.
+// Through the REAL shell (the app's own routes): with nothing paired, the onboarding is the whole screen, no bar,
+// and every step is reachable; once a computer is paired the tabs come back.
 
 /// Storage whose paired list can change, like pairing does (it saves, then invalidates the provider).
 class _Storage extends DemoStorage {

@@ -1,7 +1,3 @@
-// Regression (screen recording 2026-11-12, tab_overlap_67s): switching tabs (Settings -> Projects) showed both pages
-// superimposed, because the shell cross-faded the page being left with the page being entered for 260 ms.
-// Frame by frame, through the REAL shell (the app's own routes, real providers, the demo computer as transport):
-// one page at any frame, each tab keeps its scroll, Settings opens without anything moving, Reduce motion cuts.
 import 'dart:async';
 
 import 'package:flutter/material.dart';
@@ -27,6 +23,11 @@ import 'package:atlas_mobile/main.dart';
 
 import 'support/demo_harness.dart';
 import 'support/frame_probe.dart';
+
+// Regression (screen recording 2026-11-12, tab_overlap_67s): switching tabs (Settings -> Projects) showed both pages
+// superimposed, because the shell cross-faded the page being left with the page being entered for 260 ms.
+// Frame by frame, through the REAL shell (the app's own routes, real providers, the demo computer as transport):
+// one page at any frame, each tab keeps its scroll, Settings opens without anything moving, Reduce motion cuts.
 
 const _mac = MacDevice(nodeId: 'mac-1', name: 'Mac');
 

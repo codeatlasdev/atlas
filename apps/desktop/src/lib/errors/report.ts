@@ -7,6 +7,8 @@
  * path, no env). Query strings and long hex/base64-looking tokens are dropped from messages.
  */
 
+import { machineLines } from "./machine.ts";
+
 export interface ErrorReport {
 	/** First line of the error, what the person reads. */
 	message: string;
@@ -47,6 +49,35 @@ export interface Diagnostics {
 		quarantined: boolean;
 		translocated: boolean;
 		channel: string;
+	};
+	/** Distro, session, GPU and the graphics stack (`atlas_core::probe::Platform`, #275). */
+	platform: {
+		distro: string | null;
+		kernel: string | null;
+		session: string | null;
+		desktop: string | null;
+		compositor: string | null;
+		gpus: string[];
+		nvidiaDriver: string | null;
+		mesa: string | null;
+		gtk: string | null;
+		webview: string | null;
+		graphicsEnv: string[];
+	};
+	/** How Atlas got onto the machine (`atlas_core::probe::Packaging`). */
+	packaging: {
+		appimage: string | null;
+		exe: string | null;
+		exeOwner: string | null;
+		localBin: string[];
+	};
+	/** Core dumps of the last day and Atlas's own crash files, with when they happened (`probe::Crashes`). */
+	crashes: {
+		/** `ok`, `unavailable`, or empty where there is no systemd-coredump to ask. */
+		coredumpStatus: string;
+		coredumps: { at: number; pid: number; signal: string; exe: string }[];
+		/** Newest first; `ageSecs` is measured when the report was built. */
+		atlas: { at: number; ageSecs: number; summary: string }[];
 	};
 	hostdLog: string;
 	appLog: string;
@@ -193,6 +224,9 @@ export function detailsText(r: ErrorReport): string {
 				`OS: ${d.os || "unknown"}`,
 				`Running bundle: ${d.install.runningBundle ?? "(not a bundle)"}`,
 				`Installed app: ${d.install.installedApp ?? "none found"}`,
+				// Machine lines: `atlas_core::redact::redact` already redacted them in `atlas_core::probe`; `scrub` only drops
+				// homes and query secrets again (`redactText`'s token shape reads `WEBKIT_DISABLE_DMABUF_RENDERER=1` as a secret).
+				...machineLines(d).map(scrub),
 				...findings(d).map((f) => `Finding: ${redactText(f)}`),
 				...(d.lastCrash ? [`Last crash: ${redactText(d.lastCrash)}`] : []),
 				...tails,
@@ -320,7 +354,14 @@ const envLines = (r: ErrorReport): string[] => {
 		d?.lastCrash ? `- Last crash: ${d.lastCrash}` : "",
 	]
 		.filter(Boolean)
-		.map(redactText);
+		.map(redactText)
+		.concat(
+			// Machine facts (distro, GPU, packaging, core dumps): `atlas_core::redact::redact` already redacted every
+			// path and variable in `atlas_core::probe` (`graphics_env`, `packaging_of`, `parse_coredumps`,
+			// `crash_summary`). `scrub` only drops homes and query secrets again: `redactText`'s token shape reads
+			// `WEBKIT_DISABLE_DMABUF_RENDERER=1` and an AppImage mount path as secrets.
+			d ? machineLines(d).map((l) => `- ${scrub(l)}`) : [],
+		);
 };
 
 /**

@@ -464,6 +464,11 @@ echo "capture: B's loopback port and 169.254.169.254 refused, A's own loopback s
 # is now PartOf=nftables.service and loads the table again with it; and while the table is missing the helper starts nothing.
 table_loaded() { srv nft list table inet atlas_crew; }
 table_loaded >/dev/null || fail "control: the atlas_crew table is not loaded before the test"
+# nftables is inactive on this image: start it (its `flush ruleset` removes our table, as at a boot where it came after the
+# egress unit), load ours again, and only then restart the ACTIVE nftables, the case that propagates through PartOf=.
+srv systemctl start nftables
+srv systemctl restart atlas-crew-egress
+until_true 30 "the egress unit to load the atlas_crew table" table_loaded
 srv systemctl restart nftables
 until_true 30 "the egress unit to load the atlas_crew table again after nftables restarted" table_loaded
 srv nft delete table inet atlas_crew

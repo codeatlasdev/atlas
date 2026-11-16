@@ -159,12 +159,15 @@
 		<div class="controls">
 			<input
 				placeholder="Search sessions"
+				aria-label="Search sessions"
 				bind:value={query}
 				oninput={onSearch}
 				onkeydown={(e) => e.key === "Enter" && (clearTimeout(typing), loadSessions())}
 			/>
 			<Select
+				class="scope"
 				size="sm"
+				aria-label="Show sessions of"
 				value={scope}
 				options={[
 					{ value: "workspace", label: "Workspace" },
@@ -286,6 +289,11 @@
 		align-items: center;
 		gap: 6px;
 		padding: 8px 10px;
+	}
+	/* The kit select is `width: 100%`, which in this row left the search field a few pixels: an empty square. */
+	.controls :global(.scope) {
+		flex: none;
+		width: 104px;
 	}
 	.controls input {
 		flex: 1;

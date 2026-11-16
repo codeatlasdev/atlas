@@ -83,6 +83,7 @@
 			<span>{reason}</span>
 			<button
 				class="link"
+				aria-label="View logs of {service.name}"
 				onclick={(e) => {
 					e.stopPropagation();
 					onlogs();

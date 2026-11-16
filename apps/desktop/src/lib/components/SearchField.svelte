@@ -24,7 +24,8 @@
 
 <label class="search" class:compact>
 	<Search size={12} />
-	<input bind:value {onkeydown} {...rest} />
+	<!-- The placeholder is not a name: a field with only one reads as unlabeled; an explicit aria-label wins. -->
+	<input aria-label={rest.placeholder} bind:value {onkeydown} {...rest} />
 	{#if clearable && value}
 		<button class="clear" aria-label={label ?? "Clear search"} onclick={() => (value = "")}>
 			<X size={compact ? 11 : 12} />

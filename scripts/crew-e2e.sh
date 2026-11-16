@@ -476,7 +476,8 @@ wait_task "$CM" "$T" "done" 90
 UIGATE=$(task_json "$CM" "$T" | jq -r '.reply // .result')
 echo "A's ui_gate calls: $UIGATE"
 srv test -L "$WORKA/.atlas" || fail "control: A's .atlas is not a link, so the check proves nothing: $UIGATE"
-[[ $UIGATE == *"plan=["*"affected.command"*"link=["* ]] || fail "ui_gate did not refuse A's affected.command: $UIGATE"
+[[ $UIGATE == *"plan=["*"affected.command"*"link=["* ]] ||
+  fail "ui_gate did not refuse A's affected.command: $UIGATE ($(srv stat -c '%U:%G %a %n' "$WORKA" "$WORKA/atlas.yaml" 2>&1 | tr '\n' ';'))"
 srv test ! -e "$HOME_DIR/e2e-affected-ran" || fail "hostd ran A's affected.command as the crew user"
 [[ $UIGATE == *"link=["*"ui-regressions.json"* ]] || fail "ui_gate did not refuse the registry behind A's .atlas link: $UIGATE"
 srv test ! -e "$DIRB/work/ui-regressions.json" || fail "hostd wrote the registry into B's work tree through A's .atlas link"

@@ -250,6 +250,7 @@ macro_rules! handlers {
             crew::crew_browsers_status,
             crew::crew_browsers_install,
             crew::ssh_key_find,
+            crew::ssh_hosts_list,
             crew::ssh_keygen,
             crew::ssh_authorize_key,
             crew::crew_agent_check,

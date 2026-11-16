@@ -45,6 +45,8 @@ const KIT_COMPONENTS = [
 	"TextArea",
 	"SegmentedControl",
 	"Skeleton",
+	// The connect step's SSH host picker (and the model picker): the Combobox.
+	"Combobox",
 ];
 const Stub = () => {};
 const kit = {

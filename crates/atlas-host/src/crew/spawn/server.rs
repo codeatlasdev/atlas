@@ -215,13 +215,20 @@ impl Server {
             // Not even an error reply: a stranger gets a closed socket.
             return Ok(());
         }
+        // The fd handed over with the last reply. It stays open here until the peer's next request or
+        // hang-up: on macOS the received end reads EOF (and loses what the child printed) if this last
+        // descriptor closes before the peer's recvmsg. hostd's client reads the reply and then drops its
+        // connection, so that is the moment it has its own copy.
+        let mut in_flight = None;
         loop {
             let Some(frame) = wire::recv::<Request>(&conn)? else {
                 return Ok(());
             };
+            drop(in_flight.take());
             let (resp, fd) = self.handle(who, frame.len, frame.msg);
             let fds: Vec<_> = fd.iter().map(|f| f.as_raw_fd()).collect();
             wire::send(&conn, &resp, &fds)?;
+            in_flight = fd;
         }
     }
 
@@ -905,7 +912,10 @@ mod tests {
             .unwrap();
         let mut io = std::fs::File::from(f.fds.remove(0));
         let out = read_until(&mut io, "printed");
-        assert!(out.contains("printed"), "the child's output was lost: {out:?}");
+        assert!(
+            out.contains("printed"),
+            "the child's output was lost: {out:?}"
+        );
     }
 
     // Refusals come back as errors and nothing is started: the validators run in the helper, not

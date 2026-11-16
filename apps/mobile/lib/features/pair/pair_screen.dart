@@ -1,18 +1,20 @@
 import 'dart:math';
 
-import 'package:go_router/go_router.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
+import 'package:go_router/go_router.dart';
 import 'package:mobile_scanner/mobile_scanner.dart';
 
-import 'package:atlas_mobile/core/protocol/models.dart';
-import 'package:atlas_mobile/core/ui/computer_state.dart';
-import 'package:atlas_mobile/core/ui/components.dart';
-import 'package:atlas_mobile/core/ui/atlas_theme.dart';
-import 'package:atlas_mobile/core/storage/mac_storage.dart';
 import 'package:atlas_mobile/core/connection/connection_notifier.dart';
+import 'package:atlas_mobile/core/protocol/models.dart';
 import 'package:atlas_mobile/core/protocol/multiplexer.dart';
+import 'package:atlas_mobile/core/device_label.dart';
+import 'package:atlas_mobile/core/protocol/pair_info.dart';
+import 'package:atlas_mobile/core/storage/mac_storage.dart';
+import 'package:atlas_mobile/core/ui/atlas_theme.dart';
+import 'package:atlas_mobile/core/ui/components.dart';
+import 'package:atlas_mobile/core/ui/computer_state.dart';
 
 /// State for the pairing flow.
 enum PairStatus { idle, connecting, success, error }
@@ -59,7 +61,8 @@ class PairNotifier extends Notifier<PairState> {
       try {
         final resp = await mux.call('pair', {
           'code': info.code,
-          'name': 'Atlas Mobile',
+          // How the computer lists this phone (its model and system), so two phones never look alike there.
+          'name': await deviceLabel(),
         });
         if (resp['ok'] != true) {
           throw Exception(resp['error'] ?? 'Pairing failed');

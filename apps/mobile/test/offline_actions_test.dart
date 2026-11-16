@@ -1,7 +1,3 @@
-// Regression: with the computer off, tapping Approve / Deny / an answer / Cancel / Send did NOTHING and said
-// nothing (the handler did `if (mux == null) return`), so the user believed they had answered. Every action the
-// user triggers goes through `requireMuxOf` and shows the shared offline sentence where it lives; what they typed
-// stays, and nothing is marked sent. The online path still sends exactly one call.
 import 'dart:convert';
 
 import 'package:flutter/material.dart';
@@ -12,7 +8,7 @@ import 'package:flutter_test/flutter_test.dart';
 import 'package:atlas_mobile/core/auth/device_auth.dart';
 import 'package:atlas_mobile/core/connection/connection_notifier.dart';
 import 'package:atlas_mobile/core/demo/demo_computer.dart';
-import 'package:atlas_mobile/core/protocol/crew_models.dart';
+import 'package:atlas_mobile/core/protocol/crew_task.dart';
 import 'package:atlas_mobile/core/protocol/models.dart';
 import 'package:atlas_mobile/core/transport/transport.dart';
 import 'package:atlas_mobile/core/ui/atlas_theme.dart';
@@ -21,6 +17,11 @@ import 'package:atlas_mobile/features/crew/chat/action_card.dart';
 import 'package:atlas_mobile/features/crew/chat/crewmate_chat_screen.dart';
 
 import 'support/demo_harness.dart';
+
+// Regression: with the computer off, tapping Approve / Deny / an answer / Cancel / Send did NOTHING and said
+// nothing (the handler did `if (mux == null) return`), so the user believed they had answered. Every action the
+// user triggers goes through `requireMuxOf` and shows the shared offline sentence where it lives; what they typed
+// stays, and nothing is marked sent. The online path still sends exactly one call.
 
 const _mac = MacDevice(nodeId: 'demo', name: 'Demo MacBook');
 const _offline = 'Demo MacBook is offline';

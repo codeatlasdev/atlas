@@ -2,13 +2,15 @@ import 'dart:async';
 
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:flutter_riverpod/legacy.dart';
-import 'package:atlas_mobile/features/crew/chat/attachments.dart';
-import 'package:atlas_mobile/core/protocol/crew_models.dart';
-import 'package:atlas_mobile/core/protocol/models.dart';
+
 import 'package:atlas_mobile/core/connection/connection_notifier.dart';
 import 'package:atlas_mobile/core/connection/require_mux.dart';
 import 'package:atlas_mobile/core/demo/demo_computer.dart';
+import 'package:atlas_mobile/core/protocol/crew_models.dart';
+import 'package:atlas_mobile/core/protocol/crew_task.dart';
+import 'package:atlas_mobile/core/protocol/models.dart';
 import 'package:atlas_mobile/core/providers/push_events_provider.dart';
+import 'package:atlas_mobile/features/crew/chat/attachments.dart';
 
 /// Result of `crewmate_list`: whether the server is a crew server, its crewmates, and whether
 /// the kill switch is on (`paused`: nothing runs, queues are held).
@@ -135,8 +137,16 @@ Duration? noRetryWhenUnavailable(int count, Object error) =>
 const notCrewServerError =
     'this computer is not a crew server (atlas crew install)';
 
-/// Loads crewmates from a device. `isCrewServer: false` only when hostd answers [notCrewServerError] (a hostd
-/// without ATLAS_CREW_HOST=1). A computer that is not reachable yet, is offline, speaks another protocol, or
+/// Whether [error] is a hostd too old to know [command] (serde's "unknown variant `command`": an Atlas from before
+/// the feature). For an optional feature such as the crew this means "not here", not a failure.
+bool isUnknownCommand(String? error, String command) =>
+    error != null &&
+    error.contains('unknown variant') &&
+    error.contains('`$command`');
+
+/// Loads crewmates from a device. `isCrewServer: false` when hostd answers [notCrewServerError] (a hostd
+/// without ATLAS_CREW_HOST=1) or does not know `crewmate_list` at all (an Atlas from before the crew). A
+/// computer that is not reachable yet, is offline, speaks another protocol, or
 /// refuses is an `AsyncError` ([DeviceUnavailable] or a [StateError] with the server's text), never an empty
 /// crew: a screen shows "Reaching…", "Can't reach" or the error, not "No crew yet".
 final crewProvider = AsyncNotifierProvider.autoDispose
@@ -160,7 +170,8 @@ class CrewNotifier extends AsyncNotifier<CrewListResult> {
     final resp = await mux.call('crewmate_list', {});
     if (resp['ok'] != true) {
       final error = resp['error'] as String?;
-      if (error == notCrewServerError) {
+      if (error == notCrewServerError ||
+          isUnknownCommand(error, 'crewmate_list')) {
         return (
           isCrewServer: false,
           hostName: device.name,

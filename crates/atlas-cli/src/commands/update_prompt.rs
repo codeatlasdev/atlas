@@ -7,9 +7,10 @@ use std::os::unix::process::CommandExt;
 use std::time::Duration;
 
 use anyhow::Result;
+use atlas_core::update_cache::{UpdateCache, now_secs};
 
 use super::self_update::{
-    self, UpdateCache, UpdateOutcome, current_version, load_cache, newer_than, now_secs, save_cache,
+    self, UpdateOutcome, current_version, load_cache, newer_than, save_cache,
 };
 
 /// Never block `atlas dev` longer than this on a live version check.

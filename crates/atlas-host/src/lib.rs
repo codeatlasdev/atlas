@@ -24,6 +24,7 @@ pub mod protocol;
 mod protocol_golden;
 mod pty;
 pub mod server;
+mod update;
 pub mod upgrade;
 pub mod worktrees;
 

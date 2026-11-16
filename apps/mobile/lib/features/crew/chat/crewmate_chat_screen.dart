@@ -8,30 +8,31 @@ import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 
-import 'package:atlas_mobile/core/ui/chat_reader.dart';
-import 'package:atlas_mobile/core/ui/route_page.dart';
-import 'package:atlas_mobile/core/connection/require_mux.dart';
 import 'package:atlas_mobile/core/connection/connection_notifier.dart';
+import 'package:atlas_mobile/core/connection/require_mux.dart';
 import 'package:atlas_mobile/core/protocol/crew_models.dart';
+import 'package:atlas_mobile/core/protocol/crew_task.dart';
 import 'package:atlas_mobile/core/protocol/models.dart';
 import 'package:atlas_mobile/core/protocol/multiplexer.dart';
 import 'package:atlas_mobile/core/providers/push_events_provider.dart';
 import 'package:atlas_mobile/core/ui/async_view.dart';
-import 'package:atlas_mobile/core/ui/computer_state.dart';
 import 'package:atlas_mobile/core/ui/atlas_theme.dart';
-import 'package:atlas_mobile/features/crew/chat_motion.dart';
+import 'package:atlas_mobile/core/ui/chat_reader.dart';
 import 'package:atlas_mobile/core/ui/components.dart';
+import 'package:atlas_mobile/core/ui/computer_state.dart';
 import 'package:atlas_mobile/core/ui/protocol_banner.dart';
+import 'package:atlas_mobile/core/ui/route_page.dart';
+import 'package:atlas_mobile/features/crew/avatar/crewmate_avatar.dart';
+import 'package:atlas_mobile/features/crew/avatar/crewmate_look.dart';
 import 'package:atlas_mobile/features/crew/chat/approval_bubble.dart';
 import 'package:atlas_mobile/features/crew/chat/attachments.dart';
 import 'package:atlas_mobile/features/crew/chat/composer.dart';
 import 'package:atlas_mobile/features/crew/chat/glass.dart';
 import 'package:atlas_mobile/features/crew/chat/task_thread.dart';
 import 'package:atlas_mobile/features/crew/chat/working_row.dart';
+import 'package:atlas_mobile/features/crew/chat_motion.dart';
 import 'package:atlas_mobile/features/crew/crew_provider.dart';
 import 'package:atlas_mobile/features/crew/crew_text.dart';
-import 'package:atlas_mobile/features/crew/avatar/crewmate_avatar.dart';
-import 'package:atlas_mobile/features/crew/avatar/crewmate_look.dart';
 import 'package:atlas_mobile/features/crew/profile/crewmate_profile_screen.dart';
 
 class CrewmateChatScreen extends ConsumerStatefulWidget {

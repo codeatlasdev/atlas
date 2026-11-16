@@ -1,7 +1,3 @@
-// "Reduce motion" (iOS) / "Remove animations" (Android) reaches the app as
-// MediaQuery.disableAnimations. Every animation that loops forever must hold a still frame
-// then: pumpAndSettle only returns once no frame is scheduled, so a loop left running makes it
-// time out. Each case also runs with animations ON first, so the check proves it can fail.
 import 'dart:async';
 import 'dart:convert';
 
@@ -10,16 +6,22 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:flutter_test/flutter_test.dart';
 
 import 'package:atlas_mobile/core/connection/connection_notifier.dart';
+import 'package:atlas_mobile/core/protocol/agent_tree.dart';
 import 'package:atlas_mobile/core/protocol/models.dart';
-import 'package:atlas_mobile/core/storage/mac_storage.dart';
 import 'package:atlas_mobile/core/protocol/protocol_version.dart';
+import 'package:atlas_mobile/core/storage/mac_storage.dart';
 import 'package:atlas_mobile/core/transport/transport.dart';
 import 'package:atlas_mobile/core/ui/atlas_logo.dart';
 import 'package:atlas_mobile/core/ui/atlas_theme.dart';
 import 'package:atlas_mobile/core/ui/typing_dots.dart';
-import 'package:atlas_mobile/features/agents/crew_widgets.dart';
 import 'package:atlas_mobile/features/agents/agent_chat_screen.dart';
+import 'package:atlas_mobile/features/agents/tree/now_strip.dart';
 import 'package:atlas_mobile/features/projects/project_detail_screen.dart';
+
+// "Reduce motion" (iOS) / "Remove animations" (Android) reaches the app as
+// MediaQuery.disableAnimations. Every animation that loops forever must hold a still frame
+// then: pumpAndSettle only returns once no frame is scheduled, so a loop left running makes it
+// time out. Each case also runs with animations ON first, so the check proves it can fail.
 
 Widget _app(Widget child, {required bool reduced}) => MaterialApp(
   theme: atlasTheme(),

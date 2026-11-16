@@ -305,6 +305,33 @@ impl Phone {
         }
         out
     }
+
+    /// Pushes until one satisfies `done` (that one is the last returned), or until `ms` pass.
+    pub(crate) async fn pushes_until(
+        &mut self,
+        ms: u64,
+        done: impl Fn(&Value) -> bool,
+    ) -> Vec<Value> {
+        let mut out = Vec::new();
+        let mut buf = String::new();
+        let end = tokio::time::Instant::now() + Duration::from_millis(ms);
+        while let Ok(Ok(n)) = tokio::time::timeout_at(end, self.recv.read_line(&mut buf)).await {
+            if n == 0 {
+                break;
+            }
+            if let Ok(v) = serde_json::from_str::<Value>(&buf)
+                && v.get("id").is_none()
+            {
+                let last = done(&v);
+                out.push(v);
+                if last {
+                    break;
+                }
+            }
+            buf.clear();
+        }
+        out
+    }
 }
 
 /// A paired phone and the desktop-side client of the same daemon.

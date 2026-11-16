@@ -103,6 +103,14 @@ jobs:
           GOOGLE_SERVICE_INFO_PLIST: ${{ secrets.GOOGLE_SERVICE_INFO_PLIST }}
         run: bundle exec fastlane ios_beta
 
+      # `flutter symbolize` needs these to read a stack trace of this build (the Dart symbols are not in the binary).
+      - name: Keep the Dart symbols
+        uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
+        with:
+          name: mobile-symbols-ios-${{ needs.number.outputs.n }}
+          path: apps/mobile/build/symbols/ios
+          if-no-files-found: error
+
   android:
     name: Play internal testing
     needs: number
@@ -143,6 +151,14 @@ jobs:
           ANDROID_KEY_PASSWORD: ${{ secrets.ANDROID_KEY_PASSWORD }}
           GOOGLE_SERVICES_JSON: ${{ secrets.GOOGLE_SERVICES_JSON }}
         run: bundle exec fastlane android_beta
+
+      # `flutter symbolize` needs these to read a stack trace of this build (the Dart symbols are not in the binary).
+      - name: Keep the Dart symbols
+        uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
+        with:
+          name: mobile-symbols-android-${{ needs.number.outputs.n }}
+          path: apps/mobile/build/symbols/android
+          if-no-files-found: error
 
   store:
     name: To the stores (needs approval)

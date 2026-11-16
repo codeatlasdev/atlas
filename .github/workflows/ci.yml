@@ -96,11 +96,12 @@ jobs:
         with:
           persist-credentials: false
 
+      # ffmpeg: the Linux recorder's tests encode a real file (`debug record`, #282); a missing one fails them in CI.
       - name: System libraries (Tauri/WebKitGTK)
         run: |
           SUDO=$(command -v sudo || true)
           $SUDO apt-get update
-          $SUDO apt-get install -y --no-install-recommends libwebkit2gtk-4.1-dev libayatana-appindicator3-dev librsvg2-dev libxdo-dev libssl-dev fish
+          $SUDO apt-get install -y --no-install-recommends libwebkit2gtk-4.1-dev libayatana-appindicator3-dev librsvg2-dev libxdo-dev libssl-dev fish ffmpeg
 
       - uses: ./.github/actions/rust-gate
         with:

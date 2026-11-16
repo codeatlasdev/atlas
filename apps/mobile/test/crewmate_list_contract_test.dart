@@ -1,12 +1,14 @@
-// Contract: CrewmateEntry parses triggers from the real Rust crewmate_list fixture.
-// Incident: triggers field was absent from CrewmateEntry; routines used instead.
-// Regenerate fixture: UPDATE_FIXTURES=1 cargo test -p atlas-host crewmate_list_json_contract
 import 'dart:convert';
 import 'dart:io';
 
 import 'package:flutter_test/flutter_test.dart';
 
 import 'package:atlas_mobile/core/protocol/crew_models.dart';
+import 'package:atlas_mobile/core/protocol/crew_triggers.dart';
+
+// Contract: CrewmateEntry parses triggers from the real Rust crewmate_list fixture.
+// Incident: triggers field was absent from CrewmateEntry; routines used instead.
+// Regenerate fixture: UPDATE_FIXTURES=1 cargo test -p atlas-host crewmate_list_json_contract
 
 void main() {
   late List<dynamic> crewmates;

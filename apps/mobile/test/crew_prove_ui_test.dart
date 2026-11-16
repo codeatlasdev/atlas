@@ -7,11 +7,12 @@ import 'package:flutter_test/flutter_test.dart';
 
 import 'package:atlas_mobile/core/demo/demo_computer.dart';
 import 'package:atlas_mobile/core/protocol/crew_models.dart';
+import 'package:atlas_mobile/core/protocol/crew_task.dart';
 import 'package:atlas_mobile/core/protocol/models.dart';
 import 'package:atlas_mobile/core/transport/transport.dart';
 import 'package:atlas_mobile/features/crew/chat/action_card.dart';
-import 'package:atlas_mobile/features/crew/list/needs_you_card.dart';
 import 'package:atlas_mobile/features/crew/crew_provider.dart';
+import 'package:atlas_mobile/features/crew/list/needs_you_card.dart';
 
 import 'support/demo_harness.dart';
 

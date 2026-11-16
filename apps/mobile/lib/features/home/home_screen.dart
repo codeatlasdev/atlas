@@ -12,7 +12,6 @@ import 'package:atlas_mobile/core/ui/atlas_logo.dart';
 import 'package:atlas_mobile/core/ui/atlas_theme.dart';
 import 'package:atlas_mobile/core/ui/components.dart';
 import 'package:atlas_mobile/features/home/dashboard.dart';
-import 'package:atlas_mobile/features/home/onboarding.dart';
 import 'package:atlas_mobile/features/home/splash.dart';
 import 'package:atlas_mobile/features/projects/projects_provider.dart';
 
@@ -37,7 +36,19 @@ const _alwaysOnboard =
 /// Onboarding was finished in this launch (debug: lets the dashboard show afterwards).
 final onboardingSeenProvider = StateProvider<bool>((ref) => false);
 
-/// Home: onboarding until a computer is paired, then that computer's dashboard.
+/// The app is in its first run: no computer paired (or, in debug, the onboarding not finished this launch),
+/// so the shell shows the onboarding full screen instead of the tabs. Null while storage is still read (the
+/// home's loading screen covers that); false in demo mode and when storage failed (the home shows the error).
+final firstRunProvider = Provider.autoDispose<bool?>((ref) {
+  if (ref.watch(demoModeProvider)) return false;
+  final devices = ref.watch(pairedDevicesProvider);
+  if (devices.hasError) return false;
+  if (!devices.hasValue) return null;
+  return devices.value!.isEmpty ||
+      (!ref.watch(onboardingSeenProvider) && _alwaysOnboard);
+});
+
+/// Home: the paired computer's dashboard (the first run's onboarding is the shell's, not this tab's).
 class HomeScreen extends ConsumerStatefulWidget {
   const HomeScreen({super.key});
 
@@ -65,23 +76,20 @@ class _HomeScreenState extends ConsumerState<HomeScreen> {
     super.dispose();
   }
 
-  /// What the home shows: onboarding, the demo computer, or a paired one's dashboard.
-  ({bool onboard, MacDevice? device, List<MacDevice> others}) _target(
+  /// The computer shown (the demo one, or the chosen paired one) and the others to switch to. No device:
+  /// nothing is paired, the shell is showing the onboarding over this tab.
+  ({MacDevice? device, List<MacDevice> others}) _target(
     List<MacDevice> stored,
   ) {
     if (ref.watch(demoModeProvider)) {
-      return (onboard: false, device: demoDevice, others: const []);
+      return (device: demoDevice, others: const []);
     }
-    final onboard =
-        stored.isEmpty ||
-        (!ref.watch(onboardingSeenProvider) && _alwaysOnboard);
-    if (onboard) return (onboard: true, device: null, others: const []);
+    if (stored.isEmpty) return (device: null, others: const []);
     final device = stored.firstWhere(
       (d) => d.nodeId == _nodeId,
       orElse: () => stored.first,
     );
     return (
-      onboard: false,
       device: device,
       others: [
         for (final d in stored)
@@ -147,8 +155,9 @@ class _HomeScreenState extends ConsumerState<HomeScreen> {
                   child: const Text('Try again'),
                 ),
               )
-            : target!.onboard
-            ? Onboarding(paired: devices.value!.isNotEmpty)
+            : target!.device == null
+            // Nothing paired: the shell shows the onboarding over this tab, which stays bare.
+            ? const SizedBox.shrink(key: ValueKey('unpaired'))
             : HomeDashboard(
                 key: ValueKey(target.device!.nodeId),
                 device: target.device!,

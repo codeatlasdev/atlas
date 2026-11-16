@@ -2,6 +2,7 @@ import 'package:flutter/material.dart';
 import 'package:flutter_test/flutter_test.dart';
 
 import 'package:atlas_mobile/core/ui/atlas_theme.dart';
+import 'package:atlas_mobile/core/ui/backdrop.dart';
 
 /// A phone to lay a screen out on: the smallest we still support, a common
 /// small Android, and a current iPhone.
@@ -58,7 +59,11 @@ Future<void> withPhone(
 
 /// Wraps [screen] the way the app does (theme, Material, Navigator), under [wrap].
 Widget appAround(Widget screen, [AppWrapper? wrap]) {
-  final app = MaterialApp(theme: atlasTheme(), home: screen);
+  final app = MaterialApp(
+    theme: atlasTheme(),
+    builder: atlasGround,
+    home: screen,
+  );
   return wrap == null ? app : wrap(app);
 }
 

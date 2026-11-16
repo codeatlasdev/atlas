@@ -6,9 +6,9 @@ import 'package:flutter/material.dart';
 import 'package:atlas_mobile/core/protocol/crew_models.dart';
 import 'package:atlas_mobile/core/ui/atlas_theme.dart';
 import 'package:atlas_mobile/core/ui/typing_dots.dart';
-import 'package:atlas_mobile/features/crew/crew_text.dart';
 import 'package:atlas_mobile/features/crew/avatar/crewmate_avatar.dart';
 import 'package:atlas_mobile/features/crew/avatar/crewmate_look.dart';
+import 'package:atlas_mobile/features/crew/crew_text.dart';
 
 class CrewmateWorkingRow extends StatelessWidget {
   const CrewmateWorkingRow({

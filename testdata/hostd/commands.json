@@ -70,6 +70,14 @@
         "pane"
       ]
     },
+    "atlas_update": {
+      "optional": [],
+      "required": []
+    },
+    "atlas_update_check": {
+      "optional": [],
+      "required": []
+    },
     "crew_audit": {
       "optional": [
         "kind",

@@ -8,6 +8,7 @@ import 'package:atlas_mobile/core/connection/connection_notifier.dart';
 import 'package:atlas_mobile/core/protocol/models.dart';
 import 'package:atlas_mobile/core/storage/mac_storage.dart';
 import 'package:atlas_mobile/core/ui/atlas_theme.dart';
+import 'package:atlas_mobile/core/ui/backdrop.dart';
 
 class _FakeStorage extends MacStorage {
   _FakeStorage() : super(storage: null);
@@ -24,6 +25,7 @@ Widget goldenFrame(Widget child) => ProviderScope(
   ],
   child: MaterialApp(
     theme: atlasTheme(),
+    builder: atlasGround,
     home: Scaffold(body: child),
     debugShowCheckedModeBanner: false,
   ),

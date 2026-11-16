@@ -4,7 +4,7 @@ library;
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 
-import 'package:atlas_mobile/core/protocol/crew_models.dart';
+import 'package:atlas_mobile/core/protocol/crew_github.dart';
 import 'package:atlas_mobile/core/ui/atlas_theme.dart';
 
 class GithubCard extends StatelessWidget {

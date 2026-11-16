@@ -187,9 +187,9 @@ describe.skipIf(process.platform === "win32")("firebase-mobile-config.sh", () =>
 		expect(r.code).toBe(0);
 		order(r.out, [
 			"apps:create ANDROID Atlas Mobile (Android) --package-name br.com.codeatlas.atlas.mobile ",
-			"apps:create ANDROID Atlas Lab (Android) --package-name br.com.codeatlas.atlas.mobile.lab",
+			"apps:create ANDROID Atlas Dev (Android) --package-name br.com.codeatlas.atlas.mobile.dev",
 			"apps:create IOS Atlas Mobile (iOS) --bundle-id br.com.codeatlas.atlas.mobile ",
-			"apps:create IOS Atlas Lab (iOS) --bundle-id br.com.codeatlas.atlas.mobile.lab",
+			"apps:create IOS Atlas Dev (iOS) --bundle-id br.com.codeatlas.atlas.mobile.dev",
 			"apps:sdkconfig ANDROID",
 			"apps:sdkconfig IOS",
 			"gh secret set GOOGLE_SERVICES_JSON -R codeatlasdev/atlas -e mobile-beta",
@@ -219,7 +219,7 @@ describe.skipIf(process.platform === "win32")("firebase-mobile-config.sh", () =>
 echo "firebase $*" >> "${f.log}"
 case "$1" in
   projects:list) echo '{"result":[]}' ;;
-  apps:list) echo '{"result":[{"appId":"1:1:android:a","displayName":"Atlas Mobile (Android)","platform":"ANDROID"},{"appId":"1:1:android:b","displayName":"Atlas Lab (Android)","platform":"ANDROID"},{"appId":"1:1:ios:a","displayName":"Atlas Mobile (iOS)","platform":"IOS"},{"appId":"1:1:ios:b","displayName":"Atlas Lab (iOS)","platform":"IOS"}]}' ;;
+  apps:list) echo '{"result":[{"appId":"1:1:android:a","displayName":"Atlas Mobile (Android)","platform":"ANDROID"},{"appId":"1:1:android:b","displayName":"Atlas Dev (Android)","platform":"ANDROID"},{"appId":"1:1:ios:a","displayName":"Atlas Mobile (iOS)","platform":"IOS"},{"appId":"1:1:ios:b","displayName":"Atlas Dev (iOS)","platform":"IOS"}]}' ;;
   apps:sdkconfig) for ((i=1;i<=$#;i++)); do [[ "\${!i}" == "--out" ]] && { j=$((i+1)); out="\${!j}"; }; done
     if [[ "$2" == ANDROID ]]; then printf '%s' '${GOOGLE_JSON}' >"$out"; else printf '%s' '${GOOGLE_PLIST}' >"$out"; fi ;;
 esac\n`,

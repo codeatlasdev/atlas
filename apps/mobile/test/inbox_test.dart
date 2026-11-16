@@ -1,11 +1,12 @@
+import 'package:flutter_test/flutter_test.dart';
+
+import 'package:atlas_mobile/core/protocol/crew_models.dart';
+import 'package:atlas_mobile/core/protocol/models.dart';
+import 'package:atlas_mobile/features/inbox/inbox.dart';
+
 // The Inbox replaced the Crew tab's red dot, which fired on `state == 'needs_you'`,
 // while the Inbox counted only crewmates with a pending approval. These pin that a
 // crewmate shows up on either signal, so nothing the old dot showed is lost.
-import 'package:flutter_test/flutter_test.dart';
-
-import 'package:atlas_mobile/core/protocol/models.dart';
-import 'package:atlas_mobile/core/protocol/crew_models.dart';
-import 'package:atlas_mobile/features/inbox/inbox.dart';
 
 const _mac = MacDevice(nodeId: 'n1', name: 'mac');
 

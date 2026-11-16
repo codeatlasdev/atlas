@@ -1,7 +1,3 @@
-// Regression (screen recording 2026-11-12: chat_open_fade_50s, send_jump_36s, statusbar_overlap_49s): the crewmate
-// chat faded its history in message by message on every open, jumped when a message was sent, moved the reader's
-// place when something arrived below it, and let the thread draw under the clock. Frame by frame, through the
-// app's REAL routes (Crew tab -> row -> chat), real providers and a scripted crew server.
 import 'dart:async';
 import 'dart:convert';
 import 'dart:io';
@@ -24,6 +20,11 @@ import 'package:atlas_mobile/main.dart';
 
 import 'support/demo_harness.dart';
 import 'support/frame_probe.dart';
+
+// Regression (screen recording 2026-11-12: chat_open_fade_50s, send_jump_36s, statusbar_overlap_49s): the crewmate
+// chat faded its history in message by message on every open, jumped when a message was sent, moved the reader's
+// place when something arrived below it, and let the thread draw under the clock. Frame by frame, through the
+// app's REAL routes (Crew tab -> row -> chat), real providers and a scripted crew server.
 
 const _mac = MacDevice(nodeId: 'mac-1', name: 'Mac');
 const _id = 'crewmate-working';

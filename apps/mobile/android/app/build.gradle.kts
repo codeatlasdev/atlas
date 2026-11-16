@@ -13,13 +13,6 @@ val upload = Properties().apply {
     rootProject.file("key.properties").takeIf { it.exists() }?.inputStream()?.use { load(it) }
 }
 
-// Atlas Lab (`bun run mobile:lab`, docs/mobile.md "Lab lane"): `-Platlab=1` (flutter's
-// `--android-project-arg=atlas.lab=1`) installs a second app beside the real one: its own application
-// id (so its storage and permissions are its own), its name and an orange icon (src/lab/res, debug builds). Without
-// the property nothing changes: same id, name, icon and output paths as before, so the release
-// lanes (fastlane, CI) need no flavor. No push or Firebase is configured for the app, so the lab has none.
-val atlasLab = project.findProperty("atlas.lab") == "1"
-
 android {
     namespace = "br.com.codeatlas.atlas.mobile"
     compileSdk = flutter.compileSdkVersion
@@ -30,14 +23,8 @@ android {
         targetCompatibility = JavaVersion.VERSION_17
     }
 
-    // AGP 9 turns generated resource values off; the app name below is one.
-    buildFeatures {
-        resValues = true
-    }
-
     defaultConfig {
-        applicationId = "br.com.codeatlas.atlas.mobile" + if (atlasLab) ".lab" else ""
-        resValue("string", "app_name", if (atlasLab) "Atlas Lab" else "Atlas")
+        applicationId = "br.com.codeatlas.atlas.mobile"
         minSdk = flutter.minSdkVersion
         targetSdk = flutter.targetSdkVersion
         // From pubspec.yaml; the beta lane overrides the build number per upload.
@@ -45,11 +32,18 @@ android {
         versionName = flutter.versionName
     }
 
-    sourceSets {
-        if (atlasLab) {
-            // A build type's resources override main's of the same name (inside main they would be a
-            // duplicate error): the lab is always a debug build, so its orange launcher icons ride on `debug`.
-            getByName("debug").res.srcDir("src/lab/res")
+    // Two apps from one codebase (flutter's `--flavor`, docs/mobile.md "Dev and store apps"). `dev` is
+    // the default flavor (pubspec.yaml `default-flavor`): own id so its storage and permissions are its
+    // own, the name in src/dev/res/values and the orange icon in src/dev/res, on every build type. `prod`
+    // is the store app. The names are plain resources (AGP 9 turns generated resValue()s off).
+    flavorDimensions += "env"
+    productFlavors {
+        create("dev") {
+            dimension = "env"
+            applicationIdSuffix = ".dev"
+        }
+        create("prod") {
+            dimension = "env"
         }
     }
 
@@ -68,6 +62,12 @@ android {
         release {
             signingConfig =
                 signingConfigs.findByName("upload") ?: signingConfigs.getByName("debug")
+            // R8 + resource shrinking are already on for release (Flutter's Gradle plugin turns them on);
+            // this adds the native symbol table to the app bundle, so Play can symbolize a crash in
+            // libatlas_mobile_native.so (the APK itself is stripped; users do not download the symbols).
+            ndk {
+                debugSymbolLevel = "SYMBOL_TABLE"
+            }
         }
     }
 }

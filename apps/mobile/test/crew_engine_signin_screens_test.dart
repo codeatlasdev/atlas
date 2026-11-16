@@ -1,7 +1,3 @@
-// The two places a phone signs an engine in: the "Sign in to …" action card of a waiting task (a real task
-// from hostd with the real `sign_in_engine` action) and the engine rows of Crew settings. Both start
-// `crew_engine_login` on the crew server and open its terminal (`/terminal`, which keeps typing behind Face ID).
-// Incident (PhoneCrewAudit gap 2): the card said "Sign in … in Settings" and Settings had nothing to tap.
 import 'dart:convert';
 import 'dart:io';
 
@@ -12,13 +8,18 @@ import 'package:go_router/go_router.dart';
 
 import 'package:atlas_mobile/core/connection/connection_notifier.dart';
 import 'package:atlas_mobile/core/demo/demo_computer.dart';
-import 'package:atlas_mobile/core/protocol/crew_models.dart';
+import 'package:atlas_mobile/core/protocol/crew_task.dart';
 import 'package:atlas_mobile/core/protocol/models.dart';
 import 'package:atlas_mobile/core/ui/atlas_theme.dart';
 import 'package:atlas_mobile/features/crew/chat/action_card.dart';
 import 'package:atlas_mobile/features/crew/ops/crew_settings_screen.dart';
 
 import 'support/demo_harness.dart';
+
+// The two places a phone signs an engine in: the "Sign in to …" action card of a waiting task (a real task
+// from hostd with the real `sign_in_engine` action) and the engine rows of Crew settings. Both start
+// `crew_engine_login` on the crew server and open its terminal (`/terminal`, which keeps typing behind Face ID).
+// Incident (PhoneCrewAudit gap 2): the card said "Sign in … in Settings" and Settings had nothing to tap.
 
 dynamic _json(String name) =>
     jsonDecode(File('test/fixtures/$name').readAsStringSync());

@@ -1,6 +1,8 @@
 import 'package:flutter/material.dart';
 
 import 'package:atlas_mobile/core/ui/atlas_logo.dart';
+import 'package:atlas_mobile/core/links.dart';
+import 'package:atlas_mobile/core/ui/motion_loop.dart';
 import 'package:atlas_mobile/core/ui/atlas_theme.dart';
 
 /// The desktop's panel card: base fill, hairline border, 12 px radius. Pressable when
@@ -95,38 +97,12 @@ class StatusDot extends StatefulWidget {
 }
 
 class _StatusDotState extends State<StatusDot>
-    with SingleTickerProviderStateMixin {
-  late final AnimationController _a = AnimationController(
-    vsync: this,
-    duration: const Duration(milliseconds: 1400),
-  );
+    with SingleTickerProviderStateMixin, MotionLoop<StatusDot> {
+  @override
+  Duration get loopDuration => const Duration(milliseconds: 1400);
 
   @override
-  void didChangeDependencies() {
-    super.didChangeDependencies();
-    _sync();
-  }
-
-  @override
-  void didUpdateWidget(StatusDot old) {
-    super.didUpdateWidget(old);
-    _sync();
-  }
-
-  void _sync() {
-    if (widget.pulse && !Motion.reduced(context)) {
-      if (!_a.isAnimating) _a.repeat();
-    } else {
-      _a.stop();
-      _a.value = 0;
-    }
-  }
-
-  @override
-  void dispose() {
-    _a.dispose();
-    super.dispose();
-  }
+  bool get loopWhile => widget.pulse;
 
   @override
   Widget build(BuildContext context) {
@@ -134,17 +110,17 @@ class _StatusDotState extends State<StatusDot>
     return SizedBox.square(
       dimension: s * 2.2,
       child: AnimatedBuilder(
-        animation: _a,
+        animation: loop,
         builder: (_, _) => Stack(
           alignment: Alignment.center,
           children: [
             if (widget.pulse)
               Container(
-                width: s * (1 + 1.2 * _a.value),
-                height: s * (1 + 1.2 * _a.value),
+                width: s * (1 + 1.2 * loop.value),
+                height: s * (1 + 1.2 * loop.value),
                 decoration: BoxDecoration(
                   shape: BoxShape.circle,
-                  color: widget.color.withValues(alpha: .35 * (1 - _a.value)),
+                  color: widget.color.withValues(alpha: .35 * (1 - loop.value)),
                 ),
               ),
             AnimatedContainer(
@@ -161,6 +137,36 @@ class _StatusDotState extends State<StatusDot>
       ),
     );
   }
+}
+
+/// A tab's title ("Crew", "Inbox", "Settings") with its controls on the same line: every tab opens the same
+/// way, at the same height. It sits at the top of the tab's scroll view, under the status bar.
+class TabTitle extends StatelessWidget {
+  const TabTitle(this.title, {super.key, this.actions = const []});
+
+  final String title;
+
+  /// Small controls at the end of the line (a pill button, an options menu).
+  final List<Widget> actions;
+
+  @override
+  Widget build(BuildContext context) => Padding(
+    padding: const EdgeInsets.fromLTRB(Space.lg, Space.md, Space.sm, Space.md),
+    child: ConstrainedBox(
+      constraints: const BoxConstraints(minHeight: kMinInteractiveDimension),
+      child: Row(
+        children: [
+          Expanded(
+            child: Semantics(
+              header: true,
+              child: Text(title, style: Theme.of(context).textTheme.titleLarge),
+            ),
+          ),
+          ...actions,
+        ],
+      ),
+    ),
+  );
 }
 
 /// Uppercase-free section title with an optional count and trailing control.
@@ -213,7 +219,9 @@ class SectionHeader extends StatelessWidget {
   }
 }
 
-/// Centered logo, title, line and action, used for every empty and error state.
+/// Centered logo, title, line and action, used for every empty and error state. A state the person can act
+/// on outside the app (set something up on a computer) carries a [guide]: the docs page that walks them
+/// through it, so the screen is a next step, not only a report.
 class EmptyState extends StatelessWidget {
   const EmptyState({
     super.key,
@@ -221,6 +229,7 @@ class EmptyState extends StatelessWidget {
     required this.message,
     this.action,
     this.icon,
+    this.guide,
   });
 
   final String title;
@@ -229,6 +238,9 @@ class EmptyState extends StatelessWidget {
 
   /// Defaults to the Atlas logo.
   final Widget? icon;
+
+  /// (label, page): a link under the action, opened in the browser.
+  final (String, Uri)? guide;
 
   @override
   Widget build(BuildContext context) {
@@ -266,6 +278,15 @@ class EmptyState extends StatelessWidget {
                   if (action != null) ...[
                     const SizedBox(height: Space.xl),
                     action!,
+                  ],
+                  if (guide case (final label, final uri)) ...[
+                    SizedBox(height: action == null ? Space.lg : Space.sm),
+                    TextButton.icon(
+                      onPressed: () => openLink(uri),
+                      iconAlignment: IconAlignment.end,
+                      icon: const Icon(Icons.arrow_outward_rounded, size: 16),
+                      label: Text(label),
+                    ),
                   ],
                 ],
               ),

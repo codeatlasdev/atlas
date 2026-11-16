@@ -1,6 +1,3 @@
-// A phone that was offline when a crew server's invite was pushed used to miss it for good: the app only
-// listened for the `computer_invite` push and never called `mobile_invites` (PhoneCrewAudit gaps 1 and 4).
-// On connect it now asks every computer for its pending invites.
 import 'dart:async';
 import 'dart:convert';
 
@@ -14,6 +11,10 @@ import 'package:atlas_mobile/core/transport/transport.dart';
 import 'package:atlas_mobile/features/crew/crew_provider.dart';
 
 import 'support/demo_harness.dart';
+
+// A phone that was offline when a crew server's invite was pushed used to miss it for good: the app only
+// listened for the `computer_invite` push and never called `mobile_invites` (PhoneCrewAudit gaps 1 and 4).
+// On connect it now asks every computer for its pending invites.
 
 const _mac = MacDevice(nodeId: 'mac-1', name: 'Mac');
 const _server = MacDevice(nodeId: 'srv-1', name: 'Ship');

@@ -12,6 +12,7 @@ import 'package:atlas_mobile/core/protocol/models.dart';
 import 'package:atlas_mobile/core/storage/mac_storage.dart';
 import 'package:atlas_mobile/core/transport/transport.dart';
 import 'package:atlas_mobile/core/ui/atlas_theme.dart';
+import 'package:atlas_mobile/core/ui/backdrop.dart';
 
 class DemoStorage extends MacStorage {
   DemoStorage(this.devices) : super(storage: null);
@@ -38,7 +39,7 @@ Widget demoWrap(
     ),
     ...overrides,
   ],
-  child: MaterialApp(theme: atlasTheme(), home: child),
+  child: MaterialApp(theme: atlasTheme(), builder: atlasGround, home: child),
 );
 
 /// Lets timers and demo pushes run for three seconds of fake time.

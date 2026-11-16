@@ -236,7 +236,7 @@ say "4. a hanging task: cancel ends it and everything it started (#290)"
 T=$(send_task "$CM" "E2E_HANG 31337")
 wait_task "$CM" "$T" running 60
 until_true 20 "the engine's child process (sleep 31337) to exist" has_sleeper 31337
-NNP=$(srv sh -c "for p in \$(pgrep -fx 'sleep 31337'); do while read k v; do [ \"\$k\" = NoNewPrivs: ] && echo \$v; done < /proc/\$p/status; done")
+NNP=$(srv sh -c "for p in \$(pgrep -fx 'sleep 31337'); do while read k v; do [ \"\$k\" = NoNewPrivs: ] && echo \$v; done < /proc/\$p/status; done; true") || true
 [[ $NNP == 1 ]] || fail "the crewmate's agent process does not have NoNewPrivs: 1 (got '$NNP')"
 OWNER=$(owner_of_sleeper 31337)
 [[ $OWNER == "$CMUSER" ]] || fail "the engine's child runs as '$OWNER', not as the crewmate's own user $CMUSER"

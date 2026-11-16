@@ -124,7 +124,9 @@ pub fn cgroup_path() -> String {
 /// `atlas-crew-provision.service`: the one root process that may create and remove accounts.
 ///
 /// - `CAP_CHOWN`, `CAP_FOWNER`, `CAP_DAC_OVERRIDE` give the crewmate's directories their owners and
-///   modes; `CAP_SETUID`/`CAP_SETGID` are what `useradd` and `userdel` need on `/etc/passwd`;
+///   modes; `CAP_FSETID` keeps the setgid bit of `work/` (a `chmod 2770` by a process without it, whose groups
+///   do not include the directory's, silently drops the bit: files the agent made then belonged to its own
+///   group and hostd could not read them; found by the real-systemd E2E); `CAP_SETUID`/`CAP_SETGID` are what `useradd` and `userdel` need on `/etc/passwd`;
 ///   `CAP_KILL` ends a deleted crewmate's processes; `CAP_NET_ADMIN` loads the egress rules.
 /// - Writes only what account tools touch: `/etc`, `/var/lib/atlas-cm`, `/var/log` (lastlog), `/run`.
 ///   `ProtectSystem=strict`, not `full`: `full` keeps `/etc` read-only and a `ReadWritePaths=/etc` does not
@@ -144,7 +146,7 @@ ExecStart={INSTALL_DIR}/atlas crew-spawn --provision\n\
 KillMode=process\n\
 Restart=on-failure\n\
 NoNewPrivileges=yes\n\
-CapabilityBoundingSet=CAP_CHOWN CAP_FOWNER CAP_DAC_OVERRIDE CAP_SETUID CAP_SETGID CAP_KILL CAP_NET_ADMIN\n\
+CapabilityBoundingSet=CAP_CHOWN CAP_FOWNER CAP_FSETID CAP_DAC_OVERRIDE CAP_SETUID CAP_SETGID CAP_KILL CAP_NET_ADMIN\n\
 ProtectSystem=strict\n\
 ReadWritePaths=/etc {CM_ROOT} /var/log /run\n\
 ProtectHome=yes\n\
@@ -843,6 +845,7 @@ mod tests {
                 "CAP_CHOWN",
                 "CAP_DAC_OVERRIDE",
                 "CAP_FOWNER",
+                "CAP_FSETID",
                 "CAP_KILL",
                 "CAP_NET_ADMIN",
                 "CAP_SETGID",

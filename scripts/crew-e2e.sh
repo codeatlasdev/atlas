@@ -324,6 +324,9 @@ AUID=$(srv id -u "$CMUSER")
 for d in "$DIRA" "$DIRB"; do
   [[ $(mode_of "$d") == "root:root 711" ]] || fail "$d is $(mode_of "$d"), not root:root 711"
 done
+# work/ is setgid (2770): what A writes there belongs to the crew group, which is how hostd reads it. A provisioning service
+# without CAP_FSETID silently dropped the bit (found by the ui_gate check below, which could not read A's atlas.yaml).
+[[ $(srv stat -c %a "$WORKA") == 2770 ]] || fail "work/ is $(srv stat -c %a "$WORKA"), not 2770: files A makes there are not readable by hostd"
 denied "A listing its own crewmate directory" as_user "$CMUSER" ls "$DIRA"
 denied "A renaming work/ in its directory" as_user "$CMUSER" mv "$WORKA" "$DIRA/work.moved"
 denied "A planting a link in its directory" as_user "$CMUSER" ln -s /etc/passwd "$DIRA/memory.md.link"
@@ -471,14 +474,13 @@ echo "capture: B's loopback port (127.0.0.1 and [::]), 0.0.0.0 and 169.254.169.2
 # plan, then links `.atlas` to B's work tree and asks to register a regression: B's tree must not get the registry.
 denied "A making a file in the crew home" as_user "$CMUSER" touch "$HOME_DIR/e2e-affected-ran"
 srv rm -rf "$WORKA/.atlas" "$WORKA/atlas.yaml"
-echo "work/ before the task: $(mode_of "$WORKA") $(srv stat -c %a "$WORKA")"
 T=$(send_task "$CM" "E2E_UIGATE $SLUGB")
 wait_task "$CM" "$T" "done" 90
 UIGATE=$(task_json "$CM" "$T" | jq -r '.reply // .result')
 echo "A's ui_gate calls: $UIGATE"
 srv test -L "$WORKA/.atlas" || fail "control: A's .atlas is not a link, so the check proves nothing: $UIGATE"
 [[ $UIGATE == *"plan=["*"affected.command"*"link=["* ]] ||
-  fail "ui_gate did not refuse A's affected.command: $UIGATE ($(srv stat -c '%U:%G %a %n' "$WORKA" "$WORKA/atlas.yaml" 2>&1 | tr '\n' ';'))"
+  fail "ui_gate did not refuse A's affected.command: $UIGATE"
 srv test ! -e "$HOME_DIR/e2e-affected-ran" || fail "hostd ran A's affected.command as the crew user"
 [[ $UIGATE == *"link=["*"ui-regressions.json"* ]] || fail "ui_gate did not refuse the registry behind A's .atlas link: $UIGATE"
 srv test ! -e "$DIRB/work/ui-regressions.json" || fail "hostd wrote the registry into B's work tree through A's .atlas link"

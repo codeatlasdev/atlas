@@ -1,5 +1,5 @@
-import 'package:flutter/cupertino.dart';
-import 'package:flutter/material.dart';
+import 'package:cupertino_ui/cupertino_ui.dart';
+import 'package:material_ui/material_ui.dart';
 
 /// Atlas's palette, taken from the desktop's bundled theme
 /// (`apps/desktop/src/lib/themes/atlas.json`, Atlas Dark / Atlas Light, Tokyo Night).

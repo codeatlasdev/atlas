@@ -2,7 +2,7 @@
 // projects, the project screen, an agent and its terminal. Run by
 // `bun scripts/mobile-e2e.ts`, which starts an isolated hostd with a fixture
 // project and an agent terminal and passes the pairing URL in `E2E_PAIR_URL`.
-import 'package:flutter/material.dart';
+import 'package:material_ui/material_ui.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:integration_test/integration_test.dart';

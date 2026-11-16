@@ -1,7 +1,7 @@
 /// "Crewmate wants to run a tool": the bubble that carries Deny / Allow in the chat thread.
 library;
 
-import 'package:flutter/material.dart';
+import 'package:material_ui/material_ui.dart';
 
 import 'package:atlas_mobile/core/protocol/crew_models.dart';
 import 'package:atlas_mobile/core/ui/atlas_theme.dart';

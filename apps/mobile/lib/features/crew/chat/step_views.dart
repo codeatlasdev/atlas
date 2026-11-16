@@ -1,7 +1,7 @@
 /// A task's steps in a crewmate bubble: grouped phases, each a short list of step phrases.
 library;
 
-import 'package:flutter/material.dart';
+import 'package:material_ui/material_ui.dart';
 
 import 'package:atlas_mobile/core/protocol/crew_models.dart';
 import 'package:atlas_mobile/core/ui/atlas_theme.dart';

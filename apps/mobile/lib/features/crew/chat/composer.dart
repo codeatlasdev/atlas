@@ -1,7 +1,7 @@
 /// The chat's composer: a floating pill whose send dot buds out of its right end once there is text.
 library;
 
-import 'package:flutter/material.dart';
+import 'package:material_ui/material_ui.dart';
 import 'package:flutter/services.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 

@@ -1,7 +1,7 @@
 /// The profile's Automations section: one swipe-to-delete row per trigger and an Add button.
 library;
 
-import 'package:flutter/material.dart';
+import 'package:material_ui/material_ui.dart';
 
 import 'package:atlas_mobile/core/protocol/crew_models.dart';
 import 'package:atlas_mobile/core/protocol/crew_triggers.dart';

@@ -1,7 +1,7 @@
 /// The profile's GitHub account card: connected, not connected, or the device code to enter.
 library;
 
-import 'package:flutter/material.dart';
+import 'package:material_ui/material_ui.dart';
 import 'package:flutter/services.dart';
 
 import 'package:atlas_mobile/core/protocol/crew_github.dart';

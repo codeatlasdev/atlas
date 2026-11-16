@@ -1,7 +1,7 @@
 // Guards the 2026-11-03 bug: going Crew -> Computers moved the tab bar but the Crew page stayed on screen. The
 // frame-by-frame, real-shell version of "one page at a time" is test/tab_switch_test.dart; these are the parts
 // of FadeBranches that need no app around it.
-import 'package:flutter/material.dart';
+import 'package:material_ui/material_ui.dart';
 import 'package:flutter_test/flutter_test.dart';
 
 import 'package:atlas_mobile/core/ui/atlas_theme.dart';

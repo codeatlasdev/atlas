@@ -3,7 +3,7 @@
 // Regression: the crew audit's filter chip was 36 dp tall (below the 48 dp touch target Material asks for).
 import 'dart:ui' show Tristate;
 
-import 'package:flutter/material.dart';
+import 'package:material_ui/material_ui.dart';
 import 'package:flutter_test/flutter_test.dart';
 
 import 'package:atlas_mobile/core/ui/atlas_theme.dart';

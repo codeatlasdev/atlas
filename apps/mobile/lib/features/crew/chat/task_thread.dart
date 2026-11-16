@@ -2,7 +2,7 @@
 /// result), an inline approval and the task action card, as a column in the thread.
 library;
 
-import 'package:flutter/material.dart';
+import 'package:material_ui/material_ui.dart';
 
 import 'package:atlas_mobile/core/protocol/crew_models.dart';
 import 'package:atlas_mobile/core/protocol/crew_task.dart';

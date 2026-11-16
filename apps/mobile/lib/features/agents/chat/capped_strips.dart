@@ -1,4 +1,4 @@
-import 'package:flutter/material.dart';
+import 'package:material_ui/material_ui.dart';
 
 /// A column of fixed-height strips that scrolls when the room runs out: it never takes
 /// more than [share] of [bodyHeight], the room the chat body really has (the screen

@@ -3,7 +3,7 @@ library;
 
 import 'dart:math' as math;
 
-import 'package:flutter/material.dart';
+import 'package:material_ui/material_ui.dart';
 import 'package:path_parsing/path_parsing.dart';
 
 import 'package:atlas_mobile/features/crew/avatar/crew_shell_paths.dart';

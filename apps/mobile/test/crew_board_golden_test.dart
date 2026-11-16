@@ -1,7 +1,7 @@
 /// Golden screenshot: the board with cards in every column.
 library;
 
-import 'package:flutter/material.dart';
+import 'package:material_ui/material_ui.dart';
 import 'package:flutter_test/flutter_test.dart';
 
 import 'package:atlas_mobile/core/protocol/crew_models.dart';

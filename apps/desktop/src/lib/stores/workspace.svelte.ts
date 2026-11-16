@@ -18,6 +18,7 @@ import { clampRatio, leaves, removeLeaf, splitAt, splitLeaf } from "#lib/stores/
 import { rightNeighbor } from "#lib/stores/preview.ts";
 import { ptyRequest } from "#lib/stores/ptySpawn.ts";
 import { WorkspacePersist } from "#lib/stores/workspacePersist.svelte.ts";
+import { tabTitle } from "#lib/title.ts";
 import {
 	emptyDoc,
 	type Doc,
@@ -87,7 +88,7 @@ class Workspace {
 			const list = await host.ptyList();
 			this.ptys = Object.fromEntries(list.map((p) => [p.pty, p]));
 			for (const p of list) {
-				this.titles[p.pty] = p.title;
+				this.titles[p.pty] = tabTitle(p.title);
 				if (p.exited) this.exited[p.pty] = p.exited.code;
 			}
 			this.hostError = null;

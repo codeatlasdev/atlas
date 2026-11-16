@@ -6,6 +6,7 @@ import { toast } from "@codeatlasdev/ui";
 import { errText } from "#lib/api.ts";
 import { errors } from "#lib/errors/errors.svelte.ts";
 import { emptyDoc, type Doc } from "#lib/stores/workspaceTypes.ts";
+import { tabTitle } from "#lib/title.ts";
 
 const SAVE_DEBOUNCE_MS = 300;
 
@@ -35,7 +36,7 @@ export class WorkspacePersist {
 			track(
 				listen<{ ev: string; pty?: string; title?: string; code?: number | null }>("host://event", (e) => {
 					const p = e.payload;
-					if (p.ev === "pty_title" && p.pty) ws.titles[p.pty] = p.title ?? "";
+					if (p.ev === "pty_title" && p.pty) ws.titles[p.pty] = tabTitle(p.title ?? "");
 					if (p.ev === "pty_exit" && p.pty) ws.exited[p.pty] = p.code ?? null;
 				}),
 			),

@@ -14,7 +14,8 @@ use super::AtlasCommand;
 use super::release::{REPO, download_verified};
 use super::update_channel::{self as ch, Pick};
 use super::update_core;
-use super::update_pkg::{self, PackageManager};
+use super::update_pkg;
+use atlas_core::pkgowner::{self, PackageManager};
 
 const CURRENT_VERSION: &str = env!("CARGO_PKG_VERSION");
 
@@ -303,7 +304,7 @@ pub fn print_update_notice() {
         .clamp(40, 200);
     let rule = "─".repeat(width);
     let run = update_command(
-        &InstallMethod::of_exe(&update_core::judged_exe(), update_pkg::owner),
+        &InstallMethod::of_exe(&update_core::judged_exe(), pkgowner::owner),
         &v,
     );
     eprintln!();
@@ -470,7 +471,7 @@ fn installed_version() -> semver::Version {
 
 pub(crate) async fn run_update(req: Request) -> Result<UpdateOutcome> {
     let judged = update_core::judged_exe();
-    let method = InstallMethod::of_exe(&judged, update_pkg::owner);
+    let method = InstallMethod::of_exe(&judged, pkgowner::owner);
 
     // `--channel X` sticks, even where this binary cannot install anything itself.
     if let Some(on) = req.channel {
@@ -1050,7 +1051,7 @@ mod tests {
 
     #[test]
     fn test_install_method_of_this_binary() {
-        let m = InstallMethod::of_exe(&update_core::judged_exe(), update_pkg::owner);
+        let m = InstallMethod::of_exe(&update_core::judged_exe(), pkgowner::owner);
         assert!(matches!(
             m,
             InstallMethod::Manual

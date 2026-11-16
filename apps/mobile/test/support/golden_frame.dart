@@ -1,7 +1,7 @@
 /// The frame every crew golden is drawn in: the app theme, a fake storage and no transport.
 library;
 
-import 'package:flutter/material.dart';
+import 'package:material_ui/material_ui.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 
 import 'package:atlas_mobile/core/connection/connection_notifier.dart';

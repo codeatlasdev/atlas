@@ -5,7 +5,7 @@
 /// and answers the terminal; typing into it stays behind the terminal screen's `term_write` scope and Face ID.
 library;
 
-import 'package:flutter/material.dart';
+import 'package:material_ui/material_ui.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:go_router/go_router.dart';
 

@@ -1,7 +1,7 @@
 /// Golden screenshot: chat with a running task (2 step groups) and the add_trigger card.
 library;
 
-import 'package:flutter/material.dart';
+import 'package:material_ui/material_ui.dart';
 import 'package:flutter_test/flutter_test.dart';
 
 import 'package:atlas_mobile/core/protocol/crew_models.dart';

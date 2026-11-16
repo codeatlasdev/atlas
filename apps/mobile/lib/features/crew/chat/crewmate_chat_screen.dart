@@ -4,7 +4,7 @@ library;
 
 import 'dart:async';
 
-import 'package:flutter/material.dart';
+import 'package:material_ui/material_ui.dart';
 import 'package:flutter/services.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 
@@ -102,7 +102,7 @@ class _CrewmateChatScreenState extends ConsumerState<CrewmateChatScreen> {
     super.initState();
     // A thread this phone already read is on screen at once, and is read again behind it.
     final thread = crewmateTasksProvider((widget.device, widget.crewmateId));
-    if (ref.exists(thread)) ref.invalidate(thread);
+    if (ref.read(thread.exists)) ref.invalidate(thread);
     if (widget.scrollToTaskId != null) {
       WidgetsBinding.instance.addPostFrameCallback(
         (_) => _scrollToTask(widget.scrollToTaskId!),

@@ -2,7 +2,7 @@
 /// service. Each edits [AutomationDraft] and calls `onChanged` to rebuild the sheet.
 library;
 
-import 'package:flutter/material.dart';
+import 'package:material_ui/material_ui.dart';
 
 import 'package:atlas_mobile/core/ui/atlas_theme.dart';
 import 'package:atlas_mobile/features/crew/automation_editor/automation_draft.dart';

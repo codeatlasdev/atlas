@@ -107,3 +107,19 @@ test("a failed check is not 'up to date' just because an earlier one was", () =>
 	expect(c.headline).toBe("Atlas versions");
 	expect(c.hero).not.toMatch(/up to date/i);
 });
+
+// #313: the app runs a withdrawn version. The release is the real Rust serialization (fixture), so the field the
+// section reads is the one hostd's `latest_release` really sends.
+test("a withdrawn running version says why and that updating leaves it", () => {
+	card({ release: fixtureViews.release.yanked, checkedAt: Date.now() });
+	const text = document.body.textContent.replace(/\s+/g, " ");
+	expect(text).toContain("This version was withdrawn");
+	expect(text).toContain("Corrupts the workspace file on first launch.");
+	expect(text).toContain("Use 1.4.0-beta.2 instead.");
+	expect(text).toContain("Update to leave it.");
+});
+
+test("a version that was not withdrawn shows no withdrawal notice", () => {
+	card({ release: fixtureViews.release.update, checkedAt: Date.now() });
+	expect(document.body.textContent).not.toContain("withdrawn");
+});

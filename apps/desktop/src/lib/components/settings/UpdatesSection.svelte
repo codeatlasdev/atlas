@@ -153,6 +153,15 @@
 	<Alert severity="error" title="Could not check for updates">{u.error}</Alert>
 {/if}
 
+{#if u.release?.yanked}
+	<Alert severity="warning" title="This version was withdrawn">
+		{u.release.yanked.reason}
+		{#if u.release.yanked.replacement}Use {u.release.yanked.replacement} instead.{/if}
+		{#if u.available}Update to leave it.{:else if u.aheadOfChannel}The newest safe release is older: install
+			it with the button at the bottom.{/if}
+	</Alert>
+{/if}
+
 {#if u.available && !u.pill && !u.linked}
 	<p class="skipnote">
 		You skipped {u.release?.version}, so Atlas will not remind you. It will tell you about the next one.

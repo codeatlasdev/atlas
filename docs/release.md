@@ -241,11 +241,22 @@ Users get the new version with `atlas update`, which downloads `atlas-<version>-
 
 ## Yanking a bad release
 
-A release that must not be installed is handled in the open and never rewritten:
+A release that must not be installed is withdrawn in the open and never rewritten. The tag and the assets stay (other clones and the resume logic rely on them); what changes is that every client stops offering it, **without a new release**:
 
-1. Mark it in `CHANGELOG.md`: `## [1.4.0-beta.2] — 2026-10-20 [YANKED]` with one line saying why and which version to use instead. Do not delete the section.
-2. Ship the fix as the next version (`beta.3`, or `patch` for a stable). Clients move up to it by SemVer precedence.
-3. Only the maintainer may then demote or remove the GitHub release: `gh release edit vX.Y.Z --prerelease` (a release stops being "Latest" once something newer is marked latest; demoting a default-channel alpha hands "Latest" back to the previous build only when you also `gh release edit <tag> --latest`), or `gh release delete vX.Y.Z` for a build that is dangerous to keep downloadable. Never delete or move the **tag**: other clones and the resume logic rely on it, and a deleted version number is never reused (v1.2.0 was deleted and stays skipped).
+1. Add it to [`data/yanked.json`](../data/yanked.json) on `main` (a normal PR; a maintainer may merge it as an emergency):
+
+   ```json
+   { "yanked": [ { "version": "1.5.0-alpha.3", "reason": "Corrupts the workspace file on first launch.", "replacement": "1.5.0-alpha.4" } ] }
+   ```
+
+   `version` has no leading `v`; `reason` is one line the user reads; `replacement` is optional and must not be yanked itself. `cargo test -p atlas-core yanked` checks the committed file.
+2. From then on, `atlas update`, the app's Settings → Updates and the channel cards, hostd's phone check and `atlas desktop` skip that version: a channel offers the newest published version that is not yanked (Stable falls back to the previous Stable, even when `releases/latest` still names the yanked one). Clients read the file from `raw.githubusercontent.com/codeatlasdev/atlas/main/data/yanked.json` at every update check, so it applies within the check interval (6 h for the cached banner) of the merge. A client that cannot read it (offline, GitHub down, a file that does not parse) logs that and offers every release: the list only removes offers, so not knowing it never blocks an update.
+3. A user who **runs** the yanked version is told why (`atlas update`, `atlas update --check --json` as `yanked`, Settings → Updates) and is offered the newest version of their channel that is not yanked, even when that is older than what they run (a confirmed rollback, like `--downgrade`).
+4. Mark the section in `CHANGELOG.md` as well: `## [1.4.0-beta.2] — 2026-10-20 [YANKED]` with one line saying why and which version to use instead. Do not delete it.
+5. Ship the fix as the next version (`beta.3`, or `patch` for a stable); clients move up to it by SemVer precedence.
+6. Only the maintainer may also demote or remove the GitHub release: `gh release edit vX.Y.Z --prerelease` (a release stops being "Latest" once something newer is marked latest; demoting a default-channel alpha hands "Latest" back to the previous build only when you also `gh release edit <tag> --latest`), or `gh release delete vX.Y.Z` for a build that is dangerous to keep downloadable. Never delete or move the **tag**, and a deleted version number is never reused (v1.2.0 was deleted and stays skipped).
+
+The manifest (`manifest.json`) has no kill-switch fields: it holds `version`, `channel`, `prerelease`, `commit`, `date`, `assets`, `changelog` and, for a promotion, `promoted_from`. `scripts/test_generate_manifest.py` pins that set, so a key nothing reads cannot come back. The yank list is not signed yet; it is as trustworthy as `main` (signing waits for #279).
 
 ## Provenance and signing: what is true today
 

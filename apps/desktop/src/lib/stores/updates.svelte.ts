@@ -61,6 +61,8 @@ export interface Release {
 	/** Installed CLI / this app is newer than `version` (only an explicit downgrade installs it). */
 	cli_ahead: boolean;
 	app_ahead: boolean;
+	/** This app's version was withdrawn (`data/yanked.json`): why, and what replaces it; null when it was not. */
+	yanked: { version: string; reason: string; replacement: string | null } | null;
 }
 
 export type { SettingsSection, SettingsTab } from "#lib/settings/index.ts";

@@ -58,6 +58,9 @@ fn private_link_local_metadata_and_cgnat_addresses_are_refused_in_every_notation
         "fc00::1",
         "fd12:3456::1",
         "fe80::1",
+        // NAT64 carries IPv4 addresses, the private ones too (security review 5).
+        "64:ff9b::a00:1",
+        "64:ff9b::a9fe:a9fe",
         // The same address in IPv6 clothes.
         "::ffff:169.254.169.254",
         "::ffff:10.1.2.3",
@@ -81,13 +84,23 @@ fn private_link_local_metadata_and_cgnat_addresses_are_refused_in_every_notation
 // was a way to reach another crewmate's `[::1]` server while only one's own `0.0.0.0` socket was looked at.
 #[test]
 fn an_unspecified_address_is_refused_even_when_my_own_wildcard_listener_is_on_the_port() {
-    let table = tcp(&[("::1", 5173, OTHER), ("0.0.0.0", 5173, ME), ("::", 5174, ME)]);
+    let table = tcp(&[
+        ("::1", 5173, OTHER),
+        ("0.0.0.0", 5173, ME),
+        ("::", 5174, ME),
+    ]);
     for ip in ["::", "0.0.0.0"] {
         for local in [true, false] {
             let why = judged(ip, 5173, &table, local).unwrap_err();
-            assert!(why.contains("private, link-local or metadata"), "{ip}: {why}");
+            assert!(
+                why.contains("private, link-local or metadata"),
+                "{ip}: {why}"
+            );
         }
-        assert!(judged(ip, 5174, &table, true).is_err(), "{ip} even for my own `::` server");
+        assert!(
+            judged(ip, 5174, &table, true).is_err(),
+            "{ip} even for my own `::` server"
+        );
     }
 }
 
@@ -95,9 +108,15 @@ fn an_unspecified_address_is_refused_even_when_my_own_wildcard_listener_is_on_th
 #[test]
 fn an_ipv4_wildcard_listener_does_not_cover_an_ipv6_address() {
     let table = tcp(&[("0.0.0.0", 5173, ME), ("::", 5175, ME)]);
-    assert!(judged("::1", 5173, &table, true).is_err(), "::1 is not served by 0.0.0.0");
+    assert!(
+        judged("::1", 5173, &table, true).is_err(),
+        "::1 is not served by 0.0.0.0"
+    );
     assert!(judged("127.0.0.1", 5173, &table, true).is_ok());
-    assert!(judged("::1", 5175, &table, true).is_ok() && judged("127.0.0.1", 5175, &table, true).is_ok());
+    assert!(
+        judged("::1", 5175, &table, true).is_ok()
+            && judged("127.0.0.1", 5175, &table, true).is_ok()
+    );
     // B on `[::1]` only, me on `0.0.0.0`: the very listener table of the attack, asking for ::1 itself.
     let table = tcp(&[("::1", 5173, OTHER), ("0.0.0.0", 5173, ME)]);
     assert!(judged("::1", 5173, &table, true).is_err());

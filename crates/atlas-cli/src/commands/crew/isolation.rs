@@ -162,19 +162,23 @@ MemoryDenyWriteExecute=yes\n"
 /// The provisioning service rewrites [`EGRESS_FILE`] whenever a user comes or goes; this only replays it.
 /// `PartOf=`/`After=nftables.service`: a restart of nftables (Debian's `/etc/nftables.conf` begins with
 /// `flush ruleset`) removes the table, and this restarts with it and loads it again (security review 4, S-C); the
-/// spawn helper also refuses to start anyone while the table is missing.
+/// spawn helper also refuses to start anyone while the table is missing. A *reload* of nftables flushes the ruleset
+/// the same way, and `PartOf=` does not carry it: `ReloadPropagatedFrom=` does, and `ExecReload` loads the table
+/// again (security review 5, S-1).
 pub fn egress_unit() -> String {
     format!(
         "[Unit]\n\
 Description=Atlas Crew egress rules for crewmate users\n\
 After=network-pre.target nftables.service\n\
 PartOf=nftables.service\n\
+ReloadPropagatedFrom=nftables.service\n\
 Before=network.target\n\
 ConditionPathExists={EGRESS_FILE}\n\
 [Service]\n\
 Type=oneshot\n\
 RemainAfterExit=yes\n\
 ExecStart=/usr/sbin/nft -f {EGRESS_FILE}\n\
+ExecReload=/usr/sbin/nft -f {EGRESS_FILE}\n\
 [Install]\n\
 WantedBy=multi-user.target\n"
     )
@@ -618,6 +622,9 @@ mod tests {
             "RemainAfterExit",
             // 187.
             "PartOf",
+            // 237 and 1: the egress unit follows a reload of nftables (security review 5, S-1).
+            "ReloadPropagatedFrom",
+            "ExecReload",
         ];
         for unit in [
             service_unit(),
@@ -997,6 +1004,9 @@ mod tests {
             // Security review 4, S-C: a flush of the ruleset by nftables.service reloads the rules with it.
             "After=network-pre.target nftables.service\n",
             "PartOf=nftables.service\n",
+            // Security review 5, S-1: so does a reload of nftables, which the unit follows and answers by loading again.
+            "ReloadPropagatedFrom=nftables.service\n",
+            "ExecReload=/usr/sbin/nft -f /etc/atlas-crew/egress.nft\n",
         ] {
             assert!(u.contains(want), "missing {want:?}");
         }

@@ -185,7 +185,9 @@ function collectDom([maxElements, textMax]) {
  * Whether `browser` sends a request for a loopback address to its proxy and not straight out. A canary server on
  * 127.0.0.1 belongs to this process, not to the crewmate the guard serves, so the guard refuses it: the canary seeing
  * a connection means the engine bypassed the proxy for loopback (as a browser may by default), and nothing it loads
- * could be decided. Both spellings are tried: `localhost` is special-cased by some engines.
+ * could be decided. Every spelling is tried: `localhost` is special-cased by some engines, and `[::1]` and
+ * `127.0.0.2` are loopback that a rule written for `127.0.0.1` alone does not cover (security review 5, S-3). The
+ * canary listens on every address (`::`, dual-stack, or `0.0.0.0` where the machine has no IPv6) to see all four.
  */
 async function proxyIsUsed(browser) {
 	let hits = 0;
@@ -193,12 +195,12 @@ async function proxyIsUsed(browser) {
 		hits++;
 		res.end("canary");
 	});
-	await new Promise((resolve) => canary.listen(0, "127.0.0.1", resolve));
+	await new Promise((resolve) => canary.listen(0, resolve));
 	const { port } = canary.address();
 	const context = await browser.newContext();
 	try {
 		const page = await context.newPage();
-		for (const host of ["127.0.0.1", "localhost"]) {
+		for (const host of ["127.0.0.1", "localhost", "[::1]", "127.0.0.2"]) {
 			await page.goto(`http://${host}:${port}/`, { timeout: 8_000 }).catch(() => {});
 		}
 	} finally {

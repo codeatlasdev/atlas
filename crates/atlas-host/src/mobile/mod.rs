@@ -638,7 +638,7 @@ pub(crate) fn loopback_only(
 
 impl Mobile {
     /// The sockets the endpoint is bound to (empty until it is).
-    #[cfg(test)]
+    #[cfg(all(test, unix))]
     pub(crate) fn endpoint_sockets(&self) -> Vec<std::net::SocketAddr> {
         self.endpoint
             .lock()

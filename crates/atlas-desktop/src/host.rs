@@ -103,6 +103,75 @@ struct HostCtl {
     /// Why the last attempt to connect to or start the local daemon failed (redacted); cleared
     /// on connect. Part of the "not reachable" message and of the diagnostics.
     last_error: Option<String>,
+    /// The local daemon the app last reconciled with, to tell its death from a clean handover (#276).
+    served: Option<Served>,
+}
+
+/// The daemon behind the current (or last) local connection.
+struct Served {
+    pid: u64,
+    /// The app asked it to end (upgrade, shutdown, the user's restart): its exit is no incident.
+    clean: bool,
+}
+
+/// The pid of the daemon that ended without anyone asking it to, given the one the app was served by and the one it
+/// is connected to now. Needs two known pids that differ: the same pid after a reconnect is a daemon that is alive
+/// (the connection dropped, not the daemon), and a daemon that reports no pid (proto 1) cannot be compared.
+fn lost_hostd(prev: Option<Served>, now: u64) -> Option<u64> {
+    let p = prev?;
+    (!p.clean && p.pid != 0 && now != 0 && p.pid != now).then_some(p.pid)
+}
+
+impl HostCtl {
+    /// The app is connected to the daemon `pid`: the old pid when that replaced one that died unasked.
+    fn connected(&mut self, pid: u64) -> Option<u64> {
+        lost_hostd(self.served.replace(Served { pid, clean: false }), pid)
+    }
+
+    /// The app is about to end daemon `pid` (or hand over from it): its exit is expected.
+    fn expect_exit(&mut self, pid: u64) {
+        if let Some(s) = self.served.as_mut().filter(|s| s.pid == pid) {
+            s.clean = true;
+        }
+    }
+
+    /// The daemon did not leave after all (a failed upgrade): a later exit is a death again.
+    fn withdraw_expected_exit(&mut self) {
+        if let Some(s) = self.served.as_mut() {
+            s.clean = false;
+        }
+    }
+}
+
+/// What the incident says: both pids, and the old daemon's crash report when it left one (its panic hook ran). Its
+/// exit status is not known: the daemon is not a child of the app.
+fn hostd_exit_detail(old: u64, new: u64, crash: Option<&str>) -> String {
+    let mut d = format!(
+        "terminal host pid {old} ended without a shutdown, upgrade or restart from the app; the app is now \
+         connected to pid {new}. Its terminals ended."
+    );
+    if let Some(c) = crash {
+        d.push_str(&format!(" Crash report: {c}."));
+    }
+    d
+}
+
+/// The newest `crash-<unix_ms>-<pid>[-n].toml` in `dir` written by `pid` (atlas-core's naming).
+fn crash_report_of(dir: &Path, pid: u64) -> Option<String> {
+    let mut found: Vec<(u128, u32, String)> = std::fs::read_dir(dir)
+        .ok()?
+        .filter_map(|e| {
+            let name = e.ok()?.file_name().into_string().ok()?;
+            let rest = name.strip_prefix("crash-")?.strip_suffix(".toml")?;
+            let mut parts = rest.splitn(3, '-');
+            let ms: u128 = parts.next()?.parse().ok()?;
+            (parts.next()?.parse::<u64>().ok()? == pid).then_some(())?;
+            let n = parts.next().map_or(Some(0), |n| n.parse().ok())?;
+            Some((ms, n, name))
+        })
+        .collect();
+    found.sort();
+    found.pop().map(|(_, _, name)| name)
 }
 
 impl Default for HostCtl {
@@ -114,6 +183,7 @@ impl Default for HostCtl {
             prompt_pending: false,
             attempted: false,
             last_error: None,
+            served: None,
         }
     }
 }
@@ -749,21 +819,30 @@ async fn reconcile(app: &AppHandle, hub: &HostHub, c: &HostClient, bin: &Path) -
     };
     let ptys = live_list(&list);
     let pid = info["pid"].as_u64().unwrap_or(0);
-    let (choice, attempted) = {
-        let g = hub.ctl.lock();
-        (g.choice, g.attempted)
+    let (choice, attempted, lost) = {
+        let mut g = hub.ctl.lock();
+        (g.choice, g.attempted, g.connected(pid))
     };
+    if let Some(old) = lost {
+        let crash = crash_report_of(&atlas_core::crash::crash_dir(), old);
+        crate::diag::incident(
+            "hostd-exited",
+            &hostd_exit_detail(old, pid, crash.as_deref()),
+        );
+    }
     let mut decision = plan(&info, ptys.len(), choice, attempted);
 
     if decision == Decision::Upgrade {
         hub.ctl.lock().attempted = true;
         hub.publish(app, state_for(&info, ptys.clone(), decision, choice));
+        hub.ctl.lock().expect_exit(pid);
         match c
             .call("upgrade", json!({"exe": bin.to_string_lossy()}))
             .await
         {
             Ok(_) => return Outcome::Reconnect,
             Err(e) => {
+                hub.ctl.lock().withdraw_expected_exit();
                 crate::diag::incident("upgrade-failed", &format!("{e:#}"));
                 let _ = app.emit(
                     "host://error",
@@ -782,6 +861,7 @@ async fn reconcile(app: &AppHandle, hub: &HostHub, c: &HostClient, bin: &Path) -
         if hub.fake.lock().is_some() {
             return Outcome::Serve;
         }
+        hub.ctl.lock().expect_exit(pid);
         let _ = c.call("shutdown", json!({})).await;
         return Outcome::Reconnect;
     }
@@ -882,6 +962,13 @@ async fn restart_local(app: &AppHandle, hub: &HostHub) {
     if let Some(s) = s {
         hub.publish(app, s);
     }
+    // Also when there is no client: a wedged daemon is retired by `host_restart_force`.
+    {
+        let mut g = hub.ctl.lock();
+        if let Some(pid) = g.served.as_ref().map(|s| s.pid) {
+            g.expect_exit(pid);
+        }
+    }
     if let Some(c) = hub.clients.read().await.get(LOCAL).cloned() {
         let _ = c.call("shutdown", json!({})).await;
     }
@@ -957,6 +1044,8 @@ pub fn start(app: &AppHandle) {
             if let Some(pid) =
                 atlas_host::client::unusable_hostd_pid(&atlas_host::paths::base()).await
             {
+                // Said below as "restarted": not a second incident when the app connects to its replacement.
+                hub.ctl.lock().expect_exit(u64::from(pid));
                 crate::diag::incident(
                     "restarted",
                     &format!(
@@ -1635,5 +1724,157 @@ mod tests {
         let b = Duration::from_secs(4);
         assert!(reconnect_pause(STABLE_AFTER, b).0 < b);
         assert!(reconnect_pause(STABLE_AFTER - Duration::from_millis(1), b).0 >= b);
+    }
+
+    fn served(pid: u64, clean: bool) -> Option<Served> {
+        Some(Served { pid, clean })
+    }
+
+    // Regression: #276. A hostd that aborted and was respawned by `ensure_local` left nothing in app.log or the
+    // report, so "my terminals vanished" had no trace. A daemon that ended without anyone asking is one incident.
+    #[test]
+    fn a_daemon_replaced_without_being_asked_to_leave_is_a_death() {
+        assert_eq!(lost_hostd(served(10, false), 11), Some(10));
+    }
+
+    #[test]
+    fn a_shutdown_an_upgrade_or_a_user_restart_is_not_a_death() {
+        assert_eq!(lost_hostd(served(10, true), 11), None);
+    }
+
+    /// The same pid after a reconnect is a daemon that is alive (the connection dropped, not the daemon), the first
+    /// connect has nothing to compare, and a daemon that reports no pid (proto 1, the debug fake) cannot be compared.
+    #[test]
+    fn nothing_is_reported_without_two_known_pids_that_differ() {
+        assert_eq!(lost_hostd(served(10, false), 10), None);
+        assert_eq!(lost_hostd(None, 10), None);
+        assert_eq!(lost_hostd(served(0, false), 10), None);
+        assert_eq!(lost_hostd(served(10, false), 0), None);
+    }
+
+    /// A crash loop is one incident per death, not per reconnect: reconnecting to the same pid says nothing, every
+    /// new pid says one thing, and a clean restart in the middle costs none.
+    #[test]
+    fn a_reconnect_loop_reports_each_death_once() {
+        let mut ctl = HostCtl::default();
+        let mut deaths = vec![];
+        for pid in [10, 10, 10, 11, 11, 12] {
+            deaths.extend(ctl.connected(pid));
+        }
+        assert_eq!(deaths, [10, 11]);
+        ctl.expect_exit(12);
+        assert_eq!(ctl.connected(13), None, "the user's restart");
+        assert_eq!(
+            ctl.connected(14),
+            Some(13),
+            "and the next death counts again"
+        );
+    }
+
+    /// `expect_exit` names the daemon being asked to leave: a restart of one daemon must not excuse the death of
+    /// another, and a failed upgrade (the daemon keeps running) must not excuse its later death.
+    #[test]
+    fn an_expected_exit_excuses_only_that_daemon_and_only_until_it_is_withdrawn() {
+        let mut ctl = HostCtl::default();
+        ctl.connected(10);
+        ctl.expect_exit(99);
+        assert_eq!(ctl.connected(11), Some(10));
+        ctl.expect_exit(11);
+        ctl.withdraw_expected_exit();
+        assert_eq!(ctl.connected(12), Some(11));
+    }
+
+    /// The silence itself, through the state `reconcile` and the restart commands drive: the daemon the app asked to
+    /// leave (an upgrade, a shutdown, the user's Restart) is replaced without an incident, and a daemon that stayed
+    /// after being asked (the restart did nothing) is not excused for the death after it.
+    #[test]
+    fn the_daemon_the_app_asked_to_leave_is_replaced_without_an_incident() {
+        let mut ctl = HostCtl::default();
+        ctl.connected(10);
+        ctl.expect_exit(10);
+        assert_eq!(ctl.connected(11), None, "handover or restart");
+        ctl.expect_exit(11);
+        assert_eq!(ctl.connected(11), None, "asked, but it stayed");
+        assert_eq!(
+            ctl.connected(12),
+            Some(11),
+            "its later death is not excused"
+        );
+    }
+
+    #[test]
+    fn the_incident_names_both_pids_and_the_crash_report_of_the_old_one() {
+        let d = hostd_exit_detail(10, 11, Some("crash-1-10.toml"));
+        assert!(d.contains("pid 10") && d.contains("pid 11"), "{d}");
+        assert!(d.contains("crash-1-10.toml"), "{d}");
+        assert!(
+            !hostd_exit_detail(10, 11, None).contains("crash"),
+            "no report, no mention"
+        );
+    }
+
+    /// `crash-<unix_ms>-<pid>[-n].toml` (atlas-core): the pid is the old daemon's, never a longer pid that ends
+    /// the same way, and the newest report wins.
+    #[test]
+    fn the_crash_report_is_found_by_the_exact_pid() {
+        let tmp = tempfile::tempdir().unwrap();
+        for f in [
+            "crash-100-10.toml",
+            "crash-200-10-1.toml",
+            "crash-300-110.toml",
+            "crash-400-7.toml",
+            "notes.txt",
+        ] {
+            std::fs::write(tmp.path().join(f), "").unwrap();
+        }
+        assert_eq!(
+            crash_report_of(tmp.path(), 10).as_deref(),
+            Some("crash-200-10-1.toml")
+        );
+        assert_eq!(crash_report_of(tmp.path(), 1), None);
+        assert_eq!(crash_report_of(&tmp.path().join("missing"), 10), None);
+    }
+
+    /// A real client against a real socket whose daemon is killed mid-session (it vanishes without a goodbye),
+    /// then a new daemon with another pid: exactly the sequence `start` goes through, one death reported.
+    #[tokio::test]
+    async fn killing_the_daemon_mid_session_yields_one_death_on_the_next_connect() {
+        use tokio::io::{AsyncBufReadExt, AsyncWriteExt, BufReader};
+        async fn daemon(pid: u64) -> (tempfile::TempDir, tokio::task::JoinHandle<()>, HostClient) {
+            let tmp = tempfile::tempdir().unwrap();
+            let sock = tmp.path().join("h.sock");
+            let listener = atlas_core::ipc::Listener::bind(&sock).unwrap();
+            let task = tokio::spawn(async move {
+                let (r, mut w) = atlas_core::ipc::split(listener.accept().await.unwrap());
+                let mut r = BufReader::new(r).lines();
+                r.next_line().await.unwrap();
+                w.write_all(b"{\"ok\":true}\n").await.unwrap();
+                while let Ok(Some(line)) = r.next_line().await {
+                    let v: Value = serde_json::from_str(&line).unwrap();
+                    let reply = json!({"id": v["id"], "ok": true, "data": {"pid": pid}});
+                    w.write_all(format!("{reply}\n").as_bytes()).await.unwrap();
+                }
+            });
+            let c = HostClient::connect(&sock, "t", "test").await.unwrap();
+            (tmp, task, c)
+        }
+        let mut ctl = HostCtl::default();
+        let (_a, killed, first) = daemon(4242).await;
+        let pid = first.call("info", json!({})).await.unwrap()["pid"]
+            .as_u64()
+            .unwrap();
+        assert_eq!(ctl.connected(pid), None);
+        // SIGKILL: the socket closes, nothing was said.
+        killed.abort();
+        let _ = killed.await;
+        tokio::time::timeout(Duration::from_secs(5), first.closed())
+            .await
+            .unwrap();
+        let (_b, _task, second) = daemon(4243).await;
+        let pid = second.call("info", json!({})).await.unwrap()["pid"]
+            .as_u64()
+            .unwrap();
+        assert_eq!(ctl.connected(pid), Some(4242));
+        assert_eq!(ctl.connected(pid), None, "once");
     }
 }

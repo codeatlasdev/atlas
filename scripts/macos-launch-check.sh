@@ -17,7 +17,8 @@
 #
 # `--negative` runs the same launch check on a program that exits at once and EXPECTS it to fail: the check can fail.
 # The app runs from a copy under a temporary directory; the user's /Applications is never touched. HOME stays the
-# runner's (the app has no private-HOME mode in a release build), so this is for CI machines, not a developer's Mac.
+# runner's (the app has no private-HOME mode in a release build) and ~/.atlas/bin/atlas is overwritten with the CLI
+# under test, so this is for CI machines, not a developer's Mac.
 set -o pipefail
 
 out=launch-check-out version="" window_s=90 settle_s=8 negative=0
@@ -53,9 +54,19 @@ windows_of() {
   osascript -l JavaScript -e '
     ObjC.import("CoreGraphics");
     const pid = '"$1"';
-    const list = ObjC.deepUnwrap($.CGWindowListCopyWindowInfo($.kCGWindowListOptionOnScreenOnly, $.kCGNullWindowID));
-    list.filter(w => w.kCGWindowOwnerPID === pid && w.kCGWindowBounds.Width >= 200 && w.kCGWindowBounds.Height >= 200)
-        .map(w => w.kCGWindowBounds.Width + "x" + w.kCGWindowBounds.Height).join("\n");' 2>/dev/null
+    const list = ObjC.deepUnwrap(ObjC.castRefToObject($.CGWindowListCopyWindowInfo($.kCGWindowListOptionAll, $.kCGNullWindowID)));
+    list.filter(w => w.kCGWindowOwnerPID === pid && w.kCGWindowIsOnscreen && w.kCGWindowBounds.Width >= 200 && w.kCGWindowBounds.Height >= 200)
+        .map(w => w.kCGWindowBounds.Width + "x" + w.kCGWindowBounds.Height).join("\n");' 2>>"$out/osascript.err"
+}
+
+# What the window list holds when the check cannot find the app's window: evidence for the failure, not a verdict.
+dump_windows() {
+  osascript -l JavaScript -e '
+    ObjC.import("CoreGraphics");
+    const list = ObjC.deepUnwrap(ObjC.castRefToObject($.CGWindowListCopyWindowInfo($.kCGWindowListOptionAll, $.kCGNullWindowID)));
+    list.map(w => [w.kCGWindowOwnerPID, w.kCGWindowOwnerName, w.kCGWindowIsOnscreen, w.kCGWindowBounds.Width + "x" + w.kCGWindowBounds.Height].join(" ")).join("\n");' >"$out/$1-windows.txt" 2>&1
+  ps -axo pid,ppid,command | grep -F "$work" | grep -v grep >"$out/$1-processes.txt" 2>&1
+  screencapture -x "$out/$1.png" 2>/dev/null || true
 }
 
 stop_atlas() {
@@ -77,7 +88,7 @@ check_launch() {
     [ -n "$win" ] && break
     sleep 1
   done
-  [ -n "$win" ] || { fail "$tag-no-window" "no window on screen within ${window_s}s"; stop_atlas; return; }
+  [ -n "$win" ] || { dump_windows "$tag"; fail "$tag-no-window" "no window on screen within ${window_s}s"; stop_atlas; return; }
   echo "$tag window: $(head -1 <<<"$win")"
   sleep "$settle_s"
   kill -0 "$pid" 2>/dev/null || { fail "$tag-exited" "the app ended after its window opened"; return; }
@@ -118,6 +129,11 @@ ver="$("$work/cli/atlas" --version 2>&1)"; rc=$?
 echo "$ver"
 if [ $rc -ne 0 ]; then fail cli-version "atlas --version exited $rc: $ver"
 elif [ -n "$version" ] && ! grep -qF "$version" <<<"$ver"; then fail cli-version "atlas says '$ver', expected $version"; fi
+
+# The app starts hostd with the CLI it finds at ~/.atlas/bin/atlas (what install.sh puts there): without it the first
+# window says "Terminal host not reachable". Installed here the way a user has it, from the tarball under test.
+mkdir -p "$HOME/.atlas/bin"
+cp "$work/cli/atlas" "$HOME/.atlas/bin/atlas"
 
 step "the .dmg"
 mount="$work/dmg"

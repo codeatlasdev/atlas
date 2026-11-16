@@ -2,10 +2,10 @@ import 'package:flutter/material.dart';
 
 import 'package:atlas_mobile/core/ui/atlas_theme.dart';
 
-/// Atlas Lab: the second app `bun run mobile:lab` installs beside the real one (docs/mobile.md,
-/// "Lab lane"). It is the same code, built with `--dart-define=ATLAS_LAB=1 --dart-define=ATLAS_SHA=<git sha>`;
-/// the native side gives it its own bundle id (`…mobile.lab`), name and icon, so its pairings and secure
-/// storage never touch the real app's. The real build passes neither define and is unchanged.
+/// The lab strip: `bun run mobile:lab` (docs/mobile.md, "Lab lane") builds the dev app (`--flavor dev`: its own
+/// bundle id `…mobile.dev`, the name Atlas Dev and the orange icon, so its pairings and secure storage never
+/// touch the store app's) with `--dart-define=ATLAS_LAB=1 --dart-define=ATLAS_SHA=<git sha>`, and this strip
+/// says which branch build is on the phone. A plain dev run passes neither define and shows no strip.
 @immutable
 class LabConfig {
   const LabConfig({required this.enabled, required this.sha});

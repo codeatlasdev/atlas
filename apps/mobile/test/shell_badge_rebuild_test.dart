@@ -1,6 +1,3 @@
-// Regression: the app shell watched the inbox providers to compute the Inbox tab's badge, so every
-// crew push (a crewmate state change updates `inboxProvider`) rebuilt the whole shell and with it the
-// tab bar and the branch stack. Only the badge depends on the count; the rest must stay put.
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:flutter_riverpod/legacy.dart';
@@ -12,6 +9,10 @@ import 'package:atlas_mobile/core/ui/atlas_theme.dart';
 import 'package:atlas_mobile/core/ui/floating_tab_bar.dart';
 import 'package:atlas_mobile/features/inbox/inbox.dart';
 import 'package:atlas_mobile/main.dart';
+
+// Regression: the app shell watched the inbox providers to compute the Inbox tab's badge, so every
+// crew push (a crewmate state change updates `inboxProvider`) rebuilt the whole shell and with it the
+// tab bar and the branch stack. Only the badge depends on the count; the rest must stay put.
 
 const _mac = MacDevice(nodeId: 'n1', name: 'mac');
 

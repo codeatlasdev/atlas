@@ -1,11 +1,3 @@
-// "New terminal" (#53): a phone opens a shell on the computer. `pty_open` takes registry ids, never a path, and the
-// terminal it answers opens in the existing terminal screen (typing there stays behind Face ID).
-//   - the reply parses from hostd's REAL payload (`test/fixtures/pty_open.json`, written by
-//     `UPDATE_FIXTURES=1 cargo test -p atlas-host --lib -- mobile::tests::a_phone_opens_a_shell`);
-//   - the project page and the computer page start it and open `/terminal`; a crew server has no projects, so its
-//     terminal starts in the crew home; one reached through a Mac is not offered it (`canOpenTerminal`: hostd
-//     refuses `pty_open` inside `crew_call`, and the Rust test `opening_a_terminal_needs_act…` pins that);
-//   - a refusal (a phone without `act`, an unknown project) is shown and opens nothing.
 import 'dart:convert';
 import 'dart:io';
 
@@ -13,6 +5,8 @@ import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:go_router/go_router.dart';
+
+import 'fake_transport.dart';
 
 import 'package:atlas_mobile/core/connection/connection_notifier.dart';
 import 'package:atlas_mobile/core/demo/demo_computer.dart';
@@ -23,8 +17,16 @@ import 'package:atlas_mobile/core/ui/atlas_theme.dart';
 import 'package:atlas_mobile/features/projects/project_detail_screen.dart';
 import 'package:atlas_mobile/features/terminal/new_terminal.dart';
 
-import 'fake_transport.dart';
 import 'support/demo_harness.dart';
+
+// "New terminal" (#53): a phone opens a shell on the computer. `pty_open` takes registry ids, never a path, and the
+// terminal it answers opens in the existing terminal screen (typing there stays behind Face ID).
+//   - the reply parses from hostd's REAL payload (`test/fixtures/pty_open.json`, written by
+//     `UPDATE_FIXTURES=1 cargo test -p atlas-host --lib -- mobile::tests::a_phone_opens_a_shell`);
+//   - the project page and the computer page start it and open `/terminal`; a crew server has no projects, so its
+//     terminal starts in the crew home; one reached through a Mac is not offered it (`canOpenTerminal`: hostd
+//     refuses `pty_open` inside `crew_call`, and the Rust test `opening_a_terminal_needs_act…` pins that);
+//   - a refusal (a phone without `act`, an unknown project) is shown and opens nothing.
 
 Map<String, dynamic> _fixture(String name) =>
     jsonDecode(File('test/fixtures/$name').readAsStringSync())

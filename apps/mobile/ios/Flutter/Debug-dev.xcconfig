@@ -1,0 +1,3 @@
+// Atlas Dev (`flutter build ios --flavor dev`, the default flavor): the stock Debug settings plus the dev app's name.
+#include "Debug.xcconfig"
+ATLAS_DISPLAY_NAME = Atlas Dev

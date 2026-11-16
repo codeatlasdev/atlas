@@ -6,18 +6,18 @@
 //   1. builds the CLI from this checkout (target/debug/atlas, through scripts/heavy.sh);
 //   2. starts (or hot-restarts) the LAB hostd from that binary: `atlas hostd --lab`, files in <~/.atlas>/lab, a
 //      client of your real hostd (it mirrors its agents and forwards terminals to it; it never writes to it);
-//   3. builds the "Atlas Lab" phone app (bundle id br.com.codeatlas.atlas.mobile.lab, orange icon, a "LAB · <sha>"
-//      banner) and installs it on your first connected iPhone (or --device, --android, --sim) with
-//      `flutter install`, beside the real app;
+//   3. builds the "Atlas Dev" phone app (flavor dev: bundle id br.com.codeatlas.atlas.mobile.dev, orange icon, a
+//      "LAB · <sha>" banner) and installs it on your first connected iPhone (or --device, --android, --sim) with
+//      `flutter install`, beside the store app;
 //   4. prints the lab's own pairing QR/URL and exits.
 //
 // --watch   rebuild and restart the lab hostd when crates/ change, and keep a `flutter run` (debug, hot reload) of
-//           the lab app attached. Never `flutter run --release` (attached, it hangs): the one-shot path is build + install.
+//           the dev app attached. Never `flutter run --release` (attached, it hangs): the one-shot path is build + install.
 // --status  is the lab running, and what does it follow.
-// --stop    stops the LAB hostd only. The real hostd, its terminals, ~/.atlas and the real app are never touched.
+// --stop    stops the LAB hostd only. The real hostd, its terminals, ~/.atlas and the store app are never touched.
 //
 // Nothing here stops, restarts, upgrades or writes into your hostd or ~/.atlas (except ~/.atlas/lab), runs
-// `atlas link`, or replaces the installed CLI or app.
+// `atlas link`, or replaces the installed CLI or the store app.
 import { $ } from "bun";
 import { existsSync, readFileSync, watch as fsWatch } from "node:fs";
 import { connect } from "node:net";
@@ -113,29 +113,28 @@ const defines = (sha: string) => [
 	"--dart-define=ATLAS_ALWAYS_ONBOARD=false",
 ];
 
-/** `flutter build ios` of the lab scheme (Xcode configurations *-lab: bundle id, name, icon). */
+/** `flutter build ios` of the dev scheme (Xcode configurations *-dev: bundle id, name, icon). */
 export const iosBuildArgs = (sha: string, simulator = false) => [
 	"build",
 	"ios",
 	"--debug",
 	...(simulator ? ["--simulator"] : []),
-	"--flavor=lab",
+	"--flavor=dev",
 	...defines(sha),
 ];
 
-/** `flutter build apk`: the lab id comes from a gradle property, so the real app needs no flavor. */
+/** `flutter build apk` of the dev product flavor (id ….mobile.dev, name, orange icon). */
 export const androidBuildArgs = (sha: string) => [
 	"build",
 	"apk",
 	"--debug",
-	"--android-project-arg=atlas.lab=1",
+	"--flavor=dev",
 	...defines(sha),
 ];
 
 /** The attached debug run of `--watch` (hot reload). Never `--release`: attached, it hangs. */
-export function runArgs(platform: Platform, device: string, sha: string): string[] {
-	const native = platform === "android" ? ["--android-project-arg=atlas.lab=1"] : ["--flavor=lab"];
-	return ["run", "--debug", "-d", device, ...native, ...defines(sha)];
+export function runArgs(device: string, sha: string): string[] {
+	return ["run", "--debug", "-d", device, "--flavor=dev", ...defines(sha)];
 }
 
 /** `atlas-mobile://pair?…`, the URL the desktop's QR carries (apps/desktop/src/lib/settings/mobile.ts). */
@@ -290,20 +289,20 @@ async function pair(dir: string, alias?: string) {
 	const url = pairUrl(p, alias);
 	const { renderANSI } = await import("uqr");
 	console.log(`\n${renderANSI(url)}`);
-	console.log(`Scan it with Atlas Lab (Add a computer), or open:\n${url}`);
-	console.log(`Code ${p.code} works once, for 2 minutes. The lab has its own pairing: your real phone app is untouched.`);
+	console.log(`Scan it with Atlas Dev (Add a computer), or open:\n${url}`);
+	console.log(`Code ${p.code} works once, for 2 minutes. The lab has its own pairing: the store app is untouched.`);
 }
 
 async function install(dev: Dev, a: Args, s: string) {
 	const android = dev.platform.startsWith("android");
 	const args = android ? androidBuildArgs(s) : iosBuildArgs(s, dev.emulator);
-	log(`building Atlas Lab for ${dev.name}… (flutter ${args.slice(0, 3).join(" ")})`);
+	log(`building Atlas Dev for ${dev.name}… (flutter ${args.slice(0, 3).join(" ")})`);
 	const b = await $`${heavy} nice flutter ${args}`.cwd(mobile).nothrow();
 	if (b.exitCode !== 0) throw new Error("flutter build failed");
-	log(`installing on ${dev.name} (beside the real app)…`);
+	log(`installing on ${dev.name} (beside the store app)…`);
 	const i = android
-		? await $`flutter install --debug -d ${dev.id} --use-application-binary=${join(mobile, "build/app/outputs/flutter-apk/app-debug.apk")}`.cwd(mobile).nothrow()
-		: await $`flutter install --debug --flavor=lab -d ${dev.id}`.cwd(mobile).nothrow();
+		? await $`flutter install --debug -d ${dev.id} --use-application-binary=${join(mobile, "build/app/outputs/flutter-apk/app-dev-debug.apk")}`.cwd(mobile).nothrow()
+		: await $`flutter install --debug --flavor=dev -d ${dev.id}`.cwd(mobile).nothrow();
 	if (i.exitCode !== 0) throw new Error("flutter install failed");
 }
 
@@ -324,14 +323,13 @@ async function stop(dir: string) {
 	}
 	await labHostd(["--stop"]);
 	await until("the lab hostd to stop", async () => !(await labInfo(dir)), 15_000);
-	console.log("lab hostd: stopped (your real hostd and app are untouched)");
+	console.log("lab hostd: stopped (your real hostd and the store app are untouched)");
 }
 
 /** --watch: rebuild + restart the lab hostd on crates/ changes; `flutter run` keeps the phone hot-reloading. */
-async function watchLoop(dir: string, dev: Dev, a: Args, s: string) {
-	const android = dev.platform.startsWith("android");
+async function watchLoop(dir: string, dev: Dev, s: string) {
 	log(`watching crates/ (Ctrl-C to stop); flutter run is attached to ${dev.name} for hot reload`);
-	const run = Bun.spawn(["flutter", ...runArgs(android ? "android" : "ios", dev.id, s)], {
+	const run = Bun.spawn(["flutter", ...runArgs(dev.id, s)], {
 		cwd: mobile,
 		stdin: "inherit",
 		stdout: "inherit",
@@ -377,7 +375,7 @@ async function main() {
 	await startLab(dir);
 	await install(dev, a, s);
 	await pair(dir, dev.emulator && dev.platform.startsWith("android") ? "10.0.2.2" : undefined);
-	if (a.watch) await watchLoop(dir, dev, a, s);
+	if (a.watch) await watchLoop(dir, dev, s);
 }
 
 if (import.meta.main) {

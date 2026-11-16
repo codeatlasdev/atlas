@@ -1,5 +1,3 @@
-// AsyncView is the one rendering of a screen's async states: loading, error + "Try again", empty, offline,
-// protocol mismatch, data. A golden pins the whole set so a change to any of them is seen.
 import 'dart:async';
 
 import 'package:flutter/material.dart';
@@ -12,6 +10,10 @@ import 'package:atlas_mobile/core/protocol/models.dart';
 import 'package:atlas_mobile/core/protocol/protocol_version.dart';
 import 'package:atlas_mobile/core/ui/async_view.dart';
 import 'package:atlas_mobile/core/ui/atlas_theme.dart';
+import 'package:atlas_mobile/core/ui/backdrop.dart';
+
+// AsyncView is the one rendering of a screen's async states: loading, error + "Try again", empty, offline,
+// protocol mismatch, data. A golden pins the whole set so a change to any of them is seen.
 
 const _device = MacDevice(nodeId: 'mac-1', name: 'Studio');
 
@@ -22,6 +24,7 @@ Widget _view(
 }) => ProviderScope(
   child: MaterialApp(
     theme: atlasTheme(),
+    builder: atlasGround,
     home: Scaffold(
       body: AsyncView<List<String>>(
         value: v,
@@ -126,7 +129,8 @@ void main() {
       ),
     );
     expect(find.text("Couldn't read the list"), findsOneWidget);
-    expect(find.text('the server refused'), findsOneWidget);
+    // The computer's answer, said as a sentence (the raw text is under Details only when it is long).
+    expect(find.text('The server refused'), findsOneWidget);
     await t.tap(find.text('Try again'));
     expect(retried, 1);
   });
@@ -190,6 +194,7 @@ void main() {
       ProviderScope(
         child: MaterialApp(
           theme: atlasTheme(),
+          builder: atlasGround,
           home: Scaffold(
             body: Column(
               children: [

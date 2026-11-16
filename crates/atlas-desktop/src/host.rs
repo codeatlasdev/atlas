@@ -1273,7 +1273,7 @@ pub async fn host_restart_force(
 #[tauri::command]
 pub async fn host_diagnostics(
     hub: tauri::State<'_, Arc<HostHub>>,
-) -> Result<crate::diag::Diagnostics, String> {
+) -> Result<atlas_host::bundle::Diagnostics, String> {
     let info = match hub.clients.read().await.get(LOCAL).cloned() {
         Some(c) => tokio::time::timeout(Duration::from_secs(2), c.call("info", json!({})))
             .await
@@ -1285,19 +1285,11 @@ pub async fn host_diagnostics(
         Ok(bin) => crate::updates::cli_version(&bin).await,
         Err(_) => None,
     };
-    let versions = crate::diag::Versions {
-        app: APP_VERSION.to_string(),
-        cli,
-        hostd: info
-            .as_ref()
-            .and_then(|i| i["version"].as_str().map(str::to_string)),
-        hostd_pid: info.as_ref().and_then(|i| i["pid"].as_u64()),
-        hostd_caps: info
-            .as_ref()
-            .map(|i| caps_of(i).into_iter().map(str::to_string).collect())
-            .unwrap_or_default(),
-    };
-    Ok(crate::diag::build(&atlas_host::paths::base(), versions))
+    let versions = atlas_host::bundle::Versions::from_info(APP_VERSION, cli, info.as_ref());
+    // The probe runs bounded subprocess queries (package manager, coredumpctl): not on the runtime.
+    tokio::task::spawn_blocking(move || crate::diag::build(&atlas_host::paths::base(), versions))
+        .await
+        .map_err(|e| format!("diagnostics probe failed: {e}"))
 }
 
 /// "Later": no prompt for the rest of this session (a new launch asks again); the chip stays.

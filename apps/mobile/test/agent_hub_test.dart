@@ -4,12 +4,22 @@ import 'dart:io';
 import 'package:flutter/material.dart';
 import 'package:flutter_test/flutter_test.dart';
 
+import 'package:atlas_mobile/core/protocol/agent_history.dart';
+import 'package:atlas_mobile/core/protocol/agent_tree.dart';
 import 'package:atlas_mobile/core/protocol/models.dart';
+import 'package:atlas_mobile/core/protocol/timeline_blocks.dart';
+import 'package:atlas_mobile/core/protocol/timeline_items.dart';
 import 'package:atlas_mobile/core/ui/atlas_theme.dart';
 import 'package:atlas_mobile/features/agents/agent_hub_screen.dart';
 import 'package:atlas_mobile/features/agents/agent_info.dart';
-import 'package:atlas_mobile/features/agents/crew_widgets.dart';
-import 'package:atlas_mobile/features/agents/timeline_widgets.dart';
+import 'package:atlas_mobile/features/agents/hub/hub_filter.dart';
+import 'package:atlas_mobile/features/agents/hub/hub_row.dart';
+import 'package:atlas_mobile/features/agents/hub/hub_totals.dart';
+import 'package:atlas_mobile/features/agents/timeline/chat_messages.dart';
+import 'package:atlas_mobile/features/agents/timeline/timeline_block.dart';
+import 'package:atlas_mobile/features/agents/timeline/timeline_notices.dart';
+import 'package:atlas_mobile/features/agents/tree/jobs_strip.dart';
+import 'package:atlas_mobile/features/agents/tree/todo_card.dart';
 
 /// The real hostd output: an omp session with Scout (running, spawned Deep), Fixer (failed).
 AgentTree _tree() => AgentTree.fromJson(

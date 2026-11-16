@@ -1,6 +1,3 @@
-// Tapping a push opens that agent's chat. The push says only which pane (and a title); the phone
-// finds the computer that has it, so these run against computers that answer `agent_status_all` the
-// way hostd does, with a real widget tree for the screen that opens.
 import 'dart:async';
 import 'dart:convert';
 
@@ -8,15 +5,19 @@ import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:flutter_test/flutter_test.dart';
 
-import 'package:atlas_mobile/core/protocol/protocol_version.dart';
 import 'package:atlas_mobile/core/connection/connection_notifier.dart';
 import 'package:atlas_mobile/core/protocol/models.dart';
+import 'package:atlas_mobile/core/protocol/protocol_version.dart';
 import 'package:atlas_mobile/core/push/push_payload.dart';
 import 'package:atlas_mobile/core/push/push_tap.dart';
 import 'package:atlas_mobile/core/storage/mac_storage.dart';
 import 'package:atlas_mobile/core/transport/transport.dart';
 import 'package:atlas_mobile/core/ui/atlas_theme.dart';
 import 'package:atlas_mobile/features/agents/agent_chat_screen.dart';
+
+// Tapping a push opens that agent's chat. The push says only which pane (and a title); the phone
+// finds the computer that has it, so these run against computers that answer `agent_status_all` the
+// way hostd does, with a real widget tree for the screen that opens.
 
 class _Storage extends MacStorage {
   _Storage(this.devices) : super(storage: null);

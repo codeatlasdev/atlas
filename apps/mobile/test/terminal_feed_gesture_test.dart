@@ -5,7 +5,7 @@ import 'package:xterm/xterm.dart';
 
 import 'package:atlas_mobile/core/ui/atlas_theme.dart';
 import 'package:atlas_mobile/features/terminal/terminal_feed.dart';
-import 'package:atlas_mobile/features/terminal/terminal_screen.dart';
+import 'package:atlas_mobile/features/terminal/terminal_theme.dart';
 
 Future<Terminal> _feed(WidgetTester t) async {
   final term = Terminal()..resize(40, 60);

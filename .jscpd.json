@@ -1,7 +1,7 @@
 {
   "minTokens": 50,
   "minLines": 5,
-  "format": ["rust", "typescript", "javascript", "svelte", "astro"],
+  "format": ["rust", "typescript", "javascript", "svelte", "astro", "dart"],
   "ignore": [
     "**/target/**",
     "**/node_modules/**",
@@ -19,7 +19,13 @@
     "**/tests/**",
     "site/public/**",
     "site/src/lib/atlas-shiki-theme.json",
-    "studio/assets/**"
+    "studio/assets/**",
+    "apps/mobile/lib/src/rust/**",
+    "apps/mobile/test/**",
+    "apps/mobile/.dart_tool/**",
+    "apps/mobile/ios/**",
+    "apps/mobile/android/**",
+    "**/*.g.dart"
   ],
   "reporters": ["console"],
   "threshold": 1.5

@@ -16,8 +16,10 @@ pub mod hygiene;
 pub mod ipc;
 pub mod login_env;
 pub mod paths;
+pub mod pkgowner;
 pub mod pkgstore;
 pub mod port_owner;
+pub mod probe;
 pub mod procs;
 pub mod project_root;
 pub mod redact;
@@ -26,6 +28,7 @@ pub mod ssh;
 pub mod sys;
 mod sys_clone;
 pub mod taskcache;
+pub mod update_cache;
 pub mod util;
 
 pub use error::AtlasError;

@@ -5,6 +5,7 @@
 //! [`protocol`]); the same binary runs on SSH hosts.
 
 pub mod agents;
+pub mod bundle;
 pub mod client;
 pub mod crew;
 mod exec;
@@ -23,6 +24,7 @@ pub mod protocol;
 mod protocol_golden;
 mod pty;
 pub mod server;
+mod update;
 pub mod upgrade;
 pub mod worktrees;
 

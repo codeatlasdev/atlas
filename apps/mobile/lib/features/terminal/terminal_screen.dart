@@ -3,20 +3,20 @@ import 'dart:convert';
 
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
-import 'package:atlas_mobile/core/connection/require_mux.dart';
-import 'package:atlas_mobile/core/ui/atlas_theme.dart';
 import 'package:local_auth/local_auth.dart';
 import 'package:xterm/xterm.dart';
 
+import 'package:atlas_mobile/core/connection/connection_notifier.dart';
+import 'package:atlas_mobile/core/connection/require_mux.dart';
 import 'package:atlas_mobile/core/protocol/models.dart';
 import 'package:atlas_mobile/core/protocol/multiplexer.dart';
-import 'package:atlas_mobile/core/connection/connection_notifier.dart';
-import 'package:atlas_mobile/features/agents/agent_chat_screen.dart'
-    show agentStateLabel;
-import 'package:atlas_mobile/features/agents/agents_provider.dart';
-import 'package:atlas_mobile/core/ui/components.dart';
+import 'package:atlas_mobile/core/ui/atlas_theme.dart';
+import 'package:atlas_mobile/features/terminal/agent_strip.dart';
+import 'package:atlas_mobile/features/terminal/key_bar.dart';
+import 'package:atlas_mobile/features/terminal/line_input.dart';
 import 'package:atlas_mobile/features/terminal/live_screen.dart';
 import 'package:atlas_mobile/features/terminal/terminal_feed.dart';
+import 'package:atlas_mobile/features/terminal/terminal_theme.dart';
 
 /// Full-screen terminal view for a single PTY session.
 ///
@@ -294,7 +294,7 @@ class _TerminalScreenState extends ConsumerState<TerminalScreen> {
       body: Column(
         children: [
           if (widget.pane != null)
-            _AgentStrip(device: widget.device, pane: widget.pane!),
+            AgentStrip(device: widget.device, pane: widget.pane!),
           if (_notice(conn) case final text?) _LinkNotice(text),
           Expanded(
             // Rebuilt on output so the automatic view follows the program into
@@ -383,61 +383,6 @@ class _LinkNotice extends StatelessWidget {
   }
 }
 
-/// What the agent on this terminal is doing, from its hooks: state and the task
-/// it is on, above its screen.
-class _AgentStrip extends ConsumerWidget {
-  const _AgentStrip({required this.device, required this.pane});
-  final MacDevice device;
-  final String pane;
-
-  @override
-  Widget build(BuildContext context, WidgetRef ref) {
-    final a = ref.watch(agentStatusMapNotifierProvider(device)).value?[pane];
-    if (a == null) return const SizedBox.shrink();
-    final c = AtlasColors.of(context);
-    final k = c.agentState(a.state);
-    final task = a.state == 'working' ? a.prompt : (a.lastMessage ?? a.prompt);
-    return Container(
-      width: double.infinity,
-      padding: const EdgeInsets.fromLTRB(
-        Space.md,
-        Space.sm,
-        Space.md,
-        Space.md,
-      ),
-      decoration: BoxDecoration(
-        color: c.raised,
-        border: Border(bottom: BorderSide(color: c.borderSubtle)),
-      ),
-      child: Column(
-        crossAxisAlignment: CrossAxisAlignment.start,
-        children: [
-          Row(
-            children: [
-              StatusDot(color: k, pulse: a.state == 'working', size: 6),
-              Text(
-                agentStateLabel(a.state),
-                style: Theme.of(context).textTheme.bodySmall!
-                    .copyWith(color: k, fontWeight: FontWeight.w700),
-              ),
-            ],
-          ),
-          if (task != null && task.trim().isNotEmpty) ...[
-            const SizedBox(height: 3),
-            Text(
-              task.replaceAll('\n', ' '),
-              maxLines: 2,
-              overflow: TextOverflow.ellipsis,
-              style: Theme.of(context).textTheme.bodyMedium!
-                  .copyWith(color: c.text, height: 1.3),
-            ),
-          ],
-        ],
-      ),
-    );
-  }
-}
-
 /// Feeds decoded text into the terminal.
 class _TerminalSink implements Sink<String> {
   _TerminalSink(this.terminal);
@@ -447,194 +392,3 @@ class _TerminalSink implements Sink<String> {
   @override
   void close() {}
 }
-
-// ── Key bar ───────────────────────────────────────────────────────────────────
-
-/// The row of keys a phone keyboard lacks: Esc, Tab, Ctrl (then A to Z) and the arrows.
-class KeyBar extends StatefulWidget {
-  const KeyBar({super.key, required this.onKey, required this.enabled});
-
-  final void Function(String) onKey;
-  final bool enabled;
-
-  @override
-  State<KeyBar> createState() => _KeyBarState();
-}
-
-class _KeyBarState extends State<KeyBar> {
-  bool _ctrlActive = false;
-
-  void _tap(String seq) {
-    if (widget.enabled) widget.onKey(seq);
-  }
-
-  @override
-  Widget build(BuildContext context) {
-    final c = AtlasColors.of(context);
-    final bg = c.base;
-
-    Widget key(String label, String seq) => Padding(
-      padding: const EdgeInsets.symmetric(horizontal: 3, vertical: 2),
-      child: TextButton(
-        style: TextButton.styleFrom(
-          minimumSize: const Size(48, 48),
-          padding: const EdgeInsets.symmetric(horizontal: Space.md),
-          backgroundColor: c.raised,
-          foregroundColor: c.text,
-          disabledForegroundColor: c.faint,
-          shape: RoundedRectangleBorder(
-            borderRadius: BorderRadius.circular(Space.radiusSm),
-          ),
-          textStyle: Theme.of(context).textTheme.bodyMedium!.copyWith(
-            fontFamily: monoFamily,
-            fontFamilyFallback: monoFallback,
-          ),
-        ),
-        onPressed: widget.enabled ? () => _tap(seq) : null,
-        child: Text(label),
-      ),
-    );
-
-    final baseKeys = [
-      key('Esc', '\x1b'),
-      key('Tab', '\t'),
-      // Ctrl toggle
-      TextButton(
-        style: TextButton.styleFrom(
-          minimumSize: const Size(48, 48),
-          padding: const EdgeInsets.symmetric(horizontal: Space.md),
-          backgroundColor: _ctrlActive ? c.accent : c.raised,
-          foregroundColor: _ctrlActive ? c.onAccent : c.text,
-          disabledForegroundColor: c.faint,
-          shape: RoundedRectangleBorder(
-            borderRadius: BorderRadius.circular(Space.radiusSm),
-          ),
-        ),
-        onPressed: widget.enabled
-            ? () => setState(() => _ctrlActive = !_ctrlActive)
-            : null,
-        child: const Text('Ctrl'),
-      ),
-      key('←', '\x1b[D'),
-      key('↑', '\x1b[A'),
-      key('↓', '\x1b[B'),
-      key('→', '\x1b[C'),
-    ];
-
-    // When ctrl is active, show A–Z row instead of base keys.
-    final ctrlKeys = [
-      for (final c in 'ABCDEFGHIJKLMNOPQRSTUVWXYZ'.split(''))
-        key('^$c', String.fromCharCode(c.codeUnitAt(0) - 64)),
-    ];
-
-    return Container(
-      decoration: BoxDecoration(
-        color: bg,
-        border: Border(top: BorderSide(color: c.borderSubtle)),
-      ),
-      child: SingleChildScrollView(
-        scrollDirection: Axis.horizontal,
-        padding: const EdgeInsets.symmetric(horizontal: Space.xs, vertical: 2),
-        child: Row(children: _ctrlActive ? ctrlKeys : baseKeys),
-      ),
-    );
-  }
-}
-
-/// One line typed with the system keyboard, sent with Enter (the key bar covers Esc,
-/// Tab, Ctrl and arrows).
-class LineInput extends StatefulWidget {
-  const LineInput({super.key, required this.onSubmit});
-  final void Function(String) onSubmit;
-
-  @override
-  State<LineInput> createState() => _LineInputState();
-}
-
-class _LineInputState extends State<LineInput> {
-  final _c = TextEditingController();
-
-  @override
-  void dispose() {
-    _c.dispose();
-    super.dispose();
-  }
-
-  void _send() {
-    widget.onSubmit(_c.text);
-    _c.clear();
-  }
-
-  @override
-  Widget build(BuildContext context) {
-    final c = AtlasColors.of(context);
-    return Container(
-      color: c.base,
-      padding: EdgeInsets.fromLTRB(
-        Space.md,
-        Space.sm,
-        Space.sm,
-        // The home indicator, unless the keyboard is up and already below us.
-        MediaQuery.viewInsetsOf(context).bottom > 0
-            ? Space.sm
-            : MediaQuery.paddingOf(context).bottom,
-      ),
-      child: Row(
-        children: [
-          Expanded(
-            child: TextField(
-              controller: _c,
-              autocorrect: false,
-              enableSuggestions: false,
-              textCapitalization: TextCapitalization.none,
-              style: Theme.of(context).textTheme.bodyLarge!.copyWith(
-                fontFamily: monoFamily,
-                fontFamilyFallback: monoFallback,
-              ),
-              decoration: const InputDecoration(
-                hintText: 'Type, then return',
-                // Dense is 40 dp; a thumb needs 48.
-                isDense: false,
-                constraints: BoxConstraints(minHeight: 48),
-              ),
-              onSubmitted: (_) => _send(),
-              textInputAction: TextInputAction.send,
-            ),
-          ),
-          IconButton(
-            tooltip: 'Send line',
-            icon: const Icon(Icons.keyboard_return_rounded),
-            onPressed: _send,
-          ),
-        ],
-      ),
-    );
-  }
-}
-
-/// The desktop's Atlas Dark terminal colours (atlas.json `terminal.*`).
-const atlasTerminalTheme = TerminalTheme(
-  cursor: Color(0xFFC0CAF5),
-  selection: Color(0xFF243A61),
-  foreground: Color(0xFFC0CAF5),
-  background: Color(0xFF131C2B),
-  black: Color(0xFF15161E),
-  red: Color(0xFFF7768E),
-  green: Color(0xFF9ECE6A),
-  yellow: Color(0xFFE0AF68),
-  blue: Color(0xFF7AA2F7),
-  magenta: Color(0xFFBB9AF7),
-  cyan: Color(0xFF7DCFFF),
-  white: Color(0xFFA9B1D6),
-  brightBlack: Color(0xFF414868),
-  brightRed: Color(0xFFF7768E),
-  brightGreen: Color(0xFF9ECE6A),
-  brightYellow: Color(0xFFE0AF68),
-  brightBlue: Color(0xFF7AA2F7),
-  brightMagenta: Color(0xFFBB9AF7),
-  brightCyan: Color(0xFF7DCFFF),
-  brightWhite: Color(0xFFC0CAF5),
-  searchHitBackground: Color(0x40E6B46D),
-  searchHitBackgroundCurrent: Color(0x73EF945F),
-  searchHitForeground: Color(0xFFC0CAF5),
-);

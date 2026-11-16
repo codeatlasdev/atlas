@@ -1,8 +1,3 @@
-// Regression: moving between Home, a project, an agent chat, the Inbox and a terminal flickered: content the
-// phone already had faded in or showed a spinner for a frame, and things that arrived later pushed what the user
-// was reading. Every test here drives the REAL screens through the app's own router (`buildRouter` in
-// lib/main.dart: the shell with its tabs, `/project`, `/terminal`; the chat is pushed by the screens themselves)
-// against the demo computer behind a link with latency, and reads every frame with FrameProbe.
 import 'dart:async';
 
 import 'package:flutter/material.dart';
@@ -10,9 +5,9 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:go_router/go_router.dart';
 
+import 'package:atlas_mobile/core/connection/connection_notifier.dart';
 import 'package:atlas_mobile/core/demo/demo_computer.dart';
 import 'package:atlas_mobile/core/protocol/models.dart';
-import 'package:atlas_mobile/core/connection/connection_notifier.dart';
 import 'package:atlas_mobile/core/transport/transport.dart';
 import 'package:atlas_mobile/core/ui/atlas_theme.dart';
 import 'package:atlas_mobile/features/agents/agent_chat_screen.dart';
@@ -24,8 +19,8 @@ import 'package:atlas_mobile/features/home/splash.dart';
 import 'package:atlas_mobile/features/inbox/activity_row.dart';
 import 'package:atlas_mobile/features/inbox/attention_cards.dart';
 import 'package:atlas_mobile/features/inbox/inbox.dart';
-import 'package:atlas_mobile/features/projects/detail/skeleton.dart';
 import 'package:atlas_mobile/features/projects/detail/header.dart';
+import 'package:atlas_mobile/features/projects/detail/skeleton.dart';
 import 'package:atlas_mobile/features/projects/project_avatar.dart';
 import 'package:atlas_mobile/features/projects/project_detail_screen.dart';
 import 'package:atlas_mobile/features/terminal/live_screen.dart';
@@ -35,6 +30,12 @@ import 'package:atlas_mobile/main.dart' show buildRouter;
 
 import 'support/demo_harness.dart';
 import 'support/frame_probe.dart';
+
+// Regression: moving between Home, a project, an agent chat, the Inbox and a terminal flickered: content the
+// phone already had faded in or showed a spinner for a frame, and things that arrived later pushed what the user
+// was reading. Every test here drives the REAL screens through the app's own router (`buildRouter` in
+// lib/main.dart: the shell with its tabs, `/project`, `/terminal`; the chat is pushed by the screens themselves)
+// against the demo computer behind a link with latency, and reads every frame with FrameProbe.
 
 const _mac = MacDevice(nodeId: 'mac-1', name: 'Mac');
 

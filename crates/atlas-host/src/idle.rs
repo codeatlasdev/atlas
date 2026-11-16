@@ -1,8 +1,9 @@
-//! When the daemon exits on its own: nothing running, nobody connected, for a while.
+//! When the daemon exits on its own: nothing running, nobody connected, no phone paired, for a while.
 //!
-//! A daemon outlives the app by design (terminals keep running), but one with no terminal
-//! and no client is just a stale process that never picks up a new binary. The decisions are
-//! pure so they can be tested without a clock or a socket.
+//! A daemon outlives the app by design (terminals keep running, and a paired phone reaches the
+//! computer through it), but one with no terminal, no client and no phone is just a stale process
+//! that never picks up a new binary. The decisions are pure so they can be tested without a clock
+//! or a socket.
 
 use std::path::Path;
 use std::time::Duration;
@@ -42,10 +43,26 @@ pub fn limit_from_env() -> Option<Duration> {
     parse_limit(&std::env::var(IDLE_ENV).unwrap_or_default())
 }
 
-/// True once the daemon has been idle for `limit`: never while a terminal runs or a client is
-/// connected (`idle_for` is how long both have been zero).
-pub fn idle_expired(live_ptys: usize, clients: usize, idle_for: Duration, limit: Duration) -> bool {
-    live_ptys == 0 && clients == 0 && idle_for >= limit
+/// Something keeps the daemon up: a terminal runs, a client is connected, or a phone is paired.
+///
+/// A paired phone counts even while it is not connected: the phone only ever dials a daemon that is
+/// already there, so a daemon that left 10 minutes after the desktop closed turned every later
+/// phone visit into "Can't reach Mac" until someone opened Atlas Desktop. A revoked phone does not
+/// count (the caller passes the number of non-revoked ones).
+pub fn busy(live_ptys: usize, clients: usize, paired_phones: usize) -> bool {
+    live_ptys > 0 || clients > 0 || paired_phones > 0
+}
+
+/// True once the daemon has been idle for `limit`: never while [`busy`] (`idle_for` is how long it
+/// has not been).
+pub fn idle_expired(
+    live_ptys: usize,
+    clients: usize,
+    paired_phones: usize,
+    idle_for: Duration,
+    limit: Duration,
+) -> bool {
+    !busy(live_ptys, clients, paired_phones) && idle_for >= limit
 }
 
 /// True when the directory that holds the pid file is gone (a dev or test dir that was
@@ -62,21 +79,38 @@ mod tests {
 
     #[test]
     fn expires_only_when_nothing_runs_nobody_is_connected_and_the_limit_passed() {
-        assert!(idle_expired(0, 0, LIMIT, LIMIT));
-        assert!(idle_expired(0, 0, LIMIT * 2, LIMIT));
-        assert!(!idle_expired(0, 0, LIMIT - Duration::from_secs(1), LIMIT));
+        assert!(idle_expired(0, 0, 0, LIMIT, LIMIT));
+        assert!(idle_expired(0, 0, 0, LIMIT * 2, LIMIT));
+        assert!(!idle_expired(
+            0,
+            0,
+            0,
+            LIMIT - Duration::from_secs(1),
+            LIMIT
+        ));
     }
 
     #[test]
     fn a_running_pty_never_expires_however_long_it_has_been() {
-        assert!(!idle_expired(1, 0, LIMIT * 100, LIMIT));
-        assert!(!idle_expired(3, 0, Duration::MAX, LIMIT));
+        assert!(!idle_expired(1, 0, 0, LIMIT * 100, LIMIT));
+        assert!(!idle_expired(3, 0, 0, Duration::MAX, LIMIT));
     }
 
     #[test]
     fn a_connected_client_never_expires() {
-        assert!(!idle_expired(0, 1, LIMIT * 100, LIMIT));
-        assert!(!idle_expired(2, 2, LIMIT * 100, LIMIT));
+        assert!(!idle_expired(0, 1, 0, LIMIT * 100, LIMIT));
+        assert!(!idle_expired(2, 2, 0, LIMIT * 100, LIMIT));
+    }
+
+    /// Incident: the desktop closed, 10 minutes later hostd left, and the paired phone showed
+    /// "Can't reach Mac" until someone opened Atlas Desktop again. The phone is not a client while
+    /// it is away, so being paired is what has to keep the daemon.
+    #[test]
+    fn a_paired_phone_keeps_the_daemon_up_while_it_is_away() {
+        assert!(!idle_expired(0, 0, 1, LIMIT * 100, LIMIT));
+        assert!(!idle_expired(0, 0, 3, Duration::MAX, LIMIT));
+        assert!(busy(0, 0, 1));
+        assert!(!busy(0, 0, 0), "no phone, nothing running, nobody here");
     }
 
     #[test]

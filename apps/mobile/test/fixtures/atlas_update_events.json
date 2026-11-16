@@ -1,0 +1,42 @@
+{
+  "failed": [
+    {
+      "ev": "atlas_update",
+      "message": "Downloading Atlas v1.6.0",
+      "stage": "downloading",
+      "version": "1.6.0"
+    },
+    {
+      "ev": "atlas_update",
+      "message": "Download failed. Releases: https://github.com/codeatlasdev/atlas/releases",
+      "stage": "failed",
+      "version": "1.6.0"
+    }
+  ],
+  "success": [
+    {
+      "ev": "atlas_update",
+      "message": "Downloading Atlas v1.6.0",
+      "stage": "downloading",
+      "version": "1.6.0"
+    },
+    {
+      "ev": "atlas_update",
+      "message": "Installing Atlas v1.6.0",
+      "stage": "installing",
+      "version": "1.6.0"
+    },
+    {
+      "ev": "atlas_update",
+      "message": "Switching the terminal host to v1.6.0; terminals keep running",
+      "stage": "handing_off",
+      "version": "1.6.0"
+    },
+    {
+      "ev": "atlas_update",
+      "message": "Atlas v1.6.0 is installed",
+      "stage": "done",
+      "version": "1.6.0"
+    }
+  ]
+}

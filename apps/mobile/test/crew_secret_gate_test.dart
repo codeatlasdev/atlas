@@ -1,6 +1,3 @@
-// Secrets from the phone (PhoneCrewAudit gap 7): a crewmate that needs a value asks with a `provide_secret`
-// card; the owner types it on the phone. Decision: allowed, Face ID first, and nothing leaves the phone
-// until they pass it. The transport records every line the app really sends.
 import 'dart:convert';
 
 import 'package:flutter/material.dart';
@@ -9,13 +6,17 @@ import 'package:flutter_test/flutter_test.dart';
 
 import 'package:atlas_mobile/core/auth/device_auth.dart';
 import 'package:atlas_mobile/core/connection/connection_notifier.dart';
-import 'package:atlas_mobile/core/protocol/crew_models.dart';
-import 'package:atlas_mobile/core/protocol/models.dart';
 import 'package:atlas_mobile/core/demo/demo_computer.dart';
+import 'package:atlas_mobile/core/protocol/crew_task.dart';
+import 'package:atlas_mobile/core/protocol/models.dart';
 import 'package:atlas_mobile/core/transport/transport.dart';
 import 'package:atlas_mobile/features/crew/chat/action_card.dart';
 
 import 'support/demo_harness.dart';
+
+// Secrets from the phone (PhoneCrewAudit gap 7): a crewmate that needs a value asks with a `provide_secret`
+// card; the owner types it on the phone. Decision: allowed, Face ID first, and nothing leaves the phone
+// until they pass it. The transport records every line the app really sends.
 
 /// The demo computer's transport, remembering what the app sent it.
 class _Recording implements Transport {

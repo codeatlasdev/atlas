@@ -1,6 +1,3 @@
-// A screen reader finds a row by its role and name. A bare InkWell/GestureDetector row has a tap
-// action but no "button" role, and merges every Text inside it into one long label (or, under
-// excludeSemantics, none). Each row below must be a button named for what it opens.
 import 'dart:async';
 import 'dart:convert';
 
@@ -18,6 +15,10 @@ import 'package:atlas_mobile/core/ui/atlas_theme.dart';
 import 'package:atlas_mobile/features/home/home_screen.dart';
 import 'package:atlas_mobile/features/inbox/inbox.dart';
 import 'package:atlas_mobile/features/projects/projects_provider.dart';
+
+// A screen reader finds a row by its role and name. A bare InkWell/GestureDetector row has a tap
+// action but no "button" role, and merges every Text inside it into one long label (or, under
+// excludeSemantics, none). Each row below must be a button named for what it opens.
 
 class _Storage extends MacStorage {
   _Storage(this.devices) : super(storage: null);
@@ -180,13 +181,6 @@ void main() {
           child: MaterialApp(theme: atlasTheme(), home: const HomeScreen()),
         ),
       );
-      await _settle(t);
-      // Debug builds show onboarding first; tap through it.
-      for (var i = 0; i < 3; i++) {
-        await t.tap(find.text('Continue'));
-        await _settle(t, 8);
-      }
-      await t.tap(find.text('Open my computer'));
       await _settle(t);
 
       final row = _button(t, 'shop');

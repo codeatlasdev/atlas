@@ -541,12 +541,15 @@ impl LoginArgs {
                 self.agent
             )
         })?;
+        // The same ssh helper as every other crew call: the port, and the quoting of the script.
+        let argv = atlas_core::ssh::SshTarget::new(self.ssh_target.clone(), Some(self.ssh.port))
+            .terminal_argv(&script);
         println!(
             "\x1b[36m▸\x1b[0m Opening sign-in session for crewmate {id}: ssh -t {} (atlas hostd --crew-login {})",
             self.ssh_target, self.agent
         );
-        let status = std::process::Command::new("ssh")
-            .args(["-t", &self.ssh_target, &script])
+        let status = std::process::Command::new(&argv[0])
+            .args(&argv[1..])
             .status()
             .context("could not launch ssh")?;
         if !status.success() {

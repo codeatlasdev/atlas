@@ -24,7 +24,9 @@ fn counting_shell(dir: &Path) -> (String, std::path::PathBuf) {
 }
 
 fn starts(log: &Path) -> usize {
-    std::fs::read_to_string(log).map_or(0, |t| t.lines().count())
+    let n = std::fs::read_to_string(log).map_or(0, |t| t.lines().count());
+    eprintln!("probes so far: {n}");
+    n
 }
 
 #[test]

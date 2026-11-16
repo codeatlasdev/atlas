@@ -189,7 +189,9 @@ done
 run cargo update --workspace --offline --quiet
 
 run git add Cargo.lock CHANGELOG.md "${crates[@]}"
-run git commit -m "chore(release): $tag"
+# Signed off like every commit (DCO): the release commit goes to the branch through the maintainer bypass, so the
+# Signed-off-by check never sees it; 1.5.0-alpha.24 to alpha.26 shipped without one.
+run git commit -s -m "chore(release): $tag"
 tag_msg="Atlas $tag"
 [[ -z "$promoted_from" ]] || tag_msg="$tag_msg
 

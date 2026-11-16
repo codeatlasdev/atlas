@@ -6,6 +6,9 @@ All notable changes to Atlas (CLI, TUI, MCP server and Atlas Desktop). Versions 
 
 ## [Unreleased]
 
+### Changed
+
+- **The Signed-off-by check refuses placeholder identities, and release commits are signed off.** A commit authored or committed as a placeholder (an email on `example.com`, `.test` or `.invalid`, a host name such as `you@MacBook.local` or `localhost`, a template name like "Your Name" or "First User") now fails the required `Signed-off-by` check on pull requests even when it carries a sign-off: two such commits ("First User <first@example.com>") reached 1.5.0-alpha.26 and could not be credited. `bun run release` now signs off its own `chore(release)` commit, which 1.5.0-alpha.24 to alpha.26 lacked (it goes in through the maintainer bypass, so the check never saw it). See [CONTRIBUTING.md](CONTRIBUTING.md#developer-certificate-of-origin-dco).
 ### Fixed
 
 - **A release's GitHub page is never cut off.** GitHub truncates a release body at 125,000 characters without a word, and the 1.5.0-alpha.26 notes (155,000) stopped mid-entry and lost the Install and Update sections. The release workflow now builds the body with `scripts/release-notes.ts`: a section that fits is copied as before (byte for byte), a longer one keeps its intro, headings and every entry's title, with a link to the full section in `CHANGELOG.md` at the tag. Atlas Desktop's What's new already reads `CHANGELOG.md` at the tag and was never affected. The 1.5.0-alpha.26 page was regenerated this way.

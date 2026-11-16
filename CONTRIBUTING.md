@@ -90,7 +90,7 @@ git rebase --signoff main                          # sign every commit of a bran
 git commit --amend -s --no-edit                    # sign the last one
 ```
 
-The name and email must match your git identity (a real name, not a handle you want to hide). The `DCO` check on pull requests fails when a commit lacks the trailer.
+The name and email must match your git identity (a real name, not a handle you want to hide). The `DCO` check on pull requests fails when a commit lacks the trailer, and when its author or committer is a placeholder: an email on a domain reserved for examples (`example.com`, `.test`, `.invalid`), a machine's own host name (`you@MacBook.local`, `localhost`, what git guesses when `user.email` is unset), or a template name ("Your Name", "First User"). Nobody can credit or reach such a commit. This applies to commits made by an agent in your checkout too: set `git config user.name` and `user.email` where it runs.
 
 ## License of contributions
 

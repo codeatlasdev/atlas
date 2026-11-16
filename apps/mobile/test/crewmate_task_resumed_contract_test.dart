@@ -2,7 +2,8 @@ import 'dart:convert';
 import 'dart:io';
 
 import 'package:flutter_test/flutter_test.dart';
-import 'package:atlas_mobile/core/protocol/crew_models.dart';
+
+import 'package:atlas_mobile/core/protocol/crew_task.dart';
 
 void main() {
   // The task as hostd serializes it after a restart interrupted it (#199): written by the Rust test

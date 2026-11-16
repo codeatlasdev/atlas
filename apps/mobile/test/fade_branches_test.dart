@@ -4,10 +4,12 @@
 import 'package:flutter/material.dart';
 import 'package:flutter_test/flutter_test.dart';
 
+import 'package:atlas_mobile/core/ui/atlas_theme.dart';
 import 'package:atlas_mobile/core/ui/fade_branches.dart';
 
 void main() {
   Widget app(int index, {List<Widget>? pages}) => MaterialApp(
+    theme: atlasTheme(),
     home: FadeBranches(
       index: index,
       children: pages ?? const [Text('computers'), Text('crew')],

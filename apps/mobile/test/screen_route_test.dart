@@ -1,10 +1,3 @@
-// One way to push a screen. Every screen the app opens from another one goes through `screenRoute` (core/ui/
-// route_page.dart), the same rules as the pages go_router builds with `routePage`: on iOS it slides in and an edge
-// swipe pops it, elsewhere the theme's transition, and with Reduce motion it is simply there on its first frame.
-// Before, ten call sites built a `MaterialPageRoute` each: they slid correctly, but ignored Reduce motion.
-//
-// Every test drives the REAL screens through the app's own router (`buildRouter`) against the demo computer and
-// reads each frame with FrameProbe.
 import 'dart:io';
 
 import 'package:flutter/material.dart';
@@ -23,6 +16,14 @@ import 'package:atlas_mobile/main.dart' show buildRouter;
 
 import 'support/demo_harness.dart';
 import 'support/frame_probe.dart';
+
+// One way to push a screen. Every screen the app opens from another one goes through `screenRoute` (core/ui/
+// route_page.dart), the same rules as the pages go_router builds with `routePage`: on iOS it slides in and an edge
+// swipe pops it, elsewhere the theme's transition, and with Reduce motion it is simply there on its first frame.
+// Before, ten call sites built a `MaterialPageRoute` each: they slid correctly, but ignored Reduce motion.
+//
+// Every test drives the REAL screens through the app's own router (`buildRouter`) against the demo computer and
+// reads each frame with FrameProbe.
 
 const _mac = MacDevice(nodeId: 'mac-1', name: 'Mac');
 const _phone = Size(393, 852);

@@ -6,8 +6,8 @@ import 'package:flutter_test/flutter_test.dart';
 
 import 'package:atlas_mobile/core/protocol/models.dart';
 import 'package:atlas_mobile/core/ui/markdown/code_block.dart';
-import 'package:atlas_mobile/features/git/git_models.dart';
 import 'package:atlas_mobile/features/git/changes_screen.dart';
+import 'package:atlas_mobile/features/git/git_models.dart';
 
 import 'support/demo_harness.dart';
 

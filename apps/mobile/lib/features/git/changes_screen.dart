@@ -1,14 +1,17 @@
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 
-import 'package:atlas_mobile/core/connection/require_mux.dart';
 import 'package:atlas_mobile/core/connection/connection_notifier.dart';
+import 'package:atlas_mobile/core/connection/require_mux.dart';
 import 'package:atlas_mobile/core/protocol/models.dart';
 import 'package:atlas_mobile/core/protocol/multiplexer.dart';
 import 'package:atlas_mobile/core/ui/atlas_theme.dart';
 import 'package:atlas_mobile/core/ui/components.dart';
-import 'package:atlas_mobile/core/ui/markdown/code_block.dart';
+import 'package:atlas_mobile/features/git/branch_bar.dart';
+import 'package:atlas_mobile/features/git/diff_panel.dart';
 import 'package:atlas_mobile/features/git/git_models.dart';
+import 'package:atlas_mobile/features/git/sheets/commit_sheet.dart';
+import 'package:atlas_mobile/features/git/sheets/pr_sheet.dart';
 
 /// Review and ship a project's changes from the phone: files with their status, the diff of each,
 /// stage toggles, commit (with the AI message the desktop has), push and a pull request. Every
@@ -141,7 +144,7 @@ class _ChangesScreenState extends ConsumerState<ChangesScreen> {
       context: context,
       isScrollControlled: true,
       showDragHandle: true,
-      builder: (_) => _CommitSheet(
+      builder: (_) => CommitSheet(
         staged: _status?.staged.length ?? 0,
         suggest: () async {
           final d = await _call('git_commit_message');
@@ -172,7 +175,7 @@ class _ChangesScreenState extends ConsumerState<ChangesScreen> {
       context: context,
       isScrollControlled: true,
       showDragHandle: true,
-      builder: (_) => _PrSheet(branch: _status?.branch ?? ''),
+      builder: (_) => PrSheet(branch: _status?.branch ?? ''),
     );
     if (input == null || !mounted) return;
     setState(() => _busy.add('pr'));
@@ -224,7 +227,7 @@ class _ChangesScreenState extends ConsumerState<ChangesScreen> {
                   Space.xxl,
                 ),
                 children: [
-                  _BranchBar(status: s),
+                  BranchBar(status: s),
                   if (s.staged.isNotEmpty) ...[
                     SectionHeader('Staged', count: s.staged.length),
                     for (final e in s.staged) _row(e, staged: true),
@@ -316,7 +319,7 @@ class _ChangesScreenState extends ConsumerState<ChangesScreen> {
             ],
           ),
         ),
-        if (open) _DiffPanel(diff: _diffs[k], loaded: _diffs.containsKey(k)),
+        if (open) DiffPanel(diff: _diffs[k], loaded: _diffs.containsKey(k)),
       ],
     );
   }
@@ -364,229 +367,4 @@ class _ChangesScreenState extends ConsumerState<ChangesScreen> {
       ],
     );
   }
-}
-
-class _BranchBar extends StatelessWidget {
-  const _BranchBar({required this.status});
-  final GitStatus status;
-
-  @override
-  Widget build(BuildContext context) {
-    final c = AtlasColors.of(context);
-    return Row(
-      children: [
-        Icon(Icons.call_split, size: 18, color: c.accent),
-        const SizedBox(width: Space.sm),
-        Flexible(
-          child: Text(
-            status.branch,
-            overflow: TextOverflow.ellipsis,
-            style: const TextStyle(fontWeight: FontWeight.w700),
-          ),
-        ),
-        if (status.upstream != null) ...[
-          const SizedBox(width: Space.sm),
-          Text(
-            '${status.ahead > 0 ? '↑${status.ahead} ' : ''}${status.upstream}',
-            style: Theme.of(context).textTheme.bodySmall!
-                .copyWith(color: c.muted),
-          ),
-        ] else ...[
-          const SizedBox(width: Space.sm),
-          Text(
-            'not pushed',
-            style: Theme.of(context).textTheme.bodySmall!
-                .copyWith(color: c.muted),
-          ),
-        ],
-      ],
-    );
-  }
-}
-
-class _DiffPanel extends StatelessWidget {
-  const _DiffPanel({required this.diff, required this.loaded});
-  final FileDiff? diff;
-  final bool loaded;
-
-  @override
-  Widget build(BuildContext context) {
-    final d = diff;
-    return Padding(
-      padding: const EdgeInsets.only(bottom: Space.sm),
-      child: !loaded
-          ? const Padding(
-              padding: EdgeInsets.all(Space.md),
-              child: Center(child: CircularProgressIndicator()),
-            )
-          : d == null || d.binary || d.hunks.isEmpty
-          ? const Padding(
-              padding: EdgeInsets.all(Space.md),
-              child: Text('No text changes to show (binary or empty).'),
-            )
-          : AtlasCodeBlock(code: d.asPatch(), language: 'diff'),
-    );
-  }
-}
-
-class _CommitSheet extends StatefulWidget {
-  const _CommitSheet({required this.staged, required this.suggest});
-  final int staged;
-  final Future<String?> Function() suggest;
-
-  @override
-  State<_CommitSheet> createState() => _CommitSheetState();
-}
-
-class _CommitSheetState extends State<_CommitSheet> {
-  final _text = TextEditingController();
-  bool _writing = false;
-
-  @override
-  void dispose() {
-    _text.dispose();
-    super.dispose();
-  }
-
-  Future<void> _ai() async {
-    setState(() => _writing = true);
-    final m = await widget.suggest();
-    if (!mounted) return;
-    setState(() {
-      _writing = false;
-      if (m != null) _text.text = m;
-    });
-  }
-
-  @override
-  Widget build(BuildContext context) => Padding(
-    padding: EdgeInsets.fromLTRB(
-      Space.lg,
-      0,
-      Space.lg,
-      MediaQuery.viewInsetsOf(context).bottom + Space.lg,
-    ),
-    child: Column(
-      mainAxisSize: MainAxisSize.min,
-      crossAxisAlignment: CrossAxisAlignment.stretch,
-      children: [
-        Text(
-          'Commit ${widget.staged} staged file${widget.staged == 1 ? '' : 's'}',
-          style: Theme.of(context).textTheme.titleMedium,
-        ),
-        const SizedBox(height: Space.md),
-        TextField(
-          key: const ValueKey('commit-message'),
-          controller: _text,
-          minLines: 3,
-          maxLines: 8,
-          onChanged: (_) => setState(() {}),
-          decoration: const InputDecoration(
-            hintText: 'Subject, blank line, then why',
-            border: OutlineInputBorder(),
-          ),
-        ),
-        const SizedBox(height: Space.sm),
-        Wrap(
-          alignment: WrapAlignment.spaceBetween,
-          crossAxisAlignment: WrapCrossAlignment.center,
-          spacing: Space.sm,
-          runSpacing: Space.sm,
-          children: [
-            OutlinedButton.icon(
-              key: const ValueKey('ai-message'),
-              onPressed: _writing ? null : _ai,
-              icon: _writing
-                  ? const SizedBox(
-                      width: Space.lg,
-                      height: Space.lg,
-                      child: CircularProgressIndicator(strokeWidth: 2),
-                    )
-                  : const Icon(Icons.auto_awesome),
-              label: Text(_writing ? 'Writing…' : 'Write with AI'),
-            ),
-            FilledButton(
-              key: const ValueKey('commit-confirm'),
-              onPressed: _text.text.trim().isEmpty
-                  ? null
-                  : () => Navigator.pop(context, _text.text.trim()),
-              child: const Text('Commit'),
-            ),
-          ],
-        ),
-      ],
-    ),
-  );
-}
-
-class _PrSheet extends StatefulWidget {
-  const _PrSheet({required this.branch});
-  final String branch;
-
-  @override
-  State<_PrSheet> createState() => _PrSheetState();
-}
-
-class _PrSheetState extends State<_PrSheet> {
-  final _title = TextEditingController();
-  final _body = TextEditingController();
-
-  @override
-  void dispose() {
-    _title.dispose();
-    _body.dispose();
-    super.dispose();
-  }
-
-  @override
-  Widget build(BuildContext context) => Padding(
-    padding: EdgeInsets.fromLTRB(
-      Space.lg,
-      0,
-      Space.lg,
-      MediaQuery.viewInsetsOf(context).bottom + Space.lg,
-    ),
-    child: Column(
-      mainAxisSize: MainAxisSize.min,
-      crossAxisAlignment: CrossAxisAlignment.stretch,
-      children: [
-        Text(
-          'Pull request from ${widget.branch}',
-          style: Theme.of(context).textTheme.titleMedium,
-        ),
-        const SizedBox(height: Space.md),
-        TextField(
-          key: const ValueKey('pr-title'),
-          controller: _title,
-          onChanged: (_) => setState(() {}),
-          decoration: const InputDecoration(
-            labelText: 'Title',
-            border: OutlineInputBorder(),
-          ),
-        ),
-        const SizedBox(height: Space.sm),
-        TextField(
-          key: const ValueKey('pr-body'),
-          controller: _body,
-          minLines: 3,
-          maxLines: 8,
-          decoration: const InputDecoration(
-            labelText: 'Description',
-            border: OutlineInputBorder(),
-          ),
-        ),
-        const SizedBox(height: Space.md),
-        FilledButton(
-          key: const ValueKey('pr-confirm'),
-          onPressed: _title.text.trim().isEmpty
-              ? null
-              : () => Navigator.pop(context, (
-                  _title.text.trim(),
-                  _body.text.trim(),
-                )),
-          child: const Text('Open pull request'),
-        ),
-      ],
-    ),
-  );
 }

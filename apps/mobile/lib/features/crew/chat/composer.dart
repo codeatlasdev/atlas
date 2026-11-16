@@ -6,9 +6,10 @@ import 'package:flutter/services.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 
 import 'package:atlas_mobile/core/ui/atlas_theme.dart';
-import 'package:atlas_mobile/features/crew/chat_motion.dart';
 import 'package:atlas_mobile/features/crew/chat/attachments.dart';
 import 'package:atlas_mobile/features/crew/chat/glass.dart';
+import 'package:atlas_mobile/features/crew/chat/image_source.dart';
+import 'package:atlas_mobile/features/crew/chat_motion.dart';
 
 // ── Composer: a floating pill, like the desktop's ────────────────────────────
 
@@ -47,47 +48,18 @@ class _ChatComposerState extends ConsumerState<ChatComposer> {
   void _fail(String message) => setState(() => _error = message);
 
   Future<void> _chooseSource() async {
-    final source = await showModalBottomSheet<_Source>(
-      context: context,
-      backgroundColor: AtlasColors.of(context).overlay,
-      builder: (ctx) => SafeArea(
-        child: Column(
-          mainAxisSize: MainAxisSize.min,
-          children: [
-            ListTile(
-              leading: const Icon(Icons.photo_camera_outlined),
-              title: const Text('Take photo'),
-              onTap: () => Navigator.of(ctx).pop(_Source.camera),
-            ),
-            ListTile(
-              leading: const Icon(Icons.photo_library_outlined),
-              title: const Text('Photo library'),
-              onTap: () => Navigator.of(ctx).pop(_Source.gallery),
-            ),
-          ],
-        ),
-      ),
-    );
+    final source = await askPhotoSource(context);
     if (source == null || !mounted) return;
-    final picker = ref.read(imagePickerProvider);
     final List<PickedImage> picked;
     try {
-      picked = source == _Source.camera
-          ? await picker.camera()
-          : await picker.gallery();
+      picked = await pickPhotos(ref, source);
     } on Object catch (e) {
       // A permission refused in the system sheet, or no camera: say so, never a silent nothing.
       if (mounted) _fail('Could not open the ${source.name}: $e');
       return;
     }
     if (!mounted) return;
-    final r = addImages(_images, picked);
-    setState(() {
-      _images
-        ..clear()
-        ..addAll(r.images);
-      _error = r.errors.isEmpty ? null : r.errors.join('\n');
-    });
+    setState(() => _error = takePicked(_images, picked));
   }
 
   Future<void> _send() async {
@@ -271,8 +243,6 @@ class _ChatComposerState extends ConsumerState<ChatComposer> {
     );
   }
 }
-
-enum _Source { camera, gallery }
 
 /// One picked image above the field: a small square with a remove button.
 class _PendingThumb extends StatelessWidget {

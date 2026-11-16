@@ -1,23 +1,25 @@
-// Contract: a task from GitHub keeps its `origin`, and a GitHub automation round-trips every field
-// hostd sends (authors, allow_auto, handle, assignee), from the file hostd's real serializer wrote.
-// Incident guarded: the editors rebuilt the automation as {type, repo, events}, so saving an edit
-// reset `authors` and `allow_auto` to their defaults on the server.
-// Regenerate fixture: UPDATE_FIXTURES=1 cargo test -p atlas-host github_origin_fixture_is_real_payload
 import 'dart:convert';
 import 'dart:io';
 
 import 'package:flutter_test/flutter_test.dart';
 
-import 'package:atlas_mobile/core/protocol/crew_models.dart';
+import 'package:atlas_mobile/core/protocol/crew_task.dart';
+import 'package:atlas_mobile/core/protocol/crew_triggers.dart';
 import 'package:atlas_mobile/features/crew/automations.dart';
+
+// Contract: a task from GitHub keeps its `origin`, and a GitHub automation round-trips every field
+// hostd sends (authors, allow_auto, handle, assignee), from the file hostd's real serializer wrote.
+// Incident guarded: the editors rebuilt the automation as {type, repo, events}, so saving an edit
+// reset `authors` and `allow_auto` to their defaults on the server.
+// Regenerate fixture: UPDATE_FIXTURES=1 cargo test -p atlas-host github_origin_fixture_is_real_payload
 
 void main() {
   late Map<String, dynamic> fixture;
 
   setUpAll(() {
-    fixture =
-        jsonDecode(File('test/fixtures/github_origin.json').readAsStringSync())
-            as Map<String, dynamic>;
+    fixture = jsonDecode(
+      File('test/fixtures/github_origin.json').readAsStringSync(),
+    ) as Map<String, dynamic>;
   });
 
   test('CrewmateTask parses the GitHub origin', () {

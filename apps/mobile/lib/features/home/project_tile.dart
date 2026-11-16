@@ -3,6 +3,7 @@ import 'package:flutter/material.dart';
 import 'package:atlas_mobile/core/protocol/models.dart';
 import 'package:atlas_mobile/core/ui/agent_logo.dart';
 import 'package:atlas_mobile/core/ui/atlas_theme.dart';
+import 'package:atlas_mobile/core/ui/inset_row.dart';
 import 'package:atlas_mobile/features/projects/project_avatar.dart';
 
 /// A project, Telegram-row style like the crew's logbook: avatar with a running dot, the name
@@ -54,98 +55,65 @@ class ProjectTile extends StatelessWidget {
         : project.services.isEmpty
         ? ('running', c.success)
         : ('$up/${project.services.length} up', c.success);
-    return Semantics(
-      button: true,
-      label: [
+    return InsetRow(
+      semanticsLabel: [
         '${project.name}, $stateText',
         if (lead != null) '${lead.$2.agent}, ${lead.$2.state}',
       ].join('. '),
-      excludeSemantics: true,
       onTap: onOpen,
-      child: InkWell(
-        onTap: onOpen,
-        child: Padding(
-          padding: const EdgeInsets.only(left: Space.lg),
-          child: Row(
-            children: [
-              // Flies into the project screen's header; the dot says if it runs.
-              Stack(
-                clipBehavior: Clip.none,
-                children: [
-                  Hero(
-                    tag: 'project-${project.id}',
-                    child: ProjectAvatar(name: project.name, size: 50),
-                  ),
-                  if (project.running)
-                    Positioned(
-                      right: -2,
-                      bottom: -2,
-                      child: Container(
-                        width: 15,
-                        height: 15,
-                        decoration: BoxDecoration(
-                          color: failed > 0 ? c.error : c.success,
-                          shape: BoxShape.circle,
-                          border: Border.all(color: c.ground, width: 2.5),
-                        ),
-                      ),
-                    ),
-                ],
-              ),
-              const SizedBox(width: Space.md),
-              Expanded(
-                child: Container(
-                  padding: const EdgeInsets.fromLTRB(
-                    0,
-                    Space.md,
-                    Space.lg,
-                    Space.md,
-                  ),
-                  decoration: BoxDecoration(
-                    border: last
-                        ? null
-                        : Border(bottom: BorderSide(color: c.borderSubtle)),
-                  ),
-                  child: Column(
-                    crossAxisAlignment: CrossAxisAlignment.start,
-                    children: [
-                      Row(
-                        children: [
-                          Expanded(
-                            child: Text(
-                              project.name,
-                              overflow: TextOverflow.ellipsis,
-                              style: Theme.of(context).textTheme.titleMedium!
-                                  .copyWith(
-                                    fontWeight: FontWeight.w600,
-                                    color: c.text,
-                                  ),
-                            ),
-                          ),
-                          Text(
-                            stateText,
-                            style: Theme.of(context).textTheme.bodyMedium!
-                                .copyWith(color: stateColor),
-                          ),
-                        ],
-                      ),
-                      const SizedBox(height: 3),
-                      if (lead == null)
-                        Text(
-                          project.running ? 'No agent here' : 'Tap to open',
-                          style: Theme.of(context).textTheme.bodyLarge!
-                              .copyWith(color: c.muted),
-                        )
-                      else
-                        AgentLine(status: lead.$2, more: agents.length - 1),
-                    ],
-                  ),
+      last: last,
+      // Flies into the project screen's header; the dot says if it runs.
+      leading: Stack(
+        clipBehavior: Clip.none,
+        children: [
+          Hero(
+            tag: 'project-${project.id}',
+            child: ProjectAvatar(name: project.name, size: 50),
+          ),
+          if (project.running)
+            Positioned(
+              right: -2,
+              bottom: -2,
+              child: Container(
+                width: 15,
+                height: 15,
+                decoration: BoxDecoration(
+                  color: failed > 0 ? c.error : c.success,
+                  shape: BoxShape.circle,
+                  border: Border.all(color: c.ground, width: 2.5),
                 ),
               ),
-            ],
-          ),
-        ),
+            ),
+        ],
       ),
+      lines: [
+        Row(
+          children: [
+            Expanded(
+              child: Text(
+                project.name,
+                overflow: TextOverflow.ellipsis,
+                style: Theme.of(context).textTheme.titleMedium!
+                    .copyWith(fontWeight: FontWeight.w600, color: c.text),
+              ),
+            ),
+            Text(
+              stateText,
+              style: Theme.of(context).textTheme.bodyMedium!
+                  .copyWith(color: stateColor),
+            ),
+          ],
+        ),
+        const SizedBox(height: 3),
+        if (lead == null)
+          Text(
+            project.running ? 'No agent here' : 'Tap to open',
+            style: Theme.of(context).textTheme.bodyLarge!
+                .copyWith(color: c.muted),
+          )
+        else
+          AgentLine(status: lead.$2, more: agents.length - 1),
+      ],
     );
   }
 }

@@ -3,6 +3,7 @@ import 'package:go_router/go_router.dart';
 
 import 'package:atlas_mobile/core/ui/agent_logo.dart';
 import 'package:atlas_mobile/core/ui/atlas_theme.dart';
+import 'package:atlas_mobile/core/ui/inset_row.dart';
 import 'package:atlas_mobile/features/crew/avatar/crewmate_avatar.dart';
 import 'package:atlas_mobile/features/crew/avatar/crewmate_look.dart';
 import 'package:atlas_mobile/features/crew/crew_text.dart';
@@ -55,101 +56,68 @@ class ActivityRow extends StatelessWidget {
         c.success,
       ),
     };
-    return Semantics(
-      button: true,
-      label: '$title. $line',
-      excludeSemantics: true,
+    return InsetRow(
+      semanticsLabel: '$title. $line',
       onTap: () => _open(context),
-      child: InkWell(
-        onTap: () => _open(context),
-        child: Padding(
-          padding: const EdgeInsets.only(left: Space.lg),
-          child: Row(
-            children: [
-              avatar,
-              const SizedBox(width: Space.md),
-              Expanded(
-                child: Container(
-                  padding: const EdgeInsets.fromLTRB(
-                    0,
-                    Space.md,
-                    Space.lg,
-                    Space.md,
-                  ),
-                  decoration: BoxDecoration(
-                    border: last
-                        ? null
-                        : Border(bottom: BorderSide(color: c.borderSubtle)),
-                  ),
-                  child: Column(
-                    crossAxisAlignment: CrossAxisAlignment.start,
-                    children: [
-                      Row(
-                        children: [
-                          Icon(
-                            color == c.error
-                                ? Icons.error_rounded
-                                : Icons.check_circle_rounded,
-                            size: 14,
-                            color: color,
-                          ),
-                          const SizedBox(width: Space.xs),
-                          Expanded(
-                            child: Text(
-                              title,
-                              overflow: TextOverflow.ellipsis,
-                              style: Theme.of(context).textTheme.bodyLarge!
-                                  .copyWith(
-                                    fontWeight: unread
-                                        ? FontWeight.w700
-                                        : FontWeight.w500,
-                                    color: c.text,
-                                  ),
-                            ),
-                          ),
-                          Text(
-                            crewTimeAgo(
-                              item.at.millisecondsSinceEpoch ~/ 1000,
-                              DateTime.now(),
-                            ),
-                            style: Theme.of(context).textTheme.bodySmall!
-                                .copyWith(color: unread ? c.accent : c.muted),
-                          ),
-                        ],
-                      ),
-                      const SizedBox(height: 3),
-                      Row(
-                        children: [
-                          Expanded(
-                            child: Text(
-                              line,
-                              maxLines: 2,
-                              overflow: TextOverflow.ellipsis,
-                              style: Theme.of(context).textTheme.bodyLarge!
-                                  .copyWith(height: 1.3, color: c.muted),
-                            ),
-                          ),
-                          if (unread) ...[
-                            const SizedBox(width: Space.sm),
-                            Container(
-                              width: 9,
-                              height: 9,
-                              decoration: BoxDecoration(
-                                color: c.accent,
-                                shape: BoxShape.circle,
-                              ),
-                            ),
-                          ],
-                        ],
-                      ),
-                    ],
-                  ),
+      last: last,
+      leading: avatar,
+      lines: [
+        Row(
+          children: [
+            Icon(
+              color == c.error
+                  ? Icons.error_rounded
+                  : Icons.check_circle_rounded,
+              size: 14,
+              color: color,
+            ),
+            const SizedBox(width: Space.xs),
+            Expanded(
+              child: Text(
+                title,
+                overflow: TextOverflow.ellipsis,
+                style: Theme.of(context).textTheme.bodyLarge!.copyWith(
+                  fontWeight: unread ? FontWeight.w700 : FontWeight.w500,
+                  color: c.text,
+                ),
+              ),
+            ),
+            Text(
+              crewTimeAgo(
+                item.at.millisecondsSinceEpoch ~/ 1000,
+                DateTime.now(),
+              ),
+              style: Theme.of(context).textTheme.bodySmall!
+                  .copyWith(color: unread ? c.accent : c.muted),
+            ),
+          ],
+        ),
+        const SizedBox(height: 3),
+        Row(
+          children: [
+            Expanded(
+              child: Text(
+                line,
+                maxLines: 2,
+                overflow: TextOverflow.ellipsis,
+                style: Theme.of(context).textTheme.bodyLarge!
+                    .copyWith(height: 1.3, color: c.muted),
+              ),
+            ),
+            if (unread) ...[
+              const SizedBox(width: Space.sm),
+              Container(
+                width: 9,
+                height: 9,
+                decoration: BoxDecoration(
+                  color: c.accent,
+                  shape: BoxShape.circle,
                 ),
               ),
             ],
-          ),
+          ],
         ),
-      ),
+      ],
     );
   }
 }

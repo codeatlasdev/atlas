@@ -89,6 +89,8 @@ impl Git {
     ) -> Result<Output, String> {
         match &self.0 {
             How::Local => {
+                // Only a crewmate's git gets the server's token.
+                let _ = net;
                 let mut cmd = tokio::process::Command::new(git_program());
                 cmd.args(args);
                 if let Some(d) = cwd {

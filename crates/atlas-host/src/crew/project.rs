@@ -592,6 +592,8 @@ mod tests {
     // Issue #200: a crewmate that runs as its own user gets a full clone in its own directory (a
     // worktree would point into the crew home, which the crewmate cannot read), tracking the branch. The
     // clone is made by the crewmate: the helper's git request, here run by the real helper loop.
+    // Isolation and the helper are Unix only.
+    #[cfg(unix)]
     #[tokio::test]
     async fn an_isolated_crewmate_gets_its_own_full_clone_not_a_worktree_of_a_shared_one() {
         let tmp = tempfile::tempdir().unwrap();
@@ -634,6 +636,8 @@ mod tests {
     }
 
     // A commit lands on the remote; `fetch` brings the crewmate's own checkout up to date through the helper.
+    // Isolation and the helper are Unix only.
+    #[cfg(unix)]
     #[tokio::test]
     async fn fetch_updates_the_isolated_checkout_through_the_helper() {
         let tmp = tempfile::tempdir().unwrap();

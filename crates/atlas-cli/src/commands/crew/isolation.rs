@@ -890,6 +890,8 @@ mod tests {
     // `RestrictSUIDSGID=yes`, whose seccomp filter makes any chmod that sets a setuid or setgid bit fail with
     // EPERM, and its own plan gives `work/` mode 2770 (setgid, so what the crew user and the crewmate write
     // keeps one group). Creating a crewmate failed with "preparing .../work: Operation not permitted".
+    // The provisioning service (and so its plan) is Unix only.
+    #[cfg(unix)]
     #[test]
     fn the_provisioning_unit_does_not_forbid_the_setgid_bit_its_own_plan_sets() {
         use atlas_host::crew::spawn::provision::{PlanCfg, Step, provision_plan};

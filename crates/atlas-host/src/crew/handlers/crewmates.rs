@@ -450,7 +450,7 @@ fn warm_checkout(hub: &Hub, crewmate: &Crewmate) {
     let git = hub
         .crew
         .store
-        .git_in(&project::work_dir_for(&dir, &id, iso.as_ref()));
+        .git_for_checkout(&id, &project::work_dir_for(&dir, &id, iso.as_ref()));
     tokio::spawn(async move {
         if let Err(e) = project::prepare(&project, &id, &dir, iso, &git).await {
             eprintln!("atlas crew: checkout for {id} not ready yet: {e}");

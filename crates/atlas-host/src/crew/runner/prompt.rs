@@ -122,11 +122,13 @@ async fn prepare_work_dir(
         }
         // Inside the task's own life: a cancel (the store says `cancelled`) ends the checkout at once, and the dropped
         // git calls take their process trees with them (`proc::run_bounded`); each call also has its own deadline.
-        let git = hub.crew.store.git_in(&work);
+        let git = hub.crew.store.git_for_checkout(&crewmate.id, &work);
+        let mirror = crate::crew::mirror::mirror_for(proj, iso.as_ref(), &git);
         let checkout = async {
             let p = project::prepare(proj, &crewmate.id, &hub.crew.dir, iso.clone(), &git).await?;
-            // non-fatal; an isolated checkout is fetched by the crewmate itself, never by hostd
-            let _ = project::fetch(&p, &git).await;
+            // non-fatal; an isolated checkout is fetched by the crewmate itself (from hostd's mirror unless it has a
+            // GitHub token of its own), never by hostd
+            let _ = project::fetch(&p, &git, mirror.as_ref()).await;
             Ok::<_, String>(p)
         };
         let cancelled = async {

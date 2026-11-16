@@ -599,6 +599,13 @@ impl CrewStore {
         super::gitrun::Git::local()
     }
 
+    /// [`CrewStore::git_in`] for the checkout of crewmate `id`: with the crewmate's own `GITHUB_TOKEN` secret, if it
+    /// has one, as the only GitHub credential its git processes get (see `gitrun::Git::with_token`).
+    pub fn git_for_checkout(&self, id: &str, dir: &Path) -> super::gitrun::Git {
+        self.git_in(dir)
+            .with_token(self.secret_env(id).remove("GITHUB_TOKEN"))
+    }
+
     /// Why crewmates cannot run on this server, when isolation is installed but its helper is missing
     /// (`layout::Detected::Missing`): every task is refused with this text.
     pub fn isolation_fault(&self) -> Option<&str> {

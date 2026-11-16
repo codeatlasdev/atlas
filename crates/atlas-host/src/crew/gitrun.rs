@@ -24,7 +24,12 @@ enum How {
     Local,
     /// The crewmate `user`, through the spawn helper.
     #[cfg(unix)]
-    Crewmate { client: Client, user: String },
+    Crewmate {
+        client: Client,
+        user: String,
+        /// The crewmate's **own** GitHub token (its `GITHUB_TOKEN` secret), the only one its git processes ever get.
+        token: Option<String>,
+    },
 }
 
 impl Git {
@@ -39,7 +44,37 @@ impl Git {
         Self(How::Crewmate {
             client: Client::at(socket),
             user,
+            token: None,
         })
+    }
+
+    /// This git with the crewmate's own GitHub token, for the commands that talk to the network. Nothing else is
+    /// ever a crewmate's token: the crew user's `gh` login is never given to a process that runs as a crewmate (it
+    /// reaches every repository the operator's account can); without a token of its own the crewmate clones and
+    /// fetches from a mirror hostd keeps ([`super::mirror`]). No effect on [`Git::local`].
+    pub fn with_token(self, own: Option<String>) -> Self {
+        #[cfg(unix)]
+        {
+            let mut git = self;
+            if let How::Crewmate { token, .. } = &mut git.0 {
+                *token = own.filter(|t| !t.is_empty());
+            }
+            git
+        }
+        #[cfg(not(unix))]
+        {
+            let _ = own;
+            self
+        }
+    }
+
+    /// Whether this crewmate has a GitHub token of its own (always `false` for [`Git::local`]).
+    pub fn has_own_token(&self) -> bool {
+        match &self.0 {
+            How::Local => false,
+            #[cfg(unix)]
+            How::Crewmate { token, .. } => token.is_some(),
+        }
     }
 
     /// Whether the helper runs it as a crewmate.
@@ -63,7 +98,7 @@ impl Git {
                 .output()
                 .map_err(|e| format!("git error: {e}")),
             #[cfg(unix)]
-            How::Crewmate { client, user } => ask(client, request(user, cwd, args, None)),
+            How::Crewmate { client, user, .. } => ask(client, request(user, cwd, args, None)),
         }
     }
 
@@ -75,8 +110,7 @@ impl Git {
     }
 
     /// [`Git::run`] for a command that talks to the network (`clone`, `fetch`, `pull`). Run as a
-    /// crewmate it gets the server's GitHub token for this one process (the crew user's `gh` login is
-    /// what private repos were always cloned with; the crewmate has no login of its own).
+    /// crewmate it gets the crewmate's own GitHub token if it has one ([`Git::with_token`]) and none otherwise.
     pub async fn run_net(&self, cwd: Option<&Path>, args: &[&str]) -> Result<Output, String> {
         self.run_with(cwd, args, true).await
     }
@@ -89,7 +123,7 @@ impl Git {
     ) -> Result<Output, String> {
         match &self.0 {
             How::Local => {
-                // Only a crewmate's git gets the server's token.
+                // hostd's own git: its own setup (the `gh` credential helper) answers a password prompt.
                 let _ = net;
                 let mut cmd = tokio::process::Command::new(git_program());
                 cmd.args(args);
@@ -101,9 +135,13 @@ impl Git {
                     .map_err(|e| format!("git error: {e}"))
             }
             #[cfg(unix)]
-            How::Crewmate { client, user } => {
+            How::Crewmate {
+                client,
+                user,
+                token,
+            } => {
                 let cwd = cwd.ok_or("git error: no directory to run in")?;
-                let token = if net { github_token().await } else { None };
+                let token = if net { token.clone() } else { None };
                 let (client, req) = (client.clone(), request(user, cwd, args, token));
                 tokio::task::spawn_blocking(move || ask(&client, req))
                     .await
@@ -138,14 +176,4 @@ fn ask(client: &Client, req: GitReq) -> Result<Output, String> {
         stdout: out.stdout,
         stderr: out.stderr.into_bytes(),
     })
-}
-
-/// The GitHub token of the crew user's `gh` login, if there is one.
-#[cfg(unix)]
-async fn github_token() -> Option<String> {
-    let out = proc::gh_output(&["auth", "token"], "gh auth token")
-        .await
-        .ok()?;
-    let t = String::from_utf8_lossy(&out.stdout).trim().to_string();
-    (out.status.success() && !t.is_empty()).then_some(t)
 }

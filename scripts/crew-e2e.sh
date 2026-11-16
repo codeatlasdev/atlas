@@ -387,6 +387,43 @@ srv rm -rf "$WORKA/.atlas" # hostd made it: A may not remove what is inside
 wait_idle "$CM"
 echo "attachments: nothing written through A's link into B's work/; the staged image is readable by A"
 
+# (10) the crew user's GitHub login never reaches a process that runs as a crewmate (N2). A fake `gh` stands in for
+# the operator's login; crewmate C has a project and no token of its own, so hostd mirrors the project into
+# C's crew-runtime/ with that login and C clones the mirror. Hooks in C's own ~/.gitconfig record the environment
+# of every git process of its clone and fetch.
+LOGIN_TOKEN=ghp_e2e_login_token_0123456789
+docker exec -i "$NAME" sh -c 'cat > /usr/local/bin/gh && chmod 755 /usr/local/bin/gh' <<EOF
+#!/bin/sh
+echo "\$@" >> "$HOME_DIR/e2e-gh.log"
+[ "\$1 \$2" = "auth token" ] && echo $LOGIN_TOKEN
+exit 0
+EOF
+srv_sh "rm -f $HOME_DIR/e2e-gh.log;
+  git init -q -b main /srv/e2e-src && git -C /srv/e2e-src -c user.name=e -c user.email=e@example.com commit -q --allow-empty -m one && chmod -R a+rX /srv/e2e-src"
+CMC=$(hostd crewmate_create '{"name":"Cee","role":"You are the third crew-e2e crewmate.","agent":"claude","approval":"auto","engine":{"kind":"claude"}}' | jq -r .id)
+SLUGC=${CMC//-/}
+SLUGC=${SLUGC:0:12}
+CUSER=atlas-cm-$SLUGC
+DIRC=/var/lib/atlas-cm/$SLUGC
+docker exec -i "$NAME" setpriv --reuid="$CUSER" --regid="$CUSER" --clear-groups sh -c "mkdir -p '$DIRC/home/hooks' &&
+  for h in post-checkout reference-transaction post-merge; do printf '#!/bin/sh\nenv >> \"$DIRC/home/env.log\"\n' > '$DIRC/home/hooks/'\$h; chmod +x '$DIRC/home/hooks/'\$h; done &&
+  printf '[core]\n\thooksPath = $DIRC/home/hooks\n' > '$DIRC/home/.gitconfig'" </dev/null || fail "C cannot set up its own git hooks"
+hostd crewmate_update "$(jq -nc --arg id "$CMC" '{id: $id, project: {kind: "git", url: "file:///srv/e2e-src"}}')" >/dev/null
+T=$(send_task "$CMC" "E2E_OK mirror$RANDOM")
+wait_task "$CMC" "$T" "done" 120
+MIRROR=$(srv sh -c "ls -d $DIRC/crew-runtime/*.git") || fail "hostd made no mirror under C's crew-runtime/"
+[[ $(srv stat -c %U "$MIRROR") == atlas-crew ]] || fail "the mirror is not hostd's own (owner $(srv stat -c %U "$MIRROR"))"
+denied "C writing in hostd's mirror" as_user "$CUSER" touch "$MIRROR/x"
+srv test -s "$HOME_DIR/e2e-gh.log" || fail "hostd never asked gh for the login: the check below proves nothing"
+srv test -s "$DIRC/home/env.log" || fail "C's git hooks never ran: the check below proves nothing"
+if srv grep -q -e "$LOGIN_TOKEN" -e ATLAS_GIT_TOKEN "$DIRC/home/env.log"; then fail "the crew user's GitHub login is in a git process of crewmate C"; fi
+[[ $(as_user "$CUSER" git -C "$DIRC/work" config remote.origin.url) == "file://$MIRROR" ]] || fail "C's origin is not hostd's mirror"
+[[ $(as_user "$CUSER" git -C "$DIRC/work" config remote.origin.pushurl) == "file:///srv/e2e-src" ]] || fail "C's pushes do not go to the project"
+GH_CALLS=$(srv_sh "wc -l < $HOME_DIR/e2e-gh.log")
+hostd crewmate_delete "$(jq -nc --arg id "$CMC" '{id: $id}')" >/dev/null
+srv_sh "rm -rf /usr/local/bin/gh /srv/e2e-src $HOME_DIR/e2e-gh.log"
+echo "mirror: hostd asked gh for the login $GH_CALLS time(s), C cloned $MIRROR, and no git process of C had the token"
+
 # (4)(5) A's git config is A's own code: hostd's and the helper's git run it as A, never as the crew user
 # The command also records what its own process looks like (probe: descriptors, NoNewPrivs, cgroup).
 FSM=$(

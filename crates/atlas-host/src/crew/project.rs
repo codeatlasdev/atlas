@@ -9,6 +9,7 @@
 use std::path::{Path, PathBuf};
 
 use crate::crew::gitrun::Git;
+use crate::crew::mirror::Mirror;
 use crate::crew::spawn::layout::Isolated;
 use crate::crew::store::{ProjectRef, crewmate_dir_in};
 use base64::Engine as _;
@@ -95,31 +96,41 @@ pub async fn prepare(
 
 /// Fetch latest changes (git only, non-destructive). Call before each turn.
 ///
-/// Fetches in the shared repo, then fast-forward pulls in the worktree only
-/// when there are no local modifications.
+/// For a worktree of the shared clone: fetches in the shared repo, then fast-forward pulls in the worktree only
+/// when there are no local modifications. For a crewmate that runs as its own user: its checkout is a full clone, so
+/// it fetches and pulls **in its own `work_dir`** (never in a directory its own git output names: it is the
+/// crewmate's to change), after hostd brought `mirror` up to date when the crewmate has no GitHub token of its own.
 ///
 /// `git` runs every command: the crewmate itself for an isolated checkout (its `.git/config` is the
 /// crewmate's), hostd otherwise.
-pub async fn fetch(work_dir: &Path, git: &Git) -> Result<(), String> {
-    // Find the shared (main) worktree via `git worktree list --porcelain`. An isolated checkout is
-    // a full clone: its list names itself, and the fetch below runs there.
-    let list = git_out(
-        git,
-        Some(work_dir),
-        &["worktree", "list", "--porcelain"],
-        false,
-    )
-    .await
-    .unwrap_or_default();
-
-    let shared = list
-        .lines()
-        .find(|l| l.starts_with("worktree "))
-        .and_then(|l| l.strip_prefix("worktree "))
-        .map(|s| PathBuf::from(s.trim()));
-
-    if let Some(shared_dir) = shared {
-        let _ = git_out(git, Some(&shared_dir), &["fetch", "--quiet"], true).await;
+pub async fn fetch(work_dir: &Path, git: &Git, mirror: Option<&Mirror>) -> Result<(), String> {
+    if git.is_crewmate() {
+        if let Some(m) = mirror
+            && let Err(e) = m.refresh().await
+        {
+            eprintln!(
+                "atlas crew: mirror of {} not refreshed: {e}",
+                work_dir.display()
+            );
+        }
+        let _ = git_out(git, Some(work_dir), &["fetch", "--quiet"], true).await;
+    } else {
+        // Find the shared (main) worktree via `git worktree list --porcelain`.
+        let list = git_out(
+            git,
+            Some(work_dir),
+            &["worktree", "list", "--porcelain"],
+            false,
+        )
+        .await
+        .unwrap_or_default();
+        let shared = list
+            .lines()
+            .find_map(|l| l.strip_prefix("worktree "))
+            .map(|s| PathBuf::from(s.trim()));
+        if let Some(shared_dir) = shared {
+            let _ = git_out(git, Some(&shared_dir), &["fetch", "--quiet"], true).await;
+        }
     }
 
     // Pull in the worktree only when the working tree is clean.
@@ -245,7 +256,7 @@ pub fn infer_github_repo(work_dir: &Path, git: &Git) -> Option<String> {
 
 // ─── Internals ────────────────────────────────────────────────────────────────
 
-fn git_slug(url: &str) -> String {
+pub(crate) fn git_slug(url: &str) -> String {
     let encoded = URL_SAFE_NO_PAD.encode(url.as_bytes());
     if encoded.len() > 64 {
         encoded[..64].to_string()
@@ -434,6 +445,16 @@ async fn prepare_isolated(
     }
     let url = ssh_to_https(url);
     let work_str = work.to_string_lossy().into_owned();
+    // A crewmate with a GitHub token of its own clones the real URL with it. Any other clones hostd's mirror, which
+    // hostd fills with the crew user's login: that token is never given to a process that runs as the crewmate.
+    let mirror = (!git.has_own_token()).then(|| Mirror::of(&url, iso));
+    let source = match &mirror {
+        Some(m) => {
+            m.refresh().await?;
+            m.local_url()
+        }
+        None => url.clone(),
+    };
     let mut args: Vec<&str> = vec![
         "clone",
         "--filter=blob:none",
@@ -445,9 +466,19 @@ async fn prepare_isolated(
         args.push("--branch");
         args.push(b);
     }
-    args.push(&url);
+    args.push(&source);
     args.push(&work_str);
     git_out(git, Some(&iso.dir()), &args, true).await?;
+    if mirror.is_some() {
+        // Fetches read the mirror; a push still goes where the project lives.
+        git_out(
+            git,
+            Some(&work),
+            &["remote", "set-url", "--push", "origin", &url],
+            false,
+        )
+        .await?;
+    }
     Ok(work)
 }
 
@@ -666,7 +697,159 @@ mod tests {
                 "two",
             ],
         );
-        fetch(&w, &git).await.unwrap();
+        fetch(
+            &w,
+            &git,
+            crate::crew::mirror::mirror_for(&p, Some(&iso), &git).as_ref(),
+        )
+        .await
+        .unwrap();
+        let log = std::process::Command::new("git")
+            .args(["log", "--oneline"])
+            .current_dir(&w)
+            .output()
+            .unwrap();
+        assert_eq!(String::from_utf8_lossy(&log.stdout).lines().count(), 2);
+    }
+
+    // Security review of the crew isolation, N4: `fetch` ran `git worktree list` in the crewmate's checkout and
+    // fetched in the first directory it named. The crewmate controls that output (a directory it made, swapped for a
+    // link to another crewmate's tree while hostd ran `gh auth token`), so the next `git fetch` ran, as the crewmate,
+    // in a directory of the crewmate's choosing. For an isolated crewmate the checkout is a full clone: it fetches
+    // in its own `work_dir`. Here the checkout is a linked worktree of a repository elsewhere in the crewmate's
+    // directory, so `worktree list` names that other directory first; a hook of that repository records where git
+    // ran.
+    #[cfg(unix)]
+    #[tokio::test]
+    async fn fetch_for_an_isolated_crewmate_runs_in_its_own_work_dir_and_not_where_worktree_list_points()
+     {
+        use std::os::unix::fs::PermissionsExt;
+        let tmp = tempfile::tempdir().unwrap();
+        let url = remote_repo(tmp.path());
+        let rig = crate::crew::spawn::testing::rig();
+        let setup = rig.setup();
+        let iso = setup.of("3f2a9c1e-5b7d-4e8f-9a0b-1c2d3e4f5a6b").unwrap();
+        let git = Git::crewmate(&setup.socket, iso.user.clone());
+        let shared = rig.cm.join("shared");
+        sh(
+            tmp.path(),
+            &["clone", "-q", &url, &shared.to_string_lossy()],
+        );
+        let work = rig.work();
+        sh(
+            &shared,
+            &[
+                "worktree",
+                "add",
+                "-q",
+                "--track",
+                "-B",
+                "wt",
+                &work.to_string_lossy(),
+                "origin/main",
+            ],
+        );
+        let seen = rig.cm.join("where.log");
+        let hook = shared.join(".git/hooks/reference-transaction");
+        std::fs::write(&hook, format!("#!/bin/sh\npwd -P >> {}\n", seen.display())).unwrap();
+        std::fs::set_permissions(&hook, std::fs::Permissions::from_mode(0o755)).unwrap();
+        sh(
+            &tmp.path().join("src"),
+            &[
+                "-c",
+                "user.email=t@t",
+                "-c",
+                "user.name=t",
+                "commit",
+                "-q",
+                "--allow-empty",
+                "-m",
+                "two",
+            ],
+        );
+        fetch(&work, &git, None).await.unwrap();
+        let ran: Vec<String> = std::fs::read_to_string(&seen)
+            .unwrap_or_default()
+            .lines()
+            .map(str::to_string)
+            .collect();
+        let work = std::fs::canonicalize(&work).unwrap().display().to_string();
+        assert!(
+            !ran.is_empty(),
+            "no git command touched a ref, so this proved nothing"
+        );
+        assert!(
+            ran.iter().all(|d| *d == work),
+            "git ran outside the crewmate's work_dir {work}: {ran:?}"
+        );
+    }
+
+    // Security review of the crew isolation, N2: `fetch` and `clone` put the crew user's `gh auth token` into
+    // the environment of the git process that ran as the crewmate, in a repo whose config and hooks the crewmate
+    // controls (and `/proc/<pid>/environ` is readable by its own uid): a crewmate could read the token of the
+    // operator's account, which reaches every repository that account can. hostd now fetches into a mirror it
+    // owns with the token and the crewmate clones and fetches from that path with none.
+    #[cfg(unix)]
+    #[tokio::test]
+    async fn the_crew_users_github_token_never_reaches_a_process_run_as_a_crewmate() {
+        use std::os::unix::fs::PermissionsExt;
+        let _bin = crate::crew::runner::TEST_BIN_LOCK
+            .get_or_init(|| tokio::sync::Mutex::new(()))
+            .lock()
+            .await;
+        const TOKEN: &str = "ghp_crew_user_login_token_0123456789";
+        let tmp = tempfile::tempdir().unwrap();
+        let gh = tmp.path().join("gh");
+        std::fs::write(
+            &gh,
+            format!("#!/bin/sh\n[ \"$1 $2\" = \"auth token\" ] && echo {TOKEN}\n"),
+        )
+        .unwrap();
+        std::fs::set_permissions(&gh, std::fs::Permissions::from_mode(0o755)).unwrap();
+        *crate::crew::proc::TEST_GH_PROGRAM.lock() = Some(gh.display().to_string());
+
+        let url = remote_repo(tmp.path());
+        let rig = crate::crew::spawn::testing::rig();
+        let log = rig.env_recording_hooks();
+        let setup = rig.setup();
+        let id = "3f2a9c1e-5b7d-4e8f-9a0b-1c2d3e4f5a6b";
+        let iso = setup.of(id).unwrap();
+        let git = Git::crewmate(&setup.socket, iso.user.clone());
+        let p = ProjectRef::Git { url, branch: None };
+        let w = prepare(&p, id, &tmp.path().join("hostd"), Some(iso.clone()), &git).await;
+        let w = w.unwrap();
+        sh(
+            &tmp.path().join("src"),
+            &[
+                "-c",
+                "user.email=t@t",
+                "-c",
+                "user.name=t",
+                "commit",
+                "-q",
+                "--allow-empty",
+                "-m",
+                "two",
+            ],
+        );
+        fetch(
+            &w,
+            &git,
+            crate::crew::mirror::mirror_for(&p, Some(&iso), &git).as_ref(),
+        )
+        .await
+        .unwrap();
+        *crate::crew::proc::TEST_GH_PROGRAM.lock() = None;
+
+        let seen = std::fs::read_to_string(&log).unwrap_or_default();
+        assert!(
+            seen.contains("HOME="),
+            "the recording hooks never ran, so this proved nothing: {seen:?}"
+        );
+        assert!(
+            !seen.contains(TOKEN) && !seen.contains("ATLAS_GIT_TOKEN"),
+            "the crew user's GitHub token is in a crewmate's git process:\n{seen}"
+        );
         let log = std::process::Command::new("git")
             .args(["log", "--oneline"])
             .current_dir(&w)
@@ -897,7 +1080,7 @@ services:
         assert!(git.is_crewmate());
         assert!(current_branch(&work, &git).await.is_some());
         let _ = infer_github_repo(&work, &git);
-        fetch(&work, &git).await.unwrap();
+        fetch(&work, &git, None).await.unwrap();
         let users = Rig::marker_users(&marker);
         assert!(!users.is_empty(), "no command triggered core.fsmonitor");
         assert!(users.iter().all(|u| u == USER), "{users:?}");

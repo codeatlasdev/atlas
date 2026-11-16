@@ -293,6 +293,26 @@ impl Rig {
         out
     }
 
+    /// Hooks, in the crewmate's own `~/.gitconfig`, that record the environment of every git process that runs
+    /// them (clone's `post-checkout`, a fetch's `reference-transaction`, a pull's `post-merge`): what a crewmate's
+    /// code sees of the git hostd asks for. Returns the file they append to.
+    pub fn env_recording_hooks(&self) -> PathBuf {
+        let log = self.cm.join("env.log");
+        let hooks = self.cm.join("hooks");
+        std::fs::create_dir_all(&hooks).unwrap();
+        for name in ["post-checkout", "reference-transaction", "post-merge"] {
+            let h = hooks.join(name);
+            std::fs::write(&h, format!("#!/bin/sh\nenv >> {}\n", log.display())).unwrap();
+            std::fs::set_permissions(&h, std::fs::Permissions::from_mode(0o755)).unwrap();
+        }
+        std::fs::write(
+            self.cm.join("home/.gitconfig"),
+            format!("[core]\n\thooksPath = {}\n", hooks.display()),
+        )
+        .unwrap();
+        log
+    }
+
     /// What the marker holds: one `$USER` per run of the planted command.
     pub fn marker_users(marker: &std::path::Path) -> Vec<String> {
         std::fs::read_to_string(marker)

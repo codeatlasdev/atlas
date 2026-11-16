@@ -18,6 +18,7 @@
 //! | `events`    | the push events broadcast to clients                                        |
 //! | `pane`      | the `crew:<crewmate>:<task>` pane key                                       |
 //! | `project`   | Git/path project checkout                                                   |
+//! | `mirror`    | hostd's bare mirror of a project, so a crewmate never holds the GitHub login  |
 //! | `spawn`     | the root helper protocol that starts each crewmate as its own Linux user    |
 //! | `telegram`, `push` | delivery channels                                                    |
 //! | `mcp`       | the MCP server an engine's agent talks to (`atlas mcp --crewmate <id>`)     |
@@ -36,6 +37,7 @@ mod hub;
 pub mod locate;
 pub mod mcp;
 pub(crate) mod memory_cap;
+pub(crate) mod mirror;
 pub(crate) mod pane;
 pub(crate) mod proc;
 pub(crate) mod project;

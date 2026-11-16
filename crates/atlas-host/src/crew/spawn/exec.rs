@@ -410,6 +410,8 @@ mod tests {
     // took `CAP_SETUID` out of the helper's own permitted set (every spawn then failed at `setuid` with EPERM; the
     // unit works with the option off, checked by leaving each option out in turn). What it was for is that no
     // process a crewmate runs gains privileges through a setuid binary, so the child sets it on itself.
+    // no_new_privs and /proc are Linux's.
+    #[cfg(target_os = "linux")]
     #[test]
     fn the_child_cannot_gain_privileges_through_a_setuid_binary() {
         let f = fixture();
@@ -672,6 +674,11 @@ mod tests {
         let mut out = String::new();
         io.read_to_string(&mut out).ok();
         assert!(out.contains(&format!("uid={}", ids.uid)), "{out}");
+        // The helper's unit has no NoNewPrivileges=: what it gave is set on the child itself, as the crewmate.
+        assert!(
+            out.contains("nnp=1"),
+            "the crewmate's process has no no_new_privs: {out}"
+        );
 
         // A process of another uid cannot be signalled by an unprivileged caller, and cannot
         // read the crewmate's directory: the isolation #200 asks for.

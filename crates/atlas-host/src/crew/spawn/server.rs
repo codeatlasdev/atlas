@@ -905,7 +905,10 @@ mod tests {
             .unwrap();
         let mut io = std::fs::File::from(f.fds.remove(0));
         let out = read_until(&mut io, "printed");
-        assert!(out.contains("printed"), "the child's output was lost: {out:?}");
+        assert!(
+            out.contains("printed"),
+            "the child's output was lost: {out:?}"
+        );
     }
 
     // Refusals come back as errors and nothing is started: the validators run in the helper, not

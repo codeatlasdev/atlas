@@ -61,6 +61,9 @@ fn private_link_local_metadata_and_cgnat_addresses_are_refused_in_every_notation
         // NAT64 carries IPv4 addresses, the private ones too (security review 5).
         "64:ff9b::a00:1",
         "64:ff9b::a9fe:a9fe",
+        // The local-use NAT64 prefix (RFC 8215) too (review 6).
+        "64:ff9b:1::a00:1",
+        "64:ff9b:1:ffff:ffff:ffff:a9fe:a9fe",
         // The same address in IPv6 clothes.
         "::ffff:169.254.169.254",
         "::ffff:10.1.2.3",

@@ -272,8 +272,10 @@ pub(crate) const NEVER: [&str; 5] = [
     "100.64.0.0/10",
 ];
 /// `64:ff9b::/96` is NAT64: on an IPv6-only network (DNS64) `64:ff9b::a00:1` reaches `10.0.0.1`, so it is as private as
-/// the IPv4 ranges it carries (security review 5). A crewmate on such a network cannot reach IPv4-only hosts.
-pub(crate) const NEVER6: [&str; 3] = ["fc00::/7", "fe80::/10", "64:ff9b::/96"];
+/// the IPv4 ranges it carries (security review 5). `64:ff9b:1::/48` is the local-use NAT64 prefix (RFC 8215): a
+/// network may translate any IPv4 address through it too (review 6). A crewmate on such a network cannot reach
+/// IPv4-only hosts.
+pub(crate) const NEVER6: [&str; 4] = ["fc00::/7", "fe80::/10", "64:ff9b::/96", "64:ff9b:1::/48"];
 
 /// The nftables ruleset: a table that is replaced as a whole (atomic: `nft -f` applies the file or
 /// none of it) with one chain per crewmate user, selected by `meta skuid`.
@@ -981,6 +983,7 @@ mod tests {
             "fc00::/7",
             // NAT64 carries any IPv4 address, private ones included.
             "64:ff9b::/96",
+            "64:ff9b:1::/48",
         ] {
             assert!(r.contains(must), "{must}");
         }

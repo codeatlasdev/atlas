@@ -14,6 +14,7 @@ use std::time::{Duration, Instant};
 #[cfg(target_os = "linux")]
 use super::desktop_agent_linux as linux;
 use anyhow::{Context, Result, bail};
+use atlas_core::hygiene::Registry;
 use serde::{Deserialize, Serialize};
 
 /// Longest a unix socket path may be on macOS (`sun_path` is 104 bytes including the NUL).
@@ -414,7 +415,7 @@ pub fn start(o: StartOpts) -> Result<()> {
         }
     };
     let pid = child.id();
-    register_instance(&s, &session, pid, &name);
+    register_instance(&Registry::open(), &s, &session, pid, &name);
     let rec = Record {
         name: name.clone(),
         pid,
@@ -499,12 +500,11 @@ pub fn start(o: StartOpts) -> Result<()> {
 /// is left behind when the instance crashes: record it under the instance's pid and start time so
 /// `atlas doctor --hygiene` and the sweeps reclaim it once the instance is gone, and cap it.
 /// Best effort: a full disk must not stop an instance.
-fn register_instance(s: &Session, session: &str, pid: u32, name: &str) {
-    use atlas_core::hygiene::{Dir, DirKind, Kind, Owner, Registry, Root, now_secs};
+fn register_instance(registry: &Registry, s: &Session, session: &str, pid: u32, name: &str) {
+    use atlas_core::hygiene::{Dir, DirKind, Kind, Owner, Root, now_secs};
     let start = atlas_core::procs::start_time(pid).unwrap_or(0);
     let owner = Owner { pid, start };
-    let registry = Registry::open();
-    let _ = registry.add_root(Root {
+    let root = Root {
         session: session.to_string(),
         owner,
         pid,
@@ -513,7 +513,15 @@ fn register_instance(s: &Session, session: &str, pid: u32, name: &str) {
         label: format!("agent instance {name}"),
         project: None,
         started_at: now_secs(),
-    });
+    };
+    // The instance's own hostd sweeps `<hostd dir>/hygiene`, not the user's registry: without the root there it takes
+    // the tagged compositor, bus and app (the tag is readable on Linux) for orphans of an unknown session and reaps
+    // them a minute in.
+    let _ = Registry::at(&atlas_host::paths::hygiene_base(
+        &atlas_host::paths::scrollback_dir(&s.hostd()),
+    ))
+    .add_root(root.clone());
+    let _ = registry.add_root(root);
     let _ = registry.add_dir(Dir {
         path: s.dir.clone(),
         cap_bytes: INSTANCE_DIR_CAP,
@@ -997,6 +1005,58 @@ mod tests {
         }
         out.sort();
         out
+    }
+
+    /// Incident (first-user pass of 1.5.0-alpha.25 on Linux, #289): every agent instance died about a minute after it
+    /// started. The instance's session was recorded only in the user's registry (`~/.atlas/hygiene`), but its own
+    /// hostd sweeps `<hostd dir>/hygiene`, where nobody had registered it: the compositor, the bus, the app and the
+    /// WebKit processes all carry the tag and were reaped as orphans of an unknown session once older than the grace.
+    #[cfg(target_os = "linux")]
+    #[test]
+    fn the_instances_own_hostd_knows_its_session_and_never_reaps_it() {
+        use atlas_core::hygiene::{REGISTRATION_GRACE_SECS, SESSION_ENV, classify, now_secs};
+        let root = tempfile::tempdir().unwrap();
+        let s = session_in(root.path(), "a1").unwrap();
+        std::fs::create_dir_all(s.hostd()).unwrap();
+        let session = atlas_core::hygiene::new_session_id();
+        // A real process of the instance: tagged like sway, dbus and the app are. Its owner (the app) is this test.
+        let mut child = Command::new("sleep")
+            .arg("30")
+            .env(SESSION_ENV, &session)
+            .spawn()
+            .unwrap();
+        let user = tempfile::tempdir().unwrap();
+        register_instance(
+            &Registry::at(user.path()),
+            &s,
+            &session,
+            std::process::id(),
+            "a1",
+        );
+
+        // The registry hostd opens for this instance (its dir is ATLAS_HOSTD_DIR), read the way hostd reads it.
+        let hostd_view = Registry::in_existing(&atlas_host::paths::hygiene_base(
+            &atlas_host::paths::scrollback_dir(&s.hostd()),
+        ));
+        let tagged = atlas_core::procs::tagged(SESSION_ENV, &session);
+        assert!(tagged.iter().any(|p| p.pid == child.id()), "{tagged:?}");
+        let tagged: Vec<_> = tagged.into_iter().map(|p| (p, session.clone())).collect();
+        let later = now_secs() + REGISTRATION_GRACE_SECS + 5;
+        let scan = classify(
+            &tagged,
+            &hostd_view.roots(),
+            &hostd_view.members(),
+            &atlas_core::procs::table(),
+            later,
+        );
+        let _ = child.kill();
+        let _ = child.wait();
+        assert!(
+            scan.orphans.is_empty(),
+            "hostd would reap a live instance: {:?}",
+            scan.orphans
+        );
+        assert_eq!(scan.live, 1);
     }
 
     #[test]

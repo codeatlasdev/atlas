@@ -4,7 +4,7 @@ use crate::runtime::service::ServiceState;
 
 impl ServiceManager {
     pub async fn start_all(&mut self) {
-        let _ = std::fs::create_dir_all(&self.log_dir);
+        let _ = crate::runtime::ensure_log_dir(&self.log_dir);
 
         // Tunnel (enabled only): supervised on its own task, never blocks startup.
         // Idempotent, so `restart_all` does not tear it down and respawn it.

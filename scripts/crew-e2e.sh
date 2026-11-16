@@ -86,21 +86,6 @@ collect() {
   srv_sh "cat $HOME_DIR/.atlas/hostd.log" >"$OUT/hostd.log" 2>&1 || true
   srv_sh "ps -eo pid,ppid,user:20,pgid,args --forest" >"$OUT/ps.txt" 2>&1 || true
   srv_sh "id atlas-crew; ls -ldn /run/atlas-crew /run/atlas-crew/* /var/lib/atlas-cm /usr/local/lib/atlas-crew/engines/*; sudo -u atlas-crew stat /run/atlas-crew/spawn.sock" >"$OUT/isolation.txt" 2>&1 || true
-  # TEMPORARY-DEBUG
-  {
-    for where in host container; do
-      for v in "ps-only:-p ProtectSystem=full" "ps+rw-etc:-p ProtectSystem=full -p ReadWritePaths=/etc" "ps+rw-etc+run:-p ProtectSystem=full -p ReadWritePaths='/etc /run'" "strict+rw-etc:-p ProtectSystem=strict -p ReadWritePaths=/etc" "rw-before:-p ReadWritePaths=/etc -p ProtectSystem=full"; do
-        name=${v%%:*}; props=${v#*:}
-        if [[ $where == host ]]; then
-          echo "--- host $name: $(sudo sh -c "systemd-run --wait --collect -P -p User=root $props touch /etc/zz-e2e-test 2>&1 | grep -i 'touch\|denied\|read-only'; ls /etc/zz-e2e-test 2>&1; rm -f /etc/zz-e2e-test")"
-        else
-          echo "--- container $name: $(srv_sh "systemd-run --wait --collect -P -p User=root $props touch /etc/zz-e2e-test 2>&1 | grep -i 'touch\|denied\|read-only'; ls /etc/zz-e2e-test 2>&1; rm -f /etc/zz-e2e-test")"
-        fi
-      done
-    done
-    srv_sh "findmnt -o TARGET,SOURCE,FSTYPE,OPTIONS | grep ' /etc'; systemctl --version | head -1"
-    systemctl --version | head -1
-  } >"$OUT/useradd-debug.txt" 2>&1 || true
   srv_sh "nft list ruleset; cat /etc/atlas-crew/egress.nft" >"$OUT/nft.txt" 2>&1 || true
   srv_sh "tar -C $HOME_DIR/.atlas -cf - crew" 2>/dev/null | tar -C "$OUT" -xf - 2>/dev/null || true
 }

@@ -1,6 +1,12 @@
 <script lang="ts">
 	import type { Snippet } from "svelte";
-	import { statusItems, statusRank, type StatusInput, type StatusItem } from "#lib/editor/statusbar.ts";
+	import StatusItem from "#lib/editor/StatusItem.svelte";
+	import {
+		statusItems,
+		statusRank,
+		type StatusInput,
+		type StatusItem as Item,
+	} from "#lib/editor/statusbar.ts";
 
 	let {
 		input,
@@ -15,22 +21,21 @@
 	} = $props();
 
 	let items = $derived(statusItems(input));
-	const leading = (it: StatusItem) => it.id === "position" || it.id === "problems";
+	const leading = (it: Item) => it.id === "position" || it.id === "problems";
 	let left = $derived(items.filter(leading));
 	let right = $derived(items.filter((i) => !leading(i)));
 </script>
 
-{#snippet cell(it: StatusItem)}
+{#snippet cell(it: Item)}
 	{#if it.kind === "info"}
-		<span class="item" data-rank={statusRank(it.id)} title={it.title}>{it.text}</span>
+		<StatusItem data-rank={statusRank(it.id)} title={it.title}>{it.text}</StatusItem>
 	{:else}
-		<button
-			class="item btn"
-			class:warning={it.kind === "warning"}
-			class:error={it.kind === "error"}
+		<StatusItem
+			button
+			tone={it.kind === "warning" || it.kind === "error" ? it.kind : undefined}
 			data-rank={statusRank(it.id)}
 			title={it.title}
-			onclick={(e) => onaction(it.id, e.currentTarget)}>{it.text}</button
+			onclick={(e) => onaction(it.id, e.currentTarget)}>{it.text}</StatusItem
 		>
 	{/if}
 {/snippet}
@@ -88,49 +93,24 @@
 		flex: 0 1 auto;
 		overflow: hidden;
 	}
-	.item {
-		display: block;
-		flex: 0 1 auto;
-		min-width: 0;
-		height: 18px;
-		line-height: 18px;
-		padding: 0 6px;
-		border: 0;
-		border-radius: 4px;
-		background: none;
-		font: inherit;
-		color: inherit;
-		overflow: hidden;
-		text-overflow: ellipsis;
-	}
 	.slot {
 		display: inline-flex;
 		min-width: 0;
 	}
 	/* Ranks come from `statusRank`: 1 = language and server, 2 = indent, 3 = encoding and line endings. */
 	@container (max-width: 640px) {
-		[data-rank="3"] {
+		.status :global([data-rank="3"]) {
 			display: none;
 		}
 	}
 	@container (max-width: 520px) {
-		[data-rank="2"] {
+		.status :global([data-rank="2"]) {
 			display: none;
 		}
 	}
 	@container (max-width: 400px) {
-		[data-rank="1"] {
+		.status :global([data-rank="1"]) {
 			display: none;
 		}
-	}
-	.btn:hover {
-		background: var(--ca-action-hover);
-		color: var(--ca-text-primary);
-	}
-	.warning {
-		color: var(--ca-semantic-warning);
-	}
-	.error {
-		color: var(--ca-semantic-error);
 	}
 </style>

@@ -213,9 +213,41 @@ jobs:
         with:
           persist-credentials: false
 
+      # Everything but the tests (toolchain, nextest, cache, fmt, clippy). The tests are steps of this job, not of
+      # the action: a composite step cannot have `timeout-minutes`.
       - uses: ./.github/actions/rust-gate
         with:
           tests: ${{ needs.plan.outputs.tested != 'true' }}
+          defer-tests: "true"
+
+      # Issue #520: this job lost its runner 8 times since 2026-11-15 ("The hosted runner lost communication with
+      # the server" after exactly 50 min, no log kept). It takes 6-8 min: a hang in the tests now fails this step
+      # after 25 min with its log (and nextest ends a single test after 3 min, `.config/nextest.toml`), instead of
+      # taking the runner with it. The log is a file as well, so it can be uploaded below.
+      - name: Test
+        if: ${{ needs.plan.outputs.tested != 'true' }}
+        timeout-minutes: 25
+        shell: bash
+        run: cargo nextest run --workspace --locked --profile ci 2>&1 | tee nextest.log
+
+      - name: Doctests
+        if: ${{ needs.plan.outputs.tested != 'true' }}
+        timeout-minutes: 10
+        shell: bash
+        run: cargo test --workspace --locked --doc
+
+      # What the next hang or runner loss shows: the nextest log (SLOW/TIMEOUT lines name the test that hung) and
+      # the JUnit report (every test with its time), kept briefly.
+      - name: Nextest log and JUnit report
+        if: ${{ always() }}
+        uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
+        with:
+          name: nextest-windows-${{ github.run_attempt }}
+          path: |
+            nextest.log
+            target/nextest/ci/junit.xml
+          if-no-files-found: ignore
+          retention-days: 3
 
   # The tests that need root (crew isolation, issue #200): a real cross-uid spawn and a real useradd. GitHub's
   # Ubuntu runners have passwordless sudo, and the runner is thrown away, so creating system users is fine. The

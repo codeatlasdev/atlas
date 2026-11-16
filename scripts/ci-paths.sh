@@ -3,7 +3,7 @@
 # only runs the jobs it can affect. Anything not matched by a known docs-only pattern counts as source for
 # every area (unknown paths never skip a check). Docs feed the site build, so docs/ still runs `site`.
 set -uo pipefail
-rust=false front=false mobile=false site=false relay=false workflows=false any=false
+rust=false front=false mobile=false site=false relay=false workflows=false installer=false any=false
 while IFS= read -r f || [[ -n $f ]]; do
   [[ -z $f ]] && continue
   any=true
@@ -16,12 +16,14 @@ while IFS= read -r f || [[ -n $f ]]; do
     crates/*|Cargo.toml|Cargo.lock|rust-toolchain.toml|deny.toml|.cargo/*|.config/nextest.toml) rust=true ;;
     apps/desktop/*) front=true; rust=true ;;              # the desktop shell embeds the frontend build
     apps/mobile/*) mobile=true ;;
+    site/public/install.ps1) site=true; installer=true ;;   # the Windows installer has its own job (PowerShell 5.1 and 7)
     site/*) site=true ;;
     services/push-relay/*) relay=true ;;
-    .github/*) workflows=true; rust=true; front=true; mobile=true; site=true ;;
-    *) rust=true front=true mobile=true site=true relay=true workflows=true ;;
+    .github/*) workflows=true; rust=true; front=true; mobile=true; site=true; installer=true ;;
+    scripts/install-ps1.test.ts) front=true; installer=true ;;
+    *) rust=true front=true mobile=true site=true relay=true workflows=true installer=true ;;
   esac
 done
 # No diff to compare (a new branch, an API error): run everything.
-if [[ $any == false ]]; then rust=true front=true mobile=true site=true relay=true workflows=true; fi
-for k in rust front mobile site relay workflows; do echo "$k=${!k}"; done
+if [[ $any == false ]]; then rust=true front=true mobile=true site=true relay=true workflows=true installer=true; fi
+for k in rust front mobile site relay workflows installer; do echo "$k=${!k}"; done

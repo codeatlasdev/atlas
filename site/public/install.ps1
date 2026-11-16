@@ -14,6 +14,10 @@ $ErrorActionPreference = 'Stop'
 $ProgressPreference = 'SilentlyContinue'
 $Repo = 'codeatlasdev/atlas'
 $DefaultChannel = 'alpha'
+# Test hook (scripts/install-ps1.test.ts): ATLAS_GITHUB_ORIGIN points every GitHub request at a local
+# server and allows plain http for it. Never set it yourself; unset, everything is https://github.com.
+$Origin = if ($env:ATLAS_GITHUB_ORIGIN) { $env:ATLAS_GITHUB_ORIGIN.TrimEnd('/') } else { 'https://github.com' }
+$Proto = if ($env:ATLAS_GITHUB_ORIGIN) { '=http,https' } else { '=https' }
 
 function Say([string]$m) { Write-Host "  $m" }
 function Die([string]$m) { Write-Host "  x $m" -ForegroundColor Red; throw $m }
@@ -49,16 +53,16 @@ function Get-Stable([string[]]$tags) {
 
 $latest = ''
 try {
-  $r = Invoke-WebRequest -UseBasicParsing -Uri "https://github.com/$Repo/releases/latest" -MaximumRedirection 0 -ErrorAction SilentlyContinue
+  $r = Invoke-WebRequest -UseBasicParsing -Uri "$Origin/$Repo/releases/latest" -MaximumRedirection 0 -ErrorAction SilentlyContinue
   $loc = $r.Headers.Location
 } catch { $loc = $_.Exception.Response.Headers.Location }
 if ($loc -and "$loc" -match '/releases/tag/(.+)$') { $latest = $Matches[1] }
 
-$seen = @(Get-Tags "https://github.com/$Repo/releases.atom")
+$seen = @(Get-Tags "$Origin/$Repo/releases.atom")
 $tag = Get-Stable ($seen + $latest)
 $pages = 0
 while (-not $tag -and $pages -lt 5 -and $seen.Count -ge 10) {
-  $page = @(Get-Tags "https://github.com/$Repo/releases.atom?after=$($seen[-1])")
+  $page = @(Get-Tags "$Origin/$Repo/releases.atom?after=$($seen[-1])")
   if ($page.Count -eq 0) { break }
   $seen += $page
   $tag = Get-Stable ($seen + $latest)
@@ -73,7 +77,7 @@ $stable = $tag
 function Test-Asset([string]$t) {
   $v = $t -replace '^v', ''
   if (-not $v -or $v -notmatch '^[0-9A-Za-z._-]+$') { return $false }
-  & curl.exe -fsSIL --proto '=https' --tlsv1.2 -o NUL "https://github.com/$Repo/releases/download/$t/atlas-$v-$target.tar.gz" 2>$null
+  & curl.exe -fsSIL --proto $Proto --tlsv1.2 -o NUL "$Origin/$Repo/releases/download/$t/atlas-$v-$target.tar.gz" 2>$null
   return $LASTEXITCODE -eq 0
 }
 $step = if ($channel) { $channel } else { $DefaultChannel }
@@ -91,14 +95,14 @@ if ($tag -ne $stable) { Say "no Stable build for $target yet (newest Stable: $(i
 $version = $tag -replace '^v', ''
 
 $asset = "atlas-$version-$target.tar.gz"
-$base = "https://github.com/$Repo/releases/download/$tag"
+$base = "$Origin/$Repo/releases/download/$tag"
 $tmp = Join-Path ([IO.Path]::GetTempPath()) ("atlas-install-" + [guid]::NewGuid())
 New-Item -ItemType Directory -Path $tmp | Out-Null
 try {
   Say "Atlas $version ($target)"
-  & curl.exe -fsSL --proto '=https' --tlsv1.2 -o "$tmp\$asset" "$base/$asset"
+  & curl.exe -fsSL --proto $Proto --tlsv1.2 -o "$tmp\$asset" "$base/$asset"
   if ($LASTEXITCODE -ne 0) { Die "download failed: $asset" }
-  & curl.exe -fsSL --proto '=https' --tlsv1.2 -o "$tmp\$asset.sha256" "$base/$asset.sha256"
+  & curl.exe -fsSL --proto $Proto --tlsv1.2 -o "$tmp\$asset.sha256" "$base/$asset.sha256"
   if ($LASTEXITCODE -ne 0) { Die "download failed: $asset.sha256" }
 
   $want = ((Get-Content "$tmp\$asset.sha256" -Raw).Trim() -split '\s+')[0].ToLowerInvariant()

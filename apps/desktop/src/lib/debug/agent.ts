@@ -6,6 +6,7 @@
  */
 
 import { typeInto } from "../capture/dom.ts";
+import { isRendered } from "../dom/visible.ts";
 import { type Key, keyBytes } from "./keys.ts";
 
 export { contrastAudit, nonTextAudit } from "./contrast.ts";
@@ -23,7 +24,7 @@ const realClock: Clock = {
 	},
 };
 
-const visible = (e: Element) => (e as HTMLElement).offsetParent !== null;
+const visible = isRendered;
 
 /**
  * The element a selector means to an agent: the first match that is visible and, when a `view` is given, on screen

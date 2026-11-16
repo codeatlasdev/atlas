@@ -36,9 +36,13 @@
 </script>
 
 <DropdownMenu align="start">
-	{#snippet trigger()}
-		<span class="plus" aria-label="New tab" title="New tab {shortcutFor('workspace::NewTerminal') ?? ''}"
-			><Plus size={14} /></span
+	{#snippet triggerChild(props)}
+		<button
+			type="button"
+			{...props}
+			class="plus"
+			aria-label="New tab"
+			title="New tab {shortcutFor('workspace::NewTerminal') ?? ''}"><Plus size={14} /></button
 		>
 	{/snippet}
 	<DropdownMenuItem onclick={() => w && ws.newTerminal(w.id, { groupId })}>

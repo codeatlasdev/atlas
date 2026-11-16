@@ -226,6 +226,7 @@ macro_rules! handlers {
             git::git_diff,
             git::git_status,
             git::git_run,
+            git::gh_identity,
             git::git_files,
             commit_msg::commit_msg_provider,
             commit_msg::commit_msg_generate,

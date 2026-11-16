@@ -184,6 +184,18 @@ test("focusedTab is a pure read: a worktree without a layout yields nothing and 
 	expect(ws.focusedTab(W)?.id).toBe(t.id);
 });
 
+// Regression: 1.5.0-alpha.26, the tab of a terminal whose shell has no user name read "@oma:~/Projects/orbit-shop".
+test("the title the host reports is shown without an empty user part", async () => {
+	fresh();
+	ptyList = async () => [
+		{ pty: "a", title: "@oma:~/Projects/orbit-shop", exited: null },
+		{ pty: "b", title: "matheus@oma:~/p", exited: null },
+	];
+	await ws.syncPtys();
+	expect(ws.titles.a).toBe("oma:~/Projects/orbit-shop");
+	expect(ws.titles.b).toBe("matheus@oma:~/p");
+});
+
 /**
  * Incident 1.5.0-alpha.5: while the local terminal host was unreachable, `host_pty_list` answered `[]`
  * and every terminal tab became "Terminal is gone" with a Restart that could not work. Now the backend

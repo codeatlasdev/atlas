@@ -16,7 +16,7 @@ const {
 } = agent;
 
 const html = (s: string) => (document.body.innerHTML = s);
-/** happy-dom does no layout: give elements a rect and visibility the way WebKit would. */
+/** happy-dom does no layout: give elements a rect and the visibility WebKit would report (`checkVisibility`). */
 function laidOut(el: Element, r = { x: 10, y: 20, width: 100, height: 30 }) {
 	el.getBoundingClientRect = () => ({
 		...r,
@@ -26,7 +26,11 @@ function laidOut(el: Element, r = { x: 10, y: 20, width: 100, height: 30 }) {
 		bottom: r.y + r.height,
 		toJSON() {},
 	});
-	Object.defineProperty(el, "offsetParent", { get: () => document.body, configurable: true });
+	el.checkVisibility = () => true;
+}
+/** What WebKit says of `display: none` (itself or an ancestor): no box, not rendered. */
+function hide(el: Element) {
+	el.checkVisibility = () => false;
 }
 beforeEach(() => html(""));
 
@@ -203,13 +207,31 @@ describe("clickTarget / typeTarget (DOM events only, never OS input)", () => {
 
 	test("a missing or invisible element is reported, not silently ignored", () => {
 		html('<button class="go">Go</button>');
-		// display:none in WebKit: no offsetParent
-		Object.defineProperty(document.querySelector(".go"), "offsetParent", {
-			get: () => null,
-			configurable: true,
-		});
+		hide(document.querySelector(".go"));
 		expect(clickTarget(".nope")).toEqual({ clicked: false, reason: "no element matches .nope" });
 		expect(clickTarget(".go")).toEqual({ clicked: false, reason: ".go is not visible" });
+	});
+
+	// Incident (macOS release check, 2026-11-15): `atlas desktop debug wait body` timed out on a loaded app, and
+	// a fixed dialog's button could not be clicked: visibility was `offsetParent !== null`, which WebKit answers
+	// null for <body>, <html> and every `position: fixed` element. Rendered means "has a box".
+	test("body and a fixed overlay (offsetParent null in WebKit) are visible to wait and click", async () => {
+		html('<div class="sheet"><button class="ok">OK</button></div>');
+		const ok = document.querySelector(".ok");
+		laidOut(ok);
+		for (const el of [document.body, ok])
+			Object.defineProperty(el, "offsetParent", { get: () => null, configurable: true });
+		document.body.checkVisibility = () => true;
+		let t = 0;
+		const c = { now: () => t, sleep: async (ms: number) => void (t += ms) };
+		expect(await waitFor({ selector: "body" }, { timeoutMs: 100, pollMs: 50 }, c)).toEqual({
+			ok: true,
+			ms: 0,
+		});
+		expect(clickTarget(".ok")).toMatchObject({ clicked: true, tag: "button" });
+		// <body> outlives the test: put its own properties back.
+		delete document.body.checkVisibility;
+		delete document.body.offsetParent;
 	});
 
 	test("type fills an input through the native setter and fires input events", async () => {
@@ -368,7 +390,7 @@ describe("which element a selector means", () => {
 			bottom: 700,
 			toJSON() {},
 		});
-		Object.defineProperty(hidden, "offsetParent", { get: () => null, configurable: true });
+		hide(hidden);
 		laidOut(shown, { x: 0, y: 0, width: 260, height: 700 });
 		Object.defineProperty(shown, "scrollHeight", { value: 700, configurable: true });
 		Object.defineProperty(shown, "scrollWidth", { value: 260, configurable: true });
@@ -405,7 +427,7 @@ describe("which element a selector means", () => {
 	test("when every match is invisible the error says so instead of 'outside the viewport'", () => {
 		html('<aside class="s"></aside>');
 		const el = document.querySelector(".s");
-		Object.defineProperty(el, "offsetParent", { get: () => null, configurable: true });
+		hide(el);
 		expect(() => elementShotRect(".s", { w: 1280, h: 820, scale: 2 })).toThrow(/not visible/);
 		expect(() => fullShotSize(".s", { w: 1280, h: 820 })).toThrow(/not visible/);
 	});

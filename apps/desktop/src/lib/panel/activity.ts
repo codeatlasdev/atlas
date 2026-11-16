@@ -273,12 +273,17 @@ export function group(rows: Row[], now: number): Group[] {
 	return out;
 }
 
-/** Rows newer than `seenAt` that are not routine (state noise counts too, errors weigh in the badge tone). */
+/**
+ * Rows newer than `seenAt` that need attention: failures and warnings (a crash, a restart, a degraded service, a failed
+ * action). Normal starts and stops are history, not news: counting them put a red "9+" on the Activity button of a
+ * brand-new user whose stack had just come up (1.5.0-alpha.26). `errors` is the part that is a failure, for the tone.
+ */
 export function unread(rows: Row[], seenAt: number): { n: number; errors: number } {
 	let n = 0;
 	let errors = 0;
 	for (const r of rows) {
 		if (r.ts <= seenAt) break;
+		if (r.tone !== "fail" && r.tone !== "warn") continue;
 		n++;
 		if (r.tone === "fail") errors++;
 	}

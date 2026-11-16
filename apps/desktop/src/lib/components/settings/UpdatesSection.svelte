@@ -19,7 +19,7 @@
 	import { api } from "#lib/api.ts";
 	import { tilde } from "#lib/format.ts";
 	import { updates as u } from "#lib/stores/updates.svelte.ts";
-	import { DEFAULT_CHANNEL, managedView } from "#lib/updates.ts";
+	import { DEFAULT_CHANNEL, managedView, updateHeadline, updateStatus } from "#lib/updates.ts";
 	import HostStatusRow from "./HostStatusRow.svelte";
 	import SectionTitle from "./SectionTitle.svelte";
 	import Tile from "./Tile.svelte";
@@ -35,17 +35,19 @@
 		if (logEl) logEl.scrollTop = logEl.scrollHeight;
 	});
 
-	let headline = $derived(
-		u.relaunchNeeded
-			? "Restart to finish updating"
-			: u.linked
-				? "Running a dev build"
-				: u.available
-					? `Atlas ${u.release?.version} is available`
-					: u.release
-						? "Atlas is up to date"
-						: "Atlas versions",
+	/** One state at a time: while a check runs there is no verdict ("up to date" would contradict "Checking…"). */
+	let status = $derived(
+		updateStatus({
+			relaunchNeeded: u.relaunchNeeded,
+			linked: u.linked,
+			installing: u.running === "update",
+			checking: u.checking,
+			failed: !!u.error,
+			available: u.available,
+			checked: !!u.release,
+		}),
 	);
+	let headline = $derived(updateHeadline(status, u.release?.version));
 
 	let checked = $derived(
 		u.checkedAt
@@ -66,16 +68,23 @@
 </script>
 
 <SectionTitle title="Updates" setting="updates" first />
-<div class="hero" class:avail={u.available && !u.linked} class:dev={u.linked}>
+<div
+	class="hero"
+	class:avail={status === "available"}
+	class:dev={status === "dev"}
+	class:quiet={status === "checking" || status === "unknown"}
+>
 	<div class="badge">
-		{#if u.linked}<FlaskConical size={20} />{:else if u.available}<Sparkles size={20} />{:else}<CheckCircle2
+		{#if status === "dev"}<FlaskConical size={20} />{:else if status === "available"}<Sparkles
 				size={20}
-			/>{/if}
+			/>{:else if status === "checking"}<Spinner size={20} />{:else if status === "unknown"}<CircleAlert
+				size={20}
+			/>{:else}<CheckCircle2 size={20} />{/if}
 	</div>
 	<div class="htext">
 		<h2>{headline}</h2>
 		<p>
-			{#if u.checking}<Spinner size={11} /> Checking…{:else if checked}{checked}{/if}
+			{#if status === "checking"}Looking for the newest release…{:else if checked}{checked}{/if}
 			<span class="chip mono">{u.info?.app.version ?? "—"}</span>
 			<span class="chip">{channelLabel}</span>
 			{#if u.release}
@@ -91,14 +100,14 @@
 				{#snippet leading()}<RotateCcw size={14} />{/snippet}
 				Restart Atlas
 			</Button>
-		{:else if u.linked}
+		{:else if status === "dev"}
 			<Button variant="outlined" disabled={!!u.running} onclick={u.unlink}>
 				{#snippet leading()}{#if u.running === "unlink"}<Spinner size={14} />{:else}<Unlink
 							size={14}
 						/>{/if}{/snippet}
 				Unlink dev build
 			</Button>
-		{:else if u.available}
+		{:else if status === "available" || status === "installing"}
 			<Button disabled={!!u.running} onclick={u.updateAll}>
 				{#snippet leading()}{#if u.running === "update"}<Spinner size={14} />{:else}<Download
 							size={14}
@@ -282,6 +291,9 @@
 	}
 	.hero.dev {
 		--tone: var(--ca-semantic-warning);
+	}
+	.hero.quiet {
+		--tone: var(--ca-text-secondary);
 	}
 	.htext {
 		flex: 1 1 260px;

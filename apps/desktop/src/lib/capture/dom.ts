@@ -4,6 +4,7 @@
  * windows that are not frontmost, and a recording of an occluded window must still advance.
  */
 
+import { isRendered } from "../dom/visible.ts";
 import { parseCombo } from "./motion.ts";
 import type { Rect } from "./timeline.ts";
 
@@ -14,7 +15,7 @@ export const realSleep: Sleep = (ms) => {
 	return promise;
 };
 
-const visible = (e: Element) => (e as HTMLElement).offsetParent !== null;
+const visible = isRendered;
 
 export function elementRect(selector: string): Rect | undefined {
 	const el = document.querySelector(selector);

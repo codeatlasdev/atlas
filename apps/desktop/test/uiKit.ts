@@ -28,6 +28,9 @@ const KIT_COMPONENTS = [
 	"DropdownMenu",
 	"DropdownMenuItem",
 	"DropdownMenuSeparator",
+	"DropdownMenuLabel",
+	"NotificationBell",
+	"Skeleton",
 	"SchemeAsset",
 	"Popover",
 	"CopyButton",
@@ -38,6 +41,10 @@ const KIT_COMPONENTS = [
 	"Progress",
 	"SettingItem",
 	"TextField",
+	// Source Control (commit box) and Settings → Updates (channel cards).
+	"TextArea",
+	"SegmentedControl",
+	"Skeleton",
 ];
 const Stub = () => {};
 const kit = {

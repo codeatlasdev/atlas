@@ -1,6 +1,6 @@
 // The frame probe must see what a screen recording sees: these controls prove it catches a cross-fade, a
 // fade-in of content that was already there and a layout shift, and stays quiet when there is none.
-import 'package:flutter/material.dart';
+import 'package:material_ui/material_ui.dart';
 import 'package:flutter_test/flutter_test.dart';
 
 import 'support/frame_probe.dart';

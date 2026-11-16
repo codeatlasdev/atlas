@@ -4,7 +4,7 @@
 /// image only, with a retry: a phone without the `read` scope sees exactly this, never a broken thread.
 library;
 
-import 'package:flutter/material.dart';
+import 'package:material_ui/material_ui.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 
 import 'package:atlas_mobile/core/protocol/crew_task.dart';

@@ -129,8 +129,9 @@
 			<PanelOps project={p} />
 		</div>
 		<DropdownMenu align="end">
-			{#snippet trigger()}
-				<span class="more" aria-label="Project menu"><Ellipsis size={16} /></span>
+			{#snippet triggerChild(props)}
+				<button type="button" {...props} class="more" aria-label="Project menu"><Ellipsis size={16} /></button
+				>
 			{/snippet}
 			<DropdownMenuItem onclick={() => store.run("ed", () => api.openEditor(p.id))}>
 				<Code size={14} /> Open in external editor
@@ -172,8 +173,10 @@
 				</Button>
 				{#if p.profiles.length}
 					<DropdownMenu align="end">
-						{#snippet trigger()}
-							<span class="split-arrow" aria-label="Start with profile"><ChevronDown size={13} /></span>
+						{#snippet triggerChild(props)}
+							<button type="button" {...props} class="split-arrow" aria-label="Start with profile"
+								><ChevronDown size={13} /></button
+							>
 						{/snippet}
 						<DropdownMenuLabel>Start with profile</DropdownMenuLabel>
 						{#each p.profiles as prof (prof)}
@@ -300,6 +303,8 @@
 	}
 	.more,
 	.split-arrow {
+		border: 0;
+		background: none;
 		display: inline-flex;
 		align-items: center;
 		justify-content: center;

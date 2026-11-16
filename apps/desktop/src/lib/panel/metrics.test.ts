@@ -8,6 +8,7 @@ import {
 	Track,
 	bandOf,
 	fmtUptime,
+	upLabel,
 	stackSum,
 	summarize,
 	sumLatest,
@@ -154,6 +155,14 @@ describe("LogCursor", () => {
 });
 
 describe("formatting and summary", () => {
+	// Regression: 1.5.0-alpha.26 showed a bare "Up —" in the panel header right after Start (no sample yet).
+	test("the header says Starting… until an uptime exists, never a bare dash", () => {
+		expect(upLabel(null)).toBe("Starting…");
+		expect(upLabel(-5)).toBe("Starting…");
+		expect(upLabel(Number.NaN)).toBe("Starting…");
+		expect(upLabel(0)).toBe("Up 0s");
+		expect(upLabel(125_000)).toBe("Up 2m 5s");
+	});
 	test("fmtUptime scales units", () => {
 		expect(fmtUptime(5_000)).toBe("5s");
 		expect(fmtUptime(125_000)).toBe("2m 5s");

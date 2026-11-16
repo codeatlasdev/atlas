@@ -7,7 +7,7 @@
 /// calls; `action/` holds one body per kind.
 library;
 
-import 'package:flutter/material.dart';
+import 'package:material_ui/material_ui.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 
 import 'package:atlas_mobile/core/auth/device_auth.dart';

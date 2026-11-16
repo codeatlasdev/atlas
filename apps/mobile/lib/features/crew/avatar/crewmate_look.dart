@@ -2,7 +2,7 @@
 /// the colour helpers ported from the desktop's `look.ts`, and the presence state the face shows.
 library;
 
-import 'package:flutter/material.dart';
+import 'package:material_ui/material_ui.dart';
 
 import 'package:atlas_mobile/core/ui/atlas_theme.dart';
 

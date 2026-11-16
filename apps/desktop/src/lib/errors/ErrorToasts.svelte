@@ -4,6 +4,7 @@
 	import CornerNotice from "#lib/shell/CornerNotice.svelte";
 	import ErrorPanel from "./ErrorPanel.svelte";
 	import { errors } from "./errors.svelte.ts";
+	import { headline } from "./report.ts";
 
 	/** Longer than the stock toast (4 s): there is something to read and act on. */
 	const LIFETIME_MS = 12_000;
@@ -33,7 +34,7 @@
 		id="error:{t.id}"
 		kind="alert"
 		tone="error"
-		title={t.host ? "Terminal host not reachable" : "An action didn't finish"}
+		title={headline(t.report).title}
 		body={t.host ? HOST_HELP : t.report.message}
 		count={t.repeats + 1}
 		actions={act}
@@ -51,10 +52,8 @@
 		<ErrorPanel
 			report={errors.current}
 			variant="dialog"
-			title={errors.current.kind === "hostd" ? "Terminal host not reachable" : "An action didn't finish"}
-			hint={errors.current.kind === "hostd"
-				? "Copy the diagnostics (versions, OS, redacted logs) or report it; secrets are removed before anything leaves your machine."
-				: "Atlas is still running. Copy the details or report it if it keeps happening."}
+			title={headline(errors.current).title}
+			hint={headline(errors.current).hint}
 			close={() => (errors.current = null)}
 			closeLabel="Close"
 		/>

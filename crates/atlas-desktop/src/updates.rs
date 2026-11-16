@@ -380,8 +380,8 @@ pub struct ReleaseNotes {
 pub async fn releases_between(from: String, to: String) -> Result<Vec<ReleaseNotes>, String> {
     const MAX: usize = 10;
     tauri::async_runtime::spawn_blocking(move || {
-        let all =
-            atlas_core::github::releases(REPO, channel::current()).map_err(|e| e.to_string())?;
+        let all = atlas_core::github::releases_up_to(REPO, channel::current(), &to)
+            .map_err(|e| e.to_string())?;
         Ok(atlas_core::github::in_range(all, &from, &to)
             .into_iter()
             .take(MAX)

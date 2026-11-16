@@ -263,6 +263,11 @@ class Workspace {
 		const first = this.group(leaves(this.ensureLayout(worktreeId))[0]);
 		if (!first) return;
 		const panels = this.tabsOf(worktreeId).filter(pinned);
+		// A plain folder has no stack to show: no Panel, and one an older workspace saved for it goes.
+		if (this.worktree(worktreeId)?.plain) {
+			for (const p of panels) this.closeTab(p.id, true, true);
+			return;
+		}
 		const [keep, ...extra] = panels;
 		for (const p of extra) this.closeTab(p.id, true, true);
 		if (!keep) {

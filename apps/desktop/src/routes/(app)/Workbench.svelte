@@ -8,7 +8,7 @@
 	import Welcome from "#lib/components/Welcome.svelte";
 	import SearchPanel from "#lib/search/SearchPanel.svelte";
 	import RightDock from "#lib/shell/RightDock.svelte";
-	import { docks } from "#lib/stores/docks.svelte.ts";
+	import { docks, showExplorerOnce } from "#lib/stores/docks.svelte.ts";
 	import { prefs } from "#lib/stores/prefs.svelte.ts";
 	import { leaves, ws } from "#lib/stores/workspace.svelte.ts";
 	import { untrack } from "svelte";
@@ -22,6 +22,11 @@
 	$effect(() => {
 		const id = wt?.id;
 		if (docks.bottom && id) untrack(() => ws.bottomGroup(id));
+	});
+	// A plain folder is its files: show the explorer the first time it is the space on screen (not a mounted neighbour).
+	$effect(() => {
+		const id = wt?.id;
+		if (id && wt?.plain && space.current) untrack(() => showExplorerOnce(id));
 	});
 
 	/** No tab in the main pane tree (the bottom dock has its own group). */

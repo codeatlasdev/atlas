@@ -39,7 +39,7 @@ impl UiState {
 
     pub fn save(&self, log_dir: &Path) {
         if let Ok(json) = serde_json::to_string_pretty(self) {
-            let _ = std::fs::create_dir_all(log_dir);
+            let _ = crate::runtime::ensure_log_dir(log_dir);
             let _ = std::fs::write(Self::path(log_dir), json);
         }
     }

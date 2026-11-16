@@ -22,8 +22,10 @@ interface AudioCtxLike {
 
 export interface EngineDeps {
 	AudioContext: (new () => AudioCtxLike) | undefined;
-	/** Raw bytes of an earcon (`/sounds/<name>.m4a` in the app). */
-	fetchAsset: (name: Category) => Promise<ArrayBuffer>;
+	/** Extensions to try for every earcon, best first (`earconFormats`). Default: AAC only. */
+	formats?: readonly string[];
+	/** Raw bytes of an earcon in one format (`/sounds/<name>.<format>` in the app). */
+	fetchAsset: (name: Category, format: string) => Promise<ArrayBuffer>;
 	/** Live world state, read at call time. `now` is the clock. */
 	context: () => Ctx;
 	/** Last-played times that must survive a restart (`{ boot: ms }`), and where to write them back. */
@@ -49,10 +51,24 @@ export function createEngine(deps: EngineDeps): Engine {
 	let held: Category | null = null;
 	let deviceFailed = false;
 
+	// The webview decodes through GStreamer, and which codecs exist depends on the host's plugins: a format that
+	// fails to decode (AAC without gst-libav, #265) falls through to the next one.
+	async function decodeFirst(category: Category, c: AudioCtxLike): Promise<unknown> {
+		let failure: unknown = new Error(`sound ${category}: no format`);
+		for (const format of deps.formats ?? ["m4a"]) {
+			try {
+				return await c.decodeAudioData(await deps.fetchAsset(category, format));
+			} catch (e) {
+				failure = e;
+			}
+		}
+		throw failure;
+	}
+
 	function decoded(category: Category, c: AudioCtxLike) {
 		let p = buffers.get(category);
 		if (!p) {
-			p = deps.fetchAsset(category).then((bytes) => c.decodeAudioData(bytes));
+			p = decodeFirst(category, c);
 			buffers.set(category, p);
 			// A failed load is retried next time instead of being cached as a permanent miss.
 			p.catch(() => buffers.delete(category));
@@ -108,4 +124,11 @@ export function createEngine(deps: EngineDeps): Engine {
 			else held = category;
 		},
 	};
+}
+
+/** Earcon file extensions, best first, for a webview whose `canPlayType` is `canPlay`. */
+export function earconFormats(canPlay: (mime: string) => string): string[] {
+	const aac = canPlay('audio/mp4; codecs="mp4a.40.2"') !== "";
+	const ogg = canPlay("audio/ogg; codecs=vorbis") !== "";
+	return ogg && !aac ? ["ogg", "m4a"] : ["m4a", "ogg"];
 }

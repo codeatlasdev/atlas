@@ -9,7 +9,6 @@
 		PanelLeftClose,
 		RefreshCw,
 		TriangleAlert,
-		FileText,
 	} from "@lucide/svelte";
 	import { onMount } from "svelte";
 	import { getCurrentWebview } from "@tauri-apps/api/webview";
@@ -32,8 +31,8 @@
 	import SidebarFooter from "./sidebar/SidebarFooter.svelte";
 	import WorktreeRow from "./sidebar/WorktreeRow.svelte";
 	import { droppedOn } from "./sidebar/addProject.ts";
-	import { loose } from "#lib/stores/loose.svelte.ts";
-	import { baseName, dropAction } from "#lib/openPath.ts";
+	import LooseFiles from "./sidebar/LooseFiles.svelte";
+	import { dropAction } from "#lib/openPath.ts";
 	import { openPath } from "#lib/ctl.ts";
 	import { host } from "#lib/host.ts";
 	import { errText } from "#lib/api.ts";
@@ -214,16 +213,7 @@
 		<button class="item fixed" class:active={ws.view === "dashboard"} onclick={() => (ws.view = "dashboard")}>
 			<LayoutDashboard size={13} /><span class="name">Dashboard</span>
 		</button>
-		{#each loose.files as f (f)}
-			<button
-				class="item fixed"
-				class:active={ws.view === "file" && loose.active === f}
-				title={f}
-				onclick={() => loose.open(f)}
-			>
-				<FileText size={13} /><span class="name">{baseName(f)}</span>
-			</button>
-		{/each}
+		<LooseFiles />
 		{#if activeRepo}
 			<ProjectHead r={activeRepo} active {onAgent} />
 			{#if activeKids.length}

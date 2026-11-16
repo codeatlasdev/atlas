@@ -37,7 +37,7 @@
 					role="tab"
 					aria-selected={f === loose.active}
 					title={tilde(f)}
-					onclick={() => (loose.active = f)}>{baseName(f)}</button
+					onclick={() => loose.open(f)}>{baseName(f)}</button
 				>
 				<button type="button" class="x" aria-label="Close {baseName(f)}" onclick={() => loose.close(f)}>
 					<X size={11} />

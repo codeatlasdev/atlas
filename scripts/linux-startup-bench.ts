@@ -36,10 +36,12 @@ import { basename, dirname, join, resolve } from "node:path";
 // ---------- pure: parsing, summary, judgement (tested in linux-startup-bench.test.ts) ----------
 
 /**
- * Chosen from docs/perf/linux-startup.json (Ryzen 7 7735HS, 5.5 GB RAM shared with builds, debug build, llvmpipe, load ~9; WebKitGTK 2.54.1):
- * cold app_ready 2.1 s, warm p95 1.9 s, idle PSS 404-485 MB (largest process 148-168 MB, a WebKitWebProcess), idle CPU 0.9%.
- * About twice the measurement where a GitHub runner (2 cores, no GPU, sandbox off) is slower, so a regression of the size a feature
- * adds (a webview, a second login shell, a timer that spins) fails and noise does not. Tighten it from the CI artifact.
+ * Chosen from two measurements. docs/perf/linux-startup.json (Ryzen 7 7735HS, 5.5 GB RAM shared with builds, debug build, llvmpipe,
+ * load ~9, WebKitGTK 2.54.1): cold app_ready 2.1 s, warm p95 1.9 s, idle PSS 404-485 MB (largest process 148-168 MB, a
+ * WebKitWebProcess), idle CPU 0.9%. The "Desktop opens (Linux)" job of the first PR (GitHub runner, no GPU, sandbox off, Ubuntu's
+ * WebKitGTK): cold 1.9 s, warm p95 2.5 s, idle PSS 756 MB, largest 362 MB (a web process), idle CPU 0.3%.
+ * Time gets about 1.6x the slower of the two (runners vary), memory 1.3x (it is far steadier), so a regression of the size a feature
+ * adds (a webview is ~70-100 MB, a second login shell, a timer that spins) fails and noise does not.
  */
 export const BUDGET = {
 	/** warm starts: p95 of `app_ready` (ms since process start). */
@@ -47,9 +49,9 @@ export const BUDGET = {
 	/** the first launch of a fresh HOME. */
 	coldReadyMs: 6000,
 	/** PSS of every process the app owns, at idle, MB. */
-	idlePssMb: 900,
+	idlePssMb: 1000,
 	/** the largest single process, MB: the budget that names who grows. */
-	largestPssMb: 400,
+	largestPssMb: 500,
 	/** idle CPU of all processes together, % of one core, averaged over the window. */
 	idleCpuPct: 5,
 	/** interactive login shells started by the app at launch: 2 today (#285 makes it 1). */

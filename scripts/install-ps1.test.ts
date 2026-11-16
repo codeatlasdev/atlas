@@ -156,6 +156,11 @@ async function install(shell: string, rel: Release, env: Record<string, string> 
 	}
 }
 
+/** A run that must have succeeded; when it did not, the failure shows everything the installer printed. */
+function succeeded(r: { code: number | null; out: string; err: string }) {
+	if (r.code !== 0) throw new Error(`install.ps1 exited ${r.code}\n--- stdout\n${r.out}\n--- stderr\n${r.err}`);
+}
+
 for (const { name, exe } of shells) describe.skipIf(process.platform !== "win32")(`install.ps1 in ${name}`, () => {
 	const run = (rel: Release, env?: Record<string, string>) => {
 		if (!exe) throw new Error("this shell is not installed on the runner");
@@ -169,7 +174,7 @@ for (const { name, exe } of shells) describe.skipIf(process.platform !== "win32"
 		expect(r.err).not.toContain("NativeCommandError");
 		expect(r.out).toContain(`no Stable build for ${TARGET} yet (newest Stable: ${STABLE}); starting from ${ALPHA}`);
 		expect(r.out).toContain("sha256 verified");
-		expect(r.code).toBe(0);
+		succeeded(r);
 		expect(r.calls[0]).toStartWith("atlas install");
 		// No ATLAS_CHANNEL: the default channel is followed for this run only (never saved).
 		expect(r.calls[1]).toBe("atlas update [channel=alpha]");
@@ -178,7 +183,7 @@ for (const { name, exe } of shells) describe.skipIf(process.platform !== "win32"
 
 	test("a Stable with a Windows build is installed as it is, with no fallback message", async () => {
 		const r = await run({ feed: [ALPHA, STABLE], latest: ALPHA, withBuild: [STABLE, ALPHA] });
-		expect(r.code).toBe(0);
+		succeeded(r);
 		expect(r.out).not.toContain("no Stable build");
 		expect(r.out).toContain(`Atlas ${STABLE.slice(1)} (${TARGET})`);
 		expect(r.installed).toBe(true);
@@ -186,7 +191,7 @@ for (const { name, exe } of shells) describe.skipIf(process.platform !== "win32"
 
 	test("on the stable channel, a Stable without a Windows build is refused with the way out", async () => {
 		const r = await run({ feed: [ALPHA, STABLE], latest: ALPHA, withBuild: [ALPHA] }, { ATLAS_CHANNEL: "stable" });
-		expect(r.code).not.toBe(0);
+		expect(r.code, `${r.out}${r.err}`).not.toBe(0);
 		expect(r.out).toContain(`no Stable release has a build for ${TARGET} yet (newest Stable: ${STABLE})`);
 		expect(r.err).not.toContain("NativeCommandError");
 		expect(r.calls).toEqual([]);
@@ -195,7 +200,7 @@ for (const { name, exe } of shells) describe.skipIf(process.platform !== "win32"
 
 	test("no release with a Windows build at all says so", async () => {
 		const r = await run({ feed: [STABLE], latest: ALPHA, withBuild: [] });
-		expect(r.code).not.toBe(0);
+		expect(r.code, `${r.out}${r.err}`).not.toBe(0);
 		expect(r.out).toContain(`could not find a release with a build for ${TARGET}`);
 		expect(r.err).not.toContain("NativeCommandError");
 		expect(r.calls).toEqual([]);
@@ -204,7 +209,7 @@ for (const { name, exe } of shells) describe.skipIf(process.platform !== "win32"
 	// Incident class for any installer: a tarball that does not match its checksum must never run.
 	test("a checksum mismatch aborts before anything is run or installed", async () => {
 		const r = await run({ feed: [STABLE], latest: STABLE, withBuild: [STABLE], checksum: (d) => `${"0".repeat(d.length)}  x\n` });
-		expect(r.code).not.toBe(0);
+		expect(r.code, `${r.out}${r.err}`).not.toBe(0);
 		expect(r.out).toContain("sha256 mismatch");
 		expect(r.calls).toEqual([]);
 		expect(r.installed).toBe(false);
@@ -212,20 +217,20 @@ for (const { name, exe } of shells) describe.skipIf(process.platform !== "win32"
 
 	test("a missing checksum file is a clear failure, not a PowerShell error record", async () => {
 		const r = await run({ feed: [STABLE], latest: STABLE, withBuild: [STABLE], checksum: () => "" });
-		expect(r.code).not.toBe(0);
+		expect(r.code, `${r.out}${r.err}`).not.toBe(0);
 		expect(r.calls).toEqual([]);
 		expect(r.installed).toBe(false);
 	}, 120_000);
 
 	test("ATLAS_CHANNEL is saved with --channel", async () => {
 		const r = await run({ feed: [STABLE], latest: STABLE, withBuild: [STABLE] }, { ATLAS_CHANNEL: "stable" });
-		expect(r.code).toBe(0);
+		succeeded(r);
 		expect(r.calls[1]).toStartWith("atlas update --channel stable");
 	}, 120_000);
 
 	test("an unknown ATLAS_CHANNEL is refused before any download", async () => {
 		const r = await run({ feed: [STABLE], latest: STABLE, withBuild: [STABLE] }, { ATLAS_CHANNEL: "nightly" });
-		expect(r.code).not.toBe(0);
+		expect(r.code, `${r.out}${r.err}`).not.toBe(0);
 		expect(r.out).toContain("unknown ATLAS_CHANNEL");
 		expect(r.calls).toEqual([]);
 	}, 120_000);

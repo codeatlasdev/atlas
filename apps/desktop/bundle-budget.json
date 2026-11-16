@@ -1,0 +1,29 @@
+{
+	"jsGzip": 1035264,
+	"cssGzip": 74752,
+	"slack": 8192,
+	"forbidden": [
+		"@codemirror/*",
+		"@lezer/*",
+		"codemirror",
+		"@xterm/*",
+		"yaml",
+		"marked",
+		"prettier",
+		"echarts"
+	],
+	"known": [
+		{
+			"package": "@codemirror/*",
+			"why": "routes/(app)/+layout.svelte imports CrewWorkspace -> CrewmateView -> ChatThread -> TaskReply -> lib/viewers/markdown.ts -> lib/cm.ts and lib/viewers/lang.ts (every language pack), and lib/lsp/convert.ts (via shell/session.svelte.ts) imports @codemirror/state: load the crew chat lazily and keep the shell's LSP bookkeeping off CodeMirror"
+		},
+		{
+			"package": "@lezer/*",
+			"why": "the same chain: CodeMirror's parsers"
+		},
+		{
+			"package": "marked",
+			"why": "the same chain (lib/viewers/markdown.ts)"
+		}
+	]
+}

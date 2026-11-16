@@ -6,6 +6,10 @@ All notable changes to Atlas (CLI, TUI, MCP server and Atlas Desktop). Versions 
 
 ## [Unreleased]
 
+### Changed
+
+- **The release workflow sets up its toolchain in one place, and the manifest lists only what is built ([#317](https://github.com/codeatlasdev/atlas/issues/317)).** `release.yml` repeated the Rust install six times, the apt block five times and `SOURCE_DATE_EPOCH` nine times; they are now one composite action (`.github/actions/release-toolchain`) that every build job calls, so a build cannot get another epoch or toolchain than its siblings. `manifest.json` no longer lists `x86_64-apple-darwin` and `universal-apple-darwin`, which no job ever built; a test pins its platforms to the `atlas-<target>` artifacts the workflow uploads.
+
 ## [1.5.0-alpha.26] — 2026-11-16
 
 Atlas is in **alpha**: expect bugs and breaking changes. Please [report what breaks](https://github.com/codeatlasdev/atlas/issues/new).

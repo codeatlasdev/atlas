@@ -100,3 +100,17 @@ test("folding a file removes its matches from the list and the rows below move u
 	await tick();
 	expect(items(target)).toHaveLength(9);
 });
+
+// Found in the real-WebKit pass of #308: the first time the Search panel opened for a worktree, `searchState()` created
+// that worktree's state (a write to a `$state` map) inside `$derived`, and Svelte threw `state_unsafe_mutation`: "This panel
+// hit an error". Every earlier use had gone through a search first, which created the entry outside a derived.
+test("the Search panel opens for a worktree that never searched", async () => {
+	const { default: SearchPanel } = await import("./SearchPanel.svelte");
+	const target = document.createElement("div");
+	document.body.append(target);
+	const app = flushSync(() => mount(SearchPanel, { target, props: { worktreeId: "never-searched" } }));
+	done = () => (unmount(app), target.remove());
+	await tick();
+	expect(target.querySelector('[role="tree"]')).not.toBeNull();
+	expect(target.textContent).toContain("Search every file in this worktree");
+});

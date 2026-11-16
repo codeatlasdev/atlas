@@ -168,7 +168,9 @@
 		border-radius: 6px;
 		background: none;
 		font-size: 11.5px;
-		color: var(--space-accent-text, var(--ca-brand-main));
+		/* Not the space accent: a project whose identity color is red drew its healthy port in the failure color
+		   (1.5.0-alpha.26). The state line owns green / amber / red on this card; the port is a plain link. */
+		color: var(--ca-text-primary);
 		transition: background 120ms ease-out;
 	}
 	.port:hover {

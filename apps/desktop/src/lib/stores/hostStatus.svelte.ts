@@ -126,7 +126,10 @@ export async function initHostStatus(): Promise<UnlistenFn> {
 		listen("host://status", (e) => apply(e.payload)),
 		listen("host://prompt", () => void takePrompt()),
 		listen<{ kind?: string; text?: string }>("host://toast", (e) => {
-			if (e.payload.text) toast.success(e.payload.text);
+			if (!e.payload.text) return;
+			// `warning`: events were dropped and resynced (#299); anything else is a finished upgrade.
+			if (e.payload.kind === "warning") toast.info(e.payload.text);
+			else toast.success(e.payload.text);
 		}),
 		listen("host://reconnected", () => void refresh()),
 		listen<{ kind?: string }>("updates://progress", (e) => {

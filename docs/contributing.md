@@ -42,7 +42,7 @@ sudo apt install libwebkit2gtk-4.1-dev build-essential curl wget file libxdo-dev
 sudo dnf install webkit2gtk4.1-devel openssl-devel curl wget file libappindicator-gtk3-devel librsvg2-devel libxdo-devel   # Fedora
 ```
 
-Terminals use xterm.js; agent instances, Atlas Lab and the mirror are macOS only for now (#280, #282). The Linux roadmap is #289.
+Terminals use xterm.js. Agent instances (`bun run desktop:agent`) run on their own headless sway and D-Bus session bus, so they need `sway`, `grim` and `dbus-daemon` (Arch: `pacman -S sway grim`; Debian/Ubuntu: `apt install sway grim dbus`); Atlas Lab, the mirror and recording are not there yet (#282). The Linux roadmap is #289.
 
 ### Windows
 
@@ -50,7 +50,7 @@ Install [Git for Windows](https://git-scm.com/download/win) (it brings Git Bash)
 
 `bun run` scripts call repo shell scripts through `bun scripts/sh.ts`, which runs them with Git Bash: on Windows the `bash` first on `PATH` is often WSL's (`WindowsApps\bash.exe`), which would run them inside Linux where your Windows Rust and Bun do not exist. Call a script by hand the same way: `bun scripts/sh.ts scripts/heavy.sh cargo build`. `ATLAS_BASH` points it at another bash. Checked on Windows 11: `bun run setup`, `bun run check:changed`, `bun run lint:workflows` and `bun run check` (rc 0 at 40e8b67, Git `usr\bin` on `PATH`). Run the gate from Git Bash, or put `C:\Program Files\Git\usr\bin` on `PATH` in PowerShell: some Rust tests spawn `sh` and `sleep`, and from a plain PowerShell `PATH` they fail with `program not found`. Not yet checked on Windows: `bun run desktop:dev` and `desktop:build`.
 
-Terminals use xterm.js on Windows; agent instances, Atlas Lab and the mirror are macOS only (see below). Tests of macOS-only or POSIX-only scripts (`dev-signing-identity`, `install.sh`, the load gate of `heavy.sh`) are skipped on Windows; CI runs the repo scripts and their tests on Linux and Windows (job "Repo scripts").
+Terminals use xterm.js on Windows; agent instances, Atlas Lab and the mirror are not there (see below). Tests of macOS-only or POSIX-only scripts (`dev-signing-identity`, `install.sh`, the load gate of `heavy.sh`) are skipped on Windows; CI runs the repo scripts and their tests on Linux and Windows (job "Repo scripts").
 
 ## The gate
 
@@ -186,7 +186,19 @@ Most frontend work does not need the app on screen. Pick the lightest level that
 
 Agent instances keep a WebKit store each (WKWebView ignores `HOME`); `--stop` deletes it, and `atlas desktop --agent --gc` deletes the stores of instances that are gone (crashes, killed processes).
 
-**Linux and Windows gaps.** Agent instances, so the Lab backend and the mirror, are macOS only (private virtual display, ScreenCaptureKit). On Linux and Windows use `bun run desktop:dev` (a normal window) and level 0 tests; `check:changed`, `heavy.sh` (the load gate is off on Windows) and the repo `atlas.yaml` work everywhere.
+**Linux: open the app with no window on your screen.** `scripts/linux-shot.sh` runs the app on a private headless sway (own Wayland socket, own D-Bus session, throwaway HOME; Mesa software rendering, no GPU) and screenshots it with `grim`. `scripts/linux-launch-check.sh <atlas-desktop | .AppImage>` does the same and **fails** on what a first user would hit: the app exits or crashes, no window maps, the page stays one flat colour, `WebKitWebProcess` dies, a crash/EGL/CSP marker on stderr, or any error line in the app's own `~/.atlas/desktop/app.log` (exit codes in its header; evidence in `launch-check-out/`). `scripts/linux-first-run.sh --cli target/debug/atlas --desktop target/debug/atlas-desktop` walks the first-user path with your own builds (`atlas install`, `atlas doctor`, `atlas desktop --from`, then the launch check) in a throwaway HOME, so nothing of it touches yours or downloads a published build. Needs `sway`, `grim` and `dbus-run-session` (`pacman -S sway grim`, `apt install sway grim dbus`). The debug binary must embed the frontend, as `cargo tauri build` does: `(cd apps/desktop && bun run build) && cargo build -p atlas-desktop --features tauri/custom-protocol` (without the feature a debug build waits for the Vite dev server on :1420 and shows nothing). CI runs the check on every change that touches Rust or the frontend (job "Desktop opens (Linux)", screenshot attached as an artifact), and the release runs it on the AppImage and each distro package before publishing ([Releasing](release.md)).
+
+**Linux and Windows gaps.** What works in an agent instance (`bun run desktop:agent`, `atlas desktop --agent`):
+
+| | macOS | Linux | Windows |
+|---|---|---|---|
+| Isolated instance (own HOME, hostd, bridge; `--stop`, `--gc`) | yes (private virtual display) | yes: own headless sway + own D-Bus session under `/tmp/atlas-agent-<name>/run`; never your Wayland/X11/D-Bus session | no |
+| `debug info\|state\|eval\|logs\|wait\|click\|type\|a11y\|perf\|resize` | yes | yes | no |
+| `debug shot` page, `--selector`, `--rect`, `--window` | yes (WKWebView snapshot, ScreenCaptureKit) | yes: `grim` reads the instance's own compositor (needs `sway`, `grim`); `--full` too; rects are the page's CSS px | no |
+| `debug record`, `desktop:mirror`, flicker sweep, selection bench, `debug hide`, gesture record/replay | yes | no (#282) | no |
+| Atlas Lab (`desktop:lab`) | yes | no | no |
+
+An instance refuses to start (exit 3) when its environment points at anything but its own display: it never uses `/run/user/<uid>`, has no `DISPLAY`, and turns off the accessibility bridge. On Linux the app is the debug binary with the bundled frontend: `bun run desktop:build:debug` builds it (`desktop:agent` does it the first time). It skips the single-instance guard, so it runs beside your installed Atlas and `desktop:dev` (dev builds use id `br.com.codeatlas.atlas.dev`; a bare `cargo build` binary started WITHOUT `ATLAS_AGENT=1` still uses the installed app's id and would hand off to it: use `desktop:dev`). On Windows use `bun run desktop:dev` (a normal window) and level 0 tests; `check:changed`, `heavy.sh` (the load gate is off on Windows) and the repo `atlas.yaml` work everywhere.
 
 Limits: `Channel` streams (terminals, gestures) and `convertFileSrc` assets are not forwarded, and the browser is not WKWebView; use level 2 for those and for the CSP/IPC check before shipping. The bridge answers only its own page (per-run token, same Origin, JSON content type) and only when `ATLAS_DEBUG_SOCK` is an agent instance; it never talks to your own app.
 
@@ -282,7 +294,7 @@ Before you open it: make the change with its tests and doc updates, run `bun run
 
 ## CI and releases
 
-CI (`.github/workflows/ci.yml`) runs on every pull request and on pushes to `main` and `release/**`: macOS, Linux and Windows run the Rust gate (one composite action, `.github/actions/rust-gate`, so they cannot drift), Linux and Windows run the repo scripts and their tests (`bun run release:test`, job "Repo scripts"), plus the desktop frontend checks, the site build, `cargo deny`, the duplication report and the workflow lint. Fork pull requests run it with a read-only token and no secrets. How it is wired:
+CI (`.github/workflows/ci.yml`) runs on every pull request and on pushes to `main` and `release/**`: macOS, Linux and Windows run the Rust gate (one composite action, `.github/actions/rust-gate`, so they cannot drift), Linux and Windows run the repo scripts and their tests (`bun run release:test`, job "Repo scripts"), plus "Desktop opens (Linux)" (the app launched headless, `scripts/linux-launch-check.sh`), the desktop frontend checks, the site build, `cargo deny`, the duplication report and the workflow lint. Fork pull requests run it with a read-only token and no secrets. How it is wired:
 
 - **One required check.** The last job, `CI`, passes only when every other job passed, so jobs can be renamed or split without touching the ruleset. `pr.yml` adds `Signed-off-by` (DCO) and `Conventional title` (the pull request title becomes the squash commit subject). These three are the required checks.
 - **No second test run after a merge.** The branch must be up to date to merge, so the squash commit on `main` has exactly the tree its pull request tested. `scripts/ci-tested.sh` checks that (same tree as the pull request head, and a green CI run for it) and then the push skips the tests and only builds what keeps the cache warm. A different tree, a direct push or any API error runs everything.

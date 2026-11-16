@@ -1,0 +1,27 @@
+Atlas 1.5.0-alpha.5
+Where: terminal host (hostd)
+
+Terminal host not reachable
+
+
+Terminal host: 1.5.0-alpha.4
+CLI: 1.5.0-alpha.5
+OS: macOS 15.1 (aarch64)
+Running bundle: /Applications/Atlas.app
+Installed app: /Applications/Atlas.app
+Kernel: 24.1.0
+Web view: WebKit 619.1.26
+Binary: /Applications/Atlas.app/Contents/MacOS/atlas-desktop
+Atlas crash reports: newest 2026-10-14 01:06:40 UTC (50m ago)
+Finding: Terminal host 1.5.0-alpha.4 is older than Atlas 1.5.0-alpha.5.
+Last crash: atlas 1.5.0-alpha.4: index out of bounds (crates/atlas-host/src/server.rs:9:1)
+
+app.log (tail):
+1791943000 unreachable: socket in use
+
+stderr.log (tail):
+Could not create default EGL display: EGL_BAD_PARAMETER. Aborting...
+
+hostd.log (tail):
+atlas hostd 1.5.0-alpha.4 listening on ~/.atlas/hostd.sock (pid 8664, took over 2 pty(s))
+spawn failed: GITHUB_TOKEN=[redacted]

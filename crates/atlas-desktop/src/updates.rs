@@ -68,14 +68,22 @@ pub enum Progress {
         live: u64,
     },
     /// Nothing was installed: Homebrew or a system package manager owns this Atlas.
-    /// `how` is `homebrew` or `package`.
+    /// `how` is `homebrew` or `package`. For a package, `manager` (`apt`, `dnf`, `pacman`,
+    /// `zypper`) and `command` (what the user runs) say how to update it, and `installable`
+    /// that running `atlas update --yes` (after the app's own confirmation) would do it.
     Managed {
         how: String,
+        #[serde(skip_serializing_if = "Option::is_none")]
+        manager: Option<String>,
+        #[serde(skip_serializing_if = "std::ops::Not::not")]
+        installable: bool,
+        #[serde(skip_serializing_if = "Option::is_none")]
+        command: Option<String>,
     },
 }
 
 /// `@@atlas phase download` / `@@atlas bytes 10 100` / `@@atlas rollback restored` /
-/// `@@atlas managed homebrew`.
+/// `@@atlas managed homebrew` / `@@atlas managed package apt install sudo apt install ./x.deb`.
 fn parse_progress(line: &str) -> Option<Progress> {
     let mut it = line.strip_prefix("@@atlas ")?.split_whitespace();
     match it.next()? {
@@ -93,9 +101,18 @@ fn parse_progress(line: &str) -> Option<Progress> {
             state: it.next()?.to_string(),
             live: it.next().and_then(|n| n.parse().ok()).unwrap_or(0),
         }),
-        "managed" => Some(Progress::Managed {
-            how: it.next()?.to_string(),
-        }),
+        "managed" => {
+            let how = it.next()?.to_string();
+            let manager = it.next().map(String::from);
+            let installable = it.next() == Some("install");
+            let command = it.collect::<Vec<_>>().join(" ");
+            Some(Progress::Managed {
+                how,
+                manager,
+                installable,
+                command: (!command.is_empty()).then_some(command),
+            })
+        }
         _ => None,
     }
 }
@@ -569,17 +586,23 @@ fn fixture_views() -> serde_json::Value {
 /// and needs a relaunch. `downgrade` installs an older build the followed channel offers
 /// (explicit user choice; a plain update never goes down).
 #[tauri::command]
-pub async fn update_all(app: AppHandle, downgrade: Option<bool>) -> Result<bool, String> {
+pub async fn update_all(
+    app: AppHandle,
+    downgrade: Option<bool>,
+    confirmed: Option<bool>,
+) -> Result<bool, String> {
     #[cfg(debug_assertions)]
     if std::env::var_os("ATLAS_DEBUG_FAKE_VERSION").is_some() {
         return Err("Updates are disabled while ATLAS_DEBUG_FAKE_VERSION is set".into());
     }
     let before = bundle_stamp();
     // The persisted channel is authoritative: `--channel` is never passed from here.
-    let args: &[&str] = if downgrade == Some(true) {
-        &["update", "--downgrade", "--yes"]
-    } else {
-        &["update"]
+    // `confirmed`: the user accepted installing a system package from the app's own prompt
+    // (`pkexec` then asks for the password); without it the CLI only reports the command.
+    let args: &[&str] = match (downgrade == Some(true), confirmed == Some(true)) {
+        (true, _) => &["update", "--downgrade", "--yes"],
+        (false, true) => &["update", "--yes"],
+        (false, false) => &["update"],
     };
     stream(&app, args).await?;
     Ok(before.is_some() && before != bundle_stamp())
@@ -667,7 +690,10 @@ mod tests {
         assert_eq!(
             parse_progress("@@atlas managed package"),
             Some(Progress::Managed {
-                how: "package".into()
+                how: "package".into(),
+                manager: None,
+                installable: false,
+                command: None,
             })
         );
         // The wire shape the frontend reads: `{kind:"managed", how}`.
@@ -685,6 +711,64 @@ mod tests {
         ] {
             assert_eq!(parse_progress(bad), None, "{bad}");
         }
+    }
+
+    /// #278 contract: `apps/desktop/src/lib/__fixtures__/managed-progress.json` is the REAL
+    /// serialization of what the app emits for a package install. The lines are exactly what
+    /// `update_core::managed_package_line` prints (pinned by its test in `atlas-cli`).
+    #[test]
+    fn managed_package_progress_is_the_real_serialization_the_frontend_reads() {
+        let apt = parse_progress(
+            "@@atlas managed package apt install sudo apt install ./atlas_1.6.0_amd64.deb",
+        )
+        .unwrap();
+        let manual = parse_progress(
+            "@@atlas managed package pacman manual sudo pacman -U codeatlas-atlas-bin-1.6.0-1-x86_64.pkg.tar.zst",
+        )
+        .unwrap();
+        assert_eq!(
+            apt,
+            Progress::Managed {
+                how: "package".into(),
+                manager: Some("apt".into()),
+                installable: true,
+                command: Some("sudo apt install ./atlas_1.6.0_amd64.deb".into()),
+            }
+        );
+        let fixture = serde_json::json!({
+            "apt": apt,
+            "pacman_manual": manual,
+            "homebrew": parse_progress("@@atlas managed homebrew").unwrap(),
+        });
+        assert_eq!(
+            fixture["pacman_manual"]["installable"],
+            serde_json::Value::Null
+        );
+        assert_eq!(
+            fixture["pacman_manual"]["command"],
+            "sudo pacman -U codeatlas-atlas-bin-1.6.0-1-x86_64.pkg.tar.zst"
+        );
+        let path = std::path::Path::new(env!("CARGO_MANIFEST_DIR"))
+            .join("../../apps/desktop/src/lib/__fixtures__/managed-progress.json");
+        // Same convention as git_review's fixture: tab-indented (the frontend's prettier style), compared
+        // with the committed file, rewritten only with UPDATE_FIXTURES=1.
+        let mut buf = Vec::new();
+        let mut ser = serde_json::Serializer::with_formatter(
+            &mut buf,
+            serde_json::ser::PrettyFormatter::with_indent(b"\t"),
+        );
+        serde::Serialize::serialize(&fixture, &mut ser).unwrap();
+        let fresh = String::from_utf8(buf).unwrap() + "\n";
+        if std::env::var_os("UPDATE_FIXTURES").is_some() {
+            std::fs::write(&path, &fresh).unwrap();
+        }
+        let committed = std::fs::read_to_string(&path)
+            .expect("fixture missing: run with UPDATE_FIXTURES=1 to create it");
+        let committed: serde_json::Value = serde_json::from_str(&committed).unwrap();
+        assert_eq!(
+            committed, fixture,
+            "stale fixture: re-run with UPDATE_FIXTURES=1"
+        );
     }
 
     #[test]

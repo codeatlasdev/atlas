@@ -14,7 +14,8 @@ use super::AtlasCommand;
 use super::release::{REPO, download_verified};
 use super::update_channel::{self as ch, Pick};
 use super::update_core;
-use super::update_pkg::{self, PackageManager};
+use super::update_pkg;
+use atlas_core::pkgowner::{self, PackageManager};
 
 const CURRENT_VERSION: &str = env!("CARGO_PKG_VERSION");
 /// Hit GitHub at most every 6h (cached result is reused in between).
@@ -440,7 +441,7 @@ pub fn print_update_notice() {
         .clamp(40, 200);
     let rule = "─".repeat(width);
     let run = update_command(
-        &InstallMethod::of_exe(&update_core::judged_exe(), update_pkg::owner),
+        &InstallMethod::of_exe(&update_core::judged_exe(), pkgowner::owner),
         &v,
     );
     eprintln!();
@@ -607,7 +608,7 @@ fn installed_version() -> semver::Version {
 
 pub(crate) async fn run_update(req: Request) -> Result<UpdateOutcome> {
     let judged = update_core::judged_exe();
-    let method = InstallMethod::of_exe(&judged, update_pkg::owner);
+    let method = InstallMethod::of_exe(&judged, pkgowner::owner);
 
     // `--channel X` sticks, even where this binary cannot install anything itself.
     if let Some(on) = req.channel {
@@ -881,6 +882,16 @@ async fn install_package(
     tag: &str,
     yes: bool,
 ) -> Result<UpdateOutcome> {
+    let tty = interactive();
+    let has = |n: &str| atlas_core::paths::which(n).is_some();
+    // Decided before the download: with no terminal and no confirmation (the in-app Update) or
+    // nothing that can ask for the password, the user gets the command, not a failed install.
+    let esc = match update_pkg::plan(update_pkg::is_root(), tty, yes, has)? {
+        update_pkg::Plan::Install(esc) => esc,
+        update_pkg::Plan::Show { installable } => {
+            return show_package_command(pm, latest, installable);
+        }
+    };
     let exe = update_core::judged_exe();
     let asset = pm.asset(latest);
     println!("\x1b[1;34m◆\x1b[0m Downloading {asset}...");
@@ -893,10 +904,7 @@ async fn install_package(
     update_core::phase(update_core::Phase::Verify);
     println!("\x1b[1;32m✓\x1b[0m Checksum verified");
 
-    let tty = interactive();
-    let has = |n: &str| atlas_core::paths::which(n).is_some();
-    let is_root = update_pkg::is_root();
-    let argv = update_pkg::command_line(update_pkg::escalation(is_root, tty, has)?, pm, &file);
+    let argv = update_pkg::command_line(esc, pm, &file);
     println!();
     println!("  This installs v{latest} with {} as root:", pm.name());
     println!("    {}", argv.join(" "));
@@ -935,6 +943,35 @@ async fn install_package(
     sync_desktop_best_effort(&exe);
     reconcile_host_with_new_binary(&exe);
     Ok(UpdateOutcome::Installed)
+}
+
+/// A package install this process cannot run (#278): print the package manager's command and
+/// tell the app (`@@atlas managed package …`). In the app that is a finished, non-error run (it
+/// shows the command and, when `installable`, an "Install now" that passes `--yes`); anywhere
+/// else nothing was installed, which is an error that still names the command.
+fn show_package_command(
+    pm: PackageManager,
+    latest: &str,
+    installable: bool,
+) -> Result<UpdateOutcome> {
+    let command = pm.manual_command(latest);
+    println!(
+        "\x1b[1;34m◆\x1b[0m Installed by {} — update it with:",
+        pm.name()
+    );
+    println!("  {command}");
+    update_core::managed_package_event(pm.name(), installable, &command);
+    if update_core::enabled() {
+        return Ok(UpdateOutcome::Managed);
+    }
+    if installable {
+        bail!(
+            "installing a system package needs confirmation: run it in a terminal, pass --yes, or run: {command}"
+        );
+    }
+    bail!(
+        "installing a system package needs a terminal or pkexec for the password: run it in a terminal: {command}"
+    )
 }
 
 /// `atlas hostd --reconcile` of the new binary. A failure is reported, not fatal: the CLI and
@@ -1145,7 +1182,7 @@ mod tests {
 
     #[test]
     fn test_install_method_of_this_binary() {
-        let m = InstallMethod::of_exe(&update_core::judged_exe(), update_pkg::owner);
+        let m = InstallMethod::of_exe(&update_core::judged_exe(), pkgowner::owner);
         assert!(matches!(
             m,
             InstallMethod::Manual

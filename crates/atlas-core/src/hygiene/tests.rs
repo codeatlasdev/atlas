@@ -512,7 +512,10 @@ fn a_writer_gives_up_with_timed_out_when_the_lock_is_never_released() {
         .add_root(root("second", Owner::current(), 2, 1))
         .expect_err("the lock is held by someone else");
     assert_eq!(err.kind(), std::io::ErrorKind::TimedOut);
-    assert!(started.elapsed() >= Duration::from_millis(100), "gave up early");
+    assert!(
+        started.elapsed() >= Duration::from_millis(100),
+        "gave up early"
+    );
     drop(lock);
     assert_eq!(reg.roots().len(), 1, "the refused write left no record");
 }

@@ -63,6 +63,7 @@ pub(super) async fn is_github_logged_in() -> bool {
     }
     // A deadline and a tree kill like every git call of a checkout: this runs before any task prepares, so a
     // `gh` that never answers would hold the whole queue (#296). Not logged in is the safe reading of a timeout.
+    // tree-access: `gh` with hostd's own arguments, no tree cwd
     let mut cmd = tokio::process::Command::new(gh_program());
     cmd.args(["auth", "status", "--hostname", "github.com"]);
     crate::crew::proc::run_bounded(&mut cmd, "gh", crate::crew::proc::call_deadline())

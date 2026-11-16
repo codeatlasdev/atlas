@@ -20,6 +20,17 @@ pub(crate) fn call_deadline() -> Duration {
     CALL_DEADLINE
 }
 
+/// Run blocking work (a crewmate's git that may sit in its own `core.fsmonitor` for up to
+/// [`CALL_DEADLINE`], a walk of its tree) off the async threads: on one they would hold a worker of hostd,
+/// and with enough calls stall everyone's. The `Err` is the work's panic.
+pub(crate) async fn blocking<T: Send + 'static>(
+    work: impl FnOnce() -> T + Send + 'static,
+) -> Result<T, String> {
+    tokio::task::spawn_blocking(work)
+        .await
+        .map_err(|e| format!("blocking work failed: {e}"))
+}
+
 /// Test-only: the program started in place of `gh` (a fake that hangs, or records its calls).
 #[cfg(test)]
 pub(crate) static TEST_GH_PROGRAM: parking_lot::Mutex<Option<String>> =
@@ -29,8 +40,10 @@ pub(crate) static TEST_GH_PROGRAM: parking_lot::Mutex<Option<String>> =
 pub(crate) fn gh_command() -> tokio::process::Command {
     #[cfg(test)]
     if let Some(p) = TEST_GH_PROGRAM.lock().clone() {
+        // tree-access: `gh` (or the configured gh path) with hostd's own arguments, no tree cwd
         return tokio::process::Command::new(p);
     }
+    // tree-access: `gh` (or the configured gh path) with hostd's own arguments, no tree cwd
     tokio::process::Command::new("gh")
 }
 

@@ -44,7 +44,7 @@ pub fn import_script(rename: bool) -> String {
 /// `home <path>`, `crewmates <n>`, `size <du -sh>` (nothing for a host without crew data).
 pub const INVENTORY_SCRIPT: &str = "u=$(if id atlas-crew >/dev/null 2>&1; then echo atlas-crew; elif id atlas-bot >/dev/null 2>&1; then echo atlas-bot; else echo ''; fi); \
 [ -n \"$u\" ] || exit 0; h=/var/lib/$u; echo \"home $h\"; \
-n=$(ls -d $h/.atlas/crew/*/ $h/.atlas/bots/*/ 2>/dev/null | wc -l | tr -d ' '); echo \"crewmates $n\"; \
+n=$(sudo -n sh -c \"ls -d $h/.atlas/crew/*/ $h/.atlas/bots/*/ 2>/dev/null\" | wc -l | tr -d ' '); echo \"crewmates $n\"; \
 echo \"size $(sudo -n du -sh $h 2>/dev/null | cut -f1)\"";
 
 /// What [`INVENTORY_SCRIPT`] printed.
@@ -245,6 +245,18 @@ mod tests {
         for w in ["rm ", "userdel", "systemctl"] {
             assert!(!INVENTORY_SCRIPT.contains(w), "{w}");
         }
+    }
+
+    // Incident (real-systemd end-to-end test): since isolation the crew home is 0700 for the crew user, and the
+    // inventory counted its crewmates as the admin user, so uninstall told the person "0 crewmate(s)" about a
+    // home that held one. Only the size went through sudo.
+    #[test]
+    fn the_inventory_counts_crewmates_with_sudo_because_the_crew_home_is_private() {
+        let count = INVENTORY_SCRIPT
+            .split(';')
+            .find(|l| l.contains(".atlas/crew/"))
+            .expect("the count line");
+        assert!(count.contains("sudo -n"), "{count}");
     }
 
     // Uninstall prints what it deletes before it deletes anything, and names the home and the count.

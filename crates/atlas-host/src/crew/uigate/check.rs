@@ -39,6 +39,7 @@ impl Check for Detectors {
 
     fn run(&self, _combo: Combo, png: &Path) -> Result<Vec<Finding>, String> {
         let file = detectors::findings_path(png);
+        // tree-access: hostd-owned (the crew store, scratch or runtime), never a crewmate's tree
         if !file.is_file() {
             return Err(format!(
                 "the runner wrote no {}: {}",

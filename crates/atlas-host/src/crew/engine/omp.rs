@@ -28,7 +28,9 @@ const CREW_OVERLAY: &str = "power:\n  sleepPrevention: \"off\"\n";
 /// `--config <file>` for an omp started by a crewmate; the file sits in the crewmate's dir and is rewritten when it differs.
 pub(crate) fn overlay_args(crewmate_dir: &std::path::Path) -> Vec<String> {
     let path = crewmate_dir.join("omp-crew.yml");
+    // tree-access: hostd's own engine files in ctx.crewmate_dir (crew-runtime under isolation, which the crewmate cannot write)
     if std::fs::read_to_string(&path).ok().as_deref() != Some(CREW_OVERLAY) {
+        // tree-access: hostd's own engine files in ctx.crewmate_dir (crew-runtime under isolation, which the crewmate cannot write)
         let _ = std::fs::write(&path, CREW_OVERLAY);
     }
     vec!["--config".to_string(), path.to_string_lossy().into_owned()]
@@ -329,8 +331,10 @@ export default function atlasApproval(pi) {{
         pane = pane_key,
     );
     if let Some(parent) = path.parent() {
+        // tree-access: hostd's own engine files in ctx.crewmate_dir (crew-runtime under isolation, which the crewmate cannot write)
         std::fs::create_dir_all(parent).map_err(|e| format!("omp extension dir: {e}"))?;
     }
+    // tree-access: hostd's own engine files in ctx.crewmate_dir (crew-runtime under isolation, which the crewmate cannot write)
     std::fs::write(path, content).map_err(|e| format!("omp extension write: {e}"))
 }
 

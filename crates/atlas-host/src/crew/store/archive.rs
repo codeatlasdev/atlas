@@ -276,7 +276,13 @@ pub fn export(
             } else {
                 dir.join(&file)
             };
-            match std::fs::read(path) {
+            let read = if file == "memory.md" && store.isolated(&id).is_some() {
+                // The crewmate owns that file's directory entry: not through a link it planted.
+                crate::crew::spawn::layout::read_nofollow(&path).map(String::into_bytes)
+            } else {
+                std::fs::read(path)
+            };
+            match read {
                 Ok(data) => append(
                     &mut b,
                     &format!("crew/{id}/{file}"),

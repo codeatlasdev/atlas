@@ -7,6 +7,7 @@ use std::time::Duration;
 
 use serde_json::{Value, json};
 
+use super::fixture::log_task;
 use crate::crew::capture::tests::{fake_runner, full_report};
 use crate::crew::capture::{self, TEST_RUNNER};
 
@@ -46,16 +47,6 @@ async fn post_capture(dir: &Path, id: &str, pane: &str, args: Value) -> (String,
     let status = r.lines().next().unwrap_or("").to_string();
     let body = r.split("\r\n\r\n").nth(1).unwrap_or_default();
     (status, serde_json::from_str(body).unwrap_or(Value::Null))
-}
-
-/// Put a bare task `task_id` on the crewmate's log (a capture attaches to a task that exists) and
-/// return its id.
-fn log_task(dir: &Path, crewmate_id: &str, task_id: &str) -> String {
-    let store = crate::crew::store::CrewStore::new(dir);
-    let mut t = crate::crew::store::Task::new("test", "look");
-    t.id = task_id.to_string();
-    store.append_task(crewmate_id, &t).unwrap();
-    task_id.to_string()
 }
 
 #[tokio::test(flavor = "multi_thread")]

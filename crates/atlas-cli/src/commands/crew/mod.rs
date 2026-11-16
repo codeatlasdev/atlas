@@ -530,26 +530,26 @@ impl AtlasCommand for LoginArgs {
 }
 
 impl LoginArgs {
-    /// The crewmate's own sign-in: ssh to the server as the person's admin user (the crew user is not
-    /// in sudoers, and cannot become another user), then run the engine as the crewmate.
+    /// The crewmate's own sign-in: ssh to the server as the person's admin user (the crew user is not in sudoers),
+    /// where the crew user's hostd is asked for the engine's login terminal, the request the phone sends
+    /// (`crew_engine_login`). The helper starts it as the crewmate under the confinement of its agents; this
+    /// command only carries the terminal (`atlas hostd --crew-login`).
     fn login_as_crewmate(&self, id: &str) -> Result<()> {
-        let user = atlas_host::crew::spawn::validate::user_for(id).with_context(|| {
+        let script = layout::login_script(&self.agent, id).with_context(|| {
             format!(
-                "'{id}' is not a crewmate id (see `atlas crew status`: 36 characters, lowercase)"
+                "'{id}' is not a crewmate id (see `atlas crew status`: 36 characters, lowercase), or '{}' is not an agent",
+                self.agent
             )
         })?;
-        let command = isolation::login_command(&user, &self.agent).map_err(|e| {
-            anyhow::anyhow!(
-                "cannot build the sign-in command for {:?}: not a crewmate or agent",
-                e.0
-            )
-        })?;
+        // The same ssh helper as every other crew call: the port, and the quoting of the script.
+        let argv = atlas_core::ssh::SshTarget::new(self.ssh_target.clone(), Some(self.ssh.port))
+            .terminal_argv(&script);
         println!(
-            "\x1b[36m▸\x1b[0m Opening sign-in session as {user}: ssh -t {} {}",
+            "\x1b[36m▸\x1b[0m Opening sign-in session for crewmate {id}: ssh -t {} (atlas hostd --crew-login {})",
             self.ssh_target, self.agent
         );
-        let status = std::process::Command::new("ssh")
-            .args(["-t", &self.ssh_target, &command])
+        let status = std::process::Command::new(&argv[0])
+            .args(&argv[1..])
             .status()
             .context("could not launch ssh")?;
         if !status.success() {

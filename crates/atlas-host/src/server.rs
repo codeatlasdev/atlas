@@ -398,6 +398,9 @@ pub struct ServeOpts {
     /// what the machine has (`Setup::detect`, the helper's socket); `None` runs every crewmate as the
     /// crew user, which is also what tests get unless they run a helper of their own.
     pub isolation: Option<crate::crew::spawn::layout::Setup>,
+    /// Why no crewmate may run: isolation is installed on this server but the helper's socket is missing
+    /// (`Setup::detect`). Every crew task is refused with this text instead of running as the crew user.
+    pub isolation_fault: Option<String>,
     /// Another desktop control socket than `~/.atlas/desktop.sock` (tests); `None`: the user's.
     pub desktop: Option<atlas_core::desktop_ctl::Endpoint>,
     /// Where plain-agent pushes go ([`crate::agents::push`]); `None`: the push relay. Tests capture them.
@@ -416,16 +419,34 @@ pub fn desktop_registry() -> PathBuf {
     atlas_core::paths::atlas_home()
 }
 
+/// Isolation for a daemon that is a crew host: what the machine has (`Setup::detect`, the helper's socket),
+/// and the reason crewmates cannot run when isolation is installed but its helper is missing. Nothing for
+/// any other daemon. Every real entry point passes both as [`ServeOpts::isolation`] and
+/// [`ServeOpts::isolation_fault`]; leaving them at their default silently runs every crewmate as the crew user.
+pub fn detect_isolation(
+    crew_host: bool,
+) -> (Option<crate::crew::spawn::layout::Setup>, Option<String>) {
+    use crate::crew::spawn::layout::{Detected, Setup};
+    if !crew_host {
+        return (None, None);
+    }
+    match Setup::detect() {
+        Detected::Off => (None, None),
+        Detected::On(s) => (Some(s), None),
+        Detected::Missing(why) => (None, Some(why)),
+    }
+}
+
 pub async fn serve(dir: &Path) -> Result<()> {
     let crew_host = std::env::var("ATLAS_CREW_HOST").as_deref() == Ok("1");
+    let (isolation, isolation_fault) = detect_isolation(crew_host);
     serve_with(
         dir,
         ServeOpts {
             crew_host,
             registry: Some(desktop_registry()),
-            isolation: crew_host
-                .then(crate::crew::spawn::layout::Setup::detect)
-                .flatten(),
+            isolation,
+            isolation_fault,
             ..Default::default()
         },
     )
@@ -557,7 +578,7 @@ pub async fn serve_with(dir: &Path, opts: ServeOpts) -> Result<()> {
     let (lsp_tx, lsp_rx) = mpsc::channel(512);
     let agents = Arc::new(crate::agents::AgentHub::default());
     let mobile = Arc::new(crate::mobile::Mobile::load(dir, !opts.no_mobile_relay)?);
-    let crew = crate::crew::CrewHub::new(dir, opts.isolation.clone());
+    let crew = crate::crew::CrewHub::new(dir, opts.isolation.clone(), opts.isolation_fault.clone());
     let registry = opts
         .registry
         .clone()

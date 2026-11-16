@@ -11,10 +11,13 @@ use crate::protocol::{Mode, PtyCreate, Scope};
 /// the desktop's agent tab turns that off. Written once under the registry dir the desktop also uses.
 fn omp_fresh_config(registry: &Path) -> Result<PathBuf, String> {
     let p = registry.join("desktop").join("omp-fresh.yml");
+    // tree-access: the registry dir the desktop also uses (hostd's own)
     if !p.exists() {
         if let Some(dir) = p.parent() {
+            // tree-access: the registry dir the desktop also uses (hostd's own)
             std::fs::create_dir_all(dir).map_err(|e| format!("{}: {e}", dir.display()))?;
         }
+        // tree-access: the registry dir the desktop also uses (hostd's own)
         std::fs::write(&p, "autoResume: false\n").map_err(|e| format!("{}: {e}", p.display()))?;
     }
     Ok(p)

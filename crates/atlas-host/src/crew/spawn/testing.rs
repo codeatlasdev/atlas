@@ -83,6 +83,54 @@ impl Host for TreeHost {
     }
 }
 
+/// A shell snippet that prints what the process running it looks like from the inside: `ls -l` of its open
+/// descriptors (no pipe or substitution: the shell would hold one of its own while it lists), its `NoNewPrivs:` line and
+/// its `/proc/self/cgroup`. Run as `exec sh -c '<PROBE>'`: the script's own descriptor for itself (dash keeps
+/// one, not close-on-exec) is not the process's, and `$$` is that shell. Scripts that run it start with `#!/bin/bash`,
+/// whose descriptor for the script is close-on-exec (dash's is fd 10 and is inherited; dash cannot close it either:
+/// `10<&-` closes fd 0).
+pub const PROBE: &str =
+    r#"ls -l /proc/$$/fd; grep NoNewPrivs /proc/$$/status; cat /proc/$$/cgroup"#;
+
+/// The descriptor numbers a [`PROBE`] saw open, in order (`... 3 -> socket:[123]` lines of `ls -l`).
+pub fn probe_fds(probe: &str) -> Vec<u32> {
+    probe
+        .lines()
+        .filter_map(|l| {
+            let t: Vec<&str> = l.split_whitespace().collect();
+            let arrow = t.iter().position(|w| *w == "->")?;
+            t.get(arrow.checked_sub(1)?)?.parse().ok()
+        })
+        .collect()
+}
+
+/// A listening socket the way systemd's socket activation leaves it (close-on-exec cleared), adopted through
+/// the code the helper runs at start ([`server::listener_from_fd`]), and the `socket:[inode]` text a [`PROBE`]
+/// shows if a child holds it. Every other descriptor of the test process is first made close-on-exec, so a
+/// descriptor a test runner leaked into the process cannot appear in a probe: what a probe shows is the helper's.
+pub fn systemd_listener(dir: &std::path::Path) -> (std::os::unix::net::UnixListener, String) {
+    use std::os::fd::{AsRawFd, OwnedFd};
+    let fd =
+        OwnedFd::from(std::os::unix::net::UnixListener::bind(dir.join("systemd.sock")).unwrap());
+    if let Ok(fds) = std::fs::read_dir("/proc/self/fd") {
+        for n in fds
+            .flatten()
+            .filter_map(|e| e.file_name().to_str()?.parse::<i32>().ok())
+        {
+            // SAFETY: plain fcntl; an fd that is not open (the directory's own, already closed) just fails.
+            unsafe { libc::fcntl(n, libc::F_SETFD, libc::FD_CLOEXEC) };
+        }
+    }
+    // SAFETY: plain fcntl on an fd we own: what systemd's socket activation leaves.
+    unsafe { libc::fcntl(fd.as_raw_fd(), libc::F_SETFD, 0) };
+    let socket = std::fs::read_link(format!("/proc/self/fd/{}", fd.as_raw_fd()))
+        .unwrap()
+        .to_string_lossy()
+        .into_owned();
+    assert!(socket.starts_with("socket:["), "{socket}");
+    (server::listener_from_fd(fd), socket)
+}
+
 pub struct Rig {
     // Kept alive for the sockets and directories of the rig.
     _dir: tempfile::TempDir,
@@ -136,6 +184,18 @@ pub fn rig() -> Rig {
 
 /// [`rig`] whose helper reports `memory` (see [`server::Memory::Verdict`]).
 pub fn rig_with(memory: server::Memory) -> Rig {
+    rig_full(memory, || Ok(()))
+}
+
+/// [`rig`] whose helper asks `egress` whether the firewall is in place ([`server::Config::egress`]).
+pub fn rig_with_egress(egress: fn() -> io::Result<()>) -> Rig {
+    rig_full(
+        server::Memory::Off("tests run without a cgroup".into()),
+        egress,
+    )
+}
+
+fn rig_full(memory: server::Memory, egress: fn() -> io::Result<()>) -> Rig {
     let dir = tempfile::tempdir().unwrap();
     let engines = dir.path().join("engines");
     let cm = dir.path().join("cm/3f2a9c1e5b7d");
@@ -146,6 +206,7 @@ pub fn rig_with(memory: server::Memory) -> Rig {
         engines: vec![engines.to_string_lossy().into()],
         resolve: me,
         memory: Arc::new(memory),
+        egress,
     });
     let sock = dir.path().join("spawn.sock");
     let listener = server::bind(&sock).unwrap();
@@ -191,4 +252,89 @@ pub fn rig_with(memory: server::Memory) -> Rig {
     rig.provision();
     rig.prov_log.lock().clear();
     rig
+}
+
+impl Rig {
+    /// A git repository in the checkout whose **own config** runs a command: `core.fsmonitor` appends
+    /// `$USER` to the returned marker file. That is what a crewmate can do to the git that hostd runs in its
+    /// tree (security review of #448, B2). The helper starts git as the crewmate with `USER` set to the
+    /// crewmate's user; hostd's own git would leave the test process's `USER` (or none) there. A marker line
+    /// that is not [`USER`] means git ran as someone else; no marker at all means nothing triggered it.
+    pub fn booby_trapped_repo(&self) -> PathBuf {
+        let marker = self.cm.join("marker");
+        self.planted_repo(&format!(
+            "printf '%s\\n' \"$USER\" >> {}\nexit 1\n",
+            marker.display()
+        ));
+        marker
+    }
+
+    /// A repository in the checkout whose `core.fsmonitor` is `#!/bin/sh` + `hook_body`, which git runs on
+    /// every `status` as whoever runs git: the way a test sees what a crewmate's git process is like from the
+    /// inside (its descriptors, `no_new_privs`, cgroup).
+    pub fn planted_repo(&self, hook_body: &str) {
+        let work = self.work();
+        let hook = self.cm.join("fsmonitor.sh");
+        std::fs::write(&hook, format!("#!/bin/bash\n{hook_body}")).unwrap();
+        std::fs::set_permissions(&hook, std::fs::Permissions::from_mode(0o755)).unwrap();
+        let git = |args: &[&str]| {
+            let o = std::process::Command::new("git")
+                .args(["-c", "user.name=t", "-c", "user.email=t@t"])
+                .args(args)
+                .current_dir(&work)
+                .env_remove("GIT_DIR")
+                .output()
+                .unwrap();
+            assert!(
+                o.status.success(),
+                "git {args:?}: {}",
+                String::from_utf8_lossy(&o.stderr)
+            );
+        };
+        git(&["init", "-q"]);
+        std::fs::write(work.join("a.txt"), "one\n").unwrap();
+        git(&["add", "a.txt"]);
+        git(&["commit", "-q", "-m", "one"]);
+        // Set only now, so the setup above does not trigger it.
+        git(&["config", "core.fsmonitor", &hook.to_string_lossy()]);
+        std::fs::write(work.join("a.txt"), "two\n").unwrap();
+        std::fs::write(work.join("new.txt"), "new\n").unwrap();
+    }
+
+    /// A planted repo whose command writes, to the returned file, what its own process looks like: [`PROBE`].
+    #[cfg(target_os = "linux")]
+    pub fn probe_repo(&self) -> PathBuf {
+        let out = self.cm.join("probe");
+        self.planted_repo(&format!("exec bash -c '{PROBE}' > {}\n", out.display()));
+        out
+    }
+
+    /// Hooks, in the crewmate's own `~/.gitconfig`, that record the environment of every git process that runs
+    /// them (clone's `post-checkout`, a fetch's `reference-transaction`, a pull's `post-merge`): what a crewmate's
+    /// code sees of the git hostd asks for. Returns the file they append to.
+    pub fn env_recording_hooks(&self) -> PathBuf {
+        let log = self.cm.join("env.log");
+        let hooks = self.cm.join("hooks");
+        std::fs::create_dir_all(&hooks).unwrap();
+        for name in ["post-checkout", "reference-transaction", "post-merge"] {
+            let h = hooks.join(name);
+            std::fs::write(&h, format!("#!/bin/sh\nenv >> {}\n", log.display())).unwrap();
+            std::fs::set_permissions(&h, std::fs::Permissions::from_mode(0o755)).unwrap();
+        }
+        std::fs::write(
+            self.cm.join("home/.gitconfig"),
+            format!("[core]\n\thooksPath = {}\n", hooks.display()),
+        )
+        .unwrap();
+        log
+    }
+
+    /// What the marker holds: one `$USER` per run of the planted command.
+    pub fn marker_users(marker: &std::path::Path) -> Vec<String> {
+        std::fs::read_to_string(marker)
+            .unwrap_or_default()
+            .lines()
+            .map(str::to_string)
+            .collect()
+    }
 }

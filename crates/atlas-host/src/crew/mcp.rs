@@ -383,7 +383,7 @@ fn tools_list() -> Value {
         },
         {
             "name": "capture",
-            "description": "Open a URL in real browsers and attach screenshots to this task: one per engine x width x theme (default chromium + webkit, 390 + 1440 px, light + dark, full page). Fails, naming them, when any combination is missing, so a capture that returns is complete. localhost and LAN URLs work. Use it to look at a UI change before and after you make it.",
+            "description": "Open a URL in real browsers and attach screenshots to this task: one per engine x width x theme (default chromium + webkit, 390 + 1440 px, light + dark, full page). Fails, naming them, when any combination is missing, so a capture that returns is complete. localhost URLs of a server you started work; where each crewmate runs as its own user, another crewmate's server and private or metadata addresses are refused. Use it to look at a UI change before and after you make it.",
             "inputSchema": {
                 "type": "object",
                 "properties": {

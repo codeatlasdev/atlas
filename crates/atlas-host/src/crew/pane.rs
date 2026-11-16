@@ -24,6 +24,26 @@ pub(crate) fn is_pane_of(pane_key: &str, id: &str) -> bool {
     crewmate_id(pane_key) == Some(id)
 }
 
+/// The task id of a pane of crewmate `id`, `None` for any other pane or a task part that is not a plain
+/// name. The crewmate writes this key, so the task part is as untrusted as the key: it is what hostd
+/// joins to a folder, so it must be one path component (see [`is_plain_name`]).
+pub(crate) fn task_id<'a>(pane_key: &'a str, id: &str) -> Option<&'a str> {
+    if !is_pane_of(pane_key, id) {
+        return None;
+    }
+    pane_key.splitn(3, ':').nth(2).filter(|t| is_plain_name(t))
+}
+
+/// Whether `name` is one normal path component: not empty, not `.` or `..`, no separator, no NUL, never
+/// absolute. `dir.join(name)` then stays directly under `dir`.
+pub(crate) fn is_plain_name(name: &str) -> bool {
+    let mut parts = std::path::Path::new(name).components();
+    matches!(
+        (parts.next(), parts.next()),
+        (Some(std::path::Component::Normal(n)), None) if n == name
+    ) && !name.contains(['\\', '\0'])
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -40,5 +60,28 @@ mod tests {
         assert!(!is_crewmate_pane("p1"));
         assert!(!is_crewmate_pane("bot:abc:t1"), "the old prefix is gone");
         assert_eq!(crewmate_id("p1"), None);
+    }
+
+    #[test]
+    fn a_task_id_is_one_plain_path_component_of_the_callers_own_pane() {
+        assert_eq!(task_id("crew:abc:t1", "abc"), Some("t1"));
+        assert_eq!(task_id("crew:abc:t1", "other"), None);
+        assert_eq!(task_id("crew:abc:", "abc"), None);
+        assert_eq!(task_id("crew:abc", "abc"), None);
+        for bad in [
+            "/etc",
+            "/var/lib/x/work/y",
+            "..",
+            ".",
+            "../x",
+            "a/b",
+            "a\\b",
+            "x/..",
+            "a\0b",
+        ] {
+            assert_eq!(task_id(&format!("crew:abc:{bad}"), "abc"), None, "{bad:?}");
+            assert!(!is_plain_name(bad), "{bad:?}");
+        }
+        assert!(is_plain_name("task-9_x.y"));
     }
 }

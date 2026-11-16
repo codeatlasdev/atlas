@@ -111,7 +111,7 @@ sudo -E env "PATH=$PATH" cargo test -p atlas-host --lib crew::spawn -- --ignored
 
 To run them yourself use a disposable Linux machine or VM, never your Mac (they are compiled out of the run there) and not a container that shares the host's user database. They add `atlas-cm-ffffffffffff` and `atlas-cm-eeeeeeeeeeee` and remove them when they finish.
 
-The egress rules (`nft`) and the engine installers are not covered by it: the ruleset is a pure string tested for order and content, and applying it needs `nft` and a real server.
+The egress rules (`nft`) are a pure string tested for order and content here; applying them, the engine installers and the rest of a crew server on real systemd are covered by the crew end-to-end test ([Atlas Crew, "End-to-end test on real systemd"](crew.md#end-to-end-test-on-real-systemd)).
 
 ### Updating JS dependencies
 

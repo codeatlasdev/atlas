@@ -110,22 +110,45 @@ fn an_image_outside_the_work_tree_is_refused_even_through_a_symlink() {
     .unwrap();
     std::fs::write(other.join("secret.png"), png_header(390, 10)).unwrap();
 
-    let ok = resolve_image(&work, ".atlas/attachments/t1/a.png").unwrap();
-    assert!(ok.ends_with("a.png"));
+    assert_eq!(
+        read_image(&work, ".atlas/attachments/t1/a.png").unwrap(),
+        png_header(390, 10)
+    );
     let abs = work.join(".atlas/attachments/t1/a.png");
-    assert!(resolve_image(&work, abs.to_str().unwrap()).is_ok());
+    assert!(read_image(&work, abs.to_str().unwrap()).is_ok());
+    assert!(read_image(&work, "./.atlas/attachments/t1/a.png").is_ok());
 
-    let e = resolve_image(&work, "../other/secret.png").unwrap_err();
+    let e = read_image(&work, "../other/secret.png").unwrap_err();
     assert!(e.contains("outside your work tree"), "{e}");
-    let e = resolve_image(&work, other.join("secret.png").to_str().unwrap()).unwrap_err();
+    let e = read_image(&work, other.join("secret.png").to_str().unwrap()).unwrap_err();
     assert!(e.contains("outside your work tree"), "{e}");
     std::os::unix::fs::symlink(&other, work.join("link")).unwrap();
-    let e = resolve_image(&work, "link/secret.png").unwrap_err();
+    let e = read_image(&work, "link/secret.png").unwrap_err();
     assert!(e.contains("outside your work tree"), "{e}");
-    let e = resolve_image(&work, "missing.png").unwrap_err();
+    // A link to a file (the last component) is refused the same way.
+    std::os::unix::fs::symlink(other.join("secret.png"), work.join("leaf.png")).unwrap();
+    let e = read_image(&work, "leaf.png").unwrap_err();
+    assert!(e.contains("outside your work tree"), "{e}");
+    let e = read_image(&work, "missing.png").unwrap_err();
     assert!(e.contains("no image"), "{e}");
-    let e = resolve_image(&work, ".atlas").unwrap_err();
+    let e = read_image(&work, ".atlas").unwrap_err();
     assert!(e.contains("not a file"), "{e}");
+}
+
+// Security review 5 (the class): `locate` told an agent whether any file the crew user can stat exists
+// ("outside your work tree" for one that does, "no image" for one that does not).
+#[test]
+fn locate_does_not_say_whether_a_path_outside_the_work_tree_exists() {
+    let tmp = tempfile::tempdir().unwrap();
+    let work = tmp.path().join("work");
+    std::fs::create_dir_all(&work).unwrap();
+    std::fs::write(tmp.path().join("exists.png"), "x").unwrap();
+    let say = |p: &str| read_image(&work, p).unwrap_err().replace(p, "<path>");
+    assert_eq!(
+        say(tmp.path().join("exists.png").to_str().unwrap()),
+        say(tmp.path().join("gone.png").to_str().unwrap())
+    );
+    assert_eq!(say("../exists.png"), say("../gone.png"));
 }
 
 #[test]
@@ -416,4 +439,42 @@ async fn errors_the_agent_reads_a_missing_url_an_outside_image_a_rect_over_nothi
     .unwrap_err();
     assert!(e.contains("not readable"), "{e}");
     *capture::TEST_RUNNER.lock() = None;
+}
+
+// Security review of the crew isolation, N5: `locate` runs in hostd (the crew user) on the crewmate's tree and
+// told the agent which files contain a string the agent chose. A file the crewmate swapped for a link to
+// `hostd.token` (or a directory for a link) between the listing and the read was read through it, so the agent
+// could learn the token one probe at a time. Links are never followed, at any component.
+#[cfg(unix)]
+#[test]
+fn locate_never_reads_through_a_link_out_of_the_tree() {
+    use std::os::unix::fs::symlink;
+    let t = tempfile::tempdir().unwrap();
+    let root = t.path().join("work");
+    let outside = t.path().join("outside");
+    std::fs::create_dir_all(root.join("src")).unwrap();
+    std::fs::create_dir_all(&outside).unwrap();
+    std::fs::write(outside.join("secret.svelte"), "data-testid=\"buy-button\"").unwrap();
+    std::fs::write(
+        outside.join("app.dart"),
+        "GoRoute(path: '/pricing', builder: (c, s) => P())",
+    )
+    .unwrap();
+    std::fs::write(root.join("src/real.svelte"), "data-testid=\"buy-button\"").unwrap();
+    symlink(outside.join("secret.svelte"), root.join("src/file.svelte")).unwrap();
+    symlink(&outside, root.join("dir")).unwrap();
+    symlink(outside.join("app.dart"), root.join("src/app.dart")).unwrap();
+    let files: Vec<String> = ["src/file.svelte", "dir/secret.svelte", "src/real.svelte"]
+        .map(String::from)
+        .into();
+    assert_eq!(
+        grep_sources(&root, &files, "buy-button"),
+        ["src/real.svelte"],
+        "a file read through a link out of the tree"
+    );
+    let routes = route::routes_for(&root, &["src/app.dart".to_string()], "/pricing");
+    assert!(
+        routes.is_empty(),
+        "a Dart file read through a link: {routes:?}"
+    );
 }

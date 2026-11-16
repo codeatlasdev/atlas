@@ -128,11 +128,16 @@ impl World {
     }
 
     fn ctx(&self) -> Ctx<'_, Fake> {
+        self.ctx_in(&Tree::Own)
+    }
+
+    fn ctx_in<'a>(&'a self, tree: &'a Tree) -> Ctx<'a, Fake> {
         Ctx {
             capturer: &self.fake,
             cache: &self.cache,
             checks: &[],
             root: &self.root,
+            tree,
             task_dir: &self.task_dir,
             scratch: &self.scratch,
             force: false,
@@ -380,7 +385,7 @@ async fn add_regression_persists_and_the_next_plan_includes_it() {
     w.call(json!({"action": "add_regression", "url": "http://localhost:5173/settings", "widths": [390], "themes": ["dark"], "note": "new note"}))
         .await
         .unwrap();
-    let all = regressions::load(&w.root).unwrap();
+    let all = regressions::load(&Tree::Own, &w.root).unwrap();
     assert_eq!(all.len(), 1);
     assert_eq!(all[0].note, "new note");
 }
@@ -659,4 +664,273 @@ async fn fixing_the_page_turns_the_failing_scenario_green_on_rerun() {
     .await
     .unwrap();
     assert_eq!(v["passed"], true, "{v}");
+}
+
+// ── security review 5, N1: an isolated crewmate's tree is the crewmate's ─────────────────────────────────────
+//
+// hostd (the crew user) planned the gate from `atlas.yaml` in the crewmate's checkout: it read the file through
+// links, ran its `affected.command` as itself and wrote the regression registry through links. `Tree::Isolated`
+// is what `handle` uses for a crewmate that runs as its own user.
+
+fn isolated() -> Tree {
+    Tree::Isolated(crate::crew::gitrun::Git::local())
+}
+
+async fn run_in(w: &World, tree: &Tree, files: &[&str]) -> Result<serde_json::Value, String> {
+    let action = Action::from_args(&json!({
+        "action": "run", "base_url": "http://localhost:5173", "files": files,
+    }))?;
+    dispatch(&w.ctx_in(tree), action).await
+}
+
+/// An `atlas.yaml` whose plugin command touches `marker` and answers one route.
+fn with_command(w: &World, marker: &Path) {
+    std::fs::write(
+        w.root.join("atlas.yaml"),
+        format!(
+            "name: shop\nservices:\n  web:\n    command: echo web\n    port: 5173\naffected:\n  command: |\n    touch {} && echo '{{\"routes\": [\"/cmd\"]}}'\n",
+            marker.display()
+        ),
+    )
+    .unwrap();
+}
+
+#[tokio::test(flavor = "multi_thread")]
+async fn the_affected_command_of_a_crewmates_atlas_yaml_is_never_run_by_hostd() {
+    let w = World::new();
+    let marker = w.root.join("ran-as-hostd");
+    with_command(&w, &marker);
+    // Control: in a tree that is nobody else's the command is the project's plugin and runs.
+    let v = run_in(&w, &Tree::Own, &["src/home.svelte"]).await.unwrap();
+    assert!(marker.exists(), "control: the plugin did not run");
+    assert_eq!(urls(&v), ["http://localhost:5173/cmd"]);
+    std::fs::remove_file(&marker).unwrap();
+
+    let e = run_in(&w, &isolated(), &["src/home.svelte"])
+        .await
+        .unwrap_err();
+    assert!(e.contains("affected.command"), "{e}");
+    assert!(
+        !marker.exists(),
+        "hostd ran the crewmate's affected.command"
+    );
+    assert!(
+        w.fake.calls().len() == 1,
+        "nothing captured for the refused run"
+    );
+}
+
+#[tokio::test(flavor = "multi_thread")]
+async fn declared_rules_still_plan_an_isolated_crewmates_routes() {
+    let w = World::new();
+    let v = run_in(&w, &isolated(), &["src/docs.svelte"]).await.unwrap();
+    assert_eq!(urls(&v), ["http://localhost:5173/docs"], "{v}");
+}
+
+#[cfg(unix)]
+#[tokio::test(flavor = "multi_thread")]
+async fn a_link_where_the_gate_reads_atlas_yaml_or_the_registry_is_refused_without_reading_through_it()
+ {
+    use std::os::unix::fs::symlink;
+    let w = World::new();
+    let outside = w._tmp.path().join("b-work");
+    std::fs::create_dir_all(&outside).unwrap();
+    std::fs::write(outside.join(".env"), "SECRET=hunter2").unwrap();
+
+    // atlas.yaml is a link to another crewmate's file: its content would come back in the YAML error.
+    std::fs::remove_file(w.root.join("atlas.yaml")).unwrap();
+    symlink(outside.join(".env"), w.root.join("atlas.yaml")).unwrap();
+    let e = run_in(&w, &isolated(), &["src/home.svelte"])
+        .await
+        .unwrap_err();
+    assert!(!e.contains("hunter2"), "read through the link: {e}");
+    assert!(e.contains("atlas.yaml"), "{e}");
+
+    // The registry file is a link: neither read nor written.
+    std::fs::remove_file(w.root.join("atlas.yaml")).unwrap();
+    std::fs::create_dir_all(w.root.join(".atlas")).unwrap();
+    symlink(
+        outside.join(".env"),
+        w.root.join(".atlas/ui-regressions.json"),
+    )
+    .unwrap();
+    let e = regressions::load(&isolated(), &w.root).unwrap_err();
+    assert!(
+        !e.contains("hunter2") && e.contains("ui-regressions.json"),
+        "{e}"
+    );
+    let add = |t: &Tree| {
+        regressions::add(
+            t,
+            &w.root,
+            Scenario::for_url("http://localhost:5173/x"),
+            "n",
+        )
+    };
+    assert!(add(&isolated()).is_err());
+    assert_eq!(
+        std::fs::read_to_string(outside.join(".env")).unwrap(),
+        "SECRET=hunter2",
+        "the link's target was written"
+    );
+
+    // `.atlas` itself is a link into another crewmate's tree: nothing is created there.
+    std::fs::remove_dir_all(w.root.join(".atlas")).unwrap();
+    symlink(&outside, w.root.join(".atlas")).unwrap();
+    assert!(add(&isolated()).is_err());
+    assert!(
+        !outside.join("ui-regressions.json").exists(),
+        "hostd wrote the registry through the `.atlas` link"
+    );
+    assert!(regressions::load(&isolated(), &w.root).is_err());
+}
+
+#[tokio::test(flavor = "multi_thread")]
+async fn an_isolated_registry_round_trips_in_the_crewmates_tree() {
+    let w = World::new();
+    let t = isolated();
+    let all = regressions::add(
+        &t,
+        &w.root,
+        Scenario::for_url("http://localhost:5173/x"),
+        "cut off",
+    )
+    .unwrap();
+    assert_eq!(all.len(), 1);
+    assert_eq!(regressions::load(&t, &w.root).unwrap()[0].note, "cut off");
+    // The same file an own tree reads.
+    assert_eq!(regressions::load(&Tree::Own, &w.root).unwrap().len(), 1);
+}
+
+// The cache key of an isolated tree lists its files with git as the crewmate and opens each beneath the root.
+#[cfg(unix)]
+#[test]
+fn the_cache_key_of_an_isolated_tree_never_reads_through_a_link() {
+    use std::os::unix::fs::symlink;
+    let w = World::new();
+    let git = |args: &[&str]| {
+        let o = std::process::Command::new("git")
+            .args(["-c", "user.name=t", "-c", "user.email=t@t"])
+            .args(args)
+            .current_dir(&w.root)
+            .env_remove("GIT_DIR")
+            .output()
+            .unwrap();
+        assert!(o.status.success(), "{}", String::from_utf8_lossy(&o.stderr));
+    };
+    let outside = w._tmp.path().join("b-work");
+    std::fs::create_dir_all(&outside).unwrap();
+    std::fs::write(outside.join("secret"), "one").unwrap();
+    symlink(&outside, w.root.join("dir")).unwrap();
+    symlink(outside.join("secret"), w.root.join("leaf")).unwrap();
+    git(&["init", "-q"]);
+    git(&["add", "-A"]);
+    let spec = cache_spec(&w.root, "id", &[]);
+    let t = isolated();
+    let key = t.cache_key(&spec).unwrap();
+    std::fs::write(outside.join("secret"), "two").unwrap();
+    assert_eq!(
+        t.cache_key(&spec).unwrap(),
+        key,
+        "the key hashed what a link points at"
+    );
+    // A file of the tree is hashed (and the tracked one that is gone is just absent).
+    std::fs::write(w.root.join("src/home.svelte"), "home v2").unwrap();
+    assert_ne!(t.cache_key(&spec).unwrap(), key);
+    // Not a git checkout: no key, so the gate captures again instead of trusting a cache it cannot key.
+    let plain = tempfile::tempdir().unwrap();
+    assert!(t.cache_key(&cache_spec(plain.path(), "id", &[])).is_err());
+}
+
+// The changed files of an isolated crewmate's tree come from git run by the spawn helper as that crewmate:
+// its `.git/config` names a `core.fsmonitor` that records `$USER`, and only the crewmate may ever be there.
+#[cfg(unix)]
+#[test]
+fn the_changed_files_of_an_isolated_tree_are_found_by_git_run_as_the_crewmate() {
+    use crate::crew::spawn::testing::{Rig, USER, rig};
+    let rig = rig();
+    let marker = rig.booby_trapped_repo();
+    let hostd = tempfile::tempdir().unwrap();
+    let store = crate::crew::store::CrewStore::new(hostd.path()).with_isolation(Some(rig.setup()));
+    let work = rig.work();
+    let git = store.git_in(&work);
+    assert!(git.is_crewmate());
+    let tree = Tree::Isolated(git);
+    assert_eq!(tree.changed_files(&work).unwrap(), ["a.txt", "new.txt"]);
+    let users = Rig::marker_users(&marker);
+    assert!(!users.is_empty(), "no git command triggered core.fsmonitor");
+    assert!(users.iter().all(|u| u == USER), "{users:?}");
+}
+
+// Even if a bad task id slipped past the hook route, the folders hostd builds from it stay under the crewmate's own.
+#[test]
+fn the_gate_and_dom_folders_of_a_task_are_one_plain_name_under_the_crewmates_directory() {
+    let hostd = tempfile::tempdir().unwrap();
+    let store = crate::crew::store::CrewStore::new(hostd.path());
+    let own = store.crewmate_dir("c1");
+    assert_eq!(
+        gate_dir(&store, "c1", "t1").unwrap(),
+        own.join("ui-gate/t1")
+    );
+    assert_eq!(
+        crate::crew::capture::task_dom_dir(&store, "c1", "t1").unwrap(),
+        own.join("dom/t1")
+    );
+    for bad in ["/var/lib/victim", "..", "../c2/x", "a/b", ""] {
+        assert!(gate_dir(&store, "c1", bad).is_err(), "{bad:?}");
+        assert!(
+            crate::crew::capture::task_dom_dir(&store, "c1", bad).is_err(),
+            "{bad:?}"
+        );
+    }
+}
+
+// L1 of the sixth review: the crewmate's own `core.fsmonitor` can keep its git for up to two minutes, and the plan asks
+// git for the changed files. On an async thread that holds a worker of hostd for everyone. Here the runtime has one
+// thread and git takes ~1 s per call: a ticker next to the plan must keep ticking.
+#[cfg(unix)]
+#[tokio::test]
+async fn planning_from_a_slow_git_does_not_hold_the_async_thread() {
+    use crate::crew::spawn::testing::rig;
+    let rig = rig();
+    rig.planted_repo("sleep 1\nexit 1");
+    let hostd = tempfile::tempdir().unwrap();
+    let store = crate::crew::store::CrewStore::new(hostd.path()).with_isolation(Some(rig.setup()));
+    let work = rig.work();
+    let tree = Tree::Isolated(store.git_in(&work));
+    let w = World::new();
+    let ctx = Ctx {
+        capturer: &w.fake,
+        cache: &w.cache,
+        checks: &[],
+        root: &work,
+        tree: &tree,
+        task_dir: &w.task_dir,
+        scratch: &w.scratch,
+        force: false,
+    };
+    let ticks = std::sync::Arc::new(AtomicUsize::new(0));
+    let ticker = {
+        let ticks = ticks.clone();
+        tokio::spawn(async move {
+            loop {
+                tokio::time::sleep(std::time::Duration::from_millis(20)).await;
+                ticks.fetch_add(1, Ordering::Relaxed);
+            }
+        })
+    };
+    let started = std::time::Instant::now();
+    let action =
+        Action::from_args(&json!({"action": "run", "base_url": "http://localhost:5173"})).unwrap();
+    let _ = dispatch(&ctx, action).await;
+    let (took, ticked) = (started.elapsed(), ticks.load(Ordering::Relaxed));
+    ticker.abort();
+    assert!(
+        took >= std::time::Duration::from_millis(900),
+        "control: git was not slow ({took:?})"
+    );
+    assert!(
+        ticked >= 10,
+        "git held the only async thread: the ticker ticked {ticked} times in {took:?}"
+    );
 }

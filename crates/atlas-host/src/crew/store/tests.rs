@@ -464,3 +464,35 @@ fn nothing_recreates_the_directory_of_a_deleted_crewmate() {
         .append_task("gone", &task)
         .unwrap();
 }
+
+// Regression (security review of #448, B1): a crewmate that plants `memory.md -> <file>` in its own
+// directory must not make hostd, which reads and writes that file for the apps as the crew user, read or
+// overwrite the file behind the link (hostd.token, another crewmate's secrets).
+#[cfg(unix)]
+#[test]
+fn hostds_memory_read_and_write_never_follow_a_link_the_crewmate_planted() {
+    let t = tempfile::tempdir().unwrap();
+    let setup = super::super::spawn::layout::Setup {
+        socket: t.path().join("s.sock"),
+        provision_socket: t.path().join("p.sock"),
+        root: t.path().join("cm").to_string_lossy().into_owned(),
+        hook_port: 0,
+    };
+    let store = CrewStore::new(&t.path().join("hostd")).with_isolation(Some(setup));
+    let id = "3f2a9c1e-5b7d-4e8f-9a0b-1c2d3e4f5a6b";
+    let memory = store.memory_path(id);
+    std::fs::create_dir_all(memory.parent().unwrap()).unwrap();
+    let secret = t.path().join("hostd.token");
+    std::fs::write(&secret, "token-abc").unwrap();
+    std::os::unix::fs::symlink(&secret, &memory).unwrap();
+
+    assert_eq!(store.read_memory(id), "", "read the file behind the link");
+    assert!(store.write_memory(id, "overwritten").is_err());
+    assert_eq!(std::fs::read_to_string(&secret).unwrap(), "token-abc");
+
+    // A regular file is still read and written in place.
+    std::fs::remove_file(&memory).unwrap();
+    std::fs::write(&memory, "").unwrap();
+    store.write_memory(id, "likes tabs").unwrap();
+    assert_eq!(store.read_memory(id), "likes tabs");
+}

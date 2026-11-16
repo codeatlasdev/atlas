@@ -8,12 +8,23 @@ use std::os::unix::net::UnixStream;
 use std::path::{Path, PathBuf};
 use std::time::Duration;
 
-use super::protocol::{Request, Response, SpawnReq};
+use super::protocol::{GitReq, Request, Response, SpawnReq};
 use super::wire;
 
 /// A reply is not expected to take long (the helper only forks); a helper that does not answer in
 /// this time is as good as down.
 const REPLY_TIMEOUT: Duration = Duration::from_secs(10);
+
+/// How a git run ended, with what it wrote.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct GitOut {
+    /// Exit code; `None` when a signal ended it (the deadline's kill, the size limit).
+    pub code: Option<i32>,
+    pub stdout: Vec<u8>,
+    /// The end of stderr.
+    pub stderr: String,
+    pub timed_out: bool,
+}
 
 /// What the helper reported about a spawned process.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
@@ -38,8 +49,12 @@ impl Client {
     }
 
     fn call(&self, req: &Request) -> io::Result<(Response, Vec<OwnedFd>)> {
+        self.call_within(req, REPLY_TIMEOUT)
+    }
+
+    fn call_within(&self, req: &Request, wait: Duration) -> io::Result<(Response, Vec<OwnedFd>)> {
         let conn = UnixStream::connect(&self.path)?;
-        conn.set_read_timeout(Some(REPLY_TIMEOUT))?;
+        conn.set_read_timeout(Some(wait))?;
         conn.set_write_timeout(Some(REPLY_TIMEOUT))?;
         wire::send(&conn, req, &[])?;
         let f = wire::recv::<Response>(&conn)?.ok_or_else(|| {
@@ -50,6 +65,46 @@ impl Client {
             )
         })?;
         Ok((f.msg, f.fds))
+    }
+
+    /// Run git as the crewmate and wait for it. The helper ends it at `req.timeout_secs`; this waits a
+    /// little longer than that for the answer.
+    pub fn git(&self, req: &GitReq) -> io::Result<GitOut> {
+        use std::io::Read;
+        let wait = Duration::from_secs(req.timeout_secs) + REPLY_TIMEOUT;
+        match self.call_within(&Request::Git(req.clone()), wait)? {
+            (
+                Response::Git {
+                    code,
+                    stderr,
+                    timed_out,
+                },
+                mut fds,
+            ) if fds.len() == 1 => {
+                let mut stdout = Vec::new();
+                // One byte over the helper's own limit is already an error, never a silent cut.
+                std::fs::File::from(fds.remove(0))
+                    .take(super::git::MAX_OUTPUT + 1)
+                    .read_to_end(&mut stdout)?;
+                if stdout.len() as u64 > super::git::MAX_OUTPUT {
+                    return Err(io::Error::other("git wrote more than the helper allows"));
+                }
+                Ok(GitOut {
+                    code,
+                    stdout,
+                    stderr,
+                    timed_out,
+                })
+            }
+            (Response::Git { .. }, fds) => Err(io::Error::new(
+                io::ErrorKind::InvalidData,
+                format!(
+                    "the helper sent {} fds with a git reply, expected 1",
+                    fds.len()
+                ),
+            )),
+            (other, _) => Err(unexpected(other)),
+        }
     }
 
     /// Start `req` as its crewmate. The fd is the pty master (`Mode::Pty`) or hostd's end of the

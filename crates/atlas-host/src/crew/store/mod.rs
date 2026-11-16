@@ -535,6 +535,8 @@ pub struct CrewStore {
     base: PathBuf,
     /// Where isolation lives, when crewmates run as their own users (`spawn::layout::Setup`).
     isolation: Option<super::spawn::layout::Setup>,
+    /// Set when the server has isolation installed and no helper to run it: crewmates must not run at all.
+    isolation_fault: Option<String>,
     /// The task log size below which it is never compacted (see `tasklog`); tests lower it.
     compact_min: u64,
     /// The size of `usage.jsonl` that rotates it ([`USAGE_MAX_BYTES`]); tests lower it.
@@ -559,6 +561,7 @@ impl CrewStore {
         Self {
             base: base.to_path_buf(),
             isolation: None,
+            isolation_fault: None,
             compact_min: tasklog::COMPACT_MIN,
             usage_max: USAGE_MAX_BYTES,
             usage_keep: USAGE_KEEP_ROTATED,
@@ -582,13 +585,37 @@ impl CrewStore {
         self.isolation.as_ref()?.of(id)
     }
 
-    /// git's environment for running git in `dir` as hostd: an isolated crewmate's tree belongs to
-    /// another user, and git opens it only with that crewmate's config. Empty for any other directory.
-    pub fn git_env_in(&self, dir: &Path) -> Vec<(String, String)> {
-        self.isolation
-            .as_ref()
-            .map(|s| super::spawn::layout::git_env_in(&s.root, dir))
-            .unwrap_or_default()
+    /// Who runs git in `dir`: the crewmate itself, through the spawn helper, for a tree inside an isolated
+    /// crewmate's directory (it controls that tree's git config, so hostd never runs git there), hostd
+    /// for any other directory.
+    pub fn git_in(&self, dir: &Path) -> super::gitrun::Git {
+        #[cfg(unix)]
+        if let Some(setup) = &self.isolation
+            && let Some(iso) = setup.owner_of(dir)
+        {
+            return super::gitrun::Git::crewmate(&setup.socket, iso.user);
+        }
+        let _ = dir;
+        super::gitrun::Git::local()
+    }
+
+    /// [`CrewStore::git_in`] for the checkout of crewmate `id`: with the crewmate's own `GITHUB_TOKEN` secret, if it
+    /// has one, as the only GitHub credential its git processes get (see `gitrun::Git::with_token`).
+    pub fn git_for_checkout(&self, id: &str, dir: &Path) -> super::gitrun::Git {
+        self.git_in(dir)
+            .with_token(self.secret_env(id).remove("GITHUB_TOKEN"))
+    }
+
+    /// Why crewmates cannot run on this server, when isolation is installed but its helper is missing
+    /// (`layout::Detected::Missing`): every task is refused with this text.
+    pub fn isolation_fault(&self) -> Option<&str> {
+        self.isolation_fault.as_deref()
+    }
+
+    /// This store with `fault` as [`CrewStore::isolation_fault`].
+    pub fn with_isolation_fault(mut self, fault: Option<String>) -> Self {
+        self.isolation_fault = fault;
+        self
     }
 
     /// `<base>/crew/<id>/`
@@ -806,7 +833,12 @@ impl CrewStore {
     }
 
     pub fn read_memory(&self, crewmate_id: &str) -> String {
-        std::fs::read_to_string(self.memory_path(crewmate_id)).unwrap_or_default()
+        let path = self.memory_path(crewmate_id);
+        if self.isolated(crewmate_id).is_some() {
+            // The crewmate owns the directory's content: never follow a link it planted there.
+            return super::spawn::layout::read_nofollow(&path).unwrap_or_default();
+        }
+        std::fs::read_to_string(path).unwrap_or_default()
     }
 
     /// Write `memory.md`, truncating at 64 KiB.
@@ -822,8 +854,9 @@ impl CrewStore {
         let path = self.memory_path(crewmate_id);
         if self.isolated(crewmate_id).is_some() {
             // Written in place: replacing the file would make hostd its owner, and the agent (the
-            // owner, writing through the group bit) could no longer append to it.
-            return std::fs::write(&path, data);
+            // owner, writing through the group bit) could no longer append to it. Never through a
+            // link the crewmate planted.
+            return super::spawn::layout::write_nofollow(&path, data);
         }
         paths::write_private(&path, data)
     }

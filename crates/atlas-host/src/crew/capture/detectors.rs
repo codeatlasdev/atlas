@@ -55,6 +55,7 @@ pub const OLD_RUNNER_HINT: &str = "this server's capture runner predates the UI 
 /// The findings file of one capture cell. A file that is not a list of findings is an error
 /// naming it: a gate must not read garbage as "nothing wrong".
 pub fn read(path: &Path) -> Result<Vec<Finding>, String> {
+    // tree-access: hostd-owned (the crew store, scratch or runtime), never a crewmate's tree
     let bytes = std::fs::read(path).map_err(|e| format!("cannot read {}: {e}", path.display()))?;
     serde_json::from_slice(&bytes)
         .map_err(|e| format!("{} is not a list of findings: {e}", path.display()))

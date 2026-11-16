@@ -24,6 +24,7 @@ use base64::engine::general_purpose::STANDARD as B64;
 use serde::{Deserialize, Serialize};
 use sha2::{Digest, Sha256};
 
+use super::spawn::layout;
 use super::store::CrewStore;
 
 /// Images a task takes.
@@ -200,6 +201,7 @@ pub(crate) fn task_dir(store: &CrewStore, crewmate_id: &str, task_id: &str) -> P
     store
         .crewmate_dir(crewmate_id)
         .join("attachments")
+        // tree-access: task_id is a stored task's id: hostd's own (task.id) or the one `hook_server::task_of_pane` found in the store
         .join(task_id)
 }
 
@@ -213,6 +215,7 @@ pub(crate) fn save(
     let dir = task_dir(store, crewmate_id, task_id);
     for (a, bytes) in files {
         if let Err(e) = crate::paths::write_private(&dir.join(&a.name), bytes) {
+            // tree-access: hostd-owned (the crew store, scratch or runtime), never a crewmate's tree
             let _ = std::fs::remove_dir_all(&dir);
             return Err(e);
         }
@@ -233,12 +236,14 @@ pub(crate) fn read(
         .iter()
         .find(|a| a.name == name)
         .ok_or_else(|| format!("task {} has no attachment {name:?}", task.id))?;
+    // tree-access: hostd-owned (the crew store, scratch or runtime), never a crewmate's tree
     let bytes = std::fs::read(task_dir(store, crewmate_id, &task.id).join(&a.name))
         .map_err(|e| format!("attachment {name:?} cannot be read: {e}"))?;
     Ok((a.clone(), bytes))
 }
 
-/// Copy the task's images into `work_dir/.atlas/attachments/<task id>/` for the agent, and return the
+/// Copy the task's images into `work_dir/.atlas/attachments/<task id>/` for the agent (readable by it, never
+/// following a link in its tree), and return the
 /// paths (relative to the work dir) that now exist. An image whose stored copy is gone is skipped and
 /// named in hostd's log: the task still runs, the prompt only lists what the agent can open.
 pub(crate) fn stage(
@@ -251,14 +256,12 @@ pub(crate) fn stage(
     for a in &task.attachments {
         let src = task_dir(store, crewmate_id, &task.id).join(&a.name);
         let rel = format!("{WORK_SUBDIR}/{}/{}", task.id, a.name);
-        let dst = work_dir.join(&rel);
-        let copied = dst
-            .parent()
-            .map(std::fs::create_dir_all)
-            .transpose()
-            .and_then(|_| std::fs::copy(&src, &dst));
+        // The checkout is the crewmate's: every component is opened without following a link (N5).
+        // tree-access: hostd-owned (the crew store, scratch or runtime), never a crewmate's tree
+        let copied = std::fs::File::open(&src)
+            .and_then(|mut f| layout::write_beneath(work_dir, &rel, &mut f));
         match copied {
-            Ok(_) => staged.push(rel),
+            Ok(()) => staged.push(rel),
             Err(e) => eprintln!(
                 "atlas crew: attachment {} of task {} not staged: {e}",
                 a.name, task.id
@@ -266,47 +269,18 @@ pub(crate) fn stage(
         }
     }
     if !staged.is_empty() {
-        keep_out_of_git(work_dir, &store.git_env_in(work_dir));
+        keep_out_of_git(work_dir);
     }
     staged
 }
 
-/// Add `.atlas/attachments/` to the checkout's local `info/exclude`, so an agent's `git add -A` never commits
-/// the user's screenshots (the project's own `.gitignore` is never touched). Best effort: a work dir that is
-/// not a git checkout has nothing to exclude from.
-fn keep_out_of_git(work_dir: &Path, git_env: &[(String, String)]) {
-    let Ok(out) = std::process::Command::new("git")
-        .args(["rev-parse", "--git-path", "info/exclude"])
-        .current_dir(work_dir)
-        .envs(git_env.iter().map(|(k, v)| (k, v)))
-        .output()
-    else {
-        return;
-    };
-    if !out.status.success() {
-        return;
-    }
-    let rel = String::from_utf8_lossy(&out.stdout).trim().to_string();
-    let path = if Path::new(&rel).is_absolute() {
-        PathBuf::from(rel)
-    } else {
-        work_dir.join(rel)
-    };
-    let line = format!("/{WORK_SUBDIR}/");
-    let have = std::fs::read_to_string(&path).unwrap_or_default();
-    if have.lines().any(|l| l.trim() == line) {
-        return;
-    }
-    let sep = if have.is_empty() || have.ends_with('\n') {
-        ""
-    } else {
-        "\n"
-    };
-    let _ = path
-        .parent()
-        .map(std::fs::create_dir_all)
-        .transpose()
-        .and_then(|_| std::fs::write(&path, format!("{have}{sep}{line}\n")));
+/// Put a `.gitignore` of `*` in `.atlas/attachments/`, so an agent's `git add -A` never commits the user's
+/// screenshots (the project's own `.gitignore` is never touched, and the file ignores itself too). It is
+/// hostd's own file in a directory hostd made: the checkout and its `.git` are the crewmate's, and hostd
+/// neither runs git in them nor edits what is inside `.git`. Best effort.
+fn keep_out_of_git(work_dir: &Path) {
+    let ignore = format!("{WORK_SUBDIR}/.gitignore");
+    let _ = layout::write_beneath(work_dir, &ignore, &mut &b"*\n"[..]);
 }
 
 /// The line of the prompt that names the task's images, empty without any. Ours, not the sender's: it holds
@@ -407,10 +381,12 @@ const MAX_LIVE_UPLOADS: usize = MAX_ATTACHMENTS * 2;
 /// The upload dirs of `uploads` (a crewmate's `uploads/`): real directories with a valid upload id for a name.
 /// A stray file or an odd name is not ours and is never listed, so never removed.
 fn upload_dirs(uploads: &Path) -> Vec<PathBuf> {
+    // tree-access: hostd-owned (the crew store, scratch or runtime), never a crewmate's tree
     let Ok(rd) = std::fs::read_dir(uploads) else {
         return vec![];
     };
     rd.filter_map(Result::ok)
+        // tree-access: hostd-owned (the crew store, scratch or runtime), never a crewmate's tree
         .filter(|e| e.file_type().is_ok_and(|t| t.is_dir()))
         .filter(|e| e.file_name().to_str().is_some_and(valid_upload))
         .map(|e| e.path())
@@ -424,7 +400,9 @@ fn live_uploads(uploads: &Path) -> usize {
 /// When an upload last got a piece: its `seq` file is rewritten by every one. A dir without it (a crash between
 /// creating the dir and the first write) falls back to the dir's own time, so it too ages out.
 fn upload_touched(dir: &Path) -> Option<std::time::SystemTime> {
+    // tree-access: hostd-owned (the crew store, scratch or runtime), never a crewmate's tree
     std::fs::metadata(dir.join("seq"))
+        // tree-access: hostd-owned (the crew store, scratch or runtime), never a crewmate's tree
         .or_else(|_| std::fs::metadata(dir))
         .and_then(|m| m.modified())
         .ok()
@@ -438,6 +416,7 @@ fn sweep_dir(uploads: &Path) {
         let stale = upload_touched(&dir)
             .and_then(|t| now.duration_since(t).ok())
             .is_some_and(|age| age > UPLOAD_TTL);
+        // tree-access: hostd-owned (the crew store, scratch or runtime), never a crewmate's tree
         if stale && let Err(e) = std::fs::remove_dir_all(&dir) {
             eprintln!(
                 "atlas crew: stale upload {} not removed: {e}",
@@ -481,13 +460,16 @@ pub(crate) fn put_piece(
     let uploads = store.crewmate_dir(crewmate_id).join("uploads");
     sweep_dir(&uploads);
     let dir = upload_dir(store, crewmate_id, upload);
+    // tree-access: hostd-owned (the crew store, scratch or runtime), never a crewmate's tree
     if !dir.exists() && live_uploads(&uploads) >= MAX_LIVE_UPLOADS {
         return Err(format!(
             "too many unfinished uploads ({MAX_LIVE_UPLOADS}); send the task or wait"
         ));
     }
     let file = dir.join("data");
+    // tree-access: hostd-owned (the crew store, scratch or runtime), never a crewmate's tree
     let have = std::fs::metadata(&file).map(|m| m.len()).unwrap_or(0);
+    // tree-access: hostd-owned (the crew store, scratch or runtime), never a crewmate's tree
     let expected = std::fs::read_to_string(dir.join("seq"))
         .ok()
         .and_then(|s| s.trim().parse::<u32>().ok())
@@ -496,14 +478,18 @@ pub(crate) fn put_piece(
         return Err(format!("expected piece {expected}, got {seq}"));
     }
     if have + bytes.len() as u64 > MAX_BYTES as u64 {
+        // tree-access: hostd-owned (the crew store, scratch or runtime), never a crewmate's tree
         let _ = std::fs::remove_dir_all(&dir);
         return Err(format!("upload is over {} MiB", MAX_BYTES / (1024 * 1024)));
     }
+    // tree-access: hostd-owned (the crew store, scratch or runtime), never a crewmate's tree
     std::fs::create_dir_all(&dir).map_err(|e| e.to_string())?;
+    // tree-access: hostd-owned (the crew store, scratch or runtime), never a crewmate's tree
     atlas_core::sys::owner_only(std::fs::OpenOptions::new().create(true).append(true))
         .open(&file)
         .and_then(|mut f| f.write_all(&bytes))
         .map_err(|e| format!("upload: {e}"))?;
+    // tree-access: hostd-owned (the crew store, scratch or runtime), never a crewmate's tree
     std::fs::write(dir.join("seq"), (seq + 1).to_string()).map_err(|e| e.to_string())?;
     Ok(have + bytes.len() as u64)
 }
@@ -514,8 +500,10 @@ fn take_upload(store: &CrewStore, crewmate_id: &str, upload: &str) -> Result<Vec
         return Err("upload must be 8 to 64 letters, digits, - or _".into());
     }
     let dir = upload_dir(store, crewmate_id, upload);
+    // tree-access: hostd-owned (the crew store, scratch or runtime), never a crewmate's tree
     let bytes = std::fs::read(dir.join("data"))
         .map_err(|_| format!("upload {upload} was not found (send its pieces first)"))?;
+    // tree-access: hostd-owned (the crew store, scratch or runtime), never a crewmate's tree
     let _ = std::fs::remove_dir_all(&dir);
     Ok(bytes)
 }
@@ -524,6 +512,7 @@ fn take_upload(store: &CrewStore, crewmate_id: &str, upload: &str) -> Result<Vec
 pub(crate) fn discard_uploads(store: &CrewStore, crewmate_id: &str, sent: &[Sent]) {
     for u in sent.iter().filter_map(|s| s.upload.as_deref()) {
         if valid_upload(u) {
+            // tree-access: hostd-owned (the crew store, scratch or runtime), never a crewmate's tree
             let _ = std::fs::remove_dir_all(upload_dir(store, crewmate_id, u));
         }
     }
@@ -637,6 +626,7 @@ pub(crate) fn store_agent(
                     .and_then(|n| n.to_str())
                     .ok_or_else(|| format!("bad file name: {}", f.display()))?
                     .to_string(),
+                // tree-access: hostd-owned (the crew store, scratch or runtime), never a crewmate's tree
                 bytes: std::fs::read(f).map_err(|e| format!("{}: {e}", f.display()))?,
             })
         })
@@ -1031,5 +1021,152 @@ mod tests {
         #[cfg(not(windows))]
         o.read(true);
         o.open(dir).unwrap().set_modified(t).unwrap();
+    }
+
+    // The staged screenshots must never reach a commit (`git add -A`), without hostd running git in or editing
+    // the crewmate's `.git`: a `.gitignore` of `*` inside the staged directory does it.
+    #[test]
+    fn staged_images_stay_out_of_git_add_without_touching_the_repos_own_files() {
+        let t = tempfile::tempdir().unwrap();
+        let git = |args: &[&str]| {
+            let o = std::process::Command::new("git")
+                .args(args)
+                .current_dir(t.path())
+                .output()
+                .unwrap();
+            assert!(o.status.success(), "{args:?}");
+            String::from_utf8_lossy(&o.stdout).into_owned()
+        };
+        git(&["init", "-q"]);
+        let shot = t.path().join(WORK_SUBDIR).join("task1/a.png");
+        std::fs::create_dir_all(shot.parent().unwrap()).unwrap();
+        std::fs::write(&shot, PNG).unwrap();
+        std::fs::write(t.path().join("code.rs"), "fn main() {}").unwrap();
+        keep_out_of_git(t.path());
+        keep_out_of_git(t.path()); // idempotent
+        let status = git(&["status", "--porcelain", "--untracked-files=all"]);
+        assert_eq!(status.trim(), "?? code.rs", "{status}");
+        let ignore =
+            std::fs::read_to_string(t.path().join(WORK_SUBDIR).join(".gitignore")).unwrap();
+        assert_eq!(ignore, "*\n");
+    }
+
+    /// A task with one stored image, and the checkout it is staged into.
+    #[cfg(unix)]
+    fn staging() -> (
+        tempfile::TempDir,
+        CrewStore,
+        super::super::store::Task,
+        PathBuf,
+    ) {
+        let tmp = tempfile::tempdir().unwrap();
+        let store = CrewStore::new(&tmp.path().join("hostd"));
+        let mut task = super::super::store::Task::new("test", "look");
+        let name = "a.png".to_string();
+        let a = Attachment {
+            name: name.clone(),
+            mime: "image/png".into(),
+            bytes_len: PNG.len() as u64,
+            sha256: String::new(),
+            path: format!("{WORK_SUBDIR}/{}/{name}", task.id),
+            source: String::new(),
+        };
+        task.attachments = vec![a.clone()];
+        save(&store, "c1", &task.id, &[(a, PNG.to_vec())]).unwrap();
+        let work = tmp.path().join("work");
+        std::fs::create_dir_all(&work).unwrap();
+        (tmp, store, task, work)
+    }
+
+    // Security review of the crew isolation, N5: hostd (the crew user) copied the images into the crewmate's
+    // `work/.atlas/attachments/` with `create_dir_all` and `fs::copy`, following every link. A crewmate that
+    // turned `.atlas`, `.atlas/attachments` or the task's folder into a link to a directory the crew user can
+    // write (another crewmate's `work/`, the crew home) made hostd create files there, and the `.gitignore` of
+    // `*` hostd adds went through the same links. Staging now opens each component without following links.
+    #[cfg(unix)]
+    #[test]
+    fn staging_never_writes_through_a_link_the_crewmate_planted() {
+        for planted in [".atlas", ".atlas/attachments"] {
+            let (tmp, store, task, work) = staging();
+            let victim = tmp.path().join("victim");
+            // The victim already has the directories hostd would otherwise find on the other side.
+            std::fs::create_dir_all(victim.join("attachments")).unwrap();
+            if let Some(parent) = Path::new(planted).parent() {
+                std::fs::create_dir_all(work.join(parent)).unwrap();
+            }
+            std::os::unix::fs::symlink(
+                if planted == ".atlas" {
+                    victim.clone()
+                } else {
+                    victim.join("attachments")
+                },
+                work.join(planted),
+            )
+            .unwrap();
+            let staged = stage(&store, "c1", &task, &work);
+            assert!(
+                staged.is_empty(),
+                "{planted}: staged through a link: {staged:?}"
+            );
+            let wrote: Vec<_> = walkdir_files(&victim);
+            assert!(
+                wrote.is_empty(),
+                "{planted}: hostd wrote through the link: {wrote:?}"
+            );
+        }
+    }
+
+    #[cfg(unix)]
+    #[test]
+    fn staging_never_overwrites_a_file_a_link_stands_in_for() {
+        let (tmp, store, task, work) = staging();
+        let secret = tmp.path().join("hostd.token");
+        std::fs::write(&secret, "the token").unwrap();
+        let dir = work.join(WORK_SUBDIR).join(&task.id);
+        std::fs::create_dir_all(&dir).unwrap();
+        std::os::unix::fs::symlink(&secret, dir.join("a.png")).unwrap();
+        assert!(stage(&store, "c1", &task, &work).is_empty());
+        assert_eq!(std::fs::read_to_string(&secret).unwrap(), "the token");
+    }
+
+    #[cfg(unix)]
+    #[test]
+    fn the_gitignore_of_staged_images_is_not_written_through_a_link() {
+        let (tmp, _store, _task, work) = staging();
+        let victim = tmp.path().join("victim");
+        std::fs::create_dir_all(victim.join("attachments")).unwrap();
+        std::os::unix::fs::symlink(&victim, work.join(".atlas")).unwrap();
+        keep_out_of_git(&work);
+        assert!(walkdir_files(&victim).is_empty());
+    }
+
+    #[cfg(unix)]
+    #[test]
+    fn staging_into_a_real_tree_works_and_the_crewmate_can_read_what_hostd_wrote() {
+        use std::os::unix::fs::MetadataExt;
+        let (_tmp, store, task, work) = staging();
+        let staged = stage(&store, "c1", &task, &work);
+        assert_eq!(staged, vec![format!("{WORK_SUBDIR}/{}/a.png", task.id)]);
+        let file = work.join(&staged[0]);
+        assert_eq!(std::fs::read(&file).unwrap(), PNG);
+        // The agent is another user: the file must not be hostd-private (the stored copy is 0600).
+        assert_eq!(std::fs::metadata(&file).unwrap().mode() & 0o044, 0o044);
+        assert_eq!(
+            std::fs::read_to_string(work.join(WORK_SUBDIR).join(".gitignore")).unwrap(),
+            "*\n"
+        );
+    }
+
+    #[cfg(unix)]
+    fn walkdir_files(dir: &Path) -> Vec<PathBuf> {
+        let mut out = vec![];
+        for e in std::fs::read_dir(dir).unwrap().flatten() {
+            if e.file_type().unwrap().is_dir() {
+                out.extend(walkdir_files(&e.path()));
+            } else {
+                out.push(e.path());
+            }
+        }
+        out
     }
 }

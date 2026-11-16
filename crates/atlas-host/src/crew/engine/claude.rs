@@ -91,6 +91,7 @@ pub(super) async fn run(ctx: TurnCtx<'_>) -> Result<TurnResult, String> {
 
 /// Write `<crewmate_dir>/mcp-config.json` for the claude `--mcp-config` flag and return its path.
 fn write_mcp_config(ctx: &TurnCtx<'_>) -> Result<std::path::PathBuf, String> {
+    // tree-access: ctx.crewmate_dir is hostd's own (crew-runtime under isolation, which the crewmate cannot write)
     std::fs::create_dir_all(ctx.crewmate_dir)
         .map_err(|e| format!("claude: create crewmate_dir: {e}"))?;
 
@@ -98,6 +99,7 @@ fn write_mcp_config(ctx: &TurnCtx<'_>) -> Result<std::path::PathBuf, String> {
         .map_err(|e| format!("claude: serialize mcp config: {e}"))?;
 
     let path = ctx.crewmate_dir.join("mcp-config.json");
+    // tree-access: ctx.crewmate_dir is hostd's own (crew-runtime under isolation, which the crewmate cannot write)
     std::fs::write(&path, json).map_err(|e| format!("claude: write mcp-config.json: {e}"))?;
     Ok(path)
 }

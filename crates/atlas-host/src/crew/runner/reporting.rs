@@ -10,6 +10,7 @@ use std::path::PathBuf;
 
 use super::outcome::persist;
 use crate::crew::github::reply::Reporter;
+use crate::crew::gitrun::Git;
 use crate::crew::project::{current_branch, work_dir_for};
 use crate::crew::store::{Step, Task, TaskState};
 use crate::server::Hub;
@@ -19,8 +20,8 @@ pub(crate) struct Live {
     reporter: Reporter,
     /// Where the agent works, and the branch it was on when the task started.
     work_dir: PathBuf,
-    /// git's environment in `work_dir` (an isolated crewmate's tree needs that crewmate's config).
-    git_env: Vec<(String, String)>,
+    /// Who runs git in `work_dir` (the crewmate itself for an isolated tree).
+    git: Git,
     started_on: Option<String>,
 }
 
@@ -50,7 +51,7 @@ pub(super) async fn start(hub: &Hub, crewmate_id: &str, task: &mut Task) {
         crewmate_id,
         hub.crew.store.isolated(crewmate_id).as_ref(),
     );
-    let git_env = hub.crew.store.git_env_in(&dir);
+    let git = hub.crew.store.git_in(&dir);
     let mut reporter = Reporter::new(hub.crew.github(), origin);
     if let Some(id) = reporter.start().await {
         if let Some(o) = task.origin.as_mut() {
@@ -60,9 +61,9 @@ pub(super) async fn start(hub: &Hub, crewmate_id: &str, task: &mut Task) {
     }
     let live = Live {
         reporter,
-        started_on: current_branch(&dir, &git_env).await,
+        started_on: current_branch(&dir, &git).await,
         work_dir: dir,
-        git_env,
+        git,
     };
     hub.crew.reporters.lock().insert(task.id.clone(), live);
 }
@@ -92,7 +93,7 @@ pub(super) fn finish(hub: &Hub, task: &Task) {
     tokio::spawn(async move {
         match state {
             TaskState::Done => {
-                let ended_on = current_branch(&live.work_dir, &live.git_env).await;
+                let ended_on = current_branch(&live.work_dir, &live.git).await;
                 live.reporter
                     .set_branch(branch_to_report(live.started_on.take(), ended_on));
                 live.reporter.finish_ok(&result, &steps).await;

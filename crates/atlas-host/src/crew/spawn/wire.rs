@@ -108,6 +108,13 @@ mod tests {
             },
             Request::SetMemoryCap { bytes: 3 << 30 },
             Request::MemoryCap,
+            Request::Git(crate::crew::spawn::protocol::GitReq {
+                user: "atlas-cm-3f2a9c1e5b7d".into(),
+                args: vec!["fetch".into(), "--quiet".into()],
+                cwd: "/var/lib/atlas-cm/3f2a9c1e5b7d/work".into(),
+                token: Some("gho_x".into()),
+                timeout_secs: 120,
+            }),
         ];
         for r in &reqs {
             send(&a, r, &[]).unwrap();

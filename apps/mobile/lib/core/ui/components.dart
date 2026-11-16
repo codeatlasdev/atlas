@@ -2,6 +2,7 @@ import 'package:flutter/material.dart';
 
 import 'package:atlas_mobile/core/ui/atlas_logo.dart';
 import 'package:atlas_mobile/core/links.dart';
+import 'package:atlas_mobile/core/ui/motion_loop.dart';
 import 'package:atlas_mobile/core/ui/atlas_theme.dart';
 
 /// The desktop's panel card: base fill, hairline border, 12 px radius. Pressable when
@@ -96,38 +97,12 @@ class StatusDot extends StatefulWidget {
 }
 
 class _StatusDotState extends State<StatusDot>
-    with SingleTickerProviderStateMixin {
-  late final AnimationController _a = AnimationController(
-    vsync: this,
-    duration: const Duration(milliseconds: 1400),
-  );
+    with SingleTickerProviderStateMixin, MotionLoop<StatusDot> {
+  @override
+  Duration get loopDuration => const Duration(milliseconds: 1400);
 
   @override
-  void didChangeDependencies() {
-    super.didChangeDependencies();
-    _sync();
-  }
-
-  @override
-  void didUpdateWidget(StatusDot old) {
-    super.didUpdateWidget(old);
-    _sync();
-  }
-
-  void _sync() {
-    if (widget.pulse && !Motion.reduced(context)) {
-      if (!_a.isAnimating) _a.repeat();
-    } else {
-      _a.stop();
-      _a.value = 0;
-    }
-  }
-
-  @override
-  void dispose() {
-    _a.dispose();
-    super.dispose();
-  }
+  bool get loopWhile => widget.pulse;
 
   @override
   Widget build(BuildContext context) {
@@ -135,17 +110,17 @@ class _StatusDotState extends State<StatusDot>
     return SizedBox.square(
       dimension: s * 2.2,
       child: AnimatedBuilder(
-        animation: _a,
+        animation: loop,
         builder: (_, _) => Stack(
           alignment: Alignment.center,
           children: [
             if (widget.pulse)
               Container(
-                width: s * (1 + 1.2 * _a.value),
-                height: s * (1 + 1.2 * _a.value),
+                width: s * (1 + 1.2 * loop.value),
+                height: s * (1 + 1.2 * loop.value),
                 decoration: BoxDecoration(
                   shape: BoxShape.circle,
-                  color: widget.color.withValues(alpha: .35 * (1 - _a.value)),
+                  color: widget.color.withValues(alpha: .35 * (1 - loop.value)),
                 ),
               ),
             AnimatedContainer(

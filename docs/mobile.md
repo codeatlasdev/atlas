@@ -7,7 +7,7 @@ description: "Control the Atlas on your computer from your phone: projects, serv
 
 Atlas Mobile (`apps/mobile`, iOS and Android, preview) is a remote control for the Atlas running on your computer. There is no account and no Atlas server: the phone connects straight to `atlas hostd` on your computer over [iroh](https://www.iroh.computer) (QUIC dialed by public key). It goes direct when the network allows and otherwise through n0's public relays. Traffic is end-to-end encrypted either way, and a relay can't read it.
 
-It works while the Atlas window is closed, because hostd keeps running. The computer has to be awake.
+It works while the Atlas window is closed, because hostd keeps running: it only exits by itself when nothing runs, nobody is connected and no phone is paired, so a paired phone keeps it up (revoke the phone and it goes back to leaving after 10 quiet minutes). The computer has to be awake.
 
 ## Pairing
 
@@ -164,6 +164,21 @@ Push has never been switched on (see the status above): the relay is not deploye
 4. **APNs key, by hand** (iOS only; Firebase has no CLI for it): [developer.apple.com](https://developer.apple.com/account/resources/authkeys/list) → Certificates, Identifiers & Profiles → Keys → **+** → name `Atlas APNs`, tick **Apple Push Notifications service (APNs)** → Continue → Register → **Download** the `.p8` (shown once) and note its Key ID; the Team ID is under Membership details. Then [Firebase console](https://console.firebase.google.com) → the project → ⚙ Project settings → **Cloud Messaging** → **Apple app configuration** → the app `br.com.codeatlas.atlas.mobile` → **APNs authentication key** → **Upload** → the `.p8`, the Key ID, the Team ID. Without it Android push works and iOS push never arrives.
 5. **Rebuild the app**: push needs a build that has the config, so ship a release (`bun run mobile:release X.Y.Z`; testers get it first). A build made before step 3 has no push.
 6. **Check it end to end with a real phone** (a simulator has no APNs): install the TestFlight or Play internal build, open it and allow notifications; pair a Mac, start an agent in a terminal there, send the app to the background (or lock the phone) and let the agent finish or ask for approval. The phone must buzz within seconds, and tapping the push opens that agent's chat. If it does not: `gcloud run services logs read push-relay --region southamerica-east1` (`403` means the phone's grant is stale, so reopen the app once; `502` is FCM, usually the APNs key or the role), and `curl -sS -X POST https://push.codeatlas.com.br/v1/register -d '{"token":"x"}'` must answer `200`.
+
+## Update Atlas from the phone
+
+The computer's page shows the version of Atlas it runs, and says when a newer one is on offer. hostd reads that from the check `atlas` already keeps in `~/.atlas/.update_check` (the exit banner and the `atlas dev` prompt use it too), so showing it costs no network call: `info.update` is `{installed, offered, channel, action, checked_at}`, absent until a check of the channel the computer follows is on record. **Check now** runs the real check on the computer (`atlas_update_check`, scope `read`: `atlas update --check --json` of the daemon's own binary, which also refreshes that file), and **Update** starts it (`atlas_update`, scope `act`).
+
+| Command / event | Scope | Does |
+|---|---|---|
+| `info.update` | `read` | `{installed, offered, channel, action, checked_at}` from the cache; `action` is `update` when `offered` is newer than `installed`, else `none`; absent with no check on record |
+| `atlas_update_check {}` | `read` | the CLI's `update --check --json` report `{installed, channel, offered, tag, action}` (plus `managed`, `manager`, `command` when Homebrew or a package owns the install), and refreshes the cache |
+| `atlas_update {}` | `act` | `{started: true, from, to}`; then `atlas_update` events. Refused through `crew_call` |
+| `{ev: "atlas_update", stage, message, version}` | `read` | `stage`: `downloading`, `installing`, `handing_off`, `done`, `failed` |
+
+`atlas_update` runs `atlas update --yes` (never `--downgrade`) detached from hostd, so it is the same download, checksum, lock, backup and rollback as typing it in a terminal, and answers `{started: true, from, to}` at once. One runs at a time (a second tap gets `an update is already running`), and it is refused, with the CLI's own words, when nothing newer is offered or when Homebrew or a system package owns this Atlas: those update with `brew upgrade atlas` or the package manager, on the computer. Who started it is written to the audit log (`atlas_update_started {by, from, to}`).
+
+Progress arrives as `{ev: "atlas_update", stage, message, version}` pushes (scope `read`): `downloading`, `installing`, `handing_off` (the terminal host is being replaced by the new one; terminals keep running), then `done` or `failed` (`message` is the CLI's error). The handoff ends the daemon the phone is connected to, so the connection drops and comes back to the new one: `info.version` equal to `to` is the proof the update took, and the phone should treat a drop after `handing_off` as expected, not as "Can't reach Mac". A Windows host has no live handoff: with terminals running it keeps the old host and says so in the `done` message. The `update` capability in `info.caps` tells the phone both commands exist.
 
 ## Lab lane (validate a branch without touching your install)
 

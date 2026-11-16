@@ -7,6 +7,7 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:flutter_test/flutter_test.dart';
 
 import 'package:atlas_mobile/core/demo/demo_computer.dart';
+import 'package:atlas_mobile/core/permissions/permissions.dart';
 import 'package:atlas_mobile/core/protocol/models.dart';
 import 'package:atlas_mobile/core/transport/transport.dart';
 import 'package:atlas_mobile/core/ui/atlas_theme.dart';
@@ -15,6 +16,7 @@ import 'package:atlas_mobile/features/crew/chat/composer.dart';
 import 'package:atlas_mobile/features/crew/chat/crewmate_chat_screen.dart';
 
 import 'support/demo_harness.dart';
+import 'support/fake_permissions.dart';
 
 // A real 1x1 PNG: the thread decodes what the demo serves back, so the bytes must be an image Flutter can draw.
 final _png = base64.decode(
@@ -50,7 +52,10 @@ Widget _composer(
   required List<(String, List<PendingImage>)> sent,
   TextEditingController? controller,
 }) => ProviderScope(
-  overrides: [imagePickerProvider.overrideWithValue(picker)],
+  overrides: [
+    imagePickerProvider.overrideWithValue(picker),
+    permissionsProvider.overrideWithValue(FakePermissions()),
+  ],
   child: MaterialApp(
     theme: atlasTheme(),
     home: Scaffold(

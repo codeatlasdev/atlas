@@ -1,16 +1,53 @@
 import 'package:material_ui/material_ui.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 
+import 'package:atlas_mobile/core/permissions/permission_ui.dart';
+import 'package:atlas_mobile/core/permissions/permissions.dart';
 import 'package:atlas_mobile/core/ui/atlas_theme.dart';
 import 'package:atlas_mobile/features/crew/chat/attachments.dart';
 
 /// Where a picked image comes from.
 enum PhotoSource { camera, gallery }
 
-/// Opens the picker for [source]; throws what the picker throws (a permission refused, no camera).
-Future<List<PickedImage>> pickPhotos(WidgetRef ref, PhotoSource source) {
+/// Opens the picker for [source]; throws what the picker throws (no camera, a picker that failed). The
+/// library needs no permission. The camera is asked for in context: explained first, and when it is off the
+/// person gets what to do (Open Settings) and the library instead. Null: nothing was picked (Not now, the
+/// sheet closed).
+Future<List<PickedImage>?> pickPhotos(
+  BuildContext context,
+  WidgetRef ref,
+  PhotoSource source,
+) async {
   final picker = ref.read(imagePickerProvider);
-  return source == PhotoSource.camera ? picker.camera() : picker.gallery();
+  if (source == PhotoSource.gallery) return picker.gallery();
+  final state = await askPermission(
+    context,
+    ref,
+    AtlasPermission.camera,
+    why: 'Atlas can photograph a screen or an error to send to your crewmate.',
+  );
+  switch (state) {
+    case PermissionState.granted:
+      return picker.camera();
+    case PermissionState.notAsked:
+      return null;
+    case PermissionState.blocked ||
+        PermissionState.restricted ||
+        PermissionState.unavailable:
+      if (!context.mounted) return null;
+      final library = await showPermissionOff<bool>(
+        context,
+        AtlasPermission.camera,
+        state,
+        extra: (sheet) => [
+          OutlinedButton(
+            onPressed: () => Navigator.of(sheet).pop(true),
+            child: const Text('Choose from the library instead'),
+          ),
+        ],
+      );
+      return library == true ? picker.gallery() : null;
+  }
 }
 
 /// Asks, in a sheet, whether the image comes from the camera or the library. Null when

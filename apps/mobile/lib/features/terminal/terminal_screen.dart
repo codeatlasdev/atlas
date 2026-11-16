@@ -3,10 +3,12 @@ import 'dart:convert';
 
 import 'package:material_ui/material_ui.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
-import 'package:local_auth/local_auth.dart';
 import 'package:xterm/xterm.dart';
 
+import 'package:atlas_mobile/core/auth/device_auth.dart';
 import 'package:atlas_mobile/core/connection/connection_notifier.dart';
+import 'package:atlas_mobile/core/permissions/permission_ui.dart';
+import 'package:atlas_mobile/core/permissions/permissions.dart';
 import 'package:atlas_mobile/core/connection/require_mux.dart';
 import 'package:atlas_mobile/core/protocol/models.dart';
 import 'package:atlas_mobile/core/protocol/multiplexer.dart';
@@ -196,12 +198,25 @@ class _TerminalScreenState extends ConsumerState<TerminalScreen> {
       return;
     }
     try {
-      final ok = await LocalAuthentication().authenticate(
-        localizedReason: 'Type into this terminal on your Mac',
+      final ok = await confirmItsYou(
+        context,
+        ref,
+        'Type into this terminal on your Mac',
       );
       if (ok && mounted) setState(() => _writeEnabled = true);
-    } catch (e) {
-      _toast('Face ID unavailable: $e');
+    } on DeviceAuthUnavailable catch (e) {
+      if (!mounted) return;
+      if (e.noLock) {
+        showPermissionOff<void>(
+          context,
+          AtlasPermission.faceId,
+          PermissionState.unavailable,
+        );
+      } else {
+        _toast(e.message);
+      }
+    } on Object catch (e) {
+      _toast('Could not check it is you: $e');
     }
   }
 

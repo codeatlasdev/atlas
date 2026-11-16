@@ -271,7 +271,7 @@ pub fn uninstall_script() -> String {
     format!(
         "for u in $(getent passwd | cut -d: -f1 | grep -E '^{USER_PREFIX}[0-9a-f]{{12}}$'); do \
 sudo pkill -KILL -u \"$u\" 2>/dev/null || true; sudo userdel \"$u\" 2>/dev/null || true; done; \
-sudo systemctl stop {SPAWN_UNIT}.socket {SPAWN_UNIT}.service {PROVISION_UNIT}.socket {PROVISION_UNIT}.service 2>/dev/null || true; \
+sudo systemctl stop {SPAWN_UNIT}.socket {SPAWN_UNIT}.service {PROVISION_UNIT}.socket {PROVISION_UNIT}.service {EGRESS_UNIT}.service 2>/dev/null || true; \
 sudo systemctl disable {SPAWN_UNIT}.socket {PROVISION_UNIT}.socket {EGRESS_UNIT}.service 2>/dev/null || true; \
 sudo nft delete table inet atlas_crew 2>/dev/null || true; \
 sudo rm -f /etc/systemd/system/{SPAWN_UNIT}.socket /etc/systemd/system/{SPAWN_UNIT}.service \
@@ -745,7 +745,9 @@ mod tests {
         assert!(sh.find("pkill").unwrap() < sh.find("userdel").unwrap());
         assert!(sh.find("userdel").unwrap() < sh.find("systemctl stop").unwrap());
         for want in [
-            "systemctl stop atlas-crew-spawn.socket atlas-crew-spawn.service atlas-crew-provision.socket atlas-crew-provision.service",
+            // The egress unit too: it stays active (RemainAfterExit) from boot, or from a PartOf= restart with nftables, and
+            // `disable` leaves an active unit loaded after its file is gone ("not-found active exited" in the E2E's last check).
+            "systemctl stop atlas-crew-spawn.socket atlas-crew-spawn.service atlas-crew-provision.socket atlas-crew-provision.service atlas-crew-egress.service",
             "systemctl disable atlas-crew-spawn.socket atlas-crew-provision.socket atlas-crew-egress.service",
             "nft delete table inet atlas_crew",
             "/etc/systemd/system/atlas-crew-provision.service",

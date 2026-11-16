@@ -154,6 +154,58 @@ exit 22
         .unwrap();
     }
 
+    /// A throwaway ed25519 key made by the real `ssh-keygen` (the oracle the verifier is judged
+    /// against); returns `(private key path, "ssh-ed25519 AAAA… name" public key line)`.
+    fn ssh_key(&self, name: &str) -> (PathBuf, String) {
+        let key = self.root.path().join(format!("{name}.key"));
+        ssh_keygen(&[
+            "-q",
+            "-t",
+            "ed25519",
+            "-N",
+            "",
+            "-C",
+            name,
+            "-f",
+            key.to_str().unwrap(),
+        ]);
+        let public = std::fs::read_to_string(format!("{}.pub", key.display())).unwrap();
+        (key, public.trim().to_string())
+    }
+
+    /// Make this CLI trust `pubkey` and require signatures from `since` on (a debug-build
+    /// test seam, `ATLAS_RELEASE_POLICY`, stands in for the constants of a real release).
+    fn policy(&self, since: &str, pubkey: &str) -> String {
+        let file = self.root.path().join("release-keys.json");
+        let json = serde_json::json!({
+            "signed_since": since,
+            "keys": [{ "name": "test", "pubkey": pubkey }],
+        });
+        std::fs::write(&file, json.to_string()).unwrap();
+        file.display().to_string()
+    }
+
+    /// `SHA256SUMS` over `entries` (`name`, digest) in `assets/`, signed by `key` unless None.
+    fn sums(&self, entries: &[(&str, String)], key: Option<&Path>) {
+        let dir = self.assets();
+        std::fs::create_dir_all(&dir).unwrap();
+        let body: String = entries.iter().map(|(n, d)| format!("{d}  {n}\n")).collect();
+        let sums = dir.join("SHA256SUMS");
+        std::fs::write(&sums, body).unwrap();
+        let _ = std::fs::remove_file(dir.join("SHA256SUMS.sig"));
+        if let Some(key) = key {
+            ssh_keygen(&[
+                "-Y",
+                "sign",
+                "-n",
+                "atlas-release",
+                "-f",
+                key.to_str().unwrap(),
+                sums.to_str().unwrap(),
+            ]);
+        }
+    }
+
     fn calls(&self) -> Vec<String> {
         std::fs::read_to_string(self.log())
             .unwrap_or_default()
@@ -314,6 +366,129 @@ fn a_missing_checksum_file_also_aborts_before_any_escalation() {
     let o = sb.run(&["update", "--yes"], &[]);
     assert!(!o.status.success(), "{}", text(&o));
     assert!(sb.calls().is_empty(), "{:?}", sb.calls());
+}
+
+// ── #279: signed releases ─────────────────────────────────────────────────────
+
+const SIGNED_TAG: &str = "v99.0.0";
+
+fn digest(bytes: &[u8]) -> String {
+    hex::encode(Sha256::digest(bytes))
+}
+
+fn ssh_keygen(args: &[&str]) {
+    let o = Command::new("ssh-keygen")
+        .args(args)
+        .env_remove("SSH_AUTH_SOCK")
+        .output()
+        .expect("ssh-keygen is required by these tests (the signature oracle)");
+    assert!(o.status.success(), "ssh-keygen {args:?}: {}", text(&o));
+}
+
+/// The deb of `LATEST`, signed in `SHA256SUMS` by a trusted key: it installs, and the CLI says
+/// whose signature it relied on.
+#[test]
+fn a_release_signed_by_a_trusted_key_installs() {
+    let sb = Sandbox::new("dpkg");
+    let name = stage_deb(&sb);
+    let (key, public) = sb.ssh_key("maintainer");
+    sb.sums(&[(&name, digest(b"deb-bytes"))], Some(&key));
+    let policy = sb.policy(SIGNED_TAG, &public);
+    let o = sb.run(&["update", "--yes"], &[("ATLAS_RELEASE_POLICY", &policy)]);
+    let out = text(&o);
+    assert!(o.status.success(), "{out}");
+    assert!(out.contains("signed by test"), "{out}");
+    assert!(
+        sb.calls()
+            .iter()
+            .any(|c| c.starts_with("pkexec apt-get install")),
+        "{:?}",
+        sb.calls()
+    );
+}
+
+/// The attack of #279: the release's assets were swapped, and the per-asset `.sha256` swapped with
+/// them. Without `SHA256SUMS.sig` nothing is trusted, and nothing is installed.
+#[test]
+fn at_or_after_signed_since_an_asset_without_a_signature_is_an_error_and_installs_nothing() {
+    let sb = Sandbox::new("dpkg");
+    let name = stage_deb(&sb); // a matching .sha256 sits next to it
+    let (_, public) = sb.ssh_key("maintainer");
+    sb.sums(&[(&name, digest(b"deb-bytes"))], None); // SHA256SUMS exists, .sig does not
+    let policy = sb.policy(SIGNED_TAG, &public);
+    let o = sb.run(&["update", "--yes"], &[("ATLAS_RELEASE_POLICY", &policy)]);
+    let out = text(&o);
+    assert!(!o.status.success(), "{out}");
+    assert!(out.contains("SHA256SUMS.sig"), "{out}");
+    assert!(sb.calls().is_empty(), "nothing may run: {:?}", sb.calls());
+}
+
+#[test]
+fn a_signature_by_a_key_that_is_not_trusted_is_an_error_and_installs_nothing() {
+    let sb = Sandbox::new("dpkg");
+    let name = stage_deb(&sb);
+    let (_, trusted) = sb.ssh_key("maintainer");
+    let (attacker, _) = sb.ssh_key("attacker");
+    sb.sums(&[(&name, digest(b"deb-bytes"))], Some(&attacker));
+    let policy = sb.policy(SIGNED_TAG, &trusted);
+    let o = sb.run(&["update", "--yes"], &[("ATLAS_RELEASE_POLICY", &policy)]);
+    let out = text(&o);
+    assert!(!o.status.success(), "{out}");
+    assert!(out.contains("not signed by a trusted key"), "{out}");
+    assert!(sb.calls().is_empty(), "{:?}", sb.calls());
+}
+
+/// The asset was swapped after signing: its own `.sha256` agrees with it, the signed line does not.
+#[test]
+fn a_signed_sha256sums_line_that_does_not_match_the_asset_is_an_error_and_installs_nothing() {
+    let sb = Sandbox::new("dpkg");
+    let name = stage_deb(&sb);
+    let (key, public) = sb.ssh_key("maintainer");
+    sb.sums(
+        &[(&name, digest(b"the-bytes-that-were-signed"))],
+        Some(&key),
+    );
+    let policy = sb.policy(SIGNED_TAG, &public);
+    let o = sb.run(&["update", "--yes"], &[("ATLAS_RELEASE_POLICY", &policy)]);
+    let out = text(&o);
+    assert!(!o.status.success(), "{out}");
+    assert!(out.contains("checksum mismatch"), "{out}");
+    assert!(sb.calls().is_empty(), "{:?}", sb.calls());
+}
+
+/// A valid signature over sums that do not list the asset vouches for nothing about it.
+#[test]
+fn an_asset_missing_from_the_signed_sha256sums_is_an_error_and_installs_nothing() {
+    let sb = Sandbox::new("dpkg");
+    stage_deb(&sb);
+    let (key, public) = sb.ssh_key("maintainer");
+    sb.sums(&[("atlas_99.0.0_arm64.deb", digest(b"other"))], Some(&key));
+    let policy = sb.policy(SIGNED_TAG, &public);
+    let o = sb.run(&["update", "--yes"], &[("ATLAS_RELEASE_POLICY", &policy)]);
+    let out = text(&o);
+    assert!(!o.status.success(), "{out}");
+    assert!(out.contains("does not list"), "{out}");
+    assert!(sb.calls().is_empty(), "{:?}", sb.calls());
+}
+
+/// Tags before `SIGNED_SINCE` keep the `.sha256` check (the one hop old releases get) with a warning.
+#[test]
+fn a_tag_before_signed_since_keeps_the_sha256_check_and_warns() {
+    let sb = Sandbox::new("dpkg");
+    stage_deb(&sb); // no SHA256SUMS at all
+    let (_, public) = sb.ssh_key("maintainer");
+    let policy = sb.policy("v100.0.0", &public);
+    let o = sb.run(&["update", "--yes"], &[("ATLAS_RELEASE_POLICY", &policy)]);
+    let out = text(&o);
+    assert!(o.status.success(), "{out}");
+    assert!(out.contains("predates release signing"), "{out}");
+    assert!(
+        sb.calls()
+            .iter()
+            .any(|c| c.starts_with("pkexec apt-get install")),
+        "{:?}",
+        sb.calls()
+    );
 }
 
 #[test]

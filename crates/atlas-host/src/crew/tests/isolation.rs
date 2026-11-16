@@ -858,3 +858,38 @@ async fn an_omp_turn_that_dies_for_another_reason_is_not_blamed_on_memory() {
     assert!(!said.contains("out of memory"), "{said}");
     client.call("shutdown", json!({})).await.ok();
 }
+
+// Regression (security review of #448, should-fix 1): isolation was on only if the helper's socket existed when
+// hostd started, so a server whose socket unit was stopped (or never started, #430) quietly ran every crewmate
+// as the crew user again. With isolation installed and no helper, a task fails with the reason and the agent is
+// never started, as nobody.
+#[tokio::test(flavor = "multi_thread")]
+async fn a_server_with_isolation_installed_and_no_helper_refuses_tasks_and_starts_no_agent() {
+    use super::fixture::{daemon_with_fault, fake_agent, use_agent_bin};
+    let _bin_lock = lock_agent_bin().await;
+    let tmp = tempfile::tempdir().unwrap();
+    let marker = tmp.path().join("agent-started");
+    let agent = fake_agent(
+        tmp.path(),
+        "claude",
+        &format!("echo started > \"{}\"", marker.display()),
+    );
+    use_agent_bin(&agent);
+    let why = "isolation is installed but the spawn helper's socket /run/x is missing";
+    let client = daemon_with_fault(&tmp.path().join("hostd"), why).await;
+    let id = create(&client, "Ana").await;
+    let v = client
+        .call(
+            "crewmate_task",
+            json!({"id": id, "prompt": "hi", "source": "test"}),
+        )
+        .await
+        .unwrap();
+    let task_id = v["task"]["id"].as_str().unwrap().to_string();
+    let t = wait_task_state(&client, &id, &task_id, "failed", Duration::from_secs(20)).await;
+    assert!(t["error"].as_str().unwrap().contains(why), "{t}");
+    tokio::time::sleep(Duration::from_secs(1)).await;
+    assert!(!marker.exists(), "the agent was started without isolation");
+    crate::crew::runner::set_test_agent_bin(None);
+    client.call("shutdown", json!({})).await.ok();
+}

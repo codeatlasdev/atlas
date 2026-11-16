@@ -1,24 +1,27 @@
 //! Where a crewmate lives once it has its own Linux user, and whether that is the case at all.
 //!
 //! Isolation is on exactly when the spawn helper's socket exists (`atlas crew install` creates it):
-//! no helper means every crewmate keeps running as the crew user under `<hostd dir>/crew/<id>/`,
-//! which is what a developer's Mac and every server installed before #200 do. Nothing else decides
-//! it, so a half-installed server can never end up with some crewmates isolated and a store that
-//! does not know it.
+//! no helper and no trace of an install means every crewmate keeps running as the crew user under
+//! `<hostd dir>/crew/<id>/`, which is what a developer's Mac and every server installed before #200 do.
+//! Nothing else decides it, so a half-installed server can never end up with some crewmates isolated
+//! and a store that does not know it. A server that **has** the install (the crewmates' parent
+//! directory, or an `atlas-cm-*` user) but no helper socket is not "isolation off": it is broken, and
+//! [`detect`] says so, so tasks are refused instead of quietly running as the crew user.
 //!
 //! ```text
-//! /var/lib/atlas-cm/<slug>/        crewmate user, 0750; the crew user is in its group (traverse only)
+//! /var/lib/atlas-cm/<slug>/        root 0711: everyone only traverses it, nobody can replace what is in it
 //!   home/                          crewmate user 0700: $HOME, the engines' sign-ins
-//!   work/                          crewmate user 2770 (setgid): the checkout; the crew user writes it
+//!   work/                          crewmate user, crew group, 2770 (setgid): the checkout; hostd writes it
+//!                                  through the group (attachments), and never runs git in it
 //!   crew-runtime/                  crew user, group crewmate, 0750: what the agent reads, never writes
-//!   memory.md                      crewmate user, group crewmate, 0660: the agent appends, hostd edits
+//!   memory.md                      crewmate user, crew group, 0660: the agent appends, hostd edits
 //! ```
 //!
 //! `<slug>` is the first 12 hex digits of the crewmate id (`validate::user_for`).
 
-use std::path::PathBuf;
+use std::path::{Path, PathBuf};
 
-use super::validate::{CM_ROOT, dir_in, user_for};
+use super::validate::{CM_ROOT, dir_in, slug_of, user_for};
 
 /// Where the helper listens (the socket unit's `ListenStream`).
 pub const SOCKET_PATH: &str = "/run/atlas-crew/spawn.sock";
@@ -64,7 +67,7 @@ impl Isolated {
     }
 
     /// What the agent may read and not change: MCP config, the omp approval extension and overlay,
-    /// the hook endpoint, git's global config.
+    /// the hook endpoint.
     pub fn runtime(&self) -> PathBuf {
         self.dir().join("crew-runtime")
     }
@@ -79,12 +82,6 @@ impl Isolated {
     /// the desktop's, with a token that only opens this crewmate's routes.
     pub fn hook_endpoint(&self) -> PathBuf {
         self.runtime().join("hook-endpoint.env")
-    }
-
-    /// git's global config for this crewmate (`GIT_CONFIG_GLOBAL`): the checkout is owned by two users
-    /// (the crew user clones, the crewmate commits), which git refuses without `safe.directory`.
-    pub fn gitconfig(&self) -> PathBuf {
-        self.runtime().join("gitconfig")
     }
 }
 
@@ -107,21 +104,16 @@ pub fn provision_socket_path() -> PathBuf {
         .unwrap_or_else(|| PathBuf::from(PROVISION_SOCKET_PATH))
 }
 
-/// [`active_at`] for the configured socket path.
-pub fn active() -> bool {
-    active_at(&socket_path())
-}
-
 /// Is there a helper to ask? Its socket exists and is a socket (not a stale file, not a directory).
 #[cfg(unix)]
-pub fn active_at(sock: &std::path::Path) -> bool {
+pub fn active_at(sock: &Path) -> bool {
     use std::os::unix::fs::FileTypeExt;
     std::fs::symlink_metadata(sock).is_ok_and(|m| m.file_type().is_socket())
 }
 
 /// Windows has no helper.
 #[cfg(not(unix))]
-pub fn active_at(_sock: &std::path::Path) -> bool {
+pub fn active_at(_sock: &Path) -> bool {
     false
 }
 
@@ -152,62 +144,120 @@ pub struct Setup {
     pub hook_port: u16,
 }
 
+/// What this machine says about isolation.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub enum Detected {
+    /// No helper and no trace of an install: crewmates run as the crew user, as they always did.
+    Off,
+    /// The helper's socket exists.
+    On(Setup),
+    /// The server has the install (the crewmates' directory or an `atlas-cm-*` user) and no helper
+    /// socket: a stopped socket unit, a failed start. Running crewmates as the crew user here would
+    /// silently undo the isolation the operator installed, so tasks are refused with this text.
+    Missing(String),
+}
+
 impl Setup {
-    /// What this machine has: `Some` when the helper's socket exists (at the default or configured paths).
-    pub fn detect() -> Option<Self> {
-        active().then(|| Self {
-            socket: socket_path(),
-            provision_socket: provision_socket_path(),
-            root: cm_root(),
-            hook_port: HOOK_PORT,
-        })
+    /// What this machine has, at the default or configured paths.
+    pub fn detect() -> Detected {
+        let passwd = std::fs::read_to_string("/etc/passwd").unwrap_or_default();
+        Self::detect_in(&socket_path(), &cm_root(), &passwd)
+    }
+
+    /// [`Setup::detect`] with the helper's socket, the crewmates' parent directory and the text of the
+    /// passwd file given.
+    pub fn detect_in(socket: &Path, root: &str, passwd: &str) -> Detected {
+        if active_at(socket) {
+            return Detected::On(Self {
+                socket: socket.to_path_buf(),
+                provision_socket: provision_socket_path(),
+                root: root.to_string(),
+                hook_port: HOOK_PORT,
+            });
+        }
+        let has_users = passwd
+            .lines()
+            .filter_map(|l| l.split(':').next())
+            .any(|n| slug_of(n).is_ok());
+        if has_users || Path::new(root).exists() {
+            return Detected::Missing(format!(
+                "this server has per-crewmate isolation installed ({root} or an atlas-cm-* user exists) but the spawn helper's socket {} is missing, so no crewmate can run: running one as the crew user would undo the isolation. Start it (`sudo systemctl start atlas-crew-spawn.socket`) or re-run `atlas crew install`",
+                socket.display()
+            ));
+        }
+        Detected::Off
     }
 
     /// The isolated layout of crewmate `id`; `None` when `id` is not a crewmate id.
     pub fn of(&self, id: &str) -> Option<Isolated> {
         Isolated::under(&self.root, id)
     }
-}
 
-/// `git` environment for a checkout two users share: the config file that trusts it, and a
-/// group-shared repository so what one user writes the other can read and write. Empty for a
-/// crewmate that is not isolated.
-pub fn git_env(iso: Option<&Isolated>) -> Vec<(String, String)> {
-    iso.map(|i| {
-        vec![(
-            "GIT_CONFIG_GLOBAL".to_string(),
-            i.gitconfig().to_string_lossy().into_owned(),
-        )]
-    })
-    .unwrap_or_default()
-}
-
-/// [`git_env`] for whichever crewmate's directory `dir` is in (under `<root>/<slug>/`): what hostd
-/// needs to run git inside an agent's tree, whose owner is another user. Empty for any other path.
-pub fn git_env_in(root: &str, dir: &std::path::Path) -> Vec<(String, String)> {
-    let Ok(rest) = dir.strip_prefix(root) else {
-        return vec![];
-    };
-    let Some(slug) = rest
-        .components()
-        .next()
-        .and_then(|c| c.as_os_str().to_str())
-    else {
-        return vec![];
-    };
-    // `slug_of` is the one place that knows what a slug looks like.
-    let user = format!("{}{slug}", super::validate::USER_PREFIX);
-    if super::validate::slug_of(&user).is_err() {
-        return vec![];
+    /// The crewmate whose directory `dir` is in (`<root>/<slug>/...`); `None` for any other path. What
+    /// tells hostd that a tree it is about to run something in is one a crewmate controls.
+    pub fn owner_of(&self, dir: &Path) -> Option<Isolated> {
+        let slug = dir
+            .strip_prefix(&self.root)
+            .ok()?
+            .components()
+            .next()?
+            .as_os_str()
+            .to_str()?;
+        // `slug_of` is the one place that knows what a slug looks like.
+        let user = format!("{}{slug}", super::validate::USER_PREFIX);
+        slug_of(&user).ok()?;
+        Some(Isolated {
+            user,
+            root: self.root.clone(),
+        })
     }
-    git_env(Some(&Isolated {
-        user,
-        root: root.to_string(),
-    }))
 }
 
-/// The contents of [`Isolated::gitconfig`].
-pub const GITCONFIG: &str = "[safe]\n\tdirectory = *\n[core]\n\tsharedRepository = group\n";
+/// `path`'s text, read without following a link at its last component and at most 1 MiB of it. For files
+/// inside a crewmate's directory that hostd (the crew user) opens: the crewmate could have replaced one with
+/// a link to a file only hostd can read, `hostd.token` or another crewmate's secrets.
+#[cfg(unix)]
+pub fn read_nofollow(path: &Path) -> std::io::Result<String> {
+    use std::io::Read;
+    let mut bytes = Vec::new();
+    open_nofollow(path, std::fs::OpenOptions::new().read(true))?
+        .take(1 << 20)
+        .read_to_end(&mut bytes)?;
+    Ok(String::from_utf8_lossy(&bytes).into_owned())
+}
+
+/// `data` written over `path`, in place, without following a link at its last component. In place on
+/// purpose: replacing the file would make hostd its owner, and the agent could no longer append to it.
+#[cfg(unix)]
+pub fn write_nofollow(path: &Path, data: &[u8]) -> std::io::Result<()> {
+    use std::io::Write;
+    open_nofollow(
+        path,
+        std::fs::OpenOptions::new()
+            .write(true)
+            .create(true)
+            .truncate(true),
+    )?
+    .write_all(data)
+}
+
+/// `O_NONBLOCK` too: a FIFO planted in place of the file must fail or return at once, never hang hostd.
+#[cfg(unix)]
+fn open_nofollow(path: &Path, o: &mut std::fs::OpenOptions) -> std::io::Result<std::fs::File> {
+    use std::os::unix::fs::OpenOptionsExt;
+    o.custom_flags(libc::O_NOFOLLOW | libc::O_NONBLOCK)
+        .open(path)
+}
+
+#[cfg(not(unix))]
+pub fn read_nofollow(path: &Path) -> std::io::Result<String> {
+    Ok(String::from_utf8_lossy(&std::fs::read(path)?).into_owned())
+}
+
+#[cfg(not(unix))]
+pub fn write_nofollow(path: &Path, data: &[u8]) -> std::io::Result<()> {
+    std::fs::write(path, data)
+}
 
 #[cfg(test)]
 mod tests {
@@ -228,7 +278,7 @@ mod tests {
             i.hook_endpoint(),
             PathBuf::from("/var/lib/atlas-cm/3f2a9c1e5b7d/crew-runtime/hook-endpoint.env")
         );
-        for p in [i.home(), i.work(), i.runtime(), i.memory(), i.gitconfig()] {
+        for p in [i.home(), i.work(), i.runtime(), i.memory()] {
             assert!(p.starts_with(i.dir()), "{p:?}");
         }
     }
@@ -292,40 +342,70 @@ mod tests {
         assert!(check(&sock), "a listening socket is");
     }
 
+    // Regression (security review of #448, should-fix 1): isolation used to be on only if the helper's
+    // socket existed when hostd started. A server whose socket unit was stopped (or whose helper never
+    // started, #430) then ran every crewmate as the crew user again, with no error. An installed server with
+    // no socket is `Missing`; only a machine with no trace of an install is `Off`.
+    #[cfg(unix)]
     #[test]
-    fn git_env_trusts_the_shared_checkout_only_when_isolated() {
-        assert!(git_env(None).is_empty());
-        let i = Isolated::under("/r", ID).unwrap();
-        let env = git_env(Some(&i));
-        assert_eq!(env.len(), 1);
-        assert_eq!(env[0].0, "GIT_CONFIG_GLOBAL");
-        // Compared by path components: the separator is the platform's.
-        assert!(
-            std::path::Path::new(&env[0].1)
-                .ends_with(std::path::Path::new("crew-runtime").join("gitconfig")),
-            "{}",
-            env[0].1
-        );
-        assert!(GITCONFIG.contains("directory = *"));
-        assert!(GITCONFIG.contains("sharedRepository = group"));
+    fn an_installed_server_without_its_helper_socket_is_missing_never_off() {
+        use std::os::unix::net::UnixListener;
+        let t = tempfile::tempdir().unwrap();
+        let sock = t.path().join("spawn.sock");
+        let root = t.path().join("atlas-cm");
+        let root_s = root.to_string_lossy().into_owned();
+        let user = "atlas-cm-3f2a9c1e5b7d:x:991:991::/var/lib/atlas-cm/3f2a9c1e5b7d/home:/usr/sbin/nologin\n";
+        let other = "root:x:0:0::/root:/bin/bash\natlas-crew:x:990:990::/x:/bin/bash\natlas-cm-short:x:1:1::/x:/bin/false\n";
+
+        // A developer's machine: no root, no crewmate user (look-alikes do not count), no socket.
+        assert_eq!(Setup::detect_in(&sock, &root_s, other), Detected::Off);
+        assert_eq!(Setup::detect_in(&sock, &root_s, ""), Detected::Off);
+
+        // The crewmates' directory alone is a trace; so is a crewmate user alone.
+        std::fs::create_dir(&root).unwrap();
+        for passwd in [other, user] {
+            match Setup::detect_in(&sock, &root_s, passwd) {
+                Detected::Missing(why) => {
+                    assert!(why.contains(&sock.display().to_string()), "{why}");
+                    assert!(why.contains("atlas-crew-spawn.socket"), "{why}");
+                }
+                d => panic!("{d:?}"),
+            }
+        }
+        std::fs::remove_dir(&root).unwrap();
+        assert!(matches!(
+            Setup::detect_in(&sock, &root_s, user),
+            Detected::Missing(_)
+        ));
+
+        // With the socket there, it is on, at the paths asked for.
+        let _l = UnixListener::bind(&sock).unwrap();
+        match Setup::detect_in(&sock, &root_s, user) {
+            Detected::On(s) => assert_eq!((s.socket, s.root), (sock.clone(), root_s)),
+            d => panic!("{d:?}"),
+        }
     }
 
-    // Regression (merging #200 with the guards of #214 and the attachments of #209): hostd runs git in
-    // the agent's tree for the guards and the exclude file, and git refuses a tree owned by another
-    // user ("dubious ownership") unless the crewmate's gitconfig is in effect. The tree alone says whose
-    // it is.
+    // Regression (merging #200 with the guards of #214 and the attachments of #209): hostd runs git in the
+    // agent's tree, and which crewmate's it is comes from the path alone. Only a path inside a crewmate's
+    // directory under the configured root is one.
     #[test]
-    fn git_env_in_names_the_config_of_whichever_crewmate_owns_the_directory() {
-        let i = Isolated::under("/r", ID).unwrap();
-        let want = git_env(Some(&i));
+    fn owner_of_names_whichever_crewmate_owns_the_directory_and_nobody_for_other_paths() {
+        let s = Setup {
+            socket: "/s".into(),
+            provision_socket: "/p".into(),
+            root: "/r".into(),
+            hook_port: 0,
+        };
+        let want = s.of(ID).unwrap();
         for inside in [
             "/r/3f2a9c1e5b7d/work",
             "/r/3f2a9c1e5b7d/work/crates/x/src",
             "/r/3f2a9c1e5b7d",
         ] {
             assert_eq!(
-                git_env_in("/r", std::path::Path::new(inside)),
-                want,
+                s.owner_of(Path::new(inside)),
+                Some(want.clone()),
                 "{inside}"
             );
         }
@@ -338,10 +418,7 @@ mod tests {
             "/r2/3f2a9c1e5b7d/work",
             "/home/me/project",
         ] {
-            assert!(
-                git_env_in("/r", std::path::Path::new(outside)).is_empty(),
-                "{outside}"
-            );
+            assert!(s.owner_of(Path::new(outside)).is_none(), "{outside}");
         }
     }
 }

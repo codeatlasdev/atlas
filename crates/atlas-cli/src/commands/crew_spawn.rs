@@ -25,6 +25,16 @@ pub struct CrewSpawnArgs {
     /// The only user (besides root) that may connect, when `--socket` is given
     #[arg(long, value_name = "USER", requires = "socket")]
     pub crew_user: Option<String>,
+    /// Provision one crewmate's user and directories now, with the plan the provisioning service runs,
+    /// then exit: `--provision-user <CREWMATE USER> <CREW USER>`. What `atlas crew install` runs for the
+    /// crewmates that exist, so the installer and the service share one code path
+    #[arg(
+        long,
+        num_args = 2,
+        value_names = ["CREWMATE_USER", "CREW_USER"],
+        conflicts_with_all = ["provision", "socket", "crew_user"]
+    )]
+    pub provision_user: Option<Vec<String>>,
 }
 
 impl AtlasCommand for CrewSpawnArgs {
@@ -37,6 +47,15 @@ impl AtlasCommand for CrewSpawnArgs {
             bail!(
                 "atlas crew-spawn runs as root (it is started by systemd: atlas-crew-spawn.service)"
             );
+        }
+        if let Some(names) = &self.provision_user {
+            let (user, crew) = (&names[0], &names[1]);
+            return match provision::Service::production(crew, exec::lookup(crew)?.uid)
+                .handle(provision::ProvRequest::Provision { user: user.clone() })
+            {
+                provision::ProvResponse::Done => Ok(()),
+                provision::ProvResponse::Error { reason } => bail!("{reason}"),
+            };
         }
         let (listener, user, uid) = match (&self.socket, &self.crew_user) {
             (Some(path), Some(user)) => {
@@ -105,6 +124,30 @@ mod tests {
         assert!(Cli::try_parse_from(["x", "--crew-user", "u"]).is_err());
     }
 
+    // The installer's one-shot: a crewmate user and the crew user, and nothing else with it.
+    #[test]
+    fn provision_user_takes_the_crewmate_and_the_crew_user_and_excludes_the_service_flags() {
+        let a = Cli::try_parse_from([
+            "x",
+            "--provision-user",
+            "atlas-cm-3f2a9c1e5b7d",
+            "atlas-crew",
+        ])
+        .unwrap()
+        .a;
+        assert_eq!(
+            a.provision_user.as_deref(),
+            Some(
+                &[
+                    "atlas-cm-3f2a9c1e5b7d".to_string(),
+                    "atlas-crew".to_string()
+                ][..]
+            )
+        );
+        assert!(Cli::try_parse_from(["x", "--provision-user", "only-one"]).is_err());
+        assert!(Cli::try_parse_from(["x", "--provision-user", "a", "b", "--provision"]).is_err());
+    }
+
     // Not root, not under systemd: it refuses with the reason instead of serving a socket nobody gave it.
     #[cfg(unix)]
     #[tokio::test]
@@ -117,6 +160,7 @@ mod tests {
             provision: false,
             socket: None,
             crew_user: None,
+            provision_user: None,
         }
         .run()
         .await

@@ -192,3 +192,57 @@ pub fn rig_with(memory: server::Memory) -> Rig {
     rig.prov_log.lock().clear();
     rig
 }
+
+impl Rig {
+    /// A git repository in the checkout whose **own config** runs a command: `core.fsmonitor` appends
+    /// `$USER` to the returned marker file. That is what a crewmate can do to the git that hostd runs in its
+    /// tree (security review of #448, B2). The helper starts git as the crewmate with `USER` set to the
+    /// crewmate's user; hostd's own git would leave the test process's `USER` (or none) there. A marker line
+    /// that is not [`USER`] means git ran as someone else; no marker at all means nothing triggered it.
+    pub fn booby_trapped_repo(&self) -> PathBuf {
+        let work = self.work();
+        let marker = self.cm.join("marker");
+        let hook = self.cm.join("fsmonitor.sh");
+        std::fs::write(
+            &hook,
+            format!(
+                "#!/bin/sh\nprintf '%s\\n' \"$USER\" >> {}\nexit 1\n",
+                marker.display()
+            ),
+        )
+        .unwrap();
+        std::fs::set_permissions(&hook, std::fs::Permissions::from_mode(0o755)).unwrap();
+        let git = |args: &[&str]| {
+            let o = std::process::Command::new("git")
+                .args(["-c", "user.name=t", "-c", "user.email=t@t"])
+                .args(args)
+                .current_dir(&work)
+                .env_remove("GIT_DIR")
+                .output()
+                .unwrap();
+            assert!(
+                o.status.success(),
+                "git {args:?}: {}",
+                String::from_utf8_lossy(&o.stderr)
+            );
+        };
+        git(&["init", "-q"]);
+        std::fs::write(work.join("a.txt"), "one\n").unwrap();
+        git(&["add", "a.txt"]);
+        git(&["commit", "-q", "-m", "one"]);
+        // Set only now, so the setup above does not trigger it.
+        git(&["config", "core.fsmonitor", &hook.to_string_lossy()]);
+        std::fs::write(work.join("a.txt"), "two\n").unwrap();
+        std::fs::write(work.join("new.txt"), "new\n").unwrap();
+        marker
+    }
+
+    /// What the marker holds: one `$USER` per run of the planted command.
+    pub fn marker_users(marker: &std::path::Path) -> Vec<String> {
+        std::fs::read_to_string(marker)
+            .unwrap_or_default()
+            .lines()
+            .map(str::to_string)
+            .collect()
+    }
+}

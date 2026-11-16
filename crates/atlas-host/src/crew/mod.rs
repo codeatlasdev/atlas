@@ -30,6 +30,7 @@ pub(crate) mod engine;
 pub(crate) mod engine_login;
 pub(crate) mod events;
 pub(crate) mod github;
+pub(crate) mod gitrun;
 mod handlers;
 mod hub;
 pub mod locate;

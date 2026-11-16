@@ -114,13 +114,13 @@ pub(super) async fn gate_success(
     let dir = std::path::Path::new(work_dir);
     // Hub tapes are per task id; a retry starts a fresh one.
     let commands = hub.crew.tape.of(&task.id);
-    let git_env = hub.crew.store.git_env_in(dir);
-    let repo = project::infer_github_repo(dir, &git_env);
+    let git = hub.crew.store.git_in(dir);
+    let repo = project::infer_github_repo(dir, &git);
     let api = hub.crew.github();
     let verdict = guard::review(
         &Input {
             work_dir: dir,
-            git_env: &git_env,
+            git: &git,
             repo: repo.as_deref(),
             result: &result,
             commands: &commands,

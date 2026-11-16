@@ -230,31 +230,20 @@ pub fn start_steps() -> Vec<String> {
     v
 }
 
-/// Shell that creates the Linux user of one crewmate, idempotently, and its directories:
-///
-/// ```text
-/// /var/lib/atlas-cm/<slug>/        user:crew 0750   (the crew user's own group: hostd traverses it)
-///   home/                          user:user 0700   $HOME: the engines' sign-ins live here
-///   work/                          user:user 2770   setgid; the crew user, in the group, writes it
-///   crew-runtime/                  crew:user 0750   hostd writes what the agent reads and must not change
-///   memory.md                      user:user 0660   the agent appends, hostd edits
-/// ```
+/// Shell that brings one crewmate under isolation, idempotently: its Linux user and its directories, made
+/// by `atlas crew-spawn --provision-user`, which runs the plan the provisioning service runs for every
+/// task (`atlas_host::crew::spawn::provision`). One code path, so the installer cannot drift from the
+/// service, and what the service does with a link planted in a crewmate's directory (refuse it, never
+/// chown or chmod through it) is what the installer does too. The layout is that module's.
 ///
 /// `useradd --system` allocates from the system uid range (about 900 accounts): a failure there
 /// is printed as such, and the script exits non-zero.
 pub fn provision_script(a: &Account, user: &str) -> Result<String, BadUser> {
-    let slug = slug(user)?;
-    let dir = format!("{CM_ROOT}/{slug}");
+    slug(user)?;
     Ok(format!(
         "set -e; \
-if ! id {user} >/dev/null 2>&1; then \
-sudo useradd --system --user-group --no-create-home --home-dir {dir}/home --shell /usr/sbin/nologin {user} \
-|| {{ echo 'could not create {user}: out of system user ids? (useradd --system has about 900)' >&2; exit 1; }}; fi; \
-sudo install -d -m 0750 -o {user} -g {crew} {dir}; \
-sudo install -d -m 0700 -o {user} -g {user} {dir}/home; \
-sudo install -d -m 2770 -o {user} -g {crew} {dir}/work; \
-sudo install -d -m 0750 -o {crew} -g {user} {dir}/crew-runtime; \
-[ -e {dir}/memory.md ] || sudo install -m 0660 -o {user} -g {crew} /dev/null {dir}/memory.md",
+sudo {INSTALL_DIR}/atlas crew-spawn --provision-user {user} {crew} \
+|| {{ echo 'could not provision {user}: out of system user ids? (useradd --system has about 900)' >&2; exit 1; }}",
         crew = a.user
     ))
 }
@@ -690,46 +679,43 @@ mod tests {
         assert!(provision_script(&a, USER).is_ok());
     }
 
+    // Regression (security review of #448, B1): the installer used to carry its own copy of the layout as
+    // `sudo install -d -o <crewmate>` calls, which follow a link a crewmate planted in its directory and
+    // chown the target as root. It now runs the provisioning service's plan, so it has none of that text.
     #[test]
-    fn provisioning_makes_the_user_its_group_and_a_private_tree_for_it() {
+    fn provisioning_runs_the_services_own_plan_and_has_no_shell_copy_of_the_layout() {
         let sh = provision_script(&acct(), USER).unwrap();
-        for want in [
-            "set -e",
-            "id atlas-cm-3f2a9c1e5b7d >/dev/null 2>&1",
-            "useradd --system --user-group --no-create-home --home-dir /var/lib/atlas-cm/3f2a9c1e5b7d/home --shell /usr/sbin/nologin atlas-cm-3f2a9c1e5b7d",
-            // hostd's groups are fixed when it starts, so what it reaches is in the crew user's own group.
-            "install -d -m 0750 -o atlas-cm-3f2a9c1e5b7d -g atlas-crew /var/lib/atlas-cm/3f2a9c1e5b7d;",
-            "install -d -m 0700 -o atlas-cm-3f2a9c1e5b7d -g atlas-cm-3f2a9c1e5b7d /var/lib/atlas-cm/3f2a9c1e5b7d/home",
-            "install -d -m 2770 -o atlas-cm-3f2a9c1e5b7d -g atlas-crew /var/lib/atlas-cm/3f2a9c1e5b7d/work",
-            // hostd (the crew user) writes it, the crewmate reads it through the group.
-            "install -d -m 0750 -o atlas-crew -g atlas-cm-3f2a9c1e5b7d /var/lib/atlas-cm/3f2a9c1e5b7d/crew-runtime",
-            "install -m 0660 -o atlas-cm-3f2a9c1e5b7d -g atlas-crew /dev/null /var/lib/atlas-cm/3f2a9c1e5b7d/memory.md",
-            "out of system user ids",
+        assert!(sh.starts_with("set -e;"), "{sh}");
+        assert!(
+            sh.contains("sudo /usr/local/lib/atlas-crew/atlas crew-spawn --provision-user atlas-cm-3f2a9c1e5b7d atlas-crew"),
+            "{sh}"
+        );
+        assert!(sh.contains("out of system user ids"), "{sh}");
+        for gone in [
+            "install -d",
+            "install -m",
+            "useradd --system --user-group",
+            "chown",
+            "chmod",
+            "usermod",
         ] {
-            assert!(sh.contains(want), "missing {want:?}:\n{sh}");
+            assert!(!sh.contains(gone), "{gone} in:\n{sh}");
         }
-        // Idempotent: the useradd sits inside the "not there yet" branch, the rest is install -d.
-        assert!(sh.find("if ! id").unwrap() < sh.find("useradd").unwrap());
-        // The crew user is never added to a crewmate's group: a running hostd would not have it.
-        assert!(!sh.contains("usermod"), "{sh}");
-        // No shell, no login: nobody can ssh or `su` into a crewmate.
-        assert!(sh.contains("/usr/sbin/nologin") && !sh.contains("/bin/bash"));
     }
 
-    // The crew user of a migrated server is the group hostd's files are in.
+    // The crew user of a migrated server is the one the plan puts hostd's files in the group of.
     #[test]
-    fn provisioning_puts_what_hostd_reaches_in_the_servers_own_crew_group() {
+    fn provisioning_names_the_servers_own_crew_user() {
         let old = account(Probe {
             legacy_user: true,
             ..Probe::default()
         });
         let sh = provision_script(&old, USER).unwrap();
         assert!(
-            sh.contains(
-                "-o atlas-cm-3f2a9c1e5b7d -g atlas-bot /var/lib/atlas-cm/3f2a9c1e5b7d/work"
-            )
+            sh.contains("--provision-user atlas-cm-3f2a9c1e5b7d atlas-bot"),
+            "{sh}"
         );
-        assert!(!sh.contains("atlas-crew"));
+        assert!(!sh.contains("atlas-crew crew-spawn") && !sh.contains("3f2a9c1e5b7d atlas-crew"));
     }
 
     // Nothing may be traversable by a crewmate that holds another's data: this is the first of
@@ -1049,7 +1035,7 @@ mod tests {
     fn migrating_a_crewmate_provisions_it_and_renames_the_old_checkout_never_deletes_it() {
         let sh = migrate_script(&acct(), ID).unwrap();
         assert!(sh.starts_with("set -e;"), "{sh}");
-        assert!(sh.contains("useradd --system"));
+        assert!(sh.contains("--provision-user atlas-cm-3f2a9c1e5b7d atlas-crew"));
         let dir = format!("/var/lib/atlas-crew/.atlas/crew/{ID}");
         assert!(
             sh.contains(&format!(

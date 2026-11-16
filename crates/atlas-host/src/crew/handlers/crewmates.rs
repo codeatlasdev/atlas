@@ -447,8 +447,12 @@ fn warm_checkout(hub: &Hub, crewmate: &Crewmate) {
     };
     let (id, dir) = (crewmate.id.clone(), hub.crew.dir.clone());
     let iso = hub.crew.store.isolated(&id);
+    let git = hub
+        .crew
+        .store
+        .git_in(&project::work_dir_for(&dir, &id, iso.as_ref()));
     tokio::spawn(async move {
-        if let Err(e) = project::prepare(&project, &id, &dir, iso).await {
+        if let Err(e) = project::prepare(&project, &id, &dir, iso, &git).await {
             eprintln!("atlas crew: checkout for {id} not ready yet: {e}");
         }
     });

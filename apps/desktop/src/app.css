@@ -524,3 +524,27 @@ html {
 [popover][data-state="closed"] {
 	pointer-events: none;
 }
+
+/* UI kit workaround (shell/closingLayers.ts, atlas#501): a closing modal is released from modality and fades out where it
+   is. Its `::backdrop` ended with the modality, so this element replays the kit's scrim (colour, fade; no blur: Atlas sets `--ca-scrim-blur: none`, and noBackdropBlur.test.ts keeps app.css free of backdrop-filter), and the
+   dialog (made `inert`, so presses and focus go to the page) is lifted above it. Duration and curve are the kit's
+   `ca-overlay-out`. @codeatlasdev/ui 4.6.0, `components/Dialog/dialog.css`. Remove with the module. */
+.closing-scrim {
+	position: fixed;
+	inset: 0;
+	z-index: calc(var(--ca-z-modal) - 1);
+	background: var(--ca-scrim-color);
+	pointer-events: none;
+	animation: closing-scrim-out var(--ca-enter-fast) var(--ca-ease-standard) both;
+}
+dialog.ca-overlay[data-released] {
+	z-index: var(--ca-z-modal);
+}
+@keyframes closing-scrim-out {
+	from {
+		opacity: 1;
+	}
+	to {
+		opacity: 0;
+	}
+}

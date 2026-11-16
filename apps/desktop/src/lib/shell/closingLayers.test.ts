@@ -15,6 +15,8 @@ import { readFileSync } from "node:fs";
 //   2. `press()` delivers a click only inside the topmost modal while one is open (HTML: "blocked by a modal dialog");
 //   3. a kit overlay with `data-state="closed"` has one running 150 ms animation (`getAnimations()`), as measured on
 //      WebKit: `ca-dialog-out` / `ca-overlay-out`, 150 ms.
+// The workaround must give the page its clicks back AT ONCE and still let the exit fade play, so the tests press one
+// microtask after the dismissal (nothing has rendered yet) and again mid-exit.
 const { flushSync, mount, unmount, createRawSnippet } = await import("svelte");
 const { proxy } = await import("svelte/internal/client");
 const { realKitComponent } = await import("../../../test/uiKit.ts");
@@ -162,7 +164,7 @@ async function openKit(name: string) {
 }
 
 for (const name of Object.keys(modalKinds)) {
-	test(`${name}: the next click right after an outside dismissal runs its handler once`, async () => {
+	test(`${name}: the next click after an outside dismissal runs its handler once, at once and mid-exit`, async () => {
 		stop = releaseClosingModals();
 		const { props, dialog } = await openKit(name);
 		const next = addNextButton();
@@ -171,15 +173,81 @@ for (const name of Object.keys(modalKinds)) {
 		modalKinds[name].dismiss(dialog);
 		flushSync();
 		expect(props.open).toBe(false);
-		// The user's next press, one frame after the dismissal: well inside the 150 ms exit.
-		await frames();
+		// The user's very next press: one microtask after the dismissal, before any frame.
+		await Promise.resolve();
 		expect(press(next)).toBe(true);
 		expect(clicks).toBe(1);
-		// The layer is gone: nothing modal, no dialog left, and a second press is not a second delivery.
+		// And again in the middle of the exit, with the dialog still fading in the page.
+		await frames();
+		expect(dialog.isConnected).toBe(true);
+		expect(press(next)).toBe(true);
+		expect(clicks).toBe(2);
+		// The exit ends and the layer is removed, with the scrim stand-in.
+		await wait(EXIT_MS + 60);
 		expect(modals.size).toBe(0);
 		expect(document.querySelector("dialog")).toBeNull();
+		expect(document.querySelector(".closing-scrim")).toBeNull();
 	});
 }
+
+test("a released dialog keeps fading: still in the page, inert, not modal, with a scrim stand-in, until the exit ends", async () => {
+	stop = releaseClosingModals();
+	const { props, dialog } = await openKit("Dialog");
+	pressScrim(dialog);
+	flushSync();
+	expect(props.open).toBe(false);
+	await frames();
+	expect(dialog.isConnected).toBe(true);
+	expect(dialog.getAttribute("data-state")).toBe("closed");
+	expect(dialog.hasAttribute("open")).toBe(true);
+	expect(dialog.matches(":modal")).toBe(false);
+	expect(dialog.inert).toBe(true);
+	const scrim = document.querySelector(".closing-scrim");
+	expect(scrim).not.toBeNull();
+	expect(scrim.nextElementSibling).toBe(dialog);
+	await wait(EXIT_MS + 60);
+	expect(dialog.isConnected).toBe(false);
+});
+
+test("opening the dialog again during its exit makes it the modal it was (no inert shell, no stray scrim)", async () => {
+	stop = releaseClosingModals();
+	const { props, dialog } = await openKit("Dialog");
+	pressScrim(dialog);
+	flushSync();
+	await frames();
+	expect(dialog.matches(":modal")).toBe(false);
+	props.open = true;
+	flushSync();
+	await Promise.resolve();
+	expect(dialog.getAttribute("data-state")).toBe("open");
+	expect(dialog.matches(":modal")).toBe(true);
+	expect(dialog.inert).toBe(false);
+	expect(document.querySelector(".closing-scrim")).toBeNull();
+	const next = addNextButton();
+	expect(press(next)).toBe(false);
+	expect(press(dialog.querySelector("button.in"))).toBe(true);
+	await wait(EXIT_MS + 60);
+	expect(dialog.isConnected).toBe(true);
+});
+
+test("a control focused during the exit keeps focus when the kit removes the layer and restores the opener", async () => {
+	stop = releaseClosingModals();
+	const opener = addNextButton();
+	opener.focus();
+	const { dialog } = await openKit("Dialog");
+	const other = document.createElement("button");
+	host.append(other);
+	pressScrim(dialog);
+	flushSync();
+	await frames();
+	other.focus();
+	// A browser reports focus with `focusin`; happy-dom's `focus()` does not.
+	other.dispatchEvent(new FocusEvent("focusin", { bubbles: true }));
+	expect(document.activeElement).toBe(other);
+	await wait(EXIT_MS + 60);
+	expect(dialog.isConnected).toBe(false);
+	expect(document.activeElement).toBe(other);
+});
 
 // The control: without the workaround the kit keeps the closing dialog modal for its whole exit animation and the click
 // is dropped. When this goes red the kit releases the modal itself: delete `closingLayers.ts` (see its header).
@@ -200,7 +268,7 @@ test("without the workaround, a click during the exit animation of a Dialog is d
 	expect(clicks).toBe(1);
 });
 
-test("a spinner that never ends inside a closing modal no longer keeps it alive", async () => {
+test("a spinner that never ends inside a closing modal is cancelled and no longer keeps it alive", async () => {
 	stop = releaseClosingModals();
 	const Component = await realKitComponent("Dialog");
 	const props = proxy({ open: true, title: "t", children: body });
@@ -225,8 +293,10 @@ test("a spinner that never ends inside a closing modal no longer keeps it alive"
 	props.open = false;
 	flushSync();
 	await frames();
-	Element.prototype.getAnimations = base;
 	expect(forever.playState).toBe("idle");
+	// The kit's exit (150 ms) is all that is left to wait for.
+	await wait(EXIT_MS + 60);
+	Element.prototype.getAnimations = base;
 	expect(document.querySelector("dialog")).toBeNull();
 });
 

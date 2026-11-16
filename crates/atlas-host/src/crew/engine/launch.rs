@@ -89,10 +89,16 @@ impl Exec {
         }
     }
 
-    // Only the Unix isolation tests ask (`runner/isolation.rs`, `cfg(all(test, unix))`).
-    #[cfg(all(test, unix))]
+    /// Whether the process runs as the crewmate's own user (through the helper).
     pub fn is_isolated(&self) -> bool {
-        self.iso.is_some()
+        #[cfg(unix)]
+        {
+            self.iso.is_some()
+        }
+        #[cfg(not(unix))]
+        {
+            false
+        }
     }
 }
 

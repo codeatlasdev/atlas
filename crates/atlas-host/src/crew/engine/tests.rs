@@ -520,3 +520,60 @@ async fn dropping_an_isolated_turn_kills_its_tree() {
     let _ = h.turn.await;
     wait_gone(h.pid, "abort").await;
 }
+
+// An isolated codex crewmate cannot write into `crew-runtime` (hostd's, read-only for the agent), so the reply file
+// `--output-last-message` names must be where the crewmate can write: its work tree. The reply still reaches hostd,
+// which reads it beneath the tree, and the file is gone afterwards.
+#[tokio::test(flavor = "multi_thread")]
+async fn an_isolated_codex_turn_writes_its_reply_file_where_the_crewmate_can_and_hostd_reads_it() {
+    let _lock = crate::crew::runner::TEST_BIN_LOCK
+        .get_or_init(|| tokio::sync::Mutex::new(()))
+        .lock()
+        .await;
+    let rig = crate::crew::spawn::testing::rig();
+    let tmp = tempfile::tempdir().unwrap();
+    let seen = tmp.path().join("out-path");
+    rig.engine(
+        "codex",
+        &format!(
+            "while [ $# -gt 0 ]; do [ \"$1\" = --output-last-message ] && out=$2; shift; done\n\
+             printf %s \"$out\" > \"{}\"\nprintf 'the codex reply' > \"$out\"",
+            seen.display()
+        ),
+    );
+    let exec = Exec::isolated(rig.client.clone(), crate::crew::spawn::testing::USER.into());
+    let runtime = tmp.path().join("crew-runtime");
+    let work = rig.work();
+    let engine = EngineConfig {
+        kind: "codex".into(),
+        provider: None,
+        base_url: None,
+        model: None,
+    };
+    let env = BTreeMap::new();
+    let out = run_turn(TurnCtx {
+        engine: &engine,
+        session: CrewmateSession::default(),
+        prompt: "go",
+        crewmate_dir: &runtime,
+        crewmate_id: "c1",
+        hook_port: HOOK_PORT,
+        hook_token: HOOK_TOKEN,
+        pane_key: PANE_KEY,
+        extra_env: &env,
+        work_dir: &work.to_string_lossy(),
+        yolo: true,
+        tools: None,
+        cancel: &TurnCancel::new(),
+        exec: &exec,
+    })
+    .await
+    .unwrap();
+    assert_eq!(out.reply, "the codex reply");
+    let path = std::path::PathBuf::from(std::fs::read_to_string(&seen).unwrap());
+    assert!(
+        path.starts_with(&work) && path.parent() == Some(work.as_path()),
+        "the reply file is {path:?}, not directly in the crewmate's work tree {work:?}"
+    );
+    assert!(!path.exists(), "the reply file is left behind");
+}

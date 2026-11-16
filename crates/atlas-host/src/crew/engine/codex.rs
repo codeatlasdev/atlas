@@ -9,6 +9,10 @@ use crate::paths;
 
 use super::launch::McpServer;
 use super::{TurnCtx, TurnResult, launch, program};
+use crate::crew::spawn::layout;
+
+/// The most of the reply file hostd reads from a crewmate's tree.
+const MAX_REPLY: u64 = 4 << 20;
 
 /// Build the codex argv (excluding the binary name) for one turn.
 ///
@@ -41,10 +45,17 @@ pub(super) async fn run(ctx: TurnCtx<'_>) -> Result<TurnResult, String> {
     std::fs::create_dir_all(ctx.crewmate_dir)
         .map_err(|e| format!("codex: create crewmate_dir: {e}"))?;
 
-    // codex writes the last agent message to this file.
-    let result_file = ctx
-        .crewmate_dir
-        .join(format!("codex-out-{}.txt", paths::new_id()));
+    // codex writes the last agent message to this file. An isolated crewmate cannot write into `crew-runtime`
+    // (the agent reads it, never changes it), so its file is a name directly in its work tree, which it owns and
+    // hostd (the crew group) reads beneath the tree and removes. Otherwise the crewmate's dir, as before.
+    let name = format!("codex-out-{}.txt", paths::new_id());
+    let isolated = ctx.exec.is_isolated();
+    let work = Path::new(ctx.work_dir);
+    let result_file = if isolated {
+        work.join(format!(".atlas-{name}"))
+    } else {
+        ctx.crewmate_dir.join(&name)
+    };
 
     let mut cmd = ctx.command(&program("codex"));
     cmd.args(exec_args(
@@ -92,13 +103,21 @@ pub(super) async fn run(ctx: TurnCtx<'_>) -> Result<TurnResult, String> {
     }
 
     // Reply is the content of the output file; empty string if missing.
-    // tree-access: ctx.crewmate_dir and the result file are hostd's own (crew-runtime under isolation)
-    let reply = std::fs::read_to_string(&result_file)
-        .unwrap_or_default()
-        .trim()
-        .to_string();
-    // tree-access: ctx.crewmate_dir and the result file are hostd's own (crew-runtime under isolation)
-    let _ = std::fs::remove_file(&result_file);
+    let reply = if isolated {
+        let rel = format!(".atlas-{name}");
+        let text = layout::read_beneath(work, &rel, MAX_REPLY).unwrap_or_default();
+        // tree-access: the name is ours and `work/` is an entry of the root-owned slug dir; unlink never follows the last link
+        let _ = std::fs::remove_file(&result_file);
+        text
+    } else {
+        // tree-access: ctx.crewmate_dir and the result file are hostd's own (crew-runtime under isolation)
+        let text = std::fs::read_to_string(&result_file).unwrap_or_default();
+        // tree-access: ctx.crewmate_dir and the result file are hostd's own (crew-runtime under isolation)
+        let _ = std::fs::remove_file(&result_file);
+        text
+    }
+    .trim()
+    .to_string();
 
     let usage = if usage_in.is_some() || usage_out.is_some() {
         Some(UsageRecord {

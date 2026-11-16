@@ -82,6 +82,13 @@ struct Buf {
     raw: HashMap<u64, RawOut>,
     file: Option<std::fs::File>,
     file_len: u64,
+    /// `Some` while the scrollback file is being rewritten off the lock: the output that arrived
+    /// since the snapshot, appended to the new file when the rewrite lands.
+    trim: Option<Vec<u8>>,
+    /// Bumped by `clear`, so a rewrite that started before it does not bring the old output back.
+    epoch: u64,
+    /// The session's files were removed (`remove_files`): nothing may write them again.
+    gone: bool,
 }
 
 impl Buf {
@@ -93,6 +100,9 @@ impl Buf {
             raw: HashMap::new(),
             file,
             file_len,
+            trim: None,
+            epoch: 0,
+            gone: false,
         }
     }
 

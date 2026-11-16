@@ -8,8 +8,10 @@
 					h.classList.add("ca-init");
 					// Only macOS has a see-through window (vibrancy); elsewhere the page paints its own backdrop.
 					if (!/Mac/.test(navigator.platform)) h.classList.add("opaque-window");
-					// Windows: no native title bar or menu; the page draws the caption buttons (WindowControls.svelte).
-					if (/Win/.test(navigator.platform)) h.classList.add("custom-chrome");
+					// Windows and Linux: no native title bar or menu; the page draws one title row (#269). Caption
+					// buttons (WindowControls.svelte) except on a Linux tiling WM, which owns the window.
+					if (!/Mac/.test(navigator.platform)) h.classList.add("custom-chrome");
+					if (window.__ATLAS_TILING__) h.classList.add("tiling-wm");
 					var s = localStorage.getItem("ca-scheme");
 					var p = localStorage.getItem("ca-preset");
 					var scheme = s ? JSON.parse(s) : "system";

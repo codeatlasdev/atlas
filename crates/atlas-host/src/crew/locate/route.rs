@@ -7,7 +7,7 @@
 //! `@parallel` slots take no part. Several files may match (a static `/settings` beats `/[tab]`):
 //! the more specific match comes first.
 
-use std::path::{Path, PathBuf};
+use std::path::Path;
 
 /// One file that renders the URL path, and how specific the match was (higher is better: static
 /// segments count more than parameters, parameters more than catch-alls).
@@ -227,33 +227,34 @@ pub fn go_route_matches(route: &str, url_path: &str) -> Option<u32> {
 /// Walk the work tree for the files route matching can look at: relative `/`-separated paths,
 /// without dot folders, `node_modules`, `target`, `build` outputs, bounded in count.
 pub fn list_files(root: &Path, max: usize) -> Vec<String> {
+    use crate::crew::spawn::layout::{Kind, read_dir_beneath};
     let mut out = vec![];
-    let mut stack: Vec<PathBuf> = vec![root.to_path_buf()];
+    // Directories as `/`-separated paths below the root, listed without following a link at any component: the
+    // tree is the crewmate's and may change under us (a link is `Kind::Other`, so it is neither listed nor entered).
+    let mut stack: Vec<String> = vec![String::new()];
     while let Some(dir) = stack.pop() {
-        let Ok(rd) = std::fs::read_dir(&dir) else {
+        let Ok(entries) = read_dir_beneath(root, &dir) else {
             continue;
         };
-        let mut entries: Vec<_> = rd.flatten().collect();
-        entries.sort_by_key(|e| e.file_name());
-        for e in entries {
-            let name = e.file_name().to_string_lossy().to_string();
-            let Ok(ft) = e.file_type() else { continue };
-            // Symlinks are not followed: a link out of the tree must not be read.
-            if ft.is_symlink() {
-                continue;
-            }
-            if ft.is_dir() {
-                if name.starts_with('.') || SKIP_DIRS.contains(&name.as_str()) {
-                    continue;
+        for (name, kind) in entries {
+            let rel = if dir.is_empty() {
+                name.clone()
+            } else {
+                format!("{dir}/{name}")
+            };
+            match kind {
+                Kind::Dir => {
+                    if !name.starts_with('.') && !SKIP_DIRS.contains(&name.as_str()) {
+                        stack.push(rel);
+                    }
                 }
-                stack.push(e.path());
-            } else if ft.is_file()
-                && let Ok(rel) = e.path().strip_prefix(root)
-            {
-                out.push(rel.to_string_lossy().replace('\\', "/"));
-                if out.len() >= max {
-                    return out;
+                Kind::File => {
+                    out.push(rel);
+                    if out.len() >= max {
+                        return out;
+                    }
                 }
+                Kind::Other => {}
             }
         }
     }

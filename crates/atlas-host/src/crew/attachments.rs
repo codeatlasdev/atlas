@@ -214,6 +214,7 @@ pub(crate) fn save(
     let dir = task_dir(store, crewmate_id, task_id);
     for (a, bytes) in files {
         if let Err(e) = crate::paths::write_private(&dir.join(&a.name), bytes) {
+            // tree-access: hostd-owned (the crew store, scratch or runtime), never a crewmate's tree
             let _ = std::fs::remove_dir_all(&dir);
             return Err(e);
         }
@@ -234,6 +235,7 @@ pub(crate) fn read(
         .iter()
         .find(|a| a.name == name)
         .ok_or_else(|| format!("task {} has no attachment {name:?}", task.id))?;
+    // tree-access: hostd-owned (the crew store, scratch or runtime), never a crewmate's tree
     let bytes = std::fs::read(task_dir(store, crewmate_id, &task.id).join(&a.name))
         .map_err(|e| format!("attachment {name:?} cannot be read: {e}"))?;
     Ok((a.clone(), bytes))
@@ -254,6 +256,7 @@ pub(crate) fn stage(
         let src = task_dir(store, crewmate_id, &task.id).join(&a.name);
         let rel = format!("{WORK_SUBDIR}/{}/{}", task.id, a.name);
         // The checkout is the crewmate's: every component is opened without following a link (N5).
+        // tree-access: hostd-owned (the crew store, scratch or runtime), never a crewmate's tree
         let copied = std::fs::File::open(&src)
             .and_then(|mut f| layout::write_beneath(work_dir, &rel, &mut f));
         match copied {
@@ -377,10 +380,12 @@ const MAX_LIVE_UPLOADS: usize = MAX_ATTACHMENTS * 2;
 /// The upload dirs of `uploads` (a crewmate's `uploads/`): real directories with a valid upload id for a name.
 /// A stray file or an odd name is not ours and is never listed, so never removed.
 fn upload_dirs(uploads: &Path) -> Vec<PathBuf> {
+    // tree-access: hostd-owned (the crew store, scratch or runtime), never a crewmate's tree
     let Ok(rd) = std::fs::read_dir(uploads) else {
         return vec![];
     };
     rd.filter_map(Result::ok)
+        // tree-access: hostd-owned (the crew store, scratch or runtime), never a crewmate's tree
         .filter(|e| e.file_type().is_ok_and(|t| t.is_dir()))
         .filter(|e| e.file_name().to_str().is_some_and(valid_upload))
         .map(|e| e.path())
@@ -394,7 +399,9 @@ fn live_uploads(uploads: &Path) -> usize {
 /// When an upload last got a piece: its `seq` file is rewritten by every one. A dir without it (a crash between
 /// creating the dir and the first write) falls back to the dir's own time, so it too ages out.
 fn upload_touched(dir: &Path) -> Option<std::time::SystemTime> {
+    // tree-access: hostd-owned (the crew store, scratch or runtime), never a crewmate's tree
     std::fs::metadata(dir.join("seq"))
+        // tree-access: hostd-owned (the crew store, scratch or runtime), never a crewmate's tree
         .or_else(|_| std::fs::metadata(dir))
         .and_then(|m| m.modified())
         .ok()
@@ -408,6 +415,7 @@ fn sweep_dir(uploads: &Path) {
         let stale = upload_touched(&dir)
             .and_then(|t| now.duration_since(t).ok())
             .is_some_and(|age| age > UPLOAD_TTL);
+        // tree-access: hostd-owned (the crew store, scratch or runtime), never a crewmate's tree
         if stale && let Err(e) = std::fs::remove_dir_all(&dir) {
             eprintln!(
                 "atlas crew: stale upload {} not removed: {e}",
@@ -451,13 +459,16 @@ pub(crate) fn put_piece(
     let uploads = store.crewmate_dir(crewmate_id).join("uploads");
     sweep_dir(&uploads);
     let dir = upload_dir(store, crewmate_id, upload);
+    // tree-access: hostd-owned (the crew store, scratch or runtime), never a crewmate's tree
     if !dir.exists() && live_uploads(&uploads) >= MAX_LIVE_UPLOADS {
         return Err(format!(
             "too many unfinished uploads ({MAX_LIVE_UPLOADS}); send the task or wait"
         ));
     }
     let file = dir.join("data");
+    // tree-access: hostd-owned (the crew store, scratch or runtime), never a crewmate's tree
     let have = std::fs::metadata(&file).map(|m| m.len()).unwrap_or(0);
+    // tree-access: hostd-owned (the crew store, scratch or runtime), never a crewmate's tree
     let expected = std::fs::read_to_string(dir.join("seq"))
         .ok()
         .and_then(|s| s.trim().parse::<u32>().ok())
@@ -466,14 +477,18 @@ pub(crate) fn put_piece(
         return Err(format!("expected piece {expected}, got {seq}"));
     }
     if have + bytes.len() as u64 > MAX_BYTES as u64 {
+        // tree-access: hostd-owned (the crew store, scratch or runtime), never a crewmate's tree
         let _ = std::fs::remove_dir_all(&dir);
         return Err(format!("upload is over {} MiB", MAX_BYTES / (1024 * 1024)));
     }
+    // tree-access: hostd-owned (the crew store, scratch or runtime), never a crewmate's tree
     std::fs::create_dir_all(&dir).map_err(|e| e.to_string())?;
+    // tree-access: hostd-owned (the crew store, scratch or runtime), never a crewmate's tree
     atlas_core::sys::owner_only(std::fs::OpenOptions::new().create(true).append(true))
         .open(&file)
         .and_then(|mut f| f.write_all(&bytes))
         .map_err(|e| format!("upload: {e}"))?;
+    // tree-access: hostd-owned (the crew store, scratch or runtime), never a crewmate's tree
     std::fs::write(dir.join("seq"), (seq + 1).to_string()).map_err(|e| e.to_string())?;
     Ok(have + bytes.len() as u64)
 }
@@ -484,8 +499,10 @@ fn take_upload(store: &CrewStore, crewmate_id: &str, upload: &str) -> Result<Vec
         return Err("upload must be 8 to 64 letters, digits, - or _".into());
     }
     let dir = upload_dir(store, crewmate_id, upload);
+    // tree-access: hostd-owned (the crew store, scratch or runtime), never a crewmate's tree
     let bytes = std::fs::read(dir.join("data"))
         .map_err(|_| format!("upload {upload} was not found (send its pieces first)"))?;
+    // tree-access: hostd-owned (the crew store, scratch or runtime), never a crewmate's tree
     let _ = std::fs::remove_dir_all(&dir);
     Ok(bytes)
 }
@@ -494,6 +511,7 @@ fn take_upload(store: &CrewStore, crewmate_id: &str, upload: &str) -> Result<Vec
 pub(crate) fn discard_uploads(store: &CrewStore, crewmate_id: &str, sent: &[Sent]) {
     for u in sent.iter().filter_map(|s| s.upload.as_deref()) {
         if valid_upload(u) {
+            // tree-access: hostd-owned (the crew store, scratch or runtime), never a crewmate's tree
             let _ = std::fs::remove_dir_all(upload_dir(store, crewmate_id, u));
         }
     }
@@ -607,6 +625,7 @@ pub(crate) fn store_agent(
                     .and_then(|n| n.to_str())
                     .ok_or_else(|| format!("bad file name: {}", f.display()))?
                     .to_string(),
+                // tree-access: hostd-owned (the crew store, scratch or runtime), never a crewmate's tree
                 bytes: std::fs::read(f).map_err(|e| format!("{}: {e}", f.display()))?,
             })
         })

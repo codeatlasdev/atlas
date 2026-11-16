@@ -192,7 +192,9 @@ impl TurnCtx<'_> {
     }
 }
 
+// tree-access: reached only for a crewmate that is not isolated; an isolated one runs through the spawn helper (`output_isolated`)
 fn tokio_cmd(cmd: &Cmd) -> tokio::process::Command {
+    // tree-access: reached only for a crewmate that is not isolated; an isolated one runs through the spawn helper (`output_isolated`)
     let mut c = tokio::process::Command::new(&cmd.program);
     c.args(&cmd.args).current_dir(&cmd.cwd).envs(&cmd.env);
     c

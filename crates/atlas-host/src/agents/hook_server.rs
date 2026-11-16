@@ -16,7 +16,7 @@ use tokio::io::{AsyncBufReadExt, AsyncReadExt, AsyncWriteExt, BufReader};
 use tokio::net::{TcpListener, TcpStream};
 
 use super::AgentHub;
-use super::hook_auth::{Caller, Verdict, authorize};
+use super::hook_auth::{Caller, Verdict, authorize, scrub};
 use crate::paths;
 
 const MAX_BODY: usize = 1024 * 1024;
@@ -154,7 +154,12 @@ async fn serve(
         } else {
             match serde_json::from_slice::<Value>(&body_bytes) {
                 Err(_) => ("400 Bad Request", String::new()),
-                Ok(v) => route(hub, mobile.can_approve(), &path, &v).await,
+                Ok(mut v) => {
+                    if let Some(c) = &caller {
+                        scrub(c, &mut v);
+                    }
+                    route(hub, mobile.can_approve(), &path, &v).await
+                }
             }
         }
     };

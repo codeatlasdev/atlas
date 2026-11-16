@@ -15,17 +15,6 @@ use crate::crew::store::{ProjectRef, crewmate_dir_in};
 use base64::Engine as _;
 use base64::engine::general_purpose::URL_SAFE_NO_PAD;
 
-// ─── Public types ─────────────────────────────────────────────────────────────
-
-#[allow(dead_code)]
-pub struct AtlasYamlInfo {
-    pub name: String,
-    pub services: Vec<String>,
-    /// Inferred `owner/repo` from the git remote, for github trigger defaults.
-    #[allow(dead_code)]
-    pub git_remote: Option<String>,
-}
-
 // ─── prepare ──────────────────────────────────────────────────────────────────
 
 /// `<base>/crew/<id>/work/`: the crewmate's git worktree (or the folder of a crewmate without a project).
@@ -60,6 +49,7 @@ pub fn current_work_dir(
             .map(PathBuf::from)
             .unwrap_or_else(|| work_dir_for(base_dir, &crewmate.id, iso)),
     };
+    // tree-access: `work/` is an entry of the root-owned slug dir (nobody can replace it) or an operator-set path; stat only
     if dir.is_dir() {
         Ok(dir)
     } else {
@@ -188,6 +178,7 @@ fn fetch_args<'a>(sub: &'a str, upload_pack: &'a Option<String>) -> Vec<&'a str>
 /// nothing to remove. Errors are returned so the caller can say what was left; every step still runs.
 pub async fn remove_checkout(base_dir: &Path, crewmate_id: &str) -> Result<(), String> {
     let worktree = work_dir(base_dir, crewmate_id);
+    // tree-access: the store's own `crew/<id>/work`, a shared-clone worktree of a crewmate that is not isolated
     if !worktree.join(".git").exists() {
         return Ok(());
     }
@@ -231,49 +222,6 @@ pub async fn remove_checkout(base_dir: &Path, crewmate_id: &str) -> Result<(), S
 }
 
 // ─── atlas.yaml ───────────────────────────────────────────────────────────────
-
-/// Read `atlas.yaml` from `work_dir` and extract the project name, service
-/// names, and (if available) the inferred GitHub repo slug.
-#[allow(dead_code)]
-pub fn read_atlas_yaml(work_dir: &Path) -> Option<AtlasYamlInfo> {
-    let content = std::fs::read_to_string(work_dir.join("atlas.yaml")).ok()?;
-
-    let name = content
-        .lines()
-        .find(|l| l.starts_with("name:"))
-        .and_then(|l| l.split_once(':'))
-        .map(|(_, v)| v.trim().to_string())
-        .unwrap_or_default();
-
-    let mut in_services = false;
-    let mut services = Vec::new();
-    for line in content.lines() {
-        if line.starts_with("services:") {
-            in_services = true;
-            continue;
-        }
-        if in_services {
-            if !line.starts_with(' ') && !line.starts_with('\t') {
-                in_services = false;
-                continue;
-            }
-            // Handles both `  name: foo` and `  - name: foo` (list-item) formats.
-            let trimmed = line.trim_start_matches([' ', '\t', '-'].as_ref());
-            if let Some((k, v)) = trimmed.split_once(':')
-                && k.trim() == "name"
-            {
-                services.push(v.trim().to_string());
-            }
-        }
-    }
-
-    let git_remote = infer_github_repo(work_dir, &Git::local());
-    Some(AtlasYamlInfo {
-        name,
-        services,
-        git_remote,
-    })
-}
 
 /// Infer `owner/repo` from the `origin` git remote in `work_dir`.
 ///
@@ -399,7 +347,9 @@ async fn prepare_git(
     let worktree = work_dir(base_dir, crewmate_id);
 
     // Clone into shared dir if it doesn't exist yet.
+    // tree-access: hostd-owned (the crew store, scratch or runtime), never a crewmate's tree
     if !shared_dir.exists() {
+        // tree-access: hostd-owned (the crew store, scratch or runtime), never a crewmate's tree
         std::fs::create_dir_all(shared_dir.parent().unwrap_or(base_dir))
             .map_err(|e| format!("mkdir error: {e}"))?;
         let shared_str = shared_dir.to_string_lossy().into_owned();
@@ -418,7 +368,9 @@ async fn prepare_git(
     }
 
     // Add the per-crewmate worktree if the directory doesn't exist.
+    // tree-access: hostd-owned (the crew store, scratch or runtime), never a crewmate's tree
     if !worktree.exists() {
+        // tree-access: hostd-owned (the crew store, scratch or runtime), never a crewmate's tree
         std::fs::create_dir_all(worktree.parent().unwrap_or(base_dir))
             .map_err(|e| format!("mkdir error: {e}"))?;
         let wt_str = worktree.to_string_lossy().into_owned();
@@ -469,10 +421,11 @@ async fn prepare_isolated(
     let _one_at_a_time = CHECKOUT.lock().await;
 
     let work = iso.work();
-    if work.join(".git").exists() {
+    if super::spawn::layout::has_checkout(&work) {
         return Ok(work);
     }
     // `work/` comes from provisioning (the crewmate's directory is root's: hostd cannot make it).
+    // tree-access: hostd-owned (the crew store, scratch or runtime), never a crewmate's tree
     if !work.is_dir() {
         return Err(format!(
             "{} does not exist: the Linux user {} is not provisioned yet",
@@ -526,7 +479,9 @@ async fn prepare_isolated(
 
 pub(crate) fn prepare_path(path: &str) -> Result<PathBuf, String> {
     let p = PathBuf::from(path);
+    // tree-access: hostd-owned (the crew store, scratch or runtime), never a crewmate's tree
     match std::fs::metadata(&p) {
+        // tree-access: hostd-owned (the crew store, scratch or runtime), never a crewmate's tree
         Ok(m) if m.is_dir() => Ok(p),
         Ok(_) => Err(format!("not a directory: {path}")),
         Err(e) => Err(format!("path error: {e}")),
@@ -991,32 +946,6 @@ mod tests {
     fn prepare_path_accepts_dir() {
         let d = tempfile::tempdir().unwrap();
         assert!(prepare_path(d.path().to_str().unwrap()).is_ok());
-    }
-
-    #[test]
-    fn read_atlas_yaml_extracts_name_and_services() {
-        let dir = tempfile::tempdir().unwrap();
-        std::fs::write(
-            dir.path().join("atlas.yaml"),
-            r#"
-name: my-project
-services:
-  - name: api
-    command: cargo run
-  - name: web
-    command: bun dev
-"#,
-        )
-        .unwrap();
-        let info = read_atlas_yaml(dir.path()).unwrap();
-        assert_eq!(info.name, "my-project");
-        assert_eq!(info.services, vec!["api", "web"]);
-    }
-
-    #[test]
-    fn read_atlas_yaml_missing_returns_none() {
-        let dir = tempfile::tempdir().unwrap();
-        assert!(read_atlas_yaml(dir.path()).is_none());
     }
 
     #[test]

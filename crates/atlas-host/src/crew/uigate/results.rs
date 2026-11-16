@@ -57,6 +57,7 @@ impl TaskResults {
     /// record: `rerun_failed` on an empty record would claim there is nothing to rerun.
     pub fn load(captures_dir: &Path) -> Result<Self, String> {
         let p = Self::path(captures_dir);
+        // tree-access: hostd-owned (the crew store, scratch or runtime), never a crewmate's tree
         match std::fs::read_to_string(&p) {
             Ok(t) => serde_json::from_str(&t).map_err(|e| {
                 format!(
@@ -70,6 +71,7 @@ impl TaskResults {
     }
 
     pub fn save(&self, captures_dir: &Path) -> Result<(), String> {
+        // tree-access: hostd-owned (the crew store, scratch or runtime), never a crewmate's tree
         std::fs::create_dir_all(captures_dir)
             .map_err(|e| format!("ui gate: cannot create {}: {e}", captures_dir.display()))?;
         let p = Self::path(captures_dir);

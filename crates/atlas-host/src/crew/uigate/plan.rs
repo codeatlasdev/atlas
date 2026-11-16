@@ -7,6 +7,7 @@ use atlas_core::affected::{self, ActionInputs};
 
 use super::regressions::Regression;
 use super::scenario::{Scenario, Why};
+use super::tree::Tree;
 
 /// A scenario and the reason it is planned.
 #[derive(Debug, Clone, PartialEq, Eq)]
@@ -33,20 +34,42 @@ pub fn url_of(base_url: &str, route: &str) -> Result<String, String> {
 }
 
 /// The routes the change touches, from the project's declared graph (`atlas.yaml` `affected:`,
-/// `atlas_core::affected::resolve`, the same answer as the MCP tool `atlas_affected`).
-pub fn routes_of(root: &Path, files: &[String]) -> Result<Vec<String>, String> {
-    let (cfg, _) = atlas_tui::config::load_or_detect(root).map_err(|e| format!("{e:#}"))?;
-    let actions: Vec<ActionInputs> = cfg
-        .actions
-        .iter()
-        .filter_map(|a| {
-            a.cache.as_ref().map(|c| ActionInputs {
-                label: a.label.clone(),
-                inputs: c.inputs.clone(),
-            })
-        })
-        .collect();
-    let declared = cfg.affected.as_ref().map(|a| a.declared());
+/// `atlas_core::affected::resolve`, the same answer as the MCP tool `atlas_affected`). In an isolated crewmate's
+/// tree only the `affected:` block of `atlas.yaml` is read (beneath the root, see [`Tree`]) and its `command` is
+/// refused: it would run as the crew user, with the crewmate's text as the program.
+pub fn routes_of(tree: &Tree, root: &Path, files: &[String]) -> Result<Vec<String>, String> {
+    let (declared, actions) = match tree {
+        Tree::Own => {
+            let (cfg, _) = atlas_tui::config::load_or_detect(root).map_err(|e| format!("{e:#}"))?;
+            let actions: Vec<ActionInputs> = cfg
+                .actions
+                .iter()
+                .filter_map(|a| {
+                    a.cache.as_ref().map(|c| ActionInputs {
+                        label: a.label.clone(),
+                        inputs: c.inputs.clone(),
+                    })
+                })
+                .collect();
+            (cfg.affected.as_ref().map(|a| a.declared()), actions)
+        }
+        Tree::Isolated(_) => {
+            let declared = match tree.read_text(root, "atlas.yaml")? {
+                Some(yaml) => atlas_tui::config::affected_of(&yaml)
+                    .map_err(|e| format!("{e:#}"))?
+                    .map(|a| a.declared()),
+                None => None,
+            };
+            if declared
+                .as_ref()
+                .and_then(|d| d.command.as_deref())
+                .is_some_and(|c| !c.trim().is_empty())
+            {
+                return Err("ui gate: the `affected.command` of atlas.yaml is not run for a crewmate that runs as its own user (it would run as the crew user, with the crewmate's text as the program). Pass the `routes` of the pages you touched, or declare `affected.rules`".into());
+            }
+            (declared, vec![])
+        }
+    };
     affected::resolve(declared.as_ref(), &actions, root, files).map(|(_, i)| i.routes)
 }
 

@@ -110,22 +110,45 @@ fn an_image_outside_the_work_tree_is_refused_even_through_a_symlink() {
     .unwrap();
     std::fs::write(other.join("secret.png"), png_header(390, 10)).unwrap();
 
-    let ok = resolve_image(&work, ".atlas/attachments/t1/a.png").unwrap();
-    assert!(ok.ends_with("a.png"));
+    assert_eq!(
+        read_image(&work, ".atlas/attachments/t1/a.png").unwrap(),
+        png_header(390, 10)
+    );
     let abs = work.join(".atlas/attachments/t1/a.png");
-    assert!(resolve_image(&work, abs.to_str().unwrap()).is_ok());
+    assert!(read_image(&work, abs.to_str().unwrap()).is_ok());
+    assert!(read_image(&work, "./.atlas/attachments/t1/a.png").is_ok());
 
-    let e = resolve_image(&work, "../other/secret.png").unwrap_err();
+    let e = read_image(&work, "../other/secret.png").unwrap_err();
     assert!(e.contains("outside your work tree"), "{e}");
-    let e = resolve_image(&work, other.join("secret.png").to_str().unwrap()).unwrap_err();
+    let e = read_image(&work, other.join("secret.png").to_str().unwrap()).unwrap_err();
     assert!(e.contains("outside your work tree"), "{e}");
     std::os::unix::fs::symlink(&other, work.join("link")).unwrap();
-    let e = resolve_image(&work, "link/secret.png").unwrap_err();
+    let e = read_image(&work, "link/secret.png").unwrap_err();
     assert!(e.contains("outside your work tree"), "{e}");
-    let e = resolve_image(&work, "missing.png").unwrap_err();
+    // A link to a file (the last component) is refused the same way.
+    std::os::unix::fs::symlink(other.join("secret.png"), work.join("leaf.png")).unwrap();
+    let e = read_image(&work, "leaf.png").unwrap_err();
+    assert!(e.contains("outside your work tree"), "{e}");
+    let e = read_image(&work, "missing.png").unwrap_err();
     assert!(e.contains("no image"), "{e}");
-    let e = resolve_image(&work, ".atlas").unwrap_err();
+    let e = read_image(&work, ".atlas").unwrap_err();
     assert!(e.contains("not a file"), "{e}");
+}
+
+// Security review 5 (the class): `locate` told an agent whether any file the crew user can stat exists
+// ("outside your work tree" for one that does, "no image" for one that does not).
+#[test]
+fn locate_does_not_say_whether_a_path_outside_the_work_tree_exists() {
+    let tmp = tempfile::tempdir().unwrap();
+    let work = tmp.path().join("work");
+    std::fs::create_dir_all(&work).unwrap();
+    std::fs::write(tmp.path().join("exists.png"), "x").unwrap();
+    let say = |p: &str| read_image(&work, p).unwrap_err().replace(p, "<path>");
+    assert_eq!(
+        say(tmp.path().join("exists.png").to_str().unwrap()),
+        say(tmp.path().join("gone.png").to_str().unwrap())
+    );
+    assert_eq!(say("../exists.png"), say("../gone.png"));
 }
 
 #[test]

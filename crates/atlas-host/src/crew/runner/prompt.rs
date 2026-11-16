@@ -110,7 +110,7 @@ async fn prepare_work_dir(
         let iso = hub.crew.store.isolated(&crewmate.id);
         let work = project::work_dir_for(&hub.crew.dir, &crewmate.id, iso.as_ref());
         if let ProjectRef::Git { url, .. } = proj
-            && !work.join(".git").exists()
+            && !crate::crew::spawn::layout::has_checkout(&work)
         {
             task.preparing = Some(
                 url.trim_end_matches(".git")
@@ -164,6 +164,7 @@ async fn prepare_work_dir(
             .to_string()
         })
     };
+    // tree-access: hostd-owned (the crew store, scratch or runtime), never a crewmate's tree
     let _ = std::fs::create_dir_all(&dir);
     Ok(dir)
 }
@@ -235,6 +236,7 @@ fn task_prompt(
 /// desktop writes: a custom provider key reaches every engine and the terminal agent through it.
 pub(super) fn load_agent_env(dir: &Path, agent: &str) -> BTreeMap<String, String> {
     let mut env = BTreeMap::new();
+    // tree-access: hostd-owned (the crew store, scratch or runtime), never a crewmate's tree
     let Ok(data) = std::fs::read_to_string(dir.join("agent-env").join(format!("{agent}.env")))
     else {
         return env;
@@ -254,6 +256,7 @@ pub(super) fn load_agent_env(dir: &Path, agent: &str) -> BTreeMap<String, String
 /// The hook endpoint the desktop wrote (`ATLAS_HOOK_PORT`, `ATLAS_HOOK_TOKEN`), `(0, "")` when absent.
 pub(super) fn load_hook_endpoint(dir: &Path) -> (u16, String) {
     let env_path = dir.join("desktop").join("hook-endpoint.env");
+    // tree-access: hostd-owned (the crew store, scratch or runtime), never a crewmate's tree
     let content = std::fs::read_to_string(env_path).unwrap_or_default();
     let mut port = 0u16;
     let mut token = String::new();

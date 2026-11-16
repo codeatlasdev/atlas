@@ -78,34 +78,44 @@ impl Request {
     }
 }
 
-/// `image` resolved inside `work`: it must exist, be a file and stay inside the work tree once
-/// symlinks are resolved (an agent cannot point `locate` at `/etc/passwd` or at another
-/// crewmate's files).
-pub fn resolve_image(work: &Path, image: &str) -> Result<PathBuf, String> {
-    let root = work.canonicalize().map_err(|e| {
+/// The bytes of `image`, a path inside `work` (relative to it, or absolute under it). The tree is the crewmate's, so
+/// nothing of it is resolved by hostd's own `stat`: the path is checked as text (no `..`, an absolute one must start
+/// with `work`), and the file is opened one component at a time without following a link
+/// ([`layout::read_bytes_beneath`]). A path outside the tree is refused whether or not it exists (`locate` is no way
+/// to ask whether a file of the crew user's exists), and so is a link on the way: an agent cannot point `locate` at
+/// `/etc/passwd` or at another crewmate's files.
+pub fn read_image(work: &Path, image: &str) -> Result<Vec<u8>, String> {
+    use std::path::Component;
+    let outside = || {
         format!(
-            "locate: the work tree {} is not readable: {e}",
-            work.display()
-        )
-    })?;
-    let p = Path::new(image);
-    let joined = if p.is_absolute() {
-        p.to_path_buf()
-    } else {
-        root.join(p)
-    };
-    let real = joined
-        .canonicalize()
-        .map_err(|_| format!("locate: no image at {image} in your work tree"))?;
-    if !real.starts_with(&root) {
-        return Err(format!(
             "locate: {image} is outside your work tree; images are staged under .atlas/attachments/"
-        ));
+        )
+    };
+    let p = Path::new(image);
+    let rel = if p.is_absolute() {
+        p.strip_prefix(work).map_err(|_| outside())?
+    } else {
+        p
+    };
+    let mut parts = vec![];
+    for c in rel.components() {
+        match c {
+            Component::Normal(n) => parts.push(n.to_str().ok_or_else(outside)?),
+            Component::CurDir => {}
+            _ => return Err(outside()),
+        }
     }
-    if !real.is_file() {
-        return Err(format!("locate: {image} is not a file"));
-    }
-    Ok(real)
+    layout::read_bytes_beneath(work, &parts.join("/"), MAX_IMAGE_BYTES).map_err(|e| {
+        if e.kind() == std::io::ErrorKind::NotFound {
+            format!("locate: no image at {image} in your work tree")
+        } else if layout::is_link_refusal(&e) {
+            outside()
+        } else if e.kind() == std::io::ErrorKind::InvalidInput && !parts.is_empty() {
+            format!("locate: {image} is not a file")
+        } else {
+            format!("locate: cannot read the image {image}: {e}")
+        }
+    })
 }
 
 /// The pixel width of a PNG, JPEG, GIF or WebP, from its header; `None` for anything else.
@@ -284,20 +294,7 @@ pub async fn handle(
         .map_err(|e| format!("locate: crewmate {crewmate_id} is not readable: {e}"))?;
     let iso = store.isolated(crewmate_id);
     let work = work_tree(hostd_dir, &crewmate, iso.as_ref())?;
-    let image = resolve_image(&work, &req.image)?;
-    // Not `fs::read`: the tree is the crewmate's. No link followed, and no more than MAX_IMAGE_BYTES in memory.
-    let rel = work
-        .canonicalize()
-        .ok()
-        .and_then(|w| {
-            image
-                .strip_prefix(w)
-                .ok()
-                .map(|r| r.to_string_lossy().replace('\\', "/"))
-        })
-        .ok_or("locate: the image is outside your work tree")?;
-    let bytes = layout::read_bytes_beneath(&work, &rel, MAX_IMAGE_BYTES)
-        .map_err(|e| format!("locate: cannot read the image: {e}"))?;
+    let bytes = read_image(&work, &req.image)?;
     let image_w = image_width(&bytes);
     let Some(url) = req.url.clone() else {
         return Err(
@@ -315,6 +312,7 @@ pub async fn handle(
     spec.reach = capture::Reach::of(store, crewmate_id).map_err(|e| as_locate(&e))?;
 
     let scratch = capture::scratch_dir(hostd_dir);
+    // tree-access: hostd-owned (the crew store, scratch or runtime), never a crewmate's tree
     std::fs::create_dir_all(&scratch)
         .map_err(|e| format!("locate: cannot make {}: {e}", scratch.display()))?;
     let _cleanup = capture::RemoveOnDrop(scratch.clone());
@@ -326,6 +324,7 @@ pub async fn handle(
         .first()
         .ok_or("locate: the runner wrote no DOM report")?;
     let dom: DomReport = serde_json::from_slice(
+        // tree-access: hostd-owned (the crew store, scratch or runtime), never a crewmate's tree
         &std::fs::read(dom_path).map_err(|e| format!("locate: cannot read the DOM report: {e}"))?,
     )
     .map_err(|e| format!("locate: the DOM report is not valid: {e}"))?;

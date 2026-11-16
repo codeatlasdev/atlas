@@ -294,6 +294,167 @@ pub fn read_bytes_beneath(root: &Path, rel: &str, max: u64) -> std::io::Result<V
     Ok(bytes)
 }
 
+/// `root/rel` opened for reading the way [`read_bytes_beneath`] does (no link followed anywhere on the way, a
+/// regular file), for a caller that streams it.
+#[cfg(unix)]
+pub fn open_regular_beneath(root: &Path, rel: &str) -> std::io::Result<std::fs::File> {
+    open_beneath(root, rel, false)
+}
+
+/// Whether `work` already holds a checkout: its `.git` exists and is not a link. hostd decides with this whether to
+/// clone into a crewmate's tree, and a `.git` the crewmate made a link (to another crewmate's repository, say)
+/// is not one, and is never asked about through the link.
+pub fn has_checkout(work: &Path) -> bool {
+    std::fs::symlink_metadata(work.join(".git")).is_ok_and(|m| !m.file_type().is_symlink())
+}
+
+/// What a directory entry is, without following a link: a link is [`Kind::Other`].
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum Kind {
+    Dir,
+    File,
+    Other,
+}
+
+/// The entries of the directory `root/rel` (`rel` empty: `root` itself), sorted by name, each with its [`Kind`]:
+/// the directory is opened one component at a time without following a link, like [`read_bytes_beneath`], so a
+/// directory the crewmate swapped for a link is an error and never a listing of what it points at.
+#[cfg(unix)]
+pub fn read_dir_beneath(root: &Path, rel: &str) -> std::io::Result<Vec<(String, Kind)>> {
+    use std::ffi::{CStr, CString};
+    use std::io::{Error, ErrorKind};
+    use std::os::fd::{AsRawFd, FromRawFd, IntoRawFd, OwnedFd};
+    use std::os::unix::ffi::OsStrExt;
+
+    let invalid = || Error::new(ErrorKind::InvalidInput, format!("bad path {rel:?}"));
+    let open = |at: Option<&OwnedFd>, name: &CString| -> std::io::Result<OwnedFd> {
+        let flags = libc::O_RDONLY | libc::O_DIRECTORY | libc::O_NOFOLLOW | libc::O_CLOEXEC;
+        // SAFETY: a NUL-terminated name, and a descriptor that is open (or AT_FDCWD for the absolute root).
+        let fd = unsafe {
+            libc::openat(
+                at.map_or(libc::AT_FDCWD, |d| d.as_raw_fd()),
+                name.as_ptr(),
+                flags,
+            )
+        };
+        // SAFETY: a fresh descriptor from openat that nothing else owns.
+        (fd >= 0)
+            .then(|| unsafe { OwnedFd::from_raw_fd(fd) })
+            .ok_or_else(Error::last_os_error)
+    };
+    // `root` is the path hostd computed and is opened as given (a link in it is hostd's own doing, not the crewmate's).
+    let mut dir = {
+        let c = CString::new(root.as_os_str().as_bytes()).map_err(|_| invalid())?;
+        // SAFETY: as above.
+        let fd = unsafe {
+            libc::open(
+                c.as_ptr(),
+                libc::O_RDONLY | libc::O_DIRECTORY | libc::O_CLOEXEC,
+            )
+        };
+        // SAFETY: a fresh descriptor.
+        (fd >= 0)
+            .then(|| unsafe { OwnedFd::from_raw_fd(fd) })
+            .ok_or_else(Error::last_os_error)?
+    };
+    if !rel.is_empty() {
+        for part in rel.split('/') {
+            if part.is_empty() || part == "." || part == ".." || part.contains('\0') {
+                return Err(invalid());
+            }
+            dir = open(Some(&dir), &CString::new(part).map_err(|_| invalid())?)?;
+        }
+    }
+    let dup = open(Some(&dir), &CString::new(".").map_err(|_| invalid())?)?;
+    // SAFETY: `fdopendir` takes ownership of `dup` on success; on failure we still own it and close it by dropping.
+    let stream = unsafe { libc::fdopendir(dup.as_raw_fd()) };
+    if stream.is_null() {
+        return Err(Error::last_os_error());
+    }
+    let _ = dup.into_raw_fd();
+    let mut out = vec![];
+    loop {
+        // SAFETY: `stream` is a live DIR*; readdir returns null at the end (errno is not checked: a short
+        // listing is only a shorter list of candidates).
+        let e = unsafe { libc::readdir(stream) };
+        if e.is_null() {
+            break;
+        }
+        // SAFETY: `d_name` is NUL-terminated inside the dirent readdir returned.
+        let name = unsafe { CStr::from_ptr((*e).d_name.as_ptr()) };
+        let Ok(name) = name.to_str() else { continue };
+        if name == "." || name == ".." {
+            continue;
+        }
+        // SAFETY: reading a plain field of the dirent.
+        let kind = match unsafe { (*e).d_type } {
+            libc::DT_DIR => Kind::Dir,
+            libc::DT_REG => Kind::File,
+            libc::DT_UNKNOWN => {
+                let c = CString::new(name).map_err(|_| invalid())?;
+                // SAFETY: a zeroed stat is a valid out-parameter; `dir` is open.
+                let mut st: libc::stat = unsafe { std::mem::zeroed() };
+                let r = unsafe {
+                    libc::fstatat(
+                        dir.as_raw_fd(),
+                        c.as_ptr(),
+                        &mut st,
+                        libc::AT_SYMLINK_NOFOLLOW,
+                    )
+                };
+                match (r, st.st_mode & libc::S_IFMT) {
+                    (0, libc::S_IFDIR) => Kind::Dir,
+                    (0, libc::S_IFREG) => Kind::File,
+                    _ => Kind::Other,
+                }
+            }
+            _ => Kind::Other,
+        };
+        out.push((name.to_string(), kind));
+    }
+    // SAFETY: closes the stream (and the descriptor it owns) exactly once.
+    unsafe { libc::closedir(stream) };
+    out.sort_by(|a, b| a.0.cmp(&b.0));
+    Ok(out)
+}
+
+#[cfg(not(unix))]
+pub fn read_dir_beneath(root: &Path, rel: &str) -> std::io::Result<Vec<(String, Kind)>> {
+    let mut out = vec![];
+    for e in std::fs::read_dir(root.join(rel))?.flatten() {
+        let Ok(t) = e.file_type() else { continue };
+        let kind = if t.is_dir() {
+            Kind::Dir
+        } else if t.is_file() {
+            Kind::File
+        } else {
+            Kind::Other
+        };
+        out.push((e.file_name().to_string_lossy().into_owned(), kind));
+    }
+    out.sort_by(|a, b| a.0.cmp(&b.0));
+    Ok(out)
+}
+
+/// Whether `e` is what the `*_beneath` opens answer for a link on the way (`O_NOFOLLOW`: ELOOP, or ENOTDIR when
+/// the link stands for a directory).
+pub fn is_link_refusal(e: &std::io::Error) -> bool {
+    #[cfg(unix)]
+    {
+        matches!(e.raw_os_error(), Some(libc::ELOOP | libc::ENOTDIR))
+    }
+    #[cfg(not(unix))]
+    {
+        let _ = e;
+        false
+    }
+}
+
+#[cfg(not(unix))]
+pub fn open_regular_beneath(root: &Path, rel: &str) -> std::io::Result<std::fs::File> {
+    std::fs::File::open(root.join(rel))
+}
+
 #[cfg(unix)]
 fn open_beneath(root: &Path, rel: &str, write: bool) -> std::io::Result<std::fs::File> {
     use std::ffi::CString;
@@ -518,6 +679,57 @@ mod beneath_tests {
             }
         }
         out
+    }
+
+    #[test]
+    fn a_listing_never_enters_a_link_and_marks_what_it_finds() {
+        let t = tempfile::tempdir().unwrap();
+        let root = t.path().join("work");
+        let other = t.path().join("other");
+        std::fs::create_dir_all(root.join("src")).unwrap();
+        std::fs::create_dir_all(&other).unwrap();
+        std::fs::write(root.join("a.txt"), "a").unwrap();
+        std::fs::write(other.join("secret"), "s").unwrap();
+        symlink(&other, root.join("dirlink")).unwrap();
+        symlink(other.join("secret"), root.join("filelink")).unwrap();
+        assert_eq!(
+            read_dir_beneath(&root, "").unwrap(),
+            [
+                ("a.txt".into(), Kind::File),
+                ("dirlink".into(), Kind::Other),
+                ("filelink".into(), Kind::Other),
+                ("src".into(), Kind::Dir),
+            ]
+        );
+        assert!(
+            read_dir_beneath(&root, "dirlink").is_err(),
+            "listed what a link points at"
+        );
+        std::fs::write(root.join("src/b.txt"), "b").unwrap();
+        assert_eq!(
+            read_dir_beneath(&root, "src").unwrap(),
+            [("b.txt".into(), Kind::File)]
+        );
+        assert!(read_dir_beneath(&root, "../other").is_err());
+        assert!(read_dir_beneath(&root, "a.txt").is_err());
+    }
+
+    #[test]
+    fn a_dot_git_that_is_a_link_is_not_a_checkout() {
+        let t = tempfile::tempdir().unwrap();
+        let work = t.path().join("work");
+        let other = t.path().join("other/.git");
+        std::fs::create_dir_all(&work).unwrap();
+        std::fs::create_dir_all(&other).unwrap();
+        assert!(!has_checkout(&work), "no .git");
+        symlink(&other, work.join(".git")).unwrap();
+        assert!(!has_checkout(&work), "a link to another repository");
+        std::fs::remove_file(work.join(".git")).unwrap();
+        std::fs::create_dir(work.join(".git")).unwrap();
+        assert!(has_checkout(&work));
+        std::fs::remove_dir(work.join(".git")).unwrap();
+        std::fs::write(work.join(".git"), "gitdir: x").unwrap();
+        assert!(has_checkout(&work), "a worktree's .git file");
     }
 }
 

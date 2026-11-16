@@ -152,6 +152,7 @@ impl Ctx {
 fn adopt_memory(old: &Path, new: &Path) -> std::io::Result<()> {
     // Neither read nor written through a link: `new` is in the crewmate's directory.
     let have = layout::read_nofollow(new).unwrap_or_default();
+    // tree-access: reads `crew-home/memory.md` (hostd's); the crewmate's file is read and written with the `*_nofollow` helpers
     let before = match std::fs::read_to_string(old) {
         Ok(t) if !t.trim().is_empty() => t,
         _ => return Ok(()),
@@ -161,6 +162,7 @@ fn adopt_memory(old: &Path, new: &Path) -> std::io::Result<()> {
     }
     // In place: the file is the crewmate's (group-writable), not replaced by hostd's.
     layout::write_nofollow(new, before.as_bytes())?;
+    // tree-access: renames hostd's own old memory file inside the crew home
     std::fs::rename(old, old.with_extension("md.pre-isolation"))
 }
 

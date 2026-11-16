@@ -465,6 +465,25 @@ wait_task "$CMB" "$TBS" cancelled 30
 wait_idle "$CMB"
 echo "capture: B's loopback port (127.0.0.1 and [::]), 0.0.0.0 and 169.254.169.254 refused, A's own loopback server allowed through to the browsers"
 
+# (9d2) N1 of the fifth review: `ui_gate` planned a change from the `atlas.yaml` in A's tree and ran its `affected.command`
+# with `sh -c` inside hostd, as the crew user; and it read and wrote `.atlas/ui-regressions.json` through links. A's agent
+# writes an atlas.yaml whose command touches a file in the crew home (only the crew user can make one there), asks for a
+# plan, then links `.atlas` to B's work tree and asks to register a regression: B's tree must not get the registry.
+denied "A making a file in the crew home" as_user "$CMUSER" touch "$HOME_DIR/e2e-affected-ran"
+srv rm -rf "$WORKA/.atlas" "$WORKA/atlas.yaml"
+T=$(send_task "$CM" "E2E_UIGATE $SLUGB")
+wait_task "$CM" "$T" "done" 90
+UIGATE=$(task_json "$CM" "$T" | jq -r '.reply // .result')
+echo "A's ui_gate calls: $UIGATE"
+srv test -L "$WORKA/.atlas" || fail "control: A's .atlas is not a link, so the check proves nothing: $UIGATE"
+[[ $UIGATE == *"plan=["*"affected.command"*"link=["* ]] || fail "ui_gate did not refuse A's affected.command: $UIGATE"
+srv test ! -e "$HOME_DIR/e2e-affected-ran" || fail "hostd ran A's affected.command as the crew user"
+[[ $UIGATE == *"link=["*"ui-regressions.json"* ]] || fail "ui_gate did not refuse the registry behind A's .atlas link: $UIGATE"
+srv test ! -e "$DIRB/work/ui-regressions.json" || fail "hostd wrote the registry into B's work tree through A's .atlas link"
+srv rm -f "$WORKA/.atlas" "$WORKA/atlas.yaml"
+wait_idle "$CM"
+echo "ui_gate: A's affected.command did not run as the crew user, and the registry behind a .atlas link into B's tree was refused"
+
 # (9e) S-C of the fourth review: the egress rules were replayed at boot only, so `systemctl restart nftables` (whose
 # /etc/nftables.conf begins with `flush ruleset`) left the crewmates with no firewall until the next boot. The egress unit
 # is now PartOf=nftables.service and loads the table again with it; and while the table is missing the helper starts nothing.
@@ -477,7 +496,14 @@ srv systemctl restart atlas-crew-egress
 until_true 30 "the egress unit to load the atlas_crew table" table_loaded
 srv systemctl restart nftables
 until_true 30 "the egress unit to load the atlas_crew table again after nftables restarted" table_loaded
-echo "firewall: a restart of nftables reloaded the table"
+# S-1 of the fifth review: PartOf= carries stop and restart, not a reload, and `systemctl reload nftables` runs
+# `nft -f /etc/nftables.conf` (which begins with `flush ruleset`). The table is removed here the way that flush does, and the
+# reload of the ACTIVE nftables must bring it back through ReloadPropagatedFrom= and ExecReload=.
+srv nft delete table inet atlas_crew
+! table_loaded >/dev/null 2>&1 || fail "control: the atlas_crew table is still loaded after deleting it"
+srv systemctl reload nftables
+until_true 30 "the egress unit to load the atlas_crew table again after nftables reloaded" table_loaded
+echo "firewall: a restart and a reload of nftables reloaded the table"
 
 # (10) the crew user's GitHub login never reaches a process that runs as a crewmate (N2). A fake `gh` stands in for
 # the operator's login; crewmate C has a project and no token of its own, so hostd mirrors the project into

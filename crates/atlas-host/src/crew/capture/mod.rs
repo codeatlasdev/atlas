@@ -70,12 +70,15 @@ pub(crate) static TEST_RUNNER: parking_lot::Mutex<Option<(PathBuf, Duration)>> =
 pub(crate) static TEST_LOCK: tokio::sync::Mutex<()> = tokio::sync::Mutex::const_new(());
 
 /// The program that runs the capture, and how long it may take.
+// tree-access: the capture runner (node, hostd's own script); no tree input
 fn runner_command(dir: &Path) -> Result<(tokio::process::Command, Duration), String> {
     #[cfg(test)]
     if let Some((prog, timeout)) = TEST_RUNNER.lock().clone() {
+        // tree-access: the capture runner (node, hostd's own script); no tree input
         return Ok((tokio::process::Command::new(prog), timeout));
     }
     let script = dir.join("runner.mjs");
+    // tree-access: hostd-owned (the crew store, scratch or runtime), never a crewmate's tree
     if !script.is_file() {
         return Err(format!(
             "capture: the browsers are not installed on this server ({} is missing). \
@@ -84,6 +87,7 @@ fn runner_command(dir: &Path) -> Result<(tokio::process::Command, Duration), Str
             script.display()
         ));
     }
+    // tree-access: the capture runner (node, hostd's own script); no tree input
     let mut c = tokio::process::Command::new("node");
     c.arg(script);
     Ok((c, TIMEOUT))
@@ -188,6 +192,7 @@ pub async fn run(hostd_dir: &Path, spec: &Spec, out_dir: &Path) -> Result<Captur
         ] {
             let Some(path) = path else { continue };
             let p = PathBuf::from(&path);
+            // tree-access: hostd-owned (the crew store, scratch or runtime), never a crewmate's tree
             if !p.is_file() {
                 return Err(format!(
                     "capture incomplete. {combo}: the runner reported {path} but the {what} file does not exist"
@@ -218,6 +223,7 @@ impl Reach {
 /// The runner runs in the capture dir (Node finds `node_modules` from the script, not the cwd, but a
 /// fake runner and relative paths expect a real directory); fall back to the current one.
 fn dir_or_cwd(dir: &Path) -> PathBuf {
+    // tree-access: hostd-owned (the crew store, scratch or runtime), never a crewmate's tree
     if dir.is_dir() {
         dir.to_path_buf()
     } else {
@@ -242,6 +248,7 @@ pub(crate) struct RemoveOnDrop(pub(crate) PathBuf);
 
 impl Drop for RemoveOnDrop {
     fn drop(&mut self) {
+        // tree-access: hostd-owned (the crew store, scratch or runtime), never a crewmate's tree
         let _ = std::fs::remove_dir_all(&self.0);
     }
 }
@@ -272,6 +279,7 @@ pub async fn handle(
     // The runner writes into a scratch dir that is removed whatever happens; what is kept is the copy
     // `attach_captures` stores with the task.
     let scratch = scratch_dir(hostd_dir);
+    // tree-access: hostd-owned (the crew store, scratch or runtime), never a crewmate's tree
     std::fs::create_dir_all(&scratch)
         .map_err(|e| format!("capture: cannot make {}: {e}", scratch.display()))?;
     let _cleanup = RemoveOnDrop(scratch.clone());
@@ -284,6 +292,7 @@ pub async fn handle(
     let dom_dir = task_dom_dir(store, crewmate_id, task_id);
     let mut kept: std::collections::BTreeMap<PathBuf, String> = Default::default();
     if !captured.doms.is_empty() || !captured.findings.is_empty() {
+        // tree-access: hostd-owned (the crew store, scratch or runtime), never a crewmate's tree
         std::fs::create_dir_all(&dom_dir)
             .map_err(|e| format!("capture: cannot make {}: {e}", dom_dir.display()))?;
     }
@@ -293,6 +302,7 @@ pub async fn handle(
             .and_then(|n| n.to_str())
             .ok_or_else(|| format!("capture: bad report name {}", p.display()))?
             .to_string();
+        // tree-access: hostd-owned (the crew store, scratch or runtime), never a crewmate's tree
         std::fs::copy(p, dom_dir.join(&name))
             .map_err(|e| format!("capture: cannot keep the report {name}: {e}"))?;
         kept.insert(p.clone(), name);

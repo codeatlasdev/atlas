@@ -22,6 +22,7 @@ pub mod plan;
 pub mod regressions;
 pub mod results;
 pub mod scenario;
+pub mod tree;
 
 use std::path::{Path, PathBuf};
 
@@ -32,6 +33,7 @@ pub use check::{Check, Finding};
 pub use plan::Planned;
 pub use results::{Outcome, Source, TaskResults, Verdict};
 pub use scenario::{Scenario, Why};
+pub use tree::Tree;
 
 use super::capture::{self, Captured, Spec};
 use super::store::{CrewStore, Crewmate};
@@ -61,6 +63,8 @@ pub struct Ctx<'a, C: Capturer> {
     pub checks: &'a [Box<dyn Check>],
     /// The project checkout the change is in.
     pub root: &'a Path,
+    /// Whose it is, and so who opens what in it (see [`Tree`]).
+    pub tree: &'a Tree,
     /// Where this task keeps its captures and `ui-gate.json`.
     pub task_dir: &'a Path,
     /// Scratch for the runner, removed when the run ends.
@@ -84,20 +88,35 @@ fn cache_spec(ctx_root: &Path, id: &str, checks: &[Box<dyn Check>]) -> CacheSpec
 
 /// The cached pass of `planned`, when the cache has one and its screenshots are still in the
 /// task's dir (a hit that names files that are gone is a miss).
-fn cached_pass(cache: &Cache, spec: &CacheSpec, task_dir: &Path) -> Option<Vec<String>> {
-    let key = spec.key().ok()?;
+fn cached_pass(
+    cache: &Cache,
+    tree: &Tree,
+    spec: &CacheSpec,
+    task_dir: &Path,
+) -> Option<Vec<String>> {
+    let key = tree.cache_key(spec).ok()?;
     let entry = cache.lookup(&key)?;
     let mut text = Vec::new();
     cache.replay(&entry, &mut text, &mut std::io::sink()).ok()?;
     let names: Vec<String> = serde_json::from_slice(&text).ok()?;
     names
         .iter()
+        // tree-access: hostd-owned (the crew store, scratch or runtime), never a crewmate's tree
         .all(|n| task_dir.join(n).is_file())
         .then_some(names)
 }
 
-fn remember_pass(cache: &Cache, spec: &CacheSpec, planned: &Planned, names: &[String], ms: u64) {
-    let Ok(key) = spec.key() else { return };
+fn remember_pass(
+    cache: &Cache,
+    tree: &Tree,
+    spec: &CacheSpec,
+    planned: &Planned,
+    names: &[String],
+    ms: u64,
+) {
+    let Ok(key) = tree.cache_key(spec) else {
+        return;
+    };
     let run = Run {
         project: spec
             .cwd
@@ -130,6 +149,7 @@ async fn capture_one<C: Capturer>(
         .spec(check::wants_detectors(ctx.checks))
         .map_err(|e| vec![e])?;
     let out = ctx.scratch.join(&planned.id);
+    // tree-access: hostd-owned (the crew store, scratch or runtime), never a crewmate's tree
     std::fs::create_dir_all(&out)
         .map_err(|e| vec![format!("cannot make {}: {e}", out.display())])?;
     let captured = ctx
@@ -152,6 +172,7 @@ async fn capture_one<C: Capturer>(
     }
     // Keep the shots under the scenario's id so two scenarios never share a file name.
     let mut names = vec![];
+    // tree-access: hostd-owned (the crew store, scratch or runtime), never a crewmate's tree
     std::fs::create_dir_all(ctx.task_dir)
         .map_err(|e| vec![format!("cannot make {}: {e}", ctx.task_dir.display())])?;
     for (combo, png) in &captured.files {
@@ -162,6 +183,7 @@ async fn capture_one<C: Capturer>(
             combo.width,
             combo.theme.as_str()
         );
+        // tree-access: hostd-owned (the crew store, scratch or runtime), never a crewmate's tree
         std::fs::copy(png, ctx.task_dir.join(&name))
             .map_err(|e| vec![format!("cannot keep {name}: {e}")])?;
         names.push(name);
@@ -185,8 +207,13 @@ pub async fn execute<C: Capturer>(
         let hit = if ctx.force {
             None
         } else {
-            let (cache, s, dir) = (ctx.cache.clone(), spec.clone(), ctx.task_dir.to_path_buf());
-            tokio::task::spawn_blocking(move || cached_pass(&cache, &s, &dir))
+            let (cache, tree, s, dir) = (
+                ctx.cache.clone(),
+                ctx.tree.clone(),
+                spec.clone(),
+                ctx.task_dir.to_path_buf(),
+            );
+            tokio::task::spawn_blocking(move || cached_pass(&cache, &tree, &s, &dir))
                 .await
                 .map_err(|e| e.to_string())?
         };
@@ -204,11 +231,18 @@ pub async fn execute<C: Capturer>(
             match capture_one(ctx, &planned).await {
                 Ok(captures) => {
                     let ms = started.elapsed().as_millis() as u64;
-                    let (cache, s, p, n) =
-                        (ctx.cache.clone(), spec, planned.clone(), captures.clone());
-                    tokio::task::spawn_blocking(move || remember_pass(&cache, &s, &p, &n, ms))
-                        .await
-                        .map_err(|e| e.to_string())?;
+                    let (cache, tree, s, p, n) = (
+                        ctx.cache.clone(),
+                        ctx.tree.clone(),
+                        spec,
+                        planned.clone(),
+                        captures.clone(),
+                    );
+                    tokio::task::spawn_blocking(move || {
+                        remember_pass(&cache, &tree, &s, &p, &n, ms)
+                    })
+                    .await
+                    .map_err(|e| e.to_string())?;
                     Outcome {
                         scenario: planned.scenario.clone(),
                         why: planned.why,
@@ -326,7 +360,7 @@ pub async fn dispatch<C: Capturer>(ctx: &Ctx<'_, C>, action: Action) -> Result<V
     match action {
         Action::AddRegression { scenario, note } => {
             let id = scenario.id()?;
-            let all = regressions::add(ctx.root, scenario, &note)?;
+            let all = regressions::add(ctx.tree, ctx.root, scenario, &note)?;
             Ok(json!({
                 "added": id,
                 "file": regressions::FILE,
@@ -345,12 +379,12 @@ pub async fn dispatch<C: Capturer>(ctx: &Ctx<'_, C>, action: Action) -> Result<V
                 None => {
                     let files = match files {
                         Some(f) => f,
-                        None => atlas_core::affected::changed_files(ctx.root, None)?,
+                        None => ctx.tree.changed_files(ctx.root)?,
                     };
-                    plan::routes_of(ctx.root, &files)?
+                    plan::routes_of(ctx.tree, ctx.root, &files)?
                 }
             };
-            let regs = regressions::load(ctx.root)?;
+            let regs = regressions::load(ctx.tree, ctx.root)?;
             let planned = plan::plan(&base_url, &routes, &regs)?;
             if planned.is_empty() {
                 return Ok(json!({
@@ -402,6 +436,7 @@ impl<C: Capturer> Ctx<'_, C> {
             cache: self.cache,
             checks: self.checks,
             root: self.root,
+            tree: self.tree,
             task_dir: self.task_dir,
             scratch: self.scratch,
             force: self.force,
@@ -426,6 +461,7 @@ struct RemoveOnDrop(PathBuf);
 
 impl Drop for RemoveOnDrop {
     fn drop(&mut self) {
+        // tree-access: hostd-owned (the crew store, scratch or runtime), never a crewmate's tree
         let _ = std::fs::remove_dir_all(&self.0);
     }
 }
@@ -458,6 +494,7 @@ pub async fn handle(
         .load_crewmate(crewmate_id)
         .map_err(|e| format!("ui_gate: cannot read the crewmate: {e}"))?;
     let root = root_of(hostd_dir, store, &crewmate);
+    // tree-access: hostd-owned (the crew store, scratch or runtime), never a crewmate's tree
     if !root.is_dir() {
         return Err(format!(
             "ui_gate: the work folder {} does not exist yet",
@@ -468,17 +505,24 @@ pub async fn handle(
     let scratch = capture::capture_dir(hostd_dir)
         .join("runs")
         .join(crate::paths::new_id());
+    // tree-access: hostd-owned (the crew store, scratch or runtime), never a crewmate's tree
     std::fs::create_dir_all(&scratch)
         .map_err(|e| format!("ui_gate: cannot make {}: {e}", scratch.display()))?;
     let _cleanup = RemoveOnDrop(scratch.clone());
     let cache = cache();
     let checks = check::registered();
     let capturer = Playwright(hostd_dir, capture::Reach::of(store, crewmate_id)?);
+    // An isolated crewmate's tree is the crewmate's: git runs as it, and no file of it is opened through a link.
+    let tree = match store.isolated(crewmate_id) {
+        Some(_) => Tree::Isolated(store.git_for_checkout(crewmate_id, &root)),
+        None => Tree::Own,
+    };
     let ctx = Ctx {
         capturer: &capturer,
         cache: &cache,
         checks: &checks,
         root: &root,
+        tree: &tree,
         task_dir: &task_dir,
         scratch: &scratch,
         force: false,

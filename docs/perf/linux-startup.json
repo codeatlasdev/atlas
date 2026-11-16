@@ -1,0 +1,283 @@
+{
+  "when": "2026-11-16T13:12:14.456Z",
+  "binary": "atlas-desktop",
+  "format": "binary",
+  "build": "debug, bundled frontend (cargo build --features tauri/custom-protocol), main 4303661f",
+  "machine": {
+    "os": "Omarchy",
+    "kernel": "7.2.15-1-omarchy",
+    "cpu": "AMD Ryzen 7 7735HS with Radeon Graphics",
+    "cores": 16,
+    "memMb": 5592,
+    "display": "headless sway (wlroots, pixman); no real display",
+    "gpu": "Advanced Micro Devices, Inc. [AMD/ATI] Rembrandt [Radeon 680M] (rev 0a)",
+    "gpuDriverLoadedByWebKit": "libgallium-26.2.5-arch1.1.so",
+    "webkit": "2.54.1",
+    "loadAvg1": 8.79
+  },
+  "runs": [
+    {
+      "kind": "cold",
+      "marks": {
+        "main": 0.1,
+        "shell_env:started": 0.9,
+        "builder:configured": 3.6,
+        "context:generated": 13.2,
+        "setup:begin": 158.4,
+        "window:created": 644.2,
+        "setup:end": 1118.4,
+        "ready": 1118.5,
+        "page:Started": 1381.1,
+        "page:Finished": 1417.1,
+        "show:deadline": 1646.2,
+        "js:layout:mounted": 1956.9,
+        "js:session:start": 1959.1,
+        "js:theme:init": 1967.7,
+        "js:theme:ready": 2324.8,
+        "js:projects:loaded": 2325.6,
+        "js:ready:gate": 2326.4,
+        "js:workspace:loaded": 2363,
+        "js:host:status": 2373.7
+      },
+      "spawnToWebProcessMs": 894.7,
+      "spawnToWindowMs": 1941,
+      "readyMs": 2326.4,
+      "shownBy": "deadline",
+      "loginShells": {
+        "app": 2,
+        "hostd": 1
+      }
+    },
+    {
+      "kind": "warm",
+      "marks": {
+        "main": 0,
+        "shell_env:started": 0.5,
+        "builder:configured": 1,
+        "context:generated": 5.2,
+        "setup:begin": 107.5,
+        "window:created": 283.4,
+        "setup:end": 818.3,
+        "ready": 818.4,
+        "page:Started": 972.6,
+        "page:Finished": 990.4,
+        "show:deadline": 1285.5,
+        "js:layout:mounted": 1355.4,
+        "js:session:start": 1356.3,
+        "js:theme:init": 1367.1,
+        "js:theme:ready": 1742.9,
+        "js:projects:loaded": 1835.5,
+        "js:ready:gate": 1836.9,
+        "js:workspace:loaded": 1860.7,
+        "js:host:status": 1874.3
+      },
+      "spawnToWebProcessMs": 492.6,
+      "spawnToWindowMs": 1559.9,
+      "readyMs": 1836.9,
+      "shownBy": "deadline",
+      "loginShells": {
+        "app": 2,
+        "hostd": 1
+      }
+    },
+    {
+      "kind": "warm",
+      "marks": {
+        "main": 0,
+        "shell_env:started": 0.3,
+        "builder:configured": 0.6,
+        "context:generated": 2.4,
+        "setup:begin": 74.9,
+        "window:created": 204.2,
+        "setup:end": 680.9,
+        "ready": 681,
+        "page:Started": 816.5,
+        "page:Finished": 832,
+        "show:deadline": 1206.2,
+        "js:layout:mounted": 1224.8,
+        "js:session:start": 1225.5,
+        "js:theme:init": 1237.1,
+        "js:theme:ready": 1667.3,
+        "js:projects:loaded": 1752.4,
+        "js:ready:gate": 1753.8,
+        "js:workspace:loaded": 1790,
+        "js:host:status": 1801.9
+      },
+      "spawnToWebProcessMs": 308.8,
+      "spawnToWindowMs": 1326.4,
+      "readyMs": 1753.8,
+      "shownBy": "deadline",
+      "loginShells": {
+        "app": 2,
+        "hostd": 1
+      }
+    },
+    {
+      "kind": "warm",
+      "marks": {
+        "main": 0,
+        "shell_env:started": 0.4,
+        "builder:configured": 0.9,
+        "context:generated": 4.3,
+        "setup:begin": 98.8,
+        "window:created": 247.3,
+        "setup:end": 705.1,
+        "ready": 705.1,
+        "page:Started": 862.6,
+        "page:Finished": 882.3,
+        "show:deadline": 1249.2,
+        "js:layout:mounted": 1520.4,
+        "js:session:start": 1521.2,
+        "js:theme:init": 1540.2,
+        "js:theme:ready": 2221.4,
+        "js:projects:loaded": 2327.6,
+        "js:ready:gate": 2329.3,
+        "js:workspace:loaded": 2358.3,
+        "js:host:status": 2368.4
+      },
+      "spawnToWebProcessMs": 428.3,
+      "spawnToWindowMs": 1465,
+      "readyMs": 2329.3,
+      "shownBy": "deadline",
+      "loginShells": {
+        "app": 2,
+        "hostd": 1
+      }
+    },
+    {
+      "kind": "warm",
+      "marks": {
+        "main": 0,
+        "shell_env:started": 0.3,
+        "builder:configured": 0.6,
+        "context:generated": 2.5,
+        "setup:begin": 99.3,
+        "window:created": 261.7,
+        "setup:end": 704.4,
+        "ready": 704.5,
+        "page:Started": 851.3,
+        "page:Finished": 867,
+        "js:layout:mounted": 1223.2,
+        "js:session:start": 1223.7,
+        "js:theme:init": 1232.4,
+        "show:deadline": 1263.3,
+        "js:theme:ready": 1575.1,
+        "js:projects:loaded": 1660.2,
+        "js:ready:gate": 1661.8,
+        "js:workspace:loaded": 1684.6,
+        "js:host:status": 1697.8
+      },
+      "spawnToWebProcessMs": 431.9,
+      "spawnToWindowMs": 1434.1,
+      "readyMs": 1661.8,
+      "shownBy": "deadline",
+      "loginShells": {
+        "app": 2,
+        "hostd": 1
+      }
+    }
+  ],
+  "summary": {
+    "coldReadyMs": 2326.4,
+    "warmReady": {
+      "p50": 1795.4,
+      "p95": 2255.4,
+      "max": 2329.3
+    },
+    "warmWindow": {
+      "p50": 1449.6,
+      "p95": 1545.7,
+      "max": 1559.9
+    },
+    "warmWebProcess": {
+      "p50": 430.1,
+      "p95": 483.5,
+      "max": 492.6
+    }
+  },
+  "idle": {
+    "settleS": 30,
+    "cpuS": 60,
+    "processes": [
+      {
+        "role": "webprocess",
+        "pid": 2833139,
+        "comm": "WebKitWebProces",
+        "rssMb": 242.2,
+        "pssMb": 167.8,
+        "swapMb": 36.9
+      },
+      {
+        "role": "app",
+        "pid": 2833032,
+        "comm": "atlas-desktop",
+        "rssMb": 160,
+        "pssMb": 123.9,
+        "swapMb": 36
+      },
+      {
+        "role": "webprocess",
+        "pid": 2833313,
+        "comm": "WebKitWebProces",
+        "rssMb": 154.6,
+        "pssMb": 71.9,
+        "swapMb": 19.5
+      },
+      {
+        "role": "webprocess",
+        "pid": 2833161,
+        "comm": "WebKitWebProces",
+        "rssMb": 144.5,
+        "pssMb": 68.1,
+        "swapMb": 22.5
+      },
+      {
+        "role": "hostd",
+        "pid": 2833142,
+        "comm": "atlas",
+        "rssMb": 20.8,
+        "pssMb": 21.1,
+        "swapMb": 3.8
+      },
+      {
+        "role": "network",
+        "pid": 2833090,
+        "comm": "WebKitNetworkPr",
+        "rssMb": 43.7,
+        "pssMb": 19,
+        "swapMb": 7.8
+      }
+    ],
+    "rssMb": 765.8,
+    "swapMb": 126.5,
+    "pssMb": 471.8,
+    "dominant": {
+      "role": "webprocess",
+      "pid": 2833139,
+      "pssMb": 167.8,
+      "share": 0.4
+    },
+    "cpuPct": {
+      "total": 0.5,
+      "byRole": {
+        "webprocess": 0.1,
+        "app": 0.2,
+        "network": 0,
+        "hostd": 0.2
+      }
+    },
+    "pssMbAfter": 438.5,
+    "paint": {
+      "colours": 5100,
+      "topPermille": 147
+    }
+  },
+  "budget": {
+    "warmReadyP95Ms": 4000,
+    "coldReadyMs": 6000,
+    "idlePssMb": 900,
+    "largestPssMb": 400,
+    "idleCpuPct": 5,
+    "appLoginShells": 2
+  }
+}

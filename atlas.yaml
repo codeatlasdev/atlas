@@ -88,6 +88,10 @@ actions:
     label: Terminal agent bench (6 agent TUI flood patterns, scroll, mouse reports)
     group: bench
     command: scripts/heavy.sh bun scripts/term-agent-bench.ts
+  - key: S
+    label: Linux startup and idle bench (app_ready, memory per process, idle CPU; headless sway)
+    group: bench
+    command: scripts/heavy.sh bun scripts/linux-startup-bench.ts target/debug/atlas-desktop
   - key: I
     label: Regenerate the Atlas Dev icons
     group: build

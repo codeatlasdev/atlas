@@ -19,3 +19,10 @@ rules:
   cache-poisoning:
     ignore:
       - ci.yml:142
+  # The one release toolchain action writes a fixed PATH entry and the commit's own time (git log of the checked-out
+  # tag) to the environment files, and is only called from release.yml (a v* tag push or a dispatch by someone with write
+  # access); `action.yml:36` and `:46` are those two writes in .github/actions/release-toolchain. No attacker-controlled value reaches either file; inlining the writes again would bring back the nine copies.
+  github-env:
+    ignore:
+      - action.yml:36
+      - action.yml:46

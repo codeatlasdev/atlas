@@ -6,6 +6,10 @@ All notable changes to Atlas (CLI, TUI, MCP server and Atlas Desktop). Versions 
 
 ## [Unreleased]
 
+### Changed
+
+- **A release is not published until its Windows and macOS files have been run ([#312](https://github.com/codeatlasdev/atlas/issues/312)).** `release.yml` built `Atlas-Setup.exe`, the NSIS installer, the `.dmg` and the `.app` and published them unopened (Linux had been opened since #283). Two new jobs run them on native runners before `publish`: Windows installs `Atlas-Setup.exe` and the NSIS installer silently, opens the installed app, and uninstalls; macOS mounts the `.dmg`, verifies the app's signature and opens the app from the `.dmg` and from the `.app.tar.gz`. A file that does not match its checksum, does not install, does not open a window or leaves an error in `app.log` stops the release.
+
 ## [1.5.0-alpha.26] — 2026-11-16
 
 Atlas is in **alpha**: expect bugs and breaking changes. Please [report what breaks](https://github.com/codeatlasdev/atlas/issues/new).

@@ -1,5 +1,3 @@
-// `ask_user` on the phone (PhoneCrewAudit gap 3): the agent is blocked on a question; the phone renders
-// it from the real task (fixtures/crewmate_task_ask.json) and answers with `crewmate_answer`, Act scope.
 import 'dart:convert';
 import 'dart:io';
 
@@ -9,12 +7,15 @@ import 'package:flutter_test/flutter_test.dart';
 
 import 'package:atlas_mobile/core/connection/connection_notifier.dart';
 import 'package:atlas_mobile/core/demo/demo_computer.dart';
-import 'package:atlas_mobile/core/protocol/crew_models.dart';
+import 'package:atlas_mobile/core/protocol/crew_task.dart';
 import 'package:atlas_mobile/core/protocol/models.dart';
 import 'package:atlas_mobile/core/transport/transport.dart';
 import 'package:atlas_mobile/features/crew/chat/ask_card.dart';
 
 import 'support/demo_harness.dart';
+
+// `ask_user` on the phone (PhoneCrewAudit gap 3): the agent is blocked on a question; the phone renders
+// it from the real task (fixtures/crewmate_task_ask.json) and answers with `crewmate_answer`, Act scope.
 
 class _Recording implements Transport {
   _Recording(this.inner);

@@ -1,7 +1,6 @@
 import 'dart:async';
 
 import 'package:flutter/foundation.dart';
-
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:flutter_riverpod/legacy.dart';
 
@@ -10,8 +9,8 @@ import 'package:atlas_mobile/core/protocol/models.dart';
 import 'package:atlas_mobile/core/protocol/multiplexer.dart';
 import 'package:atlas_mobile/core/protocol/protocol_version.dart';
 import 'package:atlas_mobile/core/storage/mac_storage.dart';
-import 'package:atlas_mobile/core/transport/frb_transport.dart';
 import 'package:atlas_mobile/core/transport/crew_transport.dart';
+import 'package:atlas_mobile/core/transport/frb_transport.dart';
 import 'package:atlas_mobile/core/transport/transport.dart';
 
 /// Factory that creates a [Transport] for a given [MacDevice].

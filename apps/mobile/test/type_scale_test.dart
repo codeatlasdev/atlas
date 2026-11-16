@@ -13,7 +13,7 @@ const _computed = <String, (int, String)>{
     1,
     'the initial scales with the avatar circle',
   ),
-  'lib/features/agents/crew_widgets.dart': (
+  'lib/features/agents/tree/node_ring.dart': (
     1,
     'the initial scales with the avatar circle',
   ),

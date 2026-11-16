@@ -238,7 +238,7 @@ pub async fn run(root_dir: &Path, select: &config::SelectionRequest) -> Result<(
     let selection = config::resolve_selection(&cfg, select).map_err(|e| anyhow::anyhow!(e))?;
 
     let log_dir = root_dir.join(".logs");
-    std::fs::create_dir_all(&log_dir)?;
+    crate::runtime::ensure_log_dir(&log_dir)?;
     let lock_path = log_dir.join(".tui.lock");
 
     // A live runner (`atlas dev --detach`, `--headless`) is attached to, never killed.

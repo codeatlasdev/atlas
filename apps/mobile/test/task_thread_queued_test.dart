@@ -1,16 +1,17 @@
-// The thread's queued line says why a task is not starting (#296): a full server read as a
-// bare "Queued…". The task is the one hostd's own serializer wrote (the shared fixture).
 import 'dart:convert';
 import 'dart:io';
 
 import 'package:flutter/material.dart';
 import 'package:flutter_test/flutter_test.dart';
 
-import 'package:atlas_mobile/core/protocol/crew_models.dart';
+import 'package:atlas_mobile/core/protocol/crew_task.dart';
 import 'package:atlas_mobile/core/protocol/models.dart';
 import 'package:atlas_mobile/features/crew/chat/task_thread.dart';
 
 import 'support/golden_frame.dart';
+
+// The thread's queued line says why a task is not starting (#296): a full server read as a
+// bare "Queued…". The task is the one hostd's own serializer wrote (the shared fixture).
 
 Future<void> _pump(WidgetTester tester, CrewmateTask task) async {
   await tester.pumpWidget(

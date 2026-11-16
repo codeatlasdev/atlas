@@ -17,6 +17,35 @@ hex = "0.4"
 [lints.rust]
 unexpected_cfgs = { level = "warn", check-cfg = ['cfg(frb_expand)'] }
 
+# Build profiles (cargokit builds `release` for release and profile builds, `dev` for debug ones).
+# Measured on aarch64-linux-android, libatlas_mobile_native.so inside the release APK: 13.2 MB with
+# cargo's defaults, 8.2 MB with fat LTO + one codegen unit at opt-level 3, 6.2 MB at "s", 5.6 MB at
+# "z", 5.3 MB at "s" with panic=abort (docs/mobile.md "Build settings").
+[profile.release]
+# "s", not 3 (-25 % code): this crate moves terminal text and small messages, not bulk data. Not "z": 9 % smaller
+# still, for a much slower QUIC/crypto path.
+opt-level = "s"
+# One LTO pass over iroh, quinn, rustls and tokio drops what the app never calls (the largest single win).
+lto = "fat"
+codegen-units = 1
+# Keeps symbol names: AGP strips them from the APK but extracts them for Play's native crash symbols
+# (`debugSymbolLevel` in android/app/build.gradle.kts), and Xcode strips and dSYMs on archive.
+strip = "debuginfo"
+# NOT panic = "abort": flutter_rust_bridge catches a panic and hands it to Dart as an exception; aborting would
+# turn each one into a crash of the app (it only saves 0.9 MB).
+
+[profile.dev]
+# Line tables keep backtraces; variable info is what made the debug library 83 MB on iOS.
+debug = "line-tables-only"
+# iroh's crypto and QUIC at opt-level 0 make pairing and every connection visibly slow on a phone; level 1
+# keeps incremental builds of this crate quick.
+opt-level = 1
+
+[profile.dev.package."*"]
+# Dependencies are built once and rarely change: optimise them harder, and without debug info.
+opt-level = 2
+debug = false
+
 # Own workspace root: cargokit builds with `rustup run stable`, which must not parse the
 # Atlas workspace above (its `[profile.debug]` needs the pinned toolchain).
 [workspace]

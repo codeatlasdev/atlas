@@ -4,10 +4,15 @@
 # CocoaPods analytics sends network stats synchronously affecting flutter build latency.
 ENV['COCOAPODS_DISABLE_STATS'] = 'true'
 
+# Debug/Profile/Release are the store app (flavor `prod`: Flutter falls back to the base configurations);
+# the `-dev` ones are the Atlas Dev app (docs/mobile.md "Dev and store apps").
 project 'Runner', {
   'Debug' => :debug,
   'Profile' => :release,
   'Release' => :release,
+  'Debug-dev' => :debug,
+  'Profile-dev' => :release,
+  'Release-dev' => :release,
 }
 
 def flutter_root

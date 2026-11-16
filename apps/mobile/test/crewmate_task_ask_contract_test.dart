@@ -1,15 +1,16 @@
+import 'dart:convert';
+import 'dart:io';
+
+import 'package:flutter_test/flutter_test.dart';
+
+import 'package:atlas_mobile/core/protocol/crew_task.dart';
+
 // Contract: CrewmateTask parses `ask` from the real Rust task while an agent waits in `ask_user`
 // (fixtures/crewmate_task_ask.json, written by atlas-host's
 // `ask_user_fixtures_are_real_payloads_and_the_phones_answer_wakes_the_agent`), and the answer the
 // phone sends is the `crewmate_answer {id, ask_id, key|text}` hostd parses.
 // Incident (PhoneCrewAudit gap 3): the agent blocked up to 30 min on a question the phone never showed.
 // Regenerate: UPDATE_FIXTURES=1 cargo test -p atlas-host crew::tests::mobile_payloads
-import 'dart:convert';
-import 'dart:io';
-
-import 'package:flutter_test/flutter_test.dart';
-
-import 'package:atlas_mobile/core/protocol/crew_models.dart';
 
 void main() {
   late Map<String, dynamic> raw;

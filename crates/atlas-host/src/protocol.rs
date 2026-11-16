@@ -20,6 +20,12 @@
 //!   connection and how many clients were dropped for not reading. `caps` lists
 //!   what this daemon can do (`pty_attach_raw`, `upgrade`); clients check it instead of
 //!   guessing from error strings. A proto 1 daemon has no `caps` and cannot `upgrade`.
+//! - `info.update` (cap `update`, optional, additive): `{installed, offered, channel, action, checked_at}`,
+//!   what the last update check found, read from `~/.atlas/.update_check` (no network). `offered` is `null`
+//!   and `action` `none` when the channel offers nothing newer; `action` is `update` when it does. The key is
+//!   absent when no check of the followed channel is on record: `atlas_update_check` makes one. A phone only
+//!   receives `{"ev":"atlas_update","stage":..,"message":..,"version":..}` pushes (scope `read`) while an
+//!   `atlas_update` it or the desktop started runs.
 //! - `upgrade {exe}`: live takeover. hostd starts `exe hostd --takeover`, hands it every live pty
 //!   master fd over a unix socket (`SCM_RIGHTS`) plus session state, and exits. Children keep
 //!   running; clients reconnect and reattach. See `handoff`.
@@ -66,11 +72,12 @@ where
 pub const PROTO: u32 = 2;
 /// Capabilities reported by `info`; the desktop gates features on these. `push`: the daemon takes a
 /// phone's `push_register` and pushes about its plain agents (the phone registers only where it is).
+/// `update`: `atlas_update_check` and `atlas_update` exist, and `info` may carry `update` (see below).
 /// Windows has no live `upgrade`: pty handles cannot move to a successor the way Unix passes
 /// master fds, so clients restart the daemon when it has no running terminal (see
 /// `upgrade::decide`).
 pub fn caps(crew_host: bool) -> Vec<&'static str> {
-    let mut v: Vec<&'static str> = vec!["pty_attach_raw", "lsp", "agents", "push"];
+    let mut v: Vec<&'static str> = vec!["pty_attach_raw", "lsp", "agents", "push", "update"];
     #[cfg(unix)]
     v.push("upgrade");
     if crew_host {
@@ -268,6 +275,17 @@ pub enum HostCmd {
         id: String,
     },
     Info {},
+    /// Ask the release channel now (`atlas update --check --json` of this daemon's own binary, which
+    /// also refreshes the update cache `info.update` reads) and return that report:
+    /// `{installed, channel, offered, tag, action}`, plus `{managed, manager, command}` when Homebrew or a
+    /// system package owns this install (then `action` is `managed`/`package` and `command` is what to run).
+    AtlasUpdateCheck {},
+    /// Install the newer Atlas this channel offers (`atlas update --yes`, never `--downgrade`), detached
+    /// from the daemon. Replies `{started: true, from, to}` at once and pushes `{ev: "atlas_update", stage,
+    /// message, version}` (`stage`: downloading | installing | handing_off | done | failed). Refused when one
+    /// runs already, when nothing newer is offered, or when a package manager owns this install. The
+    /// terminal-host handoff ends this daemon: the client reconnects and `info.version` shows the new one.
+    AtlasUpdate {},
     Upgrade {
         /// The `atlas` binary to take over with (must be this user's own, e.g. the freshly
         /// installed `~/.atlas/bin/atlas`).
@@ -514,6 +532,17 @@ pub enum HostCmd {
     MobileSetScopes {
         node_id: String,
         scopes: Vec<crate::mobile::Scope>,
+    },
+    /// Give a paired phone a name of the owner's choosing (desktop only).
+    MobileRename {
+        node_id: String,
+        name: String,
+    },
+    /// What a paired phone did lately, newest first: `{activity: [{ts, cmd, args}]}` (desktop only).
+    MobileActivity {
+        node_id: String,
+        #[serde(default)]
+        limit: Option<usize>,
     },
     CrewmateList {},
     CrewmateCreate {

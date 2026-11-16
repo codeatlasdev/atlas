@@ -31,10 +31,17 @@ const KIT_COMPONENTS = [
 	"SchemeAsset",
 	"Popover",
 	"CopyButton",
+	// Settings → Mobile (MobileSettings.test.ts): every name the pane imports must exist in whichever mock comes first.
+	"Alert",
+	"Collapsible",
+	"EmptyState",
+	"Progress",
+	"SettingItem",
+	"TextField",
 ];
 const Stub = () => {};
 const kit = {
-	toast: { error() {}, info() {} },
+	toast: { error() {}, info() {}, success() {} },
 	...Object.fromEntries(KIT_COMPONENTS.map((n) => [n, Stub])),
 };
 const publish = () => mock.module("@codeatlasdev/ui", () => ({ ...kit }));

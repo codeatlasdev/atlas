@@ -135,8 +135,8 @@ fn message(what: &str) -> String {
         "{what}, so Atlas has nothing to show.\n\n\
          Details are in:\n  {}\n  {}\n\n\
          Include them when you report it: https://github.com/codeatlasdev/atlas/issues/new",
-        crate::stderr_log::path(&base).display(),
-        crate::diag::app_log_path(&base).display(),
+        atlas_host::paths::stderr_log(&base).display(),
+        atlas_host::paths::app_log(&base).display(),
     )
 }
 
@@ -255,7 +255,7 @@ fn give_up(wv: &webkit2gtk::WebView, what: &str) {
 fn copy_details() {
     let report = crate::diag::build(
         &atlas_host::paths::base(),
-        crate::diag::Versions {
+        atlas_host::bundle::Versions {
             app: env!("CARGO_PKG_VERSION").to_string(),
             ..Default::default()
         },

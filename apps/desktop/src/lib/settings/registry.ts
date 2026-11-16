@@ -1199,7 +1199,11 @@ const DEFS = [
 				label: "Mobile",
 				description: "Pair a phone to see and control this computer from Atlas Mobile.",
 				aliases: ["mobile"],
-				files: ["components/MobileSettings.svelte"],
+				files: [
+					"components/MobileSettings.svelte",
+					"components/mobile/PairCard.svelte",
+					"components/mobile/PhoneRow.svelte",
+				],
 				groups: [
 					{
 						title: "Pairing",
@@ -1208,7 +1212,7 @@ const DEFS = [
 								"mobile-pair",
 								"Pair a phone",
 								"Scan a code with Atlas Mobile to control this computer from your phone.",
-								"iphone android qr phone remote p2p",
+								"iphone android qr phone remote p2p app store testflight vpn warp wifi",
 							),
 						],
 					},
@@ -1218,8 +1222,8 @@ const DEFS = [
 							item(
 								"mobile-devices",
 								"Paired phones",
-								"What each phone may do, and revoke it.",
-								"revoke permissions scopes terminal approve",
+								"Which phones are paired, whether they are connected, what each may do and did; rename or unpair one.",
+								"revoke unpair rename activity last seen permissions scopes terminal approve",
 							),
 						],
 					},

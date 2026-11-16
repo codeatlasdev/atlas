@@ -1,6 +1,6 @@
 <script lang="ts">
 	import { usePoll } from "#lib/clock.svelte.ts";
-	import { onMount } from "svelte";
+	import { onMount, untrack } from "svelte";
 	import { kbd, primaryKey } from "#lib/keys.ts";
 	import { Button, DropdownMenu, DropdownMenuItem, Spinner, TextArea, toast } from "@codeatlasdev/ui";
 	import { Plus, Minus, Undo2, Sparkles, Ellipsis, GitPullRequest, Square, RefreshCw } from "@lucide/svelte";
@@ -10,6 +10,14 @@
 	import { commitMessages } from "#lib/stores/commitMessage.svelte.ts";
 	import { providerHint } from "#lib/commitMessage.ts";
 	import { openFile, openDiff } from "#lib/stores/files.svelte.ts";
+	import {
+		identityMissing,
+		identityProblem,
+		isIdentityError,
+		readIdentity,
+		saveIdentity,
+		type IdentityScope,
+	} from "#lib/gitIdentity.ts";
 	import { pr } from "#lib/stores/pr.svelte.ts";
 	import { confirmDialog } from "#lib/stores/ask.svelte.ts";
 	import { statusGroups } from "#lib/stores/tree.ts";
@@ -32,6 +40,17 @@
 	let message = $state("");
 	let busy = $state<string | null>(null);
 	let failure = $state<string | null>(null);
+	/** The action `failure` belongs to: a commit's error is about that message and that staged set, nothing else's. */
+	let failureOf = $state<string | null>(null);
+	/** Commit identity form: shown instead of git's "Author identity unknown"; `amend` is what Save & commit retries. */
+	let who = $state<{
+		name: string;
+		email: string;
+		scope: IdentityScope;
+		amend: boolean;
+		saving: boolean;
+		error: string;
+	} | null>(null);
 	let instruction = $state("");
 	let showInstruction = $state(false);
 	let gen = $derived(commitMessages.run(worktreeId));
@@ -66,13 +85,17 @@
 		};
 	});
 
+	const gitHere = (args: string[]) => git.run(worktreeId, args);
+
 	async function run(label: string, args: string[], stdin?: string): Promise<boolean> {
 		busy = label;
 		failure = null;
+		failureOf = null;
 		try {
 			const r = await git.run(worktreeId, args, stdin);
 			if (r.code !== 0) {
 				failure = (r.stderr || r.stdout).trim();
+				failureOf = label;
 				return false;
 			}
 			return true;
@@ -81,6 +104,20 @@
 			await refresh();
 		}
 	}
+
+	// A commit error describes one message and one staged set. Once either changes (an edit, a commit or an unstage
+	// from the terminal or an agent) it is history, and leaving it next to a different state reads as a live failure.
+	let stagedKey = $derived(staged.map((e) => `${e.x}${e.path}`).join("\0"));
+	$effect(() => {
+		message;
+		stagedKey;
+		untrack(() => {
+			if (failureOf === "commit") {
+				failure = null;
+				failureOf = null;
+			}
+		});
+	});
 
 	const stage = (paths: string[]) => run("stage", ["add", "--", ...paths]);
 	const unstage = (paths: string[]) => run("unstage", ["restore", "--staged", "--", ...paths]);
@@ -96,11 +133,50 @@
 
 	async function commit(amend = false) {
 		if (!message.trim() && !amend) return toast.error("Write a commit message");
+		// Ask before git does: its answer is a wall of text with a shell recipe in it.
+		if (await identityMissing(gitHere)) return askWho(amend);
 		const args = ["commit", "-F", "-", ...(amend ? ["--amend"] : [])];
 		if (await run("commit", args, message)) {
 			message = "";
 			toast.success(amend ? "Amended" : "Committed");
+		} else if (failure && isIdentityError(failure)) {
+			failure = null;
+			failureOf = null;
+			await askWho(amend);
 		}
+	}
+
+	/** Open the identity form with what git and `gh` already know. */
+	async function askWho(amend: boolean) {
+		who = { name: "", email: "", scope: "global", amend, saving: false, error: "" };
+		const known = await readIdentity(gitHere);
+		const gh = !known.name || !known.email ? await git.ghIdentity(worktreeId).catch(() => null) : null;
+		// The reader may already be typing: only fill what is still empty.
+		if (who) {
+			who.name ||= known.name ?? gh?.name ?? "";
+			who.email ||= known.email ?? gh?.email ?? "";
+		}
+	}
+
+	async function saveWho() {
+		if (!who || who.saving) return;
+		const problem = identityProblem(who);
+		if (problem) {
+			who.error = problem;
+			return;
+		}
+		who.saving = true;
+		who.error = "";
+		try {
+			await saveIdentity(gitHere, who, who.scope);
+		} catch (e) {
+			who.saving = false;
+			who.error = errText(e);
+			return;
+		}
+		const amend = who.amend;
+		who = null;
+		await commit(amend);
 	}
 
 	async function primary() {
@@ -232,6 +308,54 @@
 		</div>
 	</div>
 
+	{#if who}
+		<form
+			class="who"
+			aria-label="Who are you?"
+			novalidate
+			onsubmit={(e) => {
+				e.preventDefault();
+				void saveWho();
+			}}
+		>
+			<b>Who is committing?</b>
+			<span class="dim">Git puts a name and an e-mail on every commit. Atlas saves them and commits.</span>
+			<label>
+				Name
+				<input class="instr" autocomplete="name" placeholder="Ada Lovelace" bind:value={who.name} />
+			</label>
+			<label>
+				E-mail
+				<input
+					class="instr"
+					type="email"
+					autocomplete="email"
+					placeholder="you@example.com"
+					bind:value={who.email}
+				/>
+			</label>
+			<fieldset>
+				<legend class="dim">Save it for</legend>
+				<label class="radio">
+					<input type="radio" name="who-scope" value="global" bind:group={who.scope} />
+					All repositories (global)
+				</label>
+				<label class="radio">
+					<input type="radio" name="who-scope" value="local" bind:group={who.scope} />
+					This repository only
+				</label>
+			</fieldset>
+			{#if who.error}<span class="err" role="alert">{who.error}</span>{/if}
+			<div class="row-btns">
+				<Button size="sm" type="submit" disabled={who.saving}>
+					{#snippet leading()}{#if who?.saving}<Spinner size={12} />{/if}{/snippet}
+					{who.amend ? "Save & amend" : "Save & commit"}
+				</Button>
+				<Button size="sm" variant="ghost" onclick={() => (who = null)}>Cancel</Button>
+			</div>
+		</form>
+	{/if}
+
 	{#if failure}
 		<div class="failure">
 			<pre class="ca-selectable">{failure}</pre>
@@ -318,12 +442,37 @@
 		display: inline-flex;
 	}
 	.msg,
+	.who,
 	.conflict,
 	.failure {
 		display: flex;
 		flex-direction: column;
 		gap: 6px;
 		padding: 0 10px 10px;
+	}
+	.who {
+		gap: 8px;
+	}
+	.who label {
+		display: flex;
+		flex-direction: column;
+		gap: 3px;
+		font-size: 11.5px;
+		color: var(--ca-text-secondary);
+	}
+	.who fieldset {
+		display: flex;
+		flex-direction: column;
+		gap: 4px;
+		margin: 0;
+		padding: 0;
+		border: 0;
+	}
+	.who .radio {
+		flex-direction: row;
+		align-items: center;
+		gap: 6px;
+		color: var(--ca-text-primary);
 	}
 	.conflict {
 		padding-top: 8px;

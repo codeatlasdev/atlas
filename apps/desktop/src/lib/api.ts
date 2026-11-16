@@ -314,6 +314,8 @@ export const git = {
 	status: (id: string) => invoke<GitStatus>("git_status", { id }),
 	run: (id: string, args: string[], stdin?: string) =>
 		invoke<RunResult>("git_run", { id, args, stdin: stdin ?? null }),
+	/** Name and email of the GitHub account `gh` is signed in as (through the worktree's host); null when there is none. */
+	ghIdentity: (id: string) => invoke<{ name: string; email: string } | null>("gh_identity", { id }),
 	files: (id: string) => invoke<string[]>("git_files", { id }),
 	commitMsgProvider: () => invoke<ProviderState>("commit_msg_provider"),
 	/** Starts a run; progress arrives as `commit-msg://<request>` events. Rejects with `no_provider` when none is set up. */

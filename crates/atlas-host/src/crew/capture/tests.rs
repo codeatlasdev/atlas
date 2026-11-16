@@ -578,7 +578,7 @@ fn serve_one(mut s: std::net::TcpStream) {
 }
 
 /// A runner installed under a temp dir with the browsers cache linked in, or why not.
-fn real_runner(tmp: &Path, who: &str) -> Result<PathBuf, String> {
+pub(crate) fn real_runner(tmp: &Path, who: &str) -> Result<PathBuf, String> {
     if let Some(why) = real_run_blocker() {
         return Err(why);
     }
@@ -764,4 +764,132 @@ fn every_detector_has_a_failing_and_a_fixed_fixture_and_the_names_match_the_pack
         }
     }
     assert_eq!(DETECTOR_FIXTURES.len(), detectors::NAMES.len());
+}
+
+// ── An isolated crewmate's capture behind the guard, in a real browser ───────────────────────────────────
+
+/// A server on 127.0.0.1 answering `GET <path>` from `routes` (`(path, status line, extra header, body)`) and counting
+/// every request it gets.
+fn route_server(
+    routes: Vec<(&'static str, &'static str, String, String)>,
+) -> (u16, std::sync::Arc<std::sync::atomic::AtomicUsize>) {
+    use std::sync::atomic::{AtomicUsize, Ordering};
+    let listener = std::net::TcpListener::bind("127.0.0.1:0").unwrap();
+    let port = listener.local_addr().unwrap().port();
+    let hits = std::sync::Arc::new(AtomicUsize::new(0));
+    let n = hits.clone();
+    std::thread::spawn(move || {
+        for s in listener.incoming().flatten() {
+            let (routes, n) = (routes.clone(), n.clone());
+            std::thread::spawn(move || {
+                use std::io::{Read, Write};
+                let mut s = s;
+                let mut buf = [0u8; 4096];
+                let k = s.read(&mut buf).unwrap_or(0);
+                let req = String::from_utf8_lossy(&buf[..k]);
+                let path = req.split_whitespace().nth(1).unwrap_or("/").to_string();
+                n.fetch_add(1, Ordering::SeqCst);
+                let (status, header, body) = routes
+                    .iter()
+                    .find(|r| r.0 == path)
+                    .map(|r| (r.1, r.2.clone(), r.3.clone()))
+                    .unwrap_or(("404 Not Found", String::new(), String::new()));
+                let _ = write!(
+                    s,
+                    "HTTP/1.1 {status}\r\n{header}Content-Type: text/html\r\nContent-Length: {}\r\nConnection: close\r\n\r\n{body}",
+                    body.len()
+                );
+            });
+        }
+    });
+    (port, hits)
+}
+
+// Incident (security review 4, C1): A's capture reached B's loopback port, directly, through a redirect of A's own
+// server, and from A's own page (an `<img>` and a `fetch`). The real runner is started behind the guard with a
+// listener table that makes one server A's and the other B's; B must see no request at all, and A's page must load.
+// The browser engine also has to prove it sends loopback through the proxy (`proxyIsUsed`), or no cell would load.
+#[tokio::test(flavor = "multi_thread")]
+async fn a_real_browser_behind_the_guard_loads_the_askers_page_and_never_reaches_another_crewmates_server()
+ {
+    use std::sync::atomic::Ordering;
+    const T: &str = "a_real_browser_behind_the_guard_loads_the_askers_page_and_never_reaches_another_crewmates_server";
+    let _g = TEST_LOCK.lock().await;
+    clear_runner();
+    let tmp = tempfile::tempdir().unwrap();
+    let dir = match real_runner(tmp.path(), T) {
+        Ok(d) => d,
+        Err(why) => return eprintln!("SKIP {T}: {why}"),
+    };
+    let (b_port, b_hits) = route_server(vec![(
+        "/secret",
+        "200 OK",
+        String::new(),
+        "<h1>B's secret</h1>".into(),
+    )]);
+    let a_page = format!(
+        "<h1>A's own page</h1><img src=\"http://127.0.0.1:{b_port}/secret\">\
+         <script>fetch('http://127.0.0.1:{b_port}/secret').catch(() => {{}})</script>"
+    );
+    let (a_port, a_hits) = route_server(vec![
+        ("/", "200 OK", String::new(), a_page),
+        (
+            "/redir",
+            "302 Found",
+            format!("Location: http://127.0.0.1:{b_port}/secret\r\n"),
+            String::new(),
+        ),
+    ]);
+    const A: u32 = 4242;
+    *guard::TEST_TABLES.lock() = Some(guard::tests::tcp(&[
+        ("127.0.0.1", a_port, A),
+        ("127.0.0.1", b_port, 4243),
+    ]));
+    let capture = |path: String| {
+        let mut s = Spec::from_args(&json!({
+            "url": format!("http://127.0.0.1:{a_port}{path}"), "engines": ["chromium"],
+            "widths": [390], "themes": ["light"], "full_page": false,
+        }))
+        .unwrap();
+        s.reach = Some(Reach { uid: A });
+        s
+    };
+    let out = tmp.path().join("out");
+    let own = run(&dir, &capture("/".into()), &out.join("own")).await;
+    let redirected = run(&dir, &capture("/redir".into()), &out.join("redir")).await;
+    let direct = run(
+        &dir,
+        &{
+            let mut s = capture("/".into());
+            s.url = format!("http://127.0.0.1:{b_port}/secret");
+            s
+        },
+        &out.join("direct"),
+    )
+    .await;
+    let metadata = run(
+        &dir,
+        &{
+            let mut s = capture("/".into());
+            s.url = "http://169.254.169.254/latest/meta-data/".into();
+            s
+        },
+        &out.join("meta"),
+    )
+    .await;
+    *guard::TEST_TABLES.lock() = None;
+    let b = b_hits.load(Ordering::SeqCst);
+    assert_eq!(
+        b, 0,
+        "B's server was reached {b} time(s): own={own:?} redirected={redirected:?}"
+    );
+    own.unwrap_or_else(|e| panic!("A's own page did not load behind the guard: {e}"));
+    assert!(
+        a_hits.load(Ordering::SeqCst) >= 2,
+        "A's own server was not asked"
+    );
+    redirected
+        .unwrap_or_else(|e| panic!("the redirect cell failed instead of showing the refusal: {e}"));
+    assert!(direct.unwrap_err().contains("no server of yours"));
+    assert!(metadata.unwrap_err().contains("metadata"));
 }

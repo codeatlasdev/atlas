@@ -6,6 +6,10 @@
 #   E2E_FAIL                 exits 1 with an error, like an engine whose sign-in expired
 #   E2E_PROBE                answers what its own process looks like: open descriptors, NoNewPrivs, cgroup, and
 #                            whether `node` (a JIT) runs
+#   E2E_SERVE <port>         serves `B-secret` on 127.0.0.1:<port> (a crewmate's dev server) and waits
+#   E2E_CAPTURE <port>       asks hostd's `capture` tool, as the agent's MCP client does, for 127.0.0.1:<port> (another
+#                            crewmate's server), the cloud metadata address, and a server of its own, and answers each
+#                            reply: what an isolated crewmate's capture may reach
 #   E2E_HANG <n>             starts `sleep <n>` as a child and waits for it: a tool the agent started
 #   E2E_HANG_ONCE <n>        like E2E_HANG, but a run that hostd resumed after a restart ("was interrupted")
 #                            finishes at once
@@ -40,6 +44,33 @@ case "$prompt" in
     # Another crewmate's command line, from /proc: `ProtectProc=invisible` in the helper's unit hides it.
     others=$(for d in /proc/[0-9]*; do tr '\0' ' ' <"$d/cmdline" 2>/dev/null; echo; done | grep -c 'sleep 3134[1]')
     reply "probe: $(tr '\n\t' ' ;' <"$HOME/e2e-probe" | tr -d '"\\') node=$node others=$others extra=$(awk '$9>2{printf "%s=%s ", $9, $11}' "$HOME/e2e-probe-l" | tr -d '"\\')"
+    exit 0
+    ;;
+  *E2E_SERVE*)
+    n=$(arg_of E2E_SERVE)
+    node -e "require('http').createServer((q,s)=>s.end('B-secret')).listen($n,'127.0.0.1')" &
+    wait
+    reply "fake-claude served"
+    exit 0
+    ;;
+  *E2E_CAPTURE*)
+    bport=$(arg_of E2E_CAPTURE)
+    # The capture tool's request, the way the agent's MCP client makes it (crew/mcp.rs `post_task_tool`); the one
+    # browser that needs no install of ours is chromium, and the refusals come before any browser starts.
+    cap() {
+      curl -s -X POST -H "X-Atlas-Hook-Token: $ATLAS_HOOK_TOKEN" -H 'Content-Type: application/json' \
+        -d "{\"pane_key\":\"$ATLAS_PANE_KEY\",\"args\":{\"url\":\"$1\",\"engines\":[\"chromium\"],\"widths\":[390],\"themes\":[\"light\"]}}" \
+        "http://127.0.0.1:$ATLAS_HOOK_PORT/crew/$ATLAS_CREWMATE_ID/capture" | tr -d '"\\\n' | cut -c1-260
+    }
+    # A server of this agent's own on 127.0.0.1:47777 (0xBAA1); its egress chain drops loopback, so wait for it in /proc.
+    node -e "require('http').createServer((q,s)=>s.end('A-own')).listen(47777,'127.0.0.1')" &
+    srv=$!
+    for _ in $(seq 25); do grep -q ':BAA1 00000000:0000 0A' /proc/net/tcp && break; sleep 0.2; done
+    b=$(cap "http://127.0.0.1:$bport/src/App.tsx")
+    meta=$(cap "http://169.254.169.254/latest/meta-data/")
+    own=$(cap "http://127.0.0.1:47777/")
+    kill "$srv"
+    reply "capture b=[$b] meta=[$meta] own=[$own]"
     exit 0
     ;;
   *E2E_HANG_ONCE*)

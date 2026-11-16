@@ -428,6 +428,31 @@ until_true 20 "B's sleep 31342 to be gone" no_sleeper 31342
 wait_idle "$CMB"
 echo "crewmate sign-in through hostd: the hook ran confined (NoNewPrivs 1) and the process it detached sees none of B's"
 
+# (9d) C1 of the fourth review: `capture` runs as the crew user, outside every crewmate's firewall chain, so A could
+# screenshot B's dev server on 127.0.0.1 (listed in /proc/net/tcp with B's uid) and the cloud metadata address. Now an
+# isolated crewmate's capture refuses private, link-local and metadata addresses, and loopback unless the server on that
+# port is its own. B's agent runs a server on 127.0.0.1:47778; A asks for it, for 169.254.169.254, and for a server of its
+# own. The refusals come before any browser starts; the allowed one gets as far as the browsers (none are installed on
+# this server: "the browsers are not installed" is the answer of a capture that was allowed to start).
+TBS=$(send_task "$CMB" "E2E_SERVE 47778")
+wait_task "$CMB" "$TBS" running 60
+b_serves() { srv grep -q ':BAA2 00000000:0000 0A' /proc/net/tcp; }
+until_true 20 "B's server on 127.0.0.1:47778 (0xBAA2)" b_serves
+T=$(send_task "$CM" "E2E_CAPTURE 47778")
+wait_task "$CM" "$T" "done" 90
+CAPTURE=$(task_json "$CM" "$T" | jq -r .result)
+echo "A's captures: $CAPTURE"
+[[ $CAPTURE == *"b=["*"port 47778 is this server's, and no server of yours listens on it"*"meta=["* ]] ||
+  fail "A's capture of B's loopback server was not refused as another crewmate's: $CAPTURE"
+[[ $CAPTURE == *"meta=["*"169.254.169.254 is a private, link-local or metadata address"*"own=["* ]] ||
+  fail "A's capture of the metadata address was not refused: $CAPTURE"
+[[ $CAPTURE == *"own=["*"browsers are not installed"* ]] ||
+  fail "A's capture of its own loopback server was refused, or failed some other way than the missing browsers: $CAPTURE"
+hostd crewmate_cancel "$(jq -nc --arg id "$CMB" --arg t "$TBS" '{id: $id, task: $t}')" >/dev/null
+wait_task "$CMB" "$TBS" cancelled 30
+wait_idle "$CMB"
+echo "capture: B's loopback port and 169.254.169.254 refused, A's own loopback server allowed through to the browsers"
+
 # (10) the crew user's GitHub login never reaches a process that runs as a crewmate (N2). A fake `gh` stands in for
 # the operator's login; crewmate C has a project and no token of its own, so hostd mirrors the project into
 # C's crew-runtime/ with that login and C clones the mirror. Hooks in C's own ~/.gitconfig record the environment

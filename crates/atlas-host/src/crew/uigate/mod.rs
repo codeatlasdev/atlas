@@ -43,11 +43,14 @@ pub trait Capturer {
 }
 
 /// The real capturer: `crew::capture::run` on this crew server.
-pub struct Playwright<'a>(pub &'a Path);
+pub struct Playwright<'a>(pub &'a Path, pub Option<capture::Reach>);
 
 impl Capturer for Playwright<'_> {
     async fn capture(&self, spec: &Spec, out_dir: &Path) -> Result<Captured, String> {
-        capture::run(self.0, spec, out_dir).await
+        // Whatever scenario a project file names, the page is the asking crewmate's to reach, not the server's.
+        let mut spec = spec.clone();
+        spec.reach = self.1;
+        capture::run(self.0, &spec, out_dir).await
     }
 }
 
@@ -470,7 +473,7 @@ pub async fn handle(
     let _cleanup = RemoveOnDrop(scratch.clone());
     let cache = cache();
     let checks = check::registered();
-    let capturer = Playwright(hostd_dir);
+    let capturer = Playwright(hostd_dir, capture::Reach::of(store, crewmate_id)?);
     let ctx = Ctx {
         capturer: &capturer,
         cache: &cache,

@@ -16,6 +16,8 @@
 //! crew user and uses root only for an `apt-get install` of validated package names.
 
 pub mod detectors;
+#[cfg(unix)]
+pub mod guard;
 pub mod spec;
 
 use std::path::{Path, PathBuf};
@@ -26,7 +28,7 @@ use serde_json::json;
 use tokio::io::AsyncWriteExt;
 
 use super::store::CrewStore;
-pub use spec::{Combo, Spec};
+pub use spec::{Combo, Reach, Spec};
 
 /// The one place the Playwright version is written in Rust. The browsers it downloads match this
 /// exact release, so it moves only together with `package-lock.json` (below) and a re-run of
@@ -109,6 +111,20 @@ pub struct Captured {
 /// timeout passes.
 pub async fn run(hostd_dir: &Path, spec: &Spec, out_dir: &Path) -> Result<Captured, String> {
     let dir = capture_dir(hostd_dir);
+    // For an isolated crewmate: the URL first (before any browser starts), then a proxy the browser is started with
+    // that decides every connection the page makes, each hop of a redirect included (`guard`).
+    #[cfg(unix)]
+    let guard = match &spec.reach {
+        Some(reach) => {
+            reach.check_url(&spec.url).await?;
+            Some(
+                guard::Guard::start(reach)
+                    .await
+                    .map_err(|e| format!("capture: cannot start the network guard: {e}"))?,
+            )
+        }
+        None => None,
+    };
     let (mut cmd, timeout) = runner_command(&dir)?;
     cmd.current_dir(dir_or_cwd(&dir))
         .env("PLAYWRIGHT_BROWSERS_PATH", dir.join("browsers"))
@@ -122,6 +138,10 @@ pub async fn run(hostd_dir: &Path, spec: &Spec, out_dir: &Path) -> Result<Captur
 
     let mut input = json!(spec);
     input["out_dir"] = json!(out_dir);
+    #[cfg(unix)]
+    if let Some(g) = &guard {
+        input["proxy"] = json!(g.url());
+    }
     let mut stdin = child.stdin.take().expect("piped");
     // The runner reads all of stdin before it prints; a write error means it already died, which
     // the exit status below reports with its stderr.
@@ -187,6 +207,14 @@ pub async fn run(hostd_dir: &Path, spec: &Spec, out_dir: &Path) -> Result<Captur
     })
 }
 
+/// No isolation off Unix: there is no crewmate user to protect another one from.
+#[cfg(not(unix))]
+impl Reach {
+    pub fn of(_: &CrewStore, _: &str) -> Result<Option<Self>, String> {
+        Ok(None)
+    }
+}
+
 /// The runner runs in the capture dir (Node finds `node_modules` from the script, not the cwd, but a
 /// fake runner and relative paths expect a real directory); fall back to the current one.
 fn dir_or_cwd(dir: &Path) -> PathBuf {
@@ -239,7 +267,8 @@ pub async fn handle(
     task_id: &str,
     args: &serde_json::Value,
 ) -> Result<serde_json::Value, String> {
-    let spec = Spec::from_args(args)?;
+    let mut spec = Spec::from_args(args)?;
+    spec.reach = Reach::of(store, crewmate_id)?;
     // The runner writes into a scratch dir that is removed whatever happens; what is kept is the copy
     // `attach_captures` stores with the task.
     let scratch = scratch_dir(hostd_dir);

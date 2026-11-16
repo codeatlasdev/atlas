@@ -307,11 +307,12 @@ pub async fn handle(
         );
     };
     let width = capture_width(req.width, image_w);
-    let spec = Spec::from_args(&json!({
+    let mut spec = Spec::from_args(&json!({
         "url": url, "widths": [width], "themes": ["light"], "engines": ["chromium"],
         "full_page": true, "dom": true,
     }))
     .map_err(|e| as_locate(&e))?;
+    spec.reach = capture::Reach::of(store, crewmate_id).map_err(|e| as_locate(&e))?;
 
     let scratch = capture::scratch_dir(hostd_dir);
     std::fs::create_dir_all(&scratch)

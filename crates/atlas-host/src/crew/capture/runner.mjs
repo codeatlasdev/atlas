@@ -1,7 +1,10 @@
 // Atlas Crew capture runner. Embedded in atlas (`crew/capture/mod.rs`) and written next to the pinned
 // `playwright` package on the crew server by `atlas crew browsers install`.
 //
-// stdin : one JSON spec {url, widths[], themes[], engines[], slow_network, full_page, steps[], dom?, checks?, out_dir}
+// stdin : one JSON spec {url, widths[], themes[], engines[], slow_network, full_page, steps[], dom?, checks?, proxy?, out_dir}
+// With `proxy` (an isolated crewmate's capture) the browsers connect ONLY through that proxy, which refuses private
+// networks and other crewmates' servers for every request of the page and every hop of a redirect (`crew/capture/guard.rs`).
+// Each engine first proves it really sends loopback through it (`proxyIsUsed`); one that does not is not used.
 // stdout: one JSON report {shots: [{engine, width, theme, path, dom?, findings?} | {engine, width, theme, error}]}
 // With `dom: true` every cell also writes `<engine>-<width>px-<theme>.dom.json` next to the PNG: the
 // element boxes of the page (see `collectDom`), which the `locate` tool ranks.
@@ -13,6 +16,7 @@
 import { mkdirSync, writeFileSync } from "node:fs";
 import { join } from "node:path";
 import { createRequire } from "node:module";
+import { createServer } from "node:http";
 import { detect, observeShifts } from "./detectors.mjs";
 
 // The package lives next to this file, installed by `npm install playwright@<pin>`.
@@ -177,6 +181,33 @@ function collectDom([maxElements, textMax]) {
 	return { page_w: Math.max(de.scrollWidth, window.innerWidth), page_h: Math.max(de.scrollHeight, window.innerHeight), elements: out };
 }
 
+/**
+ * Whether `browser` sends a request for a loopback address to its proxy and not straight out. A canary server on
+ * 127.0.0.1 belongs to this process, not to the crewmate the guard serves, so the guard refuses it: the canary seeing
+ * a connection means the engine bypassed the proxy for loopback (as a browser may by default), and nothing it loads
+ * could be decided. Both spellings are tried: `localhost` is special-cased by some engines.
+ */
+async function proxyIsUsed(browser) {
+	let hits = 0;
+	const canary = createServer((_req, res) => {
+		hits++;
+		res.end("canary");
+	});
+	await new Promise((resolve) => canary.listen(0, "127.0.0.1", resolve));
+	const { port } = canary.address();
+	const context = await browser.newContext();
+	try {
+		const page = await context.newPage();
+		for (const host of ["127.0.0.1", "localhost"]) {
+			await page.goto(`http://${host}:${port}/`, { timeout: 8_000 }).catch(() => {});
+		}
+	} finally {
+		await context.close().catch(() => {});
+		await new Promise((resolve) => canary.close(resolve));
+	}
+	return hits === 0;
+}
+
 async function shot(browser, spec, engine, width, theme) {
 	const base = { engine, width, theme };
 	const context = await browser.newContext({
@@ -227,7 +258,14 @@ const shots = [];
 for (const engine of spec.engines) {
 	let browser;
 	try {
-		browser = await playwright[engine].launch();
+		browser = await playwright[engine].launch(
+			// `<-loopback>`: Chromium never sends loopback through a proxy otherwise.
+			spec.proxy ? { proxy: { server: spec.proxy, bypass: "<-loopback>" } } : {},
+		);
+		if (spec.proxy && !(await proxyIsUsed(browser))) {
+			await browser.close().catch(() => {});
+			throw new Error(`${engine} does not send loopback addresses through the network guard, so nothing it loads can be checked`);
+		}
 	} catch (e) {
 		const error = String(e && e.message ? e.message : e).split("\n")[0];
 		for (const width of spec.widths)

@@ -264,14 +264,14 @@ impl Default for Policy {
 
 /// Destinations a crewmate never reaches: the machine's own network, the cloud metadata service and
 /// every private range (another server in the VPC is exactly what a prompt-injected agent would try).
-const NEVER: [&str; 5] = [
+pub(crate) const NEVER: [&str; 5] = [
     "10.0.0.0/8",
     "172.16.0.0/12",
     "192.168.0.0/16",
     "169.254.0.0/16",
     "100.64.0.0/10",
 ];
-const NEVER6: [&str; 2] = ["fc00::/7", "fe80::/10"];
+pub(crate) const NEVER6: [&str; 2] = ["fc00::/7", "fe80::/10"];
 
 /// The nftables ruleset: a table that is replaced as a whole (atomic: `nft -f` applies the file or
 /// none of it) with one chain per crewmate user, selected by `meta skuid`.

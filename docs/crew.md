@@ -437,7 +437,7 @@ Only `url` is required. Each field and what it means:
 
 | Field | Default | Meaning |
 |---|---|---|
-| `url` | | `http://` or `https://` only. `localhost` and LAN addresses are allowed on purpose (the page is usually a dev server on the crew server); `file:`, `data:`, `javascript:` and the like are refused |
+| `url` | | `http://` or `https://` only. `localhost` and LAN addresses are allowed on purpose (the page is usually a dev server on the crew server), except for a crewmate that runs as its own Linux user: it may load only a server **its own user** listens on (its dev server on `localhost`), never another crewmate's, a private or link-local network, or the cloud metadata address (see "Not covered" above); `file:`, `data:`, `javascript:` and the like are refused |
 | `widths` | `[390, 1440]` | viewport widths in px, 200 to 4000: a phone and a desktop |
 | `themes` | `["light", "dark"]` | the page's `prefers-color-scheme` |
 | `engines` | `["chromium", "webkit"]` | chromium is Chrome/Edge/Android; webkit is Safari, iOS and Tauri's WKWebView, where most "works on my machine" layout bugs live |

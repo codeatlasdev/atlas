@@ -31,6 +31,8 @@ pub enum Target {
 #[derive(Debug, Clone, PartialEq)]
 pub enum Req {
     Info,
+    /// Kill the main webview's web process (Linux): the recovery path of `webview_guard`.
+    KillWebProcess,
     Logs {
         since: u64,
     },
@@ -180,6 +182,7 @@ fn target(v: &Value) -> Result<Target, String> {
 pub fn parse(v: &Value) -> Result<Req, String> {
     match v["cmd"].as_str().unwrap_or_default() {
         "info" => Ok(Req::Info),
+        "kill_web_process" => Ok(Req::KillWebProcess),
         "logs" => Ok(Req::Logs {
             since: v["since"].as_u64().unwrap_or(0),
         }),
@@ -293,7 +296,7 @@ pub fn parse(v: &Value) -> Result<Req, String> {
             })
         }
         other => Err(format!(
-            "unknown cmd {other:?}; expected info|logs|eval|state|wait|click|type|a11y|contrast|perf|shot|record|resize|frame|gesture_record|gesture_replay"
+            "unknown cmd {other:?}; expected info|logs|eval|state|wait|click|type|a11y|contrast|perf|shot|record|resize|frame|gesture_record|gesture_replay|kill_web_process"
         )),
     }
 }
@@ -608,6 +611,16 @@ mod tests {
                 selector: Some("aside.sidebar".into())
             }
         );
+    }
+
+    #[test]
+    fn kill_web_process_parses_and_is_listed() {
+        assert_eq!(
+            parse(&json!({"cmd":"kill_web_process"})).unwrap(),
+            Req::KillWebProcess
+        );
+        let e = parse(&json!({"cmd":"poke"})).unwrap_err();
+        assert!(e.contains("kill_web_process"), "{e}");
     }
 
     #[test]

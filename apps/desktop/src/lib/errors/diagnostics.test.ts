@@ -163,12 +163,11 @@ describe("diagnose: what a remote maintainer reads first", () => {
 		const l = w({ install: { ...fixture.install, cliLinkedTo: "/repo/target/debug/atlas" } });
 		expect(findings(l).join(" ")).toContain("linked to a dev build");
 	});
-	test("Markdown and Copy details carry the install block and the findings", () => {
+	test("Markdown and Copy details carry the install facts and the findings", () => {
 		const r = hostErrorReport("x", w({ install: { ...fixture.install, translocated: true } }));
 		const md = markdownReport(r, 100_000);
-		expect(md).toContain("## Install");
 		expect(md).toContain("- Running bundle: /Applications/Atlas.app");
-		expect(md).toContain("- CLI: ~/.atlas/bin/atlas");
+		expect(md).toContain("- CLI path: ~/.atlas/bin/atlas");
 		expect(md).toContain("App Translocation");
 		expect(detailsText(r)).toContain("Installed app: /Applications/Atlas.app");
 	});

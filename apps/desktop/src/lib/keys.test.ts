@@ -164,6 +164,34 @@ test("labels read Ctrl/Alt/Shift words off macOS and glyphs on macOS", () => {
 	expect(label("shift-cmd-p", true)).toBe("⇧⌘P");
 });
 
+// Incident (#270): the palette and menus must name every key the way the platform writes it. One formatter, every
+// special key, both spellings: a user-bound `cmd-pagedown` read "⌘PAGEDOWN" on macOS (no glyph, no word).
+test("special keys read the same word or glyph per platform, modifiers always in ctrl-alt-shift-cmd order", () => {
+	const rows: [string, string, string][] = [
+		["cmd-enter", "⌘↩", "Ctrl+Enter"],
+		["shift-enter", "⇧↩", "Shift+Enter"],
+		["cmd-backspace", "⌘⌫", "Ctrl+Backspace"],
+		["alt-delete", "⌥⌦", "Alt+Delete"],
+		["cmd-up", "⌘↑", "Ctrl+↑"],
+		["alt-shift-down", "⌥⇧↓", "Alt+Shift+↓"],
+		["ctrl-tab", "⌃⇥", "Ctrl+Tab"],
+		["shift-escape", "⇧⎋", "Shift+Esc"],
+		["cmd-space", "⌘␣", "Ctrl+Space"],
+		["ctrl-pageup", "⌃⇞", "Ctrl+PgUp"],
+		["cmd-pagedown", "⌘⇟", "Ctrl+PgDn"],
+		["shift-home", "⇧↖", "Shift+Home"],
+		["alt-end", "⌥↘", "Alt+End"],
+		["f12", "F12", "F12"],
+		["alt-shift-f", "⌥⇧F", "Alt+Shift+F"],
+		["ctrl-cmd-1", "⌃⌘1", "Ctrl+1"],
+		["shift-cmd-\\", "⇧⌘\\", "Ctrl+Shift+\\"],
+	];
+	for (const [stroke, mac, other] of rows) {
+		expect(label(stroke, true), `mac ${stroke}`).toBe(mac);
+		expect(label(stroke, false), `other ${stroke}`).toBe(other);
+	}
+});
+
 // Off macOS the app's shortcuts are Ctrl chords; a shell needs ^C, ^R, ^L, ^W, ^K… for itself. In a focused terminal a
 // plain Ctrl+letter goes to the program; Ctrl+Shift, digit, Tab and punctuation chords still reach the app.
 test("off macOS a focused terminal keeps plain Ctrl+letter, Ctrl+[ and Alt+←/→ for the program", () => {

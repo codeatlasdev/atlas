@@ -1,0 +1,61 @@
+{
+	"appLog": "",
+	"crashes": {
+		"atlas": [
+			{
+				"ageSecs": 7200,
+				"at": 1700000000,
+				"summary": "atlas 1.5.0-alpha.24: index out of bounds (crates/atlas-host/src/server.rs:9:1)"
+			}
+		],
+		"coredumpStatus": "ok",
+		"coredumps": [
+			{
+				"at": 1700000100,
+				"exe": "/tmp/.mount_AtlasAbc/usr/lib/webkit2gtk-4.1/WebKitWebProcess",
+				"pid": 4242,
+				"signal": "SIGSEGV"
+			}
+		]
+	},
+	"hostdLog": "",
+	"incidents": [],
+	"install": {
+		"channel": "alpha",
+		"cli": "/usr/bin/atlas",
+		"cliLinkedTo": null,
+		"installedApp": null,
+		"quarantined": false,
+		"runningBundle": null,
+		"translocated": false
+	},
+	"lastCrash": "atlas 1.5.0-alpha.24: index out of bounds (crates/atlas-host/src/server.rs:9:1)",
+	"os": "Arch Linux [arch], kernel 7.2.15-1-omarchy (x86_64)",
+	"packaging": {
+		"appimage": "~/Apps/Atlas_1.5.0-alpha.25_amd64.AppImage",
+		"exe": "/tmp/.mount_AtlasAbc/usr/bin/atlas-desktop",
+		"exeOwner": null,
+		"localBin": ["atlas"]
+	},
+	"platform": {
+		"compositor": "Hyprland",
+		"desktop": "Hyprland",
+		"distro": "Arch Linux [arch]",
+		"gpus": ["AMD (amdgpu)"],
+		"graphicsEnv": ["WEBKIT_DISABLE_DMABUF_RENDERER=1"],
+		"gtk": "3.24.52",
+		"kernel": "7.2.15-1-omarchy",
+		"mesa": "26.2.5-1",
+		"nvidiaDriver": null,
+		"session": "wayland",
+		"webview": "WebKitGTK 2.54.1"
+	},
+	"stderrLog": "Gtk-WARNING: cannot open display\nCould not create default EGL display: EGL_BAD_PARAMETER",
+	"versions": {
+		"app": "1.5.0-alpha.25",
+		"cli": "1.5.0-alpha.25",
+		"hostd": "1.5.0-alpha.24",
+		"hostdCaps": ["pty_attach_raw"],
+		"hostdPid": 8664
+	}
+}

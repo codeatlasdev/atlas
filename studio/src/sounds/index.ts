@@ -106,7 +106,7 @@ function levelBefore(y: Float32Array, at: number): number {
 
 const f32 = (x: Float32Array) => Buffer.from(x.buffer, x.byteOffset, x.byteLength);
 
-/** Write the finished earcon: gain-matched, 5 ms fades, mono 48 kHz, shipped as .m4a (AAC); a .wav copy for auditioning stays in the gitignored cache. */
+/** Write the finished earcon: gain-matched, 5 ms fades, mono 48 kHz, shipped as .m4a (AAC) and .ogg (Vorbis, for a GStreamer without an AAC decoder, #265); a .wav copy for auditioning stays in the gitignored cache. */
 async function render(id: EarconId, c: Candidate): Promise<{ m4a: number; wav: string; rmsDb: number; peakDb: number }> {
 	mkdirSync(WORK, { recursive: true });
 	mkdirSync(AUDITION, { recursive: true });
@@ -127,6 +127,7 @@ async function render(id: EarconId, c: Candidate): Promise<{ m4a: number; wav: s
 	const wav = join(AUDITION, `${id}.wav`);
 	await ffmpeg([...input, "-c:a", "pcm_s16le", wav]);
 	await ffmpeg([...input, "-c:a", "aac", "-b:a", "48k", "-movflags", "+faststart", join(OUT, `${id}.m4a`)]);
+	await ffmpeg([...input, "-c:a", "libvorbis", "-b:a", "48k", join(OUT, `${id}.ogg`)]);
 	rmSync(raw);
 	const after = analyze(y, SR);
 	return { m4a: statSync(join(OUT, `${id}.m4a`)).size, wav, rmsDb: after.rmsDb, peakDb: after.peakDb };

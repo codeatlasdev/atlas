@@ -2,7 +2,8 @@
 # Patch an extracted AppImage dir (AppDir) after `cargo tauri build` (#266):
 #   1. drop host-ABI libraries the bundle must never carry,
 #   2. replace linuxdeploy's GTK hook with packaging/appimage/apprun-hook.sh,
-#   3. fail if a forbidden library is still there.
+#   3. fail if a forbidden library is still there,
+#   4. fail if the bundled GStreamer has no plugins or no hook pointing at them (#265).
 # usage: scripts/appimage-patch.sh <AppDir>
 # Repacking is the caller's job (release.yml runs appimagetool).
 set -euo pipefail
@@ -34,5 +35,13 @@ if [ -n "$left" ]; then
   echo "$left" >&2
   exit 1
 fi
+# GStreamer: the AppImage's libgstreamer looks for plugins at the build distro's path, which other distros do not
+# have, so `bundleMediaFramework` ships the plugins and a hook with GST_PLUGIN_SYSTEM_PATH_1_0. Without them every media
+# element in the page logs `GStreamer element appsrc not found` (appsrc is in libgstapp.so) and playback fails.
+if ! find "$appdir" -path '*/gstreamer-1.0/libgstapp.so' | grep -q .; then
+  echo "no GStreamer plugins in the AppImage (libgstapp.so, which holds appsrc, is missing): media would fail" >&2
+  exit 1
+fi
+[ -f "$hooks/linuxdeploy-plugin-gstreamer.sh" ] || { echo "linuxdeploy-plugin-gstreamer.sh is missing: the bundled plugins would not be found" >&2; exit 1; }
 grep -q 'export GDK_BACKEND=x11' "$hooks"/*.sh && { echo "a hook still forces GDK_BACKEND=x11" >&2; exit 1; }
 echo "appimage patched: $appdir"

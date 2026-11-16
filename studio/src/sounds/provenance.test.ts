@@ -43,4 +43,14 @@ describe("provenance README", () => {
 		expect(md).toMatch(/40 dB/);
 		expect(md).toContain("`boot` signature");
 	});
+
+	// Regression (#265): the README said "WebKit decodes AAC natively; only the .m4a files ship", which is false on
+	// WebKitGTK without an AAC decoder; the Ogg Vorbis copy is what Linux plays.
+	test("says both the AAC .m4a and the Ogg Vorbis .ogg ship, and why", () => {
+		const md = readme([row("boot")], "2026-10-12");
+		expect(md).toContain(".m4a");
+		expect(md).toContain(".ogg");
+		expect(md).toContain("Vorbis");
+		expect(md).not.toContain("only the .m4a files ship");
+	});
 });

@@ -2,6 +2,7 @@
 import "../../../test/setup.ts";
 import { afterAll, expect, mock, test } from "bun:test";
 import { resolve } from "node:path";
+import { projectsMock } from "../../../test/projectsMock.ts";
 import { showFirstProject } from "./flow.ts";
 
 // Regression: 1.5.0-alpha.26 first-user pass (01-welcome): a window with no project and no first-run overlay (an agent
@@ -17,21 +18,9 @@ test("a no-project window gets the first-project state unless the overlay or the
 });
 
 const calls = [];
-mock.module(resolve(import.meta.dir, "../components/sidebar/projects.ts"), () => ({
-	addProject: () => calls.push("add"),
-	showDiscover: () => calls.push("find"),
-	...Object.fromEntries(
-		[
-			"addFolder",
-			"addPaths",
-			"refreshProjects",
-			"locateProject",
-			"relinkProject",
-			"removeProject",
-			"removeAllMissing",
-		].map((n) => [n, async () => {}]),
-	),
-}));
+mock.module(resolve(import.meta.dir, "../components/sidebar/projects.ts"), () =>
+	projectsMock({ addProject: () => calls.push("add"), showDiscover: () => calls.push("find") }),
+);
 // The standing Hero draws the globe with the theme store, which bun cannot load (Vite-only `import.meta.glob`).
 mock.module(resolve(import.meta.dir, "./Hero.svelte"), () => ({ default: () => {} }));
 mock.module("@tauri-apps/plugin-dialog", () => ({ open: async () => null }));

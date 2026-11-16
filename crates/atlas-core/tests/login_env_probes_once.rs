@@ -6,14 +6,15 @@
 use std::os::unix::fs::PermissionsExt;
 use std::path::Path;
 
-/// A "shell" that records each time it is started, then behaves like `sh`.
+/// A "shell" that records each probe (the first attempt, `-l -i -c`: a `sh` that rejects those flags, dash on Ubuntu, makes
+/// the probe retry with fewer, and that is still one probe), then behaves like `sh`.
 fn counting_shell(dir: &Path) -> (String, std::path::PathBuf) {
     let log = dir.join("starts.log");
     let sh = dir.join("counting-sh");
     std::fs::write(
         &sh,
         format!(
-            "#!/bin/sh\necho \"$@\" >> '{}'\nexec /bin/sh \"$@\"\n",
+            "#!/bin/sh\ncase \"$*\" in \"-l -i -c \"*) echo probe >> '{}' ;; esac\nexec /bin/sh \"$@\"\n",
             log.display()
         ),
     )

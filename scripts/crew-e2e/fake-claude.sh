@@ -35,8 +35,8 @@ case "$prompt" in
     n=$(arg_of E2E_HANG)
     ;;
   *E2E_OK*)
-    reply "fake-claude done $(arg_of E2E_OK)"
-    exit 0
+    echo "deliberately broken for the red demonstration" >&2
+    exit 1
     ;;
   *)
     reply "fake-claude: nothing to do"

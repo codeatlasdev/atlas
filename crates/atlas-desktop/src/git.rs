@@ -11,7 +11,7 @@ use crate::host::HostHub;
 use crate::worktree::git;
 
 use atlas_core::git_review::{
-    FileDiff, Hunk, Line, REVIEW_DIFF, STATUS_ARGS, UNTRACKED_MAX, parse, parse_status,
+    FileDiff, Hunk, Line, REVIEW_DIFF, UNTRACKED_MAX, base_for, parse, status_json,
 };
 
 /// An untracked file as an all-added diff; read through hostd so SSH checkouts work.
@@ -130,65 +130,32 @@ pub async fn git_diff(
     Ok(json!({"files": files, "base": base_used}))
 }
 
+type GitFuture<'a> = std::pin::Pin<Box<dyn Future<Output = Result<String, String>> + Send + 'a>>;
+
+/// `git` through hostd as the plain closure `status_json` takes (the args are copied so the future borrows no slice).
+fn hub_git<'a>(hub: &'a HostHub, dir: &'a Path) -> impl Fn(&[&str]) -> GitFuture<'a> + 'a {
+    move |args| {
+        let args: Vec<String> = args.iter().map(|s| s.to_string()).collect();
+        Box::pin(async move {
+            let args: Vec<&str> = args.iter().map(String::as_str).collect();
+            git(hub, dir, &args).await
+        })
+    }
+}
+
 async fn default_base(hub: &HostHub, dir: &Path) -> String {
     let branch = git(hub, dir, &["branch", "--show-current"])
         .await
         .unwrap_or_default();
-    let branch = branch.trim();
-    if !branch.is_empty()
-        && let Ok(b) = git(hub, dir, &["config", &format!("branch.{branch}.base")]).await
-        && !b.trim().is_empty()
-    {
-        return b.trim().to_string();
-    }
-    "HEAD".into()
+    base_for(Some(branch.trim()), &hub_git(hub, dir)).await
 }
 
 /// Porcelain v2 status: branch, upstream, ahead/behind vs base, entries (ignored ones included, `x`/`y` = `!`).
+/// One `status --branch` plus the base lookup (see `status_json`); the frontend debounces how often this runs.
 #[tauri::command]
 pub async fn git_status(hub: State<'_, Arc<HostHub>>, id: String) -> Result<Value, String> {
     let dir = root(&id)?;
-    let out = git(&hub, &dir, &STATUS_ARGS).await?;
-    let (branch, upstream, ab, entries) = parse_status(&out);
-    let base = default_base(&hub, &dir).await;
-    let vs_base = if base != "HEAD" {
-        git(
-            &hub,
-            &dir,
-            &[
-                "rev-list",
-                "--left-right",
-                "--count",
-                &format!("HEAD...{base}"),
-            ],
-        )
-        .await
-        .ok()
-        .and_then(|s| {
-            let mut n = s.split_whitespace().filter_map(|x| x.parse::<u64>().ok());
-            Some(json!({"ahead": n.next()?, "behind": n.next()?}))
-        })
-    } else {
-        None
-    };
-    let merging = dir.join(".git").is_file() || dir.join(".git").is_dir();
-    let gitdir = git(&hub, &dir, &["rev-parse", "--git-dir"])
-        .await
-        .unwrap_or_default();
-    let gd = dir.join(gitdir.trim());
-    let op = if !merging {
-        None
-    } else if gd.join("MERGE_HEAD").exists() {
-        Some("merge")
-    } else if gd.join("rebase-merge").exists() || gd.join("rebase-apply").exists() {
-        Some("rebase")
-    } else {
-        None
-    };
-    Ok(json!({
-        "branch": branch, "upstream": upstream, "ab": ab, "base": base,
-        "vs_base": vs_base, "entries": entries, "operation": op,
-    }))
+    status_json(&dir, &hub_git(&hub, &dir)).await
 }
 
 /// `git <args>` in the worktree (stage/unstage/commit/push…); argv is restricted to git.

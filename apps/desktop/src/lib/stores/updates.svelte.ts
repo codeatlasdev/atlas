@@ -383,6 +383,8 @@ class Updates {
 	}
 
 	updateAll = () => this.#run("update", "update_all");
+	/** "Install now" on a managed package: the click is the confirmation, `pkexec` asks for the password. */
+	installPackage = () => this.#run("update", "update_all", { confirmed: true });
 	/** Explicit "Install X now (downgrade)": the CLI is told `--downgrade --yes`; the channel stays as persisted. */
 	downgrade = () => this.#run("update", "update_all", { downgrade: true });
 	reinstall = () => this.#run("reinstall", "reinstall_app");

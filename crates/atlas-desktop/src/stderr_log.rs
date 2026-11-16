@@ -181,8 +181,10 @@ mod tests {
         spawn_trimmer(p.clone(), 64, std::time::Duration::from_millis(10));
         w.write_all(&[b'x'; 128]).unwrap();
         let old = p.with_extension("log.1");
+        // Done when the live log was truncated: that happens after the copy finished. Waiting for `.1`
+        // to exist raced the copy (it exists, empty, while `fs::copy` still writes it).
         let deadline = std::time::Instant::now() + std::time::Duration::from_secs(5);
-        while !old.exists() && std::time::Instant::now() < deadline {
+        while std::fs::metadata(&p).unwrap().len() != 0 && std::time::Instant::now() < deadline {
             std::thread::sleep(std::time::Duration::from_millis(10));
         }
         assert_eq!(std::fs::metadata(&old).unwrap().len(), 128);

@@ -78,6 +78,9 @@ mod term;
 mod term;
 mod tray;
 mod updates;
+// The ready watch runs everywhere; the reload/give-up decision only on Linux so far (#350).
+#[cfg_attr(not(target_os = "linux"), allow(dead_code))]
+mod webview_guard;
 #[cfg(windows)]
 mod webview_win;
 mod workspace;
@@ -120,7 +123,18 @@ fn show_main(app: &AppHandle) {
         webview_win::sync(app);
         return;
     }
-    // Agent instances need the private virtual display (macOS); elsewhere they stay hidden.
+    // Linux: the private headless display of the instance (`atlas_core::agent_display`); shown without focus, and
+    // only after the environment is verified once more. macOS: the private virtual display.
+    #[cfg(target_os = "linux")]
+    match agent_mode::verify_display() {
+        Ok(()) => {
+            let _ = w.show();
+        }
+        Err(e) => {
+            eprintln!("atlas-agent: REFUSED to show the window: {e}");
+            app.exit(3);
+        }
+    }
     #[cfg(target_os = "macos")]
     {
         // Watching first: whatever the placement below does or fails to do, the window cannot stay on his screen.
@@ -547,6 +561,14 @@ fn main() {
     // First, so GTK/WebKit messages printed while starting (and by every web process) are kept.
     stderr_log::install();
     diag::install_panic_hook();
+    // Linux agent instance: before anything touches a display, the environment must point at its own private one.
+    #[cfg(target_os = "linux")]
+    if agent_mode::Mode::current() == agent_mode::Mode::Agent
+        && let Err(e) = agent_mode::verify_display()
+    {
+        eprintln!("atlas-agent: REFUSED to show the window: {e}");
+        std::process::exit(3);
+    }
     #[cfg(target_os = "linux")]
     linux_gfx::log_startup();
     boot::start();
@@ -556,15 +578,24 @@ fn main() {
     let builder = tauri::Builder::default();
     // Windows/Linux: a second launch (Start menu, taskbar, `atlas desktop`) focuses the running app instead of
     // starting another one with its own WebView2 tree (~600 MB) racing for the control socket. Registered first,
-    // as the plugin requires. macOS: LaunchServices already keeps one instance per bundle id.
+    // as the plugin requires. macOS: LaunchServices already keeps one instance per bundle id. Never in an agent
+    // instance: it runs beside the user's app, which would otherwise absorb its launch and raise his window (#281).
     #[cfg(not(target_os = "macos"))]
-    let builder = builder.plugin(tauri_plugin_single_instance::init(|app, argv, cwd| {
-        open_path::open(
-            app,
-            open_path::paths_from_argv(&argv, std::path::Path::new(&cwd)),
-        );
-        show_main(app)
-    }));
+    let builder = if agent_mode::Mode::current().single_instance() {
+        builder.plugin(tauri_plugin_single_instance::init(|app, argv, cwd| {
+            // The launch that handed off exits 0 without a word; this line is where it shows.
+            diag::log(&format!(
+                "single-instance: another launch handed off {argv:?}; showing this window"
+            ));
+            open_path::open(
+                app,
+                open_path::paths_from_argv(&argv, std::path::Path::new(&cwd)),
+            );
+            show_main(app)
+        }))
+    } else {
+        builder
+    };
     let builder = builder
         .plugin(tauri_plugin_dialog::init())
         .plugin(tauri_plugin_shell::init())
@@ -596,6 +627,8 @@ fn main() {
             // First: WebKit's WebContent process spawns while the rest of setup runs. Nothing can
             // reach managed state before `setup` returns (the page's scripts need the event loop).
             create_main_window(app)?;
+            // Before the page can die: a dead web process must reload or say so, never a blank window.
+            webview_guard::install(app);
             let handle = app.handle().clone();
             app.manage(menu::Items::default());
             app.manage(tray::CaptureMenus::default());

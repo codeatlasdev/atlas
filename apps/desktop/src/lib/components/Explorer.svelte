@@ -11,6 +11,7 @@
 	import { prefs } from "#lib/stores/prefs.svelte.ts";
 	import { host, type FsEntry } from "#lib/host.ts";
 	import { api, git, errText } from "#lib/api.ts";
+	import { gitStatus } from "#lib/stores/gitStatus.ts";
 	import { duplicateName, menuItems, type MenuAction, type MenuTarget } from "#lib/stores/explorerMenu.ts";
 	import { uid, ws } from "#lib/stores/workspace.svelte.ts";
 	import { openFile, openFileToSide } from "#lib/stores/files.svelte.ts";
@@ -67,32 +68,28 @@
 		}
 	}
 
-	async function loadStatus() {
-		const s = await git.status(worktreeId).catch(() => null);
-		if (!s) return;
-		status = statusMap(s.entries);
-	}
-
 	onMount(() => {
 		void load("");
-		void loadStatus();
-		let timer: number | undefined;
+		// The same debounced, single-flight status Source Control reads (#307); a failure leaves the last one.
+		const stopStatus = gitStatus.watch(worktreeId, root, {
+			status: (s) => (status = statusMap(s.entries)),
+			error: () => {},
+		});
 		// The host came back (an update, a restart, a handoff): the watches died with the old connection.
 		const back = listen("host://reconnected", () => {
 			watchIds = {};
 			watchFailed = false;
 			for (const rel of foldersToReload(expanded, pending)) void load(rel);
-			void loadStatus();
+			void gitStatus.refresh(worktreeId);
 		});
 		const off = listen<{ ev: string; id?: string }>("host://event", (e) => {
 			if (e.payload.ev !== "fs_event") return;
 			const rel = Object.keys(watchIds).find((k) => watchIds[k] === e.payload.id);
 			if (rel === undefined) return;
 			void load(rel);
-			clearTimeout(timer);
-			timer = window.setTimeout(loadStatus, 300);
 		});
 		return () => {
+			stopStatus();
 			void off.then((u) => u());
 			void back.then((u) => u());
 			for (const id of Object.values(watchIds)) void host.fsUnwatch(id).catch(() => {});
@@ -215,7 +212,7 @@
 	async function gitDo(args: string[]) {
 		const r = await git.run(worktreeId, args);
 		if (r.code !== 0) toast.error(r.stderr || "git failed");
-		await loadStatus();
+		await gitStatus.refresh(worktreeId);
 	}
 
 	const copy = (t: string) => navigator.clipboard.writeText(t).then(() => toast.success("Copied"));

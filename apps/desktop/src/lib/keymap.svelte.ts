@@ -6,7 +6,7 @@
  */
 import { api } from "#lib/api.ts";
 import { modalOpen } from "#lib/modalOpen.ts";
-import { bindingsOf, defaultKeymap, label, merge, rebind, strokesOf, unbind } from "#lib/keys.ts";
+import { IS_MAC, bindingsOf, defaultKeymap, label, merge, rebind, strokesOf, unbind } from "#lib/keys.ts";
 
 export interface Command {
 	id: string;
@@ -91,13 +91,13 @@ export const unbindKey = (id: string) => saveKeymap(unbind(defaultKeymap(), keym
 export const resetKeymap = () => saveKeymap({});
 
 /** Stroke labels bound to a command (`["⌘B"]`). */
-export function bindingLabels(id: string): string[] {
-	return bindingsOf(id, merge(defaultKeymap(), keymap.user)).map((k) => label(k));
+export function bindingLabels(id: string, mac = IS_MAC): string[] {
+	return bindingsOf(id, merge(defaultKeymap(mac), keymap.user)).map((k) => label(k, mac));
 }
 
 /** First binding of a command, as a label. */
-export function shortcutFor(id: string): string | undefined {
-	for (const [k, v] of merge(defaultKeymap(), keymap.user)) if (v === id) return label(k);
+export function shortcutFor(id: string, mac = IS_MAC): string | undefined {
+	for (const [k, v] of merge(defaultKeymap(mac), keymap.user)) if (v === id) return label(k, mac);
 }
 
 /**

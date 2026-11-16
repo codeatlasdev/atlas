@@ -2,10 +2,10 @@ import 'dart:io';
 
 import 'package:flutter_test/flutter_test.dart';
 
-/// Atlas Lab is a second app next to the real one, on the maintainer's own phone. These read the
-/// native project files (the only place the identity lives) and fail when a change would let the two
-/// apps share state, or break the lab's name and id: the cost is his real pairings or a lab that
-/// replaces the real app on install.
+/// Atlas Dev is a second app next to the store app, on the maintainer's own phone (flavors `dev` and
+/// `prod`, docs/mobile.md "Dev and store apps"). These read the native project files (the only place
+/// the identity lives) and fail when a change would let the two apps share state, or break the dev
+/// app's name and id: the cost is his real pairings or a dev build that replaces the store app.
 String _read(String path) => File(path).readAsStringSync();
 
 void main() {
@@ -27,7 +27,7 @@ void main() {
   }
 
   group('iOS', () {
-    test('the real app keeps its bundle id, name and icon in every mode', () {
+    test('the store app keeps its bundle id, name and icon in every mode', () {
       final c = configs();
       for (final mode in ['Debug', 'Release', 'Profile']) {
         final s = c[mode]!;
@@ -47,28 +47,28 @@ void main() {
     });
 
     test(
-      'the lab is a different app: own bundle id, own icon, in every mode',
+      'the dev app is a different app: own bundle id, own icon, in every mode',
       () {
         final c = configs();
-        for (final mode in ['Debug-lab', 'Release-lab', 'Profile-lab']) {
+        for (final mode in ['Debug-dev', 'Release-dev', 'Profile-dev']) {
           final s = c[mode]!;
           expect(
             s,
             contains(
-              'PRODUCT_BUNDLE_IDENTIFIER = br.com.codeatlas.atlas.mobile.lab;',
+              'PRODUCT_BUNDLE_IDENTIFIER = br.com.codeatlas.atlas.mobile.dev;',
             ),
             reason: mode,
           );
-          expect(s, contains('AppIcon-Lab'), reason: mode);
+          expect(s, contains('AppIcon-Dev'), reason: mode);
         }
       },
     );
 
-    test('the lab is named "Atlas Lab" and the real app "Atlas"', () {
-      for (final f in ['Debug-lab', 'Release-lab', 'Profile-lab']) {
+    test('the dev app is named "Atlas Dev" and the store app "Atlas"', () {
+      for (final f in ['Debug-dev', 'Release-dev', 'Profile-dev']) {
         expect(
           _read('ios/Flutter/$f.xcconfig'),
-          contains('ATLAS_DISPLAY_NAME = Atlas Lab'),
+          contains('ATLAS_DISPLAY_NAME = Atlas Dev'),
         );
       }
       for (final f in ['Debug', 'Release']) {
@@ -83,47 +83,47 @@ void main() {
       );
     });
 
-    test('the lab scheme builds the lab configurations only', () {
+    test('the dev scheme builds the dev configurations only', () {
       final s = _read(
-        'ios/Runner.xcodeproj/xcshareddata/xcschemes/lab.xcscheme',
+        'ios/Runner.xcodeproj/xcshareddata/xcschemes/dev.xcscheme',
       );
       final used = RegExp(r'buildConfiguration = "([\w-]+)"')
           .allMatches(s)
           .map((m) => m[1])
           .toSet();
-      expect(used, everyElement(endsWith('-lab')));
-      // And the real scheme never points at them.
-      final real = _read(
-        'ios/Runner.xcodeproj/xcshareddata/xcschemes/Runner.xcscheme',
+      expect(used, everyElement(endsWith('-dev')));
+      // And the store scheme (`prod`, over the base configurations) never points at them.
+      final store = _read(
+        'ios/Runner.xcodeproj/xcshareddata/xcschemes/prod.xcscheme',
       );
-      expect(real, isNot(contains('-lab"')));
+      expect(store, isNot(contains('-dev"')));
     });
 
-    test('the lab icons exist and differ from the release ones', () {
+    test('the dev icons exist and differ from the store ones', () {
       final rel = File(
         'ios/Runner/Assets.xcassets/AppIcon.appiconset/Icon-App-1024x1024@1x.png',
       ).readAsBytesSync();
-      final lab = File(
-        'ios/Runner/Assets.xcassets/AppIcon-Lab.appiconset/Icon-App-1024x1024@1x.png',
+      final dev = File(
+        'ios/Runner/Assets.xcassets/AppIcon-Dev.appiconset/Icon-App-1024x1024@1x.png',
       ).readAsBytesSync();
-      expect(lab, isNot(rel));
+      expect(dev, isNot(rel));
     });
 
     // Bundle id isolation is the whole storage story: a shared keychain or app group would let
-    // the lab read, and so corrupt, the real app's pairings and phone key. Push needs
-    // both an entitlement and a Firebase config; the lab has neither.
+    // the dev app read, and so corrupt, the real app's pairings and phone key. Push needs
+    // both an entitlement and a Firebase config; the dev app has neither.
     // firebase_* packages are allowed in pubspec because build.gradle.kts applies
-    // google-services only when google-services.json is present (lab never has one).
+    // google-services only when google-services.json is present (the dev app never has one).
     test('nothing is shared between the two apps and no push is set up', () {
-      // The real app has push (Runner*.entitlements: aps-environment only); the lab's
+      // The store app has push (Runner*.entitlements: aps-environment only); the dev app's
       // configurations sign with no entitlements at all, so it never gets push, a shared
       // keychain or an app group.
       for (final MapEntry(key: name, value: body) in configs().entries) {
-        final lab = name.endsWith('-lab');
+        final dev = name.endsWith('-dev');
         expect(
           body.contains('CODE_SIGN_ENTITLEMENTS'),
-          !lab,
-          reason: '$name: entitlements are the real app\'s alone',
+          !dev,
+          reason: '$name: entitlements are the store app\'s alone',
         );
       }
       for (final f in Directory('ios/Runner').listSync().whereType<File>()) {
@@ -146,7 +146,7 @@ void main() {
         expect(
           pub,
           isNot(contains(p)),
-          reason: 'push packages need a per-app config the lab lacks',
+          reason: 'push packages need a per-app config the dev app lacks',
         );
       }
       expect(File('ios/Runner/GoogleService-Info.plist').existsSync(), isFalse);
@@ -157,25 +157,34 @@ void main() {
   group('Android', () {
     final gradle = _read('android/app/build.gradle.kts');
 
-    test('the lab id is the real id plus ".lab", only when asked for', () {
-      expect(
-        gradle,
-        contains('val atlasLab = project.findProperty("atlas.lab") == "1"'),
-      );
-      expect(
-        gradle,
-        contains(
-          'applicationId = "br.com.codeatlas.atlas.mobile" + if (atlasLab) ".lab" else ""',
-        ),
-      );
-    });
+    test(
+      'the dev flavor is the store id plus ".dev"; prod keeps the store id',
+      () {
+        expect(
+          gradle,
+          contains('applicationId = "br.com.codeatlas.atlas.mobile"'),
+        );
+        expect(gradle, contains('create("dev")'));
+        expect(gradle, contains('applicationIdSuffix = ".dev"'));
+        expect(gradle, contains('create("prod")'));
+        // Only dev has a suffix: a second one would change the store id.
+        expect(RegExp('applicationIdSuffix').allMatches(gradle).length, 1);
+        expect(
+          _read('pubspec.yaml'),
+          contains('default-flavor: dev'),
+          reason: 'plain flutter run must land on the dev app',
+        );
+      },
+    );
 
-    test('the real app is still called Atlas and the lab "Atlas Lab"', () {
+    test('the store app is called Atlas and the dev app "Atlas Dev"', () {
       expect(
-        gradle,
-        contains(
-          'resValue("string", "app_name", if (atlasLab) "Atlas Lab" else "Atlas")',
-        ),
+        _read('android/app/src/prod/res/values/strings.xml'),
+        contains('<string name="app_name">Atlas</string>'),
+      );
+      expect(
+        _read('android/app/src/dev/res/values/strings.xml'),
+        contains('<string name="app_name">Atlas Dev</string>'),
       );
       expect(
         _read('android/app/src/main/AndroidManifest.xml'),
@@ -183,23 +192,15 @@ void main() {
       );
     });
 
-    test('the lab has its own launcher icons', () {
+    test('the dev flavor has its own launcher icons, in every build type', () {
       for (final d in ['mdpi', 'hdpi', 'xhdpi', 'xxhdpi', 'xxxhdpi']) {
         expect(
-          File('android/app/src/lab/res/mipmap-$d/ic_launcher.png')
+          File('android/app/src/dev/res/mipmap-$d/ic_launcher.png')
               .existsSync(),
           isTrue,
           reason: d,
         );
       }
     });
-
-    test(
-      'no flavor was added: the release lanes build the same outputs as before',
-      () {
-        expect(gradle, isNot(contains('productFlavors')));
-        expect(gradle, isNot(contains('flavorDimensions')));
-      },
-    );
   });
 }

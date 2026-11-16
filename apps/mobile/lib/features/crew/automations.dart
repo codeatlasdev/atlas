@@ -3,7 +3,7 @@
 /// No side-effects; safe to import in tests.
 library;
 
-import 'package:atlas_mobile/core/protocol/crew_models.dart';
+import 'package:atlas_mobile/core/protocol/crew_triggers.dart';
 
 // ─── Schedule spec ────────────────────────────────────────────────────────────
 

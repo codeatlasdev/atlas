@@ -6,9 +6,9 @@ import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 
 import 'package:atlas_mobile/core/connection/require_mux.dart';
-import 'package:atlas_mobile/core/protocol/protocol_version.dart';
 import 'package:atlas_mobile/core/ui/components.dart';
 import 'package:atlas_mobile/core/ui/computer_state.dart';
+import 'package:atlas_mobile/core/ui/problem.dart';
 
 /// Renders [value] in the app's one set of states:
 ///
@@ -29,6 +29,7 @@ class AsyncView<T> extends ConsumerWidget {
     required this.value,
     required this.data,
     required this.errorTitle,
+    this.loading,
     this.onRetry,
     this.isEmpty,
     this.emptyTitle = 'Nothing here',
@@ -40,8 +41,12 @@ class AsyncView<T> extends ConsumerWidget {
   final AsyncValue<T> value;
   final Widget Function(T data) data;
 
-  /// Title of the generic error state: "Couldn't read the audit".
+  /// Title of the generic error state: "Couldn't read the audit". Its verb phrase ("read the audit") is what
+  /// the error state says the phone was doing.
   final String errorTitle;
+
+  /// What to show while nothing is loaded yet: the screen's own skeleton. Null is a quiet spinner.
+  final Widget? loading;
 
   /// Called by "Try again"; usually `() => ref.invalidate(provider)`. Null hides the button.
   final VoidCallback? onRetry;
@@ -57,22 +62,23 @@ class AsyncView<T> extends ConsumerWidget {
   Widget build(BuildContext context, WidgetRef ref) {
     return value.when(
       skipLoadingOnReload: true,
-      loading: () => const Center(child: CircularProgressIndicator()),
+      loading: () =>
+          loading ?? const Center(child: CircularProgressIndicator()),
       error: (e, _) => switch (e) {
         DeviceOffline(:final device) => ReachingView(
           device: device,
           connecting: false,
         ),
-        DeviceProtocolMismatch(:final mismatch) => _MismatchView(mismatch),
-        _ => EmptyState(
-          title: errorTitle,
-          message: errorText(e),
-          action: onRetry == null
-              ? null
-              : OutlinedButton(
-                  onPressed: onRetry,
-                  child: const Text('Try again'),
-                ),
+        _ => ProblemView(
+          problem: Problem.of(
+            e,
+            doing: _doing(errorTitle),
+            computer: switch (e) {
+              DeviceUnavailable(:final device) => device.name,
+              _ => null,
+            },
+          ),
+          onRetry: e is DeviceProtocolMismatch ? null : onRetry,
         ),
       },
       data: (d) => isEmpty?.call(d) == true
@@ -87,11 +93,11 @@ class AsyncView<T> extends ConsumerWidget {
   }
 }
 
-class _MismatchView extends StatelessWidget {
-  const _MismatchView(this.mismatch);
-  final ProtocolMismatch mismatch;
-
-  @override
-  Widget build(BuildContext context) =>
-      EmptyState(title: mismatch.title, message: mismatch.message);
+/// "Couldn't read your inbox" → "read your inbox".
+String _doing(String title) {
+  final t = title.replaceFirst(
+    RegExp(r"^Couldn'?t\s+", caseSensitive: false),
+    '',
+  );
+  return t.isEmpty ? 'do that' : t[0].toLowerCase() + t.substring(1);
 }

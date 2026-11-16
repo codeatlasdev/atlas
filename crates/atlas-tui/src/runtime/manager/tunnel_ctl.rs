@@ -51,7 +51,7 @@ impl ServiceManager {
     /// Rotate the tunnel's disk log and start its supervisor; `autostart`
     /// brings the tunnel up immediately instead of idling until `ensure_up`.
     fn spawn_tunnel(&mut self, cfg: crate::config::TunnelConfig, autostart: bool) {
-        let _ = std::fs::create_dir_all(&self.log_dir);
+        let _ = crate::runtime::ensure_log_dir(&self.log_dir);
         super::rotate_stream_log(&self.log_dir, tunnel::LOG_NAME);
         self.tunnel = Some(TunnelHandle::spawn(
             cfg,

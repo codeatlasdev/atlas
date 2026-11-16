@@ -11,6 +11,7 @@ import 'package:atlas_mobile/core/protocol/models.dart';
 import 'package:atlas_mobile/core/ui/atlas_logo.dart';
 import 'package:atlas_mobile/core/ui/atlas_theme.dart';
 import 'package:atlas_mobile/core/ui/components.dart';
+import 'package:atlas_mobile/core/ui/problem.dart';
 
 /// What the "reaching" state says under its title.
 const reachingMessage =
@@ -39,22 +40,30 @@ class ReachingView extends ConsumerWidget {
     final mismatch = connecting || d == null
         ? null
         : ref.watch(protocolMismatchProvider(d));
-    return EmptyState(
-      icon: connecting
-          ? AtlasLogo(size: d == null ? 96 : 80, animated: true)
-          : null,
-      title:
-          mismatch?.title ??
-          (connecting ? 'Reaching $name…' : "Can't reach $name"),
-      message:
-          mismatch?.message ??
-          (connecting ? reachingMessage : unreachableMessage),
-      action: connecting || d == null
-          ? null
-          : FilledButton(
-              onPressed: () => ref.invalidate(connectionNotifierProvider(d)),
-              child: const Text('Try again'),
+    if (connecting) {
+      return EmptyState(
+        icon: AtlasLogo(size: d == null ? 96 : 80, animated: true),
+        title: 'Reaching $name…',
+        message: reachingMessage,
+      );
+    }
+    // Not reachable, or reachable but on another protocol: what happened and how to fix it.
+    return ProblemView(
+      problem: d == null
+          ? Problem.of(
+              DeviceOffline(const MacDevice(nodeId: '', name: 'your computer')),
+              doing: 'reach it',
+            )
+          : Problem.of(
+              mismatch == null
+                  ? DeviceOffline(d)
+                  : DeviceProtocolMismatch(d, mismatch),
+              doing: 'reach it',
+              computer: d.name,
             ),
+      onRetry: d == null || mismatch != null
+          ? null
+          : () => ref.invalidate(connectionNotifierProvider(d)),
     );
   }
 }

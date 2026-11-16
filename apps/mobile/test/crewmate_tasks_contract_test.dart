@@ -1,13 +1,15 @@
-// Contract: CrewmateTask parses title/preparing/tz, CrewmateStep parses group,
-// and TaskAction parses add_trigger kind from the real Rust crewmate_tasks fixture.
-// Incident: new fields absent from mobile model; ChatBoard needed them for live steps.
-// Regenerate fixture: UPDATE_FIXTURES=1 cargo test -p atlas-host crewmate_tasks_json_contract
 import 'dart:convert';
 import 'dart:io';
 
 import 'package:flutter_test/flutter_test.dart';
 
-import 'package:atlas_mobile/core/protocol/crew_models.dart';
+import 'package:atlas_mobile/core/protocol/crew_task.dart';
+import 'package:atlas_mobile/core/protocol/crew_triggers.dart';
+
+// Contract: CrewmateTask parses title/preparing/tz, CrewmateStep parses group,
+// and TaskAction parses add_trigger kind from the real Rust crewmate_tasks fixture.
+// Incident: new fields absent from mobile model; ChatBoard needed them for live steps.
+// Regenerate fixture: UPDATE_FIXTURES=1 cargo test -p atlas-host crewmate_tasks_json_contract
 
 void main() {
   late List<dynamic> tasks;

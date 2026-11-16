@@ -5,14 +5,13 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:flutter_test/flutter_test.dart';
 
 import 'package:atlas_mobile/core/connection/connection_notifier.dart';
+import 'package:atlas_mobile/core/demo/demo_computer.dart';
 import 'package:atlas_mobile/core/protocol/models.dart';
 import 'package:atlas_mobile/core/transport/transport.dart';
 import 'package:atlas_mobile/core/ui/atlas_theme.dart';
-import 'package:atlas_mobile/features/crew/list/crew_screen.dart';
 import 'package:atlas_mobile/features/crew/chat/crewmate_chat_screen.dart';
+import 'package:atlas_mobile/features/crew/list/crew_screen.dart';
 import 'package:atlas_mobile/features/home/home_screen.dart';
-
-import 'package:atlas_mobile/core/demo/demo_computer.dart';
 
 import 'support/demo_harness.dart';
 

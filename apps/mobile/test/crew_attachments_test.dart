@@ -4,7 +4,7 @@ import 'dart:typed_data';
 
 import 'package:flutter_test/flutter_test.dart';
 
-import 'package:atlas_mobile/core/protocol/crew_models.dart';
+import 'package:atlas_mobile/core/protocol/crew_task.dart';
 import 'package:atlas_mobile/features/crew/chat/attachments.dart';
 
 final _png = Uint8List.fromList([

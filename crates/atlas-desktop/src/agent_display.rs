@@ -474,8 +474,9 @@ mod tests {
         assert!(dock.contains("enabled && crate::agent_mode::Mode::current().focus_allowed()"));
         let all = sources();
         let src = |n: &str| code(&all.iter().find(|(f, _)| f == n).unwrap().1);
-        // `show_main`: the three window calls sit inside the branch that agent mode never takes, and the agent
-        // branch goes through `park_and_show` only.
+        // `show_main`: the three window calls sit inside the branch that agent mode never takes. In the agent branch,
+        // macOS goes through `park_and_show` only, and Linux (#418) shows only in the `Ok` arm of `verify_display()`
+        // (the instance's private display, checked once more); nothing else in that branch shows a window.
         let main = src("src/main.rs");
         let (gate, rest) = main
             .split_once("if agent_mode::Mode::current().focus_allowed() {")
@@ -483,7 +484,31 @@ mod tests {
         assert!(!gate.contains(".show()") && !gate.contains(".set_focus()"));
         let (user_branch, agent_branch) = rest.split_once("return;").unwrap();
         assert!(user_branch.contains(".show()") && user_branch.contains(".set_focus()"));
-        assert!(agent_branch.contains("park_and_show") && !agent_branch.contains(".show()"));
+        let agent_branch = agent_branch
+            .split_once("\n}\n")
+            .map_or(agent_branch, |(body, _)| body);
+        assert!(!agent_branch.contains(".set_focus()"));
+        let (linux, mac) = agent_branch
+            .split_once("#[cfg(target_os = \"macos\")]")
+            .expect("show_main keeps its macOS agent branch");
+        assert!(mac.contains("park_and_show") && !mac.contains(".show()"));
+        let (before_ok, ok_and_after) = linux
+            .split_once("match agent_mode::verify_display() {")
+            .map(|(_, m)| m)
+            .unwrap_or("")
+            .split_once("Ok(()) =>")
+            .expect("the Linux agent branch shows only after verify_display() says Ok");
+        assert!(!before_ok.contains(".show()"));
+        let (ok_arm, err_arm) = ok_and_after
+            .split_once("Err(")
+            .expect("verify_display()'s error arm refuses");
+        assert_eq!(ok_arm.matches(".show()").count(), 1);
+        assert!(!err_arm.contains(".show()") && err_arm.contains("app.exit("));
+        assert_eq!(
+            linux.matches(".show()").count(),
+            1,
+            "the only show in the Linux agent branch is the verified one"
+        );
         // the tray is only started when the mode allows it
         assert!(main.contains("if agent_mode::Mode::current().tray_allowed() {"));
         // the guarded path itself: it takes the proof by value and nothing else constructs one

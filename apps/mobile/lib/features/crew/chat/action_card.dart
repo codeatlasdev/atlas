@@ -2,24 +2,32 @@
 /// or a value, pick an option, sign in to an engine, approve an automation it proposes, or decide on work Atlas's guards refused.
 /// Every kind is a title, an optional reason, its own body and a Submit / Cancel row; the
 /// answers go out as `crewmate_action_answer`, a cancel as `crewmate_cancel`.
+///
+/// This file holds the state (what is typed, what is in flight, the last error) and the
+/// calls; `action/` holds one body per kind.
 library;
 
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 
-import 'package:atlas_mobile/core/connection/require_mux.dart';
 import 'package:atlas_mobile/core/auth/device_auth.dart';
-import 'package:atlas_mobile/core/protocol/crew_models.dart';
-import 'package:atlas_mobile/core/protocol/crew_ops_models.dart';
+import 'package:atlas_mobile/core/connection/require_mux.dart';
+import 'package:atlas_mobile/core/protocol/crew_task.dart';
 import 'package:atlas_mobile/core/protocol/models.dart';
 import 'package:atlas_mobile/core/ui/atlas_theme.dart';
-import 'package:atlas_mobile/core/ui/attention_card.dart';
+import 'package:atlas_mobile/features/crew/chat/action/action_parts.dart';
+import 'package:atlas_mobile/features/crew/chat/action/choose_action.dart';
+import 'package:atlas_mobile/features/crew/chat/action/engine_action.dart';
+import 'package:atlas_mobile/features/crew/chat/action/github_action.dart';
+import 'package:atlas_mobile/features/crew/chat/action/retry_action.dart';
+import 'package:atlas_mobile/features/crew/chat/action/text_action.dart';
+import 'package:atlas_mobile/features/crew/chat/action/trigger_action.dart';
 import 'package:atlas_mobile/features/crew/chat/attachments.dart';
-import 'package:atlas_mobile/features/crew/chat/task_images.dart';
+import 'package:atlas_mobile/features/crew/chat/crewmate_card_frame.dart';
+import 'package:atlas_mobile/features/crew/chat/image_source.dart';
 import 'package:atlas_mobile/features/crew/crew_provider.dart';
 import 'package:atlas_mobile/features/crew/ops/engine_signin.dart';
 import 'package:atlas_mobile/features/crew/widgets/github_device_login.dart';
-import 'package:atlas_mobile/features/crew/widgets/pill_buttons.dart';
 
 class TaskActionCard extends ConsumerStatefulWidget {
   const TaskActionCard({
@@ -110,44 +118,20 @@ class _TaskActionCardState extends ConsumerState<TaskActionCard> {
   }
 
   Future<void> _addImages() async {
-    final source = await showModalBottomSheet<bool>(
-      context: context,
-      backgroundColor: AtlasColors.of(context).overlay,
-      builder: (ctx) => SafeArea(
-        child: Column(
-          mainAxisSize: MainAxisSize.min,
-          children: [
-            ListTile(
-              leading: const Icon(Icons.photo_camera_outlined),
-              title: const Text('Take photo'),
-              onTap: () => Navigator.of(ctx).pop(true),
-            ),
-            ListTile(
-              leading: const Icon(Icons.photo_library_outlined),
-              title: const Text('Choose from library'),
-              onTap: () => Navigator.of(ctx).pop(false),
-            ),
-          ],
-        ),
-      ),
+    final source = await askPhotoSource(
+      context,
+      libraryLabel: 'Choose from library',
     );
     if (source == null || !mounted) return;
-    final picker = ref.read(imagePickerProvider);
     final List<PickedImage> picked;
     try {
-      picked = source ? await picker.camera() : await picker.gallery();
+      picked = await pickPhotos(ref, source);
     } on Object catch (e) {
       if (mounted) setState(() => _error = 'Could not open the picker: $e');
       return;
     }
     if (!mounted) return;
-    final r = addImages(_images, picked);
-    setState(() {
-      _images
-        ..clear()
-        ..addAll(r.images);
-      _error = r.errors.isEmpty ? null : r.errors.join('\n');
-    });
+    setState(() => _error = takePicked(_images, picked));
   }
 
   void _submitText() {
@@ -192,17 +176,37 @@ class _TaskActionCardState extends ConsumerState<TaskActionCard> {
     }
   }
 
+  /// Primary + Cancel, the row every kind but `choose` ends with.
+  Widget _buttons(
+    String primary,
+    VoidCallback? onPrimary, {
+    String cancel = 'Cancel',
+  }) => ActionButtons(
+    primary: primary,
+    onPrimary: onPrimary,
+    cancel: cancel,
+    onCancel: _submitting ? null : _cancel,
+  );
+
   @override
   Widget build(BuildContext context) {
-    final c = AtlasColors.of(context);
     final action = widget.task.action;
     if (action == null) return const SizedBox.shrink();
 
     final busy = _submitting;
     final cardContent = switch (action.kind) {
-      'connect_github' => _connectGithub(c, action, busy),
-      'provide_secret' => _textCard(
-        c,
+      'connect_github' => ConnectGithubAction(
+        action: action,
+        flow: _login.flow,
+        polling: _login.polling,
+        onCancelFlow: _login.cancel,
+        buttons: _buttons(
+          'Connect',
+          busy ? null : _startGithubLogin,
+          cancel: 'Cancel task',
+        ),
+      ),
+      'provide_secret' => _text(
         action,
         busy,
         title: action.label ?? 'Secret required',
@@ -210,8 +214,7 @@ class _TaskActionCardState extends ConsumerState<TaskActionCard> {
         hint: 'Enter value',
         obscure: true,
       ),
-      'input' => _textCard(
-        c,
+      'input' => _text(
         action,
         busy,
         title: action.label ?? 'Input required',
@@ -219,125 +222,52 @@ class _TaskActionCardState extends ConsumerState<TaskActionCard> {
         hint: action.placeholder ?? '',
         submitOnEnter: true,
       ),
-      'choose' => _choose(c, action, busy),
-      'sign_in_engine' => _signInEngine(c, action, busy),
-      'add_trigger' => _addTrigger(c, action, busy),
-      'refused' => _retryable(
-        c,
+      'choose' => ChooseAction(
+        action: action,
+        busy: busy,
+        onPick: _submit,
+        onCancel: _cancel,
+      ),
+      'sign_in_engine' => SignInEngineAction(
+        action: action,
+        busy: busy,
+        onSignIn: (engine) =>
+            openEngineSignin(context, ref, widget.device, engine),
+        buttons: _buttons('Done', busy ? null : () => _submit('done')),
+      ),
+      'add_trigger' => AddTriggerAction(
+        action: action,
+        crewmateId: widget.crewmateId,
+        busy: busy,
+        onAdd: () => _submit('add'),
+        onSkip: () => _submit('skip'),
+      ),
+      'refused' => _retry(
         busy,
         title: 'This work was refused',
         reasons: action.reasons,
       ),
-      'prove_ui' => _retryable(
-        c,
+      'prove_ui' => _retry(
         busy,
         title: 'Could not prove this UI work',
         reasons: [if (action.reason != null) action.reason!],
       ),
-      _ => _textCard(c, action, busy, title: action.label ?? 'Response needed'),
+      _ => _text(action, busy, title: action.label ?? 'Response needed'),
     };
 
-    return Padding(
-      padding: const EdgeInsets.symmetric(vertical: Space.xs),
-      child: Row(
-        crossAxisAlignment: CrossAxisAlignment.end,
-        children: [
-          const SizedBox(width: 36), // avatar placeholder alignment
-          Flexible(
-            child: AttentionCard(
-              bubble: true,
-              child: Column(
-                crossAxisAlignment: CrossAxisAlignment.start,
-                children: [
-                  cardContent,
-                  // What went wrong with the last tap (offline, refused): one line for every kind of card.
-                  if (_error != null) ...[
-                    const SizedBox(height: Space.sm),
-                    Text(
-                      _error!,
-                      style: Theme.of(context).textTheme.bodySmall!
-                          .copyWith(color: c.error),
-                    ),
-                  ],
-                ],
-              ),
-            ),
-          ),
+    return CrewmateCardFrame(
+      children: [
+        cardContent,
+        // What went wrong with the last tap (offline, refused): one line for every kind of card.
+        if (_error != null) ...[
+          const SizedBox(height: Space.sm),
+          CardError(_error!),
         ],
-      ),
+      ],
     );
   }
 
-  // ── shared pieces ──────────────────────────────────────────────────────────
-
-  Widget _title(AtlasColors c, String text) => Text(
-    text,
-    style: Theme.of(context).textTheme.bodyMedium!
-        .copyWith(fontWeight: FontWeight.w600, color: c.text),
-  );
-
-  /// The agent's reason under a title, when it gave one.
-  List<Widget> _reason(AtlasColors c, TaskAction action) => [
-    if (action.reason != null) ...[
-      const SizedBox(height: Space.xs),
-      Text(
-        action.reason!,
-        style: Theme.of(context).textTheme.bodySmall!.copyWith(color: c.muted),
-      ),
-    ],
-  ];
-
-  /// Primary + Cancel, the row every kind but `choose` ends with.
-  Widget _actions(
-    String primary,
-    VoidCallback? onPrimary, {
-    String cancel = 'Cancel',
-    VoidCallback? onCancel,
-  }) => Row(
-    children: [
-      WarnPillButton(label: primary, onPressed: onPrimary),
-      const SizedBox(width: Space.sm),
-      OutlinePillButton(
-        label: cancel,
-        onPressed: _submitting ? null : (onCancel ?? _cancel),
-      ),
-    ],
-  );
-
-  Widget _field(
-    AtlasColors c, {
-    String? hint,
-    bool obscure = false,
-    ValueChanged<String>? onSubmitted,
-  }) => TextField(
-    controller: _controller,
-    obscureText: obscure,
-    style: Theme.of(context).textTheme.bodyLarge!.copyWith(color: c.text),
-    decoration: InputDecoration(
-      hintText: hint,
-      hintStyle: Theme.of(context).textTheme.bodyLarge!
-          .copyWith(color: c.faint),
-      contentPadding: const EdgeInsets.symmetric(
-        horizontal: Space.md,
-        vertical: Space.sm,
-      ),
-      border: OutlineInputBorder(
-        borderRadius: BorderRadius.circular(8),
-        borderSide: BorderSide(color: c.borderSubtle),
-      ),
-      enabledBorder: OutlineInputBorder(
-        borderRadius: BorderRadius.circular(8),
-        borderSide: BorderSide(color: c.borderSubtle),
-      ),
-    ),
-    onSubmitted: onSubmitted,
-  );
-
-  // ── kinds ──────────────────────────────────────────────────────────────────
-
-  /// A title, a text field and Submit / Cancel: `provide_secret`, `input` and the fallback.
-  Widget _textCard(
-    AtlasColors c,
+  Widget _text(
     TaskAction action,
     bool busy, {
     required String title,
@@ -345,346 +275,35 @@ class _TaskActionCardState extends ConsumerState<TaskActionCard> {
     String? hint,
     bool obscure = false,
     bool submitOnEnter = false,
-  }) => Column(
-    crossAxisAlignment: CrossAxisAlignment.start,
-    children: [
-      _title(c, title),
-      if (reason) ..._reason(c, action),
-      const SizedBox(height: Space.sm),
-      _field(
-        c,
-        hint: hint,
-        obscure: obscure,
-        onSubmitted: submitOnEnter
-            ? (v) {
-                if (v.trim().isNotEmpty) _submit(v.trim());
-              }
-            : null,
-      ),
-      const SizedBox(height: Space.sm),
-      _actions('Submit', busy ? null : _submitText),
-    ],
+  }) => TextAction(
+    title: title,
+    reason: reason ? action : null,
+    controller: _controller,
+    hint: hint,
+    obscure: obscure,
+    onSubmitted: submitOnEnter
+        ? (v) {
+            if (v.trim().isNotEmpty) _submit(v.trim());
+          }
+        : null,
+    buttons: _buttons('Submit', busy ? null : _submitText),
   );
 
-  Widget _connectGithub(AtlasColors c, TaskAction action, bool busy) {
-    final flow = _login.flow;
-    return Column(
-      crossAxisAlignment: CrossAxisAlignment.start,
-      children: [
-        _title(c, 'Connect GitHub to continue'),
-        ..._reason(c, action),
-        const SizedBox(height: Space.md),
-        if (flow != null) ...[
-          Text(
-            'Enter this code at ${flow.verificationUri}',
-            style: Theme.of(context).textTheme.bodySmall!
-                .copyWith(color: c.muted),
-          ),
-          const SizedBox(height: Space.sm),
-          Row(
-            children: [
-              Text(
-                flow.userCode,
-                style: Theme.of(context).textTheme.titleLarge!.copyWith(
-                  fontWeight: FontWeight.w700,
-                  letterSpacing: 2,
-                  fontFamily: monoFamily,
-                  fontFamilyFallback: monoFallback,
-                  color: c.text,
-                ),
-              ),
-              const SizedBox(width: Space.sm),
-              OutlinedButton(
-                onPressed: () {
-                  // clipboard
-                },
-                style: OutlinedButton.styleFrom(
-                  padding: const EdgeInsets.symmetric(
-                    horizontal: Space.md,
-                    vertical: Space.xs,
-                  ),
-                  minimumSize: Size.zero,
-                  tapTargetSize: MaterialTapTargetSize.padded,
-                  shape: RoundedRectangleBorder(
-                    borderRadius: BorderRadius.circular(8),
-                  ),
-                ),
-                child: Text(
-                  'Copy',
-                  style: Theme.of(context).textTheme.bodySmall!
-                      .copyWith(color: AtlasColors.of(context).text),
-                ),
-              ),
-            ],
-          ),
-          if (_login.polling) ...[
-            const SizedBox(height: Space.sm),
-            Text(
-              'Waiting for authorization…',
-              style: Theme.of(context).textTheme.bodySmall!
-                  .copyWith(color: c.muted),
-            ),
-          ],
-          const SizedBox(height: Space.sm),
-          OutlinePillButton(
-            label: 'Cancel',
-            hPad: 12,
-            vPad: 4,
-            onPressed: _login.cancel,
-          ),
-        ] else
-          _actions(
-            'Connect',
-            busy ? null : _startGithubLogin,
-            cancel: 'Cancel task',
-          ),
-      ],
-    );
-  }
-
-  Widget _choose(AtlasColors c, TaskAction action, bool busy) => Column(
-    crossAxisAlignment: CrossAxisAlignment.start,
-    children: [
-      _title(c, action.question ?? 'Choose an option'),
-      const SizedBox(height: Space.sm),
-      for (int i = 0; i < action.options.length; i++) ...[
-        OutlinedButton(
-          onPressed: busy ? null : () => _submit(action.options[i]),
-          style: OutlinedButton.styleFrom(
-            foregroundColor: c.text,
-            side: BorderSide(color: c.borderSubtle),
-            padding: const EdgeInsets.symmetric(
-              horizontal: Space.md,
-              vertical: Space.sm,
-            ),
-            minimumSize: const Size(double.infinity, 48),
-            tapTargetSize: MaterialTapTargetSize.padded,
-            shape: RoundedRectangleBorder(
-              borderRadius: BorderRadius.circular(10),
-            ),
-            alignment: Alignment.centerLeft,
-          ),
-          child: Row(
-            children: [
-              Container(
-                width: 22,
-                height: 22,
-                alignment: Alignment.center,
-                decoration: BoxDecoration(
-                  color: c.ground,
-                  borderRadius: BorderRadius.circular(4),
-                  border: Border.all(color: c.borderSubtle),
-                ),
-                child: Text(
-                  String.fromCharCode(65 + i),
-                  style: Theme.of(context).textTheme.labelSmall!
-                      .copyWith(fontWeight: FontWeight.w600, color: c.muted),
-                ),
-              ),
-              const SizedBox(width: Space.md),
-              Flexible(
-                child: Text(
-                  action.options[i],
-                  style: Theme.of(context).textTheme.bodyLarge!
-                      .copyWith(color: c.text),
-                ),
-              ),
-            ],
-          ),
-        ),
-        if (i < action.options.length - 1) const SizedBox(height: Space.xs),
-      ],
-      const SizedBox(height: Space.sm),
-      OutlinePillButton(label: 'Cancel task', onPressed: busy ? null : _cancel),
-    ],
-  );
-
-  Widget _signInEngine(AtlasColors c, TaskAction action, bool busy) {
-    final engine = action.engine ?? 'engine';
-    // Only the engines hostd can sign in get the button; any other name keeps the Settings text.
-    final canSignInHere = engineLabels.containsKey(engine);
-    return Column(
-      crossAxisAlignment: CrossAxisAlignment.start,
-      children: [
-        _title(c, 'Sign in to ${engineLabels[engine] ?? engine}'),
-        const SizedBox(height: Space.xs),
-        Text(
-          canSignInHere
-              ? 'Tap Sign in here to open its sign-in on the crew server, finish it, then tap Done.'
-              : 'Sign in to $engine on the crew server, then tap Done.',
-          style: Theme.of(context).textTheme.bodySmall!
-              .copyWith(color: c.muted),
-        ),
-        const SizedBox(height: Space.md),
-        if (canSignInHere) ...[
-          WarnPillButton(
-            key: const Key('sign-in-here'),
-            label: 'Sign in here',
-            onPressed: busy
-                ? null
-                : () => openEngineSignin(context, ref, widget.device, engine),
-          ),
-          const SizedBox(height: Space.sm),
-        ],
-        _actions('Done', busy ? null : () => _submit('done')),
-      ],
-    );
-  }
-
-  /// A card that can be retried: Atlas's guards refused the work, or a UI task finished without two captures.
-  /// The captures the agent took (tap to enlarge), the reasons, a marked screenshot the owner may add, then
-  /// Retry (the task runs again with the reasons in its prompt and the screenshot staged for the agent) or
-  /// Override (accept the work as it is; images never go with it).
-  Widget _retryable(
-    AtlasColors c,
+  Widget _retry(
     bool busy, {
     required String title,
     required List<String> reasons,
-  }) => Column(
-    crossAxisAlignment: CrossAxisAlignment.start,
-    children: [
-      _title(c, title),
-      TaskImageRow(
-        images: widget.task.agentImages,
-        taskId: widget.task.id,
-        device: widget.device,
-        crewmateId: widget.crewmateId,
-        alignEnd: false,
-      ),
-      const SizedBox(height: Space.sm),
-      for (final reason in reasons)
-        Padding(
-          padding: const EdgeInsets.only(bottom: 2),
-          child: Text(
-            '• $reason',
-            style: Theme.of(context).textTheme.bodySmall!
-                .copyWith(color: c.muted),
-          ),
-        ),
-      const SizedBox(height: Space.sm),
-      if (_images.isNotEmpty)
-        Wrap(
-          spacing: 6,
-          runSpacing: 4,
-          children: [
-            for (var i = 0; i < _images.length; i++)
-              InputChip(
-                label: Text(
-                  _images[i].name,
-                  style: Theme.of(context).textTheme.bodySmall!
-                      .copyWith(color: AtlasColors.of(context).text),
-                ),
-                onDeleted: busy
-                    ? null
-                    : () => setState(() => _images.removeAt(i)),
-                deleteButtonTooltipMessage: 'Remove ${_images[i].name}',
-              ),
-          ],
-        ),
-      OutlinePillButton(
-        label: 'Add a screenshot',
-        onPressed: busy ? null : _addImages,
-      ),
-      const SizedBox(height: Space.sm),
-      Row(
-        children: [
-          WarnPillButton(
-            label: 'Retry',
-            onPressed: busy ? null : () => _submit('retry'),
-          ),
-          const SizedBox(width: Space.sm),
-          OutlinePillButton(
-            label: 'Override',
-            onPressed: busy ? null : () => _submit('override'),
-          ),
-        ],
-      ),
-    ],
+  }) => RetryAction(
+    title: title,
+    reasons: reasons,
+    task: widget.task,
+    device: widget.device,
+    crewmateId: widget.crewmateId,
+    images: _images,
+    busy: busy,
+    onRemoveImage: (i) => setState(() => _images.removeAt(i)),
+    onAddImage: _addImages,
+    onRetry: () => _submit('retry'),
+    onOverride: () => _submit('override'),
   );
-
-  /// The crewmate proposes an automation; the user adds it or skips.
-  Widget _addTrigger(AtlasColors c, TaskAction action, bool busy) {
-    final triggerKind = action.triggerKind;
-    final triggerPrompt = action.triggerPrompt;
-    final resolved = action.reason;
-    return Column(
-      crossAxisAlignment: CrossAxisAlignment.start,
-      children: [
-        Row(
-          children: [
-            Icon(Icons.schedule_outlined, size: 14, color: c.warning),
-            const SizedBox(width: Space.sm),
-            Flexible(
-              child: Text(
-                '${action.name ?? widget.crewmateId} wants to add an automation',
-                style: Theme.of(context).textTheme.bodyMedium!
-                    .copyWith(fontWeight: FontWeight.w600, color: c.warning),
-                overflow: TextOverflow.ellipsis,
-              ),
-            ),
-          ],
-        ),
-        const SizedBox(height: Space.sm),
-        if (triggerKind != null) ...[
-          Text(
-            _describeTriggerKind(triggerKind),
-            style: Theme.of(context).textTheme.bodyMedium!
-                .copyWith(color: c.text),
-          ),
-          const SizedBox(height: 2),
-        ],
-        if (triggerPrompt != null && triggerPrompt.isNotEmpty) ...[
-          Text(
-            triggerPrompt,
-            style: Theme.of(context).textTheme.bodySmall!
-                .copyWith(color: c.muted),
-            maxLines: 2,
-            overflow: TextOverflow.ellipsis,
-          ),
-          const SizedBox(height: 2),
-        ],
-        if (resolved != null) ...[
-          Text(
-            resolved,
-            style: Theme.of(context).textTheme.bodySmall!
-                .copyWith(color: c.muted),
-          ),
-          const SizedBox(height: Space.sm),
-        ] else
-          const SizedBox(height: Space.sm),
-        Row(
-          children: [
-            WarnPillButton(
-              label: 'Add',
-              onPressed: busy ? null : () => _submit('add'),
-            ),
-            const SizedBox(width: Space.sm),
-            OutlinePillButton(
-              label: 'Not now',
-              onPressed: busy ? null : () => _submit('skip'),
-            ),
-          ],
-        ),
-      ],
-    );
-  }
-}
-
-String _describeTriggerKind(TriggerKind kind) => switch (kind) {
-  ScheduleTrigger(:final cron) => 'Schedule: $cron',
-  IntervalTrigger(:final everySecs) => 'Every ${_formatInterval(everySecs)}',
-  WebhookTrigger() => 'Webhook',
-  GithubTrigger(:final repo, :final events) =>
-    'GitHub: $repo (${events.join(', ')})',
-  FileTrigger(:final path, :final glob) =>
-    'File: $path${glob != null ? '/$glob' : ''}',
-  CrewmateTrigger(:final fromCrewmate, :final on) =>
-    'After $fromCrewmate ($on)',
-  ServiceTrigger(:final service, :final on) => 'Service $service ($on)',
-};
-
-String _formatInterval(int secs) {
-  if (secs < 60) return '${secs}s';
-  if (secs < 3600) return '${secs ~/ 60}m';
-  return '${secs ~/ 3600}h';
 }

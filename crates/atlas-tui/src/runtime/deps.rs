@@ -147,7 +147,7 @@ pub async fn ensure_deps(
 
     info!("Running dependency install: {command}");
     let log_dir = super::log_dir(root_dir);
-    let _ = std::fs::create_dir_all(&log_dir);
+    let _ = super::ensure_log_dir(&log_dir);
     let log_path = log_dir.join(SETUP_LOG);
     let mut status = SetupStatus {
         state: "running".into(),

@@ -23,6 +23,14 @@ pub fn pid(dir: &Path) -> PathBuf {
 pub fn log(dir: &Path) -> PathBuf {
     dir.join("hostd.log")
 }
+/// `<base>/desktop/app.log`: panics, host incidents and page errors of Atlas Desktop.
+pub fn app_log(dir: &Path) -> PathBuf {
+    dir.join("desktop").join("app.log")
+}
+/// `<base>/desktop/stderr.log`: what GTK, WebKit and the web processes printed (#273).
+pub fn stderr_log(dir: &Path) -> PathBuf {
+    dir.join("desktop").join("stderr.log")
+}
 
 /// The daemon log, opened for appending (created if missing): its stdout/stderr.
 pub fn open_log(dir: &Path) -> std::io::Result<std::fs::File> {
@@ -30,6 +38,13 @@ pub fn open_log(dir: &Path) -> std::io::Result<std::fs::File> {
         .create(true)
         .append(true)
         .open(log(dir))
+}
+
+/// Where the output of the `atlas update` this daemon started goes (a file, not a pipe: the update
+/// ends this daemon in its last step, and a pipe whose reader is gone makes the update's own
+/// prints fail).
+pub fn update_log(dir: &Path) -> PathBuf {
+    dir.join("update.log")
 }
 pub fn scrollback_dir(dir: &Path) -> PathBuf {
     dir.join("hostd").join("scrollback")

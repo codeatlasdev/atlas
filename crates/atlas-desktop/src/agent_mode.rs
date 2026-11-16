@@ -56,6 +56,9 @@ impl Mode {
     /// Whether this process registers the single-instance guard of its app id (D-Bus name on Linux, a mutex on
     /// Windows): a second launch of the user's app hands off to the first and exits. An agent instance is meant to run
     /// beside the user's app and beside other agents; with the guard it would be absorbed by his window (#281).
+    /// macOS has no guard to register (LaunchServices keeps one instance per bundle id), so it only exists
+    /// where `main` calls it, and for the tests that pin the rule on every OS.
+    #[cfg(any(not(target_os = "macos"), test))]
     pub fn single_instance(self) -> bool {
         self == Mode::User
     }

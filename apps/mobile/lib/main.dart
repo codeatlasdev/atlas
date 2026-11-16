@@ -10,12 +10,14 @@ import 'package:atlas_mobile/core/push/push_provider.dart';
 import 'package:atlas_mobile/core/push/push_tap.dart';
 import 'package:atlas_mobile/core/push/push_service.dart';
 import 'package:atlas_mobile/core/ui/atlas_theme.dart';
+import 'package:atlas_mobile/core/ui/backdrop.dart';
 import 'package:atlas_mobile/core/ui/fade_branches.dart';
 import 'package:atlas_mobile/core/ui/floating_tab_bar.dart';
 import 'package:atlas_mobile/core/ui/route_page.dart';
 import 'package:atlas_mobile/features/crew/list/crew_screen.dart';
 import 'package:atlas_mobile/features/crew/chat/crewmate_chat_screen.dart';
 import 'package:atlas_mobile/features/home/home_screen.dart';
+import 'package:atlas_mobile/features/home/onboarding.dart';
 import 'package:atlas_mobile/features/inbox/inbox.dart';
 import 'package:atlas_mobile/features/pair/pair_screen.dart';
 import 'package:atlas_mobile/features/projects/project_detail_screen.dart';
@@ -126,30 +128,50 @@ GoRouter buildRouter() => GoRouter(
 
 // ── Shell scaffold ─────────────────────────────────────────────────────────
 
-/// The tabs' frame: the branch stack and the floating bar. It reads no provider itself, so a
-/// crew push (which changes the Inbox badge) does not rebuild it; [_InboxBadgedTabBar] does.
-class ShellScaffold extends StatelessWidget {
+/// The tabs' frame: the branch stack and the floating bar, or, on the first run, the onboarding full screen.
+/// The tabs stay mounted underneath (offstage, tickers off), so finishing the onboarding reveals a home that
+/// has already started connecting, and nothing of the tabs (the bar, a tab's content) ever shows through it.
+/// Its only provider is [firstRunProvider], which changes once; the Inbox count lives in
+/// [_InboxBadgedTabBar] so a crew push does not rebuild the shell.
+class ShellScaffold extends ConsumerWidget {
   const ShellScaffold({super.key, required this.shell});
   final StatefulNavigationShell shell;
 
   @override
-  Widget build(BuildContext context) {
+  Widget build(BuildContext context, WidgetRef ref) {
+    final firstRun = ref.watch(firstRunProvider) ?? false;
     return Scaffold(
+      // Expand: the tabs' Offstage is zero-sized while hidden, and a loose Stack would shrink to it and lay
+      // the onboarding out at width 0.
       body: Stack(
+        fit: StackFit.expand,
         children: [
-          shell,
-          Positioned(
-            bottom: 0,
-            left: Space.lg,
-            right: Space.lg,
-            child: SafeArea(
-              top: false,
-              child: Padding(
-                padding: const EdgeInsets.only(bottom: Space.md),
-                child: _InboxBadgedTabBar(shell: shell),
+          TickerMode(
+            enabled: !firstRun,
+            child: Offstage(
+              offstage: firstRun,
+              child: Stack(
+                children: [
+                  shell,
+                  Positioned(
+                    bottom: 0,
+                    left: Space.lg,
+                    right: Space.lg,
+                    child: SafeArea(
+                      top: false,
+                      child: Padding(
+                        padding: const EdgeInsets.only(bottom: Space.md),
+                        child: _InboxBadgedTabBar(shell: shell),
+                      ),
+                    ),
+                  ),
+                ],
               ),
             ),
           ),
+          // Opaque: the app's backdrop, so nothing of the tabs underneath shows through.
+          if (firstRun)
+            const Positioned.fill(child: AtlasBackdrop(child: Onboarding())),
         ],
       ),
     );
@@ -232,9 +254,12 @@ class _AtlasMobileAppState extends ConsumerState<AtlasMobileApp> {
       debugShowCheckedModeBanner: false,
       theme: atlasTheme(),
       routerConfig: _router,
-      // Tapping a push opens the agent it is about, over whatever tab is showing.
-      builder: (context, child) =>
-          PushTapHost(navigatorKey: _rootNavigatorKey, child: child!),
+      // The app's ground under every route; tapping a push opens the agent it is about, over whatever tab is
+      // showing.
+      builder: (context, child) => atlasGround(
+        context,
+        PushTapHost(navigatorKey: _rootNavigatorKey, child: child!),
+      ),
     );
   }
 }

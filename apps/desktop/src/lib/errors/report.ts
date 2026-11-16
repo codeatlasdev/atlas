@@ -7,6 +7,8 @@
  * path, no env). Query strings and long hex/base64-looking tokens are dropped from messages.
  */
 
+import { machineLines } from "./machine.ts";
+
 export interface ErrorReport {
 	/** First line of the error, what the person reads. */
 	message: string;
@@ -48,6 +50,35 @@ export interface Diagnostics {
 		translocated: boolean;
 		channel: string;
 	};
+	/** Distro, session, GPU and the graphics stack (`atlas_core::probe::Platform`, #275). */
+	platform: {
+		distro: string | null;
+		kernel: string | null;
+		session: string | null;
+		desktop: string | null;
+		compositor: string | null;
+		gpus: string[];
+		nvidiaDriver: string | null;
+		mesa: string | null;
+		gtk: string | null;
+		webview: string | null;
+		graphicsEnv: string[];
+	};
+	/** How Atlas got onto the machine (`atlas_core::probe::Packaging`). */
+	packaging: {
+		appimage: string | null;
+		exe: string | null;
+		exeOwner: string | null;
+		localBin: string[];
+	};
+	/** Core dumps of the last day and Atlas's own crash files, with when they happened (`probe::Crashes`). */
+	crashes: {
+		/** `ok`, `unavailable`, or empty where there is no systemd-coredump to ask. */
+		coredumpStatus: string;
+		coredumps: { at: number; pid: number; signal: string; exe: string }[];
+		/** Newest first; `ageSecs` is measured when the report was built. */
+		atlas: { at: number; ageSecs: number; summary: string }[];
+	};
 	hostdLog: string;
 	appLog: string;
 	/** What GTK, WebKit and the web processes printed (`desktop/stderr.log`, #273). */
@@ -74,8 +105,8 @@ export interface ErrorContext {
 export const REPO_URL = "https://github.com/codeatlasdev/atlas";
 const MAX_STACK_LINES = 12;
 const MAX_TITLE = 100;
-/** GitHub rejects URLs past ~8 KB; stay well below it. */
-const MAX_BODY = 4000;
+/** GitHub rejects a "new issue" URL past ~8 KB (8192 bytes); the whole URL, encoded, stays under this. */
+export const MAX_URL = 7500;
 
 /** `AbortError` and WebKit's resize loop warning are normal operation, not bugs. */
 const BENIGN = [
@@ -179,6 +210,13 @@ export function detailsText(r: ErrorReport): string {
 		r.file ? `File: ${r.file}` : "",
 	].filter(Boolean);
 	const d = r.context?.diagnostics;
+	const tails = d
+		? [
+				["app.log", d.appLog],
+				["stderr.log", d.stderrLog],
+				["hostd.log", d.hostdLog],
+			].flatMap(([name, text]) => (text ? ["", `${name} (tail):`, redactText(text)] : []))
+		: [];
 	const diag = d
 		? [
 				`Terminal host: ${d.versions.hostd ?? "not running"}`,
@@ -186,13 +224,21 @@ export function detailsText(r: ErrorReport): string {
 				`OS: ${d.os || "unknown"}`,
 				`Running bundle: ${d.install.runningBundle ?? "(not a bundle)"}`,
 				`Installed app: ${d.install.installedApp ?? "none found"}`,
-				...findings(d).map((f) => `Finding: ${f}`),
+				// Machine lines: `atlas_core::redact::redact` already redacted them in `atlas_core::probe`; `scrub` only drops
+				// homes and query secrets again (`redactText`'s token shape reads `WEBKIT_DISABLE_DMABUF_RENDERER=1` as a secret).
+				...machineLines(d).map(scrub),
+				...findings(d).map((f) => `Finding: ${redactText(f)}`),
 				...(d.lastCrash ? [`Last crash: ${redactText(d.lastCrash)}`] : []),
-				...(d.stderrLog ? ["", "stderr.log (tail):", redactText(d.stderrLog)] : []),
-				...(d.hostdLog ? ["", "hostd.log (tail):", redactText(d.hostdLog)] : []),
+				...tails,
 			]
 		: [];
-	return [...head, "", r.message, r.stack ? `\n${r.stack}` : "", ...(diag.length ? ["", ...diag] : [])]
+	return [
+		...head,
+		"",
+		redactText(r.message),
+		r.stack ? `\n${redactText(r.stack)}` : "",
+		...(diag.length ? ["", ...diag] : []),
+	]
 		.join("\n")
 		.trimEnd();
 }
@@ -225,6 +271,29 @@ function topFrame(stack: string): string | undefined {
 		.find((l) => /\.(svelte|ts|js)[:)]/.test(l) && !/node_modules/.test(l));
 }
 
+type Platform = "macos" | "linux" | "windows";
+
+/** The reporter's OS, from the Rust label (`Linux (x86_64)`) or the page's user agent. */
+function platformOf(r: ErrorReport): Platform | undefined {
+	const s = `${r.context?.diagnostics?.os ?? ""} ${r.context?.os ?? ""}`;
+	if (/mac/i.test(s)) return "macos";
+	if (/windows/i.test(s)) return "windows";
+	if (/linux/i.test(s)) return "linux";
+	return undefined;
+}
+
+/**
+ * Where to read the app's logs, as a command that exists on that OS. `atlas desktop debug logs` is not
+ * one of them: it is compiled out of release builds. `stderr.log` is written on Linux only.
+ */
+const LOG_HINT: Record<Platform | "other", string> = {
+	linux:
+		"`tail -n 50 ~/.atlas/desktop/stderr.log` (WebKit prints CSP violations and IPC failures there) and `~/.atlas/desktop/app.log`",
+	macos: "`tail -n 50 ~/.atlas/desktop/app.log`",
+	windows: "`Get-Content $env:USERPROFILE\\.atlas\\desktop\\app.log -Tail 50` in PowerShell",
+	other: "`desktop/app.log` in the Atlas folder (`~/.atlas`)",
+};
+
 /**
  * A best-effort, honest guess at the cause, for the screen and the prompts. Only patterns that are
  * known to happen in this app; anything else returns `null` rather than a confident wrong answer.
@@ -247,27 +316,52 @@ export function causeHint(r: ErrorReport): CauseHint | null {
 	if (/failed to fetch|networkerror|load failed|csp|content security/i.test(r.message))
 		return {
 			title: "A request was blocked or the backend did not answer",
-			detail:
-				"Check the Atlas desktop logs (`atlas desktop debug logs`) for a CSP violation or an IPC failure.",
+			detail: `Look for a CSP violation or an IPC failure in the log tails of this report; for more, read ${LOG_HINT[platformOf(r) ?? "other"]}.`,
 		};
 	return null;
 }
 
-const ctxLines = (r: ErrorReport): string[] => {
+/** The whole environment of the report: versions, OS, install and the last crash. Never cut to fit a budget. */
+const envLines = (r: ErrorReport): string[] => {
 	const c = r.context;
+	const d = c?.diagnostics;
+	const v = d?.versions;
+	const os = d?.os || (c?.os ? `${c.os}${c.arch ? ` (${c.arch})` : ""}` : "");
+	const host = c?.hostVersion ?? v?.hostd;
+	const caps = c?.hostCaps ?? (v?.hostdCaps.length ? v.hostdCaps : undefined);
+	// Quarantine and translocation are macOS facts: on Linux and Windows "no" is noise.
+	const macFacts = d && (platformOf(r) === "macos" || d.install.quarantined || d.install.translocated);
 	return [
-		`- Atlas: ${r.version ?? "unknown"}`,
+		`- Atlas: ${r.version ?? (v?.app || "unknown")}`,
 		`- Where: ${r.where}${r.kind ? ` (${r.kind})` : ""}`,
 		r.file ? `- File: ${r.file}` : "",
-		c?.os ? `- OS: ${c.os}${c.arch ? ` (${c.arch})` : ""}` : "",
+		os ? `- OS: ${os}` : "",
 		c?.locale ? `- Locale: ${c.locale}` : "",
 		c?.route ? `- Route: ${c.route}` : "",
-		c?.hostVersion || c?.diagnostics?.versions.hostd
-			? `- Terminal host: ${c.hostVersion ?? c.diagnostics?.versions.hostd}${c.hostCaps ? ` [${c.hostCaps.join(", ")}]` : ""}`
+		host || d
+			? `- Terminal host: ${host ?? "not running"}${v?.hostdPid ? ` (pid ${v.hostdPid})` : ""}${caps ? ` [${caps.join(", ")}]` : ""}`
 			: "",
-		c?.diagnostics?.versions.cli ? `- CLI: ${c.diagnostics.versions.cli}` : "",
-		!c?.os && c?.diagnostics?.os ? `- OS: ${c.diagnostics.os}` : "",
-	].filter(Boolean);
+		d ? `- CLI: ${v?.cli ?? "unknown"}` : "",
+		d ? `- Channel: ${d.install.channel || "unknown"}` : "",
+		d ? `- Running bundle: ${d.install.runningBundle ?? "(not a bundle)"}` : "",
+		d ? `- Installed app: ${d.install.installedApp ?? "none found"}` : "",
+		d
+			? `- CLI path: ${d.install.cli ?? "not found"}${d.install.cliLinkedTo ? ` -> ${d.install.cliLinkedTo}` : ""}`
+			: "",
+		macFacts
+			? `- Quarantined: ${d.install.quarantined ? "yes" : "no"}; translocated: ${d.install.translocated ? "yes" : "no"}`
+			: "",
+		d?.lastCrash ? `- Last crash: ${d.lastCrash}` : "",
+	]
+		.filter(Boolean)
+		.map(redactText)
+		.concat(
+			// Machine facts (distro, GPU, packaging, core dumps): `atlas_core::redact::redact` already redacted every
+			// path and variable in `atlas_core::probe` (`graphics_env`, `packaging_of`, `parse_coredumps`,
+			// `crash_summary`). `scrub` only drops homes and query secrets again: `redactText`'s token shape reads
+			// `WEBKIT_DISABLE_DMABUF_RENDERER=1` and an AppImage mount path as secrets.
+			d ? machineLines(d).map((l) => `- ${scrub(l)}`) : [],
+		);
 };
 
 /**
@@ -299,101 +393,176 @@ export function findings(d: Diagnostics): string[] {
 	return out;
 }
 
-const diagLines = (r: ErrorReport): string[] => {
-	const d = r.context?.diagnostics;
-	if (!d) return [];
-	const v = d.versions;
-	return [
-		"",
-		"## Versions",
-		`- App: ${v.app || "unknown"}`,
-		`- CLI: ${v.cli ?? "unknown"}`,
-		`- Terminal host: ${v.hostd ?? "not running"}${v.hostdPid ? ` (pid ${v.hostdPid})` : ""}`,
-		`- OS: ${d.os || "unknown"}`,
-		`- Channel: ${d.install.channel || "unknown"}`,
-		"",
-		"## Install",
-		`- Running bundle: ${d.install.runningBundle ?? "(not a bundle)"}`,
-		`- Installed app: ${d.install.installedApp ?? "none found"}`,
-		`- CLI: ${d.install.cli ?? "not found"}${d.install.cliLinkedTo ? ` -> ${d.install.cliLinkedTo}` : ""}`,
-		`- Quarantined: ${d.install.quarantined ? "yes" : "no"}; translocated: ${d.install.translocated ? "yes" : "no"}`,
-		...(findings(d).length ? ["", "## Findings", ...findings(d).map((f) => `- ${f}`)] : []),
-		"",
-		...(d.lastCrash ? [`- Last crash: ${redactText(d.lastCrash)}`] : []),
-		...(d.incidents.length
-			? [
-					"",
-					"## Host incidents",
-					...d.incidents
-						.slice(-8)
-						.map((i) => `- ${new Date(i.at * 1000).toISOString().slice(11, 19)} ${i.kind}: ${i.detail}`),
-				]
-			: []),
-		// stderr first: it is what explains a blank window, and the limit cuts from the end.
-		...(d.stderrLog ? ["", "## stderr.log (tail)", ...fence(redactText(d.stderrLog))] : []),
-		...(d.hostdLog ? ["", "## hostd.log (tail)", ...fence(redactText(d.hostdLog))] : []),
-		...(d.appLog ? ["", "## app.log (tail)", ...fence(redactText(d.appLog))] : []),
-	];
+/** What one rendering of the report may hold. The Environment is in none of it: it is never cut. */
+interface Budget {
+	/** Characters of the error message. */
+	msg: number;
+	/** Frames of the stack, from the top. */
+	stack: number;
+	/** Last lines of each log. */
+	app: number;
+	stderr: number;
+	hostd: number;
+	crumbs: number;
+	incidents: number;
+	/** The "Likely cause" paragraph. */
+	hint: boolean;
+	/** Characters of a stack frame or a log line. */
+	line: number;
+}
+
+/**
+ * From everything (what the clipboard gets) down to the least that is still useful. A size-limited output (the
+ * issue URL, an AI prompt) takes the first step that fits, so it loses the host tail and the breadcrumbs first, then
+ * stack frames, and only then lines of app.log and stderr.log; never half a fence, never the Environment (#274).
+ */
+const STEPS: Budget[] = [
+	{
+		msg: Infinity,
+		stack: Infinity,
+		app: Infinity,
+		stderr: Infinity,
+		hostd: Infinity,
+		crumbs: Infinity,
+		incidents: Infinity,
+		hint: true,
+		line: Infinity,
+	},
+	{ msg: 600, stack: 12, app: 20, stderr: 20, hostd: 10, crumbs: 8, incidents: 8, hint: true, line: 200 },
+	{ msg: 600, stack: 12, app: 20, stderr: 20, hostd: 5, crumbs: 5, incidents: 4, hint: true, line: 200 },
+	{ msg: 400, stack: 8, app: 20, stderr: 20, hostd: 0, crumbs: 0, incidents: 0, hint: false, line: 200 },
+	{ msg: 300, stack: 6, app: 20, stderr: 20, hostd: 0, crumbs: 0, incidents: 0, hint: false, line: 160 },
+	{ msg: 300, stack: 4, app: 20, stderr: 20, hostd: 0, crumbs: 0, incidents: 0, hint: false, line: 120 },
+	{ msg: 300, stack: 4, app: 15, stderr: 15, hostd: 0, crumbs: 0, incidents: 0, hint: false, line: 120 },
+	{ msg: 300, stack: 3, app: 10, stderr: 10, hostd: 0, crumbs: 0, incidents: 0, hint: false, line: 100 },
+	{ msg: 200, stack: 2, app: 5, stderr: 5, hostd: 0, crumbs: 0, incidents: 0, hint: false, line: 100 },
+	{ msg: 200, stack: 2, app: 3, stderr: 3, hostd: 0, crumbs: 0, incidents: 0, hint: false, line: 80 },
+];
+
+/** The first rendering that passes `ok`; the smallest one when none does. */
+function fit<T>(make: (b: Budget) => T, ok: (t: T) => boolean): T {
+	let out!: T;
+	for (const b of STEPS) {
+		out = make(b);
+		if (ok(out)) return out;
+	}
+	return out;
+}
+
+const lastN = <T>(a: T[], n: number) => a.slice(Math.max(0, a.length - n));
+const clip = (s: string, max: number) => (s.length > max ? `${s.slice(0, max - 1)}…` : s);
+
+/** A code fence that the text itself cannot close: longer than any run of backticks inside it. */
+const fence = (t: string) => {
+	const ticks = "`".repeat(Math.max(3, ...[...t.matchAll(/`{3,}/g)].map((m) => m[0].length + 1)));
+	return [ticks, t, ticks];
 };
 
 const crumbLines = (r: ErrorReport): string[] =>
-	(r.context?.breadcrumbs ?? []).map((b) => `- ${new Date(b.at).toISOString().slice(11, 19)} ${b.text}`);
+	(r.context?.breadcrumbs ?? []).map(
+		(b) => `- ${new Date(b.at).toISOString().slice(11, 19)} ${redactText(b.text)}`,
+	);
 
-const fence = (t: string) => ["```", t, "```"];
-
-/** A complete, paste-ready report: what an issue or an AI conversation starts from. */
-export function markdownReport(r: ErrorReport, limit = MAX_BODY): string {
-	const hint = causeHint(r);
-	const crumbs = crumbLines(r);
+/** The report as Markdown within `b`. Every section is redacted on its own, before it is fenced, and cut by whole lines. */
+function render(r: ErrorReport, b: Budget): string {
+	const d = r.context?.diagnostics;
+	const hint = b.hint ? causeHint(r) : null;
+	const found = d ? findings(d) : [];
+	const stack = redactText(r.stack)
+		.split("\n")
+		.slice(0, b.stack)
+		.map((l) => clip(l, b.line));
+	const tails: [string, string, number][] = d
+		? [
+				["app.log", d.appLog, b.app],
+				["stderr.log", d.stderrLog, b.stderr],
+				["hostd.log", d.hostdLog, b.hostd],
+			]
+		: [];
 	return [
 		"# Atlas desktop error",
 		"",
 		"## Error",
-		...fence(r.message.slice(0, 600)),
+		...fence(redactText(clip(r.message, b.msg))),
 		"",
 		"## Environment",
-		...ctxLines(r),
+		...envLines(r),
+		...(found.length ? ["", "## Findings", ...found.map((f) => `- ${redactText(f)}`)] : []),
 		...(hint ? ["", "## Likely cause", `**${hint.title}.** ${hint.detail}`] : []),
-		...(crumbs.length ? ["", "## Last things the app did", ...crumbs] : []),
-		...diagLines(r),
 		"",
 		"## Stack (file names only)",
-		...fence(r.stack || "(none)"),
-	]
-		.join("\n")
-		.slice(0, limit);
+		...fence(r.stack && b.stack ? stack.join("\n") : "(none)"),
+		...tails.flatMap(([name, text, n]) => {
+			const lines = lastN(redactText(text).trimEnd().split("\n"), n).map((l) => clip(l, b.line));
+			return text.trim() && lines.length ? ["", `## ${name} (tail)`, ...fence(lines.join("\n"))] : [];
+		}),
+		...(d?.incidents.length && b.incidents
+			? [
+					"",
+					"## Host incidents",
+					...lastN(d.incidents, b.incidents).map(
+						(i) =>
+							`- ${new Date(i.at * 1000).toISOString().slice(11, 19)} ${i.kind}: ${redactText(i.detail)}`,
+					),
+				]
+			: []),
+		...(b.crumbs && r.context?.breadcrumbs.length
+			? ["", "## Last things the app did", ...lastN(crumbLines(r), b.crumbs)]
+			: []),
+	].join("\n");
 }
 
-/** Longest `logs` field in the URL: GitHub rejects URLs past ~8 KB. */
-const MAX_LOGS = 2500;
+/**
+ * A complete, paste-ready report: what an issue or an AI conversation starts from. Without `limit` it is whole
+ * (the clipboard); with one, the largest rendering of at most `limit` characters.
+ */
+export function markdownReport(r: ErrorReport, limit = Infinity): string {
+	return fit(
+		(b) => render(r, b),
+		(md) => md.length <= limit,
+	);
+}
+
+/**
+ * `encodeURIComponent` that leaves the characters a query may carry as they are (`:` `/` `,` `@` `;` `$` `[` `]`)
+ * and writes a space as `+`: logs are mostly those, and every `%XX` costs two bytes of an 8 KB URL.
+ */
+const queryValue = (s: string) =>
+	encodeURIComponent(s)
+		.replace(/%20/g, "+")
+		.replace(/%(?:3A|2F|2C|40|3B|24|5B|5D)/g, (m) => String.fromCharCode(Number.parseInt(m.slice(1), 16)));
+
+/** Release channels `bug_report.yml` offers; a dropdown only prefills with one of its option names. */
+const FORM_CHANNELS = ["stable", "beta", "alpha"];
 
 /**
  * Prefilled "new issue" URL for `.github/ISSUE_TEMPLATE/bug_report.yml`: its field ids (`what`, `surface`,
- * `version`, `os`, `logs`...) are query parameters, so the form opens filled. Everything is redacted first.
+ * `version`, `os`, `logs`...) are query parameters, so the form opens filled. Everything is redacted first; the
+ * `logs` field is the report with the largest budget whose whole URL stays within `MAX_URL`.
  * Opens in the system browser through `api.openUrl`.
  */
 export function issueUrl(r: ErrorReport): string {
 	const title = redactText(`[desktop] ${r.message.split("\n")[0]}`).slice(0, MAX_TITLE);
 	const d = r.context?.diagnostics;
 	const version = r.version ?? d?.versions.app;
-	const q = new URLSearchParams({
+	const channel = d?.install.channel ?? "";
+	const fields: Record<string, string> = {
 		template: "bug_report.yml",
 		title,
 		labels: "type: bug",
-		what: redactText(`${r.message}\n\n(What were you doing when this appeared?)`).slice(0, 800),
+		what: `${clip(redactText(r.message), 300)}\n\n(What were you doing when this appeared?)`,
 		surface: "Atlas Desktop",
 		...(version ? { version: `atlas ${version}` } : {}),
 		...(d?.os || r.context?.os ? { os: d?.os ?? r.context?.os ?? "" } : {}),
-		logs: redactText(
-			[
-				markdownReport({ ...r, context: r.context && { ...r.context, diagnostics: undefined } }, 1200),
-				d?.hostdLog ?? "",
-			]
-				.filter(Boolean)
-				.join("\n\n"),
-		).slice(-MAX_LOGS),
-	});
-	return `${REPO_URL}/issues/new?${q}`;
+		...(FORM_CHANNELS.includes(channel) ? { channel } : {}),
+	};
+	return fit(
+		(b) =>
+			`${REPO_URL}/issues/new?${Object.entries({ ...fields, logs: render(r, b) })
+				.map(([k, v]) => `${k}=${queryValue(v)}`)
+				.join("&")}`,
+		(url) => url.length <= MAX_URL,
+	);
 }
 
 const PROMPT_CAP = 9000;
@@ -411,9 +580,7 @@ export function aiFixPrompt(r: ErrorReport): string {
 		"4. Fix the root cause (not the symptom), show the tests pass, then run `bun run check`.",
 		"",
 		markdownReport(r, PROMPT_CAP - 1200),
-	]
-		.join("\n")
-		.slice(0, PROMPT_CAP);
+	].join("\n");
 }
 
 /** For an agent with `gh`: dedupe, then file a well-formed issue. */
@@ -427,9 +594,7 @@ export function aiIssuePrompt(r: ErrorReport): string {
 		"3. Reply with the issue URL.",
 		"",
 		markdownReport(r, PROMPT_CAP - 1200),
-	]
-		.join("\n")
-		.slice(0, PROMPT_CAP);
+	].join("\n");
 }
 
 /** For a person using any chat AI: explain it, say what to do now, no code changes. */
@@ -438,9 +603,7 @@ export function aiDiagnosePrompt(r: ErrorReport): string {
 		"I use Atlas (a desktop app for running dev projects) and it showed this error screen. Explain what happened in plain language, what I can do right now to get back to work, and whether it is a bug I should report. Do not edit, change or run anything on my machine; only explain.",
 		"",
 		markdownReport(r, PROMPT_CAP - 600),
-	]
-		.join("\n")
-		.slice(0, PROMPT_CAP);
+	].join("\n");
 }
 
 /** Same error fired in a burst (a render loop, a timer) should surface once. */

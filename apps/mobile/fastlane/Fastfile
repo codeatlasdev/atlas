@@ -45,6 +45,15 @@ def flutter(*args)
   sh("flutter", *args, log: true) # sh runs from fastlane/; Flutter needs the app dir
 end
 
+# What every store build passes to `flutter build`. The pubspec's default flavor is the Atlas Dev app, so the
+# store app is always asked for by name (`prod`: br.com.codeatlas.atlas.mobile). The Dart symbols go to a
+# directory instead of the binary (smaller App.framework / libapp.so); CI keeps that directory as an artifact
+# (`flutter symbolize` needs it for a stack trace). Names are kept readable (no --obfuscate).
+def store_build_args(platform, n)
+  ["--release", "--flavor", "prod", "--split-debug-info=build/symbols/#{platform}",
+   "--build-number=#{n}", "--build-name=#{version_name}"]
+end
+
 # Firebase config (push): CI hands it over as secrets; the files are written only for the build and
 # deleted right after, never committed (apps/mobile/.gitignore lists both). Without the secret the
 # app builds with no push. Returns the path when written, else nil.
@@ -75,8 +84,7 @@ lane :ios_beta do |options|
   File.write(p8, ENV["ASC_KEY_P8"])
   plist = write_firebase_config("ios/GoogleService-Info.plist", "GOOGLE_SERVICE_INFO_PLIST")
   Dir.chdir(APP) do
-    flutter("build", "ios", "--release", "--no-codesign", "--build-number=#{n}",
-            "--build-name=#{version_name}")
+    flutter("build", "ios", "--no-codesign", *store_build_args("ios", n))
   end
   # Archive and export both sign through the API key (role Admin: creating the cloud-managed
   # distribution certificate needs it): with -allowProvisioningUpdates Xcode
@@ -89,7 +97,7 @@ lane :ios_beta do |options|
   ].join(" ")
   ipa = build_app(
     workspace: File.join(APP, "ios/Runner.xcworkspace"),
-    scheme: "Runner",
+    scheme: "prod", # the store app: the Release configuration, id br.com.codeatlas.atlas.mobile
     export_method: "app-store",
     output_directory: File.join(APP, "build/fastlane"),
     # fastlane hands xcargs to the export too (a second copy is refused).
@@ -128,13 +136,12 @@ lane :android_beta do |options|
   PROPS
   gservices = write_firebase_config("android/app/google-services.json", "GOOGLE_SERVICES_JSON")
   Dir.chdir(APP) do
-    flutter("build", "appbundle", "--release", "--build-number=#{n}",
-            "--build-name=#{version_name}")
+    flutter("build", "appbundle", *store_build_args("android", n))
   end
   upload_to_play_store(
     package_name: ANDROID_PACKAGE,
     track: "internal",
-    aab: File.join(APP, "build/app/outputs/bundle/release/app-release.aab"),
+    aab: File.join(APP, "build/app/outputs/bundle/prodRelease/app-prod-release.aab"),
     json_key_data: ENV["PLAY_SERVICE_ACCOUNT_JSON"],
     skip_upload_metadata: true,
     skip_upload_images: true,

@@ -184,14 +184,14 @@ fn pe_codeview_id<R: Read + Seek>(r: &mut R) -> Option<String> {
     }
     let sections = read_at(r, pe + 24 + optsz as u64, nsec * 40)?;
     let offset_of = |rva: usize| {
-        sections.chunks_exact(40).find_map(|s| {
+        sections.as_chunks::<40>().0.iter().find_map(|s| {
             let (vsize, va, rawsize, raw) =
                 (u32_at(s, 8), u32_at(s, 12), u32_at(s, 16), u32_at(s, 20));
             (rva >= va && rva < va + vsize.max(rawsize)).then(|| raw + (rva - va))
         })
     };
     let dir = read_at(r, offset_of(rva)? as u64, size.min(28 * 16))?;
-    for e in dir.chunks_exact(28) {
+    for e in dir.as_chunks::<28>().0 {
         const IMAGE_DEBUG_TYPE_CODEVIEW: usize = 2;
         if u32_at(e, 12) != IMAGE_DEBUG_TYPE_CODEVIEW {
             continue;

@@ -644,18 +644,36 @@ async fn settings_fixtures_are_the_real_payloads() {
     m.ensure_endpoint().await.unwrap();
     let mut start = m.pair_start().unwrap();
     let code = start["code"].as_str().unwrap().to_string();
-    m.pair("n1", &code, "iPhone").unwrap();
+    // The name the real app sends (`pair_screen.dart`): the same for every phone.
+    m.pair("n1", &code, "Atlas Mobile").unwrap();
     m.set_scopes("n1", vec![super::Scope::Read, super::Scope::TermRead])
         .unwrap();
     start["node_id"] = json!("NODE");
     start["code"] = json!("012345");
     start["hostname"] = json!("Luan's MacBook");
     start["addrs"] = json!(["192.168.1.2:4433", "[fe80::1]:4433"]);
-    let mut devices = json!(m.devices());
+    m.audit(
+        "n1",
+        "project_service",
+        &json!({"id": "p1", "service": "web", "op": "restart"}),
+    );
+    m.audit("n1", "pty_write", &json!({"pty": "t1", "data": "bHM="}));
+    m.audit(
+        "n1",
+        "agent_approve",
+        &json!({"pane": "a1", "req": "r1", "allow": true}),
+    );
+    let mut devices = json!(m.devices_view());
     devices[0]["paired_at"] = json!(1_700_000_000);
+    devices[0]["last_seen"] = json!(1_700_000_500);
+    let mut activity = json!(m.activity("n1", 50));
+    for (i, e) in activity.as_array_mut().unwrap().iter_mut().enumerate() {
+        e["ts"] = json!(1_700_000_500 - 60 * i as u64);
+    }
     for (name, v) in [
         ("mobile-pair-start.json", start),
         ("mobile-devices.json", devices),
+        ("mobile-activity.json", activity),
     ] {
         let p = std::path::Path::new(env!("CARGO_MANIFEST_DIR"))
             .join("../../apps/desktop/src/lib/__fixtures__")
@@ -2376,4 +2394,118 @@ async fn on_a_crew_server_a_phone_opens_a_shell_in_the_crew_home_or_a_crewmate_w
         "the crew home and the work tree are audited; every refusal is not"
     );
     c.call("shutdown", json!({})).await.ok();
+}
+
+async fn device_of(c: &HostClient, node: &str) -> Value {
+    c.call("mobile_devices", json!({})).await.unwrap()["devices"]
+        .as_array()
+        .unwrap()
+        .iter()
+        .find(|d| d["node_id"] == node)
+        .unwrap()
+        .clone()
+}
+
+/// Settings tells the phones apart: whether each is connected now, when it was last here, what it did, and the
+/// owner can name it (the real app sends the same name for every phone). A phone can do none of this.
+#[tokio::test]
+async fn paired_phones_report_connection_activity_and_take_a_name() {
+    let tmp = tempfile::tempdir().unwrap();
+    let (c, mut phone, node) = paired(tmp.path()).await;
+
+    let d = device_of(&c, &node).await;
+    assert_eq!(d["connected"], true, "{d}");
+    assert!(d["last_seen"].is_u64(), "connecting is being seen: {d}");
+
+    phone
+        .call("project_service", json!({"id": "x", "op": "restart"}))
+        .await
+        .unwrap();
+    let r = c
+        .call("mobile_activity", json!({"node_id": node, "limit": 1}))
+        .await
+        .unwrap();
+    let acts = r["activity"].as_array().unwrap();
+    assert_eq!(acts.len(), 1, "{r}");
+    assert_eq!(acts[0]["cmd"], "project_service");
+    assert_eq!(acts[0]["args"]["op"], "restart");
+    let all = c
+        .call("mobile_activity", json!({"node_id": node}))
+        .await
+        .unwrap();
+    assert_eq!(all["activity"][1]["cmd"], "pair", "newest first: {all}");
+    let none = c
+        .call("mobile_activity", json!({"node_id": "nobody"}))
+        .await
+        .unwrap();
+    assert_eq!(none["activity"], json!([]));
+
+    c.call(
+        "mobile_rename",
+        json!({"node_id": node, "name": "  Luan's iPhone  "}),
+    )
+    .await
+    .unwrap();
+    assert_eq!(device_of(&c, &node).await["name"], "Luan's iPhone");
+    assert!(
+        c.call("mobile_rename", json!({"node_id": node, "name": "   "}))
+            .await
+            .is_err()
+    );
+    assert!(
+        c.call("mobile_rename", json!({"node_id": "nobody", "name": "x"}))
+            .await
+            .is_err()
+    );
+
+    for cmd in ["mobile_rename", "mobile_activity"] {
+        let r = phone
+            .call(cmd, json!({"node_id": node, "name": "mine"}))
+            .await
+            .unwrap();
+        assert_eq!(r["error"], "not available on mobile", "{cmd}: {r}");
+    }
+    assert_eq!(device_of(&c, &node).await["name"], "Luan's iPhone");
+
+    phone.conn.close(0u32.into(), b"bye");
+    let mut gone = false;
+    for _ in 0..100 {
+        if device_of(&c, &node).await["connected"] == false {
+            gone = true;
+            break;
+        }
+        tokio::time::sleep(Duration::from_millis(50)).await;
+    }
+    assert!(gone, "a phone that hung up is not connected");
+    assert!(device_of(&c, &node).await["last_seen"].is_u64());
+    c.call("shutdown", json!({})).await.ok();
+}
+
+/// A phone paired before `last_seen` existed (no such key on disk) still shows when it was last active.
+#[tokio::test]
+async fn last_seen_falls_back_to_the_audit_log_and_a_long_log_is_read_from_its_end() {
+    let tmp = tempfile::tempdir().unwrap();
+    let m = super::Mobile::load(tmp.path(), false).unwrap();
+    let code = m.pair_start().unwrap()["code"]
+        .as_str()
+        .unwrap()
+        .to_string();
+    m.pair("n1", &code, "Atlas Mobile").unwrap();
+    assert!(m.devices_view()[0].get("last_seen").is_none(), "never seen");
+    m.audit("n1", "project_service", &json!({"op": "stop"}));
+    let seen = m.devices_view()[0]["last_seen"].as_u64().unwrap();
+    assert!(seen > 1_700_000_000);
+    assert_eq!(m.devices_view()[0]["connected"], false);
+
+    // ~700 KB of log: more than the tail read, so the oldest lines are not parsed and the newest are.
+    for i in 0..700 {
+        m.audit("n1", &format!("cmd{i}"), &json!({"pad": "x".repeat(1000)}));
+    }
+    let acts = m.activity("n1", 1000);
+    assert_eq!(acts.len(), 200, "capped");
+    assert_eq!(acts[0]["cmd"], "cmd699");
+    assert!(
+        acts.iter()
+            .all(|a| a["cmd"].as_str().unwrap().starts_with("cmd"))
+    );
 }

@@ -118,6 +118,8 @@ pub fn route(cmd: &HostCmd) -> Route {
         | C::MobileDevices {}
         | C::MobileRevoke { .. }
         | C::MobileSetScopes { .. }
+        | C::MobileRename { .. }
+        | C::MobileActivity { .. }
         | C::Shutdown {}
         | C::LspOpen { .. }
         | C::LspChange { .. }

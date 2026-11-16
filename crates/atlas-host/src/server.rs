@@ -1274,7 +1274,13 @@ pub(crate) async fn handle(hub: &Arc<Hub>, cmd: HostCmd, conn_id: u64) -> Result
             hub.mobile.ensure_endpoint().await?;
             hub.mobile.pair_start()
         }
-        HostCmd::MobileDevices {} => Ok(json!({"devices": hub.mobile.devices()})),
+        HostCmd::MobileDevices {} => Ok(json!({"devices": hub.mobile.devices_view()})),
+        HostCmd::MobileRename { node_id, name } => {
+            hub.mobile.rename(&node_id, &name).map(|()| json!({}))
+        }
+        HostCmd::MobileActivity { node_id, limit } => Ok(json!({
+            "activity": hub.mobile.activity(&node_id, limit.unwrap_or(50)),
+        })),
         HostCmd::MobileRevoke { node_id } => {
             hub.crew.revoke_device_tokens(&node_id);
             // The crew servers behind this Mac hold the phone's tokens too (it registered through

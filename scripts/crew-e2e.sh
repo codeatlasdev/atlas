@@ -453,6 +453,26 @@ wait_task "$CMB" "$TBS" cancelled 30
 wait_idle "$CMB"
 echo "capture: B's loopback port and 169.254.169.254 refused, A's own loopback server allowed through to the browsers"
 
+# (9e) S-C of the fourth review: the egress rules were replayed at boot only, so `systemctl restart nftables` (whose
+# /etc/nftables.conf begins with `flush ruleset`) left the crewmates with no firewall until the next boot. The egress unit
+# is now PartOf=nftables.service and loads the table again with it; and while the table is missing the helper starts nothing.
+table_loaded() { srv nft list table inet atlas_crew; }
+table_loaded >/dev/null || fail "control: the atlas_crew table is not loaded before the test"
+srv systemctl restart nftables
+until_true 30 "the egress unit to load the atlas_crew table again after nftables restarted" table_loaded
+srv nft delete table inet atlas_crew
+! table_loaded >/dev/null 2>&1 || fail "control: the table is still loaded after deleting it"
+T=$(send_task "$CM" "E2E_OK nofirewall$RANDOM")
+wait_task "$CM" "$T" failed 60
+task_json "$CM" "$T" | jq -r .error | grep -q 'firewall table atlas_crew' ||
+  fail "a task with the firewall table missing did not fail naming it: $(task_json "$CM" "$T" | jq -r .error)"
+srv systemctl restart atlas-crew-egress
+until_true 30 "the egress unit to load the table" table_loaded
+wait_idle "$CM"
+T=$(send_task "$CM" "E2E_OK firewall-back$RANDOM")
+wait_task "$CM" "$T" "done" 60
+echo "firewall: a restart of nftables reloaded the table; with it missing a task is refused; reloaded, it runs"
+
 # (10) the crew user's GitHub login never reaches a process that runs as a crewmate (N2). A fake `gh` stands in for
 # the operator's login; crewmate C has a project and no token of its own, so hostd mirrors the project into
 # C's crew-runtime/ with that login and C clones the mirror. Hooks in C's own ~/.gitconfig record the environment

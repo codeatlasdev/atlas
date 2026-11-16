@@ -393,6 +393,7 @@ mod tests {
             engines: vec![],
             resolve: super::super::exec::lookup,
             memory: std::sync::Arc::new(super::super::server::Memory::Off("test".into())),
+            egress: || Ok(()),
         };
         let (resp, fd) = run(
             &cfg,

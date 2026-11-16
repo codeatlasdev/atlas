@@ -48,6 +48,32 @@ pub struct Config {
     /// How agents are capped: production detects its delegated cgroup at start ([`cgroup::Pool::detect`]);
     /// tests give a pool under a scratch cgroup, or `None`.
     pub memory: Arc<Memory>,
+    /// Whether the egress firewall is in place ([`egress_loaded`] in production). A spawn or a git request is refused
+    /// while it says no: a crewmate would start with no rules on what it can reach.
+    pub egress: fn() -> io::Result<()>,
+}
+
+/// The table `atlas-crew-provision.service` loads (`provision::egress_ruleset`), checked with `nft list table`: the
+/// firewall is not only a file but a table in the kernel, which a flush of the ruleset (`systemctl restart nftables` on
+/// Debian, whose `/etc/nftables.conf` starts with `flush ruleset`) removes until the egress unit loads it again.
+pub fn egress_loaded() -> io::Result<()> {
+    let nft = ["/usr/sbin", "/sbin", "/usr/bin", "/bin"]
+        .iter()
+        .map(|d| format!("{d}/nft"))
+        .find(|p| std::path::Path::new(p).is_file())
+        .ok_or_else(|| io::Error::new(io::ErrorKind::NotFound, "nft is not installed"))?;
+    let out = std::process::Command::new(nft)
+        .args(["list", "table", "inet", "atlas_crew"])
+        .stdin(std::process::Stdio::null())
+        .output()?;
+    if out.status.success() {
+        return Ok(());
+    }
+    Err(io::Error::other(format!(
+        "the firewall table atlas_crew is not loaded ({}), so crewmates are not started: they would reach each other and the \
+         server's network. `systemctl restart atlas-crew-egress` loads it again",
+        String::from_utf8_lossy(&out.stderr).trim()
+    )))
 }
 
 /// Where the memory cap stands.
@@ -126,6 +152,7 @@ impl Config {
             engines: ENGINE_DIRS.iter().map(|s| s.to_string()).collect(),
             resolve: exec::lookup,
             memory: Arc::new(Memory::detect()),
+            egress: egress_loaded,
         }
     }
 }
@@ -253,6 +280,17 @@ impl Server {
     ) -> (Response, Option<std::os::fd::OwnedFd>) {
         if let Err(r) = validate::check_in(&self.cfg.cm_root, &req, len) {
             return (err(r), None);
+        }
+        // What a crewmate runs (an agent, or the hooks of its git) starts only with its egress rules loaded.
+        if matches!(req, Request::Spawn(_) | Request::Git(_))
+            && let Err(e) = (self.cfg.egress)()
+        {
+            return (
+                Response::Error {
+                    reason: e.to_string(),
+                },
+                None,
+            );
         }
         match req {
             Request::Spawn(s) => match self.spawn(&s) {
@@ -944,6 +982,53 @@ mod tests {
             out.contains("printed"),
             "the child's output was lost: {out:?}"
         );
+    }
+
+    // Security review 4, S-C: the egress rules were replayed at boot only, and `systemctl restart nftables` (Debian's
+    // /etc/nftables.conf starts with `flush ruleset`) removed the table, so crewmates ran with no firewall until the next
+    // boot. A spawn and a git request (a hook is crewmate code too) are refused while the table is missing.
+    #[test]
+    fn nothing_is_started_for_a_crewmate_while_the_firewall_table_is_missing() {
+        let r = super::super::testing::rig_with_egress(|| {
+            Err(io::Error::other(
+                "the firewall table atlas_crew is not loaded",
+            ))
+        });
+        r.engine("claude", "echo started");
+        let e = r.client.spawn(&req(&r, Mode::Pipe, "true")).unwrap_err();
+        assert!(e.to_string().contains("firewall table atlas_crew"), "{e}");
+        assert!(r.server.sessions.lock().is_empty());
+        #[cfg(target_os = "linux")]
+        {
+            let git = GitReq {
+                user: USER.into(),
+                args: vec!["status".into()],
+                cwd: r.work().to_string_lossy().into_owned(),
+                token: None,
+                timeout_secs: 5,
+            };
+            let e = r.client.git(&git).unwrap_err();
+            assert!(e.to_string().contains("firewall table atlas_crew"), "{e}");
+        }
+        // And with the table there, the same request runs (the rig's default).
+        let ok = rig();
+        ok.client.spawn(&req(&ok, Mode::Pipe, "true")).unwrap();
+    }
+
+    // The real check: `nft list table inet atlas_crew` says no on a machine where nothing loaded it (a developer's, a CI
+    // runner) and the refusal says what to do.
+    #[test]
+    fn the_real_check_names_the_unit_that_loads_the_table() {
+        if let Err(e) = egress_loaded() {
+            let t = e.to_string();
+            assert!(
+                t.contains("nft is not installed")
+                    || t.contains("atlas-crew-egress")
+                    || t.contains("Operation not permitted")
+                    || t.contains("Permission denied"),
+                "{t}"
+            );
+        }
     }
 
     // Refusals come back as errors and nothing is started: the validators run in the helper, not

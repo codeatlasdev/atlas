@@ -671,6 +671,7 @@ mod tests {
             engines: vec![],
             resolve: as_nobody,
             memory: std::sync::Arc::new(Memory::On(pool)),
+            egress: || Ok(()),
         };
         let (resp, _) = super::super::git::run(
             &cfg,

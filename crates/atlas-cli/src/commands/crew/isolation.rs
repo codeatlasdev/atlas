@@ -61,7 +61,9 @@ pub fn provision_socket_unit(a: &Account) -> String {
 /// - `CAP_SETUID`/`CAP_SETGID` switch to the crewmate's user, `CAP_CHOWN` gives it its pty slave,
 ///   `CAP_KILL` signals its processes, `CAP_DAC_OVERRIDE` lets root reach directories that are
 ///   0700 for the crewmate or the crew user, `CAP_SYS_PTRACE` lets the helper still see the crewmates' processes
-///   (reap, the working directory of a session) under `ProtectProc=invisible`. Nothing else is in the bounding set.
+///   (reap, the working directory of a session) under `ProtectProc=invisible`, `CAP_NET_ADMIN` lets it ask nftables whether the
+///   egress table is loaded (`nft list table`) before it starts anyone. A crewmate process never has either: it changes
+///   uid without keeping capabilities and sets no_new_privs. Nothing else is in the bounding set.
 /// - `ProtectProc=invisible` (systemd 247; an older systemd ignores it, see docs/crew.md): the `/proc` of the helper's
 ///   mount namespace, which every agent inherits, shows a process only to its own user, so one crewmate cannot read
 ///   another's `/proc/<pid>/cmdline` (its whole prompt, and every tool command with its variables expanded) or `environ`.
@@ -95,7 +97,7 @@ User=root\n\
 ExecStart={INSTALL_DIR}/atlas crew-spawn\n\
 KillMode=process\n\
 Restart=on-failure\n\
-CapabilityBoundingSet=CAP_SETUID CAP_SETGID CAP_CHOWN CAP_KILL CAP_DAC_OVERRIDE CAP_SYS_PTRACE\n\
+CapabilityBoundingSet=CAP_SETUID CAP_SETGID CAP_CHOWN CAP_KILL CAP_DAC_OVERRIDE CAP_SYS_PTRACE CAP_NET_ADMIN\n\
 ProtectSystem=strict\n\
 ReadWritePaths={CM_ROOT} -{cg}\n\
 Delegate=memory pids\n\
@@ -158,11 +160,15 @@ MemoryDenyWriteExecute=yes\n"
 
 /// `atlas-crew-egress.service`: loads the egress rules at boot, before anything can start a crewmate.
 /// The provisioning service rewrites [`EGRESS_FILE`] whenever a user comes or goes; this only replays it.
+/// `PartOf=`/`After=nftables.service`: a restart of nftables (Debian's `/etc/nftables.conf` begins with
+/// `flush ruleset`) removes the table, and this restarts with it and loads it again (security review 4, S-C); the
+/// spawn helper also refuses to start anyone while the table is missing.
 pub fn egress_unit() -> String {
     format!(
         "[Unit]\n\
 Description=Atlas Crew egress rules for crewmate users\n\
-After=network-pre.target\n\
+After=network-pre.target nftables.service\n\
+PartOf=nftables.service\n\
 Before=network.target\n\
 ConditionPathExists={EGRESS_FILE}\n\
 [Service]\n\
@@ -502,11 +508,11 @@ mod tests {
         );
     }
 
-    // The bounding set is the whole point of "hardened as far as compatible": exactly these six (CAP_SYS_PTRACE is what the
-    // helper needs to see crewmates' processes under `ProtectProc=invisible`),
+    // The bounding set is the whole point of "hardened as far as compatible": exactly these seven (CAP_SYS_PTRACE is what the
+    // helper needs to see crewmates' processes under `ProtectProc=invisible`, CAP_NET_ADMIN to check the egress table),
     // and none of the capabilities that would let a bug in the helper do more.
     #[test]
-    fn the_service_keeps_six_capabilities_and_a_read_only_system() {
+    fn the_service_keeps_seven_capabilities_and_a_read_only_system() {
         let u = service_unit();
         let caps = u
             .lines()
@@ -520,12 +526,13 @@ mod tests {
                 "CAP_CHOWN",
                 "CAP_DAC_OVERRIDE",
                 "CAP_KILL",
+                "CAP_NET_ADMIN",
                 "CAP_SETGID",
                 "CAP_SETUID",
                 "CAP_SYS_PTRACE"
             ]
         );
-        for bad in ["CAP_SYS_ADMIN", "CAP_NET_ADMIN", "CAP_FOWNER"] {
+        for bad in ["CAP_SYS_ADMIN", "CAP_FOWNER", "CAP_NET_RAW"] {
             assert!(!caps.contains(bad));
         }
         for want in [
@@ -609,6 +616,8 @@ mod tests {
             "Before",
             "ConditionPathExists",
             "RemainAfterExit",
+            // 187.
+            "PartOf",
         ];
         for unit in [
             service_unit(),
@@ -983,6 +992,9 @@ mod tests {
             "RemainAfterExit=yes\n",
             "Before=network.target\n",
             "WantedBy=multi-user.target\n",
+            // Security review 4, S-C: a flush of the ruleset by nftables.service reloads the rules with it.
+            "After=network-pre.target nftables.service\n",
+            "PartOf=nftables.service\n",
         ] {
             assert!(u.contains(want), "missing {want:?}");
         }

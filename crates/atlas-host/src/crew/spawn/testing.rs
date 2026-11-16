@@ -184,6 +184,18 @@ pub fn rig() -> Rig {
 
 /// [`rig`] whose helper reports `memory` (see [`server::Memory::Verdict`]).
 pub fn rig_with(memory: server::Memory) -> Rig {
+    rig_full(memory, || Ok(()))
+}
+
+/// [`rig`] whose helper asks `egress` whether the firewall is in place ([`server::Config::egress`]).
+pub fn rig_with_egress(egress: fn() -> io::Result<()>) -> Rig {
+    rig_full(
+        server::Memory::Off("tests run without a cgroup".into()),
+        egress,
+    )
+}
+
+fn rig_full(memory: server::Memory, egress: fn() -> io::Result<()>) -> Rig {
     let dir = tempfile::tempdir().unwrap();
     let engines = dir.path().join("engines");
     let cm = dir.path().join("cm/3f2a9c1e5b7d");
@@ -194,6 +206,7 @@ pub fn rig_with(memory: server::Memory) -> Rig {
         engines: vec![engines.to_string_lossy().into()],
         resolve: me,
         memory: Arc::new(memory),
+        egress,
     });
     let sock = dir.path().join("spawn.sock");
     let listener = server::bind(&sock).unwrap();

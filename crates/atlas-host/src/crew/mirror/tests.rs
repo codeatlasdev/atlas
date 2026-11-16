@@ -528,6 +528,7 @@ fn a_crewmate_uid_clones_the_mirror_of_another_uid_and_cannot_write_it() {
         engines: vec![],
         resolve: crate::crew::spawn::exec::lookup,
         memory: Arc::new(Memory::Off("test".into())),
+        egress: || Ok(()),
     };
     let run = |args: &[&str], cwd: &Path| {
         let (resp, fd) = crate::crew::spawn::git::run(

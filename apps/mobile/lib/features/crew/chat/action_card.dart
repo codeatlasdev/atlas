@@ -109,9 +109,13 @@ class _TaskActionCardState extends ConsumerState<TaskActionCard> {
   /// nothing is sent.
   Future<bool> _confirmSecret(TaskAction action) async {
     try {
-      return await ref.read(deviceAuthProvider)(
+      return await confirmItsYou(
+        context,
+        ref,
         'Send ${action.name ?? 'this secret'} to your crew server',
       );
+    } on DeviceAuthUnavailable catch (e) {
+      throw '${e.message} The secret was not sent.';
     } on Object catch (e) {
       throw 'Face ID is unavailable ($e): the secret was not sent';
     }
@@ -123,15 +127,16 @@ class _TaskActionCardState extends ConsumerState<TaskActionCard> {
       libraryLabel: 'Choose from library',
     );
     if (source == null || !mounted) return;
-    final List<PickedImage> picked;
+    List<PickedImage>? picked;
     try {
-      picked = await pickPhotos(ref, source);
+      picked = await pickPhotos(context, ref, source);
     } on Object catch (e) {
       if (mounted) setState(() => _error = 'Could not open the picker: $e');
       return;
     }
-    if (!mounted) return;
-    setState(() => _error = takePicked(_images, picked));
+    final got = picked;
+    if (!mounted || got == null) return;
+    setState(() => _error = takePicked(_images, got));
   }
 
   void _submitText() {

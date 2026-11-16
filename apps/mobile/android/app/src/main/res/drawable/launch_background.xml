@@ -1,5 +1,5 @@
 <?xml version="1.0" encoding="utf-8"?>
-<!-- Atlas dark ground while Flutter starts (matches the iOS launch screen). -->
+<!-- The app's ground while Flutter starts (Android 11 and older, and after the system splash on 12+). -->
 <layer-list xmlns:android="http://schemas.android.com/apk/res/android">
-    <item><color android:color="#0B1320" /></item>
+    <item android:drawable="@color/atlas_ground" />
 </layer-list>

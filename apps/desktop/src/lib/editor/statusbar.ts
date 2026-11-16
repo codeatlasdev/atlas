@@ -98,6 +98,26 @@ function indentText(i: StatusInput["indent"]): string {
 	return i.style === "tab" ? `Tab Size: ${i.size}` : `Spaces: ${i.size}`;
 }
 
+/**
+ * How soon an item gives way when the bar is too narrow (the component hides rank 3, then 2, then 1; rank 0 stays and
+ * truncates instead). What the person acts on stays: where the caret is and what is wrong come first.
+ */
+export function statusRank(id: string): 0 | 1 | 2 | 3 {
+	switch (id) {
+		case "encoding":
+		case "eol":
+			return 3;
+		case "indent":
+		case "wrap":
+			return 2;
+		case "language":
+		case "lsp":
+			return 1;
+		default:
+			return 0;
+	}
+}
+
 /** The status bar items for the current editor state, in display order. */
 export function statusItems(i: StatusInput): StatusItem[] {
 	const pos = position(i);

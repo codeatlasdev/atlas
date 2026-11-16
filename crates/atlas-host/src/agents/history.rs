@@ -27,6 +27,7 @@ const COMPACTION_CHARS: usize = 400;
 /// `compaction` a short `compaction` item; a tool call without an intent of its own takes
 /// the one omp logged when it started it (`tool_execution_start`).
 pub fn read(path: &str, limit: usize) -> Result<Value, String> {
+    // tree-access: omp's session file of an agent the owner runs (a crewmate's hook cannot name one: hook_auth::scrub)
     let text = std::fs::read_to_string(path).map_err(|e| format!("{path}: {e}"))?;
     let mut items: Vec<Value> = Vec::new();
     // Tool call id → index in `items`, to attach its result.
@@ -433,6 +434,7 @@ fn clean_title(t: &str) -> Option<String> {
 pub fn title(path: &str) -> Option<String> {
     use std::io::Read;
     let mut head = vec![0; 8192];
+    // tree-access: omp's session file of an agent the owner runs (a crewmate's hook cannot name one: hook_auth::scrub)
     let n = std::fs::File::open(path).ok()?.read(&mut head).ok()?;
     let head: Vec<Value> = String::from_utf8_lossy(&head[..n])
         .lines()
@@ -455,6 +457,7 @@ pub fn title(path: &str) -> Option<String> {
 fn first_prompt_title(path: &str) -> Option<String> {
     use std::io::Read;
     let mut buf = Vec::new();
+    // tree-access: omp's session file of an agent the owner runs (a crewmate's hook cannot name one: hook_auth::scrub)
     std::fs::File::open(path)
         .ok()?
         .take(256 * 1024)

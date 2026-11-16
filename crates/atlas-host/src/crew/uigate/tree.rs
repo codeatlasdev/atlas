@@ -57,6 +57,7 @@ impl Tree {
                 // tree-access: own tree (`Tree::Own`); an isolated tree is written beneath the root below
                 std::fs::create_dir_all(p.parent().unwrap_or(root)).and_then(|()| {
                     // Atomic: a crash mid-write must not leave a file `load` refuses.
+                    // tree-access: the own tree (Tree::Own): hostd's own checkout, not a crewmate's
                     atlas_core::fs::write_atomic(&p, text.as_bytes(), atlas_core::fs::Mode::Default)
                 })
             }

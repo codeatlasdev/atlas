@@ -170,6 +170,7 @@ fn adopt_memory(old: &Path, new: &Path) -> std::io::Result<()> {
 /// Atomic, so an agent never reads half a file.
 #[cfg(unix)]
 fn write_readable(path: &Path, data: &[u8]) -> std::io::Result<()> {
+    // tree-access: hostd's own runtime files (crew-runtime), written atomically for the crewmate to read
     atlas_core::fs::write_atomic(path, data, atlas_core::fs::Mode::Exact(0o640))
 }
 

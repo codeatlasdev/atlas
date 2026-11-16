@@ -76,6 +76,7 @@ impl TaskResults {
             .map_err(|e| format!("ui gate: cannot create {}: {e}", captures_dir.display()))?;
         let p = Self::path(captures_dir);
         let body = serde_json::to_string_pretty(self).map_err(|e| e.to_string())?;
+        // tree-access: the gate's state under the store (gate_dir: a plain task id of a stored task)
         atlas_core::fs::write_atomic(&p, body.as_bytes(), atlas_core::fs::Mode::Default)
             .map_err(|e| format!("ui gate: cannot write {}: {e}", p.display()))
     }

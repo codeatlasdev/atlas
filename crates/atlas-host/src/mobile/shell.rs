@@ -86,8 +86,10 @@ pub(crate) async fn open(
     )
     .await?;
     let cwd = cwd
+        // tree-access: the owner's own phone shell request (L5 in docs/crew.md, not covered)
         .canonicalize()
         .map_err(|_| format!("{} no longer exists", cwd.display()))?;
+    // tree-access: the owner's own phone shell request (L5 in docs/crew.md, not covered)
     if !cwd.is_dir() {
         return Err(format!("{} no longer exists", cwd.display()));
     }

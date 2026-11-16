@@ -547,5 +547,6 @@ pub(crate) fn gate_dir(
     Ok(store
         .crewmate_dir(crewmate_id)
         .join("ui-gate")
+        // tree-access: task_id is one plain name, checked just above (pane::is_plain_name)
         .join(task_id))
 }

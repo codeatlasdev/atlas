@@ -37,6 +37,7 @@ pub(crate) fn exec_args(
 }
 
 pub(super) async fn run(ctx: TurnCtx<'_>) -> Result<TurnResult, String> {
+    // tree-access: ctx.crewmate_dir and the result file are hostd's own (crew-runtime under isolation)
     std::fs::create_dir_all(ctx.crewmate_dir)
         .map_err(|e| format!("codex: create crewmate_dir: {e}"))?;
 
@@ -91,10 +92,12 @@ pub(super) async fn run(ctx: TurnCtx<'_>) -> Result<TurnResult, String> {
     }
 
     // Reply is the content of the output file; empty string if missing.
+    // tree-access: ctx.crewmate_dir and the result file are hostd's own (crew-runtime under isolation)
     let reply = std::fs::read_to_string(&result_file)
         .unwrap_or_default()
         .trim()
         .to_string();
+    // tree-access: ctx.crewmate_dir and the result file are hostd's own (crew-runtime under isolation)
     let _ = std::fs::remove_file(&result_file);
 
     let usage = if usage_in.is_some() || usage_out.is_some() {

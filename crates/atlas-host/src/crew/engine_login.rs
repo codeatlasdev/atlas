@@ -422,6 +422,7 @@ async fn probe_as_crew_user(e: &'static Engine) -> Probe {
     let Some(program) = atlas_core::paths::which_in(e.status[0], &path) else {
         return Probe::NotInstalled;
     };
+    // tree-access: hostd's own engine binary for the sign-in, in the crew user's home, never a tree
     let mut cmd = tokio::process::Command::new(program);
     cmd.args(&e.status[1..]).env("PATH", &path);
     cmd.no_window();

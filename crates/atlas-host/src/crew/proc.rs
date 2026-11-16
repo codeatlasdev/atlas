@@ -29,8 +29,10 @@ pub(crate) static TEST_GH_PROGRAM: parking_lot::Mutex<Option<String>> =
 pub(crate) fn gh_command() -> tokio::process::Command {
     #[cfg(test)]
     if let Some(p) = TEST_GH_PROGRAM.lock().clone() {
+        // tree-access: `gh` (or the configured gh path) with hostd's own arguments, no tree cwd
         return tokio::process::Command::new(p);
     }
+    // tree-access: `gh` (or the configured gh path) with hostd's own arguments, no tree cwd
     tokio::process::Command::new("gh")
 }
 

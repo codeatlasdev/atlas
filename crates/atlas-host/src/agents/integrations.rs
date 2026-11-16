@@ -42,6 +42,7 @@ pub async fn all() -> Value {
 }
 
 async fn check(exe: &std::path::Path, setup: &str) -> &'static str {
+    // tree-access: hostd's own binary, to install the user's agent hooks
     let status = tokio::process::Command::new(exe)
         .args(["setup", setup, "--check"])
         .no_window()

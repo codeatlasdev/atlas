@@ -91,6 +91,7 @@ impl Git {
     pub fn run_sync(&self, cwd: &Path, args: &[&str]) -> Result<Output, String> {
         match &self.0 {
             // Not `git_program()`: that is the test override of the checkout, which a fake may hang.
+            // tree-access: this is the one place that decides who runs git: the crewmate through the helper, hostd itself only for a tree of its own
             How::Local => std::process::Command::new("git")
                 .args(args)
                 .current_dir(cwd)
@@ -125,6 +126,7 @@ impl Git {
             How::Local => {
                 // hostd's own git: its own setup (the `gh` credential helper) answers a password prompt.
                 let _ = net;
+                // tree-access: this is the one place that decides who runs git: the crewmate through the helper, hostd itself only for a tree of its own
                 let mut cmd = tokio::process::Command::new(git_program());
                 cmd.args(args);
                 if let Some(d) = cwd {

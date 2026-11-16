@@ -46,6 +46,7 @@ fn proc_tables() -> String {
     }
     let mut all = String::new();
     for f in ["/proc/net/tcp", "/proc/net/tcp6"] {
+        // tree-access: the kernel's /proc tables, and an lstat (no link followed) of the crewmate's home for its uid
         all.push_str(&std::fs::read_to_string(f).unwrap_or_default());
         all.push('\n');
     }
@@ -58,11 +59,13 @@ impl Reach {
     /// its user cannot be told (never an unlimited capture for it). The uid is the owner of the crewmate's home:
     /// provisioning gives it to the crewmate, which cannot give it to anyone else.
     pub fn of(store: &crate::crew::store::CrewStore, id: &str) -> Result<Option<Self>, String> {
+        // tree-access: the kernel's /proc tables, and an lstat (no link followed) of the crewmate's home for its uid
         use std::os::unix::fs::MetadataExt;
         let Some(iso) = store.isolated(id) else {
             return Ok(None);
         };
         let home = iso.home();
+        // tree-access: the kernel's /proc tables, and an lstat (no link followed) of the crewmate's home for its uid
         std::fs::symlink_metadata(&home)
             .map(|m| Some(Self { uid: m.uid() }))
             .map_err(|e| {

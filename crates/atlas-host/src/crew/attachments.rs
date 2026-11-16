@@ -201,6 +201,7 @@ pub(crate) fn task_dir(store: &CrewStore, crewmate_id: &str, task_id: &str) -> P
     store
         .crewmate_dir(crewmate_id)
         .join("attachments")
+        // tree-access: task_id is a stored task's id: hostd's own (task.id) or the one `hook_server::task_of_pane` found in the store
         .join(task_id)
 }
 

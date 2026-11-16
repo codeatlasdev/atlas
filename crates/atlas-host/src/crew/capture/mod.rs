@@ -262,6 +262,7 @@ pub fn task_dom_dir(
     if !crate::crew::pane::is_plain_name(task_id) {
         return Err(format!("capture: {task_id:?} is not a task id"));
     }
+    // tree-access: task_id is one plain name, checked just above (pane::is_plain_name)
     Ok(store.crewmate_dir(crewmate_id).join("dom").join(task_id))
 }
 

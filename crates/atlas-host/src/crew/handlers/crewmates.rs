@@ -205,6 +205,7 @@ pub(crate) fn create(
     // (a definition whose every task fails is worse than a clear refusal now).
     provision(hub, &id)?;
     if let Some(ref wd) = workdir {
+        // tree-access: the operator's own workdir from his request, never a crewmate's word
         std::fs::create_dir_all(wd).map_err(|e| format!("cannot create workdir: {e}"))?;
     }
     let crewmate = Crewmate {

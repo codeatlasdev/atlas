@@ -42,13 +42,14 @@ pub fn paths_from_argv(argv: &[String], cwd: &Path) -> Vec<OpenReq> {
 }
 
 /// The paths of the `file://` URLs macOS hands the app when the user picks "Open With" (or drops a file on the Dock
-/// icon): `RunEvent::Opened`. Other schemes are not ours to open.
+/// icon): `RunEvent::Opened`. Other schemes are not ours to open. A folder arrives with a trailing slash
+/// (`file:///n/Notes/`), which is dropped so it is the same path `atlas /n/Notes` queues.
 #[cfg(any(target_os = "macos", test))]
 pub fn paths_from_urls(urls: &[tauri::Url]) -> Vec<OpenReq> {
     urls.iter()
         .filter_map(|u| u.to_file_path().ok())
         .map(|p| OpenReq {
-            path: atlas_core::paths::normalize(&p)
+            path: atlas_core::paths::normalize(&p.components().collect::<PathBuf>())
                 .to_string_lossy()
                 .into_owned(),
         })
@@ -107,6 +108,43 @@ mod tests {
         assert_eq!(paths, ["/Users/m/My Notes/café.md", "/tmp/b.txt"]);
     }
 
+    // "Open With" with several files selected, and a folder (Windows/Linux pass every path as an argument, macOS as a
+    // URL each): all of them reach the queue, in order, as the page opens them one by one.
+    #[test]
+    fn several_files_and_a_folder_all_reach_the_queue_in_order() {
+        let cwd = Path::new(if cfg!(windows) { "C:/work" } else { "/work" });
+        let (a, dir, b) = if cfg!(windows) {
+            ("C:/n/a.md", "C:/n/Notes folder", "C:/n/b file.txt")
+        } else {
+            ("/n/a.md", "/n/Notes folder", "/n/b file.txt")
+        };
+        let got = paths_from_argv(&argv(&["Atlas.exe", a, dir, b]), cwd);
+        let paths: Vec<_> = got.iter().map(|r| r.path.as_str()).collect();
+        assert_eq!(paths, [a, dir, b]);
+    }
+
+    #[cfg(unix)]
+    #[test]
+    fn a_folder_url_and_several_file_urls_keep_their_order() {
+        let urls = [
+            "file:///n/a.md",
+            "file:///n/Notes%20folder/",
+            "file:///n/b.txt",
+        ]
+        .map(|u| tauri::Url::parse(u).unwrap());
+        let got = paths_from_urls(&urls);
+        let paths: Vec<_> = got.iter().map(|r| r.path.as_str()).collect();
+        assert_eq!(paths, ["/n/a.md", "/n/Notes folder", "/n/b.txt"]);
+    }
+
+    // A second launch ("Open With" while Atlas runs) is a new process with its own cwd: a relative path is made
+    // absolute against THAT cwd, not the running app's, before it is forwarded to the window.
+    #[test]
+    fn a_second_launch_forwards_relative_paths_against_its_own_directory() {
+        let cwd = Path::new(if cfg!(windows) { "C:/other" } else { "/other" });
+        let got = paths_from_argv(&argv(&["atlas-desktop", "notes.md"]), cwd);
+        assert!(got[0].path.ends_with("other/notes.md"), "{}", got[0].path);
+    }
     #[test]
     fn a_launch_without_a_path_queues_nothing() {
         let p = Pending::default();

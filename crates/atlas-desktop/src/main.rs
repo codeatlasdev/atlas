@@ -49,6 +49,7 @@ mod live_server;
 mod menu;
 // Pure, tested decision code driven only by the AppKit side: unused outside macOS, still built so its tests run.
 mod crew;
+mod loose_fs;
 mod natives;
 mod open_path;
 mod pty_batch;
@@ -167,6 +168,9 @@ macro_rules! handlers {
             cmds::project_init,
             cmds::project_save_config,
             open_path::open_pending,
+            loose_fs::loose_stat,
+            loose_fs::loose_read,
+            loose_fs::loose_write,
             cmds::project_probe,
             cmds::project_promote,
             cmds::path_locate,

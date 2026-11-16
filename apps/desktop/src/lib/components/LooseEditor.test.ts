@@ -29,9 +29,13 @@ const fake = {
 	fsWatch: async () => {},
 	fsUnwatch: async () => {},
 };
-// Another suite may have replaced `#lib/host.ts` with a partial object (module mocks are process-wide), so the fs
-// methods are assigned whether or not `host` has them, and put back (or removed) afterwards.
-const real: Record<string, unknown> = {};
+// The light editor reads and writes through `looseIo` (the app process, no hostd), so the fake file system is behind
+// `looseIo`, and EVERY `host` method (hostd) is a recorder: opening and editing a file must not touch hostd at all.
+// Another suite may have replaced `#lib/host.ts` with a partial object (module mocks are process-wide), so keys are
+// assigned whether or not `host` has them, and put back (or removed) afterwards.
+const { looseIo } = await import("#lib/looseIo.ts");
+const realHost: Record<string, unknown> = {};
+const realIo: Record<string, unknown> = {};
 const stray =
 	(k: string) =>
 	(...args) => {
@@ -40,15 +44,17 @@ const stray =
 	};
 beforeAll(() => {
 	for (const k of new Set([...Object.keys(host), ...Object.keys(fake)])) {
-		real[k] = host[k];
-		host[k] = k in fake ? fake[k] : stray(k);
+		realHost[k] = host[k];
+		host[k] = stray(k);
+	}
+	for (const k of Object.keys(fake)) {
+		realIo[k] = looseIo[k];
+		looseIo[k] = fake[k];
 	}
 });
 afterAll(() => {
-	for (const k of Object.keys(real)) {
-		if (real[k] === undefined) delete host[k];
-		else host[k] = real[k];
-	}
+	for (const [k, v] of Object.entries(realHost)) v === undefined ? delete host[k] : (host[k] = v);
+	Object.assign(looseIo, realIo);
 });
 
 const { flushSync, mount, unmount, tick } = await import("svelte");
@@ -144,7 +150,7 @@ test("a plain text file gets no Markdown bar", async () => {
 	expect(target.querySelector('[role="toolbar"]')).toBeNull();
 });
 
-test("opening and editing a file asks hostd for nothing but that file", async () => {
+test("opening and editing a file never calls hostd", async () => {
 	const { target, view } = await open("/Users/m/Downloads/notes.md", "a\n");
 	select(view, "a");
 	button(target, "Italic").click();

@@ -8,6 +8,7 @@
 	import { EditorView } from "@codemirror/view";
 	import { toast } from "@codeatlasdev/ui";
 	import { host } from "#lib/host.ts";
+	import { looseIo } from "#lib/looseIo.ts";
 	import { errText } from "#lib/api.ts";
 	import { primaryKey } from "#lib/keys.ts";
 	import { baseName, dirOf } from "#lib/openPath.ts";
@@ -38,11 +39,13 @@
 	let preview = $state(false);
 	const abort = new AbortController();
 
-	const session = new EditorSession(abs, name, root, {
-		extensions: () => [],
-		onChange: () => {},
-		onConflict: () => {},
-	});
+	const session = new EditorSession(
+		abs,
+		name,
+		root,
+		{ extensions: () => [], onChange: () => {}, onConflict: () => {} },
+		looseIo,
+	);
 	let phase = $derived(error ? "error" : session.phase);
 	let showCm = $derived(phase === "text" && !preview);
 	let cursor = $derived(session.cursor);
@@ -51,7 +54,7 @@
 	const opened = performance.now();
 
 	async function load() {
-		const st = await host.fsStat(abs);
+		const st = await looseIo.fsStat(abs);
 		const max = MAX_BYTES[kind];
 		if (st.size > max) {
 			session.fileSize = st.size;

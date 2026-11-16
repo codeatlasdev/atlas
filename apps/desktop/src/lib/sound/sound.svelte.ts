@@ -6,7 +6,7 @@
 import { invoke } from "@tauri-apps/api/core";
 import { getCurrentWindow } from "@tauri-apps/api/window";
 import { api } from "#lib/api.ts";
-import { createEngine } from "./engine.ts";
+import { createEngine, earconFormats } from "./engine.ts";
 import { DEFAULT_SOUND_PREFS, parseSoundPrefs, type Category, type SoundPrefs } from "./policy.ts";
 
 const LAST_KEY = "atlas.sound.last";
@@ -22,9 +22,10 @@ class Sound {
 		AudioContext:
 			window.AudioContext ??
 			(window as unknown as { webkitAudioContext?: typeof AudioContext }).webkitAudioContext,
-		fetchAsset: async (name) => {
-			const res = await fetch(`/sounds/${name}.m4a`);
-			if (!res.ok) throw new Error(`sound ${name}: ${res.status}`);
+		formats: earconFormats((mime) => new Audio().canPlayType(mime)),
+		fetchAsset: async (name, format) => {
+			const res = await fetch(`/sounds/${name}.${format}`);
+			if (!res.ok) throw new Error(`sound ${name}.${format}: ${res.status}`);
 			return res.arrayBuffer();
 		},
 		persisted: {

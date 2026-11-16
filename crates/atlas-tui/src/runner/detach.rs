@@ -77,7 +77,7 @@ pub async fn detach(
     }
 
     let log_dir = crate::runtime::log_dir(root_dir);
-    std::fs::create_dir_all(&log_dir)?;
+    crate::runtime::ensure_log_dir(&log_dir)?;
     let log_path = log_dir.join(RUNNER_LOG);
     let out = std::fs::File::create(&log_path)?;
     let err = out.try_clone()?;

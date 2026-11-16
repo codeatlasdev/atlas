@@ -499,6 +499,7 @@ dependencies = [
  "portable-pty",
  "reqwest 0.13.5",
  "rustls",
+ "semver",
  "serde",
  "serde_json",
  "sha1_smol",

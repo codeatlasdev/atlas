@@ -1155,7 +1155,7 @@ mod tests {
             .spawn(&req(
                 &r,
                 Mode::Pipe,
-                &format!("PATH=/usr/bin:/bin; exec sh -c '{PROBE}'"),
+                &format!("PATH=/usr/bin:/bin; exec bash -c '{PROBE}'"),
             ))
             .unwrap();
         let mut agent = String::new();

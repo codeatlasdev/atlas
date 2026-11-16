@@ -234,7 +234,7 @@ T=$(send_task "$CM" "E2E_PROBE")
 wait_task "$CM" "$T" "done" 60
 PROBE=$(task_json "$CM" "$T" | jq -r .result)
 [[ $PROBE == "probe: 0 1 2 NoNewPrivs:;1 "* ]] || fail "the agent has descriptors besides 0, 1, 2, or no NoNewPrivs: $PROBE"
-[[ $PROBE == *"node=499999500000 others=0" ]] || fail "node does not run as the agent (a seccomp filter of the helper's unit, MemoryDenyWriteExecute=?): $PROBE"
+[[ $PROBE == *"node=499999500000 others=0 extra=" ]] || fail "node does not run as the agent (a seccomp filter of the helper's unit, MemoryDenyWriteExecute=?): $PROBE"
 if srv test -d "$LEAF_DIR"; then
   [[ $PROBE == *"0::/system.slice/atlas-crew-spawn.service/cm-$SLUG"* ]] || fail "the agent does not run in its memory leaf cm-$SLUG: $PROBE"
   echo "agent process: fds 0 1 2, NoNewPrivs 1, node (V8 JIT) runs, in the memory leaf cm-$SLUG"
@@ -395,7 +395,7 @@ until_true 20 "B's sleep 31341 to exist" has_sleeper 31341
 T=$(send_task "$CM" "E2E_PROBE")
 wait_task "$CM" "$T" "done" 60
 PROBE=$(task_json "$CM" "$T" | jq -r .result)
-[[ $PROBE == *"others=0" ]] || fail "A's agent can read another crewmate's command line in /proc: $PROBE"
+[[ $PROBE == *"others=0 extra=" ]] || fail "A's agent can read another crewmate's command line in /proc: $PROBE"
 hostd crewmate_cancel "$(jq -nc --arg id "$CMB" --arg t "$TBH" '{id: $id, task: $t}')" >/dev/null
 wait_task "$CMB" "$TBH" cancelled 30
 until_true 20 "B's sleep 31341 to be gone" no_sleeper 31341
@@ -446,7 +446,7 @@ FSM=$(
 #!/bin/bash
 id -u >> "$WORKA/marker"
 cp "$HOME_DIR/.atlas/hostd.token" "$WORKA/stolen" 2>/dev/null
-sh -c 'ls /proc/\$\$/fd >"\$1"; grep NoNewPrivs /proc/\$\$/status >>"\$1"; cat /proc/\$\$/cgroup >>"\$1"' sh "$WORKA/probe"
+bash -c 'ls /proc/\$\$/fd >"\$1"; grep NoNewPrivs /proc/\$\$/status >>"\$1"; cat /proc/\$\$/cgroup >>"\$1"' sh "$WORKA/probe"
 exit 0
 EOF
 )

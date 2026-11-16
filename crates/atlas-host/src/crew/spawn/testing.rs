@@ -292,7 +292,7 @@ impl Rig {
     #[cfg(target_os = "linux")]
     pub fn probe_repo(&self) -> PathBuf {
         let out = self.cm.join("probe");
-        self.planted_repo(&format!("exec sh -c '{PROBE}' > {}\n", out.display()));
+        self.planted_repo(&format!("exec bash -c '{PROBE}' > {}\n", out.display()));
         out
     }
 

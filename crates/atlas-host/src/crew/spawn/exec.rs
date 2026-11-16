@@ -862,7 +862,7 @@ mod tests {
         std::fs::write(secret.join("flag"), "other user's file\n").unwrap();
         std::fs::write(
             format!("{}/claude", f.engines),
-            format!("#!/bin/bash\nexec sh -c '{PROBE}'\n"),
+            format!("#!/bin/bash\nexec bash -c '{PROBE}'\n"),
         )
         .unwrap();
         assert!(sh(&format!(

@@ -1,5 +1,16 @@
 {
 	"appLog": "1791943000 unreachable: socket in use",
+	"crashes": {
+		"atlas": [
+			{
+				"ageSecs": 3000,
+				"at": 1791940000,
+				"summary": "atlas 1.5.0-alpha.4: index out of bounds (crates/atlas-host/src/server.rs:9:1)"
+			}
+		],
+		"coredumpStatus": "",
+		"coredumps": []
+	},
 	"hostdLog": "atlas hostd 1.5.0-alpha.4 listening on ~/.atlas/hostd.sock (pid 8664, took over 2 pty(s))\nspawn failed: GITHUB_TOKEN=[redacted]",
 	"incidents": [
 		{
@@ -19,6 +30,25 @@
 	},
 	"lastCrash": "atlas 1.5.0-alpha.4: index out of bounds (crates/atlas-host/src/server.rs:9:1)",
 	"os": "macOS 15.1 (aarch64)",
+	"packaging": {
+		"appimage": null,
+		"exe": "/Applications/Atlas.app/Contents/MacOS/atlas-desktop",
+		"exeOwner": null,
+		"localBin": []
+	},
+	"platform": {
+		"compositor": null,
+		"desktop": null,
+		"distro": null,
+		"gpus": [],
+		"graphicsEnv": [],
+		"gtk": null,
+		"kernel": "24.1.0",
+		"mesa": null,
+		"nvidiaDriver": null,
+		"session": null,
+		"webview": "WebKit 619.1.26"
+	},
 	"stderrLog": "Could not create default EGL display: EGL_BAD_PARAMETER. Aborting...",
 	"versions": {
 		"app": "1.5.0-alpha.5",

@@ -258,8 +258,10 @@ mod imp {
                     .map_or(0, |i| i.si_addr() as usize)
             };
             write_report(armed, SIGNALS[idx], addr);
-            BUSY.store(false, Ordering::SeqCst);
+            // Held through the chain: the standard library's stack-overflow handler ends in `abort`, and that SIGABRT is
+            // the same incident, not a second report. It takes the default path above.
             chain(&armed.previous[idx], sig, info, ctx);
+            BUSY.store(false, Ordering::SeqCst);
         } else {
             reset(sig);
         }
@@ -726,7 +728,14 @@ mod tests {
         let files = reports(dir.path());
         assert_eq!(files.len(), 1, "{files:?}\n{err}");
         let text = std::fs::read_to_string(&files[0]).unwrap();
-        assert_eq!(field(&text, "signal").as_deref(), Some("SIGSEGV"), "{text}");
+        // macOS reports a guard-page hit as SIGBUS, Linux as SIGSEGV.
+        assert!(
+            matches!(
+                field(&text, "signal").as_deref(),
+                Some("SIGSEGV" | "SIGBUS")
+            ),
+            "{text}"
+        );
     }
 
     /// Installing twice in one process is a no-op, and an unusable directory is reported, not half-armed.

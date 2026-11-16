@@ -8,7 +8,7 @@
 	import ProjectIcon from "#lib/shell/ProjectIcon.svelte";
 	import SetupRow from "#lib/components/SetupRow.svelte";
 	import { store, type Live } from "#lib/stores/projects.svelte.ts";
-	import { fmtUptime } from "./metrics.ts";
+	import { upLabel } from "./metrics.ts";
 	import { portsLabel } from "./overview.ts";
 
 	/** Title, facts line, setup row and the in-flight operation/tunnel strip of the panel. */
@@ -36,7 +36,7 @@
 		<h1>{project.parent ? (space.worktree?.name ?? project.name) : project.name}</h1>
 	</div>
 	<div class="facts">
-		{#if project.running}<span title="Time since the stack came up">Up {fmtUptime(uptime)}</span>{/if}
+		{#if project.running}<span title="Time since the stack came up">{upLabel(uptime)}</span>{/if}
 		{#if project.running && live?.mode}<span>{modeLabel}{live.version ? ` · v${live.version}` : ""}</span
 			>{/if}
 		{#if project.branch}<span class="mono"

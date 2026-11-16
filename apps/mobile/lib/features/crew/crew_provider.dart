@@ -2,13 +2,15 @@ import 'dart:async';
 
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:flutter_riverpod/legacy.dart';
-import 'package:atlas_mobile/features/crew/chat/attachments.dart';
-import 'package:atlas_mobile/core/protocol/crew_models.dart';
-import 'package:atlas_mobile/core/protocol/models.dart';
+
 import 'package:atlas_mobile/core/connection/connection_notifier.dart';
 import 'package:atlas_mobile/core/connection/require_mux.dart';
 import 'package:atlas_mobile/core/demo/demo_computer.dart';
+import 'package:atlas_mobile/core/protocol/crew_models.dart';
+import 'package:atlas_mobile/core/protocol/crew_task.dart';
+import 'package:atlas_mobile/core/protocol/models.dart';
 import 'package:atlas_mobile/core/providers/push_events_provider.dart';
+import 'package:atlas_mobile/features/crew/chat/attachments.dart';
 
 /// Result of `crewmate_list`: whether the server is a crew server, its crewmates, and whether
 /// the kill switch is on (`paused`: nothing runs, queues are held).

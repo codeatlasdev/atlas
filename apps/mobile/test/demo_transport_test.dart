@@ -1,8 +1,7 @@
 import 'package:flutter_test/flutter_test.dart';
 
 import 'package:atlas_mobile/core/demo/demo_computer.dart';
-
-import 'package:atlas_mobile/core/protocol/models.dart';
+import 'package:atlas_mobile/core/protocol/agent_approval.dart';
 import 'package:atlas_mobile/core/protocol/multiplexer.dart';
 
 // App Review and first-run users only see the app through the demo: it must answer the

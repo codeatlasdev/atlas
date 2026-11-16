@@ -1,12 +1,12 @@
-import 'package:flutter_test/flutter_test.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
+import 'package:flutter_test/flutter_test.dart';
 
 import 'fake_transport.dart';
 
-import 'package:atlas_mobile/core/storage/mac_storage.dart';
+import 'package:atlas_mobile/core/connection/connection_notifier.dart';
 import 'package:atlas_mobile/core/protocol/models.dart';
 import 'package:atlas_mobile/core/protocol/multiplexer.dart';
-import 'package:atlas_mobile/core/connection/connection_notifier.dart';
+import 'package:atlas_mobile/core/storage/mac_storage.dart';
 
 // ── Fake MacStorage ───────────────────────────────────────────────────────────
 // Extends MacStorage but overrides every method so FlutterSecureStorage

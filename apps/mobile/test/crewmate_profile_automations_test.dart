@@ -1,7 +1,3 @@
-// Golden screenshots: CrewmateProfileScreen with 2 automations, and the editor sheet.
-// Incident: profile broke after removing the old crewmate_get; automations section is new.
-// Run with: cd apps/mobile && flutter test test/crewmate_profile_automations_test.dart
-// To update goldens: flutter test --update-goldens test/crewmate_profile_automations_test.dart
 import 'dart:async';
 import 'dart:convert';
 
@@ -9,15 +5,20 @@ import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:flutter_test/flutter_test.dart';
 
-import 'package:atlas_mobile/core/protocol/protocol_version.dart';
 import 'package:atlas_mobile/core/connection/connection_notifier.dart';
 import 'package:atlas_mobile/core/protocol/models.dart';
+import 'package:atlas_mobile/core/protocol/protocol_version.dart';
 import 'package:atlas_mobile/core/storage/mac_storage.dart';
 import 'package:atlas_mobile/core/transport/transport.dart';
 import 'package:atlas_mobile/core/ui/atlas_theme.dart';
 import 'package:atlas_mobile/core/ui/backdrop.dart';
-import 'package:atlas_mobile/features/crew/profile/crewmate_profile_screen.dart';
 import 'package:atlas_mobile/features/crew/automation_editor_sheet.dart';
+import 'package:atlas_mobile/features/crew/profile/crewmate_profile_screen.dart';
+
+// Golden screenshots: CrewmateProfileScreen with 2 automations, and the editor sheet.
+// Incident: profile broke after removing the old crewmate_get; automations section is new.
+// Run with: cd apps/mobile && flutter test test/crewmate_profile_automations_test.dart
+// To update goldens: flutter test --update-goldens test/crewmate_profile_automations_test.dart
 
 // ─── Fake transport: full NDJSON protocol ─────────────────────────────────────
 

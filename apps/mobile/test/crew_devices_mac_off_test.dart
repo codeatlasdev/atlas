@@ -1,7 +1,3 @@
-// The phone is PC-free only if a crew server paired directly stays listed when the Mac is off or asleep
-// (PhoneCrewAudit gap 4). `crewDevicesProvider` awaited each Mac's `crew_servers` before returning anything,
-// so a Mac whose link was still "up" but never answered (asleep) hid every directly paired crew server for
-// as long as the call took to fail.
 import 'dart:async';
 import 'dart:convert';
 
@@ -15,6 +11,11 @@ import 'package:atlas_mobile/core/transport/transport.dart';
 import 'package:atlas_mobile/features/crew/crew_provider.dart';
 
 import 'support/demo_harness.dart';
+
+// The phone is PC-free only if a crew server paired directly stays listed when the Mac is off or asleep
+// (PhoneCrewAudit gap 4). `crewDevicesProvider` awaited each Mac's `crew_servers` before returning anything,
+// so a Mac whose link was still "up" but never answered (asleep) hid every directly paired crew server for
+// as long as the call took to fail.
 
 const _mac = MacDevice(nodeId: 'mac-1', name: 'Mac');
 const _server = MacDevice(nodeId: 'srv-1', name: 'Ship');

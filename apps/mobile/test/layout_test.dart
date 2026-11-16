@@ -5,24 +5,25 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:flutter_test/flutter_test.dart';
 
 import 'package:atlas_mobile/core/connection/connection_notifier.dart';
+import 'package:atlas_mobile/core/demo/demo_computer.dart';
+import 'package:atlas_mobile/core/lab/lab.dart';
 import 'package:atlas_mobile/core/protocol/models.dart';
 import 'package:atlas_mobile/core/storage/mac_storage.dart';
 import 'package:atlas_mobile/core/transport/transport.dart';
+import 'package:atlas_mobile/core/ui/atlas_logo.dart';
+import 'package:atlas_mobile/core/ui/components.dart';
+import 'package:atlas_mobile/core/ui/markdown/atlas_markdown.dart';
 import 'package:atlas_mobile/features/agents/agent_chat_screen.dart';
 import 'package:atlas_mobile/features/agents/agent_launcher.dart';
 import 'package:atlas_mobile/features/agents/agent_switcher.dart';
 import 'package:atlas_mobile/features/home/home_screen.dart';
 import 'package:atlas_mobile/features/home/onboarding.dart';
 import 'package:atlas_mobile/features/pair/pair_screen.dart';
-import 'package:atlas_mobile/features/settings/settings_screen.dart';
 import 'package:atlas_mobile/features/projects/project_detail_screen.dart';
+import 'package:atlas_mobile/features/settings/settings_screen.dart';
+import 'package:atlas_mobile/features/terminal/key_bar.dart';
+import 'package:atlas_mobile/features/terminal/line_input.dart';
 import 'package:atlas_mobile/features/terminal/terminal_screen.dart';
-import 'package:atlas_mobile/core/ui/atlas_logo.dart';
-import 'package:atlas_mobile/core/lab/lab.dart';
-import 'package:atlas_mobile/core/ui/components.dart';
-import 'package:atlas_mobile/core/ui/markdown/atlas_markdown.dart';
-
-import 'package:atlas_mobile/core/demo/demo_computer.dart';
 
 import 'support/layout_harness.dart';
 import 'support/stress_computer.dart';

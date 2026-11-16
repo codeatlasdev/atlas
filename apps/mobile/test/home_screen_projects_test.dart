@@ -4,17 +4,16 @@ import 'dart:io';
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:flutter_test/flutter_test.dart';
+import 'package:go_router/go_router.dart';
 
 import 'package:atlas_mobile/core/connection/connection_notifier.dart';
+import 'package:atlas_mobile/core/demo/demo_computer.dart';
 import 'package:atlas_mobile/core/protocol/models.dart';
 import 'package:atlas_mobile/core/storage/mac_storage.dart';
 import 'package:atlas_mobile/core/ui/atlas_theme.dart';
+import 'package:atlas_mobile/features/agents/agent_chat_screen.dart';
 import 'package:atlas_mobile/features/home/home_screen.dart';
 import 'package:atlas_mobile/features/projects/projects_provider.dart';
-import 'package:atlas_mobile/features/agents/agent_chat_screen.dart';
-import 'package:go_router/go_router.dart';
-
-import 'package:atlas_mobile/core/demo/demo_computer.dart';
 
 // Minimal MacStorage stub — no secure storage in tests.
 class _FakeStorage extends MacStorage {

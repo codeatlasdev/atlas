@@ -1,6 +1,7 @@
 import 'dart:convert';
 
 import 'package:flutter_secure_storage/flutter_secure_storage.dart';
+
 import 'package:atlas_mobile/core/protocol/models.dart';
 
 /// Secure-storage key for the list of paired Mac devices.

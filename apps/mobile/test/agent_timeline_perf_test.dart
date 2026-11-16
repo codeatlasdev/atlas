@@ -12,8 +12,8 @@ import 'package:atlas_mobile/core/storage/mac_storage.dart';
 import 'package:atlas_mobile/core/transport/transport.dart';
 import 'package:atlas_mobile/core/ui/atlas_theme.dart';
 import 'package:atlas_mobile/features/agents/agent_chat_screen.dart';
-import 'package:atlas_mobile/features/agents/crew_widgets.dart';
-import 'package:atlas_mobile/features/agents/timeline_widgets.dart';
+import 'package:atlas_mobile/features/agents/timeline/chat_messages.dart';
+import 'package:atlas_mobile/features/agents/tree/crew_rail.dart';
 
 class _Storage extends MacStorage {
   _Storage() : super(storage: null);

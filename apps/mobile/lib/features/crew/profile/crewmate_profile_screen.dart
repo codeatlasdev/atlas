@@ -5,18 +5,21 @@ library;
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 
-import 'package:atlas_mobile/core/ui/route_page.dart';
-import 'package:atlas_mobile/core/protocol/multiplexer.dart';
 import 'package:atlas_mobile/core/connection/require_mux.dart';
-import 'package:atlas_mobile/core/protocol/models.dart';
+import 'package:atlas_mobile/core/protocol/crew_github.dart';
 import 'package:atlas_mobile/core/protocol/crew_models.dart';
 import 'package:atlas_mobile/core/protocol/crew_ops_models.dart';
+import 'package:atlas_mobile/core/protocol/crew_triggers.dart';
+import 'package:atlas_mobile/core/protocol/models.dart';
+import 'package:atlas_mobile/core/protocol/multiplexer.dart';
 import 'package:atlas_mobile/core/ui/async_view.dart';
 import 'package:atlas_mobile/core/ui/atlas_theme.dart';
-import 'package:atlas_mobile/features/crew/automations.dart';
+import 'package:atlas_mobile/core/ui/route_page.dart';
 import 'package:atlas_mobile/features/crew/automation_editor_sheet.dart';
-import 'package:atlas_mobile/features/crew/crew_provider.dart';
+import 'package:atlas_mobile/features/crew/automations.dart';
+import 'package:atlas_mobile/features/crew/avatar/crewmate_look.dart';
 import 'package:atlas_mobile/features/crew/chat_motion.dart';
+import 'package:atlas_mobile/features/crew/crew_provider.dart';
 import 'package:atlas_mobile/features/crew/ops/crew_audit_screen.dart';
 import 'package:atlas_mobile/features/crew/ops/crew_ops_provider.dart';
 import 'package:atlas_mobile/features/crew/ops/crewmate_usage_screen.dart';
@@ -27,7 +30,6 @@ import 'package:atlas_mobile/features/crew/profile/profile_dialogs.dart';
 import 'package:atlas_mobile/features/crew/profile/profile_header.dart';
 import 'package:atlas_mobile/features/crew/profile/profile_rows.dart';
 import 'package:atlas_mobile/features/crew/widgets/github_device_login.dart';
-import 'package:atlas_mobile/features/crew/avatar/crewmate_look.dart';
 
 class CrewmateProfileScreen extends ConsumerStatefulWidget {
   const CrewmateProfileScreen({

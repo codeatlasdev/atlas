@@ -13,7 +13,8 @@
 //!
 //! The endpoint binds only once a phone is paired or a pairing starts: a hostd nobody
 //! pairs never touches the network. `ServeOpts::no_mobile_relay` (`ATLAS_MOBILE_RELAY=0`
-//! for `atlas hostd`) turns relays and address lookup off (LAN, tests).
+//! for `atlas hostd`) turns relays and address lookup off (LAN, tests). `ServeOpts::mobile_loopback`
+//! (`ATLAS_MOBILE_LOOPBACK=1`) binds loopback only: tests, so a Mac's firewall never asks about them.
 
 mod addrs;
 mod session;
@@ -112,6 +113,9 @@ pub struct Mobile {
     binding: tokio::sync::Mutex<()>,
     /// Use n0's public relays (off: direct addresses only, for tests and local runs).
     relay: bool,
+    /// Bind loopback only (tests): the default listens on every interface, which makes the macOS
+    /// firewall ask "accept incoming network connections?" for each new test binary.
+    loopback: bool,
     /// The daemon, for the sessions the endpoint accepts (set once it exists).
     hub: std::sync::OnceLock<std::sync::Weak<Hub>>,
     /// Pending mobile invites (url, name, created_at); pruned on expiry.
@@ -178,9 +182,16 @@ impl Mobile {
             endpoint: Mutex::new(None),
             binding: tokio::sync::Mutex::new(()),
             relay,
+            loopback: false,
             hub: std::sync::OnceLock::new(),
             invites: Mutex::new(invites),
         })
+    }
+
+    /// Bind loopback only (see [`loopback_only`]).
+    pub fn loopback_only(mut self, on: bool) -> Self {
+        self.loopback = on;
+        self
     }
 
     pub fn node_id(&self) -> String {
@@ -614,21 +625,45 @@ fn accept_phones(ep: Endpoint, hub: std::sync::Weak<Hub>) {
     });
 }
 
+/// `builder` listening on loopback (IPv4 and IPv6) only. iroh's default binds `0.0.0.0` and `[::]`,
+/// which the macOS application firewall asks about; a phone on the same machine needs nothing more.
+pub(crate) fn loopback_only(
+    builder: iroh::endpoint::Builder,
+) -> Result<iroh::endpoint::Builder, String> {
+    builder
+        .bind_addr("127.0.0.1:0")
+        .and_then(|b| b.bind_addr("[::1]:0"))
+        .map_err(|e| format!("mobile gateway: {e}"))
+}
+
 impl Mobile {
+    /// The sockets the endpoint is bound to (empty until it is).
+    #[cfg(test)]
+    pub(crate) fn endpoint_sockets(&self) -> Vec<std::net::SocketAddr> {
+        self.endpoint
+            .lock()
+            .as_ref()
+            .map(|e| e.bound_sockets())
+            .unwrap_or_default()
+    }
+
     /// Bind the iroh endpoint (once) and accept phones until the process exits.
     pub(crate) async fn ensure_endpoint(self: &Arc<Self>) -> Result<(), String> {
         let _one = self.binding.lock().await;
         if self.endpoint.lock().is_some() {
             return Ok(());
         }
-        let builder = if self.relay {
+        let mut builder = if self.relay {
             Endpoint::builder(iroh::endpoint::presets::N0)
         } else {
             Endpoint::builder(iroh::endpoint::presets::Minimal)
-        };
+        }
+        .secret_key(self.key.clone())
+        .alpns(vec![ALPN.to_vec()]);
+        if self.loopback {
+            builder = loopback_only(builder)?;
+        }
         let ep = builder
-            .secret_key(self.key.clone())
-            .alpns(vec![ALPN.to_vec()])
             .bind()
             .await
             .map_err(|e| format!("mobile gateway: {e}"))?;

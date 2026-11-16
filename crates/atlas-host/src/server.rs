@@ -382,6 +382,9 @@ pub struct ServeOpts {
     /// Atlas Mobile without n0's public relays: direct addresses only (tests, a
     /// phone on the same network). `ATLAS_MOBILE_RELAY=0` for `atlas hostd`.
     pub no_mobile_relay: bool,
+    /// Atlas Mobile listens on loopback only, not every interface (tests: a Mac's firewall asks
+    /// about each new test binary that listens on the network). `ATLAS_MOBILE_LOOPBACK=1` for `atlas hostd`.
+    pub mobile_loopback: bool,
     /// Whether this daemon is a crew server (adds "crew" to caps, gates crewmate commands).
     pub crew_host: bool,
     /// Run as the lab lane's shadow daemon following the main hostd in this directory
@@ -577,7 +580,10 @@ pub async fn serve_with(dir: &Path, opts: ServeOpts) -> Result<()> {
     }
     let (lsp_tx, lsp_rx) = mpsc::channel(512);
     let agents = Arc::new(crate::agents::AgentHub::default());
-    let mobile = Arc::new(crate::mobile::Mobile::load(dir, !opts.no_mobile_relay)?);
+    let mobile = Arc::new(
+        crate::mobile::Mobile::load(dir, !opts.no_mobile_relay)?
+            .loopback_only(opts.mobile_loopback),
+    );
     let crew = crate::crew::CrewHub::new(dir, opts.isolation.clone(), opts.isolation_fault.clone());
     let registry = opts
         .registry

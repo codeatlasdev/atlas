@@ -1675,6 +1675,7 @@ async fn hostd_mobile_pair_prints_the_daemons_live_invite() {
         .args(["hostd", "--dir"])
         .arg(dir)
         .env("ATLAS_MOBILE_RELAY", "0")
+        .env("ATLAS_MOBILE_LOOPBACK", "1")
         .stdin(Stdio::null())
         .stdout(Stdio::null())
         .stderr(Stdio::null())

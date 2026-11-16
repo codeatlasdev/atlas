@@ -11,7 +11,7 @@ const read = (p: string) => readFileSync(join(root, p), "utf8");
 const pkg: { scripts: Record<string, string> } = JSON.parse(read("package.json"));
 
 /** The `cargo tauri build …` commands in a text (a script line or a hint inside a string). */
-const tauriBuilds = (text: string) => [...text.matchAll(/cargo tauri build[^\n"'`)]*/g)].map((m) => m[0]);
+const tauriBuilds = (text: string) => [...text.matchAll(/cargo tauri (?:build|bundle)[^\n"'`)]*/g)].map((m) => m[0]);
 
 describe("local, debug and agent builds never build the DMG", () => {
 	test("`desktop:build:app` is the one app-only entry: debug, app bundle only, no Finder scripting", () => {

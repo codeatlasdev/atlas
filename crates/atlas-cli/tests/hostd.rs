@@ -1792,3 +1792,43 @@ async fn hostd_runs_crewmates_as_their_own_users_when_the_helpers_socket_exists(
     let made = create(connect_when_up(&dir).await).await.unwrap();
     assert!(made["id"].is_string(), "{made}");
 }
+
+// Security review 4, C2: `atlas crew login --crewmate` runs this on the server. It must ask hostd for the sign-in
+// (the request the phone sends) and carry nothing else: on a server where crewmates are not their own Linux users
+// hostd refuses it, and the command must fail with that reason, not fall back to starting the engine itself or to the
+// crew user's own sign-in. No terminal may have been opened.
+#[tokio::test]
+async fn crew_login_asks_hostd_and_never_starts_the_engine_itself() {
+    let tmp = tempfile::tempdir().unwrap();
+    let dir = tmp.path().join("hostd");
+    // A crew server whose crewmates are the crew user's own (no helper socket).
+    let _d = spawn_with(
+        &dir,
+        &[
+            ("ATLAS_CREW_HOST", "1"),
+            (
+                "ATLAS_CREW_SPAWN_SOCK",
+                tmp.path().join("absent.sock").to_str().unwrap(),
+            ),
+        ],
+    );
+    let c = connect_when_up(&dir).await;
+    let out = Command::new(BIN)
+        .args([
+            "hostd",
+            "--crew-login",
+            "claude",
+            "--login-as",
+            "3f2a9c1e-5b7d-4e8f-9a0b-1c2d3e4f5a6b",
+            "--dir",
+        ])
+        .arg(&dir)
+        .stdin(Stdio::null())
+        .output()
+        .unwrap();
+    assert!(!out.status.success());
+    let err = String::from_utf8_lossy(&out.stderr);
+    assert!(err.contains("as their own Linux user"), "{err}");
+    let ptys = c.call("pty_list", json!({})).await.unwrap();
+    assert_eq!(ptys["ptys"].as_array().unwrap().len(), 0, "{ptys}");
+}

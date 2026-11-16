@@ -360,21 +360,6 @@ A project checkout is made again by the next task; the old one is kept as work.p
     })
 }
 
-/// The command `atlas crew login --crewmate` runs over ssh: the engine as that crewmate's user, with its
-/// home, in its directory, then the hooks registered for it. `bin` is an engine binary of the agent
-/// table, `user` is checked against the helper's own shape.
-pub fn login_command(user: &str, agent: &str) -> Result<String, BadUser> {
-    let slug = slug(user)?;
-    let bin = atlas_core::agents::get(agent)
-        .map(|a| a.bin)
-        .ok_or_else(|| BadUser(agent.chars().take(64).collect()))?;
-    let home = format!("{CM_ROOT}/{slug}/home");
-    Ok(format!(
-        "sudo -u {user} env HOME={home} PATH={ENGINES_DIR}:/usr/local/bin:/usr/bin:/bin \
-sh -c 'cd {home} && {bin}'"
-    ))
-}
-
 /// One thing the installer does for isolation, in the order it must happen.
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub enum Action {
@@ -1097,20 +1082,6 @@ mod tests {
         assert!(n.starts_with("3 crewmate(s)"));
         assert!(n.contains("atlas crew login <server> <agent> --crewmate <id>"));
         assert!(n.contains("work.pre-isolation"));
-    }
-
-    #[test]
-    fn login_runs_the_engine_as_the_crewmates_user_with_its_home_and_the_shared_engines() {
-        let c = login_command(USER, "claude").unwrap();
-        assert_eq!(
-            c,
-            "sudo -u atlas-cm-3f2a9c1e5b7d env HOME=/var/lib/atlas-cm/3f2a9c1e5b7d/home PATH=/usr/local/lib/atlas-crew/engines:/usr/local/bin:/usr/bin:/bin sh -c 'cd /var/lib/atlas-cm/3f2a9c1e5b7d/home && claude'"
-        );
-        // The injection guard again: neither the user nor the agent can carry shell.
-        assert!(login_command("root", "claude").is_err());
-        assert!(login_command("atlas-cm-3f2a9c1e5b7d; id", "claude").is_err());
-        assert!(login_command(USER, "claude; id").is_err());
-        assert!(login_command(USER, "sh").is_err());
     }
 
     // The install order is the contract. Closing the crew home comes first, units are written before

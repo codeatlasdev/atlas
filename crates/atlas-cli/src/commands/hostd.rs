@@ -73,6 +73,13 @@ pub struct HostdArgs {
     /// With `--crew-import`: give crewmates whose id exists new ids instead of refusing
     #[arg(long, requires = "crew_import")]
     pub rename: bool,
+    /// Sign this engine in as a crewmate, through the running hostd's helper (`atlas crew login --crewmate` runs this on
+    /// a crew server over `ssh -t`): the same request the phone sends, the terminal carried to this one
+    #[arg(long, value_name = "ENGINE", hide = true, requires = "login_as", conflicts_with_all = ["stop", "status", "upgrade", "check", "reconcile", "restart", "takeover", "lab", "crew_pause", "crew_resume", "mobile_pair", "crew_export", "crew_import"])]
+    pub crew_login: Option<String>,
+    /// With `--crew-login`: the crewmate's id
+    #[arg(long, value_name = "ID", hide = true, requires = "crew_login")]
+    pub login_as: Option<String>,
     /// Lab lane: run a SHADOW hostd that follows your real one (read-only) so a branch can be
     /// validated, with its own pairing and a Lab phone app, without touching your installation. Its
     /// files live in `<main dir>/lab` (override with --dir); combine with --stop/--status to manage it
@@ -196,6 +203,13 @@ impl AtlasCommand for HostdArgs {
                         String::new()
                     }
                 );
+            }
+            return Ok(());
+        }
+        if let Some(engine) = &self.crew_login {
+            let code = super::hostd_login::run(&dir, engine, self.login_as.as_deref()).await?;
+            if code != 0 {
+                std::process::exit(code);
             }
             return Ok(());
         }

@@ -11,6 +11,8 @@
 #                            finishes at once
 # `sleep <n>` is how the script finds the process tree on the server.
 if [ "$1" = auth ]; then
+  # Like the real engine, it runs the hooks of the user's own config at startup (a SessionStart hook).
+  [ -x "$HOME/.claude/e2e-hook.sh" ] && "$HOME/.claude/e2e-hook.sh"
   echo "Logged in (fake claude)"
   exit 0
 fi

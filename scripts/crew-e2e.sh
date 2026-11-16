@@ -402,6 +402,32 @@ until_true 20 "B's sleep 31341 to be gone" no_sleeper 31341
 wait_idle "$CMB"
 echo "A's agent sees none of B's processes in /proc (B's sleep 31341 was running, visible to root)"
 
+# (9c) C2 of the fourth review: `atlas crew login --crewmate` used to run the engine as A over `sudo`, in the host's
+# namespace with A's own config. A hook A's agent planted in its home ran outside the sandbox, and a process it detached
+# outlived the login and read B's /proc for good. The sign-in is now hostd's login request: the helper starts the engine
+# like any agent. B's agent (`sleep 31342`) runs; the planted hook detaches a process that looks for it after the login.
+TBH=$(send_task "$CMB" "E2E_HANG 31342")
+wait_task "$CMB" "$TBH" running 60
+until_true 20 "B's sleep 31342 to exist" has_sleeper 31342
+docker exec -i "$NAME" setpriv --reuid="$CMUSER" --regid="$CMUSER" --clear-groups sh -c "mkdir -p '$DIRA/home/.claude' &&
+  cat > '$DIRA/home/.claude/e2e-hook.sh' && chmod +x '$DIRA/home/.claude/e2e-hook.sh'" <<'HOOK'
+#!/bin/sh
+grep NoNewPrivs /proc/$$/status > "$HOME/e2e-hook-nnp"
+setsid sh -c 'sleep 3; for d in /proc/[0-9]*; do tr "\0" " " <"$d/cmdline" 2>/dev/null; echo; done | grep -c "sleep 3134[2]" > "$HOME/e2e-hook-seen"' </dev/null >/dev/null 2>&1 &
+HOOK
+atlas crew login "$TARGET" --port "$PORT" claude --crewmate "$CM" </dev/null 2>&1 | tee "$OUT/login-crewmate.log"
+grep -q 'Logged in (fake claude)' "$OUT/login-crewmate.log" || fail "the crewmate's sign-in did not reach the engine through hostd"
+until_true 30 "the process the hook detached to report" srv test -s "$DIRA/home/e2e-hook-seen"
+[[ $(srv cat "$DIRA/home/e2e-hook-nnp") == *1 ]] || fail "the login ran A's hook without no_new_privs: it did not go through the helper"
+[[ $(srv cat "$DIRA/home/e2e-hook-seen") == 0 ]] || fail "a process A's hook detached during the login sees B's processes"
+has_sleeper 31342 || fail "control: B's sleep 31342 was gone when the detached process looked, so the check proves nothing"
+srv rm -f "$DIRA/home/e2e-hook-seen" "$DIRA/home/e2e-hook-nnp" "$DIRA/home/.claude/e2e-hook.sh"
+hostd crewmate_cancel "$(jq -nc --arg id "$CMB" --arg t "$TBH" '{id: $id, task: $t}')" >/dev/null
+wait_task "$CMB" "$TBH" cancelled 30
+until_true 20 "B's sleep 31342 to be gone" no_sleeper 31342
+wait_idle "$CMB"
+echo "crewmate sign-in through hostd: the hook ran confined (NoNewPrivs 1) and the process it detached sees none of B's"
+
 # (10) the crew user's GitHub login never reaches a process that runs as a crewmate (N2). A fake `gh` stands in for
 # the operator's login; crewmate C has a project and no token of its own, so hostd mirrors the project into
 # C's crew-runtime/ with that login and C clones the mirror. Hooks in C's own ~/.gitconfig record the environment

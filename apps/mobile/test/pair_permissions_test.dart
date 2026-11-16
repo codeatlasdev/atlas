@@ -192,6 +192,30 @@ void main() {
       },
     );
 
+    // App Review 5.1.1(iv): on iOS the screen before the camera prompt offers no "Not now". Paste link stays:
+    // it is another way to pair, on the feature's own screen, not a way out of the explanation.
+    testWidgets(
+      'iOS: the camera explanation has only Continue, and Paste link',
+      (t) async {
+        debugDefaultTargetPlatformOverride = TargetPlatform.iOS;
+        try {
+          final rig = await _pump(
+            t,
+            FakePermissions(
+              states: {AtlasPermission.camera: PermissionState.notAsked},
+            ),
+          );
+          expect(find.text('Allow the camera'), findsOneWidget);
+          expect(find.text('Continue'), findsOneWidget);
+          expect(find.text('Not now'), findsNothing);
+          expect(find.text('Paste link'), findsOneWidget);
+          expect(rig.perms.requested, isEmpty);
+        } finally {
+          debugDefaultTargetPlatformOverride = null;
+        }
+      },
+    );
+
     _test(
       'Not now: says what does not work, offers Allow camera and Paste link',
       (t) async {

@@ -14,7 +14,8 @@ import 'package:atlas_mobile/core/ui/atlas_theme.dart';
 ///
 /// - Already allowed: returns [PermissionState.granted] at once, nothing shown.
 /// - Not asked: the explanation sheet first; "Continue" shows the system prompt and returns what the person
-///   answered; "Not now" returns [PermissionState.notAsked] and nothing was requested.
+///   answered; "Not now" (Android only, see [explanationCanDecline]) returns [PermissionState.notAsked] and
+///   nothing was requested.
 /// - Blocked, restricted, unavailable: returns that state without a prompt (the system would not show one);
 ///   the caller shows [PermissionOffCard] or [showPermissionOff].
 ///
@@ -51,31 +52,52 @@ Future<void> offerNotifications(BuildContext context, WidgetRef ref) async {
   if (context.mounted) await askPermission(context, ref, p);
 }
 
-/// The explanation as a bottom sheet. `true` = "Continue", anything else = "Not now".
+/// Whether the explanation before a system prompt may offer a way out ("Not now", tap outside, swipe down).
+///
+/// - iOS: no. The HIG ("Requesting permission") wants one button, Continue, and no way to leave the screen
+///   without seeing the system alert; App Review rejects a "Continue" + "Not Now" pre-prompt under 5.1.1(iv)
+///   (Apple Developer Forums thread 817672, March 2026). The person declines in the system alert, and the
+///   feature's screen keeps its own alternatives (Paste link, the relay).
+/// - Android: yes. Google: "Always provide the option to cancel an educational UI flow."
+bool explanationCanDecline(BuildContext context) =>
+    Theme.of(context).platform != TargetPlatform.iOS;
+
+/// The explanation as a bottom sheet. `true` = "Continue", anything else = "Not now" or dismissed (Android).
 Future<bool?> showPermissionExplainer(
   BuildContext context,
   AtlasPermission p, {
   String? why,
-}) => showModalBottomSheet<bool>(
-  context: context,
-  isScrollControlled: true,
-  showDragHandle: true,
-  backgroundColor: AtlasColors.of(context).overlay,
-  builder: (ctx) => SafeArea(
-    child: SingleChildScrollView(
-      padding: const EdgeInsets.fromLTRB(Space.xl, 0, Space.xl, Space.lg),
-      child: PermissionExplainer(
-        permission: p,
-        why: why,
-        onContinue: () => Navigator.of(ctx).pop(true),
-        onNotNow: () => Navigator.of(ctx).pop(false),
+}) {
+  final decline = explanationCanDecline(context);
+  return showModalBottomSheet<bool>(
+    context: context,
+    isScrollControlled: true,
+    isDismissible: decline,
+    enableDrag: decline,
+    showDragHandle: decline,
+    backgroundColor: AtlasColors.of(context).overlay,
+    builder: (ctx) => SafeArea(
+      child: SingleChildScrollView(
+        padding: EdgeInsets.fromLTRB(
+          Space.xl,
+          decline ? 0 : Space.xl,
+          Space.xl,
+          Space.lg,
+        ),
+        child: PermissionExplainer(
+          permission: p,
+          why: why,
+          onContinue: () => Navigator.of(ctx).pop(true),
+          onNotNow: () => Navigator.of(ctx).pop(false),
+        ),
       ),
     ),
-  ),
-);
+  );
+}
 
-/// Icon, one sentence on why, what stays private, "Continue" (shows the system prompt) and "Not now".
-/// Used in the sheet and inline (the pairing screen is the camera's explanation until it is allowed).
+/// Icon, one sentence on why, what stays private, "Continue" (shows the system prompt) and, where the
+/// platform allows it ([explanationCanDecline]), "Not now". Used in the sheet and inline (the pairing screen
+/// is the camera's explanation until it is allowed).
 class PermissionExplainer extends StatelessWidget {
   const PermissionExplainer({
     super.key,
@@ -132,8 +154,10 @@ class PermissionExplainer extends StatelessWidget {
         ),
         const SizedBox(height: Space.xl),
         FilledButton(onPressed: onContinue, child: const Text('Continue')),
-        const SizedBox(height: Space.xs),
-        TextButton(onPressed: onNotNow, child: const Text('Not now')),
+        if (explanationCanDecline(context)) ...[
+          const SizedBox(height: Space.xs),
+          TextButton(onPressed: onNotNow, child: const Text('Not now')),
+        ],
       ],
     );
   }

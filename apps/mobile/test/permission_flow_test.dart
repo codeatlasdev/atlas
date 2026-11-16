@@ -83,7 +83,9 @@ void main() {
     },
   );
 
-  testWidgets('Not now: nothing is requested and nothing is granted', (
+  // Android: Google wants every educational screen to be cancellable. (The test binding's default
+  // platform is Android.)
+  testWidgets('Android, Not now: nothing is requested and nothing is granted', (
     t,
   ) async {
     final perms = await _pump(
@@ -100,6 +102,41 @@ void main() {
     expect(perms.requested, isEmpty);
     expect(_result, PermissionState.notAsked);
   });
+
+  // App Review (guideline 5.1.1(iv), HIG "Requesting permission"): a screen before an iOS permission prompt
+  // has one button, Continue, and no way to leave it without seeing the system alert. A "Continue" + "Not Now"
+  // pre-prompt was rejected for exactly that (Apple Developer Forums thread 817672, March 2026). The person
+  // declines in the system alert itself.
+  testWidgets(
+    'iOS: the explanation has only Continue and cannot be dismissed',
+    (t) async {
+      final perms = await _pump(
+        t,
+        FakePermissions(
+          states: {AtlasPermission.camera: PermissionState.notAsked},
+        ),
+      );
+      await t.tap(find.text('Ask'));
+      await t.pumpAndSettle();
+
+      expect(find.text('Continue'), findsOneWidget);
+      expect(find.text('Not now'), findsNothing);
+
+      // Neither a tap on the scrim nor a swipe down closes it.
+      await t.tapAt(const Offset(20, 20));
+      await t.pumpAndSettle();
+      await t.drag(find.text('Allow the camera'), const Offset(0, 600));
+      await t.pumpAndSettle();
+      expect(find.text('Allow the camera'), findsOneWidget);
+      expect(_result, isNull, reason: 'the flow is still waiting on Continue');
+
+      await t.tap(find.text('Continue'));
+      await t.pumpAndSettle();
+      expect(perms.requested, [AtlasPermission.camera]);
+      expect(_result, PermissionState.granted);
+    },
+    variant: TargetPlatformVariant.only(TargetPlatform.iOS),
+  );
 
   testWidgets(
     'refused in the system prompt: the caller gets the blocked state',

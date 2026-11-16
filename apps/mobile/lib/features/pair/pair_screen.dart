@@ -127,7 +127,7 @@ class _PairScreenState extends ConsumerState<PairScreen> {
   }
 
   /// Pairs with [url], after telling the person (iOS, the first time) why the phone is about to look for the
-  /// computer on the Wi-Fi. "Not now" still pairs: through the relay.
+  /// computer on the Wi-Fi. "Don't Allow" in the system alert still pairs: through the relay.
   Future<void> _begin(String url) async {
     if (_scanned) return;
     setState(() => _scanned = true);

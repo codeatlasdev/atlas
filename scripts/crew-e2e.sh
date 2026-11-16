@@ -414,7 +414,7 @@ echo "\$@" >> "$HOME_DIR/e2e-gh.log"
 exit 0
 EOF
 srv_sh "rm -f $HOME_DIR/e2e-gh.log;
-  git init -q -b main /srv/e2e-src && git -C /srv/e2e-src -c user.name=e -c user.email=e@example.com commit -q --allow-empty -m one && chmod -R a+rX /srv/e2e-src"
+  git init -q -b main /srv/e2e-src && git -C /srv/e2e-src -c user.name=e -c user.email=e@example.com commit -q --allow-empty -m one && chown -R atlas-crew:atlas-crew /srv/e2e-src && chmod -R a+rX /srv/e2e-src"
 CMC=$(hostd crewmate_create '{"name":"Cee","role":"You are the third crew-e2e crewmate.","agent":"claude","approval":"auto","engine":{"kind":"claude"}}' | jq -r .id)
 SLUGC=${CMC//-/}
 SLUGC=${SLUGC:0:12}

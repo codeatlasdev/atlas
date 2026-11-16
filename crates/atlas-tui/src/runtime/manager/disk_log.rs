@@ -198,7 +198,11 @@ mod tests {
                 .current_dir(root)
                 .output()
                 .unwrap();
-            assert!(o.status.success(), "{args:?}: {}", String::from_utf8_lossy(&o.stderr));
+            assert!(
+                o.status.success(),
+                "{args:?}: {}",
+                String::from_utf8_lossy(&o.stderr)
+            );
             String::from_utf8_lossy(&o.stdout).into_owned()
         };
         let repo = tempfile::tempdir().unwrap();
@@ -236,7 +240,10 @@ mod tests {
         std::fs::create_dir_all(&logs).unwrap();
         std::fs::write(logs.join(".gitignore"), "mine\n").unwrap();
         append_mark(&logs, "api", "x");
-        assert_eq!(std::fs::read_to_string(logs.join(".gitignore")).unwrap(), "mine\n");
+        assert_eq!(
+            std::fs::read_to_string(logs.join(".gitignore")).unwrap(),
+            "mine\n"
+        );
     }
 
     #[test]

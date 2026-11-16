@@ -22,13 +22,13 @@
     "linux": {
       "deb": {
         "section": "devel",
-        "depends": ["git"],
+        "depends": ["git", "gstreamer1.0-plugins-base", "gstreamer1.0-plugins-good"],
         "files": {
           "/usr/bin/atlas": "../../target/release/atlas"
         }
       },
       "rpm": {
-        "depends": ["git"],
+        "depends": ["git", "gstreamer1-plugins-base", "gstreamer1-plugins-good"],
         "files": {
           "/usr/bin/atlas": "../../target/release/atlas"
         }

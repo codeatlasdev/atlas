@@ -744,6 +744,11 @@ jobs:
           ls -l dist
           ${{ matrix.install }}
 
+      # The package declares GStreamer's plugins (#265): without them a page that loads an <audio> or <video> aborts
+      # its web process. Ogg (plugins-base) is the one every sound and media file needs.
+      - name: The package brought GStreamer's plugins
+        run: find /usr/lib /usr/lib64 -name libgstogg.so 2>/dev/null | grep . || { echo "no GStreamer plugins after the install" >&2; exit 1; }
+
       - name: atlas --version and atlas doctor
         run: |
           atlas --version

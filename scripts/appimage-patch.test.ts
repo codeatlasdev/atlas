@@ -72,6 +72,9 @@ function fakeAppDir(): string {
 	// bundleMediaFramework: linuxdeploy's GStreamer plugin points GST_PLUGIN_PATH inside the AppImage.
 	writeFileSync(join(a, "apprun-hooks/linuxdeploy-plugin-gstreamer.sh"), "export GST_PLUGIN_PATH=$APPDIR/usr/lib/gstreamer-1.0\n");
 	writeFileSync(join(a, "usr/lib/libgstreamer-1.0.so.0"), "x");
+	// The plugins linuxdeploy bundled: libgstapp.so is where `appsrc` lives.
+	mkdirSync(join(a, "usr/lib/gstreamer-1.0"), { recursive: true });
+	writeFileSync(join(a, "usr/lib/gstreamer-1.0/libgstapp.so"), "x");
 	return a;
 }
 
@@ -80,10 +83,27 @@ describe.skipIf(process.platform === "win32")("appimage-patch.sh", () => {
 		const a = fakeAppDir();
 		const p = Bun.spawnSync(["bash", PATCH, a]);
 		expect(p.exitCode).toBe(0);
-		expect(readdirSync(join(a, "usr/lib")).sort()).toEqual(["libgstreamer-1.0.so.0", "libwebkit2gtk-4.1.so.0"]);
+		expect(readdirSync(join(a, "usr/lib")).sort()).toEqual(["gstreamer-1.0", "libgstreamer-1.0.so.0", "libwebkit2gtk-4.1.so.0"]);
 		expect(readFileSync(join(a, "apprun-hooks/linuxdeploy-plugin-gtk.sh"), "utf8")).toBe(readFileSync(HOOK, "utf8"));
 		// The bundled GStreamer and its plugins' hook stay (#265: no plugins → `appsrc not found`).
 		expect(readFileSync(join(a, "apprun-hooks/linuxdeploy-plugin-gstreamer.sh"), "utf8")).toContain("GST_PLUGIN_PATH");
+	});
+	// #265: the 1.5.0-alpha.25 AppImage carried libgstreamer and no plugins, and every media element in the page logged
+	// `GStreamer element appsrc not found` (and, with no plugin at all, aborted the web process). `appsrc` is in
+	// libgstapp.so: a build whose bundle lacks it must not be published.
+	test("refuses an AppDir whose GStreamer has no plugins (appsrc not found)", () => {
+		const a = fakeAppDir();
+		rmSync(join(a, "usr/lib/gstreamer-1.0"), { recursive: true });
+		const p = Bun.spawnSync(["bash", PATCH, a]);
+		expect(p.exitCode).not.toBe(0);
+		expect(p.stderr.toString()).toContain("libgstapp.so");
+	});
+	test("refuses an AppDir with plugins but without linuxdeploy's GStreamer hook (they would not be found off Ubuntu)", () => {
+		const a = fakeAppDir();
+		rmSync(join(a, "apprun-hooks/linuxdeploy-plugin-gstreamer.sh"));
+		const p = Bun.spawnSync(["bash", PATCH, a]);
+		expect(p.exitCode).not.toBe(0);
+		expect(p.stderr.toString()).toContain("linuxdeploy-plugin-gstreamer.sh");
 	});
 	test("refuses a dir that is not an AppDir", () => {
 		const d = tmp();

@@ -247,7 +247,7 @@ Every release publishes the debug info of what it ships, so a crash report from 
 |---|---|---|
 | Linux (x86_64, aarch64) | `<build-id>.debug` per binary (`atlas`, and `atlas-desktop` on x86_64), made by `scripts/symbols.sh extract` | the GNU build id (`atlas version` prints it as `build:`; every crash report has `build_id`) |
 | macOS | the `.dSYM` bundles (`split-debuginfo=packed`) | the Mach-O UUID |
-| Windows | the `.pdb` files | the PDB signature of the exe; `load_bias` in a report is the image base |
+| Windows | the `.pdb` files | the PDB signature (GUID + age) of the exe, which is the `build_id`; `load_bias` in a report is the image base |
 
 A crash report (`crash-*.toml` or `crash-native-*.toml`) names `version`, `channel`, `commit`, `build_id`, `load_bias` and `frames` (raw return addresses). On Linux:
 
@@ -255,6 +255,8 @@ A crash report (`crash-*.toml` or `crash-native-*.toml`) names `version`, `chann
 tar xzf atlas-X.Y.Z-x86_64-unknown-linux-gnu-symbols.tar.gz -C symbols/
 scripts/symbols.sh resolve crash-native-<ms>-<pid>.toml symbols/   # one line per frame: address function file:line
 ```
+
+The shipped binaries, the AppImage, `.deb`, `.rpm`, `.dmg` and the NSIS installer carry **no** debug info: the workflow takes it out right after the build (`scripts/symbols.sh split` on Linux, `strip -S` after the `.dSYM` on macOS, a PDB that is already separate on Windows) and checks it (`symbols.sh verify-stripped`) before any package is made. Symbol names stay in the binary, so a plain backtrace still has function names; file and line come from the archive.
 
 `resolve` looks the frame up as `frame - load_bias - 1` in `symbols/<build_id>.debug`, so a report from a build whose archive was not published says so instead of guessing. The reports stay on the user's machine until he attaches one; nothing is uploaded.
 

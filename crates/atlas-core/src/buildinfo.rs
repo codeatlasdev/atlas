@@ -3,9 +3,9 @@
 //! symbols published for it (`scripts/symbols.sh`, `docs/release.md`).
 //!
 //! The **build id** is the linker's identity of the executable: the ELF `NT_GNU_BUILD_ID` note on Linux, the Mach-O
-//! `LC_UUID` on macOS. The symbol archive of a release names its debug files by it, so a crash file finds its symbols
-//! without trusting a version string. Windows PE files carry no such note here (a PDB is matched by the signature in
-//! the file, not by this id): there the build id is absent and version + commit identify the build.
+//! `LC_UUID` on macOS, the CodeView signature (PDB GUID + age) on Windows. The symbol archive of a release names or
+//! matches its debug files by it, so a crash file finds its symbols without trusting a version string. A PE built
+//! without a PDB has none: there the build id is absent and version + commit identify the build.
 
 use std::io::{Read, Seek, SeekFrom};
 use std::path::Path;
@@ -72,6 +72,7 @@ pub fn build_id_of(path: &Path) -> Option<String> {
         [0x7f, b'E', b'L', b'F'] => elf_build_id(&mut f),
         // Mach-O 64-bit, little endian (`MH_MAGIC_64` as the bytes on disk).
         [0xcf, 0xfa, 0xed, 0xfe] => macho_uuid(&mut f),
+        [b'M', b'Z', ..] => pe_codeview_id(&mut f),
         _ => None,
     }
 }
@@ -158,6 +159,58 @@ fn macho_uuid<R: Read + Seek>(r: &mut R) -> Option<String> {
     None
 }
 
+/// The PDB signature of a PE image: the `RSDS` CodeView record of its debug directory, as the GUID's 32 hex digits
+/// followed by the age in hex (what a symbol server and `dumpbin /headers` show, lowercase).
+fn pe_codeview_id<R: Read + Seek>(r: &mut R) -> Option<String> {
+    let u16_at = |b: &[u8], o: usize| u16::from_le_bytes([b[o], b[o + 1]]) as usize;
+    let u32_at = |b: &[u8], o: usize| u32::from_le_bytes(b[o..o + 4].try_into().unwrap()) as usize;
+    let dos = read_at(r, 0, 64)?;
+    let pe = u32_at(&dos, 0x3c) as u64;
+    let h = read_at(r, pe, 24)?;
+    if &h[0..4] != b"PE\0\0" {
+        return None;
+    }
+    let (nsec, optsz) = (u16_at(&h, 6), u16_at(&h, 20));
+    let opt = read_at(r, pe + 24, optsz)?;
+    // PE32+ keeps its data directories at 112, PE32 at 96; the debug directory is the seventh.
+    let dirs = match u16_at(&opt, 0) {
+        0x20b => 112,
+        0x10b => 96,
+        _ => return None,
+    };
+    let (rva, size) = (u32_at(&opt, dirs + 6 * 8), u32_at(&opt, dirs + 6 * 8 + 4));
+    if rva == 0 || size == 0 {
+        return None;
+    }
+    let sections = read_at(r, pe + 24 + optsz as u64, nsec * 40)?;
+    let offset_of = |rva: usize| {
+        sections.chunks_exact(40).find_map(|s| {
+            let (vsize, va, rawsize, raw) =
+                (u32_at(s, 8), u32_at(s, 12), u32_at(s, 16), u32_at(s, 20));
+            (rva >= va && rva < va + vsize.max(rawsize)).then(|| raw + (rva - va))
+        })
+    };
+    let dir = read_at(r, offset_of(rva)? as u64, size.min(28 * 16))?;
+    for e in dir.chunks_exact(28) {
+        const IMAGE_DEBUG_TYPE_CODEVIEW: usize = 2;
+        if u32_at(e, 12) != IMAGE_DEBUG_TYPE_CODEVIEW {
+            continue;
+        }
+        let rec = read_at(r, u32_at(e, 24) as u64, 24)?;
+        if &rec[0..4] != b"RSDS" {
+            continue;
+        }
+        // A GUID is written as one u32, two u16 and eight bytes; the first three are little endian on disk.
+        let (d1, d2, d3) = (u32_at(&rec, 4), u16_at(&rec, 8), u16_at(&rec, 10));
+        return Some(format!(
+            "{d1:08x}{d2:04x}{d3:04x}{}{:x}",
+            hex(&rec[12..20]),
+            u32_at(&rec, 20)
+        ));
+    }
+    None
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -224,6 +277,48 @@ mod tests {
         assert_eq!(build_id_of(&d.path().join("missing")), None);
         // A truncated ELF header is not a panic.
         std::fs::write(&p, [0x7f, b'E', b'L', b'F', 2, 1]).unwrap();
+        assert_eq!(build_id_of(&p), None);
+    }
+
+    /// A hand-built PE32+ image with a debug directory holding one CodeView record, as `link.exe` / `lld-link` write
+    /// for a PDB. The id is the GUID in its usual order plus the age.
+    #[test]
+    fn a_pe_codeview_signature_is_the_pdb_guid_and_age() {
+        let mut m = vec![0u8; 0x400];
+        m[0..2].copy_from_slice(b"MZ");
+        m[0x3c..0x40].copy_from_slice(&0x80u32.to_le_bytes());
+        m[0x80..0x84].copy_from_slice(b"PE\0\0");
+        m[0x86..0x88].copy_from_slice(&1u16.to_le_bytes()); // one section
+        m[0x94..0x96].copy_from_slice(&240u16.to_le_bytes()); // optional header size
+        m[0x98..0x9a].copy_from_slice(&0x20bu16.to_le_bytes()); // PE32+
+        let dir_entry = 0x98 + 112 + 6 * 8;
+        m[dir_entry..dir_entry + 4].copy_from_slice(&0x2000u32.to_le_bytes()); // debug directory RVA
+        m[dir_entry + 4..dir_entry + 8].copy_from_slice(&28u32.to_le_bytes());
+        let sec = 0x98 + 240;
+        m[sec..sec + 6].copy_from_slice(b".rdata");
+        m[sec + 8..sec + 12].copy_from_slice(&0x200u32.to_le_bytes()); // virtual size
+        m[sec + 12..sec + 16].copy_from_slice(&0x2000u32.to_le_bytes()); // virtual address
+        m[sec + 16..sec + 20].copy_from_slice(&0x200u32.to_le_bytes()); // raw size
+        m[sec + 20..sec + 24].copy_from_slice(&0x200u32.to_le_bytes()); // raw pointer
+        // The directory entry at file offset 0x200: type 2 (CodeView), pointer to the record at 0x300.
+        m[0x200 + 12..0x200 + 16].copy_from_slice(&2u32.to_le_bytes());
+        m[0x200 + 24..0x200 + 28].copy_from_slice(&0x300u32.to_le_bytes());
+        m[0x300..0x304].copy_from_slice(b"RSDS");
+        m[0x304..0x308].copy_from_slice(&0x1122_3344u32.to_le_bytes());
+        m[0x308..0x30a].copy_from_slice(&0x5566u16.to_le_bytes());
+        m[0x30a..0x30c].copy_from_slice(&0x7788u16.to_le_bytes());
+        m[0x30c..0x314].copy_from_slice(&[0x99, 0xaa, 0xbb, 0xcc, 0xdd, 0xee, 0xff, 0x00]);
+        m[0x314..0x318].copy_from_slice(&3u32.to_le_bytes()); // age
+        let d = tempfile::tempdir().unwrap();
+        let p = d.path().join("atlas.exe");
+        std::fs::write(&p, &m).unwrap();
+        assert_eq!(
+            build_id_of(&p).as_deref(),
+            Some("112233445566778899aabbccddeeff003")
+        );
+        // An image with no debug directory has none.
+        m[dir_entry..dir_entry + 8].fill(0);
+        std::fs::write(&p, &m).unwrap();
         assert_eq!(build_id_of(&p), None);
     }
 

@@ -458,7 +458,7 @@ Skills are agent instructions compiled into the `atlas` binary, so they always m
 
 ## `atlas version`
 
-Prints `atlas <version>`, the **channel** the build was cut for (`alpha`, `beta`, `stable`), the **commit** it was built from (`unknown` outside git), the **build id** (the linker's identity of the executable: the ELF GNU build id on Linux, the Mach-O UUID on macOS, `none` on Windows) and the OS and architecture. Put the whole block in a bug report: the build id is what finds the symbols published for that release ([Symbols](release.md#symbols)).
+Prints `atlas <version>`, the **channel** the build was cut for (`alpha`, `beta`, `stable`), the **commit** it was built from (`unknown` outside git), the **build id** (the linker's identity of the executable: the ELF GNU build id on Linux, the Mach-O UUID on macOS, the PDB signature on Windows, `none` where the executable has none) and the OS and architecture. Put the whole block in a bug report: the build id is what finds the symbols published for that release ([Symbols](release.md#symbols)).
 
 ```
 atlas 1.5.0-alpha.25

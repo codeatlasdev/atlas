@@ -2,6 +2,11 @@
 # Symbols of a release binary, and crash addresses resolved against them (#318).
 #
 #   scripts/symbols.sh extract <binary> <outdir>       copy the binary's debug info to <outdir>/<build-id>.debug
+#   scripts/symbols.sh split <binary> <outdir>         extract, then take the debug info out of <binary> in place
+#                                                      (objcopy --strip-debug --add-gnu-debuglink): what a release
+#                                                      ships. Symbol names stay, file:line moves to the .debug file
+#   scripts/symbols.sh verify-stripped <binary>...     exit 1 when a binary still carries debug info (ELF: .debug_*
+#                                                      sections; Mach-O: a __DWARF segment; PE: .debug_* sections)
 #   scripts/symbols.sh resolve <crash.toml> <symbols>  print one line per frame of a crash report:
 #                                                      <frame> <function> <file:line>
 #                                                      <symbols> is a directory of <build-id>.debug files (the
@@ -36,6 +41,37 @@ case "$cmd" in
     objcopy --only-keep-debug "$bin" "$out/$id.debug"
     echo "$out/$id.debug"
     ;;
+  split)
+    [ $# -eq 3 ] || die "usage: symbols.sh split <binary> <outdir>"
+    "$0" extract "$2" "$3" >/dev/null
+    id="$(build_id_of "$2")"
+    objcopy --strip-debug --add-gnu-debuglink="$3/$id.debug" "$2"
+    echo "$3/$id.debug"
+    ;;
+  verify-stripped)
+    [ $# -ge 2 ] || die "usage: symbols.sh verify-stripped <binary>..."
+    shift
+    bad=0
+    for b in "$@"; do
+      [ -f "$b" ] || die "not a file: $b"
+      magic="$(head -c4 "$b" | od -An -c | tr -d ' ')"
+      case "$magic" in
+        *E*L*F) found="$(readelf -S "$b" 2>/dev/null | grep -c '\.debug_\(info\|line\|abbrev\)' || true)" ;;
+        MZ*) found="$(python3 - "$b" <<'PY'
+import struct, sys
+d = open(sys.argv[1], "rb").read()
+pe = struct.unpack_from("<I", d, 0x3C)[0]
+nsec, optsz = struct.unpack_from("<H", d, pe + 6)[0], struct.unpack_from("<H", d, pe + 20)[0]
+first = pe + 24 + optsz
+print(sum(1 for i in range(nsec) if d[first + 40 * i: first + 40 * i + 8].rstrip(b"\0").startswith(b".debug")))
+PY
+)" ;;
+        *) found="$(otool -l "$b" 2>/dev/null | grep -c 'segname __DWARF' || true)" ;;
+      esac
+      if [ "${found:-0}" -gt 0 ]; then echo "symbols.sh: $b still has debug info ($found sections)" >&2; bad=1; else echo "no debug info: $b ($(wc -c < "$b") bytes)"; fi
+    done
+    exit $bad
+    ;;
   resolve)
     [ $# -eq 3 ] || die "usage: symbols.sh resolve <crash.toml> <symbols dir | .debug file>"
     report=$2 syms=$3
@@ -60,5 +96,5 @@ case "$cmd" in
       echo "$f ${res:-?? ??:0}"
     done
     ;;
-  *) die "usage: symbols.sh extract <binary> <outdir> | resolve <crash.toml> <symbols>" ;;
+  *) die "usage: symbols.sh extract|split <binary> <outdir> | verify-stripped <binary>... | resolve <crash.toml> <symbols>" ;;
 esac

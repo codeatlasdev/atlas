@@ -547,11 +547,12 @@ mod imp {
     }
 }
 
-#[cfg(all(test, unix))]
+#[cfg(test)]
 mod tests {
     use super::*;
 
     /// The crasher: `#[inline(never)]` so its frame is in the stack the handler writes and in the debug info.
+    #[cfg(unix)]
     #[inline(never)]
     #[unsafe(no_mangle)]
     pub extern "C" fn atlas_crash_on_purpose(sig: i32) {
@@ -575,11 +576,23 @@ mod tests {
         let (Ok(dir), Ok(how)) = (std::env::var(CHILD_DIR), std::env::var(CHILD_HOW)) else {
             return; // a normal run of the suite: nothing to do
         };
+        // No "program has stopped working" dialog on a CI runner or a desktop: the crash is the test.
+        #[cfg(windows)]
+        // SAFETY: `SetErrorMode` only sets this process's error-mode flags.
+        unsafe {
+            windows_sys::Win32::System::Diagnostics::Debug::SetErrorMode(
+                windows_sys::Win32::System::Diagnostics::Debug::SEM_NOGPFAULTERRORBOX
+                    | windows_sys::Win32::System::Diagnostics::Debug::SEM_FAILCRITICALERRORS,
+            )
+        };
         assert!(install_in(Path::new(&dir), crate::buildinfo::current()));
         match how.as_str() {
             "null" => fault_through_a_null_pointer(),
+            #[cfg(unix)]
             "abort" => atlas_crash_on_purpose(libc::SIGABRT),
+            #[cfg(unix)]
             "bus" => atlas_crash_on_purpose(libc::SIGBUS),
+            #[cfg(unix)]
             "overflow" => {
                 #[inline(never)]
                 fn down(n: u64) -> u64 {
@@ -598,8 +611,13 @@ mod tests {
 
     /// Start the child, wait for it, and return how it ended and the directory it wrote into.
     fn crash_a_child(how: &str) -> (std::process::ExitStatus, tempfile::TempDir) {
+        crash_a_child_of(&std::env::current_exe().unwrap(), how)
+    }
+
+    /// [`crash_a_child`] for another copy of this test executable (the stripped one a release ships).
+    fn crash_a_child_of(exe: &Path, how: &str) -> (std::process::ExitStatus, tempfile::TempDir) {
         let dir = tempfile::tempdir().unwrap();
-        let st = std::process::Command::new(std::env::current_exe().unwrap())
+        let st = std::process::Command::new(exe)
             .args([
                 "--exact",
                 "crash_native::tests::child_that_crashes",
@@ -640,11 +658,24 @@ mod tests {
     /// #318: "Forced SIGSEGV in a test binary leaves `crash-native-*.toml`". A real child process dereferences null;
     /// the report names the signal, the build and the fault, and the process still dies of SIGSEGV (a core dump or
     /// systemd-coredump still sees it).
+    ///
+    /// On Windows the same test is an access violation: the unhandled-exception filter runs in a real child, and the
+    /// process still ends with the exception.
     #[test]
     fn a_segfault_leaves_a_native_report_and_the_process_still_dies_of_it() {
         let (st, dir) = crash_a_child("null");
-        use std::os::unix::process::ExitStatusExt;
-        assert_eq!(st.signal(), Some(libc::SIGSEGV), "{st:?}");
+        #[cfg(unix)]
+        {
+            use std::os::unix::process::ExitStatusExt;
+            assert_eq!(st.signal(), Some(libc::SIGSEGV), "{st:?}");
+        }
+        #[cfg(windows)]
+        assert_eq!(st.code(), Some(0xC000_0005u32 as i32), "{st:?}");
+        let signal = if cfg!(windows) {
+            "EXCEPTION_ACCESS_VIOLATION"
+        } else {
+            "SIGSEGV"
+        };
         let files = reports(dir.path());
         assert_eq!(files.len(), 1, "{files:?}");
         let name = files[0].file_name().unwrap().to_str().unwrap().to_string();
@@ -655,13 +686,28 @@ mod tests {
 
         let text = std::fs::read_to_string(&files[0]).unwrap();
         assert_eq!(field(&text, "kind").as_deref(), Some("native"), "{text}");
-        assert_eq!(field(&text, "signal").as_deref(), Some("SIGSEGV"), "{text}");
+        assert_eq!(field(&text, "signal").as_deref(), Some(signal), "{text}");
+        // The address of the data a fault touched is the Unix report's; Windows reports the faulting instruction.
+        #[cfg(unix)]
         assert_eq!(
             field(&text, "fault_address").as_deref(),
             Some("0x0"),
             "{text}"
         );
         let b = crate::buildinfo::current();
+        // The build id is the one `atlas version` prints and the symbols are keyed by: it must exist where the
+        // platform's linker writes one (ELF note, Mach-O UUID, PE CodeView signature of an MSVC build).
+        if cfg!(any(
+            all(target_os = "linux", target_env = "gnu"),
+            target_vendor = "apple",
+            target_env = "msvc"
+        )) {
+            assert!(
+                b.build_id.is_some(),
+                "no build id read from {:?}",
+                std::env::current_exe()
+            );
+        }
         assert_eq!(field(&text, "version").as_deref(), Some(b.version.as_str()));
         assert_eq!(field(&text, "channel").as_deref(), Some(b.channel.as_str()));
         assert_eq!(field(&text, "commit").as_deref(), Some(b.commit.as_str()));
@@ -679,12 +725,15 @@ mod tests {
         let found = crate::probe::crash_files(dir.path(), u64::MAX);
         assert_eq!(found.len(), 1, "{found:?}");
         assert!(
-            found[0].summary.contains("native crash: SIGSEGV"),
+            found[0]
+                .summary
+                .contains(&format!("native crash: {signal}")),
             "{}",
             found[0].summary
         );
     }
 
+    #[cfg(unix)]
     #[test]
     fn an_abort_and_a_bus_error_leave_their_own_signal_in_the_report() {
         for (how, sig, name) in [
@@ -708,6 +757,7 @@ mod tests {
 
     /// The standard library's stack-overflow handler was installed first and prints the message the user and the
     /// maintainer read; ours must run in front of it, leave the report, and still hand the signal on to it.
+    #[cfg(unix)]
     #[test]
     fn a_stack_overflow_leaves_a_report_and_the_standard_librarys_message() {
         let dir = tempfile::tempdir().unwrap();
@@ -739,6 +789,7 @@ mod tests {
     }
 
     /// Installing twice in one process is a no-op, and an unusable directory is reported, not half-armed.
+    #[cfg(unix)]
     #[test]
     fn a_directory_the_handler_cannot_use_is_refused() {
         let d = tempfile::tempdir().unwrap();
@@ -827,5 +878,86 @@ mod tests {
             line.contains("crash_native.rs:"),
             "file and line are resolved: {line}"
         );
+    }
+
+    /// What a release ships is the binary with its debug info taken out (`symbols.sh split`), not the one the symbols
+    /// came from. A crash of THAT copy must still resolve, with the symbols split off it: same build id, same
+    /// addresses, and the shipped file really is smaller and free of DWARF (`verify-stripped` fails on the original).
+    #[cfg(target_os = "linux")]
+    #[test]
+    fn a_crash_of_the_stripped_shipped_binary_resolves_with_the_symbols_split_off_it() {
+        let tool = |t: &str| {
+            std::process::Command::new(t)
+                .arg("--version")
+                .output()
+                .is_ok()
+        };
+        if !["objcopy", "addr2line", "readelf"].iter().all(|t| tool(t)) {
+            eprintln!("skipped: binutils not installed");
+            return;
+        }
+        let script = Path::new(env!("CARGO_MANIFEST_DIR")).join("../../scripts/symbols.sh");
+        let sh = |args: &[&std::ffi::OsStr]| {
+            std::process::Command::new("sh")
+                .arg(&script)
+                .args(args)
+                .output()
+                .unwrap()
+        };
+        let exe = std::env::current_exe().unwrap();
+        // Next to the original (the target directory), not in /tmp: a test executable with debug info is large.
+        let work = tempfile::tempdir_in(exe.parent().unwrap()).unwrap();
+        let shipped = work.path().join("shipped");
+        std::fs::copy(&exe, &shipped).unwrap();
+        let symbols = work.path().join("symbols");
+
+        assert!(
+            !sh(&["verify-stripped".as_ref(), exe.as_os_str()])
+                .status
+                .success(),
+            "the unstripped original has debug info: the check must say so"
+        );
+        let split = sh(&["split".as_ref(), shipped.as_os_str(), symbols.as_os_str()]);
+        assert!(
+            split.status.success(),
+            "split: {}",
+            String::from_utf8_lossy(&split.stderr)
+        );
+        let v = sh(&["verify-stripped".as_ref(), shipped.as_os_str()]);
+        assert!(
+            v.status.success(),
+            "verify-stripped: {}",
+            String::from_utf8_lossy(&v.stderr)
+        );
+        let (before, after) = (
+            std::fs::metadata(&exe).unwrap().len(),
+            std::fs::metadata(&shipped).unwrap().len(),
+        );
+        assert!(
+            after < before,
+            "the shipped copy must be smaller: {after} >= {before}"
+        );
+        assert_eq!(
+            crate::buildinfo::build_id_of(&shipped),
+            crate::buildinfo::build_id_of(&exe),
+            "stripping must keep the build id the symbols are named by"
+        );
+
+        let (_, dir) = crash_a_child_of(&shipped, "abort");
+        let report = reports(dir.path())
+            .pop()
+            .expect("the stripped child left a report");
+        let rs = sh(&["resolve".as_ref(), report.as_os_str(), symbols.as_os_str()]);
+        let out = String::from_utf8_lossy(&rs.stdout);
+        assert!(
+            rs.status.success(),
+            "resolve: {out}{}",
+            String::from_utf8_lossy(&rs.stderr)
+        );
+        let line = out
+            .lines()
+            .find(|l| l.contains("atlas_crash_on_purpose"))
+            .unwrap_or_else(|| panic!("no frame resolved to the crasher:\n{out}"));
+        assert!(line.contains("crash_native.rs:"), "{line}");
     }
 }

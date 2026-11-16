@@ -118,7 +118,28 @@ jobs:
           SOURCE_DATE_EPOCH="$(git log -1 --format=%ct)"
           export SOURCE_DATE_EPOCH
           export CARGO_PROFILE_RELEASE_SPLIT_DEBUGINFO=packed
-          (cd crates/atlas-desktop && cargo tauri build --target aarch64-apple-darwin --bundles app,dmg --ci)
+          (cd crates/atlas-desktop && cargo tauri build --target aarch64-apple-darwin --no-bundle --ci)
+
+      # The shipped binaries carry no debug info (#318): the .dSYMs rustc wrote next to them are the symbols (archived in
+      # Package). Taken out BEFORE the app bundle is packed, so the .app, the .dmg and the CLI tarball all hold the
+      # stripped copy. `strip -S` keeps the symbol names and the Mach-O UUID the .dSYM is matched by.
+      - name: Strip binaries and check
+        run: |
+          R=target/aarch64-apple-darwin/release
+          for b in atlas atlas-desktop; do
+            echo "before: $(wc -c < "$R/$b") bytes $R/$b"
+            strip -S "$R/$b"
+          done
+          ls -ld "$R"/*.dSYM || true
+          scripts/symbols.sh verify-stripped "$R/atlas" "$R/atlas-desktop"
+          dwarfdump --uuid "$R/atlas" "$R/atlas-desktop" || true
+          ls -l "$R/atlas" "$R/atlas-desktop"
+
+      - name: Bundle desktop app
+        run: |
+          SOURCE_DATE_EPOCH="$(git log -1 --format=%ct)"
+          export SOURCE_DATE_EPOCH
+          (cd crates/atlas-desktop && cargo tauri bundle --target aarch64-apple-darwin --bundles app,dmg --ci)
 
       - name: Package
         run: |
@@ -130,6 +151,8 @@ jobs:
           if ls -d target/aarch64-apple-darwin/release/*.dSYM >/dev/null 2>&1; then
             (cd target/aarch64-apple-darwin/release && tar czf "$OLDPWD/dist/atlas-${ATLAS_VERSION}-aarch64-apple-darwin-symbols.tar.gz" ./*.dSYM)
             shasum -a 256 "dist/atlas-${ATLAS_VERSION}-aarch64-apple-darwin-symbols.tar.gz" > "dist/atlas-${ATLAS_VERSION}-aarch64-apple-darwin-symbols.tar.gz.sha256"
+            echo "symbols archive:"; tar tzf "dist/atlas-${ATLAS_VERSION}-aarch64-apple-darwin-symbols.tar.gz" | head -8
+            ls -l dist/ "${BUNDLE:-target/aarch64-apple-darwin/release/bundle}"/dmg/*.dmg 2>/dev/null || true
           else
             echo "::warning::no .dSYM was produced: this release has no symbols for macOS"
           fi
@@ -194,27 +217,40 @@ jobs:
           export SOURCE_DATE_EPOCH
           cargo build --release --locked -p atlas-cli
 
-      # tauri.linux.conf.json picks the deb/rpm/appimage bundles and puts target/release/atlas in the packages.
-      # linuxdeploy (and its plugins) are AppImages; APPIMAGE_EXTRACT_AND_RUN unpacks them instead of mounting through FUSE, which the runner does not provide.
+      # The binary and the frontend only; the packages are made below, from the stripped binaries (`cargo tauri bundle`
+      # compiles nothing).
       - name: Build desktop app
-        env:
-          APPIMAGE_EXTRACT_AND_RUN: 1
         run: |
           command -v cargo-tauri >/dev/null || cargo install tauri-cli --version "$(scripts/setup.sh --tauri-version)" --locked
           (cd apps/desktop && bun install --frozen-lockfile)
           SOURCE_DATE_EPOCH="$(git log -1 --format=%ct)"
           export SOURCE_DATE_EPOCH
-          (cd crates/atlas-desktop && cargo tauri build --ci)
+          (cd crates/atlas-desktop && cargo tauri build --ci --no-bundle)
 
-      # The debug info of the shipped binaries, one <build-id>.debug each (scripts/symbols.sh; docs/release.md, "Symbols").
+      # The debug info of the shipped binaries, one <build-id>.debug each (scripts/symbols.sh; docs/release.md, "Symbols"),
+      # then taken out of the binaries themselves: the AppImage, .deb, .rpm and the tarball carry the stripped copy (#318).
       # The Package step below checksums every tarball in dist/.
       - name: Symbols
         run: |
           V=${TAG#v}
           T=x86_64-unknown-linux-gnu
           mkdir -p dist symbols
-          for b in atlas atlas-desktop; do scripts/symbols.sh extract "target/release/$b" symbols; done
+          ls -l target/release/atlas target/release/atlas-desktop
+          for b in atlas atlas-desktop; do scripts/symbols.sh split "target/release/$b" symbols; done
+          scripts/symbols.sh verify-stripped target/release/atlas target/release/atlas-desktop
+          ls -l target/release/atlas target/release/atlas-desktop symbols
           tar czf "dist/atlas-$V-$T-symbols.tar.gz" -C symbols .
+          tar tzf "dist/atlas-$V-$T-symbols.tar.gz"
+
+      # tauri.linux.conf.json picks the deb/rpm/appimage bundles and puts target/release/atlas in the packages.
+      # linuxdeploy (and its plugins) are AppImages; APPIMAGE_EXTRACT_AND_RUN unpacks them instead of mounting through FUSE, which the runner does not provide.
+      - name: Bundle desktop app
+        env:
+          APPIMAGE_EXTRACT_AND_RUN: 1
+        run: |
+          SOURCE_DATE_EPOCH="$(git log -1 --format=%ct)"
+          export SOURCE_DATE_EPOCH
+          (cd crates/atlas-desktop && cargo tauri bundle --ci)
 
       - name: Package
         run: |
@@ -283,9 +319,13 @@ jobs:
           V=${TAG#v}
           T=aarch64-unknown-linux-gnu
           mkdir -p dist symbols
-          scripts/symbols.sh extract target/release/atlas symbols
+          ls -l target/release/atlas
+          scripts/symbols.sh split target/release/atlas symbols
+          scripts/symbols.sh verify-stripped target/release/atlas
+          ls -l target/release/atlas symbols
           tar czf "dist/atlas-$V-$T-symbols.tar.gz" -C symbols .
           (cd dist && sha256sum "atlas-$V-$T-symbols.tar.gz" > "atlas-$V-$T-symbols.tar.gz.sha256")
+          tar tzf "dist/atlas-$V-$T-symbols.tar.gz"
 
       - name: Package
         run: |
@@ -386,9 +426,13 @@ jobs:
           T=x86_64-pc-windows-msvc
           mkdir -p symbols dist
           cp "target/$T/release/"*.pdb symbols/ 2>/dev/null || echo "::warning::no PDB was produced: this release has no symbols for Windows"
+          # The exes carry no DWARF/CodeView sections of their own: the debug info is the PDB next to them.
+          scripts/symbols.sh verify-stripped "target/$T/release/atlas.exe" "target/$T/release/atlas-desktop.exe"
+          ls -l "target/$T/release/atlas.exe" "target/$T/release/atlas-desktop.exe" symbols
           if ls symbols/*.pdb >/dev/null 2>&1; then
             tar czf "dist/atlas-$V-$T-symbols.tar.gz" -C symbols .
             (cd dist && sha256sum "atlas-$V-$T-symbols.tar.gz" > "atlas-$V-$T-symbols.tar.gz.sha256")
+            tar tzf "dist/atlas-$V-$T-symbols.tar.gz"
           fi
 
       - name: Upload symbols

@@ -73,7 +73,7 @@ Measure with nothing else compiling (a concurrent `cargo install` turned 49 s in
 | sccache locally | no gain with incremental; maybe a later CI experiment |
 | cargo-sweep | unmaintained; `bun run sweep` deletes `target/build` instead |
 | per-dep `opt-level = 3` for proc-macros | no measured need; revisit if `--timings` shows macro expansion on the critical path |
-| `debug = "line-tables-only"` in release | adopted (#318) for crash symbols: `[profile.release]` keeps line tables so a release backtrace has file:line and `scripts/symbols.sh extract` can publish the debug file of each release binary (docs/release.md, "Symbols"). On macOS the release workflow sets `split-debuginfo=packed` so the `.dSYM` is a separate archive. The cost is a larger release binary and a little link time; measure with `ls -l target/release/atlas` against a build with `CARGO_PROFILE_RELEASE_DEBUG=false` |
+| `debug = "line-tables-only"` in release | adopted (#318) for crash symbols: `[profile.release]` keeps line tables so a release backtrace has file:line and `scripts/symbols.sh extract` can publish the debug file of each release binary (docs/release.md, "Symbols"). On macOS the release workflow sets `split-debuginfo=packed` so the `.dSYM` is a separate archive. The shipped binaries are stripped again right after the build (`scripts/symbols.sh split`), so only the intermediate file in `target/` is larger; the sizes shipped are in the release workflow log (`Symbols` steps) and in #470 |
 
 ## Editor
 

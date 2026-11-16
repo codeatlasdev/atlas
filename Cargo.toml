@@ -80,3 +80,9 @@ debug = false
 inherits = "dev"
 debug = "full"
 
+
+[profile.release]
+# File and line in release backtraces and a debug file to publish per release (#318): crash reports carry raw
+# addresses plus the build id, and `scripts/symbols.sh` resolves them against the symbols extracted from the shipped
+# binary (docs/release.md, "Symbols"). Line tables only: no variable or type info, a fraction of `debug = "full"`.
+debug = "line-tables-only"

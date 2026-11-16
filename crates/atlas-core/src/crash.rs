@@ -15,6 +15,9 @@ pub fn install_panic_hook() {
         return;
     }
 
+    // A fault in the process itself (SIGSEGV in WebKit, a driver, `unsafe`) leaves a record too (#318).
+    crate::crash_native::install();
+
     let default = std::panic::take_hook();
     std::panic::set_hook(Box::new(move |info| {
         let msg = info
@@ -84,11 +87,20 @@ fn write_report_in(
 
     std::fs::create_dir_all(dir).ok()?;
 
+    let frames = crate::crash_native::frames();
+    let bias = crate::crash_native::load_bias();
+    let mut native = String::new();
+    if let Some(b) = bias.filter(|_| !frames.is_empty()) {
+        native.push_str(&format!("load_bias = \"0x{b:x}\"\n"));
+    }
+    if !frames.is_empty() {
+        let f: Vec<String> = frames.iter().map(|f| format!("\"0x{f:x}\"")).collect();
+        native.push_str(&format!("frames = [{}]\n", f.join(", ")));
+    }
+
     let report = format!(
-        "version = \"{version}\"\nos = \"{os}\"\narch = \"{arch}\"\ntimestamp = {ts}\nargs = {args}\nmsg = {msg}\nlocation = {location}\n\nbacktrace = '''\n{backtrace}\n'''\n",
-        version = env!("CARGO_PKG_VERSION"),
-        os = std::env::consts::OS,
-        arch = std::env::consts::ARCH,
+        "{build}timestamp = {ts}\nargs = {args}\nmsg = {msg}\nlocation = {location}\n{native}\nbacktrace = '''\n{backtrace}\n'''\n",
+        build = build_lines(crate::buildinfo::current()),
         msg = toml_str(&redact(msg)),
         args = toml_str(&redact_args(args)),
         location = toml_str(&redact(location)),
@@ -127,6 +139,27 @@ fn create_new_report(dir: &Path, ms: u128, report: &str) -> Option<PathBuf> {
     None
 }
 
+/// The build facts every report starts with, as TOML lines: `version`, `channel`, `commit`, `build_id` (when the
+/// executable has one), `os`, `arch`. Written by the panic hook and by the native handler (`crash_native`), which
+/// prepares it at install because it cannot format strings in signal context.
+pub(crate) fn build_lines(b: &crate::buildinfo::BuildInfo) -> String {
+    let mut out = format!(
+        "version = {}\nchannel = {}\ncommit = {}\n",
+        toml_str(&b.version),
+        toml_str(&b.channel),
+        toml_str(&b.commit)
+    );
+    if let Some(id) = &b.build_id {
+        out.push_str(&format!("build_id = {}\n", toml_str(id)));
+    }
+    out.push_str(&format!(
+        "os = {}\narch = {}\n",
+        toml_str(std::env::consts::OS),
+        toml_str(std::env::consts::ARCH)
+    ));
+    out
+}
+
 /// Crash reports kept in the crash directory.
 const KEEP: usize = 20;
 
@@ -135,9 +168,27 @@ const KEEP: usize = 20;
 /// `crash-99` sorts before `crash-100`). `None` for any other name.
 pub fn report_time(name: &str) -> Option<u64> {
     let n = name.strip_prefix("crash-")?.strip_suffix(".toml")?;
+    // `crash-native-<unix_ms>-<pid>.toml`: the native handler's reports (`crash_native`), always milliseconds.
+    let n = n.strip_prefix("native-").unwrap_or(n);
     let t: u64 = n.split('-').next()?.parse().ok()?;
     // 10^11 ms is 1973, 10^11 s is year 5138: below it a number is seconds.
     Some(if t < 100_000_000_000 { t * 1000 } else { t })
+}
+
+/// The pid that wrote a report, from `crash-<unix_ms>-<pid>[-n].toml` or `crash-native-<unix_ms>-<pid>[-n].toml`;
+/// `None` for the old `crash-<seconds>.toml` names, which carry none.
+pub fn report_pid(name: &str) -> Option<u32> {
+    let n = name.strip_prefix("crash-")?.strip_suffix(".toml")?;
+    let n = n.strip_prefix("native-").unwrap_or(n);
+    let mut parts = n.split('-');
+    parts.next()?.parse::<u64>().ok()?;
+    parts.next()?.parse().ok()
+}
+
+/// Leave room for one more report: at most `KEEP - 1` remain. Called when the native handler is armed, which cannot
+/// prune in signal context when it writes.
+pub(crate) fn prune_all(dir: &Path) {
+    prune(dir, Path::new(""));
 }
 
 /// Delete all but the newest [`KEEP`] reports, never `just_written` (a clock that went backwards makes it look
@@ -250,6 +301,82 @@ mod tests {
             text.contains("atlas login --token"),
             "the command stays readable:\n{text}"
         );
+    }
+
+    /// #318: a panic report names the exact build (what `atlas version` prints) and carries the frames and load bias
+    /// that `scripts/symbols.sh resolve` needs; read back through the real writer, not a hand-written file.
+    #[test]
+    fn a_report_carries_the_build_and_the_frames_to_resolve_it() {
+        let dir = tempfile::tempdir().unwrap();
+        let path = super::write_report_in(dir.path(), "m", "l", &argv(&["a"]), "b").unwrap();
+        let text = std::fs::read_to_string(path).unwrap();
+        let b = crate::buildinfo::current();
+        assert!(
+            text.contains(&format!("version = \"{}\"", b.version)),
+            "{text}"
+        );
+        assert!(
+            text.contains(&format!("channel = \"{}\"", b.channel)),
+            "{text}"
+        );
+        assert!(
+            text.contains(&format!("commit = \"{}\"", b.commit)),
+            "{text}"
+        );
+        match &b.build_id {
+            Some(id) => assert!(text.contains(&format!("build_id = \"{id}\"")), "{text}"),
+            None => assert!(!text.contains("build_id"), "{text}"),
+        }
+        assert!(text.contains("os = \""), "{text}");
+        #[cfg(all(target_os = "linux", target_env = "gnu"))]
+        {
+            assert!(text.contains("load_bias = \"0x"), "{text}");
+            let frames = text
+                .lines()
+                .find(|l| l.starts_with("frames = [\"0x"))
+                .expect(&text);
+            assert!(frames.matches("0x").count() >= 3, "{frames}");
+        }
+        // Still valid TOML-ish for the summary readers.
+        assert!(
+            crate::probe::crash_files(dir.path(), u64::MAX)[0]
+                .summary
+                .starts_with(&format!("atlas {}", b.version))
+        );
+    }
+
+    /// #318: native reports share the directory, the retention and the name clock with panic reports, and the pid of
+    /// the writer is readable from either name (what the app's `hostd-exited` incident looks up).
+    #[test]
+    fn native_report_names_order_and_prune_with_the_others() {
+        assert_eq!(
+            super::report_time("crash-native-1700000000123-42.toml"),
+            Some(1_700_000_000_123)
+        );
+        assert_eq!(
+            super::report_pid("crash-native-1700000000123-42.toml"),
+            Some(42)
+        );
+        assert_eq!(super::report_pid("crash-1700000000123-42-1.toml"), Some(42));
+        assert_eq!(super::report_pid("crash-1700000000.toml"), None);
+        assert_eq!(super::report_time("crash-native-x-1.toml"), None);
+        let dir = tempfile::tempdir().unwrap();
+        for i in 1..=25u64 {
+            let name = if i % 2 == 0 {
+                format!("crash-native-{}-1.toml", 1_000 + i)
+            } else {
+                format!("crash-{}-1.toml", 1_000 + i)
+            };
+            std::fs::write(dir.path().join(name), "").unwrap();
+        }
+        super::prune_all(dir.path());
+        assert_eq!(
+            files(dir.path()).len(),
+            19,
+            "room for one more: {:?}",
+            files(dir.path())
+        );
+        assert!(files(dir.path()).contains(&"crash-1025-1.toml".to_string()));
     }
 
     /// Issue #319: reports were never pruned. The newest 20 stay, the oldest go.

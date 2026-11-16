@@ -101,6 +101,6 @@ atlas desktop debug shot /tmp/x.png
 
 ## Reporting a bug
 
-If the CLI panics it prints a path such as `crash-<unix_ms>-<pid>.toml` (the newest 20 are kept) under `~/Library/Application Support/atlas/crashes/` (`$XDG_DATA_HOME/atlas/crashes` on Linux). Crash reports stay on your machine and are never uploaded. Tokens are redacted and your home directory is written as `~`, but review one before attaching it.
+If the CLI panics it prints a path such as `crash-<unix_ms>-<pid>.toml` (the newest 20 are kept) under `~/Library/Application Support/atlas/crashes/` (`$XDG_DATA_HOME/atlas/crashes` on Linux). A crash of the process itself (a segmentation fault inside WebKit, a graphics driver or Atlas) writes `crash-native-<unix_ms>-<pid>.toml` in the same directory, so it no longer depends on `coredumpctl` being there. Crash reports stay on your machine and are never uploaded. Tokens are redacted and your home directory is written as `~`, but review one before attaching it.
 
-Open an issue at [github.com/codeatlasdev/atlas/issues](https://github.com/codeatlasdev/atlas/issues) with `atlas version`, your OS, what you ran and the relevant lines of `.logs/<service>.log` (redact secrets). Security problems go through [SECURITY.md](https://github.com/codeatlasdev/atlas/blob/main/SECURITY.md), not public issues.
+Open an issue at [github.com/codeatlasdev/atlas/issues](https://github.com/codeatlasdev/atlas/issues) with the whole output of `atlas version` (it names the exact build), your OS, what you ran and the relevant lines of `.logs/<service>.log` (redact secrets). Security problems go through [SECURITY.md](https://github.com/codeatlasdev/atlas/blob/main/SECURITY.md), not public issues.

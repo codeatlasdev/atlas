@@ -783,9 +783,9 @@ jobs:
       - name: atlas uninstall removes the package
         run: |
           H=$(mktemp -d)
-          env HOME="$H" -u XDG_CONFIG_HOME -u ZDOTDIR atlas uninstall --dry-run | tee uninstall-list.txt
+          env -u XDG_CONFIG_HOME -u ZDOTDIR HOME="$H" atlas uninstall --dry-run | tee uninstall-list.txt
           grep -F "${{ matrix.remove }}" uninstall-list.txt
-          env HOME="$H" -u XDG_CONFIG_HOME -u ZDOTDIR atlas uninstall --yes
+          env -u XDG_CONFIG_HOME -u ZDOTDIR HOME="$H" atlas uninstall --yes
           if command -v atlas-desktop; then echo "atlas-desktop is still installed" >&2; exit 1; fi
           if ${{ matrix.owned }}; then echo "the package is still installed" >&2; exit 1; fi
 

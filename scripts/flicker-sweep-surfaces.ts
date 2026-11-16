@@ -312,7 +312,7 @@ export const SURFACES: Surface[] = [
 			await d.eval(`${A}.throwLater("sweep: uncaught error"); return 1`);
 			await d.sleep(2500);
 			// "Details" opens a modal over the app: it must be closed (its own Close button) before the toast is dismissed
-			await d.click('[role="region"][aria-label="Errors"] button.details');
+			await d.click('#atlas-corner [role="alert"] button');
 			await d.sleep(1800);
 			await d.click('[role="dialog"][data-state="open"] button:not([aria-label])');
 			await d.sleep(1200);

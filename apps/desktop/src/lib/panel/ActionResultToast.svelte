@@ -1,6 +1,6 @@
 <script lang="ts">
-	import { CircleCheck, CircleX, X } from "@lucide/svelte";
-	import { corner } from "#lib/shell/cornerStack.ts";
+	import { Button } from "@codeatlasdev/ui";
+	import CornerNotice from "#lib/shell/CornerNotice.svelte";
 	import type { ProjectView } from "#lib/api.ts";
 	import { store } from "#lib/stores/projects.svelte.ts";
 	import { actionOutput } from "./actionOutput.svelte.ts";
@@ -42,60 +42,17 @@
 	}
 </script>
 
+<!-- A failed action needs a look (alert); a finished one is a plain toast. -->
 {#if run && !actionOutput.open && store.current?.id === project.id}
-	<div use:corner class="chip" class:fail={run.status === "failed"} role="status">
-		{#if run.status === "ok"}<CircleCheck size={14} />{:else}<CircleX size={14} />{/if}
-		<span class="msg">{run.label} {run.status === "ok" ? "finished" : "failed"}</span>
-		<button class="view" onclick={view}>View output</button>
-		<button class="x" aria-label="Dismiss" onclick={() => dismissed.push(run!.id)}><X size={12} /></button>
-	</div>
+	{#snippet act()}
+		<Button size="sm" variant="glass" onclick={view}>View output</Button>
+	{/snippet}
+	<CornerNotice
+		id="action-result"
+		kind={run.status === "failed" ? "alert" : "toast"}
+		tone={run.status === "failed" ? "error" : "success"}
+		title="{run.label} {run.status === 'ok' ? 'finished' : 'failed'}"
+		actions={act}
+		ondismiss={() => dismissed.push(run!.id)}
+	/>
 {/if}
-
-<style>
-	.chip {
-		display: flex;
-		align-items: center;
-		gap: 8px;
-		padding: 6px 8px 6px 12px;
-		border-radius: var(--ca-radius-md);
-		border: 1px solid var(--ca-outline-subtle);
-		border-left: 3px solid var(--ca-semantic-success);
-		/* Opaque: it floats over the pager, and a blur over moving content re-renders every frame of a swipe. */
-		background: var(--ca-surface-raised);
-		box-shadow: var(--ca-shadow-md);
-		font-size: 12.5px;
-		color: var(--ca-text-primary);
-	}
-	.chip.fail {
-		border-left-color: var(--ca-semantic-error);
-	}
-	.msg {
-		max-width: 200px;
-		overflow: hidden;
-		text-overflow: ellipsis;
-		white-space: nowrap;
-	}
-	.view {
-		border: 0;
-		border-radius: 6px;
-		padding: 3px 8px;
-		background: var(--ca-action-hover);
-		color: var(--ca-text-primary);
-		font: inherit;
-		font-size: 12px;
-	}
-	.view:hover {
-		background: var(--ca-surface-raised);
-	}
-	.x {
-		display: inline-flex;
-		border: 0;
-		background: none;
-		padding: 3px;
-		border-radius: 4px;
-		color: var(--ca-text-disabled);
-	}
-	.x:hover {
-		color: var(--ca-text-primary);
-	}
-</style>

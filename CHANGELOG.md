@@ -6,6 +6,10 @@ All notable changes to Atlas (CLI, TUI, MCP server and Atlas Desktop). Versions 
 
 ## [Unreleased]
 
+### Changed
+
+- **The Signed-off-by check refuses placeholder identities, and release commits are signed off.** A commit authored or committed as a placeholder (an email on `example.com`, `.test` or `.invalid`, a host name such as `you@MacBook.local` or `localhost`, a template name like "Your Name" or "First User") now fails the required `Signed-off-by` check on pull requests even when it carries a sign-off: two such commits ("First User <first@example.com>") reached 1.5.0-alpha.26 and could not be credited. `bun run release` now signs off its own `chore(release)` commit, which 1.5.0-alpha.24 to alpha.26 lacked (it goes in through the maintainer bypass, so the check never saw it). See [CONTRIBUTING.md](CONTRIBUTING.md#developer-certificate-of-origin-dco).
+
 ## [1.5.0-alpha.26] — 2026-11-16
 
 Atlas is in **alpha**: expect bugs and breaking changes. Please [report what breaks](https://github.com/codeatlasdev/atlas/issues/new).

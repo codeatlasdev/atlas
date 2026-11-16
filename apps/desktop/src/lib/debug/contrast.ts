@@ -9,6 +9,7 @@
  * are exempt from AA by WCAG; we hold them to 3 so they still read.
  */
 import { fromOklch, parseHex } from "../theme/color.ts";
+import { isRendered } from "../dom/visible.ts";
 
 export interface Rgba {
 	r: number;
@@ -249,13 +250,13 @@ export interface Report {
 
 const SKIP = new Set(["SCRIPT", "STYLE", "NOSCRIPT", "SVG", "CANVAS", "TEMPLATE"]);
 
-/** Is the element's text actually on screen: laid out, not `visibility:hidden`/`display:none`, not fully transparent. */
+/** Is the element's text actually on screen: rendered (see `isRendered`), not `visibility: collapse`, with a size. */
 function shown(el: Element, cs: CSSStyleDeclaration): boolean {
 	if (SKIP.has(el.tagName.toUpperCase())) return false;
 	if (cs.display === "none" || cs.visibility === "hidden" || cs.visibility === "collapse") return false;
 	const r = el.getBoundingClientRect();
 	if (r.width === 0 && r.height === 0) return false;
-	return (el as HTMLElement).offsetParent !== null || cs.position === "fixed";
+	return isRendered(el);
 }
 
 /** Disabled controls, placeholders and the editor's line-number gutter are exempt from AA by WCAG; held to 3 here. */

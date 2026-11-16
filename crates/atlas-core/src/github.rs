@@ -168,13 +168,37 @@ impl Net {
     }
 }
 
-/// `CHANGELOG.md` of `repo` at `tag`.
-fn changelog(repo: &str, tag: &str) -> Result<String, GithubError> {
-    let mut c = curl();
-    c.arg(format!(
-        "https://raw.githubusercontent.com/{repo}/{tag}/CHANGELOG.md"
-    ));
-    Ok(String::from_utf8_lossy(&run(c)?).into_owned())
+impl Net {
+    /// `CHANGELOG.md` of `repo` at `tag`.
+    fn changelog(&self, repo: &str, tag: &str) -> Result<String, GithubError> {
+        let mut c = self.curl();
+        c.arg(format!(
+            "https://raw.githubusercontent.com/{repo}/{tag}/CHANGELOG.md"
+        ));
+        Ok(String::from_utf8_lossy(&run(c)?).into_owned())
+    }
+
+    /// Every release section that has notes for `version`, newest first. The changelog of `version`'s own tag
+    /// is the one that must have it (a tag carries the whole history up to itself), so a build that is newer
+    /// than what its channel offers, or another channel's, still finds its notes; only when that tag has no
+    /// such section (a dev build, an unpublished version) does the channel's newest tag answer instead.
+    /// Network failures are errors, never an empty list.
+    fn releases_up_to(
+        &self,
+        repo: &str,
+        channel: Channel,
+        version: &str,
+    ) -> Result<Vec<ReleaseInfo>, GithubError> {
+        let version = version.trim_start_matches('v');
+        if let Ok(md) = self.changelog(repo, &format!("v{version}")) {
+            let found = sections(repo, &md);
+            if found.iter().any(|r| r.version() == version) {
+                return Ok(found);
+            }
+        }
+        let tag = self.channel_tag(repo, channel)?;
+        Ok(sections(repo, &self.changelog(repo, &tag)?))
+    }
 }
 
 /// Released sections of a Keep a Changelog file, newest first: `## [X.Y.Z] - date` headings
@@ -406,20 +430,21 @@ fn release_from_sections(
         .ok_or_else(|| GithubError::Failed(format!("CHANGELOG.md at {tag} has no [{version}]")))
 }
 
-/// Every published release the channel's newest tag knows about, newest first: the sections of
-/// `CHANGELOG.md` at that tag, which carries the whole history (older tags may not exist here).
-pub fn releases(repo: &str, channel: Channel) -> Result<Vec<ReleaseInfo>, GithubError> {
-    Ok(sections(
-        repo,
-        &changelog(repo, &channel_tag(repo, channel)?)?,
-    ))
+/// Every release section the changelog knows about, newest first, read where `version`'s notes live (see
+/// [`Net::releases_up_to`]).
+pub fn releases_up_to(
+    repo: &str,
+    channel: Channel,
+    version: &str,
+) -> Result<Vec<ReleaseInfo>, GithubError> {
+    Net::system().releases_up_to(repo, channel, version)
 }
 
 /// Newest release `channel` offers: the latest Stable for `Stable`, otherwise the newest
 /// published version the channel accepts (never older than the latest Stable).
 pub fn latest_release(repo: &str, channel: Channel) -> Result<ReleaseInfo, GithubError> {
     let tag = channel_tag(repo, channel)?;
-    release_from_sections(&tag, sections(repo, &changelog(repo, &tag)?))
+    release_from_sections(&tag, sections(repo, &Net::system().changelog(repo, &tag)?))
 }
 
 /// Releases in `(installed, latest]`, newest first (`installed == latest` keeps just that one:
@@ -898,6 +923,10 @@ case "$last" in
     [ -f "$d/fail-download" ] && {{ echo 'curl: (28) Operation too slow' >&2; exit 28; }}
     have=0; [ $resume = 1 ] && [ -f "$out" ] && have=$(wc -c < "$out" | tr -d ' ')
     if [ "$have" -gt 0 ]; then tail -c +$((have + 1)) "$d/payload" >> "$out"; else cp "$d/payload" "$out"; fi ;;
+  */CHANGELOG.md)
+    tag=${{last%/CHANGELOG.md}}; tag=${{tag##*/}}
+    [ -f "$d/changelog-$tag" ] || {{ echo 'curl: (22) The requested URL returned error: 404' >&2; exit 22; }}
+    cat "$d/changelog-$tag" ;;
   *) echo "stub curl: unexpected $last" >&2; exit 2 ;;
 esac
 "#,
@@ -1008,6 +1037,122 @@ esac
                 ),
                 "HTTP {code}"
             );
+        }
+    }
+
+    /// The repository's own CHANGELOG.md: the shape the parser has to read in production.
+    const REAL_CHANGELOG: &str = include_str!("../../../CHANGELOG.md");
+
+    // Regression: What's new said "No release notes for this version" for a version the CHANGELOG describes.
+    #[test]
+    fn the_real_changelog_gives_notes_for_every_version_the_app_can_run() {
+        let all = sections("codeatlasdev/atlas", REAL_CHANGELOG);
+        for v in ["1.5.0-alpha.25", "1.5.0-alpha.26"] {
+            let r = in_range(all.clone(), v, v);
+            assert_eq!(versions(&r), [v], "{v}");
+            assert!(r[0].notes().len() > 200, "{v}: {:?}", r[0].notes());
+            assert!(
+                r[0].notes().contains("### "),
+                "{v}: groups survive the section split"
+            );
+            assert_eq!(r[0].published_at.len(), 10, "{v}: {:?}", r[0].published_at);
+        }
+        // `[Unreleased]` is not a release and never swallows the first real section.
+        assert!(all.iter().all(|r| r.version() != "Unreleased"));
+        assert!(
+            versions(&all).len() > 20,
+            "the whole history parses: {:?}",
+            versions(&all)
+        );
+    }
+
+    #[test]
+    fn a_crlf_changelog_parses_to_the_same_releases() {
+        let lf = sections("o/r", REAL_CHANGELOG);
+        let crlf = sections("o/r", &REAL_CHANGELOG.replace('\n', "\r\n"));
+        assert_eq!(lf, crlf);
+        let bom = sections("o/r", &format!("\u{feff}{REAL_CHANGELOG}"));
+        assert_eq!(versions(&lf), versions(&bom));
+    }
+
+    #[cfg(unix)]
+    fn changelog_of(vs: &[&str]) -> String {
+        let body: String = vs
+            .iter()
+            .map(|v| format!("## [{v}] — 2026-11-12\n\n### Added\n- notes of {v}\n\n"))
+            .collect();
+        format!("# Changelog\n\n## [Unreleased]\n\n{body}")
+    }
+
+    // Regression: the notes were read from the changelog at the channel's newest tag, so a version that tag
+    // predates (another channel, a build newer than the channel offers) found nothing and the sheet said the
+    // changelog "has no entry for it yet" while the version's own tag had one.
+    #[cfg(unix)]
+    #[test]
+    fn notes_come_from_the_changelog_of_the_version_asked_not_the_channels_older_tag() {
+        let dir = tempfile::tempdir().unwrap();
+        put(
+            dir.path(),
+            "latest",
+            "https://github.com/o/r/releases/tag/v1.4.0",
+        );
+        put(dir.path(), "feed", &atom_of(&["v1.5.0-alpha.2", "v1.4.0"]));
+        put(dir.path(), "code-v1.4.0", "200");
+        put(dir.path(), "changelog-v1.4.0", &changelog_of(&["1.4.0"]));
+        put(
+            dir.path(),
+            "changelog-v1.5.0-alpha.2",
+            &changelog_of(&["1.5.0-alpha.2", "1.5.0-alpha.1", "1.4.0"]),
+        );
+        let net = stub_curl(dir.path());
+        // A Stable user running an alpha: the Stable tag (v1.4.0) has no section for it.
+        let all = net
+            .releases_up_to("o/r", Channel::Stable, "1.5.0-alpha.2")
+            .unwrap();
+        assert_eq!(
+            versions(&in_range(all, "1.5.0-alpha.2", "1.5.0-alpha.2")),
+            ["1.5.0-alpha.2"]
+        );
+        // A `v` prefix on the version is the same version.
+        let all = net
+            .releases_up_to("o/r", Channel::Stable, "v1.5.0-alpha.2")
+            .unwrap();
+        assert_eq!(versions(&all)[0], "1.5.0-alpha.2");
+    }
+
+    #[cfg(unix)]
+    #[test]
+    fn a_version_with_no_tag_changelog_falls_back_to_the_channels_newest() {
+        let dir = tempfile::tempdir().unwrap();
+        put(
+            dir.path(),
+            "latest",
+            "https://github.com/o/r/releases/tag/v1.4.0",
+        );
+        put(dir.path(), "feed", &atom_of(&["v1.4.0"]));
+        put(dir.path(), "code-v1.4.0", "200");
+        put(
+            dir.path(),
+            "changelog-v1.4.0",
+            &changelog_of(&["1.4.0", "1.3.0"]),
+        );
+        let net = stub_curl(dir.path());
+        // 1.4.0 itself has a tag; an unpublished dev version has none and reads the channel's.
+        let dev = net
+            .releases_up_to("o/r", Channel::Stable, "1.5.0-alpha.9")
+            .unwrap();
+        assert_eq!(versions(&dev), ["1.4.0", "1.3.0"]);
+        assert!(in_range(dev, "1.5.0-alpha.9", "1.5.0-alpha.9").is_empty());
+    }
+
+    #[cfg(unix)]
+    #[test]
+    fn an_unreachable_network_is_an_error_never_an_empty_list() {
+        let dir = tempfile::tempdir().unwrap();
+        let net = stub_curl(dir.path());
+        for c in Channel::ALL {
+            let e = net.releases_up_to("o/r", c, "1.5.0-alpha.2").unwrap_err();
+            assert!(matches!(e, GithubError::Feed(_)), "{c}: {e:?}");
         }
     }
 

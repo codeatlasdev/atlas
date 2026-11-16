@@ -107,6 +107,8 @@ class Updates {
 	notes = $state<ReleaseNotes[]>([]);
 	notesLoading = $state(false);
 	notesError = $state<string | null>(null);
+	/** The version the sheet asked notes for: the empty state names it. */
+	notesFor = $state<string | null>(null);
 	/** "Updated to X" card shown once after an update. */
 	updatedTo = $state<string | null>(null);
 
@@ -283,20 +285,24 @@ class Updates {
 
 	/**
 	 * Notes the sheet shows: installed→latest while an update is on offer, the version that
-	 * just got installed after an update, otherwise the release this app runs.
+	 * just got installed after an update, otherwise the release this app runs. The sheet always ends in one of
+	 * three states: notes, "couldn't load" (with the reason, and Retry) or "no entry for this version"; opening it
+	 * before the first check has read the running version reads it here instead of showing an empty sheet.
 	 */
 	async loadNotes() {
-		const running = this.info?.app.version;
-		const to = this.updatedTo ?? (this.available ? this.release?.version : running);
-		if (!running || !to) return;
-		const from = this.updatedTo || !this.available ? to : running;
 		this.notesLoading = true;
 		this.notesError = null;
 		try {
+			this.info ??= await invoke<SystemInfo>("system_info");
+			const running = this.info.app.version;
+			const to = this.updatedTo ?? (this.available ? this.release?.version : running) ?? running;
+			const from = this.updatedTo || !this.available ? to : running;
+			this.notesFor = to;
 			const all = await invoke<ReleaseNotes[]>("releases_between", { from, to });
 			this.notes = selectNotes(all, from, to);
 		} catch (e) {
-			this.notesError = errText(e);
+			this.notes = [];
+			this.notesError = errText(e).trim() || "Atlas could not reach GitHub.";
 		} finally {
 			this.notesLoading = false;
 		}

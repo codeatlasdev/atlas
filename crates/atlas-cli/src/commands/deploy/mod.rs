@@ -177,7 +177,7 @@ async fn rollback(
 async fn deploy(a: &DeployArgs) -> Result<()> {
     let ctx = Ctx::load(&a.dir, a.target.as_deref())?;
     let head = package::head(&ctx.root)?;
-    let base = guard::check(
+    let guard::Checked { base, newest } = guard::check(
         &ctx,
         &head,
         guard::Overrides {
@@ -188,7 +188,14 @@ async fn deploy(a: &DeployArgs) -> Result<()> {
     )
     .await?;
     step(&format!("package ({})", ctx.root.display()));
-    let rel = package::package(&ctx.root, &ctx.cfg, &head, a.allow_dirty, a.skip_build)?;
+    let rel = package::package(
+        &ctx.root,
+        &ctx.cfg,
+        &head,
+        a.allow_dirty,
+        a.skip_build,
+        newest.as_deref(),
+    )?;
     if let Some((dep, ancestry)) = &base {
         step(&guard::announce(&rel.id, &head, dep, ancestry));
     }

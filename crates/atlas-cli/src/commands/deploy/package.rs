@@ -8,6 +8,8 @@ use anyhow::{Context, Result, bail};
 use atlas_tui::config::DeployConfig;
 use sha2::{Digest, Sha256};
 
+use super::ctx::next_release_id;
+
 pub struct Release {
     pub id: String,
     pub sha: String,
@@ -174,6 +176,7 @@ pub fn package(
     sha: &str,
     allow_dirty: bool,
     skip_build: bool,
+    newest: Option<&str>,
 ) -> Result<Release> {
     let sha = sha.to_string();
     let dirty = !git(root, &["status", "--porcelain"])?.is_empty();
@@ -185,7 +188,7 @@ pub fn package(
     } else {
         sha[..7].to_string()
     };
-    let id = format!("{}-{suffix}", chrono::Utc::now().format("%Y%m%d%H%M%S"));
+    let id = next_release_id(chrono::Utc::now(), &suffix, newest);
 
     if let Some(build) = cfg.build.as_deref().filter(|_| !skip_build) {
         eprintln!("▸ build: {build}");

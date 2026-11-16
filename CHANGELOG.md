@@ -6,6 +6,10 @@ All notable changes to Atlas (CLI, TUI, MCP server and Atlas Desktop). Versions 
 
 ## [Unreleased]
 
+### Fixed
+
+- **`atlas deploy` never picks a release id the host already has.** Ids have one-second resolution, so two deploys of one commit within a second collided ("release exists"), and a client clock behind the host's made the new release sort before older ones (ordering goes by id). The timestamp is now the later of the clock and one second after the host's newest release ([#315](https://github.com/codeatlasdev/atlas/issues/315)).
+
 ## [1.5.0-alpha.26] — 2026-11-16
 
 Atlas is in **alpha**: expect bugs and breaking changes. Please [report what breaks](https://github.com/codeatlasdev/atlas/issues/new).

@@ -48,6 +48,8 @@ const KIT_COMPONENTS = [
 	// The notifications bell (InboxBell.test.ts) and the Pull request tab (PrTab.test.ts).
 	"Badge",
 	"StatusChip",
+	// The connect step's SSH host picker (and the model picker): the Combobox.
+	"Combobox",
 ];
 const Stub = () => {};
 const kit = {

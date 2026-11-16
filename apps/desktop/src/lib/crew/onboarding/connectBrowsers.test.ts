@@ -20,6 +20,7 @@ mock.module("@tauri-apps/api/core", () => ({
 		calls.push({ cmd, args });
 		if (cmd === "crew_servers_list") return [];
 		if (cmd === "ssh_key_find") return "/Users/me/.ssh/id_ed25519.pub";
+		if (cmd === "ssh_hosts_list") return [];
 		return {};
 	},
 }));

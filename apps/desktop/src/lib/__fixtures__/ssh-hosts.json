@@ -1,0 +1,18 @@
+[
+	{
+		"address": "deploy@prod",
+		"alias": "prod",
+		"hostname": "203.0.113.7",
+		"identity_file": "~/.ssh/id_work",
+		"port": 2222,
+		"user": "deploy"
+	},
+	{
+		"address": "alice@nohost",
+		"alias": "nohost",
+		"hostname": "nohost",
+		"identity_file": null,
+		"port": 22,
+		"user": "alice"
+	}
+]

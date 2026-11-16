@@ -427,6 +427,19 @@ pub fn ssh_key_find() -> Option<String> {
     atlas_core::ssh::find_default_public_key().map(|p| p.to_string_lossy().into_owned())
 }
 
+/// The servers in the user's `~/.ssh/config`, each resolved by `ssh -G` (effective user, host name, port, key), for
+/// the picker of "Add a crew server". Never an error: no file, an unreadable one or no `ssh` is an empty list and the
+/// free-text field stays. Runs off the main thread: it spawns up to eight `ssh -G` at a time, each bounded to 5 s.
+#[tauri::command]
+pub async fn ssh_hosts_list() -> Vec<atlas_core::ssh_config::SshHost> {
+    let Some(home) = dirs::home_dir() else {
+        return Vec::new();
+    };
+    tokio::task::spawn_blocking(move || atlas_core::ssh_config::list_hosts(&home))
+        .await
+        .unwrap_or_default()
+}
+
 /// Generate an ed25519 key pair at `~/.ssh/id_ed25519`.
 /// Fails if the private key file already exists.
 #[tauri::command]

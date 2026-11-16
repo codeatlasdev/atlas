@@ -24,6 +24,7 @@ import {
 } from "#lib/crew/onboardingFlow.ts";
 import { crewServerTarget, isCrewServerKey, parseSSHTarget } from "#lib/crew/sshTarget.ts";
 import { AGENT_AUTH_TYPE, AGENT_SIGNIN_CMD, applyAgentApiKey } from "#lib/crew/remoteAgent.ts";
+import type { SshHost } from "#lib/crew/sshHosts.ts";
 import {
 	phaseFromCheck,
 	pickReadyEngine,
@@ -62,6 +63,8 @@ export class Onboarding {
 	sshPort = $state(22);
 	/** Opt-in: also install the capture browsers (`atlas crew install --browsers`). Off for a first install. */
 	browsers = $state(false);
+	/** The user's `~/.ssh/config` servers, for the picker above the address field. */
+	sshHosts = $state<SshHost[]>([]);
 	install = $state<InstallProgress>(initialInstallProgress());
 	/** Phase that failed (shown in red). */
 	failedPhase = $state<InstallPhase | null>(null);
@@ -153,13 +156,25 @@ export class Onboarding {
 
 	// ─── connect step ─────────────────────────────────────────────────────────
 
-	/** Detect the SSH key once the connect step is showing. */
+	/**
+	 * Detect the SSH key once the connect step is showing, and list the servers of `~/.ssh/config` for the picker
+	 * (no config, or one that cannot be read, is an empty list and the address field stays on its own).
+	 */
 	checkSshKey() {
 		if (this.step !== "connect" || this.keyChecked) return;
+		void invoke<SshHost[]>("ssh_hosts_list")
+			.then((h) => (this.sshHosts = h))
+			.catch(() => {});
 		void invoke<string | null>("ssh_key_find").then((p) => {
 			this.hasKey = p !== null;
 			this.keyChecked = true;
 		});
+	}
+
+	/** Fill the address and port from a server of the user's `~/.ssh/config`. */
+	pickSshHost(host: SshHost) {
+		this.sshTarget = host.address;
+		this.sshPort = host.port;
 	}
 
 	async createSshKey() {

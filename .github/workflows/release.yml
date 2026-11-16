@@ -989,16 +989,17 @@ jobs:
           chmod 600 /home/builder/.ssh/id_ed25519
           cp arch/PKGBUILD /home/builder/PKGBUILD
           chown builder:builder /home/builder/PKGBUILD
-          su builder -c '
-            set -euo pipefail
-            cd ~
-            git -c init.defaultBranch=master clone ssh://aur@aur.archlinux.org/codeatlas-atlas-bin.git aur
-            cp PKGBUILD aur/PKGBUILD
-            cd aur
-            makepkg --printsrcinfo > .SRCINFO
-            git add PKGBUILD .SRCINFO
-            if git diff --cached --quiet; then echo "the AUR already has this PKGBUILD"; exit 0; fi
-            git -c user.name="Atlas release" -c user.email="noreply@users.noreply.github.com" \
-              commit -m "Update to $(sed -n "s/^pkgver=//p" PKGBUILD)"
-            git push origin HEAD:master
-          '
+          cat > /home/builder/push.sh <<'PUSH'
+          set -euo pipefail
+          cd ~
+          git -c init.defaultBranch=master clone ssh://aur@aur.archlinux.org/codeatlas-atlas-bin.git aur
+          cp PKGBUILD aur/PKGBUILD
+          cd aur
+          makepkg --printsrcinfo > .SRCINFO
+          git add PKGBUILD .SRCINFO
+          if git diff --cached --quiet; then echo "the AUR already has this PKGBUILD"; exit 0; fi
+          git -c user.name="Atlas release" -c user.email="noreply@users.noreply.github.com" \
+            commit -m "Update to $(sed -n 's/^pkgver=//p' PKGBUILD)"
+          git push origin HEAD:master
+          PUSH
+          su builder -c 'bash ~/push.sh'

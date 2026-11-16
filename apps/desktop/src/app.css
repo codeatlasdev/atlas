@@ -514,3 +514,13 @@ html {
 		opacity: 0.5;
 	}
 }
+
+/* UI kit workaround (docs/desktop.md, "UI kit workarounds"; atlas#501): a menu, popover or tooltip stays in the page for
+   its exit fade (kit `presence.svelte.js`) and keeps taking presses over its own box, so a click on what was under it
+   right after it closed was lost. It does not make the page inert (a modal does: `shell/closingLayers.ts` handles
+   those), so the fade can keep playing while the presses pass through.
+   @codeatlasdev/ui 4.6.0, `components/Popover/FloatingLayer.svelte` (`popover="manual"` set by `primitives/layer.js`).
+   Remove when the kit sets this itself. */
+[popover][data-state="closed"] {
+	pointer-events: none;
+}

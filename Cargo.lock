@@ -405,11 +405,13 @@ name = "atlas-core"
 version = "1.5.0-alpha.25"
 dependencies = [
  "anyhow",
+ "base64 0.23.1",
  "dirs",
  "hex",
  "ignore",
  "libc",
  "parking_lot 0.13.0",
+ "ring",
  "semver",
  "serde",
  "serde_json",

@@ -23,6 +23,7 @@ pub mod probe;
 pub mod procs;
 pub mod project_root;
 pub mod redact;
+pub mod release_verify;
 pub mod seed;
 pub mod ssh;
 pub mod sys;

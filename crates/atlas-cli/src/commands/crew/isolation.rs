@@ -61,7 +61,8 @@ pub fn provision_socket_unit(a: &Account) -> String {
 /// - `CAP_SETUID`/`CAP_SETGID` switch to the crewmate's user, `CAP_CHOWN` gives it its pty slave,
 ///   `CAP_KILL` signals its processes, `CAP_DAC_OVERRIDE` lets root reach directories that are
 ///   0700 for the crewmate or the crew user. Nothing else is in the bounding set.
-/// - `NoNewPrivileges=yes` is fine here: the helper changes uid with `setuid(2)`, never by running
+/// - No `NoNewPrivileges=`: with the other sandboxing options it left the helper without `CAP_SETUID` (systemd 255),
+///   so every spawn failed at `setuid`; each child sets no_new_privs on itself instead. The helper changes uid with `setuid(2)`, never by running
 ///   a setuid binary.
 /// - `KillMode=process`: restarting the helper must not kill the agents it started.
 ///   Uninstall stops it with `--kill-who=all` semantics (see [`uninstall_script`]).
@@ -84,7 +85,6 @@ User=root\n\
 ExecStart={INSTALL_DIR}/atlas crew-spawn\n\
 KillMode=process\n\
 Restart=on-failure\n\
-NoNewPrivileges=yes\n\
 CapabilityBoundingSet=CAP_SETUID CAP_SETGID CAP_CHOWN CAP_KILL CAP_DAC_OVERRIDE\n\
 ProtectSystem=strict\n\
 ReadWritePaths={CM_ROOT} -{cg}\n\
@@ -96,7 +96,7 @@ ProtectKernelTunables=yes\n\
 ProtectKernelModules=yes\n\
 ProtectControlGroups=yes\n\
 RestrictSUIDSGID=yes\n\
-RestrictAddressFamilies=AF_UNIX\n\
+RestrictAddressFamilies=AF_UNIX AF_INET AF_INET6 AF_NETLINK\n\
 LockPersonality=yes\n\
 MemoryDenyWriteExecute=yes\n"
     )
@@ -508,7 +508,6 @@ mod tests {
             "User=root\n",
             "ExecStart=/usr/local/lib/atlas-crew/atlas crew-spawn\n",
             "KillMode=process\n",
-            "NoNewPrivileges=yes\n",
         ] {
             assert!(s.contains(want), "missing {want:?}");
         }
@@ -552,7 +551,7 @@ mod tests {
             "ProtectSystem=strict\n",
             "ReadWritePaths=/var/lib/atlas-cm -/sys/fs/cgroup/system.slice/atlas-crew-spawn.service\n",
             "ProtectHome=yes\n",
-            "RestrictAddressFamilies=AF_UNIX\n",
+            "RestrictAddressFamilies=AF_UNIX AF_INET AF_INET6 AF_NETLINK\n",
             "RestrictSUIDSGID=yes\n",
         ] {
             assert!(u.contains(want), "missing {want:?}");
@@ -924,6 +923,33 @@ mod tests {
             !provision_service_unit().contains("RestrictSUIDSGID=yes"),
             "RestrictSUIDSGID=yes makes the plan's chmod 2770 fail"
         );
+    }
+
+    // Incident (found while reading the spawn helper's unit next to the end-to-end test): the helper had
+    // `RestrictAddressFamilies=AF_UNIX`, a seccomp filter its children inherit, so no engine it starts
+    // (claude, codex, ... or git in a crewmate's tree) could open a TCP socket or resolve a name. What a
+    // crewmate may reach is the egress firewall's job (nft, per user), not the unit's.
+    #[test]
+    fn the_spawn_helpers_children_can_use_the_network_the_firewall_allows() {
+        let u = service_unit();
+        let fam = u
+            .lines()
+            .find_map(|l| l.strip_prefix("RestrictAddressFamilies="))
+            .expect("the helper restricts address families");
+        for need in ["AF_UNIX", "AF_INET", "AF_INET6", "AF_NETLINK"] {
+            assert!(fam.split(' ').any(|f| f == need), "{need} missing in {fam}");
+        }
+    }
+
+    // Incident (real-systemd end-to-end test): with `NoNewPrivileges=yes` next to the other sandboxing options
+    // systemd 255 left the helper without `CAP_SETUID` in its permitted set (`CapPrm` 0x63 instead of 0xe3 though
+    // the bounding set had it), and every spawn failed at `setuid` with EPERM. Leaving that one option out
+    // restored it. The child sets no_new_privs on itself instead (`spawn::exec`).
+    #[test]
+    fn the_spawn_helper_keeps_its_setuid_capability_so_its_unit_has_no_no_new_privileges() {
+        let u = service_unit();
+        assert!(!u.contains("NoNewPrivileges"), "{u}");
+        assert!(u.contains("CAP_SETUID"), "{u}");
     }
 
     // The rules file the provisioning service writes is replayed at boot, but only once it exists.

@@ -199,6 +199,12 @@ pub fn spawn_capped(
                     return Err(failed(STEP_SETUID));
                 }
             }
+            // The helper's unit has no `NoNewPrivileges=` (it takes the helper's own CAP_SETUID away on
+            // systemd 255), so what that option gave every crewmate process is set here, as the crewmate.
+            #[cfg(target_os = "linux")]
+            if libc::prctl(libc::PR_SET_NO_NEW_PRIVS, 1, 0, 0, 0) != 0 {
+                return Err(failed(STEP_NO_NEW_PRIVS));
+            }
             Ok(())
         });
     }
@@ -220,6 +226,8 @@ const STEP_TTY: u8 = 3;
 const STEP_SETGROUPS: u8 = 4;
 const STEP_SETGID: u8 = 5;
 const STEP_SETUID: u8 = 6;
+#[cfg(target_os = "linux")]
+const STEP_NO_NEW_PRIVS: u8 = 7;
 
 /// A close-on-exec pipe the forked child reports its failing step on; the read end is non-blocking.
 fn step_pipe() -> io::Result<(OwnedFd, OwnedFd)> {
@@ -256,6 +264,8 @@ fn step_failed(rd: &OwnedFd) -> Option<&'static str> {
         STEP_SETGROUPS => "setgroups",
         STEP_SETGID => "setgid",
         STEP_SETUID => "setuid",
+        #[cfg(target_os = "linux")]
+        STEP_NO_NEW_PRIVS => "no_new_privs",
         _ => "an unknown step",
     })
 }
@@ -384,7 +394,7 @@ mod tests {
         let bin = engines.join("claude");
         std::fs::write(
             &bin,
-            "#!/bin/sh\necho \"uid=$(/usr/bin/id -u) cwd=$(pwd) home=$HOME user=$USER path=$PATH secret=$SECRET ld=${LD_PRELOAD:-none} args=$*\"\n[ -t 0 ] && echo tty=yes || echo tty=no\nread line; echo got=$line\n",
+            "#!/bin/sh\necho \"uid=$(/usr/bin/id -u) cwd=$(pwd) home=$HOME user=$USER path=$PATH secret=$SECRET ld=${LD_PRELOAD:-none} args=$*\"\nwhile read k v; do [ \"$k\" = NoNewPrivs: ] && echo nnp=$v; done < /proc/self/status\n[ -t 0 ] && echo tty=yes || echo tty=no\nread line; echo got=$line\n",
         )
         .unwrap();
         std::fs::set_permissions(&bin, std::fs::Permissions::from_mode(0o755)).unwrap();
@@ -394,6 +404,20 @@ mod tests {
             work: work.to_string_lossy().into(),
             _t: t,
         }
+    }
+
+    // Incident (real-systemd end-to-end test): the helper's unit had `NoNewPrivileges=yes`, which on systemd 255
+    // took `CAP_SETUID` out of the helper's own permitted set (every spawn then failed at `setuid` with EPERM; the
+    // unit works with the option off, checked by leaving each option out in turn). What it was for is that no
+    // process a crewmate runs gains privileges through a setuid binary, so the child sets it on itself.
+    #[test]
+    fn the_child_cannot_gain_privileges_through_a_setuid_binary() {
+        let f = fixture();
+        let out = run(&f, Mode::Pipe);
+        assert!(
+            out.contains("nnp=1"),
+            "the child must set no_new_privs on itself: {out}"
+        );
     }
 
     // Incident (real-systemd end-to-end test): a spawn failed with a bare "Operation not permitted" and nothing

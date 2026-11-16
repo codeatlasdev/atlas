@@ -259,10 +259,8 @@ fn stage_deb(sb: &Sandbox) -> String {
 }
 
 #[test]
-fn package_update_downloads_verifies_then_installs_through_sudo_and_refreshes() {
+fn package_update_downloads_verifies_then_installs_through_pkexec_and_refreshes() {
     let sb = Sandbox::new("dpkg");
-    // No terminal in a test, so pkexec would win when present: leave only sudo (also the host's).
-    sb.hide("pkexec");
     let name = stage_deb(&sb);
     let o = sb.run(&["update", "--yes"], &[]);
     let out = text(&o);
@@ -271,9 +269,10 @@ fn package_update_downloads_verifies_then_installs_through_sudo_and_refreshes() 
 
     let sudo = calls
         .iter()
-        .position(|c| c.starts_with("sudo apt-get install"))
-        .unwrap_or_else(|| panic!("no sudo apt-get install in {calls:?}\n{out}"));
+        .position(|c| c.starts_with("pkexec apt-get install"))
+        .unwrap_or_else(|| panic!("no pkexec apt-get install in {calls:?}\n{out}"));
     assert!(calls[sudo].contains(&name), "{}", calls[sudo]);
+    assert!(!calls.iter().any(|c| c.starts_with("sudo ")), "{calls:?}");
     // The refresh runs with the *installed* binary, after the package manager returned.
     let refresh = calls
         .iter()
@@ -327,6 +326,91 @@ fn declining_the_confirmation_installs_nothing() {
     assert!(!o.status.success(), "{out}");
     assert!(out.contains("--yes"), "tells how to proceed: {out}");
     assert!(sb.calls().is_empty(), "{:?}", sb.calls());
+}
+
+// #278: the in-app Update has no terminal and no `--yes` until the user confirms in the app.
+// It must end in the `managed package` state with the exact command, not an error, and
+// without having downloaded or escalated anything.
+#[test]
+fn the_app_without_confirmation_gets_the_managed_event_with_the_command() {
+    for (owner, manager, command) in [
+        ("dpkg", "apt", "sudo apt install ./atlas_99.0.0_amd64.deb"),
+        (
+            "pacman",
+            "pacman",
+            "sudo pacman -U codeatlas-atlas-bin-99.0.0-1-x86_64.pkg.tar.zst",
+        ),
+    ] {
+        let sb = Sandbox::new(owner);
+        // No asset is staged: the curl stub fails any download, so a download would be an error.
+        let o = sb.run(&["update"], &[("ATLAS_UPDATE_PROGRESS", "1")]);
+        let out = text(&o);
+        assert!(o.status.success(), "{owner}: {out}");
+        assert!(
+            out.contains(&format!(
+                "@@atlas managed package {manager} install {command}"
+            )),
+            "{owner}: {out}"
+        );
+        assert!(out.contains(command), "the command is printed too: {out}");
+        assert!(sb.calls().is_empty(), "{owner}: {:?}", sb.calls());
+    }
+    let sb = Sandbox::new("rpm");
+    let o = sb.run(&["update"], &[("ATLAS_UPDATE_PROGRESS", "1")]);
+    let out = text(&o);
+    assert!(o.status.success(), "{out}");
+    assert!(
+        out.contains("install sudo ") && out.contains("install ./atlas-99.0.0-1.x86_64.rpm"),
+        "{out}"
+    );
+}
+
+#[test]
+fn without_pkexec_or_a_terminal_the_command_is_shown_and_sudo_is_never_run() {
+    let sb = Sandbox::new("dpkg");
+    sb.hide("pkexec");
+    stage_deb(&sb);
+    // Confirmed in the app, but nothing can ask for the password: manual, not installable.
+    let o = sb.run(&["update", "--yes"], &[("ATLAS_UPDATE_PROGRESS", "1")]);
+    let out = text(&o);
+    assert!(o.status.success(), "{out}");
+    assert!(
+        out.contains(
+            "@@atlas managed package apt manual sudo apt install ./atlas_99.0.0_amd64.deb"
+        ),
+        "{out}"
+    );
+    assert!(
+        sb.calls().is_empty(),
+        "no sudo without a tty: {:?}",
+        sb.calls()
+    );
+    // Outside the app the same situation is a failure that still names the command.
+    let o = sb.run(&["update", "--yes"], &[]);
+    let out = text(&o);
+    assert!(!o.status.success(), "{out}");
+    assert!(
+        out.contains("sudo apt install ./atlas_99.0.0_amd64.deb"),
+        "{out}"
+    );
+    assert!(sb.calls().is_empty(), "{:?}", sb.calls());
+}
+
+#[test]
+fn the_app_confirmation_installs_through_pkexec() {
+    let sb = Sandbox::new("dpkg");
+    let name = stage_deb(&sb);
+    let o = sb.run(&["update", "--yes"], &[("ATLAS_UPDATE_PROGRESS", "1")]);
+    let out = text(&o);
+    assert!(o.status.success(), "{out}");
+    assert!(!out.contains("@@atlas managed"), "{out}");
+    assert!(
+        sb.calls()
+            .iter()
+            .any(|c| c.starts_with("pkexec apt-get install") && c.contains(&name)),
+        "{:?}",
+        sb.calls()
+    );
 }
 
 #[test]

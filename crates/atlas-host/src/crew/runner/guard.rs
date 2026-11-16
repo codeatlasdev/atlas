@@ -180,6 +180,8 @@ async fn diff_of(t: Tree<'_>, base: &str) -> Result<String, String> {
             "diff",
             "--no-color",
             "--no-renames",
+            // A `diff.external` driver prints no `diff --git` header: the parser would see no files.
+            "--no-ext-diff",
             // The parser below wants `a/` and `b/`: the user's `diff.mnemonicPrefix` and
             // `diff.noprefix` must not change them.
             "--src-prefix=a/",

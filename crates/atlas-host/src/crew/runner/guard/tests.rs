@@ -510,3 +510,24 @@ async fn guards_read_the_diff_whatever_prefix_the_users_git_config_asks_for() {
         assert!(has(&v, "ci.json"), "{key}: {:?}", v.reasons);
     }
 }
+
+// Regression (#414): with `diff.external` (difftastic and friends) in the user's git config `git diff` prints no
+// `diff --git` header, so the guard saw no files and a removed assertion passed silently.
+#[cfg(unix)]
+#[tokio::test]
+async fn guards_read_the_diff_whatever_external_diff_the_users_git_config_asks_for() {
+    let t = repo();
+    let d = t.path();
+    git(d, &["config", "diff.external", "cat \"$5\" #"]);
+    write(
+        d,
+        "src/tests.rs",
+        "#[test]\nfn adds() {\n    assert_eq!(add(1, 2), 3);\n}\n\n#[test]\nfn negative() {\n    assert_eq!(add(-1, -1), -2);\n}\n",
+    );
+    let v = run(d, "Done.", &[]).await;
+    assert!(
+        has(&v, "removes 1 assertion(s) from src/tests.rs"),
+        "{:?}",
+        v.reasons
+    );
+}

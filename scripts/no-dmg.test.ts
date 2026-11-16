@@ -23,10 +23,14 @@ describe("local, debug and agent builds never build the DMG", () => {
 		expect(cmd).not.toMatch(/dmg/);
 	});
 
-	test("desktop-agent.sh builds through that entry, never the full bundle, and does not unset CI", () => {
+	test("desktop-agent.sh builds through the app-only entries, never the full bundle, and does not unset CI", () => {
 		const sh = read("scripts/desktop-agent.sh");
 		expect(sh).toMatch(/desktop:build:app/);
-		expect(sh).not.toMatch(/desktop:build(?!:app)/);
+		// Linux builds the bare debug binary with the bundled frontend: no bundle at all, so no DMG either.
+		expect(pkg.scripts["desktop:build:debug"]).toMatch(/cargo build -p atlas-desktop\b/);
+		expect(pkg.scripts["desktop:build:debug"]).not.toMatch(/tauri build|dmg/);
+		const entries = [...sh.matchAll(/desktop:build[\w:-]*/g)].map((m) => m[0]);
+		expect(entries.filter((e) => e !== "desktop:build:app" && e !== "desktop:build:debug")).toEqual([]);
 		// `CI` set is what makes tauri's bundle_dmg.sh skip Finder; unsetting it re-enabled the AppleScript layout
 		expect(sh).not.toMatch(/env -u CI/);
 	});

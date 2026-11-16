@@ -7,6 +7,7 @@
 	import { Dialog, Kbd } from "@codeatlasdev/ui";
 	import { Search, Plus, Plug, Settings, Keyboard } from "@lucide/svelte";
 	import CrewmateFace from "#lib/crew/CrewmateFace.svelte";
+	import { kbd } from "#lib/keys.ts";
 	import { filterRows, cmdKeyIndex, keycapLabel } from "#lib/crew/crewPalette.ts";
 	import type { PaletteRow } from "#lib/crew/crewPalette.ts";
 
@@ -206,7 +207,7 @@
 
 				<!-- Keycap -->
 				{#if cap}
-					<Kbd class="pal-kbd">⌘{cap}</Kbd>
+					<Kbd class="pal-kbd">{kbd(`cmd-${cap}`)}</Kbd>
 				{/if}
 			</button>
 		{/each}

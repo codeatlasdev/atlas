@@ -51,6 +51,8 @@ describe("redaction on the way out", () => {
 		...fixture,
 		hostdLog: "GITHUB_TOKEN=ghp_abcdefghijklmnopqrstuvwxyz0123456789 at /Users/bob/work",
 		appLog: "Authorization: Bearer abc.def.ghi",
+		// stderr.log carries whatever GTK/WebKit or a child printed, env dumps included (#273).
+		stderrLog: "WebKitWebProcess: OPENAI_API_KEY=sk-proj-abcdefghijklmnopqrstuvwxyz012345 failed",
 	};
 
 	test("a report never contains a secret even if the log still did", () => {
@@ -61,7 +63,42 @@ describe("redaction on the way out", () => {
 			expect(out).not.toContain("ghp_abcdefghijklmnopqrstuvwxyz0123456789");
 			expect(out).not.toContain("abc.def.ghi");
 			expect(out).not.toContain("/Users/bob");
+			expect(out).not.toContain("sk-proj-abcdefghijklmnopqrstuvwxyz012345");
 		}
+	});
+
+	// #265: the line that explained a blank window only existed on a terminal; now it is in the report.
+	test("the stderr tail reaches the report", () => {
+		const md = markdownReport(hostErrorReport("x", parseDiagnostics(fixture)), 100_000);
+		expect(md).toContain("## stderr.log (tail)");
+		expect(md).toContain("EGL_BAD_PARAMETER");
+	});
+
+	// The default limit (4000) cuts the tail of the report: stderr must come before the hostd/app tails.
+	test("the stderr tail survives the default limit behind full hostd and app tails", () => {
+		const lines = (tag) =>
+			Array.from({ length: 40 }, (_, i) => `${tag} line ${i} some ordinary log text`).join("\n");
+		const d = parseDiagnostics({
+			...fixture,
+			hostdLog: lines("hostd"),
+			appLog: lines("app"),
+			stderrLog: `${lines("stderr")}\nCould not create default EGL display: EGL_BAD_PARAMETER`,
+		});
+		const md = markdownReport(hostErrorReport("x", d));
+		expect(md).toContain("## stderr.log (tail)");
+		expect(md).toContain("EGL_BAD_PARAMETER");
+	});
+
+	test("Copy details carries the redacted stderr tail", () => {
+		const d = parseDiagnostics({
+			...fixture,
+			stderrLog:
+				"WebKitWebProcess: OPENAI_API_KEY=sk-proj-abcdefghijklmnopqrstuvwxyz012345 EGL_BAD_PARAMETER",
+		});
+		const t = detailsText(hostErrorReport("x", d));
+		expect(t).toContain("stderr.log (tail):");
+		expect(t).toContain("EGL_BAD_PARAMETER");
+		expect(t).not.toContain("sk-proj-abcdefghijklmnopqrstuvwxyz012345");
 	});
 
 	test("redactText keeps ordinary text and drops named secrets", () => {
@@ -126,12 +163,11 @@ describe("diagnose: what a remote maintainer reads first", () => {
 		const l = w({ install: { ...fixture.install, cliLinkedTo: "/repo/target/debug/atlas" } });
 		expect(findings(l).join(" ")).toContain("linked to a dev build");
 	});
-	test("Markdown and Copy details carry the install block and the findings", () => {
+	test("Markdown and Copy details carry the install facts and the findings", () => {
 		const r = hostErrorReport("x", w({ install: { ...fixture.install, translocated: true } }));
 		const md = markdownReport(r, 100_000);
-		expect(md).toContain("## Install");
 		expect(md).toContain("- Running bundle: /Applications/Atlas.app");
-		expect(md).toContain("- CLI: ~/.atlas/bin/atlas");
+		expect(md).toContain("- CLI path: ~/.atlas/bin/atlas");
 		expect(md).toContain("App Translocation");
 		expect(detailsText(r)).toContain("Installed app: /Applications/Atlas.app");
 	});

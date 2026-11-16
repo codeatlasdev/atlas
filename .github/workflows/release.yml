@@ -1,25 +1,38 @@
 name: Release
-run-name: Release ${{ inputs.tag || github.ref_name }}
+run-name: ${{ inputs.build_only && 'Build only' || 'Release' }} ${{ inputs.tag || github.ref_name }}
 
 # Runs on GitHub-hosted runners when a v* tag is pushed (`bun run release` pushes it), or by hand for an
 # existing tag (`bun run release --publish vX.Y.Z`, which dispatches this workflow from main with `tag`).
-# Publishes only after the CI run of the tagged commit passed (scripts/ci-passed.sh).
+# Publishes only after the CI run of the tagged commit passed (scripts/ci-passed.sh) and after every Linux
+# package and the AppImage were installed and opened in Arch, Fedora, Ubuntu and Debian containers (verify-linux).
+#
+# Build only (`gh workflow run release.yml --ref <branch> -f build_only=true`, docs/release.md): builds and verifies
+# every artifact from the branch, uploads them as workflow artifacts, and creates no tag and no release, so main can
+# be tested end to end before a release. Signing is skipped; `publish` never runs.
 on:
   push:
     tags: ["v*"]
   workflow_dispatch:
     inputs:
       tag:
-        description: Existing tag to build and publish (vX.Y.Z[-pre.N])
-        required: true
+        description: Existing tag to build and publish (vX.Y.Z[-pre.N]); not used with build_only
+        required: false
         type: string
+      build_only:
+        description: Build and verify every artifact from the selected ref; no tag, no release, no signing
+        required: false
+        default: false
+        type: boolean
 
 permissions:
   contents: read
 
 env:
   CARGO_TERM_COLOR: always
-  TAG: ${{ inputs.tag || github.ref_name }}
+  # A build-only run names its files after a throwaway valid prerelease version (the Arch package version is
+  # rendered from it) and builds the dispatched commit; a release builds the tag.
+  TAG: ${{ inputs.build_only && format('v0.0.0-alpha.{0}', github.run_number) || inputs.tag || github.ref_name }}
+  REF: ${{ inputs.build_only && github.sha || format('refs/tags/{0}', inputs.tag || github.ref_name) }}
 
 concurrency:
   group: release-${{ inputs.tag || github.ref_name }}
@@ -39,7 +52,14 @@ jobs:
         with:
           persist-credentials: false
 
+      - name: A release dispatch names its tag
+        if: ${{ github.event_name == 'workflow_dispatch' && !inputs.build_only && inputs.tag == '' }}
+        run: |
+          echo "::error::dispatch with tag=vX.Y.Z to publish, or build_only=true to build without publishing"
+          exit 1
+
       - name: CI passed on the tagged commit
+        if: ${{ !inputs.build_only }}
         env:
           GH_TOKEN: ${{ github.token }}
           REPO: ${{ github.repository }}
@@ -55,7 +75,7 @@ jobs:
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
-          ref: refs/tags/${{ env.TAG }}
+          ref: ${{ env.REF }}
           persist-credentials: false
 
       - name: Install Rust
@@ -137,7 +157,7 @@ jobs:
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
-          ref: refs/tags/${{ env.TAG }}
+          ref: ${{ env.REF }}
           persist-credentials: false
 
       - name: System libraries
@@ -217,7 +237,7 @@ jobs:
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
-          ref: refs/tags/${{ env.TAG }}
+          ref: ${{ env.REF }}
           persist-credentials: false
 
       - name: System libraries
@@ -282,7 +302,7 @@ jobs:
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
-          ref: refs/tags/${{ env.TAG }}
+          ref: ${{ env.REF }}
           persist-credentials: false
 
       - name: System tools
@@ -345,7 +365,7 @@ jobs:
   # approval of the signing policy are what gate the signature itself. The jobs get read-only tokens.
   sign-binaries:
     name: Sign binaries (SignPath)
-    if: ${{ vars.SIGNPATH_ENABLED == 'true' }}
+    if: ${{ vars.SIGNPATH_ENABLED == 'true' && !inputs.build_only }}
     needs: windows-binaries
     runs-on: ubuntu-latest
     timeout-minutes: 400
@@ -391,7 +411,7 @@ jobs:
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
-          ref: refs/tags/${{ env.TAG }}
+          ref: ${{ env.REF }}
           persist-credentials: false
 
       - name: System tools
@@ -442,7 +462,7 @@ jobs:
 
   sign-installer:
     name: Sign installer (SignPath)
-    if: ${{ vars.SIGNPATH_ENABLED == 'true' }}
+    if: ${{ vars.SIGNPATH_ENABLED == 'true' && !inputs.build_only }}
     needs: windows-installer
     runs-on: ubuntu-latest
     timeout-minutes: 400
@@ -487,7 +507,7 @@ jobs:
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
-          ref: refs/tags/${{ env.TAG }}
+          ref: ${{ env.REF }}
           persist-credentials: false
 
       - name: System tools
@@ -536,7 +556,7 @@ jobs:
 
   sign-setup:
     name: Sign Atlas-Setup (SignPath)
-    if: ${{ vars.SIGNPATH_ENABLED == 'true' }}
+    if: ${{ vars.SIGNPATH_ENABLED == 'true' && !inputs.build_only }}
     needs: windows-setup
     runs-on: ubuntu-latest
     timeout-minutes: 400
@@ -630,7 +650,7 @@ jobs:
 
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
-          ref: refs/tags/${{ env.TAG }}
+          ref: ${{ env.REF }}
           persist-credentials: false
 
       - name: Download Linux build
@@ -661,12 +681,106 @@ jobs:
           name: atlas-x86_64-unknown-linux-gnu-arch
           path: dist/*
 
+  # The Linux assets, executed before anything is published (#283, #312): in a fresh container of each distro the
+  # package is installed with the distro's own tool, `atlas --version` and `atlas doctor` run, and then both the
+  # AppImage and the package's atlas-desktop are opened on a private headless sway (Mesa llvmpipe) by
+  # scripts/linux-launch-check.sh, which fails on a crash, a window that never maps, a blank page or an error in
+  # the app's log. Any failure here blocks `publish`. Debian and Ubuntu share the .deb, Fedora takes the .rpm,
+  # Arch the .pkg.tar.zst made from the .deb.
+  verify-linux:
+    name: Verify Linux (${{ matrix.name }})
+    needs: [build-linux, build-arch]
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - name: Arch Linux
+            slug: arch
+            image: archlinux:latest
+            setup: pacman -Syu --noconfirm --needed git sway grim mesa dbus ttf-dejavu xorg-xwayland procps-ng && cp "$(command -v sway)" /usr/local/bin/sway
+            install: pacman -U --noconfirm dist/*.pkg.tar.zst
+          - name: Fedora
+            slug: fedora
+            image: fedora:latest
+            setup: dnf install -y git sway grim mesa-dri-drivers dbus-daemon dejavu-sans-fonts xorg-x11-server-Xwayland procps-ng findutils && cp "$(command -v sway)" /usr/local/bin/sway
+            install: dnf install -y dist/*.rpm
+          - name: Ubuntu 24.04
+            slug: ubuntu
+            image: ubuntu:24.04
+            setup: apt-get update && apt-get install -y --no-install-recommends ca-certificates git sway grim dbus libgl1-mesa-dri libegl1 xwayland fonts-dejavu-core procps
+            install: apt-get install -y ./dist/*.deb
+          - name: Debian stable
+            slug: debian
+            image: debian:stable
+            setup: apt-get update && apt-get install -y --no-install-recommends ca-certificates git sway grim dbus libgl1-mesa-dri libegl1 xwayland fonts-dejavu-core procps
+            install: apt-get install -y ./dist/*.deb
+    container: ${{ matrix.image }}
+    env:
+      DEBIAN_FRONTEND: noninteractive
+    steps:
+      # Arch and Fedora ship sway with file capabilities (cap_sys_nice); a container without that capability cannot exec
+      # it ("Operation not permitted"). A copy has no xattrs, so it runs, and /usr/local/bin comes first on PATH.
+      - name: Tools and the headless display
+        run: ${{ matrix.setup }}
+
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          ref: ${{ env.REF }}
+          persist-credentials: false
+
+      - name: Download the Linux assets
+        uses: actions/download-artifact@9000827ccba6bdab643e8b6fd33ac0654aef8333 # v8.0.2
+        with:
+          pattern: atlas-x86_64-unknown-linux-gnu*
+          merge-multiple: true
+          path: dist/
+
+      # The package manager resolves the runtime libraries (WebKitGTK, GTK) the package declares: a missing
+      # dependency fails here, not on a user's machine.
+      - name: Install the package
+        run: |
+          ls -l dist
+          ${{ matrix.install }}
+
+      - name: atlas --version and atlas doctor
+        run: |
+          atlas --version
+          if [ "${{ inputs.build_only }}" != true ]; then atlas --version | grep -F "${TAG#v}"; fi
+          command -v atlas-desktop
+          atlas doctor --json | tee doctor.json
+
+      # A container has no user namespaces for WebKitGTK's own sandbox (bubblewrap); without the variable the web
+      # process aborts at start whatever the build is. Everything else is what a user gets.
+      - name: Open the AppImage
+        run: |
+          APPIMAGE=$(ls dist/Atlas-*.AppImage)
+          chmod +x "$APPIMAGE"
+          scripts/linux-launch-check.sh --out check/appimage --env WEBKIT_DISABLE_SANDBOX_THIS_IS_DANGEROUS=1 \
+            --env ATLAS_BIN="$(command -v atlas)" "$APPIMAGE"
+
+      - name: Open the installed atlas-desktop
+        run: |
+          scripts/linux-launch-check.sh --out check/package --env WEBKIT_DISABLE_SANDBOX_THIS_IS_DANGEROUS=1 "$(command -v atlas-desktop)"
+
+      - name: Screenshots and logs
+        if: ${{ !cancelled() }}
+        uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
+        with:
+          name: verify-linux-${{ matrix.slug }}
+          path: |
+            check/
+            doctor.json
+          if-no-files-found: ignore
+          retention-days: 14
+
   publish:
     name: Publish Release
-    needs: [build, build-linux, build-linux-arm64, build-arch, build-windows]
+    needs: [build, build-linux, build-linux-arm64, build-arch, build-windows, verify-linux]
     # Explicit: without an `if`, a skipped job anywhere upstream (the optional SignPath jobs feeding build-windows)
     # skips publish too, and v1.5.0-alpha.25's first full run built everything and published nothing.
-    if: ${{ !cancelled() && needs.build.result == 'success' && needs.build-linux.result == 'success' && needs.build-linux-arm64.result == 'success' && needs.build-arch.result == 'success' && needs.build-windows.result == 'success' }}
+    if: ${{ !cancelled() && !inputs.build_only && needs.build.result == 'success' && needs.verify-linux.result == 'success' && needs.build-linux.result == 'success' && needs.build-linux-arm64.result == 'success' && needs.build-arch.result == 'success' && needs.build-windows.result == 'success' }}
     runs-on: ubuntu-latest
     timeout-minutes: 15
     permissions:
@@ -674,7 +788,7 @@ jobs:
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
-          ref: refs/tags/${{ env.TAG }}
+          ref: ${{ env.REF }}
           persist-credentials: false
 
       - name: Install Bun

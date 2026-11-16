@@ -401,7 +401,7 @@ Layout under `/var/lib/atlas-cm/<id>/`:
 | path | owner | holds |
 |---|---|---|
 | `home/` | crewmate, 0700 | `$HOME`: the agents' sign-ins |
-| `work/` | crewmate, 2770 (setgid) | the checkout (a full clone, since a worktree would point into the crew home); hostd writes it through the group |
+| `work/` | crewmate, group = the crew user's own group, 2770 (setgid) | the checkout (a full clone, since a worktree would point into the crew home); hostd writes it through that group (its groups are fixed when it starts, so a group made later for each crewmate could never be one of them) |
 | `crew-runtime/` | crew user, group crewmate, 0750 | what the agent reads and cannot change: MCP config, omp approval extension, hook endpoint file, git config |
 | `memory.md` | crewmate, 0660 | the agent appends, hostd edits it for the apps |
 
@@ -762,7 +762,7 @@ RestartSec=5
 NoNewPrivileges=true
 ProtectSystem=strict
 ProtectHome=read-only
-ReadWritePaths=<home>
+ReadWritePaths=<home> -/var/lib/atlas-cm
 PrivateTmp=true
 ProtectKernelTunables=true
 ProtectControlGroups=true
@@ -781,7 +781,7 @@ What the hardening does, and what it costs (every directive exists in systemd 24
 |---|---|
 | `ProtectSystem=strict` | the whole filesystem is read-only except `ReadWritePaths` and `/dev`, `/proc`, `/sys` |
 | `ProtectHome=read-only` | `/home`, `/root` and `/run/user` are read-only: a crewmate cannot change other users' files there |
-| `ReadWritePaths=<home>` | the crew home stays writable, wherever it is. Everything agents install lives inside it and is on `PATH` (`~/.atlas`, `~/.bun`, `~/.local`, `~/.opencode`, `~/.npm-global`), so agents keep working |
+| `ReadWritePaths=<home> -/var/lib/atlas-cm` | the crew home stays writable, wherever it is, and so does the crewmates' parent directory when [isolation](#one-linux-user-per-crewmate) made one (`-`: no error when it does not exist). Everything agents install lives inside it and is on `PATH` (`~/.atlas`, `~/.bun`, `~/.local`, `~/.opencode`, `~/.npm-global`), so agents keep working |
 | `ProtectKernelTunables=true`, `ProtectControlGroups=true` | `/proc/sys`, `/sys` and the cgroup tree are read-only |
 | `RestrictSUIDSGID=true` | the service cannot create setuid or setgid files |
 | `MemoryMax=80%` | the service (hostd and every agent under it) is killed by the kernel past 80 % of the server's memory, instead of taking the host down. Needs cgroup v2 (the default since Ubuntu 21.10, Debian 11); on cgroup v1 the limit is ignored |

@@ -181,7 +181,7 @@ RestartSec=5\n\
 NoNewPrivileges=true\n\
 ProtectSystem=strict\n\
 ProtectHome=read-only\n\
-ReadWritePaths={h}\n\
+ReadWritePaths={h} -/var/lib/atlas-cm\n\
 PrivateTmp=true\n\
 ProtectKernelTunables=true\n\
 ProtectControlGroups=true\n\
@@ -265,13 +265,13 @@ mod tests {
         assert!(fresh.contains("User=atlas-crew"));
         assert!(fresh.contains("Environment=ATLAS_CREW_HOST=1"));
         assert!(fresh.contains("ExecStart=/usr/local/lib/atlas-crew/atlas hostd"));
-        assert!(fresh.contains("ReadWritePaths=/var/lib/atlas-crew\n"));
+        assert!(fresh.contains("ReadWritePaths=/var/lib/atlas-crew -/var/lib/atlas-cm\n"));
         assert!(fresh.contains("Environment=ATLAS_HOSTD_IDLE_SECS=never"));
 
         // The migrated server keeps its user and its home (the data), under the new unit.
         let old = systemd_unit(&account(probe(true, true, false)));
         assert!(old.contains("User=atlas-bot\n"));
-        assert!(old.contains("ReadWritePaths=/var/lib/atlas-bot\n"));
+        assert!(old.contains("ReadWritePaths=/var/lib/atlas-bot -/var/lib/atlas-cm\n"));
         assert!(old.contains("PATH=/var/lib/atlas-bot/.atlas/bin:"));
         assert!(old.contains("ExecStart=/usr/local/lib/atlas-crew/atlas hostd"));
         assert!(old.contains("ATLAS_CREW_HOST=1") && !old.contains("ATLAS_BOT_HOST"));
@@ -349,7 +349,7 @@ mod tests {
     fn the_crew_home_stays_writable_and_holds_every_agent_dir() {
         let a = account(Probe::default());
         let unit = systemd_unit(&a);
-        assert!(unit.contains(&format!("ReadWritePaths={}\n", a.home)));
+        assert!(unit.contains(&format!("ReadWritePaths={} -/var/lib/atlas-cm\n", a.home)));
         let path = unit
             .lines()
             .find_map(|l| l.strip_prefix("Environment=PATH="))

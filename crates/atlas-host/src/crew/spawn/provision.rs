@@ -41,11 +41,17 @@ pub enum ProvResponse {
 }
 
 /// Who owns a path: a crewmate user, or the crew user that runs hostd.
+///
+/// The group is what lets hostd (the crew user, whose groups are fixed when its process starts) reach a
+/// crewmate's files: a group made for a crewmate after hostd started can never be one of hostd's, so what hostd
+/// must reach is in the crew user's own primary group instead (found by the real-systemd end-to-end test).
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub enum Who {
-    /// The crewmate being provisioned.
+    /// Owned by the crewmate, in the crew user's group: the crewmate uses it and hostd reaches it.
     Crewmate,
-    /// The crew user (hostd).
+    /// Owned and grouped by the crewmate alone: nobody else, hostd included, needs it.
+    CrewmatePrivate,
+    /// Owned by the crew user (hostd), in the crewmate's group so the agent can read it.
     Crew,
 }
 
@@ -54,9 +60,7 @@ pub enum Who {
 pub enum Step {
     /// `useradd` unless the user exists.
     CreateUser { user: String, dir: PathBuf },
-    /// Put the crew user in the crewmate's group (so it can traverse and write what is group-owned).
-    JoinGroup { crew: String, group: String },
-    /// A directory with this mode, owner and group (the group is always the crewmate's).
+    /// A directory with this mode and owner (and the group [`Who`] says).
     Dir {
         path: PathBuf,
         mode: u32,
@@ -89,11 +93,11 @@ pub struct PlanCfg {
 /// Create a crewmate's account and directories. The layout is the one `layout::Isolated` names:
 ///
 /// ```text
-/// <dir>/              crewmate 0750   the crew user is in its group: traverse only
-/// <dir>/home          crewmate 0700   $HOME: the engines' sign-ins
-/// <dir>/work          crewmate 2770   setgid: the crew user (group) writes, files keep the group
-/// <dir>/crew-runtime  crew     0750   hostd writes what the agent reads; the agent cannot change it
-/// <dir>/memory.md     crewmate 0660   the agent appends, hostd edits
+/// <dir>/              crewmate:crew-group 0750   the crew user traverses it through the group
+/// <dir>/home          crewmate:crewmate   0700   $HOME: the engines' sign-ins
+/// <dir>/work          crewmate:crew-group 2770   setgid: hostd (group) writes, files keep the group
+/// <dir>/crew-runtime  crew:crewmate       0750   hostd writes what the agent reads; the agent cannot change it
+/// <dir>/memory.md     crewmate:crew-group 0660   the agent appends, hostd edits
 /// ```
 pub fn provision_plan(cfg: &PlanCfg, user: &str) -> Result<Vec<Step>, Refused> {
     let slug = slug_of(user)?;
@@ -103,10 +107,6 @@ pub fn provision_plan(cfg: &PlanCfg, user: &str) -> Result<Vec<Step>, Refused> {
             user: user.to_string(),
             dir: dir.clone(),
         },
-        Step::JoinGroup {
-            crew: cfg.crew.clone(),
-            group: user.to_string(),
-        },
         Step::Dir {
             path: dir.clone(),
             mode: 0o750,
@@ -115,7 +115,7 @@ pub fn provision_plan(cfg: &PlanCfg, user: &str) -> Result<Vec<Step>, Refused> {
         Step::Dir {
             path: dir.join("home"),
             mode: 0o700,
-            owner: Who::Crewmate,
+            owner: Who::CrewmatePrivate,
         },
         Step::Dir {
             path: dir.join("work"),
@@ -198,7 +198,6 @@ fn run_step(host: &dyn Host, cfg: &PlanCfg, crewmate: &str, step: &Step) -> io::
                 user,
             ])
         }
-        Step::JoinGroup { crew, group } => host.run(&["usermod", "-aG", group, crew]),
         Step::Dir { path, mode, owner } => host.dir(path, *mode, owner, crewmate),
         Step::File { path, mode, owner } => host.file(path, *mode, owner, crewmate),
         Step::KillProcesses { user } => {
@@ -230,7 +229,6 @@ fn run_step(host: &dyn Host, cfg: &PlanCfg, crewmate: &str, step: &Step) -> io::
 fn describe(step: &Step) -> String {
     match step {
         Step::CreateUser { user, .. } => format!("creating user {user}"),
-        Step::JoinGroup { crew, group } => format!("adding {crew} to group {group}"),
         Step::Dir { path, .. } => format!("preparing {}", path.display()),
         Step::File { path, .. } => format!("preparing {}", path.display()),
         Step::KillProcesses { user } => format!("ending the processes of {user}"),
@@ -442,10 +440,12 @@ impl Host for System {
 impl System {
     fn owner_ids(&self, owner: &Who, crewmate: &str) -> io::Result<(u32, u32)> {
         let cm = ids_of(crewmate)?;
+        let crew = ids_of(&self.cfg.crew)?;
         Ok(match owner {
-            Who::Crewmate => (cm.uid, cm.gid),
+            Who::Crewmate => (cm.uid, crew.gid),
+            Who::CrewmatePrivate => (cm.uid, cm.gid),
             // The crew user owns it; the group stays the crewmate's, so the agent can read it.
-            Who::Crew => (ids_of(&self.cfg.crew)?.uid, cm.gid),
+            Who::Crew => (crew.uid, cm.gid),
         })
     }
 }
@@ -672,9 +672,8 @@ mod tests {
             log,
             [
                 "useradd --system --user-group --no-create-home --home-dir /var/lib/atlas-cm/3f2a9c1e5b7d/home --shell /usr/sbin/nologin atlas-cm-3f2a9c1e5b7d",
-                "usermod -aG atlas-cm-3f2a9c1e5b7d atlas-crew",
                 "dir /var/lib/atlas-cm/3f2a9c1e5b7d 750 Crewmate",
-                "dir /var/lib/atlas-cm/3f2a9c1e5b7d/home 700 Crewmate",
+                "dir /var/lib/atlas-cm/3f2a9c1e5b7d/home 700 CrewmatePrivate",
                 "dir /var/lib/atlas-cm/3f2a9c1e5b7d/work 2770 Crewmate",
                 "dir /var/lib/atlas-cm/3f2a9c1e5b7d/crew-runtime 750 Crew",
                 "file /var/lib/atlas-cm/3f2a9c1e5b7d/memory.md 660 Crewmate",
@@ -967,7 +966,6 @@ atlas-cm-AAAAAAAAAAAA:x:994:994::/x:/bin/false\n";
             }
         }
         let _guard = Cleanup(&host, &cfg);
-        // `usermod -aG <group> root` is harmless for root; the crew user stands in as root here.
         execute(&host, &cfg, user, &provision_plan(&cfg, user).unwrap()).unwrap();
         let ids = super::super::exec::lookup(user).unwrap();
         assert_ne!(ids.uid, 0);
@@ -976,8 +974,11 @@ atlas-cm-AAAAAAAAAAAA:x:994:994::/x:/bin/false\n";
         use std::os::unix::fs::MetadataExt;
         let work = meta("work");
         assert_eq!(work.permissions().mode() & 0o7777, 0o2770);
-        assert_eq!((work.uid(), work.gid()), (ids.uid, ids.gid));
+        // hostd reaches it through the crew user's group (here root's: the crew user stands in as root).
+        assert_eq!(work.uid(), ids.uid);
+        assert_eq!(work.gid(), 0);
         assert_eq!(meta("home").permissions().mode() & 0o7777, 0o700);
+        assert_eq!(meta("home").gid(), ids.gid, "$HOME is the crewmate's alone");
         // crew-runtime: owned by the crew user (root here), group the crewmate's.
         let rt = meta("crew-runtime");
         assert_eq!((rt.uid(), rt.gid()), (0, ids.gid));

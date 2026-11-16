@@ -71,12 +71,19 @@ pub fn plan(is_root: bool, tty: bool, yes: bool, has: impl Fn(&str) -> bool) -> 
 
 /// The full command line: escalation prefix + package manager + file.
 pub fn command_line(esc: Escalation, pm: PackageManager, file: &Path) -> Vec<String> {
-    let mut argv = match esc {
-        Escalation::None => Vec::new(),
-        Escalation::Sudo => vec!["sudo".to_string()],
-        Escalation::Pkexec => vec!["pkexec".to_string()],
+    escalated(esc, pm.install_argv(file))
+}
+
+/// `argv` behind the escalation prefix (`sudo`, `pkexec`, or nothing for root).
+pub fn escalated(esc: Escalation, mut argv: Vec<String>) -> Vec<String> {
+    let prefix = match esc {
+        Escalation::None => None,
+        Escalation::Sudo => Some("sudo"),
+        Escalation::Pkexec => Some("pkexec"),
     };
-    argv.extend(pm.install_argv(file));
+    if let Some(p) = prefix {
+        argv.insert(0, p.to_string());
+    }
     argv
 }
 

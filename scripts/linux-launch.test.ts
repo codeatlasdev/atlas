@@ -46,6 +46,26 @@ describe("release.yml", () => {
 	});
 });
 
+// #265: a package install without GStreamer's plugins aborts the web process as soon as a page loads an <audio> or
+// <video> (MediaViewer), and no Web Audio decode works. The runtime packages webkit2gtk pulls in are only the libraries.
+describe("the .deb and .rpm", () => {
+	const conf = JSON.parse(read("crates/atlas-desktop/tauri.linux.conf.json"));
+	test("the .deb depends on the Debian/Ubuntu GStreamer base and good plugin packages", () => {
+		expect(conf.bundle.linux.deb.depends).toEqual(expect.arrayContaining(["gstreamer1.0-plugins-base", "gstreamer1.0-plugins-good"]));
+	});
+	test("the .rpm depends on the Fedora GStreamer base and good plugin packages", () => {
+		expect(conf.bundle.linux.rpm.depends).toEqual(expect.arrayContaining(["gstreamer1-plugins-base", "gstreamer1-plugins-good"]));
+	});
+	test("both keep git, which atlas needs", () => {
+		expect(conf.bundle.linux.deb.depends).toContain("git");
+		expect(conf.bundle.linux.rpm.depends).toContain("git");
+	});
+	test("verify-linux checks, after the install, that the plugins are on disk", () => {
+		const steps = release.jobs["verify-linux"].steps.map((s: any) => s.run ?? "").join("\n");
+		expect(steps).toContain("libgstogg.so");
+	});
+});
+
 describe("the Arch package", () => {
 	// Incident: verify-linux (build-only run 43766908511): `pacman -U` of the package, then atlas-desktop panicked at start
 	// ("Failed to load ayatana-appindicator3") because libayatana-appindicator was only an optdepend. The tray library is

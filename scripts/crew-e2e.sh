@@ -387,6 +387,9 @@ echo "the helper refuses git config, -c first, and a cwd outside A's directory"
 kill "$SPAWN_TUNNEL_PID"
 wait "$SPAWN_TUNNEL_PID" 2>/dev/null || true
 
+# What the checks above left in A's tree would make the guards refuse every later task of A.
+as_user "$CMUSER" sh -c "cd '$WORKA' && rm -rf .git f fsm.sh marker stolen"
+
 # (6) isolation installed but its helper gone: tasks are refused, nothing runs as the crew user
 srv systemctl stop atlas-crew-spawn.socket atlas-crew-spawn.service
 srv rm -f /run/atlas-crew/spawn.sock

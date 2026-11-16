@@ -94,11 +94,12 @@ case "$prompt" in
         -d "{\"pane_key\":\"$ATLAS_PANE_KEY\",\"args\":$1}" \
         "http://127.0.0.1:$ATLAS_HOOK_PORT/crew/$ATLAS_CREWMATE_ID/ui_gate" | tr -d '"\\\n' | cut -c1-300
     }
+    wm=$(stat -c '%a/%G' .)
     printf 'name: x\nservices:\n  web:\n    command: echo web\n    port: 5173\naffected:\n  command: touch /var/lib/atlas-crew/e2e-affected-ran\n' >atlas.yaml
     plan=$(uig '{"action":"run","base_url":"http://127.0.0.1:47777","files":["a.txt"]}')
     ln -s "/var/lib/atlas-cm/$bslug/work" .atlas
     link=$(uig '{"action":"add_regression","url":"http://127.0.0.1:47777/x","note":"n"}')
-    reply "uigate plan=[$plan] link=[$link]"
+    reply "uigate plan=[$plan] link=[$link] work=[$wm]"
     exit 0
     ;;
   *E2E_HANG_ONCE*)

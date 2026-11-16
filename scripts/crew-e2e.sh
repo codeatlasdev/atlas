@@ -471,6 +471,7 @@ echo "capture: B's loopback port (127.0.0.1 and [::]), 0.0.0.0 and 169.254.169.2
 # plan, then links `.atlas` to B's work tree and asks to register a regression: B's tree must not get the registry.
 denied "A making a file in the crew home" as_user "$CMUSER" touch "$HOME_DIR/e2e-affected-ran"
 srv rm -rf "$WORKA/.atlas" "$WORKA/atlas.yaml"
+echo "work/ before the task: $(mode_of "$WORKA") $(srv stat -c %a "$WORKA")"
 T=$(send_task "$CM" "E2E_UIGATE $SLUGB")
 wait_task "$CM" "$T" "done" 90
 UIGATE=$(task_json "$CM" "$T" | jq -r '.reply // .result')

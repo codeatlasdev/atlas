@@ -7,7 +7,7 @@ use std::time::Duration;
 
 use atlas_tui::{config, status};
 use serde::Serialize;
-use tauri::{AppHandle, Emitter, State};
+use tauri::{AppHandle, Emitter, Manager as _, State};
 
 use super::discover::{self, Event, Found, ScanOpts};
 use super::{notify_changed, root_of, update_entry};
@@ -167,19 +167,41 @@ fn view(e: &Entry, known: Option<&registry::Known>) -> ProjectView {
     }
 }
 
+/// Run blocking disk work (a project's `atlas.yaml`, its status file, `git remote`) on tokio's blocking pool. A sync
+/// Tauri command runs on the main thread, which on Linux is the GTK loop that paints the window: the project list was
+/// read there on every focus and every project added or relinked (#287).
+async fn off_main<T: Send + 'static>(
+    work: impl FnOnce() -> T + Send + 'static,
+) -> Result<T, String> {
+    tauri::async_runtime::spawn_blocking(work)
+        .await
+        .map_err(|e| e.to_string())
+}
+
+/// Every entry as the page sees it, reading each present local checkout.
+fn view_all(
+    entries: &[Entry],
+    known: &std::collections::HashMap<String, registry::Known>,
+) -> Vec<ProjectView> {
+    entries.iter().map(|e| view(e, known.get(&e.id))).collect()
+}
+
 #[tauri::command]
-pub fn projects_list(app: AppHandle, hub: State<'_, LiveHub>) -> Result<Vec<ProjectView>, String> {
-    let entries = registry::load()?;
-    for e in entries
-        .iter()
-        .filter(|e| !e.is_remote() && missing_of(e).is_none())
-    {
-        hub.ensure(&app, &e.id, Path::new(&e.root));
-    }
-    let known = registry::load_known();
-    let views: Vec<ProjectView> = entries.iter().map(|e| view(e, known.get(&e.id))).collect();
-    remember(&entries, &views);
-    Ok(views)
+pub async fn projects_list(app: AppHandle) -> Result<Vec<ProjectView>, String> {
+    off_main(move || {
+        let entries = registry::load()?;
+        let hub = app.state::<LiveHub>();
+        for e in entries
+            .iter()
+            .filter(|e| !e.is_remote() && missing_of(e).is_none())
+        {
+            hub.ensure(&app, &e.id, Path::new(&e.root));
+        }
+        let views = view_all(&entries, &registry::load_known());
+        remember(&entries, &views);
+        Ok(views)
+    })
+    .await?
 }
 
 /// Update the last-known name/remote of every present local project (best effort).
@@ -215,17 +237,17 @@ pub fn live_resync(app: AppHandle, hub: State<'_, LiveHub>, id: String) -> Resul
 }
 
 #[tauri::command]
-pub fn projects_add(
-    app: AppHandle,
-    hub: State<'_, LiveHub>,
-    root: String,
-) -> Result<ProjectView, String> {
-    let (entry, fresh) = registry::edit(|entries| register(entries, Path::new(&root)))?;
-    if fresh {
-        hub.ensure(&app, &entry.id, Path::new(&entry.root));
-        notify_changed(&app);
-    }
-    Ok(view(&entry, None))
+pub async fn projects_add(app: AppHandle, root: String) -> Result<ProjectView, String> {
+    off_main(move || {
+        let (entry, fresh) = registry::edit(|entries| register(entries, Path::new(&root)))?;
+        if fresh {
+            app.state::<LiveHub>()
+                .ensure(&app, &entry.id, Path::new(&entry.root));
+            notify_changed(&app);
+        }
+        Ok(view(&entry, None))
+    })
+    .await?
 }
 
 /// Registry edit behind `projects_add`: the project that contains `picked` (`project_root::resolve`: the nearest
@@ -526,23 +548,26 @@ pub fn projects_discover_cancel(disc: State<'_, Discovery>) {
 
 /// Point a project at a new folder, keeping its id so tabs, layouts and its icon stay attached.
 #[tauri::command]
-pub fn projects_relink(
+pub async fn projects_relink(
     app: AppHandle,
-    hub: State<'_, LiveHub>,
     id: String,
     root: String,
 ) -> Result<ProjectView, String> {
-    let (new, view_entry) = registry::edit(|entries| {
-        let new = relink(entries, &id, Path::new(&root))?;
-        let e = entries.iter().find(|e| e.id == id).cloned();
-        Ok((new, e))
-    })?;
-    hub.remove(&id);
-    hub.ensure(&app, &id, Path::new(&new));
-    notify_changed(&app);
-    view_entry
-        .map(|e| view(&e, None))
-        .ok_or_else(|| format!("unknown project {id}"))
+    off_main(move || {
+        let (new, view_entry) = registry::edit(|entries| {
+            let new = relink(entries, &id, Path::new(&root))?;
+            let e = entries.iter().find(|e| e.id == id).cloned();
+            Ok((new, e))
+        })?;
+        let hub = app.state::<LiveHub>();
+        hub.remove(&id);
+        hub.ensure(&app, &id, Path::new(&new));
+        notify_changed(&app);
+        view_entry
+            .map(|e| view(&e, None))
+            .ok_or_else(|| format!("unknown project {id}"))
+    })
+    .await?
 }
 
 /// Registry edit behind `projects_relink`; returns the root now stored.
@@ -652,11 +677,7 @@ pub async fn projects_find_moved(id: String) -> Result<Option<Found>, String> {
 /// Create an `atlas.yaml` in `dir` with `atlas init` (stack detection lives in the CLI) and
 /// register it. For the "Could use Atlas" results of discovery.
 #[tauri::command]
-pub async fn project_init(
-    app: AppHandle,
-    hub: State<'_, LiveHub>,
-    dir: String,
-) -> Result<ProjectView, String> {
+pub async fn project_init(app: AppHandle, dir: String) -> Result<ProjectView, String> {
     let out = tokio::process::Command::new(super::atlas_bin()?)
         .no_window()
         .args(["init", "--dir", &dir])
@@ -672,24 +693,27 @@ pub async fn project_init(
             err
         });
     }
-    projects_add(app, hub, dir)
+    projects_add(app, dir).await
 }
 
 /// "Save as atlas.yaml": write exactly the config Atlas detected for a file-less project (what the header chip showed,
 /// `initial_config`) and reload it as file-backed. Never overwrites an existing `atlas.yaml`.
 #[tauri::command]
-pub fn project_save_config(app: AppHandle, id: String) -> Result<ProjectView, String> {
-    let entries = registry::load()?;
-    let e = entries
-        .iter()
-        .find(|e| e.id == id)
-        .ok_or_else(|| format!("unknown project {id}"))?;
-    if e.is_remote() {
-        return Err(super::REMOTE_UNSUPPORTED.into());
-    }
-    save_detected(Path::new(&e.root))?;
-    notify_changed(&app);
-    Ok(view(e, None))
+pub async fn project_save_config(app: AppHandle, id: String) -> Result<ProjectView, String> {
+    off_main(move || {
+        let entries = registry::load()?;
+        let e = entries
+            .iter()
+            .find(|e| e.id == id)
+            .ok_or_else(|| format!("unknown project {id}"))?;
+        if e.is_remote() {
+            return Err(super::REMOTE_UNSUPPORTED.into());
+        }
+        save_detected(Path::new(&e.root))?;
+        notify_changed(&app);
+        Ok(view(e, None))
+    })
+    .await?
 }
 
 /// Write the detected `atlas.yaml` into `root` unless one is there already. Returns the text written.
@@ -776,6 +800,104 @@ mod tests {
         let hit = existing(&entries, &registry::id_for(&moved), &moved).unwrap();
         assert_eq!(hit.id, "old-id");
         assert!(existing(&entries, "x", &t.path().join("other")).is_none());
+    }
+
+    /// #287: `projects_list` read every project's `atlas.yaml`, its status file and its git remote on the main thread (a
+    /// sync Tauri command runs there; on Linux that is the GTK loop that paints), on every window focus. A command that
+    /// reads project checkouts must be `async` and do the reading through `off_main`.
+    #[test]
+    fn commands_that_read_project_checkouts_are_async_and_run_off_the_main_thread() {
+        let src = include_str!("projects.rs");
+        let code = src.split("#[cfg(test)]").next().unwrap();
+        let mut bad = Vec::new();
+        for chunk in code.split("#[tauri::command]").skip(1) {
+            let head = chunk.trim_start();
+            let body = chunk.split("\n}\n").next().unwrap_or(chunk);
+            // `view(` as a call, not the tail of another name (`ProjectView(`, `list_view(`).
+            let calls = |f: &str| {
+                body.match_indices(f)
+                    .any(|(i, _)| !body[..i].ends_with(|c: char| c.is_alphanumeric() || c == '_'))
+            };
+            let reads = calls("view_all(") || calls("view(") || calls("remember(");
+            if !reads {
+                continue;
+            }
+            let name = head.split('(').next().unwrap_or(head).to_string();
+            if !head.starts_with("pub async fn ") || !body.contains("off_main(") {
+                bad.push(name);
+            }
+        }
+        assert!(
+            bad.is_empty(),
+            "commands reading project checkouts on the main thread: {bad:?}"
+        );
+    }
+
+    /// #287: the blocking pool is not the thread that asked, and it does not hold that thread: a task waiting on the work
+    /// keeps running while it sleeps (a stalled main thread is exactly what the page saw on every focus).
+    #[test]
+    fn off_main_runs_the_work_elsewhere_and_leaves_the_caller_free() {
+        tauri::async_runtime::block_on(async {
+            let caller = std::thread::current().id();
+            let (worker, ticks) = tokio::join!(
+                off_main(|| {
+                    std::thread::sleep(Duration::from_millis(300));
+                    std::thread::current().id()
+                }),
+                async {
+                    let mut n = 0;
+                    for _ in 0..10 {
+                        tokio::time::sleep(Duration::from_millis(10)).await;
+                        n += 1;
+                    }
+                    n
+                }
+            );
+            assert_ne!(worker.unwrap(), caller);
+            assert_eq!(ticks, 10);
+        });
+    }
+
+    /// #287 acceptance: the list is what it was on the 13-repo selection fixture shape (`scripts/selection-bench.ts`): a
+    /// project per folder with its services, a folder without `atlas.yaml` detected, a gone one missing with its last
+    /// known name.
+    #[test]
+    fn the_list_of_thirteen_checkouts_reads_each_one_and_keeps_the_order() {
+        let t = tempfile::tempdir().unwrap();
+        let mut entries = Vec::new();
+        for i in 0..13 {
+            let d = t.path().join(format!("space-{i:02}"));
+            std::fs::create_dir_all(d.join("src")).unwrap();
+            std::fs::write(
+                d.join("atlas.yaml"),
+                format!(
+                    "name: space-{i}\nservices:\n  web:\n    command: \"sleep 1\"\n    port: {}\n  api:\n    command: \"sleep 1\"\n    port: {}\n",
+                    20000 + i,
+                    30000 + i
+                ),
+            )
+            .unwrap();
+            entries.push(entry(&format!("p{i}"), &d));
+        }
+        entries.push(entry("gone", &t.path().join("gone")));
+        let mut known = std::collections::HashMap::new();
+        known.insert(
+            "gone".to_string(),
+            registry::Known {
+                name: "Billing".into(),
+                remote: None,
+            },
+        );
+        let views = view_all(&entries, &known);
+        assert_eq!(views.len(), 14);
+        for (i, v) in views.iter().take(13).enumerate() {
+            assert_eq!(v.id, format!("p{i}"));
+            assert_eq!(v.name, format!("space-{i}"));
+            assert_eq!(v.services_total, 2);
+            assert!(v.missing.is_none() && v.error.is_none());
+        }
+        assert_eq!(views[13].name, "Billing");
+        assert_eq!(views[13].missing, Some(Missing::Root));
     }
 
     #[test]

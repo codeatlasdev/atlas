@@ -2,7 +2,7 @@
 /// The desktop's Settings → Crew; saved with the `act` scope, so a read-only phone sees it but cannot change it.
 library;
 
-import 'package:flutter/material.dart';
+import 'package:material_ui/material_ui.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 
 import 'package:atlas_mobile/core/protocol/crew_ops_models.dart';

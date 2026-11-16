@@ -1,7 +1,7 @@
 // AttentionCard is the one "this needs you" surface: a tone-tinted card with a tone border. The numbers
 // (fill and border alpha, radius, padding) used to be copied into five files; these pin the recipes so
 // the migration leaves every screen as it was.
-import 'package:flutter/material.dart';
+import 'package:material_ui/material_ui.dart';
 import 'package:flutter_test/flutter_test.dart';
 
 import 'package:atlas_mobile/core/ui/atlas_theme.dart';

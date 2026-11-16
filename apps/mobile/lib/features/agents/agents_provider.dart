@@ -141,7 +141,7 @@ class PendingApprovalNotifier extends Notifier<AgentApproval?> {
     _seed();
     // Already read by a screen of this computer (the project list, the inbox): there from the first frame.
     final statuses = agentStatusMapNotifierProvider(device);
-    return ref.exists(statuses)
+    return ref.read(statuses.exists)
         ? ref.read(statuses.notifier).approvals[paneKey]
         : null;
   }

@@ -1,7 +1,7 @@
 // Product review 2026-11-15 (macOS release check): a project's action rows ended in a loose letter ("x", "m"),
 // the desktop's keyboard key for the action, which means nothing on a phone and read as a stray button. A row
 // says what the action is and whether it asks first; one tap runs it, and screen readers hear it as one button.
-import 'package:flutter/material.dart';
+import 'package:material_ui/material_ui.dart';
 import 'package:flutter_test/flutter_test.dart';
 
 import 'package:atlas_mobile/features/projects/detail/action_tile.dart';

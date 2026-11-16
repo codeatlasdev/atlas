@@ -2,7 +2,7 @@
 /// primary and an outlined secondary, one shape so the cards read as one family.
 library;
 
-import 'package:flutter/material.dart';
+import 'package:material_ui/material_ui.dart';
 
 import 'package:atlas_mobile/core/ui/atlas_theme.dart';
 

@@ -1,7 +1,7 @@
 // Goldens: flutter test --update-goldens test/floating_tab_bar_test.dart
 import 'dart:io';
 
-import 'package:flutter/material.dart';
+import 'package:material_ui/material_ui.dart';
 import 'package:flutter/services.dart';
 import 'package:flutter_test/flutter_test.dart';
 

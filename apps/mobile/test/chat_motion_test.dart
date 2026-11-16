@@ -1,6 +1,6 @@
 // The crew chat felt static (2026-11-12): messages now arrive. Guards that an arrival
 // plays once, from its sender's side, and settles exactly in place.
-import 'package:flutter/material.dart';
+import 'package:material_ui/material_ui.dart';
 import 'package:flutter_test/flutter_test.dart';
 
 import 'package:atlas_mobile/features/crew/chat_motion.dart';

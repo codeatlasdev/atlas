@@ -132,6 +132,13 @@ if ! grep -q "^## \[$next\]" CHANGELOG.md; then
   if [[ $dry == 1 ]]; then echo "⚠ $msg (a real run stops here)"; else die "$msg"; fi
 fi
 
+# Everyone who worked on it is credited on the release page: stop before tagging if a commit identity maps to nobody
+# (the release workflow runs the same script to write the Contributors section). Reads the pushed HEAD on GitHub.
+if ! bun scripts/release-contributors.ts "$next" "$(git rev-parse HEAD)" --check; then
+  msg="a contributor would not be credited (see above)"
+  if [[ $dry == 1 ]]; then echo "⚠ $msg (a real run stops here)"; else die "$msg"; fi
+fi
+
 # Promotion determinism: stable == the soaked prerelease + version metadata.
 promoted_from=""
 if [[ "$channel" == stable && "$next" == *.*.0 ]]; then

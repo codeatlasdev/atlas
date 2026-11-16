@@ -790,6 +790,7 @@ jobs:
     timeout-minutes: 15
     permissions:
       contents: write   # the only job that may create the release
+      pull-requests: read   # scripts/release-contributors.ts reads each commit's PR author and reviewers
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
@@ -843,11 +844,13 @@ jobs:
           shasum -a 256 manifest.json >> SHA256SUMS
           cat SHA256SUMS
 
-      # The release body: this version's CHANGELOG.md section, then install/update steps, within GitHub's size cap
-      # (scripts/release-notes.ts shortens a section that would not fit; 1.5.0-alpha.26's was cut mid-entry).
+      # The release body: this version's CHANGELOG.md section, who worked on it, then install/update steps, within
+      # GitHub's size cap (scripts/release-notes.ts shortens a section that would not fit; 1.5.0-alpha.26's was cut
+      # mid-entry). scripts/release-contributors.ts fails the step if a commit identity maps to nobody.
       - name: Release notes
         env:
           MAKE_LATEST: ${{ steps.flags.outputs.make_latest }}
+          GH_TOKEN: ${{ github.token }}
         run: |
           V=${TAG#v}
           case "$V" in
@@ -865,7 +868,8 @@ jobs:
               printf '> This is %s It is not offered on the Stable channel; see [versioning](https://atlas.codeatlas.com.br/docs/versioning).\n\n' "$CH" >> header.md
             fi
           fi
-          cat > footer.md <<'EOF'
+          bun scripts/release-contributors.ts "$V" "$TAG" > footer.md
+          cat >> footer.md <<'EOF'
 
           ## Install
 

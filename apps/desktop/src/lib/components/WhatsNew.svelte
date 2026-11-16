@@ -174,7 +174,7 @@
 					</Button>
 				</div>
 			{:else if releases.length === 0}
-				<div class="state">
+				<div class="state" data-state="empty">
 					<Sparkles size={22} />
 					<b>No release notes for {u.notesFor ?? "this version"}</b>
 					<p>The changelog has no entry for it yet.</p>

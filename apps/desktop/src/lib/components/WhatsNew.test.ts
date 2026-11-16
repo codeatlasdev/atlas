@@ -178,7 +178,8 @@ for (const version of ["1.5.0-alpha.25", "1.5.0-alpha.26"]) {
 			async (cmd) => (cmd === "releases_between" ? [release(version, notes)] : {}),
 			running(version),
 		);
-		expect(body.textContent).not.toContain("No release notes");
+		// The element, not the text: the notes themselves may quote "No release notes" (1.5.0-alpha.26 does).
+		expect(body.querySelector('[data-state="empty"]')).toBeNull();
 		expect(body.querySelector(".num")?.textContent).toBe(version);
 		expect(body.querySelectorAll(".group").length).toBeGreaterThan(0);
 		expect(body.querySelectorAll("li").length).toBeGreaterThan(2);
@@ -194,7 +195,7 @@ test("a failed read says it could not load, why, and Retry loads the notes", asy
 	});
 	expect(body.textContent).toContain("Couldn't load the release notes");
 	expect(body.textContent).toContain("Could not resolve host");
-	expect(body.textContent).not.toContain("No release notes");
+	expect(body.querySelector('[data-state="empty"]')).toBeNull();
 	const retry = [...body.querySelectorAll("button")].find((b) => b.textContent.trim() === "Retry");
 	expect(retry).toBeDefined();
 	retry.click();
@@ -212,7 +213,7 @@ test("a failure with no message is still a failure with a reason, never the empt
 			return {};
 		});
 		expect(body.textContent, JSON.stringify(empty)).toContain("Couldn't load the release notes");
-		expect(body.textContent).not.toContain("No release notes");
+		expect(body.querySelector('[data-state="empty"]')).toBeNull();
 		expect(body.querySelector(".state p")?.textContent.trim().length).toBeGreaterThan(0);
 		done();
 		done = undefined;
@@ -225,7 +226,7 @@ test("a version the changelog really lacks says so, naming it", async () => {
 		async (cmd) => (cmd === "releases_between" ? [] : {}),
 		running("1.5.0-alpha.99"),
 	);
-	expect(body.textContent).toContain("No release notes for 1.5.0-alpha.99");
+	expect(body.querySelector('[data-state="empty"]')?.textContent).toContain("No release notes for 1.5.0-alpha.99");
 	expect(body.textContent).toContain("The changelog has no entry for it yet");
 	expect(body.textContent).not.toContain("Couldn't load");
 });
@@ -240,7 +241,7 @@ test("opening the sheet before the running version is known reads it instead of 
 	}, null);
 	expect(asked).toEqual(["system_info", "releases_between"]);
 	expect(body.querySelector(".num")?.textContent).toBe("1.5.0-alpha.25");
-	expect(body.textContent).not.toContain("No release notes");
+	expect(body.querySelector('[data-state="empty"]')).toBeNull();
 });
 
 test("opening the sheet when even the running version cannot be read says it could not load", async () => {

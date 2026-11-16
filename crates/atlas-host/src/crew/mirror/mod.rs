@@ -60,6 +60,7 @@ impl Mirror {
         }
     }
 
+    #[cfg(all(test, unix))]
     pub fn dir(&self) -> &Path {
         &self.dir
     }

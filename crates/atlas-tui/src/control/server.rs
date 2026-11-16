@@ -59,7 +59,7 @@ impl ControlServer {
         queue_wait: Duration,
     ) -> std::io::Result<(Self, mpsc::Receiver<ControlRequest>)> {
         let path = socket_path(root_dir);
-        std::fs::create_dir_all(crate::runtime::log_dir(root_dir))?;
+        crate::runtime::ensure_log_dir(&crate::runtime::log_dir(root_dir))?;
         let _ = ipc::remove_stale(&path);
         let listener = ipc::Listener::bind(&path)?;
         #[cfg(unix)]

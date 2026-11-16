@@ -241,7 +241,7 @@ A client that disconnects (clean or not) is dropped on the next write or one-sec
 
 ## Files in `.logs/`
 
-`.logs/` is created in the project root. Add it to `.gitignore`.
+`.logs/` is created in the project root with its own `.gitignore` (`*`), so none of its files can be staged or committed; your project's `.gitignore` is never touched, and a `.logs/.gitignore` you wrote yourself is kept.
 
 | File | Written by | Content |
 |---|---|---|

@@ -9,7 +9,7 @@ use crate::runtime::text::{has_control_bytes, visible_chars};
 /// Rotate `<name>.log` → `<name>.prev.log` and return a fresh append-mode handle.
 /// Returns None when the file can't be created — disk logs are best-effort.
 pub(super) fn rotate_and_open(log_dir: &Path, name: &str) -> Option<File> {
-    let _ = std::fs::create_dir_all(log_dir);
+    let _ = crate::runtime::ensure_log_dir(log_dir);
     let path = log_dir.join(format!("{name}.log"));
     let _ = std::fs::rename(&path, log_dir.join(format!("{name}.prev.log")));
     open_append(&path)
@@ -40,7 +40,7 @@ pub(crate) fn rotate_stream_log(log_dir: &Path, name: &str) {
 
 /// Rotating writer appending to `<name>.log`; used by the tunnel's stderr pump.
 pub(crate) fn open_stream_log(log_dir: &Path, name: &str) -> Option<LogWriter> {
-    let _ = std::fs::create_dir_all(log_dir);
+    let _ = crate::runtime::ensure_log_dir(log_dir);
     open_append(&log_dir.join(format!("{name}.log"))).map(|f| LogWriter::new(log_dir, name, f))
 }
 
@@ -74,7 +74,7 @@ pub(crate) fn log_file_stem(service: &str) -> String {
 /// Append one `HH:MM:SS [stdout] line` entry to the service's log file, no
 /// rotation. Best-effort: used for user marks and one-off notes.
 pub(crate) fn append_mark(log_dir: &Path, service: &str, line: &str) {
-    let _ = std::fs::create_dir_all(log_dir);
+    let _ = crate::runtime::ensure_log_dir(log_dir);
     let path = log_dir.join(format!("{}.log", log_file_stem(service)));
     if let Some(mut f) = open_append(&path) {
         write_line(&mut f, LogStream::Stdout, line);
@@ -184,6 +184,60 @@ fn write_line(file: &mut File, stream: LogStream, line: &str) {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    /// Incident (first-user pass of 1.5.0-alpha.25, #289): a first user added a project, started its stack and pressed
+    /// "Stage all": `.logs/.pids`, `.tui-*.json`, `.tui.lock` and every `<service>.log` were staged for commit, because
+    /// nothing kept the runtime directory out of git (the docs only said "add it to .gitignore"). Whatever creates
+    /// `.logs` now keeps it out of git, without touching the project's own `.gitignore` or its tracked files.
+    #[test]
+    fn what_creates_the_log_dir_keeps_it_out_of_git_and_leaves_the_users_files_alone() {
+        let git = |root: &std::path::Path, args: &[&str]| {
+            let o = std::process::Command::new("git")
+                .args(["-c", "user.name=t", "-c", "user.email=t@t"])
+                .args(args)
+                .current_dir(root)
+                .output()
+                .unwrap();
+            assert!(o.status.success(), "{args:?}: {}", String::from_utf8_lossy(&o.stderr));
+            String::from_utf8_lossy(&o.stdout).into_owned()
+        };
+        let repo = tempfile::tempdir().unwrap();
+        let root = repo.path();
+        git(root, &["init", "-q"]);
+        std::fs::write(root.join(".gitignore"), "node_modules/\n").unwrap();
+        std::fs::write(root.join("atlas.yaml"), "name: x\n").unwrap();
+        git(root, &["add", "-A"]);
+        git(root, &["commit", "-q", "-m", "init"]);
+
+        // The files a started stack writes, through the real writers.
+        let logs = crate::runtime::log_dir(root);
+        append_mark(&logs, "api", "started");
+        let _ = open_stream_log(&logs, "web");
+        std::fs::write(logs.join(".pids"), "1\n").unwrap();
+        std::fs::write(logs.join(".tui-status.json"), "{}").unwrap();
+        std::fs::write(logs.join(".tui.lock"), "1").unwrap();
+
+        assert!(logs.join("api.log").exists() && logs.join("web.log").exists());
+        let status = git(root, &["status", "--porcelain", "--untracked-files=all"]);
+        assert_eq!(status, "", "runtime files show up as changes: {status}");
+        assert_eq!(
+            std::fs::read_to_string(root.join(".gitignore")).unwrap(),
+            "node_modules/\n",
+            "the project's own .gitignore is never edited"
+        );
+    }
+
+    /// A project that already tracks something under `.logs/` keeps seeing its changes: the exclusion is a new
+    /// ignore rule, never `git rm`, and an `.logs/.gitignore` the user wrote is not overwritten.
+    #[test]
+    fn a_users_own_dot_logs_gitignore_is_never_overwritten() {
+        let dir = tempfile::tempdir().unwrap();
+        let logs = dir.path().join(".logs");
+        std::fs::create_dir_all(&logs).unwrap();
+        std::fs::write(logs.join(".gitignore"), "mine\n").unwrap();
+        append_mark(&logs, "api", "x");
+        assert_eq!(std::fs::read_to_string(logs.join(".gitignore")).unwrap(), "mine\n");
+    }
 
     #[test]
     fn rotates_previous_log_and_strips_ansi() {

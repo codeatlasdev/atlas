@@ -27,6 +27,7 @@ All notable changes to Atlas (CLI, TUI, MCP server and Atlas Desktop). Versions 
 
 ### Fixed
 
+- **Atlas's runtime files are never committed by accident.** A new project's `.logs/` (`.pids`, `.tui-status.json`, `.tui.lock`, every service log) showed up in Source Control and "Stage all" committed them. Everything that creates `.logs/` now gives it a `.gitignore` of `*` (a `.logs/.gitignore` you wrote is kept; your project's own `.gitignore` is never edited).
 - **Linux: an agent instance (`atlas desktop --agent`) no longer dies a minute after it starts ([#444](https://github.com/codeatlasdev/atlas/issues/444)).** Its session was recorded only in your `~/.atlas` registry, so the instance's own hostd took its compositor, bus and app for orphans of an unknown session and reaped them once they were a minute old; the instance's registry now has the session too, and still ends the whole tree once the app is gone.
 - **hostd stays up while a phone is paired, so the phone no longer shows "Can't reach Mac" after the desktop was closed for a while.** hostd exited by itself 10 minutes after the last terminal and client were gone, and a paired phone is neither: it only ever dials a daemon that is already there, so every phone visit after that failed until someone opened Atlas Desktop. A paired phone (not revoked) now counts as a reason to stay up; revoke it and the usual 10-minute exit applies again.
 

@@ -474,6 +474,8 @@ srv test -s "$WORKA/marker" || fail "no core.fsmonitor line: git never ran the c
 bad=$(srv cat "$WORKA/marker" | grep -vx "$AUID" || true)
 [[ -z $bad ]] || fail "core.fsmonitor ran as another uid than A's ($AUID): $bad"
 srv test ! -e "$WORKA/stolen" || fail "core.fsmonitor copied hostd.token: it ran as the crew user"
+# What the hook looked like in THIS run, the helper's: the commits below (setpriv from this script) run it again.
+HOOK_PROBE=$HOOK_PROBE
 echo "fsmonitor ran $(srv wc -l <"$WORKA/marker") time(s), always as uid $AUID, hostd.token not copied"
 as_user "$CMUSER" sh -c "cd '$WORKA' && echo one > f && git add f && git -c user.name=a -c user.email=a@example.com commit -q -m one && echo two >> f && git -c user.name=a -c user.email=a@example.com commit -q -am two" ||
   fail "A cannot edit a tracked file and commit in its own checkout"

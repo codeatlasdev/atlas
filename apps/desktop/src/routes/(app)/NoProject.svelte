@@ -1,10 +1,10 @@
 <script lang="ts">
 	import { Alert, Button, EmptyState, Skeleton } from "@codeatlasdev/ui";
 	import { FolderPlus } from "@lucide/svelte";
-	import { addProject } from "#lib/components/sidebar/projects.ts";
+	import { addProject, showDiscover } from "#lib/components/sidebar/projects.ts";
 	import { kbd } from "#lib/keys.ts";
 	import { shortcutFor } from "#lib/keymap.svelte.ts";
-	import { showStanding } from "#lib/onboarding/flow.ts";
+	import { showFirstProject, showStanding } from "#lib/onboarding/flow.ts";
 	import Hero from "#lib/onboarding/Hero.svelte";
 	import { onboarding } from "#lib/onboarding/state.svelte.ts";
 	import { welcome } from "#lib/onboarding/welcome.svelte.ts";
@@ -37,6 +37,18 @@
 		<!-- First run: the full-window overlay owns the screen; this pane waits for it to be over. -->
 		{#if showStanding(onboarding.state, onboarding.ready, store.projects.length)}
 			<Hero onfinish={() => welcome.reset()} />
+		{:else if showFirstProject(onboarding.state, onboarding.ready, store.projects.length, onboarding.firstRun)}
+			<!-- No overlay and no Hero (agent instances, a dismissed welcome): never a blank pane for a new user. -->
+			<EmptyState
+				icon={FolderPlus}
+				title="Add your first project"
+				description="Atlas runs your project's services, terminals and coding agents in one place, and works out how to start it from the folder."
+			>
+				{#snippet actions()}
+					<Button onclick={addProject}>Add project…</Button>
+					<Button variant="glass" onclick={showDiscover}>Find projects on this machine</Button>
+				{/snippet}
+			</EmptyState>
 		{/if}
 	{:else}
 		<EmptyState

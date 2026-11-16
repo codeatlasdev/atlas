@@ -6,6 +6,7 @@
 	import { corner } from "#lib/shell/cornerStack.ts";
 	import ErrorPanel from "./ErrorPanel.svelte";
 	import { errors } from "./errors.svelte.ts";
+	import { headline } from "./report.ts";
 
 	/** Longer than the stock toast (4 s): there is something to read and act on. */
 	const LIFETIME_MS = 12_000;
@@ -27,7 +28,7 @@
 		<div class="toast" class:host={t.host} role="alert" transition:fly={{ y: 10, duration: 200 }}>
 			<span class="icon" aria-hidden="true"><OctagonAlert size={15} strokeWidth={1.9} /></span>
 			<div class="text">
-				<b>{t.host ? "Terminal host not reachable" : "An action didn't finish"}</b>
+				<b>{headline(t.report).title}</b>
 				<span class="m">{t.host ? HOST_HELP : t.report.message}</span>
 				{#if t.host}
 					<div class="actions">
@@ -55,10 +56,8 @@
 		<ErrorPanel
 			report={errors.current}
 			variant="dialog"
-			title={errors.current.kind === "hostd" ? "Terminal host not reachable" : "An action didn't finish"}
-			hint={errors.current.kind === "hostd"
-				? "Copy the diagnostics (versions, OS, redacted logs) or report it; secrets are removed before anything leaves your machine."
-				: "Atlas is still running. Copy the details or report it if it keeps happening."}
+			title={headline(errors.current).title}
+			hint={headline(errors.current).hint}
 			close={() => (errors.current = null)}
 			closeLabel="Close"
 		/>

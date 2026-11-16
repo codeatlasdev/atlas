@@ -152,6 +152,14 @@ export function fmtUptime(ms: number | null): string {
 	return `${Math.floor(h / 24)}d ${h % 24}h`;
 }
 
+/**
+ * The header's uptime fact for a running project: `Up 12s`, or `Starting…` until the first sample says a service is up
+ * (`uptime` is null for those first seconds, which printed a bare "Up —").
+ */
+export function upLabel(uptime: number | null): string {
+	return uptime == null || !Number.isFinite(uptime) || uptime < 0 ? "Starting…" : `Up ${fmtUptime(uptime)}`;
+}
+
 /** `HH:MM` labels for the x axis of the last `n` slots ending at `end`. */
 export function slotLabels(n: number, end: number): string[] {
 	const out = new Array<string>(n);

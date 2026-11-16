@@ -68,6 +68,7 @@
 		font-size: 11px;
 		color: var(--ca-text-secondary);
 		max-width: 280px;
+		min-width: 0;
 		cursor: pointer;
 	}
 	.lsp:hover,

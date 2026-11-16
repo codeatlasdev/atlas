@@ -4,6 +4,7 @@ import {
 	detailsText,
 	fileNames,
 	fingerprint,
+	headline,
 	isBenign,
 	issueUrl,
 	messageOf,
@@ -216,4 +217,33 @@ test("the issue URL carries the richer report (context + hint) yet stays under b
 	expect(body).toContain("macOS 26.0");
 	expect(body).toContain("opened Settings > Languages");
 	expect(issueUrl(r).length).toBeLessThan(9000);
+});
+
+// Regression: 1.5.0-alpha.26 titled every non-host failure "An action didn't finish", even an uncaught timer error
+// the person never started. The title names what happened; host failures keep their own.
+describe("headline", () => {
+	const titles = (origin, where = "window", kind) => headline({ origin, where, kind }).title;
+	test("uncaught error, rejection, command and host each read differently", () => {
+		const all = [
+			titles("error"),
+			titles("rejection"),
+			titles("command", "restart terminal host"),
+			titles(undefined, "terminal host", "hostd"),
+		];
+		expect(new Set(all).size).toBe(4);
+		expect(all).toEqual([
+			"Unexpected error",
+			"A background task failed",
+			"Restart terminal host failed",
+			"Terminal host not reachable",
+		]);
+		expect(all.join()).not.toContain("An action didn't finish");
+	});
+	test("a command without a name still says a command failed", () => {
+		expect(titles("command", "  ")).toBe("A command failed");
+	});
+	test("the hint says what happened, not only that Atlas runs on", () => {
+		expect(headline({ origin: "rejection", where: "window" }).hint).toContain("on its own");
+		expect(headline({ origin: "error", where: "window" }).hint).toContain("threw");
+	});
 });

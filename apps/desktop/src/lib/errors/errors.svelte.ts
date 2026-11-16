@@ -8,7 +8,15 @@ import { invoke } from "@tauri-apps/api/core";
 import { crumbs } from "./breadcrumbs.ts";
 import { gatherContext } from "./context.ts";
 import { classify, hostErrorReport, parseDiagnostics } from "./diagnostics.ts";
-import { fingerprint, isBenign, messageOf, report, withContext, type ErrorReport } from "./report.ts";
+import {
+	fingerprint,
+	isBenign,
+	messageOf,
+	report,
+	withContext,
+	type ErrorOrigin,
+	type ErrorReport,
+} from "./report.ts";
 
 /** Same error inside this window collapses into one toast. */
 const DEDUPE_MS = 10_000;
@@ -50,11 +58,11 @@ class Errors {
 		return withContext(r, ctx);
 	}
 
-	async capture(e: unknown, where: string) {
+	async capture(e: unknown, where: string, origin: ErrorOrigin = "error") {
 		const message = messageOf(e);
 		if (isBenign(e, message)) return;
 		if (classify(message) === "host") return this.captureHost(message);
-		const r = await this.enrich({ ...report(e, { where }), version: await this.version() });
+		const r = await this.enrich({ ...report(e, { where, origin }), version: await this.version() });
 		crumbs.add(`error: ${r.message.split("\n")[0]}`);
 		console.error(`[atlas] ${where}: ${r.message}`, e instanceof Error ? e : "");
 		const fp = fingerprint(r);
@@ -127,7 +135,7 @@ class Errors {
 	/** "Restart terminal host": ends its terminals; works when the host answers and when it does not. */
 	async restartHost(toastId?: number) {
 		if (toastId !== undefined) this.dismiss(toastId);
-		await invoke("host_restart_force").catch((e) => this.capture(e, "restart terminal host"));
+		await invoke("host_restart_force").catch((e) => this.capture(e, "restart terminal host", "command"));
 	}
 
 	/** Open the details dialog with the diagnostics attached (Copy as Markdown / Report read them). */
@@ -150,7 +158,7 @@ export const errors = new Errors();
 /** Install the window listeners. Returns the cleanup. */
 export function startErrorHandler(where = "window"): () => void {
 	const onError = (ev: ErrorEvent) => void errors.capture(ev.error ?? ev.message, where);
-	const onRejection = (ev: PromiseRejectionEvent) => void errors.capture(ev.reason, where);
+	const onRejection = (ev: PromiseRejectionEvent) => void errors.capture(ev.reason, where, "rejection");
 	window.addEventListener("error", onError);
 	window.addEventListener("unhandledrejection", onRejection);
 	return () => {

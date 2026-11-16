@@ -9,6 +9,8 @@
 
 import { machineLines } from "./machine.ts";
 
+export type ErrorOrigin = "error" | "rejection" | "command";
+
 export interface ErrorReport {
 	/** First line of the error, what the person reads. */
 	message: string;
@@ -18,6 +20,8 @@ export interface ErrorReport {
 	where: string;
 	/** Tab kind when the error happened inside a pane. */
 	kind?: string;
+	/** How it surfaced: a script `error`, an unhandled promise `rejection`, or a `command` the person started. */
+	origin?: ErrorOrigin;
 	/** File the pane was showing (editor tabs), already reduced to its file name. */
 	file?: string;
 	version?: string;
@@ -200,6 +204,30 @@ export function report(e: unknown, ctx: Pick<ErrorReport, "where"> & Partial<Err
 		message: scrub(messageOf(e)),
 		stack: scrub(trimStack(e)),
 	};
+}
+
+const CALM = "Atlas is still running. Copy the details or report it if it keeps happening.";
+
+/** What a toast or the details dialog calls an error: the title names what happened, the hint what still works. */
+export function headline(r: Pick<ErrorReport, "kind" | "origin" | "where">): { title: string; hint: string } {
+	if (r.kind === "hostd")
+		return {
+			title: "Terminal host not reachable",
+			hint: "Copy the diagnostics (versions, OS, redacted logs) or report it; secrets are removed before anything leaves your machine.",
+		};
+	if (r.origin === "rejection")
+		return {
+			title: "A background task failed",
+			hint: `Something Atlas started on its own did not complete. ${CALM}`,
+		};
+	if (r.origin === "command") {
+		const what = r.where.trim();
+		return {
+			title: what ? `${what[0].toUpperCase()}${what.slice(1)} failed` : "A command failed",
+			hint: `What you asked for did not complete. ${CALM}`,
+		};
+	}
+	return { title: "Unexpected error", hint: `A script in the window threw and nothing caught it. ${CALM}` };
 }
 
 /** The text behind "Copy details". */

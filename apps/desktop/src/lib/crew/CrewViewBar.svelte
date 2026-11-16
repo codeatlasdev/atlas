@@ -12,6 +12,7 @@
 	import { crewView } from "#lib/crew/crewView.svelte.ts";
 	import { shortcutFor } from "#lib/keymap.svelte.ts";
 	import { reducedMotion } from "#lib/crew/motion.ts";
+	import { expireHint, hintPending, markHintSeen } from "#lib/shell/edgeHint.ts";
 
 	let visible = $state(false);
 	let hideTimer: ReturnType<typeof setTimeout> | undefined;
@@ -20,7 +21,7 @@
 	const shortcut = $derived(shortcutFor("atlas::ToggleCrewBoard") ?? "");
 
 	const HINT_KEY = "atlas.crewViewBarHintSeen";
-	let hint = $state(typeof localStorage !== "undefined" && localStorage.getItem(HINT_KEY) !== "1");
+	let hint = $state(typeof localStorage !== "undefined" && hintPending(localStorage, HINT_KEY));
 
 	/**
 	 * Watch the pointer instead of a hover strip. The strip was 6 px at the very top, which on macOS is the window's
@@ -68,14 +69,13 @@
 	}
 
 	$effect(() => {
-		if (visible && hint) {
+		if (!hint) return;
+		if (visible) {
 			hint = false;
-			try {
-				localStorage.setItem(HINT_KEY, "1");
-			} catch {
-				/* storage full */
-			}
+			markHintSeen(localStorage, HINT_KEY);
+			return;
 		}
+		return expireHint(localStorage, HINT_KEY, () => (hint = false));
 	});
 </script>
 

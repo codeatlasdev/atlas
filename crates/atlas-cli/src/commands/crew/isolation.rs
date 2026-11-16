@@ -272,7 +272,7 @@ sudo nft delete table inet atlas_crew 2>/dev/null || true; \
 sudo rm -f /etc/systemd/system/{SPAWN_UNIT}.socket /etc/systemd/system/{SPAWN_UNIT}.service \
 /etc/systemd/system/{PROVISION_UNIT}.socket /etc/systemd/system/{PROVISION_UNIT}.service \
 /etc/systemd/system/{EGRESS_UNIT}.service {EGRESS_FILE}; \
-sudo rm -rf {CM_ROOT}; \
+sudo rm -rf {CM_ROOT} /etc/atlas-crew /run/atlas-crew; \
 sudo systemctl daemon-reload 2>/dev/null || true"
     )
 }
@@ -950,6 +950,22 @@ mod tests {
         let u = service_unit();
         assert!(!u.contains("NoNewPrivileges"), "{u}");
         assert!(u.contains("CAP_SETUID"), "{u}");
+    }
+
+    // Incident (real-systemd end-to-end test): uninstall removed the egress rules file and the units but left the
+    // directories `/etc/atlas-crew` (made by the install for that file) and `/run/atlas-crew` (made by systemd for
+    // the sockets, which outlives them), so a "removed" crew server still had files on it.
+    #[test]
+    fn uninstall_removes_the_directories_the_install_and_the_sockets_made() {
+        let sh = uninstall_script();
+        for dir in ["/etc/atlas-crew", "/run/atlas-crew"] {
+            let removes = sh
+                .split(';')
+                .any(|c| c.contains("rm -rf") && c.split(' ').any(|w| w == dir));
+            assert!(removes, "{dir} is not removed: {sh}");
+        }
+        // After the sockets are stopped, or systemd makes the directory again.
+        assert!(sh.find("systemctl stop").unwrap() < sh.find("/run/atlas-crew").unwrap());
     }
 
     // The rules file the provisioning service writes is replayed at boot, but only once it exists.

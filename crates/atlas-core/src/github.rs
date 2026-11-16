@@ -66,11 +66,6 @@ impl ReleaseInfo {
     }
 }
 
-/// Metadata `curl` against the real program.
-fn curl() -> Command {
-    Net::system().curl()
-}
-
 /// What every request shares: quiet (errors still print), connect timeout, retry policy.
 /// `-f` is left to the caller: a status probe wants the HTTP code, not an exit code. `program`
 /// is `curl` outside the tests, which point it at a stub.

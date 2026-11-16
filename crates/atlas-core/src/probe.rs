@@ -684,6 +684,7 @@ mod tests {
         assert_eq!(distro_line("ID=nixos\n").as_deref(), Some("nixos [nixos]"));
     }
 
+    #[cfg(unix)]
     fn card(root: &Path, name: &str, vendor: Option<&str>, driver: Option<&str>) {
         let dev = root.join(name).join("device");
         std::fs::create_dir_all(&dev).unwrap();
@@ -791,10 +792,12 @@ mod tests {
     #[test]
     fn the_executable_of_a_core_dump_is_redacted_like_every_other_path() {
         let home = dirs::home_dir().unwrap();
-        let json = format!(
-            r#"[{{"time":1000000,"pid":1,"sig":11,"exe":"{}/.atlas/bin/atlas"}}]"#,
-            home.display()
-        );
+        // Built with serde so a Windows home (`C:\Users\…`) is escaped into valid JSON.
+        let json = serde_json::json!([{
+            "time": 1000000, "pid": 1, "sig": 11,
+            "exe": format!("{}/.atlas/bin/atlas", home.display()),
+        }])
+        .to_string();
         let rows = parse_coredumps(&json).unwrap();
         assert_eq!(rows[0].exe, "~/.atlas/bin/atlas");
     }
@@ -912,7 +915,8 @@ mod tests {
             "{}/Apps/Atlas.AppImage?TOKEN=abc12345secret",
             home.display()
         );
-        let exe = home.join(".local/bin/atlas-desktop");
+        // A string, like the AppImage above: `Path::join` would put a `\` after a Windows home.
+        let exe = std::path::PathBuf::from(format!("{}/.local/bin/atlas-desktop", home.display()));
         let p = packaging_of(
             Some(appimage),
             Some(&exe),

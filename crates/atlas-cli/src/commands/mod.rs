@@ -24,6 +24,7 @@ pub mod down;
 pub mod heavy;
 pub mod hook;
 pub mod hostd;
+pub(crate) mod hostd_login;
 pub(crate) mod hostd_reconcile;
 pub mod init;
 pub mod install;

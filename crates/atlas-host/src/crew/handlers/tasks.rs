@@ -50,6 +50,7 @@ pub(crate) fn send_task(
     attachments::discard_uploads(store, &id, &images);
     attachments::attach(store, &id, &mut task, &incoming)?;
     if let Err(e) = store.append_task(&id, &task) {
+        // tree-access: attachments of a task hostd just made, under the crew store (task.id is hostd's own)
         let _ = std::fs::remove_dir_all(attachments::task_dir(store, &id, &task.id));
         return Err(format!("append_task: {e}"));
     }

@@ -67,6 +67,8 @@ impl World {
             "var/lib",
             "log",
             "run/systemd/system",
+            // systemd makes it when the helper's socket unit starts (the fake `systemctl` starts nothing).
+            "run/atlas-crew",
             "home/.ssh",
         ] {
             std::fs::create_dir_all(w.root().join(d)).unwrap();
@@ -175,7 +177,7 @@ else set -- $files; cp "$1" "$2"; fi"#,
         // The fake ssh: run the last argument (`bash -c '<script>'`) on the simulated server.
         w.write_exec(
             "bin-ssh/ssh",
-                "#!/bin/sh\n[ \"$1\" = -G ] && { if [ -f \"$ROOT/identity\" ]; then echo \"identityfile $(cat \"$ROOT/identity\")\"; else echo 'identityfile ~/.ssh/id_ed25519'; fi; exit 0; }\nfor a; do last=$a; done\n[ -f \"$ROOT/ssh-down\" ] && { echo 'ssh: connect refused' >&2; exit 255; }\nR=\"$ROOT\"\nexport PATH=\"$R/bin\"\nscript=$(printf '%s' \"$last\" | sed -e \"s#/usr/local/lib/atlas-crew#$R/lib/atlas-crew#g\" -e \"s#/usr/local/lib/atlas-bot#$R/lib/atlas-bot#g\" -e \"s#/etc/systemd/system#$R/etc/systemd/system#g\" -e \"s#/etc/atlas-crew#$R/etc/atlas-crew#g\" -e \"s#/run/systemd/system#$R/run/systemd/system#g\" -e \"s#/var/lib#$R/var/lib#g\")\nif [ -f \"$R/ssh-drop-after\" ] && printf '%s' \"$script\" | grep -q \"$(cat \"$R/ssh-drop-after\")\"; then\n  /bin/sh -c \"$script\"; echo run >> \"$R/log/dropped-runs\"; echo 'ssh: connection reset' >&2; exit 255\nfi\nexec /bin/sh -c \"$script\"\n"
+                "#!/bin/sh\n[ \"$1\" = -G ] && { if [ -f \"$ROOT/identity\" ]; then echo \"identityfile $(cat \"$ROOT/identity\")\"; else echo 'identityfile ~/.ssh/id_ed25519'; fi; exit 0; }\nfor a; do last=$a; done\n[ -f \"$ROOT/ssh-down\" ] && { echo 'ssh: connect refused' >&2; exit 255; }\nR=\"$ROOT\"\nexport PATH=\"$R/bin\"\nscript=$(printf '%s' \"$last\" | sed -e \"s#/usr/local/lib/atlas-crew#$R/lib/atlas-crew#g\" -e \"s#/usr/local/lib/atlas-bot#$R/lib/atlas-bot#g\" -e \"s#/etc/systemd/system#$R/etc/systemd/system#g\" -e \"s#/etc/atlas-crew#$R/etc/atlas-crew#g\" -e \"s#/run/atlas-crew#$R/run/atlas-crew#g\" -e \"s#/run/systemd/system#$R/run/systemd/system#g\" -e \"s#/var/lib#$R/var/lib#g\")\nif [ -f \"$R/ssh-drop-after\" ] && printf '%s' \"$script\" | grep -q \"$(cat \"$R/ssh-drop-after\")\"; then\n  /bin/sh -c \"$script\"; echo run >> \"$R/log/dropped-runs\"; echo 'ssh: connection reset' >&2; exit 255\nfi\nexec /bin/sh -c \"$script\"\n"
         );
         w
     }
@@ -331,6 +333,70 @@ fn install_links_every_engine_from_where_its_vendor_put_it() {
         let target =
             std::fs::read_link(&link).unwrap_or_else(|e| panic!("{engine} not linked: {e}\n{t}"));
         assert_eq!(target, home.join(dir).join(engine), "{engine}");
+    }
+}
+
+// Incident (found by the real-systemd end-to-end test, scripts/crew-e2e.sh, on a plain Ubuntu 24.04): the codex
+// engine is installed with npm, which a fresh VPS does not have. `atlas crew install` failed there with
+// `npm: not found`, after it had written the unit and the isolation helpers and before it started hostd:
+// a half-installed server, over an engine nobody asked for. An engine that cannot be installed is a warning
+// that says which one and how to install it; the server and the other engines are installed.
+#[test]
+fn install_on_a_server_without_npm_installs_the_server_and_every_other_engine() {
+    let w = World::new();
+    std::fs::remove_file(w.root().join("bin/npm")).unwrap();
+    let bin = w.atlas_file("9.9.9", true);
+    let o = w.atlas(
+        &["install", "me@srv", "--binary", bin.to_str().unwrap()],
+        "",
+    );
+    let t = text(&o);
+    assert!(o.status.success(), "{t}");
+    assert!(t.contains("Crew server ready"), "{t}");
+    assert!(
+        t.contains("codex") && t.contains("npm install -g @openai/codex"),
+        "the warning names the engine and how to install it: {t}"
+    );
+    assert!(
+        w.read("lib/atlas-crew/atlas").contains("9.9.9"),
+        "hostd was swapped in"
+    );
+    assert!(
+        w.exists("var/lib/atlas-crew/.ssh/authorized_keys"),
+        "the install ran to the end"
+    );
+    let engines = w.root().join("lib/atlas-crew/engines");
+    for engine in ["claude", "omp", "opencode"] {
+        assert!(engines.join(engine).is_symlink(), "{engine} is linked: {t}");
+    }
+    assert!(
+        !engines.join("codex").exists(),
+        "no link to an engine that was not installed"
+    );
+}
+
+// Same class: a vendor installer that leaves no binary (its site is down, a proxy eats the script) must not
+// fail the install of the server either, and a later `atlas crew install` retries it.
+#[test]
+fn install_when_one_vendor_installer_leaves_nothing_still_installs_the_server() {
+    let w = World::new();
+    w.fake(
+        "curl",
+        &format!("for a; do url=$a; done\ncase \"$url\" in *claude.ai*) exit 22;; esac\n{VENDOR_INSTALLER_CURL}"),
+    );
+    let bin = w.atlas_file("9.9.9", true);
+    let o = w.atlas(
+        &["install", "me@srv", "--binary", bin.to_str().unwrap()],
+        "",
+    );
+    let t = text(&o);
+    assert!(o.status.success(), "{t}");
+    assert!(t.contains("Crew server ready"), "{t}");
+    assert!(t.contains("claude"), "the warning names the engine: {t}");
+    let engines = w.root().join("lib/atlas-crew/engines");
+    assert!(!engines.join("claude").exists(), "{t}");
+    for engine in ["omp", "opencode", "codex"] {
+        assert!(engines.join(engine).is_symlink(), "{engine} is linked: {t}");
     }
 }
 

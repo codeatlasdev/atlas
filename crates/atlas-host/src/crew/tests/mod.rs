@@ -34,12 +34,14 @@
 //! | `github_fake` | the `GithubApi` fake both of those run against                           |
 //! | `github_e2e`  | a real hostd polling the fake: mention -> task -> reply -> PR link       |
 //! | `attachments` | images on tasks: stored, staged, refused, fetched, from Telegram, scopes |
+//! | `structure`   | a grep guard: code that touches an isolated crewmate's tree says how it is safe |
 //! | `prove_ui`    | a `ui` task needs two agent captures to be done: the card, override/retry, Telegram |
 
 pub(crate) mod github_fake;
 mod github_in;
 mod github_out;
 mod payloads;
+mod structure;
 
 #[cfg(unix)]
 mod actions;

@@ -110,7 +110,7 @@ async fn prepare_work_dir(
         let iso = hub.crew.store.isolated(&crewmate.id);
         let work = project::work_dir_for(&hub.crew.dir, &crewmate.id, iso.as_ref());
         if let ProjectRef::Git { url, .. } = proj
-            && !work.join(".git").exists()
+            && !crate::crew::spawn::layout::has_checkout(&work)
         {
             task.preparing = Some(
                 url.trim_end_matches(".git")
@@ -122,11 +122,13 @@ async fn prepare_work_dir(
         }
         // Inside the task's own life: a cancel (the store says `cancelled`) ends the checkout at once, and the dropped
         // git calls take their process trees with them (`proc::run_bounded`); each call also has its own deadline.
-        let git_env = crate::crew::spawn::layout::git_env(iso.as_ref());
+        let git = hub.crew.store.git_for_checkout(&crewmate.id, &work);
+        let mirror = crate::crew::mirror::mirror_for(proj, iso.as_ref(), &git);
         let checkout = async {
-            let p = project::prepare(proj, &crewmate.id, &hub.crew.dir, iso.clone()).await?;
-            // non-fatal; an isolated checkout is fetched with the config that trusts it
-            let _ = project::fetch(&p, &git_env).await;
+            let p = project::prepare(proj, &crewmate.id, &hub.crew.dir, iso.clone(), &git).await?;
+            // non-fatal; an isolated checkout is fetched by the crewmate itself (from hostd's mirror unless it has a
+            // GitHub token of its own), never by hostd
+            let _ = project::fetch(&p, &git, mirror.as_ref()).await;
             Ok::<_, String>(p)
         };
         let cancelled = async {
@@ -162,6 +164,7 @@ async fn prepare_work_dir(
             .to_string()
         })
     };
+    // tree-access: hostd-owned (the crew store, scratch or runtime), never a crewmate's tree
     let _ = std::fs::create_dir_all(&dir);
     Ok(dir)
 }
@@ -233,6 +236,7 @@ fn task_prompt(
 /// desktop writes: a custom provider key reaches every engine and the terminal agent through it.
 pub(super) fn load_agent_env(dir: &Path, agent: &str) -> BTreeMap<String, String> {
     let mut env = BTreeMap::new();
+    // tree-access: hostd-owned (the crew store, scratch or runtime), never a crewmate's tree
     let Ok(data) = std::fs::read_to_string(dir.join("agent-env").join(format!("{agent}.env")))
     else {
         return env;
@@ -252,6 +256,7 @@ pub(super) fn load_agent_env(dir: &Path, agent: &str) -> BTreeMap<String, String
 /// The hook endpoint the desktop wrote (`ATLAS_HOOK_PORT`, `ATLAS_HOOK_TOKEN`), `(0, "")` when absent.
 pub(super) fn load_hook_endpoint(dir: &Path) -> (u16, String) {
     let env_path = dir.join("desktop").join("hook-endpoint.env");
+    // tree-access: hostd-owned (the crew store, scratch or runtime), never a crewmate's tree
     let content = std::fs::read_to_string(env_path).unwrap_or_default();
     let mut port = 0u16;
     let mut token = String::new();

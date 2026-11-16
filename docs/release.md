@@ -127,6 +127,17 @@ Only the newest stable line gets fixes. If a hotfix touches code the next beta a
 
 A release is built cold on purpose: there is no cargo cache, because a release is never built from a restored one.
 
+**The crew server end-to-end test** (`.github/workflows/crew-e2e.yml`, [what it checks](crew.md#end-to-end-test-on-real-systemd)) installs a crew server on real systemd and runs tasks on it. It runs nightly and on pull requests that touch the crew, and it is a reusable workflow. To make a release wait for it, add a job to `release.yml` and put it in `publish`'s `needs` and `if`:
+
+```yaml
+  crew-e2e:
+    name: Crew server E2E
+    needs: gate
+    uses: ./.github/workflows/crew-e2e.yml
+```
+
+Before releasing, `gh workflow run crew-e2e.yml --ref main` (it is also on the nightly schedule) and read the result: a crew release is the one thing no other job installs on a server.
+
 The GitHub flags come from the tag's channel against the **default channel** (`"default"` in `crates/atlas-core/data/channels.json`, pinned to `#[default]` on `Channel` by a test), through `scripts/release-version.ts github-flags` (unit-tested; the workflow has no `contains('-')` guess of its own):
 
 | Tag | Default `alpha` (pre-GA) | Default `stable` (GA) |

@@ -59,6 +59,7 @@ pub fn subagent_file(session_file: &str, id: &str) -> Result<String, String> {
     }
     candidates
         .into_iter()
+        // tree-access: omp's session files of the user's own agents (a crewmate's hook cannot name a session file: hook_auth::scrub)
         .find(|f| f.is_file())
         // Forward slashes on every OS (`atlas_core::paths::normalize`): the path goes to the phone as a stored path.
         .map(|f| {
@@ -78,6 +79,7 @@ fn clip(s: &str, max: usize) -> String {
 }
 
 fn lines(path: &Path) -> Vec<Value> {
+    // tree-access: omp's session files of the user's own agents (a crewmate's hook cannot name a session file: hook_auth::scrub)
     std::fs::read_to_string(path)
         .map(|t| {
             t.lines()
@@ -88,6 +90,7 @@ fn lines(path: &Path) -> Vec<Value> {
 }
 
 fn mtime_ms(path: &Path) -> Option<(u64, SystemTime)> {
+    // tree-access: omp's session files of the user's own agents (a crewmate's hook cannot name a session file: hook_auth::scrub)
     let m = path.metadata().ok()?.modified().ok()?;
     Some((m.duration_since(UNIX_EPOCH).ok()?.as_millis() as u64, m))
 }
@@ -408,6 +411,7 @@ fn status_from_files(
     is_claude: bool,
     stop: Option<&str>,
 ) -> &'static str {
+    // tree-access: omp's session files of the user's own agents (a crewmate's hook cannot name a session file: hook_auth::scrub)
     if !is_claude && holder.join(format!("{id}.md")).is_file() {
         return "completed";
     }
@@ -416,6 +420,7 @@ fn status_from_files(
             .duration_since(t)
             .is_ok_and(|d| (d.as_millis() as u64) < RUNNING_WINDOW_MS)
     });
+    // tree-access: omp's session files of the user's own agents (a crewmate's hook cannot name a session file: hook_auth::scrub)
     if fresh || holder.join(format!(".{id}.jsonl.lock.os")).exists() {
         return "running";
     }
@@ -625,6 +630,7 @@ fn omp_children(holder: &Path, parent_id: &str, parent: &[Value], nodes: &mut Ve
         .map(|(n, t, a)| (n.as_str(), (t.as_str(), a.as_deref())))
         .collect();
     // Transcripts on disk: every `<id>.jsonl` of this directory, side channels excluded.
+    // tree-access: omp's session files of the user's own agents (a crewmate's hook cannot name a session file: hook_auth::scrub)
     let mut ids: Vec<(u64, String)> = std::fs::read_dir(holder)
         .into_iter()
         .flatten()
@@ -683,11 +689,13 @@ fn omp_children(holder: &Path, parent_id: &str, parent: &[Value], nodes: &mut Ve
             .filter(|t| !t.is_empty())
             .map(str::to_string)
             .or_else(|| f.first_user.clone());
+        // tree-access: omp's session files of the user's own agents (a crewmate's hook cannot name a session file: hook_auth::scrub)
         let report = std::fs::read_to_string(holder.join(format!("{id}.md")))
             .ok()
             .map(|r| clip(r.trim(), REPORT_CHARS));
         let (status, duration) = match done.get(short).or_else(|| done.get(&id)) {
             Some((s, d)) => (norm_status(s), d.as_deref().and_then(duration_ms)),
+            // tree-access: omp's session files of the user's own agents (a crewmate's hook cannot name a session file: hook_auth::scrub)
             None if !file.is_file() => ("pending", None),
             None => (
                 status_from_files(&file, holder, &id, false, f.stop.as_deref()),
@@ -728,6 +736,7 @@ fn omp_children(holder: &Path, parent_id: &str, parent: &[Value], nodes: &mut Ve
 /// Claude Code's subagents: flat, `agent-<id>.jsonl` with a `.meta.json` (`description`).
 fn claude_children(dir: &Path, nodes: &mut Vec<Value>) {
     let holder = dir.join("subagents");
+    // tree-access: omp's session files of the user's own agents (a crewmate's hook cannot name a session file: hook_auth::scrub)
     let mut found: Vec<(u64, String)> = std::fs::read_dir(&holder)
         .into_iter()
         .flatten()
@@ -746,6 +755,7 @@ fn claude_children(dir: &Path, nodes: &mut Vec<Value>) {
         let file = holder.join(format!("{id}.jsonl"));
         let entries = lines(&file);
         let f = facts(&entries);
+        // tree-access: omp's session files of the user's own agents (a crewmate's hook cannot name a session file: hook_auth::scrub)
         let meta: Value = std::fs::read_to_string(holder.join(format!("{id}.meta.json")))
             .ok()
             .and_then(|t| serde_json::from_str(&t).ok())

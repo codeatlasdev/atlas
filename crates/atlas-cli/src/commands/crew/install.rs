@@ -416,6 +416,21 @@ fn isolation_engines() -> Vec<(&'static str, String)> {
 async fn run_action(p: &Priv<'_>, action: &isolation::Action) -> Result<()> {
     let (what, o) = match action {
         isolation::Action::Run(sh) => (sh.clone(), p.exec(sh).await?),
+        isolation::Action::Engine {
+            agent,
+            line,
+            script,
+        } => {
+            let o = p.exec(script).await?;
+            if o.code != 0 {
+                let why = o.stderr.lines().rev().find(|l| !l.trim().is_empty());
+                eprintln!(
+                    "\x1b[33m◆\x1b[0m {agent} was not installed on the server ({}). Crewmates that use it cannot run until it is: fix that and run `atlas crew install` again, or install it with the vendor's line, `{line}`.",
+                    why.unwrap_or("the installer failed").trim()
+                );
+            }
+            return Ok(());
+        }
         isolation::Action::Write { file, contents } => (
             format!("writing {file}"),
             p.exec_stdin(

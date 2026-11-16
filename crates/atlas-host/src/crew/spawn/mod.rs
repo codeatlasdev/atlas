@@ -15,6 +15,7 @@
 //! | `wire`     | length-prefixed JSON framing with fds                                    |
 //! | `cgroup`   | the per-crewmate memory cap: leaf cgroups, `memory.max`, OOM detection    |
 //! | `exec`     | fork, drop to the crewmate's user, exec, return the pty master           |
+//! | `git`      | run git as a crewmate in its own tree (hostd never runs git there itself)  |
 //! | `peer`     | who is on the other end of the socket (`SO_PEERCRED`)                    |
 //! | `server`   | the helper's loop: sessions, signals, exit codes, `atlas crew-spawn`     |
 //! | `client`   | hostd's side: ask the helper, get the master back                        |
@@ -28,6 +29,8 @@ pub mod cgroup;
 pub mod client;
 #[cfg(unix)]
 pub mod exec;
+#[cfg(unix)]
+pub mod git;
 pub mod layout;
 #[cfg(unix)]
 pub mod peer;

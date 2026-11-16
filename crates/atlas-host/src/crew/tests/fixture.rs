@@ -14,6 +14,29 @@ pub(super) async fn daemon(dir: &Path) -> HostClient {
     daemon_with(dir, None).await
 }
 
+/// [`daemon`] on a server that has isolation installed and no helper (`ServeOpts::isolation_fault`).
+pub(super) async fn daemon_with_fault(dir: &Path, fault: &str) -> HostClient {
+    let (d, fault) = (dir.to_path_buf(), fault.to_string());
+    tokio::spawn(async move {
+        let _ = crate::server::serve_with(
+            &d,
+            ServeOpts {
+                crew_host: true,
+                isolation_fault: Some(fault),
+                ..Default::default()
+            },
+        )
+        .await;
+    });
+    for _ in 0..200 {
+        if let Ok(c) = HostClient::connect_dir(dir, "test").await {
+            return c;
+        }
+        tokio::time::sleep(Duration::from_millis(50)).await;
+    }
+    panic!("hostd did not start in 10 s");
+}
+
 /// [`daemon`] whose crewmates run as their own users through the helper `isolation` names.
 pub(super) async fn daemon_with(
     dir: &Path,
@@ -201,4 +224,14 @@ impl Hooks {
             self.sh
         )
     }
+}
+
+/// Put a bare task `task_id` on the crewmate's log (a capture attaches to a task that exists) and
+/// return its id.
+pub(super) fn log_task(dir: &Path, crewmate_id: &str, task_id: &str) -> String {
+    let store = crate::crew::store::CrewStore::new(dir);
+    let mut t = crate::crew::store::Task::new("test", "look");
+    t.id = task_id.to_string();
+    store.append_task(crewmate_id, &t).unwrap();
+    task_id.to_string()
 }

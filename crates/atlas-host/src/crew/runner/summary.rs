@@ -43,6 +43,7 @@ async fn summarize(
         if let Some(bin) = test_bin {
             let out = timeout(
                 TIMEOUT,
+                // tree-access: the reply summary: the engine binary runs through the helper (ctx.exec) as the crewmate
                 tokio::process::Command::new(bin)
                     .arg(&prompt)
                     .stdout(Stdio::piped())

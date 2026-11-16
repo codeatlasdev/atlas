@@ -589,6 +589,109 @@ mod tests {
         );
     }
 
+    // Incident (security review of the crew isolation, N3): the agent joined its leaf (memory cap, `pids.max`)
+    // before `setuid`, but the helper's git request did not, so a hook of the crewmate's repo ran in the
+    // helper's own cgroup, outside the crewmate's cap, and could get the helper itself killed for memory. Both now
+    // become the crewmate through one function; a hook reads its own cgroup.
+    #[cfg(target_os = "linux")]
+    #[test]
+    #[ignore = "needs root and systemd as PID 1 (see docs/contributing.md)"]
+    fn a_git_request_runs_in_the_crewmates_leaf_under_its_cap() {
+        if let Err(why) = in_delegated_unit("inside_git_leaf") {
+            eprintln!("skipped: {why}");
+        }
+    }
+
+    #[cfg(target_os = "linux")]
+    #[test]
+    #[ignore = "run inside a systemd unit by a_git_request_runs_in_the_crewmates_leaf_under_its_cap"]
+    fn inside_git_leaf() {
+        use super::super::exec::{Ids, lookup};
+        use super::super::protocol::{GitReq, Response};
+        use super::super::server::{Config, Memory};
+
+        fn as_nobody(_: &str) -> std::io::Result<Ids> {
+            lookup("nobody")
+        }
+        if !inside("inside_git_leaf") {
+            return;
+        }
+        let pool = Pool::detect(256 << 20).expect("the unit's settings must give a usable cgroup");
+        let user = "atlas-cm-aaaaaaaaaaaa";
+        let leaf_dir = pool.leaf(user).unwrap().dir.clone();
+        let nobody = lookup("nobody").expect("user nobody");
+        let t = tempfile::tempdir().unwrap();
+        let root = t.path().join("cm");
+        let work = root.join("aaaaaaaaaaaa/work");
+        std::fs::create_dir_all(&work).unwrap();
+        let hook = t.path().join("hook.sh");
+        std::fs::write(
+            &hook,
+            format!(
+                "#!/bin/sh\ncat /proc/self/cgroup > {}/cg\nexit 1\n",
+                work.display()
+            ),
+        )
+        .unwrap();
+        let run = |prog: &str, args: &[&str]| {
+            let st = std::process::Command::new(prog)
+                .args(args)
+                .current_dir(&work)
+                .status()
+                .unwrap();
+            assert!(st.success(), "{prog} {args:?}");
+        };
+        run("git", &["init", "-q"]);
+        run(
+            "git",
+            &["config", "core.fsmonitor", &hook.to_string_lossy()],
+        );
+        run("chmod", &["755", &hook.to_string_lossy()]);
+        let path = |p: &Path| p.to_string_lossy().into_owned();
+        run(
+            "chown",
+            &[
+                "-R",
+                &format!("{}:{}", nobody.uid, nobody.gid),
+                &path(&work),
+            ],
+        );
+        run(
+            "chmod",
+            &[
+                "755",
+                &path(t.path()),
+                &path(&root),
+                &path(&root.join("aaaaaaaaaaaa")),
+            ],
+        );
+        let cfg = Config {
+            crew_uid: 0,
+            cm_root: path(&root),
+            engines: vec![],
+            resolve: as_nobody,
+            memory: std::sync::Arc::new(Memory::On(pool)),
+            egress: || Ok(()),
+        };
+        let (resp, _) = super::super::git::run(
+            &cfg,
+            &GitReq {
+                user: user.into(),
+                args: vec!["status".into()],
+                cwd: path(&work),
+                token: None,
+                timeout_secs: 30,
+            },
+        );
+        assert!(matches!(resp, Response::Git { .. }), "{resp:?}");
+        let cg = std::fs::read_to_string(work.join("cg")).expect("the hook never ran");
+        let leaf = leaf_dir.file_name().unwrap().to_string_lossy().into_owned();
+        assert!(
+            cg.trim().ends_with(&format!("/{leaf}")),
+            "the hook ran in {cg:?}, not in the crewmate's leaf {leaf}"
+        );
+    }
+
     /// A shell that allocates `mb` MiB and holds it: a variable made of that many bytes stays resident
     /// (ubuntu-latest has `head`, `tr` and `sh`; no compiler or python is assumed).
     #[cfg(target_os = "linux")]

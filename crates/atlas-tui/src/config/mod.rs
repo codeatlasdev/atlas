@@ -10,8 +10,8 @@ mod worktree_setup;
 pub use affected::{AffectedConfig, AffectedRule};
 pub use agents::{AgentsPolicy, Mode as AgentMode, POLICY_TOOLS, Verdict};
 pub use loader::{
-    ConfigSource, PORT_OFFSET_ENV, apply_port_offset, detected_notice, find_root, load,
-    load_checked, load_or_detect,
+    ConfigSource, PORT_OFFSET_ENV, affected_of, apply_port_offset, detected_notice, find_root,
+    load, load_checked, load_or_detect,
 };
 pub use project::{
     ActionConfig, AndroidConfig, Condition, DEFAULT_START_TIMEOUT_SECS, DependsOn, DeployConfig,

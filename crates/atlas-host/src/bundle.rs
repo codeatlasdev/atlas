@@ -803,7 +803,8 @@ mod tests {
         let crashes = tempfile::tempdir().unwrap();
         std::fs::write(
             crashes.path().join("crash-1700000000.toml"),
-            format!("version = \"1.5.0\"\nmsg = \"boom TOKEN=abc12345secret\"\nlocation = \"{home}/src/a.rs:1\"\n"),
+            // A literal TOML string ('…'): a Windows home's `\U` is not an escape there.
+            format!("version = \"1.5.0\"\nmsg = \"boom TOKEN=abc12345secret\"\nlocation = '{home}/src/a.rs:1'\n"),
         )
         .unwrap();
         std::fs::create_dir_all(base.path().join("desktop")).unwrap();
@@ -812,8 +813,11 @@ mod tests {
             format!("WebKitWebProcess: OPENAI_API_KEY=sk-proj-abcdefghijklmnopqrstuvwxyz012345 in {home}/x\n"),
         )
         .unwrap();
-        let json =
-            format!(r#"[{{"time":1000000,"pid":1,"sig":11,"exe":"{home}/.atlas/bin/atlas"}}]"#);
+        // Built with serde so a Windows home (`C:\Users\…`) is escaped into valid JSON.
+        let json = serde_json::json!([{
+            "time": 1000000, "pid": 1, "sig": 11, "exe": format!("{home}/.atlas/bin/atlas"),
+        }])
+        .to_string();
         let mut machine = linux_machine();
         machine.crashes.coredumps = probe::parse_coredumps(&json).unwrap();
         machine.crashes.atlas = probe::crash_files(crashes.path(), 1_700_000_100);
@@ -823,8 +827,12 @@ mod tests {
             serde_json::to_string(&d).unwrap(),
             details_text(None, "doctor", None, "", "", &d)
         );
+        // The JSON half escapes a Windows home's `\`: look for that spelling too.
+        let escaped = serde_json::to_string(home.as_ref()).unwrap();
+        let escaped = escaped.trim_matches('"');
         for leak in [
             home.as_ref(),
+            escaped,
             "abc12345secret",
             "sk-proj-abcdefghijklmnopqrstuvwxyz012345",
         ] {

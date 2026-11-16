@@ -20,6 +20,7 @@ use parking_lot::Mutex;
 
 use super::cgroup;
 use super::exec::{self, ENGINE_DIRS, Ids, Where};
+use super::git;
 use super::peer::{self, Peer};
 use super::protocol::{Request, Response};
 use super::validate::{self, CM_ROOT, Refused};
@@ -47,6 +48,32 @@ pub struct Config {
     /// How agents are capped: production detects its delegated cgroup at start ([`cgroup::Pool::detect`]);
     /// tests give a pool under a scratch cgroup, or `None`.
     pub memory: Arc<Memory>,
+    /// Whether the egress firewall is in place ([`egress_loaded`] in production). A spawn or a git request is refused
+    /// while it says no: a crewmate would start with no rules on what it can reach.
+    pub egress: fn() -> io::Result<()>,
+}
+
+/// The table `atlas-crew-provision.service` loads (`provision::egress_ruleset`), checked with `nft list table`: the
+/// firewall is not only a file but a table in the kernel, which a flush of the ruleset (`systemctl restart nftables` on
+/// Debian, whose `/etc/nftables.conf` starts with `flush ruleset`) removes until the egress unit loads it again.
+pub fn egress_loaded() -> io::Result<()> {
+    let nft = ["/usr/sbin", "/sbin", "/usr/bin", "/bin"]
+        .iter()
+        .map(|d| format!("{d}/nft"))
+        .find(|p| std::path::Path::new(p).is_file())
+        .ok_or_else(|| io::Error::new(io::ErrorKind::NotFound, "nft is not installed"))?;
+    let out = std::process::Command::new(nft)
+        .args(["list", "table", "inet", "atlas_crew"])
+        .stdin(std::process::Stdio::null())
+        .output()?;
+    if out.status.success() {
+        return Ok(());
+    }
+    Err(io::Error::other(format!(
+        "the firewall table atlas_crew is not loaded ({}), so crewmates are not started: they would reach each other and the \
+         server's network. `systemctl restart atlas-crew-egress` loads it again",
+        String::from_utf8_lossy(&out.stderr).trim()
+    )))
 }
 
 /// Where the memory cap stands.
@@ -95,6 +122,17 @@ impl Memory {
         }
     }
 
+    /// The leaf `user`'s processes join, when there is a cap. Held by the caller until its child has joined.
+    #[cfg(target_os = "linux")]
+    pub(super) fn leaf(&self, user: &str) -> io::Result<Option<Arc<cgroup::Leaf>>> {
+        match self {
+            Self::On(pool) => pool.leaf(user).map(Some),
+            Self::Off(_) => Ok(None),
+            #[cfg(test)]
+            Self::Verdict(_) => Ok(None),
+        }
+    }
+
     fn status(&self) -> cgroup::Status {
         match self {
             #[cfg(target_os = "linux")]
@@ -114,6 +152,7 @@ impl Config {
             engines: ENGINE_DIRS.iter().map(|s| s.to_string()).collect(),
             resolve: exec::lookup,
             memory: Arc::new(Memory::detect()),
+            egress: egress_loaded,
         }
     }
 }
@@ -242,6 +281,17 @@ impl Server {
         if let Err(r) = validate::check_in(&self.cfg.cm_root, &req, len) {
             return (err(r), None);
         }
+        // What a crewmate runs (an agent, or the hooks of its git) starts only with its egress rules loaded.
+        if matches!(req, Request::Spawn(_) | Request::Git(_))
+            && let Err(e) = (self.cfg.egress)()
+        {
+            return (
+                Response::Error {
+                    reason: e.to_string(),
+                },
+                None,
+            );
+        }
         match req {
             Request::Spawn(s) => match self.spawn(&s) {
                 Ok((resp, fd)) => (resp, Some(fd)),
@@ -258,6 +308,7 @@ impl Server {
             Request::Reap { user } => (self.reap_user(&user), None),
             Request::SetMemoryCap { bytes } => (self.set_memory_cap(bytes), None),
             Request::MemoryCap => (Response::MemoryCap(self.cfg.memory.status()), None),
+            Request::Git(g) => git::run(&self.cfg, &g),
         }
     }
 
@@ -271,12 +322,7 @@ impl Server {
             cm_root: &self.cfg.cm_root,
         };
         #[cfg(target_os = "linux")]
-        let leaf = match &*self.cfg.memory {
-            Memory::On(pool) => Some(pool.leaf(&s.user)?),
-            Memory::Off(_) => None,
-            #[cfg(test)]
-            Memory::Verdict(_) => None,
-        };
+        let leaf = self.cfg.memory.leaf(&s.user)?;
         #[cfg(target_os = "linux")]
         let (started, watch) = {
             // Counted before the child exists: a kill that happened during an earlier session of the
@@ -592,14 +638,20 @@ pub fn group_name(gid: u32) -> io::Result<String> {
 /// The crew user the helper serves, from the group of the socket it was given: the socket unit sets
 /// `SocketGroup=<crew user>` (the group of `atlas-crew`, or of a migrated `atlas-bot`), so the group's
 /// name is the user's. Returns `(user, uid)`.
-pub fn crew_user_of_socket(fd: std::os::fd::RawFd) -> io::Result<(String, u32)> {
-    // SAFETY: zeroed stat is a valid out-parameter; fd is a live socket.
-    let mut st: libc::stat = unsafe { std::mem::zeroed() };
-    // SAFETY: fstat on a live fd with a valid out pointer.
-    if unsafe { libc::fstat(fd, &mut st) } != 0 {
-        return Err(io::Error::last_os_error());
-    }
-    let name = group_name(st.st_gid)?;
+///
+/// The group is the one of the socket's FILE, found by the path it is bound to: systemd chowns that file, while
+/// `fstat` on the descriptor it hands over is the kernel's own socket inode, owned by root.
+pub fn crew_user_of_socket(l: &UnixListener) -> io::Result<(String, u32)> {
+    use std::os::unix::fs::MetadataExt;
+    let addr = l.local_addr()?;
+    let path = addr.as_pathname().ok_or_else(|| {
+        io::Error::new(
+            io::ErrorKind::InvalidInput,
+            "the helper's socket has no path in the file system",
+        )
+    })?;
+    let gid = std::fs::metadata(path)?.gid();
+    let name = group_name(gid)?;
     let ids = exec::lookup(&name)?;
     if ids.uid == 0 {
         // A socket group of root would serve root only; the helper refuses to start rather than
@@ -634,7 +686,19 @@ pub fn listener_from_systemd() -> Option<UnixListener> {
         return None;
     }
     // SAFETY: systemd hands over fd 3 for this process (LISTEN_PID matched); nothing else owns it.
-    Some(unsafe { UnixListener::from_raw_fd(3) })
+    Some(listener_from_fd(unsafe {
+        std::os::fd::OwnedFd::from_raw_fd(3)
+    }))
+}
+
+/// `fd` as the helper's listener, close-on-exec. systemd hands the socket over without it, and a descriptor the
+/// helper holds is one every process it starts holds too: an agent, or a hook of a crewmate's repo, that kept
+/// the listening socket could `accept()` hostd's requests (other crewmates' secrets, the GitHub token) or answer
+/// them itself. Security review of the crew isolation, N1.
+pub fn listener_from_fd(fd: std::os::fd::OwnedFd) -> UnixListener {
+    // SAFETY: plain fcntl on an fd we own.
+    unsafe { libc::fcntl(fd.as_raw_fd(), libc::F_SETFD, libc::FD_CLOEXEC) };
+    UnixListener::from(fd)
 }
 
 #[cfg(test)]
@@ -697,6 +761,8 @@ mod tests {
     // ---- the whole path: a real server on a socket, a real client, real fds and processes ----
 
     use super::super::client::is_unknown_session;
+    #[cfg(target_os = "linux")]
+    use super::super::protocol::GitReq;
     use super::super::protocol::{Mode, SpawnReq};
     use super::super::testing::{Rig, USER, rig as new_rig};
     use std::io::{Read, Write};
@@ -918,6 +984,53 @@ mod tests {
         );
     }
 
+    // Security review 4, S-C: the egress rules were replayed at boot only, and `systemctl restart nftables` (Debian's
+    // /etc/nftables.conf starts with `flush ruleset`) removed the table, so crewmates ran with no firewall until the next
+    // boot. A spawn and a git request (a hook is crewmate code too) are refused while the table is missing.
+    #[test]
+    fn nothing_is_started_for_a_crewmate_while_the_firewall_table_is_missing() {
+        let r = super::super::testing::rig_with_egress(|| {
+            Err(io::Error::other(
+                "the firewall table atlas_crew is not loaded",
+            ))
+        });
+        r.engine("claude", "echo started");
+        let e = r.client.spawn(&req(&r, Mode::Pipe, "true")).unwrap_err();
+        assert!(e.to_string().contains("firewall table atlas_crew"), "{e}");
+        assert!(r.server.sessions.lock().is_empty());
+        #[cfg(target_os = "linux")]
+        {
+            let git = GitReq {
+                user: USER.into(),
+                args: vec!["status".into()],
+                cwd: r.work().to_string_lossy().into_owned(),
+                token: None,
+                timeout_secs: 5,
+            };
+            let e = r.client.git(&git).unwrap_err();
+            assert!(e.to_string().contains("firewall table atlas_crew"), "{e}");
+        }
+        // And with the table there, the same request runs (the rig's default).
+        let ok = rig();
+        ok.client.spawn(&req(&ok, Mode::Pipe, "true")).unwrap();
+    }
+
+    // The real check: `nft list table inet atlas_crew` says no on a machine where nothing loaded it (a developer's, a CI
+    // runner) and the refusal says what to do.
+    #[test]
+    fn the_real_check_names_the_unit_that_loads_the_table() {
+        if let Err(e) = egress_loaded() {
+            let t = e.to_string();
+            assert!(
+                t.contains("nft is not installed")
+                    || t.contains("atlas-crew-egress")
+                    || t.contains("Operation not permitted")
+                    || t.contains("Permission denied"),
+                "{t}"
+            );
+        }
+    }
+
     // Refusals come back as errors and nothing is started: the validators run in the helper, not
     // only in the client.
     #[test]
@@ -1026,12 +1139,11 @@ mod tests {
     // crew user, and the helper must refuse to start instead of serving nobody in particular.
     #[test]
     fn a_socket_in_a_group_with_no_crew_user_is_refused() {
-        use std::os::fd::AsRawFd;
         let t = tempfile::tempdir().unwrap();
         let l = bind(&t.path().join("s.sock")).unwrap();
         // The socket belongs to our primary group, whose name is not a user of this machine (or is
         // a real user: either way the answer is a clean Ok or an error, never a panic or uid 0).
-        match crew_user_of_socket(l.as_raw_fd()) {
+        match crew_user_of_socket(&l) {
             Ok((name, uid)) => assert!(uid != 0 && !name.is_empty()),
             Err(e) => assert!(
                 matches!(
@@ -1041,7 +1153,128 @@ mod tests {
                 "{e}"
             ),
         }
-        assert!(crew_user_of_socket(-1).is_err());
+    }
+
+    // Incident (found by the real-systemd end-to-end test): systemd chowns the socket's FILE to
+    // `SocketGroup=`, but `fstat` on the fd it hands over is the kernel's own socket inode, owned by whoever
+    // created it (root). The helper read root there and refused to start ("the socket's group root is not a
+    // crew user"), so no crewmate user was ever created on a real server. The group is the file's.
+    #[test]
+    fn the_crew_user_is_read_from_the_socket_file_not_from_the_descriptor() {
+        use std::os::unix::fs::MetadataExt;
+        // A group of ours that is not our primary one: the file can be given to it without privileges.
+        let primary = unsafe { libc::getegid() };
+        let mut groups = [0 as libc::gid_t; 64];
+        let n = unsafe { libc::getgroups(groups.len() as i32, groups.as_mut_ptr()) };
+        let Some(other) = groups[..n.max(0) as usize]
+            .iter()
+            .copied()
+            .find(|g| *g != primary)
+        else {
+            eprintln!("skipped: this account has no group besides its primary one");
+            return;
+        };
+        let t = tempfile::tempdir().unwrap();
+        let path = t.path().join("s.sock");
+        let l = bind(&path).unwrap();
+        std::os::unix::fs::chown(&path, None, Some(other)).unwrap();
+        assert_eq!(std::fs::metadata(&path).unwrap().gid(), other);
+        let want = group_name(other).unwrap();
+        let primary_name = group_name(primary).unwrap();
+        assert_ne!(
+            want, primary_name,
+            "the test needs two differently named groups"
+        );
+        // Whatever the answer for these groups (no user of that name here, usually), it must be about the
+        // file's group.
+        let said = match crew_user_of_socket(&l) {
+            Ok((name, _)) => name,
+            Err(e) => e.to_string(),
+        };
+        assert!(
+            said.contains(&want) && !said.contains(&primary_name),
+            "the group read is not the socket file's ({want}): {said}"
+        );
+    }
+
+    // Security review of the crew isolation, S2: the helper's `PrivateTmp=` is one `/tmp` for every crewmate. Each
+    // gets a `TMPDIR` of its own, `<crewmate dir>/tmp`, `0700`, made by the helper.
+    #[cfg(target_os = "linux")]
+    #[test]
+    fn every_agent_gets_a_tmpdir_of_its_own_that_only_it_can_use() {
+        let r = rig();
+        let (_, fd) = r
+            .client
+            .spawn(&req(
+                &r,
+                Mode::Pipe,
+                "echo tmp=$TMPDIR; PATH=/usr/bin:/bin; stat -c mode=%a $TMPDIR",
+            ))
+            .unwrap();
+        let mut out = String::new();
+        std::fs::File::from(fd).read_to_string(&mut out).ok();
+        assert!(
+            out.contains(&format!("tmp={}/tmp", r.cm.display())),
+            "{out}"
+        );
+        assert!(out.contains("mode=700"), "{out}");
+    }
+
+    // Incident (security review of the crew isolation, N1): systemd hands over the listening socket as fd 3
+    // without close-on-exec, and nothing set it, so every agent and every git hook of every crewmate held the
+    // helper's `spawn.sock`: a hook that detaches keeps calling `accept()` and gets a share of hostd's requests
+    // (other crewmates' spawns with their secrets, git requests with the GitHub token), or answers them itself.
+    // The socket is made here the way systemd leaves it (close-on-exec cleared), adopted through the code the
+    // helper runs at start, and what a spawned agent and a git hook see of their own descriptors is read from
+    // `/proc` by the process itself (the real helper loop, real children).
+    #[cfg(target_os = "linux")]
+    #[test]
+    fn the_listening_socket_systemd_hands_over_reaches_no_agent_and_no_git_hook() {
+        use super::super::testing::{PROBE, systemd_listener};
+        let r = rig();
+        let t = tempfile::tempdir().unwrap();
+        let (_listener, socket) = systemd_listener(t.path());
+
+        let (_, fd) = r
+            .client
+            .spawn(&req(
+                &r,
+                Mode::Pipe,
+                &format!("PATH=/usr/bin:/bin; exec bash -c '{PROBE}'"),
+            ))
+            .unwrap();
+        let mut agent = String::new();
+        std::fs::File::from(fd).read_to_string(&mut agent).ok();
+        assert!(
+            agent.contains("NoNewPrivs:\t1"),
+            "the probe did not run in the agent: {agent}"
+        );
+        assert!(
+            !agent.contains(&socket),
+            "the agent holds the helper's listening socket:\n{agent}"
+        );
+
+        let probe = r.probe_repo();
+        let out = r
+            .client
+            .git(&GitReq {
+                user: USER.into(),
+                args: vec!["status".into()],
+                cwd: r.work().to_string_lossy().into_owned(),
+                token: None,
+                timeout_secs: 30,
+            })
+            .unwrap();
+        assert_eq!(out.code, Some(0), "{}", out.stderr);
+        let hook = std::fs::read_to_string(probe).unwrap();
+        assert!(
+            hook.contains("NoNewPrivs:"),
+            "the probe did not run in the hook: {hook}"
+        );
+        assert!(
+            !hook.contains(&socket),
+            "a git hook holds the helper's listening socket:\n{hook}"
+        );
     }
 
     #[cfg(target_os = "linux")]

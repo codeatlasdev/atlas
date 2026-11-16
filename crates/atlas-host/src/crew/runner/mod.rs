@@ -367,6 +367,12 @@ async fn run_one(hub: &Hub, crewmate: &Crewmate, mut task: Task) {
     // A task from GitHub answers there from the start, so a failure before the agent even runs
     // (project checkout, GitHub login) still edits a comment instead of leaving the issue silent.
     reporting::start(hub, &crewmate.id, &mut task).await;
+    // Isolation is installed but its helper is not there: never run the crewmate as the crew user instead.
+    if let Some(why) = hub.crew.store.isolation_fault() {
+        outcome::finish_task(hub, crewmate, &mut task, Err(why.to_string()), vec![]);
+        crate::crew::triggers::on_task_finished(hub, &crewmate.id, &task.id, task.state);
+        return;
+    }
     if let Some(engine_cfg) = &crewmate.engine {
         run_one_conversational(hub, crewmate, engine_cfg, task).await;
     } else {

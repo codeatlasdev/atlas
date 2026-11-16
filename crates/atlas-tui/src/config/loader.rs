@@ -126,6 +126,19 @@ fn parse_checked(
     Ok((config, errors))
 }
 
+/// The `affected:` block of an `atlas.yaml` text and nothing else: no `atlas.local.yaml` (it cannot set `affected`),
+/// no detection, no path. For a caller that read the text itself, because the folder is not its own to open
+/// (a crewmate's checkout on a crew server).
+pub fn affected_of(yaml: &str) -> anyhow::Result<Option<super::AffectedConfig>> {
+    #[derive(Deserialize)]
+    struct Only {
+        affected: Option<super::AffectedConfig>,
+    }
+    serde_norway::from_str::<Only>(yaml)
+        .map(|o| o.affected)
+        .map_err(|e| anyhow::anyhow!("{CONFIG_FILE}: {e}"))
+}
+
 /// Env var set by Atlas Desktop for a worktree's stack (`100`, `200`, …).
 pub const PORT_OFFSET_ENV: &str = "ATLAS_PORT_OFFSET";
 

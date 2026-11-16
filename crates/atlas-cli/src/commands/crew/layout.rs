@@ -92,6 +92,19 @@ pub fn pause_script(pause: bool) -> String {
     )
 }
 
+/// Shell that signs `agent` in as crewmate `id`: the hostd client runs as the crew user and asks hostd for the
+/// engine's login terminal (`crew_engine_login`, the request the phone sends), which the spawn helper starts as the
+/// crewmate under the same confinement as its agents. Never the engine as the crewmate over `sudo`: that runs
+/// whatever the crewmate left in its own home (a hook, an MCP server) outside the sandbox, and anything it detaches
+/// outlives the login and reads other crewmates' `/proc`. `None` for an `id` that is not a crewmate id or an unknown agent.
+pub fn login_script(agent: &str, id: &str) -> Option<String> {
+    atlas_host::crew::spawn::validate::user_for(id)?;
+    let agent = atlas_core::agents::get(agent)?.id;
+    Some(format!(
+        "u=$({WHICH_USER}); sudo -u \"$u\" {INSTALL_DIR}/atlas hostd --crew-login {agent} --login-as {id} --dir \"/var/lib/$u/.atlas\""
+    ))
+}
+
 /// The systemd units to query on a host: the current one, then the pre-rename one.
 pub fn status_script() -> String {
     format!(
@@ -181,7 +194,7 @@ RestartSec=5\n\
 NoNewPrivileges=true\n\
 ProtectSystem=strict\n\
 ProtectHome=read-only\n\
-ReadWritePaths={h}\n\
+ReadWritePaths={h} -/var/lib/atlas-cm\n\
 PrivateTmp=true\n\
 ProtectKernelTunables=true\n\
 ProtectControlGroups=true\n\
@@ -265,13 +278,13 @@ mod tests {
         assert!(fresh.contains("User=atlas-crew"));
         assert!(fresh.contains("Environment=ATLAS_CREW_HOST=1"));
         assert!(fresh.contains("ExecStart=/usr/local/lib/atlas-crew/atlas hostd"));
-        assert!(fresh.contains("ReadWritePaths=/var/lib/atlas-crew\n"));
+        assert!(fresh.contains("ReadWritePaths=/var/lib/atlas-crew -/var/lib/atlas-cm\n"));
         assert!(fresh.contains("Environment=ATLAS_HOSTD_IDLE_SECS=never"));
 
         // The migrated server keeps its user and its home (the data), under the new unit.
         let old = systemd_unit(&account(probe(true, true, false)));
         assert!(old.contains("User=atlas-bot\n"));
-        assert!(old.contains("ReadWritePaths=/var/lib/atlas-bot\n"));
+        assert!(old.contains("ReadWritePaths=/var/lib/atlas-bot -/var/lib/atlas-cm\n"));
         assert!(old.contains("PATH=/var/lib/atlas-bot/.atlas/bin:"));
         assert!(old.contains("ExecStart=/usr/local/lib/atlas-crew/atlas hostd"));
         assert!(old.contains("ATLAS_CREW_HOST=1") && !old.contains("ATLAS_BOT_HOST"));
@@ -320,6 +333,31 @@ mod tests {
         }
     }
 
+    // Security review 4, C2: `atlas crew login --crewmate` ran `sudo -u atlas-cm-X sh -c '<engine>'` over ssh, the
+    // engine in the host's mount namespace with the crewmate's own config (hooks, MCP servers) and no `ProtectProc`,
+    // `no_new_privs` or memory cap, and a process it detached outlived the login and read other crewmates' /proc.
+    // The sign-in is now the request the phone sends, so hostd's helper starts it like any agent.
+    #[test]
+    fn a_crewmates_sign_in_is_hostds_login_request_and_never_the_engine_run_as_the_crewmate_over_sudo()
+     {
+        let id = "3f2a9c1e-5b7d-4e8f-9a0b-1c2d3e4f5a6b";
+        let sh = login_script("claude", id).unwrap();
+        assert!(sh.contains(WHICH_USER), "{sh}");
+        assert!(
+            sh.contains(&format!(
+                "sudo -u \"$u\" /usr/local/lib/atlas-crew/atlas hostd --crew-login claude --login-as {id} --dir \"/var/lib/$u/.atlas\""
+            )),
+            "{sh}"
+        );
+        // Nothing here becomes the crewmate's user or runs a shell of the crewmate's own.
+        assert!(!sh.contains("atlas-cm-") && !sh.contains("sh -c"), "{sh}");
+        // The injection guard: neither the id nor the agent carries shell, and an unknown agent is refused.
+        assert!(login_script("claude", "x; id").is_none());
+        assert!(login_script("claude", &format!("{id}; id")).is_none());
+        assert!(login_script("claude; id", id).is_none());
+        assert!(login_script("sh", id).is_none());
+    }
+
     // Crew review P0, PR #106 comment 6874910355: the unit only had NoNewPrivileges/ProtectSystem/PrivateTmp,
     // so a crewmate could read other users' homes, fork-bomb the host or eat all its memory. Every
     // directive here exists in systemd 245 (Ubuntu 20.04, the oldest server we install on): ProtectHome
@@ -349,7 +387,7 @@ mod tests {
     fn the_crew_home_stays_writable_and_holds_every_agent_dir() {
         let a = account(Probe::default());
         let unit = systemd_unit(&a);
-        assert!(unit.contains(&format!("ReadWritePaths={}\n", a.home)));
+        assert!(unit.contains(&format!("ReadWritePaths={} -/var/lib/atlas-cm\n", a.home)));
         let path = unit
             .lines()
             .find_map(|l| l.strip_prefix("Environment=PATH="))

@@ -65,6 +65,8 @@ pub enum DebugCmd {
         #[arg(long, default_value_t = 60)]
         fps: u32,
     },
+    /// Kill the page's web process (Linux): the first kill reloads, a second within 60 s shows the native error
+    KillWebProcess,
     /// Resize the main window (logical px) and print the size the page view ended up with
     Resize { width: f64, height: f64 },
     /// Hide the main window (agent instances only), or show it again with --restore: the window-restore transition
@@ -152,6 +154,7 @@ pub fn to_request(cmd: &DebugCmd) -> Result<(Value, Duration)> {
         DebugCmd::Logs { since, .. } => (json!({ "cmd": "logs", "since": since }), Duration::ZERO),
         DebugCmd::Eval { js } => (json!({ "cmd": "eval", "js": js }), Duration::ZERO),
         DebugCmd::State => (json!({ "cmd": "state" }), Duration::ZERO),
+        DebugCmd::KillWebProcess => (json!({ "cmd": "kill_web_process" }), Duration::ZERO),
         DebugCmd::Shot {
             path,
             selector,

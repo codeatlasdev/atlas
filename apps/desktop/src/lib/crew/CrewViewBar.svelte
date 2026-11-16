@@ -17,7 +17,7 @@
 	let hideTimer: ReturnType<typeof setTimeout> | undefined;
 	let showTimer: ReturnType<typeof setTimeout> | undefined;
 
-	const shortcut = $derived(shortcutFor("atlas::ToggleCrewBoard") ?? "Cmd+Shift+K");
+	const shortcut = $derived(shortcutFor("atlas::ToggleCrewBoard") ?? "");
 
 	const HINT_KEY = "atlas.crewViewBarHintSeen";
 	let hint = $state(typeof localStorage !== "undefined" && localStorage.getItem(HINT_KEY) !== "1");

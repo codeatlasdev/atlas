@@ -1,8 +1,9 @@
 <script lang="ts">
-	import { Button, Drawer, Spinner } from "@codeatlasdev/ui";
+	import { Button, Drawer, Spinner, toast } from "@codeatlasdev/ui";
 	import {
 		ArrowRightLeft,
 		ChevronDown,
+		Copy,
 		ExternalLink,
 		Minus,
 		RotateCcw,
@@ -21,6 +22,7 @@
 		dateOf,
 		formatBytes,
 		isLong,
+		managedView,
 		channelOfVersion,
 		parseNotes,
 		percent,
@@ -79,6 +81,14 @@
 	let hostStale = $derived(
 		installing && u.outcome === "done" && hostState.skew === "needsRestart" && hostState.reason !== "",
 	);
+
+	/** A package manager owns this Atlas: its command, to copy, instead of an update that cannot finish. */
+	let managed = $derived(u.outcome === "managed" && !upToDate ? managedView(u.progress.managed) : null);
+
+	async function copy(text: string) {
+		await navigator.clipboard.writeText(text);
+		toast.success("Copied");
+	}
 
 	$effect(() => {
 		u.log.length;
@@ -318,6 +328,20 @@
 				</div>
 			{/if}
 
+			{#if managed?.command}
+				<div class="managed">
+					<p class="hint">{managed.title}. Run this in a terminal to update it:</p>
+					<div class="cmd">
+						<code class="mono ca-selectable">{managed.command}</code>
+						<button class="icon" aria-label="Copy command" onclick={() => copy(managed.command!)}>
+							<Copy size={13} />
+						</button>
+					</div>
+					{#if managed.installable}
+						<p class="hint">Or let Atlas run it: your system asks for your password.</p>
+					{/if}
+				</div>
+			{/if}
 			{#if u.dev && !upToDate}
 				<p class="hint">This is a dev build; Atlas will not replace it with a release.</p>
 			{/if}
@@ -329,6 +353,11 @@
 					</Button>
 				{:else if upToDate}
 					<Button onclick={close}>Done</Button>
+				{:else if managed?.installable}
+					<Button disabled={busy || u.dev} onclick={u.installPackage}>
+						{#snippet leading()}{#if busy}<Spinner size={14} />{/if}{/snippet}
+						{busy ? "Updating…" : `Install ${latest} now`}
+					</Button>
 				{:else}
 					<Button disabled={busy || u.dev} onclick={u.updateAll}>
 						{#snippet leading()}{#if busy}<Spinner size={14} />{/if}{/snippet}
@@ -362,6 +391,23 @@
 </Drawer>
 
 <style>
+	.managed {
+		margin-bottom: 8px;
+	}
+	.cmd {
+		display: flex;
+		align-items: center;
+		gap: 6px;
+		padding: 6px 8px;
+		border-radius: 8px;
+		background: var(--ca-surface-sunken, rgb(0 0 0 / 0.2));
+	}
+	.cmd code {
+		flex: 1;
+		min-width: 0;
+		overflow-wrap: anywhere;
+		font-size: 12px;
+	}
 	.sheet {
 		display: flex;
 		flex-direction: column;

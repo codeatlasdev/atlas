@@ -361,9 +361,11 @@ fn open_pty(req: &SpawnReq, ids: Ids) -> io::Result<(OwnedFd, OwnedFd)> {
         ws_ypixel: 0,
     };
     let (master, slave) = pty_pair(&ws)?;
+    // Mode first, while the slave is still root's: after the `fchown` it is the crewmate's, and the helper's bounding set
+    // has no `CAP_FOWNER`, so root could not `fchmod` it any more (EPERM, found by the first real-systemd sign-in).
     // SAFETY: valid fd; mode 0620 like a login tty.
-    if unsafe { libc::fchown(slave.as_raw_fd(), ids.uid, ids.gid) } != 0
-        || unsafe { libc::fchmod(slave.as_raw_fd(), 0o620) } != 0
+    if unsafe { libc::fchmod(slave.as_raw_fd(), 0o620) } != 0
+        || unsafe { libc::fchown(slave.as_raw_fd(), ids.uid, ids.gid) } != 0
     {
         return Err(io::Error::last_os_error());
     }

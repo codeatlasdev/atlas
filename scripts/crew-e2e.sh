@@ -484,9 +484,12 @@ srv test -L "$WORKA/.atlas" || fail "control: A's .atlas is not a link, so the c
 srv test ! -e "$HOME_DIR/e2e-affected-ran" || fail "hostd ran A's affected.command as the crew user"
 [[ $UIGATE == *"link=["*"ui-regressions.json"* ]] || fail "ui_gate did not refuse the registry behind A's .atlas link: $UIGATE"
 srv test ! -e "$DIRB/work/ui-regressions.json" || fail "hostd wrote the registry into B's work tree through A's .atlas link"
+# N3 of the sixth review: the task part of the pane key named a folder hostd writes under as the crew user.
+[[ $UIGATE == *"abs=["*"no task pane"* ]] || fail "ui_gate did not refuse a pane key naming a path of B's tree: $UIGATE"
+srv test ! -e "$DIRB/work/x" || fail "hostd wrote into B's work/x for the task A named in its pane key"
 srv rm -f "$WORKA/.atlas" "$WORKA/atlas.yaml"
 wait_idle "$CM"
-echo "ui_gate: A's affected.command did not run as the crew user, and the registry behind a .atlas link into B's tree was refused"
+echo "ui_gate: A's affected.command did not run as the crew user, the registry behind a .atlas link into B's tree and a pane key naming B's work/x were refused"
 
 # (9e) S-C of the fourth review: the egress rules were replayed at boot only, so `systemctl restart nftables` (whose
 # /etc/nftables.conf begins with `flush ruleset`) left the crewmates with no firewall until the next boot. The egress unit

@@ -225,3 +225,13 @@ impl Hooks {
         )
     }
 }
+
+/// Put a bare task `task_id` on the crewmate's log (a capture attaches to a task that exists) and
+/// return its id.
+pub(super) fn log_task(dir: &Path, crewmate_id: &str, task_id: &str) -> String {
+    let store = crate::crew::store::CrewStore::new(dir);
+    let mut t = crate::crew::store::Task::new("test", "look");
+    t.id = task_id.to_string();
+    store.append_task(crewmate_id, &t).unwrap();
+    task_id.to_string()
+}

@@ -254,8 +254,15 @@ impl Drop for RemoveOnDrop {
 }
 
 /// Where the DOM reports of one task's captures are kept: `<crewmate dir>/dom/<task id>/`.
-pub fn task_dom_dir(store: &CrewStore, crewmate_id: &str, task_id: &str) -> PathBuf {
-    store.crewmate_dir(crewmate_id).join("dom").join(task_id)
+pub fn task_dom_dir(
+    store: &CrewStore,
+    crewmate_id: &str,
+    task_id: &str,
+) -> Result<PathBuf, String> {
+    if !crate::crew::pane::is_plain_name(task_id) {
+        return Err(format!("capture: {task_id:?} is not a task id"));
+    }
+    Ok(store.crewmate_dir(crewmate_id).join("dom").join(task_id))
 }
 
 /// A fresh scratch directory path for one run (`<capture dir>/runs/<id>`; the caller creates it).
@@ -274,6 +281,7 @@ pub async fn handle(
     task_id: &str,
     args: &serde_json::Value,
 ) -> Result<serde_json::Value, String> {
+    let dom_dir = task_dom_dir(store, crewmate_id, task_id)?;
     let mut spec = Spec::from_args(args)?;
     spec.reach = Reach::of(store, crewmate_id)?;
     // The runner writes into a scratch dir that is removed whatever happens; what is kept is the copy
@@ -289,7 +297,6 @@ pub async fn handle(
         .map_err(|e| format!("capture: cannot keep the screenshots: {e}"))?;
     // The DOM reports and the findings are JSON, not images: they are kept in the task's own `dom/`
     // folder (the scratch dir goes away with this call), never as attachments.
-    let dom_dir = task_dom_dir(store, crewmate_id, task_id);
     let mut kept: std::collections::BTreeMap<PathBuf, String> = Default::default();
     if !captured.doms.is_empty() || !captured.findings.is_empty() {
         // tree-access: hostd-owned (the crew store, scratch or runtime), never a crewmate's tree

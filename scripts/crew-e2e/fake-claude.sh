@@ -14,7 +14,8 @@
 #                            B's `[::1]` one: what an isolated crewmate's capture may reach
 #   E2E_UIGATE <slug>        writes an atlas.yaml whose `affected.command` touches a file only the crew user could make,
 #                            asks hostd's `ui_gate` to plan a change from it, then links `.atlas` to the work tree of
-#                            the crewmate whose directory slug is <slug> and asks `ui_gate` to register a regression
+#                            the crewmate whose directory slug is <slug> and asks `ui_gate` to register a regression, then
+#                            names that crewmate's `work/x` as its own task in the pane key and asks for a plan
 #   E2E_HANG <n>             starts `sleep <n>` as a child and waits for it: a tool the agent started
 #   E2E_HANG_ONCE <n>        like E2E_HANG, but a run that hostd resumed after a restart ("was interrupted")
 #                            finishes at once
@@ -91,14 +92,16 @@ case "$prompt" in
     bslug=$(arg_of E2E_UIGATE)
     uig() {
       curl -s -X POST -H "X-Atlas-Hook-Token: $ATLAS_HOOK_TOKEN" -H 'Content-Type: application/json' \
-        -d "{\"pane_key\":\"$ATLAS_PANE_KEY\",\"args\":$1}" \
+        -d "{\"pane_key\":\"${PANE:-$ATLAS_PANE_KEY}\",\"args\":$1}" \
         "http://127.0.0.1:$ATLAS_HOOK_PORT/crew/$ATLAS_CREWMATE_ID/ui_gate" | tr -d '"\\\n' | cut -c1-300
     }
     printf 'name: x\nservices:\n  web:\n    command: echo web\n    port: 5173\naffected:\n  command: touch /var/lib/atlas-crew/e2e-affected-ran\n' >atlas.yaml
     plan=$(uig '{"action":"run","base_url":"http://127.0.0.1:47777","files":["a.txt"]}')
     ln -s "/var/lib/atlas-cm/$bslug/work" .atlas
     link=$(uig '{"action":"add_regression","url":"http://127.0.0.1:47777/x","note":"n"}')
-    reply "uigate plan=[$plan] link=[$link]"
+    # Security review 6, N3: the task part of the pane key is a path of B's tree.
+    abs=$(PANE="crew:$ATLAS_CREWMATE_ID:/var/lib/atlas-cm/$bslug/work/x" uig '{"action":"run","base_url":"http://127.0.0.1:47777","routes":["/"]}')
+    reply "uigate plan=[$plan] link=[$link] abs=[$abs]"
     exit 0
     ;;
   *E2E_HANG_ONCE*)

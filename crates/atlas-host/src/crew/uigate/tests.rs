@@ -861,3 +861,26 @@ fn the_changed_files_of_an_isolated_tree_are_found_by_git_run_as_the_crewmate() 
     assert!(!users.is_empty(), "no git command triggered core.fsmonitor");
     assert!(users.iter().all(|u| u == USER), "{users:?}");
 }
+
+// Even if a bad task id slipped past the hook route, the folders hostd builds from it stay under the crewmate's own.
+#[test]
+fn the_gate_and_dom_folders_of_a_task_are_one_plain_name_under_the_crewmates_directory() {
+    let hostd = tempfile::tempdir().unwrap();
+    let store = crate::crew::store::CrewStore::new(hostd.path());
+    let own = store.crewmate_dir("c1");
+    assert_eq!(
+        gate_dir(&store, "c1", "t1").unwrap(),
+        own.join("ui-gate/t1")
+    );
+    assert_eq!(
+        crate::crew::capture::task_dom_dir(&store, "c1", "t1").unwrap(),
+        own.join("dom/t1")
+    );
+    for bad in ["/var/lib/victim", "..", "../c2/x", "a/b", ""] {
+        assert!(gate_dir(&store, "c1", bad).is_err(), "{bad:?}");
+        assert!(
+            crate::crew::capture::task_dom_dir(&store, "c1", bad).is_err(),
+            "{bad:?}"
+        );
+    }
+}

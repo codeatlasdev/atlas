@@ -29,10 +29,11 @@ case "$f" in
   *.rpm)
     raw=$(rpm -qpR "$f")
     required=(
-      "WebKitGTK 4.1|webkit2gtk4\.1"
+      # Tauri's rpm requires sonames (`libwebkit2gtk-4.1.so.0()(64bit)`), which the distro's webkit2gtk4.1 provides.
+      "WebKitGTK 4.1|libwebkit2gtk-4\.1\.so\.0|webkit2gtk4\.1"
       "GStreamer base plugins|gstreamer1-plugins-base"
       "GStreamer good plugins|gstreamer1-plugins-good"
-      "tray library (dlopen'd at start)|libayatana-appindicator-gtk3|libappindicator-gtk3"
+      "tray library (dlopen'd at start)|libayatana-appindicator3\.so\.1|libayatana-appindicator-gtk3|libappindicator-gtk3"
       "ripgrep (project search)|ripgrep"
       "git|git"
     )

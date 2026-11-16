@@ -29,7 +29,8 @@ function check(file: string, tool: string, output: string) {
 }
 
 const DEB = "libwebkit2gtk-4.1-0 (>= 2.40), libgtk-3-0 (>= 3.24), libayatana-appindicator3-1, git, gstreamer1.0-plugins-base, gstreamer1.0-plugins-good, ripgrep\n";
-const RPM = ["webkit2gtk4.1", "gtk3", "libayatana-appindicator-gtk3", "git", "gstreamer1-plugins-base", "gstreamer1-plugins-good", "ripgrep", "rpmlib(CompressedFileNames) <= 3.0.4-1", "/bin/sh"].join("\n") + "\n";
+// `rpm -qpR` of the release .rpm (verify-linux, Fedora): sonames for the libraries, names for what Atlas adds.
+const RPM = ["git", "ripgrep", "gstreamer1-plugins-base", "gstreamer1-plugins-good", "libayatana-appindicator3.so.1()(64bit)", "libwebkit2gtk-4.1.so.0()(64bit)", "libgtk-3.so.0()(64bit)", "rpmlib(CompressedFileNames) <= 3.0.4-1", "/bin/sh"].join("\n") + "\n";
 const ARCH = (deps: string) =>
 	`Name            : codeatlas-atlas-bin\nVersion         : 1.5.0alpha.26-1\nDepends On      : ${deps}\nOptional Deps   : docker: infra: services in atlas.yaml\n                  github-cli: pull requests and checks in Atlas Desktop\n`;
 const ARCH_ALL = "webkit2gtk-4.1  gst-plugins-base  gst-plugins-good  gtk3  git  libayatana-appindicator  ripgrep";
@@ -71,7 +72,7 @@ describe.skipIf(process.platform === "win32")("linux-pkg-deps.sh", () => {
 	});
 
 	test("rpm versions and rpmlib lines are not package names, and a missing tray library fails", () => {
-		const rpm = RPM.replace("libayatana-appindicator-gtk3\n", "").replace("webkit2gtk4.1", "webkit2gtk4.1 >= 2.40");
+		const rpm = RPM.replace("libayatana-appindicator3.so.1()(64bit)\n", "").replace("libwebkit2gtk-4.1.so.0()(64bit)", "libwebkit2gtk-4.1.so.0()(64bit) >= 2.40");
 		const r = check("atlas-1.0.0-1.x86_64.rpm", "rpm", rpm);
 		expect(r.code).toBe(1);
 		expect(r.out).toContain("MISSING  tray library");

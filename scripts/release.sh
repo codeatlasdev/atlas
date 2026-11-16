@@ -56,12 +56,20 @@ watch_release() {
   [[ "$conclusion" == success ]] || die "release run $id: $conclusion (gh run view $id --log-failed)"
 }
 
+# release.yml builds every release (a stable promotion included) as a DRAFT. A maintainer's offline key signs its SHA256SUMS and
+# publishes it (scripts/release-sign.sh); with a key configured an unsigned release is never published, and the site is not
+# deployed for it. Failing here leaves the draft in place: fix the cause and re-run `scripts/release-sign.sh <tag>`.
+sign_release() {
+  run scripts/release-sign.sh "$1" || die "$1 is built but still a draft (not public): sign and publish it with scripts/release-sign.sh $1 (docs/release.md, \"Release signing\")"
+}
+
 # Builds and publishes a tag that is already on origin: dispatches release.yml from main with that tag.
 publish_existing() {
   local since
   since="$(date -u +%Y-%m-%dT%H:%M:%SZ)"
   run gh workflow run release.yml --repo codeatlasdev/atlas --ref main -f tag="$1"
   watch_release "$1" "$since"
+  sign_release "$1"
   deploy_site "$1"
 }
 
@@ -191,4 +199,5 @@ run git tag -a "$tag" -m "$tag_msg"
 since="$(date -u +%Y-%m-%dT%H:%M:%SZ)"
 run git push --atomic origin "$target" "$tag"
 watch_release "$tag" "$since"
+sign_release "$tag"
 deploy_site "$tag"

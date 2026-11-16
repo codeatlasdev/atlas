@@ -6,6 +6,10 @@ All notable changes to Atlas (CLI, TUI, MCP server and Atlas Desktop). Versions 
 
 ## [Unreleased]
 
+### Fixed
+
+- **`atlas desktop` on arm64 Linux says there is no Atlas Desktop for it, instead of a download error ([#268](https://github.com/codeatlasdev/atlas/issues/268)).** The release carries only the CLI for aarch64 Linux (crew servers), but `atlas desktop` asked for `Atlas-<version>-aarch64-unknown-linux-gnu.AppImage`, which was never built, and failed with a 404 and no explanation. It now stops with "Atlas Desktop is not published for aarch64 Linux yet", what the release does have and the releases link, and `atlas update` leaves an app you installed yourself (`--from`) alone instead of failing on its download. `manifest.json` lists a desktop asset only for the platforms that have a build, and a test keeps that list and the one `atlas desktop` checks the same.
+
 ## [1.5.0-alpha.26] — 2026-11-16
 
 Atlas is in **alpha**: expect bugs and breaking changes. Please [report what breaks](https://github.com/codeatlasdev/atlas/issues/new).

@@ -87,7 +87,7 @@ atlas desktop
 The first run downloads the app that matches your CLI version, verifies its checksum, installs it and opens it. Later runs just open it.
 
 - **macOS:** `Atlas.app` goes into `/Applications`. You can also download `Atlas-<version>-aarch64-apple-darwin.dmg` from the release page by hand.
-- **Linux:** the AppImage goes to `~/.local/bin/atlas-desktop`, with an "Atlas" entry in your application menu. `atlas update` keeps it on the CLI's version.
+- **Linux:** the AppImage goes to `~/.local/bin/atlas-desktop`, with an "Atlas" entry in your application menu. `atlas update` keeps it on the CLI's version. **aarch64 Linux has no Atlas Desktop build yet** (the release carries the CLI there, for crew servers): `atlas desktop` says so and points at the releases page instead of asking for a file that does not exist; `atlas desktop --from <AppImage>` installs a build of your own, and `atlas update` leaves it as it is.
 - **Windows:** the release's per-user installer runs silently into `%LOCALAPPDATA%\Atlas` (no admin rights), with a Start menu entry and an uninstaller in Settings › Apps. `atlas update` keeps it on the CLI's version.
 
 See the [Desktop app](desktop.md) for the details.

@@ -2,6 +2,7 @@
 import "../../../test/setup.ts";
 import { expect, mock, test } from "bun:test";
 import { resolve } from "node:path";
+import { projectsMock } from "../../../test/projectsMock.ts";
 import { revealLabel } from "../keys.ts";
 
 // Issue #98: the space dots (the main project switcher) and the project header had no "Remove from Atlas…"; a right-click
@@ -10,21 +11,26 @@ import { revealLabel } from "../keys.ts";
 // (static imports are hoisted above them).
 await (await import("../../../test/uiKit.ts")).installUiKit();
 const removed: string[] = [];
-mock.module(resolve(import.meta.dir, "../components/sidebar/projects.ts"), () => ({
-	removeProject: async (id: string) => void removed.push(id),
-}));
+mock.module(resolve(import.meta.dir, "../components/sidebar/projects.ts"), () =>
+	projectsMock({ removeProject: async (id: string) => void removed.push(id) }),
+);
+// Module mocks are process-wide in bun, so a partial mock of the api, the store or identities leaks into every later
+// test file (the checklist corner then mounts against a store with no `projects`). The store and identities stay real;
+// the api is the real module (a private instance, as SourceControl.test.ts does) with only the two commands stubbed.
+mock.module("@tauri-apps/api/core", () => ({ invoke: async () => ({}) }));
+mock.module("@tauri-apps/api/event", () => ({ listen: async () => () => {} }));
+mock.module("@tauri-apps/api/window", () => ({ getCurrentWindow: () => ({}) }));
 const calls: [string, ...unknown[]][] = [];
+const realApi = await import("../api.ts?real");
 mock.module(resolve(import.meta.dir, "../api.ts"), () => ({
+	...realApi,
 	api: {
+		...realApi.api,
 		pin: async (...a: unknown[]) => void calls.push(["pin", ...a]),
 		reveal: async (...a: unknown[]) => void calls.push(["reveal", ...a]),
 	},
 }));
-mock.module(resolve(import.meta.dir, "../stores/projects.svelte.ts"), () => ({
-	store: { run: (_key: string, f: () => Promise<unknown>) => f() },
-}));
-const identities = { editing: null as string | null };
-mock.module(resolve(import.meta.dir, "../stores/identity.svelte.ts"), () => ({ identities }));
+const { identities } = await import("#lib/stores/identity.svelte.ts");
 const { projectMenuItems } = await import("./projectMenu.ts");
 
 const repo = (over = {}) => ({ id: "a", name: "a", root: "/r/a", parent: null, pinned: false, ...over });

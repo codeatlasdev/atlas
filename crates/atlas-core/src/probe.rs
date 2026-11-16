@@ -684,6 +684,7 @@ mod tests {
         assert_eq!(distro_line("ID=nixos\n").as_deref(), Some("nixos [nixos]"));
     }
 
+    #[cfg(unix)]
     fn card(root: &Path, name: &str, vendor: Option<&str>, driver: Option<&str>) {
         let dev = root.join(name).join("device");
         std::fs::create_dir_all(&dev).unwrap();

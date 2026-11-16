@@ -18,7 +18,7 @@ use std::os::unix::process::CommandExt;
 use std::process::{Command, Stdio};
 use std::time::{Duration, Instant};
 
-use super::exec::{Identity, Ids, drop_for};
+use super::exec::{Becoming, identity_for, spawn_becoming};
 use super::protocol::{GitReq, Response};
 use super::server::Config;
 use super::validate::dir_in;
@@ -49,15 +49,7 @@ fn run_inner(cfg: &Config, req: &GitReq) -> io::Result<(Response, OwnedFd)> {
     let ids = (cfg.resolve)(&req.user)?;
     let dir = dir_in(&cfg.cm_root, &req.user)
         .map_err(|e| io::Error::new(io::ErrorKind::PermissionDenied, e))?;
-    // SAFETY: plain getters.
-    let (euid, egid) = unsafe { (libc::geteuid(), libc::getegid()) };
-    let identity = drop_for(
-        Ids {
-            uid: euid,
-            gid: egid,
-        },
-        ids,
-    )?;
+    let identity = identity_for(ids)?;
     let git = GIT_DIRS
         .iter()
         .map(|d| format!("{d}/git"))
@@ -79,7 +71,6 @@ fn run_inner(cfg: &Config, req: &GitReq) -> io::Result<(Response, OwnedFd)> {
     }
     cmd.args(&req.args)
         .env_clear()
-        .current_dir(&req.cwd)
         .env("PATH", GIT_PATH)
         .env("HOME", format!("{dir}/home"))
         .env("USER", &req.user)
@@ -95,32 +86,23 @@ fn run_inner(cfg: &Config, req: &GitReq) -> io::Result<(Response, OwnedFd)> {
     if let Some(t) = &req.token {
         cmd.env("ATLAS_GIT_TOKEN", t);
     }
-    // SAFETY: the hook runs between fork and exec and calls only async-signal-safe libc functions
-    // (setsid, setrlimit, setgroups, setgid, setuid); it allocates nothing.
-    unsafe {
-        cmd.pre_exec(move || {
-            // Its own process group, so the deadline ends the whole tree (a hook, ssh, a helper).
-            if libc::setsid() < 0 {
-                return Err(io::Error::last_os_error());
-            }
-            let limit = libc::rlimit {
-                rlim_cur: MAX_OUTPUT as libc::rlim_t,
-                rlim_max: MAX_OUTPUT as libc::rlim_t,
-            };
-            if libc::setrlimit(libc::RLIMIT_FSIZE, &limit) != 0 {
-                return Err(io::Error::last_os_error());
-            }
-            if let Identity::To(ids) = identity
-                && (libc::setgroups(0, std::ptr::null()) != 0
-                    || libc::setgid(ids.gid) != 0
-                    || libc::setuid(ids.uid) != 0)
-            {
-                return Err(io::Error::last_os_error());
-            }
-            Ok(())
-        });
-    }
-    let mut child = cmd.spawn()?;
+    // The crewmate's memory cap applies to its git too: a hook that eats memory is killed with the leaf, not the helper.
+    #[cfg(target_os = "linux")]
+    let leaf = cfg.memory.leaf(&req.user)?;
+    #[cfg(target_os = "linux")]
+    let procs = leaf.as_ref().map(|l| l.procs_fd());
+    #[cfg(not(target_os = "linux"))]
+    let procs = None;
+    let mut child = spawn_becoming(
+        &mut cmd,
+        Becoming {
+            identity,
+            leaf: procs,
+            tty: false,
+            cwd: &req.cwd,
+            max_file: Some(MAX_OUTPUT),
+        },
+    )?;
     // The parent's copies of the stdio fds close with the `Command`; only the files remain.
     drop(cmd);
 
@@ -199,7 +181,7 @@ fn scratch() -> io::Result<File> {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::crew::spawn::testing::{Rig, USER, rig};
+    use crate::crew::spawn::testing::{PROBE, Rig, USER, probe_fds, rig, systemd_listener};
     use std::os::unix::fs::PermissionsExt;
 
     // Every test here runs the real helper loop on a temp socket as the current user (`testing::Rig`), and
@@ -298,6 +280,21 @@ mod tests {
         assert!(t.elapsed() < Duration::from_secs(10), "{:?}", t.elapsed());
     }
 
+    // Incident (security review of the crew isolation, N3): the agent spawn sets `no_new_privs` on itself because
+    // the helper's unit cannot have `NoNewPrivileges=`, but the git request did not, so a hook of a crewmate's
+    // repo (crewmate code) could run a setuid binary. A git request becomes the crewmate through the same code
+    // as a spawn: the hook reads its own `/proc/self/status`.
+    #[cfg(target_os = "linux")]
+    #[test]
+    fn a_git_hook_cannot_gain_privileges_through_a_setuid_binary() {
+        let rig = rig();
+        let probe = rig.probe_repo();
+        let out = rig.client.git(&req(&rig, &["status"])).unwrap();
+        assert_eq!(out.code, Some(0), "{}", out.stderr);
+        let seen = std::fs::read_to_string(&probe).unwrap();
+        assert!(seen.contains("NoNewPrivs:\t1"), "{seen}");
+    }
+
     // Needs root on Linux: the real identity switch. The planted `core.fsmonitor` of a crewmate's repo must
     // run with that crewmate's uid, not root's and not the crew user's (CI's root job runs `crew::spawn --ignored`).
     #[test]
@@ -330,10 +327,15 @@ mod tests {
         std::fs::create_dir_all(dir.join("home")).unwrap();
         // The crewmate owns its tree and a repo with a planted command; the rest is traversable.
         let marker = work.join("marker");
+        let probe = work.join("probe");
         let hook = dir.join("hook.sh");
         std::fs::write(
             &hook,
-            format!("#!/bin/sh\nid -u > {}\nexit 1\n", marker.display()),
+            format!(
+                "#!/bin/sh\nid -u > {}\nsh -c '{PROBE}' > {}\nexit 1\n",
+                marker.display(),
+                probe.display()
+            ),
         )
         .unwrap();
         assert!(sh(&format!(
@@ -359,6 +361,7 @@ mod tests {
             hook.display()
         )));
 
+        let (_listener, _socket) = systemd_listener(t.path());
         let cfg = Config {
             crew_uid: 0,
             cm_root: root.to_string_lossy().into_owned(),
@@ -384,9 +387,43 @@ mod tests {
             ids.uid.to_string()
         );
         assert_eq!(std::fs::metadata(&marker).unwrap().uid(), ids.uid);
+        // N1, N3: and as a process it is as confined as an agent: only stdio is open (the helper's listening
+        // socket, and anything else it holds, is not inherited) and no setuid binary can raise its privileges.
+        let probe = std::fs::read_to_string(&probe).unwrap();
+        assert_eq!(probe_fds(&probe), [0, 1, 2], "{probe}");
+        assert!(probe.contains("NoNewPrivs:\t1"), "{probe}");
+
+        // N4: a working directory that is a link into another user's private directory is not entered. The
+        // chdir happens as the crewmate, after setuid: before it, root followed the link and the process
+        // started inside the other user's tree.
+        let secret = t.path().join("secret");
+        std::fs::create_dir(&secret).unwrap();
+        let other = super::super::exec::lookup("nobody").unwrap();
+        assert!(sh(&format!(
+            "chown {}:{} {s} && chmod 700 {s}",
+            other.uid,
+            other.gid,
+            s = secret.display()
+        )));
+        std::os::unix::fs::symlink(&secret, work.join("link")).unwrap();
+        let (resp, fd) = run(
+            &cfg,
+            &GitReq {
+                user: user.into(),
+                args: vec!["status".into()],
+                cwd: work.join("link").to_string_lossy().into_owned(),
+                token: None,
+                timeout_secs: 30,
+            },
+        );
+        assert!(
+            matches!(&resp, Response::Error { reason } if reason.contains("working directory")),
+            "a link into another user's private directory was entered: {resp:?}"
+        );
+        assert!(fd.is_none());
     }
 
-    fn exec_lookup(user: &str) -> Ids {
+    fn exec_lookup(user: &str) -> super::super::exec::Ids {
         super::super::exec::lookup(user).unwrap()
     }
 }

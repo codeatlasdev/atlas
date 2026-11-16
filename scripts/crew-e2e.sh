@@ -222,6 +222,24 @@ task_json "$CM" "$T" | jq -e '.error == null and .started_at != null and .finish
 # The log: the server's own record of the task and the audit trail.
 srv_sh "grep -q 'fake-claude done' $HOME_DIR/.atlas/crew/$CM/tasks.jsonl" || fail "tasks.jsonl on the server does not hold the result"
 hostd crewmate_audit "$(jq -nc --arg id "$CM" '{id: $id}')" | jq -e '.entries | length > 0' >/dev/null || fail "the crewmate's audit log is empty"
+
+# What the agent's process looks like from the inside (the security review's N1 and N3): only stdio is open (the
+# helper's listening socket, fd 3 from systemd, is not inherited), no_new_privs is set, and it runs in the
+# crewmate's own memory cgroup leaf when the server has one.
+HELPER_PID=$(srv systemctl show -p MainPID --value atlas-crew-spawn.service)
+HELPER_SOCKET=$(srv readlink "/proc/$HELPER_PID/fd/3") || fail "the helper (pid $HELPER_PID) has no fd 3: the check below proves nothing"
+[[ $HELPER_SOCKET == "socket:["* ]] || fail "fd 3 of the helper is '$HELPER_SOCKET', not its listening socket"
+LEAF_DIR=/sys/fs/cgroup/system.slice/atlas-crew-spawn.service/cm-$SLUG
+T=$(send_task "$CM" "E2E_PROBE")
+wait_task "$CM" "$T" "done" 60
+PROBE=$(task_json "$CM" "$T" | jq -r .result)
+[[ $PROBE == "probe: 0 1 2 NoNewPrivs:;1 "* ]] || fail "the agent has descriptors besides 0, 1, 2, or no NoNewPrivs: $PROBE"
+if srv test -d "$LEAF_DIR"; then
+  [[ $PROBE == *"0::/system.slice/atlas-crew-spawn.service/cm-$SLUG"* ]] || fail "the agent does not run in its memory leaf cm-$SLUG: $PROBE"
+  echo "agent process: fds 0 1 2, NoNewPrivs 1, in the memory leaf cm-$SLUG"
+else
+  echo "agent process: fds 0 1 2, NoNewPrivs 1 (this server has no memory cap: no leaf to check)"
+fi
 echo "done: $RESULT"
 
 say "3b. an engine that fails ends the task failed (and not done)"
@@ -349,9 +367,20 @@ T=$(send_task "$CM" "E2E_OK recovered$RANDOM")
 wait_task "$CM" "$T" "done" 60
 
 # (4)(5) A's git config is A's own code: hostd's and the helper's git run it as A, never as the crew user
-as_user "$CMUSER" sh -c "cd '$WORKA' && git init -q . && git -c user.name=a -c user.email=a@example.com commit -q --allow-empty -m init &&
-  printf '#!/bin/sh\nid -u >> \"%s/marker\"\ncp \"%s/.atlas/hostd.token\" \"%s/stolen\" 2>/dev/null\nexit 0\n' '$WORKA' '$HOME_DIR' '$WORKA' > '$WORKA/fsm.sh' && chmod +x '$WORKA/fsm.sh' &&
-  git config core.fsmonitor '$WORKA/fsm.sh'" || fail "A cannot set up a git checkout of its own in work/"
+# The command also records what its own process looks like (probe: descriptors, NoNewPrivs, cgroup).
+FSM=$(
+  cat <<EOF
+#!/bin/sh
+id -u >> "$WORKA/marker"
+cp "$HOME_DIR/.atlas/hostd.token" "$WORKA/stolen" 2>/dev/null
+sh -c 'ls /proc/\$\$/fd >"\$1"; grep NoNewPrivs /proc/\$\$/status >>"\$1"; cat /proc/\$\$/cgroup >>"\$1"' sh "$WORKA/probe"
+exit 0
+EOF
+)
+as_user "$CMUSER" sh -c "cd '$WORKA' && git init -q . && git -c user.name=a -c user.email=a@example.com commit -q --allow-empty -m init" ||
+  fail "A cannot set up a git checkout of its own in work/"
+printf '%s\n' "$FSM" | docker exec -i "$NAME" setpriv --reuid="$CMUSER" --regid="$CMUSER" --clear-groups sh -c "cat > '$WORKA/fsm.sh' && chmod +x '$WORKA/fsm.sh' && cd '$WORKA' && git config core.fsmonitor '$WORKA/fsm.sh'" ||
+  fail "A cannot plant a core.fsmonitor in its own checkout"
 [[ $(srv stat -c %U "$WORKA/.git") == "$CMUSER" ]] || fail "work/.git is not owned by A"
 T=$(send_task "$CM" "E2E_OK fsmonitor$RANDOM")
 # hostd's guards read the tree with git when the task ends; the files this check makes in it are "stray files" to
@@ -386,11 +415,31 @@ for case in "config|[\"config\",\"core.fsmonitor\",\"x\"]|$WORKA|not allowed" \
   [[ $(jq -r .status <<<"$r") == error && $(jq -r .reason <<<"$r") == *"$want"* ]] || fail "the helper did not refuse a git request ($name) with '$want': $r"
 done
 echo "the helper refuses git config, -c first, and a cwd outside A's directory"
+
+# (8) a link in A's work/ to B's work/: Command::current_dir used to enter it as root, before the uid dropped, and
+# the process started inside B's tree (N4). The chdir is now A's own, after setuid: EACCES, nothing starts.
+as_user "$CMUSER" ln -s "$DIRB/work" "$WORKA/linkB"
+spawn_req() { jq -nc --arg u "$CMUSER" --arg cwd "$1" '{op: "spawn", user: $u, argv: ["claude", "E2E_OK link"], cwd: $cwd, mode: "pipe"}'; }
+for case in "git|$(git_req '["status"]' "$WORKA/linkB")" "spawn|$(spawn_req "$WORKA/linkB")"; do
+  IFS='|' read -r name req <<<"$case"
+  r=$(helper "$req")
+  [[ $(jq -r .status <<<"$r") == error && $(jq -r .reason <<<"$r") == *"entering the working directory"* ]] ||
+    fail "the helper ($name) entered a link to B's directory, or failed some other way: $r"
+done
+echo "a link to B's work/ as the working directory: git and spawn both fail at the chdir as A"
+
+# The same probe, from the planted command of the last plain git request above (A's own git, run by the helper).
 kill "$SPAWN_TUNNEL_PID"
 wait "$SPAWN_TUNNEL_PID" 2>/dev/null || true
+PROBE=$(srv cat "$WORKA/probe" | tr '\n\t' ' ;')
+[[ $PROBE == "0 1 2 NoNewPrivs:;1 "* ]] || fail "the git hook has descriptors besides 0, 1, 2 (the helper's listening socket?), or no NoNewPrivs: $PROBE"
+if srv test -d "$LEAF_DIR"; then
+  [[ $PROBE == *"0::/system.slice/atlas-crew-spawn.service/cm-$SLUG"* ]] || fail "the git hook does not run in A's memory leaf cm-$SLUG: $PROBE"
+fi
+echo "git hook process: fds 0 1 2, NoNewPrivs 1${PROBE:+, cgroup $(grep -o '0::[^ ]*' <<<"$PROBE")}"
 
 # What the checks above left in A's tree would make the guards refuse every later task of A.
-as_user "$CMUSER" sh -c "cd '$WORKA' && rm -rf .git f fsm.sh marker stolen"
+as_user "$CMUSER" sh -c "cd '$WORKA' && rm -rf .git f fsm.sh marker stolen probe linkB"
 
 # (6) isolation installed but its helper gone: tasks are refused, nothing runs as the crew user
 srv systemctl stop atlas-crew-spawn.socket atlas-crew-spawn.service

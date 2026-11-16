@@ -83,6 +83,52 @@ impl Host for TreeHost {
     }
 }
 
+/// A shell snippet that prints what the process running it looks like from the inside: `ls -l` of its open
+/// descriptors (no pipe or substitution: the shell would hold one of its own while it lists), its `NoNewPrivs:` line and
+/// its `/proc/self/cgroup`. Run as `exec sh -c '<PROBE>'`: the script's own descriptor for itself (dash keeps
+/// one) is not the process's, and `$$` is that shell.
+pub const PROBE: &str =
+    r#"ls -l /proc/$$/fd; grep NoNewPrivs /proc/$$/status; cat /proc/$$/cgroup"#;
+
+/// The descriptor numbers a [`PROBE`] saw open, in order (`... 3 -> socket:[123]` lines of `ls -l`).
+pub fn probe_fds(probe: &str) -> Vec<u32> {
+    probe
+        .lines()
+        .filter_map(|l| {
+            let t: Vec<&str> = l.split_whitespace().collect();
+            let arrow = t.iter().position(|w| *w == "->")?;
+            t.get(arrow.checked_sub(1)?)?.parse().ok()
+        })
+        .collect()
+}
+
+/// A listening socket the way systemd's socket activation leaves it (close-on-exec cleared), adopted through
+/// the code the helper runs at start ([`server::listener_from_fd`]), and the `socket:[inode]` text a [`PROBE`]
+/// shows if a child holds it. Every other descriptor of the test process is first made close-on-exec, so a
+/// descriptor a test runner leaked into the process cannot appear in a probe: what a probe shows is the helper's.
+pub fn systemd_listener(dir: &std::path::Path) -> (std::os::unix::net::UnixListener, String) {
+    use std::os::fd::{AsRawFd, OwnedFd};
+    let fd =
+        OwnedFd::from(std::os::unix::net::UnixListener::bind(dir.join("systemd.sock")).unwrap());
+    if let Ok(fds) = std::fs::read_dir("/proc/self/fd") {
+        for n in fds
+            .flatten()
+            .filter_map(|e| e.file_name().to_str()?.parse::<i32>().ok())
+        {
+            // SAFETY: plain fcntl; an fd that is not open (the directory's own, already closed) just fails.
+            unsafe { libc::fcntl(n, libc::F_SETFD, libc::FD_CLOEXEC) };
+        }
+    }
+    // SAFETY: plain fcntl on an fd we own: what systemd's socket activation leaves.
+    unsafe { libc::fcntl(fd.as_raw_fd(), libc::F_SETFD, 0) };
+    let socket = std::fs::read_link(format!("/proc/self/fd/{}", fd.as_raw_fd()))
+        .unwrap()
+        .to_string_lossy()
+        .into_owned();
+    assert!(socket.starts_with("socket:["), "{socket}");
+    (server::listener_from_fd(fd), socket)
+}
+
 pub struct Rig {
     // Kept alive for the sockets and directories of the rig.
     _dir: tempfile::TempDir,
@@ -200,17 +246,21 @@ impl Rig {
     /// crewmate's user; hostd's own git would leave the test process's `USER` (or none) there. A marker line
     /// that is not [`USER`] means git ran as someone else; no marker at all means nothing triggered it.
     pub fn booby_trapped_repo(&self) -> PathBuf {
-        let work = self.work();
         let marker = self.cm.join("marker");
+        self.planted_repo(&format!(
+            "printf '%s\\n' \"$USER\" >> {}\nexit 1\n",
+            marker.display()
+        ));
+        marker
+    }
+
+    /// A repository in the checkout whose `core.fsmonitor` is `#!/bin/sh` + `hook_body`, which git runs on
+    /// every `status` as whoever runs git: the way a test sees what a crewmate's git process is like from the
+    /// inside (its descriptors, `no_new_privs`, cgroup).
+    pub fn planted_repo(&self, hook_body: &str) {
+        let work = self.work();
         let hook = self.cm.join("fsmonitor.sh");
-        std::fs::write(
-            &hook,
-            format!(
-                "#!/bin/sh\nprintf '%s\\n' \"$USER\" >> {}\nexit 1\n",
-                marker.display()
-            ),
-        )
-        .unwrap();
+        std::fs::write(&hook, format!("#!/bin/sh\n{hook_body}")).unwrap();
         std::fs::set_permissions(&hook, std::fs::Permissions::from_mode(0o755)).unwrap();
         let git = |args: &[&str]| {
             let o = std::process::Command::new("git")
@@ -234,7 +284,13 @@ impl Rig {
         git(&["config", "core.fsmonitor", &hook.to_string_lossy()]);
         std::fs::write(work.join("a.txt"), "two\n").unwrap();
         std::fs::write(work.join("new.txt"), "new\n").unwrap();
-        marker
+    }
+
+    /// A planted repo whose command writes, to the returned file, what its own process looks like: [`PROBE`].
+    pub fn probe_repo(&self) -> PathBuf {
+        let out = self.cm.join("probe");
+        self.planted_repo(&format!("exec sh -c '{PROBE}' > {}\n", out.display()));
+        out
     }
 
     /// What the marker holds: one `$USER` per run of the planted command.

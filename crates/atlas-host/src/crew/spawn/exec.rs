@@ -6,8 +6,11 @@
 //! Order matters and is the point of this file: the slave pty is `fchown`ed to the crewmate (a
 //! terminal the caller does not own cannot become its controlling terminal without
 //! `CAP_SYS_ADMIN`), then the child does `setsid`, `TIOCSCTTY`, drops groups, gid and uid (in that
-//! order: `setuid` first would lose the right to `setgroups`), `chdir`s as the crewmate and execs.
-//! `std::process::Command` does the fork/exec; the hooks only call async-signal-safe functions.
+//! order: `setuid` first would lose the right to `setgroups`), sets `no_new_privs`, `chdir`s as the
+//! crewmate (never before: `Command::current_dir` would enter the directory as root and follow any link
+//! in it) and execs. `std::process::Command` does the fork/exec; the hooks only call async-signal-safe
+//! functions. [`spawn_becoming`] is the one place that turns a forked child into a crewmate: the agent
+//! spawn and the helper's git request both go through it, so they cannot drift apart.
 
 use std::ffi::CString;
 use std::io;
@@ -129,10 +132,7 @@ pub fn spawn_capped(
         .map_err(|e| io::Error::new(io::ErrorKind::PermissionDenied, e))?;
     let program = resolve(dirs, &req.argv[0])?;
     let mut cmd = Command::new(&program);
-    cmd.arg0(&req.argv[0])
-        .args(&req.argv[1..])
-        .env_clear()
-        .current_dir(&req.cwd);
+    cmd.arg0(&req.argv[0]).args(&req.argv[1..]).env_clear();
     cmd.env("PATH", pinned_path(dirs))
         .env("HOME", home)
         .env("USER", &req.user)
@@ -150,22 +150,72 @@ pub fn spawn_capped(
     cmd.stdin(dup(&child_end)?)
         .stdout(dup(&child_end)?)
         .stderr(Stdio::from(child_end));
-    let tty = matches!(req.mode, Mode::Pty);
+    let child = spawn_becoming(
+        &mut cmd,
+        Becoming {
+            identity: identity_for(ids)?,
+            leaf,
+            tty: matches!(req.mode, Mode::Pty),
+            cwd: &req.cwd,
+            max_file: None,
+        },
+    )?;
+    Ok(Started { child, fd })
+}
+
+/// The identity change a process of this helper needs to become `want`.
+pub(super) fn identity_for(want: Ids) -> io::Result<Identity> {
     // SAFETY: plain getters.
     let (euid, egid) = unsafe { (libc::geteuid(), libc::getegid()) };
-    let identity = drop_for(
+    drop_for(
         Ids {
             uid: euid,
             gid: egid,
         },
-        ids,
-    )?;
+        want,
+    )
+}
+
+/// What a forked child does to become a crewmate before it execs: the one description both of the helper's
+/// ways of running a crewmate's code (an agent, and `git` with the hooks of the crewmate's own config) share.
+pub(super) struct Becoming<'a> {
+    pub identity: Identity,
+    /// The fd of the crewmate's leaf `cgroup.procs` (see `cgroup::Leaf::procs_fd`), `None` without a cap.
+    pub leaf: Option<RawFd>,
+    /// Take stdin (a pty slave) as the controlling terminal.
+    pub tty: bool,
+    /// Entered after the uid changed, never before: `Command::current_dir` would enter it as root and follow
+    /// any link in it, so a link the crewmate planted could start the process inside another user's tree.
+    pub cwd: &'a str,
+    /// `RLIMIT_FSIZE`: the most any file the process writes may hold.
+    pub max_file: Option<u64>,
+}
+
+/// Run `cmd` as a crewmate: in the order the module documents, with every step named in the error if it fails.
+/// Join the leaf (root only), `setsid`, take the terminal, `RLIMIT_FSIZE`, groups, gid, uid, `no_new_privs`,
+/// `chdir`. The helper's unit cannot have `NoNewPrivileges=` (it takes the helper's own `CAP_SETUID` away on
+/// systemd 255), so what that option gave every crewmate process is set here, as the crewmate.
+pub(super) fn spawn_becoming(cmd: &mut Command, b: Becoming<'_>) -> io::Result<Child> {
+    let Becoming {
+        identity,
+        leaf,
+        tty,
+        cwd,
+        max_file,
+    } = b;
+    // Prepared before the fork: the hook may not allocate.
+    let cwd = CString::new(cwd)
+        .map_err(|_| io::Error::new(io::ErrorKind::InvalidInput, "NUL in the working directory"))?;
+    let limit = max_file.map(|n| libc::rlimit {
+        rlim_cur: n as libc::rlim_t,
+        rlim_max: n as libc::rlim_t,
+    });
     // A failing step says which one it was through a close-on-exec pipe (one byte, `write(2)` only: the hook
     // may not allocate), so the error is "setuid: Operation not permitted" and not a bare errno.
     let (step_rd, step_wr) = step_pipe()?;
     let step_fd = step_wr.as_raw_fd();
     // SAFETY: the hook runs between fork and exec and calls only async-signal-safe libc functions
-    // (write, setsid, ioctl, setgroups, setgid, setuid); it allocates nothing.
+    // (write, setsid, ioctl, setrlimit, setgroups, setgid, setuid, prctl, chdir); it allocates nothing.
     unsafe {
         cmd.pre_exec(move || {
             let failed = |step: u8| {
@@ -188,6 +238,11 @@ pub fn spawn_capped(
             if tty && libc::ioctl(0, libc::TIOCSCTTY as _, 0) < 0 {
                 return Err(failed(STEP_TTY));
             }
+            if let Some(l) = &limit
+                && libc::setrlimit(libc::RLIMIT_FSIZE, l) != 0
+            {
+                return Err(failed(STEP_FSIZE));
+            }
             if let Identity::To(ids) = identity {
                 if libc::setgroups(0, std::ptr::null()) != 0 {
                     return Err(failed(STEP_SETGROUPS));
@@ -199,25 +254,20 @@ pub fn spawn_capped(
                     return Err(failed(STEP_SETUID));
                 }
             }
-            // The helper's unit has no `NoNewPrivileges=` (it takes the helper's own CAP_SETUID away on
-            // systemd 255), so what that option gave every crewmate process is set here, as the crewmate.
             #[cfg(target_os = "linux")]
             if libc::prctl(libc::PR_SET_NO_NEW_PRIVS, 1, 0, 0, 0) != 0 {
                 return Err(failed(STEP_NO_NEW_PRIVS));
             }
+            if libc::chdir(cwd.as_ptr()) != 0 {
+                return Err(failed(STEP_CHDIR));
+            }
             Ok(())
         });
     }
-    let child = match cmd.spawn() {
-        Ok(c) => c,
-        Err(e) => {
-            return Err(match step_failed(&step_rd) {
-                Some(step) => io::Error::new(e.kind(), format!("{step}: {e}")),
-                None => e,
-            });
-        }
-    };
-    Ok(Started { child, fd })
+    cmd.spawn().map_err(|e| match step_failed(&step_rd) {
+        Some(step) => io::Error::new(e.kind(), format!("{step}: {e}")),
+        None => e,
+    })
 }
 
 const STEP_CGROUP: u8 = 1;
@@ -228,6 +278,8 @@ const STEP_SETGID: u8 = 5;
 const STEP_SETUID: u8 = 6;
 #[cfg(target_os = "linux")]
 const STEP_NO_NEW_PRIVS: u8 = 7;
+const STEP_CHDIR: u8 = 8;
+const STEP_FSIZE: u8 = 9;
 
 /// A close-on-exec pipe the forked child reports its failing step on; the read end is non-blocking.
 fn step_pipe() -> io::Result<(OwnedFd, OwnedFd)> {
@@ -264,6 +316,8 @@ fn step_failed(rd: &OwnedFd) -> Option<&'static str> {
         STEP_SETGROUPS => "setgroups",
         STEP_SETGID => "setgid",
         STEP_SETUID => "setuid",
+        STEP_CHDIR => "entering the working directory",
+        STEP_FSIZE => "setting the file size limit",
         #[cfg(target_os = "linux")]
         STEP_NO_NEW_PRIVS => "no_new_privs",
         _ => "an unknown step",
@@ -702,6 +756,94 @@ mod tests {
         );
         s.child.wait().unwrap();
         drop(guard);
+    }
+
+    // Needs root, like the test above. Incidents (security review of the crew isolation): N1, the helper's
+    // listening socket (fd 3 from systemd, close-on-exec cleared) was inherited by every agent; N4,
+    // `Command::current_dir` entered the working directory as root, before `setuid`, following any link in it,
+    // so a crewmate that swapped a directory of its own for a link got a process started inside another user's
+    // private tree. Now the child enters it as the crewmate: a link into a directory it may not enter fails
+    // the spawn (the child never execs), and the child holds nothing but stdio.
+    #[test]
+    #[ignore = "needs root on Linux: creates a system user and changes uid (see docs/contributing.md)"]
+    fn a_spawned_child_holds_only_stdio_and_cannot_be_started_inside_another_users_directory_through_a_link()
+     {
+        use crate::crew::spawn::testing::{PROBE, probe_fds, systemd_listener};
+        use std::process::Command as C;
+        // SAFETY: plain getter.
+        assert_eq!(unsafe { libc::geteuid() }, 0, "this test must run as root");
+        let f = fixture();
+        let user = "atlas-cm-eeeeeeeeeeee";
+        let sh = |cmd: &str| C::new("sh").args(["-c", cmd]).status().unwrap().success();
+        assert!(sh(&format!(
+            "useradd --system --no-create-home --shell /usr/sbin/nologin {user}"
+        )));
+        let _guard = Cleanup(user);
+        let ids = lookup(user).unwrap();
+        let other = lookup("nobody").unwrap();
+        assert_ne!(ids.uid, other.uid);
+
+        let t = std::path::Path::new(&f.root)
+            .parent()
+            .unwrap()
+            .to_path_buf();
+        let dir = format!("{}/eeeeeeeeeeee", f.root);
+        let secret = t.join("secret");
+        std::fs::create_dir_all(format!("{dir}/work")).unwrap();
+        std::fs::create_dir_all(&secret).unwrap();
+        std::fs::write(secret.join("flag"), "other user's file\n").unwrap();
+        std::fs::write(
+            format!("{}/claude", f.engines),
+            format!("#!/bin/sh\nexec sh -c '{PROBE}'\n"),
+        )
+        .unwrap();
+        assert!(sh(&format!(
+            "chmod 755 {t} {r} {d} {e} {e}/claude && chown {user}:{user} {d}/work && chmod 700 {d}/work && \
+             chown {o}:{og} {s} && chmod 700 {s}",
+            t = t.display(),
+            r = f.root,
+            d = dir,
+            e = f.engines,
+            o = other.uid,
+            og = other.gid,
+            s = secret.display(),
+        )));
+        let w = Where {
+            engines: &[f.engines.as_str(), "/usr/bin", "/bin"],
+            cm_root: &f.root,
+        };
+        let mut r = req(&f, Mode::Pipe);
+        r.user = user.into();
+        r.argv = vec!["claude".into()];
+        r.cwd = format!("{dir}/work");
+
+        // N1 and nothing else open, with the listener left the way systemd leaves it.
+        let (_listener, _socket) = systemd_listener(&t);
+        let s = spawn_in(&w, &r, ids, &format!("{dir}/home")).unwrap();
+        let mut seen = String::new();
+        std::fs::File::from(s.fd.try_clone().unwrap())
+            .read_to_string(&mut seen)
+            .ok();
+        assert_eq!(probe_fds(&seen), [0, 1, 2], "{seen}");
+        assert!(seen.contains("NoNewPrivs:\t1"), "{seen}");
+
+        // N4: the link is the crewmate's own doing (it could not make it in root's directory, but `work/` is its).
+        std::os::unix::fs::symlink(&secret, format!("{dir}/work/link")).unwrap();
+        r.cwd = format!("{dir}/work/link");
+        match spawn_in(&w, &r, ids, &format!("{dir}/home")) {
+            Ok(mut s) => {
+                let mut seen = String::new();
+                std::fs::File::from(s.fd.try_clone().unwrap())
+                    .read_to_string(&mut seen)
+                    .ok();
+                s.child.wait().ok();
+                panic!("a process started inside another user's private directory: {seen}");
+            }
+            Err(e) => assert!(
+                e.to_string().contains("entering the working directory"),
+                "the spawn failed, but not at the chdir as the crewmate: {e}"
+            ),
+        }
     }
 
     struct Cleanup(&'static str);

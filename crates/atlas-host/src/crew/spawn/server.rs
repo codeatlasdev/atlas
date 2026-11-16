@@ -96,6 +96,17 @@ impl Memory {
         }
     }
 
+    /// The leaf `user`'s processes join, when there is a cap. Held by the caller until its child has joined.
+    #[cfg(target_os = "linux")]
+    pub(super) fn leaf(&self, user: &str) -> io::Result<Option<Arc<cgroup::Leaf>>> {
+        match self {
+            Self::On(pool) => pool.leaf(user).map(Some),
+            Self::Off(_) => Ok(None),
+            #[cfg(test)]
+            Self::Verdict(_) => Ok(None),
+        }
+    }
+
     fn status(&self) -> cgroup::Status {
         match self {
             #[cfg(target_os = "linux")]
@@ -273,12 +284,7 @@ impl Server {
             cm_root: &self.cfg.cm_root,
         };
         #[cfg(target_os = "linux")]
-        let leaf = match &*self.cfg.memory {
-            Memory::On(pool) => Some(pool.leaf(&s.user)?),
-            Memory::Off(_) => None,
-            #[cfg(test)]
-            Memory::Verdict(_) => None,
-        };
+        let leaf = self.cfg.memory.leaf(&s.user)?;
         #[cfg(target_os = "linux")]
         let (started, watch) = {
             // Counted before the child exists: a kill that happened during an earlier session of the
@@ -642,7 +648,19 @@ pub fn listener_from_systemd() -> Option<UnixListener> {
         return None;
     }
     // SAFETY: systemd hands over fd 3 for this process (LISTEN_PID matched); nothing else owns it.
-    Some(unsafe { UnixListener::from_raw_fd(3) })
+    Some(listener_from_fd(unsafe {
+        std::os::fd::OwnedFd::from_raw_fd(3)
+    }))
+}
+
+/// `fd` as the helper's listener, close-on-exec. systemd hands the socket over without it, and a descriptor the
+/// helper holds is one every process it starts holds too: an agent, or a hook of a crewmate's repo, that kept
+/// the listening socket could `accept()` hostd's requests (other crewmates' secrets, the GitHub token) or answer
+/// them itself. Security review of the crew isolation, N1.
+pub fn listener_from_fd(fd: std::os::fd::OwnedFd) -> UnixListener {
+    // SAFETY: plain fcntl on an fd we own.
+    unsafe { libc::fcntl(fd.as_raw_fd(), libc::F_SETFD, libc::FD_CLOEXEC) };
+    UnixListener::from(fd)
 }
 
 #[cfg(test)]
@@ -705,7 +723,7 @@ mod tests {
     // ---- the whole path: a real server on a socket, a real client, real fds and processes ----
 
     use super::super::client::is_unknown_session;
-    use super::super::protocol::{Mode, SpawnReq};
+    use super::super::protocol::{GitReq, Mode, SpawnReq};
     use super::super::testing::{Rig, USER, rig as new_rig};
     use std::io::{Read, Write};
 
@@ -1089,6 +1107,63 @@ mod tests {
         assert!(
             said.contains(&want) && !said.contains(&primary_name),
             "the group read is not the socket file's ({want}): {said}"
+        );
+    }
+
+    // Incident (security review of the crew isolation, N1): systemd hands over the listening socket as fd 3
+    // without close-on-exec, and nothing set it, so every agent and every git hook of every crewmate held the
+    // helper's `spawn.sock`: a hook that detaches keeps calling `accept()` and gets a share of hostd's requests
+    // (other crewmates' spawns with their secrets, git requests with the GitHub token), or answers them itself.
+    // The socket is made here the way systemd leaves it (close-on-exec cleared), adopted through the code the
+    // helper runs at start, and what a spawned agent and a git hook see of their own descriptors is read from
+    // `/proc` by the process itself (the real helper loop, real children).
+    #[cfg(target_os = "linux")]
+    #[test]
+    fn the_listening_socket_systemd_hands_over_reaches_no_agent_and_no_git_hook() {
+        use super::super::testing::{PROBE, systemd_listener};
+        let r = rig();
+        let t = tempfile::tempdir().unwrap();
+        let (_listener, socket) = systemd_listener(t.path());
+
+        let (_, fd) = r
+            .client
+            .spawn(&req(
+                &r,
+                Mode::Pipe,
+                &format!("PATH=/usr/bin:/bin; exec sh -c '{PROBE}'"),
+            ))
+            .unwrap();
+        let mut agent = String::new();
+        std::fs::File::from(fd).read_to_string(&mut agent).ok();
+        assert!(
+            agent.contains("NoNewPrivs:\t1"),
+            "the probe did not run in the agent: {agent}"
+        );
+        assert!(
+            !agent.contains(&socket),
+            "the agent holds the helper's listening socket:\n{agent}"
+        );
+
+        let probe = r.probe_repo();
+        let out = r
+            .client
+            .git(&GitReq {
+                user: USER.into(),
+                args: vec!["status".into()],
+                cwd: r.work().to_string_lossy().into_owned(),
+                token: None,
+                timeout_secs: 30,
+            })
+            .unwrap();
+        assert_eq!(out.code, Some(0), "{}", out.stderr);
+        let hook = std::fs::read_to_string(probe).unwrap();
+        assert!(
+            hook.contains("NoNewPrivs:"),
+            "the probe did not run in the hook: {hook}"
+        );
+        assert!(
+            !hook.contains(&socket),
+            "a git hook holds the helper's listening socket:\n{hook}"
         );
     }
 

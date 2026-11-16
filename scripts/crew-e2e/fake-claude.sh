@@ -4,6 +4,7 @@
 # The prompt (the last argument; hostd puts the role and the task text in it) says what to do:
 #   E2E_OK <word>            answers `fake-claude done <word>`
 #   E2E_FAIL                 exits 1 with an error, like an engine whose sign-in expired
+#   E2E_PROBE                answers what its own process looks like: open descriptors, NoNewPrivs, cgroup
 #   E2E_HANG <n>             starts `sleep <n>` as a child and waits for it: a tool the agent started
 #   E2E_HANG_ONCE <n>        like E2E_HANG, but a run that hostd resumed after a restart ("was interrupted")
 #                            finishes at once
@@ -26,6 +27,13 @@ case "$prompt" in
   *E2E_FAIL*)
     echo "fake-claude: the engine failed on purpose" >&2
     exit 1
+    ;;
+  *E2E_PROBE*)
+    # A child `sh`, listing the fds of ITS shell with a redirect that only the `ls` child sees (a pipe or a
+    # command substitution would put a descriptor of its own in the shell).
+    sh -c 'ls /proc/$$/fd >"$HOME/e2e-probe"; grep NoNewPrivs /proc/$$/status >>"$HOME/e2e-probe"; cat /proc/$$/cgroup >>"$HOME/e2e-probe"'
+    reply "probe: $(tr '\n\t' ' ;' <"$HOME/e2e-probe" | tr -d '"\\')"
+    exit 0
     ;;
   *E2E_HANG_ONCE*)
     case "$prompt" in *"was interrupted"*) reply "fake-claude resumed"; exit 0 ;; esac

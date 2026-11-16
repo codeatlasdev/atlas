@@ -352,6 +352,11 @@ as_user "$CMUSER" sh -c "cd '$WORKA' && git init -q . && git -c user.name=a -c u
   git config core.fsmonitor '$WORKA/fsm.sh'" || fail "A cannot set up a git checkout of its own in work/"
 [[ $(srv stat -c %U "$WORKA/.git") == "$CMUSER" ]] || fail "work/.git is not owned by A"
 T=$(send_task "$CM" "E2E_OK fsmonitor$RANDOM")
+# hostd's guards read the tree with git when the task ends; the files this check makes in it are "stray files" to
+# them, so the task parks for an answer (proof that they ran): accept the work as it is.
+wait_task "$CM" "$T" waiting_action 60
+task_json "$CM" "$T" | jq -e '.action.kind == "refused"' >/dev/null || fail "the guards did not refuse the stray files: $(task_json "$CM" "$T")"
+hostd crewmate_action_answer "$(jq -nc --arg id "$CM" --arg t "$T" '{id: $id, task: $t, value: "override"}')" >/dev/null
 wait_task "$CM" "$T" "done" 60
 # The same through the helper, which is how hostd runs git in A's tree (checked below as (7) for refusals).
 ssh -N -o BatchMode=yes -o ExitOnForwardFailure=yes -o StreamLocalBindUnlink=yes -L "$WORK/spawn.sock:/run/atlas-crew/spawn.sock" -p "$PORT" atlas-crew@127.0.0.1 &

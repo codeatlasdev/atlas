@@ -163,11 +163,6 @@ jobs:
       # at idle, idle CPU. Fails over the budget in scripts/linux-startup-bench.ts, which is set from docs/perf/linux-startup.json.
       - name: Startup and idle baseline
         run: |
-          for i in 1 2 3 4; do
-            bun scripts/linux-startup-bench.ts --no-check --out startup-bench-out/sample-$i.json \
-              --env WEBKIT_DISABLE_SANDBOX_THIS_IS_DANGEROUS=1 \
-              --env ATLAS_BIN="$PWD/target/debug/atlas" target/debug/atlas-desktop
-          done
           bun scripts/linux-startup-bench.ts --out startup-bench-out/report.json \
             --env WEBKIT_DISABLE_SANDBOX_THIS_IS_DANGEROUS=1 \
             --env ATLAS_BIN="$PWD/target/debug/atlas" target/debug/atlas-desktop

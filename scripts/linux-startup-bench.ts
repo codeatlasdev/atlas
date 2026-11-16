@@ -36,22 +36,23 @@ import { basename, dirname, join, resolve } from "node:path";
 // ---------- pure: parsing, summary, judgement (tested in linux-startup-bench.test.ts) ----------
 
 /**
- * Chosen from two measurements. docs/perf/linux-startup.json (Ryzen 7 7735HS, 5.5 GB RAM shared with builds, debug build, llvmpipe,
- * load ~9, WebKitGTK 2.54.1): cold app_ready 2.1 s, warm p95 1.9 s, idle PSS 404-485 MB (largest process 148-168 MB, a
- * WebKitWebProcess), idle CPU 0.9%. The "Desktop opens (Linux)" job of the first PR (GitHub runner, no GPU, sandbox off, Ubuntu's
- * WebKitGTK): cold 1.9 s, warm p95 2.5 s, idle PSS 756 MB, largest 362 MB (a web process), idle CPU 0.3%.
- * Time gets about 1.6x the slower of the two (runners vary), memory 1.3x (it is far steadier), so a regression of the size a feature
- * adds (a webview is ~70-100 MB, a second login shell, a timer that spins) fails and noise does not.
+ * Chosen from measurements, with at least 1.6x headroom over the worst sample of each. docs/perf/linux-startup.json (Ryzen 7 7735HS, 5.5 GB
+ * RAM shared with builds, debug build, llvmpipe, load ~9, WebKitGTK 2.54.1): cold app_ready 2.1 s, warm p95 1.9 s, idle PSS 404-485 MB, largest
+ * process 148-168 MB, idle CPU 0.9%. The "Desktop opens (Linux)" job (GitHub runner, no GPU, sandbox off, Ubuntu's WebKitGTK), 6 runs of the
+ * whole bench on 2 runner VMs: cold 1.33-1.93 s, warm p95 1.48-2.50 s, idle PSS 756-791 MB, largest process (a web process) 357-392 MB,
+ * idle CPU 0.3-0.4%, login shells app 2 / hostd 1.
+ * Worst sample x: time 2x (cold 5 s, warm p95 5 s), memory 1.6x (PSS 1300 MB, largest 600 MB). The memory budgets catch a doubling, not a
+ * single extra web process (~70-100 MB): that is what the per-process list in the report is for, and what the tests of #286 pin.
  */
 export const BUDGET = {
 	/** warm starts: p95 of `app_ready` (ms since process start). */
-	warmReadyP95Ms: 4000,
+	warmReadyP95Ms: 5000,
 	/** the first launch of a fresh HOME. */
-	coldReadyMs: 6000,
+	coldReadyMs: 5000,
 	/** PSS of every process the app owns, at idle, MB. */
-	idlePssMb: 1000,
+	idlePssMb: 1300,
 	/** the largest single process, MB: the budget that names who grows. */
-	largestPssMb: 500,
+	largestPssMb: 600,
 	/** idle CPU of all processes together, % of one core, averaged over the window. */
 	idleCpuPct: 5,
 	/** interactive login shells started by the app at launch: 2 today (#285 makes it 1). */

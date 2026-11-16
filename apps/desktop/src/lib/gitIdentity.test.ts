@@ -1,7 +1,7 @@
 // @ts-nocheck bun test runtime types are not part of the app tsconfig
 import { afterAll, beforeAll, expect, test } from "bun:test";
-import { chmodSync, mkdtempSync, rmSync, writeFileSync } from "node:fs";
-import { tmpdir } from "node:os";
+import { chmodSync, existsSync, mkdtempSync, readFileSync, rmSync, writeFileSync } from "node:fs";
+import { homedir, tmpdir } from "node:os";
 import { join } from "node:path";
 import {
 	identityMissing,
@@ -44,7 +44,16 @@ function repo() {
 	return dir;
 }
 
+/** The developer's own global git config files, as they were before these tests: they must not change. */
+const realConfigs = [
+	join(homedir(), ".gitconfig"),
+	join(process.env.XDG_CONFIG_HOME || join(homedir(), ".config"), "git", "config"),
+];
+const snapshot = () => realConfigs.map((p) => (existsSync(p) ? readFileSync(p, "utf8") : null));
+let before;
+
 beforeAll(() => {
+	before = snapshot();
 	root = mkdtempSync(join(tmpdir(), "atlas-identity-"));
 	globalConfig = join(root, "global.gitconfig");
 	writeFileSync(globalConfig, "[user]\n\tuseConfigOnly = true\n");
@@ -153,4 +162,38 @@ test("isIdentityError recognizes git's identity errors and nothing else", () => 
 	expect(isIdentityError("nothing to commit, working tree clean")).toBe(false);
 	expect(isIdentityError("error: pathspec 'identity' did not match any file(s) known to git")).toBe(false);
 	expect(isIdentityError("")).toBe(false);
+});
+
+// The product's "all repositories" choice is `git config --global`. These pin where that write lands: git's own
+// resolution of GIT_CONFIG_GLOBAL / HOME, never a path of ours, so a test (or an agent instance) with an isolated
+// environment can never reach the developer's real identity (an earlier run left someone else's name in the real one).
+test("a global save goes to GIT_CONFIG_GLOBAL when set, and to nothing else", async () => {
+	const dir = repo();
+	const run = runIn(dir);
+	await saveIdentity(run, { name: "Global Gina", email: "gina@example.com" }, "global");
+	const written = readFileSync(globalConfig, "utf8");
+	expect(written).toContain("name = Global Gina");
+	expect(written).toContain("email = gina@example.com");
+	expect(existsSync(join(root, ".gitconfig"))).toBe(false);
+	expect(existsSync(join(root, ".config", "git", "config"))).toBe(false);
+	expect(snapshot()).toEqual(before);
+	writeFileSync(globalConfig, "[user]\n\tuseConfigOnly = true\n");
+});
+
+test("without GIT_CONFIG_GLOBAL a global save goes to the HOME it runs under", async () => {
+	const dir = repo();
+	const home = join(root, "other-home");
+	Bun.spawnSync(["mkdir", "-p", home]);
+	const isolated = { PATH: process.env.PATH, HOME: home, GIT_CONFIG_NOSYSTEM: "1" };
+	const run = async (args) => {
+		const p = Bun.spawnSync(["git", "-C", dir, ...args], { env: isolated, stdin: "ignore" });
+		return { code: p.exitCode, stdout: decoder.decode(p.stdout), stderr: decoder.decode(p.stderr) };
+	};
+	await saveIdentity(run, { name: "Home Hal", email: "hal@example.com" }, "global");
+	expect(readFileSync(join(home, ".gitconfig"), "utf8")).toContain("name = Home Hal");
+	expect(snapshot()).toEqual(before);
+});
+
+test("the developer's own global git config is exactly as these tests found it", () => {
+	expect(snapshot()).toEqual(before);
 });

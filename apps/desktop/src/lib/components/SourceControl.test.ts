@@ -1,8 +1,8 @@
 // @ts-nocheck bun test runtime types are not part of the app tsconfig
 import "../../../test/setup.ts";
 import { afterAll, afterEach, beforeAll, beforeEach, expect, mock, test } from "bun:test";
-import { chmodSync, mkdtempSync, rmSync, writeFileSync } from "node:fs";
-import { tmpdir } from "node:os";
+import { chmodSync, existsSync, mkdtempSync, readFileSync, rmSync, writeFileSync } from "node:fs";
+import { homedir, tmpdir } from "node:os";
 import { join } from "node:path";
 
 // Incidents (first-user pass, shots 23 and 26):
@@ -81,7 +81,17 @@ const { flushSync, mount, tick, unmount } = await import("svelte");
 const { gitStatus } = await import("#lib/stores/gitStatus.ts");
 const { default: SourceControl } = await import("./SourceControl.svelte");
 
+// The identity form's "all repositories" choice writes `git config --global`: it must land in the isolated
+// GIT_CONFIG_GLOBAL above, never in the developer's real config.
+const realConfigs = [
+	join(homedir(), ".gitconfig"),
+	join(process.env.XDG_CONFIG_HOME || join(homedir(), ".config"), "git", "config"),
+];
+const snapshot = () => realConfigs.map((p) => (existsSync(p) ? readFileSync(p, "utf8") : null));
+let before;
+
 beforeAll(() => {
+	before = snapshot();
 	root = mkdtempSync(join(tmpdir(), "atlas-scm-"));
 	globalConfig = join(root, "global.gitconfig");
 });
@@ -287,4 +297,9 @@ test("a later successful commit leaves no error behind", async () => {
 	click(button("Commit"));
 	await until(() => git(["rev-parse", "--verify", "HEAD"]).code === 0, "the commit");
 	await until(() => !text().includes("hook says no"), "the error to clear");
+});
+
+test("the developer's own global git config is exactly as these tests found it", () => {
+	expect(snapshot()).toEqual(before);
+	expect(readFileSync(globalConfig, "utf8")).toContain("useConfigOnly");
 });

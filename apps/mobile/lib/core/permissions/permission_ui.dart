@@ -54,10 +54,10 @@ Future<void> offerNotifications(BuildContext context, WidgetRef ref) async {
 
 /// Whether the explanation before a system prompt may offer a way out ("Not now", tap outside, swipe down).
 ///
-/// - iOS: no. The HIG ("Requesting permission") wants one button, Continue, and no way to leave the screen
-///   without seeing the system alert; App Review rejects a "Continue" + "Not Now" pre-prompt under 5.1.1(iv)
-///   (Apple Developer Forums thread 817672, March 2026). The person declines in the system alert, and the
-///   feature's screen keeps its own alternatives (Paste link, the relay).
+/// - iOS: no. Apple's HIG (Privacy): "Include only one button", "Continue" or "Next", and "don't provide a
+///   way for people to leave the screen or window without viewing the system alert". Developers report App
+///   Review rejections of a "Continue" + "Not Now" pre-prompt under guideline 5.1.1(iv). The person declines
+///   in the system alert, and the feature's screen keeps its own alternatives (Paste link, the relay).
 /// - Android: yes. Google: "Always provide the option to cancel an educational UI flow."
 bool explanationCanDecline(BuildContext context) =>
     Theme.of(context).platform != TargetPlatform.iOS;

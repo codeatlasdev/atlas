@@ -103,10 +103,10 @@ void main() {
     expect(_result, PermissionState.notAsked);
   });
 
-  // App Review (guideline 5.1.1(iv), HIG "Requesting permission"): a screen before an iOS permission prompt
-  // has one button, Continue, and no way to leave it without seeing the system alert. A "Continue" + "Not Now"
-  // pre-prompt was rejected for exactly that (Apple Developer Forums thread 817672, March 2026). The person
-  // declines in the system alert itself.
+  // Apple HIG, Privacy ("Include only one button", "don't provide a way for people to leave the screen or
+  // window without viewing the system alert"): a screen before an iOS permission prompt has one button,
+  // Continue. Developers report App Review rejections of a "Continue" + "Not Now" pre-prompt under
+  // guideline 5.1.1(iv). The person declines in the system alert itself.
   testWidgets(
     'iOS: the explanation has only Continue and cannot be dismissed',
     (t) async {

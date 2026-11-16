@@ -405,7 +405,10 @@ echo "A's agent sees none of B's processes in /proc (B's sleep 31341 was running
 # (9c) C2 of the fourth review: `atlas crew login --crewmate` used to run the engine as A over `sudo`, in the host's
 # namespace with A's own config. A hook A's agent planted in its home ran outside the sandbox, and a process it detached
 # outlived the login and read B's /proc for good. The sign-in is now hostd's login request: the helper starts the engine
-# like any agent. B's agent (`sleep 31342`) runs; the planted hook detaches a process that looks for it after the login.
+# like any agent. B's agent (`sleep 31342`) runs; the planted hook (run by the fake engine like a SessionStart hook)
+# detaches a process that looks for B's sleep while the login is open. The hook must run confined (no_new_privs, and
+# /proc without B), and what it detached must not outlive the login (hostd ends everything of the crewmate's user when
+# its terminal ends).
 TBH=$(send_task "$CMB" "E2E_HANG 31342")
 wait_task "$CMB" "$TBH" running 60
 until_true 20 "B's sleep 31342 to exist" has_sleeper 31342
@@ -413,26 +416,22 @@ docker exec -i "$NAME" setpriv --reuid="$CMUSER" --regid="$CMUSER" --clear-group
   cat > '$DIRA/home/.claude/e2e-hook.sh' && chmod +x '$DIRA/home/.claude/e2e-hook.sh'" <<'HOOK'
 #!/bin/sh
 grep NoNewPrivs /proc/$$/status > "$HOME/e2e-hook-nnp"
-# nohup: the fake engine exits at once, and the hangup of its terminal would reach this child before it has left the session.
-nohup setsid sh -c 'echo started > "$HOME/e2e-hook-started"; sleep 3; for d in /proc/[0-9]*; do tr "\0" " " <"$d/cmdline" 2>/dev/null; echo; done | grep -c "sleep 3134[2]" > "$HOME/e2e-hook-seen"' </dev/null >"$HOME/e2e-hook-log" 2>&1 &
+# nohup: the fake engine may exit before this child has left the session, and the terminal's hangup would end it.
+nohup setsid sh -c 'n=$(for d in /proc/[0-9]*; do tr "\0" " " <"$d/cmdline" 2>/dev/null; echo; done | grep -c "sleep 3134[2]"); echo $n > "$HOME/e2e-hook-seen"; sleep 120' </dev/null >"$HOME/e2e-hook-log" 2>&1 &
 HOOK
 atlas crew login "$TARGET" --port "$PORT" claude --crewmate "$CM" </dev/null 2>&1 | tee "$OUT/login-crewmate.log"
 grep -q 'Logged in (fake claude)' "$OUT/login-crewmate.log" || fail "the crewmate's sign-in did not reach the engine through hostd"
-for _ in $(seq 30); do hook_reported=; srv test -s "$DIRA/home/e2e-hook-seen" && hook_reported=1 && break; sleep 1; done
-if [[ -z $hook_reported ]]; then
-  srv ls -la "$DIRA/home" "$DIRA/home/.claude" >&2 || true
-  srv sh -c "cat $DIRA/home/e2e-hook-log $DIRA/home/e2e-hook-nnp 2>&1; ps -eo pid,user:20,args | grep -v ' ps ' | tail -n 20" >&2 || true
-  fail "the process the hook detached never reported (the files above say how far it got)"
-fi
 [[ $(srv cat "$DIRA/home/e2e-hook-nnp") == *1 ]] || fail "the login ran A's hook without no_new_privs: it did not go through the helper"
-[[ $(srv cat "$DIRA/home/e2e-hook-seen") == 0 ]] || fail "a process A's hook detached during the login sees B's processes"
+[[ $(srv cat "$DIRA/home/e2e-hook-seen" 2>/dev/null) == 0 ]] || fail "a process A's hook detached during the login sees B's processes (or never reported): $(srv cat "$DIRA/home/e2e-hook-seen" "$DIRA/home/e2e-hook-log" 2>&1)"
 has_sleeper 31342 || fail "control: B's sleep 31342 was gone when the detached process looked, so the check proves nothing"
-srv rm -f "$DIRA/home/e2e-hook-seen" "$DIRA/home/e2e-hook-nnp" "$DIRA/home/e2e-hook-started" "$DIRA/home/e2e-hook-log" "$DIRA/home/.claude/e2e-hook.sh"
+no_process_of_a() { ! srv pgrep -u "$CMUSER" >/dev/null; }
+until_true 20 "what the login's hook detached to end with the login" no_process_of_a
+srv rm -f "$DIRA/home/e2e-hook-seen" "$DIRA/home/e2e-hook-nnp" "$DIRA/home/e2e-hook-log" "$DIRA/home/.claude/e2e-hook.sh"
 hostd crewmate_cancel "$(jq -nc --arg id "$CMB" --arg t "$TBH" '{id: $id, task: $t}')" >/dev/null
 wait_task "$CMB" "$TBH" cancelled 30
 until_true 20 "B's sleep 31342 to be gone" no_sleeper 31342
 wait_idle "$CMB"
-echo "crewmate sign-in through hostd: the hook ran confined (NoNewPrivs 1) and the process it detached sees none of B's"
+echo "crewmate sign-in through hostd: the hook ran confined (NoNewPrivs 1), the process it detached saw none of B's and ended with the login"
 
 # (9d) C1 of the fourth review: `capture` runs as the crew user, outside every crewmate's firewall chain, so A could
 # screenshot B's dev server on 127.0.0.1 (listed in /proc/net/tcp with B's uid) and the cloud metadata address. Now an

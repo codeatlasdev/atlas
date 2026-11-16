@@ -137,8 +137,18 @@ describe("bucket and group", () => {
 describe("unread and span", () => {
 	test("counts rows newer than the last seen time and flags errors", () => {
 		const rows = fold([st("a", "running", T0), { ts: T0 + 1000, kind: "alert", text: "a: x" }]);
-		expect(unread(rows, T0 - 1)).toEqual({ n: 2, errors: 1 });
+		expect(unread(rows, T0 - 1)).toEqual({ n: 1, errors: 1 });
 		expect(unread(rows, T0 + 1000)).toEqual({ n: 0, errors: 0 });
+	});
+	// Regression: 1.5.0-alpha.26, a brand-new user's healthy stack start showed a red "9+" on the Activity button.
+	test("a normal stack start is not unread: only failures and warnings are", () => {
+		const start = ["api", "web", "worker", "payments", "migrate"].flatMap((s, i) => [
+			st(s, "starting", T0 + i * 10_000),
+			st(s, "running", T0 + i * 10_000 + 1500),
+		]);
+		expect(unread(fold(start), T0 - 1)).toEqual({ n: 0, errors: 0 });
+		const crashed = fold([...start, st("api", "failed", T0 + 120_000)]);
+		expect(unread(crashed, T0 - 1)).toMatchObject({ n: 1, errors: 1 });
 	});
 	test("span formats short and long ranges", () => {
 		expect(span(0, 12_000)).toBe("12s");

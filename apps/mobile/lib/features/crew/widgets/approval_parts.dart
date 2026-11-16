@@ -2,7 +2,7 @@
 /// the Crew tab's needs-you card): the tool line, the command preview and Deny / Allow.
 library;
 
-import 'package:flutter/material.dart';
+import 'package:material_ui/material_ui.dart';
 
 import 'package:atlas_mobile/core/protocol/crew_models.dart';
 import 'package:atlas_mobile/core/ui/atlas_theme.dart';

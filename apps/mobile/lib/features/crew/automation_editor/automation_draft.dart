@@ -5,7 +5,7 @@ library;
 
 import 'dart:math';
 
-import 'package:flutter/material.dart';
+import 'package:material_ui/material_ui.dart';
 
 import 'package:atlas_mobile/core/protocol/crew_triggers.dart';
 import 'package:atlas_mobile/features/crew/automations.dart';

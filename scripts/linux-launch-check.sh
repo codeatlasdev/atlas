@@ -17,8 +17,10 @@
 #   no-window        no window mapped in sway within --map-timeout
 #   blank-page       the screenshot is one flat colour (or almost): the page never painted, or painted nothing
 #   webprocess-died  no WebKitWebProcess under the app at the end, or the one seen at first paint is gone
-#   stderr-marker    the app/WebKit printed a crash, EGL/GBM/Mesa failure, GLib CRITICAL, panic, CSP refusal or
-#                    console error (MARKERS below)
+#   stderr-marker    the app/WebKit printed a crash, EGL/GBM/Mesa failure, GStreamer `appsrc not found` (a bundle
+#                    without its plugins, #265; it shows only once a page plays audio or video, so a clean launch
+#                    does not prove playback: scripts/appimage-patch.sh checks the plugins are in the bundle), GLib
+#                    CRITICAL, panic, CSP refusal or console error (MARKERS below)
 #   app-log-error    the app wrote anything but its startup line to ~/.atlas/desktop/app.log: every line there is
 #                    an incident (panic, frontend error from the page's error/unhandledrejection handlers,
 #                    host/terminal failure). See crates/atlas-desktop/src/diag.rs
@@ -43,7 +45,7 @@ here="$(cd "$(dirname "$0")" && pwd)"
 # or `MESA: error: ZINK: vkCreateInstance failed`: Mesa probing a GPU/Vulkan a headless machine does not have before it
 # falls back to llvmpipe (seen on GitHub runners, with a page that rendered). A GL that really cannot start shows as
 # WebKit's `Could not create ... EGL`, a missing window or a blank page.
-MARKERS='Aborting|Process crashed|[Ww]eb ?[Pp]rocess (crashed|terminated|died)|terminated unexpectedly|Segmentation fault|SIGSEGV|SIGABRT|SIGBUS|panicked at|EGL_BAD|EGL_NOT_INITIALIZED|Could not create (an )?(EGL|GL)|Failed to create (an )?(EGL|GBM|GL)|Cannot get default EGL|Error 71 \(Protocol error\)|CRITICAL \*\*|-CRITICAL|Refused to (load|execute|connect|apply|evaluate|frame|create)|Content[- ]Security[- ]Policy|CONSOLE (JS )?ERROR|Uncaught|error while loading shared libraries|cannot open shared object'
+MARKERS='Aborting|GStreamer element appsrc not found|Process crashed|[Ww]eb ?[Pp]rocess (crashed|terminated|died)|terminated unexpectedly|Segmentation fault|SIGSEGV|SIGABRT|SIGBUS|panicked at|EGL_BAD|EGL_NOT_INITIALIZED|Could not create (an )?(EGL|GL)|Failed to create (an )?(EGL|GBM|GL)|Cannot get default EGL|Error 71 \(Protocol error\)|CRITICAL \*\*|-CRITICAL|Refused to (load|execute|connect|apply|evaluate|frame|create)|Content[- ]Security[- ]Policy|CONSOLE (JS )?ERROR|Uncaught|error while loading shared libraries|cannot open shared object'
 
 # Known, tracked, harmless today; each entry names why. Everything else that matches MARKERS fails.
 #  - Gtk-CRITICAL gtk_widget_get_scale_factor: printed once at startup by the tray/dock window creation (GTK3 called on a

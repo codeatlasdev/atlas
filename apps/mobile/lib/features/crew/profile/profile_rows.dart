@@ -2,7 +2,7 @@
 /// (approval, short replies) that sit in rows.
 library;
 
-import 'package:flutter/material.dart';
+import 'package:material_ui/material_ui.dart';
 import 'package:flutter/services.dart';
 
 import 'package:atlas_mobile/core/ui/atlas_theme.dart';

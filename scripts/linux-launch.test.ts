@@ -46,6 +46,26 @@ describe("release.yml", () => {
 	});
 });
 
+// #265: a package install without GStreamer's plugins aborts the web process as soon as a page loads an <audio> or
+// <video> (MediaViewer), and no Web Audio decode works. The runtime packages webkit2gtk pulls in are only the libraries.
+describe("the .deb and .rpm", () => {
+	const conf = JSON.parse(read("crates/atlas-desktop/tauri.linux.conf.json"));
+	test("the .deb depends on the Debian/Ubuntu GStreamer base and good plugin packages", () => {
+		expect(conf.bundle.linux.deb.depends).toEqual(expect.arrayContaining(["gstreamer1.0-plugins-base", "gstreamer1.0-plugins-good"]));
+	});
+	test("the .rpm depends on the Fedora GStreamer base and good plugin packages", () => {
+		expect(conf.bundle.linux.rpm.depends).toEqual(expect.arrayContaining(["gstreamer1-plugins-base", "gstreamer1-plugins-good"]));
+	});
+	test("both keep git, which atlas needs", () => {
+		expect(conf.bundle.linux.deb.depends).toContain("git");
+		expect(conf.bundle.linux.rpm.depends).toContain("git");
+	});
+	test("verify-linux checks, after the install, that the plugins are on disk", () => {
+		const steps = release.jobs["verify-linux"].steps.map((s: any) => s.run ?? "").join("\n");
+		expect(steps).toContain("libgstogg.so");
+	});
+});
+
 describe("the Arch package", () => {
 	// Incident: verify-linux (build-only run 43766908511): `pacman -U` of the package, then atlas-desktop panicked at start
 	// ("Failed to load ayatana-appindicator3") because libayatana-appindicator was only an optdepend. The tray library is
@@ -55,6 +75,16 @@ describe("the Arch package", () => {
 		const depends = pkgbuild.match(/^depends=\((.*)\)$/m)?.[1] ?? "";
 		expect(depends).toContain("'libayatana-appindicator'");
 		expect(pkgbuild).not.toMatch(/optdepends=\([^)]*libayatana-appindicator/);
+	});
+
+	// #265, measured on an Arch install with webkit2gtk-4.1 and only gst-plugins-base-libs (what webkit2gtk-4.1 pulls in):
+	// every Web Audio decode failed with `Missing decoder: Ogg`/`WAV`, `GStreamer element autoaudiosink not found`, and a
+	// page that loaded an <audio>/<video> aborted its web process (SIGABRT). The demuxers and decoders are in the plugin
+	// packages, not the -libs ones.
+	test("depends on the GStreamer plugins webkit2gtk-4.1 needs to play media, not just its -libs", () => {
+		const depends = read("packaging/arch/PKGBUILD.in").match(/^depends=\((.*)\)$/m)?.[1] ?? "";
+		expect(depends).toContain("'gst-plugins-base'");
+		expect(depends).toContain("'gst-plugins-good'");
 	});
 });
 
@@ -90,5 +120,19 @@ describe("linux-launch-check.sh", () => {
 		const p = run("--out", out, "--map-timeout", "3", app);
 		expect(p.exitCode).toBe(1);
 		expect(p.stdout.toString()).toContain("FAIL no-window");
+	});
+
+	// #265: the lines are copied from the real stderr of the published 1.5.0-alpha.25 AppImage (no GStreamer plugins) when
+	// its page created an AudioContext, and of the AppImage built with the plugins. Only the first is a broken package;
+	// a machine without an audio sink or an AAC decoder is the host's gap, not a failed launch.
+	describe("stderr markers", () => {
+		const markers = new RegExp(read("scripts/linux-launch-check.sh").match(/^MARKERS='(.*)'$/m)![1]!);
+		test("`appsrc not found` (bundled GStreamer without its plugins) fails the launch", () => {
+			expect(markers.test("GStreamer element appsrc not found. Please install it")).toBe(true);
+		});
+		test("a host with no audio sink or no AAC decoder is not a launch failure", () => {
+			expect(markers.test("GStreamer element autoaudiosink not found. Please install it")).toBe(false);
+			expect(markers.test("Missing decoder: MPEG-4 AAC (audio/x-m4a)")).toBe(false);
+		});
 	});
 });

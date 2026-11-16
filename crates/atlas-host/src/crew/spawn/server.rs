@@ -216,13 +216,20 @@ impl Server {
             // Not even an error reply: a stranger gets a closed socket.
             return Ok(());
         }
+        // The fd handed over with the last reply. It stays open here until the peer's next request or
+        // hang-up: on macOS the received end reads EOF (and loses what the child printed) if this last
+        // descriptor closes before the peer's recvmsg. hostd's client reads the reply and then drops its
+        // connection, so that is the moment it has its own copy.
+        let mut in_flight = None;
         loop {
             let Some(frame) = wire::recv::<Request>(&conn)? else {
                 return Ok(());
             };
+            drop(in_flight.take());
             let (resp, fd) = self.handle(who, frame.len, frame.msg);
             let fds: Vec<_> = fd.iter().map(|f| f.as_raw_fd()).collect();
             wire::send(&conn, &resp, &fds)?;
+            in_flight = fd;
         }
     }
 
@@ -894,6 +901,29 @@ mod tests {
         let out = read_until(&mut io, "echo=ping");
         assert!(out.contains("echo=ping"), "{out}");
         assert_eq!(r.client.wait_exit(sp.session), Some(0));
+    }
+
+    // On macOS a socket whose last descriptor is the one in flight in an SCM_RIGHTS message loses its
+    // data when the sender closes its copy before the receiver's recvmsg, and the peer (the child) is
+    // already gone: the receiver reads EOF, whatever the child printed (a fast `claude` fake in CI
+    // gave "no result JSON in output:" with exit 0). The helper must keep its end until hostd has it.
+    #[test]
+    fn what_a_fast_child_printed_survives_a_reply_that_is_read_late() {
+        let r = rig();
+        let conn = UnixStream::connect(r.client.path()).unwrap();
+        let spawn = super::super::protocol::Request::Spawn(req(&r, Mode::Pipe, "echo printed"));
+        wire::send(&conn, &spawn, &[]).unwrap();
+        // The child is done (and its end closed) long before hostd reads the reply.
+        std::thread::sleep(std::time::Duration::from_millis(700));
+        let mut f = wire::recv::<super::super::protocol::Response>(&conn)
+            .unwrap()
+            .unwrap();
+        let mut io = std::fs::File::from(f.fds.remove(0));
+        let out = read_until(&mut io, "printed");
+        assert!(
+            out.contains("printed"),
+            "the child's output was lost: {out:?}"
+        );
     }
 
     // Refusals come back as errors and nothing is started: the validators run in the helper, not

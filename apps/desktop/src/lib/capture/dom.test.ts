@@ -9,7 +9,7 @@ const { clickBySelector, clickByText, elementRect, findByText, pressKey, typeInt
 function html(s: string) {
 	document.body.innerHTML = s;
 }
-/** happy-dom does no layout; give elements a rect and offsetParent-like visibility the way WebKit would. */
+/** happy-dom does no layout; give elements a rect and the visibility WebKit would report (`checkVisibility`). */
 function laidOut(el: Element, r = { x: 10, y: 20, width: 100, height: 30 }) {
 	el.getBoundingClientRect = () => ({
 		...r,
@@ -19,7 +19,11 @@ function laidOut(el: Element, r = { x: 10, y: 20, width: 100, height: 30 }) {
 		bottom: r.y + r.height,
 		toJSON() {},
 	});
-	Object.defineProperty(el, "offsetParent", { get: () => document.body, configurable: true });
+	el.checkVisibility = () => true;
+}
+/** What WebKit says of `display: none` (itself or an ancestor): no box, not rendered. */
+function hidden(el: Element) {
+	el.checkVisibility = () => false;
 }
 
 beforeEach(() => html(""));
@@ -71,14 +75,28 @@ describe("clicks", () => {
 		expect(clickBySelector(".nope")).toBe(false);
 	});
 
-	test("a hidden element (no offsetParent) is not clicked: a script must not press what the viewer cannot see", () => {
+	test("a hidden element (display: none) is not clicked: a script must not press what the viewer cannot see", () => {
 		html('<button class="a">A</button>');
 		const b = document.querySelector(".a");
-		Object.defineProperty(b, "offsetParent", { get: () => null, configurable: true });
+		hidden(b);
 		let n = 0;
 		b.addEventListener("click", () => n++);
 		expect(clickBySelector(".a")).toBe(false);
 		expect(n).toBe(0);
+	});
+
+	// Incident (macOS release check, 2026-11-15): visibility was `offsetParent !== null`, which WebKit answers null
+	// for every `position: fixed` element and for <body>, so a script could never press a button in a fixed
+	// dialog or sheet. Rendered means "has a box", whatever its positioning.
+	test("a button in a fixed overlay (offsetParent null in WebKit) is clicked", () => {
+		html('<div class="sheet"><button class="ok">OK</button></div>');
+		const b = document.querySelector(".ok");
+		laidOut(b);
+		Object.defineProperty(b, "offsetParent", { get: () => null, configurable: true });
+		let n = 0;
+		b.addEventListener("click", () => n++);
+		expect(clickBySelector(".ok")).toBe(true);
+		expect(n).toBe(1);
 	});
 
 	test("clickByText matches the whole trimmed text, not a substring", () => {
@@ -94,10 +112,7 @@ describe("clicks", () => {
 
 	test("findByText only considers visible elements", () => {
 		html("<span>Hi</span>");
-		Object.defineProperty(document.querySelector("span"), "offsetParent", {
-			get: () => null,
-			configurable: true,
-		});
+		hidden(document.querySelector("span"));
 		expect(findByText("Hi")).toBeUndefined();
 		laidOut(document.querySelector("span"));
 		expect(findByText("Hi")?.tagName).toBe("SPAN");

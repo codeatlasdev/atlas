@@ -1,4 +1,4 @@
-import 'package:flutter/material.dart';
+import 'package:material_ui/material_ui.dart';
 
 import 'package:atlas_mobile/core/protocol/agent_history.dart';
 import 'package:atlas_mobile/core/protocol/timeline_items.dart';

@@ -160,35 +160,114 @@ pub fn spawn_capped(
         },
         ids,
     )?;
+    // A failing step says which one it was through a close-on-exec pipe (one byte, `write(2)` only: the hook
+    // may not allocate), so the error is "setuid: Operation not permitted" and not a bare errno.
+    let (step_rd, step_wr) = step_pipe()?;
+    let step_fd = step_wr.as_raw_fd();
     // SAFETY: the hook runs between fork and exec and calls only async-signal-safe libc functions
     // (write, setsid, ioctl, setgroups, setgid, setuid); it allocates nothing.
     unsafe {
         cmd.pre_exec(move || {
+            let failed = |step: u8| {
+                let e = io::Error::last_os_error();
+                libc::write(step_fd, (&raw const step).cast(), 1);
+                e
+            };
             // First thing, as root: the cgroup file is only writable before the uid changes.
             #[cfg(target_os = "linux")]
-            if let Some(fd) = leaf {
-                super::cgroup::join(fd)?;
+            if let Some(fd) = leaf
+                && super::cgroup::join(fd).is_err()
+            {
+                return Err(failed(STEP_CGROUP));
             }
             #[cfg(not(target_os = "linux"))]
             let _ = leaf;
             if libc::setsid() < 0 {
-                return Err(io::Error::last_os_error());
+                return Err(failed(STEP_SETSID));
             }
             if tty && libc::ioctl(0, libc::TIOCSCTTY as _, 0) < 0 {
-                return Err(io::Error::last_os_error());
+                return Err(failed(STEP_TTY));
             }
-            if let Identity::To(ids) = identity
-                && (libc::setgroups(0, std::ptr::null()) != 0
-                    || libc::setgid(ids.gid) != 0
-                    || libc::setuid(ids.uid) != 0)
-            {
-                return Err(io::Error::last_os_error());
+            if let Identity::To(ids) = identity {
+                if libc::setgroups(0, std::ptr::null()) != 0 {
+                    return Err(failed(STEP_SETGROUPS));
+                }
+                if libc::setgid(ids.gid) != 0 {
+                    return Err(failed(STEP_SETGID));
+                }
+                if libc::setuid(ids.uid) != 0 {
+                    return Err(failed(STEP_SETUID));
+                }
+            }
+            // The helper's unit has no `NoNewPrivileges=` (it takes the helper's own CAP_SETUID away on
+            // systemd 255), so what that option gave every crewmate process is set here, as the crewmate.
+            #[cfg(target_os = "linux")]
+            if libc::prctl(libc::PR_SET_NO_NEW_PRIVS, 1, 0, 0, 0) != 0 {
+                return Err(failed(STEP_NO_NEW_PRIVS));
             }
             Ok(())
         });
     }
-    let child = cmd.spawn()?;
+    let child = match cmd.spawn() {
+        Ok(c) => c,
+        Err(e) => {
+            return Err(match step_failed(&step_rd) {
+                Some(step) => io::Error::new(e.kind(), format!("{step}: {e}")),
+                None => e,
+            });
+        }
+    };
     Ok(Started { child, fd })
+}
+
+const STEP_CGROUP: u8 = 1;
+const STEP_SETSID: u8 = 2;
+const STEP_TTY: u8 = 3;
+const STEP_SETGROUPS: u8 = 4;
+const STEP_SETGID: u8 = 5;
+const STEP_SETUID: u8 = 6;
+#[cfg(target_os = "linux")]
+const STEP_NO_NEW_PRIVS: u8 = 7;
+
+/// A close-on-exec pipe the forked child reports its failing step on; the read end is non-blocking.
+fn step_pipe() -> io::Result<(OwnedFd, OwnedFd)> {
+    let mut fds = [0 as RawFd; 2];
+    // SAFETY: `fds` has room for the two descriptors.
+    #[cfg(target_os = "linux")]
+    let rc = unsafe { libc::pipe2(fds.as_mut_ptr(), libc::O_CLOEXEC | libc::O_NONBLOCK) };
+    #[cfg(not(target_os = "linux"))]
+    let rc = unsafe { libc::pipe(fds.as_mut_ptr()) };
+    if rc != 0 {
+        return Err(io::Error::last_os_error());
+    }
+    // SAFETY: pipe returned two fresh descriptors we now own.
+    let (r, w) = unsafe { (OwnedFd::from_raw_fd(fds[0]), OwnedFd::from_raw_fd(fds[1])) };
+    set_cloexec(r.as_raw_fd());
+    set_cloexec(w.as_raw_fd());
+    // SAFETY: plain fcntl on a descriptor we own (the pipe2 flag above is Linux only).
+    unsafe { libc::fcntl(r.as_raw_fd(), libc::F_SETFL, libc::O_NONBLOCK) };
+    Ok((r, w))
+}
+
+/// The step a failed child reported, in words.
+fn step_failed(rd: &OwnedFd) -> Option<&'static str> {
+    let mut b = 0u8;
+    // SAFETY: reads one byte into a live local from a descriptor we own.
+    let n = unsafe { libc::read(rd.as_raw_fd(), (&raw mut b).cast(), 1) };
+    if n != 1 {
+        return None;
+    }
+    Some(match b {
+        STEP_CGROUP => "joining the memory cgroup",
+        STEP_SETSID => "setsid",
+        STEP_TTY => "taking the terminal",
+        STEP_SETGROUPS => "setgroups",
+        STEP_SETGID => "setgid",
+        STEP_SETUID => "setuid",
+        #[cfg(target_os = "linux")]
+        STEP_NO_NEW_PRIVS => "no_new_privs",
+        _ => "an unknown step",
+    })
 }
 
 /// pty with the slave owned by the crewmate. Returns the master and the slave (the child's stdio),
@@ -315,7 +394,7 @@ mod tests {
         let bin = engines.join("claude");
         std::fs::write(
             &bin,
-            "#!/bin/sh\necho \"uid=$(/usr/bin/id -u) cwd=$(pwd) home=$HOME user=$USER path=$PATH secret=$SECRET ld=${LD_PRELOAD:-none} args=$*\"\n[ -t 0 ] && echo tty=yes || echo tty=no\nread line; echo got=$line\n",
+            "#!/bin/sh\necho \"uid=$(/usr/bin/id -u) cwd=$(pwd) home=$HOME user=$USER path=$PATH secret=$SECRET ld=${LD_PRELOAD:-none} args=$*\"\nwhile read k v; do [ \"$k\" = NoNewPrivs: ] && echo nnp=$v; done < /proc/self/status\n[ -t 0 ] && echo tty=yes || echo tty=no\nread line; echo got=$line\n",
         )
         .unwrap();
         std::fs::set_permissions(&bin, std::fs::Permissions::from_mode(0o755)).unwrap();
@@ -325,6 +404,48 @@ mod tests {
             work: work.to_string_lossy().into(),
             _t: t,
         }
+    }
+
+    // Incident (real-systemd end-to-end test): the helper's unit had `NoNewPrivileges=yes`, which on systemd 255
+    // took `CAP_SETUID` out of the helper's own permitted set (every spawn then failed at `setuid` with EPERM; the
+    // unit works with the option off, checked by leaving each option out in turn). What it was for is that no
+    // process a crewmate runs gains privileges through a setuid binary, so the child sets it on itself.
+    #[test]
+    fn the_child_cannot_gain_privileges_through_a_setuid_binary() {
+        let f = fixture();
+        let out = run(&f, Mode::Pipe);
+        assert!(
+            out.contains("nnp=1"),
+            "the child must set no_new_privs on itself: {out}"
+        );
+    }
+
+    // Incident (real-systemd end-to-end test): a spawn failed with a bare "Operation not permitted" and nothing
+    // said which of cgroup join, setsid, setgroups, setgid or setuid after the fork had been refused. The
+    // step is now in the message (and a failure of chdir or exec, which std reports itself, has none).
+    #[test]
+    fn a_step_that_fails_after_the_fork_is_named_in_the_error() {
+        use std::os::fd::AsRawFd;
+        let f = fixture();
+        // A read-only descriptor: writing `0` to it, as the cgroup join does, fails in the child.
+        let ro = std::fs::File::open("/dev/null").unwrap();
+        ro.as_raw_fd();
+        let err = spawn_capped(
+            &Where {
+                engines: &[f.engines.as_str()],
+                cm_root: &f.root,
+            },
+            &req(&f, Mode::Pipe),
+            me(),
+            "/tmp",
+            Some(ro.as_raw_fd()),
+        )
+        .err()
+        .expect("the cgroup join fails");
+        assert!(
+            err.to_string().contains("joining the memory cgroup"),
+            "the failing step is named: {err}"
+        );
     }
 
     fn me() -> Ids {

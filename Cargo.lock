@@ -406,6 +406,7 @@ version = "1.5.0-alpha.26"
 dependencies = [
  "anyhow",
  "dirs",
+ "globset",
  "hex",
  "ignore",
  "libc",
@@ -499,6 +500,7 @@ dependencies = [
  "portable-pty",
  "reqwest 0.13.5",
  "rustls",
+ "semver",
  "serde",
  "serde_json",
  "sha1_smol",

@@ -4,6 +4,7 @@
 	import type { LspDoc } from "#lib/lsp/client.svelte.ts";
 	import { hint, dismissHint, runHintAction } from "#lib/lsp/hints.svelte.ts";
 	import LspPopover from "#lib/lsp/LspPopover.svelte";
+	import StatusItem from "#lib/editor/StatusItem.svelte";
 	import { uiStateOf } from "#lib/lsp/uiState.svelte.ts";
 
 	let { doc, errors = 0, warnings = 0 }: { doc: LspDoc; errors?: number; warnings?: number } = $props();
@@ -24,17 +25,18 @@
 	{/if}
 	<Popover side="top" align="end" sideOffset={6}>
 		{#snippet triggerChild(props)}
-			<button
+			<StatusItem
+				button
 				{...props}
-				class="lsp"
 				aria-label="Language server: {ui.label}"
 				title={ui.summary}
 				data-kind={ui.kind}
+				style="max-width: 280px"
 			>
 				{#if ui.tone === "busy"}<LoaderCircle size={12} class="spin" />{:else}<Languages size={12} />{/if}
 				<span class="dot {ui.tone}"></span>
 				<span class="label">{ui.label}</span>
-			</button>
+			</StatusItem>
 		{/snippet}
 		<LspPopover {doc} {ui} />
 	</Popover>
@@ -56,24 +58,6 @@
 		align-items: center;
 		gap: 2px;
 		min-width: 0;
-	}
-	.lsp {
-		display: inline-flex;
-		align-items: center;
-		gap: 5px;
-		padding: 2px 6px;
-		border: 0;
-		border-radius: 5px;
-		background: none;
-		font-size: 11px;
-		color: var(--ca-text-secondary);
-		max-width: 280px;
-		min-width: 0;
-		cursor: pointer;
-	}
-	.lsp:hover,
-	.lsp[data-state="open"] {
-		background: var(--ca-action-hover);
 	}
 	.label {
 		overflow: hidden;

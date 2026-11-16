@@ -23,7 +23,6 @@ const readers = (name: string) =>
 /** Files that render only below a space layer (SpaceView → ProjectHeader / Workbench → panes, panel, viewers). */
 const BELOW_A_LAYER = [
 	"lib/components/Editor.svelte", // TabGroupView → editor tab
-	"lib/panel/CardHead.svelte", // Panel tab → ServiceCard
 	"lib/panel/PanelHeader.svelte", // Panel tab
 	"lib/panel/PanelOps.svelte", // ProjectHeader
 	"lib/search/SearchForm.svelte", // left dock → SearchPanel

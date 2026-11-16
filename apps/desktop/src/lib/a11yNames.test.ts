@@ -1,17 +1,26 @@
 // @ts-nocheck bun test runtime types are not part of the app tsconfig
 import "../../test/setup.ts";
-import { afterEach, expect, mock, test } from "bun:test";
+import { afterAll, afterEach, expect, mock, test } from "bun:test";
 
 // First-run pass on 1.5.0-alpha.26 (`atlas desktop debug a11y`): the "…" of the project header and the "+" of a tab strip
 // were a kit menu button wrapping a `<span aria-label>` (the button had no name of its own), and the sidebar's
 // "Filter worktrees" and "Search sessions" fields had only a placeholder. Real kit, real components, and the app's own
 // `a11yTree` (what `debug a11y` prints): no button or link may carry a `problem`, and the fields have a name.
+// RightSidebar reads sessions through the Tauri bridge; a global stub (not a module mock, which would outlive this file
+// for every suite in the run) that `afterAll` removes.
 window.__TAURI_INTERNALS__ = { invoke: async () => [], transformCallback: () => 0 };
+// The real `@tauri-apps/api/window` links `SERIALIZE_TO_IPC_FN` from `api/core`, which any other suite's `core` mock
+// lacks (module mocks are process-wide): neither these components nor this test touch the window (DiffView.test.ts).
+mock.module("@tauri-apps/api/window", () => ({
+	getCurrentWindow: () => ({ onFocusChanged: async () => () => {} }),
+}));
 await (await import("../../test/uiKit.ts")).useRealKit("DropdownMenu", "DropdownMenu/DropdownMenuItem");
-// The theme store reads `import.meta.glob` (Vite only) and the whole kit; the project header's import graph reaches it.
-mock.module("#lib/stores/theme.svelte.ts", () => ({ themes: { xterm: {} } }));
 const { flushSync, mount, unmount, tick } = await import("svelte");
 const { a11yTree } = await import("./debug/agent.ts");
+
+afterAll(() => {
+	delete window.__TAURI_INTERNALS__;
+});
 
 let done: (() => void) | undefined;
 afterEach(() => {

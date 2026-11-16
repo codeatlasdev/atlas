@@ -3,7 +3,7 @@ import { expect, test } from "bun:test";
 import { readFileSync } from "node:fs";
 
 // Regression: 1.5.0-alpha.26, a healthy service's ":4100" was red. The port link took the project's identity color
-// (--space-accent-text), and orbit-shop's identity is red, so a running api looked like it was failing. On a service
+// (the space accent variable), and orbit-shop's identity is red, so a running api looked like it was failing. On a service
 // card only the state line may carry a status color; the link must not follow a user-chosen hue.
 function ruleOf(css: string, selector: string) {
 	return css.match(new RegExp(`(?:^|\\n)\\s*${selector.replace(".", "\\.")}\\s*\\{([^}]*)\\}`))?.[1] ?? "";

@@ -475,7 +475,7 @@ bad=$(srv cat "$WORKA/marker" | grep -vx "$AUID" || true)
 [[ -z $bad ]] || fail "core.fsmonitor ran as another uid than A's ($AUID): $bad"
 srv test ! -e "$WORKA/stolen" || fail "core.fsmonitor copied hostd.token: it ran as the crew user"
 # What the hook looked like in THIS run, the helper's: the commits below (setpriv from this script) run it again.
-HOOK_PROBE=$HOOK_PROBE
+HOOK_PROBE=$(srv cat "$WORKA/probe" | tr '\n\t' ' ;')
 echo "fsmonitor ran $(srv wc -l <"$WORKA/marker") time(s), always as uid $AUID, hostd.token not copied"
 as_user "$CMUSER" sh -c "cd '$WORKA' && echo one > f && git add f && git -c user.name=a -c user.email=a@example.com commit -q -m one && echo two >> f && git -c user.name=a -c user.email=a@example.com commit -q -am two" ||
   fail "A cannot edit a tracked file and commit in its own checkout"
@@ -506,7 +506,7 @@ echo "a link to B's work/ as the working directory: git and spawn both fail at t
 # The same probe, from the planted command of the last plain git request above (A's own git, run by the helper).
 kill "$SPAWN_TUNNEL_PID"
 wait "$SPAWN_TUNNEL_PID" 2>/dev/null || true
-PROBE=$(srv cat "$WORKA/probe" | tr '\n\t' ' ;')
+PROBE=$HOOK_PROBE
 [[ $PROBE == "0 1 2 NoNewPrivs:;1 "* ]] || fail "the git hook has descriptors besides 0, 1, 2 (the helper's listening socket?), or no NoNewPrivs: $PROBE"
 if srv test -d "$LEAF_DIR"; then
   [[ $PROBE == *"0::/system.slice/atlas-crew-spawn.service/cm-$SLUG"* ]] || fail "the git hook does not run in A's memory leaf cm-$SLUG: $PROBE"

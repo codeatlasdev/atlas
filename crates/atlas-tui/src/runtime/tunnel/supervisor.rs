@@ -362,7 +362,7 @@ impl Tunnel {
             .or(self.adopted_pid);
         match pid {
             Some(pid) if pid_alive(pid) => {
-                let _ = std::fs::create_dir_all(&self.log_dir);
+                let _ = crate::runtime::ensure_log_dir(&self.log_dir);
                 let rec = PidRecord {
                     pid,
                     ssh_host: self.cfg.ssh_host.clone(),

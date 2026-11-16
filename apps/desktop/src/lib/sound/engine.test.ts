@@ -1,6 +1,6 @@
 // @ts-nocheck bun test runtime types are not part of the app tsconfig
 import { describe, expect, test } from "bun:test";
-import { createEngine } from "./engine.ts";
+import { createEngine, earconFormats } from "./engine.ts";
 import { DEFAULT_SOUND_PREFS, parseSoundPrefs } from "./policy.ts";
 
 /** A fake Web Audio graph that records what the engine builds, with the real control flow around it. */
@@ -178,6 +178,82 @@ describe("audio engine", () => {
 		});
 		e.gesture();
 		await e.play("update");
+	});
+});
+
+/**
+ * Regression (#265): the earcons were AAC-in-.m4a only. WebKitGTK decodes through the host's (or the AppImage's)
+ * GStreamer, and neither has an AAC decoder (`Missing decoder: MPEG-4 AAC`: gst-libav/faad is not in the AppImage's
+ * Ubuntu plugin set nor in a bare Arch install), so every `decodeAudioData` failed and Linux never made a sound.
+ * Every other format is decoded with plugins-base/good, so an Ogg copy ships and the engine falls back to it.
+ */
+describe("earcon formats", () => {
+	/** A graph whose decoder only understands the formats in `decodes`: the bytes fetched say which format they are. */
+	function formatRig(decodes, formats) {
+		const log = { fetched: [], started: 0 };
+		const engine = createEngine({
+			AudioContext: class {
+				state = "running";
+				destination = {};
+				resume() {}
+				decodeAudioData(buf) {
+					const format = new TextDecoder().decode(buf);
+					return decodes.includes(format)
+						? Promise.resolve({ format })
+						: Promise.reject(new Error("EncodingError"));
+				}
+				createBufferSource() {
+					return { buffer: null, connect: (x) => x, start: () => log.started++ };
+				}
+				createGain() {
+					return { gain: { value: 1 }, connect: (x) => x };
+				}
+			},
+			formats,
+			fetchAsset: async (name, format) => {
+				log.fetched.push(`${name}.${format}`);
+				return new TextEncoder().encode(format).buffer;
+			},
+			context: () => ({ now: 1_000_000, foreground: true, systemUiSounds: true, prefs: DEFAULT_SOUND_PREFS }),
+		});
+		engine.gesture();
+		return { engine, log };
+	}
+
+	test("a decoder without AAC plays the Ogg copy, and remembers which format worked", async () => {
+		const { engine, log } = formatRig(["ogg"], ["m4a", "ogg"]);
+		await engine.play("agent-done");
+		expect(log.started).toBe(1);
+		expect(log.fetched).toEqual(["agent-done.m4a", "agent-done.ogg"]);
+		await engine.play("agent-done", { preview: true }); // (past the cooldown) the decoded buffer is cached: no second fetch of either file
+		expect(log.started).toBe(2);
+		expect(log.fetched.length).toBe(2);
+	});
+
+	test("the first format in the list that decodes wins, and later ones are never fetched", async () => {
+		const { engine, log } = formatRig(["m4a", "ogg"], ["ogg", "m4a"]);
+		await engine.play("toggle");
+		expect(log.fetched).toEqual(["toggle.ogg"]);
+		expect(log.started).toBe(1);
+	});
+
+	test("when no format decodes the earcon is a silent miss, retried (not cached) next time", async () => {
+		const { engine, log } = formatRig([], ["m4a", "ogg"]);
+		await engine.play("update");
+		await engine.play("update");
+		expect(log.started).toBe(0);
+		expect(log.fetched).toEqual(["update.m4a", "update.ogg", "update.m4a", "update.ogg"]);
+	});
+
+	// canPlayType is WebKit's view of GStreamer's registry: the AppImage answered "" for audio/mp4 and "maybe" for
+	// audio/ogg (probed 2026-11-15 with the bundled plugins), macOS answers "maybe"/"probably" for mp4 and "" for ogg.
+	test("earconFormats puts AAC first only where the webview says it can play it", () => {
+		const says = (table) => (mime) => table[mime] ?? "";
+		expect(
+			earconFormats(says({ 'audio/mp4; codecs="mp4a.40.2"': "probably", "audio/ogg; codecs=vorbis": "" })),
+		).toEqual(["m4a", "ogg"]);
+		expect(earconFormats(says({ "audio/ogg; codecs=vorbis": "maybe" }))).toEqual(["ogg", "m4a"]);
+		expect(earconFormats(says({}))).toEqual(["m4a", "ogg"]);
 	});
 });
 

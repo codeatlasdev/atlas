@@ -135,7 +135,7 @@ fn path(log_dir: &Path) -> std::path::PathBuf {
 /// Start a run's audit file: the previous run's file becomes `atlas-audit.prev.log`.
 /// Best-effort like every disk log: auditing never blocks a control call.
 pub fn rotate_for_new_run(log_dir: &Path) {
-    let _ = std::fs::create_dir_all(log_dir);
+    let _ = crate::runtime::ensure_log_dir(log_dir);
     let cur = path(log_dir);
     if cur.exists() {
         let _ = std::fs::rename(&cur, log_dir.join(format!("{AUDIT_LOG}.prev.log")));
@@ -144,7 +144,7 @@ pub fn rotate_for_new_run(log_dir: &Path) {
 
 /// Append one entry. Rotates first when the file is over [`MAX_AUDIT_BYTES`].
 pub fn record(log_dir: &Path, entry: &AuditEntry) {
-    let _ = std::fs::create_dir_all(log_dir);
+    let _ = crate::runtime::ensure_log_dir(log_dir);
     let cur = path(log_dir);
     if std::fs::metadata(&cur).is_ok_and(|m| m.len() >= MAX_AUDIT_BYTES) {
         rotate_for_new_run(log_dir);

@@ -21,7 +21,7 @@ use crate::runtime::service::ServiceState;
 pub(crate) fn lock_or_err(root_dir: &Path) -> Result<SingletonLock> {
     let log_dir = crate::runtime::log_dir(root_dir);
     let lock_path = log_dir.join(".tui.lock");
-    std::fs::create_dir_all(&log_dir)
+    crate::runtime::ensure_log_dir(&log_dir)
         .map_err(|e| anyhow::anyhow!("atlas dev: cannot create {}: {e}", log_dir.display()))?;
     SingletonLock::acquire(&lock_path).map_err(|_| match SingletonLock::existing_pid(&lock_path) {
         Some(pid) => {

@@ -562,6 +562,20 @@ async fn info_of_a_busy_atlas_is_running_not_absent() {
 fn fake_runner(root: &Path) -> FakeRunner {
     let exe = root.join("atlas");
     std::fs::copy("/bin/sleep", &exe).unwrap();
+    // macOS 26+ kills a copied platform binary on exec (it loses Apple's signature trust out of /bin), so
+    // the "runner" died at once and every busy test saw pid 0. An ad-hoc signature makes it an ordinary
+    // binary again.
+    #[cfg(target_os = "macos")]
+    assert!(
+        std::process::Command::new("codesign")
+            .args(["-f", "-s", "-"])
+            .arg(&exe)
+            .output()
+            .unwrap()
+            .status
+            .success(),
+        "codesign the fake runner"
+    );
     let child = std::process::Command::new(&exe).arg("60").spawn().unwrap();
     std::fs::create_dir_all(root.join(".logs")).unwrap();
     std::fs::write(root.join(".logs/.tui.lock"), child.id().to_string()).unwrap();

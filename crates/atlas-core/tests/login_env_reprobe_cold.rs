@@ -31,17 +31,22 @@ fn starts(log: &Path) -> usize {
 
 #[test]
 fn a_first_reprobe_is_the_only_probe_of_the_launch() {
-    let dir = tempfile::tempdir().unwrap();
+    // Under the target dir, not /tmp: a full tmpfs makes the fake shell's `echo >> log` fail silently and the count read 0.
+    let dir = tempfile::tempdir_in(env!("CARGO_TARGET_TMPDIR")).unwrap();
     let (shell, log) = counting_shell(dir.path());
     atlas_core::login_env::set_override(Some(shell.clone()));
 
     let probed = atlas_core::login_env::reprobe();
+    eprintln!("probe: flags {:?} error {:?}", probed.flags, probed.error);
 
     assert_eq!(probed.shell, shell, "the override picked the shell");
     assert_eq!(
         starts(&log),
         1,
-        "reprobe on a cold cache ran the probe, then forced the lazy initializer to run it again"
+        "reprobe on a cold cache must run the probe once (flags {:?}, error {:?}, log {:?})",
+        probed.flags,
+        probed.error,
+        std::fs::read_to_string(&log)
     );
     // The result is what the next reader gets: no probe for it.
     assert_eq!(atlas_core::login_env::current().shell, shell);

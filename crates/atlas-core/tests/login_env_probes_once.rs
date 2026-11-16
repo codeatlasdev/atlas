@@ -31,7 +31,8 @@ fn starts(log: &Path) -> usize {
 
 #[test]
 fn callers_racing_for_the_first_probe_share_one() {
-    let dir = tempfile::tempdir().unwrap();
+    // Under the target dir, not /tmp: a full tmpfs makes the fake shell's `echo >> log` fail silently and the count read 0.
+    let dir = tempfile::tempdir_in(env!("CARGO_TARGET_TMPDIR")).unwrap();
     let (shell, log) = counting_shell(dir.path());
     atlas_core::login_env::set_override(Some(shell.clone()));
 

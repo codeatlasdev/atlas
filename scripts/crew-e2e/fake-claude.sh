@@ -6,10 +6,12 @@
 #   E2E_FAIL                 exits 1 with an error, like an engine whose sign-in expired
 #   E2E_PROBE                answers what its own process looks like: open descriptors, NoNewPrivs, cgroup, and
 #                            whether `node` (a JIT) runs
-#   E2E_SERVE <port>         serves `B-secret` on 127.0.0.1:<port> (a crewmate's dev server) and waits
+#   E2E_SERVE <port>         serves `B-secret` on 127.0.0.1:<port> and on [::1]:<port>+1 (a crewmate's dev server, as vite
+#                            on Node 17+ listens on `::1` only) and waits
 #   E2E_CAPTURE <port>       asks hostd's `capture` tool, as the agent's MCP client does, for 127.0.0.1:<port> (another
 #                            crewmate's server), the cloud metadata address, and a server of its own, and answers each
-#                            reply: what an isolated crewmate's capture may reach
+#                            reply, then `[::]` and `0.0.0.0` with a server of its own on 0.0.0.0:<port>+1, the port of
+#                            B's `[::1]` one: what an isolated crewmate's capture may reach
 #   E2E_HANG <n>             starts `sleep <n>` as a child and waits for it: a tool the agent started
 #   E2E_HANG_ONCE <n>        like E2E_HANG, but a run that hostd resumed after a restart ("was interrupted")
 #                            finishes at once
@@ -50,6 +52,7 @@ case "$prompt" in
   *E2E_SERVE*)
     n=$(arg_of E2E_SERVE)
     node -e "require('http').createServer((q,s)=>s.end('B-secret')).listen($n,'127.0.0.1')" &
+    node -e "require('http').createServer((q,s)=>s.end('B-secret6')).listen($n+1,'::1')" &
     wait
     reply "fake-claude served"
     exit 0
@@ -70,8 +73,15 @@ case "$prompt" in
     b=$(cap "http://127.0.0.1:$bport/src/App.tsx")
     meta=$(cap "http://169.254.169.254/latest/meta-data/")
     own=$(cap "http://127.0.0.1:47777/")
-    kill "$srv"
-    reply "capture b=[$b] meta=[$meta] own=[$own]"
+    # Security review 5, N2: `[::]` connects to `::1`, B's server, while A's own `0.0.0.0` socket holds the same port.
+    wport=$((bport + 1))
+    node -e "require('http').createServer((q,s)=>s.end('A-wild')).listen($wport,'0.0.0.0')" &
+    wild_srv=$!
+    for _ in $(seq 25); do grep -qi ":$(printf '%04X' "$wport") 00000000:0000 0A" /proc/net/tcp && break; sleep 0.2; done
+    unspec=$(cap "http://[::]:$wport/src/App.tsx")
+    unspec4=$(cap "http://0.0.0.0:47777/")
+    kill "$srv" "$wild_srv"
+    reply "capture b=[$b] meta=[$meta] own=[$own] unspec=[$unspec] unspec4=[$unspec4]"
     exit 0
     ;;
   *E2E_HANG_ONCE*)

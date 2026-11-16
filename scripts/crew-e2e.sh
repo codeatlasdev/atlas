@@ -439,10 +439,14 @@ echo "crewmate sign-in through hostd: the hook ran confined (NoNewPrivs 1), the 
 # port is its own. B's agent runs a server on 127.0.0.1:47778; A asks for it, for 169.254.169.254, and for a server of its
 # own. The refusals come before any browser starts; the allowed one gets as far as the browsers (none are installed on
 # this server: "the browsers are not installed" is the answer of a capture that was allowed to start).
+srv sysctl -qw net.ipv6.conf.lo.disable_ipv6=0 || true # the attack needs ::1; a container may start without it
 TBS=$(send_task "$CMB" "E2E_SERVE 47778")
 wait_task "$CMB" "$TBS" running 60
 b_serves() { srv grep -q ':BAA2 00000000:0000 0A' /proc/net/tcp; }
 until_true 20 "B's server on 127.0.0.1:47778 (0xBAA2)" b_serves
+# N2 of the fifth review: B's second server is on [::1]:47779 only (IPv4 and IPv6 sockets do not conflict), a port A holds on 0.0.0.0.
+b6_serves() { srv grep -qE ' 0+1000000:BAA3 [0-9A-F:]+ 0A ' /proc/net/tcp6; }
+until_true 20 "B's server on [::1]:47779 (0xBAA3)" b6_serves
 T=$(send_task "$CM" "E2E_CAPTURE 47778")
 wait_task "$CM" "$T" "done" 90
 # `reply` is the engine's answer as text; `result` the raw line when the answer is long (hostd keeps both).
@@ -452,12 +456,14 @@ echo "A's captures: $CAPTURE"
   fail "A's capture of B's loopback server was not refused as another crewmate's: $CAPTURE"
 [[ $CAPTURE == *"meta=["*"169.254.169.254 is a private, link-local or metadata address"*"own=["* ]] ||
   fail "A's capture of the metadata address was not refused: $CAPTURE"
-[[ $CAPTURE == *"own=["*"browsers are not installed"* ]] ||
+[[ $CAPTURE == *"own=["*"browsers are not installed"*"unspec=["* ]] ||
   fail "A's capture of its own loopback server was refused, or failed some other way than the missing browsers: $CAPTURE"
+[[ $CAPTURE == *"unspec=["*"is a private, link-local or metadata address"*"unspec4=["*"is a private, link-local or metadata address"* ]] ||
+  fail "A's capture of http://[::]:47779 (B's [::1] server) or of 0.0.0.0 was not refused outright: $CAPTURE"
 hostd crewmate_cancel "$(jq -nc --arg id "$CMB" --arg t "$TBS" '{id: $id, task: $t}')" >/dev/null
 wait_task "$CMB" "$TBS" cancelled 30
 wait_idle "$CMB"
-echo "capture: B's loopback port and 169.254.169.254 refused, A's own loopback server allowed through to the browsers"
+echo "capture: B's loopback port (127.0.0.1 and [::]), 0.0.0.0 and 169.254.169.254 refused, A's own loopback server allowed through to the browsers"
 
 # (9e) S-C of the fourth review: the egress rules were replayed at boot only, so `systemctl restart nftables` (whose
 # /etc/nftables.conf begins with `flush ruleset`) left the crewmates with no firewall until the next boot. The egress unit

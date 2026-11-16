@@ -11,7 +11,8 @@
 //!   again, and connects to the address that was checked: a name that resolves to a private address one moment and a
 //!   public one the next (DNS rebinding) connects to the first or to nothing.
 //!
-//! The rule: an address of [`NEVER`]/[`NEVER6`] (private, link-local with the metadata service, CGNAT) is refused;
+//! The rule: an unspecified address (`0.0.0.0`, `::`: a connect to it reaches this machine's loopback) and an address of
+//! [`NEVER`]/[`NEVER6`] (private, link-local with the metadata service, CGNAT) are refused;
 //! this machine's own addresses (loopback, and any interface's) are reachable only on a port whose listening socket
 //! belongs to the asking crewmate's uid (`/proc/net/tcp{,6}`); everything else (the public internet) is allowed.
 
@@ -135,9 +136,7 @@ async fn decide(host: &str, port: u16, uid: u32, tables: &Tables) -> Result<Sock
 
 /// Whether `ip` is an address of this machine (assigned to an interface): bind succeeds only for those.
 fn is_local(ip: IpAddr) -> bool {
-    ip.is_loopback()
-        || ip.is_unspecified()
-        || std::net::UdpSocket::bind(SocketAddr::new(ip, 0)).is_ok()
+    ip.is_loopback() || std::net::UdpSocket::bind(SocketAddr::new(ip, 0)).is_ok()
 }
 
 /// The decision for one address: see the module's rule. `local` is whether `ip` is an address of this machine.
@@ -159,6 +158,7 @@ fn judge(
         format!("{host} ({ip})")
     };
     let private = NEVER.iter().chain(&NEVER6).any(|c| in_cidr(ip, c))
+        || ip.is_unspecified()
         || matches!(ip, IpAddr::V4(v4) if v4.octets()[0] == 0 || v4.is_broadcast() || v4.is_multicast())
         || matches!(ip, IpAddr::V6(v6) if v6.is_multicast());
     if private {
@@ -166,7 +166,7 @@ fn judge(
             "capture: {shown} is a private, link-local or metadata address: a crewmate's capture does not load other machines of the server's network"
         ));
     }
-    if !(local || ip.is_loopback() || ip.is_unspecified()) {
+    if !(local || ip.is_loopback()) {
         return Ok(());
     }
     let here: Vec<u32> = listeners(tables)
@@ -211,9 +211,11 @@ struct Listener {
 }
 
 impl Listener {
-    /// Whether a connection to `ip` on this socket's port reaches it: bound to that address or to every one.
+    /// Whether a connection to `ip` on this socket's port reaches it: bound to that address, or to every address of
+    /// its family (an IPv6 wildcard also takes IPv4, never the reverse: an IPv4 socket cannot answer `::1`). `ip` is
+    /// never unspecified here (`judge` refuses those: a connect to `::` goes to `::1`).
     fn covers(&self, ip: IpAddr) -> bool {
-        self.ip.is_unspecified() || self.ip == ip
+        self.ip == ip || (self.ip.is_unspecified() && (self.ip.is_ipv6() || ip.is_ipv4()))
     }
 }
 

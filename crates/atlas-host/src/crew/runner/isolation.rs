@@ -11,7 +11,7 @@ use crate::crew::engine::Exec;
 use crate::crew::project;
 #[cfg(unix)]
 use crate::crew::spawn::client::Client;
-use crate::crew::spawn::layout::{self, GITCONFIG, Isolated};
+use crate::crew::spawn::layout::{self, Isolated};
 use crate::server::Hub;
 
 /// How one crewmate runs.
@@ -101,8 +101,8 @@ impl Ctx {
     }
 
     /// Write what an isolated agent reads from `crew-runtime/` (the hook endpoint file `atlas hook`
-    /// follows through `ATLAS_HOOK_ENDPOINT`, and git's config for the shared checkout). A no-op when not
-    /// isolated. Group-readable and not writable: the crewmate is in the directory's group only.
+    /// follows through `ATLAS_HOOK_ENDPOINT`). A no-op when not isolated. Group-readable and not
+    /// writable: the crewmate is in the directory's group only.
     pub(crate) fn prepare(&self, hub: &Hub, id: &str) -> std::io::Result<()> {
         let Some(iso) = self.isolated() else {
             return Ok(());
@@ -125,27 +125,24 @@ impl Ctx {
         write_readable(
             &iso.hook_endpoint(),
             format!("ATLAS_HOOK_PORT={port}\nATLAS_HOOK_TOKEN={token}\n").as_bytes(),
-        )?;
-        write_readable(&iso.gitconfig(), GITCONFIG.as_bytes())
+        )
     }
 
-    /// Environment a terminal agent needs on top of the request's own: where its hook endpoint file is,
-    /// its token, and git's config. Empty when not isolated.
+    /// Environment a terminal agent needs on top of the request's own: where its hook endpoint file is
+    /// and its token. Empty when not isolated.
     pub(crate) fn agent_env(&self, hub: &Hub, id: &str) -> Vec<(String, String)> {
         let Some(iso) = self.isolated() else {
             return vec![];
         };
         let (port, token) = self.hook_endpoint(hub, id);
-        let mut env = vec![
+        vec![
             (
                 "ATLAS_HOOK_ENDPOINT".to_string(),
                 iso.hook_endpoint().to_string_lossy().into_owned(),
             ),
             ("ATLAS_HOOK_PORT".to_string(), port.to_string()),
             ("ATLAS_HOOK_TOKEN".to_string(), token),
-        ];
-        env.extend(layout::git_env(Some(iso)));
-        env
+        ]
     }
 }
 
@@ -153,7 +150,8 @@ impl Ctx {
 /// directory, once: only when the new file is empty and the old one has content. The old file is kept
 /// as `memory.md.pre-isolation`, never deleted.
 fn adopt_memory(old: &Path, new: &Path) -> std::io::Result<()> {
-    let have = std::fs::read_to_string(new).unwrap_or_default();
+    // Neither read nor written through a link: `new` is in the crewmate's directory.
+    let have = layout::read_nofollow(new).unwrap_or_default();
     let before = match std::fs::read_to_string(old) {
         Ok(t) if !t.trim().is_empty() => t,
         _ => return Ok(()),
@@ -162,7 +160,7 @@ fn adopt_memory(old: &Path, new: &Path) -> std::io::Result<()> {
         return Ok(());
     }
     // In place: the file is the crewmate's (group-writable), not replaced by hostd's.
-    std::fs::write(new, before)?;
+    layout::write_nofollow(new, before.as_bytes())?;
     std::fs::rename(old, old.with_extension("md.pre-isolation"))
 }
 
@@ -250,30 +248,44 @@ mod tests {
         assert!(plain.isolated().is_none() && !plain.exec().is_isolated());
     }
 
-    // Regression (merging #200 with the guards of #214 and the attachments of #209): hostd runs git in
-    // the agent's tree, which another uid owns, so every such call needs that crewmate's gitconfig;
-    // without it the guards read "could not list the new files" and the repo check was silently skipped.
+    // Regression (security review of #448, B2): the tree of an isolated crewmate is the crewmate's, so git
+    // there runs as the crewmate through the helper; running it as hostd would run the crewmate's
+    // `core.fsmonitor`. Any other directory (a Path project on the server) and a server without a helper
+    // keep running git in hostd.
     #[test]
-    fn hostds_git_in_an_agents_tree_uses_that_crewmates_config_only_when_isolated() {
+    fn git_runs_as_the_crewmate_only_in_an_isolated_crewmates_tree() {
         let t = tempfile::tempdir().unwrap();
-        let root = t.path().join("cm").to_string_lossy().into_owned();
         let setup = layout::Setup {
             socket: t.path().join("s.sock"),
             provision_socket: t.path().join("p.sock"),
-            root: root.clone(),
+            root: t.path().join("cm").to_string_lossy().into_owned(),
             hook_port: 0,
         };
         let id = "3f2a9c1e-5b7d-4e8f-9a0b-1c2d3e4f5a6b";
         let isolated = crate::crew::store::CrewStore::new(t.path()).with_isolation(Some(setup));
         let work = isolated.isolated(id).unwrap().work();
-        assert_eq!(
-            isolated.git_env_in(&work),
-            layout::git_env(isolated.isolated(id).as_ref())
-        );
-        // A tree outside any crewmate directory (a Path project on the server) needs nothing.
-        assert!(isolated.git_env_in(&t.path().join("projects/x")).is_empty());
-        // No helper, no isolation: the same path is not special.
+        assert!(isolated.git_in(&work).is_crewmate());
+        assert!(isolated.git_in(&work.join("src")).is_crewmate());
+        assert!(!isolated.git_in(&t.path().join("projects/x")).is_crewmate());
         let plain = crate::crew::store::CrewStore::new(t.path());
-        assert!(plain.git_env_in(&work).is_empty());
+        assert!(!plain.git_in(&work).is_crewmate());
+    }
+
+    // Regression (security review of #448, B1): adopting the old memory must not write through a link the
+    // crewmate put where `memory.md` is.
+    #[test]
+    fn adopting_memory_never_writes_through_a_link_in_the_crewmates_directory() {
+        let t = tempfile::tempdir().unwrap();
+        let (old, new, secret) = (
+            t.path().join("old.md"),
+            t.path().join("new.md"),
+            t.path().join("hostd.token"),
+        );
+        std::fs::write(&secret, "token-abc").unwrap();
+        std::os::unix::fs::symlink(&secret, &new).unwrap();
+        std::fs::write(&old, "milk").unwrap();
+        assert!(adopt_memory(&old, &new).is_err());
+        assert_eq!(std::fs::read_to_string(&secret).unwrap(), "token-abc");
+        assert!(old.exists(), "the old memory stays where it was");
     }
 }

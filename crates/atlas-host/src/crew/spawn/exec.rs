@@ -75,7 +75,7 @@ pub struct Where<'a> {
 
 /// What the child must do about its identity before `exec`.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
-enum Identity {
+pub(super) enum Identity {
     /// Already the right user (a helper under test, or `ids` is the caller).
     Nothing,
     /// Root: drop groups, gid, uid, in that order.
@@ -85,7 +85,7 @@ enum Identity {
 /// The identity change a spawn as `want` needs when the process runs as `have`. Root becomes
 /// anyone but root; anyone else can only be itself, and being asked for another user is refused
 /// here, with a message, instead of failing with a bare `EPERM` in the child after the fork.
-fn drop_for(have: Ids, want: Ids) -> io::Result<Identity> {
+pub(super) fn drop_for(have: Ids, want: Ids) -> io::Result<Identity> {
     if want.uid == 0 && have.uid == 0 {
         // A crewmate user whose account resolves to uid 0 (a hand-edited passwd) must never run.
         return Err(io::Error::new(

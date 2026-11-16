@@ -83,7 +83,7 @@ async fn run(dir: &Path, result: &str, commands: &[Ran]) -> Verdict {
     review(
         &Input {
             work_dir: dir,
-            git_env: &[],
+            git: &crate::crew::gitrun::Git::local(),
             repo: None,
             result,
             commands,
@@ -360,7 +360,7 @@ async fn references_in_commits_and_in_a_published_comment_are_checked() {
     let v = review(
         &Input {
             work_dir: d,
-            git_env: &[],
+            git: &crate::crew::gitrun::Git::local(),
             repo: Some("o/r"),
             result: "Opened, refs #12.",
             commands: &cmds,
@@ -530,4 +530,45 @@ async fn guards_read_the_diff_whatever_external_diff_the_users_git_config_asks_f
         "{:?}",
         v.reasons
     );
+}
+
+// Regression (security review of #448, B2): `git diff` in a repo the crewmate controls ran its
+// `core.fsmonitor` as the crew user, who owns `hostd.token` and every crewmate's secrets. Through the helper
+// it runs as the crewmate. The planted command records `$USER`: only the crewmate's may ever be there, and
+// something must be there (else the test proves nothing).
+#[cfg(unix)]
+#[tokio::test]
+async fn the_guards_never_run_a_crewmates_git_config_as_hostd() {
+    use crate::crew::spawn::testing::{Rig, USER, rig};
+    let rig = rig();
+    let marker = rig.booby_trapped_repo();
+    let hostd = tempfile::tempdir().unwrap();
+    let store = crate::crew::store::CrewStore::new(hostd.path()).with_isolation(Some(rig.setup()));
+    let work = rig.work();
+    let git = store.git_in(&work);
+    assert!(git.is_crewmate());
+    let api = FakeGithub::new("bot");
+    let v = review(
+        &Input {
+            work_dir: &work,
+            git: &git,
+            repo: None,
+            result: "done",
+            commands: &[],
+        },
+        &api,
+    )
+    .await;
+    // The guards read the tree (the diff, the new files): git worked.
+    assert!(
+        !v.reasons.iter().any(|r| r.contains("could not")),
+        "{:?}",
+        v.reasons
+    );
+    let users = Rig::marker_users(&marker);
+    assert!(
+        !users.is_empty(),
+        "no guard command triggered core.fsmonitor"
+    );
+    assert!(users.iter().all(|u| u == USER), "{users:?}");
 }

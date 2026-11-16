@@ -20,6 +20,7 @@ use parking_lot::Mutex;
 
 use super::cgroup;
 use super::exec::{self, ENGINE_DIRS, Ids, Where};
+use super::git;
 use super::peer::{self, Peer};
 use super::protocol::{Request, Response};
 use super::validate::{self, CM_ROOT, Refused};
@@ -251,6 +252,7 @@ impl Server {
             Request::Reap { user } => (self.reap_user(&user), None),
             Request::SetMemoryCap { bytes } => (self.set_memory_cap(bytes), None),
             Request::MemoryCap => (Response::MemoryCap(self.cfg.memory.status()), None),
+            Request::Git(g) => git::run(&self.cfg, &g),
         }
     }
 

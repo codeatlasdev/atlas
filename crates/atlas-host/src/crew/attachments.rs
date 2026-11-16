@@ -24,6 +24,7 @@ use base64::engine::general_purpose::STANDARD as B64;
 use serde::{Deserialize, Serialize};
 use sha2::{Digest, Sha256};
 
+use super::spawn::layout;
 use super::store::CrewStore;
 
 /// Images a task takes.
@@ -266,47 +267,21 @@ pub(crate) fn stage(
         }
     }
     if !staged.is_empty() {
-        keep_out_of_git(work_dir, &store.git_env_in(work_dir));
+        keep_out_of_git(work_dir);
     }
     staged
 }
 
-/// Add `.atlas/attachments/` to the checkout's local `info/exclude`, so an agent's `git add -A` never commits
-/// the user's screenshots (the project's own `.gitignore` is never touched). Best effort: a work dir that is
-/// not a git checkout has nothing to exclude from.
-fn keep_out_of_git(work_dir: &Path, git_env: &[(String, String)]) {
-    let Ok(out) = std::process::Command::new("git")
-        .args(["rev-parse", "--git-path", "info/exclude"])
-        .current_dir(work_dir)
-        .envs(git_env.iter().map(|(k, v)| (k, v)))
-        .output()
-    else {
-        return;
-    };
-    if !out.status.success() {
+/// Put a `.gitignore` of `*` in `.atlas/attachments/`, so an agent's `git add -A` never commits the user's
+/// screenshots (the project's own `.gitignore` is never touched, and the file ignores itself too). It is
+/// hostd's own file in a directory hostd made: the checkout and its `.git` are the crewmate's, and hostd
+/// neither runs git in them nor edits what is inside `.git`. Best effort.
+fn keep_out_of_git(work_dir: &Path) {
+    let path = work_dir.join(WORK_SUBDIR).join(".gitignore");
+    if layout::read_nofollow(&path).is_ok_and(|t| t.lines().any(|l| l.trim() == "*")) {
         return;
     }
-    let rel = String::from_utf8_lossy(&out.stdout).trim().to_string();
-    let path = if Path::new(&rel).is_absolute() {
-        PathBuf::from(rel)
-    } else {
-        work_dir.join(rel)
-    };
-    let line = format!("/{WORK_SUBDIR}/");
-    let have = std::fs::read_to_string(&path).unwrap_or_default();
-    if have.lines().any(|l| l.trim() == line) {
-        return;
-    }
-    let sep = if have.is_empty() || have.ends_with('\n') {
-        ""
-    } else {
-        "\n"
-    };
-    let _ = path
-        .parent()
-        .map(std::fs::create_dir_all)
-        .transpose()
-        .and_then(|_| std::fs::write(&path, format!("{have}{sep}{line}\n")));
+    let _ = layout::write_nofollow(&path, b"*\n");
 }
 
 /// The line of the prompt that names the task's images, empty without any. Ours, not the sender's: it holds
@@ -1031,5 +1006,33 @@ mod tests {
         #[cfg(not(windows))]
         o.read(true);
         o.open(dir).unwrap().set_modified(t).unwrap();
+    }
+
+    // The staged screenshots must never reach a commit (`git add -A`), without hostd running git in or editing
+    // the crewmate's `.git`: a `.gitignore` of `*` inside the staged directory does it.
+    #[test]
+    fn staged_images_stay_out_of_git_add_without_touching_the_repos_own_files() {
+        let t = tempfile::tempdir().unwrap();
+        let git = |args: &[&str]| {
+            let o = std::process::Command::new("git")
+                .args(args)
+                .current_dir(t.path())
+                .output()
+                .unwrap();
+            assert!(o.status.success(), "{args:?}");
+            String::from_utf8_lossy(&o.stdout).into_owned()
+        };
+        git(&["init", "-q"]);
+        let shot = t.path().join(WORK_SUBDIR).join("task1/a.png");
+        std::fs::create_dir_all(shot.parent().unwrap()).unwrap();
+        std::fs::write(&shot, PNG).unwrap();
+        std::fs::write(t.path().join("code.rs"), "fn main() {}").unwrap();
+        keep_out_of_git(t.path());
+        keep_out_of_git(t.path()); // idempotent
+        let status = git(&["status", "--porcelain", "--untracked-files=all"]);
+        assert_eq!(status.trim(), "?? code.rs", "{status}");
+        let ignore =
+            std::fs::read_to_string(t.path().join(WORK_SUBDIR).join(".gitignore")).unwrap();
+        assert_eq!(ignore, "*\n");
     }
 }

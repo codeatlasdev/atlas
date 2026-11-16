@@ -8,7 +8,7 @@
 use std::fmt;
 use std::path::Path;
 
-use super::protocol::{MAX_MESSAGE, Request, SpawnReq};
+use super::protocol::{GitReq, MAX_MESSAGE, Request, SpawnReq};
 
 /// Prefix of every crewmate's Linux user.
 pub const USER_PREFIX: &str = "atlas-cm-";
@@ -16,6 +16,25 @@ pub const USER_PREFIX: &str = "atlas-cm-";
 pub const CM_ROOT: &str = "/var/lib/atlas-cm";
 /// The only binaries a crewmate can be started as (`atlas_core::agents`), by bare name.
 pub const ENGINE_BINARIES: [&str; 4] = ["claude", "codex", "omp", "opencode"];
+/// The only git subcommands hostd may run as a crewmate: what the guards, the checkout and the GitHub
+/// reply read from the tree (`diff`, `ls-files`, `log`, `status`, `rev-parse`, `symbolic-ref`,
+/// `merge-base`, `remote`, `worktree`), and the three that talk to the network (`clone`, `fetch`, `pull`).
+pub const GIT_SUBCOMMANDS: [&str; 12] = [
+    "clone",
+    "fetch",
+    "pull",
+    "status",
+    "rev-parse",
+    "symbolic-ref",
+    "remote",
+    "diff",
+    "ls-files",
+    "log",
+    "merge-base",
+    "worktree",
+];
+/// Longest a git request may run before the helper ends it (a clone of a large repo).
+pub const MAX_GIT_SECS: u64 = 3600;
 /// Signals hostd may send: HUP, INT, KILL, TERM, CONT.
 pub const SIGNALS: [i32; 5] = [1, 2, 9, 15, 18];
 const MAX_ARGS: usize = 256;
@@ -30,6 +49,7 @@ const SLUG_LEN: usize = 12;
 pub enum Refused {
     BadUser(String),
     BadBinary(String),
+    BadGit(String),
     BadArg(&'static str),
     BadCwd(String),
     BadEnv(String),
@@ -43,6 +63,7 @@ impl fmt::Display for Refused {
         match self {
             Self::BadUser(u) => write!(f, "not a provisioned crewmate user: {u:?}"),
             Self::BadBinary(b) => write!(f, "binary not allowed: {b:?}"),
+            Self::BadGit(g) => write!(f, "git subcommand not allowed: {g:?}"),
             Self::BadArg(why) => write!(f, "bad argv: {why}"),
             Self::BadCwd(c) => write!(f, "cwd outside the crewmate directory: {c:?}"),
             Self::BadEnv(k) => write!(f, "environment variable not allowed: {k:?}"),
@@ -110,6 +131,7 @@ pub fn check_in(root: &str, req: &Request, body_len: usize) -> Result<(), Refuse
             .then_some(())
             .ok_or(Refused::BadSignal(*sig)),
         Request::Reap { user } => slug_of(user).map(|_| ()),
+        Request::Git(g) => check_git_in(root, g),
         Request::Wait { .. }
         | Request::Cwd { .. }
         | Request::MemoryCap
@@ -130,6 +152,39 @@ pub fn check_spawn_in(root: &str, s: &SpawnReq) -> Result<(), Refused> {
     check_env(s)?;
     if s.cols == 0 || s.rows == 0 || s.cols > MAX_DIM || s.rows > MAX_DIM {
         return Err(Refused::BadSize);
+    }
+    Ok(())
+}
+
+/// The rules for one git request: a provisioned user, an allowed subcommand first, data-only arguments,
+/// a cwd inside that crewmate's directory, a token that is one plain line, a bounded time.
+pub fn check_git_in(root: &str, g: &GitReq) -> Result<(), Refused> {
+    let dir = dir_in(root, &g.user)?;
+    let sub = g.args.first().ok_or(Refused::BadArg("empty"))?;
+    if !GIT_SUBCOMMANDS.contains(&sub.as_str()) {
+        return Err(Refused::BadGit(clip(sub)));
+    }
+    if g.args.len() > MAX_ARGS {
+        return Err(Refused::BadArg("too many arguments"));
+    }
+    for a in &g.args {
+        if a.len() > MAX_ITEM {
+            return Err(Refused::BadArg("argument too long"));
+        }
+        if a.contains('\0') {
+            return Err(Refused::BadArg("NUL byte"));
+        }
+    }
+    check_cwd(&g.cwd, &dir)?;
+    if let Some(t) = &g.token
+        && (t.is_empty()
+            || t.len() > 1024
+            || t.chars().any(|c| c.is_control() || c.is_whitespace()))
+    {
+        return Err(Refused::BadArg("token"));
+    }
+    if g.timeout_secs == 0 || g.timeout_secs > MAX_GIT_SECS {
+        return Err(Refused::BadArg("timeout"));
     }
     Ok(())
 }
@@ -227,6 +282,91 @@ mod tests {
     #[test]
     fn a_well_formed_spawn_is_accepted_and_shell_text_in_argv_is_just_data() {
         assert_eq!(check(&Request::Spawn(spawn()), 100), Ok(()));
+    }
+
+    fn git(args: &[&str]) -> GitReq {
+        GitReq {
+            user: USER.into(),
+            args: args.iter().map(|s| s.to_string()).collect(),
+            cwd: format!("{CM_ROOT}/3f2a9c1e5b7d/work"),
+            token: None,
+            timeout_secs: 120,
+        }
+    }
+
+    fn git_refused(f: impl FnOnce(&mut GitReq)) -> Refused {
+        let mut g = git(&["status"]);
+        f(&mut g);
+        check(&Request::Git(g), 100).unwrap_err()
+    }
+
+    // The helper runs git as a crewmate for hostd, so what it accepts is the whole attack surface: a listed
+    // subcommand first (never an option such as `-c` or `--exec-path`), data-only arguments, the crewmate's
+    // own directory, a plain token, a bounded time.
+    #[test]
+    fn a_git_request_needs_an_allowed_subcommand_first_the_crewmates_directory_and_sane_limits() {
+        for sub in GIT_SUBCOMMANDS {
+            assert_eq!(
+                check(&Request::Git(git(&[sub, "--quiet"])), 100),
+                Ok(()),
+                "{sub}"
+            );
+        }
+        for bad in [
+            "config",
+            "-c",
+            "--exec-path=/x",
+            "push",
+            "commit",
+            "gc",
+            "hook",
+            "daemon",
+            "",
+            "status;id",
+            "STATUS",
+        ] {
+            assert!(
+                matches!(git_refused(|g| g.args[0] = bad.into()), Refused::BadGit(_)),
+                "{bad:?}"
+            );
+        }
+        assert_eq!(git_refused(|g| g.args.clear()), Refused::BadArg("empty"));
+        assert_eq!(
+            git_refused(|g| g.args.push("a\0b".into())),
+            Refused::BadArg("NUL byte")
+        );
+        assert!(matches!(
+            git_refused(|g| g.user = "root".into()),
+            Refused::BadUser(_)
+        ));
+        for cwd in [
+            "/tmp",
+            "/var/lib/atlas-cm",
+            "/var/lib/atlas-cm/aaaaaaaaaaaa/work",
+            "/var/lib/atlas-cm/3f2a9c1e5b7d/../aaaaaaaaaaaa",
+            "work",
+        ] {
+            assert!(
+                matches!(git_refused(|g| g.cwd = cwd.into()), Refused::BadCwd(_)),
+                "{cwd}"
+            );
+        }
+        for tok in ["", "a b", "a\nb", &"x".repeat(2000)] {
+            assert_eq!(
+                git_refused(|g| g.token = Some(tok.into())),
+                Refused::BadArg("token")
+            );
+        }
+        for secs in [0, MAX_GIT_SECS + 1] {
+            assert_eq!(
+                git_refused(|g| g.timeout_secs = secs),
+                Refused::BadArg("timeout")
+            );
+        }
+        let mut ok = git(&["fetch"]);
+        ok.token = Some("gho_abc123".into());
+        ok.timeout_secs = MAX_GIT_SECS;
+        assert_eq!(check(&Request::Git(ok), 100), Ok(()));
     }
 
     #[test]

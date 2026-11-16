@@ -26,7 +26,7 @@
 
 use std::path::Path;
 
-use tokio::process::Command;
+use crate::crew::gitrun::Git;
 
 use crate::crew::github::GithubApi;
 
@@ -38,9 +38,8 @@ pub(crate) const RETRY: &str = "retry";
 /// What the guard looks at.
 pub(crate) struct Input<'a> {
     pub work_dir: &'a Path,
-    /// git's environment in `work_dir` (an isolated crewmate's tree belongs to another user and
-    /// opens only with that crewmate's config; empty otherwise).
-    pub git_env: &'a [(String, String)],
+    /// Who runs git in `work_dir` (the crewmate itself for an isolated tree, hostd otherwise).
+    pub git: &'a Git,
     /// `owner/repo` for the `#N` check; `None` skips it (no GitHub project).
     pub repo: Option<&'a str>,
     /// The agent's final message.
@@ -81,7 +80,7 @@ pub(crate) async fn review(input: &Input<'_>, api: &dyn GithubApi) -> Verdict {
     let mut v = Verdict::default();
     let tree = Tree {
         dir: input.work_dir,
-        env: input.git_env,
+        git: input.git,
     };
     let base = base_of(tree).await;
     // A folder that is not a git work tree (a crewmate without a project) has no diff and no new
@@ -122,26 +121,24 @@ pub(crate) async fn review(input: &Input<'_>, api: &dyn GithubApi) -> Verdict {
 
 // ─── the task's base and its diff ────────────────────────────────────────────
 
-/// The work tree git runs in, with git's environment for it (an isolated crewmate's tree belongs to
-/// another user and opens only with that crewmate's config; empty otherwise).
+/// The work tree git runs in, and who runs it (an isolated crewmate's own tree: the crewmate itself,
+/// through the spawn helper; its git config is its own, never run by hostd).
 #[derive(Clone, Copy)]
 struct Tree<'a> {
     dir: &'a Path,
-    env: &'a [(String, String)],
+    git: &'a Git,
 }
 
 async fn git(t: Tree<'_>, args: &[&str]) -> Result<String, String> {
-    let out = Command::new("git")
-        .args(args)
-        .current_dir(t.dir)
-        .envs(t.env.iter().map(|(k, v)| (k, v)))
-        .output()
+    let sub = args.first().copied().unwrap_or("");
+    let out = t
+        .git
+        .run(Some(t.dir), args)
         .await
-        .map_err(|e| format!("git {}: {e}", args.first().copied().unwrap_or("")))?;
+        .map_err(|e| format!("git {sub}: {e}"))?;
     if !out.status.success() {
         return Err(format!(
-            "git {}: {}",
-            args.first().copied().unwrap_or(""),
+            "git {sub}: {}",
             String::from_utf8_lossy(&out.stderr).trim()
         ));
     }

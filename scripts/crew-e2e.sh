@@ -291,7 +291,7 @@ tar -xzOf "$WORK/export.tar.gz" "crew/$CM/tasks.jsonl" | grep -q 'fake-claude do
 kill "$TUNNEL_PID"
 wait "$TUNNEL_PID" 2>/dev/null || true
 TUNNEL_PID=
-no_crew_session() { ! srv pgrep -u atlas-crew >/dev/null; }
+no_crew_session() { ! srv pgrep -u atlas-crew -x sshd >/dev/null; }
 until_true 20 "the crew user's ssh session to end" no_crew_session
 
 # No terminal and no --yes: it refuses and changes nothing.

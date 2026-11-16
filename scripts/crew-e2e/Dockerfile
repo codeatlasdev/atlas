@@ -1,13 +1,14 @@
 # The "server" of scripts/crew-e2e.sh: a plain Ubuntu 24.04 with systemd as PID 1 and sshd, the way a fresh
 # VPS looks before `atlas crew install` (sudo, curl, tar, git, nftables, an admin user with passwordless sudo).
-# Nothing of Atlas is in it; the install puts everything there over ssh.
+# Nothing of Atlas is in it; the install puts everything there over ssh. `nodejs`: a JIT engine the agents' tools
+# (npm, vite, tsc) run on, to prove the helper's unit does not break it (MemoryDenyWriteExecute= would).
 FROM ubuntu:24.04
 
 ENV DEBIAN_FRONTEND=noninteractive container=docker
 
 RUN apt-get update \
  && apt-get install -y --no-install-recommends \
-      systemd systemd-sysv dbus openssh-server sudo curl ca-certificates tar git gawk passwd procps nftables \
+      systemd systemd-sysv dbus openssh-server sudo curl ca-certificates tar git gawk passwd procps nftables nodejs \
  && rm -rf /var/lib/apt/lists/* \
  # Units a container has no use for, or that stall its boot.
  && systemctl mask getty.target console-getty.service systemd-logind.service systemd-udevd.service \

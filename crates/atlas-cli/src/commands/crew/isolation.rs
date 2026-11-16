@@ -72,6 +72,11 @@ pub fn provision_socket_unit(a: &Account) -> String {
 ///   keeps the helper process out of the unit's cgroup so that cgroup can have one leaf per crewmate.
 ///   `ProtectControlGroups=yes` stays, with only the unit's own cgroup writable again ([`cgroup_path`]);
 ///   the `-` prefix makes a missing path a no-op instead of a unit that cannot start.
+/// - Every seccomp-based option here (`RestrictAddressFamilies=`, `RestrictSUIDSGID=`, `LockPersonality=`) and the
+///   mount namespace of `ProtectSystem=` is inherited by every agent and every tool it runs. So no
+///   `MemoryDenyWriteExecute=`: under it Node's V8 cannot make its JIT code executable and aborts at start (npm, vite,
+///   tsc and the playwright of a project are Node); checked with Node 26 and `systemd-run -p MemoryDenyWriteExecute=yes`,
+///   while Bun and the native engines start. The address families are the ones an agent needs for git, npm and its API.
 pub fn service_unit() -> String {
     let cg = cgroup_path();
     format!(
@@ -97,8 +102,7 @@ ProtectKernelModules=yes\n\
 ProtectControlGroups=yes\n\
 RestrictSUIDSGID=yes\n\
 RestrictAddressFamilies=AF_UNIX AF_INET AF_INET6 AF_NETLINK\n\
-LockPersonality=yes\n\
-MemoryDenyWriteExecute=yes\n"
+LockPersonality=yes\n"
     )
 }
 
@@ -335,7 +339,7 @@ pub fn migrate_script(a: &Account, id: &str) -> Option<String> {
     let crew_dir = format!("{}/.atlas/crew/{id}", a.home);
     Some(format!(
         "{prov}; \
-if [ -d {crew_dir}/work ]; then sudo mv {crew_dir}/work {crew_dir}/work.pre-isolation; fi"
+if [ -d {crew_dir}/work ]; then sudo mv -T {crew_dir}/work {crew_dir}/work.pre-isolation; fi"
     ))
 }
 
@@ -940,6 +944,18 @@ mod tests {
         assert!(u.contains("CAP_SETUID"), "{u}");
     }
 
+    // Security review of the crew isolation, MDWE note: `MemoryDenyWriteExecute=` is a seccomp filter, and a filter
+    // is inherited by every process the helper starts and cannot be lifted: every agent and every tool it runs
+    // (npm, vite, tsc, playwright: all Node) would run under it. Node's V8 cannot make its JIT code executable
+    // under it and aborts at start ("Fatal error ... Check failed: 12 == errno", checked with Node 26 under
+    // `systemd-run -p MemoryDenyWriteExecute=yes`; Bun's JavaScriptCore and the native engines start). So the helper
+    // does not have it. The provisioning service runs `useradd` and `nft`, never an agent, and keeps it.
+    #[test]
+    fn the_spawn_helper_has_no_memory_deny_write_execute_because_its_agents_inherit_it() {
+        assert!(!service_unit().contains("MemoryDenyWriteExecute"));
+        assert!(provision_service_unit().contains("MemoryDenyWriteExecute=yes\n"));
+    }
+
     // Incident (real-systemd end-to-end test): uninstall removed the egress rules file and the units but left the
     // directories `/etc/atlas-crew` (made by the install for that file) and `/run/atlas-crew` (made by systemd for
     // the sockets, which outlives them), so a "removed" crew server still had files on it.
@@ -1032,7 +1048,9 @@ mod tests {
 
     const ID: &str = "3f2a9c1e-5b7d-4e8f-9a0b-1c2d3e4f5a6b";
 
-    // Nothing is deleted by a migration: the old checkout is renamed, memory is moved by hostd.
+    // Nothing is deleted by a migration: the old checkout is renamed, memory is moved by hostd. `mv -T`: the target
+    // is never taken for a directory to move into (a link planted at `work.pre-isolation` by the crew user would
+    // make a root `mv` put `work` inside the link's target; security review of the crew isolation, nit).
     #[test]
     fn migrating_a_crewmate_provisions_it_and_renames_the_old_checkout_never_deletes_it() {
         let sh = migrate_script(&acct(), ID).unwrap();
@@ -1041,7 +1059,7 @@ mod tests {
         let dir = format!("/var/lib/atlas-crew/.atlas/crew/{ID}");
         assert!(
             sh.contains(&format!(
-                "if [ -d {dir}/work ]; then sudo mv {dir}/work {dir}/work.pre-isolation; fi"
+                "if [ -d {dir}/work ]; then sudo mv -T {dir}/work {dir}/work.pre-isolation; fi"
             )),
             "{sh}"
         );

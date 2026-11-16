@@ -4,7 +4,8 @@
 # The prompt (the last argument; hostd puts the role and the task text in it) says what to do:
 #   E2E_OK <word>            answers `fake-claude done <word>`
 #   E2E_FAIL                 exits 1 with an error, like an engine whose sign-in expired
-#   E2E_PROBE                answers what its own process looks like: open descriptors, NoNewPrivs, cgroup
+#   E2E_PROBE                answers what its own process looks like: open descriptors, NoNewPrivs, cgroup, and
+#                            whether `node` (a JIT) runs
 #   E2E_HANG <n>             starts `sleep <n>` as a child and waits for it: a tool the agent started
 #   E2E_HANG_ONCE <n>        like E2E_HANG, but a run that hostd resumed after a restart ("was interrupted")
 #                            finishes at once
@@ -32,7 +33,9 @@ case "$prompt" in
     # A child `sh`, listing the fds of ITS shell with a redirect that only the `ls` child sees (a pipe or a
     # command substitution would put a descriptor of its own in the shell).
     sh -c 'ls /proc/$$/fd >"$HOME/e2e-probe"; grep NoNewPrivs /proc/$$/status >>"$HOME/e2e-probe"; cat /proc/$$/cgroup >>"$HOME/e2e-probe"'
-    reply "probe: $(tr '\n\t' ' ;' <"$HOME/e2e-probe" | tr -d '"\\')"
+    # Node's V8 aborts at start under a seccomp MemoryDenyWriteExecute= that the agent inherited from the helper's unit.
+    node=$(node -e 'let s=0;for(let i=0;i<1e6;i++)s+=i;console.log(s)' 2>&1 | tail -n 1 | tr -cd 'A-Za-z0-9 ')
+    reply "probe: $(tr '\n\t' ' ;' <"$HOME/e2e-probe" | tr -d '"\\') node=$node"
     exit 0
     ;;
   *E2E_HANG_ONCE*)

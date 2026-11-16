@@ -234,11 +234,12 @@ T=$(send_task "$CM" "E2E_PROBE")
 wait_task "$CM" "$T" "done" 60
 PROBE=$(task_json "$CM" "$T" | jq -r .result)
 [[ $PROBE == "probe: 0 1 2 NoNewPrivs:;1 "* ]] || fail "the agent has descriptors besides 0, 1, 2, or no NoNewPrivs: $PROBE"
+[[ $PROBE == *"node=499999500000" ]] || fail "node does not run as the agent (a seccomp filter of the helper's unit, MemoryDenyWriteExecute=?): $PROBE"
 if srv test -d "$LEAF_DIR"; then
   [[ $PROBE == *"0::/system.slice/atlas-crew-spawn.service/cm-$SLUG"* ]] || fail "the agent does not run in its memory leaf cm-$SLUG: $PROBE"
-  echo "agent process: fds 0 1 2, NoNewPrivs 1, in the memory leaf cm-$SLUG"
+  echo "agent process: fds 0 1 2, NoNewPrivs 1, node (V8 JIT) runs, in the memory leaf cm-$SLUG"
 else
-  echo "agent process: fds 0 1 2, NoNewPrivs 1 (this server has no memory cap: no leaf to check)"
+  echo "agent process: fds 0 1 2, NoNewPrivs 1, node (V8 JIT) runs (this server has no memory cap: no leaf to check)"
 fi
 echo "done: $RESULT"
 

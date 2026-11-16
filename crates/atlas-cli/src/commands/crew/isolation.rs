@@ -233,7 +233,7 @@ pub fn start_steps() -> Vec<String> {
 /// Shell that creates the Linux user of one crewmate, idempotently, and its directories:
 ///
 /// ```text
-/// /var/lib/atlas-cm/<slug>/        user:user 0750   (the crew user is in the group: traverse only)
+/// /var/lib/atlas-cm/<slug>/        user:crew 0750   (the crew user's own group: hostd traverses it)
 ///   home/                          user:user 0700   $HOME: the engines' sign-ins live here
 ///   work/                          user:user 2770   setgid; the crew user, in the group, writes it
 ///   crew-runtime/                  crew:user 0750   hostd writes what the agent reads and must not change
@@ -250,12 +250,11 @@ pub fn provision_script(a: &Account, user: &str) -> Result<String, BadUser> {
 if ! id {user} >/dev/null 2>&1; then \
 sudo useradd --system --user-group --no-create-home --home-dir {dir}/home --shell /usr/sbin/nologin {user} \
 || {{ echo 'could not create {user}: out of system user ids? (useradd --system has about 900)' >&2; exit 1; }}; fi; \
-sudo usermod -aG {user} {crew}; \
-sudo install -d -m 0750 -o {user} -g {user} {dir}; \
+sudo install -d -m 0750 -o {user} -g {crew} {dir}; \
 sudo install -d -m 0700 -o {user} -g {user} {dir}/home; \
-sudo install -d -m 2770 -o {user} -g {user} {dir}/work; \
+sudo install -d -m 2770 -o {user} -g {crew} {dir}/work; \
 sudo install -d -m 0750 -o {crew} -g {user} {dir}/crew-runtime; \
-[ -e {dir}/memory.md ] || sudo install -m 0660 -o {user} -g {user} /dev/null {dir}/memory.md",
+[ -e {dir}/memory.md ] || sudo install -m 0660 -o {user} -g {crew} /dev/null {dir}/memory.md",
         crew = a.user
     ))
 }
@@ -699,33 +698,38 @@ mod tests {
             "set -e",
             "id atlas-cm-3f2a9c1e5b7d >/dev/null 2>&1",
             "useradd --system --user-group --no-create-home --home-dir /var/lib/atlas-cm/3f2a9c1e5b7d/home --shell /usr/sbin/nologin atlas-cm-3f2a9c1e5b7d",
-            "usermod -aG atlas-cm-3f2a9c1e5b7d atlas-crew",
-            "install -d -m 0750 -o atlas-cm-3f2a9c1e5b7d -g atlas-cm-3f2a9c1e5b7d /var/lib/atlas-cm/3f2a9c1e5b7d;",
+            // hostd's groups are fixed when it starts, so what it reaches is in the crew user's own group.
+            "install -d -m 0750 -o atlas-cm-3f2a9c1e5b7d -g atlas-crew /var/lib/atlas-cm/3f2a9c1e5b7d;",
             "install -d -m 0700 -o atlas-cm-3f2a9c1e5b7d -g atlas-cm-3f2a9c1e5b7d /var/lib/atlas-cm/3f2a9c1e5b7d/home",
-            "install -d -m 2770 -o atlas-cm-3f2a9c1e5b7d -g atlas-cm-3f2a9c1e5b7d /var/lib/atlas-cm/3f2a9c1e5b7d/work",
+            "install -d -m 2770 -o atlas-cm-3f2a9c1e5b7d -g atlas-crew /var/lib/atlas-cm/3f2a9c1e5b7d/work",
             // hostd (the crew user) writes it, the crewmate reads it through the group.
             "install -d -m 0750 -o atlas-crew -g atlas-cm-3f2a9c1e5b7d /var/lib/atlas-cm/3f2a9c1e5b7d/crew-runtime",
-            "install -m 0660 -o atlas-cm-3f2a9c1e5b7d -g atlas-cm-3f2a9c1e5b7d /dev/null /var/lib/atlas-cm/3f2a9c1e5b7d/memory.md",
+            "install -m 0660 -o atlas-cm-3f2a9c1e5b7d -g atlas-crew /dev/null /var/lib/atlas-cm/3f2a9c1e5b7d/memory.md",
             "out of system user ids",
         ] {
             assert!(sh.contains(want), "missing {want:?}:\n{sh}");
         }
         // Idempotent: the useradd sits inside the "not there yet" branch, the rest is install -d.
         assert!(sh.find("if ! id").unwrap() < sh.find("useradd").unwrap());
-        assert!(sh.find("fi;").unwrap() < sh.find("usermod").unwrap());
+        // The crew user is never added to a crewmate's group: a running hostd would not have it.
+        assert!(!sh.contains("usermod"), "{sh}");
         // No shell, no login: nobody can ssh or `su` into a crewmate.
         assert!(sh.contains("/usr/sbin/nologin") && !sh.contains("/bin/bash"));
     }
 
-    // The crew user of a migrated server is the one added to the crewmate's group.
+    // The crew user of a migrated server is the group hostd's files are in.
     #[test]
-    fn provisioning_adds_the_servers_own_crew_user_to_the_group() {
+    fn provisioning_puts_what_hostd_reaches_in_the_servers_own_crew_group() {
         let old = account(Probe {
             legacy_user: true,
             ..Probe::default()
         });
         let sh = provision_script(&old, USER).unwrap();
-        assert!(sh.contains("usermod -aG atlas-cm-3f2a9c1e5b7d atlas-bot"));
+        assert!(
+            sh.contains(
+                "-o atlas-cm-3f2a9c1e5b7d -g atlas-bot /var/lib/atlas-cm/3f2a9c1e5b7d/work"
+            )
+        );
         assert!(!sh.contains("atlas-crew"));
     }
 

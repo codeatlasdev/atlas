@@ -10,6 +10,8 @@
 	import AskDialog from "#lib/components/AskDialog.svelte";
 	import CrashProbe from "#lib/errors/CrashProbe.svelte";
 	import Contain from "#lib/errors/Contain.svelte";
+	import CrashCard from "#lib/errors/CrashCard.svelte";
+	import { crashCards } from "#lib/errors/crashCard.svelte.ts";
 	import ErrorToasts from "#lib/errors/ErrorToasts.svelte";
 	import LazyOpen from "#lib/components/LazyOpen.svelte";
 	import DevLine from "#lib/components/DevLine.svelte";
@@ -57,6 +59,7 @@
 
 	onMount(() => {
 		bootMark("layout:mounted");
+		void crashCards.load();
 		const stopGate = startReadyGate();
 		const stopSession = startSession();
 		return () => {
@@ -148,4 +151,5 @@
 <TabSwitcher />
 <CornerStack />
 <ErrorToasts />
+<CrashCard />
 {#if captionButtons}<WindowControls />{/if}

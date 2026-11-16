@@ -215,6 +215,17 @@ export function headline(r: Pick<ErrorReport, "kind" | "origin" | "where">): { t
 			title: "Terminal host not reachable",
 			hint: "Copy the diagnostics (versions, OS, redacted logs) or report it; secrets are removed before anything leaves your machine.",
 		};
+	// #322: an event of an earlier session (`crashCard.ts`); nothing is still running that could be calm about it.
+	if (r.kind === "crash")
+		return {
+			title: "Atlas closed unexpectedly last time",
+			hint: "A crash report was saved on this machine. Review the details, then report it if you want it looked at; secrets are removed first.",
+		};
+	if (r.kind === "hostd-exited")
+		return {
+			title: "The terminal host closed unexpectedly",
+			hint: "Its terminals ended. Review the details, then report it if it keeps happening; secrets are removed first.",
+		};
 	if (r.origin === "rejection")
 		return {
 			title: "A background task failed",

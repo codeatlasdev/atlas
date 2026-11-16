@@ -2,9 +2,10 @@
  * The four command surfaces of the shell (jump, commands, go-to-file, go-to-symbol): their
  * open state and the item lists each `<Palette>` renders.
  */
-import type { PaletteItem } from "#lib/components/Palette.svelte";
+import { PALETTE_LIMIT, type PaletteItem } from "#lib/components/Palette.svelte";
 import { openService, runAction } from "#lib/actions.svelte.ts";
 import { fileIcon } from "#lib/icons.ts";
+import { indexFor, type FileIndex } from "#lib/quickOpen.ts";
 import { allCommands, noteRun, recent, shortcutFor } from "#lib/keymap.svelte.ts";
 import { activeEditor } from "#lib/shell/editors.ts";
 import { agents } from "#lib/stores/agents.svelte.ts";
@@ -17,7 +18,7 @@ import { ops } from "#lib/symbols.ts";
 import { groupCommands } from "#lib/shell/commandOrder.ts";
 import { goTab, goWorktree, recentWorktrees, wtLabel } from "#lib/shell/navigate.ts";
 
-/** Open flags for each palette plus the file list the "Go to file" palette searches. */
+/** Open flags for each palette; `quickRev` counts the times "Go to file" got a (new) file list. */
 export const palettes = $state({
 	jump: false,
 	/** The Atlas Crew palette (crewmates + crew commands); ⌘K opens it instead of Jump while the Crew workspace is shown. */
@@ -25,14 +26,18 @@ export const palettes = $state({
 	commands: false,
 	files: false,
 	symbols: false,
-	quickFiles: [] as string[],
+	quickRev: 0,
 });
+
+/** What "Go to file" searches: the selected worktree's files, ranked by an index that lives as long as the list does. */
+let quick: FileIndex | undefined;
 
 /** ⌘P: load the selected worktree's files, then open the palette. */
 export async function openQuick() {
 	const w = ws.selected;
 	if (!w) return;
-	palettes.quickFiles = await worktreeFiles(w.id);
+	quick = indexFor(await worktreeFiles(w.id));
+	palettes.quickRev++;
 	palettes.files = true;
 }
 
@@ -127,11 +132,14 @@ export function createItems(q: string): PaletteItem[] {
 	];
 }
 
-/** "Go to file": the cached file list of the selected worktree; ⇧ opens in a split. */
-export function fileItems(): PaletteItem[] {
+/** "Go to file": the best matches of `q` in the cached file list of the selected worktree; ⇧ opens in a split. */
+export function fileItems(q: string): PaletteItem[] {
+	void palettes.quickRev;
 	const w = ws.selected;
-	if (!w) return [];
-	return palettes.quickFiles.map((f) => {
+	if (!w || !quick) return [];
+	const files = quick.files;
+	return quick.top(q, PALETTE_LIMIT).map((n) => {
+		const f = files[n];
 		const i = f.lastIndexOf("/");
 		return {
 			id: f,

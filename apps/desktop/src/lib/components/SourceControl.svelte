@@ -1,6 +1,6 @@
 <script lang="ts">
 	import { usePoll } from "#lib/clock.svelte.ts";
-	import { onMount, untrack } from "svelte";
+	import { onMount, tick, untrack } from "svelte";
 	import { kbd, primaryKey } from "#lib/keys.ts";
 	import { Button, DropdownMenu, DropdownMenuItem, Spinner, TextArea, toast } from "@codeatlasdev/ui";
 	import { Plus, Minus, Undo2, Sparkles, Ellipsis, GitPullRequest, Square, RefreshCw } from "@lucide/svelte";
@@ -18,6 +18,7 @@
 		saveIdentity,
 		type IdentityScope,
 	} from "#lib/gitIdentity.ts";
+	import VirtualList from "#lib/components/VirtualList.svelte";
 	import { pr } from "#lib/stores/pr.svelte.ts";
 	import { confirmDialog } from "#lib/stores/ask.svelte.ts";
 	import { statusGroups } from "#lib/stores/tree.ts";
@@ -61,6 +62,52 @@
 	let changes = $derived(groups.changes);
 	let untracked = $derived(groups.untracked);
 	let conflicts = $derived(groups.conflicts);
+
+	type Group = "staged" | "changes" | "untracked" | "conflicts";
+	/** The panel's one windowed list: each non-empty group's header, then its entries. */
+	type Row =
+		| { key: string; kind: "group"; title: string; list: GitEntry[]; group: Group }
+		| { key: string; kind: "entry"; e: GitEntry; group: Group };
+	let rows = $derived.by((): Row[] => {
+		const out: Row[] = [];
+		const shown: [string, GitEntry[], Group][] = [
+			["Conflicts", conflicts, "conflicts"],
+			["Staged", staged, "staged"],
+			["Changes", changes, "changes"],
+			["Untracked", untracked, "untracked"],
+		];
+		for (const [title, list, group] of shown) {
+			if (!list.length) continue;
+			out.push({ key: `g:${group}`, kind: "group", title, list, group });
+			for (const e of list) out.push({ key: group + e.path, kind: "entry", e, group });
+		}
+		return out;
+	});
+	let vl: ReturnType<typeof VirtualList<Row>> | undefined = $state();
+	let scroller: HTMLDivElement | undefined = $state();
+
+	/** Arrow keys, Home and End between entries: rows are windowed, so Tab alone would never reach the far ones. */
+	async function stepEntry(key: string, to: "next" | "prev" | "first" | "last") {
+		const forward = to === "next" || to === "first";
+		let i =
+			to === "first"
+				? 0
+				: to === "last"
+					? rows.length - 1
+					: rows.findIndex((r) => r.key === key) + (forward ? 1 : -1);
+		while (rows[i] && rows[i].kind !== "entry") i += forward ? 1 : -1;
+		if (!rows[i]) return;
+		vl?.reveal(i);
+		await tick();
+		scroller?.querySelector<HTMLElement>(`[data-key="${CSS.escape(rows[i].key)}"]`)?.focus();
+	}
+
+	const STEP: Record<string, "next" | "prev" | "first" | "last"> = {
+		ArrowDown: "next",
+		ArrowUp: "prev",
+		Home: "first",
+		End: "last",
+	};
 	let ahead = $derived(st?.ab ? Number(st.ab.split(" ")[0].slice(1)) : 0);
 	let behind = $derived(st?.ab ? Number(st.ab.split(" ")[1].slice(1)) : 0);
 
@@ -367,35 +414,46 @@
 		</div>
 	{/if}
 
-	{#snippet group(title: string, list: GitEntry[], kind: "staged" | "changes" | "untracked" | "conflicts")}
-		{#if list.length}
-			<div class="group">
-				<span>{title} <span class="dim">{list.length}</span></span>
-				{#if kind === "staged"}
-					<button title="Unstage all" onclick={() => unstage(list.map((e) => e.path))}
-						><Minus size={12} /></button
-					>
-				{:else if kind !== "conflicts"}
-					<button title="Stage all" onclick={() => stage(list.map((e) => e.path))}><Plus size={12} /></button>
-				{/if}
-			</div>
-			{#each list as e (kind + e.path)}
+	<VirtualList bind:this={vl} bind:scroller class="lists" items={rows} key={(r) => r.key} estimate={24}>
+		{#snippet item(r)}
+			{#if r.kind === "group"}
+				<div class="group">
+					<span>{r.title} <span class="dim">{r.list.length}</span></span>
+					{#if r.group === "staged"}
+						<button title="Unstage all" onclick={() => unstage(r.list.map((e) => e.path))}
+							><Minus size={12} /></button
+						>
+					{:else if r.group !== "conflicts"}
+						<button title="Stage all" onclick={() => stage(r.list.map((e) => e.path))}
+							><Plus size={12} /></button
+						>
+					{/if}
+				</div>
+			{:else}
+				{@const e = r.e}
 				{@const code =
-					kind === "staged" ? e.x : kind === "untracked" ? "U" : kind === "conflicts" ? "!" : e.y}
+					r.group === "staged" ? e.x : r.group === "untracked" ? "U" : r.group === "conflicts" ? "!" : e.y}
 				<div
 					class="entry"
 					role="button"
 					tabindex="0"
+					data-key={r.key}
 					onclick={() => openFile(worktreeId, e.path)}
-					onkeydown={(ev) => ev.key === "Enter" && openFile(worktreeId, e.path)}
+					onkeydown={(ev) => {
+						if (ev.key === "Enter") return openFile(worktreeId, e.path);
+						const to = ev.target === ev.currentTarget ? STEP[ev.key] : undefined;
+						if (!to) return;
+						ev.preventDefault();
+						void stepEntry(r.key, to);
+					}}
 				>
 					<span class="code {CODE_KIND[code] ?? 'modified'}">{code}</span>
 					<PathText path={e.path} />
-					{#if kind === "staged"}
+					{#if r.group === "staged"}
 						<button title="Unstage" onclick={(ev) => (ev.stopPropagation(), unstage([e.path]))}
 							><Minus size={12} /></button
 						>
-					{:else if kind !== "conflicts"}
+					{:else if r.group !== "conflicts"}
 						<button title="Discard" onclick={(ev) => (ev.stopPropagation(), discard(e))}
 							><Undo2 size={12} /></button
 						>
@@ -404,16 +462,9 @@
 						>
 					{/if}
 				</div>
-			{/each}
-		{/if}
-	{/snippet}
-
-	<div class="lists">
-		{@render group("Conflicts", conflicts, "conflicts")}
-		{@render group("Staged", staged, "staged")}
-		{@render group("Changes", changes, "changes")}
-		{@render group("Untracked", untracked, "untracked")}
-	</div>
+			{/if}
+		{/snippet}
+	</VirtualList>
 </aside>
 
 <style>
@@ -491,9 +542,8 @@
 		gap: 6px;
 		flex-wrap: wrap;
 	}
-	.lists {
+	.sc :global(.lists) {
 		flex: 1;
-		overflow: auto;
 	}
 	.group {
 		display: flex;

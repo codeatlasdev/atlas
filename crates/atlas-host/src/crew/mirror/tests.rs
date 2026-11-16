@@ -314,6 +314,11 @@ async fn a_private_repository_reaches_a_crewmate_through_hostds_mirror_and_the_t
         !seen.contains(LOGIN_TOKEN) && !seen.contains("ATLAS_GIT_TOKEN"),
         "the crew user's token is in a crewmate's git process:\n{seen}"
     );
+    // git < 2.45 refuses to serve a repository another uid owns (the mirror is the crew user's): the helper names it.
+    assert!(
+        seen.contains(&format!("GIT_CONFIG_VALUE_0={}", mirror.dir().display())),
+        "the mirror is not a safe.directory of the crewmate's git:\n{seen}"
+    );
 }
 
 // A crewmate that has a GitHub token of its own uses it, and only it: the real URL, its token in its own

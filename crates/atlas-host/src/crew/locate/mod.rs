@@ -35,6 +35,10 @@ const MAX_SCAN_FILES: usize = 20_000;
 const MAX_FILE_BYTES: u64 = 512 * 1024;
 /// The largest image `locate` reads (a full-page screenshot is a few MiB).
 const MAX_IMAGE_BYTES: u64 = 32 * 1024 * 1024;
+/// Test-only: how long the scan of the work tree (a slow disk, a big tree) takes, to see it never holds an async thread.
+#[cfg(test)]
+pub(crate) static TEST_SCAN_PAUSE: parking_lot::Mutex<Option<std::time::Duration>> =
+    parking_lot::Mutex::new(None);
 /// A text shorter than this is too common to point at a file.
 const MIN_TEXT_LEN: usize = 3;
 const SOURCE_EXTS: &[&str] = &[
@@ -294,7 +298,10 @@ pub async fn handle(
         .map_err(|e| format!("locate: crewmate {crewmate_id} is not readable: {e}"))?;
     let iso = store.isolated(crewmate_id);
     let work = work_tree(hostd_dir, &crewmate, iso.as_ref())?;
-    let bytes = read_image(&work, &req.image)?;
+    let bytes = {
+        let (work, image) = (work.clone(), req.image.clone());
+        super::proc::blocking(move || read_image(&work, &image)).await??
+    };
     let image_w = image_width(&bytes);
     let Some(url) = req.url.clone() else {
         return Err(
@@ -340,8 +347,19 @@ pub async fn handle(
         .map(|[x, y, w, h]| Rect::from_array([x * scale, y * scale, w * scale, h * scale]))
         .transpose()?;
 
-    let files = route::list_files(&work, MAX_SCAN_FILES);
-    let (found, ambiguous) = candidates(&work, &files, &dom, rect);
+    // Listing the tree and grepping its sources (up to MAX_SCAN_FILES files) is blocking work.
+    let (found, ambiguous) = {
+        let work = work.clone();
+        super::proc::blocking(move || {
+            #[cfg(test)]
+            if let Some(d) = *TEST_SCAN_PAUSE.lock() {
+                std::thread::sleep(d);
+            }
+            let files = route::list_files(&work, MAX_SCAN_FILES);
+            candidates(&work, &files, &dom, rect)
+        })
+        .await?
+    };
     if found.is_empty() {
         return Err(match rect {
             Some(_) => "locate: no element of the page is under that rect (is the URL the page of the screenshot, at the same state?)".into(),

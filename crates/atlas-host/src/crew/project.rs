@@ -228,9 +228,10 @@ pub async fn remove_checkout(base_dir: &Path, crewmate_id: &str) -> Result<(), S
 /// Handles both HTTPS (`https://github.com/owner/repo`) and SSH
 /// (`git@github.com:owner/repo`) remotes.
 #[allow(dead_code)]
-pub fn infer_github_repo(work_dir: &Path, git: &Git) -> Option<String> {
+pub async fn infer_github_repo(work_dir: &Path, git: &Git) -> Option<String> {
     let out = git
-        .run_sync(work_dir, &["remote", "get-url", "origin"])
+        .run(Some(work_dir), &["remote", "get-url", "origin"])
+        .await
         .ok()?;
     if !out.status.success() {
         return None;
@@ -1050,7 +1051,7 @@ mod tests {
         let git = store.git_in(&work);
         assert!(git.is_crewmate());
         assert!(current_branch(&work, &git).await.is_some());
-        let _ = infer_github_repo(&work, &git);
+        let _ = infer_github_repo(&work, &git).await;
         fetch(&work, &git, None).await.unwrap();
         let users = Rig::marker_users(&marker);
         assert!(!users.is_empty(), "no command triggered core.fsmonitor");

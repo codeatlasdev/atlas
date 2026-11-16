@@ -884,3 +884,53 @@ fn the_gate_and_dom_folders_of_a_task_are_one_plain_name_under_the_crewmates_dir
         );
     }
 }
+
+// L1 of the sixth review: the crewmate's own `core.fsmonitor` can keep its git for up to two minutes, and the plan asks
+// git for the changed files. On an async thread that holds a worker of hostd for everyone. Here the runtime has one
+// thread and git takes ~1 s per call: a ticker next to the plan must keep ticking.
+#[cfg(unix)]
+#[tokio::test]
+async fn planning_from_a_slow_git_does_not_hold_the_async_thread() {
+    use crate::crew::spawn::testing::rig;
+    let rig = rig();
+    rig.planted_repo("sleep 1\nexit 1");
+    let hostd = tempfile::tempdir().unwrap();
+    let store = crate::crew::store::CrewStore::new(hostd.path()).with_isolation(Some(rig.setup()));
+    let work = rig.work();
+    let tree = Tree::Isolated(store.git_in(&work));
+    let w = World::new();
+    let ctx = Ctx {
+        capturer: &w.fake,
+        cache: &w.cache,
+        checks: &[],
+        root: &work,
+        tree: &tree,
+        task_dir: &w.task_dir,
+        scratch: &w.scratch,
+        force: false,
+    };
+    let ticks = std::sync::Arc::new(AtomicUsize::new(0));
+    let ticker = {
+        let ticks = ticks.clone();
+        tokio::spawn(async move {
+            loop {
+                tokio::time::sleep(std::time::Duration::from_millis(20)).await;
+                ticks.fetch_add(1, Ordering::Relaxed);
+            }
+        })
+    };
+    let started = std::time::Instant::now();
+    let action =
+        Action::from_args(&json!({"action": "run", "base_url": "http://localhost:5173"})).unwrap();
+    let _ = dispatch(&ctx, action).await;
+    let (took, ticked) = (started.elapsed(), ticks.load(Ordering::Relaxed));
+    ticker.abort();
+    assert!(
+        took >= std::time::Duration::from_millis(900),
+        "control: git was not slow ({took:?})"
+    );
+    assert!(
+        ticked >= 10,
+        "git held the only async thread: the ticker ticked {ticked} times in {took:?}"
+    );
+}

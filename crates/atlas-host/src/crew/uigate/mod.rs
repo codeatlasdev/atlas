@@ -379,7 +379,11 @@ pub async fn dispatch<C: Capturer>(ctx: &Ctx<'_, C>, action: Action) -> Result<V
                 None => {
                     let files = match files {
                         Some(f) => f,
-                        None => ctx.tree.changed_files(ctx.root)?,
+                        None => {
+                            // git runs the crewmate's own `core.fsmonitor`: off the async threads.
+                            let (tree, root) = (ctx.tree.clone(), ctx.root.to_path_buf());
+                            crate::crew::proc::blocking(move || tree.changed_files(&root)).await??
+                        }
                     };
                     plan::routes_of(ctx.tree, ctx.root, &files)?
                 }

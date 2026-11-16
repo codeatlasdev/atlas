@@ -115,7 +115,7 @@ pub(super) async fn gate_success(
     // Hub tapes are per task id; a retry starts a fresh one.
     let commands = hub.crew.tape.of(&task.id);
     let git = hub.crew.store.git_in(dir);
-    let repo = project::infer_github_repo(dir, &git);
+    let repo = project::infer_github_repo(dir, &git).await;
     let api = hub.crew.github();
     let verdict = guard::review(
         &Input {

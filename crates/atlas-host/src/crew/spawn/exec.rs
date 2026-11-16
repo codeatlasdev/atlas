@@ -423,6 +423,8 @@ mod tests {
     // Incident (real-systemd end-to-end test): a spawn failed with a bare "Operation not permitted" and nothing
     // said which of cgroup join, setsid, setgroups, setgid or setuid after the fork had been refused. The
     // step is now in the message (and a failure of chdir or exec, which std reports itself, has none).
+    // The cgroup join exists on Linux only.
+    #[cfg(target_os = "linux")]
     #[test]
     fn a_step_that_fails_after_the_fork_is_named_in_the_error() {
         use std::os::fd::AsRawFd;

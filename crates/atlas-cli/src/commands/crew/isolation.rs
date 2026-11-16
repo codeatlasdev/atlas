@@ -115,7 +115,8 @@ pub fn cgroup_path() -> String {
 ///   modes; `CAP_SETUID`/`CAP_SETGID` are what `useradd` and `userdel` need on `/etc/passwd`;
 ///   `CAP_KILL` ends a deleted crewmate's processes; `CAP_NET_ADMIN` loads the egress rules.
 /// - Writes only what account tools touch: `/etc`, `/var/lib/atlas-cm`, `/var/log` (lastlog), `/run`.
-///   `ProtectSystem=full` (not `strict`): `/usr` and the boot files stay read-only, `/etc` is writable.
+///   `ProtectSystem=strict`, not `full`: `full` keeps `/etc` read-only and a `ReadWritePaths=/etc` does not
+///   open it again, so `useradd` could not lock `/etc/passwd`. `strict` makes everything read-only but the listed paths.
 /// - `AF_NETLINK` is for `nft`; there is no network family beyond that and unix sockets.
 pub fn provision_service_unit() -> String {
     format!(
@@ -131,7 +132,7 @@ KillMode=process\n\
 Restart=on-failure\n\
 NoNewPrivileges=yes\n\
 CapabilityBoundingSet=CAP_CHOWN CAP_FOWNER CAP_DAC_OVERRIDE CAP_SETUID CAP_SETGID CAP_KILL CAP_NET_ADMIN\n\
-ProtectSystem=full\n\
+ProtectSystem=strict\n\
 ReadWritePaths=/etc {CM_ROOT} /var/log /run\n\
 ProtectHome=yes\n\
 PrivateTmp=yes\n\
@@ -860,7 +861,7 @@ mod tests {
         for want in [
             "User=root\n",
             "ExecStart=/usr/local/lib/atlas-crew/atlas crew-spawn --provision\n",
-            "ProtectSystem=full\n",
+            "ProtectSystem=strict\n",
             "ReadWritePaths=/etc /var/lib/atlas-cm /var/log /run\n",
             "ProtectHome=yes\n",
             "RestrictAddressFamilies=AF_UNIX AF_NETLINK\n",
@@ -874,6 +875,26 @@ mod tests {
         let sock = provision_socket_unit(&acct());
         assert!(sock.contains("ListenStream=/run/atlas-crew/provision.sock\n"));
         assert!(sock.contains("SocketGroup=atlas-crew\n") && sock.contains("SocketMode=0660\n"));
+    }
+
+    // Incident (found by the real-systemd end-to-end test): the provisioning service had `ProtectSystem=full`
+    // and `ReadWritePaths=/etc ...`, and `useradd` failed with "cannot lock /etc/passwd". `full` makes /etc
+    // read-only and a `ReadWritePaths=` for /etc does not open it again (systemd 255, Ubuntu 24.04: checked with
+    // `touch /etc/x` on a real VM and in a container); only `strict` lets a listed path stay writable. So a
+    // unit that lists /etc must say `strict`.
+    #[test]
+    fn a_unit_that_needs_etc_writable_protects_the_system_strictly() {
+        for (file, body) in unit_files(&acct()) {
+            let Some(rw) = body.lines().find_map(|l| l.strip_prefix("ReadWritePaths=")) else {
+                continue;
+            };
+            if rw.split(' ').any(|p| p == "/etc") {
+                assert!(
+                    body.contains("ProtectSystem=strict\n"),
+                    "{file} lists /etc as writable but `ProtectSystem=full` keeps it read-only"
+                );
+            }
+        }
     }
 
     // The rules file the provisioning service writes is replayed at boot, but only once it exists.

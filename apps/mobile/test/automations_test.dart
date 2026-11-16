@@ -1,9 +1,10 @@
-// Pure-logic tests for automations.dart, mirroring automations.test.ts cases.
-// No Flutter widgets; just the Dart port of the TS logic.
 import 'package:flutter_test/flutter_test.dart';
 
+import 'package:atlas_mobile/core/protocol/crew_triggers.dart';
 import 'package:atlas_mobile/features/crew/automations.dart';
-import 'package:atlas_mobile/core/protocol/crew_models.dart';
+
+// Pure-logic tests for automations.dart, mirroring automations.test.ts cases.
+// No Flutter widgets; just the Dart port of the TS logic.
 
 void main() {
   // ─── scheduleFromCron ──────────────────────────────────────────────────────

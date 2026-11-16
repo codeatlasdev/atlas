@@ -1,7 +1,3 @@
-// Every crew operations screen of the phone, run against the demo computer (what App Review uses):
-// audit (filters, copy), usage and engine limits, routines (add, edit, toggle, delete, bad cron), crew
-// settings (short replies, the model) and how each is reached from the crewmate profile and the Crew tab.
-// Gap #5: the desktop had them, the phone had no screen for commands hostd already answers.
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 import 'package:flutter_test/flutter_test.dart';
@@ -14,6 +10,11 @@ import 'package:atlas_mobile/features/crew/ops/crewmate_usage_screen.dart';
 import 'package:atlas_mobile/features/crew/profile/crewmate_profile_screen.dart';
 
 import 'support/demo_harness.dart';
+
+// Every crew operations screen of the phone, run against the demo computer (what App Review uses):
+// audit (filters, copy), usage and engine limits, routines (add, edit, toggle, delete, bad cron), crew
+// settings (short replies, the model) and how each is reached from the crewmate profile and the Crew tab.
+// Gap #5: the desktop had them, the phone had no screen for commands hostd already answers.
 
 void main() {
   const mac = MacDevice(nodeId: 'demo', name: 'Demo MacBook');

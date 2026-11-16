@@ -5,6 +5,8 @@ import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:flutter_test/flutter_test.dart';
 
+import 'fake_transport.dart';
+
 import 'package:atlas_mobile/core/connection/connection_notifier.dart';
 import 'package:atlas_mobile/core/demo/demo_computer.dart';
 import 'package:atlas_mobile/core/protocol/models.dart';
@@ -15,7 +17,6 @@ import 'package:atlas_mobile/core/ui/atlas_theme.dart';
 import 'package:atlas_mobile/features/crew/list/crew_screen.dart';
 import 'package:atlas_mobile/features/home/home_screen.dart';
 
-import 'fake_transport.dart';
 import 'support/demo_harness.dart';
 
 // Regression: #302. hostd's `info.proto` was never read, so a hostd older (or newer) than the app
@@ -315,13 +316,6 @@ void main() {
           child: MaterialApp(theme: atlasTheme(), home: const HomeScreen()),
         ),
       );
-      await _settle(t);
-      // Debug builds show the onboarding on every launch.
-      for (var i = 0; i < 3; i++) {
-        await t.tap(find.text('Continue'));
-        await _settle(t);
-      }
-      await t.tap(find.text('Open my computer'));
       await _settle(t);
     }
 

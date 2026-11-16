@@ -9,6 +9,7 @@
     "proto": "number",
     "ptys": "number",
     "queued": "object",
+    "update": "object",
     "uptime_s": "number",
     "version": "string"
   },

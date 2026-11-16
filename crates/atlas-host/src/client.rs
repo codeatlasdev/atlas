@@ -91,10 +91,14 @@ const QUICK: &[&str] = &[
     "lsp_log",
     "lsp_save",
     "lsp_status",
+    // The audit log's last entries, read from its end (bounded however long the log is).
+    "mobile_activity",
     "mobile_devices",
     "mobile_invite",
     "mobile_invite_dismiss",
     "mobile_invites",
+    // One small write of devices.json.
+    "mobile_rename",
     "mobile_revoke",
     "mobile_set_scopes",
     "pty_attach",
@@ -158,6 +162,9 @@ const LONG: &[&str] = &[
     "worktree_create",
     "worktree_remove",
     "upgrade",
+    // Run `atlas update --check` (up to 45 s on a slow network); `atlas_update` checks first, then starts it.
+    "atlas_update_check",
+    "atlas_update",
 ];
 
 /// Commands whose deadline depends on the call (see [`deadline_for`]) or that have none.

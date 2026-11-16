@@ -6,9 +6,12 @@ import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:flutter_test/flutter_test.dart';
 
-import 'package:atlas_mobile/core/protocol/protocol_version.dart';
 import 'package:atlas_mobile/core/connection/connection_notifier.dart';
+import 'package:atlas_mobile/core/protocol/agent_history.dart';
 import 'package:atlas_mobile/core/protocol/models.dart';
+import 'package:atlas_mobile/core/protocol/protocol_version.dart';
+import 'package:atlas_mobile/core/protocol/timeline_blocks.dart';
+import 'package:atlas_mobile/core/protocol/timeline_items.dart';
 import 'package:atlas_mobile/core/storage/mac_storage.dart';
 import 'package:atlas_mobile/core/transport/transport.dart';
 import 'package:atlas_mobile/core/ui/agent_logo.dart';
@@ -16,7 +19,7 @@ import 'package:atlas_mobile/core/ui/atlas_theme.dart';
 import 'package:atlas_mobile/features/agents/agent_chat_screen.dart';
 import 'package:atlas_mobile/features/agents/agent_info.dart';
 import 'package:atlas_mobile/features/agents/agent_launcher.dart';
-import 'package:atlas_mobile/features/agents/timeline_widgets.dart';
+import 'package:atlas_mobile/features/agents/timeline/chat_messages.dart';
 import 'package:atlas_mobile/features/projects/project_detail_screen.dart';
 
 class _Storage extends MacStorage {

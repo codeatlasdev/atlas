@@ -203,7 +203,9 @@ ThemeData atlasTheme() {
   );
   final text = base.textTheme.apply(bodyColor: c.text, displayColor: c.text);
   return base.copyWith(
-    scaffoldBackgroundColor: c.ground,
+    // Screens sit on one shared `AtlasBackdrop` (tabs: FadeBranches; pushed screens: route_page.dart), so a
+    // Scaffold paints nothing of its own.
+    scaffoldBackgroundColor: Colors.transparent,
     canvasColor: c.ground,
     splashFactory: InkSparkle.splashFactory,
     textTheme: text.copyWith(
@@ -239,7 +241,7 @@ ThemeData atlasTheme() {
       headlineMedium: text.headlineMedium?.copyWith(fontSize: TextSize.display),
     ),
     appBarTheme: AppBarTheme(
-      backgroundColor: c.ground,
+      backgroundColor: Colors.transparent,
       surfaceTintColor: Colors.transparent,
       foregroundColor: c.text,
       elevation: 0,

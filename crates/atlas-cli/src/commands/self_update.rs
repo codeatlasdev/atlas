@@ -3,24 +3,21 @@
 
 use anyhow::{Context, Result, bail};
 use atlas_core::channel::{self, Channel, Decision};
+use atlas_core::update_cache::{
+    self as cache, CHECK_INTERVAL_SECS, UpdateCache, background_available, now_secs,
+};
 use clap::{Args, Subcommand};
-use serde::{Deserialize, Serialize};
 use std::env;
 use std::io::{BufRead, IsTerminal, Write};
-use std::path::PathBuf;
-use std::time::{SystemTime, UNIX_EPOCH};
 
 use super::AtlasCommand;
 use super::release::{REPO, download_verified};
 use super::update_channel::{self as ch, Pick};
 use super::update_core;
-use super::update_pkg::{self, PackageManager};
+use super::update_pkg;
+use atlas_core::pkgowner::{self, PackageManager};
 
 const CURRENT_VERSION: &str = env!("CARGO_PKG_VERSION");
-/// Hit GitHub at most every 6h (cached result is reused in between).
-const CHECK_INTERVAL_SECS: u64 = 6 * 3600;
-/// After a failed live check (offline), do not try again for this long.
-pub(crate) const FAILED_BACKOFF_SECS: u64 = 30 * 60;
 
 /// `atlas update` — see `docs/cli.md#atlas-update`.
 #[derive(Debug, Args)]
@@ -74,141 +71,15 @@ impl AtlasCommand for UpdateArgs {
 }
 
 // ── Update check cache ────────────────────────────────────────────────────────
-
-#[derive(Debug, Serialize, Deserialize, Default, Clone, PartialEq)]
-pub(crate) struct UpdateCache {
-    pub(crate) last_checked: u64,
-    pub(crate) available_version: Option<String>,
-    /// "Not now" answer to the pre-flight prompt: that version is not offered again
-    /// until `until` (unix secs). Absent in caches written by older atlas versions.
-    #[serde(default)]
-    pub(crate) dismissed: Option<Dismissal>,
-    /// The channel `available_version` was computed for. Absent in caches written before
-    /// channels existed, which only ever knew the stable releases.
-    #[serde(default)]
-    pub(crate) channel: Option<String>,
-    /// When the last live check *failed* (offline, GitHub down), unix secs. Until
-    /// [`FAILED_BACKOFF_SECS`] passed, nothing re-checks, so an offline `atlas dev` does not
-    /// wait on the network at every start. Cleared by the next successful check.
-    #[serde(default)]
-    pub(crate) failed_at: Option<u64>,
-}
-
-#[derive(Debug, Serialize, Deserialize, Clone, PartialEq)]
-pub(crate) struct Dismissal {
-    pub(crate) version: String,
-    pub(crate) until: u64,
-}
-
-/// How long a "No" to the pre-flight prompt silences that version.
-pub(crate) const DISMISS_SECS: u64 = 24 * 3600;
-
-impl UpdateCache {
-    /// Cache after a check on `on`: fresh timestamp and result, keeping a still-relevant dismissal.
-    pub(crate) fn checked_for(&self, on: Channel, available: Option<String>) -> Self {
-        Self {
-            last_checked: now_secs(),
-            available_version: available,
-            dismissed: self.dismissed.clone(),
-            channel: Some(on.as_str().to_string()),
-            failed_at: None,
-        }
-    }
-
-    /// Cache after a check on `on` that could not reach GitHub: what was known for `on` stays
-    /// (the notice keeps working from it), the failure is stamped so nothing retries for a while.
-    /// An offer computed for another channel is not carried over.
-    pub(crate) fn failed_for(&self, on: Channel, now: u64) -> Self {
-        let same = self.valid_for(on);
-        Self {
-            last_checked: if same { self.last_checked } else { 0 },
-            available_version: if same {
-                self.available_version.clone()
-            } else {
-                None
-            },
-            dismissed: self.dismissed.clone(),
-            channel: Some(on.as_str().to_string()),
-            failed_at: Some(now),
-        }
-    }
-
-    /// Computed for `on` (a cache without a channel is a stable one).
-    pub(crate) fn valid_for(&self, on: Channel) -> bool {
-        self.channel.as_deref().unwrap_or(Channel::Stable.as_str()) == on.as_str()
-    }
-
-    /// A check is due: the cache is older than the check interval, never written, or computed
-    /// for another channel, and the last attempt did not fail within the backoff window.
-    pub(crate) fn is_stale_for(&self, on: Channel, now: u64) -> bool {
-        if self
-            .failed_at
-            .is_some_and(|f| now.saturating_sub(f) < FAILED_BACKOFF_SECS)
-        {
-            return false;
-        }
-        !self.valid_for(on) || now.saturating_sub(self.last_checked) >= CHECK_INTERVAL_SECS
-    }
-
-    /// The cached version when it is an upgrade over `installed` on `on`, else `None`.
-    pub(crate) fn available_for(&self, installed: &semver::Version, on: Channel) -> Option<String> {
-        if !self.valid_for(on) {
-            return None;
-        }
-        background_available(installed, self.available_version.as_deref()?)
-    }
-
-    /// `version` was dismissed and the 24h silence has not elapsed.
-    pub(crate) fn is_dismissed(&self, version: &str, now: u64) -> bool {
-        self.dismissed
-            .as_ref()
-            .is_some_and(|d| d.version == version && now < d.until)
-    }
-
-    pub(crate) fn dismiss(&mut self, version: &str, now: u64) {
-        self.dismissed = Some(Dismissal {
-            version: version.to_string(),
-            until: now + DISMISS_SECS,
-        });
-    }
-}
-
-fn cache_path() -> PathBuf {
-    atlas_core::paths::atlas_home().join(".update_check")
-}
-
-pub(crate) fn now_secs() -> u64 {
-    SystemTime::now()
-        .duration_since(UNIX_EPOCH)
-        .map(|d| d.as_secs())
-        .unwrap_or(0)
-}
+// The type and its rules live in `atlas_core::update_cache` (hostd reads the same file); this is
+// the CLI's side of it: where it is, and writing it.
 
 pub(crate) fn load_cache() -> UpdateCache {
-    load_cache_at(&cache_path())
-}
-
-/// The cache at `path`. A file that does not parse as a whole (a field of an unexpected type,
-/// a hand edit) still keeps what can be salvaged — the dismissal above all, so "No" to the
-/// prompt is not forgotten — and counts as never checked. Missing or unreadable: default.
-pub(crate) fn load_cache_at(path: &std::path::Path) -> UpdateCache {
-    let Ok(text) = std::fs::read_to_string(path) else {
-        return UpdateCache::default();
-    };
-    if let Ok(cache) = serde_json::from_str(&text) {
-        return cache;
-    }
-    let dismissed = serde_json::from_str::<serde_json::Value>(&text)
-        .ok()
-        .and_then(|v| serde_json::from_value::<Dismissal>(v.get("dismissed")?.clone()).ok());
-    UpdateCache {
-        dismissed,
-        ..UpdateCache::default()
-    }
+    UpdateCache::load_at(&cache::path())
 }
 
 pub(crate) fn save_cache(cache: &UpdateCache) {
-    save_cache_at(&cache_path(), cache);
+    save_cache_at(&cache::path(), cache);
 }
 
 /// Best-effort and atomic: `atlas dev` and `atlas update` may run at once.
@@ -328,13 +199,6 @@ pub(crate) fn newer_than(current: &str, candidate: &str) -> Option<String> {
     background_available(&current, candidate)
 }
 
-/// What a background check may report for `offered`: the version when it is an
-/// [`Decision::Upgrade`] over `installed`, nothing for current or older builds.
-pub(crate) fn background_available(installed: &semver::Version, offered: &str) -> Option<String> {
-    let (_, decision) = ch::offer(installed, offered)?;
-    (decision == Decision::Upgrade).then(|| offered.to_string())
-}
-
 pub(crate) const fn current_version() -> &'static str {
     CURRENT_VERSION
 }
@@ -440,7 +304,7 @@ pub fn print_update_notice() {
         .clamp(40, 200);
     let rule = "─".repeat(width);
     let run = update_command(
-        &InstallMethod::of_exe(&update_core::judged_exe(), update_pkg::owner),
+        &InstallMethod::of_exe(&update_core::judged_exe(), pkgowner::owner),
         &v,
     );
     eprintln!();
@@ -607,7 +471,7 @@ fn installed_version() -> semver::Version {
 
 pub(crate) async fn run_update(req: Request) -> Result<UpdateOutcome> {
     let judged = update_core::judged_exe();
-    let method = InstallMethod::of_exe(&judged, update_pkg::owner);
+    let method = InstallMethod::of_exe(&judged, pkgowner::owner);
 
     // `--channel X` sticks, even where this binary cannot install anything itself.
     if let Some(on) = req.channel {
@@ -661,6 +525,14 @@ pub(crate) async fn run_update(req: Request) -> Result<UpdateOutcome> {
         }
     };
 
+    // Whatever this run does next, the check itself is what the cache holds: the exit banner, the
+    // prompt and hostd's `info.update` (the phone's version line) read it, and `--check` is how a
+    // phone asks for a fresh answer. An install clears the offer once it is in.
+    save_cache(&load_cache().checked_for(
+        on,
+        newer_than_current(tag.strip_prefix('v').unwrap_or(&tag)),
+    ));
+
     if req.json {
         // `--json` is a report: it never installs.
         let report = ch::check_json(&current, on, Some(&tag));
@@ -679,8 +551,6 @@ pub(crate) async fn run_update(req: Request) -> Result<UpdateOutcome> {
     match decision {
         Decision::Current => {
             println!("{}", ch::describe(&current, &tag, on, req.downgrade));
-            // Clear any stale cache entry
-            save_cache(&load_cache().checked_for(on, None));
             // The app may still lag behind (an earlier sync failed or was skipped). Homebrew
             // and packages own the CLI, not the app: the sync is still ours to do.
             if !req.check_only {
@@ -689,7 +559,6 @@ pub(crate) async fn run_update(req: Request) -> Result<UpdateOutcome> {
             return Ok(UpdateOutcome::Unchanged);
         }
         Decision::Ahead => {
-            save_cache(&load_cache().checked_for(on, None));
             println!("{}", ch::describe(&current, &tag, on, req.downgrade));
             if !req.downgrade || req.check_only {
                 return Ok(UpdateOutcome::Unchanged);
@@ -1171,6 +1040,7 @@ mod extract_tests {
 mod tests {
     use super::*;
     use atlas_core::channel::Channel;
+    use atlas_core::update_cache::DISMISS_SECS;
 
     #[test]
     fn test_current_platform() {
@@ -1181,7 +1051,7 @@ mod tests {
 
     #[test]
     fn test_install_method_of_this_binary() {
-        let m = InstallMethod::of_exe(&update_core::judged_exe(), update_pkg::owner);
+        let m = InstallMethod::of_exe(&update_core::judged_exe(), pkgowner::owner);
         assert!(matches!(
             m,
             InstallMethod::Manual
@@ -1584,7 +1454,7 @@ mod robustness_tests {
         );
     }
 
-    // ── G7: the cache is written atomically and a damaged file keeps the dismissal ──
+    // ── G7: the cache is written atomically ──
 
     #[test]
     fn save_cache_leaves_no_temp_file_and_roundtrips() {
@@ -1593,108 +1463,12 @@ mod robustness_tests {
         let mut c = UpdateCache::default().checked_for(Channel::Alpha, Some("9.9.9".into()));
         c.dismiss("9.9.9", 5);
         save_cache_at(&path, &c);
-        assert_eq!(load_cache_at(&path), c);
+        assert_eq!(UpdateCache::load_at(&path), c);
         let names: Vec<_> = std::fs::read_dir(dir.path())
             .unwrap()
             .map(|e| e.unwrap().file_name().to_string_lossy().into_owned())
             .collect();
         assert_eq!(names, [".update_check"], "{names:?}");
-    }
-
-    #[test]
-    fn a_truncated_cache_still_counts_as_never_checked() {
-        let dir = tempfile::tempdir().unwrap();
-        let path = dir.path().join("c");
-        std::fs::write(&path, r#"{"last_checked":17,"available_ver"#).unwrap();
-        assert_eq!(load_cache_at(&path), UpdateCache::default());
-        assert!(load_cache_at(&path).is_stale_for(Channel::Alpha, 20));
-    }
-
-    /// The reported loss: a cache with a good dismissal but one field of the wrong type used to
-    /// reset to `default()`, so "No" to the prompt was forgotten and `atlas dev` asked again.
-    #[test]
-    fn a_cache_that_does_not_parse_keeps_its_dismissal() {
-        let dir = tempfile::tempdir().unwrap();
-        let path = dir.path().join("c");
-        std::fs::write(
-            &path,
-            r#"{"last_checked":"yesterday","available_version":"9.9.9",
-                "dismissed":{"version":"9.9.9","until":4102444800}}"#,
-        )
-        .unwrap();
-        let c = load_cache_at(&path);
-        assert!(c.is_dismissed("9.9.9", 1_000), "{c:?}");
-        assert_eq!(c.available_version, None, "the rest is not trusted");
-        assert!(
-            c.is_stale_for(Channel::Alpha, 1_000),
-            "and the next check refetches"
-        );
-    }
-
-    #[test]
-    fn garbage_or_a_missing_cache_is_the_default() {
-        let dir = tempfile::tempdir().unwrap();
-        assert_eq!(
-            load_cache_at(&dir.path().join("none")),
-            UpdateCache::default()
-        );
-        let p = dir.path().join("g");
-        std::fs::write(&p, "not json at all").unwrap();
-        assert_eq!(load_cache_at(&p), UpdateCache::default());
-    }
-
-    // ── G14: a failed check is stamped with a backoff ──
-
-    #[test]
-    fn a_failed_check_backs_off_and_keeps_what_was_known() {
-        let known = UpdateCache {
-            last_checked: 1_000,
-            available_version: Some("9.9.9".into()),
-            dismissed: None,
-            channel: Some("alpha".into()),
-            failed_at: None,
-        };
-        let now = 1_000 + CHECK_INTERVAL_SECS + 10; // stale: a check is due
-        assert!(known.is_stale_for(Channel::Alpha, now));
-        let failed = known.failed_for(Channel::Alpha, now);
-        assert_eq!(
-            failed.available_version.as_deref(),
-            Some("9.9.9"),
-            "notice keeps working"
-        );
-        assert_eq!(failed.last_checked, 1_000, "not pretended fresh");
-        assert!(
-            !failed.is_stale_for(Channel::Alpha, now + 1),
-            "no retry inside the backoff"
-        );
-        assert!(!failed.is_stale_for(Channel::Alpha, now + FAILED_BACKOFF_SECS - 1));
-        assert!(
-            failed.is_stale_for(Channel::Alpha, now + FAILED_BACKOFF_SECS),
-            "then it retries"
-        );
-    }
-
-    #[test]
-    fn a_successful_check_clears_the_failure() {
-        let failed = UpdateCache::default().failed_for(Channel::Alpha, 50);
-        assert_eq!(failed.failed_at, Some(50));
-        assert_eq!(failed.checked_for(Channel::Alpha, None).failed_at, None);
-    }
-
-    #[test]
-    fn a_failure_never_carries_another_channels_offer() {
-        let beta = UpdateCache::default().checked_for(Channel::Beta, Some("2.0.0-beta.1".into()));
-        let failed = beta.failed_for(Channel::Alpha, 99);
-        assert_eq!(failed.available_version, None);
-        assert_eq!(failed.channel.as_deref(), Some("alpha"));
-        assert_eq!(failed.available_for(&ver("1.0.0"), Channel::Alpha), None);
-    }
-
-    #[test]
-    fn a_failure_keeps_the_dismissal() {
-        let mut c = UpdateCache::default();
-        c.dismiss("2.0.0", 10);
-        assert!(c.failed_for(Channel::Alpha, 20).is_dismissed("2.0.0", 21));
     }
 
     fn ver(s: &str) -> semver::Version {

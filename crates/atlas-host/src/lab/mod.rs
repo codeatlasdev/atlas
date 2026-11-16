@@ -81,6 +81,9 @@ pub fn route(cmd: &HostCmd) -> Route {
         C::Upgrade { .. } => {
             Route::Refuse("lab hostd has no live upgrade: restart it with `bun run mobile:lab`")
         }
+        C::AtlasUpdate {} => Route::Refuse(
+            "lab hostd does not update Atlas: it follows a main hostd that does",
+        ),
         C::Exec { .. }
         | C::FsList { .. }
         | C::FsRead { .. }
@@ -92,6 +95,7 @@ pub fn route(cmd: &HostCmd) -> Route {
         | C::FsWatch { .. }
         | C::FsUnwatch { .. }
         | C::Info {}
+        | C::AtlasUpdateCheck {}
         | C::AgentTree { .. }
         | C::AgentHistory { .. }
         | C::AgentStatusAll {}
@@ -114,6 +118,8 @@ pub fn route(cmd: &HostCmd) -> Route {
         | C::MobileDevices {}
         | C::MobileRevoke { .. }
         | C::MobileSetScopes { .. }
+        | C::MobileRename { .. }
+        | C::MobileActivity { .. }
         | C::Shutdown {}
         | C::LspOpen { .. }
         | C::LspChange { .. }

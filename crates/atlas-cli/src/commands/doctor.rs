@@ -1,5 +1,6 @@
-//! `atlas doctor --hygiene`: the processes Atlas tagged whose owner is gone, and the disk it
-//! owns, per project. Looks by default (`--dry-run`); `--fix` ends the orphans and frees what
+//! `atlas doctor`: the install checks (plain), `--hygiene` (the processes Atlas tagged whose owner
+//! is gone, and the disk it owns, per project) and `--bundle` (`doctor_bundle`).
+//! `--hygiene` looks by default (`--dry-run`); `--fix` ends the orphans and frees what
 //! Atlas created (registered temp dirs and caches over their caps, rotated logs). Never removes
 //! `target/`, `node_modules`, worktrees or any file Atlas did not create.
 
@@ -23,6 +24,11 @@ pub struct DoctorArgs {
     #[arg(long, requires = "hygiene")]
     pub fix: bool,
 
+    /// The diagnostics bundle (what Atlas Desktop's "Copy details" copies): distro, session, GPU,
+    /// packaging, crashes, versions and the log tails, redacted. Attach it to a bug report.
+    /// With `--json`, the app's payload.
+    #[arg(long, conflicts_with_all = ["hygiene", "dry_run", "fix"])]
+    pub bundle: bool,
     /// Machine-readable output
     #[arg(long)]
     pub json: bool,
@@ -30,6 +36,9 @@ pub struct DoctorArgs {
 
 impl AtlasCommand for DoctorArgs {
     async fn run(self) -> Result<()> {
+        if self.bundle {
+            return super::doctor_bundle::run(self.json).await;
+        }
         if !self.hygiene {
             use super::doctor_checks as dc;
             let checks = dc::evaluate(&dc::Facts::gather().await);

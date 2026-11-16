@@ -1,0 +1,31 @@
+Atlas 1.5.0-alpha.25
+Where: terminal host (hostd)
+
+Terminal host not reachable
+
+
+Terminal host: 1.5.0-alpha.24
+CLI: 1.5.0-alpha.25
+OS: Arch Linux [arch], kernel 7.2.15-1-omarchy (x86_64)
+Running bundle: (not a bundle)
+Installed app: none found
+Distro: Arch Linux [arch]
+Kernel: 7.2.15-1-omarchy
+Session: wayland, desktop Hyprland, compositor Hyprland
+GPU: AMD (amdgpu)
+Mesa: 26.2.5-1
+GTK: 3.24.52
+Web view: WebKitGTK 2.54.1
+Graphics env: WEBKIT_DISABLE_DMABUF_RENDERER=1
+AppImage: ~/Apps/Atlas_1.5.0-alpha.25_amd64.AppImage
+Binary: /tmp/.mount_AtlasAbc/usr/bin/atlas-desktop
+~/.local/bin: atlas
+Core dumps (24h): 1
+  2023-11-14 22:15:00 UTC SIGSEGV pid 4242 /tmp/.mount_AtlasAbc/usr/lib/webkit2gtk-4.1/WebKitWebProcess
+Atlas crash reports: newest 2023-11-14 22:13:20 UTC (2h ago)
+Finding: Terminal host 1.5.0-alpha.24 is older than Atlas 1.5.0-alpha.25.
+Last crash: atlas 1.5.0-alpha.24: index out of bounds (crates/atlas-host/src/server.rs:9:1)
+
+stderr.log (tail):
+Gtk-WARNING: cannot open display
+Could not create default EGL display: EGL_BAD_PARAMETER

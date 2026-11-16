@@ -5,8 +5,8 @@
 # docs/mobile.md "Bringing push up" is the runbook.
 #
 # Registers (idempotent, matched by display name) the Firebase apps for
-#   Android  br.com.codeatlas.atlas.mobile            and the Lab id  br.com.codeatlas.atlas.mobile.lab
-#   iOS      br.com.codeatlas.atlas.mobile            and the Lab id  br.com.codeatlas.atlas.mobile.lab
+#   Android  br.com.codeatlas.atlas.mobile            and the Dev id  br.com.codeatlas.atlas.mobile.dev
+#   iOS      br.com.codeatlas.atlas.mobile            and the Dev id  br.com.codeatlas.atlas.mobile.dev
 # then downloads google-services.json (one file listing both Android clients) and
 # GoogleService-Info.plist (the real app) into a temp dir, stores them as the GitHub environment
 # secrets GOOGLE_SERVICES_JSON / GOOGLE_SERVICE_INFO_PLIST of `mobile-beta` and `mobile-store`
@@ -38,10 +38,10 @@ run() { echo "+ $*"; [[ $dry == 1 ]] || "$@"; }
 REPO="${REPO:-codeatlasdev/atlas}"
 ENVS=(mobile-beta mobile-store)
 
-# id, display name; the Lab app is its own identity (docs/mobile.md "Lab lane") but has no push by
-# design, so it only gets a Firebase app to make a Lab build with the file possible later.
-ANDROID=("br.com.codeatlas.atlas.mobile|Atlas Mobile (Android)" "br.com.codeatlas.atlas.mobile.lab|Atlas Lab (Android)")
-IOS=("br.com.codeatlas.atlas.mobile|Atlas Mobile (iOS)" "br.com.codeatlas.atlas.mobile.lab|Atlas Lab (iOS)")
+# id, display name; the Dev app is its own identity (docs/mobile.md "Dev and store apps") but has no push by
+# design, so it only gets a Firebase app to make a Dev build with the file possible later.
+ANDROID=("br.com.codeatlas.atlas.mobile|Atlas Mobile (Android)" "br.com.codeatlas.atlas.mobile.dev|Atlas Dev (Android)")
+IOS=("br.com.codeatlas.atlas.mobile|Atlas Mobile (iOS)" "br.com.codeatlas.atlas.mobile.dev|Atlas Dev (iOS)")
 
 if [[ $dry == 0 ]]; then
   for c in firebase gh jq; do command -v "$c" >/dev/null || die "$c is required"; done
@@ -73,7 +73,7 @@ step "2/3 Config files (temp dir, deleted at exit)"
 tmp="$(mktemp -d)"
 trap 'rm -rf "$tmp"' EXIT
 # google-services.json carries every Android client of the project, so one file serves the real app
-# and the Lab id; the plist is per iOS app, and only the real app has push (the Lab has no APNs identity).
+# and the Dev id; the plist is per iOS app, and only the store app has push (the Dev app has no APNs identity).
 if [[ $dry == 1 ]]; then
   echo "+ firebase apps:sdkconfig ANDROID <app id of Atlas Mobile (Android)> --project $project --out $tmp/google-services.json"
   echo "+ firebase apps:sdkconfig IOS <app id of Atlas Mobile (iOS)> --project $project --out $tmp/GoogleService-Info.plist"

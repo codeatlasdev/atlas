@@ -1,9 +1,3 @@
-// The home project list and the agent launcher on a bad network day. Real providers, real
-// connection, real screens: the computer is a scripted host (`_Host`) whose `project_list` /
-// `agent_integrations` replies the test chooses (ok, error, held back).
-//
-// Before: a null connection or `ok:false` became `[]`, so "No projects yet" (or "No agent found")
-// replaced a list that was merely unreachable, and the 5 s poll kept asking while the phone slept.
 import 'dart:async';
 import 'dart:convert';
 
@@ -19,6 +13,13 @@ import 'package:atlas_mobile/core/transport/transport.dart';
 import 'package:atlas_mobile/core/ui/atlas_theme.dart';
 import 'package:atlas_mobile/features/agents/agent_launcher.dart';
 import 'package:atlas_mobile/features/home/home_screen.dart';
+
+// The home project list and the agent launcher on a bad network day. Real providers, real
+// connection, real screens: the computer is a scripted host (`_Host`) whose `project_list` /
+// `agent_integrations` replies the test chooses (ok, error, held back).
+//
+// Before: a null connection or `ok:false` became `[]`, so "No projects yet" (or "No agent found")
+// replaced a list that was merely unreachable, and the 5 s poll kept asking while the phone slept.
 
 class _Storage extends MacStorage {
   _Storage(this._devices) : super(storage: null);
@@ -129,7 +130,6 @@ Future<ProviderContainer> _pump(
   WidgetTester t,
   _Host host,
   Widget home, {
-  bool throughOnboarding = false,
   bool unreachable = false,
 }) async {
   await t.binding.setSurfaceSize(const Size(393, 852));
@@ -154,14 +154,6 @@ Future<ProviderContainer> _pump(
     ),
   );
   await _settle(t, 3000);
-  if (throughOnboarding) {
-    for (var i = 0; i < 3; i++) {
-      await t.tap(find.text('Continue'));
-      await _settle(t, 1500);
-    }
-    await t.tap(find.text('Open my computer'));
-    await _settle(t, 3000);
-  }
   return container;
 }
 
@@ -176,7 +168,7 @@ void main() {
       'a computer that drops out keeps the last project list on screen, with the offline strip',
       (t) async {
         final host = _Host();
-        await _pump(t, host, const HomeScreen(), throughOnboarding: true);
+        await _pump(t, host, const HomeScreen());
         expect(find.text('shop'), findsOneWidget);
 
         // The link dies and the computer stays out of reach; several 5 s polls pass.
@@ -204,11 +196,15 @@ void main() {
       'a project_list error shows the error with Try again, not "No projects yet"',
       (t) async {
         final host = _Host()..listReply = {'ok': false, 'error': 'forbidden'};
-        await _pump(t, host, const HomeScreen(), throughOnboarding: true);
+        await _pump(t, host, const HomeScreen());
 
         expect(find.text('No projects yet'), findsNothing);
         expect(find.text('Try again'), findsOneWidget);
-        expect(find.textContaining('forbidden'), findsOneWidget);
+        // Said for a person (the raw "forbidden" is under Details): a permission to grant on the computer.
+        expect(
+          find.text("This phone isn't allowed to do that"),
+          findsOneWidget,
+        );
 
         // Try again asks again, and a good answer replaces the error.
         host.listReply = {
@@ -234,7 +230,7 @@ void main() {
           'ok': true,
           'data': {'projects': <Object>[]},
         };
-      await _pump(t, host, const HomeScreen(), throughOnboarding: true);
+      await _pump(t, host, const HomeScreen());
       expect(find.text('No projects yet'), findsOneWidget);
       expect(find.text('Try again'), findsNothing);
       await _unmount(t);
@@ -244,7 +240,7 @@ void main() {
       'no project_list is sent while the app is in the background, and polling resumes after',
       (t) async {
         final host = _Host();
-        await _pump(t, host, const HomeScreen(), throughOnboarding: true);
+        await _pump(t, host, const HomeScreen());
         final loaded = host.count('project_list');
         expect(loaded, greaterThan(0));
 
@@ -270,7 +266,7 @@ void main() {
       t,
     ) async {
       final host = _Host();
-      await _pump(t, host, const HomeScreen(), throughOnboarding: true);
+      await _pump(t, host, const HomeScreen());
 
       // The link dies and the computer stays out of reach (the notifier retries with backoff and
       // fails every time).
@@ -292,7 +288,7 @@ void main() {
       'polls ticking while one is in flight put ONE project_list on the wire',
       (t) async {
         final host = _Host();
-        await _pump(t, host, const HomeScreen(), throughOnboarding: true);
+        await _pump(t, host, const HomeScreen());
         host.listReply = null; // the next list never answers
         await _settle(t, 6000); // first tick: parked
         final inFlight = host.count('project_list');
@@ -319,13 +315,7 @@ void main() {
       'an unreachable computer shows "Can\'t reach" within seconds, with no spinner',
       (t) async {
         final host = _Host();
-        await _pump(
-          t,
-          host,
-          const HomeScreen(),
-          throughOnboarding: true,
-          unreachable: true,
-        );
+        await _pump(t, host, const HomeScreen(), unreachable: true);
         expect(find.text("Can't reach My Mac"), findsOneWidget);
         expect(find.byType(CircularProgressIndicator), findsNothing);
         expect(find.text('No projects yet'), findsNothing);

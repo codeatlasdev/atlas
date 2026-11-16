@@ -88,11 +88,11 @@ collect() {
   srv_sh "id atlas-crew; ls -ldn /run/atlas-crew /run/atlas-crew/* /var/lib/atlas-cm /usr/local/lib/atlas-crew/engines/*; sudo -u atlas-crew stat /run/atlas-crew/spawn.sock" >"$OUT/isolation.txt" 2>&1 || true
   # TEMPORARY-DEBUG
   {
-    n=0
-    for prop in "" "-p NoNewPrivileges=yes" "-p ProtectSystem=strict" "-p ProtectHome=yes" "-p PrivateTmp=yes" "-p ProtectKernelTunables=yes" "-p ProtectKernelModules=yes" "-p ProtectControlGroups=yes" "-p RestrictSUIDSGID=yes" "-p RestrictAddressFamilies=AF_UNIX" "-p LockPersonality=yes" "-p MemoryDenyWriteExecute=yes" "-p Delegate='memory pids' -p DelegateSubgroup=helper" "-p KillMode=process" "ALL"; do
-      n=$((n+1))
-      if [[ $prop == ALL ]]; then prop="-p NoNewPrivileges=yes -p ProtectSystem=strict -p ProtectHome=yes -p PrivateTmp=yes -p ProtectKernelTunables=yes -p ProtectKernelModules=yes -p ProtectControlGroups=yes -p RestrictSUIDSGID=yes -p RestrictAddressFamilies=AF_UNIX -p LockPersonality=yes -p MemoryDenyWriteExecute=yes -p Delegate='memory pids' -p DelegateSubgroup=helper -p KillMode=process"; fi
-      srv_sh "systemd-run --quiet --unit=probe$n -p User=root -p CapabilityBoundingSet='CAP_SETUID CAP_SETGID CAP_CHOWN CAP_KILL CAP_DAC_OVERRIDE' $prop /bin/sleep 20; sleep 1; p=\$(systemctl show -p MainPID --value probe$n); echo \"[$prop] \$(grep -E 'CapPrm|CapBnd' /proc/\$p/status | tr '\n\t' '  ')\"; systemctl stop probe$n" 2>&1
+    props=("-p NoNewPrivileges=yes" "-p ProtectSystem=strict" "-p ProtectHome=yes" "-p PrivateTmp=yes" "-p ProtectKernelTunables=yes" "-p ProtectKernelModules=yes" "-p ProtectControlGroups=yes" "-p RestrictSUIDSGID=yes" "-p RestrictAddressFamilies=AF_UNIX" "-p LockPersonality=yes" "-p MemoryDenyWriteExecute=yes" "-p Delegate='memory pids' -p DelegateSubgroup=helper" "-p KillMode=process")
+    for skip in "${!props[@]}"; do
+      set=""
+      for i in "${!props[@]}"; do [[ $i == "$skip" ]] || set="$set ${props[$i]}"; done
+      srv_sh "systemd-run --quiet --unit=probe$skip -p User=root -p CapabilityBoundingSet='CAP_SETUID CAP_SETGID CAP_CHOWN CAP_KILL CAP_DAC_OVERRIDE' $set /bin/sleep 20; sleep 1; p=\$(systemctl show -p MainPID --value probe$skip); echo \"without [${props[$skip]}]: \$(grep -E 'CapPrm' /proc/\$p/status | tr '\n\t' '  ')\"; systemctl stop probe$skip" 2>&1
     done
   } >"$OUT/setuid-debug.txt" 2>&1 || true
   srv_sh "nft list ruleset; cat /etc/atlas-crew/egress.nft" >"$OUT/nft.txt" 2>&1 || true

@@ -117,6 +117,7 @@ pub fn cgroup_path() -> String {
 /// - Writes only what account tools touch: `/etc`, `/var/lib/atlas-cm`, `/var/log` (lastlog), `/run`.
 ///   `ProtectSystem=strict`, not `full`: `full` keeps `/etc` read-only and a `ReadWritePaths=/etc` does not
 ///   open it again, so `useradd` could not lock `/etc/passwd`. `strict` makes everything read-only but the listed paths.
+/// - No `RestrictSUIDSGID=`: its seccomp filter would make the `chmod 2770` of a crewmate's `work/` fail.
 /// - `AF_NETLINK` is for `nft`; there is no network family beyond that and unix sockets.
 pub fn provision_service_unit() -> String {
     format!(
@@ -139,7 +140,6 @@ PrivateTmp=yes\n\
 ProtectKernelTunables=yes\n\
 ProtectKernelModules=yes\n\
 ProtectControlGroups=yes\n\
-RestrictSUIDSGID=yes\n\
 RestrictAddressFamilies=AF_UNIX AF_NETLINK\n\
 LockPersonality=yes\n\
 MemoryDenyWriteExecute=yes\n"
@@ -895,6 +895,31 @@ mod tests {
                 );
             }
         }
+    }
+
+    // Incident (found by the real-systemd end-to-end test): the provisioning service had
+    // `RestrictSUIDSGID=yes`, whose seccomp filter makes any chmod that sets a setuid or setgid bit fail with
+    // EPERM, and its own plan gives `work/` mode 2770 (setgid, so what the crew user and the crewmate write
+    // keeps one group). Creating a crewmate failed with "preparing .../work: Operation not permitted".
+    #[test]
+    fn the_provisioning_unit_does_not_forbid_the_setgid_bit_its_own_plan_sets() {
+        use atlas_host::crew::spawn::provision::{PlanCfg, Step, provision_plan};
+        let cfg = PlanCfg {
+            crew: "atlas-crew".into(),
+            cm_root: CM_ROOT.into(),
+        };
+        let plan = provision_plan(&cfg, "atlas-cm-3f2a9c1e5b7d").unwrap();
+        let sets_setgid = plan.iter().any(
+            |s| matches!(s, Step::Dir { mode, .. } | Step::File { mode, .. } if mode & 0o6000 != 0),
+        );
+        assert!(
+            sets_setgid,
+            "the plan no longer sets setuid/setgid: drop this test"
+        );
+        assert!(
+            !provision_service_unit().contains("RestrictSUIDSGID=yes"),
+            "RestrictSUIDSGID=yes makes the plan's chmod 2770 fail"
+        );
     }
 
     // The rules file the provisioning service writes is replayed at boot, but only once it exists.

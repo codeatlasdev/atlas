@@ -275,6 +275,24 @@ What the build does, and why (measured 2026-11-15 on Flutter 3.47.7, AGP 9.1.0, 
 
 Cold times on this Mac (12 cores, `CARGO_BUILD_JOBS=4`): Android debug (4 Rust targets) 5 min, release split APKs 4.5 min, iOS archive 2 min; warm builds recompile only what changed. For a quicker device loop use one ABI: `flutter run --target-platform android-arm64`.
 
+## Launch (no flash between the icon and the first screen)
+
+Tapping the icon shows one colour, the app's ground (`AtlasColors.dark.ground`, `#0B1320`), from the first pixel the OS draws to the first Flutter frame, which is drawn on the same ground; nothing else is on screen before the globe forms in Flutter. The mark is Flutter's on purpose: the entrance animation starts from an empty stage, so a finished globe in the native splash would vanish and form again (the old splash did exactly that). The app is dark only, so there are no night variants.
+
+- **iOS:** `ios/Runner/Base.lproj/LaunchScreen.storyboard` is a view with the ground as an sRGB colour (exact 8-bit fractions: a rounded `0.043` or a P3 colour shows as a step) and no subviews.
+- **Android:** `res/values/colors.xml` holds `atlas_ground`; `LaunchTheme` and `NormalTheme` paint it as the window background (`NormalTheme` used the platform's black), and `res/values-v31/styles.xml` styles the Android 12+ system splash: `windowSplashScreenBackground` is the ground and `windowSplashScreenAnimatedIcon` is `drawable/splash_icon.xml`, a transparent square (a drawable without a path makes the system draw the launcher icon, the orange disc the old launch showed). No `postSplashScreenTheme`: that attribute belongs to `androidx.core-splashscreen`; Flutter applies `NormalTheme` itself.
+- **Nothing runs before the first frame but `RustLib.init`** (about 10 to 30 ms in a profile build, inside `timeAfterFrameworkInit`). Paired devices come from secure storage after the first frame (Home shows `HomeSplash`, held until the globe has formed) and `PushService.init` starts from `initState`, after it.
+- **Guard:** `test/launch_ground_test.dart` reads the storyboard and the Android resources and fails when a native colour differs from the Dart one, when a launch file spells a colour out instead of referencing `@color/atlas_ground`, or when a launch icon comes back.
+- **Check a change on a device:** record the launch and sort every frame (`ffmpeg`, Pillow and numpy needed):
+
+  ```sh
+  xcrun simctl io booted recordVideo --codec h264 /tmp/launch.mov      # iOS Simulator; Ctrl-C to stop
+  adb shell screenrecord --time-limit 7 /sdcard/launch.mp4 && adb pull /sdcard/launch.mp4   # Android
+  scripts/mobile-launch-frames.py /tmp/launch.mov
+  ```
+
+  It prints the timeline (`GROUND` is the ground colour, `SOLID` a flat white, black or off-colour frame, `OTHER` anything with structure) and exits 1 when a flat off-ground frame follows the first ground frame. The recorders shift dark colours a few steps, so the ground is matched as the recording shows it. `flutter run --profile --trace-startup` writes `build/start_up_info.json` with the time to the first frame; iOS release and profile do not run on the Simulator, so there the frames are from a debug build.
+
 ## Goldens
 
 Screenshot tests compare against `apps/mobile/test/goldens/<os>/`: Flutter draws text a few pixels differently on macOS and Linux, so each platform has its own recording and is compared exactly against it (`test/flutter_test_config.dart`). After a visual change, record both: `flutter test --update-goldens` on a Mac writes `macos/`; for `linux/`, push and take the images from the failed CI run's `mobile-golden-failures` artifact (each `<name>_testImage.png` becomes `linux/<name>.png`), or run `--update-goldens` on Linux. Check that the two sets show the same thing.

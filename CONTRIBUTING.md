@@ -92,6 +92,25 @@ git commit --amend -s --no-edit                    # sign the last one
 
 The name and email must match your git identity (a real name, not a handle you want to hide). The `DCO` check on pull requests fails when a commit lacks the trailer.
 
+## Signed commits
+
+Every commit that reaches `main` or a `release/*` branch must be **cryptographically signed** (the ruleset "main and release branches" requires it). This is separate from the DCO trailer above: `-s` says *you may contribute this*, a signature proves *the commit came from you*. Pull requests are squash-merged on GitHub, and GitHub signs that commit itself; your own commits should be signed too, so the history you push is verifiable end to end.
+
+Sign with an SSH key (the simplest; any ed25519 key works, a dedicated one is cleaner):
+
+```bash
+ssh-keygen -t ed25519 -C "you@example.com (git signing)" -f ~/.ssh/id_ed25519_signing
+git config --global gpg.format ssh
+git config --global user.signingkey ~/.ssh/id_ed25519_signing.pub
+git config --global commit.gpgsign true && git config --global tag.gpgsign true
+```
+
+Then add the **public** key on GitHub as a *signing* key (Settings › SSH and GPG keys › New SSH key › Key type: Signing key), or `gh auth refresh -s admin:ssh_signing_key && gh ssh-key add ~/.ssh/id_ed25519_signing.pub --type signing`. The email on your commits must be a verified email of your GitHub account.
+
+Check locally: put `you@example.com <the public key line>` in `~/.ssh/allowed_signers`, set `git config --global gpg.ssh.allowedSignersFile ~/.ssh/allowed_signers`, and `git log --show-signature -1` prints `Good "git" signature`. On GitHub the commit shows **Verified**. GPG keys work the same way (`gpg.format openpgp`).
+
+A branch you already made: `git rebase --exec 'git commit --amend --no-edit -S -s' main` signs (and signs off) every commit, then push with `--force-with-lease` to **your own branch** only.
+
 ## License of contributions
 
 Unless you say otherwise, any contribution you submit is dual-licensed as MIT or Apache-2.0, at the user's option, without additional terms (the same as the project).

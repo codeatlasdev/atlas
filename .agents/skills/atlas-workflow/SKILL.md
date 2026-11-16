@@ -34,7 +34,8 @@ main ── alpha ── alpha ──────────────▶  ev
 
 ## Commits
 
-- `git commit -s` (DCO). Conventional, imperative subject: `feat:`, `fix:`, `test:`, `docs:`, `chore:`, scoped when useful (`fix(desktop): …`).
+- `git commit -s` (DCO) and **signed** (`commit.gpgsign=true` with an SSH or GPG key registered on GitHub as a signing key; the ruleset requires signed commits on `main` and `release/*`, `CONTRIBUTING.md` "Signed commits"). Conventional, imperative subject: `feat:`, `fix:`, `test:`, `docs:`, `chore:`, scoped when useful (`fix(desktop): …`).
+- Land through a pull request squash-merged on GitHub (GitHub signs the squash commit), never a direct push to `main`. Check `git log --show-signature -1` before pushing.
 - Stage paths, not `git add -A`; check `git diff --cached --stat` for files you did not touch (other agents and the user work in the same tree).
 - User-visible changes get a line under `## [Unreleased]` in `CHANGELOG.md` in the same commit.
 

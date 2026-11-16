@@ -277,13 +277,7 @@ const SKIP_DIRS: &[&str] = &[
 pub fn routes_for(root: &Path, files: &[String], url_path: &str) -> Vec<RouteFile> {
     let mut out = match_files(files, url_path);
     for f in files.iter().filter(|f| f.ends_with(".dart")) {
-        let Ok(meta) = std::fs::metadata(root.join(f)) else {
-            continue;
-        };
-        if meta.len() > 512 * 1024 {
-            continue;
-        }
-        let Ok(src) = std::fs::read_to_string(root.join(f)) else {
+        let Ok(src) = crate::crew::spawn::layout::read_beneath(root, f, 512 * 1024) else {
             continue;
         };
         for (route, line) in go_routes(&src) {

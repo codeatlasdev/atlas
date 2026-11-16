@@ -239,7 +239,8 @@ pub(crate) fn read(
     Ok((a.clone(), bytes))
 }
 
-/// Copy the task's images into `work_dir/.atlas/attachments/<task id>/` for the agent, and return the
+/// Copy the task's images into `work_dir/.atlas/attachments/<task id>/` for the agent (readable by it, never
+/// following a link in its tree), and return the
 /// paths (relative to the work dir) that now exist. An image whose stored copy is gone is skipped and
 /// named in hostd's log: the task still runs, the prompt only lists what the agent can open.
 pub(crate) fn stage(
@@ -252,14 +253,11 @@ pub(crate) fn stage(
     for a in &task.attachments {
         let src = task_dir(store, crewmate_id, &task.id).join(&a.name);
         let rel = format!("{WORK_SUBDIR}/{}/{}", task.id, a.name);
-        let dst = work_dir.join(&rel);
-        let copied = dst
-            .parent()
-            .map(std::fs::create_dir_all)
-            .transpose()
-            .and_then(|_| std::fs::copy(&src, &dst));
+        // The checkout is the crewmate's: every component is opened without following a link (N5).
+        let copied = std::fs::File::open(&src)
+            .and_then(|mut f| layout::write_beneath(work_dir, &rel, &mut f));
         match copied {
-            Ok(_) => staged.push(rel),
+            Ok(()) => staged.push(rel),
             Err(e) => eprintln!(
                 "atlas crew: attachment {} of task {} not staged: {e}",
                 a.name, task.id
@@ -277,11 +275,8 @@ pub(crate) fn stage(
 /// hostd's own file in a directory hostd made: the checkout and its `.git` are the crewmate's, and hostd
 /// neither runs git in them nor edits what is inside `.git`. Best effort.
 fn keep_out_of_git(work_dir: &Path) {
-    let path = work_dir.join(WORK_SUBDIR).join(".gitignore");
-    if layout::read_nofollow(&path).is_ok_and(|t| t.lines().any(|l| l.trim() == "*")) {
-        return;
-    }
-    let _ = layout::write_nofollow(&path, b"*\n");
+    let ignore = format!("{WORK_SUBDIR}/.gitignore");
+    let _ = layout::write_beneath(work_dir, &ignore, &mut &b"*\n"[..]);
 }
 
 /// The line of the prompt that names the task's images, empty without any. Ours, not the sender's: it holds
@@ -1034,5 +1029,124 @@ mod tests {
         let ignore =
             std::fs::read_to_string(t.path().join(WORK_SUBDIR).join(".gitignore")).unwrap();
         assert_eq!(ignore, "*\n");
+    }
+
+    /// A task with one stored image, and the checkout it is staged into.
+    #[cfg(unix)]
+    fn staging() -> (
+        tempfile::TempDir,
+        CrewStore,
+        super::super::store::Task,
+        PathBuf,
+    ) {
+        let tmp = tempfile::tempdir().unwrap();
+        let store = CrewStore::new(&tmp.path().join("hostd"));
+        let mut task = super::super::store::Task::new("test", "look");
+        let name = "a.png".to_string();
+        let a = Attachment {
+            name: name.clone(),
+            mime: "image/png".into(),
+            bytes_len: PNG.len() as u64,
+            sha256: String::new(),
+            path: format!("{WORK_SUBDIR}/{}/{name}", task.id),
+            source: String::new(),
+        };
+        task.attachments = vec![a.clone()];
+        save(&store, "c1", &task.id, &[(a, PNG.to_vec())]).unwrap();
+        let work = tmp.path().join("work");
+        std::fs::create_dir_all(&work).unwrap();
+        (tmp, store, task, work)
+    }
+
+    // Security review of the crew isolation, N5: hostd (the crew user) copied the images into the crewmate's
+    // `work/.atlas/attachments/` with `create_dir_all` and `fs::copy`, following every link. A crewmate that
+    // turned `.atlas`, `.atlas/attachments` or the task's folder into a link to a directory the crew user can
+    // write (another crewmate's `work/`, the crew home) made hostd create files there, and the `.gitignore` of
+    // `*` hostd adds went through the same links. Staging now opens each component without following links.
+    #[cfg(unix)]
+    #[test]
+    fn staging_never_writes_through_a_link_the_crewmate_planted() {
+        for planted in [".atlas", ".atlas/attachments"] {
+            let (tmp, store, task, work) = staging();
+            let victim = tmp.path().join("victim");
+            // The victim already has the directories hostd would otherwise find on the other side.
+            std::fs::create_dir_all(victim.join("attachments")).unwrap();
+            if let Some(parent) = Path::new(planted).parent() {
+                std::fs::create_dir_all(work.join(parent)).unwrap();
+            }
+            std::os::unix::fs::symlink(
+                if planted == ".atlas" {
+                    victim.clone()
+                } else {
+                    victim.join("attachments")
+                },
+                work.join(planted),
+            )
+            .unwrap();
+            let staged = stage(&store, "c1", &task, &work);
+            assert!(
+                staged.is_empty(),
+                "{planted}: staged through a link: {staged:?}"
+            );
+            let wrote: Vec<_> = walkdir_files(&victim);
+            assert!(
+                wrote.is_empty(),
+                "{planted}: hostd wrote through the link: {wrote:?}"
+            );
+        }
+    }
+
+    #[cfg(unix)]
+    #[test]
+    fn staging_never_overwrites_a_file_a_link_stands_in_for() {
+        let (tmp, store, task, work) = staging();
+        let secret = tmp.path().join("hostd.token");
+        std::fs::write(&secret, "the token").unwrap();
+        let dir = work.join(WORK_SUBDIR).join(&task.id);
+        std::fs::create_dir_all(&dir).unwrap();
+        std::os::unix::fs::symlink(&secret, dir.join("a.png")).unwrap();
+        assert!(stage(&store, "c1", &task, &work).is_empty());
+        assert_eq!(std::fs::read_to_string(&secret).unwrap(), "the token");
+    }
+
+    #[cfg(unix)]
+    #[test]
+    fn the_gitignore_of_staged_images_is_not_written_through_a_link() {
+        let (tmp, _store, _task, work) = staging();
+        let victim = tmp.path().join("victim");
+        std::fs::create_dir_all(victim.join("attachments")).unwrap();
+        std::os::unix::fs::symlink(&victim, work.join(".atlas")).unwrap();
+        keep_out_of_git(&work);
+        assert!(walkdir_files(&victim).is_empty());
+    }
+
+    #[cfg(unix)]
+    #[test]
+    fn staging_into_a_real_tree_works_and_the_crewmate_can_read_what_hostd_wrote() {
+        use std::os::unix::fs::MetadataExt;
+        let (_tmp, store, task, work) = staging();
+        let staged = stage(&store, "c1", &task, &work);
+        assert_eq!(staged, vec![format!("{WORK_SUBDIR}/{}/a.png", task.id)]);
+        let file = work.join(&staged[0]);
+        assert_eq!(std::fs::read(&file).unwrap(), PNG);
+        // The agent is another user: the file must not be hostd-private (the stored copy is 0600).
+        assert_eq!(std::fs::metadata(&file).unwrap().mode() & 0o044, 0o044);
+        assert_eq!(
+            std::fs::read_to_string(work.join(WORK_SUBDIR).join(".gitignore")).unwrap(),
+            "*\n"
+        );
+    }
+
+    #[cfg(unix)]
+    fn walkdir_files(dir: &Path) -> Vec<PathBuf> {
+        let mut out = vec![];
+        for e in std::fs::read_dir(dir).unwrap().flatten() {
+            if e.file_type().unwrap().is_dir() {
+                out.extend(walkdir_files(&e.path()));
+            } else {
+                out.push(e.path());
+            }
+        }
+        out
     }
 }

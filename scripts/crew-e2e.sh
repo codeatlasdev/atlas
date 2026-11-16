@@ -366,6 +366,26 @@ link_target_untouched crew-runtime crew-runtime /etc/sudoers.d
 T=$(send_task "$CM" "E2E_OK recovered$RANDOM")
 wait_task "$CM" "$T" "done" 60
 
+# (9) hostd copies a task's images into A's work/.atlas/attachments/: through a link A planted there it must
+# create nothing in B's tree (N5), and in a real tree the file is readable by A (it was the crew user's 0600).
+PNG_B64=iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAYAAAAfFcSJAAAADUlEQVR42mNkYPhfDwAChwGA60e6kgAAAABJRU5ErkJggg==
+task_with_image() {
+  hostd crewmate_task "$(jq -nc --arg id "$CM" --arg p "E2E_OK image$RANDOM" --arg d "$PNG_B64" '{id: $id, prompt: $p, source: "desktop", attachments: [{name: "shot.png", data_b64: $d}]}')" | jq -r .task.id
+}
+B_BEFORE=$(srv ls -A "$DIRB/work" | wc -l)
+as_user "$CMUSER" ln -s "$DIRB/work" "$WORKA/.atlas"
+T=$(task_with_image)
+wait_task "$CM" "$T" "done" 60
+[[ $(srv ls -A "$DIRB/work" | wc -l) == "$B_BEFORE" ]] || fail "hostd staged an attachment through A's link into B's work/: $(srv ls -A "$DIRB/work")"
+as_user "$CMUSER" rm "$WORKA/.atlas"
+wait_idle "$CM"
+T=$(task_with_image)
+wait_task "$CM" "$T" "done" 60
+as_user "$CMUSER" cat "$WORKA/.atlas/attachments/$T/shot.png" >/dev/null || fail "A cannot read the image hostd staged in its work/"
+srv rm -rf "$WORKA/.atlas" # hostd made it: A may not remove what is inside
+wait_idle "$CM"
+echo "attachments: nothing written through A's link into B's work/; the staged image is readable by A"
+
 # (4)(5) A's git config is A's own code: hostd's and the helper's git run it as A, never as the crew user
 # The command also records what its own process looks like (probe: descriptors, NoNewPrivs, cgroup).
 FSM=$(

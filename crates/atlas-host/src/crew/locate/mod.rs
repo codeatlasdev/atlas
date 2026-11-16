@@ -21,6 +21,7 @@ use serde::Deserialize;
 use serde_json::{Value, json};
 
 use super::capture::{self, Spec};
+use super::spawn::layout;
 use rank::{DomReport, Rect};
 
 /// The widths an image is assumed to have been taken at when its own width says so; any other
@@ -187,12 +188,8 @@ pub fn grep_sources(root: &Path, files: &[String], needle: &str) -> Vec<String> 
         if !SOURCE_EXTS.contains(&ext) {
             continue;
         }
-        let path = root.join(f);
-        match std::fs::metadata(&path) {
-            Ok(m) if m.len() <= MAX_FILE_BYTES => {}
-            _ => continue,
-        }
-        if let Ok(src) = std::fs::read_to_string(&path)
+        // Without following a link, at any component: the tree is the crewmate's and may change under us.
+        if let Ok(src) = layout::read_beneath(root, f, MAX_FILE_BYTES)
             && src.contains(needle)
         {
             hits.push(f.clone());

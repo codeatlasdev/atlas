@@ -259,6 +259,242 @@ pub fn write_nofollow(path: &Path, data: &[u8]) -> std::io::Result<()> {
     std::fs::write(path, data)
 }
 
+/// `data` written to `root/rel`, and `root/rel` read back: for files hostd (the crew user) touches inside a
+/// crewmate's checkout, which the crewmate controls. `rel` is `/`-separated with no empty, `.` or `..` segment;
+/// every component of it is opened relative to its parent without following a link (`openat` with
+/// `O_NOFOLLOW`), directories are made on the way when writing, and the last one must be a regular file. A
+/// link the crewmate planted in place of any component is an error, never a file made or read somewhere else
+/// that the crew user can reach (`hostd.token`, another crewmate's `work/`). `root` itself is the path hostd
+/// computed for the checkout and is opened as given. Security review of the crew isolation, N5.
+#[cfg(unix)]
+pub fn write_beneath(root: &Path, rel: &str, data: &mut dyn std::io::Read) -> std::io::Result<()> {
+    let mut file = open_beneath(root, rel, true)?;
+    std::io::copy(data, &mut file).map(|_| ())
+}
+
+/// [`write_beneath`]'s reading half: the file's text, an error when it holds more than `max` bytes.
+#[cfg(unix)]
+pub fn read_beneath(root: &Path, rel: &str, max: u64) -> std::io::Result<String> {
+    use std::io::Read;
+    let file = open_beneath(root, rel, false)?;
+    if file.metadata()?.len() > max {
+        return Err(std::io::Error::new(
+            std::io::ErrorKind::InvalidData,
+            "file too large",
+        ));
+    }
+    let mut bytes = Vec::new();
+    file.take(max).read_to_end(&mut bytes)?;
+    Ok(String::from_utf8_lossy(&bytes).into_owned())
+}
+
+#[cfg(unix)]
+fn open_beneath(root: &Path, rel: &str, write: bool) -> std::io::Result<std::fs::File> {
+    use std::ffi::CString;
+    use std::io::{Error, ErrorKind};
+    use std::os::fd::{FromRawFd, OwnedFd};
+    use std::os::unix::ffi::OsStrExt;
+
+    let invalid = || Error::new(ErrorKind::InvalidInput, format!("bad path {rel:?}"));
+    let parts: Vec<&str> = rel.split('/').collect();
+    if parts
+        .iter()
+        .any(|p| p.is_empty() || *p == "." || *p == ".." || p.contains('\0'))
+    {
+        return Err(invalid());
+    }
+    let own = |fd: libc::c_int| -> std::io::Result<OwnedFd> {
+        // SAFETY: `fd` is a fresh descriptor from open/openat that nothing else owns.
+        (fd >= 0)
+            .then(|| unsafe { OwnedFd::from_raw_fd(fd) })
+            .ok_or_else(Error::last_os_error)
+    };
+    let root = CString::new(root.as_os_str().as_bytes()).map_err(|_| invalid())?;
+    // SAFETY: a NUL-terminated path.
+    let mut dir = own(unsafe {
+        libc::open(
+            root.as_ptr(),
+            libc::O_RDONLY | libc::O_DIRECTORY | libc::O_CLOEXEC,
+        )
+    })?;
+    let (last, parents) = parts.split_last().ok_or_else(invalid)?;
+    for part in parents {
+        use std::os::fd::AsRawFd;
+        let c = CString::new(*part).map_err(|_| invalid())?;
+        if write {
+            // SAFETY: `dir` is open, `c` is NUL-terminated.
+            if unsafe { libc::mkdirat(dir.as_raw_fd(), c.as_ptr(), 0o755) } == 0 {
+                // What hostd makes is for the crewmate to walk through, whatever hostd's umask is.
+                let made = own(unsafe {
+                    libc::openat(
+                        dir.as_raw_fd(),
+                        c.as_ptr(),
+                        libc::O_RDONLY | libc::O_DIRECTORY | libc::O_NOFOLLOW | libc::O_CLOEXEC,
+                    )
+                })?;
+                // SAFETY: plain fchmod on a directory we just made and hold open.
+                unsafe { libc::fchmod(made.as_raw_fd(), 0o755) };
+            } else if Error::last_os_error().kind() != ErrorKind::AlreadyExists {
+                return Err(Error::last_os_error());
+            }
+        }
+        // SAFETY: as above. A link here is ELOOP (or ENOTDIR), never followed.
+        dir = own(unsafe {
+            libc::openat(
+                dir.as_raw_fd(),
+                c.as_ptr(),
+                libc::O_RDONLY | libc::O_DIRECTORY | libc::O_NOFOLLOW | libc::O_CLOEXEC,
+            )
+        })?;
+    }
+    use std::os::fd::AsRawFd;
+    let c = CString::new(*last).map_err(|_| invalid())?;
+    // O_NONBLOCK: a FIFO planted in place of the file fails (ENXIO) or is refused below, never hangs hostd.
+    let flags = libc::O_NOFOLLOW
+        | libc::O_NONBLOCK
+        | libc::O_CLOEXEC
+        | if write {
+            libc::O_WRONLY | libc::O_CREAT | libc::O_TRUNC
+        } else {
+            libc::O_RDONLY
+        };
+    // SAFETY: as above; the mode applies only when the file is created.
+    let fd =
+        own(unsafe { libc::openat(dir.as_raw_fd(), c.as_ptr(), flags, 0o644 as libc::c_uint) })?;
+    let file = std::fs::File::from(fd);
+    if !file.metadata()?.is_file() {
+        return Err(Error::new(
+            ErrorKind::InvalidInput,
+            format!("{rel:?} is not a regular file"),
+        ));
+    }
+    if write {
+        // SAFETY: plain fchmod on a regular file we hold open: readable by the crewmate, whatever hostd's umask.
+        unsafe { libc::fchmod(file.as_raw_fd(), 0o644) };
+    }
+    Ok(file)
+}
+
+#[cfg(not(unix))]
+pub fn write_beneath(root: &Path, rel: &str, data: &mut dyn std::io::Read) -> std::io::Result<()> {
+    let path = root.join(rel);
+    if let Some(dir) = path.parent() {
+        std::fs::create_dir_all(dir)?;
+    }
+    std::io::copy(data, &mut std::fs::File::create(path)?).map(|_| ())
+}
+
+#[cfg(not(unix))]
+pub fn read_beneath(root: &Path, rel: &str, max: u64) -> std::io::Result<String> {
+    let path = root.join(rel);
+    if std::fs::metadata(&path)?.len() > max {
+        return Err(std::io::Error::new(
+            std::io::ErrorKind::InvalidData,
+            "file too large",
+        ));
+    }
+    Ok(String::from_utf8_lossy(&std::fs::read(path)?).into_owned())
+}
+
+#[cfg(all(test, unix))]
+mod beneath_tests {
+    use super::*;
+    use std::os::unix::fs::{MetadataExt, symlink};
+
+    fn put(root: &Path, rel: &str, bytes: &[u8]) -> std::io::Result<()> {
+        write_beneath(root, rel, &mut &bytes[..])
+    }
+
+    // Security review of the crew isolation, N5: hostd (the crew user) staged attachments into the crewmate's
+    // `work/` with `create_dir_all` and `fs::copy`, which follow every link on the way, so a crewmate that made
+    // `.atlas` (or `.atlas/attachments`, or the file) a link made hostd create or overwrite files in any
+    // directory the crew user can write: `hostd.token`, another crewmate's `work/`.
+    #[test]
+    fn files_land_under_the_root_with_their_directories_made() {
+        let t = tempfile::tempdir().unwrap();
+        put(t.path(), ".atlas/attachments/t1/a.png", b"png").unwrap();
+        assert_eq!(
+            std::fs::read(t.path().join(".atlas/attachments/t1/a.png")).unwrap(),
+            b"png"
+        );
+        // Readable by the crewmate (a different user, "others" of the file), and rewritten in place.
+        let mode = std::fs::metadata(t.path().join(".atlas/attachments/t1/a.png"))
+            .unwrap()
+            .mode();
+        assert_eq!(mode & 0o044, 0o044, "{mode:o}");
+        put(t.path(), ".atlas/attachments/t1/a.png", b"new").unwrap();
+        assert_eq!(
+            std::fs::read(t.path().join(".atlas/attachments/t1/a.png")).unwrap(),
+            b"new"
+        );
+    }
+
+    #[test]
+    fn a_link_in_place_of_a_directory_on_the_way_is_never_followed_or_written_through() {
+        for planted in [".atlas", ".atlas/attachments", ".atlas/attachments/t1"] {
+            let t = tempfile::tempdir().unwrap();
+            let victim = tempfile::tempdir().unwrap();
+            // Everything above the link is real, the link points at somebody else's directory.
+            if let Some(parent) = Path::new(planted).parent() {
+                std::fs::create_dir_all(t.path().join(parent)).unwrap();
+            }
+            symlink(victim.path(), t.path().join(planted)).unwrap();
+            let err = put(t.path(), ".atlas/attachments/t1/a.png", b"png").unwrap_err();
+            assert_ne!(err.kind(), std::io::ErrorKind::NotFound, "{planted}: {err}");
+            let left: Vec<_> = walk(victim.path());
+            assert!(
+                left.is_empty(),
+                "{planted}: wrote through the link: {left:?}"
+            );
+        }
+    }
+
+    #[test]
+    fn a_link_in_place_of_the_file_is_not_written_through() {
+        let t = tempfile::tempdir().unwrap();
+        let victim = tempfile::tempdir().unwrap();
+        let secret = victim.path().join("hostd.token");
+        std::fs::write(&secret, "the token").unwrap();
+        std::fs::create_dir_all(t.path().join(".atlas/attachments/t1")).unwrap();
+        symlink(&secret, t.path().join(".atlas/attachments/t1/a.png")).unwrap();
+        assert!(put(t.path(), ".atlas/attachments/t1/a.png", b"png").is_err());
+        assert_eq!(std::fs::read_to_string(&secret).unwrap(), "the token");
+    }
+
+    // A FIFO in place of the file would block a blocking open for good: the crew server's task would hang.
+    #[test]
+    fn a_fifo_in_place_of_the_file_fails_at_once() {
+        let t = tempfile::tempdir().unwrap();
+        std::fs::create_dir_all(t.path().join("d")).unwrap();
+        let fifo = std::ffi::CString::new(t.path().join("d/a.png").to_str().unwrap()).unwrap();
+        // SAFETY: a NUL-terminated path.
+        assert_eq!(unsafe { libc::mkfifo(fifo.as_ptr(), 0o600) }, 0);
+        let start = std::time::Instant::now();
+        assert!(put(t.path(), "d/a.png", b"png").is_err());
+        assert!(start.elapsed() < std::time::Duration::from_secs(5));
+    }
+
+    #[test]
+    fn a_path_that_climbs_or_has_empty_segments_is_refused() {
+        let t = tempfile::tempdir().unwrap();
+        for bad in ["../x", "a/../../x", "a//b", "/abs", "", "a/./b"] {
+            assert!(put(t.path(), bad, b"x").is_err(), "{bad:?}");
+        }
+        assert!(walk(t.path()).is_empty());
+    }
+
+    fn walk(dir: &Path) -> Vec<std::path::PathBuf> {
+        let mut out = vec![];
+        for e in std::fs::read_dir(dir).unwrap().flatten() {
+            out.push(e.path());
+            if e.file_type().unwrap().is_dir() {
+                out.extend(walk(&e.path()));
+            }
+        }
+        out
+    }
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;

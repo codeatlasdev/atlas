@@ -5,7 +5,7 @@
 import type { PaletteItem } from "#lib/components/Palette.svelte";
 import { openService, runAction } from "#lib/actions.svelte.ts";
 import { fileIcon } from "#lib/icons.ts";
-import { allCommands, noteRun, recent, shortcutFor } from "#lib/keymap.svelte.ts";
+import { allCommands, listedAsRecent, noteRun, recent, shortcutFor } from "#lib/keymap.svelte.ts";
 import { activeEditor } from "#lib/shell/editors.ts";
 import { agents } from "#lib/stores/agents.svelte.ts";
 import { worktreeFiles, openFile } from "#lib/stores/files.svelte.ts";
@@ -41,14 +41,14 @@ const KEY_ONLY = /^(atlas::RecentWorktree|shell::Space\d|pane::ActivateItem\d)/;
 /** Registry commands (recent first) plus the current project's services and actions. */
 export function commandItems(): PaletteItem[] {
 	const rank = (id: string) => {
-		const i = recent.ids.indexOf(id);
+		const i = listedAsRecent(id) ? recent.ids.indexOf(id) : -1;
 		return i < 0 ? Infinity : i;
 	};
 	const items: PaletteItem[] = allCommands()
 		.filter((c) => !KEY_ONLY.test(c.id))
 		.map((c) => ({
 			id: c.id,
-			group: recent.ids.includes(c.id) ? "Recent commands" : "Commands",
+			group: listedAsRecent(c.id) ? "Recent commands" : "Commands",
 			label: c.label,
 			shortcut: shortcutFor(c.id),
 			run: () => (noteRun(c.id), c.run()),

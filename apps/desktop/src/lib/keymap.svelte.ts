@@ -48,6 +48,17 @@ export const recent = $state<{ ids: string[] }>({
 	})(),
 });
 
+/**
+ * Commands that are recorded as run (the onboarding checklist reads `recent` to tick "Try the command palette") but are
+ * not shown under "Recent commands": opening the palette from the palette is never what someone wants to repeat.
+ */
+const NOT_LISTED_AS_RECENT = new Set(["command_palette::Toggle"]);
+
+/** Whether the palette lists `id` under "Recent commands" (and floats it to the top). */
+export function listedAsRecent(id: string): boolean {
+	return recent.ids.includes(id) && !NOT_LISTED_AS_RECENT.has(id);
+}
+
 /** Remember `id` as the latest command run from the palette or a key. */
 export function noteRun(id: string) {
 	recent.ids = [id, ...recent.ids.filter((x) => x !== id)].slice(0, RECENT_MAX);

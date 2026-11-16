@@ -1,13 +1,14 @@
 <script lang="ts">
 	import { Kbd } from "@codeatlasdev/ui";
-	import { corner } from "#lib/shell/cornerStack.ts";
 	import { Check, ChevronDown, X } from "@lucide/svelte";
+	import { slide } from "svelte/transition";
 	import { runCommand, shortcutFor } from "#lib/keymap.svelte.ts";
+	import CornerCard from "#lib/shell/CornerCard.svelte";
+	import { corner } from "#lib/shell/corner.svelte.ts";
+	import { reducedMotion } from "#lib/shell/cornerMotion.ts";
 	import { onboarding } from "./state.svelte.ts";
 	import { CHECKLIST, nextItem, progress } from "./checklist.ts";
 
-	const KEY = "atlas.checklistOpen";
-	let open = $state(localStorage.getItem(KEY) !== "0");
 	let p = $derived(progress(onboarding.state));
 	let next = $derived(nextItem(onboarding.state));
 	let visible = $derived(
@@ -16,11 +17,8 @@
 			!onboarding.state.checklist.dismissed &&
 			!onboarding.tourOpen,
 	);
-
-	function toggle() {
-		open = !open;
-		localStorage.setItem(KEY, open ? "1" : "0");
-	}
+	// The coordinator folds it to this header while a toast is up and opens it again after (when the user had it open).
+	let open = $derived(!(corner.plan.checklist?.collapsed ?? true));
 
 	// Finished: leave a moment for the last check to register, then step aside.
 	$effect(() => {
@@ -32,54 +30,55 @@
 </script>
 
 {#if visible}
-	<aside use:corner class="card" class:collapsed={!open} aria-label="Getting started" data-testid="checklist">
-		<header>
-			<button class="head" onclick={toggle} aria-expanded={open}>
-				<span class="ring" style:--pct="{(p.done / p.total) * 100}%"></span>
-				<span class="title">{p.all ? "You're all set" : "Getting started"}</span>
-				<span class="count">{p.done}/{p.total}</span>
-				<ChevronDown size={13} class="chev" />
-			</button>
-			<button class="x" aria-label="Dismiss checklist" onclick={() => void onboarding.dismissChecklist()}>
-				<X size={12} />
-			</button>
-		</header>
-		{#if open}
-			<ul>
-				{#each CHECKLIST as c (c.id)}
-					{@const done = onboarding.state.checklist.done.includes(c.id)}
-					<li>
-						<button
-							class="item"
-							class:done
-							class:next={next?.id === c.id}
-							disabled={done}
-							onclick={() => c.command && runCommand(c.command)}
-						>
-							<span class="box"
-								>{#if done}<Check size={10} strokeWidth={3} />{/if}</span
+	<!-- Esc folds it (the X dismisses it for good, and "Show getting started checklist" brings it back). -->
+	<CornerCard
+		id="checklist"
+		kind="checklist"
+		role="complementary"
+		label="Getting started"
+		ondismiss={() => open && corner.toggleChecklist()}
+	>
+		<div class="inner" class:collapsed={!open} data-testid="checklist">
+			<header>
+				<button class="head" onclick={() => corner.toggleChecklist()} aria-expanded={open}>
+					<span class="ring" style:--pct="{(p.done / p.total) * 100}%"></span>
+					<span class="title">{p.all ? "You're all set" : "Getting started"}</span>
+					<span class="count">{p.done}/{p.total}</span>
+					<ChevronDown size={13} class="chev" />
+				</button>
+				<button class="x" aria-label="Dismiss checklist" onclick={() => void onboarding.dismissChecklist()}>
+					<X size={12} />
+				</button>
+			</header>
+			{#if open}
+				<ul transition:slide={{ duration: reducedMotion() ? 0 : 200 }}>
+					{#each CHECKLIST as c (c.id)}
+						{@const done = onboarding.state.checklist.done.includes(c.id)}
+						<li>
+							<button
+								class="item"
+								class:done
+								class:next={next?.id === c.id}
+								disabled={done}
+								onclick={() => c.command && runCommand(c.command)}
 							>
-							<span class="label">{c.label}</span>
-							{#if c.command && !done && shortcutFor(c.command)}<Kbd>{shortcutFor(c.command)}</Kbd>{/if}
-						</button>
-					</li>
-				{/each}
-			</ul>
-		{/if}
-	</aside>
+								<span class="box"
+									>{#if done}<Check size={10} strokeWidth={3} />{/if}</span
+								>
+								<span class="label">{c.label}</span>
+								{#if c.command && !done && shortcutFor(c.command)}<Kbd>{shortcutFor(c.command)}</Kbd>{/if}
+							</button>
+						</li>
+					{/each}
+				</ul>
+			{/if}
+		</div>
+	</CornerCard>
 {/if}
 
 <style>
-	.card {
-		width: 250px;
+	.inner {
 		padding: 4px;
-		border-radius: 14px;
-		/* Opaque: it floats over the pager, and a blur over moving content re-renders every frame of a swipe. */
-		background: var(--ca-surface-raised);
-		box-shadow:
-			0 0 0 0.5px var(--ca-outline-subtle),
-			var(--ca-shadow-md, 0 10px 30px rgb(0 0 0 / 0.2));
-		animation: arrive 260ms cubic-bezier(0.2, 0.8, 0.2, 1);
 	}
 	header {
 		display: flex;
@@ -194,16 +193,7 @@
 		background: var(--space-accent, var(--ca-brand-main));
 		box-shadow: none;
 	}
-	@keyframes arrive {
-		from {
-			opacity: 0;
-			transform: translateY(10px) scale(0.97);
-		}
-	}
 	@media (prefers-reduced-motion: reduce) {
-		.card {
-			animation: none;
-		}
 		.head :global(.chev),
 		.box,
 		.ring {

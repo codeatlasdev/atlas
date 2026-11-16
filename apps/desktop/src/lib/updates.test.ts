@@ -36,6 +36,8 @@ import {
 	splitItem,
 	stepsFrom,
 	stripVersionHeading,
+	updateHeadline,
+	updateStatus,
 	versionAnchor,
 } from "./updates.ts";
 import { searchSettings } from "./settings/index.ts";
@@ -611,5 +613,51 @@ describe("managed package state (#278)", () => {
 		const t = finishToast("update", "managed", reduceProgress(EMPTY_PROGRESS, managedFixture.apt).managed);
 		expect(t.level).toBe("info");
 		expect(t.text).toContain("sudo apt install ./atlas_1.6.0_amd64.deb");
+	});
+});
+
+describe("updateStatus", () => {
+	const base = {
+		relaunchNeeded: false,
+		linked: false,
+		installing: false,
+		checking: false,
+		failed: false,
+		available: false,
+		checked: false,
+	};
+	const status = (o) => updateStatus({ ...base, ...o });
+
+	// Regression: Settings > Updates showed "Atlas is up to date" and "Checking..." at once (first-user pass, shot 25).
+	test("while a check runs there is no verdict, whatever the last check found", () => {
+		expect(status({ checking: true, checked: true })).toBe("checking");
+		expect(status({ checking: true, checked: true, available: true })).toBe("checking");
+		expect(status({ checking: true, failed: true })).toBe("checking");
+		expect(updateHeadline("checking", "1.0.0")).not.toMatch(/up to date|available/i);
+	});
+
+	test("a finished check says available, current or nothing, one at a time", () => {
+		expect(status({ checked: true, available: true })).toBe("available");
+		expect(status({ checked: true })).toBe("current");
+		expect(status({})).toBe("unknown");
+	});
+
+	test("a failed check is no verdict, even after an earlier one found something", () => {
+		expect(status({ failed: true, checked: true })).toBe("unknown");
+		expect(status({ failed: true, checked: true, available: true })).toBe("unknown");
+	});
+
+	test("what does not depend on the network wins over a running check", () => {
+		expect(status({ relaunchNeeded: true, checking: true })).toBe("restart");
+		expect(status({ linked: true, checking: true, checked: true })).toBe("dev");
+		expect(status({ installing: true, checking: true, available: true, checked: true })).toBe("installing");
+		expect(status({ relaunchNeeded: true, linked: true, installing: true })).toBe("restart");
+	});
+
+	test("every status has its own headline", () => {
+		const all = ["restart", "dev", "installing", "checking", "available", "current", "unknown"];
+		const lines = all.map((s) => updateHeadline(s, "1.2.3"));
+		expect(new Set(lines).size).toBe(all.length);
+		expect(updateHeadline("available", "1.2.3")).toBe("Atlas 1.2.3 is available");
 	});
 });

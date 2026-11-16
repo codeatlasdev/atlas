@@ -223,11 +223,6 @@
 		animation: none !important;
 		transition: none !important;
 	}
-	/* The Dialog chromeless body has no padding; we own the layout. */
-	:global(.ca-dialog .ca-dialog__body) {
-		padding: 0;
-	}
-
 	.pal-search {
 		display: flex;
 		align-items: center;

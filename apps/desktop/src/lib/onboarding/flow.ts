@@ -207,6 +207,20 @@ export function primaryEvent(phase: Phase): "scan" | "init" | "add" | "continue"
 	}
 }
 
+/**
+ * Whether the main pane shows a plain "add your first project" state: no project, lists loaded, and neither the
+ * first-run overlay nor the standing Hero owns the screen. That is every no-project window where the welcome flow
+ * does not run (agent instances, a welcome never finished but dismissed), which showed a blank pane (1.5.0-alpha.26).
+ */
+export function showFirstProject(
+	state: { done: boolean },
+	loaded: boolean,
+	projectCount: number,
+	overlayUp: boolean,
+): boolean {
+	return loaded && projectCount === 0 && !overlayUp && !showStanding(state, loaded, projectCount);
+}
+
 /** Whether the main pane shows the standing empty state: no project, lists loaded, and the first-run overlay is over. */
 export function showStanding(state: { done: boolean }, loaded: boolean, projectCount: number): boolean {
 	return loaded && projectCount === 0 && state.done;

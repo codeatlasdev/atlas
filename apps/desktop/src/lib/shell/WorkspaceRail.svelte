@@ -2,6 +2,7 @@
 	import { ws } from "#lib/stores/workspace.svelte.ts";
 	import { shortcutFor } from "#lib/keymap.svelte.ts";
 	import { SHOW_DELAY_MS, HIDE_DELAY_MS } from "./workspaceRail.ts";
+	import { expireHint, hintPending, markHintSeen } from "./edgeHint.ts";
 	import { crew } from "#lib/stores/crew.svelte.ts";
 	import { CodeXml } from "@lucide/svelte";
 	import CrewFlag from "#lib/crew/CrewFlag.svelte";
@@ -88,14 +89,18 @@
 	}
 
 	// The rail is hidden until the pointer reaches the edge, so it must announce itself: a small handle always
-	// peeks at the left edge, and the first time, a hint says what it is (gone for good once the rail opens).
+	// peeks at the left edge, and the first time, a hint says what it is: gone for good once the rail opens or
+	// after a few seconds, so it never sits over the sidebar for a user who does not go looking for the rail.
 	const HINT_KEY = "atlas.railHintSeen";
-	let hint = $state(localStorage.getItem(HINT_KEY) !== "1");
+	let hint = $state(hintPending(localStorage, HINT_KEY));
 	$effect(() => {
-		if (visible && hint) {
+		if (!hint) return;
+		if (visible) {
 			hint = false;
-			localStorage.setItem(HINT_KEY, "1");
+			markHintSeen(localStorage, HINT_KEY);
+			return;
 		}
+		return expireHint(localStorage, HINT_KEY, () => (hint = false));
 	});
 </script>
 

@@ -14,6 +14,7 @@ import { ws } from "#lib/stores/workspace.svelte.ts";
 import { worktrees } from "#lib/stores/worktrees.svelte.ts";
 import { lspSymbols } from "#lib/lsp/symbols.svelte.ts";
 import { ops } from "#lib/symbols.ts";
+import { groupCommands } from "#lib/shell/commandOrder.ts";
 import { goTab, goWorktree, recentWorktrees, wtLabel } from "#lib/shell/navigate.ts";
 
 /** Open flags for each palette plus the file list the "Go to file" palette searches. */
@@ -40,20 +41,17 @@ const KEY_ONLY = /^(atlas::RecentWorktree|shell::Space\d|pane::ActivateItem\d)/;
 
 /** Registry commands (recent first) plus the current project's services and actions. */
 export function commandItems(): PaletteItem[] {
-	const rank = (id: string) => {
-		const i = recent.ids.indexOf(id);
-		return i < 0 ? Infinity : i;
-	};
-	const items: PaletteItem[] = allCommands()
-		.filter((c) => !KEY_ONLY.test(c.id))
-		.map((c) => ({
-			id: c.id,
-			group: recent.ids.includes(c.id) ? "Recent commands" : "Commands",
-			label: c.label,
-			shortcut: shortcutFor(c.id),
-			run: () => (noteRun(c.id), c.run()),
-		}))
-		.sort((a, b) => rank(a.id) - rank(b.id));
+	const items: PaletteItem[] = groupCommands(
+		allCommands()
+			.filter((c) => !KEY_ONLY.test(c.id))
+			.map((c) => ({
+				id: c.id,
+				label: c.label,
+				shortcut: shortcutFor(c.id),
+				run: () => (noteRun(c.id), c.run()),
+			})),
+		recent.ids,
+	);
 	const cur = store.current;
 	if (!cur) return items;
 	for (const s of store.configs[cur.id]?.services.filter((s) => s.target) ?? [])

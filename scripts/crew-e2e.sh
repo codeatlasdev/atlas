@@ -88,10 +88,12 @@ collect() {
   srv_sh "id atlas-crew; ls -ldn /run/atlas-crew /run/atlas-crew/* /var/lib/atlas-cm /usr/local/lib/atlas-crew/engines/*; sudo -u atlas-crew stat /run/atlas-crew/spawn.sock" >"$OUT/isolation.txt" 2>&1 || true
   # TEMPORARY-DEBUG
   {
-    for prop in "" "-p NoNewPrivileges=yes" "-p CapabilityBoundingSet='CAP_SETUID CAP_SETGID CAP_CHOWN CAP_KILL CAP_DAC_OVERRIDE'" "-p ProtectSystem=strict" "-p ProtectHome=yes" "-p PrivateTmp=yes" "-p ProtectKernelTunables=yes" "-p ProtectKernelModules=yes" "-p ProtectControlGroups=yes" "-p RestrictSUIDSGID=yes" "-p RestrictAddressFamilies=AF_UNIX" "-p LockPersonality=yes" "-p MemoryDenyWriteExecute=yes" "-p Delegate='memory pids'" "-p KillMode=process"; do
-      echo "--- [$prop]: $(srv_sh "systemd-run --wait --collect -P -p User=root $prop setpriv --reuid=65534 --regid=65534 --clear-groups id -u 2>&1 | grep -v '^Running\|^Service\|^CPU\|^Memory\|^Main\|^Finished\|^Memory\|^Invocation\|^Job'" | tr '\n' ' ')"
-    done
-    echo "--- the helper's own status"; srv_sh "grep -E 'Cap|NoNewPrivs|Seccomp' /proc/\$(systemctl show -p MainPID --value atlas-crew-spawn.service)/status" 2>&1
+    echo "--- unit"; srv systemctl cat atlas-crew-spawn.service
+    echo "--- show"; srv systemctl show -p CapabilityBoundingSet -p AmbientCapabilities -p User -p NoNewPrivileges -p MainPID atlas-crew-spawn.service
+    echo "--- every thread of the helper"
+    srv_sh 'p=$(systemctl show -p MainPID --value atlas-crew-spawn.service); for t in /proc/$p/task/*; do echo "$t $(grep -E "^(Name|Uid|CapPrm|CapEff)" $t/status | tr "\n" " ")"; done'
+    echo "--- all the unit's properties together"
+    srv_sh "systemd-run --wait --collect -P -p User=root -p NoNewPrivileges=yes -p CapabilityBoundingSet='CAP_SETUID CAP_SETGID CAP_CHOWN CAP_KILL CAP_DAC_OVERRIDE' -p ProtectSystem=strict -p ReadWritePaths=/var/lib/atlas-cm -p Delegate='memory pids' -p DelegateSubgroup=helper -p ProtectHome=yes -p PrivateTmp=yes -p ProtectKernelTunables=yes -p ProtectKernelModules=yes -p ProtectControlGroups=yes -p RestrictSUIDSGID=yes -p RestrictAddressFamilies=AF_UNIX -p LockPersonality=yes -p MemoryDenyWriteExecute=yes -p KillMode=process sh -c 'grep -E \"CapPrm|CapEff|CapBnd\" /proc/self/status; setpriv --reuid=65534 --regid=65534 --clear-groups id -u' 2>&1 | tail -6"
   } >"$OUT/setuid-debug.txt" 2>&1 || true
   srv_sh "nft list ruleset; cat /etc/atlas-crew/egress.nft" >"$OUT/nft.txt" 2>&1 || true
   srv_sh "tar -C $HOME_DIR/.atlas -cf - crew" 2>/dev/null | tar -C "$OUT" -xf - 2>/dev/null || true

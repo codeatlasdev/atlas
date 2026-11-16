@@ -6,6 +6,10 @@ All notable changes to Atlas (CLI, TUI, MCP server and Atlas Desktop). Versions 
 
 ## [Unreleased]
 
+### Added
+
+- **Release signing: a maintainer's offline key signs each release's `SHA256SUMS` ([#279](https://github.com/codeatlasdev/atlas/issues/279)).** Until now the checksum Atlas verified (`.sha256`) was served by the same release as the file it checks, so anyone who could replace a release's assets could replace both. Releases are now built as drafts and only published after a maintainer signs `SHA256SUMS` (OpenSSH signature, namespace `atlas-release`, ed25519 key kept offline; `scripts/release-sign.sh`, called by `bun run release` for every channel, a stable promotion included), and a new `attest` job adds a GitHub artifact attestation (`gh attestation verify`). The CLI verifies that signature with an in-tree verifier on `ring` (no new crate, about 17 KB) and takes every asset hash from the signed file: from the first signed release on (`signed_since` in `crates/atlas-core/data/release-keys.json`) a missing or invalid signature, or an asset that is not in the signed file or does not match it, is an error in `atlas update`, `atlas desktop` and the local download of `atlas crew install`, and nothing is installed, with no override. Older releases keep the `.sha256` check and warn that they predate signing. **Inactive in this build:** no key is committed and `signed_since` is unset, so nothing changes for users yet; the shell installers move to the signature in the release that turns it on. `docs/release.md` ("Release signing") has the key, rotation and lost-key procedures; `SECURITY.md` ("Verifying downloads") shows how to verify a release by hand.
+
 ## [1.5.0-alpha.26] — 2026-11-16
 
 Atlas is in **alpha**: expect bugs and breaking changes. Please [report what breaks](https://github.com/codeatlasdev/atlas/issues/new).

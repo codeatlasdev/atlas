@@ -78,14 +78,34 @@ Out of scope: running `atlas dev` on an `atlas.yaml` you do not trust (it runs t
 
 ## Verifying downloads
 
-Each release has a `.sha256` next to every asset and a `manifest.json` with the checksum of each file. The installer, `atlas update` and `atlas desktop` verify the checksum before installing anything. To check by hand:
+Each release has a `.sha256` next to every asset, a `SHA256SUMS` over all of them, and a `manifest.json`. `atlas update`, `atlas desktop` and `atlas crew install` verify before installing anything. To check an asset by hand:
 
 ```bash
 shasum -a 256 -c atlas-<version>-aarch64-apple-darwin.tar.gz.sha256
 ```
 
+**Signed releases.** Starting with the first signed release (announced in its release notes; earlier releases are not signed), a maintainer signs `SHA256SUMS` offline with an ed25519 SSH key (namespace `atlas-release`) before the release is public, and Atlas takes every asset hash from that signed file, never from the `.sha256` beside the asset. `atlas update`, `atlas desktop` and the download `atlas crew install` makes on your own machine refuse a signed-era release whose signature is missing or invalid, and an asset that does not match the signed file; there is no override. The public keys are in [`crates/atlas-core/data/release-keys.json`](crates/atlas-core/data/release-keys.json). To verify by hand:
+
+```bash
+# the keys, as an OpenSSH allowed_signers file (from a checkout at the release tag)
+bun scripts/release-keys.ts allowed-signers > allowed_signers
+curl -fsSLO https://github.com/codeatlasdev/atlas/releases/download/vX.Y.Z/SHA256SUMS
+curl -fsSLO https://github.com/codeatlasdev/atlas/releases/download/vX.Y.Z/SHA256SUMS.sig
+ssh-keygen -Y verify -f allowed_signers -I <key name> -n atlas-release -s SHA256SUMS.sig < SHA256SUMS   # prints: Good "atlas-release" signature
+shasum -a 256 -c SHA256SUMS --ignore-missing
+```
+
+Each release is also attested by GitHub (a Sigstore attestation made by the release workflow), and, once the repository has immutable releases on, GitHub signs the release itself. These need the `gh` CLI and do not replace the maintainer signature:
+
+```bash
+gh attestation verify atlas-<version>-aarch64-apple-darwin.tar.gz --repo codeatlasdev/atlas
+gh release verify vX.Y.Z --repo codeatlasdev/atlas
+gh release verify-asset vX.Y.Z atlas-<version>-aarch64-apple-darwin.tar.gz --repo codeatlasdev/atlas
+```
+
 What that does and does not prove, so you can decide how much to trust it:
 
-- **Provenance: built on GitHub-hosted runners from the tag, ad-hoc code signed, checksummed.** Releases are built by GitHub Actions from the version tag, with no long-lived secret (the publish job uses the run's `GITHUB_TOKEN`), and the binaries are ad-hoc signed (not Developer ID signed or notarized, so macOS may ask you to confirm the first launch of a downloaded app).
-- The checksum protects against a corrupted or truncated download. It comes from the same place as the file, so it does not on its own protect against someone who can replace both on GitHub. A signed `SHA256SUMS` is planned, not shipped.
-- **No SLSA level is claimed**, and GitHub artifact attestations are not enabled yet (possible now that builds are hosted). See [docs/supply-chain.md](docs/supply-chain.md) for what is done today, what is not claimed and why.
+- **Provenance: built on GitHub-hosted runners from the tag, ad-hoc code signed, checksummed, with a GitHub attestation.** Releases are built by GitHub Actions from the version tag, with no long-lived secret in CI (the publish job uses the run's `GITHUB_TOKEN`; the signing key is offline, on a maintainer's machine), and the binaries are ad-hoc signed (not Developer ID signed or notarized, so macOS may ask you to confirm the first launch of a downloaded app).
+- A `.sha256` file protects against a corrupted or truncated download only: it comes from the same place as the file, so anyone who can replace the release's assets can replace both. The signed `SHA256SUMS` is what protects against that (a stolen upload token, a compromised GitHub account or workflow can publish assets but cannot produce a signature the clients accept). It does not stop someone who suppresses new releases or serves an old signed one, and a maintainer who signs a poisoned build signs it.
+- **Not yet:** the shell installers (`install.sh`, `install.ps1`) and the script `atlas crew install` runs on the server to download the CLI still check only the `.sha256`; they move to the signature in the release that makes signed releases the only bootstrap source ([docs/release.md](docs/release.md#transition)).
+- **No SLSA level is claimed** beyond what GitHub's attestation states. See [docs/supply-chain.md](docs/supply-chain.md) for what is done today, what is not claimed and why.

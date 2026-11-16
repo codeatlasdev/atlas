@@ -26,14 +26,14 @@ This page is the honest version of "how much can you trust an Atlas download". I
 
 ## What is deliberately not claimed
 
-- **No SLSA level.** Atlas builds on GitHub-hosted runners from the tag, but publishes no signed provenance document and claims no SLSA level.
-- **No GitHub artifact attestations yet.** They need the GitHub Actions OIDC token of a hosted run (`id-token: write`), which release builds now have, so they are possible; they are not enabled. A hosted job that only attests files already uploaded would prove "these bytes were uploaded", not "these bytes were built from this commit", so attest the build job's own output when this is turned on.
+- **No SLSA level.** Atlas builds on GitHub-hosted runners from the tag and the `attest` job records a GitHub attestation for the published assets, but claims no SLSA level above build level 1.
+- **The attestation is of what `publish` collected, not of what each build job produced.** The `attest` job runs after the build jobs, over the `SHA256SUMS` that `publish` computed from their artifacts, so it proves "this workflow run published these bytes", not "these bytes were built from this commit". Attesting each build job's own output would prove more; it is not done.
 - **Not Developer ID signed or notarized.** Gatekeeper may ask for confirmation on first open of a downloaded app. The installer and `atlas update` fetch with `curl`, which is the path that works without a prompt.
 - **Not reproducible bit for bit.** Code signing and the macOS bundle embed timestamps; nothing here promises two builds are byte identical.
-- **No signed checksum file yet** (it is in the list below). The SBOM is best effort, see the table above.
+- **The signed checksum file is enforced from the first signed release, not before.** Until then `signed_since` is unset and clients check the `.sha256` only ([docs/release.md](release.md#release-signing)). The SBOM is best effort, see the table above.
 - **No third-party audit.** Dependencies are screened by `cargo deny`, not reviewed line by line.
 
-Provenance in one sentence: *built on GitHub-hosted runners from the tag, ad-hoc code signed, checksummed.*
+Provenance in one sentence: *built on GitHub-hosted runners from the tag, ad-hoc code signed, checksummed, attested by GitHub, and (from the first signed release) `SHA256SUMS` signed offline by a maintainer.*
 
 ## Release checklist addition
 
@@ -138,20 +138,9 @@ Apply at <https://www.bestpractices.dev> with the repository URL. The table maps
 
 The criteria text is on the badge site and changes; re-read each answer when you apply.
 
-### 9. A signed `SHA256SUMS`
+### 9. A signed `SHA256SUMS` (built; enforced from the first signed release)
 
-Today a `.sha256` next to an asset protects against a corrupted download, not against a tampered release, because both come from the same place. Publish one `SHA256SUMS` per release and sign it with one of:
-
-```bash
-# keyless, bound to the maintainer's identity, logged in Rekor; opens a browser
-shasum -a 256 atlas-*.tar.gz Atlas-*.dmg Atlas-*.app.tar.gz > SHA256SUMS
-cosign sign-blob SHA256SUMS --bundle SHA256SUMS.sigstore.json
-
-# or a plain key pair, no network needed
-minisign -Sm SHA256SUMS
-```
-
-Verify with `cosign verify-blob --bundle SHA256SUMS.sigstore.json --certificate-identity <maintainer email> --certificate-oidc-issuer <issuer> SHA256SUMS`, or `minisign -Vm SHA256SUMS -P <public key>`. Put the public key or identity in `SECURITY.md`. The Scorecard *Signed-Releases* check looks for `*.sigstore.json`, `*.minisig`, `*.sig` and `*.asc` among the release assets, so this also improves that score. Teach `atlas update` to verify the signature only once it ships with a pinned public key; until then it is documentation, not a guarantee.
+A `.sha256` next to an asset protects against a corrupted download, not against a tampered release, because both come from the same place. Each release's `SHA256SUMS` is now signed offline by a maintainer (OpenSSH `sshsig`, namespace `atlas-release`; `scripts/release-sign.sh`) and the CLI verifies it with the keys in `crates/atlas-core/data/release-keys.json`, which is what a stolen upload token, a compromised account or a poisoned workflow cannot forge. Why an offline SSH key and not Sigstore keyless or minisign as the trust anchor, the threat table, key rotation and the transition: [docs/release.md](release.md#release-signing) and `SECURITY.md#verifying-downloads`. The Scorecard *Signed-Releases* check looks for `*.sig` among the release assets, so the first signed release also improves that score. Remaining: turn on immutable releases (below) at that release.
 
 ### 10. Developer ID signing and notarization
 

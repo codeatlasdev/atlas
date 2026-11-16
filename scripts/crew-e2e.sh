@@ -445,7 +445,8 @@ b_serves() { srv grep -q ':BAA2 00000000:0000 0A' /proc/net/tcp; }
 until_true 20 "B's server on 127.0.0.1:47778 (0xBAA2)" b_serves
 T=$(send_task "$CM" "E2E_CAPTURE 47778")
 wait_task "$CM" "$T" "done" 90
-CAPTURE=$(task_json "$CM" "$T" | jq -r .result)
+# `reply` is the engine's answer as text; `result` the raw line when the answer is long (hostd keeps both).
+CAPTURE=$(task_json "$CM" "$T" | jq -r '.reply // .result')
 echo "A's captures: $CAPTURE"
 [[ $CAPTURE == *"b=["*"port 47778 is this server's, and no server of yours listens on it"*"meta=["* ]] ||
   fail "A's capture of B's loopback server was not refused as another crewmate's: $CAPTURE"

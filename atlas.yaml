@@ -77,7 +77,7 @@ actions:
     group: bench
     command: scripts/heavy.sh bun scripts/gesture-bench.ts
   - key: O
-    label: Mobile lab (build the branch, install Atlas Lab, pair)
+    label: Mobile lab (build the branch, install Atlas Dev, pair)
     group: build
     command: bun run mobile:lab
   - key: Z

@@ -160,7 +160,7 @@ Push has never been switched on (see the status above): the relay is not deploye
 
 1. **Logins** (you, once; the scripts store none of them): `gcloud auth login` (an owner of the Firebase/GCP project), `firebase login`, `gh auth login` (admin on `codeatlasdev/atlas`, to write environment secrets), and `CLOUDFLARE_API_TOKEN` in the environment with Zone DNS Edit and Zone Origin Rules Edit on `codeatlas.com.br`. A Firebase project must exist (Firebase console, **Add project**, or an existing GCP project with Firebase added); its id is `<project>` below.
 2. **The relay**: `GCP_PROJECT=<project> bun run push:deploy` (run `bun run push:deploy --dry-run` first). It enables the APIs, creates the `push-relay` service account (only `roles/firebasecloudmessaging.admin`, the narrowest predefined role with `cloudmessaging.messages.create`, plus read access to its one secret), creates `RELAY_GRANT_KEY` in Secret Manager if absent (never printed, never rotated by the script), builds with Cloud Build, deploys Cloud Run in `southamerica-east1` (0 to 3 instances), points `push.codeatlas.com.br` at it through Cloudflare and ends with a smoke check: `POST /v1/register` answers `200` with a grant and `POST /v1/notify` with a bad grant answers `403`. Why Cloudflare and not a Cloud Run domain mapping: that feature is Preview, "not recommended for production", and not offered in `southamerica-east1`; the script makes a proxied CNAME to the service's `run.app` host and an Origin Rule that rewrites `Host` to it (Cloud Run routes by `Host`).
-3. **The app's Firebase config**: `scripts/firebase-mobile-config.sh <project>` registers the Android and iOS apps (`br.com.codeatlas.atlas.mobile` and the Lab id `….mobile.lab`), downloads `google-services.json` and `GoogleService-Info.plist` into a temp dir and stores them as `GOOGLE_SERVICES_JSON` and `GOOGLE_SERVICE_INFO_PLIST` in the `mobile-beta` and `mobile-store` environments, then deletes them. They never touch the repo. The release lanes write the files only for the build and delete them (`write_firebase_config` in `fastlane/Fastfile`); without the secrets the app still builds, with no push.
+3. **The app's Firebase config**: `scripts/firebase-mobile-config.sh <project>` registers the Android and iOS apps (`br.com.codeatlas.atlas.mobile` and the Dev id `….mobile.dev`), downloads `google-services.json` and `GoogleService-Info.plist` into a temp dir and stores them as `GOOGLE_SERVICES_JSON` and `GOOGLE_SERVICE_INFO_PLIST` in the `mobile-beta` and `mobile-store` environments, then deletes them. They never touch the repo. The release lanes write the files only for the build and delete them (`write_firebase_config` in `fastlane/Fastfile`); without the secrets the app still builds, with no push.
 4. **APNs key, by hand** (iOS only; Firebase has no CLI for it): [developer.apple.com](https://developer.apple.com/account/resources/authkeys/list) → Certificates, Identifiers & Profiles → Keys → **+** → name `Atlas APNs`, tick **Apple Push Notifications service (APNs)** → Continue → Register → **Download** the `.p8` (shown once) and note its Key ID; the Team ID is under Membership details. Then [Firebase console](https://console.firebase.google.com) → the project → ⚙ Project settings → **Cloud Messaging** → **Apple app configuration** → the app `br.com.codeatlas.atlas.mobile` → **APNs authentication key** → **Upload** → the `.p8`, the Key ID, the Team ID. Without it Android push works and iOS push never arrives.
 5. **Rebuild the app**: push needs a build that has the config, so ship a release (`bun run mobile:release X.Y.Z`; testers get it first). A build made before step 3 has no push.
 6. **Check it end to end with a real phone** (a simulator has no APNs): install the TestFlight or Play internal build, open it and allow notifications; pair a Mac, start an agent in a terminal there, send the app to the background (or lock the phone) and let the agent finish or ask for approval. The phone must buzz within seconds, and tapping the push opens that agent's chat. If it does not: `gcloud run services logs read push-relay --region southamerica-east1` (`403` means the phone's grant is stale, so reopen the app once; `502` is FCM, usually the APNs key or the role), and `curl -sS -X POST https://push.codeatlas.com.br/v1/register -d '{"token":"x"}'` must answer `200`.
@@ -185,7 +185,7 @@ Progress arrives as `{ev: "atlas_update", stage, message, version}` pushes (scop
 Validating a change to hostd or to the phone app used to mean replacing your installed Atlas and restarting your hostd in the middle of real work. The lab lane runs the branch **beside** your installation, on your real agents:
 
 ```bash
-bun run mobile:lab                     # build, start the lab hostd, install Atlas Lab on your iPhone, print the pairing QR
+bun run mobile:lab                     # build, start the lab hostd, install Atlas Dev on your iPhone, print the pairing QR
 bun run mobile:lab --device "<name>"   # a specific device (id or name)    --android | --sim: a physical Android phone, a booted simulator
 bun run mobile:lab --watch             # + rebuild and restart the lab hostd on crates/ changes; `flutter run` (debug, hot reload) stays attached
 bun run mobile:lab --status            # is the lab running, and what does it follow
@@ -202,9 +202,39 @@ bun run mobile:lab --stop              # stops the LAB hostd only
 
 It never starts the hook server (that would steal the endpoint your agents read), never adopts or hands off terminals, and refuses to create, kill or resize one. Your hostd holds a permission prompt only for *its own* phones, so an experimental phone never makes a real agent wait. If your hostd restarts (`atlas update`), forwarded calls fail with a clear message and the lab reconnects and re-seeds on its own; with no hostd at all it exits at start with an error. It has no idle timeout: it stops with `--stop`.
 
-**Atlas Lab** is the same app built with `--dart-define=ATLAS_LAB=1 --dart-define=ATLAS_SHA=<git sha>` under its own identity: bundle id `br.com.codeatlas.atlas.mobile.lab` (iOS scheme `lab`, Android gradle property `atlas.lab=1` giving the id `….mobile.lab`), the name "Atlas Lab", an orange icon (`bun run mobile:lab:icons`, the phone twin of `icons:dev`) and a slim `LAB · <sha>` strip on top. Secure storage is isolated by the bundle id (no keychain or app group is shared), and the app has no push (no Firebase or APNs identity), so nothing in it depends on one. The lab pairs with its own code and key; your real app and its pairings are untouched. The real app's build, id, name, icon and output paths are unchanged.
+The lab lane installs the **Atlas Dev** app ([Dev and store apps](#dev-and-store-apps): flavor `dev`, bundle id `br.com.codeatlas.atlas.mobile.dev`, orange icon), built with `--dart-define=ATLAS_LAB=1 --dart-define=ATLAS_SHA=<git sha>` so it shows a slim `LAB · <sha>` strip on top. Secure storage is isolated by the bundle id (no keychain or app group is shared), and the app has no push (no Firebase or APNs identity), so nothing in it depends on one. The lab pairs with its own code and key; the store app and its pairings are untouched.
 
 Notes: build and install go through `scripts/heavy.sh`; the one-shot path is `flutter build` + `flutter install` (an attached `flutter run --release` hangs, so `--watch` attaches a debug run). A phone must be unlocked and trusted for `flutter install`. `atlas.yaml` action `M` runs it.
+
+## Dev and store apps
+
+One codebase, two installable apps, side by side on the same phone (Flutter flavors, [Android](https://docs.flutter.dev/deployment/flavors), [iOS](https://docs.flutter.dev/deployment/flavors-ios)):
+
+| | **Atlas Dev** (flavor `dev`, the default) | **Atlas** (flavor `prod`, the store app) |
+|---|---|---|
+| Android `applicationId` | `br.com.codeatlas.atlas.mobile.dev` | `br.com.codeatlas.atlas.mobile` |
+| iOS bundle id | `br.com.codeatlas.atlas.mobile.dev` | `br.com.codeatlas.atlas.mobile` |
+| Name under the icon | Atlas Dev | Atlas |
+| Icon | orange (`bun run mobile:dev:icons`) | blue |
+| Push | none (no Firebase/APNs identity; entitlements without `aps-environment`) | yes, once configured |
+| Where it is defined | Android: product flavor `dev` (`app/build.gradle.kts`, `src/dev/res`); iOS: scheme `dev` and configurations `Debug-dev`, `Profile-dev`, `Release-dev` (`ios/Flutter/*-dev.xcconfig`, `AppIcon-Dev`) | Android: product flavor `prod`; iOS: scheme `prod` over the base `Debug`, `Profile` and `Release` configurations |
+
+The dev app has the orange icon and its own name in **every** build mode (debug, profile, release), so a release-mode build of it is never mistaken for the store app. Its storage, keychain and permissions are its own (the ids differ), so it never reads or overwrites the store app's pairings.
+
+**Plain `flutter run` and `flutter build` make the dev app**: `pubspec.yaml` sets `default-flavor: dev`, which Flutter applies on both platforms (and to `flutter test integration_test`, so the end-to-end test installs the dev app too). A local build therefore cannot replace the store app. In Dart, `appFlavor` (`package:flutter/services.dart`) is `dev` or `prod`.
+
+```bash
+flutter run                              # the dev app, debug
+flutter run --profile                    # the dev app, profile (orange icon too)
+flutter build apk --split-per-abi        # a dev release APK per ABI (sideload)
+bun run mobile:lab                       # dev app + lab hostd, see "Lab lane"
+```
+
+**Store builds ask for `prod` by name**, never rely on the default: fastlane does (`store_build_args` in `fastlane/Fastfile`: `flutter build ios|appbundle --release --flavor prod --split-debug-info=build/symbols/<platform>`, archive with the `prod` scheme), so `bun run mobile:beta` and the `Mobile release` workflow need nothing extra. By hand: `flutter build appbundle --flavor prod --release` gives `build/app/outputs/bundle/prodRelease/app-prod-release.aab`; `flutter build ipa --flavor prod --no-codesign` gives the `prod` archive. Forgetting `--flavor prod` builds the dev app, which Play and App Store Connect refuse (they know no such app), so the mistake cannot ship the wrong app.
+
+Why flavors and not a project property or `--dart-define`: a flavor is what `flutter run`, the IDEs and `flutter install` understand natively (the old `-Platlab=1` property was invisible to them), Gradle names the outputs per flavor (`app-dev-debug.apk`, `app-prod-release.aab`) and Xcode keeps one scheme per app. The Dart side only needs `appFlavor`; the dart-defines of the lab lane stay for the `LAB` strip and the commit.
+
+To register the dev app for push later, add its ids to the Firebase project (`scripts/firebase-mobile-config.sh` already does); `google-services.json` lists every Android client, so one file serves both flavors.
 
 ## Files
 
@@ -213,6 +243,33 @@ Under `~/.atlas/mobile/` (`$ATLAS_HOSTD_DIR/mobile/`): `key` (the computer's iro
 ## Building the app
 
 Needs the Flutter version pinned in `apps/mobile/pubspec.yaml` (`environment.flutter`, always the newest stable; the gate fails with `flutter upgrade` when yours is older, see `apps/mobile/AGENTS.md`) and a Rust toolchain (the transport is the `apps/mobile/native` crate, bound through flutter_rust_bridge). `scripts/mobile-check.sh` (part of `bun run check`) runs `flutter analyze` and `flutter test`. It is skipped with a notice when Flutter is not installed.
+
+`flutter run` and `flutter build` make the **Atlas Dev** app (see [Dev and store apps](#dev-and-store-apps)); a store build says `--flavor prod`. Release sizes and what each build setting is for: [Build settings](#build-settings-size-and-speed).
+
+### Build settings (size and speed)
+
+What the build does, and why (measured 2026-11-15 on Flutter 3.47.7, AGP 9.1.0, Xcode 27.2; the store flavor, release mode, before → after):
+
+| | before | after |
+|---|---|---|
+| Android APK arm64-v8a (`--split-per-abi`) | 42.3 MB | **34.0 MB** |
+| Android APK armeabi-v7a / x86_64 | 33.7 / 46.1 MB | 28.0 / 37.2 MB |
+| Android app bundle (`appbundle`, what Play receives) | 105.2 MB | **85.7 MB** |
+| `libatlas_mobile_native.so` in the arm64 APK | 13.2 MB | 6.2 MB |
+| `libapp.so` (Dart AOT) in the arm64 APK | 8.8 MB | 7.5 MB |
+| iOS `Runner.app` of the archive (on disk) | 45.9 MB | **28.7 MB** |
+| iOS `Runner.app` zipped (about the IPA's size) | 17.3 MB | **12.2 MB** |
+| iOS `atlas_mobile_native.framework` / `App.framework` | 23.3 / 9.7 MB | 8.2 / 8.0 MB |
+| iOS debug `Runner.app` (dev) / its native framework | 248 / 83 MB | 196 / 27 MB |
+
+- **Rust (`apps/mobile/native/Cargo.toml`, the biggest piece)**: `opt-level = "s"`, fat LTO and one codegen unit. Measured on `libatlas_mobile_native.so` in the arm64 APK: 13.2 MB with cargo's defaults, 8.2 MB with fat LTO and one unit at `opt-level` 3, 6.2 MB at `s`, 5.6 MB at `z`, 5.3 MB at `s` with `panic = "abort"`. `s` over `3` is a quarter smaller for a crate that moves terminal text, not bulk data; `z` is 9 % smaller still but costs much more speed in crypto-heavy code (one [third-party measurement](https://github.com/Offline-Protocol/offline-protocol-sdk/blob/main/docs/adr/0029-mobile-libraries-are-sized-not-aborting.md): +115 % to +145 % on AES-GCM paths); `panic = "abort"` saves 0.9 MB but turns every panic that flutter_rust_bridge reports to Dart as an exception into a crash of the app, so it stays `unwind`. Debug builds keep line tables (variable info is what made the debug library 83 MB), build dependencies at `opt-level` 2 and the crate at 1, because Rust at level 0 is unusably slow in crypto (not measured here).
+- **Dart**: tree-shaken icons are on by default in release (MaterialIcons 1.6 MB → 17 KB). Store builds pass `--split-debug-info=build/symbols/<platform>` (fastlane): the symbols leave the binary, and CI keeps them as the `mobile-symbols-<platform>-<build number>` artifact; `flutter symbolize -i <trace> -d build/symbols/android/app.android-arm64.symbols` reads a stack trace with them. `--obfuscate` is not used: it hides nothing the open repository does not show and makes every report unreadable.
+- **Android**: R8 (full mode), resource shrinking and `proguard-android-optimize` are already on for release (Flutter's Gradle plugin; `--no-shrink` has no effect). Release adds `ndk.debugSymbolLevel = SYMBOL_TABLE`, so Play symbolizes a crash in the Rust library. Play receives the bundle and serves each phone only its ABI and density; `--split-per-abi` is for APKs you sideload (the fat one is 115 MB).
+- **iOS**: the Xcode Release configuration already has `-O` with whole-module, dead-code stripping and dSYMs; archiving strips the binary (`flutter build ipa`, not `flutter build ios`, for sizes). The obsolete `ENABLE_BITCODE` setting was removed. The Rust static library is force-loaded into its framework, which is why its own size (above) is what counts.
+- **Gradle** (`android/gradle.properties`): parallel project execution and the build cache are on. The configuration cache is **off on purpose**: with AGP 9.1 and Flutter 3.47 the first task fails (`Task :app:DevDebugMinSdkCheck … error writing value of type 'java.lang.ref.ReferenceQueue'`, with the report in `build/reports/configuration-cache`). The 8 GB daemon heap is Flutter's template value and fits this Mac. `android.newDsl=false` and `android.builtInKotlin=false` must stay: Flutter's Gradle plugin and its plugins still need the old DSL and the Kotlin plugin (AGP 10, announced for late 2026, removes both flags, so Flutter has to move first; see the [AGP roadmap](https://developer.android.com/build/releases/gradle-plugin-roadmap)).
+- **Not done, and why**: a Swift Package Manager plugin. Flutter 3.44+ prefers it and warns that `atlas_mobile_native` does not support it (the CocoaPods path still works, "maintenance mode"), but SPM cannot run `cargo`; flutter_rust_bridge's way out is [native assets](https://cjycode.com/flutter_rust_bridge/manual/integrate/migrate-cargokit-to-native-assets) (`hook/build.dart`, no `rust_builder/`, no cargokit). That migration replaces the whole Rust build path on both platforms, so it is its own change.
+
+Cold times on this Mac (12 cores, `CARGO_BUILD_JOBS=4`): Android debug (4 Rust targets) 5 min, release split APKs 4.5 min, iOS archive 2 min; warm builds recompile only what changed. For a quicker device loop use one ABI: `flutter run --target-platform android-arm64`.
 
 ## Goldens
 

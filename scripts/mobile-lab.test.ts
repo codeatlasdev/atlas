@@ -96,10 +96,10 @@ describe("pickDevice", () => {
 
 describe("build commands", () => {
 	const sha = "a1b2c3d";
-	test("iOS builds the lab scheme with the lab dart-defines and no push/onboarding noise", () => {
+	test("iOS builds the dev scheme with the lab dart-defines and no push/onboarding noise", () => {
 		const a = iosBuildArgs(sha);
 		expect(a.slice(0, 3)).toEqual(["build", "ios", "--debug"]);
-		expect(a).toContain("--flavor=lab");
+		expect(a).toContain("--flavor=dev");
 		expect(a).toContain("--dart-define=ATLAS_LAB=1");
 		expect(a).toContain(`--dart-define=ATLAS_SHA=${sha}`);
 		expect(a).toContain("--dart-define=ATLAS_ALWAYS_ONBOARD=false");
@@ -111,26 +111,25 @@ describe("build commands", () => {
 		expect(iosBuildArgs(sha, false)).not.toContain("--simulator");
 		expect(iosBuildArgs(sha)).not.toContain("--simulator");
 	});
-	test("Android passes the gradle property that makes the lab id, never a flavor", () => {
+	test("Android builds the dev product flavor, never the store one", () => {
 		const a = androidBuildArgs(sha);
 		expect(a.slice(0, 3)).toEqual(["build", "apk", "--debug"]);
-		expect(a).toContain("--android-project-arg=atlas.lab=1");
-		expect(a.join(" ")).not.toContain("--flavor");
+		expect(a).toContain("--flavor=dev");
+		expect(a.join(" ")).not.toContain("prod");
 		expect(a).toContain("--dart-define=ATLAS_LAB=1");
 	});
-	// `flutter run --release` attached hangs (documented): the attached run is debug, hot reload, lab only.
-	test("the attached --watch run is a debug `flutter run` of the lab, never --release", () => {
-		const ios = runArgs("ios", "PHONE-1", sha);
-		const and = runArgs("android", "PIXEL", sha);
+	// `flutter run --release` attached hangs (documented): the attached run is debug, hot reload, dev flavor only.
+	test("the attached --watch run is a debug `flutter run` of the dev flavor, never --release", () => {
+		const ios = runArgs("PHONE-1", sha);
+		const and = runArgs("PIXEL", sha);
 		for (const a of [ios, and]) {
 			expect(a[0]).toBe("run");
 			expect(a).not.toContain("--release");
 			expect(a).toContain("--debug");
+			expect(a).toContain("--flavor=dev");
 			expect(a).toContain("--dart-define=ATLAS_LAB=1");
 			expect(a.slice(a.indexOf("-d"), a.indexOf("-d") + 2)).toEqual(["-d", a[a.indexOf("-d") + 1]]);
 		}
-		expect(ios).toContain("--flavor=lab");
-		expect(and).toContain("--android-project-arg=atlas.lab=1");
 	});
 });
 

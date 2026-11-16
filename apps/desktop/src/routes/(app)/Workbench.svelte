@@ -26,6 +26,8 @@
 
 	/** No tab in the main pane tree (the bottom dock has its own group). */
 	let empty = $derived(!!layout && leaves(layout).every((id) => !ws.group(id)?.order.length));
+	/** A plain folder: the Changes panel has nothing to show, so it says why instead of failing on `git status`. */
+	let folder = $derived(space.project?.kind === "folder");
 </script>
 
 {#snippet dockPanel(id: string, edge: "left" | "right")}
@@ -42,9 +44,12 @@
 		>
 			{#if docks.leftPanel === "explorer"}<Explorer
 					worktreeId={id}
-				/>{:else if docks.leftPanel === "search"}<SearchPanel worktreeId={id} />{:else}<SourceControl
-					worktreeId={id}
-				/>{/if}
+				/>{:else if docks.leftPanel === "search"}<SearchPanel worktreeId={id} />{:else if folder}
+				<div class="notgit" role="status">
+					<b>Not a git repository</b>
+					<span>This folder has no version control, so there are no changes or pull requests to show.</span>
+				</div>
+			{:else}<SourceControl worktreeId={id} />{/if}
 		</Contain>
 	</div>
 	{#if edge === "left"}<DockResizer side="left" {edge} />{/if}
@@ -86,6 +91,19 @@
 		flex: 1;
 		min-height: 0;
 		display: flex;
+	}
+	.notgit {
+		flex: 1;
+		display: flex;
+		flex-direction: column;
+		gap: 4px;
+		padding: 16px 14px;
+		font-size: 12.5px;
+		color: var(--ca-text-secondary);
+	}
+	.notgit b {
+		color: var(--ca-text-primary);
+		font-weight: 600;
 	}
 	.center {
 		flex: 1;

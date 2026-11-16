@@ -143,6 +143,20 @@ Deleting a worktree stops its stack, runs `worktree.archive`, removes the checko
 
 Sidebar: glyph = agent state (spinner working, `?` needs you, ✓ done, • idle), **bold** = unread, chips for PR and port offset. ⌘-click selects several; ⌘⇧⌫ deletes the selection or the row under the pointer. **Agents** is a feed of agent events, **Dashboard** a board of agents by state.
 
+### Plain folders
+
+A folder is a **project** when it has a `.git`, an `atlas.yaml` or a recognised manifest (`package.json`, `Cargo.toml`, `go.mod`, `pyproject.toml`, a compose file, `Gemfile`, `pom.xml`, `build.gradle`, `composer.json`, `deno.json`, `pubspec.yaml`, `Package.swift`, `mix.exs`, `CMakeLists.txt`). Anything else, such as `~/Downloads`, is a **plain folder**, and Atlas does not pretend it is a project: the header says **Folder** instead of the health pill, and there is no **Auto-detected** chip, no **Save as atlas.yaml**, no **Start**, no Activity or Machine buttons, no Panel, Logs or Config tab, no **New worktree**, and the Changes panel says "Not a git repository". What stays is the explorer, the editor, search, terminals and agents.
+
+**Use as project** (in the header and its menu) gives the folder the full project UI from then on. It writes nothing to the folder: the choice is a flag on the sidebar entry (`project` in `~/.atlas/desktop/projects.json`). A linked worktree and an SSH checkout are always projects. The test is the folder's own markers, so a folder that gains a `.git` turns into a project on the next refresh.
+
+### Opening a single file
+
+`atlas notes.md`, Finder's **Open With** (Atlas offers itself for `.md`, `.markdown` and `.txt`, as an alternate: it never becomes the default app) and dropping a file on the window or the Dock icon all go through one door. A text file (not an image, PDF or media file) with **no project above it** (no `.git`, `atlas.yaml` or manifest in its folder or any parent) and not inside a folder you already added opens in the **light editor**, in the main area, and **registers nothing**: no sidebar project, no worktree, no services, no git status, no language server. It is the project editor's own CodeMirror session (autosave after 0.5 s, ⌘S to save now, external changes followed, `.editorconfig`, the large-file tiers) with a line and column footer. Files you open this way are listed under **Dashboard** in the sidebar for the life of the window; closing Atlas forgets them.
+
+A Markdown file also gets a bar over the editor: **Bold**, **Italic**, **Heading** (cycles plain, H1, H2, H3), **Bulleted list**, **Numbered list**, **Link**, and **Preview** (the rendered file, **Edit source** to come back). Each button toggles, works on every selection range and is one undo step. **Open folder** adds the file's folder to the sidebar (a plain folder, so still no services) and continues there in the full editor; **Open as project** also promotes it.
+
+A file inside a project, or inside a folder you added, opens in that project as before (`atlas src/main.rs` opens the project, then the file). Images, PDFs and media have no light viewer, so a loose one opens inside its folder (plain-folder mode). Time to first paint of a loose file is recorded as the `loose:first-paint` performance measure (`atlas desktop debug eval 'return performance.getEntriesByName("loose:first-paint").map(e => e.duration)'` in an agent instance).
+
 ## Tabs and panes
 
 Each worktree has its own tab groups and splits (⌘\\ right, ⌘⇧\\ down; drag a tab to a pane edge to split). Tab kinds: terminal, agent, editor, changes (diff), browser, pull request, panel, logs, config. Layout is saved in `~/.atlas/desktop/workspace.json`.

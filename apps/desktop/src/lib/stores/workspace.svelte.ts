@@ -49,8 +49,8 @@ class Workspace {
 	hostError = $state<string | null>(null);
 	/** The terminal host did not answer the last `syncPtys`: `ptys` is what we knew, not what is true. */
 	hostDown = $state(false);
-	/** Main area: the selected worktree, or a global agents view. */
-	view = $state<"worktree" | "agents" | "dashboard">("worktree");
+	/** Main area: the selected worktree, a global agents view, or the light editor of a loose file (`loose` store). */
+	view = $state<"worktree" | "agents" | "dashboard" | "file">("worktree");
 	/** Top-level workspace mode: "ide" is everything today; "crew" is the full-window messenger. */
 	appMode = $state<"ide" | "crew">("ide");
 	#persist = new WorkspacePersist(this);

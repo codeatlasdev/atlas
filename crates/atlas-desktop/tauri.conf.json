@@ -47,6 +47,15 @@
       "icons/128x128@2x.png",
       "icons/icon.icns"
     ],
+    "fileAssociations": [
+      {
+        "ext": ["md", "markdown", "txt"],
+        "name": "Text document",
+        "description": "Markdown or plain text document",
+        "role": "Editor",
+        "rank": "Alternate"
+      }
+    ],
     "macOS": {
       "minimumSystemVersion": "13.0",
       "signingIdentity": "-",

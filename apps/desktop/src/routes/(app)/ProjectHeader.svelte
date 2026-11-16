@@ -69,14 +69,33 @@
 		await store.refresh();
 		void store.loadConfig(id);
 	}
+
+	/** A plain folder: explorer and editor only. */
+	let folder = $derived(p.kind === "folder");
+
+	/** "Use as project": the folder keeps its files; it gets the services, Changes and PR parts of the app. */
+	async function promote(id: string) {
+		const done = await store.run(`promote:${id}`, async () => (await api.promote(id), true));
+		if (!done) return;
+		await store.refresh();
+		void store.loadConfig(id);
+	}
 </script>
 
 <header data-tauri-drag-region class:inset={!docks.sidebar}>
 	<Crumbs />
-	<span class="pill t-{health.tone}" title={health.label}>
-		<span class="dot" class:pulse={health.tone === "ok"}></span>{p.running ? health.label : "Stopped"}
-	</span>
-	{#if p.config_source === "detected"}
+	{#if folder}
+		<span
+			class="detected"
+			title="A plain folder: Atlas shows its files and nothing else. Use it as a project to run services and see changes."
+			>Folder</span
+		>
+	{:else}
+		<span class="pill t-{health.tone}" title={health.label}>
+			<span class="dot" class:pulse={health.tone === "ok"}></span>{p.running ? health.label : "Stopped"}
+		</span>
+	{/if}
+	{#if !folder && p.config_source === "detected"}
 		<span
 			class="detected"
 			title="No atlas.yaml in this folder: Atlas detected how to run it. Nothing was written to disk."
@@ -125,9 +144,11 @@
 			{/each}
 			<RightToggle />
 		</div>
-		<div class="ops" role="group" aria-label="Activity and actions">
-			<PanelOps project={p} />
-		</div>
+		{#if !folder}
+			<div class="ops" role="group" aria-label="Activity and actions">
+				<PanelOps project={p} />
+			</div>
+		{/if}
 		<DropdownMenu align="end">
 			{#snippet triggerChild(props)}
 				<button type="button" {...props} class="more" aria-label="Project menu"><Ellipsis size={16} /></button
@@ -145,7 +166,11 @@
 				</DropdownMenuItem>
 			{/if}
 		</DropdownMenu>
-		{#if p.running}
+		{#if folder}
+			<Button size="sm" disabled={!!store.busy[`promote:${p.id}`]} onclick={() => promote(p.id)}>
+				Use as project
+			</Button>
+		{:else if p.running}
 			<Button
 				variant="glass"
 				size="sm"

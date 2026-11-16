@@ -41,6 +41,20 @@ pub fn paths_from_argv(argv: &[String], cwd: &Path) -> Vec<OpenReq> {
         .collect()
 }
 
+/// The paths of the `file://` URLs macOS hands the app when the user picks "Open With" (or drops a file on the Dock
+/// icon): `RunEvent::Opened`. Other schemes are not ours to open.
+#[cfg(any(target_os = "macos", test))]
+pub fn paths_from_urls(urls: &[tauri::Url]) -> Vec<OpenReq> {
+    urls.iter()
+        .filter_map(|u| u.to_file_path().ok())
+        .map(|p| OpenReq {
+            path: atlas_core::paths::normalize(&p)
+                .to_string_lossy()
+                .into_owned(),
+        })
+        .collect()
+}
+
 /// Queue `reqs`, tell the page, and bring the window forward.
 pub fn open(app: &AppHandle, reqs: Vec<OpenReq>) {
     if reqs.is_empty() {
@@ -75,6 +89,22 @@ mod tests {
         assert!(got[0].path.ends_with("work/sub"), "{}", got[0].path);
         assert_eq!(got[1].path, abs);
         assert!(paths_from_argv(&argv(&["atlas-desktop"]), cwd).is_empty());
+    }
+
+    // Finder hands the app percent-encoded `file://` URLs; a path with a space or an accent must arrive decoded, and a
+    // URL that is not a file (a link some app sent) must not become a path.
+    #[cfg(unix)]
+    #[test]
+    fn opened_urls_become_decoded_paths_and_other_schemes_are_dropped() {
+        let urls = [
+            "file:///Users/m/My%20Notes/caf%C3%A9.md",
+            "https://example.com/a.md",
+            "file:///tmp/a/../b.txt",
+        ]
+        .map(|u| tauri::Url::parse(u).unwrap());
+        let got = paths_from_urls(&urls);
+        let paths: Vec<_> = got.iter().map(|r| r.path.as_str()).collect();
+        assert_eq!(paths, ["/Users/m/My Notes/café.md", "/tmp/b.txt"]);
     }
 
     #[test]

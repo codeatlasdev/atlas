@@ -293,6 +293,7 @@ pub(super) async fn create(
             branch: Some(branch.clone()),
             host: repo.host.clone(),
             identity: None,
+            project: false,
         };
         entries.retain(|e| e.id != entry.id);
         entries.push(entry.clone());

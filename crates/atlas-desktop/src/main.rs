@@ -168,6 +168,8 @@ macro_rules! handlers {
             cmds::project_save_config,
             open_path::open_pending,
             cmds::project_probe,
+            cmds::project_promote,
+            cmds::path_locate,
             cmds::project_init_preview,
             cmds::stack_start,
             cmds::stack_stop,
@@ -758,6 +760,12 @@ fn main() {
             #[cfg(target_os = "macos")]
             if let tauri::RunEvent::Reopen { .. } = ev {
                 show_main(app);
+            }
+            // Finder "Open With" and a file dropped on the Dock icon (`bundle.fileAssociations` in tauri.conf.json): the
+            // page opens it the way `atlas <path>` does (a loose text file goes to the light editor).
+            #[cfg(target_os = "macos")]
+            if let tauri::RunEvent::Opened { urls } = &ev {
+                open_path::open(app, open_path::paths_from_urls(urls));
             }
             // An exit the user did not ask for (the last window going away) is held while the tray can reopen the
             // app; an explicit `exit(code)` (tray Quit, ⌘Q, the updater's restart) always goes through.

@@ -1,14 +1,20 @@
-//! Linux side of `atlas desktop`: the app is one AppImage (`Atlas-<version>-<platform>.AppImage`),
-//! installed as `~/.local/bin/atlas-desktop` with a menu entry and icon under `~/.local/share`.
-//! A distro package (.deb, .rpm, Arch) installs `/usr/bin/atlas-desktop` instead; that one is
-//! opened but never replaced, its package manager updates it.
+//! Linux side of `atlas desktop`. On a distro that has a release package (Debian and Ubuntu: .deb,
+//! Fedora and RHEL: .rpm, openSUSE: .rpm, Arch: pacman) the app is that package, installed as root
+//! after a confirmation (`atlas_core::distro`); elsewhere, or with `--appimage`, it is one AppImage
+//! (`Atlas-<version>-<platform>.AppImage`) installed as `~/.local/bin/atlas-desktop` with a menu
+//! entry and icon under `~/.local/share`. A package installs `/usr/bin/atlas-desktop`; that one is
+//! opened but never replaced by atlas, its package manager updates it.
 
+use std::io::{BufRead, IsTerminal, Write};
 use std::os::unix::fs::PermissionsExt;
 use std::os::unix::process::CommandExt;
 use std::path::{Path, PathBuf};
 use std::process::{Command, Stdio};
 
 use anyhow::{Context, Result, bail};
+use atlas_core::pkgowner::PackageManager;
+
+use super::update_pkg;
 
 /// Menu entry and icon id; the same reverse-DNS id as the macOS bundle (`tauri.conf.json`).
 const APP_ID: &str = "br.com.codeatlas.atlas";
@@ -195,6 +201,90 @@ fn desktop_entry(exec: &Path) -> String {
          Categories=Development;IDE;\n\
          StartupWMClass=atlas-desktop\n"
     )
+}
+
+/// The package manager whose release asset this machine's distro takes (#267), or `None` for the
+/// AppImage: not x86_64 (the packages are), a distro no package is built for, or its package
+/// manager is missing.
+pub(super) fn native_manager() -> Option<PackageManager> {
+    if !cfg!(target_arch = "x86_64") {
+        return None;
+    }
+    let os_release = std::fs::read_to_string("/etc/os-release")
+        .or_else(|_| std::fs::read_to_string("/usr/lib/os-release"))
+        .ok()?;
+    atlas_core::distro::native_manager(&os_release, |n| atlas_core::paths::which(n).is_some())
+}
+
+/// Install the release package of `version` with the distro's package manager, as root, and return
+/// the app it put at `/usr/bin/atlas-desktop`. `None` means install the AppImage instead, after
+/// saying why on the terminal: nobody confirmed (no terminal and no `--yes`), the answer was no,
+/// or the install failed (a distro older than the package's WebKitGTK; the manager's own error is
+/// printed). A failure never leaves `atlas desktop` without an app.
+pub(super) fn install_package(pm: PackageManager, version: &str, yes: bool) -> Option<PathBuf> {
+    match try_install_package(pm, version, yes) {
+        Ok(app) => app,
+        Err(e) => {
+            eprintln!(
+                "\x1b[33m◆\x1b[0m Could not install the {} package ({e:#}); installing the AppImage instead.",
+                pm.name()
+            );
+            None
+        }
+    }
+}
+
+fn try_install_package(pm: PackageManager, version: &str, yes: bool) -> Result<Option<PathBuf>> {
+    let tty = std::io::stdin().is_terminal() && std::io::stdout().is_terminal();
+    let has = |n: &str| atlas_core::paths::which(n).is_some();
+    let esc = match update_pkg::plan(update_pkg::is_root(), tty, yes, has)? {
+        update_pkg::Plan::Install(esc) => esc,
+        update_pkg::Plan::Show { .. } => {
+            println!(
+                "\x1b[1;34m◆\x1b[0m Installing the AppImage: the {} package needs your confirmation (run `atlas desktop` in a terminal, or pass --yes).",
+                pm.name()
+            );
+            return Ok(None);
+        }
+    };
+    let asset = pm.asset(version);
+    let dir = tempfile::Builder::new()
+        .prefix(&format!("atlas-desktop-{version}-"))
+        .tempdir()?;
+    println!("\x1b[1;34m◆\x1b[0m Downloading {asset}...");
+    let file = super::release::download_verified(
+        &format!("v{version}"),
+        &asset,
+        dir.path(),
+        super::update_core::bytes,
+    )?;
+    let argv = update_pkg::command_line(esc, pm, &file);
+    println!(
+        "\n  Atlas Desktop v{version} comes as a {} package, installed as root:",
+        pm.name()
+    );
+    println!("    {}", argv.join(" "));
+    if !yes {
+        print!("Install it now? [Y/n] ");
+        std::io::stdout().flush()?;
+        let mut line = String::new();
+        // A closed stdin (Ctrl-D) is not an Enter.
+        let read = std::io::stdin().lock().read_line(&mut line)?;
+        if read == 0 || !confirmed_by_default(&line) {
+            println!("Skipped the package; installing the AppImage.");
+            return Ok(None);
+        }
+    }
+    let _lock = super::update_core::UpdateLock::acquire()?;
+    update_pkg::run_install(&argv)?;
+    atlas_core::paths::packaged_app()
+        .map(Some)
+        .context("the package installed but /usr/bin/atlas-desktop is not there")
+}
+
+/// `[Y/n]`: an empty answer (just Enter) is yes; only an explicit no (or anything else) is not.
+fn confirmed_by_default(line: &str) -> bool {
+    matches!(line.trim().to_ascii_lowercase().as_str(), "" | "y" | "yes")
 }
 
 /// Start the app detached from this terminal (own session, no stdio), so closing the shell or
@@ -390,5 +480,16 @@ mod tests {
                 .join("icons/hicolor/128x128/apps/br.com.codeatlas.atlas.png")
                 .is_file()
         );
+    }
+
+    /// `[Y/n]` installs a root package on Enter, but a stray word is not consent.
+    #[test]
+    fn the_package_prompt_defaults_to_yes_and_a_stray_answer_is_no() {
+        for yes in ["\n", "y\n", "YES\n", "  yes  \n"] {
+            assert!(confirmed_by_default(yes), "{yes:?}");
+        }
+        for no in ["n\n", "no\n", "later\n", "yy\n"] {
+            assert!(!confirmed_by_default(no), "{no:?}");
+        }
     }
 }

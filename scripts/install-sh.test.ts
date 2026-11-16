@@ -39,6 +39,8 @@ interface Opts {
 	updateExit?: number;
 	/** The fake `atlas desktop` exits with this (download failed: 1). */
 	desktopExit?: number;
+	/** Run it as `curl … | sh` in a real terminal (a pty from `script`). */
+	pty?: boolean;
 	env?: Record<string, string>;
 }
 
@@ -62,7 +64,10 @@ function install(opts: Opts = {}) {
 		`echo "atlas $* [channel=\${ATLAS_UPDATE_CHANNEL:-}]" >> '${calls}'
 if [ "$1" = install ]; then mkdir -p "$HOME/.atlas/bin" && cp "$0" "$HOME/.atlas/bin/atlas"; fi
 if [ "$1" = update ]; then exit ${opts.updateExit ?? 0}; fi
-if [ "$1" = desktop ]; then exit ${opts.desktopExit ?? 0}; fi
+if [ "$1" = desktop ]; then
+  if [ -t 0 ]; then echo "desktop stdin=tty" >> '${calls}'; else echo "desktop stdin=not-a-tty" >> '${calls}'; fi
+  exit ${opts.desktopExit ?? 0}
+fi
 exit 0`,
 	);
 	const version = TAG.slice(1);
@@ -94,7 +99,9 @@ esac`,
 	);
 	script(join(stubs, "uname"), `case "$1" in -s) echo Linux ;; -m) echo x86_64 ;; *) echo Linux ;; esac`);
 
-	const p = Bun.spawnSync(["sh", INSTALL_SH], {
+	// `pty`: the way people run it, `curl … | sh` in a terminal: stdin is the pipe, stdout and /dev/tty are the terminal.
+	const argv = opts.pty ? ["script", "-qec", `cat '${INSTALL_SH}' | sh`, "/dev/null"] : ["sh", INSTALL_SH];
+	const p = Bun.spawnSync(argv, {
 		cwd: root_,
 		env: {
 			PATH: `${stubs}:${process.env.PATH}`,
@@ -169,6 +176,21 @@ describe.skipIf(process.platform === "win32")("install.sh", () => {
 			expect(r.calls).toContain("atlas desktop --no-open [channel=]");
 			expect(r.out).toContain("in your app launcher");
 		}
+	});
+
+	// #267: on a distro with a native package `atlas desktop` asks before installing it as root. Under `curl | sh` its
+	// stdin is the script, so the question would never be answered and the app would always fall back to the AppImage.
+	test.skipIf(!Bun.which("script"))("`curl | sh` in a terminal hands the desktop step the terminal, so it can ask", () => {
+		const r = install({ env: { DISPLAY: ":0" }, pty: true });
+		expect(r.code).toBe(0);
+		expect(r.calls).toContain("atlas desktop --no-open [channel=]");
+		expect(r.calls).toContain("desktop stdin=tty");
+	});
+
+	test("with no terminal at all the desktop step keeps the stdin it had", () => {
+		const r = install({ env: { DISPLAY: ":0" } });
+		expect(r.code).toBe(0);
+		expect(r.calls).toContain("desktop stdin=not-a-tty");
 	});
 
 	test("no display, or ATLAS_NO_DESKTOP, installs only the CLI", () => {

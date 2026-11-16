@@ -6,6 +6,7 @@ pub mod channel;
 pub mod crash;
 pub mod crew;
 pub mod desktop_ctl;
+pub mod distro;
 pub mod domain;
 pub mod error;
 pub mod fs;

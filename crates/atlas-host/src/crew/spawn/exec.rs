@@ -138,6 +138,11 @@ pub fn spawn_capped(
         .env("USER", &req.user)
         .env("LOGNAME", &req.user)
         .env("TERM", "xterm-256color");
+    // A `/tmp` of its own: the helper's `PrivateTmp=` is one for every crewmate, so a fixed name there is another
+    // crewmate's to take and a default-umask file is another crewmate's to read.
+    if let Some(tmp) = private_tmp(home, ids) {
+        cmd.env("TMPDIR", tmp);
+    }
     cmd.envs(&req.env);
 
     let (fd, child_end) = match req.mode {
@@ -161,6 +166,25 @@ pub fn spawn_capped(
         },
     )?;
     Ok(Started { child, fd })
+}
+
+/// `<crewmate dir>/tmp`, made `0700` for the crewmate if it is not there (the directory itself is root's, so nothing
+/// in it can have been planted), or `None` when it cannot be (a helper under test with an arbitrary `home`).
+fn private_tmp(home: &str, ids: Ids) -> Option<String> {
+    let tmp = std::path::Path::new(home).parent()?.join("tmp");
+    let c = CString::new(tmp.to_str()?).ok()?;
+    // SAFETY: a NUL-terminated path; mkdir and lchown (which does not follow a link) are plain syscalls.
+    unsafe {
+        if libc::mkdir(c.as_ptr(), 0o700) == 0 {
+            // Only root can give it away; anyone else made it their own, which is who they will be.
+            if libc::geteuid() == 0 && libc::lchown(c.as_ptr(), ids.uid, ids.gid) != 0 {
+                return None;
+            }
+        } else if io::Error::last_os_error().kind() != io::ErrorKind::AlreadyExists {
+            return None;
+        }
+    }
+    Some(tmp.to_string_lossy().into_owned())
 }
 
 /// The identity change a process of this helper needs to become `want`.
@@ -327,23 +351,64 @@ fn step_failed(rd: &OwnedFd) -> Option<&'static str> {
 /// pty with the slave owned by the crewmate. Returns the master and the slave (the child's stdio),
 /// both close-on-exec: see [`open_pipe`].
 fn open_pty(req: &SpawnReq, ids: Ids) -> io::Result<(OwnedFd, OwnedFd)> {
-    let (mut m, mut s): (RawFd, RawFd) = (-1, -1);
     let ws = libc::winsize {
         ws_row: req.rows,
         ws_col: req.cols,
         ws_xpixel: 0,
         ws_ypixel: 0,
     };
-    // SAFETY: out-pointers are live; null name/termios are allowed. macOS declares termios and winsize
-    // `*mut` where Linux has `*const`; a cast to the type the platform wants is a no-op on Linux and
-    // the only way to a single call on both (openpty never writes through them).
+    let (master, slave) = pty_pair(&ws)?;
+    // SAFETY: valid fd; mode 0620 like a login tty.
+    if unsafe { libc::fchown(slave.as_raw_fd(), ids.uid, ids.gid) } != 0
+        || unsafe { libc::fchmod(slave.as_raw_fd(), 0o620) } != 0
+    {
+        return Err(io::Error::last_os_error());
+    }
+    Ok((master, slave))
+}
+
+/// A pty whose two ends are close-on-exec **from the instant they exist**. glibc's `openpty` makes both without
+/// it, and the helper serves each connection on its own thread: a fork on another thread inside that window
+/// would carry this crewmate's terminal into another crewmate's process across `exec` (a read of its output, input
+/// into its agent). Security review of the crew isolation, B2. `posix_openpt(O_CLOEXEC)` and `TIOCGPTPEER` (the
+/// slave opened from the master's fd, no path) leave no window. Elsewhere (a developer's Mac) `openpty` and an
+/// immediate `fcntl`.
+#[cfg(target_os = "linux")]
+fn pty_pair(ws: &libc::winsize) -> io::Result<(OwnedFd, OwnedFd)> {
+    let flags = libc::O_RDWR | libc::O_NOCTTY | libc::O_CLOEXEC;
+    // SAFETY: plain syscalls; the descriptors are wrapped as soon as they exist.
+    unsafe {
+        let m = libc::posix_openpt(flags);
+        if m < 0 {
+            return Err(io::Error::last_os_error());
+        }
+        let master = OwnedFd::from_raw_fd(m);
+        if libc::grantpt(m) != 0 || libc::unlockpt(m) != 0 {
+            return Err(io::Error::last_os_error());
+        }
+        let s = libc::ioctl(m, libc::TIOCGPTPEER as _, flags);
+        if s < 0 {
+            return Err(io::Error::last_os_error());
+        }
+        let slave = OwnedFd::from_raw_fd(s);
+        if libc::ioctl(m, libc::TIOCSWINSZ as _, std::ptr::from_ref(ws)) != 0 {
+            return Err(io::Error::last_os_error());
+        }
+        Ok((master, slave))
+    }
+}
+
+#[cfg(not(target_os = "linux"))]
+fn pty_pair(ws: &libc::winsize) -> io::Result<(OwnedFd, OwnedFd)> {
+    let (mut m, mut s): (RawFd, RawFd) = (-1, -1);
+    // SAFETY: out-pointers are live; macOS declares termios and winsize `*mut` (openpty never writes through them).
     if unsafe {
         libc::openpty(
             &mut m,
             &mut s,
             std::ptr::null_mut(),
             std::ptr::null_mut(),
-            std::ptr::from_ref(&ws).cast_mut().cast(),
+            std::ptr::from_ref(ws).cast_mut().cast(),
         )
     } != 0
     {
@@ -351,12 +416,6 @@ fn open_pty(req: &SpawnReq, ids: Ids) -> io::Result<(OwnedFd, OwnedFd)> {
     }
     // SAFETY: openpty returned two fresh fds we now own.
     let (master, slave) = unsafe { (OwnedFd::from_raw_fd(m), OwnedFd::from_raw_fd(s)) };
-    // SAFETY: valid fd; mode 0620 like a login tty.
-    if unsafe { libc::fchown(slave.as_raw_fd(), ids.uid, ids.gid) } != 0
-        || unsafe { libc::fchmod(slave.as_raw_fd(), 0o620) } != 0
-    {
-        return Err(io::Error::last_os_error());
-    }
     set_cloexec(master.as_raw_fd());
     set_cloexec(slave.as_raw_fd());
     Ok((master, slave))
@@ -563,6 +622,15 @@ mod tests {
         let (ours, theirs) = open_pipe().unwrap();
         assert!(cloexec(&ours), "hostd's end of the socketpair");
         assert!(cloexec(&theirs), "the child's end of the socketpair");
+        // Straight from creation, before anything else runs: a fork on another thread has no window.
+        let ws = libc::winsize {
+            ws_row: 24,
+            ws_col: 80,
+            ws_xpixel: 0,
+            ws_ypixel: 0,
+        };
+        let (m, s) = pty_pair(&ws).unwrap();
+        assert!(cloexec(&m) && cloexec(&s), "a fresh pty is close-on-exec");
         let (master, slave) = open_pty(&req(&fixture(), Mode::Pty), me()).unwrap();
         assert!(cloexec(&master), "the pty master");
         assert!(cloexec(&slave), "the pty slave");
@@ -794,7 +862,7 @@ mod tests {
         std::fs::write(secret.join("flag"), "other user's file\n").unwrap();
         std::fs::write(
             format!("{}/claude", f.engines),
-            format!("#!/bin/sh\nexec sh -c '{PROBE}' 10<&-\n"),
+            format!("#!/bin/bash\nexec sh -c '{PROBE}'\n"),
         )
         .unwrap();
         assert!(sh(&format!(

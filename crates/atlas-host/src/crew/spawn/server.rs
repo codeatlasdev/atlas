@@ -723,7 +723,9 @@ mod tests {
     // ---- the whole path: a real server on a socket, a real client, real fds and processes ----
 
     use super::super::client::is_unknown_session;
-    use super::super::protocol::{GitReq, Mode, SpawnReq};
+    #[cfg(target_os = "linux")]
+    use super::super::protocol::GitReq;
+    use super::super::protocol::{Mode, SpawnReq};
     use super::super::testing::{Rig, USER, rig as new_rig};
     use std::io::{Read, Write};
 
@@ -1110,6 +1112,29 @@ mod tests {
         );
     }
 
+    // Security review of the crew isolation, S2: the helper's `PrivateTmp=` is one `/tmp` for every crewmate. Each
+    // gets a `TMPDIR` of its own, `<crewmate dir>/tmp`, `0700`, made by the helper.
+    #[cfg(target_os = "linux")]
+    #[test]
+    fn every_agent_gets_a_tmpdir_of_its_own_that_only_it_can_use() {
+        let r = rig();
+        let (_, fd) = r
+            .client
+            .spawn(&req(
+                &r,
+                Mode::Pipe,
+                "echo tmp=$TMPDIR; PATH=/usr/bin:/bin; stat -c mode=%a $TMPDIR",
+            ))
+            .unwrap();
+        let mut out = String::new();
+        std::fs::File::from(fd).read_to_string(&mut out).ok();
+        assert!(
+            out.contains(&format!("tmp={}/tmp", r.cm.display())),
+            "{out}"
+        );
+        assert!(out.contains("mode=700"), "{out}");
+    }
+
     // Incident (security review of the crew isolation, N1): systemd hands over the listening socket as fd 3
     // without close-on-exec, and nothing set it, so every agent and every git hook of every crewmate held the
     // helper's `spawn.sock`: a hook that detaches keeps calling `accept()` and gets a share of hostd's requests
@@ -1130,7 +1155,7 @@ mod tests {
             .spawn(&req(
                 &r,
                 Mode::Pipe,
-                &format!("PATH=/usr/bin:/bin; exec sh -c '{PROBE}' 10<&-"),
+                &format!("PATH=/usr/bin:/bin; exec sh -c '{PROBE}'"),
             ))
             .unwrap();
         let mut agent = String::new();

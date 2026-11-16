@@ -1,4 +1,4 @@
-#!/bin/sh
+#!/bin/bash
 # A fake `claude` for scripts/crew-e2e.sh, installed on the crew server where the real engine would be.
 # It speaks the contract of `claude -p --output-format json`: one `{"type":"result",...}` line on stdout.
 # The prompt (the last argument; hostd puts the role and the task text in it) says what to do:
@@ -32,10 +32,12 @@ case "$prompt" in
   *E2E_PROBE*)
     # A child `sh`, listing the fds of ITS shell with a redirect that only the `ls` child sees (a pipe or a
     # command substitution would put a descriptor of its own in the shell).
-    sh -c 'ls /proc/$$/fd >"$HOME/e2e-probe"; grep NoNewPrivs /proc/$$/status >>"$HOME/e2e-probe"; cat /proc/$$/cgroup >>"$HOME/e2e-probe"' 10<&-
+    sh -c 'ls /proc/$$/fd >"$HOME/e2e-probe"; grep NoNewPrivs /proc/$$/status >>"$HOME/e2e-probe"; cat /proc/$$/cgroup >>"$HOME/e2e-probe"'
     # Node's V8 aborts at start under a seccomp MemoryDenyWriteExecute= that the agent inherited from the helper's unit.
     node=$(node -e 'let s=0;for(let i=0;i<1e6;i++)s+=i;console.log(s)' 2>&1 | tail -n 1 | tr -cd 'A-Za-z0-9 ')
-    reply "probe: $(tr '\n\t' ' ;' <"$HOME/e2e-probe" | tr -d '"\\') node=$node"
+    # Another crewmate's command line, from /proc: `ProtectProc=invisible` in the helper's unit hides it.
+    others=$(for d in /proc/[0-9]*; do tr '\0' ' ' <"$d/cmdline" 2>/dev/null; echo; done | grep -c 'sleep 31341')
+    reply "probe: $(tr '\n\t' ' ;' <"$HOME/e2e-probe" | tr -d '"\\') node=$node others=$others"
     exit 0
     ;;
   *E2E_HANG_ONCE*)

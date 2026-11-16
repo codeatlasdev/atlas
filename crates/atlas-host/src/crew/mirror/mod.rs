@@ -22,10 +22,25 @@ use std::path::{Path, PathBuf};
 use super::proc;
 use super::spawn::layout::Isolated;
 
-/// Answers any host's password prompt from the environment. Reset first: hostd's git must use nothing of the
-/// crew user's own setup.
+/// Answers a password prompt from the environment, for one origin only (see [`token_scope`]). Reset first: hostd's
+/// git must use nothing of the crew user's own setup.
 const HELPER: &str =
     "!f() { echo username=x-access-token; echo \"password=$ATLAS_GIT_TOKEN\"; }; f";
+/// The origin the login may be sent to: `https://github.com` and nothing else (a project on another host, or a
+/// redirect to one, never gets the operator's GitHub token as a password). Tests may use a loopback server.
+fn token_scope(url: &str) -> Option<String> {
+    let (scheme, rest) = url.split_once("://")?;
+    let host = rest.split('/').next()?;
+    if scheme == "https" && host == "github.com" {
+        return Some("https://github.com".into());
+    }
+    #[cfg(test)]
+    if host.starts_with("127.0.0.1") {
+        return Some(format!("{scheme}://{host}"));
+    }
+    None
+}
+
 /// What hostd's mirror git may talk: never `ext::` or anything else that runs a command named in a URL.
 const PROTOCOLS: &str = "file:http:https:ssh:git";
 
@@ -41,9 +56,7 @@ impl Mirror {
     pub fn of(url: &str, iso: &Isolated) -> Self {
         Self {
             url: url.to_string(),
-            dir: iso
-                .runtime()
-                .join(format!("{}.git", super::project::git_slug(url))),
+            dir: iso.runtime().join(format!("{}.git", url_hash(url))),
         }
     }
 
@@ -53,6 +66,11 @@ impl Mirror {
     }
 
     /// Where the crewmate clones and fetches from.
+    /// The project's own URL (where the crewmate's pushes go).
+    pub fn url(&self) -> &str {
+        &self.url
+    }
+
     pub fn local_url(&self) -> String {
         format!("file://{}", self.dir.display())
     }
@@ -65,6 +83,9 @@ impl Mirror {
 
     /// [`Mirror::refresh`] with `token` (hostd's, never a crewmate's).
     pub async fn refresh_with(&self, token: Option<String>) -> Result<(), String> {
+        let scope = token_scope(&self.url);
+        // No scope, no token: it is never offered to a host it was not meant for.
+        let token = token.filter(|_| scope.is_some());
         if self.dir.join("HEAD").is_file() {
             let dir = self.dir.to_string_lossy().into_owned();
             return git(
@@ -79,6 +100,7 @@ impl Mirror {
                     "+refs/tags/*:refs/tags/*",
                 ],
                 token,
+                scope.as_deref(),
             )
             .await;
         }
@@ -88,7 +110,12 @@ impl Mirror {
         std::fs::create_dir_all(self.dir.parent().unwrap_or(Path::new("/")))
             .map_err(|e| format!("mkdir error: {e}"))?;
         let (from, to) = (self.url.clone(), partial.to_string_lossy().into_owned());
-        let made = git(&["clone", "--bare", "--quiet", &from, &to], token).await;
+        let made = git(
+            &["clone", "--bare", "--quiet", &from, &to],
+            token,
+            scope.as_deref(),
+        )
+        .await;
         if let Err(e) = made {
             let _ = std::fs::remove_dir_all(&partial);
             return Err(e);
@@ -98,7 +125,7 @@ impl Mirror {
             ("uploadpack.allowFilter", "true"),
             ("uploadpack.allowAnySHA1InWant", "true"),
         ] {
-            git(&["--git-dir", &to, "config", k, v], None).await?;
+            git(&["--git-dir", &to, "config", k, v], None, None).await?;
         }
         std::fs::rename(&partial, &self.dir).map_err(|e| format!("mirror: {e}"))
     }
@@ -115,7 +142,7 @@ async fn login_token() -> Option<String> {
 
 /// hostd's own `git <args>`: cleared environment, no hooks, no global or system configuration, the token (if
 /// any) only in this process's environment, files readable by the crewmate's group tree (umask 022).
-async fn git(args: &[&str], token: Option<String>) -> Result<(), String> {
+async fn git(args: &[&str], token: Option<String>, scope: Option<&str>) -> Result<(), String> {
     let mut cmd = tokio::process::Command::new("git");
     cmd.args([
         "-c",
@@ -124,16 +151,17 @@ async fn git(args: &[&str], token: Option<String>) -> Result<(), String> {
         "core.fsmonitor=",
         "-c",
         "credential.helper=",
-        "-c",
-        &format!("credential.helper={HELPER}"),
-    ])
-    .args(args)
-    .env_clear()
-    .env("PATH", "/usr/local/bin:/usr/bin:/bin")
-    .env("GIT_CONFIG_GLOBAL", "/dev/null")
-    .env("GIT_CONFIG_NOSYSTEM", "1")
-    .env("GIT_TERMINAL_PROMPT", "0")
-    .env("GIT_ALLOW_PROTOCOL", PROTOCOLS);
+    ]);
+    if let Some(scope) = scope {
+        cmd.args(["-c", &format!("credential.{scope}.helper={HELPER}")]);
+    }
+    cmd.args(args)
+        .env_clear()
+        .env("PATH", "/usr/local/bin:/usr/bin:/bin")
+        .env("GIT_CONFIG_GLOBAL", "/dev/null")
+        .env("GIT_CONFIG_NOSYSTEM", "1")
+        .env("GIT_TERMINAL_PROMPT", "0")
+        .env("GIT_ALLOW_PROTOCOL", PROTOCOLS);
     if let Some(t) = token {
         cmd.env("ATLAS_GIT_TOKEN", t);
     }
@@ -154,6 +182,16 @@ async fn git(args: &[&str], token: Option<String>) -> Result<(), String> {
             String::from_utf8_lossy(&out.stderr).trim()
         ))
     }
+}
+
+/// A name for the mirror of `url`: a hash, so two long URLs never share a directory.
+fn url_hash(url: &str) -> String {
+    use sha2::{Digest, Sha256};
+    Sha256::digest(url.as_bytes())
+        .iter()
+        .take(16)
+        .map(|b| format!("{b:02x}"))
+        .collect()
 }
 
 /// `Some(mirror)` when `crewmate`'s project is a Git repository, the crewmate runs as its own user and has no

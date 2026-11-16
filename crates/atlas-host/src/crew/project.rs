@@ -113,6 +113,24 @@ pub async fn fetch(work_dir: &Path, git: &Git, mirror: Option<&Mirror>) -> Resul
                 work_dir.display()
             );
         }
+        // A clone made before the mirror (or under the other mode) is moved to the current one: its `origin` reads
+        // the mirror and pushes to the project.
+        if let Some(m) = mirror {
+            let _ = git_out(
+                git,
+                Some(work_dir),
+                &["remote", "set-url", "origin", &m.local_url()],
+                false,
+            )
+            .await;
+            let _ = git_out(
+                git,
+                Some(work_dir),
+                &["remote", "set-url", "--push", "origin", m.url()],
+                false,
+            )
+            .await;
+        }
         let _ = git_out(git, Some(work_dir), &["fetch", "--quiet"], true).await;
     } else {
         // Find the shared (main) worktree via `git worktree list --porcelain`.

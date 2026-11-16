@@ -60,7 +60,12 @@ pub fn provision_socket_unit(a: &Account) -> String {
 ///
 /// - `CAP_SETUID`/`CAP_SETGID` switch to the crewmate's user, `CAP_CHOWN` gives it its pty slave,
 ///   `CAP_KILL` signals its processes, `CAP_DAC_OVERRIDE` lets root reach directories that are
-///   0700 for the crewmate or the crew user. Nothing else is in the bounding set.
+///   0700 for the crewmate or the crew user, `CAP_SYS_PTRACE` lets the helper still see the crewmates' processes
+///   (reap, the working directory of a session) under `ProtectProc=invisible`. Nothing else is in the bounding set.
+/// - `ProtectProc=invisible` (systemd 247; an older systemd ignores it, see docs/crew.md): the `/proc` of the helper's
+///   mount namespace, which every agent inherits, shows a process only to its own user, so one crewmate cannot read
+///   another's `/proc/<pid>/cmdline` (its whole prompt, and every tool command with its variables expanded) or `environ`.
+///   Not `ProcSubset=pid`: it hides `/proc/meminfo`, which Node and most tools read.
 /// - No `NoNewPrivileges=`: with the other sandboxing options it left the helper without `CAP_SETUID` (systemd 255),
 ///   so every spawn failed at `setuid`; each child sets no_new_privs on itself instead. The helper changes uid with `setuid(2)`, never by running
 ///   a setuid binary.
@@ -90,12 +95,13 @@ User=root\n\
 ExecStart={INSTALL_DIR}/atlas crew-spawn\n\
 KillMode=process\n\
 Restart=on-failure\n\
-CapabilityBoundingSet=CAP_SETUID CAP_SETGID CAP_CHOWN CAP_KILL CAP_DAC_OVERRIDE\n\
+CapabilityBoundingSet=CAP_SETUID CAP_SETGID CAP_CHOWN CAP_KILL CAP_DAC_OVERRIDE CAP_SYS_PTRACE\n\
 ProtectSystem=strict\n\
 ReadWritePaths={CM_ROOT} -{cg}\n\
 Delegate=memory pids\n\
 DelegateSubgroup=helper\n\
 ProtectHome=yes\n\
+ProtectProc=invisible\n\
 PrivateTmp=yes\n\
 ProtectKernelTunables=yes\n\
 ProtectKernelModules=yes\n\
@@ -511,10 +517,11 @@ mod tests {
         );
     }
 
-    // The bounding set is the whole point of "hardened as far as compatible": exactly these five,
+    // The bounding set is the whole point of "hardened as far as compatible": exactly these six (CAP_SYS_PTRACE is what the
+    // helper needs to see crewmates' processes under `ProtectProc=invisible`),
     // and none of the capabilities that would let a bug in the helper do more.
     #[test]
-    fn the_service_keeps_five_capabilities_and_a_read_only_system() {
+    fn the_service_keeps_six_capabilities_and_a_read_only_system() {
         let u = service_unit();
         let caps = u
             .lines()
@@ -529,15 +536,11 @@ mod tests {
                 "CAP_DAC_OVERRIDE",
                 "CAP_KILL",
                 "CAP_SETGID",
-                "CAP_SETUID"
+                "CAP_SETUID",
+                "CAP_SYS_PTRACE"
             ]
         );
-        for bad in [
-            "CAP_SYS_ADMIN",
-            "CAP_NET_ADMIN",
-            "CAP_SYS_PTRACE",
-            "CAP_FOWNER",
-        ] {
+        for bad in ["CAP_SYS_ADMIN", "CAP_NET_ADMIN", "CAP_FOWNER"] {
             assert!(!caps.contains(bad));
         }
         for want in [
@@ -633,7 +636,7 @@ mod tests {
                 let key = line.split('=').next().unwrap();
                 // Unknown directives are ignored with a warning by older systemd, and the helper does not
                 // need this one there: it moves itself into `helper` (`cgroup::Pool::detect`).
-                if key == "DelegateSubgroup" {
+                if key == "DelegateSubgroup" || key == "ProtectProc" {
                     continue;
                 }
                 assert!(
@@ -942,6 +945,18 @@ mod tests {
         let u = service_unit();
         assert!(!u.contains("NoNewPrivileges"), "{u}");
         assert!(u.contains("CAP_SETUID"), "{u}");
+    }
+
+    // Security review of the crew isolation, B1: every agent shared the host's `/proc`, where `cmdline` is world-readable,
+    // so crewmate A read B's whole prompt and every command B's tools ran, secrets expanded. `ProtectProc=invisible`
+    // hides other users' processes in the helper's mount namespace (inherited by the agents); the helper keeps
+    // seeing them through CAP_SYS_PTRACE. The real-systemd E2E reads B's cmdline as A's agent.
+    #[test]
+    fn the_spawn_helper_hides_other_crewmates_processes_from_the_agents() {
+        let u = service_unit();
+        assert!(u.contains("ProtectProc=invisible\n"), "{u}");
+        assert!(!u.contains("ProcSubset"), "{u}");
+        assert!(!provision_service_unit().contains("ProtectProc"));
     }
 
     // Security review of the crew isolation, MDWE note: `MemoryDenyWriteExecute=` is a seccomp filter, and a filter

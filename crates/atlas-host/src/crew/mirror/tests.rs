@@ -390,6 +390,63 @@ fn only_an_isolated_crewmate_without_its_own_token_gets_a_mirror() {
     );
 }
 
+// Security review of the crew isolation, S1: the login answered any host's password prompt, so a project on another host
+// (or a redirect to one) was sent the operator's GitHub token. It is offered to https://github.com only. And two long URLs
+// never share a mirror directory (the old name kept the first 48 bytes of the URL).
+#[test]
+fn the_login_is_only_offered_to_github_and_every_url_has_its_own_mirror() {
+    assert_eq!(
+        token_scope("https://github.com/o/r.git").as_deref(),
+        Some("https://github.com")
+    );
+    for other in [
+        "https://gitlab.com/o/r.git",
+        "https://github.com.evil.example/o/r.git",
+        "http://github.com/o/r.git",
+        "git@github.com:o/r.git",
+        "file:///srv/r",
+    ] {
+        assert_eq!(token_scope(other), None, "{other}");
+    }
+    let long = format!("https://github.com/{}", "a".repeat(80));
+    assert_ne!(
+        url_hash(&format!("{long}/one")),
+        url_hash(&format!("{long}/two"))
+    );
+}
+
+// A clone made before the mirror existed (origin = GitHub, no token any more) is moved to it by the next fetch:
+// origin reads the mirror and pushes to the project (review 3, nit).
+#[tokio::test]
+async fn fetch_moves_an_older_clone_to_the_mirror() {
+    let tmp = tempfile::tempdir().unwrap();
+    let src = source(tmp.path());
+    let url = format!("file://{}", src.display());
+    let cm = crewmate();
+    let project = ProjectRef::Git {
+        url: url.clone(),
+        branch: None,
+    };
+    let own = cm
+        .git
+        .clone()
+        .with_token(Some("ghp_own_token_for_the_old_clone".into()));
+    let work = prepare(
+        &project,
+        ID,
+        &tmp.path().join("hostd"),
+        Some(cm.iso.clone()),
+        &own,
+    )
+    .await
+    .unwrap();
+    assert_eq!(git(&work, &["config", "remote.origin.url"]), url);
+    let m = mirror_for(&project, Some(&cm.iso), &cm.git).unwrap();
+    fetch(&work, &cm.git, Some(&m)).await.unwrap();
+    assert_eq!(git(&work, &["config", "remote.origin.url"]), m.local_url());
+    assert_eq!(git(&work, &["config", "remote.origin.pushurl"]), url);
+}
+
 // A clone that fails halfway is not left where a crewmate would clone it as the mirror.
 #[tokio::test]
 async fn a_failed_mirror_clone_leaves_nothing_behind() {

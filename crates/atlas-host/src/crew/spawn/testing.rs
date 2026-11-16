@@ -86,7 +86,9 @@ impl Host for TreeHost {
 /// A shell snippet that prints what the process running it looks like from the inside: `ls -l` of its open
 /// descriptors (no pipe or substitution: the shell would hold one of its own while it lists), its `NoNewPrivs:` line and
 /// its `/proc/self/cgroup`. Run as `exec sh -c '<PROBE>'`: the script's own descriptor for itself (dash keeps
-/// one, not close-on-exec) is not the process's, and `$$` is that shell: callers add `10<&-` to close that one too.
+/// one, not close-on-exec) is not the process's, and `$$` is that shell. Scripts that run it start with `#!/bin/bash`,
+/// whose descriptor for the script is close-on-exec (dash's is fd 10 and is inherited; dash cannot close it either:
+/// `10<&-` closes fd 0).
 pub const PROBE: &str =
     r#"ls -l /proc/$$/fd; grep NoNewPrivs /proc/$$/status; cat /proc/$$/cgroup"#;
 
@@ -260,7 +262,7 @@ impl Rig {
     pub fn planted_repo(&self, hook_body: &str) {
         let work = self.work();
         let hook = self.cm.join("fsmonitor.sh");
-        std::fs::write(&hook, format!("#!/bin/sh\n{hook_body}")).unwrap();
+        std::fs::write(&hook, format!("#!/bin/bash\n{hook_body}")).unwrap();
         std::fs::set_permissions(&hook, std::fs::Permissions::from_mode(0o755)).unwrap();
         let git = |args: &[&str]| {
             let o = std::process::Command::new("git")
@@ -287,9 +289,10 @@ impl Rig {
     }
 
     /// A planted repo whose command writes, to the returned file, what its own process looks like: [`PROBE`].
+    #[cfg(target_os = "linux")]
     pub fn probe_repo(&self) -> PathBuf {
         let out = self.cm.join("probe");
-        self.planted_repo(&format!("exec sh -c '{PROBE}' 10<&- > {}\n", out.display()));
+        self.planted_repo(&format!("exec sh -c '{PROBE}' > {}\n", out.display()));
         out
     }
 

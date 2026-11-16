@@ -234,7 +234,7 @@ T=$(send_task "$CM" "E2E_PROBE")
 wait_task "$CM" "$T" "done" 60
 PROBE=$(task_json "$CM" "$T" | jq -r .result)
 [[ $PROBE == "probe: 0 1 2 NoNewPrivs:;1 "* ]] || fail "the agent has descriptors besides 0, 1, 2, or no NoNewPrivs: $PROBE"
-[[ $PROBE == *"node=499999500000" ]] || fail "node does not run as the agent (a seccomp filter of the helper's unit, MemoryDenyWriteExecute=?): $PROBE"
+[[ $PROBE == *"node=499999500000 others=0" ]] || fail "node does not run as the agent (a seccomp filter of the helper's unit, MemoryDenyWriteExecute=?): $PROBE"
 if srv test -d "$LEAF_DIR"; then
   [[ $PROBE == *"0::/system.slice/atlas-crew-spawn.service/cm-$SLUG"* ]] || fail "the agent does not run in its memory leaf cm-$SLUG: $PROBE"
   echo "agent process: fds 0 1 2, NoNewPrivs 1, node (V8 JIT) runs, in the memory leaf cm-$SLUG"
@@ -387,6 +387,21 @@ srv rm -rf "$WORKA/.atlas" # hostd made it: A may not remove what is inside
 wait_idle "$CM"
 echo "attachments: nothing written through A's link into B's work/; the staged image is readable by A"
 
+# (9b) B1 of the third review: A's agent reads /proc/<pid>/cmdline of every process it can see. B's agent (a tool running
+# `sleep 31341`) is running; root sees it, A's agent does not (ProtectProc=invisible in the helper's unit).
+TBH=$(send_task "$CMB" "E2E_HANG 31341")
+wait_task "$CMB" "$TBH" running 60
+until_true 20 "B's sleep 31341 to exist" has_sleeper 31341
+T=$(send_task "$CM" "E2E_PROBE")
+wait_task "$CM" "$T" "done" 60
+PROBE=$(task_json "$CM" "$T" | jq -r .result)
+[[ $PROBE == *"others=0" ]] || fail "A's agent can read another crewmate's command line in /proc: $PROBE"
+hostd crewmate_cancel "$(jq -nc --arg id "$CMB" --arg t "$TBH" '{id: $id, task: $t}')" >/dev/null
+wait_task "$CMB" "$TBH" cancelled 30
+until_true 20 "B's sleep 31341 to be gone" no_sleeper 31341
+wait_idle "$CMB"
+echo "A's agent sees none of B's processes in /proc (B's sleep 31341 was running, visible to root)"
+
 # (10) the crew user's GitHub login never reaches a process that runs as a crewmate (N2). A fake `gh` stands in for
 # the operator's login; crewmate C has a project and no token of its own, so hostd mirrors the project into
 # C's crew-runtime/ with that login and C clones the mirror. Hooks in C's own ~/.gitconfig record the environment
@@ -428,10 +443,10 @@ echo "mirror: hostd asked gh for the login $GH_CALLS time(s), C cloned $MIRROR, 
 # The command also records what its own process looks like (probe: descriptors, NoNewPrivs, cgroup).
 FSM=$(
   cat <<EOF
-#!/bin/sh
+#!/bin/bash
 id -u >> "$WORKA/marker"
 cp "$HOME_DIR/.atlas/hostd.token" "$WORKA/stolen" 2>/dev/null
-sh -c 'ls /proc/\$\$/fd >"\$1"; grep NoNewPrivs /proc/\$\$/status >>"\$1"; cat /proc/\$\$/cgroup >>"\$1"' sh "$WORKA/probe" 10<&-
+sh -c 'ls /proc/\$\$/fd >"\$1"; grep NoNewPrivs /proc/\$\$/status >>"\$1"; cat /proc/\$\$/cgroup >>"\$1"' sh "$WORKA/probe"
 exit 0
 EOF
 )

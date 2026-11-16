@@ -273,8 +273,14 @@ pub fn write_beneath(root: &Path, rel: &str, data: &mut dyn std::io::Read) -> st
 }
 
 /// [`write_beneath`]'s reading half: the file's text, an error when it holds more than `max` bytes.
-#[cfg(unix)]
 pub fn read_beneath(root: &Path, rel: &str, max: u64) -> std::io::Result<String> {
+    read_bytes_beneath(root, rel, max).map(|b| String::from_utf8_lossy(&b).into_owned())
+}
+
+/// [`read_beneath`] for bytes (an image): never reads past `max`, so a sparse file of the crewmate's cannot fill
+/// hostd's memory.
+#[cfg(unix)]
+pub fn read_bytes_beneath(root: &Path, rel: &str, max: u64) -> std::io::Result<Vec<u8>> {
     use std::io::Read;
     let file = open_beneath(root, rel, false)?;
     if file.metadata()?.len() > max {
@@ -285,7 +291,7 @@ pub fn read_beneath(root: &Path, rel: &str, max: u64) -> std::io::Result<String>
     }
     let mut bytes = Vec::new();
     file.take(max).read_to_end(&mut bytes)?;
-    Ok(String::from_utf8_lossy(&bytes).into_owned())
+    Ok(bytes)
 }
 
 #[cfg(unix)]
@@ -385,7 +391,7 @@ pub fn write_beneath(root: &Path, rel: &str, data: &mut dyn std::io::Read) -> st
 }
 
 #[cfg(not(unix))]
-pub fn read_beneath(root: &Path, rel: &str, max: u64) -> std::io::Result<String> {
+pub fn read_bytes_beneath(root: &Path, rel: &str, max: u64) -> std::io::Result<Vec<u8>> {
     let path = root.join(rel);
     if std::fs::metadata(&path)?.len() > max {
         return Err(std::io::Error::new(
@@ -393,7 +399,7 @@ pub fn read_beneath(root: &Path, rel: &str, max: u64) -> std::io::Result<String>
             "file too large",
         ));
     }
-    Ok(String::from_utf8_lossy(&std::fs::read(path)?).into_owned())
+    std::fs::read(path)
 }
 
 #[cfg(all(test, unix))]
@@ -472,6 +478,26 @@ mod beneath_tests {
         let start = std::time::Instant::now();
         assert!(put(t.path(), "d/a.png", b"png").is_err());
         assert!(start.elapsed() < std::time::Duration::from_secs(5));
+    }
+
+    // Security review of the crew isolation, S3: `locate` read a screenshot with `fs::read`, with no size limit
+    // and following links; a sparse 50 GB `x.png` in the crewmate's tree filled hostd's memory.
+    #[test]
+    fn bytes_are_read_up_to_a_limit_and_never_through_a_link() {
+        let t = tempfile::tempdir().unwrap();
+        std::fs::write(t.path().join("ok.png"), vec![1u8; 100]).unwrap();
+        std::fs::File::create(t.path().join("huge.png"))
+            .unwrap()
+            .set_len(1 << 40)
+            .unwrap();
+        symlink(t.path().join("ok.png"), t.path().join("link.png")).unwrap();
+        assert_eq!(
+            read_bytes_beneath(t.path(), "ok.png", 1000).unwrap().len(),
+            100
+        );
+        assert!(read_bytes_beneath(t.path(), "ok.png", 99).is_err());
+        assert!(read_bytes_beneath(t.path(), "huge.png", 32 << 20).is_err());
+        assert!(read_bytes_beneath(t.path(), "link.png", 1000).is_err());
     }
 
     #[test]

@@ -100,7 +100,10 @@ fn run_inner(cfg: &Config, req: &GitReq) -> io::Result<(Response, OwnedFd)> {
             leaf: procs,
             tty: false,
             cwd: &req.cwd,
-            max_file: Some(MAX_OUTPUT),
+            // The limit is for what git prints (a runaway diff). A clone or fetch writes pack files into the tree, so
+            // it has none (its stdout is a few lines).
+            max_file: (!matches!(req.args[0].as_str(), "clone" | "fetch" | "pull"))
+                .then_some(MAX_OUTPUT),
         },
     )?;
     // The parent's copies of the stdio fds close with the `Command`; only the files remain.
@@ -332,7 +335,7 @@ mod tests {
         std::fs::write(
             &hook,
             format!(
-                "#!/bin/sh\nid -u > {}\nsh -c '{PROBE}' 10<&- > {}\nexit 1\n",
+                "#!/bin/bash\nid -u > {}\nsh -c '{PROBE}' > {}\nexit 1\n",
                 marker.display(),
                 probe.display()
             ),

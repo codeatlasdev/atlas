@@ -33,6 +33,8 @@ const MAX_CANDIDATES: usize = 5;
 /// Files read while looking for a testid or text in the work tree, and the size of each.
 const MAX_SCAN_FILES: usize = 20_000;
 const MAX_FILE_BYTES: u64 = 512 * 1024;
+/// The largest image `locate` reads (a full-page screenshot is a few MiB).
+const MAX_IMAGE_BYTES: u64 = 32 * 1024 * 1024;
 /// A text shorter than this is too common to point at a file.
 const MIN_TEXT_LEN: usize = 3;
 const SOURCE_EXTS: &[&str] = &[
@@ -283,7 +285,19 @@ pub async fn handle(
     let iso = store.isolated(crewmate_id);
     let work = work_tree(hostd_dir, &crewmate, iso.as_ref())?;
     let image = resolve_image(&work, &req.image)?;
-    let bytes = std::fs::read(&image).map_err(|e| format!("locate: cannot read the image: {e}"))?;
+    // Not `fs::read`: the tree is the crewmate's. No link followed, and no more than MAX_IMAGE_BYTES in memory.
+    let rel = work
+        .canonicalize()
+        .ok()
+        .and_then(|w| {
+            image
+                .strip_prefix(w)
+                .ok()
+                .map(|r| r.to_string_lossy().replace('\\', "/"))
+        })
+        .ok_or("locate: the image is outside your work tree")?;
+    let bytes = layout::read_bytes_beneath(&work, &rel, MAX_IMAGE_BYTES)
+        .map_err(|e| format!("locate: cannot read the image: {e}"))?;
     let image_w = image_width(&bytes);
     let Some(url) = req.url.clone() else {
         return Err(

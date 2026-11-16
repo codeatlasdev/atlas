@@ -41,6 +41,10 @@ const KIT_COMPONENTS = [
 	"Progress",
 	"SettingItem",
 	"TextField",
+	// Source Control (commit box) and Settings → Updates (channel cards).
+	"TextArea",
+	"SegmentedControl",
+	"Skeleton",
 ];
 const Stub = () => {};
 const kit = {

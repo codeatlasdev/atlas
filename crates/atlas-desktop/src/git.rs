@@ -214,3 +214,70 @@ pub async fn git_files(hub: State<'_, Arc<HostHub>>, id: String) -> Result<Vec<S
     v.dedup();
     Ok(v)
 }
+
+/// Name and email of the GitHub account `gh` is signed in as, to prefill the commit identity form.
+/// `gh` missing or signed out is `None` (the form just starts empty).
+#[tauri::command]
+pub async fn gh_identity(
+    hub: State<'_, Arc<HostHub>>,
+    id: String,
+) -> Result<Option<Value>, String> {
+    let dir = root(&id)?;
+    let Ok(out) = crate::worktree::exec(&hub, &dir, &["gh", "api", "user"], 15_000).await else {
+        return Ok(None);
+    };
+    if out.code != Some(0) {
+        return Ok(None);
+    }
+    Ok(identity_from_gh(&out.stdout).map(|(name, email)| json!({"name": name, "email": email})))
+}
+
+/// `gh api user` → `(name, email)`. A private profile has no `name`/`email`: the login and GitHub's no-reply
+/// address (`<id>+<login>@users.noreply.github.com`, the one GitHub itself accepts for commits) stand in.
+fn identity_from_gh(json: &str) -> Option<(String, String)> {
+    let v: Value = serde_json::from_str(json).ok()?;
+    let text = |k: &str| v[k].as_str().map(str::trim).filter(|s| !s.is_empty());
+    let login = text("login")?;
+    let name = text("name").unwrap_or(login);
+    let email = match (text("email"), v["id"].as_u64()) {
+        (Some(e), _) => e.to_string(),
+        (None, Some(id)) => format!("{id}+{login}@users.noreply.github.com"),
+        (None, None) => format!("{login}@users.noreply.github.com"),
+    };
+    Some((name.to_string(), email))
+}
+
+#[cfg(test)]
+mod identity_tests {
+    use super::identity_from_gh;
+
+    #[test]
+    fn a_public_profile_gives_its_name_and_email() {
+        let j = r#"{"login":"octo","id":583231,"name":"The Octocat","email":"octo@github.com"}"#;
+        assert_eq!(
+            identity_from_gh(j),
+            Some(("The Octocat".into(), "octo@github.com".into()))
+        );
+    }
+
+    #[test]
+    fn a_private_profile_falls_back_to_login_and_the_noreply_address() {
+        let j = r#"{"login":"octo","id":583231,"name":null,"email":null}"#;
+        assert_eq!(
+            identity_from_gh(j),
+            Some(("octo".into(), "583231+octo@users.noreply.github.com".into()))
+        );
+        let blank = r#"{"login":"octo","id":7,"name":"  ","email":""}"#;
+        assert_eq!(
+            identity_from_gh(blank),
+            Some(("octo".into(), "7+octo@users.noreply.github.com".into()))
+        );
+    }
+
+    #[test]
+    fn gh_errors_and_garbage_give_nothing() {
+        assert_eq!(identity_from_gh(""), None);
+        assert_eq!(identity_from_gh("not json"), None);
+        assert_eq!(identity_from_gh(r#"{"message":"Bad credentials"}"#), None);
+    }
+}

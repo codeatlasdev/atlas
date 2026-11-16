@@ -166,7 +166,7 @@
 			{:else if u.notesError}
 				<div class="state" role="alert">
 					<WifiOff size={22} />
-					<b>Could not load the release notes</b>
+					<b>Couldn't load the release notes</b>
 					<p>{u.notesError}</p>
 					<Button variant="glass" onclick={() => u.loadNotes()}>
 						{#snippet leading()}<RotateCcw size={14} />{/snippet}
@@ -176,7 +176,7 @@
 			{:else if releases.length === 0}
 				<div class="state">
 					<Sparkles size={22} />
-					<b>No release notes for this version</b>
+					<b>No release notes for {u.notesFor ?? "this version"}</b>
 					<p>The changelog has no entry for it yet.</p>
 					<Button variant="glass" onclick={() => api.openUrl(CHANGELOG_URL)}>Open the full changelog</Button>
 				</div>

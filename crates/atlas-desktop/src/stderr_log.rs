@@ -13,6 +13,9 @@
 //! its web processes, a second launch that exits through single-instance) keeps writing into the
 //! current `stderr.log`, which is what diagnostics read.
 
+#[cfg(target_os = "linux")]
+use atlas_host::paths::stderr_log as path;
+#[cfg(target_os = "linux")]
 use std::path::{Path, PathBuf};
 
 /// Past this size the log moves to `stderr.log.1` (one generation).
@@ -22,11 +25,6 @@ pub const MAX: u64 = 2 * 1024 * 1024;
 /// How often a running app re-checks the size.
 #[cfg(target_os = "linux")]
 const CHECK_EVERY: std::time::Duration = std::time::Duration::from_secs(60);
-
-/// `<base>/desktop/stderr.log`.
-pub fn path(base: &Path) -> PathBuf {
-    base.join("desktop").join("stderr.log")
-}
 
 /// Copy a log at or past `max` to `<name>.1` (replacing the previous one), then truncate it in
 /// place. Not a rename: the running app's descriptor would follow the file to `.1`.

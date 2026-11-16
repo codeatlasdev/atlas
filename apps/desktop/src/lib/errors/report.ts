@@ -7,6 +7,8 @@
  * path, no env). Query strings and long hex/base64-looking tokens are dropped from messages.
  */
 
+import { machineLines } from "./machine.ts";
+
 export interface ErrorReport {
 	/** First line of the error, what the person reads. */
 	message: string;
@@ -47,6 +49,35 @@ export interface Diagnostics {
 		quarantined: boolean;
 		translocated: boolean;
 		channel: string;
+	};
+	/** Distro, session, GPU and the graphics stack (`atlas_core::probe::Platform`, #275). */
+	platform: {
+		distro: string | null;
+		kernel: string | null;
+		session: string | null;
+		desktop: string | null;
+		compositor: string | null;
+		gpus: string[];
+		nvidiaDriver: string | null;
+		mesa: string | null;
+		gtk: string | null;
+		webview: string | null;
+		graphicsEnv: string[];
+	};
+	/** How Atlas got onto the machine (`atlas_core::probe::Packaging`). */
+	packaging: {
+		appimage: string | null;
+		exe: string | null;
+		exeOwner: string | null;
+		localBin: string[];
+	};
+	/** Core dumps of the last day and Atlas's own crash files, with when they happened (`probe::Crashes`). */
+	crashes: {
+		/** `ok`, `unavailable`, or empty where there is no systemd-coredump to ask. */
+		coredumpStatus: string;
+		coredumps: { at: number; pid: number; signal: string; exe: string }[];
+		/** Newest first; `ageSecs` is measured when the report was built. */
+		atlas: { at: number; ageSecs: number; summary: string }[];
 	};
 	hostdLog: string;
 	appLog: string;
@@ -186,6 +217,9 @@ export function detailsText(r: ErrorReport): string {
 				`OS: ${d.os || "unknown"}`,
 				`Running bundle: ${d.install.runningBundle ?? "(not a bundle)"}`,
 				`Installed app: ${d.install.installedApp ?? "none found"}`,
+				// Rust redacted these (`diag::redact`); `scrub` only drops homes and query secrets again: `redactText`'s
+				// token shape reads `WEBKIT_DISABLE_DMABUF_RENDERER=1` and an AppImage mount path as secrets.
+				...machineLines(d).map(scrub),
 				...findings(d).map((f) => `Finding: ${f}`),
 				...(d.lastCrash ? [`Last crash: ${redactText(d.lastCrash)}`] : []),
 				...(d.stderrLog ? ["", "stderr.log (tail):", redactText(d.stderrLog)] : []),
@@ -317,6 +351,9 @@ const diagLines = (r: ErrorReport): string[] => {
 		`- Installed app: ${d.install.installedApp ?? "none found"}`,
 		`- CLI: ${d.install.cli ?? "not found"}${d.install.cliLinkedTo ? ` -> ${d.install.cliLinkedTo}` : ""}`,
 		`- Quarantined: ${d.install.quarantined ? "yes" : "no"}; translocated: ${d.install.translocated ? "yes" : "no"}`,
+		"",
+		"## Machine",
+		...machineLines(d).map((l) => `- ${scrub(l)}`),
 		...(findings(d).length ? ["", "## Findings", ...findings(d).map((f) => `- ${f}`)] : []),
 		"",
 		...(d.lastCrash ? [`- Last crash: ${redactText(d.lastCrash)}`] : []),

@@ -16,6 +16,7 @@ pub(crate) mod desktop_linux;
 pub(crate) mod desktop_windows;
 pub mod dev;
 pub mod doctor;
+pub(crate) mod doctor_bundle;
 pub(crate) mod doctor_checks;
 pub mod down;
 pub mod heavy;

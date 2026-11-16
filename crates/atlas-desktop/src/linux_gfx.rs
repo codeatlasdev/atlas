@@ -12,10 +12,7 @@
 
 use std::collections::BTreeMap;
 
-/// Variables that change WebKitGTK's or GTK's rendering path; shown verbatim when set.
-const PREFIXES: &[&str] = &[
-    "WEBKIT_", "GSK_", "GDK_", "__NV_", "__GLX_", "LIBGL_", "MESA_", "LIBVA_",
-];
+use atlas_core::probe::GRAPHICS_ENV_PREFIXES as PREFIXES;
 
 /// The line for the log: session type, display servers, the rendering variables that are set, the NVIDIA driver.
 /// `env` is the process environment; `nvidia_driver` is the contents of `/proc/driver/nvidia/version`, if present.

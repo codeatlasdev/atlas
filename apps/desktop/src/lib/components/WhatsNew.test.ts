@@ -226,7 +226,9 @@ test("a version the changelog really lacks says so, naming it", async () => {
 		async (cmd) => (cmd === "releases_between" ? [] : {}),
 		running("1.5.0-alpha.99"),
 	);
-	expect(body.querySelector('[data-state="empty"]')?.textContent).toContain("No release notes for 1.5.0-alpha.99");
+	expect(body.querySelector('[data-state="empty"]')?.textContent).toContain(
+		"No release notes for 1.5.0-alpha.99",
+	);
 	expect(body.textContent).toContain("The changelog has no entry for it yet");
 	expect(body.textContent).not.toContain("Couldn't load");
 });

@@ -7,7 +7,7 @@
  * Plain disk text (`lastSaved`, the watcher's reads) always means the on-disk representation: line
  * endings as written, save policy applied. The view holds `\n` text only (`session.ts`).
  */
-import { Compartment, EditorSelection, EditorState, type Extension } from "@codemirror/state";
+import { Compartment, EditorSelection, EditorState, type Extension, type Text } from "@codemirror/state";
 import { EditorView, type ViewUpdate } from "@codemirror/view";
 import { toast } from "@codeatlasdev/ui";
 import { listen, type UnlistenFn } from "@tauri-apps/api/event";
@@ -66,8 +66,6 @@ export class EditorSession {
 	fileSize = $state(0);
 	head = $state<Uint8Array | undefined>();
 	plan = $state<OpenPlan | undefined>();
-	/** Document text, kept for the rich viewers (they render from it). */
-	text = $state("");
 	dirty = $state(false);
 	wrap = $state(false);
 	/** The file changed on disk while the buffer has edits (waiting for the user's choice). */
@@ -96,6 +94,18 @@ export class EditorSession {
 	#off: Promise<UnlistenFn> | undefined;
 	#watchId = "";
 	#applying = false;
+	/** The text `plan` was made from, until the view exists. */
+	#loaded = "";
+	/** Bumped by every document change so `text` readers re-run; the copy itself is made on demand. */
+	#rev = $state(0);
+	#copy: { doc: Text; text: string } | undefined;
+	/**
+	 * What `lastSaved` is in view terms: the document it was made from and the line ending it was
+	 * written with. The buffer is dirty when its document differs from this one (`Text.eq` skips the
+	 * shared structure, so a keystroke costs O(change), not O(file)), the line ending changed, or the
+	 * save policy would rewrite the file (`clean` false: planSave of the document is not what is on disk).
+	 */
+	#base: { doc: Text; eol: OpenPlan["eol"]; clean: boolean } | undefined;
 
 	constructor(
 		readonly abs: string,
@@ -124,7 +134,7 @@ export class EditorSession {
 		const files = await this.#editorConfigs();
 		const plan = planOpen({ raw, bytes: bytes.length, path: this.abs, files, prefs: editorPrefs() });
 		this.plan = plan;
-		this.text = plan.text;
+		this.#loaded = plan.text;
 		this.lastSaved = raw;
 		this.#ext = { ...this.#ext, bufferText: raw, lastSaved: raw, mtime: st.mtime, dirty: false };
 		this.#disk = { mtime: st.mtime, size: st.size };
@@ -167,6 +177,7 @@ export class EditorSession {
 					EditorView.updateListener.of((u) => {
 						if (u.selectionSet || u.docChanged) this.#cursor(u.state);
 						if (!u.docChanged) return;
+						this.#rev++;
 						if (!this.#applying) this.#edited(u.state);
 						this.hooks.onChange(u);
 					}),
@@ -174,6 +185,7 @@ export class EditorSession {
 			}),
 		});
 		this.view = view;
+		this.#base = { doc: view.state.doc, eol: plan.eol, clean: planSave(plan.text, plan) === this.lastSaved };
 		this.#cursor(view.state);
 		this.#watch();
 		return view;
@@ -216,21 +228,34 @@ export class EditorSession {
 
 	// ---- saving -------------------------------------------------------------------------------
 
-	/** Text of the view as it is written to disk. */
-	diskText(): string | undefined {
+	/**
+	 * Document text for the rich viewers (Markdown, SVG, data views). Copied from the view when read and
+	 * cached per document: typing in the editor itself never reads it, so it never pays for it.
+	 */
+	get text(): string {
+		void this.#rev;
+		const doc = this.view?.state.doc;
+		if (!doc) return this.#loaded;
+		if (this.#copy?.doc !== doc) this.#copy = { doc, text: doc.toString() };
+		return this.#copy.text;
+	}
+
+	/** The document as it is written to disk, with the snapshot it was made from. Copies the document: save and conflict checks only. */
+	#snapshot(): { doc: Text; eol: OpenPlan["eol"]; out: string } | undefined {
 		const v = this.view;
-		return v && this.plan ? planSave(v.state.doc.toString(), this.plan) : undefined;
+		const plan = this.plan;
+		if (!v || !plan) return undefined;
+		const doc = v.state.doc;
+		return { doc, eol: plan.eol, out: planSave(doc.toString(), plan) };
+	}
+
+	#isDirty(doc: Text): boolean {
+		const b = this.#base;
+		return !b || !b.clean || b.eol !== this.plan?.eol || !doc.eq(b.doc);
 	}
 
 	#edited(state: EditorState) {
-		const cur = state.doc.toString();
-		this.text = cur;
-		const next = reduceExternal(this.#ext, {
-			kind: "edited",
-			text: this.plan ? planSave(cur, this.plan) : cur,
-		});
-		this.#ext = next.state;
-		this.dirty = next.state.dirty;
+		this.#ext.dirty = this.dirty = this.#isDirty(state.doc);
 		clearTimeout(this.#saveTimer);
 		this.#saveTimer = window.setTimeout(() => void this.save(), SAVE_IDLE_MS);
 	}
@@ -251,8 +276,9 @@ export class EditorSession {
 		clearTimeout(this.#saveTimer);
 		if (this.conflict && !force) return this.#notSaved();
 		if (beforeWrite && !this.#closing) await beforeWrite();
-		const out = this.diskText();
-		if (out === undefined || (out === this.lastSaved && !this.deleted)) return;
+		const snap = this.#snapshot();
+		if (!snap || (snap.out === this.lastSaved && !this.deleted)) return;
+		const out = snap.out;
 		try {
 			if (!force && (await this.#blockedByDisk())) return;
 			await host.fsWrite(this.abs, out);
@@ -261,9 +287,9 @@ export class EditorSession {
 			this.lastSaved = out;
 			this.deleted = false;
 			this.#ext = reduceExternal(this.#ext, { kind: "saved", text: out, mtime: st?.mtime ?? 0 }).state;
+			this.#base = { doc: snap.doc, eol: snap.eol, clean: true };
 			// Edits made while the write was in flight keep the buffer dirty.
-			this.#ext = reduceExternal(this.#ext, { kind: "edited", text: this.diskText() ?? out }).state;
-			this.dirty = this.#ext.dirty;
+			this.#ext.dirty = this.dirty = this.#isDirty(this.view?.state.doc ?? snap.doc);
 		} catch (e) {
 			toast.error(`Save failed: ${errText(e)}`);
 		}
@@ -336,16 +362,25 @@ export class EditorSession {
 				this.#applying = false;
 			}
 		}
-		this.text = next;
 		this.lastSaved = disk;
 		this.conflict = null;
 		this.#ext = { ...this.#ext, bufferText: disk, lastSaved: disk, diskText: null, dirty: false };
 		this.dirty = false;
+		this.#base = {
+			doc: v.state.doc,
+			eol: this.plan?.eol ?? "lf",
+			clean: !!this.plan && planSave(next, this.plan) === disk,
+		};
 	}
 
 	#apply(effect: ExternalEffect, diskText?: string) {
 		if (effect === "reload" && diskText !== undefined) this.#replaceBuffer(diskText);
-		else if (effect === "prompt-conflict" && diskText !== undefined) {
+		else if (effect === "in-sync" && diskText !== undefined) {
+			// Someone wrote what the buffer already says: that is the new baseline.
+			this.lastSaved = diskText;
+			this.dirty = false;
+			this.#base = { doc: this.view!.state.doc, eol: this.plan?.eol ?? "lf", clean: true };
+		} else if (effect === "prompt-conflict" && diskText !== undefined) {
 			this.conflict = { text: diskText };
 			this.hooks.onConflict();
 		} else if (effect === "notice-deleted") this.deleted = true;
@@ -400,6 +435,10 @@ export class EditorSession {
 		const text = await this.#readDisk();
 		if (text === null) return "unreadable";
 		this.#disk = { mtime: st.mtime, size: st.size };
+		// The reducer compares the disk with the buffer as it would be written; typing does not keep that
+		// copy, so make it now (not for our own write coming back: that one matches `lastSaved`).
+		const buffer = text === this.#ext.lastSaved ? undefined : this.#snapshot();
+		if (buffer) this.#ext.bufferText = buffer.out;
 		return this.#feed({ kind: "disk-changed", text, mtime: st.mtime }, text);
 	}
 

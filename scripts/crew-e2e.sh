@@ -413,7 +413,8 @@ docker exec -i "$NAME" setpriv --reuid="$CMUSER" --regid="$CMUSER" --clear-group
   cat > '$DIRA/home/.claude/e2e-hook.sh' && chmod +x '$DIRA/home/.claude/e2e-hook.sh'" <<'HOOK'
 #!/bin/sh
 grep NoNewPrivs /proc/$$/status > "$HOME/e2e-hook-nnp"
-setsid sh -c 'echo started > "$HOME/e2e-hook-started"; sleep 3; for d in /proc/[0-9]*; do tr "\0" " " <"$d/cmdline" 2>/dev/null; echo; done | grep -c "sleep 3134[2]" > "$HOME/e2e-hook-seen"' </dev/null >"$HOME/e2e-hook-log" 2>&1 &
+# nohup: the fake engine exits at once, and the hangup of its terminal would reach this child before it has left the session.
+nohup setsid sh -c 'echo started > "$HOME/e2e-hook-started"; sleep 3; for d in /proc/[0-9]*; do tr "\0" " " <"$d/cmdline" 2>/dev/null; echo; done | grep -c "sleep 3134[2]" > "$HOME/e2e-hook-seen"' </dev/null >"$HOME/e2e-hook-log" 2>&1 &
 HOOK
 atlas crew login "$TARGET" --port "$PORT" claude --crewmate "$CM" </dev/null 2>&1 | tee "$OUT/login-crewmate.log"
 grep -q 'Logged in (fake claude)' "$OUT/login-crewmate.log" || fail "the crewmate's sign-in did not reach the engine through hostd"

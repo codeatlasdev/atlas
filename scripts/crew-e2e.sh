@@ -94,6 +94,7 @@ finish() {
   rc=$?
   set +e
   [[ -n $TUNNEL_PID ]] && kill "$TUNNEL_PID" 2>/dev/null
+  [[ -n ${SPAWN_TUNNEL_PID:-} ]] && kill "$SPAWN_TUNNEL_PID" 2>/dev/null
   collect
   if [[ ${CREW_E2E_KEEP:-} == 1 ]]; then
     echo "container $NAME left running (ssh -p $PORT -F $WORK/ssh_config $TARGET)"
@@ -277,6 +278,127 @@ until_true 30 "the run the restart interrupted to be gone" no_sleeper 31339
 wait_idle "$CM"
 echo "resumed after the restart: $(task_json "$CM" "$T" | jq -c '{state, resumed, restarts}')"
 
+# ── isolation: what one crewmate cannot do to the server or to another crewmate ───────────────────
+denied() { # denied WHAT cmd…: the command must fail
+  local what=$1
+  shift
+  if "$@" >/dev/null 2>&1; then fail "$what was allowed"; fi
+}
+as_user() { local u=$1; shift; srv setpriv --reuid="$u" --regid="$u" --clear-groups "$@"; }
+mode_of() { srv stat -c '%U:%G %a' "$1"; }
+
+say "8. a second crewmate B: what crewmate A cannot do (isolation)"
+CMB=$(hostd crewmate_create '{"name":"Bee","role":"You are the second crew-e2e crewmate.","agent":"claude","approval":"auto","engine":{"kind":"claude"}}' | jq -r .id)
+SLUGB=${CMB//-/}
+SLUGB=${SLUGB:0:12}
+hostd crewmate_secret_set "$(jq -nc --arg id "$CMB" '{id: $id, key: "E2E_SECRET", value: "bee-secret"}')" >/dev/null
+TB=$(send_task "$CMB" "E2E_OK bee$RANDOM")
+wait_task "$CMB" "$TB" "done" 60
+DIRA=/var/lib/atlas-cm/$SLUG
+DIRB=/var/lib/atlas-cm/$SLUGB
+WORKA=$DIRA/work
+AUID=$(srv id -u "$CMUSER")
+
+# (1) a crewmate's directory belongs to root and A cannot change or list it
+for d in "$DIRA" "$DIRB"; do
+  [[ $(mode_of "$d") == "root:root 711" ]] || fail "$d is $(mode_of "$d"), not root:root 711"
+done
+denied "A listing its own crewmate directory" as_user "$CMUSER" ls "$DIRA"
+denied "A renaming work/ in its directory" as_user "$CMUSER" mv "$WORKA" "$DIRA/work.moved"
+denied "A planting a link in its directory" as_user "$CMUSER" ln -s /etc/passwd "$DIRA/memory.md.link"
+denied "A listing B's directory" as_user "$CMUSER" ls "$DIRB"
+denied "A listing the crewmates' parent" as_user "$CMUSER" ls /var/lib/atlas-cm
+
+# (3) A cannot read B's files or the crew user's, nor reach the helpers
+denied "A reading B's memory.md" as_user "$CMUSER" cat "$DIRB/memory.md"
+denied "A reading hostd.token" as_user "$CMUSER" cat "$HOME_DIR/.atlas/hostd.token"
+denied "A reading B's secrets.json" as_user "$CMUSER" cat "$HOME_DIR/.atlas/crew/$CMB/secrets.json"
+srv setpriv --reuid=atlas-crew --regid=atlas-crew --init-groups cat "$HOME_DIR/.atlas/hostd.token" >/dev/null ||
+  fail "control: the crew user cannot read hostd.token either, so the checks above prove nothing"
+for sock in spawn provision; do
+  as_user "$CMUSER" curl -s --unix-socket "/run/atlas-crew/$sock.sock" http://localhost/ >/dev/null 2>&1 && rc=0 || rc=$?
+  [[ $rc == 7 ]] || fail "A connecting to $sock.sock: curl exited $rc, not 7 (could not connect)"
+  srv setpriv --reuid=atlas-crew --regid=atlas-crew --init-groups curl -s --unix-socket "/run/atlas-crew/$sock.sock" http://localhost/ >/dev/null 2>&1 && rc=0 || rc=$?
+  [[ $rc != 7 ]] || fail "control: the crew user cannot connect to $sock.sock either"
+done
+
+# (2) a link where the provisioning service would chown or chmod: the task fails, the target is untouched.
+# The link is made as root here: it stands for whatever a bug would let a crewmate plant.
+link_target_untouched() { # NAME PATH-IN-A'S-DIR TARGET
+  local name=$1 rel=$2 target=$3 before after
+  before=$(mode_of "$target")
+  srv sh -c "mv '$DIRA/$rel' '$DIRA/$rel.real' && ln -s '$target' '$DIRA/$rel'"
+  local t
+  t=$(send_task "$CM" "E2E_OK link$RANDOM")
+  wait_task "$CM" "$t" failed 60
+  task_json "$CM" "$t" | jq -r .error | grep -q 'is a symbolic link' ||
+    fail "a link at $name did not fail the task with 'is a symbolic link': $(task_json "$CM" "$t" | jq -r .error)"
+  after=$(mode_of "$target")
+  [[ $before == "$after" ]] || fail "a link at $name changed $target from '$before' to '$after'"
+  srv sh -c "rm '$DIRA/$rel' && mv '$DIRA/$rel.real' '$DIRA/$rel'"
+  wait_idle "$CM"
+  echo "link at $name: task failed, $target still '$after'"
+}
+link_target_untouched memory.md memory.md /etc/passwd
+link_target_untouched home home "$DIRB/home"
+link_target_untouched work work /etc/ssh
+link_target_untouched crew-runtime crew-runtime /etc/sudoers.d
+T=$(send_task "$CM" "E2E_OK recovered$RANDOM")
+wait_task "$CM" "$T" "done" 60
+
+# (4)(5) A's git config is A's own code: hostd's and the helper's git run it as A, never as the crew user
+as_user "$CMUSER" sh -c "cd '$WORKA' && git init -q . && git -c user.name=a -c user.email=a@example.com commit -q --allow-empty -m init &&
+  printf '#!/bin/sh\nid -u >> \"%s/marker\"\ncp \"%s/.atlas/hostd.token\" \"%s/stolen\" 2>/dev/null\nexit 0\n' '$WORKA' '$HOME_DIR' '$WORKA' > '$WORKA/fsm.sh' && chmod +x '$WORKA/fsm.sh' &&
+  git config core.fsmonitor '$WORKA/fsm.sh'" || fail "A cannot set up a git checkout of its own in work/"
+[[ $(srv stat -c %U "$WORKA/.git") == "$CMUSER" ]] || fail "work/.git is not owned by A"
+T=$(send_task "$CM" "E2E_OK fsmonitor$RANDOM")
+wait_task "$CM" "$T" "done" 60
+# The same through the helper, which is how hostd runs git in A's tree (checked below as (7) for refusals).
+ssh -N -o BatchMode=yes -o ExitOnForwardFailure=yes -o StreamLocalBindUnlink=yes -L "$WORK/spawn.sock:/run/atlas-crew/spawn.sock" -p "$PORT" atlas-crew@127.0.0.1 &
+SPAWN_TUNNEL_PID=$!
+until_true 20 "the helper socket tunnel" test -S "$WORK/spawn.sock"
+helper() { python3 "$ROOT/scripts/crew-e2e/helper-call.py" "$WORK/spawn.sock" "$1"; }
+git_req() { jq -nc --arg u "$CMUSER" --arg cwd "$2" --argjson args "$1" '{op: "git", user: $u, args: $args, cwd: $cwd, timeout_secs: 20}'; }
+r=$(helper "$(git_req '["status"]' "$WORKA")")
+[[ $(jq -r .status <<<"$r") != error ]] || fail "the helper refused a plain git status in A's tree: $r"
+srv test -s "$WORKA/marker" || fail "no core.fsmonitor line: git never ran the checkout's command, so this check proved nothing"
+bad=$(srv cat "$WORKA/marker" | grep -vx "$AUID" || true)
+[[ -z $bad ]] || fail "core.fsmonitor ran as another uid than A's ($AUID): $bad"
+srv test ! -e "$WORKA/stolen" || fail "core.fsmonitor copied hostd.token: it ran as the crew user"
+echo "fsmonitor ran $(srv wc -l <"$WORKA/marker") time(s), always as uid $AUID, hostd.token not copied"
+as_user "$CMUSER" sh -c "cd '$WORKA' && echo one > f && git add f && git -c user.name=a -c user.email=a@example.com commit -q -m one && echo two >> f && git -c user.name=a -c user.email=a@example.com commit -q -am two" ||
+  fail "A cannot edit a tracked file and commit in its own checkout"
+
+# (7) the helper's git request is narrow
+for case in "config|[\"config\",\"core.fsmonitor\",\"x\"]|$WORKA|not allowed" \
+  "-c first|[\"-c\",\"core.fsmonitor=x\",\"status\"]|$WORKA|not allowed" \
+  "cwd outside A's directory|[\"status\"]|/etc|cwd outside" \
+  "cwd in B's directory|[\"status\"]|$DIRB/work|cwd outside"; do
+  IFS='|' read -r name args cwd want <<<"$case"
+  r=$(helper "$(git_req "$args" "$cwd")")
+  [[ $(jq -r .status <<<"$r") == error && $(jq -r .reason <<<"$r") == *"$want"* ]] || fail "the helper did not refuse a git request ($name) with '$want': $r"
+done
+echo "the helper refuses git config, -c first, and a cwd outside A's directory"
+kill "$SPAWN_TUNNEL_PID"
+wait "$SPAWN_TUNNEL_PID" 2>/dev/null || true
+
+# (6) isolation installed but its helper gone: tasks are refused, nothing runs as the crew user
+srv systemctl stop atlas-crew-spawn.socket atlas-crew-spawn.service
+srv rm -f /run/atlas-crew/spawn.sock
+srv systemctl restart atlas-crew
+until_true 60 "hostd to answer again" hostd info
+T=$(send_task "$CM" "E2E_HANG 31340")
+wait_task "$CM" "$T" failed 30
+task_json "$CM" "$T" | jq -r .error | grep -q 'spawn helper' || fail "a task with the helper gone did not say why: $(task_json "$CM" "$T" | jq -r .error)"
+no_sleeper 31340 || fail "a task ran with the spawn helper gone"
+[[ -z $(srv ps -eo user:30,args | grep -E '^atlas-crew +sleep' || true) ]] || fail "something ran as the crew user"
+srv systemctl start atlas-crew-spawn.socket
+srv systemctl restart atlas-crew
+until_true 60 "hostd to answer again" hostd info
+T=$(send_task "$CM" "E2E_OK helper-back$RANDOM")
+wait_task "$CM" "$T" "done" 60
+echo "helper gone: task refused, nothing ran as the crew user; helper back: task done"
+
 # ── 4. export, uninstall ──────────────────────────────────────────────────────────────────────────
 say "7. atlas crew export, then uninstall"
 atlas crew export "$TARGET" --port "$PORT" -o "$WORK/export.tar.gz" 2>&1 | tee "$OUT/export.log"
@@ -305,7 +427,7 @@ srv id atlas-crew >/dev/null || fail "a refused uninstall removed the crew user"
 
 atlas crew uninstall "$TARGET" --port "$PORT" --yes 2>&1 | tee "$OUT/uninstall.log"
 grep -q 'crew server removed' "$OUT/uninstall.log" || fail "uninstall did not say it removed the crew server"
-grep -q "Deleted $HOME_DIR on $TARGET (1 crewmate(s))" "$OUT/uninstall.log" || fail "uninstall did not report what it deleted"
+grep -q "Deleted $HOME_DIR on $TARGET (2 crewmate(s))" "$OUT/uninstall.log" || fail "uninstall did not report what it deleted"
 
 say "7b. nothing of the crew server is left"
 left=$(srv_sh "

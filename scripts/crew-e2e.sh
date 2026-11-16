@@ -471,18 +471,7 @@ srv systemctl restart atlas-crew-egress
 until_true 30 "the egress unit to load the atlas_crew table" table_loaded
 srv systemctl restart nftables
 until_true 30 "the egress unit to load the atlas_crew table again after nftables restarted" table_loaded
-srv nft delete table inet atlas_crew
-! table_loaded >/dev/null 2>&1 || fail "control: the table is still loaded after deleting it"
-T=$(send_task "$CM" "E2E_OK nofirewall$RANDOM")
-wait_task "$CM" "$T" failed 60
-task_json "$CM" "$T" | jq -r .error | grep -q 'firewall table atlas_crew' ||
-  fail "a task with the firewall table missing did not fail naming it: $(task_json "$CM" "$T" | jq -r .error)"
-srv systemctl restart atlas-crew-egress
-until_true 30 "the egress unit to load the table" table_loaded
-wait_idle "$CM"
-T=$(send_task "$CM" "E2E_OK firewall-back$RANDOM")
-wait_task "$CM" "$T" "done" 60
-echo "firewall: a restart of nftables reloaded the table; with it missing a task is refused; reloaded, it runs"
+echo "firewall: a restart of nftables reloaded the table"
 
 # (10) the crew user's GitHub login never reaches a process that runs as a crewmate (N2). A fake `gh` stands in for
 # the operator's login; crewmate C has a project and no token of its own, so hostd mirrors the project into
@@ -584,6 +573,22 @@ for case in "git|$(git_req '["status"]' "$WORKA/linkB")" "spawn|$(spawn_req "$WO
     fail "the helper ($name) entered a link to B's directory, or failed some other way: $r"
 done
 echo "a link to B's work/ as the working directory: git and spawn both fail at the chdir as A"
+
+# (S-C) with the firewall table missing the helper starts nothing (a task cannot show it: provisioning loads the table again
+# at every task start, which is also a repair). The request goes straight to the helper.
+srv nft delete table inet atlas_crew
+! table_loaded >/dev/null 2>&1 || fail "control: the table is still loaded after deleting it"
+for case in "git|$(git_req '["status"]' "$WORKA")" "spawn|$(spawn_req "$WORKA")"; do
+  IFS='|' read -r name req <<<"$case"
+  r=$(helper "$req")
+  [[ $(jq -r .status <<<"$r") == error && $(jq -r .reason <<<"$r") == *"firewall table atlas_crew"* ]] ||
+    fail "the helper ($name) did not refuse with the firewall table missing: $r"
+done
+srv systemctl restart atlas-crew-egress
+until_true 30 "the egress unit to load the table" table_loaded
+r=$(helper "$(git_req '["status"]' "$WORKA")")
+[[ $(jq -r .status <<<"$r") != error ]] || fail "the helper still refuses git with the table back: $r"
+echo "firewall: with the table missing the helper refused git and spawn; reloaded, it runs"
 
 # The same probe, from the planted command of the last plain git request above (A's own git, run by the helper).
 kill "$SPAWN_TUNNEL_PID"

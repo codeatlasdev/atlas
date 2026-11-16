@@ -95,7 +95,7 @@ function box(el: Element, w = 100, h = 20) {
 		height: h,
 		toJSON() {},
 	});
-	Object.defineProperty(el, "offsetParent", { get: () => document.body, configurable: true });
+	el.checkVisibility = () => true;
 }
 const mount = (html: string) => {
 	document.body.innerHTML = html;
@@ -230,8 +230,9 @@ describe("contrastAudit", () => {
 		mount(
 			`<div style="background:#fff"><p style="color:#fefefe;display:none">hidden</p><p style="color:#fefefe;visibility:hidden">invisible</p><p style="color:#fefefe">  </p></div>`,
 		);
+		// display:none: WebKit reports no box.
 		document.querySelectorAll("p").forEach((p, i) => {
-			if (i < 1) Object.defineProperty(p, "offsetParent", { get: () => null, configurable: true });
+			if (i < 1) p.checkVisibility = () => false;
 		});
 		expect(contrastAudit(document.body).failures).toEqual([]);
 	});

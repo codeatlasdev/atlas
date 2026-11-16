@@ -6,6 +6,10 @@ All notable changes to Atlas (CLI, TUI, MCP server and Atlas Desktop). Versions 
 
 ## [Unreleased]
 
+### Fixed
+
+- **A release's GitHub page is never cut off.** GitHub truncates a release body at 125,000 characters without a word, and the 1.5.0-alpha.26 notes (155,000) stopped mid-entry and lost the Install and Update sections. The release workflow now builds the body with `scripts/release-notes.ts`: a section that fits is copied as before (byte for byte), a longer one keeps its intro, headings and every entry's title, with a link to the full section in `CHANGELOG.md` at the tag. Atlas Desktop's What's new already reads `CHANGELOG.md` at the tag and was never affected. The 1.5.0-alpha.26 page was regenerated this way.
+
 ## [1.5.0-alpha.26] — 2026-11-16
 
 Atlas is in **alpha**: expect bugs and breaking changes. Please [report what breaks](https://github.com/codeatlasdev/atlas/issues/new).

@@ -7,6 +7,7 @@ import 'package:flutter_test/flutter_test.dart';
 import 'package:atlas_mobile/core/connection/connection_notifier.dart';
 import 'package:atlas_mobile/core/demo/demo_computer.dart';
 import 'package:atlas_mobile/core/lab/lab.dart';
+import 'package:atlas_mobile/core/permissions/permissions.dart';
 import 'package:atlas_mobile/core/protocol/models.dart';
 import 'package:atlas_mobile/core/storage/mac_storage.dart';
 import 'package:atlas_mobile/core/transport/transport.dart';
@@ -25,6 +26,7 @@ import 'package:atlas_mobile/features/terminal/key_bar.dart';
 import 'package:atlas_mobile/features/terminal/line_input.dart';
 import 'package:atlas_mobile/features/terminal/terminal_screen.dart';
 
+import 'support/fake_permissions.dart';
 import 'support/layout_harness.dart';
 import 'support/stress_computer.dart';
 
@@ -47,6 +49,16 @@ AppWrapper _phone({
 }) =>
     (app) => ProviderScope(
       overrides: [
+        // Every permission on this phone and still to ask: the Settings rows and the explanations are the
+        // longest text they show.
+        permissionsProvider.overrideWithValue(
+          FakePermissions(
+            states: {
+              for (final p in AtlasPermission.values)
+                p: PermissionState.notAsked,
+            },
+          ),
+        ),
         macStorageProvider.overrideWithValue(_Storage(devices)),
         transportFactoryProvider.overrideWithValue((_, _) async {
           final t =
@@ -165,6 +177,11 @@ void main() {
   });
 
   group('pair', () {
+    // The camera is still to ask: the whole screen is its explanation.
+    testWidgets('camera explanation', (t) async {
+      await _check(t, 'pair camera', (_) => const PairScreen(), settleMs: 300);
+    });
+
     testWidgets('error state with a long message', (t) async {
       await _check(
         t,

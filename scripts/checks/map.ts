@@ -26,6 +26,9 @@ export const AREAS: Record<string, string[]> = {
 	// The repo's own scripts, release helpers and everything their tests read.
 	scripts: [
 		"scripts/**",
+		".claude/**", // agent guard wiring, read by scripts/agent-guard*.test.ts
+		".codex/**",
+		".omp/**",
 		"CHANGELOG.md",
 		"testdata/**",
 		"packaging/**",

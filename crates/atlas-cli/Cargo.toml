@@ -26,7 +26,6 @@ serde = { workspace = true }
 serde_json = { workspace = true, features = ["preserve_order"] }
 anyhow = { workspace = true }
 semver = { workspace = true }
-chrono = { workspace = true }
 sha2 = "0.11"
 hex = "0.4"
 self-replace = "1.5"

@@ -389,6 +389,7 @@ class Routine {
     required this.prompt,
     required this.enabled,
     this.lastRun,
+    this.invalid,
   });
 
   factory Routine.create({
@@ -403,12 +404,17 @@ class Routine {
   final bool enabled;
   final int? lastRun;
 
+  /// Why hostd's cron parser refuses this schedule (one saved under an older parser): it is kept as saved and
+  /// never runs until it is fixed or deleted. Computed on crewmate_list, never sent back.
+  final String? invalid;
+
   factory Routine.fromJson(Map<String, dynamic> j) => Routine(
     id: j['id'] as String? ?? '',
     cron: j['cron'] as String? ?? '',
     prompt: j['prompt'] as String? ?? '',
     enabled: j['enabled'] as bool? ?? true,
     lastRun: (j['last_run'] as num?)?.toInt(),
+    invalid: j['invalid'] as String?,
   );
 
   Map<String, dynamic> toJson() => {
@@ -425,6 +431,7 @@ class Routine {
     prompt: prompt ?? this.prompt,
     enabled: enabled ?? this.enabled,
     lastRun: lastRun,
+    invalid: invalid,
   );
 }
 

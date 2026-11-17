@@ -1,4 +1,5 @@
 {
+	"settings_automation_invalid": "Não é executada: {reason}",
 	"settings_display_language_description": "Idioma dos menus, botões e mensagens do Atlas.",
 	"settings_display_language_env_override": "ATLAS_LANG está definida e decide o idioma por enquanto. Sua escolha fica salva e vale quando ela não estiver definida.",
 	"settings_display_language_failed": "Não foi possível mudar o idioma: {error}",

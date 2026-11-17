@@ -6,6 +6,7 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:flutter_test/flutter_test.dart';
 
 import 'package:atlas_mobile/core/connection/connection_notifier.dart';
+import 'package:atlas_mobile/core/permissions/permissions.dart';
 import 'package:atlas_mobile/core/protocol/models.dart';
 import 'package:atlas_mobile/core/push/push_provider.dart';
 import 'package:atlas_mobile/core/storage/mac_storage.dart';
@@ -14,6 +15,7 @@ import 'package:atlas_mobile/core/ui/motion_size.dart';
 import 'package:atlas_mobile/features/settings/settings_screen.dart';
 
 import 'support/frame_probe.dart';
+import 'support/fake_permissions.dart';
 
 // Content that grows into place (a status line arriving, a prompt above a composer) must not jump in one frame
 // with motion on, and must just be there with Reduce motion: an `AnimatedSize` given `Duration.zero` re-dirties
@@ -48,6 +50,18 @@ Future<Completer<String?>> _settings(
       overrides: [
         macStorageProvider.overrideWithValue(_Storage()),
         pushRegistrationProvider.overrideWith((ref) => status.future),
+        // Only notifications exist on this phone, and the row arrives with the answer.
+        permissionsProvider.overrideWithValue(
+          FakePermissions(
+            states: {
+              AtlasPermission.camera: PermissionState.unavailable,
+              AtlasPermission.localNetwork: PermissionState.unavailable,
+            },
+          ),
+        ),
+        permissionStateProvider(AtlasPermission.notifications).overrideWith(
+          (ref) => status.future.then((_) => PermissionState.granted),
+        ),
       ],
       child: _app(const SettingsScreen(), reduce: reduce),
     ),

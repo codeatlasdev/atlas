@@ -120,7 +120,15 @@ class TriggerRow extends StatelessWidget {
                         style: Theme.of(context).textTheme.bodyLarge!
                             .copyWith(color: c.text),
                       ),
-                      if (nextStr != null) ...[
+                      if (trigger.invalid != null) ...[
+                        const SizedBox(height: 2),
+                        Text(
+                          'Not running: ${trigger.invalid}',
+                          key: Key('automation-invalid-${trigger.id}'),
+                          style: Theme.of(context).textTheme.bodySmall!
+                              .copyWith(color: c.error),
+                        ),
+                      ] else if (nextStr != null) ...[
                         const SizedBox(height: 2),
                         Text(
                           'Next: $nextStr',

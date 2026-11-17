@@ -5,6 +5,7 @@
 import { colorScheme, toast } from "@codeatlasdev/ui";
 import { nativeFeel } from "@codeatlasdev/ui/kit";
 import { dismissHoverOnBlur } from "./hoverDismiss.ts";
+import { releaseClosingModals } from "./closingLayers.ts";
 import { allowContextMenu } from "#lib/contextMenu.ts";
 import { invoke } from "@tauri-apps/api/core";
 import { getCurrentWindow } from "@tauri-apps/api/window";
@@ -230,6 +231,8 @@ export function startSession(): () => void {
 	exposeStores();
 	const stopFeel = nativeFeel({ blockZoom: true, allowContextMenu });
 	const stopHoverDismiss = dismissHoverOnBlur();
+	// A closing modal stops blocking the page at once (kit workaround, shell/closingLayers.ts, #501).
+	const stopClosingModals = releaseClosingModals();
 	// A press on a terminal/browser closes menus and popovers like a press on the page does.
 	const stopNativeClicks = startNativeClicks();
 	// A press on a native view gives it the keyboard, even when a closing menu restores focus to its trigger.
@@ -270,6 +273,7 @@ export function startSession(): () => void {
 		crew.dispose();
 		stopFeel();
 		stopHoverDismiss();
+		stopClosingModals();
 		stopNativeClicks();
 		stopNativeFocus();
 		stopHitMap();

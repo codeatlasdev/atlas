@@ -226,10 +226,23 @@ pub async fn git_run(
     Ok(json!({"code": r["code"], "stdout": dec("stdout"), "stderr": dec("stderr")}))
 }
 
-/// Tracked + untracked (not ignored) files, for Quick Open.
+/// Quick Open walks at most this many files of a folder that is not a git repository, for at most this long.
+const PLAIN_FOLDER_FILES: usize = 20_000;
+const PLAIN_FOLDER_BUDGET: std::time::Duration = std::time::Duration::from_secs(2);
+
+/// Tracked + untracked (not ignored) files, for Quick Open. A folder with no `.git` (a plain folder) has no index to
+/// ask, so it is walked instead (`atlas_core::filelist`), off the async threads and bounded.
 #[tauri::command]
 pub async fn git_files(hub: State<'_, Arc<HostHub>>, id: String) -> Result<Vec<String>, String> {
     let dir = root(&id)?;
+    if dir.is_dir() && !dir.join(".git").exists() {
+        let listing = tokio::task::spawn_blocking(move || {
+            atlas_core::filelist::list_files(&dir, PLAIN_FOLDER_FILES, PLAIN_FOLDER_BUDGET)
+        })
+        .await
+        .map_err(|e| e.to_string())?;
+        return Ok(listing.files);
+    }
     let out = git(
         &hub,
         &dir,

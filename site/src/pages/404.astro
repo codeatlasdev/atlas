@@ -1,16 +1,46 @@
 ---
 import Base from "../layouts/Base.astro";
+import { m } from "../lib/paraglide/messages.js";
+import { LOCALES } from "../lib/i18n";
+
+// One 404.html serves every URL (Cloudflare Pages), so its language is not known at build time. Both versions are in the HTML, English
+// shown; a visitor under /pt-br/ gets the pt-BR one (script below, which also sets <html lang>). Without JavaScript: English.
+const text = Object.fromEntries(
+	LOCALES.map((locale) => [
+		locale,
+		{
+			heading: m.not_found_heading({}, { locale }),
+			text: m.not_found_text({}, { locale }),
+			home: m.not_found_home({}, { locale }),
+			docs: m.not_found_docs({}, { locale }),
+		},
+	]),
+);
+const docsHref = { en: "/docs/getting-started/", "pt-BR": "/pt-br/docs/getting-started/" };
 ---
-<Base ground="paper" title="Page not found · Atlas" description="This page does not exist." noindex>
-	<section class="wrap nf">
-		<h1 class="display">This page is off the map.</h1>
-		<p>The link is old or the page was never written. Docs search finds most things.</p>
-		<div class="cta">
-			<a class="btn solid" href="/">Back to the stack</a>
-			<a class="btn" href="/docs/getting-started/">Read the docs</a>
-		</div>
+<Base ground="paper" title={m.not_found_title({}, { locale: "en" })} description={m.not_found_description({}, { locale: "en" })} noindex>
+	<section class="wrap nf" data-title-pt={m.not_found_title({}, { locale: "pt-BR" })}>
+		{LOCALES.map((locale) => (
+			<div lang={locale} data-nf={locale} hidden={locale !== "en"}>
+				<h1 class="display">{text[locale].heading}</h1>
+				<p>{text[locale].text}</p>
+				<div class="cta">
+					<a class="btn solid" href="/">{text[locale].home}</a>
+					<a class="btn" href={docsHref[locale]}>{text[locale].docs}</a>
+				</div>
+			</div>
+		))}
 	</section>
 </Base>
+<script>
+	// The path says the language of the page the visitor was looking for.
+	const pt = location.pathname.toLowerCase().startsWith("/pt-br/");
+	if (pt) {
+		document.documentElement.lang = "pt-BR";
+		document.title = document.querySelector<HTMLElement>("[data-title-pt]")?.dataset.titlePt ?? document.title;
+		for (const el of document.querySelectorAll<HTMLElement>("[data-nf]")) el.hidden = el.dataset.nf !== "pt-BR";
+	}
+</script>
 <style>
 	.nf { min-height: 70vh; min-height: 70svh; padding: 8rem 0 4rem; }
 	h1 { font-size: clamp(3rem, 10vw, 8rem); max-width: 12ch; }

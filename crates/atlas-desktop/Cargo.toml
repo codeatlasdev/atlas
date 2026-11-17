@@ -1,6 +1,6 @@
 [package]
 name = "atlas-desktop"
-version = "1.5.0-alpha.25"
+version = "1.5.0-alpha.26"
 edition.workspace = true
 rust-version.workspace = true
 license.workspace = true
@@ -42,7 +42,6 @@ base64 = { workspace = true }
 tokio = { workspace = true }
 serde = { workspace = true }
 serde_json = { workspace = true }
-chrono = { workspace = true }
 dirs = { workspace = true }
 sha1_smol = "1"
 notify = { workspace = true }

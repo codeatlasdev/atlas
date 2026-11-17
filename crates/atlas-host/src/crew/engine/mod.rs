@@ -56,11 +56,12 @@ pub(super) fn program(kind: &str) -> String {
     kind.to_string()
 }
 
-/// Whether a crewmate's engine can pause for the user's approval of a tool call. `claude` asks
-/// through its permission-prompt tool and `omp` through the approval extension; `codex exec` and
-/// `opencode run --auto` have no approval channel here, so they only ever run unattended.
+/// Whether a crewmate's engine can pause for the user's approval of a tool call (`can_ask` in
+/// `data/agents.json`). `claude` asks through its permission-prompt tool and `omp` through the approval
+/// extension; `codex exec` and `opencode run --auto` have no approval channel here, so they only ever run
+/// unattended. An unknown kind cannot ask.
 pub(crate) fn can_ask(kind: &str) -> bool {
-    matches!(kind, "claude" | "omp")
+    atlas_core::agents::get(kind).is_some_and(|a| a.can_ask)
 }
 
 /// A turn's cancel handle: whoever holds a clone can end the turn (`fire`), and the turn sees it
@@ -160,9 +161,10 @@ impl Drop for TurnProc {
     }
 }
 
-/// `Child::wait_with_output` without consuming the child, so a cancelled wait can still kill it:
-/// stdout and stderr are read to the end while the process is waited for.
-async fn wait_with_output(
+/// `Child::wait_with_output` without consuming the child, so a cancelled wait can still kill it (and, on
+/// Windows, the child's handle keeps its pid from being reused until the caller lets go of it): stdout and
+/// stderr are read to the end while the process is waited for.
+pub(crate) async fn wait_with_output(
     child: &mut tokio::process::Child,
 ) -> std::io::Result<std::process::Output> {
     use tokio::io::AsyncReadExt;

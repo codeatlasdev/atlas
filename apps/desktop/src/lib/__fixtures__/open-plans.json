@@ -1,0 +1,10 @@
+{
+	"loose": {
+		"root": "/Users/m/Downloads",
+		"standalone": true
+	},
+	"project": {
+		"root": "/Users/m/repo",
+		"standalone": false
+	}
+}

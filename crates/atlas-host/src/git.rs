@@ -363,11 +363,10 @@ fn provider(data_dir: &Path) -> review::Provider {
         .and_then(|t| serde_json::from_str(&t).ok())
         .unwrap_or(Value::Null);
     let get = |k: &str| settings.get(k).and_then(Value::as_str);
-    let installed: Vec<&str> = ["omp", "claude", "codex"]
-        .into_iter()
+    let installed: Vec<&str> = review::provider_ids()
         .filter(|a| {
             atlas_core::agents::get(a)
-                .is_some_and(|d| atlas_core::login_env::which(d.bin).is_some())
+                .is_some_and(|d| atlas_core::login_env::which(&d.bin).is_some())
         })
         .collect();
     review::resolve_provider(get("gitCommitAgent"), get("defaultAgent"), &installed)
@@ -404,13 +403,9 @@ pub async fn commit_message(data_dir: &Path, root: &str) -> Result<Value, String
         .map(|o| o.lines().map(str::to_string).collect())
         .unwrap_or_default();
     let prompt = review::build_prompt(&review::commit_rules(&docs), &recent, "", &d);
-    let mut argv: Vec<String> = review::provider_argv(agent)
-        .expect("known agent")
-        .into_iter()
-        .map(str::to_string)
-        .collect();
+    let mut argv: Vec<String> = review::provider_argv(agent).expect("known agent").to_vec();
     if let Some(bin) =
-        atlas_core::agents::get(agent).and_then(|a| atlas_core::login_env::which(a.bin))
+        atlas_core::agents::get(agent).and_then(|a| atlas_core::login_env::which(&a.bin))
     {
         argv[0] = bin.to_string_lossy().into_owned();
     }

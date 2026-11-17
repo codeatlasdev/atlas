@@ -34,7 +34,7 @@
 	<MissingProject {p} />
 {:else if p}
 	<ProjectHeader {p} />
-	{#if space.current}<ActivityDrawer projectId={p.id} /><MachineDrawer />{/if}
+	{#if space.current && p.kind !== "folder"}<ActivityDrawer projectId={p.id} /><MachineDrawer />{/if}
 
 	{#if p.error}
 		<div class="banner">

@@ -98,7 +98,7 @@ pub fn debug_log(state: State<'_, DebugState>, level: String, msg: String) {
     if logs.len() == MAX_LOGS {
         logs.pop_front();
     }
-    let ts = chrono::Local::now().format("%H:%M:%S%.3f").to_string();
+    let ts = atlas_core::time::local_hms_millis(std::time::SystemTime::now());
     logs.push_back(json!({ "seq": seq, "ts": ts, "level": level, "msg": msg }));
 }
 
@@ -434,7 +434,7 @@ async fn gesture_record<R: Runtime>(
     let events = rx.recv().map_err(|e| e.to_string())??;
     let trace = json!({
         "name": out.file_stem().and_then(|s| s.to_str()).unwrap_or("recorded"),
-        "source": format!("recorded:{} {}s on this Mac's trackpad", chrono::Local::now().format("%Y-%m-%d %H:%M"), secs),
+        "source": format!("recorded:{} {}s on this Mac's trackpad", atlas_core::time::local_date_hm(std::time::SystemTime::now()), secs),
         "expect": { "zone": "space", "steps": 0, "untouched": false },
         "events": events,
     });

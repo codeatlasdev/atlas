@@ -1,0 +1,15 @@
+{
+	"_recorded": "gh version 2.103.3 (2026-10-26), 2026-11-16: GH_CONFIG_DIR empty: not signed in",
+	"argv": [
+		"gh",
+		"pr",
+		"view",
+		"--json",
+		"number,title,state,url,body,author,reviews,comments,statusCheckRollup,mergeable,reviewDecision,headRefName,headRefOid,baseRefName,isDraft"
+	],
+	"result": {
+		"code": 4,
+		"stdout": "",
+		"stderr": "gh: To use GitHub CLI in automation, set the GH_TOKEN environment variable.\n"
+	}
+}

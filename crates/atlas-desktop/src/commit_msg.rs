@@ -13,7 +13,7 @@ use tauri::{AppHandle, Emitter, Manager, State};
 
 use atlas_core::git_review::{
     ALL_CHANGES, Event, Provider, STAGED_CHANGES, build_prompt, commit_rules, digest,
-    new_file_args, provider_argv, resolve_provider, run_provider,
+    new_file_args, provider_argv, provider_ids, resolve_provider, run_provider,
 };
 
 use crate::host::HostHub;
@@ -34,11 +34,10 @@ fn setting(key: &str) -> Option<String> {
 }
 
 fn installed() -> Vec<&'static str> {
-    ["omp", "claude", "codex"]
-        .into_iter()
+    provider_ids()
         .filter(|a| {
             atlas_core::agents::get(a)
-                .and_then(|d| crate::agent::registry::which(d.bin))
+                .and_then(|d| crate::agent::registry::which(&d.bin))
                 .is_some()
         })
         .collect()
@@ -157,14 +156,10 @@ pub async fn commit_msg_generate(
         instruction.as_deref().unwrap_or(""),
         &d,
     );
-    let mut argv: Vec<String> = provider_argv(agent)
-        .expect("known agent")
-        .into_iter()
-        .map(str::to_string)
-        .collect();
+    let mut argv: Vec<String> = provider_argv(agent).expect("known agent").to_vec();
     // The agent's own binary path (login-shell PATH), not whatever the app inherited.
     if let Some(bin) =
-        atlas_core::agents::get(agent).and_then(|a| crate::agent::registry::which(a.bin))
+        atlas_core::agents::get(agent).and_then(|a| crate::agent::registry::which(&a.bin))
     {
         argv[0] = bin.to_string_lossy().into_owned();
     }

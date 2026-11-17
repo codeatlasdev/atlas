@@ -110,6 +110,16 @@ class _RoutineRow extends StatelessWidget {
                       fontFamilyFallback: monoFallback,
                     ),
                   ),
+                  if (routine.invalid != null)
+                    Padding(
+                      padding: const EdgeInsets.only(top: 2),
+                      child: Text(
+                        'Not running: ${routine.invalid}',
+                        key: Key('routine-invalid-$index'),
+                        style: Theme.of(context).textTheme.bodySmall!
+                            .copyWith(color: c.error),
+                      ),
+                    ),
                 ],
               ),
             ),

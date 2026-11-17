@@ -37,15 +37,11 @@ export function applyInstallLine(p: InstallProgress, line: string): InstallProgr
 	return { ...p, done: p.active ? new Set([...p.done, p.active]) : p.done, active: phase };
 }
 
-/** Which password prompt an install failure calls for: the Mac's key is not authorized yet, sudo needs a password, or neither. */
-export function authModeForError(err: string): "authorize" | "sudo" | "none" {
-	if (err.includes("Permission denied (publickey)")) return "authorize";
-	if (
+/** Whether a (string) failure of the browsers commands is sudo asking for a password, so the page asks for it and retries. */
+export function needsSudoPassword(err: string): boolean {
+	return (
 		err.includes("asks for a password") ||
 		err.includes("passwordless sudo") ||
 		err.includes("sudo password rejected")
-	) {
-		return "sudo";
-	}
-	return "none";
+	);
 }

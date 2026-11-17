@@ -1,0 +1,17 @@
+{
+	"os_reveal_in_file_manager": [
+		{
+			"declarations": [
+				"input os"
+			],
+			"selectors": [
+				"os"
+			],
+			"match": {
+				"os=mac": "Reveal in Finder",
+				"os=windows": "Reveal in File Explorer",
+				"os=*": "Reveal in file manager"
+			}
+		}
+	]
+}

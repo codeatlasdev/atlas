@@ -294,22 +294,20 @@ Narration is a synthetic voice and the music bed is generated; keep the disclosu
 
 English is the source language and Brazilian Portuguese (pt-BR) is the first translation. Translations are plain files in the repository, reviewed in the pull request like code; there is no account to create anywhere. You do not need to write Rust or Svelte to translate. Before you write or translate any user-facing text, read [`i18n/style/README.md`](https://github.com/codeatlasdev/atlas/blob/main/i18n/style/README.md) (voice, punctuation, no em dashes) and the file for your language.
 
-Where the text lives:
+Where the text lives: **one tree for the CLI, the TUI, the desktop app and the website**, `i18n/messages/<area>/<lang>.json`, one small folder per area (`settings`, `crew_onboarding`, `cli_config`, ...). Each area has `en.json`, one file per language, and `meta.json` (what each message is and where it appears). Words every screen shares (Cancel, Delete, key names, "your Mac" or "this PC") live once in the `common` areas. `i18n/surfaces.json` says which areas each surface uses; the files the apps read are generated (`bun run i18n:generate`), so you never edit them.
 
-|Surface|Catalog|
+|What|Where|
 |---|---|
-|CLI, TUI, desktop menus and notifications|`crates/atlas-i18n/locales/<lang>/<area>.ftl` ([Fluent](https://projectfluent.org/))|
-|Desktop app|`apps/desktop/messages/<lang>.json`|
-|Website|`site/messages/<lang>.json`|
+|Interface text|`i18n/messages/<area>/<lang>.json`|
 |Documentation pages|`docs/<lang>/<page>.md`, with `source_sha` in the front matter|
 
-**Fixing or translating a string.** Edit the file of your language, keep every `{placeholder}` and `$variable` exactly as in English, and run `bun run i18n:check`. It is offline and takes seconds; each finding names the file, the line and the key. If a message is marked outdated, the English changed after it was translated: read the English, update yours, run `bun run i18n:fix` to refresh `i18n/lock/`. The tone and the terms to keep in English are in `i18n/style/` and `i18n/glossary.yaml`. Plurals need care: in pt-BR zero reads as singular, so give "nenhum" its own variant where "0 arquivo" would sound wrong.
+**Fixing or translating a string.** Edit the file of your language in the area folder, keep every `{placeholder}` exactly as in English, and run `bun run i18n:check`. It is offline and takes seconds; each finding names the file, the line and the key. If a message is marked outdated, the English changed after it was translated: read the English, update yours, run `bun run i18n:fix` to refresh the area's lock file. Use `bun run i18n:find <text>` to see whether a word already exists in `common`. The tone and the terms to keep in English are in `i18n/style/` and `i18n/glossary.yaml`. Plurals need care: in pt-BR zero reads as singular, so give "nenhum" its own variant where "0 arquivo" would sound wrong.
 
 **Drafting with a model.** `bun run i18n:translate` translates only the keys that are missing or outdated, with the glossary and each key's description in the prompt, using your own `ANTHROPIC_API_KEY` or any OpenAI-compatible endpoint (`I18N_BASE_URL`, Ollama works). A native speaker still reviews the result in the pull request.
 
 **Adding a language, in one pull request** (one language per pull request):
 
-1. `bun run i18n:add-locale <tag> --owner @you` (a BCP-47 tag such as `es` or `fr`). It adds the language to `i18n/locales.json`, `atlas_core::lang::SUPPORTED`, the inlang projects, the desktop `Info.plist`, and the owner lines in `.github/CODEOWNERS`, and creates the catalog folders.
+1. `bun run i18n:add-locale <tag> --owner @you` (a BCP-47 tag such as `es` or `fr`). It adds the language to `i18n/locales.json`, `atlas_core::lang::SUPPORTED`, the desktop `Info.plist`, and the owner lines in `.github/CODEOWNERS`, and creates `<tag>.json` in every area folder; the generators pick the language up for every surface.
 2. Translate with `bun run i18n:translate --locale <tag>` and by hand until `bun run i18n:check` is clean for your language. A new language starts as `community`: a missing key falls back to English instead of failing the gate; pt-BR is the only required one.
 3. Open the pull request. The `CODEOWNERS` owner of your language reviews it, and a maintainer merges it.
 

@@ -1,5 +1,6 @@
 /**
- * The display-language compiler: `messages/{locale}.json` (inlang message format) in, typed `m.*()` functions out at
+ * The display-language compiler: `.i18n/{locale}.json` (inlang message format, generated from the one source tree
+ * `i18n/messages/**` by `scripts/i18n/generate.ts`, gitignored) in, typed `m.*()` functions out at
  * `src/lib/paraglide/` (generated, gitignored). ONE options object for the two callers that must agree:
  * `vite.config.ts` (dev and build, recompiles on every catalog edit) and `compileMessages()` (`bun run i18n:compile`,
  * and the `bun test` preload, which has no Vite).
@@ -10,6 +11,7 @@
  */
 import { compile } from "@inlang/paraglide-js";
 import { readdirSync, statSync } from "node:fs";
+import { spawnSync } from "node:child_process";
 import { join } from "node:path";
 import { fileURLToPath } from "node:url";
 
@@ -25,10 +27,39 @@ export const PARAGLIDE: Parameters<typeof compile>[0] = {
 	emitTsDeclarations: true,
 };
 
-const newest = (dir: string) =>
-	Math.max(0, ...readdirSync(dir).map((f) => statSync(join(dir, f)).mtimeMs));
+const repo = fileURLToPath(new URL("../../..", import.meta.url));
 
-/** Whether `src/lib/paraglide` is missing or older than the catalogs and the project settings. */
+/**
+ * Write `.i18n/{locale}.json` from i18n/messages (only the files that changed, so mtimes stay put when nothing did).
+ * Always `bun`, never `process.execPath`: `svelte-kit sync` and `vite` load vite.config.ts (and so this file) in Node,
+ * which cannot run the generator's TypeScript.
+ */
+export function generateMessages(): void {
+	const r = spawnSync("bun", [join(repo, "scripts/i18n/generate.ts"), "--surface", "desktop"], {
+		cwd: repo,
+		encoding: "utf8",
+	});
+	if (r.status !== 0) throw new Error(`i18n:generate failed: ${r.stderr || r.stdout}`);
+}
+
+/** Vite plugin: regenerate `.i18n` when a message under i18n/messages changes, so Paraglide recompiles. */
+export function messagesWatcher() {
+	const dir = join(repo, "i18n/messages");
+	return {
+		name: "atlas-i18n-generate",
+		configureServer(server: {
+			watcher: { add(p: string): void; on(e: string, f: (p: string) => void): void };
+		}) {
+			server.watcher.add(dir);
+			for (const ev of ["add", "change", "unlink"])
+				server.watcher.on(ev, (f) => f.startsWith(dir) && generateMessages());
+		},
+	};
+}
+
+const newest = (dir: string) => Math.max(0, ...readdirSync(dir).map((f) => statSync(join(dir, f)).mtimeMs));
+
+/** Whether `src/lib/paraglide` is missing or older than the generated inputs and the project settings. */
 export function isStale(): boolean {
 	let built: number;
 	try {
@@ -36,11 +67,12 @@ export function isStale(): boolean {
 	} catch {
 		return true;
 	}
-	return Math.max(newest(join(root, "messages")), newest(join(root, "project.inlang"))) > built;
+	return Math.max(newest(join(root, ".i18n")), newest(join(root, "project.inlang"))) > built;
 }
 
 /** Compile the catalogs to `src/lib/paraglide`; with `onlyIfStale`, only when they changed since. */
 export async function compileMessages(onlyIfStale = false): Promise<void> {
+	generateMessages();
 	if (onlyIfStale && !isStale()) return;
 	const cwd = process.cwd();
 	process.chdir(root);

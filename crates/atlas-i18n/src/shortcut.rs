@@ -4,7 +4,7 @@
 //! and the caller passes `shortcut("cmd-shift-p")`. That keeps `Ctrl+Shift+P` and `⇧⌘P` out of
 //! every translation, and follows the OS. Same canonical strokes and same output as
 //! `label()` in `apps/desktop/src/lib/keys.ts` (`cmd-shift-p`, `ctrl-space`, `alt-enter`).
-//! Key names off macOS come from `keys.ftl`, so a language can spell `Space` its own way;
+//! Key names off macOS come from the `common_keys` area of the catalog (`i18n/messages`), so a language can spell `Space` its own way;
 //! modifiers stay as printed on keyboards.
 
 /// The shortcut for `stroke` (`-`-separated lowercase, last part the key; a trailing `--` is the
@@ -28,25 +28,25 @@ pub fn shortcut_for(stroke: &str, os: &'static str, lang: &str) -> String {
     let word = |id: &str| crate::lookup_on(lang, id, None, os).unwrap_or_else(|| id.to_owned());
     let mut out = Vec::new();
     if has("ctrl") || has("cmd") {
-        out.push(word("key-ctrl"));
+        out.push(word("common_keys_ctrl"));
     }
     if has("alt") {
-        out.push(word("key-alt"));
+        out.push(word("common_keys_alt"));
     }
     if has("shift") {
-        out.push(word("key-shift"));
+        out.push(word("common_keys_shift"));
     }
     out.push(match key {
-        "escape" => word("key-escape"),
-        "enter" => word("key-enter"),
-        "tab" => word("key-tab"),
-        "backspace" => word("key-backspace"),
-        "delete" => word("key-delete"),
-        "space" => word("key-space"),
-        "home" => word("key-home"),
-        "end" => word("key-end"),
-        "pageup" => word("key-pageup"),
-        "pagedown" => word("key-pagedown"),
+        "escape" => word("common_keys_escape"),
+        "enter" => word("common_keys_enter"),
+        "tab" => word("common_keys_tab"),
+        "backspace" => word("common_keys_backspace"),
+        "delete" => word("common_keys_delete"),
+        "space" => word("common_keys_space"),
+        "home" => word("common_keys_home"),
+        "end" => word("common_keys_end"),
+        "pageup" => word("common_keys_pageup"),
+        "pagedown" => word("common_keys_pagedown"),
         "up" => "↑".to_owned(),
         "down" => "↓".to_owned(),
         "left" => "←".to_owned(),

@@ -24,7 +24,6 @@
 # "Translating Atlas"). pt-BR is a required language; its owners are the maintainers who speak it.
 # `bun run i18n:add-locale <tag>` adds the two lines for a new language.
 **/pt-BR/**                  @mvilacad @luancoleto
-/*/*/messages/pt-BR.json     @mvilacad @luancoleto
-/site/messages/pt-BR.json    @mvilacad @luancoleto
+/i18n/messages/*/pt-BR.json  @mvilacad @luancoleto
 /i18n/glossary.yaml          @codeatlasdev/atlas-maintainers
 /i18n/style/                 @codeatlasdev/atlas-maintainers

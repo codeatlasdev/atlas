@@ -16,14 +16,14 @@ while IFS= read -r f || [[ -n $f ]]; do
       case "$f" in skills/*) front=true; rust=true ;; esac   # skills are embedded in the CLI and checked
       case "$f" in apps/mobile/*) mobile=true ;; esac
       ;;
-    # The i18n job (bun run i18n:check): Fluent catalogs, and every Rust file its hardcoded-text ratchet scans
-    # (scripts/i18n/hardcoded/rust.ts RUST_DIRS). Scanning by directory, not by `t!(`: the ratchet exists to catch the
-    # new println!/bail! that has no `t!(` in it, and names alone cannot tell which file contains what.
-    crates/*/locales/*|crates/atlas-cli/src/*|crates/atlas-tui/src/*|crates/atlas-desktop/src/*|crates/atlas-host/src/*) rust=true; i18n=true ;;
+    # The i18n job (bun run i18n:check) reads Rust sources: the hardcoded-text ratchet (scripts/i18n/hardcoded/rust.ts) and
+    # the t!("key") references (undefined-key, unused) of every crate. Scanning by directory, not by `t!(`: the ratchet
+    # exists to catch the new println!/bail! that has no `t!(` in it, and names alone cannot tell which file contains what.
+    crates/*/src/*|crates/*/tests/*) rust=true; i18n=true ;;
     crates/*|Cargo.toml|Cargo.lock|rust-toolchain.toml|deny.toml|.cargo/*|.config/nextest.toml) rust=true ;;
     apps/desktop/*) front=true; rust=true; i18n=true ;;   # the desktop shell embeds the frontend build; catalogs and ratchets
     apps/mobile/*) mobile=true ;;
-    site/messages/*|site/project.inlang/*|site/src/*) site=true; i18n=true ;;   # catalogs and the source ratchets
+    site/project.inlang/*|site/src/*) site=true; i18n=true ;;   # the Paraglide project and the source ratchets
     site/public/install.ps1) site=true; installer=true ;;   # the Windows installer has its own job (PowerShell 5.1 and 7)
     site/*) site=true ;;
     services/push-relay/*) relay=true ;;

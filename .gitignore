@@ -68,3 +68,6 @@ studio/out/
 demo/.out/
 __pycache__/
 *.pyc
+
+# i18n: inlang plugin caches (absolute paths of whoever ran the build) and Paraglide inputs generated at build time
+**/project.inlang/cache/

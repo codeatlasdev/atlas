@@ -15,7 +15,7 @@ export interface GlossaryEntry {
 	dnt?: boolean;
 	note?: string;
 	/** Per locale: the noun an OS-specific concept takes on each platform (`en: { mac: your Mac, windows: this PC, linux: ... }`).
-	 * Messages select on `os` (Fluent `$os ->`, Paraglide selector `os`); the lint forbids the nouns outside such a select. */
+	 * Messages select on `os` (a selector `os` in the variants, `mac`|`windows`|`*`); the lint forbids the nouns outside such a select. */
 	os?: Record<string, OsForms>;
 	/** Per locale: grammatical gender of a kept term (`pt-BR: f` = "a branch"). Shown to the translator, not enforced. */
 	gender?: Record<string, string>;

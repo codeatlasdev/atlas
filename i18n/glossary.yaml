@@ -4,7 +4,7 @@
 #   gender:       per locale, the grammatical gender of a kept term (pt-BR: f = "a branch"); shown to the translator
 #   advice:       per locale, a wording decision no pattern can check; shown to the translator
 #   os:           per locale, the noun an OS-specific concept takes on each platform (mac | windows | linux). A message
-#                 that needs one selects on `os` (Fluent `$os ->`, Paraglide selector `os`); i18n:check rejects Mac,
+#                 that needs one selects on `os` (a variants message with an `os` selector); i18n:check rejects Mac,
 #                 macOS, Finder, Windows and Explorer in any message that does not (platform-noun), and shortcut
 #                 glyphs or `Cmd+` chords in any catalog value (shortcut): a shortcut is a {key} placeholder.
 #   note:         why, for the people maintaining this file
@@ -98,7 +98,7 @@
       mac: seu Mac
       windows: este PC
       linux: este computador
-  note: crates/atlas-i18n/locales/en/terms.ftl term-your-computer
+  note: common_os_your_computer
 - term: file manager
   os:
     en:
@@ -109,7 +109,7 @@
       mac: Finder
       windows: Explorador de Arquivos
       linux: gerenciador de arquivos
-  note: term-file-manager
+  note: common_os_file_manager
 - term: trash
   os:
     en:
@@ -120,7 +120,7 @@
       mac: Lixeira
       windows: Lixeira
       linux: Lixeira
-  note: term-trash
+  note: common_os_trash
 - term: system settings
   os:
     en:
@@ -131,7 +131,7 @@
       mac: Ajustes do Sistema
       windows: Configurações
       linux: configurações do sistema
-  note: term-system-settings
+  note: common_os_system_settings
 - term: alt key
   os:
     en:
@@ -142,7 +142,7 @@
       mac: Option
       windows: Alt
       linux: Alt
-  note: the key name in prose; shortcuts are placeholders. term-alt-key
+  note: the key name in prose; shortcuts are placeholders. common_os_alt_key
 - term: enter key
   os:
     en:
@@ -153,7 +153,7 @@
       mac: Return
       windows: Enter
       linux: Enter
-  note: term-enter-key
+  note: common_os_enter_key
 - term: menu bar
   os:
     en:
@@ -164,4 +164,4 @@
       mac: a barra de menus
       windows: a bandeja
       linux: a bandeja
-  note: where the app lives in the background; on Windows the OS calls it the notification area. term-menu-bar
+  note: where the app lives in the background; on Windows the OS calls it the notification area. common_os_menu_bar

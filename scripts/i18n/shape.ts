@@ -1,8 +1,11 @@
-// The structure of one message, independent of its file format: the variables it interpolates, its markup tags,
-// its code spans and URLs, and its plural/select selectors. Two shapes are compared to catch a translation that
-// dropped `{count}`, lost a plural form or rewrote a URL. Paraglide (inlang message-format) and Fluent both
-// reduce to the same shape, so one set of rules covers both.
-import type { Expression, Message, Pattern, PatternElement, SelectExpression } from "@fluent/syntax";
+// The structure of one message: the variables it interpolates, its markup tags, its code spans and URLs, and its
+// plural/select selectors. Two shapes are compared to catch a translation that dropped `{count}`, lost a plural form
+// or rewrote a URL. Shapes are taken from the RESOLVED message (references inlined), so a translation may write its
+// own `os` select where the English references `{@common_os_trash}`.
+import { type MsgValue, type Variant, normalize, parseMatchKey, selectorInfo } from "./resolve.ts";
+
+export type { Variant };
+export type ParaglideValue = MsgValue;
 
 export const PLURAL_CATEGORIES = ["zero", "one", "two", "few", "many", "other"];
 
@@ -35,160 +38,66 @@ interface Scan {
 	urls: string[];
 }
 
-const newScan = (): Scan => ({ vars: new Set(), markup: new Set(), code: [], urls: [] });
-
-/** Variables, markup, code spans and URLs of one paraglide message text (`Hello {name}`, `{#link}..{/link}`). */
-function scanParaglide(text: string, into: Scan) {
+/** Variables, markup, code spans and URLs of one message text (`Hello {name}`, `{#link}..{/link}`). References
+ * (`{@key}`) are not variables. */
+function scanText(text: string, into: Scan) {
 	const plain = text.replace(/\\[{}]/g, "");
 	for (const m of plain.matchAll(/\{([^{}]*)\}/g)) {
 		const inner = m[1].trim();
+		if (inner.startsWith("@")) continue;
 		if (inner.startsWith("#")) into.markup.add(`#${inner.slice(1).split(/[\s/]/)[0]}`);
 		else if (inner.startsWith("/")) into.markup.add(`/${inner.slice(1).split(/\s/)[0]}`);
 		else if (inner) into.vars.add(inner.replace(/^\$/, "").split(/[\s:]/)[0]);
 	}
-	scanLiteral(plain.replace(/\{[^{}]*\}/g, " "), into);
-}
-
-function scanLiteral(text: string, into: Scan) {
-	for (const m of text.matchAll(/`([^`]+)`/g)) into.code.push(m[1]);
-	for (const m of text.matchAll(/https?:\/\/[^\s)>\]|`]+/g)) into.urls.push(m[0]);
+	const prose = plain.replace(/\{[^{}]*\}/g, " ");
+	for (const m of prose.matchAll(/`([^`]+)`/g)) into.code.push(m[1]);
+	for (const m of prose.matchAll(/https?:\/\/[^\s)>\]|`]+/g)) into.urls.push(m[0]);
 }
 
 const sorted = (xs: Iterable<string>) => [...xs].sort();
 
-export interface Variant {
-	declarations?: string[];
-	selectors?: string[];
-	match: Record<string, string>;
-}
-
-export type ParaglideValue = string | Variant[];
-
-/** What is wrong with the structure of a catalog value, or undefined when it is a string or well-formed variants. */
+/** What is wrong with the structure of a catalog value, or undefined when it is a string or one well-formed variants object. */
 export function paraglideProblem(v: unknown): string | undefined {
 	if (typeof v === "string") return undefined;
-	if (!Array.isArray(v) || v.length === 0) return "value must be a string or a non-empty variants array";
+	if (!Array.isArray(v) || v.length === 0) return "value must be a string or a variants array";
+	if (v.length > 1) return "a message has exactly one variants object";
 	for (const variant of v) {
 		if (typeof variant !== "object" || variant === null || typeof variant.match !== "object" || variant.match === null) {
 			return "a variant needs a `match` object";
 		}
 		if (Object.values(variant.match).some((t) => typeof t !== "string")) return "every `match` value must be a string";
+		if (!Array.isArray(variant.selectors) || variant.selectors.length === 0) return "a variants object needs its `selectors`";
 	}
 	return undefined;
 }
 
-/** Every human-readable text of a paraglide value (the string, or each match arm). */
-export function paraglideTexts(v: ParaglideValue): string[] {
-	return typeof v === "string" ? [v] : v.flatMap((x) => Object.values(x.match));
-}
+/** Every human-readable text of a value (the string, or each match arm). */
+export const paraglideTexts = (v: MsgValue): string[] => (typeof v === "string" ? [v] : v.flatMap((x) => Object.values(x.match)));
 
-export function paraglideShape(v: ParaglideValue): Shape {
-	const scan = newScan();
+export function paraglideShape(v: MsgValue): Shape {
+	const scan: Scan = { vars: new Set(), markup: new Set(), code: [], urls: [] };
 	const selectors: SelectorShape[] = [];
-	if (typeof v === "string") {
-		scanParaglide(v, scan);
-	} else {
-		for (const variant of v) {
-			for (const t of Object.values(variant.match)) scanParaglide(t, scan);
-			for (const d of variant.declarations ?? []) {
-				const input = /^input\s+\{?\$?(\w+)/.exec(d.trim());
-				if (input) scan.vars.add(input[1]);
-				const local = /^local\s+\$?\w+\s*=\s*\{?\s*\$?(\w+)/.exec(d.trim());
-				if (local) scan.vars.add(local[1]);
+	if (typeof v === "string") scanText(v, scan);
+	else {
+		const msg = normalize(v);
+		for (const arm of msg.arms) scanText(arm.text, scan);
+		for (const d of msg.declarations) {
+			const input = /^input\s+\{?\$?(\w+)/.exec(d.trim());
+			if (input) scan.vars.add(input[1]);
+			const local = /^local\s+\$?\w+\s*=\s*\{?\s*\$?(\w+)/.exec(d.trim());
+			if (local) scan.vars.add(local[1]);
+		}
+		for (const name of msg.selectors) {
+			const info = selectorInfo(msg, name);
+			const values = new Set<string>();
+			for (const key of Object.keys(v[0].match)) {
+				const literal = key.trim() === "*" ? "*" : parseMatchKey(key)[name];
+				if (literal !== undefined) values.add(info.kind === "plural" && literal === "*" ? "other" : literal);
 			}
-			const names = variant.selectors ?? [];
-			const plural = new Set<string>();
-			for (const d of variant.declarations ?? []) {
-				const m = /^local\s+\$?(\w+)\s*=\s*\{?[^:]*:\s*plural\b(.*?)\}?$/.exec(d.trim());
-				if (m && !/type\s*=\s*\|?ordinal/.test(m[2])) plural.add(m[1]);
-			}
-			names.forEach((name, i) => {
-				const values = new Set<string>();
-				for (const k of Object.keys(variant.match)) {
-					const part = k.trim() === "*" ? "*" : new RegExp(`(?:^|\\s)\\$?${name}=([^\\s]+)`).exec(k)?.[1];
-					if (part !== undefined) values.add(part);
-				}
-				const kind = plural.has(name) ? "plural" : "select";
-				const norm = kind === "plural" ? [...values].map((x) => (x === "*" ? "other" : x)) : [...values];
-				const aliasOf = (variant.declarations ?? []).map((d) => new RegExp(`^local\\s+\\$?${name}\\s*=\\s*\\{?\\s*\\$?(\\w+)`).exec(d.trim())?.[1]).find(Boolean);
-				selectors[i] = { kind, name: aliasOf ?? name, values: sorted(new Set([...(selectors[i]?.values ?? []), ...norm])) };
-			});
+			selectors.push({ kind: info.kind, name: info.var, values: sorted(values) });
 		}
 	}
-	return finish(scan, [], selectors);
-}
-
-function finish(scan: Scan, attrs: string[], selectors: SelectorShape[]): Shape {
-	return { vars: sorted(scan.vars), markup: sorted(scan.markup), attrs: sorted(attrs), code: scan.code.sort(), urls: scan.urls.sort(), selectors };
-}
-
-/** The plain text of a Fluent pattern (placeables dropped), one string per select arm. */
-function fluentPatternTexts(p: Pattern | null, out: string[] = []): string[] {
-	if (!p) return out;
-	let cur = "";
-	const flush = () => {
-		if (cur.trim()) out.push(cur);
-		cur = "";
-	};
-	for (const el of p.elements) {
-		if (el.type === "TextElement") cur += el.value;
-		else if (el.expression.type === "SelectExpression") {
-			flush();
-			for (const v of el.expression.variants) fluentPatternTexts(v.value, out);
-		} else cur += " ";
-	}
-	flush();
-	return out;
-}
-
-export function fluentTexts(m: Message): string[] {
-	return [m.value, ...m.attributes.map((a) => a.value)].flatMap((p) => fluentPatternTexts(p));
-}
-
-function visitExpression(e: Expression, scan: Scan, selectors: SelectorShape[]) {
-	switch (e.type) {
-		case "VariableReference":
-			scan.vars.add(e.id.name);
-			break;
-		case "FunctionReference":
-			for (const a of e.arguments.positional) visitExpression(a, scan, selectors);
-			for (const a of e.arguments.named) visitExpression(a.value, scan, selectors);
-			break;
-		case "Placeable":
-			visitExpression(e.expression, scan, selectors);
-			break;
-		case "SelectExpression":
-			visitSelect(e, scan, selectors);
-			break;
-		default:
-			break;
-	}
-}
-
-function visitSelect(e: SelectExpression, scan: Scan, selectors: SelectorShape[]) {
-	visitExpression(e.selector, scan, selectors);
-	const names = e.variants.map((v) => (v.key.type === "Identifier" ? v.key.name : v.key.value));
-	// A select whose only named arm is the default `*[other]` is a plain select (`[mac] ... *[other] ...`), not a plural.
-	const plural = e.variants.some((v) => v.key.type === "Identifier" && v.key.name !== "other" && PLURAL_CATEGORIES.includes(v.key.name));
-	const name = e.selector.type === "VariableReference" ? e.selector.id.name : undefined;
-	selectors.push({ kind: plural ? "plural" : "select", name, values: plural ? sorted(names.filter((n) => PLURAL_CATEGORIES.includes(n))) : sorted(names) });
-	for (const v of e.variants) visitPattern(v.value, scan, selectors);
-}
-
-function visitPattern(p: Pattern | null, scan: Scan, selectors: SelectorShape[]) {
-	if (!p) return;
-	for (const el of p.elements as PatternElement[]) {
-		if (el.type === "TextElement") scanLiteral(el.value, scan);
-		else visitExpression(el.expression, scan, selectors);
-	}
-}
-
-export function fluentShape(m: Message): Shape {
-	const scan = newScan();
-	const selectors: SelectorShape[] = [];
-	visitPattern(m.value, scan, selectors);
-	for (const a of m.attributes) visitPattern(a.value, scan, selectors);
-	return finish(scan, m.attributes.map((a) => a.id.name), selectors);
+	return { vars: sorted(scan.vars), markup: sorted(scan.markup), attrs: [], code: scan.code.sort(), urls: scan.urls.sort(), selectors };
 }
 
 export interface ShapeIssue {
@@ -216,7 +125,6 @@ export function compareShapes(source: Shape, target: Shape, locale: string): Sha
 	};
 	names("variable", source.vars, target.vars, "placeholder", (x) => `{${x}}`);
 	names("markup", source.markup, target.markup, "placeholder", (x) => `{${x}}`);
-	names("attribute", source.attrs, target.attrs, "placeholder", (x) => `.${x}`);
 	names("code span", source.code, target.code, "verbatim", (x) => `\`${x}\``);
 	names("URL", source.urls, target.urls, "verbatim");
 	if (source.selectors.length !== target.selectors.length) {

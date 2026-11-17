@@ -33,7 +33,7 @@ fn lang(tag: Option<String>, unset: bool, json: bool) -> Result<()> {
     use atlas_i18n::t;
     if unset {
         lang::set_preference(None)?;
-        println!("{}", t!("config-lang-unset"));
+        println!("{}", t!("config_lang_unset"));
         return Ok(());
     }
     if let Some(tag) = tag {
@@ -41,21 +41,21 @@ fn lang(tag: Option<String>, unset: bool, json: bool) -> Result<()> {
             anyhow::bail!(
                 "{}",
                 t!(
-                    "config-lang-unsupported",
+                    "config_lang_unsupported",
                     tag = tag.as_str(),
                     langs = lang::SUPPORTED.join(", ")
                 )
             );
         };
         lang::set_preference(Some(saved))?;
-        println!("{}", t!("config-lang-set", lang = saved));
+        println!("{}", t!("config_lang_set", lang = saved));
         if let Some(env) = std::env::var(lang::ENV)
             .ok()
             .filter(|v| !v.trim().is_empty())
         {
             eprintln!(
                 "{}",
-                t!("config-lang-set-env-warning", value = env.as_str())
+                t!("config_lang_set_env_warning", value = env.as_str())
             );
         }
         return Ok(());
@@ -74,16 +74,16 @@ fn lang(tag: Option<String>, unset: bool, json: bool) -> Result<()> {
         );
         return Ok(());
     }
-    println!("{}", t!("config-lang-current", lang = now.tag));
-    println!("{}", t!("config-lang-source", source = now.source.as_str()));
+    println!("{}", t!("config_lang_current", lang = now.tag));
+    println!("{}", t!("config_lang_source", source = now.source.as_str()));
     match saved {
-        Some(saved) => println!("{}", t!("config-lang-saved", lang = saved)),
-        None => println!("{}", t!("config-lang-saved-none")),
+        Some(saved) => println!("{}", t!("config_lang_saved", lang = saved)),
+        None => println!("{}", t!("config_lang_saved_none")),
     }
     println!(
         "{}",
         t!(
-            "config-lang-available",
+            "config_lang_available",
             count = lang::SUPPORTED.len(),
             langs = lang::SUPPORTED.join(", ")
         )

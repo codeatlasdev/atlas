@@ -1,76 +1,123 @@
 //! Display-language catalogs for the Rust side of Atlas: the CLI, the TUI, hostd and the desktop
 //! shell (tray, menus, native notifications).
 //!
-//! Catalogs are Fluent files, `locales/<lang>/<area>.ftl`, embedded into the binary by `build.rs`
-//! (no file is read at run time: the locale of a catalog can never be missing on a user's disk).
-//! A message is looked up by id in the language of [`lang()`] and falls back to English, then to
-//! the id itself; a missing id panics in debug builds and never in a release.
+//! The source is `i18n/messages/<area>/<locale>.json`, the same files the desktop app and the site
+//! read (one tree, no copies). `build.rs` embeds the areas this crate serves into the binary, so no
+//! file is read at run time and a malformed message fails the build. A message is looked up by
+//! key in the language of [`lang()`] and falls back to English, then to the key itself; a missing
+//! key panics in debug builds and never in a release.
 //!
 //! ```ignore
-//! println!("{}", t!("config-lang-set", lang = "pt-BR"));
+//! println!("{}", t!("config_lang_set", lang = "pt-BR"));
 //! ```
 //!
 //! What is NEVER translated, so never goes through `t!`: `--json` output, MCP, logs, exit codes,
 //! the hostd protocol, `step:` lines. `crates/atlas-cli/tests/machine_output.rs` enforces it.
 //!
-//! Plurals: pt-BR treats 0 as singular (CLDR), so `0 arquivo` is what a plain `[one]` variant
-//! prints. Where that reads wrong, add an exact `[0]` variant before `[one]`; Fluent matches a
-//! numeric key against the number first. Always keep a `*[other]` default: engines disagree on
-//! the categories of large numbers.
-//!
-//! Numbers are not localized by Fluent's `NUMBER` (it ignores the locale): format a number in
-//! Rust and pass the string, or write it in the message. A custom ICU4X-backed function costs
-//! about 68 KB and nothing needs it yet.
+//! The format (`message.rs`): `{name}` variables, `{@key}` references, plural and `os` selects.
+//! pt-BR treats 0 as singular (CLDR), so a plain `one` variant prints "0 arquivo": add an exact
+//! `0` variant (`local countExact = count`, key `countExact=0`) where that reads wrong. Always
+//! keep a `*` arm. Numbers are printed as given; format a number in Rust and pass the string
+//! when grouping matters.
 
+mod message;
 mod shortcut;
 pub use shortcut::{shortcut, shortcut_for};
 
+use std::collections::HashMap;
 use std::sync::{LazyLock, OnceLock};
 
-use fluent_bundle::FluentResource;
-use fluent_bundle::concurrent::FluentBundle;
-pub use fluent_bundle::{FluentArgs, FluentValue};
-use unic_langid::LanguageIdentifier;
+use message::{Message, Part, Selector};
 
 include!(concat!(env!("OUT_DIR"), "/catalogs.rs"));
 
-type Bundle = FluentBundle<FluentResource>;
+/// A value passed to a message: text or a number (a number selects plural variants).
+#[derive(Debug, Clone, PartialEq)]
+pub enum Value {
+    Str(String),
+    Num(f64),
+}
 
-/// The languages with a catalog, as BCP-47 tags (the names of the `locales/` directories).
+impl Value {
+    fn text(&self) -> String {
+        match self {
+            Value::Str(s) => s.clone(),
+            Value::Num(n) if n.fract() == 0.0 && n.abs() < 1e15 => format!("{}", *n as i64),
+            Value::Num(n) => n.to_string(),
+        }
+    }
+}
+
+impl From<&str> for Value {
+    fn from(s: &str) -> Self {
+        Value::Str(s.to_owned())
+    }
+}
+impl From<String> for Value {
+    fn from(s: String) -> Self {
+        Value::Str(s)
+    }
+}
+impl From<&String> for Value {
+    fn from(s: &String) -> Self {
+        Value::Str(s.clone())
+    }
+}
+macro_rules! num {
+    ($($t:ty),*) => {$(impl From<$t> for Value { fn from(n: $t) -> Self { Value::Num(n as f64) } })*};
+}
+num!(i32, i64, u32, u64, usize, f64);
+
+/// The named values of one message call.
+#[derive(Debug, Default, Clone)]
+pub struct Args(Vec<(String, Value)>);
+
+impl Args {
+    pub fn new() -> Self {
+        Self::default()
+    }
+
+    pub fn set(&mut self, name: &str, value: impl Into<Value>) {
+        let value = value.into();
+        match self.0.iter_mut().find(|(n, _)| n == name) {
+            Some(slot) => slot.1 = value,
+            None => self.0.push((name.to_owned(), value)),
+        }
+    }
+
+    fn get(&self, name: &str) -> Option<&Value> {
+        self.0.iter().find(|(n, _)| n == name).map(|(_, v)| v)
+    }
+}
+
+type Map = HashMap<String, Message>;
+
+/// The languages with a catalog, as BCP-47 tags (the names of the locale files).
 pub fn locales() -> impl Iterator<Item = &'static str> {
     CATALOGS.iter().map(|(tag, _)| *tag)
 }
 
-/// A bundle of `sources` for `tag`. Bidi isolation is off: it wraps every argument in invisible
-/// marks that corrupt terminal output and copy-pasted paths.
-fn build(tag: &str, sources: &[&str]) -> Bundle {
-    let id: LanguageIdentifier = tag.parse().unwrap_or_default();
-    let mut bundle = FluentBundle::new_concurrent(vec![id]);
-    bundle.set_use_isolating(false);
-    for src in sources {
-        let res = match FluentResource::try_new((*src).to_owned()) {
-            Ok(res) => res,
-            // A malformed entry is Junk; the rest of the file still works. The catalog test
-            // refuses a Junk-ful file in CI, so this is only reachable in a half-edited tree.
-            Err((res, _)) => res,
-        };
-        // A duplicate id keeps the first definition; the catalog test refuses duplicates.
-        let _ = bundle.add_resource(res);
-    }
-    bundle
-}
-
-fn bundle(tag: &str) -> Option<&'static Bundle> {
-    static BUNDLES: LazyLock<Vec<OnceLock<Bundle>>> =
+fn catalog(tag: &str) -> Option<&'static Map> {
+    static MAPS: LazyLock<Vec<OnceLock<Map>>> =
         LazyLock::new(|| CATALOGS.iter().map(|_| OnceLock::new()).collect());
     let i = CATALOGS.iter().position(|(t, _)| *t == tag)?;
-    Some(BUNDLES[i].get_or_init(|| {
-        let sources: Vec<&str> = CATALOGS[i].1.iter().map(|(_, s)| *s).collect();
-        build(tag, &sources)
+    Some(MAPS[i].get_or_init(|| {
+        let mut map = Map::new();
+        for (area, json) in CATALOGS[i].1 {
+            // build.rs parsed every message already; this cannot fail on an embedded file.
+            let value: serde_json::Value =
+                serde_json::from_str(json).unwrap_or_else(|e| panic!("area {area}: {e}"));
+            for (key, v) in value.as_object().into_iter().flatten() {
+                if let Ok(m) = message::parse(v) {
+                    map.insert(key.clone(), m);
+                }
+            }
+        }
+        map
     }))
 }
 
-/// The operating system the process runs on, as the `$os` every message can select on:
+/// The operating system the process runs on, as the `os` every message can select on:
 /// `mac`, `windows` or `linux`.
 pub fn os() -> &'static str {
     if cfg!(target_os = "macos") {
@@ -82,45 +129,139 @@ pub fn os() -> &'static str {
     }
 }
 
-/// The message `id` in `tag`, formatted with `args` for an explicit `os`; `None` when `tag` has no
-/// such message. Every message may select on `$os` (`mac`, `windows`, `linux`): it is added here
-/// for every call, so no call site passes it and a text such as "your Mac" or "Trash" is one
-/// message with three variants. A caller's own `os` argument wins (tests).
-pub fn lookup_on(
-    tag: &str,
-    id: &str,
-    args: Option<&FluentArgs>,
-    os: &'static str,
-) -> Option<String> {
-    let bundle = bundle(tag)?;
-    let pattern = bundle.get_message(id)?.value()?;
-    // `FluentArgs` is not `Clone`: copy the caller's values, then add `os`.
-    let mut with_os = FluentArgs::new();
-    for (name, value) in args.into_iter().flat_map(FluentArgs::iter) {
-        with_os.set(name.to_owned(), value.clone());
+fn plural_category(tag: &str, n: f64) -> &'static str {
+    use intl_pluralrules::{PluralCategory, PluralRuleType, PluralRules};
+    // The rule tables are keyed by language (`pt`, `pt-PT`), not by region: try the whole tag,
+    // then its language alone (`pt-BR` -> `pt`, which is what CLDR says for Brazil).
+    let rules = tag
+        .parse::<unic_langid::LanguageIdentifier>()
+        .ok()
+        .and_then(|id| {
+            let mut bare = id.clone();
+            bare.region = None;
+            bare.clear_variants();
+            PluralRules::create(id, PluralRuleType::CARDINAL)
+                .or_else(|_| PluralRules::create(bare, PluralRuleType::CARDINAL))
+                .ok()
+        });
+    let picked = rules.and_then(|r| {
+        if n.fract() == 0.0 {
+            r.select(n as i64)
+        } else {
+            r.select(n)
+        }
+        .ok()
+    });
+    match picked {
+        Some(PluralCategory::ZERO) => "zero",
+        Some(PluralCategory::ONE) => "one",
+        Some(PluralCategory::TWO) => "two",
+        Some(PluralCategory::FEW) => "few",
+        Some(PluralCategory::MANY) => "many",
+        _ => "other",
     }
+}
+
+/// `key` in `tag`, else in English (a reference may point at a common message a language lacks).
+fn find(tag: &str, key: &str) -> Option<(&'static str, &'static Message)> {
+    for t in [tag, atlas_core::lang::DEFAULT] {
+        if let Some(m) = catalog(t).and_then(|c| c.get(key)) {
+            let name = locales().find(|l| *l == t)?;
+            return Some((name, m));
+        }
+    }
+    None
+}
+
+fn pattern(parts: &[Part], tag: &str, args: &Args, depth: usize, out: &mut String) -> Option<()> {
+    for part in parts {
+        match part {
+            Part::Text(t) => out.push_str(t),
+            Part::Var(name) => out.push_str(&args.get(name)?.text()),
+            Part::Ref(key) => out.push_str(&render(tag, key, args, depth + 1)?),
+        }
+    }
+    Some(())
+}
+
+fn select<'m>(
+    selectors: &[Selector],
+    variants: &'m [(Vec<String>, message::Pattern)],
+    tag: &str,
+    args: &Args,
+) -> Option<&'m message::Pattern> {
+    let resolved: Vec<String> = selectors
+        .iter()
+        .map(|s| {
+            let v = args.get(&s.var)?;
+            Some(match (s.plural, v) {
+                (true, Value::Num(n)) => plural_category(tag, *n).to_owned(),
+                (true, Value::Str(_)) => "other".to_owned(),
+                (false, v) => v.text(),
+            })
+        })
+        .collect::<Option<_>>()?;
+    // Most specific wins, earlier selectors first: a literal beats `*` at the first position
+    // where the candidates differ.
+    // Reversed so that, of equally specific arms, the first one in the file wins.
+    variants
+        .iter()
+        .rev()
+        .filter(|(keys, _)| keys.iter().zip(&resolved).all(|(k, r)| k == "*" || k == r))
+        .max_by_key(|(keys, _)| keys.iter().map(|k| k != "*").collect::<Vec<_>>())
+        .map(|(_, p)| p)
+}
+
+fn render(tag: &str, key: &str, args: &Args, depth: usize) -> Option<String> {
+    if depth > 8 {
+        return None;
+    }
+    let (name, msg) = find(tag, key)?;
+    let mut out = String::new();
+    match msg {
+        Message::Text(p) => pattern(p, name, args, depth, &mut out)?,
+        Message::Select {
+            selectors,
+            variants,
+        } => pattern(
+            select(selectors, variants, name, args)?,
+            name,
+            args,
+            depth,
+            &mut out,
+        )?,
+    }
+    Some(out)
+}
+
+/// `key` in `tag` for an explicit `os` (`mac`, `windows`, `linux`), formatted with `args`; `None`
+/// when no catalog has it or it cannot be formatted (a missing argument). Every message may
+/// select on `os`: it is added here for every call, so no call site passes it and a text such as
+/// "your Mac" or "Trash" is one message with three variants. A caller's own `os` argument wins.
+pub fn lookup_on(tag: &str, key: &str, args: Option<&Args>, os: &str) -> Option<String> {
+    let mut with_os = args.cloned().unwrap_or_default();
     if with_os.get("os").is_none() {
         with_os.set("os", os);
     }
-    let mut errors = Vec::new();
-    let text = bundle.format_pattern(pattern, Some(&with_os), &mut errors);
-    debug_assert!(errors.is_empty(), "message {id} ({tag}): {errors:?}");
-    Some(text.into_owned())
+    // Only this language: English is the caller's fallback (`translate`), except inside a
+    // reference, which falls back by itself.
+    catalog(tag)?.get(key)?;
+    render(tag, key, &with_os, 0)
 }
 
 /// [`lookup_on`] for the OS this process runs on.
-pub fn lookup(tag: &str, id: &str, args: Option<&FluentArgs>) -> Option<String> {
-    lookup_on(tag, id, args, os())
+pub fn lookup(tag: &str, key: &str, args: Option<&Args>) -> Option<String> {
+    lookup_on(tag, key, args, os())
 }
 
-/// The message `id` in `tag`: that language, else English, else the id. Panics in debug builds
-/// on an id no catalog has (a typo must not ship).
-pub fn translate(tag: &str, id: &str, args: Option<&FluentArgs>) -> String {
-    lookup(tag, id, args)
-        .or_else(|| lookup(atlas_core::lang::DEFAULT, id, args))
+/// `key` in `tag`: that language, else English, else the key. Panics in debug builds on a key no
+/// catalog has (a typo must not ship; `bun run i18n:check` also reports it).
+pub fn translate(tag: &str, key: &str, args: Option<&Args>) -> String {
+    lookup(tag, key, args)
+        .or_else(|| lookup(atlas_core::lang::DEFAULT, key, args))
         .unwrap_or_else(|| {
-            debug_assert!(false, "no message with id {id:?} in any catalog");
-            id.to_owned()
+            debug_assert!(false, "no message with key {key:?} in any catalog");
+            key.to_owned()
         })
 }
 
@@ -130,7 +271,7 @@ pub fn lang() -> &'static str {
     *LANG
 }
 
-/// A message in the display language: `t!("id")` or `t!("id", name = value, count = 3)`.
+/// A message in the display language: `t!("key")` or `t!("key", name = value, count = 3)`.
 /// Values are strings or numbers; a number selects plural variants.
 #[macro_export]
 macro_rules! t {
@@ -138,7 +279,7 @@ macro_rules! t {
         $crate::translate($crate::lang(), $id, ::core::option::Option::None)
     };
     ($id:literal, $($name:ident = $value:expr),+ $(,)?) => {{
-        let mut args = $crate::FluentArgs::new();
+        let mut args = $crate::Args::new();
         $( args.set(::core::stringify!($name), $value); )+
         $crate::translate($crate::lang(), $id, ::core::option::Option::Some(&args))
     }};
@@ -147,118 +288,216 @@ macro_rules! t {
 #[cfg(test)]
 mod tests {
     use super::*;
+    use serde_json::json;
 
-    fn plural(tag: &str, ftl: &str, count: i64) -> String {
-        let b = build(tag, &[ftl]);
-        let mut errors = vec![];
-        let mut args = FluentArgs::new();
-        args.set("count", count);
-        let p = b.get_message("n").unwrap().value().unwrap();
-        b.format_pattern(p, Some(&args), &mut errors).into_owned()
+    /// Format a one-off message in `tag` (no catalog needed).
+    fn fmt(tag: &str, value: serde_json::Value, args: &[(&str, Value)]) -> String {
+        let msg = message::parse(&value).unwrap();
+        let mut a = Args::new();
+        for (n, v) in args {
+            a.set(n, v.clone());
+        }
+        let mut out = String::new();
+        match &msg {
+            Message::Text(p) => pattern(p, tag, &a, 0, &mut out).unwrap(),
+            Message::Select {
+                selectors,
+                variants,
+            } => pattern(
+                select(selectors, variants, tag, &a).unwrap(),
+                tag,
+                &a,
+                0,
+                &mut out,
+            )
+            .unwrap(),
+        }
+        out
     }
 
-    // pt-BR: CLDR gives 0 the category `one`, so a plain [one] variant prints "0 arquivo".
-    // An exact [0] variant placed first is how a translation says "Nenhum arquivo".
+    fn files(plural_zero: bool) -> serde_json::Value {
+        let mut m = serde_json::Map::new();
+        if plural_zero {
+            m.insert(
+                "countExact=0, countPlural=*".into(),
+                "Nenhum arquivo".into(),
+            );
+        }
+        m.insert(
+            "countExact=*, countPlural=one".into(),
+            "{count} arquivo".into(),
+        );
+        m.insert(
+            "countExact=*, countPlural=*".into(),
+            "{count} arquivos".into(),
+        );
+        json!([{
+            "declarations": ["input count", "local countExact = count", "local countPlural = count: plural"],
+            "selectors": ["countExact", "countPlural"],
+            "match": m
+        }])
+    }
+
+    // pt-BR: CLDR gives 0 the category `one`, so a plain `one` variant prints "0 arquivo". An exact
+    // 0 arm is how a translation says "Nenhum arquivo".
     #[test]
     fn pt_br_zero_is_singular_unless_the_translation_has_an_exact_zero() {
-        let plain =
-            "n = { $count ->\n    [one] { $count } arquivo\n   *[other] { $count } arquivos\n}\n";
-        let with_zero = "n = { $count ->\n    [0] Nenhum arquivo\n    [one] { $count } arquivo\n   *[other] { $count } arquivos\n}\n";
-        assert_eq!(plural("pt-BR", plain, 0), "0 arquivo");
-        assert_eq!(plural("pt-BR", plain, 1), "1 arquivo");
-        assert_eq!(plural("pt-BR", plain, 2), "2 arquivos");
-        assert_eq!(plural("pt-BR", with_zero, 0), "Nenhum arquivo");
-        assert_eq!(plural("pt-BR", with_zero, 1), "1 arquivo");
+        let n =
+            |tag, plural_zero, c: i64| fmt(tag, files(plural_zero), &[("count", Value::from(c))]);
+        assert_eq!(n("pt-BR", false, 0), "0 arquivo");
+        assert_eq!(n("pt-BR", false, 1), "1 arquivo");
+        assert_eq!(n("pt-BR", false, 2), "2 arquivos");
+        assert_eq!(n("pt-BR", true, 0), "Nenhum arquivo");
+        assert_eq!(n("pt-BR", true, 1), "1 arquivo");
         // English treats 0 as plural.
-        assert_eq!(plural("en", plain, 0), "0 arquivos");
+        assert_eq!(n("en", false, 0), "0 arquivos");
     }
 
     #[test]
-    fn arguments_are_not_wrapped_in_bidi_isolation_marks() {
-        let b = build("en", &["hi = Hello { $name }\n"]);
-        let mut args = FluentArgs::new();
-        args.set("name", "Ana");
-        let mut errors = vec![];
-        let p = b.get_message("hi").unwrap().value().unwrap();
-        assert_eq!(b.format_pattern(p, Some(&args), &mut errors), "Hello Ana");
+    fn the_most_specific_variant_wins_earlier_selectors_first() {
+        let v = json!([{
+            "declarations": ["input a", "input b"],
+            "selectors": ["a", "b"],
+            "match": { "a=x, b=*": "ax", "a=*, b=y": "by", "a=*, b=*": "none" }
+        }]);
+        let on = |a: &str, b: &str| fmt("en", v.clone(), &[("a", a.into()), ("b", b.into())]);
+        assert_eq!(
+            on("x", "y"),
+            "ax",
+            "the first selector's literal outranks the second's"
+        );
+        assert_eq!(on("z", "y"), "by");
+        assert_eq!(on("z", "z"), "none");
     }
 
-    // Every message can select on $os without any call site passing it: one shared term, three
+    #[test]
+    fn braces_can_be_escaped_and_bad_messages_are_refused() {
+        assert_eq!(
+            fmt("en", json!("a \\{b\\} {x}"), &[("x", "1".into())]),
+            "a {b} 1"
+        );
+        for bad in ["{", "}", "{#link}x{/link}", "{a b}"] {
+            assert!(message::parse(&json!(bad)).is_err(), "{bad}");
+        }
+        let undeclared = json!([{ "declarations": [], "selectors": ["n"], "match": {"n=*": "x"} }]);
+        assert!(
+            message::parse(&undeclared)
+                .unwrap_err()
+                .contains("not declared")
+        );
+        let no_default =
+            json!([{ "declarations": ["input n"], "selectors": ["n"], "match": {"n=1": "x"} }]);
+        assert!(
+            message::parse(&no_default)
+                .unwrap_err()
+                .contains("catch-all")
+        );
+    }
+
+    // Every message can select on `os` without any call site passing it: one shared term, three
     // variants, in both languages. A hand-spelled "Mac" in a message would not move with the OS.
     #[test]
     fn os_terms_select_by_os_in_every_language() {
         let cases: &[(&str, &str, &str, &str)] = &[
-            ("term-your-computer", "mac", "en", "your Mac"),
-            ("term-your-computer", "windows", "en", "this PC"),
-            ("term-your-computer", "linux", "en", "this computer"),
-            ("term-your-computer", "mac", "pt-BR", "seu Mac"),
-            ("term-your-computer", "windows", "pt-BR", "este PC"),
-            ("term-your-computer", "linux", "pt-BR", "este computador"),
-            ("term-file-manager", "mac", "en", "Finder"),
-            ("term-file-manager", "windows", "en", "File Explorer"),
+            ("common_os_your_computer", "mac", "en", "your Mac"),
+            ("common_os_your_computer", "windows", "en", "this PC"),
+            ("common_os_your_computer", "linux", "en", "this computer"),
+            ("common_os_your_computer", "mac", "pt-BR", "seu Mac"),
+            ("common_os_your_computer", "windows", "pt-BR", "este PC"),
             (
-                "term-file-manager",
+                "common_os_your_computer",
+                "linux",
+                "pt-BR",
+                "este computador",
+            ),
+            ("common_os_file_manager", "mac", "en", "Finder"),
+            ("common_os_file_manager", "windows", "en", "File Explorer"),
+            (
+                "common_os_file_manager",
                 "linux",
                 "pt-BR",
                 "o gerenciador de arquivos",
             ),
-            ("term-trash", "windows", "en", "Recycle Bin"),
-            ("term-trash", "windows", "pt-BR", "Lixeira"),
-            ("term-system-settings", "mac", "pt-BR", "Ajustes do Sistema"),
-            ("term-alt-key", "mac", "en", "Option"),
-            ("term-alt-key", "linux", "en", "Alt"),
-            ("term-enter-key", "mac", "en", "Return"),
-            ("term-enter-key", "windows", "en", "Enter"),
-            ("term-menu-bar", "mac", "en", "the menu bar"),
-            ("term-menu-bar", "windows", "pt-BR", "a bandeja do sistema"),
+            ("common_os_trash", "windows", "en", "Recycle Bin"),
+            ("common_os_trash", "windows", "pt-BR", "Lixeira"),
+            (
+                "common_os_system_settings",
+                "mac",
+                "pt-BR",
+                "Ajustes do Sistema",
+            ),
+            ("common_os_alt_key", "mac", "en", "Option"),
+            ("common_os_alt_key", "linux", "en", "Alt"),
+            ("common_os_enter_key", "mac", "en", "Return"),
+            ("common_os_enter_key", "windows", "en", "Enter"),
+            ("common_os_menu_bar", "mac", "en", "the menu bar"),
+            (
+                "common_os_menu_bar",
+                "windows",
+                "pt-BR",
+                "a bandeja do sistema",
+            ),
         ];
-        for (id, os, lang, want) in cases {
+        for (key, os, lang, want) in cases {
             assert_eq!(
-                lookup_on(lang, id, None, os).as_deref(),
+                lookup_on(lang, key, None, os).as_deref(),
                 Some(*want),
-                "{id} on {os} in {lang}"
+                "{key} on {os} in {lang}"
             );
         }
     }
 
-    // A message that references a term keeps the caller's arguments, $os included.
+    // A message that references another keeps the caller's arguments, `os` included, and a
+    // language without the referenced message falls back to English for that part.
     #[test]
-    fn a_message_reference_passes_os_through() {
-        let b = build(
-            "pt-BR",
-            &[
-                "term = { $os ->\n    [mac] seu Mac\n   *[other] este PC\n}\nuses = Roda em { term }\n",
-            ],
-        );
-        let mut args = FluentArgs::new();
-        args.set("os", "mac");
-        let mut errors = vec![];
-        let p = b.get_message("uses").unwrap().value().unwrap();
+    fn a_reference_evaluates_with_the_callers_arguments() {
+        let v = json!("Moved to {@common_os_trash}");
         assert_eq!(
-            b.format_pattern(p, Some(&args), &mut errors),
-            "Roda em seu Mac"
+            fmt("en", v.clone(), &[("os", "windows".into())]),
+            "Moved to Recycle Bin"
         );
-        assert!(errors.is_empty(), "{errors:?}");
+        assert_eq!(fmt("pt-BR", v, &[("os", "mac".into())]), "Moved to Lixeira");
     }
 
     #[test]
-    fn a_language_without_the_message_falls_back_to_english_then_to_the_id() {
+    fn a_language_without_the_message_falls_back_to_english_then_to_the_key() {
         // `fr` has no catalog at all: English answers.
-        let en = lookup("en", "config-lang-unset", None).unwrap();
-        assert_eq!(translate("fr", "config-lang-unset", None), en);
-        assert_eq!(lookup("fr", "config-lang-unset", None), None);
+        let en = lookup("en", "config_lang_unset", None).unwrap();
+        assert_eq!(translate("fr", "config_lang_unset", None), en);
+        assert_eq!(lookup("fr", "config_lang_unset", None), None);
+    }
+
+    // A message the build embedded must format with the arguments its call site passes: every
+    // key of every language renders when given every variable it might use.
+    #[test]
+    fn every_embedded_message_renders_in_every_language() {
+        let mut all = Args::new();
+        for v in [
+            "count", "lang", "langs", "source", "value", "tag", "version", "user", "target",
+        ] {
+            all.set(v, 2);
+        }
+        all.set("source", "env");
+        for tag in locales() {
+            for key in catalog(tag).unwrap().keys() {
+                assert!(
+                    lookup(tag, key, Some(&all)).is_some(),
+                    "{key} ({tag}) does not render: a bad reference, or a variable the test does not know"
+                );
+            }
+        }
     }
 
     #[test]
     #[cfg(not(debug_assertions))]
-    fn an_unknown_id_is_returned_as_is_in_release() {
-        assert_eq!(translate("en", "no-such-id", None), "no-such-id");
+    fn an_unknown_key_is_returned_as_is_in_release() {
+        assert_eq!(translate("en", "no_such_key", None), "no_such_key");
     }
 
     #[test]
     #[cfg(debug_assertions)]
-    #[should_panic(expected = "no message with id")]
-    fn an_unknown_id_panics_in_debug() {
-        translate("en", "no-such-id", None);
+    #[should_panic(expected = "no message with key")]
+    fn an_unknown_key_panics_in_debug() {
+        translate("en", "no_such_key", None);
     }
 }

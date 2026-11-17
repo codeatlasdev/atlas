@@ -8,7 +8,7 @@ import rehypeAutolinkHeadings from "rehype-autolink-headings";
 import { paraglideVitePlugin } from "@inlang/paraglide-js";
 import { existsSync, readdirSync, readFileSync } from "node:fs";
 import { inSitemap, withXDefault } from "./src/lib/i18n.ts";
-import { paraglideOptions } from "./paraglide.options.mjs";
+import { generateMessages, paraglideOptions } from "./paraglide.options.mjs";
 import remarkDocsLinks from "./src/lib/remark-docs-links.mjs";
 import remarkDocsTitle from "./src/lib/remark-docs-title.mjs";
 
@@ -19,6 +19,9 @@ const translatedDocs = new Set(
 );
 
 const atlasNight = JSON.parse(readFileSync(new URL("./src/lib/atlas-shiki-theme.json", import.meta.url), "utf8"));
+
+// The inputs of Paraglide come from the one source tree (i18n/messages); write them before the plugin compiles.
+generateMessages();
 
 export default defineConfig({
 	site: "https://atlas.codeatlas.com.br",

@@ -29,8 +29,8 @@ test("docs/ rebuilds the site, which renders it, and reruns the i18n job (source
 	expect(areas(["docs/contributing.md"])).toEqual({ ...none, site: true, i18n: true });
 });
 
-test("a crate runs Rust only, unless its sources are scanned by the i18n ratchet; the desktop frontend also rebuilds the shell that embeds it", () => {
-	expect(areas(["crates/atlas-core/src/lib.rs"])).toEqual({ ...none, rust: true });
+test("a crate manifest runs Rust only; a crate's sources also run the i18n job (t! references, the ratchet); the desktop frontend also rebuilds the shell that embeds it", () => {
+	expect(areas(["crates/atlas-core/Cargo.toml"])).toEqual({ ...none, rust: true });
 	expect(areas(["crates/atlas-host/Cargo.toml"])).toEqual({ ...none, rust: true });
 	expect(areas(["crates/atlas-host/src/lib.rs"])).toEqual({ ...none, rust: true, i18n: true });
 	expect(areas(["apps/desktop/src/App.svelte"])).toEqual({ ...none, rust: true, front: true, i18n: true });
@@ -59,18 +59,21 @@ test("unknown paths, workflows and an empty diff run everything", () => {
 // dash in the docs merges. Each case below is a path whose misclassification lets one of those through.
 test.each([
 	["docs/pt-BR/getting-started.md", { site: true }],
-	["site/messages/pt-BR.json", { site: true }],
-	["site/messages/descriptions.json", { site: true }],
 	["site/project.inlang/settings.json", { site: true }],
 	["site/src/components/islands/Waitlist.svelte", { site: true }],
 	["site/src/pages/index.astro", { site: true }],
 	["site/src/content/guide.md", {}],
-	["crates/atlas-i18n/locales/pt-BR/config.ftl", { rust: true }],
+	["crates/atlas-core/src/lang.rs", { rust: true }],
+	["crates/atlas-i18n/src/lib.rs", { rust: true }],
+	["crates/atlas-cli/tests/cli_i18n.rs", { rust: true }],
 	["crates/atlas-cli/src/commands/config.rs", { rust: true }],
 	["crates/atlas-tui/src/tui/mod.rs", { rust: true }],
 	["crates/atlas-desktop/src/menu.rs", { rust: true }],
 	["crates/atlas-host/src/server.rs", { rust: true }],
-	["apps/desktop/messages/en.json", { rust: true, front: true }],
+	["apps/desktop/src/lib/i18n/fmt.ts", { rust: true, front: true }],
+	["i18n/messages/app/en.json", { rust: true, front: true, mobile: true, site: true, relay: true, workflows: true, installer: true }],
+	["i18n/messages/common/lock.json", { rust: true, front: true, mobile: true, site: true, relay: true, workflows: true, installer: true }],
+	["i18n/surfaces.json", { rust: true, front: true, mobile: true, site: true, relay: true, workflows: true, installer: true }],
 	["apps/desktop/project.inlang/settings.json", { rust: true, front: true }],
 	["i18n/glossary.yaml", { rust: true, front: true, mobile: true, site: true, relay: true, workflows: true, installer: true }],
 	["i18n/hardcoded-baseline.json", { rust: true, front: true, mobile: true, site: true, relay: true, workflows: true, installer: true }],
@@ -85,7 +88,7 @@ test.each([
 });
 
 test.each([
-	["a crate nothing scans", "crates/atlas-core/src/lang.rs"],
+	["a crate manifest", "crates/atlas-core/Cargo.toml"],
 	["the Flutter app", "apps/mobile/lib/main.dart"],
 	["the push relay", "services/push-relay/main.go"],
 	["a site asset", "site/public/llms.txt"],

@@ -2,10 +2,11 @@
 import { afterAll, describe, expect, test } from "bun:test";
 import { existsSync } from "node:fs";
 import { join } from "node:path";
-import { FluentParser } from "@fluent/syntax";
-import { printFluentArea, pseudoCatalog, pseudoFluent, pseudoText, pseudoValue, writePseudoCatalogs } from "./pseudo.ts";
+import { printArea, pseudoCatalog, pseudoText, pseudoValue, writePseudoCatalogs } from "./pseudo.ts";
 import type { ParaglideValue, Variant } from "./shape.ts";
-import { check, cleanup, errors, makeRepo, read } from "./testkit.ts";
+import { generateAll } from "./generate.ts";
+import { loadCtx } from "./types.ts";
+import { EN, META, check, cleanup, editJson, errors, makeRepo, read } from "./testkit.ts";
 
 afterAll(cleanup);
 
@@ -89,75 +90,53 @@ describe("Paraglide variants (os select x plural)", () => {
 	});
 });
 
-describe("Fluent", () => {
-	const FTL = `# Reveal action
-cli-reveal = { $os ->
-    [mac] Reveal { $name } in Finder
-    [windows] Reveal { $name } in File Explorer
-   *[linux] Reveal { $name } in the file manager
-}
-
-# Count
-cli-files =
-    { $count ->
-        [one] { $count } file
-       *[other] { $count } files
-    }
-    .title = Files in { $dir }
-
-# Plain
-cli-save = Save { term-trash }
-`;
-
-	test("every select variant and attribute is transformed; ids, variables, selectors and references untouched", () => {
-		const out = pseudoFluent(FTL);
-		const parsed = new FluentParser().parse(out);
-		expect(parsed.body.some((e) => e.type === "Junk")).toBe(false);
-		expect(parsed.body.filter((e) => e.type === "Message").map((e) => e.id.name)).toEqual(["cli-reveal", "cli-files", "cli-save"]);
-		expect(out).toContain("$os ->");
-		expect(out).toContain("[mac]");
-		expect(out).toContain("[windows]");
-		expect(out).toContain("*[linux]");
-		expect(out).toContain("$count ->");
-		expect(out).toContain("{ term-trash }");
-		for (const line of out.split("\n").filter((l) => /^\s*\*?\[(mac|windows|linux|one|other)\]/.test(l))) {
-			expect(line).toMatch(/⟦.*⟧$/);
-		}
-		expect(out).toContain(".title = ⟦");
-		expect(out).toContain("cli-save = ⟦");
-		expect(out).not.toContain("# Reveal action");
-	});
-
-	test("stable: transforming twice, or the output again, gives the same text", () => {
-		const once = pseudoFluent(FTL);
-		expect(pseudoFluent(FTL)).toBe(once);
-		expect(pseudoFluent(once)).toBe(once);
-	});
-
-	test("--print area prints the English messages of one area, and refuses an unknown area", async () => {
+describe("an area as JSON (--print)", () => {
+	test("every value of an area is transformed, keys and references kept; an unknown area is refused", async () => {
 		const root = await makeRepo();
-		const out = printFluentArea(root, "cli");
-		expect(out).toContain("cli-lang-current = ⟦");
-		expect(out).toContain("{ $lang }");
-		expect(() => printFluentArea(root, "nope")).toThrow("areas: cli");
+		const out = JSON.parse(printArea(root, "cli"));
+		expect(Object.keys(out)).toEqual(["cli_files_count", "cli_lang_current"]);
+		expect(out.cli_lang_current).toBe("⟦Láñgúágé: {lang} ~~~⟧");
+		for (const m of Object.values((out.cli_files_count as Variant[])[0].match)) expect(bracketed(m)).toBe(true);
+		expect(() => printArea(root, "nope")).toThrow("areas:");
+	});
+
+	test("references are kept as written so Rust still evaluates them", async () => {
+		const root = await makeRepo();
+		const out = JSON.parse(printArea(root, "common_os"));
+		expect(out.common_os_trash).toBeDefined();
+		const app = await makeRepo();
+		editJson(app, EN, (o) => void (o.app_gone = "Moved to {@common_os_trash}"));
+		editJson(app, META, (o) => void (o.app_gone = "Toast"));
+		expect(JSON.parse(printArea(app, "app")).app_gone).toContain("{@common_os_trash}");
 	});
 });
 
 describe("en-XA files", () => {
-	test("written next to the English catalog, transformed key by key, and invisible to every checker", async () => {
+	test("written next to the generated English input, transformed key by key, and invisible to every checker", async () => {
 		const root = await makeRepo();
+		generateAll(loadCtx(root));
 		const before = JSON.stringify(await check(root));
 		const [file] = writePseudoCatalogs(root);
-		expect(file).toBe(join(root, "apps/desktop/messages/en-XA.json"));
-		const en = JSON.parse(read(root, "apps/desktop/messages/en.json"));
-		const xa = JSON.parse(read(root, "apps/desktop/messages/en-XA.json"));
+		expect(file).toBe(join(root, "apps/desktop/.i18n/en-XA.json"));
+		const en = JSON.parse(read(root, "apps/desktop/.i18n/en.json"));
+		const xa = JSON.parse(read(root, "apps/desktop/.i18n/en-XA.json"));
 		expect(Object.keys(xa)).toEqual(Object.keys(en));
 		expect(xa.app_save_button).toBe("⟦Sávé ~~⟧");
 		expect(JSON.stringify(await check(root))).toBe(before);
 		expect(errors(await check(root))).toEqual([]);
-		expect(existsSync(join(root, "crates/atlas-i18n/locales/en-XA"))).toBe(false);
-		const again = read(root, "apps/desktop/messages/en-XA.json");
+		const again = read(root, "apps/desktop/.i18n/en-XA.json");
 		writePseudoCatalogs(root);
-		expect(read(root, "apps/desktop/messages/en-XA.json")).toBe(again);
+		expect(read(root, "apps/desktop/.i18n/en-XA.json")).toBe(again);
+	});
+
+	test("an inlined reference is pseudo-localized in every variant of the generated input", async () => {
+		const root = await makeRepo();
+		editJson(root, EN, (o) => void (o.app_gone = "Moved to {@common_os_trash}"));
+		editJson(root, META, (o) => void (o.app_gone = "Toast"));
+		writePseudoCatalogs(root);
+		const xa = JSON.parse(read(root, "apps/desktop/.i18n/en-XA.json"));
+		const match = (xa.app_gone as Variant[])[0].match;
+		expect(Object.keys(match).sort()).toEqual(["os=*", "os=windows"]);
+		for (const t of Object.values(match)) expect(bracketed(t)).toBe(true);
 	});
 });

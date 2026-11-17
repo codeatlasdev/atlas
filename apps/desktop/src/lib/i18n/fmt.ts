@@ -8,7 +8,7 @@
  * for a maintainer is always English).
  *
  * Plural-safe counts are not here: a count that picks a word ("1 terminal", "2 terminais") is a message with plural
- * variants (`messages/*.json`), and `{count: number}` inside a message formats the digits for the locale.
+ * variants (`i18n/messages/<area>/*.json`), and `{count: number}` inside a message formats the digits for the locale.
  */
 import { appLocale } from "./locale.svelte.ts";
 

@@ -5,7 +5,7 @@ import { join } from "node:path";
 import { readBaseline } from "./baseline.ts";
 import { fix } from "./fix.ts";
 import { loadCtx } from "./types.ts";
-import { addKey, check, cleanup, editJson, errors, finding, makeRepo, put, read, rulesOf } from "./testkit.ts";
+import { EN, META, PT, addKey, check, cleanup, editJson, errors, finding, makeRepo, put, read, rulesOf } from "./testkit.ts";
 import { allowsIn, loadRules, markdownProse } from "./writing.ts";
 
 afterAll(cleanup);
@@ -60,8 +60,6 @@ rules:
 
 const ctxOf = (root: string) => loadCtx(root);
 const writing = async (root: string) => (await check(root, "writing")).filter((f) => f.severity !== "info");
-const EN = "apps/desktop/messages/en.json";
-const PT = "apps/desktop/messages/pt-BR.json";
 
 async function repo(rules = MINI) {
 	const root = await makeRepo({ [RULES_FILE]: rules });
@@ -166,41 +164,10 @@ describe("catalog values (scope ui)", () => {
 		const root = await repo();
 		addKey(root, "app_dash", "A \u2014 B", "A \u2014 B", "Probe. writing-lint: allow em-dash: it is a literal range label");
 		expect(await writing(root)).toEqual([]);
-		editJson(root, "apps/desktop/messages/descriptions.json", (o) => void (o.app_dash = "Probe. writing-lint: allow em-dash"));
+		editJson(root, META, (o) => void (o.app_dash = "Probe. writing-lint: allow em-dash"));
 		const fs = await writing(root);
 		expect(rulesOf(fs)).toContain("writing-allow");
 		expect(rulesOf(fs)).toContain("writing-em-dash");
-	});
-
-	test("Fluent: a `# writing-lint: allow` comment above the message waives it", async () => {
-		const root = await repo();
-		const EN_FTL = "crates/atlas-i18n/locales/en/cli.ftl";
-		put(root, EN_FTL, `${read(root, EN_FTL)}\n# Probe\ncli-dash = A \u2014 B\n`);
-		put(root, "crates/atlas-i18n/locales/pt-BR/cli.ftl", `${read(root, "crates/atlas-i18n/locales/pt-BR/cli.ftl")}\ncli-dash = A \u2014 B\n`);
-		fix(ctxOf(root));
-		expect((await writing(root)).filter((f) => f.rule === "writing-em-dash")).toHaveLength(2);
-		put(root, EN_FTL, read(root, EN_FTL).replace("# Probe\ncli-dash", "# Probe\n# writing-lint: allow em-dash: literal\ncli-dash"));
-		expect((await writing(root)).filter((f) => f.rule === "writing-em-dash").map((f) => f.file)).toEqual([]);
-	});
-});
-
-describe("Fluent comments on translations", () => {
-	test("a target message may carry a writing-lint waiver; it needs no description and is not mistaken for one", async () => {
-		const root = await repo();
-		const EN_FTL = "crates/atlas-i18n/locales/en/cli.ftl";
-		const PT_FTL = "crates/atlas-i18n/locales/pt-BR/cli.ftl";
-		put(root, EN_FTL, `${read(root, EN_FTL)}\n# Probe\n# writing-lint: allow em-dash: literal label\ncli-dash = A \u2014 B\n`);
-		put(root, PT_FTL, `${read(root, PT_FTL)}\n# writing-lint: allow em-dash: rótulo literal\ncli-dash = A \u2014 B\n`);
-		fix(ctxOf(root));
-		const fs = await check(root);
-		expect(fs.filter((f) => f.rule === "description")).toEqual([]);
-		expect(fs.filter((f) => f.rule === "writing-em-dash")).toEqual([]);
-		expect(errors(fs)).toEqual([]);
-		// the English waiver covers its translations; the translation's own covers only itself
-		put(root, EN_FTL, read(root, EN_FTL).replace("# writing-lint: allow em-dash: literal label\n", ""));
-		expect((await check(root)).filter((f) => f.rule === "writing-em-dash").map((f) => f.file)).toEqual([EN_FTL]);
-		put(root, PT_FTL, read(root, PT_FTL).replace("# writing-lint: allow em-dash: rótulo literal\n", ""));
-		expect((await check(root)).filter((f) => f.rule === "writing-em-dash").map((f) => f.file).sort()).toEqual([EN_FTL, PT_FTL]);
 	});
 });
 

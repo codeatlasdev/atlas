@@ -1,12 +1,13 @@
 // bun run i18n:add-locale <tag> [--owner @user] [--tier community|required]
-// Adds a language in one PR by editing only: i18n/locales.json, .github/CODEOWNERS (the three translation lines),
-// every project.inlang `locales` list (and an empty catalog next to the others), the `SUPPORTED` list of
-// crates/atlas-core/src/lang.rs, CFBundleLocalizations of crates/atlas-desktop/Info.plist and an empty
-// crates/atlas-i18n/locales/<tag>/. It then prints what is left to do. A new language starts as `community`:
-// missing keys warn and the UI falls back to English until a native speaker owns it.
-import { existsSync, mkdirSync, writeFileSync } from "node:fs";
-import { join } from "node:path";
-import { loadParaglide } from "./formats/paraglide.ts";
+// Adds a language in one PR by editing only: i18n/locales.json, .github/CODEOWNERS (two lines), an empty
+// `<tag>.json` in every area of i18n/messages, every project.inlang `locales` list, the `SUPPORTED` list of
+// crates/atlas-core/src/lang.rs, CFBundleLocalizations of crates/atlas-desktop/Info.plist; then it runs the generators (they pick the language up). It prints what is left to
+// do. A new language starts as `community`: missing keys warn and the UI falls back to English until a native speaker
+// owns it.
+import { existsSync, writeFileSync } from "node:fs";
+import { dirname, join } from "node:path";
+import { generateAll } from "./generate.ts";
+import { loadSource } from "./source.ts";
 import { LOCALES_FILE, loadCtx, loadLocales, type LocalesConfig } from "./types.ts";
 import { readText } from "./util.ts";
 
@@ -55,23 +56,30 @@ export function addLocale(root: string, tag: string, opts: AddLocaleOptions = {}
 	const owners = join(root, CODEOWNERS);
 	if (existsSync(owners)) {
 		const lines = readText(owners).split("\n");
-		const block = [`**/${tag}/**`, `/*/*/messages/${tag}.json`, `/site/messages/${tag}.json`].map((p) => `${p.padEnd(28)} ${owner}`);
-		let at = lines.map((l) => /^\/site\/messages\/\S+\.json\s/.test(l)).lastIndexOf(true);
+		const block = [`**/${tag}/**`, `/i18n/messages/*/${tag}.json`].map((p) => `${p.padEnd(28)} ${owner}`);
+		let at = lines.map((l) => /^\/i18n\/messages\/\*\/\S+\.json\s/.test(l)).lastIndexOf(true);
+		if (at < 0) at = lines.map((l) => /^\*\*\/[\w-]+\/\*\*\s/.test(l)).lastIndexOf(true);
 		if (at < 0) at = lines.length - (lines.at(-1) === "" ? 2 : 1);
 		lines.splice(at + 1, 0, ...block);
 		writeFileSync(owners, lines.join("\n"));
-		log.push(`${CODEOWNERS}: added 3 lines for ${tag}`);
+		log.push(`${CODEOWNERS}: added 2 lines for ${tag}`);
 	} else log.push(`${CODEOWNERS}: not found, skipped`);
 
 	const ctx = loadCtx(root);
-	for (const p of loadParaglide(ctx)) {
-		writeFileSync(p.settingsFile, addToLocalesArray(readText(p.settingsFile), tag));
-		const catalog = join(p.dir, "messages", `${tag}.json`);
-		if (!existsSync(catalog)) {
-			mkdirSync(join(p.dir, "messages"), { recursive: true });
-			writeFileSync(catalog, "{}\n");
+	const source = loadSource(ctx);
+	for (const area of source.areas.values()) {
+		const file = join(root, area.dir, `${tag}.json`);
+		if (!existsSync(file)) writeFileSync(file, "{}\n");
+	}
+	log.push(`i18n/messages/*/${tag}.json: created empty for ${source.areas.size} area(s)`);
+	for (const [name, def] of Object.entries(source.config.surfaces)) {
+		if (def.paraglide) {
+			const settings = join(root, dirname(def.paraglide), "project.inlang", "settings.json");
+			if (existsSync(settings)) {
+				writeFileSync(settings, addToLocalesArray(readText(settings), tag));
+				log.push(`${settings.slice(root.length + 1)}: added ${tag}`);
+			} else log.push(`${name}: no project.inlang/settings.json next to ${def.paraglide}, add ${tag} to its locales by hand`);
 		}
-		log.push(`${p.settingsFile.slice(root.length + 1)}: added ${tag}; created ${catalog.slice(root.length + 1)}`);
 	}
 
 	const lang = join(root, LANG_RS);
@@ -99,15 +107,12 @@ export function addLocale(root: string, tag: string, opts: AddLocaleOptions = {}
 		}
 	} else log.push(`${PLIST}: not found, skipped`);
 
-	if (existsSync(join(root, "crates", "atlas-i18n", "locales"))) {
-		mkdirSync(join(root, "crates", "atlas-i18n", "locales", tag), { recursive: true });
-		log.push(`crates/atlas-i18n/locales/${tag}/: created (empty)`);
-	}
+	for (const g of generateAll(loadCtx(root))) log.push(`generated ${g}`);
 
 	log.push(
 		"",
 		"Next:",
-		`  1. bun run i18n:translate --locale ${tag}        (needs ANTHROPIC_API_KEY or I18N_BASE_URL; fills the catalogs and the Rust .ftl files)`,
+		`  1. bun run i18n:translate --locale ${tag}        (needs ANTHROPIC_API_KEY or I18N_BASE_URL; fills i18n/messages/*/${tag}.json)`,
 		`  2. put the writing guide of ${tag} in i18n/style/${tag}.md and its fixed terms in i18n/glossary.yaml`,
 		`  3. docs: translate docs/<page>.md into docs/${tag}/<page>.md (front matter: title, source, source_sha)`,
 		"  4. bun run i18n:fix && bun run i18n:check",

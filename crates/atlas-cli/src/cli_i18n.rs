@@ -2,15 +2,16 @@
 //!
 //! clap has no i18n (clap#380), so the English doc comments stay the source and the tree is
 //! rewritten after it is built: for a command inside [`MIGRATED`], `about`, `long_about` and each
-//! argument's `help` come from `crates/atlas-i18n/locales/<lang>/cli.ftl` by command path
-//! (`atlas config lang` -> `cli-config-lang-about`, `cli-config-lang-arg-tag`), and the words clap
-//! prints itself (`Usage:`, `Commands:`, `Options:`, the help flag) from `cli-chrome.ftl`.
+//! argument's `help` come from the catalog (`i18n/messages/cli_<command>/`) by command path
+//! (`atlas config lang` -> `cli_config_lang_about`, `cli_config_lang_arg_tag`), and the words clap
+//! prints itself (`Usage:`, `Commands:`, `Options:`, the help flag) from `cli_chrome`.
 //! Anything the active language lacks keeps its English text, so a half-translated tree is safe.
 //!
-//! English is never rewritten: `en` runs the stock clap tree. `locales/en/cli.ftl` is a golden
-//! file generated from the tree by [`golden`]; `UPDATE_FIXTURES=1 cargo test -p atlas-cli
-//! cli_i18n` rewrites it, and an agent that adds a flag with a doc comment inside a migrated
-//! command fails the test until it does, then adds the pt-BR line.
+//! English is never rewritten: `en` runs the stock clap tree. `i18n/messages/cli_<command>/en.json`
+//! and `meta.json` are a golden generated from the tree by [`golden`]; `UPDATE_FIXTURES=1 cargo
+//! test -p atlas-cli cli_i18n` rewrites them, and an agent that adds
+//! a flag with a doc comment inside a migrated command fails the test until it does, then adds the
+//! pt-BR line.
 //!
 //! Never translated: subcommand names, flag names, value names, env var names (they are API).
 //! Not translated yet: clap's own parse errors and the `[default: ..]`/`[possible values: ..]`
@@ -27,12 +28,25 @@ fn migrated(path: &[String]) -> bool {
         .any(|m| path.len() >= m.len() && m.iter().zip(path).all(|(a, b)| a == b))
 }
 
+/// A command or argument name as a catalog key part: `-` is not valid in an identifier.
+fn id_part(s: &str) -> String {
+    s.replace('-', "_")
+}
+
+fn path_part(path: &[String]) -> String {
+    path.iter()
+        .map(|p| id_part(p))
+        .collect::<Vec<_>>()
+        .join("_")
+}
+
+/// `cli_<path>_<what>`: `atlas config lang` and `about` give `cli_config_lang_about`.
 fn cmd_id(path: &[String], what: &str) -> String {
-    format!("cli-{}-{what}", path.join("-"))
+    format!("cli_{}_{what}", path_part(path))
 }
 
 fn arg_id(path: &[String], arg: &str) -> String {
-    format!("cli-{}-arg-{arg}", path.join("-"))
+    format!("cli_{}_arg_{}", path_part(path), id_part(arg))
 }
 
 /// `cmd` with the help of every migrated command in `lang`. A no-op for English.
@@ -71,11 +85,11 @@ fn translate_node(mut cmd: Command, path: &[String], lang: &str) -> Command {
     if let Some(about) = atlas_i18n::lookup(lang, &cmd_id(path, "about"), None) {
         cmd = cmd.about(about);
     }
-    if let Some(long) = atlas_i18n::lookup(lang, &cmd_id(path, "long-about"), None) {
+    if let Some(long) = atlas_i18n::lookup(lang, &cmd_id(path, "long_about"), None) {
         cmd = cmd.long_about(long);
     }
-    let arguments = chrome(lang, "cli-chrome-arguments");
-    let options = chrome(lang, "cli-chrome-options");
+    let arguments = chrome(lang, "cli_chrome_arguments");
+    let options = chrome(lang, "cli_chrome_options");
     let ids: Vec<String> = cmd
         .get_arguments()
         .map(|a| a.get_id().as_str().to_owned())
@@ -85,7 +99,7 @@ fn translate_node(mut cmd: Command, path: &[String], lang: &str) -> Command {
             .get_arguments()
             .any(|a| a.get_id() == id.as_str() && a.is_positional());
         let (help, heading) = match id.as_str() {
-            "help" => (chrome(lang, "cli-chrome-help-flag"), options.clone()),
+            "help" => (chrome(lang, "cli_chrome_help_flag"), options.clone()),
             _ => (
                 atlas_i18n::lookup(lang, &arg_id(path, &id), None),
                 if positional {
@@ -107,11 +121,11 @@ fn translate_node(mut cmd: Command, path: &[String], lang: &str) -> Command {
         });
     }
     if cmd.has_subcommands() {
-        if let Some(h) = chrome(lang, "cli-chrome-commands") {
+        if let Some(h) = chrome(lang, "cli_chrome_commands") {
             cmd = cmd.subcommand_help_heading(h);
         }
-        let about = chrome(lang, "cli-chrome-help-subcommand");
-        let arg = chrome(lang, "cli-chrome-help-subcommand-arg");
+        let about = chrome(lang, "cli_chrome_help_subcommand");
+        let arg = chrome(lang, "cli_chrome_help_subcommand_arg");
         cmd = cmd.mut_subcommand("help", |h| {
             let h = match about {
                 Some(a) => h.about(a),
@@ -127,7 +141,7 @@ fn translate_node(mut cmd: Command, path: &[String], lang: &str) -> Command {
             }
         });
     }
-    if let Some(usage) = chrome(lang, "cli-chrome-usage") {
+    if let Some(usage) = chrome(lang, "cli_chrome_usage") {
         // clap's default template with its `{usage-heading}` replaced by the translated word.
         cmd = cmd.help_template(format!(
             "{{before-help}}{{about-with-newline}}\n{usage} {{usage}}\n\n{{all-args}}{{after-help}}"
@@ -136,36 +150,59 @@ fn translate_node(mut cmd: Command, path: &[String], lang: &str) -> Command {
     cmd
 }
 
-/// The `locales/en/cli.ftl` content for the migrated commands of `cmd` (the stock tree, not
-/// built). One message per command (`about`, `long-about` when there is one) and per argument
-/// that has help text, each with the description comment the catalog check requires.
+/// A generated catalog area: `cli_<command>` holds the help of `atlas <command>` and everything below.
 #[cfg(test)]
-pub fn golden(cmd: &Command) -> String {
-    let mut out = String::from(
-        "# Generated from the clap tree by `UPDATE_FIXTURES=1 cargo test -p atlas-cli cli_i18n`.\n\
-         # Do not edit by hand: change the doc comment in the Rust source and regenerate.\n\n",
-    );
-    dump(cmd, &mut Vec::new(), &mut out);
-    out
+pub struct Area {
+    pub name: String,
+    /// key -> English text (`en.json`).
+    pub en: std::collections::BTreeMap<String, String>,
+    /// key -> description (`meta.json`).
+    pub meta: std::collections::BTreeMap<String, String>,
+}
+
+/// The English catalog areas for the migrated commands of `cmd` (the stock tree, not built): one
+/// message per command (`about`, `long_about` when there is one) and per argument that has help
+/// text, each with the description the catalog check requires.
+#[cfg(test)]
+pub fn golden(cmd: &Command) -> Vec<Area> {
+    let mut areas = std::collections::BTreeMap::new();
+    dump(cmd, &mut Vec::new(), &mut areas);
+    areas.into_values().collect()
 }
 
 #[cfg(test)]
-fn dump(cmd: &Command, path: &mut Vec<String>, out: &mut String) {
+fn dump(
+    cmd: &Command,
+    path: &mut Vec<String>,
+    areas: &mut std::collections::BTreeMap<String, Area>,
+) {
     if !path.is_empty() && migrated(path) {
+        let name = format!("cli_{}", id_part(&path[0]));
+        let area = areas.entry(name.clone()).or_insert_with(|| Area {
+            name,
+            en: Default::default(),
+            meta: Default::default(),
+        });
         let shown = format!("atlas {}", path.join(" "));
+        let mut add = |id: String, description: String, text: &str| {
+            assert!(
+                !text.contains(['{', '}']),
+                "{id}: help text with a brace is not supported by the catalog format; reword the doc comment"
+            );
+            area.en.insert(id.clone(), text.to_owned());
+            area.meta.insert(id, description);
+        };
         if let Some(about) = cmd.get_about() {
-            message(
-                out,
-                &format!("Short description of `{shown}` in `--help`."),
-                &cmd_id(path, "about"),
+            add(
+                cmd_id(path, "about"),
+                format!("Short description of `{shown}` in `--help`."),
                 &about.to_string(),
             );
         }
         if let Some(long) = cmd.get_long_about() {
-            message(
-                out,
-                &format!("Long description of `{shown}` in `--help`."),
-                &cmd_id(path, "long-about"),
+            add(
+                cmd_id(path, "long_about"),
+                format!("Long description of `{shown}` in `--help`."),
                 &long.to_string(),
             );
         }
@@ -178,10 +215,9 @@ fn dump(cmd: &Command, path: &mut Vec<String>, out: &mut String) {
                 continue;
             }
             if let Some(help) = arg.get_help() {
-                message(
-                    out,
-                    &format!("Help line of the `{id}` argument of `{shown}`."),
-                    &arg_id(path, id),
+                add(
+                    arg_id(path, id),
+                    format!("Help line of the `{id}` argument of `{shown}`."),
                     &help.to_string(),
                 );
             }
@@ -189,37 +225,25 @@ fn dump(cmd: &Command, path: &mut Vec<String>, out: &mut String) {
     }
     for sub in cmd.get_subcommands() {
         path.push(sub.get_name().to_owned());
-        dump(sub, path, out);
+        dump(sub, path, areas);
         path.pop();
     }
 }
 
-/// One Fluent message. `{` and `}` in help text are escaped as string literals; a text with
-/// several lines becomes a block value.
+/// A catalog file: one key per line, sorted, tab indented, a trailing newline (what `i18n:fix` writes).
 #[cfg(test)]
-fn message(out: &mut String, description: &str, id: &str, text: &str) {
-    let escaped: String = text
-        .chars()
-        .map(|c| match c {
-            '{' => "{ \"{\" }".to_owned(),
-            '}' => "{ \"}\" }".to_owned(),
-            c => c.to_string(),
+fn json(entries: &std::collections::BTreeMap<String, String>) -> String {
+    let lines: Vec<String> = entries
+        .iter()
+        .map(|(k, v)| {
+            format!(
+                "\t{}: {}",
+                serde_json::to_string(k).unwrap(),
+                serde_json::to_string(v).unwrap()
+            )
         })
         .collect();
-    out.push_str(&format!("# {description}\n{id} ="));
-    if escaped.contains('\n') {
-        out.push('\n');
-        for line in escaped.lines() {
-            out.push_str("    ");
-            out.push_str(line);
-            out.push('\n');
-        }
-    } else {
-        out.push(' ');
-        out.push_str(&escaped);
-        out.push('\n');
-    }
-    out.push('\n');
+    format!("{{\n{}\n}}\n", lines.join(",\n"))
 }
 
 #[cfg(test)]
@@ -242,28 +266,37 @@ mod tests {
         sub.render_long_help().to_string()
     }
 
+    fn messages_dir() -> std::path::PathBuf {
+        std::path::Path::new(env!("CARGO_MANIFEST_DIR")).join("../../i18n/messages")
+    }
+
     // The golden is the single source the English catalog is checked against: a doc comment
-    // edited or added in a migrated command, without regenerating, fails here.
+    // edited or added in a migrated command, without regenerating, fails here. It owns the
+    // `i18n/messages/cli_<command>/{en,meta}.json` of every migrated command.
     #[test]
     fn the_english_catalog_is_the_dump_of_the_clap_tree() {
-        let path = concat!(
-            env!("CARGO_MANIFEST_DIR"),
-            "/../atlas-i18n/locales/en/cli.ftl"
-        );
-        let want = golden(&tree());
-        if std::env::var_os("UPDATE_FIXTURES").is_some() {
-            std::fs::write(path, &want).unwrap();
+        let update = std::env::var_os("UPDATE_FIXTURES").is_some();
+        let mut stale = Vec::new();
+        for area in golden(&tree()) {
+            for (file, entries) in [("en.json", &area.en), ("meta.json", &area.meta)] {
+                let path = messages_dir().join(&area.name).join(file);
+                let want = json(entries);
+                if update {
+                    std::fs::create_dir_all(path.parent().unwrap()).unwrap();
+                    std::fs::write(&path, &want).unwrap();
+                }
+                if std::fs::read_to_string(&path).ok().as_deref() != Some(want.as_str()) {
+                    stale.push(path.display().to_string());
+                }
+            }
         }
-        let have = std::fs::read_to_string(path)
-            .expect("locales/en/cli.ftl missing: run with UPDATE_FIXTURES=1 to create it");
-        assert_eq!(
-            have, want,
-            "stale locales/en/cli.ftl: re-run with UPDATE_FIXTURES=1"
+        assert!(
+            stale.is_empty(),
+            "stale or missing, re-run with UPDATE_FIXTURES=1 cargo test -p atlas-cli cli_i18n: {stale:?}"
         );
     }
 
-    // Every golden message round-trips through the Fluent parser to the exact clap text, so the
-    // escaping and block layout cannot drift from what pt-BR sees as the source.
+    // Every golden message reaches the runtime catalog (embedded JSON) as the exact clap text.
     #[test]
     fn golden_messages_round_trip_to_the_clap_text() {
         let config = tree();
@@ -271,12 +304,12 @@ mod tests {
         let lang = sub.find_subcommand("lang").unwrap();
         let about = lang.get_about().unwrap().to_string();
         assert_eq!(
-            atlas_i18n::lookup("en", "cli-config-lang-about", None).as_deref(),
+            atlas_i18n::lookup("en", "cli_config_lang_about", None).as_deref(),
             Some(about.as_str())
         );
         let tag = lang.get_arguments().find(|a| a.get_id() == "tag").unwrap();
         assert_eq!(
-            atlas_i18n::lookup("en", "cli-config-lang-arg-tag", None).as_deref(),
+            atlas_i18n::lookup("en", "cli_config_lang_arg_tag", None).as_deref(),
             Some(tag.get_help().unwrap().to_string().as_str())
         );
     }

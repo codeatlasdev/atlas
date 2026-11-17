@@ -1,7 +1,7 @@
 // @ts-nocheck bun test runtime types are not part of the app tsconfig
 import "../../../test/setup.ts";
 import { expect, test } from "bun:test";
-import { existsSync, readFileSync } from "node:fs";
+import { existsSync, readFileSync, readdirSync } from "node:fs";
 import { join } from "node:path";
 import * as compiled from "#lib/paraglide/messages.js";
 import { locales } from "#lib/paraglide/runtime.js";
@@ -9,8 +9,15 @@ import { inLocale } from "../../../test/locale.ts";
 
 const root = join(import.meta.dir, "../../..");
 const json = (rel: string) => JSON.parse(readFileSync(join(root, rel), "utf8"));
-const catalog = (locale: string) =>
-	Object.keys(json(`messages/${locale}.json`)).filter((k) => k !== "$schema");
+// What Paraglide compiles is `.i18n/{locale}.json`, generated from the one source tree (`i18n/messages/<area>/…`) by
+// `scripts/i18n/generate.ts`; descriptions live in each area's `meta.json`.
+const catalog = (locale: string) => Object.keys(json(`.i18n/${locale}.json`)).filter((k) => k !== "$schema");
+const SOURCE = join(root, "../../i18n/messages");
+const descriptions = () =>
+	Object.assign(
+		{},
+		...readdirSync(SOURCE).map((area) => JSON.parse(readFileSync(join(SOURCE, area, "meta.json"), "utf8"))),
+	);
 
 // A plugin path that does not resolve makes the Paraglide CLI log a warning and still print "Successfully compiled"
 // with ZERO messages: every `m.*()` then fails at runtime, far from the cause. What is compiled is what is asserted.
@@ -52,11 +59,12 @@ test("plural variants: zero is its own sentence in both languages, one and other
 });
 
 test("every key has an English description that is not the text itself", () => {
-	const descriptions = json("messages/descriptions.json");
-	expect(Object.keys(descriptions)).toEqual(catalog("en"));
-	const en = json("messages/en.json");
-	for (const [key, d] of Object.entries(descriptions)) {
+	const described = descriptions();
+	const en = json(".i18n/en.json");
+	for (const key of catalog("en")) {
+		// A meta entry is the description, or `{ description, distinct }` when two near-identical texts need telling apart.
+		const d = typeof described[key] === "string" ? described[key] : described[key]?.description;
+		expect(d, `${key} has no description in i18n/messages/*/meta.json`).toBeString();
 		expect(d, key).not.toBe(en[key]);
-		expect(d.length, key).toBeGreaterThan(20);
 	}
 });

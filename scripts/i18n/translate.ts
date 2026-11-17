@@ -1,20 +1,19 @@
-// bun run i18n:translate [--locale pt-BR] [--surface desktop] [--dry-run]
+// bun run i18n:translate [--locale pt-BR] [--area x] [--surface y] [--dry-run]
 // Translates only what is new or changed: keys the locale lacks, and keys whose English hash differs from the lock.
 // Bring your own model: ANTHROPIC_API_KEY (+ I18N_MODEL), or any OpenAI-compatible endpoint with I18N_BASE_URL
 // (+ I18N_API_KEY, I18N_MODEL; Ollama works). The model output is validated with the same rules `i18n:check` runs
-// (placeholders, plural forms, glossary, pt-PT words) and nothing is written for a surface+locale if any key fails.
+// (placeholders, plural forms, glossary, pt-PT words) and nothing is written for an area and locale if any key fails.
 // --dry-run prints the prompts and touches neither the network nor a file.
-import { existsSync, mkdirSync, writeFileSync } from "node:fs";
-import { dirname, join } from "node:path";
-import { FluentParser } from "@fluent/syntax";
-import { type Entry, entryIssues, hashOf, type Surface } from "./engine.ts";
+import { existsSync, writeFileSync } from "node:fs";
+import { join } from "node:path";
+import { type Entry, entryIssues, hashOf } from "./engine.ts";
 import { rebuildLock } from "./fix.ts";
-import { entryOf, parseMessage } from "./formats/fluent.ts";
-import { formatProblem, paraglideEntry } from "./formats/paraglide.ts";
 import { OS_KEYS, osLine, termRegex } from "./glossary.ts";
-import { readLocks } from "./lock.ts";
-import { type ParaglideValue, paraglideProblem } from "./shape.ts";
-import { loadSurfaces, type Loaded } from "./surfaces.ts";
+import type { Area } from "./model.ts";
+import { readLock } from "./lock.ts";
+import { type MsgValue } from "./resolve.ts";
+import { paraglideProblem } from "./shape.ts";
+import { type Source, areasFor, loadSource, makeEntry } from "./source.ts";
 import { type Ctx, loadCtx } from "./types.ts";
 import { canonicalJson, detectIndent, readText } from "./util.ts";
 
@@ -28,29 +27,27 @@ export interface Pending {
 	previous?: Entry;
 }
 
-/** Keys of `surface` that `locale` lacks or whose English changed since they were translated (not merely unstamped). */
-export function pending(ctx: Ctx, surface: Surface, locale: string): Pending[] {
-	const base = surface.entries.get(surface.base) ?? new Map<string, Entry>();
-	const mine = surface.entries.get(locale) ?? new Map<string, Entry>();
-	const lock = readLocks(ctx.root, surface.name, locale).byKey;
+/** Keys of `area` that `locale` lacks or whose English changed since they were translated (not merely unstamped). */
+export function pending(ctx: Ctx, area: Area, locale: string): Pending[] {
+	const base = area.entries.get(area.base) ?? new Map<string, Entry>();
+	const mine = area.entries.get(locale) ?? new Map<string, Entry>();
+	const lock = readLock(ctx.root, area.name, locale).byKey;
 	const out: Pending[] = [];
 	for (const [key, b] of base) {
 		const t = mine.get(key);
-		const stamp = lock.get(key)?.hash;
+		const stamp = lock.get(key);
 		if (!t) out.push({ key, base: b });
 		else if (stamp && stamp !== hashOf(b)) out.push({ key, base: b, previous: t });
 	}
 	return out;
 }
 
-const SYSTEM = (locale: string, kind: Surface["kind"]) =>
+const SYSTEM = (locale: string) =>
 	[
 		`You translate user interface text of the Atlas developer tool from English into ${locale}.`,
-		"Follow the glossary and the style guide exactly. Keep every {placeholder}, markup tag, `code span`, URL and plural/select structure; translate nothing inside them.",
+		"Follow the glossary and the style guide exactly. Keep every {placeholder}, {@reference}, markup tag, `code span`, URL and plural/select structure; translate nothing inside them.",
 		"Use the description of each key to understand what UI element it is. Do not add explanations.",
-		kind === "paraglide"
-			? 'Answer with ONE JSON object and nothing else: {"<key>": <value>, ...}. A value is a string, or, when the English value is a variants array, the same variants array with every match arm translated and the selectors/declarations unchanged. Plural selectors need the variants the target language requires (pt-BR: one and other).'
-			: 'Answer with ONE JSON object and nothing else: {"<key>": "<the whole Fluent message>", ...}. Each value is the complete message source, starting with the id and " = ", with attributes and select expressions as in the English; no comments.',
+		'Answer with ONE JSON object and nothing else: {"<key>": <value>, ...}. A value is a string, or, when the English value is a variants array, the same variants array with every match arm translated and the selectors/declarations unchanged. Plural selectors need the variants the target language requires (pt-BR: one and other).',
 	].join("\n");
 
 /** Glossary entries that matter for this batch, as prompt lines: a term that occurs in the English text, or an OS
@@ -76,34 +73,33 @@ function glossaryLines(ctx: Ctx, locale: string, batch: Pending[]): string[] {
 	return out;
 }
 
-/** Up to 20 existing, fresh translations of the same areas: the repository is the translation memory. */
-function examples(ctx: Ctx, surface: Surface, locale: string, batch: Pending[]): string[] {
-	const areas = new Set(batch.map((p) => p.base.area));
+/** Up to 20 existing, fresh translations of the same area: the repository is the translation memory. */
+function examples(ctx: Ctx, area: Area, locale: string, batch: Pending[]): string[] {
 	const skip = new Set(batch.map((p) => p.key));
-	const lock = readLocks(ctx.root, surface.name, locale).byKey;
+	const lock = readLock(ctx.root, area.name, locale).byKey;
 	const out: string[] = [];
-	for (const [key, t] of surface.entries.get(locale) ?? []) {
-		const b = surface.entries.get(surface.base)?.get(key);
+	for (const [key, t] of area.entries.get(locale) ?? []) {
+		const b = area.entries.get(area.base)?.get(key);
 		if (out.length >= EXAMPLES) break;
-		if (b && areas.has(b.area) && !skip.has(key) && lock.get(key)?.hash === hashOf(b)) out.push(`${key}\n  en: ${b.raw}\n  ${locale}: ${t.raw}`);
+		if (b && !skip.has(key) && lock.get(key) === hashOf(b)) out.push(`${key}\n  en: ${b.raw}\n  ${locale}: ${t.raw}`);
 	}
 	return out;
 }
 
-export function buildPrompt(ctx: Ctx, surface: Surface, locale: string, batch: Pending[]): { system: string; user: string } {
+export function buildPrompt(ctx: Ctx, area: Area, locale: string, batch: Pending[]): { system: string; user: string } {
 	const style = join(ctx.root, "i18n", "style", `${locale}.md`);
 	const parts: string[] = [];
 	const gl = glossaryLines(ctx, locale, batch);
 	if (gl.length) parts.push("Glossary:", ...gl, "");
 	if (existsSync(style)) parts.push(`Style guide for ${locale}:`, readText(style).trim(), "");
-	const ex = examples(ctx, surface, locale, batch);
-	if (ex.length) parts.push("Existing translations of the same areas (match their wording):", ...ex, "");
+	const ex = examples(ctx, area, locale, batch);
+	if (ex.length) parts.push("Existing translations of the same area (match their wording):", ...ex, "");
 	parts.push("Translate these:");
 	for (const p of batch) {
 		parts.push(`\n${p.key}`, `  description: ${p.base.description ?? "(none)"}`, `  en: ${p.base.raw}`);
 		if (p.previous) parts.push(`  previous ${locale} (the English changed since): ${p.previous.raw}`);
 	}
-	return { system: SYSTEM(locale, surface.kind), user: parts.join("\n") };
+	return { system: SYSTEM(locale), user: parts.join("\n") };
 }
 
 /** The JSON object in a model answer (tolerates a code fence or a sentence around it). */
@@ -118,13 +114,12 @@ export function parseAnswer(text: string): Record<string, unknown> {
 
 export interface Candidate {
 	key: string;
-	/** The value to store: a catalog value (paraglide) or the message source (fluent). */
-	value: unknown;
+	value: MsgValue;
 	entry: Entry;
 }
 
 /** Validate the answer for `batch`; returns the candidates and every problem found (errors fail the batch). */
-export function validate(ctx: Ctx, surface: Surface, locale: string, batch: Pending[], answer: Record<string, unknown>): { ok: Candidate[]; errors: string[] } {
+export function validate(ctx: Ctx, source: Source, area: Area, locale: string, batch: Pending[], answer: Record<string, unknown>): { ok: Candidate[]; errors: string[] } {
 	const ok: Candidate[] = [];
 	const errors: string[] = [];
 	for (const p of batch) {
@@ -134,106 +129,62 @@ export function validate(ctx: Ctx, surface: Surface, locale: string, batch: Pend
 			fail("missing in the model answer");
 			continue;
 		}
-		let entry: Entry;
-		if (surface.kind === "paraglide") {
-			const bad = paraglideProblem(value);
-			if (bad) {
-				fail(bad);
-				continue;
-			}
-			entry = paraglideEntry(p.key, value as ParaglideValue, p.base.file, undefined, undefined);
-		} else {
-			if (typeof value !== "string") {
-				fail("a Fluent value must be the message source as a string");
-				continue;
-			}
-			const r = parseMessage(value);
-			if ("error" in r) {
-				fail(r.error);
-				continue;
-			}
-			if (r.message.id.name !== p.key) {
-				fail(`the message id is "${r.message.id.name}", expected "${p.key}"`);
-				continue;
-			}
-			entry = entryOf(r.message, p.base.file, p.base.area, value);
+		const bad = paraglideProblem(value);
+		if (bad) {
+			fail(bad);
+			continue;
 		}
+		const v = value as MsgValue;
+		const entry = makeEntry({ key: p.key, area: area.name, file: p.base.file, value: v, lookup: source.lookup(locale) });
 		const issues = entryIssues(ctx, locale, p.base, entry);
 		for (const i of issues) if (i.severity === "error") fail(`${i.rule}: ${i.message}`);
-		if (!issues.some((i) => i.severity === "error")) ok.push({ key: p.key, value, entry });
+		if (entry.refError) fail(`dangling-ref: ${entry.refError}`);
+		if (!issues.some((i) => i.severity === "error") && !entry.refError) ok.push({ key: p.key, value: v, entry });
 	}
 	return { ok, errors };
 }
 
-function writeParaglide(loaded: Loaded, locale: string, items: Candidate[]) {
-	const path = loaded.catalogs?.get(locale);
-	if (!path) throw new Error(`${loaded.surface.name} has no catalog for ${locale}`);
+/** Merge `items` into `<area>/<locale>.json` (canonical form, keys sorted). */
+export function writeValues(root: string, area: Area, locale: string, items: { key: string; value: MsgValue }[]) {
+	const path = join(root, area.dir, `${locale}.json`);
 	const text = existsSync(path) ? readText(path) : "{}\n";
 	const obj: Record<string, unknown> = JSON.parse(text);
 	for (const i of items) obj[i.key] = i.value;
-	mkdirSync(dirname(path), { recursive: true });
 	writeFileSync(path, canonicalJson(obj, detectIndent(text)));
-	const written = readText(path);
-	if (formatProblem(written, JSON.parse(written))) throw new Error(`${path}: wrote a non-canonical catalog`);
-}
-
-function writeFluent(ctx: Ctx, surface: Surface, locale: string, items: Candidate[]) {
-	const parser = new FluentParser({ withSpans: true });
-	const byFile = new Map<string, Candidate[]>();
-	for (const i of items) {
-		const baseFile = surface.entries.get(surface.base)?.get(i.key)?.file ?? "";
-		const file = baseFile.replace(`/locales/${surface.base}/`, `/locales/${locale}/`);
-		byFile.set(file, [...(byFile.get(file) ?? []), i]);
-	}
-	for (const [file, list] of byFile) {
-		const path = join(ctx.root, file);
-		let text = existsSync(path) ? readText(path) : "";
-		for (const i of list) {
-			const existing = parser.parse(text).body.find((e) => e.type === "Message" && e.id.name === i.key);
-			const src = String(i.value).trim();
-			if (existing?.type === "Message" && existing.span && existing.id.span) {
-				text = text.slice(0, existing.id.span.start) + src + text.slice(existing.span.end);
-			} else text = `${text}${text === "" || text.endsWith("\n\n") ? "" : text.endsWith("\n") ? "\n" : "\n\n"}${src}\n`;
-		}
-		mkdirSync(dirname(path), { recursive: true });
-		writeFileSync(path, text);
-	}
 }
 
 export type Complete = (prompt: { system: string; user: string }) => Promise<string>;
 
 export interface Report {
-	surface: string;
+	area: string;
 	locale: string;
 	translated: string[];
 	errors: string[];
 }
 
-/** Translate everything pending for one surface+locale. Writes only when every key validates. */
-export async function translateSurface(ctx: Ctx, loaded: Loaded, locale: string, complete: Complete): Promise<Report> {
-	const { surface } = loaded;
-	const todo = pending(ctx, surface, locale);
-	const report: Report = { surface: surface.name, locale, translated: [], errors: [] };
+/** Translate everything pending for one area and locale. Writes only when every key validates. */
+export async function translateArea(ctx: Ctx, source: Source, area: Area, locale: string, complete: Complete): Promise<Report> {
+	const todo = pending(ctx, area, locale);
+	const report: Report = { area: area.name, locale, translated: [], errors: [] };
 	const accepted: Candidate[] = [];
 	for (let i = 0; i < todo.length; i += BATCH) {
 		const batch = todo.slice(i, i + BATCH);
 		let answer: Record<string, unknown>;
 		try {
-			answer = parseAnswer(await complete(buildPrompt(ctx, surface, locale, batch)));
+			answer = parseAnswer(await complete(buildPrompt(ctx, area, locale, batch)));
 		} catch (e) {
 			report.errors.push(`batch ${i / BATCH + 1}: ${(e as Error).message}`);
 			continue;
 		}
-		const v = validate(ctx, surface, locale, batch, answer);
+		const v = validate(ctx, source, area, locale, batch, answer);
 		accepted.push(...v.ok);
 		report.errors.push(...v.errors);
 	}
 	if (report.errors.length || accepted.length === 0) return report;
-	if (surface.kind === "paraglide") writeParaglide(loaded, locale, accepted);
-	else writeFluent(ctx, surface, locale, accepted);
+	writeValues(ctx.root, area, locale, accepted);
 	// Reload what was just written so the lock stamps the keys that now exist.
-	const fresh = loadSurfaces(ctx).find((l) => l.surface.name === surface.name);
-	if (fresh) rebuildLock(ctx.root, fresh.surface, locale, new Set(accepted.map((c) => c.key)));
+	const fresh = loadSource(ctx).areas.get(area.name);
+	if (fresh) rebuildLock(ctx.root, fresh, locale, new Set(accepted.map((c) => c.key)));
 	report.translated = accepted.map((c) => c.key);
 	return report;
 }
@@ -278,24 +229,26 @@ async function main() {
 	const root = opt("--root") ?? join(import.meta.dir, "..", "..");
 	const ctx = loadCtx(root, opt("--surface"));
 	const only = opt("--locale");
+	const area = opt("--area");
 	const dry = args.includes("--dry-run");
 	const targets = Object.keys(ctx.locales.locales).filter((l) => l !== ctx.locales.default && (!only || l === only));
 	if (only && targets.length === 0) {
 		console.error(`i18n:translate: "${only}" is not a target locale of i18n/locales.json`);
 		process.exit(1);
 	}
+	const source = loadSource(ctx);
 	let complete: Complete | undefined;
 	let failed = false;
 	let any = false;
-	for (const loaded of loadSurfaces(ctx)) {
-		for (const locale of targets.filter((l) => loaded.surface.locales.includes(l))) {
-			const todo = pending(ctx, loaded.surface, locale);
+	for (const a of areasFor(source, ctx.surface).filter((x) => !area || x.name === area)) {
+		for (const locale of targets) {
+			const todo = pending(ctx, a, locale);
 			if (todo.length === 0) continue;
 			any = true;
 			if (dry) {
 				for (let i = 0; i < todo.length; i += BATCH) {
-					const p = buildPrompt(ctx, loaded.surface, locale, todo.slice(i, i + BATCH));
-					console.log(`=== ${loaded.surface.name} ${locale} (batch ${i / BATCH + 1}) ===\n--- system ---\n${p.system}\n--- user ---\n${p.user}\n`);
+					const p = buildPrompt(ctx, a, locale, todo.slice(i, i + BATCH));
+					console.log(`=== ${a.name} ${locale} (batch ${i / BATCH + 1}) ===\n--- system ---\n${p.system}\n--- user ---\n${p.user}\n`);
 				}
 				continue;
 			}
@@ -305,12 +258,12 @@ async function main() {
 				console.error(`i18n:translate: ${(e as Error).message}`);
 				process.exit(1);
 			}
-			const r = await translateSurface(ctx, loaded, locale, complete);
+			const r = await translateArea(ctx, source, a, locale, complete);
 			if (r.errors.length) {
 				failed = true;
-				console.error(`${r.surface} ${r.locale}: nothing written, ${r.errors.length} problem(s):`);
+				console.error(`${r.area} ${r.locale}: nothing written, ${r.errors.length} problem(s):`);
 				for (const e of r.errors) console.error(`  ${e}`);
-			} else console.log(`${r.surface} ${r.locale}: ${r.translated.length} key(s) written and stamped; run bun run i18n:check`);
+			} else console.log(`${r.area} ${r.locale}: ${r.translated.length} key(s) written and stamped; run bun run i18n:check`);
 		}
 	}
 	if (!any) console.log("i18n:translate: nothing to translate");

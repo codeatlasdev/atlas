@@ -52,9 +52,9 @@ describe("plan", () => {
 			"i18n/glossary.yaml",
 			"i18n/lock/desktop/pt-BR/settings.json",
 			"scripts/i18n/check.ts",
-			"crates/atlas-i18n/locales/pt-BR/cli.ftl",
-			"site/messages/pt-BR.json",
-			"apps/desktop/messages/en.json",
+			"i18n/messages/app/pt-BR.json",
+			"i18n/surfaces.json",
+			"crates/atlas-core/src/lang.rs",
 			"docs/pt-BR/getting-started.md",
 		]) {
 			expect(plan([f], graph).steps).toContain("bun run i18n:check");

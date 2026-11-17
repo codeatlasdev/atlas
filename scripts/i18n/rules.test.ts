@@ -4,13 +4,11 @@ import { afterAll, describe, expect, test } from "bun:test";
 import { rmSync } from "node:fs";
 import { fix } from "./fix.ts";
 import { type Finding, loadCtx } from "./types.ts";
-import { addKey, check, cleanup, editJson, errors, finding, json, makeRepo, PLURAL, put, read, rulesOf } from "./testkit.ts";
+import { EN, META, PT, addKey, check, cleanup, editJson, errors, finding, json, makeRepo, PLURAL, put, read, rulesOf } from "./testkit.ts";
 
 afterAll(cleanup);
 
-const EN = "apps/desktop/messages/en.json";
-const PT = "apps/desktop/messages/pt-BR.json";
-const DESC = "apps/desktop/messages/descriptions.json";
+const DESC = META;
 
 describe("a valid repo", () => {
 	test("has no error and no warning", async () => {
@@ -54,7 +52,7 @@ describe("missing / outdated / orphan / lock", () => {
 
 	test("a translation without a lock entry is unstamped until fix stamps it", async () => {
 		const root = await makeRepo();
-		rmSync(`${root}/i18n/lock/desktop`, { recursive: true });
+		rmSync(`${root}/i18n/messages/app/lock.json`);
 		const fs = await check(root);
 		expect(fs.filter((f) => f.rule === "unstamped")).toHaveLength(5);
 		fix(loadCtx(root));
@@ -78,10 +76,38 @@ describe("missing / outdated / orphan / lock", () => {
 		expect((await check(root)).filter((f) => f.rule === "lock")).toEqual([]);
 	});
 
-	test("a locale in settings.json that i18n/locales.json does not know is a config error", async () => {
+	test("a locale file i18n/locales.json does not know is a config error", async () => {
 		const root = await makeRepo();
-		editJson(root, "apps/desktop/project.inlang/settings.json", (o) => void (o.locales = ["en", "pt-BR", "es"]));
-		expect(finding(await check(root), "config")?.message).toContain('"es"');
+		put(root, "i18n/messages/app/es.json", "{}\n");
+		expect(finding(await check(root), "config")?.message).toContain("not a locale");
+	});
+});
+
+describe("lock.json is only ever written by the tools", () => {
+	const LOCKF = "i18n/messages/app/lock.json";
+	test("a hand-edited lock (unsorted, other indent), a bad hash, a wrong shape and invalid JSON are lock errors; fix repairs the first", async () => {
+		const root = await makeRepo();
+		const lock = JSON.parse(read(root, LOCKF));
+		const keys = Object.keys(lock["pt-BR"]);
+		const reversed = Object.fromEntries([...keys].reverse().map((k) => [k, lock["pt-BR"][k]]));
+		put(root, LOCKF, `${JSON.stringify({ "pt-BR": reversed }, null, "\t")}\n`);
+		expect(finding(await check(root), "lock")?.message).toContain("not in canonical form");
+		fix(loadCtx(root));
+		expect(rulesOf(await check(root))).not.toContain("lock");
+
+		put(root, LOCKF, `${JSON.stringify({ "pt-BR": { ...lock["pt-BR"], app_welcome: "nothex" } }, null, "  ")}\n`);
+		expect((await check(root)).some((f) => f.rule === "lock" && f.key === "app_welcome" && f.message.includes("12-hex"))).toBe(true);
+		put(root, LOCKF, '{ "pt-BR": ["a"] }\n');
+		expect(finding(await check(root), "lock")?.message).toContain('{ "<locale>": { "<key>": "<hash>" } }');
+		put(root, LOCKF, "{ nope");
+		expect(finding(await check(root), "lock")?.message).toContain("invalid JSON");
+	});
+
+	test("a lock of one locale never touches the others: locales share the file", async () => {
+		const root = await makeRepo();
+		put(root, LOCKF, `${JSON.stringify({ "es": { app_welcome: "0123456789ab" }, "pt-BR": JSON.parse(read(root, LOCKF))["pt-BR"] }, null, "  ")}\n`);
+		fix(loadCtx(root));
+		expect(JSON.parse(read(root, LOCKF)).es.app_welcome).toBe("0123456789ab");
 	});
 });
 

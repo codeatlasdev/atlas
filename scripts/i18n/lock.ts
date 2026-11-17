@@ -1,68 +1,69 @@
-// i18n/lock/<surface>/<locale>/<area>.json: for every translated key, the 12-hex hash of the English value it was
-// translated from. A key whose current English hash differs is outdated. Only `i18n:fix` and `i18n:translate`
-// write these files; a person never does.
-import { existsSync, mkdirSync, readdirSync, rmSync, writeFileSync } from "node:fs";
-import { dirname, join } from "node:path";
-import { LOCK_DIR } from "./types.ts";
-import { canonicalJson, readText, rel } from "./util.ts";
+// i18n/messages/<area>/lock.json: for every translated key of the area, the 12-hex hash of the English value it was
+// translated from, per locale: `{ "pt-BR": { "<key>": "3fa1c2d09b7e" } }`. A key whose current English hash differs is
+// outdated. Only `i18n:fix`, `i18n:translate`, `i18n:add` and `i18n:mv` write this file; a person never does.
+import { existsSync, rmSync, writeFileSync } from "node:fs";
+import { join } from "node:path";
+import { MESSAGES_DIR } from "./types.ts";
+import { cmp, readText } from "./util.ts";
 
-export const LOCK_INDENT = "  ";
+export const lockFile = (area: string) => `${MESSAGES_DIR}/${area}/lock.json`;
 
-export interface LockEntry {
-	hash: string;
-	area: string;
-	file: string;
+type LockFile = Record<string, Record<string, string>>;
+
+/** Keys sorted at both levels, two-space indent, LF, trailing newline: the one form a lock is written in. */
+function render(lock: LockFile): string {
+	const sorted: LockFile = {};
+	for (const l of Object.keys(lock).sort(cmp)) {
+		sorted[l] = Object.fromEntries(Object.entries(lock[l]).sort(([a], [b]) => cmp(a, b)));
+	}
+	return `${JSON.stringify(sorted, null, "  ")}\n`;
 }
 
 export interface LockRead {
-	byKey: Map<string, LockEntry>;
-	/** Lock files that are unreadable, not a flat string map, or not in canonical form. */
-	problems: { file: string; message: string; key?: string }[];
+	byKey: Map<string, string>;
+	/** A lock that is unreadable, not `{ locale: { key: hash } }`, holds a bad hash, or is not in canonical form. */
+	problems: { message: string; key?: string }[];
 }
 
-export const lockFile = (surface: string, locale: string, area: string) => `${LOCK_DIR}/${surface}/${locale}/${area}.json`;
+/** Parse the whole file; `problems` are about the file, not one locale. */
+function readAll(root: string, area: string): { lock: LockFile; problems: LockRead["problems"] } {
+	const path = join(root, lockFile(area));
+	const out: { lock: LockFile; problems: LockRead["problems"] } = { lock: {}, problems: [] };
+	if (!existsSync(path)) return out;
+	const text = readText(path);
+	let obj: unknown;
+	try {
+		obj = JSON.parse(text);
+	} catch (e) {
+		out.problems.push({ message: `invalid JSON: ${(e as Error).message}` });
+		return out;
+	}
+	const ok = typeof obj === "object" && obj !== null && !Array.isArray(obj) && Object.values(obj).every((v) => typeof v === "object" && v !== null && !Array.isArray(v) && Object.values(v).every((h) => typeof h === "string"));
+	if (!ok) {
+		out.problems.push({ message: 'a lock is { "<locale>": { "<key>": "<hash>" } }' });
+		return out;
+	}
+	out.lock = Object.fromEntries(Object.entries(obj as object).map(([l, m]) => [l, Object.fromEntries(Object.entries(m as object))])) as LockFile;
+	if (text !== render(out.lock)) out.problems.push({ message: "not in canonical form (sorted keys, one per line, LF, trailing newline); run bun run i18n:fix" });
+	return out;
+}
 
-export function readLocks(root: string, surface: string, locale: string): LockRead {
-	const out: LockRead = { byKey: new Map(), problems: [] };
-	const dir = join(root, LOCK_DIR, surface, locale);
-	if (!existsSync(dir)) return out;
-	for (const name of readdirSync(dir).filter((n) => n.endsWith(".json")).sort()) {
-		const path = join(dir, name);
-		const file = rel(root, path);
-		const area = name.slice(0, -".json".length);
-		const text = readText(path);
-		let obj: unknown;
-		try {
-			obj = JSON.parse(text);
-		} catch (e) {
-			out.problems.push({ file, message: `invalid JSON: ${(e as Error).message}` });
-			continue;
-		}
-		if (typeof obj !== "object" || obj === null || Array.isArray(obj) || Object.values(obj).some((v) => typeof v !== "string")) {
-			out.problems.push({ file, message: "a lock is a flat { key: hash } object" });
-			continue;
-		}
-		const map = obj as Record<string, string>;
-		for (const [key, hash] of Object.entries(map)) {
-			if (!/^[0-9a-f]{12}$/.test(hash)) out.problems.push({ file, key, message: `"${hash}" is not a 12-hex hash` });
-			if (out.byKey.has(key)) out.problems.push({ file, key, message: `also locked in ${out.byKey.get(key)?.file}` });
-			else out.byKey.set(key, { hash, area, file });
-		}
-		if (text !== canonicalJson(map, LOCK_INDENT)) out.problems.push({ file, message: "not in canonical form (sorted keys, one per line, LF, trailing newline); run bun run i18n:fix" });
+export function readLock(root: string, area: string, locale: string): LockRead {
+	const { lock, problems } = readAll(root, area);
+	const out: LockRead = { byKey: new Map(), problems: [...problems] };
+	for (const [key, hash] of Object.entries(lock[locale] ?? {})) {
+		if (!/^[0-9a-f]{12}$/.test(hash)) out.problems.push({ key, message: `"${hash}" is not a 12-hex hash` });
+		out.byKey.set(key, hash);
 	}
 	return out;
 }
 
-/** Replace the lock of `locale` with `hashes` (area -> key -> hash); areas that end up empty lose their file. */
-export function writeLocks(root: string, surface: string, locale: string, hashes: Map<string, Record<string, string>>) {
-	const dir = join(root, LOCK_DIR, surface, locale);
-	const keep = new Set<string>();
-	for (const [area, map] of [...hashes].sort(([a], [b]) => (a < b ? -1 : 1))) {
-		if (Object.keys(map).length === 0) continue;
-		const path = join(root, lockFile(surface, locale, area));
-		mkdirSync(dirname(path), { recursive: true });
-		writeFileSync(path, canonicalJson(map, LOCK_INDENT));
-		keep.add(`${area}.json`);
-	}
-	if (existsSync(dir)) for (const n of readdirSync(dir)) if (n.endsWith(".json") && !keep.has(n)) rmSync(join(dir, n));
+/** Replace the lock of one locale of an area, keeping the other locales; an empty file is deleted. */
+export function writeLock(root: string, area: string, locale: string, hashes: Record<string, string>) {
+	const { lock } = readAll(root, area);
+	if (Object.keys(hashes).length) lock[locale] = hashes;
+	else delete lock[locale];
+	const path = join(root, lockFile(area));
+	if (Object.keys(lock).length === 0) rmSync(path, { force: true });
+	else writeFileSync(path, render(lock));
 }

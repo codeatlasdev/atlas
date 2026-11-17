@@ -5,7 +5,7 @@ import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { loadCheckers, runChecks } from "./check.ts";
 import { type Finding, formatFinding, loadCtx } from "./types.ts";
-import { cleanup, editJson, makeRepo, put } from "./testkit.ts";
+import { EN, PT, cleanup, editJson, makeRepo, put } from "./testkit.ts";
 
 afterAll(cleanup);
 
@@ -17,10 +17,10 @@ const cli = async (script: string, args: string[]) => {
 };
 
 describe("checker discovery", () => {
-	test("every file of checks/ is loaded; the shipped ones are docs-md, paraglide-json, platform-lint, rust-fluent, writing", async () => {
+	test("every file of checks/ is loaded; the shipped ones are docs-md, hardcoded, messages, platform-lint, supported-sync, writing", async () => {
 		const { checkers, problems } = await loadCheckers();
 		expect(problems).toEqual([]);
-		expect(checkers.map((c) => c.name).sort()).toEqual(["docs-md", "paraglide-json", "platform-lint", "rust-fluent", "writing"]);
+		expect(checkers.map((c) => c.name).sort()).toEqual(["docs-md", "hardcoded", "messages", "platform-lint", "supported-sync", "writing"]);
 	});
 
 	test("a new checker file in the directory runs with no edit to the runner", async () => {
@@ -76,28 +76,28 @@ describe("bun scripts/i18n/check.ts", () => {
 
 	test("a broken repo prints `file:line rule key message` and exits 1", async () => {
 		const root = await makeRepo();
-		editJson(root, "apps/desktop/messages/pt-BR.json", (o) => void delete o.app_save_button);
+		editJson(root, PT, (o) => void delete o.app_save_button);
 		const r = await cli(CHECK, ["--root", root]);
 		expect(r.code).toBe(1);
 		const line = r.out.split("\n").find((l) => l.includes(" missing "));
-		expect(line).toBe("error apps/desktop/messages/pt-BR.json missing app_save_button no pt-BR translation of \"Save\"");
+		expect(line).toBe(`error ${PT} missing app_save_button no pt-BR translation of "Save": run bun run i18n:translate --locale pt-BR --area app, or write it in ${PT} and run bun run i18n:fix`);
 		expect(r.out).toContain("i18n: 2 error(s)");
 	});
 
 	test("--json is machine-readable with the same findings and the same exit code", async () => {
 		const root = await makeRepo();
-		editJson(root, "apps/desktop/messages/pt-BR.json", (o) => void delete o.app_save_button);
+		editJson(root, PT, (o) => void delete o.app_save_button);
 		const r = await cli(CHECK, ["--root", root, "--json"]);
 		expect(r.code).toBe(1);
 		const j = JSON.parse(r.out);
 		expect(j.ok).toBe(false);
 		expect(j.errors).toBe(2);
-		expect(j.findings.find((f: Finding) => f.rule === "missing")).toMatchObject({ severity: "error", key: "app_save_button", file: "apps/desktop/messages/pt-BR.json" });
+		expect(j.findings.find((f: Finding) => f.rule === "missing")).toMatchObject({ severity: "error", key: "app_save_button", file: PT });
 	});
 
 	test("--surface limits the run to one surface", async () => {
 		const root = await makeRepo();
-		editJson(root, "apps/desktop/messages/pt-BR.json", (o) => void delete o.app_save_button);
+		editJson(root, PT, (o) => void delete o.app_save_button);
 		expect((await cli(CHECK, ["--root", root, "--surface", "rust"])).code).toBe(0);
 		expect((await cli(CHECK, ["--root", root, "--surface", "docs"])).code).toBe(0);
 		expect((await cli(CHECK, ["--root", root, "--surface", "desktop"])).code).toBe(1);
@@ -115,8 +115,8 @@ describe("bun scripts/i18n/check.ts", () => {
 
 	test("--status prints a per-locale, per-area table", async () => {
 		const root = await makeRepo();
-		editJson(root, "apps/desktop/messages/pt-BR.json", (o) => void delete o.app_save_button);
-		editJson(root, "apps/desktop/messages/en.json", (o) => void (o.app_welcome = "Welcome back, {name}"));
+		editJson(root, PT, (o) => void delete o.app_save_button);
+		editJson(root, EN, (o) => void (o.app_welcome = "Welcome back, {name}"));
 		const r = await cli(CHECK, ["--root", root, "--status"]);
 		expect(r.code).toBe(0);
 		const row = r.out.split("\n").find((l) => l.startsWith("desktop"));

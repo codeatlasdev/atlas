@@ -1,6 +1,6 @@
 // bun run i18n:fix [--restamp <key>] [--baseline]
-// The one command that writes derived files: sorts and formats Paraglide catalogs, rewrites the locks, shrinks the
-// hardcoded-text baseline. It is also the conflict-resolution command after merging two branches.
+// The one command that writes derived files: sorts and formats the area files, rewrites the locks, shrinks the
+// ratchet baseline. It is also the conflict-resolution command after merging two branches.
 //   locks      for every translated key: keep the stamp of a key whose English changed (it stays outdated), stamp a key
 //              that has none, drop entries of keys that no longer exist.
 //   --restamp  a typo-only English edit: record the current hash of <key> in every locale without retranslating.
@@ -9,27 +9,26 @@
 import { existsSync, writeFileSync } from "node:fs";
 import { join } from "node:path";
 import { type Baseline, readBaseline, shrunk, writeBaseline } from "./baseline.ts";
-import { hashOf, type Surface } from "./engine.ts";
-import { formatProblem } from "./formats/paraglide.ts";
-import { readLocks, writeLocks } from "./lock.ts";
+import { hashOf } from "./engine.ts";
+import type { Area } from "./model.ts";
+import { readLock, writeLock } from "./lock.ts";
 import { RATCHETS, scanRatchet } from "./ratchets.ts";
-import { loadSurfaces } from "./surfaces.ts";
+import { formatProblem, loadSource } from "./source.ts";
 import { BASELINE_FILE, type Ctx, loadCtx } from "./types.ts";
 import { canonicalJson, detectIndent, readText } from "./util.ts";
 
-/** Rewrite the lock of `locale`: `forced` keys get the current English hash, the rest keep their stamp. */
-export function rebuildLock(root: string, surface: Surface, locale: string, forced: ReadonlySet<string> = new Set()) {
-	const base = surface.entries.get(surface.base) ?? new Map();
-	const mine = surface.entries.get(locale) ?? new Map();
-	const old = readLocks(root, surface.name, locale).byKey;
-	const hashes = new Map<string, Record<string, string>>();
+/** Rewrite the lock of one area and locale: `forced` keys get the current English hash, the rest keep their stamp. */
+export function rebuildLock(root: string, area: Area, locale: string, forced: ReadonlySet<string> = new Set()) {
+	const base = area.entries.get(area.base) ?? new Map();
+	const mine = area.entries.get(locale) ?? new Map();
+	const old = readLock(root, area.name, locale).byKey;
+	const hashes: Record<string, string> = {};
 	for (const [key, b] of base) {
 		if (!mine.has(key)) continue;
-		const stamp = old.get(key)?.hash;
-		const hash = forced.has(key) || !stamp || !/^[0-9a-f]{12}$/.test(stamp) ? hashOf(b) : stamp;
-		hashes.set(b.area, { ...hashes.get(b.area), [key]: hash });
+		const stamp = old.get(key);
+		hashes[key] = forced.has(key) || !stamp || !/^[0-9a-f]{12}$/.test(stamp) ? hashOf(b) : stamp;
 	}
-	writeLocks(root, surface.name, locale, hashes);
+	writeLock(root, area.name, locale, hashes);
 }
 
 /** Rewrite a JSON file in canonical form if it parses and is not canonical yet; true when it changed. */
@@ -57,14 +56,15 @@ export function fix(ctx: Ctx, opts: FixOptions = {}): string[] {
 	const log: string[] = [];
 	const restamp = new Set(opts.restamp ?? []);
 	const known = new Set<string>();
-	for (const { surface, catalogs, descriptionsFile } of loadSurfaces(ctx)) {
-		for (const path of [...(catalogs?.values() ?? []), ...(descriptionsFile ? [descriptionsFile] : [])]) {
-			if (canonicalizeFile(path)) log.push(`formatted ${path.slice(root.length + 1)}`);
+	const source = loadSource(ctx);
+	for (const area of source.areas.values()) {
+		for (const f of [...area.locales.map((l) => `${area.name}/${l}.json`), `${area.name}/meta.json`]) {
+			if (canonicalizeFile(join(root, "i18n/messages", f))) log.push(`formatted i18n/messages/${f}`);
 		}
-		for (const key of restamp) if (surface.entries.get(surface.base)?.has(key)) known.add(key);
-		for (const locale of surface.locales.filter((l) => l !== surface.base)) rebuildLock(root, surface, locale, restamp);
-		log.push(`locks ${surface.name}: ${surface.locales.filter((l) => l !== surface.base).join(", ") || "none"}`);
+		for (const key of restamp) if (area.entries.get(area.base)?.has(key)) known.add(key);
+		for (const locale of area.locales.filter((l) => l !== area.base)) rebuildLock(root, area, locale, restamp);
 	}
+	log.push(`locks: ${source.areas.size} area(s)`);
 	for (const key of restamp) if (!known.has(key)) throw new Error(`--restamp ${key}: no such key in any English source`);
 
 	if (existsSync(join(root, BASELINE_FILE)) || opts.baseline) {

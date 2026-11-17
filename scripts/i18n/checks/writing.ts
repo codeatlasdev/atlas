@@ -4,11 +4,12 @@
 //   English docs, README, skills, site content, CHANGELOG   existing prose: error-level hits are counted against the
 //                                baseline (they may not grow); everything else is info
 // Waive one hit with a reason: `<!-- writing-lint: allow RULE_ID: reason -->` on the line before (Markdown),
-// `# writing-lint: allow RULE_ID: reason` above the message (Fluent), the same text in the key's description (Paraglide).
+// the same text in the key's description (meta.json); it covers every locale of the key.
 import { join } from "node:path";
-import type { Entry } from "../engine.ts";
+import type { Entry } from "../model.ts";
+import { paraglideTexts } from "../shape.ts";
+import { loadSource } from "../source.ts";
 import { WRITING, runRatchet, scanRatchet } from "../ratchets.ts";
-import { loadSurfaces } from "../surfaces.ts";
 import type { Checker, Finding } from "../types.ts";
 import { allowsIn, docFiles, hitMessage, lintMarkdown, lintText, loadRules, uiProse } from "../writing.ts";
 import { readText } from "../util.ts";
@@ -23,13 +24,10 @@ const checker: Checker = {
 		if (rules.length === 0) return out;
 		const all = { ...ctx, surface: undefined };
 
-		for (const { surface } of loadSurfaces(all)) {
-			const base = surface.entries.get(surface.base);
-			for (const [locale, entries] of surface.entries) {
-				for (const e of entries.values()) {
-					const description = `${base?.get(e.key)?.description ?? ""}\n${e.description ?? ""}`;
-					out.push(...uiFindings(rules, e, locale, description));
-				}
+		for (const area of loadSource(all).areas.values()) {
+			const base = area.entries.get(area.base);
+			for (const [locale, entries] of area.entries) {
+				for (const e of entries.values()) out.push(...uiFindings(rules, e, locale, base?.get(e.key)?.description ?? ""));
 			}
 		}
 
@@ -56,7 +54,7 @@ const checker: Checker = {
 function uiFindings(rules: Parameters<typeof lintText>[0], e: Entry, locale: string, description: string): Finding[] {
 	const waived = allowsIn(description);
 	const out: Finding[] = waived.noReason.map((id) => ({ rule: "writing-allow", severity: "error" as const, file: e.file, line: e.line, key: e.key, message: `allow ${id} needs a reason: writing-lint: allow ${id}: why` }));
-	for (const text of e.texts) {
+	for (const text of paraglideTexts(e.value)) {
 		for (const h of lintText(rules, uiProse(text), locale, "ui")) {
 			if (waived.ids.has(h.rule.id)) continue;
 			out.push({ rule: `writing-${h.rule.id}`, severity: h.rule.severity, file: e.file, line: e.line, key: e.key, message: hitMessage(h) });

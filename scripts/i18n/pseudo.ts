@@ -4,19 +4,18 @@
 // together from pieces (brackets in the middle of a sentence). Variables, markup, code spans, URLs, selectors and
 // keys are kept byte for byte; every plural and `os` variant is transformed, so each platform and each form shows it.
 //
-//   (no args)       writes <app>/messages/en-XA.json next to the English catalog of each Paraglide project. The
-//                   file is gitignored and not a locale of the project (it is not in settings.json), so no check
-//                   reads it; list en-XA in a dev build's settings to see it.
-//   --print <area>  prints the pseudo-localized messages of one Fluent area (crates/*/locales/en/<area>.ftl) to
-//                   stdout. The Rust catalogs are embedded in the binary, so nothing is written for them.
-import { writeFileSync } from "node:fs";
-import { basename, dirname, join } from "node:path";
-import { FluentParser, FluentSerializer, Message, type Pattern, Resource, TextElement } from "@fluent/syntax";
-import { ftlFiles } from "./formats/fluent.ts";
-import { loadParaglide } from "./formats/paraglide.ts";
+//   (no args)       writes <paraglide dir>/en-XA.json (apps/desktop/.i18n, site/.i18n) from the generated English
+//                   input. It is gitignored and not a locale of the project (it is not in settings.json), so nothing
+//                   reads it until a dev build lists en-XA.
+//   --print <area>  prints the pseudo-localized messages of one area as JSON to stdout (references kept, as Rust
+//                   evaluates them). The Rust catalogs are embedded in the binary, so nothing is written for them.
+import { mkdirSync, writeFileSync } from "node:fs";
+import { dirname, join } from "node:path";
+import { outputsFor } from "./generate.ts";
 import type { ParaglideValue } from "./shape.ts";
+import { loadSource } from "./source.ts";
 import { loadCtx } from "./types.ts";
-import { canonicalJson, detectIndent, readText } from "./util.ts";
+import { canonicalJson, detectIndent } from "./util.ts";
 
 export const PSEUDO_LOCALE = "en-XA";
 const OPEN = "⟦";
@@ -64,61 +63,30 @@ export function pseudoCatalog(en: Record<string, ParaglideValue>): Record<string
 	return Object.fromEntries(Object.entries(en).map(([k, v]) => [k, k === "$schema" ? v : pseudoValue(v)]));
 }
 
-/** Pseudo-localize the patterns of a Fluent message in place: text elements accented, variables and selectors kept,
- * every select variant transformed on its own. A pattern that is only a select is not wrapped itself. */
-function pseudoPattern(p: Pattern | null) {
-	if (!p) return;
-	let n = 0;
-	for (const el of p.elements) {
-		if (el.type === "TextElement") {
-			const t = accentProse(el.value);
-			el.value = t.text;
-			n += t.letters;
-		} else if (el.expression.type === "SelectExpression") {
-			for (const v of el.expression.variants) pseudoPattern(v.value);
-		}
-	}
-	const onlySelect = p.elements.length === 1 && p.elements[0].type === "Placeable";
-	if (onlySelect) return;
-	const first = p.elements[0];
-	if (first?.type === "TextElement" && first.value.startsWith(OPEN)) return;
-	p.elements.unshift(new TextElement(OPEN));
-	p.elements.push(new TextElement(`${padding(n)}${CLOSE}`));
-}
-
-/** The messages of an `.ftl` source, pseudo-localized and serialized (ids, variables and selectors untouched). */
-export function pseudoFluent(source: string): string {
-	const parsed = new FluentParser().parse(source);
-	const messages = parsed.body.filter((e): e is Message => e.type === "Message");
-	for (const m of messages) {
-		pseudoPattern(m.value);
-		for (const a of m.attributes) pseudoPattern(a.value);
-		m.comment = null;
-	}
-	return new FluentSerializer().serialize(new Resource(messages));
-}
-
-/** Write en-XA.json next to the English catalog of every Paraglide project; the paths written. */
+/** Write en-XA.json next to the generated English input of every Paraglide surface; the paths written. */
 export function writePseudoCatalogs(root: string): string[] {
+	const ctx = loadCtx(root);
+	const source = loadSource(ctx);
 	const written: string[] = [];
-	for (const p of loadParaglide(loadCtx(root))) {
-		const en = p.catalogs.get(p.surface.base);
+	for (const [name, def] of Object.entries(source.config.surfaces)) {
+		if (!def.paraglide) continue;
+		const en = outputsFor(source, name).find((o) => o.path === `${def.paraglide}/${ctx.locales.default}.json`);
 		if (!en) continue;
-		const text = readText(en);
-		const out = join(dirname(en), `${PSEUDO_LOCALE}.json`);
-		writeFileSync(out, canonicalJson(pseudoCatalog(JSON.parse(text)), detectIndent(text)));
+		const out = join(root, def.paraglide, `${PSEUDO_LOCALE}.json`);
+		mkdirSync(dirname(out), { recursive: true });
+		writeFileSync(out, canonicalJson(pseudoCatalog(JSON.parse(en.content)), detectIndent(en.content)));
 		written.push(out);
 	}
 	return written;
 }
 
-/** The pseudo-localized messages of one Fluent area, over every crate that has it. */
-export function printFluentArea(root: string, area: string): string {
-	const ctx = loadCtx(root);
-	const files = ftlFiles(root).filter((f) => f.locale === ctx.locales.default);
-	const mine = files.filter((f) => basename(f.path, ".ftl") === area);
-	if (mine.length === 0) throw new Error(`no area "${area}" (areas: ${[...new Set(files.map((f) => basename(f.path, ".ftl")))].join(", ") || "none"})`);
-	return mine.map((f) => pseudoFluent(readText(f.path))).join("\n");
+/** The pseudo-localized messages of one area as JSON (what the embedded Rust catalogs read), to stdout. */
+export function printArea(root: string, areaName: string): string {
+	const source = loadSource(loadCtx(root));
+	const area = source.areas.get(areaName);
+	if (!area) throw new Error(`no area "${areaName}" (areas: ${[...source.areas.keys()].join(", ") || "none"})`);
+	const messages = Object.fromEntries([...(area.entries.get(area.base)?.values() ?? [])].map((e) => [e.key, pseudoValue(e.value)]));
+	return canonicalJson(messages, "\t");
 }
 
 if (import.meta.main) {
@@ -128,10 +96,10 @@ if (import.meta.main) {
 	try {
 		const area = opt("--print");
 		if (args.includes("--print") && !area) throw new Error("usage: bun run i18n:pseudo [--print <area>]");
-		if (area) process.stdout.write(printFluentArea(root, area));
+		if (area) process.stdout.write(printArea(root, area));
 		else {
 			for (const f of writePseudoCatalogs(root)) console.log(`wrote ${f.slice(root.length + 1)}`);
-			console.log("Rust catalogs are embedded: bun run i18n:pseudo -- --print <area> prints one area");
+			console.log("Rust catalogs are embedded: bun run i18n:pseudo -- --print <area> prints one area as JSON");
 		}
 	} catch (e) {
 		console.error(`i18n:pseudo: ${(e as Error).message}`);

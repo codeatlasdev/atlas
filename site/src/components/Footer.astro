@@ -6,8 +6,8 @@ const locale = localeOfAstro(Astro.currentLocale);
 // Docs links follow the page's language (every docs page exists under /pt-br/); the other pages are English only.
 const doc = (slug: string) => docPath(slug, locale);
 const cols = [
-	{ h: m.footer_product(), l: [[m.footer_download(), "/download/"], [m.footer_getting_started(), doc("getting-started")], [m.footer_changelog(), "/changelog/"], [m.footer_releases(), SITE.releases]] },
-	{ h: m.footer_docs(), l: [[m.footer_config_reference(), doc("configuration")], [m.footer_desktop(), doc("desktop")], ["CLI", doc("cli")], ["MCP", doc("mcp")], [m.footer_troubleshooting(), doc("troubleshooting")]] },
+	{ h: m.footer_product(), l: [[m.nav_download(), "/download/"], [m.nav_getting_started(), doc("getting-started")], [m.nav_changelog(), "/changelog/"], [m.footer_releases(), SITE.releases]] },
+	{ h: m.nav_docs(), l: [[m.footer_config_reference(), doc("configuration")], [m.footer_desktop(), doc("desktop")], ["CLI", doc("cli")], ["MCP", doc("mcp")], [m.footer_troubleshooting(), doc("troubleshooting")]] },
 	{ h: m.footer_elsewhere(), l: [["GitHub", SITE.github], ["CodeAtlas", SITE.codeatlas], ["llms.txt", "/llms.txt"]] },
 ];
 ---

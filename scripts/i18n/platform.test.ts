@@ -4,17 +4,13 @@ import { afterAll, describe, expect, test } from "bun:test";
 import { readBaseline } from "./baseline.ts";
 import { fix } from "./fix.ts";
 import { loadCtx } from "./types.ts";
-import { addKey, check, cleanup, editJson, errors, finding, json, makeRepo, put, read, rulesOf } from "./testkit.ts";
+import { EN, META, OS, PT, addKey, check, cleanup, editJson, errors, finding, makeRepo, put, read, rulesOf } from "./testkit.ts";
 
 afterAll(cleanup);
 
-const EN = "apps/desktop/messages/en.json";
-const PT = "apps/desktop/messages/pt-BR.json";
-const FTL_EN = "crates/atlas-i18n/locales/en/cli.ftl";
-const FTL_PT = "crates/atlas-i18n/locales/pt-BR/cli.ftl";
-
-const OS_EN = [{ declarations: ["input os"], selectors: ["os"], match: { "os=mac": "Reveal in Finder", "os=windows": "Reveal in File Explorer", "os=*": "Reveal in the file manager" } }];
-const OS_PT = [{ declarations: ["input os"], selectors: ["os"], match: { "os=mac": "Mostrar no Finder", "os=windows": "Mostrar no Explorador de Arquivos", "os=*": "Mostrar no gerenciador de arquivos" } }];
+const OS_EN = OS("Reveal in Finder", "Reveal in File Explorer", "Reveal in the file manager");
+const OS_PT = OS("Mostrar no Finder", "Mostrar no Explorador de Arquivos", "Mostrar no gerenciador de arquivos");
+const COMMON_OS = "i18n/messages/common_os";
 
 describe("shortcuts in catalog values", () => {
 	test.each([["⌘K"], ["⌃C"], ["⌥⇧P"], ["Cmd+K"], ["Ctrl+S"], ["Shift + Tab"], ["Alt+Enter"], ["Option+Click"]])("%s is an error", async (chord) => {
@@ -39,7 +35,7 @@ describe("shortcuts in catalog values", () => {
 	});
 });
 
-describe("OS nouns in catalog values (Paraglide)", () => {
+describe("OS nouns in catalog values", () => {
 	test.each([["Mac"], ["macOS"], ["Finder"], ["Windows"], ["Explorer"]])("%s without an os select is an error", async (noun) => {
 		const root = await makeRepo();
 		addKey(root, "app_probe", `Open in ${noun}`, `Abrir no ${noun}`, "A probe");
@@ -73,10 +69,10 @@ describe("OS nouns in catalog values (Paraglide)", () => {
 		expect(rulesOf(await check(root))).toContain("platform-noun");
 	});
 
-	test("i18n/platform-keys.json licenses the nouns of exactly one platform", async () => {
+	test("meta `platform` licenses the nouns of exactly one platform", async () => {
 		const root = await makeRepo();
 		addKey(root, "app_probe", "Open in Finder", "Abrir no Finder", "A probe");
-		put(root, "i18n/platform-keys.json", json({ app_probe: "mac" }));
+		editJson(root, META, (o) => void (o.app_probe = { description: "A probe", platform: "mac" }));
 		expect(rulesOf(await check(root))).not.toContain("platform-noun");
 		editJson(root, EN, (o) => void (o.app_probe = "Open in Finder or Explorer"));
 		editJson(root, PT, (o) => void (o.app_probe = "Abrir no Finder ou Explorer"));
@@ -86,13 +82,15 @@ describe("OS nouns in catalog values (Paraglide)", () => {
 		expect(f[0].message).toContain("flagged mac");
 	});
 
-	test("platform-keys.json problems: an unknown platform, an unknown key, invalid JSON", async () => {
+	test("meta problems: an unknown platform, an unknown field, a description of a key that is gone", async () => {
 		const root = await makeRepo();
-		put(root, "i18n/platform-keys.json", json({ app_save_button: "amiga", app_gone: "mac" }));
-		const fs = (await check(root)).filter((f) => f.rule === "platform-keys");
-		expect(fs.map((f) => f.key).sort()).toEqual(["app_gone", "app_save_button"]);
-		put(root, "i18n/platform-keys.json", "{ nope");
-		expect(finding(await check(root), "platform-keys")?.message).toContain("invalid JSON");
+		editJson(root, META, (o) => void (o.app_save_button = { description: "x", platform: "amiga" }));
+		const says = async (text: string) => (await check(root)).some((f) => f.rule === "description" && f.key === "app_save_button" && f.message.includes(text));
+		expect(await says("platform must be one of")).toBe(true);
+		editJson(root, META, (o) => void (o.app_save_button = { description: "x", colour: "red" }));
+		expect(await says("unknown meta field")).toBe(true);
+		editJson(root, META, (o) => void (o.app_gone = "Nothing"));
+		expect((await check(root)).some((f) => f.rule === "description" && f.key === "app_gone")).toBe(true);
 	});
 
 	test("lowercase windows (the plural of window) and a noun in a code span are not platform nouns", async () => {
@@ -100,41 +98,17 @@ describe("OS nouns in catalog values (Paraglide)", () => {
 		addKey(root, "app_probe", "Close all windows or run `open Finder`", "Feche todas as janelas ou execute `open Finder`", "A probe");
 		expect(rulesOf(await check(root))).not.toContain("platform-noun");
 	});
-});
 
-describe("OS nouns in Fluent messages", () => {
-	test("a $os select may name the nouns; a plain message may not; a `# platform:` comment licenses one platform", async () => {
+	test("a reference to a common_os term composes: the message becomes an os select and may name no noun itself", async () => {
 		const root = await makeRepo();
-		put(root, FTL_EN, `${read(root, FTL_EN)}\n# Reveal action\ncli-reveal = { $os ->\n    [mac] Reveal in Finder\n    [windows] Reveal in File Explorer\n   *[linux] Reveal in the file manager\n}\n`);
-		put(root, FTL_PT, `${read(root, FTL_PT)}\ncli-reveal = { $os ->\n    [mac] Mostrar no Finder\n    [windows] Mostrar no Explorador de Arquivos\n   *[linux] Mostrar no gerenciador de arquivos\n}\n`);
-		fix(loadCtx(root));
-		expect(errors(await check(root, "rust"))).toEqual([]);
-
-		put(root, FTL_EN, `${read(root, FTL_EN)}\n# Plain\ncli-plain = Open Finder\n`);
-		put(root, FTL_PT, `${read(root, FTL_PT)}\ncli-plain = Abrir o Finder\n`);
-		fix(loadCtx(root));
-		expect(finding(await check(root, "rust"), "platform-noun", "cli-plain")).toBeDefined();
-
-		put(root, FTL_EN, read(root, FTL_EN).replace("# Plain\n", "# Plain\n# platform: mac\n"));
-		expect(rulesOf(await check(root, "rust"))).not.toContain("platform-noun");
-		put(root, FTL_EN, read(root, FTL_EN).replace("# platform: mac", "# platform: windows"));
-		expect(finding(await check(root, "rust"), "platform-noun", "cli-plain")?.message).toContain("flagged windows");
-	});
-
-	test("a default arm named other is a plain select, not a plural (no one/other error)", async () => {
-		const root = await makeRepo();
-		put(root, FTL_EN, `${read(root, FTL_EN)}\n# Key name\ncli-alt = { $os ->\n    [mac] Option\n   *[other] Alt\n}\n`);
-		put(root, FTL_PT, `${read(root, FTL_PT)}\ncli-alt = { $os ->\n    [mac] Option\n   *[other] Alt\n}\n`);
-		fix(loadCtx(root));
-		expect(errors(await check(root, "rust"))).toEqual([]);
-	});
-
-	test("a shortcut glyph in an .ftl value is an error", async () => {
-		const root = await makeRepo();
-		put(root, FTL_EN, `${read(root, FTL_EN)}\n# Hint\ncli-hint = Press ⌘K\n`);
-		put(root, FTL_PT, `${read(root, FTL_PT)}\ncli-hint = Pressione ⌘K\n`);
-		fix(loadCtx(root));
-		expect(finding(await check(root, "rust"), "shortcut", "cli-hint")?.severity).toBe("error");
+		editJson(root, `${COMMON_OS}/en.json`, (o) => void (o.common_os_file_manager = OS("Finder", "File Explorer", "the file manager")));
+		editJson(root, `${COMMON_OS}/pt-BR.json`, (o) => void (o.common_os_file_manager = OS("o Finder", "o Explorador de Arquivos", "o gerenciador de arquivos")));
+		editJson(root, `${COMMON_OS}/meta.json`, (o) => void (o.common_os_file_manager = "The OS app that shows files and folders"));
+		addKey(root, "app_reveal", "Reveal in {@common_os_file_manager}", "Mostrar em {@common_os_file_manager}", "Menu item that reveals a file");
+		expect(errors(await check(root))).toEqual([]);
+		editJson(root, EN, (o) => void (o.app_reveal = "Reveal in Finder"));
+		fix(loadCtx(root), { restamp: ["app_reveal"] });
+		expect(rulesOf(errors(await check(root)))).toContain("platform-noun");
 	});
 });
 

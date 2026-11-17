@@ -32,9 +32,10 @@ describe("--json --stdin (the atlas_affected plugin)", () => {
 	});
 
 	test("a clean change set, or docs the checks do not read, prints an empty plan", async () => {
-		const { out, code } = await run(["--json", "--stdin"], ["AGENTS.md"]);
+		// CONTRIBUTING.md: no area reads it (README.md goes through the writing lint, AGENTS.md through the scripts tests).
+		const { out, code } = await run(["--json", "--stdin"], ["CONTRIBUTING.md"]);
 		expect(code).toBe(0);
-		expect(JSON.parse(out)).toMatchObject({ tests: [], builds: [], commands: [], everything: null, ignored: ["AGENTS.md"] });
+		expect(JSON.parse(out)).toMatchObject({ tests: [], builds: [], commands: [], everything: null, ignored: ["CONTRIBUTING.md"] });
 	});
 
 	test("says why: the glob and the file behind each command", async () => {
@@ -78,7 +79,7 @@ describe("--dry-run", () => {
 	});
 
 	test("nothing to check says so", async () => {
-		const { out, code } = await run(["--stdin", "--dry-run"], ["AGENTS.md"]);
+		const { out, code } = await run(["--stdin", "--dry-run"], ["CONTRIBUTING.md"]);
 		expect(code).toBe(0);
 		expect(out).toContain("nothing to check");
 	});

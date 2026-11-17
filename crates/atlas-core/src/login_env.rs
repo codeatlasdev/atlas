@@ -27,10 +27,9 @@ use std::ffi::OsString;
 use std::io::Read;
 use std::path::{Path, PathBuf};
 use std::process::{Command, Stdio};
-use std::sync::LazyLock;
 use std::time::{Duration, Instant};
 
-use parking_lot::Mutex;
+use parking_lot::{MappedMutexGuard, Mutex, MutexGuard};
 
 const MARK: &str = "__ATLAS_ENV__";
 const ATTEMPT_TIMEOUT: Duration = Duration::from_secs(6);
@@ -80,8 +79,14 @@ fn is_path_key(k: &str) -> bool {
 }
 
 /// The cached probe; the first access runs it (a few seconds at most), so async callers use
-/// `spawn_blocking`.
-static CURRENT: LazyLock<Mutex<Probe>> = LazyLock::new(|| Mutex::new(run()));
+/// `spawn_blocking`. The first probe runs holding the lock, so callers racing for it share one shell
+/// start (#285); `None` until then.
+static CURRENT: Mutex<Option<Probe>> = Mutex::new(None);
+
+/// The cached probe, running it first if nothing did.
+fn cached() -> MappedMutexGuard<'static, Probe> {
+    MutexGuard::map(CURRENT.lock(), |slot| slot.get_or_insert_with(run))
+}
 static OVERRIDE: Mutex<Option<String>> = Mutex::new(None);
 
 /// Set the shell override (Atlas Desktop's Settings; `None` = automatic). Takes effect on the next
@@ -92,24 +97,32 @@ pub fn set_override(shell: Option<String>) {
 
 /// The cached probe, running it on first use.
 pub fn current() -> Probe {
-    CURRENT.lock().clone()
+    cached().clone()
 }
 
 /// The shell the cached probe ran (what a terminal tab starts), without cloning the environment.
 pub fn shell() -> String {
-    CURRENT.lock().shell.clone()
+    cached().shell.clone()
 }
 
 /// Run the probe now if nothing did yet. A daemon calls this from a blocking thread at start so the
 /// first terminal does not wait for the shell's rc files.
 pub fn warm() {
-    LazyLock::force(&CURRENT);
+    drop(cached());
 }
 
-/// Probe again now (after the override changed) and cache the result.
+/// Probe again now (after the override changed) and cache the result. A cache nothing has filled yet is
+/// filled by this one probe (running the probe and then letting the first reader run it again cost a
+/// second interactive login shell at every launch, #285); a filled one stays readable while the new
+/// probe runs.
 pub fn reprobe() -> Probe {
+    let mut slot = CURRENT.lock();
+    if slot.is_none() {
+        return slot.insert(run()).clone();
+    }
+    drop(slot);
     let p = run();
-    *CURRENT.lock() = p.clone();
+    *CURRENT.lock() = Some(p.clone());
     p
 }
 
@@ -123,9 +136,9 @@ pub fn reprobe() -> Probe {
 pub fn install(p: Probe) -> Installed {
     static SERIAL: std::sync::Mutex<()> = std::sync::Mutex::new(());
     let serial = SERIAL.lock().unwrap_or_else(|e| e.into_inner());
-    let previous = std::mem::replace(&mut *CURRENT.lock(), p);
+    let previous = CURRENT.lock().replace(p);
     Installed {
-        previous: Some(previous),
+        previous,
         _serial: serial,
     }
 }
@@ -138,9 +151,7 @@ pub struct Installed {
 
 impl Drop for Installed {
     fn drop(&mut self) {
-        if let Some(p) = self.previous.take() {
-            *CURRENT.lock() = p;
-        }
+        *CURRENT.lock() = self.previous.take();
     }
 }
 

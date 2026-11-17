@@ -9,7 +9,7 @@
 // --dry-run, would merge), 1: refused, 2: bad usage. Why: scripts/pr-closes.ts. How a maintainer uses it:
 // CONTRIBUTING.md "Pull request flow and who merges". `GH` replaces the gh binary (tests; see gh.ts).
 import { ghCommand, ghOut, run } from "./gh";
-import { fetchJobs, lostOnly } from "./ci-lost-runner";
+import { fetchJobs, infraOnly } from "./ci-lost-runner";
 import { type Facts, decide, runFor } from "./pr-merge-decide";
 
 const gh = ghCommand();
@@ -62,10 +62,10 @@ async function facts(n: number, subject: string | undefined): Promise<Facts> {
     run(["git", "config", "--get", "user.email"]).then((r) => r.out),
   ]);
 
-  // A red run is worth a second look: only lost runners (issue #520) is a rerun the maintainer waits for, not a fix.
+  // A red run is worth a second look: one that only ended by infrastructure (issue #520) is a rerun to wait for, not a fix.
   const last = runFor(runs, sha);
   if (last?.status === "completed" && last.conclusion === "failure" && last.id !== undefined) {
-    last.lostOnly = lostOnly(await fetchJobs(repo, last.id, last.attempt ?? 1));
+    last.infra = infraOnly(await fetchJobs(repo, last.id, last.attempt ?? 1));
   }
 
   return {

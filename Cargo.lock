@@ -437,6 +437,7 @@ dependencies = [
  "color_quant 2.0.0",
  "dirs",
  "dispatch2",
+ "futures-util",
  "gif",
  "gio 0.22.10",
  "gtk",

@@ -2,7 +2,6 @@
 	import "@codeatlasdev/ui/styles/global.css";
 	import "@codeatlasdev/ui/styles/materials.css";
 	import "../../app.css";
-	import "@xterm/xterm/css/xterm.css";
 	import CornerStack from "#lib/shell/CornerStack.svelte";
 	import { bootMark } from "#lib/boot.ts";
 	import { ChevronLeft, ChevronRight } from "@lucide/svelte";

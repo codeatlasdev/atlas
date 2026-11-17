@@ -30,6 +30,13 @@ test("a crate runs Rust only; the desktop frontend also rebuilds the shell that 
 	expect(areas(["Cargo.lock"])).toEqual({ ...none, rust: true });
 });
 
+// Incident class: the agent list lives in crates/ but the desktop imports it and Atlas Mobile's copy is generated
+// from it; a Rust-only classification would let a stale Dart copy or a broken frontend through.
+test("the shared agent list runs the frontend, mobile and scripts checks, not Rust alone", () => {
+	expect(areas(["crates/atlas-core/data/agents.json"])).toEqual({ ...none, rust: true, front: true, mobile: true });
+	expect(areas(["crates/atlas-core/data/channels.json"])).toEqual({ ...none, rust: true });
+});
+
 test("markdown that is source is not skipped: skills are embedded and checked", () => {
 	expect(areas(["skills/atlas/yaml.md"])).toMatchObject({ rust: true, front: true });
 });

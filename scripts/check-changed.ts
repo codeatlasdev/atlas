@@ -35,6 +35,10 @@ export interface Plan {
 const STEPS: [RegExp, string][] = [
 	[/^apps\/desktop\//, "bun run desktop:check"],
 	[/^apps\/mobile\//, "scripts/mobile-check.sh"],
+	// The built-in agent list: the desktop imports it, Atlas Mobile's Dart copy is generated from it (checked by scripts).
+	[/^crates\/atlas-core\/data\/agents\.json$/, "bun run desktop:check"],
+	[/^crates\/atlas-core\/data\/agents\.json$/, "scripts/mobile-check.sh"],
+	[/^crates\/atlas-core\/data\/agents\.json$/, "bun test scripts"],
 	[/^services\/push-relay\//, "scripts/push-relay-check.sh"],
 	[/^skills\//, "scripts/check-skills.sh"],
 	[/^\.github\/workflows\//, "scripts/lint-workflows.sh"],

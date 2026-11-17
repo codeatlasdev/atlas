@@ -13,6 +13,8 @@ while IFS= read -r f || [[ -n $f ]]; do
       case "$f" in skills/*) front=true; rust=true ;; esac   # skills are embedded in the CLI and checked
       case "$f" in apps/mobile/*) mobile=true ;; esac
       ;;
+    # The built-in agent list is read by the desktop frontend and generated into Atlas Mobile: their tests must run.
+    crates/atlas-core/data/agents.json) rust=true; front=true; mobile=true ;;
     crates/*|Cargo.toml|Cargo.lock|rust-toolchain.toml|deny.toml|.cargo/*|.config/nextest.toml) rust=true ;;
     apps/desktop/*) front=true; rust=true ;;              # the desktop shell embeds the frontend build
     apps/mobile/*) mobile=true ;;

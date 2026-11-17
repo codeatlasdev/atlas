@@ -684,23 +684,15 @@ pub async fn crew_agent_install(
 
 /// Shell script that checks install+auth for `agent_id`. Returns tab-separated "0/1\t0/1\n".
 fn check_script(agent_id: &str) -> Option<String> {
-    let (bin, auth_check) = match agent_id {
-        "omp" => (
-            "omp",
-            r#"omp auth export 2>/dev/null | grep -q '"providerType"' && signed_in=1 || true"#,
-        ),
-        "claude" => (
-            "claude",
-            r#"claude auth status >/dev/null 2>&1 && signed_in=1 || true"#,
-        ),
-        "codex" => (
-            "codex",
-            r#"codex login status >/dev/null 2>&1 && signed_in=1 || true"#,
-        ),
-        "opencode" => (
-            "opencode",
-            r#"_oc=$(opencode auth list 2>/dev/null); [ -n "$_oc" ] && ! echo "$_oc" | grep -q '0 credentials' && signed_in=1 || true"#,
-        ),
+    let bin = atlas_core::agents::get(agent_id)?.bin.as_str();
+    // How each CLI says it is signed in (the same status commands hostd's `engine_login::ENGINES` runs).
+    let auth_check = match agent_id {
+        "omp" => r#"omp auth export 2>/dev/null | grep -q '"providerType"' && signed_in=1 || true"#,
+        "claude" => r#"claude auth status >/dev/null 2>&1 && signed_in=1 || true"#,
+        "codex" => r#"codex login status >/dev/null 2>&1 && signed_in=1 || true"#,
+        "opencode" => {
+            r#"_oc=$(opencode auth list 2>/dev/null); [ -n "$_oc" ] && ! echo "$_oc" | grep -q '0 credentials' && signed_in=1 || true"#
+        }
         _ => return None,
     };
     Some(format!(
@@ -729,25 +721,19 @@ fn install_command(script: &str) -> String {
 /// The agent's own installer, then `atlas setup <agent> --apply`: without Atlas's hooks the agent never reports
 /// "done" to hostd, so every crewmate task sat on "Working" until the 2 h timeout.
 fn install_script(agent_id: &str) -> Option<String> {
-    let (install, setup) = match agent_id {
-        // A crewmate's omp runs in a pane nobody watches: its first-run wizard ("↑/↓ select · ⏎ confirm") waited
-        // for a key forever and the task sat on "Working". Mark the wizard done for atlas-bot only (never on the
-        // user's Mac, where the wizard is omp's real onboarding).
-        "omp" => (
-            r#"curl -fsSL https://omp.sh/install | sh && mkdir -p "$HOME/.omp/agent" && f="$HOME/.omp/agent/config.yml" && touch "$f" && chmod 600 "$f" && { grep -q '^setupVersion:' "$f" || echo 'setupVersion: 2' >> "$f"; }"#,
-            "omp",
-        ),
-        "claude" => (
-            "curl -fsSL https://claude.ai/install.sh | bash",
-            "claude-code",
-        ),
-        "opencode" => ("curl -fsSL https://opencode.ai/install | bash", "opencode"),
-        "codex" => (
-            r#"npm_config_prefix="$HOME/.npm-global" npm install -g @openai/codex"#,
-            "codex",
-        ),
-        _ => return None,
-    };
+    let def = atlas_core::agents::get(agent_id)?;
+    // A crewmate's omp runs in a pane nobody watches: its first-run wizard ("↑/↓ select · ⏎ confirm") waited
+    // for a key forever and the task sat on "Working". Mark the wizard done for atlas-bot only (never on the
+    // user's Mac, where the wizard is omp's real onboarding).
+    const OMP_WIZARD_DONE: &str = r#"mkdir -p "$HOME/.omp/agent" && f="$HOME/.omp/agent/config.yml" && touch "$f" && chmod 600 "$f" && { grep -q '^setupVersion:' "$f" || echo 'setupVersion: 2' >> "$f"; }"#;
+    let (install, setup) = (
+        if def.id == "omp" {
+            format!("{} && {OMP_WIZARD_DONE}", def.install)
+        } else {
+            def.install.clone()
+        },
+        def.setup.as_str(),
+    );
     // The installer may have created new dirs: export the agents' PATH again before `atlas setup`.
     Some(format!(
         "{install} && {} && atlas setup {setup} --apply </dev/null",
@@ -1279,8 +1265,8 @@ mod tests {
 
     #[test]
     fn check_script_covers_all_agents() {
-        for id in ["omp", "claude", "codex", "opencode"] {
-            let s = check_script(id).unwrap();
+        for id in atlas_core::agents::all().iter().map(|a| a.id.as_str()) {
+            let s = check_script(id).unwrap_or_else(|| panic!("{id}: no check script"));
             assert!(s.contains(id), "{id}: missing bin name in script");
             let full = atlas_core::ssh::with_path(&s);
             assert!(full.contains(".bun/bin"), "{id}: missing .bun/bin in PATH");
@@ -1319,13 +1305,11 @@ mod tests {
     // CLI actually accepts (claude's is `claude-code`), and only after the agent itself installed.
     #[test]
     fn every_engine_install_wires_atlas_hooks_after_installing() {
-        for (id, setup) in [
-            ("omp", "omp"),
-            ("claude", "claude-code"),
-            ("codex", "codex"),
-            ("opencode", "opencode"),
-        ] {
-            let s = install_script(id).unwrap();
+        for (id, setup) in atlas_core::agents::all()
+            .iter()
+            .map(|a| (a.id.as_str(), a.setup.as_str()))
+        {
+            let s = install_script(id).unwrap_or_else(|| panic!("{id}: no installer"));
             let at = s
                 .find(&format!("atlas setup {setup} --apply"))
                 .unwrap_or_else(|| panic!("{id}: no hooks"));

@@ -1,19 +1,18 @@
 import 'package:material_ui/material_ui.dart';
 import 'package:path_parsing/path_parsing.dart';
 
+import 'package:atlas_mobile/core/protocol/agent_registry.dart';
 import 'package:atlas_mobile/core/ui/agent_logo_data.dart';
 import 'package:atlas_mobile/core/ui/atlas_theme.dart';
 
-/// Registry ids Atlas launches (`crates/atlas-desktop/src/agent/registry.rs`).
-const knownAgents = ['omp', 'claude', 'codex'];
+/// Registry ids Atlas launches (`crates/atlas-core/data/agents.json`, via the generated
+/// `agent_registry.g.dart`); each has a mark drawn below.
+final knownAgents = [for (final a in builtinAgents) a.id];
 
 /// Display name of a registry id.
 String agentLabel(String id) => switch (id) {
-  'omp' => 'omp',
-  'claude' => 'Claude Code',
-  'codex' => 'Codex',
   '' => 'Agent',
-  _ => id,
+  _ => builtinAgentOf(id)?.label ?? id,
 };
 
 Path _parse(String d) {
@@ -45,9 +44,13 @@ class _Proxy extends PathProxy {
 final _claude = _parse(claudeCodePath);
 final _codexDark = _parse(codexWhitePath);
 final _omp = _parse(ompGlyphPath);
+final _opencodeInner = _parse(opencodeInnerPath);
+final _opencodeFrame = _parse(opencodeFramePath)
+  ..fillType = PathFillType.evenOdd;
 
 /// The official mark of agent [agent] (a registry id), unaltered: omp's gradient glyph on
-/// its dark tile, Claude Code's `#D97757`, Codex in white on this dark UI. An unknown
+/// its dark tile, Claude Code's `#D97757`, Codex in white on this dark UI, OpenCode's frame on
+/// its dark tile. An unknown
 /// agent gets the generic icon.
 class AgentLogo extends StatelessWidget {
   const AgentLogo(this.agent, {super.key, this.size = 24});
@@ -121,6 +124,20 @@ class _AgentPainter extends CustomPainter {
         canvas.scale(size.width / 24);
         // The app is dark only: the pair's dark-surface mark.
         canvas.drawPath(_codexDark, Paint()..color = const Color(0xFFFFFFFF));
+      case 'opencode':
+        canvas.scale(size.width / 512);
+        canvas.drawRect(
+          const Rect.fromLTWH(0, 0, 512, 512),
+          Paint()..color = const Color(0xFF131010),
+        );
+        canvas.drawPath(
+          _opencodeInner,
+          Paint()..color = const Color(0xFF5A5858),
+        );
+        canvas.drawPath(
+          _opencodeFrame,
+          Paint()..color = const Color(0xFFFFFFFF),
+        );
     }
   }
 

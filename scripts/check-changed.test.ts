@@ -41,6 +41,16 @@ describe("plan", () => {
 		expect(plan(["skills/atlas/yaml.md"], graph).crates).toEqual(["atlas-cli", "atlas-skills"]);
 	});
 
+	// The agent list is Rust data that the desktop imports and Atlas Mobile's generated copy mirrors.
+	test("the shared agent list also runs the desktop, mobile and scripts checks", () => {
+		expect(plan(["crates/atlas-core/data/agents.json"], graph).steps).toEqual([
+			"bun run desktop:check",
+			"bun test scripts",
+			"scripts/mobile-check.sh",
+		]);
+		expect(plan(["crates/atlas-core/data/channels.json"], graph).steps).toEqual([]);
+	});
+
 	test("docs only: nothing to run", () => {
 		expect(plan(["docs/contributing.md", "CHANGELOG.md"], graph)).toEqual({ crates: [], workspace: false, steps: [] });
 	});

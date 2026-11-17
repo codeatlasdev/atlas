@@ -71,13 +71,16 @@ describe("decide: CI is the run of this exact head", () => {
   });
 });
 
-describe("decide: a red CI run that only lost its runner (issue #520)", () => {
+describe("decide: a red CI run that only ended by infrastructure (issue #520)", () => {
   test.each<[string, Partial<Facts["runs"][number]>, RegExp]>([
-    ["attempt 1: the rerun is pending", { id: 99, attempt: 1, lostOnly: true, conclusion: "failure" }, /runner lost, rerun pending \(attempt 1 of 3.*wait for the new attempt/],
-    ["attempt 2: still pending", { id: 99, attempt: 2, lostOnly: true, conclusion: "failure" }, /runner lost, rerun pending \(attempt 2 of 3/],
-    ["attempt 3: no rerun is pending, say what to do", { id: 99, attempt: 3, lostOnly: true, conclusion: "failure" }, /on every attempt \(3 of 3\): no rerun is pending; `gh run rerun --failed 99`/],
-    ["a real failure keeps the plain text", { id: 99, attempt: 1, lostOnly: false, conclusion: "failure" }, /concluded failure: fix it and push/],
-    ["no lostOnly fact (not looked at) keeps the plain text", { conclusion: "failure" }, /concluded failure: fix it and push/],
+    ["attempt 1: the rerun is pending", { id: 99, attempt: 1, infra: ["lost"], conclusion: "failure" }, /runner lost, rerun pending \(attempt 1 of 3.*wait for the new attempt/],
+    ["attempt 2: still pending", { id: 99, attempt: 2, infra: ["lost"], conclusion: "failure" }, /runner lost, rerun pending \(attempt 2 of 3/],
+    ["attempt 3: no rerun is pending, say what to do", { id: 99, attempt: 3, infra: ["lost"], conclusion: "failure" }, /on every attempt \(3 of 3\): no rerun is pending; `gh run rerun --failed 99`/],
+    ["no runner was available", { id: 99, attempt: 1, infra: ["unavailable"], conclusion: "failure" }, /no runner was available, rerun pending \(attempt 1 of 3/],
+    ["no runner was available, attempt 3", { id: 99, attempt: 3, infra: ["unavailable"], conclusion: "failure" }, /\(no runner was available\), on every attempt \(3 of 3\)/],
+    ["both kinds", { id: 99, attempt: 1, infra: ["lost", "unavailable"], conclusion: "failure" }, /runner lost and no runner was available, rerun pending/],
+    ["a real failure keeps the plain text", { id: 99, attempt: 1, infra: null, conclusion: "failure" }, /concluded failure: fix it and push/],
+    ["no infra fact (not looked at) keeps the plain text", { conclusion: "failure" }, /concluded failure: fix it and push/],
   ])("%s", (_n, patch, reason) => {
     const d = decide({ ...good, runs: [run(patch)] });
     expect(d.decision).toBe("refuse");

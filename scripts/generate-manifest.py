@@ -121,10 +121,8 @@ def main():
         "prerelease": channel != "stable",
         "commit": commit(),
         "date": datetime.now(timezone.utc).isoformat(),
-        "min_os": "14.0",
         "assets": assets,
         "changelog": f"https://github.com/codeatlasdev/atlas/releases/tag/v{version}",
-        "required_update": False,
     }
     promoted_from = os.environ.get("ATLAS_PROMOTED_FROM")
     if promoted_from:

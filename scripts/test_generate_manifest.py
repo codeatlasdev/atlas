@@ -154,6 +154,16 @@ class Manifest(unittest.TestCase):
         root, *_ = make_artifacts("1.4.0")
         self.assertNotIn("promoted_from", run_cli("1.4.0", root, {"ATLAS_PROMOTED_FROM": ""}))
 
+    # #313: the manifest used to carry `required_update` and `min_os`, which no client reads. A key that nothing
+    # reads promises a kill switch that does not exist; withdrawing a release is `data/yanked.json` (docs/release.md).
+    # The keys below are what the site and `atlas` read (version, date, assets) or what a person reading it needs.
+    def test_the_manifest_carries_only_keys_something_reads(self):
+        root, *_ = make_artifacts("1.4.0")
+        self.assertEqual(
+            sorted(run_cli("1.4.0", root, {"ATLAS_COMMIT": "abc"})),
+            ["assets", "changelog", "channel", "commit", "date", "prerelease", "version"],
+        )
+
     def test_channel_function_rejects_unknown_labels(self):
         mod = load()
         self.assertEqual(mod.channel_of("1.4.0"), "stable")

@@ -72,6 +72,13 @@ impl Civil {
     }
 }
 
+/// The IANA zone called `name`, from the database bundled in the binary (so it never depends on the machine's
+/// tzdata); `None` for a name it does not know. The letter case of `name` is not significant.
+pub fn zone(name: &str) -> Option<TimeZone> {
+    let (canonical, tzif) = jiff_tzdb::get(name)?;
+    TimeZone::tzif(canonical, tzif).ok()
+}
+
 /// The instant of `at`; the epoch for a time no calendar holds (past year 9999), never a panic.
 fn instant(at: SystemTime) -> Timestamp {
     Timestamp::try_from(at).unwrap_or(Timestamp::UNIX_EPOCH)
@@ -224,6 +231,7 @@ mod tests {
 
     // Contract (chrono → jiff migration, #540): these strings reach disk (project and worktree registries'
     // `added`, deploy ids) and are read back by the next build; the bytes must not change.
+    // `SystemTime` ticks in 100 ns on Windows, so the nanosecond rows are multiples of 100.
     #[test]
     fn utc_rfc3339_keeps_plus_zero_and_the_shortest_of_0_3_6_9_fraction_digits() {
         let s = 1_794_909_605; // 2026-11-17T10:00:05Z
@@ -234,9 +242,9 @@ mod tests {
             (123_400_000, "2026-11-17T10:00:05.123400+00:00"),
             (123_456_000, "2026-11-17T10:00:05.123456+00:00"),
             (1_000, "2026-11-17T10:00:05.000001+00:00"),
-            (123_456_780, "2026-11-17T10:00:05.123456780+00:00"),
-            (1, "2026-11-17T10:00:05.000000001+00:00"),
-            (999_999_999, "2026-11-17T10:00:05.999999999+00:00"),
+            (123_456_700, "2026-11-17T10:00:05.123456700+00:00"),
+            (100, "2026-11-17T10:00:05.000000100+00:00"),
+            (999_999_900, "2026-11-17T10:00:05.999999900+00:00"),
         ] {
             assert_eq!(utc_rfc3339(at(s, nanos)), want, "{nanos} ns");
         }
@@ -273,7 +281,7 @@ mod tests {
     // for five minutes), so each test owns one zone and the suite runs under nextest, one process per
     // test; a second zone in the same process is refused instead of passing on the first one's clock.
     #[cfg(unix)]
-    fn zone(tz: &str) {
+    fn set_zone(tz: &str) {
         static SET: std::sync::OnceLock<String> = std::sync::OnceLock::new();
         let first = SET.get_or_init(|| {
             // SAFETY: first thing the test does, before any local-time read; the process runs this one test.
@@ -285,7 +293,7 @@ mod tests {
 
     #[cfg(unix)]
     fn local_text_in(tz: &str, rfc: &str, hms: &str, date_hm: &str) {
-        zone(tz);
+        set_zone(tz);
         let t = at(1_794_909_605, 123_456_789); // 2026-11-17T10:00:05.123456789Z
         assert_eq!(local_rfc3339_millis(t), rfc);
         assert_eq!(local_hms(t), hms);
@@ -361,7 +369,7 @@ mod tests {
     #[cfg(unix)]
     #[test]
     fn local_text_in_berlin_follows_the_dst_changes() {
-        zone("Europe/Berlin");
+        set_zone("Europe/Berlin");
         // 2026-03-29: 00:30Z is 01:30 CET (+01:00), 01:00Z is 03:00 CEST (+02:00).
         assert_eq!(
             local_rfc3339_millis(at(1_774_744_200, 0)),
@@ -387,7 +395,7 @@ mod tests {
     #[cfg(unix)]
     #[test]
     fn berlin_seconds_of_day_are_wall_clock_and_a_gap_has_no_second() {
-        zone("Europe/Berlin");
+        set_zone("Europe/Berlin");
         let ms = |secs: u64| secs * 1000;
         // 2026-03-29T01:00Z is 03:00 CEST: wall clock, not elapsed time (which would be 02:00).
         assert_eq!(local_secs_of_day(ms(1_774_746_000)), 3 * 3600);
@@ -429,7 +437,7 @@ mod tests {
     #[cfg(unix)]
     #[test]
     fn sao_paulo_midnight_gap_of_2018() {
-        zone("America/Sao_Paulo");
+        set_zone("America/Sao_Paulo");
         let ms = |secs: u64| secs * 1000;
         // 2018-11-04 00:00 did not exist (clocks went to 01:00).
         let day = ms(1_541_332_800);
@@ -443,7 +451,7 @@ mod tests {
     #[cfg(unix)]
     #[test]
     fn utc_seconds_of_day_and_local_midnight() {
-        zone("UTC");
+        set_zone("UTC");
         let ms = |secs: u64| secs * 1000;
         assert_eq!(local_secs_of_day(ms(1_794_909_605)), 10 * 3600 + 5);
         assert_eq!(
@@ -492,5 +500,36 @@ mod tests {
         for bad in ["", "now", "2026-11-17", "2026-11-17T10:00:05", "1794909605"] {
             assert!(read(bad).is_err(), "{bad:?}");
         }
+    }
+
+    // Incident (CI, #540): Ubuntu 24.04 ships no `US/Pacific`, `EST5EDT`, `Zulu` or `CET` without `tzdata-legacy`; a
+    // zone read from the machine failed there while chrono-tz, which bundles its own, knew them all.
+    #[test]
+    fn a_named_zone_comes_from_the_bundled_database_legacy_names_included() {
+        for name in [
+            "US/Pacific",
+            "EST5EDT",
+            "Zulu",
+            "CET",
+            "Brazil/East",
+            "Europe/Berlin",
+            "UTC",
+            "Etc/GMT+3",
+        ] {
+            assert!(zone(name).is_some(), "{name}");
+        }
+        for name in ["", "Mars/Olympus", "../etc/passwd", "Europe/", " UTC"] {
+            assert!(zone(name).is_none(), "{name:?}");
+        }
+        // Not just present: the rules are right (Berlin leaves CET for CEST on 2026-03-29 at 01:00Z).
+        let berlin = zone("Europe/Berlin").unwrap();
+        let offset = |secs| {
+            Timestamp::from_second(secs)
+                .unwrap()
+                .to_zoned(berlin.clone())
+                .offset()
+                .seconds()
+        };
+        assert_eq!((offset(1_774_744_200), offset(1_774_746_000)), (3600, 7200));
     }
 }

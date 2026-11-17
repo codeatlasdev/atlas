@@ -31,18 +31,16 @@ pub(crate) fn validate_cron(s: &str) -> Result<(), String> {
 
 /// Validate an IANA time zone name of a trigger.
 pub(crate) fn validate_tz(tz: &str) -> Result<(), String> {
-    TimeZone::get(tz)
+    atlas_core::time::zone(tz)
         .map(|_| ())
-        .map_err(|_| format!("unknown timezone: {tz}"))
+        .ok_or_else(|| format!("unknown timezone: {tz}"))
 }
 
 /// The unix second of the next fire of `cron` strictly after `since_s`, on the wall clock of `tz` (an IANA
 /// name; UTC when it is absent or unknown: hostd validates it on write, a file edited by hand must not crash).
 /// A `since_s` no calendar holds counts as now.
 pub(crate) fn next_fire_after(cron: &Cron, since_s: u64, tz: Option<&str>) -> Option<u64> {
-    let zone = tz
-        .and_then(|name| TimeZone::get(name).ok())
-        .unwrap_or(TimeZone::UTC);
+    let zone = tz.and_then(atlas_core::time::zone).unwrap_or(TimeZone::UTC);
     let since = Timestamp::from_second(since_s as i64).unwrap_or_else(|_| Timestamp::now());
     let next = cron
         .find_next_occurrence(&since.to_zoned(zone), false)

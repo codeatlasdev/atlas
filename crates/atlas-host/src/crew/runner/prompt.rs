@@ -174,7 +174,7 @@ fn tz_line(tz: Option<&str>, now_s: i64) -> String {
     let Some(tz_str) = tz else {
         return String::new();
     };
-    if let Ok(zone) = jiff::tz::TimeZone::get(tz_str) {
+    if let Some(zone) = atlas_core::time::zone(tz_str) {
         let local = jiff::Timestamp::from_second(now_s)
             .unwrap_or_default()
             .to_zoned(zone);

@@ -29,7 +29,10 @@ $ErrorActionPreference = 'Continue'
 $tick = 3
 $runnerNames = @('Runner.Listener.exe', 'Runner.Worker.exe')
 $treeRoots = @('cargo-nextest.exe', 'cargo.exe')
-$ignoreGone = @('WmiPrvSE.exe', 'conhost.exe', 'pwsh.exe', 'powershell.exe')
+# Images that come and go on a hosted runner all the time (seen in the first run of this script): not signal.
+$ignoreGone = @('WmiPrvSE.exe', 'conhost.exe', 'pwsh.exe', 'powershell.exe', 'dllhost.exe', 'RuntimeBroker.exe',
+    'MoUsoCoreWorker.exe', 'firefox.exe', 'crashhelper.exe', 'default-browser-agent.exe', 'wsl.exe', 'wslhost.exe',
+    'TiWorker.exe', 'wermgr.exe', 'taskhostw.exe', 'backgroundTaskHost.exe', 'SearchProtocolHost.exe', 'SearchFilterHost.exe')
 $gb = 1GB
 
 function Say([string]$text) {

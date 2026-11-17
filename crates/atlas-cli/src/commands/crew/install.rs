@@ -475,12 +475,12 @@ async fn list_crewmates(p: &Priv<'_>, a: &Account) -> Result<Vec<String>> {
         .collect())
 }
 
-/// The engines installed system-wide: each agent with the vendor's own install line
-/// (`agent_install_hint`, the lines `atlas crew login` prints).
+/// The engines installed system-wide: each built-in agent with the vendor's own install line
+/// (`install` in `data/agents.json`, the lines `atlas crew login` prints).
 fn isolation_engines() -> Vec<(&'static str, String)> {
-    ["omp", "claude", "codex", "opencode"]
-        .into_iter()
-        .filter_map(|a| super::agent_install_hint(a).map(|c| (a, c.to_string())))
+    atlas_core::agents::all()
+        .iter()
+        .map(|a| (a.id.as_str(), a.install.clone()))
         .collect()
 }
 

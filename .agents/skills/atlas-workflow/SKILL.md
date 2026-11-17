@@ -17,6 +17,7 @@ main ── alpha ── alpha ──────────────▶  ev
 - Tags `v*` are immutable (ruleset "release tags are immutable"), same single bypass. Never move or delete a tag; cut the next version instead.
 - Fixes land on `main` first. For a soaking release: `git switch release/X.Y && git cherry-pick -x <sha>`, then a PR to `release/X.Y` by a maintainer. Never commit a fix only to `release/X.Y`.
 - The flow for every change: branch `type/short-desc` (fork or branch), draft PR to `main`, CI green, 2 human approvals from people other than the author (external contributors only; maintainers need none), a maintainer merges (squash). The canonical text is [CONTRIBUTING.md](../../../CONTRIBUTING.md#pull-request-flow-and-who-merges); do not restate or soften it here.
+- **Merging, when a maintainer is running you and asks for it, is `bun run pr:merge <pr>` and nothing else.** Run it with `--dry-run --json` first and act on `reasons` (each names its fix). Never type `gh pr merge`, `--admin`, `--subject` or a `Closes #N` yourself: the script builds the squash message from the PR's linked issues and refuses a stale, red or mis-titled PR. Details: [CONTRIBUTING.md](../../../CONTRIBUTING.md#pull-request-flow-and-who-merges).
 - Bypass is for maintainers: merging their own PR without approvals, a release, or an emergency hotfix (with a note saying what was bypassed and why). An agent never pushes to `main`, merges a PR or uses the bypass unless a maintainer is running it and asks for exactly that. If you are not sure whom you are working for, open a PR.
 
 ## The gate

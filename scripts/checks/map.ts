@@ -19,7 +19,9 @@ export const AREAS: Record<string, string[]> = {
 		"skills/**",
 		"scripts/linux-launch-check.sh",
 	],
-	desktop: ["apps/desktop/**"],
+	// The built-in agent list (crates/atlas-core/data/agents.json) is imported by the desktop frontend and generated into
+	// Atlas Mobile's Dart; the scripts area runs the staleness test of that copy.
+	desktop: ["apps/desktop/**", "crates/atlas-core/data/agents.json"],
 	// Catalogs, locks, the writing lint and the hardcoded-text ratchets (scripts/i18n). Offline and bun only. Any user-facing
 	// source can add a hardcoded string, and the catalogs are read by the desktop, the site and the Rust crates.
 	i18n: [
@@ -40,6 +42,9 @@ export const AREAS: Record<string, string[]> = {
 	// The repo's own scripts, release helpers and everything their tests read.
 	scripts: [
 		"scripts/**",
+		".claude/**", // agent guard wiring, read by scripts/agent-guard*.test.ts
+		".codex/**",
+		".omp/**",
 		"CHANGELOG.md",
 		"testdata/**",
 		"packaging/**",
@@ -53,8 +58,9 @@ export const AREAS: Record<string, string[]> = {
 		"crates/atlas-desktop/src/main.rs",
 		"crates/atlas-cli/src/commands/{link,desktop_agent}.rs",
 		"apps/desktop/src/lib/debug/selectionBench.ts",
+		"crates/atlas-core/data/agents.json",
 	],
-	mobile: ["apps/mobile/**", "scripts/mobile-check.sh"],
+	mobile: ["apps/mobile/**", "scripts/mobile-check.sh", "crates/atlas-core/data/agents.json"],
 	relay: ["services/push-relay/**", "scripts/push-relay-check.sh"],
 	// docs/ is rendered by the site.
 	site: ["site/**", "docs/**"],

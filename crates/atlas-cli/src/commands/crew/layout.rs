@@ -169,7 +169,7 @@ pub fn pause_script(pause: bool) -> String {
 /// outlives the login and reads other crewmates' `/proc`. `None` for an `id` that is not a crewmate id or an unknown agent.
 pub fn login_script(agent: &str, id: &str) -> Option<String> {
     atlas_host::crew::spawn::validate::user_for(id)?;
-    let agent = atlas_core::agents::get(agent)?.id;
+    let agent = atlas_core::agents::get(agent)?.id.as_str();
     Some(format!(
         "u=$({WHICH_USER}); sudo -u \"$u\" {INSTALL_DIR}/atlas hostd --crew-login {agent} --login-as {id} --dir \"/var/lib/$u/.atlas\""
     ))

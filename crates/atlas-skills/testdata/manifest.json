@@ -1,0 +1,45 @@
+{
+  "skills": [
+    {
+      "name": "whole-second",
+      "version": "1.0.0",
+      "description": "no fraction",
+      "installed_at": "2026-11-14T09:05:07Z",
+      "file": "whole-second/SKILL.md",
+      "files": [
+        "SKILL.md"
+      ]
+    },
+    {
+      "name": "millis",
+      "version": "1.0.0",
+      "description": "3 digits",
+      "installed_at": "2026-11-14T09:05:07.120Z",
+      "file": "millis/SKILL.md",
+      "files": [
+        "SKILL.md"
+      ]
+    },
+    {
+      "name": "micros",
+      "version": "1.0.0",
+      "description": "6 digits, the macOS clock",
+      "installed_at": "2026-11-14T09:05:07.123400Z",
+      "file": "micros/SKILL.md",
+      "files": [
+        "SKILL.md"
+      ]
+    },
+    {
+      "name": "nanos",
+      "version": "1.0.0",
+      "description": "9 digits, the Linux clock",
+      "installed_at": "2026-11-14T09:05:07.123456780Z",
+      "file": "nanos/SKILL.md",
+      "files": [
+        "SKILL.md",
+        "yaml.md"
+      ]
+    }
+  ]
+}

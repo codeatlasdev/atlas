@@ -178,7 +178,9 @@ for (const version of ["1.5.0-alpha.25", "1.5.0-alpha.26"]) {
 			async (cmd) => (cmd === "releases_between" ? [release(version, notes)] : {}),
 			running(version),
 		);
-		expect(body.textContent).not.toContain("No release notes");
+		// The sheet is not in its empty ("No release notes for X") or error state. Checked on the state element, not on
+		// the phrase: the notes may quote it (1.5.0-alpha.26's What's new entry does), which failed the release CI.
+		expect(body.querySelector(".state")).toBeNull();
 		expect(body.querySelector(".num")?.textContent).toBe(version);
 		expect(body.querySelectorAll(".group").length).toBeGreaterThan(0);
 		expect(body.querySelectorAll("li").length).toBeGreaterThan(2);

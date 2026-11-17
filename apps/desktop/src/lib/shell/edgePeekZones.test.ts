@@ -115,6 +115,10 @@ test("closing the peek re-pushes again and the space zone is gone", async () => 
 	await hover(2);
 	await run(200);
 	expect(zonesOf()).toContain("space");
+	// The pointer goes back into the page and out of the window (a pointerleave at the panel's own edge is "still at
+	// the edge", edgePeek.test.ts), so the close is a real departure.
+	window.dispatchEvent(new PointerEvent("pointermove", { clientX: 600, buttons: 0 }));
+	await run(20);
 	document.documentElement.dispatchEvent(new Event("pointerleave"));
 	await run(300); // CLOSE_DELAY
 	expect(panel.dataset.state).toBe("closed");

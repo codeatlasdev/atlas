@@ -1,0 +1,17 @@
+{
+	"found": {
+		"key": {
+			"has_public": true,
+			"identity": "/Users/me/.ssh/id_ed25519"
+		},
+		"ssh_found": true
+	},
+	"no_ssh": {
+		"key": null,
+		"ssh_found": false
+	},
+	"none": {
+		"key": null,
+		"ssh_found": true
+	}
+}

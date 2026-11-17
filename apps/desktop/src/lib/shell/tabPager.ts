@@ -8,7 +8,7 @@
  * Same contract as the space pager: frames of an older generation are dropped, each decision applies once
  * (`activate` is only called for `seq` above the last applied one), and the end pose is cleared on `rest`.
  */
-import type { CommitMsg, FrameMsg } from "#lib/shell/pager.ts";
+import { PAGER_WATCHDOG_MS, type CommitMsg, type FrameMsg } from "#lib/shell/pager.ts";
 
 export interface TabHost {
 	pane(id: string): HTMLElement | undefined;
@@ -51,12 +51,15 @@ interface GroupState {
 	origin: string | undefined;
 	moved: Set<string>;
 	active: boolean;
+	/** Lets go of the pose when the engine stops reporting (`PAGER_WATCHDOG_MS`). */
+	watchdog?: ReturnType<typeof setTimeout>;
 }
 
 class TabPager {
 	#groups = new Map<string, GroupState>();
 
 	reset() {
+		for (const g of this.#groups.values()) clearTimeout(g.watchdog);
 		this.#groups.clear();
 	}
 
@@ -77,6 +80,7 @@ class TabPager {
 		if (m.stage === "rest") {
 			if (g.active) this.#clear(g, h);
 			g.active = false;
+			clearTimeout(g.watchdog);
 			return;
 		}
 		const next = placeTabs(h.order(), g.origin, m.amount, h.width());
@@ -98,6 +102,14 @@ class TabPager {
 		if (strip)
 			strip.style.transform = `translate3d(${-Math.max(-1, Math.min(1, m.amount)) * STRIP_NUDGE}px,0,0)`;
 		g.active = true;
+		clearTimeout(g.watchdog);
+		const seq = m.seq;
+		g.watchdog = setTimeout(() => {
+			if (g.seq !== seq || !g.active) return;
+			console.warn("[tabPager] the engine stopped reporting; settling the panes on the active tab");
+			this.#clear(g, h);
+			g.active = false;
+		}, PAGER_WATCHDOG_MS);
 	}
 
 	commit(group: string, h: TabHost, m: CommitMsg) {

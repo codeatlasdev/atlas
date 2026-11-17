@@ -12,6 +12,9 @@ import 'dart:typed_data';
 
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:image_picker/image_picker.dart';
+import 'package:image_picker_android/image_picker_android.dart';
+import 'package:image_picker_platform_interface/image_picker_platform_interface.dart'
+    show ImagePickerPlatform;
 
 import 'package:atlas_mobile/core/protocol/image_rules.dart';
 
@@ -171,8 +174,16 @@ abstract class ImagePickerPort {
 
 /// The system pickers (`image_picker`). Images are scaled to at most 2048 px at 85 % quality: a phone photo is
 /// 3 to 8 MB, over the 5 MiB cap, and 2048 px is plenty to read a screen.
+///
+/// The library needs no permission: PHPicker (iOS) and the Photo Picker (Android) run out of process and hand
+/// over only the pictures the person picks. `requestFullMetadata: false` keeps iOS from asking for the whole
+/// library to read asset metadata, and the Photo Picker is switched on for Android 15 and older (16+ always
+/// uses it), so neither platform ever shows a photos prompt. Only the camera has one (see `askPermission`).
 class SystemImagePicker implements ImagePickerPort {
-  SystemImagePicker([ImagePicker? picker]) : _picker = picker ?? ImagePicker();
+  SystemImagePicker([ImagePicker? picker]) : _picker = picker ?? ImagePicker() {
+    final platform = ImagePickerPlatform.instance;
+    if (platform is ImagePickerAndroid) platform.useAndroidPhotoPicker = true;
+  }
   final ImagePicker _picker;
 
   Future<PickedImage?> _one(XFile? f) async => f == null
@@ -186,6 +197,7 @@ class SystemImagePicker implements ImagePickerPort {
       maxWidth: 2048,
       maxHeight: 2048,
       imageQuality: 85,
+      requestFullMetadata: false,
     );
     final one = await _one(f);
     return [?one];
@@ -198,6 +210,7 @@ class SystemImagePicker implements ImagePickerPort {
       maxHeight: 2048,
       imageQuality: 85,
       limit: maxAttachments,
+      requestFullMetadata: false,
     );
     return [
       for (final f in fs)

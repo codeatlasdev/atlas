@@ -1,0 +1,7 @@
+{
+  "$comment": "Read by scripts/release-contributors.ts. 'always': people credited in every release's Special thanks. 'aliases': a commit identity (email) that has no GitHub account -> the GitHub login of the person behind it (agent sessions that committed under a made-up identity). A release stops when a commit's author or co-author maps to nobody, so add the alias here instead of leaving someone out.",
+  "always": ["FabioHAraujo", "Richards0nd"],
+  "aliases": {
+    "first@example.com": "mvilacad"
+  }
+}

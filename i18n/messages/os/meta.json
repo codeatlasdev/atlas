@@ -1,0 +1,3 @@
+{
+	"os_reveal_in_file_manager": "Menu item and tooltip that opens the folder or file in the system file manager. The `os` input (injected by the app, never passed by the caller) picks Finder on macOS, File Explorer on Windows and the generic name on Linux; keep the product names Finder and File Explorer as the OS spells them in this language."
+}

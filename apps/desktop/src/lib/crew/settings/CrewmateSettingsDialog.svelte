@@ -13,7 +13,8 @@
 	import CrewmateEditor from "#lib/crew/CrewmateEditor.svelte";
 	import { normalizeLook, type CrewmateLook } from "#lib/crew/look.ts";
 	import { CrewmateSettings } from "#lib/crew/settings/settings.svelte.ts";
-	import { PROVIDER_AGENTS, ProviderForm } from "#lib/crew/providerForm.svelte.ts";
+	import { ProviderForm } from "#lib/crew/providerForm.svelte.ts";
+	import { builtinAgent, isBuiltinAgent } from "#lib/agentRegistry.ts";
 	import SettingsNav from "#lib/crew/settings/SettingsNav.svelte";
 	import GeneralSection from "#lib/crew/settings/GeneralSection.svelte";
 	import AutomationsSection from "#lib/crew/settings/AutomationsSection.svelte";
@@ -33,16 +34,10 @@
 	const settings = new CrewmateSettings();
 	const provider = new ProviderForm();
 
-	const AGENT_LABELS: Record<string, string> = {
-		omp: "omp",
-		claude: "Claude Code",
-		codex: "Codex",
-		opencode: "OpenCode",
-	};
 	const agentLabel = $derived(
 		crewmate
 			? (agents.list.find((a) => a.id === crewmate.agent)?.label ??
-					AGENT_LABELS[crewmate.agent] ??
+					builtinAgent(crewmate.agent)?.label ??
 					crewmate.agent)
 			: "",
 	);
@@ -55,9 +50,7 @@
 	const sections = $derived([
 		{ id: "general" as SectionId, label: "General" },
 		{ id: "automations" as SectionId, label: "Automations" },
-		...(PROVIDER_AGENTS.includes(crewmate?.agent ?? "")
-			? [{ id: "engine" as SectionId, label: "Engine" }]
-			: []),
+		...(isBuiltinAgent(crewmate?.agent) ? [{ id: "engine" as SectionId, label: "Engine" }] : []),
 		{ id: "memory" as SectionId, label: "Memory" },
 		{ id: "usage" as SectionId, label: "Usage" },
 		{ id: "audit" as SectionId, label: "Audit" },

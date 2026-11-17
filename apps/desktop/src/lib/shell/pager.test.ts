@@ -1,6 +1,6 @@
 // @ts-nocheck bun test runtime types are not part of the app tsconfig
-import { beforeEach, expect, test } from "bun:test";
-import { place, spacePager } from "./pager.ts";
+import { afterEach, beforeEach, expect, jest, spyOn, test } from "bun:test";
+import { PAGER_WATCHDOG_MS, place, spacePager } from "./pager.ts";
 
 /** Let the pager's `await host.flush()` continuations run (microtasks only, no wall clock). */
 const settle = async () => {
@@ -211,4 +211,52 @@ test("moving() is told once per gesture and again only when the set of layers it
 		expect(moving.length).toBe(n + 1);
 		expect(moving.at(-1)).toEqual([true, ["a", "b"]]);
 	});
+});
+
+// ---- the pager always lets go of a pose ----
+
+afterEach(() => spacePager.attach(host)()); // no pose, no timer, left to the next test
+
+// Regression (#498): when the engine's last frame never reached the pager, the layers stayed where the last frame put
+// them (half-way between two spaces, natives parked) and only quitting the app cleared it.
+test("a pose with no frame for the watchdog period is let go: the layers settle without the engine", async () => {
+	jest.useFakeTimers();
+	const warn = spyOn(console, "warn").mockImplementation(() => {});
+	try {
+		f(1, 0.4);
+		expect(layers.a.style.transform).not.toBe("");
+		jest.advanceTimersByTime(PAGER_WATCHDOG_MS - 1);
+		expect(spacePager.active).toBe(true);
+		jest.advanceTimersByTime(2);
+		await settle();
+		expect(spacePager.active).toBe(false);
+		expect(layers.a.style.transform).toBe("");
+		expect(layers.b.style.transform).toBe("");
+		expect(moving.at(-1)).toEqual([false, undefined]);
+		expect(committed).toEqual([]);
+		expect(warn).toHaveBeenCalledTimes(1);
+	} finally {
+		jest.useRealTimers();
+		warn.mockRestore();
+	}
+});
+
+test("a gesture that keeps reporting is never cut short, and a rest frame disarms the watchdog", async () => {
+	jest.useFakeTimers();
+	const warn = spyOn(console, "warn").mockImplementation(() => {});
+	try {
+		f(1, 0.1);
+		jest.advanceTimersByTime(PAGER_WATCHDOG_MS - 100);
+		f(1, 0.2);
+		jest.advanceTimersByTime(PAGER_WATCHDOG_MS - 100);
+		expect(spacePager.active).toBe(true);
+		expect(layers.a.style.transform).toBe("translate3d(-200px,0,0)");
+		f(1, 0, "rest");
+		await settle();
+		jest.advanceTimersByTime(PAGER_WATCHDOG_MS * 3);
+		expect(warn).not.toHaveBeenCalled();
+	} finally {
+		jest.useRealTimers();
+		warn.mockRestore();
+	}
 });

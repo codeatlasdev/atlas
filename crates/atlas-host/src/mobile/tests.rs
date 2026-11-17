@@ -10,6 +10,16 @@ use tokio::io::{AsyncBufReadExt, BufReader};
 
 use crate::HostClient;
 
+/// Tests listen on loopback only: any other bound address makes the macOS firewall ask, for every new
+/// test binary, "Do you want the application to accept incoming network connections?".
+fn assert_all_loopback(socks: &[std::net::SocketAddr]) {
+    assert!(!socks.is_empty(), "endpoint bound nothing");
+    assert!(
+        socks.iter().all(|s| s.ip().is_loopback()),
+        "a test endpoint listens beyond loopback: {socks:?}"
+    );
+}
+
 async fn daemon(dir: &Path) -> HostClient {
     // No desktop, whatever runs on the machine: a socket that is never there (`agent_launch` tries it first).
     daemon_with(dir, dir.join("no-desktop.sock")).await
@@ -29,6 +39,7 @@ async fn daemon_as(dir: &Path, socket: std::path::PathBuf, crew_host: bool) -> H
     let d = dir.to_path_buf();
     let opts = crate::server::ServeOpts {
         no_mobile_relay: true,
+        mobile_loopback: true,
         crew_host,
         desktop: Some(atlas_core::desktop_ctl::Endpoint {
             token: socket.with_extension("token"),
@@ -51,6 +62,12 @@ pub(crate) async fn pair_start(c: &HostClient) -> Value {
     for _ in 0..100 {
         let v = c.call("mobile_pair_start", json!({})).await.unwrap();
         if v["addrs"].as_array().is_some_and(|a| !a.is_empty()) {
+            // The gateway listens on loopback only, so nothing else can be published: a LAN
+            // address here means the daemon bound every interface (macOS asks about that).
+            for a in v["addrs"].as_array().unwrap() {
+                let a: std::net::SocketAddr = a.as_str().unwrap().parse().unwrap();
+                assert!(a.ip().is_loopback(), "the test gateway published {a}");
+            }
             return v;
         }
         tokio::time::sleep(Duration::from_millis(50)).await;
@@ -109,11 +126,9 @@ impl Phone {
 
     /// Dial as a given identity (the same phone reconnecting).
     async fn dial_as(info: &Value, key: iroh::SecretKey) -> Self {
-        let ep = Endpoint::builder(iroh::endpoint::presets::Minimal)
-            .secret_key(key)
-            .bind()
-            .await
-            .unwrap();
+        let builder = Endpoint::builder(iroh::endpoint::presets::Minimal).secret_key(key);
+        let ep = super::loopback_only(builder).unwrap().bind().await.unwrap();
+        assert_all_loopback(&ep.bound_sockets());
         let id: PublicKey = info["node_id"].as_str().unwrap().parse().unwrap();
         let mut addr = EndpointAddr::new(id);
         for a in loopback_addrs(info) {
@@ -640,8 +655,13 @@ async fn agent_send_types_only_into_an_idle_or_done_agent() {
 #[tokio::test]
 async fn settings_fixtures_are_the_real_payloads() {
     let tmp = tempfile::tempdir().unwrap();
-    let m = std::sync::Arc::new(super::Mobile::load(tmp.path(), false).unwrap());
+    let m = std::sync::Arc::new(
+        super::Mobile::load(tmp.path(), false)
+            .unwrap()
+            .loopback_only(true),
+    );
     m.ensure_endpoint().await.unwrap();
+    assert_all_loopback(&m.endpoint_sockets());
     let mut start = m.pair_start().unwrap();
     let code = start["code"].as_str().unwrap().to_string();
     // The name the real app sends (`pair_screen.dart`): the same for every phone.

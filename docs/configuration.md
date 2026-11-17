@@ -521,7 +521,7 @@ affected:
 | `command` | string | Run with `sh -c` in the project root (`cmd /c` on Windows). It receives the changed files on stdin, one per line, relative to the project root, and prints JSON `{"tasks": [], "tests": [], "routes": [], "builds": []}` to stdout (every key optional, each a list of strings; other keys are ignored). A non-zero exit or output that is not that JSON is an error returned to the agent, never a silent fallback. Wins over `rules`. |
 | `rules` | list | `match` (globs relative to the project root, `**` crosses folders; at least one), and any of `tasks` (must be an action `label`, case-insensitive), `tests`, `routes`, `builds`. A rule applies when any changed file matches any of its globs; the answer is the union of the matching rules, without duplicates, in file order. |
 
-Unknown keys are config errors; so are a rule without `match`, a glob that does not parse, a blank `command` and a `tasks` entry that names no action. `atlas.local.yaml` can override `affected` like any other top-level key. This repository declares `affected: { command: bun scripts/check-changed.ts --json }`: the plan `bun run check:changed` would run, as JSON, without running it.
+Unknown keys are config errors; so are a rule without `match`, a glob that does not parse, a blank `command` and a `tasks` entry that names no action. `atlas.local.yaml` can override `affected` like any other top-level key. This repository declares `affected: { command: bun scripts/check-changed.ts --json --stdin }`: the plan `bun run check:changed` would run for the files on stdin, as JSON, without running it.
 
 ## agents
 

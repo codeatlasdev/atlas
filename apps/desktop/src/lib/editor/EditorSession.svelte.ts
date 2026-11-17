@@ -32,6 +32,9 @@ import { languageLabel } from "#lib/editor/statusbar.ts";
 const HEX_BYTES = 4096;
 const SAVE_IDLE_MS = 500;
 
+/** The file operations the session needs; `host` has them all, and so does the light editor's direct access. */
+export type FileIo = Pick<typeof host, "fsStat" | "fsRead" | "fsWrite" | "fsWatch" | "fsUnwatch">;
+
 export interface Hooks {
 	/** Extensions that depend on the component (LSP, language, theme add-ons). */
 	extensions: () => Extension[];
@@ -102,16 +105,18 @@ export class EditorSession {
 		readonly relPath: string,
 		readonly root: string,
 		private readonly hooks: Hooks,
+		/** Where the file is read and written: hostd for a project's editor, the app itself for the light editor. */
+		private readonly io: FileIo = host,
 	) {}
 
 	// ---- loading ------------------------------------------------------------------------------
 
 	/** Read the file and build the plan. `null` when it is not decodable text (phase says why). */
 	async read(max: number, signal: AbortSignal): Promise<OpenPlan | null> {
-		const st = await host.fsStat(this.abs);
+		const st = await this.io.fsStat(this.abs);
 		this.fileSize = st.size;
 		if (signal.aborted) throw new DOMException("aborted", "AbortError");
-		const r = await host.fsRead(this.abs, max);
+		const r = await this.io.fsRead(this.abs, max);
 		const bytes = b64bytes(r.data);
 		let raw: string;
 		try {
@@ -138,7 +143,7 @@ export class EditorSession {
 		const found = await Promise.all(
 			dirs.map(async (dir) => {
 				try {
-					const r = await host.fsRead(`${dir}/.editorconfig`, 64 * 1024);
+					const r = await this.io.fsRead(`${dir}/.editorconfig`, 64 * 1024);
 					return { dir, text: new TextDecoder().decode(b64bytes(r.data)) };
 				} catch {
 					return null;
@@ -255,8 +260,8 @@ export class EditorSession {
 		if (out === undefined || (out === this.lastSaved && !this.deleted)) return;
 		try {
 			if (!force && (await this.#blockedByDisk())) return;
-			await host.fsWrite(this.abs, out);
-			const st = await host.fsStat(this.abs).catch(() => null);
+			await this.io.fsWrite(this.abs, out);
+			const st = await this.io.fsStat(this.abs).catch(() => null);
 			this.#disk = st ? { mtime: st.mtime, size: st.size } : null;
 			this.lastSaved = out;
 			this.deleted = false;
@@ -278,7 +283,7 @@ export class EditorSession {
 	 */
 	async #blockedByDisk(): Promise<boolean> {
 		const known = this.#disk;
-		const st = await host.fsStat(this.abs).catch(() => null);
+		const st = await this.io.fsStat(this.abs).catch(() => null);
 		if (!known || !st || (st.mtime === known.mtime && st.size === known.size)) return false;
 		const effect = await this.#diskChanged();
 		if (effect === "unreadable") {
@@ -305,7 +310,7 @@ export class EditorSession {
 
 	async #readDisk(): Promise<string | null> {
 		try {
-			const r = await host.fsRead(
+			const r = await this.io.fsRead(
 				this.abs,
 				this.fileSize > 0 ? Math.max(this.fileSize * 2, 1_000_000) : undefined,
 			);
@@ -370,7 +375,7 @@ export class EditorSession {
 	#watch() {
 		const dir = this.abs.slice(0, this.abs.lastIndexOf("/"));
 		this.#watchId = `ed:${this.abs}:${Math.random().toString(36).slice(2, 8)}`;
-		host.fsWatch(dir, this.#watchId).catch((e) => {
+		this.io.fsWatch(dir, this.#watchId).catch((e) => {
 			// Saves still compare the file with what we last read (`#changedOnDisk`); only live updates are lost.
 			this.watchError = `External changes to this file are not watched: ${errText(e)}`;
 		});
@@ -393,7 +398,7 @@ export class EditorSession {
 	async #diskChanged(): Promise<ExternalEffect | "unreadable"> {
 		let st: { mtime: number; size: number };
 		try {
-			st = await host.fsStat(this.abs);
+			st = await this.io.fsStat(this.abs);
 		} catch {
 			return this.#feed({ kind: "disk-deleted" });
 		}
@@ -458,7 +463,7 @@ export class EditorSession {
 		this.#closing = true;
 		clearTimeout(this.#saveTimer);
 		beforeClose?.();
-		if (this.#watchId) void host.fsUnwatch(this.#watchId).catch(() => {});
+		if (this.#watchId) void this.io.fsUnwatch(this.#watchId).catch(() => {});
 		void this.#off?.then((u) => u());
 		await this.save();
 		this.view?.destroy();

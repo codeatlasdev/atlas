@@ -185,7 +185,7 @@ pub fn package(
     } else {
         sha[..7].to_string()
     };
-    let id = format!("{}-{suffix}", chrono::Utc::now().format("%Y%m%d%H%M%S"));
+    let id = format!("{}-{suffix}", atlas_core::time::utc_compact_now());
 
     if let Some(build) = cfg.build.as_deref().filter(|_| !skip_build) {
         eprintln!("▸ build: {build}");

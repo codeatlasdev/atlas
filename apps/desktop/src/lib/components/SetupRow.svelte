@@ -6,6 +6,7 @@
 	import { onMount } from "svelte";
 	import { api, errText, type SetupConfig, type SetupStatus } from "#lib/api.ts";
 	import { css, parseAnsi } from "#lib/ansi.ts";
+	import { relativeTime } from "#lib/i18n/fmt.ts";
 	import VirtualList from "./VirtualList.svelte";
 	import { guarded } from "./tooltipGuard.ts";
 
@@ -59,14 +60,8 @@
 		}
 	}
 
-	/** `3m ago` from a unix-seconds timestamp. */
-	function ago(secs: number): string {
-		const d = Math.max(0, Math.round(clk.now / 1000 - secs));
-		if (d < 60) return `${d}s ago`;
-		if (d < 3600) return `${Math.floor(d / 60)}m ago`;
-		if (d < 86_400) return `${Math.floor(d / 3600)}h ago`;
-		return `${Math.floor(d / 86_400)}d ago`;
-	}
+	/** `3 min ago` from a unix-seconds timestamp. */
+	const ago = (secs: number) => relativeTime(secs * 1000, clk.now);
 
 	// Re-read when the project changes or `projects://setup` fires; tick the clock for "x ago".
 	$effect(() => {

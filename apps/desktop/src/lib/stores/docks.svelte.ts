@@ -81,6 +81,19 @@ export function toggleLeftPanel(panel: LeftPanel) {
 	docks.zoomed = false;
 }
 
+const explorerShown = new Set<string>();
+
+/**
+ * A plain folder is its files: the first time one is selected in this window the explorer opens in the left dock. Once
+ * per folder, so a user who closes it is not overruled the next time he comes back.
+ */
+export function showExplorerOnce(worktreeId: string) {
+	if (explorerShown.has(worktreeId)) return;
+	explorerShown.add(worktreeId);
+	docks.leftPanel = "explorer";
+	docks.left = true;
+}
+
 /** Toggle one dock (and leave pane zoom). Pinning or hiding drops any peek. */
 export function toggleDock(side: DockSide) {
 	docks[side] = !docks[side];

@@ -15,6 +15,7 @@ async fn main_daemon(dir: &Path) -> HostClient {
     let d = dir.to_path_buf();
     let opts = ServeOpts {
         no_mobile_relay: true,
+        mobile_loopback: true,
         ..Default::default()
     };
     tokio::spawn(async move { crate::server::serve_with(&d, opts).await });
@@ -26,6 +27,7 @@ async fn lab_daemon(dir: &Path, main: &Path) -> HostClient {
     let (d, m) = (dir.to_path_buf(), main.to_path_buf());
     let opts = ServeOpts {
         no_mobile_relay: true,
+        mobile_loopback: true,
         lab: Some(m),
         ..Default::default()
     };

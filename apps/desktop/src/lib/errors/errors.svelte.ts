@@ -23,6 +23,11 @@ const DEDUPE_MS = 10_000;
 const MAX_SEEN = 50;
 /** An outage keeps producing the same failure for as long as it lasts: one toast per minute, not per call. */
 const HOST_DEDUPE_MS = 60_000;
+/**
+ * How long the host must stay unreachable before the outage is shown. A live upgrade (update, app start) drops every
+ * client for a moment and the app reconnects within a second or two; that is no outage worth Restart / Report (#500).
+ */
+const HOST_GRACE_MS = 3_000;
 
 /** Host failures read the same everywhere: strip the home directory the OS error carried. */
 const hostText = (m: string) => m.replace(/\/(?:Users|home)\/[^/\s)]+/g, "~").trim();
@@ -36,6 +41,10 @@ class Errors {
 	crashing = $state<Record<string, true>>({});
 	#version: Promise<string | undefined> | undefined;
 	#seen = new Map<string, { at: number; id: number }>();
+	/** Host failures that have not lasted `hostGraceMs` yet, by key: shown when the timer fires, dropped by `hostReachable`. */
+	#waiting = new Map<string, { text: string; repeats: number; timer: number }>();
+	/** Tests set 0 to see an outage at once. */
+	hostGraceMs = HOST_GRACE_MS;
 	#next = 1;
 
 	/** Cached `system_info().app.version`; undefined when the call fails (tray webview, tests). */
@@ -98,13 +107,31 @@ class Errors {
 			live.repeats += 1;
 			return;
 		}
+		const waiting = this.#waiting.get(key);
+		if (waiting) {
+			waiting.repeats += 1;
+			return;
+		}
+		if (this.hostGraceMs <= 0) return this.#raiseHost(key, text, 0);
+		const w = {
+			text,
+			repeats: 0,
+			timer: window.setTimeout(() => {
+				this.#waiting.delete(key);
+				this.#raiseHost(key, text, w.repeats);
+			}, this.hostGraceMs),
+		};
+		this.#waiting.set(key, w);
+	}
+
+	#raiseHost(key: string, text: string, repeats: number) {
 		const id = this.#next++;
-		this.#seen.set(key, { at: now, id });
+		this.#seen.set(key, { at: Date.now(), id });
 		crumbs.add(`host: ${text.split("\n")[0]}`);
 		// Pushed before any await: concurrent callers (three tabs, a poll) must see it and fold into it.
 		const t = {
 			id,
-			repeats: 0,
+			repeats,
 			host: true,
 			report: {
 				message: text,
@@ -119,6 +146,18 @@ class Errors {
 			const live = this.toasts.find((x) => x.id === id);
 			if (live) live.report.version = v;
 		});
+	}
+
+	/**
+	 * The terminal host answers again (`host://reconnected`, a `pty_list` that succeeded): what was said about it being
+	 * away is no longer true. Failures still inside the grace are dropped, shown toasts are dismissed, and the next
+	 * outage starts from a clean slate. Other errors stay.
+	 */
+	hostReachable() {
+		for (const w of this.#waiting.values()) clearTimeout(w.timer);
+		this.#waiting.clear();
+		if (this.toasts.some((t) => t.host)) this.toasts = this.toasts.filter((t) => !t.host);
+		for (const k of [...this.#seen.keys()]) if (k.startsWith("host:")) this.#seen.delete(k);
 	}
 
 	/** Versions, OS and the redacted log tails; best effort, the screen is already showing a failure. */

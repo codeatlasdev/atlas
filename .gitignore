@@ -15,6 +15,9 @@ dist/
 .astro/
 .wrangler/
 
+# i18n pseudo-locale en-XA (bun run i18n:pseudo): generated from the English catalogs, never committed
+**/messages/en-XA.json
+
 # ── Flutter (apps/mobile) ───────────────────────────────────────────────────
 apps/mobile/.dart_tool/
 apps/mobile/build/
@@ -65,3 +68,6 @@ studio/out/
 demo/.out/
 __pycache__/
 *.pyc
+
+# i18n: inlang plugin caches (absolute paths of whoever ran the build) and Paraglide inputs generated at build time
+**/project.inlang/cache/

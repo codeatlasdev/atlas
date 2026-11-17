@@ -1,41 +1,57 @@
 ---
 import { SITE } from "../data/site";
+import { m } from "../lib/paraglide/messages.js";
+import { delocalizePath, localeOfAstro, localizePath, switchTarget, type Locale } from "../lib/i18n";
 import NavLinks from "./NavLinks.astro";
-const path = Astro.url.pathname;
+
+interface Props {
+	/** Real equivalents of this page per locale (Base.astro passes them through); drives the language switch. */
+	alternates?: Partial<Record<Locale, string>>;
+	/** Path of the English page this page falls back to, when it has no translation of its own. */
+	canonicalPath?: string;
+}
+const { alternates, canonicalPath } = Astro.props;
+const locale = localeOfAstro(Astro.currentLocale);
+const { path } = delocalizePath(Astro.url.pathname);
+// Only the docs have pt-BR pages (/pt-br/docs/...); every other page is English, so its links stay unprefixed.
+const to = switchTarget(locale, alternates, canonicalPath);
 const links = [
-	{ href: SITE.docs, label: "Docs", active: path.startsWith("/docs") },
-	{ href: "/changelog/", label: "Changelog", active: path.startsWith("/changelog") },
+	{ href: localizePath(SITE.docs, locale), label: m.nav_docs(), active: path.startsWith("/docs") },
+	{ href: "/changelog/", label: m.nav_changelog(), active: path.startsWith("/changelog") },
 	{ href: SITE.github, label: "GitHub" },
+	...(to ? [{ href: to.path, label: m.nav_language_switch(), lang: to.locale }] : []),
 ];
 ---
 <header class="nav" data-nav>
 	<div class="bar">
-		<a class="brand" href="/" aria-label="Atlas home">
+		<a class="brand" href="/" aria-label={m.nav_home_label()}>
 			<span class="mark" aria-hidden="true"><img src="/favicon.svg" alt="" width="26" height="26" decoding="async" /></span>
 			<span class="word">Atlas</span>
 		</a>
-		<nav class="links" aria-label="Main">
+		<nav class="links" aria-label={m.nav_main_label()}>
 			<ul>
 				<NavLinks links={links} />
 			</ul>
 		</nav>
-		<a class="btn solid sm cta-bar" href="/download/">Download</a>
-		<button type="button" class="burger" aria-expanded="false" aria-controls="menu-sheet" aria-label="Open menu" data-burger>
+		<a class="btn solid sm cta-bar" href="/download/">{m.nav_download()}</a>
+		<button type="button" class="burger" aria-expanded="false" aria-controls="menu-sheet" aria-label={m.nav_menu_open()} data-burger>
 			<svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="square" aria-hidden="true"><path class="l1" d="M4 8h16" /><path class="l2" d="M4 16h16" /></svg>
 		</button>
 	</div>
 	<div class="sheet" id="menu-sheet" hidden data-sheet>
-		<nav aria-label="Menu">
+		<nav aria-label={m.nav_menu_label()}>
 			<ul>
-				<li><a href="/#yaml">The idea</a></li>
+				<li><a href="/#yaml">{m.nav_idea()}</a></li>
 				<NavLinks links={links} />
-				<li><a href="/docs/getting-started/">Getting started</a></li>
+				<li><a href={localizePath("/docs/getting-started/", locale)}>{m.nav_getting_started()}</a></li>
 			</ul>
 		</nav>
-		<a class="btn solid wide" href="/download/" data-close>Download Atlas</a>
+		<a class="btn solid wide" href="/download/" data-close>{m.nav_download_atlas()}</a>
 	</div>
 </header>
 <script>
+	import "../lib/locale-client";
+	import { m } from "../lib/paraglide/messages.js";
 	// Menu sheet: toggled by the burger, closed by Escape, a link tap, or leaving the phone breakpoint.
 	// Body scroll is locked while it is open (position-free, so iOS keeps the scroll offset).
 	const nav = document.querySelector<HTMLElement>("[data-nav]");
@@ -46,7 +62,7 @@ const links = [
 		const set = (open: boolean) => {
 			sheet.hidden = !open;
 			burger.setAttribute("aria-expanded", String(open));
-			burger.setAttribute("aria-label", open ? "Close menu" : "Open menu");
+			burger.setAttribute("aria-label", open ? m.nav_menu_close() : m.nav_menu_open());
 			root.classList.toggle("menu-open", open);
 			if (open) sheet.querySelector<HTMLElement>("a")?.focus({ preventScroll: true });
 		};

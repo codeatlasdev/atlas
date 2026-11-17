@@ -260,13 +260,24 @@ export async function runGesture(o: GestureRunOpts & { shell: Shell; ws?: Ws }):
 	probe.start();
 	t0 = performance.now();
 	let report: { first_seq: number; last_seq: number; commits: [number, number][] };
+	// A trace that starts over a scroller (an editor with a long line): the page has none under the aimed pointer, so
+	// the bench puts one there for the replay, with the edges the trace says, and gives the engine its real table back.
+	const over = trace.expect.scroller;
+	const zones = over ? await invoke<unknown[]>("swipe_zones_now") : [];
+	const scrollers = over ? await invoke<unknown[]>("swipe_scrollers_now") : [];
 	try {
+		if (over) {
+			const p = trace.events[0]!;
+			const box = { x: p.x - 40, y: p.y - 20, w: 80, h: 40, ...over };
+			await invoke("swipe_zones", { zones, scrollers: [...scrollers, box] });
+		}
 		report = await invoke("gesture_replay_samples", { events: trace.events });
 		// Let Svelte apply the commit and the natives come back: 600 ms of quiet.
 		const quiet = Promise.withResolvers<void>();
 		setTimeout(quiet.resolve, 600);
 		await quiet.promise;
 	} finally {
+		if (over) await invoke("swipe_zones", { zones, scrollers });
 		un();
 		mo.disconnect();
 	}

@@ -7,6 +7,7 @@
     "check:changed": "bun scripts/check-changed.ts",
     "check": "cargo fmt --all -- --check && cargo clippy --workspace --all-targets --locked -- -D warnings && cargo nextest run --workspace --locked && cargo test --workspace --locked --doc && cargo deny check && bun scripts/sh.ts scripts/check-skills.sh && bun scripts/sh.ts scripts/lint-workflows.sh && bun run desktop:check && bun scripts/sh.ts scripts/mobile-check.sh && bun scripts/sh.ts scripts/push-relay-check.sh && bun run release:test",
     "sweep": "bun scripts/sh.ts scripts/sweep.sh",
+    "pr:merge": "bun scripts/pr-merge.ts",
     "lint:workflows": "bun scripts/sh.ts scripts/lint-workflows.sh",
     "fmt": "cargo fmt --all && cd apps/desktop && bun run format",
     "dup": "bunx jscpd",

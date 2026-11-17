@@ -21,7 +21,8 @@ export interface Repo {
 }
 
 export function makeRepo(): Repo {
-	const base = realpathSync(mkdtempSync(join(tmpdir(), "guard-")));
+	// `.native`: on Windows only it expands 8.3 names (RUNNER~1), which git and the guard report in full.
+	const base = realpathSync.native(mkdtempSync(join(tmpdir(), "guard-")));
 	const main = join(base, "atlas");
 	mkdirSync(join(main, "sub"), { recursive: true });
 	git(main, "init", "-q", "-b", "main");

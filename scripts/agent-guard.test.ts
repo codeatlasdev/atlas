@@ -7,6 +7,7 @@ import { type Call, decide } from "./lib/agent-guard/decide";
 import { dirLink, git, makeRepo } from "./lib/agent-guard/fixture";
 import { fromHook, fromOmp } from "./lib/agent-guard/payload";
 import { decidePush, parsePushLines } from "./lib/agent-guard/prepush";
+import { fromMsys } from "./lib/agent-guard/paths";
 import { parseShell } from "./lib/agent-guard/shell";
 
 // The guard decides on a real repository (primary checkout + two linked worktrees), because the rules are about where
@@ -14,7 +15,12 @@ import { parseShell } from "./lib/agent-guard/shell";
 const r = makeRepo();
 const ctxA = (env: Record<string, string> = {}) => realCtx(r.a, env);
 const write = (path: string, ctx = ctxA()) => decide({ kind: "write", paths: [path] }, ctx);
-const bash = (command: string, ctx = ctxA()) => decide({ kind: "bash", command }, ctx);
+// Shell text: a backslash escapes, so on Windows the absolute paths in a command are written with slashes, as Git Bash does.
+const slashed = (command: string) =>
+	process.platform !== "win32"
+		? command
+		: [r.base, tmpdir()].reduce((c, root) => c.replace(new RegExp(`${root.replace(/[\\^$.*+?()[\]{}|]/g, "\\$&")}[^\\s'"]*`, "g"), (m) => m.replaceAll("\\", "/")), command);
+const bash = (command: string, ctx = ctxA()) => decide({ kind: "bash", command: slashed(command) }, ctx);
 
 describe("file writes", () => {
 	test("inside your own worktree is allowed, existing or new, however deep", () => {
@@ -437,4 +443,22 @@ test("fixture: a and b are linked worktrees of main", () => {
 	expect(realCtx(r.main, {}).tree()?.primary).toBe(true);
 	writeFileSync(join(r.a, "marker"), "");
 	mkdirSync(join(r.a, "sub"), { recursive: true });
+});
+
+describe("Windows path spellings", () => {
+	test("Git Bash and Cygwin paths become Windows paths on Windows, and are left alone elsewhere", () => {
+		expect(fromMsys("/c/Users/dev/atlas", true, "C:\\T")).toBe("C:\\Users\\dev\\atlas");
+		expect(fromMsys("/cygdrive/d/a/atlas/x.rs", true, "C:\\T")).toBe("D:\\a\\atlas\\x.rs");
+		expect(fromMsys("/c", true, "C:\\T")).toBe("C:\\");
+		expect(fromMsys("/tmp/x.txt", true, join("C:", "T"))).toBe(join("C:", "T", "x.txt"));
+		expect(fromMsys("/home/dev/x", true, "C:\\T")).toBe("/home/dev/x");
+		expect(fromMsys("/c/Users/dev", false)).toBe("/c/Users/dev");
+	});
+
+	// Windows also hands out 8.3 names (`RUNNER~1` for `runneradmin`); they resolve through the same canonicalization.
+	test("a differently cased spelling of the main checkout is still the main checkout", () => {
+		if (process.platform === "linux") return; // case-sensitive: no alias to test
+		const odd = r.main.replace(/atlas$/, "ATLAS");
+		expect(write(join(odd, "x.rs")).allow).toBe(false);
+	});
 });

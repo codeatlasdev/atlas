@@ -12,7 +12,7 @@ const r = makeRepo();
 /** What Claude Code writes on the hook's stdin for a PreToolUse event. */
 function claudeHook(tool_name: string, tool_input: unknown, env: Record<string, string> = {}) {
 	const payload = { session_id: "s", transcript_path: "/x", cwd: r.a, permission_mode: "default", hook_event_name: "PreToolUse", tool_name, tool_input, tool_use_id: "t" };
-	const p = Bun.spawnSync(["bun", entry, "hook"], { cwd: r.a, stdin: new TextEncoder().encode(JSON.stringify(payload)), env: { ...process.env, ATLAS_MAINTAINER_OK: "", ...env } });
+	const p = Bun.spawnSync([process.execPath, entry, "hook"], { cwd: r.a, stdin: new TextEncoder().encode(JSON.stringify(payload)), env: { ...process.env, ATLAS_MAINTAINER_OK: "", ...env } });
 	return { code: p.exitCode, stderr: p.stderr.toString(), stdout: p.stdout.toString() };
 }
 
@@ -40,13 +40,13 @@ test("Claude Code hook: Bash commands are judged, other tools are not", () => {
 test("hook: the maintainer's environment lifts the rule, and --json reports the verdict", () => {
 	expect(claudeHook("Bash", { command: "git push origin main" }, { ATLAS_MAINTAINER_OK: "push" }).code).toBe(0);
 	const payload = JSON.stringify({ cwd: r.a, tool_name: "Bash", tool_input: { command: "git stash" } });
-	const p = Bun.spawnSync(["bun", entry, "hook", "--json"], { cwd: r.a, stdin: new TextEncoder().encode(payload), env: { ...process.env, ATLAS_MAINTAINER_OK: "" } });
+	const p = Bun.spawnSync([process.execPath, entry, "hook", "--json"], { cwd: r.a, stdin: new TextEncoder().encode(payload), env: { ...process.env, ATLAS_MAINTAINER_OK: "" } });
 	expect(p.exitCode).toBe(2);
 	expect(JSON.parse(p.stdout.toString())).toMatchObject({ allow: false, action: "stash" });
 });
 
 test("hook: garbage on stdin is no opinion, not a crash", () => {
-	const p = Bun.spawnSync(["bun", entry, "hook"], { cwd: r.a, stdin: new TextEncoder().encode("not json") });
+	const p = Bun.spawnSync([process.execPath, entry, "hook"], { cwd: r.a, stdin: new TextEncoder().encode("not json") });
 	expect(p.exitCode).toBe(0);
 });
 

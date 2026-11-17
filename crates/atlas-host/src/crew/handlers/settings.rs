@@ -64,9 +64,7 @@ pub(crate) fn set_triggers(hub: &Hub, id: String, triggers: Vec<Value>) -> Resul
                 serde_json::from_value(v).map_err(|e| format!("invalid trigger: {e}"))?;
             // Validate tz before anything else.
             if let Some(tz_str) = &t.tz {
-                tz_str
-                    .parse::<chrono_tz::Tz>()
-                    .map_err(|_| format!("unknown timezone: {tz_str}"))?;
+                schedule::validate_tz(tz_str)?;
             }
             triggers::validate_trigger(&t)?;
             // Preserve last_fired of an existing trigger with the same id;

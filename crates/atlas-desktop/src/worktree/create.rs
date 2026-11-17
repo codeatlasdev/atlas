@@ -287,7 +287,7 @@ pub(super) async fn create(
             id: registry::id_for_host(repo.host.as_deref(), &real),
             root: real.to_string_lossy().into_owned(),
             pinned: false,
-            added: chrono::Utc::now().to_rfc3339(),
+            added: atlas_core::time::utc_rfc3339_now(),
             parent: Some(repo.id.clone()),
             port_offset: free_offset(entries, &repo.id),
             branch: Some(branch.clone()),

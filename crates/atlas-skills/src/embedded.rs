@@ -440,3 +440,29 @@ mod tests {
         assert!(SkillsManifest::load_from(&mpath).unwrap().skills.is_empty());
     }
 }
+
+#[cfg(test)]
+mod time_contract {
+    // Contract (chrono → jiff migration, #540): the manifest `install` writes carries `installed_at` as `Z` and
+    // 0, 3, 6 or 9 fractional digits, the way every older build wrote it.
+    #[test]
+    fn install_records_installed_at_in_the_z_form_with_auto_precision() {
+        let dir = tempfile::tempdir().unwrap();
+        let manifest = dir.path().join("m.json");
+        super::install(dir.path(), &manifest, &["atlas".to_string()]).unwrap();
+        let v: serde_json::Value =
+            serde_json::from_str(&std::fs::read_to_string(&manifest).unwrap()).unwrap();
+        let ts = v["skills"][0]["installed_at"].as_str().unwrap();
+        let (secs, frac) = ts.strip_suffix('Z').expect("Z, not +00:00").split_at(19);
+        assert_eq!(secs.len(), 19, "{ts}");
+        assert_eq!(&secs[4..5], "-", "{ts}");
+        assert_eq!(&secs[10..11], "T", "{ts}");
+        assert_eq!(&secs[13..14], ":", "{ts}");
+        assert!(
+            matches!(frac.len(), 0 | 4 | 7 | 10) && (frac.is_empty() || frac.starts_with('.')),
+            "{ts}"
+        );
+        assert!(frac.chars().skip(1).all(|c| c.is_ascii_digit()), "{ts}");
+        assert!(secs.starts_with("20"), "the clock is this century: {ts}");
+    }
+}

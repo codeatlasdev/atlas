@@ -381,7 +381,6 @@ dependencies = [
  "atlas-skills",
  "atlas-tui",
  "base64 0.23.1",
- "chrono",
  "clap",
  "crossterm",
  "dirs",
@@ -406,6 +405,7 @@ name = "atlas-core"
 version = "1.5.0-alpha.26"
 dependencies = [
  "anyhow",
+ "chrono",
  "dirs",
  "globset",
  "hex",
@@ -433,7 +433,6 @@ dependencies = [
  "atlas-tui",
  "base64 0.23.1",
  "block2",
- "chrono",
  "color_quant 2.0.0",
  "dirs",
  "dispatch2",
@@ -591,7 +590,6 @@ version = "1.5.0-alpha.26"
 dependencies = [
  "anyhow",
  "atlas-core",
- "chrono",
  "crossterm",
  "dirs",
  "futures-util",

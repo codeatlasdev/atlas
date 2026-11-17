@@ -393,7 +393,7 @@ pub(crate) fn start(hub_weak: Weak<Hub>) {
 
 /// Evaluate a cron expression in an optional IANA timezone; returns true when the
 /// next occurrence since `last_fired` (or epoch) has passed `now_s`.
-fn should_fire_cron(
+pub(crate) fn should_fire_cron(
     cron_expr: &str,
     last_fired: Option<u64>,
     tz: Option<&str>,

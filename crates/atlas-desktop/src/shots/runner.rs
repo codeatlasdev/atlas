@@ -644,18 +644,9 @@ pub fn finish_image(
 
 /// `dir/<name>` for a new capture of `kind`, unused.
 pub fn save_path(dir: &Path, kind: Kind) -> PathBuf {
-    use chrono::{Datelike, Timelike};
-    let now = chrono::Local::now();
     let name = naming::file_name(
         kind,
-        (
-            now.year(),
-            now.month(),
-            now.day(),
-            now.hour(),
-            now.minute(),
-            now.second(),
-        ),
+        atlas_core::time::local_parts(std::time::SystemTime::now()),
     );
     naming::unique(dir, &name, |p| p.exists())
 }

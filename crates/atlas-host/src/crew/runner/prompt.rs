@@ -8,7 +8,7 @@ use super::action::park_task;
 use super::github::{WaitResult, needs_github_auth, wait_for_github_connect};
 use super::outcome::{broadcast_task, finish_task, persist, was_cancelled};
 use crate::crew::store::{ProjectRef, Task, TaskAction};
-use crate::crew::{Crewmate, attachments, project, triggers};
+use crate::crew::{Crewmate, attachments, now_s, project, triggers};
 use crate::server::Hub;
 
 /// What a task needs before its agent can start.
@@ -169,6 +169,24 @@ async fn prepare_work_dir(
     Ok(dir)
 }
 
+/// The prompt line about the user's time zone and the time there (empty without a zone).
+fn tz_line(tz: Option<&str>, now_s: i64) -> String {
+    let Some(tz_str) = tz else {
+        return String::new();
+    };
+    if let Ok(zone) = tz_str.parse::<chrono_tz::Tz>() {
+        let local = chrono::DateTime::from_timestamp(now_s, 0)
+            .unwrap_or_default()
+            .with_timezone(&zone);
+        format!(
+            "The user's timezone is {tz_str}. Current local time there: {}.\n",
+            local.format("%Y-%m-%d %H:%M %Z")
+        )
+    } else {
+        format!("The user's timezone is {tz_str}.\n")
+    }
+}
+
 /// The instructions every agent gets. It says where it runs: the crewmate lives on its own server, so the user's computer
 /// (its paths, mounts, branches) is out of reach; without this an agent kept asking to "mount the Mac folder".
 fn task_prompt(
@@ -191,19 +209,7 @@ fn task_prompt(
         }
         None => format!("Your working directory is {work_dir}.\n"),
     };
-    let tz_line = if let Some(tz_str) = tz {
-        if let Ok(zone) = tz_str.parse::<chrono_tz::Tz>() {
-            let local = chrono::Utc::now().with_timezone(&zone);
-            format!(
-                "The user's timezone is {tz_str}. Current local time there: {}.\n",
-                local.format("%Y-%m-%d %H:%M %Z")
-            )
-        } else {
-            format!("The user's timezone is {tz_str}.\n")
-        }
-    } else {
-        String::new()
-    };
+    let tz_line = tz_line(tz, now_s() as i64);
     format!(
         "You are {name}. {role}\n\
          You run on your own server, not on the user's computer. You cannot see the user's machine, its files or \
@@ -274,6 +280,47 @@ pub(super) fn load_hook_endpoint(dir: &Path) -> (u16, String) {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    // Contract (chrono → jiff migration, #540): the zone line the agent reads. The abbreviation is the zone
+    // database's own (`CET`, `IST`, `-03` where a zone has no letters).
+    #[test]
+    fn the_prompt_names_the_time_zone_and_the_local_time_there() {
+        let at = |s: i64| {
+            // 2026-03-29T00:30:00Z, the half hour before Berlin springs forward.
+            1_774_744_200 + s
+        };
+        let line = |tz: &str, t| tz_line(Some(tz), t);
+        assert_eq!(
+            line("Europe/Berlin", at(0)),
+            "The user's timezone is Europe/Berlin. Current local time there: 2026-03-29 01:30 CET.\n"
+        );
+        assert_eq!(
+            line("Europe/Berlin", at(1800)),
+            "The user's timezone is Europe/Berlin. Current local time there: 2026-03-29 03:00 CEST.\n"
+        );
+        assert_eq!(
+            line("America/Sao_Paulo", at(0)),
+            "The user's timezone is America/Sao_Paulo. Current local time there: 2026-03-28 21:30 -03.\n"
+        );
+        assert_eq!(
+            line("Asia/Kolkata", at(0)),
+            "The user's timezone is Asia/Kolkata. Current local time there: 2026-03-29 06:00 IST.\n"
+        );
+        assert_eq!(
+            line("UTC", at(0)),
+            "The user's timezone is UTC. Current local time there: 2026-03-29 00:30 UTC.\n"
+        );
+        assert_eq!(
+            line("Etc/GMT+3", at(0)),
+            "The user's timezone is Etc/GMT+3. Current local time there: 2026-03-28 21:30 -03.\n"
+        );
+        assert_eq!(
+            line("Mars/Olympus", at(0)),
+            "The user's timezone is Mars/Olympus.\n",
+            "an unknown zone is named, without a time"
+        );
+        assert_eq!(tz_line(None, at(0)), "");
+    }
 
     // The provider setup writes `KEY=VALUE` lines; a custom provider key must reach the agent.
     #[test]

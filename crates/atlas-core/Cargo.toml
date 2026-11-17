@@ -30,6 +30,7 @@ ignore = "0.4"
 # `Include` globs of ~/.ssh/config (`ssh_config.rs`): already in the tree through `ignore`.
 globset = "0.4"
 tempfile = { workspace = true, optional = true }
+chrono = { workspace = true }
 
 [features]
 # Fixtures for spawn-path tests in dependent crates (`login_env::fixtures`).

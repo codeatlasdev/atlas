@@ -15,6 +15,13 @@ pub(crate) fn validate_cron(s: &str) -> Result<(), String> {
         .map_err(|e| format!("invalid cron '{s}': {e}"))
 }
 
+/// Validate an IANA time zone name of a trigger.
+pub(crate) fn validate_tz(tz: &str) -> Result<(), String> {
+    tz.parse::<chrono_tz::Tz>()
+        .map(|_| ())
+        .map_err(|_| format!("unknown timezone: {tz}"))
+}
+
 /// Spawn the routine scheduler. Runs forever; call once from `CrewHub::start`.
 pub(crate) fn start(hub_weak: Weak<Hub>) {
     tokio::spawn(async move {

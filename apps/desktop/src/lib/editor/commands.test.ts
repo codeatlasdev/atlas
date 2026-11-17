@@ -3,6 +3,7 @@ import { expect, test } from "bun:test";
 import { EditorSelection, EditorState } from "@codemirror/state";
 import { indentUnit } from "@codemirror/language";
 import { javascript } from "@codemirror/lang-javascript";
+import { parsedState } from "../../../test/parsedState.ts";
 import {
 	convertIndentation,
 	expandSelection,
@@ -77,9 +78,9 @@ test("Tab inserts spaces up to the next unit stop, or indents a multi-line selec
 
 test("expand then shrink selection restores the previous selection", () => {
 	const doc = "f(a, b)";
-	let state = EditorState.create({ doc, selection: EditorSelection.cursor(3), extensions: [javascript()] });
+	// A fully parsed state: `selectParentSyntax` reads the state's tree, which a loaded runner may not finish at creation.
+	let state = parsedState({ doc, selection: EditorSelection.cursor(3), extensions: [javascript()] });
 	const dispatch = (tr) => (state = tr.state);
-	// Syntax tree is parsed synchronously for such a small document on first access.
 	expect(expandSelection({ state, dispatch })).toBe(true);
 	const widened = state.selection.main;
 	expect(widened.to - widened.from).toBeGreaterThan(0);

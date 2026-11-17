@@ -1,7 +1,7 @@
 // @ts-nocheck bun test runtime types are not part of the app tsconfig
 import "../../../test/setup.ts";
 import { expect, test } from "bun:test";
-import { dateTime, formatNumber, list, relative, relativeTime, upperFirst } from "./fmt.ts";
+import { dateTime, formatNumber, languageName, list, relative, relativeTime, upperFirst } from "./fmt.ts";
 import { inLocale } from "../../../test/locale.ts";
 
 const NOW = Date.UTC(2026, 0, 10, 12, 0, 0);
@@ -118,4 +118,15 @@ test("lists use the language's conjunction", async () => {
 	expect(list(["a", "b", "c"])).toBe("a, b, and c");
 	expect(list(["a", "b"], "disjunction")).toBe("a or b");
 	await inLocale("pt-BR", () => expect(list(["a", "b", "c"])).toBe("a, b e c"));
+});
+
+// The Match system option names the system's language inside a parenthesis, so it must be flat: the base language in
+// the UI language ("português", never "Português (Brasil)").
+test("a language name is the base language in the given locale, with no region and no nested parentheses", () => {
+	expect(languageName("en", "en")).toBe("English");
+	expect(languageName("pt-BR", "en")).toBe("Portuguese");
+	expect(languageName("pt-BR", "pt-BR")).toBe("português");
+	expect(languageName("en", "pt-BR")).toBe("inglês");
+	for (const l of ["en", "pt-BR"])
+		for (const t of ["en", "pt-BR"]) expect(languageName(t, l)).not.toContain("(");
 });

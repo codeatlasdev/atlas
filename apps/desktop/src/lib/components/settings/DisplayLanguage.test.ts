@@ -109,16 +109,14 @@ test("Match system sends no tag, so Rust removes the saved choice, and names the
 	expect(document.querySelector('[role="option"]').textContent.trim()).toBe("Match system (English)");
 });
 
-test("following the system in Portuguese reads 'Igual ao sistema (Português (Brasil))' with the resolved language", async () => {
+test("following the system in Portuguese reads 'Igual ao sistema (português)': no nested parentheses", async () => {
 	mockReply = { locale: "pt-BR", preference: null, source: "os", supported: ["en", "pt-BR"] };
 	await chooseLocale(null);
 	const t = await render();
 	t.querySelector(".ca-sel button").click();
 	await tick();
 	flushSync();
-	expect(document.querySelector('[role="option"]').textContent.trim()).toBe(
-		"Igual ao sistema (Português (Brasil))",
-	);
+	expect(document.querySelector('[role="option"]').textContent.trim()).toBe("Igual ao sistema (português)");
 });
 
 test("a refused save is a toast in the current language and the UI stays as it was", async () => {

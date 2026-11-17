@@ -91,3 +91,16 @@ export function list(
 export function upperFirst(s: string, locale = appLocale()): string {
 	return s.charAt(0).toLocaleUpperCase(locale) + s.slice(1);
 }
+
+/**
+ * The name of `tag`'s base language, written in `locale` (`en` in pt-BR is "inglês"; `pt-BR` in pt-BR is "português",
+ * with no region): a short name that fits inside a parenthesis. The language lists show the full endonym instead.
+ */
+export function languageName(tag: string, locale = appLocale()): string {
+	const base = tag.split("-")[0];
+	const name =
+		memo("dn", locale, undefined, () => new Intl.DisplayNames(locale, { type: "language" })).of(base) ?? base;
+	// Portuguese writes language names in lower case inside a sentence ("igual ao sistema (português)"); engines differ on
+	// whether they hand the name back capitalized (JavaScriptCore does, V8 does not), so the rule is applied here.
+	return locale.split("-")[0] === "pt" ? name.toLocaleLowerCase(locale) : name;
+}

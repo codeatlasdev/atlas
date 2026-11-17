@@ -1,0 +1,22 @@
+[package]
+name = "atlas-i18n"
+version = "0.1.0"
+description = "Atlas display-language catalogs (Fluent): en + pt-BR embedded in the binary, the t! macro"
+edition.workspace = true
+rust-version.workspace = true
+license.workspace = true
+repository.workspace = true
+homepage.workspace = true
+authors.workspace = true
+publish = false
+
+[dependencies]
+atlas-core = { path = "../atlas-core" }
+fluent-bundle = "0.16"
+unic-langid = "0.9"
+
+[dev-dependencies]
+fluent-syntax = "0.12"
+
+[lints]
+workspace = true

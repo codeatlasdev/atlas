@@ -1,0 +1,68 @@
+{
+	"os_reveal_in_file_manager": [
+		{
+			"declarations": [
+				"input os"
+			],
+			"selectors": [
+				"os"
+			],
+			"match": {
+				"os=mac": "Mostrar no Finder",
+				"os=windows": "Mostrar no Explorador de Arquivos",
+				"os=*": "Mostrar no gerenciador de arquivos"
+			}
+		}
+	],
+	"settings_display_language_description": "O idioma dos menus, botões e mensagens do Atlas. Seguir o sistema usa o idioma do seu computador.",
+	"settings_display_language_env_override": "ATLAS_LANG está definido e decide o idioma por enquanto. Sua escolha fica salva e vale quando ele não estiver definido.",
+	"settings_display_language_failed": "Não foi possível mudar o idioma: {error}",
+	"settings_display_language_follow_system": "Seguir o sistema",
+	"settings_display_language_label": "Idioma de exibição",
+	"settings_group_language": "Idioma",
+	"settings_host_action_dont_wait": "Não esperar",
+	"settings_host_action_restart": "Reiniciar",
+	"settings_host_action_restart_confirm": "Reiniciar…",
+	"settings_host_badge_postponed": "Adiado",
+	"settings_host_badge_restarts_when_idle": "Reinicia quando ocioso",
+	"settings_host_name": "Host de terminais",
+	"settings_host_sub_current": [
+		{
+			"declarations": [
+				"input count",
+				"local countExact = count",
+				"local countPlural = count: plural"
+			],
+			"selectors": [
+				"countExact",
+				"countPlural"
+			],
+			"match": {
+				"countExact=0, countPlural=*": "Atualizado · nenhum terminal em execução",
+				"countExact=*, countPlural=one": "Atualizado · {count} terminal em execução",
+				"countExact=*, countPlural=*": "Atualizado · {count} terminais em execução"
+			}
+		}
+	],
+	"settings_host_sub_older": [
+		{
+			"declarations": [
+				"input version",
+				"input count",
+				"local countExact = count",
+				"local countPlural = count: plural"
+			],
+			"selectors": [
+				"countExact",
+				"countPlural"
+			],
+			"match": {
+				"countExact=0, countPlural=*": "Mais antigo que o Atlas {version} · nenhum terminal em execução",
+				"countExact=*, countPlural=one": "Mais antigo que o Atlas {version} · {count} terminal em execução",
+				"countExact=*, countPlural=*": "Mais antigo que o Atlas {version} · {count} terminais em execução"
+			}
+		}
+	],
+	"settings_host_sub_restarting": "Reiniciando…",
+	"settings_host_sub_updating": "Atualizando, os terminais continuam conectados…"
+}

@@ -113,11 +113,11 @@ describe("filters", () => {
 describe("bucket and group", () => {
 	test("labels", () => {
 		const now = new Date(2026, 9, 11, 19, 30).getTime();
-		expect(bucket(now - 10_000, now)).toBe("Just now");
-		expect(bucket(now - 2 * 60_000, now)).toBe("1 min ago");
-		expect(bucket(now - 7 * 60_000, now)).toBe("5 min ago");
-		expect(bucket(now - 20 * 60_000, now)).toBe("15 min ago");
-		expect(bucket(now - 40 * 60_000, now)).toBe("30 min ago");
+		expect(bucket(now - 10_000, now)).toBe("Now");
+		expect(bucket(now - 2 * 60_000, now)).toBe("1 min. ago");
+		expect(bucket(now - 7 * 60_000, now)).toBe("5 min. ago");
+		expect(bucket(now - 20 * 60_000, now)).toBe("15 min. ago");
+		expect(bucket(now - 40 * 60_000, now)).toBe("30 min. ago");
 		expect(bucket(now - 90 * 60_000, now)).toBe("Today 18:00");
 		expect(bucket(new Date(2026, 9, 10, 21, 5).getTime(), now)).toBe("Yesterday 21:00");
 	});
@@ -129,7 +129,7 @@ describe("bucket and group", () => {
 			st("c", "running", T0 - 10 * 60_000),
 		]);
 		const g = group(rows, now);
-		expect(g.map((x) => x.label)).toEqual(["Just now", "5 min ago"]);
+		expect(g.map((x) => x.label)).toEqual(["Now", "5 min. ago"]);
 		expect(g[0].rows).toHaveLength(2);
 	});
 });

@@ -10,12 +10,15 @@ while IFS= read -r f || [[ -n $f ]]; do
   case "$f" in
     *.md|LICENSE*|.github/ISSUE_TEMPLATE/*|assets/*)
       case "$f" in docs/*) site=true ;; esac
+      case "$f" in docs/pt-BR/*) front=true ;; esac        # translations: bun run i18n:check (front matter, source sha)
       case "$f" in skills/*) front=true; rust=true ;; esac   # skills are embedded in the CLI and checked
       case "$f" in apps/mobile/*) mobile=true ;; esac
       ;;
+    crates/*/locales/*) rust=true; front=true ;;          # Fluent catalogs: bun run i18n:check lives in the frontend job
     crates/*|Cargo.toml|Cargo.lock|rust-toolchain.toml|deny.toml|.cargo/*|.config/nextest.toml) rust=true ;;
     apps/desktop/*) front=true; rust=true ;;              # the desktop shell embeds the frontend build
     apps/mobile/*) mobile=true ;;
+    site/messages/*|site/project.inlang/*|site/*.svelte) site=true; front=true ;;   # catalogs and the hardcoded-text ratchet
     site/*) site=true ;;
     services/push-relay/*) relay=true ;;
     .github/*) workflows=true; rust=true; front=true; mobile=true; site=true ;;

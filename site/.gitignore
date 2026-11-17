@@ -1,0 +1,4 @@
+# Compiled by Paraglide (astro.config.mjs plugin, or `bun run i18n:compile`); never edit or commit.
+src/lib/paraglide/
+# Plugin cache of the inlang project.
+project.inlang/cache/

@@ -67,11 +67,12 @@ bun run check
 5. `scripts/check-skills.sh` (validates `skills/*/SKILL.md` against the Agent Skills spec)
 6. `scripts/lint-workflows.sh` (actionlint and zizmor over `.github/`; also `bun run lint:workflows`)
 7. `bun run desktop:check` (svelte-check, prettier and the frontend tests, `bun run test` in `apps/desktop`: `bun test --conditions browser src`; a bare `bun test` there stops at once, since without the `browser` condition Svelte resolves its server build and no component can mount). `bun run test` at the root runs those tests plus `release:test`.
-8. `scripts/mobile-check.sh` (the native crate's fmt and clippy, then Flutter analyze and test for `apps/mobile`; skipped with a notice when Flutter is not installed)
-9. `scripts/push-relay-check.sh` (the Go push relay in `services/push-relay`; skipped with a notice when Go is not installed)
-10. `bun run release:test` (the repo scripts' own tests, the release manifest tests in Python, the bootstrap channel vectors and the label checks); CI runs it on Linux and Windows in the "Repo scripts" job
+8. `bun run i18n:check` (translations: missing, outdated, unused or mismatched strings, hardcoded user-facing text, docs translations; offline, seconds; see [Translating Atlas](#translating-atlas))
+9. `scripts/mobile-check.sh` (the native crate's fmt and clippy, then Flutter analyze and test for `apps/mobile`; skipped with a notice when Flutter is not installed)
+10. `scripts/push-relay-check.sh` (the Go push relay in `services/push-relay`; skipped with a notice when Go is not installed)
+11. `bun run release:test` (the repo scripts' own tests, the release manifest tests in Python, the bootstrap channel vectors and the label checks); CI runs it on Linux and Windows in the "Repo scripts" job
 
-Steps 5, 6, 8 and 9 run through `bun scripts/sh.ts`, so they use Git Bash on Windows (see [Windows](#windows)).
+Steps 5, 6, 9 and 10 run through `bun scripts/sh.ts`, so they use Git Bash on Windows (see [Windows](#windows)).
 
 Run it on its own and read the exit code before you push. A pull request should pass it.
 
@@ -95,6 +96,7 @@ Every command is a root `package.json` script, so `bun run <name>` from the repo
 | `bun run site:dev` / `site:build` / `site:check` / `site:deploy` | the website: dev server, static build, `astro check` plus script/function type-checks, Cloudflare deploy |
 | `bun run studio` / `studio:check` | the film studio CLI, and its checks (`studio/` is not part of `bun run check`) |
 | `bun run icons` / `icons:check` | regenerate the app icons from `assets/*.svg`; fail when anything derived is stale |
+| `bun run i18n:check` / `i18n:translate` / `i18n:fix` / `i18n:add-locale` | translations: check every catalog (also part of `bun run check`), draft missing or outdated keys with a model, sort and relock, add a language (see [Translating Atlas](#translating-atlas)) |
 | `bun run deps:update` | update JS dependencies everywhere (see [Updating JS dependencies](#updating-js-dependencies)) |
 | `bun run release <alpha\|beta\|rc\|stable\|patch>` / `release:dry` / `release:publish vX.Y.Z` / `release:test` | maintainers only: cut a release, rehearse it, (re)publish an existing tag, run the release tooling's tests (see [Releasing](release.md)) |
 | `cargo test -p atlas-cli --test mcp` | the MCP integration suite (real binary, live headless run; needs `python3`) |
@@ -285,6 +287,31 @@ Capture and narration:
 - The final mix is measured: the render fails when the integrated loudness is not within the film's tolerance of -14 LUFS.
 
 Narration is a synthetic voice and the music bed is generated; keep the disclosure and licence notes in `site/public/media/README.md` accurate when you change either. A change to `studio/` is checked with `bun studio check`, not `bun run check`.
+
+## Translating Atlas
+
+English is the source language and Brazilian Portuguese (pt-BR) is the first translation. Translations are plain files in the repository, reviewed in the pull request like code; there is no account to create anywhere. You do not need to write Rust or Svelte to translate. Before you write or translate any user-facing text, read [`i18n/style/README.md`](https://github.com/codeatlasdev/atlas/blob/main/i18n/style/README.md) (voice, punctuation, no em dashes) and the file for your language.
+
+Where the text lives:
+
+|Surface|Catalog|
+|---|---|
+|CLI, TUI, desktop menus and notifications|`crates/atlas-i18n/locales/<lang>/<area>.ftl` ([Fluent](https://projectfluent.org/))|
+|Desktop app|`apps/desktop/messages/<lang>.json`|
+|Website|`site/messages/<lang>.json`|
+|Documentation pages|`docs/<lang>/<page>.md`, with `source_sha` in the front matter|
+
+**Fixing or translating a string.** Edit the file of your language, keep every `{placeholder}` and `$variable` exactly as in English, and run `bun run i18n:check`. It is offline and takes seconds; each finding names the file, the line and the key. If a message is marked outdated, the English changed after it was translated: read the English, update yours, run `bun run i18n:fix` to refresh `i18n/lock/`. The tone and the terms to keep in English are in `i18n/style/` and `i18n/glossary.yaml`. Plurals need care: in pt-BR zero reads as singular, so give "nenhum" its own variant where "0 arquivo" would sound wrong.
+
+**Drafting with a model.** `bun run i18n:translate` translates only the keys that are missing or outdated, with the glossary and each key's description in the prompt, using your own `ANTHROPIC_API_KEY` or any OpenAI-compatible endpoint (`I18N_BASE_URL`, Ollama works). A native speaker still reviews the result in the pull request.
+
+**Adding a language, in one pull request** (one language per pull request):
+
+1. `bun run i18n:add-locale <tag> --owner @you` (a BCP-47 tag such as `es` or `fr`). It adds the language to `i18n/locales.json`, `atlas_core::lang::SUPPORTED`, the inlang projects, the desktop `Info.plist`, and the owner lines in `.github/CODEOWNERS`, and creates the catalog folders.
+2. Translate with `bun run i18n:translate --locale <tag>` and by hand until `bun run i18n:check` is clean for your language. A new language starts as `community`: a missing key falls back to English instead of failing the gate; pt-BR is the only required one.
+3. Open the pull request. The `CODEOWNERS` owner of your language reviews it, and a maintainer merges it.
+
+What is never translated: `--json` and other machine output, MCP, skills, logs, exit codes, the install scripts and the changelog. `ATLAS_LANG=pt-BR atlas ...` forces a language for one command, and `atlas config lang <tag>` saves it; the desktop has Settings > General > Display language.
 
 ## Pull requests
 

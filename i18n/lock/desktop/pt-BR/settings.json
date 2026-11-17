@@ -1,0 +1,18 @@
+{
+  "settings_display_language_description": "8a4f19ca6f0c",
+  "settings_display_language_env_override": "2459a942e3c2",
+  "settings_display_language_failed": "38a347017c45",
+  "settings_display_language_follow_system": "4046e50947ec",
+  "settings_display_language_label": "f683af180596",
+  "settings_group_language": "1fa24b490573",
+  "settings_host_action_dont_wait": "9a9130fa3c0d",
+  "settings_host_action_restart": "61ecb75a1070",
+  "settings_host_action_restart_confirm": "f0ed560b3ae4",
+  "settings_host_badge_postponed": "1d23e116cfb1",
+  "settings_host_badge_restarts_when_idle": "9dd2293c23c0",
+  "settings_host_name": "d6790ee7e7d8",
+  "settings_host_sub_current": "7a9b27040f36",
+  "settings_host_sub_older": "11b7952c0bdd",
+  "settings_host_sub_restarting": "0847075370a8",
+  "settings_host_sub_updating": "a3673071e8be"
+}

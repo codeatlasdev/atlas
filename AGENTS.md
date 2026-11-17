@@ -86,6 +86,16 @@ Prove you did not touch his screen when it matters: list the windows of your pid
 - After HMR, a store listener registered in `onMount` can survive with stale module instances; reload the webview before trusting socket/ctl behavior.
 - Codex runs hooks in its own daemon without the terminal's env: `atlas hook` falls back to the default endpoint and the app matches by agent + cwd.
 
+## Translations (i18n)
+
+English is the source, pt-BR is required and blocks the gate. **Procedure, tools per surface and traps: `.agents/skills/i18n/SKILL.md`; read it before touching any user-visible string.** Human translators: `docs/contributing.md`, "Translating Atlas".
+
+- Adding a string: write the English with its description, then the pt-BR, in the catalog of the surface. Desktop and site: `m.area_name()` from Paraglide, catalogs `apps/desktop/messages/` and `site/messages/`. Rust (CLI, TUI, hostd, desktop shell): `t!("area-thing")`, Fluent files in `crates/atlas-i18n/locales/<lang>/<area>.ftl`. Docs: `docs/pt-BR/<slug>.md`.
+- `bun run i18n:check` (offline, seconds) names anything missing, outdated, unused, mismatched or hardcoded; it is part of `bun run check` and `check:changed`. `bun run i18n:translate` drafts only new or changed keys (your own API key or Ollama); `bun run i18n:fix` sorts, relocks and shrinks the hardcoded baseline. Never hand-write `i18n/lock/**`.
+- Never translate machine output: `--json`, MCP, `skills/`, logs, exit codes, the hostd protocol, install scripts, `llms.txt`, `CHANGELOG.md`. Human CLI text (`error:`, `help:`, `▸` lines) IS translated, so **no program may parse it**: a driver (Atlas Desktop) reads the machine channel, `--progress json` (NDJSON `{v, kind: step|info|hint|error, code, args, message(en)}`, contract in `atlas_core::progress`; a failure carries a stable `code` via `progress::Coded`, e.g. `sudo.password_rejected`). The old `step:` lines stay only for old clients. `crates/atlas-cli/tests/machine_output.rs` and `tests/crew_install.rs` fail if a catalog leaks into a machine surface; add a row for every new one.
+- The language is resolved once, in `atlas_core::lang` (`ATLAS_LANG`, then `~/.atlas/language`, then `LANG`/`LC_*`, then the OS). The desktop gets it from Rust; never read `navigator.language`. Glossary (`i18n/glossary.yaml`) terms such as crewmate, hostd, worktree stay English; pt-BR uses você, sentence case, no em dashes. Before you write or translate any user-facing text read `i18n/style/README.md`.
+- OS-aware text: a shortcut is never typed in a message (a `{key}` placeholder filled by `kbd()`/`label()` in `keys.ts`, or `atlas_i18n::shortcut`), and a system noun ("your Mac", Finder, Trash, Option) is never typed either: it comes from the shared `term-*` messages, selected on the `os` variable (`mac`|`windows`|`linux`) that the i18n layer adds to every message. Only one `isMac` exists: `IS_MAC` in `keys.ts`.
+
 ## Tests
 
 **Tests first, always.** For every bug found or reported, before touching the fix:

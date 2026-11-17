@@ -13,6 +13,10 @@
 
 use anyhow::{Context, Result, bail};
 use clap::Args;
+use serde_json::json;
+use std::sync::atomic::{AtomicBool, Ordering};
+
+use atlas_core::progress;
 
 use crate::commands::AtlasCommand;
 use crate::commands::deploy::remote::{Remote, shq};
@@ -45,11 +49,32 @@ pub struct InstallArgs {
     /// Needs Node.js on the server and sudo for the apt libraries; the same as `atlas crew browsers install`.
     #[arg(long)]
     pub browsers: bool,
+    /// What stdout carries: `text` (`step: <key>` markers, for people and old clients) or `json` (one
+    /// event per line: kind, code, args, message; never translated). Atlas Desktop reads only `json`.
+    #[arg(long, value_enum, default_value_t = Progress::Text)]
+    pub progress: Progress,
 }
+
+/// See [`InstallArgs::progress`] and `atlas_core::progress` for the event contract.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, clap::ValueEnum)]
+pub enum Progress {
+    Text,
+    Json,
+}
+
+/// Whether this process prints events instead of `step:` markers (set once, by [`InstallArgs::run`]).
+static JSON_EVENTS: AtomicBool = AtomicBool::new(false);
 
 impl AtlasCommand for InstallArgs {
     async fn run(self) -> Result<()> {
-        run_install(self).await
+        let json = self.progress == Progress::Json;
+        JSON_EVENTS.store(json, Ordering::Relaxed);
+        let result = run_install(self).await;
+        // The failure is the last event, with the code of the error, so a client never reads text.
+        if let (true, Err(e)) = (json, &result) {
+            println!("{}", progress::error_line(e));
+        }
+        result
     }
 }
 
@@ -63,7 +88,23 @@ fn step(msg: &str) {
 }
 
 fn step_marker(key: &str) {
-    println!("step: {key}");
+    if JSON_EVENTS.load(Ordering::Relaxed) {
+        let message = match key {
+            "check" => "checking the server",
+            "install" => "installing atlas",
+            "user" => "creating the crew user",
+            "service" => "writing the systemd service",
+            "ssh" => "configuring SSH access",
+            "browsers" => "installing browsers",
+            _ => "done",
+        };
+        println!(
+            "{}",
+            progress::event_line(progress::Kind::Step, key, json!({}), message)
+        );
+    } else {
+        println!("step: {key}");
+    }
 }
 
 /// Ask the host which of the pre-rename and current names exist (one ssh round trip).
@@ -168,7 +209,17 @@ async fn run_install(args: InstallArgs) -> Result<()> {
         }
     }
     // The ssh user to reach this server as: Atlas Desktop reads it (it differs on a migrated server).
-    println!("user: {}", account.user);
+    if JSON_EVENTS.load(Ordering::Relaxed) {
+        let line = progress::event_line(
+            progress::Kind::Info,
+            "crew.user",
+            json!({ "user": account.user }),
+            &format!("the ssh user is {}", account.user),
+        );
+        println!("{line}");
+    } else {
+        println!("user: {}", account.user);
+    }
 
     // The desktop reaches a crew server over SSH as its user and runs `$HOME/.atlas/bin/atlas hostd`, the same
     // path as any remote; without this link it found no binary and the first crewmate never got created.
@@ -274,11 +325,17 @@ async fn run_install(args: InstallArgs) -> Result<()> {
         super::browsers::install(&p, &args.ssh_target).await?;
     }
 
-    println!(
+    let ready = format!(
         "\x1b[32m✓\x1b[0m Crew server ready: {user}@{host}. \
 Add it in Atlas Desktop → Crew, then sign the agents in (atlas crew login <agent>).",
         user = account.user
     );
+    // With --progress json stdout carries events only.
+    if JSON_EVENTS.load(Ordering::Relaxed) {
+        eprintln!("{ready}");
+    } else {
+        println!("{ready}");
+    }
     step_marker("done");
     Ok(())
 }
@@ -291,10 +348,20 @@ pub(super) async fn preflight(r: &Remote, ssh_target: &str) -> Result<&'static s
     if out.code == 255 {
         // ssh's own failure (refused, timeout, key rejected): not the host's OS. Saying "needs Linux with systemd"
         // here sent the user hunting for the wrong problem on a server whose sshd was simply down.
-        bail!(
-            "could not connect to {ssh_target} over SSH: {}",
-            out.stderr.trim()
-        );
+        // The stable code lets a client tell "the key is not authorized yet" from "the host is down" without
+        // reading the text (OpenSSH's own English, which is not ours to translate or to match on).
+        let stderr = out.stderr.trim();
+        let code = if stderr.contains("Permission denied (publickey") {
+            "ssh.key_rejected"
+        } else {
+            "ssh.unreachable"
+        };
+        return Err(progress::Coded::new(
+            code,
+            json!({ "target": ssh_target, "detail": stderr }),
+            format!("could not connect to {ssh_target} over SSH: {stderr}"),
+        )
+        .into());
     }
     let p = binary::parse_preflight(&out.stdout);
     // The OS first: a Mac or a BSD also lacks "tools", and the useful message is that it is not Linux.
@@ -567,6 +634,7 @@ mod tests {
             sudo_password_stdin: true,
             binary: None,
             browsers: false,
+            progress: Progress::Text,
         };
     }
 }

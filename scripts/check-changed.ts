@@ -39,6 +39,9 @@ const STEPS: [RegExp, string][] = [
 	[/^skills\//, "scripts/check-skills.sh"],
 	[/^\.github\/workflows\//, "scripts/lint-workflows.sh"],
 	[/^scripts\//, "bun test scripts"],
+	// Catalogs, locks, the glossary, the checker itself, and everything the checker reads: Rust and Svelte sources
+	// (the hardcoded-text ratchet), docs and their translations. Runs after desktop:check (sorted), which installs.
+	[/^(?:i18n\/|scripts\/i18n\/|crates\/|apps\/desktop\/|site\/|docs\/pt-BR\/|docs\/[^/]+\.md$)/, "bun run i18n:check"],
 ];
 
 export function plan(files: string[], graph: Graph): Plan {

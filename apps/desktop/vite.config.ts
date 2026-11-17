@@ -1,12 +1,15 @@
 import { sveltekit } from "@sveltejs/kit/vite";
 import adapter from "@sveltejs/adapter-static";
+import { paraglideVitePlugin } from "@inlang/paraglide-js";
 import { caThemePlugin } from "@codeatlasdev/ui/vite";
 import { defineConfig } from "vite";
 import { labBridge } from "./scripts/lab-bridge.ts";
+import { PARAGLIDE } from "./scripts/paraglide.ts";
 import { pdfjsAssets } from "./scripts/pdfjs-assets.ts";
 
 export default defineConfig({
 	plugins: [
+		paraglideVitePlugin({ ...PARAGLIDE }),
 		caThemePlugin(),
 		pdfjsAssets(),
 		labBridge(),

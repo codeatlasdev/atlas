@@ -36,13 +36,32 @@ describe("plan", () => {
 
 	test("the frontend also rebuilds the desktop shell; skills also the crate that embeds them", () => {
 		const p = plan(["apps/desktop/src/lib/crew/board.ts"], graph);
-		expect(p.steps).toEqual(["bun run desktop:check"]);
+		expect(p.steps).toEqual(["bun run desktop:check", "bun run i18n:check"]);
 		expect(p.crates).toEqual(["atlas-desktop"]);
 		expect(plan(["skills/atlas/yaml.md"], graph).crates).toEqual(["atlas-cli", "atlas-skills"]);
 	});
 
-	test("docs only: nothing to run", () => {
-		expect(plan(["docs/contributing.md", "CHANGELOG.md"], graph)).toEqual({ crates: [], workspace: false, steps: [] });
+	test("docs only: nothing to build; a page under docs/ still feeds the i18n source-hash check", () => {
+		expect(plan(["CHANGELOG.md", "docs/perf/x.json", "docs/postmortems/ghost-frames.md"], graph)).toEqual({ crates: [], workspace: false, steps: [] });
+		expect(plan(["docs/contributing.md"], graph)).toEqual({ crates: [], workspace: false, steps: ["bun run i18n:check"] });
+	});
+
+	// i18n:check reads catalogs, locks, the glossary, Rust and Svelte sources (hardcoded-text ratchet) and docs/pt-BR.
+	test("everything the i18n checker reads runs it, after desktop:check", () => {
+		for (const f of [
+			"i18n/glossary.yaml",
+			"i18n/lock/desktop/pt-BR/settings.json",
+			"scripts/i18n/check.ts",
+			"crates/atlas-i18n/locales/pt-BR/cli.ftl",
+			"site/messages/pt-BR.json",
+			"apps/desktop/messages/en.json",
+			"docs/pt-BR/getting-started.md",
+		]) {
+			expect(plan([f], graph).steps).toContain("bun run i18n:check");
+		}
+		const steps = plan(["apps/desktop/src/x.svelte", "i18n/glossary.yaml"], graph).steps;
+		expect(steps.indexOf("bun run desktop:check")).toBeLessThan(steps.indexOf("bun run i18n:check"));
+		expect(plan(["apps/mobile/lib/main.dart", "skills/atlas/SKILL.md"], graph).steps).not.toContain("bun run i18n:check");
 	});
 
 	test("a path that merely looks like a crate is ignored", () => {
@@ -63,7 +82,7 @@ describe("windows lane", () => {
 		expect(win).toStartWith("CARGO_TARGET_DIR=target/xwin ");
 	});
 	test("nothing Rust changed: no Windows lint either", () => {
-		expect(commands(plan(["docs/cli.md"], graph), { windows: true })).toEqual([]);
+		expect(commands(plan(["CHANGELOG.md"], graph), { windows: true })).toEqual([]);
 	});
 });
 
@@ -91,6 +110,7 @@ describe("--json (the atlas_affected plugin)", () => {
 			`cargo clippy ${p.crates.map((c) => `-p ${c}`).join(" ")} --all-targets --locked -- -D warnings`,
 			`cargo nextest run ${p.crates.map((c) => `-p ${c}`).join(" ")} --locked`,
 			"bun run desktop:check",
+			"bun run i18n:check",
 		]);
 		expect(j.tasks).toEqual([]);
 		expect(j.routes).toEqual([]);
@@ -102,7 +122,7 @@ describe("--json (the atlas_affected plugin)", () => {
 			"cargo clippy --workspace --all-targets --locked -- -D warnings",
 			"cargo nextest run --workspace --locked",
 		]);
-		expect(impact(plan(["docs/x.md"], graph))).toEqual({
+		expect(impact(plan(["CHANGELOG.md"], graph))).toEqual({
 			tasks: [],
 			tests: [],
 			routes: [],
@@ -121,8 +141,8 @@ describe("--json (the atlas_affected plugin)", () => {
 		const { out, code } = await run(["scripts/check-changed.ts", "docs/contributing.md"]);
 		expect(code).toBe(0);
 		const j = JSON.parse(out);
-		expect(j.tests).toEqual(["bun test scripts"]);
-		expect(j.steps).toEqual(["bun test scripts"]);
+		expect(j.tests).toEqual(["bun run i18n:check", "bun test scripts"]);
+		expect(j.steps).toEqual(["bun run i18n:check", "bun test scripts"]);
 		expect(j.builds).toEqual([]);
 	}, COLD_CARGO_MS);
 

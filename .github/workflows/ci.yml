@@ -296,6 +296,11 @@ jobs:
       - name: svelte-check, prettier, bun test
         run: bun run desktop:check
 
+      # After desktop:check (it installs the apps): catalogs, locks, glossary, translated docs and the
+      # hardcoded-text ratchet. Offline; scripts/i18n/check.ts.
+      - name: i18n
+        run: bun run i18n:check
+
   # The repo's own scripts (setup, heavy queue, CI gates, release helpers) and their tests, on Linux and on Windows
   # through Git Bash (`scripts/sh.ts`), so a contributor's `bun run check` keeps working on both (#260).
   scripts:
@@ -325,6 +330,9 @@ jobs:
       - name: PyYAML (scripts/test-labels.sh)
         shell: bash
         run: bash scripts/py.sh -c "import yaml" 2>/dev/null || bash scripts/py.sh -m pip install --quiet pyyaml
+
+      - name: i18n script dependencies (scripts/i18n/*.test.ts)
+        run: bun install --frozen-lockfile --cwd scripts/i18n
 
       - name: bun run release:test
         run: bun run release:test

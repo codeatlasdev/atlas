@@ -13,11 +13,88 @@ pub enum ConfigCommands {
     },
     /// Print the JSON Schema for atlas.yaml to stdout
     Schema,
+    /// Show or set the display language (en, pt-BR); `ATLAS_LANG` overrides it per command
+    Lang {
+        /// Language to save in ~/.atlas/language (en, pt-BR); omit to show the current one
+        #[arg(value_name = "TAG", conflicts_with = "unset")]
+        tag: Option<String>,
+        /// Remove the saved language: follow the system language
+        #[arg(long)]
+        unset: bool,
+        /// Print JSON (language, source, preference, supported); machine output is never translated
+        #[arg(long, conflicts_with_all = ["tag", "unset"])]
+        json: bool,
+    },
+}
+
+/// `atlas config lang`: show, set or unset the display language.
+fn lang(tag: Option<String>, unset: bool, json: bool) -> Result<()> {
+    use atlas_core::lang;
+    use atlas_i18n::t;
+    if unset {
+        lang::set_preference(None)?;
+        println!("{}", t!("config-lang-unset"));
+        return Ok(());
+    }
+    if let Some(tag) = tag {
+        let Some(saved) = lang::normalize(&tag) else {
+            anyhow::bail!(
+                "{}",
+                t!(
+                    "config-lang-unsupported",
+                    tag = tag.as_str(),
+                    langs = lang::SUPPORTED.join(", ")
+                )
+            );
+        };
+        lang::set_preference(Some(saved))?;
+        println!("{}", t!("config-lang-set", lang = saved));
+        if let Some(env) = std::env::var(lang::ENV)
+            .ok()
+            .filter(|v| !v.trim().is_empty())
+        {
+            eprintln!(
+                "{}",
+                t!("config-lang-set-env-warning", value = env.as_str())
+            );
+        }
+        return Ok(());
+    }
+    let now = lang::resolve_source();
+    let saved = lang::preference();
+    if json {
+        println!(
+            "{}",
+            serde_json::json!({
+                "language": now.tag,
+                "source": now.source.as_str(),
+                "preference": saved,
+                "supported": lang::SUPPORTED,
+            })
+        );
+        return Ok(());
+    }
+    println!("{}", t!("config-lang-current", lang = now.tag));
+    println!("{}", t!("config-lang-source", source = now.source.as_str()));
+    match saved {
+        Some(saved) => println!("{}", t!("config-lang-saved", lang = saved)),
+        None => println!("{}", t!("config-lang-saved-none")),
+    }
+    println!(
+        "{}",
+        t!(
+            "config-lang-available",
+            count = lang::SUPPORTED.len(),
+            langs = lang::SUPPORTED.join(", ")
+        )
+    );
+    Ok(())
 }
 
 impl ConfigCommands {
     pub fn run(self) -> Result<()> {
         match self {
+            Self::Lang { tag, unset, json } => lang(tag, unset, json),
             Self::Schema => {
                 println!("{}", atlas_tui::config::json_schema());
                 Ok(())

@@ -41,3 +41,17 @@ test("unknown paths, workflows and an empty diff run everything", () => {
 	expect(areas([])).toEqual(all);
 	expect(areas([".github/workflows/ci.yml"])).toMatchObject({ rust: true, workflows: true });
 });
+
+// bun run i18n:check runs in the frontend job: a change it reads must reach that job, or a red catalog merges.
+test("catalogs, translated docs and the i18n tooling reach the frontend job", () => {
+	expect(areas(["docs/pt-BR/getting-started.md"])).toEqual({ ...none, site: true, front: true });
+	expect(areas(["site/messages/pt-BR.json"])).toEqual({ ...none, site: true, front: true });
+	expect(areas(["site/src/components/islands/Waitlist.svelte"])).toEqual({ ...none, site: true, front: true });
+	expect(areas(["crates/atlas-i18n/locales/pt-BR/config.ftl"])).toEqual({ ...none, rust: true, front: true });
+	expect(areas(["i18n/glossary.yaml"])).toMatchObject({ front: true });
+	expect(areas(["scripts/i18n/check.ts"])).toMatchObject({ front: true });
+	expect(areas(["apps/desktop/messages/en.json"])).toMatchObject({ front: true });
+	// plain site pages and English docs do not rerun the desktop checks
+	expect(areas(["site/src/pages/index.astro"])).toEqual({ ...none, site: true });
+	expect(areas(["docs/contributing.md"])).toEqual({ ...none, site: true });
+});

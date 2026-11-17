@@ -2,7 +2,6 @@
 //! dies, registered dirs that must not grow. Unix only where a shell one-liner builds the tree.
 
 use super::*;
-#[cfg(unix)]
 use std::time::Instant;
 
 fn registry() -> (tempfile::TempDir, Registry) {

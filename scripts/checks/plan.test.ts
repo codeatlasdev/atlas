@@ -24,26 +24,27 @@ const cmds = (files: string[], opts = {}) => plan(files, graph, opts).commands.m
 const ALL = Object.keys(AREAS);
 
 describe("areas (what CI's plan job outputs)", () => {
-	test("README, CHANGELOG-free top-level docs and AGENTS.md run nothing", () => {
-		expect(on(["README.md", "AGENTS.md", "CONTRIBUTING.md", "LICENSE-MIT", ".github/ISSUE_TEMPLATE/bug.yml"])).toEqual([]);
+	test("AGENTS.md and the other top-level docs run nothing; the README is prose the writing lint reads", () => {
+		expect(on(["AGENTS.md", "CONTRIBUTING.md", "LICENSE-MIT", ".github/ISSUE_TEMPLATE/bug.yml"])).toEqual([]);
+		expect(on(["README.md"])).toEqual(["i18n"]);
 	});
 
 	test("the changelog is read by the scripts tests (changelog-lint, release-notes)", () => {
-		expect(on(["CHANGELOG.md"])).toEqual(["scripts"]);
+		expect(on(["CHANGELOG.md"])).toEqual(["i18n", "scripts"]);
 	});
 
-	test("docs/ rebuilds only the site, which renders it", () => {
-		expect(on(["docs/contributing.md"])).toEqual(["site"]);
+	test("docs/ rebuilds the site, which renders it, and is read by the i18n check (writing lint, translations)", () => {
+		expect(on(["docs/contributing.md"])).toEqual(["i18n", "site"]);
 	});
 
 	test("a crate runs Rust (and duplication for its sources); the desktop frontend also rebuilds the shell that embeds it", () => {
-		expect(on(["crates/atlas-host/src/lib.rs"])).toEqual(["rust", "dup"]);
-		expect(on(["apps/desktop/src/App.svelte"])).toEqual(["rust", "desktop", "dup"]);
+		expect(on(["crates/atlas-host/src/lib.rs"])).toEqual(["rust", "i18n", "dup"]);
+		expect(on(["apps/desktop/src/App.svelte"])).toEqual(["rust", "desktop", "i18n", "dup"]);
 		expect(on(["Cargo.lock"])).toEqual(["rust"]);
 	});
 
 	test("markdown that is source is not skipped: skills are embedded and checked", () => {
-		expect(on(["skills/atlas/yaml.md"])).toEqual(["rust", "skills"]);
+		expect(on(["skills/atlas/yaml.md"])).toEqual(["rust", "i18n", "skills"]);
 	});
 
 	test("the Windows installer runs its own job, and only the changes that can affect it do", () => {
@@ -53,7 +54,7 @@ describe("areas (what CI's plan job outputs)", () => {
 	});
 
 	test("jscpd runs for the formats it reads, and for its own config", () => {
-		expect(on(["site/src/pages/index.astro"])).toEqual(["site", "dup"]);
+		expect(on(["site/src/pages/index.astro"])).toEqual(["i18n", "site", "dup"]);
 		expect(on([".jscpd.json"])).toEqual(["dup"]);
 		expect(on(["services/push-relay/main.go"])).toEqual(["relay"]);
 	});
@@ -97,6 +98,7 @@ describe("areas (what CI's plan job outputs)", () => {
 		const probe: Record<string, string> = {
 			rust: "crates/atlas-core/src/lib.rs",
 			desktop: "apps/desktop/src/x.ts",
+			i18n: "i18n/glossary.yaml",
 			skills: "skills/atlas/SKILL.md",
 			scripts: "scripts/release.sh",
 			mobile: "apps/mobile/pubspec.yaml",
@@ -171,9 +173,9 @@ describe("commands", () => {
 		expect(ids(["deny.toml"])).toContain("deny");
 	});
 
-	test("docs only: the site build and type-check, nothing else", () => {
-		expect(cmds(["docs/contributing.md"])).toEqual(["bun run site:check", "bun run site:build"]);
-		expect(cmds(["README.md", "AGENTS.md"])).toEqual([]);
+	test("docs only: the i18n check and the site build and type-check, nothing else", () => {
+		expect(cmds(["docs/contributing.md"])).toEqual(["bun run i18n:check", "bun run site:check", "bun run site:build"]);
+		expect(cmds(["AGENTS.md"])).toEqual([]);
 	});
 
 	test("each non-Rust area contributes its own check", () => {
@@ -186,7 +188,7 @@ describe("commands", () => {
 	test("unknown paths run every check, the whole workspace, in the order `bun run check` uses", () => {
 		const p = plan(undefined, graph);
 		expect(p.commands.map((c) => c.id)).toEqual([
-			"fmt", "clippy", "nextest", "doctests", "deny", "skills", "workflows", "desktop", "mobile", "relay", "scripts", "dup", "site-check", "site-build",
+			"fmt", "clippy", "nextest", "doctests", "deny", "skills", "workflows", "desktop", "i18n", "mobile", "relay", "scripts", "dup", "site-check", "site-build",
 		]);
 		expect(p.commands[1]!.cmd).toBe("cargo clippy --workspace --all-targets --locked -- -D warnings");
 		expect(p.commands.every((c) => c.why[0]!.includes("no changed-file list"))).toBe(true);

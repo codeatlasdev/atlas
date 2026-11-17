@@ -253,6 +253,11 @@ else set -- $files; cp "$1" "$2"; fi"#,
     }
 
     fn atlas(&self, args: &[&str], stdin: &str) -> Output {
+        self.atlas_in("en", args, stdin)
+    }
+
+    /// [`World::atlas`] with `lang` as the display language (`ATLAS_LANG`).
+    fn atlas_in(&self, lang: &str, args: &[&str], stdin: &str) -> Output {
         let path = format!(
             "{}:{}",
             self.root().join("bin-ssh").display(),
@@ -262,6 +267,7 @@ else set -- $files; cp "$1" "$2"; fi"#,
             .arg("crew")
             .args(args)
             .env("PATH", path)
+            .env("ATLAS_LANG", lang)
             .env("HOME", self.root().join("home"))
             .env("ROOT", self.root())
             .env_remove("ATLAS_CREW_BINARY")
@@ -284,6 +290,158 @@ fn text(o: &Output) -> String {
         String::from_utf8_lossy(&o.stdout),
         String::from_utf8_lossy(&o.stderr)
     )
+}
+
+/// The events on stdout of `--progress json`: every line must parse, in the documented shape.
+fn events(o: &Output) -> Vec<serde_json::Value> {
+    String::from_utf8_lossy(&o.stdout)
+        .lines()
+        .map(|l| {
+            serde_json::from_str(l).unwrap_or_else(|e| panic!("stdout line is not JSON ({e}): {l}"))
+        })
+        .collect()
+}
+
+// The machine channel (the human lines are for people and get translated; a program reads this).
+// Desktop reads `kind`/`code` only, so a client never matches on text and a translation can never break it.
+#[test]
+fn progress_json_prints_only_events_on_stdout_and_ends_with_done() {
+    let w = World::new();
+    let bin = w.atlas_file("9.9.9", true);
+    let o = w.atlas(
+        &[
+            "install",
+            "me@srv",
+            "--binary",
+            bin.to_str().unwrap(),
+            "--progress",
+            "json",
+        ],
+        "",
+    );
+    assert!(o.status.success(), "{}", text(&o));
+    let ev = events(&o);
+    let codes: Vec<&str> = ev.iter().map(|e| e["code"].as_str().unwrap()).collect();
+    assert_eq!(
+        codes,
+        [
+            "check",
+            "install",
+            "user",
+            "crew.user",
+            "service",
+            "ssh",
+            "done"
+        ]
+    );
+    assert!(ev.iter().all(|e| e["v"] == 1 && e["args"].is_object()));
+    let user = ev.iter().find(|e| e["code"] == "crew.user").unwrap();
+    assert_eq!(
+        (user["kind"].as_str(), user["args"]["user"].as_str()),
+        (Some("info"), Some("atlas-crew"))
+    );
+    // The human lines moved to stderr, they did not vanish.
+    assert!(String::from_utf8_lossy(&o.stderr).contains("Crew server ready"));
+    // The default is unchanged for old clients: `step:` markers.
+    let o = w.atlas(
+        &["install", "me@srv", "--binary", bin.to_str().unwrap()],
+        "",
+    );
+    assert!(
+        String::from_utf8_lossy(&o.stdout).contains("step: check"),
+        "{}",
+        text(&o)
+    );
+}
+
+#[test]
+fn progress_json_failures_carry_a_stable_code_the_client_branches_on() {
+    let bin_of = |w: &World| w.atlas_file("9.9.9", true);
+    let last = |o: &Output| -> serde_json::Value { events(o).pop().expect("an error event") };
+
+    // A wrong sudo password: the client asks for it again.
+    let w = World::new();
+    std::fs::write(w.root().join("sudo-password"), "hunter2\n").unwrap();
+    let o = w.atlas(
+        &[
+            "install",
+            "me@srv",
+            "--sudo-password-stdin",
+            "--binary",
+            bin_of(&w).to_str().unwrap(),
+            "--progress",
+            "json",
+        ],
+        "nope\n",
+    );
+    let e = last(&o);
+    assert_eq!(
+        (e["kind"].as_str(), e["code"].as_str()),
+        (Some("error"), Some("sudo.password_rejected"))
+    );
+    assert_eq!(e["args"]["target"], "me@srv");
+
+    // A server that wants a password and none was given: the client shows the password field.
+    let w = World::new();
+    std::fs::write(w.root().join("sudo-password"), "hunter2\n").unwrap();
+    let o = w.atlas(
+        &[
+            "install",
+            "me@srv",
+            "--binary",
+            bin_of(&w).to_str().unwrap(),
+            "--progress",
+            "json",
+        ],
+        "",
+    );
+    assert_eq!(last(&o)["code"], "sudo.password_required");
+
+    // ssh itself down: not "the host lacks systemd".
+    let w = World::new();
+    std::fs::write(w.root().join("ssh-down"), "").unwrap();
+    let o = w.atlas(
+        &[
+            "install",
+            "me@srv",
+            "--binary",
+            bin_of(&w).to_str().unwrap(),
+            "--progress",
+            "json",
+        ],
+        "",
+    );
+    assert_eq!(last(&o)["code"], "ssh.unreachable");
+}
+
+// The point of the channel: the same bytes in every language, whatever the human lines say.
+#[test]
+fn progress_json_is_byte_identical_under_en_and_pt_br() {
+    for (name, setup) in [("success", false), ("sudo rejected", true)] {
+        let run = |lang: &str| {
+            let w = World::new();
+            if setup {
+                std::fs::write(w.root().join("sudo-password"), "hunter2\n").unwrap();
+            }
+            let bin = w.atlas_file("9.9.9", true);
+            let mut args = vec![
+                "install",
+                "me@srv",
+                "--binary",
+                bin.to_str().unwrap(),
+                "--progress",
+                "json",
+            ];
+            if setup {
+                args.insert(2, "--sudo-password-stdin");
+            }
+            let o = w.atlas_in(lang, &args, if setup { "nope\n" } else { "" });
+            String::from_utf8_lossy(&o.stdout).replace(w.root().to_str().unwrap(), "<root>")
+        };
+        let (en, pt) = (run("en"), run("pt-BR"));
+        assert!(!en.is_empty(), "{name}: no events");
+        assert_eq!(en, pt, "{name}: events differ between en and pt-BR");
+    }
 }
 
 // Gap 2: install reported "ready" without checking hostd. A binary that never answers must fail, point at

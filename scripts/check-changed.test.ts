@@ -24,7 +24,7 @@ describe("--json --stdin (the atlas_affected plugin)", () => {
 		const { out, code } = await run(["--json", "--stdin"], ["scripts/check-changed.ts", "docs/contributing.md"]);
 		expect(code).toBe(0);
 		const j = JSON.parse(out);
-		expect(j.tests).toEqual(["bun run release:test", "bun run dup", "bun run site:check", "bun run site:build"]);
+		expect(j.tests).toEqual(["bun run i18n:check", "bun run release:test", "bun run dup", "bun run site:check", "bun run site:build"]);
 		expect(j.steps).toEqual(j.tests);
 		expect(j.builds).toEqual([]);
 		expect([j.tasks, j.routes]).toEqual([[], []]);
@@ -78,7 +78,7 @@ describe("--dry-run", () => {
 	});
 
 	test("nothing to check says so", async () => {
-		const { out, code } = await run(["--stdin", "--dry-run"], ["README.md"]);
+		const { out, code } = await run(["--stdin", "--dry-run"], ["AGENTS.md"]);
 		expect(code).toBe(0);
 		expect(out).toContain("nothing to check");
 	});

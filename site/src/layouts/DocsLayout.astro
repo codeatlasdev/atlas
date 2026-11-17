@@ -2,7 +2,11 @@
 import Base from "./Base.astro";
 import Search from "astro-pagefind/components/Search.astro";
 import type { MarkdownHeading } from "astro";
+import DocsNotice from "../components/DocsNotice.astro";
 import type { NavGroup } from "../lib/docs";
+import type { DocState } from "../lib/doc-translation";
+import { m } from "../lib/paraglide/messages.js";
+import { docPath, localeOfAstro, type Locale } from "../lib/i18n";
 
 interface Props {
 	title: string;
@@ -11,8 +15,19 @@ interface Props {
 	groups: NavGroup[];
 	headings: MarkdownHeading[];
 	editUrl: string;
+	/** pt-BR pages only: `ok` is a current translation (no banner); `missing` and `outdated` get a banner. English pages leave it out. */
+	state?: DocState;
+	/** Language of the body when it is not the page's own: a fallback page shows the English text under /pt-br/. */
+	contentLang?: Locale;
+	alternates?: Partial<Record<Locale, string>>;
+	canonicalPath?: string;
 }
-const { title, description, slug, groups, headings, editUrl } = Astro.props;
+const { title, description, slug, groups, headings, editUrl, state, contentLang, alternates, canonicalPath } = Astro.props;
+const locale = localeOfAstro(Astro.currentLocale);
+// A fallback page repeats the English page: Pagefind must index the English one only, so it has no data-pagefind-body.
+// Title and description are in the language of the body: a fallback page is English text.
+const bodyLocale = contentLang ?? locale;
+const indexed = state !== "missing";
 
 const flat = groups.flatMap((g) => g.items);
 const i = flat.findIndex((p) => p.slug === slug);
@@ -20,7 +35,7 @@ const prev = i > 0 ? flat[i - 1] : undefined;
 const next = i >= 0 && i < flat.length - 1 ? flat[i + 1] : undefined;
 const toc = headings.filter((h) => h.depth === 2 || h.depth === 3);
 ---
-<Base ground="paper" title={`${title} · Atlas docs`} description={description ?? `Atlas documentation: ${title}.`}>
+<Base ground="paper" title={m.docs_page_title({ title }, { locale: bodyLocale })} description={description ?? m.docs_meta_description({ title }, { locale: bodyLocale })} alternates={alternates} canonicalPath={canonicalPath}>
 	<div class="docs wrap">
 		<!-- Phones: a sticky sub-bar opens the section drawer (replaces the always-open sidebar) -->
 		<div class="docbar" data-docbar>
@@ -45,7 +60,7 @@ const toc = headings.filter((h) => h.depth === 2 || h.depth === 3);
 						<h2>{g.title}</h2>
 						<ul>
 							{g.items.map((p) => (
-								<li><a href={`/docs/${p.slug}/`} aria-current={p.slug === slug ? "page" : undefined}>{p.title}</a></li>
+								<li><a href={docPath(p.slug, locale)} aria-current={p.slug === slug ? "page" : undefined}>{p.title}</a></li>
 							))}
 						</ul>
 					</section>
@@ -53,14 +68,15 @@ const toc = headings.filter((h) => h.depth === 2 || h.depth === 3);
 			</nav>
 		</aside>
 
-		<article class="doc" data-pagefind-body>
+		<article class="doc" {...(indexed ? { "data-pagefind-body": true } : {})} lang={contentLang}>
+			{state && state !== "ok" && <DocsNotice state={state} slug={slug} />}
 			<h1 class="display">{title}</h1>
 			<div class="prose"><slot /></div>
 			<footer class="foot">
 				<a class="edit" href={editUrl} rel="noopener">Edit this page on GitHub</a>
 				<div class="pn">
-					{prev ? <a href={`/docs/${prev.slug}/`} rel="prev"><span>Previous</span>{prev.title}</a> : <span />}
-					{next ? <a href={`/docs/${next.slug}/`} rel="next"><span>Next</span>{next.title}</a> : <span />}
+					{prev ? <a href={docPath(prev.slug, locale)} rel="prev"><span>Previous</span>{prev.title}</a> : <span />}
+					{next ? <a href={docPath(next.slug, locale)} rel="next"><span>Next</span>{next.title}</a> : <span />}
 				</div>
 			</footer>
 		</article>

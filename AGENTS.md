@@ -86,6 +86,14 @@ Prove you did not touch his screen when it matters: list the windows of your pid
 - After HMR, a store listener registered in `onMount` can survive with stale module instances; reload the webview before trusting socket/ctl behavior.
 - Codex runs hooks in its own daemon without the terminal's env: `atlas hook` falls back to the default endpoint and the app matches by agent + cwd.
 
+## Translations (i18n)
+
+**Before touching any user-visible string, read `.agents/skills/i18n/SKILL.md`: it is the one place with the procedure.** English is the source, pt-BR is required and blocks `bun run i18n:check` (inside `bun run check`).
+
+- **One source tree, small files: `i18n/messages/<area>/` for the CLI, TUI, desktop app and site.** Shared words (Cancel, Delete, OS terms, key names) live once in `common*` and are used by key, never retyped. Find with `bun run i18n:find`, add with `bun run i18n:add`; never hand-write lock files or generated output.
+- **Machine output is never translated, and no program parses human text.** `--json`, MCP, logs, exit codes, the hostd protocol: English and stable. Human CLI text (`error:`, `help:`, `▸`) is translated, so a driver (Atlas Desktop) reads `--progress json` (`atlas_core::progress`, stable `code`s via `progress::Coded`), never `step:` lines. `crates/atlas-cli/tests/machine_output.rs` and `tests/crew_install.rs` fail on a leak; add a row for every new machine surface.
+- **Text follows the language and the OS, never a hand-typed one.** The language is resolved once in `atlas_core::lang` (the desktop gets it from Rust, never `navigator.language`). A shortcut is a `{key}` placeholder filled by `kbd()` or `atlas_i18n::shortcut`; "your Mac", Finder, Trash come from `common_os_*` via the `os` variable. Voice and terms: `i18n/style/README.md`.
+
 ## Tests
 
 **Tests first, always.** For every bug found or reported, before touching the fix:

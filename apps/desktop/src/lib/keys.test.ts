@@ -5,7 +5,6 @@ import {
 	appLauncher,
 	bindingsOf,
 	defaultKeymap,
-	fileManager,
 	kbd,
 	modClick,
 	label,
@@ -334,10 +333,9 @@ test("kbd names a key for UI text: glyphs on macOS, Ctrl/Shift/Esc words elsewhe
 
 // Incident (Windows): "Reveal in Finder" was shown on Windows, where the action opens File Explorer.
 test("the reveal action names the platform's file manager", () => {
-	expect(revealLabel(true, false)).toBe("Reveal in Finder");
-	expect(revealLabel(false, true)).toBe("Reveal in File Explorer");
-	expect(revealLabel(false, false)).toBe("Reveal in file manager");
-	expect(fileManager(false, true)).toBe("File Explorer");
+	expect(revealLabel("mac")).toBe("Reveal in Finder");
+	expect(revealLabel("windows")).toBe("Reveal in File Explorer");
+	expect(revealLabel("linux")).toBe("Reveal in file manager");
 });
 
 // Incident (Windows): the dock/tray error fallback said "Open Atlas from the Dock", which Windows does not have.

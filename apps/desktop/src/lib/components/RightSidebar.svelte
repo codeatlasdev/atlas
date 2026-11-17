@@ -23,6 +23,7 @@
 	import { liveAgents, portRows, STATE_LABEL } from "#lib/shell/rightPanel.ts";
 	import { api, errText } from "#lib/api.ts";
 	import { agents } from "#lib/stores/agents.svelte.ts";
+	import { resumeCommand } from "#lib/agentRegistry.ts";
 	import { store } from "#lib/stores/projects.svelte.ts";
 	import { ws } from "#lib/stores/workspace.svelte.ts";
 	import { openPreview } from "#lib/stores/browser.svelte.ts";
@@ -148,8 +149,7 @@
 	const clk = useNow(30_000);
 	const age = (ms: number | null) => (void clk.now, ms ? ago(ms / 1000) : "");
 	const when = (ts: number) => (void clk.now, ago(ts));
-	const resumeCommand = (s: Session) =>
-		s.agent === "codex" ? `codex resume ${s.resume}` : `${s.agent} --resume ${s.resume}`;
+	const resumeCommandOf = (s: Session) => resumeCommand(s.agent, s.resume);
 
 	let live = $derived(w ? liveAgents(ws.doc.tabs, agents.status, w.id) : []);
 	let rows = $derived(
@@ -243,7 +243,7 @@
 								>{/if}
 							<button
 								onclick={() =>
-									navigator.clipboard.writeText(resumeCommand(s)).then(
+									navigator.clipboard.writeText(resumeCommandOf(s)).then(
 										() => toast.success("Copied"),
 										(e) => toast.error(errText(e)),
 									)}><Copy size={12} /> Copy command</button

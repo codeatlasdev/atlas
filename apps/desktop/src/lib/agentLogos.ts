@@ -1,5 +1,5 @@
 /**
- * Official logos of the coding agents Atlas launches (ids = `crates/atlas-desktop/src/agent/registry.rs`).
+ * Official logos of the coding agents Atlas launches (ids = `crates/atlas-core/data/agents.json`).
  * Marks are inlined unaltered (the vendors forbid recoloring), so there is no img-src/CSP concern and no
  * request. Source, license and brand rules of each file: `agent-logos/README.md`. `agentLogos.test.ts`
  * keeps this table byte-identical to those files and checks every registry id has a logo.

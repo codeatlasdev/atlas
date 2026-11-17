@@ -8,6 +8,7 @@
  * for servers that kept the older `atlas-bot` user alike.
  */
 import { invoke } from "@tauri-apps/api/core";
+import { builtinAgent } from "#lib/agentRegistry.ts";
 import {
 	buildClaudeEnvLines,
 	buildCodexConfigToml,
@@ -37,22 +38,6 @@ export const AGENT_KEY_LABEL: Record<string, string> = {
 	claude: "Anthropic API key (optional)",
 	codex: "OpenAI API key",
 	opencode: "Provider API key",
-};
-
-/** The env var each engine reads its key from. */
-export const AGENT_KEY_ENV: Record<string, string> = {
-	omp: "OPENROUTER_API_KEY",
-	claude: "ANTHROPIC_API_KEY",
-	codex: "OPENAI_API_KEY",
-	opencode: "OPENAI_API_KEY",
-};
-
-/** The command that starts an engine's interactive sign-in. */
-export const AGENT_SIGNIN_CMD: Record<string, string> = {
-	claude: "claude",
-	codex: "codex",
-	opencode: "opencode",
-	omp: "omp",
 };
 
 /** Run a shell script on a crew server through hostd; resolves with hostd's exec result. */
@@ -100,7 +85,7 @@ export async function writeAgentEnv(hostKey: string, agentId: string, content: s
  * user in `ps`).
  */
 export async function applyAgentApiKey(hostKey: string, agentId: string, apiKey: string): Promise<void> {
-	await writeAgentEnv(hostKey, agentId, `${AGENT_KEY_ENV[agentId] ?? "API_KEY"}=${apiKey.trim()}\n`);
+	await writeAgentEnv(hostKey, agentId, `${builtinAgent(agentId)?.key_env ?? "API_KEY"}=${apiKey.trim()}\n`);
 	if (agentId === "codex") {
 		await runOnServer(
 			hostKey,

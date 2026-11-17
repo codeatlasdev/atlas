@@ -81,6 +81,9 @@ pub(crate) struct Hub {
     stop: Notify,
     /// Signalled once the successor has taken the ptys: `serve` returns without killing.
     handed_off: Arc<Notify>,
+    /// Serializes `upgrade` calls; `true` once a successor has taken over (see `upgrade::run`).
+    #[cfg_attr(windows, allow(dead_code))]
+    pub(crate) upgraded: tokio::sync::Mutex<bool>,
     /// The locked pid file; its fd travels to the successor on upgrade. Held for the lock
     /// alone on Windows.
     #[cfg_attr(windows, allow(dead_code))]
@@ -382,6 +385,9 @@ pub struct ServeOpts {
     /// Atlas Mobile without n0's public relays: direct addresses only (tests, a
     /// phone on the same network). `ATLAS_MOBILE_RELAY=0` for `atlas hostd`.
     pub no_mobile_relay: bool,
+    /// Atlas Mobile listens on loopback only, not every interface (tests: a Mac's firewall asks
+    /// about each new test binary that listens on the network). `ATLAS_MOBILE_LOOPBACK=1` for `atlas hostd`.
+    pub mobile_loopback: bool,
     /// Whether this daemon is a crew server (adds "crew" to caps, gates crewmate commands).
     pub crew_host: bool,
     /// Run as the lab lane's shadow daemon following the main hostd in this directory
@@ -577,7 +583,10 @@ pub async fn serve_with(dir: &Path, opts: ServeOpts) -> Result<()> {
     }
     let (lsp_tx, lsp_rx) = mpsc::channel(512);
     let agents = Arc::new(crate::agents::AgentHub::default());
-    let mobile = Arc::new(crate::mobile::Mobile::load(dir, !opts.no_mobile_relay)?);
+    let mobile = Arc::new(
+        crate::mobile::Mobile::load(dir, !opts.no_mobile_relay)?
+            .loopback_only(opts.mobile_loopback),
+    );
     let crew = crate::crew::CrewHub::new(dir, opts.isolation.clone(), opts.isolation_fault.clone());
     let registry = opts
         .registry
@@ -595,6 +604,7 @@ pub async fn serve_with(dir: &Path, opts: ServeOpts) -> Result<()> {
         hello_timeout: opts.hello_timeout.unwrap_or(HELLO_TIMEOUT),
         stop: Notify::new(),
         handed_off: Arc::new(Notify::new()),
+        upgraded: tokio::sync::Mutex::new(false),
         lock,
         lsp: atlas_lsp::Manager::new(dir, atlas_lsp::Config::default(), lsp_tx),
         subscribers: Mutex::new(HashMap::new()),

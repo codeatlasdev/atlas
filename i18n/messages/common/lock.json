@@ -1,0 +1,23 @@
+{
+  "pt-BR": {
+    "common_action_add": "b071c943d8da",
+    "common_action_back": "7ceade8f25b5",
+    "common_action_cancel": "c0774c185060",
+    "common_action_close": "d7cf5045c01b",
+    "common_action_continue": "25ad263f60f3",
+    "common_action_copy": "4f60d1e142af",
+    "common_action_delete": "b26de372b4b0",
+    "common_action_done": "16552c2580bb",
+    "common_action_edit": "f7e6729d30cf",
+    "common_action_open": "3e52f04f92e0",
+    "common_action_remove": "9469a102f04e",
+    "common_action_rename": "d6952b4e54d2",
+    "common_action_retry": "1cc2e703cf24",
+    "common_action_save": "c1db83d165ed",
+    "common_action_search": "bde99b13e0a9",
+    "common_action_undo": "675036bd3758",
+    "common_state_empty": "3f216d20c8e1",
+    "common_state_loading": "9e84d6d7b988",
+    "common_state_saving": "4e65400e023b"
+  }
+}

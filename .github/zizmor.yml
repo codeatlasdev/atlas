@@ -18,4 +18,10 @@ rules:
   # a screenshot and logs. The artifact is read by people, never executed or published.
   cache-poisoning:
     ignore:
-      - ci.yml:142
+      - ci.yml:148
+  # `ci-rerun-lost.yml` reacts to a finished CI run to rerun it when its runner was lost (issue #520). It checks out the
+  # default branch only, never the pull request, passes the event's values through `env:` to a script that validates them,
+  # and its token is `actions: write` + `checks: read` + `contents: read`: it can rerun a run and read annotations.
+  dangerous-triggers:
+    ignore:
+      - ci-rerun-lost.yml

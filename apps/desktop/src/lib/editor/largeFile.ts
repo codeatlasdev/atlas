@@ -3,6 +3,7 @@
  * `huge` from 5x that; a single very long line (minified bundles) is `large` above 10k chars and
  * `huge` above 200k, whatever the byte size. Pure: the integrator turns `disable` into extensions.
  */
+import { formatNumber } from "#lib/i18n/fmt.ts";
 
 export type Tier = "normal" | "large" | "huge";
 
@@ -111,9 +112,8 @@ export function classifyFile(m: FileMetrics, t: Partial<Thresholds> = {}): Class
 	};
 	if (m.bytes >= th.largeBytes * th.hugeFactor) raise("huge", `${mb(m.bytes)} file`);
 	else if (m.bytes >= th.largeBytes) raise("large", `${mb(m.bytes)} file`);
-	if (m.longestLine > th.hugeLine)
-		raise("huge", `a line has ${m.longestLine.toLocaleString("en-US")} characters`);
+	if (m.longestLine > th.hugeLine) raise("huge", `a line has ${formatNumber(m.longestLine)} characters`);
 	else if (m.longestLine > th.longLine)
-		raise("large", `a line has ${m.longestLine.toLocaleString("en-US")} characters`);
+		raise("large", `a line has ${formatNumber(m.longestLine)} characters`);
 	return { tier, reasons, disable: { ...DISABLE[tier] }, notice: NOTICES[tier] };
 }

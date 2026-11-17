@@ -44,8 +44,16 @@ export interface ProjectView {
 	identity: Identity | null;
 	/** The checkout's folder is gone from this machine (null = present, or an SSH project). */
 	missing: "root" | null;
-	/** `file`: an atlas.yaml is on disk. `detected`: Atlas detected the stack in memory (offer "Save as atlas.yaml"). */
-	config_source: "file" | "detected";
+	/**
+	 * `file`: an atlas.yaml is on disk. `detected`: Atlas detected the stack in memory (offer "Save as atlas.yaml").
+	 * `none`: a plain folder, which has no config to talk about.
+	 */
+	config_source: "file" | "detected" | "none";
+	/**
+	 * `folder`: a plain folder (no git, atlas.yaml or manifest, not promoted): explorer and editor only, no services,
+	 * no atlas.yaml prompt, no Changes or PR. `project`: everything else.
+	 */
+	kind: "project" | "folder";
 	/** `origin` URL last seen while the project existed (set when missing). */
 	last_remote: string | null;
 }
@@ -152,6 +160,14 @@ export interface Probe {
 	registered: string | null;
 }
 
+/** Where opening a path leads (`path_locate`). */
+export interface OpenPlan {
+	/** A file of no project and no added folder: opens in the light editor and registers nothing. */
+	standalone: boolean;
+	/** The folder to open; for a standalone file, the folder it sits in. */
+	root: string;
+}
+
 /** What `atlas init` would write in a folder (`project_init_preview`). */
 export interface InitPreview {
 	yaml: string;
@@ -203,6 +219,10 @@ export const api = {
 	relink: (id: string, root: string) => invoke<ProjectView>("projects_relink", { id, root }),
 	removeMissing: () => invoke<number>("projects_remove_missing"),
 	findMoved: (id: string) => invoke<Found | null>("projects_find_moved", { id }),
+	/** "Use as project": a plain folder gets the full project UI from now on (nothing is written to the folder). */
+	promote: (id: string) => invoke<void>("project_promote", { id }),
+	/** How opening `path` goes: a project or folder to open, or a standalone file (no project is registered). */
+	locate: (path: string) => invoke<OpenPlan>("path_locate", { path }),
 	initProject: (dir: string) => invoke<ProjectView>("project_init", { dir }),
 	/** Write the detected config as atlas.yaml (exactly what the header shows) and reload the project as file-backed. */
 	saveConfig: (id: string) => invoke<ProjectView>("project_save_config", { id }),

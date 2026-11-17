@@ -49,6 +49,9 @@ pub struct TargetArgs {
     /// SSH port (default 22). Used when the server listens on a non-standard port.
     #[arg(long, default_value_t = 22)]
     pub port: u16,
+    /// Private key to sign in with (`ssh -i`), instead of the ones ssh finds by itself.
+    #[arg(long)]
+    pub identity: Option<std::path::PathBuf>,
     /// Read the sudo password from stdin instead of requiring passwordless sudo.
     /// Used by Atlas Desktop; the password is NEVER placed on argv.
     #[arg(long, hide = true)]
@@ -57,7 +60,7 @@ pub struct TargetArgs {
 
 impl TargetArgs {
     fn remote(&self) -> Remote {
-        Remote::crew(&self.ssh_target, self.port)
+        Remote::crew(&self.ssh_target, self.port).with_identity(self.identity.clone())
     }
 
     /// `sudo -u <crew user>` runs in `install` and `status`: make sudo work before either, with the

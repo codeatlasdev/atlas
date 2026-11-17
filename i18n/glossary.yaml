@@ -1,0 +1,167 @@
+# One entry per product concept, read by i18n:check, i18n:translate and every agent that translates.
+#   dnt: true     never translated: the term stays exactly as written in every locale
+#   <locale>: x   the fixed rendering in that locale (a warning when a translation does not use it)
+#   gender:       per locale, the grammatical gender of a kept term (pt-BR: f = "a branch"); shown to the translator
+#   advice:       per locale, a wording decision no pattern can check; shown to the translator
+#   os:           per locale, the noun an OS-specific concept takes on each platform (mac | windows | linux). A message
+#                 that needs one selects on `os` (a variants message with an `os` selector); i18n:check rejects Mac,
+#                 macOS, Finder, Windows and Explorer in any message that does not (platform-noun), and shortcut
+#                 glyphs or `Cmd+` chords in any catalog value (shortcut): a shortcut is a {key} placeholder.
+#   note:         why, for the people maintaining this file
+# A term with a capital matches only that case (Crew is the feature, crew is a noun); an all-lowercase term
+# matches any case. A homograph the rule trips over ("log in" the verb) is waived in the key's description with
+# `i18n-allow dnt:log`, `i18n-allow glossary:agent` or `i18n-allow pt-pt:<word>`.
+- term: Atlas
+  dnt: true
+- term: Crew
+  dnt: true
+  note: the product feature (docs/crew.md)
+- term: crewmate
+  dnt: true
+  gender:
+    pt-BR: m
+  note: an agent of the Crew; stays English in pt-BR ("o crewmate")
+- term: crew server
+  dnt: true
+  gender:
+    pt-BR: m
+  note: a machine of the Crew; stays English in pt-BR ("o crew server")
+- term: hostd
+  dnt: true
+- term: worktree
+  dnt: true
+  gender:
+    pt-BR: f
+  note: git term; Brazilian developers say it in English ("a worktree")
+- term: branch
+  dnt: true
+  gender:
+    pt-BR: f
+  note: '"a branch"'
+- term: issue
+  dnt: true
+  gender:
+    pt-BR: f
+  note: '"a issue", as developers write it'
+- term: commit
+  dnt: true
+  gender:
+    pt-BR: m
+- term: merge
+  dnt: true
+  gender:
+    pt-BR: m
+- term: pull request
+  dnt: true
+  gender:
+    pt-BR: m
+- term: deploy
+  dnt: true
+  gender:
+    pt-BR: m
+- term: prompt
+  dnt: true
+  gender:
+    pt-BR: m
+- term: token
+  dnt: true
+  gender:
+    pt-BR: m
+- term: log
+  dnt: true
+  gender:
+    pt-BR: m
+  note: the noun; waive the verb "log in" with i18n-allow
+- term: build
+  dnt: true
+  gender:
+    pt-BR: m
+- term: agent
+  pt-BR: agente
+- term: project
+  pt-BR: projeto
+- term: service
+  pt-BR: serviço
+- term: settings
+  pt-BR: configurações
+  note: never "definições" (pt-PT)
+- term: run
+  advice:
+    pt-BR: 'The run button and menu item say "Executar". Prose in docs may say "rodar".'
+- term: your computer
+  os:
+    en:
+      mac: your Mac
+      windows: this PC
+      linux: this computer
+    pt-BR:
+      mac: seu Mac
+      windows: este PC
+      linux: este computador
+  note: common_os_your_computer
+- term: file manager
+  os:
+    en:
+      mac: Finder
+      windows: File Explorer
+      linux: the file manager
+    pt-BR:
+      mac: Finder
+      windows: Explorador de Arquivos
+      linux: gerenciador de arquivos
+  note: common_os_file_manager
+- term: trash
+  os:
+    en:
+      mac: Trash
+      windows: Recycle Bin
+      linux: Trash
+    pt-BR:
+      mac: Lixeira
+      windows: Lixeira
+      linux: Lixeira
+  note: common_os_trash
+- term: system settings
+  os:
+    en:
+      mac: System Settings
+      windows: Settings
+      linux: system settings
+    pt-BR:
+      mac: Ajustes do Sistema
+      windows: Configurações
+      linux: configurações do sistema
+  note: common_os_system_settings
+- term: alt key
+  os:
+    en:
+      mac: Option
+      windows: Alt
+      linux: Alt
+    pt-BR:
+      mac: Option
+      windows: Alt
+      linux: Alt
+  note: the key name in prose; shortcuts are placeholders. common_os_alt_key
+- term: enter key
+  os:
+    en:
+      mac: Return
+      windows: Enter
+      linux: Enter
+    pt-BR:
+      mac: Return
+      windows: Enter
+      linux: Enter
+  note: common_os_enter_key
+- term: menu bar
+  os:
+    en:
+      mac: the menu bar
+      windows: the system tray
+      linux: the system tray
+    pt-BR:
+      mac: a barra de menus
+      windows: a bandeja
+      linux: a bandeja
+  note: where the app lives in the background; on Windows the OS calls it the notification area. common_os_menu_bar

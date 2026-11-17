@@ -63,13 +63,13 @@
 		<string>UIInterfaceOrientationLandscapeRight</string>
 	</array>
 	<key>NSLocalNetworkUsageDescription</key>
-	<string>Atlas Mobile connects directly to your Mac when it is on the same network.</string>
+	<string>Atlas connects straight to your computer when you are on the same Wi-Fi network. If you do not allow it, Atlas connects through an encrypted relay instead.</string>
 	<key>NSCameraUsageDescription</key>
-	<string>Used to scan QR codes when pairing a Mac, and to photograph a screen to send to a crewmate.</string>
+	<string>Atlas uses the camera to scan the pairing QR code shown on your computer, and to photograph a screen you want to send to a crewmate. Nothing is recorded; a photo leaves your iPhone only when you send it.</string>
 	<key>NSPhotoLibraryUsageDescription</key>
-	<string>Used to pick a screenshot or photo to send to a crewmate.</string>
+	<string>Atlas lets you pick screenshots and photos to send to a crewmate. Only the pictures you choose are used.</string>
 	<key>NSFaceIDUsageDescription</key>
-	<string>Used to unlock terminal write access.</string>
+	<string>Atlas uses Face ID to confirm it is you before typing into your computer's terminal or sending a secret. Your face data never leaves your iPhone.</string>
 	<key>ITSAppUsesNonExemptEncryption</key>
 	<false/>
 </dict>

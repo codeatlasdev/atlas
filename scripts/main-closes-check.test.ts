@@ -1,6 +1,6 @@
 // The push-to-main check against a real repository (the squash commits) and a fake `gh` (the PRs' links).
 import { expect, test } from "bun:test";
-import { chmodSync, existsSync, mkdtempSync, readFileSync, writeFileSync } from "node:fs";
+import { existsSync, mkdtempSync, readFileSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 
@@ -23,18 +23,27 @@ function main(commits: string[], links: Record<number, number[]>) {
   for (const m of commits) git("commit", "-q", "--allow-empty", "-m", m);
   const after = git("rev-parse", "HEAD");
 
-  const cases = Object.entries(links)
-    .map(([n, issues]) => {
-      const refs = issues.map((i) => ({ number: i, repository: { name: "atlas", owner: { login: "o" } } }));
-      return `  "pr view ${n} "*) echo '${JSON.stringify({ closingIssuesReferences: refs })}' ;;`;
-    })
-    .join("\n");
+  // A fake `gh` every OS can run: a JS file (GH=<it> makes the script run it through Bun).
+  const world = Object.fromEntries(
+    Object.entries(links).map(([n, issues]) => [
+      n,
+      { closingIssuesReferences: issues.map((i) => ({ number: i, repository: { name: "atlas", owner: { login: "o" } } })) },
+    ]),
+  );
   const comments = join(dir, "comments.log");
-  const gh = join(dir, "gh");
-  writeFileSync(gh, `#!/usr/bin/env bash\ncase "$*" in\n${cases}\n  "pr comment"*) printf '%s %s\\n' "$3" "$7" >> '${comments}' ;;\n  *) echo "unexpected gh $*" >&2; exit 1 ;;\nesac\n`);
-  chmodSync(gh, 0o755);
+  const gh = join(dir, "gh.mjs");
+  writeFileSync(
+    gh,
+    `import { appendFileSync } from "node:fs";
+const world = ${JSON.stringify(world)};
+const a = process.argv.slice(2);
+if (a[0] === "pr" && a[1] === "view" && world[a[2]]) { console.log(JSON.stringify(world[a[2]])); process.exit(0); }
+if (a[0] === "pr" && a[1] === "comment") { appendFileSync(${JSON.stringify(comments)}, a[2] + " " + a[6] + "\\n"); process.exit(0); }
+console.error("unexpected gh " + a.join(" ")); process.exit(1);
+`,
+  );
   const run = (...extra: string[]) =>
-    Bun.spawnSync(["bun", script, "--repo", "o/atlas", "--range", `${extra.includes("--first-push") ? "0".repeat(40) : before}..${after}`, ...extra.filter((a) => a !== "--first-push")], {
+    Bun.spawnSync([process.execPath, script, "--repo", "o/atlas", "--range", `${extra.includes("--first-push") ? "0".repeat(40) : before}..${after}`, ...extra.filter((a) => a !== "--first-push")], {
       cwd: dir,
       env: { ...env, GH: gh },
     });
@@ -78,5 +87,20 @@ test("a push with no previous commit (all-zero before) judges only the new head"
 });
 
 test("bad usage exits 2", () => {
-  expect(Bun.spawnSync(["bun", script]).exitCode).toBe(2);
+  expect(Bun.spawnSync([process.execPath, script]).exitCode).toBe(2);
+});
+
+test("a gh that cannot be spawned fails with a JSON error on stdout, not silence", () => {
+  const dir = mkdtempSync(join(tmpdir(), "closes-nogh-"));
+  const git = (...a: string[]) => Bun.spawnSync(["git", ...a], { cwd: dir, env: { ...process.env, GIT_AUTHOR_NAME: "A", GIT_AUTHOR_EMAIL: "a@codeatlas.com.br", GIT_COMMITTER_NAME: "A", GIT_COMMITTER_EMAIL: "a@codeatlas.com.br" } }).stdout.toString().trim();
+  git("init", "-q", "-b", "main");
+  git("commit", "-q", "--allow-empty", "-m", "base");
+  const before = git("rev-parse", "HEAD");
+  git("commit", "-q", "--allow-empty", "-m", "fix: f (#9)\n\nCloses #2");
+  const p = Bun.spawnSync([process.execPath, script, "--repo", "o/atlas", "--range", `${before}..${git("rev-parse", "HEAD")}`, "--json"], {
+    cwd: dir,
+    env: { ...process.env, GH: join(tmpdir(), "no-such-gh-binary") },
+  });
+  expect(p.exitCode).toBe(1);
+  expect(JSON.parse(p.stdout.toString()).error).toContain("cannot run");
 });

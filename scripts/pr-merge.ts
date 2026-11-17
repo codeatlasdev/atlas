@@ -7,22 +7,11 @@
 //
 // --json prints {pr, decision: "merge"|"refuse", reasons[], subject, body, mergedSha?}. Exit 0: merged (or, with
 // --dry-run, would merge), 1: refused, 2: bad usage. Why: scripts/pr-closes.ts. How a maintainer uses it:
-// docs/release.md "Merging a pull request". `GH` overrides the gh binary (tests).
+// CONTRIBUTING.md "Pull request flow and who merges". `GH` replaces the gh binary (tests; see gh.ts).
+import { ghCommand, ghOut, run } from "./gh";
 import { type Facts, decide } from "./pr-merge-decide";
 
-const gh = process.env.GH ?? "gh";
-
-async function run(cmd: string[]): Promise<{ code: number; out: string; err: string }> {
-  const p = Bun.spawn(cmd, { stdout: "pipe", stderr: "pipe", stdin: "ignore" });
-  const [out, err, code] = await Promise.all([new Response(p.stdout).text(), new Response(p.stderr).text(), p.exited]);
-  return { code, out: out.trim(), err: err.trim() };
-}
-
-async function ghOut(...args: string[]): Promise<string> {
-  const r = await run([gh, ...args]);
-  if (r.code !== 0) throw new Error(`gh ${args.slice(0, 3).join(" ")} failed: ${r.err || r.out}`);
-  return r.out;
-}
+const gh = ghCommand();
 
 type PrView = {
   number: number;
@@ -55,7 +44,7 @@ async function facts(n: number, subject: string | undefined): Promise<Facts> {
 
   const [behindBy, tip, runs, team, name, email] = await Promise.all([
     ghOut("api", `repos/${repo}/compare/${pr.baseRefName}...${sha}`, "--jq", ".behind_by").then(Number),
-    run([gh, "api", `repos/${headRepo}/git/ref/heads/${pr.headRefName}`, "--jq", ".object.sha"]).then((r) => {
+    run([...gh, "api", `repos/${headRepo}/git/ref/heads/${pr.headRefName}`, "--jq", ".object.sha"]).then((r) => {
       if (r.code === 0) return r.out;
       if (/404|Not Found/.test(r.err + r.out)) return null;
       throw new Error(`gh api git/ref failed: ${r.err || r.out}`);
@@ -67,7 +56,7 @@ async function facts(n: number, subject: string | undefined): Promise<Facts> {
       "[.workflow_runs[] | {headSha: .head_sha, status, conclusion, createdAt: .created_at, url: .html_url}]",
     ).then((s) => JSON.parse(s)),
     // Not a member answers 404; any failure counts as "not a maintainer" (fail closed).
-    run([gh, "api", `orgs/${owner}/teams/atlas-maintainers/memberships/${login}`, "--jq", ".state"]),
+    run([...gh, "api", `orgs/${owner}/teams/atlas-maintainers/memberships/${login}`, "--jq", ".state"]),
     run(["git", "config", "--get", "user.name"]).then((r) => r.out),
     run(["git", "config", "--get", "user.email"]).then((r) => r.out),
   ]);
@@ -137,7 +126,7 @@ if (d.decision === "refuse" || dry) finish({ pr, ...d });
 // --match-head-commit: a push that lands between the decision and the merge makes gh refuse instead of merging
 // a commit CI never saw.
 const merged = await run([
-  gh,
+  ...gh,
   "pr",
   "merge",
   String(pr),

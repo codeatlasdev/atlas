@@ -2,17 +2,41 @@
 // the CLI proves it reads the right API answers, never calls `gh pr merge` when it refuses or in a dry run, and
 // calls it with exactly the guarded arguments when it merges.
 import { expect, test } from "bun:test";
-import { chmodSync, existsSync, mkdtempSync, readFileSync, writeFileSync } from "node:fs";
+import { existsSync, mkdtempSync, readFileSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 
 const SHA = "a".repeat(40);
+const script = join(import.meta.dir, "pr-merge.ts");
+
+// A fake `gh` every OS can run: a JS file (GH=<it> makes pr-merge.ts run it through Bun) answering from world.json.
+const FAKE_GH = `
+import { readFileSync, writeFileSync } from "node:fs";
+import { join } from "node:path";
+const w = JSON.parse(readFileSync(join(import.meta.dir, "world.json"), "utf8"));
+const a = process.argv.slice(2);
+const out = (s) => { console.log(typeof s === "string" ? s : JSON.stringify(s)); process.exit(0); };
+if (a[0] === "repo") out("codeatlasdev/atlas");
+if (a[0] === "pr" && a[1] === "view") out(a[4].startsWith("number") ? w.pr : "c".repeat(40));
+if (a[0] === "pr" && a[1] === "merge") { writeFileSync(join(import.meta.dir, "merge.json"), JSON.stringify(a)); process.exit(0); }
+if (a[0] === "api") {
+  const path = a[1];
+  if (path === "user") out("mvilacad");
+  if (path.includes("/compare/main...")) out(String(w.behind));
+  if (path.includes("/git/ref/heads/fix/click")) out(w.tip);
+  if (path.includes("/actions/workflows/ci.yml/runs")) out(w.runs);
+  if (path.includes("/teams/atlas-maintainers/memberships/")) {
+    if (w.maintainer) out("active");
+    console.error("Not Found (HTTP 404)"); process.exit(1);
+  }
+}
+console.error("unexpected gh " + a.join(" ")); process.exit(1);
+`;
 
 type World = { behind?: number; tip?: string; runs?: object[]; maintainer?: boolean; linked?: number[]; title?: string };
 
 function cli(w: World, args: string[]) {
   const dir = mkdtempSync(join(tmpdir(), "pr-merge-"));
-  const log = join(dir, "merge.log");
   const pr = {
     number: 7,
     title: w.title ?? "fix(desktop): the click is delivered",
@@ -26,33 +50,19 @@ function cli(w: World, args: string[]) {
     closingIssuesReferences: (w.linked ?? [501, 504]).map((n) => ({ number: n, repository: { name: "atlas", owner: { login: "codeatlasdev" } } })),
   };
   const runs = w.runs ?? [{ headSha: SHA, status: "completed", conclusion: "success", createdAt: "2026-11-16T10:00:00Z", url: "https://x/1" }];
-  const q = (s: string) => `'${s.replaceAll("'", "'\\''")}'`;
-  const gh = join(dir, "gh");
+  writeFileSync(join(dir, "gh.mjs"), FAKE_GH);
   writeFileSync(
-    gh,
-    `#!/usr/bin/env bash
-case "$*" in
-  "repo view"*) echo codeatlasdev/atlas ;;
-  "pr view 7 --json number"*) echo ${q(JSON.stringify(pr))} ;;
-  "pr view 7 --json mergeCommit"*) echo ${"c".repeat(40)} ;;
-  "api user"*) echo mvilacad ;;
-  *"/compare/main...${SHA}"*) echo ${w.behind ?? 0} ;;
-  *"/git/ref/heads/fix/click"*) echo ${w.tip ?? SHA} ;;
-  *"/actions/workflows/ci.yml/runs?head_sha=${SHA}"*) echo ${q(JSON.stringify(runs))} ;;
-  *"/teams/atlas-maintainers/memberships/mvilacad"*) ${w.maintainer === false ? 'echo "Not Found (HTTP 404)" >&2; exit 1' : "echo active"} ;;
-  "pr merge"*) printf '%s\\0' "$@" > ${q(log)} ;;
-  *) echo "unexpected gh $*" >&2; exit 1 ;;
-esac
-`,
+    join(dir, "world.json"),
+    JSON.stringify({ pr: JSON.stringify(pr), behind: w.behind ?? 0, tip: w.tip ?? SHA, runs: JSON.stringify(runs), maintainer: w.maintainer !== false }),
   );
-  chmodSync(gh, 0o755);
   const gitconfig = join(dir, "gitconfig");
   writeFileSync(gitconfig, "[user]\n\tname = Matheus\n\temail = matheus@codeatlas.com.br\n");
-  const p = Bun.spawnSync(["bun", join(import.meta.dir, "pr-merge.ts"), "7", "--json", ...args], {
+  const p = Bun.spawnSync([process.execPath, script, "7", "--json", ...args], {
     cwd: dir,
-    env: { ...process.env, GH: gh, GIT_CONFIG_GLOBAL: gitconfig, GIT_CONFIG_SYSTEM: "/dev/null" },
+    env: { ...process.env, GH: join(dir, "gh.mjs"), GIT_CONFIG_GLOBAL: gitconfig, GIT_CONFIG_SYSTEM: "/dev/null" },
   });
-  const merged = existsSync(log) ? readFileSync(log, "utf8").split("\0").slice(0, -1) : null;
+  const log = join(dir, "merge.json");
+  const merged: string[] | null = existsSync(log) ? JSON.parse(readFileSync(log, "utf8")) : null;
   return { code: p.exitCode, out: JSON.parse(p.stdout.toString() || "{}"), err: p.stderr.toString(), merged };
 }
 
@@ -102,6 +112,14 @@ test.each<[string, World, RegExp]>([
 });
 
 test("bad usage exits 2", () => {
-  const p = Bun.spawnSync(["bun", join(import.meta.dir, "pr-merge.ts"), "--nope"]);
+  const p = Bun.spawnSync([process.execPath, script, "--nope"]);
   expect(p.exitCode).toBe(2);
+});
+
+test("a gh that cannot be spawned is a JSON refusal on stdout, not silence", () => {
+  const p = Bun.spawnSync([process.execPath, script, "7", "--dry-run", "--json"], { env: { ...process.env, GH: join(tmpdir(), "no-such-gh-binary") } });
+  const out = JSON.parse(p.stdout.toString());
+  expect(p.exitCode).toBe(1);
+  expect(out.decision).toBe("refuse");
+  expect(out.reasons[0]).toContain("cannot run");
 });

@@ -5,6 +5,7 @@
 	import CrewFlag from "#lib/crew/CrewFlag.svelte";
 	import { BROWSERS_COST, BROWSERS_WHY } from "#lib/crew/browsers.ts";
 	import type { Onboarding } from "./onboarding.svelte.ts";
+	import SshHostPicker from "./SshHostPicker.svelte";
 
 	let { ob }: { ob: Onboarding } = $props();
 
@@ -30,6 +31,15 @@
 		{/if}
 	{:else}
 		<!-- Has SSH key: show address field -->
+		{#if ob.sshHosts.length > 0}
+			<SshHostPicker
+				hosts={ob.sshHosts}
+				address={ob.sshTarget}
+				port={ob.sshPort}
+				disabled={locked}
+				onpick={(h) => ob.pickSshHost(h)}
+			/>
+		{/if}
 		<label class="field-label" for="ssh-target">SSH address</label>
 		<div class="field-wrap" class:shake={ob.fieldShake}>
 			<input

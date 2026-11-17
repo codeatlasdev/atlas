@@ -4,6 +4,14 @@
 pub fn swipe_zones(_zones: Vec<serde_json::Value>, _scrollers: Option<Vec<serde_json::Value>>) {}
 
 #[tauri::command]
+pub fn swipe_scrollers_now() -> serde_json::Value {
+    serde_json::Value::Array(Vec::new())
+}
+
+#[tauri::command]
+pub fn swipe_abandon() {}
+
+#[tauri::command]
 pub fn swipe_zones_now() -> serde_json::Value {
     serde_json::Value::Array(Vec::new())
 }

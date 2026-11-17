@@ -26,6 +26,7 @@ pub mod project_root;
 pub mod redact;
 pub mod seed;
 pub mod ssh;
+pub mod ssh_config;
 pub mod sys;
 mod sys_clone;
 pub mod taskcache;

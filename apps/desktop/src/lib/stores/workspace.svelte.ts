@@ -93,6 +93,7 @@ class Workspace {
 			}
 			this.hostError = null;
 			this.hostDown = false;
+			errors.hostReachable();
 		} catch (e) {
 			// Keep `ptys`: an unreachable host says nothing about its terminals, and replacing the map
 			// would show every tab as "Terminal is gone" (1.5.0-alpha.5). Report the outage once.

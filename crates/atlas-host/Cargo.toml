@@ -39,6 +39,7 @@ chrono = { workspace = true }
 chrono-tz = { workspace = true }
 sha1_smol = "1"
 url = "2"
+semver = { workspace = true }
 
 [target.'cfg(unix)'.dependencies]
 libc = { workspace = true }

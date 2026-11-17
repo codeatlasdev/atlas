@@ -5,7 +5,6 @@
 		DropdownMenu,
 		DropdownMenuItem,
 		DropdownMenuLabel,
-		NotificationBell,
 		Spinner,
 	} from "@codeatlasdev/ui";
 	import {
@@ -25,7 +24,9 @@
 	import { removeProject } from "#lib/components/sidebar/projects.ts";
 	import PanelOps from "#lib/panel/PanelOps.svelte";
 	import Crumbs from "#lib/shell/Crumbs.svelte";
+	import InboxBell from "#lib/shell/InboxBell.svelte";
 	import RightToggle from "#lib/shell/RightToggle.svelte";
+	import { updates } from "#lib/stores/updates.svelte.ts";
 	import { agents } from "#lib/stores/agents.svelte.ts";
 	import { docks, toggleDock } from "#lib/stores/docks.svelte.ts";
 	import { store } from "#lib/stores/projects.svelte.ts";
@@ -112,8 +113,8 @@
 	{/if}
 	<div class="grow" data-tauri-drag-region></div>
 	<div class="actions">
-		<NotificationBell
-			notifications={agents.inbox.map((n) => ({
+		<InboxBell
+			items={agents.inbox.map((n) => ({
 				id: n.id,
 				title: n.title,
 				body: n.body,
@@ -124,6 +125,7 @@
 			onRead={openInbox}
 			onReadAll={() => agents.inbox.forEach((n) => (n.read = true))}
 			onClear={() => (agents.inbox = [])}
+			onSettings={() => updates.show("notifications")}
 		/>
 		<div class="docks" role="group" aria-label="Docks">
 			{#each DOCKS as d (d.side)}

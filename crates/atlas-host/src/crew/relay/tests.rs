@@ -57,6 +57,7 @@ impl Rig {
             &crewmate_dir,
             ServeOpts {
                 no_mobile_relay: true,
+                mobile_loopback: true,
                 crew_host: true,
                 ..Default::default()
             },
@@ -79,6 +80,7 @@ impl Rig {
             &tmp.path().join("mac"),
             ServeOpts {
                 no_mobile_relay: true,
+                mobile_loopback: true,
                 registry: Some(home),
                 crew_relay: Some(direct(crewmate_dir)),
                 ..Default::default()
@@ -251,6 +253,7 @@ async fn a_registry_still_under_its_old_name_is_adopted() {
         &tmp.path().join("mac"),
         ServeOpts {
             no_mobile_relay: true,
+            mobile_loopback: true,
             registry: Some(home.clone()),
             crew_relay: Some(direct(tmp.path().join("nowhere"))),
             ..Default::default()
@@ -482,6 +485,7 @@ impl Flaky {
             &self.crew_dir,
             ServeOpts {
                 no_mobile_relay: true,
+                mobile_loopback: true,
                 crew_host: true,
                 ..Default::default()
             },
@@ -495,6 +499,7 @@ impl Flaky {
             &self.mac_dir,
             ServeOpts {
                 no_mobile_relay: true,
+                mobile_loopback: true,
                 registry: Some(self.home.clone()),
                 crew_relay: Some(self.connector()),
                 ..Default::default()

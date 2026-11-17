@@ -127,7 +127,7 @@
 <Palette bind:open={palettes.commands} placeholder="Run a command" items={commandItems} />
 <LazyOpen when={worktrees.newDialog.open} load={() => import("#lib/components/NewWorktreeDialog.svelte")} />
 <LazyOpen when={!!pr.createFor} load={() => import("#lib/components/CreatePrDialog.svelte")} />
-<Palette bind:open={palettes.files} placeholder="Go to file" items={fileItems} />
+<Palette bind:open={palettes.files} placeholder="Go to file" items={fileItems} ranked />
 <Palette
 	bind:open={branchPicker.open}
 	placeholder="Switch branch or create one"

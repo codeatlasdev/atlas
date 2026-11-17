@@ -6,6 +6,7 @@
 	import AutomationDialog from "#lib/crew/automation/AutomationDialog.svelte";
 	import { describeNext, describeTrigger } from "#lib/crew/automations.ts";
 	import { optionIn } from "#lib/crew/motion.ts";
+	import { m } from "#lib/i18n/m.ts";
 	import type { CrewmateSettings } from "#lib/crew/settings/settings.svelte.ts";
 	import { triggerIcon } from "#lib/crew/settings/triggerIcons.ts";
 
@@ -58,7 +59,9 @@
 					<span class="row-label">{describeTrigger(trig.kind, trig.tz)}</span>
 					{#if trig.prompt}<span class="row-hint auto-prompt">{trig.prompt}</span>{/if}
 					{#if trig.invalid}
-						<span class="row-hint auto-invalid">Not running: {trig.invalid}</span>
+						<span class="row-hint auto-invalid"
+							>{m.settings_automation_invalid({ reason: trig.invalid })}</span
+						>
 					{:else if trig.next_fire && trig.enabled}
 						<span class="row-hint">Next: {describeNext(trig.next_fire, now)}</span>
 					{/if}

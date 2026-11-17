@@ -116,18 +116,34 @@ pub(crate) fn tick(hub: &std::sync::Arc<Hub>, now_s: u64) {
                 }
             }
         }
-        let mut changed = false;
+        let mut fired_ids = Vec::new();
         for (i, task) in fired {
             crewmate.routines[i].last_run = Some(now_s);
+            fired_ids.push(crewmate.routines[i].id.clone());
             crate::crew::runner::enqueue(hub, &hub.crew.store, &crewmate, task);
             hub.broadcast(super::events::task(&crewmate.id, None));
-            changed = true;
         }
-        if changed && let Err(e) = hub.crew.store.save_crewmate(&crewmate) {
-            eprintln!(
-                "atlas crew: crewmate {}: cannot save the routines' last_run: {e}",
-                crewmate.id
-            );
+        if !fired_ids.is_empty() {
+            // Write into the crewmate as it is now, not as this tick listed it: `tick_schedule` saves the
+            // `last_fired` of triggers in the same 30 s window, and a stale copy would undo one of the two.
+            let mut fresh = hub
+                .crew
+                .store
+                .load_crewmate(&crewmate.id)
+                .unwrap_or_else(|_| crewmate.clone());
+            for r in fresh
+                .routines
+                .iter_mut()
+                .filter(|r| fired_ids.contains(&r.id))
+            {
+                r.last_run = Some(now_s);
+            }
+            if let Err(e) = hub.crew.store.save_crewmate(&fresh) {
+                eprintln!(
+                    "atlas crew: crewmate {}: cannot save the routines' last_run: {e}",
+                    crewmate.id
+                );
+            }
         }
     }
 }

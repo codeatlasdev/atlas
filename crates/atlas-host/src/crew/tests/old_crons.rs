@@ -16,6 +16,8 @@ use crate::crew::store::{CrewStore, Routine, Trigger, TriggerKind};
 const PLUS: &str = "+5 * * * *";
 /// `?` in the minute field and `?/2` in the hour field: `*` and `*/2` to croner 2, an error to croner 4 as is.
 const QUESTION: &str = "? ?/2 * * *";
+/// `?` in the minute field, on the first of January only.
+const TRIGGER_QUESTION: &str = "? 3 1 1 *";
 
 async fn stop(client: HostClient) {
     client.call("shutdown", json!({})).await.ok();
@@ -105,9 +107,14 @@ async fn automations_an_older_parser_accepted_load_list_and_run_without_hurting_
     ];
     crewmate.triggers = vec![
         trigger("t-ok", "0 9 * * *"),
-        trigger("t-question", QUESTION),
+        trigger("t-question", TRIGGER_QUESTION),
         trigger("t-plus", PLUS),
     ];
+    // Not due at start: the routines' `last_run` is what the test waits for, and a trigger firing in the same
+    // tick would race the scheduler's saves of it.
+    for t in &mut crewmate.triggers {
+        t.last_fired = Some(crate::crew::now_s());
+    }
     store.save_crewmate(&crewmate).unwrap();
     let before = stored_crons(&dir, &id);
 
@@ -206,7 +213,7 @@ async fn automations_an_older_parser_accepted_load_list_and_run_without_hurting_
     let triggers = |plus: &str, ok_enabled: bool| {
         json!([
             {"id": "t-ok", "kind": {"type": "schedule", "cron": "0 9 * * *"}, "enabled": ok_enabled, "prompt": "run t-ok"},
-            {"id": "t-question", "kind": {"type": "schedule", "cron": QUESTION}, "enabled": true, "prompt": "run t-question"},
+            {"id": "t-question", "kind": {"type": "schedule", "cron": TRIGGER_QUESTION}, "enabled": true, "prompt": "run t-question"},
             {"id": "t-plus", "kind": {"type": "schedule", "cron": plus}, "enabled": true, "prompt": "run t-plus"},
         ])
     };

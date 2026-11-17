@@ -47,7 +47,7 @@
           "enabled": true,
           "id": "t-question",
           "kind": {
-            "cron": "? ?/2 * * *",
+            "cron": "? 3 1 1 *",
             "type": "schedule"
           },
           "next_fire": 1700100000,

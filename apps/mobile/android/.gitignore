@@ -13,3 +13,5 @@ key.properties
 **/*.keystore
 **/*.jks
 google-services.json
+# Gradle's own outputs at the project root (reports, problems): the app's are under ../build.
+/build/

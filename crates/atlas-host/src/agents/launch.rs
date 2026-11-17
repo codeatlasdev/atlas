@@ -44,7 +44,7 @@ pub fn resolve_bin(agent: &str) -> Result<PathBuf, String> {
         return Ok(b);
     }
     let def = atlas_core::agents::get(agent).ok_or_else(|| format!("unknown agent {agent}"))?;
-    atlas_core::login_env::which(def.bin)
+    atlas_core::login_env::which(&def.bin)
         .ok_or_else(|| format!("{} is not installed (not on PATH)", def.bin))
 }
 
@@ -117,10 +117,10 @@ mod tests {
     #[test]
     fn a_phone_launch_never_passes_the_yolo_flags() {
         let reg = tempfile::tempdir().unwrap();
-        for a in atlas_core::agents::AGENTS {
+        for a in atlas_core::agents::all() {
             let p = plan(
                 reg.path(),
-                a.id,
+                &a.id,
                 Path::new("/bin/x"),
                 Path::new("/w"),
                 "w",
@@ -128,9 +128,9 @@ mod tests {
                 Some("--dangerously-skip-permissions"),
             )
             .unwrap();
-            for y in a.yolo_args {
+            for y in &a.yolo_args {
                 assert!(
-                    !p.argv[..p.argv.len() - 1].contains(&y.to_string()),
+                    !p.argv[..p.argv.len() - 1].contains(y),
                     "{}: {:?}",
                     a.id,
                     p.argv

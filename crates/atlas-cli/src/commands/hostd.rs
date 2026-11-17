@@ -128,6 +128,8 @@ impl AtlasCommand for HostdArgs {
         };
         // `ATLAS_MOBILE_RELAY=0`: Atlas Mobile on direct addresses only (LAN, tests).
         let no_mobile_relay = std::env::var("ATLAS_MOBILE_RELAY").is_ok_and(|v| v == "0");
+        // `ATLAS_MOBILE_LOOPBACK=1`: Atlas Mobile listens on loopback only (tests; no firewall prompt on a Mac).
+        let mobile_loopback = std::env::var("ATLAS_MOBILE_LOOPBACK").is_ok_and(|v| v == "1");
         let crew_host = std::env::var("ATLAS_CREW_HOST").as_deref() == Ok("1");
         let (isolation, isolation_fault) = atlas_host::server::detect_isolation(crew_host);
         if let Some(sock) = self.takeover {
@@ -137,6 +139,7 @@ impl AtlasCommand for HostdArgs {
                     takeover: Some(sock),
                     lab: None,
                     no_mobile_relay,
+                    mobile_loopback,
                     crew_host,
                     isolation,
                     isolation_fault,
@@ -265,6 +268,7 @@ impl AtlasCommand for HostdArgs {
             atlas_host::server::ServeOpts {
                 takeover: None,
                 no_mobile_relay,
+                mobile_loopback,
                 crew_host,
                 isolation,
                 isolation_fault,

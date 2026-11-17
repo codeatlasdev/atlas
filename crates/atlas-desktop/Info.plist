@@ -2,6 +2,14 @@
 <!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
 <plist version="1.0">
 <dict>
+	<!-- The languages the app ships (docs/contributing.md, "Translating Atlas"). Without this macOS reports
+	     the development region to the webview and native dialogs, whatever the user's language is.
+	     bun run i18n:add-locale adds a tag here. -->
+	<key>CFBundleLocalizations</key>
+	<array>
+		<string>en</string>
+		<string>pt-BR</string>
+	</array>
 	<key>NSMicrophoneUsageDescription</key>
 	<string>Atlas records your microphone only when you turn on Microphone in Settings › Capture and start a screen recording.</string>
 </dict>

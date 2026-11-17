@@ -87,18 +87,8 @@ pub enum Agent {
 impl Agent {
     const ALL: [Agent; 4] = [Agent::Omp, Agent::ClaudeCode, Agent::Codex, Agent::OpenCode];
 
-    /// Subcommand name (`atlas setup <name>`).
-    fn name(self) -> &'static str {
-        match self {
-            Agent::Omp => "omp",
-            Agent::ClaudeCode => "claude-code",
-            Agent::Codex => "codex",
-            Agent::OpenCode => "opencode",
-        }
-    }
-
-    /// Executable looked up on `PATH`.
-    fn binary(self) -> &'static str {
+    /// The built-in agent's id in `data/agents.json`: its name, binary, label and hooks come from there.
+    fn id(self) -> &'static str {
         match self {
             Agent::Omp => "omp",
             Agent::ClaudeCode => "claude",
@@ -107,13 +97,22 @@ impl Agent {
         }
     }
 
+    fn def(self) -> &'static atlas_core::agents::AgentDef {
+        atlas_core::agents::get(self.id()).expect("every setup agent is in data/agents.json")
+    }
+
+    /// Subcommand name (`atlas setup <name>`).
+    fn name(self) -> &'static str {
+        &self.def().setup
+    }
+
+    /// Executable looked up on `PATH`.
+    fn binary(self) -> &'static str {
+        &self.def().bin
+    }
+
     fn title(self) -> &'static str {
-        match self {
-            Agent::Omp => "OMP",
-            Agent::ClaudeCode => "Claude Code",
-            Agent::Codex => "Codex",
-            Agent::OpenCode => "OpenCode",
-        }
+        &self.def().label
     }
 
     /// Where this agent's user-scope config lives, for the scope banner.
@@ -537,4 +536,52 @@ fn refresh_agent(agent: Agent, env: &Env, project_root: Option<&Path>) -> Result
         }
     }
     Ok(())
+}
+
+#[cfg(test)]
+mod registry_tests {
+    use super::*;
+    use clap::Parser;
+
+    #[derive(Parser)]
+    struct Cli {
+        #[command(flatten)]
+        setup: SetupArgs,
+    }
+
+    // The registry (`data/agents.json`) says every built-in agent has hooks installed by `atlas setup <setup>`;
+    // hostd's integrations check, Atlas Desktop's prompt and the crew install all run that exact command. A
+    // built-in added to the registry without a harness here (or a harness without an entry) turns this red.
+    #[test]
+    fn every_built_in_agent_has_a_setup_command_with_check_and_no_harness_is_unlisted() {
+        for def in atlas_core::agents::all() {
+            let cli =
+                Cli::try_parse_from(["atlas", def.setup.as_str(), "--check"]).unwrap_or_else(|e| {
+                    panic!("`atlas setup {} --check` does not parse: {e}", def.setup)
+                });
+            let ok = match cli.setup.harness {
+                Some(Harness::Omp(a)) => (Agent::Omp, a.check),
+                Some(Harness::ClaudeCode(a)) => (Agent::ClaudeCode, a.check),
+                Some(Harness::Codex(a)) => (Agent::Codex, a.check),
+                Some(Harness::OpenCode(a)) => (Agent::OpenCode, a.check),
+                None => panic!("{}: no harness", def.setup),
+            };
+            assert!(ok.1, "{}: --check", def.setup);
+            assert_eq!(
+                ok.0.id(),
+                def.id,
+                "{}: harness maps to its registry entry",
+                def.setup
+            );
+        }
+        let covered: Vec<&str> = Agent::ALL.iter().map(|a| a.id()).collect();
+        let registry: Vec<&str> = atlas_core::agents::all()
+            .iter()
+            .map(|a| a.id.as_str())
+            .collect();
+        assert_eq!(
+            covered, registry,
+            "Agent::ALL is the registry, in its order"
+        );
+    }
 }

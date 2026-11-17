@@ -1,4 +1,5 @@
 /** Pure helpers behind the "Find projects" dialog: grouping, filtering, relink suggestions. */
+import { relativeTime } from "#lib/i18n/fmt.ts";
 
 /** One folder reported by the Rust scan (`discover://event` `found`). */
 export interface Found {
@@ -120,20 +121,9 @@ export function movedCopy(
 	return only(pool.filter((f) => f.name === missing.name));
 }
 
-/** "just now", "3 days ago"… for the last-modified column. */
+/** "now", "3 days ago"… for the last-modified column (unix seconds, empty when unknown). */
 export function ago(seconds: number | null, now = Date.now() / 1000): string {
-	if (seconds == null) return "";
-	const d = Math.max(0, now - seconds);
-	const units: [number, string][] = [
-		[365 * 86400, "y"],
-		[30 * 86400, "mo"],
-		[7 * 86400, "w"],
-		[86400, "d"],
-		[3600, "h"],
-		[60, "min"],
-	];
-	for (const [s, label] of units) if (d >= s) return `${Math.floor(d / s)}${label} ago`;
-	return "just now";
+	return seconds == null ? "" : relativeTime(seconds * 1000, now * 1000);
 }
 
 /** The saved scan preferences. Folders without an atlas.yaml are included until the user turns them off: most people

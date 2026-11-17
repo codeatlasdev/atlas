@@ -150,7 +150,7 @@ async fn rollback(
     {
         bail!("invalid release id: {id}");
     }
-    let run_id = format!("rb-{}", chrono::Utc::now().format("%Y%m%d%H%M%S"));
+    let run_id = format!("rb-{}", atlas_core::time::utc_compact_now());
     let plan = Plan {
         app: &ctx.app,
         target_name: &ctx.name,

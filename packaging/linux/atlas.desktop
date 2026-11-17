@@ -1,0 +1,11 @@
+[Desktop Entry]
+Categories={{categories}}
+{{#if comment}}
+Comment={{comment}}
+{{/if}}
+Exec={{exec}} %F
+Icon={{icon}}
+Name={{name}}
+Terminal=false
+Type=Application
+MimeType=text/plain;text/markdown;text/x-markdown;text/html;text/css;text/csv;text/xml;text/x-c;text/x-c++;text/x-csrc;text/x-chdr;text/x-c++src;text/x-c++hdr;text/x-java;text/x-python;text/x-python3;text/x-rust;text/x-go;text/x-script.python;text/x-shellscript;text/x-sh;text/x-tex;text/x-log;text/x-makefile;text/x-cmake;text/x-diff;text/x-patch;text/x-readme;text/x-sql;text/x-yaml;text/x-toml;text/javascript;text/x-typescript;application/json;application/x-yaml;application/yaml;application/toml;application/xml;application/javascript;application/x-shellscript;application/x-sh;application/x-php;application/sql;application/x-desktop;inode/directory;

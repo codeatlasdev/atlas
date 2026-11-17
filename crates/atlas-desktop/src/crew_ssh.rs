@@ -791,10 +791,10 @@ mod tests {
             std::fs::set_permissions(&p, std::fs::Permissions::from_mode(0o755)).unwrap();
             p
         };
-        // Stands in for the app's executable: talks to the endpoint like `askpass::helper` does (bytes until close).
+        // Stands in for the app's executable: talks to the endpoint like `askpass::helper` does (a 4-byte length, then the password).
         let helper = exec(
             "helper",
-            "#!/bin/sh\nexec perl -e 'use IO::Socket::UNIX; my $s = IO::Socket::UNIX->new(Peer => $ENV{ATLAS_ASKPASS_SOCK}) or exit 1; print while <$s>;'\n",
+            "#!/bin/sh\nexec perl -e 'use IO::Socket::UNIX; my $s = IO::Socket::UNIX->new(Peer => $ENV{ATLAS_ASKPASS_SOCK}) or exit 1; read($s, my $h, 4) == 4 or exit 1; read($s, my $p, unpack(q(N), $h)); print $p;'\n",
         );
         let record = dir.path().join("record");
         let fake = exec(

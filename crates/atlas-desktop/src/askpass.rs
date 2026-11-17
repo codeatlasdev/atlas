@@ -25,13 +25,16 @@ use std::path::{Path, PathBuf};
 use std::time::Duration;
 
 use atlas_core::ipc;
-use tokio::io::AsyncWriteExt as _;
+use tokio::io::{AsyncReadExt as _, AsyncWriteExt as _};
 
 /// Set on the `ssh` child: the endpoint the helper fetches the password from.
 pub const SOCK_ENV: &str = "ATLAS_ASKPASS_SOCK";
 
 /// One login asks for the password at most twice (keyboard-interactive, then password): one more is slack.
 const MAX_SERVES: usize = 3;
+
+/// What the helper accepts as a password (bytes): far more than anyone types, far less than memory.
+const MAX_PASSWORD: usize = 1 << 20;
 
 /// A password that `ssh` can ask for, for as long as this value lives.
 pub struct Askpass {
@@ -61,8 +64,15 @@ impl Askpass {
                 let Ok(mut conn) = listener.accept().await else {
                     return;
                 };
-                let _ = conn.write_all(password.as_bytes()).await;
-                let _ = conn.shutdown().await;
+                // Length first, so the client knows where the password ends without waiting for the server to
+                // close; and the server then waits for the CLIENT to close. A Windows named pipe discards unread
+                // data when the server end disconnects (`DisconnectNamedPipe`), so closing first lost the password.
+                let mut frame = (password.len() as u32).to_be_bytes().to_vec();
+                frame.extend_from_slice(password.as_bytes());
+                let _ = conn.write_all(&frame).await;
+                let _ = conn.flush().await;
+                let _ =
+                    tokio::time::timeout(Duration::from_secs(10), conn.read(&mut [0u8; 1])).await;
             }
         });
         Ok(Self {
@@ -119,9 +129,18 @@ fn helper(sock: Option<OsString>, prompt: Option<String>, out: &mut impl Write) 
 fn fetch(sock: &Path) -> io::Result<String> {
     let mut conn = ipc::connect_sync(sock)?;
     conn.set_read_timeout(Some(Duration::from_secs(10)))?;
-    let mut pw = String::new();
-    conn.read_to_string(&mut pw)?;
-    Ok(pw)
+    let mut len = [0u8; 4];
+    conn.read_exact(&mut len)?;
+    let len = u32::from_be_bytes(len) as usize;
+    if len > MAX_PASSWORD {
+        return Err(io::Error::new(
+            io::ErrorKind::InvalidData,
+            "password too long",
+        ));
+    }
+    let mut pw = vec![0u8; len];
+    conn.read_exact(&mut pw)?;
+    String::from_utf8(pw).map_err(|e| io::Error::new(io::ErrorKind::InvalidData, e))
 }
 
 #[cfg(test)]

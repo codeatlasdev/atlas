@@ -1,0 +1,130 @@
+[
+	{
+		"error": {
+			"detail": "could not connect to ubuntu@203.0.113.7 over SSH: ubuntu@203.0.113.7: Permission denied (publickey).",
+			"hint": null,
+			"kind": "key_refused"
+		},
+		"name": "key refused by the server"
+	},
+	{
+		"error": {
+			"detail": "Received disconnect from 203.0.113.7 port 22:2: Too many authentication failures",
+			"hint": null,
+			"kind": "key_refused"
+		},
+		"name": "too many keys offered"
+	},
+	{
+		"error": {
+			"detail": "bad permissions: ignore key: C:\\\\Users\\\\me\\\\.ssh\\\\id_work",
+			"hint": null,
+			"kind": "key_unusable"
+		},
+		"name": "key file permissions too open (Windows)"
+	},
+	{
+		"error": {
+			"detail": "could not connect to ubuntu@10.0.0.9 over SSH: ssh: connect to host 10.0.0.9 port 22: No route to host",
+			"hint": null,
+			"kind": "unreachable"
+		},
+		"name": "host unreachable"
+	},
+	{
+		"error": {
+			"detail": "ssh: connect to host 127.0.0.1 port 1: Connection refused",
+			"hint": null,
+			"kind": "unreachable"
+		},
+		"name": "port closed"
+	},
+	{
+		"error": {
+			"detail": "ssh: connect to host 203.0.113.7 port 22: Operation timed out",
+			"hint": null,
+			"kind": "timeout"
+		},
+		"name": "timeout"
+	},
+	{
+		"error": {
+			"detail": "ssh: Could not resolve hostname my-server.example: Name or service not known",
+			"hint": null,
+			"kind": "name_not_found"
+		},
+		"name": "name does not resolve"
+	},
+	{
+		"error": {
+			"detail": "Host key verification failed.",
+			"hint": null,
+			"kind": "host_key_changed"
+		},
+		"name": "host key changed"
+	},
+	{
+		"error": {
+			"detail": "sudo on ubuntu@203.0.113.7 asks for a password — grant passwordless sudo to this user, or run it from a terminal: atlas crew install ubuntu@203.0.113.7",
+			"hint": null,
+			"kind": "sudo_password"
+		},
+		"name": "sudo wants a password"
+	},
+	{
+		"error": {
+			"detail": "sudo password rejected — check your password and try again",
+			"hint": null,
+			"kind": "sudo_rejected"
+		},
+		"name": "sudo password wrong"
+	},
+	{
+		"error": {
+			"detail": "caused by: The system cannot find the file specified. (os error 2)",
+			"hint": null,
+			"kind": "ssh_missing"
+		},
+		"name": "ssh not installed (Windows without the OpenSSH Client)"
+	},
+	{
+		"error": {
+			"detail": "writing the service failed: Failed to enable unit: Unit atlas-crew.service is masked",
+			"hint": null,
+			"kind": "other"
+		},
+		"name": "anything else"
+	},
+	{
+		"error": {
+			"detail": "error: writing the service failed: Unit atlas-crew.service is masked",
+			"hint": "run `sudo systemctl unmask atlas-crew.service` on the server, then retry",
+			"kind": "other"
+		},
+		"name": "masked unit with the CLI's hint"
+	},
+	{
+		"error": {
+			"detail": "ubuntu@h: Permission denied (publickey,password).",
+			"hint": null,
+			"kind": "password_refused"
+		},
+		"name": "password refused"
+	},
+	{
+		"error": {
+			"detail": "ubuntu@h: Permission denied (publickey).",
+			"hint": null,
+			"kind": "password_not_allowed"
+		},
+		"name": "server takes only keys"
+	},
+	{
+		"error": {
+			"detail": "/h/.ssh/id_work does not exist",
+			"hint": null,
+			"kind": "no_key"
+		},
+		"name": "picked key file is gone"
+	}
+]

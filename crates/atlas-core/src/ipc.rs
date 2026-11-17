@@ -101,6 +101,8 @@ mod imp {
 
     const ERROR_ACCESS_DENIED: i32 = 5;
     const ERROR_PIPE_BUSY: i32 = 231;
+    const ERROR_BROKEN_PIPE: i32 = 109;
+    const ERROR_PIPE_NOT_CONNECTED: i32 = 233;
 
     /// One end of a connection: the client that dialled or the server instance that accepted.
     pub enum Stream {
@@ -168,7 +170,20 @@ mod imp {
     impl io::Read for &SyncStream {
         fn read(&mut self, buf: &mut [u8]) -> io::Result<usize> {
             self.wait_readable()?;
-            (&self.file).read(buf)
+            // The server closing its end after the client has read everything is how a byte stream ends: Windows
+            // reports it as ERROR_BROKEN_PIPE (109) or ERROR_PIPE_NOT_CONNECTED (233), where Unix reads 0. std maps
+            // the anonymous-pipe 109 to EOF the same way; without this `read_to_string` failed on a complete reply.
+            match (&self.file).read(buf) {
+                Err(e)
+                    if matches!(
+                        e.raw_os_error(),
+                        Some(ERROR_BROKEN_PIPE | ERROR_PIPE_NOT_CONNECTED)
+                    ) =>
+                {
+                    Ok(0)
+                }
+                r => r,
+            }
         }
     }
 
@@ -231,7 +246,10 @@ mod imp {
         fn poll_shutdown(self: Pin<&mut Self>, cx: &mut Context<'_>) -> Poll<io::Result<()>> {
             match self.get_mut() {
                 Stream::Client(c) => Pin::new(c).poll_shutdown(cx),
-                // A server end has no half-close: disconnecting tells the client EOF.
+                // A server end has no half-close: disconnecting tells the client EOF. WARNING: `DisconnectNamedPipe`
+                // DISCARDS whatever the client has not read yet (Win32 documents `FlushFileBuffers` first, which
+                // blocks until the client reads). A server that writes a reply and then shuts down can therefore lose
+                // the reply on Windows: wait for the client to close its end first (see `atlas-desktop`'s askpass).
                 Stream::Server(s) => {
                     let _ = s.disconnect();
                     Pin::new(s).poll_shutdown(cx)
@@ -344,6 +362,40 @@ mod tests {
         let roundabout = d.path().join("..").join(name).join("x.sock");
         assert_eq!(pipe_name(&abs), pipe_name(&roundabout));
         assert_ne!(pipe_name(&abs), pipe_name(&d.path().join("y.sock")));
+    }
+
+    // #517 (askpass on Windows): once the server closes its end after the client has read the reply, the next read is
+    // EOF, not an error (Windows says ERROR_BROKEN_PIPE where Unix says 0). The server waits for the client before it
+    // closes, so no byte is discarded by the close.
+    #[tokio::test]
+    async fn a_sync_client_reads_the_reply_and_then_sees_eof_when_the_server_closes() {
+        use std::io::Read as _;
+        let d = tempfile::tempdir().unwrap();
+        let p = d.path().join("eof.sock");
+        let l = Listener::bind(&p).unwrap();
+        let (read_done, wait_read) = tokio::sync::oneshot::channel::<()>();
+        let server = tokio::spawn(async move {
+            let mut s = l.accept().await.unwrap();
+            s.write_all(b"hello pipe").await.unwrap();
+            s.flush().await.unwrap();
+            wait_read.await.unwrap();
+            drop(s); // the close the client observes
+        });
+        let client = tokio::task::spawn_blocking(move || {
+            let mut c = connect_sync(&p).unwrap();
+            c.set_read_timeout(Some(Duration::from_secs(10))).unwrap();
+            let mut got = [0u8; 10];
+            c.read_exact(&mut got).unwrap();
+            read_done.send(()).unwrap();
+            // Everything arrived; what follows is the server closing: EOF.
+            let mut rest = Vec::new();
+            c.read_to_end(&mut rest).unwrap();
+            (got, rest)
+        });
+        let (got, rest) = client.await.unwrap();
+        server.await.unwrap();
+        assert_eq!(&got, b"hello pipe");
+        assert!(rest.is_empty());
     }
 
     #[tokio::test]

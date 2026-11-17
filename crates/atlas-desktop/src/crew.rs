@@ -12,25 +12,32 @@ use serde::{Deserialize, Serialize};
 use tauri::{AppHandle, Emitter};
 use tokio::io::{AsyncBufReadExt, AsyncWriteExt as _, BufReader};
 
-/// The SSH address the user installed a crew server with (`ubuntu@host`, plus the port when it is not 22).
+use crate::crew_ssh::ConnectError;
+
+/// The SSH address the user installed a crew server with (`ubuntu@host`, plus the port when it is not 22, plus the
+/// private key FILE they picked for it, when they did).
 ///
-/// This is an address, like a `Host` entry in `~/.ssh/config`: never a password, key or any other credential
-/// (the SSH key is the Mac's own, the sudo password goes to the CLI's stdin once and is not kept). The crew
-/// service user in [`CrewServer::host`] cannot `sudo`, and `atlas crew browsers install|status` need an account
-/// that can, so Settings reads it from here instead of asking every time.
+/// This is an address, like a `Host` entry in `~/.ssh/config`: never a password or the contents of a key (the key
+/// is a path to a file of this computer; the account and sudo passwords go to the CLI once and are not kept). The
+/// crew service user in [`CrewServer::host`] cannot `sudo`, and `atlas crew browsers install|status` need an
+/// account that can, so Settings reads it from here instead of asking every time.
 #[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Eq)]
 pub struct AdminAddress {
     pub target: String,
     /// Absent for the default port 22.
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub port: Option<u16>,
+    /// The private key file picked with "Choose another key" (`ssh -i`); absent when ssh finds the key by itself.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub identity: Option<String>,
 }
 
 impl AdminAddress {
-    /// The port 22 and "no port" are the same address: keep one spelling in the file.
+    /// The port 22 and "no port" are the same address, and an empty key path is no key: keep one spelling in the file.
     fn normalized(self) -> Self {
         Self {
             port: self.port.filter(|&p| p != 22),
+            identity: self.identity.filter(|i| !i.is_empty()),
             ..self
         }
     }
@@ -47,6 +54,10 @@ pub struct CrewServer {
     /// (a port from `~/.ssh/config` still applies to those).
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub port: Option<u16>,
+    /// The picked private key file the server is reached with (every ssh call of the desktop and of the relay);
+    /// absent when ssh finds the key by itself. Follows the admin address, like the port.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub identity: Option<String>,
     /// The admin address the server was installed with. Absent for servers added before this field existed
     /// (and for servers added by hand, until the user types one in Settings).
     #[serde(default, skip_serializing_if = "Option::is_none")]
@@ -93,10 +104,12 @@ fn with_server(
     let admin = admin.map(AdminAddress::normalized);
     // The crew user is reached over the sshd the install ran against: that port is the server's.
     let port = admin.as_ref().and_then(|a| a.port);
+    let identity = admin.as_ref().and_then(|a| a.identity.clone());
     if let Some(e) = hosts.iter_mut().find(|h| h.host == host) {
         if admin.is_some() {
             e.admin = admin;
             e.port = port;
+            e.identity = identity;
         }
         return (e.clone(), false);
     }
@@ -104,6 +117,7 @@ fn with_server(
         host: host.to_string(),
         name,
         port,
+        identity,
         admin,
     };
     hosts.push(entry.clone());
@@ -111,15 +125,16 @@ fn with_server(
 }
 
 /// How to ssh to the crew server `host` (a registry host, or an `ssh:`-prefixed hostd key): its
-/// registered port, or the default. The one place the desktop turns a server into an ssh address.
+/// registered port and picked key, or the defaults. The one place the desktop turns a server into an ssh address.
 pub fn server_ssh(host: &str) -> atlas_core::ssh::SshTarget {
     server_ssh_in(&load(), host)
 }
 
 fn server_ssh_in(hosts: &[CrewServer], host: &str) -> atlas_core::ssh::SshTarget {
     let host = host.strip_prefix("ssh:").unwrap_or(host);
-    let port = hosts.iter().find(|h| h.host == host).and_then(|h| h.port);
-    atlas_core::ssh::SshTarget::new(host, port)
+    let entry = hosts.iter().find(|h| h.host == host);
+    atlas_core::ssh::SshTarget::new(host, entry.and_then(|h| h.port))
+        .with_identity(entry.and_then(|h| h.identity.clone()))
 }
 
 /// List all registered crew servers.
@@ -171,6 +186,7 @@ fn set_admin(
         .ok_or_else(|| format!("{host} is not a registered crew server"))?;
     e.admin = admin.map(AdminAddress::normalized);
     e.port = e.admin.as_ref().and_then(|a| a.port);
+    e.identity = e.admin.as_ref().and_then(|a| a.identity.clone());
     Ok(())
 }
 
@@ -189,13 +205,15 @@ pub struct CrewInstallLine {
     pub is_err: bool,
 }
 
-/// argv of `atlas crew install <target> --yes [--sudo-password-stdin] [--port N] [--browsers]`. A password is read
-/// from stdin by the CLI, never from argv; port 22 is the CLI's default and is left out.
+/// argv of `atlas crew install <target> --yes [--sudo-password-stdin] [--port N] [--identity KEY] [--browsers]`. A
+/// password is read from stdin by the CLI, never from argv; port 22 is the CLI's default and is left out; the
+/// identity is the PATH of a private key file the user picked, never its contents.
 fn install_argv(
     target: &str,
     port: Option<u16>,
     with_password: bool,
     browsers: bool,
+    identity: Option<&str>,
 ) -> Vec<String> {
     let mut a: Vec<String> = ["crew", "install", target, "--yes"]
         .map(String::from)
@@ -204,25 +222,39 @@ fn install_argv(
         a.push("--sudo-password-stdin".into());
     }
     push_port(&mut a, port);
+    push_identity(&mut a, identity);
     if browsers {
         a.push("--browsers".into());
     }
     a
 }
 
-/// argv of `atlas crew browsers <verb> <target> [--sudo-password-stdin] [--port N]`.
-fn browsers_argv(verb: &str, target: &str, port: Option<u16>, with_password: bool) -> Vec<String> {
+/// argv of `atlas crew browsers <verb> <target> [--sudo-password-stdin] [--port N] [--identity KEY]`.
+fn browsers_argv(
+    verb: &str,
+    target: &str,
+    port: Option<u16>,
+    with_password: bool,
+    identity: Option<&str>,
+) -> Vec<String> {
     let mut a: Vec<String> = ["crew", "browsers", verb, target].map(String::from).into();
     if with_password {
         a.push("--sudo-password-stdin".into());
     }
     push_port(&mut a, port);
+    push_identity(&mut a, identity);
     a
 }
 
 fn push_port(a: &mut Vec<String>, port: Option<u16>) {
     if let Some(p) = port.filter(|&p| p != 22) {
         a.extend(["--port".into(), p.to_string()]);
+    }
+}
+
+fn push_identity(a: &mut Vec<String>, identity: Option<&str>) {
+    if let Some(i) = identity.filter(|i| !i.is_empty()) {
+        a.extend(["--identity".into(), i.to_string()]);
     }
 }
 
@@ -241,23 +273,24 @@ async fn atlas_command(argv: &[String], stdin: Stdio) -> Result<tokio::process::
 }
 
 /// Run `atlas <argv>`, streaming each output line as `crew://install-line`. When `sudo_password` is given it is
-/// piped to the child's stdin (the argv carries `--sudo-password-stdin`), never placed on argv. Returns the last
-/// output line as the error on failure.
+/// piped to the child's stdin (the argv carries `--sudo-password-stdin`), never placed on argv. On failure the
+/// error says what kind of failure it was, its last line, and the CLI's own `hint:` when it wrote one.
 async fn run_streamed(
     app: AppHandle,
     argv: Vec<String>,
     sudo_password: Option<String>,
     what: &str,
-) -> Result<(), String> {
+) -> Result<(), ConnectError> {
     let stdin = if sudo_password.is_some() {
         Stdio::piped()
     } else {
         Stdio::null()
     };
     let mut child = atlas_command(&argv, stdin)
-        .await?
+        .await
+        .map_err(ConnectError::other)?
         .spawn()
-        .map_err(|e| format!("cannot run atlas: {e}"))?;
+        .map_err(|e| ConnectError::other(format!("cannot run atlas: {e}")))?;
     // Pipe the sudo password to stdin, then drop it, closing the pipe so the child can proceed.
     if let Some(pw) = sudo_password
         && let Some(mut stdin) = child.stdin.take()
@@ -266,27 +299,34 @@ async fn run_streamed(
     }
     let stdout = child.stdout.take().expect("piped");
     let stderr = child.stderr.take().expect("piped");
-    let (last_out, last_err) = tokio::join!(
+    let (out_lines, err_lines) = tokio::join!(
         pump_install(stdout, app.clone(), false),
         pump_install(stderr, app.clone(), true),
     );
-    let st = child.wait().await.map_err(|e| e.to_string())?;
+    let st = child
+        .wait()
+        .await
+        .map_err(|e| ConnectError::other(e.to_string()))?;
     if st.success() {
-        Ok(())
-    } else {
-        let msg = [last_err, last_out]
-            .into_iter()
-            .find(|s| !s.is_empty())
-            .unwrap_or_else(|| format!("{what} failed ({st})"));
-        Err(msg)
+        return Ok(());
     }
+    let lines = if err_lines.is_empty() {
+        out_lines
+    } else {
+        err_lines
+    };
+    if lines.is_empty() {
+        return Err(ConnectError::other(format!("{what} failed ({st})")));
+    }
+    Err(ConnectError::from_lines(&lines))
 }
 
 /// Run `atlas crew install <target> --yes`, streaming each output line as
 /// `crew://install-line` to the frontend. Returns the error message on failure.
 /// When `sudo_password` is provided the install runs with `--sudo-password-stdin`;
 /// the password is piped to the child's stdin and never placed on argv. `browsers` adds
-/// `--browsers` (Playwright's chromium and webkit for the `capture` tool).
+/// `--browsers` (Playwright's chromium and webkit for the `capture` tool); `identity` is the private key file
+/// the user picked (`--identity`), absent when ssh finds the key by itself.
 #[tauri::command]
 pub async fn crew_server_install(
     app: AppHandle,
@@ -294,12 +334,14 @@ pub async fn crew_server_install(
     port: Option<u16>,
     sudo_password: Option<String>,
     browsers: Option<bool>,
-) -> Result<(), String> {
+    identity: Option<String>,
+) -> Result<(), ConnectError> {
     let argv = install_argv(
         &target,
         port,
         sudo_password.is_some(),
         browsers.unwrap_or(false),
+        identity.as_deref(),
     );
     run_streamed(app, argv, sudo_password, "atlas crew install").await
 }
@@ -351,8 +393,15 @@ pub async fn crew_browsers_status(
     target: String,
     port: Option<u16>,
     sudo_password: Option<String>,
+    identity: Option<String>,
 ) -> Result<CrewBrowsersStatus, String> {
-    let argv = browsers_argv("status", &target, port, sudo_password.is_some());
+    let argv = browsers_argv(
+        "status",
+        &target,
+        port,
+        sudo_password.is_some(),
+        identity.as_deref(),
+    );
     let stdin = if sudo_password.is_some() {
         Stdio::piped()
     } else {
@@ -390,22 +439,38 @@ pub async fn crew_browsers_install(
     target: String,
     port: Option<u16>,
     sudo_password: Option<String>,
+    identity: Option<String>,
 ) -> Result<(), String> {
-    let argv = browsers_argv("install", &target, port, sudo_password.is_some());
-    run_streamed(app, argv, sudo_password, "atlas crew browsers install").await
+    let argv = browsers_argv(
+        "install",
+        &target,
+        port,
+        sudo_password.is_some(),
+        identity.as_deref(),
+    );
+    run_streamed(app, argv, sudo_password, "atlas crew browsers install")
+        .await
+        .map_err(|e| e.detail)
 }
 
+/// Lines of a failed run kept to read its error from: the error and its `caused by:` chain are at the end.
+const KEPT_LINES: usize = 80;
+
+/// Emit each line of `rd` as `crew://install-line`; the last [`KEPT_LINES`] non-empty ones are returned.
 async fn pump_install<R: tokio::io::AsyncRead + Unpin>(
     rd: R,
     app: AppHandle,
     is_err: bool,
-) -> String {
+) -> Vec<String> {
     let mut lines = BufReader::new(rd).lines();
-    let mut last = String::new();
+    let mut kept = std::collections::VecDeque::new();
     while let Ok(Some(l)) = lines.next_line().await {
         let clean = atlas_tui::runtime::text::strip_ansi(&l);
         if !clean.trim().is_empty() {
-            last = clean.clone();
+            if kept.len() == KEPT_LINES {
+                kept.pop_front();
+            }
+            kept.push_back(clean.clone());
         }
         let _ = app.emit(
             "crew://install-line",
@@ -415,17 +480,10 @@ async fn pump_install<R: tokio::io::AsyncRead + Unpin>(
             },
         );
     }
-    last
+    kept.into()
 }
 
 // ─── SSH key helpers ─────────────────────────────────────────────────────────
-
-/// Return the path of the SSH public key `ssh` would use, or null if none exists. Asks `ssh -G` (the
-/// `IdentityFile`s of ~/.ssh/config and the default names), so a key named anything is found.
-#[tauri::command]
-pub fn ssh_key_find() -> Option<String> {
-    atlas_core::ssh::find_default_public_key().map(|p| p.to_string_lossy().into_owned())
-}
 
 /// The servers in the user's `~/.ssh/config`, each resolved by `ssh -G` (effective user, host name, port, key), for
 /// the picker of "Add a crew server". Never an error: no file, an unreadable one or no `ssh` is an empty list and the
@@ -438,167 +496,6 @@ pub async fn ssh_hosts_list() -> Vec<atlas_core::ssh_config::SshHost> {
     tokio::task::spawn_blocking(move || atlas_core::ssh_config::list_hosts(&home))
         .await
         .unwrap_or_default()
-}
-
-/// Generate an ed25519 key pair at `~/.ssh/id_ed25519`.
-/// Fails if the private key file already exists.
-#[tauri::command]
-pub async fn ssh_keygen() -> Result<(), String> {
-    let home = dirs::home_dir().ok_or("no home directory")?;
-    let key = home.join(".ssh/id_ed25519");
-    if key.exists() {
-        return Err("SSH key already exists at ~/.ssh/id_ed25519".into());
-    }
-    let ssh_dir = home.join(".ssh");
-    std::fs::create_dir_all(&ssh_dir).map_err(|e| e.to_string())?;
-    #[cfg(unix)]
-    {
-        use std::os::unix::fs::PermissionsExt as _;
-        std::fs::set_permissions(&ssh_dir, std::fs::Permissions::from_mode(0o700))
-            .map_err(|e| e.to_string())?;
-    }
-    let out = tokio::process::Command::new("ssh-keygen")
-        .no_window()
-        .args(["-t", "ed25519", "-N", "", "-f"])
-        .arg(&key)
-        .args(["-C", "atlas"])
-        .stdin(Stdio::null())
-        .stdout(Stdio::null())
-        .stderr(Stdio::piped())
-        .output()
-        .await
-        .map_err(|e| format!("ssh-keygen: {e}"))?;
-    if out.status.success() {
-        Ok(())
-    } else {
-        Err(String::from_utf8_lossy(&out.stderr).trim().to_string())
-    }
-}
-
-/// Authorize this Mac's SSH public key on `target` using password-based SSH
-/// authentication. Uses SSH_ASKPASS + SSH_ASKPASS_REQUIRE=force so the password
-/// is never on argv; wipes it from memory after use.
-#[tauri::command]
-pub async fn ssh_authorize_key(
-    target: String,
-    port: Option<u16>,
-    password: String,
-) -> Result<(), String> {
-    let st = atlas_core::ssh::SshTarget::new(target.clone(), port);
-    st.valid()?;
-    let pub_key_path = atlas_core::ssh::find_public_key(&st)
-        .ok_or("no SSH public key found; generate one first")?;
-    let pubkey =
-        std::fs::read_to_string(&pub_key_path).map_err(|e| format!("reading public key: {e}"))?;
-    let pubkey = pubkey.trim().to_string();
-
-    let pubkey_line = format!("{pubkey}\n");
-
-    // Remote command: create ~/.ssh and append the public key.
-    // Uses stdin for the key content (avoids quoting issues in the shell command).
-    let remote_cmd = "mkdir -p ~/.ssh && chmod 700 ~/.ssh && \
-         cat >> ~/.ssh/authorized_keys && \
-         chmod 600 ~/.ssh/authorized_keys";
-
-    let mut ssh_args: Vec<String> = vec![
-        "-o".into(),
-        "PasswordAuthentication=yes".into(),
-        "-o".into(),
-        "PubkeyAuthentication=no".into(),
-        "-o".into(),
-        "StrictHostKeyChecking=accept-new".into(),
-        "-o".into(),
-        "NumberOfPasswordPrompts=1".into(),
-    ];
-    if let Some(p) = port.filter(|&p| p != 22) {
-        ssh_args.extend(["-p".into(), p.to_string()]);
-    }
-    ssh_args.push(target);
-    ssh_args.push(remote_cmd.into());
-
-    let out = run_ssh_with_password(
-        "ssh",
-        &ssh_args,
-        &std::env::temp_dir(),
-        &password,
-        &pubkey_line,
-    )
-    .await?;
-
-    if out.status.success() {
-        Ok(())
-    } else {
-        let err = String::from_utf8_lossy(&out.stderr).trim().to_string();
-        if err.contains("Permission denied") || err.contains("Authentication failed") {
-            Err("Wrong password — check and try again.".into())
-        } else if err.is_empty() {
-            Err(format!("ssh exited with {}", out.status))
-        } else {
-            Err(err)
-        }
-    }
-}
-
-/// Runs `program args` with `password` served through a temporary `SSH_ASKPASS` helper in `dir`
-/// and `stdin_data` on its stdin. The password is never on argv.
-async fn run_ssh_with_password(
-    program: &str,
-    args: &[String],
-    dir: &std::path::Path,
-    password: &str,
-    stdin_data: &str,
-) -> Result<std::process::Output, String> {
-    // Single-quote-escape the password for embedding in the shell script.
-    let escaped = password.replace('\'', "'\\''");
-    // The guard exists before the file does: whichever way this function returns (`?`, panic,
-    // cancelled future), the helper holding the password is deleted.
-    let askpass = AskpassFile(dir.join(format!("atlas-askpass-{}.sh", std::process::id())));
-    askpass.write(&format!("#!/bin/sh\nprintf '%s' '{escaped}'\n"))?;
-
-    let mut child = tokio::process::Command::new(program)
-        .no_window()
-        .args(args)
-        .env("SSH_ASKPASS", &askpass.0)
-        .env("SSH_ASKPASS_REQUIRE", "force")
-        .stdin(Stdio::piped())
-        .stdout(Stdio::null())
-        .stderr(Stdio::piped())
-        .spawn()
-        .map_err(|e| format!("ssh: {e}"))?;
-
-    if let Some(mut stdin) = child.stdin.take() {
-        let _ = stdin.write_all(stdin_data.as_bytes()).await;
-    }
-
-    child.wait_with_output().await.map_err(|e| e.to_string())
-}
-
-/// The temporary `SSH_ASKPASS` helper. Deleted when dropped, on every path.
-struct AskpassFile(PathBuf);
-
-impl AskpassFile {
-    /// Creates the file owner-only (0700 from the first byte on unix) and writes `script` to it.
-    fn write(&self, script: &str) -> Result<(), String> {
-        use std::io::Write as _;
-        // A leftover from a crashed run (any mode) is replaced, never reused.
-        let _ = std::fs::remove_file(&self.0);
-        let mut opts = std::fs::OpenOptions::new();
-        opts.write(true).create_new(true);
-        #[cfg(unix)]
-        {
-            use std::os::unix::fs::OpenOptionsExt as _;
-            opts.mode(0o700);
-        }
-        opts.open(&self.0)
-            .and_then(|mut f| f.write_all(script.as_bytes()))
-            .map_err(|e| e.to_string())
-    }
-}
-
-impl Drop for AskpassFile {
-    fn drop(&mut self) {
-        let _ = std::fs::remove_file(&self.0);
-    }
 }
 
 // ─── per-agent ship helpers ───────────────────────────────────────────────────
@@ -845,6 +742,7 @@ mod tests {
         Some(AdminAddress {
             target: target.into(),
             port,
+            identity: None,
         })
     }
 
@@ -989,7 +887,7 @@ mod tests {
             admin("ubuntu@srv", Some(2222)),
         );
         // The install command takes the password as an argument of its own; the registry call never sees it.
-        let argv = install_argv("ubuntu@srv", Some(2222), true, true);
+        let argv = install_argv("ubuntu@srv", Some(2222), true, true, None);
         assert!(argv.iter().all(|a| !a.contains(secret)));
         save_to(&file, &hosts).unwrap();
         let text = std::fs::read_to_string(&file).unwrap();
@@ -1015,15 +913,15 @@ mod tests {
     #[test]
     fn install_passes_browsers_only_when_the_user_opted_in() {
         assert_eq!(
-            install_argv("ubuntu@srv", None, false, false),
+            install_argv("ubuntu@srv", None, false, false, None),
             argv(&["crew", "install", "ubuntu@srv", "--yes"])
         );
         assert_eq!(
-            install_argv("ubuntu@srv", Some(22), false, true),
+            install_argv("ubuntu@srv", Some(22), false, true, None),
             argv(&["crew", "install", "ubuntu@srv", "--yes", "--browsers"])
         );
         assert_eq!(
-            install_argv("ubuntu@srv", Some(2222), true, true),
+            install_argv("ubuntu@srv", Some(2222), true, true, None),
             argv(&[
                 "crew",
                 "install",
@@ -1040,11 +938,11 @@ mod tests {
     #[test]
     fn browsers_commands_target_the_admin_ssh_address_with_port_and_password_flags() {
         assert_eq!(
-            browsers_argv("status", "ubuntu@srv", None, false),
+            browsers_argv("status", "ubuntu@srv", None, false, None),
             argv(&["crew", "browsers", "status", "ubuntu@srv"])
         );
         assert_eq!(
-            browsers_argv("install", "ubuntu@srv", Some(2222), true),
+            browsers_argv("install", "ubuntu@srv", Some(2222), true, None),
             argv(&[
                 "crew",
                 "browsers",
@@ -1056,7 +954,7 @@ mod tests {
             ])
         );
         // The password is never an argument.
-        let a = browsers_argv("install", "ubuntu@srv", None, true);
+        let a = browsers_argv("install", "ubuntu@srv", None, true, None);
         assert!(a.iter().all(|s| !s.contains("secret")));
     }
 
@@ -1161,15 +1059,18 @@ mod tests {
                 host: "atlas-bot@server".into(),
                 name: "My Server".into(),
                 port: None,
+                identity: None,
                 admin: None,
             },
             CrewServer {
                 host: "atlas-bot@192.168.1.5".into(),
                 name: "Local VM".into(),
                 port: Some(2222),
+                identity: Some("/home/me/.ssh/id_work".into()),
                 admin: Some(AdminAddress {
                     target: "ubuntu@192.168.1.5".into(),
                     port: Some(2222),
+                    identity: Some("/home/me/.ssh/id_work".into()),
                 }),
             },
         ]);
@@ -1300,6 +1201,7 @@ mod tests {
             host: "atlas-crew@srv".into(),
             name: "srv".into(),
             port: Some(2222),
+            identity: None,
             admin: None,
         }];
         let t = server_ssh_in(&hosts, "ssh:atlas-crew@srv");
@@ -1370,84 +1272,82 @@ mod tests {
         assert_eq!(mode, 0o600);
     }
 
-    fn askpass_files(dir: &std::path::Path) -> Vec<String> {
-        std::fs::read_dir(dir)
-            .unwrap()
-            .map(|e| e.unwrap().file_name().to_string_lossy().into_owned())
-            .filter(|n| n.starts_with("atlas-askpass-"))
-            .collect()
-    }
-
-    // Crew review P0, PR #106 comment 6874910355: the SSH bootstrap wrote the account password to
-    // $TMPDIR/atlas-askpass-<pid>.sh and removed it only after ssh finished; a failed spawn (ssh not
-    // installed or not on PATH) returned early and left the password on disk.
-    #[tokio::test]
-    async fn a_failed_ssh_spawn_leaves_no_password_file_behind() {
-        let dir = tempfile::tempdir().unwrap();
-        let err = run_ssh_with_password(
-            "atlas-no-such-ssh-binary",
-            &[],
-            dir.path(),
-            "s3cret",
-            "ssh-ed25519 AAAA key\n",
-        )
-        .await
-        .unwrap_err();
-        assert!(err.starts_with("ssh:"), "{err}");
-        assert_eq!(askpass_files(dir.path()), Vec::<String>::new());
-    }
-
-    // Same class: the happy path and a failing ssh must also clean up, and the helper must hand the
-    // password to ssh (including a single quote) without it ever being on argv.
-    #[cfg(unix)]
-    #[tokio::test]
-    async fn the_helper_serves_the_password_and_is_gone_after_ssh_exits() {
-        let dir = tempfile::tempdir().unwrap();
-        // A fake "ssh": runs the askpass helper like ssh does and fails when it prints something else.
-        let fake = dir.path().join("fake-ssh");
-        std::fs::write(
-            &fake,
-            "#!/bin/sh\n[ \"$($SSH_ASKPASS)\" = \"pa'ss\" ] || { echo 'Permission denied' >&2; exit 255; }\n",
-        )
-        .unwrap();
-        use std::os::unix::fs::PermissionsExt as _;
-        std::fs::set_permissions(&fake, std::fs::Permissions::from_mode(0o755)).unwrap();
-        let ok = run_ssh_with_password(fake.to_str().unwrap(), &[], dir.path(), "pa'ss", "k\n")
-            .await
-            .unwrap();
+    // #517: the key picked in "Add a crew server" is passed to the CLI by PATH, for the install and for the
+    // browsers commands, and an empty path means "no key picked".
+    #[test]
+    fn a_picked_key_reaches_the_cli_by_path_and_an_empty_one_is_no_key() {
+        let k = Some(r"C:\Users\me\.ssh\id work");
+        let i = install_argv("ubuntu@srv", None, true, false, k);
+        let p = i.iter().position(|a| a == "--identity").unwrap();
+        assert_eq!(i[p + 1], r"C:\Users\me\.ssh\id work");
+        let b = browsers_argv("status", "ubuntu@srv", Some(2222), false, k);
         assert!(
-            ok.status.success(),
-            "{}",
-            String::from_utf8_lossy(&ok.stderr)
+            b.windows(2)
+                .any(|w| w[0] == "--identity" && w[1] == r"C:\Users\me\.ssh\id work")
         );
-        assert_eq!(askpass_files(dir.path()), Vec::<String>::new());
-        let bad = run_ssh_with_password(fake.to_str().unwrap(), &[], dir.path(), "nope", "k\n")
-            .await
-            .unwrap();
-        assert!(!bad.status.success());
-        assert_eq!(askpass_files(dir.path()), Vec::<String>::new());
+        for none in [None, Some("")] {
+            assert!(
+                !install_argv("ubuntu@srv", None, false, false, none)
+                    .contains(&"--identity".to_string())
+            );
+            assert!(
+                !browsers_argv("install", "ubuntu@srv", None, false, none)
+                    .contains(&"--identity".to_string())
+            );
+        }
     }
 
-    // The helper holds the password: it must never exist with looser permissions than 0700, not
-    // even between the write and the chmod.
-    #[cfg(unix)]
-    #[tokio::test]
-    async fn the_helper_is_never_readable_by_others() {
+    // #517: a server installed with a picked key keeps it: the registry holds it next to the port, and every ssh
+    // address built from the registry (the tunnel, check, install of an engine, sign-in) carries `-i`; the
+    // reconnect after a restart would otherwise offer the wrong key and fail. A server without one is unchanged.
+    #[test]
+    fn a_picked_key_is_kept_with_the_server_and_reaches_every_ssh_call() {
+        let key = "/home/me/.ssh/id_work";
+        let mut hosts = vec![];
+        let picked = Some(AdminAddress {
+            target: "ubuntu@srv".into(),
+            port: Some(2222),
+            identity: Some(key.into()),
+        });
+        with_server(&mut hosts, "atlas-crew@srv", "srv".into(), picked);
+        with_server(
+            &mut hosts,
+            "atlas-crew@other",
+            "other".into(),
+            admin("ubuntu@other", None),
+        );
+
+        let t = server_ssh_in(&hosts, "ssh:atlas-crew@srv");
+        assert_eq!(t.identity.as_deref(), Some(std::path::Path::new(key)));
+        for a in [
+            t.terminal_argv("codex"),
+            t.exec_argv("true"),
+            t.tunnel_argv("/a:/b"),
+        ] {
+            assert!(a.windows(2).any(|w| w[0] == "-i" && w[1] == key), "{a:?}");
+        }
+        assert_eq!(server_ssh_in(&hosts, "ssh:atlas-crew@other").identity, None);
+
+        // The file: the key is there for the first server, absent for the second, and reads back the same.
         let dir = tempfile::tempdir().unwrap();
-        let fake = dir.path().join("fake-ssh");
-        // ssh's stdout is discarded by the real code, so the mode goes to stderr. GNU `stat -c %a`
-        // first: on Linux `stat -f` is the *filesystem* status and succeeds with the wrong output
-        // (Linux CI); BSD/macOS `stat` rejects `-c` and falls back to `-f %Lp`.
-        std::fs::write(
-            &fake,
-            "#!/bin/sh\n(stat -c %a \"$SSH_ASKPASS\" 2>/dev/null || stat -f %Lp \"$SSH_ASKPASS\") >&2\n",
-        )
-        .unwrap();
-        use std::os::unix::fs::PermissionsExt as _;
-        std::fs::set_permissions(&fake, std::fs::Permissions::from_mode(0o755)).unwrap();
-        let out = run_ssh_with_password(fake.to_str().unwrap(), &[], dir.path(), "x", "k\n")
-            .await
-            .unwrap();
-        assert_eq!(String::from_utf8_lossy(&out.stderr).trim(), "700");
+        let file = dir.path().join("crew-servers.json");
+        save_to(&file, &hosts).unwrap();
+        let v: serde_json::Value =
+            serde_json::from_str(&std::fs::read_to_string(&file).unwrap()).unwrap();
+        assert_eq!(v[0]["identity"], key);
+        assert_eq!(v[0]["admin"]["identity"], key);
+        assert!(v[1].get("identity").is_none() && v[1]["admin"].get("identity").is_none());
+        assert_eq!(load_from(&file), hosts);
+
+        // Editing the admin address in Settings keeps or drops the key with it, and an empty path is no key.
+        set_admin(&mut hosts, "atlas-crew@srv", admin("ubuntu@srv", None)).unwrap();
+        assert_eq!(hosts[0].identity, None);
+        let blank = Some(AdminAddress {
+            target: "ubuntu@srv".into(),
+            port: None,
+            identity: Some(String::new()),
+        });
+        set_admin(&mut hosts, "atlas-crew@srv", blank).unwrap();
+        assert_eq!(hosts[0].identity, None);
     }
 }

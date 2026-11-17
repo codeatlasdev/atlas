@@ -172,6 +172,9 @@ impl Net {
     /// the list may only remove offers, so not knowing it must never stop an update.
     fn yanked(&self, repo: &str) -> YankList {
         let mut c = self.curl();
+        // A missing list (404) is an answer, not a flake: no retries, or every update check waits 3 s for it
+        // (`base_curl` retries every error three times, a second apart). The later option wins.
+        c.args(["--retry", "0"]);
         c.arg(format!(
             "https://raw.githubusercontent.com/{repo}/main/{}",
             yanked::PATH
@@ -976,6 +979,9 @@ case "$last" in
     have=0; [ $resume = 1 ] && [ -f "$out" ] && have=$(wc -c < "$out" | tr -d ' ')
     if [ "$have" -gt 0 ]; then tail -c +$((have + 1)) "$d/payload" >> "$out"; else cp "$d/payload" "$out"; fi ;;
   */data/yanked.json)
+    # Never retried: curl would repeat a 404 three times, a second apart, in every update check.
+    retry=; prev=; for a; do [ "$prev" = --retry ] && retry=$a; prev=$a; done
+    [ "$retry" = 0 ] || {{ echo "stub curl: the yank list must not be retried (--retry $retry)" >&2; exit 2; }}
     [ -f "$d/yanked" ] || {{ echo 'curl: (22) The requested URL returned error: 404' >&2; exit 22; }}
     cat "$d/yanked" ;;
   */CHANGELOG.md)

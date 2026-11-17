@@ -24,30 +24,35 @@
 	const now = $derived(steps.find((s) => s.phase === (failed ?? active)));
 </script>
 
-<div class="install-checklist">
-	<div class="rail">
-		{#each steps as s (s.phase)}
+<div class="install-checklist" data-testid="install-rail">
+	<ol class="stepper" aria-label="Install progress">
+		{#each steps as s, i (s.phase)}
 			{@const isDone = done.has(s.phase)}
 			{@const isActive = active === s.phase && failed !== s.phase}
 			{@const isFailed = failed === s.phase}
-			<div class="checklist-row" class:done={isDone} class:active={isActive} class:failed={isFailed}>
-				<span class="checklist-icon" aria-hidden="true">
-					{#if isDone}
-						<Check size={13} />
-					{:else if isFailed}
-						<span class="fail-dot"></span>
-					{:else if isActive}
-						<span class="spin-dot"></span>
-					{:else}
-						<span class="idle-dot"></span>
-					{/if}
+			<li
+				class="checklist-row"
+				class:done={isDone}
+				class:active={isActive}
+				class:failed={isFailed}
+				aria-current={isActive ? "step" : undefined}
+				title={s.label}
+			>
+				<span class="dot" aria-hidden="true">
+					{#if isDone}<Check size={11} />{:else if isFailed}!{:else}{i + 1}{/if}
 				</span>
-				<span class="checklist-label">{s.label}</span>
-			</div>
+				<span class="sr-only">{s.label}</span>
+			</li>
 		{/each}
-	</div>
-	<p class="rail-detail" class:bad={failed !== null}>
-		{now ? now.detail : "About two minutes. Nothing on the server changes until its check passes."}
+	</ol>
+	<p class="now">
+		{#if now}
+			<b class:bad={failed !== null}>{now.label}</b>
+			<span>{now.detail}</span>
+		{:else}
+			<b>Ready when you are</b>
+			<span>About two minutes. Nothing on the server changes until its check passes.</span>
+		{/if}
 	</p>
 </div>
 
@@ -59,70 +64,110 @@
 		width: 100%;
 	}
 
-	.rail {
-		display: grid;
-		grid-template-columns: 1fr 1fr;
-		gap: 6px 20px;
+	/* One line, in the real install order: a dot per phase, joined by a rail. */
+	.stepper {
+		display: flex;
+		align-items: center;
+		list-style: none;
+		margin: 0;
+		padding: 0;
 	}
 
 	.checklist-row {
 		display: flex;
 		align-items: center;
-		gap: 9px;
-		font-size: 13.5px;
+		flex: 1;
 		color: var(--ca-text-secondary);
-		transition: color 250ms;
 	}
 
-	.checklist-row.done {
-		color: var(--ob-ok, var(--ca-semantic-success));
+	.checklist-row:last-child {
+		flex: 0;
 	}
 
-	.checklist-row.active {
-		color: var(--ob-accent, var(--ca-accent));
-		font-weight: 600;
+	.checklist-row::after {
+		content: "";
+		flex: 1;
+		height: 2px;
+		margin: 0 6px;
+		background: var(--ob-line-idle, var(--ca-border-subtle));
+		transition: background 300ms;
 	}
 
-	.checklist-row.failed {
-		color: var(--ob-danger, var(--ca-danger));
-		font-weight: 600;
+	.checklist-row:last-child::after {
+		display: none;
 	}
 
-	.checklist-icon {
+	.checklist-row.done::after {
+		background: var(--ob-ok, var(--ca-semantic-success));
+	}
+
+	.dot {
 		flex-shrink: 0;
-		width: 18px;
-		height: 18px;
+		width: 24px;
+		height: 24px;
+		box-sizing: border-box;
+		border-radius: 50%;
 		display: flex;
 		align-items: center;
 		justify-content: center;
+		font-size: 11px;
+		font-weight: 600;
+		border: 2px solid var(--ob-line-idle, var(--ca-border-subtle));
+		transition:
+			background 300ms,
+			border-color 300ms,
+			color 300ms;
 	}
 
-	.idle-dot,
-	.fail-dot {
-		display: inline-block;
-		width: 8px;
-		height: 8px;
-		border-radius: 50%;
+	.done .dot {
+		background: var(--ob-ok, var(--ca-semantic-success));
+		border-color: var(--ob-ok, var(--ca-semantic-success));
+		color: var(--ca-surface-base);
 	}
 
-	.idle-dot {
-		background: var(--ca-text-secondary);
-		opacity: 0.45;
+	.active .dot {
+		border-color: var(--ob-accent, var(--ca-accent));
+		color: var(--ob-accent, var(--ca-accent));
+		animation: ob-beat 1100ms ease-in-out infinite;
 	}
 
-	.fail-dot {
+	.failed .dot {
 		background: var(--ob-danger, var(--ca-danger));
+		border-color: var(--ob-danger, var(--ca-danger));
+		color: var(--ca-surface-base);
 	}
 
-	.rail-detail {
+	@keyframes ob-beat {
+		50% {
+			transform: scale(1.18);
+		}
+	}
+
+	.now {
+		display: flex;
+		flex-direction: column;
+		gap: 2px;
 		margin: 0;
-		min-height: 2.6em;
+		min-height: 2.9em;
 		font-size: 12.5px;
 		line-height: 1.5;
 		color: var(--ca-text-secondary);
 	}
 
-	.rail-detail.bad {
+	.now b {
+		font-size: 14px;
+		color: var(--ob-accent, var(--ca-accent));
+	}
+
+	.now b.bad {
 		color: var(--ob-danger, var(--ca-danger));
+	}
+
+	.sr-only {
+		position: absolute;
+		width: 1px;
+		height: 1px;
+		overflow: hidden;
+		clip: rect(0 0 0 0);
 	}
 </style>

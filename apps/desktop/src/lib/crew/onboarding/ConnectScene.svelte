@@ -44,7 +44,7 @@
 			<path class="txt" d="M54 118h46M54 134h96M54 150h70M54 166h112" />
 			<text class="prompt" x="54" y="192">$ atlas crew install</text>
 			<rect class="cursor" x="170" y="182" width="8" height="13" rx="1.5" />
-			<rect class="base" x="14" y="222" width="232" height="12" rx="6" />
+			<path class="base" d="M30 216h200l18 18a6 6 0 0 1-4 10H16a6 6 0 0 1-4-10z" />
 			<text class="cap" x="130" y="266" text-anchor="middle">{machine}</text>
 		</g>
 
@@ -164,7 +164,15 @@
 	}
 
 	.base {
-		fill: var(--ob-line-idle, var(--ca-border-subtle));
+		fill: var(--ob-panel, var(--ca-surface-base));
+		stroke: var(--ob-line-idle, var(--ca-border-subtle));
+		stroke-width: 2;
+		stroke-linejoin: round;
+		transition: stroke 300ms;
+	}
+
+	.me.lit .base {
+		stroke: var(--ob-accent, var(--ca-accent));
 	}
 
 	.cap {

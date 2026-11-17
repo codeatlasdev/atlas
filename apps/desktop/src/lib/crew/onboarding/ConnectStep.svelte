@@ -183,15 +183,6 @@
 							<CopyButton value={failure.command} label="" size="sm" aria-label="Copy command" />
 						</div>
 					{/if}
-					{#if failure.actions.some((a) => a !== "sudo")}
-						<div class="failure-actions">
-							{#each failure.actions.filter((a) => a !== "sudo") as a (a)}
-								<button class="text-link" onclick={() => ob.runAction(a)} disabled={ob.installRunning}>
-									{labels[a]}
-								</button>
-							{/each}
-						</div>
-					{/if}
 					{#if ob.needsSudo}
 						<TextField
 							name="sudo-password"
@@ -205,7 +196,15 @@
 							onkeydown={(e) => e.key === "Enter" && ob.sudoPassword && ob.launchServer(ob.sudoPassword)}
 						/>
 					{/if}
-					<button class="text-link small fix" onclick={() => api.openUrl(fixDocs())}>How to fix</button>
+					<!-- The fixes as buttons, the docs as a link, on one row. -->
+					<div class="failure-actions">
+						{#each failure.actions.filter((a) => a !== "sudo") as a (a)}
+							<button class="act" onclick={() => ob.runAction(a)} disabled={ob.installRunning}>
+								{labels[a]}
+							</button>
+						{/each}
+						<button class="text-link small fix" onclick={() => api.openUrl(fixDocs())}>How to fix</button>
+					</div>
 					{#if failure.detail}
 						<details class="failure-details">
 							<summary>Details</summary>
@@ -405,7 +404,28 @@
 	.failure-actions {
 		display: flex;
 		flex-wrap: wrap;
-		gap: 2px 14px;
+		align-items: center;
+		gap: 8px 10px;
+		margin-top: 2px;
+	}
+
+	.act {
+		padding: 6px 12px;
+		border-radius: 8px;
+		border: 1px solid var(--ca-border-subtle);
+		background: var(--ca-surface-base);
+		color: var(--ca-text-primary);
+		font-size: 13px;
+		cursor: pointer;
+	}
+
+	.act:hover:not(:disabled) {
+		border-color: var(--ob-accent, var(--ca-accent));
+	}
+
+	.act:disabled {
+		opacity: 0.5;
+		cursor: default;
 	}
 
 	.failure-details summary {
@@ -440,9 +460,8 @@
 	}
 
 	.fix {
-		align-self: flex-start;
 		font-size: 12.5px;
-		padding: 0;
+		padding: 0 4px;
 	}
 
 	.terminal {

@@ -128,7 +128,7 @@ export const STEP_META: Record<OnboardingStep, StepMeta> = {
 	},
 	ready: {
 		headline: "Your first crewmate is ready",
-		body: "Open a chat to send your first task. You can add more crewmates and customise them from the workspace.",
+		body: "Open a chat to send your first task. You can add more crewmates and customize them from the workspace.",
 		glow: "rgba(34, 197, 94, 0.12)",
 	},
 };

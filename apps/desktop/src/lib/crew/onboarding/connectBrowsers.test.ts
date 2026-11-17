@@ -101,6 +101,19 @@ describe("the browsers opt-in on the connect step", () => {
 		expect(text).toContain("500 MB");
 	});
 
+	// The primary button keeps its place and size while busy; only its label says what is happening.
+	test("the primary action says Installing… while the install runs and Add crew server otherwise", async () => {
+		const { ob } = await connectStep();
+		expect(ob.primary.label).toBe("Add crew server");
+		ob.installRunning = true;
+		ob.install = { done: new Set(), active: "install", user: "" };
+		expect(ob.primary.label).toBe("Installing…");
+		expect(ob.primary.busy).toBe(true);
+		// `step: done` ticks everything; hostd is registered after it.
+		ob.install = { done: new Set(["done"]), active: null, user: "" };
+		expect(ob.primary.label).toBe("Connecting…");
+	});
+
 	test("a first install without the opt-in does not ask for browsers", async () => {
 		const { ob } = await connectStep();
 		await ob.launchServer();
@@ -140,7 +153,7 @@ describe("the browsers opt-in on the connect step", () => {
 });
 
 describe("the install checklist", () => {
-	const labels = (t) => [...t.querySelectorAll(".checklist-label")].map((e) => e.textContent);
+	const labels = (t) => [...t.querySelectorAll(".sr-only")].map((e) => e.textContent);
 
 	test("has a browsers step only when the install includes it", async () => {
 		const base = render(InstallChecklist, { done: new Set(), active: null, failed: null });
@@ -154,9 +167,26 @@ describe("the install checklist", () => {
 		});
 		const l = labels(withBrowsers);
 		expect(l.indexOf("Installing screenshot browsers")).toBe(l.indexOf("Connecting") - 1);
-		expect(withBrowsers.querySelector(".checklist-row.active .checklist-label").textContent).toBe(
+		expect(withBrowsers.querySelector(".checklist-row.active .sr-only").textContent).toBe(
 			"Installing screenshot browsers",
 		);
+	});
+
+	// The rail reads in the real install order, one line, the active step named under it (the two-column version
+	// read "Signing in, Installing Atlas, Starting the service, Connecting" first).
+	test("lists the phases in the order the install runs them, and names the active one", async () => {
+		const t = render(InstallChecklist, { done: new Set(["signin"]), active: "check", failed: null });
+		expect(labels(t)).toEqual([
+			"Signing in",
+			"Checking the server",
+			"Installing Atlas",
+			"Creating the service user",
+			"Starting the service",
+			"Configuring SSH access",
+			"Connecting",
+		]);
+		expect(t.querySelector(".now b").textContent).toBe("Checking the server");
+		expect(t.querySelector('[aria-current="step"]')).not.toBeNull();
 	});
 });
 

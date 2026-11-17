@@ -153,15 +153,27 @@ export class Onboarding {
 		switch (this.step) {
 			case "connect":
 				if (this.needsSudo) {
-					return go("Continue", () => void this.launchServer(this.sudoPassword), {
-						busy: this.installRunning,
-						disabled: this.installRunning || !this.sudoPassword,
-					});
+					return go(
+						this.installRunning ? "Installing…" : "Continue",
+						() => void this.launchServer(this.sudoPassword),
+						{
+							busy: this.installRunning,
+							disabled: this.installRunning || !this.sudoPassword,
+						},
+					);
 				}
-				return go("Add crew server", () => void this.launchServer(), {
-					busy: this.installRunning,
-					disabled: !this.canSubmit,
-				});
+				return go(
+					this.installRunning
+						? this.install.done.has("done")
+							? "Connecting…"
+							: "Installing…"
+						: "Add crew server",
+					() => void this.launchServer(),
+					{
+						busy: this.installRunning,
+						disabled: !this.canSubmit,
+					},
+				);
 			case "engine":
 				if (this.signinActive) return go("Back to engines", () => this.closeSignin());
 				if (this.readyEngine) return go("Continue", () => this.continueWithReadyEngine());
@@ -626,7 +638,7 @@ export class Onboarding {
 				this.signinActive = null;
 				this.apiKeyMode = false;
 			} else {
-				this.apiKeyError = "Key set but agent does not recognise it yet. Try the interactive flow.";
+				this.apiKeyError = "Key set but agent does not recognize it yet. Try the interactive flow.";
 			}
 		} catch (e) {
 			this.apiKeyError = errText(e);

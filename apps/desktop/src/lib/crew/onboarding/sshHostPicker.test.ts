@@ -2,6 +2,7 @@
 import "../../../../test/setup.ts";
 import { afterEach, beforeEach, describe, expect, mock, test } from "bun:test";
 import hostsFixture from "../../__fixtures__/ssh-hosts.json";
+import keyFixture from "../../__fixtures__/crew-key-lookup.json";
 
 // "Add a crew server" offers the servers already in ~/.ssh/config (#502). Against the real `Onboarding`, the real
 // `ConnectStep`, the real picker and the kit's real Combobox; only the Tauri boundary is stubbed, and what
@@ -17,7 +18,7 @@ mock.module("@tauri-apps/api/core", () => ({
 	invoke: async (cmd: string, args: Record<string, unknown>) => {
 		calls.push({ cmd, args });
 		if (cmd === "crew_servers_list") return [];
-		if (cmd === "ssh_key_find") return "/Users/me/.ssh/id_ed25519.pub";
+		if (cmd === "ssh_key_resolve") return keyFixture.found;
 		if (cmd === "ssh_hosts_list") return hostsAnswer();
 		return {};
 	},
@@ -25,7 +26,14 @@ mock.module("@tauri-apps/api/core", () => ({
 mock.module("@tauri-apps/api/event", () => ({ listen: async () => () => {} }));
 const uiKit = await import("../../../../test/uiKit.ts");
 await uiKit.installUiKit();
-await uiKit.useRealKit("Checkbox", "CopyButton", "Button", "Combobox");
+await uiKit.useRealKit(
+	"Checkbox",
+	"CopyButton",
+	"Button",
+	"TextField",
+	"ToggleGroup/SegmentedControl",
+	"Combobox",
+);
 
 const { flushSync, mount, unmount, tick } = await import("svelte");
 // Dynamic imports on purpose: the Svelte loader registered by test/setup.ts and the module mocks above must exist
@@ -67,8 +75,8 @@ async function connectStep() {
 const trigger = (t) => t.querySelector("button.ca-combobox__trigger");
 const searchInput = () => document.querySelector("input.ca-combobox__input");
 const options = () => [...document.querySelectorAll('[role="option"]')];
-const addressField = (t) => t.querySelector("#ssh-target");
-const portField = (t) => t.querySelector("#ssh-port");
+const addressField = (t) => t.querySelector('[name="ssh-target"]');
+const portField = (t) => t.querySelector('[name="ssh-port"]');
 
 async function openPicker(t) {
 	trigger(t).click();

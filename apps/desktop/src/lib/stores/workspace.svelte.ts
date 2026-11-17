@@ -49,8 +49,8 @@ class Workspace {
 	hostError = $state<string | null>(null);
 	/** The terminal host did not answer the last `syncPtys`: `ptys` is what we knew, not what is true. */
 	hostDown = $state(false);
-	/** Main area: the selected worktree, or a global agents view. */
-	view = $state<"worktree" | "agents" | "dashboard">("worktree");
+	/** Main area: the selected worktree, a global agents view, or the light editor of a loose file (`loose` store). */
+	view = $state<"worktree" | "agents" | "dashboard" | "file">("worktree");
 	/** Top-level workspace mode: "ide" is everything today; "crew" is the full-window messenger. */
 	appMode = $state<"ide" | "crew">("ide");
 	#persist = new WorkspacePersist(this);
@@ -264,6 +264,11 @@ class Workspace {
 		const first = this.group(leaves(this.ensureLayout(worktreeId))[0]);
 		if (!first) return;
 		const panels = this.tabsOf(worktreeId).filter(pinned);
+		// A plain folder has no stack to show: no Panel, and one an older workspace saved for it goes.
+		if (this.worktree(worktreeId)?.plain) {
+			for (const p of panels) this.closeTab(p.id, true, true);
+			return;
+		}
 		const [keep, ...extra] = panels;
 		for (const p of extra) this.closeTab(p.id, true, true);
 		if (!keep) {

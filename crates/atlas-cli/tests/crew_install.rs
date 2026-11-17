@@ -883,6 +883,8 @@ fn install_authorizes_the_key_ssh_would_use_even_with_a_custom_name() {
 #[test]
 fn install_without_any_key_stops_before_touching_the_server() {
     let w = World::new();
+    // No key at all: the world only has a `.pub` (a private key alone counts as a key now, #517: the public one is
+    // derived from it), so removing it leaves neither.
     std::fs::remove_file(w.root().join("home/.ssh/id_ed25519.pub")).unwrap();
     let bin = w.atlas_file("9.9.9", true);
     let o = w.atlas(
@@ -891,7 +893,7 @@ fn install_without_any_key_stops_before_touching_the_server() {
     );
     let t = text(&o);
     assert!(!o.status.success(), "{t}");
-    assert!(t.contains("no SSH public key found"), "{t}");
+    assert!(t.contains("no SSH key found"), "{t}");
     assert!(!w.exists("log/sudo"), "the server was touched: {t}");
 }
 

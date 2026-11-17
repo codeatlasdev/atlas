@@ -9,7 +9,7 @@
     "format": "prettier --write src",
     "lint": "prettier --check src",
     "check": "bun run icons && bun run i18n:compile && svelte-kit sync && svelte-check --tsconfig ./tsconfig.json && prettier --check src && bun run test",
-    "test": "TZ=UTC LC_ALL=en_US.UTF-8 bun test --conditions browser src",
+    "test": "TZ=UTC LC_ALL=en_US.UTF-8 bun test --conditions browser --parallel src",
     "icons": "bun scripts/gen-icons.ts",
     "i18n:compile": "bun scripts/paraglide.ts"
   },

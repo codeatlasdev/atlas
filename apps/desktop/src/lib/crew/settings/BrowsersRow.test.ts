@@ -228,6 +228,20 @@ describe("the admin address the row starts from and keeps", () => {
 		expect(button(t, "Check").disabled).toBe(true);
 	});
 
+	// #517: a server added with a picked key is reached with it here too, and editing the address keeps the key
+	// (the row cannot change it, so saving without it would silently drop the key of the whole server).
+	test("the key picked when the server was added signs in the check and survives an address edit", async () => {
+		const t = render({ target: "ubuntu@srv", identity: "/k/id_work" });
+		await settle();
+		button(t, "Check").click();
+		await settle();
+		expect(calls[0].args).toEqual({ target: "ubuntu@srv", port: null, identity: "/k/id_work" });
+
+		await type(t, "Admin SSH address", "root@srv");
+		await commit(t);
+		expect(setAdmin()[0].args.admin).toEqual({ target: "root@srv", identity: "/k/id_work" });
+	});
+
 	test("what the user types is saved after a Check that worked, in the registry's shape", async () => {
 		const t = render(undefined);
 		await check(t, "ubuntu@srv:2222");

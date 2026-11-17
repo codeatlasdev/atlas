@@ -231,6 +231,7 @@ pub async fn worktrees_import(
                 branch,
                 host: repo.host.clone(),
                 identity: None,
+                project: false,
             });
             added += 1;
         }

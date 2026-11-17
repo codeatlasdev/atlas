@@ -1,0 +1,14 @@
+{
+	"nav_changelog": "Top navigation link to the changelog page.",
+	"nav_docs": "Top navigation link to the documentation (opens the getting started page).",
+	"nav_download": "Short call-to-action button in the top bar that opens the download page.",
+	"nav_download_atlas": "Full-width download button at the bottom of the phone menu sheet; opens the download page.",
+	"nav_getting_started": "Link in the phone menu sheet to the getting started docs page.",
+	"nav_home_label": "Accessible name of the logo link in the top bar; it goes to the home page.",
+	"nav_idea": "Link in the phone menu sheet that scrolls to the atlas.yaml section of the landing page.",
+	"nav_language_switch": "Visible text of the language switch link in the top bar. It names the OTHER language, written in that language, so it reads Portuguese on English pages and English on Portuguese pages.",
+	"nav_main_label": "Accessible name of the main navigation landmark in the top bar.",
+	"nav_menu_close": "Accessible name of the burger button while the phone menu sheet is open.",
+	"nav_menu_label": "Accessible name of the navigation landmark inside the phone menu sheet.",
+	"nav_menu_open": "Accessible name of the burger button while the phone menu sheet is closed."
+}

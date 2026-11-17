@@ -1,9 +1,14 @@
 ---
 import { SITE } from "../data/site";
+import { m } from "../lib/paraglide/messages.js";
+import { docPath, localeOfAstro } from "../lib/i18n";
+const locale = localeOfAstro(Astro.currentLocale);
+// Docs links follow the page's language (every docs page exists under /pt-br/); the other pages are English only.
+const doc = (slug: string) => docPath(slug, locale);
 const cols = [
-	{ h: "Product", l: [["Download", "/download/"], ["Getting started", "/docs/getting-started/"], ["Changelog", "/changelog/"], ["Releases", SITE.releases]] },
-	{ h: "Docs", l: [["atlas.yaml reference", "/docs/configuration/"], ["Desktop", "/docs/desktop/"], ["CLI", "/docs/cli/"], ["MCP", "/docs/mcp/"], ["Troubleshooting", "/docs/troubleshooting/"]] },
-	{ h: "Elsewhere", l: [["GitHub", SITE.github], ["CodeAtlas", SITE.codeatlas], ["llms.txt", "/llms.txt"]] },
+	{ h: m.footer_product(), l: [[m.nav_download(), "/download/"], [m.nav_getting_started(), doc("getting-started")], [m.nav_changelog(), "/changelog/"], [m.footer_releases(), SITE.releases]] },
+	{ h: m.nav_docs(), l: [[m.footer_config_reference(), doc("configuration")], [m.footer_desktop(), doc("desktop")], ["CLI", doc("cli")], ["MCP", doc("mcp")], [m.footer_troubleshooting(), doc("troubleshooting")]] },
+	{ h: m.footer_elsewhere(), l: [["GitHub", SITE.github], ["CodeAtlas", SITE.codeatlas], ["llms.txt", "/llms.txt"]] },
 ];
 ---
 <footer class="site-foot">
@@ -19,9 +24,9 @@ const cols = [
 		</div>
 	</div>
 	<div class="wrap legal">
-		<span>Open source · MIT or Apache-2.0</span>
-		<a class="ln" href="/code-signing-policy/">Code signing policy</a>
-		<a class="ln" href="/privacy/">Privacy policy</a>
+		<span>{m.footer_license()}</span>
+		<a class="ln" href="/code-signing-policy/">{m.footer_code_signing()}</a>
+		<a class="ln" href="/privacy/">{m.footer_privacy()}</a>
 	</div>
 </footer>
 <style>

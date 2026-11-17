@@ -4,6 +4,7 @@ use clap::{Parser, Subcommand};
 use commands::AtlasCommand;
 use std::ffi::OsString;
 
+mod cli_i18n;
 mod commands;
 
 #[derive(Debug, Parser)]
@@ -48,7 +49,7 @@ enum Commands {
     /// Initialize atlas.yaml for the current project
     Init(commands::init::InitArgs),
 
-    /// Validate atlas.yaml or print its JSON Schema
+    /// Validate atlas.yaml, print its JSON Schema or set the display language
     Config {
         #[command(subcommand)]
         command: commands::config::ConfigCommands,
@@ -173,6 +174,19 @@ fn parse(argv: &[OsString]) -> Result<Action, clap::Error> {
 }
 
 /// [`parse`] with the file-system check injected (`exists`), so the precedence is testable.
+/// The command line as clap parses it, with the help of the migrated commands in the display
+/// language (`cli_i18n`). `--help` and usage errors print in that language; nothing else changes.
+fn command() -> clap::Command {
+    use clap::CommandFactory;
+    cli_i18n::localize(Cli::command(), atlas_core::lang::resolve())
+}
+
+fn parse_cli(argv: &[OsString]) -> Result<Cli, clap::Error> {
+    use clap::FromArgMatches;
+    let mut matches = command().try_get_matches_from(argv)?;
+    Cli::from_arg_matches_mut(&mut matches)
+}
+
 fn parse_with(
     argv: &[OsString],
     exists: impl Fn(&OsString) -> bool,
@@ -200,7 +214,7 @@ fn parse_with(
         }
         _ => {}
     }
-    Ok(match Cli::try_parse_from(argv)?.command {
+    Ok(match parse_cli(argv)?.command {
         None => Action::Help,
         Some(c) => Action::Command(c),
     })
@@ -210,8 +224,7 @@ async fn run() -> Result<()> {
     let command = match parse(&std::env::args_os().collect::<Vec<_>>()) {
         Ok(Action::Command(c)) => c,
         Ok(Action::Help) => {
-            use clap::CommandFactory;
-            Cli::command().print_help()?;
+            command().print_help()?;
             return Ok(());
         }
         Ok(Action::Adhoc(argv)) => return commands::open::run_adhoc(&argv).await,

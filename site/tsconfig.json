@@ -1,6 +1,6 @@
 {
   "extends": "astro/tsconfigs/strict",
   "include": [".astro/types.d.ts", "src/**/*", "astro.config.mjs"],
-  "exclude": ["dist", "scripts", "functions"],
+  "exclude": ["dist", "scripts", "functions", "src/lib/paraglide"],
   "compilerOptions": { "jsx": "preserve" }
 }

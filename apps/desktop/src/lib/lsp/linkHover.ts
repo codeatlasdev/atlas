@@ -1,7 +1,8 @@
 import { StateEffect, StateField, type Extension } from "@codemirror/state";
 import { Decoration, EditorView, ViewPlugin, type DecorationSet, type ViewUpdate } from "@codemirror/view";
 import { envOf } from "#lib/lsp/context.ts";
-import { hoverLink, isGoToModifier, isMac } from "#lib/lsp/navigation.ts";
+import { IS_MAC } from "#lib/keys.ts";
+import { hoverLink, isGoToModifier } from "#lib/lsp/navigation.ts";
 
 /**
  * ⌘-hover underlines the identifier under the pointer (Ctrl on other platforms) and ⌘-click jumps to
@@ -49,7 +50,7 @@ export const linkPlugin = ViewPlugin.fromClass(
 		eventHandlers: {
 			mousemove(e) {
 				this.pointer = { x: e.clientX, y: e.clientY };
-				this.refresh(isGoToModifier(e, isMac()));
+				this.refresh(isGoToModifier(e, IS_MAC));
 			},
 			mouseleave() {
 				this.pointer = null;
@@ -57,7 +58,7 @@ export const linkPlugin = ViewPlugin.fromClass(
 			},
 			keydown(e) {
 				if (e.key === "Meta" || e.key === "Control")
-					this.refresh(isGoToModifier({ ...e, [e.key === "Meta" ? "metaKey" : "ctrlKey"]: true }, isMac()));
+					this.refresh(isGoToModifier({ ...e, [e.key === "Meta" ? "metaKey" : "ctrlKey"]: true }, IS_MAC));
 			},
 			keyup(e) {
 				if (e.key === "Meta" || e.key === "Control") this.refresh(false);

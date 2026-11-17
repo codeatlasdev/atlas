@@ -3,6 +3,8 @@ import "../styles/global.css";
 import Nav from "../components/Nav.astro";
 import Footer from "../components/Footer.astro";
 import { SITE } from "../data/site";
+import { m } from "../lib/paraglide/messages.js";
+import { hreflangLinks, localeOfAstro, type Locale } from "../lib/i18n";
 
 interface Props {
 	title?: string;
@@ -12,13 +14,22 @@ interface Props {
 	jsonLd?: Record<string, unknown>;
 	/** "cobalt" (default) or "paper": the ground the page starts on, so the nav and overscroll match. */
 	ground?: "cobalt" | "paper";
+	/**
+	 * The locales this page REALLY exists in, as paths ({ en, "pt-BR" }). Drives the hreflang links and the language switch. Leave it out
+	 * for pages that exist in one language, and for fallback pages (English body under /pt-br/): they are not translations.
+	 */
+	alternates?: Partial<Record<Locale, string>>;
+	/** Path the canonical link points to when it is not this URL: a fallback page canonicalizes to its English original. */
+	canonicalPath?: string;
 }
-const { title = SITE.title, description = SITE.description, image = "/og.png", noindex = false, jsonLd, ground = "cobalt" } = Astro.props;
-const canonical = new URL(Astro.url.pathname, SITE.url).href;
+const { title = SITE.title, description = SITE.description, image = "/og.png", noindex = false, jsonLd, ground = "cobalt", alternates, canonicalPath } = Astro.props;
+const locale = localeOfAstro(Astro.currentLocale);
+const canonical = new URL(canonicalPath ?? Astro.url.pathname, SITE.url).href;
+const hreflang = hreflangLinks(alternates ?? {}, SITE.url);
 const ogImage = new URL(image, SITE.url).href;
 ---
 <!doctype html>
-<html lang="en" class="no-js">
+<html lang={locale} class="no-js">
 	<head>
 		<meta charset="utf-8" />
 		<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover, interactive-widget=resizes-visual" />
@@ -28,6 +39,7 @@ const ogImage = new URL(image, SITE.url).href;
 		<meta name="color-scheme" content={ground === "paper" ? "light" : "dark"} />
 		<meta name="robots" content={noindex ? "noindex, nofollow" : "index, follow, max-image-preview:large"} />
 		<link rel="canonical" href={canonical} />
+		{hreflang.map((l) => <link rel="alternate" hreflang={l.hreflang} href={l.href} />)}
 		<link rel="icon" href="/favicon.svg" type="image/svg+xml" />
 		<link rel="icon" href="/favicon.ico" sizes="32x32" />
 		<link rel="apple-touch-icon" href="/apple-touch-icon.png" />
@@ -58,8 +70,8 @@ const ogImage = new URL(image, SITE.url).href;
 		<slot name="head" />
 	</head>
 	<body class={ground === "paper" ? "on-paper" : undefined}>
-		<a class="skip" href="#main">Skip to content</a>
-		<Nav />
+		<a class="skip" href="#main">{m.base_skip_to_content()}</a>
+		<Nav alternates={alternates} canonicalPath={canonicalPath} />
 		<slot name="rail" />
 		<main id="main"><slot /></main>
 		<Footer />

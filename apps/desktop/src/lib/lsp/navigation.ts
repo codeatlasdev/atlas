@@ -24,8 +24,6 @@ export function isGoToModifier(e: Mods, mac: boolean): boolean {
 export const isGoToClick = (e: Mods & { button: number }, mac: boolean) =>
 	e.button === 0 && isGoToModifier(e, mac);
 
-export const isMac = () => typeof navigator !== "undefined" && /Mac|iPhone|iPad/.test(navigator.platform);
-
 // --- the reply ----------------------------------------------------------------------------------
 
 /** A place a server pointed at: absolute path and the exact range (0-based LSP positions). */

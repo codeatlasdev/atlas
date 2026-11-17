@@ -5,6 +5,7 @@
 	import { pushZones } from "#lib/shell/nativeSwipe.ts";
 	import {
 		CLOSE_DELAY,
+		inHotZone,
 		OPEN_DELAY,
 		peekAction,
 		regionOf,
@@ -40,7 +41,8 @@
 	let lastX = 0;
 	let lastT = 0;
 	let speed = 0;
-	let region: PeekRegion = { hot: false, over: false };
+	const NO_REGION: PeekRegion = { hot: false, over: false };
+	let region: PeekRegion = NO_REGION;
 	let open = false;
 	// A modal layer (Dialog, Sheet, Settings, the palette) is up: the page behind it is inert, so a panel sliding in
 	// under it is dead weight and looks broken. Fed by the kit's `layerchange` (modalOpen.ts), never a per-dialog flag.
@@ -107,18 +109,28 @@
 		if (!raf) raf = requestAnimationFrame(tick);
 	}
 
+	/** A press (a selection or a drag starts, a click lands): a dwell in progress is over, and the next move decides anew. */
+	function onpress() {
+		if (open) return;
+		clear();
+		region = NO_REGION;
+	}
+
 	$effect(() => {
 		if (!active) return;
 		window.addEventListener("pointermove", onmove, { passive: true });
-		const leave = () => act(peekAction({ open }, { t: "leave-window" }));
+		window.addEventListener("pointerdown", onpress, { capture: true, passive: true });
+		const leave = () =>
+			act(peekAction({ open }, { t: "leave-window", atEdge: inHotZone(edge, mx, window.innerWidth) }));
 		document.documentElement.addEventListener("pointerleave", leave);
 		return () => {
 			window.removeEventListener("pointermove", onmove);
+			window.removeEventListener("pointerdown", onpress, { capture: true });
 			document.documentElement.removeEventListener("pointerleave", leave);
 			cancelAnimationFrame(raf);
 			raf = 0;
 			clear();
-			region = { hot: false, over: false };
+			region = NO_REGION;
 			set(false);
 		};
 	});
@@ -129,6 +141,7 @@
 			modal = on;
 			if (!on) return;
 			clear(); // a dwell that started before the dialog opened must not fire behind it
+			region = NO_REGION; // and the pointer still at the edge must start a new one when the dialog is gone
 			set(false);
 		}),
 	);

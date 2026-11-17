@@ -5,7 +5,6 @@
 		DropdownMenu,
 		DropdownMenuItem,
 		DropdownMenuLabel,
-		NotificationBell,
 		Spinner,
 	} from "@codeatlasdev/ui";
 	import {
@@ -25,7 +24,9 @@
 	import { removeProject } from "#lib/components/sidebar/projects.ts";
 	import PanelOps from "#lib/panel/PanelOps.svelte";
 	import Crumbs from "#lib/shell/Crumbs.svelte";
+	import InboxBell from "#lib/shell/InboxBell.svelte";
 	import RightToggle from "#lib/shell/RightToggle.svelte";
+	import { updates } from "#lib/stores/updates.svelte.ts";
 	import { agents } from "#lib/stores/agents.svelte.ts";
 	import { docks, toggleDock } from "#lib/stores/docks.svelte.ts";
 	import { store } from "#lib/stores/projects.svelte.ts";
@@ -69,14 +70,33 @@
 		await store.refresh();
 		void store.loadConfig(id);
 	}
+
+	/** A plain folder: explorer and editor only. */
+	let folder = $derived(p.kind === "folder");
+
+	/** "Use as project": the folder keeps its files; it gets the services, Changes and PR parts of the app. */
+	async function promote(id: string) {
+		const done = await store.run(`promote:${id}`, async () => (await api.promote(id), true));
+		if (!done) return;
+		await store.refresh();
+		void store.loadConfig(id);
+	}
 </script>
 
 <header data-tauri-drag-region class:inset={!docks.sidebar}>
 	<Crumbs />
-	<span class="pill t-{health.tone}" title={health.label}>
-		<span class="dot" class:pulse={health.tone === "ok"}></span>{p.running ? health.label : "Stopped"}
-	</span>
-	{#if p.config_source === "detected"}
+	{#if folder}
+		<span
+			class="detected"
+			title="A plain folder: Atlas shows its files and nothing else. Use it as a project to run services and see changes."
+			>Folder</span
+		>
+	{:else}
+		<span class="pill t-{health.tone}" title={health.label}>
+			<span class="dot" class:pulse={health.tone === "ok"}></span>{p.running ? health.label : "Stopped"}
+		</span>
+	{/if}
+	{#if !folder && p.config_source === "detected"}
 		<span
 			class="detected"
 			title="No atlas.yaml in this folder: Atlas detected how to run it. Nothing was written to disk."
@@ -93,8 +113,8 @@
 	{/if}
 	<div class="grow" data-tauri-drag-region></div>
 	<div class="actions">
-		<NotificationBell
-			notifications={agents.inbox.map((n) => ({
+		<InboxBell
+			items={agents.inbox.map((n) => ({
 				id: n.id,
 				title: n.title,
 				body: n.body,
@@ -105,6 +125,7 @@
 			onRead={openInbox}
 			onReadAll={() => agents.inbox.forEach((n) => (n.read = true))}
 			onClear={() => (agents.inbox = [])}
+			onSettings={() => updates.show("notifications")}
 		/>
 		<div class="docks" role="group" aria-label="Docks">
 			{#each DOCKS as d (d.side)}
@@ -125,9 +146,11 @@
 			{/each}
 			<RightToggle />
 		</div>
-		<div class="ops" role="group" aria-label="Activity and actions">
-			<PanelOps project={p} />
-		</div>
+		{#if !folder}
+			<div class="ops" role="group" aria-label="Activity and actions">
+				<PanelOps project={p} />
+			</div>
+		{/if}
 		<DropdownMenu align="end">
 			{#snippet triggerChild(props)}
 				<button type="button" {...props} class="more" aria-label="Project menu"><Ellipsis size={16} /></button
@@ -145,7 +168,11 @@
 				</DropdownMenuItem>
 			{/if}
 		</DropdownMenu>
-		{#if p.running}
+		{#if folder}
+			<Button size="sm" disabled={!!store.busy[`promote:${p.id}`]} onclick={() => promote(p.id)}>
+				Use as project
+			</Button>
+		{:else if p.running}
 			<Button
 				variant="glass"
 				size="sm"

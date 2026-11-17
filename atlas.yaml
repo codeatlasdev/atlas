@@ -35,9 +35,9 @@ services:
     autostart: false
 
 # What a change affects, for the MCP tool atlas_affected: the same plan `bun run check:changed` runs
-# (changed crates + dependents, desktop, mobile, scripts, skills, workflows) as JSON, without running it.
+# (the checks of scripts/checks/map.ts that the changed files affect) as JSON, without running it.
 affected:
-  command: bun scripts/check-changed.ts --json
+  command: bun scripts/check-changed.ts --json --stdin
 
 actions:
   - key: c

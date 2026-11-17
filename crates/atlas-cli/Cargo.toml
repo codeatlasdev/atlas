@@ -1,6 +1,6 @@
 [package]
 name = "atlas-cli"
-version = "1.5.0-alpha.25"
+version = "1.5.0-alpha.26"
 edition.workspace = true
 rust-version.workspace = true
 license.workspace = true
@@ -26,7 +26,6 @@ serde = { workspace = true }
 serde_json = { workspace = true, features = ["preserve_order"] }
 anyhow = { workspace = true }
 semver = { workspace = true }
-chrono = { workspace = true }
 sha2 = "0.11"
 hex = "0.4"
 self-replace = "1.5"
@@ -34,6 +33,7 @@ flate2 = { workspace = true }
 tar = "0.4"
 atlas-tui = { path = "../atlas-tui" }
 atlas-core = { path = "../atlas-core" }
+atlas-i18n = { path = "../atlas-i18n" }
 atlas-skills = { path = "../atlas-skills" }
 atlas-host = { path = "../atlas-host" }
 base64 = { workspace = true }

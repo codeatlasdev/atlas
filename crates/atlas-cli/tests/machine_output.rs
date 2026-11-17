@@ -23,6 +23,9 @@ struct Row {
     /// Top-level JSON keys that are live measurements (machine load, free memory) and differ between
     /// two runs of the same command in any language: compared by presence, not by value.
     live: &'static [&'static str],
+    /// stdout is JSON-RPC, one message per line: a server may answer in any order, so lines are
+    /// compared sorted by `id` (each line still byte for byte).
+    json_rpc: bool,
 }
 
 const MCP_SESSION: &str = concat!(
@@ -42,18 +45,21 @@ const MACHINE: &[Row] = &[
         args: &["config", "schema"],
         stdin: "",
         live: &[],
+        json_rpc: false,
     },
     Row {
         name: "heavy status --json",
         args: &["heavy", "status", "--json"],
         stdin: "",
         live: &["load", "mem_available_pct"],
+        json_rpc: false,
     },
     Row {
         name: "mcp: initialize, tools/list, atlas_config",
         args: &["mcp", "--dir", "."],
         stdin: MCP_SESSION,
         live: &[],
+        json_rpc: true,
     },
 ];
 
@@ -99,8 +105,24 @@ fn project() -> tempfile::TempDir {
 }
 
 /// stdout as text, with the live measurements of `live` (top-level JSON keys) blanked: they are not
-/// text of a language, and they change between two runs a second apart.
-fn stable(stdout: &[u8], live: &[&str]) -> String {
+/// text of a language, and they change between two runs a second apart. JSON-RPC output is put in
+/// `id` order, since arrival order is the server's scheduling, not a language.
+fn stable(stdout: &[u8], live: &[&str], json_rpc: bool) -> String {
+    if json_rpc {
+        let text = String::from_utf8_lossy(stdout);
+        let mut lines: Vec<(String, &str)> = text
+            .lines()
+            .map(|l| {
+                let id = serde_json::from_str::<serde_json::Value>(l)
+                    .ok()
+                    .and_then(|v| v.get("id").map(|id| id.to_string()))
+                    .unwrap_or_default();
+                (id, l)
+            })
+            .collect();
+        lines.sort();
+        return lines.into_iter().map(|(_, l)| format!("{l}\n")).collect();
+    }
     if live.is_empty() {
         return String::from_utf8_lossy(stdout).into_owned();
     }
@@ -114,6 +136,18 @@ fn stable(stdout: &[u8], live: &[&str]) -> String {
         object.insert((*key).to_owned(), serde_json::Value::Null);
     }
     v.to_string()
+}
+
+// Regression: CI on #530 failed because `atlas mcp` answered request 3 before request 2 in one of the two runs. JSON-RPC
+// lets a server answer in any order; the comparison is per response, byte for byte, never by arrival order.
+#[test]
+fn json_rpc_responses_are_compared_by_id_not_by_arrival_order() {
+    let a = b"{\"id\":1,\"r\":\"x\"}\n{\"id\":2,\"r\":\"tools\"}\n{\"id\":3,\"r\":\"config\"}\n";
+    let swapped =
+        b"{\"id\":1,\"r\":\"x\"}\n{\"id\":3,\"r\":\"config\"}\n{\"id\":2,\"r\":\"tools\"}\n";
+    let translated = b"{\"id\":1,\"r\":\"x\"}\n{\"id\":3,\"r\":\"configura\xc3\xa7\xc3\xa3o\"}\n{\"id\":2,\"r\":\"tools\"}\n";
+    assert_eq!(stable(a, &[], true), stable(swapped, &[], true));
+    assert_ne!(stable(a, &[], true), stable(translated, &[], true));
 }
 
 #[test]
@@ -130,8 +164,8 @@ fn machine_output_is_byte_identical_in_every_language() {
             row.name
         );
         assert_eq!(
-            stable(&en.stdout, row.live),
-            stable(&pt.stdout, row.live),
+            stable(&en.stdout, row.live, row.json_rpc),
+            stable(&pt.stdout, row.live, row.json_rpc),
             "{}: stdout differs between en and pt-BR",
             row.name
         );

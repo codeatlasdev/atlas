@@ -204,7 +204,7 @@ test("agents tab, populated: the agents running here with their state and last w
 	expect(rows[0].textContent).toContain("Apply the patch?");
 	expect(rows[1].textContent).toContain("Working");
 	expect(rows[1].textContent).toContain("Reading the edge peek code");
-	expect(rows[1].textContent).toContain("2min"); // in that state for two minutes
+	expect(rows[1].textContent).toContain("2 min. ago"); // in that state for two minutes
 	expect(text()).toContain("Fix the flaky panel");
 	expect(text()).toContain("5min ago");
 	expect(text()).not.toContain("Sessions of agents you run"); // not empty

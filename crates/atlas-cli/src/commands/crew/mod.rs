@@ -448,18 +448,6 @@ impl AtlasCommand for LogsArgs {
 
 // ── login ─────────────────────────────────────────────────────────────────────
 
-/// Official one-liner to install each agent on the crew server.
-/// These match the install lines documented in docs/crew.md.
-fn agent_install_hint(id: &str) -> Option<&'static str> {
-    match id {
-        "omp" => Some("curl -fsSL https://omp.sh/install | sh"),
-        "claude" => Some("curl -fsSL https://claude.ai/install.sh | bash"),
-        "codex" => Some(r#"npm_config_prefix="$HOME/.npm-global" npm install -g @openai/codex"#),
-        "opencode" => Some("curl -fsSL https://opencode.ai/install | bash"),
-        _ => None,
-    }
-}
-
 #[derive(Debug, Args)]
 pub struct LoginArgs {
     /// SSH target for the crew server (e.g. user@hostname or hostname)
@@ -476,14 +464,18 @@ pub struct LoginArgs {
 
 impl AtlasCommand for LoginArgs {
     async fn run(self) -> Result<()> {
-        let bin = atlas_core::agents::get(&self.agent)
-            .map(|a| a.bin)
-            .with_context(|| {
-                format!(
-                    "unknown agent '{}'; supported: omp, claude, codex, opencode",
-                    self.agent
-                )
-            })?;
+        let def = atlas_core::agents::get(&self.agent).with_context(|| {
+            let ids: Vec<&str> = atlas_core::agents::all()
+                .iter()
+                .map(|a| a.id.as_str())
+                .collect();
+            format!(
+                "unknown agent '{}'; supported: {}",
+                self.agent,
+                ids.join(", ")
+            )
+        })?;
+        let bin = def.bin.as_str();
         if let Some(id) = &self.crewmate {
             return self.login_as_crewmate(id);
         }
@@ -500,14 +492,12 @@ impl AtlasCommand for LoginArgs {
             .filter(|u| !u.is_empty())
             .unwrap_or_else(|| atlas_core::crew::USER.to_owned());
 
-        if let Some(hint) = agent_install_hint(&self.agent) {
-            println!(
-                "\x1b[36m◆\x1b[0m Install {} on the crew server first if needed:",
-                self.agent
-            );
-            println!("    {hint}");
-            println!();
-        }
+        println!(
+            "\x1b[36m◆\x1b[0m Install {} on the crew server first if needed:",
+            self.agent
+        );
+        println!("    {}", def.install);
+        println!();
 
         // The same ssh helper as every other crew call: the port, and the agents' PATH (a bare
         // `ssh host claude` runs in a shell that does not have ~/.local/bin).

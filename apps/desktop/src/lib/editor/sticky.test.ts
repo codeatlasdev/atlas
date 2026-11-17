@@ -1,7 +1,6 @@
 // @ts-nocheck bun test runtime types are not part of the app tsconfig
 import { expect, test } from "bun:test";
-import { EditorState } from "@codemirror/state";
-import { ensureSyntaxTree } from "@codemirror/language";
+import { parsedState } from "../../../test/parsedState.ts";
 import { javascript } from "@codemirror/lang-javascript";
 import { isScopeNode, scopesAt, stickyChain } from "./sticky.ts";
 
@@ -38,8 +37,7 @@ test("isScopeNode accepts declarations and skips imports/variables", () => {
 
 test("scopesAt walks the Lezer ancestors of a position", () => {
 	const doc = ["class A {", "  m() {", "    a;", "    b;", "  }", "}"].join("\n");
-	const state = EditorState.create({ doc, extensions: [javascript()] });
-	ensureSyntaxTree(state, state.doc.length, 5000);
+	const state = parsedState({ doc, extensions: [javascript()] });
 	const pos = state.doc.line(3).from + 4;
 	const scopes = scopesAt(state, pos);
 	expect(scopes.map((s) => s.text)).toEqual(["class A {", "m() {"]);

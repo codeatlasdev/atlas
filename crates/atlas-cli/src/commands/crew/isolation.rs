@@ -308,10 +308,10 @@ const BIN_DIRS: [&str; 5] = [
 /// [`ENGINE_HOME`] as `$HOME`, then its binary linked into [`ENGINES_DIR`] and the tree made readable
 /// and executable for every user. `None` for a name that is not an engine.
 ///
-/// The install command is the one `atlas crew login` has always printed (`agent_install_hint`): the
+/// The install command is the one `atlas crew login` has always printed (`install` in `data/agents.json`): the
 /// vendor's own line, so an upgrade of the engine is the vendor's concern, not ours.
 pub fn engine_install_script(agent: &str, install_cmd: &str) -> Option<String> {
-    let bin = atlas_core::agents::get(agent)?.bin;
+    let bin = atlas_core::agents::get(agent)?.bin.as_str();
     // `bin` comes from the agent table, `install_cmd` from the CLI's own hints: neither is user input.
     let search = BIN_DIRS
         .iter()

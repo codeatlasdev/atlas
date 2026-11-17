@@ -281,7 +281,7 @@ atlas config schema
 ## `atlas crew`
 
 ```text
-atlas crew install <ssh-target> [-y|--yes] [--port <N>] [--binary <PATH>]
+atlas crew install <ssh-target> [-y|--yes] [--port <N>] [--identity <KEY>] [--binary <PATH>]
 atlas crew update <ssh-target> [--version <X.Y.Z>] [--rollback] [--port <N>] [--binary <PATH>]
 atlas crew uninstall <ssh-target> [-y|--yes]
 atlas crew export <ssh-target> [-o <FILE>] [--crewmate <ID>]... [--with-secrets]

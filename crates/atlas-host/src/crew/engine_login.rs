@@ -525,10 +525,25 @@ pub(crate) fn note_task_failure(hub: &Hub, crewmate: &str, engine: &str, error: 
     }
 }
 
+// A sign-in probe per built-in agent, no more and no fewer (`data/agents.json`): `status()` joins exactly these,
+// so an agent added to the registry without its login and status commands (or the reverse) fails here, not on a phone.
 #[cfg(test)]
 #[test]
-fn engines_table_has_four_entries() {
-    assert_eq!(ENGINES.len(), 4, "status() joins exactly these four probes");
+fn engines_table_is_the_registry() {
+    let ids: Vec<&str> = ENGINES.iter().map(|e| e.id).collect();
+    let mut want: Vec<&str> = atlas_core::agents::all()
+        .iter()
+        .map(|a| a.id.as_str())
+        .collect();
+    let mut have = ids.clone();
+    want.sort_unstable();
+    have.sort_unstable();
+    assert_eq!(have, want);
+    for e in ENGINES {
+        let bin = &atlas_core::agents::get(e.id).unwrap().bin;
+        assert_eq!(e.login[0], bin, "{}: login runs the agent's binary", e.id);
+        assert_eq!(e.status[0], bin, "{}: status runs the agent's binary", e.id);
+    }
 }
 
 // Hostd must search where every ssh call to a crew server searches (`atlas_core::ssh::PATH_EXPORT`): a second list

@@ -6,6 +6,8 @@ library;
 
 import 'dart:convert';
 
+import 'package:atlas_mobile/core/protocol/agent_registry.dart';
+
 // ─── audit ────────────────────────────────────────────────────────────────────
 
 /// The desktop's filter groups of the audit kinds (`apps/desktop/src/lib/crew/settings/audit.ts`).
@@ -317,12 +319,9 @@ class CrewSettings {
 
 // ─── engine sign-in ───────────────────────────────────────────────────────────
 
-/// The engines a crew server can sign in, in the order the settings list shows them.
-const engineLabels = <String, String>{
-  'claude': 'Claude Code',
-  'codex': 'Codex',
-  'omp': 'omp',
-  'opencode': 'OpenCode',
+/// The engines a crew server can sign in (every built-in agent), in the order the settings list shows them.
+final engineLabels = <String, String>{
+  for (final a in builtinAgents) a.id: a.label,
 };
 
 /// One row of `crew_engine_status`: `state` is `signed_in`, `needs_signin`, `not_installed` or `unknown`

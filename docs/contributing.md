@@ -93,6 +93,7 @@ Every command is a root `package.json` script, so `bun run <name>` from the repo
 | `bun run fmt` | `cargo fmt` and prettier for the desktop frontend |
 | `bun run dup` | jscpd duplication over Rust, TypeScript, Svelte, Astro and Dart (the phone app's `lib/`, generated bindings left out); keep it at or below 1.5% (config: `.jscpd.json`) |
 | `bun run lint:workflows` | actionlint and zizmor over `.github/` (also part of `bun run check`) |
+| `bun run pr:merge <pr> [--subject s] [--dry-run] [--json]` | maintainer squash-merge: refuses a stale, red or mis-titled PR, writes `Closes #N` from the PR's linked issues (`CONTRIBUTING.md#pull-request-flow-and-who-merges`) |
 | `bun run desktop:dev` / `desktop:build` / `desktop:build:app` / `desktop:check` / `desktop:link` | run the app with hot reload, build the bundle, build a debug `.app` only, check the frontend, link the debug bundle |
 | `bun run mobile:check` | `scripts/mobile-check.sh` — Flutter analyze and test for `apps/mobile` (also part of `bun run check`; skipped when Flutter is absent) |
 | `bun run mobile:lab` | validate a branch on your phone beside your real Atlas: a shadow hostd plus the Atlas Dev app, never touching your install (see [Atlas Mobile](mobile.md#lab-lane-validate-a-branch-without-touching-your-install)) |

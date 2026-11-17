@@ -1,4 +1,5 @@
 <script lang="ts">
+	import { gitToast } from "#lib/gitToast.ts";
 	import { onMount, tick } from "svelte";
 	import { primaryKey } from "#lib/keys.ts";
 	import { listen } from "@tauri-apps/api/event";
@@ -211,7 +212,7 @@
 
 	async function gitDo(args: string[]) {
 		const r = await git.run(worktreeId, args);
-		if (r.code !== 0) toast.error(r.stderr || "git failed");
+		if (r.code !== 0) gitToast(r.stderr || r.stdout || "git failed");
 		await gitStatus.refresh(worktreeId);
 	}
 

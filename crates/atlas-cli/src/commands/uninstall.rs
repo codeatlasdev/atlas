@@ -453,8 +453,11 @@ fn remove_package(pkg: &Package) -> Result<()> {
     ) {
         Ok(update_pkg::Plan::Install(e)) => e,
         _ => bail!(
-            "cannot become root from here; run: {}",
-            pkg.manual_remove_command()
+            "{}",
+            atlas_i18n::t!(
+                "uninstall_cannot_become_root",
+                command = pkg.manual_remove_command()
+            )
         ),
     };
     update_pkg::run_install(&update_pkg::escalated(escalation, pkg.remove_argv()))

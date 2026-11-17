@@ -49,6 +49,8 @@ Default choice: `alpha` from `main` for new work; `beta` once a feature set shou
 
 **GitHub "Latest" = the default channel.** While the default channel is Alpha (`crates/atlas-core/data/channels.json`), every alpha is published as a normal release and becomes GitHub's "Latest" (and `/releases/latest`); betas stay pre-releases. Clients built from 1.5.0-alpha.4 on resolve Stable as the newest release without a prerelease label, never from `/releases/latest`; 1.4.0 binaries follow `/releases/latest`, which moves them to Alpha on purpose. At GA, set the default back to `stable` in that one file (tests flag every copy that drifts) and the badge returns to Stable releases.
 
+**Maintainer decision (2026-10-14), standing until he says otherwise: Alpha is the main channel and GitHub's "Latest".** Every release is `bun run release alpha` from `main`; each alpha is published as a normal release and becomes "Latest" (`crates/atlas-core/data/channels.json` `default: alpha` drives it). Do not cut beta/stable, set `make_latest=false`, mark alphas as pre-releases, or flip the default back to Stable unless the maintainer explicitly asks. 1.4.0 binaries follow "Latest" and so move to Alpha on purpose; newer clients that chose Stable still get the real Stable (newest release without a prerelease label).
+
 ## Never
 
 - Force-push, rewrite published history, delete branches or tags.

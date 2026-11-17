@@ -34,9 +34,8 @@ hex = "0.4"
 tar = "0.4"
 flate2 = { workspace = true }
 rustls = { version = "0.23", default-features = false, features = ["ring", "std", "tls12", "logging"] }
-croner = "2"
-chrono = { workspace = true }
-chrono-tz = { workspace = true }
+croner = { version = "4", default-features = false, features = ["jiff"] }
+jiff = { workspace = true }
 sha1_smol = "1"
 url = "2"
 semver = { workspace = true }
@@ -47,7 +46,6 @@ libc = { workspace = true }
 [dev-dependencies]
 tempfile = { workspace = true }
 atlas-core = { path = "../atlas-core", features = ["test-fixtures"] }
-chrono = { workspace = true, features = ["serde"] }
 
 [lints]
 workspace = true

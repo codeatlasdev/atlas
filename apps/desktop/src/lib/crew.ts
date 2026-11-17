@@ -82,6 +82,8 @@ export interface Trigger {
 	last_fired?: number;
 	/** Unix seconds of next scheduled/interval fire; computed by hostd, never sent on input. */
 	next_fire?: number;
+	/** Why the cron parser refuses this schedule (saved under an older parser); kept as saved, never fires. */
+	invalid?: string;
 	/** IANA timezone for evaluating cron (e.g. "America/Sao_Paulo"). None = UTC. */
 	tz?: string;
 }

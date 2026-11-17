@@ -1,4 +1,5 @@
 {
+	"settings_automation_invalid": "Not running: {reason}",
 	"settings_display_language_description": "The language of Atlas menus, buttons and messages.",
 	"settings_display_language_env_override": "ATLAS_LANG is set, so it decides the language for now. Your choice is saved and applies once it is unset.",
 	"settings_display_language_failed": "Could not change the language: {error}",

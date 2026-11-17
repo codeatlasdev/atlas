@@ -286,7 +286,7 @@ fn register(entries: &mut Vec<Entry>, picked: &Path) -> Result<(Entry, bool), St
         id,
         root: root.to_string_lossy().into_owned(),
         pinned: false,
-        added: chrono::Utc::now().to_rfc3339(),
+        added: atlas_core::time::utc_rfc3339_now(),
         parent: None,
         port_offset: 0,
         branch: None,

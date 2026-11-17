@@ -331,7 +331,7 @@ pub async fn projects_add_remote(
             id: id.clone(),
             root,
             pinned: false,
-            added: chrono::Utc::now().to_rfc3339(),
+            added: atlas_core::time::utc_rfc3339_now(),
             parent: None,
             port_offset: 0,
             branch: None,

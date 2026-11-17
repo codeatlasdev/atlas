@@ -24,9 +24,17 @@ const cmds = (files: string[], opts = {}) => plan(files, graph, opts).commands.m
 const ALL = Object.keys(AREAS);
 
 describe("areas (what CI's plan job outputs)", () => {
-	test("AGENTS.md and the other top-level docs run nothing; the README is prose the writing lint reads", () => {
-		expect(on(["AGENTS.md", "CONTRIBUTING.md", "LICENSE-MIT", ".github/ISSUE_TEMPLATE/bug.yml"])).toEqual([]);
+	test("CONTRIBUTING, licences and issue forms run nothing; the README is prose the writing lint reads", () => {
+		expect(on(["CONTRIBUTING.md", "LICENSE-MIT", ".github/ISSUE_TEMPLATE/bug.yml"])).toEqual([]);
 		expect(on(["README.md"])).toEqual(["i18n"]);
+	});
+
+	// scripts/agents-md.test.ts caps AGENTS.md at 8 KB and checks the skills and paths it names; it runs with the
+	// scripts tests, so a change to AGENTS.md, the repo skills or the .claude/skills link must run that area.
+	test("AGENTS.md and the repo skills run the scripts tests, and nothing else", () => {
+		expect(on(["AGENTS.md"])).toEqual(["scripts"]);
+		expect(on([".agents/skills/desktop-debug/SKILL.md"])).toEqual(["scripts"]);
+		expect(on([".claude/skills"])).toEqual(["scripts"]);
 	});
 
 	test("the changelog is read by the scripts tests (changelog-lint, release-notes)", () => {
@@ -175,7 +183,7 @@ describe("commands", () => {
 
 	test("docs only: the i18n check and the site build and type-check, nothing else", () => {
 		expect(cmds(["docs/contributing.md"])).toEqual(["bun run i18n:check", "bun run site:check", "bun run site:build"]);
-		expect(cmds(["AGENTS.md"])).toEqual([]);
+		expect(cmds(["CONTRIBUTING.md"])).toEqual([]);
 	});
 
 	test("each non-Rust area contributes its own check", () => {

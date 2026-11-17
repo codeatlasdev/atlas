@@ -239,7 +239,7 @@ impl AtlasCommand for ExportArgs {
         let dest = self.output.clone().unwrap_or_else(|| {
             PathBuf::from(transfer::default_export_name(
                 &self.ssh_target,
-                chrono::Utc::now(),
+                std::time::SystemTime::now(),
             ))
         });
         transfer::check_output_free(&dest)?;

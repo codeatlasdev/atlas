@@ -1,0 +1,71 @@
+{
+  "crewmates": [
+    {
+      "agent": "claude",
+      "approval": "auto",
+      "id": "crewmate-oldcrons",
+      "name": "OldCrons",
+      "queued": 0,
+      "role": "r",
+      "routines": [
+        {
+          "cron": "0 * * * *",
+          "enabled": true,
+          "id": "r-ok",
+          "last_run": null,
+          "prompt": "run r-ok"
+        },
+        {
+          "cron": "? ?/2 * * *",
+          "enabled": true,
+          "id": "r-question",
+          "last_run": null,
+          "prompt": "run r-question"
+        },
+        {
+          "cron": "+5 * * * *",
+          "enabled": true,
+          "id": "r-plus",
+          "invalid": "invalid cron '+5 * * * *': Pattern contains illegal characters: CronPattern contains illegal character '+' in part '+5'",
+          "last_run": null,
+          "prompt": "run r-plus"
+        }
+      ],
+      "state": "idle",
+      "triggers": [
+        {
+          "enabled": true,
+          "id": "t-ok",
+          "kind": {
+            "cron": "0 9 * * *",
+            "type": "schedule"
+          },
+          "next_fire": 1700100000,
+          "prompt": "run t-ok"
+        },
+        {
+          "enabled": true,
+          "id": "t-question",
+          "kind": {
+            "cron": "? 3 1 1 *",
+            "type": "schedule"
+          },
+          "next_fire": 1700100000,
+          "prompt": "run t-question"
+        },
+        {
+          "enabled": true,
+          "id": "t-plus",
+          "invalid": "invalid cron '+5 * * * *': Pattern contains illegal characters: CronPattern contains illegal character '+' in part '+5'",
+          "kind": {
+            "cron": "+5 * * * *",
+            "type": "schedule"
+          },
+          "next_fire": null,
+          "prompt": "run t-plus"
+        }
+      ]
+    }
+  ],
+  "paused": false
+}

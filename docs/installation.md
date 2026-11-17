@@ -76,7 +76,7 @@ tar xzf atlas-*.tar.gz
 
 When `~/.local/bin` is already on your `PATH` (most Linux desktops), install also links `~/.local/bin/atlas` to the binary: `atlas` then works in the shell you ran the installer from, in non-interactive `bash -c` (agents, scripts; `~/.bashrc` returns early for those) and in apps started from the launcher. A file of yours under any of these names is never overwritten; the installer says so and prints the line to add yourself. It ends with the command that puts `atlas` on `PATH` in the current shell, in your login shell's syntax. Do not run it with `sudo`: that installs for root.
 
-The release binary is ad-hoc signed. If Gatekeeper complains about a binary you downloaded in a browser, run `xattr -d com.apple.quarantine ./atlas` first. The installer script does not need this.
+Release binaries are signed with CODEATLAS LTDA's Developer ID (Team ID `58UYCA3ZYA`) and notarized by Apple, so Gatekeeper opens the downloaded `.dmg` and `Atlas.app` without the "cannot verify" warning, and the macOS firewall remembers `atlas` across updates instead of asking again. A bare binary cannot carry Apple's ticket, so Gatekeeper checks one you downloaded in a browser online the first time it runs; offline, run `xattr -d com.apple.quarantine ./atlas` first. A build from a fork, or a release made before signing was configured (see [Releasing](release.md#macos-signing-and-notarization)), is ad-hoc signed instead and always needs that command. The installer script does not need it.
 
 ## Install Atlas Desktop
 

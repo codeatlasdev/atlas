@@ -35,7 +35,9 @@ main ── alpha ── alpha ──────────────▶  ev
 
 ## Commits
 
-- `git commit -s` (DCO). Conventional, imperative subject: `feat:`, `fix:`, `test:`, `docs:`, `chore:`, scoped when useful (`fix(desktop): …`).
+- `git commit -s` (DCO) and **signed** (`commit.gpgsign=true` with an SSH or GPG key registered on GitHub as a signing key; the ruleset requires signed commits on `main` and `release/*`, `CONTRIBUTING.md` "Signed commits"). Conventional, imperative subject: `feat:`, `fix:`, `test:`, `docs:`, `chore:`, scoped when useful (`fix(desktop): …`).
+- Land through a pull request squash-merged on GitHub (GitHub signs the squash commit), never a direct push to `main`. Check `git log --show-signature -1` before pushing.
+- Identity: `git config user.email` must be the maintainer's real identity and `commit.gpgsign` must be `true`. A test or harness that needs another identity uses `git -c user.name=… -c user.email=…` or `env -u XDG_CONFIG_HOME GIT_CONFIG_GLOBAL=<tmpfile>`, never `git config --global` (with `XDG_CONFIG_HOME` exported, `HOME=/tmp/x git config --global` still writes the real `~/.config/git/config`: this put "First User" on two commits of `main` on 2026-11-15).
 - Stage paths, not `git add -A`; check `git diff --cached --stat` for files you did not touch (other agents and the user work in the same tree).
 - User-visible changes get a line under `## [Unreleased]` in `CHANGELOG.md` in the same commit.
 

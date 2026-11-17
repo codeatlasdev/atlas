@@ -69,7 +69,8 @@ beforeAll(() => {
 	if (t.exitCode !== 0) throw new Error(`tar: ${t.stderr.toString()}`);
 	tarball = readFileSync(join(work, "atlas.tar.gz"));
 	digest = createHash("sha256").update(tarball).digest("hex");
-});
+	// csc.exe cold-starts the .NET compiler; on a busy runner that alone passed bun's 5 s hook default.
+}, 120_000);
 afterAll(() => {
 	if (work) rmSync(work, { recursive: true, force: true });
 });

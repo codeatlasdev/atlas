@@ -337,6 +337,7 @@ pub async fn projects_add_remote(
             branch: None,
             host: Some(host),
             identity: None,
+            project: false,
         });
         Ok(true)
     })?;

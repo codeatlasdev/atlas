@@ -1,0 +1,15 @@
+{
+	"common_keys_alt": "Alt",
+	"common_keys_backspace": "Backspace",
+	"common_keys_ctrl": "Ctrl",
+	"common_keys_delete": "Delete",
+	"common_keys_end": "End",
+	"common_keys_enter": "Enter",
+	"common_keys_escape": "Esc",
+	"common_keys_home": "Home",
+	"common_keys_pagedown": "PgDn",
+	"common_keys_pageup": "PgUp",
+	"common_keys_shift": "Shift",
+	"common_keys_space": "Space",
+	"common_keys_tab": "Tab"
+}

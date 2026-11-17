@@ -1,0 +1,11 @@
+{
+	"footer_code_signing": "Footer legal link to the code signing policy page.",
+	"footer_config_reference": "Footer link to the atlas.yaml configuration reference docs page, in the Docs column; atlas.yaml is a file name and stays as is.",
+	"footer_desktop": "Footer link to the Atlas Desktop docs page, in the Docs column; Desktop is the app's product name.",
+	"footer_elsewhere": "Heading of the footer column with outside links (GitHub, CodeAtlas, llms.txt); also the accessible name of that nav.",
+	"footer_license": "Footer legal line stating the open source licenses; the dot is a separator.",
+	"footer_privacy": "Footer legal link to the privacy policy page.",
+	"footer_product": "Heading of the footer column with product links (download, getting started, changelog, releases); also the accessible name of that nav.",
+	"footer_releases": "Footer link to the GitHub releases page, in the Product column.",
+	"footer_troubleshooting": "Footer link to the troubleshooting docs page, in the Docs column."
+}

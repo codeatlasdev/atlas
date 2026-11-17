@@ -1,0 +1,21 @@
+{
+	"common_action_add": "Button that adds an item to a list.",
+	"common_action_back": "Button that goes to the previous step or screen.",
+	"common_action_cancel": "Button that dismisses a dialog or form without applying it.",
+	"common_action_close": "Button or menu item that closes a dialog, panel or window.",
+	"common_action_continue": "Button that goes on to the next step of a flow.",
+	"common_action_copy": "Button or menu item that copies the selection or value to the clipboard.",
+	"common_action_delete": "Button or menu item that deletes the selected item. Destructive: dialogs that confirm it say what is deleted.",
+	"common_action_done": "Button that finishes a flow or closes a confirmation once the work is complete.",
+	"common_action_edit": "Button or menu item that makes an item editable.",
+	"common_action_open": "Button or menu item that opens an item (a file, a project, a link).",
+	"common_action_remove": "Button or menu item that removes an item from a list without deleting its data.",
+	"common_action_rename": "Button or menu item that changes the name of an item.",
+	"common_action_retry": "Button offered after a failure that runs the same action again.",
+	"common_action_save": "Button that saves the current form, file or settings.",
+	"common_action_search": "Label of a search field or button that runs a search.",
+	"common_action_undo": "Button or menu item that reverts the last change.",
+	"common_state_empty": "Text of an empty list or panel that has no items yet.",
+	"common_state_loading": "Status shown while content is loading. The ellipsis means the wait is not over.",
+	"common_state_saving": "Status shown while a change is being saved."
+}

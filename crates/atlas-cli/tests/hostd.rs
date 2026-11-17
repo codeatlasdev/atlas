@@ -766,6 +766,69 @@ async fn upgrade_hands_live_ptys_to_a_new_hostd_without_killing_the_program() {
     );
 }
 
+/// Regression: #500. `atlas update` and the app both noticed the old daemon and called `upgrade` at
+/// once; the second call rebound the first's handoff socket, so the daemon was handed over twice
+/// (`hostd.log`: two `took over 8 pty(s)` lines for one update) and every client lost its host
+/// twice. One daemon, however many callers: one successor.
+#[tokio::test]
+async fn concurrent_upgrades_of_one_daemon_hand_over_once() {
+    let tmp = tempfile::tempdir().unwrap();
+    let dir = tmp.path();
+    let (_d, c) = start(dir).await;
+    let old_pid = c.call("info", json!({})).await.unwrap()["pid"]
+        .as_u64()
+        .unwrap();
+    let pty = c
+        .call(
+            "pty_create",
+            json!({"cwd": dir, "argv": ["sh", "-c", "read x; echo got:$x"]}),
+        )
+        .await
+        .unwrap()["pty"]
+        .as_str()
+        .unwrap()
+        .to_string();
+    let other = HostClient::connect_dir(dir, "test").await.unwrap();
+
+    let (a, b) = tokio::join!(
+        c.call("upgrade", json!({"exe": BIN})),
+        other.call("upgrade", json!({"exe": BIN})),
+    );
+    // The loser is told the handoff is already done, never that it failed.
+    let (a, b) = (a.unwrap(), b.unwrap());
+    let handed: Vec<_> = [&a, &b].iter().map(|r| r["handed_off"].as_u64()).collect();
+    assert!(
+        handed.contains(&Some(1)) && handed.contains(&Some(0)),
+        "one call moves the terminal, the other is a no-op: {a} / {b}"
+    );
+
+    let c2 = connect_retry(dir, old_pid).await;
+    let new_pid = c2.call("info", json!({})).await.unwrap()["pid"]
+        .as_u64()
+        .unwrap();
+    let _kill_new = Pid(new_pid as u32);
+    // Let any second (wrong) successor finish its takeover before counting.
+    tokio::time::sleep(Duration::from_secs(2)).await;
+    let log = std::fs::read_to_string(paths::log(dir)).unwrap();
+    assert_eq!(
+        log.matches("took over").count(),
+        1,
+        "one update, one handoff:\n{log}"
+    );
+    let now = connect_retry(dir, old_pid).await;
+    let info = now.call("info", json!({})).await.unwrap();
+    assert_eq!(info["pid"].as_u64(), Some(new_pid), "{info}");
+    let list = now.call("pty_list", json!({})).await.unwrap();
+    assert!(
+        list["ptys"]
+            .as_array()
+            .unwrap()
+            .iter()
+            .any(|p| p["pty"] == pty.as_str() && p["exited"].is_null()),
+        "{list}"
+    );
+}
+
 #[tokio::test]
 async fn failed_upgrade_leaves_the_old_hostd_and_its_ptys_running() {
     let tmp = tempfile::tempdir().unwrap();
@@ -1675,6 +1738,7 @@ async fn hostd_mobile_pair_prints_the_daemons_live_invite() {
         .args(["hostd", "--dir"])
         .arg(dir)
         .env("ATLAS_MOBILE_RELAY", "0")
+        .env("ATLAS_MOBILE_LOOPBACK", "1")
         .stdin(Stdio::null())
         .stdout(Stdio::null())
         .stderr(Stdio::null())

@@ -1,0 +1,7 @@
+{
+	"default": "en",
+	"locales": {
+		"en": { "tier": "source" },
+		"pt-BR": { "tier": "required", "owners": ["@mvilacad", "@luancoleto"] }
+	}
+}

@@ -2,6 +2,7 @@
 //! subcommand shares: console output, identity, and the id shapes allowed in paths.
 
 use std::path::PathBuf;
+use std::time::{Duration, SystemTime};
 
 use anyhow::{Context, Result, bail};
 use atlas_core::util::expand_tilde;
@@ -108,18 +109,13 @@ pub(super) fn valid_release_id(s: &str) -> bool {
 /// timestamp is the later of `now` and one second after `newest`'s: two deploys of one commit in a
 /// second get different ids, and a client clock behind the host's never makes the newest release
 /// sort before an older one.
-pub(super) fn next_release_id(
-    now: chrono::DateTime<chrono::Utc>,
-    suffix: &str,
-    newest: Option<&str>,
-) -> String {
-    const FORMAT: &str = "%Y%m%d%H%M%S";
+pub(super) fn next_release_id(now: SystemTime, suffix: &str, newest: Option<&str>) -> String {
     let after_newest = newest
         .filter(|id| valid_release_id(id))
-        .and_then(|id| chrono::NaiveDateTime::parse_from_str(&id[..14], FORMAT).ok())
-        .map(|t| t + chrono::Duration::seconds(1));
-    let at = after_newest.map_or(now.naive_utc(), |t| t.max(now.naive_utc()));
-    format!("{}-{suffix}", at.format(FORMAT))
+        .and_then(|id| atlas_core::time::parse_utc_compact(&id[..14]))
+        .map(|t| t + Duration::from_secs(1));
+    let at = after_newest.map_or(now, |t| t.max(now));
+    format!("{}-{suffix}", atlas_core::time::utc_compact(at))
 }
 
 /// A release id or a rollback run id (`rb-<digits>`).
@@ -133,10 +129,8 @@ pub(super) fn valid_run_id(s: &str) -> bool {
 mod tests {
     use super::*;
 
-    fn at(s: &str) -> chrono::DateTime<chrono::Utc> {
-        chrono::NaiveDateTime::parse_from_str(s, "%Y%m%d%H%M%S")
-            .unwrap()
-            .and_utc()
+    fn at(s: &str) -> SystemTime {
+        atlas_core::time::parse_utc_compact(s).unwrap()
     }
 
     #[test]

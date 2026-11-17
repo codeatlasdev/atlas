@@ -8,7 +8,11 @@
  *   not flicker it.
  */
 
-export const HOT_ZONE = 6;
+/**
+ * px from the window edge that count as "at the edge". The outermost pixels are the window padding plus the OS resize
+ * band, which the page may not even see, so a person who pushes the pointer to the edge rests a few px short of it.
+ */
+export const HOT_ZONE = 12;
 export const OPEN_DELAY = 60;
 export const CLOSE_DELAY = 250;
 export const HYSTERESIS = 24;
@@ -38,7 +42,11 @@ export type PeekEvent =
 			over: boolean;
 			/** px/ms toward the edge (positive = approaching). */ speed?: number;
 	  }
-	| { t: "leave-window" }
+	| {
+			t: "leave-window";
+			/** The pointer's last position was in the hot zone: it left the page through the edge itself. */
+			atEdge: boolean;
+	  }
 	| { t: "force-close" };
 
 export interface PeekState {
@@ -60,7 +68,9 @@ export function peekAction(s: PeekState, e: PeekEvent): PeekAction {
 		case "force-close":
 			return s.open ? { do: "close-now" } : { do: "cancel" };
 		case "leave-window":
-			// Leaving through the sidebar's own edge must not close it: the pointer is on the border.
+			// Through the edge itself: the pointer is pressed against the OS resize border, which the page reports as a
+			// leave. That is "still at the edge" (open on dwell, stay open), never a departure.
+			if (e.atEdge) return s.open ? { do: "cancel" } : { do: "schedule-open" };
 			return s.open ? { do: "schedule-close" } : { do: "cancel" };
 		case "move":
 			if (s.open) return e.over || e.hot ? { do: "cancel" } : { do: "schedule-close" };

@@ -3,6 +3,7 @@
 use std::io::Read;
 use std::path::{Path, PathBuf};
 use std::process::Command;
+use std::time::SystemTime;
 
 use anyhow::{Context, Result, bail};
 use atlas_tui::config::DeployConfig;
@@ -188,7 +189,7 @@ pub fn package(
     } else {
         sha[..7].to_string()
     };
-    let id = next_release_id(chrono::Utc::now(), &suffix, newest);
+    let id = next_release_id(SystemTime::now(), &suffix, newest);
 
     if let Some(build) = cfg.build.as_deref().filter(|_| !skip_build) {
         eprintln!("▸ build: {build}");

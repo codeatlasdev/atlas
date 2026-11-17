@@ -1,9 +1,7 @@
 //! Wall-clock helpers shared across the crate: epoch counters and the cached
 //! local `HH:MM:SS` stamp used on every log line.
 
-use std::time::{SystemTime, UNIX_EPOCH};
-
-use chrono::Timelike;
+use std::time::{Duration, SystemTime, UNIX_EPOCH};
 
 /// Milliseconds since the Unix epoch (0 if the clock is before it).
 pub fn now_ms() -> u64 {
@@ -21,21 +19,20 @@ pub fn now_secs() -> u64 {
 
 /// Seconds since local midnight, right now.
 pub fn secs_of_day_now() -> u32 {
-    chrono::Local::now().num_seconds_from_midnight()
+    atlas_core::time::local_secs_of_day(now_ms())
 }
 
 /// Local-time `HH:MM:SS` of an epoch-millis instant.
 pub fn hms(ms: i64) -> String {
-    chrono::DateTime::from_timestamp_millis(ms)
-        .map(|d| {
-            d.with_timezone(&chrono::Local)
-                .format("%H:%M:%S")
-                .to_string()
-        })
-        .unwrap_or_default()
+    let at = if ms >= 0 {
+        UNIX_EPOCH.checked_add(Duration::from_millis(ms.unsigned_abs()))
+    } else {
+        UNIX_EPOCH.checked_sub(Duration::from_millis(ms.unsigned_abs()))
+    };
+    at.map(atlas_core::time::local_hms).unwrap_or_default()
 }
 
-/// Caches the last formatted `HH:MM:SS`: chrono's local-time formatting is far
+/// Caches the last formatted `HH:MM:SS`: local-time formatting is far
 /// too slow to run per line at 100k lines/s, and it only changes once a second.
 #[derive(Default)]
 pub struct HmsCache {

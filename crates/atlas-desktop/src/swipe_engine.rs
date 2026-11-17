@@ -97,6 +97,25 @@ pub struct Hit {
     pub width: f64,
 }
 
+/// What can still scroll horizontally under the pointer when the fingers land (an editor, a diff, a table, a code
+/// block), as the page last measured it. A gesture belongs to the content from its first event if the content can
+/// still move the way the fingers go, and to the pager only if it cannot (Safari's back swipe): the answer is taken
+/// once, at the start, so a scroller that reaches its edge mid-gesture never hands the gesture over.
+#[derive(Clone, Copy, Debug, Default, PartialEq, Eq)]
+pub struct Scroll {
+    /// The content can still scroll left (reveal what is to its left): fingers moving right (`dx` > 0).
+    pub left: bool,
+    /// The content can still scroll right: fingers moving left (`dx` < 0).
+    pub right: bool,
+}
+
+impl Scroll {
+    /// Scrolling that content with these finger deltas is possible.
+    fn owns(self, dx: f64) -> bool {
+        if dx < 0.0 { self.right } else { self.left }
+    }
+}
+
 #[derive(Clone, Copy, Debug, PartialEq, Eq, Serialize)]
 #[serde(rename_all = "camelCase")]
 pub enum Stage {
@@ -136,6 +155,9 @@ pub struct Step {
     pub commit: Option<Commit>,
     /// The commit threshold was crossed by the fingers: a haptic tick (`true` = past, `false` = back below).
     pub threshold: Option<bool>,
+    /// The gate opened on a gesture the content owns (see [`Scroll`]): the page scrolls itself, so what the page
+    /// measured about that scroller is out of date until it measures again.
+    pub content: bool,
 }
 
 /// Rubber band: soft resistance past `[lo, hi]`, saturating at [`MAX_OVERSCROLL`] beyond the end.
@@ -189,6 +211,12 @@ struct Pending {
     refused: bool,
     /// Where the page is when the fingers land: 0 at rest, the spring's position when preempting a settle.
     base: f64,
+    /// What scrolls under the fingers where they landed.
+    scroll: Scroll,
+    /// The settle this gesture preempted. Fingers that land during a settle only take the page over if they
+    /// claim; until then (and for good if they never do: a scroll the content owns, a vertical scroll, a resting
+    /// finger) the spring keeps carrying the page to its target and ends in `Rest`.
+    settle: Option<Settle>,
 }
 
 #[derive(Clone, Debug)]
@@ -264,9 +292,12 @@ impl Engine {
         matches!(self.state, State::Settling(_))
     }
 
-    /// The engine has a gesture in flight (tracking or settling): the adapter should tick it.
+    /// The engine has a gesture in flight (tracking, settling, or a settle that fingers landed on): the adapter
+    /// should tick it.
     pub fn busy(&self) -> bool {
-        self.tracking() || self.settling()
+        self.tracking()
+            || self.settling()
+            || matches!(&self.state, State::Pending(p) if p.settle.is_some())
     }
 
     fn bounds(hit: Hit) -> (f64, f64) {
@@ -276,20 +307,31 @@ impl Engine {
         )
     }
 
-    /// One scroll event. `hit` resolves the zone under `(x, y)`; it is only called when a gesture claims.
-    pub fn feed(&mut self, s: &Sample, hit: impl FnOnce(f64, f64) -> Option<Hit>) -> Step {
+    /// One scroll event. `scroll` says what scrolls under `(x, y)`; it is only asked when the fingers land (see
+    /// [`Scroll`]). `hit` resolves the zone under `(x, y)`; it is only called when a gesture claims.
+    pub fn feed(
+        &mut self,
+        s: &Sample,
+        scroll: impl FnOnce(f64, f64) -> Scroll,
+        hit: impl FnOnce(f64, f64) -> Option<Hit>,
+    ) -> Step {
         // Fingers down: a new gesture. A settle in flight is preempted from where the spring is *now*.
+        let mut lost = Step::default();
         if matches!(s.phase, Phase::Began | Phase::MayBegin) {
-            if let State::Settling(st) = &self.state {
-                // The committed page is the new origin: the preempting gesture's amount is relative to it,
-                // so a settle that was 70% of the way to the next page resumes at -0.3, not at 0.7 (the
-                // consumer already moved its selection to `st.to` when the commit fired).
-                let (x, _) = spring(st.from, st.v0, st.to, ((s.t - st.t0) / 1000.0).max(0.0));
-                self.amount = x - st.to;
+            // Fingers cannot land while a gesture is still tracking: its lift never arrived. It ends here, on the
+            // page its position decides, instead of swallowing the new gesture's first events.
+            if self.tracking() {
+                lost = self.release(s.t, false);
             }
-            if !self.tracking() {
-                self.state = State::Idle;
-            }
+            // A settle in flight survives the landing (`feed_idle` hands it to the new gesture); anything else
+            // the previous gesture left behind is dropped.
+            self.state = match std::mem::replace(&mut self.state, State::Idle) {
+                State::Settling(st)
+                | State::Pending(Pending {
+                    settle: Some(st), ..
+                }) => State::Settling(st),
+                _ => State::Idle,
+            };
             self.tail = Tail::None;
         }
         // A tail event of a swallowed gesture.
@@ -299,23 +341,45 @@ impl Engine {
                 ..Step::default()
             };
         }
-        match &mut self.state {
-            State::Idle | State::Settling(_) => self.feed_idle(s, hit),
+        let mut step = match &mut self.state {
+            State::Idle | State::Settling(_) => self.feed_idle(s, scroll, hit),
             State::Pending(_) => self.feed_pending(s, hit),
             State::Tracking(_) => self.feed_tracking(s),
+        };
+        if lost.commit.is_some() {
+            step.commit = lost.commit;
+            step.frame = step.frame.or(lost.frame);
+            step.swallow = true;
         }
+        step
     }
 
-    fn feed_idle(&mut self, s: &Sample, hit: impl FnOnce(f64, f64) -> Option<Hit>) -> Step {
+    fn feed_idle(
+        &mut self,
+        s: &Sample,
+        scroll: impl FnOnce(f64, f64) -> Scroll,
+        hit: impl FnOnce(f64, f64) -> Option<Hit>,
+    ) -> Step {
         if !s.precise || !matches!(s.phase, Phase::Began | Phase::Changed) {
             return Step::default();
         }
-        // `amount` is the page position: 0 at rest, the spring's position when this preempts a settle.
+        // `base` is the page position: 0 at rest, the spring's position relative to the page it heads to when
+        // this preempts a settle. The committed page is the new origin: a settle that was 70% of the way to the
+        // next page resumes at -0.3, not at 0.7 (the consumer already moved its selection to `st.to`).
+        let (base, settle) = match &self.state {
+            State::Settling(st) => {
+                let (x, _) = spring(st.from, st.v0, st.to, ((s.t - st.t0) / 1000.0).max(0.0));
+                (x - st.to, Some(*st))
+            }
+            _ => (self.amount, None),
+        };
         self.state = State::Pending(Pending {
             dx: 0.0,
             dy: 0.0,
             refused: false,
-            base: self.amount,
+            base,
+            scroll: scroll(s.x, s.y),
+            settle,
         });
         self.feed_pending(s, hit)
     }
@@ -325,7 +389,11 @@ impl Engine {
             return Step::default();
         };
         if matches!(s.phase, Phase::Ended | Phase::Cancelled) {
-            self.state = State::Idle;
+            // The lift of a gesture that never claimed: a settle it preempted carries on.
+            self.state = match p.settle {
+                Some(st) => State::Settling(st),
+                None => State::Idle,
+            };
             return Step::default();
         }
         if p.refused || !s.precise {
@@ -339,6 +407,14 @@ impl Engine {
         }
         if p.dx.abs() < MIN_DX || p.dx.abs() <= AXIS_RATIO * p.dy.abs() {
             return Step::default();
+        }
+        if p.scroll.owns(p.dx) {
+            // The content under the fingers can still go this way: the whole gesture is its, to the lift.
+            p.refused = true;
+            return Step {
+                content: true,
+                ..Step::default()
+            };
         }
         let Some(h) = hit(s.x, s.y).filter(|h| (h.prev || h.next) && h.width > 1.0) else {
             p.refused = true;
@@ -444,6 +520,7 @@ impl Engine {
                 stage: Stage::Settle,
             }),
             threshold: None,
+            content: false,
         }
     }
 
@@ -478,43 +555,65 @@ impl Engine {
                 stage: Stage::Settle,
             }),
             threshold: None,
+            content: false,
         })
+    }
+
+    /// The gesture ends from outside (the window lost focus, the pager was torn down): fingers that are still
+    /// down are treated as a cancel, so the page settles back on the page it was on instead of staying where the
+    /// fingers were. Nothing in flight: nothing to do.
+    pub fn abandon(&mut self, now: f64) -> Step {
+        match &self.state {
+            State::Tracking(_) => self.release(now, true),
+            State::Pending(_) => {
+                self.state = State::Idle;
+                Step::default()
+            }
+            _ => Step::default(),
+        }
     }
 
     /// Advance the engine to `now` (ms). While settling it yields the spring's position and ends the gesture
     /// at rest; while tracking it detects a lost lift (no `Ended`) after [`STALE_MS`].
     pub fn tick(&mut self, now: f64) -> Step {
-        match &self.state {
-            State::Tracking(tr) if now - tr.last_t > STALE_MS => self.release(now, false),
-            State::Settling(st) => {
-                let t = ((now - st.t0) / 1000.0).max(0.0);
-                let (x, v) = spring(st.from, st.v0, st.to, t);
-                if (x - st.to).abs() < REST_X && v.abs() < REST_V {
-                    let (seq, to) = (self.seq, st.to);
-                    // The page it landed on is the new origin: the next gesture's amounts start at 0.
-                    self.amount = 0.0;
-                    self.state = State::Idle;
-                    return Step {
-                        frame: Some(Frame {
-                            seq,
-                            amount: to,
-                            stage: Stage::Rest,
-                        }),
-                        ..Step::default()
-                    };
+        let st = match &self.state {
+            State::Tracking(tr) if now - tr.last_t > STALE_MS => return self.release(now, false),
+            State::Settling(st) => *st,
+            State::Pending(Pending {
+                settle: Some(st), ..
+            }) => *st,
+            _ => return Step::default(),
+        };
+        let t = ((now - st.t0) / 1000.0).max(0.0);
+        let (x, v) = spring(st.from, st.v0, st.to, t);
+        if (x - st.to).abs() < REST_X && v.abs() < REST_V {
+            // The page it landed on is the new origin: the next gesture's amounts start at 0.
+            self.amount = 0.0;
+            match &mut self.state {
+                State::Pending(p) => {
+                    p.settle = None;
+                    p.base = 0.0;
                 }
-                self.amount = x;
-                Step {
-                    swallow: false,
-                    frame: Some(Frame {
-                        seq: self.seq,
-                        amount: x,
-                        stage: Stage::Settle,
-                    }),
-                    ..Step::default()
-                }
+                _ => self.state = State::Idle,
             }
-            _ => Step::default(),
+            return Step {
+                frame: Some(Frame {
+                    seq: self.seq,
+                    amount: st.to,
+                    stage: Stage::Rest,
+                }),
+                ..Step::default()
+            };
+        }
+        self.amount = x;
+        Step {
+            swallow: false,
+            frame: Some(Frame {
+                seq: self.seq,
+                amount: x,
+                stage: Stage::Settle,
+            }),
+            ..Step::default()
         }
     }
 }
@@ -574,10 +673,46 @@ mod tests {
     }
 
     fn run(e: &mut Engine, samples: &[Sample], hit: Hit) -> Vec<Step> {
+        run_over(e, samples, hit, Scroll::default())
+    }
+
+    /// Like `run`, with `scroll` under the pointer when the fingers land.
+    fn run_over(e: &mut Engine, samples: &[Sample], hit: Hit, scroll: Scroll) -> Vec<Step> {
         samples
             .iter()
-            .map(|x| e.feed(x, |_, _| Some(hit)))
+            .map(|x| e.feed(x, |_, _| scroll, |_, _| Some(hit)))
             .collect()
+    }
+
+    const NOTHING: Scroll = Scroll {
+        left: false,
+        right: false,
+    };
+    const BOTH_WAYS: Scroll = Scroll {
+        left: true,
+        right: true,
+    };
+
+    /// Fingers land at `t0` and move `dx` per 8 ms sample, `n` times (no lift).
+    fn swipe(t0: f64, dx: f64, n: u32) -> Vec<Sample> {
+        let mut v = vec![s(t0, Phase::Began, 0.0, 0.0)];
+        for i in 1..=n {
+            v.push(s(t0 + f64::from(i) * 8.0, Phase::Changed, dx, 0.0));
+        }
+        v
+    }
+
+    /// Tick (120 Hz) until the engine has nothing in flight; the frames it reported.
+    fn settle_out(e: &mut Engine, mut t: f64) -> Vec<Frame> {
+        let mut out = vec![];
+        for _ in 0..400 {
+            if !e.busy() {
+                break;
+            }
+            t += 8.33;
+            out.extend(e.tick(t).frame);
+        }
+        out
     }
 
     #[test]
@@ -720,7 +855,7 @@ mod tests {
             } else {
                 Momentum::Changed
             };
-            let st = e.feed(&m, |_, _| Some(BOTH));
+            let st = e.feed(&m, |_, _| Scroll::default(), |_, _| Some(BOTH));
             assert!(st.swallow, "momentum event {i} must be swallowed");
             assert!(st.commit.is_none());
         }
@@ -899,5 +1034,222 @@ mod tests {
             st.commit.is_some(),
             "no Ended ever came: the engine must release by itself"
         );
+    }
+
+    // Regression (#498): a horizontal scroll over an editor with a long line was taken by the pager.
+    #[test]
+    fn a_horizontal_scroll_over_scrollable_content_is_never_a_swipe() {
+        let mut e = Engine::new();
+        let cases = [
+            (
+                -30.0,
+                Scroll {
+                    left: false,
+                    right: true,
+                },
+            ),
+            (
+                30.0,
+                Scroll {
+                    left: true,
+                    right: false,
+                },
+            ),
+            (-30.0, BOTH_WAYS),
+        ];
+        for (k, (dx, scroll)) in cases.into_iter().enumerate() {
+            let t0 = k as f64 * 2000.0;
+            let mut v = swipe(t0, dx, 30);
+            v.push(s(t0 + 300.0, Phase::Ended, 0.0, 0.0));
+            let steps = run_over(&mut e, &v, BOTH, scroll);
+            assert!(
+                steps
+                    .iter()
+                    .all(|x| !x.swallow && x.frame.is_none() && x.commit.is_none()),
+                "case {k}: the page must keep every event of a gesture its content can scroll"
+            );
+            assert_eq!(
+                steps.iter().filter(|x| x.content).count(),
+                1,
+                "case {k}: the adapter is told once that the content took the gesture"
+            );
+            // The inertia of that scroll is the page's too.
+            let mut m = s(t0 + 320.0, Phase::None, dx, 0.0);
+            m.momentum = Momentum::Began;
+            assert!(!e.feed(&m, |_, _| scroll, |_, _| Some(BOTH)).swallow);
+            assert!(!e.busy());
+        }
+        assert_eq!(e.seq(), 0, "nothing was ever claimed");
+    }
+
+    #[test]
+    fn who_owns_the_gesture_is_decided_once_when_the_fingers_land() {
+        // The content can scroll right when the fingers land; however far the gesture goes (and it would reach
+        // the content's edge long before), the answer is not asked again and never changes.
+        let mut e = Engine::new();
+        let mut asked = 0;
+        for x in swipe(0.0, -30.0, 40) {
+            let st = e.feed(
+                &x,
+                |_, _| {
+                    asked += 1;
+                    Scroll {
+                        left: false,
+                        right: true,
+                    }
+                },
+                |_, _| Some(BOTH),
+            );
+            assert!(!st.swallow, "the content keeps the whole gesture");
+        }
+        assert_eq!(asked, 1);
+    }
+
+    #[test]
+    fn a_swipe_that_starts_with_the_content_at_its_edge_is_the_pagers() {
+        // Scrolled to the far right: nothing left to reveal that way, so fingers moving left page forward...
+        let at_right_edge = Scroll {
+            left: true,
+            right: false,
+        };
+        let mut e = Engine::new();
+        let mut v = swipe(0.0, -30.0, 30);
+        v.push(s(260.0, Phase::Ended, 0.0, 0.0));
+        let steps = run_over(&mut e, &v, BOTH, at_right_edge);
+        assert!(steps[1].swallow, "claimed at the gate");
+        assert!(steps.iter().all(|x| !x.content));
+        let commits: Vec<_> = steps.iter().filter_map(|x| x.commit).collect();
+        assert_eq!(commits.len(), 1);
+        assert_eq!(commits[0].dir, 1);
+        let last = *settle_out(&mut e, 260.0).last().unwrap();
+        assert_eq!((last.stage, last.amount), (Stage::Rest, 1.0));
+
+        // ...while fingers moving right over the same content scroll it back.
+        let mut e = Engine::new();
+        let mut v = swipe(0.0, 30.0, 30);
+        v.push(s(260.0, Phase::Ended, 0.0, 0.0));
+        let steps = run_over(&mut e, &v, BOTH, at_right_edge);
+        assert!(steps.iter().all(|x| !x.swallow && x.commit.is_none()));
+    }
+
+    #[test]
+    fn a_swipe_reversed_back_to_where_it_began_settles_there() {
+        let mut e = Engine::new();
+        let mut v = swipe(0.0, -30.0, 10);
+        for i in 11..=20 {
+            v.push(s(f64::from(i) * 8.0, Phase::Changed, 30.0, 0.0));
+        }
+        // The fingers rest a moment before they lift: no velocity either way.
+        v.push(s(160.0 + 150.0, Phase::Ended, 0.0, 0.0));
+        let steps = run(&mut e, &v, BOTH);
+        let commits: Vec<_> = steps.iter().filter_map(|x| x.commit).collect();
+        assert_eq!(commits.len(), 1);
+        assert_eq!(commits[0].dir, 0, "back where it began: a cancel");
+        let last = *settle_out(&mut e, 310.0).last().unwrap();
+        assert_eq!((last.stage, last.amount), (Stage::Rest, 0.0));
+        assert!(!e.busy());
+    }
+
+    #[test]
+    fn a_swipe_reversed_in_a_flick_still_settles_on_exactly_one_page() {
+        let mut e = Engine::new();
+        let mut v = swipe(0.0, -30.0, 10);
+        for i in 11..=24 {
+            v.push(s(f64::from(i) * 8.0, Phase::Changed, 30.0, 0.0));
+        }
+        v.push(s(24.0 * 8.0 + 4.0, Phase::Ended, 0.0, 0.0));
+        let steps = run(&mut e, &v, BOTH);
+        let commits: Vec<_> = steps.iter().filter_map(|x| x.commit).collect();
+        assert_eq!(commits.len(), 1, "one decision per gesture");
+        let dir = f64::from(commits[0].dir);
+        let last = *settle_out(&mut e, 24.0 * 8.0 + 4.0).last().unwrap();
+        assert_eq!((last.stage, last.amount), (Stage::Rest, dir));
+        assert!(!e.busy());
+    }
+
+    #[test]
+    fn a_swipe_abandoned_with_the_fingers_down_settles_back_on_its_page() {
+        // Past the commit point, then the window loses focus: nothing was decided by a lift, so nothing commits.
+        let mut e = Engine::new();
+        run(&mut e, &swipe(0.0, -60.0, 10), BOTH);
+        assert!(e.tracking());
+        let st = e.abandon(100.0);
+        assert_eq!(st.commit.map(|c| c.dir), Some(0));
+        let last = *settle_out(&mut e, 100.0).last().unwrap();
+        assert_eq!((last.stage, last.amount), (Stage::Rest, 0.0));
+
+        // Fingers that had not claimed anything yet: nothing to settle.
+        let mut e = Engine::new();
+        run(&mut e, &swipe(0.0, -5.0, 1), BOTH);
+        assert!(e.abandon(50.0).frame.is_none());
+        assert!(!e.busy() && !e.tracking());
+        // The rest of that gesture arriving later starts over cleanly.
+        let st = run(&mut e, &[s(60.0, Phase::Ended, 0.0, 0.0)], BOTH);
+        assert!(st[0].commit.is_none());
+    }
+
+    #[test]
+    fn fingers_landing_on_a_gesture_whose_lift_was_lost_end_it_first() {
+        let mut e = Engine::new();
+        run(&mut e, &swipe(0.0, -70.0, 10), BOTH);
+        assert!(e.tracking());
+        // No Ended ever came; the next touch is the proof.
+        let st = e.feed(
+            &s(500.0, Phase::Began, 0.0, 0.0),
+            |_, _| NOTHING,
+            |_, _| Some(BOTH),
+        );
+        let c = st.commit.expect("the lost gesture is decided now");
+        assert_eq!((c.seq, c.dir), (1, 1));
+        // The new touch never moves; the first gesture's page still lands.
+        let last = *settle_out(&mut e, 500.0).last().unwrap();
+        assert_eq!((last.seq, last.stage, last.amount), (1, Stage::Rest, 1.0));
+        assert_eq!(e.seq(), 1);
+    }
+
+    // Regression (#498): fingers landing during a settle replaced it. If those fingers never claimed (a
+    // horizontal scroll the content owns, a vertical scroll, a resting finger) no frame followed, the pager kept
+    // the half-way pose of the old swipe and only quitting the app cleared it.
+    #[test]
+    fn fingers_landing_during_a_settle_that_never_claim_let_the_settle_finish() {
+        let touches: [(&str, Scroll, f64, f64); 3] = [
+            ("content scrolls sideways", BOTH_WAYS, -30.0, 0.0),
+            ("vertical scroll", NOTHING, 0.0, -30.0),
+            ("a resting finger", NOTHING, 0.0, 0.0),
+        ];
+        for (what, scroll, dx, dy) in touches {
+            let mut e = Engine::new();
+            let mut frames = vec![];
+            let mut v = swipe(0.0, -60.0, 10);
+            v.push(s(88.0, Phase::Ended, 0.0, 0.0));
+            for x in run(&mut e, &v, BOTH) {
+                frames.extend(x.frame);
+            }
+            // 25 ms into the settle the fingers land again and do something else.
+            let mut t = 88.0;
+            for _ in 0..3 {
+                t += 8.33;
+                frames.extend(e.tick(t).frame);
+            }
+            let mut touch = vec![s(t + 1.0, Phase::Began, 0.0, 0.0)];
+            for i in 1..=10 {
+                touch.push(s(t + 1.0 + f64::from(i) * 8.0, Phase::Changed, dx, dy));
+            }
+            touch.push(s(t + 100.0, Phase::Ended, 0.0, 0.0));
+            for x in &touch {
+                let st = e.feed(x, |_, _| scroll, |_, _| Some(BOTH));
+                assert_eq!(st.commit, None, "{what}");
+                frames.extend(st.frame);
+                frames.extend(e.tick(x.t + 4.0).frame);
+            }
+            frames.extend(settle_out(&mut e, t + 104.0));
+            let last = frames.last().unwrap();
+            assert_eq!(
+                (last.seq, last.stage, last.amount),
+                (1, Stage::Rest, 1.0),
+                "{what}: the page must land on the committed page"
+            );
+            assert!(!e.busy(), "{what}");
+        }
     }
 }

@@ -6,7 +6,8 @@
     "dev": "astro dev",
     "build": "astro build",
     "preview": "astro preview",
-    "check": "astro check && tsc -p scripts && tsc -p functions && tsc -p functions/tsconfig.test.json && bun test functions src"
+    "check": "bun run i18n:compile && astro check && tsc -p scripts && tsc -p functions && tsc -p functions/tsconfig.test.json && bun test functions src",
+    "i18n:compile": "bun scripts/i18n-compile.mjs"
   },
   "dependencies": {
     "@astrojs/markdown-remark": "^7.3.2",
@@ -29,6 +30,8 @@
   "devDependencies": {
     "@astrojs/check": "^0.9.10",
     "@cloudflare/workers-types": "^5.20261012.1",
+    "@inlang/paraglide-js": "3.2.2",
+    "@inlang/plugin-message-format": "4.6.0",
     "@types/bun": "^1.4.2",
     "typescript": "^6"
   }

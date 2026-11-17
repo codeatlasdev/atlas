@@ -7,8 +7,6 @@
 //! the index advances their cutoff with `ViewIndex::advance_clock`, so a
 //! sliding window never forces a rescan.
 
-use chrono::{Local, NaiveTime, TimeZone, Timelike};
-
 use super::logs::LogBuffer;
 
 /// The presets `V` cycles through, in order (after `All`).
@@ -159,13 +157,7 @@ impl Window {
 /// `now_ms`. `None` for a nonexistent local time (DST gap) — callers treat the
 /// range as unresolvable and show nothing rather than guess.
 fn local_second(now_ms: u64, s: u32) -> Option<u64> {
-    let day = Local
-        .timestamp_millis_opt(now_ms as i64)
-        .single()?
-        .date_naive();
-    let t = NaiveTime::from_num_seconds_from_midnight_opt(s, 0)?;
-    let at = Local.from_local_datetime(&day.and_time(t)).earliest()?;
-    u64::try_from(at.timestamp_millis()).ok()
+    atlas_core::time::local_day_second_ms(now_ms, s)
 }
 
 /// Resolve `range` for a view over `service` (`None` = All tab) at `now_ms`.
@@ -200,10 +192,7 @@ pub fn resolve(
 
 /// Seconds since local midnight of `now_ms` (for the custom field's default).
 pub fn seconds_of_day(now_ms: u64) -> u32 {
-    Local
-        .timestamp_millis_opt(now_ms as i64)
-        .single()
-        .map_or(0, |d| d.num_seconds_from_midnight())
+    atlas_core::time::local_secs_of_day(now_ms)
 }
 
 #[cfg(test)]
@@ -348,21 +337,13 @@ mod tests {
 
     #[test]
     fn custom_resolves_to_today_and_covers_the_whole_end_second() {
-        let now = Local
-            .with_ymd_and_hms(2026, 3, 4, 15, 0, 0)
-            .earliest()
-            .unwrap()
-            .timestamp_millis() as u64;
+        // 15:00 local on a day with no clock change anywhere, built in whichever zone the machine is in.
+        let noon_utc = 1_772_625_600_000; // 2026-03-04T12:00:00Z
+        let now = local_second(noon_utc, 15 * 3600).unwrap();
         let buf = LogBuffer::new(10);
         let r = parse_custom("14:05-14:20").unwrap();
         let w = resolve(r, &buf, None, now).unwrap();
-        let at = |h, m, s| {
-            Local
-                .with_ymd_and_hms(2026, 3, 4, h, m, s)
-                .earliest()
-                .unwrap()
-                .timestamp_millis() as u64
-        };
+        let at = |h: u32, m: u32, s: u32| local_second(now, h * 3600 + m * 60 + s).unwrap();
         assert_eq!(w.from_ms, Some(at(14, 5, 0)));
         assert_eq!(
             w.to_ms,

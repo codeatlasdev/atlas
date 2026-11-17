@@ -661,35 +661,19 @@ fn split_subject(subject: &str) -> (String, String) {
     )
 }
 
-/// How an agent CLI is run to answer one prompt and exit: `argv`, prompt on stdin, no tools, no saved session.
-/// Flags verified against each CLI's `--help` (omp 18.11, claude 2.1, codex 0.162).
-pub fn provider_argv(agent: &str) -> Option<Vec<&'static str>> {
-    Some(match agent {
-        "omp" => vec![
-            "omp",
-            "-p",
-            "--no-session",
-            "--no-tools",
-            "--no-skills",
-            "--no-rules",
-            "--no-extensions",
-            "--no-lsp",
-            "--no-title",
-        ],
-        "claude" => vec!["claude", "-p", "--no-session-persistence", "--tools", ""],
-        "codex" => vec![
-            "codex",
-            "exec",
-            "--ephemeral",
-            "--skip-git-repo-check",
-            "-s",
-            "read-only",
-            "--color",
-            "never",
-            "-",
-        ],
-        _ => return None,
-    })
+/// How an agent CLI is run to answer one prompt and exit: `argv`, prompt on stdin, no tools, no saved session
+/// (`one_shot` in `data/agents.json`; `None` for an agent with no verified invocation). Flags verified against
+/// each CLI's `--help` (omp 18.11, claude 2.1, codex 0.162).
+pub fn provider_argv(agent: &str) -> Option<&'static [String]> {
+    crate::agents::get(agent)?.one_shot.as_deref()
+}
+
+/// The built-in agents that can write a commit message (have a `one_shot`), in the registry's order.
+pub fn provider_ids() -> impl Iterator<Item = &'static str> {
+    crate::agents::all()
+        .iter()
+        .filter(|a| a.one_shot.is_some())
+        .map(|a| a.id.as_str())
 }
 
 // ---------- provider selection and the run ----------
@@ -710,30 +694,16 @@ pub fn resolve_provider(
     default_agent: Option<&str>,
     installed: &[&str],
 ) -> Provider {
-    let known = |id: &str| {
-        installed
-            .iter()
-            .copied()
-            .find(|i| *i == id)
-            .and_then(|i| provider_argv(i).map(|a| a[0]))
-    };
-    let pick = |id: &str| ["omp", "claude", "codex"].into_iter().find(|k| *k == id);
+    // An agent is a candidate when it can run one-shot and is installed.
+    let known = |id: &str| provider_ids().find(|k| *k == id && installed.contains(k));
     match setting {
         Some("off") => Provider::Off,
         Some(id) if id != "auto" && !id.is_empty() => {
-            match pick(id).filter(|k| known(k).is_some()) {
-                Some(k) => Provider::Agent(k),
-                None => Provider::None,
-            }
+            known(id).map_or(Provider::None, Provider::Agent)
         }
         _ => default_agent
-            .and_then(pick)
-            .filter(|k| known(k).is_some())
-            .or_else(|| {
-                ["omp", "claude", "codex"]
-                    .into_iter()
-                    .find(|k| known(k).is_some())
-            })
+            .and_then(known)
+            .or_else(|| provider_ids().find(|k| installed.contains(k)))
             .map_or(Provider::None, Provider::Agent),
     }
 }
@@ -1486,18 +1456,16 @@ mod commit_msg_tests {
     // no tools, no session saved. A wrong flag turns into a hanging or file-editing agent, so they are pinned here.
     #[test]
     fn each_provider_runs_non_interactively_with_no_tools_and_no_saved_session() {
+        let has = |argv: &[String], f: &str| argv.iter().any(|a| a == f);
         let omp = provider_argv("omp").unwrap();
         assert_eq!(omp[0], "omp");
         for f in ["-p", "--no-session", "--no-tools"] {
-            assert!(omp.contains(&f), "omp lacks {f}: {omp:?}");
+            assert!(has(omp, f), "omp lacks {f}: {omp:?}");
         }
         let claude = provider_argv("claude").unwrap();
         assert_eq!(claude[0], "claude");
-        assert!(claude.contains(&"-p") && claude.contains(&"--no-session-persistence"));
-        let at = claude
-            .iter()
-            .position(|a| *a == "--tools")
-            .expect("--tools");
+        assert!(has(claude, "-p") && has(claude, "--no-session-persistence"));
+        let at = claude.iter().position(|a| a == "--tools").expect("--tools");
         assert_eq!(
             claude[at + 1],
             "",
@@ -1506,11 +1474,32 @@ mod commit_msg_tests {
         let codex = provider_argv("codex").unwrap();
         assert_eq!(&codex[..2], ["codex", "exec"]);
         for f in ["--ephemeral", "--skip-git-repo-check", "-"] {
-            assert!(codex.contains(&f), "codex lacks {f}: {codex:?}");
+            assert!(has(codex, f), "codex lacks {f}: {codex:?}");
         }
-        let at = codex.iter().position(|a| *a == "-s").expect("-s");
+        let at = codex.iter().position(|a| a == "-s").expect("-s");
         assert_eq!(codex[at + 1], "read-only");
         assert_eq!(provider_argv("nope"), None);
+    }
+
+    // OpenCode is installed and launchable but has no verified tools-off one-shot run: the diff must never be
+    // handed to it, whatever the setting says. (Incident class: the picker offered agents resolve_provider ignored.)
+    #[test]
+    fn an_agent_without_a_one_shot_run_is_never_a_commit_provider() {
+        assert_eq!(
+            provider_ids().collect::<Vec<_>>(),
+            ["omp", "claude", "codex"]
+        );
+        assert_eq!(provider_argv("opencode"), None);
+        let all = ["omp", "claude", "codex", "opencode"];
+        assert_eq!(
+            resolve_provider(Some("opencode"), Some("omp"), &all),
+            Provider::None
+        );
+        assert_eq!(
+            resolve_provider(None, Some("opencode"), &["opencode", "codex"]),
+            Provider::Agent("codex")
+        );
+        assert_eq!(resolve_provider(None, None, &["opencode"]), Provider::None);
     }
 
     // ----- provider selection -----

@@ -460,6 +460,42 @@ fn audit_args_are_summarized_without_the_target_and_long_values_are_cut() {
     );
 }
 
+// Contract (chrono → jiff migration, #540): `ts` is local time with milliseconds and a numeric offset, e.g.
+// `2026-11-17T10:00:05.123-03:00`; `render` reads the clock out of columns 11..19 of it, and an audit file
+// written by an older build keeps rendering.
+#[test]
+fn audit_ts_is_local_rfc3339_with_millis_and_render_shows_its_clock() {
+    let e = audit::AuditEntry::new(
+        &Caller::Human,
+        "restart_service",
+        "api",
+        &json!({}),
+        audit::Outcome::Allowed,
+        None,
+    );
+    let b = e.ts.as_bytes();
+    assert_eq!(e.ts.len(), 29, "{}", e.ts);
+    assert_eq!(
+        (b[4], b[7], b[10], b[13], b[16], b[19]),
+        (b'-', b'-', b'T', b':', b':', b'.'),
+        "{}",
+        e.ts
+    );
+    assert!(matches!(b[23], b'+' | b'-') && b[26] == b':', "{}", e.ts);
+    assert!(e.ts[20..23].bytes().all(|c| c.is_ascii_digit()), "{}", e.ts);
+    assert!(e.render().starts_with(&e.ts[11..19]), "{}", e.render());
+
+    let old: audit::AuditEntry = serde_json::from_str(
+        r#"{"ts":"2026-11-17T10:00:05.123-03:00","caller":"human","client":null,"session":null,"tool":"restart_service","target":"api","args":{},"result":"allowed"}"#,
+    )
+    .unwrap();
+    assert!(old.render().starts_with("10:00:05 "), "{}", old.render());
+    assert_eq!(
+        serde_json::to_value(&old).unwrap()["ts"],
+        "2026-11-17T10:00:05.123-03:00"
+    );
+}
+
 /// A served project whose run loop is stuck: `REQUEST_QUEUE` requests are parked in the queue and
 /// nobody reads it, so the next one finds it full. `rx` is the run loop's end.
 async fn full_queue(

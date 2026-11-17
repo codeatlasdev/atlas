@@ -10,6 +10,7 @@
 	import { hostCall } from "#lib/host.ts";
 	import { crew } from "#lib/stores/crew.svelte.ts";
 	import { agents } from "#lib/stores/agents.svelte.ts";
+	import { builtinAgent } from "#lib/agentRegistry.ts";
 	import { ws } from "#lib/stores/workspace.svelte.ts";
 	import { normalizeLook } from "#lib/crew/look.ts";
 	import { firstUnreadIndex } from "#lib/crew/crewLogic.ts";
@@ -45,16 +46,10 @@
 	const orderedTasks = $derived([...tasks].reverse()); // oldest first
 	const unreadIdx = $derived(firstUnreadIndex(orderedTasks, crew.selectedLastSeen));
 
-	const AGENT_LABELS: Record<string, string> = {
-		omp: "omp",
-		claude: "Claude Code",
-		codex: "Codex",
-		opencode: "OpenCode",
-	};
 	const agentLabel = $derived(
 		crewmate
 			? (agents.list.find((a) => a.id === crewmate.agent)?.label ??
-					AGENT_LABELS[crewmate.agent] ??
+					builtinAgent(crewmate.agent)?.label ??
 					crewmate.agent)
 			: "",
 	);

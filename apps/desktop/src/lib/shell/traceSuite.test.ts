@@ -66,6 +66,9 @@ test("the suite covers every shape the engine has to get right", () => {
 		"tab-flick-next",
 		"tab-many-tabs",
 		"wheel-mouse",
+		"editor-scroll-owned",
+		"editor-scroll-back-owned",
+		"editor-at-edge-hands-over",
 	])
 		expect(names).toContain(need);
 });

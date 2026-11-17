@@ -52,7 +52,7 @@
     "release": "bun scripts/sh.ts scripts/release.sh",
     "release:dry": "bun scripts/sh.ts scripts/release.sh --dry-run",
     "release:publish": "bun scripts/sh.ts scripts/release.sh --publish",
-    "release:test": "bun test scripts && bun scripts/sh.ts scripts/py.sh -m unittest scripts/test_generate_manifest.py && bun scripts/sh.ts scripts/test-bootstrap-channel.sh && bun scripts/sh.ts scripts/test-labels.sh",
+    "release:test": "bun run i18n:install && bun test scripts && bun scripts/sh.ts scripts/py.sh -m unittest scripts/test_generate_manifest.py && bun scripts/sh.ts scripts/test-bootstrap-channel.sh && bun scripts/sh.ts scripts/test-labels.sh",
     "test": "bun run --cwd apps/desktop test && bun run release:test"
   },
   "license": "MIT OR Apache-2.0",

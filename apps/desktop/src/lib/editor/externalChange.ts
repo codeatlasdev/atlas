@@ -3,6 +3,7 @@
  * the one effect the integrator must perform; it never touches disk or the view itself.
  *
  * - Our own save echoing back (disk text === `lastSaved`) is ignored.
+ * - Disk text === the buffer as it would be written: `in-sync` (the integrator takes it as the baseline).
  * - Clean buffer + auto reload: `reload`. Clean buffer without auto reload, or dirty: `prompt-conflict`.
  * - Deleted on disk: `notice-deleted` (the buffer is kept; saving recreates the file).
  */
@@ -25,7 +26,8 @@ export type ExternalEvent =
 	| { kind: "edited"; text: string }
 	| { kind: "resolve"; choice: "reload" | "keep" | "compare" };
 
-export type ExternalEffect = "none" | "reload" | "prompt-conflict" | "notice-deleted" | "ignore-own-write";
+export type ExternalEffect =
+	"none" | "reload" | "in-sync" | "prompt-conflict" | "notice-deleted" | "ignore-own-write";
 
 export interface ExternalResult {
 	state: ExternalState;
@@ -44,7 +46,7 @@ export function reduceExternal(state: ExternalState, event: ExternalEvent): Exte
 				// Someone wrote exactly what we have: in sync, nothing to ask.
 				return {
 					state: { ...state, diskText: null, lastSaved: event.text, mtime: event.mtime, dirty: false },
-					effect: "none",
+					effect: "in-sync",
 				};
 			}
 			const next = { ...state, diskText: event.text, mtime: event.mtime };

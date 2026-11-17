@@ -1,6 +1,8 @@
 <script lang="ts">
 	import { onMount } from "svelte";
 	import { Terminal } from "@xterm/xterm";
+	// xterm's own stylesheet loads with the terminal, not with the shell (#288).
+	import "@xterm/xterm/css/xterm.css";
 	import { FitAddon } from "@xterm/addon-fit";
 	import { SearchAddon } from "@xterm/addon-search";
 	import { WebLinksAddon } from "@xterm/addon-web-links";

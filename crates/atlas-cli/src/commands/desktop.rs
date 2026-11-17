@@ -143,7 +143,10 @@ impl AtlasCommand for DesktopArgs {
                 current_version().to_string()
             };
             if let Some(app) = super::desktop_linux::install_package(pm, &version, self.yes) {
-                println!("\x1b[32m✓\x1b[0m Installed {}", app.display());
+                println!(
+                    "\x1b[32m✓\x1b[0m {}",
+                    atlas_i18n::t!("desktop_pkg_installed", path = app.display().to_string())
+                );
                 if !self.no_open {
                     open(&app, &[])?;
                 }

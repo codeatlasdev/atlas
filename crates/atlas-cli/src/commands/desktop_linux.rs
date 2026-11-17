@@ -226,8 +226,12 @@ pub(super) fn install_package(pm: PackageManager, version: &str, yes: bool) -> O
         Ok(app) => app,
         Err(e) => {
             eprintln!(
-                "\x1b[33m◆\x1b[0m Could not install the {} package ({e:#}); installing the AppImage instead.",
-                pm.name()
+                "\x1b[33m◆\x1b[0m {}",
+                atlas_i18n::t!(
+                    "desktop_pkg_failed",
+                    manager = pm.name(),
+                    error = format!("{e:#}")
+                )
             );
             None
         }
@@ -241,8 +245,8 @@ fn try_install_package(pm: PackageManager, version: &str, yes: bool) -> Result<O
         update_pkg::Plan::Install(esc) => esc,
         update_pkg::Plan::Show { .. } => {
             println!(
-                "\x1b[1;34m◆\x1b[0m Installing the AppImage: the {} package needs your confirmation (run `atlas desktop` in a terminal, or pass --yes).",
-                pm.name()
+                "\x1b[1;34m◆\x1b[0m {}",
+                atlas_i18n::t!("desktop_pkg_needs_confirmation", manager = pm.name())
             );
             return Ok(None);
         }
@@ -251,7 +255,10 @@ fn try_install_package(pm: PackageManager, version: &str, yes: bool) -> Result<O
     let dir = tempfile::Builder::new()
         .prefix(&format!("atlas-desktop-{version}-"))
         .tempdir()?;
-    println!("\x1b[1;34m◆\x1b[0m Downloading {asset}...");
+    println!(
+        "\x1b[1;34m◆\x1b[0m {}",
+        atlas_i18n::t!("desktop_pkg_downloading", asset = asset.as_str())
+    );
     let file = super::release::download_verified(
         &format!("v{version}"),
         &asset,
@@ -260,18 +267,22 @@ fn try_install_package(pm: PackageManager, version: &str, yes: bool) -> Result<O
     )?;
     let argv = update_pkg::command_line(esc, pm, &file);
     println!(
-        "\n  Atlas Desktop v{version} comes as a {} package, installed as root:",
-        pm.name()
+        "\n  {}",
+        atlas_i18n::t!(
+            "desktop_pkg_will_run",
+            version = version,
+            manager = pm.name()
+        )
     );
     println!("    {}", argv.join(" "));
     if !yes {
-        print!("Install it now? [Y/n] ");
+        print!("{} ", atlas_i18n::t!("desktop_pkg_ask"));
         std::io::stdout().flush()?;
         let mut line = String::new();
         // A closed stdin (Ctrl-D) is not an Enter.
         let read = std::io::stdin().lock().read_line(&mut line)?;
         if read == 0 || !confirmed_by_default(&line) {
-            println!("Skipped the package; installing the AppImage.");
+            println!("{}", atlas_i18n::t!("desktop_pkg_skipped"));
             return Ok(None);
         }
     }
@@ -282,9 +293,12 @@ fn try_install_package(pm: PackageManager, version: &str, yes: bool) -> Result<O
         .context("the package installed but /usr/bin/atlas-desktop is not there")
 }
 
-/// `[Y/n]`: an empty answer (just Enter) is yes; only an explicit no (or anything else) is not.
+/// `[Y/n]` (`[S/n]` in pt-BR): an empty answer (just Enter) is yes; only an explicit no (or anything else) is not.
 fn confirmed_by_default(line: &str) -> bool {
-    matches!(line.trim().to_ascii_lowercase().as_str(), "" | "y" | "yes")
+    matches!(
+        line.trim().to_lowercase().as_str(),
+        "" | "y" | "yes" | "s" | "sim"
+    )
 }
 
 /// Start the app detached from this terminal (own session, no stdio), so closing the shell or
@@ -485,7 +499,7 @@ mod tests {
     /// `[Y/n]` installs a root package on Enter, but a stray word is not consent.
     #[test]
     fn the_package_prompt_defaults_to_yes_and_a_stray_answer_is_no() {
-        for yes in ["\n", "y\n", "YES\n", "  yes  \n"] {
+        for yes in ["\n", "y\n", "YES\n", "  yes  \n", "s\n", "Sim\n"] {
             assert!(confirmed_by_default(yes), "{yes:?}");
         }
         for no in ["n\n", "no\n", "later\n", "yy\n"] {

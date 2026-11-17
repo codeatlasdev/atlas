@@ -16,8 +16,14 @@ function areas(files: string[]): Record<string, boolean> {
 }
 const none = { rust: false, front: false, mobile: false, site: false, relay: false, workflows: false, installer: false };
 
-test("README, CHANGELOG and AGENTS.md changes run nothing heavy", () => {
-	expect(areas(["README.md", "CHANGELOG.md", "AGENTS.md"])).toEqual(none);
+test("README and CHANGELOG changes run nothing heavy", () => {
+	expect(areas(["README.md", "CHANGELOG.md"])).toEqual(none);
+});
+
+// scripts/agents-md.test.ts caps AGENTS.md and checks the skills it names; the "Repo scripts" job runs under `front`.
+test("AGENTS.md and the repo skills run the scripts job, and nothing else", () => {
+	expect(areas(["AGENTS.md"])).toEqual({ ...none, front: true });
+	expect(areas([".agents/skills/desktop-debug/SKILL.md"])).toEqual({ ...none, front: true });
 });
 
 test("docs/ rebuilds only the site, which renders it", () => {

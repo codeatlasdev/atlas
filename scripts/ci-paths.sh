@@ -12,6 +12,7 @@ while IFS= read -r f || [[ -n $f ]]; do
       case "$f" in docs/*) site=true ;; esac
       case "$f" in skills/*) front=true; rust=true ;; esac   # skills are embedded in the CLI and checked
       case "$f" in apps/mobile/*) mobile=true ;; esac
+      case "$f" in AGENTS.md|.agents/*) front=true ;; esac   # scripts/agents-md.test.ts bounds them (runs in the "Repo scripts" job)
       ;;
     crates/*|Cargo.toml|Cargo.lock|rust-toolchain.toml|deny.toml|.cargo/*|.config/nextest.toml) rust=true ;;
     apps/desktop/*) front=true; rust=true ;;              # the desktop shell embeds the frontend build

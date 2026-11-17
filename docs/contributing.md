@@ -128,6 +128,8 @@ atlas link                                 # symlink ~/.atlas/bin/atlas to the d
 atlas unlink                               # restore the release binary
 ```
 
+To install the build instead of linking it: `cargo build -p atlas-cli && codesign -f -s - target/debug/atlas && cp target/debug/atlas ~/.atlas/bin/atlas`. Verify with `strings ~/.atlas/bin/atlas | grep <version>`. For the desktop app use `bun run desktop:build:app` (debug `.app` only); never `desktop:build -- --debug`, whose DMG step mounts an image and opens Finder on your screen.
+
 ### Develop the desktop app
 
 ```bash
@@ -226,6 +228,7 @@ See [Architecture](architecture.md) for the crates and how the processes talk to
 - **Tests.** Prefer behavior tests: boundaries, failures and state transitions over getters. Manager tests live in `runtime/manager/tests.rs` and are wired by `#[cfg(test)] mod tests;` in `mod.rs`; when you split modules, check the test count does not drop. Integration tests drive the real binary.
 - **Docs move with code.** A change that alters a flag, a key, a config field or a behavior updates the page that documents it, in the same pull request. The TUI help and footer are generated from one keymap table; the desktop shortcuts are `DEFAULT_KEYMAP` in `apps/desktop/src/lib/keys.ts`.
 - **Changelog.** User-visible changes get a line under `## [Unreleased]` in `CHANGELOG.md`. Release notes are built from it.
+- **Agent instructions.** `AGENTS.md` is a map under 8 KB: the rules that cause damage if broken and a table "before you touch X, read Y". Detail goes into a skill in `.agents/skills/<name>/SKILL.md` (short, with sibling files for the rest) or a nested `AGENTS.md` next to the code it covers; never back into the root file. `.claude/skills` is a symlink to `.agents/skills` because Claude Code reads only that path (Codex and omp read `.agents/skills` directly, and omp de-duplicates by realpath). `bun test scripts/agents-md.test.ts` (part of `bun run check`) enforces the size, the references and the link; on Windows without symlink support the link is still committed as one.
 - **Formatting.** `.editorconfig` applies: tabs in TypeScript, Svelte and shell; 4 spaces in Rust; 2 spaces in YAML, Markdown and JSON.
 - **Commits.** Short imperative subject, conventional prefixes (`feat:`, `fix:`, `docs:`, `chore:`) as in the history. Explain *why* in the body when it is not obvious.
 - **Dependencies.** Prefer the standard library and what is already in the tree. A new crate or package needs a reason in the pull request; `cargo deny check` must pass.

@@ -45,6 +45,12 @@ describe("plan", () => {
 		expect(plan(["docs/contributing.md", "CHANGELOG.md"], graph)).toEqual({ crates: [], workspace: false, steps: [] });
 	});
 
+	test("AGENTS.md, the repo skills and the .claude link run the agents-md test", () => {
+		for (const f of ["AGENTS.md", ".agents/skills/real-tests/SKILL.md", ".claude/skills"]) {
+			expect(plan([f], graph)).toEqual({ crates: [], workspace: false, steps: ["bun test scripts/agents-md.test.ts"] });
+		}
+	});
+
 	test("a path that merely looks like a crate is ignored", () => {
 		expect(plan(["crates/not-a-crate/x.rs", "mycrates/atlas-core/x.rs"], graph).crates).toEqual([]);
 	});

@@ -39,6 +39,7 @@ const STEPS: [RegExp, string][] = [
 	[/^skills\//, "scripts/check-skills.sh"],
 	[/^\.github\/workflows\//, "scripts/lint-workflows.sh"],
 	[/^scripts\//, "bun test scripts"],
+	[/^(AGENTS\.md|\.agents\/|\.claude\/)/, "bun test scripts/agents-md.test.ts"],
 ];
 
 export function plan(files: string[], graph: Graph): Plan {

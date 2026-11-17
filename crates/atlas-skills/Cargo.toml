@@ -22,7 +22,7 @@ path = "src/lib.rs"
 serde = { workspace = true }
 serde_json = { workspace = true }
 anyhow = { workspace = true }
-chrono = { workspace = true }
+jiff = { workspace = true }
 atlas-core = { path = "../atlas-core" }
 
 [dev-dependencies]

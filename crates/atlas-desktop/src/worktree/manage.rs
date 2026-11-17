@@ -225,7 +225,7 @@ pub async fn worktrees_import(
                 id,
                 root,
                 pinned: false,
-                added: chrono::Utc::now().to_rfc3339(),
+                added: atlas_core::time::utc_rfc3339_now(),
                 parent: Some(repo.id.clone()),
                 port_offset: offset,
                 branch,

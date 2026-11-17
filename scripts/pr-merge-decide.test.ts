@@ -71,6 +71,21 @@ describe("decide: CI is the run of this exact head", () => {
   });
 });
 
+describe("decide: a red CI run that only lost its runner (issue #520)", () => {
+  test.each<[string, Partial<Facts["runs"][number]>, RegExp]>([
+    ["attempt 1: the rerun is pending", { id: 99, attempt: 1, lostOnly: true, conclusion: "failure" }, /runner lost, rerun pending \(attempt 1 of 3.*wait for the new attempt/],
+    ["attempt 2: still pending", { id: 99, attempt: 2, lostOnly: true, conclusion: "failure" }, /runner lost, rerun pending \(attempt 2 of 3/],
+    ["attempt 3: no rerun is pending, say what to do", { id: 99, attempt: 3, lostOnly: true, conclusion: "failure" }, /on every attempt \(3 of 3\): no rerun is pending; `gh run rerun --failed 99`/],
+    ["a real failure keeps the plain text", { id: 99, attempt: 1, lostOnly: false, conclusion: "failure" }, /concluded failure: fix it and push/],
+    ["no lostOnly fact (not looked at) keeps the plain text", { conclusion: "failure" }, /concluded failure: fix it and push/],
+  ])("%s", (_n, patch, reason) => {
+    const d = decide({ ...good, runs: [run(patch)] });
+    expect(d.decision).toBe("refuse");
+    expect(d.reasons).toHaveLength(1);
+    expect(d.reasons[0]).toMatch(reason);
+  });
+});
+
 describe("decide: subject and body", () => {
   test("all green: merge, subject '<title> (#N)', body is Closes lines from the linked issues plus the sign-off", () => {
     const d = decide(good);

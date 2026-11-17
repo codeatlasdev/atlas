@@ -18,7 +18,8 @@ pub fn is_path_word(word: &OsString, exists: impl Fn(&OsString) -> bool) -> bool
     w == "." || w == ".." || w.contains(['/', '\\']) || exists(word)
 }
 
-/// `atlas <path>`: open it in Atlas Desktop (a file opens its project, then the file).
+/// `atlas <path>`: open it in Atlas Desktop (a file opens its project, then the file; a loose text file with no
+/// project opens in the light editor and adds no project).
 pub fn open_path(word: &OsString, line: Option<u32>) -> Result<()> {
     let path = absolute(Path::new(word))?;
     if !path.exists() {
@@ -43,6 +44,9 @@ pub fn open_path(word: &OsString, line: Option<u32>) -> Result<()> {
 }
 
 fn describe(path: &Path, reply: &serde_json::Value) -> String {
+    if reply["standalone"].as_bool() == Some(true) {
+        return path.display().to_string();
+    }
     reply["root"]
         .as_str()
         .map_or_else(|| path.display().to_string(), str::to_string)
@@ -178,6 +182,18 @@ mod tests {
 
     fn w(s: &str) -> OsString {
         OsString::from(s)
+    }
+
+    // A loose text file opens in the light editor and no project is made for it: the CLI names the file, not the
+    // folder it sits in (which the reply also carries).
+    #[test]
+    fn a_standalone_open_is_reported_by_the_file_not_its_folder() {
+        let file = Path::new("/Users/m/Downloads/notes.md");
+        let loose =
+            json!({ "id": null, "root": "/Users/m/Downloads", "path": file, "standalone": true });
+        assert_eq!(describe(file, &loose), "/Users/m/Downloads/notes.md");
+        let project = json!({ "id": "p", "root": "/Users/m/repo", "path": "README.md" });
+        assert_eq!(describe(file, &project), "/Users/m/repo");
     }
 
     #[test]

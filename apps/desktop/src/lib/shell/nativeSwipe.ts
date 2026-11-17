@@ -15,6 +15,7 @@ import { invoke } from "@tauri-apps/api/core";
 import { listen } from "@tauri-apps/api/event";
 import type { CommitMsg, FrameMsg } from "#lib/shell/pager.ts";
 import { inParkedLayer } from "#lib/shell/parkedLayer.ts";
+import { edgesOf, probeOf } from "#lib/shell/scrollable.ts";
 import { availability, availabilityKey, trailing } from "#lib/shell/trailing.ts";
 import { nativeRect } from "#lib/zoom.ts";
 
@@ -67,6 +68,7 @@ export function initNativeSwipe(): Promise<void> {
 		await listen<SwipeCommit>("swipe://commit", (e) => {
 			for (const x of entries) if (matches(x, e.payload)) x.spec.onCommit(e.payload);
 		});
+		watchScrollers();
 		push();
 	})();
 	return ready;
@@ -86,18 +88,35 @@ function rectOf(el: HTMLElement) {
 	return w < 1 || h < 1 ? null : { x, y, w, h };
 }
 
+/** A horizontal scroller and which way it still can (`left` reveals more of its left side, `right` of its right). */
+export interface ScrollerRect {
+	x: number;
+	y: number;
+	w: number;
+	h: number;
+	left: boolean;
+	right: boolean;
+}
+
+/** Surfaces that scroll sideways by themselves, found by marker instead of by walking every element. */
+const MARKED = ".xterm, .cm-scroller, [data-gesture='own'], .scroll-x";
+
+/** Inactive tabs stay laid out under the active one with `visibility: hidden`: whatever they could scroll is not there. */
+const shown = (el: HTMLElement) => getComputedStyle(el).visibility !== "hidden";
+
 /**
  * Rects (CSS px, clipped to the viewport) of everything under the content that scrolls horizontally itself: the
- * terminal, editors, `data-gesture="own"` surfaces and anything that overflows in x. The Back/Forward swipe never
- * claims inside them (the engine reads this list next to the zones). The tab strip is not one: it has its own zone.
+ * terminal, editors, `data-gesture="own"` surfaces and anything that overflows in x, each with the direction it can
+ * still scroll. A gesture that lands on one that can still go the way the fingers go is the content's; at its edge
+ * it is the pager's (the engine reads this list next to the zones). The tab strip is not one: it has its own zone.
  */
-export function scrollerRects(root: ParentNode = document): { x: number; y: number; w: number; h: number }[] {
-	const out: { x: number; y: number; w: number; h: number }[] = [];
-	for (const el of root.querySelectorAll<HTMLElement>(
-		".xterm, .cm-scroller, [data-gesture='own'], .scroll-x",
-	)) {
-		const r = rectOf(el);
-		if (r) out.push(r);
+export function scrollerRects(root: ParentNode = document): ScrollerRect[] {
+	const out: ScrollerRect[] = [];
+	for (const el of root.querySelectorAll<HTMLElement>(MARKED)) {
+		const e = edgesOf(probeOf(el));
+		if (!e.left && !e.right) continue; // an editor that wraps its lines has nothing to scroll
+		const r = shown(el) ? rectOf(el) : null;
+		if (r) out.push({ ...r, ...e });
 	}
 	// Not `main.content *` over every layer: a parked layer never yields a rect (`rectOf`), and measuring its elements
 	// (`scrollWidth`, `getComputedStyle`) cost O(all mounted spaces) per switch, 480 ms with five 400-line diffs (#121).
@@ -113,10 +132,11 @@ export function scrollerRects(root: ParentNode = document): { x: number; y: numb
 		: null;
 	for (let n = walker?.nextNode(); n; n = walker!.nextNode()) {
 		const el = n as HTMLElement;
-		if (el.scrollWidth <= el.clientWidth + 1 || el.closest(".strip")) continue;
-		if (!/auto|scroll|overlay/.test(getComputedStyle(el).overflowX)) continue;
-		const r = rectOf(el);
-		if (r) out.push(r);
+		if (el.scrollWidth <= el.clientWidth + 1 || el.closest(".strip") || el.matches(MARKED)) continue;
+		const e = edgesOf(probeOf(el));
+		if (!e.left && !e.right) continue; // `overflow-x` is not auto/scroll/overlay: nothing scrolls
+		const r = shown(el) ? rectOf(el) : null;
+		if (r) out.push({ ...r, ...e });
 	}
 	return out;
 }
@@ -142,7 +162,7 @@ function push() {
 		});
 	}
 	zones.sort((a, b) => b.rect.w * b.rect.h - a.rect.w * a.rect.h);
-	const scrollers = scrollerRects().map(nativeRect);
+	const scrollers = scrollerRects().map((s) => ({ ...nativeRect(s), left: s.left, right: s.right }));
 	const key = JSON.stringify([zones, scrollers]);
 	toldKey = availabilityKey(entries);
 	if (key === last) return;
@@ -170,6 +190,41 @@ export function pushZones(geometry = false) {
 	if (!native) return;
 	if (!geometry && availabilityKey(entries) === toldKey) return;
 	schedulePush();
+}
+
+/**
+ * What the engine knows about a scroller is a measurement: a sideways scroll, an edit that makes a line long or the
+ * wheel itself changes it. Re-measure once such a burst is over, and tell the engine even when the rects did not
+ * move (a scroller the engine guessed about while it scrolled must get its real edges back).
+ */
+const scrollSettled = trailing(() => {
+	last = "";
+	if (native) push();
+}, 100);
+
+/**
+ * Page side of the swipe's two guarantees. Fresh edges: scroll positions (only a `scrollLeft` change counts, so
+ * vertical scrolling costs nothing), sideways wheels and edits schedule a re-measure. A gesture never outlives its
+ * window: when focus is lost or the page is hidden the engine settles whatever fingers it still counts as down.
+ */
+function watchScrollers() {
+	const seen = new WeakMap<Element, number>();
+	const passive = { capture: true, passive: true } as const;
+	addEventListener(
+		"scroll",
+		(e) => {
+			const el = e.target;
+			if (!(el instanceof HTMLElement) || seen.get(el) === el.scrollLeft) return;
+			seen.set(el, el.scrollLeft);
+			scrollSettled();
+		},
+		passive,
+	);
+	addEventListener("wheel", (e) => Math.abs(e.deltaX) > Math.abs(e.deltaY) && scrollSettled(), passive);
+	addEventListener("input", scrollSettled, passive);
+	const abandon = () => void invoke("swipe_abandon").catch(() => {});
+	addEventListener("blur", abandon);
+	document.addEventListener("visibilitychange", () => document.hidden && abandon());
 }
 
 /**

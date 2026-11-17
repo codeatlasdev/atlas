@@ -1,6 +1,17 @@
 import { toast } from "@codeatlasdev/ui";
 import { errText } from "#lib/api.ts";
+import { gitToast } from "#lib/gitToast.ts";
 import { host } from "#lib/host.ts";
+import {
+	classifyGhView,
+	ghAuth,
+	probeRepo,
+	type GhAuth,
+	type GhLookup,
+	type RepoProbe,
+	type Run,
+} from "#lib/repoState.ts";
+import { promptDialog } from "#lib/stores/ask.svelte.ts";
 import { ws } from "#lib/stores/workspace.svelte.ts";
 
 export interface Check {
@@ -20,6 +31,8 @@ export interface PrView {
 	author: { login: string };
 	isDraft: boolean;
 	mergeable: string;
+	/** `APPROVED`, `CHANGES_REQUESTED`, `REVIEW_REQUIRED`, or "" when the repository asks for no review. */
+	reviewDecision: string;
 	headRefName: string;
 	/** Head commit sha; auto clean up only treats commits up to it as pushed. */
 	headRefOid: string;
@@ -36,7 +49,7 @@ export interface PrView {
 }
 
 const PR_FIELDS =
-	"number,title,state,url,body,author,reviews,comments,statusCheckRollup,mergeable,headRefName,headRefOid,baseRefName,isDraft";
+	"number,title,state,url,body,author,reviews,comments,statusCheckRollup,mergeable,reviewDecision,headRefName,headRefOid,baseRefName,isDraft";
 
 /** Failed/pending/ok summary of a check rollup. */
 export function rollup(p: Pick<PrView, "statusCheckRollup">): "failed" | "pending" | "ok" | "none" {
@@ -52,7 +65,7 @@ class Prs {
 	/** Last fetched PR per worktree (sidebar chip). */
 	views = $state<Record<string, PrView>>({});
 	createFor = $state<string | null>(null);
-	auth = $state<"ok" | "missing" | "unknown">("unknown");
+	auth = $state<GhAuth>("unknown");
 
 	private dir(worktreeId: string) {
 		return ws.worktree(worktreeId)?.path ?? "/";
@@ -62,23 +75,70 @@ class Prs {
 		return host.exec(this.dir(worktreeId), ["gh", ...args], { timeout_ms });
 	}
 
+	/** gh is installed and signed in; false for "not installed" and "signed out" alike (see `auth` for which). */
+	get ghUnusable() {
+		return this.auth === "signed-out" || this.auth === "not-installed";
+	}
+
+	/** `argv` in the worktree's folder through its host (git and gh alike). */
+	runner(worktreeId: string, timeout_ms = 60_000): Run {
+		return (argv) => host.exec(this.dir(worktreeId), argv, { timeout_ms });
+	}
+
 	async checkAuth(worktreeId: string) {
-		const r = await this.gh(worktreeId, ["auth", "status"], 15_000).catch(() => null);
-		this.auth = r?.code === 0 ? "ok" : "missing";
+		this.auth = await ghAuth(this.runner(worktreeId, 15_000));
 		return this.auth === "ok";
 	}
 
-	async view(worktreeId: string): Promise<PrView | null> {
+	/** Remotes, first commit and default branch of the folder (see `repoState.ts`). */
+	probe(worktreeId: string): Promise<RepoProbe> {
+		return probeRepo(this.runner(worktreeId, 15_000));
+	}
+
+	/** What gh knows about the PR of this worktree's branch (or of the PR it is linked to). */
+	async lookup(worktreeId: string): Promise<GhLookup> {
 		const n = ws.worktree(worktreeId)?.linkedPr;
-		const r = await this.gh(worktreeId, ["pr", "view", ...(n ? [String(n)] : []), "--json", PR_FIELDS]).catch(
-			() => null,
-		);
-		if (!r || r.code !== 0) return null;
-		const v = JSON.parse(r.stdout) as PrView;
-		this.views[worktreeId] = v;
-		const w = ws.worktree(worktreeId);
-		if (w && w.linkedPr !== v.number) w.linkedPr = v.number;
-		return v;
+		let l: GhLookup;
+		try {
+			const args = ["gh", "pr", "view", ...(n ? [String(n)] : []), "--json", PR_FIELDS];
+			l = classifyGhView(await this.runner(worktreeId)(args));
+		} catch (e) {
+			l = { kind: "error", message: errText(e) };
+		}
+		if (l.kind === "pr") {
+			this.views[worktreeId] = l.pr;
+			const w = ws.worktree(worktreeId);
+			if (w && w.linkedPr !== l.pr.number) w.linkedPr = l.pr.number;
+		}
+		return l;
+	}
+
+	/** Pushes the branch and sets its upstream, the step "Create pull request" needs first. True when it worked. */
+	async pushBranch(worktreeId: string, remote: string, branch: string): Promise<boolean> {
+		const r = await host.exec(this.dir(worktreeId), ["git", "push", "--set-upstream", remote, branch], {
+			timeout_ms: 120_000,
+		});
+		if (r.code !== 0) gitToast(r.stderr || r.stdout);
+		else toast.success(`Pushed ${branch} to ${remote}`);
+		return r.code === 0;
+	}
+
+	/** Asks for the address of the GitHub repository and adds it as a remote. True when one was added. */
+	async addRemote(worktreeId: string, name: string): Promise<boolean> {
+		const url = await promptDialog("Add a remote", {
+			description: "The address of the repository on GitHub, e.g. https://github.com/owner/repo.git",
+			placeholder: "https://github.com/owner/repo.git",
+			confirmLabel: "Add remote",
+		});
+		if (!url) return false;
+		const r = await host.exec(this.dir(worktreeId), ["git", "remote", "add", name, url]);
+		if (r.code !== 0) gitToast(r.stderr || r.stdout);
+		return r.code === 0;
+	}
+
+	/** `gh auth login` in a terminal of the worktree: it asks questions and opens the browser. */
+	signIn(worktreeId: string) {
+		void ws.newTerminal(worktreeId, { argv: ["gh", "auth", "login"], label: "gh auth" });
 	}
 
 	async checks(worktreeId: string, n: number): Promise<Check[]> {
@@ -108,7 +168,7 @@ class Prs {
 	async create(worktreeId: string, a: { title: string; body: string; base: string; draft: boolean }) {
 		const push = await host.exec(this.dir(worktreeId), ["git", "push"], { timeout_ms: 120_000 });
 		if (push.code !== 0) {
-			toast.error(push.stderr || "git push failed");
+			gitToast(push.stderr || "git push failed");
 			return;
 		}
 		const args = ["pr", "create", "--title", a.title, "--body", a.body];
@@ -135,7 +195,7 @@ class Prs {
 			const r = await this.gh(worktreeId, args, 120_000);
 			if (r.code !== 0) throw r.stderr || "gh failed";
 			toast.success(ok);
-			await this.view(worktreeId);
+			await this.lookup(worktreeId);
 		} catch (e) {
 			toast.error(errText(e));
 		}

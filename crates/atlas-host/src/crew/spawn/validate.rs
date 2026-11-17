@@ -14,8 +14,11 @@ use super::protocol::{GitReq, MAX_MESSAGE, Request, SpawnReq};
 pub const USER_PREFIX: &str = "atlas-cm-";
 /// Parent of every crewmate's directory (`<CM_ROOT>/<slug>/{home,work,crew-runtime}`).
 pub const CM_ROOT: &str = "/var/lib/atlas-cm";
-/// The only binaries a crewmate can be started as (`atlas_core::agents`), by bare name.
-pub const ENGINE_BINARIES: [&str; 4] = ["claude", "codex", "omp", "opencode"];
+/// Whether `bin` is one of the only binaries a crewmate can be started as: a built-in agent's, by bare name
+/// (`data/agents.json`, compiled into this binary, so the root helper's allowlist is fixed at build time).
+pub fn is_engine_binary(bin: &str) -> bool {
+    atlas_core::agents::by_bin(bin).is_some()
+}
 /// The only git subcommands hostd may run as a crewmate: what the guards, the checkout and the GitHub
 /// reply read from the tree (`diff`, `ls-files`, `log`, `status`, `rev-parse`, `symbolic-ref`,
 /// `merge-base`, `remote`, `worktree`), and the three that talk to the network (`clone`, `fetch`, `pull`).
@@ -191,7 +194,7 @@ pub fn check_git_in(root: &str, g: &GitReq) -> Result<(), Refused> {
 
 fn check_argv(argv: &[String]) -> Result<(), Refused> {
     let bin = argv.first().ok_or(Refused::BadArg("empty"))?;
-    if !ENGINE_BINARIES.contains(&bin.as_str()) {
+    if !is_engine_binary(bin) {
         return Err(Refused::BadBinary(clip(bin)));
     }
     if argv.len() > MAX_ARGS {
@@ -405,8 +408,9 @@ mod tests {
     }
 
     #[test]
-    fn only_the_four_engine_binaries_by_bare_name_may_run() {
-        for ok in ENGINE_BINARIES {
+    fn only_the_built_in_agents_binaries_by_bare_name_may_run() {
+        assert!(atlas_core::agents::all().len() >= 4);
+        for ok in atlas_core::agents::all().iter().map(|a| a.bin.as_str()) {
             let mut s = spawn();
             s.argv = vec![ok.into()];
             assert_eq!(check(&Request::Spawn(s), 1), Ok(()));

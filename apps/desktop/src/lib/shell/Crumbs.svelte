@@ -63,7 +63,7 @@
 			<ProjectIcon id={shell.active.id} size={16} /><span class="label">{spaceName}</span>
 		</button>
 	{/if}
-	{#if w && store.current}
+	{#if w && store.current && !w.plain}
 		<ChevronRight size={11} class="sep" />
 		<button class="seg wt" class:last={!tab} onclick={toWorktree}><span class="label">{wtName}</span></button>
 		{#if w.branch}

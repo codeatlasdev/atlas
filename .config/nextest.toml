@@ -6,3 +6,23 @@ slow-timeout = { period = "60s", terminate-after = 3 }
 fail-fast = false
 failure-output = "immediate-final"
 status-level = "skip"
+# SLOW after 60 s and TIMEOUT after 3 min name a hung test in the log (the default profile's value, stated here so
+# the CI profile reads on its own); `grace-period` lets a timed-out test end before it is killed.
+slow-timeout = { period = "60s", terminate-after = 3, grace-period = "10s" }
+
+# A report of every test and its time (`target/nextest/ci/junit.xml`), uploaded by the Windows job (issue #520).
+[profile.ci.junit]
+path = "junit.xml"
+
+# Issue #520: on the Windows runner the tests that fsync in a loop (`atlas_core::fs::write_atomic`, the crew logs'
+# `sync_data` per append) take 35-105 s each, up to 2 s per write while the other three test threads do the same
+# (the JUnit report of a green run, measured). Four of them at once keep the disk, which the runner's own agent
+# writes its logs and heartbeat to, busy for minutes; the runner is lost in a window those tests fill. At most two
+# at a time; every other test still runs on all CPUs.
+[test-groups]
+disk-sync = { max-threads = 2 }
+
+[[profile.ci.overrides]]
+platform = 'cfg(windows)'
+filter = '(package(atlas-host) & test(/^crew::(store::log_tests|telegram::|triggers::github::seen_tests)/)) | (package(atlas-core) & test(/^(fs|taskcache)::tests::/))'
+test-group = 'disk-sync'

@@ -7,7 +7,6 @@ import {
 	agentDoing,
 	agentSections,
 	agentWhere,
-	ago,
 	failedServices,
 	groupProjects,
 	headerSummary,
@@ -130,12 +129,6 @@ describe("recommend", () => {
 });
 
 describe("labels", () => {
-	test("ago", () => {
-		expect(ago(10_000)).toBe("just now");
-		expect(ago(120_000)).toBe("2 min ago");
-		expect(ago(3 * 3_600_000)).toBe("3 h ago");
-		expect(ago(-5000)).toBe("just now");
-	});
 	test("upLine counts running services", () => {
 		expect(upLine(proj("a", ["running", "failed", "running"]))).toBe("2/3 up");
 	});

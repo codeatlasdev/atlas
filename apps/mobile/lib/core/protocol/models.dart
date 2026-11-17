@@ -173,6 +173,16 @@ class MacDevice {
     this.crewServer,
   });
 
+  /// The same computer with no direct addresses: only its relay and its id (discovery) remain to reach it.
+  MacDevice withoutLanHints() => MacDevice(
+    nodeId: nodeId,
+    name: name,
+    relay: relay,
+    caps: caps,
+    via: via,
+    crewServer: crewServer,
+  );
+
   /// Crew server [server] behind [mac]; its id is stable so providers keyed on it are
   /// too, and holds no `/`, so it fits one segment of the `/crew/:nodeId/:crewmateId` route.
   factory MacDevice.crew(MacDevice mac, String server, String name) =>

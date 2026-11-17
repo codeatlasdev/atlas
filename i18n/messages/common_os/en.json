@@ -1,0 +1,104 @@
+{
+	"common_os_alt_key": [
+		{
+			"declarations": [
+				"input os"
+			],
+			"selectors": [
+				"os"
+			],
+			"match": {
+				"os=mac": "Option",
+				"os=*": "Alt"
+			}
+		}
+	],
+	"common_os_enter_key": [
+		{
+			"declarations": [
+				"input os"
+			],
+			"selectors": [
+				"os"
+			],
+			"match": {
+				"os=mac": "Return",
+				"os=*": "Enter"
+			}
+		}
+	],
+	"common_os_file_manager": [
+		{
+			"declarations": [
+				"input os"
+			],
+			"selectors": [
+				"os"
+			],
+			"match": {
+				"os=mac": "Finder",
+				"os=windows": "File Explorer",
+				"os=*": "the file manager"
+			}
+		}
+	],
+	"common_os_menu_bar": [
+		{
+			"declarations": [
+				"input os"
+			],
+			"selectors": [
+				"os"
+			],
+			"match": {
+				"os=mac": "the menu bar",
+				"os=*": "the system tray"
+			}
+		}
+	],
+	"common_os_system_settings": [
+		{
+			"declarations": [
+				"input os"
+			],
+			"selectors": [
+				"os"
+			],
+			"match": {
+				"os=mac": "System Settings",
+				"os=windows": "Settings",
+				"os=*": "system settings"
+			}
+		}
+	],
+	"common_os_trash": [
+		{
+			"declarations": [
+				"input os"
+			],
+			"selectors": [
+				"os"
+			],
+			"match": {
+				"os=mac": "Trash",
+				"os=windows": "Recycle Bin",
+				"os=*": "Trash"
+			}
+		}
+	],
+	"common_os_your_computer": [
+		{
+			"declarations": [
+				"input os"
+			],
+			"selectors": [
+				"os"
+			],
+			"match": {
+				"os=mac": "your Mac",
+				"os=windows": "this PC",
+				"os=*": "this computer"
+			}
+		}
+	]
+}

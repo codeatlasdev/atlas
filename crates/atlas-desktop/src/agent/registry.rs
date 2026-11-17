@@ -3,7 +3,7 @@
 
 use std::collections::BTreeMap;
 
-use atlas_core::agents::{AGENTS, AgentDef};
+use atlas_core::agents::{self, AgentDef};
 use atlas_core::sys::CommandExt as _;
 use serde_json::{Value, json};
 
@@ -28,17 +28,16 @@ pub struct Agent {
 
 impl From<&AgentDef> for Agent {
     fn from(d: &AgentDef) -> Agent {
-        let owned = |v: &[&str]| v.iter().map(|s| s.to_string()).collect();
         Agent {
-            id: d.id.into(),
-            label: d.label.into(),
-            bin: d.bin.into(),
+            id: d.id.clone(),
+            label: d.label.clone(),
+            bin: d.bin.clone(),
             args: Vec::new(),
-            yolo_args: owned(d.yolo_args),
-            resume: owned(d.resume),
+            yolo_args: d.yolo_args.clone(),
+            resume: d.resume.clone(),
             env: BTreeMap::new(),
             custom: false,
-            prompt_flag: d.prompt_flag.map(str::to_string),
+            prompt_flag: d.prompt_flag.clone(),
         }
     }
 }
@@ -76,7 +75,7 @@ pub fn customs(settings: &serde_json::Map<String, Value>) -> Vec<Agent> {
             && id
                 .bytes()
                 .all(|b| b.is_ascii_lowercase() || b.is_ascii_digit() || b == b'-');
-        let taken = AGENTS.iter().any(|a| a.id == id) || out.iter().any(|a| a.id == id);
+        let taken = agents::all().iter().any(|a| a.id == id) || out.iter().any(|a| a.id == id);
         if !slug || taken || label.is_empty() || bin.is_empty() {
             continue;
         }
@@ -106,7 +105,11 @@ pub fn customs(settings: &serde_json::Map<String, Value>) -> Vec<Agent> {
 /// Built-ins first, then the user's custom agents.
 pub fn all() -> Vec<Agent> {
     let s = crate::shell_env::load_settings().extra;
-    AGENTS.iter().map(Agent::from).chain(customs(&s)).collect()
+    agents::all()
+        .iter()
+        .map(Agent::from)
+        .chain(customs(&s))
+        .collect()
 }
 
 pub fn find(id: &str) -> Option<Agent> {
@@ -203,7 +206,9 @@ pub async fn agent_list() -> Vec<Value> {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use atlas_core::agents::AGENTS;
+    fn builtins(id: &str) -> &'static AgentDef {
+        atlas_core::agents::get(id).unwrap()
+    }
 
     fn settings(v: Value) -> serde_json::Map<String, Value> {
         v.as_object().unwrap().clone()
@@ -264,12 +269,12 @@ mod tests {
 
     #[test]
     fn tail_args_order_resume_and_prompt() {
-        let omp = Agent::from(&AGENTS[0]);
+        let omp = Agent::from(builtins("omp"));
         assert_eq!(
             tail_args(&omp, true, Some(" -v  --x "), Some("hi".into()), None),
             ["--auto-approve", "-v", "--x", "hi"]
         );
-        let codex = Agent::from(&AGENTS[2]);
+        let codex = Agent::from(builtins("codex"));
         assert_eq!(
             tail_args(&codex, false, None, Some("hi".into()), Some("S1".into())),
             ["resume", "S1"]
@@ -299,13 +304,13 @@ mod tests {
     #[test]
     fn tail_args_prompt_flag() {
         // opencode uses --prompt for the initial prompt (not positional)
-        let opencode = Agent::from(&AGENTS[3]);
+        let opencode = Agent::from(builtins("opencode"));
         assert_eq!(
             tail_args(&opencode, false, None, Some("p".into()), None),
             ["--prompt", "p"]
         );
         // claude uses positional prompt
-        let claude = Agent::from(&AGENTS[1]);
+        let claude = Agent::from(builtins("claude"));
         assert_eq!(
             tail_args(&claude, false, None, Some("p".into()), None),
             ["p"]

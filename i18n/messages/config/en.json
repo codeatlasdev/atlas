@@ -1,0 +1,41 @@
+{
+	"config_lang_available": [
+		{
+			"declarations": [
+				"input count",
+				"local countPlural = count: plural"
+			],
+			"selectors": [
+				"countPlural"
+			],
+			"match": {
+				"countPlural=one": "Available language: {langs}",
+				"countPlural=*": "Available languages: {langs}"
+			}
+		}
+	],
+	"config_lang_current": "Display language: {lang}",
+	"config_lang_saved": "Saved preference: {lang}",
+	"config_lang_saved_none": "Saved preference: none, Atlas follows the system language",
+	"config_lang_set": "Display language set to {lang}.",
+	"config_lang_set_env_warning": "ATLAS_LANG={value} is set in this shell and takes precedence over the saved preference.",
+	"config_lang_source": [
+		{
+			"declarations": [
+				"input source"
+			],
+			"selectors": [
+				"source"
+			],
+			"match": {
+				"source=env": "Source: the ATLAS_LANG environment variable",
+				"source=file": "Source: the saved preference (~/.atlas/language)",
+				"source=posix": "Source: the LC_ALL, LC_MESSAGES or LANG environment variable",
+				"source=os": "Source: the system language",
+				"source=*": "Source: none set, using English"
+			}
+		}
+	],
+	"config_lang_unset": "Saved preference removed. Atlas follows the system language.",
+	"config_lang_unsupported": "Unsupported language \"{tag}\". Available: {langs}"
+}

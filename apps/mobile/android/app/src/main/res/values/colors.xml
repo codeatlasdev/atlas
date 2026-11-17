@@ -1,0 +1,6 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources>
+    <!-- AtlasColors.dark.ground (lib/core/ui/atlas_theme.dart), the app's one background. Every launch
+         surface references this name; test/launch_ground_test.dart fails if it drifts from the Dart colour. -->
+    <color name="atlas_ground">#0B1320</color>
+</resources>

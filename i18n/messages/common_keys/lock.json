@@ -1,0 +1,17 @@
+{
+  "pt-BR": {
+    "common_keys_alt": "7cfa9a0032f4",
+    "common_keys_backspace": "dd66f883b173",
+    "common_keys_ctrl": "0b7fae464008",
+    "common_keys_delete": "b26de372b4b0",
+    "common_keys_end": "135874d18917",
+    "common_keys_enter": "ed9140d42148",
+    "common_keys_escape": "31b20928b851",
+    "common_keys_home": "d2187d527809",
+    "common_keys_pagedown": "b66d35aa3d2d",
+    "common_keys_pageup": "801cec359d63",
+    "common_keys_shift": "ae16298d64c3",
+    "common_keys_space": "82dd231086d8",
+    "common_keys_tab": "9e68aa2f472c"
+  }
+}

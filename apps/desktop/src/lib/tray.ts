@@ -4,6 +4,7 @@
  * (`tray_publish`), the popover renders it and sends clicks back as `TrayAction`s. Everything
  * decidable without the DOM lives here, so it is testable.
  */
+import { relativeTime } from "#lib/i18n/fmt.ts";
 import { summarize, type Tone } from "#lib/panel/metrics.ts";
 
 interface TrayService {
@@ -144,15 +145,6 @@ export interface Recommendation {
 
 const FRESH_FAILURE_MS = 60 * 60_000;
 
-/** "just now", "2 min ago", "3 h ago". */
-export function ago(ms: number): string {
-	const s = Math.max(0, Math.round(ms / 1000));
-	if (s < 45) return "just now";
-	const m = Math.round(s / 60);
-	if (m < 60) return `${m} min ago`;
-	return `${Math.round(m / 60)} h ago`;
-}
-
 /**
  * The one thing worth your attention, CleanMyMac's "Today's recommendation":
  * a failed service beats an update, which beats an outdated terminal host.
@@ -166,7 +158,7 @@ export function recommend(s: TraySnapshot, now: number): Recommendation | null {
 		return {
 			id: `fail:${failing.id}:${service}`,
 			icon: "fail",
-			title: `${service} failed ${ago(now - at)}`,
+			title: `${service} failed ${relativeTime(at, now)}`,
 			detail: failing.name,
 			cta: "View logs",
 			action: { kind: "logs", id: failing.id, service },

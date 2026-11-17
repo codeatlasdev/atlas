@@ -1,14 +1,14 @@
 ---
 import { render } from "astro:content";
 import DocsLayout from "../../layouts/DocsLayout.astro";
-import { editUrl, loadNav, titleOf } from "../../lib/docs";
+import { docAlternates, editUrl, loadNav, titleOf } from "../../lib/docs";
 
 export async function getStaticPaths() {
-	const { groups, entries } = await loadNav();
-	return entries.map((entry) => ({ params: { slug: entry.id }, props: { entry, groups } }));
+	const { groups, entries, translations } = await loadNav();
+	return entries.map((entry) => ({ params: { slug: entry.id }, props: { entry, groups, state: translations.get(entry.id)!.state } }));
 }
 
-const { entry, groups } = Astro.props;
+const { entry, groups, state } = Astro.props;
 const { Content, headings, remarkPluginFrontmatter } = await render(entry);
 const title = entry.data.title ?? remarkPluginFrontmatter.title ?? titleOf(entry);
 ---
@@ -19,6 +19,7 @@ const title = entry.data.title ?? remarkPluginFrontmatter.title ?? titleOf(entry
 	groups={groups}
 	headings={headings}
 	editUrl={editUrl(entry)}
+	alternates={docAlternates(entry.id, state)}
 >
 	<Content />
 </DocsLayout>

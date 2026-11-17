@@ -1,0 +1,9 @@
+{
+  "name": "atlas-i18n-scripts",
+  "description": "Dependencies of scripts/i18n (the i18n checker, translator and fixer); not a workspace member",
+  "private": true,
+  "type": "module",
+  "devDependencies": {
+    "svelte": "^5.57.2"
+  }
+}

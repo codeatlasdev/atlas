@@ -1,0 +1,11 @@
+{
+	"config_lang_available": "Last line of `atlas config lang`. $count is how many languages exist, $langs the list of tags.",
+	"config_lang_current": "First line of `atlas config lang` with no argument. $lang is a language tag such as pt-BR.",
+	"config_lang_saved": "Third line of `atlas config lang`: the preference saved in ~/.atlas/language. $lang is a tag.",
+	"config_lang_saved_none": "Third line of `atlas config lang` when no preference is saved.",
+	"config_lang_set": "Confirmation after `atlas config lang <tag>`. $lang is the saved tag.",
+	"config_lang_set_env_warning": "Warning after `atlas config lang <tag>` when ATLAS_LANG is set: the saved language is not in effect in this shell. $value is the value of ATLAS_LANG.",
+	"config_lang_source": "Second line of `atlas config lang`: which input decided the language. $source is one of the keys below. The environment variable and file names are literal and stay as they are.",
+	"config_lang_unset": "Confirmation after `atlas config lang --unset`.",
+	"config_lang_unsupported": "Error when `atlas config lang <tag>` gets a language that has no catalog. $tag is what the user typed, $langs the list of valid tags."
+}

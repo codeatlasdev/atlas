@@ -1,10 +1,12 @@
 name: Rerun a lost runner
 
-# Issue #520: hosted Windows runners sometimes die mid-step; GitHub ends the job as a failure ~45 min later with one
-# annotation ("The hosted runner lost communication with the server") and no log. That says nothing about the commit,
-# so when CI fails ONLY by that, this reruns the failed jobs, once per attempt, up to attempt 3. A real failure in the
-# same run (any job without that annotation) means no rerun. The rules are scripts/ci-lost-runner.ts (decideRerun,
-# tested in ci-lost-runner.test.ts).
+# Issue #520: hosted runners sometimes fail a job by themselves. A Windows runner dies mid-step and GitHub ends the job
+# as a failure ~45 min later with one annotation ("The hosted runner lost communication with the server"); or no runner
+# takes the job (macOS arm64 capacity) and it ends cancelled with "The job was not acquired by Runner of type hosted
+# even after multiple attempts". Neither says anything about the commit, so when CI fails ONLY by such jobs this reruns
+# the failed jobs, once per attempt, up to attempt 3. A real failure in the same run, or a job cancelled without one of
+# those annotations, means no rerun. The rules are scripts/ci-lost-runner.ts (decideRerun, tested in
+# ci-lost-runner.test.ts).
 #
 # `workflow_run` runs with the default branch's workflow file and a token that can write, also for a fork's pull
 # request, so: nothing from the pull request is checked out or executed (the checkout is the default branch), and
@@ -22,7 +24,7 @@ concurrency:
 
 jobs:
   rerun:
-    name: Rerun failed jobs lost to their runner
+    name: Rerun failed jobs that lost or never got a runner
     if: ${{ github.event.workflow_run.conclusion == 'failure' && github.repository == 'codeatlasdev/atlas' }}
     runs-on: ubuntu-latest
     timeout-minutes: 5
@@ -40,7 +42,7 @@ jobs:
         with:
           no-cache: true
 
-      - name: Rerun when every failed job lost its runner
+      - name: Rerun when every failed job lost or never got its runner
         env:
           GH_TOKEN: ${{ github.token }}
           GH_REPO: ${{ github.repository }}

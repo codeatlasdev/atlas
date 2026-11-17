@@ -1,0 +1,62 @@
+name: LSP real servers
+
+# The four tests in crates/atlas-lsp/tests/real.rs run the REAL language servers (rust-analyzer, the npm servers
+# on a managed Node, gopls) and download them, so they are `#[ignore]`d in the CI gate and would rot unseen
+# (issue #315). They run here instead: weekly, by hand, and on pull requests that touch the LSP crate or this
+# file. Not part of the required `CI` check: a server release or a download outage must not block a merge.
+on:
+  workflow_dispatch:
+  schedule:
+    - cron: "37 5 * * 1"
+  pull_request:
+    paths:
+      - "crates/atlas-lsp/**"
+      - ".github/workflows/lsp-real.yml"
+
+permissions:
+  contents: read
+
+concurrency:
+  group: lsp-real-${{ github.workflow }}-${{ github.event.pull_request.number || github.ref }}
+  cancel-in-progress: ${{ github.event_name == 'pull_request' }}
+
+env:
+  CARGO_TERM_COLOR: always
+  CARGO_INCREMENTAL: "0"
+
+jobs:
+  real:
+    name: ${{ matrix.test }}
+    runs-on: ubuntu-latest
+    timeout-minutes: 45
+    strategy:
+      fail-fast: false
+      matrix:
+        test:
+          - rust_analyzer_definition_in_atlas_core
+          - typescript_hover_in_apps_desktop
+          - managed_node_and_all_npm_servers_initialize
+          - gopls_builds_with_go_install_and_initializes
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+
+      # The pinned gopls (registry.rs) needs a Go at least as new as its own go.mod (the install runs with
+      # GOTOOLCHAIN=local), and the runner image's Go may be older: `stable` is always new enough.
+      - name: Install Go
+        if: ${{ matrix.test == 'gopls_builds_with_go_install_and_initializes' }}
+        uses: actions/setup-go@b7ad1dad31e06c5925ef5d2fc7ad053ef454303e # v7.0.0
+        with:
+          go-version: stable
+          cache: false
+
+      - name: Install Rust
+        run: rustup show active-toolchain || rustup toolchain install
+
+      # No cargo cache on purpose: the job downloads and runs third-party servers, and a restored build
+      # directory is what zizmor's cache-poisoning audit warns about. The crate builds in a few minutes.
+      - name: Run the test against the real server
+        env:
+          TEST: ${{ matrix.test }}
+        run: cargo test -p atlas-lsp --test real --locked -- --ignored --nocapture --exact "$TEST"

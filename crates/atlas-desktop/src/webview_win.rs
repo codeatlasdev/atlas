@@ -153,9 +153,10 @@ mod tests {
     /// A sync `#[tauri::command]` must never reach webview creation; those commands are `async`.
     #[test]
     fn sync_commands_never_create_webviews() {
-        const CREATORS: [&str; 6] = [
+        const CREATORS: [&str; 7] = [
             "show_now(",
             "ensure_popover(",
+            "ensure_built(",
             "WebviewWindowBuilder::",
             "WebviewBuilder::new(",
             "dock::start(",

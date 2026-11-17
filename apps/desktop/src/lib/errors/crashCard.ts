@@ -3,6 +3,7 @@
  * earlier crash is news (newer than the stamp the user dismissed) and hands over `{ atMs, kind, summary }`, already
  * redacted; this reads it defensively and turns it into the `ErrorReport` the existing report screen files.
  */
+import { m } from "#lib/i18n/m.ts";
 import { headline, redactText, type ErrorReport } from "./report.ts";
 
 export interface CrashCard {
@@ -28,10 +29,7 @@ export function copy(card: CrashCard): { title: string; body: string } {
 	const { title } = headline(crashReport(card));
 	return {
 		title,
-		body:
-			card.kind === "crash"
-				? "A crash report was saved on this machine. Nothing was sent anywhere; report it if you want it looked at."
-				: "Its terminals ended. Nothing was sent anywhere; report it if it keeps happening.",
+		body: card.kind === "crash" ? m.errors_crash_card_body_crash() : m.errors_crash_card_body_hostd_exited(),
 	};
 }
 

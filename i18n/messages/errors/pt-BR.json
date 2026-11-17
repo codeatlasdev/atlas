@@ -1,0 +1,6 @@
+{
+	"errors_crash_card_body_crash": "Um relatório de falha foi salvo neste computador. Nada foi enviado; reporte se quiser que alguém analise.",
+	"errors_crash_card_body_hostd_exited": "Os terminais foram encerrados. Nada foi enviado; reporte se continuar acontecendo.",
+	"errors_crash_card_dismiss": "Dispensar",
+	"errors_crash_card_report": "Reportar"
+}

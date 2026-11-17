@@ -1,0 +1,6 @@
+{
+	"errors_crash_card_body_crash": "A crash report was saved on this machine. Nothing was sent anywhere; report it if you want it looked at.",
+	"errors_crash_card_body_hostd_exited": "Its terminals ended. Nothing was sent anywhere; report it if it keeps happening.",
+	"errors_crash_card_dismiss": "Dismiss",
+	"errors_crash_card_report": "Report"
+}

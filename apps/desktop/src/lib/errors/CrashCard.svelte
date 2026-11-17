@@ -1,6 +1,7 @@
 <script lang="ts">
 	/** "Closed unexpectedly last time" (#322): a dismissible card for a crash of an earlier session. */
 	import { Button } from "@codeatlasdev/ui";
+	import { m } from "#lib/i18n/m.ts";
 	import CornerNotice from "#lib/shell/CornerNotice.svelte";
 	import { copy, crashReport } from "./crashCard.ts";
 	import { crashCards } from "./crashCard.svelte.ts";
@@ -18,8 +19,10 @@
 
 {#if card && text}
 	{#snippet act()}
-		<Button size="sm" onclick={report}>Report</Button>
-		<Button size="sm" variant="glass" onclick={() => crashCards.dismiss()}>Dismiss</Button>
+		<Button size="sm" onclick={report}>{m.errors_crash_card_report()}</Button>
+		<Button size="sm" variant="glass" onclick={() => crashCards.dismiss()}
+			>{m.errors_crash_card_dismiss()}</Button
+		>
 	{/snippet}
 	<CornerNotice
 		id="crash-card"

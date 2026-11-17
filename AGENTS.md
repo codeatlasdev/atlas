@@ -17,6 +17,7 @@ This file is a map, kept under 8 KB (`bun test scripts/agents-md.test.ts` fails 
 - **Orphan kill** uses only the `.pids` file and exact PIDs: never `lsof` port-kill or negative PIDs (a container runtime's port forwarder owns those ports; a recycled group id can hit atlas itself).
 - **Containers.** Never restart the container runtime (`orb restart docker`) and never run `docker compose down` from atlas.
 - **Platform code.** Shared code goes through `atlas_core::sys` and `atlas_core::ipc`, never `libc`/`nix`. Every child of the GUI app or hostd needs `no_window()` (or `spawn_detached`), else a console window flashes.
+- Built-in coding agents live only in `crates/atlas-core/data/agents.json` (read via `atlas_core::agents`, `apps/desktop/src/lib/agentRegistry.ts`, the generated Dart `bun scripts/gen-agents-dart.ts`); never type a list of agent ids (`scripts/agent-list.test.ts` fails).
 - **Tests first.** For every bug: write a test that reproduces it, watch it fail for the reported reason, then fix. Real behavior or contract, never filler; cross-boundary contracts use the real producer's output. Full guide: `.agents/skills/real-tests/SKILL.md`.
 - **Commits** need a DCO sign-off (`git commit -s`); the AI policy is in `CONTRIBUTING.md`. Stage explicit paths.
 - Guards are enforced, not advisory: `.claude/settings.json`, `.codex/hooks.json`, `.omp/extensions/agent-guard.ts` and the `pre-push` hook (`scripts/setup.sh` installs it) refuse writes outside your worktree, pushes to `main`/`release/*`, force-push, merges (incl. `bun run pr:merge`), `git stash`

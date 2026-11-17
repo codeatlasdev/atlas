@@ -5,7 +5,7 @@
 import { PALETTE_LIMIT, type PaletteItem } from "#lib/components/Palette.svelte";
 import { openService, runAction } from "#lib/actions.svelte.ts";
 import { fileIcon } from "#lib/icons.ts";
-import { indexFor, type FileIndex } from "#lib/quickOpen.ts";
+import type { FileIndex } from "#lib/quickOpen.ts";
 import { allCommands, noteRun, recent, shortcutFor } from "#lib/keymap.svelte.ts";
 import { activeEditor } from "#lib/shell/editors.ts";
 import { agents } from "#lib/stores/agents.svelte.ts";
@@ -36,7 +36,9 @@ let quick: FileIndex | undefined;
 export async function openQuick() {
 	const w = ws.selected;
 	if (!w) return;
-	quick = indexFor(await worktreeFiles(w.id));
+	// The ranking code loads with the first ⌘P, not at startup (it is not needed for the first paint).
+	const [files, { indexFor }] = await Promise.all([worktreeFiles(w.id), import("#lib/quickOpen.ts")]);
+	quick = indexFor(files);
 	palettes.quickRev++;
 	palettes.files = true;
 }

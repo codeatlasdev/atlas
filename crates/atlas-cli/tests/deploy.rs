@@ -397,16 +397,14 @@ impl Fx {
 // the deploy is made in, the old id is taken or sorts before one that exists.
 #[test]
 fn a_deploy_never_reuses_or_sorts_before_a_release_already_on_the_host() {
-    use chrono::{Duration as Span, Utc};
+    use std::time::SystemTime;
     let fx = Fx::new();
     let sha7 = fx.head()[..7].to_string();
-    let now = Utc::now();
+    let now = SystemTime::now();
     let mut planted = Vec::new();
-    for ahead in -1..=10 {
-        let id = format!(
-            "{}-{sha7}",
-            (now + Span::seconds(ahead)).format("%Y%m%d%H%M%S")
-        );
+    for ahead in 0..=11 {
+        let at = now + Duration::from_secs(ahead) - Duration::from_secs(1);
+        let id = format!("{}-{sha7}", atlas_core::time::utc_compact(at));
         fx.plant_release(&id);
         planted.push(id);
     }

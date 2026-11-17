@@ -7,9 +7,6 @@ import { errText } from "#lib/api.ts";
 import type { ApiFormat } from "#lib/crew/providerConfig.ts";
 import { probeProvider, saveAndCheckProvider } from "#lib/crew/remoteAgent.ts";
 
-/** Engines whose provider can be rerouted through a custom gateway. */
-export const PROVIDER_AGENTS = ["omp", "claude", "codex", "opencode"];
-
 const DEFAULT_BASE_URL = "https://openrouter.ai/api/v1";
 
 export class ProviderForm {

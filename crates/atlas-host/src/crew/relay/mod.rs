@@ -69,17 +69,22 @@ struct Entry {
     #[cfg(unix)]
     #[serde(default)]
     port: Option<u16>,
+    /// The private key file picked for this server (`ssh -i`); absent when ssh finds the key by itself.
+    #[cfg(unix)]
+    #[serde(default)]
+    identity: Option<String>,
 }
 
-/// The ssh port the registry holds for `host`, `None` for the default (and when the file or entry is gone).
+/// How to ssh to `host`: the port and the picked key the registry holds for it, `None`s for the defaults (and when
+/// the file or entry is gone).
 #[cfg(unix)]
-fn port_of(registry_file: &Path, host: &str) -> Option<u16> {
-    let text = std::fs::read_to_string(registry_file).ok()?;
-    serde_json::from_str::<Vec<Entry>>(&text)
-        .ok()?
-        .into_iter()
-        .find(|e| e.host == host)
-        .and_then(|e| e.port)
+fn target_of(registry_file: &Path, host: &str) -> atlas_core::ssh::SshTarget {
+    let entry = std::fs::read_to_string(registry_file)
+        .ok()
+        .and_then(|t| serde_json::from_str::<Vec<Entry>>(&t).ok())
+        .and_then(|v| v.into_iter().find(|e| e.host == host));
+    atlas_core::ssh::SshTarget::new(host, entry.as_ref().and_then(|e| e.port))
+        .with_identity(entry.and_then(|e| e.identity))
 }
 
 struct Server {
@@ -412,8 +417,8 @@ fn ssh_connector(_registry_file: PathBuf, _dir: PathBuf) -> Connector {
     }))
 }
 
-/// `$HOME` and the hostd token of `host`, then a tunnel to its hostd socket. `host`'s port is the
-/// one its registry entry carries (`registry_file`), read at every (re)connect.
+/// `$HOME` and the hostd token of `host`, then a tunnel to its hostd socket. `host`'s port and picked key are the
+/// ones its registry entry carries (`registry_file`), read at every (re)connect.
 #[cfg(unix)]
 async fn ssh_link(registry_file: PathBuf, dir: PathBuf, host: String) -> Result<Link, String> {
     use atlas_core::sys::CommandExt as _;
@@ -421,7 +426,7 @@ async fn ssh_link(registry_file: PathBuf, dir: PathBuf, host: String) -> Result<
     use tokio::process::Command;
 
     atlas_core::ssh::valid_target(&host)?;
-    let target = atlas_core::ssh::SshTarget::new(host.clone(), port_of(&registry_file, &host));
+    let target = target_of(&registry_file, &host);
     let out = tokio::time::timeout(
         Duration::from_secs(20),
         Command::new("ssh")

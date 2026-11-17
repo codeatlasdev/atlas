@@ -1,0 +1,9 @@
+{
+	"cli_config_about": "Short description of `atlas config` in `--help`.",
+	"cli_config_check_about": "Short description of `atlas config check` in `--help`.",
+	"cli_config_lang_about": "Short description of `atlas config lang` in `--help`.",
+	"cli_config_lang_arg_json": "Help line of the `json` argument of `atlas config lang`.",
+	"cli_config_lang_arg_tag": "Help line of the `tag` argument of `atlas config lang`.",
+	"cli_config_lang_arg_unset": "Help line of the `unset` argument of `atlas config lang`.",
+	"cli_config_schema_about": "Short description of `atlas config schema` in `--help`."
+}

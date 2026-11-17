@@ -725,6 +725,7 @@ jobs:
     timeout-minutes: 15
     permissions:
       contents: write   # the only job that may create the release
+      pull-requests: read   # scripts/release-contributors.ts reads each commit's PR author and reviewers
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
@@ -778,10 +779,13 @@ jobs:
           shasum -a 256 manifest.json >> SHA256SUMS
           cat SHA256SUMS
 
-      # The release body: this version's CHANGELOG.md section, then install/update steps.
+      # The release body: this version's CHANGELOG.md section, who worked on it, then install/update steps, within
+      # GitHub's size cap (scripts/release-notes.ts shortens a section that would not fit; 1.5.0-alpha.26's was cut
+      # mid-entry). scripts/release-contributors.ts fails the step if a commit identity maps to nobody.
       - name: Release notes
         env:
           MAKE_LATEST: ${{ steps.flags.outputs.make_latest }}
+          GH_TOKEN: ${{ github.token }}
         run: |
           V=${TAG#v}
           case "$V" in
@@ -790,17 +794,17 @@ jobs:
             *-rc.*) CH="a **release-candidate** build: the next Stable, being soaked. Only the version number should change when it is promoted." ;;
             *) CH="" ;;
           esac
-          : > notes.md
+          : > header.md
           if [ -n "$CH" ]; then
             # GitHub's "Latest" badge follows the default channel (alpha pre-GA), which is not the Stable channel.
             if [ "$MAKE_LATEST" = true ]; then
-              printf '> This is %s GitHub marks it "Latest" because it is what the default update channel offers while Atlas is in alpha; it is not offered on the Stable channel; see [versioning](https://atlas.codeatlas.com.br/docs/versioning).\n\n' "$CH" >> notes.md
+              printf '> This is %s GitHub marks it "Latest" because it is what the default update channel offers while Atlas is in alpha; it is not offered on the Stable channel; see [versioning](https://atlas.codeatlas.com.br/docs/versioning).\n\n' "$CH" >> header.md
             else
-              printf '> This is %s It is not offered on the Stable channel; see [versioning](https://atlas.codeatlas.com.br/docs/versioning).\n\n' "$CH" >> notes.md
+              printf '> This is %s It is not offered on the Stable channel; see [versioning](https://atlas.codeatlas.com.br/docs/versioning).\n\n' "$CH" >> header.md
             fi
           fi
-          awk -v v="$V" '/^## /{p = index($0, "[" v "]") > 0; next} p' CHANGELOG.md >> notes.md
-          cat >> notes.md <<'EOF'
+          bun scripts/release-contributors.ts "$V" "$TAG" > footer.md
+          cat >> footer.md <<'EOF'
 
           ## Install
 
@@ -843,6 +847,7 @@ jobs:
           atlas update    # updates the CLI and an installed Atlas.app together
           ```
           EOF
+          bun scripts/release-notes.ts "$V" header.md footer.md > notes.md
 
       - name: Create GitHub Release
         uses: softprops/action-gh-release@8a0cd651e5b2365bd640854a3fa5dfc70e4875f3 # v3.0.4

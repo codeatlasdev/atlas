@@ -5,7 +5,7 @@ description: "How maintainers cut, promote and publish an Atlas release on the S
 
 # Releasing Atlas (maintainers)
 
-Releases are built and published by GitHub Actions on hosted runners when a maintainer pushes a `v*` tag, which `bun run release` does. CI runs on pull requests and on pushes to `main`/`release/**`; the Release workflow waits for the CI run of the tagged commit to pass before building.
+Releases are built and published by GitHub Actions on hosted runners when a maintainer pushes a `v*` tag, which `bun run release` does. CI runs on pull requests and on pushes to `main`/`release/**`; the Release workflow waits for the CI run of the tagged commit to pass before building. It pushes `main` (or `release/X.Y`) and the tag, which the agent guards refuse (docs/contributing.md "Agent guards"): run it as `ATLAS_MAINTAINER_OK=push bun run release <channel>`.
 
 What the channels mean for users, and what Atlas promises on each, is in [Versioning and release channels](versioning.md). This page is how to cut them.
 

@@ -30,6 +30,10 @@ pub struct Entry {
     /// User-chosen icon and color of a project (repos only); `None` = automatic.
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub identity: Option<Identity>,
+    /// The user chose "Use as project" for a plain folder (no `.git`, `atlas.yaml` or manifest): it then gets the full
+    /// project UI. Folders with a marker are projects whatever this says.
+    #[serde(default, skip_serializing_if = "std::ops::Not::not")]
+    pub project: bool,
 }
 
 /// How a project looks in the app. Both parts are optional: no icon = detect the repo's logo,
@@ -249,6 +253,7 @@ mod tests {
             branch: None,
             host: None,
             identity,
+            project: false,
         }
     }
 

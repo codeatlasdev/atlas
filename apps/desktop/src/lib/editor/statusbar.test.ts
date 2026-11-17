@@ -55,7 +55,7 @@ test("problems and a large-file tier show as warnings; mixed endings are flagged
 	expect(text).toContain("2 errors, 1 warning");
 	expect(text).toContain("Large file");
 	expect(text).toContain("Mixed");
-	expect(target.querySelector(".error")?.textContent).toContain("2 errors");
+	expect(target.querySelector("[data-tone=error]")?.textContent).toContain("2 errors");
 	done();
 });
 

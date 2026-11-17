@@ -31,6 +31,9 @@ const AIM: Record<string, NonNullable<Trace["expect"]["aim"]>> = {
 	"tab-drag-past-half": "strip",
 	"over-native-view": "history",
 	"no-zone-outside": "outside",
+	"editor-scroll-owned": "strip",
+	"editor-scroll-back-owned": "strip",
+	"editor-at-edge-hands-over": "strip",
 };
 
 export function suite(): Trace[] {
@@ -189,6 +192,26 @@ function build(): Trace[] {
 			"a notched wheel mouse (not precise): never a swipe",
 			{ zone: "space", steps: 0, untouched: true },
 			synth({ x: sidebar.x, y: sidebar.y, seed: 18, travel: -120, ms: 200, momentum: 0, precise: false }),
+		),
+		// #498: the tab zone is the whole group, editor included. What the editor under the pointer can still do
+		// decides, at the landing, whether a sideways gesture is its scroll or a tab swipe.
+		t(
+			"editor-scroll-owned",
+			"fingers left over an editor with more line to the right: the editor's scroll, never a tab swipe",
+			{ zone: "tab", steps: 0, untouched: true, scroller: { left: true, right: true } },
+			synth({ x: strip.x, y: strip.y, seed: 19, travel: -230, ms: 300, momentum: 0.6 }),
+		),
+		t(
+			"editor-scroll-back-owned",
+			"fingers right over an editor scrolled to its right end: it scrolls back, a tab swipe does not start",
+			{ zone: "tab", steps: 0, untouched: true, scroller: { left: true, right: false } },
+			synth({ x: strip.x, y: strip.y, seed: 20, travel: 230, ms: 300, momentum: 0.6 }),
+		),
+		t(
+			"editor-at-edge-hands-over",
+			"fingers left over an editor already at its right end: nothing left to scroll, the tab swipe takes it",
+			{ zone: "tab", steps: 1, scroller: { left: true, right: false } },
+			synth({ x: strip.x, y: strip.y, seed: 21, travel: -230, ms: 300, momentum: 0.6 }),
 		),
 	];
 }

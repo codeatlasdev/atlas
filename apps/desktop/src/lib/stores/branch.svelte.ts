@@ -1,5 +1,6 @@
 import { toast } from "@codeatlasdev/ui";
 import { git, errText } from "#lib/api.ts";
+import { gitToast } from "#lib/gitToast.ts";
 import { branchRows, createRow, type BranchRow, type Branches } from "#lib/branches.ts";
 import { goWorktree } from "#lib/shell/navigate.ts";
 import { confirmDialog } from "#lib/stores/ask.svelte.ts";
@@ -22,7 +23,7 @@ export async function openBranchPicker() {
 		branchPicker.worktreeId = w.id;
 		branchPicker.open = true;
 	} catch (e) {
-		toast.error(errText(e));
+		gitToast(errText(e));
 	}
 }
 
@@ -88,6 +89,6 @@ async function run(id: string, branch: string, opts: { create?: boolean; stash?:
 			await run(id, branch, { ...opts, stash: true });
 		}
 	} catch (e) {
-		toast.error(errText(e));
+		gitToast(errText(e));
 	}
 }

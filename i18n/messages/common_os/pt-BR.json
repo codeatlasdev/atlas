@@ -1,0 +1,104 @@
+{
+	"common_os_alt_key": [
+		{
+			"declarations": [
+				"input os"
+			],
+			"selectors": [
+				"os"
+			],
+			"match": {
+				"os=mac": "Option",
+				"os=*": "Alt"
+			}
+		}
+	],
+	"common_os_enter_key": [
+		{
+			"declarations": [
+				"input os"
+			],
+			"selectors": [
+				"os"
+			],
+			"match": {
+				"os=mac": "Return",
+				"os=*": "Enter"
+			}
+		}
+	],
+	"common_os_file_manager": [
+		{
+			"declarations": [
+				"input os"
+			],
+			"selectors": [
+				"os"
+			],
+			"match": {
+				"os=mac": "o Finder",
+				"os=windows": "o Explorador de Arquivos",
+				"os=*": "o gerenciador de arquivos"
+			}
+		}
+	],
+	"common_os_menu_bar": [
+		{
+			"declarations": [
+				"input os"
+			],
+			"selectors": [
+				"os"
+			],
+			"match": {
+				"os=mac": "a barra de menus",
+				"os=*": "a bandeja do sistema"
+			}
+		}
+	],
+	"common_os_system_settings": [
+		{
+			"declarations": [
+				"input os"
+			],
+			"selectors": [
+				"os"
+			],
+			"match": {
+				"os=mac": "Ajustes do Sistema",
+				"os=windows": "Configurações",
+				"os=*": "configurações do sistema"
+			}
+		}
+	],
+	"common_os_trash": [
+		{
+			"declarations": [
+				"input os"
+			],
+			"selectors": [
+				"os"
+			],
+			"match": {
+				"os=mac": "Lixeira",
+				"os=windows": "Lixeira",
+				"os=*": "Lixeira"
+			}
+		}
+	],
+	"common_os_your_computer": [
+		{
+			"declarations": [
+				"input os"
+			],
+			"selectors": [
+				"os"
+			],
+			"match": {
+				"os=mac": "seu Mac",
+				"os=windows": "este PC",
+				"os=*": "este computador"
+			}
+		}
+	]
+}

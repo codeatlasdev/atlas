@@ -8,6 +8,9 @@ ignore = [
     { id = "RUSTSEC-2026-0370", reason = "zvariant via zbus 5 (tauri-plugin-notification -> notify-rust, Linux-only); unmaintained notice, no newer notify-rust on zbus 6 yet" },
     { id = "RUSTSEC-2026-0371", reason = "zbus_names via zbus 5 (tauri-plugin-notification -> notify-rust, Linux-only); same as above" },
     { id = "RUSTSEC-2026-0372", reason = "zvariant_derive via zbus 5 (tauri-plugin-notification -> notify-rust, Linux-only); same as above" },
+    # Direct dependencies, unlike the ones above: removed by migrating to jiff (#540), which deletes these two lines.
+    { id = "RUSTSEC-2026-0543", reason = "chrono unmaintained (not a vulnerability); used directly and by croner; migration to jiff tracked in #540" },
+    { id = "RUSTSEC-2026-0555", reason = "chrono-tz unmaintained (not a vulnerability); crew automation time zones; goes with the jiff migration, #540" },
 ]
 
 [licenses]

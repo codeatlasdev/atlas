@@ -16,7 +16,8 @@ function openKind(kind: "services" | "logs" | "config") {
 }
 
 export function projectCommands(): Command[] {
-	const hasProject = () => !!store.current;
+	// A plain folder has no stack: Panel, Logs, Config, Activity and Start stay out of the palette there.
+	const hasProject = () => !!store.current && store.current.kind !== "folder";
 	const running = () => !!store.current?.running;
 	return [
 		{ id: "zed::OpenSettings", label: "Settings", run: () => updates.show() },

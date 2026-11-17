@@ -47,6 +47,32 @@
       "icons/128x128@2x.png",
       "icons/icon.icns"
     ],
+    "fileAssociations": [
+      {
+        "ext": ["md", "markdown", "txt"],
+        "contentTypes": ["public.text", "public.plain-text", "public.source-code", "public.script", "public.shell-script", "public.json", "public.xml", "public.yaml", "net.daringfireball.markdown"],
+        "name": "Text and source document",
+        "description": "Text, Markdown, source code and data files",
+        "role": "Editor",
+        "rank": "Alternate"
+      },
+      {
+        "ext": [],
+        "contentTypes": ["public.data"],
+        "name": "Any file",
+        "description": "Any file, opened as text",
+        "role": "Editor",
+        "rank": "Alternate"
+      },
+      {
+        "ext": [],
+        "contentTypes": ["public.folder"],
+        "name": "Folder",
+        "description": "A folder, opened in Atlas",
+        "role": "Viewer",
+        "rank": "Alternate"
+      }
+    ],
     "macOS": {
       "minimumSystemVersion": "13.0",
       "signingIdentity": "-",

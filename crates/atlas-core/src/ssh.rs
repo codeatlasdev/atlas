@@ -46,6 +46,9 @@ pub struct SshTarget {
     pub target: String,
     /// `None` is the default port; 22 is stored as `None`, so one address has one spelling.
     pub port: Option<u16>,
+    /// A private key the user picked for this server (`-i`), instead of the ones ssh finds by itself. `None` leaves
+    /// the choice to ssh (`~/.ssh/config`, the default key names, the agent).
+    pub identity: Option<PathBuf>,
 }
 
 /// What an ssh call is for: it decides the options (a one-shot command, a tunnel, a terminal).
@@ -64,6 +67,27 @@ impl SshTarget {
         Self {
             target: target.into(),
             port: port.filter(|&p| p != 22),
+            identity: None,
+        }
+    }
+
+    /// The same address reached with `identity` (a private key file) when there is one.
+    pub fn with_identity(mut self, identity: Option<impl Into<PathBuf>>) -> Self {
+        self.identity = identity.map(Into::into);
+        self
+    }
+
+    /// `-i <key> -o IdentitiesOnly=yes` when a key was picked: ssh then offers that key and no other, so the
+    /// server is not shown every key of the agent first (and refuses after `MaxAuthTries`).
+    fn identity_args(&self) -> Vec<String> {
+        match &self.identity {
+            Some(k) => vec![
+                "-i".to_string(),
+                k.display().to_string(),
+                "-o".to_string(),
+                "IdentitiesOnly=yes".to_string(),
+            ],
+            None => Vec::new(),
         }
     }
 
@@ -99,6 +123,7 @@ impl SshTarget {
             }
             Use::Terminal => {}
         }
+        a.extend(self.identity_args());
         if let Some(p) = self.port {
             a.extend(["-p".to_string(), p.to_string()]);
         }
@@ -136,6 +161,22 @@ impl SshTarget {
         a
     }
 
+    /// argv (after `ssh`) for the first contact with a server: `true` through the options of [`Use::Exec`], and a
+    /// host key ssh has not seen yet is recorded (`StrictHostKeyChecking=accept-new`; a key that CHANGED is still
+    /// refused). Under `BatchMode` ssh cannot ask "are you sure you want to continue connecting?", so without
+    /// this a server nobody ever connected to fails with "Host key verification failed" on the very first call.
+    pub fn first_contact_argv(&self) -> Vec<String> {
+        let mut a = self.argv(Use::Exec);
+        let target = a.pop().expect("the target is last");
+        a.extend([
+            "-o".to_string(),
+            "StrictHostKeyChecking=accept-new".to_string(),
+            target,
+            "true".to_string(),
+        ]);
+        a
+    }
+
     /// `scp` argv (after `scp`) copying `src` to `<target>:<dest>`.
     pub fn scp_argv(&self, src: &std::path::Path, dest: &str) -> Vec<String> {
         let mut a = vec![
@@ -143,6 +184,7 @@ impl SshTarget {
             "-o".to_string(),
             "BatchMode=yes".to_string(),
         ];
+        a.extend(self.identity_args());
         if let Some(p) = self.port {
             a.extend(["-P".to_string(), p.to_string()]);
         }
@@ -190,31 +232,94 @@ pub fn windows_safe(script: &str) -> String {
     format!("printf %b {} | bash", shq(&escaped))
 }
 
-/// The public key `ssh` would use to reach `target`, found the way ssh itself lists them: `ssh -G`
-/// prints the `IdentityFile`s of `~/.ssh/config` and the default key names (id_ed25519, id_ecdsa, id_rsa,
-/// …), so a key with another name is found too. The first `<identity>.pub` that exists; `None` otherwise.
-pub fn find_public_key(target: &SshTarget) -> Option<PathBuf> {
+/// The key this computer signs in to a crew server with: the private key file `ssh` offers, and its `.pub` when
+/// that file exists.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct LocalKey {
+    /// The private key file (what `-i` takes, and what the connect form shows).
+    pub identity: PathBuf,
+    /// `<identity>.pub` when it exists; without it [`LocalKey::public_text`] derives the public key.
+    pub public: Option<PathBuf>,
+}
+
+impl LocalKey {
+    /// The one-line public key to put in the server's `authorized_keys`: the `.pub` file, else derived from the
+    /// private key with `ssh-keygen -y` (a key downloaded without its `.pub`). A passphrase-protected key without
+    /// a `.pub` cannot be derived without asking, so that is an error saying so.
+    pub fn public_text(&self) -> Result<String, String> {
+        use crate::sys::CommandExt as _;
+        if let Some(p) = &self.public {
+            let text =
+                std::fs::read_to_string(p).map_err(|e| format!("reading {}: {e}", p.display()))?;
+            return Ok(text.trim().to_owned());
+        }
+        let mut cmd = std::process::Command::new("ssh-keygen");
+        cmd.no_window()
+            // `-P ""`: never ask for the passphrase (a prompt would hang with no terminal).
+            .args(["-y", "-P", "", "-f"])
+            .arg(&self.identity)
+            .stdin(std::process::Stdio::null());
+        let out = cmd.output().map_err(|e| format!("ssh-keygen: {e}"))?;
+        if !out.status.success() {
+            return Err(format!(
+                "{} has no .pub next to it and its public key could not be read from it ({}); \
+if it has a passphrase, create the .pub with: ssh-keygen -y -f <key> > <key>.pub",
+                self.identity.display(),
+                String::from_utf8_lossy(&out.stderr).trim()
+            ));
+        }
+        Ok(String::from_utf8_lossy(&out.stdout).trim().to_owned())
+    }
+}
+
+/// The key `ssh` would use to reach `target`: the `IdentityFile` given with it, else the first of the ones `ssh -G`
+/// lists (`~/.ssh/config` and the default names: id_ed25519, id_ecdsa, id_rsa, …, so a key with another name is
+/// found too) that exists. `None` when there is none.
+pub fn find_key(target: &SshTarget) -> Option<LocalKey> {
     use crate::sys::CommandExt as _;
+    let home = dirs::home_dir()?;
+    if let Some(identity) = &target.identity {
+        return key_at(identity.clone());
+    }
     let mut cmd = std::process::Command::new("ssh");
     cmd.no_window().arg("-G");
     if let Some(p) = target.port {
         cmd.args(["-p", &p.to_string()]);
     }
     cmd.arg(&target.target);
-    let out = cmd.output().ok().filter(|o| o.status.success())?;
-    let text = String::from_utf8_lossy(&out.stdout);
-    let home = dirs::home_dir()?;
-    public_key_from_g(&text, &home)
+    let listed = cmd
+        .output()
+        .ok()
+        .filter(|o| o.status.success())
+        .and_then(|o| key_from_g(&String::from_utf8_lossy(&o.stdout), &home));
+    listed.or_else(|| default_key_in(&home))
 }
 
-/// [`find_public_key`] before there is a server to ask about (onboarding's "do you have a key?"): the keys
-/// ssh offers to any host, plus a `Host *` block of `~/.ssh/config`.
-pub fn find_default_public_key() -> Option<PathBuf> {
-    find_public_key(&SshTarget::new("atlas-key-probe", None))
+/// The key a person (or Atlas) made with the default names under `<home>/.ssh`. `ssh -G` does not list it when a
+/// `~/.ssh/config` names an `IdentityFile` of its own (OpenSSH adds its default names only when none is given), so a
+/// key Atlas created for the password sign-in is still found; the caller passes it as `-i`.
+pub fn default_key_in(home: &std::path::Path) -> Option<LocalKey> {
+    ["id_ed25519", "id_ecdsa", "id_rsa"]
+        .into_iter()
+        .find_map(|n| key_at(home.join(".ssh").join(n)))
 }
 
-/// The first existing `<identityfile>.pub` listed by `ssh -G` output.
-pub fn public_key_from_g(g: &str, home: &std::path::Path) -> Option<PathBuf> {
+/// [`find_key`] before there is a server to ask about (onboarding's "do you have a key?"): the keys ssh offers
+/// to any host, plus a `Host *` block of `~/.ssh/config`.
+pub fn find_default_key() -> Option<LocalKey> {
+    find_key(&SshTarget::new("atlas-key-probe", None))
+}
+
+/// The key at `identity`, when the private file or its `.pub` is there.
+fn key_at(identity: PathBuf) -> Option<LocalKey> {
+    let mut p = identity.clone().into_os_string();
+    p.push(".pub");
+    let public = Some(PathBuf::from(p)).filter(|p| p.is_file());
+    (public.is_some() || identity.is_file()).then_some(LocalKey { identity, public })
+}
+
+/// The first existing key among the `identityfile` lines of `ssh -G` output (`~/` is `home`).
+pub fn key_from_g(g: &str, home: &std::path::Path) -> Option<LocalKey> {
     g.lines()
         .filter_map(|l| l.strip_prefix("identityfile "))
         .map(|p| {
@@ -224,13 +329,7 @@ pub fn public_key_from_g(g: &str, home: &std::path::Path) -> Option<PathBuf> {
                 None => PathBuf::from(p),
             }
         })
-        .map(|mut p| {
-            let mut s = p.into_os_string();
-            s.push(".pub");
-            p = PathBuf::from(s);
-            p
-        })
-        .find(|p| p.is_file())
+        .find_map(key_at)
 }
 
 #[cfg(test)]
@@ -419,12 +518,104 @@ mod tests {
             "host h\nidentityfile ~/.ssh/id_missing\nidentityfile {}/.ssh/id_work\nidentityfile ~/.ssh/id_rsa\n",
             home.display()
         );
+        let k = key_from_g(&g, home).unwrap();
         assert_eq!(
-            public_key_from_g(&g, home).unwrap(),
-            home.join(".ssh/id_work.pub"),
+            k.identity,
+            home.join(".ssh/id_work"),
             "the first listed key that exists wins"
         );
-        assert_eq!(public_key_from_g("host h\n", home), None);
+        assert_eq!(k.public, Some(home.join(".ssh/id_work.pub")));
+        assert_eq!(key_from_g("host h\n", home), None);
+    }
+
+    // #517: a key someone downloaded has no `.pub`. The form still shows it (the private file is what ssh uses),
+    // and the public key is derived from it instead of "no SSH public key found".
+    #[test]
+    fn a_private_key_without_its_pub_is_found_and_its_public_key_is_derived() {
+        let dir = tempfile::tempdir().unwrap();
+        let home = dir.path();
+        let key = home.join("id_dl");
+        let st = std::process::Command::new("ssh-keygen")
+            .args(["-t", "ed25519", "-N", "", "-q", "-C", "dl", "-f"])
+            .arg(&key)
+            .status()
+            .expect("ssh-keygen");
+        assert!(st.success());
+        let want = std::fs::read_to_string(home.join("id_dl.pub")).unwrap();
+        std::fs::remove_file(home.join("id_dl.pub")).unwrap();
+
+        let g = format!("identityfile {}\n", key.display());
+        let k = key_from_g(&g, home).unwrap();
+        assert_eq!(
+            (k.identity.as_path(), k.public.as_ref()),
+            (key.as_path(), None)
+        );
+        let derived = k.public_text().unwrap();
+        // The comment is not stored in the private key: compare the algorithm and the key blob.
+        let blob = |s: &str| s.split_whitespace().take(2).collect::<Vec<_>>().join(" ");
+        assert_eq!(blob(&derived), blob(&want));
+    }
+
+    // #517: a config with its own `IdentityFile` hides the default names from `ssh -G`; the key Atlas created at
+    // ~/.ssh/id_ed25519 for the password sign-in must still be found (it then travels as `-i`).
+    #[test]
+    fn a_default_named_key_is_found_even_when_ssh_does_not_list_it() {
+        let dir = tempfile::tempdir().unwrap();
+        let ssh = dir.path().join(".ssh");
+        std::fs::create_dir_all(&ssh).unwrap();
+        assert_eq!(default_key_in(dir.path()), None);
+        std::fs::write(ssh.join("id_rsa"), "x").unwrap();
+        std::fs::write(ssh.join("id_ed25519"), "x").unwrap();
+        std::fs::write(ssh.join("id_ed25519.pub"), "ssh-ed25519 AAAA a").unwrap();
+        let k = default_key_in(dir.path()).unwrap();
+        assert_eq!(k.identity, ssh.join("id_ed25519"), "ed25519 before rsa");
+        assert_eq!(k.public, Some(ssh.join("id_ed25519.pub")));
+    }
+
+    // #517: a key the user picked is used as given. A chosen key never falls back to another one: it either exists
+    // or there is no key.
+    #[test]
+    fn a_picked_key_is_the_key_and_a_missing_one_is_none() {
+        let dir = tempfile::tempdir().unwrap();
+        let key = dir.path().join("picked");
+        std::fs::write(&key, "private").unwrap();
+        std::fs::write(dir.path().join("picked.pub"), "ssh-ed25519 AAAA p\n").unwrap();
+        let t = SshTarget::new("u@h", None).with_identity(Some(key.clone()));
+        let k = find_key(&t).unwrap();
+        assert_eq!(k.identity, key);
+        assert_eq!(k.public_text().unwrap(), "ssh-ed25519 AAAA p");
+        let gone = SshTarget::new("u@h", None).with_identity(Some(dir.path().join("nope")));
+        assert_eq!(find_key(&gone), None);
+    }
+
+    // #517: a picked key reaches EVERY ssh call of the target (exec, tunnel, terminal, scp), before the target,
+    // with `IdentitiesOnly` so no other key is offered first; no key picked adds nothing.
+    #[test]
+    fn a_picked_key_is_on_every_kind_of_call_before_the_target() {
+        let t = SshTarget::new("atlas-crew@h", Some(2222)).with_identity(Some("/k/id work"));
+        for u in [Use::Exec, Use::Tunnel, Use::Terminal] {
+            let a = t.argv(u);
+            let i = a.iter().position(|x| x == "-i").unwrap_or(usize::MAX);
+            assert_eq!(a[i + 1], "/k/id work", "{u:?}: {a:?}");
+            assert!(has_pair(&a, "-o", "IdentitiesOnly=yes"), "{u:?}: {a:?}");
+            assert!(
+                i < a.iter().position(|x| x == "atlas-crew@h").unwrap(),
+                "{u:?}"
+            );
+            assert_eq!(a.last().unwrap(), "atlas-crew@h");
+            assert!(
+                !SshTarget::new("atlas-crew@h", None)
+                    .argv(u)
+                    .contains(&"-i".to_string())
+            );
+        }
+        assert!(t.tunnel_argv("/a:/b").contains(&"-i".to_string()));
+        assert!(t.exec_argv("true").contains(&"-i".to_string()));
+        assert!(t.raw_argv("true").contains(&"-i".to_string()));
+        let scp = t.scp_argv(std::path::Path::new("/a"), "d");
+        assert!(has_pair(&scp, "-i", "/k/id work"), "{scp:?}");
+        let plain = SshTarget::new("h", None).scp_argv(std::path::Path::new("/a"), "d");
+        assert!(!plain.contains(&"-i".to_string()));
     }
 
     // The forward belongs before the target (after it ssh reads it as the remote command), and the port is
@@ -453,5 +644,30 @@ mod tests {
         let a = SshTarget::new("devbox", None).raw_argv("uname -m");
         assert_eq!(a.last().unwrap(), "uname -m");
         assert!(!a.iter().any(|x| x.contains("PATH")));
+    }
+
+    // #517: a server nobody connected to has no host key in known_hosts, and `BatchMode` cannot ask about it, so
+    // the first call of a first-time user failed with "Host key verification failed". The first contact records
+    // the key (accept-new), keeps every option of an exec call (port, key) and runs `true`.
+    #[test]
+    fn the_first_contact_records_an_unknown_host_key_and_keeps_the_exec_options() {
+        let a = SshTarget::new("u@h", Some(2222))
+            .with_identity(Some("/k/id"))
+            .first_contact_argv();
+        assert!(
+            has_pair(&a, "-o", "StrictHostKeyChecking=accept-new"),
+            "{a:?}"
+        );
+        assert!(
+            has_pair(&a, "-o", "BatchMode=yes")
+                && has_pair(&a, "-p", "2222")
+                && has_pair(&a, "-i", "/k/id")
+        );
+        assert_eq!(&a[a.len() - 2..], ["u@h", "true"]);
+        let plain = SshTarget::new("u@h", None).raw_argv("true");
+        assert!(
+            !plain.iter().any(|x| x.contains("StrictHostKeyChecking")),
+            "only the first contact trusts a new key"
+        );
     }
 }

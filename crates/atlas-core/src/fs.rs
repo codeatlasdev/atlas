@@ -137,7 +137,10 @@ mod tests {
     }
 
     /// #301: writers sharing one temp name (`tmp~`) interleaved bytes or lost the rename to each
-    /// other. Two threads hammering one path leave one whole value and no temp file.
+    /// other. Two threads hammering one path leave one whole value and no temp file. 100 writes
+    /// each: every one is a flushed 150-200 KB file, and 1000 each took 40 s to over 60 s on the
+    /// Windows runner (nextest's slow mark) for no extra chance to interleave (the shared name
+    /// fails within the first few).
     #[test]
     fn concurrent_writers_to_one_path_never_corrupt_it_or_leave_temp_files() {
         let dir = tempfile::tempdir().unwrap();
@@ -148,7 +151,7 @@ mod tests {
             for v in values.iter() {
                 let path = &path;
                 s.spawn(move || {
-                    for _ in 0..1000 {
+                    for _ in 0..100 {
                         write_atomic(path, v.as_bytes(), Mode::Default).unwrap();
                     }
                 });

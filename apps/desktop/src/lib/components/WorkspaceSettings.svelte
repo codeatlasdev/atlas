@@ -2,6 +2,7 @@
 	import { Button, SegmentedControl, Spinner, Switch, toast } from "@codeatlasdev/ui";
 	import { onMount } from "svelte";
 	import { api, errText, type WorktreeStats } from "#lib/api.ts";
+	import { relativeTime } from "#lib/i18n/fmt.ts";
 	import {
 		cleanupPrefs,
 		restorable,
@@ -78,10 +79,7 @@
 			: kb > 1024 * 1024
 				? `${(kb / 1024 / 1024).toFixed(1)} GB`
 				: `${Math.round(kb / 1024)} MB`;
-	const ago = (ts: number) => {
-		const d = Math.floor((Date.now() - ts) / 86_400_000);
-		return d <= 0 ? "today" : `${d}d ago`;
-	};
+	const ago = (ts: number) => relativeTime(ts);
 </script>
 
 {#if loadError}

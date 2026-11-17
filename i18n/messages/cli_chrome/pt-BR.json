@@ -1,0 +1,9 @@
+{
+	"cli_chrome_arguments": "Argumentos",
+	"cli_chrome_commands": "Comandos",
+	"cli_chrome_help_flag": "Mostra a ajuda",
+	"cli_chrome_help_subcommand": "Mostra esta mensagem ou a ajuda do subcomando informado",
+	"cli_chrome_help_subcommand_arg": "Mostra a ajuda do subcomando",
+	"cli_chrome_options": "Opções",
+	"cli_chrome_usage": "Uso:"
+}

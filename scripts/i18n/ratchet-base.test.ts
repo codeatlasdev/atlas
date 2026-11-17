@@ -1,9 +1,7 @@
 // The ratchets in diff mode: a change is judged on the offenders it adds, against the merge-base, so a baseline that
 // lags main never fails anyone and never needs a re-snapshot. Real temp git repositories, real `git`.
 import { afterAll, describe, expect, test } from "bun:test";
-import { rmSync } from "node:fs";
-import { join } from "node:path";
-import { resolveBase } from "./base.ts";
+import { parseChanged, resolveBase } from "./base.ts";
 import { fix } from "./fix.ts";
 import { type Finding, loadCtx } from "./types.ts";
 import { check, cleanup, makeRepo, put, read, rulesOf } from "./testkit.ts";
@@ -248,11 +246,110 @@ describe("the other ratchets share the mechanism", () => {
 		expect(fs[0]).toMatchObject({ file: "README.md", line: 5, severity: "error" });
 	});
 
-	test("the committed-baseline checks (stale entries) are off in diff mode for every ratchet", async () => {
-		const root = await baseRepo({ [RS]: 'fn main() { println!("old one"); }\n', "i18n/hardcoded-baseline.json": JSON.stringify({ rust: { [RS]: 5 } }) });
+	test("the committed-baseline checks (stale entries) are off in diff mode, and on without a base", async () => {
+		const files = { [RS]: 'fn main() { println!("old one"); }\n', "i18n/hardcoded-baseline.json": JSON.stringify({ rust: { [RS]: 5 } }) };
+		const root = await baseRepo(files);
 		put(root, "docs/x.md", "# X\n");
 		expect((await check(root)).filter((f) => f.rule.endsWith("-baseline"))).toEqual([]);
-		rmSync(join(root, ".git"), { recursive: true, force: true });
-		expect((await check(root)).filter((f) => f.rule === "hardcoded-baseline")).toHaveLength(1);
+		const plain = await makeRepo(files);
+		put(plain, "i18n/hardcoded-baseline.json", files["i18n/hardcoded-baseline.json"]);
+		expect((await check(plain)).filter((f) => f.rule === "hardcoded-baseline")).toHaveLength(1);
+	});
+});
+
+// GitHub checks a pull request out as the merge of its branch into the CURRENT main. The base sha recorded in the
+// event is where the branch started, so main code merged since then would look like the PR's. CI passes I18N_BASE =
+// HEAD^1, the main tip the merge ref was built on.
+describe("a pull request merge ref", () => {
+	const MAIN_SCREEN = "apps/desktop/src/FromMain.svelte";
+	const PR_SCREEN = "apps/desktop/src/FromPr.svelte";
+
+	/** main gains a screen after the PR branched, then the merge ref: a real merge commit of the PR into main. */
+	async function mergeRef(prFile?: string) {
+		const root = await baseRepo({ [OLD]: oldScreen(1) });
+		put(root, "docs/pr.md", "# The PR\n");
+		if (prFile) put(root, prFile, "<p>Added by the PR</p>\n");
+		git(root, "add", "-A");
+		git(root, "commit", "-q", "-m", "pr");
+		const branchPoint = git(root, "rev-parse", "main");
+		git(root, "checkout", "-q", "main");
+		put(root, MAIN_SCREEN, oldScreen(3));
+		git(root, "add", "-A");
+		git(root, "commit", "-q", "-m", "main adds a screen after the PR branched");
+		git(root, "checkout", "-q", "-b", "merge-ref");
+		git(root, "merge", "-q", "--no-ff", "-m", "merge ref", "feature");
+		return { root, branchPoint, mainTip: git(root, "rev-parse", "HEAD^1") };
+	}
+
+	test("with I18N_BASE = HEAD^1 main's code is not the PR's", async () => {
+		const { root, mainTip } = await mergeRef();
+		process.env.I18N_BASE = mainTip;
+		try {
+			expect(offenders(await check(root))).toEqual([]);
+			expect(resolveBase(root)?.changed.has(MAIN_SCREEN)).toBe(false);
+			expect([...(resolveBase(root)?.changed.keys() ?? [])].sort()).toEqual(["docs/pr.md"]);
+		} finally {
+			delete process.env.I18N_BASE;
+		}
+	});
+
+	test("the sha recorded where the branch started WOULD blame the PR for main's screen (why HEAD^1)", async () => {
+		const { root, branchPoint } = await mergeRef();
+		process.env.I18N_BASE = branchPoint;
+		try {
+			expect(offenders(await check(root)).map((f) => f.file)).toEqual([MAIN_SCREEN, MAIN_SCREEN, MAIN_SCREEN]);
+		} finally {
+			delete process.env.I18N_BASE;
+		}
+	});
+
+	test("a PR that adds a string itself fails on exactly that one", async () => {
+		const { root, mainTip } = await mergeRef(PR_SCREEN);
+		process.env.I18N_BASE = mainTip;
+		try {
+			const fs = offenders(await check(root));
+			expect(fs).toHaveLength(1);
+			expect(fs[0]).toMatchObject({ file: PR_SCREEN, line: 1 });
+		} finally {
+			delete process.env.I18N_BASE;
+		}
+	});
+
+	test("locally, merge-base with main ignores main's code once the branch has merged main", async () => {
+		const { root } = await mergeRef();
+		// on the merge-ref branch, main is an ancestor: merge-base(main, HEAD) is main's tip
+		expect(offenders(await check(root))).toEqual([]);
+		git(root, "checkout", "-q", "feature");
+		git(root, "merge", "-q", "--no-edit", "main");
+		expect(offenders(await check(root))).toEqual([]);
+	});
+
+	test("an all-zero `before` (a new branch push) or an unknown ref falls through to main", async () => {
+		const root = await baseRepo({ [OLD]: oldScreen(1) });
+		put(root, "apps/desktop/src/New.svelte", "<p>New</p>\n");
+		for (const bad of ["0000000000000000000000000000000000000000", "not-a-ref", "  "]) {
+			expect(resolveBase(root, { I18N_BASE: bad })?.ref).toBe("main");
+		}
+	});
+});
+
+describe("OS-neutral git parsing", () => {
+	test("CRLF output (Git for Windows through a pipe) parses like LF, renames included", () => {
+		const nameStatus = "M\tdocs/a.md\r\nA\tdocs/new.md\r\nR100\told/Old.svelte\tnew/Renamed.svelte\r\nD\tgone.md\r\n";
+		const changed = parseChanged(nameStatus, "untracked.md\r\n\r\n");
+		expect([...changed]).toEqual([
+			["docs/a.md", "docs/a.md"],
+			["docs/new.md", undefined],
+			["new/Renamed.svelte", "old/Old.svelte"],
+			["untracked.md", undefined],
+		]);
+		expect(parseChanged(nameStatus.replaceAll("\r\n", "\n"), "untracked.md\n")).toEqual(changed);
+	});
+
+	test("the repository is recognised at its top by `rev-parse --show-prefix`, with no path comparison", async () => {
+		const root = await baseRepo({ "docs/a.md": "# A\n" });
+		expect(resolveBase(root)?.ref).toBe("main");
+		// a subdirectory of a work tree is not a root: the ratchets would read paths relative to the wrong place
+		expect(resolveBase(`${root}/docs`)).toBeUndefined();
 	});
 });

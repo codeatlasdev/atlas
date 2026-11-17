@@ -81,10 +81,15 @@ platform sniffing, flagged phrases in existing prose). It judges the **change**,
   was before: a file may not exceed its count, and a count above reality is an error that `i18n:fix` clears.
 
 `bun run i18n:check` says which mode it used (stderr; `ratchets` in `--json`). Locally, `git fetch origin main` first: a
-stale `origin/main` makes everything main gained since look like part of your change. The CI `i18n` job fetches the full
-history (`fetch-depth: 0`) and sets `I18N_BASE` to the pull request base, or to the commit a push replaced; it runs
-whenever a catalog, a doc, a file under `i18n/` or `scripts/i18n/`, or any Rust source of the four scanned crates
-changes (`scripts/ci-paths.sh`; a test fails if a scanned directory is not classified).
+stale `origin/main` makes everything main gained since look like part of your change.
+
+In CI the `i18n` job fetches the full history (`fetch-depth: 0`) and passes `I18N_BASE`: on a pull request `HEAD^1`
+(resolved to a sha), on a push the commit it replaced. GitHub checks a pull request out as the merge of its branch into
+the **current** main, and `HEAD^1` is exactly the main tip that merge was built on, so the diff is the PR's own. The base sha
+the event records (where the branch started) would blame the PR for main code merged since, which is why it is not used.
+An unknown base (the all-zero `before` of a new branch push, a missing ref) is skipped and the next candidate is tried:
+`origin/main`, then `main`. The job runs whenever a catalog, a doc, a file under `i18n/` or `scripts/i18n/`, or any Rust
+source of the four scanned crates changes (`scripts/ci-paths.sh`; a test fails if a scanned directory is not classified).
 
 | Ratchet | Looks at | Flags |
 |---|---|---|

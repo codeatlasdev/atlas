@@ -11,7 +11,12 @@ import { canonicalJson } from "./util.ts";
 const dirs: string[] = [];
 
 export function cleanup() {
-	for (const d of dirs.splice(0)) rmSync(d, { recursive: true, force: true });
+	// Best effort: on Windows git's read-only object files can refuse deletion, and a leftover temp dir is no failure.
+	for (const d of dirs.splice(0)) {
+		try {
+			rmSync(d, { recursive: true, force: true });
+		} catch {}
+	}
 }
 
 export const json = (obj: Record<string, unknown>) => canonicalJson(obj, "\t");

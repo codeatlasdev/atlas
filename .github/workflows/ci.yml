@@ -319,9 +319,25 @@ jobs:
         with:
           no-cache: true
 
+      # What the ratchets compare with. A pull request is checked out as the merge of its branch into the CURRENT main, so
+      # the base is HEAD^1 (the main tip that merge was built on), not the base sha the event recorded when the branch
+      # started: that one would blame the PR for main code merged since. A push compares with the commit it replaced
+      # (all zeros for a new branch: scripts/i18n/base.ts then falls back to origin/main).
+      - name: Diff base
+        id: base
+        env:
+          EVENT: ${{ github.event_name }}
+          BEFORE: ${{ github.event.before }}
+        run: |
+          if [ "$EVENT" = pull_request ]; then
+            echo "ref=$(git rev-parse HEAD^1)" >> "$GITHUB_OUTPUT"
+          else
+            echo "ref=$BEFORE" >> "$GITHUB_OUTPUT"
+          fi
+
       - name: i18n
         env:
-          I18N_BASE: ${{ github.event.pull_request.base.sha || github.event.before }}
+          I18N_BASE: ${{ steps.base.outputs.ref }}
         run: bun run i18n:check
 
   # The repo's own scripts (setup, heavy queue, CI gates, release helpers) and their tests, on Linux and on Windows

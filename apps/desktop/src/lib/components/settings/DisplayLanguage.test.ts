@@ -8,7 +8,9 @@ const calls: { cmd: string; args?: Record<string, unknown> }[] = [];
 let refuse: string | null = null;
 let mockReply: object | null = null;
 mock.module("@tauri-apps/api/core", () => ({
+	// Process-wide and live: only the language commands are answered, anything else another file's module asks gets null.
 	invoke: async (cmd: string, args?: Record<string, unknown>) => {
+		if (cmd !== "locale_get" && cmd !== "locale_set") return null;
 		calls.push({ cmd, args });
 		if (refuse) throw refuse;
 		if (mockReply) return mockReply;

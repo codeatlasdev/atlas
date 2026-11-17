@@ -10,8 +10,12 @@ type Args = Record<string, unknown>;
 const calls: { cmd: string; args?: Args }[] = [];
 let reply: unknown = localeStateFixture;
 let listener: ((e: { payload: unknown }) => void) | undefined;
+// `mock.module` is process-wide and live: a module another file imported earlier (a store with a poll, a timer) calls
+// THIS `invoke` for the rest of the run. So it answers only the commands under test, and everything else gets the
+// harmless `null` the other suites' mocks give; a refusal must never outlive its test (`afterEach` resets it).
 mock.module("@tauri-apps/api/core", () => ({
 	invoke: async (cmd: string, args?: Args) => {
+		if (cmd !== "locale_get" && cmd !== "locale_set") return null;
 		calls.push({ cmd, args });
 		if (reply instanceof Error) throw reply;
 		return reply;
@@ -45,6 +49,7 @@ beforeEach(() => {
 	delete window.__TAURI_INTERNALS__;
 });
 afterEach(() => {
+	reply = localeStateFixture;
 	setAppLocale("en");
 	document.body.innerHTML = "";
 });

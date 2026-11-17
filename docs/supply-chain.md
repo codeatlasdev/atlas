@@ -20,7 +20,7 @@ This page is the honest version of "how much can you trust an Atlas download". I
 | Contribution provenance | Every commit needs a `Signed-off-by` ([DCO](https://developercertificate.org/)), checked by the `Signed-off-by` job. | `.github/workflows/pr.yml`, `scripts/check-dco.sh` |
 | Release integrity | Each release asset has a `.sha256` and `manifest.json` lists the checksum of every file. `atlas update`, `atlas desktop` and the installer verify the checksum before installing anything. | [Installation](installation.md) |
 | SBOM | The release job attaches a CycloneDX SBOM of the CLI's dependency tree (`atlas-<version>-sbom.cdx.json`) when `cargo-cyclonedx` is available, and warns loudly when it is not, so a release can ship without one. | `release.yml` |
-| Code signing | Binaries and the app are **ad-hoc** code signed (`codesign --sign -`), which satisfies the Apple silicon "must be signed" rule. | `release.yml` |
+| Code signing | macOS: the CLI, `Atlas.app` and the dmg are **Developer ID** signed (hardened runtime, secure timestamp) and notarized when the signing secrets are configured, ad-hoc (`codesign --sign -`) otherwise. | `release.yml` |
 | Hosted build | Releases are built on GitHub-hosted runners from the tag; no long-lived secret: the publish job uses the run's `GITHUB_TOKEN`. | [Releasing](release.md) |
 | Network surface | Atlas makes no network request other than update checks and downloads from GitHub; there is no telemetry. **Atlas Crew** (when installed) additionally calls `push.codeatlas.com.br` for push notifications (event kind only) and, when configured, `api.telegram.org` for the Telegram bridge. Both can be disabled: `ATLAS_PUSH_RELAY=off` and leaving Telegram unset (Settings → Atlas Crew; `crew_telegram_set`). | [PRIVACY.md](https://github.com/codeatlasdev/atlas/blob/main/PRIVACY.md) |
 
@@ -28,12 +28,12 @@ This page is the honest version of "how much can you trust an Atlas download". I
 
 - **No SLSA level.** Atlas builds on GitHub-hosted runners from the tag, but publishes no signed provenance document and claims no SLSA level.
 - **No GitHub artifact attestations yet.** They need the GitHub Actions OIDC token of a hosted run (`id-token: write`), which release builds now have, so they are possible; they are not enabled. A hosted job that only attests files already uploaded would prove "these bytes were uploaded", not "these bytes were built from this commit", so attest the build job's own output when this is turned on.
-- **Not Developer ID signed or notarized.** Gatekeeper may ask for confirmation on first open of a downloaded app. The installer and `atlas update` fetch with `curl`, which is the path that works without a prompt.
+- **Developer ID signing needs the secrets.** A build without them (a fork, or before they are configured) is ad-hoc signed and Gatekeeper may ask for confirmation on first open of a downloaded app; a signed build still needs one online check for a bare CLI binary, which cannot be stapled. The installer and `atlas update` fetch with `curl`, which is the path that works without a prompt.
 - **Not reproducible bit for bit.** Code signing and the macOS bundle embed timestamps; nothing here promises two builds are byte identical.
 - **No signed checksum file yet** (it is in the list below). The SBOM is best effort, see the table above.
 - **No third-party audit.** Dependencies are screened by `cargo deny`, not reviewed line by line.
 
-Provenance in one sentence: *built on GitHub-hosted runners from the tag, ad-hoc code signed, checksummed.*
+Provenance in one sentence: *built on GitHub-hosted runners from the tag, Developer ID signed and notarized on macOS (ad-hoc without the secrets), checksummed.*
 
 ## Release checklist addition
 
@@ -155,16 +155,7 @@ Verify with `cosign verify-blob --bundle SHA256SUMS.sigstore.json --certificate-
 
 ### 10. Developer ID signing and notarization
 
-An Apple Developer Program membership costs 99 USD a year. With a Developer ID Application certificate in the maintainer's keychain (builds are local, so no secret needs to be stored anywhere):
-
-```bash
-security find-identity -v -p codesigning        # find the identity
-codesign --sign "Developer ID Application: <name> (<team id>)" --options runtime --timestamp --force dist/atlas
-xcrun notarytool submit Atlas.dmg --keychain-profile "<profile>" --wait
-xcrun stapler staple Atlas.dmg
-```
-
-A bare CLI binary cannot be stapled; the app and the dmg can. This replaces the ad-hoc `codesign --sign -` in `release.yml` and is one of the [general availability](versioning.md#general-availability) criteria.
+Done in `release.yml` (the Apple Developer Program membership and the Developer ID Application certificate are CODEATLAS LTDA's, Team ID `58UYCA3ZYA`): the CLI, `Atlas.app` and the dmg are signed with the hardened runtime and notarized, with the certificate in a temporary keychain on the runner. It switches on when the six repository secrets exist; how it works, the entitlements, setting the secrets and rotating them are in [Releasing](release.md#macos-signing-and-notarization). A bare CLI binary cannot be stapled (Gatekeeper checks it online once); the app and the dmg are stapled. It is one of the [general availability](versioning.md#general-availability) criteria.
 
 ### 11. SBOM
 

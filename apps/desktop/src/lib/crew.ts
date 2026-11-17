@@ -7,14 +7,17 @@
 import type { Attachment } from "#lib/crew/attachments.ts";
 
 /**
- * The SSH address a crew server was installed with: an address like an ssh_config `Host`, never a credential. The
- * crew service user cannot `sudo`, so `atlas crew browsers install|status` need this one.
+ * The SSH address a crew server was installed with: an address like an ssh_config `Host` (plus the path of the
+ * private key file the user picked for it, when they did), never a credential. The crew service user cannot `sudo`,
+ * so `atlas crew browsers install|status` need this one.
  */
 export interface AdminAddress {
 	/** `user@host`. */
 	target: string;
 	/** Absent for the default port 22. */
 	port?: number;
+	/** The private key file picked with "Choose another key" (`ssh -i`); absent when ssh finds the key by itself. */
+	identity?: string;
 }
 
 /** An entry from `~/.atlas/desktop/crew-servers.json`. */

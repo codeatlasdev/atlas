@@ -41,6 +41,7 @@ jobs:
       site: ${{ steps.paths.outputs.site }}
       relay: ${{ steps.paths.outputs.relay }}
       workflows: ${{ steps.paths.outputs.workflows }}
+      installer: ${{ steps.paths.outputs.installer }}
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
@@ -212,9 +213,41 @@ jobs:
         with:
           persist-credentials: false
 
+      # Everything but the tests (toolchain, nextest, cache, fmt, clippy). The tests are steps of this job, not of
+      # the action: a composite step cannot have `timeout-minutes`.
       - uses: ./.github/actions/rust-gate
         with:
           tests: ${{ needs.plan.outputs.tested != 'true' }}
+          defer-tests: "true"
+
+      # Issue #520: this job lost its runner 8 times since 2026-11-15 ("The hosted runner lost communication with
+      # the server" after exactly 50 min, no log kept). It takes 6-8 min: a hang in the tests now fails this step
+      # after 25 min with its log (and nextest ends a single test after 3 min, `.config/nextest.toml`), instead of
+      # taking the runner with it. The log is a file as well, so it can be uploaded below.
+      - name: Test
+        if: ${{ needs.plan.outputs.tested != 'true' }}
+        timeout-minutes: 25
+        shell: bash
+        run: cargo nextest run --workspace --locked --profile ci 2>&1 | tee nextest.log
+
+      - name: Doctests
+        if: ${{ needs.plan.outputs.tested != 'true' }}
+        timeout-minutes: 10
+        shell: bash
+        run: cargo test --workspace --locked --doc
+
+      # What the next hang or runner loss shows: the nextest log (SLOW/TIMEOUT lines name the test that hung) and
+      # the JUnit report (every test with its time), kept briefly.
+      - name: Nextest log and JUnit report
+        if: ${{ always() }}
+        uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
+        with:
+          name: nextest-windows-${{ github.run_attempt }}
+          path: |
+            nextest.log
+            target/nextest/ci/junit.xml
+          if-no-files-found: ignore
+          retention-days: 3
 
   # The tests that need root (crew isolation, issue #200): a real cross-uid spawn and a real useradd. GitHub's
   # Ubuntu runners have passwordless sudo, and the runner is thrown away, so creating system users is fine. The
@@ -296,6 +329,27 @@ jobs:
 
       - name: bun run release:test
         run: bun run release:test
+
+  # site/public/install.ps1 as a user runs it (`irm <url> | iex`) in Windows PowerShell 5.1 (powershell.exe, what a
+  # stock Windows has) and PowerShell 7, against a local server that plays GitHub (scripts/install-ps1.test.ts).
+  install-ps1:
+    name: Installer (Windows PowerShell 5.1 and 7)
+    needs: plan
+    if: ${{ needs.plan.outputs.tested != 'true' && needs.plan.outputs.installer == 'true' }}
+    runs-on: windows-latest
+    timeout-minutes: 15
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+
+      - name: Install Bun
+        uses: oven-sh/setup-bun@0c5077e51419868618aeaa5fe8019c62421857d6 # v2.2.0
+        with:
+          no-cache: true
+
+      - name: install.ps1 in powershell.exe and pwsh
+        run: bun test scripts/install-ps1.test.ts
 
   mobile:
     name: Mobile app
@@ -461,7 +515,7 @@ jobs:
   # plus this explicit check is what keeps a broken run from going green.
   ci:
     name: CI
-    needs: [plan, rust-macos, rust-linux, desktop-linux, rust-linux-root, rust-linux-arm64, rust-windows, frontend, scripts, mobile, push-relay, site, duplication, deny, workflows]
+    needs: [plan, rust-macos, rust-linux, desktop-linux, rust-linux-root, rust-linux-arm64, rust-windows, frontend, scripts, install-ps1, mobile, push-relay, site, duplication, deny, workflows]
     if: ${{ !cancelled() }}
     runs-on: ubuntu-latest
     timeout-minutes: 5

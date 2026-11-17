@@ -160,9 +160,10 @@ impl Drop for TurnProc {
     }
 }
 
-/// `Child::wait_with_output` without consuming the child, so a cancelled wait can still kill it:
-/// stdout and stderr are read to the end while the process is waited for.
-async fn wait_with_output(
+/// `Child::wait_with_output` without consuming the child, so a cancelled wait can still kill it (and, on
+/// Windows, the child's handle keeps its pid from being reused until the caller lets go of it): stdout and
+/// stderr are read to the end while the process is waited for.
+pub(crate) async fn wait_with_output(
     child: &mut tokio::process::Child,
 ) -> std::io::Result<std::process::Output> {
     use tokio::io::AsyncReadExt;

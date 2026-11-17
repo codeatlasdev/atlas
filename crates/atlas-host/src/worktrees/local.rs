@@ -433,6 +433,7 @@ pub async fn create(base: &Path, project: &str, req: CreateReq) -> Result<Value,
             branch: Some(branch.clone()),
             host: None,
             identity: None,
+            project: false,
         };
         entries.retain(|e| e.id != entry.id);
         entries.push(entry.clone());
@@ -1005,6 +1006,7 @@ mod tests {
             branch: Some("b".into()),
             host: Some("ssh:box".into()),
             identity: None,
+            project: false,
         });
         std::fs::write(
             registry::path_in(&b.base),

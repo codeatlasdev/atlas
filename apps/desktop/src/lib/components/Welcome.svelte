@@ -8,6 +8,8 @@
 	import { ws } from "#lib/stores/workspace.svelte.ts";
 
 	let { worktreeId }: { worktreeId: string } = $props();
+	/** A plain folder: its files are the point, so the start-something-new cards stay out of the way. */
+	let plain = $derived(!!ws.worktree(worktreeId)?.plain);
 
 	interface Action {
 		label: string;
@@ -44,8 +46,17 @@
 
 <div class="welcome">
 	<div class="inner">
-		<h2>Nothing open here</h2>
-		<p>Pick up where you left off, or start something new.</p>
+		{#if plain}
+			<h2>Pick a file</h2>
+			<p>
+				Choose one in the explorer, or search for it with <Kbd
+					>{shortcutFor("file_finder::Toggle") ?? kbd("cmd-p")}</Kbd
+				>.
+			</p>
+		{:else}
+			<h2>Nothing open here</h2>
+			<p>Pick up where you left off, or start something new.</p>
+		{/if}
 		<div class="actions">
 			{#each actions as a (a.command)}
 				<button class="action" onclick={a.run}>

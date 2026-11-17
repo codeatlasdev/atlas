@@ -4,14 +4,12 @@
 	import Frame from "./Frame.svelte";
 	import AgentLogo from "#lib/components/AgentLogo.svelte";
 	import { agents } from "#lib/stores/agents.svelte.ts";
+	import { builtinAgent } from "#lib/agentRegistry.ts";
 	import { Beats } from "./beats.svelte.ts";
 
 	// The user's own agents when Atlas found them installed (the deck speaks about what they will run), else the two
 	// best known. The tasks stay fixed: they are the story, the agent is the actor.
-	const FALLBACK = [
-		{ id: "claude", label: "Claude Code" },
-		{ id: "codex", label: "Codex" },
-	];
+	const FALLBACK = [builtinAgent("claude")!, builtinAgent("codex")!];
 	const TASKS = [
 		{ branch: "feat/checkout", lines: ["› add a coupon field", "✎ src/checkout.ts", "✓ tests pass"] },
 		{ branch: "fix/cart-total", lines: ["› fix the rounding bug", "✎ src/cart.ts", "✓ ready to review"] },

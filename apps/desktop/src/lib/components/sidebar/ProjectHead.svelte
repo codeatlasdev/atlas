@@ -85,7 +85,7 @@
 		{#if r.running}<span class="count">{up}/{live?.services.length || r.services_total}</span>{/if}
 		{#if !active && kids.length}<span class="count">{kids.length + 1} wt</span>{/if}
 	</span>
-	{#if !r.missing}
+	{#if !r.missing && r.kind !== "folder"}
 		<button
 			class="hover-btn"
 			aria-label="New worktree"

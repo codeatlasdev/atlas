@@ -1,6 +1,6 @@
 [package]
 name = "atlas-skills"
-version = "1.5.0-alpha.25"
+version = "1.5.0-alpha.26"
 edition.workspace = true
 rust-version.workspace = true
 license.workspace = true
@@ -22,7 +22,7 @@ path = "src/lib.rs"
 serde = { workspace = true }
 serde_json = { workspace = true }
 anyhow = { workspace = true }
-chrono = { workspace = true }
+jiff = { workspace = true }
 atlas-core = { path = "../atlas-core" }
 
 [dev-dependencies]

@@ -62,7 +62,7 @@
 			New omp chat
 		</DropdownMenuItem>
 	{/if}
-	{#if project}
+	{#if project && project.kind !== "folder"}
 		<DropdownMenuItem onclick={() => openKind("services")}>
 			{#snippet icon()}<LayoutGrid />{/snippet}
 			Panel
@@ -76,7 +76,7 @@
 			Config
 		</DropdownMenuItem>
 	{/if}
-	{#if w}
+	{#if w && project?.kind !== "folder"}
 		<DropdownMenuItem onclick={() => openDiff(w.id)}>
 			{#snippet icon()}<FileDiff />{/snippet}
 			Changes

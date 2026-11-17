@@ -7,6 +7,11 @@
 import { GlobalRegistrator } from "@happy-dom/global-registrator";
 import { plugin } from "bun";
 import { compile, compileModule } from "svelte/compiler";
+import { compileMessages } from "../scripts/paraglide.ts";
+
+// Dates in assertions must not depend on the machine running them (`bun run test` also sets TZ and LC_ALL; this keeps a
+// bare `bun test <file>` the same).
+process.env.TZ = "UTC";
 
 // Without `--conditions browser` Bun resolves Svelte's server build, where `mount` throws: every component test fails
 // with an unrelated-looking error. Stop with the reason instead.
@@ -59,3 +64,9 @@ plugin({
 		});
 	},
 });
+
+// The display language: compile the catalogs when they changed (the same compiler and options as Vite), then register
+// the Svelte-state locale strategy so every `m.*()` in a test reads it. Tests run in the base language ("en");
+// a test that needs another one sets it with `inLocale` (test/locale.ts) and gets "en" back.
+await compileMessages(true);
+await import("#lib/i18n/locale.svelte.ts");

@@ -147,9 +147,3 @@ export function promptCopy(s: HostState): PromptCopy {
 export function shouldPrompt(s: HostState): boolean {
 	return s.status === "outdated" && !s.deferred && !s.idleArmed && s.ptys.length > 0;
 }
-
-/** Settings row summary: "3 running terminals" / "No running terminals". */
-export function terminalsLine(n: number): string {
-	if (n === 0) return "No running terminals";
-	return n === 1 ? "1 running terminal" : `${n} running terminals`;
-}

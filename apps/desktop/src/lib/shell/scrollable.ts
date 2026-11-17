@@ -11,7 +11,7 @@ export interface ScrollProbe {
 	clientWidth: number;
 	/** `overflow-x` computed value. */
 	overflowX: string;
-	/** Surface that handles horizontal wheel itself (terminal, editor, `data-gesture="own"`). */
+	/** Surface that handles horizontal wheel itself and shows no scroll position (terminal, `data-gesture="own"`). */
 	own: boolean;
 }
 
@@ -30,7 +30,16 @@ export function consumedBy(chain: Iterable<ScrollProbe>, deltaX: number): boolea
 	return false;
 }
 
-function probeOf(el: HTMLElement): ScrollProbe {
+/**
+ * Which way an element can still scroll, as the native swipe engine wants it (see `swipe_engine::Scroll`):
+ * `left` = it can reveal more of its left side (`scrollLeft` above 0), `right` = of its right side. An editor with a
+ * long line is a scroller like any other: at its edge it can no longer go that way and the gesture is a swipe's.
+ */
+export function edgesOf(el: ScrollProbe): { left: boolean; right: boolean } {
+	return { left: canScrollX(el, -1), right: canScrollX(el, 1) };
+}
+
+export function probeOf(el: HTMLElement): ScrollProbe {
 	const overflows = el.scrollWidth > el.clientWidth + 1;
 	return {
 		scrollLeft: el.scrollLeft,
@@ -38,8 +47,7 @@ function probeOf(el: HTMLElement): ScrollProbe {
 		clientWidth: el.clientWidth,
 		// Cheap pre-check: an element that does not overflow never consumes, skip the style read.
 		overflowX: overflows ? getComputedStyle(el).overflowX : "visible",
-		own:
-			el.dataset.gesture === "own" || el.classList.contains("xterm") || el.classList.contains("cm-scroller"),
+		own: el.dataset.gesture === "own" || el.classList.contains("xterm"),
 	};
 }
 

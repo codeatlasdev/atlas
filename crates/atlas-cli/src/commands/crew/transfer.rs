@@ -114,7 +114,7 @@ pub fn confirms_server_name(target: &str, typed: &str) -> bool {
 
 /// Where an export goes when `-o` is not given: `atlas-crew-<host>-<yyyymmdd-hhmmss>.tar.gz`, with the
 /// host reduced to characters safe in a file name.
-pub fn default_export_name(target: &str, now: chrono::DateTime<chrono::Utc>) -> String {
+pub fn default_export_name(target: &str, now: std::time::SystemTime) -> String {
     let host: String = server_name(target)
         .chars()
         .map(|c| {
@@ -125,7 +125,8 @@ pub fn default_export_name(target: &str, now: chrono::DateTime<chrono::Utc>) -> 
             }
         })
         .collect();
-    format!("atlas-crew-{host}-{}.tar.gz", now.format("%Y%m%d-%H%M%S"))
+    let stamp = atlas_core::time::utc_compact(now);
+    format!("atlas-crew-{host}-{}-{}.tar.gz", &stamp[..8], &stamp[8..])
 }
 
 /// A failed export/import on the server, in words. A server whose `atlas` predates the feature
@@ -181,7 +182,6 @@ pub fn check_output_free(path: &std::path::Path) -> Result<()> {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use chrono::TimeZone;
 
     #[test]
     fn export_runs_the_servers_atlas_as_the_crew_user_in_its_dir_and_streams_to_stdout() {
@@ -335,7 +335,7 @@ mod tests {
 
     #[test]
     fn the_default_file_name_has_the_host_and_the_time_and_no_unsafe_characters() {
-        let t = chrono::Utc.with_ymd_and_hms(2026, 11, 14, 9, 5, 7).unwrap();
+        let t = std::time::UNIX_EPOCH + std::time::Duration::from_secs(1_794_647_107); // 2026-11-14T09:05:07Z
         assert_eq!(
             default_export_name("me@box.example.com", t),
             "atlas-crew-box.example.com-20261114-090507.tar.gz"

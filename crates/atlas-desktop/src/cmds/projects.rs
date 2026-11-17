@@ -37,6 +37,8 @@ pub struct ProjectView {
     missing: Option<Missing>,
     /// Where the config comes from: the folder's `atlas.yaml`, or what Atlas detected in memory (nothing on disk).
     config_source: ConfigSourceView,
+    /// Project or plain folder; a folder gets no services, no `atlas.yaml` prompt and no Changes or PR.
+    kind: KindView,
     /// `origin` URL last seen while the project existed (only reported when it is missing).
     last_remote: Option<String>,
 }
@@ -49,13 +51,40 @@ pub enum Missing {
     Root,
 }
 
-/// `ProjectView.config_source`: `file` (an `atlas.yaml` is on disk) or `detected` (in memory; offer "Save as atlas.yaml").
+/// `ProjectView.config_source`: `file` (an `atlas.yaml` is on disk), `detected` (in memory; offer "Save as
+/// atlas.yaml") or `none` (a plain folder: there is no config to talk about).
 #[derive(Serialize, Debug, PartialEq, Default, Clone, Copy)]
 #[serde(rename_all = "snake_case")]
 pub enum ConfigSourceView {
     #[default]
     File,
     Detected,
+    None,
+}
+
+/// `ProjectView.kind`: a `project` (git checkout, `atlas.yaml`, a recognised manifest, a linked worktree, an SSH
+/// checkout, or a folder the user promoted with "Use as project") or a plain `folder` (`~/Downloads`), which opens as an
+/// explorer and an editor only.
+#[derive(Serialize, Debug, PartialEq, Default, Clone, Copy)]
+#[serde(rename_all = "snake_case")]
+pub enum KindView {
+    #[default]
+    Project,
+    Folder,
+}
+
+/// Plain folder or project, from the entry and the folder's own markers (never an ancestor's: `register` already
+/// resolved the root). Remote entries and linked worktrees are projects without looking at a disk.
+fn kind_of(e: &Entry) -> KindView {
+    if e.is_remote()
+        || e.parent.is_some()
+        || e.project
+        || atlas_core::project_root::is_project_root(Path::new(&e.root))
+    {
+        KindView::Project
+    } else {
+        KindView::Folder
+    }
 }
 
 /// Cheap stat check; never reads the config or touches a remote path.
@@ -77,6 +106,7 @@ struct Detail {
     services_total: usize,
     services_healthy: usize,
     config_source: ConfigSourceView,
+    kind: KindView,
 }
 
 /// Config of a local checkout: the file's (validation errors reported, not fatal) or, with no `atlas.yaml`, the one
@@ -104,7 +134,16 @@ fn read_config(
     }
 }
 
-fn read_local(root: &Path) -> Detail {
+fn read_local(e: &Entry) -> Detail {
+    let root = Path::new(&e.root);
+    if kind_of(e) == KindView::Folder {
+        // A plain folder has no stack: no config is read or detected, and nothing can run.
+        return Detail {
+            kind: KindView::Folder,
+            config_source: ConfigSourceView::None,
+            ..Detail::default()
+        };
+    }
     let (cfg, error, config_source) = read_config(root);
     let name = cfg.as_ref().map(|c| c.name.clone());
     let total = cfg.as_ref().map_or(0, |c| c.services.len());
@@ -124,6 +163,7 @@ fn read_local(root: &Path) -> Detail {
             s.services.iter().filter(|r| r.state == "running").count()
         }),
         config_source,
+        kind: KindView::Project,
     }
 }
 
@@ -134,7 +174,7 @@ fn view(e: &Entry, known: Option<&registry::Known>) -> ProjectView {
     let d = if e.is_remote() || missing.is_some() {
         Detail::default()
     } else {
-        read_local(root)
+        read_local(e)
     };
     // Without a checkout to read, the last known name beats the folder's.
     let known_name = known.filter(|_| missing.is_some()).map(|k| k.name.clone());
@@ -160,6 +200,7 @@ fn view(e: &Entry, known: Option<&registry::Known>) -> ProjectView {
         host: e.host.clone(),
         identity: e.identity.clone(),
         config_source: d.config_source,
+        kind: d.kind,
         last_remote: known
             .filter(|_| missing.is_some())
             .and_then(|k| k.remote.clone()),
@@ -267,12 +308,13 @@ fn register(entries: &mut Vec<Entry>, picked: &Path) -> Result<(Entry, bool), St
         id,
         root: root.to_string_lossy().into_owned(),
         pinned: false,
-        added: chrono::Utc::now().to_rfc3339(),
+        added: atlas_core::time::utc_rfc3339_now(),
         parent: None,
         port_offset: 0,
         branch: None,
         host: None,
         identity: None,
+        project: false,
     };
     entries.push(entry.clone());
     Ok((entry, true))
@@ -351,6 +393,78 @@ pub fn project_init_preview(dir: String) -> Result<InitPreview, String> {
         }),
         services: d.services.into_iter().map(|s| s.name).collect(),
     })
+}
+
+/// "Use as project": mark the entry so a plain folder gets the full project UI (detected config, Start, services).
+/// A folder with a marker is a project already; the flag does no harm there.
+fn promote(entries: &mut [Entry], id: &str) -> Result<(), String> {
+    let e = entries
+        .iter_mut()
+        .find(|e| e.id == id)
+        .ok_or_else(|| format!("unknown project {id}"))?;
+    e.project = true;
+    Ok(())
+}
+
+#[tauri::command]
+pub fn project_promote(app: AppHandle, id: String) -> Result<(), String> {
+    registry::edit(|entries| promote(entries, &id))?;
+    notify_changed(&app);
+    Ok(())
+}
+
+/// Where opening `path` leads: the project or folder it belongs to, or no project at all (`standalone`).
+#[derive(Serialize, Debug, PartialEq)]
+pub struct Located {
+    /// A file that belongs to no project and to no folder the user added: it opens in the light editor and
+    /// registers nothing.
+    standalone: bool,
+    /// The folder to open (a project or a plain folder); for a standalone file, the folder it sits in.
+    root: String,
+}
+
+/// Decide how `path` opens (Finder "Open With", `atlas <path>`, a drop). A folder, or a file of a project (git, an
+/// `atlas.yaml` or a manifest at or above it), opens its project root as it always did. A loose file opens in the
+/// deepest folder the user already added that contains it, else standalone, so a loose `.md` never adds a sidebar
+/// entry. Reads the file system and the registry, writes nothing. `resolve` is `project_root::resolve`; the tests
+/// pass one that ignores what sits above their temp dir.
+fn locate_with(
+    entries: &[Entry],
+    path: &Path,
+    resolve: &dyn Fn(&Path) -> std::path::PathBuf,
+) -> Result<Located, String> {
+    if !path.exists() {
+        return Err(format!("{} does not exist", path.display()));
+    }
+    let path = atlas_core::paths::canonical(path).unwrap_or_else(|_| path.to_path_buf());
+    let located = |standalone, root: &Path| Located {
+        standalone,
+        root: root.to_string_lossy().into_owned(),
+    };
+    let root = resolve(&path);
+    let root = atlas_core::paths::canonical(&root).unwrap_or(root);
+    // A folder, or a file of a project (git, `atlas.yaml`, a manifest at or above it), opens as it always did.
+    if path.is_dir() || atlas_core::project_root::is_project_root(&root) {
+        return Ok(located(false, &root));
+    }
+    // A loose file: in the deepest folder the user already added that contains it, else on its own.
+    let registered = entries
+        .iter()
+        .filter(|e| !e.is_remote() && path.starts_with(&e.root))
+        .max_by_key(|e| e.root.len());
+    Ok(match registered {
+        Some(e) => located(false, Path::new(&e.root)),
+        None => located(true, &root),
+    })
+}
+
+#[tauri::command]
+pub fn path_locate(path: String) -> Result<Located, String> {
+    locate_with(
+        &registry::load()?,
+        Path::new(&path),
+        &atlas_core::project_root::resolve,
+    )
 }
 
 /// The entry already showing `root`: same id, or (after a relink, which keeps the old id) the
@@ -742,6 +856,7 @@ mod tests {
             branch: None,
             host: None,
             identity: None,
+            project: false,
         }
     }
 
@@ -1254,5 +1369,258 @@ mod tests {
             committed, real,
             "stale fixture: re-run with UPDATE_FIXTURES=1"
         );
+    }
+
+    /// A temp dir with a canonical path (the one `locate` sees: macOS resolves `/var` to `/private/var`).
+    fn canon_tempdir() -> CanonTemp {
+        let t = tempfile::tempdir().unwrap();
+        let path = atlas_core::paths::canonical(t.path()).unwrap();
+        CanonTemp { _t: t, path }
+    }
+
+    struct CanonTemp {
+        _t: tempfile::TempDir,
+        path: std::path::PathBuf,
+    }
+
+    impl CanonTemp {
+        fn path(&self) -> &Path {
+            &self.path
+        }
+    }
+
+    /// `project_root::resolve` as if nothing existed above `ceiling`: a marker in the test's own folders is found, one
+    /// above the temp dir (macOS keeps a `{}` package.json in `/var/folders/<..>/` on some machines) is ignored, so the
+    /// tests mean the same on every machine.
+    fn resolve_below(ceiling: &Path) -> impl Fn(&Path) -> std::path::PathBuf + '_ {
+        move |p| {
+            let root = atlas_core::project_root::resolve(p);
+            if root.starts_with(ceiling) {
+                root
+            } else if p.is_file() {
+                p.parent().unwrap().to_path_buf()
+            } else {
+                p.to_path_buf()
+            }
+        }
+    }
+
+    /// A folder of loose files, like `~/Downloads`: no marker in it.
+    fn downloads(t: &Path) -> std::path::PathBuf {
+        let d = t.join("Downloads");
+        std::fs::create_dir_all(&d).unwrap();
+        std::fs::write(d.join("report.pdf"), "x").unwrap();
+        std::fs::write(d.join("notes.md"), "# notes\n").unwrap();
+        d
+    }
+
+    // Issue #499: opening `~/Downloads` showed "Auto-detected" and "Save as atlas.yaml" (a project that "lacks" an
+    // atlas.yaml), with Start and services. A folder without a marker is a plain folder: no config is read or
+    // detected, nothing to start, and the view says so.
+    #[test]
+    fn a_plain_folder_is_a_folder_with_no_detected_config() {
+        let t = tempfile::tempdir().unwrap();
+        let d = downloads(t.path());
+        let v = serde_json::to_value(view(&entry("a", &d), None)).unwrap();
+        assert_eq!(v["kind"], "folder", "{v}");
+        assert_eq!(v["config_source"], "none", "no atlas.yaml prompt: {v}");
+        assert_eq!(v["error"], serde_json::Value::Null);
+        assert_eq!(v["name"], "Downloads");
+        assert_eq!(v["services_total"], 0);
+        assert_eq!(v["profiles"], serde_json::json!([]));
+        assert!(!d.join("atlas.yaml").exists(), "viewing must not write");
+    }
+
+    #[test]
+    fn every_kind_of_project_marker_keeps_the_folder_a_project() {
+        let t = tempfile::tempdir().unwrap();
+        for (name, marker) in [
+            ("git", ".git"),
+            ("node", "package.json"),
+            ("rust", "Cargo.toml"),
+            ("go", "go.mod"),
+            ("py", "pyproject.toml"),
+            ("compose", "compose.yaml"),
+        ] {
+            let d = t.path().join(name);
+            std::fs::create_dir_all(&d).unwrap();
+            if marker == ".git" {
+                std::fs::create_dir_all(d.join(marker)).unwrap();
+            } else {
+                std::fs::write(d.join(marker), "{}").unwrap();
+            }
+            let v = serde_json::to_value(view(&entry(name, &d), None)).unwrap();
+            assert_eq!(v["kind"], "project", "{marker}: {v}");
+        }
+        project(&t.path().join("yaml"));
+        let v = serde_json::to_value(view(&entry("y", &t.path().join("yaml")), None)).unwrap();
+        assert_eq!(
+            (v["kind"].clone(), v["config_source"].clone()),
+            ("project".into(), "file".into())
+        );
+    }
+
+    // A linked worktree and an SSH checkout are never read as plain folders: a worktree has a `.git` file, and a
+    // remote path cannot be looked at from here.
+    #[test]
+    fn worktrees_and_remote_checkouts_are_projects_without_looking_at_the_disk() {
+        let t = tempfile::tempdir().unwrap();
+        let d = downloads(t.path());
+        let mut linked = entry("wt", &d);
+        linked.parent = Some("main".into());
+        assert_eq!(
+            serde_json::to_value(view(&linked, None)).unwrap()["kind"],
+            "project"
+        );
+        let mut remote = entry("r", &d);
+        remote.host = Some("ssh:box".into());
+        assert_eq!(
+            serde_json::to_value(view(&remote, None)).unwrap()["kind"],
+            "project"
+        );
+    }
+
+    // "Use as project": the choice is stored on the entry, survives a reload of the registry file, and makes the
+    // plain folder a project (detected config, Start, services) from then on. An unknown id is an error.
+    #[test]
+    fn use_as_project_promotes_a_plain_folder_and_is_stored_in_the_registry_file() {
+        let t = tempfile::tempdir().unwrap();
+        let d = downloads(t.path());
+        let mut entries = vec![entry("a", &d), entry("b", &t.path().join("other"))];
+        assert!(promote(&mut entries, "zzz").is_err());
+        assert!(!entries[0].project);
+        promote(&mut entries, "a").unwrap();
+        promote(&mut entries, "a").unwrap();
+        assert!(entries[0].project && !entries[1].project);
+        let v = serde_json::to_value(view(&entries[0], None)).unwrap();
+        assert_eq!(v["kind"], "project");
+        assert_eq!(v["config_source"], "detected");
+        assert_eq!(v["error"], serde_json::Value::Null);
+        let text = serde_json::to_string(&entries).unwrap();
+        let back: Vec<Entry> = serde_json::from_str(&text).unwrap();
+        assert!(back[0].project && !back[1].project);
+        // A project nobody promoted keeps the file shape every older build reads.
+        assert!(
+            !serde_json::to_string(&entries[1])
+                .unwrap()
+                .contains(r#""project":"#)
+        );
+    }
+
+    // Opening a file (Finder, `atlas notes.md`, a drop) must not create a project for a loose document: it opens in the
+    // light editor. A file of a project, or of a folder the user already added, keeps opening there.
+    #[test]
+    fn a_loose_file_opens_standalone_and_a_project_file_opens_its_project() {
+        let t = canon_tempdir();
+        let d = downloads(t.path());
+        let at = resolve_below(t.path());
+        let loose = locate_with(&[], &d.join("notes.md"), &at).unwrap();
+        assert!(loose.standalone, "{loose:?}");
+        assert_eq!(Path::new(&loose.root), d);
+
+        let repo = t.path().join("repo");
+        std::fs::create_dir_all(repo.join(".git")).unwrap();
+        std::fs::write(repo.join("README.md"), "x").unwrap();
+        let in_repo = locate_with(&[], &repo.join("README.md"), &at).unwrap();
+        assert!(!in_repo.standalone);
+        assert_eq!(Path::new(&in_repo.root), repo);
+
+        // A folder is never standalone: it opens as a project or as a folder.
+        assert!(!locate_with(&[], &d, &at).unwrap().standalone);
+        assert!(locate_with(&[], &t.path().join("gone.md"), &at).is_err());
+    }
+
+    #[test]
+    fn a_file_inside_a_folder_the_user_added_opens_in_that_folder_even_when_nested() {
+        let t = canon_tempdir();
+        let d = downloads(t.path());
+        let at = resolve_below(t.path());
+        std::fs::create_dir_all(d.join("sub/deeper")).unwrap();
+        std::fs::write(d.join("sub/deeper/a.md"), "x").unwrap();
+        let registered = entry("dl", &d);
+        let file = d.join("sub/deeper/a.md");
+        let got = locate_with(std::slice::from_ref(&registered), &file, &at).unwrap();
+        assert!(!got.standalone, "{got:?}");
+        assert_eq!(Path::new(&got.root), d);
+        // The deepest registered folder wins, and a sibling folder with the same name prefix is not an ancestor.
+        let sub = entry("sub", &d.join("sub"));
+        let got = locate_with(&[registered.clone(), sub], &file, &at).unwrap();
+        assert_eq!(Path::new(&got.root), d.join("sub"));
+        std::fs::create_dir_all(t.path().join("Downloads2")).unwrap();
+        std::fs::write(t.path().join("Downloads2/b.md"), "x").unwrap();
+        let beside = t.path().join("Downloads2/b.md");
+        assert!(locate_with(&[registered], &beside, &at).unwrap().standalone);
+    }
+
+    // A file of a project the registry does not hold, under a registered ANCESTOR folder: the project wins (a monorepo
+    // package keeps opening as its own project, as before).
+    #[test]
+    fn a_project_file_under_an_added_folder_still_opens_its_own_project() {
+        let t = canon_tempdir();
+        let d = downloads(t.path());
+        let at = resolve_below(t.path());
+        let pkg = d.join("pkg");
+        std::fs::create_dir_all(&pkg).unwrap();
+        std::fs::write(pkg.join("package.json"), "{}").unwrap();
+        std::fs::write(pkg.join("a.md"), "x").unwrap();
+        let got = locate_with(&[entry("dl", &d)], &pkg.join("a.md"), &at).unwrap();
+        assert!(!got.standalone);
+        assert_eq!(Path::new(&got.root), pkg);
+    }
+
+    /// Compare `real` with the committed `apps/desktop/src/lib/__fixtures__/<name>` (the page's tests read the same
+    /// file); `UPDATE_FIXTURES=1` rewrites it.
+    fn check_fixture(name: &str, real: &serde_json::Value) {
+        let path = Path::new(env!("CARGO_MANIFEST_DIR"))
+            .join("../../apps/desktop/src/lib/__fixtures__")
+            .join(name);
+        if std::env::var_os("UPDATE_FIXTURES").is_some() {
+            let mut buf = Vec::new();
+            let mut ser = serde_json::Serializer::with_formatter(
+                &mut buf,
+                serde_json::ser::PrettyFormatter::with_indent(b"\t"),
+            );
+            serde::Serialize::serialize(real, &mut ser).unwrap();
+            std::fs::write(&path, String::from_utf8(buf).unwrap() + "\n").unwrap();
+        }
+        let committed: serde_json::Value = serde_json::from_str(
+            &std::fs::read_to_string(&path)
+                .expect("fixture missing: run with UPDATE_FIXTURES=1 to create it"),
+        )
+        .unwrap();
+        assert_eq!(
+            &committed, real,
+            "stale fixture {name}: re-run with UPDATE_FIXTURES=1"
+        );
+    }
+
+    // Contract (AGENTS.md): the header test in `apps/desktop` reads the REAL serialization of a plain folder's and of a
+    // detected project's view, so a renamed field or value cannot hide behind a hand-written mock.
+    #[test]
+    fn project_views_fixture_is_the_real_serialization() {
+        let t = tempfile::tempdir().unwrap();
+        let d = downloads(t.path());
+        let shop = t.path().join("shop");
+        std::fs::create_dir_all(&shop).unwrap();
+        std::fs::write(shop.join("package.json"), r#"{"name":"shop"}"#).unwrap();
+        let mut real = serde_json::json!({
+            "folder": view(&entry("dl", &d), None),
+            "detected": view(&entry("shop", &shop), None),
+        });
+        // Temp paths differ per run; the contract is the shape.
+        real["folder"]["root"] = "/projects/Downloads".into();
+        real["detected"]["root"] = "/projects/shop".into();
+        check_fixture("project-views.json", &real);
+    }
+
+    // Contract: `ctl.test.ts` routes opens by the shape of the REAL `path_locate` reply. The values are fixed here, not
+    // computed by `locate` (whose answer depends on what sits above the temp dir; the tests above pin that).
+    #[test]
+    fn open_plans_fixture_is_the_real_serialization() {
+        let real = serde_json::json!({
+            "loose": Located { standalone: true, root: "/Users/m/Downloads".into() },
+            "project": Located { standalone: false, root: "/Users/m/repo".into() },
+        });
+        check_fixture("open-plans.json", &real);
     }
 }

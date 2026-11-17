@@ -3,10 +3,17 @@
 	import { onMount } from "svelte";
 	import { api, errText } from "#lib/api.ts";
 	import { agents } from "#lib/stores/agents.svelte.ts";
+	import { BUILTIN_AGENTS, canWriteCommits } from "#lib/agentRegistry.ts";
 	import { commitMessages } from "#lib/stores/commitMessage.svelte.ts";
 	import Group from "#lib/settings/Group.svelte";
 	import Row from "#lib/settings/Row.svelte";
 	import LoadError from "#lib/settings/LoadError.svelte";
+
+	/** The installed agents that can write a message (a one-shot run in `agents.json`: not OpenCode, not custom agents). */
+	const writers = $derived(agents.list.filter((a) => a.installed && canWriteCommits(a.id)));
+	const writerNames = new Intl.ListFormat("en", { type: "disjunction" }).format(
+		BUILTIN_AGENTS.filter((a) => canWriteCommits(a.id)).map((a) => a.label),
+	);
 
 	/** `auto` = your default agent when it is installed, else the first installed one. */
 	let choice = $state("auto");
@@ -49,17 +56,17 @@
 				value={choice}
 				options={[
 					{ value: "auto", label: "Automatic" },
-					...agents.list.filter((a) => a.installed).map((a) => ({ value: a.id, label: a.label })),
+					...writers.map((a) => ({ value: a.id, label: a.label })),
 					{ value: "off", label: "Off" },
 				]}
 				onchange={save}
 			/>
 		</div>
 		{#snippet below()}
-			{#if !agents.list.some((a) => a.installed)}
+			{#if writers.length === 0}
 				<p class="hint">
-					No coding agent is installed on this computer, so there is nothing to write messages yet. Install
-					omp, Claude Code or Codex and pick it here.
+					None of {writerNames} is installed on this computer, so there is nothing to write messages yet. Install
+					one and pick it here.
 				</p>
 			{/if}
 		{/snippet}

@@ -77,6 +77,17 @@ pub struct Spec {
     /// (`*.findings.json`, see `detectors.mjs`). The UI gate asks for it; a plain capture does not.
     #[serde(skip_serializing_if = "std::ops::Not::not")]
     pub checks: bool,
+    /// Who is asking, when that is an isolated crewmate: what the page may reach is then limited (see `guard`). Set by
+    /// the caller from the crewmate, never read from the agent's arguments and never sent to the runner.
+    #[serde(skip)]
+    pub reach: Option<Reach>,
+}
+
+/// The Linux user a capture is made for: an isolated crewmate's. `uid` is the one whose listening sockets on this
+/// machine the page may load; every other port of this machine and every private network is out of reach.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub struct Reach {
+    pub uid: u32,
 }
 
 /// One (engine, width, theme) cell of the matrix.
@@ -131,6 +142,7 @@ impl Spec {
             steps: raw.steps.unwrap_or_default(),
             dom: raw.dom.unwrap_or(false),
             checks: raw.checks.unwrap_or(false),
+            reach: None,
         };
         spec.validate()?;
         Ok(spec)
@@ -181,7 +193,8 @@ impl Spec {
     }
 }
 
-/// http(s) only, with a host. localhost and LAN addresses are allowed on purpose: the thing to look
+/// http(s) only, with a host. localhost and LAN addresses are allowed on purpose (an isolated crewmate's reach is limited
+/// further, see `guard`): the thing to look
 /// at is usually a dev server on the crew server itself. `file:`, `javascript:`, `data:` and the
 /// like are refused: they read local files or run script instead of looking at a page.
 fn check_url(url: &str) -> Result<(), String> {

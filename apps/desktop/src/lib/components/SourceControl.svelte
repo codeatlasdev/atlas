@@ -1,6 +1,6 @@
 <script lang="ts">
 	import { usePoll } from "#lib/clock.svelte.ts";
-	import { onMount } from "svelte";
+	import { onMount, untrack } from "svelte";
 	import { kbd, primaryKey } from "#lib/keys.ts";
 	import { Button, DropdownMenu, DropdownMenuItem, Spinner, TextArea, toast } from "@codeatlasdev/ui";
 	import { Plus, Minus, Undo2, Sparkles, Ellipsis, GitPullRequest, Square, RefreshCw } from "@lucide/svelte";
@@ -10,11 +10,22 @@
 	import { commitMessages } from "#lib/stores/commitMessage.svelte.ts";
 	import { providerHint } from "#lib/commitMessage.ts";
 	import { openFile, openDiff } from "#lib/stores/files.svelte.ts";
+	import {
+		identityMissing,
+		identityProblem,
+		isIdentityError,
+		readIdentity,
+		saveIdentity,
+		type IdentityScope,
+	} from "#lib/gitIdentity.ts";
 	import { pr } from "#lib/stores/pr.svelte.ts";
 	import { confirmDialog } from "#lib/stores/ask.svelte.ts";
 	import { statusGroups } from "#lib/stores/tree.ts";
 	import { gitStatus } from "#lib/stores/gitStatus.ts";
+	import { classifyGitError } from "#lib/gitErrors.ts";
+	import { gitToast } from "#lib/gitToast.ts";
 	import PathText from "./PathText.svelte";
+	import NotRepoState from "./NotRepoState.svelte";
 
 	/** Porcelain status letter → `.code` class (anything else reads as modified). */
 	const CODE_KIND: Record<string, string> = {
@@ -29,13 +40,28 @@
 	let { worktreeId }: { worktreeId: string } = $props();
 
 	let st = $state<GitStatus | null>(null);
+	/** The folder is not a git repository: nothing to stage or commit, only `git init` (#505). */
+	let notRepo = $state(false);
 	let message = $state("");
 	let busy = $state<string | null>(null);
 	let failure = $state<string | null>(null);
+	/** The action `failure` belongs to: a commit's error is about that message and that staged set, nothing else's. */
+	let failureOf = $state<string | null>(null);
+	/** Commit identity form: shown instead of git's "Author identity unknown"; `amend` is what Save & commit retries. */
+	let who = $state<{
+		name: string;
+		email: string;
+		scope: IdentityScope;
+		amend: boolean;
+		saving: boolean;
+		error: string;
+	} | null>(null);
 	let instruction = $state("");
 	let showInstruction = $state(false);
 	let gen = $derived(commitMessages.run(worktreeId));
 	let hint = $derived(providerHint(commitMessages.provider));
+	/** A failed command in words, with git's own output next to it (the raw text is what "Fix with AI" sends). */
+	let problem = $derived(failure ? classifyGitError(failure) : null);
 
 	let groups = $derived(statusGroups(st?.entries ?? []));
 	let staged = $derived(groups.staged);
@@ -54,10 +80,14 @@
 		const detach = commitMessages.attach(worktreeId, (text) => (message = text));
 		// Fed on mount and on every fs event inside this worktree, debounced and shared with the Explorer (#307).
 		const off = gitStatus.watch(worktreeId, ws.worktree(worktreeId)?.path ?? "", {
-			status: (s) => (st = s),
+			status: (s) => {
+				st = s;
+				notRepo = false;
+			},
 			error: (e) => {
-				toast.error(errText(e));
 				st = null;
+				notRepo = classifyGitError(errText(e)).kind === "not-repo";
+				if (!notRepo) gitToast(errText(e));
 			},
 		});
 		return () => {
@@ -66,13 +96,17 @@
 		};
 	});
 
+	const gitHere = (args: string[]) => git.run(worktreeId, args);
+
 	async function run(label: string, args: string[], stdin?: string): Promise<boolean> {
 		busy = label;
 		failure = null;
+		failureOf = null;
 		try {
 			const r = await git.run(worktreeId, args, stdin);
 			if (r.code !== 0) {
 				failure = (r.stderr || r.stdout).trim();
+				failureOf = label;
 				return false;
 			}
 			return true;
@@ -81,6 +115,20 @@
 			await refresh();
 		}
 	}
+
+	// A commit error describes one message and one staged set. Once either changes (an edit, a commit or an unstage
+	// from the terminal or an agent) it is history, and leaving it next to a different state reads as a live failure.
+	let stagedKey = $derived(staged.map((e) => `${e.x}${e.path}`).join("\0"));
+	$effect(() => {
+		message;
+		stagedKey;
+		untrack(() => {
+			if (failureOf === "commit") {
+				failure = null;
+				failureOf = null;
+			}
+		});
+	});
 
 	const stage = (paths: string[]) => run("stage", ["add", "--", ...paths]);
 	const unstage = (paths: string[]) => run("unstage", ["restore", "--staged", "--", ...paths]);
@@ -96,11 +144,50 @@
 
 	async function commit(amend = false) {
 		if (!message.trim() && !amend) return toast.error("Write a commit message");
+		// Ask before git does: its answer is a wall of text with a shell recipe in it.
+		if (await identityMissing(gitHere)) return askWho(amend);
 		const args = ["commit", "-F", "-", ...(amend ? ["--amend"] : [])];
 		if (await run("commit", args, message)) {
 			message = "";
 			toast.success(amend ? "Amended" : "Committed");
+		} else if (failure && isIdentityError(failure)) {
+			failure = null;
+			failureOf = null;
+			await askWho(amend);
 		}
+	}
+
+	/** Open the identity form with what git and `gh` already know. */
+	async function askWho(amend: boolean) {
+		who = { name: "", email: "", scope: "global", amend, saving: false, error: "" };
+		const known = await readIdentity(gitHere);
+		const gh = !known.name || !known.email ? await git.ghIdentity(worktreeId).catch(() => null) : null;
+		// The reader may already be typing: only fill what is still empty.
+		if (who) {
+			who.name ||= known.name ?? gh?.name ?? "";
+			who.email ||= known.email ?? gh?.email ?? "";
+		}
+	}
+
+	async function saveWho() {
+		if (!who || who.saving) return;
+		const problem = identityProblem(who);
+		if (problem) {
+			who.error = problem;
+			return;
+		}
+		who.saving = true;
+		who.error = "";
+		try {
+			await saveIdentity(gitHere, who, who.scope);
+		} catch (e) {
+			who.saving = false;
+			who.error = errText(e);
+			return;
+		}
+		const amend = who.amend;
+		who = null;
+		await commit(amend);
 	}
 
 	async function primary() {
@@ -130,166 +217,230 @@
 </script>
 
 <aside class="sc">
-	<div class="head">
-		<span class="branch mono">{st?.branch ?? "…"}</span>
-		{#if st?.base && st.base !== "HEAD"}<span class="dim">→ {st.base}</span>{/if}
-		{#if st?.vs_base}<span class="dim">↑{st.vs_base.ahead} ↓{st.vs_base.behind}</span>{/if}
-		<DropdownMenu align="end">
-			{#snippet trigger()}<span class="more"><Ellipsis size={13} /></span>{/snippet}
-			<DropdownMenuItem onclick={() => commit(true)}>Amend last commit</DropdownMenuItem>
-			<DropdownMenuItem onclick={() => run("pull", ["pull", "--rebase"])}>Pull (rebase)</DropdownMenuItem>
-			<DropdownMenuItem onclick={() => run("push", ["push"])}>Push</DropdownMenuItem>
-			<DropdownMenuItem
-				variant="destructive"
-				onclick={async () =>
-					(await confirmDialog("Force push with lease?", {
-						description: "Overwrites the remote branch if nobody else pushed to it.",
-						confirmLabel: "Force push",
-						destructive: true,
-					})) && run("push", ["push", "--force-with-lease"])}
-			>
-				Force push with lease
-			</DropdownMenuItem>
-			<DropdownMenuItem onclick={() => openDiff(worktreeId)}>Open changes</DropdownMenuItem>
-		</DropdownMenu>
-	</div>
-
-	{#if st?.operation}
-		<div class="conflict">
-			<b>{st.operation} in progress</b>
-			{#if conflicts.length}<span>{conflicts.length} conflicted file{conflicts.length > 1 ? "s" : ""}</span
-				>{/if}
-			<div class="row-btns">
-				<Button
-					size="sm"
-					onclick={() =>
-						toAgent(
-							`Resolve the git ${st!.operation} conflicts in: ${conflicts.map((c) => c.path).join(", ")}. Then stage the files and continue the ${st!.operation}.`,
-						)}
+	{#if notRepo}
+		<NotRepoState {worktreeId} />
+	{:else}
+		<div class="head">
+			<span class="branch mono">{st?.branch ?? "…"}</span>
+			{#if st?.base && st.base !== "HEAD"}<span class="dim">→ {st.base}</span>{/if}
+			{#if st?.vs_base}<span class="dim">↑{st.vs_base.ahead} ↓{st.vs_base.behind}</span>{/if}
+			<DropdownMenu align="end">
+				{#snippet trigger()}<span class="more"><Ellipsis size={13} /></span>{/snippet}
+				<DropdownMenuItem onclick={() => commit(true)}>Amend last commit</DropdownMenuItem>
+				<DropdownMenuItem onclick={() => run("pull", ["pull", "--rebase"])}>Pull (rebase)</DropdownMenuItem>
+				<DropdownMenuItem onclick={() => run("push", ["push"])}>Push</DropdownMenuItem>
+				<DropdownMenuItem
+					variant="destructive"
+					onclick={async () =>
+						(await confirmDialog("Force push with lease?", {
+							description: "Overwrites the remote branch if nobody else pushed to it.",
+							confirmLabel: "Force push",
+							destructive: true,
+						})) && run("push", ["push", "--force-with-lease"])}
 				>
-					Resolve with AI
-				</Button>
-				<Button size="sm" variant="ghost" onclick={() => run("abort", [st!.operation!, "--abort"])}
-					>Abort</Button
-				>
-			</div>
+					Force push with lease
+				</DropdownMenuItem>
+				<DropdownMenuItem onclick={() => openDiff(worktreeId)}>Open changes</DropdownMenuItem>
+			</DropdownMenu>
 		</div>
-	{/if}
 
-	<div class="msg" role="presentation" onkeydown={(e) => e.key === "Enter" && primaryKey(e) && commit()}>
-		<TextArea bind:value={message} placeholder={`Commit message (${kbd("cmd-enter")} to commit)`} rows={3} />
-		{#if gen.phase === "running"}
-			<span class="dim">Writing with {gen.agent || "the agent"}…</span>
-		{:else if gen.error}
-			<span class="err">{gen.error}</span>
-		{:else if gen.notice}
-			<span class="dim">{gen.notice}</span>
-		{/if}
-		{#if hint.show}
-			{#if showInstruction}
-				<input
-					class="instr"
-					aria-label="Instruction for the commit message"
-					placeholder="e.g. mention issue #72"
-					bind:value={instruction}
-					onkeydown={(e) =>
-						e.key === "Enter" && (e.preventDefault(), commitMessages.generate(worktreeId, instruction))}
-				/>
-			{:else}
-				<button class="link" onclick={() => (showInstruction = true)}>Add an instruction…</button>
-			{/if}
-		{/if}
-		<div class="row-btns">
-			<Button size="sm" disabled={!!busy || primaryLabel === "Up to date"} onclick={primary}>
-				{#snippet leading()}{#if busy && busy !== "ai"}<Spinner size={12} />{/if}{/snippet}
-				{primaryLabel}
-			</Button>
-			{#if hint.show}
-				{#if gen.phase === "running"}
-					<Button size="sm" variant="ghost" onclick={() => commitMessages.cancel(worktreeId)}>
-						{#snippet leading()}<Square size={12} />{/snippet}
-						Stop
-					</Button>
-				{:else}
+		{#if st?.operation}
+			<div class="conflict">
+				<b>{st.operation} in progress</b>
+				{#if conflicts.length}<span>{conflicts.length} conflicted file{conflicts.length > 1 ? "s" : ""}</span
+					>{/if}
+				<div class="row-btns">
 					<Button
 						size="sm"
-						variant="ghost"
-						title="Write the message from {staged.length ? 'the staged diff' : 'all changes'}"
-						data-tour="commit-ai"
-						onclick={() => commitMessages.generate(worktreeId, instruction)}
+						onclick={() =>
+							toAgent(
+								`Resolve the git ${st!.operation} conflicts in: ${conflicts.map((c) => c.path).join(", ")}. Then stage the files and continue the ${st!.operation}.`,
+							)}
 					>
-						{#snippet leading()}{#if message.trim() && gen.agent}<RefreshCw size={12} />{:else}<Sparkles
-									size={12}
-								/>{/if}{/snippet}
-						{message.trim() && gen.agent ? "Regenerate" : "Generate"}
+						Resolve with AI
 					</Button>
+					<Button size="sm" variant="ghost" onclick={() => run("abort", [st!.operation!, "--abort"])}
+						>Abort</Button
+					>
+				</div>
+			</div>
+		{/if}
+
+		<div class="msg" role="presentation" onkeydown={(e) => e.key === "Enter" && primaryKey(e) && commit()}>
+			<TextArea
+				bind:value={message}
+				placeholder={`Commit message (${kbd("cmd-enter")} to commit)`}
+				rows={3}
+			/>
+			{#if gen.phase === "running"}
+				<span class="dim">Writing with {gen.agent || "the agent"}…</span>
+			{:else if gen.error}
+				<span class="err">{gen.error}</span>
+			{:else if gen.notice}
+				<span class="dim">{gen.notice}</span>
+			{/if}
+			{#if hint.show}
+				{#if showInstruction}
+					<input
+						class="instr"
+						aria-label="Instruction for the commit message"
+						placeholder="e.g. mention issue #72"
+						bind:value={instruction}
+						onkeydown={(e) =>
+							e.key === "Enter" && (e.preventDefault(), commitMessages.generate(worktreeId, instruction))}
+					/>
+				{:else}
+					<button class="link" onclick={() => (showInstruction = true)}>Add an instruction…</button>
 				{/if}
 			{/if}
-			<Button size="sm" variant="ghost" onclick={() => pr.openCreate(worktreeId)}>
-				{#snippet leading()}<GitPullRequest size={12} />{/snippet}
-				PR
-			</Button>
-		</div>
-	</div>
-
-	{#if failure}
-		<div class="failure">
-			<pre class="ca-selectable">{failure}</pre>
-			<Button
-				size="sm"
-				variant="ghost"
-				onclick={() => toAgent(`This git command failed. Fix the cause:\n\n${failure}`)}>Fix with AI</Button
-			>
-		</div>
-	{/if}
-
-	{#snippet group(title: string, list: GitEntry[], kind: "staged" | "changes" | "untracked" | "conflicts")}
-		{#if list.length}
-			<div class="group">
-				<span>{title} <span class="dim">{list.length}</span></span>
-				{#if kind === "staged"}
-					<button title="Unstage all" onclick={() => unstage(list.map((e) => e.path))}
-						><Minus size={12} /></button
-					>
-				{:else if kind !== "conflicts"}
-					<button title="Stage all" onclick={() => stage(list.map((e) => e.path))}><Plus size={12} /></button>
+			<div class="row-btns">
+				<Button size="sm" disabled={!!busy || primaryLabel === "Up to date"} onclick={primary}>
+					{#snippet leading()}{#if busy && busy !== "ai"}<Spinner size={12} />{/if}{/snippet}
+					{primaryLabel}
+				</Button>
+				{#if hint.show}
+					{#if gen.phase === "running"}
+						<Button size="sm" variant="ghost" onclick={() => commitMessages.cancel(worktreeId)}>
+							{#snippet leading()}<Square size={12} />{/snippet}
+							Stop
+						</Button>
+					{:else}
+						<Button
+							size="sm"
+							variant="ghost"
+							title="Write the message from {staged.length ? 'the staged diff' : 'all changes'}"
+							data-tour="commit-ai"
+							onclick={() => commitMessages.generate(worktreeId, instruction)}
+						>
+							{#snippet leading()}{#if message.trim() && gen.agent}<RefreshCw size={12} />{:else}<Sparkles
+										size={12}
+									/>{/if}{/snippet}
+							{message.trim() && gen.agent ? "Regenerate" : "Generate"}
+						</Button>
+					{/if}
 				{/if}
+				<Button size="sm" variant="ghost" onclick={() => pr.openCreate(worktreeId)}>
+					{#snippet leading()}<GitPullRequest size={12} />{/snippet}
+					PR
+				</Button>
 			</div>
-			{#each list as e (kind + e.path)}
-				{@const code =
-					kind === "staged" ? e.x : kind === "untracked" ? "U" : kind === "conflicts" ? "!" : e.y}
-				<div
-					class="entry"
-					role="button"
-					tabindex="0"
-					onclick={() => openFile(worktreeId, e.path)}
-					onkeydown={(ev) => ev.key === "Enter" && openFile(worktreeId, e.path)}
+		</div>
+
+		{#if who}
+			<form
+				class="who"
+				aria-label="Who are you?"
+				novalidate
+				onsubmit={(e) => {
+					e.preventDefault();
+					void saveWho();
+				}}
+			>
+				<b>Who is committing?</b>
+				<span class="dim">Git puts a name and an e-mail on every commit. Atlas saves them and commits.</span>
+				<label>
+					Name
+					<input class="instr" autocomplete="name" placeholder="Ada Lovelace" bind:value={who.name} />
+				</label>
+				<label>
+					E-mail
+					<input
+						class="instr"
+						type="email"
+						autocomplete="email"
+						placeholder="you@example.com"
+						bind:value={who.email}
+					/>
+				</label>
+				<fieldset>
+					<legend class="dim">Save it for</legend>
+					<label class="radio">
+						<input type="radio" name="who-scope" value="global" bind:group={who.scope} />
+						All repositories (global)
+					</label>
+					<label class="radio">
+						<input type="radio" name="who-scope" value="local" bind:group={who.scope} />
+						This repository only
+					</label>
+				</fieldset>
+				{#if who.error}<span class="err" role="alert">{who.error}</span>{/if}
+				<div class="row-btns">
+					<Button size="sm" type="submit" disabled={who.saving}>
+						{#snippet leading()}{#if who?.saving}<Spinner size={12} />{/if}{/snippet}
+						{who.amend ? "Save & amend" : "Save & commit"}
+					</Button>
+					<Button size="sm" variant="ghost" onclick={() => (who = null)}>Cancel</Button>
+				</div>
+			</form>
+		{/if}
+
+		{#if failure && problem}
+			<div class="failure">
+				<span class="ca-selectable">{problem.message}</span>
+				{#if problem.details}
+					<details>
+						<summary>Details</summary>
+						<pre class="ca-selectable">{problem.details}</pre>
+					</details>
+				{/if}
+				<Button
+					size="sm"
+					variant="ghost"
+					onclick={() => toAgent(`This git command failed. Fix the cause:\n\n${failure}`)}>Fix with AI</Button
 				>
-					<span class="code {CODE_KIND[code] ?? 'modified'}">{code}</span>
-					<PathText path={e.path} />
+			</div>
+		{/if}
+
+		{#snippet group(title: string, list: GitEntry[], kind: "staged" | "changes" | "untracked" | "conflicts")}
+			{#if list.length}
+				<div class="group">
+					<span>{title} <span class="dim">{list.length}</span></span>
 					{#if kind === "staged"}
-						<button title="Unstage" onclick={(ev) => (ev.stopPropagation(), unstage([e.path]))}
+						<button title="Unstage all" onclick={() => unstage(list.map((e) => e.path))}
 							><Minus size={12} /></button
 						>
 					{:else if kind !== "conflicts"}
-						<button title="Discard" onclick={(ev) => (ev.stopPropagation(), discard(e))}
-							><Undo2 size={12} /></button
-						>
-						<button title="Stage" onclick={(ev) => (ev.stopPropagation(), stage([e.path]))}
+						<button title="Stage all" onclick={() => stage(list.map((e) => e.path))}
 							><Plus size={12} /></button
 						>
 					{/if}
 				</div>
-			{/each}
-		{/if}
-	{/snippet}
+				{#each list as e (kind + e.path)}
+					{@const code =
+						kind === "staged" ? e.x : kind === "untracked" ? "U" : kind === "conflicts" ? "!" : e.y}
+					<div
+						class="entry"
+						role="button"
+						tabindex="0"
+						onclick={() => openFile(worktreeId, e.path)}
+						onkeydown={(ev) => ev.key === "Enter" && openFile(worktreeId, e.path)}
+					>
+						<span class="code {CODE_KIND[code] ?? 'modified'}">{code}</span>
+						<PathText path={e.path} />
+						{#if kind === "staged"}
+							<button title="Unstage" onclick={(ev) => (ev.stopPropagation(), unstage([e.path]))}
+								><Minus size={12} /></button
+							>
+						{:else if kind !== "conflicts"}
+							<button title="Discard" onclick={(ev) => (ev.stopPropagation(), discard(e))}
+								><Undo2 size={12} /></button
+							>
+							<button title="Stage" onclick={(ev) => (ev.stopPropagation(), stage([e.path]))}
+								><Plus size={12} /></button
+							>
+						{/if}
+					</div>
+				{/each}
+			{/if}
+		{/snippet}
 
-	<div class="lists">
-		{@render group("Conflicts", conflicts, "conflicts")}
-		{@render group("Staged", staged, "staged")}
-		{@render group("Changes", changes, "changes")}
-		{@render group("Untracked", untracked, "untracked")}
-	</div>
+		<div class="lists">
+			{@render group("Conflicts", conflicts, "conflicts")}
+			{@render group("Staged", staged, "staged")}
+			{@render group("Changes", changes, "changes")}
+			{@render group("Untracked", untracked, "untracked")}
+		</div>
+	{/if}
 </aside>
 
 <style>
@@ -318,6 +469,7 @@
 		display: inline-flex;
 	}
 	.msg,
+	.who,
 	.conflict,
 	.failure {
 		display: flex;
@@ -325,9 +477,38 @@
 		gap: 6px;
 		padding: 0 10px 10px;
 	}
+	.who {
+		gap: 8px;
+	}
+	.who label {
+		display: flex;
+		flex-direction: column;
+		gap: 3px;
+		font-size: 11.5px;
+		color: var(--ca-text-secondary);
+	}
+	.who fieldset {
+		display: flex;
+		flex-direction: column;
+		gap: 4px;
+		margin: 0;
+		padding: 0;
+		border: 0;
+	}
+	.who .radio {
+		flex-direction: row;
+		align-items: center;
+		gap: 6px;
+		color: var(--ca-text-primary);
+	}
 	.conflict {
 		padding-top: 8px;
 		background: color-mix(in oklab, var(--ca-semantic-warning) 10%, transparent);
+	}
+	.failure summary {
+		cursor: pointer;
+		font-size: 11px;
+		color: var(--ca-text-secondary);
 	}
 	.failure pre {
 		margin: 0;

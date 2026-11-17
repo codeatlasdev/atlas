@@ -1,4 +1,4 @@
-import 'package:flutter/material.dart';
+import 'package:material_ui/material_ui.dart';
 
 /// Asks for one line of text; `null` when dismissed.
 Future<String?> askText(BuildContext context, String label) =>

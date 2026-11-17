@@ -16,6 +16,8 @@
 //! crew user and uses root only for an `apt-get install` of validated package names.
 
 pub mod detectors;
+#[cfg(unix)]
+pub mod guard;
 pub mod spec;
 
 use std::path::{Path, PathBuf};
@@ -26,7 +28,7 @@ use serde_json::json;
 use tokio::io::AsyncWriteExt;
 
 use super::store::CrewStore;
-pub use spec::{Combo, Spec};
+pub use spec::{Combo, Reach, Spec};
 
 /// The one place the Playwright version is written in Rust. The browsers it downloads match this
 /// exact release, so it moves only together with `package-lock.json` (below) and a re-run of
@@ -68,12 +70,15 @@ pub(crate) static TEST_RUNNER: parking_lot::Mutex<Option<(PathBuf, Duration)>> =
 pub(crate) static TEST_LOCK: tokio::sync::Mutex<()> = tokio::sync::Mutex::const_new(());
 
 /// The program that runs the capture, and how long it may take.
+// tree-access: the capture runner (node, hostd's own script); no tree input
 fn runner_command(dir: &Path) -> Result<(tokio::process::Command, Duration), String> {
     #[cfg(test)]
     if let Some((prog, timeout)) = TEST_RUNNER.lock().clone() {
+        // tree-access: the capture runner (node, hostd's own script); no tree input
         return Ok((tokio::process::Command::new(prog), timeout));
     }
     let script = dir.join("runner.mjs");
+    // tree-access: hostd-owned (the crew store, scratch or runtime), never a crewmate's tree
     if !script.is_file() {
         return Err(format!(
             "capture: the browsers are not installed on this server ({} is missing). \
@@ -82,6 +87,7 @@ fn runner_command(dir: &Path) -> Result<(tokio::process::Command, Duration), Str
             script.display()
         ));
     }
+    // tree-access: the capture runner (node, hostd's own script); no tree input
     let mut c = tokio::process::Command::new("node");
     c.arg(script);
     Ok((c, TIMEOUT))
@@ -109,6 +115,20 @@ pub struct Captured {
 /// timeout passes.
 pub async fn run(hostd_dir: &Path, spec: &Spec, out_dir: &Path) -> Result<Captured, String> {
     let dir = capture_dir(hostd_dir);
+    // For an isolated crewmate: the URL first (before any browser starts), then a proxy the browser is started with
+    // that decides every connection the page makes, each hop of a redirect included (`guard`).
+    #[cfg(unix)]
+    let guard = match &spec.reach {
+        Some(reach) => {
+            reach.check_url(&spec.url).await?;
+            Some(
+                guard::Guard::start(reach)
+                    .await
+                    .map_err(|e| format!("capture: cannot start the network guard: {e}"))?,
+            )
+        }
+        None => None,
+    };
     let (mut cmd, timeout) = runner_command(&dir)?;
     cmd.current_dir(dir_or_cwd(&dir))
         .env("PLAYWRIGHT_BROWSERS_PATH", dir.join("browsers"))
@@ -122,6 +142,10 @@ pub async fn run(hostd_dir: &Path, spec: &Spec, out_dir: &Path) -> Result<Captur
 
     let mut input = json!(spec);
     input["out_dir"] = json!(out_dir);
+    #[cfg(unix)]
+    if let Some(g) = &guard {
+        input["proxy"] = json!(g.url());
+    }
     let mut stdin = child.stdin.take().expect("piped");
     // The runner reads all of stdin before it prints; a write error means it already died, which
     // the exit status below reports with its stderr.
@@ -168,6 +192,7 @@ pub async fn run(hostd_dir: &Path, spec: &Spec, out_dir: &Path) -> Result<Captur
         ] {
             let Some(path) = path else { continue };
             let p = PathBuf::from(&path);
+            // tree-access: hostd-owned (the crew store, scratch or runtime), never a crewmate's tree
             if !p.is_file() {
                 return Err(format!(
                     "capture incomplete. {combo}: the runner reported {path} but the {what} file does not exist"
@@ -187,9 +212,18 @@ pub async fn run(hostd_dir: &Path, spec: &Spec, out_dir: &Path) -> Result<Captur
     })
 }
 
+/// No isolation off Unix: there is no crewmate user to protect another one from.
+#[cfg(not(unix))]
+impl Reach {
+    pub fn of(_: &CrewStore, _: &str) -> Result<Option<Self>, String> {
+        Ok(None)
+    }
+}
+
 /// The runner runs in the capture dir (Node finds `node_modules` from the script, not the cwd, but a
 /// fake runner and relative paths expect a real directory); fall back to the current one.
 fn dir_or_cwd(dir: &Path) -> PathBuf {
+    // tree-access: hostd-owned (the crew store, scratch or runtime), never a crewmate's tree
     if dir.is_dir() {
         dir.to_path_buf()
     } else {
@@ -214,13 +248,22 @@ pub(crate) struct RemoveOnDrop(pub(crate) PathBuf);
 
 impl Drop for RemoveOnDrop {
     fn drop(&mut self) {
+        // tree-access: hostd-owned (the crew store, scratch or runtime), never a crewmate's tree
         let _ = std::fs::remove_dir_all(&self.0);
     }
 }
 
 /// Where the DOM reports of one task's captures are kept: `<crewmate dir>/dom/<task id>/`.
-pub fn task_dom_dir(store: &CrewStore, crewmate_id: &str, task_id: &str) -> PathBuf {
-    store.crewmate_dir(crewmate_id).join("dom").join(task_id)
+pub fn task_dom_dir(
+    store: &CrewStore,
+    crewmate_id: &str,
+    task_id: &str,
+) -> Result<PathBuf, String> {
+    if !crate::crew::pane::is_plain_name(task_id) {
+        return Err(format!("capture: {task_id:?} is not a task id"));
+    }
+    // tree-access: task_id is one plain name, checked just above (pane::is_plain_name)
+    Ok(store.crewmate_dir(crewmate_id).join("dom").join(task_id))
 }
 
 /// A fresh scratch directory path for one run (`<capture dir>/runs/<id>`; the caller creates it).
@@ -239,10 +282,13 @@ pub async fn handle(
     task_id: &str,
     args: &serde_json::Value,
 ) -> Result<serde_json::Value, String> {
-    let spec = Spec::from_args(args)?;
+    let dom_dir = task_dom_dir(store, crewmate_id, task_id)?;
+    let mut spec = Spec::from_args(args)?;
+    spec.reach = Reach::of(store, crewmate_id)?;
     // The runner writes into a scratch dir that is removed whatever happens; what is kept is the copy
     // `attach_captures` stores with the task.
     let scratch = scratch_dir(hostd_dir);
+    // tree-access: hostd-owned (the crew store, scratch or runtime), never a crewmate's tree
     std::fs::create_dir_all(&scratch)
         .map_err(|e| format!("capture: cannot make {}: {e}", scratch.display()))?;
     let _cleanup = RemoveOnDrop(scratch.clone());
@@ -252,9 +298,9 @@ pub async fn handle(
         .map_err(|e| format!("capture: cannot keep the screenshots: {e}"))?;
     // The DOM reports and the findings are JSON, not images: they are kept in the task's own `dom/`
     // folder (the scratch dir goes away with this call), never as attachments.
-    let dom_dir = task_dom_dir(store, crewmate_id, task_id);
     let mut kept: std::collections::BTreeMap<PathBuf, String> = Default::default();
     if !captured.doms.is_empty() || !captured.findings.is_empty() {
+        // tree-access: hostd-owned (the crew store, scratch or runtime), never a crewmate's tree
         std::fs::create_dir_all(&dom_dir)
             .map_err(|e| format!("capture: cannot make {}: {e}", dom_dir.display()))?;
     }
@@ -264,6 +310,7 @@ pub async fn handle(
             .and_then(|n| n.to_str())
             .ok_or_else(|| format!("capture: bad report name {}", p.display()))?
             .to_string();
+        // tree-access: hostd-owned (the crew store, scratch or runtime), never a crewmate's tree
         std::fs::copy(p, dom_dir.join(&name))
             .map_err(|e| format!("capture: cannot keep the report {name}: {e}"))?;
         kept.insert(p.clone(), name);

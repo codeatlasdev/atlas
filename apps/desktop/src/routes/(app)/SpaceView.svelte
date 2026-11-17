@@ -7,7 +7,7 @@
 	import Contain from "#lib/errors/Contain.svelte";
 	import ActivityDrawer from "#lib/panel/ActivityDrawer.svelte";
 	import MachineDrawer from "#lib/panel/MachineDrawer.svelte";
-	import { corner } from "#lib/shell/cornerStack.ts";
+	import CornerNotice from "#lib/shell/CornerNotice.svelte";
 	import ConfirmAction from "./ConfirmAction.svelte";
 	import MissingProject from "./MissingProject.svelte";
 	import ProjectHeader from "./ProjectHeader.svelte";
@@ -34,7 +34,7 @@
 	<MissingProject {p} />
 {:else if p}
 	<ProjectHeader {p} />
-	{#if space.current}<ActivityDrawer projectId={p.id} /><MachineDrawer />{/if}
+	{#if space.current && p.kind !== "folder"}<ActivityDrawer projectId={p.id} /><MachineDrawer />{/if}
 
 	{#if p.error}
 		<div class="banner">
@@ -45,17 +45,24 @@
 	{/if}
 
 	<div class="rule"></div>
-	<!-- `corner` moves the card into the one window-wide corner column: only the space on screen may put it there,
-	     or every mounted space adds its own copy (three projects open = three identical cards). -->
+	<!-- A suggestion in the corner column: it waits behind errors and toasts, one at a time, and sits in the column
+	     instead of pushing the workbench (and the native terminal views laid over it) down. Only the space on screen
+	     may offer it, or every mounted space adds its own copy (three projects open = three identical cards). -->
 	{#if offer && space.current}
 		{@const o = offer}
-		<div use:corner class="floating">
-			<Alert severity="info" title="Enable {o.label} integration">
-				Atlas and Atlas Mobile show {o.label}'s state (working, needs you, done) through its hooks.
-				<Button size="sm" onclick={() => agents.enableIntegration(o.id)}>Enable</Button>
-				<Button size="sm" variant="ghost" onclick={() => dismiss(o.id)}>Not now</Button>
-			</Alert>
-		</div>
+		{#snippet act()}
+			<Button size="sm" onclick={() => agents.enableIntegration(o.id)}>Enable</Button>
+			<Button size="sm" variant="ghost" onclick={() => dismiss(o.id)}>Not now</Button>
+		{/snippet}
+		<CornerNotice
+			id="integration:{o.id}"
+			kind="suggestion"
+			tone="info"
+			title="Enable {o.label} integration"
+			body="Atlas and Atlas Mobile show {o.label}'s state (working, needs you, done) through its hooks."
+			actions={act}
+			ondismiss={() => dismiss(o.id)}
+		/>
 	{/if}
 
 	<Contain
@@ -72,13 +79,6 @@
 <style>
 	.banner {
 		padding: 0 20px 10px;
-	}
-	/* Found by a probe that finishes after the first frame: it lives in the corner stack (above the Getting started
-	   card, never over it) instead of pushing the workbench (and the native terminal views laid over it) down. */
-	.floating {
-		width: 100%;
-		box-shadow: 0 8px 28px rgb(0 0 0 / 0.28);
-		border-radius: 12px;
 	}
 	.banner pre {
 		margin: 4px 0 0;

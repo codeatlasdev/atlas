@@ -16,7 +16,7 @@ use tokio::io::{AsyncBufReadExt, AsyncReadExt, AsyncWriteExt, BufReader};
 use tokio::net::{TcpListener, TcpStream};
 
 use super::AgentHub;
-use super::hook_auth::{Caller, Verdict, authorize};
+use super::hook_auth::{Caller, Verdict, authorize, scrub};
 use crate::paths;
 
 const MAX_BODY: usize = 1024 * 1024;
@@ -154,7 +154,12 @@ async fn serve(
         } else {
             match serde_json::from_slice::<Value>(&body_bytes) {
                 Err(_) => ("400 Bad Request", String::new()),
-                Ok(v) => route(hub, mobile.can_approve(), &path, &v).await,
+                Ok(mut v) => {
+                    if let Some(c) = &caller {
+                        scrub(c, &mut v);
+                    }
+                    route(hub, mobile.can_approve(), &path, &v).await
+                }
             }
         }
     };
@@ -253,17 +258,18 @@ async fn route_crew(
 }
 
 /// The task a crewmate's tool call belongs to (the pane key names it), or the `422` body that says
-/// only a task can call `tool`.
+/// only a task can call `tool`. The pane key is the crewmate's own word: the task must be one this
+/// crewmate has in the store, and a plain name (hostd builds folders from it), never a path.
 fn task_of_pane(
+    hub: &crate::server::Hub,
     crewmate_id: &str,
     v: &Value,
     tool: &str,
 ) -> Result<String, (&'static str, String)> {
     v["pane_key"]
         .as_str()
-        .filter(|p| crate::crew::pane::is_pane_of(p, crewmate_id))
-        .and_then(|p| p.splitn(3, ':').nth(2))
-        .filter(|t| !t.is_empty())
+        .and_then(|p| crate::crew::pane::task_id(p, crewmate_id))
+        .filter(|t| hub.crew.store.task(crewmate_id, t).is_some())
         .map(str::to_string)
         .ok_or_else(|| {
             (
@@ -293,7 +299,7 @@ async fn handle_capture(
     crewmate_id: &str,
     v: &Value,
 ) -> (&'static str, String) {
-    let task_id = match task_of_pane(crewmate_id, v, "capture") {
+    let task_id = match task_of_pane(hub, crewmate_id, v, "capture") {
         Ok(t) => t,
         Err(e) => return e,
     };
@@ -316,7 +322,7 @@ async fn handle_ui_gate(
     crewmate_id: &str,
     v: &Value,
 ) -> (&'static str, String) {
-    let task_id = match task_of_pane(crewmate_id, v, "ui_gate") {
+    let task_id = match task_of_pane(hub, crewmate_id, v, "ui_gate") {
         Ok(t) => t,
         Err(e) => return e,
     };
@@ -348,9 +354,7 @@ fn handle_set_ui(
     };
     let Some(task_id) = v["pane_key"]
         .as_str()
-        .filter(|p| crate::crew::pane::is_pane_of(p, crewmate_id))
-        .and_then(|p| p.splitn(3, ':').nth(2))
-        .filter(|t| !t.is_empty())
+        .and_then(|p| crate::crew::pane::task_id(p, crewmate_id))
     else {
         return err("set_ui: only a crewmate's task can be marked (no task pane)");
     };

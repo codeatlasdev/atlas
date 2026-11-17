@@ -43,7 +43,7 @@ async fn the_ui_gate_round_trip_plans_captures_hits_the_cache_and_replays_a_regr
 
     let client = super::fixture::daemon(&dir).await;
     let id = super::fixture::create_crewmate(&client, "Gate").await;
-    let pane = crate::crew::pane::key(&id, "task9");
+    let pane = crate::crew::pane::key(&id, &super::fixture::log_task(&dir, &id, "task9"));
     let work = crate::crew::project::work_dir(&dir, &id);
     std::fs::create_dir_all(work.join("src")).unwrap();
     std::fs::write(work.join("src/docs.svelte"), "v1").unwrap();
@@ -163,7 +163,7 @@ async fn a_detector_error_fails_the_scenario_through_hostd_and_a_fixed_page_pass
 
     let client = super::fixture::daemon(&dir).await;
     let id = super::fixture::create_crewmate(&client, "GateDet").await;
-    let pane = crate::crew::pane::key(&id, "task10");
+    let pane = crate::crew::pane::key(&id, &super::fixture::log_task(&dir, &id, "task10"));
     let work = crate::crew::project::work_dir(&dir, &id);
     std::fs::create_dir_all(work.join("src")).unwrap();
     std::fs::write(work.join("src/docs.svelte"), "v1").unwrap();
@@ -206,6 +206,66 @@ async fn a_detector_error_fails_the_scenario_through_hostd_and_a_fixed_page_pass
         .await
         .unwrap();
     assert_eq!(v["passed"], true, "{v}");
+    *TEST_CACHE.lock() = None;
+    *TEST_RUNNER.lock() = None;
+}
+
+/// Review 6, N3: the task part of a crewmate's pane key names a folder hostd writes under (as the crew
+/// user, which reaches every crewmate). A crewmate must not be able to name a path of its own choosing
+/// there, nor a task it does not have.
+#[tokio::test(flavor = "multi_thread")]
+async fn a_pane_key_naming_a_path_or_a_task_that_does_not_exist_writes_nothing() {
+    let _g = capture::TEST_LOCK.lock().await;
+    let tmp = tempfile::tempdir().unwrap();
+    let dir = tmp.path().join("hostd");
+    use_runner(&fake_runner(
+        tmp.path(),
+        &full_report_with_findings(&[], "[]"),
+    ));
+    *TEST_CACHE.lock() = Some(tmp.path().join("cache"));
+
+    let client = super::fixture::daemon(&dir).await;
+    let id = super::fixture::create_crewmate(&client, "Evil").await;
+    let victim = tmp.path().join("victim");
+    let work = crate::crew::project::work_dir(&dir, &id);
+    std::fs::create_dir_all(&work).unwrap();
+    std::fs::write(work.join("atlas.yaml"), "name: shop\n").unwrap();
+    let args = json!({"action": "run", "base_url": "http://localhost:5173", "routes": ["/"]});
+
+    let ids = [
+        victim.display().to_string(),
+        format!(
+            "../../../../{}",
+            victim.strip_prefix("/").unwrap().display()
+        ),
+        "..".to_string(),
+        "a/b".to_string(),
+        "ghost".to_string(),
+    ];
+    for task in ids {
+        let pane = crate::crew::pane::key(&id, &task);
+        for tool in ["ui_gate", "capture"] {
+            let a = if tool == "capture" {
+                json!({"url": "http://localhost:5173/"})
+            } else {
+                args.clone()
+            };
+            let r = crate::crew::mcp::call_for_test(&dir, &id, &pane, tool, a).await;
+            assert!(
+                r.is_err(),
+                "{tool} with task {task:?} must be refused: {r:?}"
+            );
+        }
+    }
+    assert!(
+        !victim.exists(),
+        "hostd wrote outside the crewmate's own task folders"
+    );
+    let gate = dir.join("crew").join(&id).join("ui-gate");
+    assert!(
+        !gate.exists(),
+        "an unknown task got a gate folder: {gate:?}"
+    );
     *TEST_CACHE.lock() = None;
     *TEST_RUNNER.lock() = None;
 }

@@ -4,8 +4,10 @@ use serde_json::{Value, json};
 
 #[cfg(unix)]
 use super::super::spawn::provision::ProvClient;
-use super::super::store::{Approval, CrewmateLook, EngineConfig, ProjectRef, TaskState};
-use super::super::{Crewmate, events, now_s, pane, project, runner, triggers};
+use super::super::store::{
+    Approval, CrewmateLook, EngineConfig, ProjectRef, TaskState, TriggerKind,
+};
+use super::super::{Crewmate, events, now_s, pane, project, runner, schedule, triggers};
 use crate::paths;
 use crate::server::Hub;
 
@@ -164,6 +166,13 @@ pub(crate) fn list(hub: &Hub) -> Result<Value, String> {
                         );
                         let mut tv = serde_json::to_value(t).unwrap_or_default();
                         tv["next_fire"] = json!(next);
+                        // A cron the parser refuses (one saved under an older parser): kept as saved, never
+                        // fired, and said so here for the client to show. Absent when the cron is fine.
+                        if let TriggerKind::Schedule { cron } = &t.kind
+                            && let Err(why) = schedule::validate_cron(cron)
+                        {
+                            tv["invalid"] = json!(why);
+                        }
                         tv
                     })
                     .collect();
@@ -172,7 +181,18 @@ pub(crate) fn list(hub: &Hub) -> Result<Value, String> {
                 v["triggers"] = json!([]);
             }
             // The cron routines, so a client can edit them (`crewmate_routine_set` replaces the whole list).
-            v["routines"] = json!(b.routines);
+            v["routines"] = b
+                .routines
+                .iter()
+                .map(|r| {
+                    let mut rv = json!(r);
+                    if let Err(why) = schedule::validate_cron(&r.cron) {
+                        rv["invalid"] = json!(why);
+                    }
+                    rv
+                })
+                .collect::<Vec<_>>()
+                .into();
             v
         })
         .collect();
@@ -205,6 +225,7 @@ pub(crate) fn create(
     // (a definition whose every task fails is worse than a clear refusal now).
     provision(hub, &id)?;
     if let Some(ref wd) = workdir {
+        // tree-access: the operator's own workdir from his request, never a crewmate's word
         std::fs::create_dir_all(wd).map_err(|e| format!("cannot create workdir: {e}"))?;
     }
     let crewmate = Crewmate {
@@ -447,8 +468,12 @@ fn warm_checkout(hub: &Hub, crewmate: &Crewmate) {
     };
     let (id, dir) = (crewmate.id.clone(), hub.crew.dir.clone());
     let iso = hub.crew.store.isolated(&id);
+    let git = hub
+        .crew
+        .store
+        .git_for_checkout(&id, &project::work_dir_for(&dir, &id, iso.as_ref()));
     tokio::spawn(async move {
-        if let Err(e) = project::prepare(&project, &id, &dir, iso).await {
+        if let Err(e) = project::prepare(&project, &id, &dir, iso, &git).await {
             eprintln!("atlas crew: checkout for {id} not ready yet: {e}");
         }
     });

@@ -1,13 +1,16 @@
-import 'package:flutter/material.dart';
+import 'package:material_ui/material_ui.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:flutter_test/flutter_test.dart';
 
 import 'package:atlas_mobile/core/connection/connection_notifier.dart';
+import 'package:atlas_mobile/core/permissions/permissions.dart';
 import 'package:atlas_mobile/core/protocol/models.dart';
 import 'package:atlas_mobile/core/push/push_provider.dart';
 import 'package:atlas_mobile/core/storage/mac_storage.dart';
 import 'package:atlas_mobile/core/ui/atlas_theme.dart';
 import 'package:atlas_mobile/features/settings/settings_screen.dart';
+
+import 'support/fake_permissions.dart';
 
 // Settings shows, in one line, why notifications work or do not: the user could never tell before
 // (every failure on the way was a silent null/false).
@@ -22,12 +25,18 @@ class _Storage extends MacStorage {
 
 Future<void> _pump(
   WidgetTester tester,
-  Future<String?> Function() status,
-) async {
+  Future<String?> Function() status, {
+  PermissionState notifications = PermissionState.granted,
+}) async {
   await tester.pumpWidget(
     ProviderScope(
       overrides: [
         macStorageProvider.overrideWithValue(_Storage()),
+        permissionsProvider.overrideWithValue(
+          FakePermissions(
+            states: {AtlasPermission.notifications: notifications},
+          ),
+        ),
         pushRegistrationProvider.overrideWith((ref) => status()),
       ],
       child: MaterialApp(theme: atlasTheme(), home: const SettingsScreen()),
@@ -57,7 +66,11 @@ void main() {
 
   // No Firebase config (a local build): nothing to report, and no empty row either.
   testWidgets('shows no row when there is nothing to say', (tester) async {
-    await _pump(tester, () async => null);
+    await _pump(
+      tester,
+      () async => null,
+      notifications: PermissionState.unavailable,
+    );
     expect(find.text('Notifications'), findsNothing);
   });
 }

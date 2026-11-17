@@ -1,7 +1,7 @@
 /// The profile's Automations section: one swipe-to-delete row per trigger and an Add button.
 library;
 
-import 'package:flutter/material.dart';
+import 'package:material_ui/material_ui.dart';
 
 import 'package:atlas_mobile/core/protocol/crew_models.dart';
 import 'package:atlas_mobile/core/protocol/crew_triggers.dart';
@@ -120,7 +120,15 @@ class TriggerRow extends StatelessWidget {
                         style: Theme.of(context).textTheme.bodyLarge!
                             .copyWith(color: c.text),
                       ),
-                      if (nextStr != null) ...[
+                      if (trigger.invalid != null) ...[
+                        const SizedBox(height: 2),
+                        Text(
+                          'Not running: ${trigger.invalid}',
+                          key: Key('automation-invalid-${trigger.id}'),
+                          style: Theme.of(context).textTheme.bodySmall!
+                              .copyWith(color: c.error),
+                        ),
+                      ] else if (nextStr != null) ...[
                         const SizedBox(height: 2),
                         Text(
                           'Next: $nextStr',

@@ -28,7 +28,7 @@ pub enum Mode {
 pub struct SpawnReq {
     /// The crewmate the child belongs to (a provisioned `atlas-cm-<slug>` user).
     pub user: String,
-    /// `argv[0]` must be one of [`super::validate::ENGINE_BINARIES`], resolved by the helper in
+    /// `argv[0]` must be one of [`super::validate::is_engine_binary`], resolved by the helper in
     /// its own pinned directory, never from the request.
     pub argv: Vec<String>,
     /// Environment the child gets, on top of a fixed minimal one.
@@ -41,6 +41,27 @@ pub struct SpawnReq {
     pub cols: u16,
     #[serde(default = "default_rows")]
     pub rows: u16,
+}
+
+/// Run `git` as the crewmate, in its own tree, and answer with its output. hostd never runs git in a
+/// crewmate's tree itself: the crewmate controls that tree's `.git/config` (`core.fsmonitor`, filters,
+/// `core.sshCommand`, credential helpers), and any of them is code that runs as whoever runs git. As the
+/// crewmate it is the crewmate's own code, which it could run anyway.
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+pub struct GitReq {
+    /// The crewmate whose tree it is (a provisioned `atlas-cm-<slug>` user).
+    pub user: String,
+    /// `git`'s arguments: `args[0]` is a subcommand of [`super::validate::GIT_SUBCOMMANDS`], never an
+    /// option, so `-c` and `--exec-path` cannot come first. The helper adds its own fixed options.
+    pub args: Vec<String>,
+    /// Working directory; must be inside `/var/lib/atlas-cm/<slug>/`.
+    pub cwd: String,
+    /// A GitHub token for `github.com` over https (`gh auth token`), for the commands that talk to
+    /// the network. It reaches git only as an environment variable of this one process.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub token: Option<String>,
+    /// Seconds before the helper kills the process tree and answers `timed_out`.
+    pub timeout_secs: u64,
 }
 
 fn default_cols() -> u16 {
@@ -82,6 +103,8 @@ pub enum Request {
     },
     /// Whether agents run under a memory cap, and which.
     MemoryCap,
+    /// Run git as a crewmate; the reply carries what it wrote to stdout as an fd.
+    Git(GitReq),
 }
 
 /// The helper's answer. A successful `Spawn` carries one fd next to this message.
@@ -105,6 +128,13 @@ pub enum Response {
     MemoryCap(super::cgroup::Status),
     Cwd {
         path: String,
+    },
+    /// Answer to `Git`: how it ended and its stderr (the end of it); stdout is the fd that comes with
+    /// this reply, rewound to its start. `code` is `None` when a signal ended it.
+    Git {
+        code: Option<i32>,
+        stderr: String,
+        timed_out: bool,
     },
     /// The request was refused or failed; `reason` is for humans and logs.
     Error {

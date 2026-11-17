@@ -81,6 +81,9 @@ pub(crate) struct Hub {
     stop: Notify,
     /// Signalled once the successor has taken the ptys: `serve` returns without killing.
     handed_off: Arc<Notify>,
+    /// Serializes `upgrade` calls; `true` once a successor has taken over (see `upgrade::run`).
+    #[cfg_attr(windows, allow(dead_code))]
+    pub(crate) upgraded: tokio::sync::Mutex<bool>,
     /// The locked pid file; its fd travels to the successor on upgrade. Held for the lock
     /// alone on Windows.
     #[cfg_attr(windows, allow(dead_code))]
@@ -382,6 +385,9 @@ pub struct ServeOpts {
     /// Atlas Mobile without n0's public relays: direct addresses only (tests, a
     /// phone on the same network). `ATLAS_MOBILE_RELAY=0` for `atlas hostd`.
     pub no_mobile_relay: bool,
+    /// Atlas Mobile listens on loopback only, not every interface (tests: a Mac's firewall asks
+    /// about each new test binary that listens on the network). `ATLAS_MOBILE_LOOPBACK=1` for `atlas hostd`.
+    pub mobile_loopback: bool,
     /// Whether this daemon is a crew server (adds "crew" to caps, gates crewmate commands).
     pub crew_host: bool,
     /// Run as the lab lane's shadow daemon following the main hostd in this directory
@@ -398,6 +404,9 @@ pub struct ServeOpts {
     /// what the machine has (`Setup::detect`, the helper's socket); `None` runs every crewmate as the
     /// crew user, which is also what tests get unless they run a helper of their own.
     pub isolation: Option<crate::crew::spawn::layout::Setup>,
+    /// Why no crewmate may run: isolation is installed on this server but the helper's socket is missing
+    /// (`Setup::detect`). Every crew task is refused with this text instead of running as the crew user.
+    pub isolation_fault: Option<String>,
     /// Another desktop control socket than `~/.atlas/desktop.sock` (tests); `None`: the user's.
     pub desktop: Option<atlas_core::desktop_ctl::Endpoint>,
     /// Where plain-agent pushes go ([`crate::agents::push`]); `None`: the push relay. Tests capture them.
@@ -416,16 +425,34 @@ pub fn desktop_registry() -> PathBuf {
     atlas_core::paths::atlas_home()
 }
 
+/// Isolation for a daemon that is a crew host: what the machine has (`Setup::detect`, the helper's socket),
+/// and the reason crewmates cannot run when isolation is installed but its helper is missing. Nothing for
+/// any other daemon. Every real entry point passes both as [`ServeOpts::isolation`] and
+/// [`ServeOpts::isolation_fault`]; leaving them at their default silently runs every crewmate as the crew user.
+pub fn detect_isolation(
+    crew_host: bool,
+) -> (Option<crate::crew::spawn::layout::Setup>, Option<String>) {
+    use crate::crew::spawn::layout::{Detected, Setup};
+    if !crew_host {
+        return (None, None);
+    }
+    match Setup::detect() {
+        Detected::Off => (None, None),
+        Detected::On(s) => (Some(s), None),
+        Detected::Missing(why) => (None, Some(why)),
+    }
+}
+
 pub async fn serve(dir: &Path) -> Result<()> {
     let crew_host = std::env::var("ATLAS_CREW_HOST").as_deref() == Ok("1");
+    let (isolation, isolation_fault) = detect_isolation(crew_host);
     serve_with(
         dir,
         ServeOpts {
             crew_host,
             registry: Some(desktop_registry()),
-            isolation: crew_host
-                .then(crate::crew::spawn::layout::Setup::detect)
-                .flatten(),
+            isolation,
+            isolation_fault,
             ..Default::default()
         },
     )
@@ -556,8 +583,11 @@ pub async fn serve_with(dir: &Path, opts: ServeOpts) -> Result<()> {
     }
     let (lsp_tx, lsp_rx) = mpsc::channel(512);
     let agents = Arc::new(crate::agents::AgentHub::default());
-    let mobile = Arc::new(crate::mobile::Mobile::load(dir, !opts.no_mobile_relay)?);
-    let crew = crate::crew::CrewHub::new(dir, opts.isolation.clone());
+    let mobile = Arc::new(
+        crate::mobile::Mobile::load(dir, !opts.no_mobile_relay)?
+            .loopback_only(opts.mobile_loopback),
+    );
+    let crew = crate::crew::CrewHub::new(dir, opts.isolation.clone(), opts.isolation_fault.clone());
     let registry = opts
         .registry
         .clone()
@@ -574,6 +604,7 @@ pub async fn serve_with(dir: &Path, opts: ServeOpts) -> Result<()> {
         hello_timeout: opts.hello_timeout.unwrap_or(HELLO_TIMEOUT),
         stop: Notify::new(),
         handed_off: Arc::new(Notify::new()),
+        upgraded: tokio::sync::Mutex::new(false),
         lock,
         lsp: atlas_lsp::Manager::new(dir, atlas_lsp::Config::default(), lsp_tx),
         subscribers: Mutex::new(HashMap::new()),

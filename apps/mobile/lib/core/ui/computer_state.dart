@@ -2,7 +2,7 @@
 /// The sentences live here once; the home, the pairing flow, a chat and every `AsyncView` use them.
 library;
 
-import 'package:flutter/material.dart';
+import 'package:material_ui/material_ui.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 
 import 'package:atlas_mobile/core/connection/connection_notifier.dart';

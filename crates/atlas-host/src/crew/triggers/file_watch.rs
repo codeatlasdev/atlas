@@ -216,6 +216,7 @@ async fn poll_fallback(
     path: String,
     filter: Filter,
 ) {
+    // tree-access: a path the owner confirmed in the trigger card (L3 in docs/crew.md, not covered)
     let mut last_mtime: Option<SystemTime> = std::fs::metadata(&path)
         .ok()
         .and_then(|m| m.modified().ok());
@@ -226,6 +227,7 @@ async fn poll_fallback(
         let Some(hub) = hub_weak.upgrade() else {
             return;
         };
+        // tree-access: a path the owner confirmed in the trigger card (L3 in docs/crew.md, not covered)
         let mtime = std::fs::metadata(&path)
             .ok()
             .and_then(|m| m.modified().ok());

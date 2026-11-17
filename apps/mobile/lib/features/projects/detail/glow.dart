@@ -1,4 +1,4 @@
-import 'package:flutter/material.dart';
+import 'package:material_ui/material_ui.dart';
 
 /// The project's colour as a faint glow behind its header. Place it first in a [Stack].
 class ProjectGlow extends StatelessWidget {

@@ -2,7 +2,7 @@
 // the default text size and at 2x, on both platforms' rules (Android 48 dp, iOS 44 pt) and with a
 // label for a screen reader. A control that only passes because a screen pads it is a bug in the
 // theme, found one screen at a time.
-import 'package:flutter/material.dart';
+import 'package:material_ui/material_ui.dart';
 import 'package:flutter_test/flutter_test.dart';
 
 import 'package:atlas_mobile/core/ui/atlas_theme.dart';

@@ -11,7 +11,7 @@
 //! root), and a [`Host`] runs the steps (the real one calls `useradd`, `userdel`, `chown`, `nft`).
 
 use std::io;
-use std::os::unix::fs::PermissionsExt;
+use std::os::fd::{AsRawFd, FromRawFd, OwnedFd};
 use std::os::unix::net::{UnixListener, UnixStream};
 use std::path::{Path, PathBuf};
 use std::sync::Arc;
@@ -41,11 +41,19 @@ pub enum ProvResponse {
 }
 
 /// Who owns a path: a crewmate user, or the crew user that runs hostd.
+///
+/// The group is what lets hostd (the crew user, whose groups are fixed when its process starts) reach a
+/// crewmate's files: a group made for a crewmate after hostd started can never be one of hostd's, so what hostd
+/// must reach is in the crew user's own primary group instead (found by the real-systemd end-to-end test).
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub enum Who {
-    /// The crewmate being provisioned.
+    /// Owned by root, in root's group: a directory the crewmate must be able to enter but never change.
+    Root,
+    /// Owned by the crewmate, in the crew user's group: the crewmate uses it and hostd reaches it.
     Crewmate,
-    /// The crew user (hostd).
+    /// Owned and grouped by the crewmate alone: nobody else, hostd included, needs it.
+    CrewmatePrivate,
+    /// Owned by the crew user (hostd), in the crewmate's group so the agent can read it.
     Crew,
 }
 
@@ -54,9 +62,7 @@ pub enum Who {
 pub enum Step {
     /// `useradd` unless the user exists.
     CreateUser { user: String, dir: PathBuf },
-    /// Put the crew user in the crewmate's group (so it can traverse and write what is group-owned).
-    JoinGroup { crew: String, group: String },
-    /// A directory with this mode, owner and group (the group is always the crewmate's).
+    /// A directory with this mode and owner (and the group [`Who`] says).
     Dir {
         path: PathBuf,
         mode: u32,
@@ -89,11 +95,11 @@ pub struct PlanCfg {
 /// Create a crewmate's account and directories. The layout is the one `layout::Isolated` names:
 ///
 /// ```text
-/// <dir>/              crewmate 0750   the crew user is in its group: traverse only
-/// <dir>/home          crewmate 0700   $HOME: the engines' sign-ins
-/// <dir>/work          crewmate 2770   setgid: the crew user (group) writes, files keep the group
-/// <dir>/crew-runtime  crew     0750   hostd writes what the agent reads; the agent cannot change it
-/// <dir>/memory.md     crewmate 0660   the agent appends, hostd edits
+/// <dir>/              root:root           0711   the crewmate (and hostd) only traverse it; nobody can replace what is in it
+/// <dir>/home          crewmate:crewmate   0700   $HOME: the engines' sign-ins
+/// <dir>/work          crewmate:crew-group 2770   setgid: hostd (group) writes, files keep the group
+/// <dir>/crew-runtime  crew:crewmate       0750   hostd writes what the agent reads; the agent cannot change it
+/// <dir>/memory.md     crewmate:crew-group 0660   the agent appends, hostd edits
 /// ```
 pub fn provision_plan(cfg: &PlanCfg, user: &str) -> Result<Vec<Step>, Refused> {
     let slug = slug_of(user)?;
@@ -103,19 +109,15 @@ pub fn provision_plan(cfg: &PlanCfg, user: &str) -> Result<Vec<Step>, Refused> {
             user: user.to_string(),
             dir: dir.clone(),
         },
-        Step::JoinGroup {
-            crew: cfg.crew.clone(),
-            group: user.to_string(),
-        },
         Step::Dir {
             path: dir.clone(),
-            mode: 0o750,
-            owner: Who::Crewmate,
+            mode: 0o711,
+            owner: Who::Root,
         },
         Step::Dir {
             path: dir.join("home"),
             mode: 0o700,
-            owner: Who::Crewmate,
+            owner: Who::CrewmatePrivate,
         },
         Step::Dir {
             path: dir.join("work"),
@@ -198,7 +200,6 @@ fn run_step(host: &dyn Host, cfg: &PlanCfg, crewmate: &str, step: &Step) -> io::
                 user,
             ])
         }
-        Step::JoinGroup { crew, group } => host.run(&["usermod", "-aG", group, crew]),
         Step::Dir { path, mode, owner } => host.dir(path, *mode, owner, crewmate),
         Step::File { path, mode, owner } => host.file(path, *mode, owner, crewmate),
         Step::KillProcesses { user } => {
@@ -230,7 +231,6 @@ fn run_step(host: &dyn Host, cfg: &PlanCfg, crewmate: &str, step: &Step) -> io::
 fn describe(step: &Step) -> String {
     match step {
         Step::CreateUser { user, .. } => format!("creating user {user}"),
-        Step::JoinGroup { crew, group } => format!("adding {crew} to group {group}"),
         Step::Dir { path, .. } => format!("preparing {}", path.display()),
         Step::File { path, .. } => format!("preparing {}", path.display()),
         Step::KillProcesses { user } => format!("ending the processes of {user}"),
@@ -264,14 +264,18 @@ impl Default for Policy {
 
 /// Destinations a crewmate never reaches: the machine's own network, the cloud metadata service and
 /// every private range (another server in the VPC is exactly what a prompt-injected agent would try).
-const NEVER: [&str; 5] = [
+pub(crate) const NEVER: [&str; 5] = [
     "10.0.0.0/8",
     "172.16.0.0/12",
     "192.168.0.0/16",
     "169.254.0.0/16",
     "100.64.0.0/10",
 ];
-const NEVER6: [&str; 2] = ["fc00::/7", "fe80::/10"];
+/// `64:ff9b::/96` is NAT64: on an IPv6-only network (DNS64) `64:ff9b::a00:1` reaches `10.0.0.1`, so it is as private as
+/// the IPv4 ranges it carries (security review 5). `64:ff9b:1::/48` is the local-use NAT64 prefix (RFC 8215): a
+/// network may translate any IPv4 address through it too (review 6). A crewmate on such a network cannot reach
+/// IPv4-only hosts.
+pub(crate) const NEVER6: [&str; 4] = ["fc00::/7", "fe80::/10", "64:ff9b::/96", "64:ff9b:1::/48"];
 
 /// The nftables ruleset: a table that is replaced as a whole (atomic: `nft -f` applies the file or
 /// none of it) with one chain per crewmate user, selected by `meta skuid`.
@@ -366,32 +370,29 @@ impl Host for System {
     }
 
     fn run(&self, argv: &[&str]) -> io::Result<()> {
-        let st = std::process::Command::new(self.bin(argv[0])?)
-            .args(&argv[1..])
-            .env_clear()
-            .stdin(std::process::Stdio::null())
-            .output()?;
-        if st.status.success() {
-            Ok(())
-        } else {
-            Err(io::Error::other(format!(
-                "{} failed: {}",
-                argv[0],
-                String::from_utf8_lossy(&st.stderr).trim()
-            )))
-        }
+        let bin = self.bin(argv[0])?;
+        retry_locked(LOCK_TRIES, std::thread::sleep, || {
+            let st = std::process::Command::new(&bin)
+                .args(&argv[1..])
+                .env_clear()
+                .stdin(std::process::Stdio::null())
+                .output()
+                .map_err(|e| format!("{}: {e}", argv[0]))?;
+            if st.status.success() {
+                Ok(())
+            } else {
+                Err(String::from_utf8_lossy(&st.stderr).trim().to_owned())
+            }
+        })
+        .map_err(|why| io::Error::other(format!("{} failed: {why}", argv[0])))
     }
 
     fn dir(&self, path: &Path, mode: u32, owner: &Who, crewmate: &str) -> io::Result<()> {
-        std::fs::create_dir_all(path)?;
-        apply(path, mode, &self.owner_ids(owner, crewmate)?)
+        ensure(path, Kind::Dir, mode, &self.owner_ids(owner, crewmate)?)
     }
 
     fn file(&self, path: &Path, mode: u32, owner: &Who, crewmate: &str) -> io::Result<()> {
-        if !path.exists() {
-            std::fs::write(path, b"")?;
-        }
-        apply(path, mode, &self.owner_ids(owner, crewmate)?)
+        ensure(path, Kind::File, mode, &self.owner_ids(owner, crewmate)?)
     }
 
     fn kill_user(&self, user: &str) -> io::Result<()> {
@@ -442,23 +443,147 @@ impl Host for System {
 impl System {
     fn owner_ids(&self, owner: &Who, crewmate: &str) -> io::Result<(u32, u32)> {
         let cm = ids_of(crewmate)?;
+        let crew = ids_of(&self.cfg.crew)?;
         Ok(match owner {
-            Who::Crewmate => (cm.uid, cm.gid),
+            Who::Root => (0, 0),
+            Who::Crewmate => (cm.uid, crew.gid),
+            Who::CrewmatePrivate => (cm.uid, cm.gid),
             // The crew user owns it; the group stays the crewmate's, so the agent can read it.
-            Who::Crew => (ids_of(&self.cfg.crew)?.uid, cm.gid),
+            Who::Crew => (crew.uid, cm.gid),
         })
     }
 }
 
-/// `chmod` then `chown`: setgid and setuid bits would be dropped by a chown that came after.
-fn apply(path: &Path, mode: u32, (uid, gid): &(u32, u32)) -> io::Result<()> {
+/// What an entry of a crewmate's directory must be.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+enum Kind {
+    Dir,
+    File,
+}
+
+/// Create `path` if it is missing, then [`apply`] owner and mode to it.
+fn ensure(path: &Path, kind: Kind, mode: u32, ids: &(u32, u32)) -> io::Result<()> {
+    let (parent, name) = split(path)?;
+    let parent = open_dir(parent)?;
+    // SAFETY: valid fd and NUL-terminated name; 0700/0600 until `apply` sets the real mode.
+    let made = unsafe {
+        match kind {
+            Kind::Dir => libc::mkdirat(parent.as_raw_fd(), name.as_ptr(), 0o700),
+            Kind::File => {
+                let fd = libc::openat(
+                    parent.as_raw_fd(),
+                    name.as_ptr(),
+                    libc::O_CREAT
+                        | libc::O_EXCL
+                        | libc::O_WRONLY
+                        | libc::O_NOFOLLOW
+                        | libc::O_CLOEXEC,
+                    0o600,
+                );
+                if fd >= 0 {
+                    libc::close(fd);
+                    0
+                } else {
+                    -1
+                }
+            }
+        }
+    };
+    if made != 0 && io::Error::last_os_error().kind() != io::ErrorKind::AlreadyExists {
+        return Err(io::Error::last_os_error());
+    }
+    apply_at(&parent, &name, path, kind, mode, ids)
+}
+
+/// Give `path` this owner and mode, **without following a link**. The crewmate controls what is in
+/// its directory (and, before [`Who::Root`], the directory itself), and this runs as root: a plain
+/// `chown(path)` or `chmod(path)` on `memory.md -> /etc/passwd` would change `/etc/passwd`. The entry
+/// is opened relative to its parent with `O_NOFOLLOW`, its type is checked on the open fd, and
+/// `fchown`/`fchmod` act on that fd, so nothing can be swapped between the check and the change.
+fn apply_at(
+    parent: &OwnedFd,
+    name: &std::ffi::CStr,
+    path: &Path,
+    kind: Kind,
+    mode: u32,
+    (uid, gid): &(u32, u32),
+) -> io::Result<()> {
+    // `O_NONBLOCK`: a FIFO planted here must not hang the (serial) service on open.
+    // SAFETY: valid fd and NUL-terminated name.
+    let fd = unsafe {
+        libc::openat(
+            parent.as_raw_fd(),
+            name.as_ptr(),
+            libc::O_RDONLY | libc::O_NOFOLLOW | libc::O_NONBLOCK | libc::O_CLOEXEC,
+        )
+    };
+    if fd < 0 {
+        let e = io::Error::last_os_error();
+        return Err(if e.raw_os_error() == Some(libc::ELOOP) {
+            refuse(path, "is a symbolic link")
+        } else {
+            e
+        });
+    }
+    // SAFETY: openat returned a fresh fd we own.
+    let fd = unsafe { OwnedFd::from_raw_fd(fd) };
+    // SAFETY: zeroed stat is a valid out-parameter.
+    let mut st: libc::stat = unsafe { std::mem::zeroed() };
+    // SAFETY: valid fd and out-pointer.
+    if unsafe { libc::fstat(fd.as_raw_fd(), &mut st) } != 0 {
+        return Err(io::Error::last_os_error());
+    }
+    let (want, label) = match kind {
+        Kind::Dir => (libc::S_IFDIR, "is not a directory"),
+        Kind::File => (libc::S_IFREG, "is not a regular file"),
+    };
+    if st.st_mode & libc::S_IFMT != want {
+        return Err(refuse(path, label));
+    }
+    // A second name for a file is a way to reach something else with the same change.
+    if kind == Kind::File && st.st_nlink > 1 {
+        return Err(refuse(path, "has more than one hard link"));
+    }
+    // `chown` first: it clears the setuid and setgid bits that the `chmod` after it sets.
+    // SAFETY: valid fd.
+    if unsafe { libc::fchown(fd.as_raw_fd(), *uid, *gid) } != 0
+        || unsafe { libc::fchmod(fd.as_raw_fd(), mode as libc::mode_t) } != 0
+    {
+        return Err(io::Error::last_os_error());
+    }
+    Ok(())
+}
+
+fn refuse(path: &Path, why: &str) -> io::Error {
+    io::Error::new(
+        io::ErrorKind::PermissionDenied,
+        format!("{} {why}: refusing to change it", path.display()),
+    )
+}
+
+fn split(path: &Path) -> io::Result<(&Path, std::ffi::CString)> {
+    let bad = || io::Error::new(io::ErrorKind::InvalidInput, "not a path of an entry");
+    let name = path.file_name().ok_or_else(bad)?;
+    let name = std::ffi::CString::new(name.as_encoded_bytes()).map_err(|_| bad())?;
+    Ok((path.parent().ok_or_else(bad)?, name))
+}
+
+/// A directory by path, never through a link at its last component.
+fn open_dir(path: &Path) -> io::Result<OwnedFd> {
     let c = std::ffi::CString::new(path.as_os_str().as_encoded_bytes())
         .map_err(|_| io::Error::new(io::ErrorKind::InvalidInput, "NUL in path"))?;
     // SAFETY: valid NUL-terminated path.
-    if unsafe { libc::chown(c.as_ptr(), *uid, *gid) } != 0 {
+    let fd = unsafe {
+        libc::open(
+            c.as_ptr(),
+            libc::O_RDONLY | libc::O_DIRECTORY | libc::O_NOFOLLOW | libc::O_CLOEXEC,
+        )
+    };
+    if fd < 0 {
         return Err(io::Error::last_os_error());
     }
-    std::fs::set_permissions(path, std::fs::Permissions::from_mode(mode))
+    // SAFETY: open returned a fresh fd we own.
+    Ok(unsafe { OwnedFd::from_raw_fd(fd) })
 }
 
 /// The crewmate users that exist, from the passwd database.
@@ -602,11 +727,93 @@ impl ProvClient {
     }
 }
 
+/// Tries of a `useradd`/`userdel` whose lock on `/etc/passwd` or `/etc/group` is busy (~3 s in all).
+const LOCK_TRIES: u32 = 5;
+
+/// Run `attempt` again while it fails because another process holds the shadow-utils lock ("cannot lock
+/// /etc/passwd; try again later.": an apt run, another `useradd`), waiting 200 ms, 400 ms, 800 ms, …; any other
+/// failure, or the last busy one, is returned as the tool reported it.
+fn retry_locked(
+    tries: u32,
+    mut sleep: impl FnMut(std::time::Duration),
+    mut attempt: impl FnMut() -> Result<(), String>,
+) -> Result<(), String> {
+    let mut wait = std::time::Duration::from_millis(200);
+    for n in 1..=tries {
+        match attempt() {
+            Err(why)
+                if n < tries && why.contains("cannot lock") && why.contains("try again later") =>
+            {
+                sleep(wait);
+                wait *= 2;
+            }
+            r => return r,
+        }
+    }
+    unreachable!("the last try returns")
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
+    use std::os::unix::fs::PermissionsExt;
 
     const USER: &str = "atlas-cm-3f2a9c1e5b7d";
+
+    // CI (Rust Linux, root tests, 2026-11-17): `userdel` failed with "cannot lock /etc/passwd; try again later."
+    // while another test held the lock. Another process holding it (an apt run, a second useradd) is ordinary
+    // on a real server too, and shadow-utils itself says to try again: a busy lock is retried, anything else is not.
+    #[test]
+    fn a_busy_passwd_lock_is_retried_and_any_other_failure_is_not() {
+        let busy = "userdel: cannot lock /etc/passwd; try again later.";
+        let mut tries = 0;
+        let r = retry_locked(
+            5,
+            |_| {},
+            || {
+                tries += 1;
+                if tries < 3 {
+                    Err(busy.to_owned())
+                } else {
+                    Ok(())
+                }
+            },
+        );
+        assert!(r.is_ok() && tries == 3, "{r:?} after {tries}");
+
+        let mut tries = 0;
+        let r = retry_locked(
+            5,
+            |_| {},
+            || {
+                tries += 1;
+                Err("userdel: user 'x' does not exist".to_owned())
+            },
+        );
+        assert_eq!(
+            (r.unwrap_err(), tries),
+            ("userdel: user 'x' does not exist".to_owned(), 1)
+        );
+
+        // Bounded: a lock that never frees fails with the tool's own message after the last try.
+        let mut tries = 0;
+        let mut waited = std::time::Duration::ZERO;
+        let r = retry_locked(
+            5,
+            |d| waited += d,
+            || {
+                tries += 1;
+                Err("useradd: cannot lock /etc/group; try again later.".to_owned())
+            },
+        );
+        assert_eq!(tries, 5);
+        assert!(r.unwrap_err().contains("cannot lock /etc/group"));
+        assert!(
+            waited >= std::time::Duration::from_secs(1)
+                && waited <= std::time::Duration::from_secs(10),
+            "{waited:?}"
+        );
+    }
 
     fn cfg() -> PlanCfg {
         PlanCfg {
@@ -672,9 +879,8 @@ mod tests {
             log,
             [
                 "useradd --system --user-group --no-create-home --home-dir /var/lib/atlas-cm/3f2a9c1e5b7d/home --shell /usr/sbin/nologin atlas-cm-3f2a9c1e5b7d",
-                "usermod -aG atlas-cm-3f2a9c1e5b7d atlas-crew",
-                "dir /var/lib/atlas-cm/3f2a9c1e5b7d 750 Crewmate",
-                "dir /var/lib/atlas-cm/3f2a9c1e5b7d/home 700 Crewmate",
+                "dir /var/lib/atlas-cm/3f2a9c1e5b7d 711 Root",
+                "dir /var/lib/atlas-cm/3f2a9c1e5b7d/home 700 CrewmatePrivate",
                 "dir /var/lib/atlas-cm/3f2a9c1e5b7d/work 2770 Crewmate",
                 "dir /var/lib/atlas-cm/3f2a9c1e5b7d/crew-runtime 750 Crew",
                 "file /var/lib/atlas-cm/3f2a9c1e5b7d/memory.md 660 Crewmate",
@@ -857,6 +1063,9 @@ mod tests {
             "172.16.0.0/12",
             "100.64.0.0/10",
             "fc00::/7",
+            // NAT64 carries any IPv4 address, private ones included.
+            "64:ff9b::/96",
+            "64:ff9b:1::/48",
         ] {
             assert!(r.contains(must), "{must}");
         }
@@ -900,16 +1109,111 @@ atlas-cm-AAAAAAAAAAAA:x:994:994::/x:/bin/false\n";
         );
     }
 
+    // ---- a crewmate that owns its directory must not steer root's chown/chmod --------------------
+
+    fn my_ids() -> (u32, u32) {
+        // SAFETY: plain getters.
+        unsafe { (libc::geteuid(), libc::getegid()) }
+    }
+
+    fn mode_of(p: &Path) -> u32 {
+        std::fs::metadata(p).unwrap().permissions().mode() & 0o7777
+    }
+
+    // Regression (security review of #448, B1): the provisioning service runs as root with CAP_CHOWN and
+    // CAP_FOWNER on every task, and the crewmate owned `<dir>`, so it could `ln -s /etc/passwd memory.md`
+    // and have root chown/chmod the target. A link at any entry is refused and its target is untouched.
+    #[test]
+    fn apply_refuses_a_symlink_planted_at_an_entry_and_leaves_its_target_alone() {
+        let t = tempfile::tempdir().unwrap();
+        let secret_file = t.path().join("secret");
+        std::fs::write(&secret_file, b"x").unwrap();
+        std::fs::set_permissions(&secret_file, std::fs::Permissions::from_mode(0o600)).unwrap();
+        let secret_dir = t.path().join("secretdir");
+        std::fs::create_dir(&secret_dir).unwrap();
+        std::fs::set_permissions(&secret_dir, std::fs::Permissions::from_mode(0o700)).unwrap();
+        for (name, kind, target, mode, before) in [
+            ("memory.md", Kind::File, &secret_file, 0o660, 0o600),
+            ("work", Kind::Dir, &secret_dir, 0o2770, 0o700),
+            ("home", Kind::Dir, &secret_dir, 0o700, 0o700),
+            ("crew-runtime", Kind::Dir, &secret_dir, 0o750, 0o700),
+        ] {
+            let link = t.path().join(name);
+            std::os::unix::fs::symlink(target, &link).unwrap();
+            let e = ensure(&link, kind, mode, &my_ids()).unwrap_err();
+            assert!(e.to_string().contains("symbolic link"), "{name}: {e}");
+            assert_eq!(mode_of(target), before, "{name}: the target's mode changed");
+        }
+        // A dangling link is no better: creating the file must not write through it.
+        let gone = t.path().join("gone");
+        let dangling = t.path().join("dangling");
+        std::os::unix::fs::symlink(&gone, &dangling).unwrap();
+        assert!(ensure(&dangling, Kind::File, 0o660, &my_ids()).is_err());
+        assert!(!gone.exists(), "created the link's target");
+    }
+
+    // The directory itself may be the link (a crewmate of an install made before `<dir>` was root's).
+    #[test]
+    fn ensure_refuses_when_the_parent_of_an_entry_is_a_link() {
+        let t = tempfile::tempdir().unwrap();
+        let real = t.path().join("real");
+        std::fs::create_dir(&real).unwrap();
+        let link = t.path().join("dir");
+        std::os::unix::fs::symlink(&real, &link).unwrap();
+        assert!(ensure(&link.join("work"), Kind::Dir, 0o2770, &my_ids()).is_err());
+        assert!(!real.join("work").exists());
+    }
+
+    #[test]
+    fn ensure_refuses_the_wrong_type_and_a_hard_linked_file_and_never_blocks_on_a_fifo() {
+        let t = tempfile::tempdir().unwrap();
+        let file = t.path().join("memory.md");
+        std::fs::write(&file, b"x").unwrap();
+        let e = ensure(&file, Kind::Dir, 0o700, &my_ids()).unwrap_err();
+        assert!(e.to_string().contains("not a directory"), "{e}");
+        let dir = t.path().join("work");
+        std::fs::create_dir(&dir).unwrap();
+        let e = ensure(&dir, Kind::File, 0o660, &my_ids()).unwrap_err();
+        assert!(e.to_string().contains("not a regular file"), "{e}");
+        let other = t.path().join("other-name");
+        std::fs::hard_link(&file, &other).unwrap();
+        let e = ensure(&file, Kind::File, 0o660, &my_ids()).unwrap_err();
+        assert!(e.to_string().contains("hard link"), "{e}");
+        let fifo = t.path().join("fifo");
+        let c = std::ffi::CString::new(fifo.as_os_str().as_encoded_bytes()).unwrap();
+        // SAFETY: valid path.
+        assert_eq!(unsafe { libc::mkfifo(c.as_ptr(), 0o600) }, 0);
+        assert!(ensure(&fifo, Kind::File, 0o660, &my_ids()).is_err());
+    }
+
+    #[test]
+    fn ensure_creates_what_is_missing_with_the_asked_mode_and_repairs_what_is_there() {
+        let t = tempfile::tempdir().unwrap();
+        let (d, f) = (t.path().join("work"), t.path().join("memory.md"));
+        ensure(&d, Kind::Dir, 0o2770, &my_ids()).unwrap();
+        ensure(&f, Kind::File, 0o660, &my_ids()).unwrap();
+        assert_eq!((mode_of(&d), mode_of(&f)), (0o2770, 0o660));
+        std::fs::write(&f, b"kept").unwrap();
+        std::fs::set_permissions(&f, std::fs::Permissions::from_mode(0o600)).unwrap();
+        ensure(&f, Kind::File, 0o660, &my_ids()).unwrap();
+        assert_eq!(mode_of(&f), 0o660);
+        assert_eq!(
+            std::fs::read(&f).unwrap(),
+            b"kept",
+            "contents are never touched"
+        );
+        // The parent is never created: a missing root of the crewmates is an install problem.
+        assert!(ensure(&t.path().join("no/such/dir"), Kind::Dir, 0o700, &my_ids()).is_err());
+    }
+
     // ---- real filesystem: modes survive chown (setgid is dropped by a chown after chmod) -------
 
     #[test]
-    fn apply_sets_the_setgid_bit_that_a_later_chown_would_have_cleared() {
+    fn ensure_sets_the_setgid_bit_that_a_later_chown_would_have_cleared() {
         let t = tempfile::tempdir().unwrap();
         let d = t.path().join("work");
         std::fs::create_dir(&d).unwrap();
-        // SAFETY: plain getters.
-        let ids = unsafe { (libc::geteuid(), libc::getegid()) };
-        apply(&d, 0o2770, &ids).unwrap();
+        ensure(&d, Kind::Dir, 0o2770, &my_ids()).unwrap();
         let mode = std::fs::metadata(&d).unwrap().permissions().mode();
         assert_eq!(mode & 0o7777, 0o2770, "{mode:o}");
     }
@@ -967,7 +1271,6 @@ atlas-cm-AAAAAAAAAAAA:x:994:994::/x:/bin/false\n";
             }
         }
         let _guard = Cleanup(&host, &cfg);
-        // `usermod -aG <group> root` is harmless for root; the crew user stands in as root here.
         execute(&host, &cfg, user, &provision_plan(&cfg, user).unwrap()).unwrap();
         let ids = super::super::exec::lookup(user).unwrap();
         assert_ne!(ids.uid, 0);
@@ -976,12 +1279,33 @@ atlas-cm-AAAAAAAAAAAA:x:994:994::/x:/bin/false\n";
         use std::os::unix::fs::MetadataExt;
         let work = meta("work");
         assert_eq!(work.permissions().mode() & 0o7777, 0o2770);
-        assert_eq!((work.uid(), work.gid()), (ids.uid, ids.gid));
+        // hostd reaches it through the crew user's group (here root's: the crew user stands in as root).
+        assert_eq!(work.uid(), ids.uid);
+        assert_eq!(work.gid(), 0);
         assert_eq!(meta("home").permissions().mode() & 0o7777, 0o700);
+        assert_eq!(meta("home").gid(), ids.gid, "$HOME is the crewmate's alone");
         // crew-runtime: owned by the crew user (root here), group the crewmate's.
         let rt = meta("crew-runtime");
         assert_eq!((rt.uid(), rt.gid()), (0, ids.gid));
         assert_eq!(meta("memory.md").permissions().mode() & 0o7777, 0o660);
+        // The crewmate's directory is root's: it can enter it and never replace what is in it.
+        let top = std::fs::metadata(&dir).unwrap();
+        assert_eq!(
+            (top.uid(), top.gid(), top.permissions().mode() & 0o7777),
+            (0, 0, 0o711)
+        );
+        // A link planted where `memory.md` is (as the old crewmate-owned directory allowed) is refused by the
+        // real service, and root's file behind it keeps its owner and mode.
+        let secret = t.path().join("secret");
+        std::fs::write(&secret, b"x").unwrap();
+        std::fs::set_permissions(&secret, std::fs::Permissions::from_mode(0o600)).unwrap();
+        std::fs::remove_file(dir.join("memory.md")).unwrap();
+        std::os::unix::fs::symlink(&secret, dir.join("memory.md")).unwrap();
+        let e = execute(&host, &cfg, user, &provision_plan(&cfg, user).unwrap()).unwrap_err();
+        assert!(e.to_string().contains("symbolic link"), "{e}");
+        let s = std::fs::metadata(&secret).unwrap();
+        assert_eq!((s.uid(), s.permissions().mode() & 0o7777), (0, 0o600));
+        std::fs::remove_file(dir.join("memory.md")).unwrap();
         // Idempotent.
         execute(&host, &cfg, user, &provision_plan(&cfg, user).unwrap()).unwrap();
         // Removal takes the user and the tree.

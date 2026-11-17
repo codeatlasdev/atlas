@@ -11,7 +11,8 @@ import { afterEach, expect, mock, test } from "bun:test";
 //  - item titles with literal backticks: the title was printed as text as well.
 // Real kit Drawer, real store, real renderer: what is asserted is the markup a reader gets.
 // Dynamic imports on purpose: the Svelte loader registered by test/setup.ts must exist before these modules load.
-mock.module("@tauri-apps/api/core", () => ({ invoke: async () => ({}) }));
+let invokeImpl = async (_cmd, _args) => ({});
+mock.module("@tauri-apps/api/core", () => ({ invoke: (cmd, args) => invokeImpl(cmd, args) }));
 mock.module("@tauri-apps/api/event", () => ({ listen: async () => () => {} }));
 mock.module("@tauri-apps/api/window", () => ({ getCurrentWindow: () => ({}) }));
 await (await import("../../../test/uiKit.ts")).useRealKit("Drawer", "Button", "Spinner");
@@ -122,4 +123,133 @@ test("a stable release has no prerelease badge in the header but still names its
 	const body = await open([release("1.5.0")], "stable");
 	expect(body.querySelector(".meta .chip[data-channel]")).toBeNull();
 	expect(body.querySelector(".chan .chip[data-channel]")?.dataset.channel).toBe("stable");
+});
+
+// Incident (first-user pass, shot 26): the sheet for 1.5.0-alpha.25 said "No release notes for this version / The
+// changelog has no entry for it yet" although CHANGELOG.md has `## [1.5.0-alpha.25]`. A sheet must end in one of three
+// states: the notes, "Couldn't load" with a reason and Retry, or a "no entry" that names the version.
+const CHANGELOG = (await Bun.file(`${import.meta.dir}/../../../../../CHANGELOG.md`).text()).replace(
+	/\r\n/g,
+	"\n",
+);
+/** The body of `## [version]` in the real CHANGELOG.md, the way the Rust parser hands it to the sheet. */
+const sectionOf = (version) => {
+	const head = CHANGELOG.indexOf(`## [${version}]`);
+	if (head < 0) throw new Error(`CHANGELOG.md has no [${version}]`);
+	const body = CHANGELOG.slice(CHANGELOG.indexOf("\n", head) + 1);
+	return body.slice(0, body.search(/^## \[/m)).trim();
+};
+
+const running = (version) => ({
+	app: { version, dev: false },
+	cli: { version },
+});
+
+async function openFresh(handler, info = running("1.5.0-alpha.25")) {
+	u.info = info;
+	u.release = null;
+	u.notesError = null;
+	u.notesFor = null;
+	invokeImpl = handler;
+	const target = document.createElement("div");
+	document.body.append(target);
+	const app = flushSync(() => mount(WhatsNew, { target, props: {} }));
+	done = () => (unmount(app), target.remove());
+	u.showWhatsNew();
+	for (let i = 0; i < 50 && u.notesLoading; i++) await tick();
+	await tick();
+	flushSync();
+	return document.body;
+}
+
+afterEach(() => {
+	invokeImpl = async () => ({});
+	u.info = null;
+	u.release = null;
+	u.notesError = null;
+	u.notesFor = null;
+});
+
+for (const version of ["1.5.0-alpha.25", "1.5.0-alpha.26"]) {
+	test(`the real CHANGELOG.md entry of ${version} renders as notes, not as "no release notes"`, async () => {
+		const notes = sectionOf(version);
+		expect(notes.length).toBeGreaterThan(200);
+		const body = await openFresh(
+			async (cmd) => (cmd === "releases_between" ? [release(version, notes)] : {}),
+			running(version),
+		);
+		// The sheet is not in its empty ("No release notes for X") or error state. Checked on the state element, not on
+		// the phrase: the notes may quote it (1.5.0-alpha.26's What's new entry does), which failed the release CI.
+		expect(body.querySelector(".state")).toBeNull();
+		expect(body.querySelector(".num")?.textContent).toBe(version);
+		expect(body.querySelectorAll(".group").length).toBeGreaterThan(0);
+		expect(body.querySelectorAll("li").length).toBeGreaterThan(2);
+	});
+}
+
+test("a failed read says it could not load, why, and Retry loads the notes", async () => {
+	let calls = 0;
+	const body = await openFresh(async (cmd) => {
+		if (cmd !== "releases_between") return {};
+		if (calls++ === 0) throw "GitHub request failed: curl: (6) Could not resolve host";
+		return [release("1.5.0-alpha.25")];
+	});
+	expect(body.textContent).toContain("Couldn't load the release notes");
+	expect(body.textContent).toContain("Could not resolve host");
+	expect(body.textContent).not.toContain("No release notes");
+	const retry = [...body.querySelectorAll("button")].find((b) => b.textContent.trim() === "Retry");
+	expect(retry).toBeDefined();
+	retry.click();
+	for (let i = 0; i < 50 && u.notesLoading; i++) await tick();
+	await tick();
+	flushSync();
+	expect(body.textContent).not.toContain("Couldn't load");
+	expect(body.querySelector(".num")?.textContent).toBe("1.5.0-alpha.25");
+});
+
+test("a failure with no message is still a failure with a reason, never the empty-changelog state", async () => {
+	for (const empty of ["", "  ", new Error("")]) {
+		const body = await openFresh(async (cmd) => {
+			if (cmd === "releases_between") throw empty;
+			return {};
+		});
+		expect(body.textContent, JSON.stringify(empty)).toContain("Couldn't load the release notes");
+		expect(body.textContent).not.toContain("No release notes");
+		expect(body.querySelector(".state p")?.textContent.trim().length).toBeGreaterThan(0);
+		done();
+		done = undefined;
+		u.whatsNewOpen = false;
+	}
+});
+
+test("a version the changelog really lacks says so, naming it", async () => {
+	const body = await openFresh(
+		async (cmd) => (cmd === "releases_between" ? [] : {}),
+		running("1.5.0-alpha.99"),
+	);
+	expect(body.textContent).toContain("No release notes for 1.5.0-alpha.99");
+	expect(body.textContent).toContain("The changelog has no entry for it yet");
+	expect(body.textContent).not.toContain("Couldn't load");
+});
+
+test("opening the sheet before the running version is known reads it instead of showing an empty sheet", async () => {
+	const asked = [];
+	const body = await openFresh(async (cmd, args) => {
+		asked.push(cmd);
+		if (cmd === "system_info") return running("1.5.0-alpha.25");
+		if (cmd === "releases_between") return [release(args.to)];
+		return {};
+	}, null);
+	expect(asked).toEqual(["system_info", "releases_between"]);
+	expect(body.querySelector(".num")?.textContent).toBe("1.5.0-alpha.25");
+	expect(body.textContent).not.toContain("No release notes");
+});
+
+test("opening the sheet when even the running version cannot be read says it could not load", async () => {
+	const body = await openFresh(async (cmd) => {
+		if (cmd === "system_info") throw "cannot run atlas";
+		return {};
+	}, null);
+	expect(body.textContent).toContain("Couldn't load the release notes");
+	expect(body.textContent).toContain("cannot run atlas");
 });

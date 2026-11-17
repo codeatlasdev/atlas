@@ -5,7 +5,7 @@ description: "Wire Atlas into omp, Claude Code and Codex with one command: MCP s
 
 # Agent setup
 
-`atlas setup` wires Atlas into your AI coding agent in one command. Three agents are supported: [OMP](https://github.com/can1357/oh-my-pi), [Claude Code](https://code.claude.com) and [Codex](https://developers.openai.com/codex). They share the same plan/apply machinery, flags and ownership rules.
+`atlas setup` wires Atlas into your AI coding agent in one command. Four agents are supported: [OMP](https://github.com/can1357/oh-my-pi), [Claude Code](https://code.claude.com), [Codex](https://developers.openai.com/codex) and [OpenCode](https://opencode.ai) (`atlas setup opencode`: one global plugin for status events and remote approval, user scope only; the tables below cover the first three). They share the same plan/apply machinery, flags and ownership rules.
 
 ```bash
 atlas setup                          # detect omp / claude / codex on PATH, show status and the commands to run

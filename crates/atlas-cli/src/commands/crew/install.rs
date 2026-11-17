@@ -13,6 +13,10 @@
 
 use anyhow::{Context, Result, bail};
 use clap::Args;
+use serde_json::json;
+use std::sync::atomic::{AtomicBool, Ordering};
+
+use atlas_core::progress;
 
 use crate::commands::AtlasCommand;
 use crate::commands::deploy::remote::{Remote, shq};
@@ -32,6 +36,10 @@ pub struct InstallArgs {
     /// SSH port (default 22). Used when the server listens on a non-standard port.
     #[arg(long, default_value_t = 22)]
     pub port: u16,
+    /// Private key to sign in with (`ssh -i`), instead of the ones ssh finds by itself. Its public key is the one
+    /// added to the crew user's `authorized_keys`. Atlas Desktop passes the key picked in "Add a crew server".
+    #[arg(long)]
+    pub identity: Option<std::path::PathBuf>,
     /// Read sudo password from stdin instead of requiring passwordless sudo.
     /// Used by Atlas Desktop; the password is NEVER placed on argv.
     #[arg(long, hide = true)]
@@ -45,11 +53,32 @@ pub struct InstallArgs {
     /// Needs Node.js on the server and sudo for the apt libraries; the same as `atlas crew browsers install`.
     #[arg(long)]
     pub browsers: bool,
+    /// What stdout carries: `text` (`step: <key>` markers, for people and old clients) or `json` (one
+    /// event per line: kind, code, args, message; never translated). Atlas Desktop reads only `json`.
+    #[arg(long, value_enum, default_value_t = Progress::Text)]
+    pub progress: Progress,
 }
+
+/// See [`InstallArgs::progress`] and `atlas_core::progress` for the event contract.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, clap::ValueEnum)]
+pub enum Progress {
+    Text,
+    Json,
+}
+
+/// Whether this process prints events instead of `step:` markers (set once, by [`InstallArgs::run`]).
+static JSON_EVENTS: AtomicBool = AtomicBool::new(false);
 
 impl AtlasCommand for InstallArgs {
     async fn run(self) -> Result<()> {
-        run_install(self).await
+        let json = self.progress == Progress::Json;
+        JSON_EVENTS.store(json, Ordering::Relaxed);
+        let result = run_install(self).await;
+        // The failure is the last event, with the code of the error, so a client never reads text.
+        if let (true, Err(e)) = (json, &result) {
+            println!("{}", progress::error_line(e));
+        }
+        result
     }
 }
 
@@ -63,7 +92,23 @@ fn step(msg: &str) {
 }
 
 fn step_marker(key: &str) {
-    println!("step: {key}");
+    if JSON_EVENTS.load(Ordering::Relaxed) {
+        let message = match key {
+            "check" => "checking the server",
+            "install" => "installing atlas",
+            "user" => "creating the crew user",
+            "service" => "writing the systemd service",
+            "ssh" => "configuring SSH access",
+            "browsers" => "installing browsers",
+            _ => "done",
+        };
+        println!(
+            "{}",
+            progress::event_line(progress::Kind::Step, key, json!({}), message)
+        );
+    } else {
+        println!("step: {key}");
+    }
 }
 
 /// Ask the host which of the pre-rename and current names exist (one ssh round trip).
@@ -115,9 +160,9 @@ Look at: atlas crew logs {target}",
 
 async fn run_install(args: InstallArgs) -> Result<()> {
     let host = host_from_target(&args.ssh_target).to_owned();
-    let r = Remote::crew(&args.ssh_target, args.port);
+    let r = Remote::crew(&args.ssh_target, args.port).with_identity(args.identity.clone());
     // The key is looked up first: a person without one is told before anything is installed.
-    let pubkey = local_public_key(&args.ssh_target, args.port)?;
+    let pubkey = local_public_key(&args.ssh_target, args.port, args.identity.clone())?;
 
     // --- Preflight: reads only, names everything that is missing ---
     step_marker("check");
@@ -168,7 +213,17 @@ async fn run_install(args: InstallArgs) -> Result<()> {
         }
     }
     // The ssh user to reach this server as: Atlas Desktop reads it (it differs on a migrated server).
-    println!("user: {}", account.user);
+    if JSON_EVENTS.load(Ordering::Relaxed) {
+        let line = progress::event_line(
+            progress::Kind::Info,
+            "crew.user",
+            json!({ "user": account.user }),
+            &format!("the ssh user is {}", account.user),
+        );
+        println!("{line}");
+    } else {
+        println!("user: {}", account.user);
+    }
 
     // The desktop reaches a crew server over SSH as its user and runs `$HOME/.atlas/bin/atlas hostd`, the same
     // path as any remote; without this link it found no binary and the first crewmate never got created.
@@ -213,12 +268,14 @@ async fn run_install(args: InstallArgs) -> Result<()> {
     }
     step("writing systemd service");
     let unit = layout::systemd_unit(&account);
-    let write_unit = format!(
-        "sudo tee /etc/systemd/system/{SERVICE}.service > /dev/null && sudo systemctl daemon-reload && sudo systemctl enable {SERVICE}"
-    );
-    let o = p.exec_stdin(&write_unit, Some(unit.as_bytes())).await?;
+    write_unit(&p, &format!("/etc/systemd/system/{SERVICE}.service"), &unit).await?;
+    let o = p
+        .exec(&format!(
+            "sudo systemctl daemon-reload && sudo systemctl enable {SERVICE}"
+        ))
+        .await?;
     if o.code != 0 {
-        bail!("writing the service failed: {}", o.stderr.trim());
+        bail!("enabling the service failed: {}", o.stderr.trim());
     }
 
     // --- One Linux user per crewmate ---
@@ -274,11 +331,17 @@ async fn run_install(args: InstallArgs) -> Result<()> {
         super::browsers::install(&p, &args.ssh_target).await?;
     }
 
-    println!(
+    let ready = format!(
         "\x1b[32m✓\x1b[0m Crew server ready: {user}@{host}. \
 Add it in Atlas Desktop → Crew, then sign the agents in (atlas crew login <agent>).",
         user = account.user
     );
+    // With --progress json stdout carries events only.
+    if JSON_EVENTS.load(Ordering::Relaxed) {
+        eprintln!("{ready}");
+    } else {
+        println!("{ready}");
+    }
     step_marker("done");
     Ok(())
 }
@@ -291,10 +354,20 @@ pub(super) async fn preflight(r: &Remote, ssh_target: &str) -> Result<&'static s
     if out.code == 255 {
         // ssh's own failure (refused, timeout, key rejected): not the host's OS. Saying "needs Linux with systemd"
         // here sent the user hunting for the wrong problem on a server whose sshd was simply down.
-        bail!(
-            "could not connect to {ssh_target} over SSH: {}",
-            out.stderr.trim()
-        );
+        // The stable code lets a client tell "the key is not authorized yet" from "the host is down" without
+        // reading the text (OpenSSH's own English, which is not ours to translate or to match on).
+        let stderr = out.stderr.trim();
+        let code = if stderr.contains("Permission denied (publickey") {
+            "ssh.key_rejected"
+        } else {
+            "ssh.unreachable"
+        };
+        return Err(progress::Coded::new(
+            code,
+            json!({ "target": ssh_target, "detail": stderr }),
+            format!("could not connect to {ssh_target} over SSH: {stderr}"),
+        )
+        .into());
     }
     let p = binary::parse_preflight(&out.stdout);
     // The OS first: a Mac or a BSD also lacks "tools", and the useful message is that it is not Linux.
@@ -402,13 +475,35 @@ async fn list_crewmates(p: &Priv<'_>, a: &Account) -> Result<Vec<String>> {
         .collect())
 }
 
-/// The engines installed system-wide: each agent with the vendor's own install line
-/// (`agent_install_hint`, the lines `atlas crew login` prints).
+/// The engines installed system-wide: each built-in agent with the vendor's own install line
+/// (`install` in `data/agents.json`, the lines `atlas crew login` prints).
 fn isolation_engines() -> Vec<(&'static str, String)> {
-    ["omp", "claude", "codex", "opencode"]
-        .into_iter()
-        .filter_map(|a| super::agent_install_hint(a).map(|c| (a, c.to_string())))
+    atlas_core::agents::all()
+        .iter()
+        .map(|a| (a.id.as_str(), a.install.clone()))
         .collect()
+}
+
+/// Write the unit `file` on the server through [`layout::write_unit_script`], the one way every unit Atlas owns is
+/// written: unmasked first, replaced rather than written through. A unit that had to be unmasked is said in one line;
+/// one that could not be fails with the command to run (and a `hint:` line on stderr, which Atlas Desktop shows as what to do).
+async fn write_unit(p: &Priv<'_>, file: &str, contents: &str) -> Result<()> {
+    let o = p
+        .exec_stdin(&layout::write_unit_script(file), Some(contents.as_bytes()))
+        .await?;
+    for unit in layout::unmasked_units(&o.stdout) {
+        step(&format!(
+            "{unit} was masked: unmasked it and wrote the real unit"
+        ));
+    }
+    if o.code != 0 {
+        if o.code == layout::UNMASK_FAILED {
+            let unit = file.rsplit('/').next().unwrap_or(file);
+            eprintln!("{}", layout::unmask_hint(unit));
+        }
+        return Err(layout::unit_write_error(o.code, &o.stderr, file));
+    }
+    Ok(())
 }
 
 /// Run one isolation action on the server. Through [`Priv`], like every privileged step of the install:
@@ -416,14 +511,24 @@ fn isolation_engines() -> Vec<(&'static str, String)> {
 async fn run_action(p: &Priv<'_>, action: &isolation::Action) -> Result<()> {
     let (what, o) = match action {
         isolation::Action::Run(sh) => (sh.clone(), p.exec(sh).await?),
-        isolation::Action::Write { file, contents } => (
-            format!("writing {file}"),
-            p.exec_stdin(
-                &format!("sudo tee {} > /dev/null", shq(file)),
-                Some(contents.as_bytes()),
-            )
-            .await?,
-        ),
+        isolation::Action::Engine {
+            agent,
+            line,
+            script,
+        } => {
+            let o = p.exec(script).await?;
+            if o.code != 0 {
+                let why = o.stderr.lines().rev().find(|l| !l.trim().is_empty());
+                eprintln!(
+                    "\x1b[33m◆\x1b[0m {agent} was not installed on the server ({}). Crewmates that use it cannot run until it is: fix that and run `atlas crew install` again, or install it with the vendor's line, `{line}`.",
+                    why.unwrap_or("the installer failed").trim()
+                );
+            }
+            return Ok(());
+        }
+        isolation::Action::Write { file, contents } => {
+            return write_unit(p, file, contents).await;
+        }
     };
     if o.code != 0 {
         bail!(
@@ -435,17 +540,21 @@ async fn run_action(p: &Priv<'_>, action: &isolation::Action) -> Result<()> {
     Ok(())
 }
 
-/// The public key `ssh` itself would offer to `ssh_target` (`ssh -G`: `~/.ssh/config` identities and the default
-/// key names, so a key called anything is found), read before the install changes anything on the server.
-fn local_public_key(ssh_target: &str, port: u16) -> Result<String> {
-    let target = atlas_core::ssh::SshTarget::new(ssh_target, Some(port));
-    let path = atlas_core::ssh::find_public_key(&target).with_context(|| {
-        "no SSH public key found (ssh -G lists none that exists as <identity>.pub); \
-create one with: ssh-keygen -t ed25519"
+/// The public key `ssh` itself would offer to `ssh_target`: the `--identity` key, else the first existing one of
+/// `ssh -G` (`~/.ssh/config` identities and the default key names, so a key called anything is found). Read before
+/// the install changes anything on the server.
+fn local_public_key(
+    ssh_target: &str,
+    port: u16,
+    identity: Option<std::path::PathBuf>,
+) -> Result<String> {
+    let target = atlas_core::ssh::SshTarget::new(ssh_target, Some(port)).with_identity(identity);
+    let key = atlas_core::ssh::find_key(&target).with_context(|| match &target.identity {
+        Some(k) => format!("the SSH key {} does not exist", k.display()),
+        None => "no SSH key found (ssh -G lists none that exists); create one with: ssh-keygen -t ed25519"
+            .to_owned(),
     })?;
-    let key =
-        std::fs::read_to_string(&path).with_context(|| format!("reading {}", path.display()))?;
-    Ok(key.trim().to_owned())
+    key.public_text().map_err(anyhow::Error::msg)
 }
 
 /// Append `pubkey` to the crew user's authorized_keys (idempotent), then lock the file down.
@@ -549,9 +658,11 @@ mod tests {
             ssh_target: "ubuntu@example.com".into(),
             yes: true,
             port: 22,
+            identity: None,
             sudo_password_stdin: true,
             binary: None,
             browsers: false,
+            progress: Progress::Text,
         };
     }
 }

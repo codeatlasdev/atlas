@@ -44,7 +44,7 @@ pub fn import_script(rename: bool) -> String {
 /// `home <path>`, `crewmates <n>`, `size <du -sh>` (nothing for a host without crew data).
 pub const INVENTORY_SCRIPT: &str = "u=$(if id atlas-crew >/dev/null 2>&1; then echo atlas-crew; elif id atlas-bot >/dev/null 2>&1; then echo atlas-bot; else echo ''; fi); \
 [ -n \"$u\" ] || exit 0; h=/var/lib/$u; echo \"home $h\"; \
-n=$(ls -d $h/.atlas/crew/*/ $h/.atlas/bots/*/ 2>/dev/null | wc -l | tr -d ' '); echo \"crewmates $n\"; \
+n=$(sudo -n sh -c \"ls -d $h/.atlas/crew/*/ $h/.atlas/bots/*/ 2>/dev/null\" | wc -l | tr -d ' '); echo \"crewmates $n\"; \
 echo \"size $(sudo -n du -sh $h 2>/dev/null | cut -f1)\"";
 
 /// What [`INVENTORY_SCRIPT`] printed.
@@ -114,7 +114,7 @@ pub fn confirms_server_name(target: &str, typed: &str) -> bool {
 
 /// Where an export goes when `-o` is not given: `atlas-crew-<host>-<yyyymmdd-hhmmss>.tar.gz`, with the
 /// host reduced to characters safe in a file name.
-pub fn default_export_name(target: &str, now: chrono::DateTime<chrono::Utc>) -> String {
+pub fn default_export_name(target: &str, now: std::time::SystemTime) -> String {
     let host: String = server_name(target)
         .chars()
         .map(|c| {
@@ -125,7 +125,8 @@ pub fn default_export_name(target: &str, now: chrono::DateTime<chrono::Utc>) -> 
             }
         })
         .collect();
-    format!("atlas-crew-{host}-{}.tar.gz", now.format("%Y%m%d-%H%M%S"))
+    let stamp = atlas_core::time::utc_compact(now);
+    format!("atlas-crew-{host}-{}-{}.tar.gz", &stamp[..8], &stamp[8..])
 }
 
 /// A failed export/import on the server, in words. A server whose `atlas` predates the feature
@@ -181,7 +182,6 @@ pub fn check_output_free(path: &std::path::Path) -> Result<()> {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use chrono::TimeZone;
 
     #[test]
     fn export_runs_the_servers_atlas_as_the_crew_user_in_its_dir_and_streams_to_stdout() {
@@ -245,6 +245,18 @@ mod tests {
         for w in ["rm ", "userdel", "systemctl"] {
             assert!(!INVENTORY_SCRIPT.contains(w), "{w}");
         }
+    }
+
+    // Incident (real-systemd end-to-end test): since isolation the crew home is 0700 for the crew user, and the
+    // inventory counted its crewmates as the admin user, so uninstall told the person "0 crewmate(s)" about a
+    // home that held one. Only the size went through sudo.
+    #[test]
+    fn the_inventory_counts_crewmates_with_sudo_because_the_crew_home_is_private() {
+        let count = INVENTORY_SCRIPT
+            .split(';')
+            .find(|l| l.contains(".atlas/crew/"))
+            .expect("the count line");
+        assert!(count.contains("sudo -n"), "{count}");
     }
 
     // Uninstall prints what it deletes before it deletes anything, and names the home and the count.
@@ -323,7 +335,7 @@ mod tests {
 
     #[test]
     fn the_default_file_name_has_the_host_and_the_time_and_no_unsafe_characters() {
-        let t = chrono::Utc.with_ymd_and_hms(2026, 11, 14, 9, 5, 7).unwrap();
+        let t = std::time::UNIX_EPOCH + std::time::Duration::from_secs(1_794_647_107); // 2026-11-14T09:05:07Z
         assert_eq!(
             default_export_name("me@box.example.com", t),
             "atlas-crew-box.example.com-20261114-090507.tar.gz"

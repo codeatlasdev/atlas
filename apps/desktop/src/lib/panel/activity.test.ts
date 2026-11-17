@@ -113,7 +113,7 @@ describe("filters", () => {
 describe("bucket and group", () => {
 	test("labels", () => {
 		const now = new Date(2026, 9, 11, 19, 30).getTime();
-		expect(bucket(now - 10_000, now)).toBe("Just now");
+		expect(bucket(now - 10_000, now)).toBe("Now");
 		expect(bucket(now - 2 * 60_000, now)).toBe("1 min ago");
 		expect(bucket(now - 7 * 60_000, now)).toBe("5 min ago");
 		expect(bucket(now - 20 * 60_000, now)).toBe("15 min ago");
@@ -129,7 +129,7 @@ describe("bucket and group", () => {
 			st("c", "running", T0 - 10 * 60_000),
 		]);
 		const g = group(rows, now);
-		expect(g.map((x) => x.label)).toEqual(["Just now", "5 min ago"]);
+		expect(g.map((x) => x.label)).toEqual(["Now", "5 min ago"]);
 		expect(g[0].rows).toHaveLength(2);
 	});
 });
@@ -137,8 +137,18 @@ describe("bucket and group", () => {
 describe("unread and span", () => {
 	test("counts rows newer than the last seen time and flags errors", () => {
 		const rows = fold([st("a", "running", T0), { ts: T0 + 1000, kind: "alert", text: "a: x" }]);
-		expect(unread(rows, T0 - 1)).toEqual({ n: 2, errors: 1 });
+		expect(unread(rows, T0 - 1)).toEqual({ n: 1, errors: 1 });
 		expect(unread(rows, T0 + 1000)).toEqual({ n: 0, errors: 0 });
+	});
+	// Regression: 1.5.0-alpha.26, a brand-new user's healthy stack start showed a red "9+" on the Activity button.
+	test("a normal stack start is not unread: only failures and warnings are", () => {
+		const start = ["api", "web", "worker", "payments", "migrate"].flatMap((s, i) => [
+			st(s, "starting", T0 + i * 10_000),
+			st(s, "running", T0 + i * 10_000 + 1500),
+		]);
+		expect(unread(fold(start), T0 - 1)).toEqual({ n: 0, errors: 0 });
+		const crashed = fold([...start, st("api", "failed", T0 + 120_000)]);
+		expect(unread(crashed, T0 - 1)).toMatchObject({ n: 1, errors: 1 });
 	});
 	test("span formats short and long ranges", () => {
 		expect(span(0, 12_000)).toBe("12s");

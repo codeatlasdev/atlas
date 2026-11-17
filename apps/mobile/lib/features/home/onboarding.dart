@@ -1,4 +1,6 @@
-import 'package:flutter/material.dart';
+import 'dart:math' show max;
+
+import 'package:material_ui/material_ui.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:go_router/go_router.dart';
 
@@ -87,24 +89,36 @@ class _OnboardingState extends ConsumerState<Onboarding> {
             ),
           ),
           Expanded(
-            child: PageView(
-              controller: _pages,
-              onPageChanged: (i) => setState(() => _i = i),
-              children: [
-                for (var i = 0; i < _content.length; i++)
+            // A size change (the app back from the background, a system prompt dismissed) moves the scroll
+            // to the same page without notifying its listeners, after the pages were laid out against the
+            // stale position: the pages are redrawn when the scroll's measurements change, or the current one
+            // stays faded out (regression, iPhone 2026-11-16: the last page came back empty).
+            child: NotificationListener<ScrollMetricsNotification>(
+              onNotification: (_) {
+                if (mounted) setState(() {});
+                return false;
+              },
+              child: PageView(
+                controller: _pages,
+                onPageChanged: (i) => setState(() => _i = i),
+                children: [
+                  for (var i = 0; i < _content.length; i++)
+                    _Parallax(
+                      controller: _pages,
+                      index: i,
+                      current: _i,
+                      art: _content[i].art(context),
+                      child: _PageText(page: _content[i]),
+                    ),
                   _Parallax(
                     controller: _pages,
-                    index: i,
-                    art: _content[i].art(context),
-                    child: _PageText(page: _content[i]),
+                    index: _content.length,
+                    current: _i,
+                    art: const ScanArt(),
+                    child: _HowToPair(active: _last),
                   ),
-                _Parallax(
-                  controller: _pages,
-                  index: _content.length,
-                  art: const ScanArt(),
-                  child: _HowToPair(active: _last),
-                ),
-              ],
+                ],
+              ),
             ),
           ),
           Padding(
@@ -156,28 +170,46 @@ class _Parallax extends StatelessWidget {
   const _Parallax({
     required this.controller,
     required this.index,
+    required this.current,
     required this.art,
     required this.child,
   });
 
   final PageController controller;
   final int index;
+
+  /// The page the onboarding is on: where this page sits when the scroll position cannot say.
+  final int current;
   final Widget art;
   final Widget child;
+
+  /// How far the scroll is from page 0, in pages. Read at layout time, and only trusted while the
+  /// viewport has a size: a frame with no size (iOS gives one when the app leaves the foreground or a
+  /// system prompt covers it) makes `page` meaningless, and the last page came back at opacity 0 for good
+  /// (regression, iPhone 2026-11-16).
+  double _page() {
+    if (controller.hasClients && controller.position.haveDimensions) {
+      final p = controller.page;
+      if (p != null &&
+          p.isFinite &&
+          controller.position.viewportDimension > 0) {
+        return p;
+      }
+    }
+    return current.toDouble();
+  }
 
   @override
   Widget build(BuildContext context) => AnimatedBuilder(
     animation: controller,
     builder: (context, _) {
-      final page = controller.hasClients && controller.position.haveDimensions
-          ? controller.page ?? 0
-          : controller.initialPage.toDouble();
-      // -1 (one page left) .. 0 (centered) .. 1 (one page right)
-      final d = (index - page).clamp(-1.0, 1.0);
       final reduced = Motion.reduced(context);
-      // Short screens / large text: the page scales down as a whole instead of overflowing.
+      // Short screens / large text: the page scales down as a whole instead of overflowing. The position is
+      // read here, in layout, so a change of size (which moves the scroll without notifying) recomputes it.
       return LayoutBuilder(
         builder: (context, box) {
+          // -1 (one page left) .. 0 (centered) .. 1 (one page right)
+          final d = (index - _page()).clamp(-1.0, 1.0);
           final w = box.maxWidth;
           return Padding(
             padding: const EdgeInsets.symmetric(horizontal: Space.xl),
@@ -185,7 +217,8 @@ class _Parallax extends StatelessWidget {
               child: FittedBox(
                 fit: BoxFit.scaleDown,
                 child: SizedBox(
-                  width: w - Space.xl * 2,
+                  // Never negative: a frame with no size (the app leaving the foreground) would throw here.
+                  width: max(0, w - Space.xl * 2),
                   child: Column(
                     mainAxisSize: MainAxisSize.min,
                     children: [

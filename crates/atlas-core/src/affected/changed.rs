@@ -20,16 +20,17 @@ fn git(root: &Path, args: &[&str]) -> Result<String, String> {
     }
 }
 
-fn ref_exists(root: &Path, r: &str) -> bool {
-    git(
-        root,
-        &[
-            "rev-parse",
-            "--verify",
-            "--quiet",
-            &format!("{r}^{{commit}}"),
-        ],
-    )
+/// Runs `git <args>` in the worktree and answers its stdout (or its stderr as the error). The caller decides who
+/// runs it: [`changed_files`] runs it here; a crew server runs it as the crewmate that owns the tree.
+pub type RunGit<'a> = &'a dyn Fn(&[&str]) -> Result<String, String>;
+
+fn ref_exists(git: RunGit, r: &str) -> bool {
+    git(&[
+        "rev-parse",
+        "--verify",
+        "--quiet",
+        &format!("{r}^{{commit}}"),
+    ])
     .is_ok()
 }
 
@@ -38,7 +39,17 @@ fn ref_exists(root: &Path, r: &str) -> bool {
 /// `master`), plus staged, unstaged and untracked files; files git ignores are not changes.
 /// Files of the repo outside `root` are left out.
 pub fn changed_files(root: &Path, base: Option<&str>) -> Result<Vec<String>, String> {
-    if git(root, &["rev-parse", "--is-inside-work-tree"]).is_err() {
+    changed_files_with(root, base, &|args| git(root, args))
+}
+
+/// [`changed_files`] with git run by `git` (in `root`, which is only named in messages): for a tree that another
+/// user controls, whose `.git/config` must not be run as this process.
+pub fn changed_files_with(
+    root: &Path,
+    base: Option<&str>,
+    git: RunGit,
+) -> Result<Vec<String>, String> {
+    if git(&["rev-parse", "--is-inside-work-tree"]).is_err() {
         return Err(format!(
             "{} is not inside a git repository: pass the changed `files` explicitly",
             root.display()
@@ -46,21 +57,21 @@ pub fn changed_files(root: &Path, base: Option<&str>) -> Result<Vec<String>, Str
     }
     let base = match base {
         Some(b) => {
-            if !ref_exists(root, b) {
+            if !ref_exists(git, b) {
                 return Err(format!("base ref '{b}' does not exist in this repository"));
             }
             b
         }
         None => DEFAULT_BASES
             .into_iter()
-            .find(|b| ref_exists(root, b))
+            .find(|b| ref_exists(git, b))
             .ok_or("no origin/main, main or master to diff against: pass `base` or `files`")?,
     };
-    let mb = git(root, &["merge-base", base, "HEAD"])
+    let mb = git(&["merge-base", base, "HEAD"])
         .map_err(|e| format!("no merge base between '{base}' and HEAD: {e}"))?;
     let mb = mb.trim();
-    let tracked = git(root, &["diff", "--name-only", "--relative", "-z", mb])?;
-    let untracked = git(root, &["ls-files", "--others", "--exclude-standard", "-z"])?;
+    let tracked = git(&["diff", "--name-only", "--relative", "-z", mb])?;
+    let untracked = git(&["ls-files", "--others", "--exclude-standard", "-z"])?;
     let mut files: Vec<String> = tracked
         .split('\0')
         .chain(untracked.split('\0'))

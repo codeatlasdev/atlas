@@ -38,7 +38,7 @@ ListenStream={path}\n\
 SocketUser=root\n\
 SocketGroup={group}\n\
 SocketMode=0660\n\
-DirectoryMode=0750\n\
+DirectoryMode=0755\n\
 [Install]\n\
 WantedBy=sockets.target\n",
         group = a.user
@@ -60,8 +60,16 @@ pub fn provision_socket_unit(a: &Account) -> String {
 ///
 /// - `CAP_SETUID`/`CAP_SETGID` switch to the crewmate's user, `CAP_CHOWN` gives it its pty slave,
 ///   `CAP_KILL` signals its processes, `CAP_DAC_OVERRIDE` lets root reach directories that are
-///   0700 for the crewmate or the crew user. Nothing else is in the bounding set.
-/// - `NoNewPrivileges=yes` is fine here: the helper changes uid with `setuid(2)`, never by running
+///   0700 for the crewmate or the crew user, `CAP_SYS_PTRACE` lets the helper still see the crewmates' processes
+///   (reap, the working directory of a session) under `ProtectProc=invisible`, `CAP_NET_ADMIN` lets it ask nftables whether the
+///   egress table is loaded (`nft list table`) before it starts anyone. A crewmate process never has either: it changes
+///   uid without keeping capabilities and sets no_new_privs. Nothing else is in the bounding set.
+/// - `ProtectProc=invisible` (systemd 247; an older systemd ignores it, see docs/crew.md): the `/proc` of the helper's
+///   mount namespace, which every agent inherits, shows a process only to its own user, so one crewmate cannot read
+///   another's `/proc/<pid>/cmdline` (its whole prompt, and every tool command with its variables expanded) or `environ`.
+///   Not `ProcSubset=pid`: it hides `/proc/meminfo`, which Node and most tools read.
+/// - No `NoNewPrivileges=`: with the other sandboxing options it left the helper without `CAP_SETUID` (systemd 255),
+///   so every spawn failed at `setuid`; each child sets no_new_privs on itself instead. The helper changes uid with `setuid(2)`, never by running
 ///   a setuid binary.
 /// - `KillMode=process`: restarting the helper must not kill the agents it started.
 ///   Uninstall stops it with `--kill-who=all` semantics (see [`uninstall_script`]).
@@ -71,6 +79,11 @@ pub fn provision_socket_unit(a: &Account) -> String {
 ///   keeps the helper process out of the unit's cgroup so that cgroup can have one leaf per crewmate.
 ///   `ProtectControlGroups=yes` stays, with only the unit's own cgroup writable again ([`cgroup_path`]);
 ///   the `-` prefix makes a missing path a no-op instead of a unit that cannot start.
+/// - Every seccomp-based option here (`RestrictAddressFamilies=`, `RestrictSUIDSGID=`, `LockPersonality=`) and the
+///   mount namespace of `ProtectSystem=` is inherited by every agent and every tool it runs. So no
+///   `MemoryDenyWriteExecute=`: under it Node's V8 cannot make its JIT code executable and aborts at start (npm, vite,
+///   tsc and the playwright of a project are Node); checked with Node 26 and `systemd-run -p MemoryDenyWriteExecute=yes`,
+///   while Bun and the native engines start. The address families are the ones an agent needs for git, npm and its API.
 pub fn service_unit() -> String {
     let cg = cgroup_path();
     format!(
@@ -84,21 +97,20 @@ User=root\n\
 ExecStart={INSTALL_DIR}/atlas crew-spawn\n\
 KillMode=process\n\
 Restart=on-failure\n\
-NoNewPrivileges=yes\n\
-CapabilityBoundingSet=CAP_SETUID CAP_SETGID CAP_CHOWN CAP_KILL CAP_DAC_OVERRIDE\n\
+CapabilityBoundingSet=CAP_SETUID CAP_SETGID CAP_CHOWN CAP_KILL CAP_DAC_OVERRIDE CAP_SYS_PTRACE CAP_NET_ADMIN\n\
 ProtectSystem=strict\n\
 ReadWritePaths={CM_ROOT} -{cg}\n\
 Delegate=memory pids\n\
 DelegateSubgroup=helper\n\
 ProtectHome=yes\n\
+ProtectProc=invisible\n\
 PrivateTmp=yes\n\
 ProtectKernelTunables=yes\n\
 ProtectKernelModules=yes\n\
 ProtectControlGroups=yes\n\
 RestrictSUIDSGID=yes\n\
-RestrictAddressFamilies=AF_UNIX\n\
-LockPersonality=yes\n\
-MemoryDenyWriteExecute=yes\n"
+RestrictAddressFamilies=AF_UNIX AF_INET AF_INET6 AF_NETLINK\n\
+LockPersonality=yes\n"
     )
 }
 
@@ -112,10 +124,14 @@ pub fn cgroup_path() -> String {
 /// `atlas-crew-provision.service`: the one root process that may create and remove accounts.
 ///
 /// - `CAP_CHOWN`, `CAP_FOWNER`, `CAP_DAC_OVERRIDE` give the crewmate's directories their owners and
-///   modes; `CAP_SETUID`/`CAP_SETGID` are what `useradd` and `userdel` need on `/etc/passwd`;
+///   modes; `CAP_FSETID` keeps the setgid bit of `work/` (a `chmod 2770` by a process without it, whose groups
+///   do not include the directory's, silently drops the bit: files the agent made then belonged to its own
+///   group and hostd could not read them; found by the real-systemd E2E); `CAP_SETUID`/`CAP_SETGID` are what `useradd` and `userdel` need on `/etc/passwd`;
 ///   `CAP_KILL` ends a deleted crewmate's processes; `CAP_NET_ADMIN` loads the egress rules.
 /// - Writes only what account tools touch: `/etc`, `/var/lib/atlas-cm`, `/var/log` (lastlog), `/run`.
-///   `ProtectSystem=full` (not `strict`): `/usr` and the boot files stay read-only, `/etc` is writable.
+///   `ProtectSystem=strict`, not `full`: `full` keeps `/etc` read-only and a `ReadWritePaths=/etc` does not
+///   open it again, so `useradd` could not lock `/etc/passwd`. `strict` makes everything read-only but the listed paths.
+/// - No `RestrictSUIDSGID=`: its seccomp filter would make the `chmod 2770` of a crewmate's `work/` fail.
 /// - `AF_NETLINK` is for `nft`; there is no network family beyond that and unix sockets.
 pub fn provision_service_unit() -> String {
     format!(
@@ -130,15 +146,14 @@ ExecStart={INSTALL_DIR}/atlas crew-spawn --provision\n\
 KillMode=process\n\
 Restart=on-failure\n\
 NoNewPrivileges=yes\n\
-CapabilityBoundingSet=CAP_CHOWN CAP_FOWNER CAP_DAC_OVERRIDE CAP_SETUID CAP_SETGID CAP_KILL CAP_NET_ADMIN\n\
-ProtectSystem=full\n\
+CapabilityBoundingSet=CAP_CHOWN CAP_FOWNER CAP_FSETID CAP_DAC_OVERRIDE CAP_SETUID CAP_SETGID CAP_KILL CAP_NET_ADMIN\n\
+ProtectSystem=strict\n\
 ReadWritePaths=/etc {CM_ROOT} /var/log /run\n\
 ProtectHome=yes\n\
 PrivateTmp=yes\n\
 ProtectKernelTunables=yes\n\
 ProtectKernelModules=yes\n\
 ProtectControlGroups=yes\n\
-RestrictSUIDSGID=yes\n\
 RestrictAddressFamilies=AF_UNIX AF_NETLINK\n\
 LockPersonality=yes\n\
 MemoryDenyWriteExecute=yes\n"
@@ -147,17 +162,25 @@ MemoryDenyWriteExecute=yes\n"
 
 /// `atlas-crew-egress.service`: loads the egress rules at boot, before anything can start a crewmate.
 /// The provisioning service rewrites [`EGRESS_FILE`] whenever a user comes or goes; this only replays it.
+/// `PartOf=`/`After=nftables.service`: a restart of nftables (Debian's `/etc/nftables.conf` begins with
+/// `flush ruleset`) removes the table, and this restarts with it and loads it again (security review 4, S-C); the
+/// spawn helper also refuses to start anyone while the table is missing. A *reload* of nftables flushes the ruleset
+/// the same way, and `PartOf=` does not carry it: `ReloadPropagatedFrom=` does, and `ExecReload` loads the table
+/// again (security review 5, S-1).
 pub fn egress_unit() -> String {
     format!(
         "[Unit]\n\
 Description=Atlas Crew egress rules for crewmate users\n\
-After=network-pre.target\n\
+After=network-pre.target nftables.service\n\
+PartOf=nftables.service\n\
+ReloadPropagatedFrom=nftables.service\n\
 Before=network.target\n\
 ConditionPathExists={EGRESS_FILE}\n\
 [Service]\n\
 Type=oneshot\n\
 RemainAfterExit=yes\n\
 ExecStart=/usr/sbin/nft -f {EGRESS_FILE}\n\
+ExecReload=/usr/sbin/nft -f {EGRESS_FILE}\n\
 [Install]\n\
 WantedBy=multi-user.target\n"
     )
@@ -186,7 +209,7 @@ pub fn install_steps(a: &Account) -> Vec<String> {
     ]
 }
 
-/// The writes of the units, as `(file, contents)`; the caller pipes the contents to `sudo tee <file>`.
+/// The writes of the units, as `(file, contents)`; the caller writes each with [`super::layout::write_unit_script`].
 pub fn unit_files(a: &Account) -> [(String, String); 5] {
     let f = |name: &str, body: String| (format!("/etc/systemd/system/{name}"), body);
     [
@@ -219,6 +242,9 @@ pub fn start_steps() -> Vec<String> {
     for u in [SPAWN_UNIT, PROVISION_UNIT] {
         v.push(format!("sudo systemctl restart {u}.socket"));
     }
+    // systemd makes /run/atlas-crew root:root with the unit's DirectoryMode and leaves an existing one as it
+    // is: a server installed with the old 0750 would keep hostd from seeing the sockets until its next boot.
+    v.push("sudo chmod 0755 /run/atlas-crew".to_string());
     // Restarting a socket leaves a running service alone, so a re-install would keep the old helper (and
     // its old unit: no cgroup delegation, no memory cap, #296). `try-restart` is a no-op for a service that
     // is not running (a fresh install: the socket starts it on the first connection); agents survive it.
@@ -226,32 +252,20 @@ pub fn start_steps() -> Vec<String> {
     v
 }
 
-/// Shell that creates the Linux user of one crewmate, idempotently, and its directories:
-///
-/// ```text
-/// /var/lib/atlas-cm/<slug>/        user:user 0750   (the crew user is in the group: traverse only)
-///   home/                          user:user 0700   $HOME: the engines' sign-ins live here
-///   work/                          user:user 2770   setgid; the crew user, in the group, writes it
-///   crew-runtime/                  crew:user 0750   hostd writes what the agent reads and must not change
-///   memory.md                      user:user 0660   the agent appends, hostd edits
-/// ```
+/// Shell that brings one crewmate under isolation, idempotently: its Linux user and its directories, made
+/// by `atlas crew-spawn --provision-user`, which runs the plan the provisioning service runs for every
+/// task (`atlas_host::crew::spawn::provision`). One code path, so the installer cannot drift from the
+/// service, and what the service does with a link planted in a crewmate's directory (refuse it, never
+/// chown or chmod through it) is what the installer does too. The layout is that module's.
 ///
 /// `useradd --system` allocates from the system uid range (about 900 accounts): a failure there
 /// is printed as such, and the script exits non-zero.
 pub fn provision_script(a: &Account, user: &str) -> Result<String, BadUser> {
-    let slug = slug(user)?;
-    let dir = format!("{CM_ROOT}/{slug}");
+    slug(user)?;
     Ok(format!(
         "set -e; \
-if ! id {user} >/dev/null 2>&1; then \
-sudo useradd --system --user-group --no-create-home --home-dir {dir}/home --shell /usr/sbin/nologin {user} \
-|| {{ echo 'could not create {user}: out of system user ids? (useradd --system has about 900)' >&2; exit 1; }}; fi; \
-sudo usermod -aG {user} {crew}; \
-sudo install -d -m 0750 -o {user} -g {user} {dir}; \
-sudo install -d -m 0700 -o {user} -g {user} {dir}/home; \
-sudo install -d -m 2770 -o {user} -g {user} {dir}/work; \
-sudo install -d -m 0750 -o {crew} -g {user} {dir}/crew-runtime; \
-[ -e {dir}/memory.md ] || sudo install -m 0660 -o {user} -g {user} /dev/null {dir}/memory.md",
+sudo {INSTALL_DIR}/atlas crew-spawn --provision-user {user} {crew} \
+|| {{ echo 'could not provision {user}: out of system user ids? (useradd --system has about 900)' >&2; exit 1; }}",
         crew = a.user
     ))
 }
@@ -263,13 +277,13 @@ pub fn uninstall_script() -> String {
     format!(
         "for u in $(getent passwd | cut -d: -f1 | grep -E '^{USER_PREFIX}[0-9a-f]{{12}}$'); do \
 sudo pkill -KILL -u \"$u\" 2>/dev/null || true; sudo userdel \"$u\" 2>/dev/null || true; done; \
-sudo systemctl stop {SPAWN_UNIT}.socket {SPAWN_UNIT}.service {PROVISION_UNIT}.socket {PROVISION_UNIT}.service 2>/dev/null || true; \
+sudo systemctl stop {SPAWN_UNIT}.socket {SPAWN_UNIT}.service {PROVISION_UNIT}.socket {PROVISION_UNIT}.service {EGRESS_UNIT}.service 2>/dev/null || true; \
 sudo systemctl disable {SPAWN_UNIT}.socket {PROVISION_UNIT}.socket {EGRESS_UNIT}.service 2>/dev/null || true; \
 sudo nft delete table inet atlas_crew 2>/dev/null || true; \
 sudo rm -f /etc/systemd/system/{SPAWN_UNIT}.socket /etc/systemd/system/{SPAWN_UNIT}.service \
 /etc/systemd/system/{PROVISION_UNIT}.socket /etc/systemd/system/{PROVISION_UNIT}.service \
 /etc/systemd/system/{EGRESS_UNIT}.service {EGRESS_FILE}; \
-sudo rm -rf {CM_ROOT}; \
+sudo rm -rf {CM_ROOT} /etc/atlas-crew /run/atlas-crew; \
 sudo systemctl daemon-reload 2>/dev/null || true"
     )
 }
@@ -294,10 +308,10 @@ const BIN_DIRS: [&str; 5] = [
 /// [`ENGINE_HOME`] as `$HOME`, then its binary linked into [`ENGINES_DIR`] and the tree made readable
 /// and executable for every user. `None` for a name that is not an engine.
 ///
-/// The install command is the one `atlas crew login` has always printed (`agent_install_hint`): the
+/// The install command is the one `atlas crew login` has always printed (`install` in `data/agents.json`): the
 /// vendor's own line, so an upgrade of the engine is the vendor's concern, not ours.
 pub fn engine_install_script(agent: &str, install_cmd: &str) -> Option<String> {
-    let bin = atlas_core::agents::get(agent)?.bin;
+    let bin = atlas_core::agents::get(agent)?.bin.as_str();
     // `bin` comes from the agent table, `install_cmd` from the CLI's own hints: neither is user input.
     let search = BIN_DIRS
         .iter()
@@ -343,7 +357,7 @@ pub fn migrate_script(a: &Account, id: &str) -> Option<String> {
     let crew_dir = format!("{}/.atlas/crew/{id}", a.home);
     Some(format!(
         "{prov}; \
-if [ -d {crew_dir}/work ]; then sudo mv {crew_dir}/work {crew_dir}/work.pre-isolation; fi"
+if [ -d {crew_dir}/work ]; then sudo mv -T {crew_dir}/work {crew_dir}/work.pre-isolation; fi"
     ))
 }
 
@@ -358,28 +372,22 @@ A project checkout is made again by the next task; the old one is kept as work.p
     })
 }
 
-/// The command `atlas crew login --crewmate` runs over ssh: the engine as that crewmate's user, with its
-/// home, in its directory, then the hooks registered for it. `bin` is an engine binary of the agent
-/// table, `user` is checked against the helper's own shape.
-pub fn login_command(user: &str, agent: &str) -> Result<String, BadUser> {
-    let slug = slug(user)?;
-    let bin = atlas_core::agents::get(agent)
-        .map(|a| a.bin)
-        .ok_or_else(|| BadUser(agent.chars().take(64).collect()))?;
-    let home = format!("{CM_ROOT}/{slug}/home");
-    Ok(format!(
-        "sudo -u {user} env HOME={home} PATH={ENGINES_DIR}:/usr/local/bin:/usr/bin:/bin \
-sh -c 'cd {home} && {bin}'"
-    ))
-}
-
 /// One thing the installer does for isolation, in the order it must happen.
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub enum Action {
     /// Run this shell on the server.
     Run(String),
-    /// Write `contents` to `file` (`sudo tee`).
+    /// Write the systemd unit `file` with `contents` ([`super::layout::write_unit_script`]).
     Write { file: String, contents: String },
+    /// Install engine `agent` system-wide with `script` ([`engine_install_script`]). Unlike every other
+    /// action a failure here does not fail the install: an engine needs the vendor's site and, for codex,
+    /// npm, which a plain server does not have, and the server works without it. The caller says which
+    /// engine is missing and `line`, the vendor's install line.
+    Engine {
+        agent: String,
+        line: String,
+        script: String,
+    },
 }
 
 /// Every action `atlas crew install` takes to put a server under isolation, in order, for the
@@ -400,8 +408,12 @@ pub fn install_actions(a: &Account, ids: &[String], engines: &[(&str, &str)]) ->
     )));
     v.extend(start_steps().into_iter().map(Action::Run));
     for (agent, cmd) in engines {
-        if let Some(sh) = engine_install_script(agent, cmd) {
-            v.push(Action::Run(sh));
+        if let Some(script) = engine_install_script(agent, cmd) {
+            v.push(Action::Engine {
+                agent: (*agent).to_string(),
+                line: (*cmd).to_string(),
+                script,
+            });
         }
     }
     for id in ids {
@@ -438,7 +450,7 @@ mod tests {
             "SocketUser=root\n",
             "SocketGroup=atlas-crew\n",
             "SocketMode=0660\n",
-            "DirectoryMode=0750\n",
+            "DirectoryMode=0755\n",
         ] {
             assert!(s.contains(want), "missing {want:?} in {s}");
         }
@@ -451,6 +463,39 @@ mod tests {
         assert!(old.contains("SocketGroup=atlas-bot\n"));
     }
 
+    // Incident (found by the real-systemd end-to-end test): systemd creates /run/atlas-crew as root:root with
+    // DirectoryMode, never as the socket's group. With 0750 the crew user (not root, not in root's group)
+    // could not even stat the socket, so hostd saw "no helper" and every crewmate on every real server ran
+    // unisolated as the crew user, silently. The directory must be enterable by "other"; who may CONNECT is
+    // the socket's own mode (0660, group = crew user), which stays closed. A server installed before the fix
+    // has the directory at 0750 until it is rebooted, so the install also fixes it in place.
+    #[test]
+    fn the_sockets_directory_can_be_entered_by_the_crew_user_who_is_neither_root_nor_in_its_group()
+    {
+        for unit in [socket_unit(&acct()), provision_socket_unit(&acct())] {
+            let s = section(&unit, "Socket");
+            let mode = s
+                .lines()
+                .find_map(|l| l.strip_prefix("DirectoryMode="))
+                .map(|m| u32::from_str_radix(m, 8).unwrap())
+                .expect("DirectoryMode is set");
+            assert!(
+                mode & 0o001 != 0,
+                "DirectoryMode={mode:o}: the crew user cannot reach the socket inside"
+            );
+            assert!(
+                s.contains("SocketMode=0660\n"),
+                "the socket itself stays closed: {s}"
+            );
+        }
+        assert!(
+            start_steps()
+                .iter()
+                .any(|c| c.contains("chmod") && c.contains("/run/atlas-crew")),
+            "a directory a previous install made at 0750 is opened by the install"
+        );
+    }
+
     #[test]
     fn the_service_is_root_socket_activated_and_does_not_kill_agents_on_restart() {
         let u = service_unit();
@@ -459,7 +504,6 @@ mod tests {
             "User=root\n",
             "ExecStart=/usr/local/lib/atlas-crew/atlas crew-spawn\n",
             "KillMode=process\n",
-            "NoNewPrivileges=yes\n",
         ] {
             assert!(s.contains(want), "missing {want:?}");
         }
@@ -470,10 +514,11 @@ mod tests {
         );
     }
 
-    // The bounding set is the whole point of "hardened as far as compatible": exactly these five,
+    // The bounding set is the whole point of "hardened as far as compatible": exactly these seven (CAP_SYS_PTRACE is what the
+    // helper needs to see crewmates' processes under `ProtectProc=invisible`, CAP_NET_ADMIN to check the egress table),
     // and none of the capabilities that would let a bug in the helper do more.
     #[test]
-    fn the_service_keeps_five_capabilities_and_a_read_only_system() {
+    fn the_service_keeps_seven_capabilities_and_a_read_only_system() {
         let u = service_unit();
         let caps = u
             .lines()
@@ -487,23 +532,20 @@ mod tests {
                 "CAP_CHOWN",
                 "CAP_DAC_OVERRIDE",
                 "CAP_KILL",
+                "CAP_NET_ADMIN",
                 "CAP_SETGID",
-                "CAP_SETUID"
+                "CAP_SETUID",
+                "CAP_SYS_PTRACE"
             ]
         );
-        for bad in [
-            "CAP_SYS_ADMIN",
-            "CAP_NET_ADMIN",
-            "CAP_SYS_PTRACE",
-            "CAP_FOWNER",
-        ] {
+        for bad in ["CAP_SYS_ADMIN", "CAP_FOWNER", "CAP_NET_RAW"] {
             assert!(!caps.contains(bad));
         }
         for want in [
             "ProtectSystem=strict\n",
             "ReadWritePaths=/var/lib/atlas-cm -/sys/fs/cgroup/system.slice/atlas-crew-spawn.service\n",
             "ProtectHome=yes\n",
-            "RestrictAddressFamilies=AF_UNIX\n",
+            "RestrictAddressFamilies=AF_UNIX AF_INET AF_INET6 AF_NETLINK\n",
             "RestrictSUIDSGID=yes\n",
         ] {
             assert!(u.contains(want), "missing {want:?}");
@@ -580,6 +622,11 @@ mod tests {
             "Before",
             "ConditionPathExists",
             "RemainAfterExit",
+            // 187.
+            "PartOf",
+            // 237 and 1: the egress unit follows a reload of nftables (security review 5, S-1).
+            "ReloadPropagatedFrom",
+            "ExecReload",
         ];
         for unit in [
             service_unit(),
@@ -592,7 +639,7 @@ mod tests {
                 let key = line.split('=').next().unwrap();
                 // Unknown directives are ignored with a warning by older systemd, and the helper does not
                 // need this one there: it moves itself into `helper` (`cgroup::Pool::detect`).
-                if key == "DelegateSubgroup" {
+                if key == "DelegateSubgroup" || key == "ProtectProc" {
                     continue;
                 }
                 assert!(
@@ -642,41 +689,43 @@ mod tests {
         assert!(provision_script(&a, USER).is_ok());
     }
 
+    // Regression (security review of #448, B1): the installer used to carry its own copy of the layout as
+    // `sudo install -d -o <crewmate>` calls, which follow a link a crewmate planted in its directory and
+    // chown the target as root. It now runs the provisioning service's plan, so it has none of that text.
     #[test]
-    fn provisioning_makes_the_user_its_group_and_a_private_tree_for_it() {
+    fn provisioning_runs_the_services_own_plan_and_has_no_shell_copy_of_the_layout() {
         let sh = provision_script(&acct(), USER).unwrap();
-        for want in [
-            "set -e",
-            "id atlas-cm-3f2a9c1e5b7d >/dev/null 2>&1",
-            "useradd --system --user-group --no-create-home --home-dir /var/lib/atlas-cm/3f2a9c1e5b7d/home --shell /usr/sbin/nologin atlas-cm-3f2a9c1e5b7d",
-            "usermod -aG atlas-cm-3f2a9c1e5b7d atlas-crew",
-            "install -d -m 0750 -o atlas-cm-3f2a9c1e5b7d -g atlas-cm-3f2a9c1e5b7d /var/lib/atlas-cm/3f2a9c1e5b7d;",
-            "install -d -m 0700 -o atlas-cm-3f2a9c1e5b7d -g atlas-cm-3f2a9c1e5b7d /var/lib/atlas-cm/3f2a9c1e5b7d/home",
-            "install -d -m 2770 -o atlas-cm-3f2a9c1e5b7d -g atlas-cm-3f2a9c1e5b7d /var/lib/atlas-cm/3f2a9c1e5b7d/work",
-            // hostd (the crew user) writes it, the crewmate reads it through the group.
-            "install -d -m 0750 -o atlas-crew -g atlas-cm-3f2a9c1e5b7d /var/lib/atlas-cm/3f2a9c1e5b7d/crew-runtime",
-            "install -m 0660 -o atlas-cm-3f2a9c1e5b7d -g atlas-cm-3f2a9c1e5b7d /dev/null /var/lib/atlas-cm/3f2a9c1e5b7d/memory.md",
-            "out of system user ids",
+        assert!(sh.starts_with("set -e;"), "{sh}");
+        assert!(
+            sh.contains("sudo /usr/local/lib/atlas-crew/atlas crew-spawn --provision-user atlas-cm-3f2a9c1e5b7d atlas-crew"),
+            "{sh}"
+        );
+        assert!(sh.contains("out of system user ids"), "{sh}");
+        for gone in [
+            "install -d",
+            "install -m",
+            "useradd --system --user-group",
+            "chown",
+            "chmod",
+            "usermod",
         ] {
-            assert!(sh.contains(want), "missing {want:?}:\n{sh}");
+            assert!(!sh.contains(gone), "{gone} in:\n{sh}");
         }
-        // Idempotent: the useradd sits inside the "not there yet" branch, the rest is install -d.
-        assert!(sh.find("if ! id").unwrap() < sh.find("useradd").unwrap());
-        assert!(sh.find("fi;").unwrap() < sh.find("usermod").unwrap());
-        // No shell, no login: nobody can ssh or `su` into a crewmate.
-        assert!(sh.contains("/usr/sbin/nologin") && !sh.contains("/bin/bash"));
     }
 
-    // The crew user of a migrated server is the one added to the crewmate's group.
+    // The crew user of a migrated server is the one the plan puts hostd's files in the group of.
     #[test]
-    fn provisioning_adds_the_servers_own_crew_user_to_the_group() {
+    fn provisioning_names_the_servers_own_crew_user() {
         let old = account(Probe {
             legacy_user: true,
             ..Probe::default()
         });
         let sh = provision_script(&old, USER).unwrap();
-        assert!(sh.contains("usermod -aG atlas-cm-3f2a9c1e5b7d atlas-bot"));
-        assert!(!sh.contains("atlas-crew"));
+        assert!(
+            sh.contains("--provision-user atlas-cm-3f2a9c1e5b7d atlas-bot"),
+            "{sh}"
+        );
+        assert!(!sh.contains("atlas-crew crew-spawn") && !sh.contains("3f2a9c1e5b7d atlas-crew"));
     }
 
     // Nothing may be traversable by a crewmate that holds another's data: this is the first of
@@ -705,7 +754,9 @@ mod tests {
         assert!(sh.find("pkill").unwrap() < sh.find("userdel").unwrap());
         assert!(sh.find("userdel").unwrap() < sh.find("systemctl stop").unwrap());
         for want in [
-            "systemctl stop atlas-crew-spawn.socket atlas-crew-spawn.service atlas-crew-provision.socket atlas-crew-provision.service",
+            // The egress unit too: it stays active (RemainAfterExit) from boot, or from a PartOf= restart with nftables, and
+            // `disable` leaves an active unit loaded after its file is gone ("not-found active exited" in the E2E's last check).
+            "systemctl stop atlas-crew-spawn.socket atlas-crew-spawn.service atlas-crew-provision.socket atlas-crew-provision.service atlas-crew-egress.service",
             "systemctl disable atlas-crew-spawn.socket atlas-crew-provision.socket atlas-crew-egress.service",
             "nft delete table inet atlas_crew",
             "/etc/systemd/system/atlas-crew-provision.service",
@@ -794,6 +845,7 @@ mod tests {
                 "CAP_CHOWN",
                 "CAP_DAC_OVERRIDE",
                 "CAP_FOWNER",
+                "CAP_FSETID",
                 "CAP_KILL",
                 "CAP_NET_ADMIN",
                 "CAP_SETGID",
@@ -811,7 +863,7 @@ mod tests {
         for want in [
             "User=root\n",
             "ExecStart=/usr/local/lib/atlas-crew/atlas crew-spawn --provision\n",
-            "ProtectSystem=full\n",
+            "ProtectSystem=strict\n",
             "ReadWritePaths=/etc /var/lib/atlas-cm /var/log /run\n",
             "ProtectHome=yes\n",
             "RestrictAddressFamilies=AF_UNIX AF_NETLINK\n",
@@ -827,6 +879,120 @@ mod tests {
         assert!(sock.contains("SocketGroup=atlas-crew\n") && sock.contains("SocketMode=0660\n"));
     }
 
+    // Incident (found by the real-systemd end-to-end test): the provisioning service had `ProtectSystem=full`
+    // and `ReadWritePaths=/etc ...`, and `useradd` failed with "cannot lock /etc/passwd". `full` makes /etc
+    // read-only and a `ReadWritePaths=` for /etc does not open it again (systemd 255, Ubuntu 24.04: checked with
+    // `touch /etc/x` on a real VM and in a container); only `strict` lets a listed path stay writable. So a
+    // unit that lists /etc must say `strict`.
+    #[test]
+    fn a_unit_that_needs_etc_writable_protects_the_system_strictly() {
+        for (file, body) in unit_files(&acct()) {
+            let Some(rw) = body.lines().find_map(|l| l.strip_prefix("ReadWritePaths=")) else {
+                continue;
+            };
+            if rw.split(' ').any(|p| p == "/etc") {
+                assert!(
+                    body.contains("ProtectSystem=strict\n"),
+                    "{file} lists /etc as writable but `ProtectSystem=full` keeps it read-only"
+                );
+            }
+        }
+    }
+
+    // Incident (found by the real-systemd end-to-end test): the provisioning service had
+    // `RestrictSUIDSGID=yes`, whose seccomp filter makes any chmod that sets a setuid or setgid bit fail with
+    // EPERM, and its own plan gives `work/` mode 2770 (setgid, so what the crew user and the crewmate write
+    // keeps one group). Creating a crewmate failed with "preparing .../work: Operation not permitted".
+    // The provisioning service (and so its plan) is Unix only.
+    #[cfg(unix)]
+    #[test]
+    fn the_provisioning_unit_does_not_forbid_the_setgid_bit_its_own_plan_sets() {
+        use atlas_host::crew::spawn::provision::{PlanCfg, Step, provision_plan};
+        let cfg = PlanCfg {
+            crew: "atlas-crew".into(),
+            cm_root: CM_ROOT.into(),
+        };
+        let plan = provision_plan(&cfg, "atlas-cm-3f2a9c1e5b7d").unwrap();
+        let sets_setgid = plan.iter().any(
+            |s| matches!(s, Step::Dir { mode, .. } | Step::File { mode, .. } if mode & 0o6000 != 0),
+        );
+        assert!(
+            sets_setgid,
+            "the plan no longer sets setuid/setgid: drop this test"
+        );
+        assert!(
+            !provision_service_unit().contains("RestrictSUIDSGID=yes"),
+            "RestrictSUIDSGID=yes makes the plan's chmod 2770 fail"
+        );
+    }
+
+    // Incident (found while reading the spawn helper's unit next to the end-to-end test): the helper had
+    // `RestrictAddressFamilies=AF_UNIX`, a seccomp filter its children inherit, so no engine it starts
+    // (claude, codex, ... or git in a crewmate's tree) could open a TCP socket or resolve a name. What a
+    // crewmate may reach is the egress firewall's job (nft, per user), not the unit's.
+    #[test]
+    fn the_spawn_helpers_children_can_use_the_network_the_firewall_allows() {
+        let u = service_unit();
+        let fam = u
+            .lines()
+            .find_map(|l| l.strip_prefix("RestrictAddressFamilies="))
+            .expect("the helper restricts address families");
+        for need in ["AF_UNIX", "AF_INET", "AF_INET6", "AF_NETLINK"] {
+            assert!(fam.split(' ').any(|f| f == need), "{need} missing in {fam}");
+        }
+    }
+
+    // Incident (real-systemd end-to-end test): with `NoNewPrivileges=yes` next to the other sandboxing options
+    // systemd 255 left the helper without `CAP_SETUID` in its permitted set (`CapPrm` 0x63 instead of 0xe3 though
+    // the bounding set had it), and every spawn failed at `setuid` with EPERM. Leaving that one option out
+    // restored it. The child sets no_new_privs on itself instead (`spawn::exec`).
+    #[test]
+    fn the_spawn_helper_keeps_its_setuid_capability_so_its_unit_has_no_no_new_privileges() {
+        let u = service_unit();
+        assert!(!u.contains("NoNewPrivileges"), "{u}");
+        assert!(u.contains("CAP_SETUID"), "{u}");
+    }
+
+    // Security review of the crew isolation, B1: every agent shared the host's `/proc`, where `cmdline` is world-readable,
+    // so crewmate A read B's whole prompt and every command B's tools ran, secrets expanded. `ProtectProc=invisible`
+    // hides other users' processes in the helper's mount namespace (inherited by the agents); the helper keeps
+    // seeing them through CAP_SYS_PTRACE. The real-systemd E2E reads B's cmdline as A's agent.
+    #[test]
+    fn the_spawn_helper_hides_other_crewmates_processes_from_the_agents() {
+        let u = service_unit();
+        assert!(u.contains("ProtectProc=invisible\n"), "{u}");
+        assert!(!u.contains("ProcSubset"), "{u}");
+        assert!(!provision_service_unit().contains("ProtectProc"));
+    }
+
+    // Security review of the crew isolation, MDWE note: `MemoryDenyWriteExecute=` is a seccomp filter, and a filter
+    // is inherited by every process the helper starts and cannot be lifted: every agent and every tool it runs
+    // (npm, vite, tsc, playwright: all Node) would run under it. Node's V8 cannot make its JIT code executable
+    // under it and aborts at start ("Fatal error ... Check failed: 12 == errno", checked with Node 26 under
+    // `systemd-run -p MemoryDenyWriteExecute=yes`; Bun's JavaScriptCore and the native engines start). So the helper
+    // does not have it. The provisioning service runs `useradd` and `nft`, never an agent, and keeps it.
+    #[test]
+    fn the_spawn_helper_has_no_memory_deny_write_execute_because_its_agents_inherit_it() {
+        assert!(!service_unit().contains("MemoryDenyWriteExecute"));
+        assert!(provision_service_unit().contains("MemoryDenyWriteExecute=yes\n"));
+    }
+
+    // Incident (real-systemd end-to-end test): uninstall removed the egress rules file and the units but left the
+    // directories `/etc/atlas-crew` (made by the install for that file) and `/run/atlas-crew` (made by systemd for
+    // the sockets, which outlives them), so a "removed" crew server still had files on it.
+    #[test]
+    fn uninstall_removes_the_directories_the_install_and_the_sockets_made() {
+        let sh = uninstall_script();
+        for dir in ["/etc/atlas-crew", "/run/atlas-crew"] {
+            let removes = sh
+                .split(';')
+                .any(|c| c.contains("rm -rf") && c.split(' ').any(|w| w == dir));
+            assert!(removes, "{dir} is not removed: {sh}");
+        }
+        // After the sockets are stopped, or systemd makes the directory again.
+        assert!(sh.find("systemctl stop").unwrap() < sh.find("/run/atlas-crew").unwrap());
+    }
+
     // The rules file the provisioning service writes is replayed at boot, but only once it exists.
     #[test]
     fn the_egress_unit_replays_the_rules_file_at_boot_only_when_there_is_one() {
@@ -838,6 +1004,12 @@ mod tests {
             "RemainAfterExit=yes\n",
             "Before=network.target\n",
             "WantedBy=multi-user.target\n",
+            // Security review 4, S-C: a flush of the ruleset by nftables.service reloads the rules with it.
+            "After=network-pre.target nftables.service\n",
+            "PartOf=nftables.service\n",
+            // Security review 5, S-1: so does a reload of nftables, which the unit follows and answers by loading again.
+            "ReloadPropagatedFrom=nftables.service\n",
+            "ExecReload=/usr/sbin/nft -f /etc/atlas-crew/egress.nft\n",
         ] {
             assert!(u.contains(want), "missing {want:?}");
         }
@@ -903,16 +1075,18 @@ mod tests {
 
     const ID: &str = "3f2a9c1e-5b7d-4e8f-9a0b-1c2d3e4f5a6b";
 
-    // Nothing is deleted by a migration: the old checkout is renamed, memory is moved by hostd.
+    // Nothing is deleted by a migration: the old checkout is renamed, memory is moved by hostd. `mv -T`: the target
+    // is never taken for a directory to move into (a link planted at `work.pre-isolation` by the crew user would
+    // make a root `mv` put `work` inside the link's target; security review of the crew isolation, nit).
     #[test]
     fn migrating_a_crewmate_provisions_it_and_renames_the_old_checkout_never_deletes_it() {
         let sh = migrate_script(&acct(), ID).unwrap();
         assert!(sh.starts_with("set -e;"), "{sh}");
-        assert!(sh.contains("useradd --system"));
+        assert!(sh.contains("--provision-user atlas-cm-3f2a9c1e5b7d atlas-crew"));
         let dir = format!("/var/lib/atlas-crew/.atlas/crew/{ID}");
         assert!(
             sh.contains(&format!(
-                "if [ -d {dir}/work ]; then sudo mv {dir}/work {dir}/work.pre-isolation; fi"
+                "if [ -d {dir}/work ]; then sudo mv -T {dir}/work {dir}/work.pre-isolation; fi"
             )),
             "{sh}"
         );
@@ -937,27 +1111,18 @@ mod tests {
         assert!(n.contains("work.pre-isolation"));
     }
 
-    #[test]
-    fn login_runs_the_engine_as_the_crewmates_user_with_its_home_and_the_shared_engines() {
-        let c = login_command(USER, "claude").unwrap();
-        assert_eq!(
-            c,
-            "sudo -u atlas-cm-3f2a9c1e5b7d env HOME=/var/lib/atlas-cm/3f2a9c1e5b7d/home PATH=/usr/local/lib/atlas-crew/engines:/usr/local/bin:/usr/bin:/bin sh -c 'cd /var/lib/atlas-cm/3f2a9c1e5b7d/home && claude'"
-        );
-        // The injection guard again: neither the user nor the agent can carry shell.
-        assert!(login_command("root", "claude").is_err());
-        assert!(login_command("atlas-cm-3f2a9c1e5b7d; id", "claude").is_err());
-        assert!(login_command(USER, "claude; id").is_err());
-        assert!(login_command(USER, "sh").is_err());
-    }
-
     // The install order is the contract. Closing the crew home comes first, units are written before
     // they start, engines and migration come before the (caller's) hostd restart.
     #[test]
     fn install_actions_close_the_home_then_write_units_then_start_them_then_migrate() {
         let engines = [("claude", "true")];
         let acts = install_actions(&acct(), &[ID.to_string()], &engines);
-        let run = |needle: &'static str| move |a: &Action| matches!(a, Action::Run(s) if s.contains(needle));
+        let run = |needle: &'static str| {
+            move |a: &Action| match a {
+                Action::Run(s) | Action::Engine { script: s, .. } => s.contains(needle),
+                Action::Write { .. } => false,
+            }
+        };
         let write = |needle: &'static str| move |a: &Action| matches!(a, Action::Write { file, .. } if file.ends_with(needle));
         let pos = |f: &dyn Fn(&Action) -> bool| acts.iter().position(f).unwrap();
         let close = pos(&run("chmod 0700 '/var/lib/atlas-crew'"));

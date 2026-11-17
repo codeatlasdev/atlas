@@ -1,0 +1,8 @@
+{
+	"not_found_description": "Meta description of the 404 page.",
+	"not_found_docs": "Secondary button on the 404 page that opens the docs.",
+	"not_found_heading": "Large heading of the 404 page; playful, it says the page is not on the map.",
+	"not_found_home": "Primary button on the 404 page that goes back to the home page; stack refers to the dev stack Atlas runs.",
+	"not_found_text": "Paragraph under the 404 heading explaining the link is old or the page never existed, and pointing to the docs search.",
+	"not_found_title": "Browser tab title of the 404 page."
+}

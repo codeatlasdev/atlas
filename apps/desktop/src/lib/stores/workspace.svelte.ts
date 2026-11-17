@@ -18,6 +18,7 @@ import { clampRatio, leaves, removeLeaf, splitAt, splitLeaf } from "#lib/stores/
 import { rightNeighbor } from "#lib/stores/preview.ts";
 import { ptyRequest } from "#lib/stores/ptySpawn.ts";
 import { WorkspacePersist } from "#lib/stores/workspacePersist.svelte.ts";
+import { tabTitle } from "#lib/title.ts";
 import {
 	emptyDoc,
 	type Doc,
@@ -48,8 +49,8 @@ class Workspace {
 	hostError = $state<string | null>(null);
 	/** The terminal host did not answer the last `syncPtys`: `ptys` is what we knew, not what is true. */
 	hostDown = $state(false);
-	/** Main area: the selected worktree, or a global agents view. */
-	view = $state<"worktree" | "agents" | "dashboard">("worktree");
+	/** Main area: the selected worktree, a global agents view, or the light editor of a loose file (`loose` store). */
+	view = $state<"worktree" | "agents" | "dashboard" | "file">("worktree");
 	/** Top-level workspace mode: "ide" is everything today; "crew" is the full-window messenger. */
 	appMode = $state<"ide" | "crew">("ide");
 	#persist = new WorkspacePersist(this);
@@ -87,11 +88,12 @@ class Workspace {
 			const list = await host.ptyList();
 			this.ptys = Object.fromEntries(list.map((p) => [p.pty, p]));
 			for (const p of list) {
-				this.titles[p.pty] = p.title;
+				this.titles[p.pty] = tabTitle(p.title);
 				if (p.exited) this.exited[p.pty] = p.exited.code;
 			}
 			this.hostError = null;
 			this.hostDown = false;
+			errors.hostReachable();
 		} catch (e) {
 			// Keep `ptys`: an unreachable host says nothing about its terminals, and replacing the map
 			// would show every tab as "Terminal is gone" (1.5.0-alpha.5). Report the outage once.
@@ -262,6 +264,11 @@ class Workspace {
 		const first = this.group(leaves(this.ensureLayout(worktreeId))[0]);
 		if (!first) return;
 		const panels = this.tabsOf(worktreeId).filter(pinned);
+		// A plain folder has no stack to show: no Panel, and one an older workspace saved for it goes.
+		if (this.worktree(worktreeId)?.plain) {
+			for (const p of panels) this.closeTab(p.id, true, true);
+			return;
+		}
 		const [keep, ...extra] = panels;
 		for (const p of extra) this.closeTab(p.id, true, true);
 		if (!keep) {

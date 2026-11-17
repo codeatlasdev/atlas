@@ -1,75 +1,17 @@
 // @ts-nocheck bun test runtime types are not part of the app tsconfig
 /**
- * Incident (user, 2026-10-13): the "Enable omp integration" card sat on top of the "Getting started" card. Seven
- * independent `position: fixed` pieces each hard-coded their own `right`/`bottom` in the bottom-right corner. They now
- * live in one stack: each takes the space above the previous one, so none can overlap whatever its height.
+ * Incident (user, 2026-10-13): the "Enable omp integration" card sat on top of the "Getting started" card; seven
+ * independent `position: fixed` pieces each hard-coded their own `right`/`bottom`. They live in one column now, and
+ * (2026-11-15) every card in it is one `CornerCard`: same width, radius, elevation and motion, placed by the plan.
  */
 import { describe, expect, test } from "bun:test";
-import { CORNER_GAP, CORNER_ID, CORNER_MARGIN, layoutCorner } from "./cornerStack.ts";
+import { readFileSync } from "node:fs";
+import { join } from "node:path";
+import { CORNER_ID, corner } from "./cornerStack.ts";
 
-const boxes = (placed) => placed.map((p) => [p.bottom, p.bottom + p.height]);
-const overlaps = (a, b) => a[0] < b[1] && b[0] < a[1];
+const src = (p) => readFileSync(join(import.meta.dir, "../../", p), "utf8");
 
-describe("layoutCorner stacks bottom-right pieces without overlap", () => {
-	test("the first piece sits on the margin, the next one above it with the gap", () => {
-		const out = layoutCorner([
-			{ id: "checklist", height: 320 },
-			{ id: "omp", height: 95 },
-		]);
-		expect(out[0]).toEqual({ id: "checklist", bottom: CORNER_MARGIN, height: 320 });
-		expect(out[1]).toEqual({ id: "omp", bottom: CORNER_MARGIN + 320 + CORNER_GAP, height: 95 });
-	});
-
-	// Incident: omp card (y 575-670) over the open checklist (≈ 62-390 from the bottom).
-	test("the omp card and the open checklist never overlap, for any heights", () => {
-		for (const checklist of [34, 120, 320, 410])
-			for (const omp of [60, 95, 160]) {
-				const [a, b] = boxes(
-					layoutCorner([
-						{ id: "checklist", height: checklist },
-						{ id: "omp", height: omp },
-					]),
-				);
-				expect(overlaps(a, b)).toBe(false);
-			}
-	});
-
-	test("a piece that is not showing (height 0) takes no room and leaves no gap", () => {
-		const out = layoutCorner([
-			{ id: "a", height: 0 },
-			{ id: "b", height: 50 },
-			{ id: "c", height: 0 },
-			{ id: "d", height: 40 },
-		]);
-		expect(out.map((p) => p.id)).toEqual(["b", "d"]);
-		expect(out[0].bottom).toBe(CORNER_MARGIN);
-		expect(out[1].bottom).toBe(CORNER_MARGIN + 50 + CORNER_GAP);
-	});
-
-	test("an empty corner places nothing, and heights are never negative or NaN", () => {
-		expect(layoutCorner([])).toEqual([]);
-		expect(
-			layoutCorner([
-				{ id: "x", height: Number.NaN },
-				{ id: "y", height: -4 },
-			]),
-		).toEqual([]);
-	});
-
-	test("order is the priority: the first id is nearest the corner", () => {
-		const out = layoutCorner([
-			{ id: "toast", height: 48 },
-			{ id: "card", height: 100 },
-		]);
-		expect(out[0].id).toBe("toast");
-		expect(out[0].bottom).toBeLessThan(out[1].bottom);
-	});
-});
-
-describe("the corner is one container, not seven fixed boxes", () => {
-	const { readFileSync } = require("node:fs");
-	const { join } = require("node:path");
-	const src = (p) => readFileSync(join(import.meta.dir, "../../", p), "utf8");
+describe("the corner is one container and one card shell, not seven fixed boxes", () => {
 	// Every piece that used to anchor itself at the bottom-right corner (`position: fixed` + `right` + `bottom`).
 	const PIECES = [
 		"lib/onboarding/Checklist.svelte",
@@ -78,16 +20,23 @@ describe("the corner is one container, not seven fixed boxes", () => {
 		"lib/components/UpdatedCard.svelte",
 		"lib/errors/ErrorToasts.svelte",
 		"lib/panel/ActionResultToast.svelte",
+		"lib/shell/KitToasts.svelte",
 	];
 	for (const p of PIECES)
-		test(`${p} mounts in the corner stack instead of anchoring itself`, () => {
+		test(`${p} is a corner card instead of anchoring itself`, () => {
 			const s = src(p);
-			expect(s).toContain("use:corner");
+			expect(s).toMatch(/<Corner(Card|Notice)\b/);
 			expect(s).not.toMatch(/position:\s*fixed[^}]*\bbottom:/);
+			expect(s).not.toContain("use:corner");
 		});
 
-	test("the corner action moves a node into #atlas-corner and takes it out again", async () => {
-		const { corner, CORNER_ID } = await import("./cornerStack.ts");
+	test("the kit's own Toaster is not mounted: its stack ignores the coordinator", () => {
+		expect(src("lib/shell/CornerStack.svelte")).not.toContain("<Toaster");
+		expect(src("lib/shell/CornerStack.svelte")).toContain("<KitToasts");
+		expect(src("routes/(app)/+layout.svelte")).not.toContain("<Toaster");
+	});
+
+	test("the corner action moves a node into #atlas-corner and takes it out again", () => {
 		document.body.innerHTML = `<div id="${CORNER_ID}"></div><section id="home"><p id="p">x</p></section>`;
 		const node = document.getElementById("p");
 		const act = corner(node);
@@ -96,21 +45,29 @@ describe("the corner is one container, not seven fixed boxes", () => {
 		expect(document.getElementById("p")).toBeNull();
 	});
 
-	test("without a corner (tray page) the node stays where it is", async () => {
-		const { corner } = await import("./cornerStack.ts");
+	test("without a corner (tray page) the node stays where it is", () => {
 		document.body.innerHTML = `<section id="home"><p id="p">x</p></section>`;
 		const node = document.getElementById("p");
 		expect(corner(node)).toBeUndefined();
 		expect(node.parentElement.id).toBe("home");
 	});
 
-	test("the shell mounts the corner column once, fixed bottom-right, with the margin and gap of layoutCorner", () => {
+	test("the shell mounts the corner column once, fixed bottom-right, a full-width sheet when narrow", () => {
 		const s = src("lib/shell/CornerStack.svelte");
 		expect(s).toContain("id={CORNER_ID}");
 		expect(CORNER_ID).toBe("atlas-corner");
 		expect(s).toMatch(/position:\s*fixed/);
 		expect(s).toContain("var(--corner-margin)");
 		expect(s).toContain("var(--corner-gap)");
+		expect(s).toMatch(/@media \(max-width: 520px\)[\s\S]*left:/);
 		expect(src("routes/(app)/+layout.svelte")).toContain("<CornerStack");
+	});
+
+	test("every card is as wide as the column and takes its radius and elevation from the kit", () => {
+		const s = src("lib/shell/CornerCard.svelte");
+		expect(s).toMatch(/\.card\s*\{[^}]*width:\s*100%/);
+		expect(s).toContain("var(--ca-radius-lg");
+		expect(s).toContain("var(--ca-shadow-md)");
+		expect(s).toContain("var(--ca-surface-raised)");
 	});
 });

@@ -36,9 +36,13 @@
 </script>
 
 <DropdownMenu align="start">
-	{#snippet trigger()}
-		<span class="plus" aria-label="New tab" title="New tab {shortcutFor('workspace::NewTerminal') ?? ''}"
-			><Plus size={14} /></span
+	{#snippet triggerChild(props)}
+		<button
+			type="button"
+			{...props}
+			class="plus"
+			aria-label="New tab"
+			title="New tab {shortcutFor('workspace::NewTerminal') ?? ''}"><Plus size={14} /></button
 		>
 	{/snippet}
 	<DropdownMenuItem onclick={() => w && ws.newTerminal(w.id, { groupId })}>
@@ -58,7 +62,7 @@
 			New omp chat
 		</DropdownMenuItem>
 	{/if}
-	{#if project}
+	{#if project && project.kind !== "folder"}
 		<DropdownMenuItem onclick={() => openKind("services")}>
 			{#snippet icon()}<LayoutGrid />{/snippet}
 			Panel
@@ -72,7 +76,7 @@
 			Config
 		</DropdownMenuItem>
 	{/if}
-	{#if w}
+	{#if w && project?.kind !== "folder"}
 		<DropdownMenuItem onclick={() => openDiff(w.id)}>
 			{#snippet icon()}<FileDiff />{/snippet}
 			Changes

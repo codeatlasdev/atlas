@@ -16,7 +16,8 @@ if command -v cargo >/dev/null; then
   rustup run stable cargo fmt --manifest-path native/Cargo.toml --check
   rustup run stable cargo clippy --manifest-path native/Cargo.toml -- -D warnings
   frb=$(sed -n 's/^flutter_rust_bridge = "=\([0-9.]*\)"$/\1/p' native/Cargo.toml)
-  got=$(flutter_rust_bridge_codegen --version 2>/dev/null | awk '{print $NF}')
+  # `|| true`: a missing generator is a skip (or the CI failure below), not exit 127 from pipefail.
+  got=$(flutter_rust_bridge_codegen --version 2>/dev/null | awk '{print $NF}' || true)
   if [[ $got == "$frb" ]]; then
     flutter_rust_bridge_codegen generate
     git diff --exit-code lib/src/rust || { echo "lib/src/rust is out of sync with api.rs — run flutter_rust_bridge_codegen generate"; exit 1; }

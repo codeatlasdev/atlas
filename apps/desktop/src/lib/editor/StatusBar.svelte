@@ -1,6 +1,12 @@
 <script lang="ts">
 	import type { Snippet } from "svelte";
-	import { statusItems, type StatusInput, type StatusItem } from "#lib/editor/statusbar.ts";
+	import StatusItem from "#lib/editor/StatusItem.svelte";
+	import {
+		statusItems,
+		statusRank,
+		type StatusInput,
+		type StatusItem as Item,
+	} from "#lib/editor/statusbar.ts";
 
 	let {
 		input,
@@ -15,39 +21,43 @@
 	} = $props();
 
 	let items = $derived(statusItems(input));
-	const leading = (it: StatusItem) => it.id === "position" || it.id === "problems";
+	const leading = (it: Item) => it.id === "position" || it.id === "problems";
 	let left = $derived(items.filter(leading));
 	let right = $derived(items.filter((i) => !leading(i)));
 </script>
 
-{#snippet cell(it: StatusItem)}
+{#snippet cell(it: Item)}
 	{#if it.kind === "info"}
-		<span class="item" title={it.title}>{it.text}</span>
+		<StatusItem data-rank={statusRank(it.id)} title={it.title}>{it.text}</StatusItem>
 	{:else}
-		<button
-			class="item btn"
-			class:warning={it.kind === "warning"}
-			class:error={it.kind === "error"}
+		<StatusItem
+			button
+			tone={it.kind === "warning" || it.kind === "error" ? it.kind : undefined}
+			data-rank={statusRank(it.id)}
 			title={it.title}
-			onclick={(e) => onaction(it.id, e.currentTarget)}>{it.text}</button
+			onclick={(e) => onaction(it.id, e.currentTarget)}>{it.text}</StatusItem
 		>
 	{/if}
 {/snippet}
 
+{#snippet server()}
+	<span class="slot" data-rank={statusRank("lsp")}>{@render lsp?.()}</span>
+{/snippet}
+
 <div class="status" role="status" aria-label="Editor status">
-	<div class="side">
+	<div class="side lead">
 		{#each left as it (it.id)}{@render cell(it)}{/each}
 	</div>
 	<div class="side">
 		{#each right as it (it.id)}
 			{#if it.id === "language"}
 				{@render cell(it)}
-				{@render lsp?.()}
+				{@render server()}
 			{:else}
 				{@render cell(it)}
 			{/if}
 		{/each}
-		{#if !right.some((i) => i.id === "language")}{@render lsp?.()}{/if}
+		{#if !right.some((i) => i.id === "language")}{@render server()}{/if}
 	</div>
 </div>
 
@@ -65,6 +75,9 @@
 		color: var(--ca-text-secondary);
 		white-space: nowrap;
 		overflow: hidden;
+		/* The bar answers to its own width (the editor sits in a pane of any size), so the rules below hide the
+		   least useful items first instead of letting two items print over each other. */
+		container-type: inline-size;
 	}
 	.side {
 		display: flex;
@@ -72,25 +85,32 @@
 		gap: 2px;
 		min-width: 0;
 	}
-	.item {
+	/* The position and problems come first and never give way to the right side; the right side shrinks. */
+	.lead {
+		flex: 0 1 auto;
+	}
+	.side:not(.lead) {
+		flex: 0 1 auto;
+		overflow: hidden;
+	}
+	.slot {
 		display: inline-flex;
-		align-items: center;
-		height: 18px;
-		padding: 0 6px;
-		border: 0;
-		border-radius: 4px;
-		background: none;
-		font: inherit;
-		color: inherit;
+		min-width: 0;
 	}
-	.btn:hover {
-		background: var(--ca-action-hover);
-		color: var(--ca-text-primary);
+	/* Ranks come from `statusRank`: 1 = language and server, 2 = indent, 3 = encoding and line endings. */
+	@container (max-width: 640px) {
+		.status :global([data-rank="3"]) {
+			display: none;
+		}
 	}
-	.warning {
-		color: var(--ca-semantic-warning);
+	@container (max-width: 520px) {
+		.status :global([data-rank="2"]) {
+			display: none;
+		}
 	}
-	.error {
-		color: var(--ca-semantic-error);
+	@container (max-width: 400px) {
+		.status :global([data-rank="1"]) {
+			display: none;
+		}
 	}
 </style>

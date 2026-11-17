@@ -1,18 +1,20 @@
 import 'dart:convert';
 
-import 'package:flutter/material.dart';
+import 'package:material_ui/material_ui.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:flutter_test/flutter_test.dart';
 
 import 'package:atlas_mobile/core/auth/device_auth.dart';
 import 'package:atlas_mobile/core/connection/connection_notifier.dart';
 import 'package:atlas_mobile/core/demo/demo_computer.dart';
+import 'package:atlas_mobile/core/permissions/permissions.dart';
 import 'package:atlas_mobile/core/protocol/crew_task.dart';
 import 'package:atlas_mobile/core/protocol/models.dart';
 import 'package:atlas_mobile/core/transport/transport.dart';
 import 'package:atlas_mobile/features/crew/chat/action_card.dart';
 
 import 'support/demo_harness.dart';
+import 'support/fake_permissions.dart';
 
 // Secrets from the phone (PhoneCrewAudit gap 7): a crewmate that needs a value asks with a `provide_secret`
 // card; the owner types it on the phone. Decision: allowed, Face ID first, and nothing leaves the phone
@@ -64,7 +66,11 @@ CrewmateTask _secretTask() => CrewmateTask.fromJson({
   },
 });
 
-Future<_Recording> _pump(WidgetTester t, DeviceAuth auth) async {
+Future<_Recording> _pump(
+  WidgetTester t,
+  DeviceAuth auth, [
+  FakePermissions? perms,
+]) async {
   final rec = _Recording(demoTransport());
   await t.pumpWidget(
     demoWrap(
@@ -80,7 +86,10 @@ Future<_Recording> _pump(WidgetTester t, DeviceAuth auth) async {
         ),
       ),
       [_mac],
-      overrides: [deviceAuthProvider.overrideWithValue(auth)],
+      overrides: [
+        deviceAuthProvider.overrideWithValue(auth),
+        permissionsProvider.overrideWithValue(perms ?? FakePermissions()),
+      ],
       transport: () => rec,
     ),
   );
@@ -121,6 +130,54 @@ void main() {
     await _typeAndSubmit(t, 'ghp_secret');
     expect(rec.answers(), isEmpty);
     expect(find.textContaining('no passcode set'), findsOneWidget);
+    expect(find.textContaining('was not sent'), findsOneWidget);
+  });
+
+  testWidgets('the first secret explains Face ID before the lock is asked', (
+    t,
+  ) async {
+    var asked = 0;
+    final rec = await _pump(
+      t,
+      (_) async {
+        asked++;
+        return true;
+      },
+      FakePermissions(
+        states: {AtlasPermission.faceId: PermissionState.notAsked},
+      ),
+    );
+    await t.enterText(find.byType(TextField), 'ghp_secret');
+    await t.tap(find.text('Submit'));
+    await settle(t);
+    expect(find.text('Confirm it is you'), findsOneWidget);
+    expect(asked, 0);
+    expect(rec.answers(), isEmpty);
+
+    await t.tap(find.text('Continue'));
+    await settle(t);
+    expect(asked, 1);
+    expect(rec.answers(), hasLength(1));
+  });
+
+  testWidgets('a phone with no lock set up says so and sends nothing', (
+    t,
+  ) async {
+    var asked = 0;
+    final rec = await _pump(
+      t,
+      (_) async {
+        asked++;
+        return true;
+      },
+      FakePermissions(
+        states: {AtlasPermission.faceId: PermissionState.unavailable},
+      ),
+    );
+    await _typeAndSubmit(t, 'ghp_secret');
+    expect(asked, 0);
+    expect(rec.answers(), isEmpty);
+    expect(find.textContaining('no lock set up'), findsOneWidget);
     expect(find.textContaining('was not sent'), findsOneWidget);
   });
 
@@ -170,6 +227,7 @@ void main() {
             asked++;
             return true;
           }),
+          permissionsProvider.overrideWithValue(FakePermissions()),
         ],
         transport: () => rec,
       ),

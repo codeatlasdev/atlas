@@ -1,7 +1,7 @@
 // Product review 2026-11-15 (screenshot of a stopped project): the state pill and a large Start floated side by
 // side above the numbers, and a stopped project showed its "0/6 running" in alarm red. The header is now one
 // status panel: the state, its one action and the numbers. These pin what a person relies on.
-import 'package:flutter/material.dart';
+import 'package:material_ui/material_ui.dart';
 import 'package:flutter_test/flutter_test.dart';
 
 import 'package:atlas_mobile/core/ui/atlas_theme.dart';

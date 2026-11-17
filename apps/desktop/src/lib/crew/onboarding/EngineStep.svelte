@@ -19,7 +19,7 @@
 			class:selected={isSel || isActive}
 			onclick={() => ob.handleEngineCardClick(agent.id)}
 			aria-pressed={isSel}
-			aria-label="{agent.label} – {engineStatusLabel(status.phase)}"
+			aria-label="{agent.label}: {engineStatusLabel(status.phase)}"
 		>
 			<div class="engine-logo">
 				{#if logo}

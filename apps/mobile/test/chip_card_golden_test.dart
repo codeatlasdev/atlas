@@ -1,6 +1,6 @@
 // Golden: every AtlasChip variant and every AttentionCard tone / strength / shape in one frame, so a change
 // to either shows up as a picture. No pulse (a running animation never settles in a golden).
-import 'package:flutter/material.dart';
+import 'package:material_ui/material_ui.dart';
 import 'package:flutter_test/flutter_test.dart';
 
 import 'package:atlas_mobile/core/ui/atlas_theme.dart';

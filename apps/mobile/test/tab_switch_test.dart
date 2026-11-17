@@ -1,12 +1,13 @@
 import 'dart:async';
 
-import 'package:flutter/material.dart';
+import 'package:material_ui/material_ui.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:flutter_riverpod/misc.dart' show Override;
 import 'package:flutter_test/flutter_test.dart';
 
 import 'package:atlas_mobile/core/connection/connection_notifier.dart';
 import 'package:atlas_mobile/core/demo/demo_computer.dart';
+import 'package:atlas_mobile/core/permissions/permissions.dart';
 import 'package:atlas_mobile/core/protocol/models.dart';
 import 'package:atlas_mobile/core/push/push_provider.dart';
 import 'package:atlas_mobile/core/storage/mac_storage.dart';
@@ -23,6 +24,7 @@ import 'package:atlas_mobile/main.dart';
 
 import 'support/demo_harness.dart';
 import 'support/frame_probe.dart';
+import 'support/fake_permissions.dart';
 
 // Regression (screen recording 2026-11-12, tab_overlap_67s): switching tabs (Settings -> Projects) showed both pages
 // superimposed, because the shell cross-faded the page being left with the page being entered for 260 ms.
@@ -277,6 +279,18 @@ void main() {
         t,
         overrides: [
           pushRegistrationProvider.overrideWith((_) => status.future),
+          // Only notifications exist on this phone, and the row arrives with the answer.
+          permissionsProvider.overrideWithValue(
+            FakePermissions(
+              states: {
+                AtlasPermission.camera: PermissionState.unavailable,
+                AtlasPermission.localNetwork: PermissionState.unavailable,
+              },
+            ),
+          ),
+          permissionStateProvider(AtlasPermission.notifications).overrideWith(
+            (ref) => status.future.then((_) => PermissionState.granted),
+          ),
         ],
       );
       await settle(t);

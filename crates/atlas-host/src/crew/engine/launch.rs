@@ -89,10 +89,16 @@ impl Exec {
         }
     }
 
-    // Only the Unix isolation tests ask (`runner/isolation.rs`, `cfg(all(test, unix))`).
-    #[cfg(all(test, unix))]
+    /// Whether the process runs as the crewmate's own user (through the helper).
     pub fn is_isolated(&self) -> bool {
-        self.iso.is_some()
+        #[cfg(unix)]
+        {
+            self.iso.is_some()
+        }
+        #[cfg(not(unix))]
+        {
+            false
+        }
     }
 }
 
@@ -192,7 +198,9 @@ impl TurnCtx<'_> {
     }
 }
 
+// tree-access: reached only for a crewmate that is not isolated; an isolated one runs through the spawn helper (`output_isolated`)
 fn tokio_cmd(cmd: &Cmd) -> tokio::process::Command {
+    // tree-access: reached only for a crewmate that is not isolated; an isolated one runs through the spawn helper (`output_isolated`)
     let mut c = tokio::process::Command::new(&cmd.program);
     c.args(&cmd.args).current_dir(&cmd.cwd).envs(&cmd.env);
     c

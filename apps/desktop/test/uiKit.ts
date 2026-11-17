@@ -9,10 +9,11 @@ import { mock } from "bun:test";
 import { createRequire } from "node:module";
 import { dirname, join } from "node:path";
 
-// A module mock is process-wide and the last `mock.module` of the specifier wins, so the stubs and the real
-// components are ONE module that every call extends: a suite that asks for a real `Tooltip` must not take `toast`
-// away from the suite that loads after it ("Export named 'toast' not found", which also skipped that suite's `afterAll`
-// and left its stub `document` in place for every file after it).
+// A module mock is process-wide within one test file's run and the last `mock.module` of the specifier wins, so the
+// stubs and the real components are ONE module that every call extends: a suite that asks for a real `Tooltip` must not
+// take `toast` away from a suite that shares its process. `bun run test` isolates files (`--parallel`), so this no longer
+// leaks across files (it once left a stub `document` in place for every file after it, and a stub `Popover` broke the
+// status-bar test when the crew onboarding suite happened to run first).
 const KIT_COMPONENTS = [
 	"Button",
 	"Dialog",
@@ -28,6 +29,9 @@ const KIT_COMPONENTS = [
 	"DropdownMenu",
 	"DropdownMenuItem",
 	"DropdownMenuSeparator",
+	"DropdownMenuLabel",
+	"NotificationBell",
+	"Skeleton",
 	"SchemeAsset",
 	"Popover",
 	"CopyButton",
@@ -38,6 +42,15 @@ const KIT_COMPONENTS = [
 	"Progress",
 	"SettingItem",
 	"TextField",
+	// Source Control (commit box) and Settings → Updates (channel cards).
+	"TextArea",
+	"SegmentedControl",
+	"Skeleton",
+	// The notifications bell (InboxBell.test.ts) and the Pull request tab (PrTab.test.ts).
+	"Badge",
+	"StatusChip",
+	// The connect step's SSH host picker (and the model picker): the Combobox.
+	"Combobox",
 ];
 const Stub = () => {};
 const kit = {

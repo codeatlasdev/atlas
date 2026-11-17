@@ -5,7 +5,7 @@ description: "How maintainers cut, promote and publish an Atlas release on the S
 
 # Releasing Atlas (maintainers)
 
-Releases are built and published by GitHub Actions on hosted runners when a maintainer pushes a `v*` tag, which `bun run release` does. CI runs on pull requests and on pushes to `main`/`release/**`; the Release workflow waits for the CI run of the tagged commit to pass before building.
+Releases are built and published by GitHub Actions on hosted runners when a maintainer pushes a `v*` tag, which `bun run release` does. CI runs on pull requests and on pushes to `main`/`release/**`; the Release workflow waits for the CI run of the tagged commit to pass before building. It pushes `main` (or `release/X.Y`) and the tag, which the agent guards refuse (docs/contributing.md "Agent guards"): run it as `ATLAS_MAINTAINER_OK=push bun run release <channel>`.
 
 What the channels mean for users, and what Atlas promises on each, is in [Versioning and release channels](versioning.md). This page is how to cut them.
 
@@ -126,6 +126,17 @@ Only the newest stable line gets fixes. If a hotfix touches code the next beta a
 7. **`publish`** (`ubuntu-latest`, after `build`, `build-linux`, `build-linux-arm64`, `build-arch` and `build-windows`): `scripts/generate-manifest.py` writes `manifest.json` (`version`, `date`, `assets`, plus `channel`, `prerelease`, `commit` and, for a promotion, `promoted_from`); a `SHA256SUMS` file covers every asset and the manifest; then the GitHub Release (`softprops/action-gh-release`, with the run's own `GITHUB_TOKEN`). `promoted_from` comes from the `Promoted from: …` line in the tag message, which `release.sh stable` writes. The body is the version's `CHANGELOG.md` section followed by the install/update instructions; for a prerelease it opens with a line saying which channel the build is on (and, for a default-channel build that GitHub marks "Latest", that it is still not offered on the Stable channel).
 
 A release is built cold on purpose: there is no cargo cache, because a release is never built from a restored one.
+
+**The crew server end-to-end test** (`.github/workflows/crew-e2e.yml`, [what it checks](crew.md#end-to-end-test-on-real-systemd)) installs a crew server on real systemd and runs tasks on it. It runs nightly and on pull requests that touch the crew, and it is a reusable workflow. To make a release wait for it, add a job to `release.yml` and put it in `publish`'s `needs` and `if`:
+
+```yaml
+  crew-e2e:
+    name: Crew server E2E
+    needs: gate
+    uses: ./.github/workflows/crew-e2e.yml
+```
+
+Before releasing, `gh workflow run crew-e2e.yml --ref main` (it is also on the nightly schedule) and read the result: a crew release is the one thing no other job installs on a server.
 
 The GitHub flags come from the tag's channel against the **default channel** (`"default"` in `crates/atlas-core/data/channels.json`, pinned to `#[default]` on `Channel` by a test), through `scripts/release-version.ts github-flags` (unit-tested; the workflow has no `contains('-')` guess of its own):
 

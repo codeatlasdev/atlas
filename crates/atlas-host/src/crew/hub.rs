@@ -60,9 +60,12 @@ impl CrewHub {
     pub(crate) fn new(
         dir: &std::path::Path,
         isolation: Option<super::spawn::layout::Setup>,
+        isolation_fault: Option<String>,
     ) -> Arc<Self> {
         let push_tokens = push::load_tokens(dir);
-        let store = CrewStore::new(dir).with_isolation(isolation);
+        let store = CrewStore::new(dir)
+            .with_isolation(isolation)
+            .with_isolation_fault(isolation_fault);
         let settings = store.load_crew_settings();
         let (paused, max_agents) = (settings.paused, settings.max_agents);
         let telegram = Arc::new(TelegramBridge::new(dir.to_path_buf()));

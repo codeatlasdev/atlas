@@ -1,0 +1,13 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources>
+    <!-- Android 12+ system splash: the ground and no icon (see drawable/splash_icon.xml). Without these the
+         system draws the launcher icon in a circle on a default colour. There is no post-splash theme here
+         (`postSplashScreenTheme` belongs to androidx.core-splashscreen, which this does not use): Flutter's
+         FlutterActivity applies NormalTheme itself at onCreate (AndroidManifest meta-data), and that theme
+         paints the same ground. -->
+    <style name="LaunchTheme" parent="@style/Theme.AppCompat.NoActionBar">
+        <item name="android:windowBackground">@drawable/launch_background</item>
+        <item name="android:windowSplashScreenBackground">@color/atlas_ground</item>
+        <item name="android:windowSplashScreenAnimatedIcon">@drawable/splash_icon</item>
+    </style>
+</resources>

@@ -1,4 +1,4 @@
-import 'package:flutter/material.dart';
+import 'package:material_ui/material_ui.dart';
 
 import 'package:atlas_mobile/src/rust/frb_generated.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
@@ -227,7 +227,7 @@ class _AtlasMobileAppState extends ConsumerState<AtlasMobileApp> {
     final devices = ref.read(pairedDevicesProvider).value ?? const [];
     for (final d in devices) {
       final p = connectionNotifierProvider(d);
-      if (ref.exists(p)) f(ref.read(p.notifier));
+      if (ref.read(p.exists)) f(ref.read(p.notifier));
     }
   }
 
@@ -235,7 +235,8 @@ class _AtlasMobileAppState extends ConsumerState<AtlasMobileApp> {
   void initState() {
     super.initState();
     _life;
-    // Push is optional: without Firebase config this is a no-op and the token stays null.
+    // Push is optional: without Firebase config this is a no-op and the token stays null. It never asks for
+    // notifications: that happens after the first pairing or in Settings, with an explanation.
     PushService.init(ref);
   }
 

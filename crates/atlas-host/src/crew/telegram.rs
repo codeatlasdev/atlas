@@ -803,6 +803,7 @@ impl TelegramBridge {
             return;
         }
         if let Err(e) = hub.crew.store.append_task(&crewmate.id, &task) {
+            // tree-access: attachments of a task hostd just made, under the crew store (task.id is hostd's own)
             let _ = std::fs::remove_dir_all(crate::crew::attachments::task_dir(
                 &hub.crew.store,
                 &crewmate.id,

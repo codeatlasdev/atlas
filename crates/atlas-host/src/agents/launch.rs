@@ -11,10 +11,13 @@ use crate::protocol::{Mode, PtyCreate, Scope};
 /// the desktop's agent tab turns that off. Written once under the registry dir the desktop also uses.
 fn omp_fresh_config(registry: &Path) -> Result<PathBuf, String> {
     let p = registry.join("desktop").join("omp-fresh.yml");
+    // tree-access: the registry dir the desktop also uses (hostd's own)
     if !p.exists() {
         if let Some(dir) = p.parent() {
+            // tree-access: the registry dir the desktop also uses (hostd's own)
             std::fs::create_dir_all(dir).map_err(|e| format!("{}: {e}", dir.display()))?;
         }
+        // tree-access: the registry dir the desktop also uses (hostd's own)
         std::fs::write(&p, "autoResume: false\n").map_err(|e| format!("{}: {e}", p.display()))?;
     }
     Ok(p)
@@ -41,7 +44,7 @@ pub fn resolve_bin(agent: &str) -> Result<PathBuf, String> {
         return Ok(b);
     }
     let def = atlas_core::agents::get(agent).ok_or_else(|| format!("unknown agent {agent}"))?;
-    atlas_core::login_env::which(def.bin)
+    atlas_core::login_env::which(&def.bin)
         .ok_or_else(|| format!("{} is not installed (not on PATH)", def.bin))
 }
 
@@ -114,10 +117,10 @@ mod tests {
     #[test]
     fn a_phone_launch_never_passes_the_yolo_flags() {
         let reg = tempfile::tempdir().unwrap();
-        for a in atlas_core::agents::AGENTS {
+        for a in atlas_core::agents::all() {
             let p = plan(
                 reg.path(),
-                a.id,
+                &a.id,
                 Path::new("/bin/x"),
                 Path::new("/w"),
                 "w",
@@ -125,9 +128,9 @@ mod tests {
                 Some("--dangerously-skip-permissions"),
             )
             .unwrap();
-            for y in a.yolo_args {
+            for y in &a.yolo_args {
                 assert!(
-                    !p.argv[..p.argv.len() - 1].contains(&y.to_string()),
+                    !p.argv[..p.argv.len() - 1].contains(y),
                     "{}: {:?}",
                     a.id,
                     p.argv

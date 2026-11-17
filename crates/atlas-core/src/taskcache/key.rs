@@ -54,6 +54,19 @@ impl Spec {
     /// Hash the argv, the declared globs, env values, tool versions and the bytes of every input.
     /// Reads the files as they are now, so uncommitted edits count.
     pub fn key(&self) -> io::Result<Key> {
+        self.key_with(&|| self.input_files(), &|rel| {
+            std::fs::File::open(self.cwd.join(rel)).map(Some)
+        })
+    }
+
+    /// [`Spec::key`] over the input files `files` names (relative to `cwd`, sorted, `/`-separated; asked after the
+    /// tools, so a missing tool is reported first) that `open` opens (`None`: not an input, left out of the key): for a tree that another user controls, where the list comes from git run
+    /// as that user and `open` refuses a link.
+    pub fn key_with(
+        &self,
+        files: &dyn Fn() -> io::Result<Vec<String>>,
+        open: &dyn Fn(&str) -> io::Result<Option<std::fs::File>>,
+    ) -> io::Result<Key> {
         self.check_outputs()?;
         let mut h = Sha256::new();
         field(&mut h, KEY_VERSION.as_bytes());
@@ -75,10 +88,11 @@ impl Spec {
             field(&mut h, tool.as_bytes());
             field(&mut h, tool_version(tool)?.as_bytes());
         }
-        for rel in self.input_files()? {
+        for rel in files()? {
+            let Some(file) = open(&rel)? else { continue };
             // A path (forward slashes on every OS) then the bytes: a rename changes the key.
             field(&mut h, rel.as_bytes());
-            hash_file(&mut h, &self.cwd.join(&rel))?;
+            hash_file(&mut h, file)?;
         }
         Ok(Key(hex::encode(h.finalize())))
     }
@@ -163,8 +177,7 @@ fn list(h: &mut Sha256, items: &[String]) {
 }
 
 /// A file's size and bytes, streamed.
-fn hash_file(h: &mut Sha256, path: &Path) -> io::Result<()> {
-    let mut f = std::fs::File::open(path)?;
+fn hash_file(h: &mut Sha256, mut f: std::fs::File) -> io::Result<()> {
     h.update(f.metadata()?.len().to_le_bytes());
     let mut buf = [0u8; 64 * 1024];
     loop {

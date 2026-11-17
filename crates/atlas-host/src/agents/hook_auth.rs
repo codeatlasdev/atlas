@@ -70,6 +70,19 @@ pub(crate) fn authorize(caller: &Caller, path: &str, body: &Value) -> Verdict {
     verdict(agent_ok && pane_ok)
 }
 
+/// What a caller's hook event may carry into hostd. A crewmate's own token (an isolated crewmate) comes from a
+/// process that controls everything it says, and `session_file` is a path hostd opens as the crew user to name the
+/// chat and to serve its history (`agents::history`, `agents::tree`): a crewmate could name another crewmate's
+/// files or `hostd.token`. The session files of such a crewmate live in its own home, which hostd cannot read
+/// anyway, so the path is dropped, not checked. The global token (hostd's own agents, the desktop's) keeps it.
+pub(crate) fn scrub(caller: &Caller, body: &mut Value) {
+    if matches!(caller, Caller::Crewmate(_))
+        && let Some(p) = body.get_mut("payload").and_then(Value::as_object_mut)
+    {
+        p.remove("session_file");
+    }
+}
+
 fn verdict(ok: bool) -> Verdict {
     if ok {
         Verdict::Allow
@@ -238,5 +251,28 @@ mod tests {
         ] {
             assert_eq!(authorize(&me(), path, &own), Verdict::Forbidden, "{path}");
         }
+    }
+
+    // Security review 5 (the class): a crewmate's hook event named `session_file: <another crewmate's file>` and
+    // hostd, as the crew user, read it for the chat title and the history the phone shows.
+    #[test]
+    fn a_crewmates_event_cannot_name_a_session_file_for_hostd_to_open() {
+        let ev = || json!({"pane_key": "p", "payload": {"event": "agent_start", "session_file": "/var/lib/atlas-cm/x/work/.env", "model": "m"}});
+        let mut mine = ev();
+        scrub(&me(), &mut mine);
+        assert!(mine["payload"].get("session_file").is_none(), "{mine}");
+        assert_eq!(
+            mine["payload"]["model"], "m",
+            "the rest of the event is kept"
+        );
+        let mut global = ev();
+        scrub(&Caller::Global, &mut global);
+        assert_eq!(
+            global["payload"]["session_file"],
+            "/var/lib/atlas-cm/x/work/.env"
+        );
+        let mut none = json!({"pane_key": "p"});
+        scrub(&me(), &mut none);
+        assert_eq!(none, json!({"pane_key": "p"}));
     }
 }

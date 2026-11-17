@@ -67,6 +67,8 @@ impl World {
             "var/lib",
             "log",
             "run/systemd/system",
+            // systemd makes it when the helper's socket unit starts (the fake `systemctl` starts nothing).
+            "run/atlas-crew",
             "home/.ssh",
         ] {
             std::fs::create_dir_all(w.root().join(d)).unwrap();
@@ -110,15 +112,26 @@ impl World {
             "basename",
             "cut",
             "dirname",
+            "readlink",
         ] {
             w.link_real(t);
         }
         w.fake("uname", "echo 'Linux x86_64'");
         w.fake("sudo", FAKE_SUDO);
         // The unit "runs" the installed binary: restart succeeds, hostd answers when the binary says so.
+        // A unit whose file is a symlink to /dev/null is masked, as in systemd: `is-enabled` says so, `unmask` removes
+        // the link (unless the test sets $ROOT/unmask-fails).
         w.fake(
             "systemctl",
-            "echo \"systemctl $*\" >> \"$ROOT/log/systemctl\"; exit 0",
+            r#"echo "systemctl $*" >> "$ROOT/log/systemctl"
+f="$ROOT/etc/systemd/system/$2"
+masked() { [ -L "$f" ] && [ "$(readlink "$f")" = /dev/null ]; }
+case "$1" in
+  is-enabled) if masked; then echo masked; exit 1; fi;;
+  unmask) if [ -e "$ROOT/unmask-fails" ]; then echo 'Access denied' >&2; exit 1; fi; masked && rm -f "$f";;
+  enable) if masked; then echo "Failed to enable unit: Unit $f is masked" >&2; exit 1; fi;;
+esac
+exit 0"#,
         );
         w.fake(
             "id",
@@ -175,7 +188,7 @@ else set -- $files; cp "$1" "$2"; fi"#,
         // The fake ssh: run the last argument (`bash -c '<script>'`) on the simulated server.
         w.write_exec(
             "bin-ssh/ssh",
-                "#!/bin/sh\n[ \"$1\" = -G ] && { if [ -f \"$ROOT/identity\" ]; then echo \"identityfile $(cat \"$ROOT/identity\")\"; else echo 'identityfile ~/.ssh/id_ed25519'; fi; exit 0; }\nfor a; do last=$a; done\n[ -f \"$ROOT/ssh-down\" ] && { echo 'ssh: connect refused' >&2; exit 255; }\nR=\"$ROOT\"\nexport PATH=\"$R/bin\"\nscript=$(printf '%s' \"$last\" | sed -e \"s#/usr/local/lib/atlas-crew#$R/lib/atlas-crew#g\" -e \"s#/usr/local/lib/atlas-bot#$R/lib/atlas-bot#g\" -e \"s#/etc/systemd/system#$R/etc/systemd/system#g\" -e \"s#/etc/atlas-crew#$R/etc/atlas-crew#g\" -e \"s#/run/systemd/system#$R/run/systemd/system#g\" -e \"s#/var/lib#$R/var/lib#g\")\nif [ -f \"$R/ssh-drop-after\" ] && printf '%s' \"$script\" | grep -q \"$(cat \"$R/ssh-drop-after\")\"; then\n  /bin/sh -c \"$script\"; echo run >> \"$R/log/dropped-runs\"; echo 'ssh: connection reset' >&2; exit 255\nfi\nexec /bin/sh -c \"$script\"\n"
+                "#!/bin/sh\n[ \"$1\" = -G ] && { if [ -f \"$ROOT/identity\" ]; then echo \"identityfile $(cat \"$ROOT/identity\")\"; else echo 'identityfile ~/.ssh/id_ed25519'; fi; exit 0; }\nfor a; do last=$a; done\n[ -f \"$ROOT/ssh-down\" ] && { echo 'ssh: connect refused' >&2; exit 255; }\nR=\"$ROOT\"\nexport PATH=\"$R/bin\"\nscript=$(printf '%s' \"$last\" | sed -e \"s#/usr/local/lib/atlas-crew#$R/lib/atlas-crew#g\" -e \"s#/usr/local/lib/atlas-bot#$R/lib/atlas-bot#g\" -e \"s#/etc/systemd/system#$R/etc/systemd/system#g\" -e \"s#/etc/atlas-crew#$R/etc/atlas-crew#g\" -e \"s#/run/atlas-crew#$R/run/atlas-crew#g\" -e \"s#/run/systemd/system#$R/run/systemd/system#g\" -e \"s#/var/lib#$R/var/lib#g\")\nif [ -f \"$R/ssh-drop-after\" ] && printf '%s' \"$script\" | grep -q \"$(cat \"$R/ssh-drop-after\")\"; then\n  /bin/sh -c \"$script\"; echo run >> \"$R/log/dropped-runs\"; echo 'ssh: connection reset' >&2; exit 255\nfi\nexec /bin/sh -c \"$script\"\n"
         );
         w
     }
@@ -240,6 +253,11 @@ else set -- $files; cp "$1" "$2"; fi"#,
     }
 
     fn atlas(&self, args: &[&str], stdin: &str) -> Output {
+        self.atlas_in("en", args, stdin)
+    }
+
+    /// [`World::atlas`] with `lang` as the display language (`ATLAS_LANG`).
+    fn atlas_in(&self, lang: &str, args: &[&str], stdin: &str) -> Output {
         let path = format!(
             "{}:{}",
             self.root().join("bin-ssh").display(),
@@ -249,6 +267,7 @@ else set -- $files; cp "$1" "$2"; fi"#,
             .arg("crew")
             .args(args)
             .env("PATH", path)
+            .env("ATLAS_LANG", lang)
             .env("HOME", self.root().join("home"))
             .env("ROOT", self.root())
             .env_remove("ATLAS_CREW_BINARY")
@@ -271,6 +290,158 @@ fn text(o: &Output) -> String {
         String::from_utf8_lossy(&o.stdout),
         String::from_utf8_lossy(&o.stderr)
     )
+}
+
+/// The events on stdout of `--progress json`: every line must parse, in the documented shape.
+fn events(o: &Output) -> Vec<serde_json::Value> {
+    String::from_utf8_lossy(&o.stdout)
+        .lines()
+        .map(|l| {
+            serde_json::from_str(l).unwrap_or_else(|e| panic!("stdout line is not JSON ({e}): {l}"))
+        })
+        .collect()
+}
+
+// The machine channel (the human lines are for people and get translated; a program reads this).
+// Desktop reads `kind`/`code` only, so a client never matches on text and a translation can never break it.
+#[test]
+fn progress_json_prints_only_events_on_stdout_and_ends_with_done() {
+    let w = World::new();
+    let bin = w.atlas_file("9.9.9", true);
+    let o = w.atlas(
+        &[
+            "install",
+            "me@srv",
+            "--binary",
+            bin.to_str().unwrap(),
+            "--progress",
+            "json",
+        ],
+        "",
+    );
+    assert!(o.status.success(), "{}", text(&o));
+    let ev = events(&o);
+    let codes: Vec<&str> = ev.iter().map(|e| e["code"].as_str().unwrap()).collect();
+    assert_eq!(
+        codes,
+        [
+            "check",
+            "install",
+            "user",
+            "crew.user",
+            "service",
+            "ssh",
+            "done"
+        ]
+    );
+    assert!(ev.iter().all(|e| e["v"] == 1 && e["args"].is_object()));
+    let user = ev.iter().find(|e| e["code"] == "crew.user").unwrap();
+    assert_eq!(
+        (user["kind"].as_str(), user["args"]["user"].as_str()),
+        (Some("info"), Some("atlas-crew"))
+    );
+    // The human lines moved to stderr, they did not vanish.
+    assert!(String::from_utf8_lossy(&o.stderr).contains("Crew server ready"));
+    // The default is unchanged for old clients: `step:` markers.
+    let o = w.atlas(
+        &["install", "me@srv", "--binary", bin.to_str().unwrap()],
+        "",
+    );
+    assert!(
+        String::from_utf8_lossy(&o.stdout).contains("step: check"),
+        "{}",
+        text(&o)
+    );
+}
+
+#[test]
+fn progress_json_failures_carry_a_stable_code_the_client_branches_on() {
+    let bin_of = |w: &World| w.atlas_file("9.9.9", true);
+    let last = |o: &Output| -> serde_json::Value { events(o).pop().expect("an error event") };
+
+    // A wrong sudo password: the client asks for it again.
+    let w = World::new();
+    std::fs::write(w.root().join("sudo-password"), "hunter2\n").unwrap();
+    let o = w.atlas(
+        &[
+            "install",
+            "me@srv",
+            "--sudo-password-stdin",
+            "--binary",
+            bin_of(&w).to_str().unwrap(),
+            "--progress",
+            "json",
+        ],
+        "nope\n",
+    );
+    let e = last(&o);
+    assert_eq!(
+        (e["kind"].as_str(), e["code"].as_str()),
+        (Some("error"), Some("sudo.password_rejected"))
+    );
+    assert_eq!(e["args"]["target"], "me@srv");
+
+    // A server that wants a password and none was given: the client shows the password field.
+    let w = World::new();
+    std::fs::write(w.root().join("sudo-password"), "hunter2\n").unwrap();
+    let o = w.atlas(
+        &[
+            "install",
+            "me@srv",
+            "--binary",
+            bin_of(&w).to_str().unwrap(),
+            "--progress",
+            "json",
+        ],
+        "",
+    );
+    assert_eq!(last(&o)["code"], "sudo.password_required");
+
+    // ssh itself down: not "the host lacks systemd".
+    let w = World::new();
+    std::fs::write(w.root().join("ssh-down"), "").unwrap();
+    let o = w.atlas(
+        &[
+            "install",
+            "me@srv",
+            "--binary",
+            bin_of(&w).to_str().unwrap(),
+            "--progress",
+            "json",
+        ],
+        "",
+    );
+    assert_eq!(last(&o)["code"], "ssh.unreachable");
+}
+
+// The point of the channel: the same bytes in every language, whatever the human lines say.
+#[test]
+fn progress_json_is_byte_identical_under_en_and_pt_br() {
+    for (name, setup) in [("success", false), ("sudo rejected", true)] {
+        let run = |lang: &str| {
+            let w = World::new();
+            if setup {
+                std::fs::write(w.root().join("sudo-password"), "hunter2\n").unwrap();
+            }
+            let bin = w.atlas_file("9.9.9", true);
+            let mut args = vec![
+                "install",
+                "me@srv",
+                "--binary",
+                bin.to_str().unwrap(),
+                "--progress",
+                "json",
+            ];
+            if setup {
+                args.insert(2, "--sudo-password-stdin");
+            }
+            let o = w.atlas_in(lang, &args, if setup { "nope\n" } else { "" });
+            String::from_utf8_lossy(&o.stdout).replace(w.root().to_str().unwrap(), "<root>")
+        };
+        let (en, pt) = (run("en"), run("pt-BR"));
+        assert!(!en.is_empty(), "{name}: no events");
+        assert_eq!(en, pt, "{name}: events differ between en and pt-BR");
+    }
 }
 
 // Gap 2: install reported "ready" without checking hostd. A binary that never answers must fail, point at
@@ -331,6 +502,70 @@ fn install_links_every_engine_from_where_its_vendor_put_it() {
         let target =
             std::fs::read_link(&link).unwrap_or_else(|e| panic!("{engine} not linked: {e}\n{t}"));
         assert_eq!(target, home.join(dir).join(engine), "{engine}");
+    }
+}
+
+// Incident (found by the real-systemd end-to-end test, scripts/crew-e2e.sh, on a plain Ubuntu 24.04): the codex
+// engine is installed with npm, which a fresh VPS does not have. `atlas crew install` failed there with
+// `npm: not found`, after it had written the unit and the isolation helpers and before it started hostd:
+// a half-installed server, over an engine nobody asked for. An engine that cannot be installed is a warning
+// that says which one and how to install it; the server and the other engines are installed.
+#[test]
+fn install_on_a_server_without_npm_installs_the_server_and_every_other_engine() {
+    let w = World::new();
+    std::fs::remove_file(w.root().join("bin/npm")).unwrap();
+    let bin = w.atlas_file("9.9.9", true);
+    let o = w.atlas(
+        &["install", "me@srv", "--binary", bin.to_str().unwrap()],
+        "",
+    );
+    let t = text(&o);
+    assert!(o.status.success(), "{t}");
+    assert!(t.contains("Crew server ready"), "{t}");
+    assert!(
+        t.contains("codex") && t.contains("npm install -g @openai/codex"),
+        "the warning names the engine and how to install it: {t}"
+    );
+    assert!(
+        w.read("lib/atlas-crew/atlas").contains("9.9.9"),
+        "hostd was swapped in"
+    );
+    assert!(
+        w.exists("var/lib/atlas-crew/.ssh/authorized_keys"),
+        "the install ran to the end"
+    );
+    let engines = w.root().join("lib/atlas-crew/engines");
+    for engine in ["claude", "omp", "opencode"] {
+        assert!(engines.join(engine).is_symlink(), "{engine} is linked: {t}");
+    }
+    assert!(
+        !engines.join("codex").exists(),
+        "no link to an engine that was not installed"
+    );
+}
+
+// Same class: a vendor installer that leaves no binary (its site is down, a proxy eats the script) must not
+// fail the install of the server either, and a later `atlas crew install` retries it.
+#[test]
+fn install_when_one_vendor_installer_leaves_nothing_still_installs_the_server() {
+    let w = World::new();
+    w.fake(
+        "curl",
+        &format!("for a; do url=$a; done\ncase \"$url\" in *claude.ai*) exit 22;; esac\n{VENDOR_INSTALLER_CURL}"),
+    );
+    let bin = w.atlas_file("9.9.9", true);
+    let o = w.atlas(
+        &["install", "me@srv", "--binary", bin.to_str().unwrap()],
+        "",
+    );
+    let t = text(&o);
+    assert!(o.status.success(), "{t}");
+    assert!(t.contains("Crew server ready"), "{t}");
+    assert!(t.contains("claude"), "the warning names the engine: {t}");
+    let engines = w.root().join("lib/atlas-crew/engines");
+    assert!(!engines.join("claude").exists(), "{t}");
+    for engine in ["omp", "opencode", "codex"] {
+        assert!(engines.join(engine).is_symlink(), "{engine} is linked: {t}");
     }
 }
 
@@ -648,6 +883,8 @@ fn install_authorizes_the_key_ssh_would_use_even_with_a_custom_name() {
 #[test]
 fn install_without_any_key_stops_before_touching_the_server() {
     let w = World::new();
+    // No key at all: the world only has a `.pub` (a private key alone counts as a key now, #517: the public one is
+    // derived from it), so removing it leaves neither.
     std::fs::remove_file(w.root().join("home/.ssh/id_ed25519.pub")).unwrap();
     let bin = w.atlas_file("9.9.9", true);
     let o = w.atlas(
@@ -656,6 +893,82 @@ fn install_without_any_key_stops_before_touching_the_server() {
     );
     let t = text(&o);
     assert!(!o.status.success(), "{t}");
-    assert!(t.contains("no SSH public key found"), "{t}");
+    assert!(t.contains("no SSH key found"), "{t}");
     assert!(!w.exists("log/sudo"), "the server was touched: {t}");
+}
+
+// Issue #518: a masked unit (a symlink to /dev/null) made `sudo tee` write the unit into /dev/null and
+// `systemctl enable` refuse it ("Failed to enable unit: ... is masked"). The install unmasks the units it owns,
+// says so, and ends with real files, whichever of its units were masked.
+#[test]
+fn install_unmasks_every_unit_it_owns_and_writes_real_files() {
+    let w = World::new();
+    let units = [
+        "atlas-crew.service",
+        "atlas-crew-spawn.socket",
+        "atlas-crew-spawn.service",
+        "atlas-crew-provision.socket",
+        "atlas-crew-provision.service",
+        "atlas-crew-egress.service",
+    ];
+    let dir = w.root().join("etc/systemd/system");
+    std::fs::create_dir_all(&dir).unwrap();
+    for u in units {
+        std::os::unix::fs::symlink("/dev/null", dir.join(u)).unwrap();
+    }
+    let bin = w.atlas_file("9.9.9", true);
+    let o = w.atlas(
+        &["install", "me@srv", "--binary", bin.to_str().unwrap()],
+        "",
+    );
+    let t = text(&o);
+    assert!(o.status.success(), "{t}");
+    assert!(t.contains("Crew server ready"), "{t}");
+    for u in units {
+        let meta = std::fs::symlink_metadata(dir.join(u)).unwrap();
+        assert!(!meta.file_type().is_symlink(), "{u} is still a link: {t}");
+        assert!(
+            std::fs::read_to_string(dir.join(u))
+                .unwrap()
+                .contains("[Unit]"),
+            "{u} has no unit text: {t}"
+        );
+        assert!(
+            t.contains(&format!("{u} was masked")),
+            "{u} not announced: {t}"
+        );
+    }
+}
+
+// Unmask impossible: the install stops at that unit with the command to run, as one `hint:` line (what Atlas
+// Desktop shows) and a one-line error, and nothing is left half-written.
+#[test]
+fn install_that_cannot_unmask_says_the_command_to_run() {
+    let w = World::new();
+    let dir = w.root().join("etc/systemd/system");
+    std::fs::create_dir_all(&dir).unwrap();
+    std::os::unix::fs::symlink("/dev/null", dir.join("atlas-crew.service")).unwrap();
+    std::fs::write(w.root().join("unmask-fails"), "").unwrap();
+    let bin = w.atlas_file("9.9.9", true);
+    let o = w.atlas(
+        &["install", "me@srv", "--binary", bin.to_str().unwrap()],
+        "",
+    );
+    let t = text(&o);
+    assert!(!o.status.success(), "{t}");
+    let err = String::from_utf8_lossy(&o.stderr);
+    assert!(
+        err.lines().any(|l| l
+            == "hint: run `sudo systemctl unmask atlas-crew.service` on the server, then retry"),
+        "{t}"
+    );
+    assert!(t.contains("is masked on the server"), "{t}");
+    assert!(
+        std::fs::symlink_metadata(dir.join("atlas-crew.service"))
+            .unwrap()
+            .file_type()
+            .is_symlink(),
+        "{t}"
+    );
+    assert!(!t.contains("Crew server ready"), "{t}");
 }

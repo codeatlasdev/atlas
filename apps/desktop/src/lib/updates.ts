@@ -674,3 +674,51 @@ export function laneStates(followed: Channel, pending: Channel | null): Record<C
 	}
 	return out;
 }
+
+/** What the Settings ▸ Updates card says, one at a time. */
+export type UpdateStatus =
+	"restart" | "dev" | "installing" | "checking" | "available" | "current" | "unknown";
+
+/**
+ * The single state of the Updates card. A verdict ("up to date", "X is available") is about the last finished check,
+ * so while a check runs there is no verdict: the card says it is checking (it once showed "Atlas is up to date" and
+ * "Checking…" together). A failed check has no verdict either, whatever an earlier one found. Facts that do not depend
+ * on the network (a restart is pending, a dev build, an install under way) come first and are never hidden by a check.
+ */
+export function updateStatus(s: {
+	relaunchNeeded: boolean;
+	linked: boolean;
+	installing: boolean;
+	checking: boolean;
+	failed: boolean;
+	available: boolean;
+	checked: boolean;
+}): UpdateStatus {
+	if (s.relaunchNeeded) return "restart";
+	if (s.linked) return "dev";
+	if (s.installing) return "installing";
+	if (s.checking) return "checking";
+	if (s.failed) return "unknown";
+	if (s.available) return "available";
+	return s.checked ? "current" : "unknown";
+}
+
+/** The card's headline for `status`. */
+export function updateHeadline(status: UpdateStatus, version: string | null | undefined): string {
+	switch (status) {
+		case "restart":
+			return "Restart to finish updating";
+		case "dev":
+			return "Running a dev build";
+		case "checking":
+			return "Checking for updates…";
+		case "available":
+			return `Atlas ${version} is available`;
+		case "current":
+			return "Atlas is up to date";
+		case "installing":
+			return version ? `Updating to ${version}…` : "Updating Atlas…";
+		case "unknown":
+			return "Atlas versions";
+	}
+}

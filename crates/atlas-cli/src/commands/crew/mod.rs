@@ -239,7 +239,7 @@ impl AtlasCommand for ExportArgs {
         let dest = self.output.clone().unwrap_or_else(|| {
             PathBuf::from(transfer::default_export_name(
                 &self.ssh_target,
-                chrono::Utc::now(),
+                std::time::SystemTime::now(),
             ))
         });
         transfer::check_output_free(&dest)?;
@@ -448,18 +448,6 @@ impl AtlasCommand for LogsArgs {
 
 // ── login ─────────────────────────────────────────────────────────────────────
 
-/// Official one-liner to install each agent on the crew server.
-/// These match the install lines documented in docs/crew.md.
-fn agent_install_hint(id: &str) -> Option<&'static str> {
-    match id {
-        "omp" => Some("curl -fsSL https://omp.sh/install | sh"),
-        "claude" => Some("curl -fsSL https://claude.ai/install.sh | bash"),
-        "codex" => Some(r#"npm_config_prefix="$HOME/.npm-global" npm install -g @openai/codex"#),
-        "opencode" => Some("curl -fsSL https://opencode.ai/install | bash"),
-        _ => None,
-    }
-}
-
 #[derive(Debug, Args)]
 pub struct LoginArgs {
     /// SSH target for the crew server (e.g. user@hostname or hostname)
@@ -476,14 +464,18 @@ pub struct LoginArgs {
 
 impl AtlasCommand for LoginArgs {
     async fn run(self) -> Result<()> {
-        let bin = atlas_core::agents::get(&self.agent)
-            .map(|a| a.bin)
-            .with_context(|| {
-                format!(
-                    "unknown agent '{}'; supported: omp, claude, codex, opencode",
-                    self.agent
-                )
-            })?;
+        let def = atlas_core::agents::get(&self.agent).with_context(|| {
+            let ids: Vec<&str> = atlas_core::agents::all()
+                .iter()
+                .map(|a| a.id.as_str())
+                .collect();
+            format!(
+                "unknown agent '{}'; supported: {}",
+                self.agent,
+                ids.join(", ")
+            )
+        })?;
+        let bin = def.bin.as_str();
         if let Some(id) = &self.crewmate {
             return self.login_as_crewmate(id);
         }
@@ -500,14 +492,12 @@ impl AtlasCommand for LoginArgs {
             .filter(|u| !u.is_empty())
             .unwrap_or_else(|| atlas_core::crew::USER.to_owned());
 
-        if let Some(hint) = agent_install_hint(&self.agent) {
-            println!(
-                "\x1b[36m◆\x1b[0m Install {} on the crew server first if needed:",
-                self.agent
-            );
-            println!("    {hint}");
-            println!();
-        }
+        println!(
+            "\x1b[36m◆\x1b[0m Install {} on the crew server first if needed:",
+            self.agent
+        );
+        println!("    {}", def.install);
+        println!();
 
         // The same ssh helper as every other crew call: the port, and the agents' PATH (a bare
         // `ssh host claude` runs in a shell that does not have ~/.local/bin).
@@ -530,26 +520,26 @@ impl AtlasCommand for LoginArgs {
 }
 
 impl LoginArgs {
-    /// The crewmate's own sign-in: ssh to the server as the person's admin user (the crew user is not
-    /// in sudoers, and cannot become another user), then run the engine as the crewmate.
+    /// The crewmate's own sign-in: ssh to the server as the person's admin user (the crew user is not in sudoers),
+    /// where the crew user's hostd is asked for the engine's login terminal, the request the phone sends
+    /// (`crew_engine_login`). The helper starts it as the crewmate under the confinement of its agents; this
+    /// command only carries the terminal (`atlas hostd --crew-login`).
     fn login_as_crewmate(&self, id: &str) -> Result<()> {
-        let user = atlas_host::crew::spawn::validate::user_for(id).with_context(|| {
+        let script = layout::login_script(&self.agent, id).with_context(|| {
             format!(
-                "'{id}' is not a crewmate id (see `atlas crew status`: 36 characters, lowercase)"
+                "'{id}' is not a crewmate id (see `atlas crew status`: 36 characters, lowercase), or '{}' is not an agent",
+                self.agent
             )
         })?;
-        let command = isolation::login_command(&user, &self.agent).map_err(|e| {
-            anyhow::anyhow!(
-                "cannot build the sign-in command for {:?}: not a crewmate or agent",
-                e.0
-            )
-        })?;
+        // The same ssh helper as every other crew call: the port, and the quoting of the script.
+        let argv = atlas_core::ssh::SshTarget::new(self.ssh_target.clone(), Some(self.ssh.port))
+            .terminal_argv(&script);
         println!(
-            "\x1b[36m▸\x1b[0m Opening sign-in session as {user}: ssh -t {} {}",
+            "\x1b[36m▸\x1b[0m Opening sign-in session for crewmate {id}: ssh -t {} (atlas hostd --crew-login {})",
             self.ssh_target, self.agent
         );
-        let status = std::process::Command::new("ssh")
-            .args(["-t", &self.ssh_target, &command])
+        let status = std::process::Command::new(&argv[0])
+            .args(&argv[1..])
             .status()
             .context("could not launch ssh")?;
         if !status.success() {

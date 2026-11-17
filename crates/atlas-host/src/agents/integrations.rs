@@ -6,30 +6,24 @@ use std::time::Duration;
 use atlas_core::sys::CommandExt;
 use serde_json::{Value, json};
 
-/// (id, label, `atlas setup` name): the agents Atlas has hooks for.
-const AGENTS: &[(&str, &str, &str)] = &[
-    ("omp", "omp", "omp"),
-    ("claude", "Claude Code", "claude-code"),
-    ("codex", "Codex", "codex"),
-];
-
-/// `{agents: [{id, label, setup, state: ok|missing|other_version|unknown}]}` for the agents
-/// on the login `PATH`, in [`AGENTS`] order; the checks run in parallel.
+/// `{agents: [{id, label, setup, state: ok|missing|other_version|unknown}]}` for the built-in agents
+/// (`data/agents.json`, every one has `atlas setup <setup>` hooks) on the login `PATH`, in registry order;
+/// the checks run in parallel.
 pub async fn all() -> Value {
     let exe = std::env::current_exe().ok();
-    let checks = AGENTS.iter().map(|&(id, label, setup)| {
+    let checks = atlas_core::agents::all().iter().map(|def| {
         let exe = exe.clone();
         tokio::spawn(async move {
-            let found = tokio::task::spawn_blocking(move || atlas_core::login_env::which(id))
+            let found = tokio::task::spawn_blocking(move || atlas_core::login_env::which(&def.bin))
                 .await
                 .ok()
                 .flatten();
             found?;
             let state = match exe {
-                Some(exe) => check(&exe, setup).await,
+                Some(exe) => check(&exe, &def.setup).await,
                 None => "unknown",
             };
-            Some(json!({"id": id, "label": label, "setup": setup, "state": state}))
+            Some(json!({"id": def.id, "label": def.label, "setup": def.setup, "state": state}))
         })
     });
     let mut out = Vec::new();
@@ -42,6 +36,7 @@ pub async fn all() -> Value {
 }
 
 async fn check(exe: &std::path::Path, setup: &str) -> &'static str {
+    // tree-access: hostd's own binary, to install the user's agent hooks
     let status = tokio::process::Command::new(exe)
         .args(["setup", setup, "--check"])
         .no_window()

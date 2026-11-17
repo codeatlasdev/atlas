@@ -27,8 +27,8 @@ pub(crate) use github::TEST_GITHUB_POLL;
 
 use std::sync::{Arc, Weak};
 
-use crate::crew::now_s;
 use crate::crew::store::{Task, TaskState, Trigger, TriggerKind};
+use crate::crew::{now_s, schedule};
 use crate::server::Hub;
 
 // ─── Public API ──────────────────────────────────────────────────────────────
@@ -393,34 +393,13 @@ pub(crate) fn start(hub_weak: Weak<Hub>) {
 
 /// Evaluate a cron expression in an optional IANA timezone; returns true when the
 /// next occurrence since `last_fired` (or epoch) has passed `now_s`.
-fn should_fire_cron(
+pub(crate) fn should_fire_cron(
     cron_expr: &str,
     last_fired: Option<u64>,
     tz: Option<&str>,
     now_s: u64,
 ) -> bool {
-    let Ok(cron) = croner::Cron::new(cron_expr).parse() else {
-        return false;
-    };
-    let since = last_fired.unwrap_or(0);
-    if let Some(tz_str) = tz
-        && let Ok(zone) = tz_str.parse::<chrono_tz::Tz>()
-    {
-        let since_dt = chrono::DateTime::from_timestamp(since as i64, 0)
-            .unwrap_or_else(chrono::Utc::now)
-            .with_timezone(&zone);
-        return cron
-            .find_next_occurrence(&since_dt, false)
-            .ok()
-            .map(|next| next.timestamp() as u64 <= now_s)
-            .unwrap_or(false);
-    }
-    let since_dt =
-        chrono::DateTime::from_timestamp(since as i64, 0).unwrap_or_else(chrono::Utc::now);
-    cron.find_next_occurrence(&since_dt, false)
-        .ok()
-        .map(|next| next.timestamp() as u64 <= now_s)
-        .unwrap_or(false)
+    schedule::parse_cron(cron_expr).is_ok_and(|cron| schedule::is_due(&cron, last_fired, tz, now_s))
 }
 
 /// Compute the unix-seconds timestamp of the next fire for a `Schedule` or `Interval`
@@ -433,26 +412,8 @@ pub(crate) fn compute_next_fire(
 ) -> Option<u64> {
     match kind {
         TriggerKind::Schedule { cron } => {
-            let Ok(c) = croner::Cron::new(cron).parse() else {
-                return None;
-            };
-            let since = last_fired.unwrap_or(now_s);
-            if let Some(tz_str) = tz
-                && let Ok(zone) = tz_str.parse::<chrono_tz::Tz>()
-            {
-                let since_dt = chrono::DateTime::from_timestamp(since as i64, 0)
-                    .unwrap_or_else(chrono::Utc::now)
-                    .with_timezone(&zone);
-                return c
-                    .find_next_occurrence(&since_dt, false)
-                    .ok()
-                    .map(|dt| dt.timestamp() as u64);
-            }
-            let since_dt =
-                chrono::DateTime::from_timestamp(since as i64, 0).unwrap_or_else(chrono::Utc::now);
-            c.find_next_occurrence(&since_dt, false)
-                .ok()
-                .map(|dt| dt.timestamp() as u64)
+            let c = schedule::parse_cron(cron).ok()?;
+            schedule::next_fire_after(&c, last_fired.unwrap_or(now_s), tz)
         }
         TriggerKind::Interval { every_secs } => {
             let last = last_fired.unwrap_or(now_s);

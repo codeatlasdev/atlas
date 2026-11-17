@@ -21,7 +21,7 @@ mod estimate_tests;
 #[cfg(test)]
 mod tests;
 
-pub use changed::changed_files;
+pub use changed::{RunGit, changed_files, changed_files_with};
 pub use plugin::from_command;
 pub use rules::{
     ActionInputs, Declared, Rule, Source, check_globs, from_action_inputs, from_rules, resolve,

@@ -55,7 +55,7 @@ test("problems and a large-file tier show as warnings; mixed endings are flagged
 	expect(text).toContain("2 errors, 1 warning");
 	expect(text).toContain("Large file");
 	expect(text).toContain("Mixed");
-	expect(target.querySelector(".error")?.textContent).toContain("2 errors");
+	expect(target.querySelector("[data-tone=error]")?.textContent).toContain("2 errors");
 	done();
 });
 
@@ -65,5 +65,44 @@ test("a selection count and size show next to the position", () => {
 		onaction: () => {},
 	});
 	expect(target.textContent).toContain("Ln 12, Col 5 (3 selections) (24 selected)");
+	done();
+});
+
+// Regression: 1.5.0-alpha.26, in a ~450px pane "2 errors, 0 warnings" printed over "Spaces: 4". The bar hides items
+// by rank as it narrows (CSS container queries, which the real WebKit proof covers); the contract tested here is the
+// order: what the person acts on (caret, problems) never ranks as droppable, encoding and line endings go first.
+test("the bar ranks what to drop first: encoding and EOL, then indent, then language; caret and problems never", () => {
+	const { statusRank } = require("./statusbar.ts");
+	const rank = Object.fromEntries(
+		["position", "problems", "indent", "encoding", "eol", "language", "lsp", "wrap"].map((id) => [
+			id,
+			statusRank(id),
+		]),
+	);
+	expect(rank.position).toBe(0);
+	expect(rank.problems).toBe(0);
+	expect(rank.encoding).toBeGreaterThan(rank.indent);
+	expect(rank.eol).toBe(rank.encoding);
+	expect(rank.indent).toBeGreaterThan(rank.language);
+	expect(rank.language).toBeGreaterThan(0);
+	expect(rank.lsp).toBe(rank.language);
+});
+
+test("every rendered cell carries its rank so the narrow rules can reach it", () => {
+	const { target, done } = render({
+		input: input({ problems: { errors: 2, warnings: 0 } }),
+		onaction: () => {},
+	});
+	const ranks = Object.fromEntries(
+		[...target.querySelectorAll("[data-rank]")].map((e) => [
+			e.textContent.trim(),
+			e.getAttribute("data-rank"),
+		]),
+	);
+	expect(ranks["2 errors, 0 warnings"]).toBe("0");
+	expect(ranks["Ln 12, Col 5"]).toBe("0");
+	expect(ranks["UTF-8"]).toBe("3");
+	expect(ranks["Spaces: 2"]).toBe("2");
+	expect(ranks["TypeScript"]).toBe("1");
 	done();
 });

@@ -1,7 +1,7 @@
 /// The Crew tab's logbook row: avatar, name and time, the crewmate's last word beneath.
 library;
 
-import 'package:flutter/material.dart';
+import 'package:material_ui/material_ui.dart';
 
 import 'package:atlas_mobile/core/ui/atlas_theme.dart';
 import 'package:atlas_mobile/core/ui/inset_row.dart';

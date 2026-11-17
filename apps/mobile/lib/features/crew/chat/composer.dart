@@ -1,7 +1,7 @@
 /// The chat's composer: a floating pill whose send dot buds out of its right end once there is text.
 library;
 
-import 'package:flutter/material.dart';
+import 'package:material_ui/material_ui.dart';
 import 'package:flutter/services.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 
@@ -50,16 +50,17 @@ class _ChatComposerState extends ConsumerState<ChatComposer> {
   Future<void> _chooseSource() async {
     final source = await askPhotoSource(context);
     if (source == null || !mounted) return;
-    final List<PickedImage> picked;
+    List<PickedImage>? picked;
     try {
-      picked = await pickPhotos(ref, source);
+      picked = await pickPhotos(context, ref, source);
     } on Object catch (e) {
-      // A permission refused in the system sheet, or no camera: say so, never a silent nothing.
+      // No camera, or a picker that failed: say so, never a silent nothing.
       if (mounted) _fail('Could not open the ${source.name}: $e');
       return;
     }
-    if (!mounted) return;
-    setState(() => _error = takePicked(_images, picked));
+    final got = picked;
+    if (!mounted || got == null) return;
+    setState(() => _error = takePicked(_images, got));
   }
 
   Future<void> _send() async {

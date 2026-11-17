@@ -14,3 +14,8 @@ const codexWhitePath =
 
 /// omp's glyph (64x64 viewBox) on a `#0f0a14` rounded tile (rx 12).
 const ompGlyphPath = 'M14 16h36v8H40v32h-8V24h-6v22h-8V24h-4z';
+
+/// OpenCode's mark (512x512 viewBox) on a `#131010` tile: the grey inner square (`#5A5858`)
+/// and the white frame, which is even-odd (the square is cut out of it).
+const opencodeInnerPath = 'M320 224V352H192V224H320Z';
+const opencodeFramePath = 'M384 416H128V96H384V416ZM320 160H192V352H320V160Z';

@@ -4,6 +4,8 @@
 
 use atlas_core::crew::{LEGACY_USER, USER};
 
+use crate::commands::deploy::remote::shq;
+
 /// Binary dir. The old `/usr/local/lib/atlas-bot` is removed by the migration.
 pub const INSTALL_DIR: &str = "/usr/local/lib/atlas-crew";
 const LEGACY_INSTALL_DIR: &str = "/usr/local/lib/atlas-bot";
@@ -70,6 +72,74 @@ pub fn retire_legacy_service(p: Probe) -> Vec<String> {
     ]
 }
 
+/// The exit code of [`write_unit_script`] when a masked unit could not be unmasked.
+pub const UNMASK_FAILED: i32 = 5;
+
+/// Shell that writes the systemd unit `file` (stdin is its text), for every unit Atlas owns.
+///
+/// A masked unit is a symlink to `/dev/null`: `tee` through it loses the text and leaves the mask, and
+/// `systemctl enable` then refuses the unit (issue #518). So the unit is unmasked first (and `unmasked:
+/// <unit>` is printed, see [`unmasked_units`]), and the text goes to a temp file next to it that is
+/// moved over the path: `mv` replaces whatever is at the path, a symlink to anywhere included, and never
+/// writes through it. A failed unmask exits [`UNMASK_FAILED`], with nothing written.
+pub fn write_unit_script(file: &str) -> String {
+    let unit = file.rsplit('/').next().unwrap_or(file);
+    let tmp = match file.rsplit_once('/') {
+        Some((dir, _)) => format!("{dir}/.{unit}.atlas-new"),
+        None => format!(".{unit}.atlas-new"),
+    };
+    let (file, tmp, unit) = (shq(file), shq(&tmp), shq(unit));
+    format!(
+        "case \"$(systemctl is-enabled {unit} 2>/dev/null)\" in masked*) \
+sudo systemctl unmask {unit} >&2 || exit {UNMASK_FAILED}; echo unmasked: {unit};; esac; \
+sudo tee {tmp} > /dev/null && sudo chmod 0644 {tmp} && sudo mv -f {tmp} {file}"
+    )
+}
+
+/// The units [`write_unit_script`] had to unmask, read from its stdout (`unmasked: <unit>` lines).
+pub fn unmasked_units(stdout: &str) -> Vec<&str> {
+    stdout
+        .lines()
+        .filter_map(|l| l.strip_prefix("unmasked: "))
+        .map(str::trim)
+        .collect()
+}
+
+/// The command that undoes a mask, for the person to run when Atlas could not.
+pub fn unmask_command(unit: &str) -> String {
+    format!("sudo systemctl unmask {unit}")
+}
+
+/// The `hint: <what to do>` stderr line printed right before the install fails (plain text, no ANSI):
+/// Atlas Desktop shows the last `hint: ` line of a failed install as its "what to do" text.
+pub fn unmask_hint(unit: &str) -> String {
+    format!(
+        "hint: run `{}` on the server, then retry",
+        unmask_command(unit)
+    )
+}
+
+/// What a failed [`write_unit_script`] (exit `code`, `stderr`) tells the person. One line, because the desktop
+/// shows the last line of the install's output: a masked unit that could not be unmasked names the command to
+/// run on the server; anything else carries the server's own message.
+pub fn unit_write_error(code: i32, stderr: &str, file: &str) -> anyhow::Error {
+    let unit = file.rsplit('/').next().unwrap_or(file);
+    let why = stderr
+        .lines()
+        .rev()
+        .find(|l| !l.trim().is_empty())
+        .unwrap_or("no reason given")
+        .trim();
+    if code == UNMASK_FAILED {
+        anyhow::anyhow!(
+            "{unit} is masked on the server and Atlas could not unmask it ({why}). Run on the server: {}, then retry",
+            unmask_command(unit)
+        )
+    } else {
+        anyhow::anyhow!("writing {unit} failed: {why}")
+    }
+}
+
 /// Shell to drop the old binary dir once the new binary is in place. Data is not under it.
 pub fn remove_legacy_install_dir() -> String {
     format!("sudo rm -rf {LEGACY_INSTALL_DIR}")
@@ -90,6 +160,19 @@ pub fn pause_script(pause: bool) -> String {
     format!(
         "u=$({WHICH_USER}); sudo -u \"$u\" {INSTALL_DIR}/atlas hostd {flag} --dir \"/var/lib/$u/.atlas\""
     )
+}
+
+/// Shell that signs `agent` in as crewmate `id`: the hostd client runs as the crew user and asks hostd for the
+/// engine's login terminal (`crew_engine_login`, the request the phone sends), which the spawn helper starts as the
+/// crewmate under the same confinement as its agents. Never the engine as the crewmate over `sudo`: that runs
+/// whatever the crewmate left in its own home (a hook, an MCP server) outside the sandbox, and anything it detaches
+/// outlives the login and reads other crewmates' `/proc`. `None` for an `id` that is not a crewmate id or an unknown agent.
+pub fn login_script(agent: &str, id: &str) -> Option<String> {
+    atlas_host::crew::spawn::validate::user_for(id)?;
+    let agent = atlas_core::agents::get(agent)?.id.as_str();
+    Some(format!(
+        "u=$({WHICH_USER}); sudo -u \"$u\" {INSTALL_DIR}/atlas hostd --crew-login {agent} --login-as {id} --dir \"/var/lib/$u/.atlas\""
+    ))
 }
 
 /// The systemd units to query on a host: the current one, then the pre-rename one.
@@ -181,7 +264,7 @@ RestartSec=5\n\
 NoNewPrivileges=true\n\
 ProtectSystem=strict\n\
 ProtectHome=read-only\n\
-ReadWritePaths={h}\n\
+ReadWritePaths={h} -/var/lib/atlas-cm\n\
 PrivateTmp=true\n\
 ProtectKernelTunables=true\n\
 ProtectControlGroups=true\n\
@@ -265,13 +348,13 @@ mod tests {
         assert!(fresh.contains("User=atlas-crew"));
         assert!(fresh.contains("Environment=ATLAS_CREW_HOST=1"));
         assert!(fresh.contains("ExecStart=/usr/local/lib/atlas-crew/atlas hostd"));
-        assert!(fresh.contains("ReadWritePaths=/var/lib/atlas-crew\n"));
+        assert!(fresh.contains("ReadWritePaths=/var/lib/atlas-crew -/var/lib/atlas-cm\n"));
         assert!(fresh.contains("Environment=ATLAS_HOSTD_IDLE_SECS=never"));
 
         // The migrated server keeps its user and its home (the data), under the new unit.
         let old = systemd_unit(&account(probe(true, true, false)));
         assert!(old.contains("User=atlas-bot\n"));
-        assert!(old.contains("ReadWritePaths=/var/lib/atlas-bot\n"));
+        assert!(old.contains("ReadWritePaths=/var/lib/atlas-bot -/var/lib/atlas-cm\n"));
         assert!(old.contains("PATH=/var/lib/atlas-bot/.atlas/bin:"));
         assert!(old.contains("ExecStart=/usr/local/lib/atlas-crew/atlas hostd"));
         assert!(old.contains("ATLAS_CREW_HOST=1") && !old.contains("ATLAS_BOT_HOST"));
@@ -320,6 +403,31 @@ mod tests {
         }
     }
 
+    // Security review 4, C2: `atlas crew login --crewmate` ran `sudo -u atlas-cm-X sh -c '<engine>'` over ssh, the
+    // engine in the host's mount namespace with the crewmate's own config (hooks, MCP servers) and no `ProtectProc`,
+    // `no_new_privs` or memory cap, and a process it detached outlived the login and read other crewmates' /proc.
+    // The sign-in is now the request the phone sends, so hostd's helper starts it like any agent.
+    #[test]
+    fn a_crewmates_sign_in_is_hostds_login_request_and_never_the_engine_run_as_the_crewmate_over_sudo()
+     {
+        let id = "3f2a9c1e-5b7d-4e8f-9a0b-1c2d3e4f5a6b";
+        let sh = login_script("claude", id).unwrap();
+        assert!(sh.contains(WHICH_USER), "{sh}");
+        assert!(
+            sh.contains(&format!(
+                "sudo -u \"$u\" /usr/local/lib/atlas-crew/atlas hostd --crew-login claude --login-as {id} --dir \"/var/lib/$u/.atlas\""
+            )),
+            "{sh}"
+        );
+        // Nothing here becomes the crewmate's user or runs a shell of the crewmate's own.
+        assert!(!sh.contains("atlas-cm-") && !sh.contains("sh -c"), "{sh}");
+        // The injection guard: neither the id nor the agent carries shell, and an unknown agent is refused.
+        assert!(login_script("claude", "x; id").is_none());
+        assert!(login_script("claude", &format!("{id}; id")).is_none());
+        assert!(login_script("claude; id", id).is_none());
+        assert!(login_script("sh", id).is_none());
+    }
+
     // Crew review P0, PR #106 comment 6874910355: the unit only had NoNewPrivileges/ProtectSystem/PrivateTmp,
     // so a crewmate could read other users' homes, fork-bomb the host or eat all its memory. Every
     // directive here exists in systemd 245 (Ubuntu 20.04, the oldest server we install on): ProtectHome
@@ -349,7 +457,7 @@ mod tests {
     fn the_crew_home_stays_writable_and_holds_every_agent_dir() {
         let a = account(Probe::default());
         let unit = systemd_unit(&a);
-        assert!(unit.contains(&format!("ReadWritePaths={}\n", a.home)));
+        assert!(unit.contains(&format!("ReadWritePaths={} -/var/lib/atlas-cm\n", a.home)));
         let path = unit
             .lines()
             .find_map(|l| l.strip_prefix("Environment=PATH="))

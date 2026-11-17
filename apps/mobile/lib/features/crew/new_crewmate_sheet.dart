@@ -1,7 +1,8 @@
-import 'package:flutter/material.dart';
+import 'package:material_ui/material_ui.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 
 import 'package:atlas_mobile/core/connection/require_mux.dart';
+import 'package:atlas_mobile/core/protocol/agent_registry.dart';
 import 'package:atlas_mobile/core/protocol/models.dart';
 import 'package:atlas_mobile/core/ui/atlas_theme.dart';
 import 'package:atlas_mobile/features/crew/crew_provider.dart';
@@ -34,8 +35,6 @@ class _NewCrewmateSheetState extends ConsumerState<NewCrewmateSheet> {
   late MacDevice _device;
   bool _submitting = false;
   String? _error;
-
-  static const _agents = ['claude', 'codex', 'opencode', 'omp'];
 
   @override
   void initState() {
@@ -167,8 +166,8 @@ class _NewCrewmateSheetState extends ConsumerState<NewCrewmateSheet> {
             initialValue: _agent,
             decoration: const InputDecoration(isDense: true),
             items: [
-              for (final a in _agents)
-                DropdownMenuItem(value: a, child: Text(a)),
+              for (final a in builtinAgents)
+                DropdownMenuItem(value: a.id, child: Text(a.label)),
             ],
             onChanged: (a) {
               if (a != null) _onAgentChanged(a);

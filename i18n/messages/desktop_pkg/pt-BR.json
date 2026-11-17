@@ -1,7 +1,7 @@
 {
 	"desktop_pkg_ask": "Instalar agora? [S/n]",
 	"desktop_pkg_downloading": "Baixando {asset}...",
-	"desktop_pkg_failed": "Não foi possível instalar o pacote {manager} ({error}); o AppImage será instalado no lugar.",
+	"desktop_pkg_failed": "Não foi possível instalar o pacote {manager} ({error}); instalando o AppImage no lugar.",
 	"desktop_pkg_installed": "Instalado em {path}",
 	"desktop_pkg_needs_confirmation": "Instalando o AppImage: o pacote {manager} precisa da sua confirmação (rode `atlas desktop` em um terminal ou passe --yes).",
 	"desktop_pkg_skipped": "Pacote ignorado; instalando o AppImage.",

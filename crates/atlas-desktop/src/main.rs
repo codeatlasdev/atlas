@@ -6,6 +6,8 @@ mod agent;
 // Pure, tested decision code driven only by the AppKit side: unused outside macOS, still built so its tests run.
 #[cfg_attr(not(target_os = "macos"), allow(dead_code))]
 mod agent_mode;
+// `ssh` runs this very executable as its SSH_ASKPASS program (see the module doc): `main` answers before anything else.
+mod askpass;
 mod boot;
 mod browser;
 // Built only on the macOS WebKit hook (`browser_fail_mac`); kept everywhere so its test runs.
@@ -49,6 +51,8 @@ mod live_server;
 mod menu;
 // Pure, tested decision code driven only by the AppKit side: unused outside macOS, still built so its tests run.
 mod crew;
+mod crew_ssh;
+mod loose_fs;
 mod natives;
 mod open_path;
 mod pty_batch;
@@ -167,7 +171,12 @@ macro_rules! handlers {
             cmds::project_init,
             cmds::project_save_config,
             open_path::open_pending,
+            loose_fs::loose_stat,
+            loose_fs::loose_read,
+            loose_fs::loose_write,
             cmds::project_probe,
+            cmds::project_promote,
+            cmds::path_locate,
             cmds::project_init_preview,
             cmds::stack_start,
             cmds::stack_stop,
@@ -249,9 +258,11 @@ macro_rules! handlers {
             crew::crew_server_install,
             crew::crew_browsers_status,
             crew::crew_browsers_install,
-            crew::ssh_key_find,
-            crew::ssh_keygen,
-            crew::ssh_authorize_key,
+            crew_ssh::ssh_key_resolve,
+            crew::ssh_hosts_list,
+            crew_ssh::ssh_keygen,
+            crew_ssh::ssh_connect_check,
+            crew_ssh::ssh_authorize_key,
             crew::crew_agent_check,
             crew::crew_agent_install,
             crew::crew_signin_argv,
@@ -290,6 +301,8 @@ macro_rules! handlers {
             term::term_stats_reset,
             swipe_mac::swipe_zones,
             swipe_mac::swipe_zones_now,
+            swipe_mac::swipe_scrollers_now,
+            swipe_mac::swipe_abandon,
             swipe_mac::swipe_native,
             swipe_mac::swipe_go,
             term::term_key,
@@ -557,6 +570,11 @@ fn wait_for_predecessor() {
 }
 
 fn main() {
+    // Started by `ssh` to ask for the account password of "Add a crew server" (#517): fetch it, print it, exit.
+    // Before the window, the logs and the predecessor wait: it must be instant and must touch nothing.
+    if let Some(code) = askpass::run_if_helper() {
+        std::process::exit(code);
+    }
     #[cfg(windows)]
     wait_for_predecessor();
     // First, so GTK/WebKit messages printed while starting (and by every web process) are kept.
@@ -758,6 +776,12 @@ fn main() {
             #[cfg(target_os = "macos")]
             if let tauri::RunEvent::Reopen { .. } = ev {
                 show_main(app);
+            }
+            // Finder "Open With" and a file dropped on the Dock icon (`bundle.fileAssociations` in tauri.conf.json): the
+            // page opens it the way `atlas <path>` does (a loose text file goes to the light editor).
+            #[cfg(target_os = "macos")]
+            if let tauri::RunEvent::Opened { urls } = &ev {
+                open_path::open(app, open_path::paths_from_urls(urls));
             }
             // An exit the user did not ask for (the last window going away) is held while the tray can reopen the
             // app; an explicit `exit(code)` (tray Quit, ⌘Q, the updater's restart) always goes through.

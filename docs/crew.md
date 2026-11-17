@@ -26,7 +26,7 @@ atlas crew install ubuntu@myserver.example.com
 # 2. Sign each agent in as the crew user (see below)
 atlas crew login ubuntu@myserver.example.com claude
 
-# 3. Add the server in Atlas Desktop (Atlas Crew → Settings), or reach it from Atlas Mobile through your Mac
+# 3. Add the server in Atlas Desktop (Atlas Crew → Settings), or reach it from Atlas Mobile through a computer you paired
 ```
 
 Requirements:
@@ -35,7 +35,18 @@ Requirements:
 - An SSH public key on your machine: the one `ssh` itself would offer for that host (`ssh -G` lists the `IdentityFile`s of `~/.ssh/config` and the default names; a key with any name works). It is looked up before anything on the server changes.
 - Internet access on the server **or** on your machine (the release is then downloaded here and sent over ssh), or a Linux `atlas` of the server's architecture (see [Offline install](#offline-install)).
 
-`atlas crew install <ssh-target>` does, in order: one preflight probe that changes nothing and names **every** missing piece at once (systemd running as PID 1, sudo, curl, tar, git, sha256sum, awk, useradd, ... each with the package that has it); stages `atlas` as `/usr/local/lib/atlas-crew/atlas.new`; creates the `atlas-crew` system user (home `/var/lib/atlas-crew`); links the binary at `<home>/.atlas/bin/atlas`; writes and enables `/etc/systemd/system/atlas-crew.service`; swaps the binary in (a binary that was already there stays as `atlas.prev`), starts the service and **waits up to 60 s for hostd to answer**, rolling back to `atlas.prev` when it does not (a dead binary fails the install and points at `atlas crew logs`, it is never reported as ready); appends your SSH public key to the crew user's `authorized_keys`. The service starts on boot and restarts on failure.
+`atlas crew install <ssh-target>` does, in order: one preflight probe that changes nothing and names **every** missing piece at once (systemd running as PID 1, sudo, curl, tar, git, sha256sum, awk, useradd, ... each with the package that has it); stages `atlas` as `/usr/local/lib/atlas-crew/atlas.new`; creates the `atlas-crew` system user (home `/var/lib/atlas-crew`); links the binary at `<home>/.atlas/bin/atlas`; writes and enables `/etc/systemd/system/atlas-crew.service` (every unit the install owns, that one and the helper units, is first **unmasked** if it was masked, with a step line saying so, and written to a temp file that is moved over the path, so a symlink at the path, a mask included, is replaced and never written through; if the unmask is refused the install stops and prints the `sudo systemctl unmask <unit>` to run on the server); swaps the binary in (a binary that was already there stays as `atlas.prev`), starts the service and **waits up to 60 s for hostd to answer**, rolling back to `atlas.prev` when it does not (a dead binary fails the install and points at `atlas crew logs`, it is never reported as ready); appends your SSH public key to the crew user's `authorized_keys`. The service starts on boot and restarts on failure.
+
+### Add a crew server in Atlas Desktop
+
+Atlas Desktop does the same on macOS, Linux and Windows, from one form (address and port, or a server picked from `~/.ssh/config`) with the sign-in method chosen up front:
+
+- **SSH key** (the default when this computer has one). The form shows the key `ssh` will use for that address (`ssh -G`: a `~/.ssh/config` alias has its own) and **Choose another…** opens a file picker for any private key; picking `id_work.pub` means `id_work`. The key is passed as `-i … -o IdentitiesOnly=yes` to every ssh call of the install (`atlas crew install --identity <key>`, also on `atlas crew browsers install|status`), and it is kept in `crew-servers.json` (`identity`, a path, never the key) so the tunnel, the mobile relay and Settings use the same one after a restart. A key without its `.pub` works: the public key is derived from it (`ssh-keygen -y`).
+- **Password.** The account password signs in once, Atlas adds this computer's public key to the server's `authorized_keys` (a key is created first when there is none; adding twice does not stack copies) and then installs with the key, so later connections need no password. The password is never on a command line, in the environment or on disk: `ssh` runs Atlas Desktop's own executable as its `SSH_ASKPASS` program (`SSH_ASKPASS_REQUIRE=force`), and that process fetches the password from a one-shot local endpoint (a Unix socket in a private directory, a named pipe on Windows) that exists only for that ssh call and serves a few connections at most. It answers only a password prompt, never a passphrase or host-key question. A `.sh` or `.cmd` helper was rejected: it would hold the password in a file and cannot be one program on every OS.
+
+Before anything is installed the form makes one connection (`first contact`) and trusts a host key this computer has never seen, like `StrictHostKeyChecking=accept-new`; a key that **changed** is refused with the command that forgets the old one. Every failure says what it is and what to do: a refused key names the key and offers the password or another key; a server that is down, silent or misspelled says so; a server that takes only keys sends you back to the key; sudo that wants a password asks for it; a masked unit shows the `hint:` line the CLI printed (`atlas crew install` writes `hint: …` on stderr when it knows the fix). The tool's own last line stays under **Details**.
+
+On Windows, `ssh` and `ssh-keygen` come from the optional **OpenSSH Client** feature (Settings → System → Optional features → Add a feature, or `Add-WindowsCapability -Online -Name OpenSSH.Client~~~~0.0.1.0` in an administrator PowerShell). Without it the form says so, with the command, instead of failing later.
 
 ### On a server that already runs crewmates
 
@@ -52,7 +63,7 @@ Run `atlas crew status <ssh-target>` afterwards to check.
 
 | Command | What it does |
 |---|---|
-| `atlas crew install <ssh-target> [--yes] [--port N] [--binary PATH] [--browsers]` | install or migrate a crew server (above), x86_64 or aarch64. `--port` for a non-standard SSH port; `--binary` uploads that Linux `atlas` (the server's architecture) instead of downloading this version's release (also read from `ATLAS_CREW_BINARY`); `--browsers` also installs the capture browsers ([Captures](#captures)) |
+| `atlas crew install <ssh-target> [--yes] [--port N] [--identity KEY] [--binary PATH] [--browsers]` | install or migrate a crew server (above), x86_64 or aarch64. `--port` for a non-standard SSH port; `--identity` signs in with that private key (`ssh -i`) and installs its public key for the crew user; `--binary` uploads that Linux `atlas` (the server's architecture) instead of downloading this version's release (also read from `ATLAS_CREW_BINARY`); `--browsers` also installs the capture browsers ([Captures](#captures)) |
 | `atlas crew update <ssh-target> [--version X] [--rollback] [--port N] [--binary PATH]` | put a release (default: this CLI's version) on a crew server, keep the old binary as `atlas.prev`, restart, wait for hostd, roll back by itself when it does not come back; `--rollback` restores `atlas.prev` ([Update a crew server](#update-a-crew-server)) |
 | `atlas crew uninstall <ssh-target> [--yes] [--port N]` | lists what it will delete (the crew home, the number of crewmates and its size), stops and removes the service, the crew user (and its home, so your crewmates) and `/usr/local/lib/atlas-crew`. In a terminal it offers an export first and asks you to type the server name; `--yes` skips the questions but still prints what was deleted and that it is gone; with neither a terminal nor `--yes` it refuses. Refuses while the user still has a login session; it never kills processes |
 | `atlas crew export <ssh-target> [-o FILE] [--crewmate ID]… [--with-secrets] [--port N]` | writes one archive of the crewmates ([Back up and move crewmates](#back-up-and-move-crewmates)) |
@@ -63,8 +74,8 @@ Run `atlas crew status <ssh-target>` afterwards to check.
 | `atlas crew logs <ssh-target> [-f] [--port N]` | last 200 lines of `journalctl -u atlas-crew`; `-f` follows |
 | `atlas crew login <ssh-target> <agent> [--port N]` | opens `ssh -t <crew-user>@<host> <agent-binary>` (with the same `PATH` the Desktop's engine check uses: `~/.local/bin`, `~/.bun/bin`, `~/.npm-global/bin`, so an agent installed there is found) so you finish the agent's own sign-in. `<agent>` is `omp`, `claude`, `codex` or `opencode`; the command prints the install line for that agent first |
 | `atlas crew pair <ssh-target> [--port N]` | pairs a phone with this crew server directly, from any machine that can SSH to it: prints a QR code, a 6-digit code and the link (`atlas hostd --mobile-pair` as the crew user; one code, 120 s). The phone keeps the server in its computers, so the crew works with your own computer off ([Atlas Mobile](mobile.md#pair-a-crew-server-with-no-computer-in-the-loop)) |
-| `atlas crew browsers install <ssh-target> [--port N]` | installs Playwright's chromium and webkit for the `capture` tool ([Captures](#captures)); idempotent. Nothing from npm runs as root: sudo is used only for one `apt-get install` that atlas builds itself |
-| `atlas crew browsers status <ssh-target> [--port N]` | one line per missing piece (node older than 20 or missing, npm, runner, Playwright package or version, each browser, a browser that cannot start for lack of libraries); says it is ready and exits 0 when nothing is missing, exits 1 otherwise |
+| `atlas crew browsers install <ssh-target> [--port N] [--identity KEY]` | installs Playwright's chromium and webkit for the `capture` tool ([Captures](#captures)); idempotent. Nothing from npm runs as root: sudo is used only for one `apt-get install` that atlas builds itself |
+| `atlas crew browsers status <ssh-target> [--port N] [--identity KEY]` | one line per missing piece (node older than 20 or missing, npm, runner, Playwright package or version, each browser, a browser that cannot start for lack of libraries); says it is ready and exits 0 when nothing is missing, exits 1 otherwise |
 
 ### One SSH path
 
@@ -356,6 +367,8 @@ Open the Atlas Crew workspace with **⌘⇧B** (command *Atlas Crew*, remappable
 
 Settings → Atlas Crew holds the crew servers (SSH target + name, listed in `~/.atlas/desktop/crew-servers.json`). The desktop reaches each server over SSH and an `ssh -L` tunnel to its `hostd.sock`. The server must already have `atlas crew install` done; Atlas Desktop can run the install for you and asks for the sudo password on stdin (never on argv).
 
+**Servers you already have in `~/.ssh/config`.** The install screen lists them in a searchable picker above the SSH address (alias, then `user@host:port` as `ssh -G` resolves it, so `Host *` defaults and `Match` rules count). Picking one fills the address as `user@alias` and the port. It is the alias that goes in the address, not the host name, so the `IdentityFile`, `Port` and `ProxyJump` of that entry keep applying to every ssh call to the server, as with `ssh <alias>`. `Include` lines are followed (globs, relative to `~/.ssh`, 16 levels at most); wildcard and negated `Host` patterns, `Match` blocks and aliases that cannot be an SSH address (a space, a leading `-`, a user containing `@`) are not listed. The list is read when the screen opens and runs off the UI thread: at most eight `ssh -G` at a time, 5 s each, none of them connects. No `~/.ssh/config`, an unreadable one, or no `ssh` on the PATH shows only the free-text field.
+
 **Screenshots for UI work.** The install screen has an opt-in, off by default: *Screenshots for UI work (Chromium + WebKit)*, with why (the `capture`, UI gate and `locate` tools need it) and the cost (Node.js 20+ on the server, about 500 MB of downloads). Ticking it runs `atlas crew install … --browsers` and adds a step to the install checklist. On an existing server, Settings → Atlas Crew has the same row: the **admin** SSH address you installed with (`ubuntu@host` or `ubuntu@host:2222`) is already there: the install saved it as `admin` in `~/.atlas/desktop/crew-servers.json` (`{"target": "ubuntu@host", "port": 2222}`, no `port` for 22). The browsers install runs `sudo -u <crew user>`, which the crew service user the desktop connects as cannot do, so it needs that account. The field is editable and an edit you commit (leave the field, Enter, or a Check that worked) is saved back; a half-typed address never replaces a good one. A server added before this was kept, or added by hand, starts empty and keeps what you type after a Check that worked. The file holds an address like an `~/.ssh/config` `Host`, never a password or key. Press **Check** (`atlas crew browsers status`: installed, or one line per missing piece) and **Install** (`atlas crew browsers install`, its output streams into a log). A server without Node.js 20 or newer says so plainly and Install stays off until you have installed Node there. When sudo asks for a password the row asks for it and sends it over stdin, like the install.
 
 ## Atlas Mobile
@@ -637,6 +650,7 @@ Read it with `crewmate_audit` and `crew_audit` (Mobile scope `read`); Atlas Desk
 |---|---|
 | `crewmate_*` commands answer `this computer is not a crew server (atlas crew install)` | hostd runs without `ATLAS_CREW_HOST=1`. The unit sets it; do not run `atlas hostd` by hand on a crew server |
 | `info.caps` has no `"crew"` | same cause; clients check this before showing the Crew UI |
+| `atlas crew install` stops with `<unit> is masked on the server and Atlas could not unmask it` | The unit is a symlink to `/dev/null` (`systemctl mask`) and the install's `sudo systemctl unmask` was refused. Run the command it prints (`sudo systemctl unmask <unit>`) on the server, then run the install again. When the unmask works the install does it itself and says `<unit> was masked: unmasked it and wrote the real unit` |
 | Approval prompt is denied at once | nobody can answer right now: no connected desktop client or phone, and no linked Telegram chat ([Approvals](#approvals)) |
 | An `ask` crewmate never asks | check its approval really is `ask` (a GitHub or webhook task asks too, see [Automations](#automations)), and that someone can answer ([Approvals](#approvals)). `codex` and `opencode` engines cannot ask, so `ask` is refused for them |
 | `could not connect … over SSH` | SSH itself failed (refused, timeout, key rejected), not the server's OS; fix SSH first |
@@ -646,6 +660,22 @@ Read it with `crewmate_audit` and `crew_audit` (Mobile scope `read`); Atlas Desk
 | Export or import says the server's atlas is too old | `atlas crew install <ssh-target>` updates the server's binary, then retry |
 | A first task shows `Downloading <repo>…` | the project clones before the task starts; a missing folder is refused when you set it |
 | Old `atlas bot` command in a script | still works; switch to `atlas crew` when convenient |
+
+### Add a crew server fails
+
+The form of Atlas Desktop says what failed and links here; the same rows apply to `atlas crew install`.
+
+| What the screen says | Cause and fix |
+|---|---|
+| The server **refused the key** `<path>` | the server does not have that key in `~/.ssh/authorized_keys`. Sign in with the **password** once (Atlas adds the key), choose another key, or add the public key yourself. A key with a passphrase has to be loaded in `ssh-agent` first |
+| This server **does not accept passwords** | `sshd` only lists `publickey`. Use the SSH key method; someone with access has to add this computer's public key first |
+| The server did not accept that password | wrong password (caps lock?). The password is used once and never stored |
+| This user **asks for a password for sudo** | the install needs sudo. Type the sudo password when the form asks (it is used for this install only) or grant passwordless sudo |
+| `Failed to enable unit … is masked` (#518) | `atlas-crew.service` is masked (a symlink to `/dev/null`). The CLI prints the fix: `sudo systemctl unmask atlas-crew.service` on the server, then retry |
+| No **systemd** (`systemd is not running as PID 1`) | the server is a container or uses OpenRC/runit. A crew server needs a systemd host |
+| **OpenSSH Client** is not installed (Windows) | Settings → System → Optional features → Add a feature → OpenSSH Client, or `Add-WindowsCapability -Online -Name OpenSSH.Client~~~~0.0.1.0` in an administrator PowerShell |
+| The server's identity changed (**host key** verification failed) | the server was reinstalled, or someone is in between. If expected, forget the old key: `ssh-keygen -R <host>`, then retry |
+| Cannot reach the host / did not answer / name does not exist | check the address and port, that `sshd` runs, firewalls and VPNs |
 
 Logs: `atlas crew logs <ssh-target> -f`. State: `atlas crew status <ssh-target>`.
 

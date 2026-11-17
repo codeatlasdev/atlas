@@ -62,6 +62,8 @@ export interface Worktree {
 	linkedPr?: number;
 	/** `local` or `ssh:<alias>`. */
 	hostId?: string;
+	/** A plain folder (`ProjectView.kind === "folder"`): no Panel tab, no worktree crumb, explorer and editor only. */
+	plain?: boolean;
 	comment?: string;
 }
 

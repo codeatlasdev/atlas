@@ -32,6 +32,10 @@ pub struct InstallArgs {
     /// SSH port (default 22). Used when the server listens on a non-standard port.
     #[arg(long, default_value_t = 22)]
     pub port: u16,
+    /// Private key to sign in with (`ssh -i`), instead of the ones ssh finds by itself. Its public key is the one
+    /// added to the crew user's `authorized_keys`. Atlas Desktop passes the key picked in "Add a crew server".
+    #[arg(long)]
+    pub identity: Option<std::path::PathBuf>,
     /// Read sudo password from stdin instead of requiring passwordless sudo.
     /// Used by Atlas Desktop; the password is NEVER placed on argv.
     #[arg(long, hide = true)]
@@ -115,9 +119,9 @@ Look at: atlas crew logs {target}",
 
 async fn run_install(args: InstallArgs) -> Result<()> {
     let host = host_from_target(&args.ssh_target).to_owned();
-    let r = Remote::crew(&args.ssh_target, args.port);
+    let r = Remote::crew(&args.ssh_target, args.port).with_identity(args.identity.clone());
     // The key is looked up first: a person without one is told before anything is installed.
-    let pubkey = local_public_key(&args.ssh_target, args.port)?;
+    let pubkey = local_public_key(&args.ssh_target, args.port, args.identity.clone())?;
 
     // --- Preflight: reads only, names everything that is missing ---
     step_marker("check");
@@ -213,12 +217,14 @@ async fn run_install(args: InstallArgs) -> Result<()> {
     }
     step("writing systemd service");
     let unit = layout::systemd_unit(&account);
-    let write_unit = format!(
-        "sudo tee /etc/systemd/system/{SERVICE}.service > /dev/null && sudo systemctl daemon-reload && sudo systemctl enable {SERVICE}"
-    );
-    let o = p.exec_stdin(&write_unit, Some(unit.as_bytes())).await?;
+    write_unit(&p, &format!("/etc/systemd/system/{SERVICE}.service"), &unit).await?;
+    let o = p
+        .exec(&format!(
+            "sudo systemctl daemon-reload && sudo systemctl enable {SERVICE}"
+        ))
+        .await?;
     if o.code != 0 {
-        bail!("writing the service failed: {}", o.stderr.trim());
+        bail!("enabling the service failed: {}", o.stderr.trim());
     }
 
     // --- One Linux user per crewmate ---
@@ -402,13 +408,35 @@ async fn list_crewmates(p: &Priv<'_>, a: &Account) -> Result<Vec<String>> {
         .collect())
 }
 
-/// The engines installed system-wide: each agent with the vendor's own install line
-/// (`agent_install_hint`, the lines `atlas crew login` prints).
+/// The engines installed system-wide: each built-in agent with the vendor's own install line
+/// (`install` in `data/agents.json`, the lines `atlas crew login` prints).
 fn isolation_engines() -> Vec<(&'static str, String)> {
-    ["omp", "claude", "codex", "opencode"]
-        .into_iter()
-        .filter_map(|a| super::agent_install_hint(a).map(|c| (a, c.to_string())))
+    atlas_core::agents::all()
+        .iter()
+        .map(|a| (a.id.as_str(), a.install.clone()))
         .collect()
+}
+
+/// Write the unit `file` on the server through [`layout::write_unit_script`], the one way every unit Atlas owns is
+/// written: unmasked first, replaced rather than written through. A unit that had to be unmasked is said in one line;
+/// one that could not be fails with the command to run (and a `hint:` line on stderr, which Atlas Desktop shows as what to do).
+async fn write_unit(p: &Priv<'_>, file: &str, contents: &str) -> Result<()> {
+    let o = p
+        .exec_stdin(&layout::write_unit_script(file), Some(contents.as_bytes()))
+        .await?;
+    for unit in layout::unmasked_units(&o.stdout) {
+        step(&format!(
+            "{unit} was masked: unmasked it and wrote the real unit"
+        ));
+    }
+    if o.code != 0 {
+        if o.code == layout::UNMASK_FAILED {
+            let unit = file.rsplit('/').next().unwrap_or(file);
+            eprintln!("{}", layout::unmask_hint(unit));
+        }
+        return Err(layout::unit_write_error(o.code, &o.stderr, file));
+    }
+    Ok(())
 }
 
 /// Run one isolation action on the server. Through [`Priv`], like every privileged step of the install:
@@ -431,14 +459,9 @@ async fn run_action(p: &Priv<'_>, action: &isolation::Action) -> Result<()> {
             }
             return Ok(());
         }
-        isolation::Action::Write { file, contents } => (
-            format!("writing {file}"),
-            p.exec_stdin(
-                &format!("sudo tee {} > /dev/null", shq(file)),
-                Some(contents.as_bytes()),
-            )
-            .await?,
-        ),
+        isolation::Action::Write { file, contents } => {
+            return write_unit(p, file, contents).await;
+        }
     };
     if o.code != 0 {
         bail!(
@@ -450,17 +473,21 @@ async fn run_action(p: &Priv<'_>, action: &isolation::Action) -> Result<()> {
     Ok(())
 }
 
-/// The public key `ssh` itself would offer to `ssh_target` (`ssh -G`: `~/.ssh/config` identities and the default
-/// key names, so a key called anything is found), read before the install changes anything on the server.
-fn local_public_key(ssh_target: &str, port: u16) -> Result<String> {
-    let target = atlas_core::ssh::SshTarget::new(ssh_target, Some(port));
-    let path = atlas_core::ssh::find_public_key(&target).with_context(|| {
-        "no SSH public key found (ssh -G lists none that exists as <identity>.pub); \
-create one with: ssh-keygen -t ed25519"
+/// The public key `ssh` itself would offer to `ssh_target`: the `--identity` key, else the first existing one of
+/// `ssh -G` (`~/.ssh/config` identities and the default key names, so a key called anything is found). Read before
+/// the install changes anything on the server.
+fn local_public_key(
+    ssh_target: &str,
+    port: u16,
+    identity: Option<std::path::PathBuf>,
+) -> Result<String> {
+    let target = atlas_core::ssh::SshTarget::new(ssh_target, Some(port)).with_identity(identity);
+    let key = atlas_core::ssh::find_key(&target).with_context(|| match &target.identity {
+        Some(k) => format!("the SSH key {} does not exist", k.display()),
+        None => "no SSH key found (ssh -G lists none that exists); create one with: ssh-keygen -t ed25519"
+            .to_owned(),
     })?;
-    let key =
-        std::fs::read_to_string(&path).with_context(|| format!("reading {}", path.display()))?;
-    Ok(key.trim().to_owned())
+    key.public_text().map_err(anyhow::Error::msg)
 }
 
 /// Append `pubkey` to the crew user's authorized_keys (idempotent), then lock the file down.
@@ -564,6 +591,7 @@ mod tests {
             ssh_target: "ubuntu@example.com".into(),
             yes: true,
             port: 22,
+            identity: None,
             sudo_password_stdin: true,
             binary: None,
             browsers: false,

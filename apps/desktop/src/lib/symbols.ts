@@ -18,7 +18,7 @@ export interface OutlineSymbol {
 
 /** CodeMirror-backed operations, set by `outline.ts`. */
 export const ops: {
-	outline: (state: EditorState) => OutlineSymbol[];
+	outline: (state: EditorState, budgetMs?: number) => OutlineSymbol[];
 	/** Put the caret at `pos` (or select `pos..to`) and scroll it to the middle of the view. */
 	reveal: (view: EditorView, pos: number, to?: number) => void;
 	/** The CodeMirror view mounted in `.cm-editor` element `host`. */

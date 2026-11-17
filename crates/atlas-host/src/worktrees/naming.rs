@@ -113,6 +113,7 @@ mod tests {
             branch: None,
             host: None,
             identity: None,
+            project: false,
         };
         assert_eq!(free_offset(&[], "r"), 100);
         assert_eq!(

@@ -1,0 +1,10 @@
+#!/bin/sh
+# Installed by scripts/setup.sh (git config core.hooksPath scripts/git-hooks). Refuses pushes to main / release/*,
+# force-pushes and ref deletions unless a maintainer set ATLAS_MAINTAINER_OK; see docs/contributing.md "Agent guards".
+# Fails closed: without bun the push is refused, with the way out in the message.
+command -v bun >/dev/null 2>&1 || {
+  [ "${ATLAS_MAINTAINER_OK:-}" = all ] && exit 0
+  echo "refused: the pre-push guard needs bun (https://bun.sh). Install it, or a maintainer can push with ATLAS_MAINTAINER_OK=all." >&2
+  exit 1
+}
+exec bun "$(dirname "$0")/../agent-guard.ts" pre-push "$@"

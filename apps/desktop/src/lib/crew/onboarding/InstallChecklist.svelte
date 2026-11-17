@@ -113,6 +113,7 @@
 		font-size: 11px;
 		font-weight: 600;
 		border: 2px solid var(--ob-line-idle, var(--ca-border-subtle));
+		background: var(--ca-surface-base);
 		transition:
 			background 300ms,
 			border-color 300ms,
@@ -126,6 +127,7 @@
 	}
 
 	.active .dot {
+		background: color-mix(in srgb, var(--ob-accent, var(--ca-accent)) 18%, var(--ca-surface-base));
 		border-color: var(--ob-accent, var(--ca-accent));
 		color: var(--ob-accent, var(--ca-accent));
 		animation: ob-beat 1100ms ease-in-out infinite;

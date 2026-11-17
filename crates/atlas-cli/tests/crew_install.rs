@@ -112,15 +112,26 @@ impl World {
             "basename",
             "cut",
             "dirname",
+            "readlink",
         ] {
             w.link_real(t);
         }
         w.fake("uname", "echo 'Linux x86_64'");
         w.fake("sudo", FAKE_SUDO);
         // The unit "runs" the installed binary: restart succeeds, hostd answers when the binary says so.
+        // A unit whose file is a symlink to /dev/null is masked, as in systemd: `is-enabled` says so, `unmask` removes
+        // the link (unless the test sets $ROOT/unmask-fails).
         w.fake(
             "systemctl",
-            "echo \"systemctl $*\" >> \"$ROOT/log/systemctl\"; exit 0",
+            r#"echo "systemctl $*" >> "$ROOT/log/systemctl"
+f="$ROOT/etc/systemd/system/$2"
+masked() { [ -L "$f" ] && [ "$(readlink "$f")" = /dev/null ]; }
+case "$1" in
+  is-enabled) if masked; then echo masked; exit 1; fi;;
+  unmask) if [ -e "$ROOT/unmask-fails" ]; then echo 'Access denied' >&2; exit 1; fi; masked && rm -f "$f";;
+  enable) if masked; then echo "Failed to enable unit: Unit $f is masked" >&2; exit 1; fi;;
+esac
+exit 0"#,
         );
         w.fake(
             "id",
@@ -882,4 +893,80 @@ fn install_without_any_key_stops_before_touching_the_server() {
     assert!(!o.status.success(), "{t}");
     assert!(t.contains("no SSH public key found"), "{t}");
     assert!(!w.exists("log/sudo"), "the server was touched: {t}");
+}
+
+// Issue #518: a masked unit (a symlink to /dev/null) made `sudo tee` write the unit into /dev/null and
+// `systemctl enable` refuse it ("Failed to enable unit: ... is masked"). The install unmasks the units it owns,
+// says so, and ends with real files, whichever of its units were masked.
+#[test]
+fn install_unmasks_every_unit_it_owns_and_writes_real_files() {
+    let w = World::new();
+    let units = [
+        "atlas-crew.service",
+        "atlas-crew-spawn.socket",
+        "atlas-crew-spawn.service",
+        "atlas-crew-provision.socket",
+        "atlas-crew-provision.service",
+        "atlas-crew-egress.service",
+    ];
+    let dir = w.root().join("etc/systemd/system");
+    std::fs::create_dir_all(&dir).unwrap();
+    for u in units {
+        std::os::unix::fs::symlink("/dev/null", dir.join(u)).unwrap();
+    }
+    let bin = w.atlas_file("9.9.9", true);
+    let o = w.atlas(
+        &["install", "me@srv", "--binary", bin.to_str().unwrap()],
+        "",
+    );
+    let t = text(&o);
+    assert!(o.status.success(), "{t}");
+    assert!(t.contains("Crew server ready"), "{t}");
+    for u in units {
+        let meta = std::fs::symlink_metadata(dir.join(u)).unwrap();
+        assert!(!meta.file_type().is_symlink(), "{u} is still a link: {t}");
+        assert!(
+            std::fs::read_to_string(dir.join(u))
+                .unwrap()
+                .contains("[Unit]"),
+            "{u} has no unit text: {t}"
+        );
+        assert!(
+            t.contains(&format!("{u} was masked")),
+            "{u} not announced: {t}"
+        );
+    }
+}
+
+// Unmask impossible: the install stops at that unit with the command to run, as one `hint:` line (what Atlas
+// Desktop shows) and a one-line error, and nothing is left half-written.
+#[test]
+fn install_that_cannot_unmask_says_the_command_to_run() {
+    let w = World::new();
+    let dir = w.root().join("etc/systemd/system");
+    std::fs::create_dir_all(&dir).unwrap();
+    std::os::unix::fs::symlink("/dev/null", dir.join("atlas-crew.service")).unwrap();
+    std::fs::write(w.root().join("unmask-fails"), "").unwrap();
+    let bin = w.atlas_file("9.9.9", true);
+    let o = w.atlas(
+        &["install", "me@srv", "--binary", bin.to_str().unwrap()],
+        "",
+    );
+    let t = text(&o);
+    assert!(!o.status.success(), "{t}");
+    let err = String::from_utf8_lossy(&o.stderr);
+    assert!(
+        err.lines().any(|l| l
+            == "hint: run `sudo systemctl unmask atlas-crew.service` on the server, then retry"),
+        "{t}"
+    );
+    assert!(t.contains("is masked on the server"), "{t}");
+    assert!(
+        std::fs::symlink_metadata(dir.join("atlas-crew.service"))
+            .unwrap()
+            .file_type()
+            .is_symlink(),
+        "{t}"
+    );
+    assert!(!t.contains("Crew server ready"), "{t}");
 }

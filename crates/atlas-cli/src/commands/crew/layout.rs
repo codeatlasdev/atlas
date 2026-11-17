@@ -4,6 +4,8 @@
 
 use atlas_core::crew::{LEGACY_USER, USER};
 
+use crate::commands::deploy::remote::shq;
+
 /// Binary dir. The old `/usr/local/lib/atlas-bot` is removed by the migration.
 pub const INSTALL_DIR: &str = "/usr/local/lib/atlas-crew";
 const LEGACY_INSTALL_DIR: &str = "/usr/local/lib/atlas-bot";
@@ -68,6 +70,74 @@ pub fn retire_legacy_service(p: Probe) -> Vec<String> {
         format!("sudo rm -f /etc/systemd/system/{LEGACY_SERVICE}.service"),
         "sudo systemctl daemon-reload".to_string(),
     ]
+}
+
+/// The exit code of [`write_unit_script`] when a masked unit could not be unmasked.
+pub const UNMASK_FAILED: i32 = 5;
+
+/// Shell that writes the systemd unit `file` (stdin is its text), for every unit Atlas owns.
+///
+/// A masked unit is a symlink to `/dev/null`: `tee` through it loses the text and leaves the mask, and
+/// `systemctl enable` then refuses the unit (issue #518). So the unit is unmasked first (and `unmasked:
+/// <unit>` is printed, see [`unmasked_units`]), and the text goes to a temp file next to it that is
+/// moved over the path: `mv` replaces whatever is at the path, a symlink to anywhere included, and never
+/// writes through it. A failed unmask exits [`UNMASK_FAILED`], with nothing written.
+pub fn write_unit_script(file: &str) -> String {
+    let unit = file.rsplit('/').next().unwrap_or(file);
+    let tmp = match file.rsplit_once('/') {
+        Some((dir, _)) => format!("{dir}/.{unit}.atlas-new"),
+        None => format!(".{unit}.atlas-new"),
+    };
+    let (file, tmp, unit) = (shq(file), shq(&tmp), shq(unit));
+    format!(
+        "case \"$(systemctl is-enabled {unit} 2>/dev/null)\" in masked*) \
+sudo systemctl unmask {unit} >&2 || exit {UNMASK_FAILED}; echo unmasked: {unit};; esac; \
+sudo tee {tmp} > /dev/null && sudo chmod 0644 {tmp} && sudo mv -f {tmp} {file}"
+    )
+}
+
+/// The units [`write_unit_script`] had to unmask, read from its stdout (`unmasked: <unit>` lines).
+pub fn unmasked_units(stdout: &str) -> Vec<&str> {
+    stdout
+        .lines()
+        .filter_map(|l| l.strip_prefix("unmasked: "))
+        .map(str::trim)
+        .collect()
+}
+
+/// The command that undoes a mask, for the person to run when Atlas could not.
+pub fn unmask_command(unit: &str) -> String {
+    format!("sudo systemctl unmask {unit}")
+}
+
+/// The `hint: <what to do>` stderr line printed right before the install fails (plain text, no ANSI):
+/// Atlas Desktop shows the last `hint: ` line of a failed install as its "what to do" text.
+pub fn unmask_hint(unit: &str) -> String {
+    format!(
+        "hint: run `{}` on the server, then retry",
+        unmask_command(unit)
+    )
+}
+
+/// What a failed [`write_unit_script`] (exit `code`, `stderr`) tells the person. One line, because the desktop
+/// shows the last line of the install's output: a masked unit that could not be unmasked names the command to
+/// run on the server; anything else carries the server's own message.
+pub fn unit_write_error(code: i32, stderr: &str, file: &str) -> anyhow::Error {
+    let unit = file.rsplit('/').next().unwrap_or(file);
+    let why = stderr
+        .lines()
+        .rev()
+        .find(|l| !l.trim().is_empty())
+        .unwrap_or("no reason given")
+        .trim();
+    if code == UNMASK_FAILED {
+        anyhow::anyhow!(
+            "{unit} is masked on the server and Atlas could not unmask it ({why}). Run on the server: {}, then retry",
+            unmask_command(unit)
+        )
+    } else {
+        anyhow::anyhow!("writing {unit} failed: {why}")
+    }
 }
 
 /// Shell to drop the old binary dir once the new binary is in place. Data is not under it.

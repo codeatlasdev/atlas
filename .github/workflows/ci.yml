@@ -225,15 +225,26 @@ jobs:
           tests: ${{ needs.plan.outputs.tested != 'true' }}
           defer-tests: "true"
 
-      # Issue #520: this job lost its runner 8 times since 2026-11-15 ("The hosted runner lost communication with
-      # the server" after exactly 50 min, no log kept). It takes 6-8 min: a hang in the tests now fails this step
-      # after 25 min with its log (and nextest ends a single test after 3 min, `.config/nextest.toml`), instead of
-      # taking the runner with it. The log is a file as well, so it can be uploaded below.
+      # Issue #520: this job lost its runner 9 times since 2026-11-15 ("The hosted runner lost communication with
+      # the server" after exactly 50 min, no log kept), once in this step with its 25 min timeout never firing, so
+      # the runner itself died or froze. The tests take 3-4 min. What this step leaves behind now:
+      # - a hang in the tests fails the step after 25 min with its log (nextest ends a single test after 3 min,
+      #   `.config/nextest.toml`), instead of taking the runner with it; the log is a file as well, to upload below;
+      # - scripts/ci-watchdog.ps1 prints memory, commit charge, page file, handles, disk queue and the top
+      #   processes every 15 s to this step's live log (and `watchdog.log`), says when a runner process or another
+      #   long-lived process outside the test tree disappears, and kills a test process that holds the runner's
+      #   memory. It is stopped by `watchdog.stop` when the tests end.
       - name: Test
         if: ${{ needs.plan.outputs.tested != 'true' }}
         timeout-minutes: 25
         shell: bash
-        run: cargo nextest run --workspace --locked --profile ci 2>&1 | tee nextest.log
+        run: |
+          rm -f watchdog.stop
+          pwsh -NoProfile -File scripts/ci-watchdog.ps1 &
+          watchdog=$!
+          stop_watchdog() { touch watchdog.stop; sleep 4; kill "$watchdog" 2>/dev/null || true; }
+          trap stop_watchdog EXIT
+          cargo nextest run --workspace --locked --profile ci 2>&1 | tee nextest.log
 
       - name: Doctests
         if: ${{ needs.plan.outputs.tested != 'true' }}
@@ -241,8 +252,8 @@ jobs:
         shell: bash
         run: cargo test --workspace --locked --doc
 
-      # What the next hang or runner loss shows: the nextest log (SLOW/TIMEOUT lines name the test that hung) and
-      # the JUnit report (every test with its time), kept briefly.
+      # What the next hang or runner loss shows: the nextest log (SLOW/TIMEOUT lines name the test that hung), the
+      # JUnit report (every test with its time) and the watchdog's samples, kept briefly.
       - name: Nextest log and JUnit report
         if: ${{ always() }}
         uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
@@ -250,6 +261,7 @@ jobs:
           name: nextest-windows-${{ github.run_attempt }}
           path: |
             nextest.log
+            watchdog.log
             target/nextest/ci/junit.xml
           if-no-files-found: ignore
           retention-days: 3

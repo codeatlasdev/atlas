@@ -18,4 +18,4 @@ rules:
   # a screenshot and logs. The artifact is read by people, never executed or published.
   cache-poisoning:
     ignore:
-      - ci.yml:144
+      - ci.yml:148

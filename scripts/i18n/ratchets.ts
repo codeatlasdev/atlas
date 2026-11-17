@@ -4,7 +4,7 @@
 import { existsSync } from "node:fs";
 import { join } from "node:path";
 import { type Found, type Lang, type RatchetText, type Violation, ratchet, readBaseline } from "./baseline.ts";
-import { showAt } from "./base.ts";
+import { showAt } from "../lib/base.ts";
 import { PLATFORM, SHORTCUT, lineViolations, scanLines } from "./hardcoded/lines.ts";
 import { RUST_DIRS, isTestFile, scanRust, scanRustSource } from "./hardcoded/rust.ts";
 import { SVELTE_ROOTS, scanSvelte, scanSvelteSource } from "./hardcoded/svelte.ts";

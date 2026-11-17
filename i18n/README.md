@@ -126,7 +126,7 @@ aside) is a warning. pt-PT words in prose warn.
 A ratchet is a scanner for something that exists today and must not spread (hardcoded text, shortcuts spelled by hand,
 platform sniffing, flagged phrases in existing prose). It judges the **change**, not a snapshot:
 
-- **With a diff base** (the normal case: a git checkout with `I18N_BASE`, `origin/main` or `main`), for every file the
+- **With a diff base** (the normal case: a git checkout; the resolver is `scripts/lib/base.ts`, shared with `check:changed` and CI), for every file the
   change touches (committed, staged, unstaged, untracked; renames followed) the offenders of the file at the
   merge-base are counted with the same detector, and only the ones the change **adds** are errors, reported with
   `file:line`. Moving, reordering or re-wrapping old code adds nothing; one more copy of a string that was already there
@@ -136,19 +136,15 @@ platform sniffing, flagged phrases in existing prose). It judges the **change**,
   only lowers it (`--baseline` starts a section that does not exist yet). A change that **raises** a count fails with
   `baseline-grew` ("fix the offenders, do not snapshot them"). A baseline that is lower or higher than reality for a
   file does not fail in diff mode.
-- **Without a diff base** (not a git checkout, a shallow clone, no such ref) the committed baseline is the judge, as it
-  was before: a file may not exceed its count, and a count above reality is an error that `i18n:fix` clears.
+- **Without a diff base** (not a git checkout, no `origin/main` or `main`, or CI with no base) the committed baseline is
+  the judge, as it was before: a file may not exceed its count, and a count above reality is an error that `i18n:fix` clears.
 
-`bun run i18n:check` says which mode it used (stderr; `ratchets` in `--json`). Locally, `git fetch origin main` first: a
-stale `origin/main` makes everything main gained since look like part of your change.
-
-In CI the `i18n` job fetches the full history (`fetch-depth: 0`) and passes `I18N_BASE`: on a pull request `HEAD^1`
-(resolved to a sha), on a push the commit it replaced. GitHub checks a pull request out as the merge of its branch into
-the **current** main, and `HEAD^1` is exactly the main tip that merge was built on, so the diff is the PR's own. The base sha
-the event records (where the branch started) would blame the PR for main code merged since, which is why it is not used.
-An unknown base (the all-zero `before` of a new branch push, a missing ref) is skipped and the next candidate is tried:
-`origin/main`, then `main`. The job runs whenever a catalog, a doc, a file under `i18n/` or `scripts/i18n/`, or any Rust
-source of the four scanned crates changes (`scripts/ci-paths.sh`; a test fails if a scanned directory is not classified).
+`bun run i18n:check` says which mode it used (stderr; `ratchets` in `--json`). Where the base comes from, best first:
+an explicit `ATLAS_BASE=<ref or sha>` (a bad one is an error); in CI a pull request uses the first parent of the merge
+ref GitHub checked out (the exact main tip it was built on, so main code merged after the branch started is not the PR's),
+a push uses the commit it replaced, anything else has no base; locally the merge-base with `origin/main`, else `main`
+(`git fetch origin main` first: a stale `origin/main` makes everything main gained since look like part of your change).
+The CI job and the paths that trigger it are declared in `scripts/checks/map.ts`, not here.
 
 | Ratchet | Looks at | Flags |
 |---|---|---|

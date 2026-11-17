@@ -80,7 +80,7 @@ One implementation, `atlas_core::lang` (CLI, TUI, hostd, desktop shell), precede
 
 - For each file you touch, the offenders at the merge-base are counted with the same detector; only the ones you **add** fail, with `file:line`. Old offenders in a file you edit are fine; moving them is fine; a file you do not touch is never looked at. So **when main adds screens there is nothing to re-snapshot**, and the baseline never needs a hand edit.
 - Fix a new finding by using a message key (or `// i18n-ignore` / `<!-- i18n-ignore -->` when it is not for users). Never raise `i18n/hardcoded-baseline.json` to make it pass: a raised count fails (`baseline-grew`). `bun run i18n:fix` only lowers it.
-- Run `git fetch origin main` before checking locally: the base is `I18N_BASE`, else `origin/main`, else `main`. With no usable base (shallow clone, no ref) the check compares with the committed baseline instead and says so.
+- Run `git fetch origin main` before checking locally: the base is `origin/main`'s merge-base (else `main`), or `ATLAS_BASE=<ref>` when set; in CI a pull request is judged against the first parent of its merge ref and a push against the commit it replaced (resolver: `scripts/lib/base.ts`). With no usable base the check compares with the committed baseline instead and says so.
 
 ## Traps that cost time
 

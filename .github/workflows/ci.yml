@@ -36,31 +36,36 @@ jobs:
     outputs:
       tested: ${{ steps.tested.outputs.tested }}
       rust: ${{ steps.paths.outputs.rust }}
-      front: ${{ steps.paths.outputs.front }}
-      mobile: ${{ steps.paths.outputs.mobile }}
-      site: ${{ steps.paths.outputs.site }}
-      relay: ${{ steps.paths.outputs.relay }}
-      workflows: ${{ steps.paths.outputs.workflows }}
-      installer: ${{ steps.paths.outputs.installer }}
+      desktop: ${{ steps.paths.outputs.desktop }}
       i18n: ${{ steps.paths.outputs.i18n }}
+      skills: ${{ steps.paths.outputs.skills }}
+      scripts: ${{ steps.paths.outputs.scripts }}
+      mobile: ${{ steps.paths.outputs.mobile }}
+      relay: ${{ steps.paths.outputs.relay }}
+      site: ${{ steps.paths.outputs.site }}
+      installer: ${{ steps.paths.outputs.installer }}
+      workflows: ${{ steps.paths.outputs.workflows }}
+      dup: ${{ steps.paths.outputs.dup }}
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
           persist-credentials: false
           fetch-depth: 0
 
-      # Which areas the change touches (scripts/ci-paths.sh): a docs-only commit skips the Rust, mobile and
-      # frontend jobs. Compared with the pull request base, or the commit this push replaced.
+      - name: Install Bun
+        uses: oven-sh/setup-bun@0c5077e51419868618aeaa5fe8019c62421857d6 # v2.2.0
+        with:
+          no-cache: true
+
+      # Which areas the change touches (scripts/checks/map.ts, the one map `bun run check` and `bun run check:changed`
+      # read too): a docs-only commit skips the Rust, mobile and frontend jobs; an unknown path, a changed workflow, a
+      # workflow_dispatch or a missing diff runs everything. The base is the pull request's merge-ref first parent, or
+      # the commit this push replaced (scripts/lib/base.ts).
       - name: Changed areas
         id: paths
-        env:
-          BASE: ${{ github.event.pull_request.base.sha || github.event.before }}
-        run: |
-          if [ -n "$BASE" ] && git cat-file -e "$BASE^{commit}" 2>/dev/null; then
-            git diff --name-only "$BASE" HEAD | scripts/ci-paths.sh
-          else
-            scripts/ci-paths.sh </dev/null
-          fi | tee -a "$GITHUB_OUTPUT"
+        # `shell: bash` runs with pipefail: a failed plan must fail the job, not leave every output empty (every job skipped).
+        shell: bash
+        run: bun scripts/ci-plan.ts | tee -a "$GITHUB_OUTPUT"
 
       - name: Already tested in its pull request?
         id: tested
@@ -279,7 +284,7 @@ jobs:
   frontend:
     name: Desktop frontend + skills
     needs: plan
-    if: ${{ needs.plan.outputs.tested != 'true' && needs.plan.outputs.front == 'true' }}
+    if: ${{ needs.plan.outputs.tested != 'true' && (needs.plan.outputs.desktop == 'true' || needs.plan.outputs.skills == 'true') }}
     runs-on: ubuntu-latest
     timeout-minutes: 20
     steps:
@@ -299,9 +304,8 @@ jobs:
         run: bun run desktop:check
 
   # Catalogs, locks, glossary, translated docs, the writing lint and the hardcoded-text ratchets (scripts/i18n). Offline
-  # and bun only, so a Rust-only or docs-only change that can break a catalog or add a println! still reaches it.
-  # The ratchets judge the change against the PR base (or the commit the push replaced), so the history is fetched;
-  # without it they fall back to the committed baseline (i18n/README.md, "Ratchets").
+  # and bun only, so a Rust-only or docs-only change that can break a catalog or add a println! still reaches it. The
+  # ratchets judge the change against the diff base of scripts/lib/base.ts, so the history is fetched.
   i18n:
     name: i18n (catalogs, writing, ratchets)
     needs: plan
@@ -319,25 +323,7 @@ jobs:
         with:
           no-cache: true
 
-      # What the ratchets compare with. A pull request is checked out as the merge of its branch into the CURRENT main, so
-      # the base is HEAD^1 (the main tip that merge was built on), not the base sha the event recorded when the branch
-      # started: that one would blame the PR for main code merged since. A push compares with the commit it replaced
-      # (all zeros for a new branch: scripts/i18n/base.ts then falls back to origin/main).
-      - name: Diff base
-        id: base
-        env:
-          EVENT: ${{ github.event_name }}
-          BEFORE: ${{ github.event.before }}
-        run: |
-          if [ "$EVENT" = pull_request ]; then
-            echo "ref=$(git rev-parse HEAD^1)" >> "$GITHUB_OUTPUT"
-          else
-            echo "ref=$BEFORE" >> "$GITHUB_OUTPUT"
-          fi
-
       - name: i18n
-        env:
-          I18N_BASE: ${{ steps.base.outputs.ref }}
         run: bun run i18n:check
 
   # The repo's own scripts (setup, heavy queue, CI gates, release helpers) and their tests, on Linux and on Windows
@@ -345,7 +331,7 @@ jobs:
   scripts:
     name: Repo scripts (${{ matrix.os }})
     needs: plan
-    if: ${{ needs.plan.outputs.tested != 'true' && needs.plan.outputs.front == 'true' }}
+    if: ${{ needs.plan.outputs.tested != 'true' && needs.plan.outputs.scripts == 'true' }}
     strategy:
       fail-fast: false
       matrix:
@@ -369,9 +355,6 @@ jobs:
       - name: PyYAML (scripts/test-labels.sh)
         shell: bash
         run: bash scripts/py.sh -c "import yaml" 2>/dev/null || bash scripts/py.sh -m pip install --quiet pyyaml
-
-      - name: i18n script dependencies (scripts/i18n/*.test.ts)
-        run: bun install --frozen-lockfile --cwd scripts/i18n
 
       - name: bun run release:test
         run: bun run release:test
@@ -445,7 +428,7 @@ jobs:
   push-relay:
     name: Push relay (Go)
     needs: plan
-    if: ${{ needs.plan.outputs.tested != 'true' }}
+    if: ${{ needs.plan.outputs.tested != 'true' && needs.plan.outputs.relay == 'true' }}
     runs-on: ubuntu-latest
     timeout-minutes: 10
     steps:
@@ -495,7 +478,7 @@ jobs:
   duplication:
     name: Duplication (jscpd, <= 1.5%)
     needs: plan
-    if: ${{ needs.plan.outputs.tested != 'true' && (needs.plan.outputs.rust == 'true' || needs.plan.outputs.front == 'true' || needs.plan.outputs.mobile == 'true') }}
+    if: ${{ needs.plan.outputs.tested != 'true' && needs.plan.outputs.dup == 'true' }}
     runs-on: ubuntu-latest
     timeout-minutes: 10
     steps:

@@ -1,145 +1,82 @@
-// bun run check:changed [--base <ref>] [--dry-run]
-// The edit-loop gate: runs only the checks the changed files can affect (a crate, every crate that depends on it,
-// the desktop app, mobile, scripts, skills, workflows). `bun run check` stays the gate before a push.
-// Changed = committed since the merge base with --base (default origin/main), plus staged, unstaged and untracked.
+// bun run check:changed [--base <ref>] [--dry-run] [--json] [--stdin] [--no-windows]
+// The edit-loop gate: runs only the checks the changed files can affect, from the same map as `bun run check` and CI
+// (scripts/checks/map.ts). It is not the gate: `bun run check` is.
+// Changed = committed since the merge base (scripts/lib/base.ts: --base, default origin/main), plus staged, unstaged and
+// untracked. No usable base, or a path no area claims, means everything runs (the reason is printed).
 //
-// bun scripts/check-changed.ts --json   (the `affected:` plugin of atlas.yaml, read by the MCP tool atlas_affected)
-// Changed files on stdin, one per line; prints {tasks, tests, routes, builds, crates, workspace, steps} and runs nothing:
-// `tests` are the commands below, `builds` the crates they cover.
-import { $ } from "bun";
+//   --dry-run   print the commands and why each runs; run nothing
+//   --json      print the plan as JSON (what would run and why); run nothing. Also the `affected:` plugin of atlas.yaml
+//               (MCP tool atlas_affected): `tasks`, `tests`, `routes`, `builds` are its contract.
+//   --stdin     the changed files come from stdin, one per line, instead of git (what the plugin passes)
+import { dirname } from "node:path";
+import { type DiffBase, resolveBase } from "./lib/base.ts";
+import { ciOnly, classify, plan } from "./checks/plan.ts";
+import { run, workspaceGraph } from "./checks/run.ts";
 
-export type Graph = Record<string, string[]>; // crate -> workspace crates it depends on
+const root = dirname(import.meta.dir);
+const args = process.argv.slice(2);
+const flag = (name: string) => args.includes(name);
 
-/** Every crate that depends on one of `crates`, transitively, plus the crates themselves. */
-export function dependents(graph: Graph, crates: Set<string>): Set<string> {
-	const out = new Set(crates);
-	let grew = true;
-	while (grew) {
-		grew = false;
-		for (const [c, deps] of Object.entries(graph)) {
-			if (!out.has(c) && deps.some((d) => out.has(d))) {
-				out.add(c);
-				grew = true;
-			}
-		}
+let files: string[] | undefined;
+let base: DiffBase | undefined;
+if (flag("--stdin")) {
+	files = (await Bun.stdin.text()).split(/\r?\n/).filter(Boolean);
+} else {
+	try {
+		base = resolveBase(root, process.env, args.includes("--base") ? args[args.indexOf("--base") + 1] : undefined);
+	} catch (e) {
+		console.error(`✗ ${(e as Error).message}`);
+		process.exit(2);
 	}
-	return out;
+	files = base?.touched;
 }
 
-export interface Plan {
-	crates: string[]; // cargo clippy/nextest -p for each
-	workspace: boolean; // Cargo.toml/Cargo.lock/toolchain changed: everything Rust
-	steps: string[]; // non-Rust check commands
-}
+// Only a change confined to some crates needs the crate graph.
+const c = classify(files);
+const graph = c.areas.rust!.on && c.everything === null ? await workspaceGraph() : {};
+// cargo-xwin present and not on Windows (which runs the real thing): also lint the Windows target.
+const windows = process.platform !== "win32" && Bun.which("cargo-xwin") !== null && !flag("--no-windows");
+const p = plan(files, graph, { windows });
 
-const STEPS: [RegExp, string][] = [
-	[/^apps\/desktop\//, "bun run desktop:check"],
-	[/^apps\/mobile\//, "scripts/mobile-check.sh"],
-	[/^services\/push-relay\//, "scripts/push-relay-check.sh"],
-	[/^skills\//, "scripts/check-skills.sh"],
-	[/^\.github\/workflows\//, "scripts/lint-workflows.sh"],
-	[/^scripts\//, "bun test scripts"],
-	// Catalogs, locks, the glossary, the checker itself, and everything the checker reads: Rust and Svelte sources
-	// (the hardcoded-text ratchet), docs and their translations. Runs after desktop:check (sorted), which installs.
-	[/^(?:i18n\/|scripts\/i18n\/|crates\/|apps\/desktop\/|site\/|docs\/pt-BR\/|docs\/[^/]+\.md$)/, "bun run i18n:check"],
-];
-
-export function plan(files: string[], graph: Graph): Plan {
-	const touched = new Set<string>();
-	let workspace = false;
-	const steps = new Set<string>();
-	for (const f of files) {
-		if (/^(Cargo\.(toml|lock)|rust-toolchain\.toml|deny\.toml|\.cargo\/)/.test(f)) workspace = true;
-		const m = /^crates\/([^/]+)\//.exec(f);
-		if (m && graph[m[1]]) touched.add(m[1]);
-		// The desktop shell embeds the frontend build; the CLI embeds the skills.
-		if (/^apps\/desktop\//.test(f) && graph["atlas-desktop"]) touched.add("atlas-desktop");
-		if (/^skills\//.test(f) && graph["atlas-skills"]) touched.add("atlas-skills");
-		for (const [re, cmd] of STEPS) if (re.test(f)) steps.add(cmd);
-	}
-	const crates = workspace ? [] : [...dependents(graph, touched)].sort();
-	return { crates, workspace, steps: [...steps].sort() };
-}
-
-/** Options for [`commands`]: `windows` adds clippy for the Windows target through cargo-xwin (a Linux/macOS
- * machine catching what only the Windows CI job used to: `cfg(windows)` code, dead code there). */
-export interface Opts {
-	windows?: boolean;
-}
-
-/** The shell commands that check `p`, in the order `check:changed` runs them. */
-export function commands(p: Plan, opts: Opts = {}): string[] {
-	const cmds: string[] = [];
-	const rust = p.workspace || p.crates.length > 0;
-	if (rust) cmds.push("cargo fmt --all -- --check");
-	const pk = p.workspace ? "--workspace" : p.crates.map((c) => `-p ${c}`).join(" ");
-	if (rust) cmds.push(`cargo clippy ${pk} --all-targets --locked -- -D warnings`, `cargo nextest run ${pk} --locked`);
-	// Own target dir: a Windows build would otherwise evict the host's from the shared cache.
-	if (rust && opts.windows) {
-		cmds.push(
-			`CARGO_TARGET_DIR=target/xwin cargo xwin clippy ${pk} --all-targets --locked --target x86_64-pc-windows-msvc -- -D warnings`,
-		);
-	}
-	cmds.push(...p.steps);
-	return cmds;
-}
-
-/** `p` as the plugin answer of atlas.yaml's `affected:`: the commands are the tests, the crates the builds. */
-export function impact(p: Plan) {
-	return {
-		tasks: [] as string[],
-		tests: commands(p),
-		routes: [] as string[],
-		builds: p.crates,
-		crates: p.crates,
-		workspace: p.workspace,
-		steps: p.steps,
-	};
-}
-
-async function workspaceGraph(): Promise<Graph> {
-	const meta = JSON.parse(await $`cargo metadata --no-deps --format-version 1`.quiet().text());
-	const names = new Set<string>(meta.packages.map((p: { name: string }) => p.name));
-	return Object.fromEntries(
-		meta.packages.map((p: { name: string; dependencies: { name: string }[] }) => [
-			p.name,
-			[...new Set(p.dependencies.map((d) => d.name).filter((d) => names.has(d)))],
-		]),
+if (flag("--json")) {
+	const rust = p.commands.filter((x) => x.area === "rust");
+	console.log(
+		JSON.stringify(
+			{
+				base: base ? { ref: base.ref, mode: base.mode, mergeBase: base.mb } : null,
+				files: files ?? null,
+				everything: p.everything,
+				areas: p.areas,
+				ignored: p.ignored,
+				workspace: p.workspace,
+				crates: p.crates,
+				commands: p.commands,
+				ciOnly: ciOnly(p),
+				// The atlas_affected contract.
+				tasks: [],
+				tests: p.commands.map((x) => x.cmd),
+				routes: [],
+				builds: p.crates,
+				steps: p.commands.filter((x) => !rust.includes(x)).map((x) => x.cmd),
+			},
+			null,
+			2,
+		),
 	);
+	process.exit(0);
 }
 
-async function main() {
-	const args = process.argv.slice(2);
-	if (args.includes("--json")) {
-		const files = (await Bun.stdin.text()).split("\n").filter(Boolean);
-		return console.log(JSON.stringify(impact(plan(files, await workspaceGraph()))));
-	}
-	const base = args.includes("--base") ? args[args.indexOf("--base") + 1] : "origin/main";
-	const dry = args.includes("--dry-run");
-	const mb = (await $`git merge-base ${base} HEAD`.nothrow().quiet().text()).trim();
-	const lines = [
-		mb ? await $`git diff --name-only ${mb}`.quiet().text() : "",
-		await $`git ls-files --others --exclude-standard`.quiet().text(),
-	];
-	const files = [...new Set(lines.join("\n").split("\n").filter(Boolean))];
-	// cargo-xwin present and not on Windows (which runs the real thing): also lint the Windows target.
-	const windows = process.platform !== "win32" && Bun.which("cargo-xwin") !== null && !args.includes("--no-windows");
-	const cmds = commands(plan(files, await workspaceGraph()), { windows });
-	if (process.platform !== "win32" && !windows && !args.includes("--no-windows")) {
-		console.log("(no Windows lint: install cargo-xwin, plus clang and lld, to catch Windows-only errors here)");
-	}
-	console.log(`${files.length} changed file(s) since ${base}`);
-	if (cmds.length === 0) return console.log("nothing to check");
-	for (const c of cmds) {
-		console.log(`▶ ${c}`);
-		if (dry) continue;
-		const r = await $`sh -c ${c}`.nothrow();
-		if (r.exitCode !== 0) {
-			console.error(`✗ ${c} (exit ${r.exitCode})`);
-			process.exit(r.exitCode);
-		}
-	}
-	if (!dry) console.log("✓ changed checks passed (bun run check is still the gate before a push)");
+const dry = flag("--dry-run");
+if (process.platform !== "win32" && !windows && !flag("--no-windows")) {
+	console.log("(no Windows lint: install cargo-xwin, plus clang and lld, to catch Windows-only errors here)");
 }
-
-if (import.meta.main) await main();
+console.log(files ? `${files.length} changed file(s) since ${base ? `${base.ref} (${base.mode})` : "stdin"}` : "changed files unknown");
+if (p.everything) console.log(`everything runs: ${p.everything}${files ? "" : " (pass --base <ref>, or git fetch origin main)"}`);
+if (p.commands.length === 0) {
+	console.log("nothing to check");
+	process.exit(0);
+}
+for (const x of p.commands) if (dry) console.log(`  ${x.id}: ${x.why.join("; ")}`);
+const code = await run(p.commands, dry, root);
+if (code === 0 && !dry) console.log("✓ changed checks passed (bun run check is still the gate before a push)");
+process.exit(code);

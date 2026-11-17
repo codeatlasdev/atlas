@@ -4,7 +4,7 @@
 // The runner globs the directory, so a later surface (Dart `arb`, ...) is one new file and no edit to a shared one.
 import { existsSync } from "node:fs";
 import { join } from "node:path";
-import { type DiffBase, resolveBase } from "./base.ts";
+import { type DiffBase, resolveBase } from "../lib/base.ts";
 import { type Glossary, loadGlossary } from "./glossary.ts";
 import { readText } from "./util.ts";
 
@@ -40,7 +40,7 @@ export interface Ctx {
 	surface?: string;
 	locales: LocalesConfig;
 	glossary: Glossary;
-	/** What the change under check is compared with, when the repo is a git checkout with a usable base (see base.ts);
+	/** What the change under check is compared with, when the repo is a git checkout with a usable base (scripts/lib/base.ts);
 	 * the ratchets then fail only on offenders the change adds. Undefined: compare with the committed baseline. */
 	base?: DiffBase;
 }

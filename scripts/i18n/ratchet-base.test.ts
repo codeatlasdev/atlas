@@ -1,15 +1,33 @@
 // The ratchets in diff mode: a change is judged on the offenders it adds, against the merge-base, so a baseline that
 // lags main never fails anyone and never needs a re-snapshot. Real temp git repositories, real `git`.
 import { afterAll, describe, expect, test } from "bun:test";
-import { parseChanged, resolveBase } from "./base.ts";
 import { fix } from "./fix.ts";
 import { type Finding, loadCtx } from "./types.ts";
 import { check, cleanup, makeRepo, put, read, rulesOf } from "./testkit.ts";
 
+// The resolver (scripts/lib/base.ts, tested in scripts/lib/base.test.ts) reads the environment: run these with a clean
+// one, whatever CI or a developer's shell exports.
+const AMBIENT = ["ATLAS_BASE", "GITHUB_ACTIONS", "GITHUB_EVENT_NAME", "GITHUB_EVENT_PATH"];
+const saved = Object.fromEntries(AMBIENT.map((k) => [k, process.env[k]]));
+for (const k of AMBIENT) delete process.env[k];
+
 afterAll(() => {
-	delete process.env.I18N_BASE;
+	for (const k of AMBIENT) {
+		if (saved[k] === undefined) delete process.env[k];
+		else process.env[k] = saved[k];
+	}
 	cleanup();
 });
+
+/** Run `fn` with extra environment variables, restoring them after. */
+async function withEnv<T>(vars: Record<string, string>, fn: () => Promise<T>): Promise<T> {
+	for (const [k, v] of Object.entries(vars)) process.env[k] = v;
+	try {
+		return await fn();
+	} finally {
+		for (const k of Object.keys(vars)) delete process.env[k];
+	}
+}
 
 const OLD = "apps/desktop/src/Old.svelte";
 const oldScreen = (n: number) => `${Array.from({ length: n }, (_, i) => `<p>Old text ${i}</p>`).join("\n")}\n`;
@@ -33,43 +51,6 @@ async function baseRepo(files: Record<string, string> = {}, branch = "main") {
 }
 
 const offenders = (fs: Finding[], rule = "hardcoded") => fs.filter((f) => f.rule === rule);
-
-describe("resolving the base", () => {
-	test("merge-base against main, with committed, staged, unstaged and untracked changes, and renames mapped back", async () => {
-		const root = await baseRepo({ [OLD]: oldScreen(2), "docs/a.md": "# A\n" });
-		put(root, "docs/a.md", "# A\n\nmore\n");
-		put(root, "docs/new.md", "# New\n");
-		git(root, "mv", OLD, "apps/desktop/src/Renamed.svelte");
-		const b = resolveBase(root);
-		expect(b?.ref).toBe("main");
-		expect(b?.mb).toBe(git(root, "rev-parse", "main"));
-		expect(b?.changed.get("docs/a.md")).toBe("docs/a.md");
-		expect(b?.changed.has("docs/new.md")).toBe(true);
-		expect(b?.changed.get("docs/new.md")).toBeUndefined();
-		expect(b?.changed.get("apps/desktop/src/Renamed.svelte")).toBe(OLD);
-		expect(b?.changed.has(OLD)).toBe(false);
-	});
-
-	test("origin/main wins over main, and I18N_BASE wins over both", async () => {
-		const root = await baseRepo({ "docs/a.md": "# A\n" });
-		put(root, "docs/b.md", "# B\n");
-		git(root, "add", "-A");
-		git(root, "commit", "-q", "-m", "second");
-		git(root, "update-ref", "refs/remotes/origin/main", "HEAD");
-		expect(resolveBase(root)?.ref).toBe("origin/main");
-		expect(resolveBase(root)?.changed.has("docs/b.md")).toBe(false);
-		expect(resolveBase(root, { I18N_BASE: "main" })?.ref).toBe("main");
-		expect(resolveBase(root, { I18N_BASE: "main" })?.changed.has("docs/b.md")).toBe(true);
-	});
-
-	test("no usable base: not a git checkout, a missing ref, no main", async () => {
-		expect(resolveBase(await makeRepo())).toBeUndefined();
-		const trunk = await baseRepo({}, "trunk");
-		expect(resolveBase(trunk)).toBeUndefined();
-		expect(resolveBase(trunk, { I18N_BASE: "no-such-ref" })).toBeUndefined();
-		expect(resolveBase(trunk, { I18N_BASE: "trunk" })?.ref).toBe("trunk");
-	});
-});
 
 describe("Svelte ratchet in diff mode", () => {
 	test("an unchanged file with 100 old offenders is not looked at, whatever the baseline says", async () => {
@@ -154,18 +135,13 @@ describe("Svelte ratchet in diff mode", () => {
 		expect(offenders(await check(root))).toEqual([]);
 	});
 
-	test("the base can be given: I18N_BASE (what CI sets) judges from that commit", async () => {
+	test("the base can be given: ATLAS_BASE judges from that commit", async () => {
 		const root = await baseRepo({ [OLD]: oldScreen(1) });
 		put(root, "apps/desktop/src/Second.svelte", "<p>Second</p>\n");
 		git(root, "add", "-A");
 		git(root, "commit", "-q", "-m", "second");
 		expect(offenders(await check(root))).toHaveLength(1);
-		process.env.I18N_BASE = "HEAD";
-		try {
-			expect(offenders(await check(root))).toEqual([]);
-		} finally {
-			delete process.env.I18N_BASE;
-		}
+		await withEnv({ ATLAS_BASE: "HEAD" }, async () => expect(offenders(await check(root))).toEqual([]));
 	});
 });
 
@@ -229,12 +205,7 @@ describe("the other ratchets share the mechanism", () => {
 		for (let i = 0; i < 50; i++) put(root, `crates/atlas-cli/src/old${i}.rs`, 'fn f() { println!("old"); }\n');
 		git(root, "add", "-A");
 		git(root, "commit", "-q", "-m", "more");
-		process.env.I18N_BASE = "HEAD";
-		try {
-			expect(offenders(await check(root), rule)).toEqual([]);
-		} finally {
-			delete process.env.I18N_BASE;
-		}
+		await withEnv({ ATLAS_BASE: "HEAD" }, async () => expect(offenders(await check(root), rule)).toEqual([]));
 	});
 
 	test("writing: a new em dash in a changed English doc fails, the old ones do not, an untouched doc is skipped", async () => {
@@ -257,12 +228,13 @@ describe("the other ratchets share the mechanism", () => {
 	});
 });
 
-// GitHub checks a pull request out as the merge of its branch into the CURRENT main. The base sha recorded in the
-// event is where the branch started, so main code merged since then would look like the PR's. CI passes I18N_BASE =
-// HEAD^1, the main tip the merge ref was built on.
+// GitHub checks a pull request out as the merge of its branch into the CURRENT main. The resolver's pull_request mode
+// takes the merge's first parent (the main tip it was built on), not the base sha the event recorded when the branch
+// started, which would blame the PR for main code merged since.
 describe("a pull request merge ref", () => {
 	const MAIN_SCREEN = "apps/desktop/src/FromMain.svelte";
 	const PR_SCREEN = "apps/desktop/src/FromPr.svelte";
+	const PR = { GITHUB_ACTIONS: "true", GITHUB_EVENT_NAME: "pull_request" };
 
 	/** main gains a screen after the PR branched, then the merge ref: a real merge commit of the PR into main. */
 	async function mergeRef(prFile?: string) {
@@ -278,41 +250,36 @@ describe("a pull request merge ref", () => {
 		git(root, "commit", "-q", "-m", "main adds a screen after the PR branched");
 		git(root, "checkout", "-q", "-b", "merge-ref");
 		git(root, "merge", "-q", "--no-ff", "-m", "merge ref", "feature");
-		return { root, branchPoint, mainTip: git(root, "rev-parse", "HEAD^1") };
+		return { root, branchPoint };
 	}
 
-	test("with I18N_BASE = HEAD^1 main's code is not the PR's", async () => {
-		const { root, mainTip } = await mergeRef();
-		process.env.I18N_BASE = mainTip;
-		try {
-			expect(offenders(await check(root))).toEqual([]);
-			expect(resolveBase(root)?.changed.has(MAIN_SCREEN)).toBe(false);
-			expect([...(resolveBase(root)?.changed.keys() ?? [])].sort()).toEqual(["docs/pr.md"]);
-		} finally {
-			delete process.env.I18N_BASE;
-		}
+	test("in pull_request mode main's code is not the PR's", async () => {
+		const { root } = await mergeRef();
+		await withEnv(PR, async () => expect(offenders(await check(root))).toEqual([]));
 	});
 
-	test("the sha recorded where the branch started WOULD blame the PR for main's screen (why HEAD^1)", async () => {
+	test("the sha recorded where the branch started WOULD blame the PR for main's screen (why the first parent)", async () => {
 		const { root, branchPoint } = await mergeRef();
-		process.env.I18N_BASE = branchPoint;
-		try {
+		await withEnv({ ATLAS_BASE: branchPoint }, async () => {
 			expect(offenders(await check(root)).map((f) => f.file)).toEqual([MAIN_SCREEN, MAIN_SCREEN, MAIN_SCREEN]);
-		} finally {
-			delete process.env.I18N_BASE;
-		}
+		});
 	});
 
 	test("a PR that adds a string itself fails on exactly that one", async () => {
-		const { root, mainTip } = await mergeRef(PR_SCREEN);
-		process.env.I18N_BASE = mainTip;
-		try {
+		const { root } = await mergeRef(PR_SCREEN);
+		await withEnv(PR, async () => {
 			const fs = offenders(await check(root));
 			expect(fs).toHaveLength(1);
 			expect(fs[0]).toMatchObject({ file: PR_SCREEN, line: 1 });
-		} finally {
-			delete process.env.I18N_BASE;
-		}
+		});
+	});
+
+	test("CI without a base (a push of a new branch, a manual run) compares with the committed baseline", async () => {
+		const { root } = await mergeRef();
+		put(root, "i18n/hardcoded-baseline.json", "{}\n");
+		await withEnv({ GITHUB_ACTIONS: "true", GITHUB_EVENT_NAME: "workflow_dispatch" }, async () => {
+			expect(offenders(await check(root)).length).toBeGreaterThan(0);
+		});
 	});
 
 	test("locally, merge-base with main ignores main's code once the branch has merged main", async () => {
@@ -322,34 +289,5 @@ describe("a pull request merge ref", () => {
 		git(root, "checkout", "-q", "feature");
 		git(root, "merge", "-q", "--no-edit", "main");
 		expect(offenders(await check(root))).toEqual([]);
-	});
-
-	test("an all-zero `before` (a new branch push) or an unknown ref falls through to main", async () => {
-		const root = await baseRepo({ [OLD]: oldScreen(1) });
-		put(root, "apps/desktop/src/New.svelte", "<p>New</p>\n");
-		for (const bad of ["0000000000000000000000000000000000000000", "not-a-ref", "  "]) {
-			expect(resolveBase(root, { I18N_BASE: bad })?.ref).toBe("main");
-		}
-	});
-});
-
-describe("OS-neutral git parsing", () => {
-	test("CRLF output (Git for Windows through a pipe) parses like LF, renames included", () => {
-		const nameStatus = "M\tdocs/a.md\r\nA\tdocs/new.md\r\nR100\told/Old.svelte\tnew/Renamed.svelte\r\nD\tgone.md\r\n";
-		const changed = parseChanged(nameStatus, "untracked.md\r\n\r\n");
-		expect([...changed]).toEqual([
-			["docs/a.md", "docs/a.md"],
-			["docs/new.md", undefined],
-			["new/Renamed.svelte", "old/Old.svelte"],
-			["untracked.md", undefined],
-		]);
-		expect(parseChanged(nameStatus.replaceAll("\r\n", "\n"), "untracked.md\n")).toEqual(changed);
-	});
-
-	test("the repository is recognised at its top by `rev-parse --show-prefix`, with no path comparison", async () => {
-		const root = await baseRepo({ "docs/a.md": "# A\n" });
-		expect(resolveBase(root)?.ref).toBe("main");
-		// a subdirectory of a work tree is not a root: the ratchets would read paths relative to the wrong place
-		expect(resolveBase(`${root}/docs`)).toBeUndefined();
 	});
 });

@@ -1,4 +1,5 @@
 {
+	"settings_automation_invalid": "Line under an automation in the crewmate's settings when hostd's cron parser refuses its schedule (saved under an older parser): it is kept as saved and never runs until it is fixed or deleted. {reason} is the parser's own message, English, shown as is.",
 	"settings_display_language_description": "Help line under the Display language row in Settings > General. Says what the setting changes; the picker's first option explains what following the system means.",
 	"settings_display_language_env_override": "Notice under the Display language row when the ATLAS_LANG environment variable forces a language, so a saved choice has no visible effect. Keep ATLAS_LANG untranslated.",
 	"settings_display_language_failed": "Error toast when saving the language fails. {error} is a technical reason from the app, usually English.",

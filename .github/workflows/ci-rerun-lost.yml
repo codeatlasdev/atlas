@@ -1,0 +1,53 @@
+name: Rerun a lost runner
+
+# Issue #520: hosted Windows runners sometimes die mid-step; GitHub ends the job as a failure ~45 min later with one
+# annotation ("The hosted runner lost communication with the server") and no log. That says nothing about the commit,
+# so when CI fails ONLY by that, this reruns the failed jobs, once per attempt, up to attempt 3. A real failure in the
+# same run (any job without that annotation) means no rerun. The rules are scripts/ci-lost-runner.ts (decideRerun,
+# tested in ci-lost-runner.test.ts).
+#
+# `workflow_run` runs with the default branch's workflow file and a token that can write, also for a fork's pull
+# request, so: nothing from the pull request is checked out or executed (the checkout is the default branch), and
+# every value of the event reaches the script through `env:` and is validated there, never inside a `run:` line.
+on:
+  workflow_run:
+    workflows: [CI]
+    types: [completed]
+
+permissions: {}
+
+concurrency:
+  group: rerun-lost-${{ github.event.workflow_run.id }}-${{ github.event.workflow_run.run_attempt }}
+  cancel-in-progress: false
+
+jobs:
+  rerun:
+    name: Rerun failed jobs lost to their runner
+    if: ${{ github.event.workflow_run.conclusion == 'failure' && github.repository == 'codeatlasdev/atlas' }}
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    permissions:
+      actions: write # POST actions/runs/{id}/rerun-failed-jobs
+      checks: read # the failed jobs' annotations
+      contents: read # the checkout of the default branch
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+
+      - name: Install Bun
+        uses: oven-sh/setup-bun@0c5077e51419868618aeaa5fe8019c62421857d6 # v2.2.0
+        with:
+          no-cache: true
+
+      - name: Rerun when every failed job lost its runner
+        env:
+          GH_TOKEN: ${{ github.token }}
+          GH_REPO: ${{ github.repository }}
+          RUN_ID: ${{ github.event.workflow_run.id }}
+          RUN_ATTEMPT: ${{ github.event.workflow_run.run_attempt }}
+          RUN_CONCLUSION: ${{ github.event.workflow_run.conclusion }}
+          HEAD_REPO: ${{ github.event.workflow_run.head_repository.full_name }}
+          HEAD_BRANCH: ${{ github.event.workflow_run.head_branch }}
+          HEAD_SHA: ${{ github.event.workflow_run.head_sha }}
+        run: bun scripts/ci-rerun-lost.ts

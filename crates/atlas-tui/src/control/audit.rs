@@ -78,7 +78,7 @@ impl AuditEntry {
         detail: Option<String>,
     ) -> Self {
         Self {
-            ts: chrono::Local::now().to_rfc3339_opts(chrono::SecondsFormat::Millis, false),
+            ts: atlas_core::time::local_rfc3339_millis(std::time::SystemTime::now()),
             caller: caller.kind().to_string(),
             client: caller.client_label(),
             session: caller.session().cloned(),

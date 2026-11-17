@@ -13,7 +13,7 @@
 #   dmg-*        the .dmg mounts, holds Atlas.app, whose code signature verifies (`codesign --verify --deep --strict`)
 #   app-tar      the .app.tar.gz (what `atlas desktop` installs) unpacks to an Atlas.app with the same bundle version
 #   app-*        the app copied out of the .dmg opens a window on screen, stays up, and writes nothing to
-#                ~/.atlas/desktop/app.log (every line there is an incident)
+#                ~/.atlas/desktop/app.log (every line there is an incident, except a screen change that rebuilt no terminal)
 #
 # `--negative` runs the same launch check on a program that exits at once and EXPECTS it to fail: the check can fail.
 # The app runs from a copy under a temporary directory; the user's /Applications is never touched. HOME stays the
@@ -95,9 +95,13 @@ check_launch() {
   [ -n "$(windows_of "$pid")" ] || fail "$tag-window-gone" "the window closed during the ${settle_s}s settle"
   # Best effort: a runner without screen-recording permission gives a blank capture, so it is evidence, not a verdict.
   screencapture -x "$out/$tag.png" 2>/dev/null || true
-  if [ -s "$app_log" ]; then
+  # Not incidents: the runner's virtual display settles after launch, and the app notes a screen change that rebuilt
+  # no terminal ("1794930585 terminal-system-event: ScreensChanged: rebuilding 0 terminal(s)", seen on the first run).
+  local bad
+  bad="$(grep -Ev '^[0-9]+ terminal-system-event: [A-Za-z]+: rebuilding 0 terminal\(s\)$' "$app_log" 2>/dev/null)"
+  if [ -n "$bad" ]; then
     cp "$app_log" "$out/$tag-app.log"
-    fail "$tag-app-log" "$(head -5 "$app_log" | cut -c1-240 | paste -sd'|' -)"
+    fail "$tag-app-log" "$(head -5 <<<"$bad" | cut -c1-240 | paste -sd'|' -)"
   fi
   kill "$pid" 2>/dev/null
   stop_atlas

@@ -19,6 +19,7 @@ This file is a map, kept under 8 KB (`bun test scripts/agents-md.test.ts` fails 
 - **Platform code.** Shared code goes through `atlas_core::sys` and `atlas_core::ipc`, never `libc`/`nix`. Every child of the GUI app or hostd needs `no_window()` (or `spawn_detached`), else a console window flashes.
 - Built-in coding agents live only in `crates/atlas-core/data/agents.json` (read via `atlas_core::agents`, `apps/desktop/src/lib/agentRegistry.ts`, the generated Dart `bun scripts/gen-agents-dart.ts`); never type a list of agent ids (`scripts/agent-list.test.ts` fails).
 - **Tests first.** For every bug: write a test that reproduces it, watch it fail for the reported reason, then fix. Real behavior or contract, never filler; cross-boundary contracts use the real producer's output. Full guide: `.agents/skills/real-tests/SKILL.md`.
+- **User-visible text** is never hardcoded: English plus pt-BR in `i18n/messages/<area>/`, shared words used once from `common*` (`bun run i18n:find`, `i18n:add`; `bun run i18n:check` blocks). Machine output (`--json`, MCP, logs, `--progress json`) is never translated and no program parses human text. Procedure: `.agents/skills/i18n/SKILL.md`.
 - **Commits** need a DCO sign-off (`git commit -s`); the AI policy is in `CONTRIBUTING.md`. Stage explicit paths.
 - Guards are enforced, not advisory: `.claude/settings.json`, `.codex/hooks.json`, `.omp/extensions/agent-guard.ts` and the `pre-push` hook (`scripts/setup.sh` installs it) refuse writes outside your worktree, pushes to `main`/`release/*`, force-push, merges (incl. `bun run pr:merge`), `git stash`
   and branch/tag deletes; a refusal names the fix, only a maintainer lifts it (`ATLAS_MAINTAINER_OK`, docs/contributing.md "Agent guards"). Use absolute paths under your worktree.
@@ -53,6 +54,7 @@ The crates and how the processes talk to each other: [docs/architecture.md](docs
 |---|---|
 | commit, push, fix CI, branch, release | `.agents/skills/atlas-workflow/SKILL.md` |
 | fix a bug or write or review a test | `.agents/skills/real-tests/SKILL.md` |
+| add or change any text a user sees (UI, CLI, site, docs) | `.agents/skills/i18n/SKILL.md`, `i18n/style/README.md` |
 | run, inspect, screenshot or benchmark the desktop app; UI work in `apps/desktop` | `.agents/skills/desktop-debug/SKILL.md` |
 | change the runtime or TUI | `crates/atlas-tui/AGENTS.md` |
 | change the Tauri shell | `crates/atlas-desktop/AGENTS.md` |

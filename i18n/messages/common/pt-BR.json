@@ -1,0 +1,21 @@
+{
+	"common_action_add": "Adicionar",
+	"common_action_back": "Voltar",
+	"common_action_cancel": "Cancelar",
+	"common_action_close": "Fechar",
+	"common_action_continue": "Continuar",
+	"common_action_copy": "Copiar",
+	"common_action_delete": "Excluir",
+	"common_action_done": "Concluir",
+	"common_action_edit": "Editar",
+	"common_action_open": "Abrir",
+	"common_action_remove": "Remover",
+	"common_action_rename": "Renomear",
+	"common_action_retry": "Tentar novamente",
+	"common_action_save": "Salvar",
+	"common_action_search": "Pesquisar",
+	"common_action_undo": "Desfazer",
+	"common_state_empty": "Nada aqui",
+	"common_state_loading": "Carregando…",
+	"common_state_saving": "Salvando…"
+}

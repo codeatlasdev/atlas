@@ -3,6 +3,7 @@
  * ("server → stopped / starting / running" within seconds) into one row, group rows by how
  * long ago they happened and filter them. No Svelte, no DOM.
  */
+import { dateTime, relative, upperFirst } from "#lib/i18n/fmt.ts";
 
 /** Same shape as the store's `TimelineEvent` (kept structural so this file has no store import). */
 export interface RawEvent {
@@ -244,21 +245,21 @@ function sameDay(a: number, b: number): boolean {
 	return x.getFullYear() === y.getFullYear() && x.getMonth() === y.getMonth() && x.getDate() === y.getDate();
 }
 
-/** Group label for a row at `ts` seen from `now`: Just now / 5 min ago / Today 19:20 / Yesterday 21:05 / Mon 10 Oct. */
+/** Group label for a row at `ts` seen from `now`: Now / 5 min ago / Today 19:00 / Yesterday 21:00 / Mon, Oct 10. */
 export function bucket(ts: number, now: number): string {
 	const age = Math.max(0, now - ts);
-	if (age < 60_000) return "Just now";
+	if (age < 60_000) return upperFirst(relative(0, "second"));
 	if (age < 3_600_000) {
 		const m = Math.floor(age / 60_000);
 		// Coarse steps so the headers don't multiply.
-		return `${m < 5 ? 1 : m < 15 ? 5 : m < 30 ? 15 : 30} min ago`;
+		return upperFirst(relative(-(m < 5 ? 1 : m < 15 ? 5 : m < 30 ? 15 : 30), "minute"));
 	}
-	const d = new Date(ts);
-	const hhmm = `${pad(d.getHours())}:00`;
-	if (sameDay(ts, now)) return `Today ${hhmm}`;
+	const hour = new Date(ts).setMinutes(0, 0, 0);
+	const hhmm = dateTime(hour, { hour: "2-digit", minute: "2-digit", hourCycle: "h23" });
+	if (sameDay(ts, now)) return `${upperFirst(relative(0, "day"))} ${hhmm}`;
 	const yesterday = now - 86_400_000;
-	if (sameDay(ts, yesterday)) return `Yesterday ${hhmm}`;
-	return d.toLocaleDateString([], { weekday: "short", day: "numeric", month: "short" });
+	if (sameDay(ts, yesterday)) return `${upperFirst(relative(-1, "day"))} ${hhmm}`;
+	return dateTime(ts, { weekday: "short", day: "numeric", month: "short" });
 }
 
 /** Group newest-first rows by `bucket`. Rows keep their order; groups follow the first row. */

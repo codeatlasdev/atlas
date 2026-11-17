@@ -37,6 +37,7 @@ jobs:
       tested: ${{ steps.tested.outputs.tested }}
       rust: ${{ steps.paths.outputs.rust }}
       desktop: ${{ steps.paths.outputs.desktop }}
+      i18n: ${{ steps.paths.outputs.i18n }}
       skills: ${{ steps.paths.outputs.skills }}
       scripts: ${{ steps.paths.outputs.scripts }}
       mobile: ${{ steps.paths.outputs.mobile }}
@@ -314,6 +315,29 @@ jobs:
       - name: svelte-check, prettier, bun test
         run: bun run desktop:check
 
+  # Catalogs, locks, glossary, translated docs, the writing lint and the hardcoded-text ratchets (scripts/i18n). Offline
+  # and bun only, so a Rust-only or docs-only change that can break a catalog or add a println! still reaches it. The
+  # ratchets judge the change against the diff base of scripts/lib/base.ts, so the history is fetched.
+  i18n:
+    name: i18n (catalogs, writing, ratchets)
+    needs: plan
+    if: ${{ needs.plan.outputs.tested != 'true' && needs.plan.outputs.i18n == 'true' }}
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+          fetch-depth: 0
+
+      - name: Install Bun
+        uses: oven-sh/setup-bun@0c5077e51419868618aeaa5fe8019c62421857d6 # v2.2.0
+        with:
+          no-cache: true
+
+      - name: i18n
+        run: bun run i18n:check
+
   # The repo's own scripts (setup, heavy queue, CI gates, release helpers) and their tests, on Linux and on Windows
   # through Git Bash (`scripts/sh.ts`), so a contributor's `bun run check` keeps working on both (#260).
   scripts:
@@ -532,7 +556,7 @@ jobs:
   # plus this explicit check is what keeps a broken run from going green.
   ci:
     name: CI
-    needs: [plan, rust-macos, rust-linux, desktop-linux, rust-linux-root, rust-linux-arm64, rust-windows, frontend, scripts, install-ps1, mobile, push-relay, site, duplication, deny, workflows]
+    needs: [plan, rust-macos, rust-linux, desktop-linux, rust-linux-root, rust-linux-arm64, rust-windows, frontend, i18n, scripts, install-ps1, mobile, push-relay, site, duplication, deny, workflows]
     if: ${{ !cancelled() }}
     runs-on: ubuntu-latest
     timeout-minutes: 5

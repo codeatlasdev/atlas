@@ -4,13 +4,14 @@
 //! (start/stop, services, actions, the config overview), `setup` (dependency install),
 //! `services` (what a service is and how to open it), `heavy` (the machine-wide heavy-job queue), `machine` (the
 //! Machine view's one report: load, memory, queue, services, terminals), `config_edit` (atlas.yaml read /
-//! validate / write) and `system` (open in editor / browser / Finder). This file holds the
-//! registry lookups they share.
+//! validate / write), `system` (open in editor / browser / Finder) and `locale` (the display language). This file
+//! holds the registry lookups they share.
 
 mod config_edit;
 pub(crate) mod discover;
 mod heavy;
 mod hygiene;
+mod locale;
 mod machine;
 mod projects;
 mod services;
@@ -30,6 +31,7 @@ use crate::registry::{self, Entry};
 pub use config_edit::*;
 pub use heavy::*;
 pub use hygiene::*;
+pub use locale::*;
 pub use machine::*;
 pub use projects::*;
 pub use setup::*;

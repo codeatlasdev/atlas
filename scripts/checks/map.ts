@@ -22,6 +22,22 @@ export const AREAS: Record<string, string[]> = {
 	// The built-in agent list (crates/atlas-core/data/agents.json) is imported by the desktop frontend and generated into
 	// Atlas Mobile's Dart; the scripts area runs the staleness test of that copy.
 	desktop: ["apps/desktop/**", "crates/atlas-core/data/agents.json"],
+	// Catalogs, locks, the writing lint and the hardcoded-text ratchets (scripts/i18n). Offline and bun only. Any user-facing
+	// source can add a hardcoded string, and the catalogs are read by the desktop, the site and the Rust crates.
+	i18n: [
+		"i18n/**",
+		"scripts/i18n/**",
+		"apps/desktop/**",
+		"site/{src,project.inlang}/**",
+		"site/paraglide.options.mjs",
+		"docs/**",
+		"skills/**",
+		"README.md",
+		"CHANGELOG.md",
+		"crates/{atlas-cli,atlas-tui,atlas-desktop,atlas-host}/src/**",
+		"crates/atlas-core/src/lang.rs",
+		"crates/atlas-desktop/Info.plist",
+	],
 	skills: ["skills/**", "scripts/check-skills.sh"],
 	// The repo's own scripts, release helpers and everything their tests read.
 	scripts: [
@@ -150,6 +166,7 @@ export const CHECKS: Check[] = [
 	{ id: "skills", area: "skills", cmd: "bun scripts/sh.ts scripts/check-skills.sh", ci: ["frontend"], ciRun: "scripts/check-skills.sh" },
 	{ id: "workflows", area: "workflows", cmd: "bun scripts/sh.ts scripts/lint-workflows.sh", ci: ["workflows"], ciRun: "scripts/lint-workflows.sh" },
 	{ id: "desktop", area: "desktop", cmd: "bun run desktop:check", ci: ["frontend"] },
+	{ id: "i18n", area: "i18n", cmd: "bun run i18n:check", ci: ["i18n"] },
 	{ id: "mobile", area: "mobile", cmd: "bun scripts/sh.ts scripts/mobile-check.sh", ci: ["mobile"], ciRun: "scripts/mobile-check.sh" },
 	{ id: "relay", area: "relay", cmd: "bun scripts/sh.ts scripts/push-relay-check.sh", ci: ["push-relay"], ciRun: "scripts/push-relay-check.sh" },
 	{ id: "scripts", area: "scripts", cmd: "bun run release:test", ci: ["scripts"] },

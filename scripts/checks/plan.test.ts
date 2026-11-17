@@ -63,6 +63,16 @@ describe("areas (what CI's plan job outputs)", () => {
 		expect(on(["apps/mobile/lib/main.dart"])).toEqual(["mobile", "dup"]);
 	});
 
+	// Incident class: the agent list lives in crates/ but the desktop imports it and Atlas Mobile's Dart copy is
+	// generated from it (checked by the scripts tests); a Rust-only classification lets a stale copy through.
+	test("the shared agent list runs the frontend, mobile and scripts checks, not Rust alone", () => {
+		expect(on(["crates/atlas-core/data/agents.json"])).toEqual(["rust", "desktop", "scripts", "mobile"]);
+		expect(ids(["crates/atlas-core/data/agents.json"])).toEqual(
+			expect.arrayContaining(["desktop", "mobile", "scripts"]),
+		);
+		expect(on(["crates/atlas-core/data/channels.json"])).toEqual(["rust"]);
+	});
+
 	test("a changed workflow or action reruns every job in CI, and only its own lint locally", () => {
 		expect(on([".github/workflows/ci.yml"], "ci")).toEqual(ALL);
 		expect(on([".github/actions/rust-gate/action.yml"], "ci")).toEqual(ALL);

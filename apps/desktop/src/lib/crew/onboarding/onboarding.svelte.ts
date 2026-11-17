@@ -11,6 +11,7 @@ import { open as pickFile } from "@tauri-apps/plugin-dialog";
 import { errText } from "#lib/api.ts";
 import { crew } from "#lib/stores/crew.svelte.ts";
 import { agents } from "#lib/stores/agents.svelte.ts";
+import { builtinAgent, isBuiltinAgent } from "#lib/agentRegistry.ts";
 import { SEEN_KEY } from "#lib/crew/crewOnboarding.svelte.ts";
 import { randomLook } from "#lib/crew/look.ts";
 import { ProviderForm } from "#lib/crew/providerForm.svelte.ts";
@@ -24,7 +25,7 @@ import {
 	type OnboardingStep,
 } from "#lib/crew/onboardingFlow.ts";
 import { crewServerTarget, isCrewServerKey, parseSSHTarget } from "#lib/crew/sshTarget.ts";
-import { AGENT_AUTH_TYPE, AGENT_SIGNIN_CMD, applyAgentApiKey } from "#lib/crew/remoteAgent.ts";
+import { AGENT_AUTH_TYPE, applyAgentApiKey } from "#lib/crew/remoteAgent.ts";
 import type { SshHost } from "#lib/crew/sshHosts.ts";
 import {
 	phaseFromCheck,
@@ -60,9 +61,6 @@ export type SignInMethod = "key" | "password";
 export type Primary = { label: string; run: () => void; busy: boolean; disabled: boolean; reason: string };
 
 type InstallLineEvent = { line: string; is_err: boolean };
-
-/** Engines the onboarding offers (ids = the agent registry). */
-const ENGINE_IDS = ["claude", "opencode", "codex", "omp"];
 
 export class Onboarding {
 	// ─── step state ───────────────────────────────────────────────────────────
@@ -214,7 +212,7 @@ export class Onboarding {
 	providerOpen = $state(false);
 	selectedEngine = $state("");
 
-	readonly integrations = $derived(agents.list.filter((a) => ENGINE_IDS.includes(a.id)));
+	readonly integrations = $derived(agents.list.filter((a) => isBuiltinAgent(a.id)));
 	readonly engineReady = $derived(
 		this.selectedEngine !== "" && this.engineStatus[this.selectedEngine]?.phase === "ready",
 	);
@@ -572,7 +570,7 @@ export class Onboarding {
 		try {
 			await openSigninPty(
 				this.launchedKey,
-				AGENT_SIGNIN_CMD[agentId] ?? agentId,
+				builtinAgent(agentId)?.bin ?? agentId,
 				(pty) => (this.signinPtyId = pty),
 			);
 		} catch (e) {

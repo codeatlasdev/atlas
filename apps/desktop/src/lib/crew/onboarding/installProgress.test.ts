@@ -2,7 +2,7 @@
 import { describe, test, expect } from "bun:test";
 import {
 	applyInstallLine,
-	authModeForError,
+	needsSudoPassword,
 	completeInstall,
 	initialInstallProgress,
 } from "./installProgress.ts";
@@ -75,6 +75,15 @@ describe("applyInstallLine", () => {
 		expect([...a.done]).toEqual(snapshot);
 		expect(a.active).toBe("check");
 	});
+
+	// The desktop's own first step ("Signing in") spins before the CLI starts; the CLI's first marker ticks it.
+	test("the sign-in step is ticked by the CLI's first marker", () => {
+		const start = { ...initialInstallProgress(), active: "signin" };
+		const p = ["step: check"].reduce(applyInstallLine, start);
+		expect(p.active).toBe("check");
+		expect(p.done.has("signin")).toBe(true);
+		expect([...completeInstall(p).done]).toContain("signin");
+	});
 });
 
 describe("completeInstall", () => {
@@ -95,19 +104,18 @@ describe("target after install", () => {
 	});
 });
 
-describe("authModeForError", () => {
-	test("a refused key asks to authorize this Mac", () => {
-		expect(authModeForError("ubuntu@host: Permission denied (publickey).")).toBe("authorize");
-	});
-
+// The browsers page reads the CLI's text (a string); onboarding gets the classified `ConnectError` instead
+// (connectError.test.ts).
+describe("needsSudoPassword", () => {
 	test("every sudo password failure asks for the sudo password", () => {
-		expect(authModeForError("sudo asks for a password")).toBe("sudo");
-		expect(authModeForError("this user needs passwordless sudo")).toBe("sudo");
-		expect(authModeForError("sudo password rejected")).toBe("sudo");
+		expect(needsSudoPassword("sudo asks for a password")).toBe(true);
+		expect(needsSudoPassword("this user needs passwordless sudo")).toBe(true);
+		expect(needsSudoPassword("sudo password rejected")).toBe(true);
 	});
 
-	test("anything else is shown as a plain error", () => {
-		expect(authModeForError("connection refused")).toBe("none");
-		expect(authModeForError("")).toBe("none");
+	test("anything else is a plain error, a refused key included", () => {
+		expect(needsSudoPassword("ubuntu@host: Permission denied (publickey).")).toBe(false);
+		expect(needsSudoPassword("connection refused")).toBe(false);
+		expect(needsSudoPassword("")).toBe(false);
 	});
 });

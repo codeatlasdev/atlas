@@ -1,36 +1,64 @@
-<!-- Connect step form: SSH key check, address + port, the password flows and the "prefer the terminal" disclosure. -->
+<!--
+  Connect step form: where the server is (address, port), how to sign in (SSH key, which one, or the account password
+  once), what the server needs, and what to do when it fails. The platform-neutral wording is deliberate: this runs on
+  macOS, Linux and Windows.
+-->
 <script lang="ts">
-	import { Check } from "@lucide/svelte";
-	import { Checkbox, CopyButton } from "@codeatlasdev/ui";
+	import { Check, CircleAlert } from "@lucide/svelte";
+	import { Checkbox, CopyButton, SegmentedControl, TextField } from "@codeatlasdev/ui";
 	import CrewFlag from "#lib/crew/CrewFlag.svelte";
 	import { BROWSERS_COST, BROWSERS_WHY } from "#lib/crew/browsers.ts";
+	import { IS_WIN } from "#lib/keys.ts";
+	import { api } from "#lib/api.ts";
+	import { fixDocs } from "./docsLinks.ts";
+	import { describeConnectError } from "./connectError.ts";
 	import type { Onboarding } from "./onboarding.svelte.ts";
 	import SshHostPicker from "./SshHostPicker.svelte";
 
 	let { ob }: { ob: Onboarding } = $props();
 
 	const shownTarget = $derived(ob.sshTarget.trim() || "user@host");
-	const locked = $derived(ob.installRunning || ob.installDone || ob.authRunning);
-	const terminalCmd = $derived(`atlas crew install ${shownTarget}${ob.browsers ? " --browsers" : ""}`);
+	const locked = $derived(ob.installRunning || ob.installDone);
+	const terminalCmd = $derived(
+		`atlas crew install ${shownTarget}${ob.identity ? ` --identity "${ob.identity}"` : ""}${ob.browsers ? " --browsers" : ""}`,
+	);
+	/** Without ssh nothing else on this form can work: say so first, with the way to get it. */
+	const noSsh = $derived(
+		ob.keyChecked && !ob.sshFound
+			? describeConnectError(
+					{ kind: "ssh_missing", detail: "ssh: not found" },
+					{ keyPath: null, keyAdded: false, target: shownTarget, windows: IS_WIN },
+				)
+			: null,
+	);
+	const failure = $derived(noSsh ?? ob.failure);
+	let showCmd = $state(false);
+	let failureEl = $state<HTMLElement>();
+	// A failure appears at the bottom of a scrolling form: bring all of it into view, above the footer.
+	$effect(() => {
+		if (!failureEl) return;
+		const frame = requestAnimationFrame(() =>
+			failureEl?.scrollIntoView({ block: "end", behavior: "smooth" }),
+		);
+		return () => cancelAnimationFrame(frame);
+	});
+	const labels = {
+		pick_key: "Choose another key",
+		use_password: "Sign in with the password",
+		use_key: "Use my SSH key",
+		retry: "Try again",
+		recheck: "Check again",
+		sudo: "",
+	} as const;
 </script>
 
 <div class="form-block" style:--stagger={3}>
 	{#if !ob.keyChecked}
 		<div class="key-checking">
 			<span class="spin-dot" aria-hidden="true"></span>
-			<span>Checking SSH key…</span>
+			<span>Looking for your SSH key…</span>
 		</div>
-	{:else if !ob.hasKey}
-		<!-- No SSH key found -->
-		<p class="key-missing-text">
-			Atlas signs in to your server with an SSH key, like a password that never leaves your Mac. You don't
-			have one yet.
-		</p>
-		{#if ob.keyError}
-			<p class="field-error" role="alert">{ob.keyError}</p>
-		{/if}
 	{:else}
-		<!-- Has SSH key: show address field -->
 		{#if ob.sshHosts.length > 0}
 			<SshHostPicker
 				hosts={ob.sshHosts}
@@ -40,141 +68,218 @@
 				onpick={(h) => ob.pickSshHost(h)}
 			/>
 		{/if}
-		<label class="field-label" for="ssh-target">SSH address</label>
-		<div class="field-wrap" class:shake={ob.fieldShake}>
-			<input
-				id="ssh-target"
-				class="ssh-input"
-				bind:value={ob.sshTarget}
-				placeholder="ubuntu@my-server.com"
-				aria-label="SSH address"
-				disabled={locked}
-				onkeydown={(e) => e.key === "Enter" && ob.launchServer()}
-			/>
-		</div>
-		<p class="field-hint">
-			Uses your Mac's SSH key, the same way <code>ssh {shownTarget}</code> does.
-		</p>
 
-		<div class="port-row">
-			<label class="field-label" for="ssh-port">Port</label>
-			<input
-				id="ssh-port"
-				class="port-input"
-				type="number"
-				min={1}
-				max={65535}
-				bind:value={ob.sshPort}
-				disabled={locked}
-			/>
+		<!-- Where: the address and a narrow port on one row. -->
+		<div class="row">
+			<div class="grow" class:shake={ob.fieldShake}>
+				<TextField
+					name="ssh-target"
+					label="SSH address"
+					placeholder="ubuntu@my-server.com"
+					bind:value={ob.sshTarget}
+					disabled={locked}
+					autocomplete="off"
+					onkeydown={(e) => e.key === "Enter" && ob.canSubmit && ob.launchServer()}
+				/>
+			</div>
+			<div class="port">
+				<TextField
+					name="ssh-port"
+					label="Port"
+					type="number"
+					value={String(ob.sshPort)}
+					oninput={(v) => (ob.sshPort = Number(v) || 22)}
+					disabled={locked}
+				/>
+			</div>
 		</div>
 
-		<!-- Opt-in, off by default: it costs a download and needs Node on the server, so it is never a surprise. -->
-		<div class="browsers-opt">
+		<!-- How: one segmented control, and below it the field it reveals, in an area of the same height for both. -->
+		<div class="group">
+			<span class="group-label">Sign in with</span>
+			<SegmentedControl
+				aria-label="Sign in with"
+				value={ob.method}
+				items={[
+					{ value: "key", label: "SSH key" },
+					{ value: "password", label: "Password" },
+				]}
+				disabled={locked}
+				onchange={(v) => ob.chooseMethod(v as "key" | "password")}
+			/>
+			<div class="reveal">
+				{#if ob.method === "key"}
+					{#if ob.key}
+						<div class="key-row" data-testid="key-in-use">
+							<code class="key-path" title={ob.key.identity}>{ob.key.identity}</code>
+							<button class="text-link" onclick={() => ob.pickKeyFile()} disabled={locked}>
+								Choose another…
+							</button>
+						</div>
+						<p class="field-hint">
+							{ob.identity ? "Used for this server from now on." : "The key ssh uses for this address."}
+							{#if ob.identity}
+								<button class="text-link" onclick={() => ob.useDefaultKey()} disabled={locked}>
+									Use the default
+								</button>
+							{/if}
+						</p>
+					{:else}
+						<div class="key-row" data-testid="no-key">
+							<span class="key-path">
+								{ob.identity ? "That key file is not there." : "No SSH key on this computer."}
+							</span>
+							<button class="text-link" onclick={() => ob.createSshKey()} disabled={ob.creatingKey || locked}>
+								{ob.creatingKey ? "Creating…" : "Create one"}
+							</button>
+							<button class="text-link" onclick={() => ob.pickKeyFile()} disabled={locked}
+								>Choose a file</button
+							>
+						</div>
+						<p class="field-hint">Or sign in with the password: Atlas creates the key for you.</p>
+					{/if}
+				{:else}
+					<TextField
+						name="ssh-password"
+						label={`Password of ${shownTarget.split("@")[0]}`}
+						hideLabel
+						placeholder={`Password of ${shownTarget.split("@")[0]}`}
+						type="password"
+						bind:value={ob.sshPassword}
+						disabled={locked}
+						autocomplete="off"
+						onkeydown={(e) => e.key === "Enter" && ob.canSubmit && ob.launchServer()}
+					/>
+					<p class="field-hint">Used once to add this computer's key; never stored.</p>
+				{/if}
+			</div>
+		</div>
+
+		<!-- Optional: one compact row (out of the way while a failure needs the room). -->
+		<div class="optional" class:gone={failure !== null && failure !== undefined}>
 			<Checkbox
 				bind:checked={ob.browsers}
 				label="Screenshots for UI work (Chromium + WebKit)"
 				disabled={locked}
 			/>
-			<p class="field-hint">{BROWSERS_WHY} {BROWSERS_COST}</p>
+			<p class="field-hint">{BROWSERS_COST}</p>
 		</div>
 
-		{#if ob.authMode === "authorize"}
-			<!-- Permission denied: offer to copy key via password -->
-			<div class="auth-block">
-				<p class="auth-desc">
-					Your Mac's SSH key isn't authorized on this server yet. Enter the server user's password to add it.
-				</p>
-				<input
-					type="password"
-					class="ssh-input"
-					bind:value={ob.authPassword}
-					placeholder="Server password"
-					aria-label="Server password for SSH key authorization"
-					disabled={ob.authRunning}
-					onkeydown={(e) => e.key === "Enter" && ob.authorizeAndRetry()}
-				/>
-				{#if ob.authError}
-					<p class="field-error" role="alert">{ob.authError}</p>
-				{/if}
+		{#if failure}
+			<div
+				class="failure"
+				bind:this={failureEl}
+				role="alert"
+				data-testid="connect-failure"
+				data-kind={failure.kind}
+			>
+				<CircleAlert size={16} class="failure-icon" />
+				<div class="failure-main">
+					<p class="failure-title">{failure.title}</p>
+					<p class="failure-body">{failure.body}</p>
+					{#if failure.command}
+						<div class="code-block">
+							<code>{failure.command}</code>
+							<CopyButton value={failure.command} label="" size="sm" aria-label="Copy command" />
+						</div>
+					{/if}
+					{#if ob.needsSudo}
+						<TextField
+							name="sudo-password"
+							label="Sudo password"
+							hideLabel
+							placeholder="Sudo password"
+							type="password"
+							bind:value={ob.sudoPassword}
+							disabled={ob.installRunning}
+							autocomplete="off"
+							onkeydown={(e) => e.key === "Enter" && ob.sudoPassword && ob.launchServer(ob.sudoPassword)}
+						/>
+					{/if}
+					<!-- The fixes as buttons, the docs as a link, on one row. -->
+					<div class="failure-actions">
+						{#each failure.actions.filter((a) => a !== "sudo") as a (a)}
+							<button class="act" onclick={() => ob.runAction(a)} disabled={ob.installRunning}>
+								{labels[a]}
+							</button>
+						{/each}
+						<button class="text-link small fix" onclick={() => api.openUrl(fixDocs())}>How to fix</button>
+					</div>
+					{#if failure.detail}
+						<details class="failure-details">
+							<summary>Details</summary>
+							<code>{failure.detail}</code>
+						</details>
+					{/if}
+				</div>
 			</div>
-		{:else if ob.authMode === "sudo"}
-			<!-- sudo needs password -->
-			<div class="auth-block">
-				<p class="auth-desc">This user's sudo needs a password. Enter it to continue the install.</p>
-				<input
-					type="password"
-					class="ssh-input"
-					bind:value={ob.authPassword}
-					placeholder="Sudo password"
-					aria-label="Sudo password"
-					disabled={ob.authRunning}
-					onkeydown={(e) => e.key === "Enter" && ob.launchServer(ob.authPassword)}
-				/>
-				{#if ob.authError}
-					<p class="field-error" role="alert">{ob.authError}</p>
-				{/if}
-			</div>
-		{:else if ob.lastErrLine}
-			<!-- Any failure, including one before the first step marker (e.g. the CLI can't run): never shake silently. -->
-			<p class="field-error" role="alert">{ob.lastErrLine}</p>
 		{/if}
 
 		{#if ob.installDone}
 			<div class="connect-success">
 				<CrewFlag size={18} />
 				<Check size={15} />
-				<span>Installed — connecting…</span>
+				<span>Installed. Connecting…</span>
 			</div>
 		{/if}
 
-		<!-- Disclosure: prefer terminal -->
-		<details class="terminal-disclosure">
-			<summary>Prefer the terminal?</summary>
-			<div class="code-block">
-				<code>{terminalCmd}</code>
-				<CopyButton value={terminalCmd} label="" size="sm" aria-label="Copy install command" />
-			</div>
-			<p class="disclosure-hint">Run on your Mac. It SSHes into the server and sets everything up.</p>
-		</details>
+		<!-- A small link; the command opens over the layout and pushes nothing. -->
+		<div class="terminal">
+			<button class="text-link small" onclick={() => (showCmd = !showCmd)} aria-expanded={showCmd}>
+				Prefer the terminal?
+			</button>
+			{#if showCmd}
+				<div class="popover">
+					<div class="code-block">
+						<code>{terminalCmd}</code>
+						<CopyButton value={terminalCmd} label="" size="sm" aria-label="Copy install command" />
+					</div>
+					<p class="field-hint">Run it on this computer; it uses the same key.</p>
+				</div>
+			{/if}
+		</div>
 	{/if}
 </div>
 
 <style>
+	/* One scale: 16px between groups, 6px label -> field -> hint inside a group. */
 	.form-block {
 		display: flex;
 		flex-direction: column;
-		gap: 12px;
-		margin-bottom: 28px;
+		gap: 16px;
 	}
 
-	.code-block {
+	.group {
 		display: flex;
-		align-items: center;
-		gap: 8px;
-		background: var(--ca-surface-sunken);
-		border: 1px solid var(--ca-border-subtle);
-		border-radius: 8px;
-		padding: 11px 14px;
-		font-family: monospace;
+		flex-direction: column;
+		gap: 6px;
+		min-width: 0;
+	}
+
+	.group-label {
 		font-size: 13px;
+		font-weight: 500;
 		color: var(--ca-text-primary);
 	}
 
-	.code-block code {
+	.row {
+		display: flex;
+		align-items: flex-start;
+		gap: 12px;
+	}
+
+	.grow {
 		flex: 1;
 		min-width: 0;
-		overflow: hidden;
-		text-overflow: ellipsis;
-		white-space: nowrap;
 	}
 
-	.field-wrap {
-		border-radius: 8px;
-	}
-
-	.field-wrap.shake {
+	.grow.shake {
 		animation: field-shake 420ms ease;
+	}
+
+	.port {
+		width: 7.5em;
+		flex-shrink: 0;
 	}
 
 	@keyframes field-shake {
@@ -192,36 +297,149 @@
 		}
 	}
 
-	.browsers-opt {
+	/* The same height for the key picker and the password field: switching the method moves nothing below. */
+	.reveal {
+		display: flex;
+		flex-direction: column;
+		gap: 6px;
+		min-height: 84px;
+		margin-top: 4px;
+	}
+
+	.key-row {
+		display: flex;
+		align-items: center;
+		gap: 12px;
+		box-sizing: border-box;
+		height: 40px;
+		padding: 0 12px;
+		border: 1px solid var(--ca-border-subtle);
+		border-radius: 8px;
+		background: var(--ca-surface-sunken);
+		font-size: 13px;
+		color: var(--ca-text-secondary);
+	}
+
+	.key-path {
+		flex: 1;
+		min-width: 0;
+		overflow: hidden;
+		text-overflow: ellipsis;
+		white-space: nowrap;
+		font-size: 12.5px;
+		color: var(--ca-text-primary);
+	}
+
+	.optional.gone {
+		display: none;
+	}
+
+	.optional {
 		display: flex;
 		flex-direction: column;
 		gap: 4px;
 	}
 
-	.port-row {
+	.optional .field-hint {
+		padding-left: 26px;
+	}
+
+	.code-block {
+		display: flex;
+		align-items: center;
+		gap: 8px;
+		background: var(--ca-surface-sunken);
+		border: 1px solid var(--ca-border-subtle);
+		border-radius: 8px;
+		padding: 8px 12px;
+		font-family: monospace;
+		font-size: 12.5px;
+		color: var(--ca-text-primary);
+	}
+
+	.code-block code {
+		flex: 1;
+		min-width: 0;
+		overflow: hidden;
+		text-overflow: ellipsis;
+		white-space: nowrap;
+	}
+
+	.failure {
+		display: flex;
+		gap: 10px;
+		padding: 12px 14px;
+		border-radius: 8px;
+		border: 1px solid var(--ca-danger, #ef4444);
+		background: var(--ca-surface-sunken);
+	}
+
+	.failure :global(.failure-icon) {
+		flex-shrink: 0;
+		margin-top: 2px;
+		color: var(--ca-danger, #ef4444);
+	}
+
+	.failure-main {
 		display: flex;
 		flex-direction: column;
-		gap: 5px;
+		gap: 6px;
+		min-width: 0;
 	}
 
-	.port-input {
-		width: 90px;
-		padding: 8px 10px;
+	.failure-title {
+		margin: 0;
+		font-size: 14px;
+		font-weight: 600;
+		color: var(--ca-text-primary);
+	}
+
+	.failure-body {
+		margin: 0;
+		font-size: 13px;
+		line-height: 1.5;
+		color: var(--ca-text-secondary);
+	}
+
+	.failure-actions {
+		display: flex;
+		flex-wrap: wrap;
+		align-items: center;
+		gap: 8px 10px;
+		margin-top: 2px;
+	}
+
+	.act {
+		padding: 6px 12px;
 		border-radius: 8px;
-		border: 1.5px solid var(--ca-border-subtle);
+		border: 1px solid var(--ca-border-subtle);
 		background: var(--ca-surface-base);
 		color: var(--ca-text-primary);
-		font-size: 14px;
-		outline: none;
-		transition: border-color 150ms;
+		font-size: 13px;
+		cursor: pointer;
 	}
 
-	.port-input:focus {
-		border-color: var(--ca-accent, #4f8ef7);
+	.act:hover:not(:disabled) {
+		border-color: var(--ob-accent, var(--ca-accent));
 	}
 
-	.port-input:disabled {
+	.act:disabled {
 		opacity: 0.5;
+		cursor: default;
+	}
+
+	.failure-details summary {
+		font-size: 12px;
+		color: var(--ca-text-secondary);
+		cursor: pointer;
+	}
+
+	.failure-details code {
+		display: block;
+		margin-top: 4px;
+		font-size: 12px;
+		word-break: break-word;
+		color: var(--ca-text-secondary);
 	}
 
 	.connect-success {
@@ -241,52 +459,34 @@
 		padding: 8px 0;
 	}
 
-	.key-missing-text {
-		font-size: 15px;
-		line-height: 1.55;
-		color: var(--ca-text-secondary);
-		margin: 0 0 20px;
+	.fix {
+		font-size: 12.5px;
+		padding: 0 4px;
 	}
 
-	.auth-block {
+	.terminal {
+		position: relative;
+		align-self: flex-start;
+	}
+
+	.terminal :global(.small) {
+		font-size: 12.5px;
+		padding: 0;
+	}
+
+	.popover {
+		position: absolute;
+		left: 0;
+		bottom: calc(100% + 6px);
+		z-index: 3;
+		width: min(480px, 80vw);
 		display: flex;
 		flex-direction: column;
-		gap: 10px;
-	}
-
-	.auth-desc {
-		font-size: 13px;
-		color: var(--ca-text-secondary);
-		margin: 0;
-		line-height: 1.5;
-	}
-
-	.terminal-disclosure {
-		margin-top: 4px;
-	}
-
-	.terminal-disclosure summary {
-		font-size: 12.5px;
-		color: var(--ca-text-secondary);
-		cursor: pointer;
-		user-select: none;
-		list-style: none;
-		padding: 4px 0;
-	}
-
-	.terminal-disclosure summary::-webkit-details-marker {
-		display: none;
-	}
-
-	.terminal-disclosure[open] summary {
-		color: var(--ca-text-primary);
-		margin-bottom: 8px;
-	}
-
-	.disclosure-hint {
-		font-size: 12px;
-		color: var(--ca-text-secondary);
-		margin: 6px 0 0;
-		line-height: 1.5;
+		gap: 6px;
+		padding: 10px;
+		border-radius: 10px;
+		border: 1px solid var(--ca-border-subtle);
+		background: var(--ca-surface-base);
+		box-shadow: 0 8px 24px rgba(0, 0, 0, 0.4);
 	}
 </style>

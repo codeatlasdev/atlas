@@ -25,6 +25,9 @@ if (a[0] === "api") {
   if (path.includes("/compare/main...")) out(String(w.behind));
   if (path.includes("/git/ref/heads/fix/click")) out(w.tip);
   if (path.includes("/actions/workflows/ci.yml/runs")) out(w.runs);
+  if (path.endsWith("/jobs")) out(w.jobs.map((j) => JSON.stringify({ id: j.id, name: j.name, conclusion: j.conclusion })).join("\\n"));
+  const m = path.match(/check-runs\\/(\\d+)\\/annotations/);
+  if (m) out(w.jobs.find((j) => String(j.id) === m[1]).failures);
   if (path.includes("/teams/atlas-maintainers/memberships/")) {
     if (w.maintainer) out("active");
     console.error("Not Found (HTTP 404)"); process.exit(1);
@@ -33,7 +36,8 @@ if (a[0] === "api") {
 console.error("unexpected gh " + a.join(" ")); process.exit(1);
 `;
 
-type World = { behind?: number; tip?: string; runs?: object[]; maintainer?: boolean; linked?: number[]; title?: string };
+type Job = { id: number; name: string; conclusion: string; failures: string[] };
+type World = { behind?: number; tip?: string; runs?: object[]; maintainer?: boolean; linked?: number[]; title?: string; jobs?: Job[] };
 
 function cli(w: World, args: string[]) {
   const dir = mkdtempSync(join(tmpdir(), "pr-merge-"));
@@ -53,7 +57,7 @@ function cli(w: World, args: string[]) {
   writeFileSync(join(dir, "gh.mjs"), FAKE_GH);
   writeFileSync(
     join(dir, "world.json"),
-    JSON.stringify({ pr: JSON.stringify(pr), behind: w.behind ?? 0, tip: w.tip ?? SHA, runs: JSON.stringify(runs), maintainer: w.maintainer !== false }),
+    JSON.stringify({ pr: JSON.stringify(pr), behind: w.behind ?? 0, tip: w.tip ?? SHA, runs: JSON.stringify(runs), maintainer: w.maintainer !== false, jobs: w.jobs ?? [] }),
   );
   const gitconfig = join(dir, "gitconfig");
   writeFileSync(gitconfig, "[user]\n\tname = Matheus\n\temail = matheus@codeatlas.com.br\n");
@@ -107,6 +111,26 @@ test.each<[string, World, RegExp]>([
   const r = cli(w, []);
   expect(r.code).toBe(1);
   expect(r.out.decision).toBe("refuse");
+  expect(r.out.reasons.join("\n")).toMatch(reason);
+  expect(r.merged).toBeNull();
+});
+
+// Issue #520: a red run whose only failure is a lost runner is a rerun to wait for, not a fix to make. The CLI reads the
+// failed jobs' annotations to tell (jobs 11 lost, 12 green, 13 the aggregate, 14 a real failure).
+const LOST_MSG = "The hosted runner lost communication with the server. Anything in your workflow ...";
+const red = (attempt: number) => [{ id: 99, attempt, headSha: SHA, status: "completed", conclusion: "failure", createdAt: "2026-11-16T10:00:00Z", url: "https://x/99" }];
+const lostJob: Job = { id: 11, name: "Rust (Windows, full workspace)", conclusion: "failure", failures: [LOST_MSG] };
+const greenJob: Job = { id: 12, name: "Rust (Linux)", conclusion: "success", failures: [] };
+const aggregateJob: Job = { id: 13, name: "CI", conclusion: "failure", failures: [] };
+const realJob: Job = { id: 14, name: "Rust (macOS)", conclusion: "failure", failures: ["Process completed with exit code 100."] };
+
+test.each<[string, World, RegExp]>([
+  ["only a lost runner, attempt 1", { runs: red(1), jobs: [lostJob, greenJob, aggregateJob] }, /runner lost, rerun pending \(attempt 1 of 3/],
+  ["only a lost runner, attempt 3", { runs: red(3), jobs: [lostJob, greenJob, aggregateJob] }, /on every attempt \(3 of 3\): no rerun is pending/],
+  ["a lost runner and a real failure", { runs: red(1), jobs: [lostJob, realJob, aggregateJob] }, /concluded failure: fix it and push/],
+])("a red CI run is told apart by its jobs' annotations: %s", (_n, w, reason) => {
+  const r = cli(w, ["--dry-run"]);
+  expect(r.code).toBe(1);
   expect(r.out.reasons.join("\n")).toMatch(reason);
   expect(r.merged).toBeNull();
 });

@@ -15,6 +15,7 @@
  * Pure: no Svelte, no IPC. Icons and components live next to the UI (`SettingsNav`, `pageComponents.ts`).
  */
 import { kbd } from "#lib/keys.ts";
+import { m } from "#lib/i18n/m.ts";
 import { CATEGORIES as SOUND_CATEGORIES, SPECS } from "#lib/sound/policy.ts";
 
 /** One row. `keywords` are words people may type that the label does not contain. */
@@ -76,6 +77,22 @@ const item = (
 	...aliases: string[]
 ): ItemDef => ({ id, label, description, ...(keywords && { keywords }), ...(aliases.length && { aliases }) });
 
+/**
+ * A row whose label and description come from the message catalog. They are getters, so they are read when something
+ * shows them (the page, the search index) and follow the display language; a plain `item(...)` string is fixed at
+ * module load. `keywords` stay a plain string on purpose: they hold words in every language people may type.
+ */
+const messageItem = (id: string, label: () => string, description: () => string, keywords = ""): ItemDef => ({
+	id,
+	get label() {
+		return label();
+	},
+	get description() {
+		return description();
+	},
+	...(keywords && { keywords }),
+});
+
 /** A row that only exists on macOS (the fast GPU terminal's own options): see [`forPlatform`]. */
 const macItem = (...a: Parameters<typeof item>): ItemDef => ({ ...item(...a), macOnly: true });
 
@@ -97,6 +114,7 @@ const DEFS = [
 					"components/settings/UpdatesSection.svelte",
 					"components/settings/UpdateChannel.svelte",
 					"components/settings/HostStatusRow.svelte",
+					"components/settings/DisplayLanguage.svelte",
 				],
 				groups: [
 					{
@@ -113,6 +131,19 @@ const DEFS = [
 								"Update channel",
 								"Follow Stable, Beta or Alpha releases. Shared with the atlas CLI.",
 								"beta alpha stable prerelease pre-release rc nightly insiders downgrade release train",
+							),
+						],
+					},
+					{
+						get title() {
+							return m.settings_group_language();
+						},
+						items: [
+							messageItem(
+								"display-language",
+								m.settings_display_language_label,
+								m.settings_display_language_description,
+								"language idioma portugues locale translation",
 							),
 						],
 					},
@@ -1308,7 +1339,13 @@ export function forPlatform(defs: readonly CategoryDef[], mac: boolean): readonl
 				.map((p) => ({
 					...p,
 					groups: p.groups
-						.map((g) => ({ ...g, items: g.items.filter((i) => !i.macOnly) }))
+						// Not `{ ...g }`: a spread would freeze a message-backed title at its current language.
+						.map((g) => ({
+							get title() {
+								return g.title;
+							},
+							items: g.items.filter((i) => !i.macOnly),
+						}))
 						.filter((g) => g.items.length > 0),
 				}))
 				.filter((p) => p.groups.length > 0),

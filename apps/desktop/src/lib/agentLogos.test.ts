@@ -1,20 +1,20 @@
 // @ts-nocheck bun test runtime types are not part of the app tsconfig
 /**
  * Every agent Atlas can launch shows its official logo in the New-tab menu and on its tab. The agent ids come
- * from the Rust registry (`crates/atlas-core/src/agents.rs`), read from the real source, so adding an
+ * from the registry file (`crates/atlas-core/data/agents.json`, the one Rust embeds), so adding an
  * agent there without a logo here turns this red instead of silently falling back to the generic robot.
  */
 import { expect, test } from "bun:test";
 import { readFileSync, readdirSync } from "node:fs";
+import { BUILTIN_AGENTS } from "./agentRegistry.ts";
 import { join } from "node:path";
 import { LOGO_FILES, agentLogo } from "./agentLogos.ts";
 
-const registry = readFileSync(join(import.meta.dir, "../../../../crates/atlas-core/src/agents.rs"), "utf8");
-const ids = [...registry.matchAll(/^\s*id:\s*"([^"]+)",/gm)].map((m) => m[1]);
+const ids = BUILTIN_AGENTS.map((a) => a.id);
 const dir = join(import.meta.dir, "agent-logos");
 
-test("the registry parse found the agents (guards the regex, not the logos)", () => {
-	expect(ids).toEqual(expect.arrayContaining(["omp", "claude", "codex"]));
+test("the registry has the built-in agents (guards an empty list, not the logos)", () => {
+	expect(ids).toEqual(expect.arrayContaining(["omp", "claude", "codex", "opencode"]));
 });
 
 test("every agent id in the Rust registry maps to a logo", () => {

@@ -22,6 +22,7 @@ pub(super) async fn daemon_with_fault(dir: &Path, fault: &str) -> HostClient {
             &d,
             ServeOpts {
                 crew_host: true,
+                mobile_loopback: true,
                 isolation_fault: Some(fault),
                 ..Default::default()
             },
@@ -48,6 +49,7 @@ pub(super) async fn daemon_with(
             &d,
             ServeOpts {
                 crew_host: true,
+                mobile_loopback: true,
                 isolation,
                 ..Default::default()
             },

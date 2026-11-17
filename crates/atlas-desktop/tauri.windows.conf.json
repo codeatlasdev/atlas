@@ -20,6 +20,7 @@
     "targets": ["nsis"],
     "icon": ["icons/32x32.png", "icons/128x128.png", "icons/icon.ico"],
     "category": "DeveloperTool",
+    "fileAssociations": [],
     "publisher": "CodeAtlas",
     "copyright": "© CodeAtlas. MIT OR Apache-2.0.",
     "homepage": "https://atlas.codeatlas.com.br",

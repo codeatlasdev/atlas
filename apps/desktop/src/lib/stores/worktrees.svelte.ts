@@ -56,7 +56,10 @@ class Worktrees {
 				linkedPr: prev?.linkedPr,
 				agent: prev?.agent,
 				hostId: p.host ?? undefined,
+				plain: p.kind === "folder",
 			});
+			// "Use as project" (or a folder gaining a `.git`) turns a plain folder into a project: it gets its Panel now.
+			if (prev?.plain && p.kind !== "folder" && ws.doc.layouts[p.id]) ws.ensurePanel(p.id);
 		}
 		for (const w of [...ws.doc.worktrees]) if (!ids.has(w.id)) ws.removeWorktree(w.id);
 	}

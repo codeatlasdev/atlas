@@ -178,9 +178,10 @@ describe.skipIf(process.platform === "win32")("install.sh", () => {
 		}
 	});
 
-	// (util-linux `script -qec`: Linux only.) #267: on a distro with a native package `atlas desktop` asks before installing it as root. Under `curl | sh` its
+	// #267: on a distro with a native package `atlas desktop` asks before installing it as root. Under `curl | sh` its
 	// stdin is the script, so the question would never be answered and the app would always fall back to the AppImage.
-	test.skipIf(!Bun.which("script"))("`curl | sh` in a terminal hands the desktop step the terminal, so it can ask", () => {
+	// `script -qec` is util-linux's: BSD `script` (macOS) does not take it, so this runs on Linux only.
+	test.skipIf(!Bun.which("script") || process.platform !== "linux")("`curl | sh` in a terminal hands the desktop step the terminal, so it can ask", () => {
 		const r = install({ env: { DISPLAY: ":0" }, pty: true });
 		expect(r.code).toBe(0);
 		expect(r.calls).toContain("atlas desktop --no-open [channel=]");

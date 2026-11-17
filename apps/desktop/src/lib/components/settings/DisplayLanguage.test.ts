@@ -6,10 +6,12 @@ import { afterEach, expect, mock, test } from "bun:test";
 // a fake that answers like `locale_set` does (the real reply shape is pinned by locale.test.ts's Rust fixture).
 const calls: { cmd: string; args?: Record<string, unknown> }[] = [];
 let refuse: string | null = null;
+let mockReply: object | null = null;
 mock.module("@tauri-apps/api/core", () => ({
 	invoke: async (cmd: string, args?: Record<string, unknown>) => {
 		calls.push({ cmd, args });
 		if (refuse) throw refuse;
+		if (mockReply) return mockReply;
 		const tag = args?.tag as string | null;
 		return { locale: tag ?? "en", preference: tag, source: tag ? "file" : "os", supported: ["en", "pt-BR"] };
 	},
@@ -20,17 +22,19 @@ await (await import("../../../../test/uiKit.ts")).useRealKit("Select");
 const kit = await import("@codeatlasdev/ui");
 kit.toast.error = (m: string) => toasts.push(m);
 const { flushSync, mount, tick, unmount } = await import("svelte");
-const { appLocale, setAppLocale } = await import("#lib/i18n/locale.svelte.ts");
+const { appLocale, chooseLocale } = await import("#lib/i18n/locale.svelte.ts");
 const { default: DisplayLanguage } = await import("./DisplayLanguage.svelte");
 
 let done: (() => void) | undefined;
-afterEach(() => {
+afterEach(async () => {
 	done?.();
 	done = undefined;
+	refuse = null;
+	mockReply = null;
+	// Back to "following the system, in English" (the store is process-wide, like the app's).
+	await chooseLocale(null);
 	calls.length = 0;
 	toasts.length = 0;
-	refuse = null;
-	setAppLocale("en");
 	document.body.innerHTML = "";
 });
 
@@ -57,13 +61,14 @@ async function choose(root: HTMLElement, option: string) {
 test("the row is named Display language (not the programming Languages tab) and offers Follow system and each language by its own name", async () => {
 	const t = await render();
 	expect(t.querySelector(".label").textContent).toBe("Display language");
+	expect(t.querySelector(".desc").textContent).toBe("The language of Atlas menus, buttons and messages.");
 	expect(t.querySelector("h3").textContent).toBe("Language");
 	expect(t.querySelector("[data-setting]").dataset.setting).toBe("display-language");
 	t.querySelector(".ca-sel button").click();
 	await tick();
 	flushSync();
 	expect([...document.querySelectorAll('[role="option"]')].map((o) => o.textContent.trim())).toEqual([
-		"Follow system",
+		"Match system (English)",
 		"English",
 		"Português (Brasil)",
 	]);
@@ -77,26 +82,43 @@ test("picking Português (Brasil) saves it through Rust and the page switches li
 	expect(appLocale()).toBe("pt-BR");
 	expect(t.querySelector(".label").textContent).toBe("Idioma de exibição");
 	expect(t.querySelector("h3").textContent).toBe("Idioma");
-	expect(t.querySelector(".desc").textContent).toContain("idioma dos menus");
+	expect(t.querySelector(".desc").textContent).toBe("Idioma dos menus, botões e mensagens do Atlas.");
 	expect(performance.timeOrigin).toBe(loaded);
-	// Follow system is now worded in the new language, the endonyms are not.
+	// With a saved choice the system's language is unknown to the page: the bare words, now in the new language. The
+	// endonyms never change.
 	t.querySelector(".ca-sel button").click();
 	await tick();
 	flushSync();
 	expect([...document.querySelectorAll('[role="option"]')].map((o) => o.textContent.trim())).toEqual([
-		"Seguir o sistema",
+		"Igual ao sistema",
 		"English",
 		"Português (Brasil)",
 	]);
 });
 
-test("Follow system sends no tag, so Rust removes the saved choice", async () => {
+test("Match system sends no tag, so Rust removes the saved choice, and names the language it resolves to", async () => {
 	const t = await render();
 	await choose(t, "Português (Brasil)");
 	calls.length = 0;
-	await choose(t, "Seguir o sistema");
+	await choose(t, "Igual ao sistema");
 	expect(calls).toEqual([{ cmd: "locale_set", args: { tag: null } }]);
 	expect(appLocale()).toBe("en");
+	t.querySelector(".ca-sel button").click();
+	await tick();
+	flushSync();
+	expect(document.querySelector('[role="option"]').textContent.trim()).toBe("Match system (English)");
+});
+
+test("following the system in Portuguese reads 'Igual ao sistema (Português (Brasil))' with the resolved language", async () => {
+	mockReply = { locale: "pt-BR", preference: null, source: "os", supported: ["en", "pt-BR"] };
+	await chooseLocale(null);
+	const t = await render();
+	t.querySelector(".ca-sel button").click();
+	await tick();
+	flushSync();
+	expect(document.querySelector('[role="option"]').textContent.trim()).toBe(
+		"Igual ao sistema (Português (Brasil))",
+	);
 });
 
 test("a refused save is a toast in the current language and the UI stays as it was", async () => {

@@ -119,10 +119,10 @@ test("ago picks the largest unit", () => {
 	const now = 1_000_000_000;
 	expect(ago(null, now)).toBe("");
 	expect(ago(now - 5, now)).toBe("now");
-	expect(ago(now - 90, now)).toBe("1 min. ago");
-	expect(ago(now - 3 * 3600, now)).toBe("3 hr. ago");
+	expect(ago(now - 90, now)).toBe("1 min ago");
+	expect(ago(now - 3 * 3600, now)).toBe("3 hr ago");
 	expect(ago(now - 3 * 86400, now)).toBe("3 days ago");
-	expect(ago(now - 400 * 86400, now)).toBe("last yr.");
+	expect(ago(now - 400 * 86400, now)).toBe("last year");
 	expect(ago(now + 100, now)).toBe("now");
 });
 

@@ -14,11 +14,12 @@
 			}
 		}
 	],
-	"settings_display_language_description": "O idioma dos menus, botões e mensagens do Atlas. Seguir o sistema usa o idioma do seu computador.",
+	"settings_display_language_description": "Idioma dos menus, botões e mensagens do Atlas.",
 	"settings_display_language_env_override": "ATLAS_LANG está definido e decide o idioma por enquanto. Sua escolha fica salva e vale quando ele não estiver definido.",
 	"settings_display_language_failed": "Não foi possível mudar o idioma: {error}",
-	"settings_display_language_follow_system": "Seguir o sistema",
 	"settings_display_language_label": "Idioma de exibição",
+	"settings_display_language_match_system": "Igual ao sistema",
+	"settings_display_language_match_system_with": "Igual ao sistema ({language})",
 	"settings_group_language": "Idioma",
 	"settings_host_action_dont_wait": "Não esperar",
 	"settings_host_action_restart": "Reiniciar",
@@ -38,9 +39,9 @@
 				"countPlural"
 			],
 			"match": {
-				"countExact=0, countPlural=*": "Atualizado · nenhum terminal em execução",
-				"countExact=*, countPlural=one": "Atualizado · {count} terminal em execução",
-				"countExact=*, countPlural=*": "Atualizado · {count} terminais em execução"
+				"countExact=0, countPlural=*": "Atualizado · sem terminais abertos",
+				"countExact=*, countPlural=one": "Atualizado · {count} terminal aberto",
+				"countExact=*, countPlural=*": "Atualizado · {count} terminais abertos"
 			}
 		}
 	],
@@ -57,9 +58,9 @@
 				"countPlural"
 			],
 			"match": {
-				"countExact=0, countPlural=*": "Mais antigo que o Atlas {version} · nenhum terminal em execução",
-				"countExact=*, countPlural=one": "Mais antigo que o Atlas {version} · {count} terminal em execução",
-				"countExact=*, countPlural=*": "Mais antigo que o Atlas {version} · {count} terminais em execução"
+				"countExact=0, countPlural=*": "Mais antigo que o Atlas {version} · sem terminais abertos",
+				"countExact=*, countPlural=one": "Mais antigo que o Atlas {version} · {count} terminal aberto",
+				"countExact=*, countPlural=*": "Mais antigo que o Atlas {version} · {count} terminais abertos"
 			}
 		}
 	],

@@ -1,9 +1,10 @@
 {
-  "settings_display_language_description": "8a4f19ca6f0c",
+  "settings_display_language_description": "4ee44b86c45d",
   "settings_display_language_env_override": "2459a942e3c2",
   "settings_display_language_failed": "38a347017c45",
-  "settings_display_language_follow_system": "4046e50947ec",
   "settings_display_language_label": "f683af180596",
+  "settings_display_language_match_system": "adb48792d464",
+  "settings_display_language_match_system_with": "192fb7725b64",
   "settings_group_language": "1fa24b490573",
   "settings_host_action_dont_wait": "9a9130fa3c0d",
   "settings_host_action_restart": "61ecb75a1070",

@@ -69,7 +69,7 @@ export function parseSwitched(v: unknown): Switched {
 	throw new Error(`git_switch: unexpected result ${JSON.stringify(v)}`);
 }
 
-/** `now`, `30 min. ago`, `5 hr. ago`, `3 days ago`…; empty for an unreadable date. */
+/** `now`, `30 min ago`, `5 hr ago`, `3 days ago`…; empty for an unreadable date. */
 export function relDate(iso: string, now = Date.now()): string {
 	const t = Date.parse(iso);
 	return Number.isNaN(t) ? "" : relativeTime(t, now);

@@ -6,7 +6,13 @@
 	 */
 	import { Select, toast } from "@codeatlasdev/ui";
 	import { errText } from "#lib/api.ts";
-	import { LOCALE_NAMES, chooseLocale, localePreference, localeSource } from "#lib/i18n/locale.svelte.ts";
+	import {
+		LOCALE_NAMES,
+		appLocale,
+		chooseLocale,
+		localePreference,
+		localeSource,
+	} from "#lib/i18n/locale.svelte.ts";
 	import { m } from "#lib/i18n/m.ts";
 	import { locales, type Locale } from "#lib/paraglide/runtime.js";
 	import Group from "#lib/settings/Group.svelte";
@@ -14,9 +20,17 @@
 
 	const FOLLOW = "system";
 
-	// Computed here, not at module level: the first option's text follows the language.
+	// Computed here, not at module level: the first option's text follows the language. While the app follows the system
+	// the language that results is named after it (in its own name); with a saved choice the system's language is not
+	// known to the page, so the bare words are used.
 	let options = $derived([
-		{ value: FOLLOW, label: m.settings_display_language_follow_system() },
+		{
+			value: FOLLOW,
+			label:
+				localePreference() === null
+					? m.settings_display_language_match_system_with({ language: LOCALE_NAMES[appLocale()] })
+					: m.settings_display_language_match_system(),
+		},
 		...locales.map((l) => ({ value: l, label: LOCALE_NAMES[l] })),
 	]);
 

@@ -53,6 +53,14 @@ Atlas runs on macOS, Windows and Linux; no message may say "Mac" or spell a shor
 
 One implementation, `atlas_core::lang` (CLI, TUI, hostd, desktop shell), precedence `ATLAS_LANG`, `~/.atlas/language`, `LANGUAGE`/`LC_ALL`/`LC_MESSAGES`/`LANG` (C/POSIX = English), the OS, English; any `pt*` selects pt-BR. `atlas config lang` shows it and what decided it; `atlas config lang <tag>` and Desktop Settings write `~/.atlas/language`. The desktop receives the resolved tag from Rust (a Tauri command) and never reads `navigator.language`. Mobile follows the phone.
 
+## The ratchets (text that must not spread)
+
+`i18n:check` also flags hardcoded user-facing text (Svelte, Rust `println!`/`bail!`), spelled shortcuts, ad hoc platform checks and flagged phrases in existing docs. These are **ratchets**: they judge your change, not a snapshot.
+
+- For each file you touch, the offenders at the merge-base are counted with the same detector; only the ones you **add** fail, with `file:line`. Old offenders in a file you edit are fine; moving them is fine; a file you do not touch is never looked at. So **when main adds screens there is nothing to re-snapshot**, and the baseline never needs a hand edit.
+- Fix a new finding by using a message key (or `// i18n-ignore` / `<!-- i18n-ignore -->` when it is not for users). Never raise `i18n/hardcoded-baseline.json` to make it pass: a raised count fails (`baseline-grew`). `bun run i18n:fix` only lowers it.
+- Run `git fetch origin main` before checking locally: the base is `I18N_BASE`, else `origin/main`, else `main`. With no usable base (shallow clone, no ref) the check compares with the committed baseline instead and says so.
+
 ## Traps that cost time
 
 - A broken Paraglide plugin path compiles zero messages with only a warning: the desktop has a test that the compiled `m` exposes the catalog's keys.

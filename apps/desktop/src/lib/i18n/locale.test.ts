@@ -83,15 +83,15 @@ test("a switch re-renders what is on screen in place, with no reload and no new 
 	const label = target.querySelector("#label");
 	expect(label.textContent).toBe("Display language");
 	expect(target.querySelector("#count").textContent).toBe("Up to date · no running terminals");
-	expect(target.querySelector("#ago").textContent).toBe("5 min. ago");
+	expect(target.querySelector("#ago").textContent).toBe("5 min ago");
 	const loaded = performance.timeOrigin;
 
 	setAppLocale("pt-BR");
 	flushSync();
 	expect(target.querySelector("#label")).toBe(label);
 	expect(label.textContent).toBe("Idioma de exibição");
-	expect(target.querySelector("#count").textContent).toBe("Atualizado · nenhum terminal em execução");
-	expect(target.querySelector("#ago").textContent).toBe("há 5 min.");
+	expect(target.querySelector("#count").textContent).toBe("Atualizado · sem terminais abertos");
+	expect(target.querySelector("#ago").textContent).toBe("há 5 min");
 	expect(performance.timeOrigin).toBe(loaded);
 
 	setAppLocale("en");
@@ -111,7 +111,7 @@ test("the very first render of a message does not throw state_unsafe_mutation (t
 	const out = JSON.parse(lines[lines.length - 1]);
 	expect(out.error, p.stderr.toString()).toBeNull();
 	expect(out.first).toBe("Display language");
-	expect(out.switched).toBe("Idioma de exibição | Atualizado · 2 terminais em execução | há 5 min.");
+	expect(out.switched).toBe("Idioma de exibição | Atualizado · 2 terminais abertos | há 5 min");
 	expect(out.sameNode).toBe(true);
 });
 

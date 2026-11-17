@@ -71,7 +71,7 @@ export function scanRustSource(source: string): Violation[] {
 	return out;
 }
 
-const isTestFile = (p: string) => /(?:^|\/)tests?(?:\/|\.rs$)/.test(p) || /_tests?\.rs$/.test(p);
+export const isTestFile = (p: string) => /(?:^|\/)tests?(?:\/|\.rs$)/.test(p) || /_tests?\.rs$/.test(p);
 
 export function scanRust(root: string, dirs: string[] = RUST_DIRS): Found {
 	const found: Found = new Map();

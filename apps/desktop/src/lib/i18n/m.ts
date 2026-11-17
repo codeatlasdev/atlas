@@ -14,7 +14,8 @@
  */
 import * as generated from "#lib/paraglide/messages.js";
 import "./locale.svelte.ts";
-import { OS, type Os } from "./os.ts";
+// A cycle with keys.ts (it builds text through `m`) that is safe: `OS` is only read when a message is called.
+import { OS, type Os } from "#lib/keys.ts";
 
 type Inputs<F> = F extends (inputs: infer I, ...rest: never[]) => unknown
 	? Omit<NonNullable<I>, "os">

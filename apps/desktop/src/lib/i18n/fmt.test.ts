@@ -7,7 +7,7 @@ import { inLocale } from "../../../test/locale.ts";
 const NOW = Date.UTC(2026, 0, 10, 12, 0, 0);
 const ago = (seconds: number, locale?: string) => relativeTime(NOW - seconds * 1000, NOW, locale);
 
-test("relative time picks the largest whole unit, in one style, in English", () => {
+test("relative time picks the largest whole unit, in the style guide's form, in English", () => {
 	expect(
 		[
 			5,
@@ -26,20 +26,20 @@ test("relative time picks the largest whole unit, in one style, in English", () 
 	).toEqual([
 		"now",
 		"now",
-		"1 min. ago",
-		"1 min. ago",
-		"3 hr. ago",
+		"1 min ago",
+		"1 min ago",
+		"3 hr ago",
 		"yesterday",
 		"3 days ago",
-		"last wk.",
-		"2 wk. ago",
-		"last mo.",
-		"last yr.",
-		"3 yr. ago",
+		"last week",
+		"2 wk ago",
+		"last month",
+		"last year",
+		"3 yr ago",
 	]);
 });
 
-test("a time in the future reads 'now', never 'in 3 sec.'", () => {
+test("a time in the future reads 'now', never 'in 3 sec'", () => {
 	expect(relativeTime(NOW + 3_000, NOW)).toBe("now");
 });
 
@@ -47,7 +47,7 @@ test("the same call reads right in Brazilian Portuguese, from the language alone
 	await inLocale("pt-BR", () => {
 		expect([5, 90, 3 * 3600, 86_400, 3 * 86_400, 40 * 86_400].map((s) => ago(s))).toEqual([
 			"agora",
-			"há 1 min.",
+			"há 1 min",
 			"há 3 h",
 			"ontem",
 			"há 3 dias",
@@ -56,12 +56,45 @@ test("the same call reads right in Brazilian Portuguese, from the language alone
 	});
 });
 
+// i18n/style/en.md says `5 min ago`, pt-BR.md says `há 5 minutos` in prose and the UI form `há 5 min`: Intl's `short`
+// abbreviations without the trailing period, and written out where there is no number.
+const UNITS = ["second", "minute", "hour", "day", "week", "month", "year"] as const;
+const TABLE = {
+	en: {
+		second: ["5 sec ago", "1 sec ago", "now", "in 1 sec", "in 5 sec"],
+		minute: ["5 min ago", "1 min ago", "this minute", "in 1 min", "in 5 min"],
+		hour: ["5 hr ago", "1 hr ago", "this hour", "in 1 hr", "in 5 hr"],
+		day: ["5 days ago", "yesterday", "today", "tomorrow", "in 5 days"],
+		week: ["5 wk ago", "last week", "this week", "next week", "in 5 wk"],
+		month: ["5 mo ago", "last month", "this month", "next month", "in 5 mo"],
+		year: ["5 yr ago", "last year", "this year", "next year", "in 5 yr"],
+	},
+	"pt-BR": {
+		second: ["há 5 seg", "há 1 seg", "agora", "em 1 seg", "em 5 seg"],
+		minute: ["há 5 min", "há 1 min", "este minuto", "em 1 min", "em 5 min"],
+		hour: ["há 5 h", "há 1 h", "esta hora", "em 1 h", "em 5 h"],
+		day: ["há 5 dias", "ontem", "hoje", "amanhã", "em 5 dias"],
+		week: ["há 5 sem", "semana passada", "esta semana", "próxima semana", "em 5 sem"],
+		month: ["há 5 meses", "mês passado", "este mês", "próximo mês", "em 5 meses"],
+		year: ["há 5 anos", "ano passado", "este ano", "próximo ano", "em 5 anos"],
+	},
+} as const;
+
+test("every unit, past and future, zero and one, in both languages, never with a period", () => {
+	for (const [locale, rows] of Object.entries(TABLE))
+		for (const unit of UNITS) {
+			const got = [-5, -1, 0, 1, 5].map((v) => relative(v, unit, locale));
+			expect(got, `${locale} ${unit}`).toEqual(rows[unit]);
+			for (const text of got) expect(text, `${locale} ${unit}`).not.toContain(".");
+		}
+});
+
 test("an explicit locale wins over the UI language (text that must stay English for a maintainer)", async () => {
-	await inLocale("pt-BR", () => expect(ago(3 * 3600, "en")).toBe("3 hr. ago"));
+	await inLocale("pt-BR", () => expect(ago(3 * 3600, "en")).toBe("3 hr ago"));
 });
 
 test("relative() is the raw formatter for labels that are not 'ago' (axis ends, group headers)", () => {
-	expect(relative(-30, "minute")).toBe("30 min. ago");
+	expect(relative(-30, "minute")).toBe("30 min ago");
 	expect(relative(0, "second")).toBe("now");
 	expect(upperFirst(relative(0, "day"))).toBe("Today");
 });

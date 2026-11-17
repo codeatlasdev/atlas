@@ -44,10 +44,10 @@ test("plural variants: zero is its own sentence in both languages, one and other
 		"Up to date · 21 running terminals",
 	]);
 	expect(await inLocale("pt-BR", () => lines(compiled))).toEqual([
-		"Atualizado · nenhum terminal em execução",
-		"Atualizado · 1 terminal em execução",
-		"Atualizado · 2 terminais em execução",
-		"Atualizado · 21 terminais em execução",
+		"Atualizado · sem terminais abertos",
+		"Atualizado · 1 terminal aberto",
+		"Atualizado · 2 terminais abertos",
+		"Atualizado · 21 terminais abertos",
 	]);
 });
 

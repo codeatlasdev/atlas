@@ -62,11 +62,29 @@ unquoted is a YAML number). A different sha today is a warning (a typo fix must 
 a source that is gone is an error; a page without a translation is `info`; a changed heading count or code block is a
 warning. pt-PT words in prose warn.
 
-### Ratchets: new offenders fail, old ones are counted
+### Ratchets: a change may not add offenders
 
-A ratchet is a scanner whose per-file count is stored in `hardcoded-baseline.json`. A file may never have more offenders
-than its baseline (a new one is an error), and a baseline that is higher than reality is an error too, so the number only
-goes down. `bun run i18n:fix` shrinks it; it never raises it, and `--baseline` only starts a section that does not exist.
+A ratchet is a scanner for something that exists today and must not spread (hardcoded text, shortcuts spelled by hand,
+platform sniffing, flagged phrases in existing prose). It judges the **change**, not a snapshot:
+
+- **With a diff base** (the normal case: a git checkout with `I18N_BASE`, `origin/main` or `main`), for every file the
+  change touches (committed, staged, unstaged, untracked; renames followed) the offenders of the file at the
+  merge-base are counted with the same detector, and only the ones the change **adds** are errors, reported with
+  `file:line`. Moving, reordering or re-wrapping old code adds nothing; one more copy of a string that was already there
+  does. A new file starts at zero. Files the change does not touch are not looked at at all, so when main adds screens
+  there is nothing to re-snapshot, and an old file with a hundred offenders never fails someone else's PR.
+- **`hardcoded-baseline.json`** is then the shrinking floor: today's count per file, kept by `bun run i18n:fix`, which
+  only lowers it (`--baseline` starts a section that does not exist yet). A change that **raises** a count fails with
+  `baseline-grew` ("fix the offenders, do not snapshot them"). A baseline that is lower or higher than reality for a
+  file does not fail in diff mode.
+- **Without a diff base** (not a git checkout, a shallow clone, no such ref) the committed baseline is the judge, as it
+  was before: a file may not exceed its count, and a count above reality is an error that `i18n:fix` clears.
+
+`bun run i18n:check` says which mode it used (stderr; `ratchets` in `--json`). Locally, `git fetch origin main` first: a
+stale `origin/main` makes everything main gained since look like part of your change. The CI `i18n` job fetches the full
+history (`fetch-depth: 0`) and sets `I18N_BASE` to the pull request base, or to the commit a push replaced; it runs
+whenever a catalog, a doc, a file under `i18n/` or `scripts/i18n/`, or any Rust source of the four scanned crates
+changes (`scripts/ci-paths.sh`; a test fails if a scanned directory is not classified).
 
 | Ratchet | Looks at | Flags |
 |---|---|---|

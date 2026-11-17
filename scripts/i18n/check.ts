@@ -66,13 +66,17 @@ async function main() {
 	}
 	if (args.includes("--status")) return console.log(args.includes("--json") ? JSON.stringify(await runStatus(ctx)) : formatStatus(await runStatus(ctx)));
 	const findings = await runChecks(ctx);
+	const mode = ctx.base
+		? `ratchets compare with the merge-base ${ctx.base.mb.slice(0, 9)} (${ctx.base.ref}): ${ctx.base.changed.size} changed file(s) checked, the rest not looked at`
+		: "no git base (not a checkout, shallow clone, no origin/main or main; set I18N_BASE): ratchets compare with the committed baseline";
 	const count = (s: Finding["severity"]) => findings.filter((f) => f.severity === s).length;
 	const [errors, warnings, info] = [count("error"), count("warn"), count("info")];
 	if (args.includes("--json")) {
-		console.log(JSON.stringify({ ok: errors === 0, errors, warnings, info, findings }, null, 2));
+		console.log(JSON.stringify({ ok: errors === 0, errors, warnings, info, ratchets: ctx.base ? { base: ctx.base.ref, mergeBase: ctx.base.mb, changedFiles: ctx.base.changed.size } : "committed baseline", findings }, null, 2));
 	} else {
 		const show = args.includes("--info") ? findings : findings.filter((f) => f.severity !== "info");
 		for (const f of show) console.log(`${f.severity === "error" ? "error" : f.severity === "warn" ? "warn " : "info "} ${formatFinding(f)}`);
+		console.error(mode);
 		const hidden = info > 0 && !args.includes("--info") ? `, ${info} info hidden (--info)` : "";
 		console.log(errors || warnings ? `i18n: ${errors} error(s), ${warnings} warning(s)${hidden}` : `i18n: ok${hidden}`);
 	}

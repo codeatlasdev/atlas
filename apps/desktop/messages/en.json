@@ -14,11 +14,12 @@
 			}
 		}
 	],
-	"settings_display_language_description": "The language of Atlas menus, buttons and messages. Follow system uses your computer's language.",
+	"settings_display_language_description": "The language of Atlas menus, buttons and messages.",
 	"settings_display_language_env_override": "ATLAS_LANG is set, so it decides the language for now. Your choice is saved and applies once it is unset.",
 	"settings_display_language_failed": "Could not change the language: {error}",
-	"settings_display_language_follow_system": "Follow system",
 	"settings_display_language_label": "Display language",
+	"settings_display_language_match_system": "Match system",
+	"settings_display_language_match_system_with": "Match system ({language})",
 	"settings_group_language": "Language",
 	"settings_host_action_dont_wait": "Don't wait",
 	"settings_host_action_restart": "Restart",

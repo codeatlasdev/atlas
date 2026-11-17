@@ -101,7 +101,7 @@ describe("recommend", () => {
 			update: { version: "0.6.0" },
 		});
 		const r = recommend(s, NOW);
-		expect(r.title).toBe("api failed 2 min. ago");
+		expect(r.title).toBe("api failed 2 min ago");
 		expect(r.action).toEqual({ kind: "logs", id: "api-stack", service: "api" });
 	});
 	test("the most recent of several failures is shown", () => {

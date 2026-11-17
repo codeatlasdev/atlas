@@ -82,15 +82,15 @@ test("in Brazilian Portuguese: its own plural rules (0 is none, 1 and 2 differ) 
 	await inLocale("pt-BR", () => {
 		expect(tile({ ptys: [] })).toMatchObject({
 			name: "Host de terminais",
-			sub: "Atualizado · nenhum terminal em execução",
+			sub: "Atualizado · sem terminais abertos",
 		});
 		done();
-		expect(tile({ ptys: [pty("a")] }).sub).toBe("Atualizado · 1 terminal em execução");
+		expect(tile({ ptys: [pty("a")] }).sub).toBe("Atualizado · 1 terminal aberto");
 		done();
-		expect(tile({ ptys: [pty("a"), pty("b")] }).sub).toBe("Atualizado · 2 terminais em execução");
+		expect(tile({ ptys: [pty("a"), pty("b")] }).sub).toBe("Atualizado · 2 terminais abertos");
 		done();
 		expect(tile({ reason: "x", skew: "needsRestart", ptys: [pty("a")] })).toMatchObject({
-			sub: "Mais antigo que o Atlas 1.5.1 · 1 terminal em execução",
+			sub: "Mais antigo que o Atlas 1.5.1 · 1 terminal aberto",
 			buttons: ["Reiniciar…"],
 		});
 	});

@@ -245,7 +245,7 @@ function sameDay(a: number, b: number): boolean {
 	return x.getFullYear() === y.getFullYear() && x.getMonth() === y.getMonth() && x.getDate() === y.getDate();
 }
 
-/** Group label for a row at `ts` seen from `now`: Now / 5 min. ago / Today 19:00 / Yesterday 21:00 / Mon, Oct 10. */
+/** Group label for a row at `ts` seen from `now`: Now / 5 min ago / Today 19:00 / Yesterday 21:00 / Mon, Oct 10. */
 export function bucket(ts: number, now: number): string {
 	const age = Math.max(0, now - ts);
 	if (age < 60_000) return upperFirst(relative(0, "second"));

@@ -1,6 +1,6 @@
 /**
  * Locale-aware formatting for UI text: relative time, absolute date and time, numbers, lists. The ONE place the app
- * builds `Intl` formatters, so every screen shows "5 min. ago" (or "há 5 min.") the same way.
+ * builds `Intl` formatters, so every screen shows "5 min ago" (or "há 5 min") the same way.
  *
  * Each function reads `appLocale()` (a `$state`), so a call inside a template or `$derived` re-runs on a language
  * switch with no extra wiring. Formatters are memoized per locale and options: constructing an `Intl` object costs far
@@ -22,17 +22,18 @@ function memo<T>(kind: string, locale: string, opts: object | undefined, make: (
 }
 
 /**
- * `value` units from now in words ("yesterday", "5 min. ago", "in 2 hr."). `numeric: "auto"` says "yesterday" and
- * "now" where a number would be stilted; `short` is the one style that reads right in both catalogs and never confuses
- * minutes with months ("5m" and "5mo" do, "5 min." and "5 mo." do not).
+ * `value` units from now in words ("yesterday", "5 min ago", "in 2 hr"; "há 5 min", "ontem"). The style guides
+ * (`i18n/style/en.md`, `pt-BR.md`) want `5 min ago` and `há 5 min`: the abbreviations of Intl's `short` style, whose
+ * only blemish is a trailing period ("5 min.") that is removed from the text around the number. A phrase with no
+ * number ("yesterday", "last week", "now") reads best written out, so it takes the `long` style ("last wk." is not a
+ * phrase). All words, plurals and word order come from CLDR; nothing here knows a language.
  */
 export function relative(value: number, unit: Intl.RelativeTimeFormatUnit, locale = appLocale()): string {
-	return memo(
-		"rtf",
-		locale,
-		undefined,
-		() => new Intl.RelativeTimeFormat(locale, { numeric: "auto", style: "short" }),
-	).format(value, unit);
+	const rtf = (style: Intl.RelativeTimeFormatStyle) =>
+		memo("rtf", locale, { style }, () => new Intl.RelativeTimeFormat(locale, { numeric: "auto", style }));
+	const parts = rtf("short").formatToParts(value, unit);
+	if (!parts.some((p) => p.type === "integer")) return rtf("long").format(value, unit);
+	return parts.map((p) => (p.type === "literal" ? p.value.replaceAll(".", "") : p.value)).join("");
 }
 
 const MINUTE = 60;

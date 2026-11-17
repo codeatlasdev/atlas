@@ -60,7 +60,7 @@
 		}
 	}
 
-	/** `3 min. ago` from a unix-seconds timestamp. */
+	/** `3 min ago` from a unix-seconds timestamp. */
 	const ago = (secs: number) => relativeTime(secs * 1000, clk.now);
 
 	// Re-read when the project changes or `projects://setup` fires; tick the clock for "x ago".

@@ -1,7 +1,6 @@
 {
 	"platform": {
 		"apps/desktop/src/app.html": 2,
-		"apps/desktop/src/lib/i18n/os.ts": 2,
 		"site/src/components/islands/InstallCopy.svelte": 1,
 		"site/src/pages/download.astro": 1
 	},

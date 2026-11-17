@@ -1,6 +1,8 @@
 /** Keystroke parsing and labels (Zed syntax), pure for tests. */
 import { m } from "#lib/i18n/m.ts";
-import { OS, type Os } from "#lib/i18n/os.ts";
+
+/** The system the webview runs on; `i18n/m.ts` injects it into messages that name an OS noun. */
+export type Os = "mac" | "windows" | "linux";
 
 export const DEFAULT_KEYMAP: Record<string, string> = {
 	// Files: ⌘S saves the focused editor (autosave is also on), ⌥⌘S every open one
@@ -176,6 +178,15 @@ const CODE_KEYS: Record<string, string> = {
  * macOS: ⌘ is the primary modifier. Elsewhere the Windows/Super key (Meta) belongs to the system, so Ctrl takes
  * ⌘'s place, as in VS Code and Zed: the keymap keeps its `cmd-…` spelling everywhere.
  */
+export const OS: Os =
+	typeof navigator === "undefined"
+		? "linux"
+		: /Mac|iPhone|iPad/.test(navigator.platform)
+			? "mac"
+			: /Win/.test(navigator.platform)
+				? "windows"
+				: "linux";
+
 export const IS_MAC = OS === "mac";
 
 /** Windows (app.html adds `custom-chrome` from the same `navigator.platform` test). */

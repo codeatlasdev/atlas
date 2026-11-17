@@ -1,5 +1,6 @@
 // ci-paths.sh decides which CI jobs a change skips. A source change classified as docs ships untested code;
 // so the rule is: only known docs-only patterns may skip anything, and an unknown path runs everything.
+import { PLATFORM_SNIFFING, RATCHETS, SHORTCUTS } from "./i18n/ratchets.ts";
 import { shArgv } from "./sh";
 import { expect, test } from "bun:test";
 import { join } from "node:path";
@@ -14,24 +15,30 @@ function areas(files: string[]): Record<string, boolean> {
 		}),
 	);
 }
-const none = { rust: false, front: false, mobile: false, site: false, relay: false, workflows: false, installer: false };
+const none = { rust: false, front: false, mobile: false, site: false, relay: false, workflows: false, installer: false, i18n: false };
 
-test("README, CHANGELOG and AGENTS.md changes run nothing heavy", () => {
-	expect(areas(["README.md", "CHANGELOG.md", "AGENTS.md"])).toEqual(none);
+test("AGENTS.md and the other top-level markdown run nothing heavy", () => {
+	expect(areas(["AGENTS.md", "CONTRIBUTING.md", "SECURITY.md"])).toEqual(none);
 });
 
-test("docs/ rebuilds only the site, which renders it", () => {
-	expect(areas(["docs/contributing.md"])).toEqual({ ...none, site: true });
+test("README and CHANGELOG feed only the i18n job (the writing lint reads them)", () => {
+	expect(areas(["README.md", "CHANGELOG.md"])).toEqual({ ...none, i18n: true });
 });
 
-test("a crate runs Rust only; the desktop frontend also rebuilds the shell that embeds it", () => {
-	expect(areas(["crates/atlas-host/src/lib.rs"])).toEqual({ ...none, rust: true });
-	expect(areas(["apps/desktop/src/App.svelte"])).toEqual({ ...none, rust: true, front: true });
+test("docs/ rebuilds the site, which renders it, and reruns the i18n job (source hashes, writing lint)", () => {
+	expect(areas(["docs/contributing.md"])).toEqual({ ...none, site: true, i18n: true });
+});
+
+test("a crate runs Rust only, unless its sources are scanned by the i18n ratchet; the desktop frontend also rebuilds the shell that embeds it", () => {
+	expect(areas(["crates/atlas-core/src/lib.rs"])).toEqual({ ...none, rust: true });
+	expect(areas(["crates/atlas-host/Cargo.toml"])).toEqual({ ...none, rust: true });
+	expect(areas(["crates/atlas-host/src/lib.rs"])).toEqual({ ...none, rust: true, i18n: true });
+	expect(areas(["apps/desktop/src/App.svelte"])).toEqual({ ...none, rust: true, front: true, i18n: true });
 	expect(areas(["Cargo.lock"])).toEqual({ ...none, rust: true });
 });
 
 test("markdown that is source is not skipped: skills are embedded and checked", () => {
-	expect(areas(["skills/atlas/yaml.md"])).toMatchObject({ rust: true, front: true });
+	expect(areas(["skills/atlas/yaml.md"])).toMatchObject({ rust: true, front: true, i18n: true });
 });
 
 test("the Windows installer runs its own job, and only the changes that can affect it do", () => {
@@ -41,23 +48,62 @@ test("the Windows installer runs its own job, and only the changes that can affe
 });
 
 test("unknown paths, workflows and an empty diff run everything", () => {
-	const all = { rust: true, front: true, mobile: true, site: true, relay: true, workflows: true, installer: true };
+	const all = { rust: true, front: true, mobile: true, site: true, relay: true, workflows: true, installer: true, i18n: true };
 	expect(areas(["package.json"])).toEqual(all);
 	expect(areas(["scripts/release.sh"])).toEqual(all);
 	expect(areas([])).toEqual(all);
 	expect(areas([".github/workflows/ci.yml"])).toMatchObject({ rust: true, workflows: true });
 });
 
-// bun run i18n:check runs in the frontend job: a change it reads must reach that job, or a red catalog merges.
-test("catalogs, translated docs and the i18n tooling reach the frontend job", () => {
-	expect(areas(["docs/pt-BR/getting-started.md"])).toEqual({ ...none, site: true, front: true });
-	expect(areas(["site/messages/pt-BR.json"])).toEqual({ ...none, site: true, front: true });
-	expect(areas(["site/src/components/islands/Waitlist.svelte"])).toEqual({ ...none, site: true, front: true });
-	expect(areas(["crates/atlas-i18n/locales/pt-BR/config.ftl"])).toEqual({ ...none, rust: true, front: true });
-	expect(areas(["i18n/glossary.yaml"])).toMatchObject({ front: true });
-	expect(areas(["scripts/i18n/check.ts"])).toMatchObject({ front: true });
-	expect(areas(["apps/desktop/messages/en.json"])).toMatchObject({ front: true });
-	// plain site pages and English docs do not rerun the desktop checks
-	expect(areas(["site/src/pages/index.astro"])).toEqual({ ...none, site: true });
-	expect(areas(["docs/contributing.md"])).toEqual({ ...none, site: true });
+// bun run i18n:check runs in its own job: every file it reads must reach it, or a red catalog, a new println! or an em
+// dash in the docs merges. Each case below is a path whose misclassification lets one of those through.
+test.each([
+	["docs/pt-BR/getting-started.md", { site: true }],
+	["site/messages/pt-BR.json", { site: true }],
+	["site/messages/descriptions.json", { site: true }],
+	["site/project.inlang/settings.json", { site: true }],
+	["site/src/components/islands/Waitlist.svelte", { site: true }],
+	["site/src/pages/index.astro", { site: true }],
+	["site/src/content/guide.md", {}],
+	["crates/atlas-i18n/locales/pt-BR/config.ftl", { rust: true }],
+	["crates/atlas-cli/src/commands/config.rs", { rust: true }],
+	["crates/atlas-tui/src/tui/mod.rs", { rust: true }],
+	["crates/atlas-desktop/src/menu.rs", { rust: true }],
+	["crates/atlas-host/src/server.rs", { rust: true }],
+	["apps/desktop/messages/en.json", { rust: true, front: true }],
+	["apps/desktop/project.inlang/settings.json", { rust: true, front: true }],
+	["i18n/glossary.yaml", { rust: true, front: true, mobile: true, site: true, relay: true, workflows: true, installer: true }],
+	["i18n/hardcoded-baseline.json", { rust: true, front: true, mobile: true, site: true, relay: true, workflows: true, installer: true }],
+	["i18n/README.md", {}],
+	["i18n/style/flagged-terms.yaml", { rust: true, front: true, mobile: true, site: true, relay: true, workflows: true, installer: true }],
+	["scripts/i18n/check.ts", { rust: true, front: true, mobile: true, site: true, relay: true, workflows: true, installer: true }],
+	["skills/atlas/SKILL.md", { rust: true, front: true }],
+	["README.md", {}],
+	["CHANGELOG.md", {}],
+])("%s reaches the i18n job", (file, others) => {
+	expect(areas([file])).toEqual({ ...none, ...others, i18n: true });
+});
+
+test.each([
+	["a crate nothing scans", "crates/atlas-core/src/lang.rs"],
+	["the Flutter app", "apps/mobile/lib/main.dart"],
+	["the push relay", "services/push-relay/main.go"],
+	["a site asset", "site/public/llms.txt"],
+	["a top-level doc", "AGENTS.md"],
+])("%s does not rerun the i18n job", (_n, file) => {
+	expect(areas([file]).i18n).toBe(false);
+});
+
+// The list above is hand-written; the ratchets are code. When a ratchet learns a new directory this fails until
+// ci-paths.sh sends it to the i18n job.
+test("every directory a ratchet scans is classified into the i18n job", () => {
+	const dirs = RATCHETS.flatMap((r) => r.scopes.flatMap((s) => s.dirs));
+	expect(dirs.length).toBeGreaterThan(5);
+	for (const dir of dirs) {
+		const file = /\.[a-z]+$/.test(dir) ? dir : `${dir}/probe.rs`;
+		expect(areas([file]).i18n, file).toBe(true);
+	}
+	for (const def of [SHORTCUTS, PLATFORM_SNIFFING]) {
+		for (const s of def.scopes) expect(areas([`${s.dirs[0]}/x.ts`]).i18n, s.dirs[0]).toBe(true);
+	}
 });

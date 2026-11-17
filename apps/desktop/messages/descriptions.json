@@ -1,10 +1,11 @@
 {
 	"os_reveal_in_file_manager": "Menu item and tooltip that opens the folder or file in the system file manager. The `os` input (injected by the app, never passed by the caller) picks Finder on macOS, File Explorer on Windows and the generic name on Linux; keep the product names Finder and File Explorer as the OS spells them in this language.",
-	"settings_display_language_description": "Help line under the Display language row in Settings > General. Explains what the setting changes and what Follow system means.",
+	"settings_display_language_description": "Help line under the Display language row in Settings > General. Says what the setting changes; the picker's first option explains what following the system means.",
 	"settings_display_language_env_override": "Notice under the Display language row when the ATLAS_LANG environment variable forces a language, so a saved choice has no visible effect. Keep ATLAS_LANG untranslated.",
 	"settings_display_language_failed": "Error toast when saving the language fails. {error} is a technical reason from the app, usually English.",
-	"settings_display_language_follow_system": "First option of the Display language picker: use the operating system's language instead of a fixed one.",
 	"settings_display_language_label": "Name of the Settings row that picks the language of the app interface. NOT the Languages tab, which is about programming languages.",
+	"settings_display_language_match_system": "First option of the Display language picker while a language is saved: use the operating system's language instead of a fixed one.",
+	"settings_display_language_match_system_with": "First option of the Display language picker while the app follows the system. {language} is the language that results, written in its own name (English, Português), so the user sees what Match system means right now.",
 	"settings_group_language": "Title of the card in Settings > General that holds the Display language row. Also shown as the group name in settings search results.",
 	"settings_host_action_dont_wait": "Ghost button on the Terminal host tile while a restart waits for the terminals to go idle; cancels the wait.",
 	"settings_host_action_restart": "Button on the Terminal host tile that restarts the host right away, because no terminal is running.",

@@ -4,6 +4,7 @@
 // The runner globs the directory, so a later surface (Dart `arb`, ...) is one new file and no edit to a shared one.
 import { existsSync } from "node:fs";
 import { join } from "node:path";
+import { type DiffBase, resolveBase } from "./base.ts";
 import { type Glossary, loadGlossary } from "./glossary.ts";
 import { readText } from "./util.ts";
 
@@ -39,6 +40,9 @@ export interface Ctx {
 	surface?: string;
 	locales: LocalesConfig;
 	glossary: Glossary;
+	/** What the change under check is compared with, when the repo is a git checkout with a usable base (see base.ts);
+	 * the ratchets then fail only on offenders the change adds. Undefined: compare with the committed baseline. */
+	base?: DiffBase;
 }
 
 /** Freshness of one locale's area of one surface (`--status`). */
@@ -78,7 +82,7 @@ export function loadLocales(root: string): LocalesConfig {
 }
 
 export function loadCtx(root: string, surface?: string): Ctx {
-	return { root, surface, locales: loadLocales(root), glossary: loadGlossary(root) };
+	return { root, surface, locales: loadLocales(root), glossary: loadGlossary(root), base: resolveBase(root) };
 }
 
 /** `file:line rule key message`, the line a human or an agent reads. */

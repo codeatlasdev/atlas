@@ -232,4 +232,16 @@ mod decision_tests {
             .collect();
         assert_eq!(keys, ["behavior", "message"]);
     }
+
+    // `atlas hook <harness>` is registered by `atlas setup <setup>` for the agents whose hooks are commands
+    // (Claude Code, Codex): the harness name and agent id must be the registry's, or the hooks `setup` writes
+    // report under an id Atlas Desktop does not know.
+    #[test]
+    fn a_hook_harness_is_named_and_identified_as_its_registry_entry() {
+        for h in [Harness::ClaudeCode, Harness::Codex] {
+            let def = atlas_core::agents::get(h.agent_id())
+                .unwrap_or_else(|| panic!("{}: not a built-in agent", h.agent_id()));
+            assert_eq!(h.name(), def.setup);
+        }
+    }
 }

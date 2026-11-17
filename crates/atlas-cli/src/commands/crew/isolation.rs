@@ -209,7 +209,7 @@ pub fn install_steps(a: &Account) -> Vec<String> {
     ]
 }
 
-/// The writes of the units, as `(file, contents)`; the caller pipes the contents to `sudo tee <file>`.
+/// The writes of the units, as `(file, contents)`; the caller writes each with [`super::layout::write_unit_script`].
 pub fn unit_files(a: &Account) -> [(String, String); 5] {
     let f = |name: &str, body: String| (format!("/etc/systemd/system/{name}"), body);
     [
@@ -308,10 +308,10 @@ const BIN_DIRS: [&str; 5] = [
 /// [`ENGINE_HOME`] as `$HOME`, then its binary linked into [`ENGINES_DIR`] and the tree made readable
 /// and executable for every user. `None` for a name that is not an engine.
 ///
-/// The install command is the one `atlas crew login` has always printed (`agent_install_hint`): the
+/// The install command is the one `atlas crew login` has always printed (`install` in `data/agents.json`): the
 /// vendor's own line, so an upgrade of the engine is the vendor's concern, not ours.
 pub fn engine_install_script(agent: &str, install_cmd: &str) -> Option<String> {
-    let bin = atlas_core::agents::get(agent)?.bin;
+    let bin = atlas_core::agents::get(agent)?.bin.as_str();
     // `bin` comes from the agent table, `install_cmd` from the CLI's own hints: neither is user input.
     let search = BIN_DIRS
         .iter()
@@ -377,7 +377,7 @@ A project checkout is made again by the next task; the old one is kept as work.p
 pub enum Action {
     /// Run this shell on the server.
     Run(String),
-    /// Write `contents` to `file` (`sudo tee`).
+    /// Write the systemd unit `file` with `contents` ([`super::layout::write_unit_script`]).
     Write { file: String, contents: String },
     /// Install engine `agent` system-wide with `script` ([`engine_install_script`]). Unlike every other
     /// action a failure here does not fail the install: an engine needs the vendor's site and, for codex,

@@ -25,7 +25,7 @@ use serde::{Deserialize, Serialize};
 use std::ptr::NonNull;
 use tauri::{AppHandle, Emitter, Manager};
 
-use crate::swipe_engine::{Engine, Hit, Momentum, PAGE_TRAVEL, Phase, Sample, Step};
+use crate::swipe_engine::{Engine, Hit, Momentum, PAGE_TRAVEL, Phase, Sample, Scroll, Step};
 
 #[derive(Clone, Copy, Deserialize, Serialize)]
 pub struct Rect {
@@ -66,9 +66,27 @@ struct CommitMsg<'a> {
     dir: i8,
 }
 
-/// Rects where something scrolls horizontally itself (terminal, editor, an overflowing list): the Back/Forward swipe
-/// never claims inside them. Pushed by the frontend next to the zones.
-static SCROLLERS: Mutex<Vec<Rect>> = Mutex::new(Vec::new());
+/// A rect where something scrolls horizontally itself (an editor, a diff, a table, a code block, the terminal), and
+/// which way it still can: `left` = it can reveal more of its left side, `right` = of its right side. A gesture that
+/// lands on one that can still go the way the fingers go is the content's, never a swipe's (the engine decides at
+/// the landing, see `swipe_engine::Scroll`). Missing edges mean "both": a surface that scrolls by itself.
+#[derive(Clone, Copy, Deserialize, Serialize)]
+pub struct Scroller {
+    #[serde(flatten)]
+    rect: Rect,
+    #[serde(default = "yes")]
+    left: bool,
+    #[serde(default = "yes")]
+    right: bool,
+}
+
+fn yes() -> bool {
+    true
+}
+
+/// What scrolls horizontally, measured by the page and pushed next to the zones. A scroll the content took leaves
+/// its edges unknown until the page measures again, so those entries are set to "both" in place (`content_took`).
+static SCROLLERS: Mutex<Vec<Scroller>> = Mutex::new(Vec::new());
 
 /// Zones, front to back (later entries are nested deeper: the first hit from the end wins).
 static ZONES: Mutex<Vec<Zone>> = Mutex::new(Vec::new());
@@ -113,8 +131,14 @@ pub fn swipe_zones_now() -> serde_json::Value {
     serde_json::to_value(&*ZONES.lock()).unwrap_or_default()
 }
 
-pub fn set_scrollers(rects: Vec<Rect>) {
-    *SCROLLERS.lock() = rects;
+/// The scrollers of the layout, as the engine sees them now (the gesture bench restores them after a trace).
+#[tauri::command]
+pub fn swipe_scrollers_now() -> serde_json::Value {
+    serde_json::to_value(&*SCROLLERS.lock()).unwrap_or_default()
+}
+
+pub fn set_scrollers(scrollers: Vec<Scroller>) {
+    *SCROLLERS.lock() = scrollers;
 }
 
 pub fn set_zones(zones: Vec<Zone>) {
@@ -132,15 +156,34 @@ fn hit(x: f64, y: f64) -> Option<Zone> {
             x >= r.x && x < r.x + r.w && y >= r.y && y < r.y + r.h
         })
         .filter(|z| (z.zone != "history" || z.pinned) && (z.prev || z.next))
-        .filter(|z| z.zone != "history" || !in_scroller(x, y))
         .cloned()
 }
 
-fn in_scroller(x: f64, y: f64) -> bool {
+fn inside(r: Rect, x: f64, y: f64) -> bool {
+    x >= r.x && x < r.x + r.w && y >= r.y && y < r.y + r.h
+}
+
+/// What can still scroll horizontally under `(x, y)`: any scroller there that can go a way counts for that way
+/// (an inner one at its edge chains to the outer one, as in the page).
+fn scroll_at(x: f64, y: f64) -> Scroll {
     SCROLLERS
         .lock()
         .iter()
-        .any(|r| x >= r.x && x < r.x + r.w && y >= r.y && y < r.y + r.h)
+        .filter(|s| inside(s.rect, x, y))
+        .fold(Scroll::default(), |a, s| Scroll {
+            left: a.left || s.left,
+            right: a.right || s.right,
+        })
+}
+
+/// The content under `(x, y)` took a gesture: the page scrolls it now, so its edges as measured are out of date.
+/// Say "both" until the page measures again (it does once the scroll settles), so a quick scroll back is the
+/// content's as well instead of a stale "at the edge" handing it to a swipe.
+fn content_took(x: f64, y: f64) {
+    for s in SCROLLERS.lock().iter_mut().filter(|s| inside(s.rect, x, y)) {
+        s.left = true;
+        s.right = true;
+    }
 }
 
 fn phase_of(p: NSEventPhase) -> Phase {
@@ -256,6 +299,24 @@ fn note(a: &mut Adapter, step: &Step) {
     }
 }
 
+/// One sample through the engine with this module's view of the page (what scrolls under the fingers, which zone
+/// claims). The real monitor and the tests both go through here.
+fn feed_engine(engine: &mut Engine, claimed: &mut Option<Zone>, s: &Sample) -> Step {
+    let step = engine.feed(s, scroll_at, |x, y| {
+        let z = hit(x, y)?;
+        *claimed = Some(z.clone());
+        Some(Hit {
+            prev: z.prev,
+            next: z.next,
+            width: PAGE_TRAVEL,
+        })
+    });
+    if step.content {
+        content_took(s.x, s.y);
+    }
+    step
+}
+
 /// The engine's entry for a sample, real or replayed: same code, same decisions.
 pub fn on_sample(app: &AppHandle, s: &Sample) -> bool {
     let mut guard = ADAPTER.lock();
@@ -263,15 +324,7 @@ pub fn on_sample(app: &AppHandle, s: &Sample) -> bool {
         return false;
     };
     let was_busy = a.engine.busy();
-    let step = a.engine.feed(s, |x, y| {
-        let z = hit(x, y)?;
-        a.zone = Some(z.clone());
-        Some(Hit {
-            prev: z.prev,
-            next: z.next,
-            width: PAGE_TRAVEL,
-        })
-    });
+    let step = feed_engine(&mut a.engine, &mut a.zone, s);
     note(a, &step);
     let zone = a.zone.clone();
     if let Some(r) = a.rec.as_mut() {
@@ -478,9 +531,25 @@ pub async fn swipe_go(app: AppHandle, zone: String, id: Option<String>, dir: i8)
 
 /// Frontend → native: the swipe zones of the current layout (CSS px in the main webview).
 #[tauri::command]
-pub fn swipe_zones(zones: Vec<Zone>, scrollers: Option<Vec<Rect>>) {
+pub fn swipe_zones(zones: Vec<Zone>, scrollers: Option<Vec<Scroller>>) {
     set_zones(zones);
     set_scrollers(scrollers.unwrap_or_default());
+}
+
+/// Frontend → native: the gesture was cut off from outside (the window lost focus, the app went to the
+/// background). Fingers still counted as down settle back on their page; the page never stays half-way.
+#[tauri::command]
+pub fn swipe_abandon(app: AppHandle) {
+    let a = app.clone();
+    let _ = app.run_on_main_thread(move || {
+        let mut g = ADAPTER.lock();
+        let Some(ad) = g.as_mut() else { return };
+        let step = ad.engine.abandon(crate::swipe_clock::now_ms());
+        note(ad, &step);
+        let zone = ad.zone.clone();
+        drop(g);
+        publish(&a, zone.as_ref(), &step);
+    });
 }
 
 /// Whether native swipe tracking is active (otherwise the frontend keeps its wheel recognizer).
@@ -585,31 +654,81 @@ mod tests {
         assert!(hit(10.0, 10.0).is_none());
     }
 
-    /// The Back/Forward swipe over the content must never steal a horizontal scroll: where a terminal, an editor or an
-    /// overflowing list sits under the pointer the `history` zone does not claim, whatever its `pinned` flag says.
+    fn scroller(r: [f64; 4], left: bool, right: bool) -> Scroller {
+        Scroller {
+            rect: Rect {
+                x: r[0],
+                y: r[1],
+                w: r[2],
+                h: r[3],
+            },
+            left,
+            right,
+        }
+    }
+
+    /// Fingers land at `(x, y)` and move `dx` per 8 ms sample, then lift and the settle runs out; every step the
+    /// engine took through the adapter's own `feed_engine`, and the frames.
+    fn gesture(e: &mut Engine, t0: f64, x: f64, y: f64, dx: f64) -> (Vec<Step>, Option<Zone>) {
+        let mut claimed = None;
+        let sample = |t: f64, phase: Phase, dx: f64| Sample {
+            t,
+            phase,
+            momentum: Momentum::None,
+            dx,
+            dy: 0.0,
+            precise: true,
+            x,
+            y,
+        };
+        let mut v = vec![sample(t0, Phase::Began, 0.0)];
+        for i in 1..=30 {
+            v.push(sample(t0 + f64::from(i) * 8.0, Phase::Changed, dx));
+        }
+        v.push(sample(t0 + 260.0, Phase::Ended, 0.0));
+        let steps = v.iter().map(|s| feed_engine(e, &mut claimed, s)).collect();
+        let mut t = t0 + 260.0;
+        while e.busy() {
+            t += 8.33;
+            e.tick(t);
+        }
+        (steps, claimed)
+    }
+
+    // Regression (#498): the tab zone is the whole group, editor included, and only `history` yielded to scrollers
+    // (by rect, whatever their edges): a horizontal scroll over a long line paged the tabs.
     #[test]
-    fn history_never_claims_where_something_scrolls_horizontally() {
+    fn no_zone_takes_a_horizontal_scroll_over_content_that_can_still_scroll_that_way() {
         let _t = SERIAL.lock();
-        set_zones(vec![zone(
-            "history",
-            None,
-            [0.0, 0.0, 1000.0, 800.0],
-            true,
-            true,
-            true,
-        )]);
-        set_scrollers(vec![Rect {
-            x: 100.0,
-            y: 100.0,
-            w: 300.0,
-            h: 200.0,
-        }]);
-        assert!(hit(150.0, 150.0).is_none(), "over a horizontal scroller");
-        assert_eq!(
-            hit(600.0, 600.0).map(|z| z.zone).as_deref(),
-            Some("history")
-        );
-        // Only history yields: a tab group or the sidebar keeps its swipe over a scroller (its strip scrolls).
+        for name in ["tab", "history", "space"] {
+            set_zones(vec![zone(
+                name,
+                Some("g"),
+                [0.0, 0.0, 1000.0, 800.0],
+                true,
+                true,
+                true,
+            )]);
+            // An editor in the middle of the zone, scrolled to the middle: it can go both ways.
+            set_scrollers(vec![scroller([100.0, 100.0, 300.0, 200.0], true, true)]);
+            let mut e = Engine::new();
+            let (steps, claimed) = gesture(&mut e, 0.0, 150.0, 150.0, -30.0);
+            assert!(
+                steps.iter().all(|s| !s.swallow && s.commit.is_none()),
+                "{name}: the scroll belongs to the editor"
+            );
+            assert!(claimed.is_none(), "{name}");
+            // The same fingers on the zone outside the editor page as usual.
+            let (steps, claimed) = gesture(&mut e, 5000.0, 600.0, 600.0, -30.0);
+            assert!(steps.iter().any(|s| s.commit.is_some()), "{name}");
+            assert_eq!(claimed.map(|z| z.zone).as_deref(), Some(name));
+        }
+        set_scrollers(vec![]);
+    }
+
+    #[test]
+    fn at_its_edge_the_content_hands_the_gesture_over_for_that_direction_only() {
+        let _t = SERIAL.lock();
         set_zones(vec![zone(
             "tab",
             Some("g"),
@@ -618,8 +737,73 @@ mod tests {
             true,
             false,
         )]);
-        assert!(hit(150.0, 150.0).is_some());
+        // Scrolled to the far right: it can only go back left.
+        set_scrollers(vec![scroller([100.0, 100.0, 300.0, 200.0], true, false)]);
+        let mut e = Engine::new();
+        let (steps, _) = gesture(&mut e, 0.0, 150.0, 150.0, -30.0);
+        assert!(steps.iter().any(|s| s.commit.map(|c| c.dir) == Some(1)));
+        let (steps, _) = gesture(&mut e, 5000.0, 150.0, 150.0, 30.0);
+        assert!(
+            steps.iter().all(|s| !s.swallow),
+            "fingers moving right scroll the editor back"
+        );
         set_scrollers(vec![]);
+    }
+
+    #[test]
+    fn an_inner_scroller_at_its_edge_chains_to_the_outer_one() {
+        let _t = SERIAL.lock();
+        set_scrollers(vec![
+            scroller([0.0, 0.0, 1000.0, 800.0], false, true),
+            scroller([100.0, 100.0, 300.0, 200.0], false, false),
+        ]);
+        assert_eq!(
+            scroll_at(150.0, 150.0),
+            Scroll {
+                left: false,
+                right: true
+            }
+        );
+        assert!(scroll_at(600.0, 600.0).right);
+        assert_eq!(scroll_at(5000.0, 5000.0), Scroll::default());
+        set_scrollers(vec![]);
+    }
+
+    /// A scroll the content took changes what the page would measure; until it does, the entry says "both", so a
+    /// quick scroll back after reaching the edge is still the content's and no stale "at the edge" pages the tabs.
+    #[test]
+    fn a_scroll_the_content_took_makes_its_edges_unknown_until_the_page_measures_again() {
+        let _t = SERIAL.lock();
+        set_zones(vec![zone(
+            "tab",
+            Some("g"),
+            [0.0, 0.0, 1000.0, 800.0],
+            true,
+            true,
+            false,
+        )]);
+        // Measured at the left edge: it can only go right.
+        set_scrollers(vec![scroller([100.0, 100.0, 300.0, 200.0], false, true)]);
+        let mut e = Engine::new();
+        gesture(&mut e, 0.0, 150.0, 150.0, -30.0); // scrolled right, the content's
+        // Fingers back right at once: the editor really can go left now, the old measure says it cannot.
+        let (steps, claimed) = gesture(&mut e, 5000.0, 150.0, 150.0, 30.0);
+        assert!(claimed.is_none() && steps.iter().all(|s| !s.swallow));
+        // The page measured again (at the right edge): its answer replaces the guess.
+        set_scrollers(vec![scroller([100.0, 100.0, 300.0, 200.0], true, false)]);
+        let (steps, _) = gesture(&mut e, 10000.0, 150.0, 150.0, -30.0);
+        assert!(steps.iter().any(|s| s.commit.is_some()));
+        set_scrollers(vec![]);
+    }
+
+    #[test]
+    fn a_scroller_pushed_without_edges_is_a_surface_that_scrolls_by_itself() {
+        let s: Scroller = serde_json::from_str(r#"{"x":1.0,"y":2.0,"w":3.0,"h":4.0}"#).unwrap();
+        assert!(s.left && s.right);
+        let s: Scroller =
+            serde_json::from_str(r#"{"x":1.0,"y":2.0,"w":3.0,"h":4.0,"left":false,"right":true}"#)
+                .unwrap();
+        assert!(!s.left && s.right);
     }
 
     #[test]

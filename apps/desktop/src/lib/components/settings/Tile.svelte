@@ -133,9 +133,15 @@
 	.sub {
 		font-size: 11px;
 		color: var(--ca-text-secondary);
+		/* A sentence ("Atualizado · sem terminais abertos") wraps to a second line rather than hiding words behind an
+		   ellipsis; only a path or another unbreakable value (`mono`) is cut to one line, its full text in the tooltip. */
+		overflow-wrap: anywhere;
+	}
+	.sub.mono {
 		overflow: hidden;
 		text-overflow: ellipsis;
 		white-space: nowrap;
+		overflow-wrap: normal;
 	}
 	.act {
 		flex: none;

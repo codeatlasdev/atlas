@@ -1,0 +1,28 @@
+---
+// Banner above a docs page in a non-English locale whose page is not (fully) translated: the page was never translated, or the
+// English file changed after the translation. Never shown for a translation that matches the current English file.
+import { m } from "../lib/paraglide/messages.js";
+import { sourceHistoryUrl, type DocState } from "../lib/doc-translation";
+import { docPath, localeOfAstro } from "../lib/i18n";
+
+interface Props {
+	state: Exclude<DocState, "ok">;
+	slug: string;
+}
+const { state, slug } = Astro.props;
+const locale = localeOfAstro(Astro.currentLocale);
+---
+<aside class="notice" role="note" lang={locale} data-state={state} data-pagefind-ignore>
+	<p>{state === "outdated" ? m.docs_banner_outdated() : m.docs_banner_untranslated()}</p>
+	<p class="acts">
+		<a href={docPath(slug, "en")} lang="en" hreflang="en">{m.docs_banner_read_english()}</a>
+		{state === "outdated" && <a href={sourceHistoryUrl(slug)} rel="noopener">{m.docs_banner_see_changes()}</a>}
+	</p>
+</aside>
+<style>
+	.notice { margin: 0 0 1.8rem; padding: 0.8rem 1rem; border: 2px solid var(--fg); border-left-width: 6px; font-size: 0.97rem; line-height: 1.5; }
+	.notice p { margin: 0; }
+	.acts { display: flex; flex-wrap: wrap; gap: 0.3rem 1.2rem; margin-top: 0.4rem !important; font-weight: 700; }
+	.acts a { color: var(--fg); text-decoration: underline; text-decoration-thickness: 1.5px; text-underline-offset: 0.2em; }
+	@media (max-width: 760px) { .acts a { display: inline-flex; align-items: center; min-height: 44px; } }
+</style>

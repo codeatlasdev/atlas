@@ -34,9 +34,15 @@
 					<span class="idle-dot"></span>
 				{/if}
 			</span>
-			<span class="checklist-label">{s.label}</span>
+			<span class="checklist-text">
+				<span class="checklist-label">{s.label}</span>
+				{#if isActive || isFailed}
+					<span class="checklist-detail">{s.detail}</span>
+				{/if}
+			</span>
 		</div>
 	{/each}
+	<p class="checklist-note">About two minutes. Nothing on the server changes until its check passes.</p>
 </div>
 
 <style>
@@ -54,6 +60,23 @@
 		font-size: 15px;
 		color: var(--ca-text-secondary);
 		transition: color 250ms;
+	}
+
+	.checklist-text {
+		display: flex;
+		flex-direction: column;
+		gap: 2px;
+	}
+
+	.checklist-detail {
+		font-size: 12.5px;
+		color: var(--ca-text-secondary);
+	}
+
+	.checklist-note {
+		margin: 6px 0 0;
+		font-size: 12.5px;
+		color: var(--ca-text-secondary);
 	}
 
 	.checklist-row.done {

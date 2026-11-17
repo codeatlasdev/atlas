@@ -165,7 +165,7 @@ fn plain_reason(e: &str) -> String {
     {
         "the server does not answer (is it powered on?)"
     } else if e.contains("Permission denied") {
-        "SSH refused this Mac's key"
+        "SSH refused this computer's key"
     } else if e.contains("Could not resolve hostname") {
         "the server name does not resolve"
     } else {
@@ -417,7 +417,7 @@ mod reason_tests {
     #[test]
     fn a_rejected_key_is_not_called_a_dead_server() {
         let r = plain_reason("atlas-bot@h: Permission denied (publickey).");
-        assert!(r.starts_with("SSH refused this Mac's key"), "{r}");
+        assert!(r.starts_with("SSH refused this computer's key"), "{r}");
     }
 
     #[test]

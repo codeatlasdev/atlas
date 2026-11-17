@@ -32,6 +32,10 @@ pub struct InstallArgs {
     /// SSH port (default 22). Used when the server listens on a non-standard port.
     #[arg(long, default_value_t = 22)]
     pub port: u16,
+    /// Private key to sign in with (`ssh -i`), instead of the ones ssh finds by itself. Its public key is the one
+    /// added to the crew user's `authorized_keys`. Atlas Desktop passes the key picked in "Add a crew server".
+    #[arg(long)]
+    pub identity: Option<std::path::PathBuf>,
     /// Read sudo password from stdin instead of requiring passwordless sudo.
     /// Used by Atlas Desktop; the password is NEVER placed on argv.
     #[arg(long, hide = true)]
@@ -115,9 +119,9 @@ Look at: atlas crew logs {target}",
 
 async fn run_install(args: InstallArgs) -> Result<()> {
     let host = host_from_target(&args.ssh_target).to_owned();
-    let r = Remote::crew(&args.ssh_target, args.port);
+    let r = Remote::crew(&args.ssh_target, args.port).with_identity(args.identity.clone());
     // The key is looked up first: a person without one is told before anything is installed.
-    let pubkey = local_public_key(&args.ssh_target, args.port)?;
+    let pubkey = local_public_key(&args.ssh_target, args.port, args.identity.clone())?;
 
     // --- Preflight: reads only, names everything that is missing ---
     step_marker("check");
@@ -450,17 +454,21 @@ async fn run_action(p: &Priv<'_>, action: &isolation::Action) -> Result<()> {
     Ok(())
 }
 
-/// The public key `ssh` itself would offer to `ssh_target` (`ssh -G`: `~/.ssh/config` identities and the default
-/// key names, so a key called anything is found), read before the install changes anything on the server.
-fn local_public_key(ssh_target: &str, port: u16) -> Result<String> {
-    let target = atlas_core::ssh::SshTarget::new(ssh_target, Some(port));
-    let path = atlas_core::ssh::find_public_key(&target).with_context(|| {
-        "no SSH public key found (ssh -G lists none that exists as <identity>.pub); \
-create one with: ssh-keygen -t ed25519"
+/// The public key `ssh` itself would offer to `ssh_target`: the `--identity` key, else the first existing one of
+/// `ssh -G` (`~/.ssh/config` identities and the default key names, so a key called anything is found). Read before
+/// the install changes anything on the server.
+fn local_public_key(
+    ssh_target: &str,
+    port: u16,
+    identity: Option<std::path::PathBuf>,
+) -> Result<String> {
+    let target = atlas_core::ssh::SshTarget::new(ssh_target, Some(port)).with_identity(identity);
+    let key = atlas_core::ssh::find_key(&target).with_context(|| match &target.identity {
+        Some(k) => format!("the SSH key {} does not exist", k.display()),
+        None => "no SSH key found (ssh -G lists none that exists); create one with: ssh-keygen -t ed25519"
+            .to_owned(),
     })?;
-    let key =
-        std::fs::read_to_string(&path).with_context(|| format!("reading {}", path.display()))?;
-    Ok(key.trim().to_owned())
+    key.public_text().map_err(anyhow::Error::msg)
 }
 
 /// Append `pubkey` to the crew user's authorized_keys (idempotent), then lock the file down.
@@ -564,6 +572,7 @@ mod tests {
             ssh_target: "ubuntu@example.com".into(),
             yes: true,
             port: 22,
+            identity: None,
             sudo_password_stdin: true,
             binary: None,
             browsers: false,

@@ -6,6 +6,8 @@ mod agent;
 // Pure, tested decision code driven only by the AppKit side: unused outside macOS, still built so its tests run.
 #[cfg_attr(not(target_os = "macos"), allow(dead_code))]
 mod agent_mode;
+// `ssh` runs this very executable as its SSH_ASKPASS program (see the module doc): `main` answers before anything else.
+mod askpass;
 mod boot;
 mod browser;
 // Built only on the macOS WebKit hook (`browser_fail_mac`); kept everywhere so its test runs.
@@ -49,6 +51,7 @@ mod live_server;
 mod menu;
 // Pure, tested decision code driven only by the AppKit side: unused outside macOS, still built so its tests run.
 mod crew;
+mod crew_ssh;
 mod natives;
 mod open_path;
 mod pty_batch;
@@ -249,10 +252,11 @@ macro_rules! handlers {
             crew::crew_server_install,
             crew::crew_browsers_status,
             crew::crew_browsers_install,
-            crew::ssh_key_find,
+            crew_ssh::ssh_key_resolve,
             crew::ssh_hosts_list,
-            crew::ssh_keygen,
-            crew::ssh_authorize_key,
+            crew_ssh::ssh_keygen,
+            crew_ssh::ssh_connect_check,
+            crew_ssh::ssh_authorize_key,
             crew::crew_agent_check,
             crew::crew_agent_install,
             crew::crew_signin_argv,
@@ -558,6 +562,11 @@ fn wait_for_predecessor() {
 }
 
 fn main() {
+    // Started by `ssh` to ask for the account password of "Add a crew server" (#517): fetch it, print it, exit.
+    // Before the window, the logs and the predecessor wait: it must be instant and must touch nothing.
+    if let Some(code) = askpass::run_if_helper() {
+        std::process::exit(code);
+    }
     #[cfg(windows)]
     wait_for_predecessor();
     // First, so GTK/WebKit messages printed while starting (and by every web process) are kept.

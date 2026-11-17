@@ -137,3 +137,13 @@
 		transform: rotate(360deg);
 	}
 }
+
+/* Named colours of the onboarding art: the app's own tokens, so a theme change reaches the scenes. */
+.crew-onboarding {
+	--ob-accent: var(--ca-accent, #4f8ef7);
+	--ob-ok: var(--ca-semantic-success);
+	--ob-danger: var(--ca-danger, #ef4444);
+	--ob-key: var(--ca-accent, #4f8ef7);
+	--ob-line: var(--ca-text-secondary);
+	--ob-line-idle: var(--ca-border-subtle);
+}

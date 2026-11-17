@@ -369,7 +369,7 @@ async fn the_relay_dials_a_crew_server_on_its_registered_port() {
     std::fs::write(
         &registry,
         json!([
-            {"host": "atlas-crew@alt", "name": "Alt", "port": 2222},
+            {"host": "atlas-crew@alt", "name": "Alt", "port": 2222, "identity": "/keys/id_work"},
             {"host": "atlas-crew@plain", "name": "Plain"},
         ])
         .to_string(),
@@ -405,9 +405,17 @@ async fn the_relay_dials_a_crew_server_on_its_registered_port() {
             .expect("-p on every call to the alt server");
         assert_eq!(c[p + 1], "2222");
         assert!(p < c.iter().position(|a| a == "atlas-crew@alt").unwrap());
+        // #517: the key picked when the server was added is offered on every call, and no other one.
+        let i = c
+            .iter()
+            .position(|a| a == "-i")
+            .expect("-i on every call to the alt server");
+        assert_eq!(c[i + 1], "/keys/id_work");
+        assert!(c.iter().any(|a| a == "IdentitiesOnly=yes"), "{c:?}");
     }
     for c in for_host("atlas-crew@plain") {
         assert!(!c.iter().any(|a| a == "-p"), "{c:?}");
+        assert!(!c.iter().any(|a| a == "-i"), "{c:?}");
     }
 }
 

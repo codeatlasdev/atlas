@@ -1,12 +1,13 @@
 /**
- * The Atlas Crew onboarding flow as one `$state` class: the step machine, the crew-server install (SSH key, auth
- * flows, install stream), the engine checks/installs, the sign-in terminal, the API key and own-provider forms and
- * the final "open chat". The components only render it and call its methods; everything that talks to Tauri/hostd
- * lives here (engine config scripts live in `remoteAgent.ts`).
+ * The Atlas Crew onboarding flow as one `$state` class: the step machine, the crew-server install (which key or
+ * password signs in, the install stream), the engine checks/installs, the sign-in terminal, the API key and
+ * own-provider forms and the final "open chat". The components only render it and call its methods; everything that
+ * talks to Tauri/hostd lives here (engine config scripts live in `remoteAgent.ts`).
  */
 import { invoke } from "@tauri-apps/api/core";
 import { listen } from "@tauri-apps/api/event";
 import { toast } from "@codeatlasdev/ui";
+import { open as pickFile } from "@tauri-apps/plugin-dialog";
 import { errText } from "#lib/api.ts";
 import { crew } from "#lib/stores/crew.svelte.ts";
 import { agents } from "#lib/stores/agents.svelte.ts";
@@ -35,12 +36,28 @@ import {
 } from "./engines.ts";
 import {
 	applyInstallLine,
-	authModeForError,
 	completeInstall,
 	initialInstallProgress,
 	type InstallProgress,
 } from "./installProgress.ts";
 import type { InstallPhase } from "#lib/crew/installSteps.ts";
+import {
+	describeConnectError,
+	folderOf,
+	parseConnectError,
+	privateKeyPath,
+	type ConnectAction,
+	type ConnectContext,
+	type ConnectFailure,
+	type KeyLookup,
+} from "./connectError.ts";
+import { IS_WIN } from "#lib/keys.ts";
+
+/** How the form signs in to the server: the SSH key of this computer, or the account password (once, to add the key). */
+export type SignInMethod = "key" | "password";
+
+/** The footer's primary button (see `Onboarding.primary`). */
+export type Primary = { label: string; run: () => void; busy: boolean; disabled: boolean; reason: string };
 
 type InstallLineEvent = { line: string; is_err: boolean };
 
@@ -68,23 +85,39 @@ export class Onboarding {
 	install = $state<InstallProgress>(initialInstallProgress());
 	/** Phase that failed (shown in red). */
 	failedPhase = $state<InstallPhase | null>(null);
-	/** Last error line from stderr. */
-	lastErrLine = $state("");
+	/** What the last failure means and what to do next, or null. */
+	failure = $state<ConnectFailure | null>(null);
 	installRunning = $state(false);
 	installDone = $state(false);
 	/** Host key of the crew server launched in this onboarding; the first crewmate is created there. */
 	launchedNow = $state("");
 	fieldShake = $state(false);
+	/** Sign in with the key (the default when there is one) or, once, with the account password. */
+	method = $state<SignInMethod>("key");
+	private methodChosen = false;
+	/** The account password of the SSH user: held while the form is open, sent once, never stored. */
+	sshPassword = $state("");
+	/** The private key file the user picked; "" lets ssh find it (`~/.ssh/config`, the default names). */
+	identity = $state("");
+	/** The key ssh will sign in with for the address typed, or null when there is none. */
+	key = $state<KeyLookup["key"]>(null);
+	readonly hasKey = $derived(this.key !== null);
+	/** `ssh` exists on this computer (on Windows it is an optional feature). */
+	sshFound = $state(true);
 	keyChecked = $state(false);
-	hasKey = $state(false);
 	creatingKey = $state(false);
-	keyError = $state("");
-	/** "authorize" = Permission denied → copy key via password. "sudo" = sudo needs password. */
-	authMode = $state<"none" | "authorize" | "sudo">("none");
-	authPassword = $state("");
-	authRunning = $state(false);
-	authError = $state("");
-
+	/** The sudo password, when the server's sudo asks for one. */
+	sudoPassword = $state("");
+	/** The address this run added the key to with the password: a refused key after that is not "not authorized yet". */
+	private addedFor = $state("");
+	private started = false;
+	private keySeq = 0;
+	private keyQuery = "";
+	/** One spelling of where the form points, to tell when it moved. */
+	private readonly where = $derived(`${this.sshTarget.trim()}:${this.sshPort}`);
+	readonly keyAdded = $derived(this.addedFor !== "" && this.addedFor === this.where);
+	/** The sudo password is asked below the form. */
+	readonly needsSudo = $derived(this.failure?.actions.includes("sudo") ?? false);
 	/**
 	 * The crew server this onboarding works on: the one launched here, else the one already connected (the connect
 	 * step is skipped when a crew server exists, which left this empty and the engine checks stuck on "Checking…").
@@ -95,6 +128,63 @@ export class Onboarding {
 	readonly targetValid = $derived(
 		this.sshTarget.trim() === "" ? false : parseSSHTarget(`${this.sshTarget.trim()}:${this.sshPort}`).ok,
 	);
+	/** The form is complete: a valid address, ssh present, and the key or the password to sign in with. */
+	readonly canSubmit = $derived(
+		this.targetValid &&
+			this.sshFound &&
+			!this.installRunning &&
+			!this.installDone &&
+			(this.method === "key" ? this.key !== null : this.sshPassword !== ""),
+	);
+
+	/**
+	 * The ONE primary action of the footer, for whatever step and state the flow is in. The footer never moves: only
+	 * this label, its busy spinner and `disabled` change, and `reason` is what the content says when it is disabled.
+	 */
+	readonly primary = $derived.by((): Primary => {
+		const go = (label: string, run: () => void, extra: Partial<Primary> = {}): Primary => ({
+			label,
+			run,
+			busy: false,
+			disabled: false,
+			reason: "",
+			...extra,
+		});
+		switch (this.step) {
+			case "connect":
+				if (this.needsSudo) {
+					return go("Continue", () => void this.launchServer(this.sudoPassword), {
+						busy: this.installRunning,
+						disabled: this.installRunning || !this.sudoPassword,
+					});
+				}
+				return go("Add crew server", () => void this.launchServer(), {
+					busy: this.installRunning,
+					disabled: !this.canSubmit,
+				});
+			case "engine":
+				if (this.signinActive) return go("Back to engines", () => this.closeSignin());
+				if (this.readyEngine) return go("Continue", () => this.continueWithReadyEngine());
+				return go("Continue", () => {}, {
+					busy: this.installingAny,
+					disabled: true,
+					reason: "Click an engine to install it on the server and sign in.",
+				});
+			case "ready":
+				return go("Open chat", () => void this.openChat(), {
+					busy: this.creatingCrewmate,
+					disabled: this.creatingCrewmate || !this.engineReady,
+					reason:
+						this.engineReady || this.creatingCrewmate
+							? ""
+							: this.selectedEngine
+								? `${this.selectedEngine} isn't ready on your crew server yet (${this.engineStatus[this.selectedEngine]?.phase ?? "not checked"}). Go back and finish it.`
+								: "Go back and pick an engine.",
+				});
+			default:
+				return go("Continue", this.advance);
+		}
+	});
 
 	// ─── engine step ──────────────────────────────────────────────────────────
 	engineStatus = $state<Record<string, EngineStatus>>({});
@@ -157,18 +247,48 @@ export class Onboarding {
 	// ─── connect step ─────────────────────────────────────────────────────────
 
 	/**
-	 * Detect the SSH key once the connect step is showing, and list the servers of `~/.ssh/config` for the picker
+	 * Look for the SSH key once the connect step is showing, and list the servers of `~/.ssh/config` for the picker
 	 * (no config, or one that cannot be read, is an empty list and the address field stays on its own).
 	 */
 	checkSshKey() {
-		if (this.step !== "connect" || this.keyChecked) return;
+		if (this.step !== "connect" || this.started) return;
+		this.started = true;
 		void invoke<SshHost[]>("ssh_hosts_list")
 			.then((h) => (this.sshHosts = h))
 			.catch(() => {});
-		void invoke<string | null>("ssh_key_find").then((p) => {
-			this.hasKey = p !== null;
-			this.keyChecked = true;
-		});
+		void this.resolveKey();
+	}
+
+	/** What `ssh_key_resolve` is asked: the address typed (a `~/.ssh/config` alias has its own key) and the picked file. */
+	private keyQueryNow() {
+		const t = parseSSHTarget(this.where);
+		return {
+			target: t.ok ? t.target : null,
+			port: t.ok && t.port !== 22 ? t.port : null,
+			identity: this.identity || null,
+		};
+	}
+
+	/** Ask which key ssh will use. The first answer also decides the method: the key when there is one, else the password (which creates it). */
+	async resolveKey() {
+		const seq = ++this.keySeq;
+		const query = this.keyQueryNow();
+		this.keyQuery = JSON.stringify(query);
+		const r = await invoke<KeyLookup>("ssh_key_resolve", query).catch(() => null);
+		if (seq !== this.keySeq) return; // a newer question is on its way: this answer is about an old address
+		this.sshFound = r?.ssh_found ?? true;
+		this.key = r?.key ?? null;
+		this.keyChecked = true;
+		if (!this.methodChosen) this.method = this.key ? "key" : "password";
+	}
+
+	/** Re-ask when the address, the port or the picked key changes (waits for the typing to pause). Returns the cleanup. */
+	watchKey(): (() => void) | undefined {
+		if (this.step !== "connect" || !this.started) return;
+		const timer = setTimeout(() => {
+			if (JSON.stringify(this.keyQueryNow()) !== this.keyQuery) void this.resolveKey();
+		}, 350);
+		return () => clearTimeout(timer);
 	}
 
 	/** Fill the address and port from a server of the user's `~/.ssh/config`. */
@@ -177,17 +297,61 @@ export class Onboarding {
 		this.sshPort = host.port;
 	}
 
+	chooseMethod(method: SignInMethod) {
+		this.method = method;
+		this.methodChosen = true;
+		this.failure = null;
+	}
+
+	/** "Choose another key": the OS file picker, opened in the folder of the key shown. */
+	async pickKeyFile() {
+		const picked = await pickFile({
+			title: "Choose a private SSH key",
+			multiple: false,
+			directory: false,
+			defaultPath: folderOf(this.key?.identity ?? ""),
+		});
+		if (typeof picked !== "string") return;
+		this.identity = privateKeyPath(picked);
+		this.chooseMethod("key");
+		await this.resolveKey();
+	}
+
+	/** Back to the key ssh finds by itself. */
+	useDefaultKey() {
+		this.identity = "";
+		void this.resolveKey();
+	}
+
 	async createSshKey() {
 		this.creatingKey = true;
-		this.keyError = "";
+		this.failure = null;
 		try {
 			await invoke("ssh_keygen");
-			this.hasKey = true;
+			await this.resolveKey();
 		} catch (e) {
-			this.keyError = errText(e);
+			this.failure = describeConnectError(parseConnectError(e), this.failureContext());
 		} finally {
 			this.creatingKey = false;
 		}
+	}
+
+	private failureContext(): ConnectContext {
+		return {
+			keyPath: this.key?.identity ?? null,
+			keyAdded: this.keyAdded,
+			target: this.sshTarget.trim(),
+			windows: IS_WIN,
+		};
+	}
+
+	/** The button of a failure block. */
+	runAction(action: ConnectAction) {
+		if (action === "pick_key") void this.pickKeyFile();
+		else if (action === "use_password") this.chooseMethod("password");
+		else if (action === "use_key") this.chooseMethod("key");
+		else if (action === "recheck") void this.resolveKey();
+		else if (action === "retry") void this.launchServer();
 	}
 
 	private shakeField() {
@@ -195,12 +359,12 @@ export class Onboarding {
 		setTimeout(() => (this.fieldShake = false), 500);
 	}
 
-	cancelAuth() {
-		this.authMode = "none";
-		this.authPassword = "";
-	}
-
-	/** Core install runner. Accepts an optional sudo password (piped securely). */
+	/**
+	 * Sign in, install, connect. Signing in is the first checklist step: with a key, one connection that also
+	 * trusts a new server's host key; with the password, the account password adds this computer's key to the
+	 * server once (the method then becomes the key, so a retry does not ask again). Accepts an optional sudo password
+	 * (piped to the CLI's stdin, never argv).
+	 */
 	async launchServer(sudoPassword?: string) {
 		const target = this.sshTarget.trim();
 		if (!target) {
@@ -210,66 +374,50 @@ export class Onboarding {
 		this.installRunning = true;
 		this.installDone = false;
 		this.failedPhase = null;
-		this.lastErrLine = "";
-		this.install = initialInstallProgress();
-		this.authMode = "none";
-		this.authError = "";
+		this.failure = null;
+		this.install = { ...initialInstallProgress(), active: "signin" };
 
 		const unlisten = await listen<InstallLineEvent>("crew://install-line", (e) => {
 			this.install = applyInstallLine(this.install, e.payload.line);
 		});
 
 		try {
-			const args: Record<string, unknown> = {
-				target,
-				port: this.sshPort !== 22 ? this.sshPort : null,
-				browsers: this.browsers,
-			};
+			const port = this.sshPort !== 22 ? this.sshPort : null;
+			const identity = this.identity || null;
+			if (this.method === "password" && !this.keyAdded) {
+				await invoke("ssh_authorize_key", { target, port, identity, password: this.sshPassword });
+				this.sshPassword = "";
+				this.addedFor = this.where;
+				// The key is how this server is reached from now on, whatever a later lookup says.
+				this.chooseMethod("key");
+				void this.resolveKey(); // a key may have been created
+			} else {
+				await invoke("ssh_connect_check", { target, port, identity });
+			}
+			const args: Record<string, unknown> = { target, port, browsers: this.browsers, identity };
 			if (sudoPassword !== undefined) args.sudoPassword = sudoPassword;
 			await invoke("crew_server_install", args);
 			// hostd runs as the service user the installer reported (a server that kept `atlas-bot` keeps it).
 			const server = crewServerTarget(target, this.install.user || undefined);
-			// Keep the address the install ran against: the browsers' status and install need an account that can sudo.
+			// Keep the address (and the key picked for it) the install ran against: the browsers' status and install
+			// need an account that can sudo, and every later connection must use the same key.
 			await crew.addServer(server, server, {
 				target,
-				...(this.sshPort !== 22 ? { port: this.sshPort } : {}),
+				...(port ? { port } : {}),
+				...(identity ? { identity } : {}),
 			});
 			this.launchedNow = `ssh:${server}`;
 			this.install = completeInstall(this.install);
 			this.installDone = true;
+			this.sudoPassword = "";
 			setTimeout(this.advance, 900);
 		} catch (e) {
-			const err = errText(e);
 			this.failedPhase = this.install.active;
-			this.lastErrLine = err;
-			const mode = authModeForError(err);
-			if (mode !== "none") this.authMode = mode;
+			this.failure = describeConnectError(parseConnectError(e), this.failureContext());
 			this.shakeField();
 		} finally {
 			unlisten();
 			this.installRunning = false;
-		}
-	}
-
-	/** Authorize this Mac's key on the server via password, then retry install. */
-	async authorizeAndRetry() {
-		this.authRunning = true;
-		this.authError = "";
-		const pw = this.authPassword;
-		this.authPassword = ""; // clear from state immediately
-		try {
-			await invoke("ssh_authorize_key", {
-				target: this.sshTarget.trim(),
-				port: this.sshPort !== 22 ? this.sshPort : null,
-				password: pw,
-			});
-			this.authMode = "none";
-			await this.launchServer();
-		} catch (e) {
-			this.authError = errText(e);
-			this.authMode = "authorize"; // stay in auth mode so user can retry
-		} finally {
-			this.authRunning = false;
 		}
 	}
 
@@ -285,7 +433,10 @@ export class Onboarding {
 		this.promoting = true;
 		const server = crewServerTarget(old.key.slice(4));
 		void crew
-			.addServer(server, server, { target: old.key.slice(4) })
+			.addServer(server, server, {
+				target: old.key.slice(4),
+				...(old.admin?.identity ? { identity: old.admin.identity } : {}),
+			})
 			.then(() => (this.launchedNow = `ssh:${server}`))
 			.catch((e) => toast.error(errText(e)))
 			.finally(() => (this.promoting = false));

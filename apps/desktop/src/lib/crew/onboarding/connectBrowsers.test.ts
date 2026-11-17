@@ -1,6 +1,7 @@
 // @ts-nocheck bun test runtime types are not part of the app tsconfig
 import "../../../../test/setup.ts";
 import { afterEach, beforeEach, describe, expect, mock, test } from "bun:test";
+import keyFixture from "../../__fixtures__/crew-key-lookup.json";
 
 // The crew-server install offers the capture browsers as an opt-in (off by default). Against the real `Onboarding`
 // and the real `ConnectStep`/`InstallChecklist`; only the Tauri boundary is stubbed, so what `crew_server_install`
@@ -19,7 +20,7 @@ mock.module("@tauri-apps/api/core", () => ({
 	invoke: async (cmd: string, args: Record<string, unknown>) => {
 		calls.push({ cmd, args });
 		if (cmd === "crew_servers_list") return [];
-		if (cmd === "ssh_key_find") return "/Users/me/.ssh/id_ed25519.pub";
+		if (cmd === "ssh_key_resolve") return keyFixture.found;
 		if (cmd === "ssh_hosts_list") return [];
 		return {};
 	},
@@ -32,7 +33,7 @@ mock.module("@tauri-apps/api/event", () => ({
 }));
 const uiKit = await import("../../../../test/uiKit.ts");
 await uiKit.installUiKit();
-await uiKit.useRealKit("Checkbox", "CopyButton", "Button");
+await uiKit.useRealKit("Checkbox", "CopyButton", "Button", "TextField", "ToggleGroup/SegmentedControl");
 
 // Dynamic imports on purpose: the Svelte loader registered by test/setup.ts and the module mocks above must exist
 // before these modules load.
@@ -70,12 +71,19 @@ function render(Component, props) {
 async function connectStep() {
 	const ob = new Onboarding(() => {});
 	ob.step = "connect";
-	ob.hasKey = true;
-	ob.keyChecked = true;
+	ob.checkSshKey();
 	ob.sshTarget = "ubuntu@srv";
 	const t = render(ConnectStep, { ob });
 	await settle();
 	return { ob, t };
+}
+
+/** The command behind "Prefer the terminal?": a small link opens it over the form. */
+async function terminal(t) {
+	const link = [...t.querySelectorAll("button")].find((b) => b.textContent.includes("Prefer the terminal?"));
+	if (!t.querySelector(".popover")) link.click();
+	await settle();
+	return t.querySelector(".popover .code-block code").textContent;
 }
 
 const installCall = () => calls.find((c) => c.cmd === "crew_server_install");
@@ -89,7 +97,6 @@ describe("the browsers opt-in on the connect step", () => {
 		expect(ob.browsers).toBe(false);
 		const text = t.textContent;
 		expect(text).toContain("Screenshots for UI work (Chromium + WebKit)");
-		expect(text).toContain("capture, UI gate and locate");
 		expect(text).toContain("Node.js 20+");
 		expect(text).toContain("500 MB");
 	});
@@ -111,16 +118,17 @@ describe("the browsers opt-in on the connect step", () => {
 			target: "ubuntu@srv",
 			port: 2222,
 			browsers: true,
+			identity: null,
 			sudoPassword: "s3cret",
 		});
 	});
 
 	test("the terminal command the disclosure offers matches the opt-in", async () => {
 		const { ob, t } = await connectStep();
-		expect(t.querySelector(".code-block code").textContent).toBe("atlas crew install ubuntu@srv");
+		expect(await terminal(t)).toBe("atlas crew install ubuntu@srv");
 		t.querySelector('input[type="checkbox"]').click();
 		await settle();
-		expect(t.querySelector(".code-block code").textContent).toBe("atlas crew install ubuntu@srv --browsers");
+		expect(await terminal(t)).toBe("atlas crew install ubuntu@srv --browsers");
 	});
 
 	test("the checkbox is locked while the install runs", async () => {

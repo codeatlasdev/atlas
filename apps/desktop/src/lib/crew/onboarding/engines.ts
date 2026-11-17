@@ -81,8 +81,11 @@ export function pickReadyEngine(
 /** One line of the how-it-works story, lit in sync with the art. */
 export const STORY = [
 	{ title: "You give the order", text: "Type what you want, like a message." },
-	{ title: "It works on your server", text: "All night, even with your Mac asleep." },
-	{ title: "It asks before anything risky", text: "Allow or deny from your Mac, phone or Telegram." },
+	{ title: "It works on your server", text: "All night, even with this computer asleep." },
+	{
+		title: "It asks before anything risky",
+		text: "Allow or deny from this computer, your phone or Telegram.",
+	},
 	{ title: "You wake up to results", text: "Every step is logged, ready to read." },
 ];
 
@@ -96,18 +99,18 @@ export type StepMeta = {
 
 export const STEP_META: Record<OnboardingStep, StepMeta> = {
 	intro: {
-		label: "1 of 2",
+		label: "Step 1 of 2",
 		headline: "Meet your Atlas Crew",
-		body: "Your crew sails while you sleep.",
+		body: "Crewmates are AI agents that work on a server you own.",
 		bullets: [
-			"Your server, your rules — runs on your server, no account",
-			"Hand it the wheel — it keeps working while your Mac sleeps",
-			"It flags you before anything risky",
+			"Runs on your own Linux server. No account.",
+			"Keeps working while this computer sleeps.",
+			"Asks you before anything risky.",
 		],
 		glow: "rgba(61, 91, 255, 0.10)",
 	},
 	how: {
-		label: "2 of 2",
+		label: "Step 2 of 2",
 		headline: "One night with your crew",
 		body: "This is what a crewmate does while you're away.",
 		bullets: undefined,
@@ -115,17 +118,17 @@ export const STEP_META: Record<OnboardingStep, StepMeta> = {
 	},
 	connect: {
 		headline: "Add a crew server",
-		body: "You need a Linux server you can SSH into.",
+		body: "A Linux server you can SSH into, with systemd and sudo. Setup takes about two minutes.",
 		glow: "rgba(61, 91, 255, 0.08)",
 	},
 	engine: {
 		headline: "Choose an engine",
-		body: "Select the AI your crewmate will use. Each engine runs on your own subscription or API key.",
+		body: "Pick the AI your crewmate will use. Click one to install it on the server and sign in; it takes about a minute and runs on your own subscription or API key.",
 		glow: "rgba(61, 91, 255, 0.10)",
 	},
 	ready: {
 		headline: "Your first crewmate is ready",
-		body: "Open a chat to send your first task. You can add more crewmates and customise them from the workspace.",
+		body: "Open a chat to send your first task. You can add more crewmates and customize them from the workspace.",
 		glow: "rgba(34, 197, 94, 0.12)",
 	},
 };

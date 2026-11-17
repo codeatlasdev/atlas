@@ -21,6 +21,7 @@ async fn daemon(dir: &Path) -> (HostClient, Sent) {
     let d = dir.to_path_buf();
     let opts = crate::server::ServeOpts {
         no_mobile_relay: true,
+        mobile_loopback: true,
         agent_push: Some(Sender(std::sync::Arc::new(move |t, m| {
             let _ = tx.send((t, m));
         }))),

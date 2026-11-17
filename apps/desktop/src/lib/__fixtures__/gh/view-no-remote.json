@@ -1,0 +1,15 @@
+{
+	"_recorded": "gh version 2.103.3 (2026-10-26), 2026-11-16: signed in, no remote",
+	"argv": [
+		"gh",
+		"pr",
+		"view",
+		"--json",
+		"number,title,state,url,body,author,reviews,comments,statusCheckRollup,mergeable,reviewDecision,headRefName,headRefOid,baseRefName,isDraft"
+	],
+	"result": {
+		"code": 1,
+		"stdout": "",
+		"stderr": "no git remotes found\n"
+	}
+}

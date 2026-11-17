@@ -2,7 +2,7 @@
   CrewArtHow — the one "how it works" screen of the Atlas Crew onboarding.
 
   One night, told in ~14 s with the real pieces of the product: you give an order in the composer, a crewmate takes
-  it and works on YOUR server while the sky turns to night and your Mac falls asleep, it stops to ask before
+  it and works on YOUR server while the sky turns to night and your computer falls asleep, it stops to ask before
   `git push`, you allow it from your phone, and at dawn the result is waiting. `beat` (0–3) tells the left column
   which of its four lines to light up, so text and picture tell the same story at the same moment.
 
@@ -101,7 +101,7 @@
 		<path d="M0 62 Q150 44 300 62 T600 62 T900 62 T1200 62 V120 H0 Z" class="wave near" />
 	</svg>
 
-	<!-- Where it runs, and what your Mac is doing meanwhile. -->
+	<!-- Where it runs, and what your computer is doing meanwhile. -->
 	<div class="chips">
 		<span class="chip">
 			<Server size={14} />
@@ -110,7 +110,7 @@
 		</span>
 		<span class="chip" class:asleep={macAsleep}>
 			<Laptop size={14} />
-			<span>your Mac</span>
+			<span>your computer</span>
 			{#if macAsleep}<span class="sleep"><Moon size={12} /> asleep</span>{/if}
 		</span>
 	</div>

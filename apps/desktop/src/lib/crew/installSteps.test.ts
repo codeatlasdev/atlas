@@ -33,11 +33,15 @@ describe("parseInstallLine", () => {
 		expect(parseInstallLine("prefix step: check")).toBeNull();
 	});
 
-	test("INSTALL_STEPS covers all 6 phases", () => {
-		expect(INSTALL_STEPS).toHaveLength(6);
+	// "signin" is the desktop's own first step: the CLI never prints a marker for it, so it cannot be parsed.
+	test("INSTALL_STEPS starts with the desktop's sign-in and covers the six CLI phases", () => {
+		expect(INSTALL_STEPS).toHaveLength(7);
 		const phases = INSTALL_STEPS.map((s) => s.phase);
+		expect(phases[0]).toBe("signin");
 		expect(phases).toContain("check");
 		expect(phases).toContain("done");
+		expect(parseInstallLine("step: signin")).toBeNull();
+		for (const s of INSTALL_STEPS) expect(s.detail.length).toBeGreaterThan(0);
 	});
 
 	// `atlas crew install --browsers` prints `step: browsers` after `ssh` and before `done`; the checklist shows that
@@ -45,7 +49,7 @@ describe("parseInstallLine", () => {
 	test("the browsers step is in the checklist only when asked for, between ssh and done", () => {
 		expect(installSteps(false)).toBe(INSTALL_STEPS);
 		const phases = installSteps(true).map((s) => s.phase);
-		expect(phases).toEqual(["check", "install", "user", "service", "ssh", "browsers", "done"]);
+		expect(phases).toEqual(["signin", "check", "install", "user", "service", "ssh", "browsers", "done"]);
 	});
 });
 

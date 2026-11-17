@@ -36,29 +36,36 @@ jobs:
     outputs:
       tested: ${{ steps.tested.outputs.tested }}
       rust: ${{ steps.paths.outputs.rust }}
-      front: ${{ steps.paths.outputs.front }}
+      desktop: ${{ steps.paths.outputs.desktop }}
+      i18n: ${{ steps.paths.outputs.i18n }}
+      skills: ${{ steps.paths.outputs.skills }}
+      scripts: ${{ steps.paths.outputs.scripts }}
       mobile: ${{ steps.paths.outputs.mobile }}
-      site: ${{ steps.paths.outputs.site }}
       relay: ${{ steps.paths.outputs.relay }}
+      site: ${{ steps.paths.outputs.site }}
+      installer: ${{ steps.paths.outputs.installer }}
       workflows: ${{ steps.paths.outputs.workflows }}
+      dup: ${{ steps.paths.outputs.dup }}
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
           persist-credentials: false
           fetch-depth: 0
 
-      # Which areas the change touches (scripts/ci-paths.sh): a docs-only commit skips the Rust, mobile and
-      # frontend jobs. Compared with the pull request base, or the commit this push replaced.
+      - name: Install Bun
+        uses: oven-sh/setup-bun@0c5077e51419868618aeaa5fe8019c62421857d6 # v2.2.0
+        with:
+          no-cache: true
+
+      # Which areas the change touches (scripts/checks/map.ts, the one map `bun run check` and `bun run check:changed`
+      # read too): a docs-only commit skips the Rust, mobile and frontend jobs; an unknown path, a changed workflow, a
+      # workflow_dispatch or a missing diff runs everything. The base is the pull request's merge-ref first parent, or
+      # the commit this push replaced (scripts/lib/base.ts).
       - name: Changed areas
         id: paths
-        env:
-          BASE: ${{ github.event.pull_request.base.sha || github.event.before }}
-        run: |
-          if [ -n "$BASE" ] && git cat-file -e "$BASE^{commit}" 2>/dev/null; then
-            git diff --name-only "$BASE" HEAD | scripts/ci-paths.sh
-          else
-            scripts/ci-paths.sh </dev/null
-          fi | tee -a "$GITHUB_OUTPUT"
+        # `shell: bash` runs with pipefail: a failed plan must fail the job, not leave every output empty (every job skipped).
+        shell: bash
+        run: bun scripts/ci-plan.ts | tee -a "$GITHUB_OUTPUT"
 
       - name: Already tested in its pull request?
         id: tested
@@ -207,14 +214,69 @@ jobs:
     if: ${{ needs.plan.outputs.tested != 'true' && needs.plan.outputs.rust == 'true' }}
     runs-on: windows-latest
     timeout-minutes: 60
+    # `checks: write` only for the watchdog's check run (scripts/ci-watchdog.ps1, issue #520). A fork's pull request
+    # gets a read-only token whatever is declared here: the watchdog then keeps to the log.
+    permissions:
+      contents: read
+      checks: write
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
           persist-credentials: false
 
+      # Everything but the tests (toolchain, nextest, cache, fmt, clippy). The tests are steps of this job, not of
+      # the action: a composite step cannot have `timeout-minutes`.
       - uses: ./.github/actions/rust-gate
         with:
           tests: ${{ needs.plan.outputs.tested != 'true' }}
+          defer-tests: "true"
+
+      # Issue #520: this job lost its runner 10 times since 2026-11-15 ("The hosted runner lost communication with
+      # the server" after exactly 50 min), twice in this step with its 25 min timeout never firing, so the runner
+      # itself died or froze; the job's live log is not kept either. The tests take 3-4 min. What this step leaves:
+      # - a hang in the tests fails the step after 25 min with its log (nextest ends a single test after 3 min,
+      #   `.config/nextest.toml`), instead of taking the runner with it; the log is a file as well, to upload below;
+      # - scripts/ci-watchdog.ps1 samples memory, commit charge, page file, handles, disk queue and free space, the
+      #   top processes and the tests running now every 15 s, to the live log, to `watchdog.log` and, off the runner,
+      #   to a check run "Windows test telemetry (#520)" updated every 30 s (the one place that outlives a lost
+      #   runner). It says when a runner process disappears and kills a test process that holds the runner's memory.
+      #   `watchdog.stop` ends it when the tests end. The token goes to the watchdog alone: it is unset before the
+      #   tests start.
+      - name: Test
+        if: ${{ needs.plan.outputs.tested != 'true' }}
+        timeout-minutes: 25
+        shell: bash
+        env:
+          WATCHDOG_TOKEN: ${{ github.token }}
+          WATCHDOG_SHA: ${{ github.event.pull_request.head.sha || github.sha }}
+        run: |
+          rm -f watchdog.stop
+          pwsh -NoProfile -File scripts/ci-watchdog.ps1 &
+          watchdog=$!
+          unset WATCHDOG_TOKEN
+          stop_watchdog() { touch watchdog.stop; sleep 6; kill "$watchdog" 2>/dev/null || true; }
+          trap stop_watchdog EXIT
+          cargo nextest run --workspace --locked --profile ci 2>&1 | tee nextest.log
+
+      - name: Doctests
+        if: ${{ needs.plan.outputs.tested != 'true' }}
+        timeout-minutes: 10
+        shell: bash
+        run: cargo test --workspace --locked --doc
+
+      # What the next hang or runner loss shows: the nextest log (SLOW/TIMEOUT lines name the test that hung), the
+      # JUnit report (every test with its time) and the watchdog's samples, kept briefly.
+      - name: Nextest log and JUnit report
+        if: ${{ always() }}
+        uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
+        with:
+          name: nextest-windows-${{ github.run_attempt }}
+          path: |
+            nextest.log
+            watchdog.log
+            target/nextest/ci/junit.xml
+          if-no-files-found: ignore
+          retention-days: 3
 
   # The tests that need root (crew isolation, issue #200): a real cross-uid spawn and a real useradd. GitHub's
   # Ubuntu runners have passwordless sudo, and the runner is thrown away, so creating system users is fine. The
@@ -245,7 +307,7 @@ jobs:
   frontend:
     name: Desktop frontend + skills
     needs: plan
-    if: ${{ needs.plan.outputs.tested != 'true' && needs.plan.outputs.front == 'true' }}
+    if: ${{ needs.plan.outputs.tested != 'true' && (needs.plan.outputs.desktop == 'true' || needs.plan.outputs.skills == 'true') }}
     runs-on: ubuntu-latest
     timeout-minutes: 20
     steps:
@@ -264,12 +326,35 @@ jobs:
       - name: svelte-check, prettier, bun test
         run: bun run desktop:check
 
+  # Catalogs, locks, glossary, translated docs, the writing lint and the hardcoded-text ratchets (scripts/i18n). Offline
+  # and bun only, so a Rust-only or docs-only change that can break a catalog or add a println! still reaches it. The
+  # ratchets judge the change against the diff base of scripts/lib/base.ts, so the history is fetched.
+  i18n:
+    name: i18n (catalogs, writing, ratchets)
+    needs: plan
+    if: ${{ needs.plan.outputs.tested != 'true' && needs.plan.outputs.i18n == 'true' }}
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+          fetch-depth: 0
+
+      - name: Install Bun
+        uses: oven-sh/setup-bun@0c5077e51419868618aeaa5fe8019c62421857d6 # v2.2.0
+        with:
+          no-cache: true
+
+      - name: i18n
+        run: bun run i18n:check
+
   # The repo's own scripts (setup, heavy queue, CI gates, release helpers) and their tests, on Linux and on Windows
   # through Git Bash (`scripts/sh.ts`), so a contributor's `bun run check` keeps working on both (#260).
   scripts:
     name: Repo scripts (${{ matrix.os }})
     needs: plan
-    if: ${{ needs.plan.outputs.tested != 'true' && needs.plan.outputs.front == 'true' }}
+    if: ${{ needs.plan.outputs.tested != 'true' && needs.plan.outputs.scripts == 'true' }}
     strategy:
       fail-fast: false
       matrix:
@@ -296,6 +381,27 @@ jobs:
 
       - name: bun run release:test
         run: bun run release:test
+
+  # site/public/install.ps1 as a user runs it (`irm <url> | iex`) in Windows PowerShell 5.1 (powershell.exe, what a
+  # stock Windows has) and PowerShell 7, against a local server that plays GitHub (scripts/install-ps1.test.ts).
+  install-ps1:
+    name: Installer (Windows PowerShell 5.1 and 7)
+    needs: plan
+    if: ${{ needs.plan.outputs.tested != 'true' && needs.plan.outputs.installer == 'true' }}
+    runs-on: windows-latest
+    timeout-minutes: 15
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+
+      - name: Install Bun
+        uses: oven-sh/setup-bun@0c5077e51419868618aeaa5fe8019c62421857d6 # v2.2.0
+        with:
+          no-cache: true
+
+      - name: install.ps1 in powershell.exe and pwsh
+        run: bun test scripts/install-ps1.test.ts
 
   mobile:
     name: Mobile app
@@ -345,7 +451,7 @@ jobs:
   push-relay:
     name: Push relay (Go)
     needs: plan
-    if: ${{ needs.plan.outputs.tested != 'true' }}
+    if: ${{ needs.plan.outputs.tested != 'true' && needs.plan.outputs.relay == 'true' }}
     runs-on: ubuntu-latest
     timeout-minutes: 10
     steps:
@@ -395,7 +501,7 @@ jobs:
   duplication:
     name: Duplication (jscpd, <= 1.5%)
     needs: plan
-    if: ${{ needs.plan.outputs.tested != 'true' && (needs.plan.outputs.rust == 'true' || needs.plan.outputs.front == 'true' || needs.plan.outputs.mobile == 'true') }}
+    if: ${{ needs.plan.outputs.tested != 'true' && needs.plan.outputs.dup == 'true' }}
     runs-on: ubuntu-latest
     timeout-minutes: 10
     steps:
@@ -461,7 +567,7 @@ jobs:
   # plus this explicit check is what keeps a broken run from going green.
   ci:
     name: CI
-    needs: [plan, rust-macos, rust-linux, desktop-linux, rust-linux-root, rust-linux-arm64, rust-windows, frontend, scripts, mobile, push-relay, site, duplication, deny, workflows]
+    needs: [plan, rust-macos, rust-linux, desktop-linux, rust-linux-root, rust-linux-arm64, rust-windows, frontend, i18n, scripts, install-ps1, mobile, push-relay, site, duplication, deny, workflows]
     if: ${{ !cancelled() }}
     runs-on: ubuntu-latest
     timeout-minutes: 5

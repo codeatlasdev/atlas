@@ -7,7 +7,7 @@
 
 use serde::Deserialize;
 
-use crate::swipe_engine::{Engine, Hit, Sample, Stage, Step};
+use crate::swipe_engine::{Engine, Hit, Sample, Scroll, Stage, Step};
 
 #[derive(Deserialize)]
 pub struct Expect {
@@ -19,6 +19,15 @@ pub struct Expect {
     pub edge: Option<String>,
     #[serde(default)]
     pub gestures: Option<u64>,
+    /// What scrolls horizontally under the pointer when the fingers land (an editor, a diff): which way it still can.
+    #[serde(default)]
+    pub scroller: Option<Scroller>,
+}
+
+#[derive(Deserialize)]
+pub struct Scroller {
+    pub left: bool,
+    pub right: bool,
 }
 
 #[derive(Deserialize)]
@@ -26,6 +35,29 @@ pub struct Trace {
     pub name: String,
     pub expect: Expect,
     pub events: Vec<Sample>,
+}
+
+/// What the engine is told about the pointer for a trace: the zone it hits and what scrolls under it.
+#[derive(Clone, Copy)]
+pub struct Scene {
+    pub hit: Option<Hit>,
+    pub scroll: Scroll,
+}
+
+impl Trace {
+    pub fn scene(&self) -> Scene {
+        Scene {
+            hit: hit_for(&self.expect.zone, self.expect.edge.as_deref()),
+            scroll: self
+                .expect
+                .scroller
+                .as_ref()
+                .map_or(Scroll::default(), |s| Scroll {
+                    left: s.left,
+                    right: s.right,
+                }),
+        }
+    }
 }
 
 /// Everything the engine told its consumer over a whole trace.
@@ -90,13 +122,13 @@ fn apply(out: &mut Outcome, st: &Step, seen: &mut u64) {
 }
 
 /// Replay `events` at their own timestamps, ticking the engine every 8.33 ms (120 Hz) in between.
-pub fn replay(events: &[Sample], hit: Option<Hit>) -> Outcome {
-    replay_on(&mut Engine::new(), events, hit)
+pub fn replay(events: &[Sample], scene: Scene) -> Outcome {
+    replay_on(&mut Engine::new(), events, scene)
 }
 
 /// Replay on a given engine: the app keeps ONE engine for its whole life, so what a previous gesture left behind
 /// (the origin after a settle, a generation counter) is part of every later gesture.
-pub fn replay_on(e: &mut Engine, events: &[Sample], hit: Option<Hit>) -> Outcome {
+pub fn replay_on(e: &mut Engine, events: &[Sample], scene: Scene) -> Outcome {
     let mut out = Outcome::default();
     let mut seen = e.seq();
     let mut clock = events.first().map_or(0.0, |s| s.t);
@@ -109,7 +141,7 @@ pub fn replay_on(e: &mut Engine, events: &[Sample], hit: Option<Hit>) -> Outcome
         }
         clock = clock.max(s.t);
         let ours = e.seq() > 0 && e.busy();
-        let st = e.feed(s, |_, _| hit);
+        let st = e.feed(s, |_, _| scene.scroll, |_, _| scene.hit);
         if tail && ours && !st.swallow {
             out.leaked_tail += 1;
         }
@@ -161,8 +193,7 @@ mod tests {
     fn every_trace_ends_on_exactly_the_page_the_person_meant() {
         let mut bad = vec![];
         for t in traces() {
-            let hit = hit_for(&t.expect.zone, t.expect.edge.as_deref());
-            let out = replay(&t.events, hit);
+            let out = replay(&t.events, t.scene());
             let net = out.net();
             if net != i32::from(t.expect.steps) {
                 bad.push(format!(
@@ -214,9 +245,8 @@ mod tests {
                     .map(|s| Sample { t: s.t + t0, ..*s })
                     .collect();
                 t0 = shifted.last().map_or(t0, |s| s.t) + 2000.0;
-                let hit = hit_for(&t.expect.zone, t.expect.edge.as_deref());
-                let alone = replay(&t.events, hit);
-                let chained = replay_on(&mut e, &shifted, hit);
+                let alone = replay(&t.events, t.scene());
+                let chained = replay_on(&mut e, &shifted, t.scene());
                 assert_eq!(
                     chained.net(),
                     alone.net(),
@@ -232,7 +262,7 @@ mod tests {
     #[test]
     fn the_momentum_tail_of_a_swipe_never_reaches_the_page() {
         for t in traces() {
-            let out = replay(&t.events, hit_for(&t.expect.zone, t.expect.edge.as_deref()));
+            let out = replay(&t.events, t.scene());
             assert_eq!(
                 out.leaked_tail, 0,
                 "{}: the page scrolled under the swipe's inertia",
@@ -244,7 +274,7 @@ mod tests {
     #[test]
     fn no_trace_ever_moves_more_than_one_page_per_gesture() {
         for t in traces() {
-            let out = replay(&t.events, hit_for(&t.expect.zone, t.expect.edge.as_deref()));
+            let out = replay(&t.events, t.scene());
             for (seq, dir) in &out.commits {
                 assert!(
                     dir.abs() <= 1,
@@ -267,7 +297,7 @@ mod tests {
     #[test]
     fn no_settle_overshoots_the_page_it_commits_to() {
         for t in traces() {
-            let out = replay(&t.events, hit_for(&t.expect.zone, t.expect.edge.as_deref()));
+            let out = replay(&t.events, t.scene());
             // Per gesture: from its commit on, |amount| must approach the target monotonically.
             for (seq, dir) in &out.commits {
                 let target = f64::from(*dir);

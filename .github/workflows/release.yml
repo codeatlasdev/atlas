@@ -8,7 +8,8 @@ run-name: ${{ inputs.build_only && 'Build only' || 'Release' }} ${{ inputs.tag |
 #
 # Build only (`gh workflow run release.yml --ref <branch> -f build_only=true`, docs/release.md): builds and verifies
 # every artifact from the branch, uploads them as workflow artifacts, and creates no tag and no release, so main can
-# be tested end to end before a release. Signing is skipped; `publish` never runs.
+# be tested end to end before a release. The Windows signing jobs are skipped; macOS is Developer ID signed and
+# notarized only for a build-only run of main (never of a branch) and only when the secrets exist; `publish` never runs.
 on:
   push:
     tags: ["v*"]
@@ -111,6 +112,69 @@ jobs:
         with:
           no-cache: true
 
+      # Developer ID signing and notarization (docs/release.md, "macOS signing and notarization"). On when all six
+      # secrets exist (MACOS_CERTIFICATE_P12_BASE64, MACOS_CERTIFICATE_PASSWORD, MACOS_SIGNING_IDENTITY, APPLE_API_KEY_ID,
+      # APPLE_API_ISSUER, APPLE_API_KEY_P8) and the run is a release or a build-only run of main (a branch's build-only run
+      # never gets the certificate). With none of them, or on a fork, the build stays ad-hoc signed exactly as before and
+      # says so; some but not all is a configuration error and fails here, so a half-set-up release cannot ship ad-hoc.
+      # The certificate lives in a temporary keychain that the last step of the job deletes. Secrets reach the steps only
+      # through env, never a command line: `security import -P` has no stdin form, so the .p12 is re-encrypted first
+      # under a throwaway password and only that one appears in argv.
+      - name: macOS signing setup
+        id: sign
+        shell: bash
+        env:
+          ELIGIBLE: ${{ !inputs.build_only || github.ref == 'refs/heads/main' }}
+          CERT_P12_BASE64: ${{ secrets.MACOS_CERTIFICATE_P12_BASE64 }}
+          CERT_PASSWORD: ${{ secrets.MACOS_CERTIFICATE_PASSWORD }}
+          SIGNING_IDENTITY: ${{ secrets.MACOS_SIGNING_IDENTITY }}
+          API_KEY_ID: ${{ secrets.APPLE_API_KEY_ID }}
+          API_ISSUER: ${{ secrets.APPLE_API_ISSUER }}
+          API_KEY_P8: ${{ secrets.APPLE_API_KEY_P8 }}
+        run: |
+          umask 077
+          adhoc() {
+            echo "::notice title=macOS build is ad-hoc signed::$1 Gatekeeper warns on the dmg and the firewall asks again after every update (docs/release.md)."
+            echo "developer-id=false" >> "$GITHUB_OUTPUT"
+            exit 0
+          }
+          [ "$ELIGIBLE" = true ] || adhoc "A build-only run of a branch never gets the Developer ID certificate."
+          missing=""
+          have=0
+          for pair in MACOS_CERTIFICATE_P12_BASE64:CERT_P12_BASE64 MACOS_CERTIFICATE_PASSWORD:CERT_PASSWORD MACOS_SIGNING_IDENTITY:SIGNING_IDENTITY \
+                      APPLE_API_KEY_ID:API_KEY_ID APPLE_API_ISSUER:API_ISSUER APPLE_API_KEY_P8:API_KEY_P8; do
+            var=${pair#*:}
+            if [ -n "${!var}" ]; then have=$((have + 1)); else missing="$missing ${pair%%:*}"; fi
+          done
+          [ "$have" -gt 0 ] || adhoc "No Developer ID secret is configured (a fork, or not set up yet)."
+          if [ -n "$missing" ]; then
+            echo "::error::macOS signing is half configured, missing secrets:$missing"
+            exit 1
+          fi
+
+          KC="$RUNNER_TEMP/atlas-signing.keychain-db"
+          PW=$(openssl rand -hex 24)
+          printf '%s' "$CERT_P12_BASE64" | base64 --decode > "$RUNNER_TEMP/cert-in.p12"
+          # LibreSSL (the runner's openssl) cannot read the PEM stream back from a pipe, hence the 0600 file, removed below.
+          openssl pkcs12 -in "$RUNNER_TEMP/cert-in.p12" -passin env:CERT_PASSWORD -nodes -out "$RUNNER_TEMP/cert.pem"
+          IMPORT_PW="$PW" openssl pkcs12 -export -in "$RUNNER_TEMP/cert.pem" -passout env:IMPORT_PW -out "$RUNNER_TEMP/cert.p12"
+          security create-keychain -p "$PW" "$KC"
+          security set-keychain-settings -lut 21600 "$KC"
+          security unlock-keychain -p "$PW" "$KC"
+          security import "$RUNNER_TEMP/cert.p12" -k "$KC" -P "$PW" -T /usr/bin/codesign -T /usr/bin/security
+          security set-key-partition-list -S apple-tool:,apple:,codesign: -s -k "$PW" "$KC" > /dev/null
+          rm -f "$RUNNER_TEMP/cert-in.p12" "$RUNNER_TEMP/cert.pem" "$RUNNER_TEMP/cert.p12"
+          set -- "$KC"
+          while IFS= read -r k; do set -- "$@" "$k"; done < <(security list-keychains -d user | sed 's/^ *"//; s/"$//')
+          security list-keychains -d user -s "$@"
+          if ! security find-identity -v -p codesigning "$KC" | grep -F "\"$SIGNING_IDENTITY\"" > /dev/null; then
+            echo "::error::the imported certificate is not a valid code-signing identity named like MACOS_SIGNING_IDENTITY; the keychain holds:"
+            security find-identity -p codesigning "$KC"
+            exit 1
+          fi
+          printf '%s' "$API_KEY_P8" > "$RUNNER_TEMP/notary.p8"
+          echo "developer-id=true" >> "$GITHUB_OUTPUT"
+
       - name: Build desktop app
         run: |
           command -v cargo-tauri >/dev/null || cargo install tauri-cli --version "$(scripts/setup.sh --tauri-version)" --locked
@@ -135,13 +199,104 @@ jobs:
           dwarfdump --uuid "$R/atlas" "$R/atlas-desktop" || true
           ls -l "$R/atlas" "$R/atlas-desktop"
 
+      # With the Developer ID on, Tauri signs Atlas.app (hardened runtime, crates/atlas-desktop/Entitlements.plist) and the
+      # dmg with APPLE_SIGNING_IDENTITY, then notarizes and staples the app (APPLE_API_KEY / APPLE_API_ISSUER /
+      # APPLE_API_KEY_PATH). The variables are exported only then: Tauri reads an empty APPLE_SIGNING_IDENTITY as an
+      # identity named "", which would break the ad-hoc build. Tauri 2.11's codesign call has no --timestamp and codesign
+      # adds none by default (measured: no `Timestamp=` in `codesign -dvv`), but notarization refuses a signature without
+      # a secure timestamp; a `codesign` first on PATH that adds the flag makes Tauri's signatures notarizable.
+      # Signing happens in this step, on the binaries Strip already took the debug info from.
       - name: Bundle desktop app
+        env:
+          DEVELOPER_ID: ${{ steps.sign.outputs.developer-id }}
+          SIGNING_IDENTITY: ${{ secrets.MACOS_SIGNING_IDENTITY }}
+          API_KEY_ID: ${{ secrets.APPLE_API_KEY_ID }}
+          API_ISSUER: ${{ secrets.APPLE_API_ISSUER }}
         run: |
           SOURCE_DATE_EPOCH="$(git log -1 --format=%ct)"
           export SOURCE_DATE_EPOCH
+          if [ "$DEVELOPER_ID" = true ]; then
+            export APPLE_SIGNING_IDENTITY="$SIGNING_IDENTITY" APPLE_API_KEY="$API_KEY_ID" APPLE_API_ISSUER="$API_ISSUER" \
+              APPLE_API_KEY_PATH="$RUNNER_TEMP/notary.p8"
+            mkdir -p "$RUNNER_TEMP/bin"
+            printf '#!/bin/sh\nexec /usr/bin/codesign --timestamp "$@"\n' > "$RUNNER_TEMP/bin/codesign"
+            chmod +x "$RUNNER_TEMP/bin/codesign"
+            export PATH="$RUNNER_TEMP/bin:$PATH"
+          fi
           (cd crates/atlas-desktop && cargo tauri bundle --target aarch64-apple-darwin --bundles app,dmg --ci)
 
+      # The CLI is signed here (hardened runtime, secure timestamp, Entitlements-cli.plist) and notarized as a zip; a bare
+      # binary cannot be stapled, so Gatekeeper checks its ticket online on first run. The dmg is notarized and stapled
+      # BEFORE Package copies it, because stapling changes its bytes and Package writes the .sha256. Then every claim
+      # the docs make is checked on the real files: signature, Team ID, hardened runtime, entitlements, Gatekeeper.
+      - name: Developer ID signature, notarization and checks
+        if: ${{ steps.sign.outputs.developer-id == 'true' }}
+        shell: bash
+        env:
+          SIGNING_IDENTITY: ${{ secrets.MACOS_SIGNING_IDENTITY }}
+          API_KEY_ID: ${{ secrets.APPLE_API_KEY_ID }}
+          API_ISSUER: ${{ secrets.APPLE_API_ISSUER }}
+        run: |
+          T=target/aarch64-apple-darwin/release
+          CLI=$T/atlas
+          APP=$T/bundle/macos/Atlas.app
+          set -- "$T"/bundle/dmg/Atlas_*_aarch64.dmg
+          DMG=$1
+          TEAM=${SIGNING_IDENTITY##*(}
+          TEAM=${TEAM%)*}
+
+          codesign --force --sign "$SIGNING_IDENTITY" --options runtime --timestamp \
+            --entitlements crates/atlas-desktop/Entitlements-cli.plist "$CLI"
+
+          notarize() {
+            local out status id
+            out=$(xcrun notarytool submit "$1" --key "$RUNNER_TEMP/notary.p8" --key-id "$API_KEY_ID" --issuer "$API_ISSUER" \
+              --wait --timeout 45m --output-format json) || { echo "$out"; echo "::error::notarytool failed for $1"; return 1; }
+            status=$(jq -r .status <<< "$out")
+            id=$(jq -r .id <<< "$out")
+            echo "notarization of $1: $status ($id)"
+            if [ "$status" != Accepted ]; then
+              xcrun notarytool log "$id" --key "$RUNNER_TEMP/notary.p8" --key-id "$API_KEY_ID" --issuer "$API_ISSUER" || true
+              echo "::error::Apple did not accept $1 ($status)"
+              return 1
+            fi
+          }
+          ditto -c -k --keepParent "$CLI" "$RUNNER_TEMP/atlas-cli.zip"
+          notarize "$RUNNER_TEMP/atlas-cli.zip"
+          notarize "$DMG"
+          xcrun stapler staple "$DMG"
+
+          fail=0
+          check() { if ! "$@"; then echo "::error::check failed: $*"; fail=1; fi; }
+          # Output goes through a variable: `grep -q` closing the pipe early would fail the pipeline under pipefail.
+          has() {
+            local what=$1 pattern=$2 out
+            shift 2
+            out=$("$@" 2>&1) || true
+            grep -E -- "$pattern" <<< "$out" > /dev/null || { echo "::error::$what: $* has no /$pattern/"; fail=1; }
+          }
+          check codesign --verify --deep --strict --verbose=2 "$APP"
+          check codesign --verify --strict --verbose=2 "$CLI"
+          check xcrun stapler validate "$APP"
+          check xcrun stapler validate "$DMG"
+          has "Gatekeeper rejects the app" "source=Notarized Developer ID" spctl -a -vvv -t exec "$APP"
+          has "Gatekeeper rejects the dmg" "source=Notarized Developer ID" spctl -a -vvv -t open --context context:primary-signature "$DMG"
+          for f in "$APP" "$CLI" "$DMG"; do
+            has "wrong Team ID" "TeamIdentifier=$TEAM" codesign -dvv "$f"
+            has "not Developer ID" "Authority=Developer ID Application" codesign -dvv "$f"
+            has "no secure timestamp" "Timestamp=" codesign -dvv "$f"
+          done
+          for f in "$APP" "$CLI"; do has "no hardened runtime" "flags=0x[0-9a-f]+\(.*runtime" codesign -dvv "$f"; done
+          has "app entitlements" "com.apple.security.device.audio-input" codesign -d --entitlements - "$APP"
+          if grep get-task-allow <<< "$(codesign -d --entitlements - "$APP" "$CLI" 2>&1)" > /dev/null; then
+            echo "::error::a notarized build must not carry get-task-allow"
+            fail=1
+          fi
+          exit "$fail"
+
       - name: Package
+        env:
+          DEVELOPER_ID: ${{ steps.sign.outputs.developer-id }}
         run: |
           ATLAS_VERSION=${TAG#v}
           mkdir -p dist
@@ -156,8 +311,10 @@ jobs:
           else
             echo "::warning::no .dSYM was produced: this release has no symbols for macOS"
           fi
-          # Ad-hoc sign so macOS Gatekeeper doesn't SIGKILL on first run
-          codesign --sign - --force --preserve-metadata=entitlements,requirements,flags dist/atlas
+          # Ad-hoc sign so macOS Gatekeeper doesn't SIGKILL on first run (a Developer ID build was signed above)
+          if [ "$DEVELOPER_ID" != true ]; then
+            codesign --sign - --force --preserve-metadata=entitlements,requirements,flags dist/atlas
+          fi
           cd dist
           tar czf "atlas-${ATLAS_VERSION}-aarch64-apple-darwin.tar.gz" atlas
           shasum -a 256 "atlas-${ATLAS_VERSION}-aarch64-apple-darwin.tar.gz" > "atlas-${ATLAS_VERSION}-aarch64-apple-darwin.tar.gz.sha256"
@@ -178,6 +335,13 @@ jobs:
             dist/*.tar.gz*
             dist/*.dmg*
             dist/*.cdx.json
+
+      # Runs when an earlier step failed too. Deleting the keychain also drops it from the search list.
+      - name: Remove the signing keychain and keys
+        if: ${{ always() }}
+        run: |
+          security delete-keychain "$RUNNER_TEMP/atlas-signing.keychain-db" 2> /dev/null || true
+          rm -f "$RUNNER_TEMP/cert-in.p12" "$RUNNER_TEMP/cert.pem" "$RUNNER_TEMP/cert.p12" "$RUNNER_TEMP/notary.p8" "$RUNNER_TEMP/atlas-cli.zip"
 
   # Linux x86_64: the CLI tarball, and Atlas Desktop as AppImage (what `atlas desktop` installs),
   # .deb and .rpm (both also carry the CLI as /usr/bin/atlas). Built on the oldest supported

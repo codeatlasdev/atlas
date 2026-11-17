@@ -26,6 +26,12 @@ describe("release.yml verifies the Windows and macOS artifacts before publish", 
 		expect(release.jobs.publish.if).toContain(`needs.${job}.result == 'success'`);
 	});
 
+	test("verify-windows is not skipped with the optional SignPath jobs behind build-windows", () => {
+		// A job without an `if` is skipped when any job upstream was skipped, and an unsigned build skips the signing jobs.
+		expect(release.jobs["verify-windows"].if).toContain("!cancelled()");
+		expect(release.jobs["verify-windows"].if).toContain("needs.build-windows.result == 'success'");
+	});
+
 	test("the jobs run on the platform they verify, and open the app before anything is published", () => {
 		expect(release.jobs["verify-windows"]["runs-on"]).toMatch(/^windows-/);
 		expect(release.jobs["verify-macos"]["runs-on"]).toMatch(/^macos-/);

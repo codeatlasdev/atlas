@@ -787,6 +787,9 @@ jobs:
   verify-windows:
     name: Verify Windows
     needs: build-windows
+    # Explicit for the reason publish's `if` gives: build-windows sits behind the optional SignPath jobs, and without an
+    # `if` a skipped job anywhere upstream skips this one too (the first build-only run of this job was skipped that way).
+    if: ${{ !cancelled() && needs.build-windows.result == 'success' }}
     runs-on: windows-latest
     timeout-minutes: 30
     env:

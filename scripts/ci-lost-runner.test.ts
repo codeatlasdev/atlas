@@ -1,10 +1,10 @@
-// The rules of a rerun for a lost runner (decideRerun, a table), and scripts/ci-rerun-lost.ts end to end against a
-// fake `gh` (reads, and the one POST it may make).
+// The rules of a rerun for a job that ended by GitHub's infrastructure (a lost runner, no runner available;
+// decideRerun, a table), and scripts/ci-rerun-lost.ts end to end against a fake `gh` (reads, and the one POST it may make).
 import { describe, expect, test } from "bun:test";
 import { existsSync, mkdtempSync, readFileSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
-import { type Job, type RerunFacts, classify, decideRerun, lostOnly } from "./ci-lost-runner";
+import { type Job, type RerunFacts, classify, decideRerun, infraOnly, infraWords } from "./ci-lost-runner";
 
 const LOST_MSG =
   "The hosted runner lost communication with the server. Anything in your workflow that terminates the runner process, starves it for CPU/Memory, or blocks its network access can cause this error.";
@@ -12,24 +12,33 @@ const win = (o: Partial<Job> = {}): Job => ({ name: "Rust (Windows, full workspa
 const aggregate: Job = { name: "CI", conclusion: "failure", failures: [] };
 const green: Job = { name: "Rust (Linux)", conclusion: "success", failures: [] };
 const realFailure: Job = { name: "Rust (macOS)", conclusion: "failure", failures: ["Process completed with exit code 100."] };
+// Seen on #547 (run 44121673101): macOS arm64 capacity. The job ends `cancelled`, with this one failure annotation.
+const NOT_ACQUIRED_MSG = "The job was not acquired by Runner of type hosted even after multiple attempts";
+const mac = (o: Partial<Job> = {}): Job => ({ name: "Rust (macOS)", conclusion: "cancelled", failures: [NOT_ACQUIRED_MSG], ...o });
 const base: RerunFacts = { conclusion: "failure", attempt: 1, headIsTip: true, jobs: [green, win(), aggregate] };
 
 describe("decideRerun", () => {
   test.each<[string, Partial<RerunFacts>, boolean, RegExp]>([
-    ["only a lost runner (the aggregate job is red too) -> rerun", {}, true, /lost runner: Rust \(Windows/],
-    ["lost runner on attempt 2 -> rerun again", { attempt: 2 }, true, /lost runner/],
+    ["only a lost runner (the aggregate job is red too) -> rerun", {}, true, /runner lost: Rust \(Windows/],
+    ["lost runner on attempt 2 -> rerun again", { attempt: 2 }, true, /runner lost/],
     ["two lost runners -> rerun", { jobs: [win(), win({ name: "Installer (Windows)" }), aggregate] }, true, /Rust \(Windows.*Installer/],
-    ["a job that timed out with the lost annotation -> rerun", { jobs: [win({ conclusion: "timed_out" }), aggregate] }, true, /lost runner/],
-    ["lost runner and a real failure -> none", { jobs: [win(), realFailure, aggregate] }, false, /real failure.*Rust \(macOS\)/],
+    ["a job that timed out with the lost annotation -> rerun", { jobs: [win({ conclusion: "timed_out" }), aggregate] }, true, /runner lost/],
+    ["only 'not acquired' (the job ended cancelled) -> rerun", { jobs: [mac(), green, aggregate] }, true, /no runner was available: Rust \(macOS\)/],
+    ["'not acquired' on a job that ended failure -> rerun", { jobs: [mac({ conclusion: "failure" }), aggregate] }, true, /no runner was available/],
+    ["lost + not acquired -> rerun, both named", { jobs: [win(), mac(), aggregate] }, true, /runner lost and no runner was available: Rust \(Windows.*Rust \(macOS\)/],
+    ["not acquired + a real failure -> none", { jobs: [mac(), win({ name: "Rust (Linux)", failures: ["Process completed with exit code 1."] }), aggregate] }, false, /real failure.*Rust \(Linux\)/],
+    ["lost + a real failure -> none", { jobs: [win(), realFailure, aggregate] }, false, /real failure.*Rust \(macOS\)/],
     ["a real failure only -> none", { jobs: [realFailure, aggregate] }, false, /real failure/],
     ["attempt 3 -> none", { attempt: 3 }, false, /attempt 3 of 3/],
+    ["attempt 3 with 'not acquired' -> none", { attempt: 3, jobs: [mac(), aggregate] }, false, /attempt 3 of 3/],
     ["the run was cancelled -> none", { conclusion: "cancelled" }, false, /concluded cancelled/],
     ["the run succeeded -> none", { conclusion: "success", jobs: [green] }, false, /concluded success/],
-    ["a cancelled job next to the lost one -> none", { jobs: [win(), { name: "Site build", conclusion: "cancelled", failures: [] }, aggregate] }, false, /cancelled: Site build/],
+    ["a job cancelled by hand (no annotation) next to the lost one -> none", { jobs: [win(), { name: "Site build", conclusion: "cancelled", failures: [] }, aggregate] }, false, /cancelled: Site build/],
+    ["a job cancelled with an unrelated annotation -> none", { jobs: [mac({ failures: ["The operation was canceled."] }), aggregate] }, false, /cancelled: Rust \(macOS\)/],
     ["a newer push superseded the run -> none", { headIsTip: false }, false, /no longer the tip/],
-    ["red with no job that lost its runner (a bare failure) -> none", { jobs: [{ name: "Site build", conclusion: "failure", failures: [] }, aggregate] }, false, /real failure/],
-    ["only the aggregate job is red -> none", { jobs: [green, aggregate] }, false, /no job failed by a lost runner/],
-    ["the lost annotation next to a real failure message in the same job -> none", { jobs: [win({ failures: [LOST_MSG, "Process completed with exit code 1."] }), aggregate] }, false, /real failure/],
+    ["red with no infrastructure annotation (a bare failure) -> none", { jobs: [{ name: "Site build", conclusion: "failure", failures: [] }, aggregate] }, false, /real failure/],
+    ["only the aggregate job is red -> none", { jobs: [green, aggregate] }, false, /no job ended by infrastructure/],
+    ["an infrastructure annotation next to a real failure message in the same job -> none", { jobs: [win({ failures: [LOST_MSG, "Process completed with exit code 1."] }), aggregate] }, false, /real failure/],
   ])("%s", (_n, patch, rerun, why) => {
     const v = decideRerun({ ...base, ...patch });
     expect(v.rerun).toBe(rerun);
@@ -37,18 +46,23 @@ describe("decideRerun", () => {
   });
 });
 
-test("classify skips the aggregate job and jobs that did not fail", () => {
-  expect(classify([green, win(), realFailure, aggregate, { name: "Mobile", conclusion: null, failures: [] }])).toEqual({
-    lost: ["Rust (Windows, full workspace)"],
+test("classify skips the aggregate job and jobs that did not end badly, and lists the kinds seen", () => {
+  expect(classify([green, win(), mac({ name: "Rust (macOS)" }), realFailure, aggregate, { name: "Mobile", conclusion: null, failures: [] }])).toEqual({
+    infra: ["Rust (Windows, full workspace)", "Rust (macOS)"],
+    kinds: ["lost", "unavailable"],
     real: ["Rust (macOS)"],
     cancelled: [],
   });
 });
 
-test("lostOnly is the same rule without attempt or head: attempt 3 is still 'only a lost runner'", () => {
-  expect(lostOnly([green, win(), aggregate])).toBe(true);
-  expect(lostOnly([win(), realFailure])).toBe(false);
-  expect(lostOnly([green, aggregate])).toBe(false);
+test("infraOnly is the same rule without attempt or head: attempt 3 is still 'only infrastructure'", () => {
+  expect(infraOnly([green, win(), aggregate])).toEqual(["lost"]);
+  expect(infraOnly([mac(), aggregate])).toEqual(["unavailable"]);
+  expect(infraOnly([win(), mac(), aggregate])).toEqual(["lost", "unavailable"]);
+  expect(infraOnly([win(), realFailure])).toBeNull();
+  expect(infraOnly([green, aggregate])).toBeNull();
+  expect(infraWords(["lost"])).toBe("runner lost");
+  expect(infraWords(["unavailable"])).toBe("no runner was available");
 });
 
 // The CLI against a fake gh: jobs 11 (the lost Windows job), 12 (green), 13 (the aggregate), 14 (a real failure).
@@ -74,6 +88,7 @@ const jobs = (...ids: number[]) =>
     { id: 12, ...green },
     { id: 13, ...aggregate },
     { id: 14, ...realFailure },
+    { id: 15, ...mac({ name: "Rust (macOS arm64)" }) },
   ].filter((j) => ids.includes(j.id));
 
 function cli(w: { tip?: string; jobs: object[] }, env: Record<string, string> = {}, args: string[] = []) {
@@ -102,13 +117,25 @@ describe("ci-rerun-lost.ts", () => {
   test("only a lost runner: POSTs rerun-failed-jobs for that run, once", () => {
     const r = cli({ jobs: jobs(11, 12, 13) });
     expect(r.code).toBe(0);
-    expect(r.out).toMatch(/run 4242 attempt 1: rerun: lost runner/);
+    expect(r.out).toMatch(/run 4242 attempt 1: rerun: runner lost: Rust \(Windows/);
     expect(r.calls).toEqual(["api --method POST repos/codeatlasdev/atlas/actions/runs/4242/rerun-failed-jobs"]);
+  });
+
+  test("only 'not acquired' (job ended cancelled): POSTs the rerun too", () => {
+    const r = cli({ jobs: jobs(15, 12, 13) });
+    expect(r.out).toMatch(/attempt 1: rerun: no runner was available: Rust \(macOS arm64\)/);
+    expect(r.calls).toEqual(["api --method POST repos/codeatlasdev/atlas/actions/runs/4242/rerun-failed-jobs"]);
+  });
+
+  test("'not acquired' next to a real failure: no POST", () => {
+    const r = cli({ jobs: jobs(15, 14, 13) });
+    expect(r.out).toMatch(/no rerun: a real failure, not infrastructure: Rust \(macOS\)/);
+    expect(r.calls).toEqual([]);
   });
 
   test("--dry-run says so and POSTs nothing", () => {
     const r = cli({ jobs: jobs(11, 12, 13) }, {}, ["--dry-run"]);
-    expect(r.out).toMatch(/: rerun: lost runner/);
+    expect(r.out).toMatch(/: rerun: runner lost/);
     expect(r.calls).toEqual([]);
   });
 

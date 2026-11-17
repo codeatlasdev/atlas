@@ -1,5 +1,4 @@
 use anyhow::Result;
-use chrono::{DateTime, Utc};
 use serde::{Deserialize, Serialize};
 use std::path::{Path, PathBuf};
 
@@ -14,7 +13,8 @@ pub struct InstalledSkill {
     pub name: String,
     pub version: String,
     pub description: String,
-    pub installed_at: DateTime<Utc>,
+    #[serde(with = "atlas_core::time::utc_z_serde")]
+    pub installed_at: jiff::Timestamp,
     /// Path relative to the manifest file (kept for backward compat with flat skills)
     pub file: String,
     /// All installed filenames relative to the skill's install directory.

@@ -2,7 +2,6 @@
 //! that writes them into an agent skills directory.
 
 use anyhow::{Context, Result, bail};
-use chrono::Utc;
 use std::path::Path;
 
 use crate::manifest::{InstalledSkill, SkillsManifest};
@@ -115,7 +114,7 @@ impl EmbeddedSkill {
             name: self.name.clone(),
             version: self.version.clone(),
             description: self.description.clone(),
-            installed_at: Utc::now(),
+            installed_at: jiff::Timestamp::now(),
             file: format!("{}/SKILL.md", self.name),
             files: self.files.iter().map(|f| f.path.to_string()).collect(),
         }

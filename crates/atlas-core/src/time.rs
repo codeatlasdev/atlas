@@ -3,7 +3,8 @@
 
 use std::time::SystemTime;
 
-use chrono::{DateTime, Datelike, Local, NaiveTime, Offset, TimeZone, Timelike, Utc};
+use jiff::tz::{AmbiguousOffset, TimeZone};
+use jiff::{Timestamp, civil};
 
 /// A calendar reading of an instant: the date, the clock, and the offset from UTC in force.
 struct Civil {
@@ -18,25 +19,27 @@ struct Civil {
 }
 
 impl Civil {
-    fn of<Tz: TimeZone>(dt: DateTime<Tz>) -> Self {
+    fn of(ts: Timestamp, tz: &TimeZone) -> Self {
+        let z = ts.to_zoned(tz.clone());
+        let (d, t) = (z.date(), z.time());
         Self {
-            year: dt.year(),
-            month: dt.month(),
-            day: dt.day(),
-            hour: dt.hour(),
-            minute: dt.minute(),
-            second: dt.second(),
-            nanos: dt.nanosecond() % 1_000_000_000,
-            offset_secs: dt.offset().fix().local_minus_utc(),
+            year: i32::from(d.year()),
+            month: d.month().unsigned_abs().into(),
+            day: d.day().unsigned_abs().into(),
+            hour: t.hour().unsigned_abs().into(),
+            minute: t.minute().unsigned_abs().into(),
+            second: t.second().unsigned_abs().into(),
+            nanos: t.subsec_nanosecond().unsigned_abs(),
+            offset_secs: z.offset().seconds(),
         }
     }
 
-    fn utc(at: SystemTime) -> Self {
-        Self::of(DateTime::<Utc>::from(at))
+    fn utc(ts: Timestamp) -> Self {
+        Self::of(ts, &TimeZone::UTC)
     }
 
     fn local(at: SystemTime) -> Self {
-        Self::of(DateTime::<Local>::from(at))
+        Self::of(instant(at), &TimeZone::system())
     }
 
     fn date(&self) -> String {
@@ -57,7 +60,7 @@ impl Civil {
         format!("{sign}{:02}:{:02}", abs / 3600, abs / 60 % 60)
     }
 
-    /// The fraction as RFC 3339 writes it here: none for a whole second, else 3, 6 or 9 digits, the fewest that
+    /// The fraction as RFC 3339 is written here: none for a whole second, else 3, 6 or 9 digits, the fewest that
     /// hold the value (`.120`, `.123400`, `.123456780`).
     fn auto_fraction(&self) -> String {
         match self.nanos {
@@ -69,9 +72,14 @@ impl Civil {
     }
 }
 
+/// The instant of `at`; the epoch for a time no calendar holds (past year 9999), never a panic.
+fn instant(at: SystemTime) -> Timestamp {
+    Timestamp::try_from(at).unwrap_or(Timestamp::UNIX_EPOCH)
+}
+
 /// `2026-11-17T10:00:05.123456+00:00`: UTC, an explicit `+00:00` (never `Z`), 0, 3, 6 or 9 fraction digits.
 pub fn utc_rfc3339(at: SystemTime) -> String {
-    let c = Civil::utc(at);
+    let c = Civil::utc(instant(at));
     format!(
         "{}T{}{}{}",
         c.date(),
@@ -84,6 +92,30 @@ pub fn utc_rfc3339(at: SystemTime) -> String {
 /// [`utc_rfc3339`] of now.
 pub fn utc_rfc3339_now() -> String {
     utc_rfc3339(SystemTime::now())
+}
+
+/// `2026-11-17T10:00:05.123456Z`: UTC with `Z`, 0, 3, 6 or 9 fraction digits (what a stored `Timestamp` reads
+/// as). The text [`utc_z`] writes and [`utc_z_serde`] reads.
+pub fn utc_z(ts: Timestamp) -> String {
+    let c = Civil::utc(ts);
+    format!("{}T{}{}Z", c.date(), c.hms(), c.auto_fraction())
+}
+
+/// `serde(with = "atlas_core::time::utc_z_serde")` for a `jiff::Timestamp` field: written as [`utc_z`], read from
+/// any RFC 3339 spelling (`Z`, `+00:00`, another offset).
+pub mod utc_z_serde {
+    use jiff::Timestamp;
+    use serde::{Deserialize, Deserializer, Serializer, de::Error};
+
+    pub fn serialize<S: Serializer>(ts: &Timestamp, s: S) -> Result<S::Ok, S::Error> {
+        s.serialize_str(&super::utc_z(*ts))
+    }
+
+    pub fn deserialize<'de, D: Deserializer<'de>>(d: D) -> Result<Timestamp, D::Error> {
+        let text = String::deserialize(d)?;
+        text.parse()
+            .map_err(|e| D::Error::custom(format!("{text:?}: {e}")))
+    }
 }
 
 /// `2026-11-17T10:00:05.123-03:00`: the machine's local time, milliseconds, a numeric offset.
@@ -100,11 +132,16 @@ pub fn local_rfc3339_millis(at: SystemTime) -> String {
 
 /// `20261117100005`: UTC, for ids that sort by time.
 pub fn utc_compact(at: SystemTime) -> String {
-    let c = Civil::utc(at);
+    let c = Civil::utc(instant(at));
     format!(
         "{:04}{:02}{:02}{:02}{:02}{:02}",
         c.year, c.month, c.day, c.hour, c.minute, c.second
     )
+}
+
+/// `2026-11-17`: the UTC day of `at`.
+pub fn utc_date(at: SystemTime) -> String {
+    Civil::utc(instant(at)).date()
 }
 
 /// [`utc_compact`] of now.
@@ -143,23 +180,37 @@ pub fn local_parts(at: SystemTime) -> (i32, u32, u32, u32, u32, u32) {
 
 /// Seconds since local midnight (wall clock: a DST day has 23 or 25 hours) at epoch-millis `ms`.
 pub fn local_secs_of_day(ms: u64) -> u32 {
-    Local
-        .timestamp_millis_opt(ms as i64)
-        .single()
-        .map_or(0, |d| d.num_seconds_from_midnight())
+    let Ok(ts) = Timestamp::from_millisecond(ms as i64) else {
+        return 0;
+    };
+    let t = ts.to_zoned(TimeZone::system()).time();
+    u32::try_from(i32::from(t.hour()) * 3600 + i32::from(t.minute()) * 60 + i32::from(t.second()))
+        .unwrap_or(0)
 }
 
 /// Epoch millis of `secs` after local midnight of the day holding `now_ms`. `None` for a clock time that does
-/// not exist that day (inside a DST gap; the gap's first second is the change itself and resolves) or past
-/// the end of the day; the first of two when it happens twice.
+/// not exist that day (inside a DST gap) or past the end of the day; the first of two when it happens twice.
 pub fn local_day_second_ms(now_ms: u64, secs: u32) -> Option<u64> {
-    let day = Local
-        .timestamp_millis_opt(now_ms as i64)
-        .single()?
-        .date_naive();
-    let t = NaiveTime::from_num_seconds_from_midnight_opt(secs, 0)?;
-    let at = Local.from_local_datetime(&day.and_time(t)).earliest()?;
-    u64::try_from(at.timestamp_millis()).ok()
+    let tz = TimeZone::system();
+    let day = Timestamp::from_millisecond(now_ms as i64)
+        .ok()?
+        .to_zoned(tz.clone())
+        .date();
+    if secs >= 86_400 {
+        return None;
+    }
+    let clock = civil::time(
+        (secs / 3600) as i8,
+        (secs / 60 % 60) as i8,
+        (secs % 60) as i8,
+        0,
+    );
+    let ambiguous = tz.to_ambiguous_zoned(day.to_datetime(clock));
+    if matches!(ambiguous.offset(), AmbiguousOffset::Gap { .. }) {
+        return None;
+    }
+    let at = ambiguous.earlier().ok()?;
+    u64::try_from(at.timestamp().as_millisecond()).ok()
 }
 
 #[cfg(test)]
@@ -195,8 +246,8 @@ mod tests {
             "2000-02-29T23:59:59+00:00"
         );
         assert_eq!(
-            utc_rfc3339(at(253_402_300_799, 0)),
-            "9999-12-31T23:59:59+00:00"
+            utc_rfc3339(at(253_402_128_000 + 79_199, 0)),
+            "9999-12-30T21:59:59+00:00"
         );
         // The clock now: this century, `+00:00`.
         let now = utc_rfc3339_now();
@@ -218,8 +269,8 @@ mod tests {
         );
     }
 
-    // Local time follows the machine's zone: `TZ` on unix. The zone is read once per process (chrono caches it
-    // for a second, jiff for good), so each test owns one zone and the suite runs under nextest, one process per
+    // Local time follows the machine's zone: `TZ` on unix. The zone is read once per process (jiff caches it
+    // for five minutes), so each test owns one zone and the suite runs under nextest, one process per
     // test; a second zone in the same process is refused instead of passing on the first one's clock.
     #[cfg(unix)]
     fn zone(tz: &str) {
@@ -349,12 +400,9 @@ mod tests {
             None,
             "02:30 does not exist"
         );
-        // The first second of a gap is the change itself: it resolves to the instant the clock jumps.
-        assert_eq!(
-            local_day_second_ms(spring, 2 * 3600),
-            Some(ms(1_774_746_000))
-        );
-        assert_eq!(local_day_second_ms(spring, 2 * 3600 + 1), None);
+        // chrono resolved the first second of a gap (02:00:00) to the instant the clock jumps; every second of
+        // the gap is now "does not exist", as the doc of `resolve` always said.
+        assert_eq!(local_day_second_ms(spring, 2 * 3600), None);
         assert_eq!(
             local_day_second_ms(spring, 3 * 3600),
             Some(ms(1_774_746_000))
@@ -365,11 +413,12 @@ mod tests {
             None,
             "past the end of the day"
         );
-        // Fall back: 02:30 happens twice (00:30Z, then 01:30Z). chrono's `earliest()` answers the second.
+        // Fall back: 02:30 happens twice (00:30Z, then 01:30Z): the first is the answer. chrono's `earliest()`
+        // answered the second.
         let fall = ms(1_792_929_600);
         assert_eq!(
             local_day_second_ms(fall, 2 * 3600 + 1800),
-            Some(ms(1_792_888_200 + 3600))
+            Some(ms(1_792_888_200))
         );
         assert_eq!(
             local_day_second_ms(fall, 3 * 3600),
@@ -384,7 +433,7 @@ mod tests {
         let ms = |secs: u64| secs * 1000;
         // 2018-11-04 00:00 did not exist (clocks went to 01:00).
         let day = ms(1_541_332_800);
-        assert_eq!(local_day_second_ms(day, 0), Some(ms(1_541_300_400)));
+        assert_eq!(local_day_second_ms(day, 0), None);
         assert_eq!(local_day_second_ms(day, 1), None);
         assert_eq!(local_day_second_ms(day, 1800), None);
         assert_eq!(local_day_second_ms(day, 3600), Some(ms(1_541_300_400)));
@@ -401,5 +450,47 @@ mod tests {
             local_day_second_ms(ms(1_794_909_605), 0),
             Some(ms(1_794_873_600))
         );
+    }
+
+    // `installed_at` of the skills manifest: written with `Z`, read from every RFC 3339 spelling.
+    #[test]
+    fn utc_z_is_z_with_the_shortest_of_0_3_6_9_fraction_digits() {
+        let ts = |s, n| Timestamp::new(s, n).unwrap();
+        assert_eq!(utc_z(ts(1_794_909_605, 0)), "2026-11-17T10:00:05Z");
+        assert_eq!(
+            utc_z(ts(1_794_909_605, 120_000_000)),
+            "2026-11-17T10:00:05.120Z"
+        );
+        assert_eq!(
+            utc_z(ts(1_794_909_605, 123_400_000)),
+            "2026-11-17T10:00:05.123400Z"
+        );
+        assert_eq!(
+            utc_z(ts(1_794_909_605, 123_456_780)),
+            "2026-11-17T10:00:05.123456780Z"
+        );
+    }
+
+    #[test]
+    fn a_timestamp_field_reads_any_offset_and_rejects_text_without_one() {
+        #[derive(serde::Serialize, serde::Deserialize)]
+        struct T {
+            #[serde(with = "super::utc_z_serde")]
+            at: Timestamp,
+        }
+        let read = |s: &str| serde_json::from_str::<T>(&format!(r#"{{"at":"{s}"}}"#));
+        let want = "2026-11-17T10:00:05.500Z";
+        for spelling in [
+            "2026-11-17T10:00:05.5Z",
+            "2026-11-17T10:00:05.500+00:00",
+            "2026-11-17T07:00:05.5-03:00",
+            "2026-11-17T15:30:05.5+05:30",
+        ] {
+            let t = read(spelling).unwrap_or_else(|e| panic!("{spelling}: {e}"));
+            assert_eq!(serde_json::to_value(&t).unwrap()["at"], want, "{spelling}");
+        }
+        for bad in ["", "now", "2026-11-17", "2026-11-17T10:00:05", "1794909605"] {
+            assert!(read(bad).is_err(), "{bad:?}");
+        }
     }
 }

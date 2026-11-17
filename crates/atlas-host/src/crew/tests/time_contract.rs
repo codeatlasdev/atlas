@@ -65,6 +65,9 @@ fn cron_expressions_are_accepted_and_rejected_as_before() {
         "0 0 * * 5#2",
         "0 0 15W * *",
         "0 0 31 2 *",
+        // The `start/step` spelling of older builds.
+        "0/15 * * * *",
+        "5/5 * * * *",
         "@yearly",
         "@annually",
         "@monthly",
@@ -131,6 +134,8 @@ fn time_zone_names_are_accepted_and_rejected_as_before() {
         "CET",
         "Etc/GMT+3",
         "Brazil/East",
+        "europe/berlin",
+        "utc",
     ];
     let rejected = [
         "",
@@ -144,9 +149,7 @@ fn time_zone_names_are_accepted_and_rejected_as_before() {
         "../etc/passwd",
         "Europe/",
         "/Europe/Berlin",
-        // Names are case-sensitive and not trimmed.
-        "europe/berlin",
-        "utc",
+        // Names are not trimmed (chrono-tz also refused other letter cases; jiff reads them).
         " UTC",
     ];
     let mut wrong = Vec::new();
@@ -439,7 +442,9 @@ fn dst_spring_forward_and_fall_back() {
             "0 * * * *",
             "Europe/Berlin",
             "2026-10-25T00:30:00Z",
-            Some("2026-10-25T02:00:00Z"),
+            // The repeated hour: croner 2.2 answered 02:00Z (skipping 02:00 CET); an hourly job now runs every
+            // real hour, 00:00Z, 01:00Z, 02:00Z.
+            Some("2026-10-25T01:00:00Z"),
         ),
         (
             "0 * * * *",
@@ -576,4 +581,147 @@ fn due_means_the_next_fire_is_at_or_before_now() {
     };
     assert!(!due_sp("2026-11-18T11:59:59Z"));
     assert!(due_sp("2026-11-18T12:00:00Z"));
+}
+
+// croner 2.2 (chrono) answered these wrongly around a clock change: a time before `since` (a trigger created in
+// that hour fired on every 30 s tick until it passed), no answer at all, the repeated hour skipped for a job that
+// runs every hour or minute, `1W` crossing into the previous month. croner 4 (jiff) answers as below; the rows
+// that matter are checked against what a person reading the pattern would say.
+#[test]
+fn the_clock_changes_croner_2_got_wrong_are_answered_right() {
+    let table: &[(&str, Option<&str>, &str, &str)] = &[
+        // Before `since`, once an hour a year: 02:30 happened at 00:30Z and again at 01:30Z, the job ran at the first.
+        (
+            "30 2 * * *",
+            Some("Europe/Berlin"),
+            "2026-10-25T01:00:00Z",
+            "2026-10-26T01:30:00Z",
+        ),
+        (
+            "30 1 * * *",
+            Some("Europe/London"),
+            "2026-10-25T01:00:00Z",
+            "2026-10-26T01:30:00Z",
+        ),
+        (
+            "59 1 * * *",
+            Some("America/New_York"),
+            "2026-11-01T06:29:59Z",
+            "2026-11-02T06:59:00Z",
+        ),
+        // No answer, in a zone that is in the gap's hour.
+        (
+            "0 * * * *",
+            Some("Antarctica/Troll"),
+            "2026-03-29T00:30:00Z",
+            "2026-03-29T01:00:00Z",
+        ),
+        // An every-minute job runs through the repeated hour.
+        (
+            "* * * * *",
+            Some("Europe/Berlin"),
+            "2026-10-25T00:59:58Z",
+            "2026-10-25T01:00:00Z",
+        ),
+        (
+            "*/30 * * * *",
+            Some("America/New_York"),
+            "2027-11-07T05:58:59Z",
+            "2027-11-07T06:00:00Z",
+        ),
+        // `:30` in a gap hour does not exist; the next real :30 is an hour later.
+        (
+            "30 * * * *",
+            Some("Europe/Berlin"),
+            "2026-03-29T00:30:00Z",
+            "2026-03-29T01:30:00Z",
+        ),
+        // A list or a step that lands in a gap skips that slot (single hours and ranges still run at the gap's end).
+        (
+            "0 */2 * * *",
+            Some("America/New_York"),
+            "2027-03-14T06:59:01Z",
+            "2027-03-14T08:00:00Z",
+        ),
+        (
+            "0 0,12 * * *",
+            Some("America/Santiago"),
+            "2026-09-06T01:59:59Z",
+            "2026-09-06T15:00:00Z",
+        ),
+        (
+            "0 0 * * *",
+            Some("America/Santiago"),
+            "2026-09-06T01:59:59Z",
+            "2026-09-06T04:00:00Z",
+        ),
+        // `1W` is the weekday nearest the 1st inside the month: Saturday Dec 1st 2018 is Monday the 3rd.
+        (
+            "0 0 1W * *",
+            None,
+            "2018-11-04T02:59:59Z",
+            "2018-12-03T00:00:00Z",
+        ),
+    ];
+    let mut wrong = Vec::new();
+    for (cron, tz, since, want) in table {
+        let got = next(cron, *tz, since);
+        if got.as_deref() != Some(*want) {
+            wrong.push(format!(
+                "{cron:?} {tz:?} since {since}: want {want}, got {got:?}"
+            ));
+        }
+    }
+    assert!(wrong.is_empty(), "{wrong:#?}");
+}
+
+// The invariant behind the table above: the next fire is never at or before `since`, so a job that just ran
+// cannot be due again on the next tick (the same table, every zone and cron of the clock-change tests).
+#[test]
+fn the_next_fire_is_always_after_since() {
+    let zones = [
+        "Europe/Berlin",
+        "Europe/London",
+        "America/New_York",
+        "Australia/Lord_Howe",
+        "America/Santiago",
+        "Antarctica/Troll",
+    ];
+    let crons = [
+        "* * * * *",
+        "*/7 * * * *",
+        "0 * * * *",
+        "30 * * * *",
+        "30 2 * * *",
+        "30 1 * * *",
+        "0 0 * * *",
+        "0 */2 * * *",
+        "@daily",
+        "@hourly",
+    ];
+    let anchors = [
+        "2026-03-29T00:30:00Z",
+        "2026-10-25T00:30:00Z",
+        "2026-03-08T06:30:00Z",
+        "2026-11-01T05:30:00Z",
+        "2026-10-03T15:00:00Z",
+        "2026-09-06T03:30:00Z",
+    ];
+    let mut wrong = Vec::new();
+    for z in zones {
+        for c in crons {
+            for a in anchors {
+                for off in [0u64, 1, 59, 1799, 1800, 3599, 3600, 5400, 7199, 86_399] {
+                    let since = at(a) + off;
+                    let kind = TriggerKind::Schedule { cron: c.into() };
+                    if let Some(n) = compute_next_fire(&kind, Some(since), Some(z), 0)
+                        && n <= since
+                    {
+                        wrong.push(format!("{c:?} {z} since {}: next {}", iso(since), iso(n)));
+                    }
+                }
+            }
+        }
+    }
+    assert!(wrong.is_empty(), "{wrong:#?}");
 }

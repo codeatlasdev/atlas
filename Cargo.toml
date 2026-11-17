@@ -44,8 +44,10 @@ clap = { version = "4.6", features = ["derive", "string"] }
 tracing = "0.1"
 thiserror = "2.0"
 anyhow = "1.0"
-chrono = { version = "0.4", features = ["serde"] }
-chrono-tz = { version = "0.10", features = ["serde"] }
+# Dates, times and time zones (replaces chrono + chrono-tz, unmaintained: RUSTSEC-2026-0543/0555, #540). Time zones
+# are always bundled, like chrono-tz did, so a crew server without tzdata still knows `Europe/Berlin`. croner 4 reads
+# jiff 0.2 (its `jiff` feature), so this stays on 0.2 until croner moves to jiff 1.
+jiff = { version = "0.2", features = ["tzdb-bundle-always"] }
 semver = "1.0"
 dirs = "7"
 tempfile = "3.27"

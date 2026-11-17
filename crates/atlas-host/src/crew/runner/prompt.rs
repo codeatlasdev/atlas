@@ -174,13 +174,13 @@ fn tz_line(tz: Option<&str>, now_s: i64) -> String {
     let Some(tz_str) = tz else {
         return String::new();
     };
-    if let Ok(zone) = tz_str.parse::<chrono_tz::Tz>() {
-        let local = chrono::DateTime::from_timestamp(now_s, 0)
+    if let Ok(zone) = jiff::tz::TimeZone::get(tz_str) {
+        let local = jiff::Timestamp::from_second(now_s)
             .unwrap_or_default()
-            .with_timezone(&zone);
+            .to_zoned(zone);
         format!(
             "The user's timezone is {tz_str}. Current local time there: {}.\n",
-            local.format("%Y-%m-%d %H:%M %Z")
+            local.strftime("%Y-%m-%d %H:%M %Z")
         )
     } else {
         format!("The user's timezone is {tz_str}.\n")

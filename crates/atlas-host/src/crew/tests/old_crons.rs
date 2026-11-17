@@ -64,7 +64,10 @@ fn by_id<'a>(list: &'a Value, id: &str) -> &'a Value {
         .unwrap()
 }
 
-fn stored_crons(dir: &Path, id: &str) -> (Vec<(String, String)>, Vec<(String, String)>) {
+/// `(id, cron)` of every routine and of every trigger, as the store has them.
+type Crons = (Vec<(String, String)>, Vec<(String, String)>);
+
+fn stored_crons(dir: &Path, id: &str) -> Crons {
     let c = CrewStore::new(dir).load_crewmate(id).unwrap();
     let routines = c
         .routines

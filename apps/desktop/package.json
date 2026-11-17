@@ -9,7 +9,7 @@
     "format": "prettier --write src",
     "lint": "prettier --check src",
     "check": "bun run icons && svelte-kit sync && svelte-check --tsconfig ./tsconfig.json && prettier --check src && bun run test",
-    "test": "bun test --conditions browser src",
+    "test": "bun test --conditions browser --parallel src",
     "icons": "bun scripts/gen-icons.ts"
   },
   "devDependencies": {

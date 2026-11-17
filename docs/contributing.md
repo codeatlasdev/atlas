@@ -58,7 +58,7 @@ Terminals use xterm.js on Windows; agent instances, Atlas Lab and the mirror are
 bun run check
 ```
 
-`bun run check` is the local gate. CI runs the same checks plus the site build and the duplication report. It chains, in order:
+`bun run check` is the local gate: every check CI's required jobs run that can run on one machine. The list lives in one place, `scripts/checks/map.ts` (areas with path globs, and the checks of each area); `bun run check` runs all of it, `bun run check:changed` the areas your change touches, and CI's plan job (`scripts/ci-plan.ts`) turns the same areas into the `area=true|false` outputs that gate the jobs of `ci.yml`. `bun run check --json` prints the list, and the checks only CI can run (the Linux desktop launch, the root tests, the arm64 build, the Windows installer) with the reason. In order:
 
 1. `cargo fmt --all -- --check`
 2. `cargo clippy --workspace --all-targets --locked -- -D warnings`
@@ -66,12 +66,18 @@ bun run check
 4. `cargo deny check` (licenses, advisories, duplicate and banned crates)
 5. `scripts/check-skills.sh` (validates `skills/*/SKILL.md` against the Agent Skills spec)
 6. `scripts/lint-workflows.sh` (actionlint and zizmor over `.github/`; also `bun run lint:workflows`)
-7. `bun run desktop:check` (svelte-check, prettier and the frontend tests, `bun run test` in `apps/desktop`: `bun test --conditions browser src`; a bare `bun test` there stops at once, since without the `browser` condition Svelte resolves its server build and no component can mount). `bun run test` at the root runs those tests plus `release:test`.
+7. `bun run desktop:check` (svelte-check, prettier and the frontend tests, `bun run test` in `apps/desktop`: `bun test --conditions browser --parallel src`; a bare `bun test` there stops at once, since without the `browser` condition Svelte resolves its server build and no component can mount). `--parallel` runs every test file in a fresh global and module registry (it implies `--isolate`): module mocks such as `test/uiKit.ts` and stubbed globals are process-wide, so without it a file's mocks leaked into whichever file ran after it and tests passed or failed with the file order. `bun run test` at the root runs those tests plus `release:test`.
 8. `scripts/mobile-check.sh` (the native crate's fmt and clippy, then Flutter analyze and test for `apps/mobile`; skipped with a notice when Flutter is not installed)
 9. `scripts/push-relay-check.sh` (the Go push relay in `services/push-relay`; skipped with a notice when Go is not installed)
 10. `bun run release:test` (the repo scripts' own tests, the release manifest tests in Python, the bootstrap channel vectors and the label checks); CI runs it on Linux and Windows in the "Repo scripts" job
+11. `bun run dup` (jscpd, at most 1.5% duplication)
+12. `bun run site:check` and `bun run site:build` (astro check, type-check and build of `site/`, which also renders `docs/`)
 
 Steps 5, 6, 8 and 9 run through `bun scripts/sh.ts`, so they use Git Bash on Windows (see [Windows](#windows)).
+
+**Adding a check or teaching it a path.** Edit `scripts/checks/map.ts` only: a check goes under its area with the `ci:` jobs that run it; a path goes into the globs of the area it affects. A path no area claims runs every check (an unknown path never skips one), so a new top-level directory costs a full run until it is mapped. `scripts/checks/map.test.ts` fails, naming the line to add, when `ci.yml` gains a job, a gated area or a check command the map does not list, or when the map lists one CI does not run. Docs-only changes (top-level `*.md`, `LICENSE*`, assets, issue templates) skip everything; `docs/` still rebuilds the site.
+
+**The diff base.** `check:changed` and the CI plan job share one resolver, `scripts/lib/base.ts`: `--base <ref>` (or `ATLAS_BASE`) if given, else in CI the pull request's merge-ref first parent (the main tip GitHub merged with, not the base sha the event recorded) or the commit a push replaced, else locally the merge base with `origin/main` (then `main`). Committed, staged, unstaged and untracked changes all count. No usable base (`workflow_dispatch`, a new branch, shallow history) runs everything: "no base" never means "nothing changed". `git fetch origin main` first when checking locally; a stale `origin/main` makes main's newer files look like yours. Other tools that judge a change against a base (the i18n ratchets) import `resolveBase` from there.
 
 Run it on its own and read the exit code before you push. A pull request should pass it.
 
@@ -87,6 +93,7 @@ Every command is a root `package.json` script, so `bun run <name>` from the repo
 | `bun run fmt` | `cargo fmt` and prettier for the desktop frontend |
 | `bun run dup` | jscpd duplication over Rust, TypeScript, Svelte, Astro and Dart (the phone app's `lib/`, generated bindings left out); keep it at or below 1.5% (config: `.jscpd.json`) |
 | `bun run lint:workflows` | actionlint and zizmor over `.github/` (also part of `bun run check`) |
+| `bun run pr:merge <pr> [--subject s] [--dry-run] [--json]` | maintainer squash-merge: refuses a stale, red or mis-titled PR, writes `Closes #N` from the PR's linked issues (`CONTRIBUTING.md#pull-request-flow-and-who-merges`) |
 | `bun run desktop:dev` / `desktop:build` / `desktop:build:app` / `desktop:check` / `desktop:link` | run the app with hot reload, build the bundle, build a debug `.app` only, check the frontend, link the debug bundle |
 | `bun run mobile:check` | `scripts/mobile-check.sh` — Flutter analyze and test for `apps/mobile` (also part of `bun run check`; skipped when Flutter is absent) |
 | `bun run mobile:lab` | validate a branch on your phone beside your real Atlas: a shadow hostd plus the Atlas Dev app, never touching your install (see [Atlas Mobile](mobile.md#lab-lane-validate-a-branch-without-touching-your-install)) |
@@ -100,6 +107,8 @@ Every command is a root `package.json` script, so `bun run <name>` from the repo
 | `cargo test -p atlas-cli --test mcp` | the MCP integration suite (real binary, live headless run; needs `python3`) |
 | `cargo test -p atlas-tui --release -- --ignored --nocapture bench_one_million` | the log pipeline benchmark |
 | `cargo test -p atlas-term --release -- --ignored --nocapture screen_bench` | the terminal renderer benchmark |
+
+Tests listen on loopback only (`127.0.0.1`, `[::1]`), never on `0.0.0.0` or `[::]`: with the application firewall on, macOS asks "Do you want the application … to accept incoming network connections?" for every new test binary that listens on the network, and each build is a new binary. The Atlas Mobile tests set `ServeOpts::mobile_loopback` (`ATLAS_MOBILE_LOOPBACK=1` for a spawned `atlas hostd`) and bind their phones with `mobile::loopback_only`; they assert the bound sockets are loopback.
 
 ### Tests that need root (Linux only)
 
@@ -150,9 +159,9 @@ Debug builds also expose the live stores as `window.__atlas` (`ws`, `store`, `ag
 
 The repo has its own `atlas.yaml` (ports 13450-13459). `atlas dev` gives you the Lab (`l` opens http://localhost:13450) and the docs site (`w`, port 13451), both started on demand, plus actions for the gate (`c`), format (`F`), desktop tests (`d`), the debug app build (`b`), an agent instance (`A`), the flicker sweep (`x`), the selection and gesture benches (`B`, `H`), the dev icons (`I`) and a release dry run (`Y`). Agents reach the same things through MCP (`atlas_start_service lab`, `atlas_run_action c`, `atlas_logs_search`), so nobody has to remember which script does what.
 
-CI does the same per job: `scripts/ci-paths.sh` maps the changed paths to areas, so a commit that only touches markdown runs no Rust, mobile or frontend job (`docs/` still rebuilds the site), while any path it does not know runs everything.
+CI does the same per job: the plan job maps the changed paths to areas with `scripts/checks/map.ts` (see [The gate](#the-gate)), so a commit that only touches top-level markdown runs no job (`docs/` still rebuilds the site), a change under `.github/workflows` or `.github/actions` reruns every job, and any path the map does not know runs everything.
 
-While editing, `bun run check:changed` (action `u`) runs only what your changes can affect: the changed crates and every crate that depends on them, plus the desktop, mobile, scripts, skills or workflow checks their paths touch (`--base <ref>`, default `origin/main`; `--dry-run` lists the commands). `bun scripts/check-changed.ts --json` prints the same plan as JSON (changed files on stdin, nothing runs): it is the `affected:` plugin of this repo's `atlas.yaml`, so agents get it through the MCP tool `atlas_affected`. `bun run check` is still the gate before a push.
+While editing, `bun run check:changed` (action `u`) runs only what your changes can affect, from the same map as the gate: the changed crates and every crate that depends on them, plus the desktop, mobile, scripts, skills, site, duplication or workflow checks their paths touch (`--base <ref>`, default the merge base with `origin/main`). `--dry-run` lists the commands and why each runs without running them; `--json` prints the plan as JSON (`bun run check:changed --dry-run --json`): the base, the changed files, which areas are on and why, the commands, and the checks only CI can run. `bun scripts/check-changed.ts --json --stdin` reads the changed files from stdin instead of git: it is the `affected:` plugin of this repo's `atlas.yaml`, so agents get the plan through the MCP tool `atlas_affected` (`tasks`, `tests`, `routes` and `builds` are its contract). `bun run check` is still the gate before a push.
 
 **Windows lint from Linux or macOS.** With [`cargo-xwin`](https://github.com/rust-cross/cargo-xwin) installed, `check:changed` also runs clippy for `x86_64-pc-windows-msvc` on the same crates (in `target/xwin`, so the host build cache stays), catching `cfg(windows)` breaks and code that is dead only on Windows before CI does (#326 shipped one). Set up once: Arch `sudo pacman -S --needed clang lld`, Debian/Ubuntu `sudo apt install clang lld`, Fedora `sudo dnf install clang lld`, then `cargo install cargo-xwin --locked` and `rustup target add x86_64-pc-windows-msvc`. The first run downloads the MSVC CRT and Windows SDK (Microsoft's license applies). `--no-windows` skips it; without cargo-xwin the loop says so and goes on.
 
@@ -228,6 +237,16 @@ See [Architecture](architecture.md) for the crates and how the processes talk to
 - **Commits.** Short imperative subject, conventional prefixes (`feat:`, `fix:`, `docs:`, `chore:`) as in the history. Explain *why* in the body when it is not obvious.
 - **Dependencies.** Prefer the standard library and what is already in the tree. A new crate or package needs a reason in the pull request; `cargo deny check` must pass.
 
+### Adding a built-in coding agent
+
+The agents Atlas launches (omp, Claude Code, Codex, OpenCode) are listed once, in `crates/atlas-core/data/agents.json`: id, label, binary, the `atlas setup <setup>` name that wires its hooks, launch and resume flags, and what it can do (`one_shot`: how it answers one prompt with no tools, which AI commit messages need, `null` when none is verified; `sessions_dir`; `can_ask`; the vendor `install` line; the `key_env` of its API key). Everything else reads that file:
+
+- Rust: `atlas_core::agents::all()` / `get(id)` (CLI, hostd, Atlas Desktop).
+- Atlas Desktop frontend: `BUILTIN_AGENTS` in `apps/desktop/src/lib/agentRegistry.ts` imports the same file.
+- Atlas Mobile: `apps/mobile/lib/core/protocol/agent_registry_data.dart` is generated by `bun scripts/gen-agents-dart.ts`; `bun test scripts` fails when it is stale, and `bun scripts/gen-agents-dart.ts --check --json` says so for a script.
+
+A new agent is one entry there, then the generator, then what is genuinely per-agent: a logo (`agentLogos.ts`, `agent_logo.dart`), an `atlas setup` harness, a sign-in probe (`crew/engine_login.rs`), the check script (`atlas-desktop/src/crew.rs`) and an engine (`crew/engine/`). Tests name each of those that is missing. `scripts/agent-list.test.ts` fails when a list of agent ids is typed anywhere else.
+
 ### Runtime rules that came from real incidents
 
 Keep these when you touch the runtime ([Architecture](architecture.md#safety-rules-the-code-relies-on)):
@@ -292,6 +311,30 @@ The flow is defined once, in [CONTRIBUTING.md](https://github.com/codeatlasdev/a
 
 Before you open it: make the change with its tests and doc updates, run `bun run check`, and fill in the template, linking the issue it closes. Small, focused pull requests get reviewed faster than large ones.
 
+## Agent guards
+
+AI agents work in this repo, so the rules about where they write and what they may push are enforced by tools, not by prose. One decision function (`scripts/lib/agent-guard/decide.ts`, table-tested in `scripts/agent-guard.test.ts`) answers "allow or refuse, and what to do instead" for every agent, through four entry points:
+
+| Harness | Wiring (committed) | How it blocks |
+|---|---|---|
+| Claude Code | `.claude/settings.json`: `PreToolUse` on `Write\|Edit\|MultiEdit\|NotebookEdit\|Bash` runs `bun scripts/agent-guard.ts hook` | exit 2, the reason on stderr is shown to the agent |
+| Codex | `.codex/hooks.json`: `PreToolUse` on `Bash\|apply_patch` (hooks must be reviewed once in `/hooks`; the project `.codex/` layer must be trusted) | same, exit 2 |
+| omp | `.omp/extensions/agent-guard.ts` (loaded from the session's cwd) calls the same function in-process | `tool_call` returns `{ block: true, reason }` |
+| any tool, a human too | `scripts/git-hooks/pre-push` through `git config core.hooksPath scripts/git-hooks` (`scripts/setup.sh` sets it, idempotently, and never replaces a hooks path you chose) | git aborts the push |
+
+What is refused (each message names the fix):
+
+- **Writes outside your worktree.** A file tool or a shell redirect (`>`, `>>`, `tee`, `cp`, `mv`, `rm`, `mkdir`, `touch`, `dd of=`, `cd <main checkout>`, `git -C <main> commit`…) whose target really lands (symlinks and `..` resolved) outside the git worktree of the session's cwd. Temp dirs and the harnesses' own state (`~/.claude`, `~/.codex`, `~/.omp`, `~/.atlas`, `~/.agents`) are allowed; the main checkout, other agents' worktrees and git's own data (`.git/`) are not. A session that starts in the **primary checkout** is free to write there unless a maintainer opted in once with `git config atlas.agentWrites deny` (then the primary checkout is closed to agents, and `git worktree add` is the way out).
+- **`git push` to `main`, `master` or `release/*`**, `--all`, `--mirror`, `--no-verify`, `-c core.hooksPath=`; a bare `git push` while on main.
+- **Force-push** (`-f`, `--force`, `--force-with-lease`, `+refspec`).
+- **Merging** (`gh pr merge`, the merge/auto-merge API, `bun run pr:merge` unless `--dry-run`).
+- **`git stash`** (everything but `list` and `show`): every worktree of a clone shares one `refs/stash`.
+- **Deleting** branches and tags (`git branch -d/-D`, `git tag -d/-f`, `git push --delete`, `git push origin :ref`, `git update-ref -d`), and changing `core.hooksPath` or `atlas.agentWrites`.
+
+**Maintainer override.** A maintainer sets `ATLAS_MAINTAINER_OK` in the environment *before launching the session* (or around one command in their own terminal): a comma list of `write`, `push`, `force-push`, `merge`, `stash`, `delete`, `config`, or `all`. Example: `ATLAS_MAINTAINER_OK=push bun run release alpha` (the release pushes `main` and a tag). The guards read it only from their own process environment, and a command that mentions `ATLAS_MAINTAINER_OK` is refused outright, so an agent cannot give itself the override. The pre-push hook cannot tell an agent from a human: a command the agent runs in a shell the maintainer exported it into is the maintainer's.
+
+Limits, so nobody over-trusts it: the guards read commands, they do not sandbox them. A script, `python -c`, `eval` code in an agent's REPL or `sed -i` can still write anywhere; variables (`> "$DIR/x"`) are not expanded. A bug in the guard itself lets the call through and says so on stderr (the pre-push hook fails closed). Debug a decision with `echo '{"tool_name":"Bash","cwd":"<dir>","tool_input":{"command":"git stash"}}' | bun scripts/agent-guard.ts hook --json`.
+
 ## CI and releases
 
 CI (`.github/workflows/ci.yml`) runs on every pull request and on pushes to `main` and `release/**`: macOS, Linux and Windows run the Rust gate (one composite action, `.github/actions/rust-gate`, so they cannot drift), Linux and Windows run the repo scripts and their tests (`bun run release:test`, job "Repo scripts"), plus "Desktop opens (Linux)" (the app launched headless, `scripts/linux-launch-check.sh`), the desktop frontend checks, the site build, `cargo deny`, the duplication report and the workflow lint. Fork pull requests run it with a read-only token and no secrets. How it is wired:
@@ -300,5 +343,6 @@ CI (`.github/workflows/ci.yml`) runs on every pull request and on pushes to `mai
 - **No second test run after a merge.** The branch must be up to date to merge, so the squash commit on `main` has exactly the tree its pull request tested. `scripts/ci-tested.sh` checks that (same tree as the pull request head, and a green CI run for it) and then the push skips the tests and only builds what keeps the cache warm. A different tree, a direct push or any API error runs everything.
 - **Caches come from `main`.** A pull request's cache is visible to that pull request only ([GitHub docs](https://docs.github.com/en/actions/reference/workflows-and-actions/dependency-caching#restrictions-for-accessing-a-cache)) and would evict the `main` cache that every pull request restores (10 GB per repository), so caches are saved only from `main` and `release/*`. Runs there are never cancelled; a new push to a pull request cancels its older run.
 - **Pinned and audited.** Every action is pinned to a full commit SHA with its exact version in a comment (`# v7.0.1`), updated by Dependabot after a 7-day cooldown. `scripts/lint-workflows.sh` runs actionlint and zizmor (config: `.github/zizmor.yml`, every ignore with its reason) locally in `bun run check` and in CI.
+- **The Windows installer has its own job.** "Installer" runs `scripts/install-ps1.test.ts` on `windows-latest`, only when `site/public/install.ps1` or that test changes (area `installer` in `scripts/checks/map.ts`; any unknown path or workflow change runs it too). It runs `irm <url> | iex` the way a user does, in `powershell.exe` (Windows PowerShell 5.1, what a stock Windows has) and in `pwsh`, against a local server that plays GitHub (the script reads `ATLAS_GITHUB_ORIGIN`, a test hook that also allows plain http; never set it outside this test), with the real `curl.exe` and `tar.exe` and a stand-in `atlas.exe` compiled with the .NET Framework's `csc.exe`. It covers the newest Stable having no Windows build (the fall back to the alpha, #519), a checksum mismatch and the channel step. It cannot run on macOS or Linux (the script needs `curl.exe` and `tar.exe`); keep `install.ps1` 5.1-safe: no `2>$null` or `2>&1` on a native command outside `Invoke-Native`, ASCII only, no `??` or `$IsWindows`.
 
 Releases: [Releasing](release.md).

@@ -148,11 +148,11 @@ pub async fn agent_sessions(cwds: Vec<String>, query: Option<String>) -> Vec<Ses
     tauri::async_runtime::spawn_blocking(move || {
         let home = dirs::home_dir().unwrap_or_default();
         let mut files = Vec::new();
-        for (agent, dir) in [
-            ("omp", ".omp/agent/sessions"),
-            ("claude", ".claude/projects"),
-            ("codex", ".codex/sessions"),
-        ] {
+        // The built-ins that keep jsonl session files under `$HOME` (`sessions_dir` in data/agents.json).
+        for (agent, dir) in atlas_core::agents::all()
+            .iter()
+            .filter_map(|a| Some((a.id.as_str(), a.sessions_dir.as_deref()?)))
+        {
             let mut f = Vec::new();
             jsonl_under(&home.join(dir), &mut f);
             files.extend(f.into_iter().map(|(m, p)| (m, agent, p)));

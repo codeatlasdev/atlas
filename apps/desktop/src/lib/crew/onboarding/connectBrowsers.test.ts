@@ -1,6 +1,7 @@
 // @ts-nocheck bun test runtime types are not part of the app tsconfig
 import "../../../../test/setup.ts";
 import { afterEach, beforeEach, describe, expect, mock, test } from "bun:test";
+import keyFixture from "../../__fixtures__/crew-key-lookup.json";
 
 // The crew-server install offers the capture browsers as an opt-in (off by default). Against the real `Onboarding`
 // and the real `ConnectStep`/`InstallChecklist`; only the Tauri boundary is stubbed, so what `crew_server_install`
@@ -19,7 +20,8 @@ mock.module("@tauri-apps/api/core", () => ({
 	invoke: async (cmd: string, args: Record<string, unknown>) => {
 		calls.push({ cmd, args });
 		if (cmd === "crew_servers_list") return [];
-		if (cmd === "ssh_key_find") return "/Users/me/.ssh/id_ed25519.pub";
+		if (cmd === "ssh_key_resolve") return keyFixture.found;
+		if (cmd === "ssh_hosts_list") return [];
 		return {};
 	},
 }));
@@ -31,7 +33,7 @@ mock.module("@tauri-apps/api/event", () => ({
 }));
 const uiKit = await import("../../../../test/uiKit.ts");
 await uiKit.installUiKit();
-await uiKit.useRealKit("Checkbox", "CopyButton", "Button");
+await uiKit.useRealKit("Checkbox", "CopyButton", "Button", "TextField", "ToggleGroup/SegmentedControl");
 
 // Dynamic imports on purpose: the Svelte loader registered by test/setup.ts and the module mocks above must exist
 // before these modules load.
@@ -69,12 +71,19 @@ function render(Component, props) {
 async function connectStep() {
 	const ob = new Onboarding(() => {});
 	ob.step = "connect";
-	ob.hasKey = true;
-	ob.keyChecked = true;
+	ob.checkSshKey();
 	ob.sshTarget = "ubuntu@srv";
 	const t = render(ConnectStep, { ob });
 	await settle();
 	return { ob, t };
+}
+
+/** The command behind "Prefer the terminal?": a small link opens it over the form. */
+async function terminal(t) {
+	const link = [...t.querySelectorAll("button")].find((b) => b.textContent.includes("Prefer the terminal?"));
+	if (!t.querySelector(".popover")) link.click();
+	await settle();
+	return t.querySelector(".popover .code-block code").textContent;
 }
 
 const installCall = () => calls.find((c) => c.cmd === "crew_server_install");
@@ -88,9 +97,21 @@ describe("the browsers opt-in on the connect step", () => {
 		expect(ob.browsers).toBe(false);
 		const text = t.textContent;
 		expect(text).toContain("Screenshots for UI work (Chromium + WebKit)");
-		expect(text).toContain("capture, UI gate and locate");
 		expect(text).toContain("Node.js 20+");
 		expect(text).toContain("500 MB");
+	});
+
+	// The primary button keeps its place and size while busy; only its label says what is happening.
+	test("the primary action says Installing… while the install runs and Add crew server otherwise", async () => {
+		const { ob } = await connectStep();
+		expect(ob.primary.label).toBe("Add crew server");
+		ob.installRunning = true;
+		ob.install = { done: new Set(), active: "install", user: "" };
+		expect(ob.primary.label).toBe("Installing…");
+		expect(ob.primary.busy).toBe(true);
+		// `step: done` ticks everything; hostd is registered after it.
+		ob.install = { done: new Set(["done"]), active: null, user: "" };
+		expect(ob.primary.label).toBe("Connecting…");
 	});
 
 	test("a first install without the opt-in does not ask for browsers", async () => {
@@ -110,16 +131,17 @@ describe("the browsers opt-in on the connect step", () => {
 			target: "ubuntu@srv",
 			port: 2222,
 			browsers: true,
+			identity: "/Users/me/.ssh/id_ed25519",
 			sudoPassword: "s3cret",
 		});
 	});
 
 	test("the terminal command the disclosure offers matches the opt-in", async () => {
 		const { ob, t } = await connectStep();
-		expect(t.querySelector(".code-block code").textContent).toBe("atlas crew install ubuntu@srv");
+		expect(await terminal(t)).toBe("atlas crew install ubuntu@srv");
 		t.querySelector('input[type="checkbox"]').click();
 		await settle();
-		expect(t.querySelector(".code-block code").textContent).toBe("atlas crew install ubuntu@srv --browsers");
+		expect(await terminal(t)).toBe("atlas crew install ubuntu@srv --browsers");
 	});
 
 	test("the checkbox is locked while the install runs", async () => {
@@ -131,7 +153,7 @@ describe("the browsers opt-in on the connect step", () => {
 });
 
 describe("the install checklist", () => {
-	const labels = (t) => [...t.querySelectorAll(".checklist-label")].map((e) => e.textContent);
+	const labels = (t) => [...t.querySelectorAll(".sr-only")].map((e) => e.textContent);
 
 	test("has a browsers step only when the install includes it", async () => {
 		const base = render(InstallChecklist, { done: new Set(), active: null, failed: null });
@@ -145,9 +167,26 @@ describe("the install checklist", () => {
 		});
 		const l = labels(withBrowsers);
 		expect(l.indexOf("Installing screenshot browsers")).toBe(l.indexOf("Connecting") - 1);
-		expect(withBrowsers.querySelector(".checklist-row.active .checklist-label").textContent).toBe(
+		expect(withBrowsers.querySelector(".checklist-row.active .sr-only").textContent).toBe(
 			"Installing screenshot browsers",
 		);
+	});
+
+	// The rail reads in the real install order, one line, the active step named under it (the two-column version
+	// read "Signing in, Installing Atlas, Starting the service, Connecting" first).
+	test("lists the phases in the order the install runs them, and names the active one", async () => {
+		const t = render(InstallChecklist, { done: new Set(["signin"]), active: "check", failed: null });
+		expect(labels(t)).toEqual([
+			"Signing in",
+			"Checking the server",
+			"Installing Atlas",
+			"Creating the service user",
+			"Starting the service",
+			"Configuring SSH access",
+			"Connecting",
+		]);
+		expect(t.querySelector(".now b").textContent).toBe("Checking the server");
+		expect(t.querySelector('[aria-current="step"]')).not.toBeNull();
 	});
 });
 
@@ -161,13 +200,17 @@ describe("the install records the admin address", () => {
 		ob.sshPort = 2222;
 		await ob.launchServer("s3cret");
 		expect(addCall().args.host).toBe("atlas-crew@srv");
-		expect(addCall().args.admin).toEqual({ target: "ubuntu@srv", port: 2222 });
+		expect(addCall().args.admin).toEqual({
+			target: "ubuntu@srv",
+			port: 2222,
+			identity: "/Users/me/.ssh/id_ed25519",
+		});
 		expect(JSON.stringify(addCall().args)).not.toContain("s3cret");
 	});
 
 	test("no port when it is the default 22", async () => {
 		const { ob } = await connectStep();
 		await ob.launchServer();
-		expect(addCall().args.admin).toEqual({ target: "ubuntu@srv" });
+		expect(addCall().args.admin).toEqual({ target: "ubuntu@srv", identity: "/Users/me/.ssh/id_ed25519" });
 	});
 });

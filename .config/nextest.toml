@@ -6,3 +6,10 @@ slow-timeout = { period = "60s", terminate-after = 3 }
 fail-fast = false
 failure-output = "immediate-final"
 status-level = "skip"
+# SLOW after 60 s and TIMEOUT after 3 min name a hung test in the log (the default profile's value, stated here so
+# the CI profile reads on its own); `grace-period` lets a timed-out test end before it is killed.
+slow-timeout = { period = "60s", terminate-after = 3, grace-period = "10s" }
+
+# A report of every test and its time (`target/nextest/ci/junit.xml`), uploaded by the Windows job (issue #520).
+[profile.ci.junit]
+path = "junit.xml"

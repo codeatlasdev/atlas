@@ -214,6 +214,11 @@ jobs:
     if: ${{ needs.plan.outputs.tested != 'true' && needs.plan.outputs.rust == 'true' }}
     runs-on: windows-latest
     timeout-minutes: 60
+    # `checks: write` only for the watchdog's check run (scripts/ci-watchdog.ps1, issue #520). A fork's pull request
+    # gets a read-only token whatever is declared here: the watchdog then keeps to the log.
+    permissions:
+      contents: read
+      checks: write
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
@@ -226,24 +231,30 @@ jobs:
           tests: ${{ needs.plan.outputs.tested != 'true' }}
           defer-tests: "true"
 
-      # Issue #520: this job lost its runner 9 times since 2026-11-15 ("The hosted runner lost communication with
-      # the server" after exactly 50 min, no log kept), once in this step with its 25 min timeout never firing, so
-      # the runner itself died or froze. The tests take 3-4 min. What this step leaves behind now:
+      # Issue #520: this job lost its runner 10 times since 2026-11-15 ("The hosted runner lost communication with
+      # the server" after exactly 50 min), twice in this step with its 25 min timeout never firing, so the runner
+      # itself died or froze; the job's live log is not kept either. The tests take 3-4 min. What this step leaves:
       # - a hang in the tests fails the step after 25 min with its log (nextest ends a single test after 3 min,
       #   `.config/nextest.toml`), instead of taking the runner with it; the log is a file as well, to upload below;
-      # - scripts/ci-watchdog.ps1 prints memory, commit charge, page file, handles, disk queue and the top
-      #   processes every 15 s to this step's live log (and `watchdog.log`), says when a runner process or another
-      #   long-lived process outside the test tree disappears, and kills a test process that holds the runner's
-      #   memory. It is stopped by `watchdog.stop` when the tests end.
+      # - scripts/ci-watchdog.ps1 samples memory, commit charge, page file, handles, disk queue and free space, the
+      #   top processes and the tests running now every 15 s, to the live log, to `watchdog.log` and, off the runner,
+      #   to a check run "Windows test telemetry (#520)" updated every 30 s (the one place that outlives a lost
+      #   runner). It says when a runner process disappears and kills a test process that holds the runner's memory.
+      #   `watchdog.stop` ends it when the tests end. The token goes to the watchdog alone: it is unset before the
+      #   tests start.
       - name: Test
         if: ${{ needs.plan.outputs.tested != 'true' }}
         timeout-minutes: 25
         shell: bash
+        env:
+          WATCHDOG_TOKEN: ${{ github.token }}
+          WATCHDOG_SHA: ${{ github.event.pull_request.head.sha || github.sha }}
         run: |
           rm -f watchdog.stop
           pwsh -NoProfile -File scripts/ci-watchdog.ps1 &
           watchdog=$!
-          stop_watchdog() { touch watchdog.stop; sleep 4; kill "$watchdog" 2>/dev/null || true; }
+          unset WATCHDOG_TOKEN
+          stop_watchdog() { touch watchdog.stop; sleep 6; kill "$watchdog" 2>/dev/null || true; }
           trap stop_watchdog EXIT
           cargo nextest run --workspace --locked --profile ci 2>&1 | tee nextest.log
 

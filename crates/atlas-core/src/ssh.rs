@@ -287,8 +287,21 @@ pub fn find_key(target: &SshTarget) -> Option<LocalKey> {
         cmd.args(["-p", &p.to_string()]);
     }
     cmd.arg(&target.target);
-    let out = cmd.output().ok().filter(|o| o.status.success())?;
-    key_from_g(&String::from_utf8_lossy(&out.stdout), &home)
+    let listed = cmd
+        .output()
+        .ok()
+        .filter(|o| o.status.success())
+        .and_then(|o| key_from_g(&String::from_utf8_lossy(&o.stdout), &home));
+    listed.or_else(|| default_key_in(&home))
+}
+
+/// The key a person (or Atlas) made with the default names under `<home>/.ssh`. `ssh -G` does not list it when a
+/// `~/.ssh/config` names an `IdentityFile` of its own (OpenSSH adds its default names only when none is given), so a
+/// key Atlas created for the password sign-in is still found; the caller passes it as `-i`.
+pub fn default_key_in(home: &std::path::Path) -> Option<LocalKey> {
+    ["id_ed25519", "id_ecdsa", "id_rsa"]
+        .into_iter()
+        .find_map(|n| key_at(home.join(".ssh").join(n)))
 }
 
 /// [`find_key`] before there is a server to ask about (onboarding's "do you have a key?"): the keys ssh offers
@@ -541,6 +554,22 @@ mod tests {
         // The comment is not stored in the private key: compare the algorithm and the key blob.
         let blob = |s: &str| s.split_whitespace().take(2).collect::<Vec<_>>().join(" ");
         assert_eq!(blob(&derived), blob(&want));
+    }
+
+    // #517: a config with its own `IdentityFile` hides the default names from `ssh -G`; the key Atlas created at
+    // ~/.ssh/id_ed25519 for the password sign-in must still be found (it then travels as `-i`).
+    #[test]
+    fn a_default_named_key_is_found_even_when_ssh_does_not_list_it() {
+        let dir = tempfile::tempdir().unwrap();
+        let ssh = dir.path().join(".ssh");
+        std::fs::create_dir_all(&ssh).unwrap();
+        assert_eq!(default_key_in(dir.path()), None);
+        std::fs::write(ssh.join("id_rsa"), "x").unwrap();
+        std::fs::write(ssh.join("id_ed25519"), "x").unwrap();
+        std::fs::write(ssh.join("id_ed25519.pub"), "ssh-ed25519 AAAA a").unwrap();
+        let k = default_key_in(dir.path()).unwrap();
+        assert_eq!(k.identity, ssh.join("id_ed25519"), "ed25519 before rsa");
+        assert_eq!(k.public, Some(ssh.join("id_ed25519.pub")));
     }
 
     // #517: a key the user picked is used as given. A chosen key never falls back to another one: it either exists

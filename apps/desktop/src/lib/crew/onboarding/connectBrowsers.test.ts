@@ -118,7 +118,7 @@ describe("the browsers opt-in on the connect step", () => {
 			target: "ubuntu@srv",
 			port: 2222,
 			browsers: true,
-			identity: null,
+			identity: "/Users/me/.ssh/id_ed25519",
 			sudoPassword: "s3cret",
 		});
 	});
@@ -170,13 +170,17 @@ describe("the install records the admin address", () => {
 		ob.sshPort = 2222;
 		await ob.launchServer("s3cret");
 		expect(addCall().args.host).toBe("atlas-crew@srv");
-		expect(addCall().args.admin).toEqual({ target: "ubuntu@srv", port: 2222 });
+		expect(addCall().args.admin).toEqual({
+			target: "ubuntu@srv",
+			port: 2222,
+			identity: "/Users/me/.ssh/id_ed25519",
+		});
 		expect(JSON.stringify(addCall().args)).not.toContain("s3cret");
 	});
 
 	test("no port when it is the default 22", async () => {
 		const { ob } = await connectStep();
 		await ob.launchServer();
-		expect(addCall().args.admin).toEqual({ target: "ubuntu@srv" });
+		expect(addCall().args.admin).toEqual({ target: "ubuntu@srv", identity: "/Users/me/.ssh/id_ed25519" });
 	});
 });

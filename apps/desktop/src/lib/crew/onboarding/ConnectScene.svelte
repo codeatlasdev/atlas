@@ -1,14 +1,14 @@
 <!--
-  The art of the connect step: this computer -> SSH link -> the server, lit phase by phase while the install runs.
-  Idle: the link breathes. Each phase lights its own part (a key crosses the link, the server pulses on the check, a
-  package drops in, a user badge pops, the service powers on, the key lands in authorized_keys, the link goes live).
-  A failure turns the part that broke red and the link on the server's side with it. Only transform and opacity move;
-  `reducedMotion` shows the states still. Colours are the app tokens (named in onboarding.css, `--ob-*`).
+  The art of the connect step, the hero of its panel: this computer -> SSH link -> the server, lit phase by phase while
+  the install runs. Idle: the link breathes and the cursor blinks. Active: a packet (a key, a probe, a package, a badge,
+  a bolt) travels the link in the accent colour. Done: green. Failed: the link breaks red on the server's side and the
+  rack turns red. Only transform and opacity move; colours are the onboarding tokens of onboarding.css.
 -->
 <script lang="ts">
 	import { reducedMotion } from "#lib/crew/motion.ts";
-	import { IS_MAC, IS_WIN } from "#lib/keys.ts";
 	import type { InstallPhase } from "#lib/crew/installSteps.ts";
+	import { machineName } from "./machine.ts";
+	import ServerRack from "./ServerRack.svelte";
 
 	let {
 		done,
@@ -16,12 +16,11 @@
 		failed,
 	}: { done: Set<InstallPhase>; active: InstallPhase | null; failed: InstallPhase | null } = $props();
 
-	/** The machine the person sits at, named the way their OS does. */
-	const machine = IS_MAC ? "your Mac" : IS_WIN ? "this PC" : "this computer";
+	const machine = machineName();
 	const lit = (p: InstallPhase) => done.has(p) || active === p;
 	const live = $derived(done.has("done"));
-	/** The link is red on the side where the failing phase happens: signing in breaks it near the server's door. */
-	const broken = $derived(failed !== null);
+	const rack = $derived(failed ? "failed" : live ? "ok" : active ? "active" : "idle");
+	const running = $derived(active !== null && failed === null && !live);
 </script>
 
 <div
@@ -30,76 +29,154 @@
 	data-testid="connect-scene"
 	data-active={active ?? ""}
 	data-failed={failed ?? ""}
+	data-state={rack}
 >
-	<svg viewBox="0 0 520 260" role="img" aria-label="{machine} connecting to your server">
+	<svg
+		viewBox="6 56 628 250"
+		role="img"
+		aria-label="{machine} connecting to your server"
+		preserveAspectRatio="xMidYMid meet"
+	>
+		<!-- this computer: a screen with a terminal on it -->
+		<g class="me" class:lit={running || live}>
+			<rect class="screen" x="30" y="86" width="200" height="130" rx="12" />
+			<rect class="glass" x="40" y="96" width="180" height="110" rx="6" />
+			<path class="txt" d="M54 118h46M54 134h96M54 150h70M54 166h112" />
+			<text class="prompt" x="54" y="192">$ atlas crew install</text>
+			<rect class="cursor" x="170" y="182" width="8" height="13" rx="1.5" />
+			<rect class="base" x="14" y="222" width="232" height="12" rx="6" />
+			<text class="cap" x="130" y="266" text-anchor="middle">{machine}</text>
+		</g>
+
 		<!-- the link -->
-		<line class="link" x1="150" y1="130" x2="370" y2="130" />
-		<line class="link flow" class:on={active !== null && !broken} x1="150" y1="130" x2="370" y2="130" />
-		<line class="link bad" class:on={broken} x1="260" y1="130" x2="370" y2="130" />
-		<line class="link good" class:on={live} x1="150" y1="130" x2="370" y2="130" />
+		<line class="link" x1="250" y1="150" x2="440" y2="150" />
+		<line class="link flow" class:on={running} x1="250" y1="150" x2="440" y2="150" />
+		<line class="link bad" class:on={failed !== null} x1="345" y1="150" x2="440" y2="150" />
+		<line class="link good" class:on={live} x1="250" y1="150" x2="440" y2="150" />
+		{#if failed}
+			<g class="x" transform="translate(440 150)">
+				<circle r="13" />
+				<path d="M-5 -5l10 10M5 -5l-10 10" />
+			</g>
+		{/if}
 
-		<!-- this computer -->
-		<g class="node me" class:lit={lit("signin")}>
-			<rect x="60" y="92" width="90" height="62" rx="9" />
-			<rect x="48" y="156" width="114" height="9" rx="4.5" class="base" />
-			<text x="105" y="190" text-anchor="middle">{machine}</text>
-		</g>
-
-		<!-- the key that crosses the link while signing in -->
-		<g class="key" class:go={active === "signin"} class:placed={lit("ssh")}>
-			<circle cx="0" cy="0" r="9" />
-			<rect x="8" y="-2.5" width="22" height="5" rx="2.5" />
-			<rect x="22" y="2" width="4" height="7" rx="1.5" />
-		</g>
+		<!-- the packet that crosses the link while a phase runs: its glyph is the phase's -->
+		{#if running}
+			{#key active}
+				<g class="packet p-{active}" transform="translate(250 150)">
+					<g class="glyph">
+						<circle class="halo" r="20" />
+						{#if active === "signin" || active === "ssh"}
+							<circle class="g" cx="-6" r="6" />
+							<path class="g" d="M0 0h16M11 0v6M15 0v5" />
+						{:else if active === "check"}
+							<circle class="g" r="7" />
+							<circle class="g ring" r="13" />
+						{:else if active === "install"}
+							<rect class="g" x="-9" y="-9" width="18" height="18" rx="3" />
+							<path class="g" d="M-9 -2h18M0 -9v7" />
+						{:else if active === "user"}
+							<circle class="g" cy="-4" r="5" />
+							<path class="g" d="M-9 9c1-8 17-8 18 0" />
+						{:else if active === "service"}
+							<path class="g" d="M3 -11l-10 13h8l-3 11 11-14h-8z" />
+						{:else}
+							<path class="g" d="M-8 0l5 5 11-11" />
+						{/if}
+					</g>
+				</g>
+			{/key}
+		{/if}
 
 		<!-- the server -->
-		<g class="node srv" class:lit={lit("check")} class:pulse={active === "check"} class:bad={failed !== null}>
-			<rect x="370" y="68" width="96" height="30" rx="7" />
-			<rect x="370" y="102" width="96" height="30" rx="7" />
-			<rect x="370" y="136" width="96" height="30" rx="7" />
-			<circle cx="384" cy="83" r="3.5" class="led" />
-			<circle cx="384" cy="117" r="3.5" class="led" />
-			<circle cx="384" cy="151" r="3.5" class="led" />
-			<text x="418" y="190" text-anchor="middle">your server</text>
+		<g class="srv" transform="translate(450 62)">
+			<ServerRack state={rack} />
 		</g>
+		<text class="cap" x="525" y="266" text-anchor="middle">your server</text>
 
-		<!-- phase glyphs over the server -->
-		<g class="drop pkg" class:go={active === "install"} class:lit={lit("install")}>
-			<rect x="395" y="22" width="22" height="22" rx="4" />
-			<path d="M395 30h22M406 22v22" />
+		<!-- the key lands in authorized_keys -->
+		<g class="auth" class:lit={lit("ssh")} class:go={active === "ssh"}>
+			<rect x="446" y="284" width="158" height="26" rx="8" />
+			<text x="525" y="302" text-anchor="middle">authorized_keys</text>
 		</g>
-		<g class="drop badge" class:go={active === "user"} class:lit={lit("user")}>
-			<circle cx="438" cy="34" r="11" />
-			<circle cx="438" cy="31" r="3.5" class="hd" />
-			<path d="M431 41c1-5 13-5 14 0" />
+		<g transform="translate(560 30)">
+			<g class="svc" class:lit={lit("service")} class:go={active === "service"}>
+				<path d="M4 -12l-10 14h8l-3 12 12-15h-8z" />
+			</g>
 		</g>
-		<g class="drop svc" class:go={active === "service"} class:lit={lit("service")}>
-			<path d="M497 40l-9 13h7l-3 11 11-14h-7z" />
-		</g>
-		<g class="drop auth" class:go={active === "ssh"} class:lit={lit("ssh")}>
-			<rect x="372" y="206" width="94" height="22" rx="6" />
-			<text x="419" y="221" text-anchor="middle">authorized_keys</text>
+		<g transform="translate(490 30)">
+			<g class="usr" class:lit={lit("user")} class:go={active === "user"}>
+				<circle cy="-3" r="5.5" />
+				<path d="M-10 11c1-9 19-9 20 0" />
+			</g>
 		</g>
 	</svg>
 </div>
 
 <style>
 	.scene {
-		width: min(480px, 92%);
-		color: var(--ob-line, var(--ca-text-secondary));
+		width: 100%;
+		min-height: 0;
+		flex: 1 1 auto;
+		display: flex;
+		align-items: center;
+		justify-content: center;
 	}
 
 	svg {
 		width: 100%;
-		height: auto;
+		height: 100%;
+		max-height: 100%;
 		overflow: visible;
+	}
+
+	.screen {
+		fill: var(--ob-panel, var(--ca-surface-base));
+		stroke: var(--ob-line-idle, var(--ca-border-subtle));
+		stroke-width: 2;
+		transition: stroke 300ms;
+	}
+
+	.me.lit .screen {
+		stroke: var(--ob-accent, var(--ca-accent));
+	}
+
+	.glass {
+		fill: var(--ob-screen, var(--ca-surface-sunken));
+	}
+
+	.txt {
+		stroke: var(--ob-line-idle, var(--ca-border-subtle));
+		stroke-width: 5;
+		stroke-linecap: round;
+	}
+
+	.prompt {
+		fill: var(--ob-accent, var(--ca-accent));
+		font:
+			11px ui-monospace,
+			monospace;
+	}
+
+	.cursor {
+		fill: var(--ob-accent, var(--ca-accent));
+		animation: ob-blink 1100ms steps(2, start) infinite;
+	}
+
+	.base {
+		fill: var(--ob-line-idle, var(--ca-border-subtle));
+	}
+
+	.cap {
+		fill: var(--ca-text-secondary);
+		font-size: 15px;
 	}
 
 	.link {
 		stroke: var(--ob-line-idle, var(--ca-border-subtle));
-		stroke-width: 3;
+		stroke-width: 4;
 		stroke-linecap: round;
-		fill: none;
+		stroke-dasharray: 2 10;
 	}
 
 	.link.flow,
@@ -107,11 +184,12 @@
 	.link.good {
 		opacity: 0;
 		transition: opacity 300ms;
+		stroke-dasharray: none;
 	}
 
 	.link.flow {
 		stroke: var(--ob-accent, var(--ca-accent));
-		stroke-dasharray: 8 14;
+		stroke-dasharray: 10 14;
 	}
 
 	.link.flow.on {
@@ -131,122 +209,135 @@
 		opacity: 1;
 	}
 
-	@keyframes ob-dash {
-		to {
-			stroke-dashoffset: -22;
-		}
+	.x circle {
+		fill: var(--ob-danger, var(--ca-danger));
 	}
 
-	.node rect {
-		fill: var(--ca-surface-sunken);
-		stroke: var(--ob-line-idle, var(--ca-border-subtle));
-		stroke-width: 2;
-		transition: stroke 300ms;
+	.x path {
+		stroke: var(--ca-surface-base);
+		stroke-width: 3;
+		stroke-linecap: round;
 	}
 
-	.node .base {
-		fill: var(--ob-line-idle, var(--ca-border-subtle));
-		stroke: none;
+	/* the packet travels once per cycle: transform only */
+	.packet {
+		animation: ob-travel 1500ms ease-in-out infinite;
 	}
 
-	.node.lit rect {
-		stroke: var(--ob-accent, var(--ca-accent));
+	.packet .halo {
+		fill: var(--ob-glow, color-mix(in srgb, var(--ca-accent) 30%, transparent));
 	}
 
-	.node.bad rect {
-		stroke: var(--ob-danger, var(--ca-danger));
-	}
-
-	.node text,
-	.auth text {
-		fill: var(--ca-text-secondary);
-		font-size: 13px;
-	}
-
-	.led {
-		fill: var(--ob-line-idle, var(--ca-border-subtle));
-		transition: fill 300ms;
-	}
-
-	.srv.lit .led {
-		fill: var(--ob-ok, var(--ca-semantic-success));
-	}
-
-	.srv.pulse {
-		animation: ob-pulse 900ms ease-in-out infinite;
-		transform-origin: 418px 117px;
-		transform-box: view-box;
-	}
-
-	@keyframes ob-pulse {
-		50% {
-			transform: scale(1.05);
-		}
-	}
-
-	/* the key: rests at the computer, crosses the link while signing in, then waits at the server's door */
-	.key {
-		transform: translate(160px, 130px);
-		opacity: 0.35;
-		fill: var(--ob-key, var(--ca-accent));
-		transition: opacity 300ms;
-	}
-
-	.key.go {
-		opacity: 1;
-		animation: ob-cross 1400ms ease-in-out infinite;
-	}
-
-	.key.placed {
-		opacity: 1;
-		transform: translate(330px, 130px);
-	}
-
-	@keyframes ob-cross {
-		from {
-			transform: translate(160px, 130px);
-		}
-		to {
-			transform: translate(330px, 130px);
-		}
-	}
-
-	/* what each phase puts on the server: dim until its phase, then in colour; the active one moves once */
-	.drop {
-		opacity: 0.22;
-		transition: opacity 300ms;
+	.packet .g {
 		fill: none;
-		stroke: var(--ca-text-secondary);
-		stroke-width: 2;
+		stroke: var(--ob-accent, var(--ca-accent));
+		stroke-width: 3;
 		stroke-linecap: round;
 		stroke-linejoin: round;
 	}
 
-	.drop.lit {
+	.packet.p-check .g,
+	.packet.p-service .g {
+		stroke: var(--ob-warm, var(--ca-semantic-warning));
+	}
+
+	.packet.p-check .halo,
+	.packet.p-service .halo {
+		fill: color-mix(in srgb, var(--ob-warm, var(--ca-semantic-warning)) 28%, transparent);
+	}
+
+	.packet .ring {
+		animation: ob-ring 1500ms ease-out infinite;
+		transform-origin: 0 0;
+	}
+
+	@keyframes ob-travel {
+		from {
+			transform: translate(250px, 150px);
+		}
+		to {
+			transform: translate(440px, 150px);
+		}
+	}
+
+	@keyframes ob-ring {
+		from {
+			transform: scale(0.6);
+			opacity: 1;
+		}
+		to {
+			transform: scale(1.5);
+			opacity: 0;
+		}
+	}
+
+	@keyframes ob-dash {
+		to {
+			stroke-dashoffset: -24;
+		}
+	}
+
+	@keyframes ob-blink {
+		to {
+			opacity: 0;
+		}
+	}
+
+	.auth rect,
+	.svc,
+	.usr {
+		opacity: 0.25;
+		transition: opacity 300ms;
+	}
+
+	.auth rect {
+		fill: var(--ob-panel, var(--ca-surface-base));
+		stroke: var(--ob-line-idle, var(--ca-border-subtle));
+		stroke-width: 2;
+	}
+
+	.auth text {
+		fill: var(--ca-text-secondary);
+		font:
+			12.5px ui-monospace,
+			monospace;
+	}
+
+	.auth.lit rect {
 		opacity: 1;
 		stroke: var(--ob-ok, var(--ca-semantic-success));
 	}
 
-	.drop.go {
+	.auth.go rect {
 		stroke: var(--ob-accent, var(--ca-accent));
 		animation: ob-drop 700ms ease-out both;
 	}
 
-	.drop .hd {
+	.svc,
+	.usr {
 		fill: none;
+		stroke: var(--ca-text-secondary);
+		stroke-width: 2.5;
+		stroke-linecap: round;
+		stroke-linejoin: round;
 	}
 
-	.auth rect {
-		fill: var(--ca-surface-sunken);
+	.svc.lit,
+	.usr.lit {
+		opacity: 1;
+		stroke: var(--ob-ok, var(--ca-semantic-success));
 	}
 
-	.auth text {
-		stroke: none;
+	.svc.go,
+	.usr.go {
+		opacity: 1;
+		stroke: var(--ob-accent, var(--ca-accent));
+		animation: ob-pop 600ms ease-out both;
 	}
 
 	@keyframes ob-drop {
 		from {
-			transform: translateY(-14px);
+			transform: translateY(-10px);
 			opacity: 0;
 		}
 		to {
@@ -255,7 +346,15 @@
 		}
 	}
 
-	.still * {
+	@keyframes ob-pop {
+		from {
+			transform: translateY(-10px) scale(0.6);
+			opacity: 0;
+		}
+	}
+
+	.still *,
+	.still {
 		animation: none !important;
 		transition: none !important;
 	}

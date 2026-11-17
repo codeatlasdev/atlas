@@ -146,4 +146,9 @@
 	--ob-key: var(--ca-accent, #4f8ef7);
 	--ob-line: var(--ca-text-secondary);
 	--ob-line-idle: var(--ca-border-subtle);
+	/* Richer than the base tokens, still derived from them so a theme change reaches every scene. */
+	--ob-warm: var(--ca-semantic-warning);
+	--ob-panel: color-mix(in srgb, var(--ca-surface-base) 82%, var(--ca-accent, #4f8ef7) 18%);
+	--ob-screen: color-mix(in srgb, var(--ca-surface-sunken) 78%, var(--ca-accent, #4f8ef7) 22%);
+	--ob-glow: color-mix(in srgb, var(--ca-accent, #4f8ef7) 32%, transparent);
 }

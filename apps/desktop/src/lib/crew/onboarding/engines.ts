@@ -99,7 +99,7 @@ export type StepMeta = {
 
 export const STEP_META: Record<OnboardingStep, StepMeta> = {
 	intro: {
-		label: "1 of 2",
+		label: "Step 1 of 2",
 		headline: "Meet your Atlas Crew",
 		body: "Your crew sails while you sleep.",
 		bullets: [
@@ -110,7 +110,7 @@ export const STEP_META: Record<OnboardingStep, StepMeta> = {
 		glow: "rgba(61, 91, 255, 0.10)",
 	},
 	how: {
-		label: "2 of 2",
+		label: "Step 2 of 2",
 		headline: "One night with your crew",
 		body: "This is what a crewmate does while you're away.",
 		bullets: undefined,

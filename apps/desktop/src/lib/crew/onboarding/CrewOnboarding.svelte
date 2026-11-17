@@ -7,8 +7,7 @@
 	import CrewArtHow from "#lib/crew/CrewArtHow.svelte";
 	import { reducedMotion } from "#lib/crew/motion.ts";
 	import ConnectStep from "./ConnectStep.svelte";
-	import InstallChecklist from "./InstallChecklist.svelte";
-	import ConnectScene from "./ConnectScene.svelte";
+	import ConnectArt from "./ConnectArt.svelte";
 	import { stepDocs } from "./docsLinks.ts";
 	import { api } from "#lib/api.ts";
 	import EngineStep from "./EngineStep.svelte";
@@ -24,6 +23,9 @@
 	// The flow reads `ondone` once at construction; the parent passes a stable callback.
 	// svelte-ignore state_referenced_locally
 	const ob = new Onboarding(ondone);
+	// Debug builds expose the stores as `window.__atlas`; the flow goes there too, so a measurement script can put it in a state.
+	const dbg = (window as unknown as { __atlas?: Record<string, unknown> }).__atlas;
+	if (dbg) dbg.crewOb = ob;
 
 	// A soft shadow on the footer, only while content is scrolled under it.
 	let scroller = $state<HTMLElement>();
@@ -186,8 +188,7 @@
 					{:else if ob.step === "how"}
 						<CrewArtHow bind:beat={ob.howBeat} />
 					{:else if ob.step === "connect"}
-						<ConnectScene done={ob.install.done} active={ob.install.active} failed={ob.failedPhase} />
-						<InstallChecklist
+						<ConnectArt
 							done={ob.install.done}
 							active={ob.install.active}
 							failed={ob.failedPhase}
@@ -381,8 +382,6 @@
 		display: block;
 		font-size: clamp(12px, 1.25cqi, 16px);
 		font-weight: 600;
-		letter-spacing: 0.04em;
-		text-transform: uppercase;
 		color: var(--ca-accent, #4f8ef7);
 		margin-bottom: clamp(12px, 1.6cqi, 22px);
 	}
@@ -490,6 +489,7 @@
 	}
 
 	.art-zone {
+		container-type: inline-size;
 		position: absolute;
 		inset: 0;
 		display: flex;

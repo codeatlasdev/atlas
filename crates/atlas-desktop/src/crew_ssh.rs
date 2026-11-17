@@ -440,20 +440,22 @@ fn password_failure(stderr: &str) -> ConnectError {
 }
 
 /// Sign in to `target` with the account password and add this computer's public key to its `authorized_keys`, so
-/// that every later connection (the install, hostd's tunnel) uses the key. Creates a key when there is none.
+/// that every later connection (the install, hostd's tunnel) uses the key. Creates a key when there is none, and
+/// answers with the key it added so the caller passes exactly that one (`-i`) from then on.
 #[tauri::command]
 pub async fn ssh_authorize_key(
     target: String,
     port: Option<u16>,
     identity: Option<String>,
     password: String,
-) -> Result<(), ConnectError> {
+) -> Result<KeyInfo, ConnectError> {
     let st = SshTarget::new(target, port).with_identity(identity.filter(|i| !i.is_empty()));
     st.valid().map_err(ConnectError::other)?;
     if let Some(home) = dirs::home_dir() {
         let _ = ensure_ssh_dir(&home);
     }
     let key = ensure_key(&st).await?;
+    let info = key_info(&key);
     let pubkey = tokio::task::spawn_blocking(move || key.public_text())
         .await
         .map_err(|e| ConnectError::other(e.to_string()))?
@@ -468,7 +470,7 @@ pub async fn ssh_authorize_key(
     )
     .await?;
     if out.status.success() {
-        Ok(())
+        Ok(info)
     } else {
         Err(password_failure(&String::from_utf8_lossy(&out.stderr)))
     }

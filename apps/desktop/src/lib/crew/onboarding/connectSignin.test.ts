@@ -190,6 +190,8 @@ describe("choosing another key", () => {
 describe("signing in with the password", () => {
 	test("adds the key first, then installs with the key; the password goes only to the sign-in call", async () => {
 		answers.ssh_key_resolve = () => keyFixture.none;
+		// The key Atlas created for the sign-in: the install must use exactly that one (`-i`).
+		answers.ssh_authorize_key = () => ({ identity: "/Users/me/.ssh/id_new", has_public: true });
 		const { ob, t } = await connectStep();
 		await typeInto(passwordField(t), "s3cret");
 		await ob.launchServer();
@@ -199,6 +201,7 @@ describe("signing in with the password", () => {
 				.map((c) => c.cmd)
 				.filter((c) => ["ssh_authorize_key", "ssh_connect_check", "crew_server_install"].includes(c)),
 		).toEqual(["ssh_authorize_key", "crew_server_install"]);
+		expect(called("crew_server_install")[0].args.identity).toBe("/Users/me/.ssh/id_new");
 		expect(called("ssh_authorize_key")[0].args).toEqual({
 			target: "ubuntu@203.0.113.7",
 			port: null,

@@ -383,9 +383,20 @@ export class Onboarding {
 
 		try {
 			const port = this.sshPort !== 22 ? this.sshPort : null;
-			const identity = this.identity || null;
+			// The key shown is the key used: pass it explicitly (a `~/.ssh/config` with its own IdentityFile hides the
+			// default names from ssh, so a key Atlas just created would never be offered otherwise).
+			let identity = this.identity || this.key?.identity || null;
 			if (this.method === "password" && !this.keyAdded) {
-				await invoke("ssh_authorize_key", { target, port, identity, password: this.sshPassword });
+				const added = await invoke<KeyLookup["key"]>("ssh_authorize_key", {
+					target,
+					port,
+					identity: this.identity || null,
+					password: this.sshPassword,
+				});
+				if (added?.identity) {
+					this.key = added;
+					identity = added.identity;
+				}
 				this.sshPassword = "";
 				this.addedFor = this.where;
 				// The key is how this server is reached from now on, whatever a later lookup says.

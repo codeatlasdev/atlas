@@ -33,6 +33,15 @@
 	);
 	const failure = $derived(noSsh ?? ob.failure);
 	let showCmd = $state(false);
+	let failureEl = $state<HTMLElement>();
+	// A failure appears at the bottom of a scrolling form: bring all of it into view, above the footer.
+	$effect(() => {
+		if (!failureEl) return;
+		const frame = requestAnimationFrame(() =>
+			failureEl?.scrollIntoView({ block: "end", behavior: "smooth" }),
+		);
+		return () => cancelAnimationFrame(frame);
+	});
 	const labels = {
 		pick_key: "Choose another key",
 		use_password: "Sign in with the password",
@@ -146,8 +155,8 @@
 			</div>
 		</div>
 
-		<!-- Optional: one compact row. -->
-		<div class="optional">
+		<!-- Optional: one compact row (out of the way while a failure needs the room). -->
+		<div class="optional" class:gone={failure !== null && failure !== undefined}>
 			<Checkbox
 				bind:checked={ob.browsers}
 				label="Screenshots for UI work (Chromium + WebKit)"
@@ -157,7 +166,13 @@
 		</div>
 
 		{#if failure}
-			<div class="failure" role="alert" data-testid="connect-failure" data-kind={failure.kind}>
+			<div
+				class="failure"
+				bind:this={failureEl}
+				role="alert"
+				data-testid="connect-failure"
+				data-kind={failure.kind}
+			>
 				<CircleAlert size={16} class="failure-icon" />
 				<div class="failure-main">
 					<p class="failure-title">{failure.title}</p>
@@ -314,6 +329,10 @@
 		white-space: nowrap;
 		font-size: 12.5px;
 		color: var(--ca-text-primary);
+	}
+
+	.optional.gone {
+		display: none;
 	}
 
 	.optional {

@@ -209,7 +209,7 @@ pub fn install_steps(a: &Account) -> Vec<String> {
     ]
 }
 
-/// The writes of the units, as `(file, contents)`; the caller pipes the contents to `sudo tee <file>`.
+/// The writes of the units, as `(file, contents)`; the caller writes each with [`super::layout::write_unit_script`].
 pub fn unit_files(a: &Account) -> [(String, String); 5] {
     let f = |name: &str, body: String| (format!("/etc/systemd/system/{name}"), body);
     [
@@ -377,7 +377,7 @@ A project checkout is made again by the next task; the old one is kept as work.p
 pub enum Action {
     /// Run this shell on the server.
     Run(String),
-    /// Write `contents` to `file` (`sudo tee`).
+    /// Write the systemd unit `file` with `contents` ([`super::layout::write_unit_script`]).
     Write { file: String, contents: String },
     /// Install engine `agent` system-wide with `script` ([`engine_install_script`]). Unlike every other
     /// action a failure here does not fail the install: an engine needs the vendor's site and, for codex,

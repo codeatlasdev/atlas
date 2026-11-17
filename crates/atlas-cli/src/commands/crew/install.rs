@@ -217,12 +217,14 @@ async fn run_install(args: InstallArgs) -> Result<()> {
     }
     step("writing systemd service");
     let unit = layout::systemd_unit(&account);
-    let write_unit = format!(
-        "sudo tee /etc/systemd/system/{SERVICE}.service > /dev/null && sudo systemctl daemon-reload && sudo systemctl enable {SERVICE}"
-    );
-    let o = p.exec_stdin(&write_unit, Some(unit.as_bytes())).await?;
+    write_unit(&p, &format!("/etc/systemd/system/{SERVICE}.service"), &unit).await?;
+    let o = p
+        .exec(&format!(
+            "sudo systemctl daemon-reload && sudo systemctl enable {SERVICE}"
+        ))
+        .await?;
     if o.code != 0 {
-        bail!("writing the service failed: {}", o.stderr.trim());
+        bail!("enabling the service failed: {}", o.stderr.trim());
     }
 
     // --- One Linux user per crewmate ---
@@ -415,6 +417,28 @@ fn isolation_engines() -> Vec<(&'static str, String)> {
         .collect()
 }
 
+/// Write the unit `file` on the server through [`layout::write_unit_script`], the one way every unit Atlas owns is
+/// written: unmasked first, replaced rather than written through. A unit that had to be unmasked is said in one line;
+/// one that could not be fails with the command to run (and a `hint:` line on stderr, which Atlas Desktop shows as what to do).
+async fn write_unit(p: &Priv<'_>, file: &str, contents: &str) -> Result<()> {
+    let o = p
+        .exec_stdin(&layout::write_unit_script(file), Some(contents.as_bytes()))
+        .await?;
+    for unit in layout::unmasked_units(&o.stdout) {
+        step(&format!(
+            "{unit} was masked: unmasked it and wrote the real unit"
+        ));
+    }
+    if o.code != 0 {
+        if o.code == layout::UNMASK_FAILED {
+            let unit = file.rsplit('/').next().unwrap_or(file);
+            eprintln!("{}", layout::unmask_hint(unit));
+        }
+        return Err(layout::unit_write_error(o.code, &o.stderr, file));
+    }
+    Ok(())
+}
+
 /// Run one isolation action on the server. Through [`Priv`], like every privileged step of the install:
 /// a server whose sudo asks for a password (Atlas Desktop sends it) gets it with each of these too.
 async fn run_action(p: &Priv<'_>, action: &isolation::Action) -> Result<()> {
@@ -435,14 +459,9 @@ async fn run_action(p: &Priv<'_>, action: &isolation::Action) -> Result<()> {
             }
             return Ok(());
         }
-        isolation::Action::Write { file, contents } => (
-            format!("writing {file}"),
-            p.exec_stdin(
-                &format!("sudo tee {} > /dev/null", shq(file)),
-                Some(contents.as_bytes()),
-            )
-            .await?,
-        ),
+        isolation::Action::Write { file, contents } => {
+            return write_unit(p, file, contents).await;
+        }
     };
     if o.code != 0 {
         bail!(

@@ -294,6 +294,30 @@ The flow is defined once, in [CONTRIBUTING.md](https://github.com/codeatlasdev/a
 
 Before you open it: make the change with its tests and doc updates, run `bun run check`, and fill in the template, linking the issue it closes. Small, focused pull requests get reviewed faster than large ones.
 
+## Agent guards
+
+AI agents work in this repo, so the rules about where they write and what they may push are enforced by tools, not by prose. One decision function (`scripts/lib/agent-guard/decide.ts`, table-tested in `scripts/agent-guard.test.ts`) answers "allow or refuse, and what to do instead" for every agent, through four entry points:
+
+| Harness | Wiring (committed) | How it blocks |
+|---|---|---|
+| Claude Code | `.claude/settings.json`: `PreToolUse` on `Write\|Edit\|MultiEdit\|NotebookEdit\|Bash` runs `bun scripts/agent-guard.ts hook` | exit 2, the reason on stderr is shown to the agent |
+| Codex | `.codex/hooks.json`: `PreToolUse` on `Bash\|apply_patch` (hooks must be reviewed once in `/hooks`; the project `.codex/` layer must be trusted) | same, exit 2 |
+| omp | `.omp/extensions/agent-guard.ts` (loaded from the session's cwd) calls the same function in-process | `tool_call` returns `{ block: true, reason }` |
+| any tool, a human too | `scripts/git-hooks/pre-push` through `git config core.hooksPath scripts/git-hooks` (`scripts/setup.sh` sets it, idempotently, and never replaces a hooks path you chose) | git aborts the push |
+
+What is refused (each message names the fix):
+
+- **Writes outside your worktree.** A file tool or a shell redirect (`>`, `>>`, `tee`, `cp`, `mv`, `rm`, `mkdir`, `touch`, `dd of=`, `cd <main checkout>`, `git -C <main> commit`…) whose target really lands (symlinks and `..` resolved) outside the git worktree of the session's cwd. Temp dirs and the harnesses' own state (`~/.claude`, `~/.codex`, `~/.omp`, `~/.atlas`, `~/.agents`) are allowed; the main checkout, other agents' worktrees and git's own data (`.git/`) are not. A session that starts in the **primary checkout** is free to write there unless a maintainer opted in once with `git config atlas.agentWrites deny` (then the primary checkout is closed to agents, and `git worktree add` is the way out).
+- **`git push` to `main`, `master` or `release/*`**, `--all`, `--mirror`, `--no-verify`, `-c core.hooksPath=`; a bare `git push` while on main.
+- **Force-push** (`-f`, `--force`, `--force-with-lease`, `+refspec`).
+- **Merging** (`gh pr merge`, the merge/auto-merge API, `bun run pr:merge` unless `--dry-run`).
+- **`git stash`** (everything but `list` and `show`): every worktree of a clone shares one `refs/stash`.
+- **Deleting** branches and tags (`git branch -d/-D`, `git tag -d/-f`, `git push --delete`, `git push origin :ref`, `git update-ref -d`), and changing `core.hooksPath` or `atlas.agentWrites`.
+
+**Maintainer override.** A maintainer sets `ATLAS_MAINTAINER_OK` in the environment *before launching the session* (or around one command in their own terminal): a comma list of `write`, `push`, `force-push`, `merge`, `stash`, `delete`, `config`, or `all`. Example: `ATLAS_MAINTAINER_OK=push bun run release alpha` (the release pushes `main` and a tag). The guards read it only from their own process environment, and a command that mentions `ATLAS_MAINTAINER_OK` is refused outright, so an agent cannot give itself the override. The pre-push hook cannot tell an agent from a human: a command the agent runs in a shell the maintainer exported it into is the maintainer's.
+
+Limits, so nobody over-trusts it: the guards read commands, they do not sandbox them. A script, `python -c`, `eval` code in an agent's REPL or `sed -i` can still write anywhere; variables (`> "$DIR/x"`) are not expanded. A bug in the guard itself lets the call through and says so on stderr (the pre-push hook fails closed). Debug a decision with `echo '{"tool_name":"Bash","cwd":"<dir>","tool_input":{"command":"git stash"}}' | bun scripts/agent-guard.ts hook --json`.
+
 ## CI and releases
 
 CI (`.github/workflows/ci.yml`) runs on every pull request and on pushes to `main` and `release/**`: macOS, Linux and Windows run the Rust gate (one composite action, `.github/actions/rust-gate`, so they cannot drift), Linux and Windows run the repo scripts and their tests (`bun run release:test`, job "Repo scripts"), plus "Desktop opens (Linux)" (the app launched headless, `scripts/linux-launch-check.sh`), the desktop frontend checks, the site build, `cargo deny`, the duplication report and the workflow lint. Fork pull requests run it with a read-only token and no secrets. How it is wired:

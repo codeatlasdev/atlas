@@ -291,6 +291,8 @@ macro_rules! handlers {
             term::term_stats_reset,
             swipe_mac::swipe_zones,
             swipe_mac::swipe_zones_now,
+            swipe_mac::swipe_scrollers_now,
+            swipe_mac::swipe_abandon,
             swipe_mac::swipe_native,
             swipe_mac::swipe_go,
             term::term_key,

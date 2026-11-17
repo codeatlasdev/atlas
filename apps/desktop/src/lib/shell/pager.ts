@@ -82,6 +82,13 @@ export function place(
 	return out;
 }
 
+/**
+ * A pager holding a pose (layers offset, natives parked) with no frame for this long has lost the end of its
+ * gesture. The engine settles in 350 ms and releases a silent finger after 400 ms, so a healthy gesture never gets
+ * near it; when one does, the pager lets go of its pose on its own and the page is simply on a page.
+ */
+export const PAGER_WATCHDOG_MS = 2000;
+
 class Pager {
 	#host: PagerHost | null = null;
 	/** Generation being drawn, and the layers it moved (to release the ones a heading flip leaves). */
@@ -99,6 +106,7 @@ class Pager {
 	#selfCommitted = false;
 	/** A programmatic switch waiting for its generation: its target and origin. */
 	#pending: { target: string; origin: string; selfCommitted: boolean } | null = null;
+	#watchdog: ReturnType<typeof setTimeout> | undefined;
 
 	get active() {
 		return this.#active;
@@ -143,6 +151,8 @@ class Pager {
 			h.moving(true, [...keep]);
 		}
 		this.#active = true;
+		clearTimeout(this.#watchdog);
+		this.#watchdog = setTimeout(() => this.#expire(m.seq), PAGER_WATCHDOG_MS);
 	}
 
 	/** The release decision: once per generation. `dir` 0 is a cancel. */
@@ -176,6 +186,13 @@ class Pager {
 		return true;
 	}
 
+	/** No frame for `PAGER_WATCHDOG_MS` while a pose is held: settle on the page the selection is on. */
+	#expire(seq: number) {
+		if (seq !== this.#seq || !this.#active) return;
+		console.warn("[pager] the engine stopped reporting; settling the layers on the selected space");
+		void this.#rest(seq);
+	}
+
 	#begin(seq: number) {
 		const h = this.#host!;
 		// A new generation while one still holds its end pose: its transforms are replaced below, so just
@@ -200,6 +217,7 @@ class Pager {
 		const h = this.#host;
 		if (!h || !this.#active) return;
 		this.#active = false;
+		clearTimeout(this.#watchdog);
 		this.#told = "";
 		// The end pose is held while Svelte applies the new roles; once the rest layout is in the DOM it is
 		// dropped, so no frame shows an in-between state.
@@ -214,6 +232,7 @@ class Pager {
 		for (const id of [...this.#moved]) this.#release(id);
 		if (this.#active) this.#host?.moving(false);
 		this.#active = false;
+		clearTimeout(this.#watchdog);
 		this.#told = "";
 		this.#origin = this.#target = this.#pending = null;
 	}

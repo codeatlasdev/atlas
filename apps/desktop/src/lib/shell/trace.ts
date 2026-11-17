@@ -44,6 +44,13 @@ export interface Expect {
 	untouched?: boolean;
 	/** The first/last page: only a rubber band, never a commit. */
 	edge?: "first" | "last";
+	/**
+	 * The pointer starts over a horizontal scroller (an editor with a long line) that can still go this way: `left`
+	 * reveals more of its left side (fingers moving right), `right` of its right side (fingers moving left). The
+	 * engine decides who owns the gesture from this when the fingers land; the bench puts such a scroller under the
+	 * aimed pointer for the replay.
+	 */
+	scroller?: { left: boolean; right: boolean };
 }
 
 export interface Trace {

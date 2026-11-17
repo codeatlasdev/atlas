@@ -1,13 +1,6 @@
 // @ts-nocheck bun test runtime types are not part of the app tsconfig
 import { describe, expect, test } from "bun:test";
-import {
-	chipFor,
-	EMPTY_HOST,
-	parseHostState,
-	promptCopy,
-	shouldPrompt,
-	terminalsLine,
-} from "./hostStatus.ts";
+import { chipFor, EMPTY_HOST, parseHostState, promptCopy, shouldPrompt } from "./hostStatus.ts";
 
 const REASON =
 	"Terminal host 0.6.2 is older than Atlas 1.2.1; language features and fast terminal rendering are off until it restarts.";
@@ -108,10 +101,4 @@ describe("shouldPrompt", () => {
 		expect(shouldPrompt(outdated({ ptys: [] }))).toBe(false);
 		expect(shouldPrompt(EMPTY_HOST)).toBe(false);
 	});
-});
-
-test("terminalsLine", () => {
-	expect(terminalsLine(0)).toBe("No running terminals");
-	expect(terminalsLine(1)).toBe("1 running terminal");
-	expect(terminalsLine(3)).toBe("3 running terminals");
 });

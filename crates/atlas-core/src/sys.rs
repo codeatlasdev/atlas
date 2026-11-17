@@ -714,15 +714,6 @@ mod imp {
         c
     }
 
-    /// One row of the process table.
-    #[derive(Clone, Debug, PartialEq, Eq)]
-    pub struct ProcRow {
-        pub pid: u32,
-        pub ppid: u32,
-        /// Executable file name (`node.exe`), as the snapshot reports it.
-        pub exe: String,
-    }
-
     /// Snapshot of every process (`CreateToolhelp32Snapshot`). Empty on failure.
     pub fn process_rows() -> Vec<ProcRow> {
         use windows_sys::Win32::Foundation::INVALID_HANDLE_VALUE;
@@ -756,36 +747,19 @@ mod imp {
         out
     }
 
-    /// Every live descendant of `root` (not `root`), parents before children. A recorded parent
-    /// pid survives its process on Windows and pids are reused, so a child counts only when it
-    /// was created no earlier than its parent.
+    /// Every live descendant of `root` (not `root`), parents before children; none when `root` is not
+    /// running. See [`super::descendants_by`].
     pub fn descendants(root: u32, rows: &[ProcRow]) -> Vec<u32> {
-        let born = |pid: u32| start_time_secs(pid).unwrap_or(0);
-        let mut out = Vec::new();
-        let mut queue = std::collections::VecDeque::from([root]);
-        while let Some(p) = queue.pop_front() {
-            let p_born = born(p);
-            for r in rows {
-                if r.ppid == p
-                    && r.pid != p
-                    && r.pid != root
-                    && !out.contains(&r.pid)
-                    && born(r.pid) >= p_born
-                {
-                    out.push(r.pid);
-                    queue.push_back(r.pid);
-                }
-            }
-        }
-        out
+        super::descendants_by(root, rows, &start_time_secs)
     }
 
-    /// End `root` and its whole tree (Windows has no process groups to signal). Never ourselves.
+    /// End `root` and its whole tree (Windows has no process groups to signal). Never ourselves or
+    /// an ancestor of ours, and nothing when no process object has `root`'s pid: after the last handle of
+    /// a child is closed its number is anyone's (see [`super::tree_targets`]), so call this while you still
+    /// hold the `Child` (a running or exited one), never after it was consumed or dropped.
     pub fn kill_tree(root: u32) {
-        let rows = process_rows();
-        let tree = descendants(root, &rows);
-        force_kill(root);
-        for pid in tree {
+        for pid in super::tree_targets(root, std::process::id(), &process_rows(), &start_time_secs)
+        {
             force_kill(pid);
         }
     }
@@ -835,10 +809,81 @@ mod imp {
     }
 }
 
+/// One row of the process table.
+#[cfg(any(windows, test))]
+#[derive(Clone, Debug, PartialEq, Eq)]
+pub struct ProcRow {
+    pub pid: u32,
+    pub ppid: u32,
+    /// Executable file name (`node.exe`), as the snapshot reports it.
+    pub exe: String,
+}
+
+/// Every live descendant of `root` (not `root`), parents before children, with `born` the creation time of a
+/// pid (`None`: no such process object). A recorded parent pid survives its process on Windows and pids are
+/// reused, so a child counts only when it was created no earlier than its parent. A `root` with no creation time
+/// has no descendants: read as 0, every process that ever had a parent with that number (any older holder of
+/// the pid, the CI runner's own children included) would pass the test above. (An exited process whose handle
+/// the caller still holds keeps its creation time, so its real orphans are still found.)
+#[cfg(any(windows, test))]
+fn descendants_by(root: u32, rows: &[ProcRow], born: &dyn Fn(u32) -> Option<u64>) -> Vec<u32> {
+    let Some(root_born) = born(root) else {
+        return Vec::new();
+    };
+    let mut out = Vec::new();
+    let mut queue = std::collections::VecDeque::from([(root, root_born)]);
+    while let Some((p, p_born)) = queue.pop_front() {
+        for r in rows {
+            if r.ppid == p
+                && r.pid != p
+                && r.pid != root
+                && !out.contains(&r.pid)
+                && let Some(b) = born(r.pid)
+                && b >= p_born
+            {
+                out.push(r.pid);
+                queue.push_back((r.pid, b));
+            }
+        }
+    }
+    out
+}
+
+/// The pids [`kill_tree`] ends for `root`: `root` and its descendants, and nothing when `root` is not running
+/// (its number may belong to a stranger by now) or is `me` or one of `me`'s ancestors (by the table's recorded
+/// parents: the test runner, the CI runner). The process table is never trusted to name a pid that is not ours.
+#[cfg(any(windows, test))]
+fn tree_targets(
+    root: u32,
+    me: u32,
+    rows: &[ProcRow],
+    born: &dyn Fn(u32) -> Option<u64>,
+) -> Vec<u32> {
+    let mut protected = vec![me];
+    let mut at = me;
+    while let Some(r) = rows.iter().find(|r| r.pid == at)
+        && r.ppid != 0
+        && !protected.contains(&r.ppid)
+    {
+        protected.push(r.ppid);
+        at = r.ppid;
+    }
+    if protected.contains(&root) || born(root).is_none() {
+        return Vec::new();
+    }
+    let mut out = vec![root];
+    out.extend(
+        descendants_by(root, rows, born)
+            .into_iter()
+            .filter(|p| !protected.contains(p)),
+    );
+    out
+}
+
 #[cfg(windows)]
 pub use imp::{
-    CREATE_BREAKAWAY_FROM_JOB, CREATE_NO_WINDOW, DETACHED, ProcRow, descendants, kill_tree,
-    process_rows, start_time_secs, usage,
+    CREATE_BREAKAWAY_FROM_JOB, CREATE_NO_WINDOW, DETACHED, descendants, kill_tree, process_rows,
+    start_time_secs, usage,
 };
 
 #[cfg(test)]
@@ -983,6 +1028,65 @@ mod tests {
         for k in kids {
             assert!(!pid_alive(k), "descendant {k} survived");
         }
+    }
+
+    fn row(pid: u32, ppid: u32) -> ProcRow {
+        ProcRow {
+            pid,
+            ppid,
+            exe: String::new(),
+        }
+    }
+
+    /// `born` for a made-up machine: the listed pids run, with that creation time; every other pid is gone.
+    fn running(born: &[(u32, u64)]) -> impl Fn(u32) -> Option<u64> {
+        let born: std::collections::HashMap<u32, u64> = born.iter().copied().collect();
+        move |pid| born.get(&pid).copied()
+    }
+
+    // Incident (Windows CI jobs that end in "The hosted runner lost communication with the server"): callers
+    // ended the tree of a child they had already waited for. With the root gone its creation time read as 0, so
+    // every process whose recorded parent had that number, an older holder of the pid included (Windows keeps
+    // `ppid` after the parent ends and reuses the number), counted as its descendant and was killed. Here 300 is
+    // such a process: started by an earlier process numbered 100, long before the child that got 100 later.
+    #[test]
+    fn a_root_that_already_exited_has_no_descendants_and_nothing_to_kill() {
+        let rows = [row(7000, 500), row(500, 4), row(300, 100)];
+        let born = running(&[(7000, 90), (500, 10), (4, 1), (300, 5)]);
+        assert!(descendants_by(100, &rows, &born).is_empty());
+        assert!(tree_targets(100, 7000, &rows, &born).is_empty());
+    }
+
+    #[test]
+    fn a_running_root_takes_its_descendants_but_not_older_strangers_with_its_number() {
+        // 100 (born 50) -> 101 (60) -> 102 (70); 300 (born 5) names 100 as its parent but is older: a stranger.
+        // 103 names 101 but is gone.
+        let rows = [
+            row(100, 1),
+            row(101, 100),
+            row(102, 101),
+            row(300, 100),
+            row(103, 101),
+        ];
+        let born = running(&[(100, 50), (101, 60), (102, 70), (300, 5)]);
+        assert_eq!(descendants_by(100, &rows, &born), vec![101, 102]);
+        assert_eq!(tree_targets(100, 7000, &rows, &born), vec![100, 101, 102]);
+    }
+
+    #[test]
+    fn the_tree_never_includes_us_or_an_ancestor_of_ours() {
+        // 7000 (us) <- 500 (test runner) <- 4 (CI runner): "500's tree" would end us and the job.
+        let rows = [row(7000, 500), row(500, 4), row(4, 1), row(100, 500)];
+        let born = running(&[(7000, 90), (500, 10), (4, 1), (100, 80)]);
+        for root in [7000, 500, 4] {
+            assert!(tree_targets(root, 7000, &rows, &born).is_empty(), "{root}");
+        }
+        // A child of the runner that is not on our own chain is an ordinary root.
+        assert_eq!(tree_targets(100, 7000, &rows, &born), vec![100]);
+        // A tree with us or an ancestor under it leaves them out.
+        let under = [row(7000, 101), row(101, 100), row(100, 4), row(4, 1)];
+        let born = running(&[(7000, 90), (101, 80), (100, 10), (4, 1)]);
+        assert!(tree_targets(100, 7000, &under, &born).is_empty());
     }
 
     #[test]

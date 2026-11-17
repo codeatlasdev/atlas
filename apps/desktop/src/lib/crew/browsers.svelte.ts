@@ -9,7 +9,7 @@
 import { invoke } from "@tauri-apps/api/core";
 import { listen } from "@tauri-apps/api/event";
 import { errText } from "#lib/api.ts";
-import { authModeForError } from "#lib/crew/onboarding/installProgress.ts";
+import { needsSudoPassword } from "#lib/crew/onboarding/installProgress.ts";
 import type { AdminAddress } from "#lib/crew.ts";
 import { parseSSHTarget } from "#lib/crew/sshTarget.ts";
 import {
@@ -65,7 +65,14 @@ export class CrewBrowsers {
 	private args(extra: Record<string, unknown> = {}) {
 		const p = this.parsed;
 		if (!p.ok) throw new Error(p.error);
-		return { target: p.target, port: p.port !== 22 ? p.port : null, ...extra };
+		const identity = this.book?.current()?.identity;
+		return {
+			target: p.target,
+			port: p.port !== 22 ? p.port : null,
+			// The key picked when the server was added: the same one signs in here.
+			...(identity ? { identity } : {}),
+			...extra,
+		};
 	}
 
 	/**
@@ -75,7 +82,10 @@ export class CrewBrowsers {
 	async saveAddress() {
 		const p = this.parsed;
 		if (!this.book || !p.ok) return;
-		const admin = adminOf(p);
+		const admin = {
+			...adminOf(p),
+			...(this.book.current()?.identity ? { identity: this.book.current()?.identity } : {}),
+		};
 		if (sameAdmin(this.book.current(), admin)) return;
 		try {
 			await this.book.save(admin);
@@ -99,7 +109,7 @@ export class CrewBrowsers {
 			await this.saveAddress();
 		} catch (e) {
 			const err = errText(e);
-			this.needsPassword = authModeForError(err) === "sudo";
+			this.needsPassword = needsSudoPassword(err);
 			this.view = errorView(err);
 		}
 	}
@@ -121,7 +131,7 @@ export class CrewBrowsers {
 		} catch (e) {
 			const err = errText(e);
 			this.installError = err;
-			this.needsPassword = authModeForError(err) === "sudo";
+			this.needsPassword = needsSudoPassword(err);
 		} finally {
 			unlisten();
 			this.installing = false;

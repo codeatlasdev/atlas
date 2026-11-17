@@ -30,8 +30,12 @@ const NOT_REACHABLE =
 	"Terminal host not reachable. Terminals cannot start or reconnect until it is back. Use Restart terminal host, or Report if it keeps happening.";
 
 beforeEach(() => {
+	errors.hostReachable();
 	errors.toasts = [];
+	errors.hostGraceMs = 0;
 });
+
+const sleep = (ms: number) => new Promise((r) => setTimeout(r, ms));
 
 /**
  * Incident 1.5.0-alpha.5: three tabs each called the host, each got "atlas hostd is not reachable
@@ -72,4 +76,56 @@ test("restartHost asks the backend to restart it and clears the toast", async ()
 	await errors.restartHost(errors.toasts[0].id);
 	expect(calls.map((c) => c[0])).toContain("host_restart_force");
 	expect(errors.toasts).toHaveLength(0);
+});
+
+/**
+ * #500: updating 1.5.0-alpha.25 -> alpha.26 left "Terminal host not reachable" on screen although the host had
+ * been handed over and was listening again. A host that is back clears its own outage toast.
+ */
+test("an outage toast is dismissed when the host is reachable again, and the next outage toasts again", async () => {
+	errors.captureHost(NOT_REACHABLE);
+	errors.captureHost(NOT_REACHABLE);
+	expect(errors.toasts).toHaveLength(1);
+	errors.hostReachable();
+	expect(errors.toasts).toHaveLength(0);
+	errors.captureHost(NOT_REACHABLE);
+	expect(errors.toasts).toHaveLength(1);
+	expect(errors.toasts[0].repeats).toBe(0);
+});
+
+test("a reachable host leaves the other errors alone", async () => {
+	errors.toasts.push({
+		id: 99,
+		repeats: 0,
+		report: { message: "boom", stack: "", where: "x", kind: "error" },
+	});
+	errors.captureHost(NOT_REACHABLE);
+	errors.hostReachable();
+	expect(errors.toasts.map((t) => t.id)).toEqual([99]);
+});
+
+/**
+ * A live upgrade drops every client for a moment (the old daemon stops serving, the new one binds the socket): calls
+ * in that window fail with "hostd disconnected" and the app reconnects within a second or two. That is not an
+ * outage worth a toast with Restart / Report: the toast only shows once the host has stayed away for the grace.
+ */
+test("a host that is back within the grace window never shows an outage toast", async () => {
+	errors.hostGraceMs = 40;
+	errors.captureHost("hostd disconnected");
+	errors.captureHost("hostd disconnected");
+	expect(errors.toasts).toHaveLength(0);
+	errors.hostReachable();
+	await sleep(100);
+	expect(errors.toasts).toHaveLength(0);
+});
+
+test("a host that stays away longer than the grace shows one toast with every failure counted", async () => {
+	errors.hostGraceMs = 30;
+	errors.captureHost("hostd disconnected");
+	errors.captureHost("hostd disconnected");
+	errors.captureHost("hostd disconnected");
+	await sleep(100);
+	expect(errors.toasts).toHaveLength(1);
+	expect(errors.toasts[0].repeats).toBe(2);
+	expect(errors.toasts[0].host).toBe(true);
 });

@@ -34,7 +34,18 @@ const git = (args, stdin) => {
 	return { code: p.exitCode, stdout: decoder.decode(p.stdout), stderr: decoder.decode(p.stderr) };
 };
 
+// What hostd's `git_status` rejects with outside a repository: the host's `git <args>: <stderr>`, git's real stderr.
+const STATUS_ARGS = [
+	"status",
+	"--porcelain=v2",
+	"-z",
+	"--branch",
+	"--ignored=matching",
+	"--untracked-files=all",
+];
 function status() {
+	const probe = git(STATUS_ARGS);
+	if (probe.code !== 0) throw `git ${STATUS_ARGS.join(" ")}: ${probe.stderr.trim()}`;
 	const out = git(["status", "--porcelain=v1", "--branch", "--untracked-files=all"])
 		.stdout.split("\n")
 		.filter(Boolean);
@@ -79,7 +90,8 @@ mock.module("#lib/stores/gitStatus.ts", () => ({
 }));
 await (
 	await import("../../../test/uiKit.ts")
-).useRealKit("Button", "Spinner", "TextArea", "DropdownMenu", "DropdownMenu/DropdownMenuItem");
+).useRealKit("Button", "Spinner", "TextArea", "EmptyState", "DropdownMenu", "DropdownMenu/DropdownMenuItem");
+const { toast } = await import("@codeatlasdev/ui");
 const { flushSync, mount, tick, unmount } = await import("svelte");
 const { gitStatus } = await import("#lib/stores/gitStatus.ts");
 const { default: SourceControl } = await import("./SourceControl.svelte");
@@ -102,7 +114,10 @@ afterAll(() => rmSync(root, { recursive: true, force: true }));
 
 let n = 0;
 let done;
+let toasts = [];
+toast.error = (message, o) => toasts.push({ message, ...(typeof o === "object" ? o : {}) });
 beforeEach(() => {
+	toasts = [];
 	writeFileSync(globalConfig, "[user]\n\tuseConfigOnly = true\n");
 	gh = null;
 	repo = join(root, `repo${n++}`);
@@ -347,6 +362,55 @@ test("End reaches the last entry, which was not rendered, and Home comes back to
 	} finally {
 		restore();
 	}
+});
+
+// Regression (#505): in a folder that is not a git repository (~/.omp) Source Control still offered its actions and
+// raised git's whole usage text as an error toast.
+test("a folder that is not a git repository says so and offers Initialize repository instead of git actions", async () => {
+	repo = join(root, `plain${n++}`);
+	mkdirSync(repo);
+	writeFileSync(join(repo, "f.txt"), "hello\n");
+	const target = document.createElement("div");
+	document.body.append(target);
+	const app = flushSync(() => mount(SourceControl, { target, props: { worktreeId: "wt" } }));
+	done = () => (unmount(app), gitStatus.refresh("wt"));
+	await until(() => text().includes("This folder is not a git repository"), "the not-a-repository state");
+	for (const label of ["Stage all", "Commit", "Push", "PR", "Generate"])
+		expect(button(label)).toBeUndefined();
+	expect(document.body.querySelector("textarea")).toBeNull();
+	// Not one toast, and above all never git's usage text.
+	expect(toasts).toEqual([]);
+	expect(text()).not.toContain("--no-index");
+	expect(text()).not.toContain("usage:");
+
+	click(button("Initialize repository"));
+	await until(() => git(["rev-parse", "--git-dir"]).code === 0, "git init");
+	await until(() => button("Stage all"), "the panel of the new repository");
+	expect(text()).not.toContain("not a git repository");
+	expect(toasts).toEqual([]);
+});
+
+test("a git failure that reaches a toast is a sentence, with git's own output under Details", async () => {
+	repo = join(root, `plain${n++}`);
+	mkdirSync(repo);
+	const { gitToast } = await import("#lib/gitToast.ts");
+	gitToast(git(["diff", "--no-color", "-U3", "--no-ext-diff"]).stderr);
+	expect(toasts).toHaveLength(1);
+	expect(toasts[0].message).toBe("This folder is not a git repository.");
+	expect(toasts[0].action.label).toBe("Details");
+});
+
+test("a failed push says why in a sentence and keeps git's output for Fix with AI and Details", async () => {
+	git(["config", "user.name", "Ada"]);
+	git(["config", "user.email", "ada@example.com"]);
+	git(["add", "f.txt"]);
+	git(["commit", "-m", "init"]);
+	await open2();
+	click(button("Push"));
+	await until(() => text().includes("This repository has no remote"), "the push explanation");
+	const raw = document.body.querySelector(".failure details");
+	expect(raw.textContent).toContain("No configured push destination");
+	expect(document.body.querySelector(".failure").textContent).toContain("Fix with AI");
 });
 
 test("the developer's own global git config is exactly as these tests found it", () => {

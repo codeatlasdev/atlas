@@ -1,8 +1,19 @@
 // The decision behind `bun run pr:merge`: pure, so every refusal is a table row in pr-merge.test.ts. Each reason
 // carries the fix, because the reader is usually an agent that has to act on it without asking.
+import { MAX_ATTEMPTS } from "./ci-lost-runner";
 import { type Signoff, squashBody } from "./pr-closes";
 
-export type Run = { headSha: string; status: string; conclusion: string | null; createdAt: string; url: string };
+export type Run = {
+  headSha: string;
+  status: string;
+  conclusion: string | null;
+  createdAt: string;
+  url: string;
+  /** The run id and attempt, and whether every job that failed in it was lost to its runner (ci-lost-runner.ts). */
+  id?: number;
+  attempt?: number;
+  lostOnly?: boolean;
+};
 
 export type Facts = {
   repo: string; // owner/repo
@@ -72,7 +83,18 @@ export function decide(f: Facts): Decision {
   } else if (run.status !== "completed") {
     reasons.push(`CI for head ${short} is ${run.status}: wait for it to complete, then rerun (${run.url})`);
   } else if (run.conclusion !== "success") {
-    reasons.push(`CI for head ${short} concluded ${run.conclusion}: fix it and push (\`gh run view --log-failed ${run.url}\`)`);
+    const attempt = run.attempt ?? 1;
+    if (run.lostOnly && attempt < MAX_ATTEMPTS) {
+      reasons.push(
+        `CI for head ${short} concluded ${run.conclusion} only because a runner was lost: runner lost, rerun pending (attempt ${attempt} of ${MAX_ATTEMPTS}, ci-rerun-lost.yml): wait for the new attempt, then rerun (${run.url})`,
+      );
+    } else if (run.lostOnly) {
+      reasons.push(
+        `CI for head ${short} concluded ${run.conclusion} only because a runner was lost, on every attempt (${attempt} of ${MAX_ATTEMPTS}): no rerun is pending; \`gh run rerun --failed ${run.id ?? run.url}\` once, then rerun this (${run.url})`,
+      );
+    } else {
+      reasons.push(`CI for head ${short} concluded ${run.conclusion}: fix it and push (\`gh run view --log-failed ${run.url}\`)`);
+    }
   }
 
   if (!conventional(f.title)) {

@@ -9,7 +9,8 @@
 // --dry-run, would merge), 1: refused, 2: bad usage. Why: scripts/pr-closes.ts. How a maintainer uses it:
 // CONTRIBUTING.md "Pull request flow and who merges". `GH` replaces the gh binary (tests; see gh.ts).
 import { ghCommand, ghOut, run } from "./gh";
-import { type Facts, decide } from "./pr-merge-decide";
+import { fetchJobs, lostOnly } from "./ci-lost-runner";
+import { type Facts, decide, runFor } from "./pr-merge-decide";
 
 const gh = ghCommand();
 
@@ -53,13 +54,19 @@ async function facts(n: number, subject: string | undefined): Promise<Facts> {
       "api",
       `repos/${repo}/actions/workflows/ci.yml/runs?head_sha=${sha}&per_page=30`,
       "--jq",
-      "[.workflow_runs[] | {headSha: .head_sha, status, conclusion, createdAt: .created_at, url: .html_url}]",
+      "[.workflow_runs[] | {id, attempt: .run_attempt, headSha: .head_sha, status, conclusion, createdAt: .created_at, url: .html_url}]",
     ).then((s) => JSON.parse(s)),
     // Not a member answers 404; any failure counts as "not a maintainer" (fail closed).
     run([...gh, "api", `orgs/${owner}/teams/atlas-maintainers/memberships/${login}`, "--jq", ".state"]),
     run(["git", "config", "--get", "user.name"]).then((r) => r.out),
     run(["git", "config", "--get", "user.email"]).then((r) => r.out),
   ]);
+
+  // A red run is worth a second look: only lost runners (issue #520) is a rerun the maintainer waits for, not a fix.
+  const last = runFor(runs, sha);
+  if (last?.status === "completed" && last.conclusion === "failure" && last.id !== undefined) {
+    last.lostOnly = lostOnly(await fetchJobs(repo, last.id, last.attempt ?? 1));
+  }
 
   return {
     repo,

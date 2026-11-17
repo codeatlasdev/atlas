@@ -4,7 +4,7 @@
  * Importing this module installs the CodeMirror-backed `ops` of `symbols.ts`.
  */
 import { EditorView } from "codemirror";
-import { syntaxTree } from "@codemirror/language";
+import { ensureSyntaxTree, syntaxTree } from "@codemirror/language";
 import type { EditorState } from "@codemirror/state";
 import { redo, selectAll, undo } from "@codemirror/commands";
 import { envOf } from "#lib/lsp/context.ts";
@@ -18,10 +18,16 @@ const SKIP = /^(Import|Export|Use|ExternCrate|Variable|Lexical|Macro|Attribute|F
 const NAME =
 	/^(VariableDefinition|PropertyDefinition|TypeDefinition|BoundIdentifier|TypeIdentifier|VariableName|Identifier|PropertyName)$/;
 
-export function outline(state: EditorState): OutlineSymbol[] {
+/**
+ * Symbols of the whole document. The parse is finished first (up to `budgetMs` of main-thread time): a state's own
+ * tree (`syntaxTree(state)`) is the partial one it was created with, so a large file listed only the symbols of its
+ * first kilobytes. The work persists in the state's parse context, so a later call is cheap; past the budget the
+ * outline covers what is parsed.
+ */
+export function outline(state: EditorState, budgetMs = 200): OutlineSymbol[] {
 	const out: OutlineSymbol[] = [];
 	const doc = state.doc;
-	syntaxTree(state).iterate({
+	(ensureSyntaxTree(state, doc.length, budgetMs) ?? syntaxTree(state)).iterate({
 		enter(n) {
 			const m = DECL.exec(n.name);
 			if (!m || (m[1] && SKIP.test(m[1]))) return;

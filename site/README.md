@@ -31,6 +31,15 @@ bun run check      # astro check + type-check of scripts/ and functions/ (CI run
 | `public/fonts/` | Archivo (variable, wght+wdth) and JetBrains Mono (variable), both SIL OFL, self-hosted |
 | `public/media/` | the film, loops and stills (all real footage, see its README). Heavy files are not in git: run `scripts/fetch-media.sh` |
 
+## Languages (en, pt-BR)
+
+English is the source and lives at `/`; Portuguese lives at `/pt-br/` (Astro i18n, `pt-br` is the URL segment, `pt-BR` the tag in catalogs and `<html lang>`). Rules: `src/lib/i18n.ts` (pure, tested).
+
+- **Chrome strings** (Nav, Footer, 404 so far) are Paraglide JS 3 messages: `messages/en.json` and `messages/pt-BR.json` (flat keys, `area_snake_name`, sorted), every English key described in `messages/descriptions.json`, project in `project.inlang/`. Use `m.key()` from `src/lib/paraglide/messages.js`. `src/lib/paraglide/` is generated and gitignored: the Vite plugin writes it on `build`/`dev`, `bun run i18n:compile` writes it for `check` and `bun test`. One config for both: `paraglide.options.mjs`. During the static build `src/middleware.ts` sets the locale of each page; in the browser `src/lib/locale-client.ts` reads `<html lang>` (import it before calling `m.*()` in client code). Never call `m.*()` at module top level of server code that renders more than one page.
+- **Only translated pages are advertised.** `hreflang` links, the language switch and the sitemap list a pt-BR page only when it is a real translation. Pages with no pt-BR twin (landing, download, privacy, changelog) redirect from `/pt-br/...` to the English URL (Astro `fallback`, default `redirect`), so there is no copy to maintain. `/changelog/` stays English only (`CHANGELOG.md` is union-merged and parsed by the release tooling).
+- **Docs.** `docs/pt-BR/<slug>.md` translates `docs/<slug>.md`; front matter is exactly `title`, `source` (`<slug>.md`) and `source_sha` (quoted: an unquoted all-digit sha is read as a number), the git blob sha of the English file when translated (`git hash-object docs/<slug>.md`). Every docs slug has a page under `/pt-br/docs/`: a translation (with a banner when the English file changed since), or the English body with a banner, `lang="en"`, a canonical link to the English page, no search index entry, no hreflang and no sitemap entry. Nav group titles are still English; item titles come from each translation's `title`. In translations, write links as `../x.md` (GitHub reads it; the site maps it to `/pt-br/docs/x/`).
+- **Not migrated yet:** the docs layout chrome (sidebar heading, previous/next, "On this page", edit link, search placeholder) and everything else on the landing, download, privacy and code signing pages.
+
 ## Motion rules
 
 `prefers-reduced-motion`: no Lenis, no ScrollTrigger, no log movement, no video autoplay (the hero shows its poster); the HTML/CSS already renders every final state. Without JavaScript the page is complete as static HTML. Continuous animation (log rivers) is CSS-only and paused off screen and in hidden tabs.

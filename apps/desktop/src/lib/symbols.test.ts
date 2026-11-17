@@ -5,17 +5,29 @@ import { markdown } from "@codemirror/lang-markdown";
 import { python } from "@codemirror/lang-python";
 import { rust } from "@codemirror/lang-rust";
 import { EditorState } from "@codemirror/state";
-import { ensureSyntaxTree } from "@codemirror/language";
+import { syntaxTree } from "@codemirror/language";
 import { outline } from "./outline.ts";
 import { registerEditor, saveAllEditors, saveEditor, savers, unregisterEditor, editors } from "./symbols.ts";
 
-// A whole parse first: `EditorState.create` parses within a small time budget, so on a loaded machine the tree
-// `outline` reads could be partial (the Python case came back empty on a loaded release gate).
+// `EditorState.create` parses within a small time budget, so a big (or, on a loaded machine, any) document starts
+// with a partial tree. `outline` must finish the parse itself: the release gate saw the Python case come back empty,
+// and CI saw only the first TypeScript symbol, because the test finished the parse but `outline` read the tree the
+// state was created with.
 const symbols = (doc: string, extension: unknown) => {
 	const state = EditorState.create({ doc, extensions: [extension] });
-	ensureSyntaxTree(state, state.doc.length, 5000);
-	return outline(state).map((s) => [s.kind, s.name, s.line]);
+	return outline(state, 5000).map((s) => [s.kind, s.name, s.line]);
 };
+
+// Regression: ⌘⇧O on a large file listed only the symbols of its first few kilobytes. `ensureSyntaxTree` returns the
+// finished tree but leaves `syntaxTree(state)` at the partial one the state was created with, which `outline` read.
+test("the outline of a document bigger than the first parse covers the whole document", () => {
+	const doc = Array.from({ length: 5000 }, (_, i) => `function f${i}() {}`).join("\n");
+	const state = EditorState.create({ doc, extensions: [javascript({ typescript: true })] });
+	expect(syntaxTree(state).length).toBeLessThan(doc.length); // the precondition: the first parse stopped early
+	const names = outline(state, 10_000).map((s) => s.name);
+	expect(names).toHaveLength(5000);
+	expect(names.at(-1)).toBe("f4999");
+});
 
 test("TypeScript: functions, classes, interfaces and type aliases; imports are skipped", () => {
 	const doc = [

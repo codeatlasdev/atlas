@@ -1,6 +1,6 @@
 <script lang="ts">
 	/** Left sidebar: filter, fixed views, the active project and the collapsible list of the others. */
-	import { IconButton, Kbd, Skeleton, Spinner } from "@codeatlasdev/ui";
+	import { IconButton, Kbd, Skeleton, Spinner, toast } from "@codeatlasdev/ui";
 	import { kbd, primaryKey } from "#lib/keys.ts";
 	import {
 		Bot,
@@ -31,6 +31,11 @@
 	import SidebarFooter from "./sidebar/SidebarFooter.svelte";
 	import WorktreeRow from "./sidebar/WorktreeRow.svelte";
 	import { droppedOn } from "./sidebar/addProject.ts";
+	import LooseFiles from "./sidebar/LooseFiles.svelte";
+	import { dropAction } from "#lib/openPath.ts";
+	import { openPath } from "#lib/ctl.ts";
+	import { host } from "#lib/host.ts";
+	import { errText } from "#lib/api.ts";
 	import {
 		addFolder,
 		addProject,
@@ -85,7 +90,18 @@
 	let asideEl: HTMLElement | undefined = $state();
 	let dropping = $state(false);
 
-	/** A folder dragged from Finder onto the sidebar is added like a picked one (Tauri delivers native drops, not DOM ones). */
+	/**
+	 * What a drop does (`dropAction`): a folder on the sidebar is added like a picked one, a file opens wherever it lands
+	 * (Tauri delivers native drops, not DOM ones).
+	 */
+	async function dropped(path: string, onSidebar: boolean) {
+		const stat = await host.fsStat(path).catch(() => null);
+		if (!stat) return;
+		const action = dropAction(stat.kind === "dir" ? "dir" : "file", onSidebar);
+		if (action === "add-folder") await addFolder(path);
+		else if (action === "open-file") await openPath(path).catch((e) => toast.error(errText(e)));
+	}
+
 	onMount(() => {
 		const off = getCurrentWebview().onDragDropEvent((e) => {
 			const d = e.payload;
@@ -94,7 +110,7 @@
 			const rect = asideEl?.getBoundingClientRect();
 			const inside = !!rect && droppedOn(rect, d.position, window.devicePixelRatio);
 			dropping = inside && d.type !== "drop";
-			if (d.type === "drop" && inside) for (const path of new Set(d.paths)) void addFolder(path);
+			if (d.type === "drop") for (const path of new Set(d.paths)) void dropped(path, inside);
 		});
 		return () => void off.then((u) => u());
 	});
@@ -197,6 +213,7 @@
 		<button class="item fixed" class:active={ws.view === "dashboard"} onclick={() => (ws.view = "dashboard")}>
 			<LayoutDashboard size={13} /><span class="name">Dashboard</span>
 		</button>
+		<LooseFiles />
 		{#if activeRepo}
 			<ProjectHead r={activeRepo} active {onAgent} />
 			{#if activeKids.length}

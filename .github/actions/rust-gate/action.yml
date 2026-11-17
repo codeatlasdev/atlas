@@ -9,6 +9,11 @@ inputs:
       "true": the full gate. "false": the tree already passed CI in its pull request (scripts/ci-tested.sh), so
       only build what a pull request builds (clippy + test binaries) to keep the cache warm.
     default: "true"
+  defer-tests:
+    description: >-
+      "true": skip the test and doctest steps here; the calling job runs them itself (a composite step cannot have
+      `timeout-minutes`, so the Windows job runs them as its own steps with one, see ci.yml `rust-windows`).
+    default: "false"
 
 runs:
   using: composite
@@ -50,7 +55,7 @@ runs:
       run: cargo clippy --workspace --all-targets --locked -- -D warnings
 
     - name: Test
-      if: ${{ inputs.tests == 'true' }}
+      if: ${{ inputs.tests == 'true' && inputs.defer-tests != 'true' }}
       shell: bash
       run: cargo nextest run --workspace --locked --profile ci
 
@@ -60,6 +65,6 @@ runs:
       run: cargo nextest run --workspace --locked --no-run
 
     - name: Doctests
-      if: ${{ inputs.tests == 'true' }}
+      if: ${{ inputs.tests == 'true' && inputs.defer-tests != 'true' }}
       shell: bash
       run: cargo test --workspace --locked --doc

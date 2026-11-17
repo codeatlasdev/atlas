@@ -14,7 +14,7 @@ function areas(files: string[]): Record<string, boolean> {
 		}),
 	);
 }
-const none = { rust: false, front: false, mobile: false, site: false, relay: false, workflows: false };
+const none = { rust: false, front: false, mobile: false, site: false, relay: false, workflows: false, installer: false };
 
 test("README, CHANGELOG and AGENTS.md changes run nothing heavy", () => {
 	expect(areas(["README.md", "CHANGELOG.md", "AGENTS.md"])).toEqual(none);
@@ -34,8 +34,14 @@ test("markdown that is source is not skipped: skills are embedded and checked", 
 	expect(areas(["skills/atlas/yaml.md"])).toMatchObject({ rust: true, front: true });
 });
 
+test("the Windows installer runs its own job, and only the changes that can affect it do", () => {
+	expect(areas(["site/public/install.ps1"])).toEqual({ ...none, site: true, installer: true });
+	expect(areas(["scripts/install-ps1.test.ts"])).toEqual({ ...none, front: true, installer: true });
+	expect(areas(["site/public/install.sh"])).toEqual({ ...none, site: true });
+});
+
 test("unknown paths, workflows and an empty diff run everything", () => {
-	const all = { rust: true, front: true, mobile: true, site: true, relay: true, workflows: true };
+	const all = { rust: true, front: true, mobile: true, site: true, relay: true, workflows: true, installer: true };
 	expect(areas(["package.json"])).toEqual(all);
 	expect(areas(["scripts/release.sh"])).toEqual(all);
 	expect(areas([])).toEqual(all);

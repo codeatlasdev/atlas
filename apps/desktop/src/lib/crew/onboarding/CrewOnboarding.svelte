@@ -16,6 +16,7 @@
 	import ReadyHero from "./ReadyHero.svelte";
 	import { STORY } from "./engines.ts";
 	import { Onboarding } from "./onboarding.svelte.ts";
+	import { modalOverlay } from "./modalOverlay.ts";
 	import "./onboarding.css";
 
 	let { ondone }: { ondone: () => void } = $props();
@@ -84,6 +85,7 @@
 </script>
 
 <div
+	use:modalOverlay
 	class="crew-onboarding overlay"
 	role="dialog"
 	aria-modal="true"
@@ -213,7 +215,8 @@
 	.overlay {
 		position: fixed;
 		inset: 0;
-		z-index: 1600;
+		/* Above the shell's rail (1700) and below the window controls (2000), which stay usable. */
+		z-index: 1800;
 		background: var(--ca-surface-base);
 		display: flex;
 		flex-direction: column;

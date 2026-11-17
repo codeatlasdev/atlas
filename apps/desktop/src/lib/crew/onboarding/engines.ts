@@ -101,11 +101,11 @@ export const STEP_META: Record<OnboardingStep, StepMeta> = {
 	intro: {
 		label: "Step 1 of 2",
 		headline: "Meet your Atlas Crew",
-		body: "Your crew sails while you sleep.",
+		body: "Crewmates are AI agents that work on a server you own.",
 		bullets: [
-			"Your server, your rules — runs on your server, no account",
-			"Hand it the wheel — it keeps working while your computer sleeps",
-			"It flags you before anything risky",
+			"Runs on your own Linux server. No account.",
+			"Keeps working while this computer sleeps.",
+			"Asks you before anything risky.",
 		],
 		glow: "rgba(61, 91, 255, 0.10)",
 	},

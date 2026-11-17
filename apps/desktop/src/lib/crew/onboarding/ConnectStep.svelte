@@ -219,7 +219,7 @@
 			<div class="connect-success">
 				<CrewFlag size={18} />
 				<Check size={15} />
-				<span>Installed — connecting…</span>
+				<span>Installed. Connecting…</span>
 			</div>
 		{/if}
 

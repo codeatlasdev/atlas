@@ -92,7 +92,7 @@ export function resolveTargets(root: string, targets: string[]): string[] {
 	for (const raw of targets) {
 		const t = isAbsolute(raw) ? relative(root, raw) : raw;
 		if (t.includes("*")) {
-			for (const f of new Bun.Glob(t).scanSync({ cwd: root })) if (WANTED(`/${f}`)) out.add(f);
+			for (const f of new Bun.Glob(t).scanSync({ cwd: root })) if (WANTED(`/${f}`)) out.add(f.replace(/\\/g, "/"));
 			continue;
 		}
 		const p = join(root, t);

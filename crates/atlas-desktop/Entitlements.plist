@@ -1,0 +1,38 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
+<!--
+  Entitlements of Atlas.app (the Developer ID build; `bundle.macOS.entitlements` in tauri.conf.json). The hardened
+  runtime (the codesign runtime option, required for notarization) turns every capability off unless it is listed here,
+  so each key below is a thing the app does and was measured against the code; an unneeded key is attack surface.
+  docs/release.md ("What is signed") has the same list and the CLI's.
+
+  IN
+  - com.apple.security.device.audio-input: Settings > Capture > Microphone. shots/record_mac.rs asks
+    AVCaptureDevice for access and sck.rs sets SCStreamConfiguration.captureMicrophone. Under the hardened runtime a
+    process without this entitlement is never prompted and records silence; NSMicrophoneUsageDescription (Info.plist)
+    alone is not enough.
+
+  OUT, deliberately (an entitlement is not needed and must not be added "just in case")
+  - com.apple.security.cs.allow-jit / allow-unsigned-executable-memory: JavaScriptCore's JIT runs in WKWebView's own
+    WebContent process (Apple-signed, with its own entitlements), not in ours. Atlas has no JIT, no wasm runtime, no
+    scripting engine in this process; the GPU terminal (atlas-term, wgpu on Metal) compiles shaders through the system's
+    Metal compiler service. Add allow-jit only if a signed build shows a WebKit/Metal crash that names it.
+  - com.apple.security.cs.disable-library-validation: Atlas loads no dylib of its own (no dlopen/libloading in crates/,
+    no bundled frameworks); everything it links is a system library or part of the main executable.
+  - com.apple.security.cs.allow-dyld-environment-variables: nothing in the app relies on DYLD_* reaching its own
+    process (the only DYLD_ mentions are the crew spawn validator, which strips them from children on purpose).
+  - Screen Recording (ScreenCaptureKit), Input Monitoring (NSEvent global monitor, CGRequestListenEventAccess),
+    Accessibility, Files and Folders, notifications: privacy permissions (TCC), asked at runtime and granted by the
+    user; none is an entitlement outside the App Sandbox. Atlas is not sandboxed (it runs shells, agents and git).
+  - com.apple.security.network.server/client: App Sandbox keys. The phone gateway listens on a socket the same way a
+    normal process does; nothing to declare. (Under the hardened runtime alone, networking needs no entitlement.)
+  - com.apple.security.automation.apple-events: no AppleScript or Apple Events anywhere in the codebase.
+  - com.apple.security.cs.debugger / get-task-allow: Atlas never attaches to another process; and get-task-allow must
+    not be in a notarized build.
+-->
+<plist version="1.0">
+<dict>
+	<key>com.apple.security.device.audio-input</key>
+	<true/>
+</dict>
+</plist>

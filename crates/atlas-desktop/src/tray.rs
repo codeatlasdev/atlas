@@ -396,10 +396,16 @@ fn icon() -> tauri::Result<tauri::image::Image<'static>> {
     })
 }
 
+/// Whether the popover is built right after the main window shows. Linux: never. Its tray gets no click events (a
+/// StatusNotifier host shows the icon's menu), so the popover could never be opened, yet it cost a full page load and a
+/// web process at every launch (#286). `tray_*` commands find no window and do nothing.
+pub fn builds_popover_after_launch(os: &str) -> bool {
+    os != "linux"
+}
+
 /// Create the tray icon. The popover window (a second WebView2 controller, ~110 ms on Windows) is not built here:
 /// it is not needed until the first click, so [`ensure_popover`] builds it right after the main window first shows
-/// (`boot::show_now`), or on the first click if that comes first. On Linux the popover is built but never opened
-/// (no click events there); it stays hidden, so the `tray_*` commands the page registers keep working unchanged.
+/// (`boot::show_now`, where [`builds_popover_after_launch`] says so), or on the first click if that comes first.
 pub fn start(app: &AppHandle) -> tauri::Result<()> {
     app.manage(TrayState::default());
     TrayIconBuilder::with_id("main")
@@ -501,7 +507,15 @@ pub fn tray_action(app: AppHandle, action: Value) {
 
 #[cfg(test)]
 mod tests {
-    use super::{place, room};
+    use super::{builds_popover_after_launch, place, room};
+
+    /// #286: on Linux the popover was built at every launch and could never be opened.
+    #[test]
+    fn linux_builds_no_popover_at_launch_and_the_others_keep_theirs() {
+        assert!(!builds_popover_after_launch("linux"));
+        assert!(builds_popover_after_launch("macos"));
+        assert!(builds_popover_after_launch("windows"));
+    }
 
     const SCREEN: (f64, f64, f64, f64) = (0.0, 0.0, 3024.0, 1964.0);
     const SIZE: (f64, f64) = (720.0, 1040.0);

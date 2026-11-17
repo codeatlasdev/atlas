@@ -57,7 +57,9 @@
 				<div class="row-text auto-text">
 					<span class="row-label">{describeTrigger(trig.kind, trig.tz)}</span>
 					{#if trig.prompt}<span class="row-hint auto-prompt">{trig.prompt}</span>{/if}
-					{#if trig.next_fire && trig.enabled}
+					{#if trig.invalid}
+						<span class="row-hint auto-invalid">Not running: {trig.invalid}</span>
+					{:else if trig.next_fire && trig.enabled}
 						<span class="row-hint">Next: {describeNext(trig.next_fire, now)}</span>
 					{/if}
 				</div>
@@ -120,6 +122,9 @@
 	.card.rows .automation-row:last-child {
 		border-bottom-left-radius: 12px;
 		border-bottom-right-radius: 12px;
+	}
+	.auto-invalid {
+		color: var(--ca-semantic-error);
 	}
 	.empty-card {
 		align-items: flex-start;

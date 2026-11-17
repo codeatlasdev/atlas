@@ -32,8 +32,17 @@ pub(crate) fn set_routines(hub: &Hub, id: String, routines: Vec<Value>) -> Resul
     // Parse and validate the routines.
     let parsed: Vec<Routine> =
         serde_json::from_value(json!(routines)).map_err(|e| format!("invalid routines: {e}"))?;
+    // A routine kept as it is stays, even when its cron no longer parses (one saved under an older cron parser):
+    // it must not block editing the others, and `crewmate_list` marks it `invalid` until the user fixes or
+    // deletes it. Only what is new or changed is validated.
     for r in &parsed {
-        schedule::validate_cron(&r.cron)?;
+        if !crewmate
+            .routines
+            .iter()
+            .any(|old| old.id == r.id && old.cron == r.cron)
+        {
+            schedule::validate_cron(&r.cron)?;
+        }
     }
     let old = std::mem::replace(&mut crewmate.routines, parsed);
     hub.crew
@@ -62,11 +71,19 @@ pub(crate) fn set_triggers(hub: &Hub, id: String, triggers: Vec<Value>) -> Resul
         .map(|v| {
             let mut t: Trigger =
                 serde_json::from_value(v).map_err(|e| format!("invalid trigger: {e}"))?;
-            // Validate tz before anything else.
-            if let Some(tz_str) = &t.tz {
-                schedule::validate_tz(tz_str)?;
+            // Validate what is new or changed; a trigger kept as it is stays (see `set_routines`).
+            let unchanged = old_triggers.iter().any(|ot| {
+                ot.id == t.id
+                    && ot.tz == t.tz
+                    && serde_json::to_value(&ot.kind).ok() == serde_json::to_value(&t.kind).ok()
+            });
+            if !unchanged {
+                // Validate tz before anything else.
+                if let Some(tz_str) = &t.tz {
+                    schedule::validate_tz(tz_str)?;
+                }
+                triggers::validate_trigger(&t)?;
             }
-            triggers::validate_trigger(&t)?;
             // Preserve last_fired of an existing trigger with the same id;
             // baseline new schedule/interval triggers so first fire is on-schedule.
             if let Some(existing) = old_triggers.iter().find(|ot| ot.id == t.id) {

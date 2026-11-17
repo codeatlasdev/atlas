@@ -725,3 +725,46 @@ fn the_next_fire_is_always_after_since() {
     }
     assert!(wrong.is_empty(), "{wrong:#?}");
 }
+
+// croner 2.2 read `?` as `*` in every field; croner 4 allows it only in the day fields. Automations saved with
+// a `?` in the minute, hour or month field keep their schedule: the expected seconds below are what croner 2.2
+// answered for each of them (since 1_790_000_000), and they equal the `*` spelling's.
+#[test]
+fn a_question_mark_in_the_minute_hour_or_month_is_the_star_croner_2_read() {
+    let since = 1_790_000_000;
+    let next = |cron: &str, tz: Option<&str>| {
+        compute_next_fire(
+            &TriggerKind::Schedule { cron: cron.into() },
+            Some(since),
+            tz,
+            0,
+        )
+    };
+    for (cron, want) in [
+        ("? * * * *", 1_790_000_040),
+        ("? ?/2 * * *", 1_790_000_040),
+        ("?/5 * * * *", 1_790_000_100),
+        ("0 ? * * *", 1_790_002_800),
+        ("0 0 * ? *", 1_790_035_200),
+        ("0 0 * ?/3 *", 1_790_812_800),
+        ("? ? ? ? ?", 1_790_000_040),
+        ("0 0 ? * ?", 1_790_035_200),
+    ] {
+        assert!(validate_cron(cron).is_ok(), "{cron}");
+        assert_eq!(next(cron, None), Some(want), "{cron}");
+    }
+    assert_eq!(
+        next("0 0 * * ?", Some("America/Sao_Paulo")),
+        Some(1_790_046_000)
+    );
+    // The spellings that never parsed in either stay errors, and so does a sign croner 2 read as a digit.
+    for bad in [
+        "?-5 * * * *",
+        "?,5 * * * *",
+        "5-? * * * *",
+        "?? * * * *",
+        "+5 * * * *",
+    ] {
+        assert!(validate_cron(bad).is_err(), "{bad}");
+    }
+}

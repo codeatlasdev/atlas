@@ -19,7 +19,24 @@ pub(crate) fn parse_cron(s: &str) -> Result<Cron, croner::errors::CronError> {
         .seconds(Seconds::Disallowed)
         .sloppy_ranges(true)
         .build()
-        .parse(s)
+        .parse(&question_marks_as_stars(s))
+}
+
+/// croner 2 read a `?` as `*` in any field, and so did the automations people saved with one (`? * * * *`,
+/// `0 ?/2 * * *`); croner 4 allows `?` only in the day fields. The same schedule, spelled the way it parses:
+/// a minute, hour or month field that is `?` or `?/n` becomes `*` or `*/n`. (Every other `?` spelling in those
+/// fields, like `?-5` or `?,5`, never parsed in either, and stays an error.)
+fn question_marks_as_stars(cron: &str) -> String {
+    let mut fields: Vec<String> = cron.split_whitespace().map(str::to_string).collect();
+    if fields.len() != 5 {
+        return cron.to_string();
+    }
+    for i in [0, 1, 3] {
+        if fields[i] == "?" || fields[i].starts_with("?/") {
+            fields[i].replace_range(..1, "*");
+        }
+    }
+    fields.join(" ")
 }
 
 /// Validate a cron expression using `croner`.

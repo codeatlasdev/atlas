@@ -1,7 +1,7 @@
 <script lang="ts">
 	import { Button, Checkbox, Dialog, Spinner, TextArea, TextField, toast } from "@codeatlasdev/ui";
 	import { Sparkles } from "@lucide/svelte";
-	import { git, errText } from "#lib/api.ts";
+	import { api, git, errText } from "#lib/api.ts";
 	import { host } from "#lib/host.ts";
 	import { pr } from "#lib/stores/pr.svelte.ts";
 	import { ws } from "#lib/stores/workspace.svelte.ts";
@@ -65,14 +65,19 @@
 
 	function signIn() {
 		pr.createFor = null;
-		void ws.newTerminal(id, { argv: ["gh", "auth", "login"], label: "gh auth" });
+		pr.signIn(id);
 	}
 </script>
 
 <Dialog {open} onOpenChange={(o) => !o && (pr.createFor = null)} title="Create pull request" size="lg">
-	{#if pr.auth === "missing"}
-		<p>GitHub CLI is not signed in.</p>
-		<Button onclick={signIn}>Sign in with gh</Button>
+	{#if pr.ghUnusable}
+		{#if pr.auth === "not-installed"}
+			<p>GitHub CLI (<code>gh</code>) is not installed.</p>
+			<Button onclick={() => api.openUrl("https://cli.github.com")}>Install GitHub CLI</Button>
+		{:else}
+			<p>GitHub CLI is not signed in.</p>
+			<Button onclick={signIn}>Sign in with gh</Button>
+		{/if}
 	{:else}
 		<div class="form">
 			<TextField label="Title" bind:value={title} />
@@ -87,7 +92,7 @@
 			Generate with AI
 		</Button>
 		<Button variant="ghost" onclick={() => (pr.createFor = null)}>Cancel</Button>
-		<Button disabled={!title.trim() || !!busy || pr.auth === "missing"} onclick={create}>
+		<Button disabled={!title.trim() || !!busy || pr.ghUnusable} onclick={create}>
 			{#snippet leading()}{#if busy === "create"}<Spinner size={12} />{/if}{/snippet}
 			Create
 		</Button>

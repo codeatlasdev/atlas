@@ -44,7 +44,8 @@ pub fn paths_from_argv(argv: &[String], cwd: &Path) -> Vec<OpenReq> {
 /// The paths of the `file://` URLs macOS hands the app when the user picks "Open With" (or drops a file on the Dock
 /// icon): `RunEvent::Opened`. Other schemes are not ours to open. A folder arrives with a trailing slash
 /// (`file:///n/Notes/`), which is dropped so it is the same path `atlas /n/Notes` queues.
-#[cfg(any(target_os = "macos", test))]
+// Its tests read real `file://` URLs, which only parse to paths on Unix; on Windows the function is unused.
+#[cfg(any(target_os = "macos", all(test, unix)))]
 pub fn paths_from_urls(urls: &[tauri::Url]) -> Vec<OpenReq> {
     urls.iter()
         .filter_map(|u| u.to_file_path().ok())

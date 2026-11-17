@@ -21,6 +21,16 @@ test("visible rows descend only into expanded, loaded folders", () => {
 	expect(visibleRows({ "": [e("src", "dir")] }, { src: true }).map((r) => r.rel)).toEqual(["src"]);
 });
 
+test("each visible row carries its name and how many folders are above it (the indent)", () => {
+	const children = { "": [e("src", "dir")], src: [e("lib", "dir"), e("a.ts")], "src/lib": [e("b.ts")] };
+	expect(visibleRows(children, { src: true, "src/lib": true })).toEqual([
+		{ rel: "src", name: "src", dir: true, depth: 0 },
+		{ rel: "src/lib", name: "lib", dir: true, depth: 1 },
+		{ rel: "src/lib/b.ts", name: "b.ts", dir: false, depth: 2 },
+		{ rel: "src/a.ts", name: "a.ts", dir: false, depth: 1 },
+	]);
+});
+
 test("ancestors run outermost first and are empty at the root", () => {
 	expect(ancestorsOf("a/b/c.ts")).toEqual(["a", "a/b"]);
 	expect(ancestorsOf("c.ts")).toEqual([]);
@@ -128,7 +138,9 @@ test("navMove walks rows, folds folders and ignores other keys", () => {
 	expect(navMove("ArrowLeft", open, "src", { src: true })).toEqual({ toggle: "src" });
 	expect(navMove("ArrowLeft", open, "src/x.ts", { src: true })).toEqual({ focus: "src" });
 	expect(navMove("ArrowLeft", closed, "a.md", {})).toEqual({ focus: undefined });
-	expect(navMove("Enter", closed, "a.md", {})).toEqual({ open: { rel: "a.md", dir: false } });
+	expect(navMove("Enter", closed, "a.md", {})).toEqual({
+		open: { rel: "a.md", name: "a.md", dir: false, depth: 0 },
+	});
 	expect(navMove("F2", closed, "a.md", {})).toEqual({ rename: "a.md" });
 	expect(navMove("x", closed, "a.md", {})).toBeNull();
 });

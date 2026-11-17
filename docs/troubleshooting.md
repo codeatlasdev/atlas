@@ -12,7 +12,7 @@ Start with `atlas dev --status` (what is running and in what state) and `atlas v
 | Symptom | Cause and fix |
 |---|---|
 | `atlas: command not found` after installing | Open a new shell: `atlas install` edits your shell's startup file. Check `~/.atlas/bin` is on `PATH`. |
-| macOS kills the binary (`zsh: killed`) | The binary is not signed. Release builds are ad-hoc signed; for a binary you built, run `codesign -f -s - target/release/atlas`. A browser download may also need `xattr -d com.apple.quarantine ./atlas`. |
+| macOS kills the binary (`zsh: killed`) | The binary is not signed. Release builds are Developer ID signed (ad-hoc when built without the signing secrets, as forks are); for a binary you built, run `codesign -f -s - target/release/atlas`. A browser download may also need `xattr -d com.apple.quarantine ./atlas`. |
 | `atlas update` says to run `brew upgrade` | The binary lives under a Homebrew prefix; update it with Homebrew. |
 | `atlas update` refuses to run | You are using a linked dev build (`atlas link`). Run `atlas unlink` first. |
 | The update prompt is in the way | `ATLAS_NO_UPDATE_PROMPT=1`, or answer `n` (silences that version for 24 hours). |

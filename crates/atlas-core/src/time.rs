@@ -146,6 +146,15 @@ pub fn utc_compact(at: SystemTime) -> String {
     )
 }
 
+/// The instant a [`utc_compact`] text names; `None` when `s` is not a valid 14-digit UTC date-time.
+pub fn parse_utc_compact(s: &str) -> Option<SystemTime> {
+    if s.len() != 14 || !s.bytes().all(|b| b.is_ascii_digit()) {
+        return None;
+    }
+    let dt = civil::DateTime::strptime("%Y%m%d%H%M%S", s).ok()?;
+    Some(dt.to_zoned(TimeZone::UTC).ok()?.timestamp().into())
+}
+
 /// `2026-11-17`: the UTC day of `at`.
 pub fn utc_date(at: SystemTime) -> String {
     Civil::utc(instant(at)).date()
@@ -275,6 +284,24 @@ mod tests {
             now.len() == 14 && now.bytes().all(|b| b.is_ascii_digit()),
             "{now}"
         );
+    }
+
+    #[test]
+    fn parse_utc_compact_reads_what_utc_compact_writes() {
+        for t in [at(0, 0), at(951_782_400 + 86_399, 0), at(1_794_909_605, 0)] {
+            assert_eq!(parse_utc_compact(&utc_compact(t)), Some(t));
+        }
+        for bad in [
+            "",
+            "2026",
+            "2026111710000",
+            "202611171000050",
+            "20261317100005",
+            "2026111710000x",
+            "20260230100005",
+        ] {
+            assert_eq!(parse_utc_compact(bad), None, "{bad:?}");
+        }
     }
 
     // Local time follows the machine's zone: `TZ` on unix. The zone is read once per process (jiff caches it

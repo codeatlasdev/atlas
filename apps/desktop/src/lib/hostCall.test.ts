@@ -28,6 +28,8 @@ beforeEach(() => {
 	fail = null;
 	hook = null;
 	errors.toasts = [];
+	errors.hostReachable();
+	errors.hostGraceMs = 0;
 });
 
 /**

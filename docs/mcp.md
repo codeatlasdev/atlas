@@ -334,7 +334,7 @@ Read-only and it starts nothing: what a change affects, so an agent runs the few
 2. `rules`: the graph declared inline as [`affected: { rules }`](configuration.md#affected): globs to tasks, tests, routes and builds.
 3. `cache_inputs` (fallback, no `affected:` block): the `atlas.yaml` actions with a `cache:` block whose `inputs` globs match a changed file, in `tasks` by label. `tests`, `routes` and `builds` are empty because nothing declares them.
 
-Empty lists mean nothing declared is affected. This repository uses the plugin form: `affected: { command: bun scripts/check-changed.ts --json }` returns the check commands in `tests` and the changed crates plus their dependents in `builds`.
+Empty lists mean nothing declared is affected. This repository uses the plugin form: `affected: { command: bun scripts/check-changed.ts --json --stdin }` returns the check commands in `tests` and the changed crates plus their dependents in `builds`.
 
 ### `atlas_estimate`
 

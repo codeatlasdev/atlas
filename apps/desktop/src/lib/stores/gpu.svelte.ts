@@ -1,4 +1,4 @@
-import { isMac } from "#lib/lsp/navigation.ts";
+import { IS_MAC } from "#lib/keys.ts";
 
 /** Native GPU terminal for local terminals; on unless the user turned it off (per machine). */
 const KEY = "atlas.gpuTerminal";
@@ -6,7 +6,7 @@ const KEY = "atlas.gpuTerminal";
 export const gpu = $state({
 	/** The native terminal is an AppKit view drawn through Metal: macOS only. Elsewhere (Linux, Windows)
 	 * every terminal uses xterm.js and the setting is not offered. */
-	supported: isMac(),
+	supported: IS_MAC,
 	terminal: localStorage.getItem(KEY) !== "0",
 	/** The running terminal host predates the raw byte stream and cannot be replaced without
 	 * ending terminals (it outlives app updates): terminals use xterm.js until it restarts.

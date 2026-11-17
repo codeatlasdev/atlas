@@ -8,6 +8,8 @@ import 'package:atlas_mobile/core/demo/demo_computer.dart';
 import 'package:atlas_mobile/core/links.dart';
 import 'package:atlas_mobile/core/protocol/host_info.dart';
 import 'package:atlas_mobile/core/protocol/models.dart';
+import 'package:atlas_mobile/core/permissions/permission_ui.dart';
+import 'package:atlas_mobile/core/permissions/permissions.dart';
 import 'package:atlas_mobile/core/push/push_provider.dart';
 import 'package:atlas_mobile/core/ui/atlas_theme.dart';
 import 'package:atlas_mobile/core/ui/components.dart';
@@ -63,7 +65,6 @@ class SettingsScreen extends ConsumerWidget {
     // Storage has not answered yet: one row's room is held (a person with a computer has at least one), so
     // the groups below do not jump down when the list arrives.
     final loading = !demo && paired.isLoading && !paired.hasValue;
-    final push = ref.watch(pushRegistrationProvider).value;
     final version = ref.watch(appVersionProvider).value;
     return Scaffold(
       body: SafeArea(
@@ -105,26 +106,11 @@ class SettingsScreen extends ConsumerWidget {
                       ),
                     ],
                   ),
-                  // A notifications row only when there is something true to say (a build without Firebase, or no
-                  // computer connected yet, has nothing). It opens its room downward when the answer arrives, so
-                  // nothing above it moves and the groups below glide, never jump (Reduce motion: one step).
-                  MotionSize(
-                    child: push == null
-                        ? const SizedBox(width: double.infinity)
-                        : RowGroup(
-                            title: 'This phone',
-                            children: [
-                              GroupRow(
-                                icon: push.startsWith('Notifications are on')
-                                    ? Icons.notifications_active_outlined
-                                    : Icons.notifications_off_outlined,
-                                title: 'Notifications',
-                                subtitle: push,
-                                kind: RowKind.info,
-                              ),
-                            ],
-                          ),
-                  ),
+                  // What the phone lets Atlas do, with the way to change it. Only the rows that exist on this phone
+                  // (no push in a local build, no camera, Local Network is iOS only); the group opens its room
+                  // downward when the answers arrive, so nothing above it moves and the groups below glide, never
+                  // jump (Reduce motion: one step).
+                  const _ThisPhone(),
                   RowGroup(
                     title: 'Help',
                     children: [
@@ -182,6 +168,108 @@ class SettingsScreen extends ConsumerWidget {
           ],
         ),
       ),
+    );
+  }
+}
+
+/// Settings → This phone: one row per permission this phone has, with its real state and the action that fits
+/// it: "Turn on" / "Allow" asks (after the explanation), "Open Settings" is the way back from a refusal.
+class _ThisPhone extends ConsumerWidget {
+  const _ThisPhone();
+
+  static const _all = [
+    AtlasPermission.notifications,
+    AtlasPermission.camera,
+    AtlasPermission.localNetwork,
+  ];
+
+  @override
+  Widget build(BuildContext context, WidgetRef ref) {
+    final push = ref.watch(pushRegistrationProvider).value;
+    final rows = <Widget>[
+      for (final p in _all)
+        if (ref.watch(permissionStateProvider(p)).value case final state?
+            when state != PermissionState.unavailable)
+          _PermissionRow(permission: p, state: state, push: push),
+    ];
+    return PermissionResumeRefresh(
+      onResume: () {
+        for (final p in _all) {
+          ref.invalidate(permissionStateProvider(p));
+        }
+      },
+      child: MotionSize(
+        child: rows.isEmpty
+            ? const SizedBox(width: double.infinity)
+            : RowGroup(title: 'This phone', children: rows),
+      ),
+    );
+  }
+}
+
+class _PermissionRow extends ConsumerWidget {
+  const _PermissionRow({
+    required this.permission,
+    required this.state,
+    required this.push,
+  });
+  final AtlasPermission permission;
+  final PermissionState state;
+
+  /// The line about notifications reaching the computers (null when there is nothing to add).
+  final String? push;
+
+  @override
+  Widget build(BuildContext context, WidgetRef ref) {
+    final on = state == PermissionState.granted;
+    final (icon, title) = switch (permission) {
+      AtlasPermission.notifications => (
+        on
+            ? Icons.notifications_active_outlined
+            : Icons.notifications_off_outlined,
+        'Notifications',
+      ),
+      AtlasPermission.camera => (Icons.photo_camera_outlined, 'Camera'),
+      _ => (Icons.wifi_rounded, 'Local network'),
+    };
+    // Local Network cannot be read on iOS: "granted" only means the person was asked.
+    final asked = permission == AtlasPermission.localNetwork && on;
+    final subtitle = switch ((permission, state)) {
+      (AtlasPermission.notifications, PermissionState.granted) => push ?? 'On',
+      (AtlasPermission.camera, PermissionState.granted) => 'On',
+      (AtlasPermission.localNetwork, PermissionState.granted) => 'Direct on Wi-Fi, if you allowed it. If you chose Don\'t Allow, Atlas uses the relay.',
+      (AtlasPermission.notifications, PermissionState.notAsked) => 'Not asked yet. Approvals and finished agents reach you when Atlas is closed.',
+      (AtlasPermission.camera, PermissionState.notAsked) =>
+        'Not asked yet. Used to scan the pairing code and take photos.',
+      (AtlasPermission.localNetwork, PermissionState.notAsked) =>
+        'Not asked yet. Atlas uses the relay until you allow it.',
+      (AtlasPermission.notifications, PermissionState.blocked) => 'Off. Approvals and finished agents will not reach you while Atlas is closed.',
+      (AtlasPermission.camera, PermissionState.blocked) =>
+        'Off. Atlas cannot scan the pairing code or take photos.',
+      (_, PermissionState.blocked) =>
+        'Off. Atlas uses the relay instead of Wi-Fi.',
+      _ => 'Restricted on this phone',
+    };
+    final String? action = switch (state) {
+      PermissionState.notAsked =>
+        permission == AtlasPermission.notifications ? 'Turn on' : 'Allow',
+      PermissionState.blocked => 'Open Settings',
+      PermissionState.granted when asked => 'Open Settings',
+      _ => null,
+    };
+    return GroupRow(
+      icon: icon,
+      title: title,
+      subtitle: subtitle,
+      kind: RowKind.info,
+      trailing: action == null
+          ? null
+          : TextButton(
+              onPressed: state == PermissionState.notAsked
+                  ? () => askPermission(context, ref, permission)
+                  : ref.read(permissionsProvider).openSettings,
+              child: Text(action),
+            ),
     );
   }
 }

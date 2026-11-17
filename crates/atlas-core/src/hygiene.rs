@@ -175,6 +175,8 @@ pub struct Registry {
     /// Create the base folder when missing. False for a daemon's own dir: when the dir is
     /// removed under it, a write must not bring it back (see [`Registry::in_existing`]).
     create_base: bool,
+    /// How long a write waits for the lock before giving up; [`LOCK_WAIT`] outside tests.
+    lock_wait: Duration,
 }
 
 impl Registry {
@@ -198,6 +200,7 @@ impl Registry {
         Self {
             dir: base.join("hygiene"),
             create_base: true,
+            lock_wait: LOCK_WAIT,
         }
     }
 
@@ -208,7 +211,17 @@ impl Registry {
         Self {
             dir: base.join("hygiene"),
             create_base: false,
+            lock_wait: LOCK_WAIT,
         }
+    }
+
+    /// A test's own lock budget: one that checks the lock holds (no lost update) must not also
+    /// race a clock on a runner whose fsync takes 100 ms; one that checks the give-up must not
+    /// wait ten seconds for it.
+    #[cfg(test)]
+    fn with_lock_wait(mut self, wait: Duration) -> Self {
+        self.lock_wait = wait;
+        self
     }
 
     fn file(&self) -> PathBuf {
@@ -257,7 +270,7 @@ impl Registry {
         // fsync per save: wait up to LOCK_WAIT by the clock. Counting tries undercounted time on
         // Windows, where a 10 ms sleep lasts a timer tick, and gave up after ~2 s of honest
         // contention, losing the write (CI, 8 concurrent writers).
-        let deadline = std::time::Instant::now() + LOCK_WAIT;
+        let deadline = std::time::Instant::now() + self.lock_wait;
         while !crate::sys::try_lock(&lock)? {
             if std::time::Instant::now() >= deadline {
                 return Err(std::io::Error::new(

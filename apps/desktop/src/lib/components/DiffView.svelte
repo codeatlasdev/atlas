@@ -11,6 +11,9 @@
 	import { prefs } from "#lib/stores/prefs.svelte.ts";
 	import { savePref } from "#lib/settings/savePref.ts";
 	import PathText from "./PathText.svelte";
+	import NotRepoState from "./NotRepoState.svelte";
+	import { classifyGitError } from "#lib/gitErrors.ts";
+	import { gitToast } from "#lib/gitToast.ts";
 	import { highlightFile } from "./diff/highlight.ts";
 	import { diffRows, fileRowIndex, type DiffRow } from "./diff/diffRows.ts";
 	import VirtualList from "./VirtualList.svelte";
@@ -34,6 +37,8 @@
 	let baseRef = $state("");
 	let curMode = $state<"working" | "staged" | "base">("base");
 	let loading = $state(true);
+	/** The folder is not a git repository: there is no diff, only `git init` (#505). */
+	let notRepo = $state(false);
 	let selected = $state<string | null>(null);
 	let wrap = $state(false);
 	let tokens = $state<Record<string, string[]>>({});
@@ -65,12 +70,15 @@
 		loading = true;
 		try {
 			const r = await git.diff(worktreeId, curMode, baseRef || undefined);
+			notRepo = false;
 			files = r.files;
 			base = r.base;
 			tokens = {};
 			for (const f of r.files) void highlightFile(f, tokens);
 		} catch (e) {
-			toast.error(errText(e));
+			notRepo = classifyGitError(errText(e)).kind === "not-repo";
+			if (notRepo) files = [];
+			else gitToast(errText(e));
 		} finally {
 			loading = false;
 		}
@@ -100,7 +108,7 @@
 			r = await git.run(worktreeId, unstage ? ["restore", "--staged", "--", f.path] : ["add", "--", f.path]);
 		else
 			r = await git.run(worktreeId, ["apply", "--cached", ...(unstage ? ["-R"] : []), "-"], hunkPatch(f, h));
-		if (r.code !== 0) toast.error(r.stderr || "git failed");
+		if (r.code !== 0) gitToast(r.stderr || r.stdout || "git failed");
 		await load();
 	}
 
@@ -157,134 +165,140 @@
 <svelte:window {onkeydown} />
 
 <div class="diff" class:wrap>
-	{#if !only}
-		<div class="toolbar">
-			<select bind:value={curMode}>
-				<option value="base">vs base{base ? ` (${base})` : ""}</option>
-				<option value="working">Unstaged</option>
-				<option value="staged">Staged</option>
-			</select>
-			{#if curMode === "base"}
-				<select bind:value={baseRef}>
-					<option value="">{"branch base"}</option>
-					<option value="HEAD">HEAD</option>
-					{#each commits as c (c)}<option value={c.split(" ")[0]}>{c}</option>{/each}
+	{#if notRepo}
+		<NotRepoState {worktreeId} onInit={load} />
+	{:else}
+		{#if !only}
+			<div class="toolbar">
+				<select bind:value={curMode}>
+					<option value="base">vs base{base ? ` (${base})` : ""}</option>
+					<option value="working">Unstaged</option>
+					<option value="staged">Staged</option>
 				</select>
-			{/if}
-			<select
-				aria-label="Diff layout"
-				value={view}
-				onchange={(e) => savePref("diff", { view: e.currentTarget.value === "split" ? "split" : "unified" })}
-			>
-				<option value="unified">Unified</option>
-				<option value="split">Split</option>
-			</select>
-			<label><input type="checkbox" bind:checked={wrap} /> Wrap</label>
-			<button title="Refresh" onclick={load}><RefreshCw size={12} /></button>
-			<span class="spacer"></span>
-			{#if open.length}
-				<DropdownMenu align="end">
-					{#snippet trigger()}
-						<span class="send"
-							><Send size={12} /> Send {open.length} note{open.length > 1 ? "s" : ""} to agent</span
+				{#if curMode === "base"}
+					<select bind:value={baseRef}>
+						<option value="">{"branch base"}</option>
+						<option value="HEAD">HEAD</option>
+						{#each commits as c (c)}<option value={c.split(" ")[0]}>{c}</option>{/each}
+					</select>
+				{/if}
+				<select
+					aria-label="Diff layout"
+					value={view}
+					onchange={(e) =>
+						savePref("diff", { view: e.currentTarget.value === "split" ? "split" : "unified" })}
+				>
+					<option value="unified">Unified</option>
+					<option value="split">Split</option>
+				</select>
+				<label><input type="checkbox" bind:checked={wrap} /> Wrap</label>
+				<button title="Refresh" onclick={load}><RefreshCw size={12} /></button>
+				<span class="spacer"></span>
+				{#if open.length}
+					<DropdownMenu align="end">
+						{#snippet trigger()}
+							<span class="send"
+								><Send size={12} /> Send {open.length} note{open.length > 1 ? "s" : ""} to agent</span
+							>
+						{/snippet}
+						{#each agents.tabsIn(worktreeId) as t (t.id)}
+							<DropdownMenuItem onclick={() => sendTo(t.id)}
+								>{(t.pty && ws.titles[t.pty]) || t.label}</DropdownMenuItem
+							>
+						{/each}
+						<DropdownMenuItem onclick={() => sendTo(null)}>New {agents.defaultAgent} session</DropdownMenuItem
 						>
-					{/snippet}
-					{#each agents.tabsIn(worktreeId) as t (t.id)}
-						<DropdownMenuItem onclick={() => sendTo(t.id)}
-							>{(t.pty && ws.titles[t.pty]) || t.label}</DropdownMenuItem
-						>
+					</DropdownMenu>
+				{/if}
+			</div>
+		{/if}
+		<div class="split">
+			{#if !only}
+				<nav class="tree">
+					{#each files as f (f.path)}
+						<button class="file {f.status}" class:on={selected === f.path} onclick={() => reveal(f.path)}>
+							<span class="st">{f.status[0].toUpperCase()}</span>
+							<PathText path={f.path} />
+							{#if comments.some((c) => c.path === f.path && !c.resolved)}<span class="dot"></span>{/if}
+						</button>
+					{:else}
+						<p class="empty">{loading ? "Loading…" : "No changes"}</p>
 					{/each}
-					<DropdownMenuItem onclick={() => sendTo(null)}>New {agents.defaultAgent} session</DropdownMenuItem>
-				</DropdownMenu>
+				</nav>
+			{/if}
+			{#if rows.length}
+				<VirtualList
+					bind:this={list}
+					bind:firstVisible
+					class="files"
+					items={rows}
+					key={(r) => r.key}
+					estimate={20}
+					overscan={4}
+				>
+					{#snippet header()}
+						{#if current && rows[firstVisible]?.kind !== "file"}
+							<div class="pin">
+								<span class="mono">{current.path}</span>
+							</div>
+						{/if}
+					{/snippet}
+					{#snippet item(r)}
+						{#if r.kind === "file"}
+							<header>
+								<span class="mono">{r.f.old_path ? `${r.f.old_path} → ` : ""}{r.f.path}</span>
+								<span class="dim">{r.f.status}</span>
+								<button class="act" onclick={() => stage(r.f)}
+									>{curMode === "staged" ? "Unstage file" : "Stage file"}</button
+								>
+							</header>
+						{:else if r.kind === "binary"}
+							{#if IMAGE.test(r.f.path)}
+								<p class="dim pad">Image changed (open the file to view).</p>
+							{:else}
+								<p class="dim pad">Binary file</p>
+							{/if}
+						{:else if r.kind === "hunk"}
+							<div class="hunk-head">
+								<span class="mono">{r.hunk.header}</span>
+								{#if r.f.status !== "untracked"}
+									<button
+										class="act"
+										onclick={() => stage(r.f, r.hunk)}
+										title={curMode === "staged" ? "Unstage hunk" : "Stage hunk"}
+									>
+										{#if curMode === "staged"}<Minus size={11} />{:else}<Plus size={11} />{/if}
+									</button>
+								{/if}
+							</div>
+						{:else if view === "split"}
+							<SplitTable
+								path={r.f.path}
+								hunk={r.hunk}
+								tokens={r.tokens}
+								{comments}
+								bind:draft
+								onsave={addComment}
+								onresolve={setResolved}
+							/>
+						{:else}
+							<DiffTable
+								path={r.f.path}
+								hunk={r.hunk}
+								tokens={r.tokens}
+								{comments}
+								bind:draft
+								onsave={addComment}
+								onresolve={setResolved}
+							/>
+						{/if}
+					{/snippet}
+				</VirtualList>
+			{:else if only}
+				<p class="empty">{loading ? "Loading…" : "No changes in this file"}</p>
 			{/if}
 		</div>
 	{/if}
-	<div class="split">
-		{#if !only}
-			<nav class="tree">
-				{#each files as f (f.path)}
-					<button class="file {f.status}" class:on={selected === f.path} onclick={() => reveal(f.path)}>
-						<span class="st">{f.status[0].toUpperCase()}</span>
-						<PathText path={f.path} />
-						{#if comments.some((c) => c.path === f.path && !c.resolved)}<span class="dot"></span>{/if}
-					</button>
-				{:else}
-					<p class="empty">{loading ? "Loading…" : "No changes"}</p>
-				{/each}
-			</nav>
-		{/if}
-		{#if rows.length}
-			<VirtualList
-				bind:this={list}
-				bind:firstVisible
-				class="files"
-				items={rows}
-				key={(r) => r.key}
-				estimate={20}
-				overscan={4}
-			>
-				{#snippet header()}
-					{#if current && rows[firstVisible]?.kind !== "file"}
-						<div class="pin">
-							<span class="mono">{current.path}</span>
-						</div>
-					{/if}
-				{/snippet}
-				{#snippet item(r)}
-					{#if r.kind === "file"}
-						<header>
-							<span class="mono">{r.f.old_path ? `${r.f.old_path} → ` : ""}{r.f.path}</span>
-							<span class="dim">{r.f.status}</span>
-							<button class="act" onclick={() => stage(r.f)}
-								>{curMode === "staged" ? "Unstage file" : "Stage file"}</button
-							>
-						</header>
-					{:else if r.kind === "binary"}
-						{#if IMAGE.test(r.f.path)}
-							<p class="dim pad">Image changed (open the file to view).</p>
-						{:else}
-							<p class="dim pad">Binary file</p>
-						{/if}
-					{:else if r.kind === "hunk"}
-						<div class="hunk-head">
-							<span class="mono">{r.hunk.header}</span>
-							{#if r.f.status !== "untracked"}
-								<button
-									class="act"
-									onclick={() => stage(r.f, r.hunk)}
-									title={curMode === "staged" ? "Unstage hunk" : "Stage hunk"}
-								>
-									{#if curMode === "staged"}<Minus size={11} />{:else}<Plus size={11} />{/if}
-								</button>
-							{/if}
-						</div>
-					{:else if view === "split"}
-						<SplitTable
-							path={r.f.path}
-							hunk={r.hunk}
-							tokens={r.tokens}
-							{comments}
-							bind:draft
-							onsave={addComment}
-							onresolve={setResolved}
-						/>
-					{:else}
-						<DiffTable
-							path={r.f.path}
-							hunk={r.hunk}
-							tokens={r.tokens}
-							{comments}
-							bind:draft
-							onsave={addComment}
-							onresolve={setResolved}
-						/>
-					{/if}
-				{/snippet}
-			</VirtualList>
-		{:else if only}
-			<p class="empty">{loading ? "Loading…" : "No changes in this file"}</p>
-		{/if}
-	</div>
 </div>
 
 <style>

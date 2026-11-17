@@ -25,7 +25,7 @@ serde_json = { workspace = true }
 tiny-skia = { version = "0.12", default-features = false, features = ["std", "simd"] }
 # Glyph outlines (already in the tree through the terminal's text stack): the unmaintained
 # ttf-parser behind ab_glyph is not.
-skrifa = "0.44"
+skrifa = "0.50"
 
 # Windows only: the Win32 window and the real installer. Everywhere else `main` just exits, so the
 # workspace builds and tests on Linux and macOS CI.

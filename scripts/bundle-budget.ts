@@ -253,15 +253,18 @@ async function main() {
 	});
 	if (icons.exitCode !== 0) process.exit(icons.exitCode);
 	// Vite is apps/desktop's dependency, not the root's: the specifier is resolved from there at run time.
-	const { build } = (await import(Bun.resolveSync("vite", desktop))) as {
-		build: (config: Record<string, unknown>) => Promise<unknown>;
+	// SvelteKit builds the server environment first and writes the client's entry files from its result, so the whole
+	// app is built the way `vite build` does it (a builder), not one environment through `build()`.
+	const { createBuilder } = (await import(Bun.resolveSync("vite", desktop))) as {
+		createBuilder: (config: Record<string, unknown>) => Promise<{ buildApp: () => Promise<void> }>;
 	};
-	await build({
+	const builder = await createBuilder({
 		root: desktop,
 		configFile: join(desktop, "vite.config.ts"),
 		plugins: [probe],
 		logLevel: "warn",
 	});
+	await builder.buildApp();
 
 	const report = analyze(chunks, assets, roots);
 	const budget: Budget = JSON.parse(readFileSync(budgetPath, "utf8"));

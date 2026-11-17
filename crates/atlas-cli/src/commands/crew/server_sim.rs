@@ -62,6 +62,7 @@ impl Sim {
             "true",
             "false",
             "printenv",
+            "readlink",
         ] {
             s.link_real(t);
         }
@@ -216,9 +217,15 @@ echo "sudo $*" >> "$ROOT/log/sudo"
 exec "$@"
 "#;
 
-/// `systemctl restart atlas-crew` starts the unit. Healthy means the installed binary answers
-/// (`ExecStart` is the binary itself); the log records every call.
+/// The log records every call. Masking is modelled like systemd does it: a unit whose file is a symlink to
+/// `/dev/null` is `masked` (`is-enabled` says so and exits 1), and `unmask` removes that link.
 const FAKE_SYSTEMCTL: &str = r#"
 echo "systemctl $*" >> "$ROOT/log/systemctl"
+f="$ROOT/etc/systemd/system/$2"
+masked() { [ -L "$f" ] && [ "$(readlink "$f")" = /dev/null ]; }
+case "$1" in
+  is-enabled) if masked; then echo masked; exit 1; fi;;
+  unmask) if masked; then rm -f "$f"; fi;;
+esac
 exit 0
 "#;

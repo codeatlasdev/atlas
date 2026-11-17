@@ -9,7 +9,8 @@ import { errText } from "#lib/api.ts";
 import { realEnv } from "#lib/capture/env.ts";
 import { runScript } from "#lib/capture/runner.ts";
 import { parseScript } from "#lib/capture/script.ts";
-import { relativeTo } from "#lib/openPath.ts";
+import { dirOf, relativeTo, routeOpen } from "#lib/openPath.ts";
+import { loose } from "#lib/stores/loose.svelte.ts";
 
 // These getters resolve through window.__atlasCtlStores (set by shell/session.svelte.ts)
 // so ctl.ts works regardless of which module instance calls it.
@@ -125,9 +126,18 @@ export async function openProject(path: string): Promise<{ id: string; root: str
 	return { id: p.id, root: p.root };
 }
 
-/** `project_open` on the path's project; for a file, then open it in the editor of that project's main worktree. */
+/**
+ * `atlas <path>` / `path_open` / Finder / a drop: a folder opens as a project (or a plain folder), a file opens in the
+ * editor of the project that contains it, and a loose text file (no project above it, not in a folder you added) opens
+ * in the light editor with nothing registered (`routeOpen`).
+ */
 export async function openPath(path: string, line?: number) {
-	const proj = await openProject(path);
+	const plan = await live().api.locate(path);
+	if (routeOpen(plan, path) === "light-editor") {
+		loose.open(path, line);
+		return { id: null, root: plan.root, path, standalone: true };
+	}
+	const proj = await openProject(plan.root);
 	const rel = relativeTo(proj.root, path);
 	const stat = rel
 		? await live()
@@ -137,6 +147,23 @@ export async function openPath(path: string, line?: number) {
 	if (!rel || stat?.kind !== "file") return { id: proj.id, root: proj.root, path: null };
 	openFile(proj.id, rel, line);
 	return { id: proj.id, root: proj.root, path: rel };
+}
+
+/**
+ * "Open folder" / "Open as project" on a loose file: its folder joins the sidebar (a plain folder, or a project with
+ * `asProject`) and the file continues there, in the full editor.
+ */
+export async function openLooseInFolder(path: string, asProject: boolean) {
+	const proj = await openProject(dirOf(path));
+	if (asProject) {
+		await live().api.promote(proj.id);
+		await live().store.refresh();
+		void live().store.loadConfig(proj.id);
+	}
+	loose.close(path);
+	const rel = relativeTo(proj.root, path);
+	if (rel) openFile(proj.id, rel);
+	return proj;
 }
 
 const handlers: Record<string, (a: Args) => Promise<unknown>> = {

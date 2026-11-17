@@ -1,0 +1,21 @@
+{
+	"common_action_add": "Add",
+	"common_action_back": "Back",
+	"common_action_cancel": "Cancel",
+	"common_action_close": "Close",
+	"common_action_continue": "Continue",
+	"common_action_copy": "Copy",
+	"common_action_delete": "Delete",
+	"common_action_done": "Done",
+	"common_action_edit": "Edit",
+	"common_action_open": "Open",
+	"common_action_remove": "Remove",
+	"common_action_rename": "Rename",
+	"common_action_retry": "Retry",
+	"common_action_save": "Save",
+	"common_action_search": "Search",
+	"common_action_undo": "Undo",
+	"common_state_empty": "Nothing here",
+	"common_state_loading": "Loading…",
+	"common_state_saving": "Saving…"
+}

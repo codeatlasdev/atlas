@@ -1,4 +1,5 @@
 <script lang="ts">
+	import { relative } from "#lib/i18n/fmt.ts";
 	import { SLOTS, STEP_MS, type Segment } from "./metrics.ts";
 
 	/** One lane per service: contiguous state bands across the history window. */
@@ -43,7 +44,9 @@
 			</span>
 		</button>
 	{/each}
-	<div class="axis"><span>{Math.round(SPAN / 60000)} min ago</span><span>now</span></div>
+	<div class="axis">
+		<span>{relative(-Math.round(SPAN / 60000), "minute")}</span><span>{relative(0, "second")}</span>
+	</div>
 </div>
 
 <style>

@@ -28,7 +28,7 @@ pub enum Mode {
 pub struct SpawnReq {
     /// The crewmate the child belongs to (a provisioned `atlas-cm-<slug>` user).
     pub user: String,
-    /// `argv[0]` must be one of [`super::validate::ENGINE_BINARIES`], resolved by the helper in
+    /// `argv[0]` must be one of [`super::validate::is_engine_binary`], resolved by the helper in
     /// its own pinned directory, never from the request.
     pub argv: Vec<String>,
     /// Environment the child gets, on top of a fixed minimal one.

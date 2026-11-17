@@ -3,6 +3,7 @@
  * `crates/atlas-desktop/src/git_branch.rs`, whose serialization is the fixture the tests read) and the rows the
  * picker shows. Pure: no Svelte, no IPC.
  */
+import { relativeTime } from "#lib/i18n/fmt.ts";
 import { fuzzy } from "#lib/fuzzy.ts";
 
 export interface BranchInfo {
@@ -68,22 +69,10 @@ export function parseSwitched(v: unknown): Switched {
 	throw new Error(`git_switch: unexpected result ${JSON.stringify(v)}`);
 }
 
-/** `now`, `30m ago`, `5h ago`, `3d ago`, `3mo ago`, `3y ago`; empty for an unreadable date. */
+/** `now`, `30 min ago`, `5 hr ago`, `3 days ago`…; empty for an unreadable date. */
 export function relDate(iso: string, now = Date.now()): string {
 	const t = Date.parse(iso);
-	if (Number.isNaN(t)) return "";
-	const s = Math.max(0, (now - t) / 1000);
-	if (s < 60) return "now";
-	const steps: [number, string][] = [
-		[60, "m"],
-		[3600, "h"],
-		[86_400, "d"],
-		[2_592_000, "mo"],
-		[31_536_000, "y"],
-	];
-	let out = "";
-	for (const [size, unit] of steps) if (s >= size) out = `${Math.floor(s / size)}${unit} ago`;
-	return out;
+	return Number.isNaN(t) ? "" : relativeTime(t, now);
 }
 
 /**

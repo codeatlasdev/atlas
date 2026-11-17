@@ -1,0 +1,9 @@
+{
+	"cli_config_about": "Validate atlas.yaml, print its JSON Schema or set the display language",
+	"cli_config_check_about": "Validate atlas.yaml (+ atlas.local.yaml); prints OK or every error, exit 1 on errors",
+	"cli_config_lang_about": "Show or set the display language (en, pt-BR); `ATLAS_LANG` overrides it per command",
+	"cli_config_lang_arg_json": "Print JSON (language, source, preference, supported); machine output is never translated",
+	"cli_config_lang_arg_tag": "Language to save in ~/.atlas/language (en, pt-BR); omit to show the current one",
+	"cli_config_lang_arg_unset": "Remove the saved language: follow the system language",
+	"cli_config_schema_about": "Print the JSON Schema for atlas.yaml to stdout"
+}

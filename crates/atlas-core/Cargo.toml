@@ -1,6 +1,6 @@
 [package]
 name = "atlas-core"
-version = "1.5.0-alpha.25"
+version = "1.5.0-alpha.26"
 edition.workspace = true
 rust-version.workspace = true
 license.workspace = true
@@ -24,9 +24,14 @@ semver = { workspace = true }
 tokio = { workspace = true }
 sha2 = "0.11"
 hex = "0.4"
+sys-locale = "0.3"
 # .gitignore-aware walking and glob matching: the task cache expands `inputs:` globs with it.
 ignore = "0.4"
+# `Include` globs of ~/.ssh/config (`ssh_config.rs`): already in the tree through `ignore`.
+globset = "0.4"
 tempfile = { workspace = true, optional = true }
+jiff = { workspace = true }
+jiff-tzdb = { workspace = true }
 
 [features]
 # Fixtures for spawn-path tests in dependent crates (`login_env::fixtures`).

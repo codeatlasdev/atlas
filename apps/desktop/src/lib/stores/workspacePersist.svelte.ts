@@ -50,6 +50,7 @@ export class WorkspacePersist {
 			track(
 				listen("host://reconnected", () => {
 					ws.hostError = null;
+					errors.hostReachable();
 					void ws.syncPtys();
 				}),
 			),

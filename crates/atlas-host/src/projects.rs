@@ -281,7 +281,7 @@ mod tests {
             "name: shop\nservices:\n  api: { command: 'x', port: 3000 }\n  db: { command: 'y', depends_on: [api] }\nactions:\n  - { key: x, label: Migrate, command: 'true', confirm: 'sure?' }\n",
         )
         .unwrap();
-        let now = chrono::Local::now().format("%H:%M:%S");
+        let now = atlas_core::time::local_hms(std::time::SystemTime::now());
         std::fs::write(
             proj.join(".logs/api.log"),
             format!("{now} [stdout] booting\n{now} [stderr] Error: ECONNREFUSED db\n{now} [stdout] listening on 3000\n"),

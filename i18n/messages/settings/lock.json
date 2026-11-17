@@ -17,6 +17,10 @@
     "settings_host_sub_current": "7a9b27040f36",
     "settings_host_sub_older": "11b7952c0bdd",
     "settings_host_sub_restarting": "0847075370a8",
-    "settings_host_sub_updating": "a3673071e8be"
+    "settings_host_sub_updating": "a3673071e8be",
+    "settings_updates_withdrawn_older": "bc9af9b3c5cb",
+    "settings_updates_withdrawn_replacement": "4f7334230fa7",
+    "settings_updates_withdrawn_title": "531342de0497",
+    "settings_updates_withdrawn_update": "5a5d98cda43d"
   }
 }

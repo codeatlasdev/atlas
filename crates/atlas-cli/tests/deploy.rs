@@ -114,7 +114,6 @@ fn deploy_lifecycle() {
     // 2. same HEAD → noop; --force → new release
     let (code, v) = fx.deploy_json(&[]);
     assert_eq!((code, v["phase"].as_str()), (0, Some("noop")), "{v}");
-    std::thread::sleep(Duration::from_millis(1100)); // ids have 1s resolution
     let (code, v) = fx.deploy_json(&["--force"]);
     assert_eq!(code, 0, "{v}");
     let second = v["release"].as_str().unwrap().to_string();
@@ -123,7 +122,6 @@ fn deploy_lifecycle() {
 
     // 3. failing restart → rolled back to last healthy, new release marked failed
     fx.commit("exit 1");
-    std::thread::sleep(Duration::from_millis(1100));
     let (code, v) = fx.deploy_json(&[]);
     assert_eq!(code, 1, "{v}");
     assert_eq!(v["rolled_back"], true);
@@ -179,7 +177,6 @@ fn deploy_lifecycle() {
         format!(r#"{{"release":"{fake}","phase":"restarting","pid":999999}}"#),
     )
     .unwrap();
-    std::thread::sleep(Duration::from_millis(1100));
     let out = fx.atlas(&["--force"]);
     let all = format!(
         "{}{}",
@@ -197,10 +194,14 @@ fn deploy_lifecycle() {
     assert!(String::from_utf8_lossy(&out.stderr).contains("working tree dirty"));
     fs::remove_file(fx.repo.join("dirty.txt")).unwrap();
 
-    // 8. --no-follow returns before the driver finishes; status turns healthy
-    fx.commit("sleep 2; date >> restarts");
-    std::thread::sleep(Duration::from_millis(1100));
-    let t0 = Instant::now();
+    // 8. --no-follow returns before the driver finishes; status turns healthy. The restart waits
+    // for a gate file this test opens, so "returned while the driver was still running" is
+    // guaranteed and not a race against a stopwatch (a `< 3 s` check failed on a loaded CI runner).
+    let gate = fx.srv.join("gate");
+    fx.commit(&format!(
+        "while [ ! -e '{}' ]; do sleep 0.05; done; date >> restarts",
+        gate.display()
+    ));
     let out = fx.atlas(&["--no-follow"]);
     assert_eq!(
         out.status.code(),
@@ -208,8 +209,14 @@ fn deploy_lifecycle() {
         "{}",
         String::from_utf8_lossy(&out.stderr)
     );
-    assert!(t0.elapsed() < Duration::from_secs(3));
     let id = String::from_utf8_lossy(&out.stdout).trim().to_string();
+    // The gate is shut, so the new release cannot be healthy (its record may not exist yet).
+    let record = fs::read_to_string(fx.srv.join("releases").join(&id).join(".atlas-release"));
+    assert!(
+        !record.is_ok_and(|r| r.contains("healthy")),
+        "healthy while the restart is held"
+    );
+    fs::write(&gate, "").unwrap();
     let deadline = Instant::now() + Duration::from_secs(30);
     loop {
         let st = fx.atlas(&["status", "--json"]);
@@ -259,7 +266,6 @@ fn deploy_refuses_to_roll_production_back_unless_allowed() {
     // Forward: HEAD descends from the deployed commit, with the announcement line.
     fx.commit("date >> restarts; true");
     let b = fx.head();
-    std::thread::sleep(Duration::from_millis(1100));
     let (code, text) = fx.deploy_text(&[]);
     assert_eq!(code, 0, "{text}");
     let announce = format!("({}) over ", &b[..7]);
@@ -290,7 +296,6 @@ fn deploy_refuses_to_roll_production_back_unless_allowed() {
     assert_ne!(code, 0, "{text}");
 
     // Explicit override ships it.
-    std::thread::sleep(Duration::from_millis(1100));
     let (code, text) = fx.deploy_text(&["--allow-downgrade"]);
     assert_eq!(code, 0, "{text}");
     assert_ne!(fx.current(), deployed);
@@ -304,7 +309,6 @@ fn deploy_refuses_to_roll_production_back_unless_allowed() {
     fx.commit("date >> restarts; echo side");
     let side = fx.head();
     sh(&fx.repo, &format!("git checkout -q -B main {b}"));
-    std::thread::sleep(Duration::from_millis(1100));
     let (code, _) = fx.deploy_text(&["--force"]); // make B current again
     assert_eq!(code, 0);
     sh(&fx.repo, &format!("git checkout -q {side}"));
@@ -316,7 +320,6 @@ fn deploy_refuses_to_roll_production_back_unless_allowed() {
             && text.contains("--allow-diverged"),
         "{text}"
     );
-    std::thread::sleep(Duration::from_millis(1100));
     let (code, text) = fx.deploy_text(&["--allow-diverged"]);
     assert_eq!(code, 0, "{text}");
 }
@@ -359,7 +362,59 @@ fn deploy_refuses_when_deployed_commit_is_unknown_locally() {
         text.contains("not in this repository") && text.contains("--allow-unknown-base"),
         "{text}"
     );
-    std::thread::sleep(Duration::from_millis(1100));
     let (code, text) = run(&["--allow-unknown-base"]);
     assert_eq!(code, 0, "{text}");
+}
+
+impl Fx {
+    /// A release that is already on the host: `releases/<id>/.atlas-release`, marked failed so no
+    /// rollback or noop check ever picks it.
+    fn plant_release(&self, id: &str) {
+        let dir = self.srv.join("releases").join(id);
+        fs::create_dir_all(&dir).unwrap();
+        fs::write(
+            dir.join(".atlas-release"),
+            format!(r#"{{"id":"{id}","sha":"0","ts":"","user":"","status":"failed"}}"#),
+        )
+        .unwrap();
+    }
+
+    fn release_ids(&self) -> Vec<String> {
+        let mut ids: Vec<String> = fs::read_dir(self.srv.join("releases"))
+            .unwrap()
+            .map(|e| e.unwrap().file_name().to_string_lossy().into_owned())
+            .collect();
+        ids.sort();
+        ids
+    }
+}
+
+// Regression (#315): release ids have one-second resolution, so two deploys of one commit inside a
+// second chose the same id and the driver refused the second ("release exists"); the tests hid it
+// behind 1.1 s sleeps. Ordering goes by id (docs/deploy.md), so an id must also never sort before a
+// release the host already has (a client clock behind the host's). The host here holds a release
+// for this very commit in every second from just before now to ten seconds ahead: whatever second
+// the deploy is made in, the old id is taken or sorts before one that exists.
+#[test]
+fn a_deploy_never_reuses_or_sorts_before_a_release_already_on_the_host() {
+    use std::time::SystemTime;
+    let fx = Fx::new();
+    let sha7 = fx.head()[..7].to_string();
+    let now = SystemTime::now();
+    let mut planted = Vec::new();
+    for ahead in 0..=11 {
+        let at = now + Duration::from_secs(ahead) - Duration::from_secs(1);
+        let id = format!("{}-{sha7}", atlas_core::time::utc_compact(at));
+        fx.plant_release(&id);
+        planted.push(id);
+    }
+    let newest = planted.last().unwrap().clone();
+
+    let (code, v) = fx.deploy_json(&["--force"]);
+    assert_eq!(code, 0, "{v}");
+    let id = v["release"].as_str().unwrap();
+    assert!(!planted.iter().any(|p| p == id), "reused {id}");
+    assert!(id > newest.as_str(), "{id} sorts before {newest}");
+    assert_eq!(fx.current(), id);
+    assert_eq!(fx.release_ids().last().map(String::as_str), Some(id));
 }

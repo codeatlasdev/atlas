@@ -132,7 +132,7 @@ impl AtlasCommand for DesktopArgs {
             let (source, version) = match self.from {
                 Some(p) => (p, None),
                 None => {
-                    if let Some(why) = no_desktop_build(&current_platform()) {
+                    if let Some(why) = no_desktop_build(atlas_i18n::lang(), &current_platform()) {
                         bail!("{why}");
                     }
                     let version = if self.latest {
@@ -249,8 +249,8 @@ const DESKTOP_PLATFORMS: [&str; 3] = [
 ];
 
 /// Why the release has no Atlas Desktop for `platform` (a target triple as [`current_platform`] names it),
-/// `None` when it has one. Asking for the asset anyway ends in a 404 that explains nothing (#268).
-pub(crate) fn no_desktop_build(platform: &str) -> Option<String> {
+/// `None` when it has one, worded in `lang`. Asking for the asset anyway ends in a 404 that explains nothing (#268).
+pub(crate) fn no_desktop_build(lang: &str, platform: &str) -> Option<String> {
     if DESKTOP_PLATFORMS.contains(&platform) {
         return None;
     }
@@ -262,10 +262,14 @@ pub(crate) fn no_desktop_build(platform: &str) -> Option<String> {
     } else {
         "Linux"
     };
-    Some(format!(
-        "Atlas Desktop is not published for {arch} {os} yet: the release has the CLI only (`atlas`, `atlas crew`). \
-         Releases: https://github.com/{REPO}/releases. To use a build of your own, install it with \
-         `atlas desktop --from <file>`."
+    let mut args = atlas_i18n::Args::new();
+    args.set("arch", arch);
+    args.set("system", os);
+    args.set("url", format!("https://github.com/{REPO}/releases"));
+    Some(atlas_i18n::translate(
+        lang,
+        "desktop_cli_no_build",
+        Some(&args),
     ))
 }
 
@@ -328,10 +332,11 @@ fn sync_app_for(platform: &str, installed: Option<&Path>) -> Result<()> {
         println!("{}", linked_notice(app));
         return Ok(());
     }
-    if no_desktop_build(platform).is_some() {
+    if no_desktop_build(atlas_i18n::lang(), platform).is_some() {
+        let path = app.display().to_string();
         println!(
-            "\x1b[2m◆ Atlas Desktop at {} is left as it is: the release has no Atlas Desktop for {platform}.\x1b[0m",
-            app.display()
+            "\x1b[2m◆ {}\x1b[0m",
+            atlas_i18n::t!("desktop_cli_left_alone", path = path, platform = platform)
         );
         return Ok(());
     }
@@ -644,7 +649,7 @@ mod tests {
     // never builds, and printed a download error.
     #[test]
     fn a_platform_the_release_has_no_desktop_for_says_so_instead_of_a_404() {
-        let why = no_desktop_build("aarch64-unknown-linux-gnu")
+        let why = no_desktop_build("en", "aarch64-unknown-linux-gnu")
             .expect("no desktop build for arm64 Linux");
         assert!(why.contains("not published for aarch64 Linux"), "{why}");
         assert!(why.contains("CLI"), "says what is published: {why}");
@@ -658,12 +663,12 @@ mod tests {
         );
         // Arm Windows and Intel macOS are not built either.
         assert!(
-            no_desktop_build("aarch64-pc-windows-msvc")
+            no_desktop_build("en", "aarch64-pc-windows-msvc")
                 .unwrap()
                 .contains("aarch64 Windows")
         );
         assert!(
-            no_desktop_build("x86_64-apple-darwin")
+            no_desktop_build("en", "x86_64-apple-darwin")
                 .unwrap()
                 .contains("x86_64 macOS")
         );
@@ -672,7 +677,7 @@ mod tests {
     #[test]
     fn every_platform_the_release_builds_has_a_desktop_download() {
         for p in DESKTOP_PLATFORMS {
-            assert_eq!(no_desktop_build(p), None, "{p}");
+            assert_eq!(no_desktop_build("en", p), None, "{p}");
         }
     }
 

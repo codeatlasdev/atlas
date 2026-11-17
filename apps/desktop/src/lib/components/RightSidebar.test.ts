@@ -206,7 +206,7 @@ test("agents tab, populated: the agents running here with their state and last w
 	expect(rows[1].textContent).toContain("Reading the edge peek code");
 	expect(rows[1].textContent).toContain("2 min. ago"); // in that state for two minutes
 	expect(text()).toContain("Fix the flaky panel");
-	expect(text()).toContain("5min ago");
+	expect(text()).toContain("5 min. ago");
 	expect(text()).not.toContain("Sessions of agents you run"); // not empty
 	rows[1].click();
 	expect(ws.group("g").activeTab).toBe("t1"); // a click brings that terminal forward

@@ -42,7 +42,9 @@ export const AREAS: Record<string, string[]> = {
 	// The repo's own scripts, release helpers and everything their tests read.
 	scripts: [
 		"scripts/**",
-		".claude/**", // agent guard wiring, read by scripts/agent-guard*.test.ts
+		".claude/**", // agent guard wiring, read by scripts/agent-guard*.test.ts; .claude/skills is checked by agents-md.test.ts
+		"AGENTS.md", // scripts/agents-md.test.ts bounds it and checks the skills and paths it names
+		".agents/**",
 		".codex/**",
 		".omp/**",
 		"CHANGELOG.md",

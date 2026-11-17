@@ -1488,10 +1488,11 @@ esac
     fn a_slow_download_that_keeps_moving_is_never_cut_off() {
         let dir = tempfile::tempdir().unwrap();
         let dest = dir.path().join("a.bin");
-        // 6 chunks 150 ms apart (~0.9 s total) against a 400 ms stall limit: slower than the
-        // limit overall, but never idle for as long as it.
+        // 6 chunks 250 ms apart (~1.5 s total) against a 1.2 s stall limit: slower than the limit
+        // overall, but never idle for as long as it. (150 ms against 400 ms was too thin a margin:
+        // a loaded macOS CI runner took longer than 400 ms between two `printf`s.)
         let script = format!(
-            "for i in 1 2 3 4 5 6; do printf x >> {d}; sleep 0.15; done",
+            "for i in 1 2 3 4 5 6; do printf x >> {d}; sleep 0.25; done",
             d = dest.display()
         );
         let mut last = (0, 0);
@@ -1501,7 +1502,7 @@ esac
             6,
             Watch {
                 poll: std::time::Duration::from_millis(10),
-                stall: std::time::Duration::from_millis(400),
+                stall: std::time::Duration::from_millis(1200),
             },
             |d, t| last = (d, t),
         )

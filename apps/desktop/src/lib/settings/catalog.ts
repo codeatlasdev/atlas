@@ -23,10 +23,17 @@ export const SETTINGS_INDEX: SettingEntry[] = forPlatform(REGISTRY, IS_MAC).flat
 			g.items.map((i): SettingEntry => ({
 				section: c.id as SettingsSection,
 				...(p.id && { tab: p.id as SettingsTab }),
-				group: g.title,
+				// Getters: the text of a message-backed row (and the group it sits in) follows the display language.
+				get group() {
+					return g.title;
+				},
 				id: i.id,
-				label: i.label,
-				description: i.description,
+				get label() {
+					return i.label;
+				},
+				get description() {
+					return i.description;
+				},
 				keywords: "keywords" in i ? i.keywords : "",
 			})),
 		),

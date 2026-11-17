@@ -70,7 +70,7 @@ pub(crate) async fn run_bounded(
         .stdout(std::process::Stdio::piped())
         .stderr(std::process::Stdio::piped())
         .kill_on_drop(true);
-    let child = cmd.spawn().map_err(|e| match e.kind() {
+    let mut child = cmd.spawn().map_err(|e| match e.kind() {
         std::io::ErrorKind::NotFound => format!("{label}: not found on PATH"),
         _ => format!("{label}: {e}"),
     })?;
@@ -78,7 +78,11 @@ pub(crate) async fn run_bounded(
         pid: child.id(),
         done: false,
     };
-    let result = tokio::time::timeout(deadline, child.wait_with_output()).await;
+    // The child is waited for without being consumed: its handle stays open until this function returns, so on
+    // Windows its pid is still ours (and its creation time readable) when the tree is ended below, whether it
+    // exited or the deadline passed. Ending the tree of a consumed child ended whoever held its pid next.
+    let result =
+        tokio::time::timeout(deadline, crate::crew::engine::wait_with_output(&mut child)).await;
     // The call is over (or given up on): a helper it left behind must not outlive it.
     tree.kill();
     match result {

@@ -260,7 +260,7 @@ To register the dev app for push later, add its ids to the Firebase project (`sc
 
 ## Files
 
-Under `~/.atlas/mobile/` (`$ATLAS_HOSTD_DIR/mobile/`): `key` (the computer's iroh identity, 0600), `devices.json` (paired phones and their permissions), `audit.log` (one JSON line per non-read request from a phone, with typed text logged as a length only). `ATLAS_MOBILE_RELAY=0` turns relays and address lookup off (LAN only).
+Under `~/.atlas/mobile/` (`$ATLAS_HOSTD_DIR/mobile/`): `key` (the computer's iroh identity, 0600), `devices.json` (paired phones and their permissions), `audit.log` (one JSON line per non-read request from a phone, with typed text logged as a length only). `ATLAS_MOBILE_RELAY=0` turns relays and address lookup off (LAN only); `ATLAS_MOBILE_LOOPBACK=1` makes it listen on loopback only (tests; the default is every interface, which a phone on the LAN needs).
 
 ## Building the app
 

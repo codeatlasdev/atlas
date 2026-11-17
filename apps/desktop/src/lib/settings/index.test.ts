@@ -185,10 +185,11 @@ describe("settings index", () => {
 	});
 
 	// The incident this reorganisation fixes: General held updates, shell, links, notifications and sounds.
-	test("General is the app and its updates, nothing else", () => {
+	test("General is the app, its updates and its display language, nothing else", () => {
 		expect(SETTINGS_INDEX.filter((e) => e.section === "general").map((e) => e.id)).toEqual([
 			"updates",
 			"update-channel",
+			"display-language",
 		]);
 	});
 

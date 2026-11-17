@@ -20,9 +20,9 @@ import TerminalSettings from "../TerminalSettings.svelte";
 import WorkspaceSettings from "../WorkspaceSettings.svelte";
 import AgentHooks from "./AgentHooks.svelte";
 import CaptureSettings from "./CaptureSettings.svelte";
+import GeneralPage from "./GeneralPage.svelte";
 import NotificationsPage from "./NotificationsPage.svelte";
 import ShellLinks from "./ShellLinks.svelte";
-import UpdatesSection from "./UpdatesSection.svelte";
 
 /** The key of a page: a single-page section's id, or `section/tab` for each tab of a tabbed one. */
 export type PageKey = RegistryDefs[number] extends infer C
@@ -34,7 +34,7 @@ export type PageKey = RegistryDefs[number] extends infer C
 	: never;
 
 export const PAGE_COMPONENTS: Record<PageKey, Component> = {
-	general: UpdatesSection,
+	general: GeneralPage,
 	appearance: AppearanceSettings,
 	notifications: NotificationsPage,
 	capture: CaptureSettings,

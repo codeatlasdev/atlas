@@ -1,0 +1,17 @@
+{
+  "hooks": {
+    "PreToolUse": [
+      {
+        "matcher": "Bash|apply_patch",
+        "hooks": [
+          {
+            "type": "command",
+            "command": "bun \"$(git rev-parse --show-toplevel)/scripts/agent-guard.ts\" hook",
+            "timeout": 10,
+            "statusMessage": "Agent guards"
+          }
+        ]
+      }
+    ]
+  }
+}

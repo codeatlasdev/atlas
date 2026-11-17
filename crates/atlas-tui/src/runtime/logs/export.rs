@@ -10,7 +10,7 @@ pub fn format_for_clipboard(entries: &[&LogEntry], context: &ClipboardContext) -
     output.push_str(&format!("# {} — Dev Logs\n", context.project_name));
     output.push_str(&format!(
         "# Generated: {}\n",
-        chrono::Local::now().format("%Y-%m-%d %H:%M:%S")
+        atlas_core::time::local_date_hms(std::time::SystemTime::now())
     ));
     if !context.services.is_empty() {
         output.push_str(&format!("# Services: {}\n", context.services.join(", ")));

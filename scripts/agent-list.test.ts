@@ -10,7 +10,7 @@ const ID = `["'\`](?:omp|claude|codex|opencode)["'\`]`;
 // Two agent ids in one bracketed list, in any order: ["omp", "claude"], ['claude', 'codex'], &["codex", "omp"].
 const LIST = new RegExp(`\\[[^\\]\\[]*${ID}\\s*,\\s*${ID}[^\\]\\[]*\\]`);
 const SCAN = ["crates", "apps/desktop/src", "apps/mobile/lib", "site/src", "services"];
-const SKIP = /(?:^|\/)(?:target|node_modules|\.svelte-kit|build|testdata|__fixtures__|fixtures|tests?)(?:\/|$)|(?:\.test\.ts|_test\.dart|tests\.rs|_tests\.rs|\.g\.dart)$|agents\.json$/;
+const SKIP = /(?:^|\/)(?:target|node_modules|\.svelte-kit|build|testdata|__fixtures__|fixtures|tests?)(?:\/|$)|(?:\.test\.ts|_test\.dart|tests\.rs|_tests\.rs|agent_registry_data\.dart)$|agents\.json$/;
 
 function files(): string[] {
 	const out = Bun.spawnSync(["git", "ls-files", "-z", "--", ...SCAN], { cwd: ROOT }).stdout.toString();

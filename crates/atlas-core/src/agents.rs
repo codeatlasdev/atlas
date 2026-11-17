@@ -96,7 +96,7 @@ mod tests {
         serde_json::from_str(include_str!("../data/agents.json")).unwrap()
     }
 
-    // Contract: Atlas Desktop (`agentRegistry.ts`) and Atlas Mobile (`agent_registry.g.dart`) read the same
+    // Contract: Atlas Desktop (`agentRegistry.ts`) and Atlas Mobile (`agent_registry_data.dart`) read the same
     // file; what Rust serializes from the parsed list must be that file, key for key, so a field the
     // struct drops or renames can never hide from them.
     #[test]

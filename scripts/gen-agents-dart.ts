@@ -1,6 +1,6 @@
 // The built-in coding agents have ONE source: crates/atlas-core/data/agents.json (Rust embeds it, Atlas Desktop
 // imports it). Atlas Mobile cannot read that file at runtime, so its copy is generated here and nowhere else:
-// apps/mobile/lib/core/protocol/agent_registry.g.dart. Never edit it by hand.
+// apps/mobile/lib/core/protocol/agent_registry_data.dart. Never edit it by hand.
 //
 //   bun scripts/gen-agents-dart.ts            rewrite the Dart file from agents.json
 //   bun scripts/gen-agents-dart.ts --check    exit 1 when the Dart file is out of date (`bun test scripts` runs this)
@@ -10,7 +10,7 @@ import { join } from "node:path";
 
 export const ROOT = join(import.meta.dir, "..");
 export const SOURCE = "crates/atlas-core/data/agents.json";
-export const OUTPUT = "apps/mobile/lib/core/protocol/agent_registry.g.dart";
+export const OUTPUT = "apps/mobile/lib/core/protocol/agent_registry_data.dart";
 export const FIX = "bun scripts/gen-agents-dart.ts";
 
 /** What Atlas Mobile reads of an agent (a subset of the JSON: the phone launches and signs in, nothing else). */

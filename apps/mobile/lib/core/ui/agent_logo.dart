@@ -6,7 +6,7 @@ import 'package:atlas_mobile/core/ui/agent_logo_data.dart';
 import 'package:atlas_mobile/core/ui/atlas_theme.dart';
 
 /// Registry ids Atlas launches (`crates/atlas-core/data/agents.json`, via the generated
-/// `agent_registry.g.dart`); each has a mark drawn below.
+/// `agent_registry_data.dart`); each has a mark drawn below.
 final knownAgents = [for (final a in builtinAgents) a.id];
 
 /// Display name of a registry id.

@@ -579,9 +579,7 @@ pub(crate) async fn run_update(req: Request) -> Result<UpdateOutcome> {
                 return Ok(UpdateOutcome::Unchanged);
             }
             if managed {
-                bail!(
-                    "installing an older release needs an Atlas installed by the shell installer; another tool manages this one"
-                );
+                bail!("{}", atlas_i18n::t!("update_older_release_managed"));
             }
             if !confirm_downgrade(&current, &offered, on, req.yes)? {
                 println!("Cancelled; nothing was changed.");

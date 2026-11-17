@@ -18,6 +18,7 @@
 	} from "@lucide/svelte";
 	import { api } from "#lib/api.ts";
 	import { tilde } from "#lib/format.ts";
+	import { m } from "#lib/i18n/m.ts";
 	import { updates as u } from "#lib/stores/updates.svelte.ts";
 	import { DEFAULT_CHANNEL, managedView, updateHeadline, updateStatus } from "#lib/updates.ts";
 	import HostStatusRow from "./HostStatusRow.svelte";
@@ -154,11 +155,12 @@
 {/if}
 
 {#if u.release?.yanked}
-	<Alert severity="warning" title="This version was withdrawn">
+	<Alert severity="warning" title={m.settings_updates_withdrawn_title()}>
 		{u.release.yanked.reason}
-		{#if u.release.yanked.replacement}Use {u.release.yanked.replacement} instead.{/if}
-		{#if u.available}Update to leave it.{:else if u.aheadOfChannel}The newest safe release is older: install
-			it with the button at the bottom.{/if}
+		{#if u.release.yanked.replacement}{m.settings_updates_withdrawn_replacement({
+				replacement: u.release.yanked.replacement,
+			})}{/if}
+		{#if u.available}{m.settings_updates_withdrawn_update()}{:else if u.aheadOfChannel}{m.settings_updates_withdrawn_older()}{/if}
 	</Alert>
 {/if}
 

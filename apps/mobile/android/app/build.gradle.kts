@@ -15,7 +15,9 @@ val upload = Properties().apply {
 
 android {
     namespace = "br.com.codeatlas.atlas.mobile"
-    compileSdk = flutter.compileSdkVersion
+    // permission_handler_android needs to compile against API 37 (Flutter 3.50 defaults to 36). Only the
+    // APIs the code may reference: targetSdk (runtime behaviour) stays Flutter's.
+    compileSdk = maxOf(flutter.compileSdkVersion, 37)
     ndkVersion = flutter.ndkVersion
 
     compileOptions {

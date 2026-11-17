@@ -27,6 +27,15 @@ fn raw_append(path: &Path, bytes: &[u8]) {
     f.write_all(bytes).unwrap();
 }
 
+/// Forget the in-memory index of the logs under `base`, as a new process would have none. Only
+/// `base`'s: `LOGS` is shared by every test of the process, and clearing all of it made a test
+/// running at the same time lose its index and its `bytes_read` count.
+fn as_a_fresh_process(base: &Path) {
+    if let Some(logs) = tasklog::LOGS.lock().as_mut() {
+        logs.retain(|path, _| !path.starts_with(base));
+    }
+}
+
 fn ids(tasks: &[Task]) -> Vec<&str> {
     tasks.iter().map(|t| t.id.as_str()).collect()
 }
@@ -169,7 +178,7 @@ fn steps_are_read_back_after_a_restart_and_a_full_record_wins() {
         task.steps.push(step(n));
     }
     drop(s);
-    tasklog::LOGS.lock().as_mut().unwrap().clear(); // as a fresh process
+    as_a_fresh_process(t.path());
 
     let s = CrewStore::new(t.path());
     let got = s.task("c", &task.id).unwrap();
@@ -234,15 +243,21 @@ fn steps_and_hook_owned_fields_do_not_overwrite_each_other() {
 
 // #295: `crewmate_list` and the 30 s cancel check read one task over and over: after the index is
 // built a read costs no file bytes, and an append costs only its own line, with 10 000 records stored.
+// The 10 000 records are written to the file in one write: `append_task` flushes every state change
+// to disk, and 10 000 flushes took 31 s here and over 180 s (nextest's kill) on the Windows runner
+// (CI run 43874552199, attempt 1), which is a test of the disk and not of the index.
 #[test]
 fn reading_the_latest_task_does_not_parse_the_file_again() {
     let (_t, s) = store();
     let mut last = String::new();
+    let mut file = String::new();
     for n in 0..10_000 {
         let t = task(&format!("task {n}"));
         last = t.id.clone();
-        s.append_task("c", &t).unwrap();
+        file.push_str(&serde_json::to_string(&t).unwrap());
+        file.push('\n');
     }
+    raw_append(&s.tasks_path("c"), file.as_bytes());
     assert_eq!(s.read_tasks("c", 1)[0].id, last);
     let built = bytes_read(&s, "c");
 
@@ -364,7 +379,7 @@ fn the_log_is_compacted_to_one_record_per_task_and_reads_the_same() {
     assert_eq!(got[2].steps.len(), 50);
     assert_eq!(got[2].title.as_deref(), Some("round 199"));
     // And a restart reads the compacted file to the same result.
-    tasklog::LOGS.lock().as_mut().unwrap().clear();
+    as_a_fresh_process(s.base.as_path());
     let again = CrewStore::new(s.base.as_path()).read_tasks("c", 100);
     assert_eq!(
         serde_json::to_value(&again).unwrap(),
@@ -621,7 +636,7 @@ fn busy_log(s: &CrewStore) -> Vec<String> {
 
 /// What a reader of a brand-new process sees, and the bytes that cost.
 fn reopen(t: &tempfile::TempDir) -> (CrewStore, Vec<Task>, u64) {
-    tasklog::LOGS.lock().as_mut().unwrap().clear(); // as a fresh process
+    as_a_fresh_process(t.path());
     let s = CrewStore::new(t.path());
     let got = s.read_tasks("c", 100);
     let read = bytes_read(&s, "c");

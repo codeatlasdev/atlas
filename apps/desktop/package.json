@@ -8,13 +8,16 @@
     "build": "bun run icons && vite build",
     "format": "prettier --write src",
     "lint": "prettier --check src",
-    "check": "bun run icons && svelte-kit sync && svelte-check --tsconfig ./tsconfig.json && prettier --check src && bun run test && bun run bundle",
+    "check": "bun run icons && bun run i18n:compile && svelte-kit sync && svelte-check --tsconfig ./tsconfig.json && prettier --check src && bun run test && bun run bundle",
     "bundle": "bun ../../scripts/bundle-budget.ts",
-    "test": "bun test --conditions browser src",
-    "icons": "bun scripts/gen-icons.ts"
+    "test": "TZ=UTC LC_ALL=en_US.UTF-8 bun test --conditions browser --parallel src",
+    "icons": "bun scripts/gen-icons.ts",
+    "i18n:compile": "bun scripts/paraglide.ts"
   },
   "devDependencies": {
     "@happy-dom/global-registrator": "^21.0.1",
+    "@inlang/paraglide-js": "3.2.2",
+    "@inlang/plugin-message-format": "4.6.0",
     "@sveltejs/adapter-static": "^4.0.0",
     "@sveltejs/kit": "^3.0.1",
     "@sveltejs/vite-plugin-svelte": "^7.3.1",

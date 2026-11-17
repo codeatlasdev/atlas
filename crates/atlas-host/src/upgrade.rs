@@ -68,13 +68,24 @@ impl Takeover {
 }
 
 /// Old side of the handoff, for the `upgrade` command.
+///
+/// One daemon is handed over once, however many callers ask (`atlas update` and the app both
+/// notice an old daemon at the same time): calls queue on `hub.upgraded`, and one that finds
+/// the handoff done answers `handed_off: 0` instead of starting a second one. A handoff that
+/// failed leaves the daemon authoritative, so the next caller may try again.
 #[cfg(unix)]
 pub(crate) async fn run(hub: &Hub, exe: &str) -> Result<Value, String> {
     let exe = Path::new(exe);
     if !exe.is_file() {
         return Err(format!("{} is not a file", exe.display()));
     }
-    run_inner(hub, exe).await.map_err(|e| format!("{e:#}"))
+    let mut done = hub.upgraded.lock().await;
+    if *done {
+        return Ok(json!({"handed_off": 0, "already": true}));
+    }
+    let r = run_inner(hub, exe).await.map_err(|e| format!("{e:#}"));
+    *done = r.is_ok();
+    r
 }
 
 #[cfg(unix)]
@@ -357,6 +368,22 @@ pub fn live_ptys(info: &Value, live_from_list: usize) -> usize {
         .map_or(live_from_list, |n| n as usize)
 }
 
+/// The daemon runs `bundled` or a newer version. A newer one is never replaced by an older
+/// caller: the only binary that caller can hand it over to is the installed CLI, which is the
+/// version the daemon already runs (#500). Versions that are not semver are compared by equality.
+fn at_least(info: &Value, bundled: &str) -> bool {
+    let Some(version) = info["version"].as_str() else {
+        return false;
+    };
+    match (
+        semver::Version::parse(version),
+        semver::Version::parse(bundled),
+    ) {
+        (Ok(host), Ok(bundled)) => host >= bundled,
+        _ => version == bundled,
+    }
+}
+
 /// Decide from `info`, the live terminal count, the version bundled with the caller and the
 /// user's [`Choice`]. Pure: the caller acts on it.
 ///
@@ -364,7 +391,7 @@ pub fn live_ptys(info: &Value, live_from_list: usize) -> usize {
 /// then treated like one that cannot hand over.
 pub fn decide(info: &Value, live_from_list: usize, bundled: &str, choice: Choice) -> Decision {
     let missing = !missing_caps(info).is_empty();
-    if !missing && info["version"].as_str() == Some(bundled) {
+    if !missing && at_least(info, bundled) {
         return Decision::Current;
     }
     if caps_of(info).contains(&"upgrade") {
@@ -389,7 +416,7 @@ pub fn decide(info: &Value, live_from_list: usize, bundled: &str, choice: Choice
 pub fn skew_reason(info: &Value, bundled: &str, app: &str) -> Option<String> {
     let version = info["version"].as_str().unwrap_or("unknown");
     let missing = missing_caps(info);
-    if missing.is_empty() && version == bundled {
+    if missing.is_empty() && at_least(info, bundled) {
         return None;
     }
     let mut s = format!("Terminal host {version} is older than {app}");
@@ -441,6 +468,62 @@ mod tests {
                 &["pty_attach_raw", "upgrade", "agents"],
                 Some(3)
             )),
+            Decision::Upgrade
+        );
+    }
+
+    /// Regression: #500. An update hands the daemon over to the new version (`atlas update`),
+    /// and the app still running the old version then saw "version differs" and handed it over
+    /// again, to the very binary it already runs (`hostd.log`: two `1.5.0-alpha.26 ... took over
+    /// 8 pty(s)` for one alpha.25 -> alpha.26 update). A daemon newer than the caller is never
+    /// replaced by it, and is no skew either.
+    #[test]
+    fn a_daemon_newer_than_the_caller_is_current_and_never_handed_over() {
+        let host = info("1.5.0-alpha.26", FULL, Some(8));
+        assert_eq!(
+            decide(&host, 8, "1.5.0-alpha.25", Choice::Ask),
+            Decision::Current
+        );
+        assert_eq!(
+            skew_reason(&host, "1.5.0-alpha.25", "Atlas 1.5.0-alpha.25"),
+            None
+        );
+        // Numeric, not lexical, ordering: alpha.9 is older than alpha.10.
+        assert_eq!(
+            decide(
+                &info("1.5.0-alpha.10", FULL, None),
+                0,
+                "1.5.0-alpha.9",
+                Choice::Ask
+            ),
+            Decision::Current
+        );
+        assert_eq!(
+            decide(
+                &info("1.5.0-alpha.9", FULL, None),
+                0,
+                "1.5.0-alpha.10",
+                Choice::Ask
+            ),
+            Decision::Upgrade
+        );
+        // Newer but missing a capability the caller needs: still not current.
+        assert_ne!(
+            decide(
+                &info(
+                    "1.5.0-alpha.26",
+                    &["pty_attach_raw", "upgrade", "agents"],
+                    None
+                ),
+                0,
+                "1.5.0-alpha.25",
+                Choice::Ask
+            ),
+            Decision::Current
+        );
+        // A version that is no semver cannot be ordered: it keeps the old "differs" rule.
+        assert_eq!(
+            decide(&info("dev", FULL, None), 0, "1.5.0-alpha.25", Choice::Ask),
             Decision::Upgrade
         );
     }

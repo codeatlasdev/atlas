@@ -1,0 +1,15 @@
+{
+	"common_keys_alt": "Alt modifier. Windows and Linux spelling; macOS uses a glyph (Option).",
+	"common_keys_backspace": "Key that deletes the character before the cursor.",
+	"common_keys_ctrl": "Control modifier. Windows and Linux spelling; macOS uses a glyph.",
+	"common_keys_delete": "Key that deletes the character after the cursor. writing-lint: allow pt-decalques-fracos: the key name as printed on the keyboard.",
+	"common_keys_end": "End key.",
+	"common_keys_enter": "Key that confirms. Windows and Linux keyboards print Enter; macOS shortcuts use a glyph and never reach this message.",
+	"common_keys_escape": "Key that cancels or closes. Printed on the keycap, so it is the same in every language.",
+	"common_keys_home": "Home key.",
+	"common_keys_pagedown": "Page Down key, as printed on keyboards.",
+	"common_keys_pageup": "Page Up key, as printed on keyboards.",
+	"common_keys_shift": "Shift modifier. Windows and Linux spelling; macOS uses a glyph.",
+	"common_keys_space": "The space bar. Spelled out in pt-BR, where keyboards label it by the long bar.",
+	"common_keys_tab": "Tab key."
+}

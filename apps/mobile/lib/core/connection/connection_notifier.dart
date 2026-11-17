@@ -5,6 +5,7 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:flutter_riverpod/legacy.dart';
 
 import 'package:atlas_mobile/core/demo/demo_computer.dart';
+import 'package:atlas_mobile/core/permissions/permissions.dart';
 import 'package:atlas_mobile/core/protocol/models.dart';
 import 'package:atlas_mobile/core/protocol/multiplexer.dart';
 import 'package:atlas_mobile/core/protocol/protocol_version.dart';
@@ -32,8 +33,25 @@ Future<Transport> _defaultTransportFactory(
         relay: device.relay,
       );
 
+/// [dial] that gives the connection the computer's LAN address hints only once the person was told why the
+/// phone is about to talk to their local network (iOS shows the Local Network prompt on the first such
+/// packet). Before that the connection goes through the relay, which always works.
+@visibleForTesting
+TransportFactory withLocalNetworkGate(
+  PermissionsPort permissions,
+  TransportFactory dial,
+) => (device, secretKeyHex) async {
+  final lan =
+      await permissions.status(AtlasPermission.localNetwork) !=
+      PermissionState.notAsked;
+  return dial(lan ? device : device.withoutLanHints(), secretKeyHex);
+};
+
 final transportFactoryProvider = Provider<TransportFactory>(
-  (ref) => _defaultTransportFactory,
+  (ref) => withLocalNetworkGate(
+    ref.read(permissionsProvider),
+    _defaultTransportFactory,
+  ),
 );
 
 /// Provides the [MacStorage] singleton.

@@ -119,6 +119,7 @@ async fn daemon(dir: &Path, fake: &Fake) -> HostClient {
     let d = dir.to_path_buf();
     let opts = crate::server::ServeOpts {
         no_mobile_relay: true,
+        mobile_loopback: true,
         atlas_exe: Some(fake.exe()),
         desktop: Some(atlas_core::desktop_ctl::Endpoint {
             token: dir.join("no-desktop.token"),
@@ -443,6 +444,7 @@ async fn daemon_that_idles(
     let d = dir.to_path_buf();
     let opts = crate::server::ServeOpts {
         no_mobile_relay: true,
+        mobile_loopback: true,
         idle: Some(limit),
         desktop: Some(atlas_core::desktop_ctl::Endpoint {
             token: dir.join("no-desktop.token"),

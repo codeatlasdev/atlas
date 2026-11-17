@@ -20,6 +20,9 @@ struct Row {
     name: &'static str,
     args: &'static [&'static str],
     stdin: &'static str,
+    /// Top-level JSON keys that are live measurements (machine load, free memory) and differ between
+    /// two runs of the same command in any language: compared by presence, not by value.
+    live: &'static [&'static str],
 }
 
 const MCP_SESSION: &str = concat!(
@@ -38,16 +41,19 @@ const MACHINE: &[Row] = &[
         name: "config schema",
         args: &["config", "schema"],
         stdin: "",
+        live: &[],
     },
     Row {
         name: "heavy status --json",
         args: &["heavy", "status", "--json"],
         stdin: "",
+        live: &["load", "mem_available_pct"],
     },
     Row {
         name: "mcp: initialize, tools/list, atlas_config",
         args: &["mcp", "--dir", "."],
         stdin: MCP_SESSION,
+        live: &[],
     },
 ];
 
@@ -92,6 +98,24 @@ fn project() -> tempfile::TempDir {
     dir
 }
 
+/// stdout as text, with the live measurements of `live` (top-level JSON keys) blanked: they are not
+/// text of a language, and they change between two runs a second apart.
+fn stable(stdout: &[u8], live: &[&str]) -> String {
+    if live.is_empty() {
+        return String::from_utf8_lossy(stdout).into_owned();
+    }
+    let mut v: serde_json::Value = serde_json::from_slice(stdout).expect("a live row prints JSON");
+    for key in live {
+        let object = v.as_object_mut().expect("a live row prints a JSON object");
+        assert!(
+            object.contains_key(*key),
+            "`{key}` is missing from the output"
+        );
+        object.insert((*key).to_owned(), serde_json::Value::Null);
+    }
+    v.to_string()
+}
+
 #[test]
 fn machine_output_is_byte_identical_in_every_language() {
     let dir = project();
@@ -106,8 +130,8 @@ fn machine_output_is_byte_identical_in_every_language() {
             row.name
         );
         assert_eq!(
-            String::from_utf8_lossy(&en.stdout),
-            String::from_utf8_lossy(&pt.stdout),
+            stable(&en.stdout, row.live),
+            stable(&pt.stdout, row.live),
             "{}: stdout differs between en and pt-BR",
             row.name
         );

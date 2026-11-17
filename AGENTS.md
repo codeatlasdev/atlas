@@ -19,13 +19,14 @@ This file is a map, kept under 8 KB (`bun test scripts/agents-md.test.ts` fails 
 - **Platform code.** Shared code goes through `atlas_core::sys` and `atlas_core::ipc`, never `libc`/`nix`. Every child of the GUI app or hostd needs `no_window()` (or `spawn_detached`), else a console window flashes.
 - **Tests first.** For every bug: write a test that reproduces it, watch it fail for the reported reason, then fix. Real behavior or contract, never filler; cross-boundary contracts use the real producer's output. Full guide: `.agents/skills/real-tests/SKILL.md`.
 - **Commits** need a DCO sign-off (`git commit -s`); the AI policy is in `CONTRIBUTING.md`. Stage explicit paths.
-- **Guards.** The repo may ship agent guards (hooks that deny writes outside your own worktree, pushes to protected branches, merges and `git stash`). A denial names the fix: follow it, never route around it.
-- **Merging** (maintainers only). `bun run pr:merge <N>` is the merge path: it checks CI on the PR's head SHA and builds the squash message from the PR's closing issues. Never hand-type `Closes #N`.
+- Guards are enforced, not advisory: `.claude/settings.json`, `.codex/hooks.json`, `.omp/extensions/agent-guard.ts` and the `pre-push` hook (`scripts/setup.sh` installs it) refuse writes outside your worktree, pushes to `main`/`release/*`, force-push, merges (incl. `bun run pr:merge`), `git stash`
+  and branch/tag deletes; a refusal names the fix, only a maintainer lifts it (`ATLAS_MAINTAINER_OK`, docs/contributing.md "Agent guards"). Use absolute paths under your worktree.
+- Merging is `bun run pr:merge <pr>` only (maintainer-run; use `--dry-run --json` first); never type `gh pr merge`, `--admin` or a `Closes #N` yourself. See CONTRIBUTING.md#pull-request-flow-and-who-merges.
 
 ## Which command checks what
 
 - `bun run check` is the only gate. Run it on its own and read the exit code; never chain `git push` or `release` after it with `;`.
-- `bun run check:changed` (edit loop, `--json`): only what the changed files affect, with their dependents. Not the gate.
+- Edit loop: `bun run check:changed` runs the checks your changes affect, from the same map as the gate (`scripts/checks/map.ts`); `--dry-run --json` says what would run and why. `bun run check` runs every check CI can run on one machine. To add a check or map a path, edit that file only (docs/contributing.md#the-gate).
 - `bun run desktop:check` frontend; `bun run mobile:check` Flutter; `bun run release:test` repo scripts (`bun test scripts`, includes the AGENTS.md and skills tests); `bun run lint:workflows` workflows; `bun run dup` duplication, keep it at or below 1.5%.
 - Heavy commands (cargo build/test, the gate, benches) go through `atlas run --heavy -- <cmd>`: the machine-wide queue protects every worktree and agent.
 - `CHANGELOG.md`: a line under `## [Unreleased]`, then `bun scripts/changelog-lint.ts` (merges can duplicate entries).

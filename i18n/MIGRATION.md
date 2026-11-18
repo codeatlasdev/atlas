@@ -116,9 +116,9 @@ person reads them in a log, not in the app, and logs are never translated. Their
 
 - **Docs** (30 pages): a batch of its own after the code batches, in full, `docs/pt-BR/<slug>.md` with the front matter
   (`title`, `source`, `source_sha`). Code blocks stay byte-identical. The decision is to keep a "tradução automática"
-  notice on AI-translated pages until someone reviews a page. **The notice does not exist yet**: `DocsNotice.astro` has
-  only the untranslated and outdated states, and the front matter has no flag for it. That is a small PR before the docs
-  batch (a front-matter field, a third banner state, two catalog messages); the docs batch depends on it.
+  notice on AI-translated pages until someone reviews a page. The notice exists: the front matter field `translation: machine` shows
+  a third `DocsNotice.astro` state (`docs_banner_machine`). The docs batch writes it on every page it translates; a
+  reviewer removes the line.
 - **Phone app** (`apps/mobile`): no ARB yet and no detector, so no count. A surface with `"arb": "<dir>"` in
   `surfaces.json` generates the files; the extraction there is by hand, after the desktop.
 - **Astro pages and `.ts` modules**: the ratchet does not count them (`ts-module` / `script-string` lines above are the

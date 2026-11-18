@@ -4,6 +4,6 @@
 	"surfaces": {
 		"desktop": { "areas": ["errors", "os", "settings"], "paraglide": "apps/desktop/.i18n" },
 		"rust": { "areas": ["cli_chrome", "cli_config", "cmd_skills", "config", "desktop_cli", "desktop_pkg", "uninstall", "update"], "rust": "crates" },
-		"site": { "areas": ["base", "docs", "footer", "nav", "not_found"], "paraglide": "site/.i18n" }
+		"site": { "areas": ["base", "docs", "footer", "islands", "nav", "not_found"], "paraglide": "site/.i18n" }
 	}
 }

@@ -10,6 +10,7 @@
 	import { welcome as w } from "./welcome.svelte.ts";
 	import { themes } from "#lib/stores/theme.svelte.ts";
 	import { cssVars } from "#lib/theme.ts";
+	import { m } from "#lib/i18n/m.ts";
 
 	// The stage is always a night sky, whatever the app theme: everything on it (copy, buttons, chips) uses the
 	// user's DARK theme of the same family, so light themes stay readable here (2026-10-13 light-theme incident).
@@ -62,7 +63,9 @@
 	{/key}
 
 	{#if onskip && w.phase !== "up"}
-		<button class="skip" data-testid={ACTIONS.skip} onclick={onskip}>Skip for now</button>
+		<button class="skip" data-testid={ACTIONS.skip} onclick={onskip}
+			>{m.onboarding_hero_skip_for_now()}</button
+		>
 	{/if}
 </div>
 

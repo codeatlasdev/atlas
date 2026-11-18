@@ -1,4 +1,5 @@
 /** Cheat sheet model: bound commands grouped by area, built from the live keymap. */
+import { m } from "#lib/i18n/m.ts";
 import { kbd } from "#lib/keys.ts";
 
 interface SheetRow {
@@ -12,15 +13,18 @@ export interface SheetGroup {
 	rows: SheetRow[];
 }
 
-const GROUPS: { title: string; match: (id: string) => boolean }[] = [
+/** A group has a stable id (the order and the lookup key) and a title in the display language, read when drawn. */
+const GROUPS: { id: string; title: () => string; match: (id: string) => boolean }[] = [
 	{
-		title: "Go anywhere",
+		id: "go",
+		title: () => m.onboarding_shortcuts_group_go_anywhere(),
 		match: (id) =>
 			["atlas::Jump", "command_palette::Toggle", "file_finder::Toggle", "outline::Toggle"].includes(id) ||
 			id.startsWith("atlas::RecentWorktree"),
 	},
 	{
-		title: "Panels",
+		id: "panels",
+		title: () => m.onboarding_shortcuts_group_panels(),
 		match: (id) =>
 			id.startsWith("workspace::Toggle") ||
 			id.endsWith("::ToggleFocus") ||
@@ -28,17 +32,19 @@ const GROUPS: { title: string; match: (id: string) => boolean }[] = [
 			id.startsWith("shell::"),
 	},
 	{
-		title: "Tabs and panes",
+		id: "tabs",
+		title: () => m.onboarding_shortcuts_group_tabs(),
 		match: (id) => id.startsWith("pane::") || id === "workspace::NewTerminal" || id === "atlas::CloseEditors",
 	},
 	{
-		title: "Project",
+		id: "project",
+		title: () => m.onboarding_shortcuts_group_project(),
 		match: (id) =>
 			id.startsWith("atlas::") && !id.startsWith("atlas::RecentWorktree") && id !== "atlas::Jump",
 	},
 ];
 
-const OTHER = "More";
+const OTHER = { id: "more", title: () => m.onboarding_shortcuts_group_more() };
 
 /**
  * Group `commands` that have at least one key. Rows keep the order of `commands`;
@@ -57,16 +63,17 @@ export function buildSheet(
 		if (/^atlas::RecentWorktree[2-9]$/.test(c.id) || /^pane::ActivateItem[2-8]$/.test(c.id)) continue;
 		const label =
 			c.id === "atlas::RecentWorktree1"
-				? "Recent worktree 1–6"
+				? m.onboarding_shortcuts_recent_worktree()
 				: c.id === "pane::ActivateItem1"
-					? `Tab 1–8 (${kbd("cmd-9")} last)`
+					? m.onboarding_shortcuts_tab_range({ key: kbd("cmd-9") })
 					: c.label;
 		if (q && !label.toLowerCase().includes(q) && !keys.some((k) => k.toLowerCase().includes(q))) continue;
-		const title = GROUPS.find((g) => g.match(c.id))?.title ?? OTHER;
-		const rows = out.get(title) ?? [];
+		const group = GROUPS.find((g) => g.match(c.id)) ?? OTHER;
+		const rows = out.get(group.id) ?? [];
 		rows.push({ id: c.id, label, keys });
-		out.set(title, rows);
+		out.set(group.id, rows);
 	}
-	const order = [...GROUPS.map((g) => g.title), OTHER];
-	return order.filter((t) => out.has(t)).map((title) => ({ title, rows: out.get(title)! }));
+	return [...GROUPS, OTHER]
+		.filter((g) => out.has(g.id))
+		.map((g) => ({ title: g.title(), rows: out.get(g.id)! }));
 }

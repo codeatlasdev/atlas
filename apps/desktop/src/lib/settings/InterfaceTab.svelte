@@ -1,5 +1,6 @@
 <script lang="ts">
 	import { SegmentedControl, Select, Switch } from "@codeatlasdev/ui";
+	import { formatNumber } from "#lib/i18n/fmt.ts";
 	import { kbd } from "#lib/keys.ts";
 	import { prefs } from "#lib/stores/prefs.svelte.ts";
 	import { ZOOM_LEVELS } from "#lib/zoom.ts";
@@ -8,21 +9,26 @@
 	import NumInput from "./NumInput.svelte";
 	import Row from "./Row.svelte";
 	import { savePref } from "./savePref.ts";
+	import { m } from "#lib/i18n/m.ts";
 
 	let p = $derived(prefs.value);
 	/** The ladder; a value off it (hand-edited settings.json) stays selectable as what it is. */
 	let zoomOptions = $derived(
 		[...new Set([...ZOOM_LEVELS, p.zoom])]
 			.sort((a, b) => a - b)
-			.map((z) => ({ value: String(z), label: `${Math.round(z * 100)}%` })),
+			.map((z) => ({ value: String(z), label: formatNumber(z, { style: "percent" }) })),
 	);
 </script>
 
-<Group title="Zoom">
+<Group title={m.settings_theme_interface_tab_zoom()}>
 	<Row
 		id="ui-zoom"
-		label="Zoom"
-		description={`Scale the whole window. ${kbd("cmd-=")} and ${kbd("cmd--")} step it, ${kbd("cmd-0")} resets it.`}
+		label={m.settings_theme_interface_tab_zoom()}
+		description={m.settings_theme_interface_tab_zoom_description({
+			zoomIn: kbd("cmd-="),
+			zoomOut: kbd("cmd--"),
+			reset: kbd("cmd-0"),
+		})}
 	>
 		<div class="select">
 			<Select
@@ -35,13 +41,13 @@
 	</Row>
 </Group>
 
-<Group title="Interface font">
+<Group title={m.settings_theme_interface_tab_font_title()}>
 	<FontRows
 		idPrefix="ui"
-		familyLabel="Interface font"
-		familyDescription="Font for menus, sidebars and buttons."
-		sizeLabel="Interface font size"
-		sizeDescription="Text size across the app."
+		familyLabel={m.settings_theme_interface_tab_font_title()}
+		familyDescription={m.settings_theme_interface_tab_font_family_description()}
+		sizeLabel={m.settings_theme_interface_tab_font_size()}
+		sizeDescription={m.settings_theme_interface_tab_font_size_description()}
 		family={p.ui_font_family}
 		size={p.ui_font_size}
 		onfamily={(v) => savePref("ui_font_family", v)}
@@ -49,57 +55,73 @@
 	>
 		{#snippet preview()}
 			<div class="sample" style="font-family: {p.ui_font_family}; font-size: {p.ui_font_size}px">
-				Services, worktrees and agents, all in one place.
+				{m.settings_theme_interface_tab_font_sample()}
 			</div>
 		{/snippet}
 	</FontRows>
 </Group>
 
-<Group title="File panel">
-	<Row id="panel-dock" label="File panel side" description="Show the file tree on the left or the right.">
+<Group title={m.settings_theme_interface_tab_file_panel()}>
+	<Row
+		id="panel-dock"
+		label={m.settings_theme_interface_tab_file_panel_side()}
+		description={m.settings_theme_interface_tab_file_panel_side_description()}
+	>
 		<SegmentedControl
-			aria-label="File panel side"
+			aria-label={m.settings_theme_interface_tab_file_panel_side()}
 			size="sm"
 			value={p.project_panel.dock}
 			items={[
-				{ value: "left", label: "Left" },
-				{ value: "right", label: "Right" },
+				{ value: "left", label: m.settings_theme_interface_tab_left() },
+				{ value: "right", label: m.settings_theme_interface_tab_right() },
 			]}
 			onchange={(v) => savePref("project_panel", { ...p.project_panel, dock: v as "left" | "right" })}
 		/>
 	</Row>
-	<Row id="panel-indent" label="Folder indent" description="How far each folder level is pushed in.">
+	<Row
+		id="panel-indent"
+		label={m.settings_theme_interface_tab_folder_indent()}
+		description={m.settings_theme_interface_tab_folder_indent_description()}
+	>
 		<NumInput
-			label="Folder indent"
+			label={m.settings_theme_interface_tab_folder_indent()}
 			unit="px"
 			value={p.project_panel.indent_size}
 			onchange={(v) => savePref("project_panel", { ...p.project_panel, indent_size: v })}
 		/>
 	</Row>
-	<Row id="panel-file-icons" label="File icons" description="Show an icon next to each file.">
+	<Row
+		id="panel-file-icons"
+		label={m.settings_theme_interface_tab_file_icons()}
+		description={m.settings_theme_interface_tab_file_icons_description()}
+	>
 		<Switch
-			aria-label="File icons"
+			aria-label={m.settings_theme_interface_tab_file_icons()}
 			checked={p.project_panel.file_icons}
 			onchange={(v) => savePref("project_panel", { ...p.project_panel, file_icons: v })}
 		/>
 	</Row>
-	<Row id="panel-folder-icons" label="Folder icons" description="Show an icon next to each folder.">
+	<Row
+		id="panel-folder-icons"
+		label={m.settings_theme_interface_tab_folder_icons()}
+		description={m.settings_theme_interface_tab_folder_icons_description()}
+	>
 		<Switch
-			aria-label="Folder icons"
+			aria-label={m.settings_theme_interface_tab_folder_icons()}
 			checked={p.project_panel.folder_icons}
 			onchange={(v) => savePref("project_panel", { ...p.project_panel, folder_icons: v })}
 		/>
 	</Row>
 </Group>
 
-<Group title="Split panes">
+<Group title={m.settings_theme_interface_tab_split_panes()}>
 	<Row
 		id="pane-border"
-		label="Active pane border"
-		description="Outline the pane you are working in. 0 hides it."
+		label={m.settings_theme_interface_tab_active_pane_border()}
+		description={m.settings_theme_interface_tab_pane_border_description()}
 	>
 		<NumInput
-			label="Active pane border"
+			label={m.settings_theme_interface_tab_active_pane_border()}
 			unit="px"
 			value={p.active_pane_modifiers.border_size}
 			onchange={(v) => savePref("active_pane_modifiers", { ...p.active_pane_modifiers, border_size: v })}
@@ -107,11 +129,11 @@
 	</Row>
 	<Row
 		id="pane-opacity"
-		label="Dim inactive panes"
-		description="How visible panes you are not using stay: 0.2 is faint, 1 is not dimmed."
+		label={m.settings_theme_interface_tab_dim_inactive_panes()}
+		description={m.settings_theme_interface_tab_dim_inactive_description()}
 	>
 		<NumInput
-			label="Dim inactive panes"
+			label={m.settings_theme_interface_tab_dim_inactive_panes()}
 			value={p.active_pane_modifiers.inactive_opacity}
 			onchange={(v) => savePref("active_pane_modifiers", { ...p.active_pane_modifiers, inactive_opacity: v })}
 		/>

@@ -1,0 +1,19 @@
+{
+	"cmd_skills_col_bundled": "Column header of `atlas skills status`: the version bundled in this atlas binary. Printed in capitals, bold.",
+	"cmd_skills_col_description": "Column header of `atlas skills list`: what the skill does. Printed in capitals, bold.",
+	"cmd_skills_col_installed": "Column header of `atlas skills status`: the version installed on disk. Printed in capitals, bold.",
+	"cmd_skills_col_name": "Column header of `atlas skills list`: the skill name. Printed in capitals, bold.",
+	"cmd_skills_col_skill": "Column header of `atlas skills status`: the skill name. Printed in capitals, bold. A skill is a bundled instruction package for coding agents.",
+	"cmd_skills_col_version": "Column header of `atlas skills list`: the version of the skill. Printed in capitals, bold.",
+	"cmd_skills_install_hint": "Last line of `atlas skills list`. {command} is the command to run (`atlas skills install`), printed in bold.",
+	"cmd_skills_installed": "Status of one skill in `atlas skills install` when it was written for the first time. {version} is the skill version. A glyph and the skill name come before it.",
+	"cmd_skills_installed_total": "Summary line of `atlas skills install`: how many skills were installed for the first time. {count} is the number, {dir} the folder they were written to.",
+	"cmd_skills_list_total": "Summary line of `atlas skills list`. {count} is the number of skills in this binary, {version} the atlas version.",
+	"cmd_skills_nothing_changed": "Summary line of `atlas skills install` and `update` when every skill already matched the bundled copy. {dir} is the skills folder.",
+	"cmd_skills_outdated_count": "Yellow warning at the end of `atlas skills status`: how many installed skills differ from the bundled copy. A hint to run the update command follows.",
+	"cmd_skills_status_total": "Summary line of `atlas skills status`. {present} skills of {total} bundled are installed in the folder {dir}.",
+	"cmd_skills_up_to_date": "Status of one skill in `atlas skills install` when its files already match the bundled copy. {version} is the skill version.",
+	"cmd_skills_update_hint": "End of the warning line of `atlas skills status`, after the count of outdated skills. {command} is the command to run (`atlas skills update`), printed in bold.",
+	"cmd_skills_updated": "Status of one skill in `atlas skills install` when an older copy was rewritten. {version} is the new skill version. A glyph and the skill name come before it.",
+	"cmd_skills_updated_total": "Summary line of `atlas skills install` and `update`: how many installed skills were rewritten with the bundled copy. {count} is the number, {dir} the folder."
+}

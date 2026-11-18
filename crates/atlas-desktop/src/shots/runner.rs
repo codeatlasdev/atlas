@@ -38,6 +38,7 @@ pub fn run(app: &AppHandle, fx: Effect) {
         other => super::record_mac::run(app, other),
     };
     if let Err(e) = result {
+        // i18n-ignore: log
         eprintln!("shots: {e}");
         notify_error(app, &e);
         super::feed(app, Event::Failed);

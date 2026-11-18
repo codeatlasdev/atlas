@@ -632,6 +632,7 @@ pub fn start(app: &AppHandle) -> tauri::Result<()> {
         build(app)?;
     }
     if let Err(e) = apply_hotkeys(app, &prefs) {
+        // i18n-ignore: log
         eprintln!("dock: hotkey: {e}");
     }
     Ok(())

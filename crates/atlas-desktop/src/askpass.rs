@@ -120,6 +120,7 @@ fn helper(sock: Option<OsString>, prompt: Option<String>, out: &mut impl Write) 
     {
         Ok(()) => Some(0),
         Err(e) => {
+            // i18n-ignore: log
             eprintln!("atlas askpass: {e}");
             Some(1)
         }

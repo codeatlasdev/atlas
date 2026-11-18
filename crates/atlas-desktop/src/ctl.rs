@@ -57,6 +57,7 @@ pub fn start(app: &AppHandle) {
     let app = app.clone();
     tauri::async_runtime::spawn(async move {
         if let Err(e) = serve(app).await {
+            // i18n-ignore: log
             eprintln!("atlas-desktop: control socket: {e}");
         }
     });

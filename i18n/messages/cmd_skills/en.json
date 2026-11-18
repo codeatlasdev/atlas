@@ -1,0 +1,89 @@
+{
+	"cmd_skills_col_bundled": "BUNDLED",
+	"cmd_skills_col_description": "DESCRIPTION",
+	"cmd_skills_col_installed": "INSTALLED",
+	"cmd_skills_col_name": "NAME",
+	"cmd_skills_col_skill": "SKILL",
+	"cmd_skills_col_version": "VERSION",
+	"cmd_skills_install_hint": "Run {command} to install all",
+	"cmd_skills_installed": "installed v{version}",
+	"cmd_skills_installed_total": [
+		{
+			"declarations": [
+				"input count",
+				"local countPlural = count: plural"
+			],
+			"selectors": [
+				"countPlural"
+			],
+			"match": {
+				"countPlural=one": "{count} skill installed → {dir}",
+				"countPlural=*": "{count} skills installed → {dir}"
+			}
+		}
+	],
+	"cmd_skills_list_total": [
+		{
+			"declarations": [
+				"input count",
+				"local countPlural = count: plural"
+			],
+			"selectors": [
+				"countPlural"
+			],
+			"match": {
+				"countPlural=one": "{count} skill bundled with atlas v{version}",
+				"countPlural=*": "{count} skills bundled with atlas v{version}"
+			}
+		}
+	],
+	"cmd_skills_nothing_changed": "Nothing changed ({dir}).",
+	"cmd_skills_outdated_count": [
+		{
+			"declarations": [
+				"input count",
+				"local countPlural = count: plural"
+			],
+			"selectors": [
+				"countPlural"
+			],
+			"match": {
+				"countPlural=one": "{count} outdated",
+				"countPlural=*": "{count} outdated"
+			}
+		}
+	],
+	"cmd_skills_status_total": [
+		{
+			"declarations": [
+				"input total",
+				"local totalPlural = total: plural"
+			],
+			"selectors": [
+				"totalPlural"
+			],
+			"match": {
+				"totalPlural=one": "{present}/{total} installed  •  directory: {dir}",
+				"totalPlural=*": "{present}/{total} installed  •  directory: {dir}"
+			}
+		}
+	],
+	"cmd_skills_up_to_date": "v{version} (up to date)",
+	"cmd_skills_update_hint": "run {command}",
+	"cmd_skills_updated": "updated → v{version}",
+	"cmd_skills_updated_total": [
+		{
+			"declarations": [
+				"input count",
+				"local countPlural = count: plural"
+			],
+			"selectors": [
+				"countPlural"
+			],
+			"match": {
+				"countPlural=one": "{count} skill updated → {dir}",
+				"countPlural=*": "{count} skills updated → {dir}"
+			}
+		}
+	]
+}

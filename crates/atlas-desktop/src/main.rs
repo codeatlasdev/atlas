@@ -137,6 +137,7 @@ fn show_main(app: &AppHandle) {
             let _ = w.show();
         }
         Err(e) => {
+            // i18n-ignore: log
             eprintln!("atlas-agent: REFUSED to show the window: {e}");
             app.exit(3);
         }
@@ -592,6 +593,7 @@ fn main() {
     if agent_mode::Mode::current() == agent_mode::Mode::Agent
         && let Err(e) = agent_mode::verify_display()
     {
+        // i18n-ignore: log
         eprintln!("atlas-agent: REFUSED to show the window: {e}");
         std::process::exit(3);
     }

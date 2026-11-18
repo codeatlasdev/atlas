@@ -1,0 +1,8 @@
+{
+	"viewers_files_fallback_binary": "Heading of the card shown instead of the editor when a file is not text.",
+	"viewers_files_fallback_binary_detail": "Line under the heading of the binary card. {size} is the file size already formatted (3.9 KB), kept as is.",
+	"viewers_files_fallback_first_bytes": "Label above the hex dump of the first bytes of a large or binary file. {size} is the size of the excerpt already formatted (3.9 KB), kept as is.",
+	"viewers_files_fallback_large_detail": "Line under the heading of the too-large card. {size} is the file size already formatted (3.9 KB), kept as is.",
+	"viewers_files_fallback_too_large": "Heading of the card shown instead of the editor when a file is larger than the editor opens (32 MB).",
+	"viewers_files_viewer_actions_open_externally": "Button label in a <button> element, in ViewerActions (apps/desktop/src/lib/viewers/ViewerActions.svelte). Extracted by i18n:extract: refine this description on review."
+}

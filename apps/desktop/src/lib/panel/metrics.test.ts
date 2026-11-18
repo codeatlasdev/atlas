@@ -1,5 +1,6 @@
 // @ts-nocheck bun test runtime types are not part of the app tsconfig
 import { describe, expect, test } from "bun:test";
+import { rustEnumValues } from "./stateLabel.test.ts";
 import {
 	LogCursor,
 	SLOTS,
@@ -170,6 +171,18 @@ describe("formatting and summary", () => {
 		expect(fmtUptime(90_000_000)).toBe("1d 1h");
 		expect(fmtUptime(null)).toBe("—");
 		expect(fmtUptime(-1)).toBe("—");
+	});
+
+	test("every state the runner sends has a label made of catalog messages, running or not", () => {
+		const sent = rustEnumValues("crates/atlas-tui/src/runtime/service.rs", "ServiceState");
+		for (const state of sent) {
+			for (const running of [true, false]) {
+				const { label } = summarize([state], running);
+				expect(label, `${state} running=${running}`).not.toMatch(/^panel_summary_|^$/);
+			}
+		}
+		expect(summarize(["hibernating"], true).label).toBe("0 of 1 up");
+		expect(summarize(["running"], false).label).toBe("Stopped");
 	});
 
 	test("summarize prioritizes failures, then starting", () => {

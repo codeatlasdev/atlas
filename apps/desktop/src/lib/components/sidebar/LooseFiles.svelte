@@ -119,6 +119,9 @@
 		padding: 4px 6px 4px 14px;
 		text-align: left;
 	}
+	.name :global(svg) {
+		flex: none;
+	}
 	.name span {
 		overflow: hidden;
 		text-overflow: ellipsis;

@@ -60,9 +60,9 @@
 				size="sm"
 				value={choice}
 				options={[
-					{ value: "auto", label: "Automatic" },
+					{ value: "auto", label: m.settings_general_git_option_automatic() },
 					...writers.map((a) => ({ value: a.id, label: a.label })),
-					{ value: "off", label: "Off" },
+					{ value: "off", label: m.settings_general_git_option_off() },
 				]}
 				onchange={save}
 			/>

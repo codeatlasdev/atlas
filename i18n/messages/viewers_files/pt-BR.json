@@ -1,0 +1,8 @@
+{
+	"viewers_files_fallback_binary": "Arquivo binário",
+	"viewers_files_fallback_binary_detail": "{size} · sem pré-visualização para este formato.",
+	"viewers_files_fallback_first_bytes": "Primeiros {size}",
+	"viewers_files_fallback_large_detail": "Este arquivo tem {size}. O Atlas abre arquivos de texto de até 32 MB.",
+	"viewers_files_fallback_too_large": "Grande demais para editar aqui",
+	"viewers_files_viewer_actions_open_externally": "Abrir externamente"
+}

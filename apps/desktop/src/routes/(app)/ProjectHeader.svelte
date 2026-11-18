@@ -102,9 +102,7 @@
 		>
 	{:else}
 		<span class="pill t-{health.tone}" title={health.label}>
-			<span class="dot" class:pulse={health.tone === "ok"}></span>{p.running
-				? health.label
-				: m.shell_project_header_stopped()}
+			<span class="dot" class:pulse={health.tone === "ok"}></span>{health.label}
 		</span>
 	{/if}
 	{#if !folder && p.config_source === "detected"}

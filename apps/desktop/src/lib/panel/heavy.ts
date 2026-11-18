@@ -1,3 +1,5 @@
+import { m } from "#lib/i18n/m.ts";
+
 /** The machine-wide heavy-job queue (`atlas run --heavy`) as the `heavy_status` command returns it (snake_case, as serialized by Rust). */
 export interface HeavyJob {
 	id: string;
@@ -42,18 +44,20 @@ export function human(secs: number): string {
 
 /** One line: who holds the slots and how many wait ("2 of 2 slots busy · 3 waiting"). */
 export function summary(s: HeavyStatus): string {
-	const busy = `${s.running.length} of ${s.slots} slot${s.slots === 1 ? "" : "s"} busy`;
-	return s.queued.length ? `${busy} · ${s.queued.length} waiting` : busy;
+	const args = { running: s.running.length, slots: s.slots, queued: s.queued.length };
+	return s.queued.length ? m.panel_activity_heavy_busy_waiting(args) : m.panel_activity_heavy_busy(args);
 }
 
 /** Row title and detail for a job: what it is, where, and how long (with the ETA when history knows it). */
 export function describe(j: HeavyJob): { title: string; detail: string } {
-	const eta =
-		j.eta_s == null
-			? ""
-			: j.state === "running"
-				? ` · ~${human(j.eta_s)} left`
-				: ` · starts in ~${human(j.eta_s)}`;
-	const what = j.state === "running" ? `running ${human(j.age_s)}` : `waiting ${human(j.age_s)}`;
-	return { title: j.label, detail: `${j.project} · ${what}${eta}` };
+	const args = { project: j.project, age: human(j.age_s), eta: j.eta_s == null ? "" : human(j.eta_s) };
+	const detail =
+		j.state === "running"
+			? j.eta_s == null
+				? m.panel_activity_heavy_running({ ...args })
+				: m.panel_activity_heavy_running_eta({ ...args })
+			: j.eta_s == null
+				? m.panel_activity_heavy_waiting({ ...args })
+				: m.panel_activity_heavy_waiting_eta({ ...args });
+	return { title: j.label, detail };
 }

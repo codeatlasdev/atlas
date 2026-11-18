@@ -13,6 +13,8 @@
 	import type { ServiceDef, ServiceKind } from "#lib/api.ts";
 	import type { Service } from "#lib/stores/projects.svelte.ts";
 	import StatusRing from "#lib/components/StatusRing.svelte";
+	import { m } from "#lib/i18n/m.ts";
+	import { stateLabel } from "./stateLabel.ts";
 
 	const KIND_ICON = {
 		web: Globe,
@@ -43,20 +45,28 @@
 			<K size={13} class="kind" />
 			<span class="n">{service.name}</span>
 			{#if service.restarts}
-				<span class="badge" title="Restarts since the stack started">↻ {service.restarts}</span>
+				<span class="badge" title={m.panel_card_head_restarts_since_the_stack_started()}
+					>↻ {service.restarts}</span
+				>
 			{/if}
 		</div>
 		<div class="meta">
-			<span class="state state-{service.state}">{service.state}{service.completed_ok ? " ✓" : ""}</span>
-			{#if service.paused_by}<span class="dim">paused by {service.paused_by}</span>{/if}
-			{#if service.deselected}<span class="dim">not selected</span>{/if}
+			<span class="state state-{service.state}"
+				>{stateLabel(service.state)}{service.completed_ok ? " ✓" : ""}</span
+			>
+			{#if service.paused_by}<span class="dim"
+					>{m.panel_card_head_paused_by({ paused_by: service.paused_by })}</span
+				>{/if}
+			{#if service.deselected}<span class="dim">{m.panel_card_head_not_selected()}</span>{/if}
 		</div>
 	</div>
 	{#if def?.target}
 		{@const t = def.target}
 		<button
 			class="port mono"
-			title={t.how === "browser" ? `Open ${t.url}` : `Copy ${t.url}`}
+			title={t.how === "browser"
+				? m.panel_card_head_open_url({ url: t.url })
+				: m.panel_card_head_copy_url({ url: t.url })}
 			onclick={(e) => {
 				e.stopPropagation();
 				onopen();

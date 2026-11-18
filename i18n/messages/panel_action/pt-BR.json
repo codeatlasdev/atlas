@@ -1,0 +1,58 @@
+{
+	"panel_action_output_drawer_action_gone": "Esta ação não está mais no atlas.yaml",
+	"panel_action_output_drawer_action_output": "Saída da ação",
+	"panel_action_output_drawer_action_runs": "Execuções da ação",
+	"panel_action_output_drawer_already_running": "Já em execução",
+	"panel_action_output_drawer_copied_lines": [
+		{
+			"declarations": [
+				"input count",
+				"input shown",
+				"local countExact = count",
+				"local countPlural = count: plural"
+			],
+			"selectors": [
+				"countExact",
+				"countPlural"
+			],
+			"match": {
+				"countExact=0, countPlural=*": "Nenhuma linha copiada",
+				"countExact=*, countPlural=one": "{shown} linha copiada",
+				"countExact=*, countPlural=*": "{shown} linhas copiadas"
+			}
+		}
+	],
+	"panel_action_output_drawer_finished": "terminou",
+	"panel_action_output_drawer_no_action_output_yet": "Nenhuma saída de ação ainda",
+	"panel_action_output_drawer_run_again": "Executar novamente",
+	"panel_action_output_drawer_run_an_action_from_the": "Execute uma ação no menu Ações; a saída dela aparece aqui.",
+	"panel_action_output_drawer_show_action_output": "Mostrar saída da ação",
+	"panel_action_output_drawer_start_stack_first": "Inicie a stack primeiro",
+	"panel_action_output_drawer_started_at": "Iniciada às {time}",
+	"panel_action_output_log_earlier_lines_dropped": [
+		{
+			"declarations": [
+				"input count",
+				"input shown",
+				"local countPlural = count: plural"
+			],
+			"selectors": [
+				"countPlural"
+			],
+			"match": {
+				"countPlural=one": "{shown} linha anterior não foi mantida (o Atlas conectou depois do início da execução); a saída completa está em .logs/.",
+				"countPlural=*": "{shown} linhas anteriores não foram mantidas (o Atlas conectou depois do início da execução); a saída completa está em .logs/."
+			}
+		}
+	],
+	"panel_action_output_log_no_output": "Sem saída.",
+	"panel_action_output_log_open_file": "Abrir arquivo",
+	"panel_action_output_log_open_link": "Abrir link ({key} para o navegador)",
+	"panel_action_output_log_outside_project": "{target} está fora do projeto",
+	"panel_action_output_log_waiting_for_output": "Aguardando saída…",
+	"panel_action_result_toast_failed": "{label} falhou",
+	"panel_action_result_toast_finished": "{label} terminou",
+	"panel_action_result_toast_view_output": "Ver saída",
+	"panel_action_unavailable_session": "Sessão interativa: execute na interface de terminal (atlas dev)",
+	"panel_action_unavailable_stopped": "Inicie a stack para executar ações"
+}

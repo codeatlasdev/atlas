@@ -1,5 +1,6 @@
 <script lang="ts">
 	import { relative } from "#lib/i18n/fmt.ts";
+	import { m } from "#lib/i18n/m.ts";
 	import { SLOTS, STEP_MS, type Segment } from "./metrics.ts";
 
 	/** One lane per service: contiguous state bands across the history window. */
@@ -25,9 +26,13 @@
 	}
 </script>
 
-<div class="tl" role="img" aria-label="Service state over the last {Math.round(SPAN / 60000)} minutes">
+<div class="tl" role="img" aria-label={m.panel_state_timeline_label({ minutes: Math.round(SPAN / 60000) })}>
 	{#each lanes as lane (lane.name)}
-		<button class="lane" onclick={() => onpick?.(lane.name)} title="{lane.name}: open logs">
+		<button
+			class="lane"
+			onclick={() => onpick?.(lane.name)}
+			title={m.panel_state_timeline_open_logs({ name: lane.name })}
+		>
 			<span class="label">{lane.name}</span>
 			<span class="track">
 				{#each lane.segments as s, i (i)}

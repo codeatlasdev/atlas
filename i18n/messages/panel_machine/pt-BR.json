@@ -1,0 +1,119 @@
+{
+	"panel_machine_agent_blocked": "bloqueado",
+	"panel_machine_agent_done": "concluído",
+	"panel_machine_agent_idle": "ocioso",
+	"panel_machine_agent_waiting": "aguardando",
+	"panel_machine_agent_working": "trabalhando",
+	"panel_machine_cache_cleared": "Cache limpo · {size} liberados",
+	"panel_machine_cache_nearly_full": "Quase cheio: as entradas usadas há mais tempo são removidas",
+	"panel_machine_cache_no_runs": "Nenhuma execução ainda",
+	"panel_machine_cache_size": "{used} de {max}",
+	"panel_machine_clear_cache_description": "Resultados, saídas e contadores do cache são excluídos. As próximas execuções começam do zero.",
+	"panel_machine_clear_cache_title": "Limpar o cache de tarefas?",
+	"panel_machine_drawer_agents_and_terminals": "Agentes e terminais",
+	"panel_machine_drawer_clear_cache": "Limpar cache",
+	"panel_machine_drawer_heavy_run_history": "Histórico de execuções pesadas",
+	"panel_machine_drawer_hit_rate": "Taxa de acerto {rate}",
+	"panel_machine_drawer_load_and_memory": "Carga e memória",
+	"panel_machine_drawer_machine": "Máquina",
+	"panel_machine_drawer_no_heavy_run_recorded_yet": "Nenhuma execução pesada registrada ainda.",
+	"panel_machine_drawer_no_service_is_running": "Nenhum serviço em execução.",
+	"panel_machine_drawer_no_terminals_running": "Nenhum terminal aberto.",
+	"panel_machine_drawer_not_available_in_this_version": "Indisponível nesta versão.",
+	"panel_machine_drawer_nothing_running_or_waiting": "Nada em execução ou na fila.",
+	"panel_machine_drawer_orphans_and_disk": "Processos órfãos e disco",
+	"panel_machine_drawer_saved_week": "{savedWeek} nos últimos 7 dias",
+	"panel_machine_drawer_services_by_memory": "Serviços por memória",
+	"panel_machine_drawer_size": "Tamanho",
+	"panel_machine_drawer_task_cache": "Cache de tarefas",
+	"panel_machine_drawer_time_saved": "Tempo economizado {saved}",
+	"panel_machine_history_stats": "{runs} · média {avg} · máx. {max}",
+	"panel_machine_hits": [
+		{
+			"declarations": [
+				"input count",
+				"local countExact = count",
+				"local countPlural = count: plural"
+			],
+			"selectors": [
+				"countExact",
+				"countPlural"
+			],
+			"match": {
+				"countExact=0, countPlural=*": "Nenhum acerto",
+				"countExact=*, countPlural=one": "{count} acerto",
+				"countExact=*, countPlural=*": "{count} acertos"
+			}
+		}
+	],
+	"panel_machine_hygiene_detail": "{live} ativos · {size} a liberar",
+	"panel_machine_load": "Carga",
+	"panel_machine_load_and_memory_holding_load": "Carga e memória · jobs pesados aguardam a carga",
+	"panel_machine_load_and_memory_holding_memory": "Carga e memória · jobs pesados aguardam a memória",
+	"panel_machine_load_cores": "{load} de {cores} núcleos",
+	"panel_machine_memory_free": "{free}% livre",
+	"panel_machine_memory_free_total": "{free}% livre · {total}",
+	"panel_machine_misses": [
+		{
+			"declarations": [
+				"input count",
+				"local countExact = count",
+				"local countPlural = count: plural"
+			],
+			"selectors": [
+				"countExact",
+				"countPlural"
+			],
+			"match": {
+				"countExact=0, countPlural=*": "Nenhuma falha",
+				"countExact=*, countPlural=one": "{count} falha",
+				"countExact=*, countPlural=*": "{count} falhas"
+			}
+		}
+	],
+	"panel_machine_no_reading": "sem leitura",
+	"panel_machine_orphans": [
+		{
+			"declarations": [
+				"input count",
+				"local countExact = count",
+				"local countPlural = count: plural"
+			],
+			"selectors": [
+				"countExact",
+				"countPlural"
+			],
+			"match": {
+				"countExact=0, countPlural=*": "Nenhum processo órfão",
+				"countExact=*, countPlural=one": "{count} processo órfão",
+				"countExact=*, countPlural=*": "{count} processos órfãos"
+			}
+		}
+	],
+	"panel_machine_over_max_rising": "Acima de max_memory · subindo {rate}",
+	"panel_machine_over_warn_rising": "Acima de memory_warn · subindo {rate}",
+	"panel_machine_past_heavy_gate": "Passou do gate de jobs pesados: os novos aguardam",
+	"panel_machine_reading": "Lendo dados da máquina…",
+	"panel_machine_report_retry_hint": "O Atlas não conseguiu ler a carga, a fila ou os terminais. Ele tenta de novo a cada poucos segundos.",
+	"panel_machine_report_unavailable": "Relatório da máquina indisponível",
+	"panel_machine_runs": [
+		{
+			"declarations": [
+				"input count",
+				"local countExact = count",
+				"local countPlural = count: plural"
+			],
+			"selectors": [
+				"countExact",
+				"countPlural"
+			],
+			"match": {
+				"countExact=0, countPlural=*": "Nenhuma execução",
+				"countExact=*, countPlural=one": "{count} execução",
+				"countExact=*, countPlural=*": "{count} execuções"
+			}
+		}
+	],
+	"panel_machine_trend_faster": "{pct}% mais rápido",
+	"panel_machine_trend_slower": "{pct}% mais lento"
+}

@@ -345,7 +345,7 @@
 {"ratchet":"svelte","file":"apps/desktop/src/lib/settings/EditorRows.svelte","count":0}
 {"ratchet":"svelte","file":"apps/desktop/src/lib/settings/FontRows.svelte","count":1}
 {"ratchet":"svelte","file":"apps/desktop/src/lib/settings/InterfaceTab.svelte","count":24}
-{"ratchet":"svelte","file":"apps/desktop/src/lib/settings/LanguagesTab.svelte","count":1}
+{"ratchet":"svelte","file":"apps/desktop/src/lib/settings/LanguagesTab.svelte","count":0}
 {"ratchet":"svelte","file":"apps/desktop/src/lib/settings/ServerRow.svelte","count":0}
 {"ratchet":"svelte","file":"apps/desktop/src/lib/settings/TerminalTab.svelte","count":62}
 {"ratchet":"svelte","file":"apps/desktop/src/lib/settings/ThemeTab.svelte","count":23}

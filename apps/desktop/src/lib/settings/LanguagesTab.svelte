@@ -25,6 +25,8 @@
 	import { openOutsideWorktree } from "./openOutside.ts";
 	import ServerRow from "./ServerRow.svelte";
 	import { m } from "#lib/i18n/m.ts";
+	import Rich from "#lib/i18n/Rich.svelte";
+	import type { Snippet } from "svelte";
 
 	let data = $state<Catalog | null>(null);
 	let loadError = $state("");
@@ -188,16 +190,17 @@
 		</Group>
 	</div>
 
+	{#snippet userLink(content: Snippet)}
+		<button class="link" onclick={openUserSettings}>{@render content()}</button>
+	{/snippet}
+	{#snippet projectLink(content: Snippet)}
+		<button class="link" onclick={openProjectSettings}><code>{@render content()}</code></button>
+	{/snippet}
 	<p class="foot" data-setting="lsp-project">
-		<span class="line"
-			>{m.settings_editor_languages_tab_user_file()}
-			<button class="link" onclick={openUserSettings}>settings.json</button></span
-		>
-		<span class="line"
-			>{m.settings_editor_languages_tab_project_file()}
-			<button class="link" onclick={openProjectSettings}><code>.atlas/settings.json</code></button></span
-		>
-		<span class="line">{m.settings_editor_languages_tab_project_wins()}</span>
+		<Rich
+			parts={m.settings_editor_languages_tab_note.parts()}
+			tags={{ user: userLink, project: projectLink }}
+		/>
 	</p>
 {/if}
 
@@ -224,9 +227,6 @@
 	.state.error {
 		justify-content: space-between;
 		color: var(--ca-semantic-error);
-	}
-	.foot .line {
-		display: block;
 	}
 	.foot {
 		margin: 0;

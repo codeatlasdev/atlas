@@ -256,6 +256,7 @@ fn background(pm: &mut Pixmap, tf: Transform, mask: &Mask) {
     let glow = shaded(
         RadialGradient::new(
             Point::from_xy(WIDTH / 2.0, 88.0),
+            0.0,
             Point::from_xy(WIDTH / 2.0, 88.0),
             190.0,
             vec![
@@ -593,6 +594,7 @@ fn progress_bar(pm: &mut Pixmap, f: &Frame, tf: Transform, mask: &Mask) {
         let g = shaded(
             RadialGradient::new(
                 Point::from_xy(hx, r.y + r.h / 2.0),
+                0.0,
                 Point::from_xy(hx, r.y + r.h / 2.0),
                 14.0,
                 vec![

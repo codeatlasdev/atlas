@@ -163,6 +163,17 @@ describe("heavy.sh with an atlas that predates the queue, or none", () => {
 		expect(p.exitCode).toBe(3);
 	});
 
+	// Incident (2026-11-16): /tmp (a tmpfs) filled up, `echo $$ >"$lock"` created the file but wrote nothing, and every
+	// later heavy job waited forever on "heavy: waiting for  to finish": an empty lock names no owner to check.
+	test("an empty lock (its writer could not write its pid) does not block the next job forever", () => {
+		const dir = mkdtempSync(join(tmpdir(), "heavy-"));
+		const env = fallbackEnv(dir);
+		writeFileSync(env.ATLAS_HEAVY_LOCK, "");
+		const p = run(["sh", "-c", "echo ran; exit 3"], env);
+		expect(p.stdout.toString().trim()).toBe("ran");
+		expect(p.exitCode).toBe(3);
+	});
+
 	// Needs a load reading: Git Bash on Windows has no `uptime`, so there the load gate is open by design.
 	test.skipIf(process.platform === "win32")("a machine that never calms down still runs the job after the wait, and says so", () => {
 		const dir = mkdtempSync(join(tmpdir(), "heavy-"));

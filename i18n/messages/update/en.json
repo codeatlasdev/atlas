@@ -1,0 +1,3 @@
+{
+	"update_older_release_managed": "Installing an older release needs an Atlas installed by the shell installer; another tool manages this one."
+}

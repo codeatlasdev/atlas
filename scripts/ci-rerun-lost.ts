@@ -1,7 +1,8 @@
 // bun scripts/ci-rerun-lost.ts [--dry-run]
 // Run by .github/workflows/ci-rerun-lost.yml after a CI run failed (issue #520): reruns the failed jobs, once per
-// attempt, when every job that failed in the run was lost to its runner ("The hosted runner lost communication with
-// the server"); does nothing otherwise, so a real test failure is never retried into green. The rules are
+// attempt, when every job that failed in the run ended by GitHub's infrastructure ("The hosted runner lost communication
+// with the server", or "The job was not acquired by Runner of type hosted even after multiple attempts"); does nothing
+// otherwise, so a real test failure is never retried into green. The rules are
 // decideRerun in ci-lost-runner.ts. Input comes from the environment (never from the command line of a shell):
 // GH_REPO, RUN_ID, RUN_ATTEMPT, RUN_CONCLUSION, HEAD_REPO, HEAD_BRANCH, HEAD_SHA. HEAD_BRANCH is a name a fork's
 // author chose: it is validated and only ever passed as one argument to gh, never to a shell.

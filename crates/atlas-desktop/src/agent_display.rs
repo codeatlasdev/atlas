@@ -471,7 +471,9 @@ mod tests {
             "a pin asks for the keyboard only through overlay_keys"
         );
         // the page shows the dock by itself only for the user's app
-        assert!(dock.contains("enabled && crate::agent_mode::Mode::current().focus_allowed()"));
+        assert!(
+            dock.contains("OnReady::Show if crate::agent_mode::Mode::current().focus_allowed()")
+        );
         let all = sources();
         let src = |n: &str| code(&all.iter().find(|(f, _)| f == n).unwrap().1);
         // `show_main`: the three window calls sit inside the branch that agent mode never takes. In the agent branch,

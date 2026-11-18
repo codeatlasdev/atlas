@@ -146,7 +146,7 @@ jobs:
 
       # Caches are saved only from main and release branches (same rule as the rust-gate action).
       - name: Cache cargo
-        uses: Swatinem/rust-cache@6323deb102c322ba6fcbdcafc7e3dddab59af2b6 # v2.9.2
+        uses: Swatinem/rust-cache@d1527c8f67ef9af357290475d4af4b0fab8f12e0 # v2.9.3
         with:
           save-if: ${{ github.ref == 'refs/heads/main' || startsWith(github.ref, 'refs/heads/release/') }}
 
@@ -447,7 +447,7 @@ jobs:
         run: echo "v=$(sed -n 's/^flutter_rust_bridge = "=\([0-9.]*\)"$/\1/p' apps/mobile/native/Cargo.toml)" >> "$GITHUB_OUTPUT"
 
       - name: Install flutter_rust_bridge_codegen
-        uses: taiki-e/install-action@c509219cf42fba86913069efd0ade2458c59337b # v2.90.1
+        uses: taiki-e/install-action@cfdb7ed4ccc7c7dce37759eae89dc5674b469b39 # v2.90.3
         with:
           tool: flutter_rust_bridge_codegen@${{ steps.frb.outputs.v }}
 
@@ -565,7 +565,7 @@ jobs:
           persist-credentials: false
 
       - name: Install zizmor
-        uses: taiki-e/install-action@c509219cf42fba86913069efd0ade2458c59337b # v2.90.1
+        uses: taiki-e/install-action@cfdb7ed4ccc7c7dce37759eae89dc5674b469b39 # v2.90.3
         with:
           tool: zizmor
 

@@ -10,7 +10,7 @@ use std::process::Command;
 
 use anyhow::{Result, bail};
 
-use super::ctx::Ctx;
+use super::ctx::{Ctx, valid_release_id};
 use super::remote::shq;
 
 /// What the host is serving: the release id and the commit it was built from.
@@ -84,7 +84,9 @@ pub fn decide(rel: Relation, o: Overrides) -> Verdict {
 /// Parse the probe's output: `<release-id> <sha>` on one line, nothing when
 /// there is no `current` or its record has no sha (a first deploy).
 pub fn parse_probe(stdout: &str) -> Option<Deployed> {
-    let line = stdout.lines().find(|l| !l.trim().is_empty())?;
+    let line = stdout
+        .lines()
+        .find(|l| !l.trim().is_empty() && !l.starts_with("newest "))?;
     let (id, sha) = line.trim().split_once(' ')?;
     let sha = sha.trim();
     let hex = !sha.is_empty() && sha.bytes().all(|b| b.is_ascii_hexdigit());
@@ -95,10 +97,23 @@ pub fn parse_probe(stdout: &str) -> Option<Deployed> {
     })
 }
 
-/// The bash probe: id and sha of the release `current` points at.
+/// The newest release id the probe reported, when it is an id (host output ends up in a timestamp).
+pub fn parse_newest(stdout: &str) -> Option<String> {
+    let id = stdout
+        .lines()
+        .find_map(|l| l.strip_prefix("newest "))?
+        .trim();
+    valid_release_id(id).then(|| id.to_string())
+}
+
+/// The bash probe: the newest release on the host (`newest <id>`, even a failed one: it is what a
+/// new id must sort after), then id and sha of the release `current` points at.
 fn probe_script(dir: &str) -> String {
     format!(
-        r#"cd {d} 2>/dev/null && [ -L current ] || exit 0
+        r#"cd {d} 2>/dev/null || exit 0
+n=$(ls -1 releases 2>/dev/null | grep -E '^[0-9]{{14}}-[0-9a-f]{{7}}(-dirty)?$' | LC_ALL=C sort | tail -n 1)
+[ -n "$n" ] && echo "newest $n"
+[ -L current ] || exit 0
 id=$(basename "$(readlink current)")
 sha=$(sed -n 's/.*"sha":"\([^"]*\)".*/\1/p' "releases/$id/.atlas-release" 2>/dev/null)
 [ -n "$sha" ] && echo "$id $sha"; true"#,
@@ -252,8 +267,14 @@ pub fn announce(id: &str, head: &str, dep: &Deployed, a: &Ancestry) -> String {
     )
 }
 
-/// Read what the host serves; `None` when nothing is deployed yet.
-async fn read_deployed(ctx: &Ctx) -> Result<Option<Deployed>> {
+/// What the host holds: the release `current` serves (`None` when nothing is deployed yet) and the
+/// newest release id of any kind.
+struct Host {
+    deployed: Option<Deployed>,
+    newest: Option<String>,
+}
+
+async fn read_host(ctx: &Ctx) -> Result<Host> {
     let out = ctx.remote.exec(&probe_script(&ctx.dir)).await?;
     if out.code != 0 {
         bail!(
@@ -262,18 +283,26 @@ async fn read_deployed(ctx: &Ctx) -> Result<Option<Deployed>> {
             out.stderr.trim()
         );
     }
-    Ok(parse_probe(&out.stdout))
+    Ok(Host {
+        deployed: parse_probe(&out.stdout),
+        newest: parse_newest(&out.stdout),
+    })
 }
 
-/// Run the guard for `atlas deploy`: the deployed release and its relation to
-/// `head`, `None` on a first deploy, or an error when the deploy must not proceed.
-pub async fn check(
-    ctx: &Ctx,
-    head: &str,
-    overrides: Overrides,
-) -> Result<Option<(Deployed, Ancestry)>> {
-    let Some(dep) = read_deployed(ctx).await? else {
-        return Ok(None); // first deploy
+/// What the guard learned from the host for `atlas deploy`.
+pub struct Checked {
+    /// The deployed release and its relation to `head`; `None` on a first deploy.
+    pub base: Option<(Deployed, Ancestry)>,
+    /// The newest release id on the host: the new release's id sorts after it.
+    pub newest: Option<String>,
+}
+
+/// Run the guard for `atlas deploy`: read the host, relate `head` to what it serves, or an error
+/// when the deploy must not proceed.
+pub async fn check(ctx: &Ctx, head: &str, overrides: Overrides) -> Result<Checked> {
+    let Host { deployed, newest } = read_host(ctx).await?;
+    let Some(dep) = deployed else {
+        return Ok(Checked { base: None, newest }); // first deploy
     };
     let a = ancestry(&ctx.root, head, &dep.sha);
     if let Verdict::Refuse(why) = decide(a.relation, overrides) {
@@ -292,7 +321,10 @@ pub async fn check(
         };
         bail!("{}", refusal_message(why, head, &dep, &a, &dropped));
     }
-    Ok(Some((dep, a)))
+    Ok(Checked {
+        base: Some((dep, a)),
+        newest,
+    })
 }
 
 #[cfg(test)]
@@ -378,6 +410,25 @@ mod tests {
         // Host output ends up in git argv: only hex shas get through.
         assert_eq!(parse_probe("id --upload-pack=evil"), None);
         assert_eq!(parse_probe("id abc"), None);
+    }
+
+    #[test]
+    fn the_newest_release_is_read_beside_the_deployed_one_and_only_when_it_is_an_id() {
+        let sha = "f1dc8a0f1dc8a0f1dc8a0f1dc8a0f1dc8a0abcd";
+        let out = format!("newest 20251113130000-aaaaaaa\n20251113120000-f1dc8a0 {sha}\n");
+        assert_eq!(
+            parse_newest(&out).as_deref(),
+            Some("20251113130000-aaaaaaa")
+        );
+        // The `newest` line is not mistaken for the deployed one.
+        assert_eq!(
+            parse_probe(&out).map(|d| d.id).as_deref(),
+            Some("20251113120000-f1dc8a0")
+        );
+        // Releases but no `current`: a newest and nothing deployed.
+        assert_eq!(parse_probe("newest 20251113130000-aaaaaaa\n"), None);
+        assert_eq!(parse_newest(""), None);
+        assert_eq!(parse_newest("newest ../../etc\n"), None);
     }
 
     #[test]

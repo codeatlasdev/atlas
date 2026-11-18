@@ -175,6 +175,43 @@ pub struct DockState {
     ready: std::sync::atomic::AtomicBool,
     /// Captures sent to the composer (`attach`) that the page has not taken yet.
     attachments: Mutex<Attachments>,
+    /// The window is being built right now (lazily, off the event loop): a second request must not build it twice.
+    building: std::sync::atomic::AtomicBool,
+    /// Something asked for the pill before its window existed: what to do once its page has painted (`dock_ready`).
+    pending: Mutex<Pending>,
+}
+
+/// What was asked of a dock window that was not built yet.
+#[derive(Debug, Default, Clone, Copy, PartialEq, Eq)]
+struct Pending {
+    show: bool,
+    summon: bool,
+}
+
+/// What the page's `dock_ready` does for the requests that came before it existed.
+#[derive(Debug, PartialEq, Eq)]
+enum OnReady {
+    Summon,
+    Show,
+    Nothing,
+}
+
+/// A summon includes the show; a show is owed when the pill is enabled (the old "always there while Atlas runs") or was asked for.
+fn on_ready(enabled: bool, pending: Pending) -> OnReady {
+    if pending.summon {
+        OnReady::Summon
+    } else if enabled || pending.show {
+        OnReady::Show
+    } else {
+        OnReady::Nothing
+    }
+}
+
+/// Whether the dock window is built when Atlas starts: only for a pill the user sees. Hidden is "no window at all" (see
+/// [`DockPrefs::enabled`]); it is built the first time something shows it. Linux and Windows default to hidden, so a launch there
+/// no longer loads a transparent always-on-top page that nobody sees (#286).
+fn builds_at_launch(prefs: &DockPrefs) -> bool {
+    prefs.enabled
 }
 
 /// Captures waiting for the dock page: a queue the page drains (`dock_take_attachments`), because the dock page may
@@ -296,9 +333,41 @@ fn reposition(app: &AppHandle, win: &WebviewWindow, to_cursor: bool) {
     let _ = win.set_position(PhysicalPosition::new(x, y));
 }
 
+/// Build the dock window when it does not exist. Never from the event loop or a sync command (`webview_win.rs` guard:
+/// a WebView2 built there never finishes on Windows): the async runtime, via [`build_lazily`].
+fn ensure_built(app: &AppHandle) {
+    if app.get_webview_window(LABEL).is_none()
+        && let Err(e) = build(app)
+    {
+        crate::diag::incident("dock", &format!("the dock could not be built: {e}"));
+    }
+}
+
+/// Build the window off the event loop, once however many ask. Its page calls `dock_ready`, which carries out what was
+/// asked meanwhile ([`Pending`]).
+fn build_lazily(app: &AppHandle) {
+    use std::sync::atomic::Ordering::AcqRel;
+    if app.state::<DockState>().building.swap(true, AcqRel) {
+        return;
+    }
+    let a = app.clone();
+    tauri::async_runtime::spawn(async move {
+        ensure_built(&a);
+        a.state::<DockState>()
+            .building
+            .store(false, std::sync::atomic::Ordering::Release);
+    });
+}
+
 /// [`show`] on the main thread, from whichever thread asks (Tauri runs commands on workers; AppKit window calls trap
-/// off the main thread).
+/// off the main thread). A window that is not built yet (hidden at launch, #286) is built first and shown once its page
+/// has painted.
 fn show_on_main(app: &AppHandle) {
+    if app.get_webview_window(LABEL).is_none() {
+        app.state::<DockState>().pending.lock().show = true;
+        build_lazily(app);
+        return;
+    }
     let a = app.clone();
     let _ = app.run_on_main_thread(move || show(&a));
 }
@@ -370,6 +439,11 @@ fn apply_hotkeys(app: &AppHandle, prefs: &DockPrefs) -> Result<(), String> {
 /// this is called from async command threads (`attach`, from the card's "Send to agent"): the work runs on the main
 /// thread (agent run, 2026-10-26: SIGTRAP in `setFrame:display:` under `dock::show`).
 pub fn summon(app: &AppHandle) {
+    if app.get_webview_window(LABEL).is_none() {
+        app.state::<DockState>().pending.lock().summon = true;
+        build_lazily(app);
+        return;
+    }
     if !app
         .state::<DockState>()
         .ready
@@ -535,7 +609,8 @@ fn set_prefs(app: &AppHandle, prefs: DockPrefs) -> Result<DockPrefs, String> {
     Ok(prefs)
 }
 
-/// Build the window, register the hotkey and show the pill (the user's app, when enabled).
+/// Register the hotkeys and, when the pill is enabled, build its window (shown once its page paints). A hidden pill has no
+/// window until something shows it: the hide key stays registered, it is the way back.
 pub fn start(app: &AppHandle) -> tauri::Result<()> {
     let prefs = DockPrefs::load();
     app.manage(DockState {
@@ -543,7 +618,9 @@ pub fn start(app: &AppHandle) -> tauri::Result<()> {
         snapshot: Mutex::new(Value::Null),
         ..DockState::default()
     });
-    build(app)?;
+    if builds_at_launch(&prefs) {
+        build(app)?;
+    }
     if let Err(e) = apply_hotkeys(app, &prefs) {
         eprintln!("dock: hotkey: {e}");
     }
@@ -556,10 +633,13 @@ pub fn dock_ready(app: AppHandle) {
     app.state::<DockState>()
         .ready
         .store(true, std::sync::atomic::Ordering::Release);
-    if app.state::<DockState>().prefs.lock().enabled
-        && crate::agent_mode::Mode::current().focus_allowed()
-    {
-        show_on_main(&app);
+    let state = app.state::<DockState>();
+    let pending = std::mem::take(&mut *state.pending.lock());
+    let enabled = state.prefs.lock().enabled;
+    match on_ready(enabled, pending) {
+        OnReady::Summon => summon(&app),
+        OnReady::Show if crate::agent_mode::Mode::current().focus_allowed() => show_on_main(&app),
+        _ => {}
     }
 }
 
@@ -705,6 +785,67 @@ pub fn dock_open(app: AppHandle, tab: Option<String>) {
 mod tests {
     use super::*;
     use serde_json::json;
+
+    fn prefs_on(os: &str) -> DockPrefs {
+        DockPrefs {
+            enabled: default_enabled(os),
+            ..DockPrefs::default()
+        }
+    }
+
+    /// #286: Linux and Windows default the pill off, yet every launch built its transparent always-on-top webview (a web
+    /// process of its own, ~60 MB PSS) and never showed it.
+    #[test]
+    fn a_launch_builds_the_dock_window_only_for_a_pill_the_user_sees() {
+        assert!(!builds_at_launch(&prefs_on("linux")));
+        assert!(!builds_at_launch(&prefs_on("windows")));
+        assert!(builds_at_launch(&prefs_on("macos")));
+        // Turned on in Settings, it is there at the next launch on any OS; turned off on macOS, it is not.
+        let on = DockPrefs {
+            enabled: true,
+            ..prefs_on("linux")
+        };
+        assert!(builds_at_launch(&on));
+        let off = DockPrefs {
+            enabled: false,
+            ..prefs_on("macos")
+        };
+        assert!(!builds_at_launch(&off));
+    }
+
+    /// A pill that was never built still has to appear when asked for: the page's first paint carries out the request
+    /// (`dock_ready`), a summon wins over a plain show, and nothing asked means nothing shown for a disabled pill.
+    #[test]
+    fn the_first_paint_of_a_lazily_built_dock_carries_out_what_was_asked() {
+        let none = Pending::default();
+        let show = Pending {
+            show: true,
+            summon: false,
+        };
+        let summon = Pending {
+            show: false,
+            summon: true,
+        };
+        let both = Pending {
+            show: true,
+            summon: true,
+        };
+        assert_eq!(on_ready(false, none), OnReady::Nothing);
+        assert_eq!(on_ready(true, none), OnReady::Show);
+        assert_eq!(on_ready(false, show), OnReady::Show);
+        assert_eq!(on_ready(false, summon), OnReady::Summon);
+        assert_eq!(on_ready(true, both), OnReady::Summon);
+    }
+
+    /// The hide key is the way back from hidden: it stays registered with no window, and the summon key only exists
+    /// while the pill does.
+    #[test]
+    fn a_hidden_dock_keeps_its_way_back_registered_without_a_window() {
+        let hidden = prefs_on("linux");
+        assert!(!builds_at_launch(&hidden));
+        let keys = wanted_keys(&hidden);
+        assert_eq!(keys, [(Action::Toggle, "ctrl-alt-d".to_string())]);
+    }
 
     fn fixture() -> Value {
         let p = std::path::Path::new(env!("CARGO_MANIFEST_DIR"))

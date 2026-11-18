@@ -3,6 +3,7 @@
 use std::path::{Path, PathBuf};
 
 use anyhow::{Context, Result, anyhow};
+use atlas_i18n::t;
 use atlas_skills::embedded;
 
 /// What a plan item will do (or did) to its target.
@@ -22,15 +23,15 @@ pub enum Action {
 }
 
 impl Action {
-    pub fn label(self) -> &'static str {
+    pub fn label(self) -> String {
         match self {
-            Action::Create => "create",
-            Action::Update => "update",
-            Action::UpToDate => "up to date",
-            Action::Conflict => "CONFLICT",
-            Action::Remove => "remove",
-            Action::Absent => "not installed",
-            Action::Skipped => "skipped",
+            Action::Create => t!("cmd_setup_action_create"),
+            Action::Update => t!("cmd_setup_action_update"),
+            Action::UpToDate => t!("cmd_setup_action_up_to_date"),
+            Action::Conflict => t!("cmd_setup_action_conflict"),
+            Action::Remove => t!("cmd_setup_action_remove"),
+            Action::Absent => t!("cmd_setup_action_absent"),
+            Action::Skipped => t!("cmd_setup_action_skipped"),
         }
     }
 
@@ -73,7 +74,7 @@ pub enum Op {
 
 #[derive(Debug, Clone)]
 pub struct Item {
-    pub label: &'static str,
+    pub label: String,
     pub path: PathBuf,
     pub action: Action,
     /// Short human diff summary, e.g. `+ mcpServers.atlas`.
@@ -108,9 +109,9 @@ impl Plan {
         for i in &self.items {
             let verb = if applied {
                 match i.action {
-                    Action::Create => "created",
-                    Action::Update => "updated",
-                    Action::Remove => "removed",
+                    Action::Create => t!("cmd_setup_done_created"),
+                    Action::Update => t!("cmd_setup_done_updated"),
+                    Action::Remove => t!("cmd_setup_done_removed"),
                     a => a.label(),
                 }
             } else {
@@ -153,10 +154,19 @@ pub fn apply(plan: &Plan, skills: &SkillsTarget) -> Result<()> {
                 content.as_bytes(),
                 atlas_core::fs::Mode::Default,
             )
-            .with_context(|| format!("writing {}", item.path.display()))?,
+            .with_context(|| {
+                t!(
+                    "cmd_setup_ctx_writing",
+                    path = item.path.display().to_string()
+                )
+            })?,
             Op::RemoveFile { boundary } => {
-                std::fs::remove_file(&item.path)
-                    .with_context(|| format!("removing {}", item.path.display()))?;
+                std::fs::remove_file(&item.path).with_context(|| {
+                    t!(
+                        "cmd_setup_ctx_removing",
+                        path = item.path.display().to_string()
+                    )
+                })?;
                 if let Some(b) = boundary {
                     prune_empty_parents(&item.path, b);
                 }
@@ -167,15 +177,24 @@ pub fn apply(plan: &Plan, skills: &SkillsTarget) -> Result<()> {
             Op::UninstallSkills => {
                 embedded::uninstall(&skills.dir, &skills.manifest)?;
             }
-            Op::RemoveDir => std::fs::remove_dir_all(&item.path)
-                .with_context(|| format!("removing {}", item.path.display()))?,
+            Op::RemoveDir => std::fs::remove_dir_all(&item.path).with_context(|| {
+                t!(
+                    "cmd_setup_ctx_removing",
+                    path = item.path.display().to_string()
+                )
+            })?,
             Op::Exec { program, args } => {
                 let status = std::process::Command::new(program)
                     .args(args)
                     .status()
-                    .with_context(|| format!("running {program}"))?;
+                    .with_context(|| t!("cmd_setup_ctx_running", program = program))?;
                 if !status.success() {
-                    return Err(anyhow!("{program} {args:?} exited {status}"));
+                    return Err(anyhow!(t!(
+                        "cmd_setup_exec_failed",
+                        program = program,
+                        args = args.join(" "),
+                        status = status.to_string()
+                    )));
                 }
             }
         }

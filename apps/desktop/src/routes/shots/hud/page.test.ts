@@ -2,9 +2,15 @@
 import { expect, test } from "bun:test";
 import { readFileSync } from "node:fs";
 import { join } from "node:path";
+import { m } from "#lib/i18n/m.ts";
 
 const read = (rel) => readFileSync(join(import.meta.dir, rel), "utf8");
 const page = read("+page.svelte");
+/** The page shows `m.<key>()` and the catalog's English (the tests run in `en`) is what the contract names. */
+const says = (key, english) => {
+	expect(page, key).toContain(`m.${key}(`);
+	expect(m[key](), key).toBe(english);
+};
 const record = read("../../../lib/shots/record.ts");
 const rustRecord = readFileSync(
 	join(import.meta.dir, "../../../../../../crates/atlas-desktop/src/shots/record.rs"),
@@ -80,8 +86,15 @@ test("the red dot pulses via the `pulse` flag only (no unconditional animation o
 });
 
 test("buttons have accessible names and the countdown is announced politely", () => {
-	for (const name of ["Pause recording", "Resume recording", "Stop recording", "Cancel recording"])
-		expect(page).toContain(`aria-label="${name}"`);
+	for (const [key, name] of [
+		["capture_hud_page_pause_recording", "Pause recording"],
+		["capture_hud_page_resume_recording", "Resume recording"],
+		["capture_hud_page_stop_recording", "Stop recording"],
+		["capture_hud_page_cancel_recording", "Cancel recording"],
+	]) {
+		expect(page).toContain(`aria-label={m.${key}()}`);
+		says(key, name);
+	}
 	expect(page).toContain('aria-live="polite"');
 });
 
@@ -109,8 +122,8 @@ test("Esc cancels the GIF encode through shots_record_cancel (the page passes wh
 });
 
 test("the trim handles are keyboard operable sliders with names and values", () => {
-	expect(page).toContain('aria-label="Trim start"');
-	expect(page).toContain('aria-label="Trim end"');
+	says("capture_hud_page_trim_start", "Trim start");
+	says("capture_hud_page_trim_end", "Trim end");
 	expect(page.match(/role="slider"/g)?.length).toBe(2);
 	expect(page).toMatch(/aria-valuenow=/);
 	expect(page).toContain("ArrowLeft");

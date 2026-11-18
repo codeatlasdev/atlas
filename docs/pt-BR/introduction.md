@@ -13,7 +13,7 @@ O Atlas é uma plataforma de desenvolvimento para todo mundo: o caminho direto d
 - **Atlas Desktop**: um app nativo para macOS, Windows e Linux com terminal (desenhado na GPU no macOS), git worktrees, agentes de código, revisão de diff e navegador embutido.
 - **`atlas mcp`**: um servidor [Model Context Protocol](mcp.md). Um agente de IA lê o status e os logs, reinicia um serviço e espera até ele ficar saudável enquanto você continua trabalhando.
 
-> **Status.** O Atlas é open source (MIT ou Apache-2.0) e feito para todo mundo. Disponível agora: macOS em Apple silicon, Windows 10/11 x64 e Linux x86_64 (a CLI, o TUI, o servidor MCP e o Atlas Desktop; [baixar](https://atlas.codeatlas.com.br/download/)). Em breve: Macs Intel, Windows em Arm e Linux em Arm.
+> **Status.** O Atlas é open source (MIT ou Apache-2.0) e feito para todo mundo. Disponível agora: macOS em Apple silicon, Windows 10/11 x64 e Linux x86_64 (a CLI, a TUI, o servidor MCP e o Atlas Desktop; [baixar](https://atlas.codeatlas.com.br/download/)). Em breve: Macs Intel, Windows em Arm e Linux em Arm.
 
 ## O problema que ele resolve
 
@@ -56,11 +56,11 @@ e roda `atlas dev`. O Postgres e o Redis sobem, a migration roda primeiro, a API
 | Terminal GPU | Renderizador Metal a 120 Hz, gráficos Kitty e sixel, ligaduras, integração com o shell | [Terminal GPU](terminal.md) |
 | MCP | Nove ferramentas, três recursos, três prompts | [MCP](mcp.md) |
 | Configuração dos agentes | `atlas setup omp\|claude-code\|codex` configura MCP, skills e hooks | [Configuração dos agentes](agents.md) |
-| Deploy | Releases atômicos, condicionados à saúde do serviço, com rollback automático | [Deploy](deploy.md) |
+| Deploy | Releases atômicas, condicionadas à saúde do serviço, com rollback automático | [Deploy](deploy.md) |
 
 ## Por onde começar
 
-1. [Instale o Atlas](installation.md), a partir de uma release ou do código-fonte.
+1. [Instale o Atlas](installation.md), a partir de uma versão ou do código-fonte.
 2. Siga o [Quickstart](quickstart.md): `atlas init`, edite, `atlas dev`.
 3. Passe os olhos em [Conceitos](concepts.md) para aprender o vocabulário (projetos, spaces, worktrees, serviços, ações, hostd).
 4. Consulte a [Configuração](configuration.md) e a [referência da CLI](cli.md).

@@ -57,7 +57,7 @@ Meça com nada mais compilando (um `cargo install` simultâneo transformou 49 s 
 | Ajuste | Onde | Efeito |
 |---|---|---|
 | `ring` no lugar de `aws-lc-rs` para o rustls | `crates/atlas-tui/Cargo.toml`, provider instalado em `runtime/health.rs` | remove o build script de C/cmake de 42 s |
-| `debug = "line-tables-only"` em dev | `Cargo.toml` da raiz | os backtraces mantêm arquivo:linha; o uv mediu −20 % no ciclo com cache quente |
+| `debug = "line-tables-only"` em dev | `Cargo.toml` da raiz | os backtraces mantêm arquivo:linha; o uv mediu −20% no ciclo com cache quente |
 | sem informações de debug para dependências e build scripts | `[profile.dev.package."*"]`, `[profile.dev.build-override]` | junto com a linha acima: 82 → 49 s, 3,5 → 2,3 G |
 | `[profile.debug]` | `Cargo.toml` da raiz | informações de debug completas só quando você pede |
 | `build.build-dir = target/build` | `.cargo/config.toml` | os intermediários ficam em um diretório que dá para apagar; os binários finais continuam em `target/debug` e `target/release` |
@@ -71,7 +71,7 @@ Meça com nada mais compilando (um `cargo install` simultâneo transformou 49 s 
 | linker alternativo no macOS (lld, sold, wild) | o ld64 já é rápido (Bevy, perf-book, Zed); o sold não tem manutenção; o wild não tem Mach-O utilizável |
 | `split-debuginfo = "unpacked"` | já é o padrão do Cargo no macOS |
 | `[profile.dev] opt-level = 1` | deixa o ciclo de edição mais lento |
-| `panic = "abort"` | o TUI e o harness de testes precisam de unwinding |
+| `panic = "abort"` | a TUI e o harness de testes precisam de unwinding |
 | sccache localmente | sem ganho com build incremental; talvez um experimento futuro no CI |
 | cargo-sweep | sem manutenção; o `bun run sweep` apaga o `target/build` no lugar dele |
 | `opt-level = 3` por dependência para proc-macros | sem necessidade medida; reveja se o `--timings` mostrar a expansão de macros no caminho crítico |

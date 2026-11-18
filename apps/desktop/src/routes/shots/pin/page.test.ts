@@ -2,6 +2,7 @@
 import { expect, test } from "bun:test";
 import { readFileSync } from "node:fs";
 import { join } from "node:path";
+import { m } from "#lib/i18n/m.ts";
 
 const read = (rel) => readFileSync(join(import.meta.dir, rel), "utf8");
 const page = read("+page.svelte");
@@ -79,7 +80,8 @@ test("the opacity is applied to the whole pin and shown with the zoom for a mome
 });
 
 test("the close button is hidden until hover or keyboard focus and has an accessible name", () => {
-	expect(page).toContain('aria-label="Close pin"');
+	expect(page).toContain("aria-label={m.capture_pin_page_close_pin()}");
+	expect(m.capture_pin_page_close_pin()).toBe("Close pin");
 	expect(page).toMatch(/\.pin:hover \.x,\s*\.x:focus-visible\s*\{\s*opacity:\s*1/);
 	expect(page).toContain(":focus-visible");
 });

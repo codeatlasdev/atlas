@@ -4,12 +4,18 @@ import { readFileSync } from "node:fs";
 import { join } from "node:path";
 import { COLORS, WIDTHS, TEXT_SIZES } from "../../../lib/shots/annotate.ts";
 import { BEAUTIFY_GRADIENTS, BEAUTIFY_PADDINGS, BEAUTIFY_RADII } from "../../../lib/shots/render.ts";
+import { m } from "#lib/i18n/m.ts";
 
 const read = (rel) => readFileSync(join(import.meta.dir, rel), "utf8");
 const page = read("+page.svelte");
 const annotate = read("../../../lib/shots/annotate.ts");
 const render = read("../../../lib/shots/render.ts");
 
+/** The page shows `m.<key>()` and the catalog's English (the tests run in `en`) is what the contract names. */
+const says = (key, english) => {
+	expect(page, key).toContain(`m.${key}(`);
+	expect(m[key](), key).toBe(english);
+};
 // The editor commands of `local://shots-contract.md` (authoritative).
 const CONTRACT_COMMANDS = ["shots_editor_load", "shots_editor_save", "shots_editor_close"];
 
@@ -57,19 +63,19 @@ test("the pure modules have no DOM, Tauri or store imports", () => {
 });
 
 test("the toolbar offers every tool, with names and the single-letter shortcuts V A R T H M N S B C", () => {
-	for (const label of [
-		"Select",
-		"Arrow",
-		"Rectangle",
-		"Text",
-		"Highlight",
-		"Highlighter",
-		"Counter",
-		"Spotlight",
-		"Blur",
-		"Crop",
+	for (const [key, label] of [
+		["capture_editor_page_tool_select", "Select"],
+		["capture_editor_page_tool_arrow", "Arrow"],
+		["capture_editor_page_rectangle", "Rectangle"],
+		["capture_editor_page_tool_text", "Text"],
+		["capture_editor_page_tool_highlight", "Highlight"],
+		["capture_editor_page_tool_highlighter", "Highlighter"],
+		["capture_editor_page_tool_counter", "Counter"],
+		["capture_editor_page_tool_spotlight", "Spotlight"],
+		["capture_editor_page_blur", "Blur"],
+		["capture_editor_page_tool_crop", "Crop"],
 	]) {
-		expect(page, label).toContain(label);
+		says(key, label);
 	}
 	const letters = {
 		v: "select",
@@ -87,11 +93,11 @@ test("the toolbar offers every tool, with names and the single-letter shortcuts 
 		expect(page, `${k} -> ${tool}`).toMatch(new RegExp(`\\b${k}:\\s*"${tool}"`));
 		// the same letter is shown in the tooltip of that tool's button
 		expect(page, `${tool} entry`).toMatch(
-			new RegExp(`tool:\\s*"${tool}",\\s*label:\\s*"[A-Za-z ]+",\\s*key:\\s*"${k.toUpperCase()}"`),
+			new RegExp(`tool:\\s*"${tool}",\\s*label:\\s*m\\.[a-z_]+\\(\\),\\s*key:\\s*"${k.toUpperCase()}"`),
 		);
 	}
-	expect(page).toMatch(/title="\{t\.label\} \(\{t\.key\}\)"/);
-	expect(page).toContain("Pixelate");
+	expect(page).toContain("m.capture_editor_page_tool_tip({ tool: t.label, key: t.key })");
+	says("capture_editor_page_pixelate", "Pixelate");
 });
 
 test("every tool letter is unique, and no letter shadows a modifier shortcut", () => {
@@ -105,7 +111,7 @@ test("the palette has at least 8 colours (the first is red), a custom hex input 
 	expect(COLORS.length).toBeGreaterThanOrEqual(8);
 	expect(COLORS[0]).toBe("#ef4444");
 	expect(page).toContain("COLORS");
-	expect(page).toMatch(/aria-label="Custom colour, hex"/);
+	says("capture_editor_page_custom_color_hex", "Custom color, hex");
 	expect(page).toContain("normalizeHex");
 	expect(WIDTHS).toEqual([2, 4, 6, 10]);
 	expect(page).toContain("WIDTHS");
@@ -118,22 +124,27 @@ test("the palette has at least 8 colours (the first is red), a custom hex input 
 test("text controls: size S/M/L/XL, bold, background none/solid/pill, applied to the selected text too", () => {
 	expect(TEXT_SIZES.map((t) => t.label)).toEqual(["S", "M", "L", "XL"]);
 	expect(page).toContain("TEXT_SIZES");
-	expect(page).toMatch(/aria-label="Bold"/);
-	for (const b of ["None", "Solid", "Pill"]) expect(page).toContain(b);
+	says("capture_editor_page_bold", "Bold");
+	for (const [key, label] of [
+		["capture_editor_page_text_bg_none", "None"],
+		["capture_editor_page_text_bg_solid", "Solid"],
+		["capture_editor_page_text_bg_pill", "Pill"],
+	])
+		says(key, label);
 	expect(page).toMatch(/function pickTextSize[\s\S]{0,160}restyle\(doc, selectedItem\.id, \{ size/);
 	expect(page).toMatch(/function pickWeight[\s\S]{0,160}restyle\(doc, selectedItem\.id, \{ weight/);
 	expect(page).toMatch(/function pickBg[\s\S]{0,160}restyle\(doc, selectedItem\.id, \{ bg/);
 });
 
 test("Beautify: a toggle with 4 gradients, paddings 0/32/64/96, radii 0/12/24 and a shadow switch", () => {
-	expect(page).toMatch(/aria-label="Beautify"/);
+	says("capture_editor_page_beautify", "Beautify");
 	expect(page).toContain("BEAUTIFY_GRADIENTS");
 	expect(BEAUTIFY_GRADIENTS).toHaveLength(4);
 	expect(BEAUTIFY_PADDINGS).toEqual([0, 32, 64, 96]);
 	expect(BEAUTIFY_RADII).toEqual([0, 12, 24]);
 	expect(page).toContain("BEAUTIFY_PADDINGS");
 	expect(page).toContain("BEAUTIFY_RADII");
-	expect(page).toMatch(/aria-label="Shadow"/);
+	says("capture_editor_page_shadow", "Shadow");
 	expect(page).toMatch(/aria-pressed=\{beautify\.on\}/);
 });
 
@@ -142,7 +153,8 @@ test("the live preview and the export both go through the shared beautify painte
 	expect(page).toContain("paintBeautified");
 	expect(page).toContain("beautifyLayout");
 	// the shown size is the beautified output size
-	expect(page).toMatch(/\{layout\.out\.w\} × \{layout\.out\.h\} px/);
+	expect(page).toContain("m.capture_editor_page_size_px(");
+	expect(m.capture_editor_page_size_px({ w: 10, h: 20 })).toBe("10 × 20 px");
 });
 
 test("export order: items on the full image, then crop, then beautify; chrome and the backdrop preview never leak in", () => {
@@ -166,10 +178,16 @@ test("beautify is an export setting: not in the undo history", () => {
 });
 
 test("each Done button saves with its contract mode: Copy=copy, Save=file, Save & Copy=both; Cancel only closes", () => {
-	expect(page).toMatch(/aria-label="Copy to clipboard"[^>]*onclick=\{\(\) => done\("copy"\)\}/);
-	expect(page).toMatch(/aria-label="Save a copy"[^>]*onclick=\{\(\) => done\("file"\)\}/);
-	expect(page).toMatch(/aria-label="Save and copy"[^>]*onclick=\{\(\) => done\("both"\)\}/);
-	expect(page).toMatch(/aria-label="Cancel"[^>]*onclick=\{requestClose\}/);
+	expect(page).toMatch(
+		/aria-label=\{m\.capture_editor_page_copy_to_clipboard\(\)\}[^>]*onclick=\{\(\) => done\("copy"\)\}/,
+	);
+	expect(page).toMatch(
+		/aria-label=\{m\.capture_editor_page_save_a_copy\(\)\}[^>]*onclick=\{\(\) => done\("file"\)\}/,
+	);
+	expect(page).toMatch(
+		/aria-label=\{m\.capture_editor_page_save_and_copy\(\)\}[^>]*onclick=\{\(\) => done\("both"\)\}/,
+	);
+	expect(page).toMatch(/aria-label=\{m\.common_action_cancel\(\)\}[^>]*onclick=\{requestClose\}/);
 	// the mode reaches Rust unchanged, with the base64 PNG, and the window closes only after a successful save
 	expect(page).toMatch(
 		/invoke<Entry>\("shots_editor_save",\s*\{\s*path,\s*png:\s*exportPng\(\),\s*mode\s*\}\)/,
@@ -212,8 +230,8 @@ test("keyboard: Cmd/Ctrl+Z undo, Shift redo, Delete/Backspace, Esc, Cmd+Enter = 
 
 test("closing with unsaved edits asks first, and only then (isDirty gates the confirmation)", () => {
 	expect(page).toContain("isDirty");
-	expect(page).toMatch(/Discard/);
-	expect(page).toMatch(/Keep editing/);
+	says("capture_discard", "Discard");
+	says("capture_editor_page_keep_editing", "Keep editing");
 });
 
 test("text is edited in an inline <input>, never contenteditable", () => {

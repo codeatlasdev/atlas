@@ -16,7 +16,7 @@ curl -fsSL https://atlas.codeatlas.com.br/install.sh | sh
 atlas version
 ```
 
-O instalador verifica o checksum da release, coloca o `atlas` em `~/.atlas/bin` e configura o seu `PATH` (abra um novo shell depois). As releases prontas cobrem macOS em Apple silicon, Linux x86_64 e Windows x64. No Linux você também pode instalar um [.deb, .rpm, pacote Arch ou AppImage](installation.md#pacotes-para-linux), e no Windows você roda `irm https://atlas.codeatlas.com.br/install.ps1 | iex` no PowerShell ([Windows](installation.md#windows)). Instalação manual, atualizações e desinstalação: [Instalação](installation.md).
+O instalador verifica o checksum da versão, coloca o `atlas` em `~/.atlas/bin` e configura o seu `PATH` (abra um novo shell depois). As versões prontas cobrem macOS em Apple silicon, Linux x86_64 e Windows x64. No Linux você também pode instalar um [.deb, .rpm, pacote Arch ou AppImage](installation.md#pacotes-para-linux), e no Windows você roda `irm https://atlas.codeatlas.com.br/install.ps1 | iex` no PowerShell ([Windows](installation.md#windows)). Instalação manual, atualizações e desinstalação: [Instalação](installation.md).
 
 ## 2. Descrever a stack
 
@@ -59,9 +59,9 @@ O `atlas config check` valida o arquivo e mostra todos os erros de uma vez. Cada
 atlas dev
 ```
 
-Uma aba por serviço, logs combinados em **All** e o estado dos serviços na barra lateral. `?` mostra as teclas, `/` pesquisa nos logs e `q` sai e para tudo. Veja o [guia do TUI](tui.md).
+Uma aba por serviço, logs combinados em **All** e o estado dos serviços na barra lateral. `?` mostra as teclas, `/` pesquisa nos logs e `q` sai e para tudo. Veja o [guia da TUI](tui.md).
 
-Para deixar a stack rodando em segundo plano, use `atlas dev --detach`; depois, `atlas dev` anexa o TUI e `atlas down` para tudo.
+Para deixar a stack rodando em segundo plano, use `atlas dev --detach`; depois, `atlas dev` anexa a TUI e `atlas down` para tudo.
 
 ## Próximos passos
 

@@ -30,13 +30,13 @@ program ─pty─▶ atlas hostd ──pty_attach_raw (raw bytes)──▶ reade
 |---|---|
 | Texto | `terminal.font_family` (fontes de sistema instaladas, vale a primeira família instalada da lista, fontes variáveis incluídas; nenhuma instalada = JetBrains Mono embutida) + fallback de símbolos Nerd Font, `terminal.font_thicken`, negrito e itálico sintéticos, box drawing, contraste mínimo, paleta ANSI do tema |
 | Decorações | sublinhado, duplo, ondulado, pontilhado, tracejado, colorido (SGR 58), tachado |
-| Interação | seleção (caractere, palavra e URL/caminho inteiro com duplo clique, linha com triplo clique, ⇧-clique estende, bloco com ⌥-arrastar, rolagem automática nas bordas, ⌘A seleciona tudo; veja [Seleção e links](#seleção-e-links)), scrollback (10 000 linhas, no máximo `terminal.scrollback_bytes`) com barra de rolagem, copiar ao selecionar (`terminal.copy_on_select`, ativado) e ⌘C, colar (bracketed), soltar um arquivo cola o caminho entre aspas, cópia por OSC 52 (programa → área de transferência: perguntar por padrão, `terminal.osc52` allow/ask/deny; ler a área de transferência é negado), clique na linha do prompt move o cursor (`terminal.click_to_move`), a roda do mouse na tela alternativa rola o programa com as setas, terminais encerrados não aceitam entrada |
+| Interação | seleção (caractere, palavra e URL/caminho inteiro com duplo clique, linha com triplo clique, ⇧-clique estende, bloco com ⌥-arrastar, rolagem automática nas bordas, ⌘A seleciona tudo; veja [Seleção e links](#seleção-e-links)), scrollback (10.000 linhas, no máximo `terminal.scrollback_bytes`) com barra de rolagem, copiar ao selecionar (`terminal.copy_on_select`, ativado) e ⌘C, colar (bracketed), soltar um arquivo cola o caminho entre aspas, cópia por OSC 52 (programa → área de transferência: perguntar por padrão, `terminal.osc52` allow/ask/deny; ler a área de transferência é negado), clique na linha do prompt move o cursor (`terminal.click_to_move`), a roda do mouse na tela alternativa rola o programa com as setas, terminais encerrados não aceitam entrada |
 | Pesquisa | ⌘F abre uma barra de pesquisa acima do terminal: literal ou regex (alternável), diferenciar maiúsculas de minúsculas (alternável), Enter / ⇧Enter próxima / anterior com retorno ao início, Esc fecha. Toda ocorrência no scrollback e na tela é destacada (âmbar) e a atual fica em destaque forte (laranja); a viewport rola até ela e a barra mostra `n/total`. As ocorrências são recalculadas conforme a saída chega |
 | Links | Hiperlinks OSC 8 e URLs `http(s)://` / `file://` simples (também entre linhas com soft wrap; a pontuação final é cortada). Segure ⌘ sobre uma URL, um link OSC 8 ou um caminho de arquivo existente para sublinhá-lo e ver a mão de ponteiro; ⌘-clique abre um link onde Configurações › Links indicar (`openPreview`: aba do navegador do Atlas ou navegador do sistema) e um caminho no editor, na linha dele |
 | Configurações ao vivo | Mudanças de tema recolorem os terminais abertos (`term_recolor`: fg, bg, cursor, texto do cursor, bg/fg da seleção, ANSI 16, contraste mínimo). `terminal.font_size`, `terminal.font_family` e `terminal.font_thicken` (o renderer reconstrói a fonte e os atlas, depois a grade e o pty são reajustados), `terminal.max_scroll_history_lines`, forma e piscar do cursor, `terminal.osc52`, `terminal.ligatures` e `terminal.minimum_contrast` (razão WCAG, 1 = desligado) valem para os terminais abertos (`term_set_prefs`). `terminal.padding_x` / `terminal.padding_y` movem o retângulo da view |
 | Clusters de grafemas | Os caracteres de largura zero de uma célula (marcas combinantes, VS16, ZWJ, modificadores de tom de pele) viajam com o caractere base no snapshot (`GlyphCell::extra`), com `wide` para células de largura dupla, de modo que o renderer desenha o cluster inteiro. O DECRQM `?2027` informa "always set" (sempre ativo) |
 | Emoji colorido | Atlas RGBA alimentado pelo Apple Color Emoji; células largas ajustadas a 2 células; clusters ZWJ, de bandeira, de tom de pele, keycap e VS16 montados em um único glifo (swash) |
-| Ligaduras e sprites | Ligaduras `calt`/`liga` para o JetBrains Mono, ativadas por padrão (`terminal.ligatures`; as sequências são células adjacentes de mesmo estilo, interrompidas por lacunas, sprites, símbolos e emoji; `Renderer::set_ligatures`). Sprites procedurais para as células se encaixarem: box drawing U+2500 a U+257F, block elements U+2580 a U+259F, braille U+2800 a U+28FF, sextantes U+1FB00 a U+1FB3B, powerline E0B0 a E0B7. Um cache de layout por linha (hash do conteúdo) faz um frame em cache custar ~90 µs; um reshape a frio de 144×44 leva ~0.25 ms em texto simples / ~0.4 ms com muito código (release; `cargo test -p atlas-term --release -- --ignored --nocapture screen_bench`) |
+| Ligaduras e sprites | Ligaduras `calt`/`liga` para o JetBrains Mono, ativadas por padrão (`terminal.ligatures`; as sequências são células adjacentes de mesmo estilo, interrompidas por lacunas, sprites, símbolos e emoji; `Renderer::set_ligatures`). Sprites procedurais para as células se encaixarem: box drawing U+2500 a U+257F, block elements U+2580 a U+259F, braille U+2800 a U+28FF, sextantes U+1FB00 a U+1FB3B, powerline E0B0 a E0B7. Um cache de layout por linha (hash do conteúdo) faz um frame em cache custar ~90 µs; um reshape a frio de 144×44 leva ~0,25 ms em texto simples / ~0,4 ms com muito código (release; `cargo test -p atlas-term --release -- --ignored --nocapture screen_bench`) |
 | Integração com o shell | Marcas de prompt OSC 133 (⌘↑ / ⌘↓ pulam entre prompts, código de saída, limites da saída do comando), cwd por OSC 7 (Restart reabre ali), título OSC 0/2, notificações OSC 9 / 777, bell (flash + atenção no Dock quando sem foco) |
 | Cursor | bloco, barra, sublinhado (DECSCUSR), piscando, vazado quando sem foco |
 | Cores | Primeiro plano, fundo, cursor, texto do cursor, seleção e os ANSI 16 vêm do tema do terminal (o tema do app, ou o escolhido em Configurações → Aparência → **Terminal theme**: `terminal.cursor`, `terminal.cursor_text`, `terminal.selection.*`, `terminal.ansi.*` do arquivo de tema). Um tema que omite uma cor recebe uma derivada da paleta |
@@ -131,7 +131,7 @@ Um terminal não carrega um bitmap, então, para uma imagem, o programa lê a á
 
 ## Scrollback
 
-Limitado em linhas e em bytes, por terminal. `terminal.max_scroll_history_lines` (padrão 10 000, 0 a 100 000) é o limite de linhas; `terminal.scrollback_bytes` (padrão 64 MiB, restrito ao intervalo de 1 MiB a 1 GiB, as Configurações mostram MB; o `scrollback-limit` do Ghostty tem padrão de 50 MB) é o limite de memória, contado em bytes de células (`Vt::history_bytes`). Uma linha custa `columns` células, então vale o mais restrito dos dois e um terminal muito largo mantém menos linhas que a configuração de linhas (`vt/history.rs::history_lines`). Os dois valem ao vivo: baixar um libera as linhas excedentes de imediato, e um redimensionamento recalcula o limite para a nova largura. `0` bytes nunca desativa o histórico (é restrito a 1 MiB); para isso, defina o limite de linhas como 0. ED3, RIS e um limite menor devolvem as linhas liberadas (teste `scrollback_memory`, um alocador contador).
+Limitado em linhas e em bytes, por terminal. `terminal.max_scroll_history_lines` (padrão 10 000, 0 a 100.000) é o limite de linhas; `terminal.scrollback_bytes` (padrão 64 MiB, restrito ao intervalo de 1 MiB a 1 GiB, as Configurações mostram MB; o `scrollback-limit` do Ghostty tem padrão de 50 MB) é o limite de memória, contado em bytes de células (`Vt::history_bytes`). Uma linha custa `columns` células, então vale o mais restrito dos dois e um terminal muito largo mantém menos linhas que a configuração de linhas (`vt/history.rs::history_lines`). Os dois valem ao vivo: baixar um libera as linhas excedentes de imediato, e um redimensionamento recalcula o limite para a nova largura. `0` bytes nunca desativa o histórico (é restrito a 1 MiB); para isso, defina o limite de linhas como 0. ED3, RIS e um limite menor devolvem as linhas liberadas (teste `scrollback_memory`, um alocador contador).
 
 ## Identidade do terminal
 
@@ -171,7 +171,7 @@ Auditoria contra os recursos documentados do Ghostty (ghostty.org/docs/config/re
 | Notificações do desktop OSC 9 / OSC 777 | presente | `vt/shell.rs::notify`, `termNotice.ts`, `agents.svelte.ts` (novo); sem as configurações `desktop-notifications` / `bell-features`, valem as configurações de notificação do Atlas |
 | Título (OSC 0/2) | presente | `pty_title` do hostd, rótulo de aba `Terminal` |
 | Largura de Unicode e emoji, clusters de grafemas (modo 2027) | parcial | `vt/frame.rs`; a largura é por code point no `alacritty_terminal`, uma sequência ZWJ ocupa várias células |
-| Desempenho com saída grande | presente | veja [Desempenho](#desempenho): `cat` 1 GiB 8.0 s contra 12.3 s |
+| Desempenho com saída grande | presente | veja [Desempenho](#desempenho): `cat` 1 GiB 8,0 s contra 12,3 s |
 | `minimum-contrast` | presente | `terminal.minimum_contrast`, `colors.rs` |
 | `window-padding-x/y`, `window-padding-color = extend` | presente | `terminal.padding_x/y`; sem `window-padding-balance` |
 | `scroll-to-bottom = keystroke` | presente | a saída deixa no lugar uma viewport rolada para cima (#97); uma tecla ou um colar volta ao fim (`term/shared.rs` `Shared::input`) |
@@ -183,9 +183,9 @@ Auditoria contra os recursos documentados do Ghostty (ghostty.org/docs/config/re
 - Fonte de emoji só no macOS (Apple Color Emoji, carregada sob demanda de `/System/Library/Fonts`): sem fallback embutido nem de outros sistemas, então em outros sistemas os emoji caem na Nerd Font monocromática ou em nada. Sem fallback de sistema para CJK ou outros sistemas de escrita. Só o primeiro glifo de um cluster que a fonte de emoji não consegue juntar é desenhado.
 - O `alacritty_terminal` mede a largura por code point, então uma sequência ZWJ que ocupa várias células largas na grade não tem a largura de uma célula, mesmo desenhada como um único glifo.
 - Blocos de sombra U+2591 a U+2593 são alfa chapado (sem dither).
-- A pesquisa se limita ao que o motor DFA do alacritty aceita: sem look-around, back-references nem `\b` Unicode (use `(?-u:\b)`); no máximo 20 000 ocorrências são mantidas.
+- A pesquisa se limita ao que o motor DFA do alacritty aceita: sem look-around, back-references nem `\b` Unicode (use `(?-u:\b)`); no máximo 20.000 ocorrências são mantidas.
 - Meio de memória compartilhada do Kitty graphics (`t=s`), animação, placeholders Unicode, posicionamentos relativos; eventos de soltar tecla.
-- Marcas de prompt e imagens são ancoradas a linhas do scrollback; quando o histórico de 10 000 linhas enche, elas se deslocam a cada linha descartada.
+- Marcas de prompt e imagens são ancoradas a linhas do scrollback; quando o histórico de 10.000 linhas enche, elas se deslocam a cada linha descartada.
 - Lacunas nos relatórios de mouse: o movimento só é informado com um botão pressionado, então um programa DECSET 1003 (efeitos de hover) recebe arrastos, mas não movimento puro; sem eventos de foco (DECSET 1004); colar com o botão do meio não está implementado.
 - Bindings do Ghostty não trazidos: navegação de abas/janelas/divisões além de ⌘D (o Atlas tem teclas de painel próprias), `write_screen_file`, `scroll_to_selection` (⌘J é o dock inferior), `adjust_selection` (⇧Home/End/setas para estender uma seleção), `search_selection` (⌘E é Config), `toggle_fullscreen`, `inspector`, quick terminal (exige um atalho global e uma janela acessória), `mouse-hide-while-typing`.
 
@@ -219,7 +219,7 @@ Hoje o terminal nativo roda só no macOS; Windows e Linux usam xterm.js (`term_s
 
 Trabalho de engine compartilhado (todas as plataformas): [#252](https://github.com/codeatlasdev/atlas/issues/252) passagem única sobre os bytes do PTY antes do parser, [#253](https://github.com/codeatlasdev/atlas/issues/253) leitura e parse em threads separadas, [#254](https://github.com/codeatlasdev/atlas/issues/254) liberar os recursos de GPU de terminais ocultos, [#255](https://github.com/codeatlasdev/atlas/issues/255) spike do libghostty-vt, [#256](https://github.com/codeatlasdev/atlas/issues/256) compressão em repouso do scrollback frio. No Linux, o Wayland espera o wry no GTK4 e depois segue o modelo do Ghostty (frames exportados como DMA-BUF para um widget GTK), veja #247.
 
-Metas propostas, **ainda não medidas** no Windows nem no Linux, todas em GPU integrada: parse ≥ 500 MB/s sem bloquear a UI; < 3% de CPU com 4 TUIs de agentes a 30 redesenhos/s; tecla até pixel p95 ≤ um frame + 2 ms; 0 despertares/s em repouso; abas em segundo plano fazem parse mas não desenham; ≤ 8 MB por terminal com 10 000 linhas; inicialização do shell ≤ 150 ms acima do processo puro. No Windows, o ConPTY limita a vazão. O ponto de partida no macOS é [Desempenho](#desempenho) abaixo (M4 Pro, execuções únicas preliminares, compiladas com debug assertions ligadas, então não comparáveis diretamente com os builds distribuídos); a Fase 0 acrescenta o que falta: um Mac com GPU integrada, despertares em repouso, CPU e RAM com N agentes, latência de tecla até pixel, inicialização e todos os números do Windows.
+Metas propostas, **ainda não medidas** no Windows nem no Linux, todas em GPU integrada: parse ≥ 500 MB/s sem bloquear a UI; < 3% de CPU com 4 TUIs de agentes a 30 redesenhos/s; tecla até pixel p95 ≤ um frame + 2 ms; 0 despertares/s em repouso; abas em segundo plano fazem parse mas não desenham; ≤ 8 MB por terminal com 10.000 linhas; inicialização do shell ≤ 150 ms acima do processo puro. No Windows, o ConPTY limita a vazão. O ponto de partida no macOS é [Desempenho](#desempenho) abaixo (M4 Pro, execuções únicas preliminares, compiladas com debug assertions ligadas, então não comparáveis diretamente com os builds distribuídos); a Fase 0 acrescenta o que falta: um Mac com GPU integrada, despertares em repouso, CPU e RAM com N agentes, latência de tecla até pixel, inicialização e todos os números do Windows.
 
 ## Desempenho
 
@@ -227,10 +227,10 @@ Preliminar, execuções únicas. M4 Pro, grade 144×44, 120 Hz. Atlas: perfil `r
 
 | Carga | Atlas | Ghostty |
 |---|---|---|
-| `seq 1 10000000` | 8.20 s | 8.48 s |
-| `cat` 1 GiB (texto com SGR) | 8.02 s | 12.34 s |
-| trabalho de renderização por frame, p50 / p95 / máx | 0.22 / 0.29 / 1.6 ms | n/d |
-| intervalo entre frames p50 / p95 | 8.33 / 8.45 ms | n/d |
+| `seq 1 10000000` | 8,20 s | 8,48 s |
+| `cat` 1 GiB (texto com SGR) | 8,02 s | 12,34 s |
+| trabalho de renderização por frame, p50 / p95 / máx | 0,22 / 0,29 / 1,6 ms | n/d |
+| intervalo entre frames p50 / p95 | 8,33 / 8,45 ms | n/d |
 
 vtebench, `--max-secs 3` (mediana de ms por amostra de 1 MiB, 97 a 429 amostras por célula; menor é melhor):
 
@@ -292,7 +292,7 @@ bun scripts/term-agent-bench.ts --judge docs/perf/term-agent.json      # re-judg
 |---|---|---|
 | `ink-2026` | Ink (Claude Code clássico): reescrita com `CUU` + `EL` da região dinâmica dentro de 2026 | frames que precisam chegar inteiros à tela |
 | `ink-no-2026` | o mesmo sem 2026 | um renderer que desenha entre leituras mostra meio frame; a cadência precisa escondê-lo |
-| `ratatui-diff` | codex: um frame 2026 de células alteradas a cada 8.3 ms | um render por leitura (400 fps) em vez de um por atualização do monitor |
+| `ratatui-diff` | codex: um frame 2026 de células alteradas a cada 8,3 ms | um render por leitura (400 fps) em vez de um por atualização do monitor |
 | `omp-boxes` | omp: caixas com borda reescritas com `CUP` + `EL`, cursor oculto, autowrap desligado | box drawing sob reescrita |
 | `slow-2026` | um frame 2026 dividido por uma pausa de 300 ms (hook, GC) | o timeout de segurança do 2026: os 150 ms do vte desenham o meio frame, o 1 s do Ghostty não |
 | `scroll-stream` | saída em fluxo durante a rolagem (#97) e um programa de mouse contando relatórios de roda | a viewport puxada para o fim, relatórios perdidos ou fora de ordem |
@@ -305,12 +305,12 @@ Para cada padrão, ele filma o terminal durante `--seconds`, recorta no retângu
 |---|---|
 | capturas rasgadas | 0 (todo padrão com o oráculo) |
 | blips, frames em branco, flashes BT.1702 | 0 |
-| frames desenhados por segundo | ≤ 1.05 × a taxa de atualização (coalescência), ≥ 0.5 × a taxa de atualização enquanto o produtor imprime |
-| intervalo entre frames p95 | ≤ 1.1 × o intervalo de atualização |
+| frames desenhados por segundo | ≤ 1,05 × a taxa de atualização (coalescência), ≥ 0,5 × a taxa de atualização enquanto o produtor imprime |
+| intervalo entre frames p95 | ≤ 1,1 × o intervalo de atualização |
 | rolagem: linhas movidas vs pedidas | dentro de 1 linha (um fluxo de trackpad sintetizado com inércia, alimentado como chamadas `term_wheel` no ritmo dele: o que o handler de roda da página invoca) |
 | relatórios de roda que um programa de mouse contou | = cliques enviados, em ordem |
 | viewport enquanto a saída flui | fica onde a pessoa a deixou |
-| intervalo entre frames com inércia p95 | ≤ 1.5 × o intervalo de atualização |
+| intervalo entre frames com inércia p95 | ≤ 1,5 × o intervalo de atualização |
 
 Ele sai com 1 em qualquer linha, e também em uma etapa que não pôde rodar, um produtor que não imprimiu nada, uma gravação com menos de 3 frames ou um relatório que não é um relatório (`--judge` valida todos os campos: um arquivo truncado não pode passar). O juiz é puro e coberto por `bun test scripts` (`term-agent-bench.test.ts`: cada modo de falha aciona a própria linha). A instância é parada explicitamente no fim, também em caso de falha.
 

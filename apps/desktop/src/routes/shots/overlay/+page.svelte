@@ -19,6 +19,7 @@
 		type OverlayState,
 	} from "#lib/shots/overlay.ts";
 	import type { LastMode, Mode, OverlayInit } from "#lib/shots/types.ts";
+	import { m } from "#lib/i18n/m.ts";
 
 	/** The loupe shows a 15x15 px block drawn 8x larger. */
 	const LOUPE_GRID = 15;
@@ -27,15 +28,23 @@
 	/** The hex colour line under the loupe. */
 	const LOUPE_HEX = 22;
 	const LABEL = { w: 150, h: 24 };
-	/** The toolbar's buttons, in `HUD_MODES` order (keys 1..6). */
-	const MODE_LABELS: Record<LastMode, string> = {
-		region: "Region",
-		window: "Window",
-		screen: "Screen",
-		record: "Record",
-		gif: "GIF",
-		text: "Text (OCR)",
-	};
+	/** The toolbar's button labels, in `HUD_MODES` order (keys 1..6). */
+	function modeLabel(mode: LastMode): string {
+		switch (mode) {
+			case "region":
+				return m.capture_overlay_page_mode_region();
+			case "window":
+				return m.capture_overlay_page_mode_window();
+			case "screen":
+				return m.capture_overlay_page_mode_screen();
+			case "record":
+				return m.capture_overlay_page_mode_record();
+			case "gif":
+				return "GIF";
+			case "text":
+				return m.capture_overlay_page_mode_text();
+		}
+	}
 
 	let st = $state<OverlayState>(initialState());
 	// The page is exactly the display's size; until init answers, the window's own size stands in for it.
@@ -335,38 +344,42 @@
 	{/if}
 
 	{#if st.hud}
-		<div class="hud" role="toolbar" aria-label="Capture mode">
-			{#each HUD_MODES as m, i (m)}
+		<div class="hud" role="toolbar" aria-label={m.capture_overlay_page_capture_mode()}>
+			{#each HUD_MODES as mode, i (mode)}
 				<button
 					type="button"
-					class:on={st.hud.mode === m}
-					aria-pressed={st.hud.mode === m}
-					aria-label={MODE_LABELS[m]}
-					title="{MODE_LABELS[m]} ({i + 1})"
-					onclick={() => dispatch({ type: "mode", mode: m })}
+					class:on={st.hud.mode === mode}
+					aria-pressed={st.hud.mode === mode}
+					aria-label={modeLabel(mode)}
+					title={m.capture_overlay_page_mode_tip({ mode: modeLabel(mode), key: String(i + 1) })}
+					onclick={() => dispatch({ type: "mode", mode })}
 				>
-					{MODE_LABELS[m]}
+					{modeLabel(mode)}
 				</button>
 			{/each}
 			<span class="sep" aria-hidden="true"></span>
 			<button
 				type="button"
 				class="timer"
-				title="Self-timer: click to change"
-				aria-label="Timer {st.hud.timerSecs > 0 ? `${st.hud.timerSecs} seconds` : 'off'}. Click to change"
+				title={m.capture_overlay_page_self_timer_click_to_change()}
+				aria-label={st.hud.timerSecs > 0
+					? m.capture_overlay_page_timer_aria_on({ seconds: st.hud.timerSecs })
+					: m.capture_overlay_page_timer_aria_off()}
 				onclick={cycleTimer}
 			>
-				Timer: {st.hud.timerSecs > 0 ? `${st.hud.timerSecs}s` : "Off"}
+				{st.hud.timerSecs > 0
+					? m.capture_overlay_page_timer_on({ seconds: st.hud.timerSecs })
+					: m.capture_overlay_page_timer_off()}
 			</button>
 			<span class="sep" aria-hidden="true"></span>
 			<button
 				type="button"
-				aria-label="Previous area"
-				title="Capture the previous area"
+				aria-label={m.capture_overlay_page_previous_area()}
+				title={m.capture_overlay_page_capture_the_previous_area()}
 				disabled={!st.hud.hasPrevious}
 				onclick={() => dispatch({ type: "previous" })}
 			>
-				Previous area
+				{m.capture_overlay_page_previous_area()}
 			</button>
 		</div>
 	{/if}

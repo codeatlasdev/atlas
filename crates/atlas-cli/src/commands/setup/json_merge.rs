@@ -4,6 +4,7 @@
 //! `.mcp.json`).
 
 use anyhow::{Result, bail};
+use atlas_i18n::t;
 use serde_json::{Map, Value, json};
 
 use super::plan::{MergeOutcome, RemoveOutcome};
@@ -73,7 +74,7 @@ pub fn merge(
         Some(text) if text.trim().is_empty() => (Map::new(), true),
         Some(text) => match serde_json::from_str::<Value>(text)? {
             Value::Object(m) => (m, false),
-            _ => bail!("top-level JSON value is not an object"),
+            _ => bail!(t!("cmd_setup_json_not_object")),
         },
     };
 
@@ -84,7 +85,7 @@ pub fn merge(
         .entry("mcpServers")
         .or_insert_with(|| Value::Object(Map::new()));
     let Some(servers) = servers.as_object_mut() else {
-        bail!("`mcpServers` is not an object");
+        bail!(t!("cmd_setup_json_servers_not_object"));
     };
 
     match servers.get(SERVER_NAME) {
@@ -114,7 +115,7 @@ pub fn remove(existing: Option<&str>, force: bool) -> Result<RemoveOutcome> {
         return Ok(RemoveOutcome::Absent);
     };
     let Value::Object(mut root) = serde_json::from_str::<Value>(text)? else {
-        bail!("top-level JSON value is not an object");
+        bail!(t!("cmd_setup_json_not_object"));
     };
     let Some(servers) = root.get_mut("mcpServers").and_then(Value::as_object_mut) else {
         return Ok(RemoveOutcome::Absent);

@@ -2,6 +2,7 @@
 	import { Chip } from "@codeatlasdev/ui";
 	import type { Level } from "#lib/logs/model.ts";
 	import { svcColor } from "#lib/logs/svcColor.svelte.ts";
+	import { m } from "#lib/i18n/m.ts";
 
 	let {
 		names,
@@ -19,7 +20,7 @@
 
 <div class="bar">
 	<div class="chips">
-		<Chip size="sm" label="All" selected={!only} onclick={() => (only = null)} />
+		<Chip size="sm" label={m.logs_filter_bar_all()} selected={!only} onclick={() => (only = null)} />
 		{#each names as n (n)}
 			<span class="svcchip" style="--svc:{svcColor(n)}">
 				<Chip
@@ -38,7 +39,7 @@
 				<Chip
 					size="sm"
 					variant={lv === "error" ? "error" : lv === "warn" ? "warning" : "default"}
-					label={lv === "info" ? "all levels" : `${lv}+`}
+					label={lv === "info" ? m.logs_filter_bar_all_levels() : `${lv}+`}
 					selected={minLevel === lv}
 					onclick={() => (minLevel = lv)}
 				/>

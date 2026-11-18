@@ -44,6 +44,7 @@
 		type TextAction,
 	} from "#lib/shots/quick.ts";
 	import type { Entry, GifEstimate, GifPreset, GifProgress } from "#lib/shots/types.ts";
+	import { m } from "#lib/i18n/m.ts";
 
 	let st = $state<QuickView>(initialState());
 	/** The card whose overflow menu is open. */
@@ -236,14 +237,14 @@
 	});
 </script>
 
-<svelte:head><title>Quick access</title></svelte:head>
+<svelte:head><title>{m.capture_quick_page_quick_access()}</title></svelte:head>
 
 <div class="column" bind:this={column}>
 	{#each cards as c (c.id)}
 		<div
 			class="card"
 			role="group"
-			aria-label={c.kind === "text" ? "Captured text" : "Capture"}
+			aria-label={c.kind === "text" ? m.capture_quick_page_captured_text() : m.capture_quick_page_capture()}
 			onpointerenter={() => dispatch({ type: "hover", id: c.id, on: true })}
 			onpointerleave={() => dispatch({ type: "hover", id: c.id, on: false })}
 		>
@@ -253,20 +254,22 @@
 					<span class="title">{textTitle(c)}</span>
 					<button
 						class="x inline"
-						aria-label="Close"
+						aria-label={m.common_action_close()}
 						onclick={() => dispatch({ type: "textAction", id: c.id, name: "close" })}
 						><X size={12} aria-hidden="true" /></button
 					>
 				</div>
 				<div class="text">
 					{#if c.empty}
-						<p class="none">No text found</p>
+						<p class="none">{m.capture_quick_page_no_text_found()}</p>
 					{:else}
 						<pre class="preview">{c.preview}</pre>
 					{/if}
 				</div>
 				{#if c.copied}
-					<span class="badge inline" role="status"><Check size={12} aria-hidden="true" /> Copied</span>
+					<span class="badge inline" role="status"
+						><Check size={12} aria-hidden="true" /> {m.capture_quick_page_copied()}</span
+					>
 				{/if}
 				{#if c.error}
 					<p class="err" role="alert"><TriangleAlert size={12} aria-hidden="true" /> {c.error}</p>
@@ -274,10 +277,10 @@
 				{#if !c.empty}
 					<div class="actions">
 						<button class="btn" onclick={() => actText(c.id, "copy")} disabled={c.busy}
-							><Copy size={12} aria-hidden="true" /> Copy again</button
+							><Copy size={12} aria-hidden="true" /> {m.capture_quick_page_copy_again()}</button
 						>
 						<button class="btn primary" onclick={() => actText(c.id, "send")} disabled={c.busy}
-							><Send size={12} aria-hidden="true" /> Send to agent</button
+							><Send size={12} aria-hidden="true" /> {m.capture_quick_page_send_to_agent()}</button
 						>
 					</div>
 				{/if}
@@ -285,11 +288,13 @@
 				{@const Icon = icons[kindIcon(c.entry.kind) as keyof typeof icons]}
 				<div class="thumb" class:small={c.sheet === "gif"}>
 					<img src={c.thumb} alt={title(c.entry)} draggable="true" ondragstart={(ev) => onDragStart(ev, c)} />
-					<button class="x" aria-label="Close" onclick={() => act(c.id, "close")}
+					<button class="x" aria-label={m.common_action_close()} onclick={() => act(c.id, "close")}
 						><X size={12} aria-hidden="true" /></button
 					>
 					{#if c.copied}
-						<span class="badge" role="status"><Check size={12} aria-hidden="true" /> Copied</span>
+						<span class="badge" role="status"
+							><Check size={12} aria-hidden="true" /> {m.capture_quick_page_copied()}</span
+						>
 					{/if}
 				</div>
 				<div class="meta">
@@ -302,9 +307,9 @@
 				{/if}
 
 				{#if c.sheet === "gif"}
-					<div class="sheet" role="group" aria-label="Make GIF">
+					<div class="sheet" role="group" aria-label={m.capture_quick_page_make_gif()}>
 						{#if presets.length > 0}
-							<div class="presets" role="radiogroup" aria-label="GIF quality">
+							<div class="presets" role="radiogroup" aria-label={m.capture_quick_page_gif_quality()}>
 								{#each presets as p (p.id)}
 									<label class="preset">
 										<input
@@ -320,19 +325,20 @@
 							</div>
 						{/if}
 						<p class="est" aria-live="polite">
-							{estimateText || (presets.length > 0 && !sheetError ? "Estimating…" : "")}
+							{estimateText || (presets.length > 0 && !sheetError ? m.capture_quick_page_estimating() : "")}
 						</p>
 						{#if exporting}
 							<progress
 								class="bar"
-								aria-label="Exporting GIF"
+								aria-label={m.capture_quick_page_exporting_gif()}
 								max={c.progress?.total ?? 1}
 								value={c.progress?.done ?? 0}
 							></progress>
 						{/if}
 						{#if exported}
 							<p class="est" role="status">
-								<Check size={12} aria-hidden="true" /> Saved {title(exported)}
+								<Check size={12} aria-hidden="true" />
+								{m.capture_quick_page_saved_title({ title: title(exported) })}
 							</p>
 						{/if}
 						{#if sheetError}
@@ -342,7 +348,7 @@
 							<button
 								class="btn"
 								onclick={() => dispatch({ type: "closeSheet", id: c.id })}
-								disabled={exporting}>Cancel</button
+								disabled={exporting}>{m.common_action_cancel()}</button
 							>
 							<button
 								class="btn primary"
@@ -353,41 +359,41 @@
 										size={12}
 										aria-hidden="true"
 									/>{/if}
-								Export
+								{m.capture_quick_page_export()}
 							</button>
 						</div>
 					</div>
 				{:else}
 					<div class="actions">
 						<button class="btn" onclick={() => act(c.id, "copy")} disabled={c.busy}
-							><Copy size={12} aria-hidden="true" /> Copy</button
+							><Copy size={12} aria-hidden="true" /> {m.common_action_copy()}</button
 						>
 						<button class="btn" onclick={() => act(c.id, "save")} disabled={c.busy}
-							><Download size={12} aria-hidden="true" /> Save…</button
+							><Download size={12} aria-hidden="true" /> {m.capture_quick_page_save_as()}</button
 						>
 						{#if c.entry.kind === "screenshot"}
 							<button class="btn" onclick={() => act(c.id, "annotate")} disabled={c.busy}
-								><Pencil size={12} aria-hidden="true" /> Annotate</button
+								><Pencil size={12} aria-hidden="true" /> {m.capture_quick_page_annotate()}</button
 							>
 							<button class="btn" onclick={() => act(c.id, "pin")} disabled={c.busy}
-								><Pin size={12} aria-hidden="true" /> Pin</button
+								><Pin size={12} aria-hidden="true" /> {m.capture_quick_page_pin()}</button
 							>
 							<button class="btn" onclick={() => act(c.id, "ocr")} disabled={c.busy}
-								><TextCursorInput size={12} aria-hidden="true" /> Text</button
+								><TextCursorInput size={12} aria-hidden="true" /> {m.capture_quick_page_ocr()}</button
 							>
 						{/if}
 						{#if c.entry.kind === "recording"}
 							<button class="btn" onclick={() => openGif(c.id)} disabled={c.busy}
-								><Film size={12} aria-hidden="true" /> Make GIF</button
+								><Film size={12} aria-hidden="true" /> {m.capture_quick_page_make_gif()}</button
 							>
 						{/if}
 						<button class="btn primary" onclick={() => act(c.id, "send")} disabled={c.busy}
-							><Send size={12} aria-hidden="true" /> Send to agent</button
+							><Send size={12} aria-hidden="true" /> {m.capture_quick_page_send_to_agent()}</button
 						>
 						<div class="more">
 							<button
 								class="btn icon"
-								aria-label="More actions"
+								aria-label={m.capture_quick_page_more_actions()}
 								aria-haspopup="menu"
 								aria-expanded={menuFor === c.id}
 								onclick={() => (menuFor = menuFor === c.id ? null : c.id)}
@@ -396,17 +402,20 @@
 							{#if menuFor === c.id}
 								<div class="menu" role="menu">
 									<button role="menuitem" class="item" onclick={() => act(c.id, "reveal")}
-										><FolderOpen size={12} aria-hidden="true" /> Reveal in Finder</button
+										><FolderOpen size={12} aria-hidden="true" />
+										{m.capture_quick_page_reveal_in_file_manager()}</button
 									>
 									<button role="menuitem" class="item danger" onclick={() => act(c.id, "discard")}>
-										{c.confirmDiscard ? "Click again to delete" : "Discard"}
+										{c.confirmDiscard ? m.capture_quick_page_click_again_to_delete() : m.capture_discard()}
 									</button>
 								</div>
 							{/if}
 						</div>
 					</div>
 					{#if c.confirmDiscard && menuFor !== c.id}
-						<button class="confirm" onclick={() => act(c.id, "discard")}>Click again to delete</button>
+						<button class="confirm" onclick={() => act(c.id, "discard")}
+							>{m.capture_quick_page_click_again_to_delete()}</button
+						>
 					{/if}
 				{/if}
 			{/if}

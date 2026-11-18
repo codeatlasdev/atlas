@@ -1,6 +1,7 @@
 <script lang="ts">
 	import { Clock, X } from "@lucide/svelte";
 	import { ALL_TIME, LAST_PRESETS, parseCustomRange, rangeLabel, type TimeRange } from "#lib/logs/range.ts";
+	import { m } from "#lib/i18n/m.ts";
 
 	let { range = $bindable(), only }: { range: TimeRange; only: string | null } = $props();
 
@@ -40,8 +41,8 @@
 	<div class="rangechip" class:on={range.kind !== "all"}>
 		<button
 			class="rangebtn"
-			title="Time range"
-			aria-label="Time range: {label}"
+			title={m.logs_range_chip_time_range()}
+			aria-label={m.logs_range_chip_time_range_label({ label })}
 			aria-haspopup="dialog"
 			aria-expanded={open}
 			onclick={() => (open = !open)}
@@ -52,39 +53,40 @@
 		{#if range.kind !== "all"}
 			<button
 				class="rangex"
-				title="Clear time range"
-				aria-label="Clear time range"
+				title={m.logs_range_chip_clear_time_range()}
+				aria-label={m.logs_range_chip_clear_time_range()}
 				onclick={() => pick(ALL_TIME)}><X size={11} /></button
 			>
 		{/if}
 	</div>
 	{#if open}
-		<div class="rangepop" role="dialog" aria-label="Time range">
-			{#each LAST_PRESETS as m (m)}
+		<div class="rangepop" role="dialog" aria-label={m.logs_range_chip_time_range()}>
+			{#each LAST_PRESETS as minutes (minutes)}
 				<button
 					class="opt"
-					class:sel={range.kind === "last" && range.minutes === m}
-					onclick={() => pick({ kind: "last", minutes: m })}
-					>{rangeLabel({ kind: "last", minutes: m })}</button
+					class:sel={range.kind === "last" && range.minutes === minutes}
+					onclick={() => pick({ kind: "last", minutes })}>{rangeLabel({ kind: "last", minutes })}</button
 				>
 			{/each}
 			<button class="opt" class:sel={range.kind === "restart"} onclick={() => pick({ kind: "restart" })}
-				>{only ? `Since ${only} restarted` : "Since last restart"}</button
+				>{only
+					? m.logs_range_chip_since_service_restarted({ name: only })
+					: m.logs_range_chip_since_last_restart()}</button
 			>
 			<button class="opt" class:sel={range.kind === "start"} onclick={() => pick({ kind: "start" })}
-				>Since stack start</button
+				>{rangeLabel({ kind: "start" })}</button
 			>
 			<div class="custom">
 				<input
 					bind:value={customText}
-					placeholder="14:05 or 14:05–14:20"
-					aria-label="Custom time range (today)"
+					placeholder={m.logs_range_chip_custom_placeholder()}
+					aria-label={m.logs_range_chip_custom_time_range_today()}
 					aria-invalid={!!customError}
 					spellcheck="false"
 					autocomplete="off"
 					onkeydown={onkey}
 				/>
-				<button class="toggle" onclick={applyCustom}>Apply</button>
+				<button class="toggle" onclick={applyCustom}>{m.logs_range_chip_apply()}</button>
 			</div>
 			{#if customError}<div class="rangeerr" role="alert">{customError}</div>{/if}
 		</div>

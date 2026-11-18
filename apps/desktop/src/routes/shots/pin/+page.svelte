@@ -21,6 +21,7 @@
 		type PinState,
 	} from "#lib/shots/pin.ts";
 	import type { EditorDoc } from "#lib/shots/types.ts";
+	import { m } from "#lib/i18n/m.ts";
 
 	let doc = $state<EditorDoc | null>(null);
 	let st = $state<PinState>(initialState({ w: 1, h: 1 }));
@@ -113,21 +114,21 @@
 	});
 </script>
 
-<svelte:head><title>Pinned screenshot</title></svelte:head>
+<svelte:head><title>{m.capture_pin_page_pinned_screenshot()}</title></svelte:head>
 
 <!-- svelte-ignore a11y_no_static_element_interactions -->
 <div
 	class="pin"
 	role="group"
-	aria-label="Pinned screenshot"
+	aria-label={m.capture_pin_page_pinned_screenshot()}
 	style:opacity={st.opacity}
 	onpointerdown={onPointerDown}
 	ondblclick={() => dispatch({ type: "reset" })}
 >
 	{#if doc}
-		<img src={doc.src} alt="Pinned screenshot" draggable="false" />
+		<img src={doc.src} alt={m.capture_pin_page_pinned_screenshot()} draggable="false" />
 	{/if}
-	<button class="x" aria-label="Close pin" onclick={() => dispatch({ type: "close" })}
+	<button class="x" aria-label={m.capture_pin_page_close_pin()} onclick={() => dispatch({ type: "close" })}
 		><X size={12} aria-hidden="true" /></button
 	>
 	{#if badge}

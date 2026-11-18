@@ -9,7 +9,7 @@ translation: machine
 
 ## O que é o Atlas, em uma frase?
 
-Um orquestrador de ambiente de desenvolvimento: um `atlas.yaml` inicia a infraestrutura e os serviços em ordem de dependência, supervisiona tudo e expõe o ambiente a um TUI, a um app desktop e a agentes de IA.
+Um orquestrador de ambiente de desenvolvimento: um `atlas.yaml` inicia a infraestrutura e os serviços em ordem de dependência, supervisiona tudo e expõe o ambiente a uma TUI, a um app desktop e a agentes de IA.
 
 ## Qual é a diferença para `docker compose`, `foreman` ou `process-compose`?
 
@@ -17,11 +17,11 @@ O `docker compose` roda containers; o Atlas roda os seus *processos* (e chama `d
 
 ## Ele roda no Linux ou no Windows?
 
-O Atlas é para todo mundo, e estamos liberando plataforma por plataforma. Disponível agora: macOS em Apple silicon, Linux x86_64 e Windows 10/11 em x64 (a CLI, o TUI, o servidor MCP e o Atlas Desktop). No Linux você pode usar o script de instalação ou um [.deb, .rpm, pacote Arch ou AppImage](installation.md#pacotes-para-linux); no Windows, rode `irm https://atlas.codeatlas.com.br/install.ps1 | iex` no PowerShell ou use o `.exe` de instalação da página de releases ([o que muda no Windows](installation.md#windows)). Em breve: Macs Intel e Linux em ARM; você pode pedir um aviso na [página de download](https://atlas.codeatlas.com.br/download/). No Linux e no Windows, o Atlas Desktop desenha os terminais com xterm.js (o terminal nativo na GPU usa Metal, então só existe no macOS), e o runtime ainda é testado principalmente no macOS: [relate o que quebrar](https://github.com/codeatlasdev/atlas/issues/new).
+O Atlas é para todo mundo, e estamos liberando plataforma por plataforma. Disponível agora: macOS em Apple silicon, Linux x86_64 e Windows 10/11 em x64 (a CLI, a TUI, o servidor MCP e o Atlas Desktop). No Linux você pode usar o script de instalação ou um [.deb, .rpm, pacote Arch ou AppImage](installation.md#pacotes-para-linux); no Windows, rode `irm https://atlas.codeatlas.com.br/install.ps1 | iex` no PowerShell ou use o `.exe` de instalação da página de releases ([o que muda no Windows](installation.md#windows)). Em breve: Macs Intel e Linux em ARM; você pode pedir um aviso na [página de download](https://atlas.codeatlas.com.br/download/). No Linux e no Windows, o Atlas Desktop desenha os terminais com xterm.js (o terminal nativo na GPU usa Metal, então só existe no macOS), e o runtime ainda é testado principalmente no macOS: [relate o que quebrar](https://github.com/codeatlasdev/atlas/issues/new).
 
 ## O Atlas envia meus dados para algum lugar?
 
-Não há telemetria. A CLI fala com o GitHub para verificar e baixar releases, e o `gh` (se você usa os recursos de pull request no app desktop) fala com o GitHub em seu nome. Os hooks dos agentes enviam dados a um servidor de loopback dentro do app desktop, protegido por token e restrito a 127.0.0.1. O Atlas nunca envia nem lê os seus arquivos de variáveis de ambiente, a não ser para injetá-las nos seus próprios serviços.
+Não há telemetria. A CLI fala com o GitHub para verificar e baixar versões, e o `gh` (se você usa os recursos de pull request no app desktop) fala com o GitHub em seu nome. Os hooks dos agentes enviam dados a um servidor de loopback dentro do app desktop, protegido por token e restrito a 127.0.0.1. O Atlas nunca envia nem lê os seus arquivos de variáveis de ambiente, a não ser para injetá-las nos seus próprios serviços.
 
 ## Onde estão meus logs?
 
@@ -37,7 +37,7 @@ O Atlas só envia sinais para PIDs que ele mesmo iniciou (registrados em `.logs/
 
 ## Os serviços sobrevivem ao fechamento do meu terminal?
 
-Sim: `atlas dev --detach` inicia um runner em segundo plano. `atlas dev` anexa um TUI, `D` desanexa e `atlas down` para tudo.
+Sim: `atlas dev --detach` inicia um runner em segundo plano. `atlas dev` anexa uma TUI, `D` desanexa e `atlas down` para tudo.
 
 ## Duas worktrees podem rodar a mesma stack?
 
@@ -49,7 +49,7 @@ O omp, o Claude Code e o Codex têm configuração com um comando (`atlas setup 
 
 ## Por que o `atlas dev` se recusa a rodar quando um agente o inicia?
 
-Os hooks que o `atlas setup` instala impedem que os agentes abram o TUI interativo, o que travaria o shell deles. Em vez disso, eles apontam para `atlas dev --status` e para as ferramentas MCP. Para um agente, `atlas dev --detach` ou `--headless` funcionam.
+Os hooks que o `atlas setup` instala impedem que os agentes abram a TUI interativa, o que travaria o shell deles. Em vez disso, eles apontam para `atlas dev --status` e para as ferramentas MCP. Para um agente, `atlas dev --detach` ou `--headless` funcionam.
 
 ## O `atlas.yaml` é compatível entre versões?
 

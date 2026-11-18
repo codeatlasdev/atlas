@@ -1,0 +1,399 @@
+{
+	"viewers_devops_atlas_view_actions": "Ações",
+	"viewers_devops_atlas_view_actions_count": [
+		{
+			"declarations": [
+				"input count",
+				"local countExact = count",
+				"local countPlural = count: plural"
+			],
+			"selectors": [
+				"countExact",
+				"countPlural"
+			],
+			"match": {
+				"countExact=0, countPlural=*": "Nenhuma ação",
+				"countExact=*, countPlural=one": "{count} ação",
+				"countExact=*, countPlural=*": "{count} ações"
+			}
+		}
+	],
+	"viewers_devops_atlas_view_also_configured": "Também configurado",
+	"viewers_devops_atlas_view_asks_first": "pede confirmação",
+	"viewers_devops_atlas_view_container_external": "container / externo",
+	"viewers_devops_atlas_view_critical": "crítico",
+	"viewers_devops_atlas_view_deploy_host": "deploy {host}",
+	"viewers_devops_atlas_view_dir": "pasta {dir}",
+	"viewers_devops_atlas_view_disabled": "desativado",
+	"viewers_devops_atlas_view_enabled": "ativado",
+	"viewers_devops_atlas_view_env_count": "{count} env",
+	"viewers_devops_atlas_view_env_file": "arquivo env {file}",
+	"viewers_devops_atlas_view_health": "health {health}",
+	"viewers_devops_atlas_view_health_url": "URL de health",
+	"viewers_devops_atlas_view_infra": "infra {name}",
+	"viewers_devops_atlas_view_local_not_committed": "local, não versionado",
+	"viewers_devops_atlas_view_local_overrides": "Substituições locais",
+	"viewers_devops_atlas_view_no_log_tab": "sem aba de logs",
+	"viewers_devops_atlas_view_pre_command": "pre: {preCommand}",
+	"viewers_devops_atlas_view_problems_count": [
+		{
+			"declarations": [
+				"input count",
+				"local countPlural = count: plural"
+			],
+			"selectors": [
+				"countPlural"
+			],
+			"match": {
+				"countPlural=one": "{count} problema",
+				"countPlural=*": "{count} problemas"
+			}
+		}
+	],
+	"viewers_devops_atlas_view_restart": "Reiniciar",
+	"viewers_devops_atlas_view_restart_name": "Reiniciar {name}",
+	"viewers_devops_atlas_view_restarts": [
+		{
+			"declarations": [
+				"input count",
+				"local countPlural = count: plural"
+			],
+			"selectors": [
+				"countPlural"
+			],
+			"match": {
+				"countPlural=one": "{count} reinício",
+				"countPlural=*": "{count} reinícios"
+			}
+		}
+	],
+	"viewers_devops_atlas_view_session": "sessão",
+	"viewers_devops_atlas_view_stack_running": "Stack em execução",
+	"viewers_devops_atlas_view_stack_stopped": "Stack parada",
+	"viewers_devops_atlas_view_start": "Iniciar",
+	"viewers_devops_atlas_view_start_name": "Iniciar {name}",
+	"viewers_devops_atlas_view_stop_name": "Parar {name}",
+	"viewers_devops_atlas_view_tunnel": "Túnel",
+	"viewers_devops_atlas_view_tunnel_route": "{remote} via {ssh}",
+	"viewers_devops_atlas_view_unknown_dep": "{name} aguarda {dep}, que não está definido aqui.",
+	"viewers_devops_atlas_view_unknown_dep_local": "{name} aguarda {dep}, que não está definido aqui (pode estar no atlas.yaml).",
+	"viewers_devops_atlas_view_valid": "Válido",
+	"viewers_devops_atlas_view_validating": "Validando",
+	"viewers_devops_atlas_view_validation": "Validação",
+	"viewers_devops_atlas_view_waits_for": "aguarda {name}",
+	"viewers_devops_cannot_parse": "Não foi possível interpretar: {error}",
+	"viewers_devops_compose_view_build": "build {build}",
+	"viewers_devops_compose_view_env": "Env",
+	"viewers_devops_compose_view_has_healthcheck": "Tem healthcheck",
+	"viewers_devops_compose_view_named_volumes": "Volumes nomeados",
+	"viewers_devops_compose_view_ports": "Portas",
+	"viewers_devops_compose_view_status": "Status",
+	"viewers_devops_compose_view_unknown_dep": "{service} depende de {dep}, que não é um serviço aqui.",
+	"viewers_devops_compose_view_up": "Subir",
+	"viewers_devops_compose_view_volumes": "Volumes",
+	"viewers_devops_compose_view_volumes_count": [
+		{
+			"declarations": [
+				"input count",
+				"local countExact = count",
+				"local countPlural = count: plural"
+			],
+			"selectors": [
+				"countExact",
+				"countPlural"
+			],
+			"match": {
+				"countExact=0, countPlural=*": "Nenhum volume",
+				"countExact=*, countPlural=one": "{count} volume",
+				"countExact=*, countPlural=*": "{count} volumes"
+			}
+		}
+	],
+	"viewers_devops_compose_view_waits_for": "Aguarda",
+	"viewers_devops_copy_command": "Copiar comando",
+	"viewers_devops_dockerfile_view_base_image": "Imagem base",
+	"viewers_devops_dockerfile_view_build_stages": "Estágios de build",
+	"viewers_devops_dockerfile_view_final": "final",
+	"viewers_devops_dockerfile_view_instructions": "Instruções",
+	"viewers_devops_dockerfile_view_no_from": "Nenhuma instrução FROM encontrada.",
+	"viewers_devops_dockerfile_view_registry": "Registry",
+	"viewers_devops_dockerfile_view_stage_default": "estágio {index}",
+	"viewers_devops_dockerfile_view_stages_count": [
+		{
+			"declarations": [
+				"input count",
+				"local countExact = count",
+				"local countPlural = count: plural"
+			],
+			"selectors": [
+				"countExact",
+				"countPlural"
+			],
+			"match": {
+				"countExact=0, countPlural=*": "Nenhum estágio",
+				"countExact=*, countPlural=one": "{count} estágio",
+				"countExact=*, countPlural=*": "{count} estágios"
+			}
+		}
+	],
+	"viewers_devops_dockerfile_view_steps_count": [
+		{
+			"declarations": [
+				"input count",
+				"local countExact = count",
+				"local countPlural = count: plural"
+			],
+			"selectors": [
+				"countExact",
+				"countPlural"
+			],
+			"match": {
+				"countExact=0, countPlural=*": "Nenhuma etapa",
+				"countExact=*, countPlural=one": "{count} etapa",
+				"countExact=*, countPlural=*": "{count} etapas"
+			}
+		}
+	],
+	"viewers_devops_dockerfile_view_unpinned": "sem versão fixa",
+	"viewers_devops_dockerfile_view_warnings": "Avisos",
+	"viewers_devops_dockerfile_view_warnings_count": [
+		{
+			"declarations": [
+				"input count",
+				"local countPlural = count: plural"
+			],
+			"selectors": [
+				"countPlural"
+			],
+			"match": {
+				"countPlural=one": "{count} aviso",
+				"countPlural=*": "{count} avisos"
+			}
+		}
+	],
+	"viewers_devops_dockerfile_warn_add_local": "ADD para arquivos locais; prefira COPY",
+	"viewers_devops_dockerfile_warn_apt_lists": "As listas do apt não são limpas na mesma camada",
+	"viewers_devops_dockerfile_warn_apt_recommends": "apt-get install sem --no-install-recommends",
+	"viewers_devops_dockerfile_warn_latest": "{image} usa :latest; use uma versão fixa ou um digest",
+	"viewers_devops_dockerfile_warn_maintainer": "MAINTAINER está obsoleto; use LABEL",
+	"viewers_devops_dockerfile_warn_no_tag": "{image} não tem tag (usa :latest por padrão)",
+	"viewers_devops_dockerfile_warn_no_user": "O último estágio nunca define USER, então roda como root",
+	"viewers_devops_dockerfile_warn_pipe_shell": "Download redirecionado direto para um shell",
+	"viewers_devops_dockerfile_warn_root_user": "O último estágio roda como root; adicione um USER sem privilégios de root",
+	"viewers_devops_env_reason_bad_name": "\"{key}\" não é um nome de variável válido",
+	"viewers_devops_env_reason_expected": "Esperado CHAVE=valor",
+	"viewers_devops_env_reason_unterminated": "Valor entre aspas sem fechamento",
+	"viewers_devops_env_view_also_defined": [
+		{
+			"declarations": [
+				"input lines",
+				"input count",
+				"local countPlural = count: plural"
+			],
+			"selectors": [
+				"countPlural"
+			],
+			"match": {
+				"countPlural=one": "Também definida na linha {lines}",
+				"countPlural=*": "Também definida nas linhas {lines}"
+			}
+		}
+	],
+	"viewers_devops_env_view_compared_with": "Comparado com {name}",
+	"viewers_devops_env_view_copy_key": "Copiar chave",
+	"viewers_devops_env_view_copy_value": "Copiar valor",
+	"viewers_devops_env_view_duplicate": "duplicada",
+	"viewers_devops_env_view_duplicated": [
+		{
+			"declarations": [
+				"input count",
+				"local countPlural = count: plural"
+			],
+			"selectors": [
+				"countPlural"
+			],
+			"match": {
+				"countPlural=one": "{count} duplicada",
+				"countPlural=*": "{count} duplicadas"
+			}
+		}
+	],
+	"viewers_devops_env_view_empty": "vazio",
+	"viewers_devops_env_view_error_lines_count": [
+		{
+			"declarations": [
+				"input count",
+				"local countPlural = count: plural"
+			],
+			"selectors": [
+				"countPlural"
+			],
+			"match": {
+				"countPlural=one": "{count} linha com erro",
+				"countPlural=*": "{count} linhas com erro"
+			}
+		}
+	],
+	"viewers_devops_env_view_extra": "extra",
+	"viewers_devops_env_view_filter_variables": "Filtrar variáveis",
+	"viewers_devops_env_view_hide_value": "Ocultar valor",
+	"viewers_devops_env_view_hide_values": "Ocultar valores",
+	"viewers_devops_env_view_matches": "Corresponde a {name}",
+	"viewers_devops_env_view_missing": "ausente",
+	"viewers_devops_env_view_no_match": "Nenhuma variável corresponde",
+	"viewers_devops_env_view_none_yet": "Nenhuma variável ainda",
+	"viewers_devops_env_view_only_here": "aqui, não no exemplo",
+	"viewers_devops_env_view_only_in_example": "no exemplo, não aqui",
+	"viewers_devops_env_view_reveal_all": "Mostrar tudo",
+	"viewers_devops_env_view_reveal_value": "Mostrar valor",
+	"viewers_devops_env_view_secret": "segredo",
+	"viewers_devops_env_view_variables_count": [
+		{
+			"declarations": [
+				"input count",
+				"local countExact = count",
+				"local countPlural = count: plural"
+			],
+			"selectors": [
+				"countExact",
+				"countPlural"
+			],
+			"match": {
+				"countExact=0, countPlural=*": "Nenhuma variável",
+				"countExact=*, countPlural=one": "{count} variável",
+				"countExact=*, countPlural=*": "{count} variáveis"
+			}
+		}
+	],
+	"viewers_devops_environment": "Ambiente",
+	"viewers_devops_filter": "Filtrar",
+	"viewers_devops_go_to_line": "Ir para a linha {line}",
+	"viewers_devops_line": "Linha {line}",
+	"viewers_devops_make_view_default": "padrão",
+	"viewers_devops_make_view_default_target": "padrão {defaultTarget}",
+	"viewers_devops_make_view_filter_targets": "Filtrar alvos",
+	"viewers_devops_make_view_no_match": "Nenhuma correspondência",
+	"viewers_devops_make_view_no_targets": "Nenhum alvo encontrado",
+	"viewers_devops_make_view_phony": "phony",
+	"viewers_devops_make_view_recipes": "Receitas",
+	"viewers_devops_make_view_recipes_count": [
+		{
+			"declarations": [
+				"input count",
+				"local countExact = count",
+				"local countPlural = count: plural"
+			],
+			"selectors": [
+				"countExact",
+				"countPlural"
+			],
+			"match": {
+				"countExact=0, countPlural=*": "Nenhuma receita",
+				"countExact=*, countPlural=one": "{count} receita",
+				"countExact=*, countPlural=*": "{count} receitas"
+			}
+		}
+	],
+	"viewers_devops_make_view_run": "Executar",
+	"viewers_devops_make_view_run_in_terminal": "Executar {tool} {name} em um terminal",
+	"viewers_devops_make_view_targets": "Alvos",
+	"viewers_devops_make_view_targets_count": [
+		{
+			"declarations": [
+				"input count",
+				"local countExact = count",
+				"local countPlural = count: plural"
+			],
+			"selectors": [
+				"countExact",
+				"countPlural"
+			],
+			"match": {
+				"countExact=0, countPlural=*": "Nenhum alvo",
+				"countExact=*, countPlural=one": "{count} alvo",
+				"countExact=*, countPlural=*": "{count} alvos"
+			}
+		}
+	],
+	"viewers_devops_make_view_toggle_recipe": "Expandir ou recolher a receita de {name}",
+	"viewers_devops_open_as_source": "Abrir como texto",
+	"viewers_devops_services": "Serviços",
+	"viewers_devops_services_count": [
+		{
+			"declarations": [
+				"input count",
+				"local countExact = count",
+				"local countPlural = count: plural"
+			],
+			"selectors": [
+				"countExact",
+				"countPlural"
+			],
+			"match": {
+				"countExact=0, countPlural=*": "Nenhum serviço",
+				"countExact=*, countPlural=one": "{count} serviço",
+				"countExact=*, countPlural=*": "{count} serviços"
+			}
+		}
+	],
+	"viewers_devops_start_order": "Ordem de início",
+	"viewers_devops_variables": "Variáveis",
+	"viewers_devops_workflow_view_after": "depois de {needs}",
+	"viewers_devops_workflow_view_jobs": "Jobs",
+	"viewers_devops_workflow_view_jobs_count": [
+		{
+			"declarations": [
+				"input count",
+				"local countExact = count",
+				"local countPlural = count: plural"
+			],
+			"selectors": [
+				"countExact",
+				"countPlural"
+			],
+			"match": {
+				"countExact=0, countPlural=*": "Nenhum job",
+				"countExact=*, countPlural=one": "{count} job",
+				"countExact=*, countPlural=*": "{count} jobs"
+			}
+		}
+	],
+	"viewers_devops_workflow_view_needs": "precisa de {needs}",
+	"viewers_devops_workflow_view_pipeline": "Pipeline",
+	"viewers_devops_workflow_view_starts_immediately": "começa imediatamente",
+	"viewers_devops_workflow_view_steps_count": [
+		{
+			"declarations": [
+				"input count",
+				"local countExact = count",
+				"local countPlural = count: plural"
+			],
+			"selectors": [
+				"countExact",
+				"countPlural"
+			],
+			"match": {
+				"countExact=0, countPlural=*": "Nenhuma etapa",
+				"countExact=*, countPlural=one": "{count} etapa",
+				"countExact=*, countPlural=*": "{count} etapas"
+			}
+		}
+	],
+	"viewers_devops_workflow_view_timeout": "{timeout} min",
+	"viewers_devops_workflow_view_unknown_need": "O job {job} precisa de {need}, que não existe.",
+	"viewers_devops_workflow_view_unpinned_actions": [
+		{
+			"declarations": [
+				"input count",
+				"local countPlural = count: plural"
+			],
+			"selectors": [
+				"countPlural"
+			],
+			"match": {
+				"countPlural=one": "{count} action não está fixada em uma versão ou SHA de commit.",
+				"countPlural=*": "{count} actions não estão fixadas em uma versão ou SHA de commit."
+			}
+		}
+	]
+}

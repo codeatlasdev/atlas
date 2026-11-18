@@ -25,6 +25,6 @@
 	"crew_workspace_setup_role_review_title": "Revisar todos os PRs",
 	"crew_workspace_setup_skip": "Pular",
 	"crew_workspace_setup_something_else": "Outra coisa",
-	"crew_workspace_setup_summary": "Sou {name}. Vou {role} e vou {approval}.",
-	"crew_workspace_setup_summary_project": "Sou {name}. Vou {role} em {project} e vou {approval}."
+	"crew_workspace_setup_summary": "Sou {name}. Vou {role} e {approval}.",
+	"crew_workspace_setup_summary_project": "Sou {name}. Vou {role} em {project} e {approval}."
 }

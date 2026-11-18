@@ -1,0 +1,12 @@
+{
+	"tui_runtime_app_event_crashed": "Sidebar event of the TUI after the subject service: it exited with an error. {code} is the exit code.",
+	"tui_runtime_app_event_degraded": "Sidebar event of the TUI after the subject service: it answers but is not ready and has no note.",
+	"tui_runtime_app_event_done": "Sidebar event of the TUI after the subject service: a one-shot finished well.",
+	"tui_runtime_app_event_failed": "Sidebar event of the TUI after the subject service: it failed with no exit code.",
+	"tui_runtime_app_event_running": "Sidebar event of the TUI after the subject service: it is up.",
+	"tui_runtime_app_event_stopped": "Sidebar event of the TUI after the subject service: it stopped.",
+	"tui_runtime_app_event_unhealthy": "Sidebar event of the TUI after the subject service: it stopped answering its health check and has no note.",
+	"tui_runtime_app_update_offer": "Body of the TUI modal offering an update on exit. {version} is the new version.",
+	"tui_runtime_app_update_offer_runner": "Same modal in a TUI attached to a runner. {command} is `atlas down && atlas dev --detach`.",
+	"tui_runtime_app_update_title": "Title of the TUI modal offering an update on exit."
+}

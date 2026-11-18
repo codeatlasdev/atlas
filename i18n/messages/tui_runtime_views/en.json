@@ -1,0 +1,54 @@
+{
+	"tui_runtime_views_confirm_accept": "confirm",
+	"tui_runtime_views_confirm_cancel": "cancel",
+	"tui_runtime_views_devices_detecting": "Detecting devices…",
+	"tui_runtime_views_devices_found": [
+		{
+			"declarations": [
+				"input count",
+				"local countExact = count",
+				"local countPlural = count: plural"
+			],
+			"selectors": [
+				"countExact",
+				"countPlural"
+			],
+			"match": {
+				"countExact=0, countPlural=*": "No devices found",
+				"countExact=*, countPlural=one": "{count} device found",
+				"countExact=*, countPlural=*": "{count} devices found"
+			}
+		}
+	],
+	"tui_runtime_views_devices_navigate": "Navigate",
+	"tui_runtime_views_devices_none": "No devices found.",
+	"tui_runtime_views_devices_none_hint": "Connect a device or start a simulator.",
+	"tui_runtime_views_devices_select": "Select",
+	"tui_runtime_views_devices_spawn_without": "Spawn without device",
+	"tui_runtime_views_devices_title_android": "Android devices",
+	"tui_runtime_views_devices_title_ios": "iOS devices",
+	"tui_runtime_views_help_actions": "Project actions",
+	"tui_runtime_views_help_ctx_all": "All tab",
+	"tui_runtime_views_help_ctx_service": "service tab",
+	"tui_runtime_views_help_ctx_session": "session tab",
+	"tui_runtime_views_help_foot": "{close} to close",
+	"tui_runtime_views_help_foot_scroll": "{arrows} {scroll} scroll · {close} close",
+	"tui_runtime_views_help_open": "Open",
+	"tui_runtime_views_help_title": "Shortcuts",
+	"tui_runtime_views_help_title_range": "Shortcuts · {from}-{to}/{total}",
+	"tui_runtime_views_menu_cancel": "{key} to cancel",
+	"tui_runtime_views_menu_restart": "Restart",
+	"tui_runtime_views_menu_start": "Start",
+	"tui_runtime_views_menu_stop": "Stop",
+	"tui_runtime_views_quit_attached_headline": "Detach leaves the services running in the runner.",
+	"tui_runtime_views_quit_attached_hint": "reattach: atlas dev · stop: atlas down",
+	"tui_runtime_views_quit_detach": "Detach",
+	"tui_runtime_views_quit_owner_headline": "All services will be stopped.",
+	"tui_runtime_views_quit_owner_hint": "keep them running: {command}",
+	"tui_runtime_views_quit_quit": "Quit",
+	"tui_runtime_views_quit_stop_all": "Stop everything",
+	"tui_runtime_views_quit_title_leave": "Leave?",
+	"tui_runtime_views_quit_title_quit": "Quit?",
+	"tui_runtime_views_splash_starting": "starting",
+	"tui_runtime_views_splash_tagline": "development environment"
+}

@@ -5,6 +5,7 @@ use crate::theme;
 use crate::tui::app::Message;
 use crate::tui::clicks::ClickMap;
 use crate::tui::widgets::modal::Modal;
+use atlas_i18n::t;
 
 /// Generic yes/no modal. Same chrome as the quit modal; body wraps to the modal width.
 pub fn render(frame: &mut Frame, title: &str, body: &str, clicks: &ClickMap) {
@@ -33,11 +34,23 @@ pub fn render(frame: &mut Frame, title: &str, body: &str, clicks: &ClickMap) {
     }
     lines.push(Line::from(""));
     let spans = [
-        Span::styled(" Esc ", Style::default().fg(t.text).bg(t.bg_float).bold()),
-        Span::styled(" cancel", Style::default().fg(t.text_dim)),
+        Span::styled(
+            format!(" {} ", t!("common_keys_escape")),
+            Style::default().fg(t.text).bg(t.bg_float).bold(),
+        ),
+        Span::styled(
+            format!(" {}", t!("tui_runtime_views_confirm_cancel")),
+            Style::default().fg(t.text_dim),
+        ),
         Span::raw("    "),
-        Span::styled(" Enter ", Style::default().fg(t.text).bg(t.error).bold()),
-        Span::styled(" confirm", Style::default().fg(t.text_dim)),
+        Span::styled(
+            format!(" {} ", t!("common_keys_enter")),
+            Style::default().fg(t.text).bg(t.error).bold(),
+        ),
+        Span::styled(
+            format!(" {}", t!("tui_runtime_views_confirm_accept")),
+            Style::default().fg(t.text_dim),
+        ),
     ];
     let w = |i: usize| spans[i].width() as u16;
     let (esc_w, enter_x_off, enter_w) = (w(0) + w(1), w(0) + w(1) + w(2), w(3) + w(4));

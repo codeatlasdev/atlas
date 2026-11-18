@@ -9,6 +9,7 @@ use crate::tui::app::Message;
 use crate::tui::clicks::ClickMap;
 use crate::tui::keymap::{self, KeyCtx, Section};
 use crate::tui::widgets::modal::Modal;
+use atlas_i18n::t;
 
 /// Width at which help switches to two columns.
 pub const TWO_COL_MIN: u16 = 100;
@@ -31,23 +32,30 @@ pub fn rows(
 ) -> Vec<Vec<Row>> {
     let mut sections: Vec<Vec<Row>> = Vec::new();
     for sec in Section::ALL {
-        let mut v = vec![Row::Header(sec.title().to_string())];
+        let mut v = vec![Row::Header(sec.title())];
         for b in keymap::help_rows(sec, keys) {
             let ctx = match b.ctx {
-                keymap::Ctx::Service => " (service tab)",
-                keymap::Ctx::All => " (All tab)",
-                keymap::Ctx::Session => " (session tab)",
-                keymap::Ctx::Tunnel | keymap::Ctx::Attached | keymap::Ctx::Any => "",
+                keymap::Ctx::Service => t!("tui_runtime_views_help_ctx_service"),
+                keymap::Ctx::All => t!("tui_runtime_views_help_ctx_all"),
+                keymap::Ctx::Session => t!("tui_runtime_views_help_ctx_session"),
+                keymap::Ctx::Tunnel | keymap::Ctx::Attached | keymap::Ctx::Any => String::new(),
             };
+            let help = (b.help)();
             v.push(Row::Key {
                 keys: b.keys.to_string(),
-                label: format!("{}{ctx}", b.help),
+                label: if ctx.is_empty() {
+                    help
+                } else {
+                    format!("{help} ({ctx})")
+                },
             });
         }
         sections.push(v);
     }
     if !open_svcs.is_empty() {
-        let mut v = vec![Row::Header("OPEN".to_string())];
+        let mut v = vec![Row::Header(
+            t!("tui_runtime_views_help_open").to_uppercase(),
+        )];
         for (k, name, port) in open_svcs {
             let label = match port {
                 Some(p) => format!("{name} (:{p})"),
@@ -61,7 +69,9 @@ pub fn rows(
         sections.push(v);
     }
     if !actions.is_empty() {
-        let mut v = vec![Row::Header("PROJECT ACTIONS".to_string())];
+        let mut v = vec![Row::Header(
+            t!("tui_runtime_views_help_actions").to_uppercase(),
+        )];
         for (group, members) in grouped_actions(actions) {
             if let Some(g) = group {
                 v.push(Row::Sub(g.to_string()));
@@ -198,13 +208,16 @@ pub fn render(
     let clipped = body_rows > view_rows;
     let title = if clipped {
         format!(
-            " Shortcuts · {}-{}/{} ",
-            scroll + 1,
-            (scroll + view_rows).min(body_rows),
-            body_rows
+            " {} ",
+            t!(
+                "tui_runtime_views_help_title_range",
+                from = scroll + 1,
+                to = (scroll + view_rows).min(body_rows),
+                total = body_rows
+            )
         )
     } else {
-        " Shortcuts ".to_string()
+        format!(" {} ", t!("tui_runtime_views_help_title"))
     };
     // The backdrop closes help (like Esc / ?); the body swallows clicks.
     let (_, inner) = Modal::new(&title, Message::HideHelp).frame(frame, width, height, clicks);
@@ -237,12 +250,21 @@ pub fn render(
         frame.render_widget(Paragraph::new(window(&left)), body);
     }
 
+    let close = format!("{} / ?", t!("common_keys_escape").to_lowercase());
     let foot = if clipped {
         let up = if scroll > 0 { "↑" } else { " " };
         let down = if scroll < max { "↓" } else { " " };
-        format!(" {up}{down} j/k scroll · esc / ? close")
+        format!(
+            " {}",
+            t!(
+                "tui_runtime_views_help_foot_scroll",
+                arrows = format!("{up}{down}"),
+                scroll = "j/k",
+                close = close
+            )
+        )
     } else {
-        " esc / ? to close".to_string()
+        format!(" {}", t!("tui_runtime_views_help_foot", close = close))
     };
     frame.render_widget(
         Paragraph::new(Span::styled(foot, Style::default().fg(t.text_dim))),

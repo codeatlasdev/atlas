@@ -1,0 +1,14 @@
+{
+  "pt-BR": {
+    "tui_runtime_app_event_crashed": "519824e28dc7",
+    "tui_runtime_app_event_degraded": "43d98d0c66cd",
+    "tui_runtime_app_event_done": "58bf5b5478e5",
+    "tui_runtime_app_event_failed": "33d04bd775e7",
+    "tui_runtime_app_event_running": "79d116a0c160",
+    "tui_runtime_app_event_stopped": "15b0fb141b76",
+    "tui_runtime_app_event_unhealthy": "9f3ac5ebd342",
+    "tui_runtime_app_update_offer": "d71590c4e8bd",
+    "tui_runtime_app_update_offer_runner": "9d2c46c51c51",
+    "tui_runtime_app_update_title": "6908b2ff53dd"
+  }
+}

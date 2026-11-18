@@ -1,6 +1,8 @@
 use std::fs::File;
 use std::path::Path;
 
+use atlas_i18n::t;
+
 /// Pure: is this (lowercase) executable path / process name the atlas binary?
 /// Exact basename match — never a substring of the directory path (`atlas.exe` on Windows).
 fn exe_is_atlas(exe: &str) -> bool {
@@ -25,7 +27,7 @@ impl SingletonLock {
             .write(true)
             .open(lock_path)?;
         if !atlas_core::sys::try_lock(&file)? {
-            return Err(anyhow::anyhow!("another atlas dev instance is running"));
+            return Err(anyhow::anyhow!(t!("tui_runtime_lock_other")));
         }
 
         file.set_len(0)?;

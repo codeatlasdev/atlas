@@ -12,6 +12,7 @@ mod services;
 mod sessions;
 mod shell;
 
+use atlas_i18n::t;
 use std::time::Instant;
 
 use super::messages::Effect;
@@ -86,27 +87,31 @@ impl App {
                 let why = self
                     .manager
                     .exit_code(name)
-                    .map(|c| format!("crashed (exit {c})"))
-                    .unwrap_or_else(|| "failed".to_string());
+                    .map(|c| t!("tui_runtime_app_event_crashed", code = c))
+                    .unwrap_or_else(|| t!("tui_runtime_app_event_failed"));
                 Some((EventKind::Crash, why))
             }
             ServiceState::Unhealthy => Some((
                 EventKind::Crash,
                 self.manager
                     .service_note(name)
-                    .unwrap_or_else(|| "unhealthy".to_string()),
+                    .unwrap_or_else(|| t!("tui_runtime_app_event_unhealthy")),
             )),
             ServiceState::Degraded => Some((
                 EventKind::Alert,
                 self.manager
                     .service_note(name)
-                    .unwrap_or_else(|| "degraded".to_string()),
+                    .unwrap_or_else(|| t!("tui_runtime_app_event_degraded")),
             )),
-            ServiceState::Running => Some((EventKind::Started, "running".into())),
-            ServiceState::Stopped if done => Some((EventKind::Done, "done".into())),
+            ServiceState::Running => {
+                Some((EventKind::Started, t!("tui_runtime_app_event_running")))
+            }
+            ServiceState::Stopped if done => {
+                Some((EventKind::Done, t!("tui_runtime_app_event_done")))
+            }
             ServiceState::Stopped | ServiceState::Suspended => match paused_by {
                 Some(by) => Some((EventKind::Paused(by), String::new())),
-                None => Some((EventKind::Stopped, "stopped".into())),
+                None => Some((EventKind::Stopped, t!("tui_runtime_app_event_stopped"))),
             },
             _ => None,
         };
@@ -144,14 +149,16 @@ impl App {
             return;
         }
         let body = if self.remote.is_some() {
-            format!(
-                "Atlas v{version} is available — update when you quit? The runner keeps the old version until `atlas down && atlas dev --detach`."
+            t!(
+                "tui_runtime_app_update_offer_runner",
+                version = version.as_str(),
+                command = "atlas down && atlas dev --detach"
             )
         } else {
-            format!("Atlas v{version} is available — update when you quit?")
+            t!("tui_runtime_app_update_offer", version = version.as_str())
         };
         self.layer = Layer::Confirm {
-            title: "Update available".to_string(),
+            title: t!("tui_runtime_app_update_title"),
             body,
             on_confirm: Box::new(Message::UpdateOnExit(version.clone())),
         };

@@ -1,0 +1,12 @@
+{
+	"tui_runtime_app_event_crashed": "crashed (exit {code})",
+	"tui_runtime_app_event_degraded": "degraded",
+	"tui_runtime_app_event_done": "done",
+	"tui_runtime_app_event_failed": "failed",
+	"tui_runtime_app_event_running": "running",
+	"tui_runtime_app_event_stopped": "stopped",
+	"tui_runtime_app_event_unhealthy": "unhealthy",
+	"tui_runtime_app_update_offer": "Atlas v{version} is available. Update when you quit?",
+	"tui_runtime_app_update_offer_runner": "Atlas v{version} is available. Update when you quit? The runner keeps the old version until `{command}`.",
+	"tui_runtime_app_update_title": "Update available"
+}

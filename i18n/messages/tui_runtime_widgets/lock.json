@@ -1,0 +1,30 @@
+{
+  "pt-BR": {
+    "tui_runtime_widgets_event_paused_by": "cbbaba10f122",
+    "tui_runtime_widgets_events_empty": "f221d50097e0",
+    "tui_runtime_widgets_events_title": "298dd7c15c67",
+    "tui_runtime_widgets_health_degraded": "5526cc62c4b1",
+    "tui_runtime_widgets_health_done": "6c28e53c7953",
+    "tui_runtime_widgets_health_running": "9477ec0c4677",
+    "tui_runtime_widgets_health_stopped": "496e83d6c538",
+    "tui_runtime_widgets_health_unhealthy": "407fa9e4eeb3",
+    "tui_runtime_widgets_phase_detecting": "eb921cf18ebe",
+    "tui_runtime_widgets_phase_failed": "33d04bd775e7",
+    "tui_runtime_widgets_phase_install": "39975c7e7154",
+    "tui_runtime_widgets_phase_launch": "6164c16405ff",
+    "tui_runtime_widgets_phase_running": "79d116a0c160",
+    "tui_runtime_widgets_sidebar_all_ok": "74d441596e95",
+    "tui_runtime_widgets_sidebar_exit": "fa1e1f6b40d0",
+    "tui_runtime_widgets_sidebar_failed": "72144b6ce764",
+    "tui_runtime_widgets_sidebar_issues": "80fe81e1bb56",
+    "tui_runtime_widgets_sidebar_mobile": "8a0f0d53a08a",
+    "tui_runtime_widgets_sidebar_no_services": "7ab3d4a5287b",
+    "tui_runtime_widgets_sidebar_off": "9f3becba6e4b",
+    "tui_runtime_widgets_sidebar_operations": "1653365f65b9",
+    "tui_runtime_widgets_sidebar_services": "639f86b8d657",
+    "tui_runtime_widgets_sidebar_tunnel": "923341d6ab1a",
+    "tui_runtime_widgets_sidebar_tunnel_kill": "e5546023bb15",
+    "tui_runtime_widgets_sidebar_tunnel_off": "edfdd91aa948",
+    "tui_runtime_widgets_tab_all": "663175a9c461"
+  }
+}

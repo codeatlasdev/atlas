@@ -1,0 +1,96 @@
+{
+	"tui_runtime_widgets_event_paused_by": "{subject} paused by {by}",
+	"tui_runtime_widgets_events_empty": "no events yet",
+	"tui_runtime_widgets_events_title": "Events",
+	"tui_runtime_widgets_health_degraded": [
+		{
+			"declarations": [
+				"input count",
+				"local countExact = count",
+				"local countPlural = count: plural"
+			],
+			"selectors": [
+				"countExact",
+				"countPlural"
+			],
+			"match": {
+				"countExact=0, countPlural=*": "none degraded",
+				"countExact=*, countPlural=one": "{count} degraded",
+				"countExact=*, countPlural=*": "{count} degraded"
+			}
+		}
+	],
+	"tui_runtime_widgets_health_done": [
+		{
+			"declarations": [
+				"input count",
+				"local countExact = count",
+				"local countPlural = count: plural"
+			],
+			"selectors": [
+				"countExact",
+				"countPlural"
+			],
+			"match": {
+				"countExact=0, countPlural=*": "none done",
+				"countExact=*, countPlural=one": "{count} done",
+				"countExact=*, countPlural=*": "{count} done"
+			}
+		}
+	],
+	"tui_runtime_widgets_health_running": "{running}/{total} running",
+	"tui_runtime_widgets_health_stopped": [
+		{
+			"declarations": [
+				"input count",
+				"local countExact = count",
+				"local countPlural = count: plural"
+			],
+			"selectors": [
+				"countExact",
+				"countPlural"
+			],
+			"match": {
+				"countExact=0, countPlural=*": "none stopped",
+				"countExact=*, countPlural=one": "{count} stopped",
+				"countExact=*, countPlural=*": "{count} stopped"
+			}
+		}
+	],
+	"tui_runtime_widgets_health_unhealthy": [
+		{
+			"declarations": [
+				"input count",
+				"local countExact = count",
+				"local countPlural = count: plural"
+			],
+			"selectors": [
+				"countExact",
+				"countPlural"
+			],
+			"match": {
+				"countExact=0, countPlural=*": "none unhealthy",
+				"countExact=*, countPlural=one": "{count} unhealthy",
+				"countExact=*, countPlural=*": "{count} unhealthy"
+			}
+		}
+	],
+	"tui_runtime_widgets_phase_detecting": "detecting",
+	"tui_runtime_widgets_phase_failed": "failed",
+	"tui_runtime_widgets_phase_install": "install",
+	"tui_runtime_widgets_phase_launch": "launch",
+	"tui_runtime_widgets_phase_running": "running",
+	"tui_runtime_widgets_sidebar_all_ok": "All systems operational",
+	"tui_runtime_widgets_sidebar_exit": "exit {code}",
+	"tui_runtime_widgets_sidebar_failed": "{name} failed",
+	"tui_runtime_widgets_sidebar_issues": "Issues",
+	"tui_runtime_widgets_sidebar_mobile": "Mobile",
+	"tui_runtime_widgets_sidebar_no_services": "No services",
+	"tui_runtime_widgets_sidebar_off": "off",
+	"tui_runtime_widgets_sidebar_operations": "Operations",
+	"tui_runtime_widgets_sidebar_services": "Services",
+	"tui_runtime_widgets_sidebar_tunnel": "Tunnel",
+	"tui_runtime_widgets_sidebar_tunnel_kill": "Kill tunnel on exit",
+	"tui_runtime_widgets_sidebar_tunnel_off": "off (opens on demand)",
+	"tui_runtime_widgets_tab_all": "All"
+}

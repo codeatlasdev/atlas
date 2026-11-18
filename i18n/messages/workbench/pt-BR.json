@@ -2,10 +2,21 @@
 	"workbench_loose_editor_keep_my_version": "Manter minha versão",
 	"workbench_loose_editor_ln_line_col_col": "Lin {line}, Col {col}",
 	"workbench_loose_editor_load_from_disk": "Carregar do disco",
+	"workbench_loose_editor_state_edited": "Editado",
+	"workbench_loose_editor_state_saved": "Salvo",
 	"workbench_loose_editor_this_file_changed_on_disk": "Este arquivo mudou no disco e você tem edições não salvas.",
 	"workbench_loose_editor_this_file_was_deleted_on": "Este arquivo foi excluído do disco. Salvar grava o arquivo de novo.",
+	"workbench_loose_view_close_file": "Fechar {name}",
 	"workbench_loose_view_open_as_project": "Abrir como projeto",
 	"workbench_loose_view_open_files": "Abrir arquivos",
 	"workbench_loose_view_open_folder": "Abrir pasta",
-	"workbench_markdown_bar_markdown_formatting": "Formatação Markdown"
+	"workbench_markdown_bar_bold": "Negrito",
+	"workbench_markdown_bar_bulleted_list": "Lista com marcadores",
+	"workbench_markdown_bar_edit_source": "Editar o código-fonte",
+	"workbench_markdown_bar_heading": "Título",
+	"workbench_markdown_bar_italic": "Itálico",
+	"workbench_markdown_bar_link": "Link",
+	"workbench_markdown_bar_markdown_formatting": "Formatação Markdown",
+	"workbench_markdown_bar_numbered_list": "Lista numerada",
+	"workbench_markdown_bar_preview": "Pré-visualizar"
 }

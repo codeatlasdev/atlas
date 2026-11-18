@@ -1,3 +1,6 @@
 {
-	"sidebar_loose_files_files": "Arquivos"
+	"sidebar_loose_files_close_file": "Fechar {name}",
+	"sidebar_loose_files_files": "Arquivos",
+	"sidebar_loose_files_show_all": "Mostrar todos ({count})",
+	"sidebar_loose_files_show_fewer": "Mostrar menos"
 }

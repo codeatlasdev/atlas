@@ -3,11 +3,22 @@
     "workbench_loose_editor_keep_my_version": "4b40022f0f02",
     "workbench_loose_editor_ln_line_col_col": "2976268dba09",
     "workbench_loose_editor_load_from_disk": "e7d402f5c852",
+    "workbench_loose_editor_state_edited": "e4f832eb4d48",
+    "workbench_loose_editor_state_saved": "4ae0f957614c",
     "workbench_loose_editor_this_file_changed_on_disk": "9976163e71a1",
     "workbench_loose_editor_this_file_was_deleted_on": "d7f203f28651",
+    "workbench_loose_view_close_file": "7deab4ee9046",
     "workbench_loose_view_open_as_project": "21cf3aca3972",
     "workbench_loose_view_open_files": "fa361dec8313",
     "workbench_loose_view_open_folder": "47873504ebe6",
-    "workbench_markdown_bar_markdown_formatting": "d6f58d2d2025"
+    "workbench_markdown_bar_bold": "7e385dc02add",
+    "workbench_markdown_bar_bulleted_list": "5338f040e449",
+    "workbench_markdown_bar_edit_source": "ff34ef2a595c",
+    "workbench_markdown_bar_heading": "e58d77dcf8b3",
+    "workbench_markdown_bar_italic": "ecd244bc78ef",
+    "workbench_markdown_bar_link": "ba77c0610a63",
+    "workbench_markdown_bar_markdown_formatting": "d6f58d2d2025",
+    "workbench_markdown_bar_numbered_list": "0b77807b6be1",
+    "workbench_markdown_bar_preview": "20226b68d546"
   }
 }

@@ -30,7 +30,8 @@
 <CodeTab />
 
 <p class="foot">
-	{m.settings_editor_advanced()} <button class="link" onclick={editJson}>{m.settings_editor_edit_settings_json()}</button>
+	{m.settings_editor_advanced()}
+	<button class="link" onclick={editJson}>{m.settings_editor_edit_settings_json()}</button>
 </p>
 
 <style>

@@ -91,7 +91,9 @@
 		{#each entry.languages as language, i (language)}
 			<label class="lang">
 				<Switch
-					aria-label={m.settings_editor_server_row_language_enabled({ language: entry.languageLabels[i] ?? language })}
+					aria-label={m.settings_editor_server_row_language_enabled({
+						language: entry.languageLabels[i] ?? language,
+					})}
 					checked={enabled(language)}
 					onchange={(v) => onsave(patchLanguage(lsp, language, { disabled: v ? undefined : true }))}
 				/>
@@ -101,7 +103,9 @@
 	</div>
 
 	{#if entry.detected.path}
-		<div class="path"><span class="k">{m.settings_editor_server_row_path()}</span><code>{entry.detected.path}</code></div>
+		<div class="path">
+			<span class="k">{m.settings_editor_server_row_path()}</span><code>{entry.detected.path}</code>
+		</div>
 	{/if}
 
 	{#if blocked}
@@ -117,7 +121,8 @@
 						aria-label={m.settings_editor_server_row_copy_command()}
 						onclick={() => oncopy(blocked.command ?? "")}
 					>
-						<Copy size={12} /> {m.common_action_copy()}
+						<Copy size={12} />
+						{m.common_action_copy()}
 					</Button>
 				</span>
 			{/if}
@@ -134,8 +139,12 @@
 	<div class="actions">
 		{#if installed}
 			{#if canUninstall(entry)}
-				<Button size="sm" variant="outlined" disabled={busy} onclick={oninstall}>{m.settings_editor_server_row_update()}</Button>
-				<Button size="sm" variant="outlined" disabled={busy} onclick={onuninstall}>{m.settings_editor_server_row_uninstall()}</Button>
+				<Button size="sm" variant="outlined" disabled={busy} onclick={oninstall}
+					>{m.settings_editor_server_row_update()}</Button
+				>
+				<Button size="sm" variant="outlined" disabled={busy} onclick={onuninstall}
+					>{m.settings_editor_server_row_uninstall()}</Button
+				>
 			{/if}
 		{:else}
 			<Button size="sm" variant="filled" disabled={busy || !!blocked} loading={busy} onclick={oninstall}
@@ -143,13 +152,15 @@
 			>
 		{/if}
 		{#if running}
-			<Button size="sm" variant="outlined" disabled={busy} onclick={onrestart}>{m.settings_editor_server_row_restart()}</Button>
+			<Button size="sm" variant="outlined" disabled={busy} onclick={onrestart}
+				>{m.settings_editor_server_row_restart()}</Button
+			>
 		{/if}
 		<Button size="sm" variant="ghost" onclick={onlog}>{m.settings_editor_server_row_open_log()}</Button>
 		<span class="grow"></span>
 		<Button size="sm" variant="ghost" onclick={() => (customOpen = !customOpen)} aria-expanded={customOpen}>
 			{customOpen ? m.settings_editor_server_row_hide_custom() : m.settings_editor_server_row_custom()}
-			{#if !customOpen && entry.languages.some((l) => hasCustom(lsp[l]))}{m.settings_editor_server_row_set()}{/if}
+			{#if !customOpen && entry.languages.some( (l) => hasCustom(lsp[l]) )}{m.settings_editor_server_row_set()}{/if}
 		</Button>
 	</div>
 

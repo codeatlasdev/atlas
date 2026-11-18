@@ -28,7 +28,10 @@ export function groupCommands<T extends { id: string }>(
 	return items
 		.map((c) => ({
 			...c,
-			group: rank(c.id) === Infinity ? m.shell_commands_group_commands() : m.shell_commands_group_recent_commands(),
+			group:
+				rank(c.id) === Infinity
+					? m.shell_commands_group_commands()
+					: m.shell_commands_group_recent_commands(),
 		}))
 		.sort((a, b) => rank(a.id) - rank(b.id));
 }

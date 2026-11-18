@@ -44,7 +44,13 @@
 
 <KitToasts />
 
-<CornerCard id={MORE_ID} kind="toast" claim={false} role="group" label={m.shell_chrome_corner_stack_more_notifications()}>
+<CornerCard
+	id={MORE_ID}
+	kind="toast"
+	claim={false}
+	role="group"
+	label={m.shell_chrome_corner_stack_more_notifications()}
+>
 	<button
 		class="more"
 		type="button"
@@ -54,7 +60,9 @@
 			: m.shell_chrome_corner_stack_show_more({ count: hidden })}
 		onclick={() => corner.toggleMore()}
 	>
-		{more === "less" ? m.shell_chrome_corner_stack_show_less() : m.shell_chrome_corner_stack_hidden_count({ count: hidden })}
+		{more === "less"
+			? m.shell_chrome_corner_stack_show_less()
+			: m.shell_chrome_corner_stack_hidden_count({ count: hidden })}
 	</button>
 </CornerCard>
 

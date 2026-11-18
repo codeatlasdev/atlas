@@ -49,7 +49,12 @@ export function projectCommands(): Command[] {
 			when: hasProject,
 		},
 		{ id: "atlas::Logs", label: () => m.panel_tab_logs(), run: () => openKind("logs"), when: hasProject },
-		{ id: "atlas::Config", label: () => m.panel_tab_config(), run: () => openKind("config"), when: hasProject },
+		{
+			id: "atlas::Config",
+			label: () => m.panel_tab_config(),
+			run: () => openKind("config"),
+			when: hasProject,
+		},
 		{
 			id: "atlas::ShowActivity",
 			label: () => m.shell_commands_show_activity(),

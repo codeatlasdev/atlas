@@ -23,7 +23,9 @@
 	// statuses ("Not Found") are not something to show, so say what happened in plain words.
 	const base = $derived<ErrorReport>({
 		...report(
-			notFound ? { message: m.errors_route_no_screen_at({ path: page.url.pathname }) } : (page.error ?? "Unknown error"),
+			notFound
+				? { message: m.errors_route_no_screen_at({ path: page.url.pathname }) }
+				: (page.error ?? "Unknown error"),
 			{ where },
 		),
 		version,

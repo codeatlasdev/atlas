@@ -109,10 +109,7 @@
 
 	const meta = $derived(
 		[
-			[
-				m.errors_panel_detail_where(),
-				report.kind ? `${report.where} · ${report.kind}` : report.where,
-			],
+			[m.errors_panel_detail_where(), report.kind ? `${report.where} · ${report.kind}` : report.where],
 			[m.errors_panel_detail_file(), report.file],
 			["Atlas", report.version],
 			[m.errors_panel_detail_system(), [report.context?.os, report.context?.arch].filter(Boolean).join(" ")],

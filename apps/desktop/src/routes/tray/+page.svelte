@@ -481,7 +481,9 @@
 					aria-expanded={stoppedShown}
 					onclick={() => (stoppedOpen = !stoppedOpen)}
 				>
-					<ChevronRight size={12} class={stoppedShown ? "turned" : ""} />{m.tray_page_stopped_count({ stoppedCount: lists.stoppedCount })}
+					<ChevronRight size={12} class={stoppedShown ? "turned" : ""} />{m.tray_page_stopped_count({
+						stoppedCount: lists.stoppedCount,
+					})}
 				</button>
 				{#if stoppedShown}
 					<ul>
@@ -503,7 +505,9 @@
 					onclick={() => send({ kind: "host" })}
 					title={m.settings_host_name()}
 				>
-					{m.tray_page_host_version({ version: snap.host.version })}{#if snap.host.status === "outdated"}<i class="dot warn"></i>{m.tray_page_outdated()}{/if}
+					{m.tray_page_host_version({ version: snap.host.version })}{#if snap.host.status === "outdated"}<i
+							class="dot warn"
+						></i>{m.tray_page_outdated()}{/if}
 					· {m.tray_page_terminals({ count: snap.terminals.live })}
 				</button>{/if}
 		</footer>

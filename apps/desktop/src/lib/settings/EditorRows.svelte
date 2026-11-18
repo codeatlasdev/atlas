@@ -15,7 +15,11 @@
 </script>
 
 <Group title={m.settings_editor_rows_editing()}>
-	<Row id="editor-tab-size" label={m.settings_editor_rows_tab_size()} description={m.settings_editor_rows_columns_a_tab_or_one()}>
+	<Row
+		id="editor-tab-size"
+		label={m.settings_editor_rows_tab_size()}
+		description={m.settings_editor_rows_columns_a_tab_or_one()}
+	>
 		<NumInput
 			label={m.settings_editor_rows_tab_size()}
 			unit={m.settings_editor_rows_unit_columns()}
@@ -82,11 +86,27 @@
 </Group>
 
 <Group title={m.settings_editor_rows_display()}>
-	<Row id="editor-word-wrap" label={m.settings_editor_rows_word_wrap()} description={m.settings_editor_rows_wrap_long_lines_at_the()}>
-		<Switch aria-label={m.settings_editor_rows_word_wrap()} checked={e.word_wrap} onchange={(v) => save({ word_wrap: v })} />
+	<Row
+		id="editor-word-wrap"
+		label={m.settings_editor_rows_word_wrap()}
+		description={m.settings_editor_rows_wrap_long_lines_at_the()}
+	>
+		<Switch
+			aria-label={m.settings_editor_rows_word_wrap()}
+			checked={e.word_wrap}
+			onchange={(v) => save({ word_wrap: v })}
+		/>
 	</Row>
-	<Row id="editor-line-numbers" label={m.settings_editor_rows_line_numbers()} description={m.settings_editor_rows_show_line_numbers_in_the()}>
-		<Switch aria-label={m.settings_editor_rows_line_numbers()} checked={e.line_numbers} onchange={(v) => save({ line_numbers: v })} />
+	<Row
+		id="editor-line-numbers"
+		label={m.settings_editor_rows_line_numbers()}
+		description={m.settings_editor_rows_show_line_numbers_in_the()}
+	>
+		<Switch
+			aria-label={m.settings_editor_rows_line_numbers()}
+			checked={e.line_numbers}
+			onchange={(v) => save({ line_numbers: v })}
+		/>
 	</Row>
 	<Row
 		id="editor-highlight-line"
@@ -99,7 +119,11 @@
 			onchange={(v) => save({ highlight_active_line: v })}
 		/>
 	</Row>
-	<Row id="editor-whitespace" label={m.settings_editor_rows_show_whitespace()} description={m.settings_editor_rows_draw_dots_for_spaces_and()}>
+	<Row
+		id="editor-whitespace"
+		label={m.settings_editor_rows_show_whitespace()}
+		description={m.settings_editor_rows_draw_dots_for_spaces_and()}
+	>
 		<SegmentedControl
 			aria-label={m.settings_editor_rows_show_whitespace()}
 			size="sm"
@@ -145,8 +169,16 @@
 			onchange={(v) => save({ sticky_scroll: v })}
 		/>
 	</Row>
-	<Row id="editor-minimap" label={m.settings_editor_rows_minimap()} description={m.settings_editor_rows_show_a_small_overview_of()}>
-		<Switch aria-label={m.settings_editor_rows_minimap()} checked={e.minimap} onchange={(v) => save({ minimap: v })} />
+	<Row
+		id="editor-minimap"
+		label={m.settings_editor_rows_minimap()}
+		description={m.settings_editor_rows_show_a_small_overview_of()}
+	>
+		<Switch
+			aria-label={m.settings_editor_rows_minimap()}
+			checked={e.minimap}
+			onchange={(v) => save({ minimap: v })}
+		/>
 	</Row>
 	<Row
 		id="editor-rulers"

@@ -359,9 +359,7 @@ export function causeHint(r: ErrorReport, locale?: "en"): CauseHint | null {
 	if (/undefined is not an object|cannot read propert|is undefined|is not a function/i.test(r.message))
 		return {
 			title: m.errors_cause_shape_title({}, lang),
-			detail: frame
-				? m.errors_cause_shape_detail_at({ frame }, lang)
-				: m.errors_cause_shape_detail({}, lang),
+			detail: frame ? m.errors_cause_shape_detail_at({ frame }, lang) : m.errors_cause_shape_detail({}, lang),
 		};
 	if (/failed to fetch|networkerror|load failed|csp|content security/i.test(r.message))
 		return {

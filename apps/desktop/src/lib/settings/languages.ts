@@ -44,9 +44,13 @@ export function serverView(entry: CatalogEntry, servers: readonly ServerStatus[]
 	// A progress line or a reason that came from the host is shown as it arrived (the host writes it, not this page).
 	if (live?.state === "downloading")
 		return { kind: "downloading", text: live.progress || m.settings_editor_view_downloading() };
-	if (live?.state === "starting") return { kind: "starting", text: live.progress || m.settings_editor_view_starting() };
+	if (live?.state === "starting")
+		return { kind: "starting", text: live.progress || m.settings_editor_view_starting() };
 	if (live?.state === "crashed") {
-		return { kind: "crashed", text: live.reason?.message || live.message || m.settings_editor_view_stopped() };
+		return {
+			kind: "crashed",
+			text: live.reason?.message || live.message || m.settings_editor_view_stopped(),
+		};
 	}
 	if (live?.state === "ready") return { kind: "running", text: m.settings_editor_view_running() };
 	const { detected } = entry;

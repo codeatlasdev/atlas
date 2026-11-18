@@ -12,7 +12,11 @@ import { store } from "#lib/stores/projects.svelte.ts";
 export function projectMenuItems(p: ProjectView): PointerMenuItem[] {
 	const items: PointerMenuItem[] = [];
 	if (!p.parent)
-		items.push({ label: m.shell_commands_project_menu_change_icon(), group: 0, run: () => (identities.editing = p.id) });
+		items.push({
+			label: m.shell_commands_project_menu_change_icon(),
+			group: 0,
+			run: () => (identities.editing = p.id),
+		});
 	items.push({
 		label: p.pinned ? m.shell_commands_project_menu_unpin() : m.shell_commands_project_menu_pin(),
 		group: 0,

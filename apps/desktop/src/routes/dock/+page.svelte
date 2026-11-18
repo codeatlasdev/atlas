@@ -194,13 +194,21 @@
 >
 	{#if st.mode === "pill" || st.mode === "sending"}
 		<div class="pillrow" oncontextmenu={onPillMenu} role="presentation">
-			<button class="pill" onclick={() => dispatch({ type: "summon" })} aria-label={m.tray_dock_page_message_an_agent()}>
+			<button
+				class="pill"
+				onclick={() => dispatch({ type: "summon" })}
+				aria-label={m.tray_dock_page_message_an_agent()}
+			>
 				<span class="dot" data-state={busyAgents > 0 ? "working" : "idle"} aria-hidden="true"></span>
 				<span class="who">
-					{#if st.mode === "sending"}{m.tray_dock_page_sending()}{:else if current}{agentLabel(current)}{:else}{m.tray_dock_page_no_agent_running()}{/if}
+					{#if st.mode === "sending"}{m.tray_dock_page_sending()}{:else if current}{agentLabel(
+							current,
+						)}{:else}{m.tray_dock_page_no_agent_running()}{/if}
 				</span>
 				{#if st.mode === "pill"}<kbd>{hint}</kbd>{/if}
-				{#if st.attention > 0}<span class="badge" aria-label={m.tray_dock_page_attention_badge({ attention: st.attention })}>{st.attention}</span
+				{#if st.attention > 0}<span
+						class="badge"
+						aria-label={m.tray_dock_page_attention_badge({ attention: st.attention })}>{st.attention}</span
 					>{/if}
 			</button>
 			<button
@@ -226,13 +234,16 @@
 					disabled={agents.length === 0}
 				>
 					<option value="">
-						{current ? m.tray_dock_page_auto_agent({ agent: agentLabel(current) }) : m.tray_dock_page_no_agent_running()}
+						{current
+							? m.tray_dock_page_auto_agent({ agent: agentLabel(current) })
+							: m.tray_dock_page_no_agent_running()}
 					</option>
 					{#each agents as a (a.tabId)}
 						<option value={a.tabId}>{agentLabel(a)}</option>
 					{/each}
 				</select>
-				<button class="x" onclick={() => dispatch({ type: "esc" })} aria-label={m.common_action_close()}><X size={14} /></button
+				<button class="x" onclick={() => dispatch({ type: "esc" })} aria-label={m.common_action_close()}
+					><X size={14} /></button
 				>
 			</div>
 			<textarea
@@ -249,7 +260,8 @@
 							<span title={a.path}>{a.path.split("/").pop()}</span>
 							<button
 								onclick={() => dispatch({ type: "detach", path: a.path })}
-								aria-label={m.tray_dock_page_remove_capture({ name: a.path.split("/").pop() ?? a.path })}><X size={12} /></button
+								aria-label={m.tray_dock_page_remove_capture({ name: a.path.split("/").pop() ?? a.path })}
+								><X size={12} /></button
 							>
 						</li>
 					{/each}
@@ -276,10 +288,13 @@
 					disabled={st.text.trim() === "" && st.attachments.length === 0}
 					onclick={() => dispatch({ type: "send", agents })}
 				>
-					{m.tray_dock_page_send()} <CornerDownLeft size={13} aria-hidden="true" />
+					{m.tray_dock_page_send()}
+					<CornerDownLeft size={13} aria-hidden="true" />
 				</button>
 				{#if agents.length === 0}
-					<button class="link" onclick={() => dispatch({ type: "openInAtlas" })}>{m.tray_dock_page_open_atlas()}</button>
+					<button class="link" onclick={() => dispatch({ type: "openInAtlas" })}
+						>{m.tray_dock_page_open_atlas()}</button
+					>
 				{/if}
 			</div>
 		</div>
@@ -288,15 +303,16 @@
 			<div class="to">
 				<span class="dot" data-state={reply.busy ? "working" : "idle"} aria-hidden="true"></span>
 				<strong>{replying ? agentLabel(replying) : m.tray_dock_page_agent()}</strong>
-				<span class="state"
-					>{replying ? STATE_LABEL[reply.busy ? "working" : replying.state] : ""}</span
-				>
+				<span class="state">{replying ? STATE_LABEL[reply.busy ? "working" : replying.state] : ""}</span>
 				<button class="link" onclick={() => dispatch({ type: "openInAtlas" })}>
-					{m.tray_dock_page_open_in_atlas()} <ArrowUpRight size={12} aria-hidden="true" />
+					{m.tray_dock_page_open_in_atlas()}
+					<ArrowUpRight size={12} aria-hidden="true" />
 				</button>
 			</div>
 			<div class="lines" aria-live="polite">
-				{#each reply.lines as l, i (i)}<p>{l}</p>{:else}<p class="dim">{m.tray_dock_page_waiting_for_the_agent()}</p>{/each}
+				{#each reply.lines as l, i (i)}<p>{l}</p>{:else}<p class="dim">
+						{m.tray_dock_page_waiting_for_the_agent()}
+					</p>{/each}
 			</div>
 		</div>
 	{:else if st.mode === "needsInput"}
@@ -318,7 +334,8 @@
 			<div class="foot">
 				<span></span>
 				<button class="send" onclick={() => dispatch({ type: "openInAtlas" })}>
-					{m.tray_dock_page_open_in_atlas()} <ArrowUpRight size={13} aria-hidden="true" />
+					{m.tray_dock_page_open_in_atlas()}
+					<ArrowUpRight size={13} aria-hidden="true" />
 				</button>
 			</div>
 		</div>

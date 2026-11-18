@@ -157,11 +157,16 @@
 			description={m.settings_editor_languages_tab_atlas_finds_a_server_on()}
 		>
 			{#if loading && !data}
-				<div class="state"><Spinner size={14} /> {m.settings_editor_languages_tab_loading_language_servers()}</div>
+				<div class="state">
+					<Spinner size={14} />
+					{m.settings_editor_languages_tab_loading_language_servers()}
+				</div>
 			{:else if loadError}
 				<div class="state error" role="alert">
 					<span>{m.settings_editor_languages_tab_could_not_load_the_language({ loadError })}</span>
-					<Button size="sm" variant="outlined" onclick={load}>{m.settings_editor_languages_tab_try_again()}</Button>
+					<Button size="sm" variant="outlined" onclick={load}
+						>{m.settings_editor_languages_tab_try_again()}</Button
+					>
 				</div>
 			{:else if data}
 				{#each data.servers as entry, i (entry.name)}

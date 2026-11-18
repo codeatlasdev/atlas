@@ -31,7 +31,9 @@
 		<Alert severity="error" title={m.shell_home_no_project_error_title()}>
 			<div class="err">
 				<span>{store.listError}</span>
-				<Button size="sm" variant="glass" onclick={() => store.refresh()}>{m.shell_home_no_project_retry()}</Button>
+				<Button size="sm" variant="glass" onclick={() => store.refresh()}
+					>{m.shell_home_no_project_retry()}</Button
+				>
 			</div>
 		</Alert>
 	{:else if store.projects.length === 0}
@@ -55,7 +57,9 @@
 		<EmptyState
 			icon={FolderPlus}
 			title={m.shell_home_no_project_none_title()}
-			description={m.shell_home_no_project_pick_a_worktree({ key: shortcutFor("atlas::Jump") ?? kbd("cmd-k") })}
+			description={m.shell_home_no_project_pick_a_worktree({
+				key: shortcutFor("atlas::Jump") ?? kbd("cmd-k"),
+			})}
 		>
 			{#snippet actions()}
 				<Button variant="glass" onclick={addProject}>{m.shell_home_no_project_add_project()}</Button>

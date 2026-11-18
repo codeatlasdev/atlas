@@ -86,7 +86,11 @@ function dockCommands(): Command[] {
 				if (!docks.bottom && ws.selected) ws.focusTree(ws.selected.id);
 			},
 		},
-		{ id: "workspace::ToggleAllDocks", label: () => m.shell_commands_toggle_all_docks(), run: toggleAllDocks },
+		{
+			id: "workspace::ToggleAllDocks",
+			label: () => m.shell_commands_toggle_all_docks(),
+			run: toggleAllDocks,
+		},
 		{
 			id: "workspace::ToggleZoom",
 			label: () => m.shell_commands_toggle_pane_zoom(),
@@ -278,7 +282,12 @@ function tabCommands(): Command[] {
 			run: () => ws.cycle(ws.selected!.id, -1),
 			when: hasWt,
 		},
-		{ id: "git::Diff", label: () => m.shell_commands_changes(), run: () => openDiff(ws.selected!.id), when: hasWt },
+		{
+			id: "git::Diff",
+			label: () => m.shell_commands_changes(),
+			run: () => openDiff(ws.selected!.id),
+			when: hasWt,
+		},
 		{
 			id: "git::GenerateCommitMessage",
 			label: () => m.shell_commands_generate_commit_message(),
@@ -371,11 +380,19 @@ export function shellCommands(): Command[] {
 				run: () => shell.go(1),
 				when: () => shell.canGo(1),
 			},
-			{ id: "shell::PreviousSpace", label: () => m.shell_commands_previous_space(), run: () => shell.cycleSpace(-1) },
+			{
+				id: "shell::PreviousSpace",
+				label: () => m.shell_commands_previous_space(),
+				run: () => shell.cycleSpace(-1),
+			},
 			{ id: "shell::NextSpace", label: () => m.shell_commands_next_space(), run: () => shell.cycleSpace(1) },
 			{ id: "shell::ZoomIn", label: () => m.shell_commands_zoom_in(), run: () => void stepZoom("in") },
 			{ id: "shell::ZoomOut", label: () => m.shell_commands_zoom_out(), run: () => void stepZoom("out") },
-			{ id: "shell::ZoomReset", label: () => m.shell_commands_zoom_reset(), run: () => void stepZoom("reset") },
+			{
+				id: "shell::ZoomReset",
+				label: () => m.shell_commands_zoom_reset(),
+				run: () => void stepZoom("reset"),
+			},
 		]),
 		...dockCommands(),
 		...paletteCommands(),
@@ -386,7 +403,11 @@ export function shellCommands(): Command[] {
 				label: () => m.shell_commands_agents(),
 				run: () => (ws.view = ws.view === "agents" ? "worktree" : "agents"),
 			},
-			{ id: "atlas::Dashboard", label: () => m.shell_commands_dashboard(), run: () => (ws.view = "dashboard") },
+			{
+				id: "atlas::Dashboard",
+				label: () => m.shell_commands_dashboard(),
+				run: () => (ws.view = "dashboard"),
+			},
 			{
 				id: "atlas::ToggleCrewWorkspace",
 				label: () => m.shell_commands_crew(),

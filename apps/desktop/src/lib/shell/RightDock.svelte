@@ -25,7 +25,12 @@
 		<DockResizer side="right" />
 		<div class="dock" style:width="{docks.rightSize}px">{@render sidebar()}</div>
 	{/if}
-	<EdgePeek edge="right" size={docks.rightSize} label={m.shell_chrome_right_dock_right_sidebar()} active={!docks.right}>
+	<EdgePeek
+		edge="right"
+		size={docks.rightSize}
+		label={m.shell_chrome_right_dock_right_sidebar()}
+		active={!docks.right}
+	>
 		{@render sidebar()}
 	</EdgePeek>
 {/if}

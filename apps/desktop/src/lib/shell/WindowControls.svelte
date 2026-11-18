@@ -23,14 +23,14 @@
 </script>
 
 <div class="controls" role="group" aria-label={m.shell_chrome_window_controls_window()}>
-	<button aria-label={m.shell_chrome_window_controls_minimize()} title={m.shell_chrome_window_controls_minimize()} onclick={() => void win.minimize()}>
+	<button
+		aria-label={m.shell_chrome_window_controls_minimize()}
+		title={m.shell_chrome_window_controls_minimize()}
+		onclick={() => void win.minimize()}
+	>
 		<svg viewBox="0 0 10 10" aria-hidden="true"><path d="M0 5.5h10" /></svg>
 	</button>
-	<button
-		aria-label={toggleLabel}
-		title={toggleLabel}
-		onclick={() => void win.toggleMaximize()}
-	>
+	<button aria-label={toggleLabel} title={toggleLabel} onclick={() => void win.toggleMaximize()}>
 		{#if maximized}
 			<svg viewBox="0 0 10 10" aria-hidden="true">
 				<path d="M2.5 2.5V1.5a1 1 0 0 1 1-1h5a1 1 0 0 1 1 1v5a1 1 0 0 1-1 1h-1" />
@@ -40,7 +40,12 @@
 			<svg viewBox="0 0 10 10" aria-hidden="true"><rect x="0.5" y="0.5" width="9" height="9" rx="1" /></svg>
 		{/if}
 	</button>
-	<button class="close" aria-label={m.common_action_close()} title={m.common_action_close()} onclick={() => void win.close()}>
+	<button
+		class="close"
+		aria-label={m.common_action_close()}
+		title={m.common_action_close()}
+		onclick={() => void win.close()}
+	>
 		<svg viewBox="0 0 10 10" aria-hidden="true"><path d="M0.5 0.5l9 9M9.5 0.5l-9 9" /></svg>
 	</button>
 </div>

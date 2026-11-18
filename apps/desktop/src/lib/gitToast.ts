@@ -1,6 +1,7 @@
 import { toast } from "@codeatlasdev/ui";
 import { classifyGitError } from "#lib/gitErrors.ts";
 import { confirmDialog } from "#lib/stores/ask.svelte.ts";
+import { m } from "#lib/i18n/m.ts";
 
 /** Git's output as shown in the Details dialog: the end of a very long one is the part that has the cause. */
 const DETAILS_MAX = 4000;
@@ -11,11 +12,11 @@ export function gitToast(raw: string): void {
 	if (!p.details) return void toast.error(p.message);
 	toast.error(p.message, {
 		action: {
-			label: "Details",
+			label: m.errors_panel_details(),
 			onClick: () =>
 				void confirmDialog(p.message, {
 					description: p.details.slice(0, DETAILS_MAX),
-					confirmLabel: "Copy",
+					confirmLabel: m.common_action_copy(),
 				}).then((copy) => {
 					if (copy) void navigator.clipboard.writeText(p.details);
 				}),

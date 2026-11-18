@@ -11,7 +11,11 @@ export function useTheme(t: Theme) {
 	const showing = themes.current?.appearance;
 	void themes.setTheme({ [t.appearance]: t.name });
 	if (showing && showing !== t.appearance)
-		toast.info(t.appearance === "dark" ? m.shell_commands_theme_used_in_dark() : m.shell_commands_theme_used_in_light());
+		toast.info(
+			t.appearance === "dark"
+				? m.shell_commands_theme_used_in_dark()
+				: m.shell_commands_theme_used_in_light(),
+		);
 }
 
 export function themeCommands(): Command[] {
@@ -23,7 +27,11 @@ export function themeCommands(): Command[] {
 		})),
 		{ id: "theme::Next", label: () => m.shell_commands_theme_next(), run: () => themes.cycle(1) },
 		{ id: "theme::Previous", label: () => m.shell_commands_theme_previous(), run: () => themes.cycle(-1) },
-		{ id: "theme::Import", label: () => m.shell_commands_theme_import(), run: () => updates.show("appearance") },
+		{
+			id: "theme::Import",
+			label: () => m.shell_commands_theme_import(),
+			run: () => updates.show("appearance"),
+		},
 		{
 			id: "theme::UseGhostty",
 			label: () => m.shell_commands_theme_use_ghostty(),

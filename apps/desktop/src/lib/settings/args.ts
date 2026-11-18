@@ -45,7 +45,10 @@ export function parseArgs(text: string): ParsedArgs {
 	if (quote) {
 		return {
 			ok: false,
-			error: quote === '"' ? m.settings_editor_args_missing_double_quote() : m.settings_editor_args_missing_single_quote(),
+			error:
+				quote === '"'
+					? m.settings_editor_args_missing_double_quote()
+					: m.settings_editor_args_missing_single_quote(),
 		};
 	}
 	if (inWord) args.push(cur);

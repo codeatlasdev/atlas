@@ -4,13 +4,14 @@
 	import { TriangleAlert } from "@lucide/svelte";
 	import { tilde } from "#lib/format.ts";
 	import { themes } from "#lib/stores/theme.svelte.ts";
+	import { m } from "#lib/i18n/m.ts";
 
 	let open = $state(false);
 </script>
 
 {#if themes.issues.length}
 	<div class="issues">
-		<Collapsible bind:open title="Theme files with problems ({themes.issues.length})">
+		<Collapsible bind:open title={m.settings_theme_issues_files({ count: themes.issues.length })}>
 			<ul class="files">
 				{#each themes.issues as f (f.file)}
 					<li>

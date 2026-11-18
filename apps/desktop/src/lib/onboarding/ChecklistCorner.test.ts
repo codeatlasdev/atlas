@@ -1,6 +1,8 @@
 // @ts-nocheck bun test runtime types are not part of the app tsconfig
 import "../../../test/setup.ts";
 import { afterEach, beforeEach, expect, mock, test } from "bun:test";
+import { m } from "#lib/i18n/m.ts";
+import { inLocale } from "../../../test/locale.ts";
 
 // Incident (maintainer screenshot, 2026-11-15): a toast sat on the open "Getting started" card. The card is a
 // corner card now: a toast folds it to its header (title + progress), it opens again when the corner is free, and
@@ -101,4 +103,34 @@ test("a suggestion sits above the checklist and does not fold it", async () => {
 		.map((c) => c.dataset.cornerCard);
 	expect(bottomUp).toEqual(["checklist", "tip"]);
 	expect(items()).toHaveLength(6);
+});
+
+// The labels come from getters on the checklist data: an open card must change language with the setting, no reload.
+test("the open card changes language live: title, close button and every item", async () => {
+	await settle();
+	expect(card()).not.toBeNull();
+	await inLocale("pt-BR", async () => {
+		await settle();
+		const pt = document.querySelector(
+			`#atlas-corner [aria-label="${m.onboarding_checklist_getting_started()}"]`,
+		);
+		expect(pt).not.toBeNull();
+		expect(pt.querySelector("button[aria-expanded]").textContent).toContain(
+			m.onboarding_checklist_getting_started(),
+		);
+		expect(
+			pt.querySelector(`button[aria-label="${m.onboarding_checklist_dismiss_checklist()}"]`),
+		).not.toBeNull();
+		const labels = [...pt.querySelectorAll("ul li")].map((li) => li.querySelector(".label").textContent);
+		expect(labels).toEqual([
+			m.onboarding_checklist_item_project(),
+			m.onboarding_checklist_item_stack(),
+			m.onboarding_checklist_item_terminal(),
+			m.onboarding_checklist_item_agent(),
+			m.onboarding_checklist_item_palette(),
+			m.onboarding_checklist_item_file(),
+		]);
+	});
+	await settle();
+	expect(head().textContent).toContain("Getting started");
 });

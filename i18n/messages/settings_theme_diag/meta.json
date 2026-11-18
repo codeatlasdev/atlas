@@ -1,0 +1,149 @@
+{
+	"settings_theme_diag_alacritty_invalid": {
+		"description": "Error when an Alacritty config cannot be parsed. kind is YAML or TOML, detail is the parser's own message."
+	},
+	"settings_theme_diag_alacritty_no_colors": {
+		"description": "Error when an Alacritty config holds no usable color."
+	},
+	"settings_theme_diag_alacritty_no_colors_section": {
+		"description": "Error when an Alacritty config has no colors section. [colors] is the section name."
+	},
+	"settings_theme_diag_alacritty_not_mapping": {
+		"description": "Error when the top level of an Alacritty config is not a key-value mapping."
+	},
+	"settings_theme_diag_appearance": {
+		"description": "Problem of a theme file: a theme's appearance is neither dark nor light, so it is skipped."
+	},
+	"settings_theme_diag_base16_invalid": {
+		"description": "Error when a Base16 scheme cannot be parsed. detail is the parser's own message."
+	},
+	"settings_theme_diag_base16_needs_base": {
+		"description": "Error when a Base16 scheme lacks the background (base00) or foreground (base05) color."
+	},
+	"settings_theme_diag_base16_not_mapping": {
+		"description": "Error when the top level of a Base16 scheme is not a key-value mapping."
+	},
+	"settings_theme_diag_config_cycle": {
+		"description": "Warning of a Ghostty import: a config-file include loops back on itself. config-file is the Ghostty setting."
+	},
+	"settings_theme_diag_config_deep": {
+		"description": "Warning of a Ghostty import: config-file includes are nested too deeply."
+	},
+	"settings_theme_diag_config_missing": {
+		"description": "Warning of a Ghostty import: an included config-file does not exist."
+	},
+	"settings_theme_diag_file_object": {
+		"description": "Problem of a theme file: the top level is not a JSON object."
+	},
+	"settings_theme_diag_file_unreadable": {
+		"description": "Warning of a package import: a file inside the archive or folder could not be read."
+	},
+	"settings_theme_diag_font_object": {
+		"description": "Problem of a theme file: the font block is not an object. font is the JSON key."
+	},
+	"settings_theme_diag_font_size": {
+		"description": "Problem of a theme file: the font size is not a number from 6 to 48."
+	},
+	"settings_theme_diag_font_style": {
+		"description": "Problem of a theme file: font_style has another value."
+	},
+	"settings_theme_diag_font_weight": {
+		"description": "Problem of a theme file: font_weight is not a number from 100 to 900."
+	},
+	"settings_theme_diag_ghostty_no_settings": {
+		"description": "Error when a Ghostty config holds no setting Atlas can use. i18n-allow glossary:settings"
+	},
+	"settings_theme_diag_include_ignored": {
+		"description": "Warning of a VS Code import: a tokenColors entry points to another file, which is not followed."
+	},
+	"settings_theme_diag_invalid_color": {
+		"description": "Warning of an import: a color value could not be read. key is the setting name in the source file."
+	},
+	"settings_theme_diag_invalid_color_key": {
+		"description": "Warning of an iTerm import: a color entry could not be read. key is the entry name in the plist."
+	},
+	"settings_theme_diag_invalid_option": {
+		"description": "Warning of a Ghostty import: a setting has a value Atlas cannot use. key is the setting name."
+	},
+	"settings_theme_diag_iterm_invalid": {
+		"description": "Error when an iTerm colors file is not the expected property list."
+	},
+	"settings_theme_diag_iterm_no_colors": {
+		"description": "Error when an iTerm colors file holds no usable color."
+	},
+	"settings_theme_diag_name_missing": {
+		"description": "Problem of a theme file: a theme has no name and is skipped."
+	},
+	"settings_theme_diag_needs_themes": {
+		"description": "Problem of a theme file: the themes array is missing."
+	},
+	"settings_theme_diag_newer_version": {
+		"description": "Problem of a theme file: it was saved by a newer Atlas, so keys this one does not know are skipped."
+	},
+	"settings_theme_diag_no_themes": {
+		"description": "Error shown for a theme file in a package that holds no theme."
+	},
+	"settings_theme_diag_not_color": {
+		"description": "Problem of a theme file: a player color is not a hex color."
+	},
+	"settings_theme_diag_not_color_ignored": {
+		"description": "Problem of a theme file: a color is not a hex color and is skipped."
+	},
+	"settings_theme_diag_palette_entry": {
+		"description": "Warning of a Ghostty import: a palette line is not index=color. palette is the Ghostty setting."
+	},
+	"settings_theme_diag_palette_range": {
+		"description": "Warning of a Ghostty import: Atlas uses the 16 ANSI colors only."
+	},
+	"settings_theme_diag_players_shape": {
+		"description": "Problem of a theme file: players is not an array whose first item holds cursor and selection."
+	},
+	"settings_theme_diag_store_no_ghostty_config": {
+		"description": "Error when the Ghostty config file to import does not exist."
+	},
+	"settings_theme_diag_store_no_theme": {
+		"description": "Error when an action names a theme that does not exist."
+	},
+	"settings_theme_diag_store_not_loaded": {
+		"description": "Error after an import: the file was written but the theme does not show up in the list. i18n-allow dnt:issue (the English means a problem, not a GitHub issue)"
+	},
+	"settings_theme_diag_store_shared_file": {
+		"description": "Error when removing a theme whose file holds other themes: Atlas does not rewrite the file."
+	},
+	"settings_theme_diag_style_missing": {
+		"description": "Problem of a theme file: a theme has no style object and is skipped."
+	},
+	"settings_theme_diag_style_object": {
+		"description": "Problem of a theme file: the style block is not an object. style is the JSON key."
+	},
+	"settings_theme_diag_syntax_object": {
+		"description": "Problem of a theme file: the syntax block is not an object. syntax is the JSON key."
+	},
+	"settings_theme_diag_syntax_role_shape": {
+		"description": "Problem of a theme file: a syntax entry is not an object with those three keys."
+	},
+	"settings_theme_diag_syntax_role_unused": {
+		"description": "Problem of a theme file: a syntax role the editor has no use for is skipped."
+	},
+	"settings_theme_diag_theme_not_found": {
+		"description": "Warning of a Ghostty import: the theme named in the config is not installed."
+	},
+	"settings_theme_diag_theme_object": {
+		"description": "Problem of a theme file: an item of the themes array is not an object."
+	},
+	"settings_theme_diag_unknown_key": {
+		"description": "Problem of a theme file: a key Atlas does not know is skipped."
+	},
+	"settings_theme_diag_unrecognized_format": {
+		"description": "Error when the import cannot tell what format a pasted or chosen file is. name is the file name."
+	},
+	"settings_theme_diag_vscode_invalid": {
+		"description": "Error when a VS Code theme cannot be parsed. detail is the parser's own message."
+	},
+	"settings_theme_diag_vscode_no_colors": {
+		"description": "Error when a VS Code theme holds no usable color."
+	},
+	"settings_theme_diag_vscode_not_object": {
+		"description": "Error when the top level of a VS Code theme is not a JSON object."
+	}
+}

@@ -1,0 +1,130 @@
+{
+	"settings_theme_import_dialog_appearance": "Appearance",
+	"settings_theme_import_dialog_apply_font": "Also use its font and cursor settings",
+	"settings_theme_import_dialog_archive_dropped": "A dropped archive has no path to unpack: use {@settings_theme_import_package_archive} to choose it.",
+	"settings_theme_import_dialog_choose_file": "Choose file…",
+	"settings_theme_import_dialog_copy_only": "Detected: {format} · the file is added to your themes as it is",
+	"settings_theme_import_dialog_description": "Ghostty, iTerm, VS Code, Alacritty, Base16 or Atlas / Zed themes: one file, pasted text, or a zip, vsix or folder with many.",
+	"settings_theme_import_dialog_detected": "Detected: {format}",
+	"settings_theme_import_dialog_drop_hint": "or drop a file here, or paste its text below",
+	"settings_theme_import_dialog_file_added": "Theme file added",
+	"settings_theme_import_dialog_filter_any": "Any file",
+	"settings_theme_import_dialog_filter_theme": "Theme",
+	"settings_theme_import_dialog_import": "Import",
+	"settings_theme_import_dialog_import_a_theme": "Import a theme",
+	"settings_theme_import_dialog_import_warnings": "Import warnings",
+	"settings_theme_import_dialog_imported": "Imported {name}",
+	"settings_theme_import_dialog_name": "Name",
+	"settings_theme_import_dialog_theme_text": "Theme text",
+	"settings_theme_import_dialog_use_as_dark": "Use as dark theme",
+	"settings_theme_import_dialog_use_as_light": "Use as light theme",
+	"settings_theme_import_format_atlas": "Atlas theme file",
+	"settings_theme_import_format_base16": "Base16 scheme",
+	"settings_theme_import_format_ghostty": "Ghostty config",
+	"settings_theme_import_format_iterm": "iTerm colors",
+	"settings_theme_import_format_vscode": "VS Code theme",
+	"settings_theme_import_format_zed": "Zed theme file",
+	"settings_theme_import_package_archive": "Archive (.zip, .vsix)…",
+	"settings_theme_import_package_choose_archive_title": "Choose a theme archive",
+	"settings_theme_import_package_choose_folder_title": "Choose a theme folder",
+	"settings_theme_import_package_failed_count": [
+		{
+			"declarations": [
+				"input count",
+				"local countPlural = count: plural"
+			],
+			"selectors": [
+				"countPlural"
+			],
+			"match": {
+				"countPlural=one": "{count} theme could not be imported.",
+				"countPlural=*": "{count} themes could not be imported."
+			}
+		}
+	],
+	"settings_theme_import_package_failures_label": "Themes that failed to import",
+	"settings_theme_import_package_files": [
+		{
+			"declarations": [
+				"input count",
+				"local countExact = count",
+				"local countPlural = count: plural"
+			],
+			"selectors": [
+				"countExact",
+				"countPlural"
+			],
+			"match": {
+				"countExact=0, countPlural=*": "{count} files",
+				"countExact=*, countPlural=one": "{count} file",
+				"countExact=*, countPlural=*": "{count} files"
+			}
+		}
+	],
+	"settings_theme_import_package_filter_archive": "Theme archive",
+	"settings_theme_import_package_folder": "Folder…",
+	"settings_theme_import_package_hint": "Archives are unpacked to a temporary folder on {@common_os_your_computer} and nothing is uploaded. Themes are saved only for you, in {path}. Bring your own licensed copy: Atlas does not include paid themes.",
+	"settings_theme_import_package_import_n": [
+		{
+			"declarations": [
+				"input count",
+				"local countExact = count",
+				"local countPlural = count: plural"
+			],
+			"selectors": [
+				"countExact",
+				"countPlural"
+			],
+			"match": {
+				"countExact=0, countPlural=*": "Import themes",
+				"countExact=*, countPlural=one": "Import {count} theme",
+				"countExact=*, countPlural=*": "Import {count} themes"
+			}
+		}
+	],
+	"settings_theme_import_package_import_name": "Import {name}",
+	"settings_theme_import_package_imported_one": "Imported {name}.",
+	"settings_theme_import_package_none_found": "No themes found in that archive or folder.",
+	"settings_theme_import_package_notes_label": "Warnings and skipped files",
+	"settings_theme_import_package_notes_summary": [
+		{
+			"declarations": [
+				"input warnings",
+				"input skipped",
+				"local warningsPlural = warnings: plural",
+				"local skippedPlural = skipped: plural"
+			],
+			"selectors": [
+				"warningsPlural",
+				"skippedPlural"
+			],
+			"match": {
+				"warningsPlural=one, skippedPlural=one": "{warnings} warning, {skipped} skipped",
+				"warningsPlural=one, skippedPlural=*": "{warnings} warning, {skipped} skipped",
+				"warningsPlural=*, skippedPlural=one": "{warnings} warnings, {skipped} skipped",
+				"warningsPlural=*, skippedPlural=*": "{warnings} warnings, {skipped} skipped"
+			}
+		}
+	],
+	"settings_theme_import_package_preview_name": "Preview {name}",
+	"settings_theme_import_package_select_all": "Select all",
+	"settings_theme_import_package_select_none": "Select none",
+	"settings_theme_import_package_selected": "{selected} of {total} selected",
+	"settings_theme_import_package_skipped": "Skipped {file}",
+	"settings_theme_import_package_themes_found": "Themes found",
+	"settings_theme_import_package_toast_imported": [
+		{
+			"declarations": [
+				"input count",
+				"local countPlural = count: plural"
+			],
+			"selectors": [
+				"countPlural"
+			],
+			"match": {
+				"countPlural=one": "Imported {count} theme into ~/.atlas/themes",
+				"countPlural=*": "Imported {count} themes into ~/.atlas/themes"
+			}
+		}
+	]
+}

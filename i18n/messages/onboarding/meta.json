@@ -1,0 +1,443 @@
+{
+	"onboarding_checklist_all_set": {
+		"description": "Title of the checklist card once every first step is done, shown for a moment before the card closes."
+	},
+	"onboarding_checklist_dismiss_checklist": {
+		"description": "Accessible name of the X button that closes the getting started checklist for good."
+	},
+	"onboarding_checklist_getting_started": {
+		"description": "Title of the getting started checklist card in the corner of the app, and its accessible name."
+	},
+	"onboarding_checklist_item_agent": {
+		"description": "Checklist step: run a coding agent."
+	},
+	"onboarding_checklist_item_file": {
+		"description": "Checklist step: find a file with the file finder."
+	},
+	"onboarding_checklist_item_palette": {
+		"description": "Checklist step: open the command palette."
+	},
+	"onboarding_checklist_item_project": {
+		"description": "Checklist step: add a project to Atlas."
+	},
+	"onboarding_checklist_item_stack": {
+		"description": "Checklist step: start the services of a project (the stack)."
+	},
+	"onboarding_checklist_item_terminal": {
+		"description": "Checklist step: open a terminal."
+	},
+	"onboarding_commands_help": {
+		"description": "Command palette command that opens the keyboard shortcuts sheet."
+	},
+	"onboarding_commands_show_checklist": {
+		"description": "Command palette command that shows the getting started checklist card."
+	},
+	"onboarding_deck_agents_body": {
+		"description": "Text under the title of the third slide of the first-run deck."
+	},
+	"onboarding_deck_agents_title": {
+		"description": "Title of the third slide of the first-run deck (agents in parallel)."
+	},
+	"onboarding_deck_get_started": {
+		"description": "Button of the first slide of the first-run deck: go to the next slide."
+	},
+	"onboarding_deck_intro_body": {
+		"description": "Text under the title of the first slide of the first-run deck."
+	},
+	"onboarding_deck_stack_body": {
+		"description": "Text under the title of the second slide of the first-run deck. atlas.yaml is the project config file name."
+	},
+	"onboarding_deck_stack_title": {
+		"description": "Title of the second slide of the first-run deck (a folder becomes a running stack)."
+	},
+	"onboarding_deck_step_of": {
+		"description": "Accessible name of one dot of the first-run deck: the slide number and how many there are."
+	},
+	"onboarding_deck_steps": {
+		"description": "Accessible name of the row of dots that shows which slide of the first-run deck is open."
+	},
+	"onboarding_deck_worktrees_body": {
+		"description": "Text under the title of the fourth slide of the first-run deck."
+	},
+	"onboarding_deck_worktrees_title": {
+		"description": "Title of the fourth slide of the first-run deck (worktrees)."
+	},
+	"onboarding_flow_project_folder": {
+		"description": "Small label of a found project with no known stack."
+	},
+	"onboarding_flow_services": {
+		"description": "Small label of a found project that has an atlas.yaml: how many services it defines."
+	},
+	"onboarding_flow_stack_compose": {
+		"description": "Small label of a found project detected as a Docker Compose project."
+	},
+	"onboarding_flow_stack_go": {
+		"description": "Small label of a found project detected as a Go project."
+	},
+	"onboarding_flow_stack_node": {
+		"description": "Small label of a found project detected as a Node project."
+	},
+	"onboarding_flow_stack_python": {
+		"description": "Small label of a found project detected as a Python project."
+	},
+	"onboarding_flow_stack_rust": {
+		"description": "Small label of a found project detected as a Rust project."
+	},
+	"onboarding_help_settings_checklist_label": {
+		"description": "Label of the checklist row in Settings."
+	},
+	"onboarding_help_settings_help": {
+		"description": "Title of the Help group in Settings."
+	},
+	"onboarding_help_settings_open_shortcuts": {
+		"description": "Button of the shortcuts row in Settings: opens the shortcuts sheet."
+	},
+	"onboarding_help_settings_progress": {
+		"description": "Description of the checklist row in Settings while the card is visible."
+	},
+	"onboarding_help_settings_progress_hidden": {
+		"description": "Description of the checklist row in Settings after the card was dismissed."
+	},
+	"onboarding_help_settings_shortcuts_description": {
+		"description": "Description of the shortcuts row in Settings."
+	},
+	"onboarding_help_settings_shortcuts_label": {
+		"description": "Label of the shortcuts row in Settings."
+	},
+	"onboarding_help_settings_show_checklist": {
+		"description": "Button of the checklist row in Settings: show the dismissed checklist card again."
+	},
+	"onboarding_help_settings_start_over": {
+		"description": "Button of the checklist row in Settings: reset the first-run state."
+	},
+	"onboarding_help_settings_tour_description": {
+		"description": "Description of the guided tour row in Settings."
+	},
+	"onboarding_help_settings_tour_label": {
+		"description": "Label of the guided tour row in Settings, and accessible name of the tour dialog."
+	},
+	"onboarding_hero_skip_for_now": {
+		"description": "Button that leaves the first-run deck and the empty-state welcome without adding a project."
+	},
+	"onboarding_phases_add_a_folder": {
+		"description": "Secondary button: opens a folder picker to add one project."
+	},
+	"onboarding_phases_add_and_start": {
+		"description": "Main button of the scan results: add the ticked projects and start the first one."
+	},
+	"onboarding_phases_add_name": {
+		"description": "Accessible name of the checkbox that picks one project to add."
+	},
+	"onboarding_phases_choose_a_project_folder": {
+		"description": "Button and folder picker title of the empty-scan state: point Atlas at one project."
+	},
+	"onboarding_phases_detects_how_to_run": {
+		"description": "Line under the scan results heading when no project has a detected service."
+	},
+	"onboarding_phases_find_my_projects": {
+		"description": "Main button of the welcome: scan the computer for projects."
+	},
+	"onboarding_phases_found_title": {
+		"description": "Heading of the scan results. number is the count shown in the accent color (count only picks the singular or plural)."
+	},
+	"onboarding_phases_jump_anywhere": {
+		"description": "Second sentence under the stack is up heading. key is the shortcut that opens the jump palette (shown as a key cap)."
+	},
+	"onboarding_phases_more_projects": {
+		"description": "Line under the project list when more projects were found than are listed (count is at least 1)."
+	},
+	"onboarding_phases_no_projects_found_yet": {
+		"description": "Heading when the scan found no project."
+	},
+	"onboarding_phases_point_at_folder": {
+		"description": "Second sentence under the empty-scan heading, after the folder count."
+	},
+	"onboarding_phases_projects_found": {
+		"description": "Accessible name of the live list of projects found while the scan runs."
+	},
+	"onboarding_phases_projects_to_add": {
+		"description": "Accessible name of the checklist of projects found, to pick which ones to add."
+	},
+	"onboarding_phases_scan_again": {
+		"description": "Button that runs the project scan again."
+	},
+	"onboarding_phases_scanned_folders": {
+		"description": "First sentence under the empty-scan heading: how many folders the scan looked at."
+	},
+	"onboarding_phases_scanning_progress": {
+		"description": "Line under the heading while the scan runs: folders looked at so far and the seconds the scan has taken."
+	},
+	"onboarding_phases_scanning_title": {
+		"description": "Heading while the scan runs. number is the count shown in the accent color (count only picks the singular or plural)."
+	},
+	"onboarding_phases_services": {
+		"description": "Accessible name of the list of services that are starting."
+	},
+	"onboarding_phases_services_ready": {
+		"description": "Line under the scan results heading: services Atlas detected in the projects found."
+	},
+	"onboarding_phases_services_ready_broken": {
+		"description": "Line under the scan results heading when some project configs are broken: services ready and configs that need a look."
+	},
+	"onboarding_phases_services_running": {
+		"description": "First sentence under the stack is up heading: how many services run."
+	},
+	"onboarding_phases_start_tour": {
+		"description": "Button that ends the first-run welcome and starts the guided tour."
+	},
+	"onboarding_phases_starting_progress": {
+		"description": "Line under the starting heading. total is a number, or an ellipsis while it is still unknown."
+	},
+	"onboarding_phases_starting_your_stack": {
+		"description": "Heading while the first stack starts."
+	},
+	"onboarding_phases_stop": {
+		"description": "Button that cancels the project scan."
+	},
+	"onboarding_phases_welcome_lead": {
+		"description": "Text under the welcome heading, before the project scan."
+	},
+	"onboarding_phases_welcome_title_first": {
+		"description": "First line of the welcome heading; a line break follows it, then the second line. Each line reads on its own."
+	},
+	"onboarding_phases_welcome_title_second": {
+		"description": "Second line of the welcome heading, under the first line."
+	},
+	"onboarding_phases_your_stack_is_up": {
+		"description": "Heading once the first stack is running."
+	},
+	"onboarding_scene_agents_ready_to_review": {
+		"description": "Sample result line of the second agent in the agents slide animation (shown after a check mark)."
+	},
+	"onboarding_scene_agents_shop_2_agents": {
+		"description": "Title bar of the drawn window in the agents slide. shop is a sample project name."
+	},
+	"onboarding_scene_agents_task_coupon": {
+		"description": "Sample prompt typed by the first agent in the agents slide animation."
+	},
+	"onboarding_scene_agents_task_rounding": {
+		"description": "Sample prompt typed by the second agent in the agents slide animation."
+	},
+	"onboarding_scene_agents_tests_pass": {
+		"description": "Sample result line of the first agent in the agents slide animation (shown after a check mark)."
+	},
+	"onboarding_scene_scan_found": {
+		"description": "Counter on the folder grid of the welcome slide: how many folders with an atlas.yaml the sweep has lit so far (count, never shown at zero)."
+	},
+	"onboarding_scene_stack_all_up_4_services": {
+		"description": "Last line of the stack slide animation: the four sample services are running."
+	},
+	"onboarding_scene_stack_job": {
+		"description": "Port column of a service that listens on no port (a background job) in the stack slide animation."
+	},
+	"onboarding_scene_stack_shop_detected": {
+		"description": "Title bar of the drawn window in the stack slide. shop is a sample project name."
+	},
+	"onboarding_scene_worktrees_merged": {
+		"description": "Label of the pill on the branch graph when the branch is merged back, in the worktrees slide."
+	},
+	"onboarding_scene_worktrees_shop_worktrees": {
+		"description": "Title bar of the drawn window in the worktrees slide. shop is a sample project name."
+	},
+	"onboarding_setup_row_failed": {
+		"description": "State of the setup strip after a failed run. when is a relative time (5 min ago)."
+	},
+	"onboarding_setup_row_failed_toast": {
+		"description": "Error toast when the setup command fails. reason is the runner's reason, or the unknown error text."
+	},
+	"onboarding_setup_row_full_output": {
+		"description": "Link of the setup strip while it runs or failed: show the full output."
+	},
+	"onboarding_setup_row_hide_output": {
+		"description": "Link of the setup strip: collapse the full output of the last run."
+	},
+	"onboarding_setup_row_installed": {
+		"description": "Toast after the setup command finished."
+	},
+	"onboarding_setup_row_less": {
+		"description": "Link of the setup strip while it runs or failed: back to the last lines of output."
+	},
+	"onboarding_setup_row_not_run_yet": {
+		"description": "State of the setup strip before any run."
+	},
+	"onboarding_setup_row_nothing_to_run": {
+		"description": "Toast when the setup was asked to run but had nothing to do."
+	},
+	"onboarding_setup_row_origin_config": {
+		"description": "Tooltip sentence of the setup strip: the setup command comes from pre_command in atlas.yaml."
+	},
+	"onboarding_setup_row_origin_detected": {
+		"description": "Tooltip sentence of the setup strip: the setup command was detected, not configured. pre_command and atlas.yaml are config names."
+	},
+	"onboarding_setup_row_ran_ok": {
+		"description": "State of the setup strip after a successful run. when is a relative time (5 min ago)."
+	},
+	"onboarding_setup_row_run_again": {
+		"description": "Link of the setup strip after a run: run the setup command again."
+	},
+	"onboarding_setup_row_run_now": {
+		"description": "Link of the setup strip before any run: run the setup command."
+	},
+	"onboarding_setup_row_running": {
+		"description": "State of the setup strip while the setup command runs."
+	},
+	"onboarding_setup_row_runs_always": {
+		"description": "Tooltip sentence of the setup strip: the setup runs on every start."
+	},
+	"onboarding_setup_row_runs_on_change": {
+		"description": "Tooltip sentence of the setup strip: the setup runs when dependencies changed."
+	},
+	"onboarding_setup_row_schedule_label": {
+		"description": "Accessible name of the info button of the setup strip. schedule is one of the two run-schedule sentences."
+	},
+	"onboarding_setup_row_setup": {
+		"description": "Label of the strip that shows the project setup command (dependency install) above the services."
+	},
+	"onboarding_setup_row_unknown_error": {
+		"description": "Reason shown in the setup failed toast when the runner gave none."
+	},
+	"onboarding_setup_row_view_output": {
+		"description": "Link of the setup strip: expand the full output of the last run."
+	},
+	"onboarding_shortcuts_change_hint": {
+		"description": "Footer of the shortcuts sheet: where to remap keys."
+	},
+	"onboarding_shortcuts_group_go_anywhere": {
+		"description": "Group title of the shortcuts sheet: jump, command palette, file finder."
+	},
+	"onboarding_shortcuts_group_more": {
+		"description": "Group title of the shortcuts sheet for every other command."
+	},
+	"onboarding_shortcuts_group_panels": {
+		"description": "Group title of the shortcuts sheet: showing and focusing panels."
+	},
+	"onboarding_shortcuts_group_project": {
+		"description": "Group title of the shortcuts sheet: project commands."
+	},
+	"onboarding_shortcuts_group_tabs": {
+		"description": "Group title of the shortcuts sheet: tabs and split panes."
+	},
+	"onboarding_shortcuts_keyboard_shortcuts": {
+		"description": "Title of the keyboard shortcuts sheet."
+	},
+	"onboarding_shortcuts_no_match": {
+		"description": "Empty state of the shortcuts sheet when the search matches nothing."
+	},
+	"onboarding_shortcuts_recent_worktree": {
+		"description": "Row of the shortcuts sheet that stands for the six commands that open a recent worktree."
+	},
+	"onboarding_shortcuts_search_shortcuts": {
+		"description": "Placeholder of the search field of the shortcuts sheet."
+	},
+	"onboarding_shortcuts_tab_range": {
+		"description": "Row of the shortcuts sheet that stands for the commands that activate tab 1 to 8. key is the shortcut of the last tab."
+	},
+	"onboarding_state_settings_unreadable": {
+		"description": "Error toast at startup when settings.json could not be read."
+	},
+	"onboarding_tour_breadcrumb_body": {
+		"description": "Text of the guided tour step about the breadcrumb."
+	},
+	"onboarding_tour_breadcrumb_title": {
+		"description": "Title of the guided tour step about the breadcrumb."
+	},
+	"onboarding_tour_next": {
+		"description": "Button of the guided tour card: go to the next step."
+	},
+	"onboarding_tour_palette_body": {
+		"description": "Text of the last guided tour step (the palette)."
+	},
+	"onboarding_tour_palette_title": {
+		"description": "Title of the last guided tour step (the palette)."
+	},
+	"onboarding_tour_panel_kpis_body": {
+		"description": "Text of the guided tour step about the project panel numbers."
+	},
+	"onboarding_tour_panel_kpis_title": {
+		"description": "Title of the guided tour step about the project panel numbers."
+	},
+	"onboarding_tour_press_palette": {
+		"description": "Hint of the last tour step. key is the shortcut of the jump palette (shown as a key cap)."
+	},
+	"onboarding_tour_right_toggle_body": {
+		"description": "Text of the guided tour step about the right sidebar."
+	},
+	"onboarding_tour_right_toggle_title": {
+		"description": "Title of the guided tour step about the right sidebar."
+	},
+	"onboarding_tour_service_card_body": {
+		"description": "Text of the guided tour step about service cards."
+	},
+	"onboarding_tour_service_card_title": {
+		"description": "Title of the guided tour step about service cards."
+	},
+	"onboarding_tour_sidebar_body": {
+		"description": "Text of the first step of the guided tour (the sidebar)."
+	},
+	"onboarding_tour_sidebar_title": {
+		"description": "Title of the first step of the guided tour (the sidebar)."
+	},
+	"onboarding_tour_skip": {
+		"description": "Button of the guided tour card: leave the tour."
+	},
+	"onboarding_tour_skip_tour": {
+		"description": "Accessible name of the dimmed area behind the guided tour card (clicking it leaves the tour)."
+	},
+	"onboarding_tour_spaces_body": {
+		"description": "Text of the guided tour step about spaces."
+	},
+	"onboarding_tour_spaces_title": {
+		"description": "Title of the guided tour step about spaces."
+	},
+	"onboarding_tour_step_of": {
+		"description": "Counter on top of the guided tour card."
+	},
+	"onboarding_welcome_add_folder_title": {
+		"description": "Title of the system folder picker opened by Add a folder."
+	},
+	"onboarding_welcome_all_commands": {
+		"description": "Footer of the empty editor area. key is the command palette shortcut (shown as a key cap)."
+	},
+	"onboarding_welcome_choose_or_search": {
+		"description": "Text of the empty editor area of a plain folder. key is the shortcut of the file finder (shown as a key cap)."
+	},
+	"onboarding_welcome_new_terminal": {
+		"description": "Card of the empty editor area: open a terminal in the worktree."
+	},
+	"onboarding_welcome_new_terminal_hint": {
+		"description": "Hint of the New terminal card."
+	},
+	"onboarding_welcome_nothing_open": {
+		"description": "Heading of the empty editor area of a worktree."
+	},
+	"onboarding_welcome_open_file": {
+		"description": "Card of the empty editor area: open the file finder."
+	},
+	"onboarding_welcome_open_file_hint": {
+		"description": "Hint of the Open a file card: a fuzzy search over the files of the worktree."
+	},
+	"onboarding_welcome_pick_a_file": {
+		"description": "Heading of the empty editor area of a plain folder (no repository)."
+	},
+	"onboarding_welcome_shortcuts": {
+		"description": "Footer link of the empty editor area: opens the keyboard shortcuts sheet."
+	},
+	"onboarding_welcome_start_agent": {
+		"description": "Card of the empty editor area: start a coding agent."
+	},
+	"onboarding_welcome_start_agent_hint": {
+		"description": "Hint of the Start an agent card. name is the display name of the default agent."
+	},
+	"onboarding_welcome_start_agent_hint_default": {
+		"description": "Hint of the Start an agent card when the default agent is not known yet."
+	},
+	"onboarding_welcome_start_something": {
+		"description": "Text under the heading of the empty editor area of a worktree."
+	},
+	"onboarding_welcome_take_the_tour": {
+		"description": "Link and button that start the guided tour (empty editor area, Help settings), and the command palette command."
+	},
+	"onboarding_welcome_to_atlas": {
+		"description": "Title of the first slide of the first-run deck, and the accessible name of the first-run dialog."
+	}
+}

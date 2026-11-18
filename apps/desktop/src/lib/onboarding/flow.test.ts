@@ -1,5 +1,7 @@
 // @ts-nocheck bun test runtime types are not part of the app tsconfig
 import { describe, expect, test } from "bun:test";
+import { readFileSync } from "node:fs";
+import { m } from "#lib/i18n/m.ts";
 import {
 	INITIAL,
 	choiceMeta,
@@ -16,6 +18,7 @@ import {
 	type Event,
 	type Phase,
 	ACTIONS,
+	STACK_MESSAGES,
 	testId,
 } from "./flow.ts";
 
@@ -121,6 +124,23 @@ describe("onboardingChoices: what the results step offers", () => {
 	test("a folder with no known stack still reads as a project folder; one service is singular", () => {
 		expect(choiceMeta(found("x", { has_config: false, stack: null }))).toBe("Project folder");
 		expect(choiceMeta(found("x", { services: 1 }))).toBe("1 service");
+	});
+	// The scan sends the stack as a bare id from `stack_of`; each one must read as a label, never as the raw id.
+	test("every stack the Rust scan can report has a label", () => {
+		const src = readFileSync(
+			new URL("../../../../../crates/atlas-desktop/src/cmds/discover.rs", import.meta.url),
+			"utf8",
+		);
+		const body = src.slice(
+			src.indexOf("fn stack_of("),
+			src.indexOf("/// Read a folder with an `atlas.yaml`"),
+		);
+		const sent = [...body.matchAll(/Some\("(\w+)"\)/g)].map(([, id]) => id);
+		expect(sent).toContain("compose");
+		for (const id of sent) expect(Object.hasOwn(STACK_MESSAGES, id), `no label for stack ${id}`).toBe(true);
+		expect(choiceMeta(found("x", { has_config: false, stack: "cobol" }))).toBe(
+			m.onboarding_flow_project_folder(),
+		);
 	});
 });
 

@@ -6,6 +6,8 @@
 	import { runCommand, shortcutFor } from "#lib/keymap.svelte.ts";
 	import { kbd } from "#lib/keys.ts";
 	import { ws } from "#lib/stores/workspace.svelte.ts";
+	import { aroundSlot } from "#lib/i18n/slot.ts";
+	import { m } from "#lib/i18n/m.ts";
 
 	let { worktreeId }: { worktreeId: string } = $props();
 	/** A plain folder: its files are the point, so the start-something-new cards stay out of the way. */
@@ -19,43 +21,47 @@
 		run: () => void;
 	}
 
+	let defaultAgent = $derived(agents.list.find((a) => a.id === agents.defaultAgent)?.label);
 	let actions = $derived<Action[]>([
 		{
-			label: "New terminal",
-			hint: "A shell in this worktree",
+			label: m.onboarding_welcome_new_terminal(),
+			hint: m.onboarding_welcome_new_terminal_hint(),
 			icon: SquareTerminal,
 			command: "workspace::NewTerminal",
 			run: () => void ws.newTerminal(worktreeId),
 		},
 		{
-			label: "Start an agent",
-			hint: `Run ${agents.list.find((a) => a.id === agents.defaultAgent)?.label ?? "your default agent"} here`,
+			label: m.onboarding_welcome_start_agent(),
+			hint: defaultAgent
+				? m.onboarding_welcome_start_agent_hint({ name: defaultAgent })
+				: m.onboarding_welcome_start_agent_hint_default(),
 			icon: Bot,
 			command: "atlas::NewAgentSession",
 			run: () => void agents.launch(worktreeId),
 		},
 		{
-			label: "Open a file",
-			hint: "Fuzzy-find in this worktree",
+			label: m.onboarding_welcome_open_file(),
+			hint: m.onboarding_welcome_open_file_hint(),
 			icon: FileText,
 			command: "file_finder::Toggle",
 			run: () => runCommand("file_finder::Toggle"),
 		},
 	]);
+	// The shortcut sits inside its sentence as a key cap: the message places it, the template draws it.
+	let findFile = $derived(aroundSlot((key) => m.onboarding_welcome_choose_or_search({ key })));
+	let allCommands = $derived(aroundSlot((key) => m.onboarding_welcome_all_commands({ key })));
 </script>
 
 <div class="welcome">
 	<div class="inner">
 		{#if plain}
-			<h2>Pick a file</h2>
+			<h2>{m.onboarding_welcome_pick_a_file()}</h2>
 			<p>
-				Choose one in the explorer, or search for it with <Kbd
-					>{shortcutFor("file_finder::Toggle") ?? kbd("cmd-p")}</Kbd
-				>.
+				{findFile[0]}<Kbd>{shortcutFor("file_finder::Toggle") ?? kbd("cmd-p")}</Kbd>{findFile[1]}
 			</p>
 		{:else}
-			<h2>Nothing open here</h2>
-			<p>Pick up where you left off, or start something new.</p>
+			<h2>{m.onboarding_welcome_nothing_open()}</h2>
+			<p>{m.onboarding_welcome_start_something()}</p>
 		{/if}
 		<div class="actions">
 			{#each actions as a (a.command)}
@@ -70,11 +76,16 @@
 			{/each}
 		</div>
 		<p class="foot">
-			<Kbd>{shortcutFor("command_palette::Toggle") ?? kbd("cmd-shift-p")}</Kbd> for every command
+			{allCommands[0]}<Kbd>{shortcutFor("command_palette::Toggle") ?? kbd("cmd-shift-p")}</Kbd
+			>{allCommands[1]}
 			<span aria-hidden="true">·</span>
-			<button class="link" onclick={() => runCommand("atlas::Help")}>Shortcuts</button>
+			<button class="link" onclick={() => runCommand("atlas::Help")}
+				>{m.onboarding_welcome_shortcuts()}</button
+			>
 			<span aria-hidden="true">·</span>
-			<button class="link" onclick={() => runCommand("atlas::TakeTour")}>Take the tour</button>
+			<button class="link" onclick={() => runCommand("atlas::TakeTour")}
+				>{m.onboarding_welcome_take_the_tour()}</button
+			>
 		</p>
 	</div>
 </div>

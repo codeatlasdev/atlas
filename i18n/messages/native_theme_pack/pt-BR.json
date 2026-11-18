@@ -1,0 +1,12 @@
+{
+	"native_theme_pack_entry_outside": "Este arquivo compactado tem uma entrada fora da própria pasta ({name}): a importação foi recusada",
+	"native_theme_pack_open_failed": "Não foi possível abrir {path}: {error}",
+	"native_theme_pack_package_too_big": "Este pacote é grande demais (mais de 5000 arquivos ou 200 MB): a importação foi recusada",
+	"native_theme_pack_run_failed": "Não foi possível executar {what}: {error}",
+	"native_theme_pack_temp_failed": "Não foi possível criar uma pasta temporária: {error}",
+	"native_theme_pack_too_large": "Este arquivo compactado ocupa mais de 200 MB quando descompactado: a importação foi recusada",
+	"native_theme_pack_too_many_entries": "Este arquivo compactado tem mais de {max} entradas: a importação foi recusada",
+	"native_theme_pack_tool_failed": "{what} falhou: isto não parece um arquivo zip válido",
+	"native_theme_pack_tool_timeout": "{what} levou mais de {seconds} s: o arquivo compactado é grande demais ou está danificado",
+	"native_theme_pack_wrong_type": "Escolha um arquivo .zip ou .vsix, ou uma pasta"
+}

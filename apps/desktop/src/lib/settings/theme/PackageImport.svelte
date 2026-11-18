@@ -8,9 +8,12 @@
 	import { invoke } from "@tauri-apps/api/core";
 	import { open as pickPath } from "@tauri-apps/plugin-dialog";
 	import { errText } from "#lib/api.ts";
+	import { aroundSlot } from "#lib/i18n/slot.ts";
 	import { themes } from "#lib/stores/theme.svelte.ts";
 	import { scanPackage, type FoundFormat, type FoundTheme } from "#lib/theme/import/package.ts";
 	import ImportPreview from "./ImportPreview.svelte";
+	import { appearanceLabel } from "./labels.ts";
+	import { m } from "#lib/i18n/m.ts";
 
 	interface Unpacked {
 		dir: string;
@@ -24,6 +27,7 @@
 		onerror,
 	}: { open: boolean; active: boolean; onerror: (message: string | null) => void } = $props();
 
+	/** Product names of the apps a theme comes from: never translated. */
 	const FORMAT_LABEL: Record<FoundFormat, string> = {
 		vscode: "VS Code",
 		ghostty: "Ghostty",
@@ -32,7 +36,7 @@
 		base16: "Base16",
 		zed: "Zed",
 	};
-	const ARCHIVE_FILTER = [{ name: "Theme archive", extensions: ["zip", "vsix"] }];
+	const THEMES_FOLDER = "~/.atlas/themes";
 
 	let found = $state<FoundTheme[]>([]);
 	let skipped = $state<string[]>([]);
@@ -52,6 +56,9 @@
 	let chosen = $derived(found.filter((f) => picked[f.id]));
 	let focused = $derived(found.find((f) => f.id === focusId) ?? found[0]);
 	let notes = $derived(warnings.length + skipped.length);
+	// The folder path (code) and the imported theme's name (bold) sit inside their sentences: the message places them.
+	let hint = $derived(aroundSlot((path) => m.settings_theme_import_package_hint({ path })));
+	let imported = $derived(aroundSlot((name) => m.settings_theme_import_package_imported_one({ name })));
 
 	async function cleanup() {
 		const dir = tempDir;
@@ -81,8 +88,14 @@
 	async function choose(kind: "archive" | "folder") {
 		const path = await pickPath(
 			kind === "folder"
-				? { directory: true, multiple: false, title: "Choose a theme folder" }
-				: { multiple: false, title: "Choose a theme archive", filters: ARCHIVE_FILTER },
+				? { directory: true, multiple: false, title: m.settings_theme_import_package_choose_folder_title() }
+				: {
+						multiple: false,
+						title: m.settings_theme_import_package_choose_archive_title(),
+						filters: [
+							{ name: m.settings_theme_import_package_filter_archive(), extensions: ["zip", "vsix"] },
+						],
+					},
 		);
 		if (typeof path !== "string") return;
 		scanning = true;
@@ -101,7 +114,7 @@
 			picked = Object.fromEntries(scan.themes.map((t) => [t.id, true]));
 			focusId = scan.themes[0]?.id ?? null;
 			active = true;
-			if (!scan.themes.length) onerror("No themes found in that archive or folder.");
+			if (!scan.themes.length) onerror(m.settings_theme_import_package_none_found());
 		} catch (e) {
 			onerror(errText(e));
 			await cleanup();
@@ -127,11 +140,11 @@
 				}
 			}
 			if (done.length) {
-				toast.success(`Imported ${done.length} theme${done.length === 1 ? "" : "s"} into ~/.atlas/themes`);
+				toast.success(m.settings_theme_import_package_toast_imported({ count: done.length }));
 			}
 			if (done.length === 1 && !failures.length) importedOne = done[0]!;
 			else if (!failures.length) open = false;
-			else onerror(`${failures.length} theme${failures.length === 1 ? "" : "s"} could not be imported.`);
+			else onerror(m.settings_theme_import_package_failed_count({ count: failures.length }));
 		} finally {
 			importing = false;
 			await cleanup();
@@ -148,51 +161,60 @@
 
 <div class="pick">
 	<Button variant="outlined" loading={scanning} disabled={importing} onclick={() => choose("archive")}>
-		<Archive size={13} /> Archive (.zip, .vsix)…
+		<Archive size={13} />
+		{m.settings_theme_import_package_archive()}
 	</Button>
 	<Button variant="outlined" disabled={scanning || importing} onclick={() => choose("folder")}>
-		<FolderOpen size={13} /> Folder…
+		<FolderOpen size={13} />
+		{m.settings_theme_import_package_folder()}
 	</Button>
 </div>
 <p class="hint">
-	Archives are unpacked to a temporary folder on this computer and nothing is uploaded. Themes are saved only
-	for you, in <code>~/.atlas/themes</code>. Bring your own licensed copy: Atlas does not include paid themes.
+	{hint[0]}<code>{THEMES_FOLDER}</code>{hint[1]}
 </p>
 
 {#if importedOne}
 	<div class="done" role="status">
-		<span>Imported <b>{importedOne}</b>.</span>
-		<Button size="sm" variant="filled" onclick={useIt}>Use it</Button>
-		<Button size="sm" variant="ghost" onclick={() => (open = false)}>Done</Button>
+		<span>{imported[0]}<b>{importedOne}</b>{imported[1]}</span>
+		<Button size="sm" variant="filled" onclick={useIt}>{m.settings_theme_use_it()}</Button>
+		<Button size="sm" variant="ghost" onclick={() => (open = false)}>{m.common_action_done()}</Button>
 	</div>
 {:else if active && found.length}
 	<div class="bar">
-		<span class="count" role="status">{chosen.length} of {found.length} selected</span>
-		<Button size="sm" variant="ghost" onclick={() => selectAll(true)}>Select all</Button>
-		<Button size="sm" variant="ghost" onclick={() => selectAll(false)}>Select none</Button>
+		<span class="count" role="status"
+			>{m.settings_theme_import_package_selected({ selected: chosen.length, total: found.length })}</span
+		>
+		<Button size="sm" variant="ghost" onclick={() => selectAll(true)}
+			>{m.settings_theme_import_package_select_all()}</Button
+		>
+		<Button size="sm" variant="ghost" onclick={() => selectAll(false)}
+			>{m.settings_theme_import_package_select_none()}</Button
+		>
 	</div>
 	<div class="list">
-		<ul class="rows" aria-label="Themes found">
+		<ul class="rows" aria-label={m.settings_theme_import_package_themes_found()}>
 			{#each found as t (t.id)}
 				<li class="row" class:focus={focused?.id === t.id}>
 					<Checkbox
-						aria-label="Import {t.name}"
+						aria-label={m.settings_theme_import_package_import_name({ name: t.name })}
 						checked={picked[t.id] ?? false}
 						onchange={(c) => (picked[t.id] = c)}
 					/>
 					<button
 						type="button"
 						class="item"
-						aria-label="Preview {t.name}"
+						aria-label={m.settings_theme_import_package_preview_name({ name: t.name })}
 						aria-current={focused?.id === t.id}
 						onclick={() => (focusId = t.id)}
 						onfocus={() => (focusId = t.id)}
 					>
 						<span class="name">{t.name}</span>
-						<span class="appearance">{t.appearance}</span>
+						<span class="appearance">{appearanceLabel(t.appearance)}</span>
 						<span class="chips">
 							<span class="chip">{FORMAT_LABEL[t.format]}</span>
-							{#if t.sources.length > 1}<span class="chip">{t.sources.length} files</span>{/if}
+							{#if t.sources.length > 1}<span class="chip"
+									>{m.settings_theme_import_package_files({ count: t.sources.length })}</span
+								>{/if}
 						</span>
 						<span class="strip" aria-hidden="true">
 							{#each t.swatches as c, i (i)}<span style:background={c}></span>{/each}
@@ -208,18 +230,23 @@
 			<button type="button" class="toggle" aria-expanded={showNotes} onclick={() => (showNotes = !showNotes)}>
 				{#if showNotes}<ChevronDown size={13} />{:else}<ChevronRight size={13} />{/if}
 				<TriangleAlert size={13} aria-hidden="true" />
-				{warnings.length} warning{warnings.length === 1 ? "" : "s"}, {skipped.length} skipped
+				{m.settings_theme_import_package_notes_summary({
+					warnings: warnings.length,
+					skipped: skipped.length,
+				})}
 			</button>
 			{#if showNotes}
-				<ul class="warnings" aria-label="Warnings and skipped files">
+				<ul class="warnings" aria-label={m.settings_theme_import_package_notes_label()}>
 					{#each warnings as w, i (`w${i}`)}<li>{w}</li>{/each}
-					{#each skipped as s, i (`s${i}`)}<li>Skipped {s}</li>{/each}
+					{#each skipped as s, i (`s${i}`)}<li>
+							{m.settings_theme_import_package_skipped({ file: s })}
+						</li>{/each}
 				</ul>
 			{/if}
 		</div>
 	{/if}
 	{#if failures.length}
-		<ul class="warnings" role="alert" aria-label="Themes that failed to import">
+		<ul class="warnings" role="alert" aria-label={m.settings_theme_import_package_failures_label()}>
 			{#each failures as f, i (i)}<li>{f}</li>{/each}
 		</ul>
 	{/if}
@@ -230,7 +257,7 @@
 			loading={importing}
 			onclick={importChosen}
 		>
-			Import {chosen.length} theme{chosen.length === 1 ? "" : "s"}
+			{m.settings_theme_import_package_import_n({ count: chosen.length })}
 		</Button>
 	</div>
 {/if}

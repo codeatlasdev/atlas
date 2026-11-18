@@ -5,6 +5,7 @@
 import { hash12 } from "./hash.ts";
 import { readLock, lockFile } from "./lock.ts";
 import { type Area, type Entry, type Platform, PLATFORMS, areaFile } from "./model.ts";
+import { type Msg, normalize, pick, selectorInfo } from "./resolve.ts";
 import { compareShapes, sourceIssues } from "./shape.ts";
 import { areaOfKey, isCommon, KEY_PATTERN } from "./source.ts";
 import { type Ctx, type Finding, type Severity, type StatusRow, tierSeverity } from "./types.ts";
@@ -63,11 +64,68 @@ export function lengthIssues(e: Entry, maxLength: number | undefined = e.maxLeng
 	return longest > maxLength ? [{ rule: "length", severity: "error", message: `${longest} characters, the limit is ${maxLength} (meta.json maxLength)` }] : [];
 }
 
+/** Locales where CLDR puts 0 in the plural category `one` (pt and pt-BR: i = 0..1; pt-PT is n = 1 only). */
+const zeroIsOne = (locale: string) => locale === "pt" || locale === "pt-BR";
+
+/** `i18n-allow pt-zero: <why>` in a key's description: the reason, or "" when the waiver has none. */
+function ptZeroWaiver(description: string | undefined): string | undefined {
+	const m = /i18n-allow\s+pt-zero:[ \t]*(.*)/.exec(description ?? "");
+	return m ? m[1].trim() : undefined;
+}
+
+/** Does the text the message gives for `assign` print the count `v`? (`{count}`, `{$count}`, `{ count }`) */
+const printsCount = (text: string | undefined, v: string) => new RegExp(`(?<!\\\\)\\{\\s*\\$?${v}\\s*[:}]`).test(text ?? "");
+
+/** Every assignment of the selectors that are neither the count under test nor on it: `os` and the like, each literal and `*`. */
+function otherAssignments(m: Msg, skip: Set<string>): Record<string, string>[] {
+	return m.selectors
+		.filter((s) => !skip.has(s))
+		.reduce<Record<string, string>[]>((acc, s) => {
+			const literals = [...new Set([...m.arms.map((a) => a.cond[s]).filter((v): v is string => v !== undefined && v !== "*"), "*"])];
+			return acc.flatMap((a) => literals.map((l) => ({ ...a, [s]: l })));
+		}, [{}]);
+}
+
+/** pt-BR (CLDR: 0 is `one`): a plural whose `one` variant prints the count says "0 arquivo" at zero unless an exact-zero
+ * arm (a second selector on the same count, literal 0) answers first, or the description waives it with a reason. */
+export function zeroIssues(locale: string, e: Entry, description: string | undefined): Issue[] {
+	if (!zeroIsOne(locale)) return [];
+	const m = normalize(e.resolved);
+	const out: Issue[] = [];
+	const waiver = ptZeroWaiver(description);
+	for (const name of m.selectors) {
+		const info = selectorInfo(m, name);
+		if (info.kind !== "plural") continue;
+		const mine = new Set(m.selectors.filter((s) => s === name || selectorInfo(m, s).var === info.var));
+		const base: Record<string, string> = {};
+		for (const s of m.selectors) if (!mine.has(s) && selectorInfo(m, s).kind === "plural") base[s] = "other";
+		for (const s of mine) base[s] = s === name ? "one" : "0";
+		const skip = new Set([...mine, ...Object.keys(base)]);
+		// 0 lands on the `one` arm itself (not on an exact-zero arm, which may print "0/0" if it likes)
+		const bad = otherAssignments(m, skip).some((rest) => {
+			const arm = pick(m, { ...base, ...rest });
+			return arm?.cond[name] === "one" && printsCount(arm.text, info.var);
+		});
+		if (!bad) continue;
+		if (waiver) continue;
+		out.push({
+			rule: "pt-zero",
+			severity: "error",
+			message:
+				waiver === ""
+					? `\`i18n-allow pt-zero:\` needs a reason: why the code never calls this with 0 (cite the call site)`
+					: `${locale} puts 0 in \`one\`, so "${info.var}" = 0 prints "0 ..." (\`one\` interpolates {${info.var}}): add an exact-zero variant ("local countExact = ${info.var}", match "countExact=0, countPlural=*": "Nenhum ..."), or, when the code never calls it with 0, write \`i18n-allow pt-zero: <why, and the call site>\` in the description (meta.json)`,
+		});
+		break;
+	}
+	return out;
+}
+
 /** Shape and text rules of one translated entry against its source (no lock, no file layout). */
 export function entryIssues(ctx: Ctx, locale: string, base: Entry, target: Entry): Issue[] {
 	const issues: Issue[] = compareShapes(base.shape, target.shape, locale).map((i) => ({ ...i, severity: "error" as const }));
 	if (target.texts.every((t) => t.trim() === "")) issues.push({ rule: "missing", severity: "error", message: "the translation is empty" });
-	issues.push(...platformIssues(target, base.platform), ...lengthIssues(target, base.maxLength));
+	issues.push(...platformIssues(target, base.platform), ...lengthIssues(target, base.maxLength), ...zeroIssues(locale, target, base.description));
 	issues.push(...textIssues({ glossary: ctx.glossary, locale, source: base.texts.join("\n"), target: target.texts.join("\n"), description: base.description }));
 	return issues;
 }

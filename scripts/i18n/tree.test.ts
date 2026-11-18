@@ -166,7 +166,7 @@ describe("references between messages", () => {
 	test("the cross product: a reference inside a plural message composes with it", async () => {
 		const root = await makeRepo();
 		const en = [{ declarations: ["input count", "local countPlural = count: plural"], selectors: ["countPlural"], match: { "countPlural=one": "{count} file moved to {@common_os_trash}", "countPlural=*": "{count} files moved to {@common_os_trash}" } }];
-		const pt = [{ declarations: ["input count", "local countPlural = count: plural"], selectors: ["countPlural"], match: { "countPlural=one": "{count} arquivo movido para {@common_os_trash}", "countPlural=*": "{count} arquivos movidos para {@common_os_trash}" } }];
+		const pt = [{ declarations: ["input count", "local countExact = count", "local countPlural = count: plural"], selectors: ["countExact", "countPlural"], match: { "countExact=0, countPlural=*": "Nenhum arquivo movido para {@common_os_trash}", "countExact=*, countPlural=one": "{count} arquivo movido para {@common_os_trash}", "countExact=*, countPlural=*": "{count} arquivos movidos para {@common_os_trash}" } }];
 		addKey(root, "app_moved", en, pt, "Toast after deleting files");
 		expect(errors(await check(root))).toEqual([]);
 	});

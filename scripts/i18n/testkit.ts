@@ -30,6 +30,15 @@ export const PLURAL = (one: string, other: string) => [
 	},
 ];
 
+/** A plural with an exact zero as a second selector: CLDR puts 0 in pt-BR's `one`, so "0 arquivo" needs its own arm. */
+export const PLURAL_ZERO = (zero: string, one: string, other: string) => [
+	{
+		declarations: ["input count", "local countExact = count", "local countPlural = count: plural"],
+		selectors: ["countExact", "countPlural"],
+		match: { "countExact=0, countPlural=*": zero, "countExact=*, countPlural=one": one, "countExact=*, countPlural=*": other },
+	},
+];
+
 /** A select on `os`: mac, windows, and the default. */
 export const OS = (mac: string, windows: string, other: string) => [
 	{ declarations: ["input os"], selectors: ["os"], match: { "os=mac": mac, "os=windows": windows, "os=*": other } },
@@ -75,7 +84,7 @@ const APP_EN = {
 };
 
 const APP_PT = {
-	app_files_count: PLURAL("{count} arquivo", "{count} arquivos"),
+	app_files_count: PLURAL_ZERO("Nenhum arquivo", "{count} arquivo", "{count} arquivos"),
 	app_open_branch: "Abrir branch",
 	app_open_docs: "Leia a {#link}documentação{/link}",
 	app_save_button: "Salvar",
@@ -96,7 +105,7 @@ const CLI_EN_V = {
 };
 
 const CLI_PT_V = {
-	cli_files_count: PLURAL("{count} arquivo", "{count} arquivos"),
+	cli_files_count: PLURAL_ZERO("Nenhum arquivo", "{count} arquivo", "{count} arquivos"),
 	cli_lang_current: "Idioma: {lang}",
 };
 

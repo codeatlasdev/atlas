@@ -18,13 +18,13 @@
 	"viewers_devops_atlas_view_local_overrides": "Title of the atlas.local.yaml viewer: the file holds this machine's overrides of atlas.yaml.",
 	"viewers_devops_atlas_view_no_log_tab": "Text in a <span> element, in AtlasView (apps/desktop/src/lib/viewers/rich/AtlasView.svelte). Extracted by i18n:extract: refine this description on review.",
 	"viewers_devops_atlas_view_pre_command": "Text in a <span> element, in AtlasView (apps/desktop/src/lib/viewers/rich/AtlasView.svelte). {preCommand} is model.preCommand. Extracted by i18n:extract: refine this description on review.",
-	"viewers_devops_atlas_view_problems_count": "Chip in the atlas.yaml viewer: how many problems validation found (shown only when there is one).",
+	"viewers_devops_atlas_view_problems_count": "Chip in the atlas.yaml viewer: how many problems validation found (shown only when there is one). i18n-allow pt-zero: rendered under `{#if problems.length}` (AtlasView.svelte).",
 	"viewers_devops_atlas_view_restart": {
 		"description": "Button label in a <button> element, in AtlasView (apps/desktop/src/lib/viewers/rich/AtlasView.svelte). Extracted by i18n:extract: refine this description on review.",
 		"distinct": "Restart one service of the project; not the hostd restart."
 	},
 	"viewers_devops_atlas_view_restart_name": "Tooltip (title attribute) of a <button> element, in AtlasView (apps/desktop/src/lib/viewers/rich/AtlasView.svelte). {name} is s.name. Extracted by i18n:extract: refine this description on review.",
-	"viewers_devops_atlas_view_restarts": "How many times a running service has restarted, next to its state.",
+	"viewers_devops_atlas_view_restarts": "How many times a running service has restarted, next to its state. i18n-allow pt-zero: rendered only when `st.restarts` is truthy (AtlasView.svelte).",
 	"viewers_devops_atlas_view_session": "Text in a <span> element, in AtlasView (apps/desktop/src/lib/viewers/rich/AtlasView.svelte). Extracted by i18n:extract: refine this description on review.",
 	"viewers_devops_atlas_view_stack_running": "Chip in the atlas.yaml viewer: the project's stack is running.",
 	"viewers_devops_atlas_view_stack_stopped": "Chip in the atlas.yaml viewer: the project's stack is stopped.",
@@ -63,7 +63,7 @@
 	"viewers_devops_dockerfile_view_steps_count": "Count of instructions in a build stage of the Dockerfile viewer.",
 	"viewers_devops_dockerfile_view_unpinned": "Text in a <span> element, in DockerfileView (apps/desktop/src/lib/viewers/rich/DockerfileView.svelte). Extracted by i18n:extract: refine this description on review.",
 	"viewers_devops_dockerfile_view_warnings": "Heading of the Dockerfile viewer section that lists lint warnings.",
-	"viewers_devops_dockerfile_view_warnings_count": "Chip in the Dockerfile viewer header: how many lint warnings the file has.",
+	"viewers_devops_dockerfile_view_warnings_count": "Chip in the Dockerfile viewer header: how many lint warnings the file has. i18n-allow pt-zero: rendered under `{#if doc.warnings.length}` (DockerfileView.svelte).",
 	"viewers_devops_dockerfile_warn_add_local": "Dockerfile lint warning: ADD used for a local file.",
 	"viewers_devops_dockerfile_warn_apt_lists": "Dockerfile lint warning: apt-get install without removing /var/lib/apt/lists in the same RUN.",
 	"viewers_devops_dockerfile_warn_apt_recommends": "Dockerfile lint warning for a RUN that installs packages with apt-get.",
@@ -81,9 +81,9 @@
 	"viewers_devops_env_view_copy_key": "label prop of a <Copy> component, in EnvView (apps/desktop/src/lib/viewers/rich/EnvView.svelte). Extracted by i18n:extract: refine this description on review.",
 	"viewers_devops_env_view_copy_value": "label prop of a <Copy> component, in EnvView (apps/desktop/src/lib/viewers/rich/EnvView.svelte). Extracted by i18n:extract: refine this description on review.",
 	"viewers_devops_env_view_duplicate": "Chip on a variable that is defined more than once in the .env file.",
-	"viewers_devops_env_view_duplicated": "Chip in the .env viewer header: how many variables are defined more than once.",
+	"viewers_devops_env_view_duplicated": "Chip in the .env viewer header: how many variables are defined more than once. i18n-allow pt-zero: rendered under `{#if doc.duplicates.size}` (EnvView.svelte).",
 	"viewers_devops_env_view_empty": "Text in a <i> element, in EnvView (apps/desktop/src/lib/viewers/rich/EnvView.svelte). Extracted by i18n:extract: refine this description on review.",
-	"viewers_devops_env_view_error_lines_count": "Chip in the .env viewer header: lines that could not be read as KEY=value.",
+	"viewers_devops_env_view_error_lines_count": "Chip in the .env viewer header: lines that could not be read as KEY=value. i18n-allow pt-zero: rendered under `{#if invalid.length}` (EnvView.svelte).",
 	"viewers_devops_env_view_extra": "Text in a <span> element, in EnvView (apps/desktop/src/lib/viewers/rich/EnvView.svelte). Extracted by i18n:extract: refine this description on review.",
 	"viewers_devops_env_view_filter_variables": "Accessible name (aria-label, read by screen readers) of a <input> element, in EnvView (apps/desktop/src/lib/viewers/rich/EnvView.svelte). Extracted by i18n:extract: refine this description on review.",
 	"viewers_devops_env_view_hide_value": "Tooltip and accessible name of the eye button of one variable while its value is shown.",
@@ -132,5 +132,5 @@
 	"viewers_devops_workflow_view_steps_count": "Count of steps of a job in the workflow viewer.",
 	"viewers_devops_workflow_view_timeout": "Job timeout chip in the workflow viewer; {timeout} is in minutes.",
 	"viewers_devops_workflow_view_unknown_need": "Text in a <div> element, in WorkflowView (apps/desktop/src/lib/viewers/rich/WorkflowView.svelte). {job} is u.job; {need} is u.need. Extracted by i18n:extract: refine this description on review.",
-	"viewers_devops_workflow_view_unpinned_actions": "Warning in the workflow viewer: actions used by tag or branch instead of a version or commit SHA."
+	"viewers_devops_workflow_view_unpinned_actions": "Warning in the workflow viewer: actions used by tag or branch instead of a version or commit SHA. i18n-allow pt-zero: rendered under `{#if w.unpinned.length}` (WorkflowView.svelte)."
 }

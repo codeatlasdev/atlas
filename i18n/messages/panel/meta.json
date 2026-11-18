@@ -40,7 +40,7 @@
 	"panel_no_services_yet": "Tooltip (title attribute) of a <EmptyState> component, in Panel (apps/desktop/src/lib/panel/Panel.svelte). Extracted by i18n:extract: refine this description on review.",
 	"panel_nothing_to_run_yet": "Title of the panel when Atlas detected a stack but no service. {stack} is the detected stack name (\"Rust project\").",
 	"panel_ops_actions": "Accessible name (aria-label, read by screen readers) of a <button> element, in PanelOps (apps/desktop/src/lib/panel/PanelOps.svelte). Extracted by i18n:extract: refine this description on review.",
-	"panel_ops_activity_new": "Accessible name of the Activity button when it has an unread badge. {count} is the number of new rows.",
+	"panel_ops_activity_new": "Accessible name of the Activity button when it has an unread badge. {count} is the number of new rows. i18n-allow pt-zero: used only when the badge is non-zero (`badge ? ... : ...` in apps/desktop/src/lib/panel/PanelOps.svelte).",
 	"panel_resources": "Heading in a <h2> element, in Panel (apps/desktop/src/lib/panel/Panel.svelte). Extracted by i18n:extract: refine this description on review.",
 	"panel_service_card_name_state": "Accessible name of a service card. {name} is the service; {state} is its state word.",
 	"panel_service_card_view_logs": "Button label in a <button> element, in ServiceCard (apps/desktop/src/lib/panel/ServiceCard.svelte). Extracted by i18n:extract: refine this description on review.",

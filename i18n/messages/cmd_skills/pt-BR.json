@@ -26,14 +26,17 @@
 		{
 			"declarations": [
 				"input count",
+				"local countExact = count",
 				"local countPlural = count: plural"
 			],
 			"selectors": [
+				"countExact",
 				"countPlural"
 			],
 			"match": {
-				"countPlural=one": "{count} skill incluída no atlas v{version}",
-				"countPlural=*": "{count} skills incluídas no atlas v{version}"
+				"countExact=0, countPlural=*": "Nenhuma skill incluída no atlas v{version}",
+				"countExact=*, countPlural=one": "{count} skill incluída no atlas v{version}",
+				"countExact=*, countPlural=*": "{count} skills incluídas no atlas v{version}"
 			}
 		}
 	],
@@ -57,14 +60,17 @@
 		{
 			"declarations": [
 				"input total",
+				"local totalExact = total",
 				"local totalPlural = total: plural"
 			],
 			"selectors": [
+				"totalExact",
 				"totalPlural"
 			],
 			"match": {
-				"totalPlural=one": "{present}/{total} instalada  •  pasta: {dir}",
-				"totalPlural=*": "{present}/{total} instaladas  •  pasta: {dir}"
+				"totalExact=0, totalPlural=*": "{present}/{total} instaladas  •  pasta: {dir}",
+				"totalExact=*, totalPlural=one": "{present}/{total} instalada  •  pasta: {dir}",
+				"totalExact=*, totalPlural=*": "{present}/{total} instaladas  •  pasta: {dir}"
 			}
 		}
 	],

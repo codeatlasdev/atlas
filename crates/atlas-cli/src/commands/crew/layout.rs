@@ -124,19 +124,26 @@ pub fn unmask_hint(unit: &str) -> String {
 /// run on the server; anything else carries the server's own message.
 pub fn unit_write_error(code: i32, stderr: &str, file: &str) -> anyhow::Error {
     let unit = file.rsplit('/').next().unwrap_or(file);
+    let no_reason = atlas_i18n::t!("cmd_crew_no_reason_given");
     let why = stderr
         .lines()
         .rev()
         .find(|l| !l.trim().is_empty())
-        .unwrap_or("no reason given")
+        .unwrap_or(&no_reason)
         .trim();
     if code == UNMASK_FAILED {
-        anyhow::anyhow!(
-            "{unit} is masked on the server and Atlas could not unmask it ({why}). Run on the server: {}, then retry",
-            unmask_command(unit)
-        )
+        anyhow::anyhow!(atlas_i18n::t!(
+            "cmd_crew_unit_masked",
+            unit = unit,
+            why = why,
+            command = unmask_command(unit)
+        ))
     } else {
-        anyhow::anyhow!("writing {unit} failed: {why}")
+        anyhow::anyhow!(atlas_i18n::t!(
+            "cmd_crew_unit_write_failed",
+            unit = unit,
+            why = why
+        ))
     }
 }
 

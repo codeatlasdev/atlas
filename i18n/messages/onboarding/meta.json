@@ -1,0 +1,9 @@
+{
+	"onboarding_welcome_find_file_hint": "Paragraph in a <p> element, in Welcome (apps/desktop/src/lib/components/Welcome.svelte). Extracted by i18n:extract: refine this description on review.",
+	"onboarding_welcome_nothing_open_here": "Heading in a <h2> element, in Welcome (apps/desktop/src/lib/components/Welcome.svelte). Extracted by i18n:extract: refine this description on review.",
+	"onboarding_welcome_palette_hint": "Paragraph in a <p> element, in Welcome (apps/desktop/src/lib/components/Welcome.svelte). Extracted by i18n:extract: refine this description on review.",
+	"onboarding_welcome_pick_a_file": "Heading in a <h2> element, in Welcome (apps/desktop/src/lib/components/Welcome.svelte). Extracted by i18n:extract: refine this description on review.",
+	"onboarding_welcome_pick_up_where_you_left": "Paragraph in a <p> element, in Welcome (apps/desktop/src/lib/components/Welcome.svelte). Extracted by i18n:extract: refine this description on review.",
+	"onboarding_welcome_shortcuts": "Button label in a <button> element, in Welcome (apps/desktop/src/lib/components/Welcome.svelte). Extracted by i18n:extract: refine this description on review.",
+	"onboarding_welcome_take_the_tour": "Button label in a <button> element, in Welcome (apps/desktop/src/lib/components/Welcome.svelte). Extracted by i18n:extract: refine this description on review."
+}

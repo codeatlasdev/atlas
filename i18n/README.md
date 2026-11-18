@@ -132,17 +132,21 @@ aside) is a warning. pt-PT words in prose warn. The optional field `translation:
 person reviewed; the site shows a banner for it (an outdated page shows the outdated banner instead), and the reviewer
 removes the line. Any other value is an error.
 
-### Ratchets: a change may not add offenders
+### Ratchets: nothing above the baseline, anywhere
 
 A ratchet is a scanner for something that exists today and must not spread (hardcoded text, shortcuts spelled by hand,
-platform sniffing, flagged phrases in existing prose). It judges the **change**, not a snapshot:
+platform sniffing, flagged phrases in existing prose). **The baseline judges every file, in every mode** (a change under
+review, a push to main, a manual run): a file with more offenders than its baseline line allows fails, and so does a
+baseline line above the real count. Counting is one pass over the scan the check does anyway (about a second for the
+whole repository). Why every file and not only the ones a change touches: the ratchet used to be seeded from a branch that
+did not yet have two merged screens, and nothing looked at untouched files afterwards, so 54 offenders sat on main
+unnoticed until a full run.
 
-- **With a diff base** (the normal case: a git checkout; the resolver is `scripts/lib/base.ts`, shared with `check:changed` and CI), for every file the
-  change touches (committed, staged, unstaged, untracked; renames followed) the offenders of the file at the
-  merge-base are counted with the same detector, and only the ones the change **adds** are errors, reported with
-  `file:line`. Moving, reordering or re-wrapping old code adds nothing; one more copy of a string that was already there
-  does. A new file starts at zero. Files the change does not touch are not looked at at all, so when main adds screens
-  there is nothing to re-snapshot, and an old file with a hundred offenders never fails someone else's PR.
+- **With a diff base** (the normal case: a git checkout; the resolver is `scripts/lib/base.ts`, shared with `check:changed` and CI), the files the
+  change touches (committed, staged, unstaged, untracked; renames followed) also report what the change **adds**: the
+  offenders of the file at the merge-base are counted with the same detector, and only the ones the change adds are
+  reported, with `file:line`. Moving, reordering or re-wrapping old code adds nothing; one more copy of a string that was
+  already there does. A new file starts at zero. A renamed file is allowed what its old path was; `i18n:fix` moves the line.
 - **`hardcoded-baseline.jsonl`** is then the shrinking floor: today's count per file, kept by `bun run i18n:fix`, which
   only lowers it (`--baseline` starts a section that does not exist yet). A local merge does not conflict on it
   (`merge=union` in `.gitattributes`; GitHub's own merge ignores the attribute, and the merge train merges `origin/main`
@@ -154,12 +158,10 @@ platform sniffing, flagged phrases in existing prose). It judges the **change**,
   `i18n:fix --prune-baseline` deletes the lines at 0 but keeps one per ratchet (a ratchet with no line has no section,
   and a new section is not checked for growth); run it alone, on a branch that does nothing else. A change that **raises** a count fails with
   `baseline-grew` ("fix the offenders, do not snapshot them"). A baseline **above** reality for a
-  file (two branches lowered the same file, a file renamed) fails in every mode, touched or not, because a count above
-  reality lets offenders come back unnoticed (`<ratchet>-baseline`: run `bun run i18n:fix`). Real offenders **above**
-  the baseline in a file the change did not touch are not looked at in diff mode.
-- **Without a diff base** (not a git checkout, no `origin/main` or `main`, or CI with no base) the committed baseline is
-  the judge, as it was before: a file may not exceed its count (and a count above reality is an error that `i18n:fix`
-  clears, as in diff mode).
+  file (two branches lowered the same file, a file deleted) fails because a count above reality lets offenders come back
+  unnoticed (`<ratchet>-baseline`: run `bun run i18n:fix`).
+- **Without a diff base** (not a git checkout, no `origin/main` or `main`, or CI with no base) the baseline alone judges
+  every file. CI runs the check on every push to main even when its tree was tested in its pull request.
 
 `bun run i18n:check` says which mode it used (stderr; `ratchets` in `--json`). Where the base comes from, best first:
 an explicit `ATLAS_BASE=<ref or sha>` (a bad one is an error); in CI a pull request uses the first parent of the merge

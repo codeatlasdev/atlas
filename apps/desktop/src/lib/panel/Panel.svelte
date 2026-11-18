@@ -111,7 +111,7 @@
 			<EmptyState
 				icon={FileCog}
 				title={m.panel_nothing_to_run_yet({ stack: stackKind(empty.detected) })}
-				description={m.panel_atlas_recognised_this_folder_but()}
+				description={m.panel_atlas_recognized_this_folder_but()}
 			>
 				{#snippet actions()}
 					<Button variant="glass" onclick={openConfig}>{m.panel_set_up_services()}</Button>
@@ -123,7 +123,7 @@
 			<EmptyState
 				icon={FileCog}
 				title={m.panel_no_services_yet()}
-				description={m.panel_atlas_did_not_recognise_a()}
+				description={m.panel_atlas_did_not_recognize_a()}
 			>
 				{#snippet actions()}
 					<Button variant="glass" onclick={openConfig}>{m.panel_set_up_services()}</Button>

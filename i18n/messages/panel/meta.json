@@ -1,6 +1,6 @@
 {
-	"panel_atlas_did_not_recognise_a": "description prop (help line) of a <EmptyState> component, in Panel (apps/desktop/src/lib/panel/Panel.svelte). Extracted by i18n:extract: refine this description on review.",
-	"panel_atlas_recognised_this_folder_but": "description prop (help line) of a <EmptyState> component, in Panel (apps/desktop/src/lib/panel/Panel.svelte). Extracted by i18n:extract: refine this description on review.",
+	"panel_atlas_did_not_recognize_a": "description prop (help line) of a <EmptyState> component, in Panel (apps/desktop/src/lib/panel/Panel.svelte). Extracted by i18n:extract: refine this description on review.",
+	"panel_atlas_recognized_this_folder_but": "description prop (help line) of a <EmptyState> component, in Panel (apps/desktop/src/lib/panel/Panel.svelte). Extracted by i18n:extract: refine this description on review.",
 	"panel_card_actions_logs_tip": "Tooltip of the logs button of a service card. {key} is the Enter key name.",
 	"panel_card_actions_restart_tip": "Tooltip of the restart button of a service card. {key} is the R key.",
 	"panel_card_actions_stop": "Name and tooltip of the stop button of a service card.",
@@ -60,6 +60,7 @@
 	"panel_state_running": "Service state word; also the hint of the services tile while the stack runs.",
 	"panel_state_starting": "Service state word.",
 	"panel_state_stopped": "Service state word; also the hint of the services tile while the stack is stopped.",
+	"panel_state_suspended": "Service state word: paused on purpose by an atlas action; also the state of a tunnel.",
 	"panel_state_timeline_label": "Accessible name of the state timeline chart. {minutes} is the window length.",
 	"panel_state_timeline_open_logs": "Tooltip of a lane of the state timeline. {name} is the service.",
 	"panel_state_unhealthy": "Service state word: the process runs but its health check fails.",

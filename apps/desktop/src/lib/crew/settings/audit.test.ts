@@ -11,7 +11,10 @@ import {
 	auditSummary,
 	filterAudit,
 	parseAudit,
+	TASK_STATE_MESSAGES,
+	taskStateLabel,
 } from "./audit.ts";
+import { rustEnumValues } from "../../panel/stateLabel.test.ts";
 
 describe("parseAudit: the real crewmate_audit reply", () => {
 	test("reads every entry of the reply, newest first as sent", () => {
@@ -122,5 +125,22 @@ describe("auditCopyText / auditKindLabel", () => {
 	test("labels are human", () => {
 		expect(auditKindLabel("approval_decision")).toBe("Approval decided");
 		expect(auditKindLabel("zzz")).toBe("zzz");
+	});
+});
+
+describe("task states: the values hostd records", () => {
+	test("every TaskState variant has a message, and the fixture's states are among them", () => {
+		const sent = rustEnumValues("crates/atlas-host/src/crew/store/mod.rs", "TaskState");
+		expect(sent).toContain("waiting_action");
+		for (const s of sent)
+			expect(Object.hasOwn(TASK_STATE_MESSAGES, s), `no message for task state ${s}`).toBe(true);
+		for (const e of fixture.entries) if (e.kind === "task_finished") expect(sent).toContain(e.state);
+	});
+
+	test("a state this build does not know shows as sent", () => {
+		expect(taskStateLabel("exploded")).toBe("exploded");
+		expect(auditSummary({ seq: 1, ts: 1, kind: "task_finished", state: "exploded" })).toBe(
+			"Task finished: exploded",
+		);
 	});
 });

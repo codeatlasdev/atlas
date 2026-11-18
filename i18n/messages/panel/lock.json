@@ -1,7 +1,7 @@
 {
   "pt-BR": {
-    "panel_atlas_did_not_recognise_a": "a82d4d035ac9",
-    "panel_atlas_recognised_this_folder_but": "0b794cd013f6",
+    "panel_atlas_did_not_recognize_a": "40da2a115d40",
+    "panel_atlas_recognized_this_folder_but": "5cd73c24cbc4",
     "panel_card_actions_logs_tip": "007edb096070",
     "panel_card_actions_restart_tip": "a32112345aa7",
     "panel_card_actions_stop": "4a784e3e95a0",
@@ -61,6 +61,7 @@
     "panel_state_running": "79d116a0c160",
     "panel_state_starting": "29f06debacd5",
     "panel_state_stopped": "15b0fb141b76",
+    "panel_state_suspended": "475cb44fc2a3",
     "panel_state_timeline_label": "e33a52060249",
     "panel_state_timeline_open_logs": "2c90afca067e",
     "panel_state_unhealthy": "9f3ac5ebd342",

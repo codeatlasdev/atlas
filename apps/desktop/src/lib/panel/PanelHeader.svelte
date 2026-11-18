@@ -10,6 +10,7 @@
 	import { store, type Live } from "#lib/stores/projects.svelte.ts";
 	import { upLabel } from "./metrics.ts";
 	import { portsLabel } from "./overview.ts";
+	import { stateLabel } from "./stateLabel.ts";
 	import { m } from "#lib/i18n/m.ts";
 
 	/** Title, facts line, setup row and the in-flight operation/tunnel strip of the panel. */
@@ -74,7 +75,7 @@
 		{#if live?.tunnel}
 			<div class="op">
 				<Network size={13} />
-				{m.panel_header_tunnel_state({ state: live.tunnel.state })}
+				{m.panel_header_tunnel_state({ state: stateLabel(live.tunnel.state) })}
 				<span class="mono detail"
 					>:{live.tunnel.local_port} → {live.tunnel.ssh_host}{live.tunnel.remote
 						? `:${live.tunnel.remote}`

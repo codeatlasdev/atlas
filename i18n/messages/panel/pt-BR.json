@@ -1,6 +1,6 @@
 {
-	"panel_atlas_did_not_recognise_a": "O Atlas não reconheceu uma stack nesta pasta. Adicione os serviços que quiser na aba Config e o Atlas os inicia, monitora e mostra em gráficos. Nada é gravado até você salvar.",
-	"panel_atlas_recognised_this_folder_but": "O Atlas reconheceu esta pasta, mas não sabe o que executar. Adicione os serviços que quiser na aba Config e o Atlas os inicia, monitora e mostra em gráficos. Nada é gravado até você salvar.",
+	"panel_atlas_did_not_recognize_a": "O Atlas não reconheceu uma stack nesta pasta. Adicione os serviços que quiser na aba Config e o Atlas os inicia, monitora e mostra em gráficos. Nada é gravado até você salvar.",
+	"panel_atlas_recognized_this_folder_but": "O Atlas reconheceu esta pasta, mas não sabe o que executar. Adicione os serviços que quiser na aba Config e o Atlas os inicia, monitora e mostra em gráficos. Nada é gravado até você salvar.",
 	"panel_card_actions_logs_tip": "Logs ({key})",
 	"panel_card_actions_restart_tip": "Reiniciar ({key})",
 	"panel_card_actions_stop": "Parar",
@@ -108,6 +108,7 @@
 	"panel_state_running": "em execução",
 	"panel_state_starting": "iniciando",
 	"panel_state_stopped": "parado",
+	"panel_state_suspended": "pausado",
 	"panel_state_timeline_label": "Estado dos serviços nos últimos {minutes} minutos",
 	"panel_state_timeline_open_logs": "{name}: abrir logs",
 	"panel_state_unhealthy": "não saudável",

@@ -1,6 +1,6 @@
 {
-	"panel_atlas_did_not_recognise_a": "Atlas did not recognise a stack in this folder. Add the services you want in the Config tab and Atlas starts, watches and charts them. Nothing is written until you save.",
-	"panel_atlas_recognised_this_folder_but": "Atlas recognised this folder but could not tell what to run. Add the services you want in the Config tab and Atlas starts, watches and charts them. Nothing is written until you save.",
+	"panel_atlas_did_not_recognize_a": "Atlas did not recognize a stack in this folder. Add the services you want in the Config tab and Atlas starts, watches and charts them. Nothing is written until you save.",
+	"panel_atlas_recognized_this_folder_but": "Atlas recognized this folder but could not tell what to run. Add the services you want in the Config tab and Atlas starts, watches and charts them. Nothing is written until you save.",
 	"panel_card_actions_logs_tip": "Logs ({key})",
 	"panel_card_actions_restart_tip": "Restart ({key})",
 	"panel_card_actions_stop": "Stop",
@@ -108,6 +108,7 @@
 	"panel_state_running": "running",
 	"panel_state_starting": "starting",
 	"panel_state_stopped": "stopped",
+	"panel_state_suspended": "suspended",
 	"panel_state_timeline_label": "Service state over the last {minutes} minutes",
 	"panel_state_timeline_open_logs": "{name}: open logs",
 	"panel_state_unhealthy": "unhealthy",

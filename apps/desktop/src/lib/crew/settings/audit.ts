@@ -122,6 +122,24 @@ function inputText(input: unknown): string {
 	return JSON.stringify(input);
 }
 
+/**
+ * Every state hostd can record for a task (`TaskState` in `crates/atlas-host/src/crew/store/mod.rs`, snake_case).
+ * The wire values stay English; `audit.test.ts` reads the Rust enum, so a new variant fails there until it has a message.
+ */
+export const TASK_STATE_MESSAGES: Record<string, () => string> = {
+	queued: () => m.crew_settings_audit_task_state_queued(),
+	running: () => m.crew_settings_audit_task_state_running(),
+	done: () => m.crew_settings_audit_task_state_done(),
+	failed: () => m.crew_settings_audit_task_state_failed(),
+	cancelled: () => m.crew_settings_audit_task_state_cancelled(),
+	waiting_action: () => m.crew_settings_audit_task_state_waiting_action(),
+};
+
+/** A task state as a person reads it; one this build does not know shows as sent. */
+export function taskStateLabel(state: string): string {
+	return Object.hasOwn(TASK_STATE_MESSAGES, state) ? TASK_STATE_MESSAGES[state]() : state;
+}
+
 /** Who answered an approval, readable: `desktop`, `phone:<node>`, `telegram:<chat>`, `none`. */
 function answerer(by: string | undefined): string {
 	if (!by || by === "none") return m.crew_settings_audit_answer_nobody();
@@ -167,7 +185,7 @@ export function auditSummary(e: AuditEntry): string {
 		case "task_started":
 			return clip(m.crew_settings_audit_task_started({ prompt: e.prompt ?? "" }));
 		case "task_finished": {
-			const state = e.state ?? "?";
+			const state = taskStateLabel(e.state ?? "?");
 			return e.error
 				? m.crew_settings_audit_task_finished_error({ state, error: String(e.error) })
 				: m.crew_settings_audit_task_finished({ state });

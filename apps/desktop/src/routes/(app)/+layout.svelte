@@ -9,8 +9,6 @@
 	import AskDialog from "#lib/components/AskDialog.svelte";
 	import CrashProbe from "#lib/errors/CrashProbe.svelte";
 	import Contain from "#lib/errors/Contain.svelte";
-	import CrashCard from "#lib/errors/CrashCard.svelte";
-	import { crashCards } from "#lib/errors/crashCard.svelte.ts";
 	import ErrorToasts from "#lib/errors/ErrorToasts.svelte";
 	import LazyOpen from "#lib/components/LazyOpen.svelte";
 	import DevLine from "#lib/components/DevLine.svelte";
@@ -56,9 +54,15 @@
 	// A tiling WM (Hyprland, Sway, i3) owns move, resize and close: no caption buttons there (#269).
 	const captionButtons = customChrome && !document.documentElement.classList.contains("tiling-wm");
 
+	// The crash card only exists on the launch after a crash: its store, text and view load only when Rust says there is one.
+	let crashPending = $state(false);
+
 	onMount(() => {
 		bootMark("layout:mounted");
-		void crashCards.load();
+		void import("#lib/errors/crashCard.svelte.ts").then(async ({ crashCards }) => {
+			await crashCards.load();
+			crashPending = !!crashCards.card;
+		});
 		const stopGate = startReadyGate();
 		const stopSession = startSession();
 		return () => {
@@ -150,5 +154,5 @@
 <TabSwitcher />
 <CornerStack />
 <ErrorToasts />
-<CrashCard />
+<LazyOpen when={crashPending} load={() => import("#lib/errors/CrashCard.svelte")} />
 {#if captionButtons}<WindowControls />{/if}

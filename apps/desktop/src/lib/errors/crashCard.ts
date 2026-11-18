@@ -40,5 +40,9 @@ export function crashReport(card: CrashCard): ErrorReport {
 		stack: "",
 		where: "earlier session",
 		kind: card.kind,
+		headline:
+			card.kind === "crash"
+				? { title: m.errors_crash_card_title_crash(), hint: m.errors_crash_card_hint_crash() }
+				: { title: m.errors_crash_card_title_hostd_exited(), hint: m.errors_crash_card_hint_hostd_exited() },
 	};
 }

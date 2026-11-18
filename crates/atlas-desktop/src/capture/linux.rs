@@ -1,4 +1,4 @@
-//! Stills on Linux: `grim` against the private sway of an agent instance (#282, #280).
+//! Stills on Linux (and the glue of recording and live frames): `grim` against the private sway of an agent instance (#282, #280).
 //!
 //! An agent instance (`atlas desktop --agent`) renders on a headless compositor nobody can see, so its pixels are
 //! read from that compositor directly: no portal, no consent prompt, nothing of the user's session involved. That is
@@ -16,7 +16,7 @@ use std::process::Command;
 use serde_json::{Value, json};
 use tauri::{AppHandle, Manager};
 
-use super::request;
+use super::{linux_rec, request};
 
 /// A rectangle in the compositor's logical pixels.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
@@ -98,7 +98,7 @@ fn require_private_display() -> Result<(), String> {
 fn tool_error(tool: &str, e: &std::io::Error) -> String {
     if e.kind() == std::io::ErrorKind::NotFound {
         format!(
-            "{tool} not found: stills need grim and sway (Arch: `pacman -S sway grim`; Debian/Ubuntu: `apt install sway grim`)"
+            "{tool} not found: stills, recordings and the live view need grim and sway (Arch: `pacman -S sway grim`; Debian/Ubuntu: `apt install sway grim`)"
         )
     } else {
         format!("{tool}: {e}")
@@ -123,13 +123,18 @@ pub fn own_window() -> Result<Rect, String> {
         .ok_or_else(|| "the compositor has no window of this process (is it shown?)".into())
 }
 
-/// Write the PNG of `rect` (compositor logical pixels) to `out`.
-pub fn grim(rect: Rect, out: &Path) -> Result<(), String> {
+/// Run `grim -g <rect> <args> <dest>` and return what it wrote to stdout (`dest` is `-`) or nothing (a file path).
+fn grim_run(
+    rect: Rect,
+    args: &[&str],
+    dest: impl AsRef<std::ffi::OsStr>,
+) -> Result<Vec<u8>, String> {
     require_private_display()?;
     let res = Command::new("grim")
+        .args(args)
         .arg("-g")
         .arg(rect.geometry())
-        .arg(out)
+        .arg(dest)
         .output()
         .map_err(|e| tool_error("grim", &e))?;
     if !res.status.success() {
@@ -138,6 +143,25 @@ pub fn grim(rect: Rect, out: &Path) -> Result<(), String> {
             String::from_utf8_lossy(&res.stderr).trim()
         ));
     }
+    Ok(res.stdout)
+}
+
+/// Write the PNG of `rect` (compositor logical pixels) to `out`.
+pub fn grim(rect: Rect, out: &Path) -> Result<(), String> {
+    grim_run(rect, &[], out).map(drop)
+}
+
+/// One frame of `rect` as bytes: `["-t", "ppm"]` for the recorder, `["-t", "jpeg", "-q", "60"]` for the live view.
+pub fn grim_frame(rect: Rect, args: &[&str]) -> Result<Vec<u8>, String> {
+    grim_run(rect, args, "-")
+}
+
+/// Resize the main window to `(w, h)` logical px and give layout and the compositor a beat to settle.
+pub fn resize_window(app: &AppHandle, (w, h): (u32, u32)) -> Result<(), String> {
+    let win = app.get_window("main").ok_or("no window \"main\"")?;
+    win.set_size(tauri::LogicalSize::new(f64::from(w), f64::from(h)))
+        .map_err(|e| e.to_string())?;
+    std::thread::sleep(std::time::Duration::from_millis(400));
     Ok(())
 }
 
@@ -145,8 +169,8 @@ pub fn grim(rect: Rect, out: &Path) -> Result<(), String> {
 /// the origin matters here).
 pub type Region = (f64, f64, f64, f64, f64);
 
-/// The main webview (a CSS-px region of it, or all of it) into a PNG, read from the instance's compositor.
-pub fn snapshot_to(app: &AppHandle, region: Option<Region>, out: &Path) -> Result<(), String> {
+/// The main webview's origin in the compositor's logical pixels, and the window it sits in.
+fn view_origin(app: &AppHandle) -> Result<((i32, i32), Rect), String> {
     let win = own_window()?;
     let view = app.get_webview("main").ok_or("no webview \"main\"")?;
     let scale = view.window().scale_factor().map_err(|e| e.to_string())?;
@@ -155,37 +179,39 @@ pub fn snapshot_to(app: &AppHandle, region: Option<Region>, out: &Path) -> Resul
         win.x + (f64::from(pos.x) / scale).round() as i32,
         win.y + (f64::from(pos.y) / scale).round() as i32,
     );
+    Ok((origin, win))
+}
+
+/// The main webview as the compositor shows it: what a page still and the live view capture. The webview fills the
+/// window below its own origin; the compositor's window size is the truth (`WebviewWindow::size` left out the bottom
+/// 27 px in a live run).
+pub fn view_rect(app: &AppHandle) -> Result<Rect, String> {
+    let (origin, win) = view_origin(app)?;
+    Ok(Rect {
+        x: origin.0,
+        y: origin.1,
+        w: (win.x + win.w - origin.0).max(1),
+        h: (win.y + win.h - origin.1).max(1),
+    })
+}
+
+/// The main webview (a CSS-px region of it, or all of it) into a PNG, read from the instance's compositor.
+pub fn snapshot_to(app: &AppHandle, region: Option<Region>, out: &Path) -> Result<(), String> {
     let rect = match region {
-        Some((x, y, w, h, _)) => region_rect(origin, (x, y, w, h)),
-        // The webview fills the window below its own origin; the compositor's window size is the truth
-        // (`WebviewWindow::size` left out the bottom 27 px in a live run).
-        None => Rect {
-            x: origin.0,
-            y: origin.1,
-            w: (win.x + win.w - origin.0).max(1),
-            h: (win.y + win.h - origin.1).max(1),
-        },
+        Some((x, y, w, h, _)) => region_rect(view_origin(app)?.0, (x, y, w, h)),
+        None => view_rect(app)?,
     };
     grim(rect, out)
 }
 
 /// `capture_shot`: the window as the compositor shows it (`window`) or the page only (`snapshot`).
 pub fn shot(app: &AppHandle, req: request::Shot) -> Result<Value, String> {
-    if req.window != "main" {
-        return Err(format!(
-            "stills on Linux are of the main window, not {:?}",
-            req.window
-        ));
-    }
+    main_window_only(&req.window, "stills")?;
     if let Some(dir) = req.out.parent() {
         std::fs::create_dir_all(dir).map_err(|e| e.to_string())?;
     }
-    if let Some((w, h)) = req.size {
-        let win = app.get_window("main").ok_or("no window \"main\"")?;
-        win.set_size(tauri::LogicalSize::new(f64::from(w), f64::from(h)))
-            .map_err(|e| e.to_string())?;
-        // Layout and the compositor need a beat to settle at the new size.
-        std::thread::sleep(std::time::Duration::from_millis(400));
+    if let Some(size) = req.size {
+        resize_window(app, size)?;
     }
     match req.mode {
         request::ShotMode::Window => grim(own_window()?, &req.out)?,
@@ -195,6 +221,93 @@ pub fn shot(app: &AppHandle, req: request::Shot) -> Result<Value, String> {
     Ok(
         json!({ "out": req.out, "bytes": meta.len(), "mode": format!("{:?}", req.mode).to_lowercase() }),
     )
+}
+
+fn main_window_only(window: &str, what: &str) -> Result<(), String> {
+    if window == "main" {
+        return Ok(());
+    }
+    Err(format!(
+        "{what} on Linux are of the main window, not {window:?}"
+    ))
+}
+
+/// `capture_start`: film the window (as the compositor shows it, title row included) until `capture_stop`. The
+/// first frame is taken here, so a missing `grim`/`ffmpeg`, or a window that is not shown, fails this call.
+pub fn start(
+    app: &AppHandle,
+    state: &super::Capture,
+    req: request::Start,
+) -> Result<Value, String> {
+    main_window_only(&req.window, "recordings")?;
+    require_private_display()?;
+    let mut active = state.active.lock();
+    if active.is_some() {
+        return Err("a recording is already running; stop it first (capture_stop)".into());
+    }
+    if let Some(dir) = req.out.parent() {
+        std::fs::create_dir_all(dir).map_err(|e| e.to_string())?;
+    }
+    if let Some(size) = req.size {
+        resize_window(app, size)?;
+    }
+    let rect = own_window()?;
+    let args: &'static [&'static str] = if req.cursor {
+        &["-t", "ppm", "-c"]
+    } else {
+        &["-t", "ppm"]
+    };
+    let first = grim_frame(rect, args)?;
+    let rec = linux_rec::Recorder::start(first, move || grim_frame(rect, args), req.fps, &req.out)?;
+    let (width, height) = rec.pixels;
+    let started_epoch_ms = rec.started_epoch_ms;
+    *active = Some(rec);
+    Ok(json!({
+        "out": req.out,
+        "width": width,
+        "height": height,
+        "window": { "width": rect.w, "height": rect.h },
+        "fps": req.fps,
+        "started_epoch_ms": started_epoch_ms,
+    }))
+}
+
+/// `capture_stop`: close the file and report what was captured (`frames` are grabs, the file is constant `fps`).
+pub fn stop(state: &super::Capture) -> Result<Value, String> {
+    let rec = state
+        .active
+        .lock()
+        .take()
+        .ok_or("no recording is running")?;
+    let (out, fps, (width, height), started_epoch_ms) =
+        (rec.out.clone(), rec.fps, rec.pixels, rec.started_epoch_ms);
+    let wall_ms = rec.started.elapsed().as_millis() as u64;
+    let tally = rec.stop()?;
+    let bytes = std::fs::metadata(&out).map_err(|e| e.to_string())?.len();
+    let duration_ms = tally.duration_ms();
+    Ok(json!({
+        "out": out,
+        "width": width,
+        "height": height,
+        "fps": fps,
+        "frames": tally.frames,
+        "duration_ms": duration_ms,
+        "wall_ms": wall_ms,
+        "max_gap_ms": tally.max_gap_ms,
+        "avg_fps": if duration_ms > 0 { tally.frames as f64 * 1000.0 / duration_ms as f64 } else { 0.0 },
+        "bytes": bytes,
+        "first_frame_offset_ms": tally.first_ms,
+        "started_epoch_ms": started_epoch_ms,
+    }))
+}
+
+pub fn status(state: &super::Capture) -> Value {
+    let a = state.active.lock();
+    json!({
+        "recording": a.is_some(),
+        "out": a.as_ref().map(|r| r.out.to_string_lossy().into_owned()),
+        "elapsed_ms": a.as_ref().map(|r| r.started.elapsed().as_millis() as u64),
+    })
 }
 
 #[cfg(test)]

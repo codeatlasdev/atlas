@@ -1,8 +1,9 @@
 /**
- * Pure parser for `atlas crew install` stdout markers.
+ * Pure parser for `atlas crew install` stdout markers, and the checklist those phases make.
  * The CLI emits `step: <key>` lines (mapped to UI phases) and one `user: <name>` line naming the service user.
- * No imports — stays bun-testable without Svelte/Tauri.
+ * Imports only the message catalog, so it stays bun-testable without Svelte/Tauri.
  */
+import { m } from "#lib/i18n/m.ts";
 
 /** `signin` is Atlas Desktop's own first step (reaching the server, with the password once if need be); the CLI never prints it. */
 export type InstallPhase = "signin" | "check" | "install" | "user" | "service" | "ssh" | "browsers" | "done";
@@ -15,15 +16,15 @@ const PHASES: InstallPhase[] = ["check", "install", "user", "service", "ssh", "b
  * Returns null for all other lines (progress output, errors, etc.).
  */
 export function parseInstallLine(line: string): InstallPhase | null {
-	const m = line.match(/^step: (\w+)/);
-	if (!m) return null;
-	return PHASES.includes(m[1] as InstallPhase) ? (m[1] as InstallPhase) : null;
+	const hit = line.match(/^step: (\w+)/);
+	if (!hit) return null;
+	return PHASES.includes(hit[1] as InstallPhase) ? (hit[1] as InstallPhase) : null;
 }
 
 /** The `user: <name>` marker: the service user hostd runs as (an existing `atlas-bot` is reused). Null for other lines. */
 export function parseInstallUser(line: string): string | null {
-	const m = line.match(/^user: ([a-z_][a-z0-9_-]*)\s*$/);
-	return m ? m[1] : null;
+	const hit = line.match(/^user: ([a-z_][a-z0-9_-]*)\s*$/);
+	return hit ? hit[1] : null;
 }
 
 export type InstallStep = {
@@ -33,36 +34,68 @@ export type InstallStep = {
 	detail: string;
 };
 
-/** Ordered steps for the progress checklist UI. */
-export const INSTALL_STEPS: InstallStep[] = [
-	{ phase: "signin", label: "Signing in", detail: "Opens an SSH connection to the server." },
-	{
-		phase: "check",
-		label: "Checking the server",
-		detail: "Looks at the system, systemd and sudo. Changes nothing.",
-	},
-	{ phase: "install", label: "Installing Atlas", detail: "Downloads Atlas onto the server." },
-	{ phase: "user", label: "Creating the service user", detail: "A separate user your crew runs as." },
-	{
-		phase: "service",
-		label: "Starting the service",
-		detail: "Atlas runs as a systemd service and restarts itself.",
-	},
-	{ phase: "ssh", label: "Configuring SSH access", detail: "Lets this computer connect to that user." },
-	{ phase: "done", label: "Connecting", detail: "Adds the server to your list." },
-];
+/** The name and the one-line detail of a phase, in the app's language. */
+function describePhase(phase: InstallPhase): InstallStep {
+	switch (phase) {
+		case "signin":
+			return {
+				phase,
+				label: m.crew_onboarding_install_signin_label(),
+				detail: m.crew_onboarding_install_signin_detail(),
+			};
+		case "check":
+			return {
+				phase,
+				label: m.crew_onboarding_install_check_label(),
+				detail: m.crew_onboarding_install_check_detail(),
+			};
+		case "install":
+			return {
+				phase,
+				label: m.crew_onboarding_install_install_label(),
+				detail: m.crew_onboarding_install_install_detail(),
+			};
+		case "user":
+			return {
+				phase,
+				label: m.crew_onboarding_install_user_label(),
+				detail: m.crew_onboarding_install_user_detail(),
+			};
+		case "service":
+			return {
+				phase,
+				label: m.crew_onboarding_install_service_label(),
+				detail: m.crew_onboarding_install_service_detail(),
+			};
+		case "ssh":
+			return {
+				phase,
+				label: m.crew_onboarding_install_ssh_label(),
+				detail: m.crew_onboarding_install_ssh_detail(),
+			};
+		case "browsers":
+			return {
+				phase,
+				label: m.crew_onboarding_install_browsers_label(),
+				detail: m.crew_onboarding_install_browsers_detail(),
+			};
+		case "done":
+			return {
+				phase,
+				label: m.crew_onboarding_install_done_label(),
+				detail: m.crew_onboarding_install_done_detail(),
+			};
+	}
+}
 
-/** The checklist of an install: `browsers` (the capture browsers, `--browsers`) is a step only when it was asked for. */
+/** The phases of an install in order; `browsers` (the capture browsers, `--browsers`) is a step only when it was asked for. */
+export function installPhases(withBrowsers: boolean): InstallPhase[] {
+	return withBrowsers
+		? ["signin", "check", "install", "user", "service", "ssh", "browsers", "done"]
+		: ["signin", "check", "install", "user", "service", "ssh", "done"];
+}
+
+/** The checklist of an install, in order, worded in the app's language. */
 export function installSteps(withBrowsers: boolean): InstallStep[] {
-	if (!withBrowsers) return INSTALL_STEPS;
-	const at = INSTALL_STEPS.findIndex((s) => s.phase === "done");
-	return [
-		...INSTALL_STEPS.slice(0, at),
-		{
-			phase: "browsers",
-			label: "Installing screenshot browsers",
-			detail: "Chromium and WebKit, for screenshots of UI work.",
-		},
-		...INSTALL_STEPS.slice(at),
-	];
+	return installPhases(withBrowsers).map(describePhase);
 }

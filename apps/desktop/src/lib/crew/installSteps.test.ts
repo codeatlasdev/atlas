@@ -1,12 +1,6 @@
 // @ts-nocheck
 import { describe, test, expect } from "bun:test";
-import {
-	parseInstallLine,
-	parseInstallUser,
-	INSTALL_STEPS,
-	installSteps,
-	type InstallPhase,
-} from "./installSteps.ts";
+import { parseInstallLine, parseInstallUser, installSteps, type InstallPhase } from "./installSteps.ts";
 
 describe("parseInstallLine", () => {
 	test("returns null for non-marker lines", () => {
@@ -34,7 +28,8 @@ describe("parseInstallLine", () => {
 	});
 
 	// "signin" is the desktop's own first step: the CLI never prints a marker for it, so it cannot be parsed.
-	test("INSTALL_STEPS starts with the desktop's sign-in and covers the six CLI phases", () => {
+	test("the checklist starts with the desktop's sign-in and covers the six CLI phases", () => {
+		const INSTALL_STEPS = installSteps(false);
 		expect(INSTALL_STEPS).toHaveLength(7);
 		const phases = INSTALL_STEPS.map((s) => s.phase);
 		expect(phases[0]).toBe("signin");
@@ -47,7 +42,7 @@ describe("parseInstallLine", () => {
 	// `atlas crew install --browsers` prints `step: browsers` after `ssh` and before `done`; the checklist shows that
 	// step only when the user opted in.
 	test("the browsers step is in the checklist only when asked for, between ssh and done", () => {
-		expect(installSteps(false)).toBe(INSTALL_STEPS);
+		expect(installSteps(false).map((s) => s.phase)).not.toContain("browsers");
 		const phases = installSteps(true).map((s) => s.phase);
 		expect(phases).toEqual(["signin", "check", "install", "user", "service", "ssh", "browsers", "done"]);
 	});

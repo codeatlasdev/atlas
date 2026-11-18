@@ -1,0 +1,61 @@
+{
+	"crew_onboarding_api_key_not_recognized": "Key set but the engine does not recognize it yet. Try the interactive flow.",
+	"crew_onboarding_atlas_crew_setup": "Atlas Crew setup",
+	"crew_onboarding_check_again": "Check again",
+	"crew_onboarding_connecting": "Connecting…",
+	"crew_onboarding_docs": "Docs",
+	"crew_onboarding_key_label_claude": "Anthropic API key (optional)",
+	"crew_onboarding_key_label_codex": "OpenAI API key",
+	"crew_onboarding_key_label_omp": "OpenRouter or OpenAI key",
+	"crew_onboarding_key_label_opencode": "Provider API key",
+	"crew_onboarding_paste_key_claude": "Paste your Anthropic API key (optional)",
+	"crew_onboarding_paste_key_codex": "Paste your OpenAI API key",
+	"crew_onboarding_paste_key_default": "Paste your API key",
+	"crew_onboarding_paste_key_omp": "Paste your OpenRouter or OpenAI key",
+	"crew_onboarding_paste_key_opencode": "Paste your provider API key",
+	"crew_onboarding_pick_key_title": "Choose a private SSH key",
+	"crew_onboarding_primary_add_crew_server": "Add crew server",
+	"crew_onboarding_primary_back_to_engines": "Back to engines",
+	"crew_onboarding_primary_engine_not_ready": "{engine} isn't ready on your crew server yet ({status}). Go back and finish it.",
+	"crew_onboarding_primary_installing": "Installing…",
+	"crew_onboarding_primary_not_checked": "not checked",
+	"crew_onboarding_primary_open_chat": "Open chat",
+	"crew_onboarding_primary_pick_engine_back": "Go back and pick an engine.",
+	"crew_onboarding_primary_pick_engine_reason": "Click an engine to install it on the server and sign in.",
+	"crew_onboarding_ready_hero_crewmate_name": "My First Crewmate",
+	"crew_onboarding_ready_hero_greeting": "Hi! What should we work on first?",
+	"crew_onboarding_ready_hero_online": "Online",
+	"crew_onboarding_ready_hero_online_caption": "is online on your server.",
+	"crew_onboarding_skip": "Skip",
+	"crew_onboarding_ssh_host_picker_connects": "Connects the way {command} does.",
+	"crew_onboarding_ssh_host_picker_connects_with_key": "Connects the way {command} does, with {key}.",
+	"crew_onboarding_ssh_host_picker_empty": "No server matches: type the address below",
+	"crew_onboarding_ssh_host_picker_from_your_ssh_config": "From your ~/.ssh/config",
+	"crew_onboarding_ssh_host_picker_placeholder": [
+		{
+			"declarations": [
+				"input count",
+				"local countExact = count",
+				"local countPlural = count: plural"
+			],
+			"selectors": [
+				"countExact",
+				"countPlural"
+			],
+			"match": {
+				"countExact=0, countPlural=*": "Choose a server",
+				"countExact=*, countPlural=one": "Choose the server",
+				"countExact=*, countPlural=*": "Choose one of {count} servers"
+			}
+		}
+	],
+	"crew_onboarding_ssh_host_picker_search": "Search your servers",
+	"crew_onboarding_story_approval_text": "Allow or deny from this computer, your phone or Telegram.",
+	"crew_onboarding_story_approval_title": "It asks before anything risky",
+	"crew_onboarding_story_order_text": "Type what you want, like a message.",
+	"crew_onboarding_story_order_title": "You give the order",
+	"crew_onboarding_story_results_text": "Every step is logged, ready to read.",
+	"crew_onboarding_story_results_title": "You wake up to results",
+	"crew_onboarding_story_server_text": "All night, even with this computer asleep.",
+	"crew_onboarding_story_server_title": "It works on your server"
+}

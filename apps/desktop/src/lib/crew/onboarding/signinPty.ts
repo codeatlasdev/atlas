@@ -7,6 +7,7 @@
 import { invoke } from "@tauri-apps/api/core";
 import { listen } from "@tauri-apps/api/event";
 import { b64decode } from "#lib/b64.ts";
+import { invokeHost } from "#lib/host.ts";
 
 /** Drop ANSI escape sequences and the text a carriage return overwrote, leaving what the user would read. */
 export function stripAnsi(s: string): string {
@@ -31,17 +32,14 @@ export async function openSigninPty(
 	onCreated: (pty: string) => void,
 ): Promise<void> {
 	const argv = await invoke<string[]>("crew_signin_argv", { hostKey, command });
-	const r = await invoke<{ pty: string }>("host_call", {
-		cmd: "pty_create",
-		args: signinPtyRequest(argv),
-	});
+	const r = await invokeHost<{ pty: string }>("pty_create", signinPtyRequest(argv));
 	onCreated(r.pty);
-	await invoke("host_call", { cmd: "pty_attach", args: { pty: r.pty } });
+	await invokeHost("pty_attach", { pty: r.pty });
 }
 
 /** Send one line of input (plus Enter) to the pty. */
 export async function writeSigninLine(pty: string, line: string): Promise<void> {
-	await invoke("host_call", { cmd: "pty_write", args: { pty, data: btoa(line + "\r") } });
+	await invokeHost("pty_write", { pty, data: btoa(line + "\r") });
 }
 
 /** Stream the pty's output (ANSI stripped) to `onOutput` and call `onExit` when it ends. Returns the cleanup. */

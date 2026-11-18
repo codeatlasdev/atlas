@@ -1313,8 +1313,8 @@ mod reason_contract_tests {
         for f in &reasons {
             assert!(install::CODES.contains(&f.code), "{} is not in install::CODES", f.code);
             // Every code a client renders its own sentence for carries the values it needs.
-            assert!(!f.args.is_empty(), "{}: no args", f.code);
-            assert!(f.args.contains_key("server") || f.code == "custom_not_found");
+            assert!(f.args.is_some(), "{}: no args", f.code);
+            assert!(f.arg("server").is_some() || f.code == "custom_not_found");
         }
 
         let path = std::path::Path::new(env!("CARGO_MANIFEST_DIR"))

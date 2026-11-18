@@ -7,7 +7,8 @@
 import { invoke } from "@tauri-apps/api/core";
 import { crumbs } from "./breadcrumbs.ts";
 import { gatherContext } from "./context.ts";
-import { classify, hostErrorReport, parseDiagnostics } from "./diagnostics.ts";
+import { hostErrorReport, parseDiagnostics } from "./diagnostics.ts";
+import { isHostFailure } from "#lib/hostText.ts";
 import {
 	fingerprint,
 	isBenign,
@@ -70,7 +71,7 @@ class Errors {
 	async capture(e: unknown, where: string, origin: ErrorOrigin = "error") {
 		const message = messageOf(e);
 		if (isBenign(e, message)) return;
-		if (classify(message) === "host") return this.captureHost(message);
+		if (isHostFailure(e, message)) return this.captureHost(message);
 		const r = await this.enrich({ ...report(e, { where, origin }), version: await this.version() });
 		crumbs.add(`error: ${r.message.split("\n")[0]}`);
 		console.error(`[atlas] ${where}: ${r.message}`, e instanceof Error ? e : "");

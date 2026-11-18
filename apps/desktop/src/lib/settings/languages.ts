@@ -5,6 +5,7 @@
  */
 import type { LspLanguagePref } from "#lib/prefs.ts";
 import type { CatalogEntry, ServerStatus } from "#lib/lsp/types.ts";
+import { lspReasonText } from "#lib/lsp/reasonText.ts";
 
 export type ServerView =
 	| { kind: "downloading"; text: string }
@@ -43,13 +44,16 @@ export function serverView(entry: CatalogEntry, servers: readonly ServerStatus[]
 	if (live?.state === "downloading") return { kind: "downloading", text: live.progress || "Downloading…" };
 	if (live?.state === "starting") return { kind: "starting", text: live.progress || "Starting…" };
 	if (live?.state === "crashed") {
-		return { kind: "crashed", text: live.reason?.message || live.message || "The server stopped." };
+		return {
+			kind: "crashed",
+			text: (live.reason && lspReasonText(live.reason).message) || live.message || "The server stopped.",
+		};
 	}
 	if (live?.state === "ready") return { kind: "running", text: "Running" };
 	const { detected } = entry;
 	if (detected.source === "path") return { kind: "path", text: "Installed" };
 	if (detected.source === "managed") return { kind: "managed", text: "Installed" };
-	if (detected.blocked) return { kind: "blocked", text: detected.blocked.message };
+	if (detected.blocked) return { kind: "blocked", text: lspReasonText(detected.blocked).message };
 	return { kind: "missing", text: "Not installed" };
 }
 

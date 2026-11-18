@@ -1,0 +1,129 @@
+{
+	"codes": [
+		"hostd.unreachable",
+		"hostd.upgrade_failed",
+		"hostd.remote_unreachable",
+		"hostd.remote_connecting",
+		"hostd.upgraded",
+		"hostd.events_dropped",
+		"hostd.older"
+	],
+	"status": [
+		{
+			"status": "outdated",
+			"version": "0.6.2",
+			"proto": 1,
+			"caps": [],
+			"appVersion": "9.9.9",
+			"skew": "needsRestart",
+			"ptys": [],
+			"reason": "Terminal host 0.6.2 is older than Atlas 9.9.9; language features, fast terminal rendering, and agent status are off until it restarts.",
+			"reasonCode": "hostd.older",
+			"reasonArgs": {
+				"version": "0.6.2",
+				"app_version": "9.9.9",
+				"missing": ["lsp", "pty_attach_raw", "agents"]
+			},
+			"deferred": false,
+			"idleArmed": false,
+			"missing": ["pty_attach_raw", "lsp", "agents"]
+		},
+		{
+			"status": "current",
+			"version": "1.0.0",
+			"proto": 2,
+			"caps": ["pty_attach_raw", "upgrade", "lsp", "agents"],
+			"appVersion": "9.9.9",
+			"skew": "needsRestart",
+			"ptys": [],
+			"reason": "Terminal host 1.0.0 is older than Atlas 9.9.9.",
+			"reasonCode": "hostd.older",
+			"reasonArgs": {
+				"version": "1.0.0",
+				"app_version": "9.9.9",
+				"missing": []
+			},
+			"deferred": false,
+			"idleArmed": false,
+			"missing": []
+		},
+		{
+			"status": "current",
+			"version": "9.9.9",
+			"proto": 2,
+			"caps": ["pty_attach_raw", "upgrade", "lsp", "agents"],
+			"appVersion": "9.9.9",
+			"skew": "none",
+			"ptys": [],
+			"reason": "",
+			"reasonCode": "",
+			"reasonArgs": {},
+			"deferred": false,
+			"idleArmed": false,
+			"missing": []
+		}
+	],
+	"toasts": [
+		{
+			"kind": "success",
+			"text": "Terminal host updated",
+			"code": "hostd.upgraded",
+			"args": {}
+		},
+		{
+			"kind": "warning",
+			"text": "Terminal events were dropped under load. Terminals were resynced.",
+			"code": "hostd.events_dropped",
+			"args": {}
+		}
+	],
+	"errors": [
+		{
+			"code": "hostd.unreachable",
+			"args": {},
+			"message": "Terminal host not reachable. Terminals cannot start or reconnect until it is back. Use Restart terminal host, or Report if it keeps happening."
+		},
+		{
+			"code": "hostd.unreachable",
+			"args": {
+				"why": "socket in use"
+			},
+			"message": "Terminal host not reachable. Terminals cannot start or reconnect until it is back. Use Restart terminal host, or Report if it keeps happening. (socket in use)"
+		},
+		{
+			"code": "hostd.upgrade_failed",
+			"args": {
+				"error": "takeover failed; the old host keeps running: the new hostd did not connect in time"
+			},
+			"message": "Terminal host upgrade failed (takeover failed; the old host keeps running: the new hostd did not connect in time). Terminals keep running on the old host."
+		},
+		{
+			"message": "some other failure"
+		}
+	],
+	"rejections": [
+		{
+			"code": "hostd.unreachable",
+			"args": {
+				"why": "socket in use"
+			},
+			"message": "Terminal host not reachable. Terminals cannot start or reconnect until it is back. Use Restart terminal host, or Report if it keeps happening. (socket in use)"
+		},
+		{
+			"code": "hostd.remote_unreachable",
+			"args": {
+				"host": "ssh:box",
+				"why": "connection refused"
+			},
+			"message": "ssh:box is not reachable: connection refused"
+		},
+		{
+			"code": "hostd.remote_connecting",
+			"args": {
+				"host": "ssh:other"
+			},
+			"message": "ssh:other is still connecting; try again in a few seconds"
+		},
+		"no such file"
+	]
+}

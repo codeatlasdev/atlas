@@ -312,7 +312,7 @@
 					{/if}
 					{#if hostStale}
 						<p class="hint warn">
-							{hostState.reason}
+							{hostState.reasonText}
 							{hostState.ptys.length > 0
 								? `${hostState.ptys.length} terminal${hostState.ptys.length === 1 ? " is" : "s are"} still running, so Atlas did not restart it.`
 								: ""}

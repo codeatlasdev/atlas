@@ -5,6 +5,7 @@ import { listen, type UnlistenFn } from "@tauri-apps/api/event";
 import { toast } from "@codeatlasdev/ui";
 import { errText } from "#lib/api.ts";
 import { errors } from "#lib/errors/errors.svelte.ts";
+import { hostText, parseWire } from "#lib/hostText.ts";
 import { emptyDoc, type Doc } from "#lib/stores/workspaceTypes.ts";
 import { tabTitle } from "#lib/title.ts";
 
@@ -41,10 +42,12 @@ export class WorkspacePersist {
 				}),
 			),
 			track(
-				listen<string>("host://error", (e) => {
-					ws.hostError = e.payload;
+				// A payload is `{code, args, message}` (or a bare string from an older shell).
+				listen<unknown>("host://error", (e) => {
+					const text = hostText(parseWire(e.payload) ?? {});
+					ws.hostError = text;
 					// The connect loop retries every few seconds: one toast with a count, not one per retry.
-					void errors.captureHost(e.payload);
+					void errors.captureHost(text);
 				}),
 			),
 			track(

@@ -448,7 +448,9 @@ pub fn skew(info: &Value, bundled: &str) -> Option<Coded> {
         // with a sibling: "are" in every case.
         let names: Vec<&str> = off.iter().map(|(_, d)| *d).collect();
         let list = match names.split_last() {
-            Some((last, rest)) if !rest.is_empty() => format!("{} and {last}", rest.join(", ")),
+            // The desktop writes the same list with `Intl.ListFormat`: "a and b", "a, b, and c".
+            Some((last, rest)) if rest.len() == 1 => format!("{} and {last}", rest[0]),
+            Some((last, rest)) if !rest.is_empty() => format!("{}, and {last}", rest.join(", ")),
             _ => names.join(""),
         };
         s.push_str(&format!("; {list} are off until it restarts"));
@@ -640,7 +642,7 @@ mod tests {
         let r = skew_reason(&json!({"version": "0.6.2"}), "1.2.1").unwrap();
         assert_eq!(
             r,
-            "Terminal host 0.6.2 is older than Atlas 1.2.1; language features, fast terminal rendering and agent status are off until it restarts."
+            "Terminal host 0.6.2 is older than Atlas 1.2.1; language features, fast terminal rendering, and agent status are off until it restarts."
         );
         let r = skew_reason(
             &info("1.1.0", &["pty_attach_raw", "lsp", "agents"], None),

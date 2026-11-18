@@ -104,8 +104,8 @@ pub struct Failure {
     /// `unsupported_platform`, `install_failed`: `server` and `detail` (the underlying error, English, shown as
     /// it is); `custom_not_found`: `program` (the command the user configured); `crashed`: `server`, plus `detail`
     /// when the server failed to start, or `cause: "repeated"` when it kept crashing. Absent when a code has none.
-    #[serde(skip_serializing_if = "serde_json::Map::is_empty")]
-    pub args: serde_json::Map<String, serde_json::Value>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub args: Option<Box<serde_json::Map<String, serde_json::Value>>>,
 }
 
 impl std::fmt::Display for Failure {
@@ -123,12 +123,16 @@ impl Failure {
             message: message.into(),
             hint: None,
             command: None,
-            args: serde_json::Map::new(),
+            args: None,
         }
     }
     pub fn with_args(mut self, args: serde_json::Value) -> Failure {
-        self.args = args.as_object().cloned().unwrap_or_default();
+        self.args = args.as_object().cloned().map(Box::new);
         self
+    }
+    /// One value of [`args`](Failure::args).
+    pub fn arg(&self, key: &str) -> Option<&serde_json::Value> {
+        self.args.as_ref()?.get(key)
     }
     pub fn hint(mut self, hint: impl Into<String>) -> Failure {
         self.hint = Some(hint.into());

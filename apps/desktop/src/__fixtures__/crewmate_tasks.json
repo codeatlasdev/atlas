@@ -1,55 +1,55 @@
 {
   "tasks": [
     {
-      "finished_at": 1761213000,
       "id": "task-done",
-      "pane": "crew:crewmate-1:task-done",
-      "prompt": "review the PR",
-      "result": "LGTM",
+      "ts": 1761213000,
       "source": "desktop",
-      "started_at": 1761212900,
+      "prompt": "review the PR",
       "state": "done",
-      "summarized": false,
-      "ts": 1761213000
+      "pane": "crew:crewmate-1:task-done",
+      "result": "LGTM",
+      "finished_at": 1761213000,
+      "started_at": 1761212900,
+      "summarized": false
     },
     {
-      "action": {
-        "kind": "add_trigger",
-        "prompt": "Review open PRs",
-        "reason": "You asked for a daily review",
-        "trigger": {
-          "cron": "0 9 * * 1-5",
-          "type": "schedule"
-        }
-      },
       "id": "task-running",
-      "preparing": "codeatlasdev/ui",
-      "prompt": "write tests",
+      "ts": 1761213100,
       "source": "desktop",
-      "started_at": 1761213090,
+      "prompt": "write tests",
       "state": "running",
+      "started_at": 1761213090,
+      "title": "Writing unit tests for store",
+      "preparing": "codeatlasdev/ui",
+      "tz": "America/Sao_Paulo",
       "steps": [
         {
-          "text": "Reading files",
-          "ts": 1761213092
+          "ts": 1761213092,
+          "text": "Reading files"
         },
         {
-          "group": "Test suite",
+          "ts": 1761213095,
           "text": "Writing tests",
-          "ts": 1761213095
+          "group": "Test suite"
         }
       ],
-      "title": "Writing unit tests for store",
-      "ts": 1761213100,
-      "tz": "America/Sao_Paulo"
+      "action": {
+        "kind": "add_trigger",
+        "trigger": {
+          "type": "schedule",
+          "cron": "0 9 * * 1-5"
+        },
+        "prompt": "Review open PRs",
+        "reason": "You asked for a daily review"
+      }
     },
     {
       "id": "task-busy",
-      "prompt": "run the linter",
+      "ts": 1761213200,
       "source": "desktop",
+      "prompt": "run the linter",
       "state": "queued",
       "summarized": false,
-      "ts": 1761213200,
       "waiting_for": "server busy"
     }
   ]

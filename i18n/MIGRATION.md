@@ -210,7 +210,7 @@ After a Rust batch: `cargo clippy` and the crate tests, then run the migrated co
 - Two batches never edit the same component (an area belongs to one batch), so source conflicts do not happen.
 - No shared file lists areas or baseline entries any more: a new area is its own `i18n/messages/<area>/area.json`
   (`"surface"`), and `i18n/hardcoded-baseline.jsonl` is one line per file that a branch only lowers (`merge=union`; a
-  path listed twice counts as the smaller number), so batches merge without a conflict. A branch written for the old
+  path listed twice counts as the smaller number), so a local `git merge origin/main` (the merge train) has no conflict there; GitHub's own merge ignores `merge=union`. After merging, `bun run i18n:fix` if the check reports a baseline above the real count. A branch written for the old
   registry (an `"areas"` list in surfaces.json, `hardcoded-baseline.json`) runs `git merge origin/main`, then
   `bun run i18n:migrate-registry` (idempotent: it writes the `area.json` files, strips surfaces.json, applies the branch's
   baseline work), `git add -A i18n`, commit. The lock files are still `i18n:fix`, never by hand. Run `git fetch origin main` before `i18n:check`: the ratchet compares with the merge base.

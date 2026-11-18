@@ -144,16 +144,22 @@ platform sniffing, flagged phrases in existing prose). It judges the **change**,
   does. A new file starts at zero. Files the change does not touch are not looked at at all, so when main adds screens
   there is nothing to re-snapshot, and an old file with a hundred offenders never fails someone else's PR.
 - **`hardcoded-baseline.jsonl`** is then the shrinking floor: today's count per file, kept by `bun run i18n:fix`, which
-  only lowers it (`--baseline` starts a section that does not exist yet). It is built not to conflict (`.gitattributes`:
-  `merge=union`): one self-contained line `{"ratchet","file","count"}` per file, a branch only ever **lowers** a line and
+  only lowers it (`--baseline` starts a section that does not exist yet). A local merge does not conflict on it
+  (`merge=union` in `.gitattributes`; GitHub's own merge ignores the attribute, and the merge train merges `origin/main`
+  locally): one self-contained line `{"ratchet","file","count"}` per file, a branch only ever **lowers** a line and
   never deletes one (a fixed file keeps its line at 0, because a union merge brings a deleted line back but keeps both
   versions of a lowered one), and the reader takes the **smaller** count of a path that appears twice. After a merge the
-  file may hold duplicates; `i18n:fix` tidies it, the check never needs it. `i18n:fix --prune-baseline` deletes the lines at
-  0 (alone, on a branch that does nothing else). A change that **raises** a count fails with
-  `baseline-grew` ("fix the offenders, do not snapshot them"). A baseline that is lower or higher than reality for a
-  file does not fail in diff mode.
+  file may hold duplicates (the check does not mind, `i18n:fix` tidies them), and two branches that lowered the same file
+  leave the count above the real one: the check reports it (see below), `i18n:fix` repairs it.
+  `i18n:fix --prune-baseline` deletes the lines at 0 but keeps one per ratchet (a ratchet with no line has no section,
+  and a new section is not checked for growth); run it alone, on a branch that does nothing else. A change that **raises** a count fails with
+  `baseline-grew` ("fix the offenders, do not snapshot them"). A baseline **above** reality for a
+  file (two branches lowered the same file, a file renamed) fails in every mode, touched or not, because a count above
+  reality lets offenders come back unnoticed (`<ratchet>-baseline`: run `bun run i18n:fix`). Real offenders **above**
+  the baseline in a file the change did not touch are not looked at in diff mode.
 - **Without a diff base** (not a git checkout, no `origin/main` or `main`, or CI with no base) the committed baseline is
-  the judge, as it was before: a file may not exceed its count, and a count above reality is an error that `i18n:fix` clears.
+  the judge, as it was before: a file may not exceed its count (and a count above reality is an error that `i18n:fix`
+  clears, as in diff mode).
 
 `bun run i18n:check` says which mode it used (stderr; `ratchets` in `--json`). Where the base comes from, best first:
 an explicit `ATLAS_BASE=<ref or sha>` (a bad one is an error); in CI a pull request uses the first parent of the merge

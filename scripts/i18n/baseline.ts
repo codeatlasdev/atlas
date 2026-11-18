@@ -3,7 +3,8 @@
 // and a baseline that is now higher than reality fails too, so the number only goes down. `bun run i18n:fix`
 // shrinks it; it never grows it.
 //
-// Built so parallel branches never conflict on it (`.gitattributes`: `merge=union`): one self-contained JSON line per
+// Built so a local merge of parallel branches does not conflict on it (`.gitattributes`: `merge=union`; GitHub's own merge
+// ignores the attribute): one self-contained JSON line per
 // (ratchet, file), `{"ratchet":"rust","file":"crates/x.rs","count":3}`. A branch only ever LOWERS a count and never
 // deletes a line (a fixed file keeps its line at 0: a union merge resurrects a deleted line, but keeps both versions of
 // a lowered one). A path that appears twice, which is what a union merge of two branches lowering the same or adjacent
@@ -66,14 +67,16 @@ export function readBaseline(root: string): Baseline {
 	return existsSync(p) ? parseBaseline(readText(p)) : {};
 }
 
-/** The file text of `b`, sorted, one line per (ratchet, file). Zero counts are written (see the header) unless `prune`. */
+/** The file text of `b`, sorted, one line per (ratchet, file). Zero counts are written (see the header); `prune` drops
+ * them but keeps the first line of a ratchet that would be left with none: a ratchet with no line at all has no section,
+ * and a section that did not exist at the base is an introduction (`baseline-grew` skips it). */
 export function renderBaseline(b: Baseline, prune = false): string {
 	const lines: string[] = [];
 	for (const lang of Object.keys(b).sort(cmp)) {
-		for (const [file, count] of Object.entries(b[lang as Lang] ?? {}).sort(([a], [c]) => cmp(a, c))) {
-			if (prune && count === 0) continue;
-			lines.push(JSON.stringify({ ratchet: lang, file, count }));
-		}
+		const entries = Object.entries(b[lang as Lang] ?? {}).sort(([a], [c]) => cmp(a, c));
+		const live = entries.filter(([, count]) => count > 0);
+		const kept = prune && live.length > 0 ? live : prune ? entries.slice(0, 1) : entries;
+		for (const [file, count] of kept) lines.push(JSON.stringify({ ratchet: lang, file, count }));
 	}
 	return lines.length ? `${lines.join("\n")}\n` : "";
 }
@@ -96,6 +99,14 @@ export function ratchet(root: string, def: RatchetText, found: Found, prefixes: 
 			out.push({ rule: v.rule ?? def.rule, severity: "error", file, line: v.line, message: `${def.noun} ${v.detail ?? JSON.stringify(v.text)} (${violations.length} in this file, baseline ${allowed}); ${def.hint}` });
 		}
 	}
+	return [...out, ...staleEntries(root, def, found, prefixes)];
+}
+
+/** Baseline lines above the real count of their file, for every file of the ratchet's scope. A count above reality lets
+ * offenders come back unnoticed, so this runs in every mode (it is one count per file, from the scan the check already did). */
+export function staleEntries(root: string, def: RatchetText, found: Found, prefixes: string[]): Finding[] {
+	const section = readBaseline(root)[def.lang] ?? {};
+	const out: Finding[] = [];
 	for (const [file, allowed] of Object.entries(section).filter(([f]) => within(f, prefixes)).sort(([a], [b]) => cmp(a, b))) {
 		const now = found.get(file)?.length ?? 0;
 		if (now < allowed) {

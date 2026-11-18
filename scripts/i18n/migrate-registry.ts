@@ -138,12 +138,11 @@ export function migrateRegistry(root: string): MigrateReport {
 	}
 
 	if (report.unresolved.length) {
-		report.log.push(`no surface known for: ${report.unresolved.join(", ")}; write i18n/messages/<area>/area.json as { "surface": "<desktop|rust|site>" } by hand`);
+		report.log.push(`no surface known for: ${report.unresolved.join(", ")}; write i18n/messages/<area>/area.json as { "surface": "<desktop|rust|site>" } by hand, then run this command again`);
 		return report;
 	}
-	if (report.areaFiles.length || report.surfacesRewritten || report.baseline !== "none") {
-		for (const line of fix(loadCtx(root))) report.log.push(line);
-	}
+	// Always: a rerun after an unplaceable area has nothing left to write, but the baseline and locks were never derived.
+	for (const line of fix(loadCtx(root))) report.log.push(line);
 	return report;
 }
 

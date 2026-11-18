@@ -109,6 +109,35 @@ describe("two batches on one surface", () => {
 	});
 });
 
+describe("two branches lowering the same file", () => {
+	test("the merge is clean, the baseline is then above the real count, and the check says so until i18n:fix", async () => {
+		// five offenders separated by spacers, so the two branches' edits to the component itself do not touch
+		const spaced = `${Array.from({ length: 5 }, (_, i) => `<p>Old text ${i}</p>`).join("\n<div></div>\n")}\n`;
+		const root = await makeRepo({ [A]: spaced, ".gitattributes": ATTRIBUTES });
+		must(root, "init", "-q", "-b", "main");
+		must(root, "add", "-A");
+		must(root, "commit", "-q", "-m", "base");
+		for (const [name, gone] of [["one", [0, 1]], ["two", [3, 4]]] as const) {
+			must(root, "checkout", "-q", "-b", name, "main");
+			let text = spaced;
+			for (const i of gone) text = text.replace(`<p>Old text ${i}</p>`, "<span></span>");
+			put(root, A, text);
+			fix(loadCtx(root));
+			must(root, "add", "-A");
+			must(root, "commit", "-q", "-m", name);
+		}
+		must(root, "checkout", "-q", "one");
+		expect(git(root, "merge", "--no-edit", "two").ok).toBe(true);
+		expect(readBaseline(root).svelte?.[A]).toBe(3); // each branch lowered 5 to 3; only one offender is really left
+		const stale = (await check(root)).filter((f) => f.rule === "hardcoded-baseline");
+		expect(stale).toHaveLength(1);
+		expect(stale[0]).toMatchObject({ key: A, file: BASELINE });
+		fix(loadCtx(root));
+		expect(readBaseline(root).svelte?.[A]).toBe(1);
+		expect(errors(await check(root))).toEqual([]);
+	});
+});
+
 describe("the baseline reader", () => {
 	test("a path listed twice counts as the smaller number; blank lines are skipped; order does not matter", () => {
 		const text = `${JSON.stringify({ ratchet: "rust", file: "z.rs", count: 2 })}\n\n${JSON.stringify({ ratchet: "rust", file: "a.rs", count: 7 })}\n${JSON.stringify({ ratchet: "rust", file: "z.rs", count: 1 })}\n`;
@@ -127,7 +156,26 @@ describe("the baseline reader", () => {
 		fix(loadCtx(root));
 		expect(readBaseline(root).svelte).toEqual({ [A]: 0 });
 		fix(loadCtx(root), { pruneBaseline: true });
-		expect(readBaseline(root).svelte).toBeUndefined();
+		expect(readBaseline(root).svelte).toEqual({ [A]: 0 }); // the last line of a ratchet stays: see the next test
 		expect(existsSync(join(root, BASELINE))).toBe(true);
+	});
+
+	test("prune keeps one line per ratchet, so a section that was emptied cannot be refilled unnoticed (baseline-grew)", async () => {
+		const root = await mainRepo();
+		put(root, A, "<div></div>\n");
+		put(root, B, "<div></div>\n");
+		put(root, C, "<div></div>\n");
+		fix(loadCtx(root));
+		expect(Object.values(readBaseline(root).svelte ?? {}).every((n) => n === 0)).toBe(true);
+		fix(loadCtx(root), { pruneBaseline: true });
+		const kept = readBaseline(root).svelte ?? {};
+		expect(Object.keys(kept)).toHaveLength(1);
+		expect(renderBaseline({ svelte: { x: 0, y: 0 }, rust: { z: 3 } }, true)).toBe(`${JSON.stringify({ ratchet: "rust", file: "z", count: 3 })}\n${JSON.stringify({ ratchet: "svelte", file: "x", count: 0 })}\n`);
+		must(root, "add", "-A");
+		must(root, "commit", "-q", "-m", "pruned");
+		must(root, "checkout", "-q", "-b", "grow");
+		put(root, BASELINE, `${read(root, BASELINE)}${JSON.stringify({ ratchet: "svelte", file: "apps/desktop/src/new.svelte", count: 3 })}\n`);
+		put(root, "apps/desktop/src/new.svelte", HARD(3));
+		expect((await check(root)).some((f) => f.rule === "baseline-grew")).toBe(true);
 	});
 });

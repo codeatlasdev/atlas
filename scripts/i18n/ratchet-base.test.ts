@@ -221,14 +221,19 @@ describe("the other ratchets share the mechanism", () => {
 		expect(fs[0]).toMatchObject({ file: "README.md", line: 5, severity: "error" });
 	});
 
-	test("the committed-baseline checks (stale entries) are off in diff mode, and on without a base", async () => {
+	test("a baseline above the real count is an error in diff mode too, in a file the change never touched", async () => {
 		const files = { [RS]: 'fn main() { println!("old one"); }\n', [BASELINE]: baselineText({ rust: { [RS]: 5 } }) };
 		const root = await baseRepo(files);
 		put(root, "docs/x.md", "# X\n");
-		expect((await check(root)).filter((f) => f.rule.endsWith("-baseline"))).toEqual([]);
+		const f = (await check(root)).filter((x) => x.rule === "hardcoded-baseline");
+		expect(f).toHaveLength(1);
+		expect(f[0]).toMatchObject({ file: BASELINE, key: RS, severity: "error" });
+		expect(f[0].message).toContain("bun run i18n:fix");
 		const plain = await makeRepo(files);
 		put(plain, BASELINE, files[BASELINE]);
-		expect((await check(plain)).filter((f) => f.rule === "hardcoded-baseline")).toHaveLength(1);
+		expect((await check(plain)).filter((x) => x.rule === "hardcoded-baseline")).toHaveLength(1);
+		fix(loadCtx(root));
+		expect((await check(root)).filter((x) => x.rule.endsWith("-baseline"))).toEqual([]);
 	});
 });
 

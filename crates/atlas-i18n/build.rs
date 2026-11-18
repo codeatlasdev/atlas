@@ -29,7 +29,6 @@ fn main() {
         }
         // The area says which surface consumes it (an area without the file is `bun run i18n:check`'s finding).
         let area_file = entry.path().join("area.json");
-        println!("cargo:rerun-if-changed={}", area_file.display());
         let Ok(text) = std::fs::read_to_string(&area_file) else {
             continue;
         };

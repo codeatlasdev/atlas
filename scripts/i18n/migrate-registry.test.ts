@@ -8,7 +8,7 @@ import { applyBranchBaseline, migrateRegistry, readOldRegistry } from "./migrate
 import { type Baseline, readBaseline } from "./baseline.ts";
 import { fix } from "./fix.ts";
 import { loadSurfacesConfig } from "./source.ts";
-import { check, cleanup, errors, git, makeRepo, must, put, read } from "./testkit.ts";
+import { areaFile, check, cleanup, errors, git, makeRepo, must, put, read } from "./testkit.ts";
 import { loadCtx } from "./types.ts";
 
 setDefaultTimeout(60_000);
@@ -71,6 +71,21 @@ describe("migrate a tree in the old format", () => {
 		const r = migrateRegistry(root);
 		expect(r.unresolved).toEqual(["stray"]);
 		expect(existsSync(join(root, "i18n/messages/stray/area.json"))).toBe(false);
+	});
+});
+
+describe("an unplaceable area", () => {
+	test("exits with it listed; once it is placed, the rerun still derives the baseline (i18n:fix) although nothing else is left to migrate", async () => {
+		const root = await makeRepo({ [A]: HARD(2) });
+		toOldFormat(root);
+		put(root, "i18n/hardcoded-baseline.json", `${JSON.stringify({ svelte: { [A]: 5 } })}\n`);
+		put(root, "i18n/messages/stray/en.json", "{}\n");
+		expect(migrateRegistry(root).unresolved).toEqual(["stray"]);
+		expect(readBaseline(root).svelte?.[A]).toBe(5); // converted, not yet derived: fix did not run
+		put(root, "i18n/messages/stray/area.json", areaFile("desktop"));
+		const r = migrateRegistry(root);
+		expect(r.unresolved).toEqual([]);
+		expect(readBaseline(root).svelte?.[A]).toBe(2);
 	});
 });
 

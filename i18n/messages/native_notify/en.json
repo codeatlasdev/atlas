@@ -1,4 +1,28 @@
 {
+	"native_notify_alert_copy_details": "Copy details",
+	"native_notify_alert_crashed": "The page's web process crashed twice in a row, so Atlas has nothing to show.",
+	"native_notify_alert_details": "Details are in:\n  {stderr}\n  {app}\n\nInclude them when you report it: {url}",
+	"native_notify_alert_ended": "The page's web process ended twice in a row, so Atlas has nothing to show.",
+	"native_notify_alert_not_ready": "The page did not start within {secs} seconds, so Atlas has nothing to show.",
+	"native_notify_alert_out_of_memory": "The page's web process ran out of memory twice in a row, so Atlas has nothing to show.",
+	"native_notify_alert_quit": [
+		{
+			"declarations": [
+				"input os"
+			],
+			"selectors": [
+				"os"
+			],
+			"match": {
+				"os=mac": "Quit",
+				"os=windows": "Exit",
+				"os=*": "Quit"
+			}
+		}
+	],
+	"native_notify_alert_reopen": "Reopen",
+	"native_notify_alert_terminated": "The page's web process was terminated by the app twice in a row, so Atlas has nothing to show.",
+	"native_notify_alert_title": "Atlas could not display its window",
 	"native_notify_capture_failed": "Capture failed",
 	"native_notify_dock_agent_gone": "That agent is not running any more. Pick another.",
 	"native_notify_dock_keys_clash": "The summon and hide keys are the same; pick two different keys",

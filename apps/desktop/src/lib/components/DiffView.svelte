@@ -440,6 +440,8 @@
 		font: inherit;
 		font-size: 11px;
 		padding: 1px 6px;
+		white-space: nowrap;
+		flex-shrink: 0;
 		color: var(--ca-text-secondary);
 	}
 	.hunk-head {
@@ -451,6 +453,8 @@
 	}
 	.mono {
 		font-family: var(--mono);
+		min-width: 0;
+		overflow-wrap: anywhere;
 	}
 	.dim {
 		color: var(--ca-text-secondary);

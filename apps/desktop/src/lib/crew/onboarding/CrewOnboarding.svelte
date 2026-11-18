@@ -14,10 +14,11 @@
 	import EngineSignIn from "./EngineSignIn.svelte";
 	import EngineArt from "./EngineArt.svelte";
 	import ReadyHero from "./ReadyHero.svelte";
-	import { STORY } from "./engines.ts";
+	import { story } from "./engines.ts";
 	import { Onboarding } from "./onboarding.svelte.ts";
 	import { modalOverlay } from "./modalOverlay.ts";
 	import "./onboarding.css";
+	import { m } from "#lib/i18n/m.ts";
 
 	let { ondone }: { ondone: () => void } = $props();
 
@@ -89,7 +90,7 @@
 	class="crew-onboarding overlay"
 	role="dialog"
 	aria-modal="true"
-	aria-label="Atlas Crew setup"
+	aria-label={m.crew_onboarding_atlas_crew_setup()}
 	data-testid="crew-onboarding"
 >
 	<!-- Progress bar + Skip -->
@@ -97,7 +98,7 @@
 		<div class="progress-track" role="progressbar" aria-valuenow={Math.round(ob.progress * 100)}>
 			<div class="progress-fill" style:width="{ob.progress * 100}%"></div>
 		</div>
-		<button class="skip-btn" onclick={ob.finish}>Skip</button>
+		<button class="skip-btn" onclick={ob.finish}>{m.crew_onboarding_skip()}</button>
 	</div>
 
 	<!-- Two-column body -->
@@ -116,7 +117,9 @@
 						<p class="body-text" style:--stagger={2}>
 							{ob.meta.body}
 							<!-- One small docs link per step, in the header: the page of the docs that explains this step. -->
-							<button class="docs-link" onclick={() => api.openUrl(stepDocs(ob.step))}>Docs</button>
+							<button class="docs-link" onclick={() => api.openUrl(stepDocs(ob.step))}
+								>{m.crew_onboarding_docs()}</button
+							>
 						</p>
 
 						<!-- Bullet points (info steps only) -->
@@ -131,7 +134,7 @@
 						<!-- The how-it-works story, lit in sync with the art -->
 						{#if ob.step === "how"}
 							<ol class="story" style:--stagger={3}>
-								{#each STORY as line, i (line.title)}
+								{#each story() as line, i (line.title)}
 									<li class:on={ob.howBeat === i} class:past={ob.howBeat > i}>
 										<b>{line.title}</b>
 										<span>{line.text}</span>
@@ -162,7 +165,7 @@
 					disabled={ob.step === "intro"}
 					onclick={ob.back}
 				>
-					<ChevronLeft size={15} />Back
+					<ChevronLeft size={15} />{m.common_action_back()}
 				</button>
 				<button
 					class="primary-btn primary-slot"

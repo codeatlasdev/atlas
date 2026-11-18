@@ -88,6 +88,7 @@ pub fn make_panel(ns: *mut std::ffi::c_void) {
             panel_base,
             panel.instance_size(),
         ) {
+            // i18n-ignore: log
             eprintln!("dock: NSPanel layout differs from the window class; staying a plain window");
             return;
         }
@@ -143,6 +144,7 @@ pub fn ensure_nonactivating(ns: *mut std::ffi::c_void) -> bool {
     make_panel(ns);
     let a = activation_of(ns);
     if !a.safe() {
+        // i18n-ignore: log
         eprintln!("capture: window cannot be made non-activating, not shown: {a:?}");
     }
     a.safe()

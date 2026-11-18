@@ -4,6 +4,7 @@
 	 * for the secret (password), the labelled input and the generic "response needed" kinds.
 	 */
 	import { Button } from "@codeatlasdev/ui";
+	import { m } from "#lib/i18n/m.ts";
 
 	interface Props {
 		value: string;
@@ -48,8 +49,10 @@
 	aria-label={label}
 />
 <div class="action-btns">
-	<Button size="sm" disabled={!value.trim() || submitting} onclick={submit}>Submit</Button>
-	<Button variant="ghost" size="sm" onclick={oncancel}>Cancel</Button>
+	<Button size="sm" disabled={!value.trim() || submitting} onclick={submit}
+		>{m.crew_chat_action_text_answer_submit()}</Button
+	>
+	<Button variant="ghost" size="sm" onclick={oncancel}>{m.common_action_cancel()}</Button>
 </div>
 
 <style>

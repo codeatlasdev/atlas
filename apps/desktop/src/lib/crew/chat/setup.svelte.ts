@@ -133,7 +133,7 @@ export class SetupFlow {
 		const option = key != null ? this.question?.options?.find((o) => o.key === key) : undefined;
 		// "Something else" asks for text: put the cursor in the box and wait, never save the option's own title.
 		if (option && "write" in optionAnswer(option)) {
-			document.querySelector<HTMLTextAreaElement>('textarea[aria-label="Setup answer"]')?.focus();
+			document.querySelector<HTMLTextAreaElement>('textarea[data-composer="setup-answer"]')?.focus();
 			return;
 		}
 		const answerText = option ? option.title : (text ?? "").trim();

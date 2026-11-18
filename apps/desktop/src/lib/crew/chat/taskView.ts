@@ -2,12 +2,13 @@
  * Owns: pure display helpers for the task thread: time/size formatting, markdown collapse, the approval-request
  * summary, date separators and the "who started this task" label. No Svelte, no stores.
  */
+import { dateTime, formatNumber, relative, upperFirst } from "#lib/i18n/fmt.ts";
 
 /** A reply longer than this many lines is folded behind "Show more". */
 export const COLLAPSE_LINES = 12;
 
 export function fmtTime(tsMs: number): string {
-	return new Date(tsMs).toLocaleTimeString([], { hour: "2-digit", minute: "2-digit" });
+	return dateTime(tsMs, { hour: "2-digit", minute: "2-digit" });
 }
 
 export function fmtElapsed(ms: number): string {
@@ -20,18 +21,18 @@ export function fmtElapsed(ms: number): string {
 }
 
 export function fmtTokens(n: number): string {
-	if (n >= 1000) return `${(n / 1000).toFixed(1)}k`;
-	return String(n);
+	if (n >= 1000) return `${formatNumber(n / 1000, { minimumFractionDigits: 1, maximumFractionDigits: 1 })}k`;
+	return formatNumber(n);
 }
 
-/** "Today", "Yesterday", or "November 13"; `today` is injectable for tests. */
+/** "Today", "Yesterday", or "November 13" in the app's language; `today` is injectable for tests. */
 export function fmtDate(tsMs: number, today: Date = new Date()): string {
 	const d = new Date(tsMs);
-	if (d.toDateString() === today.toDateString()) return "Today";
+	if (d.toDateString() === today.toDateString()) return upperFirst(relative(0, "day"));
 	const yesterday = new Date(today);
 	yesterday.setDate(today.getDate() - 1);
-	if (d.toDateString() === yesterday.toDateString()) return "Yesterday";
-	return d.toLocaleDateString([], { month: "long", day: "numeric" });
+	if (d.toDateString() === yesterday.toDateString()) return upperFirst(relative(-1, "day"));
+	return dateTime(d, { month: "long", day: "numeric" });
 }
 
 /** True when a date separator belongs before task `i`: it starts a group and falls on another day than the one before. */
@@ -88,6 +89,3 @@ export function splitUi(prompt: string): { ui: boolean; prompt: string } {
 	const m = /^\/ui(?:\s+([\s\S]*))?$/.exec(prompt);
 	return m ? { ui: true, prompt: (m[1] ?? "").trim() } : { ui: false, prompt };
 }
-
-/** What the composer says for a `/ui` with no message. */
-export const UI_USAGE = "Add a message after /ui, for example: /ui restyle the header";

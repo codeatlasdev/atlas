@@ -1,4 +1,5 @@
 use anyhow::Result;
+use atlas_i18n::t;
 use atlas_skills::{SkillState, SkillsManifest, embedded};
 
 use super::{manifest_path, skills_dir};
@@ -8,9 +9,12 @@ pub fn handle(global: bool) -> Result<()> {
     let manifest = SkillsManifest::load_from(&manifest_path(global))?;
     let available = embedded::all();
 
+    // Pad the translated header by characters, then style the whole cell: the width is measured on
+    // the words, not on the escape codes.
+    let (skill, installed) = (t!("cmd_skills_col_skill"), t!("cmd_skills_col_installed"));
     println!(
-        "{:<24} {:<14} \x1b[1mBUNDLED\x1b[0m",
-        "\x1b[1mSKILL\x1b[0m", "\x1b[1mINSTALLED\x1b[0m"
+        "\x1b[1m{skill:<24}\x1b[0m \x1b[1m{installed:<14}\x1b[0m \x1b[1m{}\x1b[0m",
+        t!("cmd_skills_col_bundled")
     );
     println!("{}", "─".repeat(56));
 
@@ -47,12 +51,23 @@ pub fn handle(global: bool) -> Result<()> {
 
     println!();
     println!(
-        "  {present}/{} installed  •  directory: {}",
-        available.len(),
-        dir.display()
+        "  {}",
+        t!(
+            "cmd_skills_status_total",
+            present = present,
+            total = available.len(),
+            dir = dir.display().to_string()
+        )
     );
     if outdated > 0 {
-        println!("  \x1b[33m{outdated} outdated\x1b[0m  →  run \x1b[1matlas skills update\x1b[0m");
+        println!(
+            "  \x1b[33m{}\x1b[0m  →  {}",
+            t!("cmd_skills_outdated_count", count = outdated),
+            t!(
+                "cmd_skills_update_hint",
+                command = "\x1b[1matlas skills update\x1b[0m"
+            )
+        );
     }
     Ok(())
 }

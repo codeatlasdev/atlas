@@ -28,6 +28,11 @@
   gender:
     pt-BR: m
   note: a machine of the Crew; stays English in pt-BR ("o crew server")
+- term: engine
+  dnt: true
+  gender:
+    pt-BR: m
+  note: the coding agent backend a crewmate runs (Claude Code, Codex, omp, OpenCode); stays English and masculine in pt-BR ("o engine", "um engine", "os engines"), docs/crew.md
 - term: hostd
   dnt: true
 - term: worktree

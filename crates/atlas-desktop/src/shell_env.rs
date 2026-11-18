@@ -31,6 +31,7 @@ pub fn reprobe() -> Probe {
 
 fn report(p: Probe) {
     if let Some(e) = &p.error {
+        // i18n-ignore: log
         eprintln!("atlas-desktop: shell env probe failed ({}): {e}", p.shell);
     }
 }

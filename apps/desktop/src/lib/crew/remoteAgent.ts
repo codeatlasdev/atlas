@@ -32,14 +32,6 @@ export const AGENT_AUTH_TYPE: Record<string, "apikey" | "both"> = {
 	opencode: "both",
 };
 
-/** What the key field asks for, per engine. */
-export const AGENT_KEY_LABEL: Record<string, string> = {
-	omp: "OpenRouter or OpenAI key",
-	claude: "Anthropic API key (optional)",
-	codex: "OpenAI API key",
-	opencode: "Provider API key",
-};
-
 /** Run a shell script on a crew server through hostd; resolves with hostd's exec result. */
 export function runOnServer(
 	hostKey: string,

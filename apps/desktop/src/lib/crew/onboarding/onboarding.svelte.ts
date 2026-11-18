@@ -28,10 +28,11 @@ import { crewServerTarget, isCrewServerKey, parseSSHTarget } from "#lib/crew/ssh
 import { AGENT_AUTH_TYPE, applyAgentApiKey } from "#lib/crew/remoteAgent.ts";
 import type { SshHost } from "#lib/crew/sshHosts.ts";
 import {
+	engineStatusLabel,
 	phaseFromCheck,
 	pickReadyEngine,
 	statusAfterInstall,
-	STEP_META,
+	stepMeta,
 	type AgentCheck,
 	type EngineStatus,
 } from "./engines.ts";
@@ -53,6 +54,7 @@ import {
 	type KeyLookup,
 } from "./connectError.ts";
 import { IS_WIN } from "#lib/keys.ts";
+import { m } from "#lib/i18n/m.ts";
 
 /** How the form signs in to the server: the SSH key of this computer, or the account password (once, to add the key). */
 export type SignInMethod = "key" | "password";
@@ -71,7 +73,7 @@ export class Onboarding {
 	readonly hasHost = $derived(crew.servers.some((h) => h.key !== ""));
 	readonly progress = $derived(stepProgress({ step: this.step, hasHost: this.hasHost }));
 	readonly isInfoStep = $derived(infoStepIndex(this.step) >= 0);
-	readonly meta = $derived(STEP_META[this.step]);
+	readonly meta = $derived(stepMeta(this.step));
 
 	// ─── connect step ─────────────────────────────────────────────────────────
 	sshTarget = $state("");
@@ -152,7 +154,7 @@ export class Onboarding {
 			case "connect":
 				if (this.needsSudo) {
 					return go(
-						this.installRunning ? "Installing…" : "Continue",
+						this.installRunning ? m.crew_onboarding_primary_installing() : m.common_action_continue(),
 						() => void this.launchServer(this.sudoPassword),
 						{
 							busy: this.installRunning,
@@ -163,9 +165,9 @@ export class Onboarding {
 				return go(
 					this.installRunning
 						? this.install.done.has("done")
-							? "Connecting…"
-							: "Installing…"
-						: "Add crew server",
+							? m.crew_onboarding_connecting()
+							: m.crew_onboarding_primary_installing()
+						: m.crew_onboarding_primary_add_crew_server(),
 					() => void this.launchServer(),
 					{
 						busy: this.installRunning,
@@ -173,26 +175,32 @@ export class Onboarding {
 					},
 				);
 			case "engine":
-				if (this.signinActive) return go("Back to engines", () => this.closeSignin());
-				if (this.readyEngine) return go("Continue", () => this.continueWithReadyEngine());
-				return go("Continue", () => {}, {
+				if (this.signinActive)
+					return go(m.crew_onboarding_primary_back_to_engines(), () => this.closeSignin());
+				if (this.readyEngine) return go(m.common_action_continue(), () => this.continueWithReadyEngine());
+				return go(m.common_action_continue(), () => {}, {
 					busy: this.installingAny,
 					disabled: true,
-					reason: "Click an engine to install it on the server and sign in.",
+					reason: m.crew_onboarding_primary_pick_engine_reason(),
 				});
 			case "ready":
-				return go("Open chat", () => void this.openChat(), {
+				return go(m.crew_onboarding_primary_open_chat(), () => void this.openChat(), {
 					busy: this.creatingCrewmate,
 					disabled: this.creatingCrewmate || !this.engineReady,
 					reason:
 						this.engineReady || this.creatingCrewmate
 							? ""
 							: this.selectedEngine
-								? `${this.selectedEngine} isn't ready on your crew server yet (${this.engineStatus[this.selectedEngine]?.phase ?? "not checked"}). Go back and finish it.`
-								: "Go back and pick an engine.",
+								? m.crew_onboarding_primary_engine_not_ready({
+										engine: this.selectedEngine,
+										status: this.engineStatus[this.selectedEngine]
+											? engineStatusLabel(this.engineStatus[this.selectedEngine].phase).toLowerCase()
+											: m.crew_onboarding_primary_not_checked(),
+									})
+								: m.crew_onboarding_primary_pick_engine_back(),
 				});
 			default:
-				return go("Continue", this.advance);
+				return go(m.common_action_continue(), this.advance);
 		}
 	});
 
@@ -316,7 +324,7 @@ export class Onboarding {
 	/** "Choose another key": the OS file picker, opened in the folder of the key shown. */
 	async pickKeyFile() {
 		const picked = await pickFile({
-			title: "Choose a private SSH key",
+			title: m.crew_onboarding_pick_key_title(),
 			multiple: false,
 			directory: false,
 			defaultPath: folderOf(this.key?.identity ?? ""),
@@ -636,7 +644,7 @@ export class Onboarding {
 				this.signinActive = null;
 				this.apiKeyMode = false;
 			} else {
-				this.apiKeyError = "Key set but agent does not recognize it yet. Try the interactive flow.";
+				this.apiKeyError = m.crew_onboarding_api_key_not_recognized();
 			}
 		} catch (e) {
 			this.apiKeyError = errText(e);

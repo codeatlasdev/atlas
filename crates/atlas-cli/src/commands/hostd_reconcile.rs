@@ -527,9 +527,11 @@ mod tests {
         let en = check_report_in("en", &s, "1.2.1", " --dir /d").unwrap();
         for tag in atlas_i18n::locales() {
             let r = check_report_in(tag, &s, "1.2.1", " --dir /d").unwrap();
+            // The values and commands are verbatim in every language, the pseudo-locale (debug builds) included; the
+            // word "pid" is message text, which en-XA accents, so the test looks for the number alone.
             assert!(
-                r.contains("0.6.2") && r.contains("1.2.1") && r.contains("pid 42"),
-                "{r}"
+                r.contains("0.6.2") && r.contains("1.2.1") && r.contains("42"),
+                "{tag}: {r}"
             );
             assert!(r.contains("atlas hostd --dir /d --reconcile"), "{r}");
             assert!(r.contains("  /w/0  zsh"), "{r}");

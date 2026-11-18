@@ -1,3 +1,4 @@
+use atlas_i18n::t;
 use std::collections::HashMap;
 use std::sync::atomic::AtomicBool;
 use std::sync::{Arc, Mutex};
@@ -83,17 +84,18 @@ pub enum MobileBuildPhase {
 }
 
 impl MobileBuildPhase {
-    /// Short label shown in the sidebar badge.
-    pub fn label(&self) -> &str {
+    /// Short label shown in the sidebar badge and the footer, in the display language. The names of the build
+    /// tools stay as they are.
+    pub fn label(&self) -> String {
         match self {
-            Self::Detecting => "detecting",
-            Self::CompilingRust => "rustc",
-            Self::GradleBuild => "gradle",
-            Self::XcodeBuild => "xcode",
-            Self::Installing => "install",
-            Self::Launching => "launch",
-            Self::Running => "running",
-            Self::Failed(_) => "failed",
+            Self::Detecting => t!("tui_runtime_widgets_phase_detecting"),
+            Self::CompilingRust => "rustc".to_string(),
+            Self::GradleBuild => "gradle".to_string(),
+            Self::XcodeBuild => "xcode".to_string(),
+            Self::Installing => t!("tui_runtime_widgets_phase_install"),
+            Self::Launching => t!("tui_runtime_widgets_phase_launch"),
+            Self::Running => t!("tui_runtime_widgets_phase_running"),
+            Self::Failed(_) => t!("tui_runtime_widgets_phase_failed"),
         }
     }
 

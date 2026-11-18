@@ -27,10 +27,14 @@ pub async fn run_ci(
 ) -> Result<()> {
     let (cfg, source) = config::load_or_detect(root_dir)?;
     if source == config::ConfigSource::Detected {
-        eprintln!("{}", config::detected_notice(&cfg));
+        eprintln!(
+            "{}",
+            config::detected_notice_in(&cfg, atlas_core::lang::DEFAULT)
+        );
     }
     let selection = config::resolve_selection(&cfg, select).map_err(|e| anyhow::anyhow!(e))?;
     let _lock = lock_or_err(root_dir)?;
+    // i18n-ignore: `--ci` output is read by pipelines and agents, never translated
     eprintln!(
         "atlas dev --ci  project={}  services={}",
         cfg.name,
@@ -51,6 +55,7 @@ pub async fn run_ci(
     )
     .await;
     if let Some(reason) = deps_failure(&deps) {
+        // i18n-ignore: `--ci` output is read by pipelines and agents, never translated
         eprintln!("[atlas] {reason}");
         let output = serde_json::json!({ "ok": false, "reason": reason, "services": [] });
         println!(
@@ -94,11 +99,13 @@ pub async fn run_ci(
                     eprintln!("  {name}: {message}");
                 }
                 ManagerEvent::InfraFailed { names, reason } => {
+                    // i18n-ignore: `--ci` output is read by pipelines and agents, never translated
                     eprintln!("  infra {}: {reason}", names.join(", "));
                     manager.record_failure(&names, &reason);
                 }
                 ManagerEvent::LogReady { name } => manager.mark_log_ready(&name),
                 ManagerEvent::TunnelState { state } => {
+                    // i18n-ignore: `--ci` output is read by pipelines and agents, never translated
                     eprintln!("  tunnel: {state:?}");
                     manager.write_status_file();
                 }
@@ -112,6 +119,7 @@ pub async fn run_ci(
             .iter()
             .any(|s| s.state == ServiceState::Starting);
         if now >= deadline {
+            // i18n-ignore: `--ci` output is read by pipelines and agents, never translated
             eprintln!("[atlas] timeout after {timeout_secs}s");
             break;
         }
@@ -123,6 +131,7 @@ pub async fn run_ci(
     }
 
     if interrupted {
+        // i18n-ignore: `--ci` output is read by pipelines and agents, never translated
         eprintln!("[atlas] interrupted, stopping services");
         manager.stop_all().await;
         std::process::exit(130);

@@ -1,13 +1,15 @@
 <script lang="ts">
 	/** What one phone may do: View and Control groups, each permission with the risk of granting it. */
 	import { SettingItem, Switch } from "@codeatlasdev/ui";
-	import { SCOPE_GROUPS, toggleScope, type Scope } from "#lib/settings/mobile.ts";
+	import { toggleScope, type Scope } from "#lib/settings/mobile.ts";
+	import { scopeGroups } from "#lib/settings/mobileText.ts";
 
 	let { scopes, onchange }: { scopes: Scope[]; onchange: (next: Scope[]) => void } = $props();
+	const groups = $derived(scopeGroups());
 </script>
 
 <div class="perms">
-	{#each SCOPE_GROUPS as g (g.title)}
+	{#each groups as g (g.title)}
 		<section>
 			<h4>{g.title}</h4>
 			{#each g.scopes as s (s.id)}

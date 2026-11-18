@@ -3,6 +3,7 @@
 use super::super::{App, Message, ToastVariant};
 use super::clipboard::{COPY_CONTEXT_SECS, COPY_RECENT_SECS, CopyKind};
 use crate::runtime::logs;
+use atlas_i18n::t;
 
 impl App {
     /// Handle the logs messages; anything else is handed back for the next domain.
@@ -18,12 +19,12 @@ impl App {
             Message::CopyLogs => self.copy_logs(
                 |b| b.since(COPY_RECENT_SECS),
                 logs::format_for_clipboard,
-                CopyKind::plain(|_| "Logs copied (3min)".to_string()),
+                CopyKind::plain(|_| t!("tui_runtime_app_toast_logs_copied")),
             ),
             Message::CopyLogsForAI => self.copy_logs(
                 |b| b.since(COPY_CONTEXT_SECS),
                 logs::format_for_ai_prompt,
-                CopyKind::plain(|_| "AI prompt copied".to_string()),
+                CopyKind::plain(|_| t!("tui_runtime_app_toast_ai_copied")),
             ),
             Message::CopyErrors => self.copy_logs(
                 |b| {
@@ -34,8 +35,8 @@ impl App {
                 },
                 logs::format_for_clipboard,
                 CopyKind {
-                    success: |n| format!("{n} errors copied"),
-                    empty_toast: Some("No errors found"),
+                    success: |n| t!("tui_runtime_app_toast_errors_copied", count = n),
+                    empty_toast: Some(|| t!("tui_runtime_app_toast_no_errors")),
                     fallback_label: Some("errors only"),
                 },
             ),
@@ -50,7 +51,7 @@ impl App {
             Message::ClearLogs => {
                 self.logs.log_buffer.clear();
                 self.reset_log_view();
-                self.set_toast("Logs cleared", ToastVariant::Info);
+                self.set_toast(t!("tui_runtime_app_toast_logs_cleared"), ToastVariant::Info);
             }
             Message::StartLogSearch => {
                 self.logs.log_search_input.clear();

@@ -3,6 +3,8 @@ mod chrome;
 mod chrome_tests;
 mod control;
 mod input;
+#[cfg(test)]
+mod layout_i18n_tests;
 mod logview;
 mod messages;
 mod palette;
@@ -148,7 +150,7 @@ impl App {
         events: EventHandler,
         dev_mode: bool,
     ) -> Self {
-        let mut tabs = vec!["All".to_string()];
+        let mut tabs = vec![atlas_i18n::t!("tui_runtime_widgets_tab_all")];
         for name in manager.app_service_names() {
             tabs.push(name.to_string());
         }

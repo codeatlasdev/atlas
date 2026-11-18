@@ -1,0 +1,10 @@
+{
+	"errors_crash_card_body_crash": "Body of the crash card when the earlier session left a crash report file. Says it stayed local.",
+	"errors_crash_card_body_hostd_exited": "Body of the crash card when the terminal host (hostd) ended on its own in the earlier session. 'Its terminals' are the terminals Atlas had open.",
+	"errors_crash_card_dismiss": "Button on the card shown after Atlas closed unexpectedly last time: hides the card until the next crash.",
+	"errors_crash_card_hint_crash": "Hint under the title on the report screen opened from the crash card, for a crash of the earlier session. Says the details are redacted before sending.",
+	"errors_crash_card_hint_hostd_exited": "Hint under the title on the report screen opened from the crash card, when the terminal host ended on its own. Says the details are redacted before sending.",
+	"errors_crash_card_report": "Button on the card shown after Atlas closed unexpectedly last time: opens the report screen with the redacted summary of that crash.",
+	"errors_crash_card_title_crash": "Title of the crash card and of its report screen when the earlier session left a crash report file.",
+	"errors_crash_card_title_hostd_exited": "Title of the crash card and of its report screen when the terminal host (hostd) ended on its own in the earlier session."
+}

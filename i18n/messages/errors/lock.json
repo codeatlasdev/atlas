@@ -1,0 +1,12 @@
+{
+  "pt-BR": {
+    "errors_crash_card_body_crash": "ddec2d14dac5",
+    "errors_crash_card_body_hostd_exited": "ed0efd5b5cf9",
+    "errors_crash_card_dismiss": "a2bd204e93e9",
+    "errors_crash_card_hint_crash": "3caa7802aabc",
+    "errors_crash_card_hint_hostd_exited": "212ee10def99",
+    "errors_crash_card_report": "85d640066187",
+    "errors_crash_card_title_crash": "bf2ef889bc79",
+    "errors_crash_card_title_hostd_exited": "623511b726dd"
+  }
+}

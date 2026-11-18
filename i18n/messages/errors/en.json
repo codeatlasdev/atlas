@@ -1,0 +1,10 @@
+{
+	"errors_crash_card_body_crash": "A crash report was saved on this machine. Nothing was sent anywhere; report it if you want it looked at.",
+	"errors_crash_card_body_hostd_exited": "Its terminals ended. Nothing was sent anywhere; report it if it keeps happening.",
+	"errors_crash_card_dismiss": "Dismiss",
+	"errors_crash_card_hint_crash": "A crash report was saved on this machine. Review the details, then report it if you want it looked at; secrets are removed first.",
+	"errors_crash_card_hint_hostd_exited": "Its terminals ended. Review the details, then report it if it keeps happening; secrets are removed first.",
+	"errors_crash_card_report": "Report",
+	"errors_crash_card_title_crash": "Atlas closed unexpectedly last time",
+	"errors_crash_card_title_hostd_exited": "The terminal host closed unexpectedly"
+}

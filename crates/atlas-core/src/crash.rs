@@ -73,7 +73,7 @@ pub fn write_crash_report(msg: &str, location: &str) -> Option<PathBuf> {
 /// The file is what a user attaches to a public issue, so every free-text field (and the backtrace, which
 /// names the home directory in every frame) goes through [`crate::redact::redact`]. Named
 /// `crash-<unix_ms>-<pid>.toml` so two panics in one second are two files; only the newest [`KEEP`] stay.
-fn write_report_in(
+pub fn write_report_in(
     dir: &Path,
     msg: &str,
     location: &str,

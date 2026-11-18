@@ -27,6 +27,8 @@ export interface ErrorReport {
 	version?: string;
 	/** What the person's machine and the last few things the app did looked like (never file contents). */
 	context?: ErrorContext;
+	/** Title and hint of a report whose wording lives with its producer (the crash card), so the startup chunk does not carry it. */
+	headline?: { title: string; hint: string };
 }
 
 /** One thing the app did shortly before the error (a command, a host call, a navigation). */
@@ -209,7 +211,11 @@ export function report(e: unknown, ctx: Pick<ErrorReport, "where"> & Partial<Err
 const CALM = "Atlas is still running. Copy the details or report it if it keeps happening.";
 
 /** What a toast or the details dialog calls an error: the title names what happened, the hint what still works. */
-export function headline(r: Pick<ErrorReport, "kind" | "origin" | "where">): { title: string; hint: string } {
+export function headline(r: Pick<ErrorReport, "kind" | "origin" | "where" | "headline">): {
+	title: string;
+	hint: string;
+} {
+	if (r.headline) return r.headline;
 	if (r.kind === "hostd")
 		return {
 			title: "Terminal host not reachable",

@@ -1047,7 +1047,8 @@ mod tests {
     /// `parse_answer` accepts, in every language, or a translated prompt would refuse its own answer.
     #[test]
     fn the_yes_a_prompt_offers_is_the_yes_it_accepts() {
-        for tag in atlas_i18n::locales() {
+        // The pseudo-locale (en-XA, dev builds) accents every letter: it is a layout aid, not a language to answer in.
+        for tag in atlas_i18n::locales().filter(|t| *t != "en-XA") {
             let prompt = atlas_i18n::t_in!(tag, "cmd_install_uninstall_confirm");
             let yes = prompt
                 .split_once('[')

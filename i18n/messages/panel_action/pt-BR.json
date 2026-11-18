@@ -40,8 +40,8 @@
 				"countPlural"
 			],
 			"match": {
-				"countPlural=one": "{shown} linha anterior não foi mantida (conectado com a execução em andamento); a saída completa está em .logs/.",
-				"countPlural=*": "{shown} linhas anteriores não foram mantidas (conectado com a execução em andamento); a saída completa está em .logs/."
+				"countPlural=one": "{shown} linha anterior não foi mantida (o Atlas conectou depois do início da execução); a saída completa está em .logs/.",
+				"countPlural=*": "{shown} linhas anteriores não foram mantidas (o Atlas conectou depois do início da execução); a saída completa está em .logs/."
 			}
 		}
 	],

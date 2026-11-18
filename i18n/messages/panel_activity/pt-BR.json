@@ -4,7 +4,7 @@
 	"panel_activity_action_started": "{label}: iniciou",
 	"panel_activity_drawer_activity": "Atividade",
 	"panel_activity_drawer_filter_activity": "Filtrar atividade",
-	"panel_activity_drawer_heavy_jobs": "Tarefas pesadas",
+	"panel_activity_drawer_heavy_jobs": "Jobs pesados",
 	"panel_activity_empty_hint": "Mudanças de estado dos serviços, alertas e ações aparecem aqui.",
 	"panel_activity_events_over": "{count} eventos em {span}",
 	"panel_activity_filter_all": "Todos",
@@ -19,8 +19,8 @@
 				"slotsPlural"
 			],
 			"match": {
-				"slotsPlural=one": "{running} de {slots} slot ocupado",
-				"slotsPlural=*": "{running} de {slots} slots ocupados"
+				"slotsPlural=one": "{running} de {slots} slot em uso",
+				"slotsPlural=*": "{running} de {slots} slots em uso"
 			}
 		}
 	],
@@ -36,12 +36,12 @@
 				"slotsPlural"
 			],
 			"match": {
-				"slotsPlural=one": "{running} de {slots} slot ocupado · {queued} aguardando",
-				"slotsPlural=*": "{running} de {slots} slots ocupados · {queued} aguardando"
+				"slotsPlural=one": "{running} de {slots} slot em uso · {queued} na fila",
+				"slotsPlural=*": "{running} de {slots} slots em uso · {queued} na fila"
 			}
 		}
 	],
-	"panel_activity_heavy_jobs_summary": "Tarefas pesadas · {summary}",
+	"panel_activity_heavy_jobs_summary": "Jobs pesados · {summary}",
 	"panel_activity_heavy_running": "{project} · em execução há {age}",
 	"panel_activity_heavy_running_eta": "{project} · em execução há {age} · faltam ~{eta}",
 	"panel_activity_heavy_waiting": "{project} · aguardando há {age}",

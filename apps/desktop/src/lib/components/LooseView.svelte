@@ -103,9 +103,12 @@
 		min-width: 0;
 		overflow: hidden;
 	}
+	/* Many or long-named tabs shrink and ellipsize their names; the close button and the right-hand actions never do. */
 	.tab {
 		display: flex;
 		align-items: center;
+		flex: 0 1 auto;
+		min-width: 0;
 		border-radius: 6px;
 		color: var(--ca-text-secondary);
 		font-size: 12.5px;
@@ -121,6 +124,7 @@
 		font: inherit;
 		padding: 3px 8px;
 		max-width: 220px;
+		min-width: 0;
 		overflow: hidden;
 		text-overflow: ellipsis;
 		white-space: nowrap;
@@ -130,6 +134,7 @@
 		padding: 3px;
 		margin-right: 3px;
 		border-radius: 4px;
+		flex: none;
 	}
 	.tab .x:hover {
 		background: var(--ca-action-hover);
@@ -141,5 +146,13 @@
 		text-overflow: ellipsis;
 		white-space: nowrap;
 		max-width: 260px;
+		flex: 0 1 auto;
+		min-width: 0;
+	}
+	header :global(button) {
+		flex: none;
+	}
+	.tab button:first-child {
+		flex: 0 1 auto;
 	}
 </style>

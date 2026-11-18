@@ -1,5 +1,5 @@
 {
-	"onboarding_welcome_find_file_hint": "Choose one in the explorer, or search for it with {key}.",
+	"onboarding_welcome_find_file_hint": "Choose one in the file list, or search for it with {key}.",
 	"onboarding_welcome_nothing_open_here": "Nothing open here",
 	"onboarding_welcome_palette_hint": "{key} for every command",
 	"onboarding_welcome_pick_a_file": "Pick a file",

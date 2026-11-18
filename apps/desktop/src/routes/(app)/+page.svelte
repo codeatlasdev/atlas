@@ -18,7 +18,7 @@
 	<Contain
 		where="Light editor"
 		title={m.shell_app_page_this_file_hit_an_error()}
-		hint="The rest of Atlas is unaffected."
+		hint={m.shell_contain_default_hint()}
 	>
 		<LooseView />
 	</Contain>
@@ -26,7 +26,7 @@
 	<Contain
 		where="Agents view"
 		title={m.shell_app_page_this_view_hit_an_error()}
-		hint="The rest of Atlas is unaffected."
+		hint={m.shell_contain_default_hint()}
 	>
 		<AgentsView mode={ws.view} />
 	</Contain>

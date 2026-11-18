@@ -46,7 +46,7 @@
 					? "Search"
 					: "Source control"}
 			title={m.shell_workbench_this_panel_hit_an_error()}
-			hint="The rest of Atlas is unaffected."
+			hint={m.shell_contain_default_hint()}
 		>
 			{#if docks.leftPanel === "explorer"}<Explorer
 					worktreeId={id}

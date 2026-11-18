@@ -1,0 +1,8 @@
+{
+	"viewers_files_fallback_binary": "Binary file",
+	"viewers_files_fallback_binary_detail": "{size} · no preview for this format.",
+	"viewers_files_fallback_first_bytes": "First {size}",
+	"viewers_files_fallback_large_detail": "This file is {size}. Atlas opens text files up to 32 MB.",
+	"viewers_files_fallback_too_large": "Too large to edit here",
+	"viewers_files_viewer_actions_open_externally": "Open externally"
+}

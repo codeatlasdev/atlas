@@ -3,7 +3,7 @@
 	"generatedAreas": { "cli_config": "UPDATE_FIXTURES=1 cargo test -p atlas-cli cli_i18n" },
 	"surfaces": {
 		"desktop": { "areas": ["errors", "os", "settings"], "paraglide": "apps/desktop/.i18n" },
-		"rust": { "areas": ["cli_chrome", "cli_config", "config", "desktop_cli", "desktop_pkg", "uninstall", "update"], "rust": "crates" },
+		"rust": { "areas": ["cli_chrome", "cli_config", "cmd_skills", "config", "desktop_cli", "desktop_pkg", "uninstall", "update"], "rust": "crates" },
 		"site": { "areas": ["base", "docs", "footer", "nav", "not_found"], "paraglide": "site/.i18n" }
 	}
 }

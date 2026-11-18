@@ -44,6 +44,8 @@
 	}
 </script>
 
+{#snippet mono(content: Snippet)}<span class="mono">{@render content()}</span>{/snippet}
+
 {#if error}
 	<Alert severity="error" title={m.settings_terminal_shell_atlas_could_not_read_your()}>{error}</Alert>
 {:else if !info}
@@ -102,7 +104,6 @@
 				>
 			</form>
 		</Row>
-		{#snippet mono(content: Snippet)}<span class="mono">{@render content()}</span>{/snippet}
 		<div class="status">
 			{#if info.probe?.error}
 				<span class="st bad"

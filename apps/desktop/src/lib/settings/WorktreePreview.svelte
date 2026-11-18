@@ -3,11 +3,14 @@
 	import { worktreePreview, type WorktreePrefs } from "./worktreePreview.ts";
 	import { m } from "#lib/i18n/m.ts";
 	import Rich from "#lib/i18n/Rich.svelte";
+	import type { Snippet } from "svelte";
 
 	let { prefs }: { prefs: WorktreePrefs } = $props();
 	let p = $derived(worktreePreview(prefs));
 	const ROW = 22;
 </script>
+
+{#snippet code(content: Snippet)}<code>{@render content()}</code>{/snippet}
 
 <figure aria-label={m.settings_terminal_worktree_preview_where_the_next_worktree_is()}>
 	<svg viewBox="0 0 360 {p.path.length * ROW + 6}" role="img" aria-hidden="true">
@@ -22,10 +25,7 @@
 		{/each}
 	</svg>
 	<figcaption>
-		<Rich
-			parts={m.settings_terminal_worktree_preview_caption.parts({ branch: p.branch })}
-			tags={{ code: "code" }}
-		/>
+		<Rich parts={m.settings_terminal_worktree_preview_caption.parts({ branch: p.branch })} tags={{ code }} />
 	</figcaption>
 </figure>
 

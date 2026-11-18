@@ -1,8 +1,8 @@
 // @ts-nocheck bun test runtime types are not part of the app tsconfig
 import { expect, test } from "bun:test";
+import { m } from "#lib/i18n/m.ts";
 import {
 	DEFAULT_KEYMAP,
-	appLauncher,
 	bindingsOf,
 	defaultKeymap,
 	kbd,
@@ -340,9 +340,9 @@ test("the reveal action names the platform's file manager", () => {
 
 // Incident (Windows): the dock/tray error fallback said "Open Atlas from the Dock", which Windows does not have.
 test("the error fallback names where the running app lives on each OS", () => {
-	expect(appLauncher(true, false)).toBe("the Dock");
-	expect(appLauncher(false, true)).toBe("the taskbar");
-	expect(appLauncher(false, false)).toBe("your launcher");
+	expect(m.tray_layout_error_hint({ os: "mac" })).toContain("the Dock");
+	expect(m.tray_layout_error_hint({ os: "windows" })).toContain("the taskbar");
+	expect(m.tray_layout_error_hint({ os: "linux" })).toContain("your launcher");
 });
 
 // The shortcut conventions decided for Windows/Linux (Chrome / VS Code / Windows Terminal) and macOS, pinned through the

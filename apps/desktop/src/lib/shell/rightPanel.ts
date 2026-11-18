@@ -4,6 +4,7 @@
  */
 import type { ServiceDef } from "#lib/api.ts";
 import type { AgentState } from "#lib/stores/agents.svelte.ts";
+import { m } from "#lib/i18n/m.ts";
 
 export interface AgentTab {
 	id: string;
@@ -29,12 +30,23 @@ export interface LiveAgent {
 	since: number | null;
 }
 
+/** Agent state words. Getters, so each read follows the app's language (`STATE_LABEL[state]` stays the call). */
 export const STATE_LABEL: Record<AgentState, string> = {
-	blocked: "Needs you",
-	waiting: "Needs you",
-	working: "Working",
-	done: "Done",
-	idle: "Idle",
+	get blocked() {
+		return m.shell_chrome_agent_state_needs_you();
+	},
+	get waiting() {
+		return m.shell_chrome_agent_state_needs_you();
+	},
+	get working() {
+		return m.shell_chrome_agent_state_working();
+	},
+	get done() {
+		return m.common_action_done();
+	},
+	get idle() {
+		return m.shell_chrome_agent_state_idle();
+	},
 };
 
 const ORDER: AgentState[] = ["blocked", "waiting", "working", "done", "idle"];

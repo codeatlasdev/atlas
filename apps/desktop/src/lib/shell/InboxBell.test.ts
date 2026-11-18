@@ -1,6 +1,7 @@
 // @ts-nocheck bun test runtime types are not part of the app tsconfig
 import "../../../test/setup.ts";
 import { afterEach, expect, test } from "bun:test";
+import { m } from "#lib/i18n/m.ts";
 
 // Incident (#506): the notifications popover of an empty inbox said only "No notifications". A first user learns
 // nothing from it (what lands here? where is it set?). Real kit Popover and Badge, the real component.
@@ -61,7 +62,9 @@ test("with entries it lists them, counts the unread ones, and keeps the settings
 		{ id: "a", title: "w · claude", body: "Needs you", read: false, variant: "warning" },
 		{ id: "b", title: "w · omp", body: "Done", read: true, variant: "success" },
 	]);
-	expect(target.querySelector("button.bell").getAttribute("aria-label")).toBe("1 unread notifications");
+	expect(target.querySelector("button.bell").getAttribute("aria-label")).toBe(
+		m.shell_chrome_inbox_bell_unread({ count: 1 }),
+	);
 	expect(text()).toContain("w · claude");
 	expect(text()).toContain("w · omp");
 	expect(button("Notification settings")).toBeUndefined();

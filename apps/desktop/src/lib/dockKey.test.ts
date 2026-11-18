@@ -37,7 +37,7 @@ describe("dockKeyFrom: a key press recorded in Settings becomes the summon key",
 		for (const e of [ev("KeyK"), ev("KeyK", { shiftKey: true }), ev("Space")]) {
 			const r = dockKeyFrom(e, true);
 			expect(r.kind).toBe("refuse");
-			expect(r.reason).toMatch(/⌘, ⌃ or ⌥/);
+			expect(r.reason).toMatch(/⌘, ⌃,? or ⌥/);
 		}
 		expect(dockKeyFrom(ev("KeyK"), false).reason).toMatch(/Ctrl or Alt/);
 	});

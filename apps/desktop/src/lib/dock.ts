@@ -7,6 +7,7 @@
  * resolution `resolveTarget`, the snapshot producer and the window sizes. `dock.test.ts` pins them; the snapshot's
  * JSON shape is also read by Rust (`__fixtures__/dock-snapshot.json`, `dock.rs`).
  */
+import { m } from "#lib/i18n/m.ts";
 
 /** What the main window publishes for each agent terminal (camelCase: Rust deserializes the same keys). */
 export interface DockAgent {
@@ -248,8 +249,6 @@ function toPill(s: DockState): DockState {
 		: { ...base, mode: "pill", needs: null };
 }
 
-const NO_AGENT = "No agent is running. Open Atlas to start one.";
-
 /**
  * The message with the attached files after it. Agents read an image or a clip by path (`@/abs/path` in omp and
  * Claude Code), one per line so the instruction comes first; a path with spaces is quoted so it stays one token.
@@ -300,11 +299,11 @@ export function reduce(s: DockState, ev: DockEvent): Step {
 					// target applies (resolveTarget answers `empty` with the tab it would use)
 					return r.tabId
 						? deliver(s, r.tabId, withPaths("", s.attachments))
-						: { state: { ...s, mode: "error", error: NO_AGENT }, effects: [] };
+						: { state: { ...s, mode: "error", error: m.tray_dock_no_agent_error() }, effects: [] };
 				case "ask":
 					return { state: { ...s, mode: "ask", candidates: r.candidates }, effects: [] };
 				case "none":
-					return { state: { ...s, mode: "error", error: NO_AGENT }, effects: [] };
+					return { state: { ...s, mode: "error", error: m.tray_dock_no_agent_error() }, effects: [] };
 			}
 			return { state: s, effects: [] };
 		}

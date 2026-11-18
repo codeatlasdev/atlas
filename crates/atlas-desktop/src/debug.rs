@@ -82,6 +82,7 @@ pub fn plugin<R: Runtime>() -> tauri::plugin::TauriPlugin<R> {
             let app = app.clone();
             tauri::async_runtime::spawn(async move {
                 if let Err(e) = serve(app).await {
+                    // i18n-ignore: log
                     eprintln!("atlas-debug: {e}");
                 }
             });
@@ -93,6 +94,7 @@ pub fn plugin<R: Runtime>() -> tauri::plugin::TauriPlugin<R> {
 #[tauri::command]
 pub fn debug_log(state: State<'_, DebugState>, level: String, msg: String) {
     let seq = state.seq.fetch_add(1, Ordering::Relaxed);
+    // i18n-ignore: log
     eprintln!("[webview {level}] {msg}");
     let mut logs = state.logs.lock();
     if logs.len() == MAX_LOGS {

@@ -100,12 +100,14 @@ pub fn run(id: &str) {
     let Some(home) = webkit_home() else { return };
     let (from, to) = (webview_dir(&home, from_id), webview_dir(&home, id));
     match migrate(&from, &to) {
+        // i18n-ignore: log
         Ok(true) => eprintln!(
             "atlas: moved webview data {} -> {}",
             from.display(),
             to.display()
         ),
         Ok(false) => {}
+        // i18n-ignore: log
         Err(e) => eprintln!("atlas: webview data not migrated ({e}); starting with defaults"),
     }
 }

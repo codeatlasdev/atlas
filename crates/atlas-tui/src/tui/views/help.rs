@@ -20,7 +20,12 @@ pub enum Row {
     Blank,
     Header(String),
     Sub(String),
-    Key { keys: String, label: String },
+    Key {
+        keys: String,
+        label: String,
+    },
+    /// The rest of a label that did not fit the panel, under the label's own column.
+    Cont(String),
 }
 
 /// Build every help row from the keymap table plus project actions / open keys.
@@ -42,7 +47,7 @@ pub fn rows(
             };
             let help = (b.help)();
             v.push(Row::Key {
-                keys: b.keys.to_string(),
+                keys: b.display(),
                 label: if ctx.is_empty() {
                     help
                 } else {
@@ -53,9 +58,7 @@ pub fn rows(
         sections.push(v);
     }
     if !open_svcs.is_empty() {
-        let mut v = vec![Row::Header(
-            t!("tui_runtime_views_help_open").to_uppercase(),
-        )];
+        let mut v = vec![Row::Header(t!("common_action_open").to_uppercase())];
         for (k, name, port) in open_svcs {
             let label = match port {
                 Some(p) => format!("{name} (:{p})"),
@@ -126,6 +129,10 @@ fn render_row<'a>(row: &Row, key_w: usize) -> Line<'a> {
             format!(" {g}"),
             Style::default().fg(t.text_muted).bold(),
         )),
+        Row::Cont(text) => Line::from(vec![
+            Span::raw(" ".repeat(key_w + 2)),
+            Span::styled(text.clone(), Style::default().fg(t.text)),
+        ]),
         Row::Key { keys, label } => Line::from(vec![
             Span::styled(
                 format!(" {keys:<key_w$} "),
@@ -136,6 +143,75 @@ fn render_row<'a>(row: &Row, key_w: usize) -> Line<'a> {
     }
 }
 
+/// Width of one help column: the widest key, a gap, the widest label and the padding. Translations make labels longer,
+/// so the layout is decided from the rows, not from a constant.
+fn column_width(sections: &[Vec<Row>]) -> u16 {
+    let key_w = sections
+        .iter()
+        .flatten()
+        .filter_map(|r| match r {
+            Row::Key { keys, .. } => Some(keys.chars().count()),
+            _ => None,
+        })
+        .max()
+        .unwrap_or(4)
+        .max(4);
+    let widest_label = sections
+        .iter()
+        .flatten()
+        .filter_map(|r| match r {
+            Row::Key { label, .. } => Some(label.chars().count()),
+            _ => None,
+        })
+        .max()
+        .unwrap_or(10);
+    (key_w + 2 + widest_label + 2) as u16
+}
+
+/// Two columns only when the terminal is wide enough for them and both columns hold the widest row whole;
+/// otherwise one column, which scrolls.
+fn two_columns_fit(sections: &[Vec<Row>], width: u16) -> bool {
+    width >= TWO_COL_MIN && column_width(sections) * 2 + 3 + 4 <= width.saturating_sub(2)
+}
+
+/// Break labels longer than `label_w` columns at word boundaries into continuation rows, so a longer translation
+/// wraps inside the panel instead of being cut at its edge.
+fn wrap_labels(sections: Vec<Vec<Row>>, label_w: usize) -> Vec<Vec<Row>> {
+    sections
+        .into_iter()
+        .map(|rows| {
+            let mut out = Vec::with_capacity(rows.len());
+            for row in rows {
+                match row {
+                    Row::Key { keys, label } if label.chars().count() > label_w => {
+                        let mut lines: Vec<String> = Vec::new();
+                        let mut cur = String::new();
+                        for word in label.split(' ') {
+                            let joined = cur.chars().count() + 1 + word.chars().count();
+                            if !cur.is_empty() && joined > label_w {
+                                lines.push(std::mem::take(&mut cur));
+                            }
+                            if !cur.is_empty() {
+                                cur.push(' ');
+                            }
+                            cur.push_str(word);
+                        }
+                        lines.push(cur);
+                        let mut it = lines.into_iter();
+                        out.push(Row::Key {
+                            keys,
+                            label: it.next().unwrap_or_default(),
+                        });
+                        out.extend(it.map(Row::Cont));
+                    }
+                    other => out.push(other),
+                }
+            }
+            out
+        })
+        .collect()
+}
+
 /// Rows of text `render` would need at `width` (for scroll clamping).
 pub fn content_rows(
     actions: &[ActionConfig],
@@ -144,7 +220,7 @@ pub fn content_rows(
     width: u16,
 ) -> usize {
     let sections = rows(actions, open_svcs, keys);
-    if width >= TWO_COL_MIN {
+    if two_columns_fit(&sections, width) {
         let (a, b) = two_columns(&sections);
         a.len().max(b.len())
     } else {
@@ -166,7 +242,7 @@ pub fn render(
     let area = frame.area();
 
     let sections = rows(actions, open_svcs, keys);
-    let two = area.width >= TWO_COL_MIN;
+    let two = two_columns_fit(&sections, area.width);
     let key_w = sections
         .iter()
         .flatten()
@@ -190,6 +266,13 @@ pub fn render(
     let wanted = if two { col_w * 2 + 3 } else { col_w } + 4;
     let width = wanted.min(area.width.saturating_sub(2)).max(20);
 
+    // Text columns inside the panel: borders and side padding take 4; two columns share the rest with a 1 gap.
+    let text_w = if two {
+        (width.saturating_sub(5)) / 2
+    } else {
+        width.saturating_sub(4)
+    } as usize;
+    let sections = wrap_labels(sections, text_w.saturating_sub(key_w + 2).max(10));
     let (left, right) = if two {
         two_columns(&sections)
     } else {
@@ -351,10 +434,10 @@ mod tests {
         for b in keymap::KEYMAP {
             assert!(
                 flat.iter().any(|r| matches!(r, Row::Key { keys, label }
-                    if keys == b.keys && label.starts_with(b.help))),
+                    if *keys == b.display() && label.starts_with(&(b.help)()))),
                 "help is missing {} / {}",
                 b.keys,
-                b.help
+                (b.help)()
             );
         }
     }

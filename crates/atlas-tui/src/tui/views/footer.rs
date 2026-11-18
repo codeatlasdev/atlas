@@ -141,7 +141,7 @@ pub fn hints_for(c: &Ctxt) -> Vec<Hint> {
             label = t!("tui_runtime_keys_footer_start");
         }
         let mut h = Hint::new(
-            &format!("{} ", b.keys),
+            &format!("{} ", b.display()),
             &label,
             keymap::click_message(b, c.active),
         );

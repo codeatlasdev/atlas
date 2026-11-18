@@ -8,6 +8,7 @@
 //! sliding window never forces a rescan.
 
 use super::logs::LogBuffer;
+use atlas_i18n::t;
 
 /// The presets `V` cycles through, in order (after `All`).
 pub const PRESET_MINUTES: [u32; 4] = [1, 5, 15, 60];
@@ -44,15 +45,19 @@ impl TimeRange {
         }
     }
 
-    /// Badge text (`last 5m`, `since restart`, `14:05–14:20`).
+    /// Badge text (`last 5m`, `since restart`, `14:05–14:20`), in the display language.
     pub fn label(self) -> String {
         match self {
-            Self::All => "all time".into(),
-            Self::LastMinutes(m) if m % 60 == 0 => format!("last {}h", m / 60),
-            Self::LastMinutes(m) => format!("last {m}m"),
-            Self::SinceRestart => "since restart".into(),
-            Self::SinceStackStart => "since start".into(),
-            Self::Custom { from_s, to_s: None } => format!("from {}", clock(from_s)),
+            Self::All => t!("tui_runtime_widgets_range_all"),
+            Self::LastMinutes(m) if m % 60 == 0 => {
+                t!("tui_runtime_widgets_range_last_hours", hours = m / 60)
+            }
+            Self::LastMinutes(m) => t!("tui_runtime_widgets_range_last_minutes", minutes = m),
+            Self::SinceRestart => t!("tui_runtime_widgets_range_since_restart"),
+            Self::SinceStackStart => t!("tui_runtime_widgets_range_since_start"),
+            Self::Custom { from_s, to_s: None } => {
+                t!("tui_runtime_widgets_range_from", time = clock(from_s))
+            }
             Self::Custom {
                 from_s,
                 to_s: Some(to_s),
@@ -92,7 +97,7 @@ fn parse_clock(s: &str) -> Option<u32> {
 pub fn parse_custom(input: &str) -> Result<TimeRange, String> {
     let input = input.trim();
     if input.is_empty() {
-        return Err("type a time: 14:05 or 14:05–14:20".into());
+        return Err(t!("tui_runtime_widgets_range_type_a_time"));
     }
     let sep = ['–', '—', '-'];
     let (a, b) = if let Some((a, b)) = input.split_once("..") {
@@ -109,12 +114,13 @@ pub fn parse_custom(input: &str) -> Result<TimeRange, String> {
         Some(b) if b.trim().is_empty() => None,
         // an end without seconds means the whole minute: `14:20` ends at 14:20:59
         Some(b) => Some(
-            parse_clock(b).ok_or_else(|| format!("not a time: {:?}", b.trim()))?
+            parse_clock(b)
+                .ok_or_else(|| t!("tui_runtime_widgets_range_not_a_time", input = b.trim()))?
                 + if b.matches(':').count() == 1 { 59 } else { 0 },
         ),
     };
     if to_s.is_some_and(|t| t < from_s) {
-        return Err("the end is before the start".into());
+        return Err(t!("tui_runtime_widgets_range_end_before_start"));
     }
     Ok(TimeRange::Custom { from_s, to_s })
 }

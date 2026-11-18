@@ -66,7 +66,8 @@ pub type Label = fn() -> String;
 /// One row of the keymap.
 #[derive(Debug, Clone, Copy)]
 pub struct Binding {
-    /// Display text of the key (`PgUp/PgDn`, `Ctrl+L`, `r`): key names, never translated.
+    /// The key as written in the table: the text of a plain key (`PgUp/PgDn`, `r`), or a stroke (`ctrl-l`,
+    /// `shift-tab`) that [`Binding::display`] spells out. Never a translated word.
     pub keys: &'static str,
     /// Label shown in help.
     pub help: Label,
@@ -76,6 +77,18 @@ pub struct Binding {
     pub ctx: Ctx,
     /// Single-character keys this row binds (checked against `BUILTIN_KEYS`).
     pub chars: &'static str,
+}
+
+impl Binding {
+    /// The key as the help and the footer show it: a stroke becomes `Ctrl+L` (terminal style on every OS, the key
+    /// names from the catalog), a plain key is shown as is.
+    pub fn display(&self) -> String {
+        if self.keys.starts_with("ctrl-") || self.keys.starts_with("shift-") {
+            atlas_i18n::shortcut_for(self.keys, "linux", atlas_i18n::lang())
+        } else {
+            self.keys.to_string()
+        }
+    }
 }
 
 const fn b(
@@ -135,7 +148,7 @@ pub const KEYMAP: &[Binding] = &[
         ":",
     ),
     b(
-        "Ctrl+C",
+        "ctrl-c",
         || t!("tui_runtime_keys_help_quit_now"),
         None,
         General,
@@ -143,7 +156,7 @@ pub const KEYMAP: &[Binding] = &[
         "",
     ),
     b(
-        "Ctrl+Z",
+        "ctrl-z",
         || t!("tui_runtime_keys_help_suspend"),
         None,
         General,
@@ -172,7 +185,7 @@ pub const KEYMAP: &[Binding] = &[
         "M",
     ),
     b(
-        "Ctrl+U/W",
+        "ctrl-u/w",
         || t!("tui_runtime_keys_help_input_edit"),
         None,
         General,
@@ -251,7 +264,7 @@ pub const KEYMAP: &[Binding] = &[
         "",
     ),
     b(
-        "Shift+Tab",
+        "shift-tab",
         || t!("tui_runtime_keys_help_prev_tab"),
         None,
         Navigation,
@@ -309,8 +322,8 @@ pub const KEYMAP: &[Binding] = &[
     ),
     b(
         "/",
-        || t!("tui_runtime_keys_help_search"),
-        Some(|| t!("tui_runtime_keys_footer_search")),
+        || t!("common_action_search"),
+        Some(|| t!("common_action_search")),
         Logs,
         Any,
         "/",
@@ -420,7 +433,7 @@ pub const KEYMAP: &[Binding] = &[
         "",
     ),
     b(
-        "Ctrl+R",
+        "ctrl-r",
         || t!("tui_runtime_keys_help_search_regex"),
         None,
         Logs,
@@ -452,7 +465,7 @@ pub const KEYMAP: &[Binding] = &[
         "E",
     ),
     b(
-        "Ctrl+L",
+        "ctrl-l",
         || t!("tui_runtime_keys_help_clear_logs"),
         None,
         Logs,
@@ -532,7 +545,7 @@ mod tests {
                 assert!(
                     BUILTIN_KEYS.contains(&c),
                     "'{c}' ({}) is in the keymap but not BUILTIN_KEYS",
-                    b.help
+                    (b.help)()
                 );
             }
         }
@@ -551,7 +564,11 @@ mod tests {
 
     #[test]
     fn required_keys_are_present() {
-        let all: String = KEYMAP.iter().map(|b| b.keys).collect::<Vec<_>>().join(" ");
+        let all: String = KEYMAP
+            .iter()
+            .map(|b| b.display())
+            .collect::<Vec<_>>()
+            .join(" ");
         for k in [
             "f",
             ":",
@@ -580,10 +597,10 @@ mod tests {
     fn r_label_depends_on_context() {
         let r: Vec<_> = KEYMAP.iter().filter(|b| b.keys == "r").collect();
         assert_eq!(r.len(), 2);
-        assert!(r.iter().any(|b| b.ctx == All && b.help.contains("all")));
+        assert!(r.iter().any(|b| b.ctx == All && (b.help)().contains("all")));
         assert!(
             r.iter()
-                .any(|b| b.ctx == Service && b.help.contains("this service"))
+                .any(|b| b.ctx == Service && (b.help)().contains("this service"))
         );
     }
 }

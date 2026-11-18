@@ -145,7 +145,7 @@
 {"ratchet":"rust-ui","file":"crates/atlas-host/src/upgrade.rs","count":8}
 {"ratchet":"rust-ui","file":"crates/atlas-tui/src/config/loader.rs","count":0}
 {"ratchet":"rust-ui","file":"crates/atlas-tui/src/tui/views/confirm.rs","count":0}
-{"ratchet":"rust-ui","file":"crates/atlas-tui/src/tui/views/dashboard.rs","count":15}
+{"ratchet":"rust-ui","file":"crates/atlas-tui/src/tui/views/dashboard.rs","count":2}
 {"ratchet":"rust-ui","file":"crates/atlas-tui/src/tui/views/device_picker.rs","count":0}
 {"ratchet":"rust-ui","file":"crates/atlas-tui/src/tui/views/footer.rs","count":0}
 {"ratchet":"rust-ui","file":"crates/atlas-tui/src/tui/views/service_menu.rs","count":0}
@@ -170,8 +170,8 @@
 {"ratchet":"shortcut","file":"crates/atlas-desktop/src/hotkeys.rs","count":12}
 {"ratchet":"shortcut","file":"crates/atlas-desktop/src/shots/keys.rs","count":4}
 {"ratchet":"shortcut","file":"crates/atlas-desktop/src/shots/prefs.rs","count":8}
-{"ratchet":"shortcut","file":"crates/atlas-tui/src/runner/lifecycle.rs","count":1}
-{"ratchet":"shortcut","file":"crates/atlas-tui/src/tui/keymap.rs","count":6}
+{"ratchet":"shortcut","file":"crates/atlas-tui/src/runner/lifecycle.rs","count":0}
+{"ratchet":"shortcut","file":"crates/atlas-tui/src/tui/keymap.rs","count":0}
 {"ratchet":"shortcut","file":"crates/atlas-tui/src/tui/views/footer.rs","count":0}
 {"ratchet":"shortcut","file":"site/src/pages/index.astro","count":1}
 {"ratchet":"svelte","file":"apps/desktop/src/lib/components/AgentSettings.svelte","count":26}

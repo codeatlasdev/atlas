@@ -27,7 +27,7 @@
 	"tui_runtime_run_action_failed": "action {label}: failed",
 	"tui_runtime_run_action_line": "[action {label}] {line}",
 	"tui_runtime_run_banner": "atlas dev ({mode})",
-	"tui_runtime_run_done": "Done.",
+	"tui_runtime_run_done": "Done",
 	"tui_runtime_run_infra_failed": "infra {names}: {reason}",
 	"tui_runtime_run_project": "project: {name}",
 	"tui_runtime_run_services": "services: {count}",

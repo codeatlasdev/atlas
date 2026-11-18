@@ -1,6 +1,7 @@
 //! Service control: restart/stop/run action, the service menu and tunnel policy.
 
 use super::super::{App, Effect, Layer, Message, ServiceMenuAction, ToastVariant};
+use atlas_i18n::t;
 
 impl App {
     /// Handle the services messages; anything else is handed back for the next domain.
@@ -13,7 +14,7 @@ impl App {
             Message::RestartAllConfirmed => {
                 let names = self.restart_all_targets();
                 self.set_toast(
-                    format!("Restarting {} services", names.len()),
+                    t!("tui_runtime_app_toast_restarting_n", count = names.len()),
                     ToastVariant::Progress,
                 );
                 for name in &names {
@@ -23,12 +24,18 @@ impl App {
             }
             Message::StopService(name) => {
                 self.audit_human("stop_service", &name);
-                self.set_toast(format!("Stopping {name}"), ToastVariant::Progress);
+                self.set_toast(
+                    t!("tui_runtime_app_toast_stopping", name = name.as_str()),
+                    ToastVariant::Progress,
+                );
                 self.effects.push_back(Effect::StopService(name));
             }
             Message::RestartService(name) => {
                 self.audit_human("restart_service", &name);
-                self.set_toast(format!("Restarting {name}"), ToastVariant::Progress);
+                self.set_toast(
+                    t!("tui_runtime_app_toast_restarting", name = name.as_str()),
+                    ToastVariant::Progress,
+                );
                 self.effects.push_back(Effect::RestartService(name));
             }
             Message::RunAction(key) => {
@@ -40,7 +47,13 @@ impl App {
                         let body = if pauses.is_empty() {
                             body
                         } else {
-                            format!("{body}\n\nPauses: {}", pauses.join(", "))
+                            format!(
+                                "{body}\n\n{}",
+                                t!(
+                                    "tui_runtime_app_confirm_pauses",
+                                    services = pauses.join(", ")
+                                )
+                            )
                         };
                         (a.label, body)
                     })
@@ -73,7 +86,7 @@ impl App {
                 // The runner owns the tunnel exit policy (it always closes it on exit).
                 if self.remote.is_some() {
                     self.set_toast(
-                        "The runner owns the tunnel: it closes when the runner stops",
+                        t!("tui_runtime_app_toast_tunnel_runner"),
                         ToastVariant::Info,
                     );
                     return None;
@@ -82,9 +95,9 @@ impl App {
                 self.manager
                     .set_tunnel_kill_on_exit(self.tunnel_kill_on_exit);
                 let msg = if self.tunnel_kill_on_exit {
-                    "Tunnel will close on exit"
+                    t!("tui_runtime_app_toast_tunnel_close")
                 } else {
-                    "Tunnel will stay on exit"
+                    t!("tui_runtime_app_toast_tunnel_stay")
                 };
                 self.set_toast(msg, ToastVariant::Info);
             }
@@ -99,17 +112,26 @@ impl App {
                 match action {
                     ServiceMenuAction::Restart => {
                         self.audit_human("restart_service", &name);
-                        self.set_toast(format!("Restarting {name}"), ToastVariant::Progress);
+                        self.set_toast(
+                            t!("tui_runtime_app_toast_restarting", name = name.as_str()),
+                            ToastVariant::Progress,
+                        );
                         self.effects.push_back(Effect::RestartService(name));
                     }
                     ServiceMenuAction::Stop => {
                         self.audit_human("stop_service", &name);
-                        self.set_toast(format!("Stopping {name}"), ToastVariant::Progress);
+                        self.set_toast(
+                            t!("tui_runtime_app_toast_stopping", name = name.as_str()),
+                            ToastVariant::Progress,
+                        );
                         self.effects.push_back(Effect::StopService(name));
                     }
                     ServiceMenuAction::Start => {
                         self.audit_human("start_service", &name);
-                        self.set_toast(format!("Starting {name}"), ToastVariant::Progress);
+                        self.set_toast(
+                            t!("tui_runtime_app_toast_starting", name = name.as_str()),
+                            ToastVariant::Progress,
+                        );
                         self.effects.push_back(Effect::RestartService(name));
                     }
                 }
@@ -119,7 +141,14 @@ impl App {
             }
             Message::DeviceDisconnected { label, device } => {
                 self.set_toast(
-                    format!("⚠ Device disconnected: {device} ({label})"),
+                    format!(
+                        "⚠ {}",
+                        t!(
+                            "tui_runtime_app_toast_device_gone",
+                            device = device.as_str(),
+                            label = label.as_str()
+                        )
+                    ),
                     ToastVariant::Warning,
                 );
             }

@@ -39,7 +39,7 @@ pub fn render(frame: &mut Frame, title: &str, body: &str, clicks: &ClickMap) {
             Style::default().fg(t.text).bg(t.bg_float).bold(),
         ),
         Span::styled(
-            format!(" {}", t!("tui_runtime_views_confirm_cancel")),
+            format!(" {}", t!("common_action_cancel").to_lowercase()),
             Style::default().fg(t.text_dim),
         ),
         Span::raw("    "),

@@ -99,7 +99,7 @@ mod tests {
         let err = lock2.unwrap_err();
         assert!(
             err.to_string()
-                .contains("another atlas dev instance is running")
+                .contains(&atlas_i18n::t!("tui_runtime_lock_other"))
         );
     }
 

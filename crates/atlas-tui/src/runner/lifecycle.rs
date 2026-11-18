@@ -138,7 +138,10 @@ impl RunnerLoop {
         if foreground {
             println!(
                 "\x1b[1;32m✓\x1b[0m {}",
-                t!("tui_runtime_run_started_foreground", key = "Ctrl+C")
+                t!(
+                    "tui_runtime_run_started_foreground",
+                    key = atlas_i18n::shortcut_for("ctrl-c", "linux", atlas_i18n::lang())
+                )
             );
         } else {
             println!(

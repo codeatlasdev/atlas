@@ -27,7 +27,7 @@
 	"tui_runtime_run_action_failed": "Console line of the runner when an action failed; a red cross comes before it.",
 	"tui_runtime_run_action_line": "Prefix of each output line of an atlas.yaml action run by the runner. {label} is the action's label, {line} one line of its output.",
 	"tui_runtime_run_banner": "First line of `atlas dev --headless` and the runner. {mode} is the flag name: headless or runner.",
-	"tui_runtime_run_done": "Last console line of `atlas dev --headless` and the runner, after every service stopped.",
+	"tui_runtime_run_done": "Last console line of `atlas dev --headless` and the runner, after every service stopped; a green check comes before it. i18n-distinct: a status line in the past, not the Done button of common_action_done (pt-BR: Concluir).",
 	"tui_runtime_run_infra_failed": "Console line of `atlas dev --headless` and the runner when the infrastructure services (docker) could not start; a red cross comes before it. {names} lists them, {reason} is the engine's message.",
 	"tui_runtime_run_project": "Detail line under the banner of `atlas dev --headless` and the runner: the project name.",
 	"tui_runtime_run_services": "Detail line under the banner: how many services the project has.",

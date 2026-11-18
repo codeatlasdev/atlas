@@ -2,7 +2,7 @@
 // ratchet baseline is one self-contained line per file that a branch only lowers (`merge=union`, the reader takes the
 // smaller count of a path listed twice). Real temp git repositories, real `git merge`; the first case is the scenario
 // that cost a manual resolution per batch PR: two batches add different areas to one surface and fix adjacent files.
-import { afterAll, describe, expect, setDefaultTimeout, test } from "bun:test";
+import { afterAll, describe, expect, test } from "bun:test";
 import { existsSync, mkdtempSync, readFileSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
@@ -12,8 +12,6 @@ import { fix } from "./fix.ts";
 import { loadSurfacesConfig } from "./source.ts";
 import { BASELINE, check, cleanup, errors, git, makeRepo, must, put, read } from "./testkit.ts";
 import { loadCtx } from "./types.ts";
-
-setDefaultTimeout(60_000);
 
 // The resolver reads the environment: run with a clean one, whatever CI or a developer's shell exports.
 const AMBIENT = ["ATLAS_BASE", "GITHUB_ACTIONS", "GITHUB_EVENT_NAME", "GITHUB_EVENT_PATH"];

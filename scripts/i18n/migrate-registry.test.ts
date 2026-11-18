@@ -1,6 +1,6 @@
 // `bun run i18n:migrate-registry`: a branch written for the old registry (areas listed in surfaces.json, the nested
 // hardcoded-baseline.json) becomes a branch of the new one, also in the middle of a conflicted `git merge origin/main`.
-import { afterAll, describe, expect, setDefaultTimeout, test } from "bun:test";
+import { afterAll, describe, expect, test } from "bun:test";
 import { existsSync, readdirSync, rmSync, writeFileSync } from "node:fs";
 import { join } from "node:path";
 import { addMessage } from "./add.ts";
@@ -11,7 +11,6 @@ import { loadSurfacesConfig } from "./source.ts";
 import { areaFile, check, cleanup, errors, git, makeRepo, must, put, read } from "./testkit.ts";
 import { loadCtx } from "./types.ts";
 
-setDefaultTimeout(60_000);
 const AMBIENT = ["ATLAS_BASE", "GITHUB_ACTIONS", "GITHUB_EVENT_NAME", "GITHUB_EVENT_PATH"];
 const saved = Object.fromEntries(AMBIENT.map((k) => [k, process.env[k]]));
 for (const k of AMBIENT) delete process.env[k];

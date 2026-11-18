@@ -1,13 +1,10 @@
 // The ratchets in diff mode: a change is judged on the offenders it adds, against the merge-base, so a baseline that
 // lags main never fails anyone and never needs a re-snapshot. Real temp git repositories, real `git`.
-import { afterAll, describe, expect, setDefaultTimeout, test } from "bun:test";
+import { afterAll, describe, expect, test } from "bun:test";
 import { readBaseline, renderBaseline } from "./baseline.ts";
 import { fix } from "./fix.ts";
 import { type Finding, loadCtx } from "./types.ts";
 import { BASELINE, baselineText, check, cleanup, makeRepo, put, read, rulesOf } from "./testkit.ts";
-
-// Each case builds real git repositories; on a loaded CI runner the default 5 s is too tight (a hook timed out at 11 s).
-setDefaultTimeout(60_000);
 
 // The resolver (scripts/lib/base.ts, tested in scripts/lib/base.test.ts) reads the environment: run these with a clean
 // one, whatever CI or a developer's shell exports.

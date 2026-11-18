@@ -15,6 +15,11 @@ const realFailure: Job = { name: "Rust (macOS)", conclusion: "failure", failures
 // Seen on #547 (run 44121673101): macOS arm64 capacity. The job ends `cancelled`, with this one failure annotation.
 const NOT_ACQUIRED_MSG = "The job was not acquired by Runner of type hosted even after multiple attempts";
 const mac = (o: Partial<Job> = {}): Job => ({ name: "Rust (macOS)", conclusion: "cancelled", failures: [NOT_ACQUIRED_MSG], ...o });
+// What a job that reached its `timeout-minutes` shows (seen on run 44413383839, "Repo scripts (ubuntu-latest)", 15 min): it ends
+// `cancelled` with these two failure annotations. The Windows job (ci.yml `rust-windows`) puts a timeout on each step, so
+// when only the job's own limit fires the runner stopped running the steps (#520: a frozen VM, no step timeout ever fires).
+const TIMEOUT_MSGS = ["The job has exceeded the maximum execution time of 30m0s", "The operation was canceled."];
+const stalled = (o: Partial<Job> = {}): Job => ({ name: "Rust (Windows, full workspace)", conclusion: "cancelled", failures: TIMEOUT_MSGS, ...o });
 const base: RerunFacts = { conclusion: "failure", attempt: 1, headIsTip: true, jobs: [green, win(), aggregate] };
 
 describe("decideRerun", () => {
@@ -35,6 +40,10 @@ describe("decideRerun", () => {
     ["the run succeeded -> none", { conclusion: "success", jobs: [green] }, false, /concluded success/],
     ["a job cancelled by hand (no annotation) next to the lost one -> none", { jobs: [win(), { name: "Site build", conclusion: "cancelled", failures: [] }, aggregate] }, false, /cancelled: Site build/],
     ["a job cancelled with an unrelated annotation -> none", { jobs: [mac({ failures: ["The operation was canceled."] }), aggregate] }, false, /cancelled: Rust \(macOS\)/],
+    ["the Windows job ended at its own time limit (its step timeouts never fired) -> rerun", { jobs: [stalled(), aggregate] }, true, /runner stalled until the job's time limit: Rust \(Windows/],
+    ["another job that ran into its time limit is a hang or a slow mirror, not the platform -> none", { jobs: [stalled({ name: "Repo scripts (ubuntu-latest)" }), aggregate] }, false, /cancelled: Repo scripts/],
+    ["the Windows job timed out next to a real failure -> none", { jobs: [stalled(), realFailure, aggregate] }, false, /real failure/],
+    ["a time limit message next to a failure of the job's own -> none", { jobs: [stalled({ failures: [...TIMEOUT_MSGS, "Process completed with exit code 1."] }), aggregate] }, false, /cancelled|real failure/],
     ["a newer push superseded the run -> none", { headIsTip: false }, false, /no longer the tip/],
     ["red with no infrastructure annotation (a bare failure) -> none", { jobs: [{ name: "Site build", conclusion: "failure", failures: [] }, aggregate] }, false, /real failure/],
     ["only the aggregate job is red -> none", { jobs: [green, aggregate] }, false, /no job ended by infrastructure/],

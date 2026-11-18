@@ -5,14 +5,23 @@
 //                (a hosted Windows runner died mid-step; GitHub notices ~45 min later and ends the job as a failure)
 //   unavailable  "The job was not acquired by Runner of type hosted even after multiple attempts"
 //                (no hosted runner took the job, e.g. macOS arm64 capacity; the job ends cancelled, not failure)
+//   stalled      "The job has exceeded the maximum execution time of 30m0s" + "The operation was canceled.", on the
+//                Windows Rust job only: it has a timeout on every step, so only its own limit can end it when the VM
+//                froze and the runner stopped running steps (GitHub would only notice ~45 min later, as `lost`)
 import { ghOut } from "./gh";
 
-export type Infra = "lost" | "unavailable";
+export type Infra = "lost" | "unavailable" | "stalled";
+const LIMIT = /the job has exceeded the maximum execution time/i;
 const INFRA: [Infra, RegExp][] = [
   ["lost", /hosted runner lost communication with the server/i],
   ["unavailable", /job was not acquired by runner of type hosted even after multiple attempts/i],
+  ["stalled", LIMIT],
 ];
-const WORDS: Record<Infra, string> = { lost: "runner lost", unavailable: "no runner was available" };
+const WORDS: Record<Infra, string> = { lost: "runner lost", unavailable: "no runner was available", stalled: "runner stalled until the job's time limit" };
+/** The jobs whose time limit is an infrastructure signal (ci.yml `rust-windows`: a timeout on each step, so it cannot be a hang). */
+const STEP_TIMEOUT_JOBS = /^Rust \(Windows\b/;
+/** What GitHub adds to every job it ends at its limit. */
+const CANCELED = /^the operation was canceled\.?$/i;
 
 /** A run is rerun while its attempt number is below this: attempts 1 and 2 are rerun, attempt 3 stays red. */
 export const MAX_ATTEMPTS = 3;
@@ -33,8 +42,10 @@ export type Job = {
 /** The infrastructure kinds that ended a job: every failure annotation is one of them (and at least one exists), else none. */
 export function infraKinds(j: Job): Infra[] {
   const kinds: Infra[] = [];
+  const hitLimit = j.failures.some((m) => LIMIT.test(m));
   for (const m of j.failures) {
-    const hit = INFRA.find(([, re]) => re.test(m));
+    if (hitLimit && CANCELED.test(m)) continue;
+    const hit = INFRA.find(([k, re]) => re.test(m) && (k !== "stalled" || STEP_TIMEOUT_JOBS.test(j.name)));
     if (!hit) return [];
     if (!kinds.includes(hit[0])) kinds.push(hit[0]);
   }

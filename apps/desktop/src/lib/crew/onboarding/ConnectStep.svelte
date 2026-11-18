@@ -7,7 +7,7 @@
 	import { Check, CircleAlert } from "@lucide/svelte";
 	import { Checkbox, CopyButton, SegmentedControl, TextField } from "@codeatlasdev/ui";
 	import CrewFlag from "#lib/crew/CrewFlag.svelte";
-	import { BROWSERS_COST, BROWSERS_WHY } from "#lib/crew/browsers.ts";
+	import { browsersCost } from "#lib/crew/browsers.ts";
 	import { IS_WIN } from "#lib/keys.ts";
 	import { api } from "#lib/api.ts";
 	import { fixDocs } from "./docsLinks.ts";
@@ -178,7 +178,7 @@
 				label={m.crew_onboarding_connect_step_browsers_option()}
 				disabled={locked}
 			/>
-			<p class="field-hint">{BROWSERS_COST}</p>
+			<p class="field-hint">{browsersCost()}</p>
 		</div>
 
 		{#if failure}

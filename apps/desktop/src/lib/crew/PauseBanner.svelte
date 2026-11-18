@@ -7,6 +7,7 @@
 	import { Pause } from "@lucide/svelte";
 	import { errText } from "#lib/api.ts";
 	import { crewServerLabel } from "#lib/crew/sshTarget.ts";
+	import { m } from "#lib/i18n/m.ts";
 	import { crew } from "#lib/stores/crew.svelte.ts";
 
 	const paused = $derived(crew.servers.filter((h) => h.paused === true));
@@ -28,11 +29,12 @@
 	<div class="pause-banner" role="status">
 		<Pause size={13} aria-hidden="true" />
 		<span class="msg">
-			Paused{crew.servers.length > 1 ? `: ${crewServerLabel(h.name)}` : ""}. Running tasks were cancelled;
-			queued tasks wait until you resume.
+			{crew.servers.length > 1
+				? m.crew_workspace_pause_banner_paused_server({ server: crewServerLabel(h.name) })
+				: m.crew_workspace_pause_banner_paused()}
 		</span>
 		<Button size="sm" onclick={() => void resume(h.key)} disabled={busy === h.key}>
-			{busy === h.key ? "Resuming…" : "Resume"}
+			{busy === h.key ? m.crew_workspace_pause_banner_resuming() : m.crew_workspace_pause_banner_resume()}
 		</Button>
 	</div>
 {/each}

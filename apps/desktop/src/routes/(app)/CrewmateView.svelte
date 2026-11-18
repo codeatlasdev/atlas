@@ -23,6 +23,7 @@
 	import SetupConversation from "#lib/crew/chat/SetupConversation.svelte";
 	import { ChatState } from "#lib/crew/chat/chat.svelte.ts";
 	import { parseAsk } from "#lib/crew/chat/parseAsk.ts";
+	import { m } from "#lib/i18n/m.ts";
 
 	const chat = new ChatState();
 
@@ -127,7 +128,7 @@
 
 <div class="crewmate-view">
 	{#if !crewmate}
-		<div class="empty">Select a crewmate from the sidebar.</div>
+		<div class="empty">{m.crew_workspace_crewmate_view_empty()}</div>
 	{:else}
 		<ChatHeader
 			{crewmate}
@@ -166,9 +167,9 @@
 				<Composer
 					bind:value={chat.prompt}
 					placeholder={hasPendingAsk
-						? "Type your answer or talk about something else"
-						: `Message ${crewmate.name ?? "crewmate"}…`}
-					label="Task prompt"
+						? m.crew_workspace_crewmate_view_answer_placeholder()
+						: m.crew_workspace_crewmate_view_message_placeholder({ name: crewmate.name })}
+					label={m.crew_workspace_crewmate_view_task_prompt_label()}
 					busy={chat.sending}
 					onfiles={(files) => void chat.attach(files)}
 					images={chat.images}

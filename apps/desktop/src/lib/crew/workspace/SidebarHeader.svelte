@@ -4,6 +4,7 @@
 	import { kbd } from "#lib/keys.ts";
 	import { palettes } from "#lib/shell/palettes.svelte.ts";
 	import { recruit } from "#lib/crew/workspace/actions.svelte.ts";
+	import { m } from "#lib/i18n/m.ts";
 </script>
 
 <!-- Drag region -->
@@ -11,13 +12,17 @@
 
 <!-- Top bar: search + add -->
 <div class="top-bar">
-	<button class="icon-btn-round" onclick={() => (palettes.crew = true)} aria-label="Search ({kbd('cmd-k')})">
+	<button
+		class="icon-btn-round"
+		onclick={() => (palettes.crew = true)}
+		aria-label={m.crew_workspace_sidebar_header_search({ key: kbd("cmd-k") })}
+	>
 		<Search size={16} />
 	</button>
 	<button
 		class="icon-btn-round"
 		onclick={() => void recruit.start()}
-		aria-label="New crewmate"
+		aria-label={m.crew_workspace_sidebar_header_new_crewmate()}
 		disabled={recruit.creating}
 	>
 		<Plus size={16} />

@@ -1,5 +1,7 @@
 // @ts-nocheck
 import { describe, expect, test } from "bun:test";
+import { upperFirst } from "#lib/i18n/fmt.ts";
+import { m } from "#lib/i18n/m.ts";
 import {
 	FAVORITE_KEY,
 	favoriteOf,
@@ -105,8 +107,8 @@ describe("groupSections", () => {
 		]);
 	});
 
-	test("an unknown server is named 'This computer'", () => {
-		expect(groupSections([e("", "c1")], servers)[0].hostName).toBe("This computer");
+	test("an unknown server is the platform's word for this computer", () => {
+		expect(groupSections([e("", "c1")], servers)[0].hostName).toBe(upperFirst(m.common_os_your_computer()));
 	});
 
 	test("no crewmates, no sections", () => {

@@ -6,6 +6,7 @@
  */
 
 import type { AdminAddress } from "#lib/crew.ts";
+import { m } from "#lib/i18n/m.ts";
 import type { ParsedTarget } from "#lib/crew/sshTarget.ts";
 
 /** What `crew_browsers_status` answers: ready, or one line per missing piece. */
@@ -17,10 +18,8 @@ export interface BrowsersStatus {
 /** The oldest Node the pinned Playwright runs on; the CLI refuses anything older. */
 export const MIN_NODE = 20;
 
-/** Why the user is offered the browsers, and what they cost (shown next to the opt-in and the settings row). */
-export const BROWSERS_WHY =
-	"Crewmates look at the UI they build: the capture, UI gate and locate tools need them.";
-export const BROWSERS_COST = "Needs Node.js 20+ on the server and about 500 MB of downloads.";
+/** What the browsers cost, shown next to the opt-in. */
+export const browsersCost = (): string => m.crew_workspace_browsers_cost({ node: MIN_NODE });
 
 /** The kind of a missing piece, from the prefix the CLI's status script gives each line. */
 export type ProblemKind =

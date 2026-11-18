@@ -13,6 +13,7 @@
 	import { shortcutFor } from "#lib/keymap.svelte.ts";
 	import { reducedMotion } from "#lib/crew/motion.ts";
 	import { expireHint, hintPending, markHintSeen } from "#lib/shell/edgeHint.ts";
+	import { m } from "#lib/i18n/m.ts";
 
 	let visible = $state(false);
 	let hideTimer: ReturnType<typeof setTimeout> | undefined;
@@ -86,7 +87,7 @@
 
 {#if hint && !visible}
 	<button class="crew-edge-hint edge-hint" onmouseenter={onHotZoneEnter} onclick={() => (visible = true)}>
-		Board <span class="kbd">{shortcut}</span>
+		{m.crew_workspace_view_bar_board()} <span class="kbd">{shortcut}</span>
 	</button>
 {/if}
 
@@ -97,7 +98,7 @@
 	class:reduced={reducedMotion}
 	role="toolbar"
 	tabindex="-1"
-	aria-label="Crew view switcher"
+	aria-label={m.crew_workspace_view_bar_crew_view_switcher()}
 	onmouseenter={onBarEnter}
 	onmouseleave={onBarLeave}
 >
@@ -105,21 +106,21 @@
 		class="seg"
 		class:active={crewView.value === "chat"}
 		onclick={() => pick("chat")}
-		aria-label="Chat view"
+		aria-label={m.crew_workspace_view_bar_chat_view()}
 		aria-pressed={crewView.value === "chat"}
 	>
 		<MessageSquare size={13} />
-		Chat
+		{m.crew_workspace_view_bar_chat()}
 	</button>
 	<button
 		class="seg"
 		class:active={crewView.value === "board"}
 		onclick={() => pick("board")}
-		aria-label="Board view"
+		aria-label={m.crew_workspace_view_bar_board_view()}
 		aria-pressed={crewView.value === "board"}
 	>
 		<Columns3 size={13} />
-		Board
+		{m.crew_workspace_view_bar_board()}
 	</button>
 </div>
 

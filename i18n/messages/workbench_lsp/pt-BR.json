@@ -43,7 +43,7 @@
 	"workbench_lsp_host_old_label": "Host antigo",
 	"workbench_lsp_host_old_safe": "Nenhum terminal está em execução, então reiniciar é seguro.",
 	"workbench_lsp_host_old_summary": "Os recursos de linguagem precisam de um host de terminais mais novo. Reinicie-o para ativá-los.",
-	"workbench_lsp_host_unreachable": "O Atlas não conseguiu acessar o host de terminais.",
+	"workbench_lsp_host_unreachable": "O Atlas não conseguiu conectar ao host de terminais.",
 	"workbench_lsp_host_unreachable_hint": "Reabra o arquivo; se continuar, reinicie o app.",
 	"workbench_lsp_host_updating": "O host de terminais está atualizando. Os terminais continuam rodando; os recursos de linguagem voltam em instantes.",
 	"workbench_lsp_host_updating_label": "Atualizando host…",

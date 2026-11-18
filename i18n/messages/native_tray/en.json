@@ -1,8 +1,50 @@
 {
 	"native_tray_capture_window_title": "Atlas Capture",
-	"native_tray_dock_hide": "Hide Agent Dock",
-	"native_tray_dock_hide_key": "Hide Agent Dock  {key}",
-	"native_tray_dock_show": "Show Agent Dock",
+	"native_tray_dock_hide": [
+		{
+			"declarations": [
+				"input os"
+			],
+			"selectors": [
+				"os"
+			],
+			"match": {
+				"os=mac": "Hide Agent Dock",
+				"os=windows": "Hide agent dock",
+				"os=*": "Hide Agent Dock"
+			}
+		}
+	],
+	"native_tray_dock_hide_key": [
+		{
+			"declarations": [
+				"input os"
+			],
+			"selectors": [
+				"os"
+			],
+			"match": {
+				"os=mac": "Hide Agent Dock  {key}",
+				"os=windows": "Hide agent dock  {key}",
+				"os=*": "Hide Agent Dock  {key}"
+			}
+		}
+	],
+	"native_tray_dock_show": [
+		{
+			"declarations": [
+				"input os"
+			],
+			"selectors": [
+				"os"
+			],
+			"match": {
+				"os=mac": "Show Agent Dock",
+				"os=windows": "Show agent dock",
+				"os=*": "Show Agent Dock"
+			}
+		}
+	],
 	"native_tray_dock_window_title": "Atlas Dock",
 	"native_tray_open": "Open Atlas",
 	"native_tray_quit": [
@@ -20,5 +62,19 @@
 			}
 		}
 	],
-	"native_tray_toggle": "Show / Hide Atlas"
+	"native_tray_toggle": [
+		{
+			"declarations": [
+				"input os"
+			],
+			"selectors": [
+				"os"
+			],
+			"match": {
+				"os=mac": "Show or Hide Atlas",
+				"os=windows": "Show or hide Atlas",
+				"os=*": "Show or Hide Atlas"
+			}
+		}
+	]
 }

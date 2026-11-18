@@ -431,7 +431,8 @@ mod tests {
         }
         assert!(pt.contains(&"Ocultar Atlas".to_owned()));
         assert!(pt.contains(&"Sair do Atlas".to_owned()));
-        assert!(pt.contains(&"Ocultar outros".to_owned()));
+        // Casing follows the OS (`each_os_has_the_casing_of_its_own_menus`); the words do not.
+        assert!(pt.iter().any(|t| t.to_lowercase() == "ocultar outros"));
         assert!(pt.contains(&"Sobre o Atlas".to_owned()));
     }
 
@@ -485,6 +486,94 @@ mod tests {
         }
     }
 
+    // Native menus keep the casing of their own system, because AppKit, Windows and GTK put their own items next to
+    // ours: macOS is title case in both languages (Apple's pt-BR menus: "Selecionar Tudo", "Ocultar Outros"), Windows
+    // is sentence case (Microsoft style guide, menu labels), and Linux follows GNOME's header capitalization in
+    // English (GNOME HIG, "menu items") and sentence case in pt-BR. One assert per rule.
+    fn on(tag: &str, os: &str, key: &str) -> String {
+        lookup_on(tag, key, None, os).unwrap()
+    }
+
+    #[test]
+    fn each_os_has_the_casing_of_its_own_menus() {
+        let select_all = |tag, os| on(tag, os, "native_menu_edit_select_all");
+        assert_eq!(select_all("en", "mac"), "Select All");
+        assert_eq!(select_all("en", "windows"), "Select all");
+        assert_eq!(select_all("en", "linux"), "Select All");
+        assert_eq!(select_all("pt-BR", "mac"), "Selecionar Tudo");
+        assert_eq!(select_all("pt-BR", "windows"), "Selecionar tudo");
+        assert_eq!(select_all("pt-BR", "linux"), "Selecionar tudo");
+    }
+
+    #[test]
+    fn title_case_keeps_articles_and_prepositions_lowercase_in_both_languages() {
+        assert_eq!(
+            on("pt-BR", "mac", "native_menu_view_split_right"),
+            "Dividir à Direita"
+        );
+        assert_eq!(
+            on("pt-BR", "mac", "native_menu_go_file"),
+            "Ir para Arquivo…"
+        );
+        assert_eq!(
+            on("pt-BR", "mac", "native_menu_file_close_all_tabs"),
+            "Fechar Todas as Abas"
+        );
+        assert_eq!(
+            on("pt-BR", "mac", "native_menu_go_palette"),
+            "Paleta de Comandos…"
+        );
+        assert_eq!(on("en", "mac", "native_menu_go_file"), "Go to File…");
+        assert_eq!(
+            on("en", "mac", "native_menu_go_search"),
+            "Search in Project"
+        );
+    }
+
+    #[test]
+    fn a_phrasal_verb_particle_and_a_hyphenated_compound_are_capitalized_in_title_case() {
+        assert_eq!(on("en", "mac", "native_menu_view_zoom_in"), "Zoom In");
+        assert_eq!(
+            on("en", "mac", "native_menu_capture_all_in_one"),
+            "All-in-One Capture"
+        );
+        assert_eq!(
+            on("en", "windows", "native_menu_capture_all_in_one"),
+            "All-in-one capture"
+        );
+    }
+
+    #[test]
+    fn product_and_glossary_words_keep_their_case_in_sentence_case() {
+        assert_eq!(on("en", "windows", "native_menu_capture_gif"), "Record GIF");
+        assert_eq!(
+            on("pt-BR", "windows", "native_menu_file_new_worktree"),
+            "Nova worktree…"
+        );
+        assert_eq!(
+            on("pt-BR", "mac", "native_menu_file_new_worktree"),
+            "Nova Worktree…"
+        );
+        assert_eq!(on("en", "windows", "native_menu_app_hide"), "Hide Atlas");
+    }
+
+    #[test]
+    fn the_tray_follows_the_casing_of_its_os_too() {
+        assert_eq!(on("en", "mac", "native_tray_dock_show"), "Show Agent Dock");
+        assert_eq!(
+            on("en", "windows", "native_tray_dock_show"),
+            "Show agent dock"
+        );
+        assert_eq!(
+            on("pt-BR", "mac", "native_tray_toggle"),
+            "Mostrar ou Ocultar o Atlas"
+        );
+        assert_eq!(
+            on("pt-BR", "linux", "native_tray_toggle"),
+            "Mostrar ou ocultar o Atlas"
+        );
+    }
+
     #[test]
     fn the_permission_text_names_the_macos_panes_in_the_language() {
         let on = |tag| lookup_on(tag, "native_notify_no_permission", None, "mac").unwrap();
@@ -504,25 +593,34 @@ mod tests {
         let en = tray("en", false, true, &keys);
         let pt = tray("pt-BR", false, true, &keys);
         assert_eq!(shape(&en), shape(&pt));
+        let lower =
+            |v: &[Entry]| -> Vec<String> { texts(v).iter().map(|t| t.to_lowercase()).collect() };
         assert_eq!(
-            texts(&pt)[..2],
-            [
-                "Abrir o Atlas".to_owned(),
-                "Ocultar dock de agentes".to_owned()
-            ]
+            lower(&pt)[..2],
+            ["abrir o atlas", "ocultar dock de agentes"]
         );
-        assert_eq!(texts(&en)[..2], ["Open Atlas", "Hide Agent Dock"]);
+        assert_eq!(lower(&en)[..2], ["open atlas", "hide agent dock"]);
         // The item names what a click does, in the language.
-        assert_eq!(dock_label("en", false), "Show Agent Dock");
-        assert_eq!(dock_label("pt-BR", false), "Mostrar dock de agentes");
-        assert_eq!(dock_label("pt-BR", true), "Ocultar dock de agentes");
+        assert_eq!(dock_label("en", false).to_lowercase(), "show agent dock");
+        assert_eq!(
+            dock_label("pt-BR", false).to_lowercase(),
+            "mostrar dock de agentes"
+        );
+        assert_eq!(
+            dock_label("pt-BR", true).to_lowercase(),
+            "ocultar dock de agentes"
+        );
     }
 
     #[test]
     fn the_linux_tray_toggles_the_window_in_the_language() {
         let keys = Keys::default();
         let pt = tray("pt-BR", true, false, &keys);
-        assert!(texts(&pt).contains(&"Mostrar / ocultar o Atlas".to_owned()));
+        assert!(
+            texts(&pt)
+                .iter()
+                .any(|t| t.to_lowercase() == "mostrar ou ocultar o atlas")
+        );
         assert!(!texts(&pt).iter().any(|t| t.starts_with("Capturar")));
     }
 
@@ -546,9 +644,23 @@ mod tests {
                 })
                 .unwrap()
         };
-        assert_eq!(label("capture:region"), "Capturar região    ⌃⌥9");
-        assert_eq!(label("capture:window"), "Capturar janela");
-        assert_eq!(label("capture:record"), "Gravar tela    ⌃⌥6");
+        let action = |key: &str| on("pt-BR", atlas_i18n::os(), key);
+        assert_eq!(
+            label("capture:region"),
+            format!("{}    ⌃⌥9", action("native_menu_capture_region"))
+        );
+        assert_eq!(
+            label("capture:window"),
+            action("native_menu_capture_window")
+        );
+        assert_eq!(
+            label("capture:record"),
+            format!("{}    ⌃⌥6", action("native_menu_capture_record"))
+        );
+        assert_eq!(
+            label("capture:region").to_lowercase(),
+            "capturar região    ⌃⌥9"
+        );
     }
 
     // The model is what `menu_dump` prints for the debug bridge: its JSON has the texts, not a debug string.
@@ -556,7 +668,10 @@ mod tests {
     fn the_model_serializes_for_the_debug_dump() {
         let json = serde_json::to_value(tray("pt-BR", true, false, &Keys::default())).unwrap();
         assert_eq!(json[0]["kind"], "command");
-        assert_eq!(json[0]["label"], "Mostrar / ocultar o Atlas");
+        assert_eq!(
+            json[0]["label"].as_str().unwrap().to_lowercase(),
+            "mostrar ou ocultar o atlas"
+        );
         assert_eq!(json[2]["kind"], "separator");
     }
 }

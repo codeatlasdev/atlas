@@ -1041,7 +1041,7 @@ mod tests {
     fn the_pill_menu_can_hide_the_dock_and_shows_its_hotkey() {
         let items = pill_menu(&DockPrefs::default(), "en");
         let hide = items.iter().find(|i| i.id == MENU_HIDE).expect("hide item");
-        assert_eq!(hide.label, "Hide Agent Dock  ⌃⌥D");
+        assert_eq!(hide.label.to_lowercase(), "hide agent dock  ⌃⌥d");
         let none = DockPrefs {
             toggle: String::new(),
             ..DockPrefs::default()
@@ -1050,7 +1050,11 @@ mod tests {
             .into_iter()
             .find(|i| i.id == MENU_HIDE)
             .unwrap();
-        assert_eq!(hide.label, "Hide Agent Dock", "no hotkey, no hint");
+        assert_eq!(
+            hide.label.to_lowercase(),
+            "hide agent dock",
+            "no hotkey, no hint"
+        );
         assert!(items.iter().any(|i| i.id == MENU_OPEN));
     }
 
@@ -1063,10 +1067,17 @@ mod tests {
                 .map(|i| i.label)
                 .collect()
         };
-        assert_eq!(labels("en"), ["Open Atlas", "Hide Agent Dock  ⌃⌥D"]);
+        // Casing follows the OS (menu_model's tests); the words are the language's.
+        let lower = |tag| {
+            labels(tag)
+                .iter()
+                .map(|l| l.to_lowercase())
+                .collect::<Vec<_>>()
+        };
+        assert_eq!(lower("en"), ["open atlas", "hide agent dock  ⌃⌥d"]);
         assert_eq!(
-            labels("pt-BR"),
-            ["Abrir o Atlas", "Ocultar dock de agentes  ⌃⌥D"]
+            lower("pt-BR"),
+            ["abrir o atlas", "ocultar dock de agentes  ⌃⌥d"]
         );
     }
 

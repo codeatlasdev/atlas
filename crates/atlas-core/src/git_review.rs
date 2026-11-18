@@ -729,7 +729,13 @@ pub mod commit_error {
     pub const ALL_SECRET: &str = "commit_msg.all_secret";
     /// The agent ended well and printed no message.
     pub const EMPTY_MESSAGE: &str = "commit_msg.empty_message";
-    pub const ALL: [&str; 5] = [SSH_HOST, PROVIDER_OFF, NO_CHANGES, ALL_SECRET, EMPTY_MESSAGE];
+    pub const ALL: [&str; 5] = [
+        SSH_HOST,
+        PROVIDER_OFF,
+        NO_CHANGES,
+        ALL_SECRET,
+        EMPTY_MESSAGE,
+    ];
 }
 
 /// One event of a run, as the frontend reads it from `commit-msg://<request>`.

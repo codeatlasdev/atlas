@@ -41,7 +41,10 @@ fn program(bin: &str, env: &BTreeMap<String, String>) -> std::path::PathBuf {
 /// and `LC_MESSAGES` is `C`. `inherited_lc_all` is this process's own `LC_ALL`, which a child gets when `env` does
 /// not say otherwise.
 fn english_messages(env: &mut BTreeMap<String, String>, inherited_lc_all: Option<String>) {
-    let lc_all = env.remove("LC_ALL").or(inherited_lc_all).filter(|v| !v.is_empty());
+    let lc_all = env
+        .remove("LC_ALL")
+        .or(inherited_lc_all)
+        .filter(|v| !v.is_empty());
     if let Some(v) = lc_all {
         env.insert("LC_CTYPE".into(), v);
     }
@@ -143,17 +146,33 @@ mod tests {
     use super::*;
 
     fn map(pairs: &[(&str, &str)]) -> BTreeMap<String, String> {
-        pairs.iter().map(|(k, v)| (k.to_string(), v.to_string())).collect()
+        pairs
+            .iter()
+            .map(|(k, v)| (k.to_string(), v.to_string()))
+            .collect()
     }
 
     #[test]
     fn git_messages_are_english_and_character_handling_is_kept() {
-        let mut env = map(&[("LC_ALL", "pt_BR.UTF-8"), ("LANGUAGE", "pt_BR"), ("LANG", "pt_BR.UTF-8"), ("PATH", "/bin")]);
+        let mut env = map(&[
+            ("LC_ALL", "pt_BR.UTF-8"),
+            ("LANGUAGE", "pt_BR"),
+            ("LANG", "pt_BR.UTF-8"),
+            ("PATH", "/bin"),
+        ]);
         english_messages(&mut env, None);
-        assert_eq!(env.get("LC_CTYPE").map(String::as_str), Some("pt_BR.UTF-8"), "LC_ALL moved to LC_CTYPE");
+        assert_eq!(
+            env.get("LC_CTYPE").map(String::as_str),
+            Some("pt_BR.UTF-8"),
+            "LC_ALL moved to LC_CTYPE"
+        );
         assert_eq!(env.get("LC_MESSAGES").map(String::as_str), Some("C"));
         assert!(!env.contains_key("LC_ALL") && !env.contains_key("LANGUAGE"));
-        assert_eq!(env.get("LANG").map(String::as_str), Some("pt_BR.UTF-8"), "the rest is untouched");
+        assert_eq!(
+            env.get("LANG").map(String::as_str),
+            Some("pt_BR.UTF-8"),
+            "the rest is untouched"
+        );
         // The process's own LC_ALL counts when the request does not set one; an empty one is no setting.
         let mut env = map(&[]);
         english_messages(&mut env, Some("C.UTF-8".into()));
@@ -169,11 +188,16 @@ mod tests {
         assert!(!is_git("gh") && !is_git("gitk") && !is_git("omp"));
     }
 
-    async fn git_in(dir: &str, parent: &BTreeMap<String, String>, args: &[&str]) -> (Option<i64>, String, String) {
+    async fn git_in(
+        dir: &str,
+        parent: &BTreeMap<String, String>,
+        args: &[&str],
+    ) -> (Option<i64>, String, String) {
         let mut argv = vec!["git".to_string(), "-C".into(), dir.into()];
         argv.extend(args.iter().map(|s| s.to_string()));
         let v = run(dir, &argv, parent, None, 20_000).await.unwrap();
-        let text = |k: &str| String::from_utf8(B64.decode(v[k].as_str().unwrap()).unwrap()).unwrap();
+        let text =
+            |k: &str| String::from_utf8(B64.decode(v[k].as_str().unwrap()).unwrap()).unwrap();
         (v["code"].as_i64(), text("stdout"), text("stderr"))
     }
 
@@ -182,7 +206,11 @@ mod tests {
     #[cfg(unix)]
     #[tokio::test]
     async fn git_runs_with_english_messages_and_still_reads_non_ascii_paths() {
-        let parent = map(&[("LC_ALL", "pt_BR.UTF-8"), ("LANGUAGE", "pt_BR"), ("GIT_CONFIG_GLOBAL", "/dev/null")]);
+        let parent = map(&[
+            ("LC_ALL", "pt_BR.UTF-8"),
+            ("LANGUAGE", "pt_BR"),
+            ("GIT_CONFIG_GLOBAL", "/dev/null"),
+        ]);
         let outside = tempfile::tempdir().unwrap();
         let (code, _, err) = git_in(outside.path().to_str().unwrap(), &parent, &["status"]).await;
         assert_ne!(code, Some(0));
@@ -192,10 +220,26 @@ mod tests {
         let dir = d.path().to_str().unwrap();
         git_in(dir, &parent, &["init", "-q", "."]).await;
         std::fs::write(d.path().join("ação.txt"), "um\n").unwrap();
-        let (_, status, _) = git_in(dir, &parent, &["status", "--porcelain=v1", "-z", "--untracked-files=all"]).await;
+        let (_, status, _) = git_in(
+            dir,
+            &parent,
+            &["status", "--porcelain=v1", "-z", "--untracked-files=all"],
+        )
+        .await;
         assert!(status.contains("ação.txt"), "{status:?}");
         git_in(dir, &parent, &["add", "ação.txt"]).await;
-        let (_, diff, _) = git_in(dir, &parent, &["-c", "core.quotePath=false", "diff", "--cached", "--no-color"]).await;
+        let (_, diff, _) = git_in(
+            dir,
+            &parent,
+            &[
+                "-c",
+                "core.quotePath=false",
+                "diff",
+                "--cached",
+                "--no-color",
+            ],
+        )
+        .await;
         assert!(diff.contains("ação.txt"), "{diff:?}");
     }
 }

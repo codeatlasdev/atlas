@@ -114,7 +114,7 @@ function fromReason(server: string, label: string, reason: Reason): LspUiState {
 				kind: "missing-toolchain",
 				server,
 				command: reason.command,
-				label: m.workbench_lsp_needs_tool({ label, tool: reason.code === "no_go" ? "Go" : "curl" }),
+				label: m.workbench_lsp_needs_tool({ tool: reason.code === "no_go" ? "Go" : "curl" }),
 				tone: "warn",
 				summary: reason.message,
 				detail,
@@ -202,7 +202,7 @@ export function lspUiState(i: UiInput): LspUiState {
 		if (host.updating)
 			return {
 				kind: "host-updating",
-				label: m.workbench_host_chip_updating(),
+				label: m.workbench_lsp_host_updating_label(),
 				tone: "busy",
 				summary: m.workbench_lsp_host_updating(),
 				actions: [],
@@ -281,9 +281,7 @@ export function lspUiState(i: UiInput): LspUiState {
 			kind: "installing",
 			server,
 			progress,
-			label: progress
-				? m.workbench_lsp_installing_progress({ label, progress })
-				: m.workbench_lsp_installing({ label }),
+			label: m.workbench_lsp_installing({ label }),
 			tone: "busy",
 			summary: m.workbench_lsp_installing_summary({ label }),
 			detail: progress || undefined,

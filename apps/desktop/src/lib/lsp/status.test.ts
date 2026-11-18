@@ -3,6 +3,7 @@ import { expect, test } from "bun:test";
 import { lspUiState, isServing, type UiInput } from "./status.ts";
 import type { ServerStatus } from "./types.ts";
 import { m } from "#lib/i18n/m.ts";
+import { inLocale } from "../../../test/locale.ts";
 
 const base = (over: Partial<UiInput> = {}): UiInput => ({
 	prefsEnabled: true,
@@ -37,7 +38,7 @@ test("old host: chip, restart now/later, lists live terminals count", () => {
 		}),
 	);
 	expect(s.kind).toBe("host-old");
-	expect(s.label).toBe("Language features need a newer terminal host");
+	expect(s.label).toBe(m.workbench_lsp_host_old_label());
 	expect(s.tone).toBe("warn");
 	expect(ids(s)).toEqual(["restart-host", "restart-host-later"]);
 	expect(s.ptys).toHaveLength(2);
@@ -55,7 +56,7 @@ test("host upgrading live (proto 2): busy, no actions, terminals are kept", () =
 	const s = lspUiState(base({ host: { lsp: false, updating: true, ptys: [{ title: "a", cwd: "/" }] } }));
 	expect(s.kind).toBe("host-updating");
 	expect(s.tone).toBe("busy");
-	expect(s.label).toBe("Updating terminal host…");
+	expect(s.label).toBe(m.workbench_lsp_host_updating_label());
 	expect(s.actions).toEqual([]);
 	expect(s.summary).toContain("keep running");
 });
@@ -116,18 +117,19 @@ test("outside root", () => {
 	expect(s.summary).toBe("This file is outside the project.");
 });
 
-test("installing shows progress in the chip and offers cancel", () => {
+test("installing keeps the progress in the popover detail and offers cancel", () => {
 	const s = lspUiState(base({ srv: srv({ state: "downloading", progress: "Downloading… 42%" }) }));
 	expect(s.kind).toBe("installing");
 	expect(s.tone).toBe("busy");
-	expect(s.label).toBe("Installing TypeScript · Downloading… 42%");
+	expect(s.label).toBe(m.workbench_lsp_installing({ label: "TypeScript" }));
+	// The progress text is in the popover, never in the chip.
 	expect(s.progress).toBe("Downloading… 42%");
 	expect(ids(s)).toEqual(["cancel-install", "open-log"]);
 });
 
 test("installing without progress text", () => {
 	const s = lspUiState(base({ srv: srv({ state: "downloading" }) }));
-	expect(s.label).toBe("Installing TypeScript…");
+	expect(s.label).toBe(m.workbench_lsp_installing({ label: "TypeScript" }));
 	expect(s.detail).toBeUndefined();
 });
 
@@ -198,7 +200,7 @@ test("go missing: copyable brew command", () => {
 	);
 	expect(s.kind).toBe("missing-toolchain");
 	expect(s.command).toBe("brew install go");
-	expect(s.label).toBe("Go needs Go");
+	expect(s.label).toBe(m.workbench_lsp_needs_tool({ tool: "Go" }));
 	expect(s.detail).toBe("Install Go, then check again.");
 	expect(s.actions[0]).toEqual({ id: "copy-command", label: "Copy command", payload: "brew install go" });
 	expect(ids(s)).toContain("retry");
@@ -290,4 +292,40 @@ test("transition: old host -> upgrading -> capable", () => {
 	const up = lspUiState(base({ host: { lsp: false, updating: true } }));
 	const ok = lspUiState(base({ host: { lsp: true }, srv: srv() }));
 	expect([old.kind, up.kind, ok.kind]).toEqual(["host-old", "host-updating", "ready"]);
+});
+
+// The chip is one short state word per state; the sentence lives in the popover. A chip as long as the sentence is cut
+// by the status bar's max width and the state is the part that disappears (pt-BR "host too old", 980 px window).
+test("every state's chip label is a short state word, in both languages, and never the popover's sentence", async () => {
+	const states = (name: string) => [
+		lspUiState(base({ host: { lsp: false } })),
+		lspUiState(base({ host: { lsp: false, updating: true } })),
+		lspUiState(base({ prefsEnabled: false })),
+		lspUiState(base({ languageDisabled: true })),
+		lspUiState(base({ outsideRoot: true, doc: undefined })),
+		lspUiState(base({ doc: { status: "disabled", server: null } })),
+		lspUiState(base({ srv: srv({ name, label: "", state: "downloading", progress: "Downloading… 42%" }) })),
+		lspUiState(base({ srv: srv({ name, label: "", state: "crashed" }) })),
+		lspUiState(base({ srv: srv({ name, label: "", state: "missing" }) })),
+		lspUiState(
+			base({ srv: srv({ name, label: "", state: "missing", reason: { code: "no_go", message: "x" } }) }),
+		),
+		lspUiState(
+			base({ srv: srv({ name, label: "", state: "missing", reason: { code: "offline", message: "x" } }) }),
+		),
+		lspUiState(
+			base({
+				srv: srv({ name, label: "", state: "missing", reason: { code: "install_failed", message: "x" } }),
+			}),
+		),
+		lspUiState(base({ srv: srv({ name, label: "", state: "starting" }) })),
+	];
+	for (const tag of ["en", "pt-BR"] as const) {
+		await inLocale(tag, () => {
+			for (const s of states("ts")) {
+				expect(s.label.length, `${tag} ${s.kind}: ${s.label}`).toBeLessThanOrEqual(28);
+				expect(s.label, `${tag} ${s.kind}`).not.toBe(s.summary);
+			}
+		});
+	}
 });

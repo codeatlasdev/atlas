@@ -889,24 +889,32 @@ jobs:
             pkg: dist/*.pkg.tar.zst
             setup: pacman -Syu --noconfirm --needed git sway grim mesa dbus ttf-dejavu xorg-xwayland procps-ng && cp "$(command -v sway)" /usr/local/bin/sway
             install: pacman -U --noconfirm dist/*.pkg.tar.zst
+            remove: sudo pacman -R codeatlas-atlas-bin
+            owned: pacman -Q codeatlas-atlas-bin
           - name: Fedora
             slug: fedora
             image: fedora:latest
             pkg: dist/*.rpm
             setup: dnf install -y git sway grim mesa-dri-drivers dbus-daemon dejavu-sans-fonts xorg-x11-server-Xwayland procps-ng findutils && cp "$(command -v sway)" /usr/local/bin/sway
             install: dnf install -y dist/*.rpm
+            remove: sudo dnf remove atlas
+            owned: rpm -q atlas
           - name: Ubuntu 24.04
             slug: ubuntu
             image: ubuntu:24.04
             pkg: dist/*.deb
             setup: apt-get update && apt-get install -y --no-install-recommends ca-certificates git sway grim dbus libgl1-mesa-dri libegl1 xwayland fonts-dejavu-core procps
             install: apt-get install -y ./dist/*.deb
+            remove: sudo apt remove atlas
+            owned: dpkg -l atlas | grep -q '^ii'
           - name: Debian stable
             slug: debian
             image: debian:stable
             pkg: dist/*.deb
             setup: apt-get update && apt-get install -y --no-install-recommends ca-certificates git sway grim dbus libgl1-mesa-dri libegl1 xwayland fonts-dejavu-core procps
             install: apt-get install -y ./dist/*.deb
+            remove: sudo apt remove atlas
+            owned: dpkg -l atlas | grep -q '^ii'
     container: ${{ matrix.image }}
     env:
       DEBIAN_FRONTEND: noninteractive
@@ -965,6 +973,18 @@ jobs:
       - name: Open the installed atlas-desktop
         run: |
           scripts/linux-launch-check.sh --out check/package --env WEBKIT_DISABLE_SANDBOX_THIS_IS_DANGEROUS=1 "$(command -v atlas-desktop)"
+
+      # #277: a package install is removed through its package manager, which uninstall names in its list and then runs
+      # (root here, so no sudo). Last of the steps that need the package. A scratch HOME without XDG_CONFIG_HOME or
+      # ZDOTDIR keeps it off the runner's own files.
+      - name: atlas uninstall removes the package
+        run: |
+          H=$(mktemp -d)
+          env -u XDG_CONFIG_HOME -u ZDOTDIR HOME="$H" atlas uninstall --dry-run | tee uninstall-list.txt
+          grep -F "${{ matrix.remove }}" uninstall-list.txt
+          env -u XDG_CONFIG_HOME -u ZDOTDIR HOME="$H" atlas uninstall --yes
+          if command -v atlas-desktop; then echo "atlas-desktop is still installed" >&2; exit 1; fi
+          if ${{ matrix.owned }}; then echo "the package is still installed" >&2; exit 1; fi
 
       - name: Screenshots and logs
         if: ${{ !cancelled() }}

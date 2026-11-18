@@ -1,5 +1,6 @@
 // @ts-nocheck
 import { describe, test, expect } from "bun:test";
+import { m } from "#lib/i18n/m.ts";
 import { crewServerLabel, crewServerTarget, isCrewServerKey, parseSSHTarget } from "./sshTarget.ts";
 
 describe("parseSSHTarget", () => {
@@ -49,7 +50,7 @@ describe("parseSSHTarget", () => {
 	test("invalid port string → error", () => {
 		const r = parseSSHTarget("ubuntu@host:abc");
 		expect(r.ok).toBe(false);
-		if (!r.ok) expect(r.error).toMatch(/valid port/i);
+		if (!r.ok) expect(r.error).toBe(m.crew_workspace_ssh_bad_port({ port: "abc" }));
 	});
 
 	test("port 0 → error", () => {

@@ -16,6 +16,7 @@
 	import { reducedMotion } from "#lib/crew/motion.ts";
 	import { normalizeLook } from "#lib/crew/look.ts";
 	import { clamp01, segment, startTimeline } from "#lib/crew/artTimeline.ts";
+	import { m } from "#lib/i18n/m.ts";
 
 	let { beat = $bindable(0) }: { beat?: number } = $props();
 
@@ -29,30 +30,32 @@
 	const at = (a: number) => t >= a;
 
 	// ── Script ────────────────────────────────────────────────────────────
-	const ORDER = "Review every PR on atlas tonight";
-	const typed = $derived(ORDER.slice(0, Math.round(seg(0.02, 0.11) * ORDER.length)));
+	const order = $derived(m.crew_workspace_art_how_order());
+	const typed = $derived(order.slice(0, Math.round(seg(0.02, 0.11) * order.length)));
 	const sent = $derived(at(0.12));
-	const steps = [
-		{ at: 0.2, text: "Read PR #115 · 4 files" },
-		{ at: 0.28, text: "Ran the tests · 212 passed" },
-		{ at: 0.36, text: "Left 2 review comments" },
-		{ at: 0.7, text: "Pushed the fix to main" },
-	];
+	const steps = $derived([
+		{ at: 0.2, text: m.crew_workspace_art_how_step_read() },
+		{ at: 0.28, text: m.crew_workspace_art_how_step_tests() },
+		{ at: 0.36, text: m.crew_workspace_art_how_step_comments() },
+		{ at: 0.7, text: m.crew_workspace_art_how_step_push() },
+	]);
 	// What the crewmate says, like a friend texting back: typing dots first, then the words arrive.
-	const LINES = [
-		{ at: 0.15, text: "On it! I'll go through them tonight." },
-		{ at: 0.44, text: "Hey, one of these needs a push to main. Okay with you?" },
-		{ at: 0.62, text: "Thanks! Pushing it now." },
-		{ at: 0.8, text: "Good morning! I reviewed 3 PRs and pushed 1 fix." },
-	];
+	const lines = $derived([
+		{ at: 0.15, text: m.crew_workspace_art_how_say_start() },
+		{ at: 0.44, text: m.crew_workspace_art_how_say_ask() },
+		{ at: 0.62, text: m.crew_workspace_art_how_say_thanks() },
+		{ at: 0.8, text: m.crew_workspace_art_how_say_morning() },
+	]);
 	const TYPE = 0.08;
 	/** Every line said so far stays in the thread (a chat keeps its history); only the newest one is still typing. */
 	const spoken = $derived(
-		LINES.filter((l) => t >= l.at).map((l) => ({
-			text: l.text,
-			typing: t < l.at + TYPE,
-			shown: l.text.slice(0, Math.round(clamp01((t - l.at - TYPE) / 0.05) * l.text.length)),
-		})),
+		lines
+			.filter((l) => t >= l.at)
+			.map((l) => ({
+				text: l.text,
+				typing: t < l.at + TYPE,
+				shown: l.text.slice(0, Math.round(clamp01((t - l.at - TYPE) / 0.05) * l.text.length)),
+			})),
 	);
 	const asking = $derived(at(0.46) && !at(0.6));
 	const allowed = $derived(at(0.6));
@@ -105,20 +108,20 @@
 	<div class="chips">
 		<span class="chip">
 			<Server size={14} />
-			<span>your server</span>
+			<span>{m.crew_workspace_art_how_your_server()}</span>
 			<span class="dot live"></span>
 		</span>
 		<span class="chip" class:asleep={macAsleep}>
 			<Laptop size={14} />
-			<span>your computer</span>
-			{#if macAsleep}<span class="sleep"><Moon size={12} /> asleep</span>{/if}
+			<span>{m.common_os_your_computer()}</span>
+			{#if macAsleep}<span class="sleep"><Moon size={12} /> {m.crew_workspace_art_how_asleep()}</span>{/if}
 		</span>
 	</div>
 
 	<div class="thread">
 		<!-- 1. The order -->
 		{#if sent}
-			<div class="bubble you pop">{ORDER}</div>
+			<div class="bubble you pop">{order}</div>
 		{/if}
 
 		<!-- The crewmate talks back: first reply above the work card, the rest below it, in order. -->
@@ -132,16 +135,16 @@
 				</div>
 				<div class="card">
 					<div class="card-head">
-						<b>Reviewer</b>
+						<b>{m.crew_workspace_look_kit_reviewer()}</b>
 						{#if done}
-							<span class="status ok">done</span>
+							<span class="status ok">{m.crew_workspace_art_how_done()}</span>
 						{:else if asking}
-							<span class="status warn">needs you</span>
+							<span class="status warn">{m.crew_workspace_art_how_needs_you()}</span>
 						{:else}
-							<span class="status shimmer">working…</span>
+							<span class="status shimmer">{m.crew_workspace_status_working()}</span>
 						{/if}
 					</div>
-					<div class="event"><GitPullRequest size={13} /> PR #115 opened</div>
+					<div class="event"><GitPullRequest size={13} /> {m.crew_workspace_art_how_pr_115_opened()}</div>
 					<ul class="steps">
 						{#each steps as s (s.text)}
 							{#if at(s.at)}
@@ -153,15 +156,21 @@
 					<!-- 3. It asks before anything risky -->
 					{#if asking}
 						<div class="ask pop">
-							<span>Wants to run</span>
+							<span>{m.crew_chat_approval_prompt_wants_to_run()}</span>
+							<!-- i18n-ignore: a command, not prose -->
 							<code>git push origin main</code>
 							<div class="ask-btns">
-								<span class="btn">Deny</span>
-								<span class="btn primary" style:transform="scale({1 - tap * 0.08})">Allow</span>
+								<span class="btn">{m.crew_chat_approval_prompt_deny()}</span>
+								<span class="btn primary" style:transform="scale({1 - tap * 0.08})"
+									>{m.crew_chat_approval_prompt_allow()}</span
+								>
 							</div>
 						</div>
 					{:else if allowed}
-						<div class="allowed pop"><Smartphone size={13} /> Allowed from your phone</div>
+						<div class="allowed pop">
+							<Smartphone size={13} />
+							{m.crew_workspace_art_how_allowed_from_your_phone()}
+						</div>
 					{/if}
 				</div>
 			</div>
@@ -172,11 +181,12 @@
 	<!-- The phone that answers the ask. -->
 	<div class="phone" class:in={at(0.47) && !at(0.68)}>
 		<div class="notif">
-			<b>Reviewer needs you</b>
+			<b>{m.crew_workspace_art_how_name_needs_you({ name: m.crew_workspace_look_kit_reviewer() })}</b>
+			<!-- i18n-ignore: a command, not prose -->
 			<span>git push origin main</span>
 			<div class="ask-btns">
-				<span class="btn">Deny</span>
-				<span class="btn primary">Allow</span>
+				<span class="btn">{m.crew_chat_approval_prompt_deny()}</span>
+				<span class="btn primary">{m.crew_chat_approval_prompt_allow()}</span>
 				<span class="ring" style:opacity={tap} style:transform="scale({0.6 + tap})"></span>
 			</div>
 		</div>

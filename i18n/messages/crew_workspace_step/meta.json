@@ -1,0 +1,23 @@
+{
+	"crew_workspace_step_almost_there": "Idle word of the working line, between tool calls.",
+	"crew_workspace_step_building": "Working line of a crewmate: its shell command builds or type-checks the project.",
+	"crew_workspace_step_editing": "Working line of a crewmate that edits without a file name.",
+	"crew_workspace_step_editing_file": "Working line of a crewmate that edits a file; {file} is the file's name.",
+	"crew_workspace_step_figuring_it_out": "Idle word of the working line, between tool calls.",
+	"crew_workspace_step_git": "Working line of a crewmate: its shell command is git.",
+	"crew_workspace_step_github": "Working line of a crewmate: its shell command is the gh CLI.",
+	"crew_workspace_step_installing_dependencies": "Working line of a crewmate: its shell command installs packages.",
+	"crew_workspace_step_looking_around": "Idle word of the working line, between tool calls.",
+	"crew_workspace_step_looking_for_files": "Working line of a crewmate that lists files by a glob.",
+	"crew_workspace_step_planning": "Idle word of the working line, between tool calls.",
+	"crew_workspace_step_reading": "Working line of a crewmate that reads without a file name.",
+	"crew_workspace_step_reading_file": "Working line of a crewmate that reads a file; {file} is the file's name.",
+	"crew_workspace_step_running_command": "Working line of a crewmate that runs a shell command with no name to show.",
+	"crew_workspace_step_running_program": "Working line of a crewmate that runs a program; {program} is its name.",
+	"crew_workspace_step_running_tests": "Working line of a crewmate: its shell command runs a test suite.",
+	"crew_workspace_step_searching": "Working line of a crewmate that searches without a pattern.",
+	"crew_workspace_step_searching_for": "Working line of a crewmate that greps; {query} is the pattern it looks for.",
+	"crew_workspace_step_using_tool": "Working line of a crewmate that calls a tool this app does not know; {tool} is the tool's name in words.",
+	"crew_workspace_step_writing": "Working line of a crewmate that writes without a file name.",
+	"crew_workspace_step_writing_file": "Working line of a crewmate that writes a file; {file} is the file's name."
+}

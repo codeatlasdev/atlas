@@ -455,7 +455,8 @@ pub const MENU_PREFIX: &str = "capture:";
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct MenuEntry {
     pub id: String,
-    pub label: &'static str,
+    /// The action; its text is in the catalog (`menu_model::capture`), in the language of the menu.
+    pub hotkey: Hotkey,
     /// The stroke in Mac symbols (`⌃⌥4`), `""` when the action has no key.
     pub stroke: String,
 }
@@ -471,7 +472,7 @@ pub fn menu_entries(keys: &Keys) -> Vec<MenuEntry> {
                 .unwrap_or_default();
             MenuEntry {
                 id: format!("{MENU_PREFIX}{name}"),
-                label: h.label(),
+                hotkey: *h,
                 stroke: stroke_symbols(keys.get(*h)),
             }
         })
@@ -841,7 +842,7 @@ mod tests {
         let entries = menu_entries(&Keys::default());
         assert_eq!(entries.len(), Hotkey::ALL.len());
         for (e, h) in entries.iter().zip(Hotkey::ALL) {
-            assert_eq!(e.label, h.label());
+            assert_eq!(e.hotkey, h);
             assert_eq!(hotkey_of_menu_id(&e.id), Some(h), "{}", e.id);
         }
         assert_eq!(entries[1].stroke, "⌃⌥4");
@@ -857,7 +858,7 @@ mod tests {
         k.region.clear();
         let e = menu_entries(&k);
         assert_eq!(e[1].stroke, "");
-        assert_eq!(e[1].label, "Capture region");
+        assert_eq!(e[1].hotkey, Hotkey::Region);
     }
 
     #[test]

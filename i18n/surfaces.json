@@ -3,7 +3,7 @@
 	"generatedAreas": { "cli_config": "UPDATE_FIXTURES=1 cargo test -p atlas-cli cli_i18n" },
 	"surfaces": {
 		"desktop": { "areas": ["capture", "crew_automation", "crew_chat", "crew_onboarding", "crew_onboarding_connect", "crew_onboarding_engine", "crew_onboarding_install", "crew_onboarding_step", "crew_settings", "errors", "logs", "os", "panel", "panel_action", "panel_activity", "panel_machine", "settings", "viewers_devops"], "paraglide": "apps/desktop/.i18n" },
-		"rust": { "areas": ["cli_chrome", "cli_config", "cmd_setup", "cmd_skills", "config", "desktop_cli", "desktop_pkg", "uninstall", "update"], "rust": "crates" },
+		"rust": { "areas": ["cli_chrome", "cli_config", "cmd_setup", "cmd_skills", "config", "desktop_cli", "desktop_pkg", "native_menu", "native_notify", "native_tray", "uninstall", "update"], "rust": "crates" },
 		"site": { "areas": ["base", "docs", "footer", "islands", "nav", "not_found"], "paraglide": "site/.i18n" }
 	}
 }

@@ -9,10 +9,10 @@ import { lineOf, readText, rel, walk } from "../util.ts";
 export const RUST_DIRS = ["crates/atlas-cli/src", "crates/atlas-tui/src", "crates/atlas-desktop/src", "crates/atlas-host/src"];
 
 const MACRO = /\b(?:println|eprintln|print|eprint|bail|anyhow)!\s*\(\s*/g;
-const LETTERS = /\p{L}/u;
+export const LETTERS = /\p{L}/u;
 
 /** The string literal at `i` (a `"` or a raw `r#"`), as [content, index after it]; undefined if `i` is not one. */
-function literalAt(src: string, i: number): [string, number] | undefined {
+export function literalAt(src: string, i: number): [string, number] | undefined {
 	const raw = /^r(#*)"/.exec(src.slice(i, i + 12));
 	if (raw) {
 		const close = `"${raw[1]}`;
@@ -44,7 +44,7 @@ function literalAt(src: string, i: number): [string, number] | undefined {
 }
 
 /** Text of a format string that a user would read: ANSI colors, placeholders and `{{` `}}` escapes removed. */
-const visibleText = (fmt: string) => fmt.replace(/\u001b\[[0-9;]*[A-Za-z]/g, "").replace(/\{\{|\}\}/g, "").replace(/\{[^{}]*\}/g, "");
+export const visibleText = (fmt: string) => fmt.replace(/\u001b\[[0-9;]*[A-Za-z]/g, "").replace(/\{\{|\}\}/g, "").replace(/\{[^{}]*\}/g, "");
 
 /** Source with everything from the first inline `#[cfg(test)] mod x {` on is dropped (the repo's test layout). */
 export function withoutTestTail(src: string): string {

@@ -16,14 +16,15 @@
 
 use parking_lot::Mutex;
 use serde_json::Value;
-use tauri::menu::{Menu, MenuItem, PredefinedMenuItem};
+use tauri::menu::{Menu, MenuItem, MenuItemKind};
 use tauri::tray::{MouseButton, MouseButtonState, TrayIconBuilder, TrayIconEvent};
 use tauri::{
     AppHandle, Emitter, LogicalSize, Manager, PhysicalPosition, Rect, State, WebviewUrl,
     WebviewWindow, WebviewWindowBuilder, WindowEvent,
 };
 
-use crate::lifecycle::{self, TrayItem};
+use crate::lifecycle;
+use crate::menu_model::{self, ID_DOCK, ID_OPEN, ID_QUIT, ID_TOGGLE};
 
 pub const LABEL: &str = "tray";
 const WIDTH: f64 = 360.0;
@@ -44,6 +45,8 @@ pub struct TrayState {
     icon: Mutex<Option<(f64, f64, f64, f64)>>,
     /// The "Show / Hide Agent Dock" item, re-labelled when the dock is shown or hidden.
     dock_item: Mutex<Option<MenuItem<tauri::Wry>>>,
+    /// The tray's native menu, re-labelled in place when the language or the capture keys change ([`relabel`]).
+    menu: Mutex<Option<Menu<tauri::Wry>>>,
 }
 
 /// Whether the icon sits in the lower half of `screen`: a bottom taskbar (Windows default), so the popover opens above
@@ -100,7 +103,7 @@ fn build(app: &AppHandle) -> tauri::Result<WebviewWindow> {
     let win = builder
         .theme(theme)
         .initialization_script(script)
-        .title("Atlas")
+        .title("Atlas") // i18n-ignore: the product name; the popover has no other text of its own
         .inner_size(WIDTH, HEIGHT)
         .decorations(false)
         .transparent(true)
@@ -200,103 +203,64 @@ fn toggle(app: &AppHandle, icon: &Rect) {
     }
 }
 
-const ID_OPEN: &str = "open";
-const ID_TOGGLE: &str = "toggle";
-const ID_DOCK: &str = "dock";
-const ID_QUIT: &str = "quit";
-
-/// The tray's native menu, from [`lifecycle::tray_menu`]. Quit is a plain item handled in [`on_menu`]: the
-/// predefined `quit` only exists on macOS (muda's GTK backend renders it as a disabled entry that never fires).
+/// The tray's native menu, from [`menu_model::tray`] (structure: [`lifecycle::tray_menu`]). Quit is a plain item handled
+/// in [`on_menu`]: the predefined `quit` only exists on macOS (muda's GTK backend renders it as a disabled entry that
+/// never fires).
 fn menu(app: &AppHandle) -> tauri::Result<Menu<tauri::Wry>> {
-    let menu = Menu::new(app)?;
-    for item in lifecycle::tray_menu(cfg!(target_os = "linux")) {
-        match item {
-            TrayItem::Open => menu.append(&MenuItem::with_id(
-                app,
-                ID_OPEN,
-                "Open Atlas",
-                true,
-                None::<&str>,
-            )?)?,
-            TrayItem::ToggleWindow => menu.append(&MenuItem::with_id(
-                app,
-                ID_TOGGLE,
-                "Show / Hide Atlas",
-                true,
-                None::<&str>,
-            )?)?,
-            TrayItem::ToggleDock => {
-                let shown = app
-                    .try_state::<crate::dock::DockState>()
-                    .is_some_and(|s| s.shown());
-                let item = MenuItem::with_id(
-                    app,
-                    ID_DOCK,
-                    lifecycle::dock_item_label(shown),
-                    true,
-                    None::<&str>,
-                )?;
-                menu.append(&item)?;
-                *app.state::<TrayState>().dock_item.lock() = Some(item);
-            }
-            TrayItem::Separator => menu.append(&PredefinedMenuItem::separator(app)?)?,
-            TrayItem::Capture => menu.append(&capture_submenu(app)?)?,
-            TrayItem::Quit => menu.append(&MenuItem::with_id(
-                app,
-                ID_QUIT,
-                "Quit Atlas",
-                true,
-                None::<&str>,
-            )?)?,
-        }
-    }
+    let shown = dock_shown(app);
+    let model = menu_model::tray(
+        atlas_i18n::lang(),
+        cfg!(target_os = "linux"),
+        shown,
+        &capture_keys(app),
+    );
+    let menu = crate::menu::realize_menu(app, &model)?;
+    let state = app.state::<TrayState>();
+    *state.dock_item.lock() = match menu.get(ID_DOCK) {
+        Some(MenuItemKind::MenuItem(item)) => Some(item),
+        _ => None,
+    };
+    *state.menu.lock() = Some(menu.clone());
     Ok(menu)
 }
 
-/// The text of a capture menu entry: the action and, after a tab-like gap, the key it has now. The key is text, not a
-/// menu accelerator: the real hotkey is the global one, and a second registration would fire twice in Atlas.
-fn capture_label(e: &crate::shots::prefs::MenuEntry) -> String {
-    if e.stroke.is_empty() {
-        e.label.to_string()
-    } else {
-        format!("{}    {}", e.label, e.stroke)
-    }
+fn dock_shown(app: &AppHandle) -> bool {
+    app.try_state::<crate::dock::DockState>()
+        .is_some_and(|s| s.shown())
 }
 
-/// Every capture menu item (the tray's and the app menu bar's), so a change of keys re-labels all of them. Managed
-/// before the menu bar is built (`main`), unlike [`TrayState`] and `Shots`.
-#[derive(Default)]
-pub struct CaptureMenus(Mutex<Vec<(String, MenuItem<tauri::Wry>)>>);
-
-/// The "Capture" submenu: one item per capture action (`shots::prefs::menu_entries`). The keys are the ones in
-/// force, or the saved ones before the capture module has started.
-pub fn capture_submenu(app: &AppHandle) -> tauri::Result<tauri::menu::Submenu<tauri::Wry>> {
-    let keys = app
-        .try_state::<crate::shots::Shots>()
+/// The capture keys in force, or the saved ones before the capture module has started: what the Capture menus show.
+pub fn capture_keys(app: &AppHandle) -> crate::shots::prefs::Keys {
+    app.try_state::<crate::shots::Shots>()
         .map(|s| s.keys())
-        .unwrap_or_else(|| crate::shots::prefs::CapturePrefs::load().keys);
-    let sub = tauri::menu::Submenu::new(app, "Capture", true)?;
-    let menus = app.state::<CaptureMenus>();
-    let mut kept = menus.0.lock();
-    for e in crate::shots::prefs::menu_entries(&keys) {
-        let item = MenuItem::with_id(app, e.id.clone(), capture_label(&e), true, None::<&str>)?;
-        sub.append(&item)?;
-        kept.push((e.id, item));
-    }
-    Ok(sub)
+        .unwrap_or_else(|| crate::shots::prefs::CapturePrefs::load().keys)
 }
 
-/// Capture keys changed in Settings: re-label every capture menu item so it shows the keys in force.
-pub fn refresh_capture(app: &AppHandle, keys: &crate::shots::prefs::Keys) {
-    let Some(menus) = app.try_state::<CaptureMenus>() else {
+/// Put the text of `tag` (and the capture keys `keys`) on the tray menu, in place. A no-op without a tray (agent
+/// instances).
+pub fn relabel(app: &AppHandle, tag: &str, keys: &crate::shots::prefs::Keys) {
+    let Some(menu) = app
+        .try_state::<TrayState>()
+        .and_then(|s| s.menu.lock().clone())
+    else {
         return;
     };
-    let items = menus.0.lock();
-    for e in crate::shots::prefs::menu_entries(keys) {
-        for (_, item) in items.iter().filter(|(id, _)| *id == e.id) {
-            let _ = item.set_text(capture_label(&e));
-        }
+    if let Ok(live) = menu.items() {
+        let model = menu_model::tray(tag, cfg!(target_os = "linux"), dock_shown(app), keys);
+        crate::menu::relabel(&live, &model);
     }
+}
+
+/// The tray menu for the debug dump: the model in `tag` and, when the tray exists, the text its items hold now.
+pub fn dump(app: &AppHandle, tag: &str, keys: &crate::shots::prefs::Keys) -> Value {
+    let live = app
+        .try_state::<TrayState>()
+        .and_then(|s| s.menu.lock().clone())
+        .and_then(|m| m.items().ok());
+    serde_json::json!({
+        "live": live.as_deref().map(crate::menu::live_json),
+        "model": menu_model::tray(tag, cfg!(target_os = "linux"), dock_shown(app), keys),
+    })
 }
 
 /// Tray menu click. Quit goes through `AppHandle::exit` with an explicit code, which [`lifecycle::exit`] never blocks.
@@ -323,7 +287,7 @@ pub fn set_dock_label(app: &AppHandle, shown: bool) {
         .try_state::<TrayState>()
         .and_then(|s| s.dock_item.lock().clone())
     {
-        let _ = item.set_text(lifecycle::dock_item_label(shown));
+        let _ = item.set_text(menu_model::dock_label(atlas_i18n::lang(), shown));
     }
 }
 

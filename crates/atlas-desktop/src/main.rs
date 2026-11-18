@@ -50,6 +50,7 @@ mod linux_gfx;
 mod live;
 mod live_server;
 mod menu;
+mod menu_model;
 // Pure, tested decision code driven only by the AppKit side: unused outside macOS, still built so its tests run.
 mod crew;
 mod crew_ssh;
@@ -275,6 +276,7 @@ macro_rules! handlers {
             crew::provider_probe,
             github_auth::project_git_info,
             menu::menu_sync,
+            menu::menu_dump,
             zoom::zoom_set,
             lifecycle::app_quit,
             live_server::live_open,
@@ -658,7 +660,6 @@ fn main() {
             let handle = app.handle().clone();
             app.manage(menu::Items::default());
             app.manage(crash_card::CrashCard::new());
-            app.manage(tray::CaptureMenus::default());
             // Only macOS has a native menu bar (at the top of the screen). Windows and Linux have no native frame
             // (tauri.{windows,linux}.conf.json): the page draws one title row, owns every key there (lib/menu.ts
             // gives no accelerators off macOS) and the palette lists every command (#269).

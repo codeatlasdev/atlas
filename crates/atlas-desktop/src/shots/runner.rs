@@ -9,6 +9,7 @@
 use std::path::{Path, PathBuf};
 use std::sync::Arc;
 
+use atlas_i18n::t;
 use objc2::msg_send;
 use objc2::runtime::AnyObject;
 use tauri::{AppHandle, Emitter, Manager};
@@ -60,7 +61,7 @@ fn notify_error(app: &AppHandle, message: &str) {
     let _ = app
         .notification()
         .builder()
-        .title("Capture failed")
+        .title(t!("native_notify_capture_failed"))
         .body(message)
         .show();
 }
@@ -72,8 +73,6 @@ pub(super) fn cursor() -> Cursor {
     let (x, y) = mac::cursor_point();
     Cursor { x, y }
 }
-
-const NO_PERMISSION: &str = "Atlas needs the Screen Recording permission to capture the screen. Grant it in System Settings > Privacy & Security > Screen Recording, then restart Atlas.";
 
 /// The displays now, from CoreGraphics (microseconds; ScreenCaptureKit's listing takes a hundred milliseconds or
 /// seconds on a loaded Mac and is not needed to put a window on screen): id, frame in global points (top-left
@@ -107,7 +106,7 @@ fn show_overlay(app: &AppHandle, pick: Pick) -> Result<(), String> {
     if !sck::permission_granted() {
         // Ask once (the system prompt), and say what to do: macOS only applies the grant after a restart.
         sck::request_permission();
-        return Err(NO_PERMISSION.into());
+        return Err(t!("native_notify_no_permission"));
     }
     let shots = app.state::<Shots>();
     let session = shots
@@ -401,7 +400,7 @@ struct Taken {
 fn still(app: &AppHandle, s: Still, then: Then) -> Result<(), String> {
     if !sck::permission_granted() {
         sck::request_permission();
-        return Err(NO_PERMISSION.into());
+        return Err(t!("native_notify_no_permission"));
     }
     let t0 = std::time::Instant::now();
     let shots = app.state::<Shots>();

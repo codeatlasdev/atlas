@@ -109,3 +109,39 @@ describe.skipIf(process.platform === "win32")("macos-launch-check.sh fails a rel
 		expect(readFileSync(join(out, "result.txt"), "utf8")).toContain("FAIL checksum");
 	});
 });
+
+// The verify jobs run `shasum -c` / `sha256sum -c` NEXT TO each file, so a `.sha256` that names `dist/<file>` fails it
+// ("FAIL checksum: atlas-0.0.0-alpha.50-aarch64-apple-darwin-symbols.tar.gz.sha256": #470's symbols archive was hashed
+// from the parent directory while #483's verify-macos had never seen it). Every producer in release.yml must hash a bare
+// file name, from inside the directory the file is in.
+describe("every .sha256 release.yml writes names a bare file", () => {
+	const lines = read(".github/workflows/release.yml").split("\n");
+	const producers = lines
+		.map((text, i) => ({ text, n: i + 1 }))
+		.filter(({ text }) => /(shasum -a 256|sha256sum)\s+\S.*>\s*\S*\.sha256/.test(text) && !text.includes("-c -"));
+
+	test("there are producers to check (the pattern did not rot)", () => {
+		expect(producers.length).toBeGreaterThanOrEqual(8);
+	});
+
+	test.each(producers.map((p) => [p.n, p.text.trim()] as const))("line %d: %s", (_n, text) => {
+		const hashed = text.match(/(?:shasum -a 256|sha256sum)\s+("[^"]+"|\S+)/)![1].replace(/"/g, "");
+		expect(hashed, "hash the file from inside its directory").not.toContain("/");
+		const written = text.match(/>\s*("[^"]+"|\S+\.sha256)/)![1].replace(/"/g, "");
+		expect(written, "write the .sha256 next to the file").not.toContain("/");
+	});
+
+	test("a .sha256 made from the parent directory is not accepted by the check that runs next to the file", () => {
+		const hasShasum = Bun.spawnSync(["sh", "-c", "command -v shasum || command -v sha256sum"]).exitCode === 0;
+		if (!hasShasum) return;
+		const sum = "$(command -v shasum >/dev/null && echo 'shasum -a 256' || echo sha256sum)";
+		const d = mkdtempSync(join(tmpdir(), "sha-"));
+		mkdirSync(join(d, "dist"));
+		writeFileSync(join(d, "dist", "a-symbols.tar.gz"), "x");
+		const sh = (cmd: string) => Bun.spawnSync(["sh", "-c", cmd], { cwd: d }).exitCode;
+		sh(`${sum} dist/a-symbols.tar.gz > dist/a-symbols.tar.gz.sha256`);
+		expect(sh(`cd dist && ${sum} -c a-symbols.tar.gz.sha256 >/dev/null 2>&1`)).not.toBe(0);
+		sh(`cd dist && ${sum} a-symbols.tar.gz > a-symbols.tar.gz.sha256`);
+		expect(sh(`cd dist && ${sum} -c a-symbols.tar.gz.sha256 >/dev/null 2>&1`)).toBe(0);
+	});
+});

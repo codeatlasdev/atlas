@@ -95,7 +95,7 @@ bun run i18n:translate [--locale pt-BR] [--area x] [--surface y] [--dry-run]
 bun run i18n:fix [--restamp <key>] [--baseline]           format files, rewrite locks, shrink the ratchet baseline
 bun run i18n:add-locale <tag> [--owner @user]           a new language everywhere it is listed
 bun run i18n:generate [--surface x]                     Paraglide/ARB inputs (the apps call it themselves)
-bun run i18n:pseudo [-- --print <area>]                 the en-XA pseudo-locale, gitignored
+bun run i18n:pseudo [-- --surface <s>] [-- --print <area>]   the en-XA pseudo-locale (gitignored; dev builds only, see below)
 ```
 
 Each finding is one line, `file:line rule key message`, and any `error` makes the exit code 1; every message names the
@@ -194,6 +194,29 @@ Clippy's `disallowed-macros` is the obvious tool and the wrong one here:
 The price is a heuristic: it misses a user-facing string that reaches the user through `format!`, `write!` or a clap `about`
 (menus, notifications, `.context` and ratatui spans are the `rust-ui` ratchet), and it reads text, not types. When a crate has migrated to catalog ids, turn on
 `disallowed-macros` for it in its `clippy.toml` (no baseline needed once the count is zero) and drop it from `RUST_DIRS`.
+
+## The pseudo-locale (en-XA)
+
+`en-XA` is the English catalog accented (`Save` becomes `⟦Sávé ~~⟧`), padded by 35% and wrapped in `⟦ ⟧`: the layout pass
+of `MIGRATION.md` step 6 reads it. It is a language of **development builds only**:
+
+| Where | How it is enabled | Selected with |
+|---|---|---|
+| Desktop: `vite dev`, Atlas Lab (`desktop:lab`), `desktop:dev` | the dev server | Settings > General > Display language > "Pseudo (en-XA)", `ATLAS_LANG=en-XA`, or `locale_set` |
+| Desktop: the debug app and agent instances (`desktop:build:app`, `desktop:build:debug`) | `TAURI_ENV_DEBUG=true` (set by the Tauri CLI) or `ATLAS_PSEUDO_LOCALE=1` while the frontend builds | the same |
+| CLI, TUI, hostd, desktop shell (native menus, tray) | `cfg!(debug_assertions)`: a `cargo build` without `--release` | `ATLAS_LANG=en-XA`, `atlas config lang en-XA` |
+
+A release build and the site never carry it: `project.inlang/settings.json` lists `en` and `pt-BR` and the release frontend is
+compiled from that file untouched (`apps/desktop/scripts/paraglide.ts`; a dev build compiles a generated project in the
+gitignored `.i18n/` that adds `en-XA`), `atlas_core::lang::SUPPORTED` stays `en, pt-BR` and `supported()` adds `en-XA` only
+when `debug_assertions` is on, so `ATLAS_LANG=en-XA` (or a saved `en-XA`) is English in a release. The tests that hold this:
+`atlas-core` `lang::tests` (also run with `cargo test --release`), `atlas-i18n` `the_locale_list_is_en_and_pt_br...`,
+`apps/desktop/src/lib/i18n/pseudo.test.ts`, and `bun run bundle`, which fails when a release frontend names `en-XA`.
+
+Nothing is committed and nothing goes stale: the dev build runs `i18n:pseudo --surface desktop` as part of generating its
+messages, and the Rust side derives en-XA from the English catalog in memory (`crates/atlas-i18n/src/pseudo.rs`).
+`i18n/pseudo-cases.json` holds the same texts for both implementations (`scripts/i18n/pseudo.ts` and `pseudo.rs` are each
+tested against it). A debug app built before this existed has no en-XA: rebuild it.
 
 ## The writing lint
 

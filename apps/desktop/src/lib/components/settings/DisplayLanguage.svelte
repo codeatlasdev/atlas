@@ -7,9 +7,9 @@
 	import { Select, toast } from "@codeatlasdev/ui";
 	import { errText } from "#lib/api.ts";
 	import {
-		LOCALE_NAMES,
 		appLocale,
 		chooseLocale,
+		localeName,
 		localePreference,
 		localeSource,
 	} from "#lib/i18n/locale.svelte.ts";
@@ -32,7 +32,7 @@
 					? m.settings_display_language_match_system_with({ language: languageName(appLocale()) })
 					: m.settings_display_language_match_system(),
 		},
-		...locales.map((l) => ({ value: l, label: LOCALE_NAMES[l] })),
+		...locales.map((l) => ({ value: l, label: localeName(l) })),
 	]);
 
 	async function pick(value: string) {

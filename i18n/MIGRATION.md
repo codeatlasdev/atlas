@@ -149,11 +149,28 @@ go through `atlas run --heavy -- <cargo ...>`.
    crate tests plus `crates/atlas-cli/tests/machine_output.rs`. Then `bun run check:changed`. These never get relaxed
    to make a batch pass; never raise `i18n/hardcoded-baseline.jsonl` (`i18n:fix` only lowers it).
 6. **Layout pass.** Portuguese is 20 to 30% longer than English: overflow, clipping and wrapping that breaks a row are
-   **bugs of the batch**. Start your own invisible instance (`bun run desktop:agent`, `.agents/skills/desktop-debug/SKILL.md`;
-   never a window on the user's screen), render every migrated screen in pt-BR (`ATLAS_LANG=pt-BR`) and in the
-   pseudo-locale (`bun run i18n:pseudo`: padded 35%, wrapped in ⟦ ⟧, so a missing closing bracket is a truncation and
-   plain text is something not extracted), and fix what overflows (CSS, not shorter text, unless the text is the problem).
-   Screenshots of the worst screens go in the PR. Rust batches check the CLI output in a terminal 80 columns wide.
+   **bugs of the batch**. The pseudo-locale `en-XA` is how you see them in English: every message accented, padded by 35%
+   and wrapped in `⟦ ⟧`, so a missing closing bracket is a truncation, plain text is something not extracted, and brackets
+   in the middle of a sentence are a sentence glued from pieces. It exists in **development builds only** (the dev server,
+   Atlas Lab, the debug app and agent instances; the CLI and TUI of a debug build); a release build and the site never list
+   it and read `ATLAS_LANG=en-XA` as English. It is generated on every dev build from the English catalog, so it is never
+   stale and nothing is committed. Exact steps, never a window on the user's screen (`.agents/skills/desktop-debug/SKILL.md`):
+
+   ```bash
+   bun run desktop:agent -- --name <you>            # debug build: the first run builds it; a build from before en-XA existed needs `bun run desktop:build:app` again
+   export ATLAS_DEBUG_SOCK=/private/tmp/atlas-agent-<you>/debug.sock
+   atlas desktop debug eval 'return await window.__TAURI_INTERNALS__.invoke("locale_set", { tag: "en-XA" })'   # or Settings > General > Display language > "Pseudo (en-XA)"
+   atlas desktop debug click '<selector of the screen>' ; atlas desktop debug shot /tmp/<screen>-xa.png      # every migrated screen
+   atlas desktop debug eval 'return await window.__TAURI_INTERNALS__.invoke("locale_set", { tag: null })'    # back to the saved language (Follow system)
+   ```
+
+   Do the same with `pt-BR` (`tag: "pt-BR"`). Read the shots: a migrated screen shows `⟦...⟧` everywhere, a screen that
+   still has plain text in en-XA is hardcoded text the batch missed (the `i18n:check` ratchet counts it too), and anything
+   cut off, wrapped badly or overlapping is fixed in CSS (not by shorter text, unless the text is the problem). With
+   Atlas Lab (`bun run desktop:lab`) the same switch works in the browser; the Lab and `vite dev` regenerate en-XA when a
+   message changes. Rust batches: run the command with `ATLAS_LANG=en-XA` from a debug build (`target/debug/atlas ...`) in a
+   terminal 80 columns wide, and again with `ATLAS_LANG=pt-BR`; `atlas config lang` shows what decided the language.
+   Screenshots of the worst screens go in the PR.
 7. **Independent review pass.** A second agent, with a fresh context and none of the batch's reasoning, reads the pt-BR
    of the batch against `i18n/style/pt-BR.md` and the glossary: você, buttons and menu items in the infinitive,
    sentence case, no em dashes, no AI vocabulary, Brazilian and never European Portuguese, glossary terms kept in

@@ -239,6 +239,9 @@ exit 22
         let mut cmd = Command::new(BIN);
         cmd.args(args)
             .env_clear()
+            // The text of these tests is English whatever language the machine is set to (the OS language counts
+            // even with the environment cleared).
+            .env("ATLAS_LANG", "en")
             .env("HOME", self.home())
             .env("PATH", path)
             .env("ATLAS_UPDATE_EXE", self.exe())

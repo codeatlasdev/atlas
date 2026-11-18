@@ -1,7 +1,7 @@
 //! The TUI in the display language: every panel at 80x24 and 120x40 through the real `App` and a test backend.
 //!
-//! The language is the process's (`ATLAS_LANG`), so the same test runs in English in CI and by hand in
-//! `ATLAS_LANG=pt-BR` and `ATLAS_LANG=en-XA` (the pseudo-locale of debug builds). With `ATLAS_TUI_DUMP=<dir>` it writes
+//! The language is the test process's: English, or what `ATLAS_TEST_LANG` asks for, so the same test runs in English in CI and by hand in
+//! `ATLAS_TEST_LANG=pt-BR` and `ATLAS_TEST_LANG=en-XA` (the pseudo-locale of debug builds). With `ATLAS_TUI_DUMP=<dir>` it writes
 //! each frame as text to `<dir>/<lang>-<panel>-<w>x<h>.txt` for the layout pass.
 //!
 //! What it asserts holds in every language, because it compares with the catalog: a help row or a modal line that the

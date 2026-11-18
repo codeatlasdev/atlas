@@ -231,9 +231,36 @@ pub fn set_preference(tag: Option<&str>) -> anyhow::Result<Option<&'static str>>
     write_preference_at(&preference_path(), tag)
 }
 
+/// The variable a test sets to run in another language (`ATLAS_TEST_LANG=pt-BR`), in a test-harness process
+/// (see [`resolve_source`]).
+pub const TEST_ENV: &str = "ATLAS_TEST_LANG";
+
+/// Whether this process is a Rust test binary (`target/<profile>/deps/<crate>-<hash>`: what `cargo test` and `cargo
+/// nextest` run). Only built with the `test-fixtures` feature, which no shipped build enables.
+#[cfg(feature = "test-fixtures")]
+fn is_test_harness() -> bool {
+    std::env::current_exe()
+        .ok()
+        .and_then(|exe| exe.parent().and_then(Path::file_name).map(|d| d == "deps"))
+        .unwrap_or(false)
+}
+
 /// The display language of this process and what decided it, from the real environment, the saved
 /// preference and the OS.
 pub fn resolve_source() -> Resolved {
+    // A test binary is English whatever the machine is set to (`ATLAS_LANG`, `~/.atlas/language`, `LANG`, the OS),
+    // so a text assertion holds on a pt-BR machine; a test that wants another language says so with `TEST_ENV`.
+    // The binaries a test spawns are not test binaries: they resolve like a user's, and a test that reads their
+    // text pins `ATLAS_LANG` for them.
+    #[cfg(feature = "test-fixtures")]
+    if is_test_harness() {
+        let want = std::env::var(TEST_ENV).ok();
+        return resolve_with(&Inputs {
+            atlas_lang: want.as_deref().or(Some(DEFAULT)),
+            pseudo: pseudo_enabled(),
+            ..Default::default()
+        });
+    }
     let env = |k: &str| std::env::var(k).ok();
     let (atlas_lang, language, lc_all, lc_messages, lang) = (
         env(ENV),

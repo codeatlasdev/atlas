@@ -636,9 +636,17 @@ mod beneath_tests {
         let fifo = std::ffi::CString::new(t.path().join("d/a.png").to_str().unwrap()).unwrap();
         // SAFETY: a NUL-terminated path.
         assert_eq!(unsafe { libc::mkfifo(fifo.as_ptr(), 0o600) }, 0);
-        let start = std::time::Instant::now();
-        assert!(put(t.path(), "d/a.png", b"png").is_err());
-        assert!(start.elapsed() < std::time::Duration::from_secs(5));
+        // A blocking open would never return (no reader will ever come), so the write runs on a thread and the test
+        // waits for its answer: the event, not a stopwatch.
+        let (tx, rx) = std::sync::mpsc::channel();
+        let root = t.path().to_path_buf();
+        std::thread::spawn(move || {
+            let _ = tx.send(put(&root, "d/a.png", b"png").is_err());
+        });
+        let refused = rx
+            .recv_timeout(atlas_core::scaling::HANG)
+            .expect("put blocked on a FIFO");
+        assert!(refused);
     }
 
     // Security review of the crew isolation, S3: `locate` read a screenshot with `fs::read`, with no size limit

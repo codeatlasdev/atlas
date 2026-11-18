@@ -1887,7 +1887,7 @@ mod tests {
         // SIGKILL: the socket closes, nothing was said.
         killed.abort();
         let _ = killed.await;
-        tokio::time::timeout(Duration::from_secs(5), first.closed())
+        tokio::time::timeout(atlas_core::scaling::HANG, first.closed())
             .await
             .unwrap();
         let (_b, _task, second) = daemon(4243).await;

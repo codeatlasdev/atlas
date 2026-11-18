@@ -15,6 +15,7 @@
 	import FormatView from "#lib/viewers/rich/FormatView.svelte";
 	import NotebookView from "#lib/viewers/rich/NotebookView.svelte";
 	import "#lib/viewers/rich/rich.css";
+	import { m } from "#lib/i18n/m.ts";
 
 	/** Picks the rich view for a file type; huge files ask before rendering. */
 	let { view, ctx }: { view: RichView; ctx: RichCtx } = $props();
@@ -26,10 +27,12 @@
 	<div class="rv">
 		<div class="rv-inner">
 			<div class="rv-banner warn">
-				{formatBytes(ctx.size)} is large for a rendered view, which parses and lays out the whole file.
+				{m.viewers_files_rich_view_too_large({ size: formatBytes(ctx.size) })}
 				<span class="sp"></span>
-				<button class="rv-btn" onclick={() => ctx.toSource()}>Open as source</button>
-				<button class="rv-btn" onclick={() => (force = true)}>Render anyway</button>
+				<button class="rv-btn" onclick={() => ctx.toSource()}>{m.viewers_devops_open_as_source()}</button>
+				<button class="rv-btn" onclick={() => (force = true)}
+					>{m.viewers_files_rich_view_render_anyway()}</button
+				>
 			</div>
 		</div>
 	</div>

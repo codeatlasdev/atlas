@@ -37,6 +37,8 @@ libc = { workspace = true }
 
 [dev-dependencies]
 tempfile = { workspace = true }
+# `scaling::HANG`: the ceiling for tests that wait on a real event.
+atlas-core = { path = "../atlas-core", features = ["test-fixtures"] }
 
 [lints]
 workspace = true

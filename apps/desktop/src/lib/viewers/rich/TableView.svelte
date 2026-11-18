@@ -4,6 +4,7 @@
 	import type { RichCtx } from "#lib/viewers/rich/ctx.ts";
 	import Copy from "#lib/viewers/rich/Copy.svelte";
 	import "#lib/viewers/rich/rich.css";
+	import { m } from "#lib/i18n/m.ts";
 
 	let { ctx }: { ctx: RichCtx } = $props();
 
@@ -80,25 +81,33 @@
 	<div class="bar">
 		<Table2 size={14} />
 		<span class="rv-ver"
-			>{rows.length.toLocaleString()}{q ? ` of ${table.rows.length.toLocaleString()}` : ""} rows · {cols} columns</span
+			>{q
+				? m.viewers_files_table_view_rows_filtered({ count: rows.length, total: table.rows.length })
+				: m.viewers_files_table_view_rows({ count: rows.length })} · {m.viewers_files_table_view_columns({
+				count: cols,
+			})}</span
 		>
-		{#if !table.header}<span class="rv-chip">no header</span>{/if}
+		{#if !table.header}<span class="rv-chip">{m.viewers_files_table_view_no_header()}</span>{/if}
 		{#if table.ragged}<span class="rv-chip warn"
-				><TriangleAlert size={10} /> {table.ragged} ragged row{table.ragged === 1 ? "" : "s"}</span
+				><TriangleAlert size={10} /> {m.viewers_files_table_view_ragged({ count: table.ragged })}</span
 			>{/if}
 		<span class="rv-chip mono"
 			>{table.delimiter === "\t"
-				? "tab"
+				? m.viewers_files_table_view_delimiter_tab()
 				: table.delimiter === ","
-					? "comma"
+					? m.viewers_files_table_view_delimiter_comma()
 					: table.delimiter === ";"
-						? "semicolon"
-						: "pipe"}</span
+						? m.viewers_files_table_view_delimiter_semicolon()
+						: m.viewers_files_table_view_delimiter_pipe()}</span
 		>
 		<span class="sp"></span>
 		<label class="rv-search">
 			<Search size={12} />
-			<input placeholder="Filter rows" bind:value={q} aria-label="Filter rows" />
+			<input
+				placeholder={m.viewers_files_table_view_filter_rows()}
+				bind:value={q}
+				aria-label={m.viewers_files_table_view_filter_rows()}
+			/>
 		</label>
 	</div>
 	<!-- svelte-ignore a11y_no_noninteractive_tabindex -->
@@ -122,7 +131,7 @@
 						class:num={numeric[c]}
 						style:width="{widths[c]}px"
 						onclick={() => toggle(c)}
-						title="Sort by {h}"
+						title={m.viewers_files_table_view_sort_by({ column: h })}
 					>
 						<span class="t">{h}</span>
 						{#if sort?.col === c}{#if sort.dir === 1}<ArrowUp size={11} />{:else}<ArrowDown
@@ -155,14 +164,18 @@
 				</div>
 			</div>
 		</div>
-		{#if !rows.length}<div class="rv-empty">{q ? "No rows match" : "Empty file"}</div>{/if}
+		{#if !rows.length}<div class="rv-empty">
+				{q ? m.viewers_files_table_view_no_rows_match() : m.viewers_files_table_view_empty_file()}
+			</div>{/if}
 	</div>
 	{#if sel && rows[sel.r]}
 		<div class="foot">
-			<span class="rv-chip mono">R{sel.r + 1} · {head[sel.c]}</span>
+			<span class="rv-chip mono"
+				>{m.viewers_files_table_view_cell({ row: sel.r + 1, column: head[sel.c] })}</span
+			>
 			<span class="val">{rows[sel.r][sel.c] ?? ""}</span>
-			<Copy text={rows[sel.r][sel.c] ?? ""} label="Copy cell" />
-			<Copy text={rows[sel.r].join(table.delimiter)} label="Copy row" />
+			<Copy text={rows[sel.r][sel.c] ?? ""} label={m.viewers_files_table_view_copy_cell()} />
+			<Copy text={rows[sel.r].join(table.delimiter)} label={m.viewers_files_table_view_copy_row()} />
 		</div>
 	{/if}
 </div>

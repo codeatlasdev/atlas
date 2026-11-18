@@ -41,6 +41,8 @@ A value is a string, or one variants object. `{name}` is a variable. `{@common_o
 
 An exact zero is a second selector (`"local countExact = count"`, match `countExact=0, countPlural=*`). `os` is `"input os"`, selector `os`, match `os=mac`, `os=windows`, `os=*`. Markup is `{#link}..{/link}` (Paraglide only). The Rust evaluator and the Paraglide compiler read exactly this; `i18n:check` rejects anything else.
 
+A sentence with an emphasized or linked span is ONE message with markup tags, never pieces around an element. On the desktop it renders with `lib/i18n/Rich.svelte`: `<Rich parts={m.key.parts({ n })} tags={{ em: "em", b: boldSnippet }} />` (a tag is an element name or a snippet that receives the tag's content; define the snippet in the component that owns the scoped CSS). `m.key()` on the same message returns the text with the tags dropped.
+
 ## Where the code calls it
 
 | Surface | Call site | Notes |

@@ -1,4 +1,5 @@
 /** Project search: builds the `rg` / `git grep` command and parses their output (pure, for tests). */
+import { m } from "#lib/i18n/m.ts";
 
 export interface SearchOpts {
 	query: string;
@@ -194,8 +195,8 @@ export function locator(o: SearchOpts): (text: string) => [number, number][] {
 	}
 	return (text) => {
 		const out: [number, number][] = [];
-		for (const m of text.matchAll(re)) {
-			if (m[0].length) out.push([m.index, m.index + m[0].length]);
+		for (const hit of text.matchAll(re)) {
+			if (hit[0].length) out.push([hit.index, hit.index + hit[0].length]);
 		}
 		return out;
 	};
@@ -205,5 +206,5 @@ export function locator(o: SearchOpts): (text: string) => [number, number][] {
 export function rgError(code: number | null, stderr: string): string | null {
 	if (code === 0 || code === 1 || code === null) return null;
 	const first = stderr.split("\n").find((l) => l.trim());
-	return first ? first.replace(/^rg: /, "") : `Search failed (exit ${code})`;
+	return first ? first.replace(/^rg: /, "") : m.search_parse_failed({ code });
 }

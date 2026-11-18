@@ -1,6 +1,7 @@
 /** GitHub Actions workflow model: triggers, jobs (with the `needs` graph) and steps. */
 import { asRecord, asString, asStringArray, isRecord } from "#lib/viewers/rich/data.ts";
 import { topoOrder } from "#lib/viewers/rich/compose.ts";
+import { m } from "#lib/i18n/m.ts";
 
 export interface Step {
 	name: string;
@@ -73,7 +74,7 @@ export function workflowModel(value: unknown): Workflow {
 				? ro.join(", ")
 				: isRecord(ro)
 					? str(ro.group ?? ro.labels)
-					: str(ro) || (j.uses ? "reusable workflow" : ""),
+					: str(ro) || (j.uses ? m.viewers_files_workflow_reusable() : ""),
 			needs,
 			cond: asString(j.if) ?? null,
 			steps: (Array.isArray(j.steps) ? j.steps : []).map((s, i) => {
@@ -81,7 +82,10 @@ export function workflowModel(value: unknown): Workflow {
 				const uses = asString(st.uses) ?? null;
 				const run = asString(st.run) ?? null;
 				return {
-					name: asString(st.name) ?? uses ?? (run ? run.split("\n")[0] : `Step ${i + 1}`),
+					name:
+						asString(st.name) ??
+						uses ??
+						(run ? run.split("\n")[0] : m.viewers_files_workflow_step_n({ n: i + 1 })),
 					uses,
 					run,
 					cond: asString(st.if) ?? null,
@@ -102,7 +106,10 @@ export function workflowModel(value: unknown): Workflow {
 	const levelOf = (j: Job, seen: Set<string>): number => {
 		if (seen.has(j.id)) return 0;
 		seen.add(j.id);
-		return j.needs.reduce((m, n) => (byId.has(n) ? Math.max(m, levelOf(byId.get(n)!, seen) + 1) : m), 0);
+		return j.needs.reduce(
+			(deepest, n) => (byId.has(n) ? Math.max(deepest, levelOf(byId.get(n)!, seen) + 1) : deepest),
+			0,
+		);
 	};
 	for (const j of jobs) j.level = levelOf(j, new Set());
 	const order = topoOrder(jobs.map((j) => ({ name: j.id, deps: j.needs })));

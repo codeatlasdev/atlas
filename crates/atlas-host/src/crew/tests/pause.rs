@@ -45,7 +45,7 @@ async fn paused(client: &HostClient) -> bool {
 /// Wait until the crewmate's runner is idle: the running task's agent has exited and the runner
 /// has recorded how the task ended.
 async fn until_idle(client: &HostClient, crewmate: &str) {
-    for _ in 0..150 {
+    for _ in 0..600 {
         let list = client.call("crewmate_list", json!({})).await.unwrap();
         let me = list["crewmates"]
             .as_array()
@@ -71,11 +71,11 @@ async fn a_cancelled_task_is_still_cancelled_after_its_agent_has_exited() {
     let _bin_lock = lock_agent_bin().await;
     let tmp = tempfile::tempdir().unwrap();
     let dir = tmp.path().join("hostd");
-    use_agent_bin(&fake_agent(tmp.path(), "claude", "sleep 60\nexit 0"));
+    use_agent_bin(&fake_agent(tmp.path(), "claude", "sleep 600\nexit 0"));
     let client = daemon(&dir).await;
     let id = create_crewmate(&client, "Canceller").await;
     let task = send(&client, &id, "long").await;
-    wait_task_state(&client, &id, &task, "running", Duration::from_secs(15)).await;
+    wait_task_state(&client, &id, &task, "running", atlas_core::scaling::HANG).await;
 
     client
         .call("crewmate_cancel", json!({"id": id, "task": task}))
@@ -95,11 +95,11 @@ async fn a_task_cancelled_by_pause_keeps_its_reason_after_its_agent_has_exited()
     let _bin_lock = lock_agent_bin().await;
     let tmp = tempfile::tempdir().unwrap();
     let dir = tmp.path().join("hostd");
-    use_agent_bin(&fake_agent(tmp.path(), "claude", "sleep 60\nexit 0"));
+    use_agent_bin(&fake_agent(tmp.path(), "claude", "sleep 600\nexit 0"));
     let client = daemon(&dir).await;
     let id = create_crewmate(&client, "Paused").await;
     let task = send(&client, &id, "long").await;
-    wait_task_state(&client, &id, &task, "running", Duration::from_secs(15)).await;
+    wait_task_state(&client, &id, &task, "running", atlas_core::scaling::HANG).await;
 
     client.call("crew_pause", json!({})).await.unwrap();
     until_idle(&client, &id).await;
@@ -121,14 +121,14 @@ async fn pause_cancels_the_running_task_holds_the_queue_and_resume_starts_it() {
     let tmp = tempfile::tempdir().unwrap();
     let dir = tmp.path().join("hostd");
     // The first task hangs; the one queued behind it would finish at once.
-    let hang = fake_agent(tmp.path(), "claude", "sleep 60\nexit 0");
+    let hang = fake_agent(tmp.path(), "claude", "sleep 600\nexit 0");
     use_agent_bin(&hang);
     let client = daemon(&dir).await;
     let id = create_crewmate(&client, "Stopper").await;
 
     let running = send(&client, &id, "first").await;
     let queued = send(&client, &id, "second").await;
-    wait_task_state(&client, &id, &running, "running", Duration::from_secs(15)).await;
+    wait_task_state(&client, &id, &running, "running", atlas_core::scaling::HANG).await;
     assert!(!paused(&client).await);
 
     // Pause: the running task is cancelled with the reason, the queued one is untouched.
@@ -137,8 +137,14 @@ async fn pause_cancels_the_running_task_holds_the_queue_and_resume_starts_it() {
         json!({})
     );
     assert!(paused(&client).await);
-    let cancelled =
-        wait_task_state(&client, &id, &running, "cancelled", Duration::from_secs(15)).await;
+    let cancelled = wait_task_state(
+        &client,
+        &id,
+        &running,
+        "cancelled",
+        atlas_core::scaling::HANG,
+    )
+    .await;
     assert_eq!(cancelled["error"], "paused", "{cancelled}");
 
     // Nothing starts while paused, however long we wait; a new task queues behind the held one.
@@ -165,8 +171,8 @@ async fn pause_cancels_the_running_task_holds_the_queue_and_resume_starts_it() {
         json!({})
     );
     assert!(!paused(&client).await);
-    wait_task_state(&client, &id, &queued, "done", Duration::from_secs(20)).await;
-    wait_task_state(&client, &id, &later, "done", Duration::from_secs(20)).await;
+    wait_task_state(&client, &id, &queued, "done", atlas_core::scaling::HANG).await;
+    wait_task_state(&client, &id, &later, "done", atlas_core::scaling::HANG).await;
 
     crate::crew::runner::set_test_agent_bin(None);
     client.call("shutdown", json!({})).await.ok();
@@ -229,7 +235,7 @@ async fn a_trigger_does_not_fire_while_paused() {
     // Resumed, the very same webhook fires.
     client.call("crew_resume", json!({})).await.unwrap();
     status("after resume").await;
-    let deadline = std::time::Instant::now() + Duration::from_secs(5);
+    let deadline = std::time::Instant::now() + atlas_core::scaling::HANG;
     loop {
         let tasks = client
             .call("crewmate_tasks", json!({"id": id, "limit": 10}))
@@ -303,7 +309,7 @@ async fn a_queue_recovered_after_a_restart_stays_held_while_paused() {
     tokio::time::sleep(Duration::from_secs(2)).await;
     assert_eq!(task_state(&client, &id, &task).await["state"], "queued");
     client.call("crew_resume", json!({})).await.unwrap();
-    wait_task_state(&client, &id, &task, "done", Duration::from_secs(20)).await;
+    wait_task_state(&client, &id, &task, "done", atlas_core::scaling::HANG).await;
 
     crate::crew::runner::set_test_agent_bin(None);
     client.call("shutdown", json!({})).await.ok();
@@ -347,7 +353,7 @@ async fn pausing_pushes_the_event_to_every_client() {
     let b = HostClient::connect_dir(&dir, "second").await.unwrap();
     let mut events = b.events();
     a.call("crew_pause", json!({})).await.unwrap();
-    let ev = tokio::time::timeout(Duration::from_secs(5), async {
+    let ev = tokio::time::timeout(atlas_core::scaling::HANG, async {
         loop {
             let e = events.recv().await.unwrap();
             if e["ev"] == "crew_paused" {
@@ -359,7 +365,7 @@ async fn pausing_pushes_the_event_to_every_client() {
     .expect("no crew_paused event reached the second client");
     assert_eq!(ev["paused"], true);
     a.call("crew_resume", json!({})).await.unwrap();
-    let ev = tokio::time::timeout(Duration::from_secs(5), async {
+    let ev = tokio::time::timeout(atlas_core::scaling::HANG, async {
         loop {
             let e = events.recv().await.unwrap();
             if e["ev"] == "crew_paused" {
@@ -429,14 +435,14 @@ async fn a_cancel_between_running_and_the_spawn_never_leaves_an_agent_running() 
     use_agent_bin(&fake_agent(
         tmp.path(),
         "claude",
-        &format!("echo $$ > \"{}\"\nsleep 60\nexit 0", pidfile.display()),
+        &format!("echo $$ > \"{}\"\nsleep 600\nexit 0", pidfile.display()),
     ));
     *crate::crew::runner::TEST_PAUSE_BEFORE_SPAWN.lock() = Some(Duration::from_millis(1500));
     let client = daemon(&dir).await;
     let id = create_crewmate(&client, "Racer").await;
     let task = send(&client, &id, "go").await;
     // Stored running: the runner is inside the pause window, before any session exists.
-    wait_task_state(&client, &id, &task, "running", Duration::from_secs(15)).await;
+    wait_task_state(&client, &id, &task, "running", atlas_core::scaling::HANG).await;
 
     client
         .call("crewmate_cancel", json!({"id": id, "task": task}))
@@ -453,7 +459,7 @@ async fn a_cancel_between_running_and_the_spawn_never_leaves_an_agent_running() 
         let start = std::time::Instant::now();
         while atlas_core::sys::pid_alive(pid) && !zombie(pid) {
             assert!(
-                start.elapsed() < Duration::from_secs(5),
+                start.elapsed() < atlas_core::scaling::HANG,
                 "the agent {pid} of a cancelled task is still running"
             );
             tokio::time::sleep(Duration::from_millis(50)).await;

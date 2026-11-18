@@ -2,6 +2,7 @@
 	import { FileText } from "@lucide/svelte";
 	import ViewerActions from "#lib/viewers/ViewerActions.svelte";
 	import type { PdfErrorKind } from "#lib/viewers/pdf/doc.ts";
+	import { m } from "#lib/i18n/m.ts";
 
 	/** Opening spinner and the "can't preview" card (password / damaged / render failure). */
 	let {
@@ -22,18 +23,18 @@
 <div class="state" aria-busy={status === "loading" ? "true" : undefined}>
 	{#if status === "loading"}
 		<div class="spin"></div>
-		Opening PDF…
+		{m.viewers_files_pdf_status_opening_pdf()}
 	{:else}
 		<FileText size={28} />
 		<h3>
 			{errorKind === "password"
-				? "This PDF is password-protected"
+				? m.viewers_files_pdf_status_password()
 				: errorKind === "invalid"
-					? "This PDF is damaged or not a PDF"
-					: "Could not render this PDF"}
+					? m.viewers_files_pdf_status_invalid()
+					: m.viewers_files_pdf_status_other()}
 		</h3>
 		<p>
-			{errorKind === "other" ? errorText : "Atlas can't preview it here. Your default app can still open it."}
+			{errorKind === "other" ? errorText : m.viewers_files_pdf_status_hint()}
 		</p>
 		<ViewerActions {onopen} {onreveal} />
 	{/if}

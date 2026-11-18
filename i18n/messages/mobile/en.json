@@ -1,0 +1,173 @@
+{
+	"mobile_access_custom_detail": "Can: {scopes}.",
+	"mobile_access_custom_label": "Custom: {count} of {total}",
+	"mobile_access_full_detail": "Can see this computer, restart services, run actions, watch and type in terminals and answer agent permission prompts.",
+	"mobile_access_full_label": "Full access",
+	"mobile_access_none_detail": "Paired, but it can do nothing until you allow something.",
+	"mobile_access_none_label": "No access",
+	"mobile_access_view_detail": "Can look at projects, logs and agents. Cannot change anything or watch terminals.",
+	"mobile_access_view_label": "View only",
+	"mobile_access_view_terminals_detail": "Can look at projects, logs, agents and terminals. Cannot change anything.",
+	"mobile_activity_action": "Ran an action",
+	"mobile_activity_action_key": "Ran the action {key}",
+	"mobile_activity_approved": "Allowed an agent's tool call",
+	"mobile_activity_crewmate_answer": "Answered a crewmate's question",
+	"mobile_activity_crewmate_cancel": "Cancelled a crewmate's task",
+	"mobile_activity_crewmate_task": "Sent a task to a crewmate",
+	"mobile_activity_denied": "Denied an agent's tool call",
+	"mobile_activity_git_commit": "Committed",
+	"mobile_activity_git_push": "Pushed a branch",
+	"mobile_activity_git_stage": "Staged files",
+	"mobile_activity_git_unstage": "Unstaged files",
+	"mobile_activity_interrupt": "Interrupted an agent",
+	"mobile_activity_launch": "Started {name}",
+	"mobile_activity_launch_unnamed": "Started an agent",
+	"mobile_activity_pair": "Paired with this computer",
+	"mobile_activity_prompt": "Sent a prompt to an agent",
+	"mobile_activity_prompt_size": [
+		{
+			"declarations": [
+				"input count",
+				"local countExact = count",
+				"local countPlural = count: plural"
+			],
+			"selectors": [
+				"countExact",
+				"countPlural"
+			],
+			"match": {
+				"countExact=0, countPlural=*": "Sent an empty prompt to an agent",
+				"countExact=*, countPlural=one": "Sent a prompt to an agent ({count} character)",
+				"countExact=*, countPlural=*": "Sent a prompt to an agent ({count} characters)"
+			}
+		}
+	],
+	"mobile_activity_pull_request": "Opened a pull request",
+	"mobile_activity_ran_op": "Ran {op}: {target}",
+	"mobile_activity_ran_operation": "Ran an operation: {target}",
+	"mobile_activity_restarted": "Restarted {target}",
+	"mobile_activity_started": "Started {target}",
+	"mobile_activity_stopped": "Stopped {target}",
+	"mobile_activity_terminal_open": "Opened a terminal",
+	"mobile_activity_terminal_signal": "Sent a signal to a terminal",
+	"mobile_activity_terminal_write": "Typed in a terminal",
+	"mobile_activity_terminal_write_size": [
+		{
+			"declarations": [
+				"input count",
+				"local countExact = count",
+				"local countPlural = count: plural"
+			],
+			"selectors": [
+				"countExact",
+				"countPlural"
+			],
+			"match": {
+				"countExact=0, countPlural=*": "Typed in a terminal (no data)",
+				"countExact=*, countPlural=one": "Typed in a terminal ({count} byte)",
+				"countExact=*, countPlural=*": "Typed in a terminal ({count} bytes)"
+			}
+		}
+	],
+	"mobile_activity_the_stack": "the stack",
+	"mobile_activity_unknown": "Unknown action",
+	"mobile_activity_worktree_create": "Created a worktree",
+	"mobile_activity_worktree_remove": "Removed a worktree",
+	"mobile_device_status_connected": "Connected now · Paired {paired}",
+	"mobile_device_status_never": "Not connected yet · Paired {paired}",
+	"mobile_device_status_seen": "Last seen {seen} · Paired {paired}",
+	"mobile_device_title": "Phone {id}",
+	"mobile_pair_card_code_expired": "Code expired",
+	"mobile_pair_card_code_lifetime": "A code works for two minutes.",
+	"mobile_pair_card_code_placeholder": "Your code appears here",
+	"mobile_pair_card_copy_link": "Copy link",
+	"mobile_pair_card_error_body": "{error}. Try again; if it keeps failing, restart Atlas.",
+	"mobile_pair_card_error_title": "Could not make a code",
+	"mobile_pair_card_expires_in": "Expires in {time}",
+	"mobile_pair_card_link_copied": "Pairing link copied. In the app, choose Paste link.",
+	"mobile_pair_card_new_code": "New code",
+	"mobile_pair_card_one_time_code": "One-time code",
+	"mobile_pair_card_pair_another": "Pair another phone",
+	"mobile_pair_card_paired_body": "It is in the list below.",
+	"mobile_pair_card_paired_title": "{paired} is paired",
+	"mobile_pair_card_show_code": "Show pairing code",
+	"mobile_pair_card_step_get": "Get Atlas Mobile",
+	"mobile_pair_card_step_get_how": "How to get it",
+	"mobile_pair_card_step_get_testing": "Still in testing, not in the stores yet.",
+	"mobile_pair_card_step_open": "Open it",
+	"mobile_pair_card_step_open_hint": "Tap {#em}Scan pairing code{/em}, or {#em}Pair another computer{/em} in its Settings.",
+	"mobile_pair_card_step_scan": "Scan the code",
+	"mobile_pair_card_step_scan_hint": "The phone appears in {#em}Paired phones{/em} below the moment it connects.",
+	"mobile_pair_card_time_left": "Time left on this code",
+	"mobile_pair_card_waiting": "Waiting for your phone…",
+	"mobile_pair_help_addrs": [
+		{
+			"declarations": [
+				"input count",
+				"local countExact = count",
+				"local countPlural = count: plural"
+			],
+			"selectors": [
+				"countExact",
+				"countPlural"
+			],
+			"match": {
+				"countExact=0, countPlural=*": "This code has no direct addresses, so the phone uses the relay.",
+				"countExact=*, countPlural=one": "This code offers this address:",
+				"countExact=*, countPlural=*": "This code offers these addresses:"
+			}
+		}
+	],
+	"mobile_pair_help_awake": "{#b}Keep this computer awake{/b} with Atlas running. A sleeping computer cannot be reached; the phone connects again once it wakes.",
+	"mobile_pair_help_title": "Pairing doesn't work?",
+	"mobile_pair_help_vpn": "{#b}VPN or Cloudflare WARP on?{/b} Pause it, or exclude your Wi-Fi network from it, then make a new code.",
+	"mobile_pair_help_vpn_docs": "Pairing fails with a VPN or WARP on",
+	"mobile_pair_help_wifi": "{#b}The phone does not need to be on this Wi-Fi.{/b} It connects through an encrypted relay, or straight to this computer when both are on the same network.",
+	"mobile_pair_qr_expired": "The code expired. Make a new one.",
+	"mobile_pair_qr_expires_in": "Expires in {left} s",
+	"mobile_pair_qr_label": "Pairing QR code",
+	"mobile_phone_activity_empty": "No activity yet. Restarts, prompts and approvals made from the phone appear here; just browsing does not.",
+	"mobile_phone_activity_error": "Could not read the activity: {error}",
+	"mobile_phone_activity_footer": [
+		{
+			"declarations": [
+				"input count",
+				"local countPlural = count: plural"
+			],
+			"selectors": [
+				"countPlural"
+			],
+			"match": {
+				"countPlural=one": "The last action. Text typed on the phone is recorded by its length only.",
+				"countPlural=*": "The last {count} actions. Text typed on the phone is recorded by its length only."
+			}
+		}
+	],
+	"mobile_phone_activity_label": "Recent activity",
+	"mobile_phone_activity_reading": "Reading the activity…",
+	"mobile_phone_activity_try_again": "Try again",
+	"mobile_phone_row_activity": "Activity",
+	"mobile_phone_row_connected_now": "Connected now",
+	"mobile_phone_row_edit_permissions": "Edit permissions",
+	"mobile_phone_row_name_description": "Only you see it, here. It helps tell your phones apart.",
+	"mobile_phone_row_name_label": "Name",
+	"mobile_phone_row_name_placeholder": "Luan's iPhone",
+	"mobile_phone_row_name_title": "Name this phone",
+	"mobile_phone_row_not_connected": "Not connected",
+	"mobile_phone_row_unpair": "Unpair",
+	"mobile_phone_row_unpair_body": "It is disconnected at once and can no longer reach this computer, and its push notifications stop. To use it again, scan a new code.",
+	"mobile_phone_row_unpair_title": "Unpair {title}?",
+	"mobile_phone_row_unpaired": "{title} unpaired",
+	"mobile_scope_act_label": "Restart services, run actions, send prompts",
+	"mobile_scope_act_risk": "Changes your running stack, creates and removes worktrees, commits and pushes, updates Atlas, tells agents what to do.",
+	"mobile_scope_approve_label": "Answer agent permission prompts",
+	"mobile_scope_approve_risk": "Can allow an agent to run a tool or a command.",
+	"mobile_scope_group_control": "Control",
+	"mobile_scope_group_view": "View",
+	"mobile_scope_read_label": "See projects, logs and agents",
+	"mobile_scope_read_risk": "Reads names, status, logs, diffs and agent conversations. Changes nothing.",
+	"mobile_scope_term_read_label": "Watch terminals",
+	"mobile_scope_term_read_risk": "Sees everything a terminal prints, secrets included.",
+	"mobile_scope_term_write_label": "Type in terminals",
+	"mobile_scope_term_write_risk": "Runs commands as you, like sitting at the keyboard."
+}

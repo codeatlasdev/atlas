@@ -16,16 +16,26 @@ pub fn ticks(secs: u32) -> Vec<u32> {
 /// Block the capture worker for `secs`, telling the page each second (`shots://timer`, the number left; `0` when
 /// it is over). `secs == 0` returns at once and emits nothing.
 pub fn wait(app: &AppHandle, secs: u32) {
-    wait_with(secs, Duration::from_secs(1), |n| {
-        let _ = app.emit("shots://timer", n);
-    });
+    wait_with(
+        secs,
+        Duration::from_secs(1),
+        |n| {
+            let _ = app.emit("shots://timer", n);
+        },
+        std::thread::sleep,
+    );
 }
 
-/// [`wait`] with the clock and the sink injected.
-fn wait_with(secs: u32, step: Duration, mut show: impl FnMut(u32)) {
+/// [`wait`] with the sink and the sleeper injected.
+fn wait_with(
+    secs: u32,
+    step: Duration,
+    mut show: impl FnMut(u32),
+    mut sleep: impl FnMut(Duration),
+) {
     for n in ticks(secs) {
         show(n);
-        std::thread::sleep(step);
+        sleep(step);
     }
     if secs > 0 {
         show(0);
@@ -44,21 +54,40 @@ mod tests {
         assert!(ticks(0).is_empty());
     }
 
-    /// No timer means no event and no sleep: an immediate capture must not pay for the feature.
+    /// No timer means no event and no sleep: an immediate capture must not pay for the feature. The sleeper counts
+    /// the sleeps asked for, so the guard is "none were asked", not a stopwatch.
     #[test]
     fn a_zero_timer_does_nothing() {
         let mut seen = Vec::new();
-        let t = std::time::Instant::now();
-        wait_with(0, Duration::from_secs(5), |n| seen.push(n));
+        let mut slept = Vec::new();
+        wait_with(
+            0,
+            Duration::from_secs(5),
+            |n| seen.push(n),
+            |d| slept.push(d),
+        );
         assert!(seen.is_empty());
-        assert!(t.elapsed() < Duration::from_millis(100));
+        assert!(slept.is_empty(), "a zero timer slept: {slept:?}");
     }
 
-    /// The page hides its countdown on `0`; it is sent exactly once, after the last number.
+    /// The page hides its countdown on `0`; it is sent exactly once, after the last number. Each number stays up
+    /// for one step: it is shown, then the worker sleeps a step, then the next.
     #[test]
     fn the_end_of_the_countdown_is_announced_once() {
-        let mut seen = Vec::new();
-        wait_with(3, Duration::from_millis(1), |n| seen.push(n));
-        assert_eq!(seen, [3, 2, 1, 0]);
+        let step = Duration::from_millis(7);
+        let log = std::cell::RefCell::new(Vec::new());
+        wait_with(
+            3,
+            step,
+            |n| log.borrow_mut().push(format!("show {n}")),
+            |d| log.borrow_mut().push(format!("sleep {d:?}")),
+        );
+        let sleep = format!("sleep {step:?}");
+        assert_eq!(
+            log.into_inner(),
+            [
+                "show 3", &sleep, "show 2", &sleep, "show 1", &sleep, "show 0"
+            ]
+        );
     }
 }

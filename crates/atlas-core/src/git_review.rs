@@ -1698,24 +1698,27 @@ mod commit_msg_tests {
         assert!(matches!(done, Event::Error { message } if message.contains("unknown flag")));
     }
 
-    // Cancel mid-stream: the child is killed (not left running) and the result is Cancelled, no message.
+    // Cancel mid-stream: the child is killed (not left running, not waited for) and the result is Cancelled, no
+    // message. The provider lives for 30 s and says so in `finished` if it gets to the end: a cancel that waited for
+    // it would return `Done` and leave that file, however fast or slow the machine is; no stopwatch is involved.
     #[cfg(unix)]
     #[test]
     fn cancel_kills_the_provider_mid_stream() {
         let d = tempfile::tempdir().unwrap();
         let marker = d.path().join("finished");
+        let pidfile = d.path().join("pid");
         let argv = fake(
             d.path(),
             &format!(
-                "cat >/dev/null; printf 'feat: start'; sleep 30; touch {}",
-                marker.display()
+                "cat >/dev/null; echo $$ > {pid}; printf 'feat: start'; sleep 30; touch {}",
+                marker.display(),
+                pid = pidfile.display()
             ),
         );
         let rt = tokio::runtime::Builder::new_current_thread()
             .enable_all()
             .build()
             .unwrap();
-        let started = std::time::Instant::now();
         let done = rt.block_on(async {
             let (tx, rx) = tokio::sync::oneshot::channel();
             let seen = std::sync::Arc::new(std::sync::atomic::AtomicBool::new(false));
@@ -1735,15 +1738,22 @@ mod commit_msg_tests {
                 tokio::time::sleep(std::time::Duration::from_millis(20)).await;
             }
             let _ = tx.send(());
-            run.await.unwrap()
+            tokio::time::timeout(crate::scaling::HANG, run)
+                .await
+                .expect("cancel hung")
+                .unwrap()
         });
         assert_eq!(done, Event::Cancelled);
+        assert!(!marker.exists(), "cancel waited for the provider to finish");
+        let pid: u32 = std::fs::read_to_string(&pidfile)
+            .unwrap()
+            .trim()
+            .parse()
+            .unwrap();
         assert!(
-            started.elapsed() < std::time::Duration::from_secs(10),
-            "cancel must not wait for the 30 s sleep"
+            !crate::sys::pid_alive(pid),
+            "the provider kept running after cancel"
         );
-        std::thread::sleep(std::time::Duration::from_millis(300));
-        assert!(!marker.exists(), "the provider kept running after cancel");
     }
 
     // Contract with the frontend: the events serialize with a `kind` tag in snake_case; the committed fixture is the

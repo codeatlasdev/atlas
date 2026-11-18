@@ -369,7 +369,8 @@ mod tests {
         let pid = child.id();
         // exec has happened once the table shows the child as `sleep`.
         let mut got = None;
-        for _ in 0..100 {
+        let end = std::time::Instant::now() + crate::scaling::HANG;
+        while std::time::Instant::now() < end {
             got = env_var(pid, "ATLAS_PROCS_TEST");
             if got.is_some() {
                 break;

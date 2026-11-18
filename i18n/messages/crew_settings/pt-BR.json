@@ -97,7 +97,7 @@
 	"crew_settings_engine_section_custom_provider": "Provedor personalizado",
 	"crew_settings_engine_section_model": "Modelo",
 	"crew_settings_engine_section_openai_compatible": "Compatível com OpenAI",
-	"crew_settings_engine_section_optional_route_this_engine_through": "Opcional. Direcione as chamadas do agente pelo seu próprio gateway de API.",
+	"crew_settings_engine_section_optional_route_this_engine_through": "Opcional. Direcione as chamadas do engine pelo seu próprio gateway de API.",
 	"crew_settings_engine_section_provider_configured": "Provedor configurado",
 	"crew_settings_engine_section_save_provider": "Salvar provedor",
 	"crew_settings_engine_section_test_connection": "Testar conexão",

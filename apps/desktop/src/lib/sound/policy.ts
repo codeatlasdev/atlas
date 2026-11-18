@@ -13,22 +13,9 @@
  */
 
 import { m } from "#lib/i18n/m.ts";
+import { CATEGORIES, type Category } from "./categories.ts";
 
-/** One earcon family member per meaningful event. Ids are also the asset file names. */
-export const CATEGORIES = [
-	"boot",
-	"discovery-done",
-	"stack-up",
-	"service-failed",
-	"agent-needs-you",
-	"agent-done",
-	"update",
-	"error",
-	"success",
-	"toggle",
-] as const;
-
-export type Category = (typeof CATEGORIES)[number];
+export { CATEGORIES, type Category };
 
 interface Spec {
 	/** Mix level relative to full scale after the assets were normalised (louder = more urgent). */

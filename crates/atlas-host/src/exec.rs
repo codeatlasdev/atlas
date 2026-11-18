@@ -201,8 +201,65 @@ mod tests {
         (v["code"].as_i64(), text("stdout"), text("stderr"))
     }
 
-    /// A real `git` under a pt_BR.UTF-8 parent: its error is the English one `gitErrors.ts` classifies, and a
-    /// non-ASCII file name survives `status` and `diff`.
+    /// Whether the machine has a pt_BR UTF-8 locale: without it git cannot print Portuguese, so an "its error is
+    /// English" assertion would pass without proving anything.
+    #[cfg(unix)]
+    fn pt_br_installed() -> bool {
+        std::process::Command::new("locale")
+            .arg("-a")
+            .output()
+            .map(|o| {
+                String::from_utf8_lossy(&o.stdout).lines().any(|l| {
+                    l.eq_ignore_ascii_case("pt_BR.utf8") || l.eq_ignore_ascii_case("pt_BR.UTF-8")
+                })
+            })
+            .unwrap_or(false)
+    }
+
+    /// The transform reaches the child, whatever the machine has installed: a program named `git` (it takes the same
+    /// path as git) prints its environment under a pt_BR parent.
+    #[cfg(unix)]
+    #[tokio::test]
+    async fn the_git_child_sees_english_messages_and_keeps_character_handling() {
+        use std::os::unix::fs::PermissionsExt;
+        let d = tempfile::tempdir().unwrap();
+        let bin = d.path().join("git");
+        std::fs::write(&bin, "#!/bin/sh\nenv\n").unwrap();
+        std::fs::set_permissions(&bin, std::fs::Permissions::from_mode(0o755)).unwrap();
+        let parent = map(&[
+            ("LC_ALL", "pt_BR.UTF-8"),
+            ("LANGUAGE", "pt_BR:pt"),
+            ("LANG", "pt_BR.UTF-8"),
+        ]);
+        let argv = vec![bin.to_str().unwrap().to_string()];
+        let v = run(d.path().to_str().unwrap(), &argv, &parent, None, 20_000)
+            .await
+            .unwrap();
+        let out = String::from_utf8(B64.decode(v["stdout"].as_str().unwrap()).unwrap()).unwrap();
+        let has = |line: &str| out.lines().any(|l| l == line);
+        assert!(has("LC_MESSAGES=C"), "{out}");
+        assert!(has("LC_CTYPE=pt_BR.UTF-8"), "{out}");
+        assert!(has("LANG=pt_BR.UTF-8"), "{out}");
+        assert!(
+            !out.lines()
+                .any(|l| l.starts_with("LC_ALL=") || l.starts_with("LANGUAGE=")),
+            "{out}"
+        );
+        // Any other program is left alone.
+        let other = d.path().join("gh");
+        std::fs::write(&other, "#!/bin/sh\nenv\n").unwrap();
+        std::fs::set_permissions(&other, std::fs::Permissions::from_mode(0o755)).unwrap();
+        let argv = vec![other.to_str().unwrap().to_string()];
+        let v = run(d.path().to_str().unwrap(), &argv, &parent, None, 20_000)
+            .await
+            .unwrap();
+        let out = String::from_utf8(B64.decode(v["stdout"].as_str().unwrap()).unwrap()).unwrap();
+        assert!(out.lines().any(|l| l == "LC_ALL=pt_BR.UTF-8"), "{out}");
+    }
+
+    /// A real `git` under a pt_BR.UTF-8 parent: its error is the English one `gitErrors.ts` classifies (checked only
+    /// where a pt_BR locale exists, and said out loud when it does not), and a non-ASCII file name survives `status`
+    /// and `diff`.
     #[cfg(unix)]
     #[tokio::test]
     async fn git_runs_with_english_messages_and_still_reads_non_ascii_paths() {
@@ -214,7 +271,13 @@ mod tests {
         let outside = tempfile::tempdir().unwrap();
         let (code, _, err) = git_in(outside.path().to_str().unwrap(), &parent, &["status"]).await;
         assert_ne!(code, Some(0));
-        assert!(err.contains("not a git repository"), "{err}");
+        if pt_br_installed() {
+            assert!(err.contains("not a git repository"), "{err}");
+        } else {
+            eprintln!(
+                "skipped: pt_BR locale not installed (the English-error assertion proves nothing here)"
+            );
+        }
 
         let d = tempfile::tempdir().unwrap();
         let dir = d.path().to_str().unwrap();

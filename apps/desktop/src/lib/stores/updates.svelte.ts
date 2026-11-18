@@ -8,7 +8,7 @@ import {
 	type SettingsSection,
 	type SettingsTab,
 	type SettingsTarget,
-} from "#lib/settings/index.ts";
+} from "#lib/settings/targets.ts";
 import { sound } from "#lib/sound/sound.svelte.ts";
 import { agents } from "#lib/stores/agents.svelte.ts";
 import {
@@ -65,7 +65,7 @@ export interface Release {
 	yanked: { version: string; reason: string; replacement: string | null } | null;
 }
 
-export type { SettingsSection, SettingsTab } from "#lib/settings/index.ts";
+export type { SettingsSection, SettingsTab } from "#lib/settings/targets.ts";
 
 type Run = "update" | "reinstall" | "unlink";
 

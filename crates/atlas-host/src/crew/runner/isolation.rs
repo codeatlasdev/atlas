@@ -92,6 +92,7 @@ impl Ctx {
                 // No token, no endpoint: better a refused hook than the global token in an
                 // isolated agent's environment.
                 Err(e) => {
+                    // i18n-ignore: log
                     eprintln!("atlas crew: crewmate {id}: cannot create its hook token: {e}");
                     (port, String::new())
                 }

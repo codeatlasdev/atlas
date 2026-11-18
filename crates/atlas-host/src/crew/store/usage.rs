@@ -77,6 +77,7 @@ pub(super) fn read_lines(dir: &Path) -> Vec<String> {
         let mut bytes = Vec::new();
         // A damaged gzip keeps what was decoded before the damage.
         if let Err(e) = flate2::read::MultiGzDecoder::new(f).read_to_end(&mut bytes) {
+            // i18n-ignore: log
             eprintln!("atlas crew: {} is damaged: {e}", dir.join(&name).display());
         }
         out.extend(jsonl::lines(io::Cursor::new(bytes)).map(|l| l.text));

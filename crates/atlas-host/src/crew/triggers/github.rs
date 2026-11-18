@@ -106,6 +106,7 @@ async fn poll_trigger(hub: &Arc<Hub>, api: &dyn GithubApi, crewmate: &Crewmate, 
     let feed = match api.events(repo).await {
         Ok(f) => f,
         Err(e) => {
+            // i18n-ignore: log
             eprintln!("triggers/github: {repo}: {e}");
             return;
         }
@@ -115,6 +116,7 @@ async fn poll_trigger(hub: &Arc<Hub>, api: &dyn GithubApi, crewmate: &Crewmate, 
     let own_login = match api.login().await {
         Ok(l) => l,
         Err(e) => {
+            // i18n-ignore: log
             eprintln!("triggers/github: cannot tell the crew's own GitHub login: {e}");
             return;
         }
@@ -134,6 +136,7 @@ async fn poll_trigger(hub: &Arc<Hub>, api: &dyn GithubApi, crewmate: &Crewmate, 
             .filter_map(|ev| ev["id"].as_str().filter(|s| !s.is_empty()))
             .collect();
         if let Err(e) = append_seen(&seen_path, &ids) {
+            // i18n-ignore: log
             eprintln!(
                 "triggers/github: {repo}: cannot baseline trigger {} of crewmate {}: {e}; not polled for {} min",
                 trigger.id,
@@ -157,6 +160,7 @@ async fn poll_trigger(hub: &Arc<Hub>, api: &dyn GithubApi, crewmate: &Crewmate, 
             Ok(f) => f,
             // Could not tell who wrote it (or what it says): not decided, so not seen. Asked again.
             Err(e) => {
+                // i18n-ignore: log
                 eprintln!(
                     "triggers/github: {} {id} in {repo} for crewmate {}: {e}; will retry",
                     ev["type"].as_str().unwrap_or("?"),
@@ -168,6 +172,7 @@ async fn poll_trigger(hub: &Arc<Hub>, api: &dyn GithubApi, crewmate: &Crewmate, 
         // Seen first, whether it matched or not: a task is only made for an event that cannot come
         // back. If the record cannot be written nothing fires, and the trigger rests for a while.
         if let Err(e) = append_seen(&seen_path, &[id]) {
+            // i18n-ignore: log
             eprintln!(
                 "triggers/github: {repo}: cannot record event {id} for crewmate {}: {e}; not fired, not polled for {} min",
                 crewmate.id,

@@ -4,6 +4,7 @@ import hashlib
 import importlib.util
 import json
 import os
+import re
 import subprocess
 import sys
 import tempfile
@@ -83,6 +84,14 @@ class Manifest(unittest.TestCase):
         self.assertEqual(a["cli"]["sha256"], cli)
         self.assertTrue(a["cli"]["url"].endswith(f"/v{version}/atlas-{version}-aarch64-unknown-linux-gnu.tar.gz"))
         self.assertEqual(sorted(a), ["cli", "daemon"])
+
+    # #317: the manifest listed x86_64-apple-darwin and universal-apple-darwin, which no job builds. Its platforms are
+    # the `atlas-<target>` artifacts release.yml uploads, no more and no fewer.
+    def test_the_manifest_platforms_are_the_targets_release_yml_builds(self):
+        with open(os.path.join(HERE, "..", ".github/workflows/release.yml")) as f:
+            wf = f.read()
+        built = set(re.findall(r"^          name: atlas-((?:aarch64|x86_64)-(?:apple-darwin|unknown-linux-gnu|pc-windows-msvc))$", wf, re.M))
+        self.assertEqual(set(load().PLATFORMS), built)
 
     def test_windows_lists_the_cli_tarball_and_the_installer_as_the_desktop(self):
         # The names release.yml uploads; `desktop` must be what `atlas desktop` downloads on Windows.

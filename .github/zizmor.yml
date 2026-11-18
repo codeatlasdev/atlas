@@ -19,6 +19,13 @@ rules:
   cache-poisoning:
     ignore:
       - ci.yml:148
+  # The one release toolchain action writes a fixed PATH entry and the commit's own time (git log of the checked-out
+  # tag) to the environment files, and is only called from release.yml (a v* tag push or a dispatch by someone with write
+  # access); `action.yml:36` and `:46` are those two writes in .github/actions/release-toolchain. No attacker-controlled value reaches either file; inlining the writes again would bring back the nine copies.
+  github-env:
+    ignore:
+      - action.yml:36
+      - action.yml:46
   # `ci-rerun-lost.yml` reacts to a finished CI run to rerun it when its runner was lost (issue #520). It checks out the
   # default branch only, never the pull request, passes the event's values through `env:` to a script that validates them,
   # and its token is `actions: write` + `checks: read` + `contents: read`: it can rerun a run and read annotations.

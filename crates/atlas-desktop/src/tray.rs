@@ -5,7 +5,9 @@
 //! Linux: the icon is an AppIndicator/StatusNotifier item. Hosts deliver no click events (only the menu works),
 //! so the menu is the whole UI there (Show / Hide, Quit; see [`lifecycle::tray_menu`]). The icon is drawn only
 //! when something on the session bus hosts it, which [`reachable`] asks; `main.rs` uses that to decide whether
-//! closing the window may hide it (`lifecycle.rs`).
+//! closing the window may hide it (`lifecycle.rs`). Where GTK has no legacy tray to fall back on (Wayland) the icon is
+//! created only once a host is on the bus ([`wait_for_host`]), never before: libayatana-appindicator's fallback there
+//! is a GTK CRITICAL on every start (#426).
 //!
 //! The popover has no stores of its own: the main window publishes a snapshot
 //! (`tray_publish`), Rust caches it and forwards it as `tray://snapshot`; clicks come back
@@ -355,7 +357,7 @@ fn tray_host_present() -> bool {
         "/org/freedesktop/DBus",
         "org.freedesktop.DBus",
         "NameHasOwner",
-        Some(&("org.kde.StatusNotifierWatcher",).to_variant()),
+        Some(&(WATCHER,).to_variant()),
         Some(gio::glib::VariantTy::new("(b)").expect("static type string")),
         gio::DBusCallFlags::NONE,
         1500,
@@ -408,6 +410,15 @@ pub fn builds_popover_after_launch(os: &str) -> bool {
 /// (`boot::show_now`, where [`builds_popover_after_launch`] says so), or on the first click if that comes first.
 pub fn start(app: &AppHandle) -> tauri::Result<()> {
     app.manage(TrayState::default());
+    #[cfg(target_os = "linux")]
+    if icon_needs_host(&gdk_display_type()) {
+        wait_for_host(app);
+        return Ok(());
+    }
+    build_icon(app)
+}
+
+fn build_icon(app: &AppHandle) -> tauri::Result<()> {
     TrayIconBuilder::with_id("main")
         .icon(icon()?)
         .icon_as_template(cfg!(target_os = "macos"))
@@ -427,6 +438,48 @@ pub fn start(app: &AppHandle) -> tauri::Result<()> {
         })
         .build(app)?;
     Ok(())
+}
+
+/// The StatusNotifier host every tray panel registers on the session bus.
+#[cfg(target_os = "linux")]
+const WATCHER: &str = "org.kde.StatusNotifierWatcher";
+
+/// Does an icon created with no StatusNotifier host on the bus trip GTK? libayatana-appindicator then falls back to a
+/// `GtkStatusIcon`, which only exists on X11 (the legacy XEmbed tray): on Wayland its tray widget is NULL and every
+/// start printed `Gtk-CRITICAL gtk_widget_get_scale_factor: assertion 'GTK_IS_WIDGET (widget)' failed` (#426) for an
+/// icon drawn nowhere. `display_type` is the GType name of the default GDK display.
+#[cfg(target_os = "linux")]
+fn icon_needs_host(display_type: &str) -> bool {
+    display_type != "GdkX11Display"
+}
+
+#[cfg(target_os = "linux")]
+fn gdk_display_type() -> String {
+    use gtk::glib::prelude::ObjectExt;
+    gtk::gdk::Display::default().map_or_else(String::new, |d| d.type_().name().to_owned())
+}
+
+/// Create the icon once a host is on the bus (now, or later: a GNOME extension enabled mid-session, a panel that
+/// registers late at login), instead of handing libayatana an icon it can only fall back with. After that the library
+/// owns the icon: it re-registers by itself when a host comes back (a restarted panel), so the watch ignores a host
+/// that goes. Runs on the main thread: the watch lives on the thread-default context that `setup` runs in.
+#[cfg(target_os = "linux")]
+fn wait_for_host(app: &AppHandle) {
+    let app = app.clone();
+    // The watch lasts as long as the app; dropping the id does not stop it.
+    let _ = gio::bus_watch_name(
+        gio::BusType::Session,
+        WATCHER,
+        gio::BusNameWatcherFlags::NONE,
+        move |_, _, _| {
+            if app.tray_by_id("main").is_none()
+                && let Err(e) = build_icon(&app)
+            {
+                crate::diag::incident("tray", &format!("icon could not be built: {e}"));
+            }
+        },
+        |_, _| {},
+    );
 }
 
 /// Build the popover once. A no-op when it exists or when no tray was started (agent instances, [`start`] never ran).
@@ -515,6 +568,21 @@ mod tests {
         assert!(!builds_popover_after_launch("linux"));
         assert!(builds_popover_after_launch("macos"));
         assert!(builds_popover_after_launch("windows"));
+    }
+
+    /// #426: on Wayland an icon created with no tray host made libayatana fall back to a GtkStatusIcon that has no
+    /// widget there (`Gtk-CRITICAL gtk_widget_get_scale_factor`); on X11 the fallback is the legacy tray and works.
+    #[cfg(target_os = "linux")]
+    #[test]
+    fn the_icon_waits_for_a_host_except_on_x11_where_the_legacy_tray_fallback_draws_it() {
+        use super::icon_needs_host;
+        assert!(icon_needs_host("GdkWaylandDisplay"));
+        assert!(icon_needs_host("GdkBroadwayDisplay"));
+        assert!(
+            icon_needs_host(""),
+            "no display at all: nothing to fall back on"
+        );
+        assert!(!icon_needs_host("GdkX11Display"));
     }
 
     const SCREEN: (f64, f64, f64, f64) = (0.0, 0.0, 3024.0, 1964.0);

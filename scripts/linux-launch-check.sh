@@ -3,7 +3,8 @@
 #
 #   scripts/linux-launch-check.sh [options] <atlas-desktop binary | .AppImage>
 #
-#   --out DIR         where the evidence goes (default launch-check-out/): screenshot.png, app.stderr.txt,
+#   --out DIR         where the evidence goes (default launch-check-out/): screenshot.png, app.stderr.txt (the app's
+#                     stdout/stderr plus its ~/.atlas/desktop/stderr.log, where GTK/WebKit write),
 #                     app.log (the app's own ~/.atlas/desktop/app.log), sway.log, result.txt
 #   --size WxH        virtual display size (default 1440x900)
 #   --map-timeout S   seconds for the window to map (default 90)
@@ -47,11 +48,6 @@ here="$(cd "$(dirname "$0")" && pwd)"
 # WebKit's `Could not create ... EGL`, a missing window or a blank page.
 MARKERS='Aborting|GStreamer element appsrc not found|Process crashed|[Ww]eb ?[Pp]rocess (crashed|terminated|died)|terminated unexpectedly|Segmentation fault|SIGSEGV|SIGABRT|SIGBUS|panicked at|EGL_BAD|EGL_NOT_INITIALIZED|Could not create (an )?(EGL|GL)|Failed to create (an )?(EGL|GBM|GL)|Cannot get default EGL|Error 71 \(Protocol error\)|CRITICAL \*\*|-CRITICAL|Refused to (load|execute|connect|apply|evaluate|frame|create)|Content[- ]Security[- ]Policy|CONSOLE (JS )?ERROR|Uncaught|error while loading shared libraries|cannot open shared object'
 
-# Known, tracked, harmless today; each entry names why. Everything else that matches MARKERS fails.
-#  - Gtk-CRITICAL gtk_widget_get_scale_factor: printed once at startup by the tray/dock window creation (GTK3 called on a
-#    widget that is already gone); the window and page work. Remove the entry when the app stops printing it.
-KNOWN='gtk_widget_get_scale_factor'
-
 out=launch-check-out size=1440x900 map_s=90 render_s=60 settle_s=8
 envs=() ignores=()
 while [ $# -gt 1 ]; do
@@ -76,9 +72,9 @@ headless_prepare "$size"
 
 # Runs in the private D-Bus session (headless_session); its exit status is the script's.
 set +e
-headless_session bash -s "$here" "$work" "$bin" "$out" "$map_s" "$render_s" "$settle_s" "$MARKERS" "$KNOWN" "${#envs[@]}" "${envs[@]}" "${ignores[@]}" <<'INNER'
+headless_session bash -s "$here" "$work" "$bin" "$out" "$map_s" "$render_s" "$settle_s" "$MARKERS" "${#envs[@]}" "${envs[@]}" "${ignores[@]}" <<'INNER'
 set -uo pipefail
-here=$1; work=$2; bin=$3; out=$4; map_s=$5; render_s=$6; settle_s=$7; markers=$8; known=$9; shift 9; nenv=$1; shift
+here=$1; work=$2; bin=$3; out=$4; map_s=$5; render_s=$6; settle_s=$7; markers=$8; shift 8; nenv=$1; shift
 envs=("${@:1:nenv}") ignores=("${@:nenv+1}")
 . "$here/linux-headless.sh"
 headless_up || exit 3
@@ -166,10 +162,12 @@ sleep 0.5; kill -9 -- -"$app" 2>/dev/null || true
 headless_down
 
 # 4. what the app printed (stderr) and wrote to its own log
-cp "$work/app.out" "$out/app.stderr.txt"
+# The app points its own stderr at ~/.atlas/desktop/stderr.log when nobody watches it (#347: a redirect to a file counts), so
+# GTK, WebKit and the web processes write there, not to $work/app.out. Read both, or the markers see nothing (#426).
+cat "$work/app.out" "$HOME/.atlas/desktop/stderr.log" > "$out/app.stderr.txt" 2>/dev/null || cp "$work/app.out" "$out/app.stderr.txt"
 cp "$work/sway.log" "$out/sway.log"
 cp "$HOME/.atlas/desktop/app.log" "$out/app.log" 2>/dev/null || : > "$out/app.log"
-hits="$(grep -E "$markers" "$out/app.stderr.txt" | grep -Ev "$known" || true)"
+hits="$(grep -E "$markers" "$out/app.stderr.txt" || true)"
 for re in ${ignores[@]+"${ignores[@]}"}; do hits="$(grep -Ev "$re" <<<"$hits" || true)"; done
 [ -z "$hits" ] || fail stderr-marker "$(head -5 <<<"$hits" | cut -c1-240 | paste -sd'|')"
 # The startup line (`linux graphics: …`) is information; every other line is an incident.

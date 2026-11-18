@@ -1,6 +1,7 @@
 // bun run desktop:mirror [--name N] [--port P]
 // Live view of an agent instance, native layers included (GPU terminal, page stage, browser tabs): the app streams its
-// window with ScreenCaptureKit at up to 30 fps as in-memory JPEGs (debug bridge `frame`), served as MJPEG on
+// window at up to 30 fps as in-memory JPEGs (debug bridge `frame`; ScreenCaptureKit on macOS, `grim` on the instance's
+// own sway on Linux, where the picture is the page area), served as MJPEG on
 // http://127.0.0.1:<port>. Open the printed URL to watch; click and type on it to drive the app (DOM events and pty
 // writes through the debug bridge, never OS input).
 // The instance stays on its private virtual display: nothing ever shows on your screen. Ctrl-C stops the mirror,

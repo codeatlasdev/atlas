@@ -1,0 +1,213 @@
+// #284: the Linux startup bench is only worth having if it fails when the app does not open or a number is over budget,
+// and if it reads the producer's real output (boot.rs's trace format, the rc-file probe log). `--judge` re-judges a saved
+// report without an app; the launch tests run the real script on a private sway when the machine has one.
+import { describe, expect, test } from "bun:test";
+import { chmodSync, mkdtempSync, readFileSync, writeFileSync } from "node:fs";
+import { tmpdir } from "node:os";
+import { join } from "node:path";
+import { BUDGET, countProbes, judge, parseTrace, pct, roleOf, summarize, type Idle, type Report, type Run } from "./linux-startup-bench.ts";
+
+const root = join(import.meta.dir, "..");
+const script = join(import.meta.dir, "linux-startup-bench.ts");
+const dir = mkdtempSync(join(tmpdir(), "startup-bench-"));
+
+const run = (o: Partial<Run> = {}): Run => ({
+	kind: "warm",
+	marks: {},
+	spawnToWebProcessMs: 300,
+	spawnToWindowMs: 1200,
+	readyMs: 1400,
+	shownBy: "ready",
+	loginShells: { app: 1, hostd: 1 },
+	...o,
+});
+const idle = (o: Partial<Idle> = {}): Idle => ({
+	settleS: 30,
+	cpuS: 60,
+	processes: [],
+	rssMb: 900,
+	pssMb: 500,
+	swapMb: 0,
+	dominant: { role: "webprocess", pid: 1, pssMb: 180, share: 0.36 },
+	cpuPct: { total: 0.8, byRole: {} },
+	pssMbAfter: 500,
+	paint: { colours: 400, topPermille: 600 },
+	...o,
+});
+const good = (): Report => ({ runs: [run({ kind: "cold", readyMs: 2000 }), run(), run({ readyMs: 1500 })], idle: idle() });
+
+describe("parseTrace reads what boot.rs writes", () => {
+	// The real format of `boot::mark`: `{:.1} {name}`; the frontend's marks arrive as `js:<name>`; page:Started repeats.
+	const trace = "12.3 main\n40.0 window:created\n880.5 js:ready:gate\n881.0 show:ready\n900.0 page:Started\n950.2 page:Started\n";
+	test("keeps the first time of a mark that repeats", () => {
+		expect(parseTrace(trace)).toEqual({ main: 12.3, "window:created": 40, "js:ready:gate": 880.5, "show:ready": 881, "page:Started": 900 });
+	});
+});
+
+describe("countProbes counts login shells by who started them", () => {
+	// #285: the app probed twice and hostd once. The rc file logs `<parent pid> <parent comm>`.
+	test("app, hostd and anything else are told apart", () => {
+		expect(countProbes("100 atlas-desktop\n100 atlas-desktop\n200 atlas\n300 bash\n")).toEqual({ app: 2, hostd: 1, bash: 1 });
+	});
+	test("an empty log is no probe", () => {
+		expect(countProbes("")).toEqual({});
+	});
+});
+
+describe("roleOf", () => {
+	test("hostd is the atlas binary running `hostd`, not any atlas process", () => {
+		expect(roleOf("atlas", "/x/atlas hostd")).toBe("hostd");
+		expect(roleOf("atlas", "/x/atlas doctor")).toBe("atlas");
+	});
+	test("WebKit's processes are named", () => {
+		expect(roleOf("WebKitWebProces", "")).toBe("webprocess");
+		expect(roleOf("WebKitNetworkPr", "")).toBe("network");
+		expect(roleOf("atlas-desktop", "")).toBe("app");
+	});
+});
+
+test("percentiles interpolate and never invent a value above the max", () => {
+	expect(pct([10, 20, 30, 40], 0.5)).toBe(25);
+	expect(pct([5], 0.95)).toBe(5);
+	expect(pct([1, 2, 3, 4, 100], 0.95)).toBeLessThanOrEqual(100);
+});
+
+describe("judge", () => {
+	test("a report inside the budget passes", () => {
+		expect(judge(good())).toEqual([]);
+	});
+
+	// Acceptance of #284: the script exits non-zero if app_ready never arrives.
+	test("a run whose app_ready never arrived fails, however good the rest is", () => {
+		const r = good();
+		r.runs[1] = run({ readyMs: null, shownBy: "deadline" });
+		expect(judge(r).join("\n")).toContain("run 2 (warm): app_ready never arrived");
+	});
+
+	test("no run at all is a failure, not a pass", () => {
+		expect(judge({ runs: [], idle: null })).toEqual(["no run was measured"]);
+	});
+
+	test("the first launch and the warm p95 each have a budget", () => {
+		const slowCold = good();
+		slowCold.runs[0] = run({ kind: "cold", readyMs: BUDGET.coldReadyMs + 1 });
+		expect(judge(slowCold).join()).toContain("cold start");
+		const slowWarm = good();
+		slowWarm.runs.push(...Array.from({ length: 5 }, () => run({ readyMs: BUDGET.warmReadyP95Ms + 500 })));
+		expect(judge(slowWarm).join()).toContain("warm start");
+	});
+
+	test("the cold run does not count towards the warm p95", () => {
+		const r = good();
+		r.runs[0] = run({ kind: "cold", readyMs: BUDGET.coldReadyMs - 1 });
+		expect(summarize(r).warmReady?.max).toBe(1500);
+	});
+
+	test("memory is judged in total and per process, and the failure names the process", () => {
+		const total = judge({ ...good(), idle: idle({ pssMb: BUDGET.idlePssMb + 1 }) }).join();
+		expect(total).toContain("idle PSS");
+		expect(total).toContain("webprocess");
+		const one = judge({ ...good(), idle: idle({ dominant: { role: "app", pid: 7, pssMb: BUDGET.largestPssMb + 1, share: 0.9 } }) }).join();
+		expect(one).toContain("app (pid 7)");
+	});
+
+	test("idle CPU over budget fails; a skipped idle window (0 s) is not judged", () => {
+		expect(judge({ ...good(), idle: idle({ cpuPct: { total: BUDGET.idleCpuPct + 1, byRole: {} } }) }).join()).toContain("idle CPU");
+		expect(judge({ ...good(), idle: idle({ cpuS: 0, cpuPct: { total: 99, byRole: {} } }) })).toEqual([]);
+	});
+
+	// A crashed page leaves one flat colour; the number of colours alone passes a gradient, the share alone passes a
+	// two-colour error page: both are checked (same rule as linux-launch-check.sh).
+	test("a flat page is not a pass", () => {
+		expect(judge({ ...good(), idle: idle({ paint: { colours: 1, topPermille: 1000 } }) }).join()).toContain("blank");
+		expect(judge({ ...good(), idle: idle({ paint: { colours: 40, topPermille: 995 } }) }).join()).toContain("blank");
+	});
+
+	// #285: the app probes its login shell once; two probes at launch is the bug.
+	test("the app running more login shells than the budget allows fails", () => {
+		const r = good();
+		r.runs[2] = run({ loginShells: { app: BUDGET.appLoginShells + 1, hostd: 1 } });
+		expect(judge(r).join()).toContain("login shells");
+	});
+});
+
+describe("--judge on a saved report", () => {
+	const judgeFile = (r: unknown, ...extra: string[]) => {
+		const p = join(dir, "report.json");
+		writeFileSync(p, JSON.stringify(r));
+		const x = Bun.spawnSync(["bun", script, "--judge", p, ...extra], { stdout: "pipe", stderr: "pipe" });
+		return { code: x.exitCode, err: x.stderr.toString() };
+	};
+	test("exits 0 inside the budget and 1 outside it, with the reason on stderr", () => {
+		expect(judgeFile(good()).code).toBe(0);
+		const bad = good();
+		bad.runs[1] = run({ readyMs: null });
+		const x = judgeFile(bad);
+		expect(x.code).toBe(1);
+		expect(x.err).toContain("app_ready never arrived");
+		expect(judgeFile(bad, "--no-check").code).toBe(0);
+	});
+	test("the committed baseline is inside its own budget", () => {
+		const x = Bun.spawnSync(["bun", script, "--judge", join(root, "docs/perf/linux-startup.json")], { stdout: "pipe", stderr: "pipe" });
+		expect(x.stderr.toString()).toBe("");
+		expect(x.exitCode).toBe(0);
+	});
+});
+
+describe("the real script on a private sway", () => {
+	const hasSway = ["sway", "grim", "dbus-run-session"].every((t) => Bun.which(t));
+	const bench = (app: string, ...args: string[]) => {
+		const out = join(dir, "out.json");
+		const x = Bun.spawnSync(["bun", script, "--runs", "1", "--idle-cpu", "0", "--ready-timeout", "4", "--out", out, ...args, app], { cwd: root, stdout: "pipe", stderr: "pipe" });
+		return { code: x.exitCode, err: x.stderr.toString(), out: x.stdout.toString() };
+	};
+	const fake = (name: string, body: string) => {
+		const p = join(dir, name);
+		writeFileSync(p, `#!/bin/sh\n${body}\n`);
+		chmodSync(p, 0o755);
+		return p;
+	};
+
+	test("a binary that does not exist is a usage error (2)", () => {
+		expect(bench("/nonexistent/atlas-desktop").code).toBe(2);
+	});
+
+	// Incident class: a bench that reports a number for an app that never opened.
+	test.skipIf(!hasSway)("an app that exits at once fails (1) and says so", () => {
+		const x = bench("/bin/false");
+		expect(x.code).toBe(1);
+		expect(x.err).toContain("app_ready never arrived");
+		expect(x.err).toContain("exited with status 1");
+	});
+
+	test.skipIf(!hasSway)("an app that runs but never sends app_ready fails (1)", () => {
+		const x = bench(fake("silent", "exec sleep 30"));
+		expect(x.code).toBe(1);
+		expect(x.err).toContain("app_ready never arrived");
+	});
+
+	// The trace is the contract with boot.rs: an app that writes js:ready:gate to ATLAS_BOOT_TRACE has reached app_ready.
+	test.skipIf(!hasSway)("an app that writes js:ready:gate to ATLAS_BOOT_TRACE gets its time reported", () => {
+		const app = fake("ready", `printf '5.0 main\\n77.5 js:ready:gate\\n78.0 show:ready\\n' >> "$ATLAS_BOOT_TRACE"\nexec sleep 30`);
+		const x = bench(app, "--no-check");
+		expect(x.code).toBe(0);
+		const r = JSON.parse(readFileSync(join(dir, "out.json"), "utf8")) as Report;
+		expect(r.runs[0].readyMs).toBe(77.5);
+		expect(r.runs[0].shownBy).toBe("ready");
+		expect(r.runs[0].kind).toBe("cold");
+	});
+});
+
+describe("ci.yml", () => {
+	const ci = Bun.YAML.parse(readFileSync(join(root, ".github/workflows/ci.yml"), "utf8")) as any;
+	// #284 acceptance: the bench runs in the job that opens the app, and its failure fails that job (no continue-on-error).
+	test("the Desktop opens (Linux) job runs the startup bench as a gating step after the launch check", () => {
+		const steps: any[] = ci.jobs["desktop-linux"].steps;
+		const launch = steps.findIndex((s) => String(s.run ?? "").includes("linux-launch-check.sh"));
+		const bench = steps.findIndex((s) => String(s.run ?? "").includes("linux-startup-bench.ts"));
+		expect(launch).toBeGreaterThanOrEqual(0);
+		expect(bench).toBeGreaterThan(launch);
+		expect(steps[bench]["continue-on-error"]).toBeUndefined();
+		expect(steps[bench].run).toContain("WEBKIT_DISABLE_SANDBOX_THIS_IS_DANGEROUS=1");
+	});
+});

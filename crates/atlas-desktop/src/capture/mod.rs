@@ -7,15 +7,21 @@
 
 #[cfg(target_os = "macos")]
 mod chrome;
+#[cfg(any(target_os = "macos", target_os = "linux"))]
+mod latest;
 #[cfg(target_os = "linux")]
 mod linux;
+#[cfg(target_os = "linux")]
+mod linux_live;
+#[cfg(target_os = "linux")]
+mod linux_rec;
 #[cfg(target_os = "macos")]
 mod live;
 #[cfg(target_os = "macos")]
 pub(crate) mod occlusion;
 #[cfg(target_os = "macos")]
 mod png;
-// Parsing is pure and tested everywhere; only the ScreenCaptureKit side uses all of it (Linux: stills only).
+// Parsing is pure and tested everywhere; only the ScreenCaptureKit side uses all of it.
 #[cfg_attr(not(target_os = "macos"), allow(dead_code))]
 pub mod request;
 #[cfg(target_os = "macos")]
@@ -108,6 +114,8 @@ pub fn snapshot_to(
 pub struct Capture {
     #[cfg(target_os = "macos")]
     active: parking_lot::Mutex<Option<Active>>,
+    #[cfg(target_os = "linux")]
+    active: parking_lot::Mutex<Option<linux_rec::Recorder>>,
 }
 
 #[cfg(target_os = "macos")]
@@ -139,10 +147,23 @@ pub async fn handle(_: &AppHandle, _: &str, _: &Value) -> Result<Value, String> 
     Err("capture needs macOS (ScreenCaptureKit) or a Linux agent instance (grim)".into())
 }
 
-/// Linux: stills of an agent instance (`linux.rs`); recording and the live view are not there yet (#282).
+/// Linux: stills, recording and live frames of an agent instance (`linux*.rs`).
 #[cfg(target_os = "linux")]
 pub async fn handle(app: &AppHandle, cmd: &str, args: &Value) -> Result<Value, String> {
+    use tauri::Manager;
+    let state = app.state::<std::sync::Arc<Capture>>().inner().clone();
     match cmd {
+        "capture_status" => Ok(linux::status(&state)),
+        "capture_start" => {
+            let req = request::parse_start(args)?;
+            let app = app.clone();
+            tauri::async_runtime::spawn_blocking(move || linux::start(&app, &state, req))
+                .await
+                .map_err(|e| e.to_string())?
+        }
+        "capture_stop" => tauri::async_runtime::spawn_blocking(move || linux::stop(&state))
+            .await
+            .map_err(|e| e.to_string())?,
         "capture_shot" => {
             let req = request::parse_shot(args)?;
             let app = app.clone();
@@ -150,11 +171,6 @@ pub async fn handle(app: &AppHandle, cmd: &str, args: &Value) -> Result<Value, S
                 .await
                 .map_err(|e| e.to_string())?
         }
-        "capture_status" => Ok(serde_json::json!({ "recording": false })),
-        "capture_start" | "capture_stop" => Err(
-            "recording needs macOS (ScreenCaptureKit); on Linux only stills (capture_shot) work, in an agent instance"
-                .into(),
-        ),
         other => Err(format!("unknown capture command {other:?}")),
     }
 }
@@ -451,12 +467,36 @@ pub fn live_frame(app: &AppHandle, since: u64, wait: std::time::Duration) -> Res
         l.shared()
     };
     // Wait without the global lock: other pulls and the idle watcher keep going.
-    Ok(live::pull(&shared, since, wait))
+    Ok(latest::pull(&shared, since, wait))
 }
 
-#[cfg(not(target_os = "macos"))]
+/// The live loop behind `debug frame` on Linux (`linux_live.rs`): started on the first pull, ends after `IDLE`.
+#[cfg(target_os = "linux")]
+static LIVE: parking_lot::Mutex<Option<linux_live::Live>> = parking_lot::Mutex::new(None);
+
+/// Newest frame of the main webview after `since`, waiting up to `wait` for one.
+#[cfg(target_os = "linux")]
+#[cfg_attr(not(debug_assertions), allow(dead_code))]
+pub fn live_frame(app: &AppHandle, since: u64, wait: std::time::Duration) -> Result<Frame, String> {
+    let shared = {
+        let mut guard = LIVE.lock();
+        match guard.as_ref().filter(|l| l.running()) {
+            Some(live) => live.touch(),
+            None => {
+                let live = linux_live::Live::start(app)?;
+                let shared = live.touch();
+                *guard = Some(live);
+                shared
+            }
+        }
+    };
+    // Wait without the global lock: other pulls keep going.
+    Ok(latest::pull(&shared, since, wait))
+}
+
+#[cfg(not(any(target_os = "macos", target_os = "linux")))]
 pub fn live_frame(_: &AppHandle, _: u64, _: std::time::Duration) -> Result<Frame, String> {
-    Err("live frames need macOS (ScreenCaptureKit)".into())
+    Err("live frames need macOS (ScreenCaptureKit) or a Linux agent instance (grim)".into())
 }
 
 #[cfg(test)]

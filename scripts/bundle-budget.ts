@@ -27,6 +27,8 @@ export interface Chunk {
 	css: string[];
 	size: number;
 	gzip: number;
+	/** Rendered bytes of the compiled messages (`lib/paraglide/messages/<key>.js`) inside it. */
+	messageBytes?: number;
 }
 
 export interface Asset {
@@ -50,10 +52,15 @@ export interface Report {
 	jsGzip: number;
 	cssGzip: number;
 	jsRaw: number;
+	/** Compiled messages in the startup closure: how many modules, and their rendered bytes. */
+	messages: { count: number; bytes: number };
 	chunks: { file: string; name: string; gzip: number; size: number }[];
 	/** Package name -> chunk names it is bundled into. */
 	packages: Record<string, string[]>;
 }
+
+/** `src/lib/paraglide/messages/settings_host_name.js`: one compiled message (not the `_index.js` barrel). */
+export const isMessageModule = (id: string) => /\/paraglide\/messages\/(?!_index)[^/]+\.js(?:\?|$)/.test(id);
 
 /** `@codemirror/state` for `/x/node_modules/@codemirror/state/dist/index.js`; null for the app's own modules. */
 export function packageOf(id: string): string | null {
@@ -116,6 +123,10 @@ export function analyze(
 	return {
 		jsGzip: inside.reduce((n, c) => n + c.gzip, 0),
 		jsRaw: inside.reduce((n, c) => n + c.size, 0),
+		messages: {
+			count: inside.reduce((n, c) => n + c.modules.filter(isMessageModule).length, 0),
+			bytes: inside.reduce((n, c) => n + (c.messageBytes ?? 0), 0),
+		},
 		cssGzip: [...css].reduce((n, f) => n + (sheets.get(f) ?? 0), 0),
 		chunks: inside
 			.map((c) => ({ file: c.file, name: c.name, gzip: c.gzip, size: c.size }))
@@ -197,7 +208,7 @@ type OutputItem =
 			name: string;
 			code: string;
 			imports: string[];
-			modules: Record<string, unknown>;
+			modules: Record<string, { renderedLength?: number }>;
 			viteMetadata?: { importedCss?: Set<string> };
 	  }
 	| { type: "asset"; source: string | Uint8Array };
@@ -227,6 +238,10 @@ async function main() {
 						name: c.name,
 						imports: c.imports,
 						modules: Object.keys(c.modules),
+						messageBytes: Object.entries(c.modules).reduce(
+							(n, [id, info]) => n + (isMessageModule(id) ? (info.renderedLength ?? 0) : 0),
+							0,
+						),
 						css: [...(c.viteMetadata?.importedCss ?? [])],
 						size: Buffer.byteLength(c.code),
 						gzip: gzipSync(c.code).length,
@@ -274,7 +289,7 @@ async function main() {
 	);
 
 	const lines = [
-		`startup JS ${kib(report.jsGzip)} gzip (${kib(report.jsRaw)} raw) in ${report.chunks.length} chunks, CSS ${kib(report.cssGzip)} gzip; budget ${kib(budget.jsGzip)} / ${kib(budget.cssGzip)}`,
+		`startup JS ${kib(report.jsGzip)} gzip (${kib(report.jsRaw)} raw) in ${report.chunks.length} chunks (${report.messages.count} compiled messages, ${kib(report.messages.bytes)} raw), CSS ${kib(report.cssGzip)} gzip; budget ${kib(budget.jsGzip)} / ${kib(budget.cssGzip)}`,
 		"largest chunks (gzip):",
 		...report.chunks
 			.slice(0, 12)

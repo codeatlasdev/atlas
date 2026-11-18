@@ -2,12 +2,14 @@
 import "../../../test/setup.ts";
 import { expect, test } from "bun:test";
 import { compile } from "@inlang/paraglide-js";
-import { mkdirSync, mkdtempSync, writeFileSync } from "node:fs";
+import { mkdirSync, mkdtempSync, readdirSync, readFileSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { kbd, revealLabel } from "#lib/keys.ts";
 import { appLocale } from "./locale.svelte.ts";
-import { m, withOs } from "./m.ts";
+import * as compiled from "#lib/paraglide/messages.js";
+import { m } from "./m.ts";
+import { withOs } from "./withOs.ts";
 import { inLocale } from "../../../test/locale.ts";
 
 const OSES = ["mac", "windows", "linux"] as const;
@@ -68,12 +70,8 @@ test("an OS noun is chosen by the injected os, one message x three systems x two
 		await inLocale(locale, () => {
 			for (const os of OSES)
 				table[`${locale}/${os}`] = [
-					withOs(generated, () => os)
-						.machine()
-						.toString(),
-					withOs(generated, () => os)
-						.trash()
-						.toString(),
+					withOs(generated.machine, () => os)().toString(),
+					withOs(generated.trash, () => os)().toString(),
 				];
 		});
 	expect(table).toEqual({
@@ -87,9 +85,9 @@ test("an OS noun is chosen by the injected os, one message x three systems x two
 });
 
 test("a call site never passes os, but may say another one", async () => {
-	const wrapped = withOs(await scratch(), () => "windows");
-	expect(wrapped.machine()).toBe("this PC");
-	expect(wrapped.machine({ os: "mac" })).toBe("your Mac");
+	const machine = withOs((await scratch()).machine, () => "windows");
+	expect(machine()).toBe("this PC");
+	expect(machine({ os: "mac" })).toBe("your Mac");
 });
 
 test("a shortcut is a placeholder the caller fills from keys.ts: the text differs between systems only by that value", async () => {
@@ -98,10 +96,7 @@ test("a shortcut is a placeholder the caller fills from keys.ts: the text differ
 		await inLocale(locale, () => {
 			const [mac, other] = [kbd("cmd-shift-p", true), kbd("cmd-shift-p", false)];
 			expect([mac, other]).toEqual(["⇧⌘P", "Ctrl+Shift+P"]);
-			const on = (os, key) =>
-				withOs(generated, () => os)
-					.save({ key })
-					.toString();
+			const on = (os, key) => withOs(generated.save, () => os)({ key }).toString();
 			expect(on("mac", mac).replace(mac, "{key}")).toBe(on("windows", other).replace(other, "{key}"));
 			expect(on("mac", mac)).not.toBe(on("windows", other));
 		});
@@ -122,4 +117,16 @@ test("the app's own message goes through the same wrapper: the file manager of e
 		"pt-BR/linux": "Mostrar no gerenciador de arquivos",
 	});
 	expect(m.os_reveal_in_file_manager()).toBe("Reveal in Finder");
+});
+
+test("every compiled message with an os input is wrapped, and no other one is (messages.gen.ts is generated from the catalog)", () => {
+	const dir = join(import.meta.dir, "../paraglide/messages");
+	const takesOs = (key: string) =>
+		/@typedef \{\{[^}]*\bos:/.test(readFileSync(join(dir, `${key}.js`), "utf8"));
+	const keys = readdirSync(dir)
+		.filter((f) => f.endsWith(".js") && !f.startsWith("_"))
+		.map((f) => f.slice(0, -3));
+	const wrapped = keys.filter((k) => m[k] !== compiled[k]);
+	expect(wrapped.length).toBeGreaterThan(0);
+	expect(wrapped).toEqual(keys.filter(takesOs));
 });

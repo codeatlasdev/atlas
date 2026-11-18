@@ -2,6 +2,7 @@ import { describe, expect, test } from "bun:test";
 import {
 	analyze,
 	evaluate,
+	isMessageModule,
 	matches,
 	mainRouteNodes,
 	packageOf,
@@ -65,6 +66,17 @@ describe("analyze", () => {
 	});
 	test("counts the stylesheets of the chunks inside, not every stylesheet of the build", () => {
 		expect(analyze(all, assets, ["nodes/2"]).cssGzip).toBe(70);
+	});
+	test("counts the compiled messages of the closure: one module per message, not the barrel, not the runtime", () => {
+		const msg = "/repo/apps/desktop/src/lib/paraglide/messages";
+		const withMessages = chunk("nodes/2", {
+			modules: [`${msg}/a_b.js`, `${msg}/c_d.js`, `${msg}/_index.js`, "/repo/apps/desktop/src/lib/paraglide/runtime.js"],
+			messageBytes: 700,
+		});
+		const r = analyze([start, withMessages, shared], [], ["entry/start", "nodes/2"]);
+		expect(r.messages).toEqual({ count: 2, bytes: 700 });
+		expect(isMessageModule(`${msg}/a_b.js?x`)).toBe(true);
+		expect(isMessageModule(`${msg}/_index.js`)).toBe(false);
 	});
 	test("a root that is not in the build is an error, not an empty report", () => {
 		expect(() => analyze(all, assets, ["nodes/9"])).toThrow(

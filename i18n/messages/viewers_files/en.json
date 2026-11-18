@@ -22,18 +22,25 @@
 			"declarations": [
 				"input rules",
 				"input owners",
+				"local rulesExact = rules",
 				"local rulesPlural = rules: plural",
+				"local ownersExact = owners",
 				"local ownersPlural = owners: plural"
 			],
 			"selectors": [
+				"rulesExact",
 				"rulesPlural",
+				"ownersExact",
 				"ownersPlural"
 			],
 			"match": {
-				"rulesPlural=one, ownersPlural=one": "{rules} rule · {owners} owner",
-				"rulesPlural=one, ownersPlural=*": "{rules} rule · {owners} owners",
-				"rulesPlural=*, ownersPlural=one": "{rules} rules · {owners} owner",
-				"rulesPlural=*, ownersPlural=*": "{rules} rules · {owners} owners"
+				"rulesExact=0, rulesPlural=*, ownersExact=*, ownersPlural=*": "No rules",
+				"rulesExact=*, rulesPlural=one, ownersExact=0, ownersPlural=*": "{rules} rule · no owners",
+				"rulesExact=*, rulesPlural=*, ownersExact=0, ownersPlural=*": "{rules} rules · no owners",
+				"rulesExact=*, rulesPlural=one, ownersExact=*, ownersPlural=one": "{rules} rule · {owners} owner",
+				"rulesExact=*, rulesPlural=one, ownersExact=*, ownersPlural=*": "{rules} rule · {owners} owners",
+				"rulesExact=*, rulesPlural=*, ownersExact=*, ownersPlural=one": "{rules} rules · {owners} owner",
+				"rulesExact=*, rulesPlural=*, ownersExact=*, ownersPlural=*": "{rules} rules · {owners} owners"
 			}
 		}
 	],
@@ -160,14 +167,17 @@
 		{
 			"declarations": [
 				"input count",
+				"local countExact = count",
 				"local countPlural = count: plural"
 			],
 			"selectors": [
+				"countExact",
 				"countPlural"
 			],
 			"match": {
-				"countPlural=one": "{count} column",
-				"countPlural=*": "{count} columns"
+				"countExact=0, countPlural=*": "No columns",
+				"countExact=*, countPlural=one": "{count} column",
+				"countExact=*, countPlural=*": "{count} columns"
 			}
 		}
 	],
@@ -218,14 +228,17 @@
 		{
 			"declarations": [
 				"input total",
+				"local totalExact = total",
 				"local totalPlural = total: plural"
 			],
 			"selectors": [
+				"totalExact",
 				"totalPlural"
 			],
 			"match": {
-				"totalPlural=one": "{count} of {total} row",
-				"totalPlural=*": "{count} of {total} rows"
+				"totalExact=0, totalPlural=*": "No rows",
+				"totalExact=*, totalPlural=one": "{count} of {total} row",
+				"totalExact=*, totalPlural=*": "{count} of {total} rows"
 			}
 		}
 	],

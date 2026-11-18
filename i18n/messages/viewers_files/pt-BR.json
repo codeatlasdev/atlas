@@ -22,18 +22,25 @@
 			"declarations": [
 				"input rules",
 				"input owners",
+				"local rulesExact = rules",
 				"local rulesPlural = rules: plural",
+				"local ownersExact = owners",
 				"local ownersPlural = owners: plural"
 			],
 			"selectors": [
+				"rulesExact",
 				"rulesPlural",
+				"ownersExact",
 				"ownersPlural"
 			],
 			"match": {
-				"rulesPlural=one, ownersPlural=one": "{rules} regra · {owners} proprietário",
-				"rulesPlural=one, ownersPlural=*": "{rules} regra · {owners} proprietários",
-				"rulesPlural=*, ownersPlural=one": "{rules} regras · {owners} proprietário",
-				"rulesPlural=*, ownersPlural=*": "{rules} regras · {owners} proprietários"
+				"rulesExact=0, rulesPlural=*, ownersExact=*, ownersPlural=*": "Nenhuma regra",
+				"rulesExact=*, rulesPlural=one, ownersExact=0, ownersPlural=*": "{rules} regra · nenhum proprietário",
+				"rulesExact=*, rulesPlural=*, ownersExact=0, ownersPlural=*": "{rules} regras · nenhum proprietário",
+				"rulesExact=*, rulesPlural=one, ownersExact=*, ownersPlural=one": "{rules} regra · {owners} proprietário",
+				"rulesExact=*, rulesPlural=one, ownersExact=*, ownersPlural=*": "{rules} regra · {owners} proprietários",
+				"rulesExact=*, rulesPlural=*, ownersExact=*, ownersPlural=one": "{rules} regras · {owners} proprietário",
+				"rulesExact=*, rulesPlural=*, ownersExact=*, ownersPlural=*": "{rules} regras · {owners} proprietários"
 			}
 		}
 	],
@@ -160,14 +167,17 @@
 		{
 			"declarations": [
 				"input count",
+				"local countExact = count",
 				"local countPlural = count: plural"
 			],
 			"selectors": [
+				"countExact",
 				"countPlural"
 			],
 			"match": {
-				"countPlural=one": "{count} coluna",
-				"countPlural=*": "{count} colunas"
+				"countExact=0, countPlural=*": "Nenhuma coluna",
+				"countExact=*, countPlural=one": "{count} coluna",
+				"countExact=*, countPlural=*": "{count} colunas"
 			}
 		}
 	],
@@ -218,14 +228,17 @@
 		{
 			"declarations": [
 				"input total",
+				"local totalExact = total",
 				"local totalPlural = total: plural"
 			],
 			"selectors": [
+				"totalExact",
 				"totalPlural"
 			],
 			"match": {
-				"totalPlural=one": "{count} de {total} linha",
-				"totalPlural=*": "{count} de {total} linhas"
+				"totalExact=0, totalPlural=*": "Nenhuma linha",
+				"totalExact=*, totalPlural=one": "{count} de {total} linha",
+				"totalExact=*, totalPlural=*": "{count} de {total} linhas"
 			}
 		}
 	],
@@ -252,7 +265,7 @@
 			}
 		}
 	],
-	"viewers_files_tree_view_nothing_matches": "Nada corresponde",
+	"viewers_files_tree_view_nothing_matches": "Nada encontrado",
 	"viewers_files_tree_view_search_keys_and_values": "Pesquisar chaves e valores",
 	"viewers_files_tree_view_visible": [
 		{

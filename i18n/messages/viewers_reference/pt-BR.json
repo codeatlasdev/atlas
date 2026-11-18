@@ -46,7 +46,7 @@
 	"viewers_reference_tsconfig_declaration": "Gera arquivos .d.ts",
 	"viewers_reference_tsconfig_es_module_interop": "Interoperabilidade entre módulos CommonJS e ES",
 	"viewers_reference_tsconfig_experimental_decorators": "Ativa os decorators legados",
-	"viewers_reference_tsconfig_force_consistent_casing": "Gera erro quando a caixa de um nome de arquivo é inconsistente",
+	"viewers_reference_tsconfig_force_consistent_casing": "Gera erro quando maiúsculas e minúsculas de um nome de arquivo são inconsistentes",
 	"viewers_reference_tsconfig_incremental": "Reaproveita as informações do build anterior",
 	"viewers_reference_tsconfig_isolated_modules": "Exige que cada arquivo possa ser transpilado isoladamente",
 	"viewers_reference_tsconfig_jsx": "Como o JSX é gerado",

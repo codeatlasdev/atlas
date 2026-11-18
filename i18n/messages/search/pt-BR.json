@@ -41,6 +41,6 @@
 	"search_results_search_every_file_in_this": "Pesquise em todos os arquivos desta worktree.",
 	"search_results_search_results": "Resultados da pesquisa",
 	"search_results_showing_the_first_results_narrow": "Mostrando os primeiros resultados. Refine a pesquisa para ver o restante.",
-	"search_results_try_fewer_words_turn_off": "Use menos palavras, desative Palavra inteira ou limpe os filtros de arquivo.",
+	"search_results_try_fewer_words_turn_off": "Use menos palavras, desative \"Palavra inteira\" ou limpe os filtros de arquivo.",
 	"search_results_type_to_search_use_to": "Digite para pesquisar. Use {up} e {down} para navegar e {enter} para abrir na linha."
 }

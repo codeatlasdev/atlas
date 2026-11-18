@@ -9,6 +9,8 @@
 	import LoadError from "#lib/settings/LoadError.svelte";
 	import Row from "#lib/settings/Row.svelte";
 	import TextInput from "#lib/settings/TextInput.svelte";
+	import { sshStatusView } from "#lib/settings/sshStatus.ts";
+	import { m } from "#lib/i18n/m.ts";
 
 	let aliases = $state<string[]>([]);
 	let hosts = $state<string[]>([]);
@@ -56,7 +58,9 @@
 			const r = await invoke<{ home: string; arch: string; os: string; atlas: string | null }>("ssh_test", {
 				alias,
 			});
-			tests[alias] = `${r.os} ${r.arch} · ${r.atlas ?? "atlas not installed"}`;
+			tests[alias] = r.atlas
+				? m.settings_agents_ssh_test_result({ os: r.os, arch: r.arch, atlas: r.atlas })
+				: m.settings_agents_ssh_test_atlas_missing({ os: r.os, arch: r.arch });
 		} catch (e) {
 			tests[alias] = errText(e);
 		}
@@ -74,79 +78,64 @@
 			await invoke("projects_add_remote", { alias: addHost, root: addPath.trim() });
 			await store.refresh();
 			addPath = "";
-			toast.success("Remote project added");
+			toast.success(m.settings_agents_ssh_project_added());
 		} catch (e) {
 			toast.error(errText(e));
 		} finally {
 			adding = false;
 		}
 	}
-
-	const chip = (s: string | undefined) =>
-		s === "connected"
-			? "success"
-			: s === "connecting"
-				? "warning"
-				: s?.startsWith("warning")
-					? "warning"
-					: s?.startsWith("error")
-						? "error"
-						: "neutral";
 </script>
 
 {#if loadError}
 	<LoadError what="your SSH hosts" error={loadError} />
 {/if}
 
-<Group title="Your hosts">
+<Group title={m.settings_agents_ssh_your_hosts()}>
 	{#each hosts as h (h)}
+		{@const view = sshStatusView(status[h])}
 		<Row label={h} description={tests[h] ?? undefined}>
-			<StatusChip
-				status={chip(status[h])}
-				label={status[h]?.startsWith("warning") ? "connected, outdated" : (status[h] ?? "idle").slice(0, 60)}
-			/>
+			<StatusChip status={view.tone} label={view.label} />
 			{#if status[h] === "connecting"}<Spinner size={11} />{/if}
-			<Button size="sm" variant="outlined" onclick={() => test(h)}>Test connection</Button>
-			<Button size="sm" variant="ghost" onclick={() => remove(h)}>Remove</Button>
+			<Button size="sm" variant="outlined" onclick={() => test(h)}>{m.crew_settings_engine_section_test_connection()}</Button>
+			<Button size="sm" variant="ghost" onclick={() => remove(h)}>{m.common_action_remove()}</Button>
 			{#snippet below()}
-				{#if status[h]?.startsWith("error") || status[h]?.startsWith("warning")}<div
-						class="err ca-selectable"
-					>
-						{status[h]}
+				{#if view.detail}<div class="err ca-selectable">
+						{view.detail}
 					</div>{/if}
 			{/snippet}
 		</Row>
 	{:else}
 		<Row
 			id="ssh-hosts"
-			label="No hosts yet"
-			description="Pick a host from your SSH config below. Atlas never changes that file."
+			label={m.settings_agents_ssh_no_hosts()}
+			description={m.settings_agents_ssh_no_hosts_description()}
 		/>
 	{/each}
 	<Row
 		id={hosts.length ? "ssh-hosts" : undefined}
-		label="Add a host"
-		description="Choose one of the hosts already set up in your SSH config."
+		label={m.settings_agents_ssh_add_host_label()}
+		description={m.settings_agents_ssh_add_host_description()}
 	>
 		<div class="select">
 			<Select
 				size="sm"
-				placeholder="Choose a host"
+				placeholder={m.settings_agents_ssh_pick_placeholder()}
 				value={pick}
 				options={aliases.filter((a) => !hosts.includes(a)).map((a) => ({ value: a, label: a }))}
 				onchange={(v) => (pick = v)}
 			/>
 		</div>
-		<Button size="sm" disabled={!pick} onclick={add}>Add host</Button>
+		<Button size="sm" disabled={!pick} onclick={add}>{m.settings_agents_ssh_add_host()}</Button>
 	</Row>
 </Group>
 
 {#if hosts.length}
 	<Group
-		title="Remote project"
-		description="Add a project that lives on one of your hosts. The folder must contain an atlas.yaml."
+		title={m.settings_agents_ssh_remote_project()}
+		description={m.settings_agents_ssh_remote_project_description()}
 	>
-		<Row id="ssh-project" label="Host" description="Which machine the project is on.">
+		<Row id="ssh-project" label={m.settings_agents_ssh_host()} description={m.settings_agents_ssh_host_description()}>
 			<div class="select">
 				<Select
 					size="sm"
@@ -156,18 +145,19 @@
 				/>
 			</div>
 		</Row>
-		<Row label="Project folder" description="Full path on that machine." stack>
+		<Row label={m.settings_agents_ssh_project_folder()} description={m.settings_agents_ssh_project_folder_description()} stack>
+			<!-- i18n-ignore: an example path, not prose -->
 			<TextInput
 				mono
 				width="100%"
-				label="Project folder"
+				label={m.settings_agents_ssh_project_folder()}
 				placeholder="/home/you/project"
 				value={addPath}
 				onchange={(v) => (addPath = v)}
 			/>
 		</Row>
-		<Row label="Add it" description="The project then appears in your sidebar.">
-			<Button size="sm" disabled={adding || !addPath.trim()} onclick={addProject}>Add project</Button>
+		<Row label={m.settings_agents_ssh_add_project_label()} description={m.settings_agents_ssh_add_project_description()}>
+			<Button size="sm" disabled={adding || !addPath.trim()} onclick={addProject}>{m.settings_agents_ssh_add_project()}</Button>
 		</Row>
 	</Group>
 {/if}

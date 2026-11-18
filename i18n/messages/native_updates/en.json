@@ -1,0 +1,13 @@
+{
+	"native_updates_already_running": "An update is already running. Wait for it to finish.",
+	"native_updates_cannot_run_atlas": "Could not run atlas: {error}",
+	"native_updates_channel_forced": "The update channel is forced by {name} in this environment. Unset it to change the channel here.",
+	"native_updates_channel_save_failed": "Could not save the update channel: {error}",
+	"native_updates_cli_version_unreadable": "Could not read the version of the atlas command",
+	"native_updates_github_failed": "The GitHub request failed: {reason}",
+	"native_updates_github_feed": "Could not read the GitHub release feed: {reason}",
+	"native_updates_github_missing": "curl is not installed. Install it, then check again.",
+	"native_updates_github_unknown": "Could not check whether {tag} is published: {reason}",
+	"native_updates_install_failed": "The command atlas {args} failed ({status})",
+	"native_updates_not_installed": "Atlas is not running from an installed app, so it cannot relaunch itself. Open the installed app instead."
+}

@@ -3,6 +3,8 @@
 import { toast } from "@codeatlasdev/ui";
 import { open as pickFolder } from "@tauri-apps/plugin-dialog";
 import { api, type ProjectView } from "#lib/api.ts";
+import { list } from "#lib/i18n/fmt.ts";
+import { m } from "#lib/i18n/m.ts";
 import { confirmDialog } from "#lib/stores/ask.svelte.ts";
 import { discovery } from "#lib/stores/discovery.svelte.ts";
 import { addedToast, addPlan, removeDescription } from "./addProject.ts";
@@ -10,7 +12,7 @@ import { store } from "#lib/stores/projects.svelte.ts";
 
 /** Pick a folder and add it. */
 export async function addProject() {
-	const dir = await pickFolder({ directory: true, title: "Add project" });
+	const dir = await pickFolder({ directory: true, title: m.sidebar_projects_add_title() });
 	if (typeof dir === "string") await addFolder(dir);
 }
 
@@ -24,13 +26,13 @@ export async function addFolder(dir: string) {
 	const plan = addPlan(probe);
 	if (plan.kind === "select") {
 		store.selected = plan.id;
-		toast.info(`${probe.name} is already in Atlas`);
+		toast.info(m.sidebar_projects_already_added({ name: probe.name }));
 		return;
 	}
 	if (plan.inside) {
-		const ok = await confirmDialog(`Add ${probe.name}?`, {
-			description: `${probe.picked} is inside the project at ${plan.root}, so that project is added.`,
-			confirmLabel: "Add project",
+		const ok = await confirmDialog(m.sidebar_projects_inside_title({ name: probe.name }), {
+			description: m.sidebar_projects_inside_body({ picked: probe.picked, root: plan.root }),
+			confirmLabel: m.sidebar_projects_add_title(),
 		});
 		if (!ok) return;
 	}
@@ -74,15 +76,14 @@ export async function refreshProjects() {
 	const now = store.missing;
 	const fresh = now.filter((p) => !before.has(p.id)).length;
 	const back = [...before].filter((id) => store.projects.some((p) => p.id === id && !p.missing)).length;
-	if (!now.length && !back) toast.info("All projects are where Atlas expects them");
-	else if (back && !fresh) toast.success(`${back} project${back > 1 ? "s" : ""} found again`);
-	else if (now.length)
-		toast.warning(`${now.length} project${now.length > 1 ? "s" : ""} not found on this computer`);
+	if (!now.length && !back) toast.info(m.sidebar_projects_all_found());
+	else if (back && !fresh) toast.success(m.sidebar_projects_found_again({ count: back }));
+	else if (now.length) toast.warning(m.sidebar_projects_not_found({ count: now.length }));
 }
 
 /** Pick the new folder of a missing project. */
 export async function locateProject(id: string) {
-	const dir = await pickFolder({ directory: true, title: "Locate the project folder" });
+	const dir = await pickFolder({ directory: true, title: m.sidebar_projects_locate_title() });
 	if (typeof dir === "string") await relinkProject(id, dir);
 }
 
@@ -90,7 +91,7 @@ export async function relinkProject(id: string, dir: string) {
 	const p = await store.run("relink", () => api.relink(id, dir));
 	if (!p) return;
 	await store.refresh();
-	toast.success(`${p.name} now points to ${dir}`);
+	toast.success(m.sidebar_projects_relinked({ name: p.name, dir }));
 }
 
 /** Take one project out of Atlas: stops its stack if it runs; never touches the folder. */
@@ -98,9 +99,9 @@ export async function removeProject(id: string) {
 	const p = store.projects.find((x) => x.id === id);
 	if (!p) return;
 	const linked = store.projects.filter((x) => x.parent === id).length;
-	const ok = await confirmDialog(`Remove ${p.name} from Atlas?`, {
+	const ok = await confirmDialog(m.sidebar_projects_remove_title({ name: p.name }), {
 		description: removeDescription(p, linked),
-		confirmLabel: "Remove",
+		confirmLabel: m.common_action_remove(),
 		destructive: true,
 	});
 	if (!ok) return;
@@ -112,13 +113,13 @@ export async function removeProject(id: string) {
 export async function removeAllMissing() {
 	const gone = store.missing;
 	if (!gone.length) return;
-	const ok = await confirmDialog(`Remove ${gone.length} missing project${gone.length > 1 ? "s" : ""}?`, {
-		description: `${gone.map((p) => p.name).join(", ")}\nOnly the Atlas entries go; nothing on disk is touched.`,
-		confirmLabel: "Remove all",
+	const ok = await confirmDialog(m.sidebar_projects_remove_missing_title({ count: gone.length }), {
+		description: `${list(gone.map((p) => p.name))}\n${m.sidebar_projects_remove_missing_note()}`,
+		confirmLabel: m.sidebar_remove_all(),
 		destructive: true,
 	});
 	if (!ok) return;
 	const n = await store.run("remove-missing", () => api.removeMissing());
 	await store.refresh();
-	if (n) toast.success(`Removed ${n} missing project${n > 1 ? "s" : ""}`);
+	if (n) toast.success(m.sidebar_projects_removed_missing({ count: n }));
 }

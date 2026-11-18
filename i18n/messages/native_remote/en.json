@@ -1,0 +1,3 @@
+{
+	"native_remote_no_atlas_yaml": "No atlas.yaml in {alias}:{root}. Choose the folder that contains it."
+}

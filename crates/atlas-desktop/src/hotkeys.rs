@@ -11,6 +11,7 @@
 //!   own and a global hotkey would steal from them (⇧⌘S "Save As", ⌘C …): a global hotkey wins over the focused
 //!   app, so those are refused or flagged before they are registered.
 
+use atlas_i18n::t;
 use parking_lot::Mutex;
 use tauri::AppHandle;
 use tauri_plugin_global_shortcut::{GlobalShortcutExt, Shortcut, ShortcutState};
@@ -32,7 +33,7 @@ pub fn accelerator(stroke: &str) -> Result<Option<String>, String> {
         parts.pop().unwrap_or_default().to_string()
     };
     if key.is_empty() {
-        return Err(format!("\"{stroke}\" has no key"));
+        return Err(t!("native_hotkeys_no_key", stroke = &stroke));
     }
     let mut out = Vec::new();
     for m in parts {
@@ -41,11 +42,23 @@ pub fn accelerator(stroke: &str) -> Result<Option<String>, String> {
             "alt" => "Alt",
             "shift" => "Shift",
             "cmd" => "Command",
-            other => return Err(format!("unknown modifier \"{other}\" in \"{stroke}\"")),
+            other => {
+                return Err(t!(
+                    "native_hotkeys_unknown_modifier",
+                    modifier = other,
+                    stroke = &stroke
+                ));
+            }
         });
     }
     if out.is_empty() {
-        return Err("A global hotkey needs a modifier (⌃, ⌥, ⇧ or ⌘)".into());
+        return Err(t!(
+            "native_hotkeys_needs_modifier",
+            ctrl = mac_key("ctrl"),
+            alt = mac_key("alt"),
+            shift = mac_key("shift"),
+            cmd = mac_key("cmd")
+        ));
     }
     let key = match key.as_str() {
         "escape" => "Escape".into(),
@@ -67,7 +80,13 @@ pub fn accelerator(stroke: &str) -> Result<Option<String>, String> {
     let accel = format!("{}+{key}", out.join("+"));
     accel
         .parse::<Shortcut>()
-        .map_err(|e| format!("\"{stroke}\" is not a key the system can listen for ({e})"))?;
+        .map_err(|e| {
+            t!(
+                "native_hotkeys_unlistenable",
+                stroke = &stroke,
+                reason = e.to_string()
+            )
+        })?;
     Ok(Some(accel))
 }
 
@@ -109,13 +128,73 @@ pub fn clash<'a>(entries: &[(&'a str, &str)]) -> Option<(&'a str, &'a str)> {
     None
 }
 
+/// A macOS key as the keyboard prints it (`shift-cmd-3` is `⇧⌘3`), on every OS: the strokes named here are macOS's
+/// own, so they are never spelled the way another OS would.
+fn mac_key(stroke: &str) -> String {
+    atlas_i18n::shortcut_for(stroke, "mac", atlas_i18n::lang())
+}
+
+/// The command a reserved stroke already belongs to. Its words are the catalog's (`native_hotkeys_owner_*`).
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum Command {
+    ScreenshotScreen,
+    ScreenshotArea,
+    ScreenshotToolbar,
+    ScreenshotTouchBar,
+    Spotlight,
+    FinderSearch,
+    AppSwitcher,
+    Quit,
+    Hide,
+    Minimize,
+    SaveAs,
+    Editing,
+    AppCommand,
+}
+
+impl Command {
+    /// What the command is, in the display language, with the key it is known by.
+    pub fn describe(self) -> String {
+        match self {
+            Command::ScreenshotScreen => t!(
+                "native_hotkeys_owner_screenshot_screen",
+                key = mac_key("shift-cmd-3")
+            ),
+            Command::ScreenshotArea => t!(
+                "native_hotkeys_owner_screenshot_area",
+                key = mac_key("shift-cmd-4")
+            ),
+            Command::ScreenshotToolbar => t!(
+                "native_hotkeys_owner_screenshot_toolbar",
+                key = mac_key("shift-cmd-5")
+            ),
+            Command::ScreenshotTouchBar => t!(
+                "native_hotkeys_owner_screenshot_touch_bar",
+                key = mac_key("shift-cmd-6")
+            ),
+            Command::Spotlight => t!("native_hotkeys_owner_spotlight", key = mac_key("cmd-space")),
+            Command::FinderSearch => t!(
+                "native_hotkeys_owner_finder_search",
+                key = mac_key("alt-cmd-space")
+            ),
+            Command::AppSwitcher => t!("native_hotkeys_owner_app_switcher", key = mac_key("cmd-tab")),
+            Command::Quit => t!("native_hotkeys_owner_quit", key = mac_key("cmd-q")),
+            Command::Hide => t!("native_hotkeys_owner_hide", key = mac_key("cmd-h")),
+            Command::Minimize => t!("native_hotkeys_owner_minimize", key = mac_key("cmd-m")),
+            Command::SaveAs => t!("native_hotkeys_owner_save_as", key = mac_key("shift-cmd-s")),
+            Command::Editing => t!("native_hotkeys_owner_editing"),
+            Command::AppCommand => t!("native_hotkeys_owner_app_command"),
+        }
+    }
+}
+
 /// What owns a stroke already.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum Owner {
     /// macOS handles it before any app: a global hotkey cannot take it, or must not.
-    System(&'static str),
+    System(Command),
     /// A standard command in the focused app: registering it globally would steal it from every app.
-    Apps(&'static str),
+    Apps(Command),
 }
 
 /// Strokes macOS or ordinary apps already own, with what they do. `⇧⌘S` is deliberately `Apps`, not `System`:
@@ -123,22 +202,22 @@ pub enum Owner {
 pub fn reserved(stroke: &str) -> Option<Owner> {
     let c = canonical(stroke)?;
     Some(match c.as_str() {
-        "cmd-shift-3" => Owner::System("macOS full-screen screenshot (⇧⌘3)"),
-        "cmd-shift-4" => Owner::System("macOS area screenshot (⇧⌘4)"),
-        "cmd-shift-5" => Owner::System("macOS screenshot and recording toolbar (⇧⌘5)"),
-        "cmd-shift-6" => Owner::System("macOS Touch Bar screenshot (⇧⌘6)"),
-        "cmd-space" => Owner::System("Spotlight (⌘Space)"),
-        "alt-cmd-space" => Owner::System("Finder search (⌥⌘Space)"),
-        "cmd-tab" | "cmd-shift-tab" => Owner::System("the app switcher (⌘Tab)"),
-        "cmd-q" => Owner::System("Quit (⌘Q)"),
-        "cmd-h" | "alt-cmd-h" => Owner::System("Hide (⌘H)"),
-        "cmd-m" => Owner::System("Minimize (⌘M)"),
-        "cmd-shift-s" => Owner::Apps("Save As in most apps (⇧⌘S)"),
+        "cmd-shift-3" => Owner::System(Command::ScreenshotScreen),
+        "cmd-shift-4" => Owner::System(Command::ScreenshotArea),
+        "cmd-shift-5" => Owner::System(Command::ScreenshotToolbar),
+        "cmd-shift-6" => Owner::System(Command::ScreenshotTouchBar),
+        "cmd-space" => Owner::System(Command::Spotlight),
+        "alt-cmd-space" => Owner::System(Command::FinderSearch),
+        "cmd-tab" | "cmd-shift-tab" => Owner::System(Command::AppSwitcher),
+        "cmd-q" => Owner::System(Command::Quit),
+        "cmd-h" | "alt-cmd-h" => Owner::System(Command::Hide),
+        "cmd-m" => Owner::System(Command::Minimize),
+        "cmd-shift-s" => Owner::Apps(Command::SaveAs),
         "cmd-c" | "cmd-v" | "cmd-x" | "cmd-z" | "cmd-shift-z" | "cmd-a" => {
-            Owner::Apps("a standard editing command")
+            Owner::Apps(Command::Editing)
         }
         "cmd-s" | "cmd-o" | "cmd-n" | "cmd-w" | "cmd-p" | "cmd-f" | "cmd-t" => {
-            Owner::Apps("a standard app command")
+            Owner::Apps(Command::AppCommand)
         }
         _ => return None,
     })
@@ -177,8 +256,10 @@ impl Registered {
                 for done in mine.drain(..) {
                     let _ = gs.unregister(done.as_str());
                 }
-                return Err(format!(
-                    "{stroke} is taken by another app or the system ({e})"
+                return Err(t!(
+                    "native_hotkeys_taken",
+                    stroke = &stroke,
+                    reason = e.to_string()
                 ));
             }
             mine.push(accel);
@@ -225,12 +306,10 @@ pub fn check_with(stroke: &str, screenshot_keys_free: bool) -> Verdict {
         return Verdict::Ok;
     }
     match reserved(stroke) {
-        Some(Owner::System(r)) => Verdict::Refused(format!(
-            "{r} already uses this key: macOS takes it before Atlas can"
-        )),
-        Some(Owner::Apps(r)) => Verdict::Warn(format!(
-            "{r}. A global hotkey wins over the app in front, so that command stops working everywhere while Atlas runs"
-        )),
+        Some(Owner::System(c)) => {
+            Verdict::Refused(t!("native_hotkeys_system_taken", owner = c.describe()))
+        }
+        Some(Owner::Apps(c)) => Verdict::Warn(t!("native_hotkeys_apps_taken", owner = c.describe())),
         None => Verdict::Ok,
     }
 }
@@ -246,9 +325,15 @@ pub fn hotkey_check(stroke: String, screenshot_keys_free: Option<bool>) -> Verdi
 mod tests {
     use super::*;
 
+    /// The sentences are the display language's: these tests read English.
+    fn english() {
+        atlas_i18n::set_lang("en");
+    }
+
     /// Settings asks Rust about each stroke before saving: the verdict is what the page shows under the key.
     #[test]
     fn the_verdict_refuses_system_keys_warns_on_app_keys_and_passes_the_rest() {
+        english();
         assert_eq!(check("ctrl-alt-4"), Verdict::Ok);
         assert_eq!(check(""), Verdict::Ok);
         match check("cmd-shift-4") {
@@ -292,6 +377,7 @@ mod tests {
     /// A hotkey without a modifier would swallow that key in every app (a bare `space`, a bare `k`).
     #[test]
     fn a_hotkey_needs_a_modifier_and_a_key_the_system_knows() {
+        english();
         assert!(accelerator("space").unwrap_err().contains("modifier"));
         assert!(accelerator("k").unwrap_err().contains("modifier"));
         assert!(

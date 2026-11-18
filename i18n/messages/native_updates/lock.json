@@ -1,0 +1,15 @@
+{
+  "pt-BR": {
+    "native_updates_already_running": "047d35f1ab32",
+    "native_updates_cannot_run_atlas": "3d6b7699c4e8",
+    "native_updates_channel_forced": "1bcca1abc7e7",
+    "native_updates_channel_save_failed": "8a39729540dd",
+    "native_updates_cli_version_unreadable": "4efe7b1e4b76",
+    "native_updates_github_failed": "63a45ef6540a",
+    "native_updates_github_feed": "3b872a2244c6",
+    "native_updates_github_missing": "634c085be74b",
+    "native_updates_github_unknown": "466b9b1683d7",
+    "native_updates_install_failed": "1f4720aaa9db",
+    "native_updates_not_installed": "3ace4cde1254"
+  }
+}

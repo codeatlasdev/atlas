@@ -1,0 +1,24 @@
+{
+  "pt-BR": {
+    "native_hotkeys_apps_taken": "362263d6f866",
+    "native_hotkeys_needs_modifier": "ad932dd4e9aa",
+    "native_hotkeys_no_key": "844535b9e3ac",
+    "native_hotkeys_owner_app_command": "4502cf5b9c73",
+    "native_hotkeys_owner_app_switcher": "1305133d6298",
+    "native_hotkeys_owner_editing": "4ce8d548b217",
+    "native_hotkeys_owner_finder_search": "cd6dbce01aa5",
+    "native_hotkeys_owner_hide": "65700873b5ea",
+    "native_hotkeys_owner_minimize": "7620c155512b",
+    "native_hotkeys_owner_quit": "4aeef0a62d02",
+    "native_hotkeys_owner_save_as": "5b069994224b",
+    "native_hotkeys_owner_screenshot_area": "5b8eeb266bcb",
+    "native_hotkeys_owner_screenshot_screen": "8d478aabd5b1",
+    "native_hotkeys_owner_screenshot_toolbar": "dd049a9d4e2c",
+    "native_hotkeys_owner_screenshot_touch_bar": "61ebc88c73fc",
+    "native_hotkeys_owner_spotlight": "ecefedee4a08",
+    "native_hotkeys_system_taken": "a6079043947e",
+    "native_hotkeys_taken": "3fedfa66f39b",
+    "native_hotkeys_unknown_modifier": "f6422d20510d",
+    "native_hotkeys_unlistenable": "75089fd11d6f"
+  }
+}

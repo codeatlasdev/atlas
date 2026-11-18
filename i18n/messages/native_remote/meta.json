@@ -1,0 +1,3 @@
+{
+	"native_remote_no_atlas_yaml": "Error of Settings > SSH hosts > Remote project when the folder typed has no atlas.yaml on that host (shown as a toast). {alias} is the SSH host alias and {root} the folder path on it."
+}

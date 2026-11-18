@@ -44,7 +44,9 @@
 		removeProject,
 		showDiscover,
 	} from "./sidebar/projects.ts";
+	import { stepLabel } from "./sidebar/model.ts";
 	import { sidebar } from "./sidebar/state.svelte.ts";
+	import { m } from "#lib/i18n/m.ts";
 
 	let { onJump, onAgent }: { onJump?: () => void; onAgent?: (worktreeId: string) => void } = $props();
 
@@ -117,22 +119,40 @@
 
 	onMount(() =>
 		register([
-			{ id: "atlas::AddProject", label: "Add project…", run: () => void addProject() },
+			{
+				id: "atlas::AddProject",
+				get label() {
+					return m.sidebar_add_project();
+				},
+				run: () => void addProject(),
+			},
 			{
 				id: "atlas::RemoveProject",
-				label: "Remove project from Atlas…",
+				get label() {
+					return m.sidebar_command_remove_project();
+				},
 				run: () => activeRepo && void removeProject(activeRepo.id),
 				when: () => !!activeRepo,
 			},
 			{
 				id: "atlas::DiscoverProjects",
-				label: "Find projects on this machine",
+				get label() {
+					return m.sidebar_command_discover();
+				},
 				run: () => void showDiscover(),
 			},
-			{ id: "atlas::RefreshProjects", label: "Refresh projects", run: () => void refresh() },
+			{
+				id: "atlas::RefreshProjects",
+				get label() {
+					return m.sidebar_refresh_projects();
+				},
+				run: () => void refresh(),
+			},
 			{
 				id: "atlas::RemoveMissingProjects",
-				label: "Remove missing projects",
+				get label() {
+					return m.sidebar_command_remove_missing();
+				},
 				run: () => void removeAllMissing(),
 				when: () => store.missing.length > 0,
 			},
@@ -144,28 +164,28 @@
 
 <aside class="sidebar" class:dropping data-tour="sidebar" bind:this={asideEl} use:swipe={spaceSwipe()}>
 	<div class="drag" data-tauri-drag-region>
-		<Tip label="Hide sidebar" command="shell::ToggleSidebar" side="bottom">
+		<Tip label={m.sidebar_hide_sidebar()} command="shell::ToggleSidebar" side="bottom">
 			{#snippet child(props)}
 				<IconButton
 					{...props}
 					class="hide-btn"
 					variant="text"
 					size="sm"
-					aria-label="Hide sidebar"
+					aria-label={m.sidebar_hide_sidebar()}
 					onclick={toggleSidebar}
 				>
 					<PanelLeftClose size={15} />
 				</IconButton>
 			{/snippet}
 		</Tip>
-		<Tip label="Refresh projects" command="atlas::RefreshProjects" side="bottom">
+		<Tip label={m.sidebar_refresh_projects()} command="atlas::RefreshProjects" side="bottom">
 			{#snippet child(props)}
 				<IconButton
 					{...props}
 					class="refresh-btn"
 					variant="text"
 					size="sm"
-					aria-label="Refresh projects"
+					aria-label={m.sidebar_refresh_projects()}
 					disabled={refreshing}
 					onclick={refresh}
 				>
@@ -178,18 +198,18 @@
 		<SearchField
 			compact
 			clearable
-			label="Clear filter"
-			placeholder="Filter worktrees"
+			label={m.sidebar_clear_filter()}
+			placeholder={m.sidebar_filter_worktrees()}
 			bind:value={sidebar.filter}
 			onkeydown={(e) => e.key === "Escape" && ((sidebar.filter = ""), e.currentTarget.blur())}
 		/>
-		<Tip label="Jump to worktree or terminal" command="atlas::Jump" side="bottom">
+		<Tip label={m.sidebar_jump()} command="atlas::Jump" side="bottom">
 			{#snippet child(props)}
 				<button
 					{...props}
 					class="jump"
 					data-tour="palette"
-					aria-label="Jump to worktree or terminal"
+					aria-label={m.sidebar_jump()}
 					onclick={() => onJump?.()}
 				>
 					<Kbd>{shortcutFor("atlas::Jump") ?? kbd("cmd-k")}</Kbd>
@@ -200,18 +220,18 @@
 	{#if store.missing.length}
 		<div class="missing-bar" role="status">
 			<TriangleAlert size={13} />
-			<span>{store.missing.length} not found</span>
-			<button onclick={refresh}>Refresh</button>
-			<button onclick={removeAllMissing}>Remove all</button>
+			<span>{m.sidebar_missing_count({ count: store.missing.length })}</span>
+			<button onclick={refresh}>{m.sidebar_refresh()}</button>
+			<button onclick={removeAllMissing}>{m.sidebar_remove_all()}</button>
 		</div>
 	{/if}
 	<nav class="list">
 		<button class="item fixed" class:active={ws.view === "agents"} onclick={() => (ws.view = "agents")}>
-			<Bot size={13} /><span class="name">Agents</span>
+			<Bot size={13} /><span class="name">{m.sidebar_agents()}</span>
 			{#if workingCount}<span class="count">{workingCount}</span>{/if}
 		</button>
 		<button class="item fixed" class:active={ws.view === "dashboard"} onclick={() => (ws.view = "dashboard")}>
-			<LayoutDashboard size={13} /><span class="name">Dashboard</span>
+			<LayoutDashboard size={13} /><span class="name">{m.sidebar_dashboard()}</span>
 		</button>
 		<LooseFiles />
 		{#if activeRepo}
@@ -224,7 +244,7 @@
 		{#if others.length}
 			<button class="section" aria-expanded={listOpen} onclick={() => (allOpen = !allOpen)}>
 				<ChevronRight size={11} class="chev {listOpen ? 'open' : ''}" />
-				<span>{activeRepo ? "Other projects" : "Projects"}</span>
+				<span>{activeRepo ? m.sidebar_other_projects() : m.sidebar_projects()}</span>
 				<span class="count">{others.length}</span>
 			</button>
 			{#if listOpen}
@@ -246,13 +266,13 @@
 					/>{/each}
 			</div>
 		{:else if repos.length === 0}
-			<p class="hint">No projects yet. Add any project folder: Atlas detects how to run it.</p>
+			<p class="hint">{m.sidebar_no_projects()}</p>
 		{:else if filtering && !visible}
-			<p class="hint">No worktree matches “{sidebar.filter.trim()}”.</p>
+			<p class="hint">{m.sidebar_no_match({ filter: sidebar.filter.trim() })}</p>
 		{/if}
 	</nav>
 	{#if hasArchived}
-		<label class="archived"><input type="checkbox" bind:checked={sidebar.showArchived} /> Show archived</label
+		<label class="archived"><input type="checkbox" bind:checked={sidebar.showArchived} /> {m.sidebar_show_archived()}</label
 		>
 	{/if}
 	<SidebarFooter onDiscover={showDiscover} />
@@ -262,7 +282,7 @@
 	{#each Object.values(worktrees.creations).filter((c) => c.repoId === repoId) as c (c.id)}
 		<div class="item creating nested">
 			<span class="glyph"><Spinner size={11} /></span>
-			<span class="name">{c.name}<small class="branch">{c.step}…</small></span>
+			<span class="name">{c.name}<small class="branch">{stepLabel(c.step)}</small></span>
 		</div>
 	{/each}
 {/snippet}

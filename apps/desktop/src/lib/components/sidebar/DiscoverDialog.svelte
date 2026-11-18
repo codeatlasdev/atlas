@@ -8,25 +8,28 @@
 	import { open as pickFolder } from "@tauri-apps/plugin-dialog";
 	import { FolderPlus, Search, TriangleAlert, X } from "@lucide/svelte";
 	import { tilde } from "#lib/format.ts";
-	import { IS_MAC } from "#lib/keys.ts";
+	import { formatNumber } from "#lib/i18n/fmt.ts";
+	import Rich from "#lib/i18n/Rich.svelte";
 	import { shell } from "#lib/shell/shell.svelte.ts";
 	import { discovery } from "#lib/stores/discovery.svelte.ts";
 	import { ws } from "#lib/stores/workspace.svelte.ts";
 	import { store } from "#lib/stores/projects.svelte.ts";
 	import {
 		ago,
-		discoverLead,
-		elsewhereLabel,
 		groupFound,
 		matchesQuery,
 		movedCopy,
 		noProjectsLine,
 		pickable,
+		scannedLine,
+		scanningLine,
 		splitFound,
+		stackLabel,
 		tickedByDefault,
 		type Found,
 	} from "./discovery.ts";
 	import { addPaths, relinkProject } from "./projects.ts";
+	import { m } from "#lib/i18n/m.ts";
 
 	let query = $state("");
 	/** Explicit user choices; everything else follows the default (valid configs ticked). */
@@ -66,7 +69,7 @@
 	}
 
 	async function addRoot() {
-		const dir = await pickFolder({ directory: true, title: "Folder to scan for projects" });
+		const dir = await pickFolder({ directory: true, title: m.sidebar_discover_dialog_pick_root() });
 		if (typeof dir !== "string") return;
 		discovery.addRoot(dir);
 		await discovery.start();
@@ -105,24 +108,24 @@
 <Dialog
 	open={discovery.open}
 	onOpenChange={(o) => !o && discovery.close()}
-	title="Find projects"
-	description={discoverLead(IS_MAC)}
+	title={m.sidebar_discover_dialog_find_projects()}
+	description={m.sidebar_discover_dialog_lead()}
 	size="xl"
 >
 	<div class="bar">
 		<label class="search">
 			<Search size={13} />
 			<input
-				placeholder="Filter by name, path, branch or remote"
-				aria-label="Filter results"
+				placeholder={m.sidebar_discover_dialog_filter_placeholder()}
+				aria-label={m.sidebar_discover_dialog_filter_results()}
 				bind:value={query}
 			/>
 			{#if query}
-				<button aria-label="Clear filter" onclick={() => (query = "")}><X size={12} /></button>
+				<button aria-label={m.sidebar_clear_filter()} onclick={() => (query = "")}><X size={12} /></button>
 			{/if}
 		</label>
 		<Switch
-			label="Also folders without atlas.yaml"
+			label={m.sidebar_discover_dialog_candidates_switch()}
 			checked={discovery.candidates}
 			onchange={toggleCandidates}
 		/>
@@ -131,24 +134,24 @@
 	<div class="status" role="status" aria-live="polite">
 		{#if discovery.running}
 			<Spinner size={12} />
-			<span>
-				Scanning… {discovery.dirs.toLocaleString()} folders · {(discovery.elapsedMs / 1000).toFixed(1)}s ·
-				{split.projects.length} found
-			</span>
+			<span>{scanningLine(discovery.dirs, discovery.elapsedMs, split.projects.length)}</span>
 			<span class="cur mono" dir="rtl" title={discovery.current}
 				><bdi dir="ltr">{tilde(discovery.current)}</bdi></span
 			>
-			<Button size="sm" variant="ghost" onclick={() => discovery.cancel()}>Cancel</Button>
+			<Button size="sm" variant="ghost" onclick={() => discovery.cancel()}>{m.common_action_cancel()}</Button>
 		{:else if discovery.error}
 			<TriangleAlert size={13} /> <span>{discovery.error}</span>
-			<Button size="sm" variant="ghost" onclick={() => discovery.start()}>Retry</Button>
+			<Button size="sm" variant="ghost" onclick={() => discovery.start()}>{m.common_action_retry()}</Button>
 		{:else if discovery.done}
 			<span>
-				{discovery.done.cancelled ? "Cancelled after" : "Scanned"}
-				{discovery.done.dirs.toLocaleString()} folders in {(discovery.done.elapsed_ms / 1000).toFixed(1)}s
-				{#if discovery.done.unreadable}· {discovery.done.unreadable} not readable{/if}
+				{scannedLine(discovery.done)}
+				{#if discovery.done.unreadable}
+					· {m.sidebar_discover_dialog_unreadable({
+						count: discovery.done.unreadable,
+						amount: formatNumber(discovery.done.unreadable),
+					})}{/if}
 			</span>
-			<Button size="sm" variant="ghost" onclick={() => discovery.start()}>Scan again</Button>
+			<Button size="sm" variant="ghost" onclick={() => discovery.start()}>{m.onboarding_phases_scan_again()}</Button>
 		{/if}
 	</div>
 
@@ -164,9 +167,9 @@
 		{/each}
 
 		{#if discovery.candidates && candidateGroups.length}
-			<h4 class="section">Could use Atlas</h4>
+			<h4 class="section">{m.sidebar_discover_dialog_could_use_atlas()}</h4>
 			<p class="note">
-				Git repositories with a project file. Atlas detects how to run them; atlas.yaml is optional.
+				{m.sidebar_discover_dialog_candidates_note()}
 			</p>
 			{#each candidateGroups as g (g.root)}
 				{@render group(g.root, g.items)}
@@ -175,19 +178,19 @@
 	</div>
 
 	{#snippet actions()}
-		<Button variant="ghost" onclick={addRoot}><FolderPlus size={13} /> Add folder to scan…</Button>
+		<Button variant="ghost" onclick={addRoot}><FolderPlus size={13} /> {m.sidebar_discover_dialog_add_root()}</Button>
 		<span class="spacer"></span>
-		<Button variant="ghost" onclick={() => discovery.close()}>Close</Button>
+		<Button variant="ghost" onclick={() => discovery.close()}>{m.common_action_close()}</Button>
 		<Button disabled={!picked.length} onclick={addSelected}>
-			Add selected{picked.length ? ` (${picked.length})` : ""}
+			{m.sidebar_discover_dialog_add_selected({ count: picked.length })}
 		</Button>
 	{/snippet}
 </Dialog>
 
 {#snippet group(root: string, items: Found[])}
 	<section class="group">
-		<h4 class="root mono" title={root || elsewhereLabel(IS_MAC)}>
-			{root ? tilde(root) : elsewhereLabel(IS_MAC)}
+		<h4 class="root mono" title={root || m.sidebar_discover_dialog_elsewhere()}>
+			{root ? tilde(root) : m.sidebar_discover_dialog_elsewhere()}
 		</h4>
 		{#each items as f (f.path)}
 			{@const move = moveByPath[f.path]}
@@ -196,7 +199,7 @@
 					<Checkbox
 						checked={isPicked(f)}
 						onchange={(on) => (override[f.path] = on)}
-						aria-label="Add {f.name}"
+						aria-label={m.onboarding_phases_add_name({ name: f.name })}
 					/>
 				{:else}
 					<span class="nocheck"></span>
@@ -204,11 +207,11 @@
 				<div class="main">
 					<div class="line1">
 						<strong>{f.name}</strong>
-						{#if f.nested}<span class="tag">package</span>{/if}
-						{#if added(f)}<span class="tag ok">In Atlas</span>{/if}
-						{#if f.stack}<span class="tag">{f.stack}</span>{/if}
+						{#if f.nested}<span class="tag">{m.sidebar_discover_dialog_tag_package()}</span>{/if}
+						{#if added(f)}<span class="tag ok">{m.sidebar_discover_dialog_tag_in_atlas()}</span>{/if}
+						{#if f.stack}<span class="tag">{stackLabel(f.stack)}</span>{/if}
 						{#if f.has_config}
-							<span class="meta">{f.services} service{f.services === 1 ? "" : "s"}</span>
+							<span class="meta">{m.onboarding_flow_services({ count: f.services })}</span>
 						{/if}
 						{#if f.branch}<span class="meta mono">{f.branch}</span>{/if}
 						<span class="meta when">{ago(f.modified)}</span>
@@ -216,23 +219,23 @@
 					<div class="path mono ca-selectable" title={f.path}>{tilde(f.path)}</div>
 					{#if f.remote}<div class="path mono">{f.remote}</div>{/if}
 					{#if f.error}
-						<div class="err" title={f.error}><TriangleAlert size={11} /> atlas.yaml has problems</div>
+						<div class="err" title={f.error}><TriangleAlert size={11} /> {m.shell_space_view_config_problems()}</div>
 					{/if}
 					{#if move}
 						<div class="move">
-							Probably the moved copy of <strong>{move.name}</strong>
-							<Button size="sm" onclick={() => relink(f)}>Relink</Button>
+							<span><Rich parts={m.sidebar_discover_dialog_moved_copy.parts({ name: move.name })} tags={{ b: "strong" }} /></span>
+							<Button size="sm" onclick={() => relink(f)}>{m.sidebar_discover_dialog_relink()}</Button>
 						</div>
 					{/if}
 				</div>
 				{#if !f.has_config}
-					<Button size="sm" variant="glass" onclick={() => addCandidate(f)}>Add</Button>
+					<Button size="sm" variant="glass" onclick={() => addCandidate(f)}>{m.common_action_add()}</Button>
 					<Button
 						size="sm"
 						variant="ghost"
-						title="Write an atlas.yaml in this folder"
+						title={m.sidebar_discover_dialog_init_title()}
 						disabled={!!store.busy[`init:${f.path}`]}
-						onclick={() => init(f)}>Create atlas.yaml</Button
+						onclick={() => init(f)}>{m.sidebar_discover_dialog_create_atlas_yaml()}</Button
 					>
 				{/if}
 			</div>

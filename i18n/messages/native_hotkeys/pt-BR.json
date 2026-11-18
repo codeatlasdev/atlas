@@ -1,0 +1,22 @@
+{
+	"native_hotkeys_apps_taken": "{owner}. Um atalho global vence o app em primeiro plano, então esse comando deixa de funcionar em todo lugar enquanto o Atlas roda",
+	"native_hotkeys_needs_modifier": "Um atalho global precisa de um modificador ({ctrl}, {alt}, {shift} ou {cmd})",
+	"native_hotkeys_no_key": "\"{stroke}\" não tem tecla",
+	"native_hotkeys_owner_app_command": "Um comando padrão de apps",
+	"native_hotkeys_owner_app_switcher": "O alternador de apps ({key})",
+	"native_hotkeys_owner_editing": "Um comando de edição padrão",
+	"native_hotkeys_owner_finder_search": "A pesquisa do Finder ({key})",
+	"native_hotkeys_owner_hide": "Ocultar ({key})",
+	"native_hotkeys_owner_minimize": "Minimizar ({key})",
+	"native_hotkeys_owner_quit": "Sair ({key})",
+	"native_hotkeys_owner_save_as": "Salvar como na maioria dos apps ({key})",
+	"native_hotkeys_owner_screenshot_area": "A captura de uma área do macOS ({key})",
+	"native_hotkeys_owner_screenshot_screen": "A captura da tela inteira do macOS ({key})",
+	"native_hotkeys_owner_screenshot_toolbar": "A barra de captura e gravação de tela do macOS ({key})",
+	"native_hotkeys_owner_screenshot_touch_bar": "A captura de tela da Touch Bar do macOS ({key})",
+	"native_hotkeys_owner_spotlight": "Spotlight ({key})",
+	"native_hotkeys_system_taken": "{owner} já usa esta tecla: o macOS a trata antes do Atlas",
+	"native_hotkeys_taken": "{stroke} já está em uso por outro app ou pelo sistema ({reason})",
+	"native_hotkeys_unknown_modifier": "modificador desconhecido \"{modifier}\" em \"{stroke}\"",
+	"native_hotkeys_unlistenable": "\"{stroke}\" não é uma tecla que o sistema consegue ouvir ({reason})"
+}

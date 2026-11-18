@@ -1,0 +1,20 @@
+{
+	"native_capture_action_all_in_one": "Capturar tudo em um",
+	"native_capture_action_gif": "Gravar GIF",
+	"native_capture_action_ocr": "Capturar texto",
+	"native_capture_action_previous": "Capturar área anterior",
+	"native_capture_action_record": "Gravar tela",
+	"native_capture_action_region": "Capturar região",
+	"native_capture_action_screen": "Capturar tela",
+	"native_capture_action_window": "Capturar janela",
+	"native_capture_audio_needs_macos_15": "Gravar com som exige o macOS 15 ou mais recente.",
+	"native_capture_dock_summon": "Enviar mensagem a um agente",
+	"native_capture_dock_toggle": "Ocultar o dock",
+	"native_capture_folder_absolute": "A pasta precisa ser um caminho absoluto",
+	"native_capture_history_range": "O histórico guarda de {min} a {max} capturas",
+	"native_capture_key_refused": "{action}: {reason}",
+	"native_capture_mic_off": "O acesso ao microfone está desativado para o Atlas. Ative em Ajustes do Sistema > Privacidade e Segurança > Microfone.",
+	"native_capture_same_key": "\"{first}\" e \"{second}\" usam a mesma tecla",
+	"native_capture_stack_range": "A pilha de acesso rápido guarda de {min} a {max} capturas",
+	"native_capture_timer_values": "O temporizador fica desativado ou em 3, 5 ou 10 segundos"
+}

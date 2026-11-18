@@ -8,6 +8,8 @@ use std::process::Stdio;
 use std::sync::atomic::{AtomicBool, Ordering};
 
 use atlas_core::channel::{self, Action, Channel};
+use atlas_core::github::GithubError;
+use atlas_i18n::{t, t_in};
 use serde::Serialize;
 use tauri::{AppHandle, Emitter};
 use tokio::io::{AsyncBufReadExt, BufReader};
@@ -38,7 +40,7 @@ impl InstallGuard {
         INSTALLING
             .compare_exchange(false, true, Ordering::AcqRel, Ordering::Acquire)
             .map(|_| Self)
-            .map_err(|_| "An update is already running".to_string())
+            .map_err(|_| t!("native_updates_already_running"))
     }
 }
 
@@ -306,7 +308,7 @@ pub async fn system_info() -> Result<SystemInfo, String> {
                 path: Some(bin.to_string_lossy().into_owned()),
                 error: version
                     .is_none()
-                    .then(|| "could not read `atlas version`".into()),
+                    .then(|| t!("native_updates_cli_version_unreadable")),
                 version,
             }
         }
@@ -323,6 +325,23 @@ pub async fn system_info() -> Result<SystemInfo, String> {
     Ok(SystemInfo { app, cli })
 }
 
+/// An update-check failure in the words of `lang` (a language tag). The reason inside is the underlying tool's own
+/// message (curl's, the feed's) and is shown as it is; the sentence around it is the catalog's.
+fn github_error_in(lang: &str, e: GithubError) -> String {
+    match e {
+        GithubError::Missing => t_in!(lang, "native_updates_github_missing"),
+        GithubError::Failed(reason) => t_in!(lang, "native_updates_github_failed", reason = reason),
+        GithubError::Feed(reason) => t_in!(lang, "native_updates_github_feed", reason = reason),
+        GithubError::Unknown { tag, reason } => {
+            t_in!(lang, "native_updates_github_unknown", tag = tag, reason = reason)
+        }
+    }
+}
+
+fn github_error(e: GithubError) -> String {
+    github_error_in(atlas_i18n::lang(), e)
+}
+
 /// Latest published release (public GitHub Releases API).
 #[tauri::command]
 pub async fn latest_release() -> Result<Release, String> {
@@ -331,15 +350,12 @@ pub async fn latest_release() -> Result<Release, String> {
         let app = app.clone();
         move || {
             let info = atlas_core::github::latest_release(REPO, channel::current())?;
-            Ok::<_, atlas_core::github::GithubError>((
-                info,
-                atlas_core::github::yank_of(REPO, &app),
-            ))
+            Ok::<_, GithubError>((info, atlas_core::github::yank_of(REPO, &app)))
         }
     })
     .await
     .map_err(|e| e.to_string())?
-    .map_err(|e| e.to_string())?;
+    .map_err(github_error)?;
     let cli = match atlas_bin() {
         Ok(bin) => cli_version(&bin).await,
         Err(_) => None,
@@ -398,7 +414,7 @@ pub async fn releases_between(from: String, to: String) -> Result<Vec<ReleaseNot
     const MAX: usize = 10;
     tauri::async_runtime::spawn_blocking(move || {
         let all = atlas_core::github::releases_up_to(REPO, channel::current(), &to)
-            .map_err(|e| e.to_string())?;
+            .map_err(github_error)?;
         Ok(atlas_core::github::in_range(all, &from, &to)
             .into_iter()
             .take(MAX)
@@ -447,7 +463,7 @@ async fn stream(app: &AppHandle, args: &[&str]) -> Result<(), String> {
         .stdout(Stdio::piped())
         .stderr(Stdio::piped())
         .spawn()
-        .map_err(|e| format!("cannot run atlas: {e}"))?;
+        .map_err(|e| t!("native_updates_cannot_run_atlas", error = e.to_string()))?;
     let out = child.stdout.take().expect("piped");
     let err = child.stderr.take().expect("piped");
     let (_, last_err) = tokio::join!(pump(out, app.clone()), pump(err, app.clone()));
@@ -456,7 +472,7 @@ async fn stream(app: &AppHandle, args: &[&str]) -> Result<(), String> {
         Ok(())
     } else {
         Err(if last_err.is_empty() {
-            format!("atlas {} failed ({st})", args.join(" "))
+            t!("native_updates_install_failed", args = args.join(" "), status = st.to_string())
         } else {
             last_err
         })
@@ -529,12 +545,10 @@ pub fn update_channel_get() -> ChannelState {
 fn set_channel_at(file: &Path, name: &str, override_: Option<&str>) -> Result<Channel, String> {
     let wanted: Channel = name.parse()?;
     if override_.is_some_and(|s| s.parse::<Channel>().is_ok()) {
-        return Err(format!(
-            "The update channel is forced by {} in this environment; unset it to change the channel here",
-            channel::ENV
-        ));
+        return Err(t!("native_updates_channel_forced", name = channel::ENV));
     }
-    channel::write_to(file, wanted).map_err(|e| format!("cannot save the update channel: {e}"))?;
+    channel::write_to(file, wanted)
+        .map_err(|e| t!("native_updates_channel_save_failed", error = e.to_string()))?;
     Ok(wanted)
 }
 
@@ -623,6 +637,7 @@ pub async fn update_all(
 ) -> Result<bool, String> {
     #[cfg(debug_assertions)]
     if std::env::var_os("ATLAS_DEBUG_FAKE_VERSION").is_some() {
+        // i18n-ignore: developer text of debug builds, never shown in a release
         return Err("Updates are disabled while ATLAS_DEBUG_FAKE_VERSION is set".into());
     }
     let before = bundle_stamp();
@@ -655,7 +670,7 @@ pub async fn unlink(app: AppHandle) -> Result<(), String> {
 pub fn relaunch(app: AppHandle) -> Result<(), String> {
     let bundle = atlas_core::paths::installed_app()
         .or_else(own_bundle)
-        .ok_or("not running from an installed Atlas.app")?;
+        .ok_or_else(|| t!("native_updates_not_installed"))?;
     // macOS opens the bundle through Launch Services; Linux runs the AppImage/binary in its own session.
     #[cfg(unix)]
     {
@@ -687,7 +702,7 @@ pub fn relaunch(app: AppHandle) -> Result<(), String> {
 
 #[cfg(test)]
 mod tests {
-    use super::{InstallGuard, Progress, parse_progress};
+    use super::{InstallGuard, Progress, github_error_in, parse_progress};
 
     #[test]
     fn progress_lines_parse_and_plain_lines_do_not() {
@@ -965,5 +980,37 @@ mod tests {
             committed, fresh,
             "stale fixture: re-run with UPDATE_FIXTURES=1"
         );
+    }
+
+    /// The update check's failures reach the screen through `u.error` / the What's new sheet. The sentence is the
+    /// catalog's in the language asked for; the reason inside is the underlying tool's message, kept as it is.
+    #[test]
+    fn github_failures_are_worded_in_the_asked_language_and_keep_their_reason() {
+        use atlas_core::github::GithubError;
+        let cases = || {
+            [
+                (GithubError::Failed("curl: (6) no host".into()), "curl: (6) no host"),
+                (GithubError::Feed("bad atom".into()), "bad atom"),
+                (
+                    GithubError::Unknown {
+                        tag: "v1.4.0".into(),
+                        reason: "timed out".into(),
+                    },
+                    "v1.4.0",
+                ),
+                (GithubError::Missing, "curl"),
+            ]
+        };
+        for ((en, kept), (pt, _)) in cases().into_iter().zip(cases()) {
+            let (en, pt) = (github_error_in("en", en), github_error_in("pt-BR", pt));
+            assert!(en.contains(kept) && pt.contains(kept), "{en} / {pt}");
+            assert_ne!(en, pt, "the sentence must follow the language");
+        }
+        // The reason of an unknown release check is kept next to the tag.
+        let unknown = GithubError::Unknown {
+            tag: "v1.4.0".into(),
+            reason: "timed out".into(),
+        };
+        assert!(github_error_in("en", unknown).contains("timed out"));
     }
 }

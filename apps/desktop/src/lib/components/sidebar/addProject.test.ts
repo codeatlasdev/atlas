@@ -1,6 +1,9 @@
 // @ts-nocheck bun test runtime types are not part of the app tsconfig
 import { expect, test } from "bun:test";
+import { readFileSync } from "node:fs";
+import { m } from "#lib/i18n/m.ts";
 import { addedToast, addPlan, droppedOn, removeDescription } from "./addProject.ts";
+import { stackLabel } from "./discovery.ts";
 // The REAL serialization of `project_probe` (crates/atlas-desktop/src/cmds/projects.rs, probe_fixture_is_the_real_serialization).
 import probeFixture from "#lib/__fixtures__/project-probe.json";
 
@@ -71,4 +74,32 @@ test("adding a folder without atlas.yaml says what was detected and how many ser
 	expect(addedToast(p({ services_total: 0 }), null)).toBe("Added: nothing to run was detected yet");
 	expect(addedToast(p({ config_source: "file" }), "Node project (package.json)")).toBeNull();
 	expect(addedToast(p({ error: "boom" }), "Node project (package.json)")).toBeNull();
+});
+
+// `detection_label` (atlas-core) names the stack in English words inside a label; the toast words it from its own
+// messages, so a stack the Rust side can name without a message here would show up untranslated in a sentence.
+test("every stack the Rust detection can name has a label of its own in the toast", () => {
+	const src = readFileSync(
+		new URL("../../../../../../crates/atlas-core/src/domain/project.rs", import.meta.url),
+		"utf8",
+	);
+	const body = src.slice(src.indexOf("pub fn detection_label("), src.indexOf("/// The port a dev command announces"));
+	const kinds = [...body.matchAll(/=>\s*\(\s*"(\w+)"/g)].map(([, kind]) => kind);
+	expect(kinds).toEqual(expect.arrayContaining(["Rust", "Node", "Go", "Python"]));
+	const p = { config_source: "detected", services_total: 1, error: null };
+	for (const kind of kinds) {
+		const toast = addedToast(p, `${kind} project (manifest)`);
+		expect(toast, kind).toBe(m.sidebar_added_detected({ stack: stackLabel(kind.toLowerCase()), count: 1 }));
+		expect(toast, kind).not.toContain("manifest");
+	}
+});
+
+test("a stack this app has no label for is named as the detection label came", () => {
+	const p = { config_source: "detected", services_total: 0, error: null };
+	expect(addedToast(p, "Zig project (build.zig)")).toBe("Detected Zig project: no services to run yet");
+});
+
+test("the remove confirmation counts linked worktrees with a plural of its own", () => {
+	expect(removeDescription({ root: "/p/a", running: false }, 3)).toContain(m.sidebar_remove_linked({ count: 3 }));
+	expect(removeDescription({ root: "/p/a", running: false }, 3)).not.toContain(m.sidebar_remove_linked({ count: 1 }));
 });

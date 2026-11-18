@@ -11,29 +11,35 @@
 	import { errText } from "#lib/api.ts";
 	import type { DockPrefs } from "#lib/dock.ts";
 	import { tilde } from "#lib/format.ts";
-	import { IS_MAC } from "#lib/keys.ts";
+	import { IS_MAC, kbd, revealLabel } from "#lib/keys.ts";
 	import Group from "#lib/settings/Group.svelte";
 	import NumInput from "#lib/settings/NumInput.svelte";
 	import Row from "#lib/settings/Row.svelte";
 	import * as history from "#lib/shots/history.ts";
 	import {
-		CORNER_OPTIONS,
 		KEY_FIELDS,
-		QUALITY_OPTIONS,
-		SCALE_OPTIONS,
-		TIMER_OPTIONS,
 		activePresetId,
 		applyPreset,
 		clashes,
+		cornerOptions,
 		historyGroups,
 		historyLabel,
 		keyLabel,
 		presetAvailable,
+		presetLabel,
+		presetNote,
+		qualityOptions,
 		recordingResult,
+		scaleOptions,
+		systemKeyArgs,
+		systemKeysClash,
 		systemKeysUsed,
+		timerOptions,
 		verdictText,
 	} from "#lib/shots/settings.ts";
 	import type { CapturePrefs, Entry, Keys, Preset, RecordCapabilities, Verdict } from "#lib/shots/types.ts";
+	import { dateTime, list } from "#lib/i18n/fmt.ts";
+	import { m } from "#lib/i18n/m.ts";
 
 	const KEY = Object.fromEntries(KEY_FIELDS.map((k) => [k.field, k])) as Record<
 		keyof Keys,
@@ -181,9 +187,6 @@
 		if (!Number.isFinite(v)) return void (prefs = { ...prefs });
 		void save(set(prefs, Math.min(max, Math.max(min, Math.round(v)))));
 	}
-
-	const when = (at: number) =>
-		new Date(at).toLocaleString(undefined, { dateStyle: "medium", timeStyle: "short" });
 </script>
 
 <svelte:window onkeydowncapture={record} />
@@ -194,17 +197,18 @@
 	<Button
 		size="sm"
 		variant={recording === field ? "filled" : "outlined"}
-		aria-label={`${label} hotkey: ${keyLabel(stroke)}. Click to change`}
+		aria-label={m.settings_capture_key_aria({ action: label, key: keyLabel(stroke) })}
 		onclick={() => (recording = recording === field ? null : field)}
 	>
-		{recording === field ? "Press a key…" : keyLabel(stroke)}
+		{recording === field ? m.settings_capture_key_press() : keyLabel(stroke)}
 	</Button>
 	{#if stroke && recording !== field}
 		<Button
 			size="sm"
 			variant="ghost"
-			aria-label={`Clear the ${label} hotkey`}
-			onclick={() => prefs && save({ ...prefs, keys: { ...prefs.keys, [field]: "" } })}>Clear</Button
+			aria-label={m.settings_capture_key_clear_aria({ action: label })}
+			onclick={() => prefs && save({ ...prefs, keys: { ...prefs.keys, [field]: "" } })}
+			>{m.settings_capture_key_clear()}</Button
 		>
 	{/if}
 {/snippet}
@@ -218,45 +222,50 @@
 	{/if}
 {/snippet}
 
-<Group
-	title="Capture"
-	description="Take screenshots and record the screen from a hotkey, from any app. Files go to the folder below."
->
+<Group title={m.capture_quick_page_capture()} description={m.settings_capture_group_capture_description()}>
 	{#if prefs}
 		<Row
 			id="capture-permission"
-			label="Screen Recording access"
-			description="Screen Recording lets Atlas see the pixels of other apps. It is only used when you press a capture hotkey; nothing is recorded in the background. After granting it, macOS asks you to restart Atlas."
+			label={m.settings_capture_permission_label()}
+			description={m.settings_capture_permission_description()}
 		>
 			<span class="state" class:ok={granted === true} role="status">
-				{granted === null ? "Checking…" : granted ? "Granted" : "Not granted"}
+				{granted === null
+					? m.settings_capture_permission_checking()
+					: granted
+						? m.settings_capture_permission_granted()
+						: m.settings_capture_permission_not_granted()}
 			</span>
 			{#if !granted}
-				<Button size="sm" variant="filled" onclick={grant}>Grant access</Button>
+				<Button size="sm" variant="filled" onclick={grant}>{m.settings_capture_permission_grant()}</Button>
 			{/if}
 			<Button size="sm" variant="outlined" onclick={() => run(() => invoke("shots_open_settings"))}
-				>Open System Settings</Button
+				>{m.settings_capture_permission_open_settings()}</Button
 			>
 		</Row>
 		<Row
 			id="capture-enabled"
-			label="Capture hotkeys"
-			description="Turn the capture hotkeys on or off. Off gives the keys back to other apps."
+			label={m.settings_capture_enabled_label()}
+			description={m.settings_capture_enabled_description()}
 		>
 			<Switch
-				aria-label="Capture hotkeys"
+				aria-label={m.settings_capture_enabled_label()}
 				checked={prefs.enabled}
 				onchange={(enabled) => prefs && save({ ...prefs, enabled })}
 			/>
 		</Row>
-		<Row id="capture-folder" label="Save to" description="Where captures are saved.">
+		<Row
+			id="capture-folder"
+			label={m.settings_capture_folder_label()}
+			description={m.settings_capture_folder_description()}
+		>
 			<span class="path" title={prefs.folder || DEFAULT_DIR}>
-				{prefs.folder ? tilde(prefs.folder) : `${DEFAULT_DIR} (default)`}
+				{prefs.folder ? tilde(prefs.folder) : m.settings_capture_folder_default({ folder: DEFAULT_DIR })}
 			</span>
-			<Button size="sm" variant="outlined" onclick={pickFolder}>Choose…</Button>
+			<Button size="sm" variant="outlined" onclick={pickFolder}>{m.settings_capture_folder_choose()}</Button>
 			{#if prefs.folder}
 				<Button size="sm" variant="ghost" onclick={() => prefs && save({ ...prefs, folder: "" })}
-					>Reset</Button
+					>{m.settings_capture_folder_reset()}</Button
 				>
 			{/if}
 		</Row>
@@ -265,30 +274,35 @@
 
 {#if prefs}
 	<Group
-		title="Hotkeys"
-		description="Click a key, then press the new one. Esc cancels. A key must include ⌘, ⌃ or ⌥ so it does not take that key from every app."
+		title={m.settings_capture_group_hotkeys()}
+		description={m.settings_capture_group_hotkeys_description({
+			modifiers: list([kbd("cmd"), kbd("ctrl"), kbd("alt")], "disjunction"),
+		})}
 	>
 		<Row
 			id="capture-preset"
-			label="Key set"
-			description="Start from a ready-made set of keys. Picking one shows what it changes; nothing is saved until you apply it."
+			label={m.settings_capture_preset_label()}
+			description={m.settings_capture_preset_description()}
 			stack
 		>
 			<div class="select">
 				<Select
 					size="sm"
-					aria-label="Key set"
+					aria-label={m.settings_capture_preset_label()}
 					value={shownId}
 					options={[
-						...(activeId === CUSTOM || picked ? [{ value: CUSTOM, label: "Custom" }] : []),
-						...presets.map((p) => ({ value: p.id, label: p.label })),
+						...(activeId === CUSTOM || picked ? [{ value: CUSTOM, label: m.settings_capture_preset_custom() }] : []),
+						...presets.map((p) => ({ value: p.id, label: presetLabel(p) })),
 					]}
 					onchange={(v) => (picked = v === activeId || v === CUSTOM ? null : v)}
 				/>
 			</div>
 			{#snippet below()}
-				{#if shownPreset?.note}
-					<div class="callout" role="note">{shownPreset.note}</div>
+				{#if shownPreset}
+					{@const note = presetNote(shownPreset)}
+					{#if note}
+						<div class="callout" role="note">{note}</div>
+					{/if}
 				{/if}
 				{#if picked}
 					<div class="actions">
@@ -296,40 +310,37 @@
 							size="sm"
 							variant="filled"
 							disabled={!pickedAvailable}
-							title={pickedAvailable ? undefined : "Turn off macOS's own screenshot shortcuts first (below)"}
-							onclick={applyPicked}>Apply these keys</Button
+							title={pickedAvailable ? undefined : m.settings_capture_preset_apply_blocked()}
+							onclick={applyPicked}>{m.settings_capture_preset_apply()}</Button
 						>
-						<Button size="sm" variant="ghost" onclick={() => (picked = null)}>Cancel</Button>
+						<Button size="sm" variant="ghost" onclick={() => (picked = null)}>{m.common_action_cancel()}</Button>
 					</div>
 				{/if}
 			{/snippet}
 		</Row>
 		<Row
 			id="capture-system-keys"
-			label="macOS screenshot shortcuts"
-			description="macOS answers ⇧⌘3, ⇧⌘4, ⇧⌘5 and ⇧⌘6 before any app, so Atlas can only use them once you turn them off yourself in System Settings ▸ Keyboard ▸ Keyboard Shortcuts ▸ Screenshots. Atlas never changes that setting for you."
+			label={m.settings_capture_system_keys_label()}
+			description={m.settings_capture_system_keys_description(systemKeyArgs())}
 			stack
 		>
 			<Button size="sm" variant="outlined" onclick={() => run(() => invoke("shots_open_shortcuts_settings"))}
-				>Open Keyboard Shortcuts</Button
+				>{m.settings_capture_system_keys_open()}</Button
 			>
 			<label class="inline">
 				<Switch
-					aria-label="I turned the macOS screenshot shortcuts off"
+					aria-label={m.settings_capture_system_keys_off_aria()}
 					checked={prefs.systemKeysFree}
 					onchange={(systemKeysFree) => prefs && save({ ...prefs, systemKeysFree })}
 				/>
-				<span>I turned them off</span>
+				<span>{m.settings_capture_system_keys_off_label()}</span>
 			</label>
 			{#snippet below()}
 				{#if usedSystem.length && !prefs?.systemKeysFree}
-					<div class="clash" role="alert">
-						{usedSystem.join(", ")} still belong to macOS. Turn them off in System Settings, tick the box above,
-						or pick other keys.
-					</div>
+					<div class="clash" role="alert">{systemKeysClash(usedSystem)}</div>
 				{:else if prefs?.systemKeysFree}
 					<div class="callout" role="note">
-						Atlas now accepts ⇧⌘3–6. If you turn the macOS ones back on, these keys stop working here.
+						{m.settings_capture_system_keys_accepted({ range: systemKeyArgs().range })}
 					</div>
 				{/if}
 			{/snippet}
@@ -371,14 +382,14 @@
 		{/if}
 	</Group>
 
-	<Group title="Screenshots">
+	<Group title={m.settings_capture_group_screenshots()}>
 		<Row
 			id="capture-on-release"
-			label="Capture when the mouse is released"
-			description="Take the shot as soon as you let go of the selection; turn off to adjust it first and confirm with Return."
+			label={m.settings_capture_on_release_label()}
+			description={m.settings_capture_on_release_description()}
 		>
 			<Switch
-				aria-label="Capture when the mouse is released"
+				aria-label={m.settings_capture_on_release_label()}
 				checked={prefs.still.captureOnRelease}
 				onchange={(captureOnRelease) =>
 					prefs && save({ ...prefs, still: { ...prefs.still, captureOnRelease } })}
@@ -386,30 +397,30 @@
 		</Row>
 		<Row
 			id="capture-timer"
-			label="Self-timer"
-			description="Wait this long after you pick before a screenshot is taken. Recordings are not delayed."
+			label={m.settings_capture_timer_label()}
+			description={m.settings_capture_timer_description()}
 		>
 			<div class="select">
 				<Select
 					size="sm"
-					aria-label="Self-timer"
+					aria-label={m.settings_capture_timer_label()}
 					value={String(prefs.still.timerSecs)}
-					options={[...TIMER_OPTIONS]}
+					options={timerOptions()}
 					onchange={(v) => prefs && save({ ...prefs, still: { ...prefs.still, timerSecs: Number(v) } })}
 				/>
 			</div>
 		</Row>
 		<Row
 			id="capture-scale"
-			label="Resolution"
-			description="Retina saves the display's own pixels; Standard saves one pixel per point, a smaller file."
+			label={m.settings_capture_scale_label()}
+			description={m.settings_capture_scale_description()}
 		>
 			<div class="select">
 				<Select
 					size="sm"
-					aria-label="Resolution"
+					aria-label={m.settings_capture_scale_label()}
 					value={prefs.still.scale}
-					options={[...SCALE_OPTIONS]}
+					options={scaleOptions()}
 					onchange={(v) =>
 						prefs &&
 						save({ ...prefs, still: { ...prefs.still, scale: v as CapturePrefs["still"]["scale"] } })}
@@ -418,51 +429,51 @@
 		</Row>
 		<Row
 			id="capture-hide-icons"
-			label="Hide desktop icons"
-			description="Hide the icons on the desktop while a screenshot or recording is taken."
+			label={m.settings_capture_hide_icons_label()}
+			description={m.settings_capture_hide_icons_description()}
 		>
 			<Switch
-				aria-label="Hide desktop icons"
+				aria-label={m.settings_capture_hide_icons_label()}
 				checked={prefs.still.hideIcons}
 				onchange={(hideIcons) => prefs && save({ ...prefs, still: { ...prefs.still, hideIcons } })}
 			/>
 		</Row>
 		<Row
 			id="capture-window-shadow"
-			label="Window shadow"
-			description="A window capture keeps its drop shadow, on a transparent background."
+			label={m.settings_capture_window_shadow_label()}
+			description={m.settings_capture_window_shadow_description()}
 		>
 			<Switch
-				aria-label="Window shadow"
+				aria-label={m.settings_capture_window_shadow_label()}
 				checked={prefs.still.windowShadow}
 				onchange={(windowShadow) => prefs && save({ ...prefs, still: { ...prefs.still, windowShadow } })}
 			/>
 		</Row>
 		<Row
 			id="capture-window-padding"
-			label="Window background"
-			description="A window capture sits on a padded background instead of a shadow. It wins over the shadow when both are on."
+			label={m.settings_capture_window_background_label()}
+			description={m.settings_capture_window_background_description()}
 		>
 			<Switch
-				aria-label="Window background"
+				aria-label={m.settings_capture_window_background_label()}
 				checked={prefs.still.windowPadding}
 				onchange={(windowPadding) => prefs && save({ ...prefs, still: { ...prefs.still, windowPadding } })}
 			/>
 		</Row>
 	</Group>
 
-	<Group title="Recording">
+	<Group title={m.capture_quick_title_recording()}>
 		<Row
 			id="capture-quality"
-			label="Video quality"
-			description="Lower qualities record fewer pixels, so the file is smaller. GIFs are not affected."
+			label={m.settings_capture_quality_label()}
+			description={m.settings_capture_quality_description()}
 		>
 			<div class="select">
 				<Select
 					size="sm"
-					aria-label="Video quality"
+					aria-label={m.settings_capture_quality_label()}
 					value={prefs.recording.quality}
-					options={[...QUALITY_OPTIONS]}
+					options={qualityOptions()}
 					onchange={(v) =>
 						prefs &&
 						save({
@@ -474,34 +485,34 @@
 		</Row>
 		<Row
 			id="capture-clicks"
-			label="Show clicks"
-			description="A ring on each click in screen recordings and GIFs."
+			label={m.settings_capture_clicks_label()}
+			description={m.settings_capture_clicks_description()}
 		>
 			<Switch
-				aria-label="Show clicks"
+				aria-label={m.settings_capture_clicks_label()}
 				checked={prefs.recording.clicks}
 				onchange={(clicks) => prefs && save({ ...prefs, recording: { ...prefs.recording, clicks } })}
 			/>
 		</Row>
 		<Row
 			id="capture-keystrokes"
-			label="Show keystrokes"
-			description="A pill with the keys you press at the bottom of the recorded area. macOS asks for Input Monitoring the first time."
+			label={m.settings_capture_keystrokes_label()}
+			description={m.settings_capture_keystrokes_description()}
 		>
 			<Switch
-				aria-label="Show keystrokes"
+				aria-label={m.settings_capture_keystrokes_label()}
 				checked={prefs.recording.keystrokes}
 				onchange={(keystrokes) => prefs && save({ ...prefs, recording: { ...prefs.recording, keystrokes } })}
 			/>
 		</Row>
 		<Row
 			id="capture-system-audio"
-			label="Record system sound"
-			description="The sound your Mac plays goes into the video. Not in GIFs."
+			label={m.settings_capture_system_audio_label()}
+			description={m.settings_capture_system_audio_description()}
 			stack={!!caps?.reason}
 		>
 			<Switch
-				aria-label="Record system sound"
+				aria-label={m.settings_capture_system_audio_label()}
 				checked={prefs.recording.systemAudio && !!caps?.systemAudio}
 				disabled={!caps?.systemAudio}
 				onchange={(systemAudio) =>
@@ -513,12 +524,12 @@
 		</Row>
 		<Row
 			id="capture-microphone"
-			label="Record the microphone"
-			description="Your voice goes into the video. macOS asks for microphone access the first time. Not in GIFs."
+			label={m.settings_capture_microphone_label()}
+			description={m.settings_capture_microphone_description()}
 			stack={!!caps?.reason}
 		>
 			<Switch
-				aria-label="Record the microphone"
+				aria-label={m.settings_capture_microphone_label()}
 				checked={prefs.recording.microphone && !!caps?.microphone}
 				disabled={!caps?.microphone}
 				onchange={(microphone) => prefs && save({ ...prefs, recording: { ...prefs.recording, microphone } })}
@@ -529,36 +540,36 @@
 		</Row>
 	</Group>
 
-	<Group title="After a capture">
+	<Group title={m.settings_capture_group_after()}>
 		<Row
 			id="capture-copy"
-			label="Copy to clipboard"
-			description="Put every capture on the clipboard as soon as it is taken: screenshots as an image, recordings and GIFs as the file."
+			label={m.capture_editor_page_copy_to_clipboard()}
+			description={m.settings_capture_copy_description()}
 		>
 			<Switch
-				aria-label="Copy to clipboard"
+				aria-label={m.capture_editor_page_copy_to_clipboard()}
 				checked={prefs.after.copy}
 				onchange={(copy) => prefs && save({ ...prefs, after: { ...prefs.after, copy } })}
 			/>
 		</Row>
 		<Row
 			id="capture-quick-access"
-			label="Show the quick access overlay"
-			description="A small card with the capture: copy, save as, annotate, send to an agent, or drag it into another app."
+			label={m.settings_capture_quick_access_label()}
+			description={m.settings_capture_quick_access_description()}
 		>
 			<Switch
-				aria-label="Show the quick access overlay"
+				aria-label={m.settings_capture_quick_access_label()}
 				checked={prefs.after.quickAccess}
 				onchange={(quickAccess) => prefs && save({ ...prefs, after: { ...prefs.after, quickAccess } })}
 			/>
 		</Row>
 		<Row
 			id="capture-dismiss"
-			label="Auto-dismiss the overlay"
-			description="Seconds before the card goes away by itself, 0 to 60. 0 keeps it until you close it."
+			label={m.settings_capture_dismiss_label()}
+			description={m.settings_capture_dismiss_description()}
 		>
 			<NumInput
-				label="Auto-dismiss seconds"
+				label={m.settings_capture_dismiss_seconds_label()}
 				unit="s"
 				value={prefs.after.dismissSecs}
 				onchange={(n) => count(n, 0, 60, (p, dismissSecs) => ({ ...p, after: { ...p.after, dismissSecs } }))}
@@ -566,15 +577,15 @@
 		</Row>
 		<Row
 			id="capture-corner"
-			label="Overlay corner"
-			description="The corner of the display under the pointer where the quick access cards stack."
+			label={m.settings_capture_corner_label()}
+			description={m.settings_capture_corner_description()}
 		>
 			<div class="select">
 				<Select
 					size="sm"
-					aria-label="Overlay corner"
+					aria-label={m.settings_capture_corner_label()}
 					value={prefs.quick.position}
-					options={[...CORNER_OPTIONS]}
+					options={cornerOptions()}
 					onchange={(v) =>
 						prefs &&
 						save({ ...prefs, quick: { ...prefs.quick, position: v as CapturePrefs["quick"]["position"] } })}
@@ -583,63 +594,64 @@
 		</Row>
 		<Row
 			id="capture-stack"
-			label="Cards in the stack"
-			description="How many quick access cards stack in the corner before the oldest goes, 1 to 8."
+			label={m.settings_capture_stack_label()}
+			description={m.settings_capture_stack_description()}
 		>
 			<NumInput
-				label="Cards in the stack"
-				unit="cards"
+				label={m.settings_capture_stack_label()}
+				unit={m.settings_capture_stack_unit()}
 				value={prefs.quick.stack}
 				onchange={(n) => count(n, 1, 8, (p, stack) => ({ ...p, quick: { ...p.quick, stack } }))}
 			/>
 		</Row>
-		<Row id="capture-sound" label="Play sound" description="A shutter sound when a screenshot is taken.">
+		<Row
+			id="capture-sound"
+			label={m.settings_capture_sound_label()}
+			description={m.settings_capture_sound_description()}
+		>
 			<Switch
-				aria-label="Play sound"
+				aria-label={m.settings_capture_sound_label()}
 				checked={prefs.after.sound}
 				onchange={(sound) => prefs && save({ ...prefs, after: { ...prefs.after, sound } })}
 			/>
 		</Row>
 		<Row
 			id="capture-highlight"
-			label="Highlight the cursor and clicks"
-			description="Show the pointer and a ring on each click in screen recordings and GIFs."
+			label={m.settings_capture_highlight_label()}
+			description={m.settings_capture_highlight_description()}
 		>
 			<Switch
-				aria-label="Highlight the cursor and clicks"
+				aria-label={m.settings_capture_highlight_label()}
 				checked={prefs.highlightCursor}
 				onchange={(highlightCursor) => prefs && save({ ...prefs, highlightCursor })}
 			/>
 		</Row>
 	</Group>
 
-	<Group
-		title="History"
-		description="Your recent captures. Removing one only forgets it here: the file is never deleted from your disk."
-	>
+	<Group title={m.settings_capture_group_history()} description={m.settings_capture_group_history_description()}>
 		<Row
 			id="capture-history-size"
-			label="History size"
-			description="How many captures to remember, 1 to 500. Older ones drop off the list; their files stay."
+			label={m.settings_capture_history_size_label()}
+			description={m.settings_capture_history_size_description()}
 		>
 			<NumInput
-				label="History size"
-				unit="captures"
+				label={m.settings_capture_history_size_label()}
+				unit={m.settings_capture_history_unit()}
 				value={prefs.history}
 				onchange={(n) => count(n, 1, 500, (p, history) => ({ ...p, history }))}
 			/>
 		</Row>
 		<Row
 			id="capture-history"
-			label="Recent captures"
-			description="Open, reveal or remove from the list your recent captures. Removing never deletes the file."
+			label={m.settings_capture_recent_label()}
+			description={m.settings_capture_recent_description()}
 			stack
 		>
 			{#snippet below()}
 				{#if historyError}
 					<p class="verdict refused" role="alert">{historyError}</p>
 				{:else if !groups.length}
-					<p class="empty">Nothing captured yet.</p>
+					<p class="empty">{m.settings_capture_recent_empty()}</p>
 				{/if}
 				{#each groups as g (g.title)}
 					<section class="hgroup" aria-label={g.title}>
@@ -652,21 +664,21 @@
 									<span class="kind" title={l.kind}><Icon size={14} aria-label={l.kind} /></span>
 									<span class="meta">
 										<span class="name" title={e.path}>{l.name}</span>
-										<span class="sub">{l.detail} · {when(e.at)}</span>
+										<span class="sub">{l.detail} · {dateTime(e.at)}</span>
 									</span>
 									<span class="btns">
 										<Button size="sm" variant="ghost" onclick={() => run(() => history.open(e.path))}
-											>Open</Button
+											>{m.common_action_open()}</Button
 										>
 										<Button size="sm" variant="ghost" onclick={() => run(() => history.reveal(e.path))}
-											>Reveal</Button
+											>{revealLabel()}</Button
 										>
 										<Button
 											size="sm"
 											variant="ghost"
-											title="Forget this capture. The file stays on your disk."
+											title={m.settings_capture_recent_forget()}
 											onclick={() => run(async () => (await history.remove(e.path), await refreshHistory()))}
-											>Remove from list</Button
+											>{m.settings_capture_recent_remove()}</Button
 										>
 									</span>
 								</li>

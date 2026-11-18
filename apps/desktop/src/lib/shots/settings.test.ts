@@ -1,21 +1,27 @@
 // @ts-nocheck bun test runtime types are not part of the app tsconfig
 import { describe, expect, test } from "bun:test";
 import { readFileSync } from "node:fs";
+import { inLocale } from "../../../test/locale.ts";
 import {
 	KEY_FIELDS,
 	activePresetId,
 	applyPreset,
 	clashes,
+	cornerOptions,
 	historyGroups,
-	CORNER_OPTIONS,
-	SCALE_OPTIONS,
-	TIMER_OPTIONS,
 	historyLabel,
 	keyLabel,
 	presetAvailable,
+	presetLabel,
+	presetNote,
+	qualityOptions,
 	recordingResult,
 	sameStroke,
+	scaleOptions,
+	systemKeyArgs,
+	systemKeysClash,
 	systemKeysUsed,
+	timerOptions,
 	verdictText,
 } from "./settings.ts";
 
@@ -456,14 +462,98 @@ describe("system screenshot keys", () => {
 describe("option lists", () => {
 	/** Rust refuses a timer other than off/3/5/10 (`TIMER_VALUES`): the page must offer exactly those. */
 	test("the timer offers only the values Rust accepts", () => {
-		expect(TIMER_OPTIONS.map((o) => o.value)).toEqual(["0", "3", "5", "10"]);
-		expect(TIMER_OPTIONS[0].label).toBe("Off");
-		expect(TIMER_OPTIONS[1].label).toBe("3 seconds");
+		expect(timerOptions().map((o) => o.value)).toEqual(["0", "3", "5", "10"]);
+		expect(timerOptions()[0].label).toBe("Off");
+		expect(timerOptions()[1].label).toBe("3 seconds");
 	});
-	test("scale and corner options are exactly Rust's enum words", () => {
-		expect(SCALE_OPTIONS.map((o) => o.value)).toEqual(["native", "1x"]);
-		expect(CORNER_OPTIONS.map((o) => o.value)).toEqual(["bottomRight", "bottomLeft", "topRight", "topLeft"]);
+	test("scale, corner and quality options are exactly Rust's enum words", () => {
+		expect(scaleOptions().map((o) => o.value)).toEqual(["native", "1x"]);
+		expect(cornerOptions().map((o) => o.value)).toEqual(["bottomRight", "bottomLeft", "topRight", "topLeft"]);
+		expect(qualityOptions().map((o) => o.value)).toEqual(["high", "medium", "low"]);
 		expect(real.prefs.still.scale).toBe("native");
 		expect(real.prefs.quick.position).toBe("bottomRight");
+		expect(real.prefs.recording.quality).toBe("high");
+	});
+	test("every option has a label of its own, and the labels follow the display language", async () => {
+		const lists = () => [timerOptions(), scaleOptions(), cornerOptions(), qualityOptions()];
+		for (const list of lists()) {
+			const labels = list.map((o) => o.label);
+			expect(new Set(labels).size, labels.join()).toBe(labels.length);
+			for (const l of labels) expect(l.trim(), l).not.toBe("");
+		}
+		const english = lists().flat().map((o) => o.label);
+		const portuguese = await inLocale("pt-BR", () => lists().flat().map((o) => o.label));
+		for (const [i, en] of english.entries()) expect(portuguese[i], en).not.toBe(en);
+	});
+});
+
+describe("preset names and notes: the stable id picks the message", () => {
+	/** The English a message-backed preset shows is what Rust sends: a Rust edit that moves one fails here. */
+	test("with the mac key names, each real preset reads exactly as Rust wrote it", () => {
+		for (const p of real.presets) {
+			expect(presetLabel(p, true), `${p.id} label`).toBe(p.label);
+			expect(presetNote(p, true), `${p.id} note`).toBe(p.note);
+		}
+	});
+	test("a preset id the page does not know shows Rust's own text, and no note when there is none", () => {
+		expect(presetLabel({ id: "from-the-future", label: "Rust label" }, true)).toBe("Rust label");
+		expect(presetNote({ id: "from-the-future", note: "Rust note" }, true)).toBe("Rust note");
+		expect(presetNote({ id: "from-the-future", note: null }, true)).toBeNull();
+	});
+	test("the names and notes follow the display language and keep the keys as printed", async () => {
+		for (const p of real.presets) {
+			const label = await inLocale("pt-BR", () => presetLabel(p, true));
+			// "⇧⌘3 / 4 / 5 / 6 (CleanShot)" is keys and a product name: the same in every language.
+			if (p.id === "cleanshot") expect(label).toBe(p.label);
+			else expect(label, `${p.id} label`).not.toBe(p.label);
+			const note = await inLocale("pt-BR", () => presetNote(p, true));
+			if (p.note) expect(note, `${p.id} note`).not.toBe(p.note);
+			else expect(note).toBeNull();
+		}
+		const cleanshot = real.presets.find((p) => p.id === "cleanshot");
+		const note = await inLocale("pt-BR", () => presetNote(cleanshot, true));
+		for (const key of ["⇧⌘3", "⇧⌘4", "⇧⌘5", "⇧⌘6"]) expect(note, key).toContain(key);
+	});
+	test("off macOS the same keys are spelled with words", () => {
+		expect(presetLabel({ id: "shift-cmd-s", label: "" }, false)).toContain("Ctrl+Shift+S");
+		expect(systemKeyArgs(false).range).toBe("Ctrl+Shift+3–6");
+	});
+});
+
+describe("the warning for macOS's own screenshot keys", () => {
+	test("one key is singular, several are a sentence list", () => {
+		expect(systemKeysClash(["⇧⌘4"])).toContain("⇧⌘4 still belongs to macOS");
+		expect(systemKeysClash(["⇧⌘3", "⇧⌘4"])).toContain("⇧⌘3 and ⇧⌘4 still belong to macOS");
+		expect(systemKeysClash(["⇧⌘3", "⇧⌘4", "⇧⌘5"])).toContain("⇧⌘3, ⇧⌘4, and ⇧⌘5 still belong");
+	});
+	test("the keys it lists come from the key set, spelled for the platform", () => {
+		const used = systemKeysUsed({ ...real.prefs.keys, region: "cmd-shift-4", record: "cmd-shift-6" }, true);
+		expect(used).toEqual(["⇧⌘4", "⇧⌘6"]);
+		expect(systemKeysClash(used)).toContain("⇧⌘4 and ⇧⌘6");
+	});
+});
+
+describe("history row text follows the display language", () => {
+	const base = {
+		path: "/s/a.png",
+		kind: "screenshot",
+		at: 0,
+		width: 1920,
+		height: 1080,
+		bytes: 2_500_000,
+		secs: null,
+	};
+	test("the size of a still uses the decimal mark of the language", async () => {
+		expect(historyLabel(base).size).toBe("2.4 MB");
+		const size = await inLocale("pt-BR", () => historyLabel(base).size);
+		expect(size).toMatch(/^2,4\sMB$/);
+	});
+	test("kind and group titles are read in the language of the moment", async () => {
+		const now = new Date(2026, 9, 21, 15, 30).getTime();
+		const english = historyGroups([{ ...base, at: now }], now)[0].title;
+		const portuguese = await inLocale("pt-BR", () => historyGroups([{ ...base, at: now }], now)[0].title);
+		expect(english).toBe("Today");
+		expect(portuguese).not.toBe(english);
+		expect(await inLocale("pt-BR", () => historyLabel(base).kind)).not.toBe(historyLabel(base).kind);
 	});
 });

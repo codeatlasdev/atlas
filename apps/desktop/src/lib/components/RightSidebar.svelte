@@ -28,6 +28,7 @@
 	import { ws } from "#lib/stores/workspace.svelte.ts";
 	import { openPreview } from "#lib/stores/browser.svelte.ts";
 	import { host } from "#lib/host.ts";
+	import { m } from "#lib/i18n/m.ts";
 
 	interface Session {
 		agent: string;
@@ -155,28 +156,29 @@
 	let rows = $derived(
 		w ? portRows(ports, store.configs[w.id]?.services ?? [], store.live[w.id]?.services ?? []) : [],
 	);
+	let dockLabel = $derived(docks.right ? m.sidebar_right_hide() : m.sidebar_right_pin());
 </script>
 
 <aside class="right">
 	<div class="tabs" data-tauri-drag-region>
-		<button class:on={tab === "agents"} onclick={() => (tab = "agents")}>Agents</button>
-		<button class:on={tab === "ports"} onclick={() => (tab = "ports")}>Ports</button>
+		<button class:on={tab === "agents"} onclick={() => (tab = "agents")}>{m.sidebar_agents()}</button>
+		<button class:on={tab === "ports"} onclick={() => (tab = "ports")}>{m.sidebar_right_ports()}</button>
 		<button
 			class="icon"
-			aria-label="Refresh"
+			aria-label={m.sidebar_refresh()}
 			onclick={() => (tab === "agents" ? loadSessions() : loadPorts())}
 		>
 			<RefreshCw size={12} />
 		</button>
 		<Tip
-			label={docks.right ? "Hide right sidebar" : "Pin right sidebar"}
+			label={dockLabel}
 			command="workspace::ToggleRightDock"
 		>
 			{#snippet child(props)}
 				<button
 					{...props}
 					class="hide"
-					aria-label={docks.right ? "Hide right sidebar" : "Pin right sidebar"}
+					aria-label={dockLabel}
 					onclick={() => toggleDock("right")}
 				>
 					{#if docks.right}<PanelRightClose size={13} />{:else}<Pin size={12} />{/if}
@@ -187,8 +189,8 @@
 	{#if tab === "agents"}
 		<div class="controls">
 			<input
-				placeholder="Search sessions"
-				aria-label="Search sessions"
+				placeholder={m.sidebar_right_search_sessions()}
+				aria-label={m.sidebar_right_search_sessions()}
 				bind:value={query}
 				oninput={onSearch}
 				onkeydown={(e) => e.key === "Enter" && (clearTimeout(typing), loadSessions())}
@@ -196,19 +198,19 @@
 			<Select
 				class="scope"
 				size="sm"
-				aria-label="Show sessions of"
+				aria-label={m.sidebar_right_show_sessions_of()}
 				value={scope}
 				options={[
-					{ value: "workspace", label: "Workspace" },
-					{ value: "project", label: "Project" },
-					{ value: "all", label: "All" },
+					{ value: "workspace", label: m.sidebar_right_scope_workspace() },
+					{ value: "project", label: m.sidebar_right_scope_project() },
+					{ value: "all", label: m.sidebar_right_scope_all() },
 				]}
 				onchange={(v) => (scope = v as typeof scope)}
 			/>
 		</div>
 		<div class="list">
 			{#if live.length}
-				<h3 class="head">Running here</h3>
+				<h3 class="head">{m.sidebar_right_running_here()}</h3>
 				{#each live as a (a.tabId)}
 					<button class="row live" data-live-agent={a.tabId} onclick={() => ws.activate(a.tabId)}>
 						<span class="l1">
@@ -220,7 +222,7 @@
 						{#if a.detail}<span class="dim detail-line">{a.detail}</span>{/if}
 					</button>
 				{/each}
-				{#if sessions.length}<h3 class="head">History</h3>{/if}
+				{#if sessions.length}<h3 class="head">{m.sidebar_right_history()}</h3>{/if}
 			{/if}
 			{#each sessions as s (s.file)}
 				<button
@@ -237,19 +239,19 @@
 						<div class="dim mono">{s.cwd}</div>
 						{#if s.first_prompt}<p>{s.first_prompt}</p>{/if}
 						<div class="acts">
-							<button onclick={() => resume(s)}><Play size={12} /> Resume</button>
+							<button onclick={() => resume(s)}><Play size={12} /> {m.sidebar_right_resume()}</button>
 							{#if s.agent === "omp"}<button onclick={() => resume(s, true)}
-									><Play size={12} /> Resume in native chat</button
+									><Play size={12} /> {m.sidebar_right_resume_in_native_chat()}</button
 								>{/if}
 							<button
 								onclick={() =>
 									navigator.clipboard.writeText(resumeCommandOf(s)).then(
-										() => toast.success("Copied"),
+										() => toast.success(m.sidebar_right_copied()),
 										(e) => toast.error(errText(e)),
-									)}><Copy size={12} /> Copy command</button
+									)}><Copy size={12} /> {m.sidebar_right_copy_command()}</button
 							>
 							<button onclick={() => api.revealPath(s.file).catch((e) => toast.error(errText(e)))}
-								><FolderSearch size={12} /> Reveal</button
+								><FolderSearch size={12} /> {m.sidebar_right_reveal()}</button
 							>
 						</div>
 					</div>
@@ -260,21 +262,20 @@
 						{#each [0, 1, 2, 3] as i (i)}<Skeleton variant="rounded" height={26} />{/each}
 					</div>
 				{:else if query}
-					<p class="empty">No sessions match “{query}”.</p>
+					<p class="empty">{m.sidebar_right_no_match({ query })}</p>
 				{:else if live.length}
-					<p class="empty">No earlier sessions {scope === "workspace" ? "in this worktree" : "here"} yet.</p>
+					<p class="empty">
+						{scope === "workspace" ? m.sidebar_right_no_earlier_worktree() : m.sidebar_right_no_earlier_here()}
+					</p>
 				{:else}
 					<EmptyState
 						icon={Bot}
-						title="No agent sessions yet"
-						description="Sessions of agents you run in this worktree show up here, with what each one last did, so you can resume them later.{scope ===
-						'workspace'
-							? ' Choose Project or All to see sessions from other worktrees.'
-							: ''}"
+						title={m.sidebar_right_empty_title()}
+						description={scope === "workspace" ? m.sidebar_right_empty_body_hint() : m.sidebar_right_empty_body()}
 					>
 						{#snippet actions()}
 							<button class="start" onclick={() => runCommand("atlas::NewAgentSession")}>
-								New agent session <kbd>{shortcutFor("atlas::NewAgentSession") ?? ""}</kbd>
+								{m.sidebar_right_new_session()} <kbd>{shortcutFor("atlas::NewAgentSession") ?? ""}</kbd>
 							</button>
 						{/snippet}
 					</EmptyState>
@@ -292,16 +293,16 @@
 					</button>
 					<button
 						class="ext"
-						aria-label="Open :{r.port} in the system browser"
-						title="Open in the system browser"
+						aria-label={m.sidebar_right_open_port_external({ port: r.port })}
+						title={m.sidebar_right_open_external()}
 						onclick={() => openPort(r.port, true)}><ExternalLink size={12} /></button
 					>
 				</div>
 			{:else}
 				<EmptyState
 					icon={Globe}
-					title="No ports listening"
-					description="A dev server or a service started from this worktree shows up here with its port and a button to open it. Run one in a terminal (for example bun run dev) or start a service from the project panel."
+					title={m.sidebar_right_no_ports_title()}
+					description={m.sidebar_right_no_ports_body()}
 				/>
 			{/each}
 		</div>

@@ -8,6 +8,7 @@ use std::time::{Duration, Instant};
 use anyhow::{Context, Result};
 use atlas_core::heavy::{self, Dir, Entry, State, Status, Ticket};
 use atlas_core::taskcache::{Chunk, Stream};
+use atlas_i18n::{t, t_in};
 use clap::{Args, Subcommand};
 
 use super::AtlasCommand;
@@ -57,7 +58,7 @@ impl AtlasCommand for HeavyCommands {
                 if json {
                     println!("{}", serde_json::to_string_pretty(&st)?);
                 } else {
-                    print!("{}", render(&st));
+                    print!("{}", render(atlas_i18n::lang(), &st));
                 }
                 Ok(())
             }
@@ -116,7 +117,12 @@ pub(super) async fn run_job(
     if let Some(dir) = queue {
         let mut t = dir
             .enqueue(&label, &command_line, &cwd, &project_of(&cwd))
-            .with_context(|| format!("cannot join the heavy queue in {}", dir.root().display()))?;
+            .with_context(|| {
+                t!(
+                    "cmd_misc_heavy_ctx_join",
+                    dir = dir.root().display().to_string()
+                )
+            })?;
         let mut said = false;
         let queued_since = Instant::now();
         while !t.try_start(slots)? {
@@ -125,14 +131,21 @@ pub(super) async fn run_job(
                 eprintln!("{}", waiting_line(&dir.status(slots), &t, &label));
             }
             if interrupt.fired_within(POLL).await {
-                eprintln!("heavy: interrupted while queued ({label})");
+                eprintln!(
+                    "{}",
+                    t!("cmd_misc_heavy_interrupted_queued", label = &label)
+                );
                 return Ok(EXIT_INTERRUPTED);
             }
         }
         if said {
             eprintln!(
-                "heavy: {label} got a slot after {}",
-                human(queued_since.elapsed().as_secs())
+                "{}",
+                t!(
+                    "cmd_misc_heavy_got_slot",
+                    label = &label,
+                    wait = human(queued_since.elapsed().as_secs())
+                )
             );
         }
         if !wait_for_gates(&heavy::Gates::from_env(), &label, &mut interrupt).await {
@@ -158,21 +171,34 @@ async fn wait_for_gates(gates: &heavy::Gates, label: &str, interrupt: &mut Inter
     let start = Instant::now();
     let mut said: Option<String> = None;
     while let Some(hold) = gates.hold_now() {
-        let why = describe_hold(&hold);
+        let why = describe_hold(atlas_i18n::lang(), &hold);
         if start.elapsed().as_secs() >= gates.wait_s {
             eprintln!(
-                "heavy: {why} after {}s; running {label} anyway, timing-sensitive tests may flake",
-                gates.wait_s
+                "{}",
+                t!(
+                    "cmd_misc_heavy_hold_anyway",
+                    why = &why,
+                    secs = gates.wait_s,
+                    label = label
+                )
             );
             break;
         }
         // Say it once per reason: a job that waited for memory and then for load tells both.
         if said.as_deref() != Some(kind(&hold)) {
             said = Some(kind(&hold).to_string());
-            eprintln!("heavy: {why}, waiting up to {}s ({label})", gates.wait_s);
+            eprintln!(
+                "{}",
+                t!(
+                    "cmd_misc_heavy_hold_waiting",
+                    why = &why,
+                    secs = gates.wait_s,
+                    label = label
+                )
+            );
         }
         if interrupt.fired_within(GATE_POLL).await {
-            eprintln!("heavy: interrupted while waiting for the machine ({label})");
+            eprintln!("{}", t!("cmd_misc_heavy_interrupted_gates", label = label));
             return false;
         }
     }
@@ -186,12 +212,21 @@ fn kind(h: &heavy::Hold) -> &'static str {
     }
 }
 
-fn describe_hold(h: &heavy::Hold) -> String {
+fn describe_hold(tag: &str, h: &heavy::Hold) -> String {
+    use crate::numfmt::fixed;
     match h {
-        heavy::Hold::Load { load, max } => format!("load {load:.1} >= {max:.1}"),
-        heavy::Hold::Memory { free_pct, min_pct } => {
-            format!("only {free_pct}% of memory free (< {min_pct}%)")
-        }
+        heavy::Hold::Load { load, max } => t_in!(
+            tag,
+            "cmd_misc_heavy_hold_load",
+            load = fixed(tag, *load, 1),
+            max = fixed(tag, *max, 1)
+        ),
+        heavy::Hold::Memory { free_pct, min_pct } => t_in!(
+            tag,
+            "cmd_misc_heavy_hold_memory",
+            free = u64::from(*free_pct),
+            min = u64::from(*min_pct)
+        ),
     }
 }
 
@@ -215,7 +250,7 @@ async fn spawn_and_wait(
     }
     let mut child = cmd
         .spawn()
-        .with_context(|| format!("failed to spawn: {}", command.join(" ")))?;
+        .with_context(|| t!("cmd_misc_heavy_ctx_spawn", command = command.join(" ")))?;
     let pid = child.id();
     let pumps = capture.map(|sink| {
         let (tx, rx) = tokio::sync::mpsc::unbounded_channel();
@@ -378,46 +413,79 @@ fn human(secs: u64) -> String {
 fn waiting_line(st: &Status, ticket: &Ticket, label: &str) -> String {
     let me = &ticket.job().id;
     let ahead = st.queued.iter().take_while(|e| &e.job.id != me).count();
-    let mut s = format!("heavy: {label} is queued ({ahead} ahead");
-    if let Some(eta) = st
+    let eta = st
         .queued
         .iter()
         .find(|e| &e.job.id == me)
-        .and_then(|e| e.eta_s)
-    {
-        s.push_str(&format!(", ~{} to start", human(eta)));
-    }
-    s.push(')');
+        .and_then(|e| e.eta_s);
+    let mut s = match eta {
+        Some(eta) => t!(
+            "cmd_misc_heavy_queued_eta",
+            label = label,
+            ahead = ahead,
+            eta = human(eta)
+        ),
+        None => t!("cmd_misc_heavy_queued", label = label, ahead = ahead),
+    };
     for e in &st.running {
-        s.push_str(&format!(
-            "\n  running: {} (pid {}, {}, {})",
-            e.job.label,
-            e.job.pid,
-            e.job.project,
-            human(e.age_s)
+        s.push('\n');
+        s.push_str(&t!(
+            "cmd_misc_heavy_running_row",
+            label = &e.job.label,
+            pid = e.job.pid,
+            project = &e.job.project,
+            age = human(e.age_s)
         ));
     }
     s
 }
 
 /// The `atlas heavy status` table.
-pub fn render(st: &Status) -> String {
-    let mut out = format!(
-        "{} of {} slot{} busy, {} waiting{}{}\n",
-        st.running.len(),
-        st.slots,
-        if st.slots == 1 { "" } else { "s" },
-        st.queued.len(),
-        st.load
-            .map_or_else(String::new, |l| format!(", load {l:.1}")),
-        st.mem_available_pct
-            .map_or_else(String::new, |m| format!(", {m}% memory free")),
-    );
+pub fn render(tag: &str, st: &Status) -> String {
+    // The header is a list of parts (busy, waiting, and the load and memory when known), joined by commas.
+    let mut parts = vec![
+        t_in!(
+            tag,
+            "cmd_misc_heavy_status_busy",
+            running = st.running.len(),
+            slots = st.slots
+        ),
+        t_in!(
+            tag,
+            "cmd_misc_heavy_status_waiting",
+            waiting = st.queued.len()
+        ),
+    ];
+    if let Some(l) = st.load {
+        parts.push(t_in!(
+            tag,
+            "cmd_misc_heavy_status_load",
+            load = crate::numfmt::fixed(tag, l, 1)
+        ));
+    }
+    if let Some(m) = st.mem_available_pct {
+        parts.push(t_in!(
+            tag,
+            "cmd_misc_heavy_status_memory",
+            pct = u64::from(m)
+        ));
+    }
+    let mut out = format!("{}\n", parts.join(", "));
     let row = |e: &Entry| {
         let eta = e.eta_s.map_or_else(|| "?".to_string(), human);
         let what = match e.job.state {
-            State::Running => format!("running {} (eta {eta})", human(e.age_s)),
-            State::Queued => format!("waiting {} (starts in ~{eta})", human(e.age_s)),
+            State::Running => t_in!(
+                tag,
+                "cmd_misc_heavy_row_running",
+                age = human(e.age_s),
+                eta = eta
+            ),
+            State::Queued => t_in!(
+                tag,
+                "cmd_misc_heavy_row_waiting",
+                age = human(e.age_s),
+                eta = eta
+            ),
         };
         format!(
             "  {:<18} {:<16} pid {:<7} {}\n    {}\n",
@@ -458,10 +526,13 @@ mod tests {
             mem_available_pct: mem,
         };
         assert_eq!(
-            render(&st(Some(2.5), Some(42))),
+            render("en", &st(Some(2.5), Some(42))),
             "0 of 3 slots busy, 0 waiting, load 2.5, 42% memory free\n"
         );
-        assert_eq!(render(&st(None, None)), "0 of 3 slots busy, 0 waiting\n");
+        assert_eq!(
+            render("en", &st(None, None)),
+            "0 of 3 slots busy, 0 waiting\n"
+        );
     }
 
     #[test]
@@ -470,12 +541,12 @@ mod tests {
             free_pct: 7,
             min_pct: 20,
         };
-        assert_eq!(describe_hold(&mem), "only 7% of memory free (< 20%)");
+        assert_eq!(describe_hold("en", &mem), "only 7% of memory free (< 20%)");
         let load = heavy::Hold::Load {
             load: 10.04,
             max: 9.0,
         };
-        assert_eq!(describe_hold(&load), "load 10.0 >= 9.0");
+        assert_eq!(describe_hold("en", &load), "load 10.0 >= 9.0");
         assert_ne!(kind(&mem), kind(&load));
     }
 

@@ -1,5 +1,6 @@
 use anyhow::{Result, bail};
 use atlas_core::util::expand_tilde;
+use atlas_i18n::t;
 use clap::Args;
 
 use super::AtlasCommand;
@@ -30,8 +31,12 @@ impl AtlasCommand for McpArgs {
         };
         let root = root.canonicalize().unwrap_or(root);
         if !root.is_dir() {
-            bail!("not a directory: {}", root.display());
+            bail!(t!(
+                "cmd_misc_mcp_not_dir",
+                path = root.display().to_string()
+            ));
         }
+        // i18n-ignore: log line of the MCP server on its stderr, read in the log of the agent that launched it
         eprintln!("atlas mcp: serving {} on stdio", root.display());
         atlas_tui::mcp::serve(&root).await
     }

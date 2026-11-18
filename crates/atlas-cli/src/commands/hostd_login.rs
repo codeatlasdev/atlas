@@ -7,8 +7,9 @@
 use std::path::Path;
 use std::time::Duration;
 
-use anyhow::{Context, Result, anyhow};
+use anyhow::{Context, Result};
 use atlas_host::HostClient;
+use atlas_i18n::t;
 use base64::Engine;
 use base64::engine::general_purpose::STANDARD as B64;
 use serde_json::{Value, json};
@@ -44,12 +45,12 @@ impl Drop for RawMode {
 pub(crate) async fn run(dir: &Path, engine: &str, crewmate: Option<&str>) -> Result<i32> {
     let c = HostClient::connect_dir(dir, "cli")
         .await
-        .map_err(|_| anyhow!("atlas hostd is not running ({})", dir.display()))?;
+        .map_err(|_| super::hostd::not_running(dir))?;
     let (cmd, args) = login_request(engine, crewmate);
     let opened = c.call(cmd, args).await?;
     let pty = opened["pty"]
         .as_str()
-        .context("hostd answered without a terminal")?
+        .with_context(|| t!("cmd_hostd_login_no_terminal"))?
         .to_string();
     if let Ok((cols, rows)) = crossterm::terminal::size() {
         let _ = c

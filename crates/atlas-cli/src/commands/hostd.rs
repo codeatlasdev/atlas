@@ -6,6 +6,7 @@ use std::time::Duration;
 
 use anyhow::{Result, anyhow};
 use atlas_host::{HostClient, paths};
+use atlas_i18n::t;
 use base64::Engine;
 use base64::engine::general_purpose::STANDARD as B64;
 use clap::{Args, Subcommand};
@@ -103,12 +104,18 @@ async fn pair_invite(c: &HostClient) -> Result<Value> {
             return Ok(v);
         }
         if t0.elapsed() >= RELAY_WAIT * 2 {
-            return Err(anyhow!(
-                "the pairing endpoint has no address a phone could dial (no relay, no LAN address): is this machine online?"
-            ));
+            return Err(anyhow!(t!("cmd_hostd_pair_no_address")));
         }
         tokio::time::sleep(Duration::from_millis(300)).await;
     }
+}
+
+/// The error of every command that needs the daemon in `dir` and finds none.
+pub(crate) fn not_running(dir: &std::path::Path) -> anyhow::Error {
+    anyhow!(t!(
+        "cmd_hostd_not_running_in",
+        dir = dir.display().to_string()
+    ))
 }
 
 /// The lab's own directory under the main hostd dir, unless `--dir` names one.
@@ -158,12 +165,18 @@ impl AtlasCommand for HostdArgs {
         if self.check {
             return match snapshot(&dir).await {
                 None => {
-                    println!("Terminal host is not running ({}).", dir.display());
+                    println!(
+                        "{}",
+                        t!(
+                            "cmd_hostd_check_not_running",
+                            dir = dir.display().to_string()
+                        )
+                    );
                     std::process::exit(1);
                 }
                 Some((_, s)) => match check_report(&s, bundled, &hint) {
                     None => {
-                        println!("Terminal host {bundled} is current.");
+                        println!("{}", t!("cmd_hostd_current", version = bundled));
                         Ok(())
                     }
                     Some(r) => {
@@ -190,22 +203,23 @@ impl AtlasCommand for HostdArgs {
                 &mut out,
             )?;
             // Stdout is the archive: the summary goes to stderr.
-            eprintln!("exported {} crewmate(s)", m.crewmates.len());
+            eprintln!("{}", t!("cmd_hostd_exported", count = m.crewmates.len()));
             return Ok(());
         }
         if self.crew_import {
             let r = atlas_host::crew::import_archive(&dir, std::io::stdin().lock(), self.rename)?;
             for i in &r.imported {
-                println!(
-                    "imported {} ({}){}",
-                    i.name,
-                    i.new_id,
-                    if i.old_id != i.new_id {
-                        format!(" was {}", i.old_id)
-                    } else {
-                        String::new()
-                    }
-                );
+                let line = if i.old_id != i.new_id {
+                    t!(
+                        "cmd_hostd_imported_renamed",
+                        name = &i.name,
+                        new_id = &i.new_id,
+                        old_id = &i.old_id
+                    )
+                } else {
+                    t!("cmd_hostd_imported", name = &i.name, new_id = &i.new_id)
+                };
+                println!("{line}");
             }
             return Ok(());
         }
@@ -219,14 +233,14 @@ impl AtlasCommand for HostdArgs {
         if self.mobile_pair {
             let c = HostClient::connect_dir(&dir, "cli")
                 .await
-                .map_err(|_| anyhow!("atlas hostd is not running ({})", dir.display()))?;
+                .map_err(|_| not_running(&dir))?;
             println!("{}", pair_invite(&c).await?);
             return Ok(());
         }
         if self.crew_pause || self.crew_resume {
             let c = HostClient::connect_dir(&dir, "cli")
                 .await
-                .map_err(|_| anyhow!("atlas hostd is not running ({})", dir.display()))?;
+                .map_err(|_| not_running(&dir))?;
             c.call(
                 if self.crew_pause {
                     "crew_pause"
@@ -237,24 +251,34 @@ impl AtlasCommand for HostdArgs {
             )
             .await?;
             println!(
-                "crew {}",
-                if self.crew_pause { "paused" } else { "resumed" }
+                "{}",
+                if self.crew_pause {
+                    t!("cmd_hostd_crew_paused")
+                } else {
+                    t!("cmd_hostd_crew_resumed")
+                }
             );
             return Ok(());
         }
         if self.stop || self.status || self.upgrade {
             let c = HostClient::connect_dir(&dir, "cli")
                 .await
-                .map_err(|_| anyhow!("atlas hostd is not running ({})", dir.display()))?;
+                .map_err(|_| not_running(&dir))?;
             if self.stop {
                 c.call("shutdown", json!({})).await?;
-                println!("atlas hostd stopped");
+                println!("{}", t!("cmd_hostd_stopped"));
             } else if self.upgrade {
                 let exe = std::env::current_exe()?;
                 let r = c
                     .call("upgrade", json!({"exe": exe.to_string_lossy()}))
                     .await?;
-                println!("atlas hostd upgraded; {} terminal(s) kept", r["handed_off"]);
+                println!(
+                    "{}",
+                    t!(
+                        "cmd_hostd_upgraded_kept",
+                        count = r["handed_off"].as_u64().unwrap_or(0)
+                    )
+                );
             } else {
                 println!(
                     "{}",
@@ -332,7 +356,7 @@ impl AtlasCommand for TermArgs {
         }
         let c = HostClient::connect_dir(&paths::base(), "cli")
             .await
-            .map_err(|_| anyhow!("atlas hostd is not running; open Atlas Desktop"))?;
+            .map_err(|_| anyhow!(t!("cmd_hostd_not_running_desktop")))?;
         let out = |v: &Value, human: &dyn Fn(&Value)| {
             if self.json {
                 println!("{v}");
@@ -403,6 +427,7 @@ impl AtlasCommand for TermArgs {
                         out(&v, &|v| println!("{}", v["state"].as_str().unwrap_or("")));
                     }
                     None => {
+                        // i18n-ignore: `timeout` is a state word of the terminal protocol, like the `idle` and `exit` lines on stdout; scripts and agents match it.
                         out(&json!({"state": "timeout"}), &|_| eprintln!("timeout"));
                         std::process::exit(2);
                     }
@@ -469,6 +494,7 @@ impl TermArgs {
                 match v {
                     Ok(v) => print(&v, &|v| println!("{}", v["state"].as_str().unwrap_or(""))),
                     Err(e) if e.to_string().contains("timeout") => {
+                        // i18n-ignore: `timeout` is a state word of the terminal protocol, like the `idle` and `exit` lines on stdout; scripts and agents match it.
                         print(&json!({"state": "timeout"}), &|_| eprintln!("timeout"));
                         std::process::exit(2);
                     }
@@ -498,14 +524,14 @@ async fn wait(c: &HostClient, pty: &str, idle: bool) -> Result<Value> {
             ev.recv().await
         };
         let Ok(e) = next else {
-            return Err(anyhow!("hostd disconnected"));
+            return Err(anyhow!(t!("cmd_hostd_disconnected")));
         };
         if e["pty"] != pty && e["ev"] != "disconnected" {
             continue;
         }
         match e["ev"].as_str() {
             Some("pty_exit") => return Ok(json!({"state": "exit", "code": e["code"]})),
-            Some("disconnected") => return Err(anyhow!("hostd disconnected")),
+            Some("disconnected") => return Err(anyhow!(t!("cmd_hostd_disconnected"))),
             _ => {}
         }
     }

@@ -6,6 +6,7 @@
 	import type { RichCtx } from "#lib/viewers/rich/ctx.ts";
 	import Code from "#lib/viewers/rich/Code.svelte";
 	import "#lib/viewers/rich/rich.css";
+	import { m } from "#lib/i18n/m.ts";
 
 	let { ctx }: { ctx: RichCtx } = $props();
 
@@ -24,16 +25,19 @@
 	<div class="rv-inner">
 		{#if !parsed.ok}
 			<div class="rv-banner bad">
-				<TriangleAlert size={14} /> Cannot parse: {parsed.error}
+				<TriangleAlert size={14} />
+				{m.viewers_devops_cannot_parse({ error: parsed.error })}
 				<span class="sp"></span>
-				<button class="rv-btn" onclick={() => ctx.toSource(parsed.line)}>Open as source</button>
+				<button class="rv-btn" onclick={() => ctx.toSource(parsed.line)}
+					>{m.viewers_devops_open_as_source()}</button
+				>
 			</div>
 		{:else if nb}
 			<header class="rv-head">
 				<div class="rv-title">
 					<BookOpen size={18} />
 					<h1>{ctx.path.split("/").pop()}</h1>
-					<span class="rv-ver">{nb.cells.length} cell{nb.cells.length === 1 ? "" : "s"}</span>
+					<span class="rv-ver">{m.viewers_files_notebook_view_cells({ count: nb.cells.length })}</span>
 				</div>
 				<div class="rv-facts">
 					<span class="rv-chip info">{nb.kernel}</span>
@@ -49,7 +53,9 @@
 							</article>
 						{:else}
 							<div class="in">
-								<span class="ct">{c.type === "code" ? `[${c.execution ?? " "}]` : "raw"}</span>
+								<span class="ct"
+									>{c.type === "code" ? `[${c.execution ?? " "}]` : m.viewers_files_notebook_view_raw()}</span
+								>
 								<div class="src"><Code code={c.source} lang={c.type === "code" ? nb.language : null} /></div>
 							</div>
 							{#each c.outputs as o, oi (oi)}
@@ -57,7 +63,10 @@
 									<span class="ct"></span>
 									<div class="body">
 										{#if o.kind === "image"}
-											<img src="data:{o.mime};base64,{o.data}" alt="Cell {i + 1} output" />
+											<img
+												src="data:{o.mime};base64,{o.data}"
+												alt={m.viewers_files_notebook_view_output_alt({ n: i + 1 })}
+											/>
 										{:else if o.kind === "html"}
 											<pre class="rv-code ca-selectable">{strip(o.text)}</pre>
 										{:else if o.kind === "error"}

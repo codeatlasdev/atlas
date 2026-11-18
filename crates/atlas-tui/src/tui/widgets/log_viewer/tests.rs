@@ -295,7 +295,7 @@ fn empty_filtered_view_says_zero_matches() {
     assert!(
         rows_text(&term)
             .iter()
-            .any(|r| r.contains("0 matches in web"))
+            .any(|r| r.contains("No matches in web"))
     );
     // Not narrowed: plain blank.
     p.narrowed = false;

@@ -4,6 +4,8 @@
  */
 import type { Crewmate } from "#lib/crew.ts";
 import { crewmateKey } from "#lib/crew/crewmateKey.ts";
+import { upperFirst } from "#lib/i18n/fmt.ts";
+import { m } from "#lib/i18n/m.ts";
 
 export const FAVORITE_KEY = "crew:favorite";
 
@@ -74,7 +76,7 @@ export function groupSections(all: Entry[], servers: { key: string; name: string
 		if (!map.has(entry.hostKey)) {
 			map.set(entry.hostKey, {
 				hostKey: entry.hostKey,
-				hostName: host?.name ?? "This computer",
+				hostName: host?.name ?? upperFirst(m.common_os_your_computer()),
 				projects: [],
 			});
 		}

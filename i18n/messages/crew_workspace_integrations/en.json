@@ -1,0 +1,45 @@
+{
+	"crew_workspace_integrations_1password_description": "Securely share credentials with the crew.",
+	"crew_workspace_integrations_catalog_coming_soon": "Coming soon",
+	"crew_workspace_integrations_catalog_connected": "Connected",
+	"crew_workspace_integrations_catalog_empty": "No integrations match your search.",
+	"crew_workspace_integrations_catalog_filter_by_category": "Filter by category",
+	"crew_workspace_integrations_catalog_integrations": "Integrations",
+	"crew_workspace_integrations_catalog_recommended_for_you": "Recommended for you",
+	"crew_workspace_integrations_catalog_search_apps_and_skills": "Search apps and skills",
+	"crew_workspace_integrations_catalog_search_integrations": "Search integrations",
+	"crew_workspace_integrations_category_all": "All",
+	"crew_workspace_integrations_category_code": "Code",
+	"crew_workspace_integrations_category_communication": "Communication",
+	"crew_workspace_integrations_category_design": "Design",
+	"crew_workspace_integrations_category_password_managers": "Password managers",
+	"crew_workspace_integrations_category_productivity": "Productivity",
+	"crew_workspace_integrations_connected_count": [
+		{
+			"declarations": [
+				"input count",
+				"local countExact = count",
+				"local countPlural = count: plural"
+			],
+			"selectors": [
+				"countExact",
+				"countPlural"
+			],
+			"match": {
+				"countExact=0, countPlural=*": "None connected",
+				"countExact=*, countPlural=one": "{count} connected",
+				"countExact=*, countPlural=*": "{count} connected"
+			}
+		}
+	],
+	"crew_workspace_integrations_figma_description": "Read design files and export assets.",
+	"crew_workspace_integrations_github_description": "Give the crew access to your private repositories.",
+	"crew_workspace_integrations_github_skill_ci_status": "Read CI status",
+	"crew_workspace_integrations_github_skill_clone": "Clone private repos",
+	"crew_workspace_integrations_github_skill_comment_prs": "Comment on pull requests",
+	"crew_workspace_integrations_github_skill_open_prs": "Open pull requests",
+	"crew_workspace_integrations_google_docs_description": "Read and edit documents in the crew's workspace.",
+	"crew_workspace_integrations_linear_description": "Create and update issues from the crew's tasks.",
+	"crew_workspace_integrations_notion_description": "Read and write Notion pages as part of crew tasks.",
+	"crew_workspace_integrations_slack_description": "Send messages and read channel history."
+}

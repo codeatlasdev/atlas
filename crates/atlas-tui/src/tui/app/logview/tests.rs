@@ -294,7 +294,7 @@ fn full_render_shows_bar_counts_empty_state_and_badges() {
     app.update(Message::ToggleSearchMode);
     app.update(Message::LogSearchInput('x'));
     let rows = screen(&app, 160, 40).join("\n");
-    assert!(rows.contains("0 matches in All"), "{rows}");
+    assert!(rows.contains("No matches in All"), "{rows}");
 
     // Toggles are echoed on the bar.
     app.update(Message::LogSearchClear);
@@ -660,7 +660,7 @@ fn custom_prompt_applies_valid_input_and_keeps_the_prompt_on_invalid() {
     }
     app.update(Message::TimeCommit);
     assert!(app.logs.time_input.is_none());
-    assert_eq!(app.logs.time_range.label(), "00:00–23:59");
+    assert_eq!(app.logs.time_range.label(), "00:00-23:59");
     assert_eq!(app.filtered_logs().len(), 2, "today's whole day shows both");
 }
 
@@ -679,8 +679,8 @@ fn custom_range_in_the_past_hides_fresh_lines_and_shows_the_empty_state() {
     if crate::runtime::timerange::seconds_of_day(crate::runtime::clock::now_ms()) > 2 {
         assert!(app.filtered_logs().is_empty());
         let text = screen(&app, 160, 40).join("\n");
-        assert!(text.contains("0 matches in"), "{text}");
-        assert!(text.contains("time: 00:00–00:00"), "{text}");
+        assert!(text.contains("No matches in"), "{text}");
+        assert!(text.contains("time: 00:00-00:00"), "{text}");
     }
 }
 

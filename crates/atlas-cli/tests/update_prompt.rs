@@ -141,6 +141,8 @@ impl Sandbox {
             .arg(DRIVER)
             .env("HOME", self.home.path())
             .env("PATH", path)
+            // The text of these tests is English whatever language the machine is set to.
+            .env("ATLAS_LANG", "en")
             .env("TERM", "xterm-256color")
             // Debug test binaries count as "linked" (hint only) unless forced.
             .env("ATLAS_UPDATE_PROMPT", "force")
@@ -279,6 +281,7 @@ fn a_cache_from_another_channel_is_not_the_defaults_offer() {
 fn no_prompt_for_non_interactive_flags() {
     let sb = Sandbox::new(&newer_cache());
     let o = Command::new(BIN)
+        .env("ATLAS_LANG", "en")
         .args(["dev", "--status", "--dir"])
         .arg(sb.project.path())
         .env("HOME", sb.home.path())

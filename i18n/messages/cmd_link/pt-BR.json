@@ -1,0 +1,66 @@
+{
+	"cmd_link_add_refused": "O runner recusou adicionar o serviço",
+	"cmd_link_adhoc_usage": "uso: atlas -- <comando> [args…]",
+	"cmd_link_app_link_removed": "Link do desktop removido; não há backup para restaurar. Instale o app com {command}.",
+	"cmd_link_app_missing": "{path} não encontrado. Rode `atlas link --desktop` sem `--no-build` para gerar o build.",
+	"cmd_link_backed_up": "Backup feito  → {path}",
+	"cmd_link_backup_failed": "Não foi possível fazer backup de {path}",
+	"cmd_link_build_failed": "O `cargo build` falhou. Corrija os erros acima e rode `atlas link` de novo.",
+	"cmd_link_copy_failed": "Não foi possível copiar {path}",
+	"cmd_link_create_failed": "Não foi possível criar {path}",
+	"cmd_link_creating_worktree": "Criando worktree (pode levar um minuto)",
+	"cmd_link_desktop_build_failed": "O build do desktop falhou. Corrija os erros acima e rode `atlas link --desktop` de novo.",
+	"cmd_link_desktop_needs_macos": "O `atlas link --desktop` só funciona com o app do macOS. Neste sistema, execute o app de debug diretamente.",
+	"cmd_link_desktop_not_installed": "O Atlas Desktop não está instalado. Rode `atlas desktop` para instalar.",
+	"cmd_link_dev_busy": "O `atlas dev` está rodando, mas ocupado. Tente novamente em instantes.",
+	"cmd_link_dev_in_terminal": "O `atlas dev` de {root} está rodando em um terminal (pid {pid}). Feche-o ou rode `atlas down` e repita este comando.",
+	"cmd_link_kept_as_copy": "Link removido, mas não há backup do binário de release em {path}.",
+	"cmd_link_kept_as_copy_next": "{path} agora é uma cópia simples do build de desenvolvimento, então o `atlas` continua funcionando; rode {command} para instalar uma versão publicada.",
+	"cmd_link_launching": "Iniciando o Atlas Desktop com {path}",
+	"cmd_link_linked": "Link criado   {link} → {target}",
+	"cmd_link_no_cargo": "Não foi possível executar o `cargo`. Verifique se o Rust está instalado e se o `cargo` está no PATH.",
+	"cmd_link_no_cwd": "Não foi possível ler a pasta atual. Rode o comando em uma pasta existente ou passe `--dir <workspace-root>`.",
+	"cmd_link_no_debug_binary": "Não há binário de debug em {path}. Rode `cargo build -p atlas-cli` antes ou use `atlas link` sem `--no-build`.",
+	"cmd_link_no_home": [
+		{
+			"declarations": [
+				"input os"
+			],
+			"selectors": [
+				"os"
+			],
+			"match": {
+				"os=windows": "Não foi possível encontrar a sua pasta pessoal. Verifique se USERPROFILE está definido e rode o comando de novo.",
+				"os=*": "Não foi possível encontrar a sua pasta pessoal. Verifique se HOME está definido e rode o comando de novo."
+			}
+		}
+	],
+	"cmd_link_no_tauri": "Não foi possível executar o `cargo tauri`. Instale com `cargo install tauri-cli`.",
+	"cmd_link_no_workspace": "Não foi possível encontrar um workspace do Cargo. Rode o comando dentro do repositório do atlas ou passe `--dir <workspace-root>`.",
+	"cmd_link_not_linked": "O atlas não aponta para um build de desenvolvimento. Nada a fazer.",
+	"cmd_link_now_runs_debug": "O `atlas` instalado agora executa o build de debug local.",
+	"cmd_link_open_missing": "{path} não existe. Verifique o caminho e tente novamente.",
+	"cmd_link_opened": "Aberto no Atlas Desktop: {path}",
+	"cmd_link_rebuild_anytime": "Recompile quando quiser com {command}; não é preciso reinstalar.",
+	"cmd_link_rebuild_desktop": "Recompile com {link} ou use {dev} para ver as mudanças ao vivo.",
+	"cmd_link_reinstall": "Reinstale: {command}",
+	"cmd_link_remove_link_failed": "Não foi possível remover o link {path}",
+	"cmd_link_removed_dangling": "Link removido. Ele apontava para um build que não existe mais, e não há backup.",
+	"cmd_link_replace_failed": "Não foi possível substituir {path}",
+	"cmd_link_resolve_failed": "Não foi possível obter o caminho absoluto de {path}",
+	"cmd_link_restore_failed": "Não foi possível restaurar {path}",
+	"cmd_link_restore_release": "Restaure o binário de release com {command}.",
+	"cmd_link_run_failed": "Não foi possível executar {path}",
+	"cmd_link_runner_started": "runner do atlas iniciado (pid {pid}) · anexar: atlas dev · parar: atlas down",
+	"cmd_link_save_failed": "Não foi possível salvar o backup em {path}",
+	"cmd_link_service_logs": "logs: {path}",
+	"cmd_link_service_port": "porta: {port} (http://localhost:{port})",
+	"cmd_link_service_started": "serviço {service} iniciado (não salvo no atlas.yaml)",
+	"cmd_link_setup_failed": "O `scripts/setup.sh` falhou. Corrija os erros acima e rode `atlas link --desktop` de novo.",
+	"cmd_link_symlink_failed": "Não foi possível criar o link em {path}",
+	"cmd_link_symlink_windows": "{reason} (o Windows precisa do Modo de Desenvolvedor ativado para criar links simbólicos)",
+	"cmd_link_title": "atlas link: modo de desenvolvimento",
+	"cmd_link_unlinked_app": "Link removido e {path} restaurado",
+	"cmd_link_unlinked_binary": "Link removido e binário de release restaurado em {path}",
+	"cmd_link_workspace": "Workspace: {dir}"
+}

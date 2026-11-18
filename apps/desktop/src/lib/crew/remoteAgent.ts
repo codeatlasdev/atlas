@@ -9,6 +9,7 @@
  */
 import { invoke } from "@tauri-apps/api/core";
 import { builtinAgent } from "#lib/agentRegistry.ts";
+import { m } from "#lib/i18n/m.ts";
 import {
 	buildClaudeEnvLines,
 	buildCodexConfigToml,
@@ -173,7 +174,7 @@ export async function probeProvider(baseUrl: string, apiKey: string): Promise<{ 
 	return {
 		ok: true,
 		text: models.length
-			? `Connected — ${models.length} model${models.length === 1 ? "" : "s"} available`
-			: "Connected",
+			? m.crew_workspace_provider_connected_models({ count: models.length })
+			: m.crew_workspace_integrations_catalog_connected(),
 	};
 }

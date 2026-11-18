@@ -6,6 +6,7 @@
 	import GithubAccounts from "#lib/crew/integrations/GithubAccounts.svelte";
 	import IntegrationCard from "#lib/crew/integrations/IntegrationCard.svelte";
 	import type { Integration } from "#lib/crew/integrations.ts";
+	import { m } from "#lib/i18n/m.ts";
 
 	let {
 		integration,
@@ -15,9 +16,13 @@
 </script>
 
 <div class="detail-head">
-	<button class="back-btn" onclick={onback} aria-label="Back to integrations">
+	<button
+		class="back-btn"
+		onclick={onback}
+		aria-label={m.crew_workspace_integration_detail_back_to_integrations()}
+	>
 		<ArrowLeft size={15} />
-		<span>Integrations</span>
+		<span>{m.crew_workspace_integrations_catalog_integrations()}</span>
 	</button>
 	<CloseButton {onclose} />
 </div>
@@ -34,9 +39,9 @@
 				href={integration.sourceUrl}
 				target="_blank"
 				rel="noreferrer"
-				aria-label="View source for {integration.name}"
+				aria-label={m.crew_workspace_integration_detail_view_source_for_name({ name: integration.name })}
 			>
-				View source
+				{m.crew_workspace_integration_detail_view_source()}
 				<ExternalLink size={11} aria-hidden="true" />
 			</a>
 		{/if}
@@ -49,18 +54,18 @@
 {#if integration.id === "github"}
 	<GithubAccounts />
 
-	<IntegrationCard title="Skills" count={integration.skills.length}>
-		<ul class="skills-list" aria-label="Integration skills">
+	<IntegrationCard title={m.crew_workspace_integration_detail_skills()} count={integration.skills.length}>
+		<ul class="skills-list" aria-label={m.crew_workspace_integration_detail_integration_skills()}>
 			{#each integration.skills as skill (skill.label)}
 				<li class="skill-row" class:skill-row--unavailable={!skill.available}>
 					{#if skill.available}
 						<span class="skill-check" aria-hidden="true"><Check size={13} /></span>
 					{:else}
-						<span class="skill-soon" aria-label="Coming soon">–</span>
+						<span class="skill-soon" aria-label={m.crew_workspace_integrations_catalog_coming_soon()}>–</span>
 					{/if}
 					<span class="skill-label">{skill.label}</span>
 					{#if !skill.available}
-						<span class="skill-badge">Coming soon</span>
+						<span class="skill-badge">{m.crew_workspace_integrations_catalog_coming_soon()}</span>
 					{/if}
 				</li>
 			{/each}

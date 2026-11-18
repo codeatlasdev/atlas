@@ -1,6 +1,6 @@
 // @ts-nocheck
 import { describe, expect, test } from "bun:test";
-import { stepGroups, stepPhrase, workingLabel, IDLE_WORDS } from "./stepPhrase.ts";
+import { stepGroups, stepPhrase, workingLabel, idleWords } from "./stepPhrase.ts";
 
 // A step is what hostd records per tool call: "<tool> <first string argument>" (crates/atlas-host/src/crew/runner.rs).
 // The working line shows it as a short phrase, so the user sees what the crewmate is doing, not just "Working".
@@ -53,13 +53,13 @@ describe("workingLabel", () => {
 	test("after a few quiet seconds it cycles idle words, changing every few seconds", () => {
 		const a = workingLabel("Read src/app.ts", at(10), at(16));
 		const b = workingLabel("Read src/app.ts", at(10), at(20));
-		expect(IDLE_WORDS).toContain(a);
-		expect(IDLE_WORDS).toContain(b);
+		expect(idleWords()).toContain(a);
+		expect(idleWords()).toContain(b);
 		expect(a).not.toBe(b);
 	});
 
 	test("with no step yet it starts cycling right away", () => {
-		expect(IDLE_WORDS).toContain(workingLabel(undefined, undefined, at(1)));
+		expect(idleWords()).toContain(workingLabel(undefined, undefined, at(1)));
 	});
 
 	test("the same moment always gives the same word (no flicker on re-render)", () => {

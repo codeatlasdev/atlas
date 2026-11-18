@@ -3,7 +3,7 @@
 	import type { RichView } from "#lib/viewers/fileType.ts";
 	import {
 		detectLicense,
-		EDITORCONFIG_DOCS,
+		editorconfigDoc,
 		ignoreSections,
 		parseCodeowners,
 		parseEditorconfig,
@@ -14,6 +14,7 @@
 	import type { RichCtx } from "#lib/viewers/rich/ctx.ts";
 	import Copy from "#lib/viewers/rich/Copy.svelte";
 	import "#lib/viewers/rich/rich.css";
+	import { m } from "#lib/i18n/m.ts";
 
 	/** One component for the small line-oriented formats: each is a short list, none deserves its own file. */
 	let { ctx, kind }: { ctx: RichCtx; kind: RichView } = $props();
@@ -35,7 +36,11 @@
 				<div class="rv-title">
 					<Ban size={18} />
 					<h1>{name}</h1>
-					<span class="rv-ver">{ignore.reduce((n, s) => n + s.rules.length, 0)} rules</span>
+					<span class="rv-ver"
+						>{m.viewers_files_format_view_rules_count({
+							count: ignore.reduce((n, s) => n + s.rules.length, 0),
+						})}</span
+					>
 				</div>
 			</header>
 			{#each ignore as s, i (i)}
@@ -47,14 +52,21 @@
 								<span
 									class="rv-chip"
 									class:ok={r.negated}
-									title={r.negated ? "Re-includes matches" : "Ignores matches"}
-									>{r.negated ? "keep" : "ignore"}</span
+									title={r.negated
+										? m.viewers_files_format_view_keep_tip()
+										: m.viewers_files_format_view_ignore_tip()}
+									>{r.negated
+										? m.viewers_files_format_view_ignore_keep()
+										: m.viewers_files_format_view_ignore_ignore()}</span
 								>
 								<span class="rv-k">{r.pattern}</span>
-								{#if r.dirOnly}<span class="rv-chip">directory</span>{/if}
-								{#if r.anchored}<span class="rv-chip">repo root only</span>{/if}
+								{#if r.dirOnly}<span class="rv-chip">{m.viewers_files_format_view_directory()}</span>{/if}
+								{#if r.anchored}<span class="rv-chip">{m.viewers_files_format_view_repo_root_only()}</span
+									>{/if}
 								<span class="rv-v"></span>
-								<button class="rv-btn" onclick={() => ctx.toSource(r.line)}>Line {r.line}</button>
+								<button class="rv-btn" onclick={() => ctx.toSource(r.line)}
+									>{m.viewers_devops_line({ line: r.line })}</button
+								>
 							</div>
 						{/each}
 					</div>
@@ -68,15 +80,15 @@
 					{#if license.spdx}<span class="rv-chip acc mono">{license.spdx}</span>{/if}
 				</div>
 				{#if license.holder || license.year}<p class="rv-desc">
-						Copyright {license.year}
-						{license.holder}
+						{m.viewers_files_format_view_copyright({ year: license.year, holder: license.holder })}
 					</p>{/if}
 				<div class="rv-facts">
 					{#each license.summary as s (s)}<span class="rv-chip ok">{s}</span>{/each}
 					{#if license.spdx}
 						<button
 							class="rv-chip acc link"
-							onclick={() => api.openUrl(`https://spdx.org/licenses/${license.spdx}.html`)}>SPDX page</button
+							onclick={() => api.openUrl(`https://spdx.org/licenses/${license.spdx}.html`)}
+							>{m.viewers_files_format_view_spdx_page()}</button
 						>
 					{/if}
 				</div>
@@ -87,7 +99,12 @@
 				<div class="rv-title">
 					<Users size={18} />
 					<h1>{name}</h1>
-					<span class="rv-ver">{owners.rules.length} rules · {owners.owners.size} owners</span>
+					<span class="rv-ver"
+						>{m.viewers_files_format_view_owners_summary({
+							rules: owners.rules.length,
+							owners: owners.owners.size,
+						})}</span
+					>
 				</div>
 				<div class="rv-facts">
 					{#each owners.owners as [o, n] (o)}
@@ -100,15 +117,21 @@
 				</div>
 			</header>
 			<section class="rv-sec">
-				<h2>Rules <span class="n">last match wins</span></h2>
+				<h2>
+					{m.viewers_files_format_view_rules()}
+					<span class="n">{m.viewers_files_format_view_last_match_wins()}</span>
+				</h2>
 				<div class="rv-list">
 					{#each owners.rules as r (r.line)}
 						<div class="rv-row">
 							<span class="rv-k">{r.pattern}</span>
 							<span class="rv-v"></span>
 							{#each r.owners as o (o)}<span class="rv-chip mono">{o}</span>{/each}
-							{#if !r.owners.length}<span class="rv-chip warn">no owner</span>{/if}
-							<button class="rv-btn" onclick={() => ctx.toSource(r.line)}>Line {r.line}</button>
+							{#if !r.owners.length}<span class="rv-chip warn">{m.viewers_files_format_view_no_owner()}</span
+								>{/if}
+							<button class="rv-btn" onclick={() => ctx.toSource(r.line)}
+								>{m.viewers_devops_line({ line: r.line })}</button
+							>
 						</div>
 					{/each}
 				</div>
@@ -118,8 +141,8 @@
 				<div class="rv-title">
 					<SlidersHorizontal size={18} />
 					<h1>{name}</h1>
-					<span class="rv-ver">{ec.sections.length} section{ec.sections.length === 1 ? "" : "s"}</span>
-					{#if ec.root}<span class="rv-chip acc">root</span>{/if}
+					<span class="rv-ver">{m.viewers_files_format_view_sections({ count: ec.sections.length })}</span>
+					{#if ec.root}<span class="rv-chip acc">{m.viewers_files_format_view_root()}</span>{/if}
 				</div>
 			</header>
 			{#each ec.sections as s (s.glob)}
@@ -132,7 +155,7 @@
 								<span class="rv-chip mono" class:ok={p.value === "true"} class:bad={p.value === "false"}
 									>{p.value}</span
 								>
-								<span class="rv-note">{EDITORCONFIG_DOCS[p.key] ?? ""}</span>
+								<span class="rv-note">{editorconfigDoc(p.key)}</span>
 							</div>
 						{/each}
 					</div>
@@ -143,7 +166,7 @@
 				<div class="rv-title">
 					<Cog size={18} />
 					<h1>{name}</h1>
-					<span class="rv-ver">{procs.length} process{procs.length === 1 ? "" : "es"}</span>
+					<span class="rv-ver">{m.viewers_files_format_view_processes({ count: procs.length })}</span>
 				</div>
 			</header>
 			<div class="rv-list">
@@ -153,14 +176,14 @@
 						<span class="rv-v" title={p.command}>{p.command}</span>
 						<button
 							class="rv-btn run"
-							title="Run in a terminal"
+							title={m.viewers_files_package_view_run_in_terminal()}
 							onclick={() => runInTerminal(ctx.worktreeId, ctx.path, ["sh", "-c", p.command], p.name)}
-							><Play size={11} /> Run</button
+							><Play size={11} /> {m.viewers_devops_make_view_run()}</button
 						>
-						<Copy text={p.command} label="Copy command" />
+						<Copy text={p.command} label={m.viewers_devops_copy_command()} />
 					</div>
 				{:else}
-					<div class="rv-empty">No processes defined</div>
+					<div class="rv-empty">{m.viewers_files_format_view_no_processes_defined()}</div>
 				{/each}
 			</div>
 		{/if}

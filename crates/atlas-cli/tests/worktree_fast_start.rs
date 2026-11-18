@@ -81,6 +81,7 @@ fn fixture() -> Fixture {
 fn cached_build(f: &Fixture, wt: &Path) -> (String, Duration) {
     let started = Instant::now();
     let out = Command::new(BIN)
+        .env("ATLAS_LANG", "en")
         .current_dir(wt)
         .env("ATLAS_CACHE_DIR", &f.store)
         .env("HOME", f.store.parent().unwrap())

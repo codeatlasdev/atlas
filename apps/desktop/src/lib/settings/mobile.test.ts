@@ -1,28 +1,28 @@
 // @ts-nocheck bun test runtime types are not part of the app tsconfig
+import "../../../test/setup.ts";
 import { describe, expect, test } from "bun:test";
 import { readFileSync, writeFileSync } from "node:fs";
 import { join } from "node:path";
 import devicesFixture from "../__fixtures__/mobile-devices.json";
 import pairStartFixture from "../__fixtures__/mobile-pair-start.json";
 import activityFixture from "../__fixtures__/mobile-activity.json";
+import { dateTime, relativeTime } from "#lib/i18n/fmt.ts";
+import { m } from "#lib/i18n/m.ts";
+import { inLocale } from "../../../test/locale.ts";
 import {
-	access,
 	clock,
-	describeActivity,
-	deviceStatus,
 	deviceTitle,
 	groupCode,
 	isGenericName,
 	MOBILE_APP,
 	pairUrl,
-	relativeTime,
-	SCOPE_GROUPS,
-	SCOPES,
+	SCOPE_IDS,
 	secondsLeft,
 	sortDevices,
 	toggleScope,
 	VPN_DOCS,
 } from "./mobile.ts";
+import { access, describeActivity, deviceStatus, scopeGroups, scopeText } from "./mobileText.ts";
 
 // The REAL `mobile_pair_start` reply (written by atlas-host `mobile::tests`), never a hand-made mock.
 const p = pairStartFixture;
@@ -50,7 +50,7 @@ test("the real devices reply has the fields Settings reads", () => {
 	expect(typeof d.name).toBe("string");
 	expect(typeof d.paired_at).toBe("number");
 	expect(typeof d.revoked).toBe("boolean");
-	expect(d.scopes.every((s) => SCOPES.some((x) => x.id === s))).toBe(true);
+	expect(d.scopes.every((s) => SCOPE_IDS.includes(s))).toBe(true);
 });
 
 test("secondsLeft counts down and stops at zero", () => {
@@ -86,24 +86,20 @@ describe("what the list says about a phone", () => {
 	});
 
 	test("the status line: connected now, last seen relative, never connected, always the paired date", () => {
-		const paired = `Paired ${new Date(real.paired_at * 1000).toLocaleDateString("pt-BR")}`;
-		expect(paired).toMatch(/^Paired \d\d\/\d\d\/\d{4}$/);
-		expect(deviceStatus({ ...real, connected: true }, NOW, "pt-BR")).toBe(`Connected now · ${paired}`);
-		expect(deviceStatus(real, NOW, "pt-BR")).toBe(`Last seen 2 min ago · ${paired}`);
+		const paired = dateTime(real.paired_at * 1000, { dateStyle: "medium" });
+		expect(deviceStatus({ ...real, connected: true }, NOW)).toBe(`Connected now · Paired ${paired}`);
+		expect(deviceStatus(real, NOW)).toBe(`Last seen 2 min ago · Paired ${paired}`);
 		const never = { ...real, last_seen: undefined };
-		expect(deviceStatus(never, NOW, "pt-BR")).toBe(`Not connected yet · ${paired}`);
+		expect(deviceStatus(never, NOW)).toBe(`Not connected yet · Paired ${paired}`);
 	});
 
-	test("relative time", () => {
-		const t = 1_700_000_000;
-		const at = (s: number) => relativeTime(t, (t + s) * 1000, "en-US");
-		expect(at(10)).toBe("just now");
-		expect(at(180)).toBe("3 min ago");
-		expect(at(3 * 3600)).toBe("3 h ago");
-		expect(at(30 * 3600)).toBe("yesterday");
-		expect(at(5 * 86400)).toBe("5 days ago");
-		expect(at(90 * 86400)).toBe(`on ${new Date(t * 1000).toLocaleDateString("en-US")}`);
-		expect(relativeTime(t, (t - 500) * 1000)).toBe("just now");
+	test("in another language the line is the catalog's, with that language's date and relative time", async () => {
+		await inLocale("pt-BR", () => {
+			const paired = dateTime(real.paired_at * 1000, { dateStyle: "medium" });
+			const seen = relativeTime(real.last_seen * 1000, NOW);
+			expect(deviceStatus(real, NOW)).toBe(m.mobile_device_status_seen({ seen, paired }));
+			expect(seen).not.toBe("2 min ago");
+		});
 	});
 
 	test("the connected phone first, then the most recently seen", () => {
@@ -120,14 +116,13 @@ describe("what the list says about a phone", () => {
 
 describe("permissions in words", () => {
 	test("every scope is in exactly one group, with a risk line", () => {
-		const grouped = SCOPE_GROUPS.flatMap((g) => g.scopes.map((s) => s.id)).sort();
-		expect(grouped).toEqual(SCOPES.map((s) => s.id).sort());
-		for (const g of SCOPE_GROUPS) for (const s of g.scopes) expect(s.risk.length).toBeGreaterThan(10);
+		const groups = scopeGroups();
+		expect(groups.flatMap((g) => g.scopes.map((s) => s.id)).sort()).toEqual([...SCOPE_IDS].sort());
+		for (const g of groups) for (const s of g.scopes) expect(s.risk.length).toBeGreaterThan(10);
 	});
 
 	test("full, view only, none and custom", () => {
-		const all = SCOPES.map((s) => s.id);
-		expect(access(all)).toMatchObject({ label: "Full access", kind: "full" });
+		expect(access(SCOPE_IDS)).toMatchObject({ label: "Full access", kind: "full" });
 		expect(access(real.scopes)).toMatchObject({ label: "View only", kind: "view" });
 		expect(access(["read"]).detail).toContain("Cannot change anything");
 		expect(access([])).toMatchObject({ label: "No access", kind: "none" });
@@ -135,6 +130,18 @@ describe("permissions in words", () => {
 		// Typing alone is not "view only", and neither is terminals without the list they live in.
 		expect(access(["term_read"]).kind).toBe("custom");
 		expect(access(["read", "term_write"]).kind).toBe("custom");
+	});
+
+	test("a custom summary lists the held permissions in lower case, in the display language", async () => {
+		expect(access(["read", "act"]).detail).toBe(
+			"Can: see projects, logs and agents; restart services, run actions, send prompts.",
+		);
+		await inLocale("pt-BR", () => {
+			const [read, act] = ["read", "act"].map((id) => scopeText(id).label.toLocaleLowerCase("pt-BR"));
+			expect(access(["read", "act"]).detail).toBe(
+				m.mobile_access_custom_detail({ scopes: `${read}; ${act}` }),
+			);
+		});
 	});
 });
 
@@ -150,11 +157,17 @@ describe("the activity, from the real audit lines", () => {
 		);
 	});
 
-	test("a command the list does not know is shown by name, never blank", () => {
-		expect(describeActivity({ ts: 1, cmd: "crewmate_memory_set", args: {} })).toBe("Crewmate memory set");
+	test("a command the list does not know is shown by its name, never blank", () => {
+		expect(describeActivity({ ts: 1, cmd: "crewmate_memory_set", args: {} })).toBe("crewmate_memory_set");
 		expect(describeActivity({ ts: 1, cmd: "", args: null })).toBe("Unknown action");
 		expect(describeActivity({ ts: 1, cmd: "project_service", args: { op: "restart" } })).toBe(
 			"Restarted the stack",
+		);
+		expect(describeActivity({ ts: 1, cmd: "pty_write", args: { data: "<4 bytes base64>" } })).toBe(
+			"Typed in a terminal (3 bytes)",
+		);
+		expect(describeActivity({ ts: 1, cmd: "agent_send", args: { text: "<1 chars>" } })).toBe(
+			"Sent a prompt to an agent (1 character)",
 		);
 	});
 });

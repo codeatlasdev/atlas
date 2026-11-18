@@ -106,6 +106,7 @@ pub(crate) fn recover(hub: &Hub) {
 fn interrupted_and_stored(hub: &Hub, crewmate: &Crewmate, t: Task) -> Task {
     let t = interrupted(t);
     if let Err(e) = hub.crew.store.append_task(&crewmate.id, &t) {
+        // i18n-ignore: log
         eprintln!(
             "atlas crew: crewmate {} task {}: cannot record the restart interruption: {e}",
             crewmate.id, t.id

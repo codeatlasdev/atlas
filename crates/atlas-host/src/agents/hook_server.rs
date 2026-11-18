@@ -35,6 +35,7 @@ async fn bind_loopback(fixed: Option<u16>) -> std::io::Result<TcpListener> {
     if let Some(want) = fixed.filter(|p| *p != 0) {
         match TcpListener::bind(("127.0.0.1", want)).await {
             Ok(l) => return Ok(l),
+            // i18n-ignore: log
             Err(e) => eprintln!(
                 "atlas hostd: hook port {want} unavailable ({e}); isolated crewmates cannot report until it is free"
             ),

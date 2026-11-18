@@ -79,6 +79,7 @@ impl Filter {
             let matcher = globset::GlobBuilder::new(g)
                 .literal_separator(true)
                 .build()
+                // i18n-ignore: log
                 .inspect_err(|e| eprintln!("triggers/file: glob {g:?} is not valid ({e})"))
                 .ok();
             (g, matcher)
@@ -165,6 +166,7 @@ fn spawn_watcher(
                 notify_loop(hub_weak, crewmate_id, trigger, rx, filter).await;
             }
             Err(e) => {
+                // i18n-ignore: log
                 eprintln!("triggers/file: notify init failed ({e}), using 30 s poll");
                 poll_fallback(hub_weak, crewmate_id, trigger, path, filter).await;
             }

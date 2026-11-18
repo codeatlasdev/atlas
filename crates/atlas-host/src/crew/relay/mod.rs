@@ -123,10 +123,12 @@ fn adopt_legacy_registry(desktop: &Path) {
         &desktop.join(LEGACY_REGISTRY_FILE),
         &desktop.join(REGISTRY_FILE),
     ) {
+        // i18n-ignore: log
         Ok(Adopted::BothExist) => eprintln!(
             "atlas crew: {LEGACY_REGISTRY_FILE} and {REGISTRY_FILE} both exist; using {REGISTRY_FILE}"
         ),
         Ok(Adopted::Moved | Adopted::Nothing) => {}
+        // i18n-ignore: log
         Err(e) => eprintln!("atlas crew: cannot adopt {LEGACY_REGISTRY_FILE}: {e}"),
     }
 }
@@ -248,6 +250,7 @@ impl CrewRelay {
                     pending.retain(|p| !p.servers.is_empty());
                     self.save_pending(&pending);
                 }
+                // i18n-ignore: log
                 Err(err) => eprintln!(
                     "atlas hostd: could not clear a revoked phone's push tokens on {host} (retried when it connects): {err}"
                 ),
@@ -276,6 +279,7 @@ impl CrewRelay {
             .map_err(|e| e.to_string())
             .and_then(|b| paths::write_private(&self.pending_file, &b).map_err(|e| e.to_string()));
         if let Err(e) = saved {
+            // i18n-ignore: log
             eprintln!("atlas hostd: cannot save the pending push forgets: {e}");
         }
     }
@@ -392,11 +396,13 @@ async fn keep(crew: Weak<CrewRelay>, host: String, server: Arc<Server>) {
 fn load_pending(file: &Path) -> Vec<Pending> {
     match std::fs::read(file) {
         Ok(b) => serde_json::from_slice(&b).unwrap_or_else(|e| {
+            // i18n-ignore: log
             eprintln!("atlas hostd: ignoring {}: {e}", file.display());
             Vec::new()
         }),
         Err(e) if e.kind() == std::io::ErrorKind::NotFound => Vec::new(),
         Err(e) => {
+            // i18n-ignore: log
             eprintln!("atlas hostd: cannot read {}: {e}", file.display());
             Vec::new()
         }

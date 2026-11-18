@@ -360,6 +360,7 @@ pub(crate) async fn delete(hub: &Hub, id: String) -> Result<Value, String> {
     })
     .await;
     if waited.is_err() {
+        // i18n-ignore: log
         eprintln!("atlas crew: delete {id}: a turn is still running after {DELETE_WAITS:?}");
     }
     let name = hub.crew.store.load_crewmate(&id).ok().map(|c| c.name);
@@ -368,6 +369,7 @@ pub(crate) async fn delete(hub: &Hub, id: String) -> Result<Value, String> {
     if hub.crew.store.isolated(&id).is_none()
         && let Err(e) = project::remove_checkout(&hub.crew.dir, &id).await
     {
+        // i18n-ignore: log
         eprintln!("atlas crew: delete {id}: checkout not fully removed: {e}");
     }
     // The Linux user first, while the definition still exists: a failure leaves a crewmate that can be
@@ -474,6 +476,7 @@ fn warm_checkout(hub: &Hub, crewmate: &Crewmate) {
         .git_for_checkout(&id, &project::work_dir_for(&dir, &id, iso.as_ref()));
     tokio::spawn(async move {
         if let Err(e) = project::prepare(&project, &id, &dir, iso, &git).await {
+            // i18n-ignore: log
             eprintln!("atlas crew: checkout for {id} not ready yet: {e}");
         }
     });

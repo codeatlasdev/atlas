@@ -111,6 +111,7 @@ impl Memory {
             match cgroup::Pool::detect(cap) {
                 Ok(p) => Self::On(p),
                 Err(why) => {
+                    // i18n-ignore: log
                     eprintln!("atlas crew-spawn: no per-agent memory cap: {why}");
                     Self::Off(why)
                 }
@@ -221,6 +222,7 @@ impl Server {
                 .name("crew-spawn-conn".into())
                 .spawn(move || {
                     if let Err(e) = me.connection(conn) {
+                        // i18n-ignore: log
                         eprintln!("atlas crew-spawn: connection ended: {e}");
                     }
                 })?;

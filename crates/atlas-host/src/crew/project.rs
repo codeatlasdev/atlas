@@ -99,6 +99,7 @@ pub async fn fetch(work_dir: &Path, git: &Git, mirror: Option<&Mirror>) -> Resul
         if let Some(m) = mirror
             && let Err(e) = m.refresh().await
         {
+            // i18n-ignore: log
             eprintln!(
                 "atlas crew: mirror of {} not refreshed: {e}",
                 work_dir.display()

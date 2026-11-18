@@ -233,6 +233,7 @@ impl Turn<'_> {
         .await?;
         if let Err(e) = hub.crew.store.save_session(&crewmate.id, &turn.session) {
             // The next turn would start a new conversation instead of continuing this one.
+            // i18n-ignore: log
             eprintln!(
                 "atlas crew: crewmate {} ({}): cannot save the session: {e}",
                 crewmate.id, self.pane_key
@@ -244,6 +245,7 @@ impl Turn<'_> {
                     .store
                     .append_usage(&crewmate.id, &self.engine_cfg.kind, now_s(), u)
         {
+            // i18n-ignore: log
             eprintln!(
                 "atlas crew: crewmate {} ({}): cannot record usage: {e}",
                 crewmate.id, self.pane_key

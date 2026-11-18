@@ -93,6 +93,7 @@ impl Audit {
     /// records, but it must not fail silently either.
     pub(crate) fn record(&self, crewmate: Option<&str>, kind: &str, fields: Value) {
         if let Err(e) = self.try_record(crewmate, kind, fields) {
+            // i18n-ignore: log
             eprintln!(
                 "atlas crew: audit: cannot record {kind} for {}: {e}",
                 crewmate.unwrap_or("the crew")

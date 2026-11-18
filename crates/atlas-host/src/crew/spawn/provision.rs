@@ -640,6 +640,7 @@ impl Service {
             let me = self.clone();
             std::thread::spawn(move || {
                 if let Err(e) = me.connection(conn) {
+                    // i18n-ignore: log
                     eprintln!("atlas crew-spawn --provision: connection ended: {e}");
                 }
             });

@@ -20,6 +20,7 @@
 	import TaskImages from "./TaskImages.svelte";
 	import TaskReply from "./TaskReply.svelte";
 	import { fmtElapsed } from "./taskView.ts";
+	import { m } from "#lib/i18n/m.ts";
 
 	interface Props {
 		task: CrewmateTask;
@@ -69,7 +70,9 @@
 		{#if t.preparing}
 			<!-- A first task on a big repo waited over a minute as a bare "Queued". -->
 			<div class="msg-meta muted preparing">
-				<span class="prep-dot" aria-hidden="true"></span>Downloading {t.preparing}…
+				<span class="prep-dot" aria-hidden="true"></span>{m.crew_chat_task_message_downloading_preparing({
+					preparing: t.preparing,
+				})}
 			</div>
 		{:else if t.state === "queued"}
 			<div class="msg-meta muted">{queuedLabel(t)}</div>
@@ -135,14 +138,14 @@
 		<div class="msg-in" class:group-start={groupStart} in:msgIn>
 			<div class="msg-in-body">
 				<TaskWork steps={t.steps ?? []} title={t.title} running={false} />
-				<div class="bubble in error ca-selectable">{t.error ?? "Failed"}</div>
+				<div class="bubble in error ca-selectable">{t.error ?? m.crew_chat_task_message_failed()}</div>
 			</div>
 		</div>
 	{:else if t.state === "cancelled"}
 		<div class="msg-in" class:group-start={groupStart} in:msgIn>
 			<div class="msg-in-body">
 				<TaskWork steps={t.steps ?? []} title={t.title} running={false} />
-				<div class="task-note"><X size={12} aria-hidden="true" /> Cancelled</div>
+				<div class="task-note"><X size={12} aria-hidden="true" /> {m.crew_chat_task_message_cancelled()}</div>
 			</div>
 		</div>
 	{:else if t.state === "waiting_action" && t.action}
@@ -164,12 +167,14 @@
 	<div class="msg-toolbar">
 		<CopyButton value={t.state === "done" ? (t.result ?? "") : t.prompt} label="" size="sm" />
 		{#if t.state === "failed" || t.state === "cancelled"}
-			<button class="tb-btn" title="Retry" onclick={() => void chat.sendText(t.prompt)}>
+			<button class="tb-btn" title={m.common_action_retry()} onclick={() => void chat.sendText(t.prompt)}>
 				<RotateCcw size={14} />
 			</button>
 		{/if}
 		{#if t.state === "running" && crewmate.running_task?.pane}
-			<button class="tb-btn" title="Open terminal" onclick={onterminal}><Terminal size={14} /></button>
+			<button class="tb-btn" title={m.crew_chat_task_message_open_terminal()} onclick={onterminal}
+				><Terminal size={14} /></button
+			>
 		{/if}
 	</div>
 </div>

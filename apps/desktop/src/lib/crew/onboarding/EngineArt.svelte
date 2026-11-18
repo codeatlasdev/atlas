@@ -9,6 +9,7 @@
 	import { reducedMotion } from "#lib/crew/motion.ts";
 	import ServerRack from "./ServerRack.svelte";
 	import type { Onboarding } from "./onboarding.svelte.ts";
+	import { m } from "#lib/i18n/m.ts";
 
 	let { ob }: { ob: Onboarding } = $props();
 
@@ -42,11 +43,11 @@
 	</div>
 	<p class="caption">
 		{#if ob.installingAny}
-			{lastLog || "Installing on the server…"}
+			{lastLog || m.crew_onboarding_engine_art_installing()}
 		{:else if ob.engineReady}
-			Ready on your server.
+			{m.crew_onboarding_engine_art_ready()}
 		{:else}
-			Pick one: Atlas installs it on the server and signs you in.
+			{m.crew_onboarding_engine_art_pick_hint()}
 		{/if}
 	</p>
 </div>

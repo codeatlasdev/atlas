@@ -8,6 +8,7 @@
 	import { Combobox } from "@codeatlasdev/ui";
 	import { typeInSearchField } from "#lib/crew/searchKeys.ts";
 	import { hostLabel, pickedHost, type SshHost } from "#lib/crew/sshHosts.ts";
+	import { m } from "#lib/i18n/m.ts";
 
 	let {
 		hosts,
@@ -34,10 +35,10 @@
 		value={picked?.alias ?? ""}
 		{options}
 		{disabled}
-		label="From your ~/.ssh/config"
-		placeholder={`Choose one of ${hosts.length} ${hosts.length === 1 ? "server" : "servers"}`}
-		searchPlaceholder="Search your servers"
-		emptyText="No server matches: type the address below"
+		label={m.crew_onboarding_ssh_host_picker_from_your_ssh_config()}
+		placeholder={m.crew_onboarding_ssh_host_picker_placeholder({ count: hosts.length })}
+		searchPlaceholder={m.crew_onboarding_ssh_host_picker_search()}
+		emptyText={m.crew_onboarding_ssh_host_picker_empty()}
 		onchange={(alias) => {
 			const h = hosts.find((x) => x.alias === alias);
 			if (h) onpick(h);
@@ -45,9 +46,12 @@
 	/>
 	{#if picked}
 		<p class="field-hint">
-			Connects the way <code>ssh {picked.alias}</code> does{picked.identity_file
-				? `, with ${picked.identity_file}`
-				: ""}.
+			{picked.identity_file
+				? m.crew_onboarding_ssh_host_picker_connects_with_key({
+						command: `ssh ${picked.alias}`,
+						key: picked.identity_file,
+					})
+				: m.crew_onboarding_ssh_host_picker_connects({ command: `ssh ${picked.alias}` })}
 		</p>
 	{/if}
 </div>

@@ -1,9 +1,11 @@
 /**
  * Engine-step vocabulary of the Atlas Crew onboarding and the per-step copy: the phase an engine is in on the crew
  * server, its card label/badge, how a `crew_agent_check` answer maps to a phase, and the headline/body text of each
- * step. Pure data and functions: no Svelte, no Tauri, so it is bun-testable.
+ * step. No Svelte and no Tauri, so it is bun-testable. The copy comes from the catalog and is read inside functions
+ * (never at module load), so it follows a language switch.
  */
 import type { OnboardingStep } from "#lib/crew/onboardingFlow.ts";
+import { m } from "#lib/i18n/m.ts";
 
 export type EnginePhase =
 	"idle" | "checking" | "not_installed" | "installing" | "install_error" | "needs_signin" | "ready";
@@ -25,17 +27,49 @@ export function engineStatusLabel(phase: EnginePhase): string {
 	switch (phase) {
 		case "idle":
 		case "checking":
-			return "Checking…";
+			return m.crew_onboarding_engine_status_checking();
 		case "not_installed":
-			return "Install";
+			return m.crew_onboarding_engine_status_install();
 		case "installing":
-			return "Installing…";
+			return m.crew_onboarding_engine_status_installing();
 		case "install_error":
-			return "Retry";
+			return m.common_action_retry();
 		case "needs_signin":
-			return "Sign in";
+			return m.crew_onboarding_engine_status_sign_in();
 		case "ready":
-			return "Ready";
+			return m.crew_onboarding_engine_status_ready();
+	}
+}
+
+/** What the key field of an engine asks for, shown under its name on the engine card ("" for an engine with no key). */
+export function agentKeyLabel(agentId: string): string {
+	switch (agentId) {
+		case "omp":
+			return m.crew_onboarding_key_label_omp();
+		case "claude":
+			return m.crew_onboarding_key_label_claude();
+		case "codex":
+			return m.crew_onboarding_key_label_codex();
+		case "opencode":
+			return m.crew_onboarding_key_label_opencode();
+		default:
+			return "";
+	}
+}
+
+/** The title over the key field of the sign-in panel: it names the key the engine takes. */
+export function pasteKeyTitle(agentId: string): string {
+	switch (agentId) {
+		case "omp":
+			return m.crew_onboarding_paste_key_omp();
+		case "claude":
+			return m.crew_onboarding_paste_key_claude();
+		case "codex":
+			return m.crew_onboarding_paste_key_codex();
+		case "opencode":
+			return m.crew_onboarding_paste_key_opencode();
+		default:
+			return m.crew_onboarding_paste_key_default();
 	}
 }
 
@@ -61,7 +95,7 @@ export function phaseFromCheck(r: AgentCheck): EnginePhase {
 export function statusAfterInstall(r: AgentCheck): EngineStatus {
 	return {
 		phase: r.installed ? (r.signed_in ? "ready" : "needs_signin") : "install_error",
-		error: r.installed ? undefined : "Install finished but binary not found",
+		error: r.installed ? undefined : m.crew_onboarding_engine_install_binary_missing(),
 	};
 }
 
@@ -79,15 +113,14 @@ export function pickReadyEngine(
 }
 
 /** One line of the how-it-works story, lit in sync with the art. */
-export const STORY = [
-	{ title: "You give the order", text: "Type what you want, like a message." },
-	{ title: "It works on your server", text: "All night, even with this computer asleep." },
-	{
-		title: "It asks before anything risky",
-		text: "Allow or deny from this computer, your phone or Telegram.",
-	},
-	{ title: "You wake up to results", text: "Every step is logged, ready to read." },
-];
+export function story(): { title: string; text: string }[] {
+	return [
+		{ title: m.crew_onboarding_story_order_title(), text: m.crew_onboarding_story_order_text() },
+		{ title: m.crew_onboarding_story_server_title(), text: m.crew_onboarding_story_server_text() },
+		{ title: m.crew_onboarding_story_approval_title(), text: m.crew_onboarding_story_approval_text() },
+		{ title: m.crew_onboarding_story_results_title(), text: m.crew_onboarding_story_results_text() },
+	];
+}
 
 export type StepMeta = {
 	label?: string;
@@ -97,38 +130,46 @@ export type StepMeta = {
 	glow: string;
 };
 
-export const STEP_META: Record<OnboardingStep, StepMeta> = {
-	intro: {
-		label: "Step 1 of 2",
-		headline: "Meet your Atlas Crew",
-		body: "Crewmates are AI agents that work on a server you own.",
-		bullets: [
-			"Runs on your own Linux server. No account.",
-			"Keeps working while this computer sleeps.",
-			"Asks you before anything risky.",
-		],
-		glow: "rgba(61, 91, 255, 0.10)",
-	},
-	how: {
-		label: "Step 2 of 2",
-		headline: "One night with your crew",
-		body: "This is what a crewmate does while you're away.",
-		bullets: undefined,
-		glow: "rgba(61, 91, 255, 0.10)",
-	},
-	connect: {
-		headline: "Add a crew server",
-		body: "A Linux server you can SSH into, with systemd and sudo. Setup takes about two minutes.",
-		glow: "rgba(61, 91, 255, 0.08)",
-	},
-	engine: {
-		headline: "Choose an engine",
-		body: "Pick the AI your crewmate will use. Click one to install it on the server and sign in; it takes about a minute and runs on your own subscription or API key.",
-		glow: "rgba(61, 91, 255, 0.10)",
-	},
-	ready: {
-		headline: "Your first crewmate is ready",
-		body: "Open a chat to send your first task. You can add more crewmates and customize them from the workspace.",
-		glow: "rgba(34, 197, 94, 0.12)",
-	},
-};
+/** The headline, body and (info steps) bullets of an onboarding step, in the app's language. */
+export function stepMeta(step: OnboardingStep): StepMeta {
+	switch (step) {
+		case "intro":
+			return {
+				label: m.crew_onboarding_step_intro_label(),
+				headline: m.crew_onboarding_step_intro_headline(),
+				body: m.crew_onboarding_step_intro_body(),
+				bullets: [
+					m.crew_onboarding_step_intro_bullet_server(),
+					m.crew_onboarding_step_intro_bullet_sleep(),
+					m.crew_onboarding_step_intro_bullet_asks(),
+				],
+				glow: "rgba(61, 91, 255, 0.10)",
+			};
+		case "how":
+			return {
+				label: m.crew_onboarding_step_how_label(),
+				headline: m.crew_onboarding_step_how_headline(),
+				body: m.crew_onboarding_step_how_body(),
+				bullets: undefined,
+				glow: "rgba(61, 91, 255, 0.10)",
+			};
+		case "connect":
+			return {
+				headline: m.crew_onboarding_step_connect_headline(),
+				body: m.crew_onboarding_step_connect_body(),
+				glow: "rgba(61, 91, 255, 0.08)",
+			};
+		case "engine":
+			return {
+				headline: m.crew_onboarding_step_engine_headline(),
+				body: m.crew_onboarding_step_engine_body(),
+				glow: "rgba(61, 91, 255, 0.10)",
+			};
+		case "ready":
+			return {
+				headline: m.crew_onboarding_step_ready_headline(),
+				body: m.crew_onboarding_step_ready_body(),
+				glow: "rgba(34, 197, 94, 0.12)",
+			};
+	}
+}

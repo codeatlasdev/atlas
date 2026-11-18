@@ -13,14 +13,17 @@
 			"declarations": [
 				"input slots",
 				"input running",
+				"local slotsExact = slots",
 				"local slotsPlural = slots: plural"
 			],
 			"selectors": [
+				"slotsExact",
 				"slotsPlural"
 			],
 			"match": {
-				"slotsPlural=one": "{running} de {slots} slot em uso",
-				"slotsPlural=*": "{running} de {slots} slots em uso"
+				"slotsExact=0, slotsPlural=*": "{running} de {slots} slots em uso",
+				"slotsExact=*, slotsPlural=one": "{running} de {slots} slot em uso",
+				"slotsExact=*, slotsPlural=*": "{running} de {slots} slots em uso"
 			}
 		}
 	],
@@ -30,14 +33,17 @@
 				"input slots",
 				"input running",
 				"input queued",
+				"local slotsExact = slots",
 				"local slotsPlural = slots: plural"
 			],
 			"selectors": [
+				"slotsExact",
 				"slotsPlural"
 			],
 			"match": {
-				"slotsPlural=one": "{running} de {slots} slot em uso · {queued} na fila",
-				"slotsPlural=*": "{running} de {slots} slots em uso · {queued} na fila"
+				"slotsExact=0, slotsPlural=*": "{running} de {slots} slots em uso · {queued} na fila",
+				"slotsExact=*, slotsPlural=one": "{running} de {slots} slot em uso · {queued} na fila",
+				"slotsExact=*, slotsPlural=*": "{running} de {slots} slots em uso · {queued} na fila"
 			}
 		}
 	],

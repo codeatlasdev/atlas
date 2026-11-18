@@ -86,14 +86,17 @@
 		{
 			"declarations": [
 				"input hours",
+				"local hoursExact = hours",
 				"local hoursPlural = hours: plural"
 			],
 			"selectors": [
+				"hoursExact",
 				"hoursPlural"
 			],
 			"match": {
-				"hoursPlural=one": "Última {hours} h",
-				"hoursPlural=*": "Últimas {hours} h"
+				"hoursExact=0, hoursPlural=*": "Últimas {hours} h",
+				"hoursExact=*, hoursPlural=one": "Última {hours} h",
+				"hoursExact=*, hoursPlural=*": "Últimas {hours} h"
 			}
 		}
 	],
@@ -101,14 +104,17 @@
 		{
 			"declarations": [
 				"input minutes",
+				"local minutesExact = minutes",
 				"local minutesPlural = minutes: plural"
 			],
 			"selectors": [
+				"minutesExact",
 				"minutesPlural"
 			],
 			"match": {
-				"minutesPlural=one": "Último {minutes} min",
-				"minutesPlural=*": "Últimos {minutes} min"
+				"minutesExact=0, minutesPlural=*": "Últimos {minutes} min",
+				"minutesExact=*, minutesPlural=one": "Último {minutes} min",
+				"minutesExact=*, minutesPlural=*": "Últimos {minutes} min"
 			}
 		}
 	],

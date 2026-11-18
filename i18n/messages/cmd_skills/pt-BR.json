@@ -11,14 +11,17 @@
 		{
 			"declarations": [
 				"input count",
+				"local countExact = count",
 				"local countPlural = count: plural"
 			],
 			"selectors": [
+				"countExact",
 				"countPlural"
 			],
 			"match": {
-				"countPlural=one": "{count} skill instalada → {dir}",
-				"countPlural=*": "{count} skills instaladas → {dir}"
+				"countExact=0, countPlural=*": "Nenhuma skill instalada → {dir}",
+				"countExact=*, countPlural=one": "{count} skill instalada → {dir}",
+				"countExact=*, countPlural=*": "{count} skills instaladas → {dir}"
 			}
 		}
 	],
@@ -45,14 +48,17 @@
 		{
 			"declarations": [
 				"input count",
+				"local countExact = count",
 				"local countPlural = count: plural"
 			],
 			"selectors": [
+				"countExact",
 				"countPlural"
 			],
 			"match": {
-				"countPlural=one": "{count} desatualizada",
-				"countPlural=*": "{count} desatualizadas"
+				"countExact=0, countPlural=*": "Nenhuma desatualizada",
+				"countExact=*, countPlural=one": "{count} desatualizada",
+				"countExact=*, countPlural=*": "{count} desatualizadas"
 			}
 		}
 	],
@@ -81,14 +87,17 @@
 		{
 			"declarations": [
 				"input count",
+				"local countExact = count",
 				"local countPlural = count: plural"
 			],
 			"selectors": [
+				"countExact",
 				"countPlural"
 			],
 			"match": {
-				"countPlural=one": "{count} skill atualizada → {dir}",
-				"countPlural=*": "{count} skills atualizadas → {dir}"
+				"countExact=0, countPlural=*": "Nenhuma skill atualizada → {dir}",
+				"countExact=*, countPlural=one": "{count} skill atualizada → {dir}",
+				"countExact=*, countPlural=*": "{count} skills atualizadas → {dir}"
 			}
 		}
 	]

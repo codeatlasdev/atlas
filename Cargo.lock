@@ -430,6 +430,7 @@ version = "1.5.0-alpha.26"
 dependencies = [
  "atlas-core",
  "atlas-host",
+ "atlas-i18n",
  "atlas-term",
  "atlas-tui",
  "base64 0.23.1",

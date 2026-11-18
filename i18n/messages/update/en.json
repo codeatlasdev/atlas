@@ -1,3 +1,5 @@
 {
-	"update_older_release_managed": "Installing an older release needs an Atlas installed by the shell installer; another tool manages this one."
+	"update_failed": "update failed: {error}",
+	"update_older_release_managed": "Installing an older release needs an Atlas installed by the shell installer; another tool manages this one.",
+	"update_restart_failed": "could not restart atlas: {error}"
 }

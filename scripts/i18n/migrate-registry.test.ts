@@ -162,6 +162,8 @@ describe("the pieces", () => {
 		const main: Baseline = { svelte: { a: 5, b: 4, c: 3 }, rust: { r: 2 } };
 		const branch: Baseline = { svelte: { a: 2, c: 9 } };
 		expect(applyBranchBaseline(main, branch)).toEqual({ svelte: { a: 2, b: 0, c: 3 }, rust: { r: 2 } });
+		// a ratchet the other side introduced (rust-ui) is carried over whole
+		expect(applyBranchBaseline(main, { svelte: { a: 5 }, "rust-ui": { u: 4 } })).toEqual({ svelte: { a: 5, b: 0, c: 0 }, rust: { r: 2 }, "rust-ui": { u: 4 } });
 	});
 
 	test("writeFileSync of the old file next to the new one is converted by min, never by raising", async () => {

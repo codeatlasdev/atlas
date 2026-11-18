@@ -66,13 +66,15 @@ function tryJson(text: string): Record<string, unknown> | undefined {
 }
 
 /** `main`'s baseline with the branch's work from `old` applied: min per path, and a path the branch no longer lists is 0.
- * A ratchet the old file has no section for is left alone. */
+ * A ratchet the old file has no section for is left alone; a ratchet only the old file has (a section the other side
+ * introduced, like `rust-ui`) is carried over whole. */
 export function applyBranchBaseline(main: Baseline, old: Baseline): Baseline {
 	const out: Baseline = {};
 	for (const lang of Object.keys(main) as Lang[]) {
 		const theirs = old[lang];
 		out[lang] = Object.fromEntries(Object.entries(main[lang] ?? {}).map(([file, n]) => [file, theirs ? Math.min(n, theirs[file] ?? 0) : n]));
 	}
+	for (const lang of Object.keys(old) as Lang[]) if (!(lang in out)) out[lang] = { ...old[lang] };
 	return out;
 }
 
@@ -88,8 +90,9 @@ export function migrateRegistry(root: string): MigrateReport {
 	const report: MigrateReport = { areaFiles: [], surfacesRewritten: false, baseline: "none", unresolved: [], log: [] };
 	const surfacesPath = join(root, SURFACES_FILE);
 	const working = existsSync(surfacesPath) ? readText(surfacesPath) : "";
-	// The working file first, then the branch's own committed one: after a resolution that took main's file, HEAD still has the lists.
-	const sources = [working, showAt(root, "HEAD", SURFACES_FILE) ?? ""];
+	// The working file first, then the branch's own committed one and, in a merge, the other side's: after a resolution
+	// that took one side's file, the other side still has its lists.
+	const sources = [working, showAt(root, "HEAD", SURFACES_FILE) ?? "", showAt(root, "MERGE_HEAD", SURFACES_FILE) ?? ""];
 	const reg = readOldRegistry(sources[0]);
 	for (const text of sources.slice(1)) {
 		const more = readOldRegistry(text);

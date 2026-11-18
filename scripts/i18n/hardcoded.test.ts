@@ -5,6 +5,7 @@ import { join } from "node:path";
 import { readBaseline } from "./baseline.ts";
 import { fix } from "./fix.ts";
 import { scanRustSource } from "./hardcoded/rust.ts";
+import { scanRustUiSource } from "./hardcoded/rust_ui.ts";
 import { scanSvelteSource } from "./hardcoded/svelte.ts";
 import { type Finding, loadCtx } from "./types.ts";
 import { BASELINE, baselineText, check, cleanup, finding, makeRepo, put, read, rulesOf } from "./testkit.ts";
@@ -74,6 +75,59 @@ describe("Rust scanner (format strings of println!/eprintln!/print!/eprint!/bail
 
 	test("a single #[cfg(test)] item does not hide the rest of the file", () => {
 		expect(scanRustSource('#[cfg(test)]\nuse foo::bar;\nfn a() { println!("Hello"); }')).toHaveLength(1);
+	});
+});
+
+describe("Rust UI scanner (native menus, notifications, error contexts, ratatui spans)", () => {
+	test.each([
+		["MenuItem::with_id label", 'MenuItem::with_id(app, "open", "Open Atlas", true, None::<&str>)?;', 1],
+		["MenuItem::new label", 'MenuItem::new(app, "Quit", true, None::<&str>)?;', 1],
+		["a label on the next line", 'MenuItem::with_id(\n    app,\n    ID_OPEN,\n    "Open Atlas",\n    true,\n    None::<&str>,\n)?;', 1],
+		["Submenu::with_items title", 'Submenu::with_items(app, "Edit", true, &[&a])?;', 1],
+		["Submenu::new title", 'tauri::menu::Submenu::new(app, "Capture", true)?;', 1],
+		["a predefined item's text", 'PredefinedMenuItem::quit(app, Some("Quit Atlas"))?;', 1],
+		["a tray tooltip and title", 'tray.set_tooltip(Some("Atlas is running")).ok();\ntray.set_title(Some("Atlas"));', 2],
+		["a notification builder", 'app.notification().builder().title("Capture failed").body("It did not work").show();', 2],
+		["a notification chain across lines", 'app\n    .notification()\n    .builder()\n    .title("Capture failed")\n    .body(message)\n    .show();', 1],
+		["an anyhow context", 'let f = read(p).context("could not read the file")?;', 1],
+		["a formatted context", 'read(p).with_context(|| format!("could not read {}", p.display()))?;', 1],
+		["a ratatui span and line", 'let a = Span::raw("Press q to quit");\nlet b = Line::from("Services");', 2],
+		["a styled span", 'Span::styled("Running", style)', 1],
+	])("flags %s", (_n, src, count) => {
+		expect(scanRustUiSource(src)).toHaveLength(count);
+	});
+
+	test.each([
+		["a label from the catalog", 'MenuItem::with_id(app, "open", t!("native_tray_open"), true, None::<&str>)?;', 0],
+		["a label from a variable", 'MenuItem::with_id(app, id, label, true, None::<&str>)?;', 0],
+		["an id that is a literal (the text is the next argument)", 'MenuItem::with_id(app, "open", label, true, None::<&str>)?;', 0],
+		["a separator", "PredefinedMenuItem::separator(app)?;", 0],
+		["a context from a variable", "read(p).context(msg)?;", 0],
+		["a glyph or spacing span", 'Span::raw("  ");\nSpan::raw("│");\nLine::from("{}");', 0],
+		["a body that is a variable", "builder.title(title).body(body);", 0],
+		["a commented-out call", '// MenuItem::new(app, "Quit", true, None::<&str>)', 0],
+		["i18n-ignore on the line above", '// i18n-ignore: window title is the product name\nbuilder.title("Atlas");', 0],
+		["the cfg(test) module tail", '#[cfg(test)]\nmod tests {\n    fn t() { x.context("test only"); }\n}', 0],
+		["a string that mentions the call", 'let s = "call .title(\\"x\\") later";', 0],
+	])("does not flag %s", (_n, src, count) => {
+		expect(scanRustUiSource(src)).toHaveLength(count);
+	});
+
+	test("reports the line of the text and quotes it", () => {
+		const v = scanRustUiSource('fn a() {\n    x.context("could not read it")?;\n}\n');
+		expect(v).toEqual([{ line: 2, text: "could not read it" }]);
+	});
+
+	test("the rust-ui ratchet is its own baseline section: it never moves the rust counts", async () => {
+		const root = await makeRepo();
+		put(root, "crates/atlas-tui/src/lib.rs", 'pub fn a() { let _ = f().context("could not read it"); }\n');
+		expect(hardcoded(await check(root)).map((x) => x.file)).toEqual(["crates/atlas-tui/src/lib.rs"]);
+		put(root, BASELINE, baselineText({ "rust-ui": { "crates/atlas-tui/src/lib.rs": 1 } }));
+		expect(rulesOf(await check(root), "error")).toEqual([]);
+		put(root, "crates/atlas-tui/src/lib.rs", "pub fn a() {}\n");
+		expect(finding(await check(root), "hardcoded-baseline")?.key).toBe("crates/atlas-tui/src/lib.rs");
+		fix(loadCtx(root));
+		expect(baselineOf(root)["rust-ui"]).toEqual({ "crates/atlas-tui/src/lib.rs": 0 });
 	});
 });
 

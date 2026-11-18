@@ -7,6 +7,7 @@
 //! All of them are listed in [`Surface`] with their label, size and behaviour (pure data, tested), so "which
 //! windows can capture create" has one answer and the capture filter can exclude them all by label.
 
+use atlas_i18n::t;
 use tauri::{AppHandle, Manager, WebviewUrl, WebviewWindow, WebviewWindowBuilder};
 
 use super::geom::Rect;
@@ -214,7 +215,7 @@ pub fn build(
     let win = builder
         .theme(theme)
         .initialization_script(script)
-        .title("Atlas Capture")
+        .title(t!("native_tray_capture_window_title"))
         .inner_size(w, h)
         .decorations(false)
         .transparent(true)

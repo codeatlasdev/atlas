@@ -18,6 +18,7 @@
 //! permission). The summon key is a setting; the action table ([`Action`]) is where later hotkeys (push-to-talk,
 //! capture) join it.
 
+use atlas_i18n::{t, t_in};
 use parking_lot::Mutex;
 use serde::{Deserialize, Serialize};
 use serde_json::Value;
@@ -80,7 +81,7 @@ impl DockPrefs {
         crate::hotkeys::accelerator(&self.summon)?;
         crate::hotkeys::accelerator(&self.toggle)?;
         if !self.summon.trim().is_empty() && self.summon.trim() == self.toggle.trim() {
-            return Err("The summon and hide keys are the same; pick two different keys".into());
+            return Err(t!("native_notify_dock_keys_clash"));
         }
         Ok(())
     }
@@ -274,7 +275,7 @@ fn build(app: &AppHandle) -> tauri::Result<WebviewWindow> {
     let win = builder
         .theme(theme)
         .initialization_script(script)
-        .title("Atlas Dock")
+        .title(t!("native_tray_dock_window_title"))
         .inner_size(PILL.0, PILL.1)
         .decorations(false)
         .transparent(true)
@@ -292,6 +293,13 @@ fn build(app: &AppHandle) -> tauri::Result<WebviewWindow> {
         crate::dock_mac::make_panel(ns);
     }
     Ok(win)
+}
+
+/// The display language changed: the dock window's title (window switchers and screen readers read it) follows it.
+pub fn retitle(app: &AppHandle, tag: &str) {
+    if let Some(win) = app.get_webview_window(LABEL) {
+        let _ = win.set_title(&t_in!(tag, "native_tray_dock_window_title"));
+    }
 }
 
 /// The monitor under the cursor, else the primary one: (x, y, w, h physical) and its scale.
@@ -492,7 +500,7 @@ const MENU_OPEN: &str = "dock:open";
 const MENU_HIDE: &str = "dock:hide";
 
 /// One entry of the pill's right-click menu.
-#[derive(Debug, Clone, PartialEq, Eq)]
+#[derive(Debug, Clone, PartialEq, Eq, Serialize)]
 pub struct MenuEntry {
     pub id: &'static str,
     pub label: String,
@@ -529,20 +537,20 @@ pub fn glyphs(stroke: &str) -> String {
     out
 }
 
-/// The pill's right-click menu.
-pub fn pill_menu(prefs: &DockPrefs) -> Vec<MenuEntry> {
+/// The pill's right-click menu in the language `tag`.
+pub fn pill_menu(prefs: &DockPrefs, tag: &str) -> Vec<MenuEntry> {
     let hint = glyphs(&prefs.toggle);
     vec![
         MenuEntry {
             id: MENU_OPEN,
-            label: "Open Atlas".into(),
+            label: t_in!(tag, "native_tray_open"),
         },
         MenuEntry {
             id: MENU_HIDE,
             label: if hint.is_empty() {
-                "Hide Agent Dock".into()
+                t_in!(tag, "native_tray_dock_hide")
             } else {
-                format!("Hide Agent Dock  {hint}")
+                t_in!(tag, "native_tray_dock_hide_key", key = hint)
             },
         },
     ]
@@ -553,8 +561,10 @@ pub fn pill_menu(prefs: &DockPrefs) -> Vec<MenuEntry> {
 #[tauri::command]
 pub fn dock_menu(app: AppHandle, state: State<'_, DockState>) -> Result<(), String> {
     use tauri::menu::{ContextMenu, Menu, MenuItem, PredefinedMenuItem};
-    let win = app.get_window(LABEL).ok_or("the dock is not built")?;
-    let items = pill_menu(&state.prefs.lock());
+    let win = app
+        .get_window(LABEL)
+        .ok_or_else(|| t!("native_notify_dock_not_built"))?;
+    let items = pill_menu(&state.prefs.lock(), atlas_i18n::lang());
     let menu = Menu::new(&app).map_err(|e| e.to_string())?;
     for (i, e) in items.iter().enumerate() {
         if i > 0 {
@@ -766,8 +776,8 @@ pub async fn dock_send(
     tab: String,
     text: String,
 ) -> Result<(), String> {
-    let pty = pty_of(&state.snapshot.lock(), &tab)
-        .ok_or("That agent is not running any more. Pick another.")?;
+    let pty =
+        pty_of(&state.snapshot.lock(), &tab).ok_or_else(|| t!("native_notify_dock_agent_gone"))?;
     crate::agent::send::send_text(&app, &pty, &text).await
 }
 
@@ -1030,19 +1040,46 @@ mod tests {
     /// does the same, so the menu teaches it.
     #[test]
     fn the_pill_menu_can_hide_the_dock_and_shows_its_hotkey() {
-        let items = pill_menu(&DockPrefs::default());
+        let items = pill_menu(&DockPrefs::default(), "en");
         let hide = items.iter().find(|i| i.id == MENU_HIDE).expect("hide item");
-        assert_eq!(hide.label, "Hide Agent Dock  ⌃⌥D");
+        assert_eq!(hide.label.to_lowercase(), "hide agent dock  ⌃⌥d");
         let none = DockPrefs {
             toggle: String::new(),
             ..DockPrefs::default()
         };
-        let hide = pill_menu(&none)
+        let hide = pill_menu(&none, "en")
             .into_iter()
             .find(|i| i.id == MENU_HIDE)
             .unwrap();
-        assert_eq!(hide.label, "Hide Agent Dock", "no hotkey, no hint");
+        assert_eq!(
+            hide.label.to_lowercase(),
+            "hide agent dock",
+            "no hotkey, no hint"
+        );
         assert!(items.iter().any(|i| i.id == MENU_OPEN));
+    }
+
+    /// The pill's menu is built when it opens, from the language in force then: a switch in Settings shows at once.
+    #[test]
+    fn the_pill_menu_is_in_the_language_asked_for() {
+        let labels = |tag| -> Vec<String> {
+            pill_menu(&DockPrefs::default(), tag)
+                .into_iter()
+                .map(|i| i.label)
+                .collect()
+        };
+        // Casing follows the OS (menu_model's tests); the words are the language's.
+        let lower = |tag| {
+            labels(tag)
+                .iter()
+                .map(|l| l.to_lowercase())
+                .collect::<Vec<_>>()
+        };
+        assert_eq!(lower("en"), ["open atlas", "hide agent dock  ⌃⌥d"]);
+        assert_eq!(
+            lower("pt-BR"),
+            ["abrir o atlas", "ocultar dock de agentes  ⌃⌥d"]
+        );
     }
 
     #[test]

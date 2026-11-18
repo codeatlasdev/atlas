@@ -55,7 +55,7 @@ export function rewriteUses(text: string, file: string, oldKey: string, newKey: 
 	const lines: number[] = [];
 	const word = oldKey.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
 	const patterns: [RegExp, string][] = [];
-	if (file.endsWith(".rs")) patterns.push([new RegExp(`(\\bt!\\(\\s*")${word}(")`, "g"), `$1${newKey}$2`]);
+	if (file.endsWith(".rs")) patterns.push([new RegExp(`(\\b(?:t!\\(|t_in!\\([^,"]+,)\\s*")${word}(")`, "g"), `$1${newKey}$2`]);
 	else if (USES_M.test(text)) {
 		patterns.push([new RegExp(`(\\bm\\.)${word}(?![A-Za-z0-9_])`, "g"), `$1${newKey}`]);
 		patterns.push([new RegExp(`(\\bm\\[\\s*["'\`])${word}(["'\`]\\s*\\])`, "g"), `$1${newKey}$2`]);

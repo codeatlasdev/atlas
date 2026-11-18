@@ -38,6 +38,7 @@ window-vibrancy = "0.8"
 atlas-tui = { path = "../atlas-tui" }
 atlas-core = { path = "../atlas-core" }
 atlas-host = { path = "../atlas-host" }
+atlas-i18n = { path = "../atlas-i18n" }
 base64 = { workspace = true }
 tokio = { workspace = true }
 serde = { workspace = true }

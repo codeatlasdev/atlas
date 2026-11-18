@@ -1,4 +1,4 @@
-// Platform wording in source, as two ratchets (error on new offenders, existing ones in i18n/hardcoded-baseline.json):
+// Platform wording in source, as two ratchets (error on new offenders, existing ones in i18n/hardcoded-baseline.jsonl):
 //   shortcut        `⌘K`, `Ctrl+S` written into user-facing Svelte/TS/Rust: a shortcut is a {key} placeholder
 //                   filled by keys.ts kbd()/label() or the Rust helper
 //   platform-check  `navigator.platform` / `isMac =` anywhere but apps/desktop/src/lib/keys.ts

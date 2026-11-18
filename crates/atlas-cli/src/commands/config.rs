@@ -104,7 +104,7 @@ impl ConfigCommands {
                 let (config, errors) = atlas_tui::config::load_checked(&root)?;
                 if errors.is_empty() {
                     for w in atlas_tui::config::warnings(&config) {
-                        eprintln!("warning: {w}");
+                        eprintln!("{} {w}", crate::chrome::warning());
                     }
                     println!("OK: {} is valid", root.join("atlas.yaml").display());
                     if config.port_offset > 0 {

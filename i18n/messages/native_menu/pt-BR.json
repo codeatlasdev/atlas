@@ -1,0 +1,606 @@
+{
+	"native_menu_app_about": "Sobre o Atlas",
+	"native_menu_app_hide": "Ocultar Atlas",
+	"native_menu_app_hide_others": [
+		{
+			"declarations": [
+				"input os"
+			],
+			"selectors": [
+				"os"
+			],
+			"match": {
+				"os=mac": "Ocultar Outros",
+				"os=windows": "Ocultar outros",
+				"os=*": "Ocultar outros"
+			}
+		}
+	],
+	"native_menu_app_quit": "Sair do Atlas",
+	"native_menu_app_services": "Serviços",
+	"native_menu_app_settings": [
+		{
+			"declarations": [
+				"input os"
+			],
+			"selectors": [
+				"os"
+			],
+			"match": {
+				"os=mac": "Ajustes…",
+				"os=windows": "Configurações…",
+				"os=*": "Preferências…"
+			}
+		}
+	],
+	"native_menu_capture_all_in_one": [
+		{
+			"declarations": [
+				"input os"
+			],
+			"selectors": [
+				"os"
+			],
+			"match": {
+				"os=mac": "Captura Multifuncional",
+				"os=windows": "Captura multifuncional",
+				"os=*": "Captura multifuncional"
+			}
+		}
+	],
+	"native_menu_capture_fullscreen": [
+		{
+			"declarations": [
+				"input os"
+			],
+			"selectors": [
+				"os"
+			],
+			"match": {
+				"os=mac": "Capturar Tela",
+				"os=windows": "Capturar tela",
+				"os=*": "Capturar tela"
+			}
+		}
+	],
+	"native_menu_capture_gif": "Gravar GIF",
+	"native_menu_capture_ocr": [
+		{
+			"declarations": [
+				"input os"
+			],
+			"selectors": [
+				"os"
+			],
+			"match": {
+				"os=mac": "Capturar Texto",
+				"os=windows": "Capturar texto",
+				"os=*": "Capturar texto"
+			}
+		}
+	],
+	"native_menu_capture_previous": [
+		{
+			"declarations": [
+				"input os"
+			],
+			"selectors": [
+				"os"
+			],
+			"match": {
+				"os=mac": "Capturar Área Anterior",
+				"os=windows": "Capturar área anterior",
+				"os=*": "Capturar área anterior"
+			}
+		}
+	],
+	"native_menu_capture_record": [
+		{
+			"declarations": [
+				"input os"
+			],
+			"selectors": [
+				"os"
+			],
+			"match": {
+				"os=mac": "Gravar Tela",
+				"os=windows": "Gravar tela",
+				"os=*": "Gravar tela"
+			}
+		}
+	],
+	"native_menu_capture_region": [
+		{
+			"declarations": [
+				"input os"
+			],
+			"selectors": [
+				"os"
+			],
+			"match": {
+				"os=mac": "Capturar Região",
+				"os=windows": "Capturar região",
+				"os=*": "Capturar região"
+			}
+		}
+	],
+	"native_menu_capture_window": [
+		{
+			"declarations": [
+				"input os"
+			],
+			"selectors": [
+				"os"
+			],
+			"match": {
+				"os=mac": "Capturar Janela",
+				"os=windows": "Capturar janela",
+				"os=*": "Capturar janela"
+			}
+		}
+	],
+	"native_menu_edit_cut": "Recortar",
+	"native_menu_edit_paste": "Colar",
+	"native_menu_edit_redo": "Refazer",
+	"native_menu_edit_select_all": [
+		{
+			"declarations": [
+				"input os"
+			],
+			"selectors": [
+				"os"
+			],
+			"match": {
+				"os=mac": "Selecionar Tudo",
+				"os=windows": "Selecionar tudo",
+				"os=*": "Selecionar tudo"
+			}
+		}
+	],
+	"native_menu_file_close_all_tabs": [
+		{
+			"declarations": [
+				"input os"
+			],
+			"selectors": [
+				"os"
+			],
+			"match": {
+				"os=mac": "Fechar Todas as Abas",
+				"os=windows": "Fechar todas as abas",
+				"os=*": "Fechar todas as abas"
+			}
+		}
+	],
+	"native_menu_file_close_other_tabs": [
+		{
+			"declarations": [
+				"input os"
+			],
+			"selectors": [
+				"os"
+			],
+			"match": {
+				"os=mac": "Fechar Outras Abas",
+				"os=windows": "Fechar outras abas",
+				"os=*": "Fechar outras abas"
+			}
+		}
+	],
+	"native_menu_file_close_tab": [
+		{
+			"declarations": [
+				"input os"
+			],
+			"selectors": [
+				"os"
+			],
+			"match": {
+				"os=mac": "Fechar Aba",
+				"os=windows": "Fechar aba",
+				"os=*": "Fechar aba"
+			}
+		}
+	],
+	"native_menu_file_new_agent_session": [
+		{
+			"declarations": [
+				"input os"
+			],
+			"selectors": [
+				"os"
+			],
+			"match": {
+				"os=mac": "Nova Sessão de Agente",
+				"os=windows": "Nova sessão de agente",
+				"os=*": "Nova sessão de agente"
+			}
+		}
+	],
+	"native_menu_file_new_browser_tab": [
+		{
+			"declarations": [
+				"input os"
+			],
+			"selectors": [
+				"os"
+			],
+			"match": {
+				"os=mac": "Nova Aba do Navegador",
+				"os=windows": "Nova aba do navegador",
+				"os=*": "Nova aba do navegador"
+			}
+		}
+	],
+	"native_menu_file_new_terminal": [
+		{
+			"declarations": [
+				"input os"
+			],
+			"selectors": [
+				"os"
+			],
+			"match": {
+				"os=mac": "Novo Terminal",
+				"os=windows": "Novo terminal",
+				"os=*": "Novo terminal"
+			}
+		}
+	],
+	"native_menu_file_new_worktree": [
+		{
+			"declarations": [
+				"input os"
+			],
+			"selectors": [
+				"os"
+			],
+			"match": {
+				"os=mac": "Nova Worktree…",
+				"os=windows": "Nova worktree…",
+				"os=*": "Nova worktree…"
+			}
+		}
+	],
+	"native_menu_file_reopen_tab": [
+		{
+			"declarations": [
+				"input os"
+			],
+			"selectors": [
+				"os"
+			],
+			"match": {
+				"os=mac": "Reabrir Aba Fechada",
+				"os=windows": "Reabrir aba fechada",
+				"os=*": "Reabrir aba fechada"
+			}
+		}
+	],
+	"native_menu_file_save_all": [
+		{
+			"declarations": [
+				"input os"
+			],
+			"selectors": [
+				"os"
+			],
+			"match": {
+				"os=mac": "Salvar Tudo",
+				"os=windows": "Salvar tudo",
+				"os=*": "Salvar tudo"
+			}
+		}
+	],
+	"native_menu_go_changes": "Alterações",
+	"native_menu_go_config": "Config",
+	"native_menu_go_file": [
+		{
+			"declarations": [
+				"input os"
+			],
+			"selectors": [
+				"os"
+			],
+			"match": {
+				"os=mac": "Ir para Arquivo…",
+				"os=windows": "Ir para arquivo…",
+				"os=*": "Ir para arquivo…"
+			}
+		}
+	],
+	"native_menu_go_jump": [
+		{
+			"declarations": [
+				"input os"
+			],
+			"selectors": [
+				"os"
+			],
+			"match": {
+				"os=mac": "Ir para Worktree ou Terminal…",
+				"os=windows": "Ir para worktree ou terminal…",
+				"os=*": "Ir para worktree ou terminal…"
+			}
+		}
+	],
+	"native_menu_go_logs": "Logs",
+	"native_menu_go_next_tab": [
+		{
+			"declarations": [
+				"input os"
+			],
+			"selectors": [
+				"os"
+			],
+			"match": {
+				"os=mac": "Próxima Aba",
+				"os=windows": "Próxima aba",
+				"os=*": "Próxima aba"
+			}
+		}
+	],
+	"native_menu_go_palette": [
+		{
+			"declarations": [
+				"input os"
+			],
+			"selectors": [
+				"os"
+			],
+			"match": {
+				"os=mac": "Paleta de Comandos…",
+				"os=windows": "Paleta de comandos…",
+				"os=*": "Paleta de comandos…"
+			}
+		}
+	],
+	"native_menu_go_previous_tab": [
+		{
+			"declarations": [
+				"input os"
+			],
+			"selectors": [
+				"os"
+			],
+			"match": {
+				"os=mac": "Aba Anterior",
+				"os=windows": "Aba anterior",
+				"os=*": "Aba anterior"
+			}
+		}
+	],
+	"native_menu_go_restart_service": [
+		{
+			"declarations": [
+				"input os"
+			],
+			"selectors": [
+				"os"
+			],
+			"match": {
+				"os=mac": "Reiniciar Serviço em Foco",
+				"os=windows": "Reiniciar serviço em foco",
+				"os=*": "Reiniciar serviço em foco"
+			}
+		}
+	],
+	"native_menu_go_search": [
+		{
+			"declarations": [
+				"input os"
+			],
+			"selectors": [
+				"os"
+			],
+			"match": {
+				"os=mac": "Pesquisar no Projeto",
+				"os=windows": "Pesquisar no projeto",
+				"os=*": "Pesquisar no projeto"
+			}
+		}
+	],
+	"native_menu_go_switch_branch": [
+		{
+			"declarations": [
+				"input os"
+			],
+			"selectors": [
+				"os"
+			],
+			"match": {
+				"os=mac": "Trocar de Branch…",
+				"os=windows": "Trocar de branch…",
+				"os=*": "Trocar de branch…"
+			}
+		}
+	],
+	"native_menu_help_shortcuts": [
+		{
+			"declarations": [
+				"input os"
+			],
+			"selectors": [
+				"os"
+			],
+			"match": {
+				"os=mac": "Atalhos de Teclado",
+				"os=windows": "Atalhos de teclado",
+				"os=*": "Atalhos de teclado"
+			}
+		}
+	],
+	"native_menu_title_capture": "Capturar",
+	"native_menu_title_file": "Arquivo",
+	"native_menu_title_go": "Ir",
+	"native_menu_title_help": "Ajuda",
+	"native_menu_title_view": "Visualizar",
+	"native_menu_title_window": "Janela",
+	"native_menu_view_actual_size": [
+		{
+			"declarations": [
+				"input os"
+			],
+			"selectors": [
+				"os"
+			],
+			"match": {
+				"os=mac": "Tamanho Real",
+				"os=windows": "Tamanho real",
+				"os=*": "Tamanho real"
+			}
+		}
+	],
+	"native_menu_view_enter_full_screen": [
+		{
+			"declarations": [
+				"input os"
+			],
+			"selectors": [
+				"os"
+			],
+			"match": {
+				"os=mac": "Entrar em Tela Cheia",
+				"os=windows": "Entrar em tela cheia",
+				"os=*": "Entrar em tela cheia"
+			}
+		}
+	],
+	"native_menu_view_split_down": [
+		{
+			"declarations": [
+				"input os"
+			],
+			"selectors": [
+				"os"
+			],
+			"match": {
+				"os=mac": "Dividir para Baixo",
+				"os=windows": "Dividir para baixo",
+				"os=*": "Dividir para baixo"
+			}
+		}
+	],
+	"native_menu_view_split_right": [
+		{
+			"declarations": [
+				"input os"
+			],
+			"selectors": [
+				"os"
+			],
+			"match": {
+				"os=mac": "Dividir à Direita",
+				"os=windows": "Dividir à direita",
+				"os=*": "Dividir à direita"
+			}
+		}
+	],
+	"native_menu_view_toggle_bottom_dock": [
+		{
+			"declarations": [
+				"input os"
+			],
+			"selectors": [
+				"os"
+			],
+			"match": {
+				"os=mac": "Alternar Dock Inferior",
+				"os=windows": "Alternar dock inferior",
+				"os=*": "Alternar dock inferior"
+			}
+		}
+	],
+	"native_menu_view_toggle_left_dock": [
+		{
+			"declarations": [
+				"input os"
+			],
+			"selectors": [
+				"os"
+			],
+			"match": {
+				"os=mac": "Alternar Dock Esquerdo",
+				"os=windows": "Alternar dock esquerdo",
+				"os=*": "Alternar dock esquerdo"
+			}
+		}
+	],
+	"native_menu_view_toggle_right_dock": [
+		{
+			"declarations": [
+				"input os"
+			],
+			"selectors": [
+				"os"
+			],
+			"match": {
+				"os=mac": "Alternar Barra Lateral Direita",
+				"os=windows": "Alternar barra lateral direita",
+				"os=*": "Alternar barra lateral direita"
+			}
+		}
+	],
+	"native_menu_view_toggle_sidebar": [
+		{
+			"declarations": [
+				"input os"
+			],
+			"selectors": [
+				"os"
+			],
+			"match": {
+				"os=mac": "Alternar Barra Lateral",
+				"os=windows": "Alternar barra lateral",
+				"os=*": "Alternar barra lateral"
+			}
+		}
+	],
+	"native_menu_view_zoom_in": [
+		{
+			"declarations": [
+				"input os"
+			],
+			"selectors": [
+				"os"
+			],
+			"match": {
+				"os=mac": "Aumentar Zoom",
+				"os=windows": "Aumentar zoom",
+				"os=*": "Aumentar zoom"
+			}
+		}
+	],
+	"native_menu_view_zoom_out": [
+		{
+			"declarations": [
+				"input os"
+			],
+			"selectors": [
+				"os"
+			],
+			"match": {
+				"os=mac": "Diminuir Zoom",
+				"os=windows": "Diminuir zoom",
+				"os=*": "Diminuir zoom"
+			}
+		}
+	],
+	"native_menu_view_zoom_pane": [
+		{
+			"declarations": [
+				"input os"
+			],
+			"selectors": [
+				"os"
+			],
+			"match": {
+				"os=mac": "Maximizar Painel",
+				"os=windows": "Maximizar painel",
+				"os=*": "Maximizar painel"
+			}
+		}
+	],
+	"native_menu_window_minimize": "Minimizar",
+	"native_menu_window_zoom": "Zoom"
+}

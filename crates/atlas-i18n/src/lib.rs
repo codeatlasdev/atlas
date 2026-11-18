@@ -25,7 +25,7 @@ mod shortcut;
 pub use shortcut::{shortcut, shortcut_for};
 
 use std::collections::HashMap;
-use std::sync::{LazyLock, OnceLock};
+use std::sync::{LazyLock, OnceLock, RwLock};
 
 use message::{Message, Part, Selector};
 
@@ -265,10 +265,25 @@ pub fn translate(tag: &str, key: &str, args: Option<&Args>) -> String {
         })
 }
 
-/// The display language of this process (`atlas_core::lang::resolve()`, read once).
+/// The display language of this process (`atlas_core::lang::resolve()`, read once), unless a long-lived
+/// process changed it with [`set_lang`].
 pub fn lang() -> &'static str {
     static LANG: LazyLock<&'static str> = LazyLock::new(atlas_core::lang::resolve);
-    *LANG
+    LIVE.read()
+        .map(|l| *l)
+        .unwrap_or_else(|e| *e.into_inner())
+        .unwrap_or(*LANG)
+}
+
+/// The language a long-lived process switched to (the desktop shell, when Settings changes it).
+static LIVE: RwLock<Option<&'static str>> = RwLock::new(None);
+
+/// Switch [`lang()`] (so every later `t!`) to `tag` without a restart. A tag without a catalog is ignored and the
+/// current language stays; the CLI never calls this, it reads the language once.
+pub fn set_lang(tag: &str) {
+    if let Some(tag) = atlas_core::lang::normalize(tag).filter(|t| locales().any(|l| l == *t)) {
+        *LIVE.write().unwrap_or_else(|e| e.into_inner()) = Some(tag);
+    }
 }
 
 /// A message in the display language: `t!("key")` or `t!("key", name = value, count = 3)`.
@@ -282,6 +297,20 @@ macro_rules! t {
         let mut args = $crate::Args::new();
         $( args.set(::core::stringify!($name), $value); )+
         $crate::translate($crate::lang(), $id, ::core::option::Option::Some(&args))
+    }};
+}
+
+/// A message in an explicit language: `t_in!(tag, "key", name = value)`. The form for code that builds text for
+/// more than one language at a time (a native menu model compared in `en` and `pt-BR`) instead of the process's.
+#[macro_export]
+macro_rules! t_in {
+    ($tag:expr, $id:literal) => {
+        $crate::translate($tag, $id, ::core::option::Option::None)
+    };
+    ($tag:expr, $id:literal, $($name:ident = $value:expr),+ $(,)?) => {{
+        let mut args = $crate::Args::new();
+        $( args.set(::core::stringify!($name), $value); )+
+        $crate::translate($tag, $id, ::core::option::Option::Some(&args))
     }};
 }
 
@@ -526,5 +555,23 @@ mod tests {
     #[should_panic(expected = "no message with key")]
     fn an_unknown_key_panics_in_debug() {
         translate("en", "no_such_key", None);
+    }
+
+    #[test]
+    fn t_in_renders_the_tag_it_is_given_whatever_the_process_language() {
+        assert_eq!(t_in!("en", "cli_chrome_usage"), "Usage:");
+        assert_eq!(t_in!("pt-BR", "cli_chrome_usage"), "Uso:");
+    }
+
+    // The only test that touches the process language (a global): nothing else here reads `lang()`.
+    #[test]
+    fn set_lang_switches_t_live_and_ignores_a_tag_without_a_catalog() {
+        set_lang("pt-BR");
+        assert_eq!(lang(), "pt-BR");
+        assert_eq!(t!("cli_chrome_usage"), "Uso:");
+        set_lang("fr");
+        assert_eq!(lang(), "pt-BR", "an unknown tag keeps the current language");
+        set_lang("en");
+        assert_eq!(t!("cli_chrome_usage"), "Usage:");
     }
 }

@@ -2,9 +2,15 @@
 import { expect, test } from "bun:test";
 import { readFileSync } from "node:fs";
 import { join } from "node:path";
+import { m } from "#lib/i18n/m.ts";
 
 const read = (rel) => readFileSync(join(import.meta.dir, rel), "utf8");
 const page = read("+page.svelte");
+/** The page shows `m.<key>()` and the catalog's English (the tests run in `en`) is what the contract names. */
+const says = (key, english) => {
+	expect(page, key).toContain(`m.${key}(`);
+	expect(m[key](), key).toBe(english);
+};
 const quick = read("../../../lib/shots/quick.ts");
 const rustQuick = readFileSync(
 	join(import.meta.dir, "../../../../../../crates/atlas-desktop/src/shots/quick.rs"),
@@ -127,24 +133,26 @@ test("hover is reported to Rust on pointerenter and pointerleave", () => {
 });
 
 test("the capture card's actions: Copy, Save…, Annotate, Pin, Text (OCR), Send to agent, Reveal, Discard, Make GIF", () => {
-	for (const label of [
-		"Copy",
-		"Save…",
-		"Annotate",
-		"Pin",
-		"Text",
-		"Send to agent",
-		"Reveal in Finder",
-		"Discard",
-		"Make GIF",
+	for (const [key, label] of [
+		["common_action_copy", "Copy"],
+		["capture_quick_page_save_as", "Save…"],
+		["capture_quick_page_annotate", "Annotate"],
+		["capture_quick_page_pin", "Pin"],
+		["capture_quick_page_ocr", "Text"],
+		["capture_quick_page_send_to_agent", "Send to agent"],
+		["capture_discard", "Discard"],
+		["capture_quick_page_make_gif", "Make GIF"],
 	])
-		expect(page, label).toContain(label);
+		says(key, label);
+	// the reveal item names the system file manager: its wording is the catalog's `os` select
+	expect(page).toContain("m.capture_quick_page_reveal_in_file_manager(");
+	expect(m.capture_quick_page_reveal_in_file_manager()).toMatch(/^Reveal in /);
 	for (const a of ['"annotate"', '"pin"', '"ocr"', '"send"', '"reveal"', '"discard"', '"copy"', '"save"'])
 		expect(page, a).toContain(a);
 	// annotate / pin / OCR only for screenshots; Make GIF only for recordings
 	expect(page).toMatch(/c\.entry\.kind === "screenshot"/);
 	expect(page).toMatch(/c\.entry\.kind === "recording"/);
-	expect(page).toContain('aria-label="More actions"');
+	says("capture_quick_page_more_actions", "More actions");
 });
 
 test("the action names the page sends are the ones Rust deserializes", () => {
@@ -156,7 +164,13 @@ test("the action names the page sends are the ones Rust deserializes", () => {
 });
 
 test("the text card: preview, Copy again, Send to agent, 'No text found' for an empty read (nothing to copy)", () => {
-	for (const s of ["Copy again", "Send to agent", "No text found", "c.preview"]) expect(page, s).toContain(s);
+	for (const [key, label] of [
+		["capture_quick_page_copy_again", "Copy again"],
+		["capture_quick_page_send_to_agent", "Send to agent"],
+		["capture_quick_page_no_text_found", "No text found"],
+	])
+		says(key, label);
+	expect(page).toContain("c.preview");
 	// an empty read has no buttons
 	expect(page).toMatch(/\{#if !c\.empty\}/);
 	expect(page).toContain('"shots_quick_text"');
@@ -164,7 +178,7 @@ test("the text card: preview, Copy again, Send to agent, 'No text found' for an 
 
 test("the discard button says it needs a second click while armed", () => {
 	expect(page).toMatch(/confirmDiscard/);
-	expect(page).toContain("Click again to delete");
+	says("capture_quick_page_click_again_to_delete", "Click again to delete");
 });
 
 test("the GIF sheet: presets radio group, estimate refetched on preset change, export with progress", () => {

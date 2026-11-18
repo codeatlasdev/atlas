@@ -11,6 +11,7 @@
  * those pauses. A card Rust re-sends (same `id`) keeps its local state; a card Rust no longer lists is gone.
  */
 
+import { m } from "#lib/i18n/m.ts";
 import type { Corner, Entry, Kind, QuickAction, QuickState } from "./types.ts";
 
 /** How long the "Copied" feedback stays. */
@@ -405,16 +406,19 @@ function fixedKB(kb: number): string {
 export function duration(secs: number): string {
 	const t = Number.isFinite(secs) && secs > 0 ? Math.floor(secs) : 0;
 	const h = Math.floor(t / 3600);
-	const m = Math.floor((t % 3600) / 60);
+	const mins = Math.floor((t % 3600) / 60);
 	const s = t % 60;
 	const ss = String(s).padStart(2, "0");
-	return h > 0 ? `${h}:${String(m).padStart(2, "0")}:${ss}` : `${m}:${ss}`;
+	return h > 0 ? `${h}:${String(mins).padStart(2, "0")}:${ss}` : `${mins}:${ss}`;
 }
 
 /** The card's title line. */
 export function title(e: Entry): string {
-	if (e.kind === "screenshot") return `Screenshot ${e.width} × ${e.height}`;
-	if (e.kind === "recording") return e.secs == null ? "Recording" : `Recording ${duration(e.secs)}`;
+	if (e.kind === "screenshot") return m.capture_quick_title_screenshot({ width: e.width, height: e.height });
+	if (e.kind === "recording")
+		return e.secs == null
+			? m.capture_quick_title_recording()
+			: m.capture_quick_title_recording_duration({ duration: duration(e.secs) });
 	return e.secs == null ? `GIF · ${humanBytes(e.bytes)}` : `GIF ${duration(e.secs)} · ${humanBytes(e.bytes)}`;
 }
 
@@ -425,7 +429,9 @@ export function kindIcon(kind: Kind): string {
 
 /** The text card's title: what was read, or that nothing was. */
 export function textTitle(c: Pick<TextView, "empty" | "lines" | "chars">): string {
-	if (c.empty) return "No text found";
-	const lines = c.lines === 1 ? "1 line" : `${c.lines} lines`;
-	return `Text copied · ${lines} · ${c.chars} characters`;
+	if (c.empty) return m.capture_quick_page_no_text_found();
+	return m.capture_quick_text_copied({
+		lines: m.capture_quick_text_lines({ count: c.lines }),
+		characters: m.capture_quick_text_characters({ count: c.chars }),
+	});
 }

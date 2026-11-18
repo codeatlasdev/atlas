@@ -5,6 +5,7 @@
 
 import { pad } from "./text.ts";
 import type { LogLine, Ring } from "./model.ts";
+import { m } from "#lib/i18n/m.ts";
 
 /** What the user picked in the range chip. */
 export type TimeRange =
@@ -98,9 +99,9 @@ export function slideCutoff(w: TimeWindow, now: number): number {
 }
 
 function parseClock(s: string): number | null {
-	const m = /^\s*(\d{1,2}):(\d{1,2})(?::(\d{1,2}))?\s*$/.exec(s);
-	if (!m) return null;
-	const [h, min, sec] = [Number(m[1]), Number(m[2]), Number(m[3] ?? 0)];
+	const match = /^\s*(\d{1,2}):(\d{1,2})(?::(\d{1,2}))?\s*$/.exec(s);
+	if (!match) return null;
+	const [h, min, sec] = [Number(match[1]), Number(match[2]), Number(match[3] ?? 0)];
 	return h > 23 || min > 59 || sec > 59 ? null : h * 3600 + min * 60 + sec;
 }
 
@@ -110,15 +111,15 @@ function parseClock(s: string): number | null {
  */
 export function parseCustomRange(input: string): { range: TimeRange } | { error: string } {
 	const text = input.trim();
-	if (!text) return { error: "Type a time: 14:05 or 14:05–14:20" };
+	if (!text) return { error: m.logs_range_error_type_time() };
 	const parts = text.split(/\s*(?:\.\.|[–—-])\s*/);
-	if (parts.length > 2) return { error: "Use one range: 14:05–14:20" };
+	if (parts.length > 2) return { error: m.logs_range_error_one_range() };
 	const fromS = parseClock(parts[0]);
-	if (fromS === null) return { error: `Not a time: "${parts[0].trim()}"` };
+	if (fromS === null) return { error: m.logs_range_error_not_a_time({ text: parts[0].trim() }) };
 	if (parts.length === 1 || parts[1].trim() === "") return { range: { kind: "custom", fromS, toS: null } };
 	const toS = parseClock(parts[1]);
-	if (toS === null) return { error: `Not a time: "${parts[1].trim()}"` };
-	if (toS < fromS) return { error: "The end is before the start" };
+	if (toS === null) return { error: m.logs_range_error_not_a_time({ text: parts[1].trim() }) };
+	if (toS < fromS) return { error: m.logs_range_error_end_before_start() };
 	return { range: { kind: "custom", fromS, toS } };
 }
 
@@ -128,14 +129,16 @@ const hhmm = (s: number) => `${pad(Math.floor(s / 3600))}:${pad(Math.floor(s / 6
 export function rangeLabel(r: TimeRange): string {
 	switch (r.kind) {
 		case "all":
-			return "All time";
+			return m.logs_range_all_time();
 		case "last":
-			return r.minutes % 60 === 0 ? `Last ${r.minutes / 60} h` : `Last ${r.minutes} min`;
+			return r.minutes % 60 === 0
+				? m.logs_range_last_hours({ hours: r.minutes / 60 })
+				: m.logs_range_last_minutes({ minutes: r.minutes });
 		case "restart":
-			return "Since restart";
+			return m.logs_range_since_restart();
 		case "start":
-			return "Since stack start";
+			return m.logs_range_since_stack_start();
 		case "custom":
-			return r.toS === null ? `From ${hhmm(r.fromS)}` : `${hhmm(r.fromS)}–${hhmm(r.toS)}`;
+			return r.toS === null ? m.logs_range_from({ time: hhmm(r.fromS) }) : `${hhmm(r.fromS)}–${hhmm(r.toS)}`;
 	}
 }

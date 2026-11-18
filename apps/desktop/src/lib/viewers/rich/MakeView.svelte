@@ -6,6 +6,7 @@
 	import Code from "#lib/viewers/rich/Code.svelte";
 	import Copy from "#lib/viewers/rich/Copy.svelte";
 	import "#lib/viewers/rich/rich.css";
+	import { m } from "#lib/i18n/m.ts";
 
 	let { ctx, just = false }: { ctx: RichCtx; just?: boolean } = $props();
 
@@ -30,25 +31,31 @@
 				<Hammer size={18} />
 				<h1>{ctx.path.split("/").pop()}</h1>
 				<span class="rv-ver"
-					>{doc.targets.length} {just ? "recipe" : "target"}{doc.targets.length === 1 ? "" : "s"}</span
+					>{just
+						? m.viewers_devops_make_view_recipes_count({ count: doc.targets.length })
+						: m.viewers_devops_make_view_targets_count({ count: doc.targets.length })}</span
 				>
 			</div>
 			<div class="rv-facts">
-				{#if doc.defaultTarget}<span class="rv-chip acc"><Star size={10} /> default {doc.defaultTarget}</span
+				{#if doc.defaultTarget}<span class="rv-chip acc"
+						><Star size={10} />
+						{m.viewers_devops_make_view_default_target({ defaultTarget: doc.defaultTarget })}</span
 					>{/if}
-				{#each doc.includes as i (i)}<span class="rv-chip mono">include {i}</span>{/each}
+				{#each doc.includes as i (i)}<span class="rv-chip mono">{`include ${i}`}</span>{/each}
 			</div>
 		</header>
 
 		{#if doc.variables.length}
 			<section class="rv-sec">
-				<h2>Variables <span class="n">{doc.variables.length}</span></h2>
+				<h2>{m.viewers_devops_variables()} <span class="n">{doc.variables.length}</span></h2>
 				<div class="rv-list">
 					{#each doc.variables as v (v.line)}
 						<div class="rv-row">
 							<span class="rv-k">{v.name}</span>
 							<span class="rv-v" title={v.value}>{v.value}</span>
-							<button class="rv-btn" onclick={() => ctx.toSource(v.line)}>Line {v.line}</button>
+							<button class="rv-btn" onclick={() => ctx.toSource(v.line)}
+								>{m.viewers_devops_line({ line: v.line })}</button
+							>
 						</div>
 					{/each}
 				</div>
@@ -57,11 +64,15 @@
 
 		<section class="rv-sec">
 			<h2>
-				{just ? "Recipes" : "Targets"}
+				{just ? m.viewers_devops_make_view_recipes() : m.viewers_devops_make_view_targets()}
 				<span class="sp"></span>
 				<label class="rv-search">
 					<Search size={12} />
-					<input placeholder="Filter" bind:value={q} aria-label="Filter targets" />
+					<input
+						placeholder={m.viewers_devops_filter()}
+						bind:value={q}
+						aria-label={m.viewers_devops_make_view_filter_targets()}
+					/>
 				</label>
 			</h2>
 			<div class="rv-list">
@@ -71,7 +82,7 @@
 							<button
 								class="tw"
 								aria-expanded={!!open[key(t)]}
-								aria-label="Toggle recipe of {t.name}"
+								aria-label={m.viewers_devops_make_view_toggle_recipe({ name: t.name })}
 								disabled={!t.recipe.length}
 								onclick={() => (open[key(t)] = !open[key(t)])}
 							>
@@ -79,14 +90,16 @@
 							</button>
 							<span class="rv-k">{t.name}</span>
 							{#each t.params as p (p)}<span class="rv-chip mono">{p}</span>{/each}
-							{#if t.phony}<span class="rv-chip info">phony</span>{/if}
-							{#if t.name === doc.defaultTarget}<span class="rv-chip acc">default</span>{/if}
+							{#if t.phony}<span class="rv-chip info">{m.viewers_devops_make_view_phony()}</span>{/if}
+							{#if t.name === doc.defaultTarget}<span class="rv-chip acc"
+									>{m.viewers_devops_make_view_default()}</span
+								>{/if}
 							{#if t.doc}<span class="rv-note doc" title={t.doc}>{t.doc}</span>{/if}
 							<span class="rv-v">{t.deps.length ? `← ${t.deps.join(" ")}` : ""}</span>
 							<button
 								class="rv-btn icon"
-								title="Go to line {t.line}"
-								aria-label="Go to line {t.line}"
+								title={m.viewers_devops_go_to_line({ line: t.line })}
+								aria-label={m.viewers_devops_go_to_line({ line: t.line })}
 								onclick={() => ctx.toSource(t.line)}
 							>
 								<span class="ln">{t.line}</span>
@@ -94,20 +107,23 @@
 							{#if t.runnable && !t.params.length}
 								<button
 									class="rv-btn run"
-									title="Run {tool} {t.name} in a terminal"
+									title={m.viewers_devops_make_view_run_in_terminal({ tool, name: t.name })}
 									onclick={() => runInTerminal(ctx.worktreeId, ctx.path, argv(t), t.name)}
 								>
-									<Play size={11} /> Run
+									<Play size={11} />
+									{m.viewers_devops_make_view_run()}
 								</button>
 							{/if}
-							<Copy text={argv(t).join(" ")} label="Copy command" />
+							<Copy text={argv(t).join(" ")} label={m.viewers_devops_copy_command()} />
 						</div>
 						{#if open[key(t)] && t.recipe.length}
 							<div class="rec"><Code code={t.recipe.join("\n")} lang="shell" /></div>
 						{/if}
 					</div>
 				{:else}
-					<div class="rv-empty">{q ? "No match" : "No targets found"}</div>
+					<div class="rv-empty">
+						{q ? m.viewers_devops_make_view_no_match() : m.viewers_devops_make_view_no_targets()}
+					</div>
 				{/each}
 			</div>
 		</section>

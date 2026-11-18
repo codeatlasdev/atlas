@@ -1,6 +1,8 @@
 <script lang="ts">
 	import { kbd, modClick } from "#lib/keys.ts";
 	import { Kbd, Spinner } from "@codeatlasdev/ui";
+	import { formatNumber } from "#lib/i18n/fmt.ts";
+	import { m } from "#lib/i18n/m.ts";
 
 	let {
 		total,
@@ -20,15 +22,30 @@
 
 <div class="status">
 	<span>
-		{total.toLocaleString()} lines{ofTotal === null ? "" : ` of ${ofTotal.toLocaleString()}`}
+		{#if ofTotal === null}
+			{m.logs_status_lines({ count: total, amount: formatNumber(total) })}
+		{:else}
+			{m.logs_status_lines_of_total({
+				count: total,
+				amount: formatNumber(total),
+				total: formatNumber(ofTotal),
+			})}
+		{/if}
 	</span>
-	{#if errors}<span class="e">{errors.toLocaleString()} errors</span>{/if}
-	{#if warns}<span class="w">{warns.toLocaleString()} warnings</span>{/if}
-	{#if filtering}<span class="busy"><Spinner size={11} label="Working" /> filtering…</span>{/if}
+	{#if errors}<span class="e">{m.logs_status_errors({ count: errors, amount: formatNumber(errors) })}</span
+		>{/if}
+	{#if warns}<span class="w">{m.logs_status_warnings({ count: warns, amount: formatNumber(warns) })}</span
+		>{/if}
+	{#if filtering}<span class="busy"
+			><Spinner size={11} label={m.logs_status_working()} /> {m.logs_status_filtering()}</span
+		>{/if}
 	<span class="hint"
-		><Kbd>{kbd("cmd-f")}</Kbd> find · <Kbd>e</Kbd>
-		<Kbd>w</Kbd> next error / warn · {modClick()} links ·
-		<Kbd>{kbd("cmd-l")}</Kbd> logs</span
+		><Kbd>{kbd("cmd-f")}</Kbd>
+		{m.logs_status_hint_find()} · <Kbd>{kbd("e")}</Kbd>
+		<Kbd>{kbd("w")}</Kbd>
+		{m.logs_status_hint_jump()} · {m.logs_status_hint_links({ key: modClick() })} ·
+		<Kbd>{kbd("cmd-l")}</Kbd>
+		{m.logs_status_hint_logs()}</span
 	>
 </div>
 

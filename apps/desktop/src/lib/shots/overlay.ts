@@ -7,6 +7,7 @@
  * The reducer stores display-local page points (the page is exactly the display's size). It converts to the global
  * points Rust expects only in the `commit` effect payload.
  */
+import { m } from "#lib/i18n/m.ts";
 import type {
 	CommitAction,
 	Display,
@@ -652,7 +653,7 @@ export function positionLabel(r: Rect, scale: number): string {
 
 /** The accessible name of the held selection. */
 export function selectionAria(r: Rect, scale: number): string {
-	return `Selection ${sizeLabel(r, scale)} pixels at ${positionLabel(r, scale)}`;
+	return m.capture_overlay_selection_aria({ size: sizeLabel(r, scale), position: positionLabel(r, scale) });
 }
 
 const LABEL_GAP = 8;

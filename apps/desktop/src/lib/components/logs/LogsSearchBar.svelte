@@ -1,6 +1,7 @@
 <script lang="ts">
 	import { kbd } from "#lib/keys.ts";
 	import { ChevronDown, ChevronUp } from "@lucide/svelte";
+	import { m } from "#lib/i18n/m.ts";
 
 	let {
 		query = $bindable(),
@@ -54,8 +55,8 @@
 	<input
 		bind:this={input}
 		bind:value={query}
-		placeholder={hideNonMatching ? "Filter" : "Find"}
-		aria-label="Search logs"
+		placeholder={hideNonMatching ? m.logs_search_bar_filter() : m.logs_search_bar_find()}
+		aria-label={m.logs_search_bar_search_logs()}
 		spellcheck="false"
 		autocomplete="off"
 		{onkeydown}
@@ -63,40 +64,44 @@
 	<button
 		class="toggle"
 		class:on={matchCase}
-		title="Match case"
-		aria-label="Match case"
+		title={m.logs_search_bar_match_case()}
+		aria-label={m.logs_search_bar_match_case()}
 		aria-pressed={matchCase}
-		onclick={() => (matchCase = !matchCase)}>Aa</button
+		onclick={() => (matchCase = !matchCase)}><!-- i18n-ignore -->Aa</button
 	>
 	<button
 		class="toggle"
 		class:on={useRegex}
-		title="Regular expression"
-		aria-label="Regular expression"
+		title={m.logs_search_bar_regular_expression()}
+		aria-label={m.logs_search_bar_regular_expression()}
 		aria-pressed={useRegex}
 		onclick={() => (useRegex = !useRegex)}>.*</button
 	>
 	<button
 		class="toggle"
 		class:on={hideNonMatching}
-		title={hideNonMatching ? "Filtering: hide lines that do not match" : "Finding: highlight matches"}
-		aria-label="Hide non-matching lines"
+		title={hideNonMatching ? m.logs_search_bar_filtering_hint() : m.logs_search_bar_finding_hint()}
+		aria-label={m.logs_search_bar_hide_non_matching_lines()}
 		aria-pressed={hideNonMatching}
-		onclick={() => (hideNonMatching = !hideNonMatching)}>Filter</button
+		onclick={() => (hideNonMatching = !hideNonMatching)}>{m.logs_search_bar_filter()}</button
 	>
 	<span class="count" aria-live="polite">
-		{#if badRegex}<span class="badtxt">invalid</span>{:else if query}{#if matchCount}{curOrdinal
+		{#if badRegex}<span class="badtxt">{m.logs_search_bar_invalid()}</span
+			>{:else if query}{#if matchCount}{curOrdinal
 					? `${curOrdinal}/`
 					: ""}{matchCount.toLocaleString()}{searching ? "+" : ""}{:else}{searching ? "…" : "0"}{/if}{/if}
 	</span>
 	<button
 		class="icon"
-		title={`Previous match (${kbd("shift-enter")})`}
-		aria-label="Previous match"
+		title={m.logs_search_bar_previous_match_tip({ key: kbd("shift-enter") })}
+		aria-label={m.logs_search_bar_previous_match()}
 		onclick={() => onstep(-1)}><ChevronUp size={14} /></button
 	>
-	<button class="icon" title="Next match (↵)" aria-label="Next match" onclick={() => onstep(1)}
-		><ChevronDown size={14} /></button
+	<button
+		class="icon"
+		title={m.logs_search_bar_next_match_tip({ key: kbd("enter") })}
+		aria-label={m.logs_search_bar_next_match()}
+		onclick={() => onstep(1)}><ChevronDown size={14} /></button
 	>
 </div>
 

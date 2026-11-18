@@ -135,8 +135,9 @@ describe("describeTrigger", () => {
 		expect(d(["issue_opened"])).toBe("When an issue is opened in owner/repo");
 		expect(d(["release"])).toBe("When a release is published in owner/repo");
 		expect(d(["pr_opened", "ci_failed"])).toBe("When a PR is opened or CI fails in owner/repo");
+		// The list comes from Intl (`fmt.list`), which writes English with the serial comma.
 		expect(d(["pr_opened", "ci_failed", "release"])).toBe(
-			"When a PR is opened, CI fails or a release is published in owner/repo",
+			"When a PR is opened, CI fails, or a release is published in owner/repo",
 		);
 	});
 

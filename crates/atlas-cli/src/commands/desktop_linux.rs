@@ -10,10 +10,12 @@ use std::process::{Command, Stdio};
 
 use anyhow::{Context, Result, bail};
 
-/// Menu entry and icon id; the same reverse-DNS id as the macOS bundle (`tauri.conf.json`).
-const APP_ID: &str = "br.com.codeatlas.atlas";
-/// The id before 1.6; its menu entry and icon are removed when the new ones are written.
-const LEGACY_APP_ID: &str = "dev.codeatlas.atlas";
+use atlas_core::paths::{
+    LINUX_APP_PREV, LINUX_APP_STAGING, LINUX_LEGACY_MENU_ID as LEGACY_APP_ID,
+    LINUX_MENU_ID as APP_ID, linux_menu_files,
+};
+
+/// The 128 px launcher icon.
 const ICON: &[u8] = include_bytes!("../../../atlas-desktop/icons/128x128.png");
 
 /// The AppImage carries no readable version, so the install records it next to atlas's other
@@ -50,7 +52,7 @@ pub(super) fn install(source: &Path, target: &Path, version: Option<&str>) -> Re
 
 /// The previous AppImage, kept beside `target` until the new one is in place and recorded.
 fn prev_path(target: &Path) -> PathBuf {
-    target.with_file_name(".atlas-desktop.prev")
+    target.with_file_name(LINUX_APP_PREV)
 }
 
 /// [`install_file`] plus the version record at `vf`, as one step: the previous app is kept as
@@ -119,7 +121,7 @@ fn install_file(source: &Path, target: &Path, prev: &Path) -> Result<()> {
     let parent = target.parent().context("bad install path")?;
     std::fs::create_dir_all(parent)
         .with_context(|| format!("cannot create {}", parent.display()))?;
-    let staging = Staging(parent.join(".atlas-desktop.new"));
+    let staging = Staging(parent.join(LINUX_APP_STAGING));
     std::fs::copy(source, &staging.0)
         .with_context(|| format!("cannot copy {}", source.display()))?;
     std::fs::set_permissions(&staging.0, std::fs::Permissions::from_mode(0o755))?;
@@ -157,9 +159,7 @@ fn is_elf(p: &Path) -> bool {
 
 /// `~/.local/share/applications/<id>.desktop` and its icon, so the app shows up in the launcher.
 fn write_menu_entry(home: &Path, exec: &Path) -> Result<()> {
-    let share = home.join(".local/share");
-    let icon = share.join(format!("icons/hicolor/128x128/apps/{APP_ID}.png"));
-    let entry = share.join(format!("applications/{APP_ID}.desktop"));
+    let (entry, icon) = linux_menu_files(home, APP_ID);
     for f in [&icon, &entry] {
         if let Some(dir) = f.parent() {
             std::fs::create_dir_all(dir)?;
@@ -167,14 +167,14 @@ fn write_menu_entry(home: &Path, exec: &Path) -> Result<()> {
     }
     std::fs::write(&icon, ICON)?;
     std::fs::write(&entry, desktop_entry(exec))?;
-    let _ =
-        std::fs::remove_file(share.join(format!("icons/hicolor/128x128/apps/{LEGACY_APP_ID}.png")));
-    let _ = std::fs::remove_file(share.join(format!("applications/{LEGACY_APP_ID}.desktop")));
+    let (old_entry, old_icon) = linux_menu_files(home, LEGACY_APP_ID);
+    let _ = std::fs::remove_file(old_icon);
+    let _ = std::fs::remove_file(old_entry);
     Ok(())
 }
 
 /// A freedesktop.org desktop entry starting `exec`.
-fn desktop_entry(exec: &Path) -> String {
+pub(crate) fn desktop_entry(exec: &Path) -> String {
     // Exec quoting (Desktop Entry spec): the path in double quotes, with `"`, `` ` ``, `$` and `\` escaped.
     let quoted: String = exec
         .to_string_lossy()

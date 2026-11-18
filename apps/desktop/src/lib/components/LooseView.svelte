@@ -40,7 +40,12 @@
 					title={tilde(f)}
 					onclick={() => loose.open(f)}>{baseName(f)}</button
 				>
-				<button type="button" class="x" aria-label="Close {baseName(f)}" onclick={() => loose.close(f)}>
+				<button
+					type="button"
+					class="x"
+					aria-label={m.workbench_loose_view_close_file({ name: baseName(f) })}
+					onclick={() => loose.close(f)}
+				>
 					<X size={11} />
 				</button>
 			</div>

@@ -41,14 +41,20 @@
 					<button class="name" onclick={() => loose.open(f)}>
 						<FileText size={13} /><span>{baseName(f)}</span>
 					</button>
-					<button class="x" aria-label="Close {baseName(f)}" onclick={() => loose.close(f)}>
+					<button
+						class="x"
+						aria-label={m.sidebar_loose_files_close_file({ name: baseName(f) })}
+						onclick={() => loose.close(f)}
+					>
 						<X size={11} />
 					</button>
 				</div>
 			{/each}
 			{#if loose.recent.length > SHOWN}
 				<button class="more" onclick={() => (all = !all)}>
-					{all ? "Show fewer" : `Show all (${loose.recent.length})`}
+					{all
+						? m.sidebar_loose_files_show_fewer()
+						: m.sidebar_loose_files_show_all({ count: loose.recent.length })}
 				</button>
 			{/if}
 		{/if}

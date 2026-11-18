@@ -169,7 +169,11 @@
 		<footer>
 			<span class="mono path" title={abs}>{abs}</span>
 			<span class="grow"></span>
-			<span>{session.dirty ? "Edited" : "Saved"}</span>
+			<span
+				>{session.dirty
+					? m.workbench_loose_editor_state_edited()
+					: m.workbench_loose_editor_state_saved()}</span
+			>
 			<span class="mono"
 				>{m.workbench_loose_editor_ln_line_col_col({ line: cursor.line, col: cursor.col })}</span
 			>

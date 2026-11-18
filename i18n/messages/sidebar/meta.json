@@ -1,3 +1,6 @@
 {
-	"sidebar_loose_files_files": "Text in a <span> element, in LooseFiles (apps/desktop/src/lib/components/sidebar/LooseFiles.svelte). Extracted by i18n:extract: refine this description on review."
+	"sidebar_loose_files_close_file": "Accessible name of the x button on a file of the sidebar's Files group (files opened on their own). {name} is the file name.",
+	"sidebar_loose_files_files": "Text in a <span> element, in LooseFiles (apps/desktop/src/lib/components/sidebar/LooseFiles.svelte). Extracted by i18n:extract: refine this description on review.",
+	"sidebar_loose_files_show_all": "Button under the sidebar's Files group that expands the list. {count} is how many files are open in total.",
+	"sidebar_loose_files_show_fewer": "Button under the sidebar's Files group that collapses the list back to the most recent files."
 }

@@ -1,7 +1,7 @@
 {
 	"crew_onboarding_step_connect_body": "Um servidor Linux acessível por SSH, com systemd e sudo. A configuração leva cerca de dois minutos.",
 	"crew_onboarding_step_connect_headline": "Adicionar um crew server",
-	"crew_onboarding_step_engine_body": "Escolha a IA que o seu crewmate vai usar. Clique em um engine para instalá-lo no servidor e entrar; leva cerca de um minuto e usa a sua própria assinatura ou chave de API.",
+	"crew_onboarding_step_engine_body": "Escolha o engine que o crewmate vai usar. Clique em um para instalá-lo no servidor e entrar; leva cerca de um minuto e usa sua própria assinatura ou chave de API.",
 	"crew_onboarding_step_engine_headline": "Escolher um engine",
 	"crew_onboarding_step_how_body": "É isso que um crewmate faz enquanto você está fora.",
 	"crew_onboarding_step_how_headline": "Uma noite com seus crewmates",

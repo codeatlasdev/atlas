@@ -1,6 +1,6 @@
 {
 	"crew_onboarding_install_browsers_detail": "Chromium e WebKit, para as capturas de tela do trabalho de interface.",
-	"crew_onboarding_install_browsers_label": "Instalando os navegadores de captura",
+	"crew_onboarding_install_browsers_label": "Instalando navegadores para capturas de tela",
 	"crew_onboarding_install_check_detail": "Examina o sistema, o systemd e o sudo. Não altera nada.",
 	"crew_onboarding_install_check_label": "Verificando o servidor",
 	"crew_onboarding_install_checklist_idle_detail": "Cerca de dois minutos. Nada muda no servidor até a verificação passar.",

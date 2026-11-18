@@ -1,10 +1,10 @@
 {
-	"crew_onboarding_connect_error_host_key_changed_body": "O ssh se recusou a continuar porque {host} apresenta uma chave de host diferente da que este computador guardou. Se você reinstalou o servidor, isso é esperado: esqueça a chave antiga com o comando abaixo e tente novamente. Se não reinstalou, alguém pode interceptar a conexão.",
+	"crew_onboarding_connect_error_host_key_changed_body": "O ssh parou porque {host} apresenta uma chave de host diferente da que este computador guardou. Se você reinstalou o servidor, isso é esperado: remova a chave antiga com o comando abaixo e tente novamente. Se o servidor não mudou, confirme com quem o administra antes de continuar.",
 	"crew_onboarding_connect_error_host_key_changed_title": "A identidade do servidor mudou",
 	"crew_onboarding_connect_error_key_refused_body": "Ela ainda não está autorizada nesse servidor. Entre uma vez com a senha da conta e o Atlas adiciona a chave para você, ou escolha outra chave. Uma chave com frase secreta precisa estar carregada no ssh-agent antes.",
 	"crew_onboarding_connect_error_key_refused_title": "O servidor recusou a chave {key}",
 	"crew_onboarding_connect_error_key_refused_title_default": "O servidor recusou a chave deste computador",
-	"crew_onboarding_connect_error_key_still_refused_body": "O Atlas adicionou a chave ao servidor, mas o sshd não a aceita. No servidor, verifique se PubkeyAuthentication está ativo e se ~/.ssh e a pasta pessoal não são graváveis por outros usuários.",
+	"crew_onboarding_connect_error_key_still_refused_body": "O Atlas adicionou a chave ao servidor, mas o sshd não a aceita. No servidor, verifique se PubkeyAuthentication está ativo e se ~/.ssh e a pasta pessoal não permitem escrita para outros usuários.",
 	"crew_onboarding_connect_error_key_still_refused_title": "O servidor ainda recusa a chave {key}",
 	"crew_onboarding_connect_error_key_still_refused_title_default": "O servidor ainda recusa a chave deste computador",
 	"crew_onboarding_connect_error_key_unusable_body": "As permissões estão abertas demais (rode `chmod 600` nela), ou ela não é uma chave privada. Ou escolha outra chave.",
@@ -13,14 +13,14 @@
 	"crew_onboarding_connect_error_key_unusable_windows_body": "O Windows informa que outros usuários podem ler a chave, ou que ela não é uma chave privada. Só a sua conta pode ter acesso ao arquivo (Propriedades → Segurança → Avançadas → desabilitar herança). Ou escolha outra chave.",
 	"crew_onboarding_connect_error_name_not_found_body": "Confira a grafia ou use o endereço IP do servidor.",
 	"crew_onboarding_connect_error_name_not_found_title": "O endereço {host} não existe",
-	"crew_onboarding_connect_error_no_key_body": "Escolha uma chave privada que exista, ou entre com a senha e o Atlas cria uma chave para você.",
+	"crew_onboarding_connect_error_no_key_body": "Escolha uma chave privada existente, ou entre com a senha e o Atlas cria uma chave para você.",
 	"crew_onboarding_connect_error_no_key_title": "Esse arquivo de chave não existe",
 	"crew_onboarding_connect_error_other_body": "O Atlas não conseguiu terminar. Os detalhes abaixo mostram onde parou.",
 	"crew_onboarding_connect_error_other_title": "A instalação parou",
-	"crew_onboarding_connect_error_password_not_allowed_body": "Só chaves SSH entram nesse servidor. Use o método da chave SSH: alguém com acesso precisa adicionar antes a chave pública deste computador ao servidor.",
+	"crew_onboarding_connect_error_password_not_allowed_body": "Só chaves SSH entram nesse servidor. Use a chave SSH: alguém com acesso precisa adicionar a chave pública deste computador ao servidor antes.",
 	"crew_onboarding_connect_error_password_not_allowed_title": "Este servidor não aceita senhas",
-	"crew_onboarding_connect_error_password_refused_body": "Verifique a senha de {user} em {host} (caps lock ligado?) e tente novamente.",
-	"crew_onboarding_connect_error_password_refused_body_default": "Verifique a senha desse usuário em {host} (caps lock ligado?) e tente novamente.",
+	"crew_onboarding_connect_error_password_refused_body": "Verifique a senha de {user} em {host} (Caps Lock ativado?) e tente novamente.",
+	"crew_onboarding_connect_error_password_refused_body_default": "Verifique a senha desse usuário em {host} (Caps Lock ativado?) e tente novamente.",
 	"crew_onboarding_connect_error_password_refused_title": "O servidor não aceitou essa senha",
 	"crew_onboarding_connect_error_ssh_missing_body": "O Atlas entra com o programa ssh. Instale o cliente OpenSSH com o gerenciador de pacotes (por exemplo `sudo apt install openssh-client`) e verifique novamente.",
 	"crew_onboarding_connect_error_ssh_missing_title": "O ssh não está instalado neste computador",
@@ -66,5 +66,5 @@
 	"crew_onboarding_connect_step_ssh_address": "Endereço SSH",
 	"crew_onboarding_connect_step_sudo_password": "Senha do sudo",
 	"crew_onboarding_connect_step_terminal_hint": "Rode neste computador; ele usa a mesma chave.",
-	"crew_onboarding_connect_step_use_the_default": "Usar a padrão"
+	"crew_onboarding_connect_step_use_the_default": "Usar a chave padrão"
 }

@@ -24,6 +24,7 @@
 	import { statusGroups } from "#lib/stores/tree.ts";
 	import { gitStatus } from "#lib/stores/gitStatus.ts";
 	import { classifyGitError } from "#lib/gitErrors.ts";
+	import { commitErrorText, commitNotice } from "#lib/commitMessage.ts";
 	import { gitToast } from "#lib/gitToast.ts";
 	import PathText from "./PathText.svelte";
 	import NotRepoState from "./NotRepoState.svelte";
@@ -79,10 +80,10 @@
 	let rows = $derived.by((): Row[] => {
 		const out: Row[] = [];
 		const shown: [string, GitEntry[], Group][] = [
-			["Conflicts", conflicts, "conflicts"],
-			["Staged", staged, "staged"],
-			["Changes", changes, "changes"],
-			["Untracked", untracked, "untracked"],
+			[m.git_commit_group_conflicts(), conflicts, "conflicts"],
+			[m.git_commit_group_staged(), staged, "staged"],
+			[m.git_commit_group_changes(), changes, "changes"],
+			[m.git_commit_group_untracked(), untracked, "untracked"],
 		];
 		for (const [title, list, group] of shown) {
 			if (!list.length) continue;
@@ -181,9 +182,9 @@
 	const stage = (paths: string[]) => run("stage", ["add", "--", ...paths]);
 	const unstage = (paths: string[]) => run("unstage", ["restore", "--staged", "--", ...paths]);
 	const discard = async (e: GitEntry) =>
-		(await confirmDialog(`Discard changes to ${e.path}?`, {
-			description: e.x === "?" ? "The untracked file is deleted." : "This cannot be undone.",
-			confirmLabel: "Discard",
+		(await confirmDialog(m.git_commit_discard_title({ path: e.path }), {
+			description: e.x === "?" ? m.git_commit_discard_untracked() : m.git_commit_discard_tracked(),
+			confirmLabel: m.git_source_control_discard(),
 			destructive: true,
 		})) &&
 		(e.x === "?"
@@ -191,13 +192,13 @@
 			: run("discard", ["checkout", "--", e.path]));
 
 	async function commit(amend = false) {
-		if (!message.trim() && !amend) return toast.error("Write a commit message");
+		if (!message.trim() && !amend) return toast.error(m.git_commit_write_message());
 		// Ask before git does: its answer is a wall of text with a shell recipe in it.
 		if (await identityMissing(gitHere)) return askWho(amend);
 		const args = ["commit", "-F", "-", ...(amend ? ["--amend"] : [])];
 		if (await run("commit", args, message)) {
 			message = "";
-			toast.success(amend ? "Amended" : "Committed");
+			toast.success(amend ? m.git_commit_amended() : m.git_commit_committed());
 		} else if (failure && isIdentityError(failure)) {
 			failure = null;
 			failureOf = null;
@@ -245,17 +246,44 @@
 		else if (ahead > 0 || !st?.upstream) await run("push", ["push"]);
 	}
 
-	let primaryLabel = $derived(
+	type Primary = "stage" | "commit" | "pull" | "push" | "done";
+	let primaryKind = $derived<Primary>(
 		!staged.length && (changes.length || untracked.length)
-			? "Stage all"
+			? "stage"
 			: staged.length
-				? "Commit"
+				? "commit"
 				: behind > 0
-					? `Pull (${behind})`
+					? "pull"
 					: ahead > 0 || !st?.upstream
-						? `Push${ahead ? ` (${ahead})` : ""}`
-						: "Up to date",
+						? "push"
+						: "done",
 	);
+	let primaryLabel = $derived.by(() => {
+		switch (primaryKind) {
+			case "stage":
+				return m.git_source_control_stage_all();
+			case "commit":
+				return m.git_commit_primary_commit();
+			case "pull":
+				return m.git_commit_primary_pull({ count: behind });
+			case "push":
+				return ahead ? m.git_commit_primary_push_count({ count: ahead }) : m.git_source_control_push();
+			case "done":
+				return m.git_commit_primary_up_to_date();
+		}
+	});
+
+	/** The merge or rebase in progress, as `git_review::operation` (Rust) names it; another value shows as it came. */
+	function operationText(op: string): string {
+		switch (op) {
+			case "merge":
+				return m.git_commit_operation_merge();
+			case "rebase":
+				return m.git_commit_operation_rebase();
+			default:
+				return m.git_source_control_operation_in_progress({ operation: op });
+		}
+	}
 
 	async function toAgent(text: string) {
 		const t = agents.tabsIn(worktreeId)[0];
@@ -280,9 +308,9 @@
 				<DropdownMenuItem
 					variant="destructive"
 					onclick={async () =>
-						(await confirmDialog("Force push with lease?", {
-							description: "Overwrites the remote branch if nobody else pushed to it.",
-							confirmLabel: "Force push",
+						(await confirmDialog(m.git_commit_force_push_title(), {
+							description: m.git_commit_force_push_body(),
+							confirmLabel: m.git_commit_force_push_confirm(),
 							destructive: true,
 						})) && run("push", ["push", "--force-with-lease"])}
 				>
@@ -294,14 +322,14 @@
 
 		{#if st?.operation}
 			<div class="conflict">
-				<b>{m.git_source_control_operation_in_progress({ operation: st.operation })}</b>
-				{#if conflicts.length}<span>{conflicts.length} conflicted file{conflicts.length > 1 ? "s" : ""}</span
-					>{/if}
+				<b>{operationText(st.operation)}</b>
+				{#if conflicts.length}<span>{m.git_commit_conflicted_files({ count: conflicts.length })}</span>{/if}
 				<div class="row-btns">
 					<Button
 						size="sm"
 						onclick={() =>
 							toAgent(
+								// i18n-ignore: the prompt an agent reads
 								`Resolve the git ${st!.operation} conflicts in: ${conflicts.map((c) => c.path).join(", ")}. Then stage the files and continue the ${st!.operation}.`,
 							)}
 					>
@@ -317,15 +345,15 @@
 		<div class="msg" role="presentation" onkeydown={(e) => e.key === "Enter" && primaryKey(e) && commit()}>
 			<TextArea
 				bind:value={message}
-				placeholder={`Commit message (${kbd("cmd-enter")} to commit)`}
+				placeholder={m.git_commit_message_placeholder({ key: kbd("cmd-enter") })}
 				rows={3}
 			/>
 			{#if gen.phase === "running"}
-				<span class="dim">Writing with {gen.agent || "the agent"}…</span>
+				<span class="dim">{gen.agent ? m.git_commit_writing_with({ agent: gen.agent }) : m.git_commit_writing()}</span>
 			{:else if gen.error}
-				<span class="err">{gen.error}</span>
-			{:else if gen.notice}
-				<span class="dim">{gen.notice}</span>
+				<span class="err">{commitErrorText(gen.error)}</span>
+			{:else if commitNotice(gen)}
+				<span class="dim">{commitNotice(gen)}</span>
 			{/if}
 			{#if hint.show}
 				{#if showInstruction}
@@ -342,7 +370,7 @@
 				{/if}
 			{/if}
 			<div class="row-btns">
-				<Button size="sm" disabled={!!busy || primaryLabel === "Up to date"} onclick={primary}>
+				<Button size="sm" disabled={!!busy || primaryKind === "done"} onclick={primary}>
 					{#snippet leading()}{#if busy && busy !== "ai"}<Spinner size={12} />{/if}{/snippet}
 					{primaryLabel}
 				</Button>
@@ -356,14 +384,14 @@
 						<Button
 							size="sm"
 							variant="ghost"
-							title="Write the message from {staged.length ? 'the staged diff' : 'all changes'}"
+							title={staged.length ? m.git_commit_write_from_staged() : m.git_commit_write_from_all()}
 							data-tour="commit-ai"
 							onclick={() => commitMessages.generate(worktreeId, instruction)}
 						>
 							{#snippet leading()}{#if message.trim() && gen.agent}<RefreshCw size={12} />{:else}<Sparkles
 										size={12}
 									/>{/if}{/snippet}
-							{message.trim() && gen.agent ? "Regenerate" : "Generate"}
+							{message.trim() && gen.agent ? m.git_commit_regenerate() : m.git_commit_generate()}
 						</Button>
 					{/if}
 				{/if}
@@ -392,6 +420,7 @@
 				</label>
 				<label>
 					{m.git_source_control_e_mail()}
+					<!-- i18n-ignore: an example address, not prose -->
 					<input
 						class="instr"
 						type="email"
@@ -415,7 +444,7 @@
 				<div class="row-btns">
 					<Button size="sm" type="submit" disabled={who.saving}>
 						{#snippet leading()}{#if who?.saving}<Spinner size={12} />{/if}{/snippet}
-						{who.amend ? "Save & amend" : "Save & commit"}
+						{who.amend ? m.git_commit_save_amend() : m.git_commit_save_commit()}
 					</Button>
 					<Button size="sm" variant="ghost" onclick={() => (who = null)}>{m.common_action_cancel()}</Button>
 				</div>

@@ -1,6 +1,7 @@
 import { toast } from "@codeatlasdev/ui";
 import { git, errText } from "#lib/api.ts";
 import { gitToast } from "#lib/gitToast.ts";
+import { m } from "#lib/i18n/m.ts";
 import { branchRows, createRow, type BranchRow, type Branches } from "#lib/branches.ts";
 import { goWorktree } from "#lib/shell/navigate.ts";
 import { confirmDialog } from "#lib/stores/ask.svelte.ts";
@@ -33,7 +34,7 @@ export function branchItems(q: string) {
 	if (!data) return [];
 	return branchRows(data, q).map((r) => ({
 		id: r.id,
-		group: r.kind === "remote" ? "Remote branches" : "Branches",
+		group: r.kind === "remote" ? m.git_branch_group_remote() : m.git_branch_group_local(),
 		label: r.label,
 		description: r.description,
 		run: () => void pick(r),
@@ -44,7 +45,7 @@ export function createBranchItems(q: string) {
 	const data = branchPicker.data;
 	const r = data && createRow(data, q, data.current);
 	return r
-		? [{ id: r.id, group: "Create", label: r.label, description: r.description, run: () => void pick(r) }]
+		? [{ id: r.id, group: m.git_branch_group_create(), label: r.label, description: r.description, run: () => void pick(r) }]
 		: [];
 }
 
@@ -59,7 +60,7 @@ async function pick(r: BranchRow) {
 	if (r.jump) {
 		const target = worktreeAt(r.jump);
 		if (target) return goWorktree(target.id);
-		return void toast.error(`${r.name} is checked out in ${r.jump}, which Atlas does not know`);
+		return void toast.error(m.git_branch_unknown_checkout({ branch: r.name, path: r.jump }));
 	}
 	if (r.current) return;
 	await run(id, r.name, { create: r.kind === "create" });
@@ -71,19 +72,20 @@ async function run(id: string, branch: string, opts: { create?: boolean; stash?:
 		if (out.status === "ok") {
 			toast.success(
 				out.stashed
-					? `Switched to ${out.branch}; your changes are in the stash`
+					? m.git_branch_switched_stashed({ branch: out.branch })
 					: opts.create
-						? `Created and switched to ${out.branch}`
-						: `Switched to ${out.branch}`,
+						? m.git_branch_created({ branch: out.branch })
+						: m.git_branch_switched({ branch: out.branch }),
 			);
 		} else if (out.status === "worktree") {
 			const target = worktreeAt(out.path);
 			if (target) goWorktree(target.id);
-			else toast.error(`${branch} is checked out in ${out.path}`);
+			else toast.error(m.git_branch_checked_out_in({ branch, path: out.path }));
 		} else if (
-			await confirmDialog(`Local changes would be overwritten`, {
-				description: `${out.message}\n\nStash them (untracked files too) and switch? They stay in \`git stash\`.`,
-				confirmLabel: "Stash and switch",
+			await confirmDialog(m.git_branch_stash_title(), {
+				// git's own words (which files are in the way), then the question.
+				description: `${out.message}\n\n${m.git_branch_stash_question()}`,
+				confirmLabel: m.git_branch_stash_confirm(),
 			})
 		) {
 			await run(id, branch, { ...opts, stash: true });

@@ -29,10 +29,10 @@
 			id={i === 0 ? "agent-integration" : undefined}
 			label={a.label}
 			description={a.state === "ok"
-				? "Reports when it works, waits for you or is done, and can use Atlas tools."
+				? m.settings_general_agent_hooks_state_ok()
 				: a.state === "missing"
-					? "Not connected: Atlas and Atlas Mobile cannot tell what it is doing."
-					: "Atlas could not tell if its hooks are on."}
+					? m.settings_general_agent_hooks_state_missing()
+					: m.settings_general_agent_hooks_state_unknown()}
 		>
 			{#snippet lead()}<AgentLogo agent={a.id} size={18} />{/snippet}
 			{#if a.state === "ok"}

@@ -1,0 +1,8 @@
+{
+	"settings_registry_general_description": "Mantenha o Atlas atualizado: o app, a CLI atlas e o host de terminais, e o canal de versões que eles seguem.",
+	"settings_registry_general_group_updates": "Atualizações",
+	"settings_registry_general_label": "Geral",
+	"settings_registry_general_update_channel_description": "Siga as versões Stable, Beta ou Alpha. Compartilhado com a CLI atlas.",
+	"settings_registry_general_update_channel_label": "Canal de atualização",
+	"settings_registry_general_updates_description": "Procure uma versão nova do Atlas e instale."
+}

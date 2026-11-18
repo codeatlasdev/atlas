@@ -1,0 +1,20 @@
+{
+  "pt-BR": {
+    "git_branch_checked_out_in": "076979b9b7e9",
+    "git_branch_create_from": "a28c2f0bd91c",
+    "git_branch_create_from_head": "51f35702f273",
+    "git_branch_create_label": "ccb1407f922b",
+    "git_branch_created": "a2cd0086286d",
+    "git_branch_group_create": "88f0bf04a31e",
+    "git_branch_group_local": "f52f1cbc7fca",
+    "git_branch_group_remote": "1a2ea0347515",
+    "git_branch_row_checked_out": "3bdc9b9de329",
+    "git_branch_row_current": "694df57a7909",
+    "git_branch_stash_confirm": "a0005904fd5a",
+    "git_branch_stash_question": "83712c73c4ad",
+    "git_branch_stash_title": "602979fb1ac5",
+    "git_branch_switched": "b2b6246ce1b1",
+    "git_branch_switched_stashed": "0857e5b03954",
+    "git_branch_unknown_checkout": "97ae022342cd"
+  }
+}

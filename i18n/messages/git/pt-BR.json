@@ -1,0 +1,164 @@
+{
+	"git_create_pr_dialog_base_branch": "Branch base",
+	"git_create_pr_dialog_cli_not_installed": "O GitHub CLI ({#code}gh{/code}) não está instalado.",
+	"git_create_pr_dialog_create": "Criar",
+	"git_create_pr_dialog_create_pull_request": "Criar pull request",
+	"git_create_pr_dialog_description": "Descrição",
+	"git_create_pr_dialog_draft": "Rascunho",
+	"git_create_pr_dialog_generate_failed": "O agente não conseguiu escrever o pull request.",
+	"git_create_pr_dialog_generate_with_ai": "Gerar com IA",
+	"git_create_pr_dialog_github_cli_is_not_signed": "O GitHub CLI não está conectado a uma conta.",
+	"git_create_pr_dialog_install_github_cli": "Instalar o GitHub CLI",
+	"git_create_pr_dialog_repository_default": "padrão do repositório",
+	"git_create_pr_dialog_sign_in_with_gh": "Entrar com gh",
+	"git_create_pr_dialog_title": "Título",
+	"git_diff_notes_placeholder": "Comentário para o agente ({key} para salvar, {escape} para cancelar)",
+	"git_diff_notes_reopen": "Reabrir",
+	"git_diff_notes_resolve": "Resolver",
+	"git_diff_notes_sent": "enviada",
+	"git_diff_table_comment_c": "Comentar (c)",
+	"git_diff_view_binary_file": "Arquivo binário",
+	"git_diff_view_branch_base": "base da branch",
+	"git_diff_view_diff_layout": "Layout do diff",
+	"git_diff_view_head": "HEAD",
+	"git_diff_view_image_changed_open_the_file": "A imagem mudou (abra o arquivo para ver).",
+	"git_diff_view_new_defaultagent_session": "Nova sessão do {defaultAgent}",
+	"git_diff_view_no_changes": "Nenhuma alteração",
+	"git_diff_view_no_changes_in_file": "Nenhuma alteração neste arquivo",
+	"git_diff_view_refresh": "Atualizar",
+	"git_diff_view_send_notes": [
+		{
+			"declarations": [
+				"input count",
+				"local countPlural = count: plural"
+			],
+			"selectors": [
+				"countPlural"
+			],
+			"match": {
+				"countPlural=one": "Enviar {count} nota ao agente",
+				"countPlural=*": "Enviar {count} notas ao agente"
+			}
+		}
+	],
+	"git_diff_view_sent_notes": [
+		{
+			"declarations": [
+				"input count",
+				"local countPlural = count: plural"
+			],
+			"selectors": [
+				"countPlural"
+			],
+			"match": {
+				"countPlural=one": "{count} nota enviada",
+				"countPlural=*": "{count} notas enviadas"
+			}
+		}
+	],
+	"git_diff_view_split": "Dividido",
+	"git_diff_view_stage_file": "Fazer stage do arquivo",
+	"git_diff_view_stage_hunk": "Fazer stage do hunk",
+	"git_diff_view_staged": "Em stage",
+	"git_diff_view_status_added": "adicionado",
+	"git_diff_view_status_deleted": "excluído",
+	"git_diff_view_status_modified": "modificado",
+	"git_diff_view_status_renamed": "renomeado",
+	"git_diff_view_status_untracked": "não rastreado",
+	"git_diff_view_unified": "Unificado",
+	"git_diff_view_unstage_file": "Remover arquivo do stage",
+	"git_diff_view_unstage_hunk": "Remover hunk do stage",
+	"git_diff_view_unstaged": "Fora do stage",
+	"git_diff_view_vs_base": "contra a base",
+	"git_diff_view_vs_base_ref": "contra a base ({base})",
+	"git_diff_view_wrap": "Quebrar linhas",
+	"git_identity_dialog_automatic": "Automático",
+	"git_identity_dialog_automatic_color": "Cor automática",
+	"git_identity_dialog_change_icon_and_color": "Alterar ícone e cor",
+	"git_identity_dialog_color": "Cor",
+	"git_identity_dialog_emoji_placeholder": "Digite ou cole um emoji",
+	"git_identity_dialog_hue_h": "Matiz {h}",
+	"git_identity_dialog_icon_source": "Origem do ícone",
+	"git_identity_dialog_no_icon_matches_query": "Nenhum ícone corresponde a “{query}”.",
+	"git_identity_dialog_no_logo_found_in_this": "Nenhum logo encontrado neste repositório (favicon, ícone do app, assets/logo…).",
+	"git_identity_dialog_reset": "Redefinir",
+	"git_identity_dialog_search_icons": [
+		{
+			"declarations": [
+				"input count",
+				"local countExact = count",
+				"local countPlural = count: plural"
+			],
+			"selectors": [
+				"countExact",
+				"countPlural"
+			],
+			"match": {
+				"countExact=0, countPlural=*": "Pesquisar ícones",
+				"countExact=*, countPlural=one": "Pesquisar {count} ícone",
+				"countExact=*, countPlural=*": "Pesquisar {count} ícones"
+			}
+		}
+	],
+	"git_identity_dialog_tab_emoji": "Emoji",
+	"git_identity_dialog_tab_icons": "Ícones",
+	"git_identity_dialog_tab_logo": "Logo do projeto",
+	"git_identity_dialog_use_project_logo": "Usar o logo do projeto",
+	"git_new_worktree_dialog_a_github_pr_or_issue": "Uma URL de PR ou de issue do GitHub também serve.",
+	"git_new_worktree_dialog_add_new_project": "Adicionar um novo projeto…",
+	"git_new_worktree_dialog_add_project_title": "Adicionar projeto",
+	"git_new_worktree_dialog_advanced": "Avançado",
+	"git_new_worktree_dialog_agent": "Agente",
+	"git_new_worktree_dialog_base_ref": "Ref base",
+	"git_new_worktree_dialog_blank_terminal": "Terminal em branco",
+	"git_new_worktree_dialog_branch_name": "Nome da branch",
+	"git_new_worktree_dialog_derived_from_the_name": "Derivado do nome",
+	"git_new_worktree_dialog_leave_blank_for_a_random": "Deixe em branco para um nome aleatório",
+	"git_new_worktree_dialog_name": "Nome",
+	"git_new_worktree_dialog_new_worktree": "Nova worktree",
+	"git_new_worktree_dialog_optional_first_message_to_the": "Primeira mensagem para o agente (opcional)",
+	"git_new_worktree_dialog_origin_default_branch": "origin/<branch padrão>",
+	"git_new_worktree_dialog_project": "Projeto",
+	"git_new_worktree_dialog_prompt": "Prompt",
+	"git_new_worktree_dialog_run_setup_script_worktree_setup": "Executar o script de setup (worktree.setup)",
+	"git_not_repo_state_description": "O controle de versão, os diffs e os pull requests precisam do git. Inicialize um repositório nesta pasta para começar a rastrear alterações.",
+	"git_not_repo_state_initialize_repository": "Inicializar repositório",
+	"git_not_repo_state_this_folder_is_not_a": "Esta pasta não é um repositório git",
+	"git_pr_tab_comment": "Comentar",
+	"git_pr_tab_could_not_read_the_repository": "Não foi possível ler o repositório",
+	"git_pr_tab_enable_auto_merge_squash": "Ativar merge automático (squash)",
+	"git_pr_tab_fix_broken_checks": "Corrigir checks quebrados",
+	"git_pr_tab_mark_ready": "Marcar como pronto",
+	"git_pr_tab_merge": "Fazer merge…",
+	"git_pr_tab_no_checks": "Nenhum check.",
+	"git_pr_tab_open_on_github": "Abrir no GitHub",
+	"git_pr_tab_try_again": "Tentar novamente",
+	"git_source_control_abort": "Abortar",
+	"git_source_control_ada_lovelace": "Ada Lovelace",
+	"git_source_control_add_an_instruction": "Adicionar uma instrução…",
+	"git_source_control_all_repositories_global": "Todos os repositórios (global)",
+	"git_source_control_amend_last_commit": "Corrigir o último commit",
+	"git_source_control_details": "Detalhes",
+	"git_source_control_discard": "Descartar",
+	"git_source_control_e_g_mention_issue_72": "ex.: mencione a issue #72",
+	"git_source_control_e_mail": "E-mail",
+	"git_source_control_fix_with_ai": "Corrigir com IA",
+	"git_source_control_force_push_with_lease": "Force push com lease",
+	"git_source_control_git_puts_a_name_and": "O git coloca um nome e um e-mail em cada commit. O Atlas salva os dois e faz o commit.",
+	"git_source_control_instruction_for_the_commit_message": "Instrução para a mensagem de commit",
+	"git_source_control_open_changes": "Abrir alterações",
+	"git_source_control_operation_in_progress": "{operation} em andamento",
+	"git_source_control_pr": "PR",
+	"git_source_control_pull_rebase": "Pull (rebase)",
+	"git_source_control_push": "Fazer push",
+	"git_source_control_resolve_with_ai": "Resolver com IA",
+	"git_source_control_save_it_for": "Salvar para",
+	"git_source_control_stage": "Fazer stage",
+	"git_source_control_stage_all": "Fazer stage de tudo",
+	"git_source_control_stop": "Parar",
+	"git_source_control_this_repository_only": "Somente este repositório",
+	"git_source_control_unstage": "Remover do stage",
+	"git_source_control_unstage_all": "Remover tudo do stage",
+	"git_source_control_who_are_you": "Quem é você?",
+	"git_source_control_who_is_committing": "Quem está fazendo o commit?"
+}

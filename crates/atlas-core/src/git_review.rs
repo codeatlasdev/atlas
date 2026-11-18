@@ -242,6 +242,12 @@ pub async fn base_for<Fut: Future<Output = Result<String, String>>>(
     "HEAD".into()
 }
 
+/// The values [`operation`] returns. The desktop words each one (`operationText`); any other value shows as it came.
+pub const OPERATIONS: [&str; 2] = ["merge", "rebase"];
+/// The `status` of a [`FileDiff`]. The desktop words each one (`statusText`); `untracked` is the status of a new
+/// file's diff, which the desktop shell builds itself.
+pub const FILE_STATUSES: [&str; 5] = ["modified", "added", "deleted", "renamed", "untracked"];
+
 /// `merge` or `rebase` while one is in progress in the checkout at `dir`. The git dir is `.git`, or what a linked
 /// worktree's `.git` file (`gitdir: <path>`) points to: a file read, not a `rev-parse` process.
 pub fn operation(dir: &std::path::Path) -> Option<&'static str> {
@@ -708,6 +714,24 @@ pub fn resolve_provider(
     }
 }
 
+/// The stable codes `commit_msg_generate` and [`run_provider`] send as the whole message of an error for the failures
+/// the app words itself, because a sentence from Rust is English and the desktop shows the language of the person.
+/// The desktop maps each to a message (`commitErrorText`); anything else is an agent's own output and shows as it
+/// came. The list is the fixture `__fixtures__/commit-msg-errors.json` that the desktop test reads.
+pub mod commit_error {
+    /// The folder is on an SSH host: the agent would have to run there.
+    pub const SSH_HOST: &str = "commit_msg.ssh_host";
+    /// Settings > Git turned the feature off.
+    pub const PROVIDER_OFF: &str = "commit_msg.provider_off";
+    /// Nothing staged and nothing changed.
+    pub const NO_CHANGES: &str = "commit_msg.no_changes";
+    /// Every changed file looks like a secret, so nothing was sent.
+    pub const ALL_SECRET: &str = "commit_msg.all_secret";
+    /// The agent ended well and printed no message.
+    pub const EMPTY_MESSAGE: &str = "commit_msg.empty_message";
+    pub const ALL: [&str; 5] = [SSH_HOST, PROVIDER_OFF, NO_CHANGES, ALL_SECRET, EMPTY_MESSAGE];
+}
+
 /// One event of a run, as the frontend reads it from `commit-msg://<request>`.
 #[derive(Serialize, Debug, PartialEq, Clone)]
 #[serde(tag = "kind", rename_all = "snake_case")]
@@ -822,7 +846,7 @@ pub async fn run_provider(
     match result {
         Ok(st) if st.success() && !message.is_empty() => Event::Done { message },
         Ok(st) if st.success() => Event::Error {
-            message: "the provider returned no message".into(),
+            message: commit_error::EMPTY_MESSAGE.into(),
         },
         Ok(st) => {
             // claude prints its auth failure on stdout; omp prints progress on stderr: show whichever says why.
@@ -1771,6 +1795,39 @@ mod commit_msg_tests {
         );
     }
 
+    // Contract with the frontend: the codes of `commit_error` are the whole `message` of an error event, and
+    // `commitErrorText` (desktop) words each one. The empty-message code is what the real run below produces.
+    #[test]
+    fn error_codes_match_the_frontend_fixture() {
+        let d = tempfile::tempdir().unwrap();
+        let (done, _) = run(fake(d.path(), "cat >/dev/null"), "x");
+        assert!(
+            matches!(&done, Event::Error { message } if message == commit_error::EMPTY_MESSAGE),
+            "{done:?}"
+        );
+        let value = serde_json::to_value(commit_error::ALL).unwrap();
+        let path = Path::new(env!("CARGO_MANIFEST_DIR"))
+            .join("../../apps/desktop/src/lib/__fixtures__/commit-msg-errors.json");
+        let mut buf = Vec::new();
+        let mut ser = serde_json::Serializer::with_formatter(
+            &mut buf,
+            serde_json::ser::PrettyFormatter::with_indent(b"\t"),
+        );
+        serde::Serialize::serialize(&value, &mut ser).unwrap();
+        let fresh = String::from_utf8(buf).unwrap() + "\n";
+        if std::env::var_os("UPDATE_FIXTURES").is_some() {
+            std::fs::write(&path, &fresh).unwrap();
+        }
+        let committed: serde_json::Value = serde_json::from_str(
+            &std::fs::read_to_string(&path).expect("fixture missing: UPDATE_FIXTURES=1"),
+        )
+        .unwrap();
+        assert_eq!(
+            committed, value,
+            "stale fixture: re-run with UPDATE_FIXTURES=1"
+        );
+    }
+
     // Incident class: "nothing staged → describe all changes" silently skipped brand-new files, because `git diff HEAD`
     // never lists untracked ones. The real `git diff --no-index /dev/null <path>` must split under the NEW path.
     #[test]
@@ -2115,6 +2172,67 @@ mod status_json_tests {
             (Some("merge"), Some("feat"))
         );
         assert_eq!(v["entries"][0]["conflict"], true);
+    }
+
+    // Contract with the frontend: the values of `OPERATIONS` and `FILE_STATUSES` are what `operationText` and
+    // `statusText` (desktop) word. Every value the REAL producers make below is in the lists; the lists are the
+    // fixture `__fixtures__/git-review-values.json` the desktop test reads.
+    #[test]
+    fn operation_and_file_status_values_match_the_frontend_fixture() {
+        let t = tempfile::tempdir().unwrap();
+        let main = t.path().join("main");
+        std::fs::create_dir_all(&main).unwrap();
+        ok(&main, &["init", "-q", "."]);
+        commit(&main, "f.txt", "base\n");
+        commit(&main, "gone.txt", "x\n");
+        commit(&main, "moved.txt", "same content\nline two\nline three\n");
+        ok(&main, &["branch", "other"]);
+        commit(&main, "f.txt", "main\n");
+        ok(&main, &["checkout", "-q", "other"]);
+        commit(&main, "f.txt", "other\n");
+        // A conflicting rebase and a conflicting merge, as real git leaves them.
+        assert!(git_in(&main, &["rebase", "main"]).is_err(), "must conflict");
+        let mut seen = vec![operation(&main).expect("a rebase is in progress")];
+        ok(&main, &["rebase", "--abort"]);
+        ok(&main, &["checkout", "-q", "main"]);
+        assert!(git_in(&main, &["merge", "other"]).is_err(), "must conflict");
+        seen.push(operation(&main).expect("a merge is in progress"));
+        ok(&main, &["merge", "--abort"]);
+        assert_eq!(seen, OPERATIONS.to_vec());
+
+        // A modified, an added, a deleted and a renamed file, in one real `git diff -M`.
+        std::fs::write(main.join("f.txt"), "edited\n").unwrap();
+        std::fs::write(main.join("added.txt"), "new\n").unwrap();
+        ok(&main, &["rm", "-q", "gone.txt"]);
+        ok(&main, &["mv", "moved.txt", "renamed.txt"]);
+        ok(&main, &["add", "-A"]);
+        let diff = git_in(&main, &["diff", "--cached", "--no-color", "-U3", "-M"]).unwrap();
+        let mut statuses: Vec<&str> = parse(&diff, true).iter().map(|f| f.status).collect();
+        statuses.sort();
+        assert_eq!(statuses, ["added", "deleted", "modified", "renamed"]);
+        assert!(statuses.iter().all(|s| FILE_STATUSES.contains(s)));
+
+        let value = json!({"operations": OPERATIONS, "statuses": FILE_STATUSES});
+        let path = Path::new(env!("CARGO_MANIFEST_DIR"))
+            .join("../../apps/desktop/src/lib/__fixtures__/git-review-values.json");
+        let mut buf = Vec::new();
+        let mut ser = serde_json::Serializer::with_formatter(
+            &mut buf,
+            serde_json::ser::PrettyFormatter::with_indent(b"\t"),
+        );
+        serde::Serialize::serialize(&value, &mut ser).unwrap();
+        let fresh = String::from_utf8(buf).unwrap() + "\n";
+        if std::env::var_os("UPDATE_FIXTURES").is_some() {
+            std::fs::write(&path, &fresh).unwrap();
+        }
+        let committed: Value = serde_json::from_str(
+            &std::fs::read_to_string(&path).expect("fixture missing: UPDATE_FIXTURES=1"),
+        )
+        .unwrap();
+        assert_eq!(
+            committed, value,
+            "stale fixture: re-run with UPDATE_FIXTURES=1"
+        );
     }
 
     // The parser behind it, on the verbatim headers of `git status --porcelain=v2 -z --branch`.

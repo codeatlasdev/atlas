@@ -71,7 +71,7 @@
 				<Button
 					size="sm"
 					variant="ghost"
-					aria-label="Play {SPECS[c].label}"
+					aria-label={m.settings_general_sound_play_label({ sound: SPECS[c].label })}
 					disabled={off}
 					onclick={() => sound.preview(c)}
 				>

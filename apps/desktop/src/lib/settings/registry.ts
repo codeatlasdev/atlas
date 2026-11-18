@@ -5,13 +5,15 @@
  *
  * The sidebar, the page header, the tab strip, the search index, the breadcrumb of a result and every
  * `updates.show("<id>")` deep link are all derived from this file, so they cannot disagree. Adding a setting is
- * one `item(...)` here plus its row in the page component named in `files`; `registry.test.ts` and
+ * one `messageItem(...)` here plus its row in the page component named in `files`; `registry.test.ts` and
  * `placement.test.ts` go red when either half is missing.
  *
  * Rules the tests pin:
  *  - ids never change when a setting moves (search, deep links and the flash on arrival key on them);
  *  - an `aliases` entry keeps an id that shipped before working after the thing it named moved or was renamed;
- *  - labels and descriptions are identical to the screens.
+ *  - labels and descriptions are identical to the screens;
+ *  - every user-visible text is a message read through a getter, so the sidebar, the page, the tab strip and the
+ *    search follow the display language live (nothing here may copy a label into a plain string at module load).
  * Pure: no Svelte, no IPC. Icons and components live next to the UI (`SettingsNav`, `pageComponents.ts`).
  */
 import { kbd } from "#lib/keys.ts";
@@ -62,27 +64,43 @@ export interface CategoryDef {
 	readonly pages: readonly PageDef[];
 }
 
-/** Sidebar headings, in order. */
+/**
+ * Sidebar headings, in order. The label is a getter: it is read when the sidebar draws, so it follows the display
+ * language.
+ */
 export const CLUSTERS = [
-	{ id: "app", label: "Atlas" },
-	{ id: "work", label: "Work" },
-	{ id: "connect", label: "Connect" },
+	{
+		id: "app",
+		get label() {
+			return m.settings_registry_clusters_app();
+		},
+	},
+	{
+		id: "work",
+		get label() {
+			return m.settings_registry_clusters_work();
+		},
+	},
+	{
+		id: "connect",
+		get label() {
+			return m.settings_registry_clusters_connect();
+		},
+	},
 ] as const;
-
-const item = (
-	id: string,
-	label: string,
-	description: string,
-	keywords = "",
-	...aliases: string[]
-): ItemDef => ({ id, label, description, ...(keywords && { keywords }), ...(aliases.length && { aliases }) });
 
 /**
  * A row whose label and description come from the message catalog. They are getters, so they are read when something
- * shows them (the page, the search index) and follow the display language; a plain `item(...)` string is fixed at
- * module load. `keywords` stay a plain string on purpose: they hold words in every language people may type.
+ * shows them (the page, the search index) and follow the display language. `keywords` stay a plain string on
+ * purpose: they hold words in every language people may type.
  */
-const messageItem = (id: string, label: () => string, description: () => string, keywords = ""): ItemDef => ({
+const messageItem = (
+	id: string,
+	label: () => string,
+	description: () => string,
+	keywords = "",
+	...aliases: string[]
+): ItemDef => ({
 	id,
 	get label() {
 		return label();
@@ -91,22 +109,35 @@ const messageItem = (id: string, label: () => string, description: () => string,
 		return description();
 	},
 	...(keywords && { keywords }),
+	...(aliases.length && { aliases }),
 });
 
-/** A row that only exists on macOS (the fast GPU terminal's own options): see [`forPlatform`]. */
-const macItem = (...a: Parameters<typeof item>): ItemDef => ({ ...item(...a), macOnly: true });
+/**
+ * A row that only exists on macOS (the fast GPU terminal's own options): see [`forPlatform`]. Not a spread: a spread
+ * would freeze the message-backed label and description at their current language.
+ */
+const macItem = (...a: Parameters<typeof messageItem>): ItemDef =>
+	Object.defineProperty(messageItem(...a), "macOnly", { value: true, enumerable: true });
 
 /** One row per sound category; the ids and texts come from the sound policy so the two lists stay one. */
 const SOUND_ITEMS = SOUND_CATEGORIES.map((c) =>
-	item(`sound-cat-${c}`, SPECS[c].label, SPECS[c].description, "sound earcon chime"),
+	messageItem(
+		`sound-cat-${c}`,
+		() => SPECS[c].label,
+		() => SPECS[c].description,
+		"sound earcon chime",
+	),
 );
 
 const DEFS = [
 	{
 		id: "general",
-		label: "General",
-		description:
-			"Keep Atlas up to date: the app, the atlas CLI and the terminal host, and the release channel they follow.",
+		get label() {
+			return m.settings_registry_general_label();
+		},
+		get description() {
+			return m.settings_registry_general_description();
+		},
 		cluster: "app",
 		pages: [
 			{
@@ -118,18 +149,20 @@ const DEFS = [
 				],
 				groups: [
 					{
-						title: "Updates",
+						get title() {
+							return m.settings_registry_general_group_updates();
+						},
 						items: [
-							item(
+							messageItem(
 								"updates",
-								"Updates",
-								"Check for a new Atlas release and install it.",
+								m.settings_registry_general_group_updates,
+								m.settings_registry_general_updates_description,
 								"version upgrade release cli app",
 							),
-							item(
+							messageItem(
 								"update-channel",
-								"Update channel",
-								"Follow Stable, Beta or Alpha releases. Shared with the atlas CLI.",
+								m.settings_registry_general_update_channel_label,
+								m.settings_registry_general_update_channel_description,
 								"beta alpha stable prerelease pre-release rc nightly insiders downgrade release train",
 							),
 						],
@@ -153,110 +186,149 @@ const DEFS = [
 	},
 	{
 		id: "appearance",
-		label: "Appearance",
-		description: "Theme, accent color, interface font, zoom and the layout of the file panel and panes.",
+		get label() {
+			return m.settings_registry_appearance_label();
+		},
+		get description() {
+			return m.settings_registry_appearance_description();
+		},
 		cluster: "app",
 		pages: [
 			{
 				files: ["settings/ThemeTab.svelte", "settings/InterfaceTab.svelte"],
 				groups: [
 					{
-						title: "Color theme",
+						get title() {
+							return m.settings_registry_appearance_group_color_theme();
+						},
 						items: [
-							item(
+							messageItem(
 								"theme-mode",
-								"Theme",
-								"Follow the system, or always use light or dark.",
+								m.settings_registry_appearance_theme_mode_label,
+								m.settings_registry_appearance_theme_mode_description,
 								"dark light mode system",
 							),
-							item(
+							messageItem(
 								"theme-light",
-								"Light theme",
-								"Colors used when Atlas is in light mode.",
+								m.settings_registry_appearance_theme_light_label,
+								m.settings_registry_appearance_theme_light_description,
 								"alucard zed json",
 							),
-							item("theme-dark", "Dark theme", "Colors used when Atlas is in dark mode.", "dracula zed json"),
-							item(
+							messageItem(
+								"theme-dark",
+								m.settings_registry_appearance_theme_dark_label,
+								m.settings_registry_appearance_theme_dark_description,
+								"dracula zed json",
+							),
+							messageItem(
 								"theme-terminal",
-								"Terminal theme",
-								"Use the app theme in terminals, or pick another one.",
+								m.settings_registry_appearance_theme_terminal_label,
+								m.settings_registry_appearance_theme_terminal_description,
 								"dracula alucard colors ansi palette",
 							),
-							item(
+							messageItem(
 								"theme-import",
-								"Import theme",
-								"Bring a theme from Ghostty, iTerm, VS Code, Alacritty or Base16, or a zip or folder of themes.",
+								m.settings_registry_appearance_theme_import_label,
+								m.settings_registry_appearance_theme_import_description,
 								"ghostty iterm itermcolors vscode vsix base16 alacritty yaml toml zip package folder dracula pro zeno alucard import zed",
 							),
-							item(
+							messageItem(
 								"theme-export",
-								"Export theme",
-								"Copy a theme as JSON or a Ghostty config, or save it to a file.",
+								m.settings_registry_appearance_theme_export_label,
+								m.settings_registry_appearance_theme_export_description,
 								"ghostty iterm vscode base16 dracula alucard export share copy save reveal folder",
 							),
-							item(
+							messageItem(
 								"accent",
-								"Accent color",
-								"Highlights buttons, selections and focus.",
+								m.settings_registry_appearance_accent_label,
+								m.settings_registry_appearance_accent_description,
 								"brand color swatch",
 							),
 						],
 					},
 					{
-						title: "Zoom",
+						get title() {
+							return m.settings_registry_appearance_group_zoom();
+						},
 						items: [
-							item(
+							messageItem(
 								"ui-zoom",
-								"Zoom",
-								`Scale the whole window. ${kbd("cmd-=")} and ${kbd("cmd--")} step it, ${kbd("cmd-0")} resets it.`,
+								m.settings_registry_appearance_group_zoom,
+								() =>
+									m.settings_registry_appearance_ui_zoom_description({
+										zoomIn: kbd("cmd-="),
+										zoomOut: kbd("cmd--"),
+										reset: kbd("cmd-0"),
+									}),
 								"scale magnify bigger smaller zoom in out reset layout size",
 							),
 						],
 					},
 					{
-						title: "Interface font",
+						get title() {
+							return m.settings_registry_appearance_group_interface_font();
+						},
 						items: [
-							item(
+							messageItem(
 								"ui-font",
-								"Interface font",
-								"Font for menus, sidebars and buttons.",
+								m.settings_registry_appearance_group_interface_font,
+								m.settings_registry_appearance_ui_font_description,
 								"ui_font_family typeface",
 							),
-							item("ui-size", "Interface font size", "Text size across the app, in pixels.", "ui_font_size"),
+							messageItem(
+								"ui-size",
+								m.settings_registry_appearance_ui_size_label,
+								m.settings_registry_appearance_ui_size_description,
+								"ui_font_size",
+							),
 						],
 					},
 					{
-						title: "File panel",
+						get title() {
+							return m.settings_registry_appearance_group_file_panel();
+						},
 						items: [
-							item(
+							messageItem(
 								"panel-dock",
-								"File panel side",
-								"Show the file tree on the left or the right.",
+								m.settings_registry_appearance_panel_dock_label,
+								m.settings_registry_appearance_panel_dock_description,
 								"project_panel dock explorer",
 							),
-							item(
+							messageItem(
 								"panel-indent",
-								"Folder indent",
-								"How far each folder level is pushed in, in pixels.",
+								m.settings_registry_appearance_panel_indent_label,
+								m.settings_registry_appearance_panel_indent_description,
 								"indent_size tree",
 							),
-							item("panel-file-icons", "File icons", "Show an icon next to each file.", "file_icons"),
-							item("panel-folder-icons", "Folder icons", "Show an icon next to each folder.", "folder_icons"),
+							messageItem(
+								"panel-file-icons",
+								m.settings_registry_appearance_panel_file_icons_label,
+								m.settings_registry_appearance_panel_file_icons_description,
+								"file_icons",
+							),
+							messageItem(
+								"panel-folder-icons",
+								m.settings_registry_appearance_panel_folder_icons_label,
+								m.settings_registry_appearance_panel_folder_icons_description,
+								"folder_icons",
+							),
 						],
 					},
 					{
-						title: "Split panes",
+						get title() {
+							return m.settings_registry_appearance_group_split_panes();
+						},
 						items: [
-							item(
+							messageItem(
 								"pane-border",
-								"Active pane border",
-								"Outline the pane you are working in, in pixels. 0 hides it.",
+								m.settings_registry_appearance_pane_border_label,
+								m.settings_registry_appearance_pane_border_description,
 								"active_pane_modifiers border_size focus",
 							),
-							item(
+							messageItem(
 								"pane-opacity",
-								"Dim inactive panes",
-								"How visible panes you are not using stay, from 0.2 (faint) to 1 (not dimmed).",
+								m.settings_registry_appearance_pane_opacity_label,
+								m.settings_registry_appearance_pane_opacity_description,
 								"inactive_opacity fade",
 							),
 						],
@@ -267,9 +339,12 @@ const DEFS = [
 	},
 	{
 		id: "notifications",
-		label: "Notifications & sounds",
-		description:
-			"When Atlas tells you something: a system notification when an agent needs you, and short sounds.",
+		get label() {
+			return m.settings_registry_notifications_label();
+		},
+		get description() {
+			return m.settings_registry_notifications_description();
+		},
 		cluster: "app",
 		pages: [
 			{
@@ -279,35 +354,39 @@ const DEFS = [
 				],
 				groups: [
 					{
-						title: "Notifications",
+						get title() {
+							return m.settings_general_notification_notifications();
+						},
 						items: [
-							item(
+							messageItem(
 								"notify",
-								"Notifications",
-								"Get told when an agent finishes or needs you.",
+								m.settings_general_notification_notifications,
+								m.settings_registry_notifications_notify_description,
 								"sound alert bell focus",
 							),
 						],
 					},
 					{
-						title: "Sounds",
+						get title() {
+							return m.settings_general_sound_sounds();
+						},
 						items: [
-							item(
+							messageItem(
 								"sounds",
-								"Sounds",
-								"Short, quiet cues for the moments that matter. Off with one switch.",
+								m.settings_general_sound_sounds,
+								m.settings_registry_notifications_sounds_description,
 								"audio sound effects earcon chime notification mute silent",
 							),
-							item(
+							messageItem(
 								"sound-volume",
-								"Sound volume",
-								"How loud Atlas sounds are, on top of your system's volume.",
+								m.settings_general_sound_sound_volume,
+								m.settings_registry_notifications_sound_volume_description,
 								"loudness quiet audio level",
 							),
-							item(
+							messageItem(
 								"sound-reduce",
-								"Reduce sounds",
-								"Only play the ones that need your attention, and quieter.",
+								m.settings_general_sound_reduce_sounds,
+								m.settings_registry_notifications_sound_reduce_description,
 								"quiet minimal less fewer",
 							),
 							...SOUND_ITEMS,
@@ -319,9 +398,12 @@ const DEFS = [
 	},
 	{
 		id: "capture",
-		label: "Capture",
-		description:
-			"Screenshots and screen recordings from a hotkey: where they go, the keys, and your history.",
+		get label() {
+			return m.settings_registry_capture_label();
+		},
+		get description() {
+			return m.settings_registry_capture_description();
+		},
 		cluster: "app",
 		macOnly: true,
 		pages: [
@@ -329,229 +411,247 @@ const DEFS = [
 				files: ["components/settings/CaptureSettings.svelte"],
 				groups: [
 					{
-						title: "Capture",
+						get title() {
+							return m.capture_quick_page_capture();
+						},
 						items: [
-							item(
+							messageItem(
 								"capture-permission",
-								"Screen Recording access",
-								"Screen Recording lets Atlas see the pixels of other apps. It is only used when you press a capture hotkey; nothing is recorded in the background. After granting it, macOS asks you to restart Atlas.",
+								m.settings_registry_capture_capture_permission_label,
+								m.settings_registry_capture_capture_permission_description,
 								"capture screenshot screen recording permission privacy grant system settings",
 							),
-							item(
+							messageItem(
 								"capture-enabled",
-								"Capture hotkeys",
-								"Turn the capture hotkeys on or off. Off gives the keys back to other apps.",
+								m.settings_registry_capture_capture_enabled_label,
+								m.settings_registry_capture_capture_enabled_description,
 								"capture screenshot screen recording gif hotkey enable disable",
 							),
-							item(
+							messageItem(
 								"capture-folder",
-								"Save to",
-								"Where captures are saved.",
+								m.settings_registry_capture_capture_folder_label,
+								m.settings_registry_capture_capture_folder_description,
 								"capture screenshot screen recording gif folder directory pictures path",
 							),
 						],
 					},
 					{
-						title: "Hotkeys",
+						get title() {
+							return m.settings_registry_capture_group_hotkeys();
+						},
 						items: [
-							item(
+							messageItem(
 								"capture-preset",
-								"Key set",
-								"Start from a ready-made set of keys. Picking one shows what it changes; nothing is saved until you apply it.",
+								m.settings_registry_capture_capture_preset_label,
+								m.settings_registry_capture_capture_preset_description,
 								"capture screenshot hotkey preset macos cleanshot shortcuts keys",
 							),
-							item(
+							messageItem(
 								"capture-system-keys",
-								"macOS screenshot shortcuts",
-								"macOS answers ⇧⌘3, ⇧⌘4, ⇧⌘5 and ⇧⌘6 before any app, so Atlas can only use them once you turn them off yourself in System Settings ▸ Keyboard ▸ Keyboard Shortcuts ▸ Screenshots. Atlas never changes that setting for you.",
+								m.settings_registry_capture_capture_system_keys_label,
+								() =>
+									m.settings_registry_capture_capture_system_keys_description({
+										screen: kbd("cmd-shift-3"),
+										area: kbd("cmd-shift-4"),
+										toolbar: kbd("cmd-shift-5"),
+										touchBar: kbd("cmd-shift-6"),
+									}),
 								"capture screenshot macos system shortcuts keyboard shift command 3 4 5 6 disable free",
 							),
-							item(
+							messageItem(
 								"capture-key-all-in-one",
-								"All-in-One",
-								"One toolbar over the screen: pick region, window, screen, record, GIF or text.",
+								m.settings_registry_capture_capture_key_all_in_one_label,
+								m.settings_registry_capture_capture_key_all_in_one_description,
 								"capture screenshot all in one toolbar menu hotkey shortcut",
 							),
-							item(
+							messageItem(
 								"capture-key-region",
-								"Region",
-								"Drag to pick an area, or press Space to switch to picking a window.",
+								m.capture_overlay_page_mode_region,
+								m.settings_registry_capture_capture_key_region_description,
 								"capture screenshot screen region area hotkey shortcut",
 							),
-							item(
+							messageItem(
 								"capture-key-previous",
-								"Previous area",
-								"Capture the same area as your last region capture, right now.",
+								m.capture_overlay_page_previous_area,
+								m.settings_registry_capture_capture_key_previous_description,
 								"capture screenshot previous last area repeat region hotkey shortcut",
 							),
-							item(
+							messageItem(
 								"capture-key-window",
-								"Window",
-								"Click a window to capture it.",
+								m.capture_overlay_page_mode_window,
+								m.settings_registry_capture_capture_key_window_description,
 								"capture screenshot window hotkey shortcut",
 							),
-							item(
+							messageItem(
 								"capture-key-fullscreen",
-								"Screen",
-								"Capture the whole screen under the pointer.",
+								m.capture_overlay_page_mode_screen,
+								m.settings_registry_capture_capture_key_fullscreen_description,
 								"capture screenshot fullscreen full screen display hotkey shortcut",
 							),
-							item(
+							messageItem(
 								"capture-key-ocr",
-								"Text",
-								"Drag over text on screen and copy it, read on this Mac.",
+								m.capture_quick_page_ocr,
+								m.settings_registry_capture_capture_key_ocr_description,
 								"capture screenshot text ocr recognize copy hotkey shortcut",
 							),
-							item(
+							messageItem(
 								"capture-key-record",
-								"Record",
-								"Pick an area and record a video. Press the key again to stop.",
+								m.capture_overlay_page_mode_record,
+								m.settings_registry_capture_capture_key_record_description,
 								"capture screen recording video record hotkey shortcut",
 							),
-							item(
+							messageItem(
 								"capture-key-gif",
-								"GIF",
-								"Pick an area and record an animated GIF.",
+								m.settings_registry_capture_capture_key_gif_label,
+								m.settings_registry_capture_capture_key_gif_description,
 								"capture screen recording gif animated hotkey shortcut",
 							),
 						],
 					},
 					{
-						title: "Screenshots",
+						get title() {
+							return m.settings_registry_capture_group_screenshots();
+						},
 						items: [
-							item(
+							messageItem(
 								"capture-on-release",
-								"Capture when the mouse is released",
-								"Take the shot as soon as you let go of the selection; turn off to adjust it first and confirm with Return.",
+								m.settings_registry_capture_capture_on_release_label,
+								m.settings_registry_capture_capture_on_release_description,
 								"capture screenshot region release mouse instant enter return confirm adjust",
 							),
-							item(
+							messageItem(
 								"capture-timer",
-								"Self-timer",
-								"Wait this long after you pick before a screenshot is taken. Recordings are not delayed.",
+								m.settings_registry_capture_capture_timer_label,
+								m.settings_registry_capture_capture_timer_description,
 								"capture screenshot timer delay countdown seconds",
 							),
-							item(
+							messageItem(
 								"capture-scale",
-								"Resolution",
-								"Retina saves the display's own pixels; Standard saves one pixel per point, a smaller file.",
+								m.settings_registry_capture_capture_scale_label,
+								m.settings_registry_capture_capture_scale_description,
 								"capture screenshot resolution retina scale 1x 2x pixels size",
 							),
-							item(
+							messageItem(
 								"capture-hide-icons",
-								"Hide desktop icons",
-								"Hide the icons on the desktop while a screenshot or recording is taken.",
+								m.settings_registry_capture_capture_hide_icons_label,
+								m.settings_registry_capture_capture_hide_icons_description,
 								"capture screenshot screen recording desktop icons hide clean",
 							),
-							item(
+							messageItem(
 								"capture-window-shadow",
-								"Window shadow",
-								"A window capture keeps its drop shadow, on a transparent background.",
+								m.settings_registry_capture_capture_window_shadow_label,
+								m.settings_registry_capture_capture_window_shadow_description,
 								"capture screenshot window shadow transparent",
 							),
-							item(
+							messageItem(
 								"capture-window-padding",
-								"Window background",
-								"A window capture sits on a padded background instead of a shadow. It wins over the shadow when both are on.",
+								m.settings_registry_capture_capture_window_padding_label,
+								m.settings_registry_capture_capture_window_padding_description,
 								"capture screenshot window background padding backdrop",
 							),
 						],
 					},
 					{
-						title: "Recording",
+						get title() {
+							return m.capture_quick_title_recording();
+						},
 						items: [
-							item(
+							messageItem(
 								"capture-quality",
-								"Video quality",
-								"Lower qualities record fewer pixels, so the file is smaller. GIFs are not affected.",
+								m.settings_registry_capture_capture_quality_label,
+								m.settings_registry_capture_capture_quality_description,
 								"capture screen recording video quality high medium low size bitrate",
 							),
-							item(
+							messageItem(
 								"capture-clicks",
-								"Show clicks",
-								"A ring on each click in screen recordings and GIFs.",
+								m.settings_registry_capture_capture_clicks_label,
+								m.settings_registry_capture_capture_clicks_description,
 								"capture screen recording gif click ring mouse highlight",
 							),
-							item(
+							messageItem(
 								"capture-keystrokes",
-								"Show keystrokes",
-								"A pill with the keys you press at the bottom of the recorded area. macOS asks for Input Monitoring the first time.",
+								m.settings_registry_capture_capture_keystrokes_label,
+								m.settings_registry_capture_capture_keystrokes_description,
 								"capture screen recording keystrokes keys keyboard pressed input monitoring",
 							),
-							item(
+							messageItem(
 								"capture-system-audio",
-								"Record system sound",
-								"The sound your Mac plays goes into the video. Not in GIFs.",
+								m.settings_registry_capture_capture_system_audio_label,
+								m.settings_registry_capture_capture_system_audio_description,
 								"capture screen recording system sound audio computer",
 							),
-							item(
+							messageItem(
 								"capture-microphone",
-								"Record the microphone",
-								"Your voice goes into the video. macOS asks for microphone access the first time. Not in GIFs.",
+								m.settings_registry_capture_capture_microphone_label,
+								m.settings_registry_capture_capture_microphone_description,
 								"capture screen recording microphone mic voice audio narration",
 							),
 						],
 					},
 					{
-						title: "After a capture",
+						get title() {
+							return m.settings_registry_capture_group_after_a_capture();
+						},
 						items: [
-							item(
+							messageItem(
 								"capture-copy",
-								"Copy to clipboard",
-								"Put every capture on the clipboard as soon as it is taken: screenshots as an image, recordings and GIFs as the file.",
+								m.capture_editor_page_copy_to_clipboard,
+								m.settings_registry_capture_capture_copy_description,
 								"capture screenshot clipboard copy",
 							),
-							item(
+							messageItem(
 								"capture-quick-access",
-								"Show the quick access overlay",
-								"A small card with the capture: copy, save as, annotate, send to an agent, or drag it into another app.",
+								m.settings_registry_capture_capture_quick_access_label,
+								m.settings_registry_capture_capture_quick_access_description,
 								"capture screenshot quick access overlay thumbnail card annotate",
 							),
-							item(
+							messageItem(
 								"capture-dismiss",
-								"Auto-dismiss the overlay",
-								"Seconds before the card goes away by itself, 0 to 60. 0 keeps it until you close it.",
+								m.settings_registry_capture_capture_dismiss_label,
+								m.settings_registry_capture_capture_dismiss_description,
 								"capture screenshot quick access overlay seconds timer never",
 							),
-							item(
+							messageItem(
 								"capture-corner",
-								"Overlay corner",
-								"The corner of the display under the pointer where the quick access cards stack.",
+								m.settings_registry_capture_capture_corner_label,
+								m.settings_registry_capture_capture_corner_description,
 								"capture screenshot quick access overlay corner position bottom top left right",
 							),
-							item(
+							messageItem(
 								"capture-stack",
-								"Cards in the stack",
-								"How many quick access cards stack in the corner before the oldest goes, 1 to 8.",
+								m.settings_registry_capture_capture_stack_label,
+								m.settings_registry_capture_capture_stack_description,
 								"capture screenshot quick access overlay stack cards number limit",
 							),
-							item(
+							messageItem(
 								"capture-sound",
-								"Play sound",
-								"A shutter sound when a screenshot is taken.",
+								m.settings_registry_capture_capture_sound_label,
+								m.settings_registry_capture_capture_sound_description,
 								"capture screenshot sound shutter audio",
 							),
-							item(
+							messageItem(
 								"capture-highlight",
-								"Highlight the cursor and clicks",
-								"Show the pointer and a ring on each click in screen recordings and GIFs.",
+								m.settings_registry_capture_capture_highlight_label,
+								m.settings_registry_capture_capture_highlight_description,
 								"capture screen recording gif cursor pointer click highlight",
 							),
 						],
 					},
 					{
-						title: "History",
+						get title() {
+							return m.settings_registry_capture_group_history();
+						},
 						items: [
-							item(
+							messageItem(
 								"capture-history-size",
-								"History size",
-								"How many captures to remember, 1 to 500. Older ones drop off the list; their files stay.",
+								m.settings_registry_capture_capture_history_size_label,
+								m.settings_registry_capture_capture_history_size_description,
 								"capture screenshot screen recording gif history size limit keep",
 							),
-							item(
+							messageItem(
 								"capture-history",
-								"Recent captures",
-								"Open, reveal or remove from the list your recent captures. Removing never deletes the file.",
+								m.settings_registry_capture_capture_history_label,
+								m.settings_registry_capture_capture_history_description,
 								"capture screenshot screen recording gif history list recent quick access folder",
 							),
 						],
@@ -562,20 +662,26 @@ const DEFS = [
 	},
 	{
 		id: "keyboard",
-		label: "Keyboard shortcuts",
-		description: "Change the key of any command, or remove it.",
+		get label() {
+			return m.settings_registry_keyboard_label();
+		},
+		get description() {
+			return m.settings_registry_keyboard_description();
+		},
 		cluster: "app",
 		pages: [
 			{
 				files: ["components/ShortcutSettings.svelte"],
 				groups: [
 					{
-						title: "Shortcuts",
+						get title() {
+							return m.settings_registry_keyboard_group_shortcuts();
+						},
 						items: [
-							item(
+							messageItem(
 								"keymap",
-								"Keyboard shortcuts",
-								"Change the key for any command, or remove it.",
+								m.settings_registry_keyboard_label,
+								m.settings_registry_keyboard_description,
 								"keybindings keymap hotkeys bind",
 							),
 						],
@@ -586,27 +692,38 @@ const DEFS = [
 	},
 	{
 		id: "help",
-		label: "Help & onboarding",
-		description: "Take the tour again, look up a shortcut, or bring the checklist back.",
+		get label() {
+			return m.settings_registry_help_label();
+		},
+		get description() {
+			return m.settings_registry_help_description();
+		},
 		cluster: "app",
 		pages: [
 			{
 				files: ["onboarding/HelpSettings.svelte"],
 				groups: [
 					{
-						title: "Help",
+						get title() {
+							return m.settings_registry_help_group_help();
+						},
 						items: [
-							item(
+							messageItem(
 								"tour",
-								"Guided tour",
-								"A short walk through spaces, the header, the panel and search.",
+								m.settings_registry_help_tour_label,
+								m.settings_registry_help_tour_description,
 								"onboarding intro",
 							),
-							item("help-keys", "Shortcut cheat sheet", "Every key, searchable.", "keyboard help"),
-							item(
+							messageItem(
+								"help-keys",
+								m.settings_registry_help_help_keys_label,
+								m.settings_registry_help_help_keys_description,
+								"keyboard help",
+							),
+							messageItem(
 								"checklist",
-								"Getting started checklist",
-								"Bring back the first steps card, or start over.",
+								m.settings_registry_help_checklist_label,
+								m.settings_registry_help_checklist_description,
 								"onboarding progress",
 							),
 						],
@@ -617,66 +734,77 @@ const DEFS = [
 	},
 	{
 		id: "workspaces",
-		label: "Workspaces",
-		description:
-			"Where Atlas puts worktrees, how their branches are named, and cleaning up the ones you no longer use.",
+		get label() {
+			return m.settings_registry_workspaces_label();
+		},
+		get description() {
+			return m.settings_registry_workspaces_description();
+		},
 		cluster: "work",
 		pages: [
 			{
 				files: ["components/WorkspaceSettings.svelte", "components/settings/HygieneGroup.svelte"],
 				groups: [
 					{
-						title: "New worktrees",
+						get title() {
+							return m.settings_general_workspace_new_worktrees();
+						},
 						items: [
-							item(
+							messageItem(
 								"ws-dir",
-								"Worktree folder",
-								"Where Atlas creates checkouts for new worktrees.",
+								m.settings_general_workspace_worktree_folder,
+								m.settings_registry_workspaces_ws_dir_description,
 								"workspace directory path location",
 							),
-							item(
+							messageItem(
 								"ws-nest",
-								"Group by repository",
-								"Put each worktree in a folder named after its repository.",
+								m.settings_general_workspace_group_by_repository,
+								m.settings_registry_workspaces_ws_nest_description,
 								"nest",
 							),
-							item(
+							messageItem(
 								"ws-prefix",
-								"Branch name prefix",
-								"Added in front of the branch Atlas creates, so branches are easy to tell apart.",
+								m.settings_general_workspace_branch_name_prefix,
+								m.settings_registry_workspaces_ws_prefix_description,
 								"git user.name custom branch",
 							),
 						],
 					},
 					{
-						title: "Auto clean up",
+						get title() {
+							return m.settings_general_workspace_auto_clean_up();
+						},
 						items: [
-							item(
+							messageItem(
 								"ws-autoclean",
-								"Remove worktrees automatically",
-								"Remove linked worktrees whose PR was merged or that sat idle, never with unsaved or unpushed work.",
+								m.settings_general_workspace_remove_worktrees_automatically,
+								m.settings_registry_workspaces_ws_autoclean_description,
 								"auto delete merged idle stale prune restore",
 							),
 						],
 					},
 					{
-						title: "Clean up",
+						get title() {
+							return m.settings_general_workspace_clean_up();
+						},
 						items: [
-							item(
+							messageItem(
 								"ws-cleanup",
-								"Clean up worktrees",
-								"See size, last commit and git state of linked worktrees, and delete the ones you no longer need.",
+								m.settings_registry_workspaces_ws_cleanup_label,
+								m.settings_registry_workspaces_ws_cleanup_description,
 								"delete remove disk scan",
 							),
 						],
 					},
 					{
-						title: "Hygiene",
+						get title() {
+							return m.settings_general_hygiene_group_hygiene();
+						},
 						items: [
-							item(
+							messageItem(
 								"ws-hygiene",
-								"Orphans and disk",
-								"Processes Atlas or an agent left running after their owner died, the disk each project holds, and what Fix can free.",
+								m.settings_general_hygiene_group_orphans_and_disk,
+								m.settings_registry_workspaces_ws_hygiene_description,
 								"orphan zombie leftover browser chromium vite process kill disk space cache temp spotlight index mdworker cleanup",
 							),
 						],
@@ -687,178 +815,193 @@ const DEFS = [
 	},
 	{
 		id: "editor",
-		label: "Editor",
-		description:
-			"The code editor and diffs: font, indentation and display, and the language servers behind completion.",
+		get label() {
+			return m.settings_registry_editor_label();
+		},
+		get description() {
+			return m.settings_registry_editor_description();
+		},
 		cluster: "work",
 		aliases: ["appearance/editor"],
 		pages: [
 			{
 				id: "editor",
-				label: "Editor",
-				description: "Font, indentation and display of the code editor and diffs.",
+				get label() {
+					return m.settings_registry_editor_label();
+				},
+				get description() {
+					return m.settings_registry_editor_tab_editor_description();
+				},
 				files: ["settings/CodeTab.svelte", "settings/EditorRows.svelte", "settings/FontRows.svelte"],
 				groups: [
 					{
-						title: "Code font",
+						get title() {
+							return m.settings_registry_editor_group_code_font();
+						},
 						items: [
-							item(
+							messageItem(
 								"buffer-font",
-								"Code font",
-								"Font for the editor and diffs.",
+								m.settings_registry_editor_group_code_font,
+								m.settings_registry_editor_buffer_font_description,
 								"buffer_font_family monospace typeface",
 							),
-							item(
+							messageItem(
 								"buffer-size",
-								"Code font size",
-								"Text size in the editor and diffs, in pixels.",
+								m.settings_registry_editor_buffer_size_label,
+								m.settings_registry_editor_buffer_size_description,
 								"buffer_font_size",
 							),
-							item(
+							messageItem(
 								"buffer-line-height",
-								"Line spacing",
-								"Space between lines of code, as a multiple of the font size.",
+								m.settings_registry_editor_buffer_line_height_label,
+								m.settings_registry_editor_buffer_line_height_description,
 								"buffer_line_height leading",
 							),
 						],
 					},
 					{
-						title: "Language servers",
+						get title() {
+							return m.settings_registry_editor_group_language_servers();
+						},
 						items: [
-							item(
+							messageItem(
 								"lsp-enable",
-								"Language servers",
-								"Completion, diagnostics, hover and go to definition from the language's server (downloaded on first use).",
+								m.settings_registry_editor_group_language_servers,
+								m.settings_registry_editor_lsp_enable_description,
 								"lsp enable_language_servers rust-analyzer gopls typescript intellisense autocomplete",
 							),
-							item(
+							messageItem(
 								"lsp-format-on-save",
-								"Format on save",
-								"Format the file with its language server every time it is saved.",
+								m.settings_registry_editor_lsp_format_on_save_label,
+								m.settings_registry_editor_lsp_format_on_save_description,
 								"format_on_save formatter prettier rustfmt",
 							),
-							item(
+							messageItem(
 								"lsp-inlay-hints",
-								"Inlay hints",
-								"Show inferred types and parameter names inline, dimmed.",
+								m.settings_registry_editor_lsp_inlay_hints_label,
+								m.settings_registry_editor_lsp_inlay_hints_description,
 								"inlay_hints types parameters",
 							),
-							item(
+							messageItem(
 								"lsp-manage",
-								"Manage language servers",
-								"Install, update or replace the server of each language.",
+								m.settings_registry_editor_lsp_manage_label,
+								m.settings_registry_editor_lsp_manage_description,
 								"languages custom command lsp gopls rust-analyzer typescript server install uninstall",
 							),
 						],
 					},
 					{
-						title: "Editing",
+						get title() {
+							return m.settings_registry_editor_group_editing();
+						},
 						items: [
-							item(
+							messageItem(
 								"editor-tab-size",
-								"Tab size",
-								"Columns a tab or one level of indentation spans.",
+								m.settings_registry_editor_editor_tab_size_label,
+								m.settings_registry_editor_editor_tab_size_description,
 								"tab_size indent indentation width",
 							),
-							item(
+							messageItem(
 								"editor-insert-spaces",
-								"Indent with spaces",
-								"Pressing Tab inserts spaces. Turn off to insert tab characters.",
+								m.settings_registry_editor_editor_insert_spaces_label,
+								m.settings_registry_editor_editor_insert_spaces_description,
 								"insert_spaces tabs spaces indentation",
 							),
-							item(
+							messageItem(
 								"editor-trim-whitespace",
-								"Trim trailing whitespace on save",
-								"Remove spaces and tabs at the end of lines when you save.",
+								m.settings_registry_editor_editor_trim_whitespace_label,
+								m.settings_registry_editor_editor_trim_whitespace_description,
 								"trim_trailing_whitespace_on_save strip",
 							),
-							item(
+							messageItem(
 								"editor-final-newline",
-								"Add a final newline on save",
-								"End every file with exactly one newline when you save.",
+								m.settings_registry_editor_editor_final_newline_label,
+								m.settings_registry_editor_editor_final_newline_description,
 								"insert_final_newline_on_save eof end of file",
 							),
-							item(
+							messageItem(
 								"editor-auto-reload",
-								"Reload files changed on disk",
-								"Update an open file when another program changes it, as long as you have no unsaved edits in it.",
+								m.settings_registry_editor_editor_auto_reload_label,
+								m.settings_registry_editor_editor_auto_reload_description,
 								"auto_reload external changes refresh watch",
 							),
-							item(
+							messageItem(
 								"editor-large-file",
-								"Large file limit",
-								"Files bigger than this open in a light mode without language features, so the editor stays fast. 0.1 to 100 MB.",
+								m.settings_registry_editor_editor_large_file_label,
+								m.settings_registry_editor_editor_large_file_description,
 								"large_file_threshold_bytes performance slow big huge",
 							),
 						],
 					},
 					{
-						title: "Display",
+						get title() {
+							return m.settings_registry_editor_group_display();
+						},
 						items: [
-							item(
+							messageItem(
 								"editor-word-wrap",
-								"Word wrap",
-								"Wrap long lines at the edge of the editor.",
+								m.settings_registry_editor_editor_word_wrap_label,
+								m.settings_registry_editor_editor_word_wrap_description,
 								"word_wrap soft wrap long lines",
 							),
-							item(
+							messageItem(
 								"editor-line-numbers",
-								"Line numbers",
-								"Show line numbers in the gutter.",
+								m.settings_registry_editor_editor_line_numbers_label,
+								m.settings_registry_editor_editor_line_numbers_description,
 								"line_numbers gutter",
 							),
-							item(
+							messageItem(
 								"editor-highlight-line",
-								"Highlight the current line",
-								"Tint the line the cursor is on.",
+								m.settings_registry_editor_editor_highlight_line_label,
+								m.settings_registry_editor_editor_highlight_line_description,
 								"highlight_active_line cursor line",
 							),
-							item(
+							messageItem(
 								"editor-whitespace",
-								"Show whitespace",
-								"Draw dots for spaces and arrows for tabs.",
+								m.settings_registry_editor_editor_whitespace_label,
+								m.settings_registry_editor_editor_whitespace_description,
 								"render_whitespace invisible characters",
 							),
-							item(
+							messageItem(
 								"editor-indent-guides",
-								"Indent guides",
-								"Draw a faint vertical line at each level of indentation.",
+								m.settings_registry_editor_editor_indent_guides_label,
+								m.settings_registry_editor_editor_indent_guides_description,
 								"indent_guides",
 							),
-							item(
+							messageItem(
 								"editor-bracket-colors",
-								"Color matching brackets",
-								"Give each level of nested brackets its own color.",
+								m.settings_registry_editor_editor_bracket_colors_label,
+								m.settings_registry_editor_editor_bracket_colors_description,
 								"bracket_pair_colorization rainbow brackets",
 							),
-							item(
+							messageItem(
 								"editor-sticky-scroll",
-								"Sticky scroll",
-								"Keep the enclosing function or class pinned at the top while you scroll its body.",
+								m.settings_registry_editor_editor_sticky_scroll_label,
+								m.settings_registry_editor_editor_sticky_scroll_description,
 								"sticky_scroll scope header",
 							),
-							item(
+							messageItem(
 								"editor-minimap",
-								"Minimap",
-								"Show a small overview of the file on the right.",
+								m.settings_registry_editor_editor_minimap_label,
+								m.settings_registry_editor_editor_minimap_description,
 								"overview",
 							),
-							item(
+							messageItem(
 								"editor-rulers",
-								"Rulers",
-								"Columns where a vertical line is drawn, such as 80 or 100. Separate several with commas.",
+								m.settings_registry_editor_editor_rulers_label,
+								m.settings_registry_editor_editor_rulers_description,
 								"column guide line length 80 100 120",
 							),
-							item(
+							messageItem(
 								"editor-scroll-past-end",
-								"Scroll past the last line",
-								"Let the last line scroll up to the top of the editor.",
+								m.settings_registry_editor_editor_scroll_past_end_label,
+								m.settings_registry_editor_editor_scroll_past_end_description,
 								"scroll_past_end",
 							),
-							item(
+							messageItem(
 								"editor-smooth-scroll",
-								"Smooth scrolling",
-								"Animate scrolling when you jump to a line or use the keyboard.",
+								m.settings_registry_editor_editor_smooth_scroll_label,
+								m.settings_registry_editor_editor_smooth_scroll_description,
 								"smooth_scrolling animation",
 							),
 						],
@@ -867,30 +1010,36 @@ const DEFS = [
 			},
 			{
 				id: "languages",
-				label: "Languages",
-				description: "Install, update and replace the language server of each language.",
+				get label() {
+					return m.settings_registry_editor_tab_languages_label();
+				},
+				get description() {
+					return m.settings_registry_editor_tab_languages_description();
+				},
 				aliases: ["appearance/languages", "languages"],
 				files: ["settings/LanguagesTab.svelte", "settings/ServerRow.svelte", "settings/CustomServer.svelte"],
 				groups: [
 					{
-						title: "Language servers",
+						get title() {
+							return m.settings_registry_editor_group_language_servers();
+						},
 						items: [
-							item(
+							messageItem(
 								"lsp-servers",
-								"Language servers",
-								"See which language servers are installed, install or update them, and open their logs.",
+								m.settings_registry_editor_group_language_servers,
+								m.settings_registry_editor_lsp_servers_description,
 								"language server typescript gopls rust-analyzer pyright clangd install uninstall update restart log path managed",
 							),
-							item(
+							messageItem(
 								"lsp-custom",
-								"Custom language server",
-								"Run your own server for a language: its command, arguments, initialization options and settings.",
+								m.settings_registry_editor_lsp_custom_label,
+								m.settings_registry_editor_lsp_custom_description,
 								"custom command args arguments initialization options json override replace binary lsp typescript gopls rust-analyzer",
 							),
-							item(
+							messageItem(
 								"lsp-project",
-								"Per-project language servers",
-								"Override servers for one project with a file inside it; it wins over your own settings.",
+								m.settings_registry_editor_lsp_project_label,
+								m.settings_registry_editor_lsp_project_description,
 								"project override .atlas workspace lsp",
 							),
 						],
@@ -901,9 +1050,12 @@ const DEFS = [
 	},
 	{
 		id: "terminal",
-		label: "Terminal",
-		description:
-			"How terminals and coding agents draw and behave: renderer, font, cursor, padding and clipboard.",
+		get label() {
+			return m.settings_registry_terminal_label();
+		},
+		get description() {
+			return m.settings_registry_terminal_description();
+		},
 		cluster: "work",
 		aliases: ["appearance/terminal"],
 		pages: [
@@ -911,118 +1063,138 @@ const DEFS = [
 				files: ["settings/TerminalTab.svelte"],
 				groups: [
 					{
-						title: "Renderer",
+						get title() {
+							return m.settings_terminal_tab_renderer();
+						},
 						items: [
 							macItem(
 								"gpu",
-								"Fast terminal (GPU)",
-								"Draws local terminals on the graphics chip: smoother scrolling and faster output.",
+								m.settings_terminal_tab_fast_terminal_gpu,
+								m.settings_registry_terminal_gpu_description,
 								"gpu renderer native xterm metal",
 							),
-							item(
+							messageItem(
 								"host-restart",
-								"Restart terminal host",
-								"Restart the background process that keeps terminals alive, to pick up a new Atlas version.",
+								m.settings_terminal_tab_restart_terminal_host,
+								m.settings_registry_terminal_host_restart_description,
 								"hostd old upgrade",
 							),
 						],
 					},
 					{
-						title: "Text",
+						get title() {
+							return m.settings_terminal_tab_text();
+						},
 						items: [
-							item(
+							messageItem(
 								"term-font",
-								"Terminal font",
-								"Font families in order; the first one installed wins, else JetBrains Mono. Variable fonts work.",
+								m.settings_terminal_tab_terminal_font,
+								m.settings_registry_terminal_term_font_description,
 								"font_family typeface font-family xterm ghostty nerd variable",
 							),
-							item("term-size", "Terminal font size", "Text size in terminals, in pixels.", "font_size"),
-							item(
+							messageItem(
+								"term-size",
+								m.settings_terminal_tab_terminal_font_size,
+								m.settings_registry_terminal_term_size_description,
+								"font_size",
+							),
+							messageItem(
 								"font-thicken",
-								"Thicken glyphs",
-								"Draw terminal text slightly heavier, like Ghostty's font-thicken. Helps thin fonts on dark backgrounds.",
+								m.settings_terminal_tab_thicken_glyphs,
+								m.settings_registry_terminal_font_thicken_description,
 								"font_thicken bold weight ghostty",
 							),
 							macItem(
 								"ligatures",
-								"Ligatures",
-								"Join characters like -> and != into single symbols (fast terminal only).",
+								m.settings_terminal_tab_ligatures,
+								m.settings_registry_terminal_ligatures_description,
 								"ligatures fira",
 							),
 							macItem(
 								"contrast",
-								"Minimum contrast",
-								"Brighten or darken text that is hard to read against its background (fast terminal only). 1 turns it off, 4.5 meets accessibility guidance.",
+								m.settings_terminal_tab_minimum_contrast,
+								m.settings_registry_terminal_contrast_description,
 								"wcag accessibility minimum_contrast readable",
 							),
 						],
 					},
 					{
-						title: "Cursor",
+						get title() {
+							return m.settings_terminal_tab_cursor();
+						},
 						items: [
-							item(
+							messageItem(
 								"cursor-shape",
-								"Cursor shape",
-								"How the cursor looks in terminals.",
+								m.settings_terminal_tab_cursor_shape,
+								m.settings_terminal_tab_how_the_cursor_looks_in,
 								"block bar underline hollow caret",
 							),
-							item("cursor-blink", "Blinking cursor", "Make the terminal cursor blink.", "caret"),
+							messageItem(
+								"cursor-blink",
+								m.settings_terminal_tab_blinking_cursor,
+								m.settings_registry_terminal_cursor_blink_description,
+								"caret",
+							),
 						],
 					},
 					{
-						title: "Padding",
+						get title() {
+							return m.settings_terminal_tab_padding();
+						},
 						items: [
-							item(
+							messageItem(
 								"term-padding-x",
-								"Horizontal padding",
-								"Space left and right of the terminal text, in points. The margin uses the terminal background.",
+								m.settings_terminal_tab_horizontal_padding,
+								m.settings_registry_terminal_term_padding_x_description,
 								"padding_x margin inset window-padding-x ghostty",
 							),
-							item(
+							messageItem(
 								"term-padding-y",
-								"Vertical padding",
-								"Space above and below the terminal text, in points. The margin uses the terminal background.",
+								m.settings_terminal_tab_vertical_padding,
+								m.settings_registry_terminal_term_padding_y_description,
 								"padding_y margin inset window-padding-y ghostty",
 							),
 						],
 					},
 					{
-						title: "Behavior",
+						get title() {
+							return m.settings_terminal_tab_behavior();
+						},
 						items: [
-							item(
+							messageItem(
 								"scrollback",
-								"Scrollback",
-								"Lines of output each terminal remembers. More lines use more memory.",
+								m.settings_terminal_tab_scrollback,
+								m.settings_terminal_tab_lines_of_output_each_terminal,
 								"max_scroll_history_lines history buffer",
 							),
 							macItem(
 								"scrollback-memory",
-								"Scrollback memory",
-								"Most memory one terminal spends on its scrollback, in MB. A wide terminal keeps fewer lines than the setting above to stay inside it (fast terminal only).",
+								m.settings_terminal_tab_scrollback_memory,
+								m.settings_registry_terminal_scrollback_memory_description,
 								"scrollback_bytes memory limit megabytes mb ghostty scrollback-limit",
 							),
-							item(
+							messageItem(
 								"clipboard",
-								"Programs can copy to your clipboard",
-								"Lets commands such as tmux or ssh sessions put text on your clipboard.",
+								m.settings_terminal_tab_programs_can_copy_to_your,
+								m.settings_registry_terminal_clipboard_description,
 								"osc52 osc 52 copy paste ask allow deny",
 							),
-							item(
+							messageItem(
 								"copy-on-select",
-								"Copy on select",
-								"Copy selected text to the clipboard when you release the mouse.",
+								m.settings_terminal_tab_copy_on_select,
+								m.settings_registry_terminal_copy_on_select_description,
 								"copy_on_select clipboard selection ghostty",
 							),
 							macItem(
 								"click-to-move",
-								"Click to move the cursor",
-								"Click the prompt line to move the cursor there. Needs shell integration (fast terminal only).",
+								m.settings_terminal_tab_click_to_move_the_cursor,
+								m.settings_registry_terminal_click_to_move_description,
 								"click_to_move cursor prompt osc 133 ghostty",
 							),
 							macItem(
 								"option-as-alt",
-								"Option key as Alt",
-								"Make ⌥ send Alt instead of typing macOS characters (fast terminal only).",
+								m.settings_terminal_tab_option_key_as_alt,
+								() => m.settings_registry_terminal_option_as_alt_description({ key: kbd("alt") }),
 								"option_as_alt macos-option-as-alt meta alt esc ghostty",
 							),
 						],
@@ -1033,20 +1205,26 @@ const DEFS = [
 	},
 	{
 		id: "git",
-		label: "Git",
-		description: "How Atlas helps with commits. Nothing is committed for you.",
+		get label() {
+			return m.settings_registry_git_label();
+		},
+		get description() {
+			return m.settings_registry_git_description();
+		},
 		cluster: "work",
 		pages: [
 			{
 				files: ["components/GitSettings.svelte"],
 				groups: [
 					{
-						title: "Commit messages",
+						get title() {
+							return m.settings_general_git_commit_messages();
+						},
 						items: [
-							item(
+							messageItem(
 								"git-commit-agent",
-								"Generate commit messages with",
-								"Which agent writes the commit message from your staged diff, or Off to hide the button. Secrets are never sent.",
+								m.settings_general_git_generate_commit_messages_with,
+								m.settings_registry_git_git_commit_agent_description,
 								"ai commit message sparkle generate omp claude codex privacy diff staged",
 							),
 						],
@@ -1057,78 +1235,89 @@ const DEFS = [
 	},
 	{
 		id: "agents",
-		label: "Agents",
-		description:
-			"Which coding agent starts by default, how much it may do on its own, custom agents and quick commands.",
+		get label() {
+			return m.settings_registry_agents_label();
+		},
+		get description() {
+			return m.settings_registry_agents_description();
+		},
 		cluster: "work",
 		pages: [
 			{
 				files: ["components/AgentSettings.svelte", "components/settings/DockSettings.svelte"],
 				groups: [
 					{
-						title: "Coding agents",
+						get title() {
+							return m.settings_registry_agents_group_coding_agents();
+						},
 						items: [
-							item(
+							messageItem(
 								"agent-default",
-								"Default agent",
-								"What a new agent tab starts.",
+								m.settings_registry_agents_agent_default_label,
+								m.settings_registry_agents_agent_default_description,
 								"omp claude codex blank",
 							),
-							item(
+							messageItem(
 								"agent-permissions",
-								"Tool approval",
-								"Choose whether agents ask before running tools or run everything on their own.",
+								m.settings_registry_agents_agent_permissions_label,
+								m.settings_registry_agents_agent_permissions_description,
 								"permissions yolo manual auto approve",
 							),
-							item(
+							messageItem(
 								"agent-args",
-								"Extra arguments",
-								"Command-line flags added every time that agent starts.",
+								m.settings_registry_agents_agent_args_label,
+								m.settings_registry_agents_agent_args_description,
 								"model flags args",
 							),
 						],
 					},
 					{
-						title: "Agent dock",
+						get title() {
+							return m.settings_general_dock_agent_dock();
+						},
 						items: [
-							item(
+							messageItem(
 								"dock-enabled",
-								"Show the dock",
-								"Keep the pill on screen while Atlas runs. Hide it any time with the hide key, the pill's hide button or right-click menu, or the tray menu; the choice is remembered. Off by default on Windows and Linux.",
+								m.settings_general_dock_show_the_dock,
+								m.settings_registry_agents_dock_enabled_description,
 								"floating pill overlay widget menu bar always on top hide show",
 							),
-							item(
+							messageItem(
 								"dock-hotkey",
-								"Message an agent",
-								"Opens the dock's composer from any app. The text goes to the agent you last used, or the one you @mention.",
+								m.settings_general_dock_message_an_agent,
+								m.settings_general_dock_opens_the_dock_s_composer,
 								"hotkey shortcut summon global keybinding send prompt",
 							),
-							item(
+							messageItem(
 								"dock-toggle-hotkey",
-								"Hide or show the dock",
-								"Works even while the dock is hidden, so it is always the way back. The tray menu has Show Agent Dock too.",
+								m.settings_general_dock_hide_or_show_the_dock,
+								m.settings_general_dock_works_even_while_the_dock,
 								"hotkey shortcut hide show toggle global keybinding tray",
 							),
 						],
 					},
 					{
-						title: "Custom agents",
+						get title() {
+							return m.settings_registry_agents_group_custom_agents();
+						},
 						items: [
-							item(
+							messageItem(
 								"agent-custom",
-								"Add agent",
-								`Run any agent CLI (OpenCode, Gemini CLI, Amp…) from the + menu and ${kbd("cmd-shift-a")}.`,
+								m.settings_registry_agents_agent_custom_label,
+								() => m.settings_registry_agents_agent_custom_description({ key: kbd("cmd-shift-a") }),
 								"custom opencode gemini amp aider cli preset add",
 							),
 						],
 					},
 					{
-						title: "Quick commands",
+						get title() {
+							return m.settings_registry_agents_group_quick_commands();
+						},
 						items: [
-							item(
+							messageItem(
 								"quick",
-								"Quick commands",
-								"One-click buttons in the tab strip that run a command or send a prompt to the agent.",
+								m.settings_registry_agents_group_quick_commands,
+								m.settings_registry_agents_quick_description,
 								"shortcuts prompt buttons",
 							),
 						],
@@ -1139,34 +1328,46 @@ const DEFS = [
 	},
 	{
 		id: "integrations",
-		label: "Integrations",
-		description: "What Atlas connects to: your shell, the browser, agent hooks, SSH machines and your phone.",
+		get label() {
+			return m.settings_registry_integrations_label();
+		},
+		get description() {
+			return m.settings_registry_integrations_description();
+		},
 		cluster: "connect",
 		pages: [
 			{
 				id: "shell",
-				label: "Shell & links",
-				description: "The shell your projects start with, and where links open.",
+				get label() {
+					return m.settings_registry_integrations_tab_shell_label();
+				},
+				get description() {
+					return m.settings_registry_integrations_tab_shell_description();
+				},
 				files: ["components/settings/ShellLinks.svelte", "components/settings/LinksSettings.svelte"],
 				groups: [
 					{
-						title: "Shell environment",
+						get title() {
+							return m.settings_registry_integrations_group_shell_environment();
+						},
 						items: [
-							item(
+							messageItem(
 								"shell",
-								"Shell for your projects",
-								"Services start with the PATH and variables of this shell, the same as in your terminal.",
+								m.settings_general_shell_links_shell_for_your_projects,
+								m.settings_registry_integrations_shell_description,
 								"zsh bash fish path environment variables env login",
 							),
 						],
 					},
 					{
-						title: "Links",
+						get title() {
+							return m.settings_general_links_links();
+						},
 						items: [
-							item(
+							messageItem(
 								"browser",
-								"Open links in",
-								"Where links from services, ports and terminals open.",
+								m.settings_general_links_open_links_in,
+								m.settings_registry_integrations_browser_description,
 								"browser system atlas",
 							),
 						],
@@ -1175,18 +1376,23 @@ const DEFS = [
 			},
 			{
 				id: "agents",
-				label: "Agent hooks",
-				description:
-					"Let omp, Claude Code and Codex tell Atlas and Atlas Mobile when they work, wait or finish.",
+				get label() {
+					return m.settings_general_agent_hooks_agent_hooks();
+				},
+				get description() {
+					return m.settings_registry_integrations_tab_agents_description();
+				},
 				files: ["components/settings/AgentHooks.svelte"],
 				groups: [
 					{
-						title: "Agent hooks",
+						get title() {
+							return m.settings_general_agent_hooks_agent_hooks();
+						},
 						items: [
-							item(
+							messageItem(
 								"agent-integration",
-								"Agent hooks",
-								"Lets omp, Claude Code and Codex report their status and tools to Atlas and Atlas Mobile.",
+								m.settings_general_agent_hooks_agent_hooks,
+								m.settings_registry_integrations_agent_integration_description,
 								"hooks plugin enable omp claude codex integration extension",
 								"agent-hooks",
 							),
@@ -1196,29 +1402,37 @@ const DEFS = [
 			},
 			{
 				id: "ssh",
-				label: "SSH hosts",
-				description: "Work on a worktree that lives on another machine over SSH.",
+				get label() {
+					return m.settings_registry_integrations_tab_ssh_label();
+				},
+				get description() {
+					return m.settings_registry_integrations_tab_ssh_description();
+				},
 				aliases: ["ssh"],
 				files: ["components/SshSettings.svelte"],
 				groups: [
 					{
-						title: "Hosts",
+						get title() {
+							return m.settings_registry_integrations_group_hosts();
+						},
 						items: [
-							item(
+							messageItem(
 								"ssh-hosts",
-								"SSH hosts",
-								"Work on another machine: Atlas starts its helper there and connects over SSH.",
+								m.settings_registry_integrations_tab_ssh_label,
+								m.settings_registry_integrations_ssh_hosts_description,
 								"remote server hostd tunnel",
 							),
 						],
 					},
 					{
-						title: "Remote projects",
+						get title() {
+							return m.settings_registry_integrations_group_remote_projects();
+						},
 						items: [
-							item(
+							messageItem(
 								"ssh-project",
-								"Remote project",
-								"Add a project that lives on one of your SSH hosts.",
+								m.settings_registry_integrations_ssh_project_label,
+								m.settings_registry_integrations_ssh_project_description,
 								"atlas.yaml path remote",
 							),
 						],
@@ -1227,8 +1441,12 @@ const DEFS = [
 			},
 			{
 				id: "mobile",
-				label: "Mobile",
-				description: "Pair a phone to see and control this computer from Atlas Mobile.",
+				get label() {
+					return m.settings_registry_integrations_tab_mobile_label();
+				},
+				get description() {
+					return m.settings_registry_integrations_tab_mobile_description();
+				},
 				aliases: ["mobile"],
 				files: [
 					"components/MobileSettings.svelte",
@@ -1237,23 +1455,27 @@ const DEFS = [
 				],
 				groups: [
 					{
-						title: "Pairing",
+						get title() {
+							return m.settings_registry_integrations_group_pairing();
+						},
 						items: [
-							item(
+							messageItem(
 								"mobile-pair",
-								"Pair a phone",
-								"Scan a code with Atlas Mobile to control this computer from your phone.",
+								m.settings_registry_integrations_mobile_pair_label,
+								m.settings_registry_integrations_mobile_pair_description,
 								"iphone android qr phone remote p2p app store testflight vpn warp wifi",
 							),
 						],
 					},
 					{
-						title: "Devices",
+						get title() {
+							return m.settings_registry_integrations_group_devices();
+						},
 						items: [
-							item(
+							messageItem(
 								"mobile-devices",
-								"Paired phones",
-								"Which phones are paired, whether they are connected, what each may do and did; rename or unpair one.",
+								m.settings_registry_integrations_mobile_devices_label,
+								m.settings_registry_integrations_mobile_devices_description,
 								"revoke unpair rename activity last seen permissions scopes terminal approve",
 							),
 						],
@@ -1264,53 +1486,65 @@ const DEFS = [
 	},
 	{
 		id: "crew",
-		label: "Atlas Crew",
-		description: "Crewmates running on your crew servers — agents working around the clock.",
+		get label() {
+			return m.settings_registry_crew_label();
+		},
+		get description() {
+			return m.settings_registry_crew_description();
+		},
 		cluster: "connect",
 		pages: [
 			{
 				files: ["components/CrewSettings.svelte"],
 				groups: [
 					{
-						title: "Crew servers",
+						get title() {
+							return m.settings_registry_crew_group_crew_servers();
+						},
 						items: [
-							item(
+							messageItem(
 								"crew-add",
-								"Add crew server",
-								"Connect a crew server running `atlas crew install`.",
+								m.crew_onboarding_primary_add_crew_server,
+								m.settings_registry_crew_crew_add_description,
 								"ssh server crew agent",
 							),
 						],
 					},
 					{
-						title: "GitHub",
+						get title() {
+							return m.settings_registry_crew_group_github();
+						},
 						items: [
-							item(
+							messageItem(
 								"crew-github",
-								"GitHub",
-								"Connect GitHub so your crew can clone private repositories.",
+								m.settings_registry_crew_group_github,
+								m.settings_registry_crew_crew_github_description,
 								"git private repo token oauth pat",
 							),
 						],
 					},
 					{
-						title: "Short replies",
+						get title() {
+							return m.crew_settings_behaviour_card_short_replies();
+						},
 						items: [
-							item(
+							messageItem(
 								"short-replies",
-								"Short replies",
-								"Summarize long crewmate replies with a cheap model before showing them.",
+								m.crew_settings_behaviour_card_short_replies,
+								m.settings_registry_crew_short_replies_description,
 								"summary compact ai model cheap",
 							),
 						],
 					},
 					{
-						title: "Onboarding",
+						get title() {
+							return m.settings_registry_crew_group_onboarding();
+						},
 						items: [
-							item(
+							messageItem(
 								"crew-onboarding",
-								"Replay onboarding",
-								"Shows the Atlas Crew introduction again from the first step.",
+								m.settings_registry_crew_crew_onboarding_label,
+								m.settings_registry_crew_crew_onboarding_description,
 								"onboarding intro tour crew atlas crew",
 							),
 						],
@@ -1325,6 +1559,16 @@ const DEFS = [
 export const REGISTRY: readonly CategoryDef[] = DEFS;
 
 /**
+ * `base` with some properties replaced, keeping its getters live. Not `{ ...base, ...over }`: a spread would freeze a
+ * message-backed label, description or title at its current language.
+ */
+const override = <T extends object>(base: T, over: object): T =>
+	Object.defineProperties(
+		{},
+		{ ...Object.getOwnPropertyDescriptors(base), ...Object.getOwnPropertyDescriptors(over) },
+	) as T;
+
+/**
  * What this platform shows: the registry without the categories and rows that only exist on macOS (capture, the
  * native GPU terminal and its own options). Sidebar, search index and deep links all read this, so a hidden page can
  * neither be found nor opened. Empty groups and pages drop with their last row.
@@ -1333,23 +1577,19 @@ export function forPlatform(defs: readonly CategoryDef[], mac: boolean): readonl
 	if (mac) return defs;
 	return defs
 		.filter((c) => !c.macOnly)
-		.map((c) => ({
-			...c,
-			pages: c.pages
-				.map((p) => ({
-					...p,
-					groups: p.groups
-						// Not `{ ...g }`: a spread would freeze a message-backed title at its current language.
-						.map((g) => ({
-							get title() {
-								return g.title;
-							},
-							items: g.items.filter((i) => !i.macOnly),
-						}))
-						.filter((g) => g.items.length > 0),
-				}))
-				.filter((p) => p.groups.length > 0),
-		}));
+		.map((c) =>
+			override(c, {
+				pages: c.pages
+					.map((p) =>
+						override(p, {
+							groups: p.groups
+								.map((g) => override(g, { items: g.items.filter((i) => !i.macOnly) }))
+								.filter((g) => g.items.length > 0),
+						}),
+					)
+					.filter((p) => p.groups.length > 0),
+			}),
+		);
 }
 
 /** The registry with its literal ids, from which the section and tab id types are derived. */

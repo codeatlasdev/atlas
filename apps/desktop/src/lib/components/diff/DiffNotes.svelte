@@ -39,7 +39,7 @@
 				{#if c.sent}<span class="dim">{m.git_diff_notes_sent()}</span>{/if}
 				<button onclick={() => onresolve(c.id, !c.resolved)}>
 					<Check size={11} />
-					{c.resolved ? "Reopen" : "Resolve"}
+					{c.resolved ? m.git_diff_notes_reopen() : m.git_diff_notes_resolve()}
 				</button>
 			</div>
 		</td>
@@ -51,7 +51,7 @@
 			<!-- svelte-ignore a11y_autofocus -->
 			<textarea
 				autofocus
-				placeholder={`Comment for the agent (${kbd("cmd-enter")} to save, Esc to cancel)`}
+				placeholder={m.git_diff_notes_placeholder({ key: kbd("cmd-enter"), escape: m.common_keys_escape() })}
 				bind:value={draft.text}
 				onkeydown={(e) => {
 					if (e.key === "Enter" && primaryKey(e)) onsave();

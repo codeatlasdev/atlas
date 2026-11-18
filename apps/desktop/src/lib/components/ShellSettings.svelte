@@ -1,5 +1,6 @@
 <script lang="ts">
 	import { Alert, Button, Select, Spinner, toast } from "@codeatlasdev/ui";
+	import type { Snippet } from "svelte";
 	import { Check, ChevronRight, RefreshCw, X } from "@lucide/svelte";
 	import { api, errText, type ShellInfo } from "#lib/api.ts";
 	import { tilde } from "#lib/format.ts";
@@ -7,6 +8,7 @@
 	import Group from "#lib/settings/Group.svelte";
 	import Row from "#lib/settings/Row.svelte";
 	import { m } from "#lib/i18n/m.ts";
+	import Rich from "#lib/i18n/Rich.svelte";
 
 	let info = $state<ShellInfo | null>(null);
 	let busy = $state(false);
@@ -14,12 +16,21 @@
 	let custom = $state("");
 	let error = $state<string | null>(null);
 
-	const SOURCE = {
-		settings: "picked in Settings",
-		account: "your account's login shell",
-		$SHELL: "taken from $SHELL",
-		default: "built-in fallback",
-	} as const;
+	/** Why this shell was chosen, as `atlas_core::login_env::resolve_shell` names it (`ShellInfo.probe.source`). */
+	function sourceText(source: string): string {
+		switch (source) {
+			case "settings":
+				return m.settings_terminal_shell_source_settings();
+			case "account":
+				return m.settings_terminal_shell_source_account();
+			case "$SHELL":
+				return m.settings_terminal_shell_source_env();
+			case "default":
+				return m.settings_terminal_shell_source_default();
+			default:
+				return source;
+		}
+	}
 
 	$effect(() => {
 		api
@@ -37,8 +48,8 @@
 		busy = true;
 		try {
 			info = await api.shellSet(shell);
-			if (info.probe?.error) toast.error(`Atlas could not start ${info.probe.shell}`);
-			else toast.success("Shell reloaded. Stop and start running projects to use it.");
+			if (info.probe?.error) toast.error(m.settings_terminal_shell_could_not_start_toast({ shell: info.probe.shell }));
+			else toast.success(m.settings_terminal_shell_reloaded());
 		} catch (e) {
 			toast.error(errText(e));
 		} finally {
@@ -84,6 +95,7 @@
 					if (custom.trim()) set(custom.trim());
 				}}
 			>
+				<!-- i18n-ignore: an example path, not prose -->
 				<FieldInput
 					class="text mono"
 					aria-label={m.settings_terminal_shell_other_shell()}
@@ -98,15 +110,27 @@
 				>
 			</form>
 		</Row>
+		{#snippet mono(content: Snippet)}<span class="mono">{@render content()}</span>{/snippet}
 		<div class="status">
 			{#if info.probe?.error}
 				<span class="st bad"
-					><X size={13} /> Could not start <span class="mono">{info.probe.shell}</span></span
+					><X size={13} />
+					<Rich parts={m.settings_terminal_shell_status_failed.parts({ shell: info.probe.shell })} tags={{ mono }} /></span
 				>
 			{:else if info.probe}
-				<span class="st ok"><Check size={13} /> Using <span class="mono">{info.probe.shell}</span></span>
+				<span class="st ok"
+					><Check size={13} />
+					<Rich parts={m.settings_terminal_shell_status_using.parts({ shell: info.probe.shell })} tags={{ mono }} /></span
+				>
 				<span class="muted"
-					>{SOURCE[info.probe.source]}, <span class="mono">{info.probe.flags}</span>, {info.probe.took_ms} ms</span
+					><Rich
+						parts={m.settings_terminal_shell_status_detail.parts({
+							source: sourceText(info.probe.source),
+							flags: info.probe.flags ?? "",
+							ms: info.probe.took_ms,
+						})}
+						tags={{ mono }}
+					/></span
 				>
 			{/if}
 		</div>
@@ -131,7 +155,7 @@
 						>{#if path}<Check size={12} />{:else}<X size={12} />{/if}</span
 					>
 					<span class="tname">{tool}</span>
-					<span class="tpath mono" title={path ?? ""}>{path ? tilde(path) : "not found"}</span>
+					<span class="tpath mono" title={path ?? ""}>{path ? tilde(path) : m.settings_terminal_shell_not_found()}</span>
 				</div>
 			{/each}
 		</div>

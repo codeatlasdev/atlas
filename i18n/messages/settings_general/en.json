@@ -1,18 +1,35 @@
 {
-	"settings_general_agent_hooks_agent_hooks": "Agent hooks",
-	"settings_general_agent_hooks_install_omp_claude_code_or": "Install omp, Claude Code or Codex and they show up here, ready to connect.",
-	"settings_general_agent_hooks_no_agents_found": "No agents found",
-	"settings_general_agent_hooks_on": "On",
-	"settings_general_agent_hooks_turn_on": "Turn on",
+	"settings_general_args_backslash": "A backslash at the end has nothing to escape.",
+	"settings_general_args_quote_double": "Missing closing double quote.",
+	"settings_general_args_quote_single": "Missing closing single quote.",
 	"settings_general_close_settings": "Close settings",
 	"settings_general_config_edited": "● edited",
 	"settings_general_config_file_changed_on_disk": "File changed on disk",
 	"settings_general_config_keep_mine": "Keep mine",
+	"settings_general_config_problems": [
+		{
+			"declarations": [
+				"input count",
+				"local countExact = count",
+				"local countPlural = count: plural"
+			],
+			"selectors": [
+				"countExact",
+				"countPlural"
+			],
+			"match": {
+				"countExact=0, countPlural=*": "No problems",
+				"countExact=*, countPlural=one": "{count} problem",
+				"countExact=*, countPlural=*": "{count} problems"
+			}
+		}
+	],
 	"settings_general_config_reload": "Reload",
 	"settings_general_config_restart_stack_to_apply": "Restart stack to apply",
 	"settings_general_config_revert": "Revert",
 	"settings_general_config_review_the_changes": "Review the changes.",
 	"settings_general_config_save_atlas_yaml": "Save atlas.yaml?",
+	"settings_general_config_saved": "atlas.yaml saved",
 	"settings_general_config_the_running_stack_still_uses": "The running stack still uses the old config.",
 	"settings_general_config_valid": "valid",
 	"settings_general_config_validating": "validating",
@@ -23,7 +40,9 @@
 	"settings_general_dock_hide_or_show_the_dock": "Hide or show the dock",
 	"settings_general_dock_keep_the_pill_on_screen": "Keep the pill on screen while Atlas runs. Hide it any time with the hide key, the pill's hide button or right-click menu, or the tray menu; the choice is remembered.",
 	"settings_general_dock_message_an_agent": "Message an agent",
+	"settings_general_dock_not_set": "Not set",
 	"settings_general_dock_opens_the_dock_s_composer": "Opens the dock's composer from any app. The text goes to the agent you last used, or the one you @mention.",
+	"settings_general_dock_press_a_key": "Press a key…",
 	"settings_general_dock_show_the_dock": "Show the dock",
 	"settings_general_dock_works_even_while_the_dock": "Works even while the dock is hidden, so it is always the way back. The tray menu has Show Agent Dock too.",
 	"settings_general_git_commit_messages": "Commit messages",
@@ -32,17 +51,22 @@
 	"settings_general_git_option_automatic": "Automatic",
 	"settings_general_git_option_off": "Off",
 	"settings_general_git_the_staged_diff_all_changes": "The staged diff (all changes when nothing is staged) goes only to the agent you pick here, run on this computer with no tools, plus your recent commit subjects and the commit rules of CONTRIBUTING.md and AGENTS.md. Files that look like secrets (.env, keys, certificates) are never sent; lockfiles and binaries are sent as names only. Choose {@settings_general_git_option_off} to hide the button.",
-	"settings_general_hygiene_group_agents_leave_browsers_dev_servers": "Agents leave browsers, dev servers and caches behind. Fix ends only processes Atlas tagged whose owner is gone, and frees only folders Atlas registered. target/, node_modules and worktrees are never removed.",
-	"settings_general_hygiene_group_fix": "Fix",
-	"settings_general_hygiene_group_hygiene": "Hygiene",
-	"settings_general_hygiene_group_orphans_and_disk": "Orphans and disk",
+	"settings_general_links_atlas_browser": "Atlas browser",
+	"settings_general_links_description": "Where links from services, ports and terminals open. Use {key} to open a link in the other browser.",
 	"settings_general_links_links": "Links",
 	"settings_general_links_open_links_in": "Open links in",
-	"settings_general_load_error_could_not_read_what": "Could not read {what}",
+	"settings_general_links_system_browser": "System browser",
+	"settings_general_load_error_agents": "Could not read your agent settings",
+	"settings_general_load_error_git": "Could not read your Git settings",
+	"settings_general_load_error_hygiene": "Could not read the hygiene report",
+	"settings_general_load_error_phones": "Could not read your paired phones",
+	"settings_general_load_error_ssh": "Could not read your SSH hosts",
+	"settings_general_load_error_workspace": "Could not read your workspace settings",
 	"settings_general_nav_dev": "Dev",
 	"settings_general_nav_search_settings": "Search settings",
 	"settings_general_nav_settings_sections": "Settings sections",
 	"settings_general_nav_update_available": "Update available",
+	"settings_general_nav_version": "Atlas {version}",
 	"settings_general_notification_a_system_notification_when_an": "A system notification when an agent is done or is waiting for an answer.",
 	"settings_general_notification_add_a_short_sound_to": "Add a short sound to each notification.",
 	"settings_general_notification_atlas_tells_you_when_an": "Atlas tells you when an agent finishes or needs you.",
@@ -51,11 +75,50 @@
 	"settings_general_notification_show_notifications": "Show notifications",
 	"settings_general_notification_skip_the_notification_when_that": "Skip the notification when that worktree is the one on your screen.",
 	"settings_general_notification_stay_quiet_while_i_m": "Stay quiet while I'm watching",
+	"settings_general_open_outside_no_worktree": "Open a worktree first, then Atlas can show {file} in its editor.",
+	"settings_general_search_count": [
+		{
+			"declarations": [
+				"input count",
+				"local countExact = count",
+				"local countPlural = count: plural"
+			],
+			"selectors": [
+				"countExact",
+				"countPlural"
+			],
+			"match": {
+				"countExact=0, countPlural=*": "No settings found",
+				"countExact=*, countPlural=one": "{count} setting",
+				"countExact=*, countPlural=*": "{count} settings"
+			}
+		}
+	],
+	"settings_general_search_empty_hint": "Try a shorter word, like “font”, “theme” or “branch”.",
+	"settings_general_search_matching": "Matching “{query}”.",
 	"settings_general_settings": "Settings",
 	"settings_general_shell_links_services_start_with_the_path": "Services start with the PATH and variables of this shell, the same as in your terminal. Pick another shell if tools like bun or node are not found.",
 	"settings_general_shell_links_shell_for_your_projects": "Shell for your projects",
+	"settings_general_shortcut_add": "Add shortcut",
 	"settings_general_shortcut_click_then_press_the_new": "Click, then press the new shortcut",
+	"settings_general_shortcut_displaced": "{key} now runs this command. “{command}” lost it.",
 	"settings_general_shortcut_if_you_pick_a_shortcut": "If you pick a shortcut that another command already uses, that command loses it.",
+	"settings_general_shortcut_needs_modifier": [
+		{
+			"declarations": [
+				"input os"
+			],
+			"selectors": [
+				"os"
+			],
+			"match": {
+				"os=mac": "Include Command, Control or Option so the shortcut does not clash with typing",
+				"os=*": "Include Ctrl or Alt so the shortcut does not clash with typing"
+			}
+		}
+	],
+	"settings_general_shortcut_no_match": "No command matches “{query}”.",
+	"settings_general_shortcut_none": "No shortcut",
 	"settings_general_shortcut_press_the_new_shortcut": "Press the new shortcut…",
 	"settings_general_shortcut_remove_this_shortcut": "Remove this shortcut",
 	"settings_general_shortcut_reset_all_to_defaults": "Reset all to defaults",
@@ -65,6 +128,7 @@
 	"settings_general_sound_on_top_of_your_system": "On top of your system's volume, which always wins.",
 	"settings_general_sound_only_the_ones_that_need": "Only the ones that need your attention, and quieter.",
 	"settings_general_sound_play": "Play",
+	"settings_general_sound_play_label": "Play {sound}",
 	"settings_general_sound_play_sounds": "Play sounds",
 	"settings_general_sound_play_user_interface_sound_effects": "“Play user interface sound effects” is off in System Settings ▸ Sound, so Atlas stays silent. The Play buttons below still work.",
 	"settings_general_sound_reduce_sounds": "Reduce sounds",
@@ -72,29 +136,5 @@
 	"settings_general_sound_sound_volume": "Sound volume",
 	"settings_general_sound_sounds": "Sounds",
 	"settings_general_sound_switch_any_of_them_off": "Switch any of them off on its own.",
-	"settings_general_sound_which_sounds": "Which sounds",
-	"settings_general_workspace_added_in_front_of_every": "Added in front of every branch Atlas creates, such as your-name/fix-login.",
-	"settings_general_workspace_atlas_never_removes_a_worktree": "Atlas never removes a worktree with unsaved changes or commits that are not on a remote, and keeps its branch.",
-	"settings_general_workspace_auto_clean_up": "Auto clean up",
-	"settings_general_workspace_branch_name_prefix": "Branch name prefix",
-	"settings_general_workspace_checked_every_15_minutes_pinned": "Checked every 15 minutes. Pinned worktrees and the one you are viewing are skipped.",
-	"settings_general_workspace_clean_up": "Clean up",
-	"settings_general_workspace_custom_prefix": "Custom prefix",
-	"settings_general_workspace_days_without_agent_activity_before": "Days without agent activity before a worktree is removed.",
-	"settings_general_workspace_delete_selected": "Delete selected",
-	"settings_general_workspace_group_by_repository": "Group by repository",
-	"settings_general_workspace_idle_for_days": "Idle for (days)",
-	"settings_general_workspace_linked_worktrees": "Linked worktrees",
-	"settings_general_workspace_linked_worktrees_take_disk_space": "Linked worktrees take disk space. Scan to see how big each one is, its last commit and whether it has unsaved work.",
-	"settings_general_workspace_new_worktrees": "New worktrees",
-	"settings_general_workspace_no_linked_worktrees_yet_create": "No linked worktrees yet. Create one from the sidebar and it will show up here.",
-	"settings_general_workspace_put_each_worktree_in_a": "Put each worktree in a folder named after its repository, so projects do not mix.",
-	"settings_general_workspace_remove_worktrees_automatically": "Remove worktrees automatically",
-	"settings_general_workspace_restore": "Restore",
-	"settings_general_workspace_scan": "Scan",
-	"settings_general_workspace_team": "team",
-	"settings_general_workspace_text_to_put_before_each": "Text to put before each new branch name.",
-	"settings_general_workspace_tick_the_ones_you_no": "Tick the ones you no longer need, then delete them.",
-	"settings_general_workspace_where_atlas_creates_checkouts_leave": "Where Atlas creates checkouts. Leave empty to use ~/.atlas/worktrees.",
-	"settings_general_workspace_worktree_folder": "Worktree folder"
+	"settings_general_sound_which_sounds": "Which sounds"
 }

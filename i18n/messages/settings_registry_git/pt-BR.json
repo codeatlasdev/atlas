@@ -1,0 +1,5 @@
+{
+	"settings_registry_git_description": "Como o Atlas ajuda nos commits. Nenhum commit é feito por você.",
+	"settings_registry_git_git_commit_agent_description": "Qual agente escreve a mensagem de commit a partir do diff em stage, ou Desativado para ocultar o botão. Segredos nunca são enviados.",
+	"settings_registry_git_label": "Git"
+}

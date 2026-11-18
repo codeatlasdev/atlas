@@ -1,42 +1,116 @@
 {
 	"git_create_pr_dialog_base_branch": "Base branch",
+	"git_create_pr_dialog_cli_not_installed": "GitHub CLI ({#code}gh{/code}) is not installed.",
 	"git_create_pr_dialog_create": "Create",
 	"git_create_pr_dialog_create_pull_request": "Create pull request",
 	"git_create_pr_dialog_description": "Description",
 	"git_create_pr_dialog_draft": "Draft",
+	"git_create_pr_dialog_generate_failed": "The agent could not write the pull request.",
 	"git_create_pr_dialog_generate_with_ai": "Generate with AI",
 	"git_create_pr_dialog_github_cli_is_not_signed": "GitHub CLI is not signed in.",
 	"git_create_pr_dialog_install_github_cli": "Install GitHub CLI",
 	"git_create_pr_dialog_repository_default": "repository default",
 	"git_create_pr_dialog_sign_in_with_gh": "Sign in with gh",
 	"git_create_pr_dialog_title": "Title",
+	"git_diff_notes_placeholder": "Comment for the agent ({key} to save, {escape} to cancel)",
+	"git_diff_notes_reopen": "Reopen",
+	"git_diff_notes_resolve": "Resolve",
 	"git_diff_notes_sent": "sent",
 	"git_diff_table_comment_c": "Comment (c)",
 	"git_diff_view_binary_file": "Binary file",
+	"git_diff_view_branch_base": "branch base",
 	"git_diff_view_diff_layout": "Diff layout",
 	"git_diff_view_head": "HEAD",
 	"git_diff_view_image_changed_open_the_file": "Image changed (open the file to view).",
 	"git_diff_view_new_defaultagent_session": "New {defaultAgent} session",
+	"git_diff_view_no_changes": "No changes",
+	"git_diff_view_no_changes_in_file": "No changes in this file",
 	"git_diff_view_refresh": "Refresh",
+	"git_diff_view_send_notes": [
+		{
+			"declarations": [
+				"input count",
+				"local countPlural = count: plural"
+			],
+			"selectors": [
+				"countPlural"
+			],
+			"match": {
+				"countPlural=one": "Send {count} note to agent",
+				"countPlural=*": "Send {count} notes to agent"
+			}
+		}
+	],
+	"git_diff_view_sent_notes": [
+		{
+			"declarations": [
+				"input count",
+				"local countPlural = count: plural"
+			],
+			"selectors": [
+				"countPlural"
+			],
+			"match": {
+				"countPlural=one": "Sent {count} note",
+				"countPlural=*": "Sent {count} notes"
+			}
+		}
+	],
 	"git_diff_view_split": "Split",
+	"git_diff_view_stage_file": "Stage file",
+	"git_diff_view_stage_hunk": "Stage hunk",
 	"git_diff_view_staged": "Staged",
+	"git_diff_view_status_added": "added",
+	"git_diff_view_status_deleted": "deleted",
+	"git_diff_view_status_modified": "modified",
+	"git_diff_view_status_renamed": "renamed",
+	"git_diff_view_status_untracked": "untracked",
 	"git_diff_view_unified": "Unified",
+	"git_diff_view_unstage_file": "Unstage file",
+	"git_diff_view_unstage_hunk": "Unstage hunk",
 	"git_diff_view_unstaged": "Unstaged",
+	"git_diff_view_vs_base": "vs base",
+	"git_diff_view_vs_base_ref": "vs base ({base})",
 	"git_diff_view_wrap": "Wrap",
 	"git_identity_dialog_automatic": "Automatic",
 	"git_identity_dialog_automatic_color": "Automatic color",
 	"git_identity_dialog_change_icon_and_color": "Change icon and color",
 	"git_identity_dialog_color": "Color",
+	"git_identity_dialog_emoji_placeholder": "Type or paste an emoji",
 	"git_identity_dialog_hue_h": "Hue {h}",
 	"git_identity_dialog_icon_source": "Icon source",
 	"git_identity_dialog_no_icon_matches_query": "No icon matches “{query}”.",
 	"git_identity_dialog_no_logo_found_in_this": "No logo found in this repo (favicon, app icon, assets/logo…).",
 	"git_identity_dialog_reset": "Reset",
+	"git_identity_dialog_search_icons": [
+		{
+			"declarations": [
+				"input count",
+				"local countExact = count",
+				"local countPlural = count: plural"
+			],
+			"selectors": [
+				"countExact",
+				"countPlural"
+			],
+			"match": {
+				"countExact=0, countPlural=*": "Search icons",
+				"countExact=*, countPlural=one": "Search {count} icon",
+				"countExact=*, countPlural=*": "Search {count} icons"
+			}
+		}
+	],
+	"git_identity_dialog_tab_emoji": "Emoji",
+	"git_identity_dialog_tab_icons": "Icons",
+	"git_identity_dialog_tab_logo": "Project logo",
 	"git_identity_dialog_use_project_logo": "Use project logo",
 	"git_new_worktree_dialog_a_github_pr_or_issue": "A GitHub PR or issue URL works too.",
+	"git_new_worktree_dialog_add_new_project": "Add a new project…",
+	"git_new_worktree_dialog_add_project_title": "Add project",
 	"git_new_worktree_dialog_advanced": "Advanced",
 	"git_new_worktree_dialog_agent": "Agent",
 	"git_new_worktree_dialog_base_ref": "Base ref",
+	"git_new_worktree_dialog_blank_terminal": "Blank terminal",
 	"git_new_worktree_dialog_branch_name": "Branch name",
 	"git_new_worktree_dialog_derived_from_the_name": "Derived from the name",
 	"git_new_worktree_dialog_leave_blank_for_a_random": "Leave blank for a random name",
@@ -47,6 +121,7 @@
 	"git_new_worktree_dialog_project": "Project",
 	"git_new_worktree_dialog_prompt": "Prompt",
 	"git_new_worktree_dialog_run_setup_script_worktree_setup": "Run setup script (worktree.setup)",
+	"git_not_repo_state_description": "Source control, diffs and pull requests need git. Initialize a repository in this folder to start tracking changes.",
 	"git_not_repo_state_initialize_repository": "Initialize repository",
 	"git_not_repo_state_this_folder_is_not_a": "This folder is not a git repository",
 	"git_pr_tab_comment": "Comment",

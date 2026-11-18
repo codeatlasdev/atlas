@@ -1,5 +1,4 @@
 <script lang="ts">
-	import { IS_MAC } from "#lib/keys.ts";
 	import { Button, Dialog, SegmentedControl, toast } from "@codeatlasdev/ui";
 	import { Check, ImageIcon, Search } from "@lucide/svelte";
 	import { fromOklch, readableOn } from "#lib/theme/color.ts";
@@ -138,9 +137,9 @@
 			fullWidth
 			aria-label={m.git_identity_dialog_icon_source()}
 			items={[
-				{ value: "emoji", label: "Emoji" },
-				{ value: "icons", label: "Icons" },
-				{ value: "logo", label: "Project logo" },
+				{ value: "emoji", label: m.git_identity_dialog_tab_emoji() },
+				{ value: "icons", label: m.git_identity_dialog_tab_icons() },
+				{ value: "logo", label: m.git_identity_dialog_tab_logo() },
 			]}
 		/>
 
@@ -148,7 +147,7 @@
 			{#if tab === "emoji"}
 				<input
 					class="field"
-					placeholder={`Type or paste an emoji (${IS_MAC ? "⌃⌘Space" : "Win+."})`}
+					placeholder={m.git_identity_dialog_emoji_placeholder()}
 					value={emoji}
 					maxlength="16"
 					oninput={(e) => pickEmoji(e.currentTarget.value)}
@@ -165,7 +164,7 @@
 			{:else if tab === "icons"}
 				<div class="search">
 					<Search size={13} />
-					<input class="bare" placeholder="Search {names.length || ''} icons" bind:value={query} />
+					<input class="bare" placeholder={m.git_identity_dialog_search_icons({ count: names.length })} bind:value={query} />
 				</div>
 				<div class="grid lucides">
 					{#each shown as n (n)}

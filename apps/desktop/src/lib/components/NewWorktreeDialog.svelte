@@ -35,7 +35,7 @@
 	let repos = $derived(store.sorted.filter((p) => !p.parent));
 	let agentOptions = $derived([
 		...agents.list.filter((a) => a.installed).map((a) => ({ value: a.id, label: a.label })),
-		{ value: "blank", label: "Blank terminal" },
+		{ value: "blank", label: m.git_new_worktree_dialog_blank_terminal() },
 	]);
 
 	$effect(() => {
@@ -61,7 +61,7 @@
 			repoId = v;
 			return;
 		}
-		const dir = await pickFolder({ directory: true, title: "Add atlas project" });
+		const dir = await pickFolder({ directory: true, title: m.git_new_worktree_dialog_add_project_title() });
 		if (typeof dir !== "string") return;
 		try {
 			const p = await api.add(dir);
@@ -122,7 +122,7 @@
 			value={repoId}
 			options={[
 				...repos.map((r) => ({ value: r.id, label: r.name })),
-				{ value: ADD, label: "Add a new project…" },
+				{ value: ADD, label: m.git_new_worktree_dialog_add_new_project() },
 			]}
 			onchange={(v) => typeof v === "string" && pickRepo(v)}
 		/>

@@ -109,8 +109,26 @@
 			r = await git.run(worktreeId, unstage ? ["restore", "--staged", "--", f.path] : ["add", "--", f.path]);
 		else
 			r = await git.run(worktreeId, ["apply", "--cached", ...(unstage ? ["-R"] : []), "-"], hunkPatch(f, h));
-		if (r.code !== 0) gitToast(r.stderr || r.stdout || "git failed");
+		if (r.code !== 0) gitToast(r.stderr || r.stdout);
 		await load();
+	}
+
+	/** `FileDiff.status` as the Rust side sends it; a status this does not know shows as it came. */
+	function statusText(status: string): string {
+		switch (status) {
+			case "modified":
+				return m.git_diff_view_status_modified();
+			case "added":
+				return m.git_diff_view_status_added();
+			case "deleted":
+				return m.git_diff_view_status_deleted();
+			case "renamed":
+				return m.git_diff_view_status_renamed();
+			case "untracked":
+				return m.git_diff_view_status_untracked();
+			default:
+				return status;
+		}
 	}
 
 	function addComment() {
@@ -141,7 +159,7 @@
 		ws.doc.diffComments[worktreeId] = comments.map((c) =>
 			notes.some((n) => n.id === c.id) ? { ...c, sent: true } : c,
 		);
-		toast.success(`Sent ${notes.length} note${notes.length > 1 ? "s" : ""}`);
+		toast.success(m.git_diff_view_sent_notes({ count: notes.length }));
 	}
 
 	function jump(delta: 1 | -1) {
@@ -172,13 +190,13 @@
 		{#if !only}
 			<div class="toolbar">
 				<select bind:value={curMode}>
-					<option value="base">vs base{base ? ` (${base})` : ""}</option>
+					<option value="base">{base ? m.git_diff_view_vs_base_ref({ base }) : m.git_diff_view_vs_base()}</option>
 					<option value="working">{m.git_diff_view_unstaged()}</option>
 					<option value="staged">{m.git_diff_view_staged()}</option>
 				</select>
 				{#if curMode === "base"}
 					<select bind:value={baseRef}>
-						<option value="">{"branch base"}</option>
+						<option value="">{m.git_diff_view_branch_base()}</option>
 						<option value="HEAD">{m.git_diff_view_head()}</option>
 						{#each commits as c (c)}<option value={c.split(" ")[0]}>{c}</option>{/each}
 					</select>
@@ -198,9 +216,7 @@
 				{#if open.length}
 					<DropdownMenu align="end">
 						{#snippet trigger()}
-							<span class="send"
-								><Send size={12} /> Send {open.length} note{open.length > 1 ? "s" : ""} to agent</span
-							>
+							<span class="send"><Send size={12} /> {m.git_diff_view_send_notes({ count: open.length })}</span>
 						{/snippet}
 						{#each agents.tabsIn(worktreeId) as t (t.id)}
 							<DropdownMenuItem onclick={() => sendTo(t.id)}
@@ -223,7 +239,7 @@
 							{#if comments.some((c) => c.path === f.path && !c.resolved)}<span class="dot"></span>{/if}
 						</button>
 					{:else}
-						<p class="empty">{loading ? "Loading…" : "No changes"}</p>
+						<p class="empty">{loading ? m.common_state_loading() : m.git_diff_view_no_changes()}</p>
 					{/each}
 				</nav>
 			{/if}
@@ -248,9 +264,9 @@
 						{#if r.kind === "file"}
 							<header>
 								<span class="mono">{r.f.old_path ? `${r.f.old_path} → ` : ""}{r.f.path}</span>
-								<span class="dim">{r.f.status}</span>
+								<span class="dim">{statusText(r.f.status)}</span>
 								<button class="act" onclick={() => stage(r.f)}
-									>{curMode === "staged" ? "Unstage file" : "Stage file"}</button
+									>{curMode === "staged" ? m.git_diff_view_unstage_file() : m.git_diff_view_stage_file()}</button
 								>
 							</header>
 						{:else if r.kind === "binary"}
@@ -266,7 +282,7 @@
 									<button
 										class="act"
 										onclick={() => stage(r.f, r.hunk)}
-										title={curMode === "staged" ? "Unstage hunk" : "Stage hunk"}
+										title={curMode === "staged" ? m.git_diff_view_unstage_hunk() : m.git_diff_view_stage_hunk()}
 									>
 										{#if curMode === "staged"}<Minus size={11} />{:else}<Plus size={11} />{/if}
 									</button>
@@ -296,7 +312,7 @@
 					{/snippet}
 				</VirtualList>
 			{:else if only}
-				<p class="empty">{loading ? "Loading…" : "No changes in this file"}</p>
+				<p class="empty">{loading ? m.common_state_loading() : m.git_diff_view_no_changes_in_file()}</p>
 			{/if}
 		</div>
 	{/if}

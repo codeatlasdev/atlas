@@ -21,7 +21,7 @@
 <EmptyState
 	icon={GitBranch}
 	title={m.git_not_repo_state_this_folder_is_not_a()}
-	description="Source control, diffs and pull requests need git. Initialize a repository here to start tracking changes."
+	description={m.git_not_repo_state_description()}
 	bare
 >
 	{#snippet actions()}

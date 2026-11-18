@@ -152,7 +152,7 @@
 		disk = text;
 		externalChange = false;
 		savedOnce = true;
-		toast.success("atlas.yaml saved");
+		toast.success(m.settings_general_config_saved());
 		store.loadConfig(project.id);
 	}
 
@@ -173,7 +173,7 @@
 		{#if validating}
 			<Spinner size={13} /> {m.settings_general_config_validating()}
 		{:else if problems.length}
-			<CircleAlert size={14} class="bad" /> {problems.length} problem{problems.length === 1 ? "" : "s"}
+			<CircleAlert size={14} class="bad" /> {m.settings_general_config_problems({ count: problems.length })}
 		{:else}
 			<CircleCheck size={14} class="good" /> {m.settings_general_config_valid()}
 		{/if}

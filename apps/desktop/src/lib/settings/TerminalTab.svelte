@@ -14,6 +14,7 @@
 	import TextInput from "./TextInput.svelte";
 	import { savePref } from "./savePref.ts";
 	import { m } from "#lib/i18n/m.ts";
+	import { kbd } from "#lib/keys.ts";
 
 	let p = $derived(prefs.value);
 	let t = $derived(p.terminal);
@@ -22,9 +23,9 @@
 
 	/** Ends every terminal: the app reconnects and starts the current host. */
 	async function restart() {
-		const ok = await confirmDialog("Restart the terminal host?", {
-			description: "Running terminals and agents end. Tabs stay; use Restart on each to reopen them.",
-			confirmLabel: "Restart",
+		const ok = await confirmDialog(m.settings_terminal_tab_restart_host_title(), {
+			description: m.settings_terminal_tab_restart_host_body(),
+			confirmLabel: m.settings_host_action_restart(),
 			destructive: true,
 		});
 		if (ok) await restartHost();
@@ -141,10 +142,10 @@
 				size="sm"
 				value={t.cursor_shape}
 				options={[
-					{ value: "block", label: "Block" },
-					{ value: "bar", label: "Bar" },
-					{ value: "underline", label: "Underline" },
-					{ value: "hollow", label: "Hollow" },
+					{ value: "block", label: m.settings_terminal_tab_cursor_block() },
+					{ value: "bar", label: m.settings_terminal_tab_cursor_bar() },
+					{ value: "underline", label: m.settings_terminal_tab_cursor_underline() },
+					{ value: "hollow", label: m.settings_terminal_tab_cursor_hollow() },
 				]}
 				onchange={(v) => save({ cursor_shape: v as Prefs["terminal"]["cursor_shape"] })}
 			/>
@@ -161,6 +162,7 @@
 					? 500
 					: 400}; padding: {t.padding_y}px {t.padding_x}px"
 			>
+				<!-- i18n-ignore: a sample prompt and command, drawn as the terminal would -->
 				<div>
 					<span style="color: {asText(2)}">~/atlas</span>
 					<span style="color: {asText(4)}">main</span>
@@ -244,9 +246,9 @@
 			size="sm"
 			value={t.osc52}
 			items={[
-				{ value: "ask", label: "Ask each time" },
-				{ value: "allow", label: "Always allow" },
-				{ value: "deny", label: "Never" },
+				{ value: "ask", label: m.settings_terminal_tab_osc52_ask() },
+				{ value: "allow", label: m.settings_terminal_tab_osc52_allow() },
+				{ value: "deny", label: m.settings_terminal_tab_osc52_deny() },
 			]}
 			onchange={(v) => save({ osc52: v as Prefs["terminal"]["osc52"] })}
 		/>
@@ -277,17 +279,17 @@
 		<Row
 			id="option-as-alt"
 			label={m.settings_terminal_tab_option_key_as_alt()}
-			description="Makes ⌥ send Alt (⌥B jumps back a word) instead of typing a macOS character such as ∫. Fast terminal only."
+			description={m.settings_terminal_tab_option_as_alt_description({ key: kbd("alt-b") })}
 		>
 			<SegmentedControl
 				aria-label={m.settings_terminal_tab_option_key_as_alt()}
 				size="sm"
 				value={t.option_as_alt}
 				items={[
-					{ value: "both", label: "Both" },
-					{ value: "left", label: "Left" },
-					{ value: "right", label: "Right" },
-					{ value: "none", label: "Off" },
+					{ value: "both", label: m.settings_terminal_tab_option_both() },
+					{ value: "left", label: m.settings_terminal_tab_option_left() },
+					{ value: "right", label: m.settings_terminal_tab_option_right() },
+					{ value: "none", label: m.settings_general_git_option_off() },
 				]}
 				onchange={(v) => save({ option_as_alt: v as Prefs["terminal"]["option_as_alt"] })}
 			/>

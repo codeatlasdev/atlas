@@ -1,0 +1,8 @@
+{
+	"settings_registry_notifications_description": "Quando o Atlas avisa você: uma notificação do sistema quando um agente precisa de você, e sons curtos.",
+	"settings_registry_notifications_label": "Notificações e sons",
+	"settings_registry_notifications_notify_description": "Receba um aviso quando um agente terminar ou precisar de você.",
+	"settings_registry_notifications_sound_reduce_description": "Toca só os que pedem sua atenção, e mais baixo.",
+	"settings_registry_notifications_sound_volume_description": "Volume dos sons do Atlas, aplicado sobre o volume do sistema.",
+	"settings_registry_notifications_sounds_description": "Sinais curtos e discretos para os momentos importantes. Desligue tudo com um interruptor."
+}

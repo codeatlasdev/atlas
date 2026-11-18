@@ -84,7 +84,7 @@
 </script>
 
 {#if loadError}
-	<LoadError what="your workspace settings" error={loadError} />
+	<LoadError what="workspace" error={loadError} />
 {/if}
 
 <Group title={m.settings_general_workspace_new_worktrees()}>
@@ -135,9 +135,9 @@
 			size="sm"
 			value={branchPrefix}
 			items={[
-				{ value: "git-username", label: "My git name" },
-				{ value: "custom", label: "Custom" },
-				{ value: "none", label: "None" },
+				{ value: "git-username", label: m.settings_general_workspace_prefix_git_name() },
+				{ value: "custom", label: m.settings_general_workspace_prefix_custom() },
+				{ value: "none", label: m.settings_general_workspace_prefix_none() },
 			]}
 			onchange={(v) => {
 				branchPrefix = v;
@@ -174,9 +174,9 @@
 			size="sm"
 			value={auto.mode}
 			items={[
-				{ value: "off", label: "Off" },
-				{ value: "merged", label: "PR merged" },
-				{ value: "idle", label: "Idle" },
+				{ value: "off", label: m.settings_general_git_option_off() },
+				{ value: "merged", label: m.settings_general_workspace_cleanup_merged() },
+				{ value: "idle", label: m.settings_general_workspace_cleanup_idle() },
 			]}
 			onchange={(v) => {
 				auto.mode = v as CleanupMode;
@@ -197,7 +197,7 @@
 		</Row>
 	{/if}
 	{#each cleaned as c (c.at + c.name)}
-		<Row label={c.name} description={`Cleaned ${ago(c.at)}; branch ${c.branch} kept.`}>
+		<Row label={c.name} description={m.settings_general_workspace_cleaned({ when: ago(c.at), branch: c.branch })}>
 			<Button size="sm" variant="glass" onclick={() => restore(c)}>{m.settings_general_workspace_restore()}</Button>
 		</Row>
 	{/each}
@@ -230,7 +230,7 @@
 				<span>{size(s.kb)}</span>
 				<span>{s.last_commit ? ago(s.last_commit * 1000) : "-"}</span>
 				<span>
-					{s.dirty ? "unsaved changes" : "clean"}{#if s.ahead !== null}
+					{s.dirty ? m.settings_general_workspace_state_dirty() : m.settings_general_workspace_state_clean()}{#if s.ahead !== null}
 						· ↑{s.ahead} ↓{s.behind}{/if}
 				</span>
 			{/if}

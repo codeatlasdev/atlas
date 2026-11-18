@@ -50,10 +50,17 @@ pub(super) async fn exec_on(
     argv: &[&str],
     timeout_ms: u64,
 ) -> Result<Out, String> {
+    // The app matches git's own words (`gitErrors.ts` turns them into sentences of the catalog), so git always speaks
+    // English here, whatever language the machine is set to.
+    let env = if argv.first() == Some(&"git") {
+        json!({"LC_ALL": "C"})
+    } else {
+        json!({})
+    };
     let r = hub
         .call(
             "exec",
-            json!({"host": host, "cwd": cwd, "argv": argv, "timeout_ms": timeout_ms}),
+            json!({"host": host, "cwd": cwd, "argv": argv, "env": env, "timeout_ms": timeout_ms}),
         )
         .await?;
     let dec = |k: &str| {

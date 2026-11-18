@@ -3,7 +3,7 @@
 	import { Undo2, X } from "@lucide/svelte";
 	import SearchField from "./SearchField.svelte";
 	import { errText } from "#lib/api.ts";
-	import { DEFAULT_KEYMAP, IS_MAC, kbd, label, strokeOf } from "#lib/keys.ts";
+	import { DEFAULT_KEYMAP, kbd, label, strokeOf } from "#lib/keys.ts";
 	import { highlight, fuzzy } from "#lib/fuzzy.ts";
 	import {
 		bindKey,
@@ -47,9 +47,7 @@
 		if (!stroke) return;
 		// A bare or shift-only key would steal typing everywhere; require ⌘, ⌃ or ⌥ (or an F-key).
 		if (!/(^|-)(ctrl|alt|cmd)-|^f\d+$/.test(stroke)) {
-			toast.info(
-				`Include ${IS_MAC ? "⌘, ⌃ or ⌥" : "Ctrl or Alt"} so the shortcut does not clash with typing`,
-			);
+			toast.info(m.settings_general_shortcut_needs_modifier());
 			return;
 		}
 		recording = null;
@@ -57,7 +55,7 @@
 			.then((r) => {
 				if (r?.displaced) {
 					const other = registeredCommands().find((c) => c.id === r.displaced)?.label ?? r.displaced;
-					toast.info(`${label(stroke)} now runs this command. “${other}” lost it.`);
+					toast.info(m.settings_general_shortcut_displaced({ key: label(stroke), command: other }));
 				}
 			})
 			.catch((err) => toast.error(errText(err)));
@@ -99,7 +97,7 @@
 							onclick={() => (recording = c.id)}
 						>
 							{#if keys.length}{#each keys as k (k)}<Kbd>{k}</Kbd>{/each}{:else}<span class="none"
-									>{isDefault(c.id) ? "No shortcut" : "Add shortcut"}</span
+									>{isDefault(c.id) ? m.settings_general_shortcut_none() : m.settings_general_shortcut_add()}</span
 								>{/if}
 						</button>
 						{#if keys.length}
@@ -111,7 +109,7 @@
 				</div>
 			</div>
 		{:else}
-			<p class="empty">No command matches “{query.trim()}”.</p>
+			<p class="empty">{m.settings_general_shortcut_no_match({ query: query.trim() })}</p>
 		{/each}
 	</div>
 	<p class="hint">{m.settings_general_shortcut_if_you_pick_a_shortcut()}</p>

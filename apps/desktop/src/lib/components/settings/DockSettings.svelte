@@ -70,7 +70,7 @@
 				variant={recording === "summon" ? "filled" : "outlined"}
 				onclick={() => (recording = recording === "summon" ? null : "summon")}
 			>
-				{recording === "summon" ? "Press a key…" : prefs.summon ? kbd(prefs.summon) : "Not set"}
+				{recording === "summon" ? m.settings_general_dock_press_a_key() : prefs.summon ? kbd(prefs.summon) : m.settings_general_dock_not_set()}
 			</Button>
 			{#if prefs.summon && recording !== "summon"}
 				<Button size="sm" variant="ghost" onclick={() => prefs && save({ ...prefs, summon: "" })}
@@ -88,7 +88,7 @@
 				variant={recording === "toggle" ? "filled" : "outlined"}
 				onclick={() => (recording = recording === "toggle" ? null : "toggle")}
 			>
-				{recording === "toggle" ? "Press a key…" : prefs.toggle ? kbd(prefs.toggle) : "Not set"}
+				{recording === "toggle" ? m.settings_general_dock_press_a_key() : prefs.toggle ? kbd(prefs.toggle) : m.settings_general_dock_not_set()}
 			</Button>
 			{#if prefs.toggle && recording !== "toggle"}
 				<Button size="sm" variant="ghost" onclick={() => prefs && save({ ...prefs, toggle: "" })}

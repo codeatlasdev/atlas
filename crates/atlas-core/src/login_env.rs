@@ -218,6 +218,10 @@ pub fn fallback_path(home: &Path, base_path: &str) -> String {
     parts.join(":")
 }
 
+/// The `source` of [`resolve_shell`] and of [`Probe`]. Settings > Terminal words each one (`sourceText`, desktop); any
+/// other value shows as it came.
+pub const SHELL_SOURCES: [&str; 4] = ["settings", "account", "$SHELL", "default"];
+
 /// Shell to probe and where the choice came from.
 pub fn resolve_shell() -> (String, &'static str) {
     let over = OVERRIDE.lock().clone();
@@ -618,6 +622,42 @@ mod tests {
         let (d, src) = pick_shell(None, None, None, ok);
         assert_eq!(src, "default");
         assert!(d.ends_with("sh"));
+    }
+
+    // Contract with the frontend: every `source` the real `pick_shell` makes is in `SHELL_SOURCES`, and that list is
+    // the fixture `__fixtures__/shell-sources.json` the desktop test reads (each one has a message).
+    #[test]
+    fn shell_sources_match_the_frontend_fixture() {
+        let ok = |p: &Path| p.starts_with("/good");
+        let s = |x: &str| Some(x.to_string());
+        let made = [
+            pick_shell(s("/good/o"), None, None, ok).1,
+            pick_shell(None, None, s("/good/a"), ok).1,
+            pick_shell(None, s("/good/e"), None, ok).1,
+            pick_shell(None, None, None, ok).1,
+        ];
+        assert_eq!(made, SHELL_SOURCES);
+        let value = serde_json::to_value(SHELL_SOURCES).unwrap();
+        let path = Path::new(env!("CARGO_MANIFEST_DIR"))
+            .join("../../apps/desktop/src/lib/__fixtures__/shell-sources.json");
+        let mut buf = Vec::new();
+        let mut ser = serde_json::Serializer::with_formatter(
+            &mut buf,
+            serde_json::ser::PrettyFormatter::with_indent(b"\t"),
+        );
+        serde::Serialize::serialize(&value, &mut ser).unwrap();
+        let fresh = String::from_utf8(buf).unwrap() + "\n";
+        if std::env::var_os("UPDATE_FIXTURES").is_some() {
+            std::fs::write(&path, &fresh).unwrap();
+        }
+        let committed: serde_json::Value = serde_json::from_str(
+            &std::fs::read_to_string(&path).expect("fixture missing: UPDATE_FIXTURES=1"),
+        )
+        .unwrap();
+        assert_eq!(
+            committed, value,
+            "stale fixture: re-run with UPDATE_FIXTURES=1"
+        );
     }
 
     #[test]

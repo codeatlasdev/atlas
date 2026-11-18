@@ -25,12 +25,17 @@ const CATEGORIES = forPlatform(REGISTRY, IS_MAC);
 /** The registry's ids are the literal `SettingsSection` union by construction (derived from the same data). */
 const sectionId = (id: string) => id as SettingsSection;
 
+/** Label and description are getters over the registry's: they follow the display language, never a copy. */
 export const SECTIONS: { id: SettingsSection; label: string; description: string; cluster: string }[] =
-	CATEGORIES.map(({ id, label, description, cluster }) => ({
-		id: sectionId(id),
-		label,
-		description,
-		cluster,
+	CATEGORIES.map((c) => ({
+		id: sectionId(c.id),
+		get label() {
+			return c.label;
+		},
+		get description() {
+			return c.description;
+		},
+		cluster: c.cluster,
 	}));
 
 /** The sections that are split in tabs; every other section is one page. */
@@ -39,7 +44,15 @@ export const SECTION_TABS: Partial<
 > = Object.fromEntries(
 	CATEGORIES.filter((c) => c.pages.length > 1).map((c) => [
 		c.id,
-		c.pages.map((p) => ({ id: p.id!, label: p.label!, description: p.description! })),
+		c.pages.map((p) => ({
+			id: p.id!,
+			get label() {
+				return p.label!;
+			},
+			get description() {
+				return p.description!;
+			},
+		})),
 	]),
 );
 

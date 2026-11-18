@@ -1,0 +1,18 @@
+{
+	"git_branch_checked_out_in": "{branch} is checked out in {path}",
+	"git_branch_create_from": "from {branch}",
+	"git_branch_create_from_head": "from the current commit",
+	"git_branch_create_label": "Create branch “{name}”",
+	"git_branch_created": "Created and switched to {branch}",
+	"git_branch_group_create": "Create",
+	"git_branch_group_local": "Branches",
+	"git_branch_group_remote": "Remote branches",
+	"git_branch_row_checked_out": "checked out in {worktree}",
+	"git_branch_row_current": "current",
+	"git_branch_stash_confirm": "Stash and switch",
+	"git_branch_stash_question": "Stash them (untracked files too) and switch? They stay in `git stash`.",
+	"git_branch_stash_title": "Local changes would be overwritten",
+	"git_branch_switched": "Switched to {branch}",
+	"git_branch_switched_stashed": "Switched to {branch}; your changes are in the stash",
+	"git_branch_unknown_checkout": "{branch} is checked out in {path}, which Atlas does not know"
+}

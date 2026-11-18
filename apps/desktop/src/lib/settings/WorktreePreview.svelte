@@ -2,6 +2,7 @@
 	/** A small tree that shows where the next worktree is created and what its branch is called. */
 	import { worktreePreview, type WorktreePrefs } from "./worktreePreview.ts";
 	import { m } from "#lib/i18n/m.ts";
+	import Rich from "#lib/i18n/Rich.svelte";
 
 	let { prefs }: { prefs: WorktreePrefs } = $props();
 	let p = $derived(worktreePreview(prefs));
@@ -21,7 +22,7 @@
 		{/each}
 	</svg>
 	<figcaption>
-		New worktrees go here, on the branch <code>{p.branch}</code>.
+		<Rich parts={m.settings_terminal_worktree_preview_caption.parts({ branch: p.branch })} tags={{ code: "code" }} />
 	</figcaption>
 </figure>
 

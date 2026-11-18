@@ -1,7 +1,9 @@
 <script lang="ts">
-	import { Button, Checkbox, Dialog, Spinner, TextArea, TextField, toast } from "@codeatlasdev/ui";
+	import { Button, Checkbox, Dialog, Spinner, TextArea, TextField } from "@codeatlasdev/ui";
 	import { Sparkles } from "@lucide/svelte";
 	import { api, git, errText } from "#lib/api.ts";
+	import { errorToast } from "#lib/gitToast.ts";
+	import Rich from "#lib/i18n/Rich.svelte";
 	import { host } from "#lib/host.ts";
 	import { pr } from "#lib/stores/pr.svelte.ts";
 	import { ws } from "#lib/stores/workspace.svelte.ts";
@@ -41,6 +43,7 @@
 					"omp",
 					"-p",
 					"--no-session",
+					// i18n-ignore: the prompt an agent reads
 					`Write a GitHub pull request for these commits. First line: the title. Then a blank line, then a markdown body.\n\nCommits:\n${log.stdout}\n\nDiff:\n${diff.stdout.slice(0, 60_000)}`,
 				],
 				{ timeout_ms: 90_000 },
@@ -50,7 +53,7 @@
 			title = t.replace(/^#+\s*/, "");
 			body = rest.join("\n").trim();
 		} catch (e) {
-			toast.error(errText(e));
+			errorToast(m.git_create_pr_dialog_generate_failed(), errText(e));
 		} finally {
 			busy = null;
 		}
@@ -73,7 +76,7 @@
 <Dialog {open} onOpenChange={(o) => !o && (pr.createFor = null)} title={m.git_create_pr_dialog_create_pull_request()} size="lg">
 	{#if pr.ghUnusable}
 		{#if pr.auth === "not-installed"}
-			<p>GitHub CLI (<code>gh</code>) is not installed.</p>
+			<p><Rich parts={m.git_create_pr_dialog_cli_not_installed.parts()} tags={{ code: "code" }} /></p>
 			<Button onclick={() => api.openUrl("https://cli.github.com")}>{m.git_create_pr_dialog_install_github_cli()}</Button>
 		{:else}
 			<p>{m.git_create_pr_dialog_github_cli_is_not_signed()}</p>

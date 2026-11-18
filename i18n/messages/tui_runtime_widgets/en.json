@@ -79,7 +79,7 @@
 	"tui_runtime_widgets_level_error": "error",
 	"tui_runtime_widgets_level_warn": "warn+",
 	"tui_runtime_widgets_log_new_lines": "↓ {count} new · {key}",
-	"tui_runtime_widgets_log_no_matches": "0 matches in {tab}",
+	"tui_runtime_widgets_log_no_matches": "No matches in {tab}",
 	"tui_runtime_widgets_mem_budget": "budget {budget}",
 	"tui_runtime_widgets_mem_budget_ok": "ok",
 	"tui_runtime_widgets_mem_budget_over": "over",

@@ -61,7 +61,7 @@
 	"tui_runtime_views_quit_attached_headline": "Detach leaves the services running in the runner.",
 	"tui_runtime_views_quit_attached_hint": "reattach: atlas dev · stop: atlas down",
 	"tui_runtime_views_quit_detach": "Detach",
-	"tui_runtime_views_quit_owner_headline": "All services will be stopped.",
+	"tui_runtime_views_quit_owner_headline": "Quitting stops all services.",
 	"tui_runtime_views_quit_owner_hint": "keep them running: {command}",
 	"tui_runtime_views_quit_quit": "Quit",
 	"tui_runtime_views_quit_stop_all": "Stop everything",

@@ -57,7 +57,7 @@
 		}
 	],
 	"tui_runtime_app_toast_logs_cleared": "Logs cleared",
-	"tui_runtime_app_toast_logs_copied": "Logs copied (3min)",
+	"tui_runtime_app_toast_logs_copied": "Logs copied (3 min)",
 	"tui_runtime_app_toast_mouse_off": "Mouse capture off: select text freely",
 	"tui_runtime_app_toast_mouse_on": "Mouse capture on",
 	"tui_runtime_app_toast_no_browser": "No browser launcher found",
@@ -116,7 +116,7 @@
 	"tui_runtime_app_toast_tunnel_close": "Tunnel will close on exit",
 	"tui_runtime_app_toast_tunnel_runner": "The runner owns the tunnel: it closes when the runner stops",
 	"tui_runtime_app_toast_tunnel_stay": "Tunnel will stay on exit",
-	"tui_runtime_app_toast_update_on_exit": "atlas will update when you quit",
+	"tui_runtime_app_toast_update_on_exit": "Atlas updates when you quit",
 	"tui_runtime_app_toast_wrap_off": "Wrap off: ←/→ pan",
 	"tui_runtime_app_toast_wrap_on": "Wrap on",
 	"tui_runtime_app_update_offer": "Atlas v{version} is available. Update when you quit?",

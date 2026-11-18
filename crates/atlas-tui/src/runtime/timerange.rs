@@ -45,7 +45,7 @@ impl TimeRange {
         }
     }
 
-    /// Badge text (`last 5m`, `since restart`, `14:05–14:20`), in the display language.
+    /// Badge text (`last 5m`, `since restart`, `14:05-14:20`), in the display language.
     pub fn label(self) -> String {
         match self {
             Self::All => t!("tui_runtime_widgets_range_all"),
@@ -61,7 +61,7 @@ impl TimeRange {
             Self::Custom {
                 from_s,
                 to_s: Some(to_s),
-            } => format!("{}–{}", clock(from_s), clock(to_s)),
+            } => format!("{}-{}", clock(from_s), clock(to_s)),
         }
     }
 
@@ -303,7 +303,7 @@ mod tests {
     #[test]
     fn label_formats_custom_ranges() {
         let r = parse_custom("14:05-14:20").unwrap();
-        assert_eq!(r.label(), "14:05–14:20");
+        assert_eq!(r.label(), "14:05-14:20");
         assert_eq!(parse_custom("08:00").unwrap().label(), "from 08:00");
     }
 

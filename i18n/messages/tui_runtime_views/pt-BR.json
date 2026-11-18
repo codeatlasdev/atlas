@@ -1,6 +1,6 @@
 {
 	"tui_runtime_views_confirm_accept": "confirmar",
-	"tui_runtime_views_dash_attached": "anexado",
+	"tui_runtime_views_dash_attached": "anexada",
 	"tui_runtime_views_dash_hint_clear": "{esc} limpar",
 	"tui_runtime_views_dash_hint_find": "n/N próximo/anterior · ]e erro · {esc} limpar",
 	"tui_runtime_views_dash_hint_searching": "{tab} localizar/filtrar · {regex} regex · {enter} manter · {esc} limpar",
@@ -61,7 +61,7 @@
 	"tui_runtime_views_quit_attached_headline": "Desanexar mantém os serviços rodando no runner.",
 	"tui_runtime_views_quit_attached_hint": "anexar de novo: atlas dev · parar: atlas down",
 	"tui_runtime_views_quit_detach": "Desanexar",
-	"tui_runtime_views_quit_owner_headline": "Todos os serviços serão parados.",
+	"tui_runtime_views_quit_owner_headline": "Sair encerra todos os serviços.",
 	"tui_runtime_views_quit_owner_hint": "para mantê-los rodando: {command}",
 	"tui_runtime_views_quit_quit": "Sair",
 	"tui_runtime_views_quit_stop_all": "Parar tudo",

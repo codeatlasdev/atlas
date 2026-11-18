@@ -1,5 +1,5 @@
 {
-	"tui_runtime_attached_ignored": "Anexado ao runner; argumentos de serviço ignorados",
+	"tui_runtime_attached_ignored": "Anexada ao runner; argumentos de serviço ignorados",
 	"tui_runtime_busy": "O `atlas dev` está rodando, mas ocupado. Tente novamente em instantes.",
 	"tui_runtime_config_changed": "O atlas.yaml mudou depois que o runner (pid {pid}) iniciou. Rode `atlas down` e depois `atlas dev` para usar a nova config.",
 	"tui_runtime_config_detected": "sem atlas.yaml: usando a config detectada (serviços: {names}); salve com `atlas init`",

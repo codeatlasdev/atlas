@@ -224,7 +224,11 @@ fn print_status(ctx: &Ctx, st: &HostStatus) {
 pub(super) async fn logs(ctx: &Ctx, release: Option<&str>, follow: bool) -> Result<()> {
     let pick = match release {
         Some(r) if valid_run_id(r) => shq(r),
-        Some(r) => bail!(t!("cmd_deploy_invalid_release_id", id = r)),
+        Some(r) => bail!(t!(
+            "cmd_deploy_invalid_release_id",
+            id = r,
+            target = &ctx.name
+        )),
         None => "\"$(ls -1t \"$R\" 2>/dev/null | head -n1)\"".into(),
     };
     let cmd = if follow { "tail -n +1 -F" } else { "cat" };

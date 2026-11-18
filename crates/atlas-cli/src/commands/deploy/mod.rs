@@ -150,7 +150,11 @@ async fn rollback(
     if let Some(id) = to
         && !valid_release_id(id)
     {
-        bail!(t!("cmd_deploy_invalid_release_id", id = id));
+        bail!(t!(
+            "cmd_deploy_invalid_release_id",
+            id = id,
+            target = &ctx.name
+        ));
     }
     let run_id = format!("rb-{}", atlas_core::time::utc_compact_now());
     let plan = Plan {

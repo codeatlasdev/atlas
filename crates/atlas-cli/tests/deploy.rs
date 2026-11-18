@@ -142,7 +142,13 @@ fn deploy_lifecycle() {
     assert_eq!(fx.current(), first);
 
     let out = fx.atlas(&["rollback", "--to", "../x"]);
-    assert!(String::from_utf8_lossy(&out.stderr).contains("invalid release id"));
+    // The catalog's own text (never a typed sentence): it names the id and the command that lists the real ones.
+    let mut args = atlas_i18n::Args::new();
+    args.set("id", "../x");
+    args.set("target", "t");
+    let want = atlas_i18n::translate("en", "cmd_deploy_invalid_release_id", Some(&args));
+    let stderr = String::from_utf8_lossy(&out.stderr);
+    assert!(stderr.contains(&want), "{stderr}");
 
     // 5. held lock → exit 3, LOCKED
     let mut holder = Command::new("flock")

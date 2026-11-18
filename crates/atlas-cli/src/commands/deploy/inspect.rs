@@ -1,11 +1,13 @@
 //! Read-only host queries: `atlas deploy status | logs | history`.
 
 use anyhow::{Result, bail};
+use atlas_i18n::t;
 use atlas_tui::config::DeployKind;
 use serde_json::{Value, json};
 
 use super::ctx::{Ctx, die, valid_run_id};
 use super::remote::shq;
+use super::words::{mode_label, phase_label};
 
 const TERMINAL: [&str; 4] = ["healthy", "noop", "rolled_back", "failed"];
 
@@ -116,7 +118,11 @@ pub(super) async fn status(ctx: &Ctx, json_out: bool) -> Result<()> {
     if out.code == 255 {
         die(
             4,
-            &format!("cannot reach {}: {}", ctx.target.host, out.stderr.trim()),
+            &t!(
+                "cmd_deploy_launch_unreachable",
+                host = &ctx.target.host,
+                error = out.stderr.trim()
+            ),
         );
     }
     let st = HostStatus::parse(&out.stdout);
@@ -133,23 +139,52 @@ pub(super) async fn status(ctx: &Ctx, json_out: bool) -> Result<()> {
 
 fn print_status(ctx: &Ctx, st: &HostStatus) {
     let phase = st.phase();
-    println!("target   {} ({}:{})", ctx.name, ctx.target.host, ctx.dir);
-    println!("current  {}", st.current.as_deref().unwrap_or("-"));
-    let mut p = format!("phase    {}", if phase.is_empty() { "-" } else { phase });
-    if let Some(r) = st
+    println!(
+        "{}",
+        t!(
+            "cmd_deploy_status_target",
+            name = &ctx.name,
+            host = &ctx.target.host,
+            dir = &ctx.dir
+        )
+    );
+    println!(
+        "{}",
+        t!(
+            "cmd_deploy_status_current",
+            release = st.current.as_deref().unwrap_or("-")
+        )
+    );
+    let shown = if phase.is_empty() {
+        "-".to_string()
+    } else {
+        phase_label(phase)
+    };
+    let mut p = match st
         .state
         .get("reason")
         .and_then(Value::as_str)
         .filter(|r| !r.is_empty())
     {
-        p.push_str(&format!(" ({r})"));
-    }
+        Some(reason) => t!(
+            "cmd_deploy_status_phase_reason",
+            phase = shown,
+            reason = reason
+        ),
+        None => t!("cmd_deploy_status_phase", phase = shown),
+    };
     if !st.terminal() && st.lock.is_none() {
-        p.push_str("  \x1b[1;31mINTERRUPTED\x1b[0m — next deploy will recover");
+        p.push_str(&format!(
+            "  \x1b[1;31m{}\x1b[0m",
+            t!("cmd_deploy_status_interrupted")
+        ));
     }
     println!("{p}");
-    println!("lock     {}", st.lock.as_deref().unwrap_or("free"));
-    println!("releases");
+    match st.lock.as_deref() {
+        Some(holder) => println!("{}", t!("cmd_deploy_status_lock", holder = holder)),
+        None => println!("{}", t!("cmd_deploy_status_lock_free")),
+    }
+    println!("{}", t!("cmd_deploy_status_releases"));
     for r in &st.releases {
         let mark = if Some(r["id"].as_str().unwrap_or("")) == st.current.as_deref() {
             "*"
@@ -160,20 +195,28 @@ fn print_status(ctx: &Ctx, st: &HostStatus) {
             "  {mark} {}  {:.7}  {}",
             r["id"].as_str().unwrap_or(""),
             r["sha"].as_str().unwrap_or(""),
-            r["status"].as_str().unwrap_or("")
+            phase_label(r["status"].as_str().unwrap_or(""))
         );
     }
-    println!("services");
+    println!("{}", t!("cmd_deploy_status_services"));
     for s in &st.services {
         let icon = if s["healthy"] == true {
             "\x1b[32m✓\x1b[0m"
         } else {
             "\x1b[31m✗\x1b[0m"
         };
+        let name = s["name"].as_str().unwrap_or("");
         println!(
-            "  {icon} {} (active: {})",
-            s["name"].as_str().unwrap_or(""),
-            s["active"]
+            "  {}",
+            if s["active"] == true {
+                t!("cmd_deploy_status_service_active", icon = icon, name = name)
+            } else {
+                t!(
+                    "cmd_deploy_status_service_inactive",
+                    icon = icon,
+                    name = name
+                )
+            }
         );
     }
 }
@@ -181,7 +224,7 @@ fn print_status(ctx: &Ctx, st: &HostStatus) {
 pub(super) async fn logs(ctx: &Ctx, release: Option<&str>, follow: bool) -> Result<()> {
     let pick = match release {
         Some(r) if valid_run_id(r) => shq(r),
-        Some(r) => bail!("invalid release id: {r}"),
+        Some(r) => bail!(t!("cmd_deploy_invalid_release_id", id = r)),
         None => "\"$(ls -1t \"$R\" 2>/dev/null | head -n1)\"".into(),
     };
     let cmd = if follow { "tail -n +1 -F" } else { "cat" };
@@ -202,10 +245,16 @@ pub(super) async fn history(ctx: &Ctx, n: usize, json_out: bool) -> Result<()> {
         print!("{}", out.stdout);
         return Ok(());
     }
-    println!(
-        "{:<20}  {:<24}  {:<8}  {:<11}  {:>5}  REASON",
-        "FINISHED", "RELEASE", "MODE", "RESULT", "SECS"
-    );
+    // The header and the values are translated, so a column is as wide as its longest cell (never less than the
+    // width the English table always had).
+    let mut rows = vec![[
+        t!("cmd_deploy_history_finished"),
+        t!("cmd_deploy_history_release"),
+        t!("cmd_deploy_history_mode"),
+        t!("cmd_deploy_history_result"),
+        t!("cmd_deploy_history_secs"),
+        t!("cmd_deploy_history_reason"),
+    ]];
     for line in out.stdout.lines() {
         let Ok(v) = serde_json::from_str::<Value>(line) else {
             continue;
@@ -219,14 +268,35 @@ pub(super) async fn history(ctx: &Ctx, n: usize, json_out: bool) -> Result<()> {
                 })
                 .unwrap_or_default()
         };
-        println!(
-            "{:<20}  {:<24}  {:<8}  {:<11}  {:>5}  {}",
+        rows.push([
             g("finished"),
             g("release"),
-            g("mode"),
-            g("result"),
+            mode_label(&g("mode")),
+            phase_label(&g("result")),
             g("duration_s"),
-            g("reason")
+            g("reason"),
+        ]);
+    }
+    let mut width = [20, 24, 8, 11, 5];
+    for row in &rows {
+        for (w, cell) in width.iter_mut().zip(row) {
+            *w = (*w).max(cell.chars().count());
+        }
+    }
+    for r in &rows {
+        println!(
+            "{:<w0$}  {:<w1$}  {:<w2$}  {:<w3$}  {:>w4$}  {}",
+            r[0],
+            r[1],
+            r[2],
+            r[3],
+            r[4],
+            r[5],
+            w0 = width[0],
+            w1 = width[1],
+            w2 = width[2],
+            w3 = width[3],
+            w4 = width[4]
         );
     }
     Ok(())

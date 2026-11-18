@@ -257,11 +257,13 @@ fn the_error_prefixes_of_a_human_command_follow_the_language() {
     let (en, pt) = (first_line(&bad, "en"), first_line(&bad, "pt-BR"));
     assert!(en.contains("error:"), "{en}");
     assert!(pt.contains("erro:"), "{pt}");
-    // The text after the prefix is the same in both languages (the command's own message).
-    assert_eq!(
-        en.split_once("error:").map(|x| x.1),
-        pt.split_once("erro:").map(|x| x.1)
-    );
+    // The text after the prefix is the command's own message, in the same language (the catalog's value, never typed
+    // here): `deploy` in a folder with no atlas.yaml deploy section fails with `cmd_deploy_ctx_no_deploy_section`.
+    let message =
+        |lang: &str| atlas_i18n::translate(lang, "cmd_deploy_ctx_no_deploy_section", None);
+    assert_ne!(message("en"), message("pt-BR"));
+    assert!(en.ends_with(&message("en")), "{en}");
+    assert!(pt.ends_with(&message("pt-BR")), "{pt}");
 }
 
 #[test]

@@ -59,6 +59,7 @@ impl Fx {
     fn atlas(&self, args: &[&str]) -> Output {
         Command::new(env!("CARGO_BIN_EXE_atlas"))
             .arg("deploy")
+            .env("ATLAS_LANG", "en")
             .args(args)
             .arg("--dir")
             .arg(&self.repo)
@@ -270,7 +271,7 @@ fn deploy_refuses_to_roll_production_back_unless_allowed() {
     assert_eq!(code, 0, "{text}");
     let announce = format!("({}) over ", &b[..7]);
     assert!(
-        text.contains(&announce) && text.contains("+1 commits"),
+        text.contains(&announce) && text.contains("+1 commit"),
         "{text}"
     );
     let deployed = fx.current();
@@ -344,6 +345,7 @@ fn deploy_refuses_when_deployed_commit_is_unknown_locally() {
     let run = |extra: &[&str]| {
         let out = Command::new(env!("CARGO_BIN_EXE_atlas"))
             .arg("deploy")
+            .env("ATLAS_LANG", "en")
             .args(extra)
             .arg("--dir")
             .arg(&other)

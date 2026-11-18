@@ -1,0 +1,179 @@
+{
+	"cmd_deploy_ctx_bad_app": "project name '{app}' is not [a-z0-9-]+: set deploy.app",
+	"cmd_deploy_ctx_multiple_targets": "multiple deploy targets ({known}): pass one",
+	"cmd_deploy_ctx_no_atlas_yaml": "no atlas.yaml found in {dir} or any parent",
+	"cmd_deploy_ctx_no_deploy_section": "no deploy: section in atlas.yaml",
+	"cmd_deploy_ctx_unknown_target": "unknown deploy target '{target}' (known: {known})",
+	"cmd_deploy_dry_driver": "driver:  {path}",
+	"cmd_deploy_dry_release": "release: {id}",
+	"cmd_deploy_dry_sha256": "sha256:  {sha256}",
+	"cmd_deploy_dry_target": "target:  {name} ({host})",
+	"cmd_deploy_guard_announce": "deploying {id} ({sha}) over {deployed_id} ({deployed_sha}): {delta}",
+	"cmd_deploy_guard_delta_ahead": [
+		{
+			"declarations": [
+				"input count",
+				"local countPlural = count: plural"
+			],
+			"selectors": [
+				"countPlural"
+			],
+			"match": {
+				"countPlural=one": "+{count} commit",
+				"countPlural=*": "+{count} commits"
+			}
+		}
+	],
+	"cmd_deploy_guard_delta_diverged": [
+		{
+			"declarations": [
+				"input behind",
+				"local behindPlural = behind: plural"
+			],
+			"selectors": [
+				"behindPlural"
+			],
+			"match": {
+				"behindPlural=one": "+{ahead} / -{behind} commit (diverged)",
+				"behindPlural=*": "+{ahead} / -{behind} commits (diverged)"
+			}
+		}
+	],
+	"cmd_deploy_guard_delta_downgrade": [
+		{
+			"declarations": [
+				"input count",
+				"local countPlural = count: plural"
+			],
+			"selectors": [
+				"countPlural"
+			],
+			"match": {
+				"countPlural=one": "-{count} commit",
+				"countPlural=*": "-{count} commits"
+			}
+		}
+	],
+	"cmd_deploy_guard_delta_same": "+0 commits (same commit)",
+	"cmd_deploy_guard_delta_unknown": "base unknown locally",
+	"cmd_deploy_guard_fetching": "deployed commit {deployed} not in this repo: git fetch origin",
+	"cmd_deploy_guard_read_host_failed": "cannot read the deployed release on {host}: {error}",
+	"cmd_deploy_guard_refuse_diverged": [
+		{
+			"declarations": [
+				"input behind",
+				"local behindPlural = behind: plural"
+			],
+			"selectors": [
+				"behindPlural"
+			],
+			"match": {
+				"behindPlural=one": "HEAD {head} and the deployed {id} @ {sha} have diverged (merge-base {base}): +{ahead} / -{behind} commit.",
+				"behindPlural=*": "HEAD {head} and the deployed {id} @ {sha} have diverged (merge-base {base}): +{ahead} / -{behind} commits."
+			}
+		}
+	],
+	"cmd_deploy_guard_refuse_diverged_no_base": [
+		{
+			"declarations": [
+				"input behind",
+				"local behindPlural = behind: plural"
+			],
+			"selectors": [
+				"behindPlural"
+			],
+			"match": {
+				"behindPlural=one": "HEAD {head} and the deployed {id} @ {sha} have diverged (no common ancestor): +{ahead} / -{behind} commit.",
+				"behindPlural=*": "HEAD {head} and the deployed {id} @ {sha} have diverged (no common ancestor): +{ahead} / -{behind} commits."
+			}
+		}
+	],
+	"cmd_deploy_guard_refuse_downgrade": [
+		{
+			"declarations": [
+				"input count",
+				"local countPlural = count: plural"
+			],
+			"selectors": [
+				"countPlural"
+			],
+			"match": {
+				"countPlural=one": "HEAD {head} is OLDER than what is deployed ({id} @ {sha}): this would roll production back by {count} commit.",
+				"countPlural=*": "HEAD {head} is OLDER than what is deployed ({id} @ {sha}): this would roll production back by {count} commits."
+			}
+		}
+	],
+	"cmd_deploy_guard_refuse_dropped": "Commits that would be dropped (git log --oneline HEAD..deployed):",
+	"cmd_deploy_guard_refuse_override": "Pass {flag} to ship anyway (to go back deliberately, `atlas deploy rollback`).",
+	"cmd_deploy_guard_refuse_shas": "HEAD     {head}\ndeployed {deployed}",
+	"cmd_deploy_guard_refuse_unknown_base": "deployed commit {sha} ({id}) is not in this repository and could not be fetched: cannot tell whether HEAD {head} is newer.",
+	"cmd_deploy_history_finished": "FINISHED",
+	"cmd_deploy_history_mode": "MODE",
+	"cmd_deploy_history_reason": "REASON",
+	"cmd_deploy_history_release": "RELEASE",
+	"cmd_deploy_history_result": "RESULT",
+	"cmd_deploy_history_secs": "SECS",
+	"cmd_deploy_invalid_release_id": "invalid release id: {id}",
+	"cmd_deploy_launch_detached": "detached; deploy continues on host. Follow: atlas deploy logs -f {target}",
+	"cmd_deploy_launch_driver_failed": "launching driver on {host} failed: {error}",
+	"cmd_deploy_launch_lost_contact": "lost contact with {host}; the deploy continues there. Run `atlas deploy status {target}`",
+	"cmd_deploy_launch_mkdir_failed": "cannot create {dir} on {host}: {error}",
+	"cmd_deploy_launch_no_flock": "flock not found on {host}",
+	"cmd_deploy_launch_unreachable": "cannot reach {host}: {error}",
+	"cmd_deploy_launch_write_failed": "writing {name} on {host}: {error}",
+	"cmd_deploy_mode_deploy": "deploy",
+	"cmd_deploy_mode_rollback": "rollback",
+	"cmd_deploy_phase_failed": "failed",
+	"cmd_deploy_phase_healthy": "healthy",
+	"cmd_deploy_phase_installing": "installing",
+	"cmd_deploy_phase_locked": "locked",
+	"cmd_deploy_phase_migrating": "migrating",
+	"cmd_deploy_phase_noop": "no change",
+	"cmd_deploy_phase_post_swap": "post-swap",
+	"cmd_deploy_phase_pre_swap": "pre-swap",
+	"cmd_deploy_phase_preflight": "preflight",
+	"cmd_deploy_phase_restarting": "restarting",
+	"cmd_deploy_phase_rolled_back": "rolled back",
+	"cmd_deploy_phase_rolling_back": "rolling back",
+	"cmd_deploy_phase_sealed": "sealed",
+	"cmd_deploy_phase_swapped": "swapped",
+	"cmd_deploy_phase_unknown": "unknown",
+	"cmd_deploy_phase_uploaded": "uploaded",
+	"cmd_deploy_pkg_artifact_missing": "artifact path not found: {path}",
+	"cmd_deploy_pkg_build_failed": "build failed (exit {code})",
+	"cmd_deploy_pkg_ctx_build": "cannot run the build command",
+	"cmd_deploy_pkg_ctx_compress": "cannot compress the artifact",
+	"cmd_deploy_pkg_ctx_create_artifact": "cannot create the artifact",
+	"cmd_deploy_pkg_ctx_git": "cannot run git",
+	"cmd_deploy_pkg_ctx_tar": "cannot run tar",
+	"cmd_deploy_pkg_ctx_tar_stderr": "cannot read tar's errors",
+	"cmd_deploy_pkg_ctx_tar_stdout": "cannot read tar's output",
+	"cmd_deploy_pkg_ctx_tar_wait": "cannot wait for tar",
+	"cmd_deploy_pkg_dirty": "working tree dirty: commit or pass --allow-dirty",
+	"cmd_deploy_pkg_failed": "packaging failed: {error}",
+	"cmd_deploy_pkg_git_failed": "git {args} failed: {error}",
+	"cmd_deploy_remote_ctx_create_file": "cannot create {path}",
+	"cmd_deploy_remote_ctx_ssh": "cannot start ssh",
+	"cmd_deploy_remote_upload_failed": "upload to {host} failed: {error}",
+	"cmd_deploy_report_critical": "CRITICAL {phase}: {reason}",
+	"cmd_deploy_report_failed": "{phase}: {reason}",
+	"cmd_deploy_report_locked": "locked by another deploy",
+	"cmd_deploy_report_ok": "{phase} {release}",
+	"cmd_deploy_status_current": "current  {release}",
+	"cmd_deploy_status_interrupted": "INTERRUPTED: the next deploy will recover it",
+	"cmd_deploy_status_lock": "lock     {holder}",
+	"cmd_deploy_status_lock_free": "lock     free",
+	"cmd_deploy_status_phase": "phase    {phase}",
+	"cmd_deploy_status_phase_reason": "phase    {phase} ({reason})",
+	"cmd_deploy_status_releases": "releases",
+	"cmd_deploy_status_service_active": "{icon} {name} (active)",
+	"cmd_deploy_status_service_inactive": "{icon} {name} (inactive)",
+	"cmd_deploy_status_services": "services",
+	"cmd_deploy_status_target": "target   {name} ({host}:{dir})",
+	"cmd_deploy_step_build": "build: {command}",
+	"cmd_deploy_step_driver_running": "driver running on {host}. Follow: atlas deploy logs -f {target}",
+	"cmd_deploy_step_launch": "launch driver",
+	"cmd_deploy_step_package": "package ({root})",
+	"cmd_deploy_step_preflight": "preflight {host}:{dir}",
+	"cmd_deploy_step_upload": "upload {id} ({bytes} bytes)"
+}

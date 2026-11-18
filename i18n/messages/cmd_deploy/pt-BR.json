@@ -1,0 +1,179 @@
+{
+	"cmd_deploy_ctx_bad_app": "o nome do projeto '{app}' não é [a-z0-9-]+: defina deploy.app",
+	"cmd_deploy_ctx_multiple_targets": "há vários targets de deploy ({known}): informe um",
+	"cmd_deploy_ctx_no_atlas_yaml": "nenhum atlas.yaml encontrado em {dir} nem nas pastas acima",
+	"cmd_deploy_ctx_no_deploy_section": "o atlas.yaml não tem a seção deploy:",
+	"cmd_deploy_ctx_unknown_target": "target de deploy '{target}' desconhecido (existentes: {known})",
+	"cmd_deploy_dry_driver": "driver:   {path}",
+	"cmd_deploy_dry_release": "release:  {id}",
+	"cmd_deploy_dry_sha256": "sha256:   {sha256}",
+	"cmd_deploy_dry_target": "alvo:     {name} ({host})",
+	"cmd_deploy_guard_announce": "fazendo deploy de {id} ({sha}) sobre {deployed_id} ({deployed_sha}): {delta}",
+	"cmd_deploy_guard_delta_ahead": [
+		{
+			"declarations": [
+				"input count",
+				"local countPlural = count: plural"
+			],
+			"selectors": [
+				"countPlural"
+			],
+			"match": {
+				"countPlural=one": "+{count} commit",
+				"countPlural=*": "+{count} commits"
+			}
+		}
+	],
+	"cmd_deploy_guard_delta_diverged": [
+		{
+			"declarations": [
+				"input behind",
+				"local behindPlural = behind: plural"
+			],
+			"selectors": [
+				"behindPlural"
+			],
+			"match": {
+				"behindPlural=one": "+{ahead} / -{behind} commit (divergiu)",
+				"behindPlural=*": "+{ahead} / -{behind} commits (divergiu)"
+			}
+		}
+	],
+	"cmd_deploy_guard_delta_downgrade": [
+		{
+			"declarations": [
+				"input count",
+				"local countPlural = count: plural"
+			],
+			"selectors": [
+				"countPlural"
+			],
+			"match": {
+				"countPlural=one": "-{count} commit",
+				"countPlural=*": "-{count} commits"
+			}
+		}
+	],
+	"cmd_deploy_guard_delta_same": "+0 commits (mesmo commit)",
+	"cmd_deploy_guard_delta_unknown": "base desconhecida neste repositório",
+	"cmd_deploy_guard_fetching": "o commit {deployed} que está em produção não existe neste repositório: git fetch origin",
+	"cmd_deploy_guard_read_host_failed": "não foi possível ler a release em produção em {host}: {error}",
+	"cmd_deploy_guard_refuse_diverged": [
+		{
+			"declarations": [
+				"input behind",
+				"local behindPlural = behind: plural"
+			],
+			"selectors": [
+				"behindPlural"
+			],
+			"match": {
+				"behindPlural=one": "O HEAD {head} e o {id} @ {sha} em produção divergiram (merge-base {base}): +{ahead} / -{behind} commit.",
+				"behindPlural=*": "O HEAD {head} e o {id} @ {sha} em produção divergiram (merge-base {base}): +{ahead} / -{behind} commits."
+			}
+		}
+	],
+	"cmd_deploy_guard_refuse_diverged_no_base": [
+		{
+			"declarations": [
+				"input behind",
+				"local behindPlural = behind: plural"
+			],
+			"selectors": [
+				"behindPlural"
+			],
+			"match": {
+				"behindPlural=one": "O HEAD {head} e o {id} @ {sha} em produção divergiram (sem ancestral comum): +{ahead} / -{behind} commit.",
+				"behindPlural=*": "O HEAD {head} e o {id} @ {sha} em produção divergiram (sem ancestral comum): +{ahead} / -{behind} commits."
+			}
+		}
+	],
+	"cmd_deploy_guard_refuse_downgrade": [
+		{
+			"declarations": [
+				"input count",
+				"local countPlural = count: plural"
+			],
+			"selectors": [
+				"countPlural"
+			],
+			"match": {
+				"countPlural=one": "O HEAD {head} é MAIS ANTIGO que o que está em produção ({id} @ {sha}): este deploy faria a produção voltar {count} commit.",
+				"countPlural=*": "O HEAD {head} é MAIS ANTIGO que o que está em produção ({id} @ {sha}): este deploy faria a produção voltar {count} commits."
+			}
+		}
+	],
+	"cmd_deploy_guard_refuse_dropped": "Commits que seriam descartados (git log --oneline HEAD..deployed):",
+	"cmd_deploy_guard_refuse_override": "Passe {flag} para fazer o deploy mesmo assim (para voltar de propósito, use `atlas deploy rollback`).",
+	"cmd_deploy_guard_refuse_shas": "HEAD        {head}\nem produção {deployed}",
+	"cmd_deploy_guard_refuse_unknown_base": "o commit {sha} ({id}) que está em produção não existe neste repositório e não pôde ser baixado: não dá para saber se o HEAD {head} é mais novo.",
+	"cmd_deploy_history_finished": "FINALIZADO",
+	"cmd_deploy_history_mode": "MODO",
+	"cmd_deploy_history_reason": "MOTIVO",
+	"cmd_deploy_history_release": "RELEASE",
+	"cmd_deploy_history_result": "RESULTADO",
+	"cmd_deploy_history_secs": "SEGS",
+	"cmd_deploy_invalid_release_id": "id de release inválido: {id}",
+	"cmd_deploy_launch_detached": "desanexado; o deploy continua no host. Acompanhe: atlas deploy logs -f {target}",
+	"cmd_deploy_launch_driver_failed": "não foi possível iniciar o driver em {host}: {error}",
+	"cmd_deploy_launch_lost_contact": "contato com {host} perdido; o deploy continua lá. Rode `atlas deploy status {target}`",
+	"cmd_deploy_launch_mkdir_failed": "não foi possível criar {dir} em {host}: {error}",
+	"cmd_deploy_launch_no_flock": "flock não encontrado em {host}",
+	"cmd_deploy_launch_unreachable": "não foi possível conectar a {host}: {error}",
+	"cmd_deploy_launch_write_failed": "não foi possível gravar {name} em {host}: {error}",
+	"cmd_deploy_mode_deploy": "deploy",
+	"cmd_deploy_mode_rollback": "rollback",
+	"cmd_deploy_phase_failed": "falhou",
+	"cmd_deploy_phase_healthy": "saudável",
+	"cmd_deploy_phase_installing": "instalando",
+	"cmd_deploy_phase_locked": "bloqueado",
+	"cmd_deploy_phase_migrating": "migrando",
+	"cmd_deploy_phase_noop": "sem mudanças",
+	"cmd_deploy_phase_post_swap": "depois da troca",
+	"cmd_deploy_phase_pre_swap": "antes da troca",
+	"cmd_deploy_phase_preflight": "pré-verificação",
+	"cmd_deploy_phase_restarting": "reiniciando",
+	"cmd_deploy_phase_rolled_back": "rollback feito",
+	"cmd_deploy_phase_rolling_back": "fazendo rollback",
+	"cmd_deploy_phase_sealed": "selada",
+	"cmd_deploy_phase_swapped": "trocada",
+	"cmd_deploy_phase_unknown": "desconhecida",
+	"cmd_deploy_phase_uploaded": "enviada",
+	"cmd_deploy_pkg_artifact_missing": "caminho do artefato não encontrado: {path}",
+	"cmd_deploy_pkg_build_failed": "o build falhou (código de saída {code})",
+	"cmd_deploy_pkg_ctx_build": "não foi possível executar o comando de build",
+	"cmd_deploy_pkg_ctx_compress": "não foi possível compactar o artefato",
+	"cmd_deploy_pkg_ctx_create_artifact": "não foi possível criar o artefato",
+	"cmd_deploy_pkg_ctx_git": "não foi possível executar o git",
+	"cmd_deploy_pkg_ctx_tar": "não foi possível executar o tar",
+	"cmd_deploy_pkg_ctx_tar_stderr": "não foi possível ler os erros do tar",
+	"cmd_deploy_pkg_ctx_tar_stdout": "não foi possível ler a saída do tar",
+	"cmd_deploy_pkg_ctx_tar_wait": "não foi possível esperar o fim do tar",
+	"cmd_deploy_pkg_dirty": "working tree com alterações: faça commit ou passe --allow-dirty",
+	"cmd_deploy_pkg_failed": "o empacotamento falhou: {error}",
+	"cmd_deploy_pkg_git_failed": "git {args} falhou: {error}",
+	"cmd_deploy_remote_ctx_create_file": "não foi possível criar {path}",
+	"cmd_deploy_remote_ctx_ssh": "não foi possível iniciar o ssh",
+	"cmd_deploy_remote_upload_failed": "o envio para {host} falhou: {error}",
+	"cmd_deploy_report_critical": "CRÍTICO {phase}: {reason}",
+	"cmd_deploy_report_failed": "{phase}: {reason}",
+	"cmd_deploy_report_locked": "bloqueado por outro deploy",
+	"cmd_deploy_report_ok": "{phase} {release}",
+	"cmd_deploy_status_current": "atual     {release}",
+	"cmd_deploy_status_interrupted": "INTERROMPIDO: o próximo deploy recupera esta release",
+	"cmd_deploy_status_lock": "lock      {holder}",
+	"cmd_deploy_status_lock_free": "lock      livre",
+	"cmd_deploy_status_phase": "fase      {phase}",
+	"cmd_deploy_status_phase_reason": "fase      {phase} ({reason})",
+	"cmd_deploy_status_releases": "releases",
+	"cmd_deploy_status_service_active": "{icon} {name} (ativo)",
+	"cmd_deploy_status_service_inactive": "{icon} {name} (inativo)",
+	"cmd_deploy_status_services": "serviços",
+	"cmd_deploy_status_target": "alvo      {name} ({host}:{dir})",
+	"cmd_deploy_step_build": "build: {command}",
+	"cmd_deploy_step_driver_running": "driver rodando em {host}. Acompanhe: atlas deploy logs -f {target}",
+	"cmd_deploy_step_launch": "iniciando o driver",
+	"cmd_deploy_step_package": "empacotando ({root})",
+	"cmd_deploy_step_preflight": "verificando {host}:{dir}",
+	"cmd_deploy_step_upload": "enviando {id} ({bytes} bytes)"
+}

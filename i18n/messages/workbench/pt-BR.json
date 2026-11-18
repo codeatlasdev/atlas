@@ -86,7 +86,7 @@
 	"workbench_lazy_load_failed": "Não foi possível carregar esta visualização: {error}",
 	"workbench_loose_editor_keep_my_version": "Manter minha versão",
 	"workbench_loose_editor_ln_line_col_col": "Lin {line}, Col {col}",
-	"workbench_loose_editor_load_from_disk": "Carregar do disco",
+	"workbench_loose_editor_load_from_disk": "Recarregar do disco",
 	"workbench_loose_editor_state_edited": "Editado",
 	"workbench_loose_editor_state_saved": "Salvo",
 	"workbench_loose_editor_this_file_changed_on_disk": "Este arquivo mudou no disco e você tem edições não salvas.",

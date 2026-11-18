@@ -1,0 +1,114 @@
+{
+  "cmd_desktop_agent_display_gone": "The display process ended before Atlas could record it",
+  "cmd_desktop_agent_helper_exited": "{program} exited with {status} before it was ready: {output}",
+  "cmd_desktop_agent_helper_timeout": "{program} was not ready after {secs} s. See {path}.",
+  "cmd_desktop_agent_interrupted_starting": "Interrupted while starting {program}",
+  "cmd_desktop_agent_json_corrupt": "agent.json is corrupt",
+  "cmd_desktop_agent_not_on_windows": "Agent instances (`atlas desktop --agent`) are not available on this system.",
+  "cmd_desktop_agent_runtime_dir": "{path} is the XDG_RUNTIME_DIR of this shell, so Atlas does not run an agent display in it.",
+  "cmd_desktop_agent_tool_missing": "{tool} not found. An agent instance needs a headless Wayland compositor: on Arch run `pacman -S sway grim`, on Debian or Ubuntu run `apt install sway grim dbus`.",
+  "cmd_desktop_bad_install_path": "{path} is not a valid install location",
+  "cmd_desktop_bridge_bad_reply": "The debug bridge sent a reply Atlas cannot read",
+  "cmd_desktop_bridge_closed": "The debug bridge closed the connection: the app exited or crashed. Start a new instance with `atlas desktop --agent`.",
+  "cmd_desktop_bridge_error": "The debug bridge reported an error",
+  "cmd_desktop_bun_failed": "Couldn't run `bun` to evaluate the script. Check that bun is installed.",
+  "cmd_desktop_command_failed": "{command} failed: {reason}",
+  "cmd_desktop_dev_exited": "`bun run desktop:dev` exited with {status}",
+  "cmd_desktop_display_mismatch": "Refusing to start: the environment of the instance does not point at its private display ({reason})",
+  "cmd_desktop_dry_run_silent": "The dry run exited without logging its decision",
+  "cmd_desktop_ended_settling": "The instance ended while it was settling (interrupted or crashed); Atlas stopped it.",
+  "cmd_desktop_exited_early": "The app exited with {status} before it was ready. See {path}.",
+  "cmd_desktop_gc_instances_kept": [
+    {
+      "declarations": [
+        "input count",
+        "local countExact = count",
+        "local countPlural = count: plural"
+      ],
+      "selectors": [
+        "countExact",
+        "countPlural"
+      ],
+      "match": {
+        "countExact=0, countPlural=*": "No live instances kept",
+        "countExact=*, countPlural=one": "{count} live instance kept",
+        "countExact=*, countPlural=*": "{count} live instances kept"
+      }
+    }
+  ],
+  "cmd_desktop_gc_removed_path": "Removed {path}",
+  "cmd_desktop_gc_stores_removed": [
+    {
+      "declarations": [
+        "input count",
+        "local countExact = count",
+        "local countPlural = count: plural"
+      ],
+      "selectors": [
+        "countExact",
+        "countPlural"
+      ],
+      "match": {
+        "countExact=0, countPlural=*": "No leftover agent stores removed",
+        "countExact=*, countPlural=one": "{count} leftover agent store removed",
+        "countExact=*, countPlural=*": "{count} leftover agent stores removed"
+      }
+    }
+  ],
+  "cmd_desktop_install_failed": "Couldn't install {path}",
+  "cmd_desktop_install_rolled_back": "Atlas Desktop install failed",
+  "cmd_desktop_installed_version": "Installed {path} ({version})",
+  "cmd_desktop_installer_failed": "The Atlas installer failed with {status}",
+  "cmd_desktop_installer_no_app": "The installer finished, but {path} is missing. Run `atlas desktop --install` again.",
+  "cmd_desktop_installer_wrong_version": "The installer left Atlas Desktop {found}, but {expected} was expected. Run `atlas desktop --install` again.",
+  "cmd_desktop_instance_exists": "Agent instance \"{name}\" already exists ({path}). Run `atlas desktop --agent --stop --name {name}` first, or pick another --name.",
+  "cmd_desktop_interrupted": "Interrupted before the instance was ready; Atlas stopped it.",
+  "cmd_desktop_linked_notice": "Atlas Desktop is linked to a dev build ({path}) and was left alone. Run `atlas unlink` to update it.",
+  "cmd_desktop_linked_to_dev": "{path} is linked to a dev build (`atlas link --desktop`). Run `atlas unlink` first.",
+  "cmd_desktop_lock_timeout": "Another agent instance is starting (it holds {path}) and Atlas waited {secs} s. If none is starting, delete the file.",
+  "cmd_desktop_lock_waiting": "atlas-agent: another instance is starting (lock {path}); waiting for its turn",
+  "cmd_desktop_move_aside_failed": "Couldn't move {path} aside to update it",
+  "cmd_desktop_move_failed": "Couldn't move {path}",
+  "cmd_desktop_name_chars": "The name can contain only letters, digits, hyphens and _",
+  "cmd_desktop_name_length": "The name must have 1 to 24 characters",
+  "cmd_desktop_no_app_in_source": "{path} does not contain {app}",
+  "cmd_desktop_no_bridge": "No debug bridge at {path}. Start an agent instance with `atlas desktop --agent` (or `bun run desktop:agent`), then set ATLAS_DEBUG_SOCK to the socket it prints.",
+  "cmd_desktop_no_bun": "Couldn't run `bun`. Install bun, then run `atlas desktop --dev` again.",
+  "cmd_desktop_no_cwd": "Couldn't read the current folder. Run the command from a folder that exists, or pass an absolute path.",
+  "cmd_desktop_no_debug_build": "No debug build of Atlas Desktop under {path}/target/debug. Build it with `cargo build -p atlas-cli -p atlas-desktop` (the frontend is served through Vite by `bun run desktop:agent`) or with `bun run desktop:build:app`.",
+  "cmd_desktop_no_home": "Couldn't find your home folder. Set HOME and try again.",
+  "cmd_desktop_no_instances": "No agent instances",
+  "cmd_desktop_no_menu_entry": "Couldn't add a menu entry ({reason}). Start Atlas Desktop with {path}.",
+  "cmd_desktop_no_such_instance": "No agent instance named {name}. Start one with `atlas desktop --agent --name {name}`.",
+  "cmd_desktop_not_a_number": "\"{value}\" is not a number",
+  "cmd_desktop_not_agent_mode": "The app started but is not in agent mode (is this a release build?), so Atlas stopped it.",
+  "cmd_desktop_not_appimage": "{path} is not an AppImage (expected an executable ELF file)",
+  "cmd_desktop_not_atlas_repo": "{path} is not the atlas repo: it has no apps/desktop. Run `atlas desktop --dev` inside a checkout of the atlas repo.",
+  "cmd_desktop_not_installer": "{path} is not an Atlas installer (expected a -setup.exe file)",
+  "cmd_desktop_not_your_dir": "{path} is not a folder of yours, so Atlas does not stop what it names.",
+  "cmd_desktop_pkg_missing_binary": "The package installed, but /usr/bin/atlas-desktop is missing. Run `atlas desktop --appimage` to install the AppImage instead.",
+  "cmd_desktop_rect_format": "Expected four numbers: x,y,width,height (for example 0,0,400,300)",
+  "cmd_desktop_restored": "Restored {path} from an interrupted update",
+  "cmd_desktop_run_failed": "Couldn't run {command}",
+  "cmd_desktop_script_eval_failed": "Couldn't evaluate {path}:\n{output}",
+  "cmd_desktop_script_failed": "The script failed",
+  "cmd_desktop_script_invalid_json": "{path} is not valid JSON",
+  "cmd_desktop_script_kind": "The script must be a .json, .ts or .js file (got \"{extension}\")",
+  "cmd_desktop_script_not_utf8": "The script printed output that is not UTF-8 text",
+  "cmd_desktop_size_format": "Expected WIDTHxHEIGHT, for example 1280x800",
+  "cmd_desktop_socket_too_long": "The socket path {path} is {length} bytes, over the limit of {max}. Use a shorter --name.",
+  "cmd_desktop_start_failed": "Couldn't start {program}",
+  "cmd_desktop_status_cli": "cli:  {version}",
+  "cmd_desktop_status_linked": "linked → {path} (run `atlas unlink` to restore)",
+  "cmd_desktop_status_missing": "Atlas Desktop: not installed. Run `atlas desktop` to install it.",
+  "cmd_desktop_status_packaged": "Atlas Desktop: {path} (from a distro package; update it with your package manager)",
+  "cmd_desktop_status_path": "path: {path}",
+  "cmd_desktop_status_version": "Atlas Desktop {version}",
+  "cmd_desktop_stopped": "Stopped agent instance {name}",
+  "cmd_desktop_update_rolled_back": "Atlas Desktop update failed; the previous install was restored",
+  "cmd_desktop_updated": "Atlas Desktop updated to v{version}",
+  "cmd_desktop_updating": "Updating Atlas Desktop to v{version}...",
+  "cmd_desktop_version_record_failed": "Couldn't record the version in {path}",
+  "cmd_desktop_window_refused": "The app refused to show its window and exited with {status}: {line}",
+  "cmd_desktop_window_timeout": "The window was not shown after {secs} s. See {path}."
+}

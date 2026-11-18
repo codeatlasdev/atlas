@@ -15,7 +15,7 @@ curl -fsSL https://atlas.codeatlas.com.br/install.sh | sh
 atlas version
 ```
 
-O instalador verifica o checksum da versão, coloca o `atlas` em `~/.atlas/bin` e configura o seu `PATH` (abra um novo shell depois). As versões prontas cobrem macOS em Apple silicon, Linux x86_64 e Windows x64. No Linux você também pode instalar um [.deb, .rpm, pacote Arch ou AppImage](../installation.md#linux-packages), e no Windows você roda `irm https://atlas.codeatlas.com.br/install.ps1 | iex` no PowerShell ([Windows](../installation.md#windows)). Instalação manual, atualizações e desinstalação: [Installation](../installation.md).
+O instalador verifica o checksum da versão, coloca o `atlas` em `~/.atlas/bin` e configura o seu `PATH` (abra um novo shell depois). As versões prontas cobrem macOS em Apple silicon, Linux x86_64 e Windows x64. No Linux você também pode instalar um [.deb, .rpm, pacote Arch ou AppImage](../installation.md#pacotes-para-linux), e no Windows você roda `irm https://atlas.codeatlas.com.br/install.ps1 | iex` no PowerShell ([Windows](../installation.md#windows)). Instalação manual, atualizações e desinstalação: [Installation](../installation.md).
 
 ## 2. Descrever a sua stack
 

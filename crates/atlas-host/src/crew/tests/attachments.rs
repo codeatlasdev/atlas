@@ -102,7 +102,7 @@ async fn a_task_with_two_images_is_stored_staged_in_the_work_dir_and_named_in_th
     );
     assert!(!v.to_string().contains(&B64.encode(PNG)), "bytes leaked");
 
-    wait_task_state(&client, &id, &task_id, "done", Duration::from_secs(15)).await;
+    wait_task_state(&client, &id, &task_id, "done", atlas_core::scaling::HANG).await;
 
     // The task keeps its images on the crew server...
     assert_eq!(fetch(&client, &id, &task_id, "a.png").await, PNG);
@@ -221,7 +221,7 @@ async fn an_oversize_image_sent_inline_is_dropped_by_the_line_limit_and_leaves_n
     let (inline_id, inline) = (id.clone(), sent("big.png", &big));
     let stuck = tokio::spawn(async move { send(&c, &inline_id, json!([inline])).await });
 
-    let said = tokio::time::timeout(Duration::from_secs(20), async {
+    let said = tokio::time::timeout(atlas_core::scaling::HANG, async {
         loop {
             let ev = events.recv().await.expect("events closed");
             if ev["ev"] == "error" {
@@ -631,7 +631,7 @@ pub(super) async fn daemon_with_telegram(dir: &std::path::Path, base: &str) -> H
 }
 
 pub(super) async fn wait_for<T>(what: &str, mut f: impl FnMut() -> Option<T>) -> T {
-    for _ in 0..200 {
+    for _ in 0..1200 {
         if let Some(v) = f() {
             return v;
         }

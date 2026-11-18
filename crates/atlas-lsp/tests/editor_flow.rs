@@ -9,8 +9,9 @@
 
 use std::path::PathBuf;
 use std::sync::Arc;
-use std::time::Duration;
+use std::time::{Duration, Instant};
 
+use atlas_core::scaling::HANG;
 use atlas_lsp::install::{Failure, Launch, Progress, Source};
 use atlas_lsp::manager::{Config, Manager, Overrides, Push, Resolver, State};
 use atlas_lsp::registry::Server;
@@ -66,11 +67,20 @@ struct Rig {
 fn cfg() -> Config {
     Config {
         idle_shutdown: Duration::from_millis(300),
-        init_timeout: Duration::from_secs(10),
+        init_timeout: HANG,
         max_restarts: 3,
         restart_window: Duration::from_secs(60),
         restart_backoff: Duration::from_millis(30),
-        request_timeout: Duration::from_secs(5),
+        request_timeout: HANG,
+    }
+}
+
+/// Poll `f` until it holds; the deadline only detects a hang.
+async fn until(what: &str, mut f: impl FnMut() -> bool) {
+    let end = Instant::now() + HANG;
+    while !f() {
+        assert!(Instant::now() < end, "timed out waiting for {what}");
+        tokio::time::sleep(Duration::from_millis(25)).await;
     }
 }
 
@@ -106,7 +116,7 @@ impl Rig {
     }
 
     async fn diagnostics(&mut self, path: &str, pred: impl Fn(&Value) -> bool) -> Value {
-        tokio::time::timeout(Duration::from_secs(10), async {
+        tokio::time::timeout(HANG, async {
             loop {
                 match self.rx.recv().await.expect("push channel closed") {
                     Push::Diagnostics {
@@ -410,7 +420,7 @@ async fn crashed_server_status_carries_its_stderr_tail() {
     assert!(rep.reason.is_some());
     // Wait for the settled status push (restart budget exhausted).
     let st = loop {
-        let p = tokio::time::timeout(Duration::from_secs(10), r.rx.recv())
+        let p = tokio::time::timeout(HANG, r.rx.recv())
             .await
             .expect("status push")
             .expect("open channel");
@@ -439,7 +449,8 @@ async fn restart_brings_a_crashed_server_back_and_resets_the_budget() {
     assert!(r.m.restart("rust-analyzer", None).await);
     // New process, documents replayed: a semantic query works again.
     let mut ok = false;
-    for _ in 0..200 {
+    let end = Instant::now() + HANG;
+    while Instant::now() < end {
         if r.m.pids().first().is_some_and(|p| *p != before[0]) {
             let q =
                 r.m.request(
@@ -927,7 +938,15 @@ async fn a_dependency_opened_first_moves_to_the_project_server_once_one_exists()
     .await;
     r.diagnostics(&f, |_| true).await;
 
-    tokio::time::sleep(Duration::from_millis(900)).await; // past `idle_shutdown` (300 ms in the rig)
+    // The worktree-root instance, now without documents, idles out: wait for that event.
+    until("the worktree-root instance to idle out", || {
+        r.m.status()
+            .iter()
+            .filter(|s| s.state == State::Ready)
+            .count()
+            == 1
+    })
+    .await;
     let st: Vec<_> =
         r.m.status()
             .into_iter()
@@ -981,7 +1000,10 @@ async fn a_dependency_opened_after_the_project_file_uses_the_project_server_even
         a.reason,
         b.reason
     );
-    tokio::time::sleep(Duration::from_millis(900)).await;
+    until("the document-less instance to idle out", || {
+        r.m.status().len() == 1
+    })
+    .await;
     let st = r.m.status();
     assert_eq!(st.len(), 1, "one TS server: {st:#?}");
     assert_eq!(st[0].root, app.to_string_lossy());
@@ -1019,7 +1041,10 @@ async fn a_dependency_arriving_while_the_project_server_is_still_starting_joins_
         }
     );
     assert_eq!((a.status, b.status), ("ready", "ready"));
-    tokio::time::sleep(Duration::from_millis(900)).await;
+    until("the document-less instance to idle out", || {
+        r.m.status().len() == 1
+    })
+    .await;
     let st = r.m.status();
     assert_eq!(st.len(), 1, "one TS server: {st:#?}");
     assert_eq!(st[0].root, app.to_string_lossy());

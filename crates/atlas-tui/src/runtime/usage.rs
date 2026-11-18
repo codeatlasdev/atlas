@@ -173,8 +173,20 @@ mod tests {
             .args(["-c", "sleep 30 & sleep 30 & wait"])
             .spawn()
             .unwrap();
-        tokio::time::sleep(std::time::Duration::from_millis(300)).await;
         let pid = child.id().unwrap();
+        // Both sleeps are children of the shell once it has forked them: wait for that, not 300 ms.
+        let children = || {
+            let out = std::process::Command::new("ps")
+                .args(["-axo", "pid=,ppid=,rss=,%cpu="])
+                .output()
+                .unwrap();
+            let ps = parse_ps(&String::from_utf8_lossy(&out.stdout));
+            ps.values().filter(|p| p.ppid == pid).count()
+        };
+        let end = std::time::Instant::now() + atlas_core::scaling::HANG;
+        while children() < 2 && std::time::Instant::now() < end {
+            tokio::time::sleep(std::time::Duration::from_millis(20)).await;
+        }
         let only_sh = {
             let out = sample(&[("x".into(), pid)]).await;
             out["x"].mem
@@ -205,11 +217,9 @@ mod tests {
             .unwrap();
         let pid = child.id().unwrap();
         let mut kids = Vec::new();
-        for _ in 0..100 {
+        let end = std::time::Instant::now() + atlas_core::scaling::HANG;
+        while kids.is_empty() && std::time::Instant::now() < end {
             kids = atlas_core::sys::descendants(pid, &atlas_core::sys::process_rows());
-            if !kids.is_empty() {
-                break;
-            }
             tokio::time::sleep(std::time::Duration::from_millis(20)).await;
         }
         assert!(!kids.is_empty(), "ping under cmd");

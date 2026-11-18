@@ -1,0 +1,33 @@
+{
+  "pt-BR": {
+    "viewers_filetypes_bash": "aad0057fd0b8",
+    "viewers_filetypes_c_header": "a0b7d43f25a5",
+    "viewers_filetypes_compose": "225d2aa2a579",
+    "viewers_filetypes_config": "1f18e403ca1e",
+    "viewers_filetypes_cpp_header": "c74f53b08334",
+    "viewers_filetypes_diff": "4716ec2a5598",
+    "viewers_filetypes_elixir_script": "290bd2f6ea21",
+    "viewers_filetypes_env": "7b4336f0fc6f",
+    "viewers_filetypes_fish": "c0c99584c835",
+    "viewers_filetypes_github_action": "e7cbf11a4d88",
+    "viewers_filetypes_github_workflow": "da60cd9644bc",
+    "viewers_filetypes_http": "490a9bbfcdba",
+    "viewers_filetypes_jsonc": "a02ad6ecf218",
+    "viewers_filetypes_kotlin_script": "81a67f33efeb",
+    "viewers_filetypes_license": "aa66842f9047",
+    "viewers_filetypes_lock": "4f60d274c7f6",
+    "viewers_filetypes_log": "c16646da71d8",
+    "viewers_filetypes_notebook": "237c35b35de0",
+    "viewers_filetypes_notice": "b0d0dc2aa738",
+    "viewers_filetypes_patch": "70dacb72a4e2",
+    "viewers_filetypes_plist": "e213d1dfa0c7",
+    "viewers_filetypes_prisma": "a8dd78f2368d",
+    "viewers_filetypes_properties": "f69fb651376a",
+    "viewers_filetypes_python_stub": "04123712d5b4",
+    "viewers_filetypes_shell": "e5b84368cdbb",
+    "viewers_filetypes_terraform_vars": "68a5ef469a28",
+    "viewers_filetypes_text": "c028d4bda5c6",
+    "viewers_filetypes_xml_schema": "520d9b17bc4e",
+    "viewers_filetypes_zsh": "2f73900a0d1f"
+  }
+}

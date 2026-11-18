@@ -11,14 +11,15 @@ use serde_json::{Value, json};
 use super::fixture::{daemon, fake_agent, lock_agent_bin, wait_task_state};
 use crate::HostClient;
 
-/// A fake engine CLI: starts `sleep 60` as a child, records the child's pid in `pidfile`, and waits
+/// A fake engine CLI: starts `sleep 600` as a child (ten times the ceiling of every wait below, so only a kill ends
+/// it), records the child's pid in `pidfile`, and waits
 /// for it (so killing only the CLI itself would orphan the `sleep`).
 fn hanging_cli(dir: &Path, name: &str, pidfile: &Path) -> std::path::PathBuf {
     fake_agent(
         dir,
         name,
         &format!(
-            "sleep 60 &\necho $! > \"{}\"\nwait\nexit 0",
+            "sleep 600 &\necho $! > \"{}\"\nwait\nexit 0",
             pidfile.display()
         ),
     )
@@ -34,7 +35,7 @@ async fn recorded_pid(pidfile: &Path) -> u32 {
             return pid;
         }
         assert!(
-            start.elapsed() < Duration::from_secs(15),
+            start.elapsed() < atlas_core::scaling::HANG,
             "the fake engine never recorded its child's pid"
         );
         tokio::time::sleep(Duration::from_millis(50)).await;
@@ -83,7 +84,7 @@ async fn stays_cancelled(client: &HostClient, crewmate: &str, task: &str, reason
             break;
         }
         assert!(
-            start.elapsed() < Duration::from_secs(10),
+            start.elapsed() < atlas_core::scaling::HANG,
             "the crewmate never went idle after the cancel: {me}"
         );
         tokio::time::sleep(Duration::from_millis(50)).await;
@@ -159,16 +160,17 @@ async fn pause_stops_the_engine_turn(kind: &str) {
     let id = engine_crewmate(&client, kind).await;
 
     let task = send(&client, &id).await;
-    wait_task_state(&client, &id, &task, "running", Duration::from_secs(15)).await;
+    wait_task_state(&client, &id, &task, "running", atlas_core::scaling::HANG).await;
     let child = recorded_pid(&pidfile).await;
     assert!(!gone(child), "the engine's child should be running");
 
     client.call("crew_pause", json!({})).await.unwrap();
-    let cancelled = wait_task_state(&client, &id, &task, "cancelled", Duration::from_secs(5)).await;
+    let cancelled =
+        wait_task_state(&client, &id, &task, "cancelled", atlas_core::scaling::HANG).await;
     assert_eq!(cancelled["error"], "paused", "{cancelled}");
     stays_cancelled(&client, &id, &task, Some("paused")).await;
     assert!(
-        wait_gone(child, Duration::from_secs(5)).await,
+        wait_gone(child, atlas_core::scaling::HANG).await,
         "{kind}: pause left the engine's child process {child} running"
     );
     client.call("shutdown", json!({})).await.ok();
@@ -207,7 +209,7 @@ async fn cancelling_one_task_ends_its_engine_turn_and_child() {
     let id = engine_crewmate(&client, "claude").await;
 
     let task = send(&client, &id).await;
-    wait_task_state(&client, &id, &task, "running", Duration::from_secs(15)).await;
+    wait_task_state(&client, &id, &task, "running", atlas_core::scaling::HANG).await;
     let child = recorded_pid(&pidfile).await;
 
     let v: Value = client
@@ -215,10 +217,10 @@ async fn cancelling_one_task_ends_its_engine_turn_and_child() {
         .await
         .unwrap();
     let _ = v;
-    wait_task_state(&client, &id, &task, "cancelled", Duration::from_secs(5)).await;
+    wait_task_state(&client, &id, &task, "cancelled", atlas_core::scaling::HANG).await;
     stays_cancelled(&client, &id, &task, None).await;
     assert!(
-        wait_gone(child, Duration::from_secs(5)).await,
+        wait_gone(child, atlas_core::scaling::HANG).await,
         "cancel left the engine's child process {child} running"
     );
     client.call("shutdown", json!({})).await.ok();
@@ -229,46 +231,58 @@ async fn cancelling_one_task_ends_its_engine_turn_and_child() {
 #[tokio::test(flavor = "multi_thread")]
 async fn a_turn_that_times_out_leaves_no_child_process() {
     for kind in ["claude", "codex", "opencode", "omp"] {
-        let tmp = tempfile::tempdir().unwrap();
-        let pidfile = tmp.path().join("child.pid");
-        let bin = hanging_cli(tmp.path(), kind, &pidfile);
-        let _engine = Engine::use_program(kind, &bin).await;
-        *crate::crew::engine::TEST_TURN_TIMEOUT.lock() = Some(Duration::from_secs(2));
-        let client = daemon(&tmp.path().join("hostd")).await;
-        let id = engine_crewmate(&client, kind).await;
+        // The 2 s turn timeout is the knob under test, not a budget for the fake CLI to start in: when a starved
+        // machine let it pass before the CLI recorded its child there is nothing to check yet, so run it again.
+        let mut ended_with_child = None;
+        for _ in 0..10 {
+            let tmp = tempfile::tempdir().unwrap();
+            let pidfile = tmp.path().join("child.pid");
+            let bin = hanging_cli(tmp.path(), kind, &pidfile);
+            let _engine = Engine::use_program(kind, &bin).await;
+            *crate::crew::engine::TEST_TURN_TIMEOUT.lock() = Some(Duration::from_secs(2));
+            let client = daemon(&tmp.path().join("hostd")).await;
+            let id = engine_crewmate(&client, kind).await;
 
-        let task = send(&client, &id).await;
-        let child = recorded_pid(&pidfile).await;
-        let start = Instant::now();
-        loop {
-            let v = client
-                .call("crewmate_tasks", json!({"id": id, "limit": 5}))
-                .await
-                .unwrap();
-            let t = v["tasks"]
-                .as_array()
-                .unwrap()
-                .iter()
-                .find(|t| t["id"] == task.as_str())
-                .cloned()
-                .unwrap();
-            if t["state"] == "failed" {
+            let task = send(&client, &id).await;
+            let start = Instant::now();
+            loop {
+                let v = client
+                    .call("crewmate_tasks", json!({"id": id, "limit": 5}))
+                    .await
+                    .unwrap();
+                let t = v["tasks"]
+                    .as_array()
+                    .unwrap()
+                    .iter()
+                    .find(|t| t["id"] == task.as_str())
+                    .cloned()
+                    .unwrap();
+                if t["state"] == "failed" {
+                    assert!(
+                        t["error"].as_str().unwrap().contains("timed out"),
+                        "{kind}: {t}"
+                    );
+                    break;
+                }
                 assert!(
-                    t["error"].as_str().unwrap().contains("timed out"),
-                    "{kind}: {t}"
+                    start.elapsed() < atlas_core::scaling::HANG,
+                    "{kind}: the task never timed out: {t}"
                 );
+                tokio::time::sleep(Duration::from_millis(100)).await;
+            }
+            ended_with_child = std::fs::read_to_string(&pidfile)
+                .ok()
+                .and_then(|s| s.trim().parse::<u32>().ok());
+            client.call("shutdown", json!({})).await.ok();
+            if ended_with_child.is_some() {
                 break;
             }
-            assert!(
-                start.elapsed() < Duration::from_secs(15),
-                "{kind}: the task never timed out: {t}"
-            );
-            tokio::time::sleep(Duration::from_millis(100)).await;
         }
+        let child =
+            ended_with_child.expect("the fake engine never recorded its child before the timeout");
         assert!(
-            wait_gone(child, Duration::from_secs(5)).await,
+            wait_gone(child, atlas_core::scaling::HANG).await,
             "{kind}: the timeout left the engine's child process {child} running"
         );
-        client.call("shutdown", json!({})).await.ok();
     }
 }

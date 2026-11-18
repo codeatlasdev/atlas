@@ -79,7 +79,7 @@ async fn tasks_of(client: &HostClient, id: &str) -> Vec<Value> {
 }
 
 async fn until<T>(what: &str, mut f: impl AsyncFnMut() -> Option<T>) -> T {
-    let deadline = std::time::Instant::now() + Duration::from_secs(20);
+    let deadline = std::time::Instant::now() + atlas_core::scaling::HANG;
     loop {
         if let Some(v) = f().await {
             return v;

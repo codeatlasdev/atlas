@@ -1463,14 +1463,21 @@ esac
     }
 
     // The watcher's stall guard: a download that stops growing is an error, one that keeps
-    // growing slowly is fine.
+    // growing slowly is fine. The hung process lives for 60 s and says so in `finished` if it gets to the end: a
+    // watcher that waited for it instead of killing it leaves that file (no stopwatch involved).
     #[cfg(unix)]
     #[test]
     fn a_stalled_download_is_an_error_and_the_process_is_stopped() {
         let dir = tempfile::tempdir().unwrap();
         let dest = dir.path().join("a.bin");
-        let script = format!("printf aaaa > {}; sleep 30", dest.display());
-        let started = std::time::Instant::now();
+        let finished = dir.path().join("finished");
+        let pidfile = dir.path().join("pid");
+        let script = format!(
+            "echo $$ > {}; printf aaaa > {}; sleep 60; touch {}",
+            pidfile.display(),
+            dest.display(),
+            finished.display()
+        );
         let e = watch_download(
             sh(&script),
             &dest,
@@ -1484,8 +1491,17 @@ esac
         .unwrap_err();
         assert!(e.to_string().contains("stalled at 4 bytes"), "{e}");
         assert!(
-            started.elapsed() < std::time::Duration::from_secs(10),
+            !finished.exists(),
             "the hung process must be killed, not waited for"
+        );
+        let pid: u32 = std::fs::read_to_string(&pidfile)
+            .unwrap()
+            .trim()
+            .parse()
+            .unwrap();
+        assert!(
+            !crate::sys::pid_alive(pid),
+            "the hung process is still running"
         );
     }
 

@@ -1664,7 +1664,7 @@ mod lock_tests {
             assert_eq!(std::fs::read_to_string(paths::pid(dir)).unwrap(), text);
             // The socket is still the first daemon's: a connection reaches ITS listener.
             let _c = ipc::connect(&sock).await.expect("socket rebound");
-            tokio::time::timeout(Duration::from_secs(2), live.accept())
+            tokio::time::timeout(atlas_core::scaling::HANG, live.accept())
                 .await
                 .unwrap_or_else(|_| panic!("{text:?}: the first daemon's socket was replaced"))
                 .unwrap();
@@ -1849,7 +1849,7 @@ mod tests {
         s.write_all(out.as_bytes()).await.unwrap();
         let want: Vec<String> = (0..200).map(|i| i.to_string()).collect();
         let mut got = Vec::new();
-        for _ in 0..100 {
+        for _ in 0..1200 {
             tokio::time::sleep(std::time::Duration::from_millis(50)).await;
             let r = client
                 .call("pty_read", json!({"pty": pty, "lines": 1000}))
@@ -1886,7 +1886,7 @@ mod tests {
             .unwrap();
         let mut seen_error = false;
         loop {
-            let l = tokio::time::timeout(std::time::Duration::from_secs(5), lines.next_line())
+            let l = tokio::time::timeout(atlas_core::scaling::HANG, lines.next_line())
                 .await
                 .expect("hostd went quiet")
                 .unwrap()
@@ -1917,7 +1917,7 @@ mod tests {
             };
             serve_with(&d2, opts).await
         });
-        for _ in 0..250 {
+        for _ in 0..3000 {
             if paths::socket(&dir).exists() {
                 break;
             }
@@ -1952,7 +1952,7 @@ mod tests {
     async fn an_idle_unauthenticated_connection_is_closed_after_the_hello_deadline() {
         let (_tmp, dir) = hostd_with_hello_timeout(Duration::from_millis(300)).await;
         let idle = ipc::connect(&paths::socket(&dir)).await.unwrap();
-        let got = lines_until_closed(idle, Duration::from_secs(3))
+        let got = lines_until_closed(idle, atlas_core::scaling::HANG)
             .await
             .expect("an idle socket stayed open past the hello deadline");
         // Not "unauthorized": a client must tell a slow handshake from a wrong token.
@@ -1963,7 +1963,8 @@ mod tests {
     /// cap: the oldest is closed at once (well before its deadline), and a real client still gets in.
     #[tokio::test]
     async fn sixty_five_idle_sockets_do_not_block_a_real_client() {
-        let (_tmp, dir) = hostd_with_hello_timeout(Duration::from_secs(60)).await;
+        // The hello deadline (ten times the ceiling) cannot close anything here: only the cap does.
+        let (_tmp, dir) = hostd_with_hello_timeout(Duration::from_secs(600)).await;
         let mut idle = Vec::new();
         for _ in 0..=MAX_PENDING_HELLOS {
             idle.push(ipc::connect(&paths::socket(&dir)).await.unwrap());
@@ -1971,7 +1972,7 @@ mod tests {
             tokio::time::sleep(Duration::from_millis(5)).await;
         }
         let client = tokio::time::timeout(
-            Duration::from_secs(5),
+            atlas_core::scaling::HANG,
             crate::client::HostClient::connect_dir(&dir, "real"),
         )
         .await
@@ -1979,7 +1980,7 @@ mod tests {
         .unwrap();
         client.call("info", json!({})).await.unwrap();
         let oldest = idle.remove(0);
-        let got = lines_until_closed(oldest, Duration::from_secs(3))
+        let got = lines_until_closed(oldest, atlas_core::scaling::HANG)
             .await
             .expect("the oldest idle socket was not closed to make room");
         assert_eq!(error_of(&got), "hostd busy");
@@ -1988,11 +1989,11 @@ mod tests {
     /// A wrong token is still "unauthorized", told apart from a timeout or "busy" (#304).
     #[tokio::test]
     async fn a_wrong_token_is_unauthorized_not_a_timeout() {
-        let (_tmp, dir) = hostd_with_hello_timeout(Duration::from_secs(60)).await;
+        let (_tmp, dir) = hostd_with_hello_timeout(Duration::from_secs(600)).await;
         let mut s = ipc::connect(&paths::socket(&dir)).await.unwrap();
         let hello = protocol::hello_line("wrong-token", "raw");
         s.write_all(format!("{hello}\n").as_bytes()).await.unwrap();
-        let got = lines_until_closed(s, Duration::from_secs(3))
+        let got = lines_until_closed(s, atlas_core::scaling::HANG)
             .await
             .expect("a wrong token was not refused");
         assert_eq!(error_of(&got), "unauthorized");

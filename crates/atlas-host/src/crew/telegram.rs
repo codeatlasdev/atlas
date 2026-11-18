@@ -83,6 +83,7 @@ fn card_images_of(
             |a| match crate::crew::attachments::read(store, crewmate_id, &task, &a.name) {
                 Ok((a, bytes)) => Some((a.name, bytes)),
                 Err(e) => {
+                    // i18n-ignore: log
                     eprintln!(
                         "atlas telegram: image {} of task {task_id} not sent: {e}",
                         a.name
@@ -176,6 +177,7 @@ impl TelegramBridge {
             Ok(Loaded::Missing) => (TelegramConfig::default(), None),
             Ok(Loaded::Corrupt(aside)) => (TelegramConfig::default(), Some(aside)),
             Err(e) => {
+                // i18n-ignore: log
                 eprintln!("atlas crew: cannot read telegram.json: {e}");
                 (TelegramConfig::default(), None)
             }
@@ -431,6 +433,7 @@ impl TelegramBridge {
                             }
                         }
                         Ok(v) => {
+                            // i18n-ignore: log
                             eprintln!(
                                 "atlas telegram: API error: {}",
                                 v["description"].as_str().unwrap_or("?")
@@ -439,6 +442,7 @@ impl TelegramBridge {
                             backoff = (backoff * 2).min(MAX_BACKOFF);
                         }
                         Err(e) => {
+                            // i18n-ignore: log
                             eprintln!("atlas telegram: parse error: {e}");
                             tokio::time::sleep(backoff).await;
                             backoff = (backoff * 2).min(MAX_BACKOFF);
@@ -446,6 +450,7 @@ impl TelegramBridge {
                     }
                 }
                 Ok(Err(e)) => {
+                    // i18n-ignore: log
                     eprintln!("atlas telegram: request error: {e}");
                     tokio::time::sleep(backoff).await;
                     backoff = (backoff * 2).min(MAX_BACKOFF);
@@ -563,6 +568,7 @@ impl TelegramBridge {
                     Some(lc) if !code.is_empty() => {
                         lc.wrong += 1;
                         if lc.wrong >= MAX_WRONG_CODES {
+                            // i18n-ignore: log
                             eprintln!(
                                 "atlas telegram: {MAX_WRONG_CODES} wrong link codes; the code is invalidated, start a new link"
                             );
@@ -1022,7 +1028,7 @@ mod tests {
             cfg.chats = vec![42];
         }
         b.send_message("done");
-        let (mut s, _) = tokio::time::timeout(Duration::from_secs(5), api.accept())
+        let (mut s, _) = tokio::time::timeout(atlas_core::scaling::HANG, api.accept())
             .await
             .expect("the bridge never called the Telegram API")
             .unwrap();

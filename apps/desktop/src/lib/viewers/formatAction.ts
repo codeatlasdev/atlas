@@ -9,6 +9,7 @@ import { editorFiles } from "#lib/symbols.ts";
 import { fileType } from "#lib/viewers/fileType.ts";
 import { editorConfigDirs, resolveEditorConfig, type EditorConfigProps } from "#lib/editor/editorconfig.ts";
 import { canFormat, formatText } from "#lib/viewers/format.ts";
+import { m } from "#lib/i18n/m.ts";
 
 /** `.editorconfig` files from the file's folder up to the worktree root. */
 async function editorConfigs(root: string, abs: string): Promise<{ dir: string; text: string }[]> {
@@ -41,10 +42,7 @@ export async function formatActive(view: EditorView): Promise<boolean> {
 	const lang = file ? fileType(file.path).lang : null;
 	if (!file || !canFormat(lang)) {
 		// With an unserved language session the hint explains why; otherwise nothing can format it.
-		if (explainUnserved(view, "format"))
-			toast.info(
-				"This file type has no formatter: no language server provides one and Atlas has no built-in one.",
-			);
+		if (explainUnserved(view, "format")) toast.info(m.viewers_files_format_action_no_formatter());
 		return false;
 	}
 	const abs = `${file.root}/${file.path}`;
@@ -61,10 +59,14 @@ export async function formatActive(view: EditorView): Promise<boolean> {
 		if (view.state.doc.toString() !== text) return false;
 		if (out !== text)
 			view.dispatch({ changes: { from: 0, to: text.length, insert: out }, userEvent: "input.format" });
-		else toast.info("Already formatted");
+		else toast.info(m.viewers_files_format_action_already_formatted());
 		return true;
 	} catch (e) {
-		toast.error(`Cannot format: ${e instanceof Error ? e.message.split("\n")[0] : String(e)}`);
+		toast.error(
+			m.viewers_files_format_action_cannot_format({
+				reason: e instanceof Error ? e.message.split("\n")[0] : String(e),
+			}),
+		);
 		return false;
 	}
 }

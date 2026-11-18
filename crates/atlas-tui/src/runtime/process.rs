@@ -645,14 +645,15 @@ mod tests {
             .spawn()
             .unwrap();
         let mut gc = 0i32;
-        for _ in 0..100 {
+        let end = std::time::Instant::now() + atlas_core::scaling::HANG;
+        while gc == 0 && std::time::Instant::now() < end {
             if let Ok(s) = std::fs::read_to_string(&pidfile)
                 && let Ok(p) = s.trim().parse()
             {
                 gc = p;
-                break;
+            } else {
+                tokio::time::sleep(Duration::from_millis(50)).await;
             }
-            tokio::time::sleep(Duration::from_millis(50)).await;
         }
         assert!(gc > 1, "grandchild started");
         // SAFETY: getpgid has no preconditions.
@@ -660,11 +661,19 @@ mod tests {
         assert_eq!(gc_pgid, gc, "grandchild is in its own new group");
         assert_ne!(gc_pgid, child.id().unwrap() as i32);
         kill_gracefully(&mut child, Duration::from_secs(2)).await;
-        tokio::time::sleep(Duration::from_millis(100)).await;
-        let alive = !matches!(
-            signal::kill(Pid::from_raw(gc), None),
-            Err(nix::errno::Errno::ESRCH)
-        );
+        // Gone = reaped by init, which takes as long as the machine is busy: wait for that event (a
+        // killed process stays visible to `kill(pid, 0)` as a zombie until then).
+        let is_alive = || {
+            !matches!(
+                signal::kill(Pid::from_raw(gc), None),
+                Err(nix::errno::Errno::ESRCH)
+            )
+        };
+        let end = std::time::Instant::now() + atlas_core::scaling::HANG;
+        while is_alive() && std::time::Instant::now() < end {
+            tokio::time::sleep(Duration::from_millis(20)).await;
+        }
+        let alive = is_alive();
         let _ = std::fs::remove_file(&pidfile);
         if alive {
             let _ = signal::kill(Pid::from_raw(gc), Signal::SIGKILL);
@@ -682,17 +691,19 @@ mod tests {
             .unwrap();
         let root = child.id().unwrap() as i32;
         let mut kids = Vec::new();
-        for _ in 0..100 {
+        let end = std::time::Instant::now() + atlas_core::scaling::HANG;
+        while kids.is_empty() && std::time::Instant::now() < end {
             kids = descendants(root, &process_table());
-            if !kids.is_empty() {
-                break;
-            }
             tokio::time::sleep(Duration::from_millis(20)).await;
         }
         assert!(!kids.is_empty(), "ping never showed up under cmd");
         kill_gracefully(&mut child, Duration::from_secs(2)).await;
-        tokio::time::sleep(Duration::from_millis(100)).await;
+        // Wait for the OS to report the exit, not for a fixed 100 ms.
         for k in kids {
+            let end = std::time::Instant::now() + atlas_core::scaling::HANG;
+            while atlas_core::sys::pid_alive(k.pid as u32) && std::time::Instant::now() < end {
+                tokio::time::sleep(Duration::from_millis(20)).await;
+            }
             assert!(
                 !atlas_core::sys::pid_alive(k.pid as u32),
                 "{} survived",

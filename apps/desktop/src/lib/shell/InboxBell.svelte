@@ -113,7 +113,10 @@
 		color: var(--ca-text-primary);
 	}
 	.panel {
+		/* The kit's popover pads its content by 16px and caps its width at 320px: cancel the padding so the panel is
+		   exactly the popover (a longer pt-BR "Limpar" was cut at the edge). */
 		width: 320px;
+		margin: -16px;
 		max-height: 440px;
 		display: flex;
 		flex-direction: column;
@@ -123,12 +126,16 @@
 		display: flex;
 		align-items: center;
 		justify-content: space-between;
+		flex-wrap: wrap;
+		gap: 4px 8px;
 		padding: 10px 12px 8px;
 		border-bottom: 0.5px solid var(--ca-outline-subtle);
 	}
 	.acts {
 		display: flex;
-		gap: 6px;
+		flex-wrap: wrap;
+		justify-content: flex-end;
+		gap: 2px 6px;
 	}
 	.act {
 		border: 0;
@@ -138,6 +145,7 @@
 		font-size: 12px;
 		color: var(--ca-brand-text);
 		cursor: pointer;
+		white-space: nowrap;
 	}
 	.act:hover {
 		background: var(--ca-action-hover);

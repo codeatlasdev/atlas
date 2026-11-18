@@ -318,6 +318,7 @@ pub(super) fn render_loop<R: Present>(mut r: R, sh: Arc<Shared>, mut hooks: Hook
             }
             // No texture to draw into: still owed, the watchdog draws again without new bytes.
             Ok(false) => {}
+            // i18n-ignore: log
             Err(e) => eprintln!("atlas-term render: {e}"),
         }
         {

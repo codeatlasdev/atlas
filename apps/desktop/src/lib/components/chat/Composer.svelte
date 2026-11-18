@@ -176,6 +176,12 @@
 		align-items: flex-end;
 		gap: 6px;
 	}
+	/* The field takes the row: at its intrinsic width (~160px) a longer placeholder, in any language, was cut off. */
+	.row textarea {
+		flex: 1;
+		min-width: 0;
+		resize: none;
+	}
 	.attach {
 		display: inline-flex;
 		padding: 8px 4px;

@@ -21,6 +21,16 @@ VERSION_RE = re.compile(r"^(0|[1-9]\d*)\.(0|[1-9]\d*)\.(0|[1-9]\d*)(?:-(alpha|be
 CHANNEL_BY_LABEL = {None: "stable", "alpha": "alpha", "beta": "beta", "rc": "beta"}
 
 
+# The targets release.yml builds (one `atlas-<target>` artifact each: build, build-linux, build-linux-arm64,
+# build-windows). A target nothing builds has no place here: a test pins this list to the workflow's artifacts.
+PLATFORMS = (
+    "aarch64-apple-darwin",
+    "x86_64-unknown-linux-gnu",
+    "aarch64-unknown-linux-gnu",
+    "x86_64-pc-windows-msvc",
+)
+
+
 def channel_of(version):
     m = VERSION_RE.match(version)
     if not m:
@@ -76,18 +86,9 @@ def main():
     version = sys.argv[1]
     artifacts_dir = sys.argv[2]
 
-    platforms = [
-        ("aarch64-apple-darwin", "atlas-aarch64-apple-darwin"),
-        ("x86_64-apple-darwin", "atlas-x86_64-apple-darwin"),
-        ("universal-apple-darwin", "atlas-universal-apple-darwin"),
-        ("x86_64-unknown-linux-gnu", "atlas-x86_64-unknown-linux-gnu"),
-        ("aarch64-unknown-linux-gnu", "atlas-aarch64-unknown-linux-gnu"),
-        ("x86_64-pc-windows-msvc", "atlas-x86_64-pc-windows-msvc"),
-    ]
-
     assets = {}
-    for platform_key, artifact_dir in platforms:
-        dir_path = os.path.join(artifacts_dir, artifact_dir)
+    for platform_key in PLATFORMS:
+        dir_path = os.path.join(artifacts_dir, f"atlas-{platform_key}")
         if not os.path.isdir(dir_path):
             continue
 
@@ -121,10 +122,8 @@ def main():
         "prerelease": channel != "stable",
         "commit": commit(),
         "date": datetime.now(timezone.utc).isoformat(),
-        "min_os": "14.0",
         "assets": assets,
         "changelog": f"https://github.com/codeatlasdev/atlas/releases/tag/v{version}",
-        "required_update": False,
     }
     promoted_from = os.environ.get("ATLAS_PROMOTED_FROM")
     if promoted_from:

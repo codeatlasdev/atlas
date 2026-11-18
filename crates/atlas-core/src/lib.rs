@@ -37,6 +37,7 @@ pub mod taskcache;
 pub mod time;
 pub mod update_cache;
 pub mod util;
+pub mod yanked;
 
 pub use error::AtlasError;
 pub type Result<T> = std::result::Result<T, AtlasError>;

@@ -12,6 +12,9 @@
 		/** `split`: Shift-Enter (open beside). */
 		run: (split: boolean) => void;
 	}
+
+	/** Rows a palette shows: the best matches of what was typed, however long the list it searches. */
+	export const PALETTE_LIMIT = 80;
 </script>
 
 <script lang="ts">
@@ -26,12 +29,18 @@
 		open = $bindable(false),
 		placeholder = "Search",
 		items,
+		ranked = false,
 		dynamic,
 	}: {
 		open?: boolean;
 		placeholder?: string;
-		/** Static items; filtered by fuzzy match on label + description. */
+		/** Static items; filtered by fuzzy match on label + description (unless `ranked`). */
 		items: (query: string) => PaletteItem[];
+		/**
+		 * `items(query)` already returns the best matches for the query, best first and at most `PALETTE_LIMIT`
+		 * (Go to file ranks 100k paths through its own index): they are shown as they come, not scored again.
+		 */
+		ranked?: boolean;
 		/** Extra items built from the raw query (e.g. "Create worktree <q>"). */
 		dynamic?: (query: string) => PaletteItem[];
 	} = $props();
@@ -45,6 +54,7 @@
 
 	let results = $derived.by(() => {
 		const base = items(q);
+		if (ranked) return [...base, ...(dynamic?.(q) ?? [])];
 		const scored = q
 			? base
 					.map((it) => ({ it, s: fuzzy(q, it.label, it.description) }))
@@ -52,7 +62,7 @@
 					.sort((a, b) => b.s - a.s)
 					.map((x) => x.it)
 			: base;
-		return [...scored.slice(0, 80), ...(dynamic?.(q) ?? [])];
+		return [...scored.slice(0, PALETTE_LIMIT), ...(dynamic?.(q) ?? [])];
 	});
 
 	$effect(() => {

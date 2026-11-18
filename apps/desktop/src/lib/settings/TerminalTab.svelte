@@ -57,14 +57,18 @@
 			label={m.settings_terminal_tab_fast_terminal_gpu()}
 			description={m.settings_terminal_tab_draws_local_terminals_on_the()}
 		>
-			<Switch aria-label={m.settings_terminal_tab_fast_terminal_gpu()} checked={gpu.terminal} onchange={(v) => setGpuTerminal(v)} />
+			<Switch
+				aria-label={m.settings_terminal_tab_fast_terminal_gpu()}
+				checked={gpu.terminal}
+				onchange={(v) => setGpuTerminal(v)}
+			/>
 			{#snippet below()}
 				{#if gpu.terminal && gpu.hostTooOld}
 					<div class="notice">
-						<span
-							>{m.settings_terminal_tab_the_running_terminal_host_is()}</span
+						<span>{m.settings_terminal_tab_the_running_terminal_host_is()}</span>
+						<Button size="sm" variant="outlined" onclick={restart}
+							>{m.settings_terminal_tab_restart_terminal_host()}</Button
 						>
-						<Button size="sm" variant="outlined" onclick={restart}>{m.settings_terminal_tab_restart_terminal_host()}</Button>
 					</div>
 				{/if}
 			{/snippet}
@@ -75,7 +79,9 @@
 		label={m.settings_terminal_tab_terminal_host()}
 		description={m.settings_terminal_tab_the_background_process_that_keeps()}
 	>
-		<Button size="sm" variant="outlined" onclick={restart}>{m.settings_terminal_tab_restart_terminal_host()}</Button>
+		<Button size="sm" variant="outlined" onclick={restart}
+			>{m.settings_terminal_tab_restart_terminal_host()}</Button
+		>
 	</Row>
 </Group>
 
@@ -94,7 +100,11 @@
 			onchange={(v) => save({ font_family: v })}
 		/>
 	</Row>
-	<Row id="term-size" label={m.settings_terminal_tab_terminal_font_size()} description={m.settings_terminal_tab_text_size_in_terminals()}>
+	<Row
+		id="term-size"
+		label={m.settings_terminal_tab_terminal_font_size()}
+		description={m.settings_terminal_tab_text_size_in_terminals()}
+	>
 		<NumInput
 			label={m.settings_terminal_tab_terminal_font_size()}
 			unit="px"
@@ -119,7 +129,11 @@
 			label={m.settings_terminal_tab_ligatures()}
 			description={m.settings_terminal_tab_join_characters_like_and_into()}
 		>
-			<Switch aria-label={m.settings_terminal_tab_ligatures()} checked={t.ligatures} onchange={(v) => save({ ligatures: v })} />
+			<Switch
+				aria-label={m.settings_terminal_tab_ligatures()}
+				checked={t.ligatures}
+				onchange={(v) => save({ ligatures: v })}
+			/>
 		</Row>
 		<Row
 			id="contrast"
@@ -136,7 +150,11 @@
 </Group>
 
 <Group title={m.settings_terminal_tab_cursor()}>
-	<Row id="cursor-shape" label={m.settings_terminal_tab_cursor_shape()} description={m.settings_terminal_tab_how_the_cursor_looks_in()}>
+	<Row
+		id="cursor-shape"
+		label={m.settings_terminal_tab_cursor_shape()}
+		description={m.settings_terminal_tab_how_the_cursor_looks_in()}
+	>
 		<div class="select">
 			<Select
 				size="sm"
@@ -151,8 +169,16 @@
 			/>
 		</div>
 	</Row>
-	<Row id="cursor-blink" label={m.settings_terminal_tab_blinking_cursor()} description={m.settings_terminal_tab_make_the_cursor_blink()}>
-		<Switch aria-label={m.settings_terminal_tab_blinking_cursor()} checked={t.blinking} onchange={(v) => save({ blinking: v })} />
+	<Row
+		id="cursor-blink"
+		label={m.settings_terminal_tab_blinking_cursor()}
+		description={m.settings_terminal_tab_make_the_cursor_blink()}
+	>
+		<Switch
+			aria-label={m.settings_terminal_tab_blinking_cursor()}
+			checked={t.blinking}
+			onchange={(v) => save({ blinking: v })}
+		/>
 	</Row>
 	<Row label={m.settings_terminal_font_rows_preview()}>
 		{#snippet below()}

@@ -71,8 +71,12 @@
 			: m.settings_general_hygiene_scan_first()}
 	>
 		{#if busy}<Spinner size={12} />{/if}
-		<Button size="sm" variant="glass" disabled={busy} onclick={scan}>{m.settings_general_workspace_scan()}</Button>
-		<Button size="sm" variant="destructive" disabled={busy || !todo} onclick={fix}>{m.settings_general_hygiene_group_fix()}</Button>
+		<Button size="sm" variant="glass" disabled={busy} onclick={scan}
+			>{m.settings_general_workspace_scan()}</Button
+		>
+		<Button size="sm" variant="destructive" disabled={busy || !todo} onclick={fix}
+			>{m.settings_general_hygiene_group_fix()}</Button
+		>
 	</Row>
 	{#if report}
 		{#each report.orphans as o (o.pid + ":" + o.start)}

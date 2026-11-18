@@ -18,6 +18,7 @@
 	import { diffRows, fileRowIndex, type DiffRow } from "./diff/diffRows.ts";
 	import VirtualList from "./VirtualList.svelte";
 	import { m } from "#lib/i18n/m.ts";
+	import { statusText } from "#lib/gitText.ts";
 
 	let {
 		worktreeId,
@@ -113,24 +114,6 @@
 		await load();
 	}
 
-	/** `FileDiff.status` as the Rust side sends it; a status this does not know shows as it came. */
-	function statusText(status: string): string {
-		switch (status) {
-			case "modified":
-				return m.git_diff_view_status_modified();
-			case "added":
-				return m.git_diff_view_status_added();
-			case "deleted":
-				return m.git_diff_view_status_deleted();
-			case "renamed":
-				return m.git_diff_view_status_renamed();
-			case "untracked":
-				return m.git_diff_view_status_untracked();
-			default:
-				return status;
-		}
-	}
-
 	function addComment() {
 		if (!draft?.text.trim()) return;
 		const c: DiffComment = {
@@ -190,7 +173,9 @@
 		{#if !only}
 			<div class="toolbar">
 				<select bind:value={curMode}>
-					<option value="base">{base ? m.git_diff_view_vs_base_ref({ base }) : m.git_diff_view_vs_base()}</option>
+					<option value="base"
+						>{base ? m.git_diff_view_vs_base_ref({ base }) : m.git_diff_view_vs_base()}</option
+					>
 					<option value="working">{m.git_diff_view_unstaged()}</option>
 					<option value="staged">{m.git_diff_view_staged()}</option>
 				</select>
@@ -216,14 +201,18 @@
 				{#if open.length}
 					<DropdownMenu align="end">
 						{#snippet trigger()}
-							<span class="send"><Send size={12} /> {m.git_diff_view_send_notes({ count: open.length })}</span>
+							<span class="send"><Send size={12} /> {m.git_diff_view_send_notes({ count: open.length })}</span
+							>
 						{/snippet}
 						{#each agents.tabsIn(worktreeId) as t (t.id)}
 							<DropdownMenuItem onclick={() => sendTo(t.id)}
 								>{(t.pty && ws.titles[t.pty]) || t.label}</DropdownMenuItem
 							>
 						{/each}
-						<DropdownMenuItem onclick={() => sendTo(null)}>{m.git_diff_view_new_defaultagent_session({ defaultAgent: agents.defaultAgent })}</DropdownMenuItem
+						<DropdownMenuItem onclick={() => sendTo(null)}
+							>{m.git_diff_view_new_defaultagent_session({
+								defaultAgent: agents.defaultAgent,
+							})}</DropdownMenuItem
 						>
 					</DropdownMenu>
 				{/if}
@@ -266,7 +255,9 @@
 								<span class="mono">{r.f.old_path ? `${r.f.old_path} → ` : ""}{r.f.path}</span>
 								<span class="dim">{statusText(r.f.status)}</span>
 								<button class="act" onclick={() => stage(r.f)}
-									>{curMode === "staged" ? m.git_diff_view_unstage_file() : m.git_diff_view_stage_file()}</button
+									>{curMode === "staged"
+										? m.git_diff_view_unstage_file()
+										: m.git_diff_view_stage_file()}</button
 								>
 							</header>
 						{:else if r.kind === "binary"}
@@ -282,7 +273,9 @@
 									<button
 										class="act"
 										onclick={() => stage(r.f, r.hunk)}
-										title={curMode === "staged" ? m.git_diff_view_unstage_hunk() : m.git_diff_view_stage_hunk()}
+										title={curMode === "staged"
+											? m.git_diff_view_unstage_hunk()
+											: m.git_diff_view_stage_hunk()}
 									>
 										{#if curMode === "staged"}<Minus size={11} />{:else}<Plus size={11} />{/if}
 									</button>

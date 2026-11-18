@@ -132,7 +132,12 @@
 			placeholder={m.git_new_worktree_dialog_leave_blank_for_a_random()}
 			description={m.git_new_worktree_dialog_a_github_pr_or_issue()}
 		/>
-		<Select label={m.git_new_worktree_dialog_agent()} value={agent} options={agentOptions} onchange={(v) => (agent = v)} />
+		<Select
+			label={m.git_new_worktree_dialog_agent()}
+			value={agent}
+			options={agentOptions}
+			onchange={(v) => (agent = v)}
+		/>
 		{#if agent !== "blank"}
 			<TextArea
 				label={m.git_new_worktree_dialog_prompt()}
@@ -143,7 +148,11 @@
 		{/if}
 		<Collapsible title={m.git_new_worktree_dialog_advanced()}>
 			<div class="adv">
-				<TextField label={m.git_new_worktree_dialog_branch_name()} bind:value={branch} placeholder={m.git_new_worktree_dialog_derived_from_the_name()} />
+				<TextField
+					label={m.git_new_worktree_dialog_branch_name()}
+					bind:value={branch}
+					placeholder={m.git_new_worktree_dialog_derived_from_the_name()}
+				/>
 				<Combobox
 					label={m.git_new_worktree_dialog_base_ref()}
 					value={base}
@@ -151,14 +160,21 @@
 					options={refs.map((r) => ({ value: r, label: r }))}
 					onchange={(v) => typeof v === "string" && (base = v)}
 				/>
-				<Checkbox bind:checked={runSetup} label={m.git_new_worktree_dialog_run_setup_script_worktree_setup()} />
+				<Checkbox
+					bind:checked={runSetup}
+					label={m.git_new_worktree_dialog_run_setup_script_worktree_setup()}
+				/>
 			</div>
 		</Collapsible>
 		<button type="submit" hidden aria-hidden="true"></button>
 	</form>
 	{#snippet actions()}
-		<Button variant="ghost" onclick={() => (worktrees.newDialog.open = false)}>{m.common_action_cancel()}</Button>
-		<Button disabled={!repoId || repoId === ADD || busy} onclick={create}>{m.git_create_pr_dialog_create()}</Button>
+		<Button variant="ghost" onclick={() => (worktrees.newDialog.open = false)}
+			>{m.common_action_cancel()}</Button
+		>
+		<Button disabled={!repoId || repoId === ADD || busy} onclick={create}
+			>{m.git_create_pr_dialog_create()}</Button
+		>
 	{/snippet}
 </Dialog>
 

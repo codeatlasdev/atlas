@@ -31,7 +31,12 @@ export function slug(s: string): string {
 
 export function worktreePreview(p: WorktreePrefs): { path: string[]; branch: string } {
 	const dir = p.dir.trim().replace(/\/+$/, "") || DEFAULT_DIR;
-	const prefix = p.prefix === "none" ? "" : p.prefix === "custom" ? slug(p.custom) : m.settings_terminal_worktree_preview_git_name();
+	const prefix =
+		p.prefix === "none"
+			? ""
+			: p.prefix === "custom"
+				? slug(p.custom)
+				: m.settings_terminal_worktree_preview_git_name();
 	return {
 		path: p.nest ? [dir, EXAMPLE_REPO, EXAMPLE_NAME] : [dir, EXAMPLE_NAME],
 		branch: prefix ? `${prefix}/${EXAMPLE_NAME}` : EXAMPLE_NAME,

@@ -2208,6 +2208,7 @@ mod status_json_tests {
         assert!(git_in(&main, &["merge", "other"]).is_err(), "must conflict");
         seen.push(operation(&main).expect("a merge is in progress"));
         ok(&main, &["merge", "--abort"]);
+        seen.sort();
         assert_eq!(seen, OPERATIONS.to_vec());
 
         // A modified, an added, a deleted and a renamed file, in one real `git diff -M`.

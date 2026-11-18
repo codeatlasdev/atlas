@@ -29,6 +29,7 @@
 	import PathText from "./PathText.svelte";
 	import NotRepoState from "./NotRepoState.svelte";
 	import { m } from "#lib/i18n/m.ts";
+	import { operationText } from "#lib/gitText.ts";
 
 	/** Porcelain status letter → `.code` class (anything else reads as modified). */
 	const CODE_KIND: Record<string, string> = {
@@ -273,18 +274,6 @@
 		}
 	});
 
-	/** The merge or rebase in progress, as `git_review::operation` (Rust) names it; another value shows as it came. */
-	function operationText(op: string): string {
-		switch (op) {
-			case "merge":
-				return m.git_commit_operation_merge();
-			case "rebase":
-				return m.git_commit_operation_rebase();
-			default:
-				return m.git_source_control_operation_in_progress({ operation: op });
-		}
-	}
-
 	async function toAgent(text: string) {
 		const t = agents.tabsIn(worktreeId)[0];
 		if (t) await agents.send(t.id, text);
@@ -302,9 +291,15 @@
 			{#if st?.vs_base}<span class="dim">↑{st.vs_base.ahead} ↓{st.vs_base.behind}</span>{/if}
 			<DropdownMenu align="end">
 				{#snippet trigger()}<span class="more"><Ellipsis size={13} /></span>{/snippet}
-				<DropdownMenuItem onclick={() => commit(true)}>{m.git_source_control_amend_last_commit()}</DropdownMenuItem>
-				<DropdownMenuItem onclick={() => run("pull", ["pull", "--rebase"])}>{m.git_source_control_pull_rebase()}</DropdownMenuItem>
-				<DropdownMenuItem onclick={() => run("push", ["push"])}>{m.git_source_control_push()}</DropdownMenuItem>
+				<DropdownMenuItem onclick={() => commit(true)}
+					>{m.git_source_control_amend_last_commit()}</DropdownMenuItem
+				>
+				<DropdownMenuItem onclick={() => run("pull", ["pull", "--rebase"])}
+					>{m.git_source_control_pull_rebase()}</DropdownMenuItem
+				>
+				<DropdownMenuItem onclick={() => run("push", ["push"])}
+					>{m.git_source_control_push()}</DropdownMenuItem
+				>
 				<DropdownMenuItem
 					variant="destructive"
 					onclick={async () =>
@@ -316,7 +311,9 @@
 				>
 					{m.git_source_control_force_push_with_lease()}
 				</DropdownMenuItem>
-				<DropdownMenuItem onclick={() => openDiff(worktreeId)}>{m.git_source_control_open_changes()}</DropdownMenuItem>
+				<DropdownMenuItem onclick={() => openDiff(worktreeId)}
+					>{m.git_source_control_open_changes()}</DropdownMenuItem
+				>
 			</DropdownMenu>
 		</div>
 
@@ -349,7 +346,9 @@
 				rows={3}
 			/>
 			{#if gen.phase === "running"}
-				<span class="dim">{gen.agent ? m.git_commit_writing_with({ agent: gen.agent }) : m.git_commit_writing()}</span>
+				<span class="dim"
+					>{gen.agent ? m.git_commit_writing_with({ agent: gen.agent }) : m.git_commit_writing()}</span
+				>
 			{:else if gen.error}
 				<span class="err">{commitErrorText(gen.error)}</span>
 			{:else if commitNotice(gen)}
@@ -366,7 +365,9 @@
 							e.key === "Enter" && (e.preventDefault(), commitMessages.generate(worktreeId, instruction))}
 					/>
 				{:else}
-					<button class="link" onclick={() => (showInstruction = true)}>{m.git_source_control_add_an_instruction()}</button>
+					<button class="link" onclick={() => (showInstruction = true)}
+						>{m.git_source_control_add_an_instruction()}</button
+					>
 				{/if}
 			{/if}
 			<div class="row-btns">
@@ -416,7 +417,12 @@
 				<span class="dim">{m.git_source_control_git_puts_a_name_and()}</span>
 				<label>
 					{m.git_new_worktree_dialog_name()}
-					<input class="instr" autocomplete="name" placeholder={m.git_source_control_ada_lovelace()} bind:value={who.name} />
+					<input
+						class="instr"
+						autocomplete="name"
+						placeholder={m.git_source_control_ada_lovelace()}
+						bind:value={who.name}
+					/>
 				</label>
 				<label>
 					{m.git_source_control_e_mail()}
@@ -463,7 +469,8 @@
 				<Button
 					size="sm"
 					variant="ghost"
-					onclick={() => toAgent(`This git command failed. Fix the cause:\n\n${failure}`)}>{m.git_source_control_fix_with_ai()}</Button
+					onclick={() => toAgent(`This git command failed. Fix the cause:\n\n${failure}`)}
+					>{m.git_source_control_fix_with_ai()}</Button
 				>
 			</div>
 		{/if}
@@ -474,12 +481,14 @@
 					<div class="group">
 						<span>{r.title} <span class="dim">{r.list.length}</span></span>
 						{#if r.group === "staged"}
-							<button title={m.git_source_control_unstage_all()} onclick={() => unstage(r.list.map((e) => e.path))}
-								><Minus size={12} /></button
+							<button
+								title={m.git_source_control_unstage_all()}
+								onclick={() => unstage(r.list.map((e) => e.path))}><Minus size={12} /></button
 							>
 						{:else if r.group !== "conflicts"}
-							<button title={m.git_source_control_stage_all()} onclick={() => stage(r.list.map((e) => e.path))}
-								><Plus size={12} /></button
+							<button
+								title={m.git_source_control_stage_all()}
+								onclick={() => stage(r.list.map((e) => e.path))}><Plus size={12} /></button
 							>
 						{/if}
 					</div>
@@ -504,15 +513,18 @@
 						<span class="code {CODE_KIND[code] ?? 'modified'}">{code}</span>
 						<PathText path={e.path} />
 						{#if r.group === "staged"}
-							<button title={m.git_source_control_unstage()} onclick={(ev) => (ev.stopPropagation(), unstage([e.path]))}
-								><Minus size={12} /></button
+							<button
+								title={m.git_source_control_unstage()}
+								onclick={(ev) => (ev.stopPropagation(), unstage([e.path]))}><Minus size={12} /></button
 							>
 						{:else if r.group !== "conflicts"}
-							<button title={m.git_source_control_discard()} onclick={(ev) => (ev.stopPropagation(), discard(e))}
-								><Undo2 size={12} /></button
+							<button
+								title={m.git_source_control_discard()}
+								onclick={(ev) => (ev.stopPropagation(), discard(e))}><Undo2 size={12} /></button
 							>
-							<button title={m.git_source_control_stage()} onclick={(ev) => (ev.stopPropagation(), stage([e.path]))}
-								><Plus size={12} /></button
+							<button
+								title={m.git_source_control_stage()}
+								onclick={(ev) => (ev.stopPropagation(), stage([e.path]))}><Plus size={12} /></button
 							>
 						{/if}
 					</div>

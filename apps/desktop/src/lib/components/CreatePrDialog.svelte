@@ -73,11 +73,18 @@
 	}
 </script>
 
-<Dialog {open} onOpenChange={(o) => !o && (pr.createFor = null)} title={m.git_create_pr_dialog_create_pull_request()} size="lg">
+<Dialog
+	{open}
+	onOpenChange={(o) => !o && (pr.createFor = null)}
+	title={m.git_create_pr_dialog_create_pull_request()}
+	size="lg"
+>
 	{#if pr.ghUnusable}
 		{#if pr.auth === "not-installed"}
 			<p><Rich parts={m.git_create_pr_dialog_cli_not_installed.parts()} tags={{ code: "code" }} /></p>
-			<Button onclick={() => api.openUrl("https://cli.github.com")}>{m.git_create_pr_dialog_install_github_cli()}</Button>
+			<Button onclick={() => api.openUrl("https://cli.github.com")}
+				>{m.git_create_pr_dialog_install_github_cli()}</Button
+			>
 		{:else}
 			<p>{m.git_create_pr_dialog_github_cli_is_not_signed()}</p>
 			<Button onclick={signIn}>{m.git_create_pr_dialog_sign_in_with_gh()}</Button>
@@ -86,7 +93,11 @@
 		<div class="form">
 			<TextField label={m.git_create_pr_dialog_title()} bind:value={title} />
 			<TextArea label={m.git_create_pr_dialog_description()} bind:value={body} rows={10} />
-			<TextField label={m.git_create_pr_dialog_base_branch()} bind:value={base} placeholder={m.git_create_pr_dialog_repository_default()} />
+			<TextField
+				label={m.git_create_pr_dialog_base_branch()}
+				bind:value={base}
+				placeholder={m.git_create_pr_dialog_repository_default()}
+			/>
 			<Checkbox bind:checked={draft} label={m.git_create_pr_dialog_draft()} />
 		</div>
 	{/if}

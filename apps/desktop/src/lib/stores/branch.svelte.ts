@@ -45,7 +45,15 @@ export function createBranchItems(q: string) {
 	const data = branchPicker.data;
 	const r = data && createRow(data, q, data.current);
 	return r
-		? [{ id: r.id, group: m.git_branch_group_create(), label: r.label, description: r.description, run: () => void pick(r) }]
+		? [
+				{
+					id: r.id,
+					group: m.git_branch_group_create(),
+					label: r.label,
+					description: r.description,
+					run: () => void pick(r),
+				},
+			]
 		: [];
 }
 

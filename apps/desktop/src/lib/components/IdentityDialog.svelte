@@ -164,7 +164,11 @@
 			{:else if tab === "icons"}
 				<div class="search">
 					<Search size={13} />
-					<input class="bare" placeholder={m.git_identity_dialog_search_icons({ count: names.length })} bind:value={query} />
+					<input
+						class="bare"
+						placeholder={m.git_identity_dialog_search_icons({ count: names.length })}
+						bind:value={query}
+					/>
 				</div>
 				<div class="grid lucides">
 					{#each shown as n (n)}
@@ -178,7 +182,9 @@
 							{#if nodes[n]}<LucideIcon iconNode={nodes[n]} size={18} />{/if}
 						</button>
 					{/each}
-					{#if names.length && !shown.length}<p class="none">{m.git_identity_dialog_no_icon_matches_query({ query })}</p>{/if}
+					{#if names.length && !shown.length}<p class="none">
+							{m.git_identity_dialog_no_icon_matches_query({ query })}
+						</p>{/if}
 				</div>
 			{:else if logo}
 				<button
@@ -187,11 +193,13 @@
 					onclick={() => (icon = { kind: "image", value: logo.path })}
 				>
 					<img src={logo.url} alt="" />
-					<span><b>{m.git_identity_dialog_use_project_logo()}</b><small class="mono">{logo.path}</small></span>
+					<span><b>{m.git_identity_dialog_use_project_logo()}</b><small class="mono">{logo.path}</small></span
+					>
 				</button>
 			{:else}
 				<p class="none">
-					<ImageIcon size={14} /> {m.git_identity_dialog_no_logo_found_in_this()}
+					<ImageIcon size={14} />
+					{m.git_identity_dialog_no_logo_found_in_this()}
 				</p>
 			{/if}
 		</div>

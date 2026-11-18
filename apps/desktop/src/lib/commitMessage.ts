@@ -99,7 +99,8 @@ export function commitNotice(s: Pick<CommitRun, "scope" | "digest">): string {
 	if (d.omitted) parts.push(m.git_commit_notice_left_out({ count: d.omitted }));
 	if (d.summarized) parts.push(m.git_commit_notice_named_only({ count: d.summarized }));
 	const omitted = list(parts, "unit");
-	if (s.scope === "all") return omitted ? m.git_commit_notice_all_with({ omitted }) : m.git_commit_notice_all();
+	if (s.scope === "all")
+		return omitted ? m.git_commit_notice_all_with({ omitted }) : m.git_commit_notice_all();
 	return omitted;
 }
 

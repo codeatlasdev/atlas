@@ -7,7 +7,10 @@
 	import { m } from "#lib/i18n/m.ts";
 </script>
 
-<Group title={m.settings_general_notification_notifications()} description={m.settings_general_notification_atlas_tells_you_when_an()}>
+<Group
+	title={m.settings_general_notification_notifications()}
+	description={m.settings_general_notification_atlas_tells_you_when_an()}
+>
 	<Row
 		id="notify"
 		label={m.settings_general_notification_show_notifications()}
@@ -19,7 +22,10 @@
 			onchange={() => agents.saveNotify()}
 		/>
 	</Row>
-	<Row label={m.settings_general_notification_play_a_sound()} description={m.settings_general_notification_add_a_short_sound_to()}>
+	<Row
+		label={m.settings_general_notification_play_a_sound()}
+		description={m.settings_general_notification_add_a_short_sound_to()}
+	>
 		<Switch
 			aria-label={m.settings_general_notification_play_a_sound()}
 			bind:checked={agents.notify.sound}

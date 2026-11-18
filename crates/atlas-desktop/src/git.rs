@@ -211,9 +211,7 @@ pub async fn git_run(
         dir.to_string_lossy().into_owned(),
     ];
     argv.extend(args);
-    let mut env = crate::shell_env::vars_json_async().await;
-    // The app matches git's own words (`gitErrors.ts`), so git speaks English whatever the machine's language is.
-    env.insert("LC_ALL".into(), "C".into());
+    let env = crate::shell_env::vars_json_async().await;
     let r = hub
         .call(
             "exec",

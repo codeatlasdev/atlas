@@ -60,7 +60,7 @@ export interface HygieneFixed {
 
 /** `1.5 GB`, `340 MB`, `12 KB`, `0 B`: binary units, one decimal from MB up, the decimal mark of the language. */
 export function bytes(n: number): string {
-	if (n < 1024) return `${formatNumber(n)} B`;
+	if (n < 1024) return `${formatNumber(n, { useGrouping: false })} B`;
 	const units = ["KB", "MB", "GB", "TB"];
 	let v = n / 1024;
 	let i = 0;
@@ -69,12 +69,12 @@ export function bytes(n: number): string {
 		i++;
 	}
 	return i === 0
-		? `${formatNumber(Math.round(v))} KB`
+		? `${formatNumber(Math.round(v), { useGrouping: false })} KB`
 		: `${formatNumber(v, { minimumFractionDigits: 1, maximumFractionDigits: 1 })} ${units[i]}`;
 }
 
 /** The kind of an orphaned process, as `atlas_core::hygiene` names it. */
-export function kindText(kind: HygieneKind): string {
+export function kindText(kind: string): string {
 	switch (kind) {
 		case "terminal":
 			return m.settings_general_hygiene_kind_terminal();
@@ -86,11 +86,13 @@ export function kindText(kind: HygieneKind): string {
 			return m.settings_general_hygiene_kind_browser();
 		case "other":
 			return m.settings_general_hygiene_kind_other();
+		default:
+			return kind;
 	}
 }
 
 /** The kind of a folder the hygiene report tracks, as `atlas_core::hygiene` names it. */
-export function dirKindText(kind: HygieneDir["kind"]): string {
+export function dirKindText(kind: string): string {
 	switch (kind) {
 		case "temp":
 			return m.settings_general_hygiene_dir_temp();
@@ -100,6 +102,8 @@ export function dirKindText(kind: HygieneDir["kind"]): string {
 			return m.settings_general_hygiene_dir_cache();
 		case "instance":
 			return m.settings_general_hygiene_dir_instance();
+		default:
+			return kind;
 	}
 }
 
@@ -122,7 +126,8 @@ export function indexedDirs(r: HygieneReport): string[] {
 export function fixSummary(r: HygieneReport): string | null {
 	const parts: string[] = [];
 	if (r.orphans.length) parts.push(m.settings_general_hygiene_todo_end({ count: r.orphans.length }));
-	if (r.freeable.bytes > 0) parts.push(m.settings_general_hygiene_todo_free({ size: bytes(r.freeable.bytes) }));
+	if (r.freeable.bytes > 0)
+		parts.push(m.settings_general_hygiene_todo_free({ size: bytes(r.freeable.bytes) }));
 	const idx = indexedDirs(r).length;
 	if (idx) parts.push(m.settings_general_hygiene_todo_spotlight({ count: idx }));
 	return parts.length ? list(parts) : null;
@@ -135,6 +140,7 @@ export function fixedText(f: HygieneFixed): string {
 		m.settings_general_hygiene_done_freed({ size: bytes(f.freed.bytes) }),
 	];
 	if (f.marked.length) parts.push(m.settings_general_hygiene_done_marked({ count: f.marked.length }));
-	if (f.survivors.length) parts.push(m.settings_general_hygiene_done_survivors({ count: f.survivors.length }));
+	if (f.survivors.length)
+		parts.push(m.settings_general_hygiene_done_survivors({ count: f.survivors.length }));
 	return list(parts, "unit");
 }

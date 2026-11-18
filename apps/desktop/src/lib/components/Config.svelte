@@ -195,7 +195,9 @@
 			<div class="row">
 				{m.settings_general_config_your_edits_are_unsaved()}
 				<Button size="sm" variant="glass" onclick={load}>{m.settings_general_config_reload()}</Button>
-				<Button size="sm" variant="ghost" onclick={() => (externalChange = false)}>{m.settings_general_config_keep_mine()}</Button>
+				<Button size="sm" variant="ghost" onclick={() => (externalChange = false)}
+					>{m.settings_general_config_keep_mine()}</Button
+				>
 			</div>
 		</Alert>
 	</div>
@@ -227,7 +229,12 @@
 	{/if}
 </div>
 
-<Dialog bind:open={diffOpen} title={m.settings_general_config_save_atlas_yaml()} description={m.settings_general_config_review_the_changes()} size="lg">
+<Dialog
+	bind:open={diffOpen}
+	title={m.settings_general_config_save_atlas_yaml()}
+	description={m.settings_general_config_review_the_changes()}
+	size="lg"
+>
 	<div class="diff ca-selectable">
 		{#each diffRows as r, i (i)}
 			<div class="row-{r.kind}">

@@ -22,7 +22,10 @@
 		{/each}
 	</svg>
 	<figcaption>
-		<Rich parts={m.settings_terminal_worktree_preview_caption.parts({ branch: p.branch })} tags={{ code: "code" }} />
+		<Rich
+			parts={m.settings_terminal_worktree_preview_caption.parts({ branch: p.branch })}
+			tags={{ code: "code" }}
+		/>
 	</figcaption>
 </figure>
 

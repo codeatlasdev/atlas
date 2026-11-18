@@ -13,6 +13,7 @@
 	"git_errors_not_repo": "Toast and panel text when a git command ran in a folder that is not a git repository (classifyGitError, kind not-repo).",
 	"git_errors_nothing_to_commit": "Git error sentence: commit with nothing staged (kind nothing-to-commit).",
 	"git_errors_other": "Generic git failure sentence for any error without its own message; git's own output is shown as the details.",
+	"git_errors_other_line": "Git error sentence for an error with no message of its own. {line} is the first line git printed, in git's own words (English); the full output is the details.",
 	"git_errors_rejected": "Git error sentence: a push was rejected as non-fast-forward (kind rejected).",
 	"git_errors_remote_access": "Git error sentence: network, address or authentication failure talking to the remote (kind remote-access)."
 }

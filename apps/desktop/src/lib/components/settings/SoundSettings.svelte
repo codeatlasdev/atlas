@@ -27,8 +27,16 @@
 {/if}
 
 <Group>
-	<Row id="sounds" label={m.settings_general_sound_play_sounds()} description={m.settings_general_sound_master_switch_for_every_atlas()}>
-		<Switch aria-label={m.settings_general_sound_play_sounds()} checked={p.enabled} onchange={(v) => set({ enabled: v })} />
+	<Row
+		id="sounds"
+		label={m.settings_general_sound_play_sounds()}
+		description={m.settings_general_sound_master_switch_for_every_atlas()}
+	>
+		<Switch
+			aria-label={m.settings_general_sound_play_sounds()}
+			checked={p.enabled}
+			onchange={(v) => set({ enabled: v })}
+		/>
 	</Row>
 	<Row
 		id="sound-volume"
@@ -64,7 +72,10 @@
 	</Row>
 </Group>
 
-<Group title={m.settings_general_sound_which_sounds()} description={m.settings_general_sound_switch_any_of_them_off()}>
+<Group
+	title={m.settings_general_sound_which_sounds()}
+	description={m.settings_general_sound_switch_any_of_them_off()}
+>
 	{#each CATEGORIES as c (c)}
 		<Row id="sound-cat-{c}" label={SPECS[c].label} description={SPECS[c].description}>
 			<div class="ctl">

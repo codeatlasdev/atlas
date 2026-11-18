@@ -69,7 +69,9 @@ export async function saveIdentity(run: GitRun, id: Identity, scope: IdentitySco
 		const r = await run(["config", ...flag, key, value]);
 		if (r.code !== 0) {
 			const output = (r.stderr || r.stdout).trim();
-			throw new Error(output ? m.git_errors_config_failed_output({ key, output }) : m.git_errors_config_failed({ key }));
+			throw new Error(
+				output ? m.git_errors_config_failed_output({ key, output }) : m.git_errors_config_failed({ key }),
+			);
 		}
 	}
 }

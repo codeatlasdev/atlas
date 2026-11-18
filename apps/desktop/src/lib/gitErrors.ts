@@ -2,8 +2,9 @@
  * What a failed git command means, in a sentence. Git's own answer to a wrong state is a wall of text (a bare
  * `git diff` outside a repository prints the whole `--no-index` usage, 100+ lines); the app showed it as a toast
  * (#505). Every failure that reaches the user goes through `classifyGitError`: a known error becomes one sentence from
- * the catalog; an unknown one gets one generic sentence. Git's own output is never the sentence, it stays available as
- * `details` (what the "Details" button shows). Pure: no Svelte, no IPC.
+ * the catalog; an unknown one is "Git failed:" and the first line git printed (its usage block is never that line,
+ * and it is cut to one sentence's length). Git's full output stays available as `details` (what the "Details" button
+ * shows). Pure: no Svelte, no IPC.
  */
 import { m } from "#lib/i18n/m.ts";
 
@@ -86,8 +87,20 @@ function stderrOf(raw: string): string {
 	return (cut < 0 ? text : text.slice(cut + 2)).trim();
 }
 
+const FIRST_LINE_MAX = 200;
+
 export function classifyGitError(raw: string): GitProblem {
 	const body = stderrOf(raw);
-	for (const [kind, re, message] of RULES) if (re.test(body)) return { kind, message: message(), details: body };
-	return { kind: "other", message: m.git_errors_other(), details: body };
+	for (const [kind, re, message] of RULES)
+		if (re.test(body)) return { kind, message: message(), details: body };
+	// Unknown: the first line is the cause, a usage block is never one.
+	const lines = body.split("\n");
+	const usage = lines.findIndex((l) => /^usage:/i.test(l));
+	const head = (usage < 0 ? lines : lines.slice(0, usage)).find((l) => l.trim()) ?? "";
+	const line = head
+		.trim()
+		.replace(/^(?:fatal|error|warning):\s*/i, "")
+		.slice(0, FIRST_LINE_MAX);
+	if (!line) return { kind: "other", message: m.git_errors_other(), details: body };
+	return { kind: "other", message: m.git_errors_other_line({ line }), details: body === line ? "" : body };
 }

@@ -195,9 +195,6 @@
 {"ratchet":"svelte","file":"apps/desktop/src/lib/components/MobileSettings.svelte","count":3}
 {"ratchet":"svelte","file":"apps/desktop/src/lib/components/NewWorktreeDialog.svelte","count":0}
 {"ratchet":"svelte","file":"apps/desktop/src/lib/components/NotRepoState.svelte","count":0}
-{"ratchet":"svelte","file":"apps/desktop/src/lib/components/PairQr.svelte","count":4}
-{"ratchet":"svelte","file":"apps/desktop/src/lib/components/NewWorktreeDialog.svelte","count":16}
-{"ratchet":"svelte","file":"apps/desktop/src/lib/components/NotRepoState.svelte","count":3}
 {"ratchet":"svelte","file":"apps/desktop/src/lib/components/PairQr.svelte","count":0}
 {"ratchet":"svelte","file":"apps/desktop/src/lib/components/Palette.svelte","count":4}
 {"ratchet":"svelte","file":"apps/desktop/src/lib/components/PointerMenu.svelte","count":1}
@@ -370,11 +367,6 @@
 {"ratchet":"svelte","file":"apps/desktop/src/lib/shell/WindowControls.svelte","count":5}
 {"ratchet":"svelte","file":"apps/desktop/src/lib/shell/WorkspaceRail.svelte","count":4}
 {"ratchet":"svelte","file":"apps/desktop/src/lib/viewers/FallbackViewer.svelte","count":0}
-{"ratchet":"svelte","file":"apps/desktop/src/lib/viewers/ImageViewer.svelte","count":9}
-{"ratchet":"svelte","file":"apps/desktop/src/lib/viewers/ViewerActions.svelte","count":0}
-{"ratchet":"svelte","file":"apps/desktop/src/lib/viewers/pdf/PdfRail.svelte","count":3}
-{"ratchet":"svelte","file":"apps/desktop/src/lib/viewers/pdf/PdfStatus.svelte","count":1}
-{"ratchet":"svelte","file":"apps/desktop/src/lib/viewers/pdf/PdfToolbar.svelte","count":17}
 {"ratchet":"svelte","file":"apps/desktop/src/lib/viewers/ImageViewer.svelte","count":0}
 {"ratchet":"svelte","file":"apps/desktop/src/lib/viewers/ViewerActions.svelte","count":0}
 {"ratchet":"svelte","file":"apps/desktop/src/lib/viewers/pdf/PdfRail.svelte","count":0}

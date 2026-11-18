@@ -13,6 +13,7 @@
 	"git_errors_not_repo": "This folder is not a git repository.",
 	"git_errors_nothing_to_commit": "Nothing to commit. Stage some changes first.",
 	"git_errors_other": "Git could not finish that command. See the details for what it printed.",
+	"git_errors_other_line": "Git failed: {line}",
 	"git_errors_rejected": "The remote has commits you don't have. Pull, then push again.",
 	"git_errors_remote_access": "Git could not reach the remote or sign in to it. Check the address and your credentials."
 }

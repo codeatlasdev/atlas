@@ -70,7 +70,11 @@
 
 <div class="shortcuts">
 	<div class="bar">
-		<SearchField placeholder={m.settings_general_shortcut_search_commands()} aria-label={m.settings_general_shortcut_search_commands()} bind:value={query} />
+		<SearchField
+			placeholder={m.settings_general_shortcut_search_commands()}
+			aria-label={m.settings_general_shortcut_search_commands()}
+			bind:value={query}
+		/>
 		<Button variant="ghost" size="sm" disabled={!customized} onclick={() => resetKeymap()}>
 			{#snippet leading()}<Undo2 size={13} />{/snippet}
 			{m.settings_general_shortcut_reset_all_to_defaults()}
@@ -89,7 +93,11 @@
 				</div>
 				<div class="keys">
 					{#if recording === c.id}
-						<span class="prompt">{m.settings_general_shortcut_press_the_new_shortcut()} <Kbd>{kbd("escape")}</Kbd> {m.settings_general_shortcut_to_cancel()}</span>
+						<span class="prompt"
+							>{m.settings_general_shortcut_press_the_new_shortcut()}
+							<Kbd>{kbd("escape")}</Kbd>
+							{m.settings_general_shortcut_to_cancel()}</span
+						>
 					{:else}
 						<button
 							class="keybtn"
@@ -97,12 +105,16 @@
 							onclick={() => (recording = c.id)}
 						>
 							{#if keys.length}{#each keys as k (k)}<Kbd>{k}</Kbd>{/each}{:else}<span class="none"
-									>{isDefault(c.id) ? m.settings_general_shortcut_none() : m.settings_general_shortcut_add()}</span
+									>{isDefault(c.id)
+										? m.settings_general_shortcut_none()
+										: m.settings_general_shortcut_add()}</span
 								>{/if}
 						</button>
 						{#if keys.length}
-							<button class="x" aria-label={m.settings_general_shortcut_remove_this_shortcut()} onclick={() => clear(c.id)}
-								><X size={12} /></button
+							<button
+								class="x"
+								aria-label={m.settings_general_shortcut_remove_this_shortcut()}
+								onclick={() => clear(c.id)}><X size={12} /></button
 							>
 						{/if}
 					{/if}

@@ -13,6 +13,7 @@
 	"git_errors_not_repo": "Esta pasta não é um repositório git.",
 	"git_errors_nothing_to_commit": "Não há nada para fazer commit. Faça stage de alguma alteração antes.",
 	"git_errors_other": "O git não conseguiu concluir esse comando. Veja nos detalhes o que ele imprimiu.",
+	"git_errors_other_line": "O git falhou: {line}",
 	"git_errors_rejected": "O remote tem commits que você não tem. Faça pull e depois push de novo.",
 	"git_errors_remote_access": "O git não conseguiu acessar o remote nem entrar nele. Confira o endereço e suas credenciais."
 }

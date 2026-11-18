@@ -146,7 +146,10 @@
 		/>
 	</Row>
 	{#if branchPrefix === "custom"}
-		<Row label={m.settings_general_workspace_custom_prefix()} description={m.settings_general_workspace_text_to_put_before_each()}>
+		<Row
+			label={m.settings_general_workspace_custom_prefix()}
+			description={m.settings_general_workspace_text_to_put_before_each()}
+		>
 			<TextInput
 				label={m.settings_general_workspace_custom_prefix()}
 				placeholder={m.settings_general_workspace_team()}
@@ -185,7 +188,10 @@
 		/>
 	</Row>
 	{#if auto.mode === "idle"}
-		<Row label={m.settings_general_workspace_idle_for_days()} description={m.settings_general_workspace_days_without_agent_activity_before()}>
+		<Row
+			label={m.settings_general_workspace_idle_for_days()}
+			description={m.settings_general_workspace_days_without_agent_activity_before()}
+		>
 			<TextInput
 				label={m.settings_general_workspace_idle_for_days()}
 				value={String(auto.days)}
@@ -197,8 +203,13 @@
 		</Row>
 	{/if}
 	{#each cleaned as c (c.at + c.name)}
-		<Row label={c.name} description={m.settings_general_workspace_cleaned({ when: ago(c.at), branch: c.branch })}>
-			<Button size="sm" variant="glass" onclick={() => restore(c)}>{m.settings_general_workspace_restore()}</Button>
+		<Row
+			label={c.name}
+			description={m.settings_general_workspace_cleaned({ when: ago(c.at), branch: c.branch })}
+		>
+			<Button size="sm" variant="glass" onclick={() => restore(c)}
+				>{m.settings_general_workspace_restore()}</Button
+			>
 		</Row>
 	{/each}
 </Group>
@@ -230,7 +241,9 @@
 				<span>{size(s.kb)}</span>
 				<span>{s.last_commit ? ago(s.last_commit * 1000) : "-"}</span>
 				<span>
-					{s.dirty ? m.settings_general_workspace_state_dirty() : m.settings_general_workspace_state_clean()}{#if s.ahead !== null}
+					{s.dirty
+						? m.settings_general_workspace_state_dirty()
+						: m.settings_general_workspace_state_clean()}{#if s.ahead !== null}
 						· ↑{s.ahead} ↓{s.behind}{/if}
 				</span>
 			{/if}

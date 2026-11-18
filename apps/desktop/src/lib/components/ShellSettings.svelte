@@ -9,28 +9,13 @@
 	import Row from "#lib/settings/Row.svelte";
 	import { m } from "#lib/i18n/m.ts";
 	import Rich from "#lib/i18n/Rich.svelte";
+	import { sourceText } from "#lib/settings/shellSource.ts";
 
 	let info = $state<ShellInfo | null>(null);
 	let busy = $state(false);
 	let showPath = $state(false);
 	let custom = $state("");
 	let error = $state<string | null>(null);
-
-	/** Why this shell was chosen, as `atlas_core::login_env::resolve_shell` names it (`ShellInfo.probe.source`). */
-	function sourceText(source: string): string {
-		switch (source) {
-			case "settings":
-				return m.settings_terminal_shell_source_settings();
-			case "account":
-				return m.settings_terminal_shell_source_account();
-			case "$SHELL":
-				return m.settings_terminal_shell_source_env();
-			case "default":
-				return m.settings_terminal_shell_source_default();
-			default:
-				return source;
-		}
-	}
 
 	$effect(() => {
 		api
@@ -48,7 +33,8 @@
 		busy = true;
 		try {
 			info = await api.shellSet(shell);
-			if (info.probe?.error) toast.error(m.settings_terminal_shell_could_not_start_toast({ shell: info.probe.shell }));
+			if (info.probe?.error)
+				toast.error(m.settings_terminal_shell_could_not_start_toast({ shell: info.probe.shell }));
 			else toast.success(m.settings_terminal_shell_reloaded());
 		} catch (e) {
 			toast.error(errText(e));
@@ -64,7 +50,10 @@
 	<div class="muted"><Spinner size={12} /> {m.settings_terminal_shell_reading_your_shell()}</div>
 {:else}
 	<Group>
-		<Row label={m.settings_terminal_shell_shell()} description={m.settings_terminal_shell_atlas_runs_this_to_learn()}>
+		<Row
+			label={m.settings_terminal_shell_shell()}
+			description={m.settings_terminal_shell_atlas_runs_this_to_learn()}
+		>
 			<div class="select">
 				<Select
 					size="sm"
@@ -87,7 +76,10 @@
 				{m.settings_terminal_shell_reload_now()}
 			</Button>
 		</Row>
-		<Row label={m.settings_terminal_shell_other_shell()} description={m.settings_terminal_shell_full_path_to_a_shell()}>
+		<Row
+			label={m.settings_terminal_shell_other_shell()}
+			description={m.settings_terminal_shell_full_path_to_a_shell()}
+		>
 			<form
 				class="other"
 				onsubmit={(e) => {
@@ -115,12 +107,18 @@
 			{#if info.probe?.error}
 				<span class="st bad"
 					><X size={13} />
-					<Rich parts={m.settings_terminal_shell_status_failed.parts({ shell: info.probe.shell })} tags={{ mono }} /></span
+					<Rich
+						parts={m.settings_terminal_shell_status_failed.parts({ shell: info.probe.shell })}
+						tags={{ mono }}
+					/></span
 				>
 			{:else if info.probe}
 				<span class="st ok"
 					><Check size={13} />
-					<Rich parts={m.settings_terminal_shell_status_using.parts({ shell: info.probe.shell })} tags={{ mono }} /></span
+					<Rich
+						parts={m.settings_terminal_shell_status_using.parts({ shell: info.probe.shell })}
+						tags={{ mono }}
+					/></span
 				>
 				<span class="muted"
 					><Rich
@@ -146,7 +144,9 @@
 	<Group>
 		<div class="ghead">
 			<span>{m.settings_terminal_shell_tools_your_projects_can_find()}</span>
-			<span class="muted">{m.settings_terminal_shell_found_of_length_found_on({ found, length: info.tools.length })}</span>
+			<span class="muted"
+				>{m.settings_terminal_shell_found_of_length_found_on({ found, length: info.tools.length })}</span
+			>
 		</div>
 		<div class="tools">
 			{#each info.tools as [tool, path] (tool)}
@@ -155,7 +155,9 @@
 						>{#if path}<Check size={12} />{:else}<X size={12} />{/if}</span
 					>
 					<span class="tname">{tool}</span>
-					<span class="tpath mono" title={path ?? ""}>{path ? tilde(path) : m.settings_terminal_shell_not_found()}</span>
+					<span class="tpath mono" title={path ?? ""}
+						>{path ? tilde(path) : m.settings_terminal_shell_not_found()}</span
+					>
 				</div>
 			{/each}
 		</div>

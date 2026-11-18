@@ -176,8 +176,14 @@
 	{#if !v}
 		<div class="pad">
 			{#if failed}
-				<EmptyState icon={CircleAlert} title={m.git_pr_tab_could_not_read_the_repository()} description={failed} bare>
-					{#snippet actions()}<Button size="sm" onclick={refresh}>{m.git_pr_tab_try_again()}</Button>{/snippet}
+				<EmptyState
+					icon={CircleAlert}
+					title={m.git_pr_tab_could_not_read_the_repository()}
+					description={failed}
+					bare
+				>
+					{#snippet actions()}<Button size="sm" onclick={refresh}>{m.git_pr_tab_try_again()}</Button
+						>{/snippet}
 				</EmptyState>
 			{:else if !repo || repo.kind === "pr"}
 				{#if loading}<Spinner />{/if}
@@ -210,7 +216,8 @@
 			{/if}
 			<span class="dim">{v.headRefName} → {v.baseRefName} · {v.author.login}</span>
 			<span class="spacer"></span>
-			<button class="icon" title={m.git_diff_view_refresh()} onclick={refresh}><RefreshCw size={13} /></button>
+			<button class="icon" title={m.git_diff_view_refresh()} onclick={refresh}><RefreshCw size={13} /></button
+			>
 			<button class="icon" title={m.git_pr_tab_open_on_github()} onclick={() => api.openUrl(v!.url)}
 				><ExternalLink size={13} /></button
 			>
@@ -219,7 +226,8 @@
 					<Button
 						size="sm"
 						variant="ghost"
-						onclick={() => pr.run(worktreeId, ["pr", "ready", String(v!.number)], m.git_github_marked_ready())}
+						onclick={() =>
+							pr.run(worktreeId, ["pr", "ready", String(v!.number)], m.git_github_marked_ready())}
 						>{m.git_pr_tab_mark_ready()}</Button
 					>
 				{/if}
@@ -227,7 +235,8 @@
 					{#snippet trigger()}<span class="merge">{m.git_pr_tab_merge()}</span>{/snippet}
 					{#each [["--squash", m.git_github_merge_squash()], ["--merge", m.git_github_merge_commit()], ["--rebase", m.git_github_merge_rebase()]] as [flag, label] (flag)}
 						<DropdownMenuItem
-							onclick={() => pr.run(worktreeId, ["pr", "merge", String(v!.number), flag], m.git_github_merged())}
+							onclick={() =>
+								pr.run(worktreeId, ["pr", "merge", String(v!.number), flag], m.git_github_merged())}
 							>{label}</DropdownMenuItem
 						>
 					{/each}
@@ -263,7 +272,11 @@
 						size="sm"
 						disabled={!reply.trim()}
 						onclick={async () => {
-							await pr.run(worktreeId, ["pr", "comment", String(v!.number), "--body", reply], m.git_github_commented());
+							await pr.run(
+								worktreeId,
+								["pr", "comment", String(v!.number), "--body", reply],
+								m.git_github_commented(),
+							);
 							reply = "";
 						}}>{m.git_pr_tab_comment()}</Button
 					>

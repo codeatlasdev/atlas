@@ -53,7 +53,12 @@
 
 		<div class="pane" bind:this={paneEl}>
 			<div class="close">
-				<IconButton variant="text" size="sm" aria-label={m.settings_general_close_settings()} onclick={() => (u.open = false)}>
+				<IconButton
+					variant="text"
+					size="sm"
+					aria-label={m.settings_general_close_settings()}
+					onclick={() => (u.open = false)}
+				>
 					<X size={15} />
 				</IconButton>
 			</div>

@@ -1,0 +1,21 @@
+{
+	"crew_onboarding_install_browsers_detail": "Chromium e WebKit, para as capturas de tela do trabalho de interface.",
+	"crew_onboarding_install_browsers_label": "Instalando os navegadores de captura",
+	"crew_onboarding_install_check_detail": "Examina o sistema, o systemd e o sudo. Não altera nada.",
+	"crew_onboarding_install_check_label": "Verificando o servidor",
+	"crew_onboarding_install_checklist_idle_detail": "Cerca de dois minutos. Nada muda no servidor até a verificação passar.",
+	"crew_onboarding_install_checklist_idle_title": "Pronto quando você estiver",
+	"crew_onboarding_install_checklist_install_progress": "Progresso da instalação",
+	"crew_onboarding_install_done_detail": "Adiciona o servidor à sua lista.",
+	"crew_onboarding_install_done_label": "Conectando",
+	"crew_onboarding_install_install_detail": "Baixa o Atlas no servidor.",
+	"crew_onboarding_install_install_label": "Instalando o Atlas",
+	"crew_onboarding_install_service_detail": "O Atlas roda como um serviço do systemd e reinicia sozinho.",
+	"crew_onboarding_install_service_label": "Iniciando o serviço",
+	"crew_onboarding_install_signin_detail": "Abre uma conexão SSH com o servidor.",
+	"crew_onboarding_install_signin_label": "Entrando",
+	"crew_onboarding_install_ssh_detail": "Permite que este computador se conecte a esse usuário.",
+	"crew_onboarding_install_ssh_label": "Configurando o acesso SSH",
+	"crew_onboarding_install_user_detail": "Um usuário separado, com o qual o seu crew roda.",
+	"crew_onboarding_install_user_label": "Criando o usuário do serviço"
+}

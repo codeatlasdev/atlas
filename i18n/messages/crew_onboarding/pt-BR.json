@@ -1,0 +1,61 @@
+{
+	"crew_onboarding_api_key_not_recognized": "A chave foi salva, mas o agente ainda não a reconhece. Tente o login interativo.",
+	"crew_onboarding_atlas_crew_setup": "Configuração do Atlas Crew",
+	"crew_onboarding_check_again": "Verificar novamente",
+	"crew_onboarding_connecting": "Conectando…",
+	"crew_onboarding_docs": "Documentação",
+	"crew_onboarding_key_label_claude": "Chave de API da Anthropic (opcional)",
+	"crew_onboarding_key_label_codex": "Chave de API da OpenAI",
+	"crew_onboarding_key_label_omp": "Chave do OpenRouter ou da OpenAI",
+	"crew_onboarding_key_label_opencode": "Chave de API do provedor",
+	"crew_onboarding_paste_key_claude": "Cole a sua chave de API da Anthropic (opcional)",
+	"crew_onboarding_paste_key_codex": "Cole a sua chave de API da OpenAI",
+	"crew_onboarding_paste_key_default": "Cole a sua chave de API",
+	"crew_onboarding_paste_key_omp": "Cole a sua chave do OpenRouter ou da OpenAI",
+	"crew_onboarding_paste_key_opencode": "Cole a sua chave de API do provedor",
+	"crew_onboarding_pick_key_title": "Escolher uma chave SSH privada",
+	"crew_onboarding_primary_add_crew_server": "Adicionar crew server",
+	"crew_onboarding_primary_back_to_engines": "Voltar aos engines",
+	"crew_onboarding_primary_engine_not_ready": "{engine} ainda não está pronto no seu crew server ({status}). Volte e conclua.",
+	"crew_onboarding_primary_installing": "Instalando…",
+	"crew_onboarding_primary_not_checked": "não verificado",
+	"crew_onboarding_primary_open_chat": "Abrir chat",
+	"crew_onboarding_primary_pick_engine_back": "Volte e escolha um engine.",
+	"crew_onboarding_primary_pick_engine_reason": "Clique em um engine para instalá-lo no servidor e entrar.",
+	"crew_onboarding_ready_hero_crewmate_name": "Meu primeiro crewmate",
+	"crew_onboarding_ready_hero_greeting": "Oi! No que vamos trabalhar primeiro?",
+	"crew_onboarding_ready_hero_online": "Online",
+	"crew_onboarding_ready_hero_online_caption": "está online no seu servidor.",
+	"crew_onboarding_skip": "Pular",
+	"crew_onboarding_ssh_host_picker_connects": "Conecta como o comando {command}.",
+	"crew_onboarding_ssh_host_picker_connects_with_key": "Conecta como o comando {command}, com a chave {key}.",
+	"crew_onboarding_ssh_host_picker_empty": "Nenhum servidor corresponde: digite o endereço abaixo",
+	"crew_onboarding_ssh_host_picker_from_your_ssh_config": "Do seu ~/.ssh/config",
+	"crew_onboarding_ssh_host_picker_placeholder": [
+		{
+			"declarations": [
+				"input count",
+				"local countExact = count",
+				"local countPlural = count: plural"
+			],
+			"selectors": [
+				"countExact",
+				"countPlural"
+			],
+			"match": {
+				"countExact=0, countPlural=*": "Escolher um servidor",
+				"countExact=*, countPlural=one": "Escolher o servidor",
+				"countExact=*, countPlural=*": "Escolher um dos {count} servidores"
+			}
+		}
+	],
+	"crew_onboarding_ssh_host_picker_search": "Pesquisar seus servidores",
+	"crew_onboarding_story_approval_text": "Permita ou negue neste computador, no celular ou no Telegram.",
+	"crew_onboarding_story_approval_title": "Ele pergunta antes de qualquer coisa arriscada",
+	"crew_onboarding_story_order_text": "Escreva o que você quer, como numa mensagem.",
+	"crew_onboarding_story_order_title": "Você dá a ordem",
+	"crew_onboarding_story_results_text": "Cada passo fica no log, pronto para ler.",
+	"crew_onboarding_story_results_title": "Você acorda com resultados",
+	"crew_onboarding_story_server_text": "A noite toda, mesmo com este computador em repouso.",
+	"crew_onboarding_story_server_title": "Ele trabalha no seu servidor"
+}

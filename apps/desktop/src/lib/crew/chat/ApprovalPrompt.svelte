@@ -8,6 +8,7 @@
 	import type { PendingApproval } from "#lib/crew.ts";
 	import { embedIn, msgIn } from "#lib/crew/motion.ts";
 	import { fmtTime, formatApprovalInput } from "./taskView.ts";
+	import { m } from "#lib/i18n/m.ts";
 
 	interface Props {
 		approval: PendingApproval;
@@ -20,15 +21,22 @@
 
 {#if answered}
 	<div class="approval-answered" in:msgIn>
-		<Check size={12} aria-hidden="true" /> Allowed by you · {fmtTime(Date.now())}
+		<Check size={12} aria-hidden="true" />
+		{m.crew_chat_approval_prompt_allowed_by_you({ time: fmtTime(Date.now()) })}
 	</div>
 {:else}
 	<div class="approval-bubble" role="alert" in:embedIn>
-		<div class="approval-tool">Wants to run <strong>{pa.tool_name}</strong></div>
+		<div class="approval-tool">
+			{m.crew_chat_approval_prompt_wants_to_run()} <strong>{pa.tool_name}</strong>
+		</div>
 		<pre class="approval-input">{formatApprovalInput(pa.tool_name ?? "", pa.tool_input)}</pre>
 		<div class="approval-btns">
-			<Button size="sm" variant="ghost" onclick={() => onanswer(pa.pane_key, pa.req, false)}>Deny</Button>
-			<Button size="sm" onclick={() => onanswer(pa.pane_key, pa.req, true)}>Allow</Button>
+			<Button size="sm" variant="ghost" onclick={() => onanswer(pa.pane_key, pa.req, false)}
+				>{m.crew_chat_approval_prompt_deny()}</Button
+			>
+			<Button size="sm" onclick={() => onanswer(pa.pane_key, pa.req, true)}
+				>{m.crew_chat_approval_prompt_allow()}</Button
+			>
 		</div>
 	</div>
 {/if}

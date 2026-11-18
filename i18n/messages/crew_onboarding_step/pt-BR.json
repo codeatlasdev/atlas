@@ -1,0 +1,17 @@
+{
+	"crew_onboarding_step_connect_body": "Um servidor Linux acessível por SSH, com systemd e sudo. A configuração leva cerca de dois minutos.",
+	"crew_onboarding_step_connect_headline": "Adicionar um crew server",
+	"crew_onboarding_step_engine_body": "Escolha a IA que o seu crewmate vai usar. Clique em um engine para instalá-lo no servidor e entrar; leva cerca de um minuto e usa a sua própria assinatura ou chave de API.",
+	"crew_onboarding_step_engine_headline": "Escolher um engine",
+	"crew_onboarding_step_how_body": "É isso que um crewmate faz enquanto você está fora.",
+	"crew_onboarding_step_how_headline": "Uma noite com seus crewmates",
+	"crew_onboarding_step_how_label": "Etapa 2 de 2",
+	"crew_onboarding_step_intro_body": "Crewmates são agentes de IA que trabalham em um servidor seu.",
+	"crew_onboarding_step_intro_bullet_asks": "Pergunta antes de qualquer coisa arriscada.",
+	"crew_onboarding_step_intro_bullet_server": "Roda no seu próprio servidor Linux. Sem conta.",
+	"crew_onboarding_step_intro_bullet_sleep": "Continua trabalhando enquanto este computador dorme.",
+	"crew_onboarding_step_intro_headline": "Conheça o Atlas Crew",
+	"crew_onboarding_step_intro_label": "Etapa 1 de 2",
+	"crew_onboarding_step_ready_body": "Abra um chat para enviar a primeira tarefa. Você pode adicionar mais crewmates e personalizá-los no workspace.",
+	"crew_onboarding_step_ready_headline": "Seu primeiro crewmate está pronto"
+}

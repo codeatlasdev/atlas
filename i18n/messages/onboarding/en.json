@@ -53,7 +53,7 @@
 	"onboarding_help_settings_shortcuts_label": "Shortcut cheat sheet",
 	"onboarding_help_settings_show_checklist": "Show the card",
 	"onboarding_help_settings_start_over": "Start over",
-	"onboarding_help_settings_tour_description": "A two-minute walk through spaces, the header, the side panel and search.",
+	"onboarding_help_settings_tour_description": "A one-minute walk through spaces, the header, the side panel and search.",
 	"onboarding_help_settings_tour_label": "Guided tour",
 	"onboarding_hero_skip_for_now": "Skip for now",
 	"onboarding_phases_add_a_folder": "Add a folder…",
@@ -212,7 +212,7 @@
 			}
 		}
 	],
-	"onboarding_phases_start_tour": "Take a 30-second look around",
+	"onboarding_phases_start_tour": "Take a one-minute look around",
 	"onboarding_phases_starting_progress": "{up} of {total} services up",
 	"onboarding_phases_starting_your_stack": "Starting your stack…",
 	"onboarding_phases_stop": "Stop",

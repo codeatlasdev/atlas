@@ -355,7 +355,7 @@
 {"ratchet":"svelte","file":"apps/desktop/src/lib/settings/theme/GhosttyOffer.svelte","count":0}
 {"ratchet":"svelte","file":"apps/desktop/src/lib/settings/theme/ImportDialog.svelte","count":0}
 {"ratchet":"svelte","file":"apps/desktop/src/lib/settings/theme/PackageImport.svelte","count":0}
-{"ratchet":"svelte","file":"apps/desktop/src/lib/settings/theme/ThemeCard.svelte","count":1}
+{"ratchet":"svelte","file":"apps/desktop/src/lib/settings/theme/ThemeCard.svelte","count":0}
 {"ratchet":"svelte","file":"apps/desktop/src/lib/settings/theme/ThemeGrid.svelte","count":0}
 {"ratchet":"svelte","file":"apps/desktop/src/lib/settings/theme/ThemePreview.svelte","count":0}
 {"ratchet":"svelte","file":"apps/desktop/src/lib/shell/CornerStack.svelte","count":2}

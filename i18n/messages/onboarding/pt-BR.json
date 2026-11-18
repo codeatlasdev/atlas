@@ -53,7 +53,7 @@
 	"onboarding_help_settings_shortcuts_label": "Guia de atalhos",
 	"onboarding_help_settings_show_checklist": "Mostrar o card",
 	"onboarding_help_settings_start_over": "Recomeçar",
-	"onboarding_help_settings_tour_description": "Um tour de dois minutos por espaços, cabeçalho, painel lateral e pesquisa.",
+	"onboarding_help_settings_tour_description": "Um tour de um minuto por espaços, cabeçalho, painel lateral e pesquisa.",
 	"onboarding_help_settings_tour_label": "Tour guiado",
 	"onboarding_hero_skip_for_now": "Pular por enquanto",
 	"onboarding_phases_add_a_folder": "Adicionar uma pasta…",
@@ -212,7 +212,7 @@
 			}
 		}
 	],
-	"onboarding_phases_start_tour": "Dar uma olhada de 30 segundos",
+	"onboarding_phases_start_tour": "Dar uma olhada de um minuto",
 	"onboarding_phases_starting_progress": "{up} de {total} serviços no ar",
 	"onboarding_phases_starting_your_stack": "Iniciando sua stack…",
 	"onboarding_phases_stop": "Parar",

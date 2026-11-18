@@ -98,7 +98,9 @@
 			>
 			{#if theme.source === "user"}
 				<DropdownMenuSeparator />
-				<DropdownMenuItem variant="destructive" onclick={onremove}>Remove…</DropdownMenuItem>
+				<DropdownMenuItem variant="destructive" onclick={onremove}
+					>{m.common_action_delete()}</DropdownMenuItem
+				>
 			{/if}
 		</DropdownMenu>
 	</div>

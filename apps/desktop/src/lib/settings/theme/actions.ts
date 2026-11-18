@@ -61,7 +61,7 @@ export const removeTheme = (name: string) =>
 	guard(async () => {
 		const ok = await confirmDialog(m.settings_theme_actions_remove_title({ name }), {
 			description: m.settings_theme_actions_remove_description(),
-			confirmLabel: m.common_action_remove(),
+			confirmLabel: m.common_action_delete(),
 			destructive: true,
 		});
 		if (ok) await themes.remove(name);

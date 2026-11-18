@@ -12,7 +12,7 @@
 	"settings_theme_actions_filter_atlas": "Atlas theme",
 	"settings_theme_actions_filter_ghostty": "Ghostty config",
 	"settings_theme_actions_remove_description": "Deletes its file from your themes folder.",
-	"settings_theme_actions_remove_title": "Remove {name}?",
+	"settings_theme_actions_remove_title": "Delete {name}?",
 	"settings_theme_actions_save_title": "Save {name}",
 	"settings_theme_actions_saved": "Saved {file}",
 	"settings_theme_card_byline": "by Zeno Rocha & Luxonauta",

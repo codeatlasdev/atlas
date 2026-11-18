@@ -12,7 +12,7 @@
 	"settings_theme_actions_filter_atlas": "Tema do Atlas",
 	"settings_theme_actions_filter_ghostty": "Configuração do Ghostty",
 	"settings_theme_actions_remove_description": "Exclui o arquivo do tema da sua pasta de temas.",
-	"settings_theme_actions_remove_title": "Remover {name}?",
+	"settings_theme_actions_remove_title": "Excluir {name}?",
 	"settings_theme_actions_save_title": "Salvar {name}",
 	"settings_theme_actions_saved": "{file} salvo",
 	"settings_theme_card_byline": "por Zeno Rocha e Luxonauta",

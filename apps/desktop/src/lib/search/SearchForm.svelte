@@ -115,12 +115,14 @@
 	{#if s.phase === "running"}
 		<Spinner size="small" /> {m.search_form_searching()}
 	{:else if s.phase === "done"}
-		{m.search_form_status({
-			matches: s.matches,
-			files: s.files.length,
-			matchesLabel: formatNumber(s.matches) + more,
-			filesLabel: formatNumber(s.files.length) + more,
-		})}
+		<span class="count"
+			>{m.search_form_status({
+				matches: s.matches,
+				files: s.files.length,
+				matchesLabel: formatNumber(s.matches) + more,
+				filesLabel: formatNumber(s.files.length) + more,
+			})}</span
+		>
 		{#if s.matches}<span class="took">{m.search_form_took({ ms: s.tookMs, tool: s.tool })}</span>{/if}
 	{:else if s.phase === "error"}
 		<span class="err">{s.error}</span>
@@ -222,15 +224,22 @@
 	}
 	.status {
 		display: flex;
+		flex-wrap: wrap;
 		align-items: center;
-		gap: 6px;
+		column-gap: 6px;
+		row-gap: 0;
 		min-height: 20px;
 		padding: 0 12px 4px;
 		font-size: 11px;
 		color: var(--ca-text-secondary);
 	}
+	.count {
+		min-width: 0;
+	}
+	/* The timing never breaks in the middle ("26 ms · rg"): when a longer language leaves no room, it drops to its own line. */
 	.took {
 		margin-left: auto;
+		white-space: nowrap;
 		color: var(--ca-text-secondary);
 	}
 	.err {

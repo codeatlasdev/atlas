@@ -1,9 +1,9 @@
 {
 	"cmd_deploy_ctx_bad_app": "o nome do projeto '{app}' não é [a-z0-9-]+: defina deploy.app",
-	"cmd_deploy_ctx_multiple_targets": "há vários targets de deploy ({known}): informe um",
+	"cmd_deploy_ctx_multiple_targets": "há vários alvos de deploy ({known}): informe um",
 	"cmd_deploy_ctx_no_atlas_yaml": "nenhum atlas.yaml encontrado em {dir} nem nas pastas acima",
 	"cmd_deploy_ctx_no_deploy_section": "o atlas.yaml não tem a seção deploy:",
-	"cmd_deploy_ctx_unknown_target": "target de deploy '{target}' desconhecido (existentes: {known})",
+	"cmd_deploy_ctx_unknown_target": "alvo de deploy '{target}' desconhecido (disponíveis: {known})",
 	"cmd_deploy_dry_driver": "driver:   {path}",
 	"cmd_deploy_dry_release": "release:  {id}",
 	"cmd_deploy_dry_sha256": "sha256:   {sha256}",
@@ -56,8 +56,8 @@
 	],
 	"cmd_deploy_guard_delta_same": "+0 commits (mesmo commit)",
 	"cmd_deploy_guard_delta_unknown": "base desconhecida neste repositório",
-	"cmd_deploy_guard_fetching": "o commit {deployed} que está em produção não existe neste repositório: git fetch origin",
-	"cmd_deploy_guard_read_host_failed": "não foi possível ler a release em produção em {host}: {error}",
+	"cmd_deploy_guard_fetching": "o commit publicado {deployed} não está neste repositório: git fetch origin",
+	"cmd_deploy_guard_read_host_failed": "não foi possível ler a release publicada em {host}: {error}",
 	"cmd_deploy_guard_refuse_diverged": [
 		{
 			"declarations": [
@@ -68,8 +68,8 @@
 				"behindPlural"
 			],
 			"match": {
-				"behindPlural=one": "O HEAD {head} e o {id} @ {sha} em produção divergiram (merge-base {base}): +{ahead} / -{behind} commit.",
-				"behindPlural=*": "O HEAD {head} e o {id} @ {sha} em produção divergiram (merge-base {base}): +{ahead} / -{behind} commits."
+				"behindPlural=one": "O HEAD {head} e a release publicada {id} @ {sha} divergiram (merge-base {base}): +{ahead} / -{behind} commit.",
+				"behindPlural=*": "O HEAD {head} e a release publicada {id} @ {sha} divergiram (merge-base {base}): +{ahead} / -{behind} commits."
 			}
 		}
 	],
@@ -83,8 +83,8 @@
 				"behindPlural"
 			],
 			"match": {
-				"behindPlural=one": "O HEAD {head} e o {id} @ {sha} em produção divergiram (sem ancestral comum): +{ahead} / -{behind} commit.",
-				"behindPlural=*": "O HEAD {head} e o {id} @ {sha} em produção divergiram (sem ancestral comum): +{ahead} / -{behind} commits."
+				"behindPlural=one": "O HEAD {head} e a release publicada {id} @ {sha} divergiram (sem ancestral comum): +{ahead} / -{behind} commit.",
+				"behindPlural=*": "O HEAD {head} e a release publicada {id} @ {sha} divergiram (sem ancestral comum): +{ahead} / -{behind} commits."
 			}
 		}
 	],
@@ -98,22 +98,22 @@
 				"countPlural"
 			],
 			"match": {
-				"countPlural=one": "O HEAD {head} é MAIS ANTIGO que o que está em produção ({id} @ {sha}): este deploy faria a produção voltar {count} commit.",
-				"countPlural=*": "O HEAD {head} é MAIS ANTIGO que o que está em produção ({id} @ {sha}): este deploy faria a produção voltar {count} commits."
+				"countPlural=one": "O HEAD {head} é MAIS ANTIGO que o commit publicado ({id} @ {sha}): este deploy faria a produção recuar {count} commit.",
+				"countPlural=*": "O HEAD {head} é MAIS ANTIGO que o commit publicado ({id} @ {sha}): este deploy faria a produção recuar {count} commits."
 			}
 		}
 	],
 	"cmd_deploy_guard_refuse_dropped": "Commits que seriam descartados (git log --oneline HEAD..deployed):",
 	"cmd_deploy_guard_refuse_override": "Passe {flag} para fazer o deploy mesmo assim (para voltar de propósito, use `atlas deploy rollback`).",
-	"cmd_deploy_guard_refuse_shas": "HEAD        {head}\nem produção {deployed}",
-	"cmd_deploy_guard_refuse_unknown_base": "o commit {sha} ({id}) que está em produção não existe neste repositório e não pôde ser baixado: não dá para saber se o HEAD {head} é mais novo.",
+	"cmd_deploy_guard_refuse_shas": "HEAD      {head}\npublicado {deployed}",
+	"cmd_deploy_guard_refuse_unknown_base": "o commit publicado {sha} ({id}) não está neste repositório e não foi possível baixá-lo: não é possível saber se o HEAD {head} é mais novo.",
 	"cmd_deploy_history_finished": "FINALIZADO",
 	"cmd_deploy_history_mode": "MODO",
 	"cmd_deploy_history_reason": "MOTIVO",
 	"cmd_deploy_history_release": "RELEASE",
 	"cmd_deploy_history_result": "RESULTADO",
 	"cmd_deploy_history_secs": "SEGS",
-	"cmd_deploy_invalid_release_id": "id de release inválido: {id}",
+	"cmd_deploy_invalid_release_id": "{id} não é um id de release (formato: 20250101120000-abcdef0)",
 	"cmd_deploy_launch_detached": "desanexado; o deploy continua no host. Acompanhe: atlas deploy logs -f {target}",
 	"cmd_deploy_launch_driver_failed": "não foi possível iniciar o driver em {host}: {error}",
 	"cmd_deploy_launch_lost_contact": "contato com {host} perdido; o deploy continua lá. Rode `atlas deploy status {target}`",
@@ -149,7 +149,7 @@
 	"cmd_deploy_pkg_ctx_tar_stderr": "não foi possível ler os erros do tar",
 	"cmd_deploy_pkg_ctx_tar_stdout": "não foi possível ler a saída do tar",
 	"cmd_deploy_pkg_ctx_tar_wait": "não foi possível esperar o fim do tar",
-	"cmd_deploy_pkg_dirty": "working tree com alterações: faça commit ou passe --allow-dirty",
+	"cmd_deploy_pkg_dirty": "há alterações sem commit: faça commit ou passe --allow-dirty",
 	"cmd_deploy_pkg_failed": "o empacotamento falhou: {error}",
 	"cmd_deploy_pkg_git_failed": "git {args} falhou: {error}",
 	"cmd_deploy_remote_ctx_create_file": "não foi possível criar {path}",

@@ -81,7 +81,7 @@
 	"workbench_editor_find_replaces_nothing": "Replaces with nothing",
 	"workbench_editor_find_select_all": "Select all matches",
 	"workbench_editor_find_toggle_replace": "Toggle replace",
-	"workbench_editor_find_whole_word": "Match whole word",
+	"workbench_editor_find_whole_word": "Whole word",
 	"workbench_editor_goto_line": "Go to line",
 	"workbench_editor_huge_file": "Huge file",
 	"workbench_editor_indent_detected": "Indentation (detected from the file): select to change",

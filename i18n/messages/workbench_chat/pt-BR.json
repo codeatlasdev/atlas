@@ -5,7 +5,7 @@
 	"workbench_chat_compact": "Compactar",
 	"workbench_chat_compact_title": "Compactar a conversa",
 	"workbench_chat_composer_busy_placeholder": "Enfileire uma mensagem ({key} para parar)",
-	"workbench_chat_composer_placeholder": "Mensagem para o omp. Digite / para comandos ou @ para arquivos.",
+	"workbench_chat_composer_placeholder": "Mensagem para o omp. / para comandos, @ para arquivos.",
 	"workbench_chat_context": "Contexto {percent}",
 	"workbench_chat_images": [
 		{

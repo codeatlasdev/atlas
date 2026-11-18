@@ -49,8 +49,18 @@
 	);
 
 	const DOCKS = [
-		{ side: "left", label: "Left dock", command: "workspace::ToggleLeftDock", icon: PanelLeft },
-		{ side: "bottom", label: "Bottom dock", command: "workspace::ToggleBottomDock", icon: PanelBottom },
+		{
+			side: "left",
+			label: () => m.shell_project_header_toggle_left_dock(),
+			command: "workspace::ToggleLeftDock",
+			icon: PanelLeft,
+		},
+		{
+			side: "bottom",
+			label: () => m.shell_project_header_toggle_bottom_dock(),
+			command: "workspace::ToggleBottomDock",
+			icon: PanelBottom,
+		},
 	] as const;
 
 	function openInbox(id: string) {
@@ -67,7 +77,7 @@
 	async function saveConfig(id: string) {
 		const saved = await store.run(`save:${id}`, () => api.saveConfig(id));
 		if (!saved) return;
-		toast.success("Saved atlas.yaml");
+		toast.success(m.shell_project_header_saved_atlas_yaml());
 		await store.refresh();
 		void store.loadConfig(id);
 	}
@@ -92,7 +102,9 @@
 		>
 	{:else}
 		<span class="pill t-{health.tone}" title={health.label}>
-			<span class="dot" class:pulse={health.tone === "ok"}></span>{p.running ? health.label : "Stopped"}
+			<span class="dot" class:pulse={health.tone === "ok"}></span>{p.running
+				? health.label
+				: m.shell_project_header_stopped()}
 		</span>
 	{/if}
 	{#if !folder && p.config_source === "detected"}
@@ -126,13 +138,13 @@
 		/>
 		<div class="docks" role="group" aria-label={m.shell_project_header_docks()}>
 			{#each DOCKS as d (d.side)}
-				<Tip label="Toggle {d.label.toLowerCase()}" command={d.command}>
+				<Tip label={d.label()} command={d.command}>
 					{#snippet child(props)}
 						<button
 							{...props}
 							class="dock-btn"
 							class:on={docks[d.side]}
-							aria-label="Toggle {d.label.toLowerCase()}"
+							aria-label={d.label()}
 							aria-pressed={docks[d.side]}
 							onclick={() => toggleDock(d.side)}
 						>

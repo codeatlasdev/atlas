@@ -63,7 +63,13 @@ fn run_tool(mut cmd: Command, what: &str) -> Result<Vec<u8>, String> {
         .stdout(Stdio::piped())
         .stderr(Stdio::null())
         .spawn()
-        .map_err(|e| t!("native_theme_pack_run_failed", what = what, error = e.to_string()))?;
+        .map_err(|e| {
+            t!(
+                "native_theme_pack_run_failed",
+                what = what,
+                error = e.to_string()
+            )
+        })?;
     // Drain stdout on a thread so a chatty tool can't block on a full pipe while we poll.
     let mut out = child.stdout.take().expect("stdout is piped");
     let reader = std::thread::spawn(move || {
@@ -235,8 +241,13 @@ fn is_zip_like(path: &Path) -> bool {
 
 fn unpack_blocking(path: &str) -> Result<UnpackedPackage, String> {
     let src = PathBuf::from(path);
-    let meta = fs::metadata(&src)
-        .map_err(|e| t!("native_theme_pack_open_failed", path = path, error = e.to_string()))?;
+    let meta = fs::metadata(&src).map_err(|e| {
+        t!(
+            "native_theme_pack_open_failed",
+            path = path,
+            error = e.to_string()
+        )
+    })?;
     if meta.is_dir() {
         let root = fs::canonicalize(&src).map_err(|e| e.to_string())?;
         // Folder import: read-only listing, symlinks are skipped, nothing is deleted.

@@ -2,7 +2,7 @@
 	/** Non-blocking toasts for errors outside any boundary, plus the dialog "Details" opens. */
 	import { Button, Dialog } from "@codeatlasdev/ui";
 	import CornerNotice from "#lib/shell/CornerNotice.svelte";
-	import ErrorPanel from "./ErrorPanel.svelte";
+	import Lazy from "#lib/components/Lazy.svelte";
 	import { errors } from "./errors.svelte.ts";
 	import { headline } from "./report.ts";
 	import { m } from "#lib/i18n/m.ts";
@@ -51,13 +51,16 @@
 	size="md"
 >
 	{#if errors.current}
-		<ErrorPanel
-			report={errors.current}
-			variant="dialog"
-			title={headline(errors.current).title}
-			hint={headline(errors.current).hint}
-			close={() => (errors.current = null)}
-			closeLabel={m.common_action_close()}
+		<Lazy
+			load={() => import("./ErrorPanel.svelte")}
+			props={{
+				report: errors.current,
+				variant: "dialog" as const,
+				title: headline(errors.current).title,
+				hint: headline(errors.current).hint,
+				close: () => (errors.current = null),
+				closeLabel: m.common_action_close(),
+			}}
 		/>
 	{/if}
 </Dialog>

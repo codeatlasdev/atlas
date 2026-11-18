@@ -77,14 +77,17 @@
 		{
 			"declarations": [
 				"input count",
+				"local countExact = count",
 				"local countPlural = count: plural"
 			],
 			"selectors": [
+				"countExact",
 				"countPlural"
 			],
 			"match": {
-				"countPlural=one": "O --fix também adicionaria um marcador .metadata_never_index a {count} pasta.",
-				"countPlural=*": "O --fix também adicionaria um marcador .metadata_never_index a {count} pastas."
+				"countExact=0, countPlural=*": "O --fix não adicionaria o marcador .metadata_never_index a nenhuma pasta.",
+				"countExact=*, countPlural=one": "O --fix também adicionaria um marcador .metadata_never_index a {count} pasta.",
+				"countExact=*, countPlural=*": "O --fix também adicionaria um marcador .metadata_never_index a {count} pastas."
 			}
 		}
 	],
@@ -112,14 +115,17 @@
 		{
 			"declarations": [
 				"input count",
+				"local countExact = count",
 				"local countPlural = count: plural"
 			],
 			"selectors": [
+				"countExact",
 				"countPlural"
 			],
 			"match": {
-				"countPlural=one": "Marcador never-index adicionado a {count} pasta.",
-				"countPlural=*": "Marcador never-index adicionado a {count} pastas."
+				"countExact=0, countPlural=*": "Nenhuma pasta recebeu o marcador never-index.",
+				"countExact=*, countPlural=one": "Marcador never-index adicionado a {count} pasta.",
+				"countExact=*, countPlural=*": "Marcador never-index adicionado a {count} pastas."
 			}
 		}
 	],
@@ -165,14 +171,17 @@
 		{
 			"declarations": [
 				"input slots",
+				"local slotsExact = slots",
 				"local slotsPlural = slots: plural"
 			],
 			"selectors": [
+				"slotsExact",
 				"slotsPlural"
 			],
 			"match": {
-				"slotsPlural=one": "{running} de {slots} slot em uso",
-				"slotsPlural=*": "{running} de {slots} slots em uso"
+				"slotsExact=0, slotsPlural=*": "{running} de {slots} slots em uso",
+				"slotsExact=*, slotsPlural=one": "{running} de {slots} slot em uso",
+				"slotsExact=*, slotsPlural=*": "{running} de {slots} slots em uso"
 			}
 		}
 	],

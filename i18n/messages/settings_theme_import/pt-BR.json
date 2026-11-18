@@ -25,7 +25,7 @@
 	"settings_theme_import_format_vscode": "Tema do VS Code",
 	"settings_theme_import_format_zed": "Arquivo de tema do Zed",
 	"settings_theme_import_package_archive": "Arquivo compactado (.zip, .vsix)…",
-	"settings_theme_import_package_choose_archive_title": "Escolher um arquivo de temas",
+	"settings_theme_import_package_choose_archive_title": "Escolher um arquivo compactado de temas",
 	"settings_theme_import_package_choose_folder_title": "Escolher uma pasta de temas",
 	"settings_theme_import_package_failed_count": [
 		{
@@ -61,7 +61,7 @@
 			}
 		}
 	],
-	"settings_theme_import_package_filter_archive": "Arquivo de temas",
+	"settings_theme_import_package_filter_archive": "Arquivo compactado de temas",
 	"settings_theme_import_package_folder": "Pasta…",
 	"settings_theme_import_package_hint": [
 		{
@@ -98,7 +98,7 @@
 	],
 	"settings_theme_import_package_import_name": "Importar {name}",
 	"settings_theme_import_package_imported_one": "{name} importado.",
-	"settings_theme_import_package_none_found": "Nenhum tema encontrado nesse arquivo ou pasta.",
+	"settings_theme_import_package_none_found": "Nenhum tema encontrado nesse arquivo compactado ou nessa pasta.",
 	"settings_theme_import_package_notes_label": "Avisos e arquivos ignorados",
 	"settings_theme_import_package_notes_summary": [
 		{

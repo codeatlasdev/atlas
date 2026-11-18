@@ -5,21 +5,24 @@
 	import type { CrewmateState } from "#lib/crew/crewmateFace.ts";
 	import {
 		CREWMATE_COLORS,
-		EYE_LABELS,
 		EYE_STYLES,
-		FACE_LABELS,
 		FACES,
-		HAT_LABELS,
 		HATS,
-		OUTFIT_LABELS,
 		OUTFITS,
 		randomLook,
-		ROLE_KITS,
-		TOOL_LABELS,
 		TOOLS,
 		type CrewmateLook,
 	} from "#lib/crew/look.ts";
+	import {
+		EYE_LABELS,
+		FACE_LABELS,
+		HAT_LABELS,
+		OUTFIT_LABELS,
+		ROLE_KITS,
+		TOOL_LABELS,
+	} from "#lib/crew/lookLabels.ts";
 	import type { EquipPart } from "#lib/crew/rig.ts";
+	import { m } from "#lib/i18n/m.ts";
 
 	interface Props {
 		open?: boolean;
@@ -45,12 +48,12 @@
 		prevOpen = open;
 	});
 
-	const STATES: { id: CrewmateState; label: string }[] = [
-		{ id: "idle", label: "Idle" },
-		{ id: "working", label: "Working" },
-		{ id: "needs_you", label: "Needs you" },
-		{ id: "offline", label: "Offline" },
-	];
+	const STATES: { id: CrewmateState; label: string }[] = $derived([
+		{ id: "idle", label: m.crew_workspace_status_idle() },
+		{ id: "working", label: m.crew_chat_header_working() },
+		{ id: "needs_you", label: m.crew_chat_header_needs_you() },
+		{ id: "offline", label: m.crew_workspace_status_offline() },
+	]);
 	let preview = $state<CrewmateState>("idle");
 
 	// Every change to the look pings the preview: the crewmate hops and the new piece animates in.
@@ -75,7 +78,7 @@
 	}
 </script>
 
-<Dialog bind:open title="Customize look" size="xl">
+<Dialog bind:open title={m.crew_workspace_crewmate_editor_customize_look()} size="xl">
 	<!-- The kit Dialog leaves the page only after every animation inside it ends (presence waits on
 	     getAnimations({subtree:true})). The faces breathe and blink forever, so the closed dialog never left and its
 	     invisible backdrop swallowed every click. Closing turns those animations off so the exit can finish. -->
@@ -85,7 +88,7 @@
 			<div class="face-wrap">
 				<CrewmateFace {seed} look={draft} state={preview} size={180} track {react} />
 			</div>
-			<div class="states" role="radiogroup" aria-label="Preview state">
+			<div class="states" role="radiogroup" aria-label={m.crew_workspace_crewmate_editor_preview_state()}>
 				{#each STATES as s (s.id)}
 					<button
 						role="radio"
@@ -106,14 +109,14 @@
 				}}
 			>
 				<Shuffle size={13} />
-				Randomize
+				{m.crew_workspace_crewmate_editor_randomize()}
 			</Button>
 		</div>
 
 		<!-- ── Right: options ─────────────────────────────────────────────── -->
 		<div class="options">
 			<section>
-				<h4>Role kits</h4>
+				<h4>{m.crew_workspace_crewmate_editor_role_kits()}</h4>
 				<div class="kits">
 					{#each ROLE_KITS as k (k.id)}
 						<button class="kit" onclick={() => equip("kit", k.kit)}>{k.label}</button>
@@ -122,8 +125,8 @@
 			</section>
 
 			<section>
-				<h4>Color</h4>
-				<div class="swatches" role="radiogroup" aria-label="Color">
+				<h4>{m.crew_workspace_crewmate_editor_color()}</h4>
+				<div class="swatches" role="radiogroup" aria-label={m.crew_workspace_crewmate_editor_color()}>
 					{#each CREWMATE_COLORS as c (c)}
 						<button
 							role="radio"
@@ -138,11 +141,11 @@
 					<label
 						class="swatch custom"
 						class:on={!CREWMATE_COLORS.includes(draft.color as never)}
-						title="Custom color"
+						title={m.crew_workspace_crewmate_editor_custom_color()}
 					>
 						<input
 							type="color"
-							aria-label="Custom color"
+							aria-label={m.crew_workspace_crewmate_editor_custom_color()}
 							value={draft.color}
 							oninput={(e) => equip("color", { color: e.currentTarget.value })}
 						/>
@@ -151,8 +154,8 @@
 			</section>
 
 			<section>
-				<h4>Eyes</h4>
-				<div class="grid" role="radiogroup" aria-label="Eyes">
+				<h4>{m.crew_workspace_crewmate_editor_eyes()}</h4>
+				<div class="grid" role="radiogroup" aria-label={m.crew_workspace_crewmate_editor_eyes()}>
 					{#each EYE_STYLES as e (e)}
 						<button
 							role="radio"
@@ -174,8 +177,8 @@
 			</section>
 
 			<section>
-				<h4>Hat</h4>
-				<div class="grid" role="radiogroup" aria-label="Hat">
+				<h4>{m.crew_workspace_crewmate_editor_hat()}</h4>
+				<div class="grid" role="radiogroup" aria-label={m.crew_workspace_crewmate_editor_hat()}>
 					{#each HATS as h (h)}
 						<button
 							role="radio"
@@ -192,8 +195,8 @@
 			</section>
 
 			<section>
-				<h4>Face</h4>
-				<div class="grid" role="radiogroup" aria-label="Face">
+				<h4>{m.crew_workspace_crewmate_editor_face()}</h4>
+				<div class="grid" role="radiogroup" aria-label={m.crew_workspace_crewmate_editor_face()}>
 					{#each FACES as f (f)}
 						<button
 							role="radio"
@@ -210,8 +213,8 @@
 			</section>
 
 			<section>
-				<h4>Tool</h4>
-				<div class="grid" role="radiogroup" aria-label="Tool">
+				<h4>{m.crew_workspace_crewmate_editor_tool()}</h4>
+				<div class="grid" role="radiogroup" aria-label={m.crew_workspace_crewmate_editor_tool()}>
 					{#each TOOLS as x (x)}
 						<button
 							role="radio"
@@ -228,8 +231,8 @@
 			</section>
 
 			<section>
-				<h4>Outfit</h4>
-				<div class="grid" role="radiogroup" aria-label="Outfit">
+				<h4>{m.crew_workspace_crewmate_editor_outfit()}</h4>
+				<div class="grid" role="radiogroup" aria-label={m.crew_workspace_crewmate_editor_outfit()}>
 					{#each OUTFITS as x (x)}
 						<button
 							role="radio"
@@ -248,8 +251,8 @@
 	</div>
 
 	{#snippet actions()}
-		<Button variant="ghost" onclick={() => (open = false)}>Cancel</Button>
-		<Button disabled={!changed} onclick={handleSave}>Save</Button>
+		<Button variant="ghost" onclick={() => (open = false)}>{m.common_action_cancel()}</Button>
+		<Button disabled={!changed} onclick={handleSave}>{m.common_action_save()}</Button>
 	{/snippet}
 </Dialog>
 

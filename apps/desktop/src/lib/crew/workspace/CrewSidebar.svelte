@@ -20,6 +20,7 @@
 	import HeroFavorite from "#lib/crew/workspace/HeroFavorite.svelte";
 	import SidebarHeader from "#lib/crew/workspace/SidebarHeader.svelte";
 	import SidebarFooter from "#lib/crew/workspace/SidebarFooter.svelte";
+	import { m } from "#lib/i18n/m.ts";
 
 	let {
 		hidden = false,
@@ -80,9 +81,11 @@
 			<!-- A crew server that didn't answer: say so instead of an empty list that looks like the crew is gone. -->
 			<div class="empty-state" role="status">
 				<p class="empty-sub">
-					Can't reach {crewServerLabel(h.name)}{h.error ? `: ${h.error}` : ""}
+					{h.error
+						? m.crew_workspace_sidebar_cant_reach_error({ server: crewServerLabel(h.name), error: h.error })
+						: m.crew_workspace_sidebar_cant_reach({ server: crewServerLabel(h.name) })}
 				</p>
-				<button class="text-link" onclick={() => void crew.retryFailed()}>Retry</button>
+				<button class="text-link" onclick={() => void crew.retryFailed()}>{m.common_action_retry()}</button>
 			</div>
 		{/each}
 		{#each listed as section (section.hostKey)}

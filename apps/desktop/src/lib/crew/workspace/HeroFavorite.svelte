@@ -7,6 +7,7 @@
 	import { crew } from "#lib/stores/crew.svelte.ts";
 	import type { Entry } from "#lib/crew/sidebar.ts";
 	import CrewmateFace from "#lib/crew/CrewmateFace.svelte";
+	import { m } from "#lib/i18n/m.ts";
 
 	let { hero, active, onselect }: { hero: Entry; active: boolean; onselect: () => void } = $props();
 
@@ -38,7 +39,7 @@
 		class="hero-btn"
 		class:active
 		onclick={onselect}
-		aria-label="{hero.crewmate.name} (first mate)"
+		aria-label={m.crew_workspace_hero_favorite_label({ name: hero.crewmate.name })}
 		aria-pressed={active}
 	>
 		<div class="hero-face-wrap">
@@ -66,7 +67,7 @@
 				aria-hidden="true"
 			></span>
 			{#if crew.hasUnread(hero.hostKey, hero.crewmate.id)}
-				<span class="hero-unread" aria-label="Unread"></span>
+				<span class="hero-unread" aria-label={m.crew_workspace_crewmate_list_row_unread_messages()}></span>
 			{/if}
 		</div>
 		<span class="hero-name">{hero.crewmate.name}</span>

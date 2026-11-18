@@ -3,19 +3,24 @@
 	import CrewmateFace from "#lib/crew/CrewmateFace.svelte";
 	import { crewmateKey } from "#lib/crew/crewmateKey.ts";
 	import type { BoardFilters, BoardSource } from "#lib/crew/board/boardFilters.svelte.ts";
+	import { m } from "#lib/i18n/m.ts";
 
 	let { filters }: { filters: BoardFilters } = $props();
 
-	const SOURCES: [BoardSource, string][] = [
-		["all", "All"],
-		["chat", "Chats"],
-		["auto", "Automations"],
-	];
+	const SOURCES = $derived<[BoardSource, string][]>([
+		["all", m.crew_workspace_board_toolbar_source_all()],
+		["chat", m.crew_workspace_board_toolbar_source_chats()],
+		["auto", m.crew_settings_crewmate_dialog_automations()],
+	]);
 </script>
 
 <div class="board-toolbar">
 	{#if filters.availableCrewmates.length > 1}
-		<div class="toolbar-crewmates" role="group" aria-label="Filter by crewmate">
+		<div
+			class="toolbar-crewmates"
+			role="group"
+			aria-label={m.crew_workspace_board_toolbar_filter_by_crewmate()}
+		>
 			{#each filters.availableCrewmates as { hostKey, crewmate } (crewmateKey(hostKey, crewmate.id))}
 				{@const key = crewmateKey(hostKey, crewmate.id)}
 				<button
@@ -32,7 +37,7 @@
 	{/if}
 
 	<div class="toolbar-right">
-		<div class="seg" role="group" aria-label="Source filter">
+		<div class="seg" role="group" aria-label={m.crew_workspace_board_toolbar_source_filter()}>
 			{#each SOURCES as [val, label] (val)}
 				<button
 					class="seg-btn"
@@ -46,29 +51,29 @@
 		<input
 			class="toolbar-search"
 			type="search"
-			placeholder="Search…"
+			placeholder={m.common_action_search()}
 			bind:value={filters.query}
-			aria-label="Search tasks"
+			aria-label={m.crew_workspace_board_toolbar_search_tasks()}
 		/>
 
 		<label class="show-done">
 			<input type="checkbox" bind:checked={filters.showDone} />
-			Show done
+			{m.crew_workspace_board_toolbar_show_done()}
 		</label>
 
 		{#if filters.showDone}
-			<div class="seg" role="group" aria-label="Done range">
+			<div class="seg" role="group" aria-label={m.crew_workspace_board_toolbar_done_range()}>
 				<button
 					class="seg-btn"
 					class:seg-btn--on={filters.doneDays === 1}
 					onclick={() => (filters.doneDays = 1)}
-					aria-pressed={filters.doneDays === 1}>Today</button
+					aria-pressed={filters.doneDays === 1}>{m.crew_workspace_board_toolbar_today()}</button
 				>
 				<button
 					class="seg-btn"
 					class:seg-btn--on={filters.doneDays === 7}
 					onclick={() => (filters.doneDays = 7)}
-					aria-pressed={filters.doneDays === 7}>7 days</button
+					aria-pressed={filters.doneDays === 7}>{m.crew_workspace_board_toolbar_7_days()}</button
 				>
 			</div>
 		{/if}

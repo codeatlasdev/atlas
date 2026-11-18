@@ -1,5 +1,7 @@
 <script lang="ts">
 	import { agentLogo } from "#lib/agentLogos.ts";
+	import { dateTime, formatNumber } from "#lib/i18n/fmt.ts";
+	import { m } from "#lib/i18n/m.ts";
 
 	let {
 		agentId,
@@ -25,7 +27,7 @@
 
 	function fmtResetsAt(iso: string): string {
 		const d = new Date(iso);
-		return d.toLocaleTimeString([], { hour: "2-digit", minute: "2-digit" });
+		return dateTime(d, { hour: "2-digit", minute: "2-digit" });
 	}
 </script>
 
@@ -35,10 +37,11 @@
 		<div class="meter-stats">
 			<span class="meter-tokens">{fmtTokens(todayTokens)}</span>
 			{#if todayCost > 0}
-				<span class="meter-cost">${todayCost.toFixed(2)}</span>
+				<span class="meter-cost">{formatNumber(todayCost, { style: "currency", currency: "USD" })}</span>
 			{/if}
 			{#if resetsAt}
-				<span class="meter-reset">resets {fmtResetsAt(resetsAt)}</span>
+				<span class="meter-reset">{m.crew_workspace_usage_meter_resets({ time: fmtResetsAt(resetsAt) })}</span
+				>
 			{/if}
 		</div>
 		{#if limitPct !== null}

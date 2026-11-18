@@ -18,6 +18,7 @@ const BIN: &str = env!("CARGO_BIN_EXE_atlas");
 
 fn heavy(dir: &Path, slots: usize) -> Command {
     let mut c = Command::new(BIN);
+    c.env("ATLAS_LANG", "en");
     c.env("ATLAS_HEAVY_DIR", dir)
         .env("ATLAS_HEAVY_SLOTS", slots.to_string())
         // Off: these tests are about slots, not about how busy (load or memory) the CI machine is;
@@ -471,6 +472,7 @@ fn slots_come_from_the_env_then_the_config_file_then_half_the_cores() {
     let f = fixture();
     let status_slots = |env: Option<&str>| -> u64 {
         let mut c = Command::new(BIN);
+        c.env("ATLAS_LANG", "en");
         c.env("ATLAS_HEAVY_DIR", &f.dir)
             .env("HOME", f.dir.parent().unwrap())
             .env_remove("ATLAS_HEAVY_SLOTS")

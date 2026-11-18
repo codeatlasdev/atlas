@@ -10,6 +10,7 @@
 	import { githubCrew } from "#lib/crew/githubCrew.svelte.ts";
 	import { connectedIntegrationIds } from "#lib/crew/integrations.ts";
 	import CrewFlag from "#lib/crew/CrewFlag.svelte";
+	import { m } from "#lib/i18n/m.ts";
 
 	let {
 		onintegrations,
@@ -62,16 +63,20 @@
 
 <!-- Footer: user avatar + crew server pill -->
 <div class="dm-footer">
-	<button class="footer-user-btn" aria-label="User">
+	<button class="footer-user-btn" aria-label={m.crew_workspace_sidebar_footer_user()}>
 		<User size={15} />
 	</button>
 	<!-- A click menu closes on a click outside or Esc, never on mouseleave: the gap between the pill and the
 	     popover closed it while the pointer travelled up to it. -->
 	<div class="footer-pill-wrap" bind:this={wrap}>
 		{#if remoteServers.length === 0}
-			<button class="footer-pill footer-pill--launch" onclick={onhelp} aria-label="Add a crew server">
+			<button
+				class="footer-pill footer-pill--launch"
+				onclick={onhelp}
+				aria-label={m.crew_workspace_sidebar_footer_add_a_crew_server()}
+			>
 				<CrewFlag size={13} />
-				<span>Add a crew server</span>
+				<span>{m.crew_workspace_sidebar_footer_add_a_crew_server()}</span>
 			</button>
 		{:else}
 			<button
@@ -84,42 +89,46 @@
 				<CrewFlag size={13} />
 				<span class="server-dot" class:online={crew.serverOk(remoteServers[0].key)} aria-hidden="true"></span>
 				<span class="footer-server-name">{remoteServers[0].name}</span>
-				{#if paused}<span class="paused-tag">Paused</span>{/if}
+				{#if paused}<span class="paused-tag">{m.crew_workspace_sidebar_footer_paused()}</span>{/if}
 			</button>
 			{#if open}
 				<div class="footer-popover" role="menu">
-					<div class="popover-section-title" aria-hidden="true">Integrations</div>
+					<div class="popover-section-title" aria-hidden="true">
+						{m.crew_workspace_integrations_catalog_integrations()}
+					</div>
 					<button
 						class="popover-item popover-item--integration"
 						role="menuitem"
 						onclick={() => pick(onintegrations)}
-						aria-label="Open integrations"
+						aria-label={m.crew_workspace_sidebar_footer_open_integrations()}
 					>
 						<Plug2 size={13} aria-hidden="true" />
-						<span>Integrations</span>
+						<span>{m.crew_workspace_integrations_catalog_integrations()}</span>
 						{#if connectedCount > 0}
-							<span class="integration-status integration-status--on">{connectedCount} connected</span>
+							<span class="integration-status integration-status--on"
+								>{m.crew_workspace_integrations_connected_count({ count: connectedCount })}</span
+							>
 						{:else}
-							<span class="integration-status">Manage</span>
+							<span class="integration-status">{m.crew_workspace_sidebar_footer_manage()}</span>
 						{/if}
 					</button>
 					<div class="popover-divider" role="separator" aria-hidden="true"></div>
 					<button class="popover-item" role="menuitem" onclick={() => pick(() => void togglePause())}>
 						{#if paused}
 							<Play size={13} />
-							<span>Resume all</span>
+							<span>{m.crew_workspace_sidebar_footer_resume_all()}</span>
 						{:else}
 							<Pause size={13} />
-							<span>Pause all</span>
+							<span>{m.crew_workspace_sidebar_footer_pause_all()}</span>
 						{/if}
 					</button>
 					<button class="popover-item" role="menuitem" onclick={() => pick(onsettings)}>
 						<Settings size={13} />
-						<span>Crew server settings</span>
+						<span>{m.crew_workspace_sidebar_footer_crew_server_settings()}</span>
 					</button>
 					<button class="popover-item" role="menuitem" onclick={() => pick(onhelp)}>
 						<CircleHelp size={13} />
-						<span>Help</span>
+						<span>{m.crew_workspace_sidebar_footer_help()}</span>
 					</button>
 				</div>
 			{/if}
@@ -214,7 +223,10 @@
 		position: absolute;
 		bottom: calc(100% + 6px);
 		left: 0;
-		right: 0;
+		/* As wide as the pill, and wider for a longer label (Portuguese runs 20-30% longer): never a wrapped menu row. */
+		min-width: 100%;
+		width: max-content;
+		max-width: min(320px, calc(100vw - 24px));
 		background: var(--ca-surface-overlay, var(--ca-surface-base));
 		border: 0.5px solid var(--ca-outline-subtle);
 		border-radius: 10px;
@@ -260,6 +272,8 @@
 	}
 	.integration-status {
 		margin-left: auto;
+		padding-left: 8px;
+		white-space: nowrap;
 		font-size: 11px;
 		color: var(--ca-text-disabled);
 	}

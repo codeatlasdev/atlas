@@ -11,6 +11,7 @@
  *
  * No Svelte/Tauri imports — stays bun-testable in isolation.
  */
+import { m } from "#lib/i18n/m.ts";
 
 export type ParsedTarget = { target: string; port: number };
 export type ParseResult = ({ ok: true } & ParsedTarget) | { ok: false; error: string };
@@ -21,29 +22,28 @@ export type ParseResult = ({ ok: true } & ParsedTarget) | { ok: false; error: st
  */
 export function parseSSHTarget(raw: string): ParseResult {
 	const trimmed = raw.trim();
-	if (!trimmed) return { ok: false, error: "Enter an SSH address, e.g. ubuntu@my-server.com" };
+	if (!trimmed) return { ok: false, error: m.crew_workspace_ssh_enter_address() };
 
 	// Must have a user@ prefix
 	const atIdx = trimmed.indexOf("@");
-	if (atIdx <= 0) return { ok: false, error: "Include a user, e.g. ubuntu@my-server.com" };
+	if (atIdx <= 0) return { ok: false, error: m.crew_workspace_ssh_include_user() };
 
 	const user = trimmed.slice(0, atIdx);
-	if (!user) return { ok: false, error: "Include a user, e.g. ubuntu@my-server.com" };
+	if (!user) return { ok: false, error: m.crew_workspace_ssh_include_user() };
 
 	const hostPart = trimmed.slice(atIdx + 1);
-	if (!hostPart) return { ok: false, error: "Include a hostname or IP address" };
+	if (!hostPart) return { ok: false, error: m.crew_workspace_ssh_include_host() };
 
 	// Detect IPv6 bracket notation: user@[::1]:port or user@[::1]
 	if (hostPart.startsWith("[")) {
 		const closeBracket = hostPart.indexOf("]");
-		if (closeBracket < 0)
-			return { ok: false, error: "IPv6 address must be closed: user@[::1] or user@[::1]:port" };
+		if (closeBracket < 0) return { ok: false, error: m.crew_workspace_ssh_close_ipv6() };
 		const ipv6Host = hostPart.slice(0, closeBracket + 1); // includes brackets
 		const rest = hostPart.slice(closeBracket + 1);
 		if (rest === "" || rest === ":") {
 			return { ok: true, target: `${user}@${ipv6Host}`, port: 22 };
 		}
-		if (!rest.startsWith(":")) return { ok: false, error: 'Expected ":port" after IPv6 address' };
+		if (!rest.startsWith(":")) return { ok: false, error: m.crew_workspace_ssh_ipv6_port() };
 		return parsePort(`${user}@${ipv6Host}`, rest.slice(1));
 	}
 
@@ -54,7 +54,7 @@ export function parseSSHTarget(raw: string): ParseResult {
 		return { ok: true, target: trimmed, port: 22 };
 	}
 	const host = hostPart.slice(0, lastColon);
-	if (!host) return { ok: false, error: "Include a hostname or IP address" };
+	if (!host) return { ok: false, error: m.crew_workspace_ssh_include_host() };
 	return parsePort(`${user}@${host}`, hostPart.slice(lastColon + 1));
 }
 
@@ -62,7 +62,7 @@ function parsePort(target: string, portStr: string): ParseResult {
 	if (!portStr) return { ok: true, target, port: 22 };
 	const n = Number(portStr);
 	if (!Number.isInteger(n) || n < 1 || n > 65535) {
-		return { ok: false, error: `"${portStr}" is not a valid port (1–65535)` };
+		return { ok: false, error: m.crew_workspace_ssh_bad_port({ port: portStr }) };
 	}
 	return { ok: true, target, port: n };
 }

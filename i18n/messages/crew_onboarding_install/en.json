@@ -1,0 +1,21 @@
+{
+	"crew_onboarding_install_browsers_detail": "Chromium and WebKit, for screenshots of UI work.",
+	"crew_onboarding_install_browsers_label": "Installing screenshot browsers",
+	"crew_onboarding_install_check_detail": "Looks at the system, systemd and sudo. Changes nothing.",
+	"crew_onboarding_install_check_label": "Checking the server",
+	"crew_onboarding_install_checklist_idle_detail": "About two minutes. Nothing on the server changes until its check passes.",
+	"crew_onboarding_install_checklist_idle_title": "Ready when you are",
+	"crew_onboarding_install_checklist_install_progress": "Install progress",
+	"crew_onboarding_install_done_detail": "Adds the server to your list.",
+	"crew_onboarding_install_done_label": "Connecting",
+	"crew_onboarding_install_install_detail": "Downloads Atlas onto the server.",
+	"crew_onboarding_install_install_label": "Installing Atlas",
+	"crew_onboarding_install_service_detail": "Atlas runs as a systemd service and restarts itself.",
+	"crew_onboarding_install_service_label": "Starting the service",
+	"crew_onboarding_install_signin_detail": "Opens an SSH connection to the server.",
+	"crew_onboarding_install_signin_label": "Signing in",
+	"crew_onboarding_install_ssh_detail": "Lets this computer connect to that user.",
+	"crew_onboarding_install_ssh_label": "Configuring SSH access",
+	"crew_onboarding_install_user_detail": "A separate user your crew runs as.",
+	"crew_onboarding_install_user_label": "Creating the service user"
+}

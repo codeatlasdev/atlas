@@ -1,0 +1,24 @@
+{
+	"crew_onboarding_install_browsers_detail": "What the screenshot browsers phase installs.",
+	"crew_onboarding_install_browsers_label": "Install checklist phase, only when the user chose the screenshot browsers.",
+	"crew_onboarding_install_check_detail": "What the checking phase does.",
+	"crew_onboarding_install_check_label": "Install checklist phase: preflight check.",
+	"crew_onboarding_install_checklist_idle_detail": "Line under the install checklist before it starts.",
+	"crew_onboarding_install_checklist_idle_title": "Bold line under the install checklist before it starts.",
+	"crew_onboarding_install_checklist_install_progress": "Accessible name of the install checklist.",
+	"crew_onboarding_install_done_detail": "What the connecting phase does.",
+	"crew_onboarding_install_done_label": {
+		"description": "Install checklist phase: adds the server to the list.",
+		"distinct": "a phase name in the checklist, without the ellipsis of the button"
+	},
+	"crew_onboarding_install_install_detail": "What the installing phase does.",
+	"crew_onboarding_install_install_label": "Install checklist phase: downloads Atlas onto the server.",
+	"crew_onboarding_install_service_detail": "What the service phase does.",
+	"crew_onboarding_install_service_label": "Install checklist phase: starts the systemd service.",
+	"crew_onboarding_install_signin_detail": "What the signing in phase does, shown under the checklist while it runs.",
+	"crew_onboarding_install_signin_label": "Install checklist phase: Atlas opens the SSH connection.",
+	"crew_onboarding_install_ssh_detail": "What the SSH access phase does.",
+	"crew_onboarding_install_ssh_label": "Install checklist phase: lets this computer connect as the service user.",
+	"crew_onboarding_install_user_detail": "What the service user phase does; the crew runs under this account.",
+	"crew_onboarding_install_user_label": "Install checklist phase: creates the service account."
+}

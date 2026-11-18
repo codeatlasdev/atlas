@@ -7,12 +7,15 @@
 	import { ArrowUp, Plus, X } from "@lucide/svelte";
 	import { MAX_ATTACHMENTS, imagesFromClipboard, type PendingImage } from "#lib/crew/attachments.ts";
 	import ImageThumb from "./ImageThumb.svelte";
+	import { m } from "#lib/i18n/m.ts";
 
 	interface Props {
 		value: string;
 		placeholder: string;
-		/** aria-label of the textarea ("Task prompt", "Setup answer"). */
+		/** aria-label of the textarea ("Task prompt", "Setup answer"): translated text, so code never looks it up. */
 		label: string;
+		/** `data-composer` of the textarea: the stable hook for code that moves the focus into it. */
+		hook?: string;
 		/** Disables the send button on top of the empty check (a send/save in flight). */
 		busy?: boolean;
 		/** Images from the "+" picker or a paste. Shows the "+" and takes pastes when given. */
@@ -29,6 +32,7 @@
 		value = $bindable(),
 		placeholder,
 		label,
+		hook,
 		busy = false,
 		onfiles,
 		images = [],
@@ -52,12 +56,14 @@
 
 <div class="composer">
 	{#if images.length}
-		<ul class="pending" aria-label="Attached images">
+		<ul class="pending" aria-label={m.crew_chat_composer_attached_images()}>
 			{#each images as im, i (im.name + i)}
 				<li class="pending-item">
 					<ImageThumb bytes={im.bytes} mime={im.mime} alt={im.name} size={56} />
-					<button class="pending-x" aria-label={`Remove ${im.name}`} onclick={() => onremoveimage?.(i)}
-						><X size={11} /></button
+					<button
+						class="pending-x"
+						aria-label={m.crew_chat_composer_remove_image({ name: im.name })}
+						onclick={() => onremoveimage?.(i)}><X size={11} /></button
 					>
 				</li>
 			{/each}
@@ -67,7 +73,7 @@
 		{#if onfiles}
 			<button
 				class="pill-add"
-				aria-label="Attach"
+				aria-label={m.crew_chat_composer_attach()}
 				disabled={images.length >= MAX_ATTACHMENTS}
 				onclick={() => picker?.click()}><Plus size={16} /></button
 			>
@@ -78,7 +84,7 @@
 				accept="image/png,image/jpeg,image/webp,image/gif"
 				multiple
 				hidden
-				aria-label="Attach images"
+				aria-label={m.crew_chat_composer_attach_images()}
 				onchange={(e) => {
 					const input = e.currentTarget;
 					onfiles(Array.from(input.files ?? []));
@@ -93,6 +99,7 @@
 			rows={1}
 			{placeholder}
 			aria-label={label}
+			data-composer={hook}
 			onkeydown={(e) => {
 				if (e.key === "Enter" && !e.shiftKey) {
 					e.preventDefault();
@@ -113,13 +120,13 @@
 		<button
 			class="pill-send"
 			class:active={!!value.trim()}
-			aria-label="Send"
+			aria-label={m.crew_chat_composer_send()}
 			disabled={!value.trim() || busy}
 			onclick={onsend}><ArrowUp size={15} /></button
 		>
 	</div>
 	{#if queued > 0}
-		<div class="queue-hint">{queued} task{queued === 1 ? "" : "s"} in queue</div>
+		<div class="queue-hint">{m.crew_chat_composer_queued_tasks({ count: queued })}</div>
 	{/if}
 </div>
 

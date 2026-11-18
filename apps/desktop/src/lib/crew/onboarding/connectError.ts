@@ -3,6 +3,7 @@
  * `crates/atlas-desktop/src/crew_ssh.rs`, fixture `__fixtures__/crew-connect-errors.json`); this turns the kind into
  * words and into the buttons that fix it. Pure: no Svelte/Tauri, bun-testable.
  */
+import { m } from "#lib/i18n/m.ts";
 
 /** Rust `ConnectErrorKind`, snake_case as serialized. */
 export type ConnectErrorKind =
@@ -80,7 +81,7 @@ export function parseConnectError(e: unknown): ConnectError {
 /** The words and the next steps for `err`. */
 export function describeConnectError(err: ConnectError, ctx: ConnectContext): ConnectFailure {
 	const host = ctx.target.slice(ctx.target.indexOf("@") + 1) || ctx.target;
-	const key = ctx.keyPath ?? "of this computer";
+	const user = ctx.target.split("@")[0];
 	const make = (title: string, body: string, actions: ConnectAction[], command?: string): ConnectFailure => ({
 		kind: err.kind,
 		title,
@@ -94,91 +95,103 @@ export function describeConnectError(err: ConnectError, ctx: ConnectContext): Co
 		case "ssh_missing":
 			return ctx.windows
 				? make(
-						"OpenSSH Client is not installed",
-						"Atlas signs in with the ssh program that comes with Windows as an optional feature. Turn it on in Settings → System → Optional features → Add a feature → OpenSSH Client, or run this in a PowerShell opened as administrator. Then check again.",
+						m.crew_onboarding_connect_error_ssh_missing_windows_title(),
+						m.crew_onboarding_connect_error_ssh_missing_windows_body(),
 						["recheck"],
 						ADD_OPENSSH_WINDOWS,
 					)
 				: make(
-						"ssh is not installed on this computer",
-						"Atlas signs in with the ssh program. Install the OpenSSH client with your package manager (for example `sudo apt install openssh-client`), then check again.",
+						m.crew_onboarding_connect_error_ssh_missing_title(),
+						m.crew_onboarding_connect_error_ssh_missing_body(),
 						["recheck"],
 					);
 		case "key_refused":
 			return ctx.keyAdded
 				? make(
-						`The server still refuses the key ${key}`,
-						"Atlas added it to the server, but sshd does not accept it. On the server check that PubkeyAuthentication is on and that ~/.ssh and your home folder are not writable by others.",
+						ctx.keyPath
+							? m.crew_onboarding_connect_error_key_still_refused_title({ key: ctx.keyPath })
+							: m.crew_onboarding_connect_error_key_still_refused_title_default(),
+						m.crew_onboarding_connect_error_key_still_refused_body(),
 						["retry"],
 					)
 				: make(
-						`The server refused the key ${key}`,
-						"It is not authorized on that server yet. Sign in with the account password once and Atlas adds this key for you, or choose another key. A key with a passphrase has to be loaded in ssh-agent first.",
+						ctx.keyPath
+							? m.crew_onboarding_connect_error_key_refused_title({ key: ctx.keyPath })
+							: m.crew_onboarding_connect_error_key_refused_title_default(),
+						m.crew_onboarding_connect_error_key_refused_body(),
 						["use_password", "pick_key"],
 					);
 		case "key_unusable":
 			return make(
-				`ssh cannot use the key ${key}`,
+				ctx.keyPath
+					? m.crew_onboarding_connect_error_key_unusable_title({ key: ctx.keyPath })
+					: m.crew_onboarding_connect_error_key_unusable_title_default(),
 				ctx.windows
-					? "Windows says other users can read it, or it is not a private key. Only your own account may have access to the file (Properties → Security → Advanced → disable inheritance). Or choose another key."
-					: "Its permissions are too open (run `chmod 600` on it), or it is not a private key. Or choose another key.",
+					? m.crew_onboarding_connect_error_key_unusable_windows_body()
+					: m.crew_onboarding_connect_error_key_unusable_body(),
 				["pick_key", "use_password"],
 			);
 		case "no_key":
 			return make(
-				"That key file is not there",
-				"Choose a private key that exists, or sign in with the password and Atlas creates a key for you.",
+				m.crew_onboarding_connect_error_no_key_title(),
+				m.crew_onboarding_connect_error_no_key_body(),
 				["pick_key", "use_password"],
 			);
 		case "password_refused":
 			return make(
-				"The server did not accept that password",
-				`Check the password of ${ctx.target.split("@")[0] || "that user"} on ${host} (caps lock?) and try again.`,
+				m.crew_onboarding_connect_error_password_refused_title(),
+				user
+					? m.crew_onboarding_connect_error_password_refused_body({ user, host })
+					: m.crew_onboarding_connect_error_password_refused_body_default({ host }),
 				["retry"],
 			);
 		case "password_not_allowed":
 			return make(
-				"This server does not accept passwords",
-				"Only SSH keys can sign in there. Use the SSH key method: someone with access has to add this computer's public key to the server first.",
+				m.crew_onboarding_connect_error_password_not_allowed_title(),
+				m.crew_onboarding_connect_error_password_not_allowed_body(),
 				["use_key"],
 			);
 		case "unreachable":
 			return make(
-				`Cannot reach ${host}`,
-				"Is the server on, and is sshd running on the port above? Check the address and the port.",
+				m.crew_onboarding_connect_error_unreachable_title({ host }),
+				m.crew_onboarding_connect_error_unreachable_body(),
 				["retry"],
 			);
 		case "timeout":
 			return make(
-				`${host} did not answer`,
-				"A firewall may be dropping the connection, or the address is wrong. If the server is on a private network, connect to its VPN first.",
+				m.crew_onboarding_connect_error_timeout_title({ host }),
+				m.crew_onboarding_connect_error_timeout_body(),
 				["retry"],
 			);
 		case "name_not_found":
 			return make(
-				`The address ${host} does not exist`,
-				"Check the spelling, or use the server's IP address.",
+				m.crew_onboarding_connect_error_name_not_found_title({ host }),
+				m.crew_onboarding_connect_error_name_not_found_body(),
 				["retry"],
 			);
 		case "host_key_changed":
 			return make(
-				"The server's identity changed",
-				`ssh refused to continue because ${host} presents a different host key than the one this computer remembers. If you reinstalled the server this is expected: forget the old one with the command below, then try again. If you did not, someone may be intercepting the connection.`,
+				m.crew_onboarding_connect_error_host_key_changed_title(),
+				m.crew_onboarding_connect_error_host_key_changed_body({ host }),
 				["retry"],
 				`ssh-keygen -R ${host}`,
 			);
 		case "sudo_password":
 			return make(
-				"This user needs a password for sudo",
-				"Atlas installs system services, which takes sudo. Enter the sudo password below (usually the login password); it is used for this install only.",
+				m.crew_onboarding_connect_error_sudo_password_title(),
+				m.crew_onboarding_connect_error_sudo_password_body(),
 				["sudo"],
 			);
 		case "sudo_rejected":
-			return make("The sudo password was not accepted", "Check it and try again.", ["sudo"]);
+			return make(
+				m.crew_onboarding_connect_error_sudo_rejected_title(),
+				m.crew_onboarding_connect_error_sudo_rejected_body(),
+				["sudo"],
+			);
 		default:
 			return make(
-				"The install stopped",
-				err.hint ?? "Atlas could not finish. The details below say where it stopped.",
+				m.crew_onboarding_connect_error_other_title(),
+				err.hint ?? m.crew_onboarding_connect_error_other_body(),
 				["retry"],
 			);
 	}

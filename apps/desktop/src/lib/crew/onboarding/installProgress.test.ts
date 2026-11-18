@@ -6,8 +6,10 @@ import {
 	completeInstall,
 	initialInstallProgress,
 } from "./installProgress.ts";
-import { INSTALL_STEPS, installSteps } from "#lib/crew/installSteps.ts";
+import { installSteps } from "#lib/crew/installSteps.ts";
 import { crewServerTarget } from "#lib/crew/sshTarget.ts";
+
+const INSTALL_STEPS = installSteps(false);
 
 const fold = (lines: string[]) => lines.reduce(applyInstallLine, initialInstallProgress());
 

@@ -1,0 +1,54 @@
+{
+	"crew_onboarding_engine_art_installing": "Caption under the engine art while an install runs and no log line is available yet.",
+	"crew_onboarding_engine_art_pick_hint": "Caption under the engine art before an engine is chosen.",
+	"crew_onboarding_engine_art_ready": "Caption under the engine art once an engine is ready.",
+	"crew_onboarding_engine_install_binary_missing": {
+		"description": "Error on an engine card when the install ended and the program is still missing on the server. Cut at 60 characters on the card.",
+		"maxLength": 60
+	},
+	"crew_onboarding_engine_sign_in_api_format": "Label and accessible name of the API format menu of the provider form.",
+	"crew_onboarding_engine_sign_in_api_key": "Label of an API key field.",
+	"crew_onboarding_engine_sign_in_apply": "Button that writes the pasted API key to the server.",
+	"crew_onboarding_engine_sign_in_applying": "Button label while the API key is written to the server.",
+	"crew_onboarding_engine_sign_in_base_url": "Label of the gateway URL field of the provider form.",
+	"crew_onboarding_engine_sign_in_claude_gateway_hint": "Hint of the provider form for Claude Code: the gateway must speak the Anthropic API.",
+	"crew_onboarding_engine_sign_in_codex_gateway_hint": "Hint of the provider form for Codex: the gateway must speak the OpenAI Responses API. The path stays as written.",
+	"crew_onboarding_engine_sign_in_format_anthropic": "Option of the API format menu of the provider form: gateways that speak the Anthropic Messages API.",
+	"crew_onboarding_engine_sign_in_format_openai": "Option of the API format menu of the provider form: gateways that speak the OpenAI Chat Completions API.",
+	"crew_onboarding_engine_sign_in_gateway_api_key": "Accessible name of the gateway key field of the provider form.",
+	"crew_onboarding_engine_sign_in_gateway_base_url": "Accessible name of the gateway URL field of the provider form.",
+	"crew_onboarding_engine_sign_in_key_stays_on_server": "Reassurance under the key form: where the key is stored.",
+	"crew_onboarding_engine_sign_in_model": "Label of the model picker of the provider form.",
+	"crew_onboarding_engine_sign_in_paste_api_key": "Link that leaves the sign-in terminal for the API key form.",
+	"crew_onboarding_engine_sign_in_provider_hint": "Hint of the provider form; {agentId} is the engine id as the app names it.",
+	"crew_onboarding_engine_sign_in_terminal_input": "Accessible name of the input line of the sign-in terminal.",
+	"crew_onboarding_engine_sign_in_terminal_output": "Accessible name of the output area of the sign-in terminal.",
+	"crew_onboarding_engine_sign_in_test_connection": "Link that tests the gateway URL and key typed in the provider form.",
+	"crew_onboarding_engine_sign_in_testing": "Link label while the gateway connection test runs.",
+	"crew_onboarding_engine_sign_in_type_here_and_press_enter": "Placeholder of the input line of the sign-in terminal.",
+	"crew_onboarding_engine_sign_in_use_direct_key_instead": "Link that leaves the provider form for a direct API key.",
+	"crew_onboarding_engine_sign_in_use_interactive": "Link that leaves the API key form for the sign-in terminal.",
+	"crew_onboarding_engine_sign_in_use_your_own_provider": "Title of the provider form and link that opens it: point the engine at another gateway.",
+	"crew_onboarding_engine_status_checking": {
+		"description": "Badge on an engine card while Atlas checks the engine on the server.",
+		"maxLength": 18
+	},
+	"crew_onboarding_engine_status_install": {
+		"description": "Badge on an engine card: click to install the engine on the server.",
+		"maxLength": 18
+	},
+	"crew_onboarding_engine_status_installing": {
+		"description": "Badge on an engine card while it installs.",
+		"maxLength": 18,
+		"distinct": "an engine badge, not the footer button"
+	},
+	"crew_onboarding_engine_status_ready": {
+		"description": "Badge on an engine card: installed and signed in.",
+		"maxLength": 18
+	},
+	"crew_onboarding_engine_status_sign_in": {
+		"description": "Badge on an engine card: installed, click to sign in.",
+		"maxLength": 18
+	},
+	"crew_onboarding_engine_step_card": "Accessible name of an engine card: the engine, then its badge text."
+}

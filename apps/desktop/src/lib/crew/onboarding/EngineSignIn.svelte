@@ -2,8 +2,10 @@
 <script lang="ts">
 	import { Globe } from "@lucide/svelte";
 	import ModelPicker from "#lib/crew/ModelPicker.svelte";
-	import { AGENT_AUTH_TYPE, AGENT_KEY_LABEL } from "#lib/crew/remoteAgent.ts";
+	import { AGENT_AUTH_TYPE } from "#lib/crew/remoteAgent.ts";
+	import { pasteKeyTitle } from "./engines.ts";
 	import type { Onboarding } from "./onboarding.svelte.ts";
+	import { m } from "#lib/i18n/m.ts";
 
 	let { ob }: { ob: Onboarding } = $props();
 
@@ -14,44 +16,49 @@
 	{#if ob.providerOpen}
 		<!-- ── Provider form (use your own gateway) ── -->
 		<div class="signin-key-form provider-form">
-			<p class="signin-title">Use your own provider</p>
-			<p class="signin-hint">Point {agentId} at OpenRouter, LiteLLM, or any compatible gateway.</p>
-			<label class="field-label" for="prov-url">Base URL</label>
+			<p class="signin-title">{m.crew_onboarding_engine_sign_in_use_your_own_provider()}</p>
+			<p class="signin-hint">{m.crew_onboarding_engine_sign_in_provider_hint({ agentId })}</p>
+			<label class="field-label" for="prov-url">{m.crew_onboarding_engine_sign_in_base_url()}</label>
 			<input
 				id="prov-url"
 				class="ssh-input"
 				type="url"
 				placeholder="https://openrouter.ai/api/v1"
 				bind:value={ob.provider.baseUrl}
-				aria-label="Gateway base URL"
+				aria-label={m.crew_onboarding_engine_sign_in_gateway_base_url()}
 			/>
 			{#if agentId !== "claude"}
-				<label class="field-label" for="prov-fmt">API format</label>
-				<select id="prov-fmt" class="provider-select" bind:value={ob.provider.format} aria-label="API format">
-					<option value="openai">OpenAI-compatible (Chat Completions)</option>
-					<option value="anthropic">Anthropic-compatible (Messages API)</option>
+				<label class="field-label" for="prov-fmt">{m.crew_onboarding_engine_sign_in_api_format()}</label>
+				<select
+					id="prov-fmt"
+					class="provider-select"
+					bind:value={ob.provider.format}
+					aria-label={m.crew_onboarding_engine_sign_in_api_format()}
+				>
+					<option value="openai">{m.crew_onboarding_engine_sign_in_format_openai()}</option>
+					<option value="anthropic">{m.crew_onboarding_engine_sign_in_format_anthropic()}</option>
 				</select>
 				{#if agentId === "codex"}
 					<p class="field-hint">
-						Codex only supports gateways that speak the OpenAI Responses API (/v1/responses), not Chat
-						Completions.
+						{m.crew_onboarding_engine_sign_in_codex_gateway_hint()}
 					</p>
 				{/if}
 			{:else}
 				<p class="field-hint">
-					Claude Code only speaks the Anthropic Messages API. Your gateway must be Anthropic-compatible.
+					{m.crew_onboarding_engine_sign_in_claude_gateway_hint()}
 				</p>
 			{/if}
-			<label class="field-label" for="prov-key">API key</label>
+			<label class="field-label" for="prov-key">{m.crew_onboarding_engine_sign_in_api_key()}</label>
+			<!-- i18n-ignore: the prefix of an API key, not prose -->
 			<input
 				id="prov-key"
 				class="ssh-input"
 				type="password"
 				placeholder="sk-…"
 				bind:value={ob.provider.apiKey}
-				aria-label="Gateway API key"
+				aria-label={m.crew_onboarding_engine_sign_in_gateway_api_key()}
 			/>
-			<span class="field-label">Model</span>
+			<span class="field-label">{m.crew_onboarding_engine_sign_in_model()}</span>
 			<ModelPicker baseUrl={ob.provider.baseUrl} apiKey={ob.provider.apiKey} bind:value={ob.provider.model} />
 			{#if ob.provider.testResult}
 				<p
@@ -72,7 +79,7 @@
 					onclick={() => ob.saveProvider()}
 					disabled={ob.provider.saving || !ob.provider.canSave}
 				>
-					{ob.provider.saving ? "Saving…" : "Save"}
+					{ob.provider.saving ? m.common_state_saving() : m.common_action_save()}
 				</button>
 				<button
 					class="text-link"
@@ -81,21 +88,24 @@
 					}}
 					disabled={ob.provider.testing || !ob.provider.canTest}
 				>
-					{ob.provider.testing ? "Testing…" : "Test connection"}
+					{ob.provider.testing
+						? m.crew_onboarding_engine_sign_in_testing()
+						: m.crew_onboarding_engine_sign_in_test_connection()}
 				</button>
 			</div>
 		</div>
 	{:else if ob.apiKeyMode}
 		<div class="signin-key-form">
-			<p class="signin-title">Paste your {AGENT_KEY_LABEL[agentId] ?? "API key"}</p>
-			<p class="signin-hint">It's stored on your crew server only, never sent anywhere else.</p>
+			<p class="signin-title">{pasteKeyTitle(agentId)}</p>
+			<p class="signin-hint">{m.crew_onboarding_engine_sign_in_key_stays_on_server()}</p>
+			<!-- i18n-ignore: the prefix of an API key, not prose -->
 			<input
 				class="ssh-input"
 				type="password"
 				placeholder="sk-…"
 				bind:value={ob.apiKeyValue}
 				onkeydown={(e) => e.key === "Enter" && ob.applyApiKey()}
-				aria-label="API key"
+				aria-label={m.crew_onboarding_engine_sign_in_api_key()}
 			/>
 			{#if ob.apiKeyError}<p class="field-error">{ob.apiKeyError}</p>{/if}
 			<button
@@ -103,22 +113,28 @@
 				onclick={() => ob.applyApiKey()}
 				disabled={ob.apiKeyApplying || !ob.apiKeyValue.trim()}
 			>
-				{ob.apiKeyApplying ? "Applying…" : "Apply"}
+				{ob.apiKeyApplying
+					? m.crew_onboarding_engine_sign_in_applying()
+					: m.crew_onboarding_engine_sign_in_apply()}
 			</button>
 		</div>
 	{:else}
 		<div class="signin-terminal">
-			<div class="signin-term-output" aria-live="polite" aria-label="Terminal output">
-				<pre>{ob.signinOutput || "Connecting…"}</pre>
+			<div
+				class="signin-term-output"
+				aria-live="polite"
+				aria-label={m.crew_onboarding_engine_sign_in_terminal_output()}
+			>
+				<pre>{ob.signinOutput || m.crew_onboarding_connecting()}</pre>
 			</div>
 			<div class="signin-term-input-row">
 				<input
 					class="signin-term-input"
 					type="text"
-					placeholder="Type here and press Enter…"
+					placeholder={m.crew_onboarding_engine_sign_in_type_here_and_press_enter()}
 					bind:value={ob.signinInput}
 					onkeydown={(e) => ob.sendSigninKey(e)}
-					aria-label="Terminal input"
+					aria-label={m.crew_onboarding_engine_sign_in_terminal_input()}
 				/>
 			</div>
 		</div>
@@ -127,16 +143,23 @@
 	{#if !ob.providerOpen}
 		{#if AGENT_AUTH_TYPE[agentId] === "both"}
 			<button class="text-link" onclick={() => ob.toggleApiKeyMode()} style="font-size:12px;margin-top:8px">
-				{ob.apiKeyMode ? "Use interactive sign-in instead" : "Paste API key instead"}
+				{ob.apiKeyMode
+					? m.crew_onboarding_engine_sign_in_use_interactive()
+					: m.crew_onboarding_engine_sign_in_paste_api_key()}
 			</button>
 		{/if}
 		<button class="text-link" onclick={() => ob.openProviderMode()} style="font-size:12px;margin-top:4px">
-			<Globe size={11} style="display:inline;vertical-align:middle;margin-right:4px" />Use your own provider
+			<Globe
+				size={11}
+				style="display:inline;vertical-align:middle;margin-right:4px"
+			/>{m.crew_onboarding_engine_sign_in_use_your_own_provider()}
 		</button>
-		<button class="text-link" onclick={() => ob.recheckSignin()} style="font-size:12px">Check again</button>
+		<button class="text-link" onclick={() => ob.recheckSignin()} style="font-size:12px"
+			>{m.crew_onboarding_check_again()}</button
+		>
 	{:else}
 		<button class="text-link" onclick={() => ob.closeProviderMode()} style="font-size:12px;margin-top:8px">
-			Use direct key instead
+			{m.crew_onboarding_engine_sign_in_use_direct_key_instead()}
 		</button>
 	{/if}
 </div>

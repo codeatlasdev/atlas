@@ -1,0 +1,17 @@
+{
+	"crew_onboarding_step_connect_body": "Paragraph under the headline of the connect step.",
+	"crew_onboarding_step_connect_headline": "Headline of the connect step.",
+	"crew_onboarding_step_engine_body": "Paragraph under the headline of the engine step.",
+	"crew_onboarding_step_engine_headline": "Headline of the engine step; an engine is the coding agent (Claude Code, Codex) a crewmate runs on.",
+	"crew_onboarding_step_how_body": "Paragraph under the headline of the how-it-works step.",
+	"crew_onboarding_step_how_headline": "Headline of the how-it-works step.",
+	"crew_onboarding_step_how_label": "Small label over the headline of the second information step.",
+	"crew_onboarding_step_intro_body": "Paragraph under the headline of the first information step.",
+	"crew_onboarding_step_intro_bullet_asks": "Third bullet of the first information step.",
+	"crew_onboarding_step_intro_bullet_server": "First bullet of the first information step.",
+	"crew_onboarding_step_intro_bullet_sleep": "Second bullet of the first information step.",
+	"crew_onboarding_step_intro_headline": "Headline of the first information step.",
+	"crew_onboarding_step_intro_label": "Small label over the headline of the first information step.",
+	"crew_onboarding_step_ready_body": "Paragraph under the headline of the last step.",
+	"crew_onboarding_step_ready_headline": "Headline of the last step."
+}

@@ -68,7 +68,7 @@ pub enum TrayItem {
     ToggleWindow,
     /// Always bring the main window forward.
     Open,
-    /// Show the agent dock when it is hidden, hide it when it is showing ("Show Agent Dock" / "Hide Agent Dock").
+    /// Show the agent dock when it is hidden, hide it when it is showing (`menu_model::dock_label` names what the click does).
     ToggleDock,
     /// The capture submenu: every capture action with its key (macOS only, capture is not available elsewhere).
     Capture,
@@ -95,15 +95,6 @@ pub fn tray_menu(linux: bool) -> &'static [TrayItem] {
             TrayItem::Separator,
             TrayItem::Quit,
         ]
-    }
-}
-
-/// The tray item's text for a dock that is `shown` now: it names what the click does.
-pub fn dock_item_label(shown: bool) -> &'static str {
-    if shown {
-        "Hide Agent Dock"
-    } else {
-        "Show Agent Dock"
     }
 }
 
@@ -191,12 +182,5 @@ mod tests {
         let quit = m.iter().position(|i| *i == TrayItem::Quit).unwrap();
         assert!(dock < at && at < quit);
         assert!(!tray_menu(true).contains(&TrayItem::Capture));
-    }
-
-    /// "Show Agent Dock" / "Hide Agent Dock": the label says what the click does, from the persisted choice.
-    #[test]
-    fn the_dock_item_names_what_a_click_does() {
-        assert_eq!(dock_item_label(true), "Hide Agent Dock");
-        assert_eq!(dock_item_label(false), "Show Agent Dock");
     }
 }

@@ -423,7 +423,7 @@ pub fn shots_prefs_set(app: AppHandle, prefs: CapturePrefs) -> Result<CapturePre
     state.history.lock().trim(prefs.history as usize);
     state.save_history();
     *state.prefs.lock() = prefs.clone();
-    crate::tray::refresh_capture(&app, &prefs.keys);
+    crate::menu::relabel_all(&app, &prefs.keys);
     Ok(prefs)
 }
 

@@ -1,0 +1,9 @@
+{
+	"native_notify_capture_failed": "Falha na captura",
+	"native_notify_dock_agent_gone": "Esse agente não está mais rodando. Escolha outro.",
+	"native_notify_dock_keys_clash": "As teclas de chamar e de ocultar são iguais. Escolha duas teclas diferentes.",
+	"native_notify_dock_not_built": "O dock de agentes não está disponível.",
+	"native_notify_no_home": "Não foi possível localizar a pasta pessoal",
+	"native_notify_no_permission": "O Atlas precisa da permissão de Gravação de Tela para capturar a tela. Conceda em {@common_os_system_settings} > Privacidade e Segurança > Gravação de Tela e reinicie o Atlas.",
+	"native_notify_shell_not_executable": "{path} não é um arquivo executável"
+}

@@ -1,0 +1,10 @@
+{
+	"native_tray_capture_window_title": "Title of the capture overlay and pinned screenshot windows, read by window switchers and screen readers.",
+	"native_tray_dock_hide": "Tray menu item and agent dock right-click item that hide the agent dock. Without a shortcut the item is just this text.",
+	"native_tray_dock_hide_key": "Right-click item of the agent dock that hides it, with the shortcut that does the same ({key}, already formatted for the OS). Two spaces separate the text from the shortcut on purpose.",
+	"native_tray_dock_show": "Tray menu item that shows the agent dock (the small always-on-top pill that sends text to agents) when it is hidden.",
+	"native_tray_dock_window_title": "Title of the agent dock window, read by window switchers and screen readers.",
+	"native_tray_open": "Tray menu item and agent dock right-click item that bring the main window forward.",
+	"native_tray_quit": "Tray menu item that quits Atlas. Windows tray menus say Exit, macOS and Linux say Quit.",
+	"native_tray_toggle": "Tray menu item (Linux) that hides the main window when it is showing and shows it when it is not."
+}

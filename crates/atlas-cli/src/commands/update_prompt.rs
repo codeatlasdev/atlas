@@ -178,9 +178,13 @@ where
         // Homebrew, a declined confirmation, already current: nothing changed, carry on.
         Ok(UpdateOutcome::Unchanged | UpdateOutcome::Managed) => Flow::Continue,
         Err(e) => {
-            eprintln!("\x1b[1;31merror:\x1b[0m update failed: {e}");
+            eprintln!(
+                "{} {}",
+                crate::chrome::error(),
+                atlas_i18n::t!("update_failed", error = e.to_string())
+            );
             for cause in e.chain().skip(1) {
-                eprintln!("  caused by: {cause}");
+                eprintln!("  {} {cause}", crate::chrome::caused_by());
             }
             if ask(&format!("Continue with v{current}? [Y/n] "), input) {
                 Flow::Continue
@@ -235,7 +239,11 @@ pub(crate) async fn preflight(interactive_path: bool) -> Flow {
                     || self_update::run_update(self_update::Request::default()),
                     || {
                         let e = reexec();
-                        eprintln!("\x1b[1;31merror:\x1b[0m could not restart atlas: {e}");
+                        eprintln!(
+                            "{} {}",
+                            crate::chrome::error(),
+                            atlas_i18n::t!("update_restart_failed", error = e.to_string())
+                        );
                     },
                 )
                 .await
@@ -268,9 +276,13 @@ pub(crate) async fn run_on_exit_update() {
         // Another tool owns this install and the user was told what to run.
         Ok(UpdateOutcome::Unchanged | UpdateOutcome::Managed) => {}
         Err(e) => {
-            eprintln!("\x1b[1;31merror:\x1b[0m update failed: {e}");
+            eprintln!(
+                "{} {}",
+                crate::chrome::error(),
+                atlas_i18n::t!("update_failed", error = e.to_string())
+            );
             for cause in e.chain().skip(1) {
-                eprintln!("  caused by: {cause}");
+                eprintln!("  {} {cause}", crate::chrome::caused_by());
             }
             eprintln!("  Run \x1b[1matlas update\x1b[0m to retry.");
         }

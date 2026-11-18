@@ -1,0 +1,115 @@
+{
+	"crew_automation_describe_crewmate_done": "When {name} finishes",
+	"crew_automation_describe_crewmate_failed": "When {name} fails",
+	"crew_automation_describe_custom_cron": "Custom: {cron}",
+	"crew_automation_describe_every_hours": [
+		{
+			"declarations": [
+				"input count",
+				"local countPlural = count: plural"
+			],
+			"selectors": [
+				"countPlural"
+			],
+			"match": {
+				"countPlural=one": "Every {count} hour",
+				"countPlural=*": "Every {count} hours"
+			}
+		}
+	],
+	"crew_automation_describe_every_hours_minutes": "Every {hours}h {minutes}m",
+	"crew_automation_describe_every_minutes": [
+		{
+			"declarations": [
+				"input count",
+				"local countPlural = count: plural"
+			],
+			"selectors": [
+				"countPlural"
+			],
+			"match": {
+				"countPlural=one": "Every {count} minute",
+				"countPlural=*": "Every {count} minutes"
+			}
+		}
+	],
+	"crew_automation_describe_every_seconds": "Every {seconds}s",
+	"crew_automation_describe_file": "When {target} changes",
+	"crew_automation_describe_github": "When {events} in {repo}",
+	"crew_automation_describe_github_ci_failed": "CI fails",
+	"crew_automation_describe_github_issue_assigned": "an issue is assigned to you",
+	"crew_automation_describe_github_issue_opened": "an issue is opened",
+	"crew_automation_describe_github_mention": "you are mentioned",
+	"crew_automation_describe_github_pr_opened": "a PR is opened",
+	"crew_automation_describe_github_release": "a release is published",
+	"crew_automation_describe_github_review_comment": "a PR gets a review comment",
+	"crew_automation_describe_github_review_requested": "your review is requested",
+	"crew_automation_describe_next_day": "{day} {time}",
+	"crew_automation_describe_next_today": "today at {time}",
+	"crew_automation_describe_next_tomorrow": "tomorrow at {time}",
+	"crew_automation_describe_schedule": "{days} at {time}",
+	"crew_automation_describe_schedule_tz": "{days} at {time} ({tz})",
+	"crew_automation_describe_service_failed": "When {name} fails",
+	"crew_automation_describe_service_recovered": "When {name} recovers",
+	"crew_automation_describe_webhook": "Webhook",
+	"crew_automation_describe_weekends": "Weekends",
+	"crew_automation_dialog_automation_prompt": "Automation prompt",
+	"crew_automation_dialog_delete_automation": "Delete automation",
+	"crew_automation_dialog_kind_crewmate": "After crewmate",
+	"crew_automation_dialog_kind_file": "File",
+	"crew_automation_dialog_kind_interval": "Interval",
+	"crew_automation_dialog_kind_schedule": "Schedule",
+	"crew_automation_dialog_kind_webhook": "Webhook",
+	"crew_automation_dialog_placeholder_github": "A PR was opened: {event}. Review it.",
+	"crew_automation_dialog_placeholder_other": "Describe what the crewmate should do when the trigger fires",
+	"crew_automation_dialog_placeholder_schedule": "Review the open PRs and post a summary",
+	"crew_automation_dialog_prompt_label": "What should {crewmate} do?",
+	"crew_automation_dialog_prompt_label_default": "What should the crewmate do?",
+	"crew_automation_dialog_title_add": "Add automation",
+	"crew_automation_dialog_title_edit": "Edit automation",
+	"crew_automation_dialog_trigger_kind": "Trigger kind",
+	"crew_automation_fields_crewmate_name": "Crewmate name",
+	"crew_automation_fields_crewmate_name_or_id": "Crewmate name or ID",
+	"crew_automation_fields_cron": "Cron",
+	"crew_automation_fields_cron_expression": "Cron expression",
+	"crew_automation_fields_custom_cron": "Custom cron",
+	"crew_automation_fields_days": "Days",
+	"crew_automation_fields_days_of_week": "Days of week",
+	"crew_automation_fields_events": "Events",
+	"crew_automation_fields_every": "Every",
+	"crew_automation_fields_every_day": "Every day",
+	"crew_automation_fields_fails": "Fails",
+	"crew_automation_fields_file_glob": "File glob",
+	"crew_automation_fields_finishes": "Finishes",
+	"crew_automation_fields_github_ci_failed": "CI failed",
+	"crew_automation_fields_github_issue_assigned": "Issue assigned",
+	"crew_automation_fields_github_issue_opened": "Issue opened",
+	"crew_automation_fields_github_mention": "Mentioned",
+	"crew_automation_fields_github_pr_opened": "PR opened",
+	"crew_automation_fields_github_release": "Release",
+	"crew_automation_fields_github_repo": "GitHub repo",
+	"crew_automation_fields_github_review_comment": "Review comment",
+	"crew_automation_fields_github_review_requested": "Review requested",
+	"crew_automation_fields_glob": "Glob",
+	"crew_automation_fields_interval_amount": "Interval amount",
+	"crew_automation_fields_interval_unit": "Interval unit",
+	"crew_automation_fields_path": "Path",
+	"crew_automation_fields_project_dir": "Project dir",
+	"crew_automation_fields_project_directory": "Project directory",
+	"crew_automation_fields_recovers": "Recovers",
+	"crew_automation_fields_repo": "Repo",
+	"crew_automation_fields_service": "Service",
+	"crew_automation_fields_service_name": "Service name",
+	"crew_automation_fields_source_crewmate": "Source crewmate",
+	"crew_automation_fields_time": "Time",
+	"crew_automation_fields_token": "Token",
+	"crew_automation_fields_unit_days": "days",
+	"crew_automation_fields_unit_hours": "hours",
+	"crew_automation_fields_unit_minutes": "minutes",
+	"crew_automation_fields_use_builder": "Use builder",
+	"crew_automation_fields_watch_path": "Watch path",
+	"crew_automation_fields_webhook_hint": "Atlas generates a unique token. Use it in your webhook URL:",
+	"crew_automation_fields_weekdays": "Weekdays",
+	"crew_automation_fields_when": "When",
+	"crew_automation_fields_when_to_trigger": "When to trigger"
+}

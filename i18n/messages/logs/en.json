@@ -1,0 +1,223 @@
+{
+	"logs_copied_lines": [
+		{
+			"declarations": [
+				"input amount",
+				"input count",
+				"local countExact = count",
+				"local countPlural = count: plural"
+			],
+			"selectors": [
+				"countExact",
+				"countPlural"
+			],
+			"match": {
+				"countExact=0, countPlural=*": "No lines to copy",
+				"countExact=*, countPlural=one": "Copied {amount} line",
+				"countExact=*, countPlural=*": "Copied {amount} lines"
+			}
+		}
+	],
+	"logs_copied_lines_for_ai": [
+		{
+			"declarations": [
+				"input amount",
+				"input count",
+				"local countExact = count",
+				"local countPlural = count: plural"
+			],
+			"selectors": [
+				"countExact",
+				"countPlural"
+			],
+			"match": {
+				"countExact=0, countPlural=*": "No lines to copy",
+				"countExact=*, countPlural=one": "Copied {amount} line for AI",
+				"countExact=*, countPlural=*": "Copied {amount} lines for AI"
+			}
+		}
+	],
+	"logs_empty_clear_search_filters": "Clear the search or the filters.",
+	"logs_empty_filtering": "Filtering",
+	"logs_empty_loading_logs": "Loading logs",
+	"logs_empty_logs_stream_here_once_it": "Logs stream here once it runs.",
+	"logs_empty_no_lines_match": "No lines match",
+	"logs_empty_nothing_in_range": "Nothing in \"{range}\". Clear the range, the search or the filters.",
+	"logs_empty_reset_filters": "Reset filters",
+	"logs_empty_stack_is_stopped": "Stack is stopped",
+	"logs_empty_waiting_for_output": "Waiting for output…",
+	"logs_filter_bar_all": "All",
+	"logs_filter_bar_all_levels": "all levels",
+	"logs_link_outside_project": "{path} is outside the project",
+	"logs_new_lines": [
+		{
+			"declarations": [
+				"input amount",
+				"input count",
+				"local countPlural = count: plural"
+			],
+			"selectors": [
+				"countPlural"
+			],
+			"match": {
+				"countPlural=one": "{amount} new line",
+				"countPlural=*": "{amount} new lines"
+			}
+		}
+	],
+	"logs_no_error_lines": "No error lines",
+	"logs_no_warning_lines": "No warning lines",
+	"logs_range_all_time": "All time",
+	"logs_range_chip_apply": "Apply",
+	"logs_range_chip_clear_time_range": "Clear time range",
+	"logs_range_chip_custom_placeholder": "14:05 or 14:05-14:20",
+	"logs_range_chip_custom_time_range_today": "Custom time range (today)",
+	"logs_range_chip_since_last_restart": "Since last restart",
+	"logs_range_chip_since_service_restarted": "Since {name} restarted",
+	"logs_range_chip_time_range": "Time range",
+	"logs_range_chip_time_range_label": "Time range: {label}",
+	"logs_range_cleared": "Cleared \"{range}\" to show that moment",
+	"logs_range_error_end_before_start": "The end is before the start",
+	"logs_range_error_not_a_time": "Not a time: \"{text}\"",
+	"logs_range_error_one_range": "Use one range: 14:05-14:20",
+	"logs_range_error_type_time": "Type a time: 14:05 or 14:05-14:20",
+	"logs_range_from": "From {time}",
+	"logs_range_last_hours": [
+		{
+			"declarations": [
+				"input hours",
+				"local hoursPlural = hours: plural"
+			],
+			"selectors": [
+				"hoursPlural"
+			],
+			"match": {
+				"hoursPlural=one": "Last {hours} h",
+				"hoursPlural=*": "Last {hours} h"
+			}
+		}
+	],
+	"logs_range_last_minutes": [
+		{
+			"declarations": [
+				"input minutes",
+				"local minutesPlural = minutes: plural"
+			],
+			"selectors": [
+				"minutesPlural"
+			],
+			"match": {
+				"minutesPlural=one": "Last {minutes} min",
+				"minutesPlural=*": "Last {minutes} min"
+			}
+		}
+	],
+	"logs_range_since_restart": "Since restart",
+	"logs_range_since_stack_start": "Since stack start",
+	"logs_search_bar_filter": "Filter",
+	"logs_search_bar_filtering_hint": "Filtering: hide lines that do not match",
+	"logs_search_bar_find": "Find",
+	"logs_search_bar_finding_hint": "Finding: highlight matches",
+	"logs_search_bar_hide_non_matching_lines": "Hide non-matching lines",
+	"logs_search_bar_invalid": "bad pattern",
+	"logs_search_bar_match_case": "Match case",
+	"logs_search_bar_next_match": "Next match",
+	"logs_search_bar_next_match_tip": "Next match ({key})",
+	"logs_search_bar_previous_match": "Previous match",
+	"logs_search_bar_previous_match_tip": "Previous match ({key})",
+	"logs_search_bar_regular_expression": "Regular expression",
+	"logs_search_bar_search_logs": "Search logs",
+	"logs_service_logs": "Service logs",
+	"logs_status_errors": [
+		{
+			"declarations": [
+				"input amount",
+				"input count",
+				"local countPlural = count: plural"
+			],
+			"selectors": [
+				"countPlural"
+			],
+			"match": {
+				"countPlural=one": "{amount} error",
+				"countPlural=*": "{amount} errors"
+			}
+		}
+	],
+	"logs_status_filtering": "filtering…",
+	"logs_status_hint_find": "find",
+	"logs_status_hint_jump": "next error / warn",
+	"logs_status_hint_links": "{key} opens links",
+	"logs_status_hint_logs": "logs",
+	"logs_status_lines": [
+		{
+			"declarations": [
+				"input amount",
+				"input count",
+				"local countExact = count",
+				"local countPlural = count: plural"
+			],
+			"selectors": [
+				"countExact",
+				"countPlural"
+			],
+			"match": {
+				"countExact=0, countPlural=*": "No lines",
+				"countExact=*, countPlural=one": "{amount} line",
+				"countExact=*, countPlural=*": "{amount} lines"
+			}
+		}
+	],
+	"logs_status_lines_of_total": [
+		{
+			"declarations": [
+				"input total",
+				"input amount",
+				"input count",
+				"local countExact = count",
+				"local countPlural = count: plural"
+			],
+			"selectors": [
+				"countExact",
+				"countPlural"
+			],
+			"match": {
+				"countExact=0, countPlural=*": "No lines of {total}",
+				"countExact=*, countPlural=one": "{amount} line of {total}",
+				"countExact=*, countPlural=*": "{amount} lines of {total}"
+			}
+		}
+	],
+	"logs_status_warnings": [
+		{
+			"declarations": [
+				"input amount",
+				"input count",
+				"local countPlural = count: plural"
+			],
+			"selectors": [
+				"countPlural"
+			],
+			"match": {
+				"countPlural=one": "{amount} warning",
+				"countPlural=*": "{amount} warnings"
+			}
+		}
+	],
+	"logs_status_working": "Working",
+	"logs_tools_copy_filtered_lines": "Copy filtered lines",
+	"logs_tools_copy_for_ai": "Copy for AI",
+	"logs_tools_copy_last_lines_for_ai": "Copy last {lines} lines for AI",
+	"logs_tools_follow": "Follow",
+	"logs_tools_next_error": "Next error",
+	"logs_tools_next_error_tip": "Next error ({key})",
+	"logs_tools_next_warning": "Next warning",
+	"logs_tools_next_warning_tip": "Next warning ({key})",
+	"logs_tools_previous_error": "Previous error",
+	"logs_tools_previous_error_tip": "Previous error ({key})",
+	"logs_tools_previous_warning": "Previous warning",
+	"logs_tools_previous_warning_tip": "Previous warning ({key})",
+	"logs_tools_timestamps": "Timestamps",
+	"logs_tools_timestamps_tip": "Timestamps ({key})",
+	"logs_tools_wrap_long_lines": "Wrap long lines"
+}

@@ -2,10 +2,16 @@
 import { expect, test } from "bun:test";
 import { readFileSync } from "node:fs";
 import { join } from "node:path";
+import { m } from "#lib/i18n/m.ts";
 
 const read = (rel) => readFileSync(join(import.meta.dir, rel), "utf8");
 const page = read("+page.svelte");
 const layout = read("../+layout.svelte");
+/** The page shows `m.<key>()` and the catalog's English (the tests run in `en`) is what the contract names. */
+const says = (key, english) => {
+	expect(page, key).toContain(`m.${key}(`);
+	expect(m[key](), key).toBe(english);
+};
 const invoked = (src) => [...src.matchAll(/invoke(?:<[^>]*>)?\(\s*"([a-z_]+)"/g)].map((m) => m[1]);
 
 // The overlay's commands (`local://shots-contract.md`, "Overlay page"). A page that calls a name outside this list
@@ -88,20 +94,27 @@ test("the page paints before init resolves: the dim mask does not depend on the 
 
 test("the toolbar has a named button per HUD mode, a previous-area button and a timer readout", () => {
 	expect(page).toContain('role="toolbar"');
-	expect(page).toMatch(/aria-label=\{MODE_LABELS\[m\]\}/);
-	for (const name of ["Region", "Window", "Screen", "Record", "GIF", "Text (OCR)"]) {
-		expect(page, name).toContain(`"${name}"`);
-	}
-	expect(page).toContain('aria-label="Previous area"');
+	expect(page).toMatch(/aria-label=\{modeLabel\(mode\)\}/);
+	for (const [key, name] of [
+		["capture_overlay_page_mode_region", "Region"],
+		["capture_overlay_page_mode_window", "Window"],
+		["capture_overlay_page_mode_screen", "Screen"],
+		["capture_overlay_page_mode_record", "Record"],
+		["capture_overlay_page_mode_text", "Text (OCR)"],
+	])
+		says(key, name);
+	expect(page).toContain('"GIF"');
+	says("capture_overlay_page_previous_area", "Previous area");
 	expect(page).toMatch(/disabled=\{!st\.hud\.hasPrevious\}/);
-	expect(page).toMatch(/Timer:/);
+	expect(page).toContain("m.capture_overlay_page_timer_on(");
+	expect(m.capture_overlay_page_timer_on({ seconds: 3 })).toBe("Timer: 3s");
 	expect(page).toMatch(/st\.hud\.timerSecs/);
 });
 
 // The timer is a saved setting that must show on every display's overlay: the click asks Rust, Rust announces the
 // new value, and the page applies it from the event (not from the click), so two screens never disagree.
 test("the timer button asks Rust and the page applies the announced value to the reducer", () => {
-	expect(page).toMatch(/class="timer"[\s\S]{0,200}onclick=\{cycleTimer\}/);
+	expect(page).toMatch(/class="timer"[\s\S]{0,400}onclick=\{cycleTimer\}/);
 	expect(page).toMatch(/invoke<number>\("shots_timer_cycle"\)/);
 	expect(page).toMatch(
 		/listen<number>\("shots:\/\/hud-timer"[\s\S]{0,80}dispatch\(\{ type: "timer", secs: ev\.payload \}\)/,
@@ -109,7 +122,7 @@ test("the timer button asks Rust and the page applies the announced value to the
 });
 
 test("toolbar buttons forward to the reducer instead of deciding anything", () => {
-	expect(page).toMatch(/dispatch\(\{ type: "mode", mode: m \}\)/);
+	expect(page).toMatch(/dispatch\(\{ type: "mode", mode \}\)/);
 	expect(page).toMatch(/dispatch\(\{ type: "previous" \}\)/);
 });
 

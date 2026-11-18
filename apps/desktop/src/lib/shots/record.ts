@@ -5,6 +5,7 @@
  * The HUD state is the shared `RecordState` plus what Rust's `RecordState` also sends for the recording options
  * (`HudState`): the size estimate, the notes of skipped options, the GIF encode progress and the trim step.
  */
+import { m } from "#lib/i18n/m.ts";
 import type { RecordState } from "./types.ts";
 
 /** The extra keys of Rust's `RecordState` (`shots/record.rs`), serialized camelCase. */
@@ -64,9 +65,9 @@ export interface RecordView {
 export function formatTimer(ms: number): string {
 	const total = Number.isFinite(ms) && ms > 0 ? Math.floor(ms / 1000) : 0;
 	const h = Math.floor(total / 3600);
-	const m = Math.floor((total % 3600) / 60);
+	const mins = Math.floor((total % 3600) / 60);
 	const s = String(total % 60).padStart(2, "0");
-	return h > 0 ? `${h}:${String(m).padStart(2, "0")}:${s}` : `${m}:${s}`;
+	return h > 0 ? `${h}:${String(mins).padStart(2, "0")}:${s}` : `${mins}:${s}`;
 }
 
 /** 3,3,2,1,1 across 0..3500 ms: held at 1 (never 0) until Rust flips the phase. */
@@ -87,21 +88,21 @@ export function formatEstimate(bytes: number | null | undefined): string | null 
 function labelOf(s: HudState): string {
 	switch (s.phase) {
 		case "countdown":
-			return "Starting";
+			return m.capture_hud_state_starting();
 		case "recording":
-			return s.kind === "gif" ? "Recording GIF" : "Recording";
+			return s.kind === "gif" ? m.capture_hud_state_recording_gif() : m.capture_hud_state_recording();
 		case "paused":
-			return "Paused";
+			return m.capture_hud_state_paused();
 		case "trim":
-			return "Trim, then save";
+			return m.capture_hud_state_trim();
 		case "saving":
 			return s.progress && s.progress.total > 0
-				? `Encoding GIF ${Math.round(encodeFraction(s.progress) * 100)}%`
-				: "Saving…";
+				? m.capture_hud_state_encoding({ percent: Math.round(encodeFraction(s.progress) * 100) })
+				: m.common_state_saving();
 		case "done":
-			return s.message || "Saved";
+			return s.message || m.capture_hud_state_saved();
 		case "error":
-			return s.message || "Recording failed";
+			return s.message || m.capture_hud_state_failed();
 		default:
 			return "";
 	}
@@ -127,7 +128,7 @@ export function view(s: HudState): RecordView {
 		label: labelOf(s),
 		timer: formatTimer(s.elapsedMs),
 		// Ceil: the last second reads 0:01, never 0:00 before the recording has really ended.
-		remaining: warn ? `${formatTimer(Math.ceil(left / 1000) * 1000)} left` : null,
+		remaining: warn ? m.capture_hud_state_left({ time: formatTimer(Math.ceil(left / 1000) * 1000) }) : null,
 		// Only an mp4 in progress has an estimate (Rust sends null for a GIF).
 		estimate: live || s.phase === "saving" ? formatEstimate(s.estimateBytes) : null,
 		notes: s.notes ?? [],
@@ -243,9 +244,9 @@ export function fractionOf(secs: number, duration: number): number {
 /** `m:ss.t` for a trim handle: the tenth matters when cutting. */
 export function formatSecs(secs: number): string {
 	const t = Number.isFinite(secs) && secs > 0 ? Math.floor(secs * 10) / 10 : 0;
-	const m = Math.floor(t / 60);
-	const s = (t - m * 60).toFixed(1).padStart(4, "0");
-	return `${m}:${s}`;
+	const mins = Math.floor(t / 60);
+	const s = (t - mins * 60).toFixed(1).padStart(4, "0");
+	return `${mins}:${s}`;
 }
 
 /** What Save sends: nothing when the whole clip is kept (no re-write), the clamped range otherwise. */

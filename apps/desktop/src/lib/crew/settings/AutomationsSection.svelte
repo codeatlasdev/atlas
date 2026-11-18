@@ -3,7 +3,6 @@
 	import { onMount } from "svelte";
 	import { Button } from "@codeatlasdev/ui";
 	import type { Crewmate, Trigger, TriggerKind } from "#lib/crew.ts";
-	import AutomationDialog from "#lib/crew/automation/AutomationDialog.svelte";
 	import { describeNext, describeTrigger } from "#lib/crew/automations.ts";
 	import { optionIn } from "#lib/crew/motion.ts";
 	import { m } from "#lib/i18n/m.ts";
@@ -97,14 +96,17 @@
 	>
 </div>
 
-<AutomationDialog
-	bind:open={dialogOpen}
-	trigger={editing}
-	crewmateName={crewmate.name}
-	tz={Intl.DateTimeFormat().resolvedOptions().timeZone}
-	onsave={save}
-	ondelete={remove}
-/>
+<!-- A chunk of its own: the dialog and its fields carry their messages, which must not grow the startup bundle. -->
+{#await import("#lib/crew/automation/AutomationDialog.svelte") then { default: AutomationDialog }}
+	<AutomationDialog
+		bind:open={dialogOpen}
+		trigger={editing}
+		crewmateName={crewmate.name}
+		tz={Intl.DateTimeFormat().resolvedOptions().timeZone}
+		onsave={save}
+		ondelete={remove}
+	/>
+{/await}
 
 <style>
 	.automation-row {

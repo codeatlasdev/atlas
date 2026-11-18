@@ -4,6 +4,7 @@
 	 * button, lettered options, and an optional "type your own answer" box. Picking or typing calls `onanswer`.
 	 */
 	import type { AskPayload } from "./parseAsk.ts";
+	import { m } from "#lib/i18n/m.ts";
 
 	interface Props {
 		ask: AskPayload;
@@ -17,7 +18,7 @@
 <div class="ask-card">
 	<div class="ask-question">
 		<span>{ask.question}</span>
-		<button class="ask-dismiss" aria-label="Dismiss" onclick={ondismiss}>×</button>
+		<button class="ask-dismiss" aria-label={m.crew_chat_ask_card_dismiss()} onclick={ondismiss}>×</button>
 	</div>
 	{#each ask.options as opt, oi (opt.key)}
 		<button class="ask-option" onclick={() => onanswer(opt.title)}>
@@ -31,7 +32,7 @@
 	{#if ask.allow_text !== false}
 		<input
 			class="ask-text"
-			placeholder="Type your own answer"
+			placeholder={m.crew_chat_ask_card_type_your_own_answer()}
 			onkeydown={(e) => {
 				const v = (e.currentTarget as HTMLInputElement).value.trim();
 				if (e.key === "Enter" && v) onanswer(v);

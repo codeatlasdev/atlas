@@ -9,6 +9,7 @@
 	import type { InstallPhase } from "#lib/crew/installSteps.ts";
 	import { machineName } from "./machine.ts";
 	import ServerRack from "./ServerRack.svelte";
+	import { m } from "#lib/i18n/m.ts";
 
 	let {
 		done,
@@ -16,7 +17,7 @@
 		failed,
 	}: { done: Set<InstallPhase>; active: InstallPhase | null; failed: InstallPhase | null } = $props();
 
-	const machine = machineName();
+	const machine = $derived(machineName());
 	const lit = (p: InstallPhase) => done.has(p) || active === p;
 	const live = $derived(done.has("done"));
 	const rack = $derived(failed ? "failed" : live ? "ok" : active ? "active" : "idle");
@@ -34,7 +35,7 @@
 	<svg
 		viewBox="6 56 628 250"
 		role="img"
-		aria-label="{machine} connecting to your server"
+		aria-label={m.crew_onboarding_connect_scene_machine_connecting({ machine })}
 		preserveAspectRatio="xMidYMid meet"
 	>
 		<!-- this computer: a screen with a terminal on it -->
@@ -42,6 +43,7 @@
 			<rect class="screen" x="30" y="86" width="200" height="130" rx="12" />
 			<rect class="glass" x="40" y="96" width="180" height="110" rx="6" />
 			<path class="txt" d="M54 118h46M54 134h96M54 150h70M54 166h112" />
+			<!-- i18n-ignore: a command, not prose -->
 			<text class="prompt" x="54" y="192">$ atlas crew install</text>
 			<rect class="cursor" x="170" y="182" width="8" height="13" rx="1.5" />
 			<path class="base" d="M30 216h200l18 18a6 6 0 0 1-4 10H16a6 6 0 0 1-4-10z" />
@@ -92,11 +94,14 @@
 		<g class="srv" transform="translate(450 62)">
 			<ServerRack state={rack} />
 		</g>
-		<text class="cap" x="525" y="266" text-anchor="middle">your server</text>
+		<text class="cap" x="525" y="266" text-anchor="middle"
+			>{m.crew_onboarding_connect_scene_your_server()}</text
+		>
 
 		<!-- the key lands in authorized_keys -->
 		<g class="auth" class:lit={lit("ssh")} class:go={active === "ssh"}>
 			<rect x="446" y="284" width="158" height="26" rx="8" />
+			<!-- i18n-ignore: a file name -->
 			<text x="525" y="302" text-anchor="middle">authorized_keys</text>
 		</g>
 		<g transform="translate(560 30)">

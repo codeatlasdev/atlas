@@ -1,6 +1,7 @@
 //! The link cursor in the log pane: step between links, open or copy one.
 use crate::runtime::loglinks::Target;
 use crate::tui::widgets::log_viewer::{self, Cursor};
+use atlas_i18n::t;
 
 use super::super::{App, Effect, ToastVariant};
 
@@ -83,7 +84,7 @@ impl App {
                 self.logs.link_cursor = Some(c);
                 self.scroll_to_seq(seq);
             }
-            None => self.set_toast("No links in view", ToastVariant::Info),
+            None => self.set_toast(t!("tui_runtime_app_toast_no_links"), ToastVariant::Info),
         }
     }
 
@@ -100,7 +101,13 @@ impl App {
     /// `o`: open the focused link without blocking the event loop.
     pub(in crate::tui::app) fn open_link(&mut self) {
         let Some(target) = self.cursor_target() else {
-            self.set_toast("Tab selects a link first", ToastVariant::Info);
+            self.set_toast(
+                t!(
+                    "tui_runtime_app_toast_select_link",
+                    key = t!("common_keys_tab")
+                ),
+                ToastVariant::Info,
+            );
             return;
         };
         match target {
@@ -115,7 +122,11 @@ impl App {
                     // Not a file we can find: the next best thing is the text.
                     None => self.copy_text(
                         format!("{path}:{line}"),
-                        format!("{path} not found — copied {path}:{line}"),
+                        t!(
+                            "tui_runtime_app_toast_path_missing",
+                            path = path.as_str(),
+                            location = format!("{path}:{line}")
+                        ),
                     ),
                 }
             }
@@ -125,7 +136,13 @@ impl App {
     /// `y`: copy the focused link's text.
     pub(in crate::tui::app) fn copy_link(&mut self) {
         let Some(target) = self.cursor_target() else {
-            self.set_toast("Tab selects a link first", ToastVariant::Info);
+            self.set_toast(
+                t!(
+                    "tui_runtime_app_toast_select_link",
+                    key = t!("common_keys_tab")
+                ),
+                ToastVariant::Info,
+            );
             return;
         };
         let text = match target {
@@ -135,6 +152,9 @@ impl App {
                 None => format!("{path}:{line}"),
             },
         };
-        self.copy_text(text.clone(), format!("Copied {text}"));
+        self.copy_text(
+            text.clone(),
+            t!("tui_runtime_app_toast_copied", text = text.as_str()),
+        );
     }
 }

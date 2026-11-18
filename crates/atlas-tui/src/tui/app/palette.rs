@@ -1,6 +1,7 @@
 use crate::runtime::service::ServiceState;
 use crate::tui::views::service_menu::visible_actions;
 use crate::tui::widgets::fuzzy;
+use atlas_i18n::t;
 
 use super::{App, Message, PaletteCommand, ServiceMenuAction};
 
@@ -32,7 +33,10 @@ impl App {
                 let mut c = cmd(
                     format!("action:{}", action.key),
                     action.label.clone(),
-                    format!("Run: {}", action.command),
+                    t!(
+                        "tui_runtime_keys_palette_run",
+                        command = action.command.as_str()
+                    ),
                     Some(&action.key.to_string()),
                     Message::RunAction(action.key),
                 );
@@ -49,13 +53,17 @@ impl App {
                     .is_some_and(|d| d.open_url.is_some());
             let desc = if has_target {
                 let url = self.service_open_url(&name, port);
-                format!("Open {} at {}", name, url.trim_start_matches("http://"))
+                t!(
+                    "tui_runtime_keys_palette_open_at",
+                    name = name.as_str(),
+                    url = url.trim_start_matches("http://")
+                )
             } else {
-                format!("Open {}", name)
+                t!("tui_runtime_keys_palette_open", name = name.as_str())
             };
             actions.push(cmd(
                 format!("open:{key}"),
-                format!("Open {name}"),
+                t!("tui_runtime_keys_palette_open", name = name.as_str()),
                 desc,
                 Some(&key.to_string()),
                 Message::OpenService(key),
@@ -65,64 +73,64 @@ impl App {
         let mut builtins = vec![
             cmd(
                 "b:restart-all",
-                "Restart All",
-                "Restart all services (asks first)",
+                t!("tui_runtime_keys_palette_restart_all"),
+                t!("tui_runtime_keys_palette_restart_all_desc"),
                 Some("r"),
                 Message::RestartAll,
             ),
             cmd(
                 "b:help",
-                "Help",
-                "Show shortcuts",
+                t!("tui_runtime_keys_palette_help"),
+                t!("tui_runtime_keys_palette_help_desc"),
                 Some("?"),
                 Message::ShowHelp,
             ),
             cmd(
                 "b:zoom",
-                "Toggle Zoom",
-                "Hide the sidebar, logs full width",
+                t!("tui_runtime_keys_palette_zoom"),
+                t!("tui_runtime_keys_palette_zoom_desc"),
                 Some("z"),
                 Message::ToggleZoom,
             ),
             cmd(
                 "b:bottom",
-                "Scroll to Bottom",
-                "Jump to latest logs",
+                t!("tui_runtime_keys_palette_bottom"),
+                t!("tui_runtime_keys_palette_bottom_desc"),
                 Some("G"),
                 Message::ScrollToBottom,
             ),
             cmd(
                 "b:top",
-                "Scroll to Top",
-                "Jump to first log",
+                t!("tui_runtime_keys_palette_top"),
+                t!("tui_runtime_keys_palette_top_desc"),
                 Some("g"),
                 Message::ScrollToTop,
             ),
             cmd(
                 "b:copy",
-                "Copy Logs",
-                "Copy recent logs to clipboard",
+                t!("tui_runtime_keys_palette_copy"),
+                t!("tui_runtime_keys_palette_copy_desc"),
                 Some("L"),
                 Message::CopyLogs,
             ),
             cmd(
                 "b:copy-ai",
-                "Copy for AI",
-                "Copy logs formatted for AI prompt",
+                t!("tui_runtime_keys_palette_copy_ai"),
+                t!("tui_runtime_keys_palette_copy_ai_desc"),
                 Some("P"),
                 Message::CopyLogsForAI,
             ),
             cmd(
                 "b:copy-err",
-                "Copy Errors",
-                "Copy only errors",
+                t!("tui_runtime_keys_palette_copy_err"),
+                t!("tui_runtime_keys_palette_copy_err_desc"),
                 Some("E"),
                 Message::CopyErrors,
             ),
             cmd(
                 "b:quit",
-                "Quit",
-                "Stop all and exit",
+                t!("tui_runtime_keys_palette_quit"),
+                t!("tui_runtime_keys_palette_quit_desc"),
                 Some("q"),
                 Message::ShowQuit,
             ),
@@ -138,26 +146,48 @@ impl App {
                 continue;
             }
             for action in visible_actions(&svc.state) {
-                let (verb, desc, msg) = match action {
+                // `verb` is part of the command's stable id (the recent list stores it), never shown.
+                let (verb, name, desc, msg) = match action {
                     ServiceMenuAction::Restart => (
                         "Restart",
-                        format!("Restart the {} service", svc.name),
+                        t!(
+                            "tui_runtime_keys_palette_svc_restart",
+                            name = svc.name.as_str()
+                        ),
+                        t!(
+                            "tui_runtime_keys_palette_svc_restart_desc",
+                            name = svc.name.as_str()
+                        ),
                         Message::RestartService(svc.name.clone()),
                     ),
                     ServiceMenuAction::Stop => (
                         "Stop",
-                        format!("Stop the {} service", svc.name),
+                        t!(
+                            "tui_runtime_keys_palette_svc_stop",
+                            name = svc.name.as_str()
+                        ),
+                        t!(
+                            "tui_runtime_keys_palette_svc_stop_desc",
+                            name = svc.name.as_str()
+                        ),
                         Message::StopService(svc.name.clone()),
                     ),
                     ServiceMenuAction::Start => (
                         "Start",
-                        format!("Start the {} service", svc.name),
+                        t!(
+                            "tui_runtime_keys_palette_svc_start",
+                            name = svc.name.as_str()
+                        ),
+                        t!(
+                            "tui_runtime_keys_palette_svc_start_desc",
+                            name = svc.name.as_str()
+                        ),
                         Message::RestartService(svc.name.clone()),
                     ),
                 };
                 per_service.push(cmd(
                     format!("svc:{}:{verb}", svc.name),
-                    format!("{verb} {}", svc.name),
+                    name,
                     desc,
                     None,
                     msg,

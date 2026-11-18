@@ -1,0 +1,72 @@
+{
+	"tui_runtime_views_confirm_accept": "confirmar",
+	"tui_runtime_views_dash_attached": "anexada",
+	"tui_runtime_views_dash_hint_clear": "{esc} limpar",
+	"tui_runtime_views_dash_hint_find": "n/N próximo/anterior · ]e erro · {esc} limpar",
+	"tui_runtime_views_dash_hint_searching": "{tab} localizar/filtrar · {regex} regex · {enter} manter · {esc} limpar",
+	"tui_runtime_views_dash_json": "json",
+	"tui_runtime_views_dash_level": "nível: {label}",
+	"tui_runtime_views_dash_linked": "link dev",
+	"tui_runtime_views_dash_no_timestamps": "sem hora",
+	"tui_runtime_views_dash_on_exit": "ao sair",
+	"tui_runtime_views_dash_ports": "portas +{offset}",
+	"tui_runtime_views_dash_range": "período: {label}",
+	"tui_runtime_views_dash_regex_error": "regex com erro",
+	"tui_runtime_views_dash_regex_tag": "re",
+	"tui_runtime_views_dash_size_current": "Atual: {width}x{height}",
+	"tui_runtime_views_dash_size_minimum": "Mínimo: {width}x{height}",
+	"tui_runtime_views_dash_time_hint": "14:05 ou 14:05-14:20 (hoje) · {enter} aplicar · {esc} todo o período",
+	"tui_runtime_views_dash_time_prompt": "hora",
+	"tui_runtime_views_dash_too_small": "Terminal pequeno demais",
+	"tui_runtime_views_dash_wrap_off": "sem quebra",
+	"tui_runtime_views_dash_wrap_off_pan": "sem quebra ← +{offset}",
+	"tui_runtime_views_devices_detecting": "Detectando dispositivos…",
+	"tui_runtime_views_devices_found": [
+		{
+			"declarations": [
+				"input count",
+				"local countExact = count",
+				"local countPlural = count: plural"
+			],
+			"selectors": [
+				"countExact",
+				"countPlural"
+			],
+			"match": {
+				"countExact=0, countPlural=*": "Nenhum dispositivo encontrado",
+				"countExact=*, countPlural=one": "{count} dispositivo encontrado",
+				"countExact=*, countPlural=*": "{count} dispositivos encontrados"
+			}
+		}
+	],
+	"tui_runtime_views_devices_navigate": "Navegar",
+	"tui_runtime_views_devices_none": "Nenhum dispositivo encontrado.",
+	"tui_runtime_views_devices_none_hint": "Conecte um dispositivo ou inicie um simulador.",
+	"tui_runtime_views_devices_select": "Selecionar",
+	"tui_runtime_views_devices_spawn_without": "Iniciar sem dispositivo",
+	"tui_runtime_views_devices_title_android": "Dispositivos Android",
+	"tui_runtime_views_devices_title_ios": "Dispositivos iOS",
+	"tui_runtime_views_help_actions": "Ações do projeto",
+	"tui_runtime_views_help_ctx_all": "aba Tudo",
+	"tui_runtime_views_help_ctx_service": "aba de serviço",
+	"tui_runtime_views_help_ctx_session": "aba de sessão",
+	"tui_runtime_views_help_foot": "{close} para fechar",
+	"tui_runtime_views_help_foot_scroll": "{arrows} {scroll} rolar · {close} fechar",
+	"tui_runtime_views_help_title": "Atalhos",
+	"tui_runtime_views_help_title_range": "Atalhos · {from}-{to}/{total}",
+	"tui_runtime_views_menu_cancel": "{key} para cancelar",
+	"tui_runtime_views_menu_restart": "Reiniciar",
+	"tui_runtime_views_menu_start": "Iniciar",
+	"tui_runtime_views_menu_stop": "Parar",
+	"tui_runtime_views_quit_attached_headline": "Desanexar mantém os serviços rodando no runner.",
+	"tui_runtime_views_quit_attached_hint": "anexar de novo: atlas dev · parar: atlas down",
+	"tui_runtime_views_quit_detach": "Desanexar",
+	"tui_runtime_views_quit_owner_headline": "Sair encerra todos os serviços.",
+	"tui_runtime_views_quit_owner_hint": "para mantê-los rodando: {command}",
+	"tui_runtime_views_quit_quit": "Sair",
+	"tui_runtime_views_quit_stop_all": "Parar tudo",
+	"tui_runtime_views_quit_title_leave": "Sair?",
+	"tui_runtime_views_quit_title_quit": "Sair?",
+	"tui_runtime_views_splash_starting": "iniciando",
+	"tui_runtime_views_splash_tagline": "ambiente de desenvolvimento"
+}

@@ -35,11 +35,11 @@ impl LevelFilter {
         }
     }
 
-    pub fn label(self) -> &'static str {
+    pub fn label(self) -> String {
         match self {
-            Self::All => "all",
-            Self::Warn => "warn+",
-            Self::Error => "error",
+            Self::All => atlas_i18n::t!("tui_runtime_widgets_level_all"),
+            Self::Warn => atlas_i18n::t!("tui_runtime_widgets_level_warn"),
+            Self::Error => atlas_i18n::t!("tui_runtime_widgets_level_error"),
         }
     }
 

@@ -1,0 +1,125 @@
+{
+	"tui_runtime_app_confirm_pauses": "Pauses: {services}",
+	"tui_runtime_app_event_crashed": "crashed (exit {code})",
+	"tui_runtime_app_event_degraded": "degraded",
+	"tui_runtime_app_event_done": "done",
+	"tui_runtime_app_event_failed": "failed",
+	"tui_runtime_app_event_running": "running",
+	"tui_runtime_app_event_stopped": "stopped",
+	"tui_runtime_app_event_unhealthy": "unhealthy",
+	"tui_runtime_app_remote_owner_only": "{label} is an interactive session: owner-only. `{command}`, then `atlas dev`",
+	"tui_runtime_app_remote_refused": "The runner refused {command}",
+	"tui_runtime_app_restart_all_body": [
+		{
+			"declarations": [
+				"input count",
+				"local countExact = count",
+				"local countPlural = count: plural"
+			],
+			"selectors": [
+				"countExact",
+				"countPlural"
+			],
+			"match": {
+				"countExact=0, countPlural=*": "No services to restart. Completed oneshots will not re-run.",
+				"countExact=*, countPlural=one": "Restart {count} service? Completed oneshots will not re-run.",
+				"countExact=*, countPlural=*": "Restart {count} services? Completed oneshots will not re-run."
+			}
+		}
+	],
+	"tui_runtime_app_restart_all_title": "Restart all",
+	"tui_runtime_app_strip_starting": "{name} starting",
+	"tui_runtime_app_toast_action_failed": "{label} failed",
+	"tui_runtime_app_toast_action_running": "{label} already running",
+	"tui_runtime_app_toast_ai_copied": "AI prompt copied",
+	"tui_runtime_app_toast_copied": "Copied {text}",
+	"tui_runtime_app_toast_critical": "Critical: {service}: {message}",
+	"tui_runtime_app_toast_deps_failed": "`pre_command` failed: {reason}",
+	"tui_runtime_app_toast_deps_installed": "Dependencies installed",
+	"tui_runtime_app_toast_detach_hint": "Run `{command}` to keep services running in the background",
+	"tui_runtime_app_toast_device_gone": "Device disconnected: {device} ({label})",
+	"tui_runtime_app_toast_errors_copied": [
+		{
+			"declarations": [
+				"input count",
+				"local countExact = count",
+				"local countPlural = count: plural"
+			],
+			"selectors": [
+				"countExact",
+				"countPlural"
+			],
+			"match": {
+				"countExact=0, countPlural=*": "No errors copied",
+				"countExact=*, countPlural=one": "{count} error copied",
+				"countExact=*, countPlural=*": "{count} errors copied"
+			}
+		}
+	],
+	"tui_runtime_app_toast_logs_cleared": "Logs cleared",
+	"tui_runtime_app_toast_logs_copied": "Logs copied (3 min)",
+	"tui_runtime_app_toast_mouse_off": "Mouse capture off: select text freely",
+	"tui_runtime_app_toast_mouse_on": "Mouse capture on",
+	"tui_runtime_app_toast_no_browser": "No browser launcher found",
+	"tui_runtime_app_toast_no_editor": "No GUI editor ($VISUAL/$EDITOR/code/zed): copied {location}",
+	"tui_runtime_app_toast_no_error_lines": "No error lines",
+	"tui_runtime_app_toast_no_errors": "No errors found",
+	"tui_runtime_app_toast_no_links": "No links in view",
+	"tui_runtime_app_toast_no_problem_lines": "No warning or error lines",
+	"tui_runtime_app_toast_nothing_to_restart": "Nothing to restart",
+	"tui_runtime_app_toast_opening": "Opening {name}",
+	"tui_runtime_app_toast_opening_path": "Opening {path}:{line}",
+	"tui_runtime_app_toast_path_missing": "{path} not found: copied {location}",
+	"tui_runtime_app_toast_restarted_n": [
+		{
+			"declarations": [
+				"input count",
+				"local countExact = count",
+				"local countPlural = count: plural"
+			],
+			"selectors": [
+				"countExact",
+				"countPlural"
+			],
+			"match": {
+				"countExact=0, countPlural=*": "No services restarted",
+				"countExact=*, countPlural=one": "Restarted {count} service",
+				"countExact=*, countPlural=*": "Restarted {count} services"
+			}
+		}
+	],
+	"tui_runtime_app_toast_restarting": "Restarting {name}",
+	"tui_runtime_app_toast_restarting_n": [
+		{
+			"declarations": [
+				"input count",
+				"local countExact = count",
+				"local countPlural = count: plural"
+			],
+			"selectors": [
+				"countExact",
+				"countPlural"
+			],
+			"match": {
+				"countExact=0, countPlural=*": "Restarting no services",
+				"countExact=*, countPlural=one": "Restarting {count} service",
+				"countExact=*, countPlural=*": "Restarting {count} services"
+			}
+		}
+	],
+	"tui_runtime_app_toast_running": "Running {label}",
+	"tui_runtime_app_toast_select_link": "{key} selects a link first",
+	"tui_runtime_app_toast_session_ended": "{label} ended",
+	"tui_runtime_app_toast_starting": "Starting {name}",
+	"tui_runtime_app_toast_stopped": "Stopped {name}",
+	"tui_runtime_app_toast_stopping": "Stopping {name}",
+	"tui_runtime_app_toast_tunnel_close": "Tunnel will close on exit",
+	"tui_runtime_app_toast_tunnel_runner": "The runner owns the tunnel: it closes when the runner stops",
+	"tui_runtime_app_toast_tunnel_stay": "Tunnel will stay on exit",
+	"tui_runtime_app_toast_update_on_exit": "Atlas updates when you quit",
+	"tui_runtime_app_toast_wrap_off": "Wrap off: ←/→ pan",
+	"tui_runtime_app_toast_wrap_on": "Wrap on",
+	"tui_runtime_app_update_offer": "Atlas v{version} is available. Update when you quit?",
+	"tui_runtime_app_update_offer_runner": "Atlas v{version} is available. Update when you quit? The runner keeps the old version until `{command}`.",
+	"tui_runtime_app_update_title": "Update available"
+}

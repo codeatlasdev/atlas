@@ -123,6 +123,7 @@ actions:
         let out_path = self.root().join("headless-stdout.txt");
         let err_path = self.root().join("headless-stderr.txt");
         let child = Command::new(BIN)
+            .env("ATLAS_LANG", "en")
             .args(["dev", "--headless", "--dir", self.root().to_str().unwrap()])
             .env("ATLAS_SSH_BIN", &self.fake)
             .env("FAKE_SSH_LOG", &self.ssh_log)
@@ -594,6 +595,7 @@ fn a_remote_service_is_forwarded_like_a_local_one_and_comes_back_after_a_drop() 
     let (log, pids) = (dir.path().join("ssh.log"), dir.path().join("ssh.pids"));
     let out = dir.path().join("out.txt");
     let child = Command::new(BIN)
+        .env("ATLAS_LANG", "en")
         .args(["dev", "--headless", "--dir", dir.path().to_str().unwrap()])
         .env("ATLAS_SSH_BIN", &fake)
         .env("FAKE_SSH_LOG", &log)

@@ -5,6 +5,7 @@ use std::path::Path;
 use std::time::Duration;
 
 use anyhow::Result;
+use atlas_i18n::t;
 use serde_json::json;
 
 use super::RUNNER_LOG;
@@ -65,15 +66,12 @@ pub async fn detach(
 
     if let Some(info) = control::info(root_dir).await {
         if info.is_busy() {
-            anyhow::bail!("atlas dev is running but busy; try again in a moment");
+            anyhow::bail!("{}", t!("tui_runtime_busy"));
         }
         if info.mode == "runner" {
             return Ok(Detached::AlreadyRunning { pid: info.pid });
         }
-        anyhow::bail!(
-            "atlas dev is already running in a terminal (pid {}); quit it first, or stop it with atlas down",
-            info.pid
-        );
+        anyhow::bail!("{}", t!("tui_runtime_in_terminal_pid", pid = info.pid));
     }
 
     let log_dir = crate::runtime::log_dir(root_dir);
@@ -122,8 +120,12 @@ pub async fn detach(
                 .collect::<Vec<_>>()
                 .join("\n");
             anyhow::bail!(
-                "runner exited during startup ({status}); see {}\n{tail}",
-                log_path.display()
+                "{}\n{tail}",
+                t!(
+                    "tui_runtime_runner_exited",
+                    status = status.to_string(),
+                    path = log_path.display().to_string()
+                )
             );
         }
         if let Some(info) = control::info(root_dir).await
@@ -133,8 +135,13 @@ pub async fn detach(
         }
         if std::time::Instant::now() >= deadline {
             anyhow::bail!(
-                "runner (pid {pid}) did not open its control socket within 60s; see {}",
-                log_path.display()
+                "{}",
+                t!(
+                    "tui_runtime_runner_no_socket",
+                    pid = pid,
+                    secs = 60,
+                    path = log_path.display().to_string()
+                )
             );
         }
         tokio::time::sleep(Duration::from_millis(100)).await;
@@ -160,13 +167,11 @@ pub async fn down(root_dir: &Path, wait: Duration) -> Result<DownOutcome, String
     };
     if info.is_busy() && info.pid <= 0 {
         // Alive, but with no pid to wait on: "stopped" would be a guess, and callers delete worktrees on it.
-        return Err(
-            "atlas dev is running but busy and its pid is unknown; try again in a moment".into(),
-        );
+        return Err(t!("tui_runtime_down_busy_unknown_pid"));
     }
     let resp = control::call(root_dir, "shutdown", json!({})).await?;
     if !resp.ok {
-        return Err(resp.error.unwrap_or_else(|| "shutdown refused".into()));
+        return Err(resp.error.unwrap_or_else(|| t!("tui_runtime_down_refused")));
     }
     Ok(wait_gone(root_dir, info.pid, wait).await)
 }

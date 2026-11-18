@@ -14,7 +14,7 @@ pub(super) struct CopyKind {
     /// Toast text from the number of copied entries.
     pub(super) success: fn(usize) -> String,
     /// Toast shown instead of copying when nothing matched (None = copy anyway).
-    pub(super) empty_toast: Option<&'static str>,
+    pub(super) empty_toast: Option<fn() -> String>,
     /// Header filter label used when no tab narrows the copy.
     pub(super) fallback_label: Option<&'static str>,
 }
@@ -46,7 +46,7 @@ impl App {
         if entries.is_empty()
             && let Some(msg) = copy.empty_toast
         {
-            self.set_toast(msg, ToastVariant::Info);
+            self.set_toast(msg(), ToastVariant::Info);
             return;
         }
         let filter = match copy.fallback_label {

@@ -1,3 +1,4 @@
+use atlas_i18n::t;
 use serde::Serialize;
 
 #[derive(Debug, Clone, PartialEq, Eq, Serialize)]
@@ -32,6 +33,21 @@ impl ServiceState {
             Self::Suspended => "suspended",
             Self::Unhealthy => "unhealthy",
             Self::Degraded => "degraded",
+        }
+    }
+
+    /// The state in words, in the display language: what the service menu, the footer and the runner's console
+    /// lines show. [`ServiceState::name`] stays the machine form.
+    pub fn label(&self) -> String {
+        match self {
+            Self::Stopped => t!("tui_runtime_state_stopped"),
+            Self::Starting => t!("tui_runtime_state_starting"),
+            Self::Running => t!("tui_runtime_state_running"),
+            Self::Failed => t!("tui_runtime_state_failed"),
+            Self::Disabled => t!("tui_runtime_state_disabled"),
+            Self::Suspended => t!("tui_runtime_state_suspended"),
+            Self::Unhealthy => t!("tui_runtime_state_unhealthy"),
+            Self::Degraded => t!("tui_runtime_state_degraded"),
         }
     }
 

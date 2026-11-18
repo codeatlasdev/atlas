@@ -9,6 +9,7 @@
 //! * effects that would act on services (restart, stop, run action) become
 //!   control requests instead of manager calls.
 
+use atlas_i18n::t;
 use std::path::PathBuf;
 
 use serde_json::{Value, json};
@@ -65,7 +66,10 @@ impl Remote {
             match control::call(&root, cmd, args).await {
                 Ok(r) if r.ok => {}
                 Ok(r) => {
-                    let _ = errors.send(r.error.unwrap_or_else(|| format!("{cmd} refused")));
+                    let _ = errors
+                        .send(r.error.unwrap_or_else(|| {
+                            t!("tui_runtime_app_remote_refused", command = cmd)
+                        }));
                 }
                 Err(e) => {
                     let _ = errors.send(e);
@@ -222,11 +226,12 @@ impl App {
                 ev["service"].as_str().unwrap_or_default().to_string(),
                 ev["message"].as_str().unwrap_or_default().to_string(),
             ),
-            Some("tunnel") => self.push_event(
-                EventKind::Tunnel,
-                "tunnel".into(),
-                ev["state"].as_str().unwrap_or_default().to_string(),
-            ),
+            Some("tunnel") => self.push_event(EventKind::Tunnel, "tunnel".into(), {
+                // The wire carries the state's machine name; show it in words, and an unknown one as it came.
+                let raw = ev["state"].as_str().unwrap_or_default();
+                raw.parse::<crate::runtime::service::ServiceState>()
+                    .map_or_else(|_| raw.to_string(), |s| s.label().to_lowercase())
+            }),
             _ => {}
         }
     }
@@ -314,29 +319,36 @@ impl App {
         match effect {
             Effect::RestartService(name) => {
                 remote.request("restart_service", json!({ "service": name }));
-                self.set_toast(format!("Restarting {name}"), ToastVariant::Progress);
+                self.set_toast(
+                    t!("tui_runtime_app_toast_restarting", name = name.as_str()),
+                    ToastVariant::Progress,
+                );
             }
             Effect::RestartServices(names) => {
                 for name in names {
                     remote.request("restart_service", json!({ "service": name }));
                 }
                 self.set_toast(
-                    format!("Restarted {} services", names.len()),
+                    t!("tui_runtime_app_toast_restarted_n", count = names.len()),
                     ToastVariant::Success,
                 );
             }
             Effect::StopService(name) => {
                 remote.request("stop_service", json!({ "service": name }));
-                self.set_toast(format!("Stopped {name}"), ToastVariant::Success);
+                self.set_toast(
+                    t!("tui_runtime_app_toast_stopped", name = name.as_str()),
+                    ToastVariant::Success,
+                );
             }
             Effect::RunAction(key) => {
                 let action = self.manager.find_action(*key);
                 match action {
                     Some(a) if a.session || a.platform.is_some() => {
                         self.set_toast(
-                            format!(
-                                "{} is an interactive session: owner-only. atlas down, then atlas dev",
-                                a.label
+                            t!(
+                                "tui_runtime_app_remote_owner_only",
+                                label = a.label.as_str(),
+                                command = "atlas down"
                             ),
                             ToastVariant::Warning,
                         );
@@ -348,7 +360,10 @@ impl App {
                             json!({ "action": key.to_string(), "confirmed": true }),
                         );
                         self.operation = Some(Operation::start(a.label.clone()));
-                        self.set_toast(format!("Running {}", a.label), ToastVariant::Progress);
+                        self.set_toast(
+                            t!("tui_runtime_app_toast_running", label = a.label.as_str()),
+                            ToastVariant::Progress,
+                        );
                     }
                     None => {}
                 }
@@ -445,7 +460,10 @@ impl App {
     pub(super) fn detach_or_hint(&mut self, stop: bool) {
         if self.remote.is_none() {
             self.set_toast(
-                "run `atlas dev --detach` to keep services running in the background",
+                t!(
+                    "tui_runtime_app_toast_detach_hint",
+                    command = "atlas dev --detach"
+                ),
                 ToastVariant::Info,
             );
             return;

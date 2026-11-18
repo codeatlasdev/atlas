@@ -2,6 +2,7 @@
 //! mouse capture, zoom.
 
 use super::super::{App, Effect, Layer, Leave, Message, ToastVariant};
+use atlas_i18n::t;
 
 impl App {
     /// Handle the shell messages; anything else is handed back for the next domain.
@@ -89,7 +90,10 @@ impl App {
             Message::UpdateOnExit(version) => {
                 self.update_on_exit = true;
                 crate::update_notice::request_on_exit(version);
-                self.set_toast("atlas will update when you quit", ToastVariant::Info);
+                self.set_toast(
+                    t!("tui_runtime_app_toast_update_on_exit"),
+                    ToastVariant::Info,
+                );
             }
             Message::ConfirmAccept => {
                 if let Layer::Confirm { on_confirm, .. } =
@@ -108,9 +112,9 @@ impl App {
             Message::ToggleMouseCapture => {
                 self.mouse_capture = !self.mouse_capture;
                 let msg = if self.mouse_capture {
-                    "Mouse capture on"
+                    t!("tui_runtime_app_toast_mouse_on")
                 } else {
-                    "Mouse capture off — select text freely"
+                    t!("tui_runtime_app_toast_mouse_off")
                 };
                 self.set_toast(msg, ToastVariant::Info);
                 self.effects

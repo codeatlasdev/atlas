@@ -2,6 +2,7 @@
 //! (`tui/keymap.rs`) filtered by context and service state, so the footer can
 //! never advertise a key that does nothing here.
 
+use atlas_i18n::t;
 use ratatui::prelude::*;
 use ratatui::widgets::*;
 
@@ -76,16 +77,40 @@ pub fn hints_for(c: &Ctxt) -> Vec<Hint> {
     let on_service = c.active.is_some();
     if c.timing {
         return vec![
-            Hint::new(" Enter ", "apply", None),
-            Hint::new("Esc ", "all time", None),
+            Hint::new(
+                &format!(" {} ", t!("common_keys_enter")),
+                &t!("tui_runtime_keys_footer_apply"),
+                None,
+            ),
+            Hint::new(
+                &format!("{} ", t!("common_keys_escape")),
+                &t!("tui_runtime_keys_footer_all_time"),
+                None,
+            ),
         ];
     }
     if c.searching {
         return vec![
-            Hint::new(" Enter ", "keep", None),
-            Hint::new("Esc ", "clear", None),
-            Hint::new("Ctrl+R ", "regex", None),
-            Hint::new("Tab ", "find/filter", None),
+            Hint::new(
+                &format!(" {} ", t!("common_keys_enter")),
+                &t!("tui_runtime_keys_footer_keep"),
+                None,
+            ),
+            Hint::new(
+                &format!("{} ", t!("common_keys_escape")),
+                &t!("tui_runtime_keys_footer_clear"),
+                None,
+            ),
+            Hint::new(
+                &format!("{}+R ", t!("common_keys_ctrl")),
+                &t!("tui_runtime_keys_footer_regex"),
+                None,
+            ),
+            Hint::new(
+                &format!("{} ", t!("common_keys_tab")),
+                &t!("tui_runtime_keys_footer_find_filter"),
+                None,
+            ),
         ];
     }
     let t = theme::current();
@@ -110,19 +135,23 @@ pub fn hints_for(c: &Ctxt) -> Vec<Hint> {
                 continue;
             }
         }
-        let mut label = b.footer.unwrap_or_default().to_string();
+        let mut label = b.footer.map(|f| f()).unwrap_or_default();
         // `r` on a stopped service starts it.
         if b.keys == "r" && b.ctx == Ctx::Service && ops.contains(&ServiceMenuAction::Start) {
-            label = "Start".to_string();
+            label = t!("tui_runtime_keys_footer_start");
         }
         let mut h = Hint::new(
-            &format!("{} ", b.keys),
+            &format!("{} ", b.display()),
             &label,
             keymap::click_message(b, c.active),
         );
         match b.keys {
             "f" => {
-                h.label = if c.following { "Following" } else { "Paused" }.to_string();
+                h.label = if c.following {
+                    t!("tui_runtime_keys_footer_following")
+                } else {
+                    t!("tui_runtime_keys_footer_paused")
+                };
                 h.label_color = Some(if c.following {
                     t.status_running
                 } else {
@@ -130,12 +159,16 @@ pub fn hints_for(c: &Ctxt) -> Vec<Hint> {
                 });
             }
             "z" => {
-                h.label = if c.zoom { "Zoom on" } else { "Zoom" }.to_string();
+                h.label = if c.zoom {
+                    t!("tui_runtime_keys_footer_zoom_on")
+                } else {
+                    t!("tui_runtime_keys_footer_zoom")
+                };
                 if c.zoom {
                     h.label_color = Some(t.warning);
                 }
             }
-            "/" if c.find_active => h.label = "Search (n/N next)".to_string(),
+            "/" if c.find_active => h.label = t!("tui_runtime_keys_footer_search_active"),
             _ => {}
         }
         out.push(h);
@@ -235,7 +268,10 @@ pub fn render(frame: &mut Frame, area: Rect, app: &App, hide_operation: bool) {
         };
         let lead = vec![
             Span::styled(
-                " ── ATTACHED ── ",
+                format!(
+                    " ── {} ── ",
+                    t!("tui_runtime_keys_footer_attached").to_uppercase()
+                ),
                 Style::default()
                     .fg(Color::Rgb(0x09, 0x09, 0x0B))
                     .bg(t.warning)
@@ -246,11 +282,16 @@ pub fn render(frame: &mut Frame, area: Rect, app: &App, hide_operation: bool) {
         let mut x = area.x + lead.iter().map(|s| s.width() as u16).sum::<u16>();
         let mut spans = lead;
         let items = [
-            ("Ctrl+B ", t.warning, "detach", Message::DetachSession),
             (
-                "Ctrl+C ",
+                format!("{}+B ", t!("common_keys_ctrl")),
+                t.warning,
+                t!("tui_runtime_keys_footer_detach_session"),
+                Message::DetachSession,
+            ),
+            (
+                format!("{}+C ", t!("common_keys_ctrl")),
                 t.error,
-                "kill session",
+                t!("tui_runtime_keys_footer_kill_session"),
                 Message::StopSession(layer_label),
             ),
         ];
@@ -297,7 +338,7 @@ pub fn render(frame: &mut Frame, area: Rect, app: &App, hide_operation: bool) {
             .phases
             .get(label)
             .map(|p| p.label())
-            .unwrap_or("running");
+            .unwrap_or_else(|| t!("tui_runtime_widgets_phase_running"));
         let icon = match app.sessions.platforms.get(label) {
             Some(crate::config::SessionPlatform::Ios) => " ",
             Some(crate::config::SessionPlatform::Android) => " ",

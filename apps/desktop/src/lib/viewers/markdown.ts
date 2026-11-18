@@ -6,10 +6,26 @@ import { languageOf } from "#lib/viewers/lang.ts";
 const esc = (s: string) =>
 	s.replace(/&/g, "&amp;").replace(/</g, "&lt;").replace(/>/g, "&gt;").replace(/"/g, "&quot;");
 
+let styled = false;
+
+/**
+ * The class names `highlightCode` emits only have rules once the HighlightStyle's StyleModule is in the page, which
+ * an editor view does when it mounts. Markdown rendered with no editor open (the crew chat, hover docs) adds the
+ * rules itself, once.
+ */
+function mountHighlightStyles() {
+	if (styled || typeof document === "undefined" || !highlight.module) return;
+	styled = true;
+	const el = document.createElement("style");
+	el.textContent = highlight.module.getRules();
+	document.head.append(el);
+}
+
 /** Code to HTML using the editor's own syntax colors (`--cm-syn-*` via the shared HighlightStyle). */
 function highlightToHtml(code: string, lang: string): string {
 	const language = languageOf(lang);
 	if (!language) return esc(code);
+	mountHighlightStyles();
 	let out = "";
 	highlightCode(
 		code,

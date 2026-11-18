@@ -59,6 +59,7 @@ impl Fx {
     fn atlas(&self, args: &[&str]) -> Output {
         Command::new(env!("CARGO_BIN_EXE_atlas"))
             .arg("deploy")
+            .env("ATLAS_LANG", "en")
             .args(args)
             .arg("--dir")
             .arg(&self.repo)
@@ -141,7 +142,13 @@ fn deploy_lifecycle() {
     assert_eq!(fx.current(), first);
 
     let out = fx.atlas(&["rollback", "--to", "../x"]);
-    assert!(String::from_utf8_lossy(&out.stderr).contains("invalid release id"));
+    // The catalog's own text (never a typed sentence): it names the id and the command that lists the real ones.
+    let mut args = atlas_i18n::Args::new();
+    args.set("id", "../x");
+    args.set("target", "t");
+    let want = atlas_i18n::translate("en", "cmd_deploy_invalid_release_id", Some(&args));
+    let stderr = String::from_utf8_lossy(&out.stderr);
+    assert!(stderr.contains(&want), "{stderr}");
 
     // 5. held lock → exit 3, LOCKED
     let mut holder = Command::new("flock")
@@ -270,7 +277,7 @@ fn deploy_refuses_to_roll_production_back_unless_allowed() {
     assert_eq!(code, 0, "{text}");
     let announce = format!("({}) over ", &b[..7]);
     assert!(
-        text.contains(&announce) && text.contains("+1 commits"),
+        text.contains(&announce) && text.contains("+1 commit"),
         "{text}"
     );
     let deployed = fx.current();
@@ -344,6 +351,7 @@ fn deploy_refuses_when_deployed_commit_is_unknown_locally() {
     let run = |extra: &[&str]| {
         let out = Command::new(env!("CARGO_BIN_EXE_atlas"))
             .arg("deploy")
+            .env("ATLAS_LANG", "en")
             .args(extra)
             .arg("--dir")
             .arg(&other)

@@ -201,7 +201,15 @@ fn config_lang_json_has_stable_keys_and_untranslated_identifiers() {
             "an identifier, never a translated sentence"
         );
         assert!(v["preference"].is_null());
-        assert_eq!(v["supported"], serde_json::json!(["en", "pt-BR"]));
+        // A release build lists exactly en and pt-BR; a debug build adds the pseudo-locale `en-XA` (a layout tool).
+        assert_eq!(
+            v["supported"],
+            if cfg!(debug_assertions) {
+                serde_json::json!(["en", "pt-BR", "en-XA"])
+            } else {
+                serde_json::json!(["en", "pt-BR"])
+            }
+        );
     }
     let keys = |v: &serde_json::Value| v.as_object().unwrap().keys().cloned().collect::<Vec<_>>();
     assert_eq!(keys(&en), keys(&pt));
@@ -257,11 +265,13 @@ fn the_error_prefixes_of_a_human_command_follow_the_language() {
     let (en, pt) = (first_line(&bad, "en"), first_line(&bad, "pt-BR"));
     assert!(en.contains("error:"), "{en}");
     assert!(pt.contains("erro:"), "{pt}");
-    // The text after the prefix is the same in both languages (the command's own message).
-    assert_eq!(
-        en.split_once("error:").map(|x| x.1),
-        pt.split_once("erro:").map(|x| x.1)
-    );
+    // The text after the prefix is the command's own message, in the same language (the catalog's value, never typed
+    // here): `deploy` in a folder with no atlas.yaml deploy section fails with `cmd_deploy_ctx_no_deploy_section`.
+    let message =
+        |lang: &str| atlas_i18n::translate(lang, "cmd_deploy_ctx_no_deploy_section", None);
+    assert_ne!(message("en"), message("pt-BR"));
+    assert!(en.ends_with(&message("en")), "{en}");
+    assert!(pt.ends_with(&message("pt-BR")), "{pt}");
 }
 
 #[test]

@@ -3,6 +3,7 @@
 	 * ChatThread — the scrolling list of tasks, oldest first: date separators, the "NEW" unread divider, the
 	 * empty / loading lines, and the "Jump to present" pill when scrolled up. Each task is a TaskMessage.
 	 */
+	import { onMount } from "svelte";
 	import { ArrowDown } from "@lucide/svelte";
 	import type { Crewmate, CrewmateTask } from "#lib/crew.ts";
 	import { groupTasks } from "#lib/crew/crewLogic.ts";
@@ -29,6 +30,9 @@
 	let { tasks, loading, crewmate, hostKey, chat, unreadIdx, now, onterminal }: Props = $props();
 
 	const grouped = $derived(groupTasks(tasks));
+
+	// The thread loads after the chat opens (CrewmateView), so the tasks that arrived first had no list to follow.
+	onMount(() => chat.followBottom(true));
 </script>
 
 <div

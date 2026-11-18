@@ -18,7 +18,7 @@
 	import type { SetupStep } from "#lib/crew/crewSetup.ts";
 	import CrewmateSettingsDialog from "#lib/crew/settings/CrewmateSettingsDialog.svelte";
 	import ChatHeader from "#lib/crew/chat/ChatHeader.svelte";
-	import ChatThread from "#lib/crew/chat/ChatThread.svelte";
+	import Lazy from "#lib/components/Lazy.svelte";
 	import Composer from "#lib/crew/chat/Composer.svelte";
 	import SetupConversation from "#lib/crew/chat/SetupConversation.svelte";
 	import { ChatState } from "#lib/crew/chat/chat.svelte.ts";
@@ -146,16 +146,23 @@
 			{#if setupStep}
 				<SetupConversation {crewmate} step={setupStep} {ideProjects} />
 			{:else}
-				<ChatThread
-					tasks={orderedTasks}
-					loading={crew.tasksLoading}
-					{crewmate}
-					{hostKey}
-					{chat}
-					{unreadIdx}
-					{now}
-					onterminal={() => void openTerminal()}
-				/>
+				<!-- The thread renders replies as markdown, which pulls in the parsers and every language pack: its
+				     chunk loads when a chat opens, not at startup. The empty box keeps the composer where it goes. -->
+				<Lazy
+					load={() => import("#lib/crew/chat/ChatThread.svelte")}
+					props={{
+						tasks: orderedTasks,
+						loading: crew.tasksLoading,
+						crewmate,
+						hostKey,
+						chat,
+						unreadIdx,
+						now,
+						onterminal: () => void openTerminal(),
+					}}
+				>
+					{#snippet pending()}<div class="thread-pending" aria-hidden="true"></div>{/snippet}
+				</Lazy>
 				<Composer
 					bind:value={chat.prompt}
 					placeholder={hasPendingAsk
@@ -194,6 +201,10 @@
 		justify-content: center;
 		color: var(--ca-text-secondary);
 		font-size: 14px;
+	}
+
+	.thread-pending {
+		flex: 1;
 	}
 
 	.chat-col {

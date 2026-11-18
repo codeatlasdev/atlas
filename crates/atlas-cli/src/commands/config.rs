@@ -44,7 +44,7 @@ fn lang(tag: Option<String>, unset: bool, json: bool) -> Result<()> {
                 t!(
                     "config_lang_unsupported",
                     tag = tag.as_str(),
-                    langs = lang::SUPPORTED.join(", ")
+                    langs = lang::supported().join(", ")
                 )
             );
         };
@@ -70,7 +70,7 @@ fn lang(tag: Option<String>, unset: bool, json: bool) -> Result<()> {
                 "language": now.tag,
                 "source": now.source.as_str(),
                 "preference": saved,
-                "supported": lang::SUPPORTED,
+                "supported": lang::supported(),
             })
         );
         return Ok(());
@@ -85,8 +85,8 @@ fn lang(tag: Option<String>, unset: bool, json: bool) -> Result<()> {
         "{}",
         t!(
             "config_lang_available",
-            count = lang::SUPPORTED.len(),
-            langs = lang::SUPPORTED.join(", ")
+            count = lang::supported().len(),
+            langs = lang::supported().join(", ")
         )
     );
     Ok(())

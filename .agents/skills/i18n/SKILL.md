@@ -20,7 +20,7 @@ Every message of every surface lives once, in `i18n/messages/<area>/`: `en.json`
 
 An English edit that changes the meaning makes the pt-BR **outdated** (the lock holds the hash of the English the translation was made from); retranslate, then `i18n:fix`.
 
-**Rename or move:** `bun run i18n:mv old_key new_key` moves values, meta and lock stamps across areas and rewrites `m.old(`, `m["old"]`, `t!("old"` and `{@old}`; what it could not prove is listed, not edited. **Delete a key:** remove it from `en.json`, `meta.json` and every locale file of its area, then `i18n:fix`. **Add a language:** `bun run i18n:add-locale <tag> --owner @user`; it creates `<area>/<tag>.json` in every area and edits `locales.json`, `SUPPORTED`, `Info.plist`, the project settings and CODEOWNERS, and `supported-sync` keeps those lists equal. All of these take `--json` for agents and exit 1 with the fix command in the error.
+**Rename or move:** `bun run i18n:mv old_key new_key` moves values, meta and lock stamps across areas and rewrites `{@old}` and every call site it can prove: through whatever name a file binds the messages to (desktop `#lib/i18n/m.ts`, Paraglide's `messages.js`, `* as ns`, `{ m as msg }`) `m.old(`, `m?.old(`, `m["old"]`, `const { old: x } = m`, `import { old as x }`, and in Rust `t!("old"`, `t_in!(tag, "old"`, `lookup`/`lookup_on`/`translate(tag, "old"`. Anything left that could still reach the old key makes it **exit 1 listing `file:line why`** (the catalogs and the provable sites are already moved; edit the rest by hand, then `i18n:check`): a mention that is no call (a string, a comment), a key built at run time (`m[\`old_${x}\`]`, `m["old_" + x]`, a Rust `format!("old_{…}")` next to a `lookup`, an `// i18n-keys: old_*` glob that covers it), a shorthand `const { old } = m` or `import { old }` (needs a local rename), a rest destructure. **Delete a key:** remove it from `en.json`, `meta.json` and every locale file of its area, then `i18n:fix`. **Add a language:** `bun run i18n:add-locale <tag> --owner @user`; it creates `<area>/<tag>.json` in every area and edits `locales.json`, `SUPPORTED`, `Info.plist`, the project settings and CODEOWNERS, and `supported-sync` keeps those lists equal. All of these take `--json` for agents and exit 1 with the fix command in the error.
 
 ## Moving existing hardcoded text (the migration)
 
@@ -80,7 +80,17 @@ Atlas runs on macOS, Windows and Linux; no message may say "Mac" or spell a shor
 
 ## Where the language comes from
 
-One implementation, `atlas_core::lang` (CLI, TUI, hostd, desktop shell), precedence `ATLAS_LANG`, `~/.atlas/language`, `LANGUAGE`/`LC_ALL`/`LC_MESSAGES`/`LANG` (C/POSIX = English), the OS, English; any `pt*` selects pt-BR. `atlas config lang` shows it and what decided it; `atlas config lang <tag>` and Desktop Settings write `~/.atlas/language`. The desktop receives the resolved tag from Rust (a Tauri command) and never reads `navigator.language`. Mobile follows the phone.
+One implementation, `atlas_core::lang` (CLI, TUI, hostd, desktop shell; a debug build also knows `en-XA`, below), precedence `ATLAS_LANG`, `~/.atlas/language`, `LANGUAGE`/`LC_ALL`/`LC_MESSAGES`/`LANG` (C/POSIX = English), the OS, English; any `pt*` selects pt-BR. `atlas config lang` shows it and what decided it; `atlas config lang <tag>` and Desktop Settings write `~/.atlas/language`. The desktop receives the resolved tag from Rust (a Tauri command) and never reads `navigator.language`. Mobile follows the phone.
+
+## Layout pass in the pseudo-locale (en-XA)
+
+Every migrated screen is looked at in `en-XA` (accented, padded 35%, wrapped in `⟦ ⟧`) and in pt-BR before its PR opens (`i18n/MIGRATION.md` step 6; why and where it exists: `i18n/README.md`, "The pseudo-locale"). It exists in development builds only: a release build, the site and `ATLAS_LANG=en-XA` on a release binary are plain English; never list it anywhere a user sees.
+
+1. `bun run desktop:agent -- --name <you>` (debug build; a build from before en-XA existed needs `bun run desktop:build:app`), `export ATLAS_DEBUG_SOCK=...`. Never the user's app.
+2. Switch: `atlas desktop debug eval 'return await window.__TAURI_INTERNALS__.invoke("locale_set", { tag: "en-XA" })'` (or Settings > General > Display language > "Pseudo (en-XA)"). Back: `{ tag: null }` follows the system, `"pt-BR"` renders Portuguese.
+3. Open each screen of the batch (`debug click`, `debug eval`), `atlas desktop debug shot /tmp/x.png`. Read it: `⟦...⟧` on every string of a migrated screen; a missing `⟧` is a truncation; plain text is not extracted; brackets inside a sentence are glued pieces. Fix overflow in CSS.
+4. Rust: `ATLAS_LANG=en-XA target/debug/atlas <command>` (debug build only), 80 columns.
+5. `bun run i18n:pseudo -- --print <area>` prints one area's pseudo text if you need to read it without an app.
 
 ## The ratchets (text that must not spread)
 

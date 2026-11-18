@@ -9,6 +9,7 @@ use std::path::Path;
 use std::process::Command;
 
 use anyhow::{Result, bail};
+use atlas_i18n::{t, t_in};
 
 use super::ctx::{Ctx, valid_release_id};
 use super::remote::shq;
@@ -171,7 +172,7 @@ pub fn ancestry(root: &Path, head: &str, deployed: &str) -> Ancestry {
         merge_base: None,
     };
     if !has_commit(root, deployed) {
-        eprintln!("▸ deployed commit {deployed} not in this repo: git fetch origin");
+        eprintln!("▸ {}", t!("cmd_deploy_guard_fetching", deployed = deployed));
         // Best effort: no remote, no network or a server refusing by-sha fetches
         // all land in the same "still unknown" answer below.
         let _ = Command::new("git")
@@ -206,8 +207,9 @@ fn short(sha: &str) -> &str {
     &sha[..sha.len().min(7)]
 }
 
-/// Refusal text: both shas, what would be dropped, and the override.
+/// Refusal text in `tag`: both shas, what would be dropped, and the override.
 pub fn refusal_message(
+    tag: &str,
     why: Refusal,
     head: &str,
     dep: &Deployed,
@@ -215,55 +217,87 @@ pub fn refusal_message(
     dropped: &str,
 ) -> String {
     let mut m = match why {
-        Refusal::Downgrade => format!(
-            "HEAD {} is OLDER than what is deployed ({} @ {}): this would roll production back by {} commit(s).",
-            short(head),
-            dep.id,
-            short(&dep.sha),
-            a.behind
+        Refusal::Downgrade => t_in!(
+            tag,
+            "cmd_deploy_guard_refuse_downgrade",
+            head = short(head),
+            id = &dep.id,
+            sha = short(&dep.sha),
+            count = a.behind
         ),
-        Refusal::Diverged => format!(
-            "HEAD {} and the deployed {} @ {} have diverged (merge-base {}): +{} / -{} commits.",
-            short(head),
-            dep.id,
-            short(&dep.sha),
-            a.merge_base.as_deref().map_or("none", short),
-            a.ahead,
-            a.behind
-        ),
-        Refusal::UnknownBase => format!(
-            "deployed commit {} ({}) is not in this repository and could not be fetched: cannot tell whether HEAD {} is newer.",
-            short(&dep.sha),
-            dep.id,
-            short(head)
+        Refusal::Diverged => match a.merge_base.as_deref() {
+            Some(base) => t_in!(
+                tag,
+                "cmd_deploy_guard_refuse_diverged",
+                head = short(head),
+                id = &dep.id,
+                sha = short(&dep.sha),
+                base = short(base),
+                ahead = a.ahead,
+                behind = a.behind
+            ),
+            None => t_in!(
+                tag,
+                "cmd_deploy_guard_refuse_diverged_no_base",
+                head = short(head),
+                id = &dep.id,
+                sha = short(&dep.sha),
+                ahead = a.ahead,
+                behind = a.behind
+            ),
+        },
+        Refusal::UnknownBase => t_in!(
+            tag,
+            "cmd_deploy_guard_refuse_unknown_base",
+            sha = short(&dep.sha),
+            id = &dep.id,
+            head = short(head)
         ),
     };
     if !dropped.is_empty() {
-        m.push_str("\nCommits that would be dropped (git log --oneline HEAD..deployed):\n");
+        m.push('\n');
+        m.push_str(&t_in!(tag, "cmd_deploy_guard_refuse_dropped"));
+        m.push('\n');
         m.push_str(dropped);
     }
-    m.push_str(&format!(
-        "\nHEAD     {head}\ndeployed {}\nPass {} to ship anyway (to go back deliberately, `atlas deploy rollback`).",
-        dep.sha,
-        why.flag()
+    m.push('\n');
+    m.push_str(&t_in!(
+        tag,
+        "cmd_deploy_guard_refuse_shas",
+        head = head,
+        deployed = &dep.sha
+    ));
+    m.push('\n');
+    m.push_str(&t_in!(
+        tag,
+        "cmd_deploy_guard_refuse_override",
+        flag = why.flag()
     ));
     m
 }
 
-/// `deploying <id> (<sha>) over <deployed-id> (<deployed-sha>): +N commits`.
-pub fn announce(id: &str, head: &str, dep: &Deployed, a: &Ancestry) -> String {
+/// `deploying <id> (<sha>) over <deployed-id> (<deployed-sha>): +N commits`, in `tag`.
+pub fn announce(tag: &str, id: &str, head: &str, dep: &Deployed, a: &Ancestry) -> String {
     let delta = match a.relation {
-        Relation::Same => "+0 commits (same commit)".to_string(),
-        Relation::Ahead => format!("+{} commits", a.ahead),
-        Relation::Downgrade => format!("-{} commits", a.behind),
-        Relation::Diverged => format!("+{} / -{} commits (diverged)", a.ahead, a.behind),
-        Relation::Unknown => "base unknown locally".to_string(),
+        Relation::Same => t_in!(tag, "cmd_deploy_guard_delta_same"),
+        Relation::Ahead => t_in!(tag, "cmd_deploy_guard_delta_ahead", count = a.ahead),
+        Relation::Downgrade => t_in!(tag, "cmd_deploy_guard_delta_downgrade", count = a.behind),
+        Relation::Diverged => t_in!(
+            tag,
+            "cmd_deploy_guard_delta_diverged",
+            ahead = a.ahead,
+            behind = a.behind
+        ),
+        Relation::Unknown => t_in!(tag, "cmd_deploy_guard_delta_unknown"),
     };
-    format!(
-        "deploying {id} ({}) over {} ({}): {delta}",
-        short(head),
-        dep.id,
-        short(&dep.sha)
+    t_in!(
+        tag,
+        "cmd_deploy_guard_announce",
+        id = id,
+        sha = short(head),
+        deployed_id = &dep.id,
+        deployed_sha = short(&dep.sha),
+        delta = delta
     )
 }
 
@@ -277,11 +311,11 @@ struct Host {
 async fn read_host(ctx: &Ctx) -> Result<Host> {
     let out = ctx.remote.exec(&probe_script(&ctx.dir)).await?;
     if out.code != 0 {
-        bail!(
-            "cannot read the deployed release on {}: {}",
-            ctx.target.host,
-            out.stderr.trim()
-        );
+        bail!(t!(
+            "cmd_deploy_guard_read_host_failed",
+            host = &ctx.target.host,
+            error = out.stderr.trim()
+        ));
     }
     Ok(Host {
         deployed: parse_probe(&out.stdout),
@@ -319,7 +353,14 @@ pub async fn check(ctx: &Ctx, head: &str, overrides: Overrides) -> Result<Checke
             .collect::<Vec<_>>()
             .join("\n")
         };
-        bail!("{}", refusal_message(why, head, &dep, &a, &dropped));
+        bail!(refusal_message(
+            atlas_i18n::lang(),
+            why,
+            head,
+            &dep,
+            &a,
+            &dropped
+        ));
     }
     Ok(Checked {
         base: Some((dep, a)),
@@ -450,6 +491,7 @@ mod tests {
         };
         assert_eq!(
             announce(
+                "en",
                 "20251113120000-f1dc8a0",
                 "f1dc8a0bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb",
                 &dep,
@@ -472,7 +514,14 @@ mod tests {
             behind: 4,
             merge_base: Some(head.into()),
         };
-        let m = refusal_message(Refusal::Downgrade, head, &dep, &down, "f1dc8a0 feat: x");
+        let m = refusal_message(
+            "en",
+            Refusal::Downgrade,
+            head,
+            &dep,
+            &down,
+            "f1dc8a0 feat: x",
+        );
         for needle in [
             head,
             dep.sha.as_str(),
@@ -489,7 +538,7 @@ mod tests {
             behind: 5,
             merge_base: Some("abc1234ffff".into()),
         };
-        let m = refusal_message(Refusal::Diverged, head, &dep, &div, "");
+        let m = refusal_message("en", Refusal::Diverged, head, &dep, &div, "");
         for needle in ["abc1234", "+2 / -5", "--allow-diverged"] {
             assert!(m.contains(needle), "{needle} missing in:\n{m}");
         }
@@ -499,7 +548,7 @@ mod tests {
             behind: 0,
             merge_base: None,
         };
-        let m = refusal_message(Refusal::UnknownBase, head, &dep, &unk, "");
+        let m = refusal_message("en", Refusal::UnknownBase, head, &dep, &unk, "");
         assert!(m.contains("--allow-unknown-base") && m.contains("could not be fetched"));
     }
 

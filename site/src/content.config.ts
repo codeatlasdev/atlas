@@ -14,9 +14,9 @@ const docs = defineCollection({
 });
 
 // Portuguese (pt-BR) translations: docs/pt-BR/<slug>.md mirrors docs/<slug>.md. The English pattern above is not recursive, so
-// these never leak into `docs`. Front matter is `title`, `source`, `source_sha` and optionally `translation: machine` (see lib/doc-translation.ts).
+// these never leak into `docs`. README.md is the GitHub index of the translations, not a page. Front matter is `title`, `source`, `source_sha` and optionally `translation: machine` (see lib/doc-translation.ts).
 const docsPtBr = defineCollection({
-	loader: glob({ pattern: "*.md", base: "../docs/pt-BR" }),
+	loader: glob({ pattern: ["*.md", "!README.md"], base: "../docs/pt-BR" }),
 	schema: z
 		.object({
 			title: z.string().min(1),

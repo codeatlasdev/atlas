@@ -152,6 +152,8 @@
 	}
 
 	onMount(() => {
+		// The first height without waiting for the observer's first callback (a window sized to the list, not the default).
+		if (scroller?.clientHeight) viewH = scroller.clientHeight;
 		ro = new ResizeObserver(schedule);
 		for (const el of els.keys()) ro.observe(el);
 		return () => ro?.disconnect();
@@ -165,6 +167,17 @@
 		el.scrollTop = Math.max(0, heights.top(i) - (align === "center" ? viewH / 2 : 0));
 		scrollTop = el.scrollTop;
 		await tick();
+	}
+
+	/** Scroll the least that brings item `i` fully into view (a keyboard cursor's "nearest"); no-op when it already is. */
+	export function reveal(i: number) {
+		const el = scroller;
+		if (!el || i < 0 || i >= items.length) return;
+		const top = heights.top(i);
+		const bottom = heights.top(i + 1);
+		if (top < el.scrollTop) el.scrollTop = top;
+		else if (bottom > el.scrollTop + viewH) el.scrollTop = Math.max(0, bottom - viewH);
+		scrollTop = el.scrollTop;
 	}
 
 	/** Follow the tail again and jump to it once the pending render landed. */

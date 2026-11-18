@@ -13,10 +13,12 @@ use serde::{Deserialize, Serialize};
 
 const SPAWN_WAIT: Duration = Duration::from_secs(8);
 
-/// Start the first probe in the background (call once at launch), with the Settings override applied.
+/// Start the first probe in the background (call once at launch), with the Settings override applied. `warm`, not
+/// `reprobe`: whoever asked for the environment first (the hostd spawn) already started the probe, and a second
+/// interactive login shell for the same answer cost 0.3 s to 6 s+ of CPU at every launch (#285).
 pub fn start() {
     login_env::set_override(load_settings().shell);
-    std::thread::spawn(|| report(login_env::reprobe()));
+    std::thread::spawn(|| report(login_env::current()));
 }
 
 /// Re-probe now (after a settings change); blocks.

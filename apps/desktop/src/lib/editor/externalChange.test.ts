@@ -58,10 +58,10 @@ const rows: Row[] = [
 		patch: { diskText: "theirs", mtime: 5 },
 	},
 	{
-		name: "disk now equals the buffer: in sync, no effect",
+		name: "disk now equals the buffer: in sync, it becomes the baseline",
 		state: dirty,
 		event: { kind: "disk-changed", text: "edited", mtime: 5 },
-		effect: "none",
+		effect: "in-sync",
 		patch: { lastSaved: "edited", dirty: false, mtime: 5, diskText: null },
 	},
 	{

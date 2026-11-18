@@ -43,8 +43,16 @@ const fresh = (): SearchState => ({
 });
 
 /** Search state per worktree, kept while the panel is hidden. */
-const states: Record<string, SearchState> = $state({});
-export const searchState = (id: string): SearchState => (states[id] ??= fresh());
+// A plain map of per-worktree `$state` objects: the first lookup of a worktree creates its state, and that happens inside
+// `$derived` (SearchPanel), where writing to a shared `$state` map throws `state_unsafe_mutation` (found in #308's WebKit pass).
+const states: Record<string, SearchState> = {};
+export function searchState(id: string): SearchState {
+	if (!states[id]) {
+		const created = $state(fresh());
+		states[id] = created;
+	}
+	return states[id];
+}
 
 const generation: Record<string, number> = {};
 const timers: Record<string, number> = {};

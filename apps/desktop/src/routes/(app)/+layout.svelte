@@ -2,7 +2,6 @@
 	import "@codeatlasdev/ui/styles/global.css";
 	import "@codeatlasdev/ui/styles/materials.css";
 	import "../../app.css";
-	import "@xterm/xterm/css/xterm.css";
 	import CornerStack from "#lib/shell/CornerStack.svelte";
 	import { bootMark } from "#lib/boot.ts";
 	import { ChevronLeft, ChevronRight } from "@lucide/svelte";
@@ -131,7 +130,7 @@
 <Palette bind:open={palettes.commands} placeholder="Run a command" items={commandItems} />
 <LazyOpen when={worktrees.newDialog.open} load={() => import("#lib/components/NewWorktreeDialog.svelte")} />
 <LazyOpen when={!!pr.createFor} load={() => import("#lib/components/CreatePrDialog.svelte")} />
-<Palette bind:open={palettes.files} placeholder="Go to file" items={fileItems} />
+<Palette bind:open={palettes.files} placeholder="Go to file" items={fileItems} ranked />
 <Palette
 	bind:open={branchPicker.open}
 	placeholder="Switch branch or create one"

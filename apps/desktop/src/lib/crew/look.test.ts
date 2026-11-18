@@ -1,6 +1,9 @@
 // @ts-nocheck bun test runtime types are not part of the app tsconfig
 import { describe, expect, it } from "bun:test";
-import { CREWMATE_COLORS, defaultLook, FACES, normalizeLook, randomLook, ROLE_KITS, shade } from "./look.ts";
+import { m } from "#lib/i18n/m.ts";
+import { inLocale } from "../../../test/locale.ts";
+import { CREWMATE_COLORS, defaultLook, FACES, normalizeLook, randomLook, shade } from "./look.ts";
+import { HAT_LABELS, ROLE_KITS } from "./lookLabels.ts";
 
 describe("normalizeLook", () => {
 	it("keeps each valid field and replaces only the invalid ones", () => {
@@ -145,5 +148,19 @@ describe("role kits", () => {
 			"Scribe",
 			"Lighthouse keeper",
 		]);
+	});
+});
+
+describe("look labels follow the language", () => {
+	it("reads the catalog when asked, so a language switch reaches the tables", async () => {
+		expect(HAT_LABELS.cap).toBe("Cap");
+		const pt = await inLocale("pt-BR", () => [
+			HAT_LABELS.cap,
+			ROLE_KITS[0].label,
+			m.crew_workspace_look_hat_cap(),
+		]);
+		expect(pt[0]).toBe(pt[2]);
+		expect(pt[0]).not.toBe("Cap");
+		expect(pt[1]).not.toBe("Captain");
 	});
 });

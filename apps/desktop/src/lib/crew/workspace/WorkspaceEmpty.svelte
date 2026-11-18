@@ -1,6 +1,7 @@
 <script lang="ts">
 	/** WorkspaceEmpty — the right panel when no crewmate is selected: a calm horizon and the recruit button. */
 	import { recruit } from "#lib/crew/workspace/actions.svelte.ts";
+	import { m } from "#lib/i18n/m.ts";
 </script>
 
 <div class="panel-empty">
@@ -34,10 +35,10 @@
 			<path d="M2 36 Q14 40 26 36 L24 34 L4 34 Z" fill="currentColor" opacity="0.32" />
 		</g>
 	</svg>
-	<p class="empty-calm">No crew selected.</p>
-	<p class="panel-empty-hint">Choose a crewmate or recruit your first one.</p>
+	<p class="empty-calm">{m.crew_workspace_empty_no_crew_selected()}</p>
+	<p class="panel-empty-hint">{m.crew_workspace_empty_choose_a_crewmate_or_recruit()}</p>
 	<button class="btn-primary-pill" onclick={() => void recruit.start()} disabled={recruit.creating}>
-		Recruit a crewmate
+		{m.crew_workspace_empty_recruit_a_crewmate()}
 	</button>
 </div>
 

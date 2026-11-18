@@ -1,5 +1,5 @@
 {
-	"crew_onboarding_connect_error_host_key_changed_body": "O ssh parou porque {host} apresenta uma chave de host diferente da que este computador guardou. Se você reinstalou o servidor, isso é esperado: remova a chave antiga com o comando abaixo e tente novamente. Se o servidor não mudou, confirme com quem o administra antes de continuar.",
+	"crew_onboarding_connect_error_host_key_changed_body": "O ssh parou porque {host} apresenta uma chave de host diferente da que este computador registrou. Se você reinstalou o servidor, isso é esperado: remova a chave antiga com o comando abaixo e tente novamente. Se o servidor não mudou, a conexão pode ter sido interceptada: não continue até quem administra o servidor confirmar a chave nova.",
 	"crew_onboarding_connect_error_host_key_changed_title": "A identidade do servidor mudou",
 	"crew_onboarding_connect_error_key_refused_body": "Ela ainda não está autorizada nesse servidor. Entre uma vez com a senha da conta e o Atlas adiciona a chave para você, ou escolha outra chave. Uma chave com frase secreta precisa estar carregada no ssh-agent antes.",
 	"crew_onboarding_connect_error_key_refused_title": "O servidor recusou a chave {key}",

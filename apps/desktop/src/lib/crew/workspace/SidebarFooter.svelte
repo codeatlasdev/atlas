@@ -223,7 +223,10 @@
 		position: absolute;
 		bottom: calc(100% + 6px);
 		left: 0;
-		right: 0;
+		/* As wide as the pill, and wider for a longer label (Portuguese runs 20-30% longer): never a wrapped menu row. */
+		min-width: 100%;
+		width: max-content;
+		max-width: min(320px, calc(100vw - 24px));
 		background: var(--ca-surface-overlay, var(--ca-surface-base));
 		border: 0.5px solid var(--ca-outline-subtle);
 		border-radius: 10px;
@@ -269,6 +272,8 @@
 	}
 	.integration-status {
 		margin-left: auto;
+		padding-left: 8px;
+		white-space: nowrap;
 		font-size: 11px;
 		color: var(--ca-text-disabled);
 	}

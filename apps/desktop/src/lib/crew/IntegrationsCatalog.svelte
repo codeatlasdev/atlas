@@ -176,9 +176,10 @@
 
 				{#if byCategory.length > 0}
 					{#each byCategory as [category, items] (category)}
-						<section class="catalog-section" aria-label={category}>
+						{@const label = categoryLabel(category as CatalogCategory)}
+						<section class="catalog-section" aria-label={label}>
 							<div class="section-head">
-								<span class="section-label">{category}</span>
+								<span class="section-label">{label}</span>
 							</div>
 							<div class="items-grid">
 								{#each items as integ (integ.id)}
@@ -338,14 +339,10 @@
 	/* ─── Category chips ─────────────────────────────────────────── */
 	.category-chips {
 		display: flex;
+		flex-wrap: wrap; /* a longer language wraps to a second row; a hidden scroll cut the last chip off */
 		gap: 6px;
 		padding: 12px 20px;
-		overflow-x: auto;
-		scrollbar-width: none;
 		flex: none;
-	}
-	.category-chips::-webkit-scrollbar {
-		display: none;
 	}
 
 	.category-chip {

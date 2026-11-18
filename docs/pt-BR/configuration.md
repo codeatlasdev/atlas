@@ -463,7 +463,7 @@ worktree:
 
 Usado pelo Atlas Desktop quando ele cria ou exclui uma worktree git deste repositório. O `setup` roda com `sh -c` na worktree nova, numa aba de terminal chamada "Setup"; o `archive` roda antes da exclusão. Os dois recebem `ATLAS_ROOT_PATH` (checkout principal), `ATLAS_WORKTREE_PATH`, `ATLAS_WORKSPACE_NAME` e `ATLAS_PORT_OFFSET`.
 
-### Seed (`seed`)
+### Seed de diretórios
 
 Uma worktree nova começa sem `node_modules` e sem `target/`, então o `setup` reinstala e recompila tudo (um `target/` frio tem de 2 a 4 GB e cerca de 100 000 arquivos). Com `seed`, o Atlas clona esses diretórios do checkout principal **antes de o `setup` rodar**, então `bun install` e `cargo build` só fazem a diferença.
 

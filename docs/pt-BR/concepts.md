@@ -38,11 +38,11 @@ Um grupo nomeado de serviços (`profiles:` no `atlas.yaml`) que você inicia com
 
 ## Ação
 
-Um comando ligado a uma tecla (`actions:`), para o que você faz ao lado da stack: zerar o banco de dados, rodar as verificações, abrir um simulador de iOS. Uma ação pode pedir `confirm` antes, usar `pause_services` enquanto roda, abrir uma `session` interativa ou mirar uma `platform` mobile. As ações aparecem na ajuda do TUI, na paleta de comandos, no menu **Ações** do desktop e via MCP, onde o `confirm` vira uma trava que exige `confirmed: true`.
+Um comando ligado a uma tecla (`actions:`), para o que você faz ao lado da stack: zerar o banco de dados, rodar as verificações, abrir um simulador de iOS. Uma ação pode pedir `confirm` antes, usar `pause_services` enquanto roda, abrir uma `session` interativa ou mirar uma `platform` mobile. As ações aparecem na ajuda da TUI, na paleta de comandos, no menu **Ações** do desktop e via MCP, onde o `confirm` vira uma trava que exige `confirmed: true`.
 
-## Runner, TUI e attach
+## Runner, TUI e anexar
 
-O **runner** é o motor que controla os serviços: agendador, health checks, socket de controle, heartbeat de status e logs em disco. Um TUI pode controlá-lo (o `atlas dev` simples), ou o runner pode viver sozinho como daemon (`atlas dev --detach`, ou `--headless` em primeiro plano). O TUI vira então só um cliente que anexa e desanexa sem tocar nos serviços. O app desktop, o TUI e o MCP conversam com o mesmo runner por `.logs/atlas.sock`.
+O **runner** é o motor que controla os serviços: agendador, health checks, socket de controle, heartbeat de status e logs em disco. Uma TUI pode controlá-lo (o `atlas dev` simples), ou o runner pode viver sozinho como daemon (`atlas dev --detach`, ou `--headless` em primeiro plano). A TUI vira então só um cliente que anexa e desanexa sem tocar nos serviços. O app desktop, a TUI e o MCP conversam com o mesmo runner por `.logs/atlas.sock`.
 
 ```text
 atlas dev --detach   start the runner and return

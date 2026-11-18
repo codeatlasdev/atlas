@@ -15,7 +15,9 @@
   dnt: true
 - term: Crew
   dnt: true
-  note: the product feature (docs/crew.md)
+  gender:
+    pt-BR: m
+  note: the product feature (docs/crew.md); "o Crew", and the noun crew (one server's team of crewmates) is "o crew" too
 - term: crewmate
   dnt: true
   gender:
@@ -76,6 +78,66 @@
   dnt: true
   gender:
     pt-BR: m
+- term: runner
+  dnt: true
+  gender:
+    pt-BR: m
+  note: the background `atlas dev` process that owns the services (docs/runtime.md); "o runner"
+- term: engine
+  dnt: true
+  gender:
+    pt-BR: m
+  note: the agent engine of a crewmate (claude, codex, omp, opencode), "o engine". A generic software engine (gesture, theme, release engine) is "motor"
+- term: TUI
+  dnt: true
+  gender:
+    pt-BR: f
+  note: '"a TUI" (the terminal interface); a client TUI is "anexada" to a runner'
+- term: gate
+  dnt: true
+  gender:
+    pt-BR: m
+  note: '"o gate" (the local `bun run check`, the load gate, the UI gate)'
+- term: health check
+  dnt: true
+  gender:
+    pt-BR: m
+  note: '"o health check"; the HTTP health probe is "sonda de saúde"'
+- term: toast
+  dnt: true
+  gender:
+    pt-BR: m
+  note: the transient message in the corner of the app; "o toast"
+- term: dock
+  dnt: true
+  gender:
+    pt-BR: m
+  note: a side or bottom region around the panes ("o dock"); the macOS Dock is "o Dock"
+- term: scrollback
+  dnt: true
+  gender:
+    pt-BR: m
+  note: the terminal history buffer, "o scrollback"; the action of scrolling is "rolagem"
+- term: backoff
+  dnt: true
+  gender:
+    pt-BR: m
+  note: '"o backoff" of restarts and reconnects'
+- term: release
+  advice:
+    pt-BR: 'A product version of Atlas is "versão" ("Publicar uma versão", "notas de versão", "pré-lançamento", "versão retirada"). Keep "release" (feminine: "a release") only for a deploy release (`atlas deploy`), the build mode and profile ("build de release"), the GitHub Release and workflow names, "release candidate", and compounds already in the docs ("branch de release", "workflow de release").'
+- term: pairing
+  advice:
+    pt-BR: '"pareamento" and "parear", never "emparelhar".'
+- term: attach
+  advice:
+    pt-BR: 'Verb and state: "anexar", "anexado", "desanexar" (a TUI "anexada" to a runner); never "fazer attach". Quoted UI labels such as "Detach" stay as shown on screen.'
+- term: maintainer
+  advice:
+    pt-BR: '"mantenedor", "mantenedores"; never "maintainer" in prose. Group and role names in code (`atlas-maintainers`) stay.'
+- term: developer
+  advice:
+    pt-BR: 'Say "quem desenvolve", the plural "desenvolvedores" or "pessoa desenvolvedora"; "Modo de Desenvolvedor" is the Windows name.'
 - term: agent
   pt-BR: agente
 - term: project

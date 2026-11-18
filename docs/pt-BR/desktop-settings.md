@@ -66,7 +66,7 @@ Para adicionar uma seção ou uma aba, adicione a categoria (ou a página) ao re
 | `project_panel.folder_icons` | `true` | |
 | `project_panel.indent_size` | `12` | 4 a 40 px |
 | `active_pane_modifiers.border_size` | `0` | borda de 0 a 8 px em volta do painel ativo |
-| `active_pane_modifiers.inactive_opacity` | `1` | 0.2 a 1; menos escurece os painéis inativos |
+| `active_pane_modifiers.inactive_opacity` | `1` | 0,2 a 1; menos escurece os painéis inativos |
 | `enable_language_servers` | `true` | servidores de linguagem (completar código, diagnósticos, hover, ir para a definição) |
 | `format_on_save` | `false` | formata com o servidor de linguagem ao salvar |
 | `inlay_hints.enabled` | `true` | tipos inferidos e nomes de parâmetros exibidos na linha |
@@ -223,13 +223,13 @@ Por que ele tem essa aparência (o que Dracula, Tokyo Night, Catppuccin e One t�
 
 | Decisão | Valor | Motivo |
 |---|---|---|
-| Superfícies em um matiz só | matiz OKLCH ~262, croma de 0.029 a 0.036; `#0b1320` rebaixado, `#131c2b` editor e terminal, `#1d2637` elevado, `#273143` sobreposição | Um único matiz de azul se lê como um material só. O croma fica baixo nas áreas grandes (calmo, sem blocos saturados), mas acima de 0.025 para que um painel IPS com brilho de backlight não vire cinza. |
-| Degraus iguais | cerca de 4% de luminosidade OKLCH entre níveis (0.186, 0.226, 0.268, 0.312) | Visíveis em IPS e em painéis de baixo contraste, então painéis, popovers e a barra lateral se separam sem bordas pesadas. |
-| Sem preto puro | a superfície mais escura tem L 0.186 | O preto do OLED borra e esmaga o detalhe das sombras ao rolar; um azul quase preto mantém os pixels ligados e os gradientes suaves. |
-| Primeiro plano suave | texto `#c0caf5` (L 0.85), nunca branco puro | Texto claro sobre fundo escuro irradia (halação, tremulação do PWM no OLED) e afina as bordas dos glifos; 12:1 no editor é suficiente. |
-| Acentos com a mesma luminosidade | vermelho, laranja, azul e magenta perto de L 0.75; amarelo, verde e ciano perto de L 0.80, croma de no máximo 0.15 | A regra do Dracula: papéis fixos, acentos de alta saturação sobre um fundo dessaturado. A mesma luminosidade percebida impede que um acento grite mais que outro, e todos têm 5.5:1 ou mais sobre a superfície de sobreposição. |
+| Superfícies em um matiz só | matiz OKLCH ~262, croma de 0,029 a 0,036; `#0b1320` rebaixado, `#131c2b` editor e terminal, `#1d2637` elevado, `#273143` sobreposição | Um único matiz de azul se lê como um material só. O croma fica baixo nas áreas grandes (calmo, sem blocos saturados), mas acima de 0,025 para que um painel IPS com brilho de backlight não vire cinza. |
+| Degraus iguais | cerca de 4% de luminosidade OKLCH entre níveis (0,186, 0,226, 0,268, 0,312) | Visíveis em IPS e em painéis de baixo contraste, então painéis, popovers e a barra lateral se separam sem bordas pesadas. |
+| Sem preto puro | a superfície mais escura tem L 0,186 | O preto do OLED borra e esmaga o detalhe das sombras ao rolar; um azul quase preto mantém os pixels ligados e os gradientes suaves. |
+| Primeiro plano suave | texto `#c0caf5` (L 0,85), nunca branco puro | Texto claro sobre fundo escuro irradia (halação, tremulação do PWM no OLED) e afina as bordas dos glifos; 12:1 no editor é suficiente. |
+| Acentos com a mesma luminosidade | vermelho, laranja, azul e magenta perto de L 0,75; amarelo, verde e ciano perto de L 0,80, croma de no máximo 0,15 | A regra do Dracula: papéis fixos, acentos de alta saturação sobre um fundo dessaturado. A mesma luminosidade percebida impede que um acento grite mais que outro, e todos têm 5,5:1 ou mais sobre a superfície de sobreposição. |
 | Croma seguro para sRGB | nenhum acento passa do que o sRGB comporta | Uma tela P3 mostra a mesma cor; nada é cortado no sRGB nem muda em gamut amplo. |
-| Legível em 1x | cores de sintaxe ajustadas para pelo menos 4.7:1 em toda superfície de código (linha, seleção, linha ativa); comentários `#acbae2` em itálico | O anti-aliasing em um painel de baixo DPI afina texto claro sobre escuro, então uma margem acima do AA 4.5 vale mais do que ficar na linha. |
+| Legível em 1x | cores de sintaxe ajustadas para pelo menos 4,7:1 em toda superfície de código (linha, seleção, linha ativa); comentários `#acbae2` em itálico | O anti-aliasing em um painel de baixo DPI afina texto claro sobre escuro, então uma margem acima do AA 4,5 vale mais do que ficar na linha. |
 | Papéis de sintaxe | palavra-chave roxo, função verde, string âmbar, tipo e namespace ciano, constante laranja, propriedade azul | Um matiz por papel em todo lugar (a especificação do Dracula), com os matizes do Tokyo. |
 
 O Atlas Light é o par do Tokyo Night Day: fundo cinza-azulado claro (`#e1e2e7`), texto azul-marinho, o mesmo mapa de papel para matiz com valores mais profundos para que toda cor mantenha o AA sobre o fundo claro. O `bun run test` (`theme/atlasDefault.test.ts`) fixa a paleta, as regras da escala OKLCH acima e a seleção padrão; o `bun scripts/contrast-audit.ts` confere as telas renderizadas nos dois temas.

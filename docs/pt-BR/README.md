@@ -7,7 +7,7 @@ translation: machine
 
 # Documentação do Atlas
 
-O Atlas sobe o ambiente de desenvolvimento inteiro de um projeto a partir de um único `atlas.yaml`: infraestrutura, serviços, ordem de dependência, reinícios e logs. Você controla tudo por um TUI, por um app desktop nativo ou por um agente de IA via MCP. Estas páginas também estão publicadas em [atlas.codeatlas.com.br/pt-br/docs](https://atlas.codeatlas.com.br/pt-br/docs/).
+O Atlas sobe o ambiente de desenvolvimento inteiro de um projeto a partir de um único `atlas.yaml`: infraestrutura, serviços, ordem de dependência, reinícios e logs. Você controla tudo por uma TUI, por um app desktop nativo ou por um agente de IA via MCP. Estas páginas também estão publicadas em [atlas.codeatlas.com.br/pt-br/docs](https://atlas.codeatlas.com.br/pt-br/docs/).
 
 ## Comece aqui
 
@@ -15,7 +15,7 @@ O Atlas sobe o ambiente de desenvolvimento inteiro de um projeto a partir de um 
 |---|---|
 | [Introdução](introduction.md) | saber o que é o Atlas e o que vem na caixa |
 | [Primeiros passos](getting-started.md) | instalar, escrever um `atlas.yaml` e rodar, em três passos |
-| [Instalação](installation.md) | instalar a partir de uma release, atualizar, compilar do código-fonte, desinstalar |
+| [Instalação](installation.md) | instalar a partir de uma versão, atualizar, compilar do código-fonte, desinstalar |
 | [Quickstart](quickstart.md) | o mesmo fluxo com mais detalhes, além de agentes e do app desktop |
 | [Conceitos](concepts.md) | aprender o vocabulário: projetos, spaces, worktrees, serviços, ações, runner, hostd |
 
@@ -54,6 +54,6 @@ O Atlas sobe o ambiente de desenvolvimento inteiro de um projeto a partir de um 
 |---|---|
 | [Arquitetura](architecture.md) | ler ou mudar o código: crates, processos, sockets |
 | [Contribuir](contributing.md) | montar um ambiente de desenvolvimento, rodar as verificações, enviar um pull request |
-| [Publicar uma versão](release.md) | (mantenedores) criar e publicar uma release |
+| [Publicar uma versão](release.md) | (mantenedores) criar e publicar uma versão |
 
 As skills de agente que acompanham o Atlas ficam em [`skills/`](../../skills/atlas/SKILL.md); elas resumem estas docs para LLMs. A ordem da barra lateral do site é definida em [`_nav.json`](../_nav.json).

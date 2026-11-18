@@ -75,7 +75,7 @@ Rode `atlas crew status <ssh-target>` depois para conferir.
 | `atlas crew resume <ssh-target> [--port N]` | inicia as filas de novo (`atlas hostd --crew-resume`) |
 | `atlas crew logs <ssh-target> [-f] [--port N]` | últimas 200 linhas de `journalctl -u atlas-crew`; `-f` acompanha |
 | `atlas crew login <ssh-target> <agent> [--port N]` | abre `ssh -t <crew-user>@<host> <agent-binary>` (com o mesmo `PATH` que a verificação de engine do Desktop usa: `~/.local/bin`, `~/.bun/bin`, `~/.npm-global/bin`, então um agente instalado ali é encontrado) para você concluir o login do próprio agente. `<agent>` é `omp`, `claude`, `codex` ou `opencode`; antes, o comando imprime a linha de instalação desse agente |
-| `atlas crew pair <ssh-target> [--port N]` | pareia um celular direto com este crew server, de qualquer máquina que acesse o servidor por SSH: imprime um QR code, um código de 6 dígitos e o link (`atlas hostd --mobile-pair` como usuário crew; um código, 120 s). O celular guarda o servidor na lista de computadores, então o crew funciona com o seu computador desligado ([Atlas Mobile](../mobile.md#pair-a-crew-server-with-no-computer-in-the-loop)) |
+| `atlas crew pair <ssh-target> [--port N]` | pareia um celular direto com este crew server, de qualquer máquina que acesse o servidor por SSH: imprime um QR code, um código de 6 dígitos e o link (`atlas hostd --mobile-pair` como usuário crew; um código, 120 s). O celular guarda o servidor na lista de computadores, então o crew funciona com o seu computador desligado ([Atlas Mobile](mobile.md#parear-um-crew-server-sem-nenhum-computador-no-meio)) |
 | `atlas crew browsers install <ssh-target> [--port N] [--identity KEY]` | instala o chromium e o webkit do Playwright para a ferramenta `capture` ([Capturas](#capturas)); idempotente. Nada do npm roda como root: o sudo é usado só em um `apt-get install` que o atlas monta sozinho |
 | `atlas crew browsers status <ssh-target> [--port N] [--identity KEY]` | uma linha por item que falta (node anterior à versão 20 ou ausente, npm, runner, pacote ou versão do Playwright, cada navegador, um navegador que não inicia por falta de bibliotecas); diz que está pronto e sai com 0 quando nada falta, sai com 1 caso contrário |
 
@@ -160,7 +160,7 @@ O `PATH` da unit já inclui `~/.atlas/bin`, `~/.bun/bin`, `~/.local/bin`, `~/.op
 
 ### Entrar pelo celular
 
-Sem nenhum PC ligado, um celular pareado com o crew server autentica uma engine por conta própria (Configurações do Crew → **Engine sign-in**, ou **Sign in here** em um card "Sign in to …"). `crew_engine_login {engine}` abre um terminal como usuário crew que roda só o comando de login dessa engine, e `crew_engine_status {refresh?}` informa por engine `signed_in`, `needs_signin`, `not_installed` ou `unknown`:
+Sem nenhum PC ligado, um celular pareado com o crew server autentica um engine por conta própria (Configurações do Crew → **Engine sign-in**, ou **Sign in here** em um card "Sign in to …"). `crew_engine_login {engine}` abre um terminal como usuário crew que roda só o comando de login desse engine, e `crew_engine_status {refresh?}` informa por engine `signed_in`, `needs_signin`, `not_installed` ou `unknown`:
 
 | Engine | Terminal de login | Verificação de status (rode como usuário crew) | Um login expirado aparece como |
 |---|---|---|---|
@@ -169,7 +169,7 @@ Sem nenhum PC ligado, um celular pareado com o crew server autentica uma engine 
 | omp | `omp login` (seletor de provedor) | `omp auth export` (linhas de credenciais) | `No API key for provider: …` |
 | OpenCode | `opencode auth login` | `opencode auth list` | `ProviderAuthError`, `Unauthorized` |
 
-Fontes: a documentação e o código dos próprios CLIs (`code.claude.com/docs/en/cli-reference` e `/errors`, `openai/codex` `codex-rs/cli` e `codex-rs/login`, `omp.sh/docs` e `oh-my-pi` `docs/providers.md`, `opencode.ai/docs/cli/providers`). A tabela é `crew/engine_login.rs` (`ENGINES`), a única lista do que um celular pode iniciar: qualquer outro nome é recusado (`unknown engine`), então o escopo que o celular tem (`act`) não vira um shell. Uma tarefa que falha com o texto da própria engine passa a engine para `needs_signin` sem executar nada, e todo cliente recebe `{"ev":"crew_engine_auth","engine","state"}`. O terminal de login é auditado (`engine_login_started`, com quem pediu), nunca as teclas digitadas. Atrás do relay de um Mac, o status funciona e o login não (terminais nunca passam pelo relay): pareie o celular com o crew server.
+Fontes: a documentação e o código dos próprios CLIs (`code.claude.com/docs/en/cli-reference` e `/errors`, `openai/codex` `codex-rs/cli` e `codex-rs/login`, `omp.sh/docs` e `oh-my-pi` `docs/providers.md`, `opencode.ai/docs/cli/providers`). A tabela é `crew/engine_login.rs` (`ENGINES`), a única lista do que um celular pode iniciar: qualquer outro nome é recusado (`unknown engine`), então o escopo que o celular tem (`act`) não vira um shell. Uma tarefa que falha com o texto do próprio engine passa o engine para `needs_signin` sem executar nada, e todo cliente recebe `{"ev":"crew_engine_auth","engine","state"}`. O terminal de login é auditado (`engine_login_started`, com quem pediu), nunca as teclas digitadas. Atrás do relay de um Mac, o status funciona e o login não (terminais nunca passam pelo relay): pareie o celular com o crew server.
 
 ## Crewmates
 
@@ -353,7 +353,7 @@ O Telegram vê o token do seu bot e as mensagens acima. Nada vai para a CodeAtla
 
 Quando uma tarefa termina ou um crewmate precisa da sua aprovação, o crew server envia um push para o seu celular.
 
-- **Ainda não está ativo:** o relay de push não foi publicado e o app é compilado sem Firebase, então nenhum celular recebe push hoje; o código abaixo é o que roda quando eles existirem (estado e passos para ativar: [Atlas Mobile → Notificações push](../mobile.md#push-notifications)).
+- **Ainda não está ativo:** o relay de push não foi publicado e o app é compilado sem Firebase, então nenhum celular recebe push hoje; o código abaixo é o que roda quando eles existirem (estado e passos para ativar: [Atlas Mobile → Notificações push](mobile.md#notificações-push)).
 - Depois do pareamento, com um build que tem a configuração de push, o registro é automático: o app obtém do relay um **grant** para o seu token FCM (`POST /v1/register`) e registra `{token, grant}` em cada crew server (`push_register`, `push_unregister`). Isso acontece a cada abertura e conexão e sempre que o FCM renova o token.
 - O relay em `push.codeatlas.com.br` recebe o token, o grant e o tipo do evento (`task_done` ou `needs_you`), nunca o conteúdo. Celulares conectados naquele momento são ignorados.
 - O relay só notifica quem tem o grant do token, então saber um token não basta para enviar um push a um celular. O crew server descarta um token que o relay recusa (`403`) ou que o FCM não tem mais (`410`).
@@ -362,9 +362,9 @@ Quando uma tarefa termina ou um crewmate precisa da sua aprovação, o crew serv
 
 ## Atlas Desktop
 
-Abra a área de trabalho do Atlas Crew com **⌘⇧B** (comando *Atlas Crew*, atalho reconfigurável). Duas visões, alternadas com **⌘⇧C** ou pela barra na borda superior:
+Abra o workspace do Atlas Crew com **⌘⇧B** (comando *Atlas Crew*, atalho reconfigurável). Duas visões, alternadas com **⌘⇧C** ou pela barra na borda superior:
 
-- **Chat**: a lista de crewmates (pesquisa, ⌘1…⌘9 para alternar, estado do servidor no rodapé) e a conversa do crewmate selecionado: tarefas, passos ao vivo, cards de aprovação e de ação embutidos, e um campo de mensagem que enfileira enquanto outra tarefa roda. Uma janela de configurações (General, Automations, Engine, Memory, Usage, Audit) salva cada campo separadamente. Um servidor pausado mostra um banner **Paused** sobre a área de trabalho com um botão **Resume**; o menu do rodapé tem **Pause all** / **Resume all**.
+- **Chat**: a lista de crewmates (pesquisa, ⌘1…⌘9 para alternar, estado do servidor no rodapé) e a conversa do crewmate selecionado: tarefas, passos ao vivo, cards de aprovação e de ação embutidos, e um campo de mensagem que enfileira enquanto outra tarefa roda. Uma janela de configurações (General, Automations, Engine, Memory, Usage, Audit) salva cada campo separadamente. Um servidor pausado mostra um banner **Paused** sobre o workspace com um botão **Resume**; o menu do rodapé tem **Pause all** / **Resume all**.
 - **Board**: colunas Queued, Working, Needs you e Done com todos os crewmates, com filtros por crewmate, origem e texto, um intervalo para Done e um clique que abre o chat naquela tarefa.
 
 Configurações → Atlas Crew guarda os crew servers (destino SSH + nome, listados em `~/.atlas/desktop/crew-servers.json`). O desktop acessa cada servidor por SSH e por um túnel `ssh -L` até o `hostd.sock` dele. O servidor já precisa ter rodado `atlas crew install`; o Atlas Desktop pode executar a instalação para você e pede a senha do sudo pelo stdin (nunca pelo argv).
@@ -375,7 +375,7 @@ Configurações → Atlas Crew guarda os crew servers (destino SSH + nome, lista
 
 ## Atlas Mobile
 
-O celular fala só com os Macs pareados; o hostd do Mac repassa os pedidos para os crew servers da lista do desktop. Detalhes e escopos: [Atlas Mobile → Crew no celular](../mobile.md#crew-on-the-phone).
+O celular fala só com os Macs pareados; o hostd do Mac repassa os pedidos para os crew servers da lista do desktop. Detalhes e escopos: [Atlas Mobile → Crew no celular](mobile.md#crew-no-celular).
 
 A aba **Crew** lista todos os crewmates de todos os computadores pareados (ponto de estado, última mensagem, hora). Cada crew server tem um botão **Pause all** e, enquanto está pausado, um banner **Crew paused** com **Resume**. Os crewmates que esperam por você aparecem em um card "needs you" no topo das abas Computers e Crew. Um crewmate abre como um chat (balões de prompt e resposta, passos recolhidos, Allow / Deny embutidos, campo de mensagem que enfileira) e uma tela de perfil: função, aprovação, automações, memória (View / Edit) e exclusão.
 
@@ -473,7 +473,7 @@ Só `url` é obrigatório. Cada campo e o que significa:
 | `widths` | `[390, 1440]` | larguras do viewport em px, de 200 a 4000: um celular e um desktop |
 | `themes` | `["light", "dark"]` | o `prefers-color-scheme` da página |
 | `engines` | `["chromium", "webkit"]` | chromium é Chrome/Edge/Android; webkit é Safari, iOS e o WKWebView do Tauri, onde moram a maioria dos bugs de layout do tipo "na minha máquina funciona" |
-| `slow_network` | `false` | cada requisição é atrasada em 400 ms, em todas as engines |
+| `slow_network` | `false` | cada requisição é atrasada em 400 ms, em todos os engines |
 | `full_page` | `true` | rola até o fim (para carregar o conteúdo sob demanda), depois captura a página inteira; `false` captura só a primeira tela |
 | `steps` | nenhum | no máximo 20 ações antes da captura: `click`, `fill`, `press`, `wait_for`, `wait_ms`. Só seletores e texto, sem script |
 | `dom` | `false` | grava também as caixas dos elementos da página ao lado de cada PNG (`<engine>-<width>px-<theme>.dom.json`): para cada elemento visível, a tag, o role, o nome acessível, o texto visível (cortado em 120 caracteres), o `data-testid` e outros atributos `data-*`, um seletor CSS estável (`[data-testid=…]`, depois `#id`, depois uma cadeia curta de `tag:nth-of-type`) e `x`, `y`, `w`, `h` em px CSS da página inteira naquela largura. Uma célula sem o arquivo é uma célula com falha. Os arquivos ficam ao lado dos PNGs e cada captura na resposta lista seu `dom` (nome do arquivo) e `dom_path`. É isso que o [`locate`](#localizar) lê |
@@ -562,7 +562,7 @@ affected:
 
 **Resultados por tarefa.** O veredito de cada cenário (passou/falhou, nomes das capturas, os problemas encontrados) é salvo em `<crewmate dir>/ui-gate/<task id>/ui-gate.json` depois de cada cenário, então uma reinicialização, ou uma execução interrompida, ainda sabe o que falhou. As capturas ficam ao lado como `<scenario id>-<engine>-<width>-<theme>.png`.
 
-**Cache.** O veredito de um cenário fica no [cache de tarefas](../cli.md) (`~/.atlas/cache`, compartilhado com toda worktree e com o `atlas run --cache`), com chave formada pelo id do cenário, pelas verificações registradas e pelos bytes de todo arquivo do projeto que o git não ignora, edições não commitadas incluídas. Um cenário que já passou sobre os mesmos bytes é um **hit**: o runner não inicia e a resposta diz `"source": "cached"`. Só os que passam são guardados, então um cenário que falha é sempre capturado de novo; um hit cujas capturas já não estão na pasta da tarefa conta como miss. O cache não enxerga os dados do app em execução: passe `force: true` quando os dados por trás de uma página mudarem.
+**Cache.** O veredito de um cenário fica no [cache de tarefas](cli.md) (`~/.atlas/cache`, compartilhado com toda worktree e com o `atlas run --cache`), com chave formada pelo id do cenário, pelas verificações registradas e pelos bytes de todo arquivo do projeto que o git não ignora, edições não commitadas incluídas. Um cenário que já passou sobre os mesmos bytes é um **hit**: o runner não inicia e a resposta diz `"source": "cached"`. Só os que passam são guardados, então um cenário que falha é sempre capturado de novo; um hit cujas capturas já não estão na pasta da tarefa conta como miss. O cache não enxerga os dados do app em execução: passe `force: true` quando os dados por trás de uma página mudarem.
 
 **Registro de regressões.** `.atlas/ui-regressions.json` no projeto:
 

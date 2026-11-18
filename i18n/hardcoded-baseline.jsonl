@@ -189,6 +189,10 @@
 {"ratchet":"svelte","file":"apps/desktop/src/lib/components/GitSettings.svelte","count":0}
 {"ratchet":"svelte","file":"apps/desktop/src/lib/components/GpuTerminal.svelte","count":0}
 {"ratchet":"svelte","file":"apps/desktop/src/lib/components/HostPrompt.svelte","count":0}
+{"ratchet":"svelte","file":"apps/desktop/src/lib/components/Explorer.svelte","count":11}
+{"ratchet":"svelte","file":"apps/desktop/src/lib/components/GitSettings.svelte","count":0}
+{"ratchet":"svelte","file":"apps/desktop/src/lib/components/GpuTerminal.svelte","count":1}
+{"ratchet":"svelte","file":"apps/desktop/src/lib/components/HostPrompt.svelte","count":4}
 {"ratchet":"svelte","file":"apps/desktop/src/lib/components/IdentityDialog.svelte","count":11}
 {"ratchet":"svelte","file":"apps/desktop/src/lib/components/Lazy.svelte","count":0}
 {"ratchet":"svelte","file":"apps/desktop/src/lib/components/Logs.svelte","count":0}

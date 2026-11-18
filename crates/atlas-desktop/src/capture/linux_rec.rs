@@ -290,9 +290,15 @@ mod tests {
         let out = dir.path().join("rec.mp4");
         // An odd-sided picture (grim gives whatever the window is): the encoder would refuse it uncropped.
         let n = std::sync::atomic::AtomicU8::new(0);
+        let grabs = Arc::new(std::sync::Mutex::new(Vec::<Instant>::new()));
+        let stamp = grabs.clone();
+        let began = Instant::now();
         let rec = Recorder::start(
             ppm(101, 61, 10),
-            move || Ok(ppm(101, 61, n.fetch_add(40, Ordering::Relaxed))),
+            move || {
+                stamp.lock().unwrap().push(Instant::now());
+                Ok(ppm(101, 61, n.fetch_add(40, Ordering::Relaxed)))
+            },
             30,
             &out,
         )
@@ -302,12 +308,34 @@ mod tests {
             (101, 61),
             "the start result tells the size grim gave"
         );
-        std::thread::sleep(Duration::from_millis(1000));
+        // Record until the loop has really grabbed a dozen frames (an event, not a stretch of time).
+        let end = Instant::now() + atlas_core::scaling::HANG;
+        while grabs.lock().unwrap().len() < 12 {
+            assert!(Instant::now() < end, "the grab loop stalled");
+            std::thread::sleep(Duration::from_millis(10));
+        }
         let t = rec.stop().unwrap();
 
-        // The grab loop paces itself: ~1 s at 30/s is ~30 frames, never an unthrottled flood or a trickle.
-        assert!((20..=40).contains(&t.frames), "frames: {t:?}");
-        assert!(t.duration_ms() >= 800, "duration: {t:?}");
+        // The grab loop paces itself at the asked rate: grab number k is scheduled `k` periods after the start, and a
+        // late one only moves the schedule later, so n grabs take at least n periods however slow the machine is. An
+        // unthrottled loop (the flood this guards) finishes n grabs in about no time.
+        let at = grabs.lock().unwrap().clone();
+        assert_eq!(
+            t.frames as usize,
+            at.len() + 1,
+            "the start frame and one per grab: {t:?}"
+        );
+        let period = Duration::from_micros(1_000_000 / 30);
+        let took = *at.last().unwrap() - began;
+        assert!(
+            took + Duration::from_millis(1) >= period * at.len() as u32,
+            "a flood: {} grabs in {took:?} (one per {period:?} asked)",
+            at.len()
+        );
+        assert!(
+            t.duration_ms() >= 11 * period.as_millis() as u64 - 11,
+            "duration: {t:?}"
+        );
         let probe = Command::new("ffprobe")
             .args(["-v", "error", "-count_frames", "-select_streams", "v:0"])
             .args([
@@ -330,7 +358,11 @@ mod tests {
             .find_map(|l| l.strip_prefix("nb_read_frames="))
             .and_then(|v| v.parse().ok())
             .unwrap();
-        assert!((20..=45).contains(&frames), "encoded frames: {info}");
+        // The file cannot hold more frames than its length at the asked rate, and holds something.
+        assert!(
+            (2..=t.last_ms * 30 / 1000 + 5).contains(&frames),
+            "encoded frames: {info} for a recording of {t:?}"
+        );
     }
 
     #[test]

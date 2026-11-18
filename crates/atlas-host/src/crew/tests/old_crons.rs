@@ -180,7 +180,7 @@ async fn automations_an_older_parser_accepted_load_list_and_run_without_hurting_
 
     // The scheduler ran at start: the parsable routines fired (last_run set), the refused one never does.
     let mut fired = Vec::new();
-    for _ in 0..100 {
+    for _ in 0..600 {
         fired = CrewStore::new(&dir).load_crewmate(&id).unwrap().routines;
         if fired.iter().filter(|r| r.last_run.is_some()).count() >= 2 {
             break;

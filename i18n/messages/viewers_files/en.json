@@ -1,0 +1,371 @@
+{
+	"viewers_files_copy_copied": "Copied",
+	"viewers_files_fallback_viewer_binary": "Binary file",
+	"viewers_files_fallback_viewer_binary_body": [
+		{
+			"declarations": [
+				"input os",
+				"input size"
+			],
+			"selectors": [
+				"os"
+			],
+			"match": {
+				"os=mac": "{size} · no preview for this format. Choose Open externally, or Reveal in Finder.",
+				"os=windows": "{size} · no preview for this format. Choose Open externally, or Reveal in File Explorer.",
+				"os=*": "{size} · no preview for this format. Choose Open externally, or Reveal in file manager."
+			}
+		}
+	],
+	"viewers_files_fallback_viewer_first_bytes": "First {size}",
+	"viewers_files_fallback_viewer_too_large": "Too large to edit here",
+	"viewers_files_fallback_viewer_too_large_body": [
+		{
+			"declarations": [
+				"input os",
+				"input size",
+				"input limit"
+			],
+			"selectors": [
+				"os"
+			],
+			"match": {
+				"os=mac": "This file is {size}. Atlas opens text files up to {limit} MB. Choose Open externally, or Reveal in Finder.",
+				"os=windows": "This file is {size}. Atlas opens text files up to {limit} MB. Choose Open externally, or Reveal in File Explorer.",
+				"os=*": "This file is {size}. Atlas opens text files up to {limit} MB. Choose Open externally, or Reveal in file manager."
+			}
+		}
+	],
+	"viewers_files_format_action_already_formatted": "Already formatted",
+	"viewers_files_format_action_cannot_format": "Cannot format: {reason}",
+	"viewers_files_format_action_no_formatter": "This file type has no formatter: no language server provides one and Atlas has no built-in one.",
+	"viewers_files_format_view_copyright": "Copyright {year} {holder}",
+	"viewers_files_format_view_directory": "directory",
+	"viewers_files_format_view_ignore_ignore": "ignore",
+	"viewers_files_format_view_ignore_keep": "keep",
+	"viewers_files_format_view_ignore_tip": "Ignores matches",
+	"viewers_files_format_view_keep_tip": "Re-includes matches",
+	"viewers_files_format_view_last_match_wins": "last match wins",
+	"viewers_files_format_view_no_owner": "no owner",
+	"viewers_files_format_view_no_processes_defined": "No processes defined",
+	"viewers_files_format_view_owners_summary": [
+		{
+			"declarations": [
+				"input rules",
+				"input owners",
+				"local rulesExact = rules",
+				"local rulesPlural = rules: plural",
+				"local ownersExact = owners",
+				"local ownersPlural = owners: plural"
+			],
+			"selectors": [
+				"rulesExact",
+				"rulesPlural",
+				"ownersExact",
+				"ownersPlural"
+			],
+			"match": {
+				"rulesExact=0, rulesPlural=*, ownersExact=*, ownersPlural=*": "No rules",
+				"rulesExact=*, rulesPlural=one, ownersExact=0, ownersPlural=*": "{rules} rule · no owners",
+				"rulesExact=*, rulesPlural=*, ownersExact=0, ownersPlural=*": "{rules} rules · no owners",
+				"rulesExact=*, rulesPlural=one, ownersExact=*, ownersPlural=one": "{rules} rule · {owners} owner",
+				"rulesExact=*, rulesPlural=one, ownersExact=*, ownersPlural=*": "{rules} rule · {owners} owners",
+				"rulesExact=*, rulesPlural=*, ownersExact=*, ownersPlural=one": "{rules} rules · {owners} owner",
+				"rulesExact=*, rulesPlural=*, ownersExact=*, ownersPlural=*": "{rules} rules · {owners} owners"
+			}
+		}
+	],
+	"viewers_files_format_view_processes": [
+		{
+			"declarations": [
+				"input count",
+				"local countExact = count",
+				"local countPlural = count: plural"
+			],
+			"selectors": [
+				"countExact",
+				"countPlural"
+			],
+			"match": {
+				"countExact=0, countPlural=*": "No processes",
+				"countExact=*, countPlural=one": "{count} process",
+				"countExact=*, countPlural=*": "{count} processes"
+			}
+		}
+	],
+	"viewers_files_format_view_repo_root_only": "repo root only",
+	"viewers_files_format_view_root": "root",
+	"viewers_files_format_view_rules": "Rules",
+	"viewers_files_format_view_rules_count": [
+		{
+			"declarations": [
+				"input count",
+				"local countExact = count",
+				"local countPlural = count: plural"
+			],
+			"selectors": [
+				"countExact",
+				"countPlural"
+			],
+			"match": {
+				"countExact=0, countPlural=*": "No rules",
+				"countExact=*, countPlural=one": "{count} rule",
+				"countExact=*, countPlural=*": "{count} rules"
+			}
+		}
+	],
+	"viewers_files_format_view_sections": [
+		{
+			"declarations": [
+				"input count",
+				"local countExact = count",
+				"local countPlural = count: plural"
+			],
+			"selectors": [
+				"countExact",
+				"countPlural"
+			],
+			"match": {
+				"countExact=0, countPlural=*": "No sections",
+				"countExact=*, countPlural=one": "{count} section",
+				"countExact=*, countPlural=*": "{count} sections"
+			}
+		}
+	],
+	"viewers_files_format_view_spdx_page": "SPDX page",
+	"viewers_files_image_viewer_actual_size": "Actual size",
+	"viewers_files_image_viewer_copied": "Image copied",
+	"viewers_files_image_viewer_copy_failed": "Could not copy this image",
+	"viewers_files_image_viewer_copy_image": "Copy image",
+	"viewers_files_image_viewer_fit_to_view": "Fit to view",
+	"viewers_files_load_host_too_old": "This host is too old to read big files in chunks. Run `atlas update` on that machine, then open the file again.",
+	"viewers_files_notebook_view_cells": [
+		{
+			"declarations": [
+				"input count",
+				"local countExact = count",
+				"local countPlural = count: plural"
+			],
+			"selectors": [
+				"countExact",
+				"countPlural"
+			],
+			"match": {
+				"countExact=0, countPlural=*": "No cells",
+				"countExact=*, countPlural=one": "{count} cell",
+				"countExact=*, countPlural=*": "{count} cells"
+			}
+		}
+	],
+	"viewers_files_notebook_view_error": "Error",
+	"viewers_files_notebook_view_output_alt": "Cell {n} output",
+	"viewers_files_notebook_view_raw": "raw",
+	"viewers_files_package_view_entry_points": "Entry points",
+	"viewers_files_package_view_features": "Features",
+	"viewers_files_package_view_filter_dependencies": "Filter dependencies",
+	"viewers_files_package_view_open_name_on_the_registry": "Open {name} on the registry",
+	"viewers_files_package_view_open_on_the_registry": "Open on the registry",
+	"viewers_files_package_view_registry": "Registry",
+	"viewers_files_package_view_run_in_terminal": "Run in a terminal",
+	"viewers_files_package_view_runs_with": "runs with {pm}",
+	"viewers_files_package_view_scripts": "Scripts",
+	"viewers_files_package_view_workspaces": "Workspaces",
+	"viewers_files_pdf_rail_outline": "Outline",
+	"viewers_files_pdf_rail_page_n": "Page {page}",
+	"viewers_files_pdf_rail_pages": "Pages",
+	"viewers_files_pdf_status_hint": "Atlas can't preview it here. Your default app can still open it.",
+	"viewers_files_pdf_status_invalid": "This PDF is damaged or not a PDF",
+	"viewers_files_pdf_status_opening_pdf": "Opening PDF…",
+	"viewers_files_pdf_status_other": "Could not render this PDF",
+	"viewers_files_pdf_status_password": "This PDF is password-protected",
+	"viewers_files_pdf_toolbar_close_find": "Close find",
+	"viewers_files_pdf_toolbar_find": "Find",
+	"viewers_files_pdf_toolbar_find_in_pdf": "Find in PDF",
+	"viewers_files_pdf_toolbar_find_tip": "Find ({key})",
+	"viewers_files_pdf_toolbar_fit_page": "Fit page",
+	"viewers_files_pdf_toolbar_fit_width": "Fit width",
+	"viewers_files_pdf_toolbar_go_to_page": "Go to page",
+	"viewers_files_pdf_toolbar_next_match": "Next match",
+	"viewers_files_pdf_toolbar_pages_outline": "Pages & outline",
+	"viewers_files_pdf_toolbar_pdf_controls": "PDF controls",
+	"viewers_files_pdf_toolbar_previous_match": "Previous match",
+	"viewers_files_pdf_toolbar_toggle_fit": "Toggle fit",
+	"viewers_files_pdf_toolbar_toggle_sidebar": "Toggle sidebar",
+	"viewers_files_rich_view_render_anyway": "Render anyway",
+	"viewers_files_rich_view_too_large": "{size} is large for a rendered view, which parses and lays out the whole file.",
+	"viewers_files_table_view_cell": "R{row} · {column}",
+	"viewers_files_table_view_columns": [
+		{
+			"declarations": [
+				"input count",
+				"local countExact = count",
+				"local countPlural = count: plural"
+			],
+			"selectors": [
+				"countExact",
+				"countPlural"
+			],
+			"match": {
+				"countExact=0, countPlural=*": "No columns",
+				"countExact=*, countPlural=one": "{count} column",
+				"countExact=*, countPlural=*": "{count} columns"
+			}
+		}
+	],
+	"viewers_files_table_view_copy_cell": "Copy cell",
+	"viewers_files_table_view_copy_row": "Copy row",
+	"viewers_files_table_view_delimiter_comma": "comma",
+	"viewers_files_table_view_delimiter_pipe": "pipe",
+	"viewers_files_table_view_delimiter_semicolon": "semicolon",
+	"viewers_files_table_view_delimiter_tab": "tab",
+	"viewers_files_table_view_empty_file": "Empty file",
+	"viewers_files_table_view_filter_rows": "Filter rows",
+	"viewers_files_table_view_no_header": "no header",
+	"viewers_files_table_view_no_rows_match": "No rows match",
+	"viewers_files_table_view_ragged": [
+		{
+			"declarations": [
+				"input count",
+				"local countExact = count",
+				"local countPlural = count: plural"
+			],
+			"selectors": [
+				"countExact",
+				"countPlural"
+			],
+			"match": {
+				"countExact=0, countPlural=*": "No ragged rows",
+				"countExact=*, countPlural=one": "{count} ragged row",
+				"countExact=*, countPlural=*": "{count} ragged rows"
+			}
+		}
+	],
+	"viewers_files_table_view_rows": [
+		{
+			"declarations": [
+				"input count",
+				"local countExact = count",
+				"local countPlural = count: plural"
+			],
+			"selectors": [
+				"countExact",
+				"countPlural"
+			],
+			"match": {
+				"countExact=0, countPlural=*": "No rows",
+				"countExact=*, countPlural=one": "{count} row",
+				"countExact=*, countPlural=*": "{count} rows"
+			}
+		}
+	],
+	"viewers_files_table_view_rows_filtered": [
+		{
+			"declarations": [
+				"input total",
+				"local totalExact = total",
+				"local totalPlural = total: plural"
+			],
+			"selectors": [
+				"totalExact",
+				"totalPlural"
+			],
+			"match": {
+				"totalExact=0, totalPlural=*": "No rows",
+				"totalExact=*, totalPlural=one": "{count} of {total} row",
+				"totalExact=*, totalPlural=*": "{count} of {total} rows"
+			}
+		}
+	],
+	"viewers_files_table_view_sort_by": "Sort by {column}",
+	"viewers_files_tree_view_cannot_parse": "Cannot parse as {format}: {error}",
+	"viewers_files_tree_view_collapse_all": "Collapse all",
+	"viewers_files_tree_view_copy_path": "Copy path",
+	"viewers_files_tree_view_expand_all": "Expand all",
+	"viewers_files_tree_view_matches": [
+		{
+			"declarations": [
+				"input count",
+				"local countExact = count",
+				"local countPlural = count: plural"
+			],
+			"selectors": [
+				"countExact",
+				"countPlural"
+			],
+			"match": {
+				"countExact=0, countPlural=*": "No matches",
+				"countExact=*, countPlural=one": "{count} match",
+				"countExact=*, countPlural=*": "{count} matches"
+			}
+		}
+	],
+	"viewers_files_tree_view_nothing_matches": "Nothing matches",
+	"viewers_files_tree_view_search_keys_and_values": "Search keys and values",
+	"viewers_files_tree_view_visible": [
+		{
+			"declarations": [
+				"input count",
+				"local countExact = count",
+				"local countPlural = count: plural"
+			],
+			"selectors": [
+				"countExact",
+				"countPlural"
+			],
+			"match": {
+				"countExact=0, countPlural=*": "{format} · none visible",
+				"countExact=*, countPlural=one": "{format} · {count} visible",
+				"countExact=*, countPlural=*": "{format} · {count} visible"
+			}
+		}
+	],
+	"viewers_files_tsconfig_view_base_first": "base first",
+	"viewers_files_tsconfig_view_compiler_options": "Compiler options",
+	"viewers_files_tsconfig_view_extends_chain": "Extends chain",
+	"viewers_files_tsconfig_view_filter_options": "Filter options",
+	"viewers_files_tsconfig_view_from": "from {path}",
+	"viewers_files_tsconfig_view_layer_options": [
+		{
+			"declarations": [
+				"input count",
+				"local countExact = count",
+				"local countPlural = count: plural"
+			],
+			"selectors": [
+				"countExact",
+				"countPlural"
+			],
+			"match": {
+				"countExact=0, countPlural=*": "no options",
+				"countExact=*, countPlural=one": "{count} option",
+				"countExact=*, countPlural=*": "{count} options"
+			}
+		}
+	],
+	"viewers_files_tsconfig_view_not_found": "not found",
+	"viewers_files_tsconfig_view_options": [
+		{
+			"declarations": [
+				"input count",
+				"local countExact = count",
+				"local countPlural = count: plural"
+			],
+			"selectors": [
+				"countExact",
+				"countPlural"
+			],
+			"match": {
+				"countExact=0, countPlural=*": "No effective options",
+				"countExact=*, countPlural=one": "{count} effective option",
+				"countExact=*, countPlural=*": "{count} effective options"
+			}
+		}
+	],
+	"viewers_files_tsconfig_view_scope": "Scope",
+	"viewers_files_tsconfig_view_this_file": "this file",
+	"viewers_files_viewer_actions_open_externally": "Open externally",
+	"viewers_files_workflow_reusable": "reusable workflow",
+	"viewers_files_workflow_step_n": "Step {n}",
+	"viewers_files_zoom_in": "Zoom in",
+	"viewers_files_zoom_out": "Zoom out"
+}

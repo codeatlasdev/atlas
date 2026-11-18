@@ -27,7 +27,7 @@ async fn tasks_of(client: &HostClient, id: &str) -> Vec<Value> {
 }
 
 async fn until<T>(what: &str, mut f: impl AsyncFnMut() -> Option<T>) -> T {
-    let deadline = std::time::Instant::now() + Duration::from_secs(20);
+    let deadline = std::time::Instant::now() + atlas_core::scaling::HANG;
     loop {
         if let Some(v) = f().await {
             return v;
@@ -80,7 +80,7 @@ async fn mutual_done_triggers_run_one_round_and_the_refusal_is_audited() {
         .await
         .unwrap();
     let first = v["task"]["id"].as_str().unwrap().to_string();
-    wait_task_state(&client, &a, &first, "done", Duration::from_secs(15)).await;
+    wait_task_state(&client, &a, &first, "done", atlas_core::scaling::HANG).await;
 
     // B runs once, because of A. B's `done` would start A again: refused, in the audit.
     let refused = until("the refusal in A's audit", async || {
@@ -281,7 +281,7 @@ async fn deleting_a_crewmate_with_a_running_turn_leaves_no_directory() {
         .await
         .unwrap();
     let task = v["task"]["id"].as_str().unwrap().to_string();
-    wait_task_state(&client, &id, &task, "running", Duration::from_secs(15)).await;
+    wait_task_state(&client, &id, &task, "running", atlas_core::scaling::HANG).await;
 
     client
         .call("crewmate_delete", json!({"id": id}))

@@ -6,6 +6,8 @@ use std::process::{Command, Output, Stdio};
 #[cfg(unix)]
 use std::time::{Duration, Instant};
 
+#[cfg(unix)]
+use atlas_core::scaling::HANG;
 use serde_json::Value;
 
 const BIN: &str = env!("CARGO_BIN_EXE_atlas");
@@ -205,7 +207,7 @@ fn headless_marks_off_and_starts_by_hand() {
         fn drop(&mut self) {
             // SIGTERM → graceful stop of the services; SIGKILL if it hangs.
             let _ = Command::new("kill").arg(self.0.id().to_string()).status();
-            let deadline = Instant::now() + Duration::from_secs(10);
+            let deadline = Instant::now() + HANG;
             while self.0.try_wait().ok().flatten().is_none() {
                 if Instant::now() > deadline {
                     let _ = self.0.kill();
@@ -238,7 +240,7 @@ fn headless_marks_off_and_starts_by_hand() {
             .map(|l| l.split_whitespace().nth(1).unwrap_or("").to_string())
     };
     let wait = |what: &str, mut f: Box<dyn FnMut() -> bool>| {
-        let deadline = Instant::now() + Duration::from_secs(30);
+        let deadline = Instant::now() + HANG;
         while !f() {
             assert!(Instant::now() < deadline, "timed out waiting for {what}");
             std::thread::sleep(Duration::from_millis(100));

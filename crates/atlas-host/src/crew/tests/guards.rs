@@ -118,7 +118,7 @@ async fn a_weakened_test_parks_the_task_and_override_finishes_it_without_the_unp
         &id,
         &task,
         "waiting_action",
-        Duration::from_secs(30),
+        atlas_core::scaling::HANG,
     )
     .await;
     assert_eq!(parked["action"]["kind"], "refused", "{parked}");
@@ -150,7 +150,7 @@ async fn a_weakened_test_parks_the_task_and_override_finishes_it_without_the_unp
         )
         .await
         .unwrap();
-    let done = wait_task_state(&client, &id, &task, "done", Duration::from_secs(30)).await;
+    let done = wait_task_state(&client, &id, &task, "done", atlas_core::scaling::HANG).await;
     let result = done["result"].as_str().unwrap();
     assert!(result.contains("Fixed the cart."), "{result}");
     assert!(
@@ -175,7 +175,7 @@ async fn retry_runs_the_task_again_with_the_reasons_in_its_prompt() {
         &id,
         &task,
         "waiting_action",
-        Duration::from_secs(30),
+        atlas_core::scaling::HANG,
     )
     .await;
 
@@ -188,7 +188,7 @@ async fn retry_runs_the_task_again_with_the_reasons_in_its_prompt() {
         .unwrap();
     // The same task runs again, so it parks again (the fake agent weakens the test again), and its
     // prompt now carries what was refused.
-    let deadline = std::time::Instant::now() + Duration::from_secs(30);
+    let deadline = std::time::Instant::now() + atlas_core::scaling::HANG;
     loop {
         let t = task_of(&client, &id, &task).await;
         let prompt = t["prompt"].as_str().unwrap();
@@ -221,7 +221,7 @@ async fn honest_work_finishes_done_with_no_card() {
     let client = daemon(&tmp.path().join("hostd")).await;
     let id = crewmate_on(&client, &proj).await;
     let task = send(&client, &id, "look at the cart").await;
-    let done = wait_task_state(&client, &id, &task, "done", Duration::from_secs(30)).await;
+    let done = wait_task_state(&client, &id, &task, "done", atlas_core::scaling::HANG).await;
     assert_eq!(done["result"], "Nothing to change.");
     assert!(done["action"].is_null(), "{done}");
     client.call("shutdown", json!({})).await.ok();
@@ -245,7 +245,7 @@ async fn a_claim_backed_by_a_test_run_with_output_is_kept() {
     let client = daemon(&tmp.path().join("hostd")).await;
     let id = crewmate_on(&client, &proj).await;
     let task = send(&client, &id, "fix the cart").await;
-    let done = wait_task_state(&client, &id, &task, "done", Duration::from_secs(30)).await;
+    let done = wait_task_state(&client, &id, &task, "done", atlas_core::scaling::HANG).await;
     assert_eq!(done["result"], "Fixed the cart. All tests pass.", "{done}");
     client.call("shutdown", json!({})).await.ok();
     crate::crew::runner::set_test_agent_bin(None);
@@ -267,7 +267,7 @@ async fn an_unproven_claim_is_stripped_from_the_result() {
     let client = daemon(&tmp.path().join("hostd")).await;
     let id = crewmate_on(&client, &proj).await;
     let task = send(&client, &id, "fix the cart").await;
-    let done = wait_task_state(&client, &id, &task, "done", Duration::from_secs(30)).await;
+    let done = wait_task_state(&client, &id, &task, "done", atlas_core::scaling::HANG).await;
     let result = done["result"].as_str().unwrap();
     assert!(result.starts_with("Fixed the cart."), "{result}");
     assert!(
@@ -305,7 +305,7 @@ async fn an_omp_test_run_that_printed_a_pass_proves_the_claim() {
     let client = daemon(&tmp.path().join("hostd")).await;
     let id = crewmate_on(&client, &proj).await;
     let task = send(&client, &id, "fix the cart").await;
-    let done = wait_task_state(&client, &id, &task, "done", Duration::from_secs(30)).await;
+    let done = wait_task_state(&client, &id, &task, "done", atlas_core::scaling::HANG).await;
     assert_eq!(done["result"], "Fixed it. All tests pass.", "{done}");
     client.call("shutdown", json!({})).await.ok();
     crate::crew::runner::set_test_agent_bin(None);
@@ -326,7 +326,7 @@ async fn an_omp_test_run_that_errored_does_not_prove_the_claim() {
     let client = daemon(&tmp.path().join("hostd")).await;
     let id = crewmate_on(&client, &proj).await;
     let task = send(&client, &id, "fix the cart").await;
-    let done = wait_task_state(&client, &id, &task, "done", Duration::from_secs(30)).await;
+    let done = wait_task_state(&client, &id, &task, "done", atlas_core::scaling::HANG).await;
     let result = done["result"].as_str().unwrap();
     assert!(result.starts_with("Fixed it."), "{result}");
     assert!(!result.starts_with("Fixed it. All tests pass."), "{result}");

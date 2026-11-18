@@ -1,4 +1,5 @@
 /** Small line-oriented dev formats: ignore files, CODEOWNERS, .editorconfig, Procfile, LICENSE. */
+import { m } from "#lib/i18n/m.ts";
 
 export interface Line {
 	text: string;
@@ -127,17 +128,29 @@ export function parseEditorconfig(text: string): { root: boolean; sections: Edit
 	return { root, sections };
 }
 
-/** Plain-language meaning of the editorconfig keys. */
-export const EDITORCONFIG_DOCS: Record<string, string> = {
-	indent_style: "Indent with tabs or spaces",
-	indent_size: "Columns per indent level",
-	tab_width: "Columns a tab character counts for",
-	end_of_line: "Line ending: lf, crlf or cr",
-	charset: "File encoding",
-	trim_trailing_whitespace: "Remove whitespace at line ends on save",
-	insert_final_newline: "End the file with a newline",
-	max_line_length: "Soft line length limit",
-};
+/** Plain-language meaning of an editorconfig key, in the display language; empty for a key Atlas has no words for. */
+export function editorconfigDoc(key: string): string {
+	switch (key) {
+		case "indent_style":
+			return m.viewers_reference_editorconfig_indent_style();
+		case "indent_size":
+			return m.viewers_reference_editorconfig_indent_size();
+		case "tab_width":
+			return m.viewers_reference_editorconfig_tab_width();
+		case "end_of_line":
+			return m.viewers_reference_editorconfig_end_of_line();
+		case "charset":
+			return m.viewers_reference_editorconfig_charset();
+		case "trim_trailing_whitespace":
+			return m.viewers_reference_editorconfig_trim_trailing_whitespace();
+		case "insert_final_newline":
+			return m.viewers_reference_editorconfig_insert_final_newline();
+		case "max_line_length":
+			return m.viewers_reference_editorconfig_max_line_length();
+		default:
+			return "";
+	}
+}
 
 export interface ProcEntry {
 	name: string;
@@ -147,8 +160,8 @@ export interface ProcEntry {
 
 export function parseProcfile(text: string): ProcEntry[] {
 	return ruleLines(text).flatMap(({ rule, line }) => {
-		const m = /^([A-Za-z0-9_-]+)\s*:\s*(.*)$/.exec(rule);
-		return m ? [{ name: m[1], command: m[2], line }] : [];
+		const entry = /^([A-Za-z0-9_-]+)\s*:\s*(.*)$/.exec(rule);
+		return entry ? [{ name: entry[1], command: entry[2], line }] : [];
 	});
 }
 
@@ -161,74 +174,96 @@ export interface LicenseInfo {
 	summary: string[];
 }
 
-const LICENSES: { spdx: string; name: string; re: RegExp; summary: string[] }[] = [
+/** What a license lets you do or asks of you: the words are read when shown, so they follow the display language. */
+const TERMS = {
+	commercial: () => m.viewers_reference_license_commercial_use(),
+	modification: () => m.viewers_reference_license_modification(),
+	distribution: () => m.viewers_reference_license_distribution(),
+	private: () => m.viewers_reference_license_private_use(),
+	keepNotice: () => m.viewers_reference_license_keep_notice(),
+	patent: () => m.viewers_reference_license_patent_grant(),
+	stateChanges: () => m.viewers_reference_license_state_changes(),
+	copyleft: () => m.viewers_reference_license_copyleft_share_source(),
+	sameLicense: () => m.viewers_reference_license_same_license(),
+	networkCopyleft: () => m.viewers_reference_license_network_copyleft(),
+	shareSource: () => m.viewers_reference_license_share_source(),
+	linkAny: () => m.viewers_reference_license_link_from_any_code(),
+	shareLibrary: () => m.viewers_reference_license_share_library_changes(),
+	fileCopyleft: () => m.viewers_reference_license_file_level_copyleft(),
+	noEndorsement: () => m.viewers_reference_license_no_endorsement(),
+	publicDomain: () => m.viewers_reference_license_public_domain(),
+	anyUse: () => m.viewers_reference_license_any_use(),
+	publicDomainDedication: () => m.viewers_reference_license_public_domain_dedication(),
+};
+
+const LICENSES: { spdx: string; name: string; re: RegExp; summary: (keyof typeof TERMS)[] }[] = [
 	{
 		spdx: "MIT",
 		name: "MIT License",
 		re: /permission is hereby granted, free of charge/i,
-		summary: ["Commercial use", "Modification", "Distribution", "Private use", "Keep the notice"],
+		summary: ["commercial", "modification", "distribution", "private", "keepNotice"],
 	},
 	{
 		spdx: "Apache-2.0",
 		name: "Apache License 2.0",
 		re: /apache license[\s\S]{0,40}version 2\.0/i,
-		summary: ["Commercial use", "Modification", "Patent grant", "State changes", "Keep the notice"],
+		summary: ["commercial", "modification", "patent", "stateChanges", "keepNotice"],
 	},
 	{
 		spdx: "GPL-3.0-only",
 		name: "GNU GPL v3",
 		re: /gnu general public license[\s\S]{0,60}version 3/i,
-		summary: ["Commercial use", "Copyleft: share source", "Patent grant", "Same license"],
+		summary: ["commercial", "copyleft", "patent", "sameLicense"],
 	},
 	{
 		spdx: "GPL-2.0-only",
 		name: "GNU GPL v2",
 		re: /gnu general public license[\s\S]{0,60}version 2/i,
-		summary: ["Commercial use", "Copyleft: share source", "Same license"],
+		summary: ["commercial", "copyleft", "sameLicense"],
 	},
 	{
 		spdx: "AGPL-3.0-only",
 		name: "GNU AGPL v3",
 		re: /gnu affero general public license/i,
-		summary: ["Network copyleft", "Share source", "Same license"],
+		summary: ["networkCopyleft", "shareSource", "sameLicense"],
 	},
 	{
 		spdx: "LGPL-3.0-only",
 		name: "GNU LGPL v3",
 		re: /gnu lesser general public license/i,
-		summary: ["Link from any code", "Share library changes"],
+		summary: ["linkAny", "shareLibrary"],
 	},
 	{
 		spdx: "MPL-2.0",
 		name: "Mozilla Public License 2.0",
 		re: /mozilla public license[\s\S]{0,40}2\.0/i,
-		summary: ["Commercial use", "File-level copyleft", "Patent grant"],
+		summary: ["commercial", "fileCopyleft", "patent"],
 	},
 	{
 		spdx: "BSD-3-Clause",
 		name: "BSD 3-Clause",
 		re: /neither the name of[\s\S]{0,200}nor the names of its contributors/i,
-		summary: ["Commercial use", "Modification", "No endorsement", "Keep the notice"],
+		summary: ["commercial", "modification", "noEndorsement", "keepNotice"],
 	},
 	{
 		spdx: "BSD-2-Clause",
 		name: "BSD 2-Clause",
 		re: /redistribution and use in source and binary forms[\s\S]{0,400}this list of conditions/i,
-		summary: ["Commercial use", "Modification", "Keep the notice"],
+		summary: ["commercial", "modification", "keepNotice"],
 	},
 	{
 		spdx: "ISC",
 		name: "ISC License",
 		re: /permission to use, copy, modify, and\/or distribute this software/i,
-		summary: ["Commercial use", "Modification", "Keep the notice"],
+		summary: ["commercial", "modification", "keepNotice"],
 	},
 	{
 		spdx: "Unlicense",
 		name: "The Unlicense",
 		re: /this is free and unencumbered software released into the public domain/i,
-		summary: ["Public domain", "Any use"],
+		summary: ["publicDomain", "anyUse"],
 	},
-	{ spdx: "CC0-1.0", name: "CC0 1.0", re: /cc0 1\.0 universal/i, summary: ["Public domain dedication"] },
+	{ spdx: "CC0-1.0", name: "CC0 1.0", re: /cc0 1\.0 universal/i, summary: ["publicDomainDedication"] },
 ];
 
 export function detectLicense(text: string): LicenseInfo {
@@ -236,9 +271,9 @@ export function detectLicense(text: string): LicenseInfo {
 	const c = /copyright\s*(?:\(c\)|©)?\s*(\d{4}(?:\s*[-–,]\s*\d{4})?)?\s*(.*)/i.exec(text);
 	return {
 		spdx: hit?.spdx ?? null,
-		name: hit?.name ?? "Unrecognized license",
+		name: hit?.name ?? m.viewers_reference_license_unrecognized(),
 		holder: c?.[2]?.trim().replace(/\.$/, "") ?? "",
 		year: c?.[1] ?? "",
-		summary: hit?.summary ?? [],
+		summary: (hit?.summary ?? []).map((term) => TERMS[term]()),
 	};
 }

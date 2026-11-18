@@ -259,13 +259,24 @@ mod tests {
         assert!(rig.client.git(&r).is_err());
     }
 
-    // A command that never returns (a hook that sleeps) is ended at the request's deadline with its tree.
+    // A command that never returns (a hook that sleeps) is ended at the request's deadline with its tree. The hook
+    // names itself and sleeps ten minutes (ten times the hang ceiling): only the deadline's kill of the group ends
+    // it, and the request answering `timed_out` at all means the helper did not wait for it.
     #[test]
     fn a_git_that_runs_past_its_deadline_is_killed_and_reported() {
+        use atlas_core::scaling::HANG;
         let rig = rig();
         rig.booby_trapped_repo();
         let hook = rig.cm.join("slow.sh");
-        std::fs::write(&hook, "#!/bin/sh\nsleep 30\n").unwrap();
+        let pidfile = rig.cm.join("hook.pid");
+        std::fs::write(
+            &hook,
+            format!(
+                "#!/bin/sh\necho $$ > {}\nexec sleep 600\n",
+                pidfile.display()
+            ),
+        )
+        .unwrap();
         std::fs::set_permissions(&hook, std::fs::Permissions::from_mode(0o755)).unwrap();
         let set = |args: &[&str]| {
             std::process::Command::new("git")
@@ -277,10 +288,28 @@ mod tests {
         assert!(set(&["config", "core.fsmonitor", &hook.to_string_lossy()]).success());
         let mut r = req(&rig, &["status"]);
         r.timeout_secs = 1;
-        let t = Instant::now();
-        let out = rig.client.git(&r).unwrap();
-        assert!(out.timed_out, "{out:?}");
-        assert!(t.elapsed() < Duration::from_secs(10), "{:?}", t.elapsed());
+        // The 1 s deadline can pass before a starved machine has started the hook: ask again until it named itself.
+        let mut pid = None;
+        for _ in 0..20 {
+            let _ = std::fs::remove_file(&pidfile);
+            let out = rig.client.git(&r).unwrap();
+            assert!(out.timed_out, "{out:?}");
+            pid = std::fs::read_to_string(&pidfile)
+                .ok()
+                .and_then(|s| s.trim().parse::<u32>().ok());
+            if pid.is_some() {
+                break;
+            }
+        }
+        let pid = pid.expect("the hook never got to name itself");
+        let t0 = Instant::now();
+        while atlas_core::sys::pid_alive(pid) {
+            assert!(
+                t0.elapsed() < HANG,
+                "the hook {pid} outlived the deadline's kill"
+            );
+            std::thread::sleep(Duration::from_millis(20));
+        }
     }
 
     // Incident (security review of the crew isolation, N3): the agent spawn sets `no_new_privs` on itself because

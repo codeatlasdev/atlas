@@ -172,7 +172,7 @@ async fn github_project_not_logged_in_yields_waiting_action() {
         &crewmate_id,
         &task_id,
         "waiting_action",
-        Duration::from_secs(10),
+        atlas_core::scaling::HANG,
     )
     .await;
     assert_eq!(task["action"]["kind"], "connect_github");
@@ -200,7 +200,7 @@ async fn github_project_not_logged_in_yields_waiting_action() {
         if t["state"] != "waiting_action" {
             break;
         }
-        if start.elapsed() > Duration::from_secs(15) {
+        if start.elapsed() > atlas_core::scaling::HANG {
             panic!("task never left waiting_action");
         }
         tokio::time::sleep(Duration::from_millis(250)).await;

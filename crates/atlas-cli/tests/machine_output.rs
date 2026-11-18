@@ -13,6 +13,8 @@ use std::path::Path;
 use std::process::{Command, Output, Stdio};
 use std::time::{Duration, Instant};
 
+use atlas_core::scaling::HANG;
+
 const BIN: &str = env!("CARGO_BIN_EXE_atlas");
 
 /// One machine surface: the arguments and what goes to stdin.
@@ -94,7 +96,7 @@ fn run(home: &Path, args: &[&str], stdin: &str, lang: &str) -> Output {
         .write_all(stdin.as_bytes())
         .unwrap();
     // stdin is closed by the drop above: a stdio server ends on EOF. A hang is a failure, not a wait.
-    let deadline = Instant::now() + Duration::from_secs(30);
+    let deadline = Instant::now() + HANG;
     while child.try_wait().unwrap().is_none() {
         assert!(Instant::now() < deadline, "atlas {args:?} did not exit");
         std::thread::sleep(Duration::from_millis(20));

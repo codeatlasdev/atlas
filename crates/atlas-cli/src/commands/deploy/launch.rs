@@ -4,11 +4,13 @@
 use std::time::{Duration, Instant};
 
 use anyhow::{Result, bail};
+use atlas_i18n::t;
 use serde_json::{Value, json};
 
 use super::ctx::{Ctx, die, step};
 use super::package;
 use super::remote::shq;
+use super::words::phase_label;
 
 const DRIVER: &str = include_str!("driver.sh");
 /// Give up following after this long without a successful poll.
@@ -34,10 +36,10 @@ pub(super) async fn launch_and_follow(
 
     preflight(ctx, &run).await?;
     if let Some(rel) = artifact {
-        step(&format!(
-            "upload {} ({} bytes)",
-            rel.id,
-            std::fs::metadata(&rel.tarball)?.len()
+        step(&t!(
+            "cmd_deploy_step_upload",
+            id = &rel.id,
+            bytes = std::fs::metadata(&rel.tarball)?.len().to_string()
         ));
         let partial = format!("{}/releases/.{}.partial", ctx.dir, rel.id);
         ctx.remote.upload(&rel.tarball, &partial).await?;
@@ -46,15 +48,21 @@ pub(super) async fn launch_and_follow(
         let w = format!("cat > {}", shq(&format!("{run}/{name}")));
         let out = ctx.remote.exec_stdin(&w, Some(body.as_bytes())).await?;
         if out.code != 0 {
-            bail!("writing {name} on {host}: {}", out.stderr.trim());
+            bail!(t!(
+                "cmd_deploy_launch_write_failed",
+                name = name,
+                host = host,
+                error = out.stderr.trim()
+            ));
         }
     }
     launch_driver(ctx, run_id, &run).await?;
     if opts.no_follow {
         println!("{run_id}");
-        step(&format!(
-            "driver running on {host}. Follow: atlas deploy logs -f {}",
-            ctx.name
+        step(&t!(
+            "cmd_deploy_step_driver_running",
+            host = host,
+            target = &ctx.name
         ));
         return Ok(());
     }
@@ -62,7 +70,10 @@ pub(super) async fn launch_and_follow(
     let code = tokio::select! {
         c = follow(ctx, &run, opts.json) => c?,
         _ = tokio::signal::ctrl_c() => {
-            eprintln!("\ndetached; deploy continues on host. Follow: atlas deploy logs -f {}", ctx.name);
+            eprintln!(
+                "\n{}",
+                t!("cmd_deploy_launch_detached", target = &ctx.name)
+            );
             std::process::exit(130);
         }
     };
@@ -73,7 +84,11 @@ pub(super) async fn launch_and_follow(
 /// Reach the host, create the release/run dirs and check `flock` exists.
 async fn preflight(ctx: &Ctx, run: &str) -> Result<()> {
     let host = &ctx.target.host;
-    step(&format!("preflight {host}:{}", ctx.dir));
+    step(&t!(
+        "cmd_deploy_step_preflight",
+        host = host,
+        dir = &ctx.dir
+    ));
     let pre = format!(
         "mkdir -p {r} {run} || exit 10; command -v flock >/dev/null || exit 11",
         r = shq(&format!("{}/releases", ctx.dir)),
@@ -81,19 +96,38 @@ async fn preflight(ctx: &Ctx, run: &str) -> Result<()> {
     );
     let out = match ctx.remote.exec(&pre).await {
         Ok(o) => o,
-        Err(e) => die(4, &format!("cannot reach {host}: {e}")),
+        Err(e) => die(
+            4,
+            &t!(
+                "cmd_deploy_launch_unreachable",
+                host = host,
+                error = e.to_string()
+            ),
+        ),
     };
     match out.code {
         0 => Ok(()),
-        11 => bail!("flock not found on {host}"),
-        10 => bail!("cannot create {} on {host}: {}", ctx.dir, out.stderr.trim()),
-        _ => die(4, &format!("cannot reach {host}: {}", out.stderr.trim())),
+        11 => bail!(t!("cmd_deploy_launch_no_flock", host = host)),
+        10 => bail!(t!(
+            "cmd_deploy_launch_mkdir_failed",
+            dir = &ctx.dir,
+            host = host,
+            error = out.stderr.trim()
+        )),
+        _ => die(
+            4,
+            &t!(
+                "cmd_deploy_launch_unreachable",
+                host = host,
+                error = out.stderr.trim()
+            ),
+        ),
     }
 }
 
 /// Start `driver.sh` detached from the ssh session (systemd-run as root, else setsid+nohup).
 async fn launch_driver(ctx: &Ctx, run_id: &str, run: &str) -> Result<()> {
-    step("launch driver");
+    step(&t!("cmd_deploy_step_launch"));
     let inner = format!(
         "exec bash {d} >>{l} 2>&1",
         d = shq(&format!("{run}/driver.sh")),
@@ -112,11 +146,11 @@ async fn launch_driver(ctx: &Ctx, run_id: &str, run: &str) -> Result<()> {
     );
     let out = ctx.remote.exec_once(&launch).await?;
     if out.code != 0 {
-        bail!(
-            "launching driver on {} failed: {}",
-            ctx.target.host,
-            out.stderr.trim()
-        );
+        bail!(t!(
+            "cmd_deploy_launch_driver_failed",
+            host = &ctx.target.host,
+            error = out.stderr.trim()
+        ));
     }
     Ok(())
 }
@@ -146,10 +180,31 @@ async fn report(ctx: &Ctx, code: i32, started: Instant, opts: &RunOpts<'_>) -> R
         println!("{}", serde_json::to_string_pretty(&o)?);
     } else {
         let msg = match code {
-            0 => format!("✓ {phase} {}", s("release").unwrap_or("")),
-            1 => format!("✗ {phase}: {}", s("reason").unwrap_or("")),
-            3 => "✗ locked by another deploy".into(),
-            _ => format!("✗ CRITICAL {phase}: {}", s("reason").unwrap_or("")),
+            0 => format!(
+                "✓ {}",
+                t!(
+                    "cmd_deploy_report_ok",
+                    phase = phase_label(phase),
+                    release = s("release").unwrap_or("")
+                )
+            ),
+            1 => format!(
+                "✗ {}",
+                t!(
+                    "cmd_deploy_report_failed",
+                    phase = phase_label(phase),
+                    reason = s("reason").unwrap_or("")
+                )
+            ),
+            3 => format!("✗ {}", t!("cmd_deploy_report_locked")),
+            _ => format!(
+                "✗ {}",
+                t!(
+                    "cmd_deploy_report_critical",
+                    phase = phase_label(phase),
+                    reason = s("reason").unwrap_or("")
+                )
+            ),
         };
         eprintln!("{msg}");
     }
@@ -196,9 +251,10 @@ async fn follow(ctx: &Ctx, run: &str, json: bool) -> Result<i32> {
             }
             _ if last_ok.elapsed() > LOST_CONTACT => die(
                 4,
-                &format!(
-                    "lost contact; deploy continues on host — atlas deploy status {}",
-                    ctx.name
+                &t!(
+                    "cmd_deploy_launch_lost_contact",
+                    host = host,
+                    target = &ctx.name
                 ),
             ),
             _ => {}

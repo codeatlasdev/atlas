@@ -41,6 +41,7 @@ fn worktree(e: &Env, name: &str, src: &str) -> PathBuf {
 /// `atlas run --cache --input 'src/**' --output out -- sh -c <script>` in `cwd`.
 fn cached(e: &Env, cwd: &Path, script: &str, extra: &[&str]) -> Output {
     Command::new(BIN)
+        .env("ATLAS_LANG", "en")
         .current_dir(cwd)
         .env("ATLAS_CACHE_DIR", &e.store)
         .env("HOME", &e.root)
@@ -55,6 +56,7 @@ fn cached(e: &Env, cwd: &Path, script: &str, extra: &[&str]) -> Output {
 
 fn atlas_cache(e: &Env, args: &[&str]) -> Output {
     Command::new(BIN)
+        .env("ATLAS_LANG", "en")
         .env("ATLAS_CACHE_DIR", &e.store)
         .env("HOME", &e.root)
         .args(["cache"])
@@ -143,6 +145,7 @@ fn a_declared_env_value_is_part_of_the_key() {
     let a = worktree(&e, "a", "x");
     let run_with = |v: &str| {
         Command::new(BIN)
+            .env("ATLAS_LANG", "en")
             .current_dir(&a)
             .env("ATLAS_CACHE_DIR", &e.store)
             .env("HOME", &e.root)
@@ -201,6 +204,7 @@ fn two_processes_caching_the_same_key_leave_one_valid_entry() {
     let script = job(&e);
     let spawn = |cwd: &Path| {
         Command::new(BIN)
+            .env("ATLAS_LANG", "en")
             .current_dir(cwd)
             .env("ATLAS_CACHE_DIR", &e.store)
             .env("HOME", &e.root)
@@ -224,6 +228,7 @@ fn two_processes_caching_the_same_key_leave_one_valid_entry() {
 #[test]
 fn run_without_heavy_or_cache_is_refused() {
     let out = Command::new(BIN)
+        .env("ATLAS_LANG", "en")
         .args(["run", "--", "true"])
         .output()
         .unwrap();

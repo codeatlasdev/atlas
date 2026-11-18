@@ -156,7 +156,7 @@ Os modelos têm vícios próprios em português, e o leitor brasileiro os reconh
 | Onboarding | `Step 1 of 3: Connect to your server` | `Etapa 1 de 3: conectar ao seu servidor` |
 | Docs (título) | `Install a crew server` | `Instalar um crew server` |
 
-Prefixos `error:`, `warning:` e `help:` traduzidos na saída para pessoas (`erro:`, `aviso:`, `ajuda:`); em modo `--json` e nos códigos, nada muda.
+Prefixos `error:`, `warning:`, `help:` e `tip:` (a dica do clap) traduzidos na saída para pessoas (`erro:`, `aviso:`, `ajuda:`, `dica:`) e `caused by:` como `causado por:`; em modo `--json` e nos códigos, nada muda.
 
 ## Revisão humana específica do pt-BR
 
@@ -176,3 +176,5 @@ O Atlas roda em macOS, Windows e Linux. Nenhum texto fixa um sistema.
 - **Nomes do sistema vêm dos termos compartilhados** (`os` no glossário), nunca digitados: `seu Mac` / `este PC` / `este computador`; `Finder` / `Explorador de Arquivos` / `gerenciador de arquivos`; `Lixeira`; `Ajustes do Sistema` / `Configurações` / `configurações do sistema`; `Option` / `Alt`; `Return` / `Enter`; `barra de menus` / `bandeja do sistema`.
 - **Preposição depende do substantivo.** `no Finder`, `no Explorador de Arquivos`, `na bandeja do sistema`: quando a frase precisa de "em" ou "para" antes do termo, escreva a frase inteira com seleção por `os`, em vez de montar `em` + termo.
 - Uma tela que só existe em um sistema (permissão de captura do macOS) pode citar o nome do sistema; marque a chave como `platform: mac`.
+- **Menus nativos: o nome do sistema vence a tradução.** A barra de menus do macOS, a bandeja e os diálogos usam a palavra que o sistema usa em pt-BR: `Ajustes…` (macOS), `Configurações…` (Windows), `Preferências…` (GNOME e KDE); `Sair do Atlas` no macOS e `Sair` no resto. Itens que o sistema já tem (`Desfazer`, `Refazer`, `Recortar`, `Copiar`, `Colar`, `Minimizar`, `Zoom`, `Ocultar`, `Serviços`) levam o nome exato do sistema.
+- **Caixa de frase também nos menus nativos.** O macOS em pt-BR usa Title Case (`Selecionar Tudo`, `Ocultar Outros`), mas o Windows e o GNOME usam caixa de frase e uma mensagem serve aos três sistemas. A regra do guia vale: `Selecionar tudo`, `Ocultar outros`. O inglês dos mesmos menus está em Title Case (herdado do macOS); isso é um desvio do `en.md`, não uma exceção para o pt-BR.

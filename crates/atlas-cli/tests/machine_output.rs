@@ -248,7 +248,7 @@ fn the_error_prefixes_of_a_human_command_follow_the_language() {
         tip("en")
     );
     assert!(
-        tip("pt-BR").contains("ajuda: a similar subcommand"),
+        tip("pt-BR").contains("dica: a similar subcommand"),
         "{}",
         tip("pt-BR")
     );

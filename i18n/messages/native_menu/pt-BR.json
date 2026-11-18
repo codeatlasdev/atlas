@@ -19,7 +19,7 @@
 			}
 		}
 	],
-	"native_menu_capture_all_in_one": "Captura tudo em um",
+	"native_menu_capture_all_in_one": "Captura multifuncional",
 	"native_menu_capture_fullscreen": "Capturar tela",
 	"native_menu_capture_gif": "Gravar GIF",
 	"native_menu_capture_ocr": "Capturar texto",
@@ -68,7 +68,7 @@
 	"native_menu_view_toggle_sidebar": "Alternar barra lateral",
 	"native_menu_view_zoom_in": "Aumentar zoom",
 	"native_menu_view_zoom_out": "Diminuir zoom",
-	"native_menu_view_zoom_pane": "Ampliar painel",
+	"native_menu_view_zoom_pane": "Maximizar painel",
 	"native_menu_window_minimize": "Minimizar",
 	"native_menu_window_zoom": "Zoom"
 }

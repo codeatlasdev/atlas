@@ -61,7 +61,7 @@ mod tests {
         let clap_text = "error: unrecognized subcommand 'confg'\n\n  tip: a similar subcommand exists: 'config'\n\nUsage: atlas <COMMAND>\n";
         assert_eq!(
             localize(clap_text, "pt-BR"),
-            "erro: unrecognized subcommand 'confg'\n\n  ajuda: a similar subcommand exists: 'config'\n\nUsage: atlas <COMMAND>\n"
+            "erro: unrecognized subcommand 'confg'\n\n  dica: a similar subcommand exists: 'config'\n\nUsage: atlas <COMMAND>\n"
         );
         assert_eq!(localize(clap_text, "en"), clap_text);
     }

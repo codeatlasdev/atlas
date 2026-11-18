@@ -7,7 +7,7 @@
 	"cli_chrome_help_subcommand": "Mostra esta mensagem ou a ajuda do subcomando informado",
 	"cli_chrome_help_subcommand_arg": "Mostra a ajuda do subcomando",
 	"cli_chrome_options": "Opções",
-	"cli_chrome_tip": "ajuda:",
+	"cli_chrome_tip": "dica:",
 	"cli_chrome_usage": "Uso:",
 	"cli_chrome_warning": "aviso:"
 }

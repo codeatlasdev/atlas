@@ -1,7 +1,7 @@
 ---
 title: "FAQ"
 source: faq.md
-source_sha: "102309b59ffd8391e4c3af8f36c8f2aaca1e2119"
+source_sha: "5a15199753aeca5a0d49cf6c3517946af31ce7a5"
 translation: machine
 ---
 
@@ -13,7 +13,7 @@ Um orquestrador de ambiente de desenvolvimento: um `atlas.yaml` inicia a infraes
 
 ## Qual é a diferença para `docker compose`, `foreman` ou `process-compose`?
 
-O `docker compose` roda containers; o Atlas roda os seus *processos* (e chama `docker compose up -d` para a infraestrutura). Em relação aos runners de Procfile, ele acrescenta condições de dependência (`healthy`, `completed_successfully`, `log_ready`), backoff de reinício, sondas de saúde, pesquisa nos logs, validação da configuração, um servidor MCP e um app desktop. Ele não reinicia serviços ao detectar mudança em arquivos, não escala réplicas e (ainda) não roda no Windows.
+O `docker compose` roda containers; o Atlas roda os seus *processos* (e chama `docker compose up -d` para a infraestrutura). Em relação aos runners de Procfile, ele acrescenta condições de dependência (`healthy`, `completed_successfully`, `log_ready`), backoff de reinício, sondas de saúde, pesquisa nos logs, validação da configuração, um servidor MCP e um app desktop. Ele não reinicia serviços ao detectar mudança em arquivos nem escala réplicas.
 
 ## Ele roda no Linux ou no Windows?
 

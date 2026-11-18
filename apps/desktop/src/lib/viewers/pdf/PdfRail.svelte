@@ -2,6 +2,7 @@
 	import { ChevronRight } from "@lucide/svelte";
 	import type { PageSize } from "#lib/viewers/pdf.ts";
 	import type { Outline, PdfDoc } from "#lib/viewers/pdf/doc.ts";
+	import { m } from "#lib/i18n/m.ts";
 
 	/** Sidebar: page thumbnails (lazy, painted when scrolled into view) or the document outline. */
 	let {
@@ -63,11 +64,15 @@
 	});
 </script>
 
-<aside class="rail" bind:this={rail} aria-label="Pages">
+<aside class="rail" bind:this={rail} aria-label={m.viewers_files_pdf_rail_pages()}>
 	{#if outline.length}
 		<div class="tabs">
-			<button class:on={sideTab === "thumbs"} onclick={() => (sideTab = "thumbs")}>Pages</button>
-			<button class:on={sideTab === "outline"} onclick={() => (sideTab = "outline")}>Outline</button>
+			<button class:on={sideTab === "thumbs"} onclick={() => (sideTab = "thumbs")}
+				>{m.viewers_files_pdf_rail_pages()}</button
+			>
+			<button class:on={sideTab === "outline"} onclick={() => (sideTab = "outline")}
+				>{m.viewers_files_pdf_rail_outline()}</button
+			>
 		</div>
 	{/if}
 	{#if sideTab === "outline" && outline.length}
@@ -95,7 +100,7 @@
 				class:cur={i === page}
 				data-thumb={i}
 				onclick={() => goto(i)}
-				aria-label="Page {i + 1}"
+				aria-label={m.viewers_files_pdf_rail_page_n({ page: i + 1 })}
 			>
 				<canvas use:thumb={i} style:width="{THUMB_W}px" style:aspect-ratio="{p.w} / {p.h}"></canvas>
 				<span>{i + 1}</span>

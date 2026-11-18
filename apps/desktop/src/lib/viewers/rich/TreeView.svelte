@@ -6,6 +6,7 @@
 	import type { RichCtx } from "#lib/viewers/rich/ctx.ts";
 	import Copy from "#lib/viewers/rich/Copy.svelte";
 	import "#lib/viewers/rich/rich.css";
+	import { m } from "#lib/i18n/m.ts";
 
 	let { ctx }: { ctx: RichCtx } = $props();
 
@@ -80,27 +81,40 @@
 	{#if !parsed.ok}
 		<div class="rv-inner">
 			<div class="rv-banner bad">
-				<TriangleAlert size={14} /> Cannot parse as {ft.label}: {parsed.error}
+				<TriangleAlert size={14} />
+				{m.viewers_files_tree_view_cannot_parse({ format: ft.label, error: parsed.error })}
 				<span class="sp"></span>
-				<button class="rv-btn" onclick={() => ctx.toSource(parsed.line)}>Open as source</button>
+				<button class="rv-btn" onclick={() => ctx.toSource(parsed.line)}
+					>{m.viewers_devops_open_as_source()}</button
+				>
 			</div>
 		</div>
 	{:else}
 		<div class="bar">
-			<span class="rv-ver">{ft.label} · {flat.rows.length.toLocaleString()} visible</span>
-			{#if q}<span class="rv-chip acc">{flat.matches} match{flat.matches === 1 ? "" : "es"}</span>{/if}
+			<span class="rv-ver"
+				>{m.viewers_files_tree_view_visible({ format: ft.label, count: flat.rows.length })}</span
+			>
+			{#if q}<span class="rv-chip acc">{m.viewers_files_tree_view_matches({ count: flat.matches })}</span
+				>{/if}
 			<span class="sp"></span>
 			<label class="rv-search">
 				<Search size={12} />
-				<input placeholder="Search keys and values" bind:value={q} aria-label="Search" />
+				<input
+					placeholder={m.viewers_files_tree_view_search_keys_and_values()}
+					bind:value={q}
+					aria-label={m.common_action_search()}
+				/>
 			</label>
-			<button class="rv-btn icon" title="Expand all" aria-label="Expand all" onclick={() => expandAll(true)}
-				><ChevronsUpDown size={13} /></button
+			<button
+				class="rv-btn icon"
+				title={m.viewers_files_tree_view_expand_all()}
+				aria-label={m.viewers_files_tree_view_expand_all()}
+				onclick={() => expandAll(true)}><ChevronsUpDown size={13} /></button
 			>
 			<button
 				class="rv-btn icon"
-				title="Collapse all"
-				aria-label="Collapse all"
+				title={m.viewers_files_tree_view_collapse_all()}
+				aria-label={m.viewers_files_tree_view_collapse_all()}
 				onclick={() => expandAll(false)}><ChevronsDownUp size={13} /></button
 			>
 		</div>
@@ -141,13 +155,13 @@
 							>
 							<span class="ty">{r.type}</span>
 							<span class="act">
-								{#if r.path}<Copy text={r.path} label="Copy path" />{/if}
+								{#if r.path}<Copy text={r.path} label={m.viewers_files_tree_view_copy_path()} />{/if}
 							</span>
 						</div>
 					{/each}
 				</div>
 			</div>
-			{#if !flat.rows.length}<div class="rv-empty">Nothing matches</div>{/if}
+			{#if !flat.rows.length}<div class="rv-empty">{m.viewers_files_tree_view_nothing_matches()}</div>{/if}
 		</div>
 	{/if}
 </div>

@@ -1,0 +1,46 @@
+{
+	"search_form_clear": "Limpar",
+	"search_form_files_to_include": "Arquivos a incluir",
+	"search_form_files_to_include_or_skip": "Arquivos a incluir ou ignorar",
+	"search_form_files_to_skip": "Arquivos a ignorar",
+	"search_form_find_in_project": "Pesquisar no projeto",
+	"search_form_include_src_ts": "Incluir: src/**, *.ts",
+	"search_form_match_case": "Diferenciar maiúsculas e minúsculas",
+	"search_form_regular_expression": "Expressão regular",
+	"search_form_search_query": "Termo de pesquisa",
+	"search_form_searching": "Pesquisando…",
+	"search_form_skip_dist_min_js": "Ignorar: dist, *.min.js",
+	"search_form_status": [
+		{
+			"declarations": [
+				"input matches",
+				"input files",
+				"input matchesLabel",
+				"input filesLabel",
+				"local matchesExact = matches",
+				"local matchesPlural = matches: plural",
+				"local filesPlural = files: plural"
+			],
+			"selectors": [
+				"matchesExact",
+				"matchesPlural",
+				"filesPlural"
+			],
+			"match": {
+				"matchesExact=0, matchesPlural=*, filesPlural=*": "Nenhum resultado",
+				"matchesExact=*, matchesPlural=one, filesPlural=*": "{matchesLabel} resultado em {filesLabel} arquivo",
+				"matchesExact=*, matchesPlural=*, filesPlural=one": "{matchesLabel} resultados em {filesLabel} arquivo",
+				"matchesExact=*, matchesPlural=*, filesPlural=*": "{matchesLabel} resultados em {filesLabel} arquivos"
+			}
+		}
+	],
+	"search_form_took": "{ms} ms · {tool}",
+	"search_form_whole_word": "Palavra inteira",
+	"search_parse_failed": "A pesquisa falhou (código de saída {code})",
+	"search_results_nothing_matches_query": "Nada corresponde a \"{query}\".",
+	"search_results_search_every_file_in_this": "Pesquise em todos os arquivos desta worktree.",
+	"search_results_search_results": "Resultados da pesquisa",
+	"search_results_showing_the_first_results_narrow": "Mostrando os primeiros resultados. Refine a pesquisa para ver o restante.",
+	"search_results_try_fewer_words_turn_off": "Use menos palavras, desative Palavra inteira ou limpe os filtros de arquivo.",
+	"search_results_type_to_search_use_to": "Digite para pesquisar. Use {up} e {down} para navegar e {enter} para abrir na linha."
+}

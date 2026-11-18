@@ -1,5 +1,6 @@
 {
 	"workbench_editor_breadcrumbs": "Accessible name of the editor's path and symbol breadcrumbs",
+	"workbench_editor_changes_vs_head": "Tooltip of the editor header button that shows the file's uncommitted changes",
 	"workbench_editor_cm_close": {
 		"description": "CodeMirror phrase: close button of its panels",
 		"distinct": "lowercase word CodeMirror looks up by its English key, not the Close button"
@@ -35,6 +36,7 @@
 	"workbench_editor_convert_file": "Group heading of the indentation picker for the conversions",
 	"workbench_editor_convert_to_spaces": "Indentation picker choice and editor command",
 	"workbench_editor_convert_to_tabs": "Indentation picker choice and editor command",
+	"workbench_editor_could_not_open": "Toast when a go to definition target path cannot be opened",
 	"workbench_editor_current": "Marks the current choice in an editor picker",
 	"workbench_editor_encoding_utf8_bom": "Status bar encoding item for UTF-8 with a byte order mark",
 	"workbench_editor_eol_mixed": "Status bar item when a file mixes line endings",
@@ -75,6 +77,8 @@
 	"workbench_editor_not_saved_unreadable": "Toast when a save was refused because the changed file cannot be read to compare",
 	"workbench_editor_notice_huge": "Notice above a huge file",
 	"workbench_editor_notice_large": "Notice above a large file",
+	"workbench_editor_open_preview_key": "Tooltip of the HTML file's preview button; key is its shortcut",
+	"workbench_editor_rich_view_key": "Tooltip of the Markdown rendered view button; key is its shortcut",
 	"workbench_editor_save_failed": "Toast when saving a file fails",
 	"workbench_editor_select_encoding": "Tooltip of the encoding item of the status bar",
 	"workbench_editor_select_eol": "Tooltip of the line ending item, and the title of its picker",
@@ -82,13 +86,17 @@
 	"workbench_editor_select_language": "Tooltip of the language item of the status bar; id is the language id",
 	"workbench_editor_selected_chars": "Status bar: how many characters are selected, shown in parentheses after the position",
 	"workbench_editor_selections": "Status bar: how many carets are selected, shown in parentheses after the position",
+	"workbench_editor_show_image": "Tooltip of the SVG toggle that switches from source back to the rendered image",
 	"workbench_editor_show_problems": "Tooltip of the problems item of the status bar",
+	"workbench_editor_show_source_key": "Tooltip of the button that leaves the rendered view for the source; key is its shortcut",
 	"workbench_editor_status_bar": "Accessible name of the editor status bar",
 	"workbench_editor_sticky_scopes": "Accessible name of the sticky scroll strip that pins the enclosing scopes",
 	"workbench_editor_tier_title": "Tooltip of the large or huge file item of the status bar",
 	"workbench_editor_tip": "A control's name followed by its shortcut, for tooltips",
+	"workbench_editor_typed_view_key": "Tooltip of the rendered view button of a typed file (type is its name, like JSON or Dockerfile); key is its shortcut",
 	"workbench_editor_warnings": "Number of warnings in the file, in the status bar and the language server item",
 	"workbench_editor_watch_failed": "Notice above an editor whose file watcher failed",
+	"workbench_editor_word_wrap_key": "Tooltip of the editor header word wrap button; key is its shortcut",
 	"workbench_editor_wrap": "Status bar item shown while word wrap is on",
 	"workbench_editor_wrap_on": "Tooltip of the word wrap item of the status bar"
 }

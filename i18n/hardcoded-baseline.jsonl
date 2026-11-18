@@ -183,7 +183,7 @@
 {"ratchet":"svelte","file":"apps/desktop/src/lib/components/CreatePrDialog.svelte","count":14}
 {"ratchet":"svelte","file":"apps/desktop/src/lib/components/CrewSettings.svelte","count":29}
 {"ratchet":"svelte","file":"apps/desktop/src/lib/components/DiffView.svelte","count":16}
-{"ratchet":"svelte","file":"apps/desktop/src/lib/components/Editor.svelte","count":9}
+{"ratchet":"svelte","file":"apps/desktop/src/lib/components/Editor.svelte","count":0}
 {"ratchet":"svelte","file":"apps/desktop/src/lib/components/EditorSettings.svelte","count":2}
 {"ratchet":"svelte","file":"apps/desktop/src/lib/components/Explorer.svelte","count":1}
 {"ratchet":"svelte","file":"apps/desktop/src/lib/components/GitSettings.svelte","count":0}

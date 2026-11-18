@@ -1,6 +1,7 @@
 {
   "pt-BR": {
     "workbench_editor_breadcrumbs": "064ae0101f06",
+    "workbench_editor_changes_vs_head": "91a1fc650ede",
     "workbench_editor_cm_close": "97959247360c",
     "workbench_editor_cm_completions": "39b79ed08429",
     "workbench_editor_cm_control_character": "343759f77c0f",
@@ -30,6 +31,7 @@
     "workbench_editor_convert_file": "6c47c49a6f7d",
     "workbench_editor_convert_to_spaces": "24e141f93a14",
     "workbench_editor_convert_to_tabs": "397645e7c9a2",
+    "workbench_editor_could_not_open": "51ab30230714",
     "workbench_editor_current": "694df57a7909",
     "workbench_editor_encoding_utf8_bom": "b08b039ae920",
     "workbench_editor_eol_mixed": "37d9f63758ab",
@@ -67,6 +69,8 @@
     "workbench_editor_not_saved_unreadable": "50704291cab4",
     "workbench_editor_notice_huge": "519ebca6b76a",
     "workbench_editor_notice_large": "953fa70f3bf3",
+    "workbench_editor_open_preview_key": "d19aab1f8346",
+    "workbench_editor_rich_view_key": "5dc24d47e645",
     "workbench_editor_save_failed": "281492fdcfc4",
     "workbench_editor_select_encoding": "3f107fbd583a",
     "workbench_editor_select_eol": "fa03d340b493",
@@ -74,13 +78,17 @@
     "workbench_editor_select_language": "09e87f2c0520",
     "workbench_editor_selected_chars": "26370b019b87",
     "workbench_editor_selections": "fc5e82f02e3c",
+    "workbench_editor_show_image": "f241852b4f5e",
     "workbench_editor_show_problems": "dafa9e19e48d",
+    "workbench_editor_show_source_key": "c506103460f7",
     "workbench_editor_status_bar": "2ff9227729ba",
     "workbench_editor_sticky_scopes": "2e579829eb57",
     "workbench_editor_tier_title": "87b10404e881",
     "workbench_editor_tip": "492edf69356a",
+    "workbench_editor_typed_view_key": "624d92535955",
     "workbench_editor_warnings": "f83765b24708",
     "workbench_editor_watch_failed": "a9557a370cec",
+    "workbench_editor_word_wrap_key": "f8f112fc75c5",
     "workbench_editor_wrap": "a64c7be6ab4b",
     "workbench_editor_wrap_on": "e9d845dcc07e"
   }

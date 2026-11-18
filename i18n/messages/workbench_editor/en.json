@@ -1,5 +1,6 @@
 {
 	"workbench_editor_breadcrumbs": "Breadcrumbs",
+	"workbench_editor_changes_vs_head": "Changes vs HEAD",
 	"workbench_editor_cm_close": "close",
 	"workbench_editor_cm_completions": "Completions",
 	"workbench_editor_cm_control_character": "Control character",
@@ -29,6 +30,7 @@
 	"workbench_editor_convert_file": "Convert file",
 	"workbench_editor_convert_to_spaces": "Convert indentation to spaces",
 	"workbench_editor_convert_to_tabs": "Convert indentation to tabs",
+	"workbench_editor_could_not_open": "Couldn't open {path}",
 	"workbench_editor_current": "current",
 	"workbench_editor_encoding_utf8_bom": "UTF-8 with BOM",
 	"workbench_editor_eol_mixed": "Mixed",
@@ -100,6 +102,8 @@
 	"workbench_editor_not_saved_unreadable": "Not saved: {path} changed on disk and can't be read.",
 	"workbench_editor_notice_huge": "Huge file: syntax highlighting and language features are off so the editor stays fast.",
 	"workbench_editor_notice_large": "Large file: word wrap, language features and other heavy extras are off so the editor stays fast.",
+	"workbench_editor_open_preview_key": "Open preview ({key})",
+	"workbench_editor_rich_view_key": "Rich view ({key})",
 	"workbench_editor_save_failed": "Couldn't save {path}: {error}",
 	"workbench_editor_select_encoding": "Select encoding",
 	"workbench_editor_select_eol": "Select end of line sequence",
@@ -141,11 +145,14 @@
 			}
 		}
 	],
+	"workbench_editor_show_image": "Show image",
 	"workbench_editor_show_problems": "Show problems",
+	"workbench_editor_show_source_key": "Show source ({key})",
 	"workbench_editor_status_bar": "Editor status",
 	"workbench_editor_sticky_scopes": "Enclosing scopes",
 	"workbench_editor_tier_title": "Some editor features are off to keep this file fast",
 	"workbench_editor_tip": "{label} ({key})",
+	"workbench_editor_typed_view_key": "{type} view ({key})",
 	"workbench_editor_warnings": [
 		{
 			"declarations": [
@@ -165,6 +172,7 @@
 		}
 	],
 	"workbench_editor_watch_failed": "Couldn't watch this file for changes: {error}. Changes made elsewhere won't show up.",
+	"workbench_editor_word_wrap_key": "Word wrap ({key})",
 	"workbench_editor_wrap": "Wrap",
 	"workbench_editor_wrap_on": "Word wrap is on"
 }

@@ -32,7 +32,7 @@
   dnt: true
   gender:
     pt-BR: m
-  note: the coding agent backend a crewmate runs (Claude Code, Codex, omp, OpenCode); stays English and masculine in pt-BR ("o engine", "um engine", "os engines"), docs/crew.md
+  note: the coding agent backend a crewmate runs (Claude Code, Codex, omp, OpenCode); stays English and masculine in pt-BR ("o engine", "um engine", "os engines"), docs/crew.md. A generic software engine (gesture, theme, release engine) is "motor"
 - term: hostd
   dnt: true
 - term: worktree
@@ -88,11 +88,6 @@
   gender:
     pt-BR: m
   note: the background `atlas dev` process that owns the services (docs/runtime.md); "o runner"
-- term: engine
-  dnt: true
-  gender:
-    pt-BR: m
-  note: the agent engine of a crewmate (claude, codex, omp, opencode), "o engine". A generic software engine (gesture, theme, release engine) is "motor"
 - term: TUI
   dnt: true
   gender:

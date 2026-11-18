@@ -345,11 +345,14 @@ jobs:
 
   # Catalogs, locks, glossary, translated docs, the writing lint and the hardcoded-text ratchets (scripts/i18n). Offline
   # and bun only, so a Rust-only or docs-only change that can break a catalog or add a println! still reaches it. The
-  # ratchets judge the change against the diff base of scripts/lib/base.ts, so the history is fetched.
+  # ratchets judge every file against the baseline (and the files a change touches against the diff base of
+  # scripts/lib/base.ts, so the history is fetched). It runs on every push to main and release branches even when the
+  # commit's tree was tested in its pull request: two pull requests that each pass alone can break the baseline together
+  # (merge skew), and only a run on the merged tree sees it. It takes about a second.
   i18n:
     name: i18n (catalogs, writing, ratchets)
     needs: plan
-    if: ${{ needs.plan.outputs.tested != 'true' && needs.plan.outputs.i18n == 'true' }}
+    if: ${{ github.event_name == 'push' || (needs.plan.outputs.tested != 'true' && needs.plan.outputs.i18n == 'true') }}
     runs-on: ubuntu-latest
     timeout-minutes: 10
     steps:

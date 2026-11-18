@@ -31,7 +31,7 @@ main ── alpha ── alpha ──────────────▶  ev
    gh run view --job <job-id> --log-failed | grep -E "error|\(fail\)" -A5
    ```
 4. A red CI job is a bug: regression test first (skill `real-tests`), then the fix.
-5. On `main`, a push whose tree its pull request already tested shows the non-Rust jobs as skipped and the Rust jobs as build-only (`scripts/ci-tested.sh`); that is expected, and `CI` is still green. Workflow changes: `bun run lint:workflows` (actionlint + zizmor) before pushing.
+5. On `main`, a push whose tree its pull request already tested shows the non-Rust jobs as skipped and the Rust jobs as build-only (`scripts/ci-tested.sh`); that is expected, and `CI` is still green; the i18n job still runs on every push to `main` (merge skew shows only on the merged tree). Workflow changes: `bun run lint:workflows` (actionlint + zizmor) before pushing.
 
 ## Commits
 

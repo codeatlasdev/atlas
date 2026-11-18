@@ -299,6 +299,13 @@ describe("undefined-key and unconsumed-key: references in the sources", () => {
 		expect(f?.message).toContain("bun run i18n:add app_save_buton");
 	});
 
+	// Regression: only `paraglide/messages` imports counted, so the desktop (`#lib/i18n/m.ts`) was never checked for typos.
+	test("m.key( through the desktop wrapper (#lib/i18n/m.ts) is checked like Paraglide's own import", async () => {
+		const root = await makeRepo();
+		put(root, "apps/desktop/src/Typo.svelte", '<script>\n  import { m } from "#lib/i18n/m.ts";\n</script>\n<p>{m.app_save_buton()}</p>\n');
+		expect(finding(await check(root), "undefined-key", "app_save_buton")).toMatchObject({ file: "apps/desktop/src/Typo.svelte", line: 4 });
+	});
+
 	test('m["key"] and the { m } import form are seen too; a file that does not import the messages is not scanned', async () => {
 		const root = await makeRepo();
 		put(root, "apps/desktop/src/a.ts", 'import { m } from "$lib/paraglide/messages.js";\nexport const x = m["app_nothing_here"]();\n');

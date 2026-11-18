@@ -5,7 +5,7 @@
 	 * `<svelte:boundary>` catches render/effect errors, not event handlers (see `errors.svelte.ts`).
 	 */
 	import type { Snippet } from "svelte";
-	import ErrorPanel from "./ErrorPanel.svelte";
+	import Lazy from "#lib/components/Lazy.svelte";
 	import { errors } from "./errors.svelte.ts";
 	import { report, type ErrorReport } from "./report.ts";
 	import { m } from "#lib/i18n/m.ts";
@@ -47,13 +47,16 @@
 	{#snippet failed(error, reset)}
 		{@const base = report(error, { where, kind, file, version })}
 		{void errors.enrich(base).then((r) => (enriched = r))}
-		<ErrorPanel
-			report={enriched?.message === base.message ? enriched : base}
-			{title}
-			{hint}
-			retry={reset}
-			{close}
-			{closeLabel}
+		<Lazy
+			load={() => import("./ErrorPanel.svelte")}
+			props={{
+				report: enriched?.message === base.message ? enriched : base,
+				title,
+				hint,
+				retry: reset,
+				close,
+				closeLabel,
+			}}
 		/>
 	{/snippet}
 </svelte:boundary>

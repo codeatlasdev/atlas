@@ -2,6 +2,7 @@ use std::io::IsTerminal;
 
 use anyhow::Result;
 use atlas_core::util::expand_tilde;
+use atlas_i18n::t;
 use clap::Args;
 
 use super::{AtlasCommand, update_prompt};
@@ -52,6 +53,7 @@ impl AtlasCommand for DevArgs {
                     return Ok(());
                 }
                 Err(reason) => {
+                    // i18n-ignore: `atlas dev --status` is what agents and scripts read; exit code 3 and this line are its documented contract (docs/cli.md).
                     println!("atlas dev not running ({reason})");
                     std::process::exit(3);
                 }
@@ -64,12 +66,12 @@ impl AtlasCommand for DevArgs {
         };
         if self.detach {
             match atlas_tui::detach(&root, &select, &self.adhoc).await? {
-                atlas_tui::runner::Detached::Started { pid } => println!(
-                    "atlas runner started (pid {pid}) · attach: atlas dev · stop: atlas down"
-                ),
-                atlas_tui::runner::Detached::AlreadyRunning { pid } => println!(
-                    "atlas runner already running (pid {pid}) · attach: atlas dev · stop: atlas down"
-                ),
+                atlas_tui::runner::Detached::Started { pid } => {
+                    println!("{}", t!("cmd_misc_dev_runner_started", pid = pid))
+                }
+                atlas_tui::runner::Detached::AlreadyRunning { pid } => {
+                    println!("{}", t!("cmd_misc_dev_runner_already", pid = pid))
+                }
             }
             Ok(())
         } else if self.runner {
@@ -80,6 +82,7 @@ impl AtlasCommand for DevArgs {
             atlas_tui::run_headless(&root, &select, &self.adhoc).await
         } else {
             if !std::io::stdin().is_terminal() || !std::io::stdout().is_terminal() {
+                // i18n-ignore: the hint is for agents and scripts that start `atlas dev` without a terminal; it names the commands they should use instead (docs/cli.md).
                 eprintln!(
                     "atlas dev needs an interactive terminal. Agents/scripts: use 'atlas dev --status' or 'atlas dev --ci'."
                 );

@@ -8,7 +8,8 @@ use std::time::Instant;
 
 use anyhow::{Context, Result};
 use atlas_core::heavy::Dir;
-use atlas_core::taskcache::{Cache, Chunk, Recorded, Run, Spec};
+use atlas_core::taskcache::{Cache, Chunk, Recorded, Run, Spec, Why};
+use atlas_i18n::t;
 use clap::Args;
 
 use super::heavy::{RunArgs, label_of, project_of, run_job};
@@ -52,7 +53,9 @@ pub async fn run(args: &RunArgs) -> Result<i32> {
     };
     // A bad output path or a tool that cannot report its version stops the run here, before the
     // command does anything.
-    let key = spec.key().context("cannot compute the cache key")?;
+    let key = spec
+        .key()
+        .with_context(|| t!("cmd_misc_run_cache_ctx_key"))?;
     let mut cache = Cache::default_cache();
     if args.cache.cache_failures {
         cache = cache.keep_failures();
@@ -67,19 +70,25 @@ pub async fn run(args: &RunArgs) -> Result<i32> {
             Ok(restored) => {
                 cache.note_hit(&entry, &key);
                 eprintln!(
-                    "atlas cache: hit {} ({} file{}, {} ms, saved {} ms)",
-                    &key.as_str()[..12],
-                    restored.files,
-                    if restored.files == 1 { "" } else { "s" },
-                    started.elapsed().as_millis(),
-                    entry.duration_ms,
+                    "{}",
+                    t!(
+                        "cmd_misc_run_cache_hit",
+                        key = &key.as_str()[..12],
+                        count = restored.files,
+                        ms = started.elapsed().as_millis().to_string(),
+                        saved = entry.duration_ms.to_string()
+                    )
                 );
                 return Ok(entry.exit);
             }
             // A damaged entry is a miss: run for real and overwrite it.
             Err(e) => eprintln!(
-                "atlas cache: entry {} unusable ({e}), running",
-                &key.as_str()[..12]
+                "{}",
+                t!(
+                    "cmd_misc_run_cache_unusable",
+                    key = &key.as_str()[..12],
+                    error = e.to_string()
+                )
             ),
         }
     }
@@ -97,13 +106,23 @@ pub async fn run(args: &RunArgs) -> Result<i32> {
         log,
     };
     match cache.record(&key, &spec, &run) {
-        Ok(Recorded::Stored) => eprintln!("atlas cache: stored {}", &key.as_str()[..12]),
-        Ok(Recorded::NotStored(why)) => {
-            eprintln!("atlas cache: not stored ({why:?})");
-        }
+        Ok(Recorded::Stored) => eprintln!(
+            "{}",
+            t!("cmd_misc_run_cache_stored", key = &key.as_str()[..12])
+        ),
+        Ok(Recorded::NotStored(why)) => eprintln!(
+            "{}",
+            match why {
+                Why::Failed => t!("cmd_misc_run_cache_not_stored_failed"),
+                Why::TooBig => t!("cmd_misc_run_cache_not_stored_too_big"),
+            }
+        ),
         // The command already ran and its result is the user's: a cache that cannot write
         // must not fail it.
-        Err(e) => eprintln!("atlas cache: could not store the result: {e}"),
+        Err(e) => eprintln!(
+            "{}",
+            t!("cmd_misc_run_cache_store_failed", error = e.to_string())
+        ),
     }
     Ok(exit)
 }

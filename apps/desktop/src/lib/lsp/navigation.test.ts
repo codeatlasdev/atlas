@@ -7,9 +7,9 @@ import {
 	isGoToClick,
 	isGoToModifier,
 	resolveTarget,
-	selectionOf,
 	toTargets,
 } from "./navigation.ts";
+import { selectionOf } from "./navigationCm.ts";
 
 const createState = (doc) => EditorState.create({ doc });
 const WORKTREES = [
@@ -262,7 +262,7 @@ test("an external target with no worktree to host the tab cannot open (caller sa
 
 // --- read-only sources ---------------------------------------------------------------------------
 
-import { readOnlyExtension } from "./navigation.ts";
+import { readOnlyExtension } from "./navigationCm.ts";
 
 test("a read-only source rejects edits but still moves the caret and selects", () => {
 	const state = EditorState.create({ doc: "fn main() {}", extensions: [readOnlyExtension()] });

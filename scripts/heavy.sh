@@ -44,12 +44,25 @@ memfree() {
 # exactly one wins on every OS and shell (dash, bash, Git Bash). Never an external tool's word: uutils `mkdir`
 # (Ubuntu 26.04) reports success to both racers of a `mkdir`, which once let two heavy jobs run at once.
 # A lock whose pid is gone is stale: it is removed, after checking it still names that pid (another job may have
-# replaced it meanwhile).
+# replaced it meanwhile). An empty lock is stale too once it stays empty across two looks, 2 s apart: its writer
+# created the file but could not write its pid (a full /tmp, 2026-11-16) and left nothing to check, so every later
+# job waited forever. A live writer fills it within microseconds of creating it.
+empty_seen=0
 take() {
-	(set -C; echo $$ >"$lock") 2>/dev/null && return 0
+	(set -C; echo $$ >"$lock") 2>/dev/null && [ -s "$lock" ] && return 0
 	owner=$(cat "$lock" 2>/dev/null)
-	if [ -n "$owner" ] && ! kill -0 "$owner" 2>/dev/null && [ "$(cat "$lock" 2>/dev/null)" = "$owner" ]; then
-		rm -f "$lock"
+	if [ -n "$owner" ]; then
+		empty_seen=0
+		if ! kill -0 "$owner" 2>/dev/null && [ "$(cat "$lock" 2>/dev/null)" = "$owner" ]; then
+			rm -f "$lock"
+		fi
+	elif [ -e "$lock" ]; then
+		empty_seen=$((empty_seen + 1))
+		if [ "$empty_seen" -ge 2 ]; then
+			empty_seen=0
+			rm -f "$lock"
+			(set -C; echo $$ >"$lock") 2>/dev/null && [ -s "$lock" ] && return 0
+		fi
 	fi
 	return 1
 }

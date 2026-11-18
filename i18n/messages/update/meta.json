@@ -1,0 +1,3 @@
+{
+	"update_older_release_managed": "Error from atlas update when it would roll back to an older release but a package manager (Homebrew, a distro package) owns this Atlas, so only that tool can install it."
+}

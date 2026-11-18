@@ -188,6 +188,7 @@ mod tests {
         assert!(!is_git("gh") && !is_git("gitk") && !is_git("omp"));
     }
 
+    #[cfg(unix)]
     async fn git_in(
         dir: &str,
         parent: &BTreeMap<String, String>,

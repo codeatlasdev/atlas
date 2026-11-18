@@ -1813,6 +1813,7 @@ mod commit_msg_tests {
 
     // Contract with the frontend: the codes of `commit_error` are the whole `message` of an error event, and
     // `commitErrorText` (desktop) words each one. The empty-message code is what the real run below produces.
+    #[cfg(unix)]
     #[test]
     fn error_codes_match_the_frontend_fixture() {
         let d = tempfile::tempdir().unwrap();

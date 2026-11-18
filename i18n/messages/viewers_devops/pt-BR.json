@@ -31,7 +31,7 @@
 	"viewers_devops_atlas_view_health": "health {health}",
 	"viewers_devops_atlas_view_health_url": "URL de health",
 	"viewers_devops_atlas_view_infra": "infra {name}",
-	"viewers_devops_atlas_view_local_not_committed": "local, sem commit",
+	"viewers_devops_atlas_view_local_not_committed": "local, não versionado",
 	"viewers_devops_atlas_view_local_overrides": "Substituições locais",
 	"viewers_devops_atlas_view_no_log_tab": "sem aba de logs",
 	"viewers_devops_atlas_view_pre_command": "pre: {preCommand}",
@@ -75,8 +75,8 @@
 	"viewers_devops_atlas_view_stop_name": "Parar {name}",
 	"viewers_devops_atlas_view_tunnel": "Túnel",
 	"viewers_devops_atlas_view_tunnel_route": "{remote} via {ssh}",
-	"viewers_devops_atlas_view_unknown_dep": "{name} espera {dep}, que não está definido aqui.",
-	"viewers_devops_atlas_view_unknown_dep_local": "{name} espera {dep}, que não está definido aqui (pode estar no atlas.yaml).",
+	"viewers_devops_atlas_view_unknown_dep": "{name} aguarda {dep}, que não está definido aqui.",
+	"viewers_devops_atlas_view_unknown_dep_local": "{name} aguarda {dep}, que não está definido aqui (pode estar no atlas.yaml).",
 	"viewers_devops_atlas_view_valid": "Válido",
 	"viewers_devops_atlas_view_validating": "Validando",
 	"viewers_devops_atlas_view_validation": "Validação",
@@ -178,7 +178,7 @@
 	"viewers_devops_dockerfile_warn_maintainer": "MAINTAINER está obsoleto; use LABEL",
 	"viewers_devops_dockerfile_warn_no_tag": "{image} não tem tag (usa :latest por padrão)",
 	"viewers_devops_dockerfile_warn_no_user": "O último estágio nunca define USER, então roda como root",
-	"viewers_devops_dockerfile_warn_pipe_shell": "Download enviado direto para um shell",
+	"viewers_devops_dockerfile_warn_pipe_shell": "Download redirecionado direto para um shell",
 	"viewers_devops_dockerfile_warn_root_user": "O último estágio roda como root; adicione um USER sem privilégios de root",
 	"viewers_devops_env_reason_bad_name": "\"{key}\" não é um nome de variável válido",
 	"viewers_devops_env_reason_expected": "Esperado CHAVE=valor",
@@ -218,7 +218,7 @@
 			}
 		}
 	],
-	"viewers_devops_env_view_empty": "vazia",
+	"viewers_devops_env_view_empty": "vazio",
 	"viewers_devops_env_view_error_lines_count": [
 		{
 			"declarations": [
@@ -315,8 +315,8 @@
 			}
 		}
 	],
-	"viewers_devops_make_view_toggle_recipe": "Alternar a receita de {name}",
-	"viewers_devops_open_as_source": "Abrir como código-fonte",
+	"viewers_devops_make_view_toggle_recipe": "Expandir ou recolher a receita de {name}",
+	"viewers_devops_open_as_source": "Abrir como texto",
 	"viewers_devops_services": "Serviços",
 	"viewers_devops_services_count": [
 		{

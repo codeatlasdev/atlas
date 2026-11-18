@@ -76,7 +76,7 @@
 	"logs_range_chip_since_service_restarted": "Desde que {name} reiniciou",
 	"logs_range_chip_time_range": "Intervalo de tempo",
 	"logs_range_chip_time_range_label": "Intervalo de tempo: {label}",
-	"logs_range_cleared": "\"{range}\" removido para mostrar esse momento",
+	"logs_range_cleared": "Intervalo \"{range}\" removido para mostrar esse momento",
 	"logs_range_error_end_before_start": "O fim vem antes do início",
 	"logs_range_error_not_a_time": "\"{text}\" não é um horário",
 	"logs_range_error_one_range": "Use um intervalo: 14:05-14:20",

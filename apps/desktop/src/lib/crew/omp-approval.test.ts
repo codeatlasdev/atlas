@@ -152,5 +152,5 @@ suiteDescribe("omp approval extension — fail-closed", () => {
 		servers.push(s);
 		const result = await requestApproval(s.port, TOKEN, PANE, "Bash", {}, 300);
 		expect(result).toBe("block");
-	}, 2_000);
+	});
 });

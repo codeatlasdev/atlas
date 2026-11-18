@@ -12,6 +12,7 @@
 	import Composer from "./Composer.svelte";
 	import { SetupFlow, type IdeProject } from "./setup.svelte.ts";
 	import "./chat.css";
+	import { m } from "#lib/i18n/m.ts";
 
 	interface Props {
 		crewmate: Crewmate;
@@ -30,10 +31,10 @@
 
 	const placeholder = $derived(
 		step === "name"
-			? "Type a name…"
+			? m.crew_chat_setup_conversation_placeholder_name()
 			: step === "project"
-				? "Paste a git URL or server path, or skip"
-				: "Type your answer…",
+				? m.crew_chat_setup_conversation_placeholder_project()
+				: m.crew_chat_setup_conversation_placeholder_answer(),
 	);
 	const look = $derived(crewmate.look as CrewmateLook | undefined);
 </script>
@@ -43,7 +44,11 @@
 				>{:else}{p.text}{/if}{/each}{:else}{text}{/if}
 {/snippet}
 
-<div class="thread setup-thread" aria-label="Setup conversation" aria-live="polite">
+<div
+	class="thread setup-thread"
+	aria-label={m.crew_chat_setup_conversation_setup_conversation()}
+	aria-live="polite"
+>
 	{#each setup.messages as msg, i (i)}
 		{#if msg.kind === "crewmate"}
 			<div class="msg-in" in:msgIn>
@@ -60,7 +65,7 @@
 
 	{#if setup.typing}
 		<div class="msg-in setup-typing" in:msgIn>
-			<CrewTyping seed={crewmate.id} {look} label="Thinking" />
+			<CrewTyping seed={crewmate.id} {look} label={m.crew_chat_setup_conversation_thinking()} />
 		</div>
 	{/if}
 
@@ -105,7 +110,8 @@
 	<Composer
 		bind:value={setup.input}
 		{placeholder}
-		label="Setup answer"
+		label={m.crew_chat_setup_conversation_setup_answer()}
+		hook="setup-answer"
 		busy={setup.saving}
 		onsend={() => void answer(undefined, setup.input)}
 	/>

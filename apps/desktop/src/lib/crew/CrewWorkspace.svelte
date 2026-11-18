@@ -11,7 +11,7 @@
 	import CrewmateView from "../../routes/(app)/CrewmateView.svelte";
 	import { crewOnboarding, SEEN_KEY } from "#lib/crew/crewOnboarding.svelte.ts";
 	import { githubCrew } from "#lib/crew/githubCrew.svelte.ts";
-	import CrewOnboarding from "#lib/crew/onboarding/CrewOnboarding.svelte";
+	import Lazy from "#lib/components/Lazy.svelte";
 	import IntegrationsCatalog from "#lib/crew/IntegrationsCatalog.svelte";
 	import CrewPalette from "#lib/crew/CrewPalette.svelte";
 	import CrewViewBar from "#lib/crew/CrewViewBar.svelte";
@@ -83,7 +83,11 @@
 
 	<IntegrationsCatalog bind:open={catalogOpen} bind:detail={catalogDetail} />
 	{#if crewOnboarding.open}
-		<CrewOnboarding ondone={() => (crewOnboarding.open = false)} />
+		<!-- Shown once (or on a replay): its screens and messages load when it opens, not at startup. -->
+		<Lazy
+			load={() => import("#lib/crew/onboarding/CrewOnboarding.svelte")}
+			props={{ ondone: () => (crewOnboarding.open = false) }}
+		/>
 	{/if}
 	<CrewPalette
 		bind:open={palettes.crew}

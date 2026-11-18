@@ -11,9 +11,10 @@
 	import { IS_WIN } from "#lib/keys.ts";
 	import { api } from "#lib/api.ts";
 	import { fixDocs } from "./docsLinks.ts";
-	import { describeConnectError } from "./connectError.ts";
+	import { describeConnectError, type ConnectAction } from "./connectError.ts";
 	import type { Onboarding } from "./onboarding.svelte.ts";
 	import SshHostPicker from "./SshHostPicker.svelte";
+	import { m } from "#lib/i18n/m.ts";
 
 	let { ob }: { ob: Onboarding } = $props();
 
@@ -42,21 +43,30 @@
 		);
 		return () => cancelAnimationFrame(frame);
 	});
-	const labels = {
-		pick_key: "Choose another key",
-		use_password: "Sign in with the password",
-		use_key: "Use my SSH key",
-		retry: "Try again",
-		recheck: "Check again",
-		sudo: "",
-	} as const;
+	/** The button of each fix a failure offers (`sudo` has none: its field is below). */
+	function actionLabel(a: ConnectAction): string {
+		switch (a) {
+			case "pick_key":
+				return m.crew_onboarding_connect_step_action_pick_key();
+			case "use_password":
+				return m.crew_onboarding_connect_step_action_use_password();
+			case "use_key":
+				return m.crew_onboarding_connect_step_action_use_key();
+			case "retry":
+				return m.crew_onboarding_connect_step_action_retry();
+			case "recheck":
+				return m.crew_onboarding_check_again();
+			case "sudo":
+				return "";
+		}
+	}
 </script>
 
 <div class="form-block" style:--stagger={3}>
 	{#if !ob.keyChecked}
 		<div class="key-checking">
 			<span class="spin-dot" aria-hidden="true"></span>
-			<span>Looking for your SSH key…</span>
+			<span>{m.crew_onboarding_connect_step_looking_for_your_ssh_key()}</span>
 		</div>
 	{:else}
 		{#if ob.sshHosts.length > 0}
@@ -74,7 +84,7 @@
 			<div class="grow" class:shake={ob.fieldShake}>
 				<TextField
 					name="ssh-target"
-					label="SSH address"
+					label={m.crew_onboarding_connect_step_ssh_address()}
 					placeholder="ubuntu@my-server.com"
 					bind:value={ob.sshTarget}
 					disabled={locked}
@@ -85,7 +95,7 @@
 			<div class="port">
 				<TextField
 					name="ssh-port"
-					label="Port"
+					label={m.crew_onboarding_connect_step_port()}
 					type="number"
 					value={String(ob.sshPort)}
 					oninput={(v) => (ob.sshPort = Number(v) || 22)}
@@ -96,13 +106,13 @@
 
 		<!-- How: one segmented control, and below it the field it reveals, in an area of the same height for both. -->
 		<div class="group">
-			<span class="group-label">Sign in with</span>
+			<span class="group-label">{m.crew_onboarding_connect_step_sign_in_with()}</span>
 			<SegmentedControl
-				aria-label="Sign in with"
+				aria-label={m.crew_onboarding_connect_step_sign_in_with()}
 				value={ob.method}
 				items={[
-					{ value: "key", label: "SSH key" },
-					{ value: "password", label: "Password" },
+					{ value: "key", label: m.crew_onboarding_connect_step_method_key() },
+					{ value: "password", label: m.crew_onboarding_connect_step_method_password() },
 				]}
 				disabled={locked}
 				onchange={(v) => ob.chooseMethod(v as "key" | "password")}
@@ -113,44 +123,50 @@
 						<div class="key-row" data-testid="key-in-use">
 							<code class="key-path" title={ob.key.identity}>{ob.key.identity}</code>
 							<button class="text-link" onclick={() => ob.pickKeyFile()} disabled={locked}>
-								Choose another…
+								{m.crew_onboarding_connect_step_choose_another()}
 							</button>
 						</div>
 						<p class="field-hint">
-							{ob.identity ? "Used for this server from now on." : "The key ssh uses for this address."}
+							{ob.identity
+								? m.crew_onboarding_connect_step_key_kept()
+								: m.crew_onboarding_connect_step_key_in_use()}
 							{#if ob.identity}
 								<button class="text-link" onclick={() => ob.useDefaultKey()} disabled={locked}>
-									Use the default
+									{m.crew_onboarding_connect_step_use_the_default()}
 								</button>
 							{/if}
 						</p>
 					{:else}
 						<div class="key-row" data-testid="no-key">
 							<span class="key-path">
-								{ob.identity ? "That key file is not there." : "No SSH key on this computer."}
+								{ob.identity
+									? m.crew_onboarding_connect_step_key_file_missing()
+									: m.crew_onboarding_connect_step_no_key()}
 							</span>
 							<button class="text-link" onclick={() => ob.createSshKey()} disabled={ob.creatingKey || locked}>
-								{ob.creatingKey ? "Creating…" : "Create one"}
+								{ob.creatingKey
+									? m.crew_onboarding_connect_step_creating()
+									: m.crew_onboarding_connect_step_create_one()}
 							</button>
 							<button class="text-link" onclick={() => ob.pickKeyFile()} disabled={locked}
-								>Choose a file</button
+								>{m.crew_onboarding_connect_step_choose_a_file()}</button
 							>
 						</div>
-						<p class="field-hint">Or sign in with the password: Atlas creates the key for you.</p>
+						<p class="field-hint">{m.crew_onboarding_connect_step_password_creates_key()}</p>
 					{/if}
 				{:else}
 					<TextField
 						name="ssh-password"
-						label={`Password of ${shownTarget.split("@")[0]}`}
+						label={m.crew_onboarding_connect_step_password_of({ user: shownTarget.split("@")[0] })}
 						hideLabel
-						placeholder={`Password of ${shownTarget.split("@")[0]}`}
+						placeholder={m.crew_onboarding_connect_step_password_of({ user: shownTarget.split("@")[0] })}
 						type="password"
 						bind:value={ob.sshPassword}
 						disabled={locked}
 						autocomplete="off"
 						onkeydown={(e) => e.key === "Enter" && ob.canSubmit && ob.launchServer()}
 					/>
-					<p class="field-hint">Used once to add this computer's key; never stored.</p>
+					<p class="field-hint">{m.crew_onboarding_connect_step_password_used_once()}</p>
 				{/if}
 			</div>
 		</div>
@@ -159,7 +175,7 @@
 		<div class="optional" class:gone={failure !== null && failure !== undefined}>
 			<Checkbox
 				bind:checked={ob.browsers}
-				label="Screenshots for UI work (Chromium + WebKit)"
+				label={m.crew_onboarding_connect_step_browsers_option()}
 				disabled={locked}
 			/>
 			<p class="field-hint">{BROWSERS_COST}</p>
@@ -180,15 +196,20 @@
 					{#if failure.command}
 						<div class="code-block">
 							<code>{failure.command}</code>
-							<CopyButton value={failure.command} label="" size="sm" aria-label="Copy command" />
+							<CopyButton
+								value={failure.command}
+								label=""
+								size="sm"
+								aria-label={m.crew_onboarding_connect_step_copy_command()}
+							/>
 						</div>
 					{/if}
 					{#if ob.needsSudo}
 						<TextField
 							name="sudo-password"
-							label="Sudo password"
+							label={m.crew_onboarding_connect_step_sudo_password()}
 							hideLabel
-							placeholder="Sudo password"
+							placeholder={m.crew_onboarding_connect_step_sudo_password()}
 							type="password"
 							bind:value={ob.sudoPassword}
 							disabled={ob.installRunning}
@@ -200,14 +221,16 @@
 					<div class="failure-actions">
 						{#each failure.actions.filter((a) => a !== "sudo") as a (a)}
 							<button class="act" onclick={() => ob.runAction(a)} disabled={ob.installRunning}>
-								{labels[a]}
+								{actionLabel(a)}
 							</button>
 						{/each}
-						<button class="text-link small fix" onclick={() => api.openUrl(fixDocs())}>How to fix</button>
+						<button class="text-link small fix" onclick={() => api.openUrl(fixDocs())}
+							>{m.crew_onboarding_connect_step_how_to_fix()}</button
+						>
 					</div>
 					{#if failure.detail}
 						<details class="failure-details">
-							<summary>Details</summary>
+							<summary>{m.crew_onboarding_connect_step_details()}</summary>
 							<code>{failure.detail}</code>
 						</details>
 					{/if}
@@ -219,22 +242,27 @@
 			<div class="connect-success">
 				<CrewFlag size={18} />
 				<Check size={15} />
-				<span>Installed. Connecting…</span>
+				<span>{m.crew_onboarding_connect_step_installed_connecting()}</span>
 			</div>
 		{/if}
 
 		<!-- A small link; the command opens over the layout and pushes nothing. -->
 		<div class="terminal">
 			<button class="text-link small" onclick={() => (showCmd = !showCmd)} aria-expanded={showCmd}>
-				Prefer the terminal?
+				{m.crew_onboarding_connect_step_prefer_the_terminal()}
 			</button>
 			{#if showCmd}
 				<div class="popover">
 					<div class="code-block">
 						<code>{terminalCmd}</code>
-						<CopyButton value={terminalCmd} label="" size="sm" aria-label="Copy install command" />
+						<CopyButton
+							value={terminalCmd}
+							label=""
+							size="sm"
+							aria-label={m.crew_onboarding_connect_step_copy_install_command()}
+						/>
 					</div>
-					<p class="field-hint">Run it on this computer; it uses the same key.</p>
+					<p class="field-hint">{m.crew_onboarding_connect_step_terminal_hint()}</p>
 				</div>
 			{/if}
 		</div>

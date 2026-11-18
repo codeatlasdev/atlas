@@ -229,6 +229,7 @@ pub fn start(app: &AppHandle) {
     app.manage(Shots::load());
     let prefs = app.state::<Shots>().prefs.lock().clone();
     if let Err(e) = apply_hotkeys(app, &prefs) {
+        // i18n-ignore: log
         eprintln!("shots: hotkeys: {e}");
     }
 }
@@ -366,6 +367,7 @@ pub fn feed(app: &AppHandle, event: Event) {
             }
         });
     if let Err(e) = spawned {
+        // i18n-ignore: log
         eprintln!("shots: cannot start the capture worker: {e}");
     }
 }

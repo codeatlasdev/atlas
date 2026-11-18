@@ -1,0 +1,46 @@
+name: Release toolchain
+description: >-
+  What every release.yml build job starts with, in one place: the Linux system packages the job needs, the
+  Rust toolchain (rust-toolchain.toml pins the version; rustup is installed when the runner has none, and
+  the cross targets are added), and SOURCE_DATE_EPOCH = the commit time, so embedded timestamps do not depend
+  on when the build ran. Expects the repository checked out (the epoch is read from its history).
+
+inputs:
+  apt:
+    description: >-
+      Extra Debian/Ubuntu packages, space separated (build-essential, curl, file and pkg-config always come with them).
+      Empty means no apt step.
+    default: ""
+  targets:
+    description: Rust targets to add (space separated), for a cross build.
+    default: ""
+
+runs:
+  using: composite
+  steps:
+    - name: System packages
+      if: ${{ inputs.apt != '' }}
+      shell: bash
+      env:
+        PACKAGES: ${{ inputs.apt }}
+      run: |
+        SUDO=$(command -v sudo || true)
+        $SUDO apt-get update
+        # shellcheck disable=SC2086 # the list is words on purpose
+        $SUDO apt-get install -y --no-install-recommends build-essential curl file pkg-config $PACKAGES
+
+    - name: Rust toolchain
+      shell: bash
+      env:
+        TARGETS: ${{ inputs.targets }}
+      run: |
+        command -v rustup >/dev/null || curl -fsSL https://sh.rustup.rs | sh -s -- -y --profile minimal --default-toolchain none
+        echo "$HOME/.cargo/bin" >> "$GITHUB_PATH"
+        export PATH="$HOME/.cargo/bin:$PATH"
+        rustup show active-toolchain || rustup toolchain install
+        for t in $TARGETS; do rustup target add "$t"; done
+
+    # No --remap-path-prefix: not verified against the Tauri build in this repo.
+    - name: Reproducible timestamps
+      shell: bash
+      run: echo "SOURCE_DATE_EPOCH=$(git log -1 --format=%ct)" >> "$GITHUB_ENV"

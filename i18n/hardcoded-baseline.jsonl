@@ -33,6 +33,12 @@
 {"ratchet":"rust","file":"crates/atlas-cli/src/commands/hostd_login.rs","count":1}
 {"ratchet":"rust","file":"crates/atlas-cli/src/commands/hostd_reconcile.rs","count":14}
 {"ratchet":"rust","file":"crates/atlas-cli/src/commands/init.rs","count":0}
+{"ratchet":"rust","file":"crates/atlas-cli/src/commands/install.rs","count":30}
+{"ratchet":"rust","file":"crates/atlas-cli/src/commands/link.rs","count":0}
+{"ratchet":"rust","file":"crates/atlas-cli/src/commands/mcp.rs","count":2}
+{"ratchet":"rust","file":"crates/atlas-cli/src/commands/open.rs","count":0}
+{"ratchet":"rust","file":"crates/atlas-cli/src/commands/release.rs","count":2}
+{"ratchet":"rust","file":"crates/atlas-cli/src/commands/run_cache.rs","count":5}
 {"ratchet":"rust","file":"crates/atlas-cli/src/commands/install.rs","count":0}
 {"ratchet":"rust","file":"crates/atlas-cli/src/commands/link.rs","count":29}
 {"ratchet":"rust","file":"crates/atlas-cli/src/commands/mcp.rs","count":0}
@@ -52,7 +58,7 @@
 {"ratchet":"rust","file":"crates/atlas-cli/src/commands/update_core.rs","count":5}
 {"ratchet":"rust","file":"crates/atlas-cli/src/commands/update_pkg.rs","count":1}
 {"ratchet":"rust","file":"crates/atlas-cli/src/commands/update_prompt.rs","count":5}
-{"ratchet":"rust","file":"crates/atlas-cli/src/commands/wt.rs","count":1}
+{"ratchet":"rust","file":"crates/atlas-cli/src/commands/wt.rs","count":0}
 {"ratchet":"rust","file":"crates/atlas-cli/src/main.rs","count":0}
 {"ratchet":"rust","file":"crates/atlas-desktop/src/agent_display.rs","count":0}
 {"ratchet":"rust","file":"crates/atlas-desktop/src/ctl.rs","count":0}
@@ -128,6 +134,11 @@
 {"ratchet":"rust-ui","file":"crates/atlas-cli/src/commands/heavy.rs","count":0}
 {"ratchet":"rust-ui","file":"crates/atlas-cli/src/commands/hostd_login.rs","count":1}
 {"ratchet":"rust-ui","file":"crates/atlas-cli/src/commands/hostd_reconcile.rs","count":1}
+{"ratchet":"rust-ui","file":"crates/atlas-cli/src/commands/install.rs","count":15}
+{"ratchet":"rust-ui","file":"crates/atlas-cli/src/commands/link.rs","count":0}
+{"ratchet":"rust-ui","file":"crates/atlas-cli/src/commands/open.rs","count":0}
+{"ratchet":"rust-ui","file":"crates/atlas-cli/src/commands/release.rs","count":2}
+{"ratchet":"rust-ui","file":"crates/atlas-cli/src/commands/run_cache.rs","count":1}
 {"ratchet":"rust-ui","file":"crates/atlas-cli/src/commands/install.rs","count":0}
 {"ratchet":"rust-ui","file":"crates/atlas-cli/src/commands/link.rs","count":16}
 {"ratchet":"rust-ui","file":"crates/atlas-cli/src/commands/open.rs","count":1}

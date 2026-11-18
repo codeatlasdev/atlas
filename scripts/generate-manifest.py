@@ -53,21 +53,28 @@ def get_sha256(filepath):
             return f.read().strip().split()[0]
     return ""
 
+# The platforms release.yml builds Atlas Desktop for (`build`, `build-linux`, `build-windows`). Mirrored by
+# `DESKTOP_PLATFORMS` in crates/atlas-cli/src/commands/desktop.rs, which is what `atlas desktop` checks before it asks
+# for an asset: a test pins the two together. Every other platform ships the CLI only (#268).
+DESKTOP_PLATFORMS = ("aarch64-apple-darwin", "x86_64-unknown-linux-gnu", "x86_64-pc-windows-msvc")
+
+
 def desktop_files(version, platform_key):
-    """(manifest key, asset name) of the Atlas Desktop assets of a platform. `desktop` is what
-    `atlas desktop` installs (`asset_name` in crates/atlas-cli/src/commands/desktop.rs); the rest are
-    for people who download a package by hand."""
+    """(manifest key, asset name) of the Atlas Desktop assets of a platform; none where no desktop is built.
+    `desktop` is what `atlas desktop` installs (`asset_name` in crates/atlas-cli/src/commands/desktop.rs); the
+    rest are for people who download a package by hand."""
+    if platform_key not in DESKTOP_PLATFORMS:
+        return ()
     if platform_key.endswith("-apple-darwin"):
         return (("desktop", f"Atlas-{version}-{platform_key}.app.tar.gz"),
                 ("desktop_dmg", f"Atlas-{version}-{platform_key}.dmg"))
     if platform_key.endswith("-pc-windows-msvc"):
         # The per-user NSIS installer: `atlas desktop` runs it silently, people double-click it.
         return (("desktop", f"Atlas-{version}-{platform_key}-setup.exe"),)
-    deb_arch, rpm_arch = {"x86_64": ("amd64", "x86_64"), "aarch64": ("arm64", "aarch64")}[platform_key.split("-")[0]]
     return (("desktop", f"Atlas-{version}-{platform_key}.AppImage"),
-            ("desktop_deb", f"atlas_{version}_{deb_arch}.deb"),
-            ("desktop_rpm", f"atlas-{version}-1.{rpm_arch}.rpm"),
-            ("desktop_arch", f"codeatlas-atlas-bin-{version.replace('-', '', 1)}-1-{rpm_arch}.pkg.tar.zst"))
+            ("desktop_deb", f"atlas_{version}_amd64.deb"),
+            ("desktop_rpm", f"atlas-{version}-1.x86_64.rpm"),
+            ("desktop_arch", f"codeatlas-atlas-bin-{version.replace('-', '', 1)}-1-x86_64.pkg.tar.zst"))
 
 def desktop_assets(dir_path, version, platform_key):
     """The Atlas Desktop assets of a platform that exist in `dir_path`."""

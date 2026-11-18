@@ -28,14 +28,17 @@
 		{
 			"declarations": [
 				"input count",
+				"local countExact = count",
 				"local countPlural = count: plural"
 			],
 			"selectors": [
+				"countExact",
 				"countPlural"
 			],
 			"match": {
-				"countPlural=one": "Enviou um prompt a um agente ({count} caractere)",
-				"countPlural=*": "Enviou um prompt a um agente ({count} caracteres)"
+				"countExact=0, countPlural=*": "Enviou um prompt vazio a um agente",
+				"countExact=*, countPlural=one": "Enviou um prompt a um agente ({count} caractere)",
+				"countExact=*, countPlural=*": "Enviou um prompt a um agente ({count} caracteres)"
 			}
 		}
 	],
@@ -52,14 +55,17 @@
 		{
 			"declarations": [
 				"input count",
+				"local countExact = count",
 				"local countPlural = count: plural"
 			],
 			"selectors": [
+				"countExact",
 				"countPlural"
 			],
 			"match": {
-				"countPlural=one": "Digitou em um terminal ({count} byte)",
-				"countPlural=*": "Digitou em um terminal ({count} bytes)"
+				"countExact=0, countPlural=*": "Digitou em um terminal (sem dados)",
+				"countExact=*, countPlural=one": "Digitou em um terminal ({count} byte)",
+				"countExact=*, countPlural=*": "Digitou em um terminal ({count} bytes)"
 			}
 		}
 	],
@@ -120,7 +126,7 @@
 	"mobile_pair_qr_expired": "O código expirou. Gere um novo.",
 	"mobile_pair_qr_expires_in": "Expira em {left} s",
 	"mobile_pair_qr_label": "QR code de pareamento",
-	"mobile_phone_activity_empty": "Nenhuma atividade ainda. A lista mostra o que o celular altera (reiniciar um serviço, enviar um prompt, aprovar algo); consultar não entra.",
+	"mobile_phone_activity_empty": "Nenhuma atividade ainda. Reinícios, prompts e aprovações feitos pelo celular aparecem aqui; apenas navegar não aparece.",
 	"mobile_phone_activity_error": "Não foi possível ler a atividade: {error}",
 	"mobile_phone_activity_footer": [
 		{

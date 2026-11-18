@@ -28,14 +28,17 @@
 		{
 			"declarations": [
 				"input count",
+				"local countExact = count",
 				"local countPlural = count: plural"
 			],
 			"selectors": [
+				"countExact",
 				"countPlural"
 			],
 			"match": {
-				"countPlural=one": "Sent a prompt to an agent ({count} character)",
-				"countPlural=*": "Sent a prompt to an agent ({count} characters)"
+				"countExact=0, countPlural=*": "Sent an empty prompt to an agent",
+				"countExact=*, countPlural=one": "Sent a prompt to an agent ({count} character)",
+				"countExact=*, countPlural=*": "Sent a prompt to an agent ({count} characters)"
 			}
 		}
 	],
@@ -52,14 +55,17 @@
 		{
 			"declarations": [
 				"input count",
+				"local countExact = count",
 				"local countPlural = count: plural"
 			],
 			"selectors": [
+				"countExact",
 				"countPlural"
 			],
 			"match": {
-				"countPlural=one": "Typed in a terminal ({count} byte)",
-				"countPlural=*": "Typed in a terminal ({count} bytes)"
+				"countExact=0, countPlural=*": "Typed in a terminal (no data)",
+				"countExact=*, countPlural=one": "Typed in a terminal ({count} byte)",
+				"countExact=*, countPlural=*": "Typed in a terminal ({count} bytes)"
 			}
 		}
 	],
@@ -120,7 +126,7 @@
 	"mobile_pair_qr_expired": "The code expired. Make a new one.",
 	"mobile_pair_qr_expires_in": "Expires in {left} s",
 	"mobile_pair_qr_label": "Pairing QR code",
-	"mobile_phone_activity_empty": "Nothing yet. What the phone changes here (a restart, a prompt, an approval) is listed; just looking around is not.",
+	"mobile_phone_activity_empty": "No activity yet. Restarts, prompts and approvals made from the phone appear here; just browsing does not.",
 	"mobile_phone_activity_error": "Could not read the activity: {error}",
 	"mobile_phone_activity_footer": [
 		{

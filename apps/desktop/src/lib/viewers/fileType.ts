@@ -3,7 +3,7 @@
  * the syntax language (source mode), the optional rich ("eye") view, and its label.
  * Name first (Dockerfile, .env.local, Makefile), then the longest dotted suffix.
  */
-import { m } from "#lib/i18n/m.ts";
+import type { DescId } from "#lib/viewers/fileTypeLabel.ts";
 
 /** Rich views, one component each under `lib/viewers/rich/`. Markdown/SVG predate this and keep their own viewers. */
 export type RichView =
@@ -33,23 +33,21 @@ export interface FileType {
 	lang: string | null;
 	/** Rich view toggled with the Eye button, when this file type has one. */
 	view?: RichView;
-	/** Human label shown in tooltips (`Dockerfile`, `package.json`). */
+	/** Proper name shown in tooltips (`Dockerfile`, `package.json`); empty for a described type: read it with `fileTypeLabel`. */
 	label: string;
+	/** Which described name this type has (`fileTypeLabel.ts`), when it has no proper name. */
+	desc?: DescId;
 	/** File name handed to the file-icon resolver (material-icon-theme). */
 	icon: string;
 }
 
-/**
- * A label is a name that stays as written (`Dockerfile`, `TypeScript`, `package.json`) or a function that reads its message
- * when the label is shown, so the file type's name follows the display language and never freezes at load.
- */
-type Label = string | (() => string);
+/** A file type's name: a proper name as written (`Dockerfile`, `TypeScript`), or the id of a described one (`L.compose`), whose words are in `fileTypeLabel.ts` (kept out of the startup bundle). */
+type Label = string | { desc: DescId };
 
 const T = (id: string, label: Label, lang: string | null, view?: RichView, icon?: string): FileType => ({
 	id,
-	get label() {
-		return typeof label === "string" ? label : label();
-	},
+	label: typeof label === "string" ? label : "",
+	desc: typeof label === "string" ? undefined : label.desc,
 	lang,
 	view,
 	icon: icon ?? id,
@@ -57,35 +55,35 @@ const T = (id: string, label: Label, lang: string | null, view?: RichView, icon?
 
 /** The file types whose name is a description, not a proper name. */
 const L = {
-	compose: () => m.viewers_filetypes_compose(),
-	license: () => m.viewers_filetypes_license(),
-	notice: () => m.viewers_filetypes_notice(),
-	jsonc: () => m.viewers_filetypes_jsonc(),
-	notebook: () => m.viewers_filetypes_notebook(),
-	env: () => m.viewers_filetypes_env(),
-	lock: () => m.viewers_filetypes_lock(),
-	config: () => m.viewers_filetypes_config(),
-	properties: () => m.viewers_filetypes_properties(),
-	prisma: () => m.viewers_filetypes_prisma(),
-	terraformVars: () => m.viewers_filetypes_terraform_vars(),
-	shell: () => m.viewers_filetypes_shell(),
-	bash: () => m.viewers_filetypes_bash(),
-	zsh: () => m.viewers_filetypes_zsh(),
-	fish: () => m.viewers_filetypes_fish(),
-	kotlinScript: () => m.viewers_filetypes_kotlin_script(),
-	pythonStub: () => m.viewers_filetypes_python_stub(),
-	cHeader: () => m.viewers_filetypes_c_header(),
-	cppHeader: () => m.viewers_filetypes_cpp_header(),
-	elixirScript: () => m.viewers_filetypes_elixir_script(),
-	log: () => m.viewers_filetypes_log(),
-	diff: () => m.viewers_filetypes_diff(),
-	patch: () => m.viewers_filetypes_patch(),
-	http: () => m.viewers_filetypes_http(),
-	plist: () => m.viewers_filetypes_plist(),
-	xmlSchema: () => m.viewers_filetypes_xml_schema(),
-	text: () => m.viewers_filetypes_text(),
-	githubWorkflow: () => m.viewers_filetypes_github_workflow(),
-	githubAction: () => m.viewers_filetypes_github_action(),
+	compose: { desc: "compose" as const },
+	license: { desc: "license" as const },
+	notice: { desc: "notice" as const },
+	jsonc: { desc: "jsonc" as const },
+	notebook: { desc: "notebook" as const },
+	env: { desc: "env" as const },
+	lock: { desc: "lock" as const },
+	config: { desc: "config" as const },
+	properties: { desc: "properties" as const },
+	prisma: { desc: "prisma" as const },
+	terraformVars: { desc: "terraformVars" as const },
+	shell: { desc: "shell" as const },
+	bash: { desc: "bash" as const },
+	zsh: { desc: "zsh" as const },
+	fish: { desc: "fish" as const },
+	kotlinScript: { desc: "kotlinScript" as const },
+	pythonStub: { desc: "pythonStub" as const },
+	cHeader: { desc: "cHeader" as const },
+	cppHeader: { desc: "cppHeader" as const },
+	elixirScript: { desc: "elixirScript" as const },
+	log: { desc: "log" as const },
+	diff: { desc: "diff" as const },
+	patch: { desc: "patch" as const },
+	http: { desc: "http" as const },
+	plist: { desc: "plist" as const },
+	xmlSchema: { desc: "xmlSchema" as const },
+	text: { desc: "text" as const },
+	githubWorkflow: { desc: "githubWorkflow" as const },
+	githubAction: { desc: "githubAction" as const },
 };
 
 /** Exact (lower-cased) base names. */

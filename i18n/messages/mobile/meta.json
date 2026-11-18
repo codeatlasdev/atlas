@@ -75,7 +75,7 @@
 	"mobile_pair_qr_expired": "Shown in place of the pairing QR code when the one-time code ran out.",
 	"mobile_pair_qr_expires_in": "Countdown under the pairing QR code in the crew server settings. {left} is the seconds left on the one-time code.",
 	"mobile_pair_qr_label": "Accessible name of the QR code image the phone scans to pair with this computer.",
-	"mobile_phone_activity_empty": "Empty state of the phone activity list.",
+	"mobile_phone_activity_empty": "Empty state of the phone activity list: says which actions of the phone will be listed.",
 	"mobile_phone_activity_error": "Shown when hostd could not read the phone's audit log. {error} is the reason, in English.",
 	"mobile_phone_activity_footer": "Footer of the phone activity list. {count} is how many entries are shown (at most 20).",
 	"mobile_phone_activity_label": "Accessible name of the list of what a phone did lately.",

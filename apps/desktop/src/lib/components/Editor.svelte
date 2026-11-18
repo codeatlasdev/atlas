@@ -44,6 +44,7 @@
 	import { readBlob } from "#lib/viewers/load.ts";
 	import { loadLanguage, lspLanguageId } from "#lib/viewers/lang.ts";
 	import { fileType } from "#lib/viewers/fileType.ts";
+	import { fileTypeLabel } from "#lib/viewers/fileTypeLabel.ts";
 	import { rememberRich, wantsRich } from "#lib/viewers/richPref.ts";
 	import RichView from "#lib/viewers/rich/RichView.svelte";
 	import ImageViewer from "#lib/viewers/ImageViewer.svelte";
@@ -328,7 +329,7 @@
 				<Tip
 					label={rich
 						? `Show source (${kbd("shift-cmd-m")})`
-						: `${isMd ? "Rich" : ft.label} view (${kbd("shift-cmd-m")})`}
+						: `${isMd ? "Rich" : fileTypeLabel(ft)} view (${kbd("shift-cmd-m")})`}
 					side="bottom"
 				>
 					{#snippet child(props)}

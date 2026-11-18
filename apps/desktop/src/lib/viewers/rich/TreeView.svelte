@@ -1,6 +1,7 @@
 <script lang="ts">
 	import { ChevronRight, Search, TriangleAlert, ChevronsDownUp, ChevronsUpDown } from "@lucide/svelte";
 	import { fileType } from "#lib/viewers/fileType.ts";
+	import { fileTypeLabel } from "#lib/viewers/fileTypeLabel.ts";
 	import { formatOf, parseData } from "#lib/viewers/rich/data.ts";
 	import { defaultOpen, flatten } from "#lib/viewers/rich/tree.ts";
 	import type { RichCtx } from "#lib/viewers/rich/ctx.ts";
@@ -82,7 +83,7 @@
 		<div class="rv-inner">
 			<div class="rv-banner bad">
 				<TriangleAlert size={14} />
-				{m.viewers_files_tree_view_cannot_parse({ format: ft.label, error: parsed.error })}
+				{m.viewers_files_tree_view_cannot_parse({ format: fileTypeLabel(ft), error: parsed.error })}
 				<span class="sp"></span>
 				<button class="rv-btn" onclick={() => ctx.toSource(parsed.line)}
 					>{m.viewers_devops_open_as_source()}</button
@@ -92,7 +93,7 @@
 	{:else}
 		<div class="bar">
 			<span class="rv-ver"
-				>{m.viewers_files_tree_view_visible({ format: ft.label, count: flat.rows.length })}</span
+				>{m.viewers_files_tree_view_visible({ format: fileTypeLabel(ft), count: flat.rows.length })}</span
 			>
 			{#if q}<span class="rv-chip acc">{m.viewers_files_tree_view_matches({ count: flat.matches })}</span
 				>{/if}

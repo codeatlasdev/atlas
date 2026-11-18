@@ -1,10 +1,41 @@
 {
 	"viewers_files_copy_copied": "Copiado",
 	"viewers_files_fallback_viewer_binary": "Arquivo binário",
-	"viewers_files_fallback_viewer_binary_body": "{size} · sem prévia para este formato.",
+	"viewers_files_fallback_viewer_binary_body": [
+		{
+			"declarations": [
+				"input os",
+				"input size"
+			],
+			"selectors": [
+				"os"
+			],
+			"match": {
+				"os=mac": "{size} · sem prévia para este formato. Escolha Abrir externamente ou Mostrar no Finder.",
+				"os=windows": "{size} · sem prévia para este formato. Escolha Abrir externamente ou Mostrar no Explorador de Arquivos.",
+				"os=*": "{size} · sem prévia para este formato. Escolha Abrir externamente ou Mostrar no gerenciador de arquivos."
+			}
+		}
+	],
 	"viewers_files_fallback_viewer_first_bytes": "Primeiros {size}",
 	"viewers_files_fallback_viewer_too_large": "Grande demais para editar aqui",
-	"viewers_files_fallback_viewer_too_large_body": "Este arquivo tem {size}. O Atlas abre arquivos de texto de até {limit} MB.",
+	"viewers_files_fallback_viewer_too_large_body": [
+		{
+			"declarations": [
+				"input os",
+				"input size",
+				"input limit"
+			],
+			"selectors": [
+				"os"
+			],
+			"match": {
+				"os=mac": "Este arquivo tem {size}. O Atlas abre arquivos de texto de até {limit} MB. Escolha Abrir externamente ou Mostrar no Finder.",
+				"os=windows": "Este arquivo tem {size}. O Atlas abre arquivos de texto de até {limit} MB. Escolha Abrir externamente ou Mostrar no Explorador de Arquivos.",
+				"os=*": "Este arquivo tem {size}. O Atlas abre arquivos de texto de até {limit} MB. Escolha Abrir externamente ou Mostrar no gerenciador de arquivos."
+			}
+		}
+	],
 	"viewers_files_format_action_already_formatted": "Já formatado",
 	"viewers_files_format_action_cannot_format": "Não foi possível formatar: {reason}",
 	"viewers_files_format_action_no_formatter": "Este tipo de arquivo não tem formatador: nenhum language server oferece um e o Atlas não tem um embutido.",
@@ -107,7 +138,7 @@
 	"viewers_files_image_viewer_copy_failed": "Não foi possível copiar a imagem",
 	"viewers_files_image_viewer_copy_image": "Copiar imagem",
 	"viewers_files_image_viewer_fit_to_view": "Ajustar à janela",
-	"viewers_files_load_host_too_old": "Este host é antigo demais para enviar arquivos grandes em partes; atualize o atlas nele.",
+	"viewers_files_load_host_too_old": "Este host é antigo demais para ler arquivos grandes em partes. Rode `atlas update` nessa máquina e abra o arquivo de novo.",
 	"viewers_files_notebook_view_cells": [
 		{
 			"declarations": [
@@ -195,14 +226,17 @@
 		{
 			"declarations": [
 				"input count",
+				"local countExact = count",
 				"local countPlural = count: plural"
 			],
 			"selectors": [
+				"countExact",
 				"countPlural"
 			],
 			"match": {
-				"countPlural=one": "{count} linha irregular",
-				"countPlural=*": "{count} linhas irregulares"
+				"countExact=0, countPlural=*": "Nenhuma linha irregular",
+				"countExact=*, countPlural=one": "{count} linha irregular",
+				"countExact=*, countPlural=*": "{count} linhas irregulares"
 			}
 		}
 	],

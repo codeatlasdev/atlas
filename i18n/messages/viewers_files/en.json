@@ -1,10 +1,41 @@
 {
 	"viewers_files_copy_copied": "Copied",
 	"viewers_files_fallback_viewer_binary": "Binary file",
-	"viewers_files_fallback_viewer_binary_body": "{size} · no preview for this format.",
+	"viewers_files_fallback_viewer_binary_body": [
+		{
+			"declarations": [
+				"input os",
+				"input size"
+			],
+			"selectors": [
+				"os"
+			],
+			"match": {
+				"os=mac": "{size} · no preview for this format. Choose Open externally, or Reveal in Finder.",
+				"os=windows": "{size} · no preview for this format. Choose Open externally, or Reveal in File Explorer.",
+				"os=*": "{size} · no preview for this format. Choose Open externally, or Reveal in file manager."
+			}
+		}
+	],
 	"viewers_files_fallback_viewer_first_bytes": "First {size}",
 	"viewers_files_fallback_viewer_too_large": "Too large to edit here",
-	"viewers_files_fallback_viewer_too_large_body": "This file is {size}. Atlas opens text files up to {limit} MB.",
+	"viewers_files_fallback_viewer_too_large_body": [
+		{
+			"declarations": [
+				"input os",
+				"input size",
+				"input limit"
+			],
+			"selectors": [
+				"os"
+			],
+			"match": {
+				"os=mac": "This file is {size}. Atlas opens text files up to {limit} MB. Choose Open externally, or Reveal in Finder.",
+				"os=windows": "This file is {size}. Atlas opens text files up to {limit} MB. Choose Open externally, or Reveal in File Explorer.",
+				"os=*": "This file is {size}. Atlas opens text files up to {limit} MB. Choose Open externally, or Reveal in file manager."
+			}
+		}
+	],
 	"viewers_files_format_action_already_formatted": "Already formatted",
 	"viewers_files_format_action_cannot_format": "Cannot format: {reason}",
 	"viewers_files_format_action_no_formatter": "This file type has no formatter: no language server provides one and Atlas has no built-in one.",
@@ -107,7 +138,7 @@
 	"viewers_files_image_viewer_copy_failed": "Could not copy this image",
 	"viewers_files_image_viewer_copy_image": "Copy image",
 	"viewers_files_image_viewer_fit_to_view": "Fit to view",
-	"viewers_files_load_host_too_old": "This host is too old to stream big files; update atlas on it.",
+	"viewers_files_load_host_too_old": "This host is too old to read big files in chunks. Run `atlas update` on that machine, then open the file again.",
 	"viewers_files_notebook_view_cells": [
 		{
 			"declarations": [
@@ -195,14 +226,17 @@
 		{
 			"declarations": [
 				"input count",
+				"local countExact = count",
 				"local countPlural = count: plural"
 			],
 			"selectors": [
+				"countExact",
 				"countPlural"
 			],
 			"match": {
-				"countPlural=one": "{count} ragged row",
-				"countPlural=*": "{count} ragged rows"
+				"countExact=0, countPlural=*": "No ragged rows",
+				"countExact=*, countPlural=one": "{count} ragged row",
+				"countExact=*, countPlural=*": "{count} ragged rows"
 			}
 		}
 	],

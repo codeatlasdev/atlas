@@ -5,6 +5,8 @@
 	import type { SearchState } from "#lib/search/search.svelte.ts";
 	import { dirOf, flatRows, nameOf, navKey, previewRuns, type Row } from "#lib/search/rows.ts";
 	import VirtualList from "#lib/components/VirtualList.svelte";
+	import { m } from "#lib/i18n/m.ts";
+	import { kbd } from "#lib/keys.ts";
 
 	/** Result tree (files with their matches) and its keyboard navigation. */
 	let {
@@ -67,18 +69,31 @@
 </script>
 
 <!-- svelte-ignore a11y_no_noninteractive_tabindex -->
-<div class="list" bind:this={list} {onkeydown} tabindex="0" role="tree" aria-label="Search results">
+<div
+	class="list"
+	bind:this={list}
+	{onkeydown}
+	tabindex="0"
+	role="tree"
+	aria-label={m.search_results_search_results()}
+>
 	<VirtualList bind:this={vl} class="vlist" items={rows} key={(r) => r.key} estimate={22}>
 		{#snippet header()}
 			{#if s.phase === "idle"}
 				<div class="hint">
-					<p>Search every file in this worktree.</p>
-					<p class="sub">Type to search. Use ↑ ↓ to move, Enter to open at the line.</p>
+					<p>{m.search_results_search_every_file_in_this()}</p>
+					<p class="sub">
+						{m.search_results_type_to_search_use_to({
+							up: kbd("up"),
+							down: kbd("down"),
+							enter: kbd("enter"),
+						})}
+					</p>
 				</div>
 			{:else if s.phase === "done" && !s.files.length}
 				<div class="hint">
-					<p>Nothing matches “{s.query}”.</p>
-					<p class="sub">Try fewer words, turn off whole word, or clear the file filters.</p>
+					<p>{m.search_results_nothing_matches_query({ query: s.query })}</p>
+					<p class="sub">{m.search_results_try_fewer_words_turn_off()}</p>
 				</div>
 			{/if}
 		{/snippet}
@@ -126,7 +141,7 @@
 		{/snippet}
 		{#snippet footer()}
 			{#if s.truncated}
-				<p class="more">Showing the first results. Narrow the search to see the rest.</p>
+				<p class="more">{m.search_results_showing_the_first_results_narrow()}</p>
 			{/if}
 			<div class="end"></div>
 		{/snippet}

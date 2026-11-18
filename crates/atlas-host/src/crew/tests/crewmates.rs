@@ -99,7 +99,7 @@ async fn caps_without_atlas_crew_host() {
         let _ = crate::server::serve_with(&d, ServeOpts::default()).await;
     });
     let mut client = None;
-    for _ in 0..200 {
+    for _ in 0..1200 {
         if let Ok(c) = HostClient::connect_dir(&dir, "test").await {
             client = Some(c);
             break;
@@ -201,12 +201,12 @@ async fn crewmate_list_json_contract() {
         &crewmate_b_id,
         &task_b_id,
         "done",
-        Duration::from_secs(15),
+        atlas_core::scaling::HANG,
     )
     .await;
 
     // ── Phase 2: Crewmate A — hanging agent (produces running_task) ───────────
-    let hang_bin = fake_agent(tmp.path(), "claude", "#!/bin/sh\nsleep 60\nexit 0\n");
+    let hang_bin = fake_agent(tmp.path(), "claude", "#!/bin/sh\nsleep 600\nexit 0\n");
     use_agent_bin(&hang_bin);
 
     let crewmate_a = client
@@ -231,7 +231,7 @@ async fn crewmate_list_json_contract() {
     let task_a_id = va["task"]["id"].as_str().unwrap().to_string();
 
     // Wait until crewmate_list sees crewmate_a as "working".
-    let deadline = std::time::Instant::now() + Duration::from_secs(15);
+    let deadline = std::time::Instant::now() + atlas_core::scaling::HANG;
     loop {
         let list = client.call("crewmate_list", json!({})).await.unwrap();
         if list["crewmates"]

@@ -1028,7 +1028,7 @@ mod tests {
             cfg.chats = vec![42];
         }
         b.send_message("done");
-        let (mut s, _) = tokio::time::timeout(Duration::from_secs(5), api.accept())
+        let (mut s, _) = tokio::time::timeout(atlas_core::scaling::HANG, api.accept())
             .await
             .expect("the bridge never called the Telegram API")
             .unwrap();

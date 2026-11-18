@@ -3,6 +3,8 @@
 	import { Search, CaseSensitive, Regex, WholeWord, SlidersHorizontal, X } from "@lucide/svelte";
 	import Tip from "#lib/components/Tip.svelte";
 	import { scheduleSearch, type SearchState } from "#lib/search/search.svelte.ts";
+	import { m } from "#lib/i18n/m.ts";
+	import { formatNumber } from "#lib/i18n/fmt.ts";
 
 	/** Query field with its toggles, the include/skip globs and the one-line status. */
 	let {
@@ -19,6 +21,8 @@
 	} = $props();
 
 	const change = () => scheduleSearch(worktreeId);
+	// A search that stopped at its limit counts "100+": the number picks the plural, the label is what is shown.
+	const more = $derived(s.truncated ? "+" : "");
 </script>
 
 <div class="form">
@@ -29,15 +33,15 @@
 			bind:value={s.query}
 			oninput={change}
 			{onkeydown}
-			placeholder="Find in project"
+			placeholder={m.search_form_find_in_project()}
 			spellcheck="false"
 			autocomplete="off"
-			aria-label="Search query"
+			aria-label={m.search_form_search_query()}
 		/>
 		{#if s.query}
 			<button
 				class="tog"
-				aria-label="Clear"
+				aria-label={m.search_form_clear()}
 				onclick={() => {
 					s.query = "";
 					change();
@@ -45,38 +49,38 @@
 				}}><X size={12} /></button
 			>
 		{/if}
-		<Tip label="Match case" side="bottom">
+		<Tip label={m.search_form_match_case()} side="bottom">
 			{#snippet child(props)}
 				<button
 					{...props}
 					class="tog"
 					class:on={s.caseSensitive}
 					aria-pressed={s.caseSensitive}
-					aria-label="Match case"
+					aria-label={m.search_form_match_case()}
 					onclick={() => ((s.caseSensitive = !s.caseSensitive), change())}><CaseSensitive size={14} /></button
 				>
 			{/snippet}
 		</Tip>
-		<Tip label="Whole word" side="bottom">
+		<Tip label={m.search_form_whole_word()} side="bottom">
 			{#snippet child(props)}
 				<button
 					{...props}
 					class="tog"
 					class:on={s.wholeWord}
 					aria-pressed={s.wholeWord}
-					aria-label="Whole word"
+					aria-label={m.search_form_whole_word()}
 					onclick={() => ((s.wholeWord = !s.wholeWord), change())}><WholeWord size={14} /></button
 				>
 			{/snippet}
 		</Tip>
-		<Tip label="Regular expression" side="bottom">
+		<Tip label={m.search_form_regular_expression()} side="bottom">
 			{#snippet child(props)}
 				<button
 					{...props}
 					class="tog"
 					class:on={s.regex}
 					aria-pressed={s.regex}
-					aria-label="Regular expression"
+					aria-label={m.search_form_regular_expression()}
 					onclick={() => ((s.regex = !s.regex), change())}><Regex size={14} /></button
 				>
 			{/snippet}
@@ -84,7 +88,7 @@
 	</div>
 	<button class="filters" onclick={() => (s.showFilters = !s.showFilters)} aria-expanded={s.showFilters}>
 		<SlidersHorizontal size={11} />
-		Files to include or skip
+		{m.search_form_files_to_include_or_skip()}
 		{#if s.include || s.exclude}<span class="dot"></span>{/if}
 	</button>
 	{#if s.showFilters}
@@ -92,16 +96,16 @@
 			<input
 				bind:value={s.include}
 				oninput={change}
-				placeholder="Include: src/**, *.ts"
+				placeholder={m.search_form_include_src_ts()}
 				spellcheck="false"
-				aria-label="Files to include"
+				aria-label={m.search_form_files_to_include()}
 			/>
 			<input
 				bind:value={s.exclude}
 				oninput={change}
-				placeholder="Skip: dist, *.min.js"
+				placeholder={m.search_form_skip_dist_min_js()}
 				spellcheck="false"
-				aria-label="Files to skip"
+				aria-label={m.search_form_files_to_skip()}
 			/>
 		</div>
 	{/if}
@@ -109,16 +113,17 @@
 
 <div class="status" aria-live="polite">
 	{#if s.phase === "running"}
-		<Spinner size="small" /> Searching…
+		<Spinner size="small" /> {m.search_form_searching()}
 	{:else if s.phase === "done"}
-		{#if s.matches}
-			{s.matches}{s.truncated ? "+" : ""} result{s.matches === 1 ? "" : "s"} in {s.files.length}{s.truncated
-				? "+"
-				: ""} file{s.files.length === 1 ? "" : "s"}
-			<span class="took">{s.tookMs} ms · {s.tool}</span>
-		{:else}
-			No results
-		{/if}
+		<span class="count"
+			>{m.search_form_status({
+				matches: s.matches,
+				files: s.files.length,
+				matchesLabel: formatNumber(s.matches) + more,
+				filesLabel: formatNumber(s.files.length) + more,
+			})}</span
+		>
+		{#if s.matches}<span class="took">{m.search_form_took({ ms: s.tookMs, tool: s.tool })}</span>{/if}
 	{:else if s.phase === "error"}
 		<span class="err">{s.error}</span>
 	{/if}
@@ -219,15 +224,22 @@
 	}
 	.status {
 		display: flex;
+		flex-wrap: wrap;
 		align-items: center;
-		gap: 6px;
+		column-gap: 6px;
+		row-gap: 0;
 		min-height: 20px;
 		padding: 0 12px 4px;
 		font-size: 11px;
 		color: var(--ca-text-secondary);
 	}
+	.count {
+		min-width: 0;
+	}
+	/* The timing never breaks in the middle ("26 ms · rg"): when a longer language leaves no room, it drops to its own line. */
 	.took {
 		margin-left: auto;
+		white-space: nowrap;
 		color: var(--ca-text-secondary);
 	}
 	.err {

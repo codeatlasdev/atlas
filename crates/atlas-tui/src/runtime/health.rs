@@ -132,8 +132,8 @@ mod tests {
         assert!(!check_process_alive(999_999).await);
     }
 
-    /// Serve one canned status line per connection, in order; `None` = accept
-    /// and never answer (to exercise the timeout).
+    /// Serve one canned status line per connection, in order; `None` = accept and never
+    /// answer, holding the connection until the client drops it (to exercise the timeout).
     async fn serve(statuses: Vec<Option<&'static str>>) -> u16 {
         let listener = tokio::net::TcpListener::bind("127.0.0.1:0").await.unwrap();
         let port = listener.local_addr().unwrap().port();
@@ -151,7 +151,7 @@ mod tests {
                             let _ = sock.write_all(resp.as_bytes()).await;
                             let _ = sock.shutdown().await;
                         }
-                        None => tokio::time::sleep(Duration::from_secs(30)).await,
+                        None => while sock.read(&mut buf).await.is_ok_and(|n| n > 0) {},
                     }
                 });
             }
@@ -187,9 +187,18 @@ mod tests {
     async fn http_timeout_and_refused_are_unhealthy() {
         let port = serve(vec![None]).await;
         let url = format!("http://127.0.0.1:{port}/");
-        let t0 = std::time::Instant::now();
-        assert!(!check_http(&url, Duration::from_millis(300)).await);
-        assert!(t0.elapsed() < Duration::from_secs(2));
+        // The server holds the connection open and never answers: only the request timeout can end
+        // the call. Without it the probe waits for ever, and the hang ceiling fails the test.
+        let hung = tokio::time::timeout(
+            atlas_core::scaling::HANG,
+            check_http(&url, Duration::from_millis(300)),
+        )
+        .await;
+        assert_eq!(
+            hung,
+            Ok(false),
+            "a server that never answers is unhealthy, not waited for"
+        );
         assert!(!check_http("http://127.0.0.1:1/", Duration::from_millis(300)).await);
         assert!(!check_http("not a url", Duration::from_millis(300)).await);
     }

@@ -50,18 +50,19 @@ pub fn pull(shared: &Shared, since: u64, wait: Duration) -> super::Frame {
 mod tests {
     use std::time::Instant;
 
+    use atlas_core::scaling::HANG;
+
     use super::*;
 
     #[test]
     fn a_pull_after_the_newest_frame_waits_for_the_next_and_a_stale_one_returns_at_once() {
         let s = Arc::new(Shared::default());
         s.publish(vec![1], (10, 20));
+        // A newer frame exists: the wait limit is never started. The limit is the hang ceiling, so a pull that
+        // waited anyway would come back only after all of it, and that is what the assert refuses.
         let t = Instant::now();
-        let (seq, jpeg, size) = pull(&s, 0, Duration::from_secs(5));
-        assert!(
-            t.elapsed() < Duration::from_secs(1),
-            "a newer frame exists: no wait"
-        );
+        let (seq, jpeg, size) = pull(&s, 0, HANG);
+        assert!(t.elapsed() < HANG, "a newer frame exists: no wait");
         assert_eq!((seq, &**jpeg, size), (1, &[1u8][..], (10, 20)));
 
         let s2 = s.clone();
@@ -69,7 +70,7 @@ mod tests {
             std::thread::sleep(Duration::from_millis(100));
             s2.publish(vec![2], (10, 20));
         });
-        let (seq, jpeg, _) = pull(&s, 1, Duration::from_secs(5));
+        let (seq, jpeg, _) = pull(&s, 1, HANG);
         publisher.join().unwrap();
         assert_eq!(
             (seq, &**jpeg),

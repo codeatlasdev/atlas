@@ -16,6 +16,8 @@
 		type PairStart,
 	} from "#lib/settings/mobile.ts";
 	import ExtLink from "./ExtLink.svelte";
+	import { m } from "#lib/i18n/m.ts";
+	import Rich from "#lib/i18n/Rich.svelte";
 
 	let {
 		pairing,
@@ -48,16 +50,18 @@
 <div class="pair" data-setting="mobile-pair" data-state={state}>
 	<div class="stage">
 		{#if pairing && state === "live"}
-			<div class="qr" aria-label="Pairing QR code" role="img">{@html renderSVG(pairUrl(pairing.p))}</div>
+			<div class="qr" aria-label={m.mobile_pair_qr_label()} role="img">
+				{@html renderSVG(pairUrl(pairing.p))}
+			</div>
 		{:else}
 			<div class="qr placeholder">
 				{#if state === "expired"}
 					<RefreshCw size={26} />
-					<strong>Code expired</strong>
-					<span>A code works for two minutes.</span>
+					<strong>{m.mobile_pair_card_code_expired()}</strong>
+					<span>{m.mobile_pair_card_code_lifetime()}</span>
 				{:else}
 					<QrCode size={34} />
-					<span>Your code appears here</span>
+					<span>{m.mobile_pair_card_code_placeholder()}</span>
 				{/if}
 			</div>
 		{/if}
@@ -68,7 +72,7 @@
 			<li>
 				<span class="n">1</span>
 				<div>
-					<strong>Get Atlas Mobile</strong>
+					<strong>{m.mobile_pair_card_step_get()}</strong>
 					{#if stores.length}
 						<span class="hint">
 							{#each stores as s, i (s.name)}{#if i}
@@ -77,8 +81,8 @@
 						</span>
 					{:else}
 						<span class="hint">
-							Still in testing, not in the stores yet.
-							<ExtLink href={MOBILE_APP.docs}>How to get it</ExtLink>
+							{m.mobile_pair_card_step_get_testing()}
+							<ExtLink href={MOBILE_APP.docs}>{m.mobile_pair_card_step_get_how()}</ExtLink>
 						</span>
 					{/if}
 				</div>
@@ -86,17 +90,19 @@
 			<li>
 				<span class="n">2</span>
 				<div>
-					<strong>Open it</strong>
+					<strong>{m.mobile_pair_card_step_open()}</strong>
 					<span class="hint"
-						>Tap <em>Scan pairing code</em>, or <em>Pair another computer</em> in its Settings.</span
+						><Rich parts={m.mobile_pair_card_step_open_hint.parts()} tags={{ em: "em" }} /></span
 					>
 				</div>
 			</li>
 			<li>
 				<span class="n">3</span>
 				<div>
-					<strong>Scan the code</strong>
-					<span class="hint">The phone appears in <em>Paired phones</em> below the moment it connects.</span>
+					<strong>{m.mobile_pair_card_step_scan()}</strong>
+					<span class="hint"
+						><Rich parts={m.mobile_pair_card_step_scan_hint.parts()} tags={{ em: "em" }} /></span
+					>
 				</div>
 			</li>
 		</ol>
@@ -104,34 +110,49 @@
 		{#if state === "live" && pairing}
 			<div class="live">
 				<div class="codeline">
-					<span class="code ca-selectable" aria-label="One-time code">{groupCode(pairing.p.code)}</span>
-					<span class="left" role="timer">Expires in {clock(left)}</span>
+					<span class="code ca-selectable" aria-label={m.mobile_pair_card_one_time_code()}
+						>{groupCode(pairing.p.code)}</span
+					>
+					<span class="left" role="timer">{m.mobile_pair_card_expires_in({ time: clock(left) })}</span>
 				</div>
-				<Progress value={left} max={pairing.p.expires_in_s} size="sm" label="Time left on this code" />
-				<div class="waiting"><Spinner size={11} /> Waiting for your phone…</div>
+				<Progress
+					value={left}
+					max={pairing.p.expires_in_s}
+					size="sm"
+					label={m.mobile_pair_card_time_left()}
+				/>
+				<div class="waiting"><Spinner size={11} /> {m.mobile_pair_card_waiting()}</div>
 				<div class="actions">
-					<Button size="sm" variant="outlined" onclick={onstart} loading={busy}>New code</Button>
+					<Button size="sm" variant="outlined" onclick={onstart} loading={busy}
+						>{m.mobile_pair_card_new_code()}</Button
+					>
 					<CopyButton
 						size="sm"
 						variant="ghost"
-						label="Copy link"
+						label={m.mobile_pair_card_copy_link()}
 						value={pairUrl(pairing.p)}
-						toast="Pairing link copied. In the app, choose Paste link."
+						toast={m.mobile_pair_card_link_copied()}
 					/>
 				</div>
 			</div>
 		{:else}
 			{#if error}
-				<Alert severity="error" title="Could not make a code">
-					{error}. Try again; if it keeps failing, restart Atlas.
+				<Alert severity="error" title={m.mobile_pair_card_error_title()}>
+					{m.mobile_pair_card_error_body({ error })}
 				</Alert>
 			{:else if paired && state === "idle"}
-				<Alert severity="success" title="{paired} is paired">It is in the list below.</Alert>
+				<Alert severity="success" title={m.mobile_pair_card_paired_title({ paired })}
+					>{m.mobile_pair_card_paired_body()}</Alert
+				>
 			{/if}
 			<div class="actions">
 				<Button onclick={onstart} loading={busy}>
 					{#snippet leading()}<Smartphone size={14} />{/snippet}
-					{state === "expired" ? "New code" : paired && !error ? "Pair another phone" : "Show pairing code"}
+					{state === "expired"
+						? m.mobile_pair_card_new_code()
+						: paired && !error
+							? m.mobile_pair_card_pair_another()
+							: m.mobile_pair_card_show_code()}
 				</Button>
 			</div>
 		{/if}

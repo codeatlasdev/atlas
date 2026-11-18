@@ -256,6 +256,7 @@ impl CliBackup {
 #[cfg(test)]
 mod tests {
     use super::*;
+    use atlas_core::scaling::HANG;
 
     #[test]
     fn lock_is_exclusive_and_released_on_drop() {
@@ -267,7 +268,7 @@ mod tests {
         drop(first);
         // flock belongs to the open file description: a sibling test that forks between our open
         // and our drop holds a dup until its child execs (CLOEXEC), so release is not instant.
-        let deadline = std::time::Instant::now() + std::time::Duration::from_secs(5);
+        let deadline = std::time::Instant::now() + HANG;
         while let Err(e) = UpdateLock::acquire_at(&p) {
             assert!(
                 std::time::Instant::now() < deadline,

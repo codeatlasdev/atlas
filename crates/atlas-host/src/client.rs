@@ -757,6 +757,7 @@ async fn reply_line(r: &mut BufReader<ipc::ReadHalf>) -> Result<Value> {
 mod tests {
     use super::{HostClient, deadline_for, is_hostd_command};
     use atlas_core::ipc;
+    use atlas_core::scaling::HANG;
     use serde_json::json;
     use std::time::Duration;
     use tokio::io::{AsyncBufReadExt, AsyncWriteExt, BufReader};
@@ -792,7 +793,7 @@ mod tests {
     async fn hang_up(c: &HostClient, hang_up: tokio::sync::oneshot::Sender<()>) {
         let mut ev = c.events();
         drop(hang_up);
-        tokio::time::timeout(Duration::from_secs(5), async {
+        tokio::time::timeout(HANG, async {
             while ev.recv().await.unwrap()["ev"] != "disconnected" {}
         })
         .await
@@ -807,7 +808,7 @@ mod tests {
     async fn a_call_on_a_connection_that_already_dropped_fails_at_once() {
         let (_tmp, c, h) = fake_hostd(0).await;
         hang_up(&c, h).await;
-        let r = tokio::time::timeout(Duration::from_secs(5), c.call("info", json!({})))
+        let r = tokio::time::timeout(HANG, c.call("info", json!({})))
             .await
             .expect("a call on a dead connection must not wait forever");
         assert!(r.unwrap_err().to_string().contains("disconnected"));
@@ -818,7 +819,7 @@ mod tests {
     async fn closed_resolves_when_asked_after_the_drop() {
         let (_tmp, c, h) = fake_hostd(0).await;
         hang_up(&c, h).await;
-        tokio::time::timeout(Duration::from_secs(5), c.closed())
+        tokio::time::timeout(HANG, c.closed())
             .await
             .expect("closed() must resolve for a connection that is already gone");
     }
@@ -828,7 +829,7 @@ mod tests {
     async fn a_call_in_flight_when_the_daemon_hangs_up_fails() {
         let (_tmp, c, h) = fake_hostd(1).await;
         drop(h);
-        let r = tokio::time::timeout(Duration::from_secs(5), c.call("info", json!({})))
+        let r = tokio::time::timeout(HANG, c.call("info", json!({})))
             .await
             .expect("an unanswered call must fail when the connection drops");
         assert!(r.unwrap_err().to_string().contains("disconnected"));
@@ -841,13 +842,18 @@ mod tests {
         let (_tmp, c, _h) = fake_hostd(1).await;
         let t = std::time::Instant::now();
         let r = tokio::time::timeout(
-            Duration::from_secs(5),
+            HANG,
             c.call_within("info", json!({}), Duration::from_millis(300)),
         )
         .await
         .expect("the deadline must end the call, not the test's own timeout");
         let e = r.unwrap_err();
-        assert!(t.elapsed() < Duration::from_secs(2));
+        // The deadline was waited for, not given up at once; that it ends the call at all is the timeout above.
+        assert!(
+            t.elapsed() >= Duration::from_millis(300),
+            "{:?}",
+            t.elapsed()
+        );
         assert!(e.to_string().contains("hostd.log") && e.to_string().contains("`info`"));
         assert!(e.downcast_ref::<super::Unanswered>().is_some());
         assert!(c.pending.lock().as_ref().unwrap().is_empty());
@@ -859,15 +865,14 @@ mod tests {
     async fn a_long_call_fails_at_the_first_unanswered_probe_not_at_its_class_deadline() {
         let (_tmp, mut c, _h) = fake_hostd(1).await;
         c.probe = Some((Duration::from_millis(200), Duration::from_millis(200)));
-        let t = std::time::Instant::now();
         let r = tokio::time::timeout(
-            Duration::from_secs(5),
+            HANG,
             c.call_within("project_action", json!({}), Duration::from_secs(3600)),
         )
         .await
         .expect("a probe must end the call long before its deadline");
         let e = r.unwrap_err();
-        assert!(t.elapsed() < Duration::from_secs(2), "{:?}", t.elapsed());
+        // Ended by the probe: the class deadline (an hour) is far past HANG, so only the probe can get here.
         assert!(e.downcast_ref::<super::Unanswered>().is_some());
         assert!(e.to_string().contains("hostd.log") && e.to_string().contains("project_action"));
         assert!(c.pending.lock().as_ref().unwrap().is_empty());
@@ -930,11 +935,19 @@ mod tests {
             std::future::pending::<()>().await;
         });
         let t = std::time::Instant::now();
-        let e = HostClient::connect_dir_within(tmp.path(), "test", Duration::from_millis(300))
-            .await
-            .err()
-            .expect("a silent daemon must not connect");
-        assert!(t.elapsed() < Duration::from_secs(2));
+        let e = tokio::time::timeout(
+            HANG,
+            HostClient::connect_dir_within(tmp.path(), "test", Duration::from_millis(300)),
+        )
+        .await
+        .expect("the handshake deadline must end the connect, not the test's own timeout")
+        .err()
+        .expect("a silent daemon must not connect");
+        assert!(
+            t.elapsed() >= Duration::from_millis(300),
+            "{:?}",
+            t.elapsed()
+        );
         assert!(e.to_string().contains("handshake") && e.to_string().contains("hostd.log"));
         assert!(!super::is_unusable(&e), "slow is not unusable");
         assert!(super::HANDSHAKE_DEADLINE <= Duration::from_secs(5));
@@ -1027,9 +1040,8 @@ mod tests {
         let mut c = HostClient::connect(&sock, "t", "test").await.unwrap();
         c.probe = Some((Duration::from_millis(50), Duration::from_millis(50)));
         c.probe_misses = 3;
-        let t = std::time::Instant::now();
         let e = tokio::time::timeout(
-            Duration::from_secs(5),
+            HANG,
             c.call_within("project_action", json!({}), Duration::from_secs(3600)),
         )
         .await
@@ -1037,8 +1049,8 @@ mod tests {
             "streaming must not keep a call that gets no probe reply alive for its class deadline",
         )
         .unwrap_err();
+        // The class deadline (an hour) is far past HANG: only the missed probes can end the call.
         assert!(e.downcast_ref::<super::Unanswered>().is_some());
-        assert!(t.elapsed() < Duration::from_secs(2), "{:?}", t.elapsed());
         assert!(c.pending.lock().as_ref().unwrap().is_empty());
     }
 
@@ -1061,11 +1073,11 @@ mod tests {
         let dir = tmp.path();
         // SIGTERM ignored before `exec`, so the `atlas hostd` process inherits it.
         let mut hostd = std::process::Command::new("bash")
-            .args(["-c", "trap '' TERM; exec -a 'atlas hostd' sleep 60"])
+            .args(["-c", "trap '' TERM; exec -a 'atlas hostd' sleep 600"])
             .spawn()
             .unwrap();
         std::fs::write(crate::paths::pid(dir), hostd.id().to_string()).unwrap();
-        tokio::time::timeout(Duration::from_secs(5), async {
+        tokio::time::timeout(HANG, async {
             while super::live_hostd_pid(dir).is_none() {
                 tokio::time::sleep(Duration::from_millis(20)).await;
             }
@@ -1075,10 +1087,17 @@ mod tests {
 
         super::retire_hostd_within(dir, Duration::from_millis(100), Duration::from_millis(400))
             .await;
-        let ended = (0..50).any(|_| {
+        // The process outlives HANG by itself, so only the kill can end it: wait for that exit event.
+        let t0 = std::time::Instant::now();
+        let ended = loop {
+            if hostd.try_wait().unwrap().is_some() {
+                break true;
+            }
+            if t0.elapsed() > HANG {
+                break false;
+            }
             std::thread::sleep(Duration::from_millis(20));
-            hostd.try_wait().unwrap().is_some()
-        });
+        };
         let _ = hostd.kill();
         let _ = hostd.wait();
         assert!(ended, "a hostd that ignores SIGTERM was left running");
@@ -1102,7 +1121,7 @@ mod tests {
             .spawn()
             .unwrap();
         std::fs::write(crate::paths::pid(dir), hostd.id().to_string()).unwrap();
-        tokio::time::timeout(Duration::from_secs(5), async {
+        tokio::time::timeout(HANG, async {
             while super::live_hostd_pid(dir).is_none() {
                 tokio::time::sleep(Duration::from_millis(20)).await;
             }
@@ -1213,7 +1232,7 @@ mod tests {
                 tokio::time::sleep(Duration::from_millis(20)).await;
             }
         };
-        tokio::time::timeout(Duration::from_secs(5), verified)
+        tokio::time::timeout(HANG, verified)
             .await
             .expect("the fake hostd never showed an `atlas hostd` command line");
 

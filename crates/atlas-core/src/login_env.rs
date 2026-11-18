@@ -658,22 +658,42 @@ mod tests {
         assert!(parse("nothing").is_none());
     }
 
-    /// An interactive rc that blocks forever must not hang a spawn: the probe times out and falls back.
+    /// A shell that never answers; each run of it appends a line to `runs`, so a test counts the probes that
+    /// were attempted instead of timing them.
+    fn hanging_shell(home: &Path) -> (std::path::PathBuf, std::path::PathBuf) {
+        let sh = home.join("hang.sh");
+        let runs = home.join("runs");
+        std::fs::write(
+            &sh,
+            format!("#!/bin/sh\necho run >> {}\nsleep 30\n", runs.display()),
+        )
+        .unwrap();
+        std::fs::set_permissions(&sh, std::fs::Permissions::from_mode(0o755)).unwrap();
+        (sh, runs)
+    }
+
+    fn runs_of(runs: &Path) -> usize {
+        std::fs::read_to_string(runs).map_or(0, |s| s.lines().count())
+    }
+
+    /// An interactive rc that blocks forever must not hang a spawn: the probe times out and falls back. Each
+    /// flag set is tried once and bounded by its own timeout, so the probe ends after exactly that many attempts
+    /// (a retry loop would add runs; a missing timeout would not report one).
     #[test]
     fn a_hanging_rc_times_out_instead_of_blocking() {
         let home = tempfile::tempdir().unwrap();
-        let sh = home.path().join("hang.sh");
-        std::fs::write(&sh, "#!/bin/sh\nsleep 30\n").unwrap();
-        std::fs::set_permissions(&sh, std::fs::Permissions::from_mode(0o755)).unwrap();
-        let t = Instant::now();
+        let (sh, runs) = hanging_shell(home.path());
         let p = probe_with(sh.to_str().unwrap(), home.path(), &gui_env(home.path()));
         assert!(
             p.error.as_deref().unwrap().contains("timed out"),
             "{:?}",
             p.error
         );
-        // Three flag sets, each bounded.
-        assert!(t.elapsed() < ATTEMPT_TIMEOUT * 3 + Duration::from_secs(5));
+        assert_eq!(
+            runs_of(&runs),
+            FLAG_SETS.len(),
+            "one bounded attempt per flag set"
+        );
     }
 
     /// Opening a terminal reads the cached probe: `shell()`, `vars()` and `warm()` never run the shell
@@ -681,20 +701,21 @@ mod tests {
     #[test]
     fn reading_the_cached_probe_does_not_probe_again() {
         let home = tempfile::tempdir().unwrap();
-        let hang = home.path().join("hang.sh");
-        std::fs::write(&hang, "#!/bin/sh\nsleep 30\n").unwrap();
-        std::fs::set_permissions(&hang, std::fs::Permissions::from_mode(0o755)).unwrap();
+        let (hang, runs) = hanging_shell(home.path());
         let mut p = probe_with("/bin/sh", home.path(), &gui_env(home.path()));
         p.shell = hang.display().to_string();
         let _env = install(p);
         set_override(Some(hang.display().to_string()));
-        let t = Instant::now();
         for _ in 0..50 {
             assert_eq!(shell(), hang.display().to_string());
             assert!(vars().iter().any(|(k, _)| k == "PATH"));
             warm();
         }
         set_override(None);
-        assert!(t.elapsed() < Duration::from_secs(1), "{:?}", t.elapsed());
+        assert_eq!(
+            runs_of(&runs),
+            0,
+            "a read of the cached probe ran the shell again"
+        );
     }
 }

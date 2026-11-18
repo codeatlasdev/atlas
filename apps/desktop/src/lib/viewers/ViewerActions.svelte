@@ -1,11 +1,12 @@
 <script lang="ts">
 	import { revealLabel } from "#lib/keys.ts";
+	import { m } from "#lib/i18n/m.ts";
 	/** "Open externally" / "Reveal in Finder" (File Explorer on Windows) row shared by the viewers' no-preview states. */
 	let { onopen, onreveal }: { onopen: () => void; onreveal: () => void } = $props();
 </script>
 
 <div class="actions">
-	<button class="primary" onclick={onopen}>Open externally</button>
+	<button class="primary" onclick={onopen}>{m.viewers_files_viewer_actions_open_externally()}</button>
 	<button onclick={onreveal}>{revealLabel()}</button>
 </div>
 

@@ -510,7 +510,7 @@ async fn a_real_child_that_leaks_stepwise_is_measured_degraded_and_flagged_as_a_
     m.usage_every = Duration::ZERO; // the real sampler runs on every call
     up(&mut m).await;
 
-    let deadline = std::time::Instant::now() + Duration::from_secs(60);
+    let deadline = std::time::Instant::now() + atlas_core::scaling::HANG;
     let mut degraded = false;
     let mut leak = false;
     while std::time::Instant::now() < deadline && !(degraded && leak) {

@@ -868,7 +868,7 @@ mod tests {
                 &r,
                 Mode::Pipe,
                 &format!(
-                    "(/bin/sleep 60 & echo $! > {}; wait) &\nwait",
+                    "(/bin/sleep 600 & echo $! > {}; wait) &\nwait",
                     pidfile.display()
                 ),
             ))
@@ -887,7 +887,7 @@ mod tests {
         r.client.wait_exit(sp.session);
         let start = Instant::now();
         // A killed process whose parent is gone is reaped by init at once; a zombie only waits for that.
-        while start.elapsed() < Duration::from_secs(5) {
+        while start.elapsed() < atlas_core::scaling::HANG {
             let dead = std::fs::read_to_string(format!("/proc/{tool}/stat"))
                 .map(|s| {
                     s.rsplit(')')

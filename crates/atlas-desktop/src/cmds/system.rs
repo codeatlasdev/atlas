@@ -605,9 +605,8 @@ mod tests {
 /// back when the launcher fails, is missing or outlives us.
 #[cfg(all(test, target_os = "linux"))]
 mod launch_tests {
-    use std::time::{Duration, Instant};
-
     use atlas_core::login_env::{Installed, Probe};
+    use atlas_core::scaling::HANG;
 
     use super::*;
 
@@ -663,14 +662,16 @@ mod launch_tests {
         }
     }
 
-    const WAIT: Duration = Duration::from_secs(5);
+    // How long a launcher gets to fail: a ceiling, so a slow runner does not turn a launcher that exits into one
+    // that "outlived" it.
+    const WAIT: std::time::Duration = HANG;
 
     #[test]
     fn a_link_runs_xdg_open_with_the_url_as_one_argument() {
         let f = fake();
         f.program("xdg-open", "exit 0");
         let url = "https://example.com/a b?x=1&y=2";
-        run(&url_argv(Os::current(), url).unwrap()).unwrap();
+        run_within(&url_argv(Os::current(), url).unwrap(), WAIT).unwrap();
         assert_eq!(f.recorded(), vec![format!("xdg-open {url}")]);
     }
 
@@ -678,36 +679,18 @@ mod launch_tests {
     fn xdg_open_failing_is_an_error_that_names_the_cause() {
         let f = fake();
         f.program("xdg-open", "exit 4");
-        let e = run(&url_argv(Os::current(), "https://a.b").unwrap()).unwrap_err();
+        let e = run_within(&url_argv(Os::current(), "https://a.b").unwrap(), WAIT).unwrap_err();
         assert!(e.contains("no application is set"), "{e}");
         f.program("xdg-open", "exit 9");
-        let e = run(&url_argv(Os::current(), "https://a.b").unwrap()).unwrap_err();
+        let e = run_within(&url_argv(Os::current(), "https://a.b").unwrap(), WAIT).unwrap_err();
         assert!(e.contains("xdg-open exited with status 9"), "{e}");
     }
 
     #[test]
     fn a_missing_launcher_says_it_is_not_installed() {
         let _f = fake();
-        let e = run(&url_argv(Os::current(), "https://a.b").unwrap()).unwrap_err();
+        let e = run_within(&url_argv(Os::current(), "https://a.b").unwrap(), WAIT).unwrap_err();
         assert!(e.contains("xdg-open is not installed"), "{e}");
-    }
-
-    // xdg-open stays alive while the browser it started does: that is success, and it must not block the app.
-    #[test]
-    fn a_launcher_that_outlives_the_grace_is_success_without_blocking() {
-        let f = fake();
-        f.program("xdg-open", "/bin/sleep 2");
-        let t = Instant::now();
-        run_within(
-            &url_argv(Os::current(), "https://a.b").unwrap(),
-            Duration::from_millis(200),
-        )
-        .unwrap();
-        assert!(
-            t.elapsed() < Duration::from_millis(1500),
-            "{:?}",
-            t.elapsed()
-        );
     }
 
     #[test]
@@ -766,5 +749,66 @@ mod launch_tests {
         .unwrap();
         run_first(&argvs).unwrap();
         assert_eq!(f.recorded(), vec!["code /p/my app"]);
+    }
+}
+
+/// `run_within` against a real child: what comes back while the launcher is still running.
+#[cfg(all(test, unix))]
+mod detached_tests {
+    use std::process::Command;
+    use std::time::Duration;
+
+    use atlas_core::scaling::HANG;
+
+    use super::*;
+
+    fn alive(pid: &str) -> bool {
+        Command::new("kill")
+            .args(["-0", pid])
+            .output()
+            .is_ok_and(|o| o.status.success())
+    }
+
+    // xdg-open stays alive while the browser it started does: that is success, and it must not block the app
+    // (#417). The launcher here runs for longer than the hang ceiling and tells its pid; the call must have returned
+    // while that process is still running (a call that waited for the launcher would return only once it was gone),
+    // so the guard is the child's state at the return, not a stopwatch.
+    #[test]
+    fn a_launcher_that_outlives_the_grace_is_success_without_blocking() {
+        use std::os::unix::fs::PermissionsExt;
+        let dir = tempfile::tempdir().unwrap();
+        let script = dir.path().join("launcher");
+        let pid_file = dir.path().join("pid");
+        std::fs::write(
+            &script,
+            format!(
+                "#!/bin/sh\necho $$ > '{0}.tmp' && mv '{0}.tmp' '{0}'\nexec /bin/sleep {1}\n",
+                pid_file.display(),
+                HANG.as_secs() + 30
+            ),
+        )
+        .unwrap();
+        std::fs::set_permissions(&script, std::fs::Permissions::from_mode(0o755)).unwrap();
+
+        run_within(&[script.into_os_string()], Duration::from_millis(200)).unwrap();
+
+        // The script may not have started yet on a loaded machine: wait for its pid (a real event).
+        let end = std::time::Instant::now() + HANG;
+        let pid = loop {
+            if let Ok(p) = std::fs::read_to_string(&pid_file) {
+                break p.trim().to_string();
+            }
+            assert!(
+                std::time::Instant::now() < end,
+                "the launcher never started"
+            );
+            std::thread::sleep(Duration::from_millis(10));
+        };
+        let still_running = alive(&pid);
+        let _ = Command::new("kill").arg(&pid).output();
+        assert!(
+            still_running,
+            "the call returned only after the launcher was gone: it blocked on it"
+        );
     }
 }

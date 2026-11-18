@@ -242,7 +242,7 @@ mod tests {
         let (base, mut rx) = fake_relay(204).await;
         let expired = notify_via(&client(), &base, &[tok("fcm-1", "grant-1")], "task_done").await;
         assert!(expired.is_empty());
-        let (line, body) = tokio::time::timeout(Duration::from_secs(5), rx.recv())
+        let (line, body) = tokio::time::timeout(atlas_core::scaling::HANG, rx.recv())
             .await
             .unwrap()
             .unwrap();

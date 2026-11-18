@@ -852,11 +852,8 @@ fn bench_one_million_lines_ingest_filter_search() {
         "memory bound: {bytes}"
     );
     assert!(buf.len() <= 8 * 200_000);
-    assert!(ingest.as_secs_f64() < 15.0, "ingest {ingest:?}");
-    assert!(
-        search_incr.as_millis() < 250,
-        "incremental find {search_incr:?}"
-    );
+    // No time budget here: how the cost grows is guarded by `a_sync_after_appends_costs_the_new_lines_not_the_history`
+    // and `ingest_with_eviction_costs_a_constant_per_line` (runtime/logindex/tests.rs).
 }
 
 /// Rendered rows of the whole screen (non-blank content rows count).

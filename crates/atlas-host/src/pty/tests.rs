@@ -163,7 +163,7 @@ async fn stuck_raw_reader_does_not_block_the_program() {
     let t0 = std::time::Instant::now();
     while s.exited().is_none() {
         assert!(
-            t0.elapsed() < Duration::from_secs(20),
+            t0.elapsed() < atlas_core::scaling::HANG,
             "program froze behind the reader"
         );
         tokio::time::sleep(Duration::from_millis(50)).await;
@@ -198,7 +198,7 @@ async fn until_exited(s: &Session) -> Option<i32> {
             return code;
         }
         assert!(
-            t0.elapsed() < Duration::from_secs(15),
+            t0.elapsed() < atlas_core::scaling::HANG,
             "the session never ended after its program exited"
         );
         tokio::time::sleep(Duration::from_millis(20)).await;
@@ -231,7 +231,7 @@ async fn an_exit_listener_attached_after_the_exit_still_gets_pty_exit() {
     assert_eq!(until_exited(&s).await, Some(4));
     let (tx, mut rx) = crate::pty::out_channel();
     s.attach(1, tx, false, false);
-    let line = tokio::time::timeout(Duration::from_secs(5), rx.recv())
+    let line = tokio::time::timeout(atlas_core::scaling::HANG, rx.recv())
         .await
         .expect("a late listener never heard the exit")
         .expect("the listener closed without the exit");
@@ -244,9 +244,9 @@ async fn an_exit_listener_attached_after_the_exit_still_gets_pty_exit() {
 async fn kill_ends_a_running_program() {
     let dir = tempfile::tempdir().unwrap();
     let script = if cfg!(windows) {
-        "ping -n 60 127.0.0.1 >NUL"
+        "ping -n 600 127.0.0.1 >NUL"
     } else {
-        "sleep 60"
+        "sleep 600"
     };
     let s = Session::spawn(shell_req(script), dir.path()).unwrap();
     tokio::time::sleep(Duration::from_millis(300)).await;
@@ -284,7 +284,7 @@ async fn pty_and_exec_find_binaries_the_login_shell_put_on_path() {
     let s = Session::spawn(req, dir.path()).unwrap();
     let t0 = std::time::Instant::now();
     while s.exited().is_none() {
-        assert!(t0.elapsed() < Duration::from_secs(10), "pty did not exit");
+        assert!(t0.elapsed() < atlas_core::scaling::HANG, "pty did not exit");
         tokio::time::sleep(Duration::from_millis(20)).await;
     }
     tokio::time::sleep(Duration::from_millis(200)).await;
@@ -355,7 +355,7 @@ async fn a_tab_without_argv_starts_the_probed_login_shell_not_the_inherited_one(
     let s = Session::spawn(req, dir.path()).unwrap();
     let t0 = std::time::Instant::now();
     while s.exited().is_none() {
-        assert!(t0.elapsed() < Duration::from_secs(10), "pty did not exit");
+        assert!(t0.elapsed() < atlas_core::scaling::HANG, "pty did not exit");
         tokio::time::sleep(Duration::from_millis(20)).await;
     }
     tokio::time::sleep(Duration::from_millis(200)).await;
@@ -399,7 +399,7 @@ async fn an_attacher_that_never_reads_is_dropped_and_the_others_keep_streaming()
     let t0 = std::time::Instant::now();
     while !text_tail.contains("END") {
         assert!(
-            t0.elapsed() < Duration::from_secs(60),
+            t0.elapsed() < atlas_core::scaling::HANG,
             "the program froze behind a client that does not read (saw {seen} bytes)"
         );
         while let Some(line) = healthy_rx.try_recv() {
@@ -679,7 +679,7 @@ fn daemonizing_shell(marker: &std::path::Path, then: &str) -> String {
 
 #[cfg(unix)]
 async fn daemon_pid(marker: &std::path::Path) -> u32 {
-    for _ in 0..200 {
+    for _ in 0..3000 {
         if let Ok(s) = std::fs::read_to_string(marker)
             && let Ok(p) = s.trim().parse::<u32>()
         {
@@ -716,7 +716,7 @@ async fn gone_within(pid: u32, within: Duration) -> bool {
 /// Wait (bounded) until the daemon has left the shell's parent chain.
 #[cfg(unix)]
 async fn left_the_parent_chain(shell: u32, daemon: u32) -> bool {
-    for _ in 0..200 {
+    for _ in 0..1200 {
         if !atlas_core::procs::tree(shell, &atlas_core::procs::table()).contains(&daemon) {
             return true;
         }
@@ -756,7 +756,7 @@ async fn closing_a_terminal_ends_the_process_it_daemonized() {
 
     s.kill().await;
     assert!(
-        gone_within(daemon, Duration::from_secs(10)).await,
+        gone_within(daemon, atlas_core::scaling::HANG).await,
         "daemon {daemon} survived the close"
     );
     assert!(
@@ -785,7 +785,7 @@ async fn a_shell_that_exits_by_itself_does_not_leave_its_daemon_behind() {
     std::fs::write(&go, "").unwrap();
     until_exited(&s).await;
     assert!(
-        gone_within(daemon, Duration::from_secs(10)).await,
+        gone_within(daemon, atlas_core::scaling::HANG).await,
         "daemon {daemon} outlived its terminal's shell"
     );
 }
@@ -809,13 +809,13 @@ async fn closing_a_terminal_leaves_another_terminals_processes_alone() {
     let (da, db) = (daemon_pid(&ma).await, daemon_pid(&mb).await);
     track(dir.path());
     a.kill().await;
-    assert!(gone_within(da, Duration::from_secs(10)).await);
+    assert!(gone_within(da, atlas_core::scaling::HANG).await);
     assert!(
         atlas_core::procs::start_time(db).is_some(),
         "the other terminal's daemon must survive"
     );
     b.kill().await;
-    assert!(gone_within(db, Duration::from_secs(10)).await);
+    assert!(gone_within(db, atlas_core::scaling::HANG).await);
 }
 
 // ---- sessions that run as a crewmate's own user (issue #200), through a real spawn helper ----------
@@ -839,7 +839,7 @@ mod isolated {
     }
 
     async fn until_text(s: &Session, needle: &str) {
-        for _ in 0..200 {
+        for _ in 0..2400 {
             if s.read_text(50).contains(needle) {
                 return;
             }
@@ -877,7 +877,7 @@ mod isolated {
         let s = Session::spawn_as(req(&r, ""), scroll.path(), Some((&r.client, USER))).unwrap();
         until_text(&s, "up").await;
         // TERM is ignored by the program: kill() must escalate to KILL, as for a plain session.
-        tokio::time::timeout(Duration::from_secs(15), s.kill())
+        tokio::time::timeout(atlas_core::scaling::HANG, s.kill())
             .await
             .expect("kill never returned");
         assert_eq!(until_exited(&s).await, Some(137));
@@ -1054,7 +1054,7 @@ async fn output_past_the_file_cap_trims_the_scrollback_to_the_ring() {
     let bin = super::bin_path(dir.path(), &s.id);
     s.buf.lock().file_len = super::stream::FILE_MAX;
     let _ = s.output(b"fresh-output");
-    for _ in 0..200 {
+    for _ in 0..6000 {
         if s.buf.lock().trim.is_none() {
             break;
         }

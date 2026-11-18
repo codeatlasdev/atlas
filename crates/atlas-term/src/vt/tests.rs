@@ -339,12 +339,18 @@ fn synchronized_output_holds_until_end_or_flush() {
 #[test]
 fn a_synchronized_update_is_held_for_a_second_like_ghostty() {
     let vt = Vt::new(20, 2, |_| {});
+    // The deadline is stamped inside `feed`, so it lies between `t0 + 1 s` and `t1 + 1 s`: a window set by the
+    // two clock reads around the call, which a slow machine cannot widen the way it widens a measured duration.
+    let hold = Duration::from_millis(1000);
     let t0 = Instant::now();
     vt.feed(b"\x1b[?2026hhidden");
-    let held = vt.sync_deadline().expect("pending").duration_since(t0);
+    let t1 = Instant::now();
+    let deadline = vt.sync_deadline().expect("pending");
     assert!(
-        held >= Duration::from_millis(990) && held <= Duration::from_millis(1100),
-        "held for {held:?}"
+        deadline >= t0 + hold && deadline <= t1 + hold,
+        "held for {:?} after the call began, the call took {:?}: want a second",
+        deadline.duration_since(t0),
+        t1.duration_since(t0)
     );
     // Still hidden well past vte's own 150 ms.
     std::thread::sleep(Duration::from_millis(200));

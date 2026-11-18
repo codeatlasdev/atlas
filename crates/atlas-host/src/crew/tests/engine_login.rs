@@ -43,7 +43,7 @@ async fn engine_login_opens_a_pty_running_only_that_engines_login_command() {
     let client = server_with_claude(tmp.path(), 1).await;
     // Every engine installed (the login terminal needs the program on PATH).
     for e in ENGINES {
-        fake_agent(tmp.path(), e.id, "sleep 30");
+        fake_agent(tmp.path(), e.id, "sleep 600");
     }
     for e in ENGINES {
         let v = client
@@ -231,7 +231,7 @@ echo '{"type":"result","is_error":true,"result":"Please run /login · API Error:
         .await
         .unwrap();
     let task = t["task"]["id"].as_str().unwrap().to_string();
-    let failed = wait_task_state(&client, &id, &task, "failed", Duration::from_secs(20)).await;
+    let failed = wait_task_state(&client, &id, &task, "failed", atlas_core::scaling::HANG).await;
     assert!(
         failed["error"].as_str().unwrap().contains("/login"),
         "{failed}"
@@ -391,7 +391,7 @@ async fn a_finished_sign_in_terminal_is_removed_after_the_grace_and_a_running_on
     let client = server_with_claude(tmp.path(), 1).await;
     // codex logs in and exits at once; opencode waits for a code that never comes.
     fake_agent(tmp.path(), "codex", "echo done");
-    fake_agent(tmp.path(), "opencode", "sleep 60");
+    fake_agent(tmp.path(), "opencode", "sleep 600");
     engine_login::set_test_reap(Some(Duration::from_millis(300)));
     let quick = client
         .call("crew_engine_login", json!({"engine": "codex"}))
@@ -418,7 +418,7 @@ async fn a_finished_sign_in_terminal_is_removed_after_the_grace_and_a_running_on
         }
     };
     let mut gone = false;
-    for _ in 0..100 {
+    for _ in 0..1200 {
         if !listed(&client).await.contains(&quick) {
             gone = true;
             break;

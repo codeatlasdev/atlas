@@ -29,13 +29,13 @@ pub(super) async fn daemon_with_fault(dir: &Path, fault: &str) -> HostClient {
         )
         .await;
     });
-    for _ in 0..200 {
+    for _ in 0..1200 {
         if let Ok(c) = HostClient::connect_dir(dir, "test").await {
             return c;
         }
         tokio::time::sleep(Duration::from_millis(50)).await;
     }
-    panic!("hostd did not start in 10 s");
+    panic!("hostd did not start");
 }
 
 /// [`daemon`] whose crewmates run as their own users through the helper `isolation` names.
@@ -56,13 +56,13 @@ pub(super) async fn daemon_with(
         )
         .await;
     });
-    for _ in 0..200 {
+    for _ in 0..1200 {
         if let Ok(c) = HostClient::connect_dir(dir, "test").await {
             return c;
         }
         tokio::time::sleep(Duration::from_millis(50)).await;
     }
-    panic!("hostd did not start in 10 s");
+    panic!("hostd did not start");
 }
 
 /// Write `script` as an executable `<dir>/bin/<name>` (a `#!/bin/sh` is prepended) and return its path.

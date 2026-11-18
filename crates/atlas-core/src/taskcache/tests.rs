@@ -4,7 +4,7 @@
 
 use std::fs;
 use std::path::{Path, PathBuf};
-use std::time::{Duration, Instant};
+use std::time::Duration;
 
 use super::*;
 
@@ -374,36 +374,50 @@ fn walk(d: &Path) -> Vec<PathBuf> {
     v
 }
 
-// The speed promise: a hit on a small entry (lookup, restore, replay) is well under 100 ms. The best of five
-// hits is judged: a slow hit every time is a regression, one slow hit on a loaded CI runner is the scheduler.
-// Windows gets 400 ms: on the CI runner (Defender scanning every restored file) one hit measured 129 ms and,
-// on another run, the BEST of five 158 ms, so 100 ms there is not a promise Atlas keeps today; 400 ms still
-// catches a hit that degrades into a rebuild (the recorded run takes 5 s).
-#[test]
-fn a_hit_on_a_small_entry_takes_under_100_ms() {
-    let t = tempfile::tempdir().unwrap();
-    let c = cache(t.path());
-    let a = tree(&t.path().join("a"), "x");
+/// Record the entry a hit will find, then fill the store to `entries` with copies of it under other keys (what a
+/// store that served many different runs holds), and return the spec of the run that hits.
+fn store_of(c: &Cache, t: &Path, entries: usize) -> Spec {
+    let a = tree(&t.join("a"), "x");
     write(&a.join("out/a.txt"), "aaa");
     write(&a.join("out/b.txt"), "bbb");
     let s = spec(&a);
-    c.record(&s.key().unwrap(), &s, &run(0, 5000)).unwrap();
-    let b = tree(&t.path().join("b"), "x");
-    let sb = spec(&b);
-    let hit = || {
-        let start = Instant::now();
-        let k = sb.key().unwrap();
-        let entry = c.lookup(&k).unwrap();
-        c.restore(&entry, &sb).unwrap();
-        c.replay(&entry, &mut Vec::new(), &mut Vec::new()).unwrap();
-        c.note_hit(&entry, &k);
-        start.elapsed()
-    };
-    let best = (0..5).map(|_| hit()).min().unwrap();
-    let budget = Duration::from_millis(if cfg!(windows) { 400 } else { 100 });
+    let k = s.key().unwrap();
+    c.record(&k, &s, &run(0, 5000)).unwrap();
+    let mut entry = c.peek(&k).unwrap();
+    for i in 1..entries {
+        entry.key = format!("{i:064x}");
+        let path = c.root().join("entries").join(format!("{}.json", entry.key));
+        fs::write(path, serde_json::to_vec(&entry).unwrap()).unwrap();
+    }
+    assert_eq!(c.status().entries, entries);
+    spec(&tree(&t.join("b"), "x"))
+}
+
+/// What a hit does for the run it serves: key, lookup, restore, replay, count.
+fn hit(c: &Cache, s: &Spec) {
+    let k = s.key().unwrap();
+    let entry = c.lookup(&k).unwrap();
+    c.restore(&entry, s).unwrap();
+    c.replay(&entry, &mut Vec::new(), &mut Vec::new()).unwrap();
+    c.note_hit(&entry, &k);
+}
+
+// The speed promise: a hit (lookup, restore, replay) touches its own entry and nothing else, so it costs the same
+// in a store of 250 entries and in one of 2000. Regression class: a hit that scans the store (re-measuring its size,
+// verifying every blob, evicting) is slower the more it holds, until it costs as much as the rebuild it replaces.
+// A wall-clock budget ("under 100 ms") measured the runner instead (Windows CI took 129-158 ms for a correct hit),
+// so the guard is how the cost grows with the store, taken in this process: the best of 15 interleaved hits on
+// each, as a ratio. Flat is 1; a scan of an 8x larger store costs several times more.
+#[test]
+fn a_hit_costs_the_same_in_a_store_of_eight_times_the_entries() {
+    let t = tempfile::tempdir().unwrap();
+    let (small, big) = (cache(&t.path().join("small")), cache(&t.path().join("big")));
+    let s_small = store_of(&small, &t.path().join("small"), 250);
+    let s_big = store_of(&big, &t.path().join("big"), 2000);
+    let ratio = crate::scaling::growth(15, || hit(&small, &s_small), || hit(&big, &s_big));
     assert!(
-        best < budget,
-        "the best of five hits took {best:?} (budget {budget:?})"
+        ratio < 2.5,
+        "a hit in a store of 2000 entries cost {ratio:.1}x a hit in one of 250 (flat is 1.0)"
     );
 }
 

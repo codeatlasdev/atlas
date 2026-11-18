@@ -490,7 +490,7 @@ mod kill_tests {
             format!(
                 "#!/bin/sh\nread -r _prompt\n\
                  printf '{{\"type\":\"tool_execution_start\",\"toolCallId\":\"c1\",\"toolName\":\"bash\",\"args\":{{}}}}\\n'\n\
-                 (sleep 60 & echo $! > \"{}\"; wait) &\nwait\n",
+                 (sleep 600 & echo $! > \"{}\"; wait) &\nwait\n",
                 pidfile.display()
             ),
         )
@@ -542,7 +542,7 @@ mod kill_tests {
                 break pid;
             }
             assert!(
-                start.elapsed() < Duration::from_secs(15),
+                start.elapsed() < atlas_core::scaling::HANG,
                 "omp never ran its tool"
             );
             tokio::time::sleep(Duration::from_millis(50)).await;
@@ -558,7 +558,7 @@ mod kill_tests {
         *crate::crew::engine::TEST_ENGINE_PROGRAM.lock() = None;
         assert!(err.contains("cancel"), "{err}");
         let start = Instant::now();
-        while !gone(tool) && start.elapsed() < Duration::from_secs(5) {
+        while !gone(tool) && start.elapsed() < atlas_core::scaling::HANG {
             tokio::time::sleep(Duration::from_millis(50)).await;
         }
         assert!(

@@ -6,8 +6,8 @@ import { promptDialog } from "#lib/stores/ask.svelte.ts";
 import { m } from "#lib/i18n/m.ts";
 import { envOf, posParams, type Location } from "#lib/lsp/context.ts";
 import { applyWorkspaceEdit } from "#lib/lsp/apply.ts";
+import { editsToChanges } from "#lib/lsp/changes.ts";
 import {
-	editsToChanges,
 	offsetToPos,
 	rangeToOffsets,
 	uriToPath,

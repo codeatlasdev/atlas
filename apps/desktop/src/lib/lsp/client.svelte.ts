@@ -7,8 +7,9 @@
 import { listen } from "@tauri-apps/api/event";
 import { untrack } from "svelte";
 import type { ChangeSet, Text } from "@codemirror/state";
+import type { ChangeBuffer } from "#lib/lsp/changes.ts";
 import { hostCall } from "#lib/host.ts";
-import { ChangeBuffer, pathToUri, type TextEdit, type WorkspaceEdit } from "#lib/lsp/convert.ts";
+import { pathToUri, type TextEdit, type WorkspaceEdit } from "#lib/lsp/convert.ts";
 import { mergeLspOverrides } from "#lib/lsp/overrides.ts";
 import type { ProjectLsp } from "#lib/lsp/projectParse.ts";
 import { invalidateProjectSettings, isProjectSettingsPath, projectLsp } from "#lib/lsp/projectSettings.ts";
@@ -181,7 +182,7 @@ export class LspDoc {
 	replied = $state(false);
 	/** `.atlas/settings.json` is unusable: one line for the status popover. */
 	projectWarning = $state<string | undefined>();
-	#buf = new ChangeBuffer();
+	#buf: ChangeBuffer;
 	#timer: number | undefined;
 	#open = false;
 	#closed = false;
@@ -196,16 +197,19 @@ export class LspDoc {
 	/**
 	 * `root` is the worktree root (for `.atlas/settings.json`; without it only user settings apply).
 	 * `gated` says whether language servers are off right now (setting, per-language override, or a
-	 * host without `lsp`): the document then stays dormant and sends nothing to hostd.
+	 * host without `lsp`): the document then stays dormant and sends nothing to hostd. `buf` is the editor's
+	 * `ChangeBuffer`, handed in so this module (the shell reaches it at startup) stays off CodeMirror.
 	 */
 	constructor(
 		readonly path: string,
 		readonly languageId: string,
 		text: () => string,
+		buf: ChangeBuffer,
 		root?: string,
 		gated: () => boolean = () => false,
 	) {
 		this.#text = text;
+		this.#buf = buf;
 		this.#gate = gated;
 		this.#root = root;
 		this.#project = () => (root ? projectLsp(root) : Promise.resolve({ lsp: {} }));

@@ -1,7 +1,11 @@
 <script lang="ts">
+	import "../../lib/locale-client";
+	import { m } from "../../lib/paraglide/messages.js";
+	import { getLocale } from "../../lib/paraglide/runtime.js";
 	// Release-notes signup. Contract unchanged: POST /api/waitlist { email, website (honeypot), lang } -> { ok } | { ok:false, error }. Owned by Deploy.
-	// `topic` tags the signup (a platform someone waits for, or "mobile-link" for the send-me-the-link form); `cta`, `title`, `done` and `id` customize the copy.
-	let { variant = "hero", topic = "", cta = "Get release notes", title = "You are on the list.", done = "One email per release. Nothing else.", id = "" }: { variant?: "hero" | "paper" | "close"; topic?: string; cta?: string; title?: string; done?: string; id?: string } = $props();
+	// `topic` tags the signup (a platform someone waits for, or "mobile-link" for the send-me-the-link form); `cta`, `title`, `done` and `id` customize the copy
+	// (messages from the caller); without them the form says its own release-notes text.
+	let { variant = "hero", topic = "", cta, title, done, id = "" }: { variant?: "hero" | "paper" | "close"; topic?: string; cta?: string; title?: string; done?: string; id?: string } = $props();
 	const uid = $derived(id || variant);
 	let email = $state("");
 	let website = $state("");
@@ -17,7 +21,7 @@
 			const res = await fetch("/api/waitlist", {
 				method: "POST",
 				headers: { "content-type": "application/json" },
-				body: JSON.stringify({ email, website, lang: "en", topic }),
+				body: JSON.stringify({ email, website, lang: getLocale(), topic }),
 			});
 			if (res.ok) {
 				status = "ok";
@@ -27,26 +31,26 @@
 			status = "error";
 			message =
 				body.error === "invalid_email"
-					? "That email does not look right. Check it and try again."
+					? m.islands_waitlist_invalid_email()
 					: body.error === "rate_limited"
-						? "Too many tries. Wait a minute and try again."
-						: "Something went wrong. Try again in a moment.";
+						? m.islands_waitlist_rate_limited()
+						: m.islands_waitlist_error();
 		} catch {
 			status = "error";
-			message = "Could not reach the server. Check your connection and try again.";
+			message = m.islands_waitlist_unreachable();
 		}
 	}
 </script>
 
 <div class={`wl ${variant}`}>
 	{#if status === "ok"}
-		<p class="done" role="status"><i class="dot go"></i> <span><b>{title}</b> {done}</span></p>
+		<p class="done" role="status"><i class="dot go"></i> <span><b>{title ?? m.islands_waitlist_you_are_on_the_list()}</b> {done ?? m.islands_waitlist_done()}</span></p>
 	{:else}
 		<form onsubmit={submit} novalidate>
-			<label class="sr-only" for={`wl-email-${uid}`}>Email</label>
-			<input id={`wl-email-${uid}`} type="email" name="email" inputmode="email" enterkeyhint="send" autocapitalize="none" autocorrect="off" spellcheck="false" required placeholder="you@company.com" autocomplete="email" bind:value={email} aria-describedby={`wl-msg-${uid}`} />
+			<label class="sr-only" for={`wl-email-${uid}`}>{m.islands_waitlist_email()}</label>
+			<input id={`wl-email-${uid}`} type="email" name="email" inputmode="email" enterkeyhint="send" autocapitalize="none" autocorrect="off" spellcheck="false" required placeholder={m.islands_waitlist_email_placeholder()} autocomplete="email" bind:value={email} aria-describedby={`wl-msg-${uid}`} />
 			<input class="hp" type="text" name="website" tabindex="-1" aria-hidden="true" autocomplete="off" bind:value={website} />
-			<button class="btn solid" disabled={status === "busy"}>{status === "busy" ? "Sending" : cta}</button>
+			<button class="btn solid" disabled={status === "busy"}>{status === "busy" ? m.islands_waitlist_sending() : (cta ?? m.islands_waitlist_get_release_notes())}</button>
 		</form>
 		<p id={`wl-msg-${uid}`} class="msg" role="alert">{message}</p>
 	{/if}

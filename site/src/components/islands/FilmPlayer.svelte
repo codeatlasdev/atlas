@@ -6,6 +6,8 @@
 	// until the first play). The dialog's button starts it inside the visitor's tap, so sound is allowed.
 	import { onMount } from "svelte";
 	import { CHAPTERS, FILM_DURATION, chapterAt, filmClock, filmSeconds, fmt, needsRotate, thumbStyle } from "../../data/film";
+	import "../../lib/locale-client";
+	import { m } from "../../lib/paraglide/messages.js";
 
 	let { poster, mp4, webm, captions, thumbs, words, autostart }: { poster: string; mp4: string; webm: string; captions: string; thumbs: string; words: string; autostart?: { nativeFullscreen: boolean } } = $props();
 
@@ -54,7 +56,7 @@
 			await video.play();
 			if (opts.nativeFullscreen) await fullscreen(true);
 		} catch {
-			say("Playback was blocked. Press play again.");
+			say(m.islands_film_player_playback_blocked());
 		}
 	}
 	/** Pause and rewind to the poster (the dialog closed). */
@@ -75,12 +77,12 @@
 	}
 	const skip = (d: number) => {
 		seek(video.currentTime + d);
-		say(`${d > 0 ? "Forward" : "Back"} 5 seconds, ${fmt(video.currentTime)}`);
+		say(d > 0 ? m.islands_film_player_skipped_forward({ time: fmt(video.currentTime) }) : m.islands_film_player_skipped_back({ time: fmt(video.currentTime) }));
 	};
-	function setMuted(m: boolean) {
-		video.muted = m;
-		muted = m;
-		say(m ? "Muted" : "Sound on");
+	function setMuted(mute: boolean) {
+		video.muted = mute;
+		muted = mute;
+		say(mute ? m.islands_film_player_muted() : m.islands_film_player_sound_on());
 	}
 	function setVolume(v: number) {
 		video.volume = v;
@@ -94,13 +96,13 @@
 		} catch {}
 		if (track) track.mode = on ? "hidden" : "disabled";
 		if (!on) cue = "";
-		say(on ? "Captions on" : "Captions off");
+		say(on ? m.islands_film_player_captions_on() : m.islands_film_player_captions_off());
 	}
 	function setRate(r: number) {
 		video.playbackRate = r;
 		rate = r;
 		panel = "";
-		say(`Speed ${r}x`);
+		say(m.islands_film_player_speed_rate({ rate: r }));
 	}
 	/** `native`: phone tap, prefer the <video>'s own fullscreen (iOS rotates it and draws the OS controls); otherwise the player goes fullscreen. */
 	async function fullscreen(native = false) {
@@ -189,7 +191,7 @@
 		else if (k === "escape" && panel) panel = "";
 		else if (/^[0-9]$/.test(k)) {
 			seek((Number(k) / 10) * duration);
-			say(`${Number(k) * 10} percent`);
+			say(m.islands_film_player_seek_percent({ percent: Number(k) * 10 }));
 		} else handled = false;
 		if (handled) {
 			e.preventDefault();
@@ -250,7 +252,7 @@
 	class:fs
 	bind:this={root}
 	role="group"
-	aria-label={`Atlas product film, ${words}`}
+	aria-label={m.islands_film_label({ duration: words })}
 	onpointermove={poke}
 	onfocusin={poke}
 	onkeydown={onKey}
@@ -261,11 +263,11 @@
 		preload="none"
 		playsinline
 		crossorigin="anonymous"
-		aria-label={`Atlas product film, ${words}`}
+		aria-label={m.islands_film_label({ duration: words })}
 		onclick={onSurface}
 		ondblclick={() => !coarse && fullscreen()}
-		onplay={() => ((playing = true), (ended = false), say("Playing"))}
-		onpause={() => ((playing = false), !video.ended && say("Paused"))}
+		onplay={() => ((playing = true), (ended = false), say(m.islands_film_player_playing()))}
+		onpause={() => ((playing = false), !video.ended && say(m.islands_film_player_paused()))}
 		onended={() => ((playing = false), (ended = true), (chromeVisible = true))}
 		onwaiting={() => (waiting = true)}
 		onplaying={() => (waiting = false)}
@@ -276,11 +278,11 @@
 	>
 		<source src={webm} type="video/webm" />
 		<source src={mp4} type="video/mp4" />
-		<track kind="captions" src={captions} srclang="en" label="English" />
+		<track kind="captions" src={captions} srclang="en" label={m.islands_film_player_english()} />
 	</video>
 
 	{#if needsRotate({ fullscreen: fs, portrait })}
-		<p class="turn" role="status"><svg width="26" height="26" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" aria-hidden="true"><rect x="7" y="2" width="10" height="20" rx="2" /><path d="M3 9v6M21 9v6" /></svg>Turn your phone sideways to fill the screen</p>
+		<p class="turn" role="status"><svg width="26" height="26" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" aria-hidden="true"><rect x="7" y="2" width="10" height="20" rx="2" /><path d="M3 9v6M21 9v6" /></svg>{m.islands_film_player_turn_phone()}</p>
 	{/if}
 
 	{#if cue && ccOn && started}
@@ -288,8 +290,8 @@
 	{/if}
 
 	{#if !started}
-		<button type="button" class="big" onclick={() => play()} aria-label={`Play the film, ${words}`}>
-			<span class="blk"><svg width="26" height="26" viewBox="0 0 24 24" fill="currentColor" aria-hidden="true"><path d="M6 3.5v17l15-8.5z" /></svg><b>Play</b><small>{total}</small></span>
+		<button type="button" class="big" onclick={() => play()} aria-label={m.islands_film_player_play_label({ duration: words })}>
+			<span class="blk"><svg width="26" height="26" viewBox="0 0 24 24" fill="currentColor" aria-hidden="true"><path d="M6 3.5v17l15-8.5z" /></svg><b>{m.islands_film_player_play()}</b><small>{total}</small></span>
 		</button>
 	{/if}
 
@@ -297,22 +299,22 @@
 
 	{#if ended}
 		<div class="end">
-			<p class="end-h display">That was the whole thing.</p>
-			<p class="end-p">Install it in one line, or download the installer for your platform.</p>
+			<p class="end-h display">{m.islands_film_player_end_title()}</p>
+			<p class="end-p">{m.islands_film_player_end_install()}</p>
 			<div class="end-b">
-				<a class="btn solid" href="/#install" onclick={() => document.fullscreenElement && document.exitFullscreen()}>Install Atlas</a>
-				<button type="button" class="btn" onclick={() => play()}>Watch again</button>
+				<a class="btn solid" href="/#install" onclick={() => document.fullscreenElement && document.exitFullscreen()}>{m.islands_film_player_install_atlas()}</a>
+				<button type="button" class="btn" onclick={() => play()}>{m.islands_film_player_watch_again()}</button>
 			</div>
 		</div>
 	{/if}
 
 	{#if started && !ended}
-		<div class="bar" role="toolbar" aria-label="Video controls">
+		<div class="bar" role="toolbar" aria-label={m.islands_film_player_video_controls()}>
 			<div
 				class="track"
 				role="slider"
 				tabindex="0"
-				aria-label="Seek"
+				aria-label={m.islands_film_player_seek()}
 				aria-valuemin="0"
 				aria-valuemax={Math.round(duration)}
 				aria-valuenow={Math.round(time)}
@@ -339,35 +341,35 @@
 			</div>
 
 			<div class="row">
-				<button type="button" class="ic" onclick={toggle} aria-label={playing ? "Pause" : "Play"} aria-keyshortcuts="k Space">
+				<button type="button" class="ic" onclick={toggle} aria-label={playing ? m.islands_film_player_pause() : m.islands_film_player_play()} aria-keyshortcuts="k Space">
 					{#if playing}<svg width="22" height="22" viewBox="0 0 24 24" fill="currentColor" aria-hidden="true"><path d="M6 4h4v16H6zM14 4h4v16h-4z" /></svg>{:else}<svg width="22" height="22" viewBox="0 0 24 24" fill="currentColor" aria-hidden="true"><path d="M6 3.5v17l15-8.5z" /></svg>{/if}
 				</button>
-				<button type="button" class="ic sk wide-only" onclick={() => skip(-5)} aria-label="Back 5 seconds" aria-keyshortcuts="j"><svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" aria-hidden="true"><path d="M4 12a8 8 0 1 0 3-6.2M4 4v4h4" /></svg><b>5</b></button>
-				<button type="button" class="ic sk wide-only" onclick={() => skip(5)} aria-label="Forward 5 seconds" aria-keyshortcuts="l"><svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" aria-hidden="true"><path d="M20 12a8 8 0 1 1-3-6.2M20 4v4h-4" /></svg><b>5</b></button>
+				<button type="button" class="ic sk wide-only" onclick={() => skip(-5)} aria-label={m.islands_film_player_back_5_seconds()} aria-keyshortcuts="j"><svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" aria-hidden="true"><path d="M4 12a8 8 0 1 0 3-6.2M4 4v4h4" /></svg><b>5</b></button>
+				<button type="button" class="ic sk wide-only" onclick={() => skip(5)} aria-label={m.islands_film_player_forward_5_seconds()} aria-keyshortcuts="l"><svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" aria-hidden="true"><path d="M20 12a8 8 0 1 1-3-6.2M20 4v4h-4" /></svg><b>5</b></button>
 				<div class="vol wide-only">
-					<button type="button" class="ic" onclick={() => setMuted(!muted)} aria-label={muted ? "Unmute" : "Mute"} aria-keyshortcuts="m">
+					<button type="button" class="ic" onclick={() => setMuted(!muted)} aria-label={muted ? m.islands_film_player_unmute() : m.islands_film_player_mute()} aria-keyshortcuts="m">
 						{#if muted || volume === 0}<svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" aria-hidden="true"><path d="M4 9h4l5-4v14l-5-4H4zM17 9l5 6M22 9l-5 6" /></svg>{:else}<svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" aria-hidden="true"><path d="M4 9h4l5-4v14l-5-4H4zM17 8a5 5 0 0 1 0 8" /></svg>{/if}
 					</button>
-					<input type="range" min="0" max="1" step="0.05" value={muted ? 0 : volume} oninput={(e) => setVolume(Number(e.currentTarget.value))} aria-label="Volume" />
+					<input type="range" min="0" max="1" step="0.05" value={muted ? 0 : volume} oninput={(e) => setVolume(Number(e.currentTarget.value))} aria-label={m.islands_film_player_volume()} />
 				</div>
 				<p class="tm" aria-hidden="true">{fmt(time)} <span>/ {total}</span></p>
 				<p class="ch wide-only" aria-hidden="true">{CHAPTERS[current]?.title}</p>
 				<span class="sp"></span>
 				<div class="menu wide-only">
-					<button type="button" class="ic txt" onclick={() => (panel = panel === "speed" ? "" : "speed")} aria-label={`Playback speed ${rate}x`} aria-expanded={panel === "speed"} aria-haspopup="true">{rate}x</button>
+					<button type="button" class="ic txt" onclick={() => (panel = panel === "speed" ? "" : "speed")} aria-label={m.islands_film_player_playback_speed({ rate })} aria-expanded={panel === "speed"} aria-haspopup="true">{m.islands_film_player_rate_x({ rate })}</button>
 					{#if panel === "speed"}
-						<ul class="pop" role="menu" aria-label="Speed">
-							{#each RATES as r}<li role="none"><button type="button" role="menuitemradio" aria-checked={r === rate} onclick={() => setRate(r)}>{r}x</button></li>{/each}
+						<ul class="pop" role="menu" aria-label={m.islands_film_player_speed()}>
+							{#each RATES as r}<li role="none"><button type="button" role="menuitemradio" aria-checked={r === rate} onclick={() => setRate(r)}>{m.islands_film_player_rate_x({ rate: r })}</button></li>{/each}
 						</ul>
 					{/if}
 				</div>
-				<button type="button" class="ic txt cc-row" class:on={ccOn} onclick={() => setCaptions(!ccOn)} aria-label="Captions" aria-pressed={ccOn} aria-keyshortcuts="c">CC</button>
+				<button type="button" class="ic txt cc-row" class:on={ccOn} onclick={() => setCaptions(!ccOn)} aria-label={m.islands_film_player_captions()} aria-pressed={ccOn} aria-keyshortcuts="c">{m.islands_film_player_cc()}</button>
 				<div class="menu">
-					<button type="button" class="ic txt chbtn" onclick={() => (panel = panel === "chapters" ? "" : "chapters")} aria-label="Chapters" aria-expanded={panel === "chapters"} aria-haspopup="true"><svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" aria-hidden="true"><path d="M4 6h16M4 12h16M4 18h10" /></svg><span class="wide-only">Chapters</span></button>
+					<button type="button" class="ic txt chbtn" onclick={() => (panel = panel === "chapters" ? "" : "chapters")} aria-label={m.islands_film_player_chapters()} aria-expanded={panel === "chapters"} aria-haspopup="true"><svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" aria-hidden="true"><path d="M4 6h16M4 12h16M4 18h10" /></svg><span class="wide-only">{m.islands_film_player_chapters()}</span></button>
 					{#if panel === "chapters"}
-						{#if coarse}<button type="button" class="scrim" aria-label="Close chapters" onclick={() => (panel = "")}></button>{/if}
-						<ul class="pop chap" class:sheet={coarse} role="menu" aria-label="Chapters">
-							{#if coarse}<li class="sh" role="presentation"><b>Chapters</b><button type="button" class="x" aria-label="Close chapters" onclick={() => (panel = "")}>×</button></li>{/if}
+						{#if coarse}<button type="button" class="scrim" aria-label={m.islands_film_player_close_chapters()} onclick={() => (panel = "")}></button>{/if}
+						<ul class="pop chap" class:sheet={coarse} role="menu" aria-label={m.islands_film_player_chapters()}>
+							{#if coarse}<li class="sh" role="presentation"><b>{m.islands_film_player_chapters()}</b><button type="button" class="x" aria-label={m.islands_film_player_close_chapters()} onclick={() => (panel = "")}>×</button></li>{/if}
 							{#each CHAPTERS as c, i}
 								<li role="none"><button type="button" role="menuitem" class:cur={i === current} onclick={() => (seek(c.t), (panel = ""), play())}><span>{c.title}</span><time>{fmt(c.t)}</time></button></li>
 							{/each}
@@ -375,22 +377,22 @@
 					{/if}
 				</div>
 				<div class="menu narrow-only">
-					<button type="button" class="ic" onclick={() => (panel = panel === "more" ? "" : "more")} aria-label="More controls" aria-expanded={panel === "more"} aria-haspopup="true"><svg width="22" height="22" viewBox="0 0 24 24" fill="currentColor" aria-hidden="true"><circle cx="5" cy="12" r="1.9" /><circle cx="12" cy="12" r="1.9" /><circle cx="19" cy="12" r="1.9" /></svg></button>
+					<button type="button" class="ic" onclick={() => (panel = panel === "more" ? "" : "more")} aria-label={m.islands_film_player_more_controls()} aria-expanded={panel === "more"} aria-haspopup="true"><svg width="22" height="22" viewBox="0 0 24 24" fill="currentColor" aria-hidden="true"><circle cx="5" cy="12" r="1.9" /><circle cx="12" cy="12" r="1.9" /><circle cx="19" cy="12" r="1.9" /></svg></button>
 					{#if panel === "more"}
-						<button type="button" class="scrim" aria-label="Close menu" onclick={() => (panel = "")}></button>
-						<ul class="pop sheet" role="menu" aria-label="More controls">
-							<li class="sh" role="presentation"><b>Controls</b><button type="button" class="x" aria-label="Close menu" onclick={() => (panel = "")}>×</button></li>
-							<li role="none"><button type="button" role="menuitem" onclick={() => (skip(-5), (panel = ""))}><span>Back 5 seconds</span></button></li>
-							<li role="none"><button type="button" role="menuitem" onclick={() => (skip(5), (panel = ""))}><span>Forward 5 seconds</span></button></li>
-							<li role="none"><button type="button" role="menuitemcheckbox" aria-checked={muted} onclick={() => (setMuted(!muted), (panel = ""))}><span>{muted ? "Unmute" : "Mute"}</span></button></li>
-							<li role="none" class="cc-more"><button type="button" role="menuitemcheckbox" aria-checked={ccOn} onclick={() => (setCaptions(!ccOn), (panel = ""))}><span>Captions</span></button></li>
-							{#each RATES as r}<li role="none"><button type="button" role="menuitemradio" aria-checked={r === rate} onclick={() => setRate(r)}><span>Speed {r}x</span></button></li>{/each}
-							{#if pipOk}<li role="none"><button type="button" role="menuitem" onclick={() => (pip(), (panel = ""))}><span>Picture in picture</span></button></li>{/if}
+						<button type="button" class="scrim" aria-label={m.islands_film_player_close_controls()} onclick={() => (panel = "")}></button>
+						<ul class="pop sheet" role="menu" aria-label={m.islands_film_player_more_controls()}>
+							<li class="sh" role="presentation"><b>{m.islands_film_player_controls()}</b><button type="button" class="x" aria-label={m.islands_film_player_close_controls()} onclick={() => (panel = "")}>×</button></li>
+							<li role="none"><button type="button" role="menuitem" onclick={() => (skip(-5), (panel = ""))}><span>{m.islands_film_player_back_5_seconds()}</span></button></li>
+							<li role="none"><button type="button" role="menuitem" onclick={() => (skip(5), (panel = ""))}><span>{m.islands_film_player_forward_5_seconds()}</span></button></li>
+							<li role="none"><button type="button" role="menuitemcheckbox" aria-checked={muted} onclick={() => (setMuted(!muted), (panel = ""))}><span>{muted ? m.islands_film_player_unmute() : m.islands_film_player_mute()}</span></button></li>
+							<li role="none" class="cc-more"><button type="button" role="menuitemcheckbox" aria-checked={ccOn} onclick={() => (setCaptions(!ccOn), (panel = ""))}><span>{m.islands_film_player_captions()}</span></button></li>
+							{#each RATES as r}<li role="none"><button type="button" role="menuitemradio" aria-checked={r === rate} onclick={() => setRate(r)}><span>{m.islands_film_player_speed_rate({ rate: r })}</span></button></li>{/each}
+							{#if pipOk}<li role="none"><button type="button" role="menuitem" onclick={() => (pip(), (panel = ""))}><span>{m.islands_film_player_picture_in_picture()}</span></button></li>{/if}
 						</ul>
 					{/if}
 				</div>
-				{#if pipOk}<button type="button" class="ic wide-only" onclick={pip} aria-label="Picture in picture"><svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" aria-hidden="true"><path d="M3 5h18v14H3zM12 12h7v5h-7z" /></svg></button>{/if}
-				<button type="button" class="ic" onclick={() => fullscreen()} aria-label={fs ? "Exit full screen" : "Full screen"} aria-keyshortcuts="f"><svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" aria-hidden="true"><path d="M4 9V4h5M20 9V4h-5M4 15v5h5M20 15v5h-5" /></svg></button>
+				{#if pipOk}<button type="button" class="ic wide-only" onclick={pip} aria-label={m.islands_film_player_picture_in_picture()}><svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" aria-hidden="true"><path d="M3 5h18v14H3zM12 12h7v5h-7z" /></svg></button>{/if}
+				<button type="button" class="ic" onclick={() => fullscreen()} aria-label={fs ? m.islands_film_player_exit_full_screen() : m.islands_film_player_full_screen()} aria-keyshortcuts="f"><svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" aria-hidden="true"><path d="M4 9V4h5M20 9V4h-5M4 15v5h5M20 15v5h-5" /></svg></button>
 			</div>
 		</div>
 	{/if}

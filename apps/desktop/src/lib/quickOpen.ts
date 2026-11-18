@@ -65,6 +65,8 @@ export class FileIndex {
 	 * are name matches (see `top`).
 	 */
 	#last: { q: string; hits: Int32Array; complete: boolean } | undefined;
+	/** Files the last `top` looked at (once per scan: a query that falls back to a second scan counts both). */
+	scanned = 0;
 
 	constructor(readonly files: readonly string[]) {
 		const n = files.length;
@@ -90,6 +92,7 @@ export class FileIndex {
 
 	/** Indexes into `files` of the best `limit` matches of `query`, best first; the first `limit` files for an empty query. */
 	top(query: string, limit: number): number[] {
+		this.scanned = 0;
 		const q = query.toLowerCase().replace(/\s+/g, "");
 		if (!q) return Array.from({ length: Math.min(limit, this.files.length) }, (_, i) => i);
 		const qMask = maskOf(q);
@@ -111,6 +114,7 @@ export class FileIndex {
 	/** Scan `source` (default: every file) for matches of `q`: names only, or names and paths. */
 	#rank(q: string, qMask: number, limit: number, source: Int32Array | undefined, namesOnly: boolean) {
 		const count = source ? source.length : this.files.length;
+		this.scanned += count;
 		const hits = new Int32Array(count);
 		let nHits = 0;
 		const best: number[] = [];

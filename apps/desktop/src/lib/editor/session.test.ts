@@ -2,6 +2,7 @@
 import { expect, test } from "bun:test";
 import { longestLine, planOpen, planSave, toViewText } from "./session.ts";
 import { DEFAULT_PREFS } from "#lib/prefs.ts";
+import { growth, linearBound } from "../../../test/scaling.ts";
 
 const prefs = { ...DEFAULT_PREFS.editor };
 const plan = (raw: string, over: Partial<Parameters<typeof planOpen>[0]> = {}) =>
@@ -61,15 +62,21 @@ test("an untouched file saves back to exactly what was on disk (no phantom dirty
 	expect(planSave(q.text, q)).toBe(crlf);
 });
 
-test("a 5 MB minified one-liner is huge, skips indent sniffing and stays fast", () => {
-	const raw = `{"a":${"1,".repeat(2_500_000)}0}`;
-	const t0 = performance.now();
-	const p = plan(raw);
-	const ms = performance.now() - t0;
-	expect(p.large.tier).toBe("huge");
-	expect(p.large.notice).toContain("Huge file");
-	expect(p.large.disable.lsp).toBe(true);
-	expect(ms).toBeLessThan(500);
+// A minified one-liner (5 MB in the incident): opening it is huge-tier, skips indent sniffing, and costs time linear in its
+// size, not quadratic (CPU time at 8x the size over the cost at 1x, test/scaling.ts: ~8 vs ~64, whatever the machine or its
+// load; it was `< 500 ms` on 5 MB, which failed under load with nothing regressed). The threshold pref is lowered so the
+// small sizes take the same huge-tier path as 5 MB, and a quadratic regression is red in seconds instead of hanging.
+test("a minified one-liner is huge, skips indent sniffing, and opens in linear time", () => {
+	const small = { prefs: { ...prefs, large_file_threshold_bytes: 1_000 } };
+	const open = (n: number) => {
+		const raw = `{"a":${"1,".repeat(n / 2)}0}`;
+		const p = plan(raw, small);
+		expect(p.large.tier).toBe("huge");
+		expect(p.large.notice).toContain("Huge file");
+		expect(p.large.disable.lsp).toBe(true);
+		return () => plan(raw, small);
+	};
+	expect(growth(open, 16_384)).toBeLessThan(linearBound());
 });
 
 test("the large threshold preference moves the tier boundary", () => {

@@ -384,6 +384,13 @@ mod tests {
             parse_cli_version("atlas 1.5.0-alpha.24\n  os:   windows\n  arch: x86_64"),
             Some(v("1.5.0-alpha.24"))
         );
+        // The multi-line block of 1.5.0-alpha.26+ (channel, commit, build id): the version stays on the first line.
+        assert_eq!(
+            parse_cli_version(
+                "atlas 1.5.0-alpha.26\n  channel: alpha\n  commit:  0123456789ab\n  build:   56d6b439\n  os:      windows\n  arch:    x86_64"
+            ),
+            Some(v("1.5.0-alpha.26"))
+        );
         assert_eq!(parse_cli_version("error: unrecognized subcommand"), None);
         assert_eq!(parse_cli_version(""), None);
         assert_eq!(

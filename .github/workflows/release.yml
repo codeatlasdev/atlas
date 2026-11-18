@@ -83,6 +83,8 @@ jobs:
 
       - name: Build
         run: |
+          # The debug info goes to a .dSYM next to each binary (archived in Package), not into the shipped file (#318).
+          export CARGO_PROFILE_RELEASE_SPLIT_DEBUGINFO=packed
           cargo build --release --locked --target aarch64-apple-darwin -p atlas-cli
 
       # CycloneDX SBOM of the CLI's dependency tree (the shipped binary). Skipped, loudly, when the tool is missing.
@@ -164,21 +166,42 @@ jobs:
           printf '%s' "$API_KEY_P8" > "$RUNNER_TEMP/notary.p8"
           echo "developer-id=true" >> "$GITHUB_OUTPUT"
 
+      - name: Build desktop app
+        run: |
+          command -v cargo-tauri >/dev/null || cargo install tauri-cli --version "$(scripts/setup.sh --tauri-version)" --locked
+          (cd apps/desktop && bun install --frozen-lockfile)
+          export CARGO_PROFILE_RELEASE_SPLIT_DEBUGINFO=packed
+          (cd crates/atlas-desktop && cargo tauri build --target aarch64-apple-darwin --no-bundle --ci)
+
+      # The shipped binaries carry no debug info (#318): the .dSYMs rustc wrote next to them are the symbols (archived in
+      # Package). Taken out BEFORE the app bundle is packed, so the .app, the .dmg and the CLI tarball all hold the
+      # stripped copy. `strip -S` keeps the symbol names and the Mach-O UUID the .dSYM is matched by.
+      - name: Strip binaries and check
+        run: |
+          R=target/aarch64-apple-darwin/release
+          for b in atlas atlas-desktop; do
+            echo "before: $(wc -c < "$R/$b") bytes $R/$b"
+            strip -S "$R/$b"
+          done
+          ls -ld "$R"/*.dSYM || true
+          scripts/symbols.sh verify-stripped "$R/atlas" "$R/atlas-desktop"
+          dwarfdump --uuid "$R/atlas" "$R/atlas-desktop" || true
+          ls -l "$R/atlas" "$R/atlas-desktop"
+
       # With the Developer ID on, Tauri signs Atlas.app (hardened runtime, crates/atlas-desktop/Entitlements.plist) and the
       # dmg with APPLE_SIGNING_IDENTITY, then notarizes and staples the app (APPLE_API_KEY / APPLE_API_ISSUER /
       # APPLE_API_KEY_PATH). The variables are exported only then: Tauri reads an empty APPLE_SIGNING_IDENTITY as an
       # identity named "", which would break the ad-hoc build. Tauri 2.11's codesign call has no --timestamp and codesign
       # adds none by default (measured: no `Timestamp=` in `codesign -dvv`), but notarization refuses a signature without
       # a secure timestamp; a `codesign` first on PATH that adds the flag makes Tauri's signatures notarizable.
-      - name: Build desktop app
+      # Signing happens in this step, on the binaries Strip already took the debug info from.
+      - name: Bundle desktop app
         env:
           DEVELOPER_ID: ${{ steps.sign.outputs.developer-id }}
           SIGNING_IDENTITY: ${{ secrets.MACOS_SIGNING_IDENTITY }}
           API_KEY_ID: ${{ secrets.APPLE_API_KEY_ID }}
           API_ISSUER: ${{ secrets.APPLE_API_ISSUER }}
         run: |
-          command -v cargo-tauri >/dev/null || cargo install tauri-cli --version "$(scripts/setup.sh --tauri-version)" --locked
-          (cd apps/desktop && bun install --frozen-lockfile)
           if [ "$DEVELOPER_ID" = true ]; then
             export APPLE_SIGNING_IDENTITY="$SIGNING_IDENTITY" APPLE_API_KEY="$API_KEY_ID" APPLE_API_ISSUER="$API_ISSUER" \
               APPLE_API_KEY_PATH="$RUNNER_TEMP/notary.p8"
@@ -187,7 +210,7 @@ jobs:
             chmod +x "$RUNNER_TEMP/bin/codesign"
             export PATH="$RUNNER_TEMP/bin:$PATH"
           fi
-          (cd crates/atlas-desktop && cargo tauri build --target aarch64-apple-darwin --bundles app,dmg --ci)
+          (cd crates/atlas-desktop && cargo tauri bundle --target aarch64-apple-darwin --bundles app,dmg --ci)
 
       # The CLI is signed here (hardened runtime, secure timestamp, Entitlements-cli.plist) and notarized as a zip; a bare
       # binary cannot be stapled, so Gatekeeper checks its ticket online on first run. The dmg is notarized and stapled
@@ -266,6 +289,15 @@ jobs:
           mkdir -p dist
           cp target/aarch64-apple-darwin/release/atlas dist/
           chmod +x dist/atlas
+          # The release's symbols: the .dSYM bundles, named by the build's UUID inside (`atlas version` prints it).
+          if ls -d target/aarch64-apple-darwin/release/*.dSYM >/dev/null 2>&1; then
+            (cd target/aarch64-apple-darwin/release && tar czf "$OLDPWD/dist/atlas-${ATLAS_VERSION}-aarch64-apple-darwin-symbols.tar.gz" ./*.dSYM)
+            shasum -a 256 "dist/atlas-${ATLAS_VERSION}-aarch64-apple-darwin-symbols.tar.gz" > "dist/atlas-${ATLAS_VERSION}-aarch64-apple-darwin-symbols.tar.gz.sha256"
+            echo "symbols archive:"; tar tzf "dist/atlas-${ATLAS_VERSION}-aarch64-apple-darwin-symbols.tar.gz" | head -8
+            ls -l dist/ "${BUNDLE:-target/aarch64-apple-darwin/release/bundle}"/dmg/*.dmg 2>/dev/null || true
+          else
+            echo "::warning::no .dSYM was produced: this release has no symbols for macOS"
+          fi
           # Ad-hoc sign so macOS Gatekeeper doesn't SIGKILL on first run (a Developer ID build was signed above)
           if [ "$DEVELOPER_ID" != true ]; then
             codesign --sign - --force --preserve-metadata=entitlements,requirements,flags dist/atlas
@@ -325,15 +357,36 @@ jobs:
         run: |
           cargo build --release --locked -p atlas-cli
 
-      # tauri.linux.conf.json picks the deb/rpm/appimage bundles and puts target/release/atlas in the packages.
-      # linuxdeploy (and its plugins) are AppImages; APPIMAGE_EXTRACT_AND_RUN unpacks them instead of mounting through FUSE, which the runner does not provide.
+      # The binary and the frontend only; the packages are made below, from the stripped binaries (`cargo tauri bundle`
+      # compiles nothing).
       - name: Build desktop app
-        env:
-          APPIMAGE_EXTRACT_AND_RUN: 1
         run: |
           command -v cargo-tauri >/dev/null || cargo install tauri-cli --version "$(scripts/setup.sh --tauri-version)" --locked
           (cd apps/desktop && bun install --frozen-lockfile)
-          (cd crates/atlas-desktop && cargo tauri build --ci)
+          (cd crates/atlas-desktop && cargo tauri build --ci --no-bundle)
+
+      # The debug info of the shipped binaries, one <build-id>.debug each (scripts/symbols.sh; docs/release.md, "Symbols"),
+      # then taken out of the binaries themselves: the AppImage, .deb, .rpm and the tarball carry the stripped copy (#318).
+      # The Package step below checksums every tarball in dist/.
+      - name: Symbols
+        run: |
+          V=${TAG#v}
+          T=x86_64-unknown-linux-gnu
+          mkdir -p dist symbols
+          ls -l target/release/atlas target/release/atlas-desktop
+          for b in atlas atlas-desktop; do scripts/symbols.sh split "target/release/$b" symbols; done
+          scripts/symbols.sh verify-stripped target/release/atlas target/release/atlas-desktop
+          ls -l target/release/atlas target/release/atlas-desktop symbols
+          tar czf "dist/atlas-$V-$T-symbols.tar.gz" -C symbols .
+          tar tzf "dist/atlas-$V-$T-symbols.tar.gz"
+
+      # tauri.linux.conf.json picks the deb/rpm/appimage bundles and puts target/release/atlas in the packages.
+      # linuxdeploy (and its plugins) are AppImages; APPIMAGE_EXTRACT_AND_RUN unpacks them instead of mounting through FUSE, which the runner does not provide.
+      - name: Bundle desktop app
+        env:
+          APPIMAGE_EXTRACT_AND_RUN: 1
+        run: |
+          (cd crates/atlas-desktop && cargo tauri bundle --ci)
 
       - name: Package
         run: |
@@ -386,6 +439,19 @@ jobs:
       - name: Build CLI
         run: |
           cargo build --release --locked -p atlas-cli
+
+      - name: Symbols
+        run: |
+          V=${TAG#v}
+          T=aarch64-unknown-linux-gnu
+          mkdir -p dist symbols
+          ls -l target/release/atlas
+          scripts/symbols.sh split target/release/atlas symbols
+          scripts/symbols.sh verify-stripped target/release/atlas
+          ls -l target/release/atlas symbols
+          tar czf "dist/atlas-$V-$T-symbols.tar.gz" -C symbols .
+          (cd dist && sha256sum "atlas-$V-$T-symbols.tar.gz" > "atlas-$V-$T-symbols.tar.gz.sha256")
+          tar tzf "dist/atlas-$V-$T-symbols.tar.gz"
 
       - name: Package
         run: |
@@ -464,6 +530,30 @@ jobs:
           T=x86_64-pc-windows-msvc
           mkdir -p stage
           cp "target/$T/release/atlas.exe" "target/$T/release/atlas-desktop.exe" stage/
+
+      # The PDBs of the two binaries: what resolves a Windows crash report's frames (frame - load_bias is the RVA).
+      # Their own artifact: the signing chain below only knows the exes.
+      - name: Stage symbols
+        run: |
+          V=${TAG#v}
+          T=x86_64-pc-windows-msvc
+          mkdir -p symbols dist
+          cp "target/$T/release/"*.pdb symbols/ 2>/dev/null || echo "::warning::no PDB was produced: this release has no symbols for Windows"
+          # The exes carry no DWARF/CodeView sections of their own: the debug info is the PDB next to them.
+          scripts/symbols.sh verify-stripped "target/$T/release/atlas.exe" "target/$T/release/atlas-desktop.exe"
+          ls -l "target/$T/release/atlas.exe" "target/$T/release/atlas-desktop.exe" symbols
+          if ls symbols/*.pdb >/dev/null 2>&1; then
+            tar czf "dist/atlas-$V-$T-symbols.tar.gz" -C symbols .
+            (cd dist && sha256sum "atlas-$V-$T-symbols.tar.gz" > "atlas-$V-$T-symbols.tar.gz.sha256")
+            tar tzf "dist/atlas-$V-$T-symbols.tar.gz"
+          fi
+
+      - name: Upload symbols
+        uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
+        with:
+          name: windows-symbols
+          path: dist/*
+          if-no-files-found: ignore
 
       - name: Upload binaries
         id: upload

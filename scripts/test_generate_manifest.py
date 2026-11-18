@@ -85,6 +85,22 @@ class Manifest(unittest.TestCase):
         self.assertTrue(a["cli"]["url"].endswith(f"/v{version}/atlas-{version}-aarch64-unknown-linux-gnu.tar.gz"))
         self.assertEqual(sorted(a), ["cli", "daemon"])
 
+    # #268: `atlas desktop` asks the manifest's platforms for a `desktop` asset only where release.yml builds one. The
+    # set it knows (`DESKTOP_PLATFORMS` in crates/atlas-cli/src/commands/desktop.rs) and the set the manifest lists
+    # must be the same, or `atlas desktop` either 404s (arm64 Linux used to) or refuses a platform that has a build.
+    def test_the_manifest_lists_a_desktop_asset_exactly_where_atlas_desktop_downloads_one(self):
+        mod = load()
+        src = open(os.path.join(HERE, "..", "crates/atlas-cli/src/commands/desktop.rs")).read()
+        known = set(re.search(r"DESKTOP_PLATFORMS: \[&str; \d+\] = \[(.*?)\];", src, re.S).group(1).replace('"', "").replace(",", " ").split())
+        self.assertTrue(known)
+        listed = {
+            f"{arch}-{os_}"
+            for arch in ("aarch64", "x86_64")
+            for os_ in ("apple-darwin", "unknown-linux-gnu", "pc-windows-msvc")
+            if any(key == "desktop" for key, _ in mod.desktop_files("1.0.0", f"{arch}-{os_}"))
+        }
+        self.assertEqual(listed, known)
+
     # #317: the manifest listed x86_64-apple-darwin and universal-apple-darwin, which no job builds. Its platforms are
     # the `atlas-<target>` artifacts release.yml uploads, no more and no fewer.
     def test_the_manifest_platforms_are_the_targets_release_yml_builds(self):

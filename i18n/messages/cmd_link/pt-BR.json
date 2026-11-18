@@ -13,14 +13,14 @@
 	"cmd_link_desktop_needs_macos": "O `atlas link --desktop` só funciona com o app do macOS. Neste sistema, execute o app de debug diretamente.",
 	"cmd_link_desktop_not_installed": "O Atlas Desktop não está instalado. Rode `atlas desktop` para instalar.",
 	"cmd_link_dev_busy": "O `atlas dev` está rodando, mas ocupado. Tente novamente em instantes.",
-	"cmd_link_dev_in_terminal": "O `atlas dev` está rodando em um terminal para {root} (pid {pid}). Feche-o ou rode `atlas down` e execute este comando de novo.",
+	"cmd_link_dev_in_terminal": "O `atlas dev` de {root} está rodando em um terminal (pid {pid}). Feche-o ou rode `atlas down` e repita este comando.",
 	"cmd_link_kept_as_copy": "Link removido, mas não há backup do binário de release em {path}.",
 	"cmd_link_kept_as_copy_next": "{path} agora é uma cópia simples do build de desenvolvimento, então o `atlas` continua funcionando; rode {command} para instalar uma versão publicada.",
 	"cmd_link_launching": "Iniciando o Atlas Desktop com {path}",
 	"cmd_link_linked": "Link criado   {link} → {target}",
 	"cmd_link_no_cargo": "Não foi possível executar o `cargo`. Verifique se o Rust está instalado e se o `cargo` está no PATH.",
-	"cmd_link_no_cwd": "Não foi possível ler a pasta atual. Rode o comando em uma pasta que exista ou passe `--dir <workspace-root>`.",
-	"cmd_link_no_debug_binary": "Não há binário de debug em {path}. Rode `cargo build -p atlas-cli` antes ou rode `atlas link` sem `--no-build`.",
+	"cmd_link_no_cwd": "Não foi possível ler a pasta atual. Rode o comando em uma pasta existente ou passe `--dir <workspace-root>`.",
+	"cmd_link_no_debug_binary": "Não há binário de debug em {path}. Rode `cargo build -p atlas-cli` antes ou use `atlas link` sem `--no-build`.",
 	"cmd_link_no_home": [
 		{
 			"declarations": [
@@ -37,7 +37,7 @@
 	],
 	"cmd_link_no_tauri": "Não foi possível executar o `cargo tauri`. Instale com `cargo install tauri-cli`.",
 	"cmd_link_no_workspace": "Não foi possível encontrar um workspace do Cargo. Rode o comando dentro do repositório do atlas ou passe `--dir <workspace-root>`.",
-	"cmd_link_not_linked": "o atlas não aponta para um build de desenvolvimento. Nada a fazer.",
+	"cmd_link_not_linked": "O atlas não aponta para um build de desenvolvimento. Nada a fazer.",
 	"cmd_link_now_runs_debug": "O `atlas` instalado agora executa o build de debug local.",
 	"cmd_link_open_missing": "{path} não existe. Verifique o caminho e tente novamente.",
 	"cmd_link_opened": "Aberto no Atlas Desktop: {path}",

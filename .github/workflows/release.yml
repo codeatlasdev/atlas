@@ -79,15 +79,10 @@ jobs:
           ref: ${{ env.REF }}
           persist-credentials: false
 
-      - name: Install Rust
-        run: rustup show active-toolchain || rustup toolchain install
+      - uses: ./.github/actions/release-toolchain
 
-      # SOURCE_DATE_EPOCH = the commit time, so embedded timestamps do not depend on when the build ran.
-      # No --remap-path-prefix: not verified against the Tauri build in this repo.
       - name: Build
         run: |
-          SOURCE_DATE_EPOCH="$(git log -1 --format=%ct)"
-          export SOURCE_DATE_EPOCH
           cargo build --release --locked --target aarch64-apple-darwin -p atlas-cli
 
       # CycloneDX SBOM of the CLI's dependency tree (the shipped binary). Skipped, loudly, when the tool is missing.
@@ -184,8 +179,6 @@ jobs:
         run: |
           command -v cargo-tauri >/dev/null || cargo install tauri-cli --version "$(scripts/setup.sh --tauri-version)" --locked
           (cd apps/desktop && bun install --frozen-lockfile)
-          SOURCE_DATE_EPOCH="$(git log -1 --format=%ct)"
-          export SOURCE_DATE_EPOCH
           if [ "$DEVELOPER_ID" = true ]; then
             export APPLE_SIGNING_IDENTITY="$SIGNING_IDENTITY" APPLE_API_KEY="$API_KEY_ID" APPLE_API_ISSUER="$API_ISSUER" \
               APPLE_API_KEY_PATH="$RUNNER_TEMP/notary.p8"
@@ -319,18 +312,9 @@ jobs:
           ref: ${{ env.REF }}
           persist-credentials: false
 
-      - name: System libraries
-        run: |
-          SUDO=$(command -v sudo || true)
-          $SUDO apt-get update
-          $SUDO apt-get install -y --no-install-recommends build-essential curl file pkg-config \
-            libwebkit2gtk-4.1-dev libayatana-appindicator3-dev librsvg2-dev libxdo-dev libssl-dev
-
-      - name: Install Rust
-        run: |
-          command -v rustup >/dev/null || curl -fsSL https://sh.rustup.rs | sh -s -- -y --profile minimal --default-toolchain none
-          echo "$HOME/.cargo/bin" >> "$GITHUB_PATH"
-          "$HOME/.cargo/bin/rustup" show active-toolchain || "$HOME/.cargo/bin/rustup" toolchain install
+      - uses: ./.github/actions/release-toolchain
+        with:
+          apt: libwebkit2gtk-4.1-dev libayatana-appindicator3-dev librsvg2-dev libxdo-dev libssl-dev
 
       - name: Install Bun
         uses: oven-sh/setup-bun@0c5077e51419868618aeaa5fe8019c62421857d6 # v2.2.0
@@ -339,8 +323,6 @@ jobs:
 
       - name: Build CLI
         run: |
-          SOURCE_DATE_EPOCH="$(git log -1 --format=%ct)"
-          export SOURCE_DATE_EPOCH
           cargo build --release --locked -p atlas-cli
 
       # tauri.linux.conf.json picks the deb/rpm/appimage bundles and puts target/release/atlas in the packages.
@@ -351,8 +333,6 @@ jobs:
         run: |
           command -v cargo-tauri >/dev/null || cargo install tauri-cli --version "$(scripts/setup.sh --tauri-version)" --locked
           (cd apps/desktop && bun install --frozen-lockfile)
-          SOURCE_DATE_EPOCH="$(git log -1 --format=%ct)"
-          export SOURCE_DATE_EPOCH
           (cd crates/atlas-desktop && cargo tauri build --ci)
 
       - name: Package
@@ -399,22 +379,12 @@ jobs:
           ref: ${{ env.REF }}
           persist-credentials: false
 
-      - name: System libraries
-        run: |
-          SUDO=$(command -v sudo || true)
-          $SUDO apt-get update
-          $SUDO apt-get install -y --no-install-recommends build-essential curl pkg-config libssl-dev
-
-      - name: Install Rust
-        run: |
-          command -v rustup >/dev/null || curl -fsSL https://sh.rustup.rs | sh -s -- -y --profile minimal --default-toolchain none
-          echo "$HOME/.cargo/bin" >> "$GITHUB_PATH"
-          "$HOME/.cargo/bin/rustup" show active-toolchain || "$HOME/.cargo/bin/rustup" toolchain install
+      - uses: ./.github/actions/release-toolchain
+        with:
+          apt: libssl-dev
 
       - name: Build CLI
         run: |
-          SOURCE_DATE_EPOCH="$(git log -1 --format=%ct)"
-          export SOURCE_DATE_EPOCH
           cargo build --release --locked -p atlas-cli
 
       - name: Package
@@ -464,19 +434,10 @@ jobs:
           ref: ${{ env.REF }}
           persist-credentials: false
 
-      - name: System tools
-        run: |
-          SUDO=$(command -v sudo || true)
-          $SUDO apt-get update
-          $SUDO apt-get install -y --no-install-recommends build-essential curl file pkg-config \
-            clang lld llvm nasm libayatana-appindicator3-dev
-
-      - name: Install Rust
-        run: |
-          command -v rustup >/dev/null || curl -fsSL https://sh.rustup.rs | sh -s -- -y --profile minimal --default-toolchain none
-          echo "$HOME/.cargo/bin" >> "$GITHUB_PATH"
-          "$HOME/.cargo/bin/rustup" show active-toolchain || "$HOME/.cargo/bin/rustup" toolchain install
-          "$HOME/.cargo/bin/rustup" target add x86_64-pc-windows-msvc
+      - uses: ./.github/actions/release-toolchain
+        with:
+          apt: clang lld llvm nasm libayatana-appindicator3-dev
+          targets: x86_64-pc-windows-msvc
 
       - name: Install Bun
         uses: oven-sh/setup-bun@0c5077e51419868618aeaa5fe8019c62421857d6 # v2.2.0
@@ -486,8 +447,6 @@ jobs:
       - name: Build CLI
         run: |
           command -v cargo-xwin >/dev/null || cargo install cargo-xwin --locked
-          SOURCE_DATE_EPOCH="$(git log -1 --format=%ct)"
-          export SOURCE_DATE_EPOCH
           cargo xwin build --release --locked --target x86_64-pc-windows-msvc -p atlas-cli
 
       # Only the app binary here (--no-bundle): the NSIS installer is packed later, from the signed files.
@@ -495,8 +454,6 @@ jobs:
         run: |
           command -v cargo-tauri >/dev/null || cargo install tauri-cli --version "$(scripts/setup.sh --tauri-version)" --locked
           (cd apps/desktop && bun install --frozen-lockfile)
-          SOURCE_DATE_EPOCH="$(git log -1 --format=%ct)"
-          export SOURCE_DATE_EPOCH
           (cd crates/atlas-desktop && cargo tauri build --ci --runner cargo-xwin \
             --target x86_64-pc-windows-msvc --no-bundle)
 
@@ -573,19 +530,10 @@ jobs:
           ref: ${{ env.REF }}
           persist-credentials: false
 
-      - name: System tools
-        run: |
-          SUDO=$(command -v sudo || true)
-          $SUDO apt-get update
-          $SUDO apt-get install -y --no-install-recommends build-essential curl file pkg-config \
-            nsis libayatana-appindicator3-dev
-
-      - name: Install Rust
-        run: |
-          command -v rustup >/dev/null || curl -fsSL https://sh.rustup.rs | sh -s -- -y --profile minimal --default-toolchain none
-          echo "$HOME/.cargo/bin" >> "$GITHUB_PATH"
-          "$HOME/.cargo/bin/rustup" show active-toolchain || "$HOME/.cargo/bin/rustup" toolchain install
-          "$HOME/.cargo/bin/rustup" target add x86_64-pc-windows-msvc
+      - uses: ./.github/actions/release-toolchain
+        with:
+          apt: nsis libayatana-appindicator3-dev
+          targets: x86_64-pc-windows-msvc
 
       - name: Download binaries
         uses: actions/download-artifact@9000827ccba6bdab643e8b6fd33ac0654aef8333 # v8.0.2
@@ -598,8 +546,6 @@ jobs:
       - name: Bundle installer
         run: |
           command -v cargo-tauri >/dev/null || cargo install tauri-cli --version "$(scripts/setup.sh --tauri-version)" --locked
-          SOURCE_DATE_EPOCH="$(git log -1 --format=%ct)"
-          export SOURCE_DATE_EPOCH
           (cd crates/atlas-desktop && cargo tauri bundle --ci \
             --target x86_64-pc-windows-msvc --bundles nsis \
             --config '{"bundle":{"resources":{"../../target/x86_64-pc-windows-msvc/release/atlas.exe":"atlas.exe"}}}')
@@ -669,19 +615,10 @@ jobs:
           ref: ${{ env.REF }}
           persist-credentials: false
 
-      - name: System tools
-        run: |
-          SUDO=$(command -v sudo || true)
-          $SUDO apt-get update
-          $SUDO apt-get install -y --no-install-recommends build-essential curl file pkg-config \
-            clang lld llvm nasm
-
-      - name: Install Rust
-        run: |
-          command -v rustup >/dev/null || curl -fsSL https://sh.rustup.rs | sh -s -- -y --profile minimal --default-toolchain none
-          echo "$HOME/.cargo/bin" >> "$GITHUB_PATH"
-          "$HOME/.cargo/bin/rustup" show active-toolchain || "$HOME/.cargo/bin/rustup" toolchain install
-          "$HOME/.cargo/bin/rustup" target add x86_64-pc-windows-msvc
+      - uses: ./.github/actions/release-toolchain
+        with:
+          apt: clang lld llvm nasm
+          targets: x86_64-pc-windows-msvc
 
       - name: Download installer
         uses: actions/download-artifact@9000827ccba6bdab643e8b6fd33ac0654aef8333 # v8.0.2
@@ -693,8 +630,6 @@ jobs:
         run: |
           command -v cargo-xwin >/dev/null || cargo install cargo-xwin --locked
           T=x86_64-pc-windows-msvc
-          SOURCE_DATE_EPOCH="$(git log -1 --format=%ct)"
-          export SOURCE_DATE_EPOCH
           NSIS="$(ls "$PWD"/payload/*-setup.exe)"
           ATLAS_SETUP_PAYLOAD="$NSIS" cargo xwin build --release --locked --target "$T" -p atlas-setup
 

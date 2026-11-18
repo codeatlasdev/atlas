@@ -13,6 +13,7 @@
 	import { leaves, ws } from "#lib/stores/workspace.svelte.ts";
 	import { untrack } from "svelte";
 	import { useSpace } from "#lib/shell/spaceCtx.ts";
+	import { m } from "#lib/i18n/m.ts";
 
 	const space = useSpace();
 	let wt = $derived(space.worktree);
@@ -44,15 +45,15 @@
 				: docks.leftPanel === "search"
 					? "Search"
 					: "Source control"}
-			title="This panel hit an error"
-			hint="The rest of Atlas is unaffected."
+			title={m.shell_workbench_this_panel_hit_an_error()}
+			hint={m.shell_contain_default_hint()}
 		>
 			{#if docks.leftPanel === "explorer"}<Explorer
 					worktreeId={id}
 				/>{:else if docks.leftPanel === "search"}<SearchPanel worktreeId={id} />{:else if folder}
 				<div class="notgit" role="status">
-					<b>Not a git repository</b>
-					<span>This folder has no version control, so there are no changes or pull requests to show.</span>
+					<b>{m.shell_workbench_not_a_git_repository()}</b>
+					<span>{m.shell_workbench_this_folder_has_no_version()}</span>
 				</div>
 			{:else}<SourceControl worktreeId={id} />{/if}
 		</Contain>

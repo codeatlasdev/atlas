@@ -1,0 +1,22 @@
+{
+	"workbench_loose_editor_keep_my_version": "Button label in a <button> element, in LooseEditor (apps/desktop/src/lib/components/LooseEditor.svelte). Extracted by i18n:extract: refine this description on review.",
+	"workbench_loose_editor_ln_line_col_col": "Text in a <span> element, in LooseEditor (apps/desktop/src/lib/components/LooseEditor.svelte). {line} is cursor.line; {col} is cursor.col. Extracted by i18n:extract: refine this description on review.",
+	"workbench_loose_editor_load_from_disk": "Button label in a <button> element, in LooseEditor (apps/desktop/src/lib/components/LooseEditor.svelte). Extracted by i18n:extract: refine this description on review.",
+	"workbench_loose_editor_state_edited": "Status in the footer of the light editor while the open file has unsaved edits.",
+	"workbench_loose_editor_state_saved": "Status in the footer of the light editor when the open file matches what is on disk.",
+	"workbench_loose_editor_this_file_changed_on_disk": "Text in a <span> element, in LooseEditor (apps/desktop/src/lib/components/LooseEditor.svelte). Extracted by i18n:extract: refine this description on review.",
+	"workbench_loose_editor_this_file_was_deleted_on": "Text in a <span> element, in LooseEditor (apps/desktop/src/lib/components/LooseEditor.svelte). Extracted by i18n:extract: refine this description on review.",
+	"workbench_loose_view_close_file": "Accessible name of the x button on a tab of the light editor. {name} is the file name.",
+	"workbench_loose_view_open_as_project": "Button label in the <Button> component, in LooseView (apps/desktop/src/lib/components/LooseView.svelte). Extracted by i18n:extract: refine this description on review.",
+	"workbench_loose_view_open_files": "Accessible name (aria-label, read by screen readers) of a <div> element, in LooseView (apps/desktop/src/lib/components/LooseView.svelte). Extracted by i18n:extract: refine this description on review.",
+	"workbench_loose_view_open_folder": "Button label in the <Button> component, in LooseView (apps/desktop/src/lib/components/LooseView.svelte). Extracted by i18n:extract: refine this description on review.",
+	"workbench_markdown_bar_bold": "Tooltip and accessible name of the Markdown toolbar button that makes the selection bold.",
+	"workbench_markdown_bar_bulleted_list": "Tooltip and accessible name of the Markdown toolbar button that turns lines into a bulleted list.",
+	"workbench_markdown_bar_edit_source": "Tooltip and accessible name of the Markdown toolbar button shown while the preview is on: goes back to editing the Markdown text.",
+	"workbench_markdown_bar_heading": "Tooltip and accessible name of the Markdown toolbar button that cycles the heading level of the line.",
+	"workbench_markdown_bar_italic": "Tooltip and accessible name of the Markdown toolbar button that makes the selection italic.",
+	"workbench_markdown_bar_link": "Tooltip and accessible name of the Markdown toolbar button that inserts a link.",
+	"workbench_markdown_bar_markdown_formatting": "Accessible name (aria-label, read by screen readers) of a <div> element, in MarkdownBar (apps/desktop/src/lib/components/MarkdownBar.svelte). Extracted by i18n:extract: refine this description on review.",
+	"workbench_markdown_bar_numbered_list": "Tooltip and accessible name of the Markdown toolbar button that turns lines into a numbered list.",
+	"workbench_markdown_bar_preview": "Tooltip and accessible name of the Markdown toolbar button that shows the rendered Markdown instead of the source."
+}

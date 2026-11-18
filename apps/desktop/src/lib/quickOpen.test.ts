@@ -178,14 +178,21 @@ describe("100k files", () => {
 				per.push(performance.now() - t);
 			}
 		}
-		const t1 = performance.now();
-		reference(files, "controller", 80);
-		const old = performance.now() - t1;
+		// The scoring the palette ran per keystroke before, measured in the same process: a loaded machine slows both
+		// the same way, so the guard compares them instead of a wall-clock budget (a fixed 32 ms failed on a loaded
+		// machine while the index was still 14x faster than this).
+		const olds: number[] = [];
+		for (let i = 0; i < 5; i++) {
+			const t1 = performance.now();
+			reference(files, "controller", 80);
+			olds.push(performance.now() - t1);
+		}
+		const old = [...olds].sort((a, b) => a - b)[2];
 		console.log(
 			`quick-open 100k: index build ${build.toFixed(1)} ms; keystroke p95 ${p95(per).toFixed(2)} ms, max ${Math.max(...per).toFixed(2)} ms; ` +
-				`the scoring the palette ran per keystroke before (score+sort, no item building): ${old.toFixed(1)} ms`,
+				`the scoring the palette ran per keystroke before (score+sort, no item building), median of 5: ${old.toFixed(1)} ms`,
 		);
-		// A regression guard with room for a loaded CI runner (two frames); the budget itself is 16 ms and the PR numbers are well under.
-		expect(p95(per)).toBeLessThan(32);
+		// Measured 14x faster (p95 2.8-3.1 ms against 41-42 ms); a regression to within 4x of the old scoring fails.
+		expect(p95(per) * 4).toBeLessThan(old);
 	});
 });

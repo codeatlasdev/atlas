@@ -51,5 +51,9 @@
 		}
 	],
 	"settings_host_sub_restarting": "Restarting…",
-	"settings_host_sub_updating": "Updating, terminals stay attached…"
+	"settings_host_sub_updating": "Updating, terminals stay attached…",
+	"settings_updates_withdrawn_older": "The newest safe release is older: install it with the button at the bottom.",
+	"settings_updates_withdrawn_replacement": "Use {replacement} instead.",
+	"settings_updates_withdrawn_title": "This version was withdrawn",
+	"settings_updates_withdrawn_update": "Update to leave it."
 }

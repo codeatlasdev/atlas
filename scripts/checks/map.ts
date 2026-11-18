@@ -18,6 +18,8 @@ export const AREAS: Record<string, string[]> = {
 		"apps/desktop/**",
 		"skills/**",
 		"scripts/linux-launch-check.sh",
+		"scripts/linux-startup-bench.ts",
+		"docs/perf/linux-startup.json",
 	],
 	// The built-in agent list (crates/atlas-core/data/agents.json) is imported by the desktop frontend and generated into
 	// Atlas Mobile's Dart; the scripts area runs the staleness test of that copy.
@@ -148,6 +150,13 @@ export const CHECKS: Check[] = [
 		ci: ["desktop-linux"],
 		ciRun: "scripts/linux-launch-check.sh",
 		why: "opens the Linux build on a headless sway (WebKitGTK, Mesa llvmpipe); run scripts/linux-launch-check.sh on a Linux machine with sway",
+	},
+	{
+		id: "desktop-startup-baseline",
+		area: "rust",
+		ci: ["desktop-linux"],
+		ciRun: "scripts/linux-startup-bench.ts",
+		why: "starts the Linux build on a headless sway and gates start time, memory per process and idle CPU (docs/perf/linux-startup.json); run scripts/linux-startup-bench.ts on a Linux machine with sway",
 	},
 	{
 		id: "root-tests",

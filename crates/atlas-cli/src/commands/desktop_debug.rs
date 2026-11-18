@@ -49,11 +49,11 @@ pub enum DebugCmd {
         /// The whole scrollable page (or element): the view grows to fit the content for the snapshot
         #[arg(long, conflicts_with = "window")]
         full: bool,
-        /// The whole native window as the compositor shows it (needs Screen Recording permission)
+        /// The whole native window as the compositor shows it (macOS: needs Screen Recording permission)
         #[arg(long)]
         window: bool,
     },
-    /// Record the window to a .mov with the app's own recorder (needs Screen Recording permission)
+    /// Record the window to a .mov/.mp4 with the app's own recorder (macOS: needs Screen Recording permission; Linux: an agent instance, needs grim and ffmpeg)
     Record {
         path: PathBuf,
         /// Record this many seconds

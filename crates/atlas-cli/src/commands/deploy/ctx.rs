@@ -2,6 +2,7 @@
 //! subcommand shares: console output, identity, and the id shapes allowed in paths.
 
 use std::path::PathBuf;
+use std::time::{Duration, SystemTime};
 
 use anyhow::{Context, Result, bail};
 use atlas_core::util::expand_tilde;
@@ -103,6 +104,20 @@ pub(super) fn valid_release_id(s: &str) -> bool {
     core && (b.len() == 22 || &s[22..] == "-dirty")
 }
 
+/// The id of a release built at `now` from commit suffix `suffix` (`<sha7>[-dirty]`), for a host whose
+/// newest release is `newest`. Ids have one-second resolution and ordering goes by id, so the
+/// timestamp is the later of `now` and one second after `newest`'s: two deploys of one commit in a
+/// second get different ids, and a client clock behind the host's never makes the newest release
+/// sort before an older one.
+pub(super) fn next_release_id(now: SystemTime, suffix: &str, newest: Option<&str>) -> String {
+    let after_newest = newest
+        .filter(|id| valid_release_id(id))
+        .and_then(|id| atlas_core::time::parse_utc_compact(&id[..14]))
+        .map(|t| t + Duration::from_secs(1));
+    let at = after_newest.map_or(now, |t| t.max(now));
+    format!("{}-{suffix}", atlas_core::time::utc_compact(at))
+}
+
 /// A release id or a rollback run id (`rb-<digits>`).
 pub(super) fn valid_run_id(s: &str) -> bool {
     valid_release_id(s)
@@ -113,6 +128,44 @@ pub(super) fn valid_run_id(s: &str) -> bool {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    fn at(s: &str) -> SystemTime {
+        atlas_core::time::parse_utc_compact(s).unwrap()
+    }
+
+    #[test]
+    fn a_release_id_is_the_clock_unless_the_host_already_has_that_second_or_later() {
+        let now = at("20250101120000");
+        assert_eq!(
+            next_release_id(now, "abcdef0", None),
+            "20250101120000-abcdef0"
+        );
+        // Older release: the clock.
+        let old = Some("20250101115959-abcdef0");
+        assert_eq!(
+            next_release_id(now, "abcdef0", old),
+            "20250101120000-abcdef0"
+        );
+        // The same second, same commit: the one after it (it was `release exists`).
+        let same = Some("20250101120000-abcdef0");
+        assert_eq!(
+            next_release_id(now, "abcdef0", same),
+            "20250101120001-abcdef0"
+        );
+        // The host is ahead of this clock: still sorts after its newest, across a minute boundary.
+        let ahead = Some("20250101120059-1234567-dirty");
+        assert_eq!(
+            next_release_id(now, "abcdef0", ahead),
+            "20250101120100-abcdef0"
+        );
+        // A host answer that is not an id is ignored, never parsed into the timestamp.
+        assert_eq!(
+            next_release_id(now, "abcdef0", Some("../../etc")),
+            "20250101120000-abcdef0"
+        );
+        let id = next_release_id(now, "abcdef0-dirty", same);
+        assert!(valid_release_id(&id), "{id}");
+    }
 
     #[test]
     fn release_id_shape() {

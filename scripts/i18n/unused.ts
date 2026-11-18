@@ -5,6 +5,7 @@
 // Dynamic access cannot be seen; annotate it where it happens: `// i18n-keys: settings_tab_*, other_key`.
 // A line (or the one above) with `i18n-ignore` is skipped by the undefined-key check.
 import { dirname } from "node:path";
+import { bracketHead, memberHead, messageBindings } from "./messageModule.ts";
 import { isTestFile, withoutTestTail } from "./hardcoded/rust.ts";
 import { KEY_PATTERN, type SurfaceDef } from "./source.ts";
 import { globToRegExp, lineOf, readText, rel, walk } from "./util.ts";
@@ -24,11 +25,12 @@ export interface Refs {
 }
 
 const WEB = /\.(?:svelte|ts|tsx|js|jsx|mjs|astro)$/;
-/** `import * as m from ".../paraglide/messages"` or `import { m } from ...`: the file's `m` is the messages module. */
-const USES_M = /import\s+(?:\*\s+as\s+m|\{[^}]*\bm\b[^}]*\})\s+from\s+["'][^"']*paraglide\/messages/;
+
+/** `// i18n-keys: settings_tab_*, other_key`: the keys a dynamic access may reach; group 1 is the list. */
+export const ANNOTATION = /i18n-keys:\s*([^\n]*?)(?:-->|\*\/|$)/gm;
 
 function annotations(text: string, patterns: RegExp[]) {
-	for (const m of text.matchAll(/i18n-keys:\s*([^\n]*?)(?:-->|\*\/|$)/gm)) {
+	for (const m of text.matchAll(ANNOTATION)) {
 		for (const g of m[1].split(/[\s,]+/).filter(Boolean)) patterns.push(globToRegExp(g));
 	}
 }
@@ -43,21 +45,19 @@ export function scanRefs(root: string, def: SurfaceDef): Refs | undefined {
 			const text = readText(path);
 			const file = rel(root, path);
 			const lines = text.split("\n");
-			const usesM = USES_M.test(text);
+			const { spaces, named } = messageBindings(text);
 			const call = (key: string, index: number) => {
 				out.names.add(key);
 				const line = lineOf(text, index);
-				if (usesM && KEY_PATTERN.test(key) && !ignored(lines, line)) out.calls.push({ key, file, line });
+				if (spaces.length > 0 && KEY_PATTERN.test(key) && !ignored(lines, line)) out.calls.push({ key, file, line });
 			};
-			for (const m of text.matchAll(/\bm\.([A-Za-z_]\w*)/g)) call(m[1], m.index ?? 0);
-			for (const m of text.matchAll(/\bm\[\s*["'`]([^"'`]+)["'`]\s*\]/g)) call(m[1], m.index ?? 0);
-			for (const m of text.matchAll(/\bmessages_([A-Za-z_]\w*)/g)) out.names.add(m[1]);
-			for (const m of text.matchAll(/import\s*\{([^}]*)\}\s*from\s*["'][^"']*paraglide\/messages[^"']*["']/g)) {
-				for (const part of m[1].split(",")) {
-					const name = part.trim().split(/\s+as\s+/)[0];
-					if (name && name !== "m") out.names.add(name);
-				}
+			// `m` counts as the namespace even where it is not imported (names only): a use keeps a key alive.
+			for (const space of new Set(["m", ...spaces])) {
+				for (const m of text.matchAll(new RegExp(`${memberHead(space)}([A-Za-z_]\\w*)`, "g"))) call(m[1], m.index ?? 0);
+				for (const m of text.matchAll(new RegExp(`${bracketHead(space)}([^"'\`]+)["'\`]\\s*\\]`, "g"))) call(m[1], m.index ?? 0);
 			}
+			for (const m of text.matchAll(/\bmessages_([A-Za-z_]\w*)/g)) out.names.add(m[1]);
+			for (const n of named) out.names.add(n.imported);
 			annotations(text, out.patterns);
 		}
 		return out;

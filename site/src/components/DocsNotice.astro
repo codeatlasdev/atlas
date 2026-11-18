@@ -1,6 +1,7 @@
 ---
-// Banner above a docs page in a non-English locale whose page is not (fully) translated: the page was never translated, or the
-// English file changed after the translation. Never shown for a translation that matches the current English file.
+// Banner above a docs page in a non-English locale whose page is not (fully) translated: the page was never translated, the
+// English file changed after the translation, or a model translated it and nobody reviewed it yet (`translation: machine`).
+// Never shown for a reviewed translation that matches the current English file.
 import { m } from "../lib/paraglide/messages.js";
 import { sourceHistoryUrl, type DocState } from "../lib/doc-translation";
 import { docPath, localeOfAstro } from "../lib/i18n";
@@ -13,7 +14,7 @@ const { state, slug } = Astro.props;
 const locale = localeOfAstro(Astro.currentLocale);
 ---
 <aside class="notice" role="note" lang={locale} data-state={state} data-pagefind-ignore>
-	<p>{state === "outdated" ? m.docs_banner_outdated() : m.docs_banner_untranslated()}</p>
+	<p>{state === "outdated" ? m.docs_banner_outdated() : state === "machine" ? m.docs_banner_machine() : m.docs_banner_untranslated()}</p>
 	<p class="acts">
 		<a href={docPath(slug, "en")} lang="en" hreflang="en">{m.docs_banner_read_english()}</a>
 		{state === "outdated" && <a href={sourceHistoryUrl(slug)} rel="noopener">{m.docs_banner_see_changes()}</a>}

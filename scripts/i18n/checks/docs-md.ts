@@ -15,6 +15,8 @@ export interface FrontMatter {
 	title?: unknown;
 	source?: unknown;
 	source_sha?: unknown;
+	/** Optional: `machine` marks a page translated by a model and not yet reviewed by a person (the site shows a banner). */
+	translation?: unknown;
 }
 
 /** The front matter of a markdown file and the offset where the body starts, or undefined when it has none. */
@@ -87,7 +89,8 @@ function checkOne(ctx: Ctx, locale: string, name: string): Doc {
 		bad("missing front matter (---, title, source, source_sha, ---)", 1);
 		return { locale, file, slug: name, findings, state: "outdated" };
 	}
-	const { title, source, source_sha: sha } = fm.data;
+	const { title, source, source_sha: sha, translation } = fm.data;
+	if (translation !== undefined && translation !== "machine") bad(`\`translation\` must be \`machine\` (AI-translated, not reviewed yet) or absent, not ${JSON.stringify(translation)}`, 1);
 	if (typeof title !== "string" || title.trim() === "") bad("`title` is missing or empty", 1);
 	if (typeof sha !== "string" || !/^[0-9a-f]{40}$/.test(sha)) bad("`source_sha` must be a quoted string of the 40-hex git blob sha of the English file (git hash-object docs/<source>); an unquoted all-digit sha parses as a number", 1);
 	let state: Doc["state"] = "outdated";

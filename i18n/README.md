@@ -120,7 +120,9 @@ command that fixes it. `warn` is for the reviewer and `info` is hidden unless as
 the **git blob sha** of that file when it was translated (`git hash-object docs/<source>`, quoted: an all-digit sha
 unquoted is a YAML number). A different sha today is a warning (a typo fix must not block a PR); invalid front matter or
 a source that is gone is an error; a page without a translation is `info`; a changed heading count or code block (comments
-aside) is a warning. pt-PT words in prose warn.
+aside) is a warning. pt-PT words in prose warn. The optional field `translation: machine` marks a page a model translated and no
+person reviewed; the site shows a banner for it (an outdated page shows the outdated banner instead), and the reviewer
+removes the line. Any other value is an error.
 
 ### Ratchets: a change may not add offenders
 

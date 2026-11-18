@@ -4,6 +4,7 @@ import { api, errText, type ProjectView, type WorktreeProgress } from "#lib/api.
 import { store } from "#lib/stores/projects.svelte.ts";
 import { ws } from "#lib/stores/workspace.svelte.ts";
 import { readyLine } from "#lib/worktreeTiming.ts";
+import { m } from "#lib/i18n/m.ts";
 
 interface Creation {
 	id: string;
@@ -78,7 +79,7 @@ class Worktrees {
 			if (p.step === "error") {
 				off();
 				delete this.creations[creationId];
-				toast.error(p.message ?? "worktree creation failed");
+				toast.error(p.message ?? m.shell_toasts_worktree_failed());
 				resolve(undefined);
 			} else if (p.step === "done" && p.worktree) {
 				off();
@@ -155,8 +156,8 @@ class Worktrees {
 			ws.removeWorktree(id);
 			if (store.selected === id) store.selected = null;
 			await store.refresh();
-			if (r.preserved_branch) toast.info(`Branch preserved: ${r.preserved_branch} (not merged)`);
-			else toast.success("Worktree deleted");
+			if (r.preserved_branch) toast.info(m.shell_toasts_branch_preserved({ branch: r.preserved_branch }));
+			else toast.success(m.shell_toasts_worktree_deleted());
 		} catch (e) {
 			toast.error(errText(e));
 		}

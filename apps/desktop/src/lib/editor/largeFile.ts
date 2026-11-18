@@ -4,6 +4,7 @@
  * `huge` above 200k, whatever the byte size. Pure: the integrator turns `disable` into extensions.
  */
 import { formatNumber } from "#lib/i18n/fmt.ts";
+import { m } from "#lib/i18n/m.ts";
 
 export type Tier = "normal" | "large" | "huge";
 
@@ -47,16 +48,16 @@ export interface Disable {
 
 export interface Classification {
 	tier: Tier;
+	/** Why, for diagnostics and tests; never shown (the person reads `largeNotice(tier)`). */
 	reasons: string[];
 	disable: Disable;
-	notice: string | null;
 }
 
-const NOTICES: Record<Tier, string | null> = {
-	normal: null,
-	large: "Large file: word wrap, language features and other heavy extras are off so the editor stays fast.",
-	huge: "Huge file: syntax highlighting and language features are off so the editor stays fast.",
-};
+/** The one-line notice for the user, in the app's language; `null` for a normal file. */
+export function largeNotice(tier: Tier): string | null {
+	if (tier === "large") return m.workbench_editor_notice_large();
+	return tier === "huge" ? m.workbench_editor_notice_huge() : null;
+}
 
 const DISABLE: Record<Tier, Disable> = {
 	normal: {
@@ -101,8 +102,8 @@ const RANK: Record<Tier, number> = { normal: 0, large: 1, huge: 2 };
 
 const mb = (bytes: number) => `${(bytes / 1_000_000).toFixed(1)} MB`;
 
-/** Tier, the reasons for it, the features to turn off and the one-line notice for the user. */
-export function classifyFile(m: FileMetrics, t: Partial<Thresholds> = {}): Classification {
+/** Tier, the reasons for it and the features to turn off. */
+export function classifyFile(metrics: FileMetrics, t: Partial<Thresholds> = {}): Classification {
 	const th = { ...DEFAULT_THRESHOLDS, ...t };
 	let tier: Tier = "normal";
 	const reasons: string[] = [];
@@ -110,10 +111,10 @@ export function classifyFile(m: FileMetrics, t: Partial<Thresholds> = {}): Class
 		if (RANK[to] > RANK[tier]) tier = to;
 		reasons.push(reason);
 	};
-	if (m.bytes >= th.largeBytes * th.hugeFactor) raise("huge", `${mb(m.bytes)} file`);
-	else if (m.bytes >= th.largeBytes) raise("large", `${mb(m.bytes)} file`);
-	if (m.longestLine > th.hugeLine) raise("huge", `a line has ${formatNumber(m.longestLine)} characters`);
-	else if (m.longestLine > th.longLine)
-		raise("large", `a line has ${formatNumber(m.longestLine)} characters`);
-	return { tier, reasons, disable: { ...DISABLE[tier] }, notice: NOTICES[tier] };
+	if (metrics.bytes >= th.largeBytes * th.hugeFactor) raise("huge", `${mb(metrics.bytes)} file`);
+	else if (metrics.bytes >= th.largeBytes) raise("large", `${mb(metrics.bytes)} file`);
+	if (metrics.longestLine > th.hugeLine) raise("huge", `a line has ${formatNumber(metrics.longestLine)} characters`);
+	else if (metrics.longestLine > th.longLine)
+		raise("large", `a line has ${formatNumber(metrics.longestLine)} characters`);
+	return { tier, reasons, disable: { ...DISABLE[tier] } };
 }

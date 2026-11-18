@@ -3,6 +3,7 @@
 	import type { LspDoc } from "#lib/lsp/client.svelte.ts";
 	import { runAction } from "#lib/lsp/run.ts";
 	import type { Action, LspUiState } from "#lib/lsp/status.ts";
+	import { m } from "#lib/i18n/m.ts";
 
 	let { doc, ui }: { doc: LspDoc; ui: LspUiState } = $props();
 
@@ -18,26 +19,26 @@
 	}
 </script>
 
-<div class="pop" role="group" aria-label="Language server">
+<div class="pop" role="group" aria-label={m.workbench_editor_language_server()}>
 	<p class="summary">{ui.summary}</p>
 	{#if ui.detail}<p class="detail">{ui.detail}</p>{/if}
 	{#if ui.kind === "host-old" && ui.ptys.length > 0}
-		<ul class="ptys" aria-label="Running terminals">
+		<ul class="ptys" aria-label={m.workbench_host_prompt_running_terminals()}>
 			{#each ui.ptys.slice(0, 6) as p}
 				<li>
-					<span class="t">{p.title || "Terminal"}</span><span class="cwd mono" dir="rtl"
+					<span class="t">{p.title || m.crew_chat_header_terminal()}</span><span class="cwd mono" dir="rtl"
 						><bdi dir="ltr">{p.cwd}</bdi></span
 					>
 				</li>
 			{/each}
-			{#if ui.ptys.length > 6}<li class="more">and {ui.ptys.length - 6} more</li>{/if}
+			{#if ui.ptys.length > 6}<li class="more">{m.workbench_host_more_terminals({ count: ui.ptys.length - 6 })}</li>{/if}
 		</ul>
 	{/if}
 	{#if ui.kind === "missing-toolchain" && ui.command}
 		<pre class="cmd mono">{ui.command}</pre>
 	{/if}
 	{#if ui.tail?.length}
-		<pre class="tail mono" aria-label="Last server output">{ui.tail.slice(-8).join("\n")}</pre>
+		<pre class="tail mono" aria-label={m.workbench_lsp_last_output()}>{ui.tail.slice(-8).join("\n")}</pre>
 	{/if}
 	{#if doc.projectWarning}<p class="warn">{doc.projectWarning}</p>{/if}
 	{#if ui.actions.length}

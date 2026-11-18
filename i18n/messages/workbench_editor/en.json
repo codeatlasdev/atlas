@@ -1,0 +1,170 @@
+{
+	"workbench_editor_breadcrumbs": "Breadcrumbs",
+	"workbench_editor_cm_close": "close",
+	"workbench_editor_cm_completions": "Completions",
+	"workbench_editor_cm_control_character": "Control character",
+	"workbench_editor_cm_current_match": "current match",
+	"workbench_editor_cm_diagnostics": "Diagnostics",
+	"workbench_editor_cm_folded_code": "folded code",
+	"workbench_editor_cm_go": "go",
+	"workbench_editor_cm_no_diagnostics": "No diagnostics",
+	"workbench_editor_cm_on_line": "on line",
+	"workbench_editor_cm_replaced_match_on_line": "replaced match on line $",
+	"workbench_editor_cm_replaced_matches": "replaced $ matches",
+	"workbench_editor_cm_selection_deleted": "Selection deleted",
+	"workbench_editor_cm_to": "to",
+	"workbench_editor_cm_unfold": "unfold",
+	"workbench_editor_cmd_duplicate_line": "Duplicate line",
+	"workbench_editor_cmd_fold_all": "Fold all",
+	"workbench_editor_cmd_join_lines": "Join lines",
+	"workbench_editor_cmd_lowercase": "Transform to lowercase",
+	"workbench_editor_cmd_reindent": "Reindent selection",
+	"workbench_editor_cmd_revert_file": "Revert file",
+	"workbench_editor_cmd_sort_ascending": "Sort lines ascending",
+	"workbench_editor_cmd_sort_descending": "Sort lines descending",
+	"workbench_editor_cmd_toggle_wrap": "Toggle word wrap",
+	"workbench_editor_cmd_trim_whitespace": "Trim trailing whitespace",
+	"workbench_editor_cmd_unfold_all": "Unfold all",
+	"workbench_editor_cmd_uppercase": "Transform to uppercase",
+	"workbench_editor_convert_file": "Convert file",
+	"workbench_editor_convert_to_spaces": "Convert indentation to spaces",
+	"workbench_editor_convert_to_tabs": "Convert indentation to tabs",
+	"workbench_editor_current": "current",
+	"workbench_editor_encoding_utf8_bom": "UTF-8 with BOM",
+	"workbench_editor_eol_mixed": "Mixed",
+	"workbench_editor_eol_mixed_title": "Mixed line endings: select to unify",
+	"workbench_editor_errors": [
+		{
+			"declarations": [
+				"input count",
+				"local countExact = count",
+				"local countPlural = count: plural"
+			],
+			"selectors": [
+				"countExact",
+				"countPlural"
+			],
+			"match": {
+				"countExact=0, countPlural=*": "No errors",
+				"countExact=*, countPlural=one": "{count} error",
+				"countExact=*, countPlural=*": "{count} errors"
+			}
+		}
+	],
+	"workbench_editor_find_all": "All",
+	"workbench_editor_find_and_replace": "Find and replace",
+	"workbench_editor_find_found": [
+		{
+			"declarations": [
+				"input count",
+				"local countExact = count",
+				"local countPlural = count: plural"
+			],
+			"selectors": [
+				"countExact",
+				"countPlural"
+			],
+			"match": {
+				"countExact=0, countPlural=*": "None found",
+				"countExact=*, countPlural=one": "{count} found",
+				"countExact=*, countPlural=*": "{count} found"
+			}
+		}
+	],
+	"workbench_editor_find_found_capped": "{count}+ found",
+	"workbench_editor_find_in_selection": "Find in selection",
+	"workbench_editor_find_no_results": "No results",
+	"workbench_editor_find_position": "{index} of {total}",
+	"workbench_editor_find_regexp": "Use regular expression",
+	"workbench_editor_find_replace": "Replace",
+	"workbench_editor_find_replace_all": "Replace all",
+	"workbench_editor_find_replaces_nothing": "Replaces with nothing",
+	"workbench_editor_find_select_all": "Select all matches",
+	"workbench_editor_find_toggle_replace": "Toggle replace",
+	"workbench_editor_find_whole_word": "Match whole word",
+	"workbench_editor_goto_line": "Go to line",
+	"workbench_editor_huge_file": "Huge file",
+	"workbench_editor_indent_detected": "Indentation (detected from the file): select to change",
+	"workbench_editor_indent_spaces": "Spaces: {size}",
+	"workbench_editor_indent_tab_size": "Tab size: {size}",
+	"workbench_editor_indent_using_spaces": "Indent using spaces",
+	"workbench_editor_indent_using_tabs": "Indent using tabs",
+	"workbench_editor_label": "Editor",
+	"workbench_editor_lang_jsonc": "JSON with comments",
+	"workbench_editor_lang_plain_text": "Plain text",
+	"workbench_editor_lang_shell_script": "Shell script",
+	"workbench_editor_language_server": "Language server",
+	"workbench_editor_large_file": "Large file",
+	"workbench_editor_line_ending": "Line ending",
+	"workbench_editor_not_saved_changed": "Not saved: {path} changed on disk. Reload it, then save again.",
+	"workbench_editor_not_saved_unreadable": "Not saved: {path} changed on disk and can't be read.",
+	"workbench_editor_notice_huge": "Huge file: syntax highlighting and language features are off so the editor stays fast.",
+	"workbench_editor_notice_large": "Large file: word wrap, language features and other heavy extras are off so the editor stays fast.",
+	"workbench_editor_save_failed": "Couldn't save {path}: {error}",
+	"workbench_editor_select_encoding": "Select encoding",
+	"workbench_editor_select_eol": "Select end of line sequence",
+	"workbench_editor_select_indentation": "Select indentation",
+	"workbench_editor_select_language": "Select language mode ({id})",
+	"workbench_editor_selected_chars": [
+		{
+			"declarations": [
+				"input count",
+				"local countExact = count",
+				"local countPlural = count: plural"
+			],
+			"selectors": [
+				"countExact",
+				"countPlural"
+			],
+			"match": {
+				"countExact=0, countPlural=*": "None selected",
+				"countExact=*, countPlural=one": "{count} selected",
+				"countExact=*, countPlural=*": "{count} selected"
+			}
+		}
+	],
+	"workbench_editor_selections": [
+		{
+			"declarations": [
+				"input count",
+				"local countExact = count",
+				"local countPlural = count: plural"
+			],
+			"selectors": [
+				"countExact",
+				"countPlural"
+			],
+			"match": {
+				"countExact=0, countPlural=*": "No selections",
+				"countExact=*, countPlural=one": "{count} selection",
+				"countExact=*, countPlural=*": "{count} selections"
+			}
+		}
+	],
+	"workbench_editor_show_problems": "Show problems",
+	"workbench_editor_status_bar": "Editor status",
+	"workbench_editor_sticky_scopes": "Enclosing scopes",
+	"workbench_editor_tier_title": "Some editor features are off to keep this file fast",
+	"workbench_editor_tip": "{label} ({key})",
+	"workbench_editor_warnings": [
+		{
+			"declarations": [
+				"input count",
+				"local countExact = count",
+				"local countPlural = count: plural"
+			],
+			"selectors": [
+				"countExact",
+				"countPlural"
+			],
+			"match": {
+				"countExact=0, countPlural=*": "No warnings",
+				"countExact=*, countPlural=one": "{count} warning",
+				"countExact=*, countPlural=*": "{count} warnings"
+			}
+		}
+	],
+	"workbench_editor_watch_failed": "Couldn't watch this file for changes: {error}. Changes made elsewhere won't show up.",
+	"workbench_editor_wrap": "Wrap",
+	"workbench_editor_wrap_on": "Word wrap is on"
+}

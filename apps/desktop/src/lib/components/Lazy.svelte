@@ -8,6 +8,7 @@
 	import { untrack, type Component } from "svelte";
 	import { messageOf } from "#lib/errors/report.ts";
 	import PaneNotice from "./panes/PaneNotice.svelte";
+	import { m } from "#lib/i18n/m.ts";
 
 	let { load, props }: { load: () => Promise<{ default: Component<P> }>; props: P } = $props();
 
@@ -20,5 +21,5 @@
 	{@const View = mod.default}
 	<View {...props} />
 {:catch err}
-	<PaneNotice>Could not load this view: {messageOf(err)}</PaneNotice>
+	<PaneNotice>{m.workbench_lazy_load_failed({ error: messageOf(err) })}</PaneNotice>
 {/await}

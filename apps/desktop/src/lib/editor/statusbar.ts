@@ -3,6 +3,8 @@
  * component only renders `text` and sets `title`. `kind` tells it which items are clickable
  * pickers (`action`), plain text (`info`) or a warning/error tint.
  */
+import { list } from "#lib/i18n/fmt.ts";
+import { m } from "#lib/i18n/m.ts";
 import type { Eol } from "./detect.ts";
 import type { Tier } from "./largeFile.ts";
 
@@ -35,7 +37,6 @@ const LANGUAGE_LABELS: Record<string, string> = {
 	javascript: "JavaScript",
 	javascriptreact: "JavaScript JSX",
 	json: "JSON",
-	jsonc: "JSON with Comments",
 	html: "HTML",
 	css: "CSS",
 	scss: "SCSS",
@@ -56,15 +57,20 @@ const LANGUAGE_LABELS: Record<string, string> = {
 	toml: "TOML",
 	xml: "XML",
 	sql: "SQL",
-	shellscript: "Shell Script",
-	shell: "Shell Script",
-	bash: "Shell Script",
 	dockerfile: "Dockerfile",
 	svelte: "Svelte",
 	vue: "Vue",
 	lua: "Lua",
-	plaintext: "Plain Text",
-	text: "Plain Text",
+};
+
+/** Language names that are words rather than names (`Plain text`), so they follow the app's language. */
+const WORD_LABELS: Record<string, () => string> = {
+	jsonc: () => m.workbench_editor_lang_jsonc(),
+	shellscript: () => m.workbench_editor_lang_shell_script(),
+	shell: () => m.workbench_editor_lang_shell_script(),
+	bash: () => m.workbench_editor_lang_shell_script(),
+	plaintext: () => m.workbench_editor_lang_plain_text(),
+	text: () => m.workbench_editor_lang_plain_text(),
 };
 
 const ENCODING_LABELS: Record<string, string> = {
@@ -72,30 +78,38 @@ const ENCODING_LABELS: Record<string, string> = {
 	utf8: "UTF-8",
 	"utf-16le": "UTF-16 LE",
 	"utf-16be": "UTF-16 BE",
-	"utf-8-bom": "UTF-8 with BOM",
 };
 
-const EOL_LABELS: Record<Eol | "mixed", string> = { lf: "LF", crlf: "CRLF", cr: "CR", mixed: "Mixed" };
+/** The text of an encoding: a name (`UTF-8`), or the one that has a word in it (`UTF-8 with BOM`). */
+const encodingLabel = (encoding: string): string => {
+	const e = encoding.toLowerCase();
+	if (e === "utf-8-bom") return m.workbench_editor_encoding_utf8_bom();
+	return ENCODING_LABELS[e] ?? encoding.toUpperCase();
+};
 
 /** Display name of a language id (`typescript` → `TypeScript`); unknown ids are capitalised as is. */
 export function languageLabel(langId: string): string {
-	const known = LANGUAGE_LABELS[langId.toLowerCase()];
+	const id = langId.toLowerCase();
+	if (Object.hasOwn(WORD_LABELS, id)) return WORD_LABELS[id]();
+	const known = LANGUAGE_LABELS[id];
 	if (known) return known;
-	return langId.length > 0 ? langId[0].toUpperCase() + langId.slice(1) : "Plain Text";
+	return langId.length > 0 ? langId[0].toUpperCase() + langId.slice(1) : m.workbench_editor_lang_plain_text();
 }
 
-/** `Ln 12, Col 5`, then `3 selections` and/or `(24 selected)` appended like VS Code. */
+/** `Ln 12, Col 5`, then `(3 selections)` and/or `(24 selected)` appended like VS Code. */
 function position(i: StatusInput): { text: string; title: string } {
 	const { count, chars } = i.selections;
-	let text = `Ln ${i.line}, Col ${i.col}`;
-	if (count > 1) text += ` (${count} selections)`;
-	if (chars > 0) text += ` (${chars} selected)`;
-	return { text, title: "Go to line" };
+	let text = m.workbench_loose_editor_ln_line_col_col({ line: i.line, col: i.col });
+	if (count > 1) text += ` (${m.workbench_editor_selections({ count })})`;
+	if (chars > 0) text += ` (${m.workbench_editor_selected_chars({ count: chars })})`;
+	return { text, title: m.workbench_editor_goto_line() };
 }
 
-/** `Spaces: 2` or `Tab Size: 4`. */
-function indentText(i: StatusInput["indent"]): string {
-	return i.style === "tab" ? `Tab Size: ${i.size}` : `Spaces: ${i.size}`;
+/** `Spaces: 2` or `Tab size: 4`. */
+export function indentText(i: Pick<StatusInput["indent"], "style" | "size">): string {
+	return i.style === "tab"
+		? m.workbench_editor_indent_tab_size({ size: i.size })
+		: m.workbench_editor_indent_spaces({ size: i.size });
 }
 
 /**
@@ -126,44 +140,42 @@ export function statusItems(i: StatusInput): StatusItem[] {
 	if (errors > 0 || warnings > 0) {
 		items.push({
 			id: "problems",
-			text: `${errors} ${errors === 1 ? "error" : "errors"}, ${warnings} ${warnings === 1 ? "warning" : "warnings"}`,
-			title: "Show problems",
+			text: list([m.workbench_editor_errors({ count: errors }), m.workbench_editor_warnings({ count: warnings })]),
+			title: m.workbench_editor_show_problems(),
 			kind: errors > 0 ? "error" : "warning",
 		});
 	}
 	items.push({
 		id: "indent",
 		text: indentText(i.indent),
-		title: i.indent.detected
-			? "Indentation (detected from the file): select to change"
-			: "Select indentation",
+		title: i.indent.detected ? m.workbench_editor_indent_detected() : m.workbench_editor_select_indentation(),
 		kind: "action",
 	});
 	items.push({
 		id: "encoding",
-		text: ENCODING_LABELS[i.encoding.toLowerCase()] ?? i.encoding.toUpperCase(),
-		title: "Select encoding",
+		text: encodingLabel(i.encoding),
+		title: m.workbench_editor_select_encoding(),
 		kind: "info",
 	});
 	items.push({
 		id: "eol",
-		text: EOL_LABELS[i.eol],
-		title: i.eol === "mixed" ? "Mixed line endings: select to unify" : "Select end of line sequence",
+		text: i.eol === "mixed" ? m.workbench_editor_eol_mixed() : { lf: "LF", crlf: "CRLF", cr: "CR" }[i.eol],
+		title: i.eol === "mixed" ? m.workbench_editor_eol_mixed_title() : m.workbench_editor_select_eol(),
 		kind: i.eol === "mixed" ? "warning" : "action",
 	});
 	items.push({
 		id: "language",
 		text: i.language.label,
-		title: `Select language mode (${i.language.id})`,
+		title: m.workbench_editor_select_language({ id: i.language.id }),
 		kind: "action",
 	});
-	if (i.lspChip) items.push({ id: "lsp", text: i.lspChip, title: "Language server", kind: "action" });
-	if (i.wrap) items.push({ id: "wrap", text: "Wrap", title: "Word wrap is on", kind: "info" });
+	if (i.lspChip) items.push({ id: "lsp", text: i.lspChip, title: m.workbench_editor_language_server(), kind: "action" });
+	if (i.wrap) items.push({ id: "wrap", text: m.workbench_editor_wrap(), title: m.workbench_editor_wrap_on(), kind: "info" });
 	if (i.tier !== "normal") {
 		items.push({
 			id: "tier",
-			text: i.tier === "huge" ? "Huge file" : "Large file",
-			title: "Some editor features are off to keep this file fast",
+			text: i.tier === "huge" ? m.workbench_editor_huge_file() : m.workbench_editor_large_file(),
+			title: m.workbench_editor_tier_title(),
 			kind: "warning",
 		});
 	}

@@ -7,6 +7,7 @@
 	import { primaryKey } from "#lib/keys.ts";
 	import FindInput from "../FindInput.svelte";
 	import ToggleChip from "../ToggleChip.svelte";
+	import { m } from "#lib/i18n/m.ts";
 
 	let {
 		tab,
@@ -84,8 +85,8 @@
 		bind:input
 		bind:value={query}
 		invalid={error}
-		placeholder="Find"
-		aria-label="Find in terminal"
+		placeholder={m.logs_search_bar_find()}
+		aria-label={m.workbench_term_search_label()}
 		spellcheck="false"
 		autocomplete="off"
 		oninput={() => void find(true)}
@@ -93,22 +94,22 @@
 	/>
 	<ToggleChip
 		on={matchCase}
-		label="Match case"
+		label={m.logs_search_bar_match_case()}
 		onclick={() => {
 			matchCase = !matchCase;
 			void find(true);
-		}}>Aa</ToggleChip
+		}}><!-- i18n-ignore -->Aa</ToggleChip
 	>
 	<ToggleChip
 		on={useRegex}
-		label="Regular expression"
+		label={m.logs_search_bar_regular_expression()}
 		onclick={() => {
 			useRegex = !useRegex;
 			void find(true);
 		}}>.*</ToggleChip
 	>
 	<span class="count" aria-live="polite">
-		{#if error}invalid{:else if stat && query}{stat.total ? `${stat.index}/${stat.total}` : "0"}{/if}
+		{#if error}{m.logs_search_bar_invalid()}{:else if stat && query}{stat.total ? `${stat.index}/${stat.total}` : "0"}{/if}
 	</span>
 </div>
 

@@ -5,6 +5,8 @@
 	import type { ChatState } from "#lib/rpc.ts";
 	import ChatTextarea from "./ChatTextarea.svelte";
 	import { atHits as findAtHits, completeAt, slashHits } from "./composer.ts";
+	import { m } from "#lib/i18n/m.ts";
+	import { kbd } from "#lib/keys.ts";
 
 	export interface Pasted {
 		name: string;
@@ -82,13 +84,13 @@
 	{#if images.length}
 		<div class="imgs">
 			{#each images as im, i (i)}
-				<span class="chip">{im.name}<button onclick={() => images.splice(i, 1)}><X size={10} /></button></span
+				<span class="chip">{im.name}<button aria-label={m.crew_chat_composer_remove_image({ name: im.name })} onclick={() => images.splice(i, 1)}><X size={10} /></button></span
 				>
 			{/each}
 		</div>
 	{/if}
 	<div class="row">
-		<label class="attach" title="Attach image">
+		<label class="attach" title={m.workbench_chat_attach_image()}>
 			<Paperclip size={14} />
 			<input
 				type="file"
@@ -104,9 +106,11 @@
 			value={draft}
 			oninput={(e) => (draft = (e.currentTarget as HTMLTextAreaElement).value)}
 			{onkeydown}
-			placeholder={busy ? "Queue a follow-up (Esc to stop)" : "Message omp — / commands, @ files"}></textarea>
+			placeholder={busy
+				? m.workbench_chat_composer_busy_placeholder({ key: kbd("escape") })
+				: m.workbench_chat_composer_placeholder()}></textarea>
 		{#if busy}
-			<button class="stop" title="Stop (Esc)" onclick={onabort}
+			<button class="stop" title={m.workbench_chat_stop({ key: kbd("escape") })} onclick={onabort}
 				><Square size={12} fill="currentColor" /></button
 			>
 		{/if}

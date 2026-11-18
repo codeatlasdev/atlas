@@ -20,6 +20,7 @@
 	import { hasTermView, reloadTermView } from "#lib/stores/termViews.ts";
 	import { pinned } from "#lib/stores/tabs.ts";
 	import { ws } from "#lib/stores/workspace.svelte.ts";
+	import { m } from "#lib/i18n/m.ts";
 
 	let { groupId, onrename }: { groupId: string; onrename: (tabId: string) => void } = $props();
 
@@ -27,9 +28,11 @@
 	const active = $derived(ws.tab(g?.activeTab));
 	const w = $derived(ws.worktree(g?.worktreeId));
 	const project = $derived(store.projects.find((p) => p.id === w?.repoId));
+	const newTabKey = $derived(shortcutFor("workspace::NewTerminal"));
 
 	function openKind(kind: "services" | "logs" | "config") {
 		if (!w) return;
+		// Stored as these English names and drawn in the app's language by `tabLabel`.
 		const labels = { services: "Panel", logs: "Logs", config: "Config" };
 		ws.reveal(w.id, (t) => t.kind === kind, { kind, label: labels[kind] });
 	}
@@ -41,70 +44,70 @@
 			type="button"
 			{...props}
 			class="plus"
-			aria-label="New tab"
-			title="New tab {shortcutFor('workspace::NewTerminal') ?? ''}"><Plus size={14} /></button
+			aria-label={m.workbench_new_tab_menu_new_tab()}
+			title={newTabKey ? m.workbench_new_tab_menu_new_tab_key({ key: newTabKey }) : m.workbench_new_tab_menu_new_tab()}><Plus size={14} /></button
 		>
 	{/snippet}
 	<DropdownMenuItem onclick={() => w && ws.newTerminal(w.id, { groupId })}>
 		{#snippet icon()}<SquareTerminal />{/snippet}
-		Terminal
+		{m.crew_chat_header_terminal()}
 		<span class="kbd">{shortcutFor("workspace::NewTerminal") ?? ""}</span>
 	</DropdownMenuItem>
 	{#each agents.list.filter((a) => a.installed) as a (a.id)}
 		<DropdownMenuItem brandIcon onclick={() => w && agents.launch(w.id, a.id, { groupId })}>
 			{#snippet icon()}<AgentLogo agent={a.id} bare />{/snippet}
-			New {a.label} session
+			{m.workbench_new_tab_menu_new_session({ label: a.label })}
 		</DropdownMenuItem>
 	{/each}
 	{#if agents.list.find((a) => a.id === "omp" && a.installed)}
 		<DropdownMenuItem brandIcon onclick={() => w && agents.launch(w.id, "omp", { groupId, chat: true })}>
 			{#snippet icon()}<AgentLogo agent="omp" bare />{/snippet}
-			New omp chat
+			{m.workbench_new_tab_menu_new_omp_chat()}
 		</DropdownMenuItem>
 	{/if}
 	{#if project && project.kind !== "folder"}
 		<DropdownMenuItem onclick={() => openKind("services")}>
 			{#snippet icon()}<LayoutGrid />{/snippet}
-			Panel
+			{m.workbench_tab_panel()}
 		</DropdownMenuItem>
 		<DropdownMenuItem onclick={() => openKind("logs")}>
 			{#snippet icon()}<ScrollText />{/snippet}
-			Logs
+			{m.panel_tab_logs()}
 		</DropdownMenuItem>
 		<DropdownMenuItem onclick={() => openKind("config")}>
 			{#snippet icon()}<FileCode2 />{/snippet}
-			Config
+			{m.panel_tab_config()}
 		</DropdownMenuItem>
 	{/if}
 	{#if w && project?.kind !== "folder"}
 		<DropdownMenuItem onclick={() => openDiff(w.id)}>
 			{#snippet icon()}<FileDiff />{/snippet}
-			Changes
+			{m.workbench_tab_changes()}
 		</DropdownMenuItem>
 		<DropdownMenuItem onclick={() => pr.openTab(w.id)}>
 			{#snippet icon()}<GitPullRequest />{/snippet}
-			Pull request
+			{m.workbench_tab_pull_request()}
 		</DropdownMenuItem>
 	{/if}
 	<DropdownMenuItem onclick={() => g?.activeTab && ws.split(groupId, "h", g.activeTab)}
-		>Split right <span class="kbd">{shortcutFor("pane::SplitRight") ?? ""}</span></DropdownMenuItem
+		>{m.workbench_new_tab_menu_split_right()} <span class="kbd">{shortcutFor("pane::SplitRight") ?? ""}</span></DropdownMenuItem
 	>
 	<DropdownMenuItem onclick={() => g?.activeTab && ws.split(groupId, "v", g.activeTab)}
-		>Split down <span class="kbd">{shortcutFor("pane::SplitDown") ?? ""}</span></DropdownMenuItem
+		>{m.workbench_new_tab_menu_split_down()} <span class="kbd">{shortcutFor("pane::SplitDown") ?? ""}</span></DropdownMenuItem
 	>
 	{#if active}
-		{#if !pinned(active)}<DropdownMenuItem onclick={() => onrename(active.id)}>Rename tab</DropdownMenuItem
+		{#if !pinned(active)}<DropdownMenuItem onclick={() => onrename(active.id)}>{m.workbench_new_tab_menu_rename_tab()}</DropdownMenuItem
 			>{/if}
 		{#if hasTermView(active.id)}
 			<DropdownMenuItem onclick={() => void reloadTermView(active.id).catch((e) => toast.error(errText(e)))}
-				>Reload terminal</DropdownMenuItem
+				>{m.workbench_new_tab_menu_reload_terminal()}</DropdownMenuItem
 			>
 		{/if}
 		<DropdownMenuItem onclick={() => ws.closeMany(groupId, active.id)}>
-			Close others <span class="kbd">{shortcutFor("pane::CloseOtherItems") ?? ""}</span>
+			{m.workbench_new_tab_menu_close_others()} <span class="kbd">{shortcutFor("pane::CloseOtherItems") ?? ""}</span>
 		</DropdownMenuItem>
 		<DropdownMenuItem onclick={() => ws.closeMany(groupId)}>
-			Close all <span class="kbd">{shortcutFor("pane::CloseAllItems") ?? ""}</span>
+			{m.workbench_new_tab_menu_close_all()} <span class="kbd">{shortcutFor("pane::CloseAllItems") ?? ""}</span>
 		</DropdownMenuItem>
 	{/if}
 </DropdownMenu>

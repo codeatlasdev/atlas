@@ -1,4 +1,5 @@
 /** Copy of the confirmation before restarting the terminal host (it ends running terminals). Pure. */
+import { m } from "#lib/i18n/m.ts";
 
 const MAX_LISTED = 6;
 
@@ -15,25 +16,25 @@ const shortCwd = (cwd: string) => cwd.split("/").filter(Boolean).slice(-2).join(
 export function hostRestartPrompt(ptys: { title: string; cwd: string }[]): HostRestartPrompt {
 	if (ptys.length === 0)
 		return {
-			title: "Restart the terminal host?",
-			description: "No terminals are running. Language features turn on once the host restarts.",
-			confirmLabel: "Restart host",
+			title: m.workbench_host_prompt_title(),
+			description: m.workbench_host_prompt_no_terminals(),
+			confirmLabel: m.workbench_host_prompt_restart_host(),
 			destructive: false,
 		};
-	const listed = ptys.slice(0, MAX_LISTED).map((p) => `• ${p.title || "Terminal"} — ${shortCwd(p.cwd)}`);
-	const more = ptys.length > MAX_LISTED ? [`…and ${ptys.length - MAX_LISTED} more`] : [];
+	const listed = ptys.slice(0, MAX_LISTED).map((p) => `• ${p.title || m.crew_chat_header_terminal()} · ${shortCwd(p.cwd)}`);
+	const more = ptys.length > MAX_LISTED ? [m.workbench_host_more_terminals({ count: ptys.length - MAX_LISTED })] : [];
 	const n = ptys.length;
 	return {
-		title: "Restart the terminal host?",
+		title: m.workbench_host_prompt_title(),
 		description: [
-			`Restarting ends ${n === 1 ? "this terminal" : `these ${n} terminals`} and anything running in ${n === 1 ? "it" : "them"}:`,
+			m.workbench_host_prompt_ends({ count: n }),
 			"",
 			...listed,
 			...more,
 			"",
-			"Language features turn on once the host restarts.",
+			m.workbench_host_prompt_language_features(),
 		].join("\n"),
-		confirmLabel: `End ${n === 1 ? "terminal" : "terminals"} and restart`,
+		confirmLabel: m.workbench_host_prompt_end_and_restart({ count: n }),
 		destructive: true,
 	};
 }

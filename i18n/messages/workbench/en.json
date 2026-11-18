@@ -1,4 +1,89 @@
 {
+	"workbench_ask_confirm": "OK",
+	"workbench_dock_resize_bottom": "Resize bottom dock",
+	"workbench_dock_resize_side": "Resize side dock",
+	"workbench_explorer_delete_folder": "Deletes the folder and everything in it.",
+	"workbench_explorer_delete_title": "Delete {name}?",
+	"workbench_explorer_discard_title": "Discard changes to {path}?",
+	"workbench_explorer_duplicate_failed": "Couldn't duplicate {name}",
+	"workbench_explorer_git_failed": "Git command failed",
+	"workbench_explorer_menu_copy_path": "Copy path",
+	"workbench_explorer_menu_copy_relative_path": "Copy relative path",
+	"workbench_explorer_menu_discard_changes": "Discard changes",
+	"workbench_explorer_menu_duplicate": "Duplicate",
+	"workbench_explorer_menu_open_in_terminal": "Open in terminal",
+	"workbench_explorer_menu_open_to_side": "Open to the side",
+	"workbench_explorer_menu_stage": "Stage",
+	"workbench_explorer_new_file": "New file",
+	"workbench_explorer_new_file_name": "New file name",
+	"workbench_explorer_new_folder": "New folder",
+	"workbench_explorer_new_name": "New name",
+	"workbench_explorer_reveal_active_file": "Reveal active file",
+	"workbench_explorer_this_folder_is_empty": "This folder is empty.",
+	"workbench_explorer_watch_failed": "Couldn't watch the file tree: {error}. It won't update on its own.",
+	"workbench_host_chip_needs_restart": "Terminal host needs a restart",
+	"workbench_host_chip_older": "Older terminal host",
+	"workbench_host_chip_restarting": "Restarting terminal host…",
+	"workbench_host_chip_restarts_when_idle": "Terminal host restarts when idle",
+	"workbench_host_chip_terminals_stay_attached": "Terminals stay attached",
+	"workbench_host_chip_updating": "Updating terminal host…",
+	"workbench_host_chip_version": "Terminal host {version}",
+	"workbench_host_more_terminals": "and {count} more",
+	"workbench_host_prompt_body": "The terminal host is older than this version of Atlas.",
+	"workbench_host_prompt_consequence": [
+		{
+			"declarations": [
+				"input count",
+				"local countPlural = count: plural"
+			],
+			"selectors": [
+				"countPlural"
+			],
+			"match": {
+				"countPlural=one": "Restarting ends this terminal.",
+				"countPlural=*": "Restarting ends these terminals."
+			}
+		}
+	],
+	"workbench_host_prompt_end_and_restart": [
+		{
+			"declarations": [
+				"input count",
+				"local countPlural = count: plural"
+			],
+			"selectors": [
+				"countPlural"
+			],
+			"match": {
+				"countPlural=one": "End terminal and restart",
+				"countPlural=*": "End terminals and restart"
+			}
+		}
+	],
+	"workbench_host_prompt_ends": [
+		{
+			"declarations": [
+				"input count",
+				"local countPlural = count: plural"
+			],
+			"selectors": [
+				"countPlural"
+			],
+			"match": {
+				"countPlural=one": "Restarting ends this terminal and anything running in it:",
+				"countPlural=*": "Restarting ends these {count} terminals and anything running in them:"
+			}
+		}
+	],
+	"workbench_host_prompt_language_features": "Language features turn on once the host restarts.",
+	"workbench_host_prompt_later": "Later",
+	"workbench_host_prompt_no_terminals": "No terminals are running. Language features turn on once the host restarts.",
+	"workbench_host_prompt_restart_host": "Restart host",
+	"workbench_host_prompt_restart_now": "Restart now",
+	"workbench_host_prompt_restart_when_idle": "Restart when idle",
+	"workbench_host_prompt_running_terminals": "Running terminals",
+	"workbench_host_prompt_title": "Restart the terminal host?",
+	"workbench_lazy_load_failed": "Couldn't load this view: {error}",
 	"workbench_loose_editor_keep_my_version": "Keep my version",
 	"workbench_loose_editor_ln_line_col_col": "Ln {line}, Col {col}",
 	"workbench_loose_editor_load_from_disk": "Load from disk",
@@ -18,5 +103,31 @@
 	"workbench_markdown_bar_link": "Link",
 	"workbench_markdown_bar_markdown_formatting": "Markdown formatting",
 	"workbench_markdown_bar_numbered_list": "Numbered list",
-	"workbench_markdown_bar_preview": "Preview"
+	"workbench_markdown_bar_preview": "Preview",
+	"workbench_new_tab_menu_close_all": "Close all",
+	"workbench_new_tab_menu_close_others": "Close others",
+	"workbench_new_tab_menu_new_omp_chat": "New omp chat",
+	"workbench_new_tab_menu_new_session": "New {label} session",
+	"workbench_new_tab_menu_new_tab": "New tab",
+	"workbench_new_tab_menu_new_tab_key": "New tab ({key})",
+	"workbench_new_tab_menu_reload_terminal": "Reload terminal",
+	"workbench_new_tab_menu_rename_tab": "Rename tab",
+	"workbench_new_tab_menu_split_down": "Split down",
+	"workbench_new_tab_menu_split_right": "Split right",
+	"workbench_nothing_to_show": "Nothing to show",
+	"workbench_palette_close": "close",
+	"workbench_palette_navigate": "navigate",
+	"workbench_palette_no_match": "Nothing matches “{query}”",
+	"workbench_palette_open_beside": "open beside",
+	"workbench_palette_select": "select",
+	"workbench_preview_failed": "Couldn't open the preview: {error}",
+	"workbench_tab_always_open": "{label} (always open)",
+	"workbench_tab_changes": "Changes",
+	"workbench_tab_close": "Close tab",
+	"workbench_tab_close_key": "Close tab ({key})",
+	"workbench_tab_error_hint": "This tab stopped rendering. Your other tabs and terminals are unaffected.",
+	"workbench_tab_error_title": "{label} hit an error",
+	"workbench_tab_panel": "Panel",
+	"workbench_tab_pull_request": "Pull request",
+	"workbench_tab_setup": "Setup"
 }

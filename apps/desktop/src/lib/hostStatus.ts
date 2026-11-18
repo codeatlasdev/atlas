@@ -4,6 +4,7 @@
  * prompt rule. No Svelte, no Tauri: `stores/hostStatus.svelte.ts` holds the state.
  */
 import { tilde } from "#lib/format.ts";
+import { m } from "#lib/i18n/m.ts";
 
 export type HostStatus = "current" | "upgrading" | "upgraded" | "outdated" | "restarting";
 export type HostSkew = "none" | "upgradable" | "needsRestart";
@@ -102,19 +103,23 @@ export function chipFor(s: HostState): Chip | null {
 	if (s.status === "upgrading" || s.status === "restarting") {
 		return {
 			tone: "busy",
-			label: s.status === "upgrading" ? "Updating terminal host…" : "Restarting terminal host…",
-			detail: s.status === "upgrading" ? "Terminals stay attached" : "",
+			label: s.status === "upgrading" ? m.workbench_host_chip_updating() : m.workbench_host_chip_restarting(),
+			detail: s.status === "upgrading" ? m.workbench_host_chip_terminals_stay_attached() : "",
 		};
 	}
 	if (s.status === "outdated") {
 		return {
 			tone: "warn",
-			label: s.idleArmed ? "Terminal host restarts when idle" : "Terminal host needs a restart",
+			label: s.idleArmed ? m.workbench_host_chip_restarts_when_idle() : m.workbench_host_chip_needs_restart(),
 			detail: s.reason,
 		};
 	}
 	if (s.skew === "needsRestart") {
-		return { tone: "info", label: `Terminal host ${s.version ?? "older"}`, detail: s.reason };
+		return {
+			tone: "info",
+			label: s.version ? m.workbench_host_chip_version({ version: s.version }) : m.workbench_host_chip_older(),
+			detail: s.reason,
+		};
 	}
 	return null;
 }
@@ -123,19 +128,19 @@ export interface PromptCopy {
 	title: string;
 	/** Why the host should restart. */
 	body: string;
-	/** `<title|command> — <~/cwd>`, one per running terminal. */
+	/** `<title|command> · <~/cwd>`, one per running terminal. */
 	items: string[];
 	consequence: string;
 }
 
 export function promptCopy(s: HostState): PromptCopy {
 	return {
-		title: "Restart the terminal host?",
-		body: s.reason || "The terminal host is older than this version of Atlas.",
+		title: m.workbench_host_prompt_title(),
+		body: s.reason || m.workbench_host_prompt_body(),
 		items: s.ptys.map(
-			(p) => `${p.title.trim() || p.argv.join(" ").trim() || "shell"} — ${tilde(p.cwd) || "~"}`,
+			(p) => `${p.title.trim() || p.argv.join(" ").trim() || "shell"} · ${tilde(p.cwd) || "~"}`,
 		),
-		consequence: "Restarting ends these terminals.",
+		consequence: m.workbench_host_prompt_consequence({ count: s.ptys.length }),
 	};
 }
 

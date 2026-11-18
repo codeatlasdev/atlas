@@ -1,4 +1,89 @@
 {
+	"workbench_ask_confirm": "OK",
+	"workbench_dock_resize_bottom": "Redimensionar o dock inferior",
+	"workbench_dock_resize_side": "Redimensionar o dock lateral",
+	"workbench_explorer_delete_folder": "Exclui a pasta e tudo o que está nela.",
+	"workbench_explorer_delete_title": "Excluir {name}?",
+	"workbench_explorer_discard_title": "Descartar as alterações em {path}?",
+	"workbench_explorer_duplicate_failed": "Não foi possível duplicar {name}",
+	"workbench_explorer_git_failed": "O comando git falhou",
+	"workbench_explorer_menu_copy_path": "Copiar caminho",
+	"workbench_explorer_menu_copy_relative_path": "Copiar caminho relativo",
+	"workbench_explorer_menu_discard_changes": "Descartar alterações",
+	"workbench_explorer_menu_duplicate": "Duplicar",
+	"workbench_explorer_menu_open_in_terminal": "Abrir no terminal",
+	"workbench_explorer_menu_open_to_side": "Abrir ao lado",
+	"workbench_explorer_menu_stage": "Fazer stage",
+	"workbench_explorer_new_file": "Novo arquivo",
+	"workbench_explorer_new_file_name": "Nome do novo arquivo",
+	"workbench_explorer_new_folder": "Nova pasta",
+	"workbench_explorer_new_name": "Novo nome",
+	"workbench_explorer_reveal_active_file": "Mostrar arquivo ativo",
+	"workbench_explorer_this_folder_is_empty": "Esta pasta está vazia.",
+	"workbench_explorer_watch_failed": "Não foi possível acompanhar a árvore de arquivos: {error}. Ela não será atualizada sozinha.",
+	"workbench_host_chip_needs_restart": "O host de terminais precisa reiniciar",
+	"workbench_host_chip_older": "Host de terminais mais antigo",
+	"workbench_host_chip_restarting": "Reiniciando o host de terminais…",
+	"workbench_host_chip_restarts_when_idle": "O host de terminais reinicia quando ocioso",
+	"workbench_host_chip_terminals_stay_attached": "Os terminais continuam anexados",
+	"workbench_host_chip_updating": "Atualizando o host de terminais…",
+	"workbench_host_chip_version": "Host de terminais {version}",
+	"workbench_host_more_terminals": "e mais {count}",
+	"workbench_host_prompt_body": "O host de terminais é mais antigo que esta versão do Atlas.",
+	"workbench_host_prompt_consequence": [
+		{
+			"declarations": [
+				"input count",
+				"local countPlural = count: plural"
+			],
+			"selectors": [
+				"countPlural"
+			],
+			"match": {
+				"countPlural=one": "Reiniciar encerra este terminal.",
+				"countPlural=*": "Reiniciar encerra estes terminais."
+			}
+		}
+	],
+	"workbench_host_prompt_end_and_restart": [
+		{
+			"declarations": [
+				"input count",
+				"local countPlural = count: plural"
+			],
+			"selectors": [
+				"countPlural"
+			],
+			"match": {
+				"countPlural=one": "Encerrar o terminal e reiniciar",
+				"countPlural=*": "Encerrar os terminais e reiniciar"
+			}
+		}
+	],
+	"workbench_host_prompt_ends": [
+		{
+			"declarations": [
+				"input count",
+				"local countPlural = count: plural"
+			],
+			"selectors": [
+				"countPlural"
+			],
+			"match": {
+				"countPlural=one": "Reiniciar encerra este terminal e tudo o que roda nele:",
+				"countPlural=*": "Reiniciar encerra estes {count} terminais e tudo o que roda neles:"
+			}
+		}
+	],
+	"workbench_host_prompt_language_features": "Os recursos de linguagem são ativados quando o host reiniciar.",
+	"workbench_host_prompt_later": "Depois",
+	"workbench_host_prompt_no_terminals": "Nenhum terminal está em execução. Os recursos de linguagem são ativados quando o host reiniciar.",
+	"workbench_host_prompt_restart_host": "Reiniciar host",
+	"workbench_host_prompt_restart_now": "Reiniciar agora",
+	"workbench_host_prompt_restart_when_idle": "Reiniciar quando ocioso",
+	"workbench_host_prompt_running_terminals": "Terminais em execução",
+	"workbench_host_prompt_title": "Reiniciar o host de terminais?",
+	"workbench_lazy_load_failed": "Não foi possível carregar esta visualização: {error}",
 	"workbench_loose_editor_keep_my_version": "Manter minha versão",
 	"workbench_loose_editor_ln_line_col_col": "Lin {line}, Col {col}",
 	"workbench_loose_editor_load_from_disk": "Carregar do disco",
@@ -18,5 +103,31 @@
 	"workbench_markdown_bar_link": "Link",
 	"workbench_markdown_bar_markdown_formatting": "Formatação Markdown",
 	"workbench_markdown_bar_numbered_list": "Lista numerada",
-	"workbench_markdown_bar_preview": "Pré-visualizar"
+	"workbench_markdown_bar_preview": "Pré-visualizar",
+	"workbench_new_tab_menu_close_all": "Fechar todas",
+	"workbench_new_tab_menu_close_others": "Fechar as outras",
+	"workbench_new_tab_menu_new_omp_chat": "Novo chat do omp",
+	"workbench_new_tab_menu_new_session": "Nova sessão de {label}",
+	"workbench_new_tab_menu_new_tab": "Nova aba",
+	"workbench_new_tab_menu_new_tab_key": "Nova aba ({key})",
+	"workbench_new_tab_menu_reload_terminal": "Recarregar terminal",
+	"workbench_new_tab_menu_rename_tab": "Renomear aba",
+	"workbench_new_tab_menu_split_down": "Dividir para baixo",
+	"workbench_new_tab_menu_split_right": "Dividir para a direita",
+	"workbench_nothing_to_show": "Nada para mostrar",
+	"workbench_palette_close": "fechar",
+	"workbench_palette_navigate": "navegar",
+	"workbench_palette_no_match": "Nada corresponde a “{query}”",
+	"workbench_palette_open_beside": "abrir ao lado",
+	"workbench_palette_select": "selecionar",
+	"workbench_preview_failed": "Não foi possível abrir a visualização: {error}",
+	"workbench_tab_always_open": "{label} (sempre aberto)",
+	"workbench_tab_changes": "Alterações",
+	"workbench_tab_close": "Fechar aba",
+	"workbench_tab_close_key": "Fechar aba ({key})",
+	"workbench_tab_error_hint": "Esta aba parou de ser exibida. As outras abas e os terminais não foram afetados.",
+	"workbench_tab_error_title": "{label} encontrou um erro",
+	"workbench_tab_panel": "Painel",
+	"workbench_tab_pull_request": "Pull request",
+	"workbench_tab_setup": "Setup"
 }

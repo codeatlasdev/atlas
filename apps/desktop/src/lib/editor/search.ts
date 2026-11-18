@@ -20,6 +20,8 @@ import {
 } from "@codemirror/search";
 import type { EditorState, Extension, Text } from "@codemirror/state";
 import { EditorView, runScopeHandlers, type Panel, type ViewUpdate } from "@codemirror/view";
+import { formatNumber } from "#lib/i18n/fmt.ts";
+import { m } from "#lib/i18n/m.ts";
 import { kbd } from "#lib/keys.ts";
 
 /** The counter stops here and shows `10000+`. */
@@ -55,13 +57,18 @@ export function countMatches(
 	return { total, capped: false, index };
 }
 
-/** `n of m` / `m+` / `No results` text of a count. */
+/** `n of m` / `m+ found` / `No results` text of a count. */
 export function counterLabel(c: MatchCount, valid: boolean, hasQuery: boolean): string {
 	if (!hasQuery) return "";
-	if (!valid) return "Invalid regex";
-	if (!c.total) return "No results";
-	const total = c.capped ? `${c.total}+` : `${c.total}`;
-	return c.index ? `${c.index} of ${total}` : `${total} found`;
+	if (!valid) return m.logs_search_bar_invalid();
+	if (!c.total) return m.workbench_editor_find_no_results();
+	if (c.index) {
+		const total = c.capped ? `${formatNumber(c.total)}+` : formatNumber(c.total);
+		return m.workbench_editor_find_position({ index: formatNumber(c.index), total });
+	}
+	return c.capped
+		? m.workbench_editor_find_found_capped({ count: c.total })
+		: m.workbench_editor_find_found({ count: c.total });
 }
 
 /**
@@ -118,11 +125,12 @@ interface Toggle {
 	shortcut: string;
 }
 
-const TOGGLES: Toggle[] = [
-	{ key: "caseSensitive", label: "Match case", text: "Aa", shortcut: kbd("alt-cmd-c") },
-	{ key: "wholeWord", label: "Match whole word", text: "ab", shortcut: kbd("alt-cmd-w") },
-	{ key: "regexp", label: "Use regular expression", text: ".*", shortcut: kbd("alt-cmd-r") },
-	{ key: "inSelection", label: "Find in selection", text: "⊡", shortcut: kbd("alt-cmd-l") },
+/** Built when a panel opens: names follow the app's language and keys follow the user's keymap. */
+const toggles = (): Toggle[] => [
+	{ key: "caseSensitive", label: m.logs_search_bar_match_case(), text: "Aa", shortcut: kbd("alt-cmd-c") },
+	{ key: "wholeWord", label: m.workbench_editor_find_whole_word(), text: "ab", shortcut: kbd("alt-cmd-w") },
+	{ key: "regexp", label: m.workbench_editor_find_regexp(), text: ".*", shortcut: kbd("alt-cmd-r") },
+	{ key: "inSelection", label: m.workbench_editor_find_in_selection(), text: "⊡", shortcut: kbd("alt-cmd-l") },
 ];
 
 /** In-selection scope: set when the panel opens over a multi-line selection, kept until toggled. */
@@ -149,8 +157,8 @@ class FindPanel implements Panel {
 		this.find = el("input", {
 			class: "cm-textfield",
 			name: "search",
-			placeholder: "Find",
-			"aria-label": "Find",
+			placeholder: m.logs_search_bar_find(),
+			"aria-label": m.logs_search_bar_find(),
 			"main-field": "true",
 			spellcheck: "false",
 			autocomplete: "off",
@@ -159,8 +167,8 @@ class FindPanel implements Panel {
 		this.repl = el("input", {
 			class: "cm-textfield",
 			name: "replace",
-			placeholder: "Replace",
-			"aria-label": "Replace",
+			placeholder: m.workbench_editor_find_replace(),
+			"aria-label": m.workbench_editor_find_replace(),
 			spellcheck: "false",
 			autocomplete: "off",
 			form: "",
@@ -178,15 +186,15 @@ class FindPanel implements Panel {
 			{
 				type: "button",
 				class: "cm-find-btn cm-find-chevron",
-				"aria-label": "Toggle replace",
+				"aria-label": m.workbench_editor_find_toggle_replace(),
 				"aria-expanded": String(this.showReplace),
-				title: `Toggle replace (${kbd("alt-cmd-f")})`,
+				title: m.workbench_editor_tip({ label: m.workbench_editor_find_toggle_replace(), key: kbd("alt-cmd-f") }),
 			},
 			"›",
 		);
 		this.chevron.addEventListener("click", () => this.setReplace(!this.showReplace));
 
-		const toggleBtns = TOGGLES.map((t) => {
+		const toggleBtns = toggles().map((t) => {
 			const b = el(
 				"button",
 				{
@@ -194,7 +202,7 @@ class FindPanel implements Panel {
 					class: "cm-find-btn cm-find-toggle",
 					"aria-label": t.label,
 					"aria-pressed": "false",
-					title: `${t.label} (${t.shortcut})`,
+					title: m.workbench_editor_tip({ label: t.label, key: t.shortcut }),
 				},
 				t.text,
 			);
@@ -216,24 +224,24 @@ class FindPanel implements Panel {
 			this.find,
 			...toggleBtns,
 			this.count,
-			btn("Previous match", "↑", `Previous match (${kbd("shift-enter")})`, () => findPrevious(view)),
-			btn("Next match", "↓", "Next match (Enter)", () => findNext(view)),
-			btn("Select all matches", "≡", `Select all matches (${kbd("alt-enter")})`, () => selectMatches(view)),
-			btn("Close", "×", "Close (Esc)", () => closeSearchPanel(view)),
+			btn(m.logs_search_bar_previous_match(), "↑", m.logs_search_bar_previous_match_tip({ key: kbd("shift-enter") }), () => findPrevious(view)),
+			btn(m.logs_search_bar_next_match(), "↓", m.logs_search_bar_next_match_tip({ key: kbd("enter") }), () => findNext(view)),
+			btn(m.workbench_editor_find_select_all(), "≡", m.workbench_editor_tip({ label: m.workbench_editor_find_select_all(), key: kbd("alt-enter") }), () => selectMatches(view)),
+			btn(m.common_action_close(), "×", m.workbench_editor_tip({ label: m.common_action_close(), key: kbd("escape") }), () => closeSearchPanel(view)),
 		);
 		this.replaceRow = el(
 			"div",
 			{ class: "cm-find-row cm-find-replace" },
 			this.repl,
-			btn("Replace", "Replace", "Replace (Enter)", () => replaceNext(view)),
-			btn("Replace all", "All", `Replace all (${kbd("cmd-shift-enter")})`, () => replaceAll(view)),
+			btn(m.workbench_editor_find_replace(), m.workbench_editor_find_replace(), m.workbench_editor_tip({ label: m.workbench_editor_find_replace(), key: kbd("enter") }), () => replaceNext(view)),
+			btn(m.workbench_editor_find_replace_all(), m.workbench_editor_find_all(), m.workbench_editor_tip({ label: m.workbench_editor_find_replace_all(), key: kbd("cmd-shift-enter") }), () => replaceAll(view)),
 		);
 		this.replaceRow.hidden = !this.showReplace;
 		this.chevron.hidden = readOnly;
 
 		this.dom = el(
 			"div",
-			{ class: "cm-search cm-find", role: "search", "aria-label": "Find and replace" },
+			{ class: "cm-search cm-find", role: "search", "aria-label": m.workbench_editor_find_and_replace() },
 			findRow,
 			this.replaceRow,
 			this.preview,
@@ -241,9 +249,9 @@ class FindPanel implements Panel {
 		this.dom.addEventListener("keydown", (e) => this.keydown(e));
 
 		// Opening over a multi-line selection scopes the search to it, like VS Code.
-		const m = view.state.selection.main;
-		if (!m.empty && view.state.doc.lineAt(m.from).number !== view.state.doc.lineAt(m.to).number) {
-			this.scope = { from: m.from, to: m.to };
+		const main = view.state.selection.main;
+		if (!main.empty && view.state.doc.lineAt(main.from).number !== view.state.doc.lineAt(main.to).number) {
+			this.scope = { from: main.from, to: main.to };
 			this.find.value = this.query.search;
 		}
 		this.sync();
@@ -374,7 +382,7 @@ class FindPanel implements Panel {
 		const p = this.showReplace ? replacementPreview(q, state, sel) : null;
 		this.preview.hidden = p === null;
 		this.preview.textContent =
-			p === null ? "" : p === "" ? "Replaces with nothing" : `→ ${p.replace(/\n/g, "↵").replace(/\t/g, "→")}`;
+			p === null ? "" : p === "" ? m.workbench_editor_find_replaces_nothing() : `→ ${p.replace(/\n/g, "↵").replace(/\t/g, "→")}`;
 	}
 }
 

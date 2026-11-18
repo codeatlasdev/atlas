@@ -10,6 +10,7 @@ import { codeActionsAt, formatDocument, goToDefinition, runCodeAction } from "#l
 import { explainUnserved } from "#lib/lsp/hints.svelte.ts";
 import { showPicker } from "#lib/lsp/picker.svelte.ts";
 import { IS_MAC } from "#lib/keys.ts";
+import { m } from "#lib/i18n/m.ts";
 import { isGoToClick } from "#lib/lsp/navigation.ts";
 import { linkHover, setLink } from "#lib/lsp/linkHover.ts";
 
@@ -18,15 +19,15 @@ export async function codeActionMenu(view: EditorView) {
 	if (!env || !explainUnserved(view, "code-actions")) return;
 	const sel = view.state.selection.main;
 	const actions = await codeActionsAt(view, sel.from, sel.to);
-	if (actions.length === 0) return toast.info("No code actions here");
+	if (actions.length === 0) return toast.info(m.workbench_lsp_no_code_actions());
 	const items: PaletteItem[] = actions.map((a, i) => ({
 		id: `${i}`,
-		group: a.kind?.startsWith("quickfix") ? "Quick fixes" : "Code actions",
+		group: a.kind?.startsWith("quickfix") ? m.workbench_lsp_group_quick_fixes() : m.workbench_lsp_cmd_code_actions(),
 		label: a.title,
 		description: a.kind,
 		run: () => void runCodeAction(view, a).then(() => view.focus()),
 	}));
-	showPicker("Code actions", items);
+	showPicker(m.workbench_lsp_cmd_code_actions(), items);
 }
 
 /** The click: a go-to modifier + primary button moves the caret there first, then jumps. */

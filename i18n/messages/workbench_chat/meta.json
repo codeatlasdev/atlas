@@ -1,0 +1,15 @@
+{
+	"workbench_chat_answer_no": "Answer button of a yes/no question an agent asks in the chat",
+	"workbench_chat_answer_yes": "Answer button of a yes/no question an agent asks in the chat",
+	"workbench_chat_attach_image": "Tooltip of the chat composer's attach button",
+	"workbench_chat_compact": "Chat bar button that compacts the conversation",
+	"workbench_chat_compact_title": "Tooltip of the chat bar compact button",
+	"workbench_chat_composer_busy_placeholder": "Chat composer placeholder while the agent works; key is Esc",
+	"workbench_chat_composer_placeholder": "Chat composer placeholder when the agent is idle",
+	"workbench_chat_context": "Chat bar: how much of the model's context window is used (percent is formatted, like 42%)",
+	"workbench_chat_images": "Chat message suffix: how many images were attached",
+	"workbench_chat_raw_protocol": "Tooltip of the chat bar button that shows the raw omp protocol",
+	"workbench_chat_search_transcript": "Placeholder of the chat transcript search field",
+	"workbench_chat_starting_omp": "Chat transcript header while omp starts",
+	"workbench_chat_stop": "Tooltip of the chat composer stop button; key is Esc"
+}

@@ -14,6 +14,7 @@ import { themes } from "#lib/stores/theme.svelte.ts";
 import { createNativeSurface, type NativeRect, type NativeSurface } from "#lib/native/surface.ts";
 import { fontCandidates, insetRect } from "./fonts.ts";
 import { isViewDropped } from "./viewDropped.ts";
+import { m } from "#lib/i18n/m.ts";
 
 /** Theme color as #rrggbb (the kit uses oklch; a canvas normalizes any CSS color). */
 function hex(el: Element, cssVar: string, fallback: string): string {
@@ -72,7 +73,7 @@ export function listenFontFallback() {
 		const key = requested.join("\n");
 		if (!requested.length || announcedFonts[key]) return;
 		announcedFonts[key] = true;
-		toast.info(`Font "${requested[0]}" is not installed for the fast terminal; using ${resolved}.`);
+		toast.info(m.workbench_term_font_fallback({ font: requested[0], resolved }));
 	});
 }
 
@@ -136,7 +137,7 @@ export class NativeView {
 				// normally upgrades it live on connect, see `host.rs`.)
 				if (msg.includes("pty_attach_raw")) {
 					if (!gpu.hostTooOld)
-						toast.info("GPU terminal turns on after the terminal host restarts (Settings → Terminal).");
+						toast.info(m.workbench_term_gpu_after_restart());
 					gpu.hostTooOld = true;
 				} else toast.error(msg);
 				return "stop";

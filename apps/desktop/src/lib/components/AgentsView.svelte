@@ -7,18 +7,21 @@
 	import { agents, type AgentState } from "#lib/stores/agents.svelte.ts";
 	import { store } from "#lib/stores/projects.svelte.ts";
 	import { ws } from "#lib/stores/workspace.svelte.ts";
+	import { m } from "#lib/i18n/m.ts";
+	import { dateTime } from "#lib/i18n/fmt.ts";
+	import { agentStateLabel } from "#lib/panel/machine.ts";
 
 	let { mode }: { mode: "agents" | "dashboard" } = $props();
 	/** `all` = no filter (the kit Select has no empty value). */
 	let repo = $state("all");
 	let stateFilter = $state<AgentState | "all">("all");
 
-	const COLUMNS: { title: string; states: AgentState[] }[] = [
-		{ title: "Needs you", states: ["blocked", "waiting"] },
-		{ title: "Working", states: ["working"] },
-		{ title: "Done", states: ["done"] },
-		{ title: "Idle", states: ["idle"] },
-	];
+	const columns = $derived<{ title: string; states: AgentState[] }[]>([
+		{ title: m.crew_chat_header_needs_you(), states: ["blocked", "waiting"] },
+		{ title: m.crew_chat_header_working(), states: ["working"] },
+		{ title: m.workbench_agents_column_done(), states: ["done"] },
+		{ title: m.workbench_agents_column_idle(), states: ["idle"] },
+	]);
 
 	let panes = $derived(
 		ws.doc.tabs
@@ -58,9 +61,9 @@
 </script>
 
 <header data-tauri-drag-region>
-	<h1>{mode === "agents" ? "Agents" : "Dashboard"}</h1>
+	<h1>{mode === "agents" ? m.workbench_agents_title_agents() : m.workbench_agents_title_dashboard()}</h1>
 	{#if panes.length}
-		<span class="sub">{running.length} working · {panes.length} total</span>
+		<span class="sub">{m.workbench_agents_summary({ working: running.length, total: panes.length })}</span>
 	{/if}
 	{#if mode === "agents"}
 		<div class="filters">
@@ -68,7 +71,7 @@
 				size="sm"
 				value={repo}
 				options={[
-					{ value: "all", label: "All projects" },
+					{ value: "all", label: m.workbench_agents_all_projects() },
 					...repos.map((r) => ({ value: r.id, label: r.name })),
 				]}
 				onchange={(v) => (repo = v)}
@@ -77,8 +80,11 @@
 				size="sm"
 				value={stateFilter}
 				options={[
-					{ value: "all", label: "All states" },
-					...["working", "waiting", "blocked", "done", "idle"].map((s) => ({ value: s, label: s })),
+					{ value: "all", label: m.workbench_agents_all_states() },
+					...(["working", "waiting", "blocked", "done", "idle"] as const).map((s) => ({
+						value: s,
+						label: agentStateLabel(s),
+					})),
 				]}
 				onchange={(v) => (stateFilter = v as AgentState | "all")}
 			/>
@@ -92,23 +98,23 @@
 			icon={mode === "agents" ? Bot : LayoutDashboard}
 			{title}
 			description={filtered
-				? "Nothing matches these filters."
+				? m.workbench_agents_empty_filtered()
 				: !store.projects.length
-					? "Add a project first. Agents run inside its worktrees and report back here."
+					? m.workbench_agents_empty_no_project()
 					: !ws.selected
-						? "Pick a worktree in the sidebar, then start one. Its progress shows up here."
-						: "Start one in this worktree and its progress shows up here."}
+						? m.workbench_agents_empty_no_worktree()
+						: m.workbench_agents_empty_no_activity_here()}
 		>
 			{#snippet actions()}
 				{#if filtered}
-					<button class="start" onclick={() => ((repo = "all"), (stateFilter = "all"))}>Clear filters</button>
+					<button class="start" onclick={() => ((repo = "all"), (stateFilter = "all"))}>{m.workbench_agents_clear_filters()}</button>
 				{:else if !store.projects.length}
-					<button class="start" onclick={() => runCommand("atlas::AddProject")}>Add a project</button>
+					<button class="start" onclick={() => runCommand("atlas::AddProject")}>{m.workbench_agents_add_project()}</button>
 				{:else if !ws.selected}
-					<button class="start" onclick={() => (ws.view = "worktree")}>Choose a worktree</button>
+					<button class="start" onclick={() => (ws.view = "worktree")}>{m.workbench_agents_choose_worktree()}</button>
 				{:else}
 					<button class="start" onclick={() => runCommand("atlas::NewAgentSession")}>
-						New agent session <kbd>{shortcutFor("atlas::NewAgentSession") ?? ""}</kbd>
+						{m.workbench_agents_new_session()} <kbd>{shortcutFor("atlas::NewAgentSession") ?? ""}</kbd>
 					</button>
 				{/if}
 			{/snippet}
@@ -118,10 +124,10 @@
 
 {#if mode === "dashboard"}
 	{#if !panes.length}
-		{@render none("No agents yet")}
+		{@render none(m.workbench_agents_none_title())}
 	{:else}
 		<div class="board">
-			{#each COLUMNS as col (col.title)}
+			{#each columns as col (col.title)}
 				{@const items = panes.filter((p) => col.states.includes(p.st?.state ?? "idle"))}
 				<section>
 					<h2>{col.title} <span>{items.length}</span></h2>
@@ -135,11 +141,11 @@
 								</div>
 								{#if p.st?.prompt}<p class="prompt">{p.st.prompt}</p>{/if}
 								{#if p.st?.last_message}<p class="msg">{p.st.last_message}</p>{/if}
-								<div class="dim">{age(p.st?.state_started_at ?? p.tab.createdAt)} in state</div>
+								<div class="dim">{m.workbench_agents_in_state({ age: age(p.st?.state_started_at ?? p.tab.createdAt) })}</div>
 							</Card>
 						</button>
 					{:else}
-						<div class="col-empty">Nothing here</div>
+						<div class="col-empty">{m.common_state_empty()}</div>
 					{/each}
 				</section>
 			{/each}
@@ -147,7 +153,7 @@
 	{/if}
 {:else if !running.length && !feed.length}
 	{@render none(
-		repo !== "all" || stateFilter !== "all" ? "No activity matches" : "No agent activity yet",
+		repo !== "all" || stateFilter !== "all" ? m.workbench_agents_feed_no_match() : m.workbench_agents_feed_none(),
 		repo !== "all" || stateFilter !== "all",
 	)}
 {:else}
@@ -163,10 +169,10 @@
 		{#each feed as e, i (i + ":" + e.ts)}
 			<button class="line" onclick={() => focus(e.tabId)}>
 				<AgentGlyph state={e.state as AgentState} />
-				<span class="time">{new Date(e.ts).toLocaleTimeString()}</span>
+				<span class="time">{dateTime(e.ts, { timeStyle: "medium" })}</span>
 				<AgentLogo agent={e.agent} size={12} /><b>{e.agent}</b>
 				<span class="where">{where(e.worktreeId)}</span>
-				<span class="state">{e.state}</span>
+				<span class="state">{agentStateLabel(e.state)}</span>
 				{#if e.text}<span class="dim">{e.text}</span>{/if}
 			</button>
 		{/each}

@@ -1,0 +1,29 @@
+{
+	"workbench_term_clipboard_description": [
+		{
+			"declarations": [
+				"input count",
+				"local countExact = count",
+				"local countPlural = count: plural"
+			],
+			"selectors": [
+				"countExact",
+				"countPlural"
+			],
+			"match": {
+				"countExact=0, countPlural=*": "A program in this terminal wants to copy an empty text to the clipboard:",
+				"countExact=*, countPlural=one": "A program in this terminal wants to copy {count} character to the clipboard:",
+				"countExact=*, countPlural=*": "A program in this terminal wants to copy {count} characters to the clipboard:"
+			}
+		}
+	],
+	"workbench_term_clipboard_title": "Copy to clipboard?",
+	"workbench_term_font_fallback": "The font {font} isn't installed, so the GPU terminal uses {resolved}.",
+	"workbench_term_gpu_after_restart": "The GPU terminal turns on after the terminal host restarts (Settings → Terminal).",
+	"workbench_term_pane_ended": "Process ended ({code})",
+	"workbench_term_pane_gone": "Terminal is gone",
+	"workbench_term_pane_host_unreachable": "Terminal host not reachable",
+	"workbench_term_pane_raw_protocol_back": "Raw omp protocol · back to chat",
+	"workbench_term_pane_restart_host": "Restart terminal host",
+	"workbench_term_search_label": "Find in terminal"
+}

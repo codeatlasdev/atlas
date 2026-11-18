@@ -1,3 +1,4 @@
+import { m } from "#lib/i18n/m.ts";
 import { revealLabel } from "#lib/keys.ts";
 
 /** What a right-click or the `…` button was aimed at: a file, a folder, or the empty area (the worktree root). */
@@ -26,10 +27,12 @@ export interface MenuItem {
 	group?: number;
 }
 
-const NEW = [
-	{ action: "new-file", label: "New file" },
-	{ action: "new-folder", label: "New folder" },
-] as const satisfies MenuItem[];
+/** The two "New …" items; built when a menu opens so the labels follow the app's language. */
+const newItems = () =>
+	[
+		{ action: "new-file", label: m.workbench_explorer_new_file() },
+		{ action: "new-folder", label: m.workbench_explorer_new_folder() },
+	] as const satisfies MenuItem[];
 
 /**
  * The one item list behind both the `…` button and the right-click / Shift+F10 menu, so they cannot drift.
@@ -39,35 +42,35 @@ const NEW = [
 export function menuItems(t: MenuTarget): MenuItem[] {
 	if (t.kind === "root") {
 		return [
-			...NEW.map((i) => ({ ...i, group: 0 })),
-			{ action: "terminal", label: "Open in terminal", group: 1 },
+			...newItems().map((i) => ({ ...i, group: 0 })),
+			{ action: "terminal", label: m.workbench_explorer_menu_open_in_terminal(), group: 1 },
 			{ action: "reveal", label: revealLabel(), group: 1 },
-			{ action: "copy-path", label: "Copy path", group: 1 },
+			{ action: "copy-path", label: m.workbench_explorer_menu_copy_path(), group: 1 },
 		];
 	}
 	const items: MenuItem[] = [];
 	if (t.kind === "file") {
 		items.push(
-			{ action: "open", label: "Open", group: 0 },
-			{ action: "open-side", label: "Open to the side", group: 0 },
+			{ action: "open", label: m.common_action_open(), group: 0 },
+			{ action: "open-side", label: m.workbench_explorer_menu_open_to_side(), group: 0 },
 		);
-	} else items.push(...NEW.map((i) => ({ ...i, group: 0 })));
+	} else items.push(...newItems().map((i) => ({ ...i, group: 0 })));
 	items.push(
-		{ action: "rename", label: "Rename", group: 1 },
-		{ action: "duplicate", label: "Duplicate", group: 1 },
-		{ action: "copy-path", label: "Copy path", group: 2 },
-		{ action: "copy-relative-path", label: "Copy relative path", group: 2 },
-		{ action: "terminal", label: "Open in terminal", group: 2 },
+		{ action: "rename", label: m.common_action_rename(), group: 1 },
+		{ action: "duplicate", label: m.workbench_explorer_menu_duplicate(), group: 1 },
+		{ action: "copy-path", label: m.workbench_explorer_menu_copy_path(), group: 2 },
+		{ action: "copy-relative-path", label: m.workbench_explorer_menu_copy_relative_path(), group: 2 },
+		{ action: "terminal", label: m.workbench_explorer_menu_open_in_terminal(), group: 2 },
 		{ action: "reveal", label: revealLabel(), group: 2 },
 	);
 	const changed = t.kind === "file" && t.status && t.status !== "ignored";
 	if (changed) {
-		items.push({ action: "stage", label: "Stage", group: 3 });
+		items.push({ action: "stage", label: m.workbench_explorer_menu_stage(), group: 3 });
 		if (t.status !== "untracked") {
-			items.push({ action: "discard", label: "Discard changes", destructive: true, group: 3 });
+			items.push({ action: "discard", label: m.workbench_explorer_menu_discard_changes(), destructive: true, group: 3 });
 		}
 	}
-	items.push({ action: "delete", label: "Delete", destructive: true, group: 4 });
+	items.push({ action: "delete", label: m.common_action_delete(), destructive: true, group: 4 });
 	return items;
 }
 

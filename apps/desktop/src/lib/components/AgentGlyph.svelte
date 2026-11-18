@@ -2,12 +2,13 @@
 	import { Spinner } from "@codeatlasdev/ui";
 	import { Check } from "@lucide/svelte";
 	import type { AgentState } from "#lib/stores/agents.svelte.ts";
+	import { agentStateLabel } from "#lib/panel/machine.ts";
 
 	let { state }: { state: AgentState | null } = $props();
 </script>
 
 {#if state}
-	<span class="g {state}" title={state}>
+	<span class="g {state}" title={agentStateLabel(state)}>
 		{#if state === "working"}<Spinner
 				size={11}
 			/>{:else if state === "waiting" || state === "blocked"}?{:else if state === "done"}<Check

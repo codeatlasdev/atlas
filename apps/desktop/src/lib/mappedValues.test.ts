@@ -62,11 +62,19 @@ const EXPECT = {
 	},
 };
 
-function covers(name: string, produced: string[], table: Record<string, () => string>, show: (v: string) => string) {
+function covers(
+	name: string,
+	produced: string[],
+	table: Record<string, () => string>,
+	show: (v: string) => string,
+) {
 	test(`${name}: every value the producer makes shows its message, in Portuguese too`, async () => {
 		expect(produced.length).toBeGreaterThan(0);
 		for (const v of produced) {
-			expect(table[v], `${name}: "${v}" has no message in this test: add one to the catalog and to EXPECT`).toBeDefined();
+			expect(
+				table[v],
+				`${name}: "${v}" has no message in this test: add one to the catalog and to EXPECT`,
+			).toBeDefined();
 			expect(show(v)).toBe(table[v]());
 			await inLocale("pt-BR", () => {
 				expect(show(v)).toBe(table[v]());
@@ -97,7 +105,18 @@ test("recorded gh states show their messages, in Portuguese too", async () => {
 });
 
 test("every GitHub check, review and PR state this app words has its own message", async () => {
-	const checks = ["SUCCESS", "FAILURE", "ERROR", "PENDING", "IN_PROGRESS", "QUEUED", "SKIPPED", "CANCELLED", "NEUTRAL", "TIMED_OUT"];
+	const checks = [
+		"SUCCESS",
+		"FAILURE",
+		"ERROR",
+		"PENDING",
+		"IN_PROGRESS",
+		"QUEUED",
+		"SKIPPED",
+		"CANCELLED",
+		"NEUTRAL",
+		"TIMED_OUT",
+	];
 	const reviews = ["APPROVED", "CHANGES_REQUESTED", "COMMENTED", "DISMISSED", "PENDING"];
 	await inLocale("pt-BR", () => {
 		const shown = [...checks.map(checkStateText), ...reviews.map(reviewStateText)];

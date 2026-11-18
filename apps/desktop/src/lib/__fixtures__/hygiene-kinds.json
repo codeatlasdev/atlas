@@ -1,15 +1,4 @@
 {
-	"dir_kinds": [
-		"temp",
-		"browser_profile",
-		"cache",
-		"instance"
-	],
-	"kinds": [
-		"terminal",
-		"service",
-		"agent",
-		"browser",
-		"other"
-	]
+	"dir_kinds": ["temp", "browser_profile", "cache", "instance"],
+	"kinds": ["terminal", "service", "agent", "browser", "other"]
 }

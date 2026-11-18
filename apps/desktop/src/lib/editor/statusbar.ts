@@ -99,7 +99,7 @@ export function languageLabel(langId: string): string {
 /** `Ln 12, Col 5`, then `(3 selections)` and/or `(24 selected)` appended like VS Code. */
 function position(i: StatusInput): { text: string; title: string } {
 	const { count, chars } = i.selections;
-	let text = m.workbench_loose_editor_ln_line_col_col({ line: i.line, col: i.col });
+	let text: string = m.workbench_loose_editor_ln_line_col_col({ line: i.line, col: i.col });
 	if (count > 1) text += ` (${m.workbench_editor_selections({ count })})`;
 	if (chars > 0) text += ` (${m.workbench_editor_selected_chars({ count: chars })})`;
 	return { text, title: m.workbench_editor_goto_line() };

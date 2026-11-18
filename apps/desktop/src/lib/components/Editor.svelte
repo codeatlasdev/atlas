@@ -39,6 +39,8 @@
 	import { convertIndentation } from "#lib/editor/commands.ts";
 	import StatusBar from "#lib/editor/StatusBar.svelte";
 	import Breadcrumbs from "#lib/editor/Breadcrumbs.svelte";
+	import { largeNotice } from "#lib/editor/largeFile.ts";
+	import { m } from "#lib/i18n/m.ts";
 	import { gotoLine } from "@codemirror/search";
 	import { MAX_BYTES, MIME, extOf, viewerKind } from "#lib/viewers/kind.ts";
 	import { readBlob } from "#lib/viewers/load.ts";
@@ -359,11 +361,11 @@
 			<button class="path mono" title={revealLabel()} onclick={reveal}>{path}</button>
 		</div>
 	{/if}
-	{#if session.plan?.large.notice && showCm}
-		<p class="notice" role="note">{session.plan.large.notice}</p>
+	{#if session.plan && largeNotice(session.plan.large.tier) && showCm}
+		<p class="notice" role="note">{largeNotice(session.plan.large.tier)}</p>
 	{/if}
 	{#if session.watchError}
-		<p class="notice" role="status">{session.watchError}</p>
+		<p class="notice" role="status">{m.workbench_editor_watch_failed({ error: session.watchError })}</p>
 	{/if}
 	{#if session.conflict}
 		<div class="banner" role="alert">

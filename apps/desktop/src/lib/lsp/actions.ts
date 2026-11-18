@@ -112,7 +112,7 @@ export async function renameSymbol(view: EditorView) {
 	if (!edit) return toast.info(m.workbench_lsp_rename_no_changes());
 	const r = await applyWorkspaceEdit(edit);
 	if (r.applied) toast.success(m.workbench_lsp_renamed({ count: r.files }));
-	else toast.error(m.workbench_lsp_rename_failed({ error: r.error }));
+	else toast.error(m.workbench_lsp_rename_failed({ error: r.error ?? "" }));
 }
 
 /**
@@ -190,7 +190,7 @@ export async function runCodeAction(view: EditorView, action: CodeAction) {
 	if (a.edit) {
 		const r = await applyWorkspaceEdit(a.edit);
 		if (!r.applied)
-			return void toast.error(m.workbench_lsp_action_failed({ title: a.title, error: r.error }));
+			return void toast.error(m.workbench_lsp_action_failed({ title: a.title, error: r.error ?? "" }));
 	}
 	if (a.command) await env.doc.request("workspace/executeCommand", a.command).catch(() => {});
 }

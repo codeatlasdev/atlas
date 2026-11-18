@@ -3,7 +3,7 @@ import { afterAll, describe, expect, test } from "bun:test";
 import { join } from "node:path";
 import { addMessage } from "./add.ts";
 import { find } from "./find.ts";
-import { moveKey } from "./mv.ts";
+import { moveKey, rewriteUses } from "./mv.ts";
 import { loadCtx } from "./types.ts";
 import { CLI_EN, CLI_META, EN, META, PT, addKey, area, check, cleanup, editJson, errors, finding, makeRepo, put, read, rulesOf } from "./testkit.ts";
 
@@ -190,6 +190,14 @@ describe("mv", () => {
 		expect(Object.keys(JSON.parse(read(root, "i18n/messages/cli/lock.json"))["pt-BR"])).toEqual(["cli_files_count"]);
 		expect(read(root, "crates/atlas-i18n/src/lib.rs")).toContain('t!("app_lang_current", lang = "en")');
 		expect(r.updated).toContainEqual({ file: "crates/atlas-i18n/src/lib.rs", line: 2 });
+	});
+
+	test("rewrites a t_in!(tag, \"old\") call (the desktop shell's explicit-language form) like t!", () => {
+		const src = 'fn f(tag: &str) { t_in!(tag, "cli_lang_current", lang = "en"); t!("cli_lang_current"); }\n';
+		expect(rewriteUses(src, "crates/atlas-desktop/src/x.rs", "cli_lang_current", "app_lang_now")).toEqual({
+			text: 'fn f(tag: &str) { t_in!(tag, "app_lang_now", lang = "en"); t!("app_lang_now"); }\n',
+			lines: [1],
+		});
 	});
 
 	test("mentions it cannot prove are reported, not edited", async () => {

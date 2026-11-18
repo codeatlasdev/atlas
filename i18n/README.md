@@ -153,6 +153,7 @@ The CI job and the paths that trigger it are declared in `scripts/checks/map.ts`
 |---|---|---|
 | `svelte` (rule `hardcoded`) | `apps/desktop/src`, `site/src` `.svelte` files, parsed with `svelte/compiler` | Text nodes with letters and static `title`, `placeholder`, `aria-label`, `aria-description`, `alt`, `label`, `tooltip`, `description`, `message`. Not `<code>`, `<pre>`, `<kbd>`, `<script>`, `<style>`, or the node after `<!-- i18n-ignore -->`. |
 | `rust` (rule `hardcoded`) | `src` of `atlas-cli`, `atlas-tui`, `atlas-desktop`, `atlas-host` | The format string of `println!`, `eprintln!`, `print!`, `eprint!`, `bail!`, `anyhow!` with letters outside `{..}`. Not test code (`mod tests` tail, `tests.rs`, `tests/`), machine output (`{}` only), `step:` lines, ANSI-only strings, or a line with `// i18n-ignore` (or the line above). |
+| `rust-ui` (rule `hardcoded`) | the same four `src` dirs | The text of a call that is not a `println!`: the label of a Tauri menu item or submenu (`MenuItem::with_id/new`, `Submenu::new/with_items`, `PredefinedMenuItem::*`), `.set_text`, `.set_title`, `.set_tooltip`, `.tooltip`, `.title`, `.body` (a tray, a window, a notification builder), `.context("..")` / `.with_context(\|\| ..)`, and the text of a ratatui widget (`Span::raw`, `Span::styled`, `Line::from`, `Text::from`, `Paragraph::new`). It flags an argument that starts with a string literal (also through `Some(..)`, `format!(..)`, `&`, `\|\| `) with letters outside `{..}`. Same exemptions as `rust`. Its baseline is its own section (`rust-ui`), so it never moved the `rust` counts. |
 | `shortcut` | the Svelte, TypeScript, Astro and Rust sources above | A modifier glyph or `Cmd+` style chord on a non-comment line. `keys.ts` and tests are exempt. |
 | `platform-check` | the desktop and site sources | `navigator.platform` and `isMac =` anywhere but `apps/desktop/src/lib/keys.ts`. |
 | `writing-*` | English docs, `README.md`, `skills/`, site content, `CHANGELOG.md` | Error-level hits of the writing lint. Translations under `docs/<locale>/` are not ratcheted: they are strict. |
@@ -169,8 +170,8 @@ Clippy's `disallowed-macros` is the obvious tool and the wrong one here:
 - It cannot skip test code per macro without a `#[cfg(test)]` allow at each module, and it needs a full build of the crate
   to run, where the scanner is about half a second and needs no toolchain.
 
-The price is a heuristic: it misses a user-facing string that reaches the user through `format!`, `write!`, a clap `about`,
-or a ratatui `Span::raw`, and it reads text, not types. When a crate has migrated to catalog ids, turn on
+The price is a heuristic: it misses a user-facing string that reaches the user through `format!`, `write!` or a clap `about`
+(menus, notifications, `.context` and ratatui spans are the `rust-ui` ratchet), and it reads text, not types. When a crate has migrated to catalog ids, turn on
 `disallowed-macros` for it in its `clippy.toml` (no baseline needed once the count is zero) and drop it from `RUST_DIRS`.
 
 ## The writing lint

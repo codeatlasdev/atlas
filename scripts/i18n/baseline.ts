@@ -1,4 +1,4 @@
-// i18n/hardcoded-baseline.json: today's count of offenders per file, per ratchet (`svelte`, `rust`, `shortcut`,
+// i18n/hardcoded-baseline.json: today's count of offenders per file, per ratchet (`svelte`, `rust`, `rust-ui`, `shortcut`,
 // `platform`, `writing`). It is a ratchet: a file may never have more than its baseline (a new violation fails),
 // and a baseline that is now higher than reality fails too, so the number only goes down. `bun run i18n:fix`
 // shrinks it; it never grows it.
@@ -7,7 +7,7 @@ import { join } from "node:path";
 import { BASELINE_FILE, type Finding } from "./types.ts";
 import { cmp, readText } from "./util.ts";
 
-export type Lang = "svelte" | "rust" | "shortcut" | "platform" | "writing";
+export type Lang = "svelte" | "rust" | "rust-ui" | "shortcut" | "platform" | "writing";
 
 export interface Violation {
 	line: number;

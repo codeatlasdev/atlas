@@ -1,7 +1,7 @@
 // What a surface's source references. Two uses: a key none of the surfaces consuming it reference is dead weight
 // (`unused`), and a reference to a key that is not in the tree is a bug the compiler cannot see (`undefined-key`).
 //   Paraglide surfaces: `m.key(`, `m["key"]`, `messages_key`, named imports of the generated messages
-//   Rust surfaces:      `t!("key")`; and any "key" string literal counts as a use (ids passed to helpers, computed ids)
+//   Rust surfaces:      `t!("key")` and `t_in!(tag, "key")`; and any "key" string literal counts as a use (ids passed to helpers, computed ids)
 // Dynamic access cannot be seen; annotate it where it happens: `// i18n-keys: settings_tab_*, other_key`.
 // A line (or the one above) with `i18n-ignore` is skipped by the undefined-key check.
 import { dirname } from "node:path";
@@ -71,7 +71,7 @@ export function scanRefs(root: string, def: SurfaceDef): Refs | undefined {
 			if (isTestFile(file)) continue;
 			const text = withoutTestTail(raw);
 			const lines = text.split("\n");
-			for (const m of text.matchAll(/\bt!\(\s*"([^"]+)"/g)) {
+			for (const m of text.matchAll(/\b(?:t!\(|t_in!\([^,"]+,)\s*"([^"]+)"/g)) {
 				const line = lineOf(text, m.index ?? 0);
 				const before = (lines[line - 1] ?? "").slice(0, (m.index ?? 0) - text.lastIndexOf("\n", (m.index ?? 0) - 1) - 1);
 				if (!before.includes("//") && !ignored(lines, line)) out.calls.push({ key: m[1], file, line });

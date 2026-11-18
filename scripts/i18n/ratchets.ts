@@ -7,6 +7,7 @@ import { type Found, type Lang, type RatchetText, type Violation, ratchet, readB
 import { showAt } from "../lib/base.ts";
 import { PLATFORM, SHORTCUT, lineViolations, scanLines } from "./hardcoded/lines.ts";
 import { RUST_DIRS, isTestFile, scanRust, scanRustSource } from "./hardcoded/rust.ts";
+import { scanRustUi, scanRustUiSource } from "./hardcoded/rust_ui.ts";
 import { SVELTE_ROOTS, scanSvelte, scanSvelteSource } from "./hardcoded/svelte.ts";
 import { BASELINE_FILE, type Ctx, type Finding } from "./types.ts";
 import { docFiles, hitMessage, lintMarkdown, loadRules } from "./writing.ts";
@@ -49,6 +50,18 @@ export const RUST: RatchetDef = {
 	scopes: [{ surface: "rust", dirs: RUST_DIRS }],
 	scan: (ctx, dirs) => ({ found: scanRust(ctx.root, dirs) }),
 	scanText: (_ctx, file, text) => (file.endsWith(".rs") && !isTestFile(file) ? scanRustSource(text) : []),
+};
+
+/** The text Rust shows that is not a `println!`: native menus, tray and window text, notification title and body, `.context("..")`,
+ * ratatui spans. Its own baseline section, so the count of the `rust` ratchet never moves when this detector grows. */
+export const RUST_UI: RatchetDef = {
+	lang: "rust-ui",
+	rule: "hardcoded",
+	noun: "hardcoded user-facing text (menu, notification, error context or widget)",
+	hint: "use a message key (`t!`), or `// i18n-ignore` if it is not for users",
+	scopes: [{ surface: "rust", dirs: RUST_DIRS }],
+	scan: (ctx, dirs) => ({ found: scanRustUi(ctx.root, dirs) }),
+	scanText: (_ctx, file, text) => (file.endsWith(".rs") && !isTestFile(file) ? scanRustUiSource(text) : []),
 };
 
 export const SHORTCUTS: RatchetDef = {
@@ -101,7 +114,7 @@ export const WRITING: RatchetDef = {
 	},
 };
 
-export const RATCHETS: RatchetDef[] = [SVELTE, RUST, SHORTCUTS, PLATFORM_SNIFFING, WRITING];
+export const RATCHETS: RatchetDef[] = [SVELTE, RUST, RUST_UI, SHORTCUTS, PLATFORM_SNIFFING, WRITING];
 
 /** What `def` finds in the scopes of `surface` (every scope when undefined) that exist in the repo. */
 export function scanRatchet(ctx: Ctx, def: RatchetDef, surface?: string) {

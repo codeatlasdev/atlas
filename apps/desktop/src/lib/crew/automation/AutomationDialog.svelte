@@ -191,6 +191,11 @@
 		gap: 6px;
 	}
 
+	/* A sentence ("O que reviewer deve fazer?"), not a short field name: it takes the row, not the 80px label column. */
+	.prompt-section .field-label {
+		width: auto;
+	}
+
 	.prompt-area {
 		width: 100%;
 		box-sizing: border-box;

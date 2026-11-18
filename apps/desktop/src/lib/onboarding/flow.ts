@@ -7,6 +7,7 @@
  *   `skip` reaches done from anywhere; a project added by any path ends the welcome at once (`added`).
  */
 import type { Found } from "#lib/components/sidebar/discovery.ts";
+import { m } from "#lib/i18n/m.ts";
 
 export type Phase = "welcome" | "scanning" | "empty" | "results" | "starting" | "up" | "done";
 
@@ -99,18 +100,24 @@ export function onboardingChoices(found: Found[], registered: ReadonlySet<string
 		.sort((a, b) => (b.modified ?? 0) - (a.modified ?? 0) || a.name.localeCompare(b.name));
 }
 
-const STACK_LABEL: Record<string, string> = {
-	node: "Node project",
-	rust: "Rust project",
-	go: "Go project",
-	python: "Python project",
-	compose: "Compose project",
+/**
+ * Every stack `stack_of` (crates/atlas-desktop/src/cmds/discover.rs) can name, as the label of a found project. The wire
+ * values stay English; flow.test.ts reads the Rust function, so a new stack fails there until it has a message.
+ */
+export const STACK_MESSAGES: Record<string, () => string> = {
+	node: () => m.onboarding_flow_stack_node(),
+	rust: () => m.onboarding_flow_stack_rust(),
+	go: () => m.onboarding_flow_stack_go(),
+	python: () => m.onboarding_flow_stack_python(),
+	compose: () => m.onboarding_flow_stack_compose(),
 };
 
 /** The result row's meta: services for a configured project, the detected stack for a folder without one. */
 export function choiceMeta(f: Pick<Found, "has_config" | "services" | "stack">): string {
-	if (f.has_config) return `${f.services.toLocaleString()} ${f.services === 1 ? "service" : "services"}`;
-	return (f.stack && STACK_LABEL[f.stack]) || "Project folder";
+	if (f.has_config) return m.onboarding_flow_services({ count: f.services });
+	return f.stack && Object.hasOwn(STACK_MESSAGES, f.stack)
+		? STACK_MESSAGES[f.stack]!()
+		: m.onboarding_flow_project_folder();
 }
 
 interface Row {

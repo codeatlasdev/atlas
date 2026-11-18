@@ -9,6 +9,7 @@
 	import { relativeTime } from "#lib/i18n/fmt.ts";
 	import VirtualList from "./VirtualList.svelte";
 	import { guarded } from "./tooltipGuard.ts";
+	import { m } from "#lib/i18n/m.ts";
 
 	let { id, setup }: { id: string; setup: SetupConfig } = $props();
 
@@ -30,12 +31,10 @@
 	let showLines = $derived(full ? lines : running || failed ? lines.slice(-TAIL) : []);
 
 	let schedule = $derived(
-		setup.when === "always"
-			? "Runs before every start."
-			: "Runs when the lockfile changes (or node_modules is missing).",
+		setup.when === "always" ? m.onboarding_setup_row_runs_always() : m.onboarding_setup_row_runs_on_change(),
 	);
 	let origin = $derived(
-		setup.auto ? "Detected from your project; no pre_command in atlas.yaml." : "From pre_command.",
+		setup.auto ? m.onboarding_setup_row_origin_detected() : m.onboarding_setup_row_origin_config(),
 	);
 
 	async function refresh() {
@@ -50,8 +49,14 @@
 		starting = true;
 		try {
 			const res = await api.setupRun(id);
-			if (!res.ok) toast.error(`${setup.command} failed: ${res.reason ?? "unknown error"}`, 8000);
-			else toast.success(res.skipped ? "Nothing to run" : "Dependencies installed");
+			if (!res.ok) {
+				const reason = res.reason ?? m.onboarding_setup_row_unknown_error();
+				// The strip (and so the run button) only exists while there is a command.
+				toast.error(m.onboarding_setup_row_failed_toast({ command: setup.command ?? "", reason }), 8000);
+			} else
+				toast.success(
+					res.skipped ? m.onboarding_setup_row_nothing_to_run() : m.onboarding_setup_row_installed(),
+				);
 		} catch (e) {
 			toast.error(errText(e), 8000);
 		} finally {
@@ -95,38 +100,46 @@
 						size={14}
 					/>{:else}<Download size={13} />{/if}
 			</span>
-			<span class="title">Setup</span>
+			<span class="title">{m.onboarding_setup_row_setup()}</span>
 			<code class="cmd mono" title={setup.command}>{setup.command}</code>
 			<Tooltip content="{schedule} {origin}" side="bottom" delay={200}>
 				{#snippet triggerChild(props)}
-					<button {...guarded(props)} class="info" aria-label="When does setup run? {schedule}">
+					<button
+						{...guarded(props)}
+						class="info"
+						aria-label={m.onboarding_setup_row_schedule_label({ schedule })}
+					>
 						<Info size={12} />
 					</button>
 				{/snippet}
 			</Tooltip>
 			<span class="sep">·</span>
 			<span class="state">
-				{#if running}running…{:else if failed}failed {ago(
-						st?.finished_at ?? st?.started_at ?? 0,
-					)}{:else if st}ran {ago(st.finished_at ?? st.started_at)} · ok{:else}not run yet{/if}
+				{#if running}{m.onboarding_setup_row_running()}{:else if failed}{m.onboarding_setup_row_failed({
+						when: ago(st?.finished_at ?? st?.started_at ?? 0),
+					})}{:else if st}{m.onboarding_setup_row_ran_ok({
+						when: ago(st.finished_at ?? st.started_at),
+					})}{:else}{m.onboarding_setup_row_not_run_yet()}{/if}
 			</span>
 			<span class="grow"></span>
 			{#if lines.length && !running && !failed}
 				<button class="link" aria-expanded={full} onclick={() => (full = !full)}>
-					{full ? "Hide output" : "View output"}
+					{full ? m.onboarding_setup_row_hide_output() : m.onboarding_setup_row_view_output()}
 				</button>
 			{:else if lines.length && (running || failed)}
 				<button class="link" aria-expanded={full} onclick={() => (full = !full)}>
-					{full ? "Less" : "Full output"}
+					{full ? m.onboarding_setup_row_less() : m.onboarding_setup_row_full_output()}
 				</button>
 			{/if}
 			{#if failed}
 				<Button size="sm" onclick={run}>
 					{#snippet leading()}<RotateCw size={13} />{/snippet}
-					Retry
+					{m.common_action_retry()}
 				</Button>
 			{:else}
-				<button class="link" disabled={running} onclick={run}>{st ? "Run again" : "Run now"}</button>
+				<button class="link" disabled={running} onclick={run}
+					>{st ? m.onboarding_setup_row_run_again() : m.onboarding_setup_row_run_now()}</button
+				>
 			{/if}
 		</div>
 		{#if failed && st?.reason}<div class="reason">{st.reason}</div>{/if}

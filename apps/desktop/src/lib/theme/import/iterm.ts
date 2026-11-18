@@ -1,3 +1,4 @@
+import { m } from "#lib/i18n/m.ts";
 import { ThemeImportError } from "./errors.ts";
 import { ANSI_KEYS, appearanceOf, rgbFloatToHex, type ImportResult } from "./color.ts";
 
@@ -29,9 +30,9 @@ function readPlist(xml: string): Plist | null {
 		while (i < tokens.length && !tokens[i].startsWith("<") && !tokens[i].trim()) i++;
 		const tag = tokens[i++];
 		if (!tag) return null;
-		const m = /^<\s*(\/?)\s*([A-Za-z]+)[^>]*?(\/?)>$/.exec(tag);
-		if (!m || m[1]) return null;
-		const [, , name, selfClose] = m;
+		const parts = /^<\s*(\/?)\s*([A-Za-z]+)[^>]*?(\/?)>$/.exec(tag);
+		if (!parts || parts[1]) return null;
+		const [, , name, selfClose] = parts;
 		switch (name) {
 			case "dict": {
 				const dict: { [key: string]: Plist } = {};
@@ -114,7 +115,7 @@ const NAMED_KEYS: [plistKey: string, styleKey: string][] = [
 
 export function parseItermColors(plistXml: string, name: string): ImportResult {
 	const root = readPlist(plistXml) ?? undefined;
-	if (!isDict(root)) throw new ThemeImportError("Not a valid .itermcolors plist");
+	if (!isDict(root)) throw new ThemeImportError(m.settings_theme_diag_iterm_invalid());
 	const warnings: string[] = [];
 	const style: Record<string, unknown> = {};
 
@@ -122,16 +123,16 @@ export function parseItermColors(plistXml: string, name: string): ImportResult {
 		if (!(plistKey in root)) continue;
 		const c = readColor(root[plistKey]);
 		if (c) style[styleKey] = c;
-		else warnings.push(`invalid color for ${plistKey}`);
+		else warnings.push(m.settings_theme_diag_invalid_color_key({ key: plistKey }));
 	}
 	for (let n = 0; n < 16; n++) {
 		const entry = root[`Ansi ${n} Color`];
 		if (entry === undefined) continue;
 		const c = readColor(entry);
 		if (c) style[ANSI_KEYS[n]] = c;
-		else warnings.push(`invalid color for Ansi ${n} Color`);
+		else warnings.push(m.settings_theme_diag_invalid_color_key({ key: `Ansi ${n} Color` }));
 	}
-	if (Object.keys(style).length === 0) throw new ThemeImportError("No colors found in .itermcolors file");
+	if (Object.keys(style).length === 0) throw new ThemeImportError(m.settings_theme_diag_iterm_no_colors());
 
 	const bg = style["terminal.background"] as string | undefined;
 	return { name, appearance: appearanceOf(bg), style, warnings };

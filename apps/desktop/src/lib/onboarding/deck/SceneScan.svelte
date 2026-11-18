@@ -2,6 +2,7 @@
 	/** Slide "your projects", before the scan: a sweep crosses a grid of folders and the ones with an atlas.yaml light up. */
 	import { onMount } from "svelte";
 	import { Beats } from "./beats.svelte.ts";
+	import { m } from "#lib/i18n/m.ts";
 
 	const COLS = 9;
 	const ROWS = 3;
@@ -23,7 +24,9 @@
 		{/each}
 	</div>
 	<span class="sweep" class:run={beats.n > 0 && beats.n < beats.last}></span>
-	<span class="count" class:on={beats.n > 0}>{Math.min(beats.n, FOUND.length)} found</span>
+	<span class="count" class:on={beats.n > 0}
+		>{m.onboarding_scene_scan_found({ count: Math.min(beats.n, FOUND.length) })}</span
+	>
 </div>
 
 <style>

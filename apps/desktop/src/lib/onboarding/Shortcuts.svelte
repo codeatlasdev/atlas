@@ -4,6 +4,7 @@
 	import { allCommands, bindingLabels } from "#lib/keymap.svelte.ts";
 	import { onboarding } from "./state.svelte.ts";
 	import { buildSheet } from "./shortcuts.ts";
+	import { m } from "#lib/i18n/m.ts";
 
 	let query = $state("");
 	let input = $state<HTMLInputElement>();
@@ -17,11 +18,16 @@
 	});
 </script>
 
-<Dialog bind:open={onboarding.helpOpen} size="lg" title="Keyboard shortcuts">
+<Dialog bind:open={onboarding.helpOpen} size="lg" title={m.onboarding_shortcuts_keyboard_shortcuts()}>
 	<div class="sheet" data-testid="shortcuts-sheet">
 		<label class="search">
 			<Search size={13} />
-			<input bind:this={input} bind:value={query} placeholder="Search shortcuts" spellcheck="false" />
+			<input
+				bind:this={input}
+				bind:value={query}
+				placeholder={m.onboarding_shortcuts_search_shortcuts()}
+				spellcheck="false"
+			/>
 		</label>
 		<div class="cols">
 			{#each groups as g (g.title)}
@@ -37,10 +43,10 @@
 					{/each}
 				</section>
 			{:else}
-				<p class="none">No shortcut matches “{query}”.</p>
+				<p class="none">{m.onboarding_shortcuts_no_match({ query })}</p>
 			{/each}
 		</div>
-		<p class="foot">Change any of these in Settings → Keyboard shortcuts.</p>
+		<p class="foot">{m.onboarding_shortcuts_change_hint()}</p>
 	</div>
 </Dialog>
 

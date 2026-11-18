@@ -1,5 +1,6 @@
 import { parse as parseToml } from "smol-toml";
 import { parse as parseYaml } from "yaml";
+import { m } from "#lib/i18n/m.ts";
 import { ANSI_NAMES, appearanceOf, normalizeColor, type ImportResult } from "./color.ts";
 import { ThemeImportError } from "./errors.ts";
 
@@ -23,9 +24,10 @@ function readDoc(text: string, fileName: string): Obj {
 		doc = isYaml ? parseYaml(text) : parseToml(text);
 	} catch (e) {
 		const kind = isYaml ? "YAML" : "TOML";
-		throw new ThemeImportError(`Invalid Alacritty ${kind}: ${e instanceof Error ? e.message : String(e)}`);
+		const detail = e instanceof Error ? e.message : String(e);
+		throw new ThemeImportError(m.settings_theme_diag_alacritty_invalid({ kind, detail }));
 	}
-	if (!isObj(doc)) throw new ThemeImportError("Alacritty config must be a mapping");
+	if (!isObj(doc)) throw new ThemeImportError(m.settings_theme_diag_alacritty_not_mapping());
 	return doc;
 }
 
@@ -33,7 +35,7 @@ function readDoc(text: string, fileName: string): Obj {
 export function parseAlacritty(text: string, fileName: string): ImportResult {
 	const doc = readDoc(text, fileName);
 	const colors = doc.colors;
-	if (!isObj(colors)) throw new ThemeImportError("No [colors] section found in Alacritty config");
+	if (!isObj(colors)) throw new ThemeImportError(m.settings_theme_diag_alacritty_no_colors_section());
 
 	const warnings: string[] = [];
 	const style: Record<string, unknown> = {};
@@ -41,7 +43,10 @@ export function parseAlacritty(text: string, fileName: string): ImportResult {
 		if (v === undefined) return;
 		const c = hex(v);
 		if (c) style[styleKey] = c;
-		else warnings.push(`invalid color for colors.${section}.${key}: ${String(v)}`);
+		else
+			warnings.push(
+				m.settings_theme_diag_invalid_color({ key: `colors.${section}.${key}`, value: String(v) }),
+			);
 	};
 
 	const section = (name: string): Obj => (isObj(colors[name]) ? colors[name] : {});
@@ -65,7 +70,8 @@ export function parseAlacritty(text: string, fileName: string): ImportResult {
 		for (const n of ANSI_NAMES) put(name, n, `${prefix}${n}`, s[n]);
 	}
 
-	if (Object.keys(style).length === 0) throw new ThemeImportError("No colors found in Alacritty config");
+	if (Object.keys(style).length === 0)
+		throw new ThemeImportError(m.settings_theme_diag_alacritty_no_colors());
 
 	const base = fileName.split("/").pop() ?? fileName;
 	const name = base.replace(/\.[^.]+$/, "") || "Alacritty import";

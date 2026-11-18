@@ -82,7 +82,17 @@ Atlas runs on macOS, Windows and Linux; no message may say "Mac" or spell a shor
 
 ## Where the language comes from
 
-One implementation, `atlas_core::lang` (CLI, TUI, hostd, desktop shell), precedence `ATLAS_LANG`, `~/.atlas/language`, `LANGUAGE`/`LC_ALL`/`LC_MESSAGES`/`LANG` (C/POSIX = English), the OS, English; any `pt*` selects pt-BR. `atlas config lang` shows it and what decided it; `atlas config lang <tag>` and Desktop Settings write `~/.atlas/language`. The desktop receives the resolved tag from Rust (a Tauri command) and never reads `navigator.language`. Mobile follows the phone.
+One implementation, `atlas_core::lang` (CLI, TUI, hostd, desktop shell; a debug build also knows `en-XA`, below), precedence `ATLAS_LANG`, `~/.atlas/language`, `LANGUAGE`/`LC_ALL`/`LC_MESSAGES`/`LANG` (C/POSIX = English), the OS, English; any `pt*` selects pt-BR. `atlas config lang` shows it and what decided it; `atlas config lang <tag>` and Desktop Settings write `~/.atlas/language`. The desktop receives the resolved tag from Rust (a Tauri command) and never reads `navigator.language`. Mobile follows the phone.
+
+## Layout pass in the pseudo-locale (en-XA)
+
+Every migrated screen is looked at in `en-XA` (accented, padded 35%, wrapped in `⟦ ⟧`) and in pt-BR before its PR opens (`i18n/MIGRATION.md` step 6; why and where it exists: `i18n/README.md`, "The pseudo-locale"). It exists in development builds only: a release build, the site and `ATLAS_LANG=en-XA` on a release binary are plain English; never list it anywhere a user sees.
+
+1. `bun run desktop:agent -- --name <you>` (debug build; a build from before en-XA existed needs `bun run desktop:build:app`), `export ATLAS_DEBUG_SOCK=...`. Never the user's app.
+2. Switch: `atlas desktop debug eval 'return await window.__TAURI_INTERNALS__.invoke("locale_set", { tag: "en-XA" })'` (or Settings > General > Display language > "Pseudo (en-XA)"). Back: `{ tag: null }` follows the system, `"pt-BR"` renders Portuguese.
+3. Open each screen of the batch (`debug click`, `debug eval`), `atlas desktop debug shot /tmp/x.png`. Read it: `⟦...⟧` on every string of a migrated screen; a missing `⟧` is a truncation; plain text is not extracted; brackets inside a sentence are glued pieces. Fix overflow in CSS.
+4. Rust: `ATLAS_LANG=en-XA target/debug/atlas <command>` (debug build only), 80 columns.
+5. `bun run i18n:pseudo -- --print <area>` prints one area's pseudo text if you need to read it without an app.
 
 ## The ratchets (text that must not spread)
 

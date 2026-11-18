@@ -209,7 +209,15 @@ fn config_lang_json_has_stable_keys_and_untranslated_identifiers() {
             "an identifier, never a translated sentence"
         );
         assert!(v["preference"].is_null());
-        assert_eq!(v["supported"], serde_json::json!(["en", "pt-BR"]));
+        // A release build lists exactly en and pt-BR; a debug build adds the pseudo-locale `en-XA` (a layout tool).
+        assert_eq!(
+            v["supported"],
+            if cfg!(debug_assertions) {
+                serde_json::json!(["en", "pt-BR", "en-XA"])
+            } else {
+                serde_json::json!(["en", "pt-BR"])
+            }
+        );
     }
     let keys = |v: &serde_json::Value| v.as_object().unwrap().keys().cloned().collect::<Vec<_>>();
     assert_eq!(keys(&en), keys(&pt));

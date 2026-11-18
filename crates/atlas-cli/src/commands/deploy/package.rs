@@ -6,6 +6,7 @@ use std::process::Command;
 use std::time::SystemTime;
 
 use anyhow::{Context, Result, bail};
+use atlas_i18n::t;
 use atlas_tui::config::DeployConfig;
 use sha2::{Digest, Sha256};
 
@@ -29,13 +30,13 @@ fn git(root: &Path, args: &[&str]) -> Result<String> {
         .args(args)
         .current_dir(root)
         .output()
-        .context("running git")?;
+        .with_context(|| t!("cmd_deploy_pkg_ctx_git"))?;
     if !out.status.success() {
-        bail!(
-            "git {} failed: {}",
-            args.join(" "),
-            String::from_utf8_lossy(&out.stderr).trim()
-        );
+        bail!(t!(
+            "cmd_deploy_pkg_git_failed",
+            args = args.join(" "),
+            error = String::from_utf8_lossy(&out.stderr).trim()
+        ));
     }
     Ok(String::from_utf8_lossy(&out.stdout).trim().to_string())
 }
@@ -142,14 +143,20 @@ fn tar_artifact(root: &Path, paths: &[String], mtime: Option<&str>, out: &Path) 
         .stdout(std::process::Stdio::piped())
         .stderr(std::process::Stdio::piped())
         .spawn()
-        .context("running tar")?;
+        .with_context(|| t!("cmd_deploy_pkg_ctx_tar"))?;
     let mut gz = flate2::GzBuilder::new().write(
-        std::fs::File::create(out).context("creating artifact")?,
+        std::fs::File::create(out).with_context(|| t!("cmd_deploy_pkg_ctx_create_artifact"))?,
         flate2::Compression::default(),
     );
-    let mut stdout = child.stdout.take().context("tar stdout")?;
+    let mut stdout = child
+        .stdout
+        .take()
+        .with_context(|| t!("cmd_deploy_pkg_ctx_tar_stdout"))?;
     // stderr is small; drain it on a thread so a chatty tar cannot block on a full pipe.
-    let mut stderr = child.stderr.take().context("tar stderr")?;
+    let mut stderr = child
+        .stderr
+        .take()
+        .with_context(|| t!("cmd_deploy_pkg_ctx_tar_stderr"))?;
     let err = std::thread::spawn(move || {
         let mut s = String::new();
         let _ = stderr.read_to_string(&mut s);
@@ -157,12 +164,16 @@ fn tar_artifact(root: &Path, paths: &[String], mtime: Option<&str>, out: &Path) 
     });
     let copied = std::io::copy(&mut stdout, &mut gz).map(drop);
     let finished = gz.finish().map(drop);
-    let st = child.wait().context("waiting for tar")?;
+    let st = child
+        .wait()
+        .with_context(|| t!("cmd_deploy_pkg_ctx_tar_wait"))?;
     let msg = err.join().unwrap_or_default();
     if !st.success() {
-        bail!("packaging failed: {}", msg.trim());
+        bail!(t!("cmd_deploy_pkg_failed", error = msg.trim()));
     }
-    copied.and(finished).context("compressing artifact")?;
+    copied
+        .and(finished)
+        .with_context(|| t!("cmd_deploy_pkg_ctx_compress"))?;
     Ok(())
 }
 
@@ -182,7 +193,7 @@ pub fn package(
     let sha = sha.to_string();
     let dirty = !git(root, &["status", "--porcelain"])?.is_empty();
     if dirty && !allow_dirty {
-        bail!("working tree dirty: commit or pass --allow-dirty");
+        bail!(t!("cmd_deploy_pkg_dirty"));
     }
     let suffix = if dirty {
         format!("{}-dirty", &sha[..7])
@@ -192,7 +203,7 @@ pub fn package(
     let id = next_release_id(SystemTime::now(), &suffix, newest);
 
     if let Some(build) = cfg.build.as_deref().filter(|_| !skip_build) {
-        eprintln!("▸ build: {build}");
+        eprintln!("▸ {}", t!("cmd_deploy_step_build", command = build));
         // The project's own build command, in this machine's shell (`cmd` on Windows).
         let queued;
         let build = if cfg.build_heavy {
@@ -205,9 +216,12 @@ pub fn package(
             .envs(atlas_core::login_env::vars())
             .current_dir(root)
             .status()
-            .context("running build")?;
+            .with_context(|| t!("cmd_deploy_pkg_ctx_build"))?;
         if !st.success() {
-            bail!("build failed (exit {})", st.code().unwrap_or(-1));
+            bail!(t!(
+                "cmd_deploy_pkg_build_failed",
+                code = st.code().unwrap_or(-1)
+            ));
         }
     }
 
@@ -222,7 +236,7 @@ pub fn package(
         Some(paths) => {
             for p in paths {
                 if !root.join(p).exists() {
-                    bail!("artifact path not found: {p}");
+                    bail!(t!("cmd_deploy_pkg_artifact_missing", path = p));
                 }
             }
             let mtime = git(root, &["show", "-s", "--format=%ct", &release.sha]).ok();
@@ -235,12 +249,12 @@ pub fn package(
                 .arg("HEAD")
                 .current_dir(root)
                 .output()
-                .context("creating artifact")?;
+                .with_context(|| t!("cmd_deploy_pkg_ctx_create_artifact"))?;
             if !out.status.success() {
-                bail!(
-                    "packaging failed: {}",
-                    String::from_utf8_lossy(&out.stderr).trim()
-                );
+                bail!(t!(
+                    "cmd_deploy_pkg_failed",
+                    error = String::from_utf8_lossy(&out.stderr).trim()
+                ));
             }
         }
     }

@@ -23,7 +23,7 @@ async fn crewmate_list_includes_triggers() {
         .await
         .unwrap();
 
-    let crewmate = wait_crewmate_triggers(&client, &crewmate_id, Duration::from_secs(5)).await;
+    let crewmate = wait_crewmate_triggers(&client, &crewmate_id, atlas_core::scaling::HANG).await;
     let triggers = crewmate["triggers"].as_array().unwrap();
     assert_eq!(triggers.len(), 1, "crewmate_list must return triggers");
     assert_eq!(triggers[0]["id"], "t1");
@@ -53,7 +53,8 @@ async fn triggers_set_preserves_last_fired() {
         .unwrap();
 
     // Read back last_fired (should be Some — baseline).
-    let crewmate_v1 = wait_crewmate_triggers(&client, &crewmate_id, Duration::from_secs(5)).await;
+    let crewmate_v1 =
+        wait_crewmate_triggers(&client, &crewmate_id, atlas_core::scaling::HANG).await;
     let lf1 = crewmate_v1["triggers"][0]["last_fired"].as_u64();
     assert!(
         lf1.is_some(),
@@ -88,7 +89,7 @@ async fn triggers_set_preserves_last_fired() {
         {
             break crewmate;
         }
-        if start.elapsed() > Duration::from_secs(5) {
+        if start.elapsed() > atlas_core::scaling::HANG {
             panic!("second triggers_set did not appear");
         }
         tokio::time::sleep(Duration::from_millis(100)).await;
@@ -232,7 +233,7 @@ async fn add_trigger_add_answer_creates_trigger_with_task_tz() {
         if t["state"] == "waiting_action" {
             break t;
         }
-        if start.elapsed() > Duration::from_secs(15) {
+        if start.elapsed() > atlas_core::scaling::HANG {
             panic!("task never reached waiting_action (state={})", t["state"]);
         }
         tokio::time::sleep(Duration::from_millis(250)).await;
@@ -266,14 +267,14 @@ async fn add_trigger_add_answer_creates_trigger_with_task_tz() {
         if t["state"] != "waiting_action" && t["state"] != "running" && t["state"] != "queued" {
             break;
         }
-        if start.elapsed() > Duration::from_secs(15) {
+        if start.elapsed() > atlas_core::scaling::HANG {
             panic!("task never completed (state={})", t["state"]);
         }
         tokio::time::sleep(Duration::from_millis(250)).await;
     }
 
     // Check triggers were added.
-    let crewmate = wait_crewmate_triggers(&client, &crewmate_id, Duration::from_secs(5)).await;
+    let crewmate = wait_crewmate_triggers(&client, &crewmate_id, atlas_core::scaling::HANG).await;
     let triggers = crewmate["triggers"].as_array().unwrap();
     assert_eq!(triggers.len(), 1, "add trigger must create one trigger");
     let t = &triggers[0];
@@ -333,7 +334,7 @@ async fn add_trigger_skip_answer_adds_nothing() {
         if t["state"] == "waiting_action" {
             break;
         }
-        if start.elapsed() > Duration::from_secs(15) {
+        if start.elapsed() > atlas_core::scaling::HANG {
             panic!("task never reached waiting_action");
         }
         tokio::time::sleep(Duration::from_millis(250)).await;
@@ -365,7 +366,7 @@ async fn add_trigger_skip_answer_adds_nothing() {
         if t["state"] != "waiting_action" && t["state"] != "running" && t["state"] != "queued" {
             break;
         }
-        if start.elapsed() > Duration::from_secs(15) {
+        if start.elapsed() > atlas_core::scaling::HANG {
             panic!("task never completed");
         }
         tokio::time::sleep(Duration::from_millis(250)).await;

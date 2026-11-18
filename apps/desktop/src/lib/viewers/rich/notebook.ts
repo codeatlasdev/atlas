@@ -1,5 +1,6 @@
 /** Jupyter notebook (nbformat 4) → cells with text/image outputs. */
 import { asArray, asRecord, asString } from "#lib/viewers/rich/data.ts";
+import { m } from "#lib/i18n/m.ts";
 
 export type Output =
 	| { kind: "text"; stream: "stdout" | "stderr" | "result"; text: string }
@@ -35,7 +36,7 @@ function outputOf(raw: unknown): Output[] {
 		return [
 			{
 				kind: "error",
-				name: asString(o.ename) ?? "Error",
+				name: asString(o.ename) ?? m.viewers_files_notebook_view_error(),
 				value: asString(o.evalue) ?? "",
 				trace: asArray(o.traceback).join("\n").replace(ANSI, ""),
 			},

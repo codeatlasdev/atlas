@@ -7,6 +7,7 @@
  * is named by its upload id in `crewmate_task`; a small one goes inline. Fetching is in pieces too.
  */
 import { b64bytes, b64encode } from "#lib/b64.ts";
+import { m } from "#lib/i18n/m.ts";
 
 /** Images a task takes. */
 export const MAX_ATTACHMENTS = 4;
@@ -181,5 +182,5 @@ export async function fetchAttachment(call: HostCall, ref: AttachmentRef): Promi
 		}
 		if (bytes.length === 0 || got > MAX_BYTES) break;
 	}
-	throw new Error(`${ref.name}: the server never finished sending it`);
+	throw new Error(m.crew_workspace_attachment_incomplete({ name: ref.name }));
 }

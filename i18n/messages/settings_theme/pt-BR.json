@@ -82,14 +82,17 @@
 		{
 			"declarations": [
 				"input count",
+				"local countExact = count",
 				"local countPlural = count: plural"
 			],
 			"selectors": [
+				"countExact",
 				"countPlural"
 			],
 			"match": {
-				"countPlural=one": "Arquivo de tema com problemas ({count})",
-				"countPlural=*": "Arquivos de tema com problemas ({count})"
+				"countExact=0, countPlural=*": "Nenhum arquivo de tema com problemas",
+				"countExact=*, countPlural=one": "Arquivo de tema com problemas ({count})",
+				"countExact=*, countPlural=*": "Arquivos de tema com problemas ({count})"
 			}
 		}
 	],

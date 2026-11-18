@@ -592,6 +592,7 @@ version = "1.5.0-alpha.26"
 dependencies = [
  "anyhow",
  "atlas-core",
+ "atlas-i18n",
  "crossterm",
  "dirs",
  "futures-util",

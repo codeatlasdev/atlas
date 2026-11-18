@@ -1,7 +1,7 @@
 // The ratchets in diff mode: a change is judged on the offenders it adds, against the merge-base, so a baseline that
 // lags main never fails anyone and never needs a re-snapshot. Real temp git repositories, real `git`.
 import { afterAll, describe, expect, setDefaultTimeout, test } from "bun:test";
-import { readBaseline } from "./baseline.ts";
+import { readBaseline, renderBaseline } from "./baseline.ts";
 import { fix } from "./fix.ts";
 import { type Finding, loadCtx } from "./types.ts";
 import { BASELINE, baselineText, check, cleanup, makeRepo, put, read, rulesOf } from "./testkit.ts";
@@ -45,8 +45,9 @@ function git(root: string, ...args: string[]) {
 /** A valid repo with `files` committed on `main` (the base) and a `feature` branch checked out. */
 async function baseRepo(files: Record<string, string> = {}, branch = "main") {
 	const root = await makeRepo(files);
-	// makeRepo snapshots a baseline from what it just wrote; the base commit holds exactly the baseline the test gives (or none).
-	put(root, BASELINE, files[BASELINE] ?? "");
+	// makeRepo snapshots a baseline from what it just wrote, so the base commit is consistent (the baseline judges every
+	// file in every mode); a test that gives its own baseline gets exactly that one.
+	if (BASELINE in files) put(root, BASELINE, files[BASELINE]);
 	git(root, "init", "-q", "-b", branch);
 	git(root, "add", "-A");
 	git(root, "commit", "-q", "-m", "base");
@@ -57,17 +58,21 @@ async function baseRepo(files: Record<string, string> = {}, branch = "main") {
 const offenders = (fs: Finding[], rule = "hardcoded") => fs.filter((f) => f.rule === rule);
 
 describe("Svelte ratchet in diff mode", () => {
-	test("an unchanged file with 100 old offenders is not looked at, whatever the baseline says", async () => {
+	test("a file the change never touched is judged by the baseline too: 100 old offenders at their baseline are quiet, above it they fail", async () => {
 		const root = await baseRepo({ [OLD]: oldScreen(100) });
 		put(root, "docs/touched.md", "# Touched\n");
 		expect(offenders(await check(root))).toEqual([]);
-		put(root, BASELINE, baselineText({ svelte: { [OLD]: 1 } }));
-		expect(offenders(await check(root))).toEqual([]);
-		expect(offenders(await check(root), "hardcoded-baseline")).toEqual([]);
+		// merge skew or a baseline lowered by mistake: the file did not change, the check still says so
+		put(root, BASELINE, baselineText({ svelte: { [OLD]: 98 } }));
+		const fs = offenders(await check(root));
+		expect(fs).toHaveLength(100);
+		expect(fs[0].message).toContain("100 in this file, baseline 98");
+		expect(fs[0].message).not.toContain("new in this change");
 	});
 
 	test("the same repo without a base ref falls back to the committed baseline", async () => {
 		const root = await baseRepo({ [OLD]: oldScreen(3) }, "trunk");
+		put(root, BASELINE, "");
 		expect(offenders(await check(root))).toHaveLength(3);
 		put(root, BASELINE, baselineText({ svelte: { [OLD]: 3 } }));
 		expect(offenders(await check(root))).toEqual([]);
@@ -127,10 +132,25 @@ describe("Svelte ratchet in diff mode", () => {
 		expect(fs.map((f) => f.message.includes("Extra"))).toEqual([true]);
 	});
 
-	test("main adding screens after the branch point needs no re-snapshot once the branch merges main", async () => {
+	test("a rename carries the baseline line: the check allows the new path, i18n:fix moves the line, main's full check stays clean", async () => {
+		const root = await baseRepo({ [OLD]: oldScreen(3) });
+		const NEW = "apps/desktop/src/Renamed.svelte";
+		git(root, "mv", OLD, NEW);
+		expect(offenders(await check(root))).toEqual([]);
+		expect((await check(root)).some((f) => f.rule === "hardcoded-baseline" && f.key === OLD)).toBe(true); // the old path's line is stale until fix
+		fix(loadCtx(root));
+		expect(readBaseline(root).svelte).toEqual({ [OLD]: 0, [NEW]: 3 });
+		expect(rulesOf(await check(root), "error")).toEqual([]);
+		git(root, "add", "-A");
+		git(root, "commit", "-q", "-m", "rename");
+		await withEnv({ GITHUB_ACTIONS: "true", GITHUB_EVENT_NAME: "workflow_dispatch" }, async () => expect(rulesOf(await check(root), "error")).toEqual([]));
+	});
+
+	test("a screen main adds after the branch point arrives with its baseline lines: nothing to re-snapshot once the branch merges main", async () => {
 		const root = await baseRepo({ [OLD]: oldScreen(1) });
 		git(root, "checkout", "-q", "main");
 		put(root, "apps/desktop/src/FromMain.svelte", oldScreen(40));
+		put(root, BASELINE, baselineText({ svelte: { [OLD]: 1, "apps/desktop/src/FromMain.svelte": 40 } }));
 		git(root, "add", "-A");
 		git(root, "commit", "-q", "-m", "main adds a screen");
 		git(root, "checkout", "-q", "feature");
@@ -142,6 +162,7 @@ describe("Svelte ratchet in diff mode", () => {
 	test("the base can be given: ATLAS_BASE judges from that commit", async () => {
 		const root = await baseRepo({ [OLD]: oldScreen(1) });
 		put(root, "apps/desktop/src/Second.svelte", "<p>Second</p>\n");
+		put(root, BASELINE, baselineText({ svelte: { [OLD]: 1, "apps/desktop/src/Second.svelte": 1 } }));
 		git(root, "add", "-A");
 		git(root, "commit", "-q", "-m", "second");
 		expect(offenders(await check(root))).toHaveLength(1);
@@ -206,7 +227,9 @@ describe("the other ratchets share the mechanism", () => {
 		expect(fs[0]).toMatchObject({ severity: "error", file });
 		expect(fs[0].message).toContain(text);
 		put(root, file, before);
-		for (let i = 0; i < 50; i++) put(root, `crates/atlas-cli/src/old${i}.rs`, 'fn f() { println!("old"); }\n');
+		put(root, "crates/atlas-cli/src/old0.rs", 'fn f() { println!("old"); }\n');
+		const b = readBaseline(root);
+		put(root, BASELINE, renderBaseline({ ...b, rust: { ...(b.rust ?? {}), "crates/atlas-cli/src/old0.rs": 1 } }));
 		git(root, "add", "-A");
 		git(root, "commit", "-q", "-m", "more");
 		await withEnv({ ATLAS_BASE: "HEAD" }, async () => expect(offenders(await check(root), rule)).toEqual([]));
@@ -255,6 +278,7 @@ describe("a pull request merge ref", () => {
 		const branchPoint = git(root, "rev-parse", "main");
 		git(root, "checkout", "-q", "main");
 		put(root, MAIN_SCREEN, oldScreen(3));
+		put(root, BASELINE, baselineText({ svelte: { [OLD]: 1, [MAIN_SCREEN]: 3 } }));
 		git(root, "add", "-A");
 		git(root, "commit", "-q", "-m", "main adds a screen after the PR branched");
 		git(root, "checkout", "-q", "-b", "merge-ref");

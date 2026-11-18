@@ -1,0 +1,30 @@
+{
+  "pt-BR": {
+    "crew_workspace_integrations_1password_description": "78b0636c5dc5",
+    "crew_workspace_integrations_catalog_coming_soon": "dea484ab2df7",
+    "crew_workspace_integrations_catalog_connected": "7d5fd539fb2a",
+    "crew_workspace_integrations_catalog_empty": "2a87bd573cf5",
+    "crew_workspace_integrations_catalog_filter_by_category": "834461faa585",
+    "crew_workspace_integrations_catalog_integrations": "e63f8e07d513",
+    "crew_workspace_integrations_catalog_recommended_for_you": "f37f45a868c0",
+    "crew_workspace_integrations_catalog_search_apps_and_skills": "8ae405dd7a41",
+    "crew_workspace_integrations_catalog_search_integrations": "149c4d910f6a",
+    "crew_workspace_integrations_category_all": "663175a9c461",
+    "crew_workspace_integrations_category_code": "39d73d8014fa",
+    "crew_workspace_integrations_category_communication": "032500892ed3",
+    "crew_workspace_integrations_category_design": "28273887a8e4",
+    "crew_workspace_integrations_category_password_managers": "2f61d0aead36",
+    "crew_workspace_integrations_category_productivity": "6dae5e2fa705",
+    "crew_workspace_integrations_connected_count": "2fc3cab354e9",
+    "crew_workspace_integrations_figma_description": "ed59c6eca5f2",
+    "crew_workspace_integrations_github_description": "4d080172d15a",
+    "crew_workspace_integrations_github_skill_ci_status": "20b425a67ca2",
+    "crew_workspace_integrations_github_skill_clone": "fa4a24d485ca",
+    "crew_workspace_integrations_github_skill_comment_prs": "9ad31c0c597b",
+    "crew_workspace_integrations_github_skill_open_prs": "6ca76382df5d",
+    "crew_workspace_integrations_google_docs_description": "9854120be5e3",
+    "crew_workspace_integrations_linear_description": "f6e0f6c707b6",
+    "crew_workspace_integrations_notion_description": "f19dda61e79d",
+    "crew_workspace_integrations_slack_description": "7246ea99e41a"
+  }
+}

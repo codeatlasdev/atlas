@@ -203,6 +203,8 @@ pub fn is_instant(effect: &Effect) -> bool {
 
 #[cfg(test)]
 mod tests {
+    use atlas_core::scaling::HANG;
+
     use super::*;
 
     /// A display of `w`×`h` pixels whose pixel `(x, y)` is `[x, y, 0, 255]` (mod 256): every pixel names itself.
@@ -303,7 +305,7 @@ mod tests {
         let slot = Arc::new(Slot::default());
         slot.begin();
         let s = slot.clone();
-        let waiter = std::thread::spawn(move || s.wait(Duration::from_secs(5)));
+        let waiter = std::thread::spawn(move || s.wait(HANG));
         std::thread::sleep(Duration::from_millis(50));
         slot.publish(frames_of(7));
         let got = waiter.join().unwrap().expect("woken by the publish");
@@ -320,17 +322,21 @@ mod tests {
     }
 
     /// "Capture previous area" has no overlay and so no session: asking the slot answers at once, it must never sit
-    /// out the wait limit (it did: the capture then failed after five seconds).
+    /// out the wait limit (it did: the capture then failed after five seconds). The limit here is the hang ceiling:
+    /// a wait that sat it out comes back only after all of it, which is what the assert refuses.
     #[test]
     fn with_no_session_open_a_wait_answers_none_at_once() {
         let slot = Slot::default();
         let t = std::time::Instant::now();
-        assert!(slot.wait(Duration::from_secs(5)).is_none());
+        assert!(slot.wait(HANG).is_none());
         slot.begin();
         slot.publish(frames_of(1));
         slot.clear();
-        assert!(slot.wait(Duration::from_secs(5)).is_none());
-        assert!(t.elapsed() < Duration::from_millis(500));
+        assert!(slot.wait(HANG).is_none());
+        assert!(
+            t.elapsed() < HANG,
+            "a wait with no session sat out its limit"
+        );
     }
 
     /// A freeze that finishes after its session was closed (Esc, the capture already taken) is dropped: it must not
@@ -351,8 +357,11 @@ mod tests {
         slot.begin();
         slot.publish(frames_of(1));
         let t = std::time::Instant::now();
-        assert!(slot.wait(Duration::from_secs(5)).is_some());
-        assert!(t.elapsed() < Duration::from_millis(500));
+        assert!(slot.wait(HANG).is_some());
+        assert!(
+            t.elapsed() < HANG,
+            "a published freeze sat out the wait limit"
+        );
         slot.begin();
         assert!(slot.peek().is_none());
         assert!(slot.wait(Duration::from_millis(10)).is_none());

@@ -168,25 +168,41 @@ async fn garbage_on_stdout_is_an_error_that_quotes_it() {
     assert!(got.unwrap_err().contains("not json at all"));
 }
 
+// A runner that hangs is ended at its timeout, with the process killed (kill_on_drop), not left running. The
+// runner records its pid and then sleeps for ten minutes, ten times what anything here waits (HANG): only the
+// timeout's kill can end it, so no wall-clock budget is needed to tell "stopped" from "waited for".
 #[tokio::test]
 async fn a_runner_that_hangs_is_stopped_at_the_timeout_and_killed() {
+    use atlas_core::scaling::HANG;
     let _g = TEST_LOCK.lock().await;
     let tmp = tempfile::tempdir().unwrap();
-    // The marker file proves the process died: a live one would write it after the sleep.
-    let marker = tmp.path().join("survived");
-    let body = format!("sleep 4\ntouch {}", marker.display());
-    use_runner(&fake_runner(tmp.path(), &body), Duration::from_millis(400));
-    let started = std::time::Instant::now();
-    let got = run(tmp.path(), &spec(), &tmp.path().join("out")).await;
-    clear_runner();
-    let e = got.unwrap_err();
-    assert!(e.contains("was stopped"), "{e}");
-    assert!(
-        started.elapsed() < Duration::from_secs(3),
-        "timeout was not enforced"
-    );
-    tokio::time::sleep(Duration::from_millis(4500)).await;
-    assert!(!marker.exists(), "the runner outlived its timeout");
+    let pidfile = tmp.path().join("runner.pid");
+    let body = format!("echo $$ > {}\nexec sleep 600", pidfile.display());
+    // The 400 ms timeout can pass before a starved machine has started the script: try again until the runner
+    // got far enough to name itself.
+    let mut pid = None;
+    for _ in 0..20 {
+        let _ = std::fs::remove_file(&pidfile);
+        use_runner(&fake_runner(tmp.path(), &body), Duration::from_millis(400));
+        let got = tokio::time::timeout(HANG, run(tmp.path(), &spec(), &tmp.path().join("out")))
+            .await
+            .expect("the timeout was not enforced: run waited for the hung runner");
+        clear_runner();
+        let e = got.unwrap_err();
+        assert!(e.contains("was stopped"), "{e}");
+        pid = std::fs::read_to_string(&pidfile)
+            .ok()
+            .and_then(|s| s.trim().parse::<u32>().ok());
+        if pid.is_some() {
+            break;
+        }
+    }
+    let pid = pid.expect("the runner never got to name itself");
+    let t0 = std::time::Instant::now();
+    while atlas_core::sys::pid_alive(pid) {
+        assert!(t0.elapsed() < HANG, "the runner {pid} outlived its timeout");
+        tokio::time::sleep(Duration::from_millis(20)).await;
+    }
 }
 
 #[tokio::test]

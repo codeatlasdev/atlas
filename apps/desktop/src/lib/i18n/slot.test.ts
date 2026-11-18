@@ -24,8 +24,6 @@ describe("aroundSlot", () => {
 				const texts = [
 					m.onboarding_tour_press_palette({ key: slot }),
 					m.onboarding_phases_jump_anywhere({ key: slot }),
-					m.onboarding_welcome_all_commands({ key: slot }),
-					m.onboarding_welcome_choose_or_search({ key: slot }),
 					m.onboarding_phases_scanning_title({ count: 3, number: slot }),
 					m.onboarding_phases_found_title({ count: 1, number: slot }),
 					m.settings_theme_import_dialog_detected({ format: slot }),

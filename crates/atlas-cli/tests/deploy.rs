@@ -7,6 +7,7 @@ use std::path::{Path, PathBuf};
 use std::process::{Command, Output};
 use std::time::{Duration, Instant};
 
+use atlas_core::scaling::HANG;
 use serde_json::Value;
 
 struct Fx {
@@ -59,6 +60,7 @@ impl Fx {
     fn atlas(&self, args: &[&str]) -> Output {
         Command::new(env!("CARGO_BIN_EXE_atlas"))
             .arg("deploy")
+            .env("ATLAS_LANG", "en")
             .args(args)
             .arg("--dir")
             .arg(&self.repo)
@@ -141,7 +143,13 @@ fn deploy_lifecycle() {
     assert_eq!(fx.current(), first);
 
     let out = fx.atlas(&["rollback", "--to", "../x"]);
-    assert!(String::from_utf8_lossy(&out.stderr).contains("invalid release id"));
+    // The catalog's own text (never a typed sentence): it names the id and the command that lists the real ones.
+    let mut args = atlas_i18n::Args::new();
+    args.set("id", "../x");
+    args.set("target", "t");
+    let want = atlas_i18n::translate("en", "cmd_deploy_invalid_release_id", Some(&args));
+    let stderr = String::from_utf8_lossy(&out.stderr);
+    assert!(stderr.contains(&want), "{stderr}");
 
     // 5. held lock → exit 3, LOCKED
     let mut holder = Command::new("flock")
@@ -150,7 +158,20 @@ fn deploy_lifecycle() {
         .args(["sleep", "30"])
         .spawn()
         .unwrap();
-    std::thread::sleep(Duration::from_millis(300));
+    // Wait for the real event, the holder owning the lock (a try-lock now fails), not for a fixed pause.
+    let lock = fx.srv.join(".atlas/lock");
+    let end = Instant::now() + HANG;
+    while Command::new("flock")
+        .args(["-n", "-o"])
+        .arg(&lock)
+        .arg("true")
+        .status()
+        .unwrap()
+        .success()
+    {
+        assert!(Instant::now() < end, "the holder never took the lock");
+        std::thread::sleep(Duration::from_millis(20));
+    }
     let out = fx.atlas(&["--force"]);
     holder.kill().ok();
     holder.wait().ok();
@@ -217,7 +238,7 @@ fn deploy_lifecycle() {
         "healthy while the restart is held"
     );
     fs::write(&gate, "").unwrap();
-    let deadline = Instant::now() + Duration::from_secs(30);
+    let deadline = Instant::now() + HANG;
     loop {
         let st = fx.atlas(&["status", "--json"]);
         let v: Value = serde_json::from_slice(&st.stdout).unwrap();
@@ -270,7 +291,7 @@ fn deploy_refuses_to_roll_production_back_unless_allowed() {
     assert_eq!(code, 0, "{text}");
     let announce = format!("({}) over ", &b[..7]);
     assert!(
-        text.contains(&announce) && text.contains("+1 commits"),
+        text.contains(&announce) && text.contains("+1 commit"),
         "{text}"
     );
     let deployed = fx.current();
@@ -344,6 +365,7 @@ fn deploy_refuses_when_deployed_commit_is_unknown_locally() {
     let run = |extra: &[&str]| {
         let out = Command::new(env!("CARGO_BIN_EXE_atlas"))
             .arg("deploy")
+            .env("ATLAS_LANG", "en")
             .args(extra)
             .arg("--dir")
             .arg(&other)

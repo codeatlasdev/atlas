@@ -116,9 +116,6 @@
 	"settings_theme_import_package_notes_label": {
 		"description": "Accessible name of the list of warnings and skipped files of a package."
 	},
-	"settings_theme_import_package_notes_summary": {
-		"description": "Toggle of the notes under the package theme list: warnings and skipped files."
-	},
 	"settings_theme_import_package_preview_name": {
 		"description": "Accessible name of the row that shows the preview of one theme of a package."
 	},
@@ -134,10 +131,12 @@
 	"settings_theme_import_package_skipped": {
 		"description": "Line of the notes of a package: a file that was not read. file is a path inside the package."
 	},
+	"settings_theme_import_package_skipped_count": "Part of the notes toggle under the package theme list: how many files were skipped.",
 	"settings_theme_import_package_themes_found": {
 		"description": "Accessible name of the list of themes found in a package."
 	},
 	"settings_theme_import_package_toast_imported": {
 		"description": "Toast after themes of a package were imported. The path is the themes folder."
-	}
+	},
+	"settings_theme_import_package_warnings_count": "Part of the notes toggle under the package theme list: how many warnings the scan raised."
 }

@@ -406,7 +406,8 @@ struct Hanging {
     _lock: tokio::sync::MutexGuard<'static, ()>,
 }
 
-async fn start_hanging_isolated_turn(timeout: Option<std::time::Duration>) -> Hanging {
+/// `None` when `timeout` (a test's short turn timeout) passed before the engine got to start its tool.
+async fn try_start_hanging_isolated_turn(timeout: Option<std::time::Duration>) -> Option<Hanging> {
     let lock = crate::crew::runner::TEST_BIN_LOCK
         .get_or_init(|| tokio::sync::Mutex::new(()))
         .lock()
@@ -419,7 +420,7 @@ async fn start_hanging_isolated_turn(timeout: Option<std::time::Duration>) -> Ha
     rig.engine(
         "claude",
         &format!(
-            "(/bin/sleep 60 & echo $! > \"{}\"; wait) &\nwait",
+            "(/bin/sleep 600 & echo $! > \"{}\"; wait) &\nwait",
             pidfile.display()
         ),
     );
@@ -463,28 +464,50 @@ async fn start_hanging_isolated_turn(timeout: Option<std::time::Duration>) -> Ha
         {
             break pid;
         }
+        if turn.is_finished() {
+            return None;
+        }
         assert!(
-            start.elapsed() < std::time::Duration::from_secs(15),
+            start.elapsed() < atlas_core::scaling::HANG,
             "the isolated engine never started its tool"
         );
         tokio::time::sleep(std::time::Duration::from_millis(50)).await;
     };
-    assert!(!gone(pid), "the tool must be running before the cancel");
-    Hanging {
+    // With a short turn timeout the turn may already be over: that is what the test then waits for.
+    assert!(
+        timeout.is_some() || !gone(pid),
+        "the tool must be running before the cancel"
+    );
+    Some(Hanging {
         turn,
         cancel,
         pid,
         _rig: rig,
         _tmp: tmp,
         _lock: lock,
+    })
+}
+
+/// [`try_start_hanging_isolated_turn`], again for as long as a short `timeout` beats a starved machine to the
+/// start of the tool (the 3 s are for the turn, not a budget for the engine to start in).
+async fn start_hanging_isolated_turn(timeout: Option<std::time::Duration>) -> Hanging {
+    for _ in 0..20 {
+        if let Some(h) = try_start_hanging_isolated_turn(timeout).await {
+            return h;
+        }
+        assert!(
+            timeout.is_some(),
+            "the isolated turn ended before it started its tool"
+        );
     }
+    panic!("the isolated engine never started its tool within the {timeout:?} turn timeout");
 }
 
 async fn wait_gone(pid: u32, what: &str) {
     let start = std::time::Instant::now();
     while !gone(pid) {
         assert!(
-            start.elapsed() < std::time::Duration::from_secs(10),
+            start.elapsed() < atlas_core::scaling::HANG,
             "{what}: the tool process {pid} outlived the turn"
         );
         tokio::time::sleep(std::time::Duration::from_millis(50)).await;

@@ -24,12 +24,14 @@
 	import "#lib/outline.ts";
 	import { registerEditor, unregisterEditor } from "#lib/symbols.ts";
 	import { LspDoc } from "#lib/lsp/client.svelte.ts";
+	import { ChangeBuffer } from "#lib/lsp/changes.ts";
 	import { lspGated } from "#lib/lsp/uiState.svelte.ts";
 	import { applyDiagnostics, countDiagnostics } from "#lib/lsp/diagnostics.ts";
 	import { formatBeforeSave, lspCompletion, lspExtension } from "#lib/lsp/extension.ts";
 	import LspStatus from "#lib/lsp/LspStatus.svelte";
 	import { openLocation, readOnlyPaths, showLocations } from "#lib/lsp/workspace.ts";
-	import { editorKey, fileOfTab, readOnlyExtension } from "#lib/lsp/navigation.ts";
+	import { editorKey, fileOfTab } from "#lib/lsp/navigation.ts";
+	import { readOnlyExtension } from "#lib/lsp/navigationCm.ts";
 	import { navigator as nav } from "#lib/lsp/history.ts";
 	import { prefs } from "#lib/stores/prefs.svelte.ts";
 	import { EditorSession } from "#lib/editor/EditorSession.svelte.ts";
@@ -44,6 +46,7 @@
 	import { readBlob } from "#lib/viewers/load.ts";
 	import { loadLanguage, lspLanguageId } from "#lib/viewers/lang.ts";
 	import { fileType } from "#lib/viewers/fileType.ts";
+	import { fileTypeLabel } from "#lib/viewers/fileTypeLabel.ts";
 	import { rememberRich, wantsRich } from "#lib/viewers/richPref.ts";
 	import RichView from "#lib/viewers/rich/RichView.svelte";
 	import ImageViewer from "#lib/viewers/ImageViewer.svelte";
@@ -128,6 +131,7 @@
 			abs,
 			id,
 			() => v.state.doc.toString(),
+			new ChangeBuffer(),
 			root,
 			() => lspGated(id),
 		);
@@ -328,7 +332,7 @@
 				<Tip
 					label={rich
 						? `Show source (${kbd("shift-cmd-m")})`
-						: `${isMd ? "Rich" : ft.label} view (${kbd("shift-cmd-m")})`}
+						: `${isMd ? "Rich" : fileTypeLabel(ft)} view (${kbd("shift-cmd-m")})`}
 					side="bottom"
 				>
 					{#snippet child(props)}

@@ -5,6 +5,7 @@
 	 */
 	import { renderSVG } from "uqr";
 	import { pairUrl, secondsLeft, type PairStart } from "#lib/settings/mobile.ts";
+	import { m } from "#lib/i18n/m.ts";
 
 	let { pairing, now }: { pairing: { p: PairStart; at: number }; now: number } = $props();
 
@@ -13,14 +14,16 @@
 
 {#if left > 0}
 	<div class="pair">
-		<div class="qr" aria-label="Pairing QR code" role="img">{@html renderSVG(pairUrl(pairing.p))}</div>
+		<div class="qr" aria-label={m.mobile_pair_qr_label()} role="img">
+			{@html renderSVG(pairUrl(pairing.p))}
+		</div>
 		<div>
 			<div class="code ca-selectable">{pairing.p.code}</div>
-			<div class="muted">Expires in {left}s</div>
+			<div class="muted">{m.mobile_pair_qr_expires_in({ left })}</div>
 		</div>
 	</div>
 {:else}
-	<div class="muted">The code expired. Make a new one.</div>
+	<div class="muted">{m.mobile_pair_qr_expired()}</div>
 {/if}
 
 <style>

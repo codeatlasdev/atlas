@@ -383,7 +383,7 @@ mod tests {
         });
         let client = tokio::task::spawn_blocking(move || {
             let mut c = connect_sync(&p).unwrap();
-            c.set_read_timeout(Some(Duration::from_secs(10))).unwrap();
+            c.set_read_timeout(Some(crate::scaling::HANG)).unwrap();
             let mut got = [0u8; 10];
             c.read_exact(&mut got).unwrap();
             read_done.send(()).unwrap();
@@ -451,34 +451,40 @@ mod tests {
         server.await.unwrap();
     }
 
+    // The server stays silent until the test says otherwise (an event, not a sleep: a slow machine cannot make it
+    // answer or close first), so a read that returns at all returned because its timeout fired; one that ignores
+    // the timeout blocks until the hang ceiling.
     #[tokio::test]
     async fn a_blocking_read_gives_up_after_its_timeout_when_the_server_stays_silent() {
         use std::io::Read;
         let d = tempfile::tempdir().unwrap();
         let p = d.path().join("q.sock");
         let l = Listener::bind(&p).unwrap();
+        let (release, held) = tokio::sync::oneshot::channel::<()>();
         let server = tokio::spawn(async move {
             let s = l.accept().await.unwrap();
-            tokio::time::sleep(Duration::from_secs(2)).await;
+            let _ = held.await;
             drop(s);
         });
         let p2 = p.clone();
-        let (err, waited) = tokio::task::spawn_blocking(move || {
-            let s = connect_sync(&p2).unwrap();
-            s.set_read_timeout(Some(Duration::from_millis(200)))
-                .unwrap();
-            let t0 = std::time::Instant::now();
-            let e = (&s).read(&mut [0u8; 8]).unwrap_err();
-            (e.kind(), t0.elapsed())
-        })
+        let err = tokio::time::timeout(
+            crate::scaling::HANG,
+            tokio::task::spawn_blocking(move || {
+                let s = connect_sync(&p2).unwrap();
+                s.set_read_timeout(Some(Duration::from_millis(200)))
+                    .unwrap();
+                (&s).read(&mut [0u8; 8]).unwrap_err().kind()
+            }),
+        )
         .await
+        .expect("the read ignored its timeout")
         .unwrap();
         assert!(
             matches!(err, io::ErrorKind::TimedOut | io::ErrorKind::WouldBlock),
             "{err:?}"
         );
-        assert!(waited < Duration::from_millis(1500), "{waited:?}");
-        server.abort();
+        let _ = release.send(());
+        server.await.unwrap();
     }
 
     #[tokio::test]

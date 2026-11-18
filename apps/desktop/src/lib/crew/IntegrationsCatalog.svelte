@@ -17,19 +17,25 @@
 	import {
 		CATALOG,
 		CATEGORIES,
+		categoryLabel,
 		filterCatalog,
 		connectedIntegrationIds,
 		canConnect,
 		type Integration,
 		type CatalogCategory,
 	} from "./integrations.ts";
+	import { m } from "#lib/i18n/m.ts";
 
 	interface Props {
 		open?: boolean;
 		detail?: string | null;
+		/** The catalog was closed (it loads lazily, so the owner holds the state). */
+		onclose: () => void;
+		/** The shown page changed: an integration's id, or null for the catalog list. */
+		ondetail: (id: string | null) => void;
 	}
 
-	let { open = $bindable(false), detail = $bindable<string | null>(null) }: Props = $props();
+	let { open = false, detail = null, onclose, ondetail }: Props = $props();
 
 	let query = $state("");
 	let activeCategory = $state<CatalogCategory>("All");
@@ -58,8 +64,7 @@
 	const connectedIntegrations = $derived(CATALOG.filter((i) => connectedIds.has(i.id)));
 
 	function close() {
-		open = false;
-		detail = null;
+		onclose();
 		query = "";
 		activeCategory = "All";
 		// Stop all active crew server login flows.
@@ -70,13 +75,13 @@
 
 	function openDetail(id: string) {
 		if (!canConnect(CATALOG.find((i) => i.id === id)!)) return;
-		detail = id;
+		ondetail(id);
 		query = "";
 		activeCategory = "All";
 	}
 
 	function backToCatalog() {
-		detail = null;
+		ondetail(null);
 		for (const hostKey of githubCrew.flows.keys()) {
 			githubCrew.stopPolling(hostKey);
 		}
@@ -88,7 +93,7 @@
 	onOpenChange={(o) => {
 		if (!o) close();
 	}}
-	title="Integrations"
+	title={m.crew_workspace_integrations_catalog_integrations()}
 	chromeless
 	size="xl"
 >
@@ -96,7 +101,7 @@
 		{#if !detail}
 			<!-- ─── Catalog view ──────────────────────────────────────────── -->
 			<div class="catalog-head">
-				<h2 class="catalog-title">Integrations</h2>
+				<h2 class="catalog-title">{m.crew_workspace_integrations_catalog_integrations()}</h2>
 				<CloseButton onclose={close} />
 			</div>
 
@@ -107,7 +112,7 @@
 							{@render integIcon(integ.id, 14)}
 						</span>
 					{/each}
-					<span>{connectedCount} connected</span>
+					<span>{m.crew_workspace_integrations_connected_count({ count: connectedCount })}</span>
 					<ChevronRight size={11} aria-hidden="true" />
 				</div>
 			{/if}
@@ -128,14 +133,18 @@
 					<input
 						class="search-input"
 						type="search"
-						placeholder="Search apps and skills"
+						placeholder={m.crew_workspace_integrations_catalog_search_apps_and_skills()}
 						bind:value={query}
-						aria-label="Search integrations"
+						aria-label={m.crew_workspace_integrations_catalog_search_integrations()}
 					/>
 				</label>
 			</div>
 
-			<div class="category-chips" role="group" aria-label="Filter by category">
+			<div
+				class="category-chips"
+				role="group"
+				aria-label={m.crew_workspace_integrations_catalog_filter_by_category()}
+			>
 				{#each CATEGORIES as cat (cat)}
 					<button
 						class="category-chip"
@@ -143,16 +152,19 @@
 						onclick={() => (activeCategory = cat)}
 						aria-pressed={activeCategory === cat}
 					>
-						{cat}
+						{categoryLabel(cat)}
 					</button>
 				{/each}
 			</div>
 
 			<div class="catalog-body">
 				{#if recommended.length > 0}
-					<section class="catalog-section" aria-label="Recommended for you">
+					<section
+						class="catalog-section"
+						aria-label={m.crew_workspace_integrations_catalog_recommended_for_you()}
+					>
 						<div class="section-head">
-							<span class="section-label">Recommended for you</span>
+							<span class="section-label">{m.crew_workspace_integrations_catalog_recommended_for_you()}</span>
 						</div>
 						<div class="items-grid">
 							{#each recommended as integ (integ.id)}
@@ -164,9 +176,10 @@
 
 				{#if byCategory.length > 0}
 					{#each byCategory as [category, items] (category)}
-						<section class="catalog-section" aria-label={category}>
+						{@const label = categoryLabel(category as CatalogCategory)}
+						<section class="catalog-section" aria-label={label}>
 							<div class="section-head">
-								<span class="section-label">{category}</span>
+								<span class="section-label">{label}</span>
 							</div>
 							<div class="items-grid">
 								{#each items as integ (integ.id)}
@@ -178,7 +191,7 @@
 				{/if}
 
 				{#if filtered.length === 0}
-					<p class="empty-state">No integrations match your search.</p>
+					<p class="empty-state">{m.crew_workspace_integrations_catalog_empty()}</p>
 				{/if}
 			</div>
 		{:else if currentIntegration}
@@ -208,14 +221,18 @@
 			>
 				{#if connected}
 					<Check size={11} aria-hidden="true" />
-					Connected
+					{m.crew_workspace_integrations_catalog_connected()}
 				{:else}
-					Connect
+					{m.crew_chat_task_action_card_connect()}
 					<ChevronRight size={11} aria-hidden="true" />
 				{/if}
 			</button>
 		{:else}
-			<span class="integ-pill integ-pill--soon" aria-label="Coming soon">Coming soon</span>
+			<span
+				class="integ-pill integ-pill--soon"
+				aria-label={m.crew_workspace_integrations_catalog_coming_soon()}
+				>{m.crew_workspace_integrations_catalog_coming_soon()}</span
+			>
 		{/if}
 	</div>
 {/snippet}
@@ -322,14 +339,10 @@
 	/* ─── Category chips ─────────────────────────────────────────── */
 	.category-chips {
 		display: flex;
+		flex-wrap: wrap; /* a longer language wraps to a second row; a hidden scroll cut the last chip off */
 		gap: 6px;
 		padding: 12px 20px;
-		overflow-x: auto;
-		scrollbar-width: none;
 		flex: none;
-	}
-	.category-chips::-webkit-scrollbar {
-		display: none;
 	}
 
 	.category-chip {

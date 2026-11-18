@@ -6,7 +6,6 @@
 	import { runCommand, shortcutFor } from "#lib/keymap.svelte.ts";
 	import { kbd } from "#lib/keys.ts";
 	import { ws } from "#lib/stores/workspace.svelte.ts";
-	import { aroundSlot } from "#lib/i18n/slot.ts";
 	import { m } from "#lib/i18n/m.ts";
 
 	let { worktreeId }: { worktreeId: string } = $props();
@@ -47,9 +46,6 @@
 			run: () => runCommand("file_finder::Toggle"),
 		},
 	]);
-	// The shortcut sits inside its sentence as a key cap: the message places it, the template draws it.
-	let findFile = $derived(aroundSlot((key) => m.onboarding_welcome_choose_or_search({ key })));
-	let allCommands = $derived(aroundSlot((key) => m.onboarding_welcome_all_commands({ key })));
 </script>
 
 <div class="welcome">
@@ -57,11 +53,11 @@
 		{#if plain}
 			<h2>{m.onboarding_welcome_pick_a_file()}</h2>
 			<p>
-				{findFile[0]}<Kbd>{shortcutFor("file_finder::Toggle") ?? kbd("cmd-p")}</Kbd>{findFile[1]}
+				{m.onboarding_welcome_find_file_hint({ key: shortcutFor("file_finder::Toggle") ?? kbd("cmd-p") })}
 			</p>
 		{:else}
-			<h2>{m.onboarding_welcome_nothing_open()}</h2>
-			<p>{m.onboarding_welcome_start_something()}</p>
+			<h2>{m.onboarding_welcome_nothing_open_here()}</h2>
+			<p>{m.onboarding_welcome_pick_up_where_you_left()}</p>
 		{/if}
 		<div class="actions">
 			{#each actions as a (a.command)}
@@ -76,8 +72,9 @@
 			{/each}
 		</div>
 		<p class="foot">
-			{allCommands[0]}<Kbd>{shortcutFor("command_palette::Toggle") ?? kbd("cmd-shift-p")}</Kbd
-			>{allCommands[1]}
+			{m.onboarding_welcome_palette_hint({
+				key: shortcutFor("command_palette::Toggle") ?? kbd("cmd-shift-p"),
+			})}
 			<span aria-hidden="true">·</span>
 			<button class="link" onclick={() => runCommand("atlas::Help")}
 				>{m.onboarding_welcome_shortcuts()}</button

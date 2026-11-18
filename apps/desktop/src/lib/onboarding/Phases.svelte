@@ -115,12 +115,10 @@
 		{found[0]}<span class="count">{formatNumber(w.choices.length)}</span>{found[1]}
 	</h1>
 	<p class="lead">
-		{#if w.summary.services && w.summary.broken}{m.onboarding_phases_services_ready_broken({
-				services: w.summary.services,
-				configs: w.summary.broken,
-			})}{:else if w.summary.services}{m.onboarding_phases_services_ready({
+		{#if w.summary.services}{m.onboarding_phases_services_ready({
 				count: w.summary.services,
 			})}{:else}{m.onboarding_phases_detects_how_to_run()}{/if}
+		{#if w.summary.broken}{m.onboarding_phases_configs_need_look({ count: w.summary.broken })}{/if}
 	</p>
 	<ul class="pick" aria-label={m.onboarding_phases_projects_to_add()}>
 		{#each w.choices.slice(0, 7) as f (f.path)}

@@ -7,6 +7,7 @@ use crate::theme;
 use crate::tui::app::Message;
 use crate::tui::clicks::{ClickMap, Target, Wheel};
 use crate::tui::widgets::modal::Modal;
+use atlas_i18n::t;
 
 /// Render the device picker modal overlay.
 /// `devices` is a slice of `(id, display_name)` pairs.
@@ -29,8 +30,8 @@ pub fn render(
     // header(1) + items + footer(2) + padding(2) + border(2)
     let height = (7 + list_rows).min(area.height.saturating_sub(4));
     let (platform_label, platform_icon) = match platform {
-        SessionPlatform::Ios => ("iOS Devices", ""),
-        SessionPlatform::Android => ("Android Devices", ""),
+        SessionPlatform::Ios => (t!("tui_runtime_views_devices_title_ios"), ""),
+        SessionPlatform::Android => (t!("tui_runtime_views_devices_title_android"), ""),
     };
     let title = format!(" {platform_icon} {platform_label} ");
 
@@ -59,19 +60,18 @@ pub fn render(
             Span::raw("  "),
             Span::styled(spin, Style::default().fg(t.primary).bold()),
             Span::raw(" "),
-            Span::styled("Detecting devices…", Style::default().fg(t.text_muted)),
+            Span::styled(
+                t!("tui_runtime_views_devices_detecting"),
+                Style::default().fg(t.text_muted),
+            ),
         ])
     } else {
         let count = devices.len();
-        let label = if count == 1 {
-            "device found"
-        } else {
-            "devices found"
-        };
+        let label = t!("tui_runtime_views_devices_found", count = count);
         Line::from(vec![
             Span::raw("  "),
             Span::styled(
-                format!("{count} {label}"),
+                label,
                 Style::default().fg(if count == 0 { t.error } else { t.text_muted }),
             ),
         ])
@@ -85,11 +85,11 @@ pub fn render(
         vec![
             Line::from(""),
             Line::from(Span::styled(
-                "  No devices found.",
+                format!("  {}", t!("tui_runtime_views_devices_none")),
                 Style::default().fg(t.text_muted),
             )),
             Line::from(Span::styled(
-                "  Connect a device or start a simulator.",
+                format!("  {}", t!("tui_runtime_views_devices_none_hint")),
                 Style::default().fg(t.text_dim),
             )),
         ]
@@ -150,22 +150,43 @@ pub fn render(
     // ── Footer hints ────────────────────────────────────────────────────
     let footer = if detecting || devices.is_empty() {
         Line::from(vec![
-            Span::styled(" Enter ", Style::default().fg(t.primary).bold()),
-            Span::styled("Spawn without device", Style::default().fg(t.text_dim)),
+            Span::styled(
+                format!(" {} ", t!("common_keys_enter")),
+                Style::default().fg(t.primary).bold(),
+            ),
+            Span::styled(
+                t!("tui_runtime_views_devices_spawn_without"),
+                Style::default().fg(t.text_dim),
+            ),
             Span::raw("  "),
-            Span::styled(" Esc ", Style::default().fg(t.text_dim)),
-            Span::styled("Cancel", Style::default().fg(t.text_dim)),
+            Span::styled(
+                format!(" {} ", t!("common_keys_escape")),
+                Style::default().fg(t.text_dim),
+            ),
+            Span::styled(t!("common_action_cancel"), Style::default().fg(t.text_dim)),
         ])
     } else {
         Line::from(vec![
             Span::styled(" ↑↓ ", Style::default().fg(t.primary).bold()),
-            Span::styled("Navigate", Style::default().fg(t.text_dim)),
+            Span::styled(
+                t!("tui_runtime_views_devices_navigate"),
+                Style::default().fg(t.text_dim),
+            ),
             Span::raw("  "),
-            Span::styled(" Enter ", Style::default().fg(t.primary).bold()),
-            Span::styled("Select", Style::default().fg(t.text_dim)),
+            Span::styled(
+                format!(" {} ", t!("common_keys_enter")),
+                Style::default().fg(t.primary).bold(),
+            ),
+            Span::styled(
+                t!("tui_runtime_views_devices_select"),
+                Style::default().fg(t.text_dim),
+            ),
             Span::raw("  "),
-            Span::styled(" Esc ", Style::default().fg(t.text_dim)),
-            Span::styled("Cancel", Style::default().fg(t.text_dim)),
+            Span::styled(
+                format!(" {} ", t!("common_keys_escape")),
+                Style::default().fg(t.text_dim),
+            ),
+            Span::styled(t!("common_action_cancel"), Style::default().fg(t.text_dim)),
         ])
     };
 

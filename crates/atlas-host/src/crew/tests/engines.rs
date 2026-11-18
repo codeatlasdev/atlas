@@ -65,7 +65,7 @@ exit 0"#,
         .await
         .unwrap();
     let t1_id = v1["task"]["id"].as_str().unwrap().to_string();
-    let t1 = wait_task_state(&client, &id, &t1_id, "done", Duration::from_secs(15)).await;
+    let t1 = wait_task_state(&client, &id, &t1_id, "done", atlas_core::scaling::HANG).await;
     assert_eq!(t1["state"], "done", "turn 1 must succeed");
 
     // Session file must exist after turn 1.
@@ -84,7 +84,7 @@ exit 0"#,
         .await
         .unwrap();
     let t2_id = v2["task"]["id"].as_str().unwrap().to_string();
-    let t2 = wait_task_state(&client, &id, &t2_id, "done", Duration::from_secs(15)).await;
+    let t2 = wait_task_state(&client, &id, &t2_id, "done", atlas_core::scaling::HANG).await;
     assert_eq!(t2["state"], "done", "turn 2 must succeed");
 
     // Reply on turn 2 must contain the resumed session id.
@@ -172,7 +172,7 @@ exit 0"#,
         .unwrap();
     let task_id = v["task"]["id"].as_str().unwrap().to_string();
 
-    let task = wait_task_state(&client, &id, &task_id, "done", Duration::from_secs(15)).await;
+    let task = wait_task_state(&client, &id, &task_id, "done", atlas_core::scaling::HANG).await;
     assert_eq!(task["state"], "done");
 
     // The fixed reply from the fake binary must not contain the secret.
@@ -369,7 +369,7 @@ exit 0
         .unwrap();
     let task_id = v["task"]["id"].as_str().unwrap().to_string();
     // Task may be done or failed — either is fine; we only care the extension file exists.
-    let deadline = std::time::Instant::now() + Duration::from_secs(10);
+    let deadline = std::time::Instant::now() + atlas_core::scaling::HANG;
     loop {
         let v = client
             .call("crewmate_tasks", json!({"id": id, "limit": 5}))

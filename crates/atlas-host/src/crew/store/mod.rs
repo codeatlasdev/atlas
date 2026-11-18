@@ -550,12 +550,15 @@ impl CrewStore {
     pub fn new(base: &Path) -> Self {
         use atlas_core::crew::{Adopted, adopt_legacy_path};
         match adopt_legacy_path(&base.join(LEGACY_DIR), &base.join(DIR)) {
+            // i18n-ignore: log
             Ok(Adopted::BothExist) => eprintln!(
                 "atlas crew: {LEGACY_DIR}/ and {DIR}/ both exist in {}; using {DIR}/, {LEGACY_DIR}/ is left untouched",
                 base.display()
             ),
+            // i18n-ignore: log
             Ok(Adopted::Moved) => eprintln!("atlas crew: {LEGACY_DIR}/ moved to {DIR}/"),
             Ok(Adopted::Nothing) => {}
+            // i18n-ignore: log
             Err(e) => eprintln!("atlas crew: cannot move {LEGACY_DIR}/ to {DIR}/: {e}"),
         }
         Self {
@@ -668,6 +671,7 @@ impl CrewStore {
             let id = e.ok()?.file_name().to_string_lossy().to_string();
             self.load_crewmate(&id)
                 .inspect_err(|err| {
+                    // i18n-ignore: log
                     eprintln!("atlas crew: crewmate {id} skipped, unreadable: {err}")
                 })
                 .ok()
@@ -914,6 +918,7 @@ impl CrewStore {
             Ok(Secrets::Ok(m)) => m,
             Ok(Secrets::Corrupt(_)) => Default::default(),
             Err(e) => {
+                // i18n-ignore: log
                 eprintln!("atlas crew: cannot read secrets of {id}: {e}");
                 Default::default()
             }
@@ -946,6 +951,7 @@ impl CrewStore {
         if len > self.usage_max
             && let Err(e) = usage::rotate(&dir, ts, self.usage_keep)
         {
+            // i18n-ignore: log
             eprintln!("atlas crew: cannot rotate {}: {e}", path.display());
         }
         Ok(())
@@ -990,6 +996,7 @@ impl CrewStore {
         match self.read_crew_settings() {
             Ok(s) => s,
             Err(e) => {
+                // i18n-ignore: log
                 eprintln!(
                     "atlas crew: {} is unreadable ({e}); the crew stays paused until it is resumed",
                     self.crew_settings_path().display()
@@ -1024,6 +1031,7 @@ impl CrewStore {
             return Ok(());
         }
         let aside = paths::set_aside_corrupt(&self.crew_settings_path())?;
+        // i18n-ignore: log
         eprintln!(
             "atlas crew: unreadable crew.json kept as {}",
             aside.display()

@@ -332,6 +332,7 @@ pub(super) fn render_loop<R: Present>(mut r: R, sh: Arc<Shared>, mut hooks: Hook
 #[cfg(test)]
 mod tests {
     use super::*;
+    use atlas_core::scaling::HANG;
     use parking_lot::Mutex;
     use std::sync::atomic::{AtomicBool, AtomicUsize, Ordering};
     use std::time::Duration;
@@ -483,7 +484,7 @@ mod tests {
 
         /// Poll until `cond` or fail after a generous (never-sleeping-to-pass) deadline.
         fn until(&self, what: &str, cond: impl Fn(&Log) -> bool) {
-            let end = Instant::now() + Duration::from_secs(10);
+            let end = Instant::now() + HANG;
             while !cond(&self.log) {
                 assert!(Instant::now() < end, "timed out waiting for: {what}");
                 std::thread::sleep(Duration::from_millis(5));
@@ -643,13 +644,22 @@ mod tests {
         healthy.until("the healthy tab presents while the other hangs", |l| {
             l.presented.load(Ordering::SeqCst) >= 1
         });
-        // Commands on the stuck terminal return at once: they only take its small state lock.
-        let t = Instant::now();
-        stuck.sh.rebuild(Why::Manual);
-        stuck.sh.redraw();
-        stuck.sh.update(|s| s.focused = true);
-        let _ = stuck.sh.vt.text();
-        assert!(t.elapsed() < Duration::from_secs(1));
+        // Commands on the stuck terminal return: they only take its small state lock. The renderer stays hung until
+        // `stop`, so a command that waited for it would never return: the wait on the real event (the commands
+        // finished) is bounded by the hang ceiling, not by a stopwatch.
+        let sh = stuck.sh.clone();
+        let (done, finished) = std::sync::mpsc::channel();
+        std::thread::spawn(move || {
+            sh.rebuild(Why::Manual);
+            sh.redraw();
+            sh.update(|s| s.focused = true);
+            let _ = sh.vt.text();
+            let _ = done.send(());
+        });
+        assert!(
+            finished.recv_timeout(HANG).is_ok(),
+            "a command on the stuck terminal blocked behind the hung renderer"
+        );
         healthy.stop();
         stuck.stop();
     }
@@ -780,16 +790,19 @@ mod tests {
             rig.sh.redraw();
             std::thread::sleep(Duration::from_millis(2));
         }
-        let burst = t0.elapsed();
         rig.until("the last state is drawn", |l| {
             l.seen.lock().last().is_some_and(|t| t.contains("chunk 39"))
         });
+        // From the first byte to the last frame: frames are at least one refresh interval apart, so no more than
+        // one per interval of that span fit, plus the first (an idle terminal draws at once). The span is
+        // measured, so a loaded runner that stretches it gets a larger allowance and a per-read loop (40 frames
+        // however long it takes) is still over.
+        let span = t0.elapsed();
         let drawn = rig.log.renders.load(Ordering::SeqCst) - before;
-        // One frame per refresh interval the burst spanned, plus the one that catches the tail.
-        let budget = (burst.as_millis() / FRAME_INTERVAL.as_millis()) as usize + 2;
+        let allowed = (span.as_micros() / FRAME_INTERVAL.as_micros()) as usize + 1;
         assert!(
-            drawn <= budget,
-            "{drawn} frames for a {burst:?} burst (budget {budget})"
+            drawn <= allowed,
+            "{drawn} frames in a {span:?} burst (at most {allowed} at one per refresh)"
         );
         rig.stop();
     }

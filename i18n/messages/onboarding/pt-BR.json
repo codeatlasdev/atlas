@@ -77,6 +77,24 @@
 	],
 	"onboarding_phases_add_name": "Adicionar {name}",
 	"onboarding_phases_choose_a_project_folder": "Escolher uma pasta de projeto",
+	"onboarding_phases_configs_need_look": [
+		{
+			"declarations": [
+				"input count",
+				"local countExact = count",
+				"local countPlural = count: plural"
+			],
+			"selectors": [
+				"countExact",
+				"countPlural"
+			],
+			"match": {
+				"countExact=0, countPlural=*": "Nenhuma configuração precisa de atenção.",
+				"countExact=*, countPlural=one": "{count} configuração precisa de atenção.",
+				"countExact=*, countPlural=*": "{count} configurações precisam de atenção."
+			}
+		}
+	],
 	"onboarding_phases_detects_how_to_run": "O Atlas detecta como executar cada um. Nada é gravado nas suas pastas.",
 	"onboarding_phases_find_my_projects": "Encontrar meus projetos",
 	"onboarding_phases_found_title": [
@@ -163,34 +181,17 @@
 		{
 			"declarations": [
 				"input count",
+				"local countExact = count",
 				"local countPlural = count: plural"
 			],
 			"selectors": [
+				"countExact",
 				"countPlural"
 			],
 			"match": {
-				"countPlural=one": "{count} serviço pronto para iniciar.",
-				"countPlural=*": "{count} serviços prontos para iniciar."
-			}
-		}
-	],
-	"onboarding_phases_services_ready_broken": [
-		{
-			"declarations": [
-				"input services",
-				"input configs",
-				"local servicesPlural = services: plural",
-				"local configsPlural = configs: plural"
-			],
-			"selectors": [
-				"servicesPlural",
-				"configsPlural"
-			],
-			"match": {
-				"servicesPlural=one, configsPlural=one": "{services} serviço pronto para iniciar, {configs} configuração precisa de atenção.",
-				"servicesPlural=one, configsPlural=*": "{services} serviço pronto para iniciar, {configs} configurações precisam de atenção.",
-				"servicesPlural=*, configsPlural=one": "{services} serviços prontos para iniciar, {configs} configuração precisa de atenção.",
-				"servicesPlural=*, configsPlural=*": "{services} serviços prontos para iniciar, {configs} configurações precisam de atenção."
+				"countExact=0, countPlural=*": "Nenhum serviço pronto para iniciar.",
+				"countExact=*, countPlural=one": "{count} serviço pronto para iniciar.",
+				"countExact=*, countPlural=*": "{count} serviços prontos para iniciar."
 			}
 		}
 	],
@@ -314,19 +315,19 @@
 	"onboarding_tour_spaces_title": "Alterne entre espaços",
 	"onboarding_tour_step_of": "{step} de {total}",
 	"onboarding_welcome_add_folder_title": "Adicionar uma pasta de projeto",
-	"onboarding_welcome_all_commands": "{key} para todos os comandos",
-	"onboarding_welcome_choose_or_search": "Escolha um no painel de arquivos ou pesquise com {key}.",
+	"onboarding_welcome_find_file_hint": "Escolha um no painel de arquivos ou pesquise com {key}.",
 	"onboarding_welcome_new_terminal": "Novo terminal",
 	"onboarding_welcome_new_terminal_hint": "Um shell nesta worktree",
-	"onboarding_welcome_nothing_open": "Nada aberto aqui",
+	"onboarding_welcome_nothing_open_here": "Nada aberto aqui",
 	"onboarding_welcome_open_file": "Abrir um arquivo",
 	"onboarding_welcome_open_file_hint": "Pesquisa aproximada nesta worktree",
+	"onboarding_welcome_palette_hint": "{key} para todos os comandos",
 	"onboarding_welcome_pick_a_file": "Escolha um arquivo",
+	"onboarding_welcome_pick_up_where_you_left": "Retome de onde parou ou comece algo novo.",
 	"onboarding_welcome_shortcuts": "Atalhos",
 	"onboarding_welcome_start_agent": "Iniciar um agente",
 	"onboarding_welcome_start_agent_hint": "Executar {name} aqui",
 	"onboarding_welcome_start_agent_hint_default": "Executar seu agente padrão aqui",
-	"onboarding_welcome_start_something": "Retome de onde parou ou comece algo novo.",
 	"onboarding_welcome_take_the_tour": "Fazer o tour",
 	"onboarding_welcome_to_atlas": "Boas-vindas ao Atlas"
 }

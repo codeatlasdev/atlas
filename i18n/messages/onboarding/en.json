@@ -77,6 +77,24 @@
 	],
 	"onboarding_phases_add_name": "Add {name}",
 	"onboarding_phases_choose_a_project_folder": "Choose a project folder",
+	"onboarding_phases_configs_need_look": [
+		{
+			"declarations": [
+				"input count",
+				"local countExact = count",
+				"local countPlural = count: plural"
+			],
+			"selectors": [
+				"countExact",
+				"countPlural"
+			],
+			"match": {
+				"countExact=0, countPlural=*": "No configs need a look.",
+				"countExact=*, countPlural=one": "{count} config needs a look.",
+				"countExact=*, countPlural=*": "{count} configs need a look."
+			}
+		}
+	],
 	"onboarding_phases_detects_how_to_run": "Atlas detects how to run each one. Nothing is written to your folders.",
 	"onboarding_phases_find_my_projects": "Find my projects",
 	"onboarding_phases_found_title": [
@@ -163,34 +181,17 @@
 		{
 			"declarations": [
 				"input count",
+				"local countExact = count",
 				"local countPlural = count: plural"
 			],
 			"selectors": [
+				"countExact",
 				"countPlural"
 			],
 			"match": {
-				"countPlural=one": "{count} service ready to start.",
-				"countPlural=*": "{count} services ready to start."
-			}
-		}
-	],
-	"onboarding_phases_services_ready_broken": [
-		{
-			"declarations": [
-				"input services",
-				"input configs",
-				"local servicesPlural = services: plural",
-				"local configsPlural = configs: plural"
-			],
-			"selectors": [
-				"servicesPlural",
-				"configsPlural"
-			],
-			"match": {
-				"servicesPlural=one, configsPlural=one": "{services} service ready to start, {configs} config needs a look.",
-				"servicesPlural=one, configsPlural=*": "{services} service ready to start, {configs} configs need a look.",
-				"servicesPlural=*, configsPlural=one": "{services} services ready to start, {configs} config needs a look.",
-				"servicesPlural=*, configsPlural=*": "{services} services ready to start, {configs} configs need a look."
+				"countExact=0, countPlural=*": "No services ready to start.",
+				"countExact=*, countPlural=one": "{count} service ready to start.",
+				"countExact=*, countPlural=*": "{count} services ready to start."
 			}
 		}
 	],
@@ -300,19 +301,19 @@
 	"onboarding_tour_spaces_title": "Switch spaces",
 	"onboarding_tour_step_of": "{step} of {total}",
 	"onboarding_welcome_add_folder_title": "Add a project folder",
-	"onboarding_welcome_all_commands": "{key} for every command",
-	"onboarding_welcome_choose_or_search": "Choose one in the explorer, or search for it with {key}.",
+	"onboarding_welcome_find_file_hint": "Choose one in the files panel, or search for it with {key}.",
 	"onboarding_welcome_new_terminal": "New terminal",
 	"onboarding_welcome_new_terminal_hint": "A shell in this worktree",
-	"onboarding_welcome_nothing_open": "Nothing open here",
+	"onboarding_welcome_nothing_open_here": "Nothing open here",
 	"onboarding_welcome_open_file": "Open a file",
 	"onboarding_welcome_open_file_hint": "Fuzzy-find in this worktree",
+	"onboarding_welcome_palette_hint": "{key} for every command",
 	"onboarding_welcome_pick_a_file": "Pick a file",
+	"onboarding_welcome_pick_up_where_you_left": "Pick up where you left off, or start something new.",
 	"onboarding_welcome_shortcuts": "Shortcuts",
 	"onboarding_welcome_start_agent": "Start an agent",
 	"onboarding_welcome_start_agent_hint": "Run {name} here",
 	"onboarding_welcome_start_agent_hint_default": "Run your default agent here",
-	"onboarding_welcome_start_something": "Pick up where you left off, or start something new.",
 	"onboarding_welcome_take_the_tour": "Take the tour",
 	"onboarding_welcome_to_atlas": "Welcome to Atlas"
 }

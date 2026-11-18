@@ -3,6 +3,7 @@
 	import { registerSearchInput, scheduleSearch, searchState } from "#lib/search/search.svelte.ts";
 	import SearchForm from "./SearchForm.svelte";
 	import SearchResults from "./SearchResults.svelte";
+	import { m } from "#lib/i18n/m.ts";
 
 	let { worktreeId }: { worktreeId: string } = $props();
 
@@ -32,7 +33,7 @@
 
 <aside class="search">
 	<div class="head">
-		<span>Search</span>
+		<span>{m.common_action_search()}</span>
 	</div>
 	<SearchForm {worktreeId} {s} bind:input onkeydown={onInputKey} />
 	<SearchResults bind:this={results} {worktreeId} {s} onleaveup={() => input?.focus()} />

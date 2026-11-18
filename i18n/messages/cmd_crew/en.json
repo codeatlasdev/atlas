@@ -1,0 +1,5 @@
+{
+	"cmd_crew_no_reason_given": "no reason given",
+	"cmd_crew_unit_masked": "{unit} is masked on the server and Atlas could not unmask it ({why}). Run on the server: {command}, then retry",
+	"cmd_crew_unit_write_failed": "writing {unit} failed: {why}"
+}

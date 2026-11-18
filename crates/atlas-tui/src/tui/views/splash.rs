@@ -5,6 +5,7 @@ use crate::runtime::service::ServiceState;
 use crate::theme;
 use crate::tui::app::App;
 use crate::tui::widgets::spinner;
+use atlas_i18n::t;
 
 const LOGO_LEFT: &[&str] = &[
     " ██████╗ ██████╗ ██████╗ ███████╗",
@@ -63,7 +64,7 @@ pub fn render(frame: &mut Frame, app: &App) {
     lines.push(Line::from(""));
     let sub = if app.config.name.is_empty() {
         vec![Span::styled(
-            "development environment",
+            t!("tui_runtime_views_splash_tagline"),
             Style::default().fg(t.text_dim),
         )]
     } else {
@@ -85,7 +86,10 @@ pub fn render(frame: &mut Frame, app: &App) {
     let rows: Vec<Line> = if services.is_empty() {
         vec![Line::from(vec![
             Span::styled(spinner::frame(tick), Style::default().fg(t.primary)),
-            Span::styled(" starting...", Style::default().fg(t.text_muted)),
+            Span::styled(
+                format!(" {}", t!("tui_runtime_views_splash_starting")),
+                Style::default().fg(t.text_muted),
+            ),
         ])]
     } else {
         services
@@ -109,7 +113,10 @@ pub fn render(frame: &mut Frame, app: &App) {
 
 /// (`name`, ` · development environment`) so the project name can be emphasized.
 fn subtitle_split(name: &str) -> (String, String) {
-    (name.to_string(), " · development environment".to_string())
+    (
+        name.to_string(),
+        format!(" · {}", t!("tui_runtime_views_splash_tagline")),
+    )
 }
 
 #[cfg(test)]

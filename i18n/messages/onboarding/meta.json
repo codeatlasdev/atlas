@@ -131,6 +131,7 @@
 	"onboarding_phases_choose_a_project_folder": {
 		"description": "Button and folder picker title of the empty-scan state: point Atlas at one project."
 	},
+	"onboarding_phases_configs_need_look": "Second sentence under the scan results heading when some project configs are broken: how many need attention.",
 	"onboarding_phases_detects_how_to_run": {
 		"description": "Line under the scan results heading when no project has a detected service."
 	},
@@ -175,9 +176,6 @@
 	},
 	"onboarding_phases_services_ready": {
 		"description": "Line under the scan results heading: services Atlas detected in the projects found."
-	},
-	"onboarding_phases_services_ready_broken": {
-		"description": "Line under the scan results heading when some project configs are broken: services ready and configs that need a look."
 	},
 	"onboarding_phases_services_running": {
 		"description": "First sentence under the stack is up heading: how many services run."
@@ -395,30 +393,25 @@
 	"onboarding_welcome_add_folder_title": {
 		"description": "Title of the system folder picker opened by Add a folder."
 	},
-	"onboarding_welcome_all_commands": {
-		"description": "Footer of the empty editor area. key is the command palette shortcut (shown as a key cap)."
-	},
-	"onboarding_welcome_choose_or_search": {
-		"description": "Text of the empty editor area of a plain folder. key is the shortcut of the file finder (shown as a key cap)."
-	},
+	"onboarding_welcome_find_file_hint": "Paragraph in a <p> element, in Welcome (apps/desktop/src/lib/components/Welcome.svelte). Extracted by i18n:extract: refine this description on review.",
 	"onboarding_welcome_new_terminal": {
 		"description": "Card of the empty editor area: open a terminal in the worktree."
 	},
 	"onboarding_welcome_new_terminal_hint": {
 		"description": "Hint of the New terminal card."
 	},
-	"onboarding_welcome_nothing_open": {
-		"description": "Heading of the empty editor area of a worktree."
-	},
+	"onboarding_welcome_nothing_open_here": "Heading in a <h2> element, in Welcome (apps/desktop/src/lib/components/Welcome.svelte). Extracted by i18n:extract: refine this description on review.",
 	"onboarding_welcome_open_file": {
 		"description": "Card of the empty editor area: open the file finder."
 	},
 	"onboarding_welcome_open_file_hint": {
 		"description": "Hint of the Open a file card: a fuzzy search over the files of the worktree."
 	},
+	"onboarding_welcome_palette_hint": "Paragraph in a <p> element, in Welcome (apps/desktop/src/lib/components/Welcome.svelte). Extracted by i18n:extract: refine this description on review.",
 	"onboarding_welcome_pick_a_file": {
 		"description": "Heading of the empty editor area of a plain folder (no repository)."
 	},
+	"onboarding_welcome_pick_up_where_you_left": "Paragraph in a <p> element, in Welcome (apps/desktop/src/lib/components/Welcome.svelte). Extracted by i18n:extract: refine this description on review.",
 	"onboarding_welcome_shortcuts": {
 		"description": "Footer link of the empty editor area: opens the keyboard shortcuts sheet."
 	},
@@ -430,9 +423,6 @@
 	},
 	"onboarding_welcome_start_agent_hint_default": {
 		"description": "Hint of the Start an agent card when the default agent is not known yet."
-	},
-	"onboarding_welcome_start_something": {
-		"description": "Text under the heading of the empty editor area of a worktree."
 	},
 	"onboarding_welcome_take_the_tour": {
 		"description": "Link and button that start the guided tour (empty editor area, Help settings), and the command palette command."

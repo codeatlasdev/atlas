@@ -235,6 +235,109 @@ describe("mv", () => {
 		expect(read(root, "apps/desktop/src/b.ts")).toContain("m.app_welcome;");
 	});
 
+	// Regression: the desktop imports `m` from `#lib/i18n/m.ts`, not from Paraglide, so i18n:mv renamed the catalogs and left every
+	// `m.old()` of apps/desktop dangling (undefined at runtime, a type error at best).
+	test("rewrites every way the desktop and the site reach a message: wrapper imports, aliases, namespaces, optional chaining, templates, destructuring", async () => {
+		const root = await makeRepo();
+		const src = "apps/desktop/src";
+		put(root, `${src}/Wrapper.svelte`, '<script lang="ts">\n  import { m } from "#lib/i18n/m.ts";\n</script>\n<p>{m.app_welcome({ name })}</p>\n<p>{@html m["app_welcome"]({ name })}</p>\n<p>{m?.app_welcome({ name })}</p>\n');
+		put(root, `${src}/lib/viaLib.ts`, 'import { m } from "$lib/i18n/m.ts";\nexport const a = () => m.app_welcome({ name: "x" });\n');
+		put(root, `${src}/lib/i18n/relative.ts`, 'import { m } from "./m.ts";\nexport const a = () => m.app_welcome({ name: "x" });\n');
+		put(root, `${src}/lib/aliased.ts`, 'import { m as msg } from "#lib/i18n/m.ts";\nexport const a = () => msg.app_welcome({ name: "x" }) + msg["app_welcome"]({ name: "y" });\n');
+		put(root, `${src}/lib/compiled.ts`, 'import * as compiled from "#lib/paraglide/messages.js";\nexport const a = compiled.app_welcome({ name: "x" });\n');
+		put(root, `${src}/lib/multiline.ts`, 'import {\n  m,\n} from "#lib/i18n/m.ts";\nexport const a = m.app_welcome({ name: "x" });\n');
+		put(root, `${src}/lib/destructured.ts`, 'import { m } from "#lib/i18n/m.ts";\nconst { app_welcome: hello, app_save_button: save } = m;\nexport const a = hello({ name: "x" }) + save();\n');
+		put(root, `${src}/lib/namedAlias.ts`, 'import { app_welcome as hello } from "#lib/paraglide/messages.js";\nexport const a = hello({ name: "x" });\n');
+		put(root, `${src}/lib/other.ts`, 'import { m } from "#lib/i18n/m.ts";\nexport const a = m.app_save_button() + m.app_welcome_back();\n');
+		put(root, `${src}/lib/shadow.ts`, "const m = new Map();\nm.app_welcome;\n");
+		const r = moveKey(loadCtx(root), "app_welcome", "app_greeting");
+		const text = (f: string) => read(root, `${src}/${f}`);
+		expect(text("Wrapper.svelte")).toContain('<p>{m.app_greeting({ name })}</p>\n<p>{@html m["app_greeting"]({ name })}</p>\n<p>{m?.app_greeting({ name })}</p>');
+		expect(text("lib/viaLib.ts")).toContain("m.app_greeting({");
+		expect(text("lib/i18n/relative.ts")).toContain("m.app_greeting({");
+		expect(text("lib/aliased.ts")).toContain('msg.app_greeting({ name: "x" }) + msg["app_greeting"]({ name: "y" })');
+		expect(text("lib/compiled.ts")).toContain("compiled.app_greeting({");
+		expect(text("lib/multiline.ts")).toContain("m.app_greeting({");
+		expect(text("lib/destructured.ts")).toContain("const { app_greeting: hello, app_save_button: save } = m;");
+		expect(text("lib/namedAlias.ts")).toContain('import { app_greeting as hello } from "#lib/paraglide/messages.js";');
+		// another key that merely starts with the old name, and a local `m` that is no message module, stay as they are
+		expect(text("lib/other.ts")).toContain("m.app_welcome_back()");
+		expect(text("lib/shadow.ts")).toContain("m.app_welcome;");
+		expect(r.updated.filter((u) => u.file.startsWith(`${src}/Wrapper`))).toEqual([
+			{ file: `${src}/Wrapper.svelte`, line: 4 },
+			{ file: `${src}/Wrapper.svelte`, line: 5 },
+			{ file: `${src}/Wrapper.svelte`, line: 6 },
+		]);
+		expect(r.dynamic).toEqual([]);
+		expect(r.unproven).toEqual([{ file: `${src}/lib/shadow.ts`, line: 2 }]);
+	});
+
+	test("Rust: t!, t_in! and the lookup / translate functions, on one line or split across lines", async () => {
+		const root = await makeRepo();
+		put(
+			root,
+			"crates/atlas-cli/src/calls.rs",
+			'fn f(tag: &str) {\n    t!(\n        "cli_lang_current",\n        lang = "en"\n    );\n    atlas_i18n::t_in!(tag, "cli_lang_current");\n    atlas_i18n::lookup(lang, "cli_lang_current", None);\n    atlas_i18n::lookup_on(tag, "cli_lang_current", None, "mac");\n    atlas_i18n::translate(tag, "cli_lang_current", None);\n}\n',
+		);
+		const r = moveKey(loadCtx(root), "cli_lang_current", "app_lang_now");
+		expect(read(root, "crates/atlas-cli/src/calls.rs")).toBe(
+			'fn f(tag: &str) {\n    t!(\n        "app_lang_now",\n        lang = "en"\n    );\n    atlas_i18n::t_in!(tag, "app_lang_now");\n    atlas_i18n::lookup(lang, "app_lang_now", None);\n    atlas_i18n::lookup_on(tag, "app_lang_now", None, "mac");\n    atlas_i18n::translate(tag, "app_lang_now", None);\n}\n',
+		);
+		expect(r.dynamic).toEqual([]);
+		expect(r.unproven).toEqual([]);
+	});
+
+	test("a reference it cannot rewrite is listed with file:line and why: computed access, shorthand or rest destructuring, a bare named import, an i18n-keys glob, a built Rust key", async () => {
+		const root = await makeRepo();
+		const src = "apps/desktop/src";
+		put(root, `${src}/lib/computed.ts`, 'import { m } from "#lib/i18n/m.ts";\nexport const a = (k: "app_welcome") => m[k]({ name: "x" });\n');
+		put(root, `${src}/lib/template.ts`, 'import { m } from "#lib/i18n/m.ts";\nexport const a = (s: string) => m[`app_${s}`]();\nexport const b = (s: string) => m[`other_${s}`]();\nexport const c = (s: string) => m["app_" + s]();\n');
+		put(root, `${src}/lib/walk.test.ts`, 'import { m } from "#lib/i18n/m.ts";\nfor (const k of Object.keys(m)) m[k]();\n');
+		put(root, `${src}/lib/rest.ts`, 'import { m } from "#lib/i18n/m.ts";\nconst { app_save_button: save, ...others } = m;\n');
+		// a local `m` inside a file that also imports the messages: its m[1] is no message access
+		put(root, `${src}/lib/shadowed.ts`, 'import { m } from "#lib/i18n/m.ts";\nexport const a = (xs: string[][]) => xs.map((m) => m[1]);\nexport const b = m.app_save_button();\n');
+		put(root, `${src}/lib/shorthand.ts`, 'import { m } from "#lib/i18n/m.ts";\nconst { app_welcome } = m;\n');
+		put(root, `${src}/lib/named.ts`, 'import { app_welcome } from "#lib/paraglide/messages.js";\n');
+		put(root, `${src}/lib/glob.ts`, "// i18n-keys: app_wel*\n");
+		const r2 = moveKey(loadCtx(root), "app_welcome", "app_greeting");
+		expect(r2.dynamic.map((d) => `${d.file}:${d.line}`)).toEqual([
+			`${src}/lib/computed.ts:2`,
+			`${src}/lib/glob.ts:1`,
+			`${src}/lib/named.ts:1`,
+			`${src}/lib/rest.ts:2`,
+			`${src}/lib/shorthand.ts:2`,
+			`${src}/lib/template.ts:2`,
+			`${src}/lib/template.ts:4`,
+		]);
+		expect(r2.dynamic.every((d) => d.reason.length > 10)).toBe(true);
+		// the static prefix `other_` cannot produce app_welcome: not reported; and nothing was rewritten in these files
+		expect(read(root, `${src}/lib/shorthand.ts`)).toContain("const { app_welcome } = m;");
+		// a Rust key built with format! next to a lookup; another key family is not touched by it
+		const rust = await makeRepo();
+		put(rust, "crates/atlas-cli/src/built.rs", 'fn f(tag: &str, what: &str) -> Option<String> {\n    atlas_i18n::lookup(tag, &format!("cli_lang_{what}"), None)\n}\n');
+		expect(moveKey(loadCtx(rust), "cli_lang_current", "cli_lang_now").dynamic).toEqual([expect.objectContaining({ file: "crates/atlas-cli/src/built.rs", line: 2 })]);
+		expect(moveKey(loadCtx(rust), "cli_files_count", "app_files_total").dynamic).toEqual([]);
+	});
+
+	test("the CLI exits 1 and prints file:line for every leftover (after moving what it could), 0 when nothing is left", async () => {
+		const root = await makeRepo();
+		put(root, "apps/desktop/src/lib/computed.ts", 'import { m } from "#lib/i18n/m.ts";\nexport const a = (k: string) => m[k]();\nexport const b = m.app_welcome({ name: "x" });\n');
+		put(root, "crates/atlas-cli/src/x.rs", 'const K: &str = "app_welcome";\n');
+		const bad = await cli("mv.ts", root, ["app_welcome", "app_greeting"]);
+		expect(bad.code).toBe(1);
+		expect(bad.out).toContain("moved app_welcome (app) -> app_greeting (app)");
+		expect(bad.out).toContain("updated apps/desktop/src/lib/computed.ts:3");
+		expect(bad.err).toContain("apps/desktop/src/lib/computed.ts:2");
+		expect(bad.err).toContain("crates/atlas-cli/src/x.rs:1");
+		expect(read(root, "apps/desktop/src/lib/computed.ts")).toContain("m.app_greeting({");
+		const json = await cli("mv.ts", root, ["app_greeting", "app_welcome", "--json"]);
+		expect(json.code).toBe(1);
+		expect(JSON.parse(json.out).dynamic).toEqual([expect.objectContaining({ file: "apps/desktop/src/lib/computed.ts", line: 2 })]);
+		expect(JSON.parse(json.err).error).toContain("not rewritten");
+		const clean = await makeRepo();
+		expect((await cli("mv.ts", clean, ["app_welcome", "app_greeting"])).code).toBe(0);
+	});
+
 	test("--new-area creates the folder; an emptied area is reported", async () => {
 		const root = await makeRepo();
 		const r = moveKey(loadCtx(root), "app_welcome", "greeting_welcome", { newArea: true, surface: "desktop" });

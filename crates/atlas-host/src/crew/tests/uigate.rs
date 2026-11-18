@@ -3,7 +3,6 @@
 //! in the crewmate's work folder.
 
 use std::path::Path;
-use std::time::Duration;
 
 use serde_json::{Value, json};
 
@@ -12,7 +11,7 @@ use crate::crew::capture::{self, TEST_RUNNER};
 use crate::crew::uigate::TEST_CACHE;
 
 fn use_runner(prog: &Path) {
-    *TEST_RUNNER.lock() = Some((prog.to_path_buf(), Duration::from_secs(20)));
+    *TEST_RUNNER.lock() = Some((prog.to_path_buf(), atlas_core::scaling::HANG));
 }
 
 async fn gate(dir: &Path, id: &str, pane: &str, args: Value) -> Result<Value, String> {

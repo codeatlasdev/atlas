@@ -28,7 +28,7 @@
     "settings_theme_import_package_archive": "c8af14d56544",
     "settings_theme_import_package_choose_archive_title": "bb08e1517bc1",
     "settings_theme_import_package_choose_folder_title": "add201f4fd2d",
-    "settings_theme_import_package_failed_count": "282069b36d14",
+    "settings_theme_import_package_failed_count": "d20e208b2bc4",
     "settings_theme_import_package_failures_label": "3e97025b0ce4",
     "settings_theme_import_package_files": "f7ed1268d3cf",
     "settings_theme_import_package_filter_archive": "45b1cf637f61",
@@ -39,13 +39,14 @@
     "settings_theme_import_package_imported_one": "c6060818c2be",
     "settings_theme_import_package_none_found": "5fd9a1083954",
     "settings_theme_import_package_notes_label": "cfa569dfec7b",
-    "settings_theme_import_package_notes_summary": "1d0afb7d5c99",
     "settings_theme_import_package_preview_name": "6787ea542a52",
     "settings_theme_import_package_select_all": "e909b897a838",
     "settings_theme_import_package_select_none": "39c006b4feae",
     "settings_theme_import_package_selected": "9524abb22ead",
     "settings_theme_import_package_skipped": "408ef229c2d5",
+    "settings_theme_import_package_skipped_count": "50d508cb480e",
     "settings_theme_import_package_themes_found": "4960743c616e",
-    "settings_theme_import_package_toast_imported": "b4d10d63f41c"
+    "settings_theme_import_package_toast_imported": "949196f1db72",
+    "settings_theme_import_package_warnings_count": "f83765b24708"
   }
 }

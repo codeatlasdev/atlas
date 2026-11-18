@@ -9,7 +9,10 @@
 //! 4. The OS preferred languages (macOS ignores the environment, so this comes after it).
 //! 5. English.
 //!
-//! The catalogs ship `en` and `pt-BR`. A tag negotiates by language: `pt`, `pt-PT` and `pt_BR.UTF-8`
+//! The catalogs ship `en` and `pt-BR`. A DEBUG build (`cfg!(debug_assertions)`: the desktop debug app, agent
+//! instances, `cargo build`) also offers the pseudo-locale [`PSEUDO`] (`en-XA`, `i18n/MIGRATION.md` step 6): a
+//! release build never lists it, never reads it from `ATLAS_LANG` or `~/.atlas/language`, and falls back to English.
+//! A tag negotiates by language: `pt`, `pt-PT` and `pt_BR.UTF-8`
 //! all select `pt-BR` until a `pt-PT` catalog exists. A language we have no catalog for (`fr`)
 //! selects English: asking for something unavailable never falls through to a lower-precedence
 //! source. [`resolve_with`] is the pure core; [`resolve`] only gathers the real inputs.
@@ -19,10 +22,31 @@ use std::path::{Path, PathBuf};
 /// The languages with a catalog, as canonical BCP-47 tags. `atlas-i18n` has a test that its
 /// `locales/` directories match this list; `bun run i18n:add-locale` edits it.
 pub const SUPPORTED: &[&str] = &["en", "pt-BR"];
+/// The pseudo-locale of development builds: the English catalog accented, padded by 35% and wrapped in `⟦ ⟧`
+/// (`bun run i18n:pseudo`), so a layout pass sees what truncates and what was never extracted. It is not in
+/// [`SUPPORTED`]: see [`supported`].
+pub const PSEUDO: &str = "en-XA";
+/// [`SUPPORTED`] plus [`PSEUDO`], what a debug build offers.
+const WITH_PSEUDO: &[&str] = &["en", "pt-BR", PSEUDO];
 /// What no input selects.
 pub const DEFAULT: &str = "en";
 /// The environment override.
 pub const ENV: &str = "ATLAS_LANG";
+
+/// Whether this build offers [`PSEUDO`]: debug builds only, never a release.
+pub const fn pseudo_enabled() -> bool {
+    cfg!(debug_assertions)
+}
+
+/// The languages this build offers: [`SUPPORTED`], plus [`PSEUDO`] in a debug build.
+pub fn supported() -> &'static [&'static str] {
+    supported_in(pseudo_enabled())
+}
+
+/// [`supported`] for an explicit build kind (`true` = a debug build); the release list is exactly [`SUPPORTED`].
+pub fn supported_in(pseudo: bool) -> &'static [&'static str] {
+    if pseudo { WITH_PSEUDO } else { SUPPORTED }
+}
 
 /// Every input of the resolution, so the precedence is testable without touching the process.
 #[derive(Debug, Default, Clone, Copy)]
@@ -38,6 +62,9 @@ pub struct Inputs<'a> {
     pub lang: Option<&'a str>,
     /// The OS preferred languages, most preferred first.
     pub os: &'a [String],
+    /// Whether [`PSEUDO`] is selectable (a debug build). `false` (the default) is a release build: `en-XA`
+    /// negotiates to English like any other tag of the `en` language.
+    pub pseudo: bool,
 }
 
 /// A tag as the BCP-47 subtags of a POSIX or BCP-47 string: `pt_BR.UTF-8@euro` becomes `pt-BR`.
@@ -52,9 +79,13 @@ fn subtags(tag: &str) -> Vec<String> {
 /// `tag` as a supported canonical tag, only when it names one exactly (`en`, `pt-BR`, any case,
 /// `_` or `-`). Validation for what a user types.
 pub fn normalize(tag: &str) -> Option<&'static str> {
+    normalize_in(tag, pseudo_enabled())
+}
+
+fn normalize_in(tag: &str, pseudo: bool) -> Option<&'static str> {
     let parts = subtags(tag.trim());
     let joined = parts.join("-");
-    SUPPORTED
+    supported_in(pseudo)
         .iter()
         .copied()
         .find(|s| s.eq_ignore_ascii_case(&joined))
@@ -62,12 +93,12 @@ pub fn normalize(tag: &str) -> Option<&'static str> {
 
 /// The supported language `tag` belongs to: the exact tag when we have it, else the first
 /// supported tag of the same language (`pt-PT` -> `pt-BR`, `en-GB` -> `en`).
-fn negotiate(tag: &str) -> Option<&'static str> {
-    if let Some(exact) = normalize(tag) {
+fn negotiate(tag: &str, pseudo: bool) -> Option<&'static str> {
+    if let Some(exact) = normalize_in(tag, pseudo) {
         return Some(exact);
     }
     let lang = subtags(tag).into_iter().next()?.to_ascii_lowercase();
-    SUPPORTED
+    supported_in(pseudo)
         .iter()
         .copied()
         .find(|s| s.split('-').next().is_some_and(|l| l == lang))
@@ -127,7 +158,7 @@ pub fn resolve_with(inputs: &Inputs) -> Resolved {
         (inputs.file, Source::File),
     ] {
         if let Some(v) = set(explicit) {
-            return got(negotiate(v).unwrap_or(DEFAULT), source);
+            return got(negotiate(v, inputs.pseudo).unwrap_or(DEFAULT), source);
         }
     }
     let effective = [inputs.lc_all, inputs.lc_messages, inputs.lang]
@@ -143,11 +174,11 @@ pub fn resolve_with(inputs: &Inputs) -> Resolved {
             .filter(|e| !e.trim().is_empty() && !is_c_locale(e.trim()));
         let tag = listed
             .chain(std::iter::once(locale))
-            .find_map(|e| negotiate(e.trim()))
+            .find_map(|e| negotiate(e.trim(), inputs.pseudo))
             .unwrap_or(DEFAULT);
         return got(tag, Source::Posix);
     }
-    match inputs.os.iter().find_map(|l| negotiate(l)) {
+    match inputs.os.iter().find_map(|l| negotiate(l, inputs.pseudo)) {
         Some(tag) => got(tag, Source::Os),
         None => got(DEFAULT, Source::Default),
     }
@@ -162,7 +193,7 @@ pub fn preference_path() -> PathBuf {
 pub fn read_preference_at(path: &Path) -> Option<&'static str> {
     let raw = std::fs::read_to_string(path).ok()?;
     let line = raw.lines().map(str::trim).find(|l| !l.is_empty())?;
-    negotiate(line)
+    negotiate(line, pseudo_enabled())
 }
 
 /// Save `tag` (validated, canonical) to `path`, or remove the file for `None` (follow the system).
@@ -179,7 +210,7 @@ pub fn write_preference_at(path: &Path, tag: Option<&str>) -> anyhow::Result<Opt
     let canonical = normalize(tag).ok_or_else(|| {
         anyhow::anyhow!(
             "unsupported language {tag:?}; supported: {}",
-            SUPPORTED.join(", ")
+            supported().join(", ")
         )
     })?;
     crate::fs::write_atomic(
@@ -200,9 +231,36 @@ pub fn set_preference(tag: Option<&str>) -> anyhow::Result<Option<&'static str>>
     write_preference_at(&preference_path(), tag)
 }
 
+/// The variable a test sets to run in another language (`ATLAS_TEST_LANG=pt-BR`), in a test-harness process
+/// (see [`resolve_source`]).
+pub const TEST_ENV: &str = "ATLAS_TEST_LANG";
+
+/// Whether this process is a Rust test binary (`target/<profile>/deps/<crate>-<hash>`: what `cargo test` and `cargo
+/// nextest` run). Only built with the `test-fixtures` feature, which no shipped build enables.
+#[cfg(feature = "test-fixtures")]
+fn is_test_harness() -> bool {
+    std::env::current_exe()
+        .ok()
+        .and_then(|exe| exe.parent().and_then(Path::file_name).map(|d| d == "deps"))
+        .unwrap_or(false)
+}
+
 /// The display language of this process and what decided it, from the real environment, the saved
 /// preference and the OS.
 pub fn resolve_source() -> Resolved {
+    // A test binary is English whatever the machine is set to (`ATLAS_LANG`, `~/.atlas/language`, `LANG`, the OS),
+    // so a text assertion holds on a pt-BR machine; a test that wants another language says so with `TEST_ENV`.
+    // The binaries a test spawns are not test binaries: they resolve like a user's, and a test that reads their
+    // text pins `ATLAS_LANG` for them.
+    #[cfg(feature = "test-fixtures")]
+    if is_test_harness() {
+        let want = std::env::var(TEST_ENV).ok();
+        return resolve_with(&Inputs {
+            atlas_lang: want.as_deref().or(Some(DEFAULT)),
+            pseudo: pseudo_enabled(),
+            ..Default::default()
+        });
+    }
     let env = |k: &str| std::env::var(k).ok();
     let (atlas_lang, language, lc_all, lc_messages, lang) = (
         env(ENV),
@@ -235,6 +293,7 @@ pub fn resolve_source() -> Resolved {
         lc_messages: lc_messages.as_deref(),
         lang: lang.as_deref(),
         os: &os,
+        pseudo: pseudo_enabled(),
     })
 }
 
@@ -450,6 +509,120 @@ mod tests {
         );
         assert_eq!(normalize("fr"), None);
         assert_eq!(normalize(""), None);
+    }
+
+    // The pseudo-locale (en-XA) is a development tool: a release build must not list it, accept it from the
+    // environment or the saved file, or show it anywhere. `Inputs::pseudo` is the build kind, so both builds are
+    // proven here; `the_build_kind_...` ties the flag to `debug_assertions`.
+    #[test]
+    fn the_release_locale_list_is_exactly_en_and_pt_br() {
+        assert_eq!(SUPPORTED, ["en", "pt-BR"]);
+        assert_eq!(supported_in(false), ["en", "pt-BR"]);
+        assert_eq!(supported_in(true), ["en", "pt-BR", "en-XA"]);
+        assert_eq!(PSEUDO, "en-XA");
+    }
+
+    #[test]
+    fn a_release_build_ignores_en_xa_and_stays_english() {
+        let os = vec!["pt-BR".to_string()];
+        for (name, input) in [
+            (
+                "ATLAS_LANG=en-XA",
+                Inputs {
+                    atlas_lang: Some("en-XA"),
+                    os: &os,
+                    ..Default::default()
+                },
+            ),
+            (
+                "ATLAS_LANG=en_xa (case and underscore)",
+                Inputs {
+                    atlas_lang: Some("en_xa"),
+                    ..Default::default()
+                },
+            ),
+            (
+                "~/.atlas/language saved by a debug build",
+                Inputs {
+                    file: Some("en-XA"),
+                    os: &os,
+                    ..Default::default()
+                },
+            ),
+            (
+                "LANG=en_XA.UTF-8",
+                Inputs {
+                    lang: Some("en_XA.UTF-8"),
+                    os: &os,
+                    ..Default::default()
+                },
+            ),
+        ] {
+            assert_eq!(resolve_with(&input).tag, "en", "{name}: pseudo=false");
+        }
+        assert_eq!(normalize_in("en-XA", false), None);
+        assert_eq!(negotiate("en-XA", false), Some("en"));
+    }
+
+    #[test]
+    fn a_debug_build_selects_en_xa_from_every_explicit_source() {
+        for (name, input) in [
+            (
+                "ATLAS_LANG",
+                Inputs {
+                    atlas_lang: Some("en-XA"),
+                    pseudo: true,
+                    ..Default::default()
+                },
+            ),
+            (
+                "the saved file",
+                Inputs {
+                    file: Some("en_xa"),
+                    pseudo: true,
+                    ..Default::default()
+                },
+            ),
+        ] {
+            assert_eq!(resolve_with(&input).tag, PSEUDO, "{name}");
+        }
+        // en-GB is still plain English: the pseudo-locale is only chosen by its exact tag.
+        let gb = Inputs {
+            atlas_lang: Some("en-GB"),
+            pseudo: true,
+            ..Default::default()
+        };
+        assert_eq!(resolve_with(&gb).tag, "en");
+        assert_eq!(normalize_in("en-XA", true), Some(PSEUDO));
+    }
+
+    #[test]
+    fn the_build_kind_is_debug_assertions_and_the_real_functions_follow_it() {
+        assert_eq!(pseudo_enabled(), cfg!(debug_assertions));
+        assert_eq!(supported(), supported_in(cfg!(debug_assertions)));
+        assert_eq!(normalize("en-XA").is_some(), cfg!(debug_assertions));
+        #[cfg(not(debug_assertions))]
+        assert_eq!(
+            supported(),
+            SUPPORTED,
+            "a release build lists en and pt-BR only"
+        );
+    }
+
+    #[test]
+    fn a_saved_en_xa_is_a_debug_only_preference() {
+        let dir = tempfile::tempdir().unwrap();
+        let path = dir.path().join("language");
+        let saved = write_preference_at(&path, Some("en-XA"));
+        if cfg!(debug_assertions) {
+            assert_eq!(saved.unwrap(), Some(PSEUDO));
+            assert_eq!(read_preference_at(&path), Some(PSEUDO));
+        } else {
+            assert!(saved.is_err(), "a release build refuses to save en-XA");
+            // A file a debug build left behind reads as English in a release.
+            std::fs::write(&path, "en-XA\n").unwrap();
+            assert_eq!(read_preference_at(&path), Some("en"));
+        }
     }
 
     #[test]

@@ -285,7 +285,7 @@ mod tests {
         let held = super::DISPLAY.lock();
         let (tx, rx) = std::sync::mpsc::channel();
         std::thread::spawn(move || tx.send(super::own_display()).unwrap());
-        let r = rx.recv_timeout(std::time::Duration::from_secs(2));
+        let r = rx.recv_timeout(atlas_core::scaling::HANG);
         drop(held);
         assert_eq!(r, Ok(Err(())), "the watchdog read blocked on the held lock");
         assert_eq!(super::own_display(), Ok(None));

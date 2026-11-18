@@ -772,7 +772,7 @@ mod tests {
             let s = spawn_capped(&w, &req, nobody, "/tmp", Some(leaf.procs_fd())).unwrap();
             (s, leaf, before)
         };
-        let (mut sibling, sibling_leaf, _) = start(user_b, "bbbbbbbbbbbb", "echo alive; sleep 30");
+        let (mut sibling, sibling_leaf, _) = start(user_b, "bbbbbbbbbbbb", "echo alive; sleep 600");
         let (mut hogger, leaf, before) = start(user_a, "aaaaaaaaaaaa", &hog(256));
 
         let t0 = Instant::now();
@@ -781,7 +781,7 @@ mod tests {
                 break st;
             }
             assert!(
-                t0.elapsed() < Duration::from_secs(30),
+                t0.elapsed() < atlas_core::scaling::HANG,
                 "the hog was never killed"
             );
             std::thread::sleep(Duration::from_millis(50));

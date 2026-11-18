@@ -76,7 +76,7 @@ describe("the surface list", () => {
 	// Incident: a surface was filmed with no state to show (the Panel with no services) and passed. A surface that claims to
 	// show something must say how to tell it is showing it.
 	test("the surfaces whose point is content on screen declare what must be visible (`expects`)", () => {
-		const need = ["panel-services", "panel-action-toast", "logs", "changes", "settings", "terminal", "dialogs", "toast-error"];
+		const need = ["crew-chat", "panel-services", "panel-action-toast", "logs", "changes", "settings", "terminal", "dialogs", "toast-error"];
 		for (const id of need) {
 			const s = SURFACES.find((x) => x.id === id)!;
 			expect(s.expects, `${id} must declare expects`).toBeTruthy();
@@ -88,6 +88,7 @@ describe("the surface list", () => {
 	test("covers every area the sweep was asked to", () => {
 		expect(SURFACES.map((s) => s.id)).toEqual([
 			"boot",
+			"crew-chat",
 			"sidebar-select",
 			"space-switch",
 			"panel-services",

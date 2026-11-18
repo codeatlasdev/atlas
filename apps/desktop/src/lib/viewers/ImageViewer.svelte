@@ -5,6 +5,7 @@
 	import Tip from "#lib/components/Tip.svelte";
 	import { formatBytes, extOf } from "#lib/viewers/kind.ts";
 	import { clampZoom, fitScale, wheelZoomFactor, zoomAt } from "#lib/viewers/zoom.ts";
+	import { m } from "#lib/i18n/m.ts";
 
 	let {
 		url,
@@ -101,9 +102,9 @@
 				png = await c.convertToBlob({ type: "image/png" });
 			}
 			await navigator.clipboard.write([new ClipboardItem({ "image/png": png })]);
-			toast.success("Image copied");
+			toast.success(m.viewers_files_image_viewer_copied());
 		} catch {
-			toast.error("Could not copy this image");
+			toast.error(m.viewers_files_image_viewer_copy_failed());
 		}
 	}
 </script>
@@ -144,33 +145,38 @@
 		<span>{formatBytes(size)}</span>
 		<span>{extOf(path).toUpperCase()}</span>
 		<span class="grow"></span>
-		<Tip label="Zoom out" side="top">
+		<Tip label={m.viewers_files_zoom_out()} side="top">
 			{#snippet child(props)}
-				<button {...props} aria-label="Zoom out" onclick={() => setScale(scale / 1.25)}
+				<button {...props} aria-label={m.viewers_files_zoom_out()} onclick={() => setScale(scale / 1.25)}
 					><ZoomOut size={13} /></button
 				>
 			{/snippet}
 		</Tip>
-		<button class="pct mono" onclick={() => setScale(1)} title="Actual size"
+		<button class="pct mono" onclick={() => setScale(1)} title={m.viewers_files_image_viewer_actual_size()}
 			>{Math.round(scale * 100)}%</button
 		>
-		<Tip label="Zoom in" side="top">
+		<Tip label={m.viewers_files_zoom_in()} side="top">
 			{#snippet child(props)}
-				<button {...props} aria-label="Zoom in" onclick={() => setScale(scale * 1.25)}
+				<button {...props} aria-label={m.viewers_files_zoom_in()} onclick={() => setScale(scale * 1.25)}
 					><ZoomIn size={13} /></button
 				>
 			{/snippet}
 		</Tip>
-		<Tip label="Fit to view" side="top">
+		<Tip label={m.viewers_files_image_viewer_fit_to_view()} side="top">
 			{#snippet child(props)}
-				<button {...props} aria-label="Fit to view" class:on={manual === null} onclick={reset}
-					><Maximize size={13} /></button
+				<button
+					{...props}
+					aria-label={m.viewers_files_image_viewer_fit_to_view()}
+					class:on={manual === null}
+					onclick={reset}><Maximize size={13} /></button
 				>
 			{/snippet}
 		</Tip>
-		<Tip label="Copy image" side="top">
+		<Tip label={m.viewers_files_image_viewer_copy_image()} side="top">
 			{#snippet child(props)}
-				<button {...props} aria-label="Copy image" onclick={copyImage}><Copy size={13} /></button>
+				<button {...props} aria-label={m.viewers_files_image_viewer_copy_image()} onclick={copyImage}
+					><Copy size={13} /></button
+				>
 			{/snippet}
 		</Tip>
 	</div>

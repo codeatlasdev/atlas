@@ -3,6 +3,7 @@ import "../../../test/setup.ts";
 import { afterEach, expect, mock, test } from "bun:test";
 import devicesFixture from "../__fixtures__/mobile-devices.json";
 import pairStartFixture from "../__fixtures__/mobile-pair-start.json";
+import { m } from "#lib/i18n/m.ts";
 
 // Incident (maintainer screenshot): Settings → Mobile listed two phones, both "Atlas Mobile" (the name the app sends,
 // the same for every phone), each with five stacked switches and a "Revoke" floating beside the third one; a code could
@@ -108,7 +109,7 @@ test("no phones: the pane says what pairing gives and points at the pair card, w
 test("two phones that both sent 'Atlas Mobile' are told apart; their actions are in the phone's header", async () => {
 	devices = [
 		phone("a3f9c2", { connected: true, scopes: ["read", "act", "approve", "term_read", "term_write"] }),
-		phone("7c1de0", { last_seen: Math.floor(Date.now() / 1000) - 180 }),
+		phone("7c1de0", { last_seen: Math.floor(Date.now() / 1000) - 200 }),
 	];
 	const t = await render(MobileSettings);
 	const rows = [...t.querySelectorAll(".row")].filter((r) => r.querySelector(".label"));
@@ -190,7 +191,7 @@ test("Activity reads the phone's log when it is opened", async () => {
 	button(t, "Activity").click();
 	await settle();
 	expect(calls.find((c) => c.cmd === "mobile_activity").args).toEqual({ node_id: "a3f9c2", limit: 20 });
-	expect(t.querySelector(".activity").textContent).toContain("Nothing yet");
+	expect(t.querySelector(".activity").textContent).toContain(m.mobile_phone_activity_empty());
 });
 
 test("a live code shows the QR, the grouped code, a countdown bar; the phone that scans it appears on its own", async () => {

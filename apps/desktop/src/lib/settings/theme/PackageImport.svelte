@@ -8,6 +8,7 @@
 	import { invoke } from "@tauri-apps/api/core";
 	import { open as pickPath } from "@tauri-apps/plugin-dialog";
 	import { errText } from "#lib/api.ts";
+	import { list } from "#lib/i18n/fmt.ts";
 	import { aroundSlot } from "#lib/i18n/slot.ts";
 	import { themes } from "#lib/stores/theme.svelte.ts";
 	import { scanPackage, type FoundFormat, type FoundTheme } from "#lib/theme/import/package.ts";
@@ -230,10 +231,13 @@
 			<button type="button" class="toggle" aria-expanded={showNotes} onclick={() => (showNotes = !showNotes)}>
 				{#if showNotes}<ChevronDown size={13} />{:else}<ChevronRight size={13} />{/if}
 				<TriangleAlert size={13} aria-hidden="true" />
-				{m.settings_theme_import_package_notes_summary({
-					warnings: warnings.length,
-					skipped: skipped.length,
-				})}
+				{list(
+					[
+						m.settings_theme_import_package_warnings_count({ count: warnings.length }),
+						m.settings_theme_import_package_skipped_count({ count: skipped.length }),
+					],
+					"unit",
+				)}
 			</button>
 			{#if showNotes}
 				<ul class="warnings" aria-label={m.settings_theme_import_package_notes_label()}>

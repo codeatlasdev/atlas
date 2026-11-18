@@ -45,16 +45,28 @@ fn track(mgr: &ServiceManager) {
     mgr.hygiene.track().unwrap();
 }
 
-async fn grandchild(marker: &std::path::Path) -> u32 {
-    for _ in 0..200 {
-        if let Ok(s) = std::fs::read_to_string(marker)
-            && let Ok(p) = s.trim().parse::<u32>()
-        {
-            return p;
+/// Poll `f` until it holds: waiting for a real event, so the only ceiling is the hang detector.
+async fn eventually(mut f: impl FnMut() -> bool) -> bool {
+    let end = Instant::now() + atlas_core::scaling::HANG;
+    while Instant::now() < end {
+        if f() {
+            return true;
         }
         tokio::time::sleep(Duration::from_millis(20)).await;
     }
-    panic!("the daemonized grandchild never started");
+    false
+}
+
+async fn grandchild(marker: &std::path::Path) -> u32 {
+    let mut pid = None;
+    eventually(|| {
+        pid = std::fs::read_to_string(marker)
+            .ok()
+            .and_then(|s| s.trim().parse::<u32>().ok());
+        pid.is_some()
+    })
+    .await;
+    pid.expect("the daemonized grandchild never started")
 }
 
 fn gone(pid: u32) -> bool {
@@ -66,15 +78,8 @@ fn gone(pid: u32) -> bool {
             .unwrap_or(false)
 }
 
-async fn wait_gone(pid: u32, within: Duration) -> bool {
-    let end = Instant::now() + within;
-    while Instant::now() < end {
-        if gone(pid) {
-            return true;
-        }
-        tokio::time::sleep(Duration::from_millis(50)).await;
-    }
-    false
+async fn wait_gone(pid: u32) -> bool {
+    eventually(|| gone(pid)).await
 }
 
 // Incident (#127): stopping a service killed its parent-chain tree, but a grandchild that
@@ -91,14 +96,7 @@ async fn stopping_a_service_ends_a_daemonized_grandchild_too() {
     track(&mgr);
     // The subshell exits and the grandchild leaves the parent chain.
     let root = mgr.services["svc"].status.pid.unwrap();
-    let mut outside = false;
-    for _ in 0..100 {
-        if !procs::tree(root, &procs::table()).contains(&gc) {
-            outside = true;
-            break;
-        }
-        tokio::time::sleep(Duration::from_millis(50)).await;
-    }
+    let outside = eventually(|| !procs::tree(root, &procs::table()).contains(&gc)).await;
     assert!(
         outside,
         "premise: the grandchild is outside the parent chain"
@@ -110,7 +108,7 @@ async fn stopping_a_service_ends_a_daemonized_grandchild_too() {
 
     mgr.stop_service("svc").await;
     assert!(
-        wait_gone(gc, Duration::from_secs(10)).await,
+        wait_gone(gc).await,
         "daemonized grandchild {gc} survived the stop"
     );
     assert!(
@@ -143,11 +141,11 @@ async fn stopping_one_service_leaves_the_tagged_processes_of_another_alone() {
     track(&mgr);
 
     mgr.stop_service("svc").await;
-    assert!(wait_gone(a, Duration::from_secs(10)).await);
+    assert!(wait_gone(a).await);
     assert!(!gone(b), "the other service's grandchild must live");
 
     mgr.stop_service("other").await;
-    assert!(wait_gone(b, Duration::from_secs(10)).await);
+    assert!(wait_gone(b).await);
 }
 
 // A service `env:` could name ATLAS_SESSION itself: the manager's tag must win, or its tree
@@ -172,13 +170,11 @@ async fn a_service_env_cannot_retag_its_tree() {
     let mut mgr = ServiceManager::new(dir.path().to_path_buf(), &config, tx);
     mgr.start_service("svc").await;
     let mut seen = String::new();
-    for _ in 0..200 {
+    eventually(|| {
         seen = std::fs::read_to_string(&out).unwrap_or_default();
-        if !seen.is_empty() {
-            break;
-        }
-        tokio::time::sleep(Duration::from_millis(20)).await;
-    }
+        !seen.is_empty()
+    })
+    .await;
     mgr.stop_service("svc").await;
     assert_eq!(seen.trim(), mgr.session_tag("svc"));
 }
@@ -219,7 +215,7 @@ async fn a_sweep_after_the_owner_run_died_ends_its_services_and_their_grandchild
     reg.set_owner(std::slice::from_ref(&tag), dead).unwrap();
     let s = hygiene::sweep(&reg, false);
     assert!(s.orphans.iter().any(|o| o.pid == gc), "{:?}", s.orphans);
-    assert!(wait_gone(gc, Duration::from_secs(10)).await);
+    assert!(wait_gone(gc).await);
     // The service's own shell died with it; drop the manager's stale handle.
     mgr.stop_service("svc").await;
 }
@@ -257,7 +253,7 @@ async fn an_action_that_leaves_a_daemonized_process_behind_does_not_outlive_it()
     assert!(ok);
     let gc = grandchild(&marker).await;
     assert!(
-        wait_gone(gc, Duration::from_secs(10)).await,
+        wait_gone(gc).await,
         "the action's daemonized process {gc} outlived it"
     );
     assert!(

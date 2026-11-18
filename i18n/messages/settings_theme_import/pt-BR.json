@@ -31,14 +31,17 @@
 		{
 			"declarations": [
 				"input count",
+				"local countExact = count",
 				"local countPlural = count: plural"
 			],
 			"selectors": [
+				"countExact",
 				"countPlural"
 			],
 			"match": {
-				"countPlural=one": "Não foi possível importar {count} tema.",
-				"countPlural=*": "Não foi possível importar {count} temas."
+				"countExact=0, countPlural=*": "Nenhum tema deixou de ser importado.",
+				"countExact=*, countPlural=one": "Não foi possível importar {count} tema.",
+				"countExact=*, countPlural=*": "Não foi possível importar {count} temas."
 			}
 		}
 	],
@@ -100,44 +103,63 @@
 	"settings_theme_import_package_imported_one": "{name} importado.",
 	"settings_theme_import_package_none_found": "Nenhum tema encontrado nesse arquivo compactado ou nessa pasta.",
 	"settings_theme_import_package_notes_label": "Avisos e arquivos ignorados",
-	"settings_theme_import_package_notes_summary": [
-		{
-			"declarations": [
-				"input warnings",
-				"input skipped",
-				"local warningsPlural = warnings: plural",
-				"local skippedPlural = skipped: plural"
-			],
-			"selectors": [
-				"warningsPlural",
-				"skippedPlural"
-			],
-			"match": {
-				"warningsPlural=one, skippedPlural=one": "{warnings} aviso, {skipped} ignorado",
-				"warningsPlural=one, skippedPlural=*": "{warnings} aviso, {skipped} ignorados",
-				"warningsPlural=*, skippedPlural=one": "{warnings} avisos, {skipped} ignorado",
-				"warningsPlural=*, skippedPlural=*": "{warnings} avisos, {skipped} ignorados"
-			}
-		}
-	],
 	"settings_theme_import_package_preview_name": "Ver prévia de {name}",
 	"settings_theme_import_package_select_all": "Selecionar tudo",
 	"settings_theme_import_package_select_none": "Desmarcar tudo",
 	"settings_theme_import_package_selected": "{selected} de {total} selecionados",
 	"settings_theme_import_package_skipped": "{file} ignorado",
+	"settings_theme_import_package_skipped_count": [
+		{
+			"declarations": [
+				"input count",
+				"local countExact = count",
+				"local countPlural = count: plural"
+			],
+			"selectors": [
+				"countExact",
+				"countPlural"
+			],
+			"match": {
+				"countExact=0, countPlural=*": "Nenhum ignorado",
+				"countExact=*, countPlural=one": "{count} ignorado",
+				"countExact=*, countPlural=*": "{count} ignorados"
+			}
+		}
+	],
 	"settings_theme_import_package_themes_found": "Temas encontrados",
 	"settings_theme_import_package_toast_imported": [
 		{
 			"declarations": [
 				"input count",
+				"local countExact = count",
 				"local countPlural = count: plural"
 			],
 			"selectors": [
+				"countExact",
 				"countPlural"
 			],
 			"match": {
-				"countPlural=one": "{count} tema importado para ~/.atlas/themes",
-				"countPlural=*": "{count} temas importados para ~/.atlas/themes"
+				"countExact=0, countPlural=*": "Nenhum tema importado para ~/.atlas/themes",
+				"countExact=*, countPlural=one": "{count} tema importado para ~/.atlas/themes",
+				"countExact=*, countPlural=*": "{count} temas importados para ~/.atlas/themes"
+			}
+		}
+	],
+	"settings_theme_import_package_warnings_count": [
+		{
+			"declarations": [
+				"input count",
+				"local countExact = count",
+				"local countPlural = count: plural"
+			],
+			"selectors": [
+				"countExact",
+				"countPlural"
+			],
+			"match": {
+				"countExact=0, countPlural=*": "Nenhum aviso",
+				"countExact=*, countPlural=one": "{count} aviso",
+				"countExact=*, countPlural=*": "{count} avisos"
 			}
 		}
 	]

@@ -27,6 +27,7 @@ mod browser_keys_win;
 mod capture;
 mod cmds;
 mod commit_msg;
+mod crash_card;
 mod ctl;
 #[cfg(debug_assertions)]
 mod debug;
@@ -196,6 +197,8 @@ macro_rules! handlers {
             boot::theme_cache_write,
             boot::themes_user_read,
             diag::diag_frontend_error,
+            crash_card::crash_card_pending,
+            crash_card::crash_card_dismiss,
             cmds::open_in_editor,
             cmds::open_url,
             cmds::reveal,
@@ -652,6 +655,7 @@ fn main() {
             webview_guard::install(app);
             let handle = app.handle().clone();
             app.manage(menu::Items::default());
+            app.manage(crash_card::CrashCard::new());
             app.manage(tray::CaptureMenus::default());
             // Only macOS has a native menu bar (at the top of the screen). Windows and Linux have no native frame
             // (tauri.{windows,linux}.conf.json): the page draws one title row, owns every key there (lib/menu.ts

@@ -267,32 +267,49 @@ fn crash_summary(text: &str) -> Option<String> {
     Some(crate::redact::redact(&line))
 }
 
-/// Crash reports in `dir` (`crate::crash::crash_dir`), newest first, at most [`MAX_CRASH_FILES`].
-/// The time is the one in the file name (`crash-<unix_ms>-<pid>.toml`, or the older
-/// `crash-<unix seconds>.toml`), so two generations order on one clock.
-pub fn crash_files(dir: &Path, now_secs: u64) -> Vec<CrashFile> {
-    let Ok(rd) = std::fs::read_dir(dir) else {
-        return Vec::new();
-    };
-    let mut found: Vec<(u64, std::path::PathBuf)> = rd
+/// One crash report on disk: when it was written (unix ms, from its name) and its redacted summary.
+#[derive(Debug, Clone, PartialEq)]
+pub struct CrashEntry {
+    pub at_ms: u64,
+    pub summary: String,
+}
+
+/// Every crash report in `dir` (`crate::crash::crash_dir`), newest first, read lazily. The time is the one in the
+/// file name (`crash-<unix_ms>-<pid>.toml`, or the older `crash-<unix seconds>.toml`), so two generations order on
+/// one clock. A report that cannot be read or has no message is skipped.
+pub fn crash_entries(dir: &Path) -> impl Iterator<Item = CrashEntry> {
+    let mut found: Vec<(u64, std::path::PathBuf)> = std::fs::read_dir(dir)
+        .into_iter()
+        .flatten()
         .flatten()
         .filter_map(|e| {
-            let ms = crate::crash::report_time(e.file_name().to_str()?)?;
-            Some((ms, e.path()))
+            Some((
+                crate::crash::report_time(e.file_name().to_str()?)?,
+                e.path(),
+            ))
         })
         .collect();
     found.sort_by_key(|a| std::cmp::Reverse(a.0));
-    found
-        .into_iter()
-        .filter_map(|(ms, p)| {
-            let at = ms / 1000;
-            Some(CrashFile {
+    found.into_iter().filter_map(|(at_ms, p)| {
+        Some(CrashEntry {
+            at_ms,
+            summary: crash_summary(&std::fs::read_to_string(p).ok()?)?,
+        })
+    })
+}
+
+/// The newest crash reports, at most [`MAX_CRASH_FILES`], with their age at `now_secs`.
+pub fn crash_files(dir: &Path, now_secs: u64) -> Vec<CrashFile> {
+    crash_entries(dir)
+        .take(MAX_CRASH_FILES)
+        .map(|c| {
+            let at = c.at_ms / 1000;
+            CrashFile {
                 at,
                 age_secs: now_secs.saturating_sub(at),
-                summary: crash_summary(&std::fs::read_to_string(p).ok()?)?,
-            })
+                summary: c.summary,
+            }
         })
-        .take(MAX_CRASH_FILES)
         .collect()
 }
 

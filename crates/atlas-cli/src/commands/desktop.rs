@@ -36,6 +36,14 @@ pub struct DesktopArgs {
     #[arg(long)]
     pub no_open: bool,
 
+    /// Linux: install the AppImage even on a distro that has a native package (`.deb`, `.rpm`, Arch)
+    #[arg(long, hide = !cfg!(target_os = "linux"))]
+    pub appimage: bool,
+
+    /// Linux: do not ask before installing the distro package as root (the password prompt remains)
+    #[arg(long, short = 'y', hide = !cfg!(target_os = "linux"))]
+    pub yes: bool,
+
     /// Run the app from source with hot reload (`bun run desktop:dev`, inside the atlas repo)
     #[arg(long, conflicts_with_all = ["install", "from", "sync"])]
     pub dev: bool,
@@ -111,6 +119,7 @@ impl AtlasCommand for DesktopArgs {
         // Linux: a distro package's app is opened as is; its package manager updates it.
         if installed.is_none()
             && !self.install
+            && !self.appimage
             && self.from.is_none()
             && let Some(pkg) = atlas_core::paths::packaged_app()
         {
@@ -118,6 +127,31 @@ impl AtlasCommand for DesktopArgs {
                 open(&pkg, &[])?;
             }
             return Ok(());
+        }
+        // Linux on a distro with a release package (#267): the first install is that package, not the
+        // AppImage, after the same confirmation and escalation `atlas update` uses. Anything that keeps
+        // the package from installing (no confirmation, a refusal, a failure) falls through to the AppImage.
+        #[cfg(target_os = "linux")]
+        if installed.is_none()
+            && !self.appimage
+            && self.from.is_none()
+            && let Some(pm) = super::desktop_linux::native_manager()
+        {
+            let version = if self.latest {
+                latest_release()?
+            } else {
+                current_version().to_string()
+            };
+            if let Some(app) = super::desktop_linux::install_package(pm, &version, self.yes) {
+                println!(
+                    "\x1b[32m✓\x1b[0m {}",
+                    atlas_i18n::t!("desktop_pkg_installed", path = app.display().to_string())
+                );
+                if !self.no_open {
+                    open(&app, &[])?;
+                }
+                return Ok(());
+            }
         }
         let target = installed.clone().unwrap_or_else(default_location);
         if self.install || self.from.is_some() || installed.is_none() {

@@ -1,0 +1,9 @@
+{
+	"desktop_pkg_ask": "Yes/no prompt of `atlas desktop` on Linux; Enter means yes. The code accepts the letter of every language (y, s).",
+	"desktop_pkg_downloading": "Progress line of `atlas desktop` on Linux while the distro package downloads. {asset} is the file name.",
+	"desktop_pkg_failed": "Warning of `atlas desktop` on Linux when the distro package failed to install and the AppImage is installed instead. {manager} is the package format (deb, rpm, pacman), {error} the reason.",
+	"desktop_pkg_installed": "Success line of `atlas desktop` on Linux after the distro package installed. {path} is the app.",
+	"desktop_pkg_needs_confirmation": "Line of `atlas desktop` on Linux when the distro package cannot be installed because nobody can confirm (no terminal, no --yes). {manager} is the package format.",
+	"desktop_pkg_skipped": "Line of `atlas desktop` on Linux after the user declined the distro package.",
+	"desktop_pkg_will_run": "Line of `atlas desktop` on Linux before it shows the root command that installs the package; the command is printed on the next line. {manager} is the package format."
+}

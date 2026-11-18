@@ -1,0 +1,3 @@
+{
+	"uninstall_cannot_become_root": "Error of `atlas uninstall` on Linux when a package install cannot be removed because neither sudo nor pkexec can be used. {command} is the package manager command to run by hand."
+}

@@ -1,0 +1,10 @@
+{
+	"errors_crash_card_body_crash": "Um relatório de falha foi salvo neste computador. Nada foi enviado; reporte se quiser que alguém analise.",
+	"errors_crash_card_body_hostd_exited": "Os terminais foram encerrados. Nada foi enviado; reporte se continuar acontecendo.",
+	"errors_crash_card_dismiss": "Dispensar",
+	"errors_crash_card_hint_crash": "Um relatório de falha foi salvo neste computador. Revise os detalhes e reporte se quiser que alguém analise; os segredos são removidos antes.",
+	"errors_crash_card_hint_hostd_exited": "Os terminais foram encerrados. Revise os detalhes e reporte se continuar acontecendo; os segredos são removidos antes.",
+	"errors_crash_card_report": "Reportar",
+	"errors_crash_card_title_crash": "O Atlas fechou inesperadamente da última vez",
+	"errors_crash_card_title_hostd_exited": "O host de terminais fechou inesperadamente"
+}

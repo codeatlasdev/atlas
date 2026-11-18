@@ -194,14 +194,19 @@ esac
 # Linux with a graphical session: install Atlas Desktop too, so the app is in the launcher
 # right away (#265: "the desktop app did not install"). ATLAS_NO_DESKTOP=1 skips it; a server
 # (no display) and macOS keep the hint. Failure never fails the CLI install.
+# On a distro with a native package (Arch, Debian, Ubuntu, Fedora, openSUSE) `atlas desktop`
+# installs that, as root, after asking (#267). Under `curl | sh` stdin is this script, so with a
+# terminal on the screen it gets that terminal to ask on; without one it keeps what it had and
+# falls back to the AppImage.
 desktop_done=""
 if [ "$os" = Linux ] && [ -z "${ATLAS_NO_DESKTOP:-}" ] && { [ -n "${WAYLAND_DISPLAY:-}" ] || [ -n "${DISPLAY:-}" ]; }; then
   say "installing Atlas Desktop (skip with ATLAS_NO_DESKTOP=1)"
-  if "$HOME/.atlas/bin/atlas" desktop --no-open; then
-    desktop_done=1
+  if [ -t 1 ] && (: </dev/tty) 2>/dev/null; then
+    "$HOME/.atlas/bin/atlas" desktop --no-open </dev/tty && desktop_done=1
   else
-    say "could not install Atlas Desktop now; run later: atlas desktop"
+    "$HOME/.atlas/bin/atlas" desktop --no-open && desktop_done=1
   fi
+  [ -n "$desktop_done" ] || say "could not install Atlas Desktop now; run later: atlas desktop"
 fi
 
 say ""

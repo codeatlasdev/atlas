@@ -8,6 +8,7 @@ pub mod crash;
 pub mod crash_native;
 pub mod crew;
 pub mod desktop_ctl;
+pub mod distro;
 pub mod domain;
 pub mod error;
 pub mod filelist;

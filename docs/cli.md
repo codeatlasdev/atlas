@@ -352,9 +352,12 @@ atlas desktop --install [--latest]     # (re)install: this CLI's version, or the
 atlas desktop --from <PATH> [--no-open]  # install a local Atlas.app or Atlas-*.app.tar.gz
 atlas desktop --status                 # installed path, version, linked or not
 atlas desktop --dev                    # inside the atlas repo: bun run desktop:dev (hot reload)
+atlas desktop [-y|--yes] [--appimage]  # Linux: install the distro package without asking / the AppImage instead
 ```
 
 Installs into `/Applications/Atlas.app` (or `~/Applications` when `/Applications` is not writable). Downloads `Atlas-<version>-<platform>.app.tar.gz` and its `.sha256` from the public GitHub release (with `curl`, no login) and verifies the checksum. The new bundle is copied next to the old one and swapped in only once complete, so a failed download never breaks the installed app. Refuses while the app is linked (`atlas link --desktop`). Full guide: [Desktop app](desktop.md).
+
+On Linux, a distro that has a release package (Arch, Debian, Ubuntu, Fedora, RHEL, openSUSE; read from `/etc/os-release`, x86_64 only) gets that package instead of the AppImage: `atlas desktop` downloads it, verifies its checksum, shows the root command and asks `[Y/n]` (`sudo` in a terminal, `pkexec` without one), then opens `/usr/bin/atlas-desktop`. `--yes` / `-y` skips the question; `--appimage` installs the AppImage anyway. When nobody can confirm (no terminal, no `--yes`), the answer is no or the package manager fails, the AppImage is installed as before. Details: [Installation › Install Atlas Desktop](installation.md#install-atlas-desktop).
 
 ### `atlas desktop --agent`
 
@@ -479,7 +482,7 @@ If the CLI panics it writes a crash report (`crash-<unix_ms>-<pid>.toml`, newest
 atlas uninstall [-y, --yes] [--purge] [--dry-run]
 ```
 
-Lists what it will remove, then removes it after confirmation (skip with `--yes`; without a terminal and without `--yes` it refuses). By default that is what Atlas installed: the `atlas` command, the desktop app (a linked dev app loses only its link), the `# Atlas CLI` PATH lines it added to your shell startup files (never a line of your own), the update cache and the terminal host's sockets. Settings, the project list, worktrees, the update channel and the omp plugin in `~/.atlas` are **kept** and listed; `--purge` deletes all of `~/.atlas`. `--dry-run` lists and exits. A step that fails is reported and the others still run. It does not touch the skills in `~/.agents/skills`, or a distro package (use its package manager). Details: [Installation › Uninstall](installation.md#uninstall).
+Lists what it will remove, then removes it after confirmation (skip with `--yes`; without a terminal and without `--yes` it refuses). By default that is what Atlas installed: the `atlas` command, the desktop app (a linked dev app loses only its link; on Linux also its launcher entry and icon and the leftovers of an interrupted update), the `# Atlas CLI` PATH lines it added to your shell startup files (never a line of your own), the update cache and the terminal host's sockets. Settings, the project list, worktrees, the update channel and the omp plugin in `~/.atlas` are **kept** and listed (on Linux also the app's WebKit store, crash reports and window state); `--purge` deletes all of `~/.atlas` and those too. `--dry-run` lists and exits. A step that fails is reported and the others still run. When a distro package owns `atlas`, the list names the package and its removal command (`sudo pacman -R …`, `sudo apt remove …`, `sudo dnf remove …`) and, after your confirmation, runs it as root; it never deletes a package's files itself. It does not touch the skills in `~/.agents/skills`. Details: [Installation › Uninstall](installation.md#uninstall).
 
 ## `atlas link` / `unlink`
 

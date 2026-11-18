@@ -4,6 +4,7 @@
 use std::time::Duration;
 
 use anyhow::Result;
+use atlas_i18n::t;
 use clap::{Args, Subcommand};
 use serde_json::{Value, json};
 
@@ -107,7 +108,7 @@ impl AtlasCommand for WtArgs {
                 no_setup,
                 pr,
             } => {
-                eprintln!("Creating worktree (this may take a minute)…");
+                eprintln!("{}", t!("cmd_link_creating_worktree"));
                 call(
                     "worktree_create",
                     json!({"repo": repo, "name": name, "base": base, "agent": agent,

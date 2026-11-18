@@ -5,7 +5,7 @@
  */
 import type { EditorView } from "@codemirror/view";
 import { b64decode, host } from "#lib/host.ts";
-import { applyTextEdits, editsToChanges, planWorkspaceEdit, type WorkspaceEdit } from "#lib/lsp/convert.ts";
+import { planWorkspaceEdit, type WorkspaceEdit } from "#lib/lsp/convert.ts";
 
 /** Open editor by absolute path; registry keys are `worktreeId:relPath`, so the workspace maps them. */
 type Resolve = (absPath: string) => EditorView | undefined;
@@ -25,6 +25,8 @@ export async function applyWorkspaceEdit(edit: WorkspaceEdit): Promise<ApplyResu
 	const { files, ops } = planWorkspaceEdit(edit);
 	let n = 0;
 	try {
+		// CodeMirror's half loads here, not at startup (a rename is the rare path; the editor's chunk is usually warm).
+		const { applyTextEdits, editsToChanges } = await import("#lib/lsp/changes.ts");
 		for (const op of ops) {
 			if (op.kind === "rename") await host.fsRename(op.from!, op.to!);
 			else if (op.kind === "delete") await host.fsRemove(op.path!, true);

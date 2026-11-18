@@ -63,6 +63,39 @@ export const SURFACES: Surface[] = [
 		run: (d) => d.sleep(3000),
 	},
 	{
+		id: "crew-chat",
+		covers:
+			"Crew chat, the first open after the app started: the workspace and the thread (a lazy chunk with the markdown renderer) fill in, a reply with a list, a highlighted fence and a table, scroll, and back",
+		seconds: 10,
+		expects: [["the app (Crew left)", '[aria-label="Settings"]']],
+		async setup(d) {
+			// A crewmate with two finished tasks, written into the store (not through hostd: the sweep has no crew server).
+			await d.eval(`const c = ${A}.crew;
+				const md = "Here is the plan:\\n\\n## Steps\\n\\n1. Read \`config.rs\`\\n2. Add the **flag**\\n\\n\`\`\`rust\\nfn main() {\\n    let x: u32 = 42; // answer\\n    println!(\\"{x}\\");\\n}\\n\`\`\`\\n\\n\`\`\`ts\\nexport const add = (a: number, b: number): number => a + b;\\n\`\`\`\\n\\n| a | b |\\n|---|---|\\n| 1 | 2 |\\n";
+				c.servers[0].crewmates = [{ id: "sweep-cm", name: "Atlas", role: "Reviewer", agent: "claude", approval: "auto", state: "idle", queued: 0 }];
+				c.tasks = [
+					{ id: "t2", ts: Date.now() - 30000, source: "desktop", prompt: "Show the plan", state: "done", result: md, started_at: Date.now() - 30000, finished_at: Date.now() - 20000 },
+					{ id: "t1", ts: Date.now() - 90000, source: "desktop", prompt: "Hi", state: "done", result: "Hello! **Ready.**", started_at: Date.now() - 90000, finished_at: Date.now() - 80000 },
+				];
+				return 1`);
+		},
+		async run(d) {
+			await d.eval(`${A}.crew.selected = { hostKey: "", crewmateId: "sweep-cm", hostName: "This computer" }; ${A}.ws.appMode = "crew"; return 1`);
+			await d.sleep(1800);
+			// the chunk has to have arrived and the fence to be coloured: a surface that filmed an empty chat is not a pass
+			const ok = await d.eval<boolean>(
+				`return document.querySelectorAll(".chat-col .thread .md-result pre.code span[class]").length > 0`,
+			);
+			if (!ok) throw new Error("the crew chat thread did not render a highlighted fence");
+			await d.eval(`const t = document.querySelector(".chat-col .thread"); t.scrollTo({ top: 0 }); return 1`);
+			await d.sleep(900);
+			await d.eval(`const t = document.querySelector(".chat-col .thread"); t.scrollTo({ top: t.scrollHeight }); return 1`);
+			await d.sleep(900);
+			await d.eval(`${A}.ws.appMode = "ide"; ${A}.crew.selected = null; ${A}.crew.tasks = []; ${A}.crew.servers[0].crewmates = []; return 1`);
+			await d.sleep(1500);
+		},
+	},
+	{
 		id: "sidebar-select",
 		covers: "sidebar: select project, then back; the space strip; hide and show the sidebar",
 		seconds: 14,

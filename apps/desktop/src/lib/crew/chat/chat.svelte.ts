@@ -173,12 +173,16 @@ export class ChatState {
 		this.threadEl?.scrollTo({ top: this.threadEl.scrollHeight, behavior: "smooth" });
 	}
 
-	/** Stick to the bottom when new tasks arrive, unless a Board card asked for one task (that wins). */
-	followBottom(): void {
+	/**
+	 * Stick to the bottom when new tasks arrive, unless a Board card asked for one task (that wins). `now`
+	 * scrolls in the same frame (a thread that just mounted must not paint at the top first).
+	 */
+	followBottom(now = false): void {
 		if (crew.focusTask) return;
-		if (this.atBottom && this.threadEl) {
-			setTimeout(() => this.threadEl?.scrollTo({ top: this.threadEl.scrollHeight }), 0);
-		}
+		const el = this.threadEl;
+		if (!this.atBottom || !el) return;
+		if (now) el.scrollTop = el.scrollHeight;
+		else setTimeout(() => this.threadEl?.scrollTo({ top: this.threadEl.scrollHeight }), 0);
 	}
 
 	/**

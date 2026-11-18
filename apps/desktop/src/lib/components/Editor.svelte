@@ -24,12 +24,14 @@
 	import "#lib/outline.ts";
 	import { registerEditor, unregisterEditor } from "#lib/symbols.ts";
 	import { LspDoc } from "#lib/lsp/client.svelte.ts";
+	import { ChangeBuffer } from "#lib/lsp/changes.ts";
 	import { lspGated } from "#lib/lsp/uiState.svelte.ts";
 	import { applyDiagnostics, countDiagnostics } from "#lib/lsp/diagnostics.ts";
 	import { formatBeforeSave, lspCompletion, lspExtension } from "#lib/lsp/extension.ts";
 	import LspStatus from "#lib/lsp/LspStatus.svelte";
 	import { openLocation, readOnlyPaths, showLocations } from "#lib/lsp/workspace.ts";
-	import { editorKey, fileOfTab, readOnlyExtension } from "#lib/lsp/navigation.ts";
+	import { editorKey, fileOfTab } from "#lib/lsp/navigation.ts";
+	import { readOnlyExtension } from "#lib/lsp/navigationCm.ts";
 	import { navigator as nav } from "#lib/lsp/history.ts";
 	import { prefs } from "#lib/stores/prefs.svelte.ts";
 	import { EditorSession } from "#lib/editor/EditorSession.svelte.ts";
@@ -128,6 +130,7 @@
 			abs,
 			id,
 			() => v.state.doc.toString(),
+			new ChangeBuffer(),
 			root,
 			() => lspGated(id),
 		);

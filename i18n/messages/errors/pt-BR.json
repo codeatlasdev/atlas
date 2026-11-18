@@ -4,7 +4,7 @@
 	"errors_cause_blocked_detail_other": "Procure uma violação de CSP ou uma falha de IPC no fim dos logs deste relatório; para saber mais, leia `desktop/app.log` na pasta do Atlas (`~/.atlas`).",
 	"errors_cause_blocked_detail_windows": "Procure uma violação de CSP ou uma falha de IPC no fim dos logs deste relatório; para saber mais, rode `Get-Content $env:USERPROFILE\\.atlas\\desktop\\app.log -Tail 50` no PowerShell.",
 	"errors_cause_blocked_title": "Uma requisição foi bloqueada ou o backend não respondeu",
-	"errors_cause_old_host_detail": "O host de terminais em segundo plano (atlas hostd) é anterior ao suporte a language servers. Reinicie-o pela barra de status; os terminais que rodam nele serão encerrados.",
+	"errors_cause_old_host_detail": "O host de terminais em segundo plano (atlas hostd) é anterior ao suporte a language servers. Reinicie-o pela barra de status; os terminais que rodam nele são encerrados.",
 	"errors_cause_old_host_title": "O host de terminais é mais antigo que este app",
 	"errors_cause_shape_detail": "Um campo que a tela lê está ausente, geralmente por nomes diferentes entre o backend em Rust (serde) e o frontend.",
 	"errors_cause_shape_detail_at": "Um campo que a tela lê está ausente, geralmente por nomes diferentes entre o backend em Rust (serde) e o frontend. Veja {frame}.",
@@ -15,7 +15,7 @@
 	"errors_crash_card_hint_crash": "Um relatório de falha foi salvo neste computador. Revise os detalhes e reporte se quiser que alguém analise; os segredos são removidos antes.",
 	"errors_crash_card_hint_hostd_exited": "Os terminais foram encerrados. Revise os detalhes e reporte se continuar acontecendo; os segredos são removidos antes.",
 	"errors_crash_card_report": "Reportar",
-	"errors_crash_card_title_crash": "O Atlas fechou inesperadamente da última vez",
+	"errors_crash_card_title_crash": "O Atlas fechou inesperadamente na última vez",
 	"errors_crash_card_title_hostd_exited": "O host de terminais fechou inesperadamente",
 	"errors_headline_command_hint": "O que você pediu não foi concluído. O Atlas continua rodando. Copie os detalhes ou reporte o problema se continuar acontecendo.",
 	"errors_headline_command_title": "Falha em: {what}",
@@ -43,10 +43,9 @@
 	"errors_panel_explain_hint": "Em linguagem simples, com o que fazer agora; funciona em qualquer IA de chat",
 	"errors_panel_file_issue": "Abrir uma issue",
 	"errors_panel_file_issue_hint": "Um agente procura duplicatas e abre a issue com o gh",
-	"errors_panel_fix_it": "Corrigir",
+	"errors_panel_fix_it": "Corrigir o erro",
 	"errors_panel_fix_it_hint": "Um agente reproduz o erro com um teste que falha e depois corrige a causa",
 	"errors_panel_report_issue": "Reportar issue",
-	"errors_panel_title": "Algo deu errado",
 	"errors_route_hint": "Seus terminais e serviços continuam rodando em segundo plano. Recarregue para voltar ao trabalho. Se o erro voltar, use Perguntar à IA para corrigi-lo ou abra uma issue com tudo já preenchido.",
 	"errors_route_no_screen_at": "Não há tela em {path}",
 	"errors_route_not_found_hint": "Recarregue para voltar ao workspace.",
@@ -55,5 +54,5 @@
 	"errors_route_title": "O Atlas encontrou um erro",
 	"errors_toasts_dialog_title": "Detalhes do erro",
 	"errors_toasts_host_help": "Os terminais não iniciam nem reconectam até o host voltar. Reinicie o host ou reporte o problema se continuar acontecendo.",
-	"errors_toasts_restart_host": "Reiniciar host de terminais"
+	"errors_toasts_restart_host": "Reiniciar o host de terminais"
 }

@@ -46,7 +46,6 @@
 	"errors_panel_fix_it": "Fix it",
 	"errors_panel_fix_it_hint": "An agent reproduces it with a failing test, then fixes the cause",
 	"errors_panel_report_issue": "Report issue",
-	"errors_panel_title": "Something went wrong",
 	"errors_route_hint": "Your terminals and services keep running in the background. Reload to get back to work. If it comes back, use Ask AI to fix it or file an issue with everything already filled in.",
 	"errors_route_no_screen_at": "No screen at {path}",
 	"errors_route_not_found_hint": "Reload to go back to your workspace.",

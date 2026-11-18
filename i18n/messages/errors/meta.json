@@ -46,7 +46,6 @@
 	"errors_panel_fix_it": "Ask AI action: hands the error to a coding agent to fix. The hint under it says how.",
 	"errors_panel_fix_it_hint": "Hint under the Fix it action of Ask AI: the agent writes a failing test first, then fixes the root cause.",
 	"errors_panel_report_issue": "Button of the error card: opens the project's GitHub issue form with the report already filled in.",
-	"errors_panel_title": "Heading of the error card when its producer gave no title of its own (ErrorPanel): the last resort, the message and the actions follow it.\nwriting-lint: allow en-generic-error: fallback heading only; the message line under it names the failure.\nwriting-lint: allow pt-erro-generico: same fallback heading.",
 	"errors_route_hint": "Line under the title of the full-window error. Names the Ask AI button, which must read the same as errors_panel_ask_ai.",
 	"errors_route_no_screen_at": "Message line of the not-found screen. {path} is the address that did not match any screen, such as /tray.",
 	"errors_route_not_found_hint": "Line under the title of the not-found screen.",

@@ -8,14 +8,15 @@
 	import Lazy from "#lib/components/Lazy.svelte";
 	import { errors } from "./errors.svelte.ts";
 	import { report, type ErrorReport } from "./report.ts";
+	import { m } from "#lib/i18n/m.ts";
 
 	let {
 		children,
 		where,
 		kind,
 		file,
-		title = "This view hit an error",
-		hint = "The rest of Atlas is unaffected.",
+		title = m.shell_contain_default_title(),
+		hint = m.shell_contain_default_hint(),
 		close,
 		closeLabel,
 	}: {

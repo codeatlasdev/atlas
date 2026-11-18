@@ -322,7 +322,7 @@ async fn fetch_latest_tag(on: Channel) -> Result<String> {
     let tag =
         tokio::task::spawn_blocking(move || atlas_core::github::channel_tag(REPO, on)).await??;
     if tag.is_empty() {
-        bail!("empty version from GitHub");
+        bail!("{}", atlas_i18n::t!("update_empty_version"));
     }
     Ok(tag)
 }

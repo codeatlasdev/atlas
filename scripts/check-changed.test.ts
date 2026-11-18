@@ -15,6 +15,10 @@ const run = async (args: string[], files?: string[]) => {
 	return { out, err, code };
 };
 
+// These run the real script, which calls `cargo metadata` for a Rust-scoped change: on a fresh CI runner (no cache,
+// first resolve of the workspace) that alone takes longer than bun's 5 s default (seen at 5000 ms, killed with 143).
+const COLD_CARGO_MS = 60_000;
+
 describe("--json --stdin (the atlas_affected plugin)", () => {
 	test("the commands of the plan are the tests; no Rust change means no crate graph and no builds", async () => {
 		const { out, code } = await run(["--json", "--stdin"], ["scripts/check-changed.ts", "docs/contributing.md"]);
@@ -62,7 +66,7 @@ describe("--json --stdin (the atlas_affected plugin)", () => {
 		expect(j.builds).toEqual(j.crates);
 		expect(j.workspace).toBe(false);
 		expect(j.tests).toContain(`cargo nextest run ${j.crates.map((c: string) => `-p ${c}`).join(" ")} --locked`);
-	});
+	}, COLD_CARGO_MS);
 });
 
 describe("--dry-run", () => {

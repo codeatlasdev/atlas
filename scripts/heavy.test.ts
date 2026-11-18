@@ -29,7 +29,7 @@ function fakeAtlas(dir: string, name: string, log: string, { code = 0, queue = t
 
 /** A PATH with only the basics, so a developer's real atlas never leaks into a test. */
 const bare = "/usr/bin:/bin";
-// `timeout` is a hang ceiling, like the test timeout (scripts/test-setup.ts): a loaded runner stalls spawns for seconds.
+// `timeout` is a hang ceiling, like the 120 s `--timeout` of `bun run release:test`: a loaded runner stalls spawns for seconds.
 const run = (args: string[], env: Record<string, string>) =>
 	Bun.spawnSync(shArgv(script, ...args), { env: { PATH: bare, HOME: env.HOME ?? "/nonexistent", ...env }, timeout: 120_000 });
 /** A path as Git Bash reads it in PATH (`C:\x` → `/c/x`); unchanged elsewhere. */

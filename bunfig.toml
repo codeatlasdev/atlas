@@ -1,4 +1,0 @@
-# `bun test` from the repo root (the scripts tests: `bun run release:test`, CI job "Repo scripts"). apps/desktop has its own
-# bunfig for its frontend tests.
-[test]
-preload = ["./scripts/test-setup.ts"]

@@ -7,6 +7,7 @@ use std::sync::Arc;
 use std::sync::mpsc;
 use std::time::{Duration, Instant};
 
+use super::latest::Shared;
 use block2::RcBlock;
 use objc2::rc::Retained;
 use objc2::runtime::ProtocolObject;
@@ -27,23 +28,10 @@ use objc2_foundation::{NSDictionary, NSError, NSNumber, NSObject, NSObjectProtoc
 use objc2_screen_capture_kit::{
     SCContentFilter, SCStream, SCStreamConfiguration, SCStreamOutput, SCStreamOutputType,
 };
-use parking_lot::{Condvar, Mutex};
 
 /// Stop the stream after this long without a pull.
 pub const IDLE: Duration = Duration::from_secs(5);
 const QUALITY: f64 = 0.6;
-
-#[derive(Default)]
-pub struct Latest {
-    pub seq: u64,
-    pub jpeg: Arc<Vec<u8>>,
-    pub size: (usize, usize),
-}
-
-pub struct Shared {
-    latest: Mutex<Latest>,
-    fresh: Condvar,
-}
 
 define_class!(
     #[unsafe(super(NSObject))]
@@ -62,12 +50,7 @@ define_class!(
             // SAFETY: `sb` is the live buffer handed to this callback.
             let Some(px) = (unsafe { sb.image_buffer() }) else { return };
             let Some((jpeg, size)) = encode(&px) else { return };
-            let sh = self.ivars();
-            let mut l = sh.latest.lock();
-            l.seq += 1;
-            l.jpeg = Arc::new(jpeg);
-            l.size = size;
-            sh.fresh.notify_all();
+            self.ivars().publish(jpeg, size);
         }
     }
 );
@@ -127,16 +110,6 @@ fn encode(px: &objc2_core_video::CVPixelBuffer) -> Option<(Vec<u8>, (usize, usiz
     Some((data.to_vec(), (w, h)))
 }
 
-/// The newest frame after `since`, waiting up to `wait` for one (a still window sends no new frames: the current
-/// one comes back after the wait so the viewer keeps a picture).
-pub fn pull(shared: &Shared, since: u64, wait: Duration) -> super::Frame {
-    let mut l = shared.latest.lock();
-    if l.seq <= since {
-        let _ = shared.fresh.wait_for(&mut l, wait);
-    }
-    (l.seq, l.jpeg.clone(), l.size)
-}
-
 pub struct Live {
     stream: Retained<SCStream>,
     _sink: Retained<Sink>,
@@ -153,10 +126,7 @@ impl Live {
     /// Start a 30 fps stream of window `id` at `pixels`.
     pub fn start(id: u32, pixels: (usize, usize)) -> Result<Self, String> {
         let window = super::sck::own_window(id)?;
-        let shared = Arc::new(Shared {
-            latest: Mutex::default(),
-            fresh: Condvar::new(),
-        });
+        let shared = Arc::new(Shared::default());
         let sink: Retained<Sink> =
             unsafe { msg_send![super(Sink::alloc().set_ivars(shared.clone())), init] };
         // SAFETY: documented SCK setup; the sink outlives the stream through `Live`.

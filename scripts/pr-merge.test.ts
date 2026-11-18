@@ -115,19 +115,23 @@ test.each<[string, World, RegExp]>([
   expect(r.merged).toBeNull();
 });
 
-// Issue #520: a red run whose only failure is a lost runner is a rerun to wait for, not a fix to make. The CLI reads the
-// failed jobs' annotations to tell (jobs 11 lost, 12 green, 13 the aggregate, 14 a real failure).
+// Issue #520: a red run whose only failures are infrastructure (a lost runner, no runner available) is a rerun to wait for,
+// not a fix to make. The CLI reads the failed jobs' annotations to tell (jobs 11 lost, 12 green, 13 the aggregate, 14 a real failure, 15 not acquired).
 const LOST_MSG = "The hosted runner lost communication with the server. Anything in your workflow ...";
 const red = (attempt: number) => [{ id: 99, attempt, headSha: SHA, status: "completed", conclusion: "failure", createdAt: "2026-11-16T10:00:00Z", url: "https://x/99" }];
 const lostJob: Job = { id: 11, name: "Rust (Windows, full workspace)", conclusion: "failure", failures: [LOST_MSG] };
 const greenJob: Job = { id: 12, name: "Rust (Linux)", conclusion: "success", failures: [] };
 const aggregateJob: Job = { id: 13, name: "CI", conclusion: "failure", failures: [] };
 const realJob: Job = { id: 14, name: "Rust (macOS)", conclusion: "failure", failures: ["Process completed with exit code 100."] };
+const notAcquiredJob: Job = { id: 15, name: "Rust (macOS arm64)", conclusion: "cancelled", failures: ["The job was not acquired by Runner of type hosted even after multiple attempts"] };
 
 test.each<[string, World, RegExp]>([
   ["only a lost runner, attempt 1", { runs: red(1), jobs: [lostJob, greenJob, aggregateJob] }, /runner lost, rerun pending \(attempt 1 of 3/],
   ["only a lost runner, attempt 3", { runs: red(3), jobs: [lostJob, greenJob, aggregateJob] }, /on every attempt \(3 of 3\): no rerun is pending/],
   ["a lost runner and a real failure", { runs: red(1), jobs: [lostJob, realJob, aggregateJob] }, /concluded failure: fix it and push/],
+  ["only no runner available (job cancelled), attempt 1", { runs: red(1), jobs: [notAcquiredJob, greenJob, aggregateJob] }, /no runner was available, rerun pending \(attempt 1 of 3/],
+  ["no runner available and a real failure", { runs: red(1), jobs: [notAcquiredJob, realJob, aggregateJob] }, /concluded failure: fix it and push/],
+  ["lost and no runner available", { runs: red(1), jobs: [lostJob, notAcquiredJob, aggregateJob] }, /runner lost and no runner was available, rerun pending/],
 ])("a red CI run is told apart by its jobs' annotations: %s", (_n, w, reason) => {
   const r = cli(w, ["--dry-run"]);
   expect(r.code).toBe(1);

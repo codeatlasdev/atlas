@@ -1,8 +1,11 @@
 import type { FsEntry } from "#lib/host.ts";
 
-interface TreeRow {
+export interface TreeRow {
 	rel: string;
+	name: string;
 	dir: boolean;
+	/** Folders above it (0 at the top level): the row's indent. */
+	depth: number;
 }
 
 /** Visible rows in display order (folders descend only when expanded and loaded). */
@@ -11,15 +14,15 @@ export function visibleRows(
 	expanded: Record<string, boolean>,
 ): TreeRow[] {
 	const out: TreeRow[] = [];
-	const walk = (dir: string) => {
+	const walk = (dir: string, depth: number) => {
 		for (const e of children[dir] ?? []) {
 			const rel = dir ? `${dir}/${e.name}` : e.name;
 			const isDir = e.kind === "dir";
-			out.push({ rel, dir: isDir });
-			if (isDir && expanded[rel]) walk(rel);
+			out.push({ rel, name: e.name, dir: isDir, depth });
+			if (isDir && expanded[rel]) walk(rel, depth + 1);
 		}
 	};
-	walk("");
+	walk("", 0);
 	return out;
 }
 

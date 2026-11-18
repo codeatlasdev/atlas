@@ -163,6 +163,9 @@ pub struct Release {
     cli_ahead: bool,
     /// This app is newer than `version`.
     app_ahead: bool,
+    /// The version this app runs was withdrawn (`data/yanked.json`): why, and what replaces it.
+    /// `null` when it was not (or the list could not be read).
+    yanked: Option<atlas_core::yanked::Yank>,
 }
 
 /// What `offered` is relative to `installed`; unknown or unparseable → `None`.
@@ -197,7 +200,12 @@ impl Flavor {
 
 impl Release {
     /// `info` as the app sees it given the installed CLI (when known) and app versions.
-    fn new(info: atlas_core::github::ReleaseInfo, cli: Option<&str>, app: &str) -> Self {
+    fn new(
+        info: atlas_core::github::ReleaseInfo,
+        cli: Option<&str>,
+        app: &str,
+        yanked: Option<atlas_core::yanked::Yank>,
+    ) -> Self {
         let version = info.version().to_string();
         let (cli_f, app_f) = (
             Flavor::of(action_of(&version, cli)),
@@ -215,6 +223,7 @@ impl Release {
             cli_ahead: cli_f.ahead,
             app_behind: app_f.behind,
             app_ahead: app_f.ahead,
+            yanked,
             notes: info.notes().to_string(),
             url: info.url,
             published_at: info.published_at,
@@ -317,8 +326,16 @@ pub async fn system_info() -> Result<SystemInfo, String> {
 /// Latest published release (public GitHub Releases API).
 #[tauri::command]
 pub async fn latest_release() -> Result<Release, String> {
-    let info = tauri::async_runtime::spawn_blocking(|| {
-        atlas_core::github::latest_release(REPO, channel::current())
+    let app = app_version();
+    let (info, yanked) = tauri::async_runtime::spawn_blocking({
+        let app = app.clone();
+        move || {
+            let info = atlas_core::github::latest_release(REPO, channel::current())?;
+            Ok::<_, atlas_core::github::GithubError>((
+                info,
+                atlas_core::github::yank_of(REPO, &app),
+            ))
+        }
     })
     .await
     .map_err(|e| e.to_string())?
@@ -327,7 +344,7 @@ pub async fn latest_release() -> Result<Release, String> {
         Ok(bin) => cli_version(&bin).await,
         Err(_) => None,
     };
-    Ok(Release::new(info, cli.as_deref(), &app_version()))
+    Ok(Release::new(info, cli.as_deref(), &app, yanked))
 }
 
 /// Platform suffix of the release assets (`aarch64-apple-darwin`, ...), as `atlas update` names them.
@@ -531,14 +548,19 @@ pub fn update_channel_set(channel: String) -> Result<ChannelState, String> {
 }
 
 #[cfg(test)]
-fn release_sample(version: &str, cli: Option<&str>, app: &str) -> Release {
+fn release_sample(
+    version: &str,
+    cli: Option<&str>,
+    app: &str,
+    yanked: Option<atlas_core::yanked::Yank>,
+) -> Release {
     let info = atlas_core::github::ReleaseInfo {
         tag_name: format!("v{version}"),
         url: format!("https://github.com/codeatlasdev/atlas/releases/tag/v{version}"),
         published_at: "2026-10-12".into(),
         body: "### Added\n- A thing".into(),
     };
-    Release::new(info, cli, app)
+    Release::new(info, cli, app, yanked)
 }
 
 /// Deterministic sample of everything the channel UI deserializes, for the frontend contract
@@ -570,9 +592,17 @@ fn fixture_views() -> serde_json::Value {
             .map(|c| channel::view(c, Channel::Beta, &installed, None))
             .collect::<Vec<_>>(),
         "release": {
-            "update": release_sample("1.4.0-beta.2", Some("1.3.0"), "1.3.0"),
-            "downgrade": release_sample("1.3.0", Some("1.4.0"), "1.4.0"),
-            "none": release_sample("1.3.0", None, "1.3.0"),
+            "update": release_sample("1.4.0-beta.2", Some("1.3.0"), "1.3.0", None),
+            "downgrade": release_sample("1.3.0", Some("1.4.0"), "1.4.0", None),
+            "none": release_sample("1.3.0", None, "1.3.0", None),
+            // The app runs 1.4.0-beta.1, withdrawn; the channel's newest safe release is 1.4.0-beta.2.
+            "yanked": release_sample("1.4.0-beta.2", Some("1.4.0-beta.1"), "1.4.0-beta.1", Some(
+                atlas_core::yanked::Yank {
+                    version: "1.4.0-beta.1".into(),
+                    reason: "Corrupts the workspace file on first launch.".into(),
+                    replacement: Some("1.4.0-beta.2".into()),
+                },
+            )),
         },
         "state": channel_state_at(&file, None),
         "state_override": channel_state_at(&file, Some("alpha")),

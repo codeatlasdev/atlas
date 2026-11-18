@@ -179,6 +179,12 @@ describe("linux-launch-check.sh", () => {
 		test("`appsrc not found` (bundled GStreamer without its plugins) fails the launch", () => {
 			expect(markers.test("GStreamer element appsrc not found. Please install it")).toBe(true);
 		});
+		// #426: the line libayatana-appindicator's GtkStatusIcon fallback printed on every Wayland start without a tray host
+		// (copied from the real stderr). It was allow-listed once; a GTK CRITICAL is a bug of the app and must fail the gate.
+		test("a GTK CRITICAL fails the launch and the script keeps no allow-list that hides one", () => {
+			expect(markers.test("(atlas-desktop:2680831): Gtk-CRITICAL **: 09:31:53.199: gtk_widget_get_scale_factor: assertion 'GTK_IS_WIDGET (widget)' failed")).toBe(true);
+			expect(read("scripts/linux-launch-check.sh")).not.toMatch(/KNOWN|gtk_widget_get_scale_factor/);
+		});
 		test("a host with no audio sink or no AAC decoder is not a launch failure", () => {
 			expect(markers.test("GStreamer element autoaudiosink not found. Please install it")).toBe(false);
 			expect(markers.test("Missing decoder: MPEG-4 AAC (audio/x-m4a)")).toBe(false);

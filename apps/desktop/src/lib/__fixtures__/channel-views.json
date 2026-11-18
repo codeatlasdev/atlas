@@ -106,7 +106,8 @@
 			"notes": "### Added\n- A thing",
 			"published_at": "2026-10-12",
 			"url": "https://github.com/codeatlasdev/atlas/releases/tag/v1.3.0",
-			"version": "1.3.0"
+			"version": "1.3.0",
+			"yanked": null
 		},
 		"none": {
 			"action": "none",
@@ -119,7 +120,8 @@
 			"notes": "### Added\n- A thing",
 			"published_at": "2026-10-12",
 			"url": "https://github.com/codeatlasdev/atlas/releases/tag/v1.3.0",
-			"version": "1.3.0"
+			"version": "1.3.0",
+			"yanked": null
 		},
 		"update": {
 			"action": "update",
@@ -132,7 +134,26 @@
 			"notes": "### Added\n- A thing",
 			"published_at": "2026-10-12",
 			"url": "https://github.com/codeatlasdev/atlas/releases/tag/v1.4.0-beta.2",
-			"version": "1.4.0-beta.2"
+			"version": "1.4.0-beta.2",
+			"yanked": null
+		},
+		"yanked": {
+			"action": "update",
+			"app_ahead": false,
+			"app_behind": true,
+			"channel": "beta",
+			"cli_ahead": false,
+			"cli_behind": true,
+			"downgrade": false,
+			"notes": "### Added\n- A thing",
+			"published_at": "2026-10-12",
+			"url": "https://github.com/codeatlasdev/atlas/releases/tag/v1.4.0-beta.2",
+			"version": "1.4.0-beta.2",
+			"yanked": {
+				"reason": "Corrupts the workspace file on first launch.",
+				"replacement": "1.4.0-beta.2",
+				"version": "1.4.0-beta.1"
+			}
 		}
 	},
 	"state": {

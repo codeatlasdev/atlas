@@ -155,6 +155,13 @@ describe("contract with the Rust serializer", () => {
 			app_behind: false,
 		});
 		expect(r.none).toMatchObject({ action: "none", cli_behind: false, cli_ahead: false });
+		// #313: a withdrawn running version carries its reason (null otherwise), straight from the Rust serializer.
+		expect(r.yanked.yanked).toEqual({
+			version: "1.4.0-beta.1",
+			reason: "Corrupts the workspace file on first launch.",
+			replacement: "1.4.0-beta.2",
+		});
+		for (const k of ["update", "downgrade", "none"] as const) expect(r[k].yanked).toBeNull();
 	});
 });
 

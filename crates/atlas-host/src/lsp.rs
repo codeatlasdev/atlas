@@ -256,7 +256,7 @@ done
 
         let mut diag = None;
         let mut statuses = 0;
-        tokio::time::timeout(Duration::from_secs(10), async {
+        tokio::time::timeout(atlas_core::scaling::HANG, async {
             while diag.is_none() {
                 let ev = events.recv().await.unwrap();
                 match ev["ev"].as_str() {
@@ -401,7 +401,7 @@ done
         drop(c2); // no lsp_close: hostd must close both
         for p in [&other, &file] {
             let mut closed = false;
-            for _ in 0..100 {
+            for _ in 0..2000 {
                 let q = json!({"path": p, "method": "$/capabilities"});
                 if client.call("lsp_request", q).await.is_err() {
                     closed = true;
@@ -421,7 +421,7 @@ done
             .await
             .unwrap();
         client.call("shutdown", json!({})).await.unwrap();
-        tokio::time::timeout(Duration::from_secs(10), srv)
+        tokio::time::timeout(atlas_core::scaling::HANG, srv)
             .await
             .unwrap()
             .unwrap()

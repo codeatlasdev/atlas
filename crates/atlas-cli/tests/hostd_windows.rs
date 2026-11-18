@@ -6,6 +6,7 @@ use std::path::Path;
 use std::process::{Child, Command, Stdio};
 use std::time::Duration;
 
+use atlas_core::scaling::HANG;
 use atlas_host::{HostClient, paths};
 use base64::Engine;
 use base64::engine::general_purpose::STANDARD as B64;
@@ -56,9 +57,9 @@ async fn until_exit(
 ) -> (String, Value) {
     let mut out = String::new();
     loop {
-        let e = tokio::time::timeout(Duration::from_secs(10), ev.recv())
+        let e = tokio::time::timeout(HANG, ev.recv())
             .await
-            .expect("no pty_exit within 10 s")
+            .expect("no pty_exit within the hang ceiling")
             .unwrap();
         if e["pty"] != pty {
             continue;
@@ -129,7 +130,7 @@ async fn ptys_exec_fs_auth_and_cold_restore_over_the_named_pipe() {
     .unwrap();
     let mut seen = String::new();
     while !seen.contains("got:hello") {
-        let e = tokio::time::timeout(Duration::from_secs(10), ev.recv())
+        let e = tokio::time::timeout(HANG, ev.recv())
             .await
             .expect("typed line never echoed")
             .unwrap();
@@ -270,7 +271,7 @@ async fn the_default_terminal_is_an_interactive_shell() {
     let mut seen = String::new();
     // The command line itself echoes "echo atlas-shell-ok"; its output is the bare word.
     while seen.matches("atlas-shell-ok").count() < 2 {
-        let e = tokio::time::timeout(Duration::from_secs(15), ev.recv())
+        let e = tokio::time::timeout(HANG, ev.recv())
             .await
             .expect("the shell never ran the command")
             .unwrap();

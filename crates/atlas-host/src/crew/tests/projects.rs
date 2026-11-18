@@ -1,8 +1,6 @@
 //! The project a crewmate works in: Git checkout before the first task, the "downloading" state,
 //! and folders that do not exist.
 
-use std::time::Duration;
-
 use serde_json::{Value, json};
 
 use super::fixture::{daemon, fake_agent, lock_agent_bin, wait_task_state};
@@ -53,7 +51,7 @@ async fn a_git_project_is_checked_out_before_the_first_task() {
         .join("crew")
         .join(crewmate["id"].as_str().unwrap())
         .join("work");
-    let deadline = std::time::Instant::now() + std::time::Duration::from_secs(20);
+    let deadline = std::time::Instant::now() + atlas_core::scaling::HANG;
     while !work.join(".git").exists() {
         assert!(
             std::time::Instant::now() < deadline,
@@ -93,7 +91,7 @@ async fn a_task_says_it_is_downloading_the_project_while_it_waits() {
         .await
         .unwrap();
     let tid = task["task"]["id"].as_str().unwrap().to_string();
-    let done = wait_task_state(&client, &id, &tid, "failed", Duration::from_secs(20)).await;
+    let done = wait_task_state(&client, &id, &tid, "failed", atlas_core::scaling::HANG).await;
     assert!(
         done.get("preparing").is_none(),
         "cleared once the wait ended: {done}"
@@ -200,7 +198,7 @@ async fn engine_project_invalid_path_fails_task() {
         .await
         .unwrap();
     let task_id = v["task"]["id"].as_str().unwrap().to_string();
-    let task = wait_task_state(&client, &id, &task_id, "failed", Duration::from_secs(15)).await;
+    let task = wait_task_state(&client, &id, &task_id, "failed", atlas_core::scaling::HANG).await;
     assert_eq!(task["state"], "failed");
     let err = task["error"].as_str().unwrap_or("");
     assert!(

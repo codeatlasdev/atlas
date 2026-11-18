@@ -375,7 +375,7 @@ async fn webhook_correct_token_enqueues_task() {
         .expect("crewmate_triggers_set failed");
 
     // Read hook server port and auth token.
-    let deadline = std::time::Instant::now() + Duration::from_secs(5);
+    let deadline = std::time::Instant::now() + atlas_core::scaling::HANG;
     let (port, tok) = loop {
         let hook_env = std::fs::read_to_string(dir.join("desktop").join("hook-endpoint.env"))
             .unwrap_or_default();
@@ -422,7 +422,7 @@ async fn webhook_correct_token_enqueues_task() {
         );
 
         // Its task must appear within 5 s.
-        let deadline = std::time::Instant::now() + Duration::from_secs(5);
+        let deadline = std::time::Instant::now() + atlas_core::scaling::HANG;
         loop {
             let tasks = client
                 .call("crewmate_tasks", json!({"id": id, "limit": 10}))
@@ -502,10 +502,10 @@ async fn crewmate_chain_trigger_fires_on_finish() {
         .await
         .unwrap();
     let task_a = v["task"]["id"].as_str().unwrap().to_string();
-    wait_task_state(&client, &id_a, &task_a, "done", Duration::from_secs(15)).await;
+    wait_task_state(&client, &id_a, &task_a, "done", atlas_core::scaling::HANG).await;
 
     // Crewmate B should have a task within 5 s (triggered by Crewmate A's completion).
-    let deadline = std::time::Instant::now() + Duration::from_secs(5);
+    let deadline = std::time::Instant::now() + atlas_core::scaling::HANG;
     loop {
         let tasks = client
             .call("crewmate_tasks", json!({"id": id_b, "limit": 10}))

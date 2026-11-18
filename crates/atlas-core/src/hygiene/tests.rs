@@ -188,7 +188,8 @@ fn tracked_tree(reg: &Registry, session: &str, owner: Owner) -> (std::process::C
     reg.add_root(root(session, owner, child.id(), start))
         .unwrap();
     let mut grandchild = 0u32;
-    for _ in 0..200 {
+    let end = Instant::now() + crate::scaling::HANG;
+    while Instant::now() < end {
         // Record while the tree exists: the grandchild is seen under the shell if `track` runs
         // before the subshell exits; either way it is recorded as soon as it is below a root.
         reg.track().unwrap();
@@ -202,7 +203,7 @@ fn tracked_tree(reg: &Registry, session: &str, owner: Owner) -> (std::process::C
     }
     assert!(grandchild > 1, "grandchild never started");
     // Wait until it left the parent chain: from here only the record names it (macOS, Windows).
-    let end = Instant::now() + Duration::from_secs(10);
+    let end = Instant::now() + crate::scaling::HANG;
     while procs::tree(child.id(), &procs::table()).contains(&grandchild) {
         assert!(
             Instant::now() < end,
@@ -242,7 +243,6 @@ fn killing_the_owner_leaves_no_session_process_even_a_daemonized_grandchild_with
     let _ = owner_proc.kill();
     let _ = owner_proc.wait();
 
-    let started = Instant::now();
     assert!(reg.has_orphaned_root(), "the dead owner must be noticed");
     let s = sweep(&reg, false);
     assert!(
@@ -256,14 +256,13 @@ fn killing_the_owner_leaves_no_session_process_even_a_daemonized_grandchild_with
         s.survivors
     );
     assert!(
-        reaped(&mut tree_root, Duration::from_secs(10)),
+        reaped(&mut tree_root, crate::scaling::HANG),
         "the shell was never ended"
     );
     assert!(
-        wait_gone(&[tree_root.id(), grandchild], Duration::from_secs(10)),
+        wait_gone(&[tree_root.id(), grandchild], crate::scaling::HANG),
         "session processes left"
     );
-    assert!(started.elapsed() < Duration::from_secs(10));
     assert!(
         reg.members().iter().all(|m| m.session != session),
         "records dropped"
@@ -290,10 +289,10 @@ fn reap_session_ends_the_whole_tree_including_the_daemonized_grandchild() {
 
     let left = reg.reap_session(&session, Duration::from_secs(2));
     assert!(left.is_empty(), "{left:?}");
-    assert!(reaped(&mut tree_root, Duration::from_secs(10)));
+    assert!(reaped(&mut tree_root, crate::scaling::HANG));
     assert!(wait_gone(
         &[tree_root.id(), grandchild],
-        Duration::from_secs(10)
+        crate::scaling::HANG
     ));
     assert!(
         crate::sys::pid_alive(bystander.id()),
@@ -314,31 +313,39 @@ fn reap_session_ends_the_whole_tree_including_the_daemonized_grandchild() {
 fn a_process_that_ignores_sigterm_is_killed_after_the_grace() {
     let (_d, reg) = registry();
     let session = new_session_id();
+    let ready = tempfile::NamedTempFile::new().unwrap();
     let mut child = std::process::Command::new("sh")
         .arg("-c")
-        .arg("trap '' TERM; while :; do sleep 1; done")
+        .arg(format!(
+            "trap '' TERM; echo ready > {}; while :; do sleep 1; done",
+            ready.path().display()
+        ))
         .spawn()
         .unwrap();
     let start = procs::start_time(child.id()).unwrap();
     reg.add_root(root(&session, Owner::current(), child.id(), start))
         .unwrap();
-    std::thread::sleep(Duration::from_millis(300));
+    // The trap is in place once the shell says so: a SIGTERM before it would kill the shell and skip the grace.
+    let end = Instant::now() + crate::scaling::HANG;
+    while std::fs::read_to_string(ready.path()).is_ok_and(|s| s.is_empty()) {
+        assert!(Instant::now() < end, "the shell never installed its trap");
+        std::thread::sleep(Duration::from_millis(10));
+    }
     let t = Instant::now();
     let r = reg.clone();
     let s = session.clone();
-    let left = bounded(Duration::from_secs(30), move || {
+    let left = bounded(crate::scaling::HANG, move || {
         r.reap_session(&s, Duration::from_millis(500))
     });
     assert!(left.is_empty(), "{left:?}");
     assert!(
-        reaped(&mut child, Duration::from_secs(5)),
+        reaped(&mut child, crate::scaling::HANG),
         "SIGKILL never landed"
     );
     assert!(
         t.elapsed() >= Duration::from_millis(500),
         "SIGTERM was ignored: the grace must elapse"
     );
-    assert!(t.elapsed() < Duration::from_secs(10));
 }
 
 // Linux reads the tag of every process: a daemonized grandchild is found with NO prior tracking.
@@ -359,7 +366,8 @@ fn on_linux_a_daemonized_grandchild_is_found_by_its_tag_without_ever_being_track
     reg.add_root(root(&session, Owner::current(), child.id(), start))
         .unwrap();
     let mut gc = 0u32;
-    for _ in 0..200 {
+    let end = Instant::now() + crate::scaling::HANG;
+    while Instant::now() < end {
         if let Ok(s) = std::fs::read_to_string(marker.path())
             && let Ok(p) = s.trim().parse()
         {
@@ -374,8 +382,8 @@ fn on_linux_a_daemonized_grandchild_is_found_by_its_tag_without_ever_being_track
         "premise: never tracked"
     );
     reg.reap_session(&session, Duration::from_secs(2));
-    assert!(reaped(&mut child, Duration::from_secs(10)));
-    assert!(wait_gone(&[gc], Duration::from_secs(10)));
+    assert!(reaped(&mut child, crate::scaling::HANG));
+    assert!(wait_gone(&[gc], crate::scaling::HANG));
 }
 
 // A member is only ever signalled while it is still the process that was recorded.
@@ -426,7 +434,8 @@ fn track_records_the_tree_of_live_roots_and_forgets_members_that_exited() {
     reg.add_root(root("s", Owner::current(), shell.id(), start))
         .unwrap();
     let mut got = Vec::new();
-    for _ in 0..200 {
+    let end = Instant::now() + crate::scaling::HANG;
+    while Instant::now() < end {
         reg.track().unwrap();
         got = reg.members();
         if got.iter().any(|m| m.name.contains("sleep")) {

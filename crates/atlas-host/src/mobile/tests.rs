@@ -48,7 +48,7 @@ async fn daemon_as(dir: &Path, socket: std::path::PathBuf, crew_host: bool) -> H
         ..Default::default()
     };
     tokio::spawn(async move { crate::server::serve_with(&d, opts).await });
-    for _ in 0..100 {
+    for _ in 0..1200 {
         if let Ok(c) = HostClient::connect_dir(dir, "test").await {
             return c;
         }
@@ -59,7 +59,7 @@ async fn daemon_as(dir: &Path, socket: std::path::PathBuf, crew_host: bool) -> H
 
 /// `mobile_pair_start` once the endpoint has bound (it binds in the background).
 pub(crate) async fn pair_start(c: &HostClient) -> Value {
-    for _ in 0..100 {
+    for _ in 0..1200 {
         let v = c.call("mobile_pair_start", json!({})).await.unwrap();
         if v["addrs"].as_array().is_some_and(|a| !a.is_empty()) {
             // The gateway listens on loopback only, so nothing else can be published: a LAN
@@ -151,7 +151,7 @@ impl Phone {
         self.next += 1;
         let line = json!({"id": id, "cmd": cmd, "args": args}).to_string() + "\n";
         self.send.write_all(line.as_bytes()).await.ok()?;
-        tokio::time::timeout(Duration::from_secs(5), async {
+        tokio::time::timeout(atlas_core::scaling::HANG, async {
             let mut buf = String::new();
             loop {
                 buf.clear();
@@ -185,7 +185,7 @@ impl Phone {
         self.next += 1;
         let line = json!({"id": id, "cmd": cmd, "args": args}).to_string() + "\n";
         self.send.write_all(line.as_bytes()).await.ok()?;
-        tokio::time::timeout(Duration::from_secs(5), async {
+        tokio::time::timeout(atlas_core::scaling::HANG, async {
             let (mut buf, mut pushes) = (String::new(), Vec::new());
             loop {
                 buf.clear();
@@ -461,7 +461,7 @@ async fn an_unpaired_peer_sending_an_endless_line_is_cut_off() {
     let mut p = Phone::dial(&info).await;
     let chunk = vec![b'x'; 256 * 1024];
     let mut sent = 0;
-    let cut = tokio::time::timeout(Duration::from_secs(20), async {
+    let cut = tokio::time::timeout(atlas_core::scaling::HANG, async {
         // No newline, ever: hostd must close the stream past the limit.
         while p.send.write_all(&chunk).await.is_ok() {
             sent += chunk.len();
@@ -561,16 +561,14 @@ async fn only_a_phone_that_may_approve_holds_a_prompt() {
     .await
     .unwrap();
     let dir = tmp.path().to_path_buf();
-    let t = std::time::Instant::now();
-    let body = tokio::task::spawn_blocking(move || ask_decision(&dir))
-        .await
-        .unwrap();
+    // A held prompt would announce itself on the daemon's events and wait 55 s for the phone: the helper fails
+    // on that event, whatever the machine's speed.
+    let mut events = c.events();
+    let body = crate::agents::hook_server::answered_without_holding(&mut events, move || {
+        ask_decision(&dir)
+    })
+    .await;
     assert_eq!(parse_decision(&body), None, "{body}");
-    assert!(
-        t.elapsed() < Duration::from_secs(3),
-        "waited {:?}",
-        t.elapsed()
-    );
 
     c.call(
         "mobile_set_scopes",
@@ -631,7 +629,7 @@ async fn agent_send_types_only_into_an_idle_or_done_agent() {
         .to_string();
     send("hello-agent").await.unwrap();
     let mut text = String::new();
-    for _ in 0..50 {
+    for _ in 0..1200 {
         text = c
             .call("pty_read", json!({"pty": pty, "lines": 10}))
             .await
@@ -904,7 +902,7 @@ async fn agent_interrupt_sends_escape_only_while_the_agent_works() {
     tokio::time::sleep(Duration::from_millis(300)).await;
     stop().await.unwrap();
     let mut text = String::new();
-    for _ in 0..50 {
+    for _ in 0..1200 {
         text = c
             .call("pty_read", json!({"pty": pty, "lines": 10}))
             .await
@@ -1387,7 +1385,7 @@ async fn a_phone_manages_worktrees_and_launches_an_agent_in_one_with_the_desktop
     assert_eq!(launched["ok"], true, "{launched}");
     let pane = launched["data"]["pane"].as_str().unwrap().to_string();
     assert!(launched["data"]["pty"].as_str().is_some());
-    for _ in 0..100 {
+    for _ in 0..1200 {
         if record.exists() {
             break;
         }
@@ -1685,7 +1683,7 @@ async fn a_stale_desktop_socket_file_still_means_not_running() {
         .await
         .unwrap();
     assert_eq!(r["ok"], true, "{r}");
-    for _ in 0..100 {
+    for _ in 0..1200 {
         if record.exists() {
             break;
         }
@@ -2489,7 +2487,7 @@ async fn paired_phones_report_connection_activity_and_take_a_name() {
 
     phone.conn.close(0u32.into(), b"bye");
     let mut gone = false;
-    for _ in 0..100 {
+    for _ in 0..1200 {
         if device_of(&c, &node).await["connected"] == false {
             gone = true;
             break;

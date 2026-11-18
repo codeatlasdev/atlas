@@ -193,8 +193,10 @@ fn unchanged_rows_hit_the_cache() {
     assert_eq!(t.rows.len(), 2);
 }
 
-/// Snapshot + layout of a full 144×44 screen; run with
-/// `cargo test -p atlas-term --release -- --ignored --nocapture screen_bench`.
+/// Snapshot + layout of a full 144×44 screen: a bench that only PRINTS its timings (run with
+/// `cargo test -p atlas-term --release -- --ignored --nocapture screen_bench`). It asserts nothing: a time budget
+/// measures the machine; what keeps a cached layout cheap is guarded by counts in the tests above (the row cache
+/// reuses the buffer instead of rebuilding it) and by `full_screen_of_ascii_layouts_without_growth`.
 #[test]
 #[ignore = "timing bench"]
 fn screen_bench() {
@@ -262,7 +264,6 @@ fn screen_bench() {
         cold[n * 95 / 100],
         t.mono.len()
     );
-    assert!(cached[n * 95 / 100] < 1000, "cached p95 over 1 ms");
 }
 
 #[test]

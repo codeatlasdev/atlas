@@ -95,6 +95,7 @@ windows = { version = "0.62", features = ["Win32_UI_Input_KeyboardAndMouse"] }
 tauri = { version = "2", features = ["test"] }
 serde_norway = { workspace = true }
 # Test processes resolve English unless a test asks otherwise (`atlas_core::lang::TEST_ENV`).
+# `scaling::HANG`, the ceiling for tests that wait on a real event, comes from the same feature.
 atlas-core = { path = "../atlas-core", features = ["test-fixtures"] }
 
 [lints]

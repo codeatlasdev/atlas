@@ -64,8 +64,13 @@ mod tests {
             w.write_all(b"llo\r\nprog 1%\rprog 99%\rdone\nprompt> ")
                 .await
                 .unwrap();
-            // Idle: the partial prompt must show up without a newline.
-            tokio::time::sleep(PARTIAL_FLUSH_AFTER * 3).await;
+            // Idle: the partial prompt must show up without a newline, while the writer is still open. Wait
+            // for that event (the idle flush), not for a multiple of its delay: a stalled runner can
+            // outlast any fixed sleep. Without the flush it never comes and the hang ceiling fails.
+            let end = tokio::time::Instant::now() + atlas_core::scaling::HANG;
+            while out.lock().unwrap().len() < 3 && tokio::time::Instant::now() < end {
+                tokio::time::sleep(std::time::Duration::from_millis(5)).await;
+            }
             assert_eq!(*out.lock().unwrap(), ["hello", "done", "prompt> "]);
             w.write_all(b"tail-no-newline").await.unwrap();
             drop(w);

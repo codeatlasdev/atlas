@@ -679,7 +679,7 @@ mod tests {
         let n = ev.read(&mut buf).await.unwrap();
         assert!(String::from_utf8_lossy(&buf[..n]).contains("text/event-stream"));
         // Wait for the subscriber to exist, then broadcast.
-        tokio::time::timeout(Duration::from_secs(2), async {
+        tokio::time::timeout(atlas_core::scaling::HANG, async {
             while tx.receiver_count() == 0 {
                 tokio::time::sleep(Duration::from_millis(10)).await;
             }
@@ -687,7 +687,7 @@ mod tests {
         .await
         .unwrap();
         tx.send("css").unwrap();
-        let n = tokio::time::timeout(Duration::from_secs(2), ev.read(&mut buf))
+        let n = tokio::time::timeout(atlas_core::scaling::HANG, ev.read(&mut buf))
             .await
             .unwrap()
             .unwrap();
@@ -705,20 +705,20 @@ mod tests {
         let _w = watch(&root, tx).expect("watcher");
         // Timing workaround, root cause unproven: the watcher can report the tempdir itself late under
         // load (a directory path is a Full reload), which flaked the v1.5.0-alpha.1 release build.
-        // Drain until quiet, at most 3 s, then expect only the events this test causes.
+        // Drain until quiet (the hang ceiling bounds it), then expect only the events this test causes.
         tokio::time::sleep(Duration::from_millis(200)).await;
-        let quiet_by = tokio::time::Instant::now() + Duration::from_secs(3);
+        let quiet_by = tokio::time::Instant::now() + atlas_core::scaling::HANG;
         while tokio::time::Instant::now() < quiet_by
             && tokio::time::timeout(DEBOUNCE * 3, rx.recv()).await.is_ok()
         {}
         std::fs::write(root.join("a.css"), "a{}").unwrap();
-        let m = tokio::time::timeout(Duration::from_secs(5), rx.recv())
+        let m = tokio::time::timeout(atlas_core::scaling::HANG, rx.recv())
             .await
             .unwrap()
             .unwrap();
         assert_eq!(m, "css");
         std::fs::write(root.join("index.html"), "x").unwrap();
-        let m = tokio::time::timeout(Duration::from_secs(5), rx.recv())
+        let m = tokio::time::timeout(atlas_core::scaling::HANG, rx.recv())
             .await
             .unwrap()
             .unwrap();

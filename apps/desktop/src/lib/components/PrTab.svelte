@@ -37,6 +37,7 @@
 		type RepoProbe,
 	} from "#lib/repoState.ts";
 	import NotRepoState from "./NotRepoState.svelte";
+	import { m } from "#lib/i18n/m.ts";
 
 	let { worktreeId, focused = false }: { worktreeId: string; focused?: boolean } = $props();
 
@@ -165,8 +166,8 @@
 	{#if !v}
 		<div class="pad">
 			{#if failed}
-				<EmptyState icon={CircleAlert} title="Could not read the repository" description={failed} bare>
-					{#snippet actions()}<Button size="sm" onclick={refresh}>Try again</Button>{/snippet}
+				<EmptyState icon={CircleAlert} title={m.git_pr_tab_could_not_read_the_repository()} description={failed} bare>
+					{#snippet actions()}<Button size="sm" onclick={refresh}>{m.git_pr_tab_try_again()}</Button>{/snippet}
 				</EmptyState>
 			{:else if !repo || repo.kind === "pr"}
 				{#if loading}<Spinner />{/if}
@@ -199,8 +200,8 @@
 			{/if}
 			<span class="dim">{v.headRefName} → {v.baseRefName} · {v.author.login}</span>
 			<span class="spacer"></span>
-			<button class="icon" title="Refresh" onclick={refresh}><RefreshCw size={13} /></button>
-			<button class="icon" title="Open on GitHub" onclick={() => api.openUrl(v!.url)}
+			<button class="icon" title={m.git_diff_view_refresh()} onclick={refresh}><RefreshCw size={13} /></button>
+			<button class="icon" title={m.git_pr_tab_open_on_github()} onclick={() => api.openUrl(v!.url)}
 				><ExternalLink size={13} /></button
 			>
 			{#if v.state === "OPEN"}
@@ -209,11 +210,11 @@
 						size="sm"
 						variant="ghost"
 						onclick={() => pr.run(worktreeId, ["pr", "ready", String(v!.number)], "Marked ready")}
-						>Mark ready</Button
+						>{m.git_pr_tab_mark_ready()}</Button
 					>
 				{/if}
 				<DropdownMenu align="end">
-					{#snippet trigger()}<span class="merge">Merge…</span>{/snippet}
+					{#snippet trigger()}<span class="merge">{m.git_pr_tab_merge()}</span>{/snippet}
 					{#each [["--squash", "Squash and merge"], ["--merge", "Create a merge commit"], ["--rebase", "Rebase and merge"]] as [flag, label] (flag)}
 						<DropdownMenuItem
 							onclick={() => pr.run(worktreeId, ["pr", "merge", String(v!.number), flag], "Merged")}
@@ -228,7 +229,7 @@
 								"Auto-merge enabled",
 							)}
 					>
-						Enable auto-merge (squash)
+						{m.git_pr_tab_enable_auto_merge_squash()}
 					</DropdownMenuItem>
 				</DropdownMenu>
 			{/if}
@@ -247,14 +248,14 @@
 					</article>
 				{/each}
 				<div class="reply">
-					<TextArea bind:value={reply} placeholder="Comment" rows={3} />
+					<TextArea bind:value={reply} placeholder={m.git_pr_tab_comment()} rows={3} />
 					<Button
 						size="sm"
 						disabled={!reply.trim()}
 						onclick={async () => {
 							await pr.run(worktreeId, ["pr", "comment", String(v!.number), "--body", reply], "Commented");
 							reply = "";
-						}}>Comment</Button
+						}}>{m.git_pr_tab_comment()}</Button
 					>
 				</div>
 			</section>
@@ -266,12 +267,12 @@
 						<span class="name">{c.workflow ? `${c.workflow} / ` : ""}{c.name}</span>
 					</button>
 				{:else}
-					<p class="dim">No checks.</p>
+					<p class="dim">{m.git_pr_tab_no_checks()}</p>
 				{/each}
 				{#if checks.some((c) => c.state === "FAILURE")}
 					<Button size="sm" onclick={fix}>
 						{#snippet leading()}<Wrench size={12} />{/snippet}
-						Fix broken checks
+						{m.git_pr_tab_fix_broken_checks()}
 					</Button>
 				{/if}
 				{#if log}

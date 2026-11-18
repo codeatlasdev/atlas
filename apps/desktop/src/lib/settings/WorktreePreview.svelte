@@ -1,13 +1,14 @@
 <script lang="ts">
 	/** A small tree that shows where the next worktree is created and what its branch is called. */
 	import { worktreePreview, type WorktreePrefs } from "./worktreePreview.ts";
+	import { m } from "#lib/i18n/m.ts";
 
 	let { prefs }: { prefs: WorktreePrefs } = $props();
 	let p = $derived(worktreePreview(prefs));
 	const ROW = 22;
 </script>
 
-<figure aria-label="Where the next worktree is created">
+<figure aria-label={m.settings_terminal_worktree_preview_where_the_next_worktree_is()}>
 	<svg viewBox="0 0 360 {p.path.length * ROW + 6}" role="img" aria-hidden="true">
 		{#each p.path as part, i (i + part)}
 			{@const y = i * ROW + 14}

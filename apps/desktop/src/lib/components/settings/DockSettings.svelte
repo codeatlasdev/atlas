@@ -9,6 +9,7 @@
 	import { IS_MAC, kbd } from "#lib/keys.ts";
 	import Group from "#lib/settings/Group.svelte";
 	import Row from "#lib/settings/Row.svelte";
+	import { m } from "#lib/i18n/m.ts";
 
 	type Field = "summon" | "toggle";
 
@@ -44,25 +45,25 @@
 <svelte:window onkeydowncapture={record} />
 
 <Group
-	title="Agent dock"
-	description="A small pill that floats above your other apps. Press the hotkey from anywhere to message an agent; it works with the Atlas window closed."
+	title={m.settings_general_dock_agent_dock()}
+	description={m.settings_general_dock_a_small_pill_that_floats()}
 >
 	{#if prefs}
 		<Row
 			id="dock-enabled"
-			label="Show the dock"
-			description="Keep the pill on screen while Atlas runs. Hide it any time with the hide key, the pill's hide button or right-click menu, or the tray menu; the choice is remembered."
+			label={m.settings_general_dock_show_the_dock()}
+			description={m.settings_general_dock_keep_the_pill_on_screen()}
 		>
 			<Switch
-				aria-label="Show the dock"
+				aria-label={m.settings_general_dock_show_the_dock()}
 				checked={prefs.enabled}
 				onchange={(enabled) => prefs && save({ ...prefs, enabled })}
 			/>
 		</Row>
 		<Row
 			id="dock-hotkey"
-			label="Message an agent"
-			description="Opens the dock's composer from any app. The text goes to the agent you last used, or the one you @mention."
+			label={m.settings_general_dock_message_an_agent()}
+			description={m.settings_general_dock_opens_the_dock_s_composer()}
 		>
 			<Button
 				size="sm"
@@ -73,14 +74,14 @@
 			</Button>
 			{#if prefs.summon && recording !== "summon"}
 				<Button size="sm" variant="ghost" onclick={() => prefs && save({ ...prefs, summon: "" })}
-					>Clear</Button
+					>{m.settings_general_dock_clear()}</Button
 				>
 			{/if}
 		</Row>
 		<Row
 			id="dock-toggle-hotkey"
-			label="Hide or show the dock"
-			description="Works even while the dock is hidden, so it is always the way back. The tray menu has Show Agent Dock too."
+			label={m.settings_general_dock_hide_or_show_the_dock()}
+			description={m.settings_general_dock_works_even_while_the_dock()}
 		>
 			<Button
 				size="sm"
@@ -91,7 +92,7 @@
 			</Button>
 			{#if prefs.toggle && recording !== "toggle"}
 				<Button size="sm" variant="ghost" onclick={() => prefs && save({ ...prefs, toggle: "" })}
-					>Clear</Button
+					>{m.settings_general_dock_clear()}</Button
 				>
 			{/if}
 		</Row>

@@ -10,6 +10,7 @@
 	import { shell } from "#lib/shell/shell.svelte.ts";
 	import { identities } from "#lib/stores/identity.svelte.ts";
 	import { store } from "#lib/stores/projects.svelte.ts";
+	import { m } from "#lib/i18n/m.ts";
 
 	/** Quick picks for the emoji tab; any emoji can be typed or pasted (⌃⌘Space opens the macOS picker). */
 	const EMOJIS =
@@ -85,7 +86,7 @@
 <Dialog
 	open={!!id}
 	onOpenChange={(o) => !o && (identities.editing = null)}
-	title="Change icon and color"
+	title={m.git_identity_dialog_change_icon_and_color()}
 	description={project?.name}
 	size="md"
 >
@@ -100,14 +101,14 @@
 				{:else if icon?.kind === "image" && logo}<img src={logo.url} alt="" />
 				{:else}<ProjectIcon {id} size={44} />{/if}
 			</span>
-			<div class="swatches" role="radiogroup" aria-label="Color">
+			<div class="swatches" role="radiogroup" aria-label={m.git_identity_dialog_color()}>
 				<button
 					class="sw auto"
 					class:on={hue === undefined}
 					role="radio"
 					aria-checked={hue === undefined}
-					aria-label="Automatic color"
-					title="Automatic"
+					aria-label={m.git_identity_dialog_automatic_color()}
+					title={m.git_identity_dialog_automatic()}
 					style:background={swatch(autoHue)}
 					style:--on={readableOn(swatchHex(autoHue))}
 					onclick={() => (hue = undefined)}
@@ -120,7 +121,7 @@
 						class:on={hue === h}
 						role="radio"
 						aria-checked={hue === h}
-						aria-label="Hue {h}"
+						aria-label={m.git_identity_dialog_hue_h({ h })}
 						style:background={swatch(h)}
 						style:--on={readableOn(swatchHex(h))}
 						onclick={() => (hue = h)}
@@ -135,7 +136,7 @@
 			bind:value={tab}
 			size="sm"
 			fullWidth
-			aria-label="Icon source"
+			aria-label={m.git_identity_dialog_icon_source()}
 			items={[
 				{ value: "emoji", label: "Emoji" },
 				{ value: "icons", label: "Icons" },
@@ -178,7 +179,7 @@
 							{#if nodes[n]}<LucideIcon iconNode={nodes[n]} size={18} />{/if}
 						</button>
 					{/each}
-					{#if names.length && !shown.length}<p class="none">No icon matches “{query}”.</p>{/if}
+					{#if names.length && !shown.length}<p class="none">{m.git_identity_dialog_no_icon_matches_query({ query })}</p>{/if}
 				</div>
 			{:else if logo}
 				<button
@@ -187,21 +188,21 @@
 					onclick={() => (icon = { kind: "image", value: logo.path })}
 				>
 					<img src={logo.url} alt="" />
-					<span><b>Use project logo</b><small class="mono">{logo.path}</small></span>
+					<span><b>{m.git_identity_dialog_use_project_logo()}</b><small class="mono">{logo.path}</small></span>
 				</button>
 			{:else}
 				<p class="none">
-					<ImageIcon size={14} /> No logo found in this repo (favicon, app icon, assets/logo…).
+					<ImageIcon size={14} /> {m.git_identity_dialog_no_logo_found_in_this()}
 				</p>
 			{/if}
 		</div>
 	{/if}
 	{#snippet actions()}
 		<Button variant="ghost" disabled={saving || (!project?.identity && !dirty)} onclick={() => save(null)}>
-			Reset
+			{m.git_identity_dialog_reset()}
 		</Button>
-		<Button variant="ghost" onclick={() => (identities.editing = null)}>Cancel</Button>
-		<Button disabled={saving || !dirty} onclick={() => save()}>Save</Button>
+		<Button variant="ghost" onclick={() => (identities.editing = null)}>{m.common_action_cancel()}</Button>
+		<Button disabled={saving || !dirty} onclick={() => save()}>{m.common_action_save()}</Button>
 	{/snippet}
 </Dialog>
 

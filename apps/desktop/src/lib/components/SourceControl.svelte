@@ -27,6 +27,7 @@
 	import { gitToast } from "#lib/gitToast.ts";
 	import PathText from "./PathText.svelte";
 	import NotRepoState from "./NotRepoState.svelte";
+	import { m } from "#lib/i18n/m.ts";
 
 	/** Porcelain status letter → `.code` class (anything else reads as modified). */
 	const CODE_KIND: Record<string, string> = {
@@ -273,9 +274,9 @@
 			{#if st?.vs_base}<span class="dim">↑{st.vs_base.ahead} ↓{st.vs_base.behind}</span>{/if}
 			<DropdownMenu align="end">
 				{#snippet trigger()}<span class="more"><Ellipsis size={13} /></span>{/snippet}
-				<DropdownMenuItem onclick={() => commit(true)}>Amend last commit</DropdownMenuItem>
-				<DropdownMenuItem onclick={() => run("pull", ["pull", "--rebase"])}>Pull (rebase)</DropdownMenuItem>
-				<DropdownMenuItem onclick={() => run("push", ["push"])}>Push</DropdownMenuItem>
+				<DropdownMenuItem onclick={() => commit(true)}>{m.git_source_control_amend_last_commit()}</DropdownMenuItem>
+				<DropdownMenuItem onclick={() => run("pull", ["pull", "--rebase"])}>{m.git_source_control_pull_rebase()}</DropdownMenuItem>
+				<DropdownMenuItem onclick={() => run("push", ["push"])}>{m.git_source_control_push()}</DropdownMenuItem>
 				<DropdownMenuItem
 					variant="destructive"
 					onclick={async () =>
@@ -285,15 +286,15 @@
 							destructive: true,
 						})) && run("push", ["push", "--force-with-lease"])}
 				>
-					Force push with lease
+					{m.git_source_control_force_push_with_lease()}
 				</DropdownMenuItem>
-				<DropdownMenuItem onclick={() => openDiff(worktreeId)}>Open changes</DropdownMenuItem>
+				<DropdownMenuItem onclick={() => openDiff(worktreeId)}>{m.git_source_control_open_changes()}</DropdownMenuItem>
 			</DropdownMenu>
 		</div>
 
 		{#if st?.operation}
 			<div class="conflict">
-				<b>{st.operation} in progress</b>
+				<b>{m.git_source_control_operation_in_progress({ operation: st.operation })}</b>
 				{#if conflicts.length}<span>{conflicts.length} conflicted file{conflicts.length > 1 ? "s" : ""}</span
 					>{/if}
 				<div class="row-btns">
@@ -304,10 +305,10 @@
 								`Resolve the git ${st!.operation} conflicts in: ${conflicts.map((c) => c.path).join(", ")}. Then stage the files and continue the ${st!.operation}.`,
 							)}
 					>
-						Resolve with AI
+						{m.git_source_control_resolve_with_ai()}
 					</Button>
 					<Button size="sm" variant="ghost" onclick={() => run("abort", [st!.operation!, "--abort"])}
-						>Abort</Button
+						>{m.git_source_control_abort()}</Button
 					>
 				</div>
 			</div>
@@ -330,14 +331,14 @@
 				{#if showInstruction}
 					<input
 						class="instr"
-						aria-label="Instruction for the commit message"
-						placeholder="e.g. mention issue #72"
+						aria-label={m.git_source_control_instruction_for_the_commit_message()}
+						placeholder={m.git_source_control_e_g_mention_issue_72()}
 						bind:value={instruction}
 						onkeydown={(e) =>
 							e.key === "Enter" && (e.preventDefault(), commitMessages.generate(worktreeId, instruction))}
 					/>
 				{:else}
-					<button class="link" onclick={() => (showInstruction = true)}>Add an instruction…</button>
+					<button class="link" onclick={() => (showInstruction = true)}>{m.git_source_control_add_an_instruction()}</button>
 				{/if}
 			{/if}
 			<div class="row-btns">
@@ -349,7 +350,7 @@
 					{#if gen.phase === "running"}
 						<Button size="sm" variant="ghost" onclick={() => commitMessages.cancel(worktreeId)}>
 							{#snippet leading()}<Square size={12} />{/snippet}
-							Stop
+							{m.git_source_control_stop()}
 						</Button>
 					{:else}
 						<Button
@@ -368,7 +369,7 @@
 				{/if}
 				<Button size="sm" variant="ghost" onclick={() => pr.openCreate(worktreeId)}>
 					{#snippet leading()}<GitPullRequest size={12} />{/snippet}
-					PR
+					{m.git_source_control_pr()}
 				</Button>
 			</div>
 		</div>
@@ -376,21 +377,21 @@
 		{#if who}
 			<form
 				class="who"
-				aria-label="Who are you?"
+				aria-label={m.git_source_control_who_are_you()}
 				novalidate
 				onsubmit={(e) => {
 					e.preventDefault();
 					void saveWho();
 				}}
 			>
-				<b>Who is committing?</b>
-				<span class="dim">Git puts a name and an e-mail on every commit. Atlas saves them and commits.</span>
+				<b>{m.git_source_control_who_is_committing()}</b>
+				<span class="dim">{m.git_source_control_git_puts_a_name_and()}</span>
 				<label>
-					Name
-					<input class="instr" autocomplete="name" placeholder="Ada Lovelace" bind:value={who.name} />
+					{m.git_new_worktree_dialog_name()}
+					<input class="instr" autocomplete="name" placeholder={m.git_source_control_ada_lovelace()} bind:value={who.name} />
 				</label>
 				<label>
-					E-mail
+					{m.git_source_control_e_mail()}
 					<input
 						class="instr"
 						type="email"
@@ -400,14 +401,14 @@
 					/>
 				</label>
 				<fieldset>
-					<legend class="dim">Save it for</legend>
+					<legend class="dim">{m.git_source_control_save_it_for()}</legend>
 					<label class="radio">
 						<input type="radio" name="who-scope" value="global" bind:group={who.scope} />
-						All repositories (global)
+						{m.git_source_control_all_repositories_global()}
 					</label>
 					<label class="radio">
 						<input type="radio" name="who-scope" value="local" bind:group={who.scope} />
-						This repository only
+						{m.git_source_control_this_repository_only()}
 					</label>
 				</fieldset>
 				{#if who.error}<span class="err" role="alert">{who.error}</span>{/if}
@@ -416,7 +417,7 @@
 						{#snippet leading()}{#if who?.saving}<Spinner size={12} />{/if}{/snippet}
 						{who.amend ? "Save & amend" : "Save & commit"}
 					</Button>
-					<Button size="sm" variant="ghost" onclick={() => (who = null)}>Cancel</Button>
+					<Button size="sm" variant="ghost" onclick={() => (who = null)}>{m.common_action_cancel()}</Button>
 				</div>
 			</form>
 		{/if}
@@ -426,14 +427,14 @@
 				<span class="ca-selectable">{problem.message}</span>
 				{#if problem.details}
 					<details>
-						<summary>Details</summary>
+						<summary>{m.git_source_control_details()}</summary>
 						<pre class="ca-selectable">{problem.details}</pre>
 					</details>
 				{/if}
 				<Button
 					size="sm"
 					variant="ghost"
-					onclick={() => toAgent(`This git command failed. Fix the cause:\n\n${failure}`)}>Fix with AI</Button
+					onclick={() => toAgent(`This git command failed. Fix the cause:\n\n${failure}`)}>{m.git_source_control_fix_with_ai()}</Button
 				>
 			</div>
 		{/if}
@@ -444,11 +445,11 @@
 					<div class="group">
 						<span>{r.title} <span class="dim">{r.list.length}</span></span>
 						{#if r.group === "staged"}
-							<button title="Unstage all" onclick={() => unstage(r.list.map((e) => e.path))}
+							<button title={m.git_source_control_unstage_all()} onclick={() => unstage(r.list.map((e) => e.path))}
 								><Minus size={12} /></button
 							>
 						{:else if r.group !== "conflicts"}
-							<button title="Stage all" onclick={() => stage(r.list.map((e) => e.path))}
+							<button title={m.git_source_control_stage_all()} onclick={() => stage(r.list.map((e) => e.path))}
 								><Plus size={12} /></button
 							>
 						{/if}
@@ -474,14 +475,14 @@
 						<span class="code {CODE_KIND[code] ?? 'modified'}">{code}</span>
 						<PathText path={e.path} />
 						{#if r.group === "staged"}
-							<button title="Unstage" onclick={(ev) => (ev.stopPropagation(), unstage([e.path]))}
+							<button title={m.git_source_control_unstage()} onclick={(ev) => (ev.stopPropagation(), unstage([e.path]))}
 								><Minus size={12} /></button
 							>
 						{:else if r.group !== "conflicts"}
-							<button title="Discard" onclick={(ev) => (ev.stopPropagation(), discard(e))}
+							<button title={m.git_source_control_discard()} onclick={(ev) => (ev.stopPropagation(), discard(e))}
 								><Undo2 size={12} /></button
 							>
-							<button title="Stage" onclick={(ev) => (ev.stopPropagation(), stage([e.path]))}
+							<button title={m.git_source_control_stage()} onclick={(ev) => (ev.stopPropagation(), stage([e.path]))}
 								><Plus size={12} /></button
 							>
 						{/if}

@@ -17,6 +17,7 @@
 	import { highlightFile } from "./diff/highlight.ts";
 	import { diffRows, fileRowIndex, type DiffRow } from "./diff/diffRows.ts";
 	import VirtualList from "./VirtualList.svelte";
+	import { m } from "#lib/i18n/m.ts";
 
 	let {
 		worktreeId,
@@ -172,27 +173,27 @@
 			<div class="toolbar">
 				<select bind:value={curMode}>
 					<option value="base">vs base{base ? ` (${base})` : ""}</option>
-					<option value="working">Unstaged</option>
-					<option value="staged">Staged</option>
+					<option value="working">{m.git_diff_view_unstaged()}</option>
+					<option value="staged">{m.git_diff_view_staged()}</option>
 				</select>
 				{#if curMode === "base"}
 					<select bind:value={baseRef}>
 						<option value="">{"branch base"}</option>
-						<option value="HEAD">HEAD</option>
+						<option value="HEAD">{m.git_diff_view_head()}</option>
 						{#each commits as c (c)}<option value={c.split(" ")[0]}>{c}</option>{/each}
 					</select>
 				{/if}
 				<select
-					aria-label="Diff layout"
+					aria-label={m.git_diff_view_diff_layout()}
 					value={view}
 					onchange={(e) =>
 						savePref("diff", { view: e.currentTarget.value === "split" ? "split" : "unified" })}
 				>
-					<option value="unified">Unified</option>
-					<option value="split">Split</option>
+					<option value="unified">{m.git_diff_view_unified()}</option>
+					<option value="split">{m.git_diff_view_split()}</option>
 				</select>
-				<label><input type="checkbox" bind:checked={wrap} /> Wrap</label>
-				<button title="Refresh" onclick={load}><RefreshCw size={12} /></button>
+				<label><input type="checkbox" bind:checked={wrap} /> {m.git_diff_view_wrap()}</label>
+				<button title={m.git_diff_view_refresh()} onclick={load}><RefreshCw size={12} /></button>
 				<span class="spacer"></span>
 				{#if open.length}
 					<DropdownMenu align="end">
@@ -206,7 +207,7 @@
 								>{(t.pty && ws.titles[t.pty]) || t.label}</DropdownMenuItem
 							>
 						{/each}
-						<DropdownMenuItem onclick={() => sendTo(null)}>New {agents.defaultAgent} session</DropdownMenuItem
+						<DropdownMenuItem onclick={() => sendTo(null)}>{m.git_diff_view_new_defaultagent_session({ defaultAgent: agents.defaultAgent })}</DropdownMenuItem
 						>
 					</DropdownMenu>
 				{/if}
@@ -254,9 +255,9 @@
 							</header>
 						{:else if r.kind === "binary"}
 							{#if IMAGE.test(r.f.path)}
-								<p class="dim pad">Image changed (open the file to view).</p>
+								<p class="dim pad">{m.git_diff_view_image_changed_open_the_file()}</p>
 							{:else}
-								<p class="dim pad">Binary file</p>
+								<p class="dim pad">{m.git_diff_view_binary_file()}</p>
 							{/if}
 						{:else if r.kind === "hunk"}
 							<div class="hunk-head">

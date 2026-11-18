@@ -6,6 +6,7 @@
 	import FieldInput from "#lib/settings/FieldInput.svelte";
 	import Group from "#lib/settings/Group.svelte";
 	import Row from "#lib/settings/Row.svelte";
+	import { m } from "#lib/i18n/m.ts";
 
 	let info = $state<ShellInfo | null>(null);
 	let busy = $state(false);
@@ -47,12 +48,12 @@
 </script>
 
 {#if error}
-	<Alert severity="error" title="Atlas could not read your shell">{error}</Alert>
+	<Alert severity="error" title={m.settings_terminal_shell_atlas_could_not_read_your()}>{error}</Alert>
 {:else if !info}
-	<div class="muted"><Spinner size={12} /> Reading your shell…</div>
+	<div class="muted"><Spinner size={12} /> {m.settings_terminal_shell_reading_your_shell()}</div>
 {:else}
 	<Group>
-		<Row label="Shell" description="Atlas runs this to learn your PATH.">
+		<Row label={m.settings_terminal_shell_shell()} description={m.settings_terminal_shell_atlas_runs_this_to_learn()}>
 			<div class="select">
 				<Select
 					size="sm"
@@ -72,10 +73,10 @@
 			</div>
 			<Button variant="outlined" size="sm" disabled={busy} onclick={() => set(info?.configured ?? null)}>
 				{#snippet leading()}{#if busy}<Spinner size={13} />{:else}<RefreshCw size={13} />{/if}{/snippet}
-				Reload now
+				{m.settings_terminal_shell_reload_now()}
 			</Button>
 		</Row>
-		<Row label="Other shell" description="Full path to a shell not listed.">
+		<Row label={m.settings_terminal_shell_other_shell()} description={m.settings_terminal_shell_full_path_to_a_shell()}>
 			<form
 				class="other"
 				onsubmit={(e) => {
@@ -85,7 +86,7 @@
 			>
 				<FieldInput
 					class="text mono"
-					aria-label="Other shell"
+					aria-label={m.settings_terminal_shell_other_shell()}
 					placeholder="/usr/local/bin/nu"
 					spellcheck="false"
 					value={custom}
@@ -93,7 +94,7 @@
 					disabled={busy}
 				/>
 				<Button variant="outlined" size="sm" type="submit" disabled={busy || !custom.trim()}
-					>Use this shell</Button
+					>{m.settings_terminal_shell_use_this_shell()}</Button
 				>
 			</form>
 		</Row>
@@ -112,17 +113,16 @@
 	</Group>
 
 	{#if info.probe?.error}
-		<Alert severity="error" title="Your projects only see the basic system PATH">
-			Tools such as bun or node may not be found. Pick another shell, or fix the error below in your shell
-			startup files, then reload.
+		<Alert severity="error" title={m.settings_terminal_shell_your_projects_only_see_the()}>
+			{m.settings_terminal_shell_tools_such_as_bun_or()}
 			<div class="mono err">{info.probe.error}</div>
 		</Alert>
 	{/if}
 
 	<Group>
 		<div class="ghead">
-			<span>Tools your projects can find</span>
-			<span class="muted">{found} of {info.tools.length} found on PATH</span>
+			<span>{m.settings_terminal_shell_tools_your_projects_can_find()}</span>
+			<span class="muted">{m.settings_terminal_shell_found_of_length_found_on({ found, length: info.tools.length })}</span>
 		</div>
 		<div class="tools">
 			{#each info.tools as [tool, path] (tool)}
@@ -141,7 +141,7 @@
 					size={13}
 					style="transform: rotate({showPath ? 90 : 0}deg); transition: transform 150ms"
 				/>
-				Show the full PATH ({info.path.length} folders)
+				{m.settings_terminal_shell_show_the_full_path_length({ length: info.path.length })}
 			</button>
 			{#if showPath}<pre class="mono ca-selectable">{info.path.join("\n")}</pre>{/if}
 		{/if}

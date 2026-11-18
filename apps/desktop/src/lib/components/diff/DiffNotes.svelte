@@ -4,6 +4,7 @@
 	import { kbd, primaryKey } from "#lib/keys.ts";
 	import type { DiffComment } from "#lib/stores/workspace.svelte.ts";
 	import type { Draft } from "./DiffTable.svelte";
+	import { m } from "#lib/i18n/m.ts";
 
 	let {
 		path,
@@ -35,7 +36,7 @@
 		<td colspan={cols}>
 			<div class="note" class:resolved={c.resolved}>
 				<span>{c.text}</span>
-				{#if c.sent}<span class="dim">sent</span>{/if}
+				{#if c.sent}<span class="dim">{m.git_diff_notes_sent()}</span>{/if}
 				<button onclick={() => onresolve(c.id, !c.resolved)}>
 					<Check size={11} />
 					{c.resolved ? "Reopen" : "Resolve"}

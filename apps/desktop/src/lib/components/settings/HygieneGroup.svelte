@@ -17,6 +17,7 @@
 		projectTotal,
 		type HygieneReport,
 	} from "#lib/settings/hygiene.ts";
+	import { m } from "#lib/i18n/m.ts";
 
 	let report = $state<HygieneReport | null>(null);
 	let busy = $state(false);
@@ -55,12 +56,12 @@
 {/if}
 
 <Group
-	title="Hygiene"
-	description="Agents leave browsers, dev servers and caches behind. Fix ends only processes Atlas tagged whose owner is gone, and frees only folders Atlas registered. target/, node_modules and worktrees are never removed."
+	title={m.settings_general_hygiene_group_hygiene()}
+	description={m.settings_general_hygiene_group_agents_leave_browsers_dev_servers()}
 >
 	<Row
 		id="ws-hygiene"
-		label="Orphans and disk"
+		label={m.settings_general_hygiene_group_orphans_and_disk()}
 		description={report
 			? todo
 				? `Fix would ${todo}.`
@@ -68,8 +69,8 @@
 			: "Scan to list orphaned processes and the disk each project holds."}
 	>
 		{#if busy}<Spinner size={12} />{/if}
-		<Button size="sm" variant="glass" disabled={busy} onclick={scan}>Scan</Button>
-		<Button size="sm" variant="destructive" disabled={busy || !todo} onclick={fix}>Fix</Button>
+		<Button size="sm" variant="glass" disabled={busy} onclick={scan}>{m.settings_general_workspace_scan()}</Button>
+		<Button size="sm" variant="destructive" disabled={busy || !todo} onclick={fix}>{m.settings_general_hygiene_group_fix()}</Button>
 	</Row>
 	{#if report}
 		{#each report.orphans as o (o.pid + ":" + o.start)}

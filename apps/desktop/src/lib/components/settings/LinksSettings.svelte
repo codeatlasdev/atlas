@@ -5,16 +5,17 @@
 	import Group from "#lib/settings/Group.svelte";
 	import Row from "#lib/settings/Row.svelte";
 	import { browserPrefs } from "#lib/stores/browser.svelte.ts";
+	import { m } from "#lib/i18n/m.ts";
 </script>
 
-<Group title="Links">
+<Group title={m.settings_general_links_links()}>
 	<Row
 		id="browser"
-		label="Open links in"
+		label={m.settings_general_links_open_links_in()}
 		description={`Where links from services, ports and terminals open. Hold ${IS_MAC ? "⌘" : "Ctrl"} while clicking to use the other browser.`}
 	>
 		<SegmentedControl
-			aria-label="Open links in"
+			aria-label={m.settings_general_links_open_links_in()}
 			size="sm"
 			value={browserPrefs.openIn}
 			items={[

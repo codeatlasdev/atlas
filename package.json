@@ -19,7 +19,7 @@
     "icons:dev": "bun scripts/sh.ts scripts/dev-icons.sh",
     "desktop:build": "bun scripts/sh.ts scripts/setup.sh --quiet && cd crates/atlas-desktop && cargo tauri build --ci",
     "desktop:build:app": "bun scripts/sh.ts scripts/setup.sh --quiet && export APPLE_SIGNING_IDENTITY=\"$(sh scripts/dev-signing-identity.sh)\" && cd crates/atlas-desktop && cargo tauri build --debug --bundles app --ci --config tauri.dev.conf.json",
-    "desktop:build:debug": "bun install --frozen-lockfile --cwd apps/desktop && bun run --cwd apps/desktop build && TAURI_CONFIG=\"$(cat crates/atlas-desktop/tauri.dev.conf.json)\" cargo build -p atlas-desktop --features tauri/custom-protocol && touch target/debug/.atlas-desktop-bundled",
+    "desktop:build:debug": "bun install --frozen-lockfile --cwd apps/desktop && ATLAS_PSEUDO_LOCALE=1 bun run --cwd apps/desktop build && TAURI_CONFIG=\"$(cat crates/atlas-desktop/tauri.dev.conf.json)\" cargo build -p atlas-desktop --features tauri/custom-protocol && touch target/debug/.atlas-desktop-bundled",
     "mobile:check": "bun scripts/sh.ts scripts/mobile-check.sh",
     "mobile:e2e": "bun scripts/mobile-e2e.ts",
     "mobile:watch": "bun scripts/mobile-e2e.ts --watch",

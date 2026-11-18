@@ -20,21 +20,29 @@ pub struct LocaleState {
     /// Which input decided `locale`: `env`, `file`, `posix`, `os` or `default` (an `ATLAS_LANG` override wins over
     /// the saved choice, and the page says so instead of silently ignoring the click).
     pub source: &'static str,
-    /// The tags with a catalog.
+    /// The tags this build offers: `en` and `pt-BR`, plus the pseudo-locale `en-XA` in a debug build only.
     pub supported: &'static [&'static str],
 }
 
-fn state(resolved: lang::Resolved, preference: Option<&'static str>) -> LocaleState {
+fn state(
+    resolved: lang::Resolved,
+    preference: Option<&'static str>,
+    supported: &'static [&'static str],
+) -> LocaleState {
     LocaleState {
         locale: resolved.tag,
         preference,
         source: resolved.source.as_str(),
-        supported: lang::SUPPORTED,
+        supported,
     }
 }
 
 fn current() -> LocaleState {
-    state(lang::resolve_source(), lang::preference())
+    state(
+        lang::resolve_source(),
+        lang::preference(),
+        lang::supported(),
+    )
 }
 
 /// The language to render in, read once by the frontend before its first render.
@@ -68,7 +76,8 @@ mod tests {
             os: &os,
             ..Inputs::default()
         });
-        state(r, file.and_then(lang::normalize))
+        // The release list: the fixture is what a shipped build sends, whatever profile the tests run in.
+        state(r, file.and_then(lang::normalize), lang::supported_in(false))
     }
 
     // Contract: `apps/desktop/src/lib/__fixtures__/locale-state.json` is the REAL serialization of a `locale_get`
@@ -115,8 +124,25 @@ mod tests {
     }
 
     #[test]
-    fn the_supported_list_is_the_catalog_list_of_atlas_core() {
+    fn the_supported_list_is_the_one_of_atlas_core_and_only_a_debug_build_adds_en_xa() {
         assert_eq!(resolved(None, &[]).supported, lang::SUPPORTED);
+        assert_eq!(current().supported, lang::supported());
+        let dev = state(
+            resolve_with(&Inputs {
+                atlas_lang: Some("en-XA"),
+                pseudo: true,
+                ..Inputs::default()
+            }),
+            None,
+            lang::supported_in(true),
+        );
+        assert_eq!((dev.locale, dev.source), ("en-XA", "env"));
+        let json = serde_json::to_value(&dev).unwrap();
+        assert_eq!(
+            json["supported"],
+            serde_json::json!(["en", "pt-BR", "en-XA"])
+        );
+        assert!(!lang::SUPPORTED.contains(&"en-XA"));
     }
 
     #[test]

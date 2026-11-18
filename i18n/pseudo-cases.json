@@ -1,0 +1,43 @@
+[
+	{
+		"en": "Save",
+		"pseudo": "⟦Sávé ~~⟧"
+	},
+	{
+		"en": "Open the project folder now",
+		"pseudo": "⟦Ópéñ thé prójéçt fóldér ñów ~~~~~~~~~⟧"
+	},
+	{
+		"en": "Run `atlas dev` in {name}",
+		"vars": {
+			"name": "ac"
+		},
+		"pseudo": "⟦Rúñ `atlas dev` íñ {name} ~~⟧"
+	},
+	{
+		"en": "Read https://atlas.codeatlas.com.br/docs now",
+		"pseudo": "⟦Réád https://atlas.codeatlas.com.br/docs ñów ~~~⟧"
+	},
+	{
+		"en": "{count} files",
+		"vars": {
+			"count": "3"
+		},
+		"pseudo": "⟦{count} fílés ~~⟧"
+	},
+	{
+		"en": "Escaped \\{braces\\} stay",
+		"pseudo": "⟦Ésçápéd \\{bráçés\\} stáý ~~~~~~⟧"
+	},
+	{
+		"en": "Wrap `a {cmd} b` here",
+		"vars": {
+			"cmd": "x"
+		},
+		"pseudo": "⟦Wráp `a {cmd} b` héré ~~~⟧"
+	},
+	{
+		"en": "Ünïcode and 42 digits: Ação",
+		"pseudo": "⟦Üñïçódé áñd 42 dígíts: Åçãó ~~~~~~~⟧"
+	}
+]

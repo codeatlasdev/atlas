@@ -76,4 +76,4 @@ scripts/sync-labels.sh --prune     # também lista as labels do GitHub que não 
 scripts/test-labels.sh             # verifica o arquivo: nomes únicos, cores de 6 dígitos, descrições de no máximo 100 caracteres
 ```
 
-Mudar uma label significa editar o `.github/labels.yml` em um pull request; um mantenedor roda a sincronização depois do merge. Renomear uma label no arquivo cria uma nova: renomeie primeiro no GitHub (Issues → Labels → Edit) e depois mude o arquivo, para que as issues existentes a mantenham. As notas de release são escritas à mão a partir do [`CHANGELOG.md`](https://github.com/codeatlasdev/atlas/blob/main/CHANGELOG.md), então as labels não as geram.
+Mudar uma label significa editar o `.github/labels.yml` em um pull request; um mantenedor roda a sincronização depois do merge. Renomear uma label no arquivo cria uma nova: renomeie primeiro no GitHub (Issues → Labels → Edit) e depois mude o arquivo, para que as issues existentes a mantenham. As notas de versão são escritas à mão a partir do [`CHANGELOG.md`](https://github.com/codeatlasdev/atlas/blob/main/CHANGELOG.md), então as labels não as geram.

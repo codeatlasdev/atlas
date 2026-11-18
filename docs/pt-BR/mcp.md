@@ -28,7 +28,7 @@ agent ──stdio──▶ atlas mcp ──files──▶ .logs/*.log, .logs/.tu
 | reiniciar / parar / iniciar serviço, executar ação | socket de controle `.logs/atlas.sock` | **sim** |
 | esperar ficar pronto | consulta o arquivo de status | precisa de um heartbeat ativo |
 
-O socket de controle é servido pela TUI, pelo runner em segundo plano (`atlas dev --detach`) e pelo `atlas dev --headless` (não pelo `--ci`); veja [Runtime › Runner e attach](runtime.md#runner-e-attach). É um Unix domain socket com modo `0600` (só o seu usuário pode usá-lo), criado enquanto o lock de singleton do projeto está retido e removido na saída. As requisições passam pelos mesmos caminhos de código do teclado, então as proteções `confirm`, `pause_services` e "já está rodando" se comportam do mesmo jeito.
+O socket de controle é servido pela TUI, pelo runner em segundo plano (`atlas dev --detach`) e pelo `atlas dev --headless` (não pelo `--ci`); veja [Runtime › Runner e anexar](runtime.md#runner-e-anexar). É um Unix domain socket com modo `0600` (só o seu usuário pode usá-lo), criado enquanto o lock de singleton do projeto está retido e removido na saída. As requisições passam pelos mesmos caminhos de código do teclado, então as proteções `confirm`, `pause_services` e "já está rodando" se comportam do mesmo jeito.
 
 Se o `atlas dev` não está rodando, as ferramentas de controle retornam um resultado de erro: `atlas dev is not running; start it in a terminal`. Peça ao usuário que o inicie, ou rode `atlas dev --detach` você mesmo: o comando retorna na hora e deixa os serviços rodando para o usuário se conectar depois com `atlas dev` (`atlas down` os para).
 
@@ -47,7 +47,7 @@ O próprio `atlas dev` aplica a regra (o servidor do socket de controle), então
 this project's atlas.yaml denies agents restart_service on api: ask the developer to run it, or to allow it under `agents:` in atlas.yaml
 ```
 
-Controle mais fino, por ferramenta e por alvo (veja [Configuração](configuration.md), seção `agents`):
+Controle mais fino, por ferramenta e por alvo (veja [Configuração](configuration.md#agents), seção `agents`):
 
 ```yaml
 agents:
@@ -129,7 +129,7 @@ Por serviço: `exit_code` é o último código de saída do processo (`null` enq
 
 `port_conflict` é `{pid, cmd, cwd}` do processo **de fora** que ocupava a porta do serviço no último início (um dev server iniciado fora do atlas), e `null` nos outros casos; `cwd` é `null` onde o sistema operacional não informa (Windows). É um campo próprio, nunca embutido em `note`, e é limpo quando o processo que ocupava a porta sai. Não cabe ao agente encerrar esse processo: avise o usuário, que pode pará-lo ou trocar a porta do serviço (de propósito, não existe ferramenta para encerrá-lo).
 
-Campos de saúde (veja [Saúde e prontidão](configuration.md)), presentes em todas as linhas:
+Campos de saúde (veja [Saúde e prontidão](configuration.md#saúde-e-prontidão)), presentes em todas as linhas:
 
 | Campo | Significado |
 |---|---|
@@ -140,7 +140,7 @@ Campos de saúde (veja [Saúde e prontidão](configuration.md)), presentes em to
 | `unhealthy_lines` | as últimas linhas de saída do serviço (até 20) naquele momento, para você ver o que ele fazia quando travou; `[]` nos outros casos |
 | `memory_rss` | bytes de toda a árvore de processos do serviço, arredondados para MB inteiros; `null` enquanto ele não está rodando |
 | `memory_trend` / `memory_trend_mb_min` | `rising`, `flat` ou `falling` e a velocidade em MB por minuto, com sinal; `null` até existirem cerca de 30 s de amostras |
-| `budget_state` | `ok`, `warn` (acima de `memory_warn`: o serviço fica `degraded` e `probe_error` diz `using 2.1 GB, over memory_warn 1.5 GB`) ou `over` (acima de `max_memory`); veja [Memória](configuration.md) |
+| `budget_state` | `ok`, `warn` (acima de `memory_warn`: o serviço fica `degraded` e `probe_error` diz `using 2.1 GB, over memory_warn 1.5 GB`) ou `over` (acima de `max_memory`); veja [Memória](configuration.md#memória) |
 | `memory_leak` | `leak suspected: +600 MB over 12 reloads` enquanto o RSS só cresce de um reload ou reinício para o seguinte; `null` nos outros casos. A série completa está em [`atlas_metrics`](#atlas_metrics) |
 
 Um serviço travado fica assim (`note` é `unhealthy for 42s: 3 missed probes`):
@@ -152,7 +152,7 @@ Um serviço travado fica assim (`note` é `unhealthy for 42s: 3 missed probes`):
   "unhealthy_lines": ["12:01:04 [stderr] Error: ETIMEDOUT db.internal:5432", "…"] }
 ```
 
-`tunnel` é `null` quando nenhum [túnel SSH](configuration.md) está rodando; caso contrário, o `state` dele usa os mesmos valores dos serviços (`failed` durante a reconexão). A saída do ssh do túnel pode ser lida com `atlas_logs` (`service: "tunnel"`).
+`tunnel` é `null` quando nenhum [túnel SSH](configuration.md#tunnel) está rodando; caso contrário, o `state` dele usa os mesmos valores dos serviços (`failed` durante a reconexão). A saída do ssh do túnel pode ser lida com `atlas_logs` (`service: "tunnel"`).
 
 `state` é um entre `starting`, `running`, `degraded`, `unhealthy`, `failed`, `stopped`, `disabled` (parado por um usuário ou agente, ou deixado de fora da execução) e `suspended` (pausado por uma ação). `unhealthy` = o processo está vivo, mas parou de responder à sonda de saúde (travou; nada saiu, então não é `failed`). `degraded` = ele responde, mas a sonda `ready:` falha, o mesmo erro se repete no log ou ele passou do orçamento `memory_warn`; `probe_error` diz qual deles. `off: true` marca um serviço deixado de fora desta execução por `atlas dev SERVICE…` / `--profile` (estado `disabled`): inicie-o com `atlas_start_service`, que limpa a marca. Quando nada está rodando: `{"running": false, "reason": "no status file", "hint": "atlas dev is not running; start it in a terminal"}`. Outros motivos: o pid está morto, ou o heartbeat tem mais de 120 s.
 
@@ -175,7 +175,7 @@ Memória de um serviço ao longo do tempo ([#131](https://github.com/codeatlasde
 }
 ```
 
-`samples` são pares `[unix_seconds, bytes]`, da mais antiga para a mais nova, uma a cada `interval_s` (5 s), até a última hora (720). Os bytes são de toda a árvore de processos (no macOS, o footprint físico). `trend` é `rising`, `flat` ou `falling` (`null` até cerca de 30 s de dados), `trend_mb_per_min` é a velocidade com sinal, `budget_state` é `ok` / `warn` / `over` em relação a [`memory_warn` / `max_memory`](configuration.md) do serviço, `cycles` são os reloads e reinícios que o monitor de vazamento contou, e `leak` é a suspeita (`null` quando não há). `running` é `false` quando nenhum `atlas dev` ativo é dono do projeto: a série é então o que a última execução deixou, e `state` é `null`. Se nada foi amostrado ainda, a ferramenta retorna o erro `no metrics yet: …`.
+`samples` são pares `[unix_seconds, bytes]`, da mais antiga para a mais nova, uma a cada `interval_s` (5 s), até a última hora (720). Os bytes são de toda a árvore de processos (no macOS, o footprint físico). `trend` é `rising`, `flat` ou `falling` (`null` até cerca de 30 s de dados), `trend_mb_per_min` é a velocidade com sinal, `budget_state` é `ok` / `warn` / `over` em relação a [`memory_warn` / `max_memory`](configuration.md#memória) do serviço, `cycles` são os reloads e reinícios que o monitor de vazamento contou, e `leak` é a suspeita (`null` quando não há). `running` é `false` quando nenhum `atlas dev` ativo é dono do projeto: a série é então o que a última execução deixou, e `state` é `null`. Se nada foi amostrado ainda, a ferramenta retorna o erro `no metrics yet: …`.
 
 ### `atlas_logs`
 
@@ -210,7 +210,7 @@ Resultado vazio: `(no matches)`.
 
 ### `atlas_config`
 
-Resumo do `atlas.yaml` combinado com o `atlas.local.yaml`, para o agente aprender os nomes de serviço e as chaves/rótulos de ação válidos. Sem `atlas.yaml`, resume a stack [detectada](configuration.md) e diz isso em `source` (`"file"` ou `"detected"`). Falha com a mensagem de validação se existe um `atlas.yaml` incorreto.
+Resumo do `atlas.yaml` combinado com o `atlas.local.yaml`, para o agente aprender os nomes de serviço e as chaves/rótulos de ação válidos. Sem `atlas.yaml`, resume a stack [detectada](configuration.md#sem-atlasyaml-config-detectada) e diz isso em `source` (`"file"` ou `"detected"`). Falha com a mensagem de validação se existe um `atlas.yaml` incorreto.
 
 ```json
 {
@@ -233,7 +233,7 @@ Resumo do `atlas.yaml` combinado com o `atlas.local.yaml`, para o agente aprende
 Argumento: `service` (nome exatamente como no `atlas.yaml`; nomes desconhecidos retornam um erro que lista os conhecidos).
 
 - **restart**: para e depois inicia. Também serve para iniciar um serviço parado ou com falha.
-- **stop**: para o serviço e o marca como `disabled`: as verificações de saúde o ignoram e ele nunca é reiniciado automaticamente.
+- **stop**: para o serviço e o marca como `disabled`: os health checks o ignoram e ele nunca é reiniciado automaticamente.
 - **start**: traz de volta um serviço parado, desabilitado ou com falha (mesmo mecanismo do restart).
 
 As três retornam assim que a requisição é aceita, não quando o serviço está de pé:
@@ -295,7 +295,7 @@ Resultados:
 
 ### `atlas_heavy_status`
 
-Só leitura e vale para a máquina inteira (não precisa de projeto nem de `atlas dev`): a fila de jobs pesados compartilhada por todos os projetos, worktrees e agentes desta máquina ([`atlas run --heavy`](cli.md)).
+Só leitura e vale para a máquina inteira (não precisa de projeto nem de `atlas dev`): a fila de jobs pesados compartilhada por todos os projetos, worktrees e agentes desta máquina ([`atlas run --heavy`](cli.md#atlas-run---heavy)).
 
 ```json
 { "slots": 2, "load": 3.1, "mem_available_pct": 42,
@@ -309,7 +309,7 @@ Só leitura e vale para a máquina inteira (não precisa de projeto nem de `atla
 
 ### `atlas_last_result`
 
-Só leitura e vale para a máquina inteira (sem projeto, sem `atlas dev`): o último resultado de uma tarefa, ação ou comando que passou pelo [cache de tarefas](cli.md), não importa quem o rodou. `name` é o rótulo da ação, o `--label` ou a linha de comando exata; `project` restringe a um projeto (o nome da pasta da raiz dele). Um nome desconhecido é um erro.
+Só leitura e vale para a máquina inteira (sem projeto, sem `atlas dev`): o último resultado de uma tarefa, ação ou comando que passou pelo [cache de tarefas](cli.md#cache-de-tarefas-atlas-run---cache-atlas-cache), não importa quem o rodou. `name` é o rótulo da ação, o `--label` ou a linha de comando exata; `project` restringe a um projeto (o nome da pasta da raiz dele). Um nome desconhecido é um erro.
 
 ```json
 { "name": "test", "command": "cargo test", "project": "atlas", "key": "9f2c…64 hex…",
@@ -332,15 +332,15 @@ Só leitura e não inicia nada: o que uma mudança afeta, para o agente rodar as
 
 `source` diz qual grafo respondeu, nesta ordem:
 
-1. `command`: o plugin que o projeto declara como [`affected: { command }`](configuration.md) no `atlas.yaml`. Ele roda na raiz do projeto, recebe os arquivos alterados no stdin (um por linha) e imprime JSON `{tasks, tests, routes, builds}` (toda chave é opcional). Um projeto que já tem um grafo de testes ou um script de impacto em rotas o conecta aqui (`bun scripts/affected.ts --json`). Um plugin que falha é um erro com o stderr dele, nunca um retorno silencioso a outro grafo.
-2. `rules`: o grafo declarado inline como [`affected: { rules }`](configuration.md): globs para tarefas, testes, rotas e builds.
+1. `command`: o plugin que o projeto declara como [`affected: { command }`](configuration.md#affected) no `atlas.yaml`. Ele roda na raiz do projeto, recebe os arquivos alterados no stdin (um por linha) e imprime JSON `{tasks, tests, routes, builds}` (toda chave é opcional). Um projeto que já tem um grafo de testes ou um script de impacto em rotas o conecta aqui (`bun scripts/affected.ts --json`). Um plugin que falha é um erro com o stderr dele, nunca um retorno silencioso a outro grafo.
+2. `rules`: o grafo declarado inline como [`affected: { rules }`](configuration.md#affected): globs para tarefas, testes, rotas e builds.
 3. `cache_inputs` (alternativa, sem bloco `affected:`): as ações do `atlas.yaml` com um bloco `cache:` cujos globs de `inputs` casam com um arquivo alterado, em `tasks` pelo rótulo. `tests`, `routes` e `builds` ficam vazios porque nada os declara.
 
 Listas vazias significam que nada do que foi declarado é afetado. Este repositório usa a forma de plugin: `affected: { command: bun scripts/check-changed.ts --json --stdin }` retorna os comandos de verificação em `tests` e os crates alterados mais os dependentes deles em `builds`.
 
 ### `atlas_estimate`
 
-Só leitura e não executa nada: quanto custaria rodar uma tarefa agora. Passe `action` (uma ação do `atlas.yaml` por rótulo, sem diferenciar maiúsculas de minúsculas, ou por tecla) ou `command` com `label`, `inputs`, `outputs`, `env` e `tools` opcionais, iguais às flags de [`atlas run --cache`](cli.md), para que a chave seja a mesma.
+Só leitura e não executa nada: quanto custaria rodar uma tarefa agora. Passe `action` (uma ação do `atlas.yaml` por rótulo, sem diferenciar maiúsculas de minúsculas, ou por tecla) ou `command` com `label`, `inputs`, `outputs`, `env` e `tools` opcionais, iguais às flags de [`atlas run --cache`](cli.md#cache-de-tarefas-atlas-run---cache-atlas-cache), para que a chave seja a mesma.
 
 ```json
 { "name": "Run checks", "command": "cargo test", "project": "atlas",
@@ -350,7 +350,7 @@ Só leitura e não executa nada: quanto custaria rodar uma tarefa agora. Passe `
   "queue": { "slots": 3, "running": 1, "queued": 0, "load": 2.4, "mem_available_pct": 61, "wait_eta_s": 0, "label": "Run checks" } }
 ```
 
-- **Duração.** `median_ms` e `p90_ms` (nearest rank) das execuções que realmente aconteceram: os misses registrados no cache de tarefas para aquele label ou linha de comando (as últimas 64 execuções que o cache viu); na falta deles, o histórico da [fila heavy](cli.md) para o mesmo label (últimas 8 execuções, em segundos inteiros; não é combinado com o do cache, porque uma ação `--heavy` com cache é gravada nos dois para a mesma execução). Hits no cache não são amostras (eles repetem a duração original). Sem histórico, `runs` é `0` e as durações são `null`: nenhum número é inventado.
+- **Duração.** `median_ms` e `p90_ms` (nearest rank) das execuções que realmente aconteceram: os misses registrados no cache de tarefas para aquele label ou linha de comando (as últimas 64 execuções que o cache viu); na falta deles, o histórico da [fila heavy](cli.md#atlas-run---heavy) para o mesmo label (últimas 8 execuções, em segundos inteiros; não é combinado com o do cache, porque uma ação `--heavy` com cache é gravada nos dois para a mesma execução). Hits no cache não são amostras (eles repetem a duração original). Sem histórico, `runs` é `0` e as durações são `null`: nenhum número é inventado.
 - **`would_hit`.** A chave de cache é calculada a partir dos bytes que estão em disco agora (edições não commitadas incluídas) e consultada sem marcar a entrada como usada: `true` significa que existe uma execução idêntica salva, então `run_with` a devolve em milissegundos de qualquer worktree e `saved_ms` é o que isso economiza. Editar um input muda o valor para `false`. `key_error` diz por que não foi possível calcular uma chave (um glob incorreto, uma ferramenta sem `--version`).
 - **`queue`.** A fila heavy da máquina inteira: slots, jobs em execução e em espera, carga de 5 minutos, percentual de memória livre e `wait_eta_s`, os segundos até um slot liberar para um novo job (`0` com um slot livre, `null` quando o histórico não permite saber). Com muitos jobs à frente, rode antes as verificações baratas.
 - Uma ação sem bloco `cache:` tem durações, mas não tem chave e `run_with` é `null`; `note` diz como torná-la cacheável.
@@ -465,7 +465,7 @@ printf '%s\n' \
 | `atlas_status` diz `running: false`, mas a TUI está aberta | O agente está olhando um diretório de projeto diferente do da TUI. Compare o `--dir`/`cwd`. |
 | `atlas dev is not running; start it in a terminal` | Inicie o `atlas dev` (ou `atlas dev --detach` / `--headless`) para esse projeto. O `--ci` não serve o controle. |
 | Chamada de controle: `timed out waiting for atlas dev` | O loop de execução não respondeu em 30 s (está travado ou encerrando). |
-| `atlas_wait_ready` expira com `degraded` / `unhealthy` | O serviço está de pé, mas inutilizável (`degraded`: a sonda `ready:` falha ou um erro se repete) ou travado (`unhealthy`). A mensagem de timeout nomeia o motivo; veja [Saúde e prontidão](configuration.md). |
+| `atlas_wait_ready` expira com `degraded` / `unhealthy` | O serviço está de pé, mas inutilizável (`degraded`: a sonda `ready:` falha ou um erro se repete) ou travado (`unhealthy`). A mensagem de timeout nomeia o motivo; veja [Saúde e prontidão](configuration.md#saúde-e-prontidão). |
 | `atlas_wait_ready` cortado após 30 s | O timeout do cliente é menor que `timeout_s`; veja [Timeouts do cliente](#atlas_wait_ready). |
 | `unknown service 'x'. Known services: …` | Use os nomes de `atlas_config`. |
 | `no log file for service 'x'` | O serviço ainda não produziu log. Serviços sem comando nunca têm um. |

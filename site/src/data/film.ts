@@ -2,6 +2,8 @@
 // `bun studio publish atlas-1-0` writes public/media/film-chapters.json next to the video; do not edit the values here.
 // The helpers below are the pure functions of that data; the player component keeps only state and DOM.
 import film from "../../public/media/film-chapters.json";
+import type { Locale } from "../lib/i18n";
+import { m } from "../lib/paraglide/messages.js";
 
 export const FILM_DURATION: number = film.duration;
 export const THUMB: { step: number; w: number; h: number; cols: number } = film.thumb;
@@ -16,11 +18,10 @@ export const filmClock = (s: number) => {
 	return `${Math.floor(n / 60)}:${String(n % 60).padStart(2, "0")}`;
 };
 
-/** "1 minute 18 seconds": the spoken form, for aria-labels and alt text. */
-export const filmWords = (s: number) => {
-	const n = filmSeconds(s), m = Math.floor(n / 60), r = n % 60;
-	const part = (v: number, unit: string) => `${v} ${unit}${v === 1 ? "" : "s"}`;
-	return [m && part(m, "minute"), (r || !m) && part(r, "second")].filter(Boolean).join(" ");
+/** "1 minute 18 seconds": the spoken form, for aria-labels and alt text. One message holds the plural of each part and the zero cases, which belong to the language; `locale` is for tests and pages that render both languages. */
+export const filmWords = (s: number, locale?: Locale) => {
+	const n = filmSeconds(s);
+	return m.islands_film_duration({ minutes: Math.floor(n / 60), seconds: n % 60 }, locale && { locale });
 };
 
 /** `m:ss` of the playhead: floored, so the clock never shows the end before the picture does. */

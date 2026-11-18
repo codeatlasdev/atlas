@@ -1,6 +1,6 @@
 {
 	"workbench_browser_address_placeholder": "Pesquisar ou digitar endereço ({key})",
-	"workbench_browser_design_mode": "Modo de design: escolha um elemento para o agente",
+	"workbench_browser_design_mode": "Modo design: escolha um elemento para o agente",
 	"workbench_browser_empty_hint": "Digite um endereço ou uma pesquisa acima ({key}).",
 	"workbench_browser_failure_host": "Não foi possível encontrar esse endereço. Confira se há erros de digitação.",
 	"workbench_browser_failure_offline": "Sem conexão com a internet. Verifique a rede e recarregue.",

@@ -32,7 +32,7 @@
 	"workbench_editor_current": "atual",
 	"workbench_editor_encoding_utf8_bom": "UTF-8 com BOM",
 	"workbench_editor_eol_mixed": "Misto",
-	"workbench_editor_eol_mixed_title": "Finais de linha mistos: selecione para unificar",
+	"workbench_editor_eol_mixed_title": "Fim de linha misto: selecione para unificar",
 	"workbench_editor_errors": [
 		{
 			"declarations": [
@@ -81,7 +81,7 @@
 	"workbench_editor_find_replaces_nothing": "Substitui por nada",
 	"workbench_editor_find_select_all": "Selecionar todas as correspondências",
 	"workbench_editor_find_toggle_replace": "Alternar substituição",
-	"workbench_editor_find_whole_word": "Corresponder palavra inteira",
+	"workbench_editor_find_whole_word": "Palavra inteira",
 	"workbench_editor_goto_line": "Ir para a linha",
 	"workbench_editor_huge_file": "Arquivo enorme",
 	"workbench_editor_indent_detected": "Indentação (detectada no arquivo): selecione para alterar",
@@ -95,7 +95,7 @@
 	"workbench_editor_lang_shell_script": "Script de shell",
 	"workbench_editor_language_server": "Servidor de linguagem",
 	"workbench_editor_large_file": "Arquivo grande",
-	"workbench_editor_line_ending": "Final de linha",
+	"workbench_editor_line_ending": "Fim de linha",
 	"workbench_editor_not_saved_changed": "Não salvo: {path} mudou no disco. Recarregue o arquivo e salve de novo.",
 	"workbench_editor_not_saved_unreadable": "Não salvo: {path} mudou no disco e não pode ser lido.",
 	"workbench_editor_notice_huge": "Arquivo enorme: o realce de sintaxe e os recursos de linguagem estão desativados para o editor continuar rápido.",
@@ -143,7 +143,7 @@
 	],
 	"workbench_editor_show_problems": "Mostrar problemas",
 	"workbench_editor_status_bar": "Status do editor",
-	"workbench_editor_sticky_scopes": "Escopos que envolvem a linha",
+	"workbench_editor_sticky_scopes": "Escopos que contêm a linha",
 	"workbench_editor_tier_title": "Alguns recursos do editor estão desativados para manter este arquivo rápido",
 	"workbench_editor_tip": "{label} ({key})",
 	"workbench_editor_warnings": [

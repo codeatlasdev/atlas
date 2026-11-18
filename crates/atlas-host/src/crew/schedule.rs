@@ -109,6 +109,7 @@ pub(crate) fn tick(hub: &std::sync::Arc<Hub>, now_s: u64) {
                 let task = crate::crew::store::Task::new("routine", &routine.prompt);
                 match hub.crew.store.append_task(&crewmate.id, &task) {
                     Ok(()) => fired.push((i, task)),
+                    // i18n-ignore: log
                     Err(e) => eprintln!(
                         "atlas crew: crewmate {} task {}: routine {} due but the task cannot be stored: {e}",
                         crewmate.id, task.id, routine.id
@@ -139,6 +140,7 @@ pub(crate) fn tick(hub: &std::sync::Arc<Hub>, now_s: u64) {
                 r.last_run = Some(now_s);
             }
             if let Err(e) = hub.crew.store.save_crewmate(&fresh) {
+                // i18n-ignore: log
                 eprintln!(
                     "atlas crew: crewmate {}: cannot save the routines' last_run: {e}",
                     crewmate.id

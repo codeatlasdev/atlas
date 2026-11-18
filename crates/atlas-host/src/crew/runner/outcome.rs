@@ -241,6 +241,7 @@ pub(super) fn finish_task(
         tokio::spawn(async move {
             let expired = crate::crew::push::notify(&tokens, "task_done").await;
             if !expired.is_empty() {
+                // i18n-ignore: log
                 eprintln!("atlas crew: push: {} expired token(s)", expired.len());
             }
         });
@@ -259,6 +260,7 @@ pub(super) fn persist(hub: &Hub, crewmate_id: &str, task: &Task) -> Result<(), S
                 "cannot record task state to {}: {e}",
                 hub.crew.store.tasks_path(crewmate_id).display()
             );
+            // i18n-ignore: log
             eprintln!(
                 "atlas crew: crewmate {crewmate_id} task {}: {msg} (state {:?})",
                 task.id, task.state

@@ -292,7 +292,8 @@ jobs:
           # The release's symbols: the .dSYM bundles, named by the build's UUID inside (`atlas version` prints it).
           if ls -d target/aarch64-apple-darwin/release/*.dSYM >/dev/null 2>&1; then
             (cd target/aarch64-apple-darwin/release && tar czf "$OLDPWD/dist/atlas-${ATLAS_VERSION}-aarch64-apple-darwin-symbols.tar.gz" ./*.dSYM)
-            shasum -a 256 "dist/atlas-${ATLAS_VERSION}-aarch64-apple-darwin-symbols.tar.gz" > "dist/atlas-${ATLAS_VERSION}-aarch64-apple-darwin-symbols.tar.gz.sha256"
+            # From inside dist/: the .sha256 names the file, not dist/<file> (`shasum -c` runs next to the file).
+            (cd dist && shasum -a 256 "atlas-${ATLAS_VERSION}-aarch64-apple-darwin-symbols.tar.gz" > "atlas-${ATLAS_VERSION}-aarch64-apple-darwin-symbols.tar.gz.sha256")
             echo "symbols archive:"; tar tzf "dist/atlas-${ATLAS_VERSION}-aarch64-apple-darwin-symbols.tar.gz" | head -8
             ls -l dist/ "${BUNDLE:-target/aarch64-apple-darwin/release/bundle}"/dmg/*.dmg 2>/dev/null || true
           else

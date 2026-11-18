@@ -1,9 +1,9 @@
-// The ratchets: scanners of existing offenders whose per-file count may only go down (i18n/hardcoded-baseline.json).
+// The ratchets: scanners of existing offenders whose per-file count may only go down (i18n/hardcoded-baseline.jsonl).
 // Each one is a definition (where it looks, what a scan returns); `runRatchet` is what the checkers call and
 // `scanRatchet` what `i18n:fix` uses to shrink the baseline.
 import { existsSync } from "node:fs";
 import { join } from "node:path";
-import { type Found, type Lang, type RatchetText, type Violation, ratchet, readBaseline } from "./baseline.ts";
+import { type Found, type Lang, type RatchetText, type Violation, parseBaseline, ratchet, readBaseline, staleEntries } from "./baseline.ts";
 import { showAt } from "../lib/base.ts";
 import { PLATFORM, SHORTCUT, lineViolations, scanLines } from "./hardcoded/lines.ts";
 import { RUST_DIRS, isTestFile, scanRust, scanRustSource } from "./hardcoded/rust.ts";
@@ -176,7 +176,7 @@ function baselineGrowth(ctx: Ctx, lang: Lang): Finding[] {
 	if (!base || text === undefined) return [];
 	let before: Record<string, number> | undefined;
 	try {
-		before = JSON.parse(text)?.[lang];
+		before = parseBaseline(text)[lang];
 	} catch {
 		return [];
 	}
@@ -198,5 +198,5 @@ export function runRatchet(ctx: Ctx, def: RatchetDef): Finding[] {
 	if (prefixes.length === 0) return [];
 	const unreadable = unparsable.map((u): Finding => ({ rule: def.rule, severity: "error", file: u.file, message: `cannot parse for the ${def.lang} scan: ${u.message}` }));
 	if (!ctx.base) return [...unreadable, ...ratchet(ctx.root, def, found, prefixes)];
-	return [...unreadable, ...newOffenders(ctx, def, found), ...baselineGrowth(ctx, def.lang)];
+	return [...unreadable, ...newOffenders(ctx, def, found), ...baselineGrowth(ctx, def.lang), ...staleEntries(ctx.root, def, found, prefixes)];
 }

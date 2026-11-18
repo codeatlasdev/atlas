@@ -1,6 +1,6 @@
 //! Embeds the messages this crate serves: `i18n/messages/<area>/<locale>.json` for every `common*`
-//! area and every area `i18n/surfaces.json` lists under `surfaces.rust.areas`. Nothing is
-//! generated or committed; a message that does not parse fails the BUILD, naming the file and key.
+//! area and every area whose `area.json` says `"surface": "rust"`. Nothing is generated or committed;
+//! a message that does not parse fails the BUILD, naming the file and key.
 
 use std::collections::BTreeMap;
 use std::fmt::Write as _;
@@ -12,28 +12,29 @@ mod message;
 
 fn main() {
     let root: PathBuf = Path::new(env!("CARGO_MANIFEST_DIR")).join("../../i18n");
-    println!("cargo:rerun-if-changed={}", root.join("messages").display());
-    println!(
-        "cargo:rerun-if-changed={}",
-        root.join("surfaces.json").display()
-    );
-    let surfaces: serde_json::Value = serde_json::from_str(
-        &std::fs::read_to_string(root.join("surfaces.json")).expect("i18n/surfaces.json"),
-    )
-    .expect("i18n/surfaces.json is JSON");
-    let mut areas: Vec<String> = surfaces["surfaces"]["rust"]["areas"]
-        .as_array()
-        .expect("surfaces.rust.areas")
-        .iter()
-        .map(|a| a.as_str().expect("an area name").to_owned())
-        .collect();
     let messages = root.join("messages");
+    println!("cargo:rerun-if-changed={}", messages.display());
+    let mut areas: Vec<String> = Vec::new();
     for entry in std::fs::read_dir(&messages)
         .expect("i18n/messages")
         .flatten()
     {
         let name = entry.file_name().to_string_lossy().into_owned();
-        if entry.path().is_dir() && (name == "common" || name.starts_with("common_")) {
+        if !entry.path().is_dir() {
+            continue;
+        }
+        if name == "common" || name.starts_with("common_") {
+            areas.push(name);
+            continue;
+        }
+        // The area says which surface consumes it (an area without the file is `bun run i18n:check`'s finding).
+        let area_file = entry.path().join("area.json");
+        let Ok(text) = std::fs::read_to_string(&area_file) else {
+            continue;
+        };
+        let value: serde_json::Value =
+            serde_json::from_str(&text).unwrap_or_else(|e| panic!("{}: {e}", area_file.display()));
+        if value["surface"] == "rust" {
             areas.push(name);
         }
     }
@@ -51,7 +52,9 @@ fn main() {
             let Some(stem) = path.file_stem().map(|s| s.to_string_lossy().into_owned()) else {
                 continue;
             };
-            if path.extension().is_none_or(|e| e != "json") || stem == "meta" || stem == "lock" {
+            if path.extension().is_none_or(|e| e != "json")
+                || matches!(stem.as_str(), "meta" | "lock" | "area")
+            {
                 continue;
             }
             let text = std::fs::read_to_string(&path).expect("a catalog file");

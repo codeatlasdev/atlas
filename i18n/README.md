@@ -12,12 +12,13 @@ i18n/
     en.json               { "<area>_<name>": "English" | [variants] }
     pt-BR.json            the same keys, translated (one file per locale)
     meta.json             { "<key>": "description" | { "description", "platform", "distinct", "maxLength", "sentence" } }
+    area.json             { "surface": "desktop" | "rust" | "site", "generated": "<command>" }   (not in common*; "generated" only for a generated area)
     lock.json             { "pt-BR": { "<key>": "<12 hex of sha256 of the English value>" } }   (written by the tools only)
-  surfaces.json           which surface consumes which areas, the size budget, the generated areas
+  surfaces.json           the size budget and the output of each surface (no area lists)
   locales.json            the languages and their tier (source, required, community), with owners
   glossary.yaml           product terms: never translated, fixed renderings, gender, advice, per-platform nouns
   style/                  the writing guide and flagged-terms.yaml (the writing lint)
-  hardcoded-baseline.json today's offenders per file for each ratchet; it only shrinks
+  hardcoded-baseline.jsonl today's offenders per file for each ratchet, one line each; it only shrinks
 ```
 
 **Every key of an area starts with `<area>_`** (`settings_display_language` is in `messages/settings/`), and the longest
@@ -38,20 +39,27 @@ A message references another with `{@common_os_trash}`; the reference is **inlin
 message that references a plural one gets both selectors. References may only reach a common area or an area the same
 surfaces consume (`dangling-ref`).
 
-### surfaces.json
+### area.json and surfaces.json
 
-```json
-{ "budget": { "keys": 150, "bytes": 24576 }, "generatedAreas": { "cli_config": "UPDATE_FIXTURES=1 cargo test -p atlas-cli cli_i18n" },
-  "surfaces": { "desktop": { "areas": ["os", "settings"], "paraglide": "apps/desktop/.i18n" },
-                "rust":    { "areas": ["cli_chrome", "cli_config", "config"], "rust": "crates" } } }
+```jsonc
+// i18n/messages/settings/area.json                 // i18n/messages/cli_config/area.json
+{ "surface": "desktop" }                            { "generated": "UPDATE_FIXTURES=1 cargo test -p atlas-cli cli_i18n", "surface": "rust" }
+
+// i18n/surfaces.json: per-surface config only
+{ "budget": { "keys": 150, "bytes": 24576 },
+  "surfaces": { "desktop": { "paraglide": "apps/desktop/.i18n" }, "rust": { "rust": "crates" }, "site": { "paraglide": "site/.i18n" } } }
 ```
 
-A surface consumes the three common areas plus the areas it lists, explicitly (no prefix convention); an area no surface
-lists is an error (`unconsumed-area`). A key's usage is searched only in the sources of the surfaces that consume its
+An area declares its own surface in its own folder, so no file lists areas: two batches that add areas never touch the
+same line (this is why every batch PR used to conflict on one `"areas": [...]` line). A surface consumes the three
+common areas plus the areas whose `area.json` names it, explicitly (no prefix convention). An area with no `area.json`,
+a malformed one, or one naming a surface `surfaces.json` does not define is an error (`area-surface`), and so is a
+surfaces.json that still lists areas (it points at `bun run i18n:migrate-registry`). `bun run i18n:add --new-area
+--surface <s>`, `i18n:mv --new-area` and `i18n:extract` write the file. A key's usage is searched only in the sources of the surfaces that consume its
 area (`unused`: a key none of them references; `undefined-key`: a `m.x(` or `t!("x")` that names no key). The budget is
 per area file: over 150 keys or 24 KB fails `budget` and the message names the sub-areas to split into, by key prefix.
-`generatedAreas` marks the areas whose English is written by a test (the clap help): checks point at that command rather
-than at hand editing.
+`"generated"` marks an area whose English is written by a test (the clap help; the test writes its `area.json` too): checks
+point at that command rather than at hand editing.
 
 ### Why meta.json, and why nothing generated is committed
 
@@ -107,10 +115,10 @@ command that fixes it. `warn` is for the reviewer and `info` is hidden unless as
 | `dnt`, `glossary`, `pt-pt` | Do-not-translate terms kept verbatim (error), glossary renderings (warning), pt-PT words in pt-BR (error). Waive one hit in the key's description: `i18n-allow dnt:log`. |
 | `shortcut`, `platform-noun` | A glyph or `Cmd+` chord in a value (use `{key}`); `Mac`, `Finder`, `Windows`, `Explorer` in a message with no `os` select, unless meta `platform` says it is about one platform. |
 | `dup-common`, `dup-value`, `common-sentence` | See above. |
-| `budget`, `unconsumed-area`, `dangling-ref`, `generate` | Area size; an area nobody consumes; a reference that does not resolve, loops or leaves the surfaces; a message a generator cannot express. |
+| `budget`, `area-surface`, `dangling-ref`, `generate` | Area size; an area with no, an unknown or a malformed surface declaration; a reference that does not resolve, loops or leaves the surfaces; a message a generator cannot express. |
 | `unused`, `undefined-key`, `unconsumed-key` | A key nobody consuming it uses (common*, generated and `cli_*` areas exempt); a reference in a source to a key that is not there, or is in an area the surface does not consume. |
 | `supported-sync` | `i18n/locales.json` equals `SUPPORTED` in `crates/atlas-core/src/lang.rs`, `CFBundleLocalizations` of `crates/atlas-desktop/Info.plist` and the `locales` of each Paraglide project. |
-| `format`, `lock`, `config`, `catalog` | Files sorted, one key per line, LF; locks canonical; unknown locale files and a malformed surfaces.json; unreadable JSON or a malformed variants object. |
+| `format`, `lock`, `config`, `catalog` | Files sorted, one key per line, LF; locks canonical; unknown locale files and a malformed surfaces.json (or one that still lists areas); unreadable JSON or a malformed variants object. |
 | `hardcoded`, `shortcut`, `platform-check`, `writing-*` | The ratchets below. |
 | `docs-frontmatter`, `docs-outdated`, `docs-structure`, `docs-missing` | Translated docs, below. |
 
@@ -135,12 +143,23 @@ platform sniffing, flagged phrases in existing prose). It judges the **change**,
   `file:line`. Moving, reordering or re-wrapping old code adds nothing; one more copy of a string that was already there
   does. A new file starts at zero. Files the change does not touch are not looked at at all, so when main adds screens
   there is nothing to re-snapshot, and an old file with a hundred offenders never fails someone else's PR.
-- **`hardcoded-baseline.json`** is then the shrinking floor: today's count per file, kept by `bun run i18n:fix`, which
-  only lowers it (`--baseline` starts a section that does not exist yet). A change that **raises** a count fails with
-  `baseline-grew` ("fix the offenders, do not snapshot them"). A baseline that is lower or higher than reality for a
-  file does not fail in diff mode.
+- **`hardcoded-baseline.jsonl`** is then the shrinking floor: today's count per file, kept by `bun run i18n:fix`, which
+  only lowers it (`--baseline` starts a section that does not exist yet). A local merge does not conflict on it
+  (`merge=union` in `.gitattributes`; GitHub's own merge ignores the attribute, and the merge train merges `origin/main`
+  locally): one self-contained line `{"ratchet","file","count"}` per file, a branch only ever **lowers** a line and
+  never deletes one (a fixed file keeps its line at 0, because a union merge brings a deleted line back but keeps both
+  versions of a lowered one), and the reader takes the **smaller** count of a path that appears twice. After a merge the
+  file may hold duplicates (the check does not mind, `i18n:fix` tidies them), and two branches that lowered the same file
+  leave the count above the real one: the check reports it (see below), `i18n:fix` repairs it.
+  `i18n:fix --prune-baseline` deletes the lines at 0 but keeps one per ratchet (a ratchet with no line has no section,
+  and a new section is not checked for growth); run it alone, on a branch that does nothing else. A change that **raises** a count fails with
+  `baseline-grew` ("fix the offenders, do not snapshot them"). A baseline **above** reality for a
+  file (two branches lowered the same file, a file renamed) fails in every mode, touched or not, because a count above
+  reality lets offenders come back unnoticed (`<ratchet>-baseline`: run `bun run i18n:fix`). Real offenders **above**
+  the baseline in a file the change did not touch are not looked at in diff mode.
 - **Without a diff base** (not a git checkout, no `origin/main` or `main`, or CI with no base) the committed baseline is
-  the judge, as it was before: a file may not exceed its count, and a count above reality is an error that `i18n:fix` clears.
+  the judge, as it was before: a file may not exceed its count (and a count above reality is an error that `i18n:fix`
+  clears, as in diff mode).
 
 `bun run i18n:check` says which mode it used (stderr; `ratchets` in `--json`). Where the base comes from, best first:
 an explicit `ATLAS_BASE=<ref or sha>` (a bad one is an error); in CI a pull request uses the first parent of the merge

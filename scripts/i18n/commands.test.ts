@@ -4,8 +4,9 @@ import { join } from "node:path";
 import { addMessage } from "./add.ts";
 import { find } from "./find.ts";
 import { moveKey, rewriteUses } from "./mv.ts";
+import { loadSurfacesConfig } from "./source.ts";
 import { loadCtx } from "./types.ts";
-import { CLI_EN, CLI_META, EN, META, PT, addKey, area, check, cleanup, editJson, errors, finding, makeRepo, put, read, rulesOf } from "./testkit.ts";
+import { CLI_EN, CLI_META, EN, META, PT, SURFACES, addKey, area, check, cleanup, editJson, errors, finding, makeRepo, put, read, rulesOf } from "./testkit.ts";
 
 afterAll(cleanup);
 
@@ -130,7 +131,7 @@ describe("add", () => {
 		expect(errors(await check(root))).toEqual([]);
 	});
 
-	test("an unknown area needs --new-area and a surface; with both it creates the folder and lists it in surfaces.json", async () => {
+	test("an unknown area needs --new-area and a surface; with both it creates the folder with an area.json naming the surface; surfaces.json is not touched", async () => {
 		const root = await makeRepo();
 		const before = snapshot(root);
 		expect(() => addMessage(loadCtx(root), { key: "billing_plan_title", english: "Plan", description: "Title of the plan card" })).toThrow("create billing with --new-area --surface <desktop|rust>");
@@ -139,8 +140,9 @@ describe("add", () => {
 		const r = addMessage(loadCtx(root), { key: "billing_plan_title", english: "Plan", pt: "Plano", description: "Title of the plan card", newArea: true, surface: "desktop" });
 		expect(r).toMatchObject({ area: "billing", createdArea: true });
 		expect(JSON.parse(read(root, "i18n/messages/billing/en.json"))).toEqual({ billing_plan_title: "Plan" });
-		expect(JSON.parse(read(root, "i18n/surfaces.json")).surfaces.desktop.areas).toEqual(["app", "billing"]);
-		expect(read(root, "i18n/surfaces.json")).toContain('"desktop": { "areas": ["app", "billing"], "paraglide": "apps/desktop/.i18n" }');
+		expect(JSON.parse(read(root, "i18n/messages/billing/area.json"))).toEqual({ surface: "desktop" });
+		expect(loadSurfacesConfig(root).config.surfaces.desktop.areas).toEqual(["app", "billing"]);
+		expect(read(root, "i18n/surfaces.json")).toBe(SURFACES);
 		put(root, "apps/desktop/src/B.svelte", '<script>\n  import * as m from "$lib/paraglide/messages";\n</script>\n{m.billing_plan_title()}\n');
 		expect(errors(await check(root))).toEqual([]);
 	});
@@ -238,7 +240,7 @@ describe("mv", () => {
 		const r = moveKey(loadCtx(root), "app_welcome", "greeting_welcome", { newArea: true, surface: "desktop" });
 		expect(r.toArea).toBe("greeting");
 		expect(JSON.parse(read(root, "i18n/messages/greeting/en.json"))).toEqual({ greeting_welcome: "Welcome to Atlas, {name}" });
-		expect(JSON.parse(read(root, "i18n/surfaces.json")).surfaces.desktop.areas).toEqual(["app", "greeting"]);
+		expect(loadSurfacesConfig(root).config.surfaces.desktop.areas).toEqual(["app", "greeting"]);
 		const emptied = moveKey(loadCtx(root), "cli_lang_current", "cli_lang_now");
 		expect(emptied.notes).toEqual([]);
 		moveKey(loadCtx(root), "cli_files_count", "app_files_total");

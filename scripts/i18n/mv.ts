@@ -9,8 +9,8 @@ import { CommandError, areaPath, readObject, removeKey, setKey, writeObject } fr
 import { fix } from "./fix.ts";
 import { hash12 } from "./hash.ts";
 import { readLock, writeLock } from "./lock.ts";
-import { areaOfKey, KEY_PATTERN, loadSource, loadSurfacesConfig, renderSurfaces, type Source } from "./source.ts";
-import { SURFACES_FILE, loadCtx, type Ctx } from "./types.ts";
+import { areaOfKey, KEY_PATTERN, loadSource, writeAreaFile, type Source } from "./source.ts";
+import { loadCtx, type Ctx } from "./types.ts";
 import { lineOf, readText, rel, walk } from "./util.ts";
 
 export interface Spot {
@@ -103,12 +103,8 @@ export function moveKey(ctx: Ctx, oldKey: string, newKey: string, o: MoveOptions
 		writeLock(ctx.root, from.name, l, Object.fromEntries([...readLock(ctx.root, from.name, l).byKey].filter(([k]) => k !== oldKey)));
 		writeLock(ctx.root, toName, l, { ...Object.fromEntries(readLock(ctx.root, toName, l).byKey), [newKey]: stamp });
 	}
-	if (createdArea && o.surface) {
-		const { config } = loadSurfacesConfig(ctx.root);
-		config.surfaces[o.surface].areas = [...new Set([...config.surfaces[o.surface].areas, toName])];
-		writeFileSync(join(ctx.root, SURFACES_FILE), renderSurfaces(config));
-	}
-	if (!Object.keys(readObject(ctx.root, areaPath(from.name, "en"))).length) report.notes.push(`area ${from.name} is empty now: delete i18n/messages/${from.name}/ and remove "${from.name}" from ${SURFACES_FILE}`);
+	if (createdArea && o.surface) writeAreaFile(ctx.root, toName, { surface: o.surface });
+	if (!Object.keys(readObject(ctx.root, areaPath(from.name, "en"))).length) report.notes.push(`area ${from.name} is empty now: delete i18n/messages/${from.name}/`);
 
 	// {@old} references inside other messages, every locale. Renaming a reference changes the English text, so the lock
 	// hash of every translation that was fresh moves with it (a pure rename is no reason to retranslate); a translation

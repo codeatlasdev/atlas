@@ -4,7 +4,7 @@ import { afterAll, describe, expect, test } from "bun:test";
 import { readBaseline } from "./baseline.ts";
 import { fix } from "./fix.ts";
 import { loadCtx } from "./types.ts";
-import { EN, META, OS, PT, addKey, check, cleanup, editJson, errors, finding, makeRepo, put, read, rulesOf } from "./testkit.ts";
+import { BASELINE, EN, META, OS, PT, addKey, baselineText, check, cleanup, editJson, errors, finding, makeRepo, put, read, rulesOf } from "./testkit.ts";
 
 afterAll(cleanup);
 
@@ -141,7 +141,7 @@ describe("shortcuts and platform sniffing in source (ratchets)", () => {
 	test("the baseline tolerates today's lines, fails a new one, and shrinks with fix", async () => {
 		const root = await makeRepo();
 		put(root, "apps/desktop/src/a.ts", 'const a = "Cmd+K";\nconst b = "Cmd+J";\n');
-		put(root, "i18n/hardcoded-baseline.json", JSON.stringify({ shortcut: { "apps/desktop/src/a.ts": 2 } }));
+		put(root, BASELINE, baselineText({ shortcut: { "apps/desktop/src/a.ts": 2 } }));
 		expect(rulesOf(await check(root))).not.toContain("shortcut");
 		put(root, "apps/desktop/src/a.ts", 'const a = "Cmd+K";\nconst b = "Cmd+J";\nconst c = "Cmd+L";\n');
 		expect((await check(root)).filter((f) => f.rule === "shortcut")).toHaveLength(3);

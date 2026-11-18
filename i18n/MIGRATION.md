@@ -120,7 +120,7 @@ person reads them in a log, not in the app, and logs are never translated. Their
   a third `DocsNotice.astro` state (`docs_banner_machine`). The docs batch writes it on every page it translates; a
   reviewer removes the line.
 - **Phone app** (`apps/mobile`): no ARB yet and no detector, so no count. A surface with `"arb": "<dir>"` in
-  `surfaces.json` generates the files; the extraction there is by hand, after the desktop.
+  the `area.json` of its areas (surface `mobile`) generates the files; the extraction there is by hand, after the desktop.
 - **Astro pages and `.ts` modules**: the ratchet does not count them (`ts-module` / `script-string` lines above are the
   heuristic worklist). They are migrated with the batch that owns the screen.
 - **Spelled shortcuts (74), platform checks (4), writing-lint hits (282)**: the ratchets already block new ones; they
@@ -147,7 +147,7 @@ go through `atlas run --heavy -- <cargo ...>`.
 5. **Deterministic gates (blocking).** `bun run i18n:check` (placeholders, plurals with the zero case, glossary terms,
    pt-PT words, writing lint, budgets, ratchets), `bun run desktop:check` (tests run in English), and for Rust the
    crate tests plus `crates/atlas-cli/tests/machine_output.rs`. Then `bun run check:changed`. These never get relaxed
-   to make a batch pass; never raise `i18n/hardcoded-baseline.json` (`i18n:fix` only lowers it).
+   to make a batch pass; never raise `i18n/hardcoded-baseline.jsonl` (`i18n:fix` only lowers it).
 6. **Layout pass.** Portuguese is 20 to 30% longer than English: overflow, clipping and wrapping that breaks a row are
    **bugs of the batch**. Start your own invisible instance (`bun run desktop:agent`, `.agents/skills/desktop-debug/SKILL.md`;
    never a window on the user's screen), render every migrated screen in pt-BR (`ATLAS_LANG=pt-BR`) and in the
@@ -208,9 +208,12 @@ After a Rust batch: `cargo clippy` and the crate tests, then run the migrated co
 ## Conflicts and order
 
 - Two batches never edit the same component (an area belongs to one batch), so source conflicts do not happen.
-- The shared files are `i18n/surfaces.json` (a new area is one entry in a sorted list: on a conflict keep both),
-  `i18n/hardcoded-baseline.json` (counts per file: after a merge run `bun run i18n:fix`) and the lock files (also
-  `i18n:fix`, never by hand). Run `git fetch origin main` before `i18n:check`: the ratchet compares with the merge base.
+- No shared file lists areas or baseline entries any more: a new area is its own `i18n/messages/<area>/area.json`
+  (`"surface"`), and `i18n/hardcoded-baseline.jsonl` is one line per file that a branch only lowers (`merge=union`; a
+  path listed twice counts as the smaller number), so a local `git merge origin/main` (the merge train) has no conflict there; GitHub's own merge ignores `merge=union`. After merging, `bun run i18n:fix` if the check reports a baseline above the real count. A branch written for the old
+  registry (an `"areas"` list in surfaces.json, `hardcoded-baseline.json`) runs `git merge origin/main`, then
+  `bun run i18n:migrate-registry` (idempotent: it writes the `area.json` files, strips surfaces.json, applies the branch's
+  baseline work), `git add -A i18n`, commit. The lock files are still `i18n:fix`, never by hand. Run `git fetch origin main` before `i18n:check`: the ratchet compares with the merge base.
 - Batches may run in parallel; the queue merges them in batch order. A batch that touches a file a merged batch also
   touched (a shared wrapper) rebases first and runs extract again; it is idempotent.
 - The areas this plan creates are the `settings_*`, `crew_*`, `viewers_*`, `workbench`, `git`, `sidebar`, `panel`,

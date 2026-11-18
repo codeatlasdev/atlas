@@ -1,16 +1,15 @@
 // bun run i18n:add <key> "English" --desc "what it is" [--pt-BR "..."] [--surface s] [--new-area] [--distinct "why"] [--json]
 // Adds one message to the source tree: the area is the longest existing area name the key starts with (`settings_` ->
-// settings); an unknown area needs --new-area, which creates the folder and lists it under --surface in surfaces.json.
+// settings); an unknown area needs --new-area, which creates the folder with an area.json naming --surface.
 // Refuses a key that exists, a text that equals a common message (use that one) and anything the rules of i18n:check
 // would reject, before writing a byte. Writes en.json, meta.json and (with --pt-BR) pt-BR.json, then stamps the lock.
-import { writeFileSync } from "node:fs";
 import { join } from "node:path";
 import { CommandError, setKey } from "./edit.ts";
 import { entryIssues, sourceEntryIssues } from "./engine.ts";
 import { fix } from "./fix.ts";
 import { type MetaEntry } from "./model.ts";
-import { areaOfKey, isCommon, KEY_PATTERN, loadSource, loadSurfacesConfig, makeEntry, renderSurfaces } from "./source.ts";
-import { type Ctx, SURFACES_FILE, loadCtx } from "./types.ts";
+import { areaOfKey, isCommon, KEY_PATTERN, loadSource, makeEntry, writeAreaFile } from "./source.ts";
+import { type Ctx, loadCtx } from "./types.ts";
 
 export interface AddOptions {
 	key: string;
@@ -54,7 +53,7 @@ export function addMessage(ctx: Ctx, o: AddOptions): Added {
 	}
 	if (!createdArea && !isCommon(area)) {
 		const consumedBy = Object.entries(source.config.surfaces).filter(([, d]) => d.areas.includes(area as string)).map(([s]) => s);
-		if (o.surface && !consumedBy.includes(o.surface)) throw new CommandError(`area ${area} is not consumed by ${o.surface} (it is by ${consumedBy.join(", ") || "no surface"}): pick a key of an area ${o.surface} lists in ${SURFACES_FILE}`);
+		if (o.surface && !consumedBy.includes(o.surface)) throw new CommandError(`area ${area} is not consumed by ${o.surface} (it is by ${consumedBy.join(", ") || "no surface"}): pick a key of an area whose area.json names ${o.surface}`);
 	}
 	if (!isCommon(area) && !o.distinct) {
 		for (const a of [...source.areas.values()].filter((x) => isCommon(x.name))) {
@@ -82,16 +81,9 @@ export function addMessage(ctx: Ctx, o: AddOptions): Added {
 		setKey(ctx.root, area, "pt-BR", o.key, o.pt);
 		files.push(`i18n/messages/${area}/pt-BR.json`);
 	}
-	if (createdArea && o.surface) registerArea(ctx.root, o.surface, area);
+	if (createdArea && o.surface) writeAreaFile(ctx.root, area, { surface: o.surface });
 	fix(loadCtx(ctx.root));
 	return { key: o.key, area, createdArea, files };
-}
-
-/** List a new area under a surface of surfaces.json (the file keeps its layout: one line per surface, areas sorted). */
-function registerArea(root: string, surface: string, area: string) {
-	const { config } = loadSurfacesConfig(root);
-	config.surfaces[surface].areas = [...new Set([...config.surfaces[surface].areas, area])];
-	writeFileSync(join(root, SURFACES_FILE), renderSurfaces(config));
 }
 
 if (import.meta.main) {

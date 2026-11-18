@@ -21,8 +21,8 @@ import { scriptStrings } from "./extract/strings.ts";
 import { type Analysis, type Candidate, type Refusal, analyzeSvelte, applySvelte, importLine } from "./extract/svelte.ts";
 import { fix } from "./fix.ts";
 import { type MetaEntry } from "./model.ts";
-import { AREA_PATTERN, areaOfKey, consumers, isCommon, loadSource, makeEntry, renderSurfaces } from "./source.ts";
-import { type Ctx, SURFACES_FILE, loadCtx } from "./types.ts";
+import { AREA_PATTERN, areaOfKey, consumers, isCommon, loadSource, makeEntry, writeAreaFile, AREA_FILE } from "./source.ts";
+import { type Ctx, MESSAGES_DIR, loadCtx } from "./types.ts";
 import { readText, rel, walk } from "./util.ts";
 import { isTestFile } from "./hardcoded/rust.ts";
 import { lintText, loadRules, uiProse } from "./writing.ts";
@@ -205,7 +205,7 @@ export function extract(ctx: Ctx, o: Options): Report {
 		if (created.has(area)) {
 			if (created.get(area) !== surface) throw new CommandError(`area ${area} is new in this run for ${created.get(area)}, and ${surface} files cannot share it: extract them with a different --area`);
 		} else if (areaNames.has(area)) {
-			if (!consumers(config, area).includes(surface)) throw new CommandError(`area ${area} is not consumed by ${surface} (it is by ${consumers(config, area).join(", ") || "no surface"}): pick an area ${surface} lists in ${SURFACES_FILE}, or leave --area off`);
+			if (!consumers(config, area).includes(surface)) throw new CommandError(`area ${area} is not consumed by ${surface} (it is by ${consumers(config, area).join(", ") || "no surface"}): pick an area whose area.json names ${surface}, or leave --area off`);
 		} else if (!created.has(area)) {
 			const clash = [...allKeys].find((k) => k.startsWith(`${area}_`) && areaOfKey(k, [...areaNames]) !== area);
 			if (clash) throw new CommandError(`new area ${area} would take over the key ${clash} of another area (the longest area prefix owns a key): pick another name`);
@@ -348,10 +348,10 @@ export function extract(ctx: Ctx, o: Options): Report {
 		report.written.push(areaPath(area, "en"), areaPath(area, "meta"));
 	}
 	if (created.size) {
-		const cfg = loadSource(ctx).config;
-		for (const [area, surface] of created) cfg.surfaces[surface].areas = [...new Set([...cfg.surfaces[surface].areas, area])];
-		writeFileSync(join(root, SURFACES_FILE), renderSurfaces(cfg));
-		report.written.push(SURFACES_FILE);
+		for (const [area, surface] of created) {
+			writeAreaFile(root, area, { surface });
+			report.written.push(`${MESSAGES_DIR}/${area}/${AREA_FILE}`);
+		}
 	}
 	for (const e of edits) {
 		writeFileSync(join(root, e.file), e.text);

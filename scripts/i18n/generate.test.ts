@@ -7,7 +7,7 @@ import { generateAll, generateSurface, outputsFor } from "./generate.ts";
 import { type MsgValue, MessageError, type Node, buildTree, inlineRefs, normalize, pick, refsOf, simplify } from "./resolve.ts";
 import { loadSource } from "./source.ts";
 import { loadCtx } from "./types.ts";
-import { EN, OS, PLURAL, addKey, area, check, cleanup, editJson, finding, makeRepo, put, read } from "./testkit.ts";
+import { EN, OS, PLURAL, addKey, area, areaFile, check, cleanup, editJson, finding, makeRepo, put, read } from "./testkit.ts";
 
 afterAll(cleanup);
 
@@ -271,7 +271,8 @@ describe("the Paraglide generator", () => {
 
 	test("an arb surface writes app_<locale>.arb with ICU messages; nothing declares one in the repo yet", async () => {
 		const root = await makeRepo();
-		put(root, "i18n/surfaces.json", read(root, "i18n/surfaces.json").replace('"rust": {', '"mobile": { "areas": ["cli"], "arb": "apps/mobile/lib/l10n" },\n\t\t"rust": {'));
+		put(root, "i18n/surfaces.json", read(root, "i18n/surfaces.json").replace('"rust": {', '"mobile": { "arb": "apps/mobile/lib/l10n" },\n\t\t"rust": {'));
+		put(root, area("cli", "area"), areaFile("mobile"));
 		const outs = outputsFor(loadSource(loadCtx(root)), "mobile");
 		expect(outs.map((o) => o.path)).toEqual(["apps/mobile/lib/l10n/app_en.arb", "apps/mobile/lib/l10n/app_pt_BR.arb"]);
 		const en = JSON.parse(outs[0].content);
@@ -283,7 +284,8 @@ describe("the Paraglide generator", () => {
 
 	test("a shape a target cannot express is a `generate` finding naming the key, not a crash", async () => {
 		const root = await makeRepo();
-		put(root, "i18n/surfaces.json", read(root, "i18n/surfaces.json").replace('"rust": {', '"mobile": { "areas": ["app"], "arb": "apps/mobile/l10n" },\n\t\t"rust": {'));
+		put(root, "i18n/surfaces.json", read(root, "i18n/surfaces.json").replace('"rust": {', '"mobile": { "arb": "apps/mobile/l10n" },\n\t\t"rust": {'));
+		put(root, area("app", "area"), areaFile("mobile"));
 		const noCatchAll = [{ declarations: ["input os"], selectors: ["os"], match: { "os=mac": "Mac", "os=windows": "Win" } }];
 		addKey(root, "app_no_default", noCatchAll, noCatchAll, "A message without a default variant");
 		const f = finding(await check(root), "generate");

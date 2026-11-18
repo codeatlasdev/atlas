@@ -4,8 +4,9 @@ import { mkdirSync, mkdtempSync, readFileSync, rmSync, writeFileSync } from "nod
 import { tmpdir } from "node:os";
 import { dirname, join } from "node:path";
 import { runChecks } from "./check.ts";
+import { type Baseline, renderBaseline } from "./baseline.ts";
 import { fix } from "./fix.ts";
-import { type Finding, loadCtx } from "./types.ts";
+import { BASELINE_FILE, type Finding, loadCtx } from "./types.ts";
 import { canonicalJson } from "./util.ts";
 
 const dirs: string[] = [];
@@ -55,13 +56,15 @@ export const CLI_META = area("cli", "meta");
 
 export const SURFACES = `{
 	"budget": { "keys": 150, "bytes": 24576 },
-	"generatedAreas": {},
 	"surfaces": {
-		"desktop": { "areas": ["app"], "paraglide": "apps/desktop/.i18n" },
-		"rust": { "areas": ["cli"], "rust": "crates" }
+		"desktop": { "paraglide": "apps/desktop/.i18n" },
+		"rust": { "rust": "crates" }
 	}
 }
 `;
+
+/** The area.json that says an area is consumed by `surface`. */
+export const areaFile = (surface: string, generated?: string) => canonicalJson({ surface, ...(generated ? { generated } : {}) });
 
 const APP_EN = {
 	app_files_count: PLURAL("{count} file", "{count} files"),
@@ -148,9 +151,11 @@ export function goodFiles(over: Record<string, string | null> = {}): Record<stri
 		[area("app", "en")]: json(APP_EN),
 		[area("app", "pt-BR")]: json(APP_PT),
 		[area("app", "meta")]: json(APP_META),
+		[area("app", "area")]: areaFile("desktop"),
 		[area("cli", "en")]: json(CLI_EN_V),
 		[area("cli", "pt-BR")]: json(CLI_PT_V),
 		[area("cli", "meta")]: json(CLI_META_V),
+		[area("cli", "area")]: areaFile("rust"),
 		[area("common", "en")]: json(COMMON_EN),
 		[area("common", "pt-BR")]: json(COMMON_PT),
 		[area("common", "meta")]: json(COMMON_META),
@@ -201,6 +206,21 @@ export async function check(root: string, surface?: string): Promise<Finding[]> 
 }
 
 export const read = (root: string, p: string) => readFileSync(join(root, p), "utf8");
+/** `git` in a temp repo with a throwaway identity and no signing; `must` throws on failure and returns the trimmed output. */
+export function git(root: string, ...args: string[]) {
+	const r = Bun.spawnSync(["git", "-c", "user.name=t", "-c", "user.email=t@example.com", "-c", "commit.gpgsign=false", ...args], { cwd: root, stdout: "pipe", stderr: "pipe" });
+	return { ok: r.exitCode === 0, out: r.stdout.toString().trim(), err: r.stderr.toString().trim() };
+}
+export const must = (root: string, ...args: string[]) => {
+	const r = git(root, ...args);
+	if (!r.ok) throw new Error(`git ${args.join(" ")}: ${r.err}\n${r.out}`);
+	return r.out;
+};
+
+/** The baseline file of a repo, and the text of a baseline in its line format. */
+export const BASELINE = BASELINE_FILE;
+export const baselineText = (b: Baseline) => renderBaseline(b);
+
 export const put = (root: string, p: string, text: string) => writeFiles(root, { [p]: text });
 
 /** `rule` of the findings with that severity, for compact assertions. */

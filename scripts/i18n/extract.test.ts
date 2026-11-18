@@ -177,7 +177,7 @@ describe("svelte codemod", () => {
 	test("a new area is registered under the surface of the file; the budget is enforced before anything is written", async () => {
 		const root = await fixture();
 		extract(loadCtx(root), { targets: [PANEL] });
-		expect(read(root, "i18n/surfaces.json")).toContain('"workbench"');
+		expect(JSON.parse(read(root, "i18n/messages/workbench/area.json"))).toEqual({ surface: "desktop" });
 		expect(errors(await check(root)).every((f) => f.rule === "missing")).toBe(true);
 
 		const tight = await fixture();

@@ -1,6 +1,6 @@
-// The source tree i18n/messages/** and i18n/surfaces.json: every rule of one area (engine.ts) plus the rules that look
+// The source tree i18n/messages/** (each area names its surface in its area.json) and i18n/surfaces.json: every rule of one area (engine.ts) plus the rules that look
 // across areas and surfaces. Every finding names the command that fixes it.
-//   unconsumed-area  an area no surface lists (and that is not common*), or a surface listing an area that is not there
+//   area-surface     (from the loader) an area with no area.json, one naming an unknown surface, a malformed file
 //   dup-key          the same key in two areas (Paraglide silently keeps the last one)
 //   budget           an area file over the keys or bytes of surfaces.json: split it
 //   dup-common       an English value equal to a common one (use common_action_cancel) unless meta says `distinct`
@@ -15,7 +15,7 @@ import { checkArea, statusArea } from "../engine.ts";
 import { outputsFor } from "../generate.ts";
 import type { Area, Entry } from "../model.ts";
 import { refsOf } from "../resolve.ts";
-import { COMMON_AREAS, type Source, areasFor, consumedAreas, consumers, isCommon, loadSource } from "../source.ts";
+import { type Source, areasFor, consumedAreas, consumers, isCommon, loadSource } from "../source.ts";
 import type { Checker, Ctx, Finding } from "../types.ts";
 import { isUsed, scanRefs } from "../unused.ts";
 
@@ -33,7 +33,7 @@ function splitAdvice(area: Area, keys: string[]): string {
 		groups.set(g, (groups.get(g) ?? 0) + 1);
 	}
 	const top = [...groups].sort((a, b) => b[1] - a[1]).slice(0, 4).map(([g, n]) => `${area.name}_${g} (${n} keys)`);
-	return `split it into areas by key prefix, e.g. ${top.join(", ")}: move the keys with i18n:mv and list the new areas in i18n/surfaces.json`;
+	return `split it into areas by key prefix, e.g. ${top.join(", ")}: move the keys with i18n:mv --new-area --surface <s>`;
 }
 
 function budgetFindings(source: Source, areas: Area[]): Finding[] {
@@ -146,23 +146,7 @@ function referenceFindings(source: Source, surfaces: string[]): Finding[] {
 		for (const r of refs?.calls ?? []) {
 			const area = owner.get(r.key);
 			if (!area) out.push(err("undefined-key", r.file, `no message "${r.key}" in i18n/messages: find the right one with bun run i18n:find ${r.key}, or add it with bun run i18n:add ${r.key} "English text" --desc "what it is"`, r.key, r.line));
-			else if (!consumedAreas(source.config, s).includes(area)) out.push(err("unconsumed-key", r.file, `"${r.key}" is in area ${area}, which surface ${s} does not consume: list ${area} under "${s}" in i18n/surfaces.json, or use a message of an area it has (bun run i18n:find ${r.key})`, r.key, r.line));
-		}
-	}
-	return out;
-}
-
-/** Whole-tree rules: which areas exist and who consumes them. */
-function treeFindings(source: Source): Finding[] {
-	const out: Finding[] = [];
-	const listed = new Set(Object.values(source.config.surfaces).flatMap((s) => s.areas));
-	for (const name of source.areas.keys()) {
-		if (!isCommon(name) && !listed.has(name)) out.push(err("unconsumed-area", `i18n/messages/${name}`, `no surface consumes area "${name}": list it in a surface of i18n/surfaces.json, or delete it`));
-	}
-	for (const [s, def] of Object.entries(source.config.surfaces)) {
-		for (const a of def.areas) {
-			if (!source.areas.has(a)) out.push(err("config", "i18n/surfaces.json", `surface "${s}" lists area "${a}", but i18n/messages/${a}/ does not exist`));
-			if (COMMON_AREAS.includes(a)) out.push(err("config", "i18n/surfaces.json", `"${a}" is consumed by every surface already; do not list it`));
+			else if (!consumedAreas(source.config, s).includes(area)) out.push(err("unconsumed-key", r.file, `"${r.key}" is in area ${area}, which surface ${s} does not consume: set the surface of ${area} in i18n/messages/${area}/area.json, or use a message of an area it has (bun run i18n:find ${r.key})`, r.key, r.line));
 		}
 	}
 	return out;
@@ -176,7 +160,7 @@ const checker: Checker = {
 		const source = loadSource(ctx);
 		const areas = areasFor(source, ctx.surface);
 		const names = [...source.areas.keys()];
-		const out: Finding[] = [...source.problems, ...treeFindings(source)];
+		const out: Finding[] = [...source.problems];
 		for (const a of areas) out.push(...checkArea(ctx, a, names));
 		const surfaces = ctx.surface ? [ctx.surface] : Object.keys(source.config.surfaces);
 		out.push(...dupKeyFindings(source), ...budgetFindings(source, areas), ...duplicateFindings(areas), ...refScopeFindings(source, areas), ...unusedFindings(source, areas));

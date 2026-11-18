@@ -2,13 +2,14 @@
 // (Per-area rules are in rules.test.ts, platform wording in platform.test.ts.)
 import { afterAll, describe, expect, test } from "bun:test";
 import { fix } from "./fix.ts";
+import { loadSurfacesConfig } from "./source.ts";
 import { type Finding, loadCtx } from "./types.ts";
-import { CLI_EN, CLI_META, EN, META, PT, addKey, area, check, cleanup, editJson, errors, finding, json, makeRepo, put, read, rulesOf } from "./testkit.ts";
+import { CLI_EN, CLI_META, EN, META, PT, addKey, area, areaFile, check, cleanup, editJson, errors, finding, json, makeRepo, put, read, rulesOf } from "./testkit.ts";
 
 afterAll(cleanup);
 
 const SURFACES = "i18n/surfaces.json";
-const surfaces = (root: string, edit: (j: { budget: { keys: number; bytes: number }; generatedAreas: Record<string, string>; surfaces: Record<string, Record<string, unknown>> }) => void) => {
+const surfaces = (root: string, edit: (j: { budget: { keys: number; bytes: number }; surfaces: Record<string, Record<string, unknown>> }) => void) => {
 	const j = JSON.parse(read(root, SURFACES));
 	edit(j);
 	put(root, SURFACES, `${JSON.stringify(j, null, "\t")}\n`);
@@ -172,30 +173,61 @@ describe("references between messages", () => {
 });
 
 describe("areas and surfaces", () => {
-	test("an area no surface lists is unconsumed-area; listing it fixes it", async () => {
-		const root = await makeRepo();
+	const orphan = (root: string) => {
 		put(root, area("orphaned", "en"), json({ orphaned_thing: "Thing" }));
 		put(root, area("orphaned", "pt-BR"), json({ orphaned_thing: "Coisa" }));
 		put(root, area("orphaned", "meta"), json({ orphaned_thing: "A thing" }));
 		fix(loadCtx(root));
-		expect(finding(await check(root), "unconsumed-area")?.file).toBe("i18n/messages/orphaned");
-		surfaces(root, (j) => void j.surfaces.desktop.areas.push("orphaned"));
-		expect(rulesOf(await check(root))).not.toContain("unconsumed-area");
+	};
+
+	test("an area with no area.json fails as area-surface, naming the file to write; writing it fixes it", async () => {
+		const root = await makeRepo();
+		orphan(root);
+		const f = finding(await check(root), "area-surface");
+		expect(f?.file).toBe("i18n/messages/orphaned");
+		expect(f?.message).toContain("i18n/messages/orphaned/area.json");
+		put(root, area("orphaned", "area"), areaFile("desktop"));
+		expect(rulesOf(await check(root))).not.toContain("area-surface");
+		expect(loadSurfacesConfig(root).config.surfaces.desktop.areas).toContain("orphaned");
 	});
 
-	test("a surface listing an area that is not there, or a common one, is a config error", async () => {
+	test("an area.json naming an unknown surface, with no surface, not JSON or with a stray field is area-surface", async () => {
 		const root = await makeRepo();
-		surfaces(root, (j) => void (j.surfaces.desktop.areas = ["app", "nope", "common"]));
-		const msgs = all(await check(root), "config").map((f) => f.message);
-		expect(msgs.some((m) => m.includes('"nope"'))).toBe(true);
-		expect(msgs.some((m) => m.includes("consumed by every surface"))).toBe(true);
+		orphan(root);
+		const at = area("orphaned", "area");
+		for (const [text, says] of [
+			[areaFile("mobile"), 'surface "mobile"'],
+			["{}\n", 'needs a string "surface"'],
+			["{ nope", "invalid JSON"],
+			[JSON.stringify({ surface: "desktop", areas: [] }), "unknown field"],
+		] as const) {
+			put(root, at, text);
+			const f = all(await check(root), "area-surface");
+			expect(f.length, text).toBeGreaterThan(0);
+			expect(f.some((x) => x.file === at && x.message.includes(says)), text).toBe(true);
+		}
+	});
+
+	test("a common area has no area.json: every surface consumes it", async () => {
+		const root = await makeRepo();
+		put(root, area("common", "area"), areaFile("desktop"));
+		expect(all(await check(root), "area-surface").some((f) => f.message.includes("consumed by every surface"))).toBe(true);
+	});
+
+	test("an old surfaces.json that still lists areas (or generatedAreas) says to run i18n:migrate-registry", async () => {
+		const root = await makeRepo();
+		surfaces(root, (j) => void (j.surfaces.desktop.areas = ["app"]));
+		expect(all(await check(root), "config").some((f) => f.message.includes("i18n:migrate-registry"))).toBe(true);
+		const other = await makeRepo();
+		surfaces(other, (j) => void Object.assign(j, { generatedAreas: {} }));
+		expect(all(await check(other), "config").some((f) => f.message.includes("i18n:migrate-registry"))).toBe(true);
 	});
 
 	test("surfaces.json that is not JSON, or a surface with two outputs, is a config error, not a crash", async () => {
 		const root = await makeRepo();
 		put(root, SURFACES, "{ nope");
 		expect(finding(await check(root), "config")?.message).toContain("invalid JSON");
-		put(root, SURFACES, JSON.stringify({ surfaces: { desktop: { areas: ["app"], paraglide: "a", rust: "b" } } }));
+		put(root, SURFACES, JSON.stringify({ surfaces: { desktop: { paraglide: "a", rust: "b" } } }));
 		expect((await check(root)).some((f) => f.rule === "config" && f.message.includes("exactly one of"))).toBe(true);
 	});
 
@@ -236,7 +268,7 @@ describe("unused is per consuming surface", () => {
 	test("common areas and generated areas are exempt", async () => {
 		const root = await makeRepo();
 		expect(rulesOf(await check(root))).not.toContain("unused");
-		surfaces(root, (j) => void (j.generatedAreas.cli = "UPDATE_FIXTURES=1 cargo test -p atlas-cli cli_i18n"));
+		put(root, area("cli", "area"), areaFile("rust", "UPDATE_FIXTURES=1 cargo test -p atlas-cli cli_i18n"));
 		put(root, "crates/atlas-i18n/src/lib.rs", "pub fn nothing() {}\n");
 		expect(rulesOf(await check(root))).not.toContain("unused");
 		editJson(root, CLI_EN, (o) => void (o.cli_orphan_line = "x"));
@@ -251,7 +283,7 @@ describe("unused is per consuming surface", () => {
 		for (const f of ["en", "pt-BR", "meta"]) {
 			put(root, area("cli_help", f), json({ cli_help_about: f === "en" ? "Show help" : f === "pt-BR" ? "Mostra a ajuda" : "Help text" }));
 		}
-		surfaces(root, (j) => void (j.surfaces.rust.areas as string[]).push("cli_help"));
+		put(root, area("cli_help", "area"), areaFile("rust"));
 		fix(loadCtx(root));
 		expect(rulesOf(await check(root))).not.toContain("unused");
 	});
@@ -288,7 +320,7 @@ describe("undefined-key and unconsumed-key: references in the sources", () => {
 		put(root, "apps/desktop/src/Wrong.svelte", '<script>\n  import * as m from "$lib/paraglide/messages";\n</script>\n<p>{m.cli_lang_current({ lang: "x" })}</p>\n');
 		const f = finding(await check(root), "unconsumed-key", "cli_lang_current");
 		expect(f?.message).toContain("area cli");
-		expect(f?.message).toContain("i18n/surfaces.json");
+		expect(f?.message).toContain("i18n/messages/cli/area.json");
 		expect(rulesOf(await check(root))).not.toContain("undefined-key");
 	});
 
@@ -350,7 +382,7 @@ describe("meta.json: limits and flags", () => {
 describe("generated areas: the English is not edited by hand", () => {
 	test("an outdated or orphan finding of a generated area points at the generator command", async () => {
 		const root = await makeRepo();
-		surfaces(root, (j) => void (j.generatedAreas.cli = "UPDATE_FIXTURES=1 cargo test -p atlas-cli cli_i18n"));
+		put(root, area("cli", "area"), areaFile("rust", "UPDATE_FIXTURES=1 cargo test -p atlas-cli cli_i18n"));
 		editJson(root, CLI_EN, (o) => void (o.cli_lang_current = "Language is: {lang}"));
 		editJson(root, CLI_META, () => {});
 		const f = finding(await check(root), "outdated", "cli_lang_current");

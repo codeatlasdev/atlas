@@ -262,6 +262,7 @@ pub(crate) fn stage(
             .and_then(|mut f| layout::write_beneath(work_dir, &rel, &mut f));
         match copied {
             Ok(()) => staged.push(rel),
+            // i18n-ignore: log
             Err(e) => eprintln!(
                 "atlas crew: attachment {} of task {} not staged: {e}",
                 a.name, task.id
@@ -418,6 +419,7 @@ fn sweep_dir(uploads: &Path) {
             .is_some_and(|age| age > UPLOAD_TTL);
         // tree-access: hostd-owned (the crew store, scratch or runtime), never a crewmate's tree
         if stale && let Err(e) = std::fs::remove_dir_all(&dir) {
+            // i18n-ignore: log
             eprintln!(
                 "atlas crew: stale upload {} not removed: {e}",
                 dir.display()

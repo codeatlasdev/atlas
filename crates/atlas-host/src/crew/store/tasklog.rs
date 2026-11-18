@@ -223,6 +223,7 @@ impl TaskLog {
             .and_then(|b| paths::write_private(&idx_path(path), &b));
         self.idx_saved = true;
         if let Err(e) = written {
+            // i18n-ignore: log
             eprintln!("atlas crew: cannot save {}: {e}", idx_path(path).display());
         }
     }
@@ -344,6 +345,7 @@ impl TaskLog {
                 self.save(path);
             }
             Err(e) => {
+                // i18n-ignore: log
                 eprintln!("atlas crew: cannot compact {}: {e}", path.display());
                 self.compact_at = self.len * 2;
             }

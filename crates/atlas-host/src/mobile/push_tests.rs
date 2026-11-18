@@ -28,7 +28,7 @@ async fn daemon(dir: &Path) -> (HostClient, Sent) {
         ..Default::default()
     };
     tokio::spawn(async move { crate::server::serve_with(&d, opts).await });
-    for _ in 0..100 {
+    for _ in 0..1200 {
         if let Ok(c) = HostClient::connect_dir(dir, "test").await {
             return (c, rx);
         }
@@ -84,6 +84,32 @@ async fn sent_within(rx: &mut Sent, ms: u64) -> Vec<(Vec<PushToken>, PushMsg)> {
     out
 }
 
+/// What was sent once a push arrived: waits for the first one (the real event, bounded only by the hang ceiling),
+/// then collects what follows within a short settle window, so a duplicate push still shows. An expected push is
+/// never missed because a loaded machine delivered it late; "nothing is sent" uses [`sent_within`] (a late push
+/// can only hide a regression there, never fail the test).
+async fn sent_when_any(rx: &mut Sent) -> Vec<(Vec<PushToken>, PushMsg)> {
+    let Ok(Some(first)) = tokio::time::timeout(atlas_core::scaling::HANG, rx.recv()).await else {
+        return Vec::new();
+    };
+    let mut out = vec![first];
+    out.extend(sent_within(rx, 700).await);
+    out
+}
+
+/// Until hostd has seen the (only) phone leave: its device row says `connected: false`. The event, not a pause: a
+/// loaded machine can take longer than any fixed wait to notice, and a phone still counted connected is not pushed.
+async fn phone_gone(c: &HostClient) {
+    let t0 = std::time::Instant::now();
+    while c.call("mobile_devices", json!({})).await.unwrap()["devices"][0]["connected"] != false {
+        assert!(
+            t0.elapsed() < atlas_core::scaling::HANG,
+            "hostd never noticed the phone leave"
+        );
+        tokio::time::sleep(Duration::from_millis(20)).await;
+    }
+}
+
 /// What was sent, for failure messages: kinds and token names (a `PushToken` holds a grant and has no `Debug`).
 fn names(sent: &[(Vec<PushToken>, PushMsg)]) -> Vec<(String, Vec<String>)> {
     sent.iter()
@@ -124,13 +150,13 @@ async fn a_finished_agent_pushes_the_offline_phone_once_with_the_documented_payl
     let node = paired_and_registered(&c, &mut phone, &info).await;
     phone.hang_up();
     // hostd notices the hang-up before the agent finishes.
-    tokio::time::sleep(Duration::from_millis(500)).await;
+    phone_gone(&c).await;
 
     work_then(tmp.path(), "p1", json!({"event": "agent_end"})).await;
     // An unchanged status (the hub repeats it as a heartbeat) must not push again.
     hook_async(tmp.path(), "p1", json!({"event": "agent_end"})).await;
 
-    let sent = sent_within(&mut rx, 1500).await;
+    let sent = sent_when_any(&mut rx).await;
     assert_eq!(sent.len(), 1, "{:?}", names(&sent));
     let (tokens, msg) = &sent[0];
     assert_eq!(tokens.len(), 1);
@@ -166,9 +192,9 @@ async fn a_connected_phone_is_not_pushed() {
     assert!(sent_within(&mut rx, 1500).await.is_empty());
     // The same phone, gone, is told the next time.
     phone.hang_up();
-    tokio::time::sleep(Duration::from_millis(500)).await;
+    phone_gone(&c).await;
     work_then(tmp.path(), "p3", json!({"event": "agent_end"})).await;
-    assert_eq!(sent_within(&mut rx, 1500).await.len(), 1);
+    assert_eq!(sent_when_any(&mut rx).await.len(), 1);
     c.call("shutdown", json!({})).await.ok();
 }
 
@@ -181,7 +207,7 @@ async fn an_approval_needed_pushes_once() {
     let mut phone = Phone::dial(&info).await;
     paired_and_registered(&c, &mut phone, &info).await;
     phone.hang_up();
-    tokio::time::sleep(Duration::from_millis(500)).await;
+    phone_gone(&c).await;
 
     hook_async(tmp.path(), "p1", json!({"event": "before_agent_start"})).await;
     hook_async(
@@ -197,7 +223,7 @@ async fn an_approval_needed_pushes_once() {
     )
     .await;
 
-    let sent = sent_within(&mut rx, 1500).await;
+    let sent = sent_when_any(&mut rx).await;
     assert_eq!(sent.len(), 1, "{:?}", names(&sent));
     assert_eq!(sent[0].1.kind, "agent_needs_you");
     assert_eq!(sent[0].1.pane, "p1");
@@ -214,7 +240,7 @@ async fn a_subagent_finishing_never_pushes() {
     let mut phone = Phone::dial(&info).await;
     paired_and_registered(&c, &mut phone, &info).await;
     phone.hang_up();
-    tokio::time::sleep(Duration::from_millis(500)).await;
+    phone_gone(&c).await;
 
     let parent = "/s/abc.jsonl";
     let sub = "/s/abc/Scout.jsonl";
@@ -243,7 +269,7 @@ async fn a_subagent_finishing_never_pushes() {
         json!({"event": "agent_end", "session_file": parent}),
     )
     .await;
-    assert_eq!(sent_within(&mut rx, 1500).await.len(), 1);
+    assert_eq!(sent_when_any(&mut rx).await.len(), 1);
     c.call("shutdown", json!({})).await.ok();
 }
 
@@ -256,7 +282,7 @@ async fn a_crewmate_pane_is_not_a_plain_agent() {
     let mut phone = Phone::dial(&info).await;
     paired_and_registered(&c, &mut phone, &info).await;
     phone.hang_up();
-    tokio::time::sleep(Duration::from_millis(500)).await;
+    phone_gone(&c).await;
 
     work_then(tmp.path(), "crew:c1:t1", json!({"event": "agent_end"})).await;
     assert!(sent_within(&mut rx, 1200).await.is_empty());

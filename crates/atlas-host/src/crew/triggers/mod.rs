@@ -210,6 +210,7 @@ pub(crate) fn tick_schedule(hub: &Arc<Hub>, now_s: u64) {
             let crewmate_id = crewmate.id.clone();
             let stored = hub.crew.store.append_task(&crewmate_id, &task);
             if let Err(e) = &stored {
+                // i18n-ignore: log
                 eprintln!(
                     "atlas crew: crewmate {crewmate_id} task {}: trigger {trigger_id} due but the task cannot be stored: {e}",
                     task.id
@@ -223,6 +224,7 @@ pub(crate) fn tick_schedule(hub: &Arc<Hub>, now_s: u64) {
                         t.last_fired = Some(now_s);
                     }
                     if let Err(e) = hub.crew.store.save_crewmate(&fresh) {
+                        // i18n-ignore: log
                         eprintln!(
                             "atlas crew: crewmate {crewmate_id}: cannot save last_fired of trigger {trigger_id}: {e}"
                         );
@@ -306,6 +308,7 @@ pub(crate) fn on_task_finished(
         let mut changed = false;
         for i in indices {
             if lineage.contains(&crewmate.id) {
+                // i18n-ignore: log
                 eprintln!(
                     "atlas crew: crewmate {}: chain trigger {} refused: it already ran in this chain ({})",
                     crewmate.id,
@@ -330,6 +333,7 @@ pub(crate) fn on_task_finished(
             task.chain = lineage.clone();
             let stored = hub.crew.store.append_task(&crewmate.id, &task);
             if let Err(e) = &stored {
+                // i18n-ignore: log
                 eprintln!(
                     "atlas crew: crewmate {} task {}: chain trigger due but the task cannot be stored: {e}",
                     crewmate.id, task.id
@@ -343,6 +347,7 @@ pub(crate) fn on_task_finished(
             }
         }
         if changed && let Err(e) = hub.crew.store.save_crewmate(&crewmate) {
+            // i18n-ignore: log
             eprintln!(
                 "atlas crew: crewmate {}: cannot save last_fired of chain triggers: {e}",
                 crewmate.id
@@ -451,6 +456,7 @@ pub(crate) fn fire(
     event: Event<'_>,
 ) {
     if hub.crew.is_paused() {
+        // i18n-ignore: log
         eprintln!("atlas crew: paused: trigger {trigger_id} of {crewmate_id} not fired");
         return;
     }
@@ -483,6 +489,7 @@ pub(crate) fn fire(
         task.no_auto = !allow_auto;
     }
     if let Err(e) = hub.crew.store.append_task(crewmate_id, &task) {
+        // i18n-ignore: log
         eprintln!(
             "atlas crew: crewmate {crewmate_id} task {}: trigger {trigger_id} fired but the task cannot be stored: {e}",
             task.id
@@ -493,6 +500,7 @@ pub(crate) fn fire(
         t.last_fired = Some(now_s());
     }
     if let Err(e) = hub.crew.store.save_crewmate(&crewmate) {
+        // i18n-ignore: log
         eprintln!(
             "atlas crew: crewmate {crewmate_id}: cannot save last_fired of trigger {trigger_id}: {e}"
         );

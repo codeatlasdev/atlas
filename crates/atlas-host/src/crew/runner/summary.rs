@@ -103,10 +103,12 @@ async fn summarize(
     {
         Ok(Ok(out)) => out,
         Ok(Err(e)) => {
+            // i18n-ignore: log
             eprintln!("atlas crew: summary: {e}");
             return None;
         }
         Err(_) => {
+            // i18n-ignore: log
             eprintln!(
                 "atlas crew: summary: {engine_kind} took over {}s, sending the full reply",
                 TIMEOUT.as_secs()
@@ -115,6 +117,7 @@ async fn summarize(
         }
     };
     if !out.success() {
+        // i18n-ignore: log
         eprintln!(
             "atlas crew: summary: {engine_kind} exited with {}",
             out.code.map_or("a signal".to_string(), |c| c.to_string())

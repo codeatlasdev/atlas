@@ -261,7 +261,7 @@ mod tests {
             "the second holder must wait while the first holds the lock"
         );
         drop(first);
-        rx.recv_timeout(std::time::Duration::from_secs(5))
+        rx.recv_timeout(atlas_core::scaling::HANG)
             .expect("the second holder proceeds once the first lets go");
         t.join().unwrap();
     }

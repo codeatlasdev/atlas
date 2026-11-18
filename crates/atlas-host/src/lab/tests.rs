@@ -36,7 +36,7 @@ async fn lab_daemon(dir: &Path, main: &Path) -> HostClient {
 }
 
 async fn connect(dir: &Path) -> HostClient {
-    for _ in 0..100 {
+    for _ in 0..1200 {
         if let Ok(c) = HostClient::connect_dir(dir, "test").await {
             return c;
         }
@@ -45,9 +45,9 @@ async fn connect(dir: &Path) -> HostClient {
     panic!("hostd at {} did not start", dir.display());
 }
 
-/// Poll `f` until it returns `Some`, for up to 10 s.
+/// Poll `f` until it returns `Some` (the hang ceiling is the only bound).
 async fn until<T, F: AsyncFnMut() -> Option<T>>(what: &str, mut f: F) -> T {
-    for _ in 0..200 {
+    for _ in 0..1200 {
         if let Some(v) = f().await {
             return v;
         }
@@ -708,7 +708,7 @@ async fn a_phone_attached_through_the_lab_streams_main_s_terminal() {
     early.extend(mid);
 
     let mut seen = String::new();
-    for _ in 0..40 {
+    for _ in 0..240 {
         early.extend(phone.pushes(250).await);
         for ev in early.drain(..) {
             if matches!(ev["ev"].as_str(), Some("pty_replay" | "pty_output")) {
@@ -803,16 +803,15 @@ async fn a_phone_leaving_the_lab_leaves_no_subscriber_on_main() {
 async fn the_lab_mirrors_main_s_approvals_and_answers_them_through_main() {
     let r = Rig::new().await;
     let mut lab_phone = lab_phone(&r).await;
-    // No phone on main: the prompt is not held (nothing waits on the lab phone).
-    let t = std::time::Instant::now();
-    let body = tokio::task::spawn_blocking({
-        let d = r.main_dir();
-        move || decision(&d)
+    // No phone on main: the prompt is not held (nothing waits on the lab phone). A held prompt would announce
+    // itself on main's event stream and wait 55 s: the helper fails on that event, whatever the machine's speed.
+    let mut main_events = r.main.events();
+    let d = r.main_dir();
+    let body = crate::agents::hook_server::answered_without_holding(&mut main_events, move || {
+        decision(&d)
     })
-    .await
-    .unwrap();
+    .await;
     assert_eq!(crate::agents::hook_server::parse_decision(&body), None);
-    assert!(t.elapsed() < Duration::from_secs(3), "{:?}", t.elapsed());
 
     // Main's own phone connects: now a prompt is held, and the lab phone sees and answers it.
     let main_info = pair_start(&r.main).await;

@@ -105,6 +105,7 @@ pub(crate) async fn send_all(
             }
             Ok(_) => {}
             Err(e) => {
+                // i18n-ignore: log
                 eprintln!("atlas crew: push notify error: {e}");
             }
         }
@@ -124,6 +125,7 @@ pub fn load_tokens(dir: &Path) -> Vec<PushToken> {
         Ok(Loaded::Ok(t)) => t,
         Ok(Loaded::Missing | Loaded::Corrupt(_)) => Vec::new(),
         Err(e) => {
+            // i18n-ignore: log
             eprintln!("atlas crew: cannot read push tokens: {e}");
             Vec::new()
         }
@@ -140,6 +142,7 @@ pub fn save_tokens(dir: &Path, tokens: &[PushToken]) {
         return;
     };
     if let Err(e) = crate::paths::write_private(&path, &data) {
+        // i18n-ignore: log
         eprintln!("atlas crew: push save_tokens error: {e}");
     }
 }
@@ -242,7 +245,7 @@ mod tests {
         let (base, mut rx) = fake_relay(204).await;
         let expired = notify_via(&client(), &base, &[tok("fcm-1", "grant-1")], "task_done").await;
         assert!(expired.is_empty());
-        let (line, body) = tokio::time::timeout(Duration::from_secs(5), rx.recv())
+        let (line, body) = tokio::time::timeout(atlas_core::scaling::HANG, rx.recv())
             .await
             .unwrap()
             .unwrap();

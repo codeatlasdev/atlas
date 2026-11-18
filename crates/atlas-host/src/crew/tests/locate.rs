@@ -10,7 +10,7 @@ use crate::crew::capture::{self, TEST_RUNNER};
 use crate::crew::locate::tests::{dom_runner, png_header, pricing_dom, sveltekit_tree};
 
 fn use_runner(prog: &std::path::Path) {
-    *TEST_RUNNER.lock() = Some((prog.to_path_buf(), Duration::from_secs(20)));
+    *TEST_RUNNER.lock() = Some((prog.to_path_buf(), atlas_core::scaling::HANG));
 }
 
 fn clear_runner() {

@@ -9,7 +9,8 @@ import { ChangeSet } from "@codemirror/state";
 import type { EditorView } from "@codemirror/view";
 import { renderMarkdown } from "#lib/viewers/markdown.ts";
 import { envOf, posParams, type LspEnv } from "#lib/lsp/context.ts";
-import { editsToChanges, posToOffset, type Range, type TextEdit } from "#lib/lsp/convert.ts";
+import { editsToChanges } from "#lib/lsp/changes.ts";
+import { posToOffset, type Range, type TextEdit } from "#lib/lsp/convert.ts";
 import { lspSnippetToCm } from "#lib/lsp/snippet.ts";
 
 interface LspCompletionItem {

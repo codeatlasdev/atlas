@@ -49,6 +49,9 @@ pub fn locale_get() -> LocaleState {
 pub fn locale_set(app: AppHandle, tag: Option<String>) -> Result<LocaleState, String> {
     lang::set_preference(tag.as_deref()).map_err(|e| format!("{e:#}"))?;
     let now = current();
+    // The native menus (menu bar, tray, dock) are Rust text: re-label them before the page is told, so nothing in the
+    // window is in the old language for a moment.
+    crate::menu::language_changed(&app, now.locale);
     let _ = app.emit(CHANGED, &now);
     Ok(now)
 }

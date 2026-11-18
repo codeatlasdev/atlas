@@ -221,6 +221,49 @@ fn the_harness_sees_a_translated_human_command() {
     assert!(pt.contains("Idioma de exibição: pt-BR"), "{pt}");
 }
 
+// The prefixes around a human error are translated; what follows them is the command's own text, and an error with
+// `--json` or a stable machine code is not touched (the rows above). A usage error (clap) and a runtime error
+// (`anyhow` in main) both go through `chrome`.
+#[test]
+fn the_error_prefixes_of_a_human_command_follow_the_language() {
+    let dir = project();
+    let first_line = |args: &[&str], lang: &str| -> String {
+        let out = run(dir.path(), args, "", lang);
+        assert!(!out.status.success(), "{args:?} must fail");
+        String::from_utf8_lossy(&out.stderr)
+            .lines()
+            .next()
+            .unwrap_or_default()
+            .to_owned()
+    };
+    // clap: unknown subcommand, with a tip underneath.
+    assert!(first_line(&["confg"], "en").starts_with("error: "));
+    assert!(first_line(&["confg"], "pt-BR").starts_with("erro: "));
+    let tip = |lang: &str| {
+        String::from_utf8_lossy(&run(dir.path(), &["confg"], "", lang).stderr).into_owned()
+    };
+    assert!(
+        tip("en").contains("tip: a similar subcommand"),
+        "{}",
+        tip("en")
+    );
+    assert!(
+        tip("pt-BR").contains("dica: a similar subcommand"),
+        "{}",
+        tip("pt-BR")
+    );
+    // anyhow in main: a failing command prints the red prefix and its message.
+    let bad = ["deploy", "nosuch"];
+    let (en, pt) = (first_line(&bad, "en"), first_line(&bad, "pt-BR"));
+    assert!(en.contains("error:"), "{en}");
+    assert!(pt.contains("erro:"), "{pt}");
+    // The text after the prefix is the same in both languages (the command's own message).
+    assert_eq!(
+        en.split_once("error:").map(|x| x.1),
+        pt.split_once("erro:").map(|x| x.1)
+    );
+}
+
 #[test]
 fn config_lang_saves_and_unsets_the_preference_file() {
     let dir = project();

@@ -4,6 +4,7 @@ use clap::{Parser, Subcommand};
 use commands::AtlasCommand;
 use std::ffi::OsString;
 
+mod chrome;
 mod cli_i18n;
 mod commands;
 
@@ -144,9 +145,9 @@ async fn main() {
     crash::install_panic_hook();
 
     if let Err(e) = run().await {
-        eprintln!("\x1b[1;31merror:\x1b[0m {e}");
+        eprintln!("{} {e}", chrome::error());
         for cause in e.chain().skip(1) {
-            eprintln!("  caused by: {cause}");
+            eprintln!("  {} {cause}", chrome::caused_by());
         }
         std::process::exit(1);
     }
@@ -229,7 +230,7 @@ async fn run() -> Result<()> {
         }
         Ok(Action::Adhoc(argv)) => return commands::open::run_adhoc(&argv).await,
         Ok(Action::OpenPath(word)) => return commands::open::open_path(&word, None),
-        Err(e) => e.exit(),
+        Err(e) => chrome::exit_clap(e, atlas_core::lang::resolve()),
     };
     // Rust ignores SIGPIPE, so `atlas version | head` panics on the closed pipe. Short-lived
     // commands get the Unix default and end quietly; the socket servers (`dev`, `hostd`) keep

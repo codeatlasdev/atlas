@@ -78,7 +78,7 @@ pub(super) fn step(msg: &str) {
 }
 
 pub(super) fn die(code: i32, msg: &str) -> ! {
-    eprintln!("\x1b[1;31merror:\x1b[0m {msg}");
+    eprintln!("{} {msg}", crate::chrome::error());
     std::process::exit(code);
 }
 

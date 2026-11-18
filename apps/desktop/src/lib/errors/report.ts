@@ -180,13 +180,19 @@ export function scrub(text: string): string {
 	return text
 		.replace(/\/Users\/[^/\s]+/g, "~")
 		.replace(/\/home\/[^/\s]+/g, "~")
-		.replace(/([?&](?:token|key|secret|password|auth)[^=&\s]*=)[^&\s]*/gi, "$1…");
+		.replace(/([?&](?:token|key|secret|password|auth)[^=&?\s]*=)[^&\s]*/gi, "$1…");
 }
 
+// Each rule below starts only where a run of its characters starts (`(?<!…)`), never at every position inside one:
+// a rule that looks ahead or reads to the end of the run from each position costs the square of a base64 blob or a
+// minified line (100k characters took 1.5 s, and 17 s when the run had separators). The prefixed tokens keep `\b`
+// because they stop at the prefix check, and so match after a `/` or `.` inside a longer run. The name of a named
+// secret is taken whole and without backtracking (`(?=(…))\1`): it ends where the run ends, so giving characters back
+// only retries the separator at each of them.
 const NAMED_SECRET =
-	/\b([\w-]*(?:token|secret|passw(?:or)?d|api[_-]?key|access[_-]?key|private[_-]?key|authorization|cookie|credential)[\w-]*)(["']?\s*[=:]\s*)(?:Bearer |Basic )?("[^"]*"|'[^']*'|[^\s,&"']+)/gi;
+	/(?<![\w-])(?=[\w-]*?(?:token|secret|passw(?:or)?d|api[_-]?key|access[_-]?key|private[_-]?key|authorization|cookie|credential))(?=([\w-]+))\1(["']?\s*[=:]\s*)(?:Bearer |Basic )?("[^"]*"|'[^']*'|[^\s,&"']+)/gi;
 const TOKEN_SHAPE =
-	/\b(?:gh[pousr]_|github_pat_|sk-|xox[bp]-|AKIA|glpat-|npm_|pk_live_|sk_live_)[A-Za-z0-9_-]{8,}|\b(?=[A-Za-z0-9+/_=-]*\d)(?=[A-Za-z0-9+/_=-]*[A-Za-z])[A-Za-z0-9+/_=-]{32,}/g;
+	/\b(?:gh[pousr]_|github_pat_|sk-|xox[bp]-|AKIA|glpat-|npm_|pk_live_|sk_live_)[A-Za-z0-9_-]{8,}|(?<![A-Za-z0-9+/_=-])(?=[A-Za-z0-9+/_=-]*\d)(?=[A-Za-z0-9+/_=-]*[A-Za-z])[A-Za-z0-9+/_=-]{32,}/g;
 
 /**
  * The same rules as `diag::redact` in Rust, applied again on the way out so a report cannot leak even
@@ -195,7 +201,7 @@ const TOKEN_SHAPE =
 export function redactText(text: string): string {
 	return scrub(text)
 		.replace(/\/(?:Users|home)\/[^/\s"']+/g, "~")
-		.replace(/(\w+:\/\/)[^\s/@]+@/g, "$1[redacted]@")
+		.replace(/(?<!\w)(\w+:\/\/)[^\s/@]+@/g, "$1[redacted]@")
 		.replace(NAMED_SECRET, (_m, name, sep) => `${name}${sep}[redacted]`)
 		.replace(TOKEN_SHAPE, "[redacted]");
 }

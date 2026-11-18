@@ -18,6 +18,7 @@
 use std::path::{Path, PathBuf};
 
 use anyhow::{Result, bail};
+use atlas_i18n::t;
 
 use super::plan::{Action, Item, Op, Plan, SkillsTarget};
 use super::shared::read_opt;
@@ -59,9 +60,7 @@ pub struct Paths {
 impl Paths {
     pub fn resolve(env: &Env, scope: Scope, _project_root: Option<&Path>) -> Result<Self> {
         if scope == Scope::Project {
-            bail!(
-                "atlas setup opencode only supports user scope; OpenCode plugins are global to the user"
-            );
+            bail!(t!("cmd_setup_opencode_user_only"));
         }
         let plugins_dir = env.opencode_config_dir.join("plugins");
         Ok(Self {
@@ -88,14 +87,14 @@ pub fn plan_install(paths: &Paths, _scope: Scope, _force: bool, _command: &str) 
         Some(_) => Action::Conflict,
     };
     plan.items.push(Item {
-        label: "Plugin",
+        label: t!("cmd_setup_label_plugin"),
         path: paths.plugin_file.clone(),
         action,
         detail: match action {
-            Action::Create => "+ atlas-status.ts (status events + permission proxy)".into(),
-            Action::Update => "~ atlas-status.ts (refreshed)".into(),
-            Action::UpToDate => "atlas-status.ts up to date".into(),
-            Action::Conflict => "atlas-status.ts exists but was not written by atlas".into(),
+            Action::Create => t!("cmd_setup_opencode_create"),
+            Action::Update => t!("cmd_setup_opencode_update"),
+            Action::UpToDate => t!("cmd_setup_opencode_up_to_date"),
+            Action::Conflict => t!("cmd_setup_opencode_conflict"),
             _ => String::new(),
         },
         op: match action {
@@ -111,10 +110,10 @@ pub fn plan_install_force(paths: &Paths) -> Result<Plan> {
     let mut plan = Plan::default();
     let desired = render_plugin();
     plan.items.push(Item {
-        label: "Plugin",
+        label: t!("cmd_setup_label_plugin"),
         path: paths.plugin_file.clone(),
         action: Action::Update,
-        detail: "~ atlas-status.ts (force-replaced)".into(),
+        detail: t!("cmd_setup_opencode_forced"),
         op: Op::WriteFile(desired),
     });
     Ok(plan)
@@ -130,15 +129,13 @@ pub fn plan_uninstall(paths: &Paths, force: bool) -> Result<Plan> {
         Some(_) => Action::Conflict,
     };
     plan.items.push(Item {
-        label: "Plugin",
+        label: t!("cmd_setup_label_plugin"),
         path: paths.plugin_file.clone(),
         action,
         detail: match action {
-            Action::Remove => "- atlas-status.ts".into(),
-            Action::Absent => "atlas-status.ts not installed".into(),
-            Action::Conflict => {
-                "atlas-status.ts exists but was not written by atlas (pass --force)".into()
-            }
+            Action::Remove => t!("cmd_setup_opencode_removed"),
+            Action::Absent => t!("cmd_setup_opencode_absent"),
+            Action::Conflict => t!("cmd_setup_opencode_foreign"),
             _ => String::new(),
         },
         op: match action {

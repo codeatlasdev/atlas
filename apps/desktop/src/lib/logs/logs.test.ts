@@ -593,36 +593,47 @@ describe("performance (200k lines)", () => {
 		),
 	);
 
-	test("append of 200k lines + full view build stays well under a second", () => {
+	// Load-independent guards (a wall-clock budget failed under load with nothing regressed): the cost model in view.ts is
+	// stated in operations (append O(k), the view meets each new line once), so the tests count them. The matcher is a
+	// fake that counts the lines the filter asks it about.
+	const counting = (accept = () => true) => {
+		const seen = { lines: 0 };
+		const matcher = {
+			lastIndex: 0,
+			test(l) {
+				seen.lines++;
+				return accept(l);
+			},
+		};
+		return { seen, filter: { ...NO_FILTER, matcher, hideNonMatching: true } };
+	};
+
+	test("append of 200k lines + full view build is linear: the ring never copies its buffer, the filter meets each line once", () => {
 		const ring = new Ring(N, 1000);
-		const t0 = performance.now();
+		const { seen, filter } = counting();
+		const buffer = ring.items;
 		for (let i = 0; i < N; i += 2000) ring.push(lines.slice(i, i + 2000));
+		expect(ring.items).toBe(buffer); // appended in place (until a trim), not rebuilt per batch
 		const view = new View();
-		view.add(NO_FILTER, ring, 0);
-		const ms = performance.now() - t0;
-		console.log(`append+view 200k: ${ms.toFixed(1)}ms`);
+		view.add(filter, ring, 0);
+		expect(seen.lines).toBe(N);
 		expect(view.length).toBe(N);
-		expect(ms).toBeLessThan(1000);
 	});
 
 	test("incremental add of a 2000-line batch onto a full 200k ring is O(batch)", () => {
 		const ring = ringOf(lines, N);
-		const f = {
-			only: null,
-			minLevel: "info",
-			matcher: compileQuery("failed", false, false),
-			hideNonMatching: true,
-			win: NO_WINDOW,
-		};
+		const { seen, filter } = counting((l) => /failed/.test(l));
 		const view = new View();
-		view.add(f, ring, 0);
+		view.add(filter, ring, 0);
+		expect(seen.lines).toBe(N);
+		const before = view.length;
 		const from = ring.base + ring.length;
 		ring.push(lines.slice(0, 2000));
-		const t0 = performance.now();
-		view.add(f, ring, from);
-		const ms = performance.now() - t0;
-		console.log(`incremental add 2000 onto 200k: ${ms.toFixed(2)}ms`);
-		expect(ms).toBeLessThan(20);
+		seen.lines = 0;
+		view.add(filter, ring, from);
+		// Only the new batch met the filter, not the 200k already in the view.
+		expect(seen.lines).toBe(2000);
+		expect(view.length).toBe(before + 2000 / 50);
 	});
 
 	test("full regex re-filter of 200k lines, time-sliced: every slice stays within budget", () => {
@@ -673,21 +684,27 @@ describe("performance (200k lines)", () => {
 		expect(slices.length).toBeGreaterThanOrEqual(Math.floor(web / (BUDGET / COST + CHUNK)));
 	});
 
-	test("search scan of 200k lines + 10k next/prev lookups", () => {
+	test("search scan of 200k lines + 10k next() lookups: each lookup is a binary search over the matches", () => {
 		const ring = ringOf(lines, N);
 		const view = new View();
 		view.add(NO_FILTER, ring, 0);
 		const s = new Search(compileQuery("ERROR", false, false), view, ring);
-		const t0 = performance.now();
 		while (!s.scan(1000));
-		const scan = performance.now() - t0;
 		expect(s.rows.length).toBe(N / 50);
-		const t1 = performance.now();
+		let reads = 0; // elements of `rows` the lookups read
+		s.rows = new Proxy(s.rows, {
+			get(rows, key, receiver) {
+				if (typeof key === "string" && /^\d+$/.test(key)) reads++;
+				return Reflect.get(rows, key, receiver);
+			},
+		});
 		let r = -1;
-		for (let i = 0; i < 10_000; i++) r = s.next(r);
-		const nav = performance.now() - t1;
-		console.log(`search scan 200k: ${scan.toFixed(0)}ms; 10k next(): ${nav.toFixed(2)}ms`);
-		expect(nav).toBeLessThan(50);
+		const lookups = 10_000;
+		for (let i = 0; i < lookups; i++) r = s.next(r);
+		const perLookup = reads / lookups;
+		console.log(`search 200k: ${s.rows.length} matches, ${perLookup.toFixed(1)} reads per next()`);
+		// log2(4000) = 12 probes and the final read; a scan from the start would read thousands.
+		expect(perLookup).toBeLessThanOrEqual(Math.ceil(Math.log2(s.rows.length)) + 2);
 	});
 });
 

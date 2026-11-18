@@ -148,7 +148,9 @@ describe("indexFor: one index per file list", () => {
 });
 
 // Regression #308: Quick Open rebuilt an item per file (icon markup included) and scored, sorted and sliced all of them on
-// every keystroke. Numbers for the PR: `bun test src/lib/quickOpen.test.ts` prints them.
+// every keystroke. The guard counts the work instead of timing it (a wall-clock budget, then a ratio to the old scoring,
+// failed on a loaded machine with the index still 14x faster): a keystroke may look at the files the previous one
+// matched and nothing more, and typing never reads the file list again once the index is built.
 describe("100k files", () => {
 	const files = corpus(100_000);
 	const typed = [
@@ -163,39 +165,38 @@ describe("100k files", () => {
 		"controlle",
 		"controller",
 	];
-	const at = (xs: number[], q: number) => [...xs].sort((a, b) => a - b)[Math.floor(xs.length * q)];
 
-	test("typing a word is fast per keystroke, and the index is built once", () => {
-		const t0 = performance.now();
-		const idx = new FileIndex(files);
-		const build = performance.now() - t0;
-		const per: number[] = [];
-		for (let round = 0; round < 5; round++) {
-			const fresh = round === 0 ? idx : new FileIndex(files);
-			for (const q of typed) {
-				const t = performance.now();
-				fresh.top(q, 80);
-				per.push(performance.now() - t);
-			}
+	/** `files` that reports every element read, so a per-keystroke pass over the list shows. */
+	function watched() {
+		const log = { reads: 0 };
+		const proxy = new Proxy(files, {
+			get(target, key, receiver) {
+				if (typeof key === "string" && /^\d+$/.test(key)) log.reads++;
+				return Reflect.get(target, key, receiver);
+			},
+		});
+		return { proxy, log };
+	}
+
+	test("typing a word narrows what each keystroke looks at, and the index is built once", () => {
+		const { proxy, log } = watched();
+		const idx = new FileIndex(proxy);
+		expect(log.reads).toBe(files.length); // the build reads each file once...
+		const scanned: number[] = [];
+		for (const q of typed) {
+			idx.top(q, 80);
+			scanned.push(idx.scanned);
 		}
-		// The scoring the palette ran per keystroke before, measured in the same process: a loaded machine slows both
-		// the same way, so the guard compares them instead of a wall-clock budget (a fixed 32 ms failed on a loaded
-		// machine while the index was still 14x faster than this).
-		const olds: number[] = [];
-		for (let i = 0; i < 5; i++) {
-			const t1 = performance.now();
-			reference(files, "controller", 80);
-			olds.push(performance.now() - t1);
+		expect(log.reads).toBe(files.length); // ...and no keystroke reads the list again
+		console.log(`quick-open 100k: files looked at per keystroke of "controller": ${scanned.join(" ")}`);
+		// The first keystroke scans the list; every later one only what its prefix matched: never more than the keystroke
+		// before, and far from the list (the pre-index palette, and an index that forgot the narrowing, scan all 100k).
+		expect(scanned[0]).toBeGreaterThanOrEqual(files.length);
+		for (let i = 1; i < scanned.length; i++) {
+			expect(scanned[i]).toBeLessThanOrEqual(scanned[i - 1]);
+			expect(scanned[i]).toBeLessThan(files.length / 2);
 		}
-		const old = at(olds, 0.5);
-		const median = at(per, 0.5);
-		console.log(
-			`quick-open 100k: index build ${build.toFixed(1)} ms; keystroke median ${median.toFixed(2)} ms, p95 ${at(per, 0.95).toFixed(2)} ms, max ${Math.max(...per).toFixed(2)} ms; ` +
-				`the scoring the palette ran per keystroke before (score+sort, no item building), median of 5: ${old.toFixed(1)} ms`,
-		);
-		// Medians, not p95: under a parallel test run the 3 ms keystrokes catch every scheduler pause (p95 rose 6x, to
-		// 18 ms) while the 40 ms old scoring only tripled, so p95 against it failed with nothing regressed. Measured:
-		// median 14x faster at rest; a regression to within 4x of the old scoring (or back to it) fails.
-		expect(median * 4).toBeLessThan(old);
+		// Narrowing changed what is looked at, not the answer.
+		expect(idx.top("controller", 80)).toEqual(reference(files, "controller", 80));
 	});
 });

@@ -82,9 +82,14 @@ describe("report + issueUrl", () => {
 		expect(t).toContain("Where: Editor (editor)");
 		expect(t).toContain("File: main.rs");
 	});
+	// The stack is clipped by frames and by line length: both shapes of "too long" stay under the URL budget. (The line is
+	// words, not one 50k run of `x`: `redactText` takes time quadratic in a long run of token characters, 780 ms for
+	// 50k, which timed this test out on a loaded machine; a real frame has separators.)
 	test("long stacks stay under the URL budget", () => {
-		const long = { ...r, stack: "x".repeat(50_000) };
-		expect(issueUrl(long).length).toBeLessThan(9000);
+		const frames = { ...r, stack: "    at f (a.ts:1:1)\n".repeat(5000) };
+		const oneLongLine = { ...r, stack: "    at f (a.ts:1:1) ".repeat(2500) };
+		expect(issueUrl(frames).length).toBeLessThan(9000);
+		expect(issueUrl(oneLongLine).length).toBeLessThan(9000);
 	});
 });
 

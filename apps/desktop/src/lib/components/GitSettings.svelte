@@ -8,6 +8,7 @@
 	import Group from "#lib/settings/Group.svelte";
 	import Row from "#lib/settings/Row.svelte";
 	import LoadError from "#lib/settings/LoadError.svelte";
+	import { m } from "#lib/i18n/m.ts";
 
 	/** The installed agents that can write a message (a one-shot run in `agents.json`: not OpenCode, not custom agents). */
 	const writers = $derived(agents.list.filter((a) => a.installed && canWriteCommits(a.id)));
@@ -44,11 +45,11 @@
 	<LoadError what="your Git settings" error={loadError} />
 {/if}
 
-<Group title="Commit messages">
+<Group title={m.settings_general_git_commit_messages()}>
 	<Row
 		id="git-commit-agent"
-		label="Generate commit messages with"
-		description="The staged diff (all changes when nothing is staged) goes only to the agent you pick here, run on this computer with no tools, plus your recent commit subjects and the commit rules of CONTRIBUTING.md and AGENTS.md. Files that look like secrets (.env, keys, certificates) are never sent; lockfiles and binaries are sent as names only. Choose Off to hide the button."
+		label={m.settings_general_git_generate_commit_messages_with()}
+		description={m.settings_general_git_the_staged_diff_all_changes()}
 	>
 		<div class="select">
 			<Select
@@ -65,8 +66,7 @@
 		{#snippet below()}
 			{#if writers.length === 0}
 				<p class="hint">
-					None of {writerNames} is installed on this computer, so there is nothing to write messages yet. Install
-					one and pick it here.
+					{m.settings_general_git_none_of_writernames_is_installed({ writerNames })}
 				</p>
 			{/if}
 		{/snippet}

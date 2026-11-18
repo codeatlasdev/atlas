@@ -21,6 +21,7 @@
 	import FallbackViewer from "#lib/viewers/FallbackViewer.svelte";
 	import MarkdownViewer from "#lib/viewers/MarkdownViewer.svelte";
 	import MarkdownBar from "./MarkdownBar.svelte";
+	import { m } from "#lib/i18n/m.ts";
 
 	/** Absolute path of the file. */
 	let { path }: { path: string } = $props();
@@ -134,18 +135,22 @@
 	{/if}
 	{#if session.conflict}
 		<div class="banner" role="alert">
-			<span>This file changed on disk and you have unsaved edits.</span>
-			<button onclick={() => void session.resolve("reload")}>Load from disk</button>
-			<button onclick={() => void session.resolve("keep")}>Keep my version</button>
+			<span>{m.workbench_loose_editor_this_file_changed_on_disk()}</span>
+			<button onclick={() => void session.resolve("reload")}
+				>{m.workbench_loose_editor_load_from_disk()}</button
+			>
+			<button onclick={() => void session.resolve("keep")}
+				>{m.workbench_loose_editor_keep_my_version()}</button
+			>
 		</div>
 	{:else if session.deleted}
 		<div class="banner" role="alert">
-			<span>This file was deleted on disk. Saving writes it again.</span>
-			<button onclick={() => void session.save()}>Save</button>
+			<span>{m.workbench_loose_editor_this_file_was_deleted_on()}</span>
+			<button onclick={() => void session.save()}>{m.common_action_save()}</button>
 		</div>
 	{/if}
 	{#if phase === "loading"}
-		<div class="msg" aria-busy="true">Loading…</div>
+		<div class="msg" aria-busy="true">{m.common_state_loading()}</div>
 	{:else if phase === "large" || phase === "binary"}
 		<FallbackViewer
 			reason={phase}
@@ -165,7 +170,9 @@
 			<span class="mono path" title={abs}>{abs}</span>
 			<span class="grow"></span>
 			<span>{session.dirty ? "Edited" : "Saved"}</span>
-			<span class="mono">Ln {cursor.line}, Col {cursor.col}</span>
+			<span class="mono"
+				>{m.workbench_loose_editor_ln_line_col_col({ line: cursor.line, col: cursor.col })}</span
+			>
 		</footer>
 	{/if}
 </div>

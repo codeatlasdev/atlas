@@ -1,0 +1,23 @@
+{
+	"shell_app_page_this_file_hit_an_error": "Este arquivo teve um erro",
+	"shell_app_page_this_view_hit_an_error": "Esta visualização teve um erro",
+	"shell_project_header_a_plain_folder_atlas_shows": "Uma pasta simples: o Atlas mostra os arquivos dela e mais nada. Use como projeto para executar serviços e ver alterações.",
+	"shell_project_header_activity_and_actions": "Atividade e ações",
+	"shell_project_header_auto_detected": "Detectado automaticamente",
+	"shell_project_header_docks": "Docks",
+	"shell_project_header_folder": "Pasta",
+	"shell_project_header_no_atlas_yaml_in_this": "Sem atlas.yaml nesta pasta: o Atlas detectou como executá-la. Nada foi gravado no disco.",
+	"shell_project_header_open_in_external_editor": "Abrir no editor externo",
+	"shell_project_header_pin_to_top": "Fixar no topo",
+	"shell_project_header_project_menu": "Menu do projeto",
+	"shell_project_header_remove_from_atlas": "Remover do Atlas…",
+	"shell_project_header_save_as_atlas_yaml": "Salvar como atlas.yaml",
+	"shell_project_header_start": "Iniciar",
+	"shell_project_header_start_with_profile": "Iniciar com perfil",
+	"shell_project_header_stop": "Parar",
+	"shell_project_header_unpin": "Desafixar",
+	"shell_project_header_use_as_project": "Usar como projeto",
+	"shell_workbench_not_a_git_repository": "Não é um repositório git",
+	"shell_workbench_this_folder_has_no_version": "Esta pasta não tem controle de versão, então não há alterações nem pull requests para mostrar.",
+	"shell_workbench_this_panel_hit_an_error": "Este painel teve um erro"
+}

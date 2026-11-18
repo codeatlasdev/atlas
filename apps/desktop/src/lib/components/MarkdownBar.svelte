@@ -11,6 +11,7 @@
 		toggleItalic,
 		toggleNumbered,
 	} from "#lib/editor/markdownFormat.ts";
+	import { m } from "#lib/i18n/m.ts";
 
 	let {
 		view,
@@ -45,7 +46,7 @@
 	}
 </script>
 
-<div class="mdbar" role="toolbar" aria-label="Markdown formatting">
+<div class="mdbar" role="toolbar" aria-label={m.workbench_markdown_bar_markdown_formatting()}>
 	{#each ITEMS as item (item.label)}
 		<button
 			type="button"

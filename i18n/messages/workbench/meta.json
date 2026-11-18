@@ -1,0 +1,11 @@
+{
+	"workbench_loose_editor_keep_my_version": "Button label in a <button> element, in LooseEditor (apps/desktop/src/lib/components/LooseEditor.svelte). Extracted by i18n:extract: refine this description on review.",
+	"workbench_loose_editor_ln_line_col_col": "Text in a <span> element, in LooseEditor (apps/desktop/src/lib/components/LooseEditor.svelte). {line} is cursor.line; {col} is cursor.col. Extracted by i18n:extract: refine this description on review.",
+	"workbench_loose_editor_load_from_disk": "Button label in a <button> element, in LooseEditor (apps/desktop/src/lib/components/LooseEditor.svelte). Extracted by i18n:extract: refine this description on review.",
+	"workbench_loose_editor_this_file_changed_on_disk": "Text in a <span> element, in LooseEditor (apps/desktop/src/lib/components/LooseEditor.svelte). Extracted by i18n:extract: refine this description on review.",
+	"workbench_loose_editor_this_file_was_deleted_on": "Text in a <span> element, in LooseEditor (apps/desktop/src/lib/components/LooseEditor.svelte). Extracted by i18n:extract: refine this description on review.",
+	"workbench_loose_view_open_as_project": "Button label in the <Button> component, in LooseView (apps/desktop/src/lib/components/LooseView.svelte). Extracted by i18n:extract: refine this description on review.",
+	"workbench_loose_view_open_files": "Accessible name (aria-label, read by screen readers) of a <div> element, in LooseView (apps/desktop/src/lib/components/LooseView.svelte). Extracted by i18n:extract: refine this description on review.",
+	"workbench_loose_view_open_folder": "Button label in the <Button> component, in LooseView (apps/desktop/src/lib/components/LooseView.svelte). Extracted by i18n:extract: refine this description on review.",
+	"workbench_markdown_bar_markdown_formatting": "Accessible name (aria-label, read by screen readers) of a <div> element, in MarkdownBar (apps/desktop/src/lib/components/MarkdownBar.svelte). Extracted by i18n:extract: refine this description on review."
+}

@@ -5,6 +5,7 @@ use crate::theme;
 use crate::tui::app::Message;
 use crate::tui::clicks::ClickMap;
 use crate::tui::widgets::modal::Modal;
+use atlas_i18n::t;
 
 /// Which quit dialog: the owner stops everything; an attached client chooses.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
@@ -18,25 +19,62 @@ pub fn render(frame: &mut Frame, selected: usize, mode: Mode, clicks: &ClickMap)
     let area = frame.area();
 
     let attached = mode == Mode::Attached;
-    let width = if attached { 54 } else { 62 }.min(area.width.saturating_sub(4));
-    let height = 8.min(area.height.saturating_sub(4));
-    let (_, inner) = Modal::new(
-        if attached { " Leave? " } else { " Quit? " },
-        Message::HideQuit,
-    )
-    .frame(frame, width, height, clicks);
-
     // Left button is the safe one (Cancel / Detach); right is the destructive one.
     let (left, right, left_msg, right_msg) = if attached {
         (
-            " Detach ",
-            " Stop everything ",
+            format!(" {} ", t!("tui_runtime_views_quit_detach")),
+            format!(" {} ", t!("tui_runtime_views_quit_stop_all")),
             Message::Detach,
             Message::StopRunner,
         )
     } else {
-        (" Cancel ", " Quit ", Message::HideQuit, Message::Quit)
+        (
+            format!(" {} ", t!("common_action_cancel")),
+            format!(" {} ", t!("tui_runtime_views_quit_quit")),
+            Message::HideQuit,
+            Message::Quit,
+        )
     };
+    let (headline, hint) = if attached {
+        (
+            t!("tui_runtime_views_quit_attached_headline"),
+            t!("tui_runtime_views_quit_attached_hint"),
+        )
+    } else {
+        (
+            t!("tui_runtime_views_quit_owner_headline"),
+            t!(
+                "tui_runtime_views_quit_owner_hint",
+                command = "atlas dev --detach"
+            ),
+        )
+    };
+    let title = if attached {
+        t!("tui_runtime_views_quit_title_leave")
+    } else {
+        t!("tui_runtime_views_quit_title_quit")
+    };
+
+    let (left_w, gap, right_w) = (
+        left.chars().count() as u16,
+        3u16,
+        right.chars().count() as u16,
+    );
+    // Wide enough for the longest line in any language (borders and padding take 6), never wider than the screen.
+    let widest = [
+        headline.chars().count(),
+        hint.chars().count(),
+        (left_w + gap + right_w) as usize,
+    ]
+    .into_iter()
+    .max()
+    .unwrap_or(0) as u16;
+    let base = if attached { 54 } else { 62 };
+    let width = base.max(widest + 6).min(area.width.saturating_sub(4));
+    let height = 8.min(area.height.saturating_sub(4));
+    let (_, inner) =
+        Modal::new(&format!(" {title} "), Message::HideQuit).frame(frame, width, height, clicks);
+
     let left_style = if selected == 0 {
         Style::default().fg(t.text).bg(t.bg_float).bold()
     } else {
@@ -48,17 +86,6 @@ pub fn render(frame: &mut Frame, selected: usize, mode: Mode, clicks: &ClickMap)
         Style::default().fg(t.text_dim)
     };
 
-    let (headline, hint) = if attached {
-        (
-            "Detach leaves the services running in the runner.",
-            "reattach with atlas dev · stop with atlas down",
-        )
-    } else {
-        (
-            "All services will be stopped.",
-            "keep them running: atlas dev --detach",
-        )
-    };
     let lines = vec![
         Line::from(""),
         Line::from(Span::styled(headline, Style::default().fg(t.text_muted))),
@@ -78,11 +105,6 @@ pub fn render(frame: &mut Frame, selected: usize, mode: Mode, clicks: &ClickMap)
     frame.render_widget(paragraph, inner);
 
     // Buttons row is line 4 of the centered paragraph: left + 3 gap + right.
-    let (left_w, gap, right_w) = (
-        left.chars().count() as u16,
-        3u16,
-        right.chars().count() as u16,
-    );
     let row_w = left_w + gap + right_w;
     let bx = inner.x + inner.width.saturating_sub(row_w) / 2;
     let by = inner.y + 4;

@@ -9,11 +9,12 @@
 	import { fly } from "svelte/transition";
 	import CrewmateFace from "#lib/crew/CrewmateFace.svelte";
 	import { normalizeLook, type CrewmateLook } from "#lib/crew/look.ts";
+	import { m } from "#lib/i18n/m.ts";
 
 	let {
 		seed,
 		look,
-		label = "Thinking",
+		label,
 		detail,
 		paused = false,
 	}: {
@@ -27,6 +28,7 @@
 	} = $props();
 
 	const crewColor = $derived(normalizeLook(look, seed).color);
+	const shown = $derived(label ?? m.crew_chat_setup_conversation_thinking());
 </script>
 
 <div class="crewmate-typing" class:paused>
@@ -35,8 +37,8 @@
 		<span class="mini"><CrewmateFace {seed} {look} state="working" size={22} /></span>
 	</span>
 	<span class="label-slot">
-		{#key label}
-			<span class="crew-shimmer shimmer" in:fly={{ y: 7, duration: 260 }}>{label}</span>
+		{#key shown}
+			<span class="crew-shimmer shimmer" in:fly={{ y: 7, duration: 260 }}>{shown}</span>
 		{/key}
 	</span>
 	{#if detail}<span class="detail">· {detail}</span>{/if}

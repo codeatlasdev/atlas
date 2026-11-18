@@ -5,6 +5,7 @@ use std::path::{Path, PathBuf};
 
 use anyhow::{Context, Result, bail};
 use atlas_core::github;
+use atlas_i18n::t;
 use sha2::{Digest, Sha256};
 
 pub const REPO: &str = "codeatlasdev/atlas";
@@ -21,10 +22,22 @@ pub fn download_verified(
     let tarball = dir.join(asset);
     let sum_name = format!("{asset}.sha256");
     let sum = dir.join(&sum_name);
-    github::download_asset_progress(REPO, tag, asset, &tarball, on_progress)
-        .with_context(|| format!("{tag} has no {asset} (download failed or missing asset)"))?;
-    github::download_asset(REPO, tag, &sum_name, &sum)
-        .with_context(|| format!("{tag} has no {sum_name} (download failed or missing asset)"))?;
+    github::download_asset_progress(REPO, tag, asset, &tarball, on_progress).with_context(
+        || {
+            t!(
+                "cmd_misc_release_ctx_missing_asset",
+                tag = tag,
+                asset = asset
+            )
+        },
+    )?;
+    github::download_asset(REPO, tag, &sum_name, &sum).with_context(|| {
+        t!(
+            "cmd_misc_release_ctx_missing_asset",
+            tag = tag,
+            asset = &sum_name
+        )
+    })?;
     verify_sha256(&tarball)?;
     Ok(tarball)
 }
@@ -39,7 +52,7 @@ pub fn verify_sha256(tarball: &Path) -> Result<()> {
     sum.push(".sha256");
     let sum = PathBuf::from(sum);
     if !sum.is_file() {
-        bail!("{name} has no {name}.sha256; refusing unverified install");
+        bail!(t!("cmd_misc_release_no_checksum", name = &name));
     }
     let expected = std::fs::read_to_string(&sum)?
         .split_whitespace()
@@ -48,7 +61,12 @@ pub fn verify_sha256(tarball: &Path) -> Result<()> {
         .to_ascii_lowercase();
     let actual = hex::encode(Sha256::digest(std::fs::read(tarball)?));
     if expected != actual {
-        bail!("checksum mismatch for {name} (expected {expected}, got {actual})");
+        bail!(t!(
+            "cmd_misc_release_checksum_mismatch",
+            name = &name,
+            expected = &expected,
+            actual = &actual
+        ));
     }
     Ok(())
 }

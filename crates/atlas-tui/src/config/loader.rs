@@ -1,6 +1,7 @@
 use std::path::{Path, PathBuf};
 
 use anyhow::{Context, bail};
+use atlas_i18n::t;
 use schemars::JsonSchema;
 use serde::Deserialize;
 
@@ -23,14 +24,19 @@ pub fn load(root_dir: &Path) -> anyhow::Result<ProjectConfig> {
 
 /// The one line printed whenever a run uses a detected config: what was found, how to keep it.
 pub fn detected_notice(config: &ProjectConfig) -> String {
-    let found = if config.services.is_empty() {
-        "no services detected (add one with `atlas -- <cmd>`)".to_string()
+    detected_notice_in(config, atlas_i18n::lang())
+}
+
+/// [`detected_notice`] in `tag`: `--ci` prints it in English whatever the display language, because pipelines and
+/// agents read that output.
+pub fn detected_notice_in(config: &ProjectConfig, tag: &str) -> String {
+    if config.services.is_empty() {
+        atlas_i18n::t_in!(tag, "tui_runtime_config_detected_none")
     } else {
         let mut names: Vec<&str> = config.services.keys().map(String::as_str).collect();
         names.sort_unstable();
-        format!("services: {}", names.join(", "))
-    };
-    format!("no atlas.yaml: using detected config ({found}); save it with `atlas init`")
+        atlas_i18n::t_in!(tag, "tui_runtime_config_detected", names = names.join(", "))
+    }
 }
 
 /// Where a loaded config came from.
@@ -55,8 +61,11 @@ pub fn load_or_detect(root_dir: &Path) -> anyhow::Result<(ProjectConfig, ConfigS
     let (config, errors) = parse_checked(root_dir, &yaml, CONFIG_FILE)?;
     if !errors.is_empty() {
         bail!(
-            "detected config for {} is invalid:\n{}",
-            root_dir.display(),
+            "{}\n{}",
+            t!(
+                "tui_runtime_config_detected_errors",
+                path = root_dir.display().to_string()
+            ),
             validate::render_errors(&errors, CONFIG_FILE)
         );
     }
@@ -72,10 +81,16 @@ pub fn load_checked(
 ) -> anyhow::Result<(ProjectConfig, Vec<validate::ConfigError>)> {
     let config_path = root_dir.join(CONFIG_FILE);
     if !config_path.exists() {
-        bail!("No {} found in {}", CONFIG_FILE, root_dir.display());
+        bail!(
+            "{}",
+            t!(
+                "tui_runtime_config_missing",
+                dir = root_dir.display().to_string()
+            )
+        );
     }
-    let base_content =
-        std::fs::read_to_string(&config_path).context("Failed to read atlas.yaml")?;
+    let base_content = std::fs::read_to_string(&config_path)
+        .with_context(|| t!("tui_runtime_config_read_failed", file = CONFIG_FILE))?;
     parse_checked(root_dir, &base_content, CONFIG_FILE)
 }
 
@@ -88,8 +103,8 @@ fn parse_checked(
 ) -> anyhow::Result<(ProjectConfig, Vec<validate::ConfigError>)> {
     let mut errors = Vec::new();
 
-    let base_value: serde_norway::Value =
-        serde_norway::from_str(base_content).context("Failed to parse atlas.yaml")?;
+    let base_value: serde_norway::Value = serde_norway::from_str(base_content)
+        .with_context(|| t!("tui_runtime_config_parse_failed", file = CONFIG_FILE))?;
     errors.extend(validate::unknown_keys(
         &base_value,
         validate::Target::Project,
@@ -100,10 +115,10 @@ fn parse_checked(
 
     let local_path = root_dir.join(LOCAL_CONFIG_FILE);
     if local_path.exists() {
-        let local_content =
-            std::fs::read_to_string(&local_path).context("Failed to read atlas.local.yaml")?;
-        let local_value: serde_norway::Value =
-            serde_norway::from_str(&local_content).context("Failed to parse atlas.local.yaml")?;
+        let local_content = std::fs::read_to_string(&local_path)
+            .with_context(|| t!("tui_runtime_config_read_failed", file = LOCAL_CONFIG_FILE))?;
+        let local_value: serde_norway::Value = serde_norway::from_str(&local_content)
+            .with_context(|| t!("tui_runtime_config_parse_failed", file = LOCAL_CONFIG_FILE))?;
         errors.extend(validate::unknown_keys(
             &local_value,
             validate::Target::Local,

@@ -1,5 +1,6 @@
 use std::cell::Cell;
 
+use atlas_i18n::t;
 use ratatui::prelude::*;
 use ratatui::widgets::*;
 
@@ -120,7 +121,7 @@ pub fn render(
     let up = if offset > 0 { "↑" } else { " " };
     let down = if offset + rows < total { "↓" } else { " " };
     let counter = if total == 0 {
-        " no match ".to_string()
+        format!(" {} ", t!("tui_runtime_widgets_palette_no_match"))
     } else {
         format!(" {up} {}/{total} {down} ", selected + 1)
     };

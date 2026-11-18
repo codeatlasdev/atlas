@@ -10,6 +10,7 @@
 	import { Combobox } from "@codeatlasdev/ui";
 	import { errText } from "#lib/api.ts";
 	import { typeInSearchField } from "#lib/crew/searchKeys.ts";
+	import { m } from "#lib/i18n/m.ts";
 
 	let {
 		baseUrl,
@@ -46,16 +47,19 @@
 	});
 
 	const options = $derived(
-		[...(value && !models.includes(value) ? [value] : []), ...models].map((m) => ({ value: m, label: m })),
+		[...(value && !models.includes(value) ? [value] : []), ...models].map((name) => ({
+			value: name,
+			label: name,
+		})),
 	);
 	const placeholder = $derived(
 		!baseUrl.trim() || !apiKey.trim()
-			? "Fill the URL and key first"
+			? m.crew_workspace_model_picker_fill_first()
 			: loading
-				? "Loading models…"
+				? m.crew_workspace_model_picker_loading_models()
 				: models.length
-					? `Choose one of ${models.length} models`
-					: "Type a model id",
+					? m.crew_workspace_model_picker_choose({ count: models.length })
+					: m.crew_workspace_model_picker_type_id(),
 	);
 </script>
 
@@ -66,10 +70,10 @@
 		bind:value={value as string}
 		{options}
 		{placeholder}
-		searchPlaceholder="Search models"
-		emptyText={loading ? "Loading…" : "No match: press Enter to use what you typed"}
+		searchPlaceholder={m.crew_workspace_model_picker_search()}
+		emptyText={loading ? m.common_state_loading() : m.crew_workspace_model_picker_no_match()}
 		creatable
-		ariaLabel="Model"
+		ariaLabel={m.crew_settings_engine_section_model()}
 		error={error || undefined}
 		class={id}
 	/>

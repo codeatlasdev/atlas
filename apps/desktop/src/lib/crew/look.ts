@@ -1,6 +1,7 @@
 /**
  * What a crewmate looks like: body colour, eye style, hat, tool, outfit and eyewear. Pure data, no DOM,
- * so the editor, the avatar and persisted settings share one definition.
+ * so the editor, the avatar and persisted settings share one definition. The words (option names) are in
+ * lookLabels.ts, so the avatar does not carry them.
  */
 
 export const CREWMATE_COLORS = [
@@ -64,86 +65,6 @@ export interface CrewmateLook {
 	outfit: Outfit;
 	face: Face;
 }
-
-export const EYE_LABELS: Record<EyeStyle, string> = {
-	round: "Round",
-	dots: "Dots",
-	happy: "Happy",
-	visor: "Visor",
-	cyclops: "Cyclops",
-	sleepy: "Sleepy",
-};
-
-export const HAT_LABELS: Record<Hat, string> = {
-	none: "None",
-	straw: "Straw hat",
-	cap: "Cap",
-	beanie: "Beanie",
-	tophat: "Top hat",
-	crown: "Crown",
-	party: "Party",
-	wizard: "Wizard",
-	headphones: "Headphones",
-	antenna: "Antenna",
-	bicorne: "Map bicorne",
-	bandana: "Bandana",
-};
-
-export const TOOL_LABELS: Record<Tool, string> = {
-	none: "None",
-	compass: "Compass",
-	spyglass: "Spyglass",
-	wrench: "Wrench",
-	quill: "Quill",
-	magnifier: "Magnifier",
-	megaphone: "Megaphone",
-	pin: "Map pin",
-	lantern: "Lantern",
-};
-
-export const OUTFIT_LABELS: Record<Outfit, string> = {
-	none: "None",
-	scarf: "Scarf",
-	coat: "Captain coat",
-	apron: "Tool apron",
-	satchel: "Satchel",
-	tie: "Tie",
-};
-
-export const FACE_LABELS: Record<Face, string> = {
-	none: "None",
-	eyepatch: "Eyepatch",
-	monocle: "Monocle",
-	"round-glasses": "Glasses",
-	sunglasses: "Sunglasses",
-	goggles: "Goggles",
-};
-
-/** One-click presets: dress for a job, keep the crewmate's own colour and eyes. */
-export const ROLE_KITS: {
-	id: string;
-	label: string;
-	kit: Pick<CrewmateLook, "hat" | "tool" | "outfit" | "face">;
-}[] = [
-	{ id: "captain", label: "Captain", kit: { hat: "bicorne", tool: "compass", outfit: "coat", face: "none" } },
-	{ id: "sales", label: "Sales", kit: { hat: "straw", tool: "pin", outfit: "satchel", face: "none" } },
-	{
-		id: "reviewer",
-		label: "Reviewer",
-		kit: { hat: "none", tool: "magnifier", outfit: "tie", face: "round-glasses" },
-	},
-	{
-		id: "lookout",
-		label: "Lookout",
-		kit: { hat: "bandana", tool: "spyglass", outfit: "none", face: "eyepatch" },
-	},
-	{ id: "scribe", label: "Scribe", kit: { hat: "beanie", tool: "quill", outfit: "scarf", face: "monocle" } },
-	{
-		id: "keeper",
-		label: "Lighthouse keeper",
-		kit: { hat: "wizard", tool: "lantern", outfit: "coat", face: "none" },
-	},
-];
 
 const HEX = /^#[0-9a-f]{6}$/i;
 

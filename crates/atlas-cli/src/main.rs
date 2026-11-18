@@ -7,6 +7,7 @@ use std::ffi::OsString;
 mod chrome;
 mod cli_i18n;
 mod commands;
+mod numfmt;
 
 #[derive(Debug, Parser)]
 #[command(

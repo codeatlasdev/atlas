@@ -2,6 +2,7 @@ use std::path::Path;
 
 use anyhow::Result;
 use atlas_core::domain::project::initial_config;
+use atlas_i18n::t;
 use clap::Args;
 
 use super::AtlasCommand;
@@ -23,31 +24,38 @@ pub async fn handle(dir: &str) -> Result<()> {
 
     let config_path = root.join("atlas.yaml");
     if config_path.exists() {
-        anyhow::bail!(
-            "atlas.yaml already exists in {}",
-            root.canonicalize().unwrap_or(root.to_path_buf()).display()
-        );
+        anyhow::bail!(t!(
+            "cmd_misc_init_exists",
+            dir = root
+                .canonicalize()
+                .unwrap_or(root.to_path_buf())
+                .display()
+                .to_string()
+        ));
     }
 
     let (yaml, detection) = initial_config(root);
 
     std::fs::write(&config_path, &yaml)?;
 
-    println!("\x1b[1;32m\u{2713}\x1b[0m Created atlas.yaml");
+    println!("\x1b[1;32m\u{2713}\x1b[0m {}", t!("cmd_misc_init_created"));
 
     if detection.language != "unknown" {
         let detail = match detection.framework.as_deref() {
             Some(fw) => format!("{} ({})", detection.language, fw),
             None => detection.language.clone(),
         };
-        println!("  Detected: {detail}");
+        println!("  {}", t!("cmd_misc_init_detected", detail = detail));
     }
 
     if detection.services.is_empty() {
-        println!("  No services auto-detected — edit atlas.yaml to add your services.");
+        println!("  {}", t!("cmd_misc_init_no_services"));
     } else {
         let names: Vec<&str> = detection.services.iter().map(|s| s.name.as_str()).collect();
-        println!("  Services: {}", names.join(", "));
+        println!(
+            "  {}",
+            t!("cmd_misc_init_services", names = names.join(", "))
+        );
     }
 
     Ok(())

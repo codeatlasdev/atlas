@@ -2,6 +2,7 @@
 //! suspended services are not "down", so they stay out of the denominator.
 
 use crate::runtime::service::ServiceState;
+use atlas_i18n::t;
 
 /// Counts behind `5/5 running · 1 done · 1 stopped`.
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Default)]
@@ -64,22 +65,35 @@ impl Health {
             .unwrap_or(0)
     }
 
-    /// `5/5 running · 1 done · 1 stopped`.
+    /// `5/5 running · 1 done · 1 stopped`, in the display language.
     pub fn label(&self) -> String {
-        let mut s = format!("{}/{} running", self.running, self.expected());
+        let mut parts = vec![t!(
+            "tui_runtime_widgets_health_running",
+            running = self.running,
+            total = self.expected()
+        )];
         if self.unhealthy > 0 {
-            s.push_str(&format!(" · {} unhealthy", self.unhealthy));
+            parts.push(t!(
+                "tui_runtime_widgets_health_unhealthy",
+                count = self.unhealthy
+            ));
         }
         if self.degraded > 0 {
-            s.push_str(&format!(" · {} degraded", self.degraded));
+            parts.push(t!(
+                "tui_runtime_widgets_health_degraded",
+                count = self.degraded
+            ));
         }
         if self.done > 0 {
-            s.push_str(&format!(" · {} done", self.done));
+            parts.push(t!("tui_runtime_widgets_health_done", count = self.done));
         }
         if self.stopped > 0 {
-            s.push_str(&format!(" · {} stopped", self.stopped));
+            parts.push(t!(
+                "tui_runtime_widgets_health_stopped",
+                count = self.stopped
+            ));
         }
-        s
+        parts.join(" · ")
     }
 }
 

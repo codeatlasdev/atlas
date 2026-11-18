@@ -6,6 +6,7 @@
 
 use std::path::{Path, PathBuf};
 
+use atlas_i18n::t_in;
 use serde::Serialize;
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize)]
@@ -34,7 +35,7 @@ pub struct Facts {
     /// `PATH` of a new terminal (the login shell's), `None` when the probe failed.
     pub login_path: Option<String>,
     /// Why the login-shell probe failed.
-    pub login_error: Option<String>,
+    pub login_error: Option<Why>,
     /// `PATH` of this process.
     pub process_path: Option<String>,
     /// The `atlas` that `PATH` resolves first in a new terminal (`None`: not found).
@@ -44,27 +45,85 @@ pub struct Facts {
     /// A graphical session (Linux) or always true on macOS/Windows.
     pub gui: bool,
     /// hostd answered the handshake; `Err` carries why not.
-    pub hostd: Result<(), String>,
+    pub hostd: Result<(), Why>,
 }
+
+/// Why a probe of the machine failed. The causes this binary words are messages; what the system said (an I/O
+/// error, a refused connection) is shown as it is.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub enum Why {
+    WindowsUnchecked,
+    ProbeDidNotRun,
+    ShellStart { shell: String, error: String },
+    ShellSilent { shell: String, secs: u64 },
+    ShellNoPath { shell: String },
+    HostdSilent { secs: u64 },
+    Other(String),
+}
+
+impl Why {
+    fn text(&self, tag: &str) -> String {
+        match self {
+            Self::WindowsUnchecked => t_in!(tag, "cmd_misc_dc_why_windows"),
+            Self::ProbeDidNotRun => t_in!(tag, "cmd_misc_dc_why_probe_not_run"),
+            Self::ShellStart { shell, error } => {
+                t_in!(
+                    tag,
+                    "cmd_misc_dc_why_start_failed",
+                    shell = shell,
+                    error = error
+                )
+            }
+            Self::ShellSilent { shell, secs } => {
+                t_in!(
+                    tag,
+                    "cmd_misc_dc_why_shell_silent",
+                    shell = shell,
+                    secs = *secs
+                )
+            }
+            Self::ShellNoPath { shell } => {
+                t_in!(tag, "cmd_misc_dc_why_shell_no_path", shell = shell)
+            }
+            Self::HostdSilent { secs } => {
+                t_in!(tag, "cmd_misc_dc_why_hostd_silent", secs = *secs)
+            }
+            Self::Other(text) => text.clone(),
+        }
+    }
+}
+
+/// The installer line a machine without `atlas` on its PATH runs again.
+const INSTALL_COMMAND: &str = "curl -fsSL https://atlas.codeatlas.com.br/install.sh | sh";
 
 fn on_path(path: Option<&str>, dir: &Path) -> bool {
     path.is_some_and(|p| std::env::split_paths(p).any(|e| e == dir))
 }
 
+/// The checks in English: what `--json` prints, whatever the display language.
 pub fn evaluate(f: &Facts) -> Vec<Check> {
+    evaluate_in("en", f)
+}
+
+/// The checks with `detail` and `fix` in `tag`; `name` is a stable id in every language.
+pub fn evaluate_in(tag: &str, f: &Facts) -> Vec<Check> {
     let mut v = Vec::new();
-    let dir = f.install_dir.display();
+    let dir = f.install_dir.display().to_string();
 
     // A new terminal: what users hit after the installer ("command not found", #265).
     v.push(match (&f.login_path, &f.login_atlas) {
         (None, _) => Check {
             name: "new terminal",
             status: Status::Warn,
-            detail: format!(
-                "could not ask your login shell for its PATH ({})",
-                f.login_error.as_deref().unwrap_or("unknown error")
+            detail: t_in!(
+                tag,
+                "cmd_misc_dc_probe_failed",
+                why = f
+                    .login_error
+                    .as_ref()
+                    .map_or_else(|| t_in!(tag, "cmd_misc_dc_unknown_error"), |w| w.text(tag))
             ),
-            fix: Some("open a new terminal and run: command -v atlas".into()),
+            fix: Some(t_in!(tag, "cmd_misc_dc_probe_failed_fix")),
         },
         // This install, directly or through the `~/.local/bin/atlas` link install makes.
         (Some(_), Some(found))
@@ -73,27 +132,38 @@ pub fn evaluate(f: &Facts) -> Vec<Check> {
             Check {
                 name: "new terminal",
                 status: Status::Ok,
-                detail: format!("`atlas` is {}", found.display()),
+                detail: t_in!(
+                    tag,
+                    "cmd_misc_dc_atlas_found",
+                    path = found.display().to_string()
+                ),
                 fix: None,
             }
         }
         (Some(_), Some(found)) => Check {
             name: "new terminal",
             status: Status::Warn,
-            detail: format!("`atlas` resolves to {}, not this install", found.display()),
-            fix: Some(format!(
-                "put {dir} first on PATH, or remove {}",
-                found.display()
+            detail: t_in!(
+                tag,
+                "cmd_misc_dc_atlas_elsewhere",
+                found = found.display().to_string()
+            ),
+            fix: Some(t_in!(
+                tag,
+                "cmd_misc_dc_atlas_elsewhere_fix",
+                dir = &dir,
+                found = found.display().to_string()
             )),
         },
         (Some(_), None) => Check {
             name: "new terminal",
             status: Status::Fail,
-            detail: format!("a new terminal does not find `atlas` ({dir} is not on its PATH)"),
-            fix: Some(
-                "re-run the installer: curl -fsSL https://atlas.codeatlas.com.br/install.sh | sh"
-                    .into(),
-            ),
+            detail: t_in!(tag, "cmd_misc_dc_atlas_missing", dir = &dir),
+            fix: Some(t_in!(
+                tag,
+                "cmd_misc_dc_atlas_missing_fix",
+                command = INSTALL_COMMAND
+            )),
         },
     });
 
@@ -101,14 +171,14 @@ pub fn evaluate(f: &Facts) -> Vec<Check> {
         Check {
             name: "this terminal",
             status: Status::Ok,
-            detail: format!("{dir} is on PATH"),
+            detail: t_in!(tag, "cmd_misc_dc_path_ok", dir = &dir),
             fix: None,
         }
     } else {
         Check {
             name: "this terminal",
             status: Status::Warn,
-            detail: format!("{dir} is not on this shell's PATH (a new terminal may have it)"),
+            detail: t_in!(tag, "cmd_misc_dc_path_missing", dir = &dir),
             fix: Some(format!("export PATH=\"{dir}:$PATH\"")),
         }
     });
@@ -117,30 +187,38 @@ pub fn evaluate(f: &Facts) -> Vec<Check> {
         Some((p, Some(ver))) if *ver == f.cli_version => Check {
             name: "desktop app",
             status: Status::Ok,
-            detail: format!("{} ({ver})", p.display()),
+            detail: t_in!(
+                tag,
+                "cmd_misc_dc_app_ok",
+                path = p.display().to_string(),
+                version = ver
+            ),
             fix: None,
         },
         Some((p, ver)) => Check {
             name: "desktop app",
             status: Status::Warn,
-            detail: format!(
-                "{} is {}, the CLI is {}",
-                p.display(),
-                ver.as_deref().unwrap_or("an unknown version"),
-                f.cli_version
+            detail: t_in!(
+                tag,
+                "cmd_misc_dc_app_mismatch",
+                path = p.display().to_string(),
+                version = ver
+                    .clone()
+                    .unwrap_or_else(|| t_in!(tag, "cmd_misc_dc_unknown_version")),
+                cli = &f.cli_version
             ),
             fix: Some("atlas update".into()),
         },
         None if f.gui => Check {
             name: "desktop app",
             status: Status::Warn,
-            detail: "Atlas Desktop is not installed".into(),
+            detail: t_in!(tag, "cmd_misc_dc_app_missing"),
             fix: Some("atlas desktop".into()),
         },
         None => Check {
             name: "desktop app",
             status: Status::Ok,
-            detail: "not installed (no graphical session)".into(),
+            detail: t_in!(tag, "cmd_misc_dc_app_none"),
             fix: None,
         },
     });
@@ -149,33 +227,51 @@ pub fn evaluate(f: &Facts) -> Vec<Check> {
         Ok(()) => Check {
             name: "terminal host",
             status: Status::Ok,
-            detail: "answering".into(),
+            detail: t_in!(tag, "cmd_misc_dc_host_ok"),
             fix: None,
         },
-        Err(e) => Check {
+        Err(why) => Check {
             name: "terminal host",
             status: Status::Warn,
-            detail: format!(
-                "not answering ({e}); Atlas Desktop and `atlas dev` start it on demand"
-            ),
+            detail: t_in!(tag, "cmd_misc_dc_host_silent", why = why.text(tag)),
             fix: Some("atlas hostd".into()),
         },
     });
     v
 }
 
-/// The text `atlas doctor` prints.
-pub fn render(checks: &[Check]) -> String {
+/// The label of a check in `tag`; an id this build does not know is shown as it is.
+fn label(tag: &str, name: &str) -> String {
+    match name {
+        "new terminal" => t_in!(tag, "cmd_misc_dc_name_new_terminal"),
+        "this terminal" => t_in!(tag, "cmd_misc_dc_name_this_terminal"),
+        "desktop app" => t_in!(tag, "cmd_misc_dc_name_desktop_app"),
+        "terminal host" => t_in!(tag, "cmd_misc_dc_name_terminal_host"),
+        other => other.to_string(),
+    }
+}
+
+/// The text `atlas doctor` prints, in `tag`.
+pub fn render(tag: &str, checks: &[Check]) -> String {
+    let labels: Vec<String> = checks.iter().map(|c| label(tag, c.name)).collect();
+    // The labels are translated, so the column is as wide as the longest one (never less than 14).
+    let width = labels
+        .iter()
+        .map(|l| l.chars().count())
+        .max()
+        .unwrap_or(0)
+        .max(14);
+    let fix_label = t_in!(tag, "cmd_misc_dc_fix_label");
     let mut s = String::new();
-    for c in checks {
+    for (c, l) in checks.iter().zip(&labels) {
         let mark = match c.status {
             Status::Ok => "\x1b[32m✓\x1b[0m",
             Status::Warn => "\x1b[33m◆\x1b[0m",
             Status::Fail => "\x1b[31m✗\x1b[0m",
         };
-        s.push_str(&format!("{mark} {:<14} {}\n", c.name, c.detail));
+        s.push_str(&format!("{mark} {l:<width$} {}\n", c.detail));
         if let Some(fix) = &c.fix {
-            s.push_str(&format!("  {:<14} fix: {fix}\n", ""));
+            s.push_str(&format!("  {:<width$} {fix_label} {fix}\n", ""));
         }
     }
     s
@@ -188,7 +284,7 @@ impl Facts {
         let (login_path, login_atlas, login_error) = match probe {
             Some(Ok((path, atlas))) => (Some(path), atlas, None),
             Some(Err(e)) => (None, None, Some(e)),
-            None => (None, None, Some("probe did not run".into())),
+            None => (None, None, Some(Why::ProbeDidNotRun)),
         };
         let app = super::desktop::installed_app()
             .or_else(atlas_core::paths::packaged_app)
@@ -206,8 +302,8 @@ impl Facts {
         .await
         {
             Ok(Ok(_)) => Ok(()),
-            Ok(Err(e)) => Err(format!("{e:#}")),
-            Err(_) => Err("no answer in 3 s".into()),
+            Ok(Err(e)) => Err(Why::Other(format!("{e:#}"))),
+            Err(_) => Err(Why::HostdSilent { secs: 3 }),
         };
         Self {
             install_dir,
@@ -227,10 +323,10 @@ impl Facts {
 /// macOS: login, as Terminal.app) and ask it for its `PATH` and which `atlas` it runs. Not
 /// `login_env`'s `-l -i` probe: that reads `~/.bash_profile`, which a Linux terminal never does,
 /// and would call #265's broken install healthy. Returns `(PATH, atlas or None)`.
-fn terminal_probe() -> Result<(String, Option<PathBuf>), String> {
+fn terminal_probe() -> Result<(String, Option<PathBuf>), Why> {
     if cfg!(windows) {
         // A new terminal there reads the registry's user/system Path, not a shell rc: see #340.
-        return Err("not checked on Windows yet".into());
+        return Err(Why::WindowsUnchecked);
     }
     let (shell, _) = atlas_core::login_env::resolve_shell();
     let name = Path::new(&shell)
@@ -256,19 +352,31 @@ fn terminal_probe() -> Result<(String, Option<PathBuf>), String> {
         .stdout(std::process::Stdio::piped())
         .stderr(std::process::Stdio::null())
         .spawn()
-        .map_err(|e| format!("cannot start {shell}: {e}"))?;
+        .map_err(|e| Why::ShellStart {
+            shell: shell.clone(),
+            error: e.to_string(),
+        })?;
     let deadline = std::time::Instant::now() + std::time::Duration::from_secs(6);
     loop {
-        if child.try_wait().map_err(|e| e.to_string())?.is_some() {
+        if child
+            .try_wait()
+            .map_err(|e| Why::Other(e.to_string()))?
+            .is_some()
+        {
             break;
         }
         if std::time::Instant::now() > deadline {
             let _ = child.kill();
-            return Err(format!("{shell} did not answer in 6 s"));
+            return Err(Why::ShellSilent {
+                shell: shell.clone(),
+                secs: 6,
+            });
         }
         std::thread::sleep(std::time::Duration::from_millis(50));
     }
-    let out = child.wait_with_output().map_err(|e| e.to_string())?;
+    let out = child
+        .wait_with_output()
+        .map_err(|e| Why::Other(e.to_string()))?;
     let text = String::from_utf8_lossy(&out.stdout);
     let field = |k: &str| {
         text.lines()
@@ -276,7 +384,9 @@ fn terminal_probe() -> Result<(String, Option<PathBuf>), String> {
             .find_map(|l| l.strip_prefix(k))
             .map(|s| s.trim().to_owned())
     };
-    let path = field("@@PATH ").ok_or_else(|| format!("{shell} printed no PATH"))?;
+    let path = field("@@PATH ").ok_or_else(|| Why::ShellNoPath {
+        shell: shell.clone(),
+    })?;
     let atlas = field("@@ATLAS ")
         .filter(|s| !s.is_empty())
         .map(PathBuf::from);
@@ -377,11 +487,63 @@ mod tests {
     fn a_failed_probe_or_silent_hostd_is_a_warning_not_a_failure() {
         let mut f = healthy();
         f.login_path = None;
-        f.login_error = Some("timeout".into());
-        f.hostd = Err("connection refused".into());
+        f.login_error = Some(Why::Other("timeout".into()));
+        f.hostd = Err(Why::Other("connection refused".into()));
         let c = evaluate(&f);
         assert_eq!(get(&c, "new terminal").status, Status::Warn);
         assert_eq!(get(&c, "terminal host").status, Status::Warn);
         assert!(!c.iter().any(|c| c.status == Status::Fail));
+    }
+
+    #[test]
+    fn the_causes_this_binary_words_are_messages_and_the_systems_text_is_kept() {
+        let shell = || "/bin/zsh".to_string();
+        for tag in atlas_i18n::locales() {
+            for why in [
+                Why::WindowsUnchecked,
+                Why::ProbeDidNotRun,
+                Why::ShellStart {
+                    shell: shell(),
+                    error: "No such file".into(),
+                },
+                Why::ShellSilent {
+                    shell: shell(),
+                    secs: 6,
+                },
+                Why::ShellNoPath { shell: shell() },
+                Why::HostdSilent { secs: 3 },
+            ] {
+                let text = why.text(tag);
+                assert!(!text.starts_with("cmd_misc_"), "{tag}: {why:?} -> {text}");
+            }
+        }
+        assert_eq!(
+            Why::Other("connection refused".into()).text("pt-BR"),
+            "connection refused"
+        );
+        assert_eq!(Why::HostdSilent { secs: 3 }.text("en"), "no answer in 3 s");
+    }
+
+    #[test]
+    fn json_is_english_and_a_check_keeps_its_id_in_every_language() {
+        let mut f = healthy();
+        f.login_atlas = None;
+        let en = evaluate(&f);
+        for tag in atlas_i18n::locales() {
+            let c = evaluate_in(tag, &f);
+            assert_eq!(
+                c.iter().map(|c| (c.name, c.status)).collect::<Vec<_>>(),
+                en.iter().map(|c| (c.name, c.status)).collect::<Vec<_>>()
+            );
+            // Every id has a label that is not a missing key.
+            for check in &c {
+                let l = label(tag, check.name);
+                assert!(!l.is_empty() && !l.starts_with("cmd_misc_"), "{tag}: {l}");
+            }
+        }
+        assert_eq!(
+            en[0].detail,
+            "a new terminal does not find `atlas` (/home/u/.atlas/bin is not on its PATH)"
+        );
     }
 }

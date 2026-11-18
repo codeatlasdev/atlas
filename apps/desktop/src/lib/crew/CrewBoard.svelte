@@ -14,6 +14,7 @@
 	import BoardToolbar from "#lib/crew/board/BoardToolbar.svelte";
 	import BoardCard from "#lib/crew/board/BoardCard.svelte";
 	import type { BoardCard as Card } from "#lib/crew/board.ts";
+	import { m } from "#lib/i18n/m.ts";
 
 	// ─── clock ────────────────────────────────────────────────────────────────
 
@@ -63,24 +64,33 @@
 	     e.g. after turning off Show done. -->
 	{#if showGlobalEmpty}
 		<div class="board-empty">
-			No tasks match these filters. <button class="empty-clear" onclick={() => filters.clear()}
-				>Clear filters</button
+			{m.crew_workspace_board_no_tasks_match_these_filters()}
+			<button class="empty-clear" onclick={() => filters.clear()}
+				>{m.crew_workspace_board_clear_filters()}</button
 			>
 		</div>
 	{/if}
-	<div class="board" aria-label="Crew board">
+	<div class="board" aria-label={m.crew_workspace_board_crew_board()}>
 		{#each columns as col (col.id)}
 			<div class="column" data-col={col.id}>
 				<div class="col-header">
 					<span class="col-label">{col.label}</span>
 					{#if col.cards.length > 0}
-						<span class="col-count" aria-label="{col.cards.length} tasks">{col.cards.length}</span>
+						<span
+							class="col-count"
+							aria-label={m.crew_workspace_board_column_task_count({ count: col.cards.length })}
+							>{col.cards.length}</span
+						>
 					{/if}
 				</div>
 
-				<div class="col-cards" role="list" aria-label="{col.label} tasks">
+				<div
+					class="col-cards"
+					role="list"
+					aria-label={m.crew_workspace_board_column_tasks({ label: col.label })}
+				>
 					{#if col.cards.length === 0}
-						<p class="col-empty" aria-live="polite">Nothing here</p>
+						<p class="col-empty" aria-live="polite">{m.common_state_empty()}</p>
 					{/if}
 
 					{#each col.cards as card (card.task.id)}

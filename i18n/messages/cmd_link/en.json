@@ -1,0 +1,66 @@
+{
+	"cmd_link_add_refused": "The runner refused to add the service",
+	"cmd_link_adhoc_usage": "usage: atlas -- <command> [args…]",
+	"cmd_link_app_link_removed": "Desktop link removed; no backup to restore. Install it with {command}.",
+	"cmd_link_app_missing": "{path} not found. Run `atlas link --desktop` without `--no-build` to build it.",
+	"cmd_link_backed_up": "Backed up  → {path}",
+	"cmd_link_backup_failed": "Couldn't back up {path}",
+	"cmd_link_build_failed": "`cargo build` failed. Fix the errors above, then run `atlas link` again.",
+	"cmd_link_copy_failed": "Couldn't copy {path}",
+	"cmd_link_create_failed": "Couldn't create {path}",
+	"cmd_link_creating_worktree": "Creating worktree (this may take a minute)",
+	"cmd_link_desktop_build_failed": "The desktop build failed. Fix the errors above, then run `atlas link --desktop` again.",
+	"cmd_link_desktop_needs_macos": "`atlas link --desktop` only works with the macOS app. On this system, run the debug app directly.",
+	"cmd_link_desktop_not_installed": "Atlas Desktop isn't installed. Run `atlas desktop` to install it.",
+	"cmd_link_dev_busy": "`atlas dev` is running but busy. Try again in a moment.",
+	"cmd_link_dev_in_terminal": "`atlas dev` is running in a terminal for {root} (pid {pid}). Quit it, or run `atlas down`, then run this command again.",
+	"cmd_link_kept_as_copy": "Unlinked, but there is no release backup at {path}.",
+	"cmd_link_kept_as_copy_next": "{path} is now a plain copy of the dev build, so `atlas` keeps working; run {command} to get a release.",
+	"cmd_link_launching": "Launching Atlas Desktop with {path}",
+	"cmd_link_linked": "Linked     {link} → {target}",
+	"cmd_link_no_cargo": "Couldn't run `cargo`. Check that Rust is installed and `cargo` is on your PATH.",
+	"cmd_link_no_cwd": "Couldn't read the current folder. Run the command from a folder that exists, or pass `--dir <workspace-root>`.",
+	"cmd_link_no_debug_binary": "No debug binary at {path}. Run `cargo build -p atlas-cli` first, or run `atlas link` without `--no-build`.",
+	"cmd_link_no_home": [
+		{
+			"declarations": [
+				"input os"
+			],
+			"selectors": [
+				"os"
+			],
+			"match": {
+				"os=windows": "Couldn't find your home folder. Check that USERPROFILE is set, then run the command again.",
+				"os=*": "Couldn't find your home folder. Check that HOME is set, then run the command again."
+			}
+		}
+	],
+	"cmd_link_no_tauri": "Couldn't run `cargo tauri`. Install it with `cargo install tauri-cli`.",
+	"cmd_link_no_workspace": "Couldn't find a Cargo workspace. Run the command inside the atlas repo, or pass `--dir <workspace-root>`.",
+	"cmd_link_not_linked": "atlas is not linked to a dev build. Nothing to do.",
+	"cmd_link_now_runs_debug": "The installed `atlas` now runs your local debug build.",
+	"cmd_link_open_missing": "{path} doesn't exist. Check the path and try again.",
+	"cmd_link_opened": "Opened {path} in Atlas Desktop",
+	"cmd_link_rebuild_anytime": "Rebuild anytime with {command}; no reinstall needed.",
+	"cmd_link_rebuild_desktop": "Rebuild with {link}, or iterate live with {dev}.",
+	"cmd_link_reinstall": "Reinstall: {command}",
+	"cmd_link_remove_link_failed": "Couldn't remove the link {path}",
+	"cmd_link_removed_dangling": "Link removed. It pointed at a build that no longer exists, and there is no backup.",
+	"cmd_link_replace_failed": "Couldn't replace {path}",
+	"cmd_link_resolve_failed": "Couldn't get the absolute path of {path}",
+	"cmd_link_restore_failed": "Couldn't restore {path}",
+	"cmd_link_restore_release": "Restore the release binary with {command}.",
+	"cmd_link_run_failed": "Couldn't run {path}",
+	"cmd_link_runner_started": "atlas runner started (pid {pid}) · attach: atlas dev · stop: atlas down",
+	"cmd_link_save_failed": "Couldn't save the backup to {path}",
+	"cmd_link_service_logs": "logs: {path}",
+	"cmd_link_service_port": "port: {port} (http://localhost:{port})",
+	"cmd_link_service_started": "service {service} started (not saved to atlas.yaml)",
+	"cmd_link_setup_failed": "`scripts/setup.sh` failed. Fix the errors above, then run `atlas link --desktop` again.",
+	"cmd_link_symlink_failed": "Couldn't create the link at {path}",
+	"cmd_link_symlink_windows": "{reason} (Windows needs Developer Mode on to create symlinks)",
+	"cmd_link_title": "atlas link: dev mode",
+	"cmd_link_unlinked_app": "Unlinked and restored {path}",
+	"cmd_link_unlinked_binary": "Unlinked and restored the release binary at {path}",
+	"cmd_link_workspace": "Workspace: {dir}"
+}

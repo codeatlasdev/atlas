@@ -3,6 +3,7 @@
 
 use anyhow::Result;
 use atlas_core::taskcache::{Cache, Freed, Status};
+use atlas_i18n::t;
 use clap::Subcommand;
 
 use super::AtlasCommand;
@@ -40,46 +41,51 @@ impl AtlasCommand for CacheCommands {
 }
 
 fn freed(f: &Freed) -> String {
-    format!(
-        "freed {} ({} entr{}, {} blob{})",
-        mib(f.bytes),
-        f.entries,
-        if f.entries == 1 { "y" } else { "ies" },
-        f.blobs,
-        if f.blobs == 1 { "" } else { "s" },
+    t!(
+        "cmd_misc_cache_freed",
+        size = mib(f.bytes),
+        entries = f.entries,
+        blobs = f.blobs
     )
 }
 
 fn mib(bytes: u64) -> String {
-    format!("{:.1} MiB", bytes as f64 / (1 << 20) as f64)
+    format!(
+        "{} MiB",
+        crate::numfmt::fixed(atlas_i18n::lang(), bytes as f64 / (1 << 20) as f64, 1)
+    )
 }
 
 fn secs(ms: u64) -> String {
-    format!("{:.1}s", ms as f64 / 1000.0)
+    format!(
+        "{}s",
+        crate::numfmt::fixed(atlas_i18n::lang(), ms as f64 / 1000.0, 1)
+    )
+}
+
+fn totals(t: &atlas_core::taskcache::stats::Totals) -> String {
+    t!(
+        "cmd_misc_cache_totals",
+        hits = t.hits,
+        misses = t.misses,
+        saved = secs(t.saved_ms)
+    )
 }
 
 fn render(st: &Status) -> String {
-    let t = &st.stats.total;
     let mut s = format!(
-        "{}\n{} entr{}, {} of {}\n{} hit{}, {} miss{}, {} saved\n",
+        "{}\n{}\n{}\n",
         st.dir,
-        st.entries,
-        if st.entries == 1 { "y" } else { "ies" },
-        mib(st.bytes),
-        mib(st.max_bytes),
-        t.hits,
-        if t.hits == 1 { "" } else { "s" },
-        t.misses,
-        if t.misses == 1 { "" } else { "es" },
-        secs(t.saved_ms),
+        t!(
+            "cmd_misc_cache_entries",
+            count = st.entries,
+            size = mib(st.bytes),
+            max = mib(st.max_bytes)
+        ),
+        totals(&st.stats.total),
     );
     for (name, p) in &st.stats.projects {
-        s.push_str(&format!(
-            "  {name}: {} hits, {} misses, {} saved\n",
-            p.hits,
-            p.misses,
-            secs(p.saved_ms)
-        ));
+        s.push_str(&format!("  {name}: {}\n", totals(p)));
     }
     s
 }

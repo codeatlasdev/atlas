@@ -1,5 +1,6 @@
 use std::collections::HashMap;
 
+use atlas_i18n::t;
 use ratatui::prelude::*;
 use ratatui::widgets::*;
 
@@ -56,7 +57,9 @@ fn extras(app: &App) -> HashMap<String, SvcExtra> {
 fn brand_line(app: &App) -> Line<'static> {
     let t = theme::current();
     let mut spans = vec![
+        // i18n-ignore: the product wordmark
         Span::styled("  code", Style::default().fg(t.primary).bold()),
+        // i18n-ignore: the product wordmark
         Span::styled("atlas", Style::default().fg(t.secondary).bold()),
     ];
     if !app.config.name.is_empty() {
@@ -65,30 +68,37 @@ fn brand_line(app: &App) -> Line<'static> {
             Style::default().fg(t.text).bold(),
         ));
     } else {
+        // i18n-ignore: the name of the command (`atlas dev`), not text
         spans.push(Span::styled(" dev", Style::default().fg(t.text_dim)));
     }
     if app.config.port_offset > 0 {
         spans.push(Span::styled(
-            format!(" ports +{}", app.config.port_offset),
+            format!(
+                " {}",
+                t!(
+                    "tui_runtime_views_dash_ports",
+                    offset = u32::from(app.config.port_offset)
+                )
+            ),
             Style::default().fg(t.text_dim),
         ));
     }
     if app.remote.is_some() {
         spans.push(Span::styled(
-            "  ⛓ attached",
+            format!("  ⛓ {}", t!("tui_runtime_views_dash_attached")),
             Style::default().fg(t.primary).bold(),
         ));
     }
     if app.dev_mode {
         spans.push(Span::styled(
-            "  ⚡ linked",
+            format!("  ⚡ {}", t!("tui_runtime_views_dash_linked")),
             Style::default().fg(t.warning).bold(),
         ));
     }
     // Versions are in the update modal and the exit banner; the sidebar is too narrow for them.
     if app.update_on_exit {
         spans.push(Span::styled(
-            " ⬆ on exit",
+            format!(" ⬆ {}", t!("tui_runtime_views_dash_on_exit")),
             Style::default().fg(t.success).bold(),
         ));
     } else if crate::update_notice::available().is_some() {
@@ -103,8 +113,18 @@ pub fn render(frame: &mut Frame, app: &App) {
 
     if area.width < MIN_SIZE.0 || area.height < MIN_SIZE.1 {
         let msg = Paragraph::new(format!(
-            "Terminal too small\n\nCurrent: {}x{}\nMinimum: {}x{}",
-            area.width, area.height, MIN_SIZE.0, MIN_SIZE.1
+            "{}\n\n{}\n{}",
+            t!("tui_runtime_views_dash_too_small"),
+            t!(
+                "tui_runtime_views_dash_size_current",
+                width = u32::from(area.width),
+                height = u32::from(area.height)
+            ),
+            t!(
+                "tui_runtime_views_dash_size_minimum",
+                width = u32::from(MIN_SIZE.0),
+                height = u32::from(MIN_SIZE.1)
+            )
         ))
         .alignment(Alignment::Center)
         .style(Style::default().fg(t.warning).bg(t.bg));
@@ -340,7 +360,10 @@ fn search_bar_line(app: &App, width: u16) -> Line<'static> {
     if let Some(text) = &app.logs.time_input {
         // The custom-range prompt takes over the bar while it is open.
         let mut spans = vec![
-            Span::styled(" time ", Style::default().fg(t.primary).bold()),
+            Span::styled(
+                format!(" {} ", t!("tui_runtime_views_dash_time_prompt")),
+                Style::default().fg(t.primary).bold(),
+            ),
             Span::styled(text.clone(), Style::default().fg(t.text)),
             Span::styled("█", dim),
         ];
@@ -350,7 +373,14 @@ fn search_bar_line(app: &App, width: u16) -> Line<'static> {
                 Style::default().fg(t.error).bold(),
             )),
             None => spans.push(Span::styled(
-                "  14:05 or 14:05–14:20 (today) · Enter apply · Esc all time",
+                format!(
+                    "  {}",
+                    t!(
+                        "tui_runtime_views_dash_time_hint",
+                        enter = t!("common_keys_enter"),
+                        esc = t!("common_keys_escape")
+                    )
+                ),
                 dim,
             )),
         }
@@ -361,7 +391,11 @@ fn search_bar_line(app: &App, width: u16) -> Line<'static> {
         let mode = format!(
             "  {}{}",
             app.logs.search_mode.label(),
-            if app.logs.search_regex { " ·re" } else { "" }
+            if app.logs.search_regex {
+                format!(" ·{}", t!("tui_runtime_views_dash_regex_tag"))
+            } else {
+                String::new()
+            }
         );
         spans.push(Span::styled(
             mode,
@@ -369,7 +403,7 @@ fn search_bar_line(app: &App, width: u16) -> Line<'static> {
         ));
         if app.search_invalid() {
             spans.push(Span::styled(
-                "  invalid regex",
+                format!("  {}", t!("tui_runtime_views_dash_regex_error")),
                 Style::default().fg(t.error).bold(),
             ));
         } else if has_query {
@@ -386,29 +420,39 @@ fn search_bar_line(app: &App, width: u16) -> Line<'static> {
             };
             spans.push(Span::styled(counts, style));
         }
+        let esc = t!("common_keys_escape");
         let hint = if app.logs.log_searching {
-            "  Tab find/filter · ^R regex · Enter keep · Esc clear"
+            t!(
+                "tui_runtime_views_dash_hint_searching",
+                tab = t!("common_keys_tab"),
+                regex = format!("{}+R", t!("common_keys_ctrl")),
+                enter = t!("common_keys_enter"),
+                esc = esc
+            )
         } else if app.find_active() {
-            "  n/N next/prev · ]e error · Esc clear"
+            t!("tui_runtime_views_dash_hint_find", esc = esc)
         } else {
-            "  Esc clear"
+            t!("tui_runtime_views_dash_hint_clear", esc = esc)
         };
-        spans.push(Span::styled(hint, dim));
+        spans.push(Span::styled(format!("  {hint}"), dim));
     }
 
     let mut toggles: Vec<String> = Vec::new();
     if !app.logs.log_wrap {
         toggles.push(if app.logs.log_hscroll > 0 {
-            format!("wrap off ← +{}", app.logs.log_hscroll)
+            t!(
+                "tui_runtime_views_dash_wrap_off_pan",
+                offset = app.logs.log_hscroll
+            )
         } else {
-            "wrap off".to_string()
+            t!("tui_runtime_views_dash_wrap_off")
         });
     }
     if !app.logs.log_timestamps {
-        toggles.push("no ts".to_string());
+        toggles.push(t!("tui_runtime_views_dash_no_timestamps"));
     }
     if app.logs.log_json_pretty {
-        toggles.push("json".to_string());
+        toggles.push(t!("tui_runtime_views_dash_json"));
     }
     if !toggles.is_empty() {
         spans.push(Span::raw("  "));
@@ -420,7 +464,13 @@ fn search_bar_line(app: &App, width: u16) -> Line<'static> {
     if app.logs.level_filter != crate::tui::app::LevelFilter::All {
         spans.push(Span::raw("  "));
         spans.push(Span::styled(
-            format!(" level: {} ", app.logs.level_filter.label()),
+            format!(
+                " {} ",
+                t!(
+                    "tui_runtime_views_dash_level",
+                    label = app.logs.level_filter.label()
+                )
+            ),
             Style::default().fg(t.warning).bold(),
         ));
         spans.push(Span::styled("v", dim));
@@ -428,7 +478,13 @@ fn search_bar_line(app: &App, width: u16) -> Line<'static> {
     if !app.logs.time_range.is_all() && app.logs.time_input.is_none() {
         spans.push(Span::raw("  "));
         spans.push(Span::styled(
-            format!(" time: {} ", app.logs.time_range.label()),
+            format!(
+                " {} ",
+                t!(
+                    "tui_runtime_views_dash_range",
+                    label = app.logs.time_range.label()
+                )
+            ),
             Style::default().fg(t.warning).bold(),
         ));
         spans.push(Span::styled("V", dim));

@@ -28,7 +28,7 @@ mock.module("@tauri-apps/api/event", () => ({
 	},
 }));
 const { flushSync, mount, unmount } = await import("svelte");
-const { LOCALE_NAMES, parseLocaleState } = await import("./state.ts");
+const { LOCALE_NAMES, localeName, parseLocaleState } = await import("./state.ts");
 const {
 	appLocale,
 	bootLocale,
@@ -79,6 +79,7 @@ test("a reply that is not a locale state is rejected, and unknown parts degrade 
 
 test("every language is shown under its own name, never translated", () => {
 	expect(LOCALE_NAMES).toEqual({ en: "English", "pt-BR": "Português (Brasil)" });
+	expect(localeName("pt-BR")).toBe("Português (Brasil)");
 });
 
 test("a switch re-renders what is on screen in place, with no reload and no new node", () => {

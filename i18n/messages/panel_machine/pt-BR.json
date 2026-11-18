@@ -92,7 +92,7 @@
 	],
 	"panel_machine_over_max_rising": "Acima de max_memory · subindo {rate}",
 	"panel_machine_over_warn_rising": "Acima de memory_warn · subindo {rate}",
-	"panel_machine_past_heavy_gate": "Passou do limite: novos jobs pesados aguardam",
+	"panel_machine_past_heavy_gate": "Passou do gate de jobs pesados: os novos aguardam",
 	"panel_machine_reading": "Lendo dados da máquina…",
 	"panel_machine_report_retry_hint": "O Atlas não conseguiu ler a carga, a fila ou os terminais. Ele tenta de novo a cada poucos segundos.",
 	"panel_machine_report_unavailable": "Relatório da máquina indisponível",

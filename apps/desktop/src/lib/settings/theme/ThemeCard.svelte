@@ -5,6 +5,8 @@
 	import { DEFAULT_SELECTION, type Theme } from "#lib/theme.ts";
 	import ThemePreview from "./ThemePreview.svelte";
 	import { previewModel } from "./preview.ts";
+	import { appearanceLabel } from "./labels.ts";
+	import { m } from "#lib/i18n/m.ts";
 
 	let {
 		theme,
@@ -26,7 +28,7 @@
 		cardEl?: HTMLElement;
 	} = $props();
 
-	let m = $derived(previewModel(theme));
+	let model = $derived(previewModel(theme));
 	let isDefault = $derived(
 		theme.source === "bundled" &&
 			(theme.name === DEFAULT_SELECTION.dark || theme.name === DEFAULT_SELECTION.light),
@@ -34,6 +36,18 @@
 	let Icon = $derived(theme.appearance === "dark" ? Moon : Sun);
 	/** Dracula and Alucard credit their author on the card (data-driven by the family file). */
 	let byline = $derived(theme.source === "bundled" && theme.family === "Dracula");
+	/** The card's spoken name: the theme, its appearance and each badge it carries, in one list. */
+	let spoken = $derived(
+		[
+			theme.name,
+			appearanceLabel(theme.appearance),
+			byline && m.settings_theme_card_byline(),
+			isDefault && m.settings_theme_card_default(),
+			theme.source === "user" && m.settings_theme_card_yours(),
+		]
+			.filter(Boolean)
+			.join(", "),
+	);
 </script>
 
 <div class="card" class:selected>
@@ -43,9 +57,7 @@
 		class="hit"
 		role="radio"
 		aria-checked={selected}
-		aria-label="{theme.name}, {theme.appearance}{byline ? ', by Zeno Rocha and Luxonauta' : ''}{isDefault
-			? ', default'
-			: ''}{theme.source === 'user' ? ', yours' : ''}"
+		aria-label={spoken}
 		{tabindex}
 		data-theme-card={theme.name}
 		onclick={onpick}
@@ -56,30 +68,39 @@
 			}
 		}}
 	>
-		<ThemePreview {m} />
+		<ThemePreview {model} />
 		<div class="meta">
 			<Icon size={12} aria-hidden="true" />
 			<span class="name">{theme.name}</span>
-			{#if isDefault}<span class="badge">Default</span>{/if}
-			{#if theme.source === "user"}<span class="badge yours">Yours</span>{/if}
+			{#if isDefault}<span class="badge">{m.settings_theme_card_default()}</span>{/if}
+			{#if theme.source === "user"}<span class="badge yours">{m.settings_theme_card_yours()}</span>{/if}
 			{#if selected}<Check size={13} class="tick" aria-hidden="true" />{/if}
 		</div>
-		{#if byline}<span class="by">by Zeno Rocha &amp; Luxonauta</span>{/if}
+		{#if byline}<span class="by">{m.settings_theme_card_byline()}</span>{/if}
 	</div>
 	<div class="more">
 		<DropdownMenu align="end">
 			{#snippet triggerChild(props)}
-				<button {...props} class="menu-btn" aria-label="{theme.name} options">
+				<button {...props} class="menu-btn" aria-label={m.settings_theme_card_options({ name: theme.name })}>
 					<Ellipsis size={14} />
 				</button>
 			{/snippet}
-			<DropdownMenuItem onclick={() => oncopy("json")}>Copy as JSON</DropdownMenuItem>
-			<DropdownMenuItem onclick={() => oncopy("ghostty")}>Copy as Ghostty config</DropdownMenuItem>
-			<DropdownMenuItem onclick={() => onsave("json")}>Save as JSON…</DropdownMenuItem>
-			<DropdownMenuItem onclick={() => onsave("ghostty")}>Save as Ghostty config…</DropdownMenuItem>
+			<DropdownMenuItem onclick={() => oncopy("json")}>{m.settings_theme_tab_copy_as_json()}</DropdownMenuItem
+			>
+			<DropdownMenuItem onclick={() => oncopy("ghostty")}
+				>{m.settings_theme_tab_copy_as_ghostty_config()}</DropdownMenuItem
+			>
+			<DropdownMenuItem onclick={() => onsave("json")}
+				>{m.settings_theme_card_save_as_json()}</DropdownMenuItem
+			>
+			<DropdownMenuItem onclick={() => onsave("ghostty")}
+				>{m.settings_theme_card_save_as_ghostty_config()}</DropdownMenuItem
+			>
 			{#if theme.source === "user"}
 				<DropdownMenuSeparator />
-				<DropdownMenuItem variant="destructive" onclick={onremove}>Remove…</DropdownMenuItem>
+				<DropdownMenuItem variant="destructive" onclick={onremove}
+					>{m.common_action_delete()}</DropdownMenuItem
+				>
 			{/if}
 		</DropdownMenu>
 	</div>

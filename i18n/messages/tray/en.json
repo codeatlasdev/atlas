@@ -1,0 +1,198 @@
+{
+	"tray_agent_needs_approval": "Needs approval",
+	"tray_agent_waiting_for_you": "Waiting for you",
+	"tray_dock_key_needs_modifier": "Include {modifiers} so the hotkey does not take that key from every app",
+	"tray_dock_layout_error_title": "The dock hit an error",
+	"tray_dock_no_agent_error": "No agent is running. Open Atlas to start one.",
+	"tray_dock_page_agent": "Agent",
+	"tray_dock_page_an_agent_needs_you": "An agent needs you",
+	"tray_dock_page_ask_hint": "Several agents match. Which one?",
+	"tray_dock_page_atlas_dock": "Atlas Dock",
+	"tray_dock_page_attached_captures": "Attached captures",
+	"tray_dock_page_attention_badge": [
+		{
+			"declarations": [
+				"input attention",
+				"local attentionExact = attention",
+				"local attentionPlural = attention: plural"
+			],
+			"selectors": [
+				"attentionExact",
+				"attentionPlural"
+			],
+			"match": {
+				"attentionExact=0, attentionPlural=*": "None need you",
+				"attentionExact=*, attentionPlural=one": "{attention} needs you",
+				"attentionExact=*, attentionPlural=*": "{attention} need you"
+			}
+		}
+	],
+	"tray_dock_page_auto_agent": "{agent} (auto)",
+	"tray_dock_page_composer_hint": "Tell the agent what to do. Mention one with @name.",
+	"tray_dock_page_dismiss": "Dismiss",
+	"tray_dock_page_esc_closes": "{key} closes",
+	"tray_dock_page_hide_the_dock": "Hide the dock",
+	"tray_dock_page_hide_with_key": "Hide the dock ({key} brings it back)",
+	"tray_dock_page_hide_with_menu": "Hide the dock (the tray menu brings it back)",
+	"tray_dock_page_message_an_agent": "Message an agent",
+	"tray_dock_page_needs_you": "{agent} needs you",
+	"tray_dock_page_no_agent_running": "No agent running",
+	"tray_dock_page_open_atlas": "Open Atlas",
+	"tray_dock_page_open_in_atlas": "Open in Atlas",
+	"tray_dock_page_remove_capture": "Remove {name}",
+	"tray_dock_page_send": "Send",
+	"tray_dock_page_sending": "Sending…",
+	"tray_dock_page_to": "To",
+	"tray_dock_page_waiting_for_the_agent": "Waiting for the agent…",
+	"tray_dock_page_which_agent": "Which agent?",
+	"tray_headline_all_up": [
+		{
+			"declarations": [
+				"input count",
+				"local countExact = count",
+				"local countPlural = count: plural"
+			],
+			"selectors": [
+				"countExact",
+				"countPlural"
+			],
+			"match": {
+				"countExact=0, countPlural=*": "No services up",
+				"countExact=*, countPlural=one": "{count} service up",
+				"countExact=*, countPlural=*": "All {count} services up"
+			}
+		}
+	],
+	"tray_headline_failed": [
+		{
+			"declarations": [
+				"input count",
+				"local countPlural = count: plural"
+			],
+			"selectors": [
+				"countPlural"
+			],
+			"match": {
+				"countPlural=one": "{names} failed",
+				"countPlural=*": "{names} failed"
+			}
+		}
+	],
+	"tray_headline_no_services": "No services",
+	"tray_headline_starting": "{count} starting",
+	"tray_headline_stopped": "Stopped",
+	"tray_layout_error_hint": [
+		{
+			"declarations": [
+				"input os"
+			],
+			"selectors": [
+				"os"
+			],
+			"match": {
+				"os=mac": "Open Atlas from the Dock to keep working.",
+				"os=windows": "Open Atlas from the taskbar to keep working.",
+				"os=*": "Open Atlas from your launcher to keep working."
+			}
+		}
+	],
+	"tray_layout_error_title": "The popover hit an error",
+	"tray_page_agent_dock": "Agent dock",
+	"tray_page_dev": "Dev",
+	"tray_page_dev_build_hint": "Dev build: updates are paused",
+	"tray_page_hide_dock": "Hide the agent dock",
+	"tray_page_host_version": "host {version}",
+	"tray_page_jump_to_agent": "Jump to {agent} in {place}",
+	"tray_page_logs": "Logs",
+	"tray_page_logs_of": "Logs of {name}",
+	"tray_page_needs_you": "Needs you",
+	"tray_page_new_agent": "New agent",
+	"tray_page_no_match": "No project matches \"{query}\".",
+	"tray_page_open_target": "Open {target}",
+	"tray_page_outdated": "outdated",
+	"tray_page_projects": "Projects",
+	"tray_page_recommendation": "Recommendation",
+	"tray_page_restart_failed": "Restart failed services",
+	"tray_page_restart_failed_of": "Restart failed services of {name}",
+	"tray_page_running": "Running",
+	"tray_page_running_stacks": "Running stacks",
+	"tray_page_search": "Find a project or branch",
+	"tray_page_service_state": "{name}: {state}",
+	"tray_page_settings": "Settings",
+	"tray_page_show_dock": "Show the agent dock",
+	"tray_page_start": "Start",
+	"tray_page_start_name": "Start {name}",
+	"tray_page_stop": "Stop",
+	"tray_page_stop_name": "Stop {name}",
+	"tray_page_stopped_count": "Stopped ({stoppedCount})",
+	"tray_page_stopped_projects": "Stopped projects",
+	"tray_page_terminals": [
+		{
+			"declarations": [
+				"input count",
+				"local countExact = count",
+				"local countPlural = count: plural"
+			],
+			"selectors": [
+				"countExact",
+				"countPlural"
+			],
+			"match": {
+				"countExact=0, countPlural=*": "No terminals",
+				"countExact=*, countPlural=one": "{count} terminal",
+				"countExact=*, countPlural=*": "{count} terminals"
+			}
+		}
+	],
+	"tray_page_verb_approval": "Approval",
+	"tray_page_verb_reply": "Reply",
+	"tray_page_working": "Working",
+	"tray_recommend_failed_cta": "View logs",
+	"tray_recommend_failed_title": "{service} failed {when}",
+	"tray_recommend_host_cta": "Review",
+	"tray_recommend_host_detail": "Language features are off until it restarts",
+	"tray_recommend_host_title": "Terminal host needs a restart",
+	"tray_recommend_update_cta": "Update",
+	"tray_recommend_update_detail": "Update the CLI and the app together",
+	"tray_recommend_update_title": "Atlas {version} is available",
+	"tray_summary_all_quiet": "All quiet",
+	"tray_summary_failed": [
+		{
+			"declarations": [
+				"input count",
+				"local countExact = count",
+				"local countPlural = count: plural"
+			],
+			"selectors": [
+				"countExact",
+				"countPlural"
+			],
+			"match": {
+				"countExact=0, countPlural=*": "None failed",
+				"countExact=*, countPlural=one": "{count} failed",
+				"countExact=*, countPlural=*": "{count} failed"
+			}
+		}
+	],
+	"tray_summary_needs_you": [
+		{
+			"declarations": [
+				"input count",
+				"local countExact = count",
+				"local countPlural = count: plural"
+			],
+			"selectors": [
+				"countExact",
+				"countPlural"
+			],
+			"match": {
+				"countExact=0, countPlural=*": "None need you",
+				"countExact=*, countPlural=one": "{count} needs you",
+				"countExact=*, countPlural=*": "{count} need you"
+			}
+		}
+	],
+	"tray_summary_up": "{count} up",
+	"tray_summary_working": "{count} working",
+	"tray_up_line": "{up}/{total} up"
+}

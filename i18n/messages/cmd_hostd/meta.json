@@ -1,0 +1,67 @@
+{
+	"cmd_hostd_ask_restart": "Question of `atlas hostd --reconcile` in a terminal, before [y/N]; only asked when terminals are running, so {count} is at least 1.",
+	"cmd_hostd_check_fix": "Heading of the commands that bring the terminal host up to date, in `atlas hostd --check`.",
+	"cmd_hostd_check_fix_asks": {
+		"description": "Comment after the `atlas hostd --reconcile` command in the fix list, when the host cannot hand over and no terminal runs.",
+		"distinct": "comment next to a shell command, lowercase"
+	},
+	"cmd_hostd_check_fix_asks_ends": {
+		"description": "Comment after the `atlas hostd --reconcile` command in the fix list, when the host cannot hand over and terminals run (listed above).",
+		"distinct": "comment next to a shell command, lowercase"
+	},
+	"cmd_hostd_check_fix_live": {
+		"description": "Comment after the `atlas hostd --reconcile` command in the fix list, when the host can hand its terminals over live.",
+		"distinct": "comment next to a shell command, lowercase"
+	},
+	"cmd_hostd_check_fix_restart": {
+		"description": "Comment after the `atlas hostd --restart` command in the fix list.",
+		"distinct": "comment next to a shell command, lowercase"
+	},
+	"cmd_hostd_check_not_running": "Output of `atlas hostd --check` (exit code 1) when no terminal host answers in the directory {dir}.",
+	"cmd_hostd_check_older": "First line of `atlas hostd --check` when the host is older than this Atlas but nothing the app needs is missing. {uptime} is a compact duration such as 40h or 4d 4h.",
+	"cmd_hostd_check_older_features": "First line of `atlas hostd --check` when the host lacks a capability the app needs. {features} is the list of what is off (cmd_hostd_features_list).",
+	"cmd_hostd_check_running_terminals": "Heading of the list of running terminals (working directory and command per line) in `atlas hostd --check`.",
+	"cmd_hostd_crew_paused": "Output of `atlas hostd --crew-pause`: the crew stops starting new tasks.",
+	"cmd_hostd_crew_resumed": "Output of `atlas hostd --crew-resume`: the crew starts new tasks again.",
+	"cmd_hostd_ctx_handoff": {
+		"description": "Context of the `upgrade` request to hostd (the hand-over of the running terminals to this binary); shown in the cause chain of the failed live upgrade.",
+		"distinct": "name of a step in an error chain, not a button"
+	},
+	"cmd_hostd_current": "Output of `atlas hostd --check` and `--reconcile` when the running terminal host matches this Atlas version.",
+	"cmd_hostd_disconnected": "Error of `atlas term wait` when the connection to hostd drops while waiting for a terminal. Lowercase: the CLI puts `error:` before it.",
+	"cmd_hostd_exported": "Summary line of `atlas hostd --crew-export` on stderr (stdout carries the archive); {count} is the number of crewmates in the archive.",
+	"cmd_hostd_feature_agents": "What is off while the terminal host is old: the state of coding agents (working, waiting) in terminal tabs. Capability `agents` of hostd.",
+	"cmd_hostd_feature_lsp": "What is off while the terminal host is old: editor features from language servers (hover, diagnostics, go to definition). Capability `lsp` of hostd.",
+	"cmd_hostd_feature_pty_attach_raw": "What is off while the terminal host is old: the raw byte stream that renders terminals quickly. Capability `pty_attach_raw` of hostd.",
+	"cmd_hostd_features_list": "The features a stale terminal host cannot offer, joined as a list: one, two or three names (cmd_hostd_feature_*) in {first}, {second}, {third}; {count} says how many.",
+	"cmd_hostd_imported": "One line per crewmate of `atlas hostd --crew-import`: its name and the id it has on this server.",
+	"cmd_hostd_imported_renamed": "Line of `atlas hostd --crew-import` for a crewmate whose id changed on import (a clash, or --rename): the new id and the id it had in the archive.",
+	"cmd_hostd_kept": "Last line of `atlas hostd --reconcile` when the person declined (or could not be asked) to end the running terminals. The two commands stay as typed.",
+	"cmd_hostd_login_no_terminal": "Context of `atlas hostd --crew-login`: hostd accepted the engine sign-in request but returned no terminal to attach. Shown after `caused by:`.",
+	"cmd_hostd_not_running": "Output of `atlas hostd --reconcile`, `--restart` and `atlas update` when no terminal host runs: the app starts a current one on demand.",
+	"cmd_hostd_not_running_desktop": "Error of `atlas term` when no hostd answers and the desktop app is closed. Lowercase: the CLI puts `error:` before it.",
+	"cmd_hostd_not_running_in": "Error of `atlas hostd` (--status, --stop, --upgrade, --mobile-pair, --crew-pause, --crew-login): no daemon answers in the hostd directory {dir}. Lowercase: the CLI puts `error:` before it.",
+	"cmd_hostd_pair_no_address": "Error of `atlas hostd --mobile-pair` when the pairing invite carries neither a relay nor a direct address. Lowercase: the CLI puts `error:` before it.",
+	"cmd_hostd_reconcile_upgraded": "Output of `atlas hostd --reconcile` and `atlas update` after a live hand-over; {count} is how many running terminals the new host kept.",
+	"cmd_hostd_restarted_ended": "Output of `atlas hostd --restart`, `--reconcile` and `atlas update` after the terminal host was replaced; {count} is how many running terminals ended with the old one.",
+	"cmd_hostd_restarted_idle": "Output of `atlas hostd --reconcile` and `atlas update` when the stale host had no running terminal and was replaced without asking.",
+	"cmd_hostd_stop_timeout": "Error of a restart: the old terminal host still answered ten seconds after the shutdown request. Lowercase: the CLI puts `error:` before it.",
+	"cmd_hostd_stopped": "Output of `atlas hostd --stop` once the daemon accepted the shutdown.",
+	"cmd_hostd_terminal_untitled": {
+		"description": "Name of a running terminal that has neither a command nor a title, in the list printed by `atlas hostd --check`.",
+		"distinct": "fallback name of a list row, lowercase"
+	},
+	"cmd_hostd_upgrade_failed": "Warning on stderr when the hand-over of the running terminals to the new host failed; {error} is the full cause chain, already formatted. The old host keeps running.",
+	"cmd_hostd_upgrade_lost_terminals": "Error of a live hand-over: the new host runs fewer terminals than the old one did; {before} and {after} are the counts. Lowercase: the CLI puts `error:` before it.",
+	"cmd_hostd_upgrade_no_start": "Error of a live hand-over: the new host did not answer with the new version in ten seconds. Lowercase: the CLI puts `error:` before it.",
+	"cmd_hostd_upgraded_kept": "Output of `atlas hostd --upgrade`: the daemon was replaced by this binary; {count} is how many running terminals moved over.",
+	"cmd_hostd_version_mismatch": "Error of a restart: the host that came up reports another version than this binary. {reported} is the raw value from hostd, quotes included. Lowercase: the CLI puts `error:` before it.",
+	"cmd_hostd_version_unknown": {
+		"description": "The version of a terminal host that reports none, shown after \"Terminal host\" in `atlas hostd --check`.",
+		"distinct": "value in a sentence about the terminal host (masculine in pt-BR)"
+	},
+	"cmd_hostd_yes_no": {
+		"description": "The hint after a yes/no question in the terminal: the capital letter is the default (no). Answers accepted: y, yes in English; s, sim in Portuguese; anything else is no.",
+		"distinct": "keys typed at a prompt, not words"
+	}
+}

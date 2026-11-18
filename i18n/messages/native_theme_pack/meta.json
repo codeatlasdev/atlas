@@ -1,0 +1,32 @@
+{
+	"native_theme_pack_entry_outside": {
+		"description": "Error of a theme package import: an entry would be written outside the extraction folder. name is the entry path."
+	},
+	"native_theme_pack_open_failed": {
+		"description": "Error of a theme package import: the chosen file or folder cannot be opened."
+	},
+	"native_theme_pack_package_too_big": {
+		"description": "Error of a theme package import: a folder or unpacked archive is over the file count or size cap."
+	},
+	"native_theme_pack_run_failed": {
+		"description": "Error of a theme package import: the system tool that unpacks the archive could not start. what is the tool name, error the system's message."
+	},
+	"native_theme_pack_temp_failed": {
+		"description": "Error of a theme package import: the folder to unpack into cannot be created."
+	},
+	"native_theme_pack_too_large": {
+		"description": "Error of a theme package import: the unpacked size is over the 200 MB cap."
+	},
+	"native_theme_pack_too_many_entries": {
+		"description": "Error of a theme package import: the archive lists too many files."
+	},
+	"native_theme_pack_tool_failed": {
+		"description": "Error of a theme package import: the unpacking tool rejected the file."
+	},
+	"native_theme_pack_tool_timeout": {
+		"description": "Error of a theme package import: unpacking took too long and was stopped."
+	},
+	"native_theme_pack_wrong_type": {
+		"description": "Error of a theme package import: the chosen file is neither a zip, a vsix nor a folder."
+	}
+}

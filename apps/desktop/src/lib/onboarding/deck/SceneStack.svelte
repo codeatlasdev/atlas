@@ -3,6 +3,7 @@
 	import { onMount } from "svelte";
 	import Frame from "./Frame.svelte";
 	import { Beats } from "./beats.svelte.ts";
+	import { m } from "#lib/i18n/m.ts";
 
 	const SERVICES = [
 		{ name: "db", port: 5432 },
@@ -16,7 +17,7 @@
 	const state = (i: number) => (beats.n > i + 1 ? "running" : beats.n > i ? "starting" : "idle");
 </script>
 
-<Frame title="shop · detected">
+<Frame title={m.onboarding_scene_stack_shop_detected()}>
 	<div class="split">
 		<pre class="yaml" aria-hidden="true"><span class="k">services:</span>
 {#each SERVICES as s, i (s.name)}<span class="line" class:on={beats.n > i}>  <span class="k">{s.name}:</span>
@@ -28,10 +29,10 @@
 				<li class={state(i)}>
 					<span class="led"></span>
 					<b>{s.name}</b>
-					<span class="port">{s.port ? `:${s.port}` : "job"}</span>
+					<span class="port">{s.port ? `:${s.port}` : m.onboarding_scene_stack_job()}</span>
 				</li>
 			{/each}
-			<li class="all" class:on={beats.n === beats.last}>All up · 4 services</li>
+			<li class="all" class:on={beats.n === beats.last}>{m.onboarding_scene_stack_all_up_4_services()}</li>
 		</ul>
 	</div>
 </Frame>

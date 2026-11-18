@@ -39,22 +39,26 @@ test("the header draws the generated mark, with no hand-kept brand colours", () 
 test("no big stat cards: the header carries the counts, the host version is a footer", () => {
 	expect(page).not.toMatch(/tile-stat|class="tiles"|class="big"/);
 	expect(page).toMatch(/headerSummary\(/);
-	expect(page).toMatch(/<footer>[\s\S]*host \{snap\.host\.version\}/);
+	expect(page).toMatch(/<footer>[\s\S]*tray_page_host_version\(\{ version: snap\.host\.version \}\)/);
 });
 
 // Redesign: stopped projects (27 in the screenshot) are one disclosure, not 27 rows; a search opens it.
 test("stopped projects sit behind a disclosure that reports how many rows are inside", () => {
 	expect(page).toMatch(/aria-expanded=\{stoppedShown\}/);
-	expect(page).toMatch(/Stopped \(\{lists\.stoppedCount\}\)/);
+	expect(page).toMatch(/tray_page_stopped_count\(\{\s*stoppedCount: lists\.stoppedCount,?\s*\}\)/);
 });
 
 // Redesign: attention first. Agents that need you come before everything else in the scroll region.
 test("agents needing you are the first section of the list", () => {
 	const at = (s) => page.indexOf(s);
-	expect(at('aria-label="Needs you"')).toBeGreaterThan(0);
-	expect(at('aria-label="Needs you"')).toBeLessThan(at('aria-label="Working"'));
-	expect(at('aria-label="Working"')).toBeLessThan(at('aria-label="Running stacks"'));
-	expect(at('aria-label="Running stacks"')).toBeLessThan(at('aria-label="Projects"'));
+	expect(at("aria-label={m.tray_page_needs_you()}")).toBeGreaterThan(0);
+	expect(at("aria-label={m.tray_page_needs_you()}")).toBeLessThan(at("aria-label={m.tray_page_working()}"));
+	expect(at("aria-label={m.tray_page_working()}")).toBeLessThan(
+		at("aria-label={m.tray_page_running_stacks()}"),
+	);
+	expect(at("aria-label={m.tray_page_running_stacks()}")).toBeLessThan(
+		at("aria-label={m.tray_page_projects()}"),
+	);
 });
 
 // Incident: the list was cut off at the bottom with no scroll. The list is its own scroll region between a pinned

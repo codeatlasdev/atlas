@@ -1,5 +1,6 @@
 // Scans an unpacked theme package (zip / vsix / folder) and turns every theme it holds into an
 // ImportResult. Pure: the caller lists the files and injects `read`.
+import { m } from "#lib/i18n/m.ts";
 import { complete } from "../derive.ts";
 import { parseFamily, type ThemeStyle } from "../schema.ts";
 import { parseAlacritty } from "./alacritty.ts";
@@ -202,7 +203,9 @@ async function classify(
 		case "atlas": {
 			const { themes, issues } = parseFamily(parseJsonc(text));
 			if (themes.length === 0) {
-				throw new Error(issues.find((i) => i.level === "error")?.message ?? "no themes in this file");
+				throw new Error(
+					issues.find((i) => i.level === "error")?.message ?? m.settings_theme_diag_no_themes(),
+				);
 			}
 			const warnings = issues.filter((i) => i.level !== "error").map((i) => `${i.path}: ${i.message}`);
 			return themes.map((t) => ({
@@ -256,7 +259,7 @@ export async function scanPackage(files: PackageFile[], ctx: PackageCtx): Promis
 			// Only complain about unreadable files that could have been themes.
 			if (["json", "jsonc", "itermcolors", "toml", "yml", "yaml"].includes(extOf(f.rel))) {
 				skipped.push(f.rel);
-				warnings.push(`${f.rel}: could not be read`);
+				warnings.push(m.settings_theme_diag_file_unreadable({ file: f.rel }));
 			}
 			continue;
 		}

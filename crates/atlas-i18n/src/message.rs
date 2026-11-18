@@ -18,6 +18,9 @@ pub enum Part {
     Text(String),
     Var(String),
     Ref(String),
+    /// Only in the pseudo-locale (`pseudo.rs`): the prose letters of the pattern, so the padding of the rendered message
+    /// can be computed. Renders as nothing; the parser never produces it.
+    Letters(usize),
 }
 
 pub type Pattern = Vec<Part>;

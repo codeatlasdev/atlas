@@ -15,6 +15,7 @@
 import { gzipSync } from "node:zlib";
 import { existsSync, readFileSync, writeFileSync } from "node:fs";
 import { dirname, join, resolve } from "node:path";
+import { PSEUDO_LOCALE, pseudoEnabled } from "../apps/desktop/scripts/pseudo-env.ts";
 
 export interface Chunk {
 	file: string;
@@ -222,6 +223,9 @@ async function main() {
 	const chunks: Chunk[] = [];
 	const assets: Asset[] = [];
 	let roots: string[] = [];
+	// A release must not carry the pseudo-locale: the chunks that name its tag (the compiled runtime lists every locale), when it is not a dev build.
+	const leaked: string[] = [];
+	const PSEUDO_TAG = new RegExp(`["'\u0060]${PSEUDO_LOCALE}["'\u0060]`);
 	const probe = {
 		name: "atlas:bundle-budget",
 		apply: "build",
@@ -232,6 +236,7 @@ async function main() {
 		) {
 			if (this.environment?.name !== "client") return;
 			for (const [file, c] of Object.entries(bundle)) {
+				if (c.type === "chunk" && !pseudoEnabled("build") && PSEUDO_TAG.test(c.code)) leaked.push(file);
 				if (c.type === "chunk")
 					chunks.push({
 						file,
@@ -316,6 +321,8 @@ async function main() {
 		return;
 	}
 	const problems = evaluate(report, budget);
+	if (leaked.length)
+		problems.push(`the pseudo-locale en-XA is in a build that is not a dev build (${leaked.join(", ")}): it must be compiled into development builds only (apps/desktop/scripts/pseudo-env.ts)`);
 	for (const p of problems) console.error(`bundle budget: ${p}`);
 	if (problems.length) process.exit(1);
 }

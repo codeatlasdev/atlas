@@ -194,7 +194,7 @@ The computer's page shows the version of Atlas it runs, and says when a newer on
 | Command / event | Scope | Does |
 |---|---|---|
 | `info.update` | `read` | `{installed, offered, channel, action, checked_at}` from the cache; `action` is `update` when `offered` is newer than `installed`, else `none`; absent with no check on record |
-| `atlas_update_check {}` | `read` | the CLI's `update --check --json` report `{installed, channel, offered, tag, action}` (plus `managed`, `manager`, `command` when Homebrew or a package owns the install), and refreshes the cache |
+| `atlas_update_check {}` | `read` | the CLI's `update --check --json` report `{installed, channel, offered, tag, action, yanked}` (plus `managed`, `manager`, `command` when Homebrew or a package owns the install), and refreshes the cache |
 | `atlas_update {}` | `act` | `{started: true, from, to}`; then `atlas_update` events. Refused through `crew_call` |
 | `{ev: "atlas_update", stage, message, version}` | `read` | `stage`: `downloading`, `installing`, `handing_off`, `done`, `failed` |
 

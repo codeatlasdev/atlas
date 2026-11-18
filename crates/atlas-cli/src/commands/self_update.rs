@@ -525,6 +525,11 @@ pub(crate) async fn run_update(req: Request) -> Result<UpdateOutcome> {
         }
     };
 
+    // Whether the version that runs was withdrawn (`data/yanked.json`): told below, and it turns an
+    // older offer into a rollback instead of "you are ahead". Never fails (an unreadable list is none).
+    let yank =
+        tokio::task::spawn_blocking(|| atlas_core::github::yank_of(REPO, CURRENT_VERSION)).await?;
+
     // Whatever this run does next, the check itself is what the cache holds: the exit banner, the
     // prompt and hostd's `info.update` (the phone's version line) read it, and `--check` is how a
     // phone asks for a fresh answer. An install clears the offer once it is in.
@@ -535,7 +540,7 @@ pub(crate) async fn run_update(req: Request) -> Result<UpdateOutcome> {
 
     if req.json {
         // `--json` is a report: it never installs.
-        let report = ch::check_json(&current, on, Some(&tag));
+        let report = ch::with_yank(ch::check_json(&current, on, Some(&tag)), yank.as_ref());
         let report = managed_report(&method, &current, &tag, report);
         println!("{}", serde_json::to_string_pretty(&report)?);
         return Ok(UpdateOutcome::Unchanged);
@@ -548,6 +553,13 @@ pub(crate) async fn run_update(req: Request) -> Result<UpdateOutcome> {
         InstallMethod::ShellInstaller | InstallMethod::Manual
     );
 
+    if let Some(y) = &yank {
+        println!("{}\n", ch::yank_notice(&current, y, Some(&offered), on));
+    }
+    // A withdrawn running version may leave the channel's safe release below it: leaving is allowed
+    // without `--downgrade` (the confirmation below still applies).
+    let rollback = req.downgrade || yank.is_some();
+
     match decision {
         Decision::Current => {
             println!("{}", ch::describe(&current, &tag, on, req.downgrade));
@@ -559,14 +571,15 @@ pub(crate) async fn run_update(req: Request) -> Result<UpdateOutcome> {
             return Ok(UpdateOutcome::Unchanged);
         }
         Decision::Ahead => {
-            println!("{}", ch::describe(&current, &tag, on, req.downgrade));
-            if !req.downgrade || req.check_only {
+            // The withdrawal notice above already says what installing the older release means.
+            if yank.is_none() {
+                println!("{}", ch::describe(&current, &tag, on, req.downgrade));
+            }
+            if !rollback || req.check_only {
                 return Ok(UpdateOutcome::Unchanged);
             }
             if managed {
-                bail!(
-                    "--downgrade needs an Atlas installed by the shell installer; another tool manages this one"
-                );
+                bail!("{}", atlas_i18n::t!("update_older_release_managed"));
             }
             if !confirm_downgrade(&current, &offered, on, req.yes)? {
                 println!("Cancelled; nothing was changed.");

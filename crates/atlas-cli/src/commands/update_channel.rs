@@ -5,6 +5,7 @@
 use std::path::Path;
 
 use atlas_core::channel::{self, Action, Channel, ChannelView, Decision};
+use atlas_core::yanked::Yank;
 use semver::Version;
 use serde_json::{Value, json};
 
@@ -41,6 +42,40 @@ pub(crate) fn describe(installed: &Version, tag: &str, on: Channel, downgrade: b
             )
         }
     }
+}
+
+/// What a user who runs a withdrawn version (`yank`, from `data/yanked.json`) is told: why, what
+/// replaces it, and what `atlas update` does about it. `offered` is the newest release the channel
+/// still offers; when it is older than what runs, installing it is a rollback and says so.
+pub(crate) fn yank_notice(
+    installed: &Version,
+    yank: &Yank,
+    offered: Option<&Version>,
+    on: Channel,
+) -> String {
+    let mut out = format!(
+        "\x1b[1;33m!\x1b[0m v{installed} was withdrawn: {}",
+        yank.reason.trim()
+    );
+    if let Some(r) = &yank.replacement {
+        out.push_str(&format!("\n  Use v{} instead.", r.trim_start_matches('v')));
+    }
+    out.push_str(&match offered.map(|o| (o, channel::decide(installed, o))) {
+        Some((o, Decision::Upgrade)) => format!("\n  \x1b[1matlas update\x1b[0m installs v{o}."),
+        Some((o, _)) => format!(
+            "\n  The newest {on} release that is not withdrawn is v{o}, older than what you run: \
+             \x1b[1matlas update\x1b[0m installs it (settings written by v{installed} may not be readable)."
+        ),
+        None => format!("\n  No {on} release that is not withdrawn is published yet."),
+    });
+    out
+}
+
+/// `report` (an `atlas update --check --json` report) plus `yanked`: the withdrawal entry of the
+/// running version (`version`, `reason`, `replacement`), or `null` when it is not withdrawn.
+pub(crate) fn with_yank(mut report: Value, yank: Option<&Yank>) -> Value {
+    report["yanked"] = json!(yank);
+    report
 }
 
 /// `atlas update --check --json`.
@@ -275,6 +310,64 @@ mod tests {
         assert_eq!(none["offered"], Value::Null);
         assert_eq!(none["tag"], Value::Null);
         assert_eq!(none["action"], "none");
+    }
+
+    fn yank(replacement: Option<&str>) -> Yank {
+        Yank {
+            version: "1.5.0-alpha.3".into(),
+            reason: "corrupts the workspace".into(),
+            replacement: replacement.map(Into::into),
+        }
+    }
+
+    #[test]
+    fn a_yanked_running_version_says_why_and_what_to_do() {
+        let me = ver("1.5.0-alpha.3");
+        let up = yank_notice(
+            &me,
+            &yank(Some("1.5.0-alpha.4")),
+            Some(&ver("1.5.0-alpha.4")),
+            Channel::Alpha,
+        );
+        for part in [
+            "v1.5.0-alpha.3 was withdrawn",
+            "corrupts the workspace",
+            "Use v1.5.0-alpha.4",
+            "installs v1.5.0-alpha.4",
+        ] {
+            assert!(up.contains(part), "{part}: {up}");
+        }
+        // The safe release is older than what runs: a rollback, said as one.
+        let back = yank_notice(
+            &me,
+            &yank(None),
+            Some(&ver("1.5.0-alpha.2")),
+            Channel::Alpha,
+        );
+        assert!(
+            back.contains("older than what you run") && back.contains("v1.5.0-alpha.2"),
+            "{back}"
+        );
+        assert!(!back.contains("Use v"), "{back}");
+        let none = yank_notice(&me, &yank(None), None, Channel::Beta);
+        assert!(
+            none.contains("No beta release that is not withdrawn"),
+            "{none}"
+        );
+    }
+
+    #[test]
+    fn the_report_carries_the_withdrawal_or_null() {
+        let base = check_json(
+            &ver("1.5.0-alpha.3"),
+            Channel::Alpha,
+            Some("v1.5.0-alpha.4"),
+        );
+        assert_eq!(with_yank(base.clone(), None)["yanked"], Value::Null);
+        assert_eq!(
+            with_yank(base, Some(&yank(Some("1.5.0-alpha.4"))))["yanked"],
+            json!({"version": "1.5.0-alpha.3", "reason": "corrupts the workspace", "replacement": "1.5.0-alpha.4"})
+        );
     }
 
     #[test]

@@ -15,7 +15,7 @@ You build once, on your machine or in CI. Atlas packs the artifact, uploads it o
 |---|---|---|
 | 1 | The host finishes what it started | The driver runs under `systemd-run` when systemd is PID 1 and atlas runs as root, otherwise under `setsid nohup`. Killing ssh does not kill it. |
 | 2 | One deploy at a time, and the lock never goes stale | The driver holds a kernel `flock` on `.atlas/lock` for its whole life. The lock dies with the process, so it never needs a TTL and nothing ever steals it. |
-| 3 | Releases are immutable | Release ids are `YYYYMMDDHHMMSS-<sha7>[-dirty]`. The upload lands in `releases/.<id>.partial`, its sha256 is checked, then it is renamed. Ordering always goes by id, never by mtime. |
+| 3 | Releases are immutable | Release ids are `YYYYMMDDHHMMSS-<sha7>[-dirty]`. The upload lands in `releases/.<id>.partial`, its sha256 is checked, then it is renamed. Ordering always goes by id, never by mtime, so the timestamp is the later of the clock and one second after the host's newest release (read by the deploy guard): two deploys of one commit in one second, or a client clock behind the host's, never reuse an id or sort before an existing release. |
 | 4 | The swap is atomic | `ln -sfn releases/<id> current.tmp.<id> && mv -Tf current.tmp.<id> current && sync -f`. |
 | 5 | Rollback goes to the last *healthy* release | Each release records `sealed`, `healthy` or `failed` in `releases/<id>/.atlas-release`. Failed releases are skipped. |
 | 6 | Healthy means it stays up | A service needs `health_passes` consecutive passing probes, then a `soak` window with no restart. Restarts are detected through systemd `NRestarts`/`ActiveEnterTimestampMonotonic` or docker `RestartCount`/`StartedAt`. |

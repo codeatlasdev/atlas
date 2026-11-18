@@ -99,7 +99,7 @@ async fn a_push_token_alone_is_nobody_who_can_answer_a_crewmate_prompt() {
 
     // The daemon notices the disconnect within moments; from then on the ask must return at once.
     // Each attempt is bounded, so a regression (a 30-minute wait) fails here instead of hanging.
-    let deadline = std::time::Instant::now() + Duration::from_secs(10);
+    let deadline = std::time::Instant::now() + atlas_core::scaling::HANG;
     loop {
         let attempt =
             tokio::time::timeout(Duration::from_millis(1500), decision(&dir, "crew:c1:t1")).await;

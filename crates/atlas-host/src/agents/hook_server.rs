@@ -503,3 +503,27 @@ pub fn parse_decision(body: &str) -> Option<bool> {
         _ => None,
     }
 }
+
+/// Test helper: run `ask` (a hook asking for a permission prompt, blocking on its socket) and return its body,
+/// failing at once if the daemon HELD the prompt: a held prompt announces itself as an `agent_approval` on `events`
+/// before it waits [`DECISION_WAIT`] for an answer, so seeing that event is the proof, where timing the call is not
+/// (a loaded runner makes any "answered within N seconds" budget flake).
+#[cfg(all(test, unix))]
+pub(crate) async fn answered_without_holding(
+    events: &mut tokio::sync::broadcast::Receiver<crate::client::HostEvent>,
+    ask: impl FnOnce() -> String + Send + 'static,
+) -> String {
+    use tokio::sync::broadcast::error::RecvError;
+    let call = tokio::task::spawn_blocking(ask);
+    tokio::pin!(call);
+    loop {
+        tokio::select! {
+            body = &mut call => return body.unwrap(),
+            ev = events.recv() => match ev {
+                Ok(e) if e["ev"] == "agent_approval" => panic!("the prompt was held for an answer: {e}"),
+                Err(RecvError::Closed) => return call.await.unwrap(),
+                _ => {}
+            },
+        }
+    }
+}

@@ -476,7 +476,7 @@ mod tests {
         // Wait until it has exec'd: before `exec` a forked child still holds every fd (close-on-exec
         // closes them AT exec), so checking earlier failed ~1 in 150 runs under load (PR #106 gate).
         let mut child = std::process::Command::new("sh")
-            .args(["-c", "echo started; exec sleep 30"])
+            .args(["-c", "echo started; exec sleep 600"])
             .stdout(std::process::Stdio::piped())
             .spawn()
             .unwrap();
@@ -488,12 +488,12 @@ mod tests {
             .read_exact(&mut started)
             .unwrap();
         drop(fds);
-        // Bounded wait, not a single try: another test in this binary may fork between our open and
-        // its own `exec`, and that child holds every open fd (ours included) until it execs. It lets
-        // go within milliseconds; our `sleep 30` child would hold the lock for the whole window if
-        // the fd leaked, so a real leak still fails (CI flake, run of PR #205's gate at load 9.7).
+        // Waits for the exit event of the other forked children (below), not for a budget: another test in this
+        // binary may fork between our open and its own `exec`, and that child holds every open fd (ours included)
+        // until it execs. It lets go within milliseconds; our `sleep 600` child outlives the ceiling, so a real leak
+        // keeps the lock until the ceiling and fails (CI flake, run of PR #205's gate at load 9.7).
         let again = std::fs::File::open(&path).unwrap();
-        let deadline = std::time::Instant::now() + std::time::Duration::from_secs(3);
+        let deadline = std::time::Instant::now() + atlas_core::scaling::HANG;
         let free = loop {
             // SAFETY: valid fd owned by `again`.
             if unsafe { libc::flock(again.as_raw_fd(), libc::LOCK_EX | libc::LOCK_NB) } == 0 {
@@ -517,20 +517,19 @@ mod tests {
     /// still succeeded. `wait` reports the exit; reaping is the parent's business.
     #[test]
     fn exit_watch_returns_when_a_non_child_dies_and_reports_its_status() {
-        // A grandchild: `sh` forks a subshell and exits, so the subshell is not our child.
+        // `t0` precedes the grandchild, which cannot exit before its 0.4 s sleep is over: a `wait` that returns
+        // earlier did not wait for the exit. (A lower bound: load only makes `took` longer.)
+        let t0 = std::time::Instant::now();
         let out = std::process::Command::new("sh")
             .args(["-c", "(sleep 0.4; exit 7) >/dev/null 2>&1 & echo $!"])
             .output()
             .unwrap();
         let pid: u32 = String::from_utf8_lossy(&out.stdout).trim().parse().unwrap();
-        let t0 = std::time::Instant::now();
         let code = ExitWatch::new(pid).wait();
         let took = t0.elapsed();
-        assert!(took < Duration::from_secs(5));
-        // It waited for the exit (0.4 s), not returned at once.
         assert!(
-            took >= Duration::from_millis(300),
-            "returned after {took:?}"
+            took >= Duration::from_millis(400),
+            "returned after {took:?}, before the process could have exited"
         );
         #[cfg(target_os = "macos")]
         assert_eq!(code, Some(7));
@@ -544,11 +543,12 @@ mod tests {
     #[test]
     fn exit_watch_reports_an_exit_before_the_zombie_is_reaped() {
         use std::io::BufRead;
-        // perl forks a child that exits 7 after 0.3 s and then sleeps without reaping it.
+        // perl forks a child that exits 7 after 0.3 s and then sleeps, without reaping it, for far longer than
+        // the ceiling below: only the exit (not the reap) can end the wait.
         let mut parent = std::process::Command::new("perl")
             .args([
                 "-e",
-                "$|=1; if (my $p = fork) { print \"$p\\n\"; sleep 3 } else { select(undef,undef,undef,0.3); exit 7 }",
+                "$|=1; if (my $p = fork) { print \"$p\\n\"; sleep 600 } else { select(undef,undef,undef,0.3); exit 7 }",
             ])
             .stdout(std::process::Stdio::piped())
             .spawn()
@@ -558,16 +558,18 @@ mod tests {
             .read_line(&mut line)
             .unwrap();
         let pid: u32 = line.trim().parse().unwrap();
-        let t0 = std::time::Instant::now();
-        let code = ExitWatch::new(pid).wait();
-        assert!(
-            t0.elapsed() < Duration::from_secs(2),
-            "waited for the reap, not the exit"
-        );
-        assert_eq!(code, Some(7));
+        // Registered here, while the child is alive; only the wait runs on the thread.
+        let watch = ExitWatch::new(pid);
+        let (tx, rx) = std::sync::mpsc::channel();
+        std::thread::spawn(move || {
+            let _ = tx.send(watch.wait());
+        });
+        let got = rx.recv_timeout(atlas_core::scaling::HANG);
         // SAFETY: existence probe; the zombie is still there because perl has not reaped it.
-        assert_eq!(unsafe { libc::kill(pid as libc::pid_t, 0) }, 0);
+        let zombie = unsafe { libc::kill(pid as libc::pid_t, 0) };
         parent.kill().unwrap();
         parent.wait().unwrap();
+        assert_eq!(got.expect("waited for the reap, not the exit"), Some(7));
+        assert_eq!(zombie, 0);
     }
 }

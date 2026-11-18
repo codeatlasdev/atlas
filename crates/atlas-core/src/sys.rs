@@ -977,7 +977,7 @@ mod tests {
         drop(a);
         // A sibling test that forks between `open` and `exec` holds the open file description for
         // that instant, so the release is bounded, not instant (the lock is per description).
-        let end = std::time::Instant::now() + std::time::Duration::from_secs(5);
+        let end = std::time::Instant::now() + crate::scaling::HANG;
         while !try_lock(&b).unwrap() {
             assert!(
                 std::time::Instant::now() < end,
@@ -1014,7 +1014,8 @@ mod tests {
         let mut child = shell("ping -n 60 127.0.0.1 >NUL").spawn().unwrap();
         let pid = child.id();
         let mut kids = Vec::new();
-        for _ in 0..100 {
+        let end = std::time::Instant::now() + crate::scaling::HANG;
+        while std::time::Instant::now() < end {
             kids = descendants(pid, &process_rows());
             if !kids.is_empty() {
                 break;

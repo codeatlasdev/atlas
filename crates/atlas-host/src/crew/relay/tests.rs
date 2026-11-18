@@ -14,7 +14,7 @@ use crate::protocol::HostCmd;
 use crate::server::ServeOpts;
 
 async fn connect(dir: &Path) -> HostClient {
-    for _ in 0..200 {
+    for _ in 0..1200 {
         if let Ok(c) = HostClient::connect_dir(dir, "test").await {
             return c;
         }
@@ -161,7 +161,7 @@ async fn the_crew_server_s_pushes_are_relayed_with_their_server() {
         )
         .await
         .unwrap();
-    let ev: Value = tokio::time::timeout(Duration::from_secs(10), async {
+    let ev: Value = tokio::time::timeout(atlas_core::scaling::HANG, async {
         loop {
             let e = events.recv().await.unwrap();
             if e["ev"] == "crew_event" {
@@ -332,7 +332,7 @@ async fn revoking_a_phone_on_the_mac_clears_its_tokens_on_the_crew_server() {
         .await
         .unwrap();
     let mut left = Vec::new();
-    for _ in 0..100 {
+    for _ in 0..1200 {
         left = crew_tokens(&crew_dir);
         if !left.iter().any(|(t, _)| t == "fcm-1") {
             break;
@@ -602,7 +602,7 @@ where
     F: FnMut() -> Fut,
     Fut: Future<Output = bool>,
 {
-    for _ in 0..200 {
+    for _ in 0..1200 {
         if f().await {
             return;
         }

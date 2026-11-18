@@ -7,6 +7,7 @@ use std::path::{Path, PathBuf};
 use std::process::{Command, Output};
 use std::time::{Duration, Instant};
 
+use atlas_core::scaling::HANG;
 use serde_json::Value;
 
 struct Fx {
@@ -157,7 +158,20 @@ fn deploy_lifecycle() {
         .args(["sleep", "30"])
         .spawn()
         .unwrap();
-    std::thread::sleep(Duration::from_millis(300));
+    // Wait for the real event, the holder owning the lock (a try-lock now fails), not for a fixed pause.
+    let lock = fx.srv.join(".atlas/lock");
+    let end = Instant::now() + HANG;
+    while Command::new("flock")
+        .args(["-n", "-o"])
+        .arg(&lock)
+        .arg("true")
+        .status()
+        .unwrap()
+        .success()
+    {
+        assert!(Instant::now() < end, "the holder never took the lock");
+        std::thread::sleep(Duration::from_millis(20));
+    }
     let out = fx.atlas(&["--force"]);
     holder.kill().ok();
     holder.wait().ok();
@@ -224,7 +238,7 @@ fn deploy_lifecycle() {
         "healthy while the restart is held"
     );
     fs::write(&gate, "").unwrap();
-    let deadline = Instant::now() + Duration::from_secs(30);
+    let deadline = Instant::now() + HANG;
     loop {
         let st = fx.atlas(&["status", "--json"]);
         let v: Value = serde_json::from_slice(&st.stdout).unwrap();

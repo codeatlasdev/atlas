@@ -65,7 +65,7 @@
   "cmd_desktop_interrupted": "Interrupted before the instance was ready; Atlas stopped it.",
   "cmd_desktop_linked_notice": "Atlas Desktop is linked to a dev build ({path}) and was left alone. Run `atlas unlink` to update it.",
   "cmd_desktop_linked_to_dev": "{path} is linked to a dev build (`atlas link --desktop`). Run `atlas unlink` first.",
-  "cmd_desktop_lock_timeout": "Another agent instance is starting (it holds {path}) and Atlas waited {secs} s. If none is starting, delete the file.",
+  "cmd_desktop_lock_timeout": "Another agent instance is starting (it holds {path}) and Atlas waited {secs} s. If none is starting, delete the lock with `rm {path}`.",
   "cmd_desktop_lock_waiting": "atlas-agent: another instance is starting (lock {path}); waiting for its turn",
   "cmd_desktop_move_aside_failed": "Couldn't move {path} aside to update it",
   "cmd_desktop_move_failed": "Couldn't move {path}",

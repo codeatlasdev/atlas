@@ -163,7 +163,7 @@ describe("100k files", () => {
 		"controlle",
 		"controller",
 	];
-	const p95 = (xs: number[]) => [...xs].sort((a, b) => a - b)[Math.floor(xs.length * 0.95)];
+	const at = (xs: number[], q: number) => [...xs].sort((a, b) => a - b)[Math.floor(xs.length * q)];
 
 	test("typing a word is fast per keystroke, and the index is built once", () => {
 		const t0 = performance.now();
@@ -187,12 +187,15 @@ describe("100k files", () => {
 			reference(files, "controller", 80);
 			olds.push(performance.now() - t1);
 		}
-		const old = [...olds].sort((a, b) => a - b)[2];
+		const old = at(olds, 0.5);
+		const median = at(per, 0.5);
 		console.log(
-			`quick-open 100k: index build ${build.toFixed(1)} ms; keystroke p95 ${p95(per).toFixed(2)} ms, max ${Math.max(...per).toFixed(2)} ms; ` +
+			`quick-open 100k: index build ${build.toFixed(1)} ms; keystroke median ${median.toFixed(2)} ms, p95 ${at(per, 0.95).toFixed(2)} ms, max ${Math.max(...per).toFixed(2)} ms; ` +
 				`the scoring the palette ran per keystroke before (score+sort, no item building), median of 5: ${old.toFixed(1)} ms`,
 		);
-		// Measured 14x faster (p95 2.8-3.1 ms against 41-42 ms); a regression to within 4x of the old scoring fails.
-		expect(p95(per) * 4).toBeLessThan(old);
+		// Medians, not p95: under a parallel test run the 3 ms keystrokes catch every scheduler pause (p95 rose 6x, to
+		// 18 ms) while the 40 ms old scoring only tripled, so p95 against it failed with nothing regressed. Measured:
+		// median 14x faster at rest; a regression to within 4x of the old scoring (or back to it) fails.
+		expect(median * 4).toBeLessThan(old);
 	});
 });

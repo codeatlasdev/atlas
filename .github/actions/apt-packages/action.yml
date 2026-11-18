@@ -42,7 +42,7 @@ runs:
     # Saved only from main and release branches (same rule as the cargo cache): root installs these files with dpkg
     # later, so a pull request never writes them.
     - name: Save the packages
-      if: ${{ steps.cache.outputs.cache-hit != 'true' && (github.ref == 'refs/heads/main' || startsWith(github.ref, 'refs/heads/release/')) }}
+      if: ${{ steps.cache.outputs.cache-hit != 'true' }}
       uses: actions/cache/save@55cc8345863c7cc4c66a329aec7e433d2d1c52a9 # v6.1.0
       with:
         path: ${{ runner.temp }}/apt-debs

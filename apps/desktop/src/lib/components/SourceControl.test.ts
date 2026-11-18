@@ -1,5 +1,6 @@
 // @ts-nocheck bun test runtime types are not part of the app tsconfig
 import "../../../test/setup.ts";
+import { stubLayout } from "../../../test/viewport.ts";
 import { afterAll, afterEach, beforeAll, beforeEach, expect, mock, test } from "bun:test";
 import { chmodSync, existsSync, mkdirSync, mkdtempSync, readFileSync, rmSync, writeFileSync } from "node:fs";
 import { homedir, tmpdir } from "node:os";
@@ -45,7 +46,9 @@ const STATUS_ARGS = [
 function status() {
 	const probe = git(STATUS_ARGS);
 	if (probe.code !== 0) throw `git ${STATUS_ARGS.join(" ")}: ${probe.stderr.trim()}`;
-	const out = git(["status", "--porcelain=v1", "--branch"]).stdout.split("\n").filter(Boolean);
+	const out = git(["status", "--porcelain=v1", "--branch", "--untracked-files=all"])
+		.stdout.split("\n")
+		.filter(Boolean);
 	const branch = (out.shift() ?? "").replace(/^## (No commits yet on )?/, "").split("...")[0] || "main";
 	const entries = out.map((l) => ({ x: l[0], y: l[1], path: l.slice(3) }));
 	return { branch, upstream: null, ab: null, base: "HEAD", vs_base: null, entries, operation: null };
@@ -312,6 +315,53 @@ test("a later successful commit leaves no error behind", async () => {
 	click(button("Commit"));
 	await until(() => git(["rev-parse", "--verify", "HEAD"]).code === 0, "the commit");
 	await until(() => !text().includes("hook says no"), "the error to clear");
+});
+
+// Regression #308: every change was a row in the DOM (a `git checkout` of another branch, `npm install` outside
+// .gitignore: thousands). The groups and their entries are one windowed list; arrow keys, Home and End move between
+// entries by index, so rows that are not in the DOM are still reachable from the keyboard.
+async function openWithManyChanges(n) {
+	mkdirSync(join(repo, "u"));
+	for (let i = 0; i < n; i++) writeFileSync(join(repo, "u", `f${String(i).padStart(4, "0")}.txt`), "x\n");
+	return open();
+}
+/** The focused entry's text ("" when focus is anywhere else: `document.body.textContent` is the whole page). */
+const focusedEntry = () =>
+	document.activeElement?.classList.contains("entry") ? document.activeElement.textContent : "";
+const entries = () => [...document.body.querySelectorAll(".entry")];
+const press = (el, key) => {
+	el.dispatchEvent(new KeyboardEvent("keydown", { key, bubbles: true, cancelable: true }));
+	flushSync();
+};
+
+test("1500 untracked files keep fewer than 150 rows in the DOM and the group still counts them all", async () => {
+	const restore = stubLayout(440, 22);
+	try {
+		await openWithManyChanges(1500);
+		expect(entries().length).toBeGreaterThan(5);
+		expect(entries().length).toBeLessThan(150);
+		expect(text()).toContain("Untracked 1501"); // f.txt too
+	} finally {
+		restore();
+	}
+});
+
+test("End reaches the last entry, which was not rendered, and Home comes back to the first", async () => {
+	const restore = stubLayout(440, 22);
+	try {
+		await openWithManyChanges(1500);
+		const first = entries()[0];
+		first.focus();
+		press(first, "End");
+		await until(() => focusedEntry().includes("f1499.txt"), "the last entry to be focused");
+		expect(entries().length).toBeLessThan(150);
+		press(document.activeElement, "Home");
+		await until(() => focusedEntry().includes("f.txt"), "the first entry to be focused");
+		press(document.activeElement, "ArrowDown");
+		await until(() => focusedEntry().includes("f0000.txt"), "the next entry");
+	} finally {
+		restore();
+	}
 });
 
 // Regression (#505): in a folder that is not a git repository (~/.omp) Source Control still offered its actions and

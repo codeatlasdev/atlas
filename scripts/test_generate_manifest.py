@@ -101,6 +101,14 @@ class Manifest(unittest.TestCase):
         }
         self.assertEqual(listed, known)
 
+    # #317: the manifest listed x86_64-apple-darwin and universal-apple-darwin, which no job builds. Its platforms are
+    # the `atlas-<target>` artifacts release.yml uploads, no more and no fewer.
+    def test_the_manifest_platforms_are_the_targets_release_yml_builds(self):
+        with open(os.path.join(HERE, "..", ".github/workflows/release.yml")) as f:
+            wf = f.read()
+        built = set(re.findall(r"^          name: atlas-((?:aarch64|x86_64)-(?:apple-darwin|unknown-linux-gnu|pc-windows-msvc))$", wf, re.M))
+        self.assertEqual(set(load().PLATFORMS), built)
+
     def test_windows_lists_the_cli_tarball_and_the_installer_as_the_desktop(self):
         # The names release.yml uploads; `desktop` must be what `atlas desktop` downloads on Windows.
         version = "1.6.0-alpha.1"
@@ -170,6 +178,16 @@ class Manifest(unittest.TestCase):
     def test_empty_promoted_from_is_omitted(self):
         root, *_ = make_artifacts("1.4.0")
         self.assertNotIn("promoted_from", run_cli("1.4.0", root, {"ATLAS_PROMOTED_FROM": ""}))
+
+    # #313: the manifest used to carry `required_update` and `min_os`, which no client reads. A key that nothing
+    # reads promises a kill switch that does not exist; withdrawing a release is `data/yanked.json` (docs/release.md).
+    # The keys below are what the site and `atlas` read (version, date, assets) or what a person reading it needs.
+    def test_the_manifest_carries_only_keys_something_reads(self):
+        root, *_ = make_artifacts("1.4.0")
+        self.assertEqual(
+            sorted(run_cli("1.4.0", root, {"ATLAS_COMMIT": "abc"})),
+            ["assets", "changelog", "channel", "commit", "date", "prerelease", "version"],
+        )
 
     def test_channel_function_rejects_unknown_labels(self):
         mod = load()

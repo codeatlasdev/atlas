@@ -81,6 +81,7 @@ selector; an earlier selector decides ties, a literal beats `*`. Anything else i
 bun run i18n:check [-- --json --surface x --status --info]   the gate: offline, seconds; in bun run check and check:changed
 bun run i18n:find <text|key> [--json]          does it exist? where, in which languages, who uses it
 bun run i18n:add <key> "English" --desc "..." [--pt-BR "..."] [--surface s] [--new-area] [--distinct "why"]
+bun run i18n:extract <path-or-glob> [--area x] [--dry-run] [--json] [--plan]   move hardcoded Svelte text into the catalog (MIGRATION.md)
 bun run i18n:mv <old> <new> [--new-area --surface s]   rename or move, with locks, references and call sites
 bun run i18n:translate [--locale pt-BR] [--area x] [--surface y] [--dry-run]
 bun run i18n:fix [--restamp <key>] [--baseline]           format files, rewrite locks, shrink the ratchet baseline

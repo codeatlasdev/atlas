@@ -32,6 +32,8 @@ echo "Atlas Lab: http://localhost:$port  (backend: agent instance $name)"
 repo=$(pwd)
 trap 'kill "$vite" 2>/dev/null; "$repo/scripts/desktop-agent.sh" --stop --name "$name" >/dev/null 2>&1' EXIT INT TERM
 cd apps/desktop
+# The generated icon tables (gitignored) are what `bun run dev` makes first; `vite dev` alone fails on a fresh checkout.
+bun run icons
 ATLAS_DEBUG_SOCK=$sock ATLAS_LAB_INSTANCE=$name ATLAS_LAB_PORT=$port bunx vite dev &
 vite=$!
 wait "$vite"

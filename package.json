@@ -47,6 +47,7 @@
     "i18n:generate": "bun run i18n:install && bun scripts/i18n/generate.ts",
     "i18n:find": "bun run i18n:install && bun scripts/i18n/find.ts",
     "i18n:add": "bun run i18n:install && bun scripts/i18n/add.ts",
+    "i18n:extract": "bun run i18n:install && bun scripts/i18n/extract.ts",
     "i18n:mv": "bun run i18n:install && bun scripts/i18n/mv.ts",
     "i18n:pseudo": "bun run i18n:install && bun scripts/i18n/pseudo.ts",
     "i18n:add-locale": "bun run i18n:install && bun scripts/i18n/add-locale.ts",

@@ -15,7 +15,7 @@ interface Props {
 	groups: NavGroup[];
 	headings: MarkdownHeading[];
 	editUrl: string;
-	/** pt-BR pages only: `ok` is a current translation (no banner); `missing` and `outdated` get a banner. English pages leave it out. */
+	/** pt-BR pages only: `ok` is a reviewed, current translation (no banner); `missing`, `outdated` and `machine` get a banner. English pages leave it out. */
 	state?: DocState;
 	/** Language of the body when it is not the page's own: a fallback page shows the English text under /pt-br/. */
 	contentLang?: Locale;

@@ -1,5 +1,6 @@
 use anyhow::{Context, Result, bail};
 use atlas_core::util::expand_tilde;
+use atlas_i18n::t;
 use clap::Args;
 use std::path::{Path, PathBuf};
 
@@ -8,6 +9,32 @@ use crate::commands::shellrc::{self, ShellEnv};
 use crate::commands::skills;
 
 const INSTALL_DIR: &str = ".atlas/bin";
+
+const GREEN: &str = "\x1b[32m";
+const YELLOW: &str = "\x1b[33m";
+const BLUE_BOLD: &str = "\x1b[1;34m";
+const GREEN_BOLD: &str = "\x1b[1;32m";
+const RESET: &str = "\x1b[0m";
+
+/// A finished step: a green check, then the message. The glyph and the color are code, the words are the catalog's.
+fn ok(message: &str) -> String {
+    format!("{GREEN}✓{RESET} {message}")
+}
+
+/// The last line of a successful run: bold green.
+fn done(message: &str) -> String {
+    format!("{GREEN_BOLD}✓{RESET} {message}")
+}
+
+/// Something the person should look at, that did not stop the install.
+fn warn(message: &str) -> String {
+    format!("{YELLOW}◆{RESET} {message}")
+}
+
+/// A section of the installer's report.
+fn head(message: &str) -> String {
+    format!("{BLUE_BOLD}◆{RESET} {message}")
+}
 
 #[derive(Debug, Args)]
 pub struct InstallArgs {
@@ -38,8 +65,8 @@ enum Upgrade {
     Linked,
     /// Same or newer than this binary.
     Current(String),
-    /// Older, or no readable version: replace it.
-    Replace(String),
+    /// Older, or no readable version (`None`): replace it.
+    Replace(Option<String>),
 }
 
 /// Judge the CLI at `dest` against `own` (this binary's version). `installed` runs `dest` and
@@ -56,12 +83,12 @@ fn judge_upgrade(
         return Upgrade::Linked;
     }
     let Some(v) = installed(dest) else {
-        return Upgrade::Replace("unreadable".into());
+        return Upgrade::Replace(None);
     };
     use atlas_core::channel;
     match (channel::parse_tag(&v), channel::parse_tag(own)) {
         (Some(have), Some(own)) if channel::precedence(&have, &own).is_ge() => Upgrade::Current(v),
-        _ => Upgrade::Replace(v),
+        _ => Upgrade::Replace(Some(v)),
     }
 }
 
@@ -101,31 +128,40 @@ fn installed_version(exe: &Path) -> Option<String> {
 /// is odd: an error is only a copy that could not be written.
 fn upgrade_existing() -> Result<()> {
     let dest = dirs::home_dir()
-        .context("no home directory")?
+        .context(t!("cmd_install_no_home"))?
         .join(INSTALL_DIR)
         .join(atlas_core::paths::exe("atlas"));
     let own = env!("CARGO_PKG_VERSION");
+    let path = dest.display().to_string();
     match judge_upgrade(&dest, own, installed_version) {
-        Upgrade::Absent => println!(
-            "atlas is not installed in {}; run `atlas install`",
-            dest.display()
+        Upgrade::Absent => println!("{}", t!("cmd_install_upgrade_absent", path = path)),
+        Upgrade::Linked => println!("{}", t!("cmd_install_upgrade_linked", path = path)),
+        Upgrade::Current(v) => println!(
+            "{}",
+            t!("cmd_install_upgrade_current", version = v, path = path)
         ),
-        Upgrade::Linked => println!("{} is linked to a dev build; left alone", dest.display()),
-        Upgrade::Current(v) => println!("atlas {v} in {} is current", dest.display()),
         Upgrade::Replace(old) => {
-            let me =
-                std::env::current_exe().context("Could not determine current executable path")?;
+            let old = old.unwrap_or_else(|| t!("cmd_install_version_unreadable"));
+            let me = std::env::current_exe().context(t!("cmd_install_no_exe"))?;
             // Running the installed copy itself (`~/.atlas/bin/atlas install --upgrade`): it is
             // the one being judged, so a newer self is simply not there to copy from.
             if me == dest {
                 println!(
-                    "atlas {old} in {} is this binary; nothing to copy",
-                    dest.display()
+                    "{}",
+                    t!("cmd_install_upgrade_self", version = old, path = path)
                 );
                 return Ok(());
             }
             replace_binary(&me, &dest)?;
-            println!("atlas {old} → {own} in {}", dest.display());
+            println!(
+                "{}",
+                t!(
+                    "cmd_install_upgrade_replaced",
+                    old = old,
+                    new = own,
+                    path = path
+                )
+            );
         }
     }
     Ok(())
@@ -155,11 +191,22 @@ impl Drop for Staging {
 /// when it is still running that fails and the next install sweeps it (`sweep_old`). If the new
 /// file cannot be put in place the old one is moved back, so there is never no `atlas`.
 fn replace_binary(src: &Path, dest: &Path) -> Result<()> {
-    let dir = dest.parent().context("install path has no folder")?;
-    std::fs::create_dir_all(dir).with_context(|| format!("Could not create {}", dir.display()))?;
+    let dir = dest
+        .parent()
+        .with_context(|| t!("cmd_install_no_parent", path = dest.display().to_string()))?;
+    std::fs::create_dir_all(dir).with_context(|| {
+        t!(
+            "cmd_install_create_failed",
+            path = dir.display().to_string()
+        )
+    })?;
     let tmp = Staging(staging_path(dir, std::process::id()));
-    std::fs::copy(src, &tmp.0)
-        .with_context(|| format!("Could not copy binary to {}", tmp.0.display()))?;
+    std::fs::copy(src, &tmp.0).with_context(|| {
+        t!(
+            "cmd_install_copy_failed",
+            path = tmp.0.display().to_string()
+        )
+    })?;
 
     #[cfg(unix)]
     {
@@ -174,8 +221,12 @@ fn replace_binary(src: &Path, dest: &Path) -> Result<()> {
         sweep_old(dir);
         (dest.is_file() && std::fs::rename(dest, &aside).is_ok()).then_some(aside)
     };
-    let installed = std::fs::rename(&tmp.0, dest)
-        .with_context(|| format!("Could not install to {}", dest.display()));
+    let installed = std::fs::rename(&tmp.0, dest).with_context(|| {
+        t!(
+            "cmd_install_install_failed",
+            path = dest.display().to_string()
+        )
+    });
     #[cfg(windows)]
     if let Some(aside) = aside {
         if installed.is_ok() {
@@ -245,33 +296,43 @@ pub async fn handle(dir: Option<String>) -> Result<()> {
     let install_dir = match dir {
         Some(d) => PathBuf::from(expand_tilde(&d)),
         None => dirs::home_dir()
-            .context("no home directory")?
+            .context(t!("cmd_install_no_home"))?
             .join(INSTALL_DIR),
     };
 
-    println!("\x1b[1;34m◆\x1b[0m Atlas installer");
-    println!("  Version:  v{}", env!("CARGO_PKG_VERSION"));
-    println!("  Target:   {}", install_dir.display());
+    println!("{}", head(&t!("cmd_install_title")));
+    println!(
+        "  {}",
+        t!("cmd_install_version", version = env!("CARGO_PKG_VERSION"))
+    );
+    println!(
+        "  {}",
+        t!(
+            "cmd_install_target",
+            dir = install_dir.display().to_string()
+        )
+    );
     println!();
 
-    let current_exe =
-        std::env::current_exe().context("Could not determine current executable path")?;
+    let current_exe = std::env::current_exe().context(t!("cmd_install_no_exe"))?;
     let dest = install_dir.join(atlas_core::paths::exe("atlas"));
+    let path = dest.display().to_string();
     match install_binary(
         &current_exe,
         &dest,
         env!("CARGO_PKG_VERSION"),
         installed_version,
     )? {
-        Installed::Copied => println!("\x1b[32m✓\x1b[0m Installed → {}", dest.display()),
-        Installed::KeptLink => println!(
-            "\x1b[32m✓\x1b[0m Kept      {} (linked to a dev build; `atlas unlink` goes back)",
-            dest.display()
-        ),
+        Installed::Copied => println!("{}", ok(&t!("cmd_install_copied", path = path))),
+        Installed::KeptLink => println!("{}", ok(&t!("cmd_install_kept_link", path = path))),
         Installed::KeptNewer(v) => println!(
-            "\x1b[32m✓\x1b[0m Kept      {} (v{v} is newer than this v{}; never a downgrade)",
-            dest.display(),
-            env!("CARGO_PKG_VERSION")
+            "{}",
+            ok(&t!(
+                "cmd_install_kept_newer",
+                path = path,
+                installed = v,
+                own = env!("CARGO_PKG_VERSION")
+            ))
         ),
     }
 
@@ -280,35 +341,40 @@ pub async fn handle(dir: Option<String>) -> Result<()> {
         let already_in_path = std::env::var_os("PATH")
             .is_some_and(|path| std::env::split_paths(&path).any(|p| p == install_dir));
         if already_in_path {
-            println!("\x1b[32m✓\x1b[0m Already in PATH");
+            println!("{}", ok(&t!("cmd_install_path_already_win")));
         } else {
             match add_user_path(&install_dir) {
-                Ok(_) => println!("\x1b[32m✓\x1b[0m Added to PATH  [user environment]"),
+                Ok(_) => println!("{}", ok(&t!("cmd_install_path_added_win"))),
                 Err(e) => println!(
-                    "\x1b[33m◆\x1b[0m Add {} to your PATH manually ({e:#})",
-                    install_dir.display()
+                    "{}",
+                    warn(&t!(
+                        "cmd_install_path_manual",
+                        dir = install_dir.display().to_string(),
+                        reason = format!("{e:#}")
+                    ))
                 ),
             }
         }
-        println!("\x1b[1;32m✓\x1b[0m Done! Open a new terminal to use `atlas`.");
+        println!("{}", done(&t!("cmd_install_done_new_terminal")));
     }
     #[cfg(not(windows))]
     setup_path_unix(&install_dir, &dest);
     println!();
 
     // Install the skills bundled in this binary into ~/.agents/skills
-    println!("\x1b[1;34m◆\x1b[0m Installing skills...");
+    println!("{}", head(&t!("cmd_install_skills")));
     if let Err(e) = skills::install::handle(vec![], true) {
-        eprintln!("\x1b[33m◆\x1b[0m Skills install failed (non-fatal): {e}");
+        eprintln!(
+            "{}",
+            warn(&t!("cmd_install_skills_failed", reason = e.to_string()))
+        );
     }
 
     println!();
-    println!("  \x1b[2mGet started:\x1b[0m");
-    println!("  atlas dev              start the TUI");
-    println!("  atlas update           keep atlas up to date");
-    println!(
-        "  atlas setup            wire atlas into omp, Claude Code or Codex (MCP + skills + hooks)"
-    );
+    println!("  \x1b[2m{}{RESET}", t!("cmd_install_get_started"));
+    println!("  {:<22}{}", "atlas dev", t!("cmd_install_hint_dev"));
+    println!("  {:<22}{}", "atlas update", t!("cmd_install_hint_update"));
+    println!("  {:<22}{}", "atlas setup", t!("cmd_install_hint_setup"));
 
     Ok(())
 }
@@ -325,17 +391,23 @@ fn sudo_warning(
 ) -> Option<String> {
     use std::os::unix::fs::MetadataExt as _;
     let user = sudo_user.filter(|u| !u.is_empty() && *u != "root")?;
-    let mut msg = format!(
-        "Running under sudo: this installs into {} as uid {euid}, not as {user}.",
-        home.display()
-    );
-    if sudo_uid.is_some_and(|u| std::fs::metadata(home).is_ok_and(|m| m.uid() == u)) {
-        msg.push_str(&format!(
-            " That is {user}'s own home (sudo -E / HOME kept), so the files written there will be owned by root."
-        ));
-    }
-    msg.push_str(" Run the installer without sudo.");
-    Some(msg)
+    let home_dir = home.display().to_string();
+    let own_home = sudo_uid.is_some_and(|u| std::fs::metadata(home).is_ok_and(|m| m.uid() == u));
+    Some(if own_home {
+        t!(
+            "cmd_install_sudo_own_home",
+            home = home_dir,
+            euid = euid,
+            user = user
+        )
+    } else {
+        t!(
+            "cmd_install_sudo_warning",
+            home = home_dir,
+            euid = euid,
+            user = user
+        )
+    })
 }
 
 /// Unix: write every shell's startup file (always, even when this process already has the dir on
@@ -350,43 +422,52 @@ fn setup_path_unix(install_dir: &Path, dest: &Path) {
         unsafe { libc::geteuid() },
         &ShellEnv::current().home,
     ) {
-        println!("\x1b[33m◆\x1b[0m {w}");
+        println!("{}", warn(&w));
     }
     let env = ShellEnv::current();
     for (shell, outcome) in setup_path_all_shells(&env, install_dir) {
         match outcome {
-            Ok(PathSetup::NoFile) => println!(
-                "\x1b[33m◆\x1b[0m {shell}: no startup file to add to; create ~/.bash_profile with:\n  {}",
-                shellrc::path_line(install_dir)
-            ),
+            Ok(PathSetup::NoFile) => {
+                println!(
+                    "{}",
+                    warn(&t!("cmd_install_no_startup_file", shell = shell))
+                );
+                println!("  {}", shellrc::path_line(install_dir));
+            }
             Ok(s) => {
-                if let Some(label) = setup_label(shell, &s) {
-                    println!("\x1b[32m✓\x1b[0m Added to PATH  [{label}]");
+                if let Some(line) = setup_line(shell, &s) {
+                    println!("{}", ok(&line));
                 }
             }
-            Err(e) => println!("\x1b[33m◆\x1b[0m {shell}: {e:#}"),
+            Err(e) => println!("{}", warn(&format!("{shell}: {e:#}"))),
         }
     }
     let path = std::env::var_os("PATH");
     let ready_now = match link_local_bin(&env, dest, path.as_deref()) {
         Ok(LocalLink::Linked(link)) => {
             println!(
-                "\x1b[32m✓\x1b[0m Linked {} → {}",
-                link.display(),
-                dest.display()
+                "{}",
+                ok(&t!(
+                    "cmd_install_linked",
+                    link = link.display().to_string(),
+                    dest = dest.display().to_string()
+                ))
             );
             true
         }
         Ok(LocalLink::Taken(link)) => {
             println!(
-                "\x1b[33m◆\x1b[0m {} exists and is not Atlas's link; left alone",
-                link.display()
+                "{}",
+                warn(&t!(
+                    "cmd_install_link_taken",
+                    link = link.display().to_string()
+                ))
             );
             false
         }
         Ok(LocalLink::NotOnPath) => false,
         Err(e) => {
-            println!("\x1b[33m◆\x1b[0m {e:#}");
+            println!("{}", warn(&format!("{e:#}")));
             false
         }
     } || path.is_some_and(|p| std::env::split_paths(&p).any(|e| e == install_dir));
@@ -399,17 +480,27 @@ fn setup_path_unix(install_dir: &Path, dest: &Path) {
     let line = shellrc::line_for_shell(&name, install_dir);
     if line.is_none() {
         println!(
-            "\x1b[33m◆\x1b[0m Atlas does not write {name}'s startup file: add {} to PATH there",
-            install_dir.display()
+            "{}",
+            warn(&t!(
+                "cmd_install_shell_unsupported",
+                shell = name,
+                dir = install_dir.display().to_string()
+            ))
         );
     }
     if ready_now {
-        println!("\x1b[1;32m✓\x1b[0m Done! `atlas` works in this shell now.");
+        println!("{}", done(&t!("cmd_install_done_this_shell")));
     } else {
-        println!("\x1b[1;32m✓\x1b[0m Done! Open a new terminal, or run this in the current one:");
+        println!("{}", done(&t!("cmd_install_done_new_terminal_or_here")));
         match line {
             Some(l) => println!("  {l}"),
-            None => println!("  (add {} to PATH)", install_dir.display()),
+            None => println!(
+                "  {}",
+                t!(
+                    "cmd_install_add_to_path",
+                    dir = install_dir.display().to_string()
+                )
+            ),
         }
     }
 }
@@ -456,7 +547,7 @@ fn edit_user_path(dir: &Path, op: &str) -> Result<bool> {
         .no_window()
         .stdin(std::process::Stdio::null())
         .output()
-        .context("cannot run powershell")?;
+        .context(t!("cmd_install_no_powershell"))?;
     if !out.status.success() {
         anyhow::bail!("{}", String::from_utf8_lossy(&out.stderr).trim());
     }
@@ -476,12 +567,20 @@ enum PathSetup {
     NoFile,
 }
 
-/// One line per shell for the installer's report; `NoFile` is not a success and says so.
+/// The report line for one shell; `NoFile` is not a success and says so (it has its own warning).
 #[cfg_attr(windows, allow(dead_code))]
-fn setup_label(shell: &str, s: &PathSetup) -> Option<String> {
+fn setup_line(shell: &str, s: &PathSetup) -> Option<String> {
     match s {
-        PathSetup::Written(p) => Some(format!("{shell}  {}", p.display())),
-        PathSetup::AlreadySet(p) => Some(format!("{shell}  {} (already set)", p.display())),
+        PathSetup::Written(p) => Some(t!(
+            "cmd_install_path_added",
+            shell = shell,
+            file = p.display().to_string()
+        )),
+        PathSetup::AlreadySet(p) => Some(t!(
+            "cmd_install_path_already",
+            shell = shell,
+            file = p.display().to_string()
+        )),
         PathSetup::NoFile => None,
     }
 }
@@ -549,17 +648,29 @@ fn write_owned_file(
         }
         if !ours(&existing) {
             bail!(
-                "{} exists and is not the file Atlas writes; add `{line}` to it yourself",
-                file.display()
+                "{}",
+                t!(
+                    "cmd_install_not_ours",
+                    file = file.display().to_string(),
+                    line = line
+                )
             );
         }
     }
     if let Some(dir) = file.parent() {
-        std::fs::create_dir_all(dir)
-            .with_context(|| format!("Could not create {}", dir.display()))?;
+        std::fs::create_dir_all(dir).with_context(|| {
+            t!(
+                "cmd_install_create_failed",
+                path = dir.display().to_string()
+            )
+        })?;
     }
-    std::fs::write(&file, contents)
-        .with_context(|| format!("Could not write {}", file.display()))?;
+    std::fs::write(&file, contents).with_context(|| {
+        t!(
+            "cmd_install_write_failed",
+            path = file.display().to_string()
+        )
+    })?;
     Ok(PathSetup::Written(file))
 }
 
@@ -629,10 +740,15 @@ fn link_local_bin(
         Err(_) if link.symlink_metadata().is_ok() => return Ok(LocalLink::Taken(link)),
         Err(_) => {}
     }
-    std::fs::create_dir_all(dir).with_context(|| format!("Could not create {}", dir.display()))?;
+    std::fs::create_dir_all(dir).with_context(|| {
+        t!(
+            "cmd_install_create_failed",
+            path = dir.display().to_string()
+        )
+    })?;
     #[cfg(unix)]
     std::os::unix::fs::symlink(dest, &link)
-        .with_context(|| format!("Could not link {}", link.display()))?;
+        .with_context(|| t!("cmd_install_link_failed", path = link.display().to_string()))?;
     Ok(LocalLink::Linked(link))
 }
 
@@ -682,7 +798,7 @@ fn append_block(rc: PathBuf, install_dir: &Path) -> Result<PathSetup> {
         .append(true)
         .create(true)
         .open(&rc)
-        .with_context(|| format!("Could not open {}", rc.display()))?;
+        .with_context(|| t!("cmd_install_open_failed", path = rc.display().to_string()))?;
     // A file that does not end in a newline would glue the marker to its last line.
     let lead = if existing.is_empty() || existing.ends_with('\n') {
         ""
@@ -690,7 +806,7 @@ fn append_block(rc: PathBuf, install_dir: &Path) -> Result<PathSetup> {
         "\n"
     };
     write!(f, "{lead}{}", shellrc::block(install_dir))
-        .with_context(|| format!("Could not write {}", rc.display()))?;
+        .with_context(|| t!("cmd_install_write_failed", path = rc.display().to_string()))?;
     Ok(PathSetup::Written(rc))
 }
 
@@ -816,18 +932,23 @@ mod tests {
         let (_t, env, bin) = shell_home();
         let s = setup_bash(&env, &bin).unwrap();
         assert_eq!(s, PathSetup::NoFile);
-        assert_eq!(setup_label("bash", &s), None);
+        assert_eq!(setup_line("bash", &s), None);
         assert!(
             !env.home.join(".bashrc").exists(),
             "nothing is created for bash"
         );
-        let done = setup_label("zsh", &PathSetup::Written(env.zsh_file())).unwrap();
-        assert!(
-            done.starts_with("zsh") && !done.contains("already"),
-            "{done}"
+        let file = env.zsh_file().display().to_string();
+        let done = setup_line("zsh", &PathSetup::Written(env.zsh_file())).unwrap();
+        assert_eq!(
+            done,
+            t!("cmd_install_path_added", shell = "zsh", file = file.clone())
         );
-        let had = setup_label("zsh", &PathSetup::AlreadySet(env.zsh_file())).unwrap();
-        assert!(had.contains("already set"), "{had}");
+        let had = setup_line("zsh", &PathSetup::AlreadySet(env.zsh_file())).unwrap();
+        assert_eq!(
+            had,
+            t!("cmd_install_path_already", shell = "zsh", file = file)
+        );
+        assert_ne!(done, had, "a file that already had the block says so");
     }
 
     /// Incident (#265, Omarchy): `~/.bash_profile` existed, the line went there, and the terminal's
@@ -876,7 +997,14 @@ mod tests {
         let mine = "function atlas\n  echo my wrapper\nend\n";
         std::fs::write(&rc, mine).unwrap();
         let e = setup_fish(&env, &bin).unwrap_err().to_string();
-        assert!(e.contains("not the file Atlas writes"), "{e}");
+        assert_eq!(
+            e,
+            t!(
+                "cmd_install_not_ours",
+                file = rc.display().to_string(),
+                line = shellrc::fish_line(&bin)
+            )
+        );
         assert_eq!(std::fs::read_to_string(&rc).unwrap(), mine);
     }
 
@@ -1066,14 +1194,30 @@ mod tests {
         let owner = std::fs::metadata(t.path()).unwrap().uid();
         assert_eq!(sudo_warning(None, None, 0, t.path()), None);
         assert_eq!(sudo_warning(Some("root"), Some(0), 0, t.path()), None);
+        let home = t.path().display().to_string();
         let own = sudo_warning(Some("ana"), Some(owner), 0, t.path()).unwrap();
-        assert!(own.contains(&t.path().display().to_string()), "{own}");
-        assert!(own.contains("as uid 0"), "{own}");
-        assert!(own.contains("owned by root"), "{own}");
+        assert_eq!(
+            own,
+            t!(
+                "cmd_install_sudo_own_home",
+                home = home.clone(),
+                euid = 0,
+                user = "ana"
+            )
+        );
         let other = sudo_warning(Some("ana"), Some(owner + 1), 0, t.path()).unwrap();
-        assert!(
-            other.contains("as uid 0") && !other.contains("owned by root"),
-            "{other}"
+        assert_eq!(
+            other,
+            t!(
+                "cmd_install_sudo_warning",
+                home = home,
+                euid = 0,
+                user = "ana"
+            )
+        );
+        assert_ne!(
+            own, other,
+            "only the caller's own home gets the root-owned warning"
         );
     }
 
@@ -1090,20 +1234,17 @@ mod tests {
     fn upgrade_replaces_only_an_older_or_unreadable_cli() {
         assert_eq!(
             judge("1.5.0-alpha.24", Some("1.5.0-alpha.9")),
-            Upgrade::Replace("1.5.0-alpha.9".into()),
+            Upgrade::Replace(Some("1.5.0-alpha.9".into())),
             "alpha.9 is older than alpha.24 (numeric, not text order)"
         );
         assert_eq!(
             judge("1.5.0", Some("1.5.0-alpha.24")),
-            Upgrade::Replace("1.5.0-alpha.24".into())
+            Upgrade::Replace(Some("1.5.0-alpha.24".into()))
         );
-        assert_eq!(
-            judge("1.5.0-alpha.24", None),
-            Upgrade::Replace("unreadable".into())
-        );
+        assert_eq!(judge("1.5.0-alpha.24", None), Upgrade::Replace(None));
         assert_eq!(
             judge("1.5.0-alpha.24", Some("garbage")),
-            Upgrade::Replace("garbage".into())
+            Upgrade::Replace(Some("garbage".into()))
         );
         assert_eq!(
             judge("1.5.0-alpha.24", Some("1.5.0-alpha.24")),
@@ -1171,7 +1312,7 @@ mod tests {
         // And through the decision: the version it read is older than a newer own build.
         assert_eq!(
             judge_upgrade(&ok, "1.5.0-alpha.24", installed_version),
-            Upgrade::Replace("1.5.0-alpha.9".into())
+            Upgrade::Replace(Some("1.5.0-alpha.9".into()))
         );
     }
 

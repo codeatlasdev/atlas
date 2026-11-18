@@ -9,11 +9,15 @@
 	import Row from "#lib/settings/Row.svelte";
 	import LoadError from "#lib/settings/LoadError.svelte";
 	import { m } from "#lib/i18n/m.ts";
+	import { list } from "#lib/i18n/fmt.ts";
 
 	/** The installed agents that can write a message (a one-shot run in `agents.json`: not OpenCode, not custom agents). */
 	const writers = $derived(agents.list.filter((a) => a.installed && canWriteCommits(a.id)));
-	const writerNames = new Intl.ListFormat("en", { type: "disjunction" }).format(
-		BUILTIN_AGENTS.filter((a) => canWriteCommits(a.id)).map((a) => a.label),
+	const writerNames = $derived(
+		list(
+			BUILTIN_AGENTS.filter((a) => canWriteCommits(a.id)).map((a) => a.label),
+			"disjunction",
+		),
 	);
 
 	/** `auto` = your default agent when it is installed, else the first installed one. */

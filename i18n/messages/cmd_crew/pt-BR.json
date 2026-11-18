@@ -1,5 +1,5 @@
 {
 	"cmd_crew_no_reason_given": "nenhum motivo informado",
-	"cmd_crew_unit_masked": "A unidade {unit} está mascarada no servidor e o Atlas não conseguiu desmascará-la ({why}). Execute no servidor: {command} e tente de novo",
-	"cmd_crew_unit_write_failed": "falha ao gravar {unit}: {why}"
+	"cmd_crew_unit_masked": "a unidade {unit} está mascarada no servidor e o Atlas não conseguiu desmascará-la ({why}). Rode no servidor: {command}. Depois, tente novamente",
+	"cmd_crew_unit_write_failed": "não foi possível gravar {unit}: {why}"
 }

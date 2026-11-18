@@ -1,9 +1,333 @@
 {
+	"onboarding_checklist_all_set": "Tudo pronto",
+	"onboarding_checklist_dismiss_checklist": "Dispensar checklist",
+	"onboarding_checklist_getting_started": "Primeiros passos",
+	"onboarding_checklist_item_agent": "Executar um agente",
+	"onboarding_checklist_item_file": "Pesquisar um arquivo",
+	"onboarding_checklist_item_palette": "Testar a paleta de comandos",
+	"onboarding_checklist_item_project": "Adicionar um projeto",
+	"onboarding_checklist_item_stack": "Iniciar a stack",
+	"onboarding_checklist_item_terminal": "Abrir um terminal",
+	"onboarding_commands_help": "Ajuda: atalhos de teclado",
+	"onboarding_commands_show_checklist": "Mostrar checklist de primeiros passos",
+	"onboarding_deck_agents_body": "Rode o Claude Code, o Codex ou o omp em paralelo, cada um no próprio terminal e na própria branch.",
+	"onboarding_deck_agents_title": "Agentes que trabalham lado a lado.",
+	"onboarding_deck_get_started": "Começar",
+	"onboarding_deck_intro_body": "Um só lugar para tudo o que você executa: sua stack, seus terminais e seus agentes de código.",
+	"onboarding_deck_stack_body": "O Atlas detecta sua stack, inicia cada serviço na ordem certa e mostra quando cada um está no ar. O atlas.yaml é opcional: salve um quando quiser ajustar algo.",
+	"onboarding_deck_stack_title": "Abra uma pasta e o Atlas a executa.",
+	"onboarding_deck_step_of": "Etapa {step} de {total}",
+	"onboarding_deck_steps": "Etapas",
+	"onboarding_deck_worktrees_body": "Crie uma branch, experimente, revise o diff e faça merge de volta, sem stash e sem alternar entre pastas.",
+	"onboarding_deck_worktrees_title": "Uma worktree para cada ideia.",
+	"onboarding_flow_project_folder": "Pasta de projeto",
+	"onboarding_flow_services": [
+		{
+			"declarations": [
+				"input count",
+				"local countExact = count",
+				"local countPlural = count: plural"
+			],
+			"selectors": [
+				"countExact",
+				"countPlural"
+			],
+			"match": {
+				"countExact=0, countPlural=*": "Nenhum serviço",
+				"countExact=*, countPlural=one": "{count} serviço",
+				"countExact=*, countPlural=*": "{count} serviços"
+			}
+		}
+	],
+	"onboarding_flow_stack_compose": "Projeto Compose",
+	"onboarding_flow_stack_go": "Projeto Go",
+	"onboarding_flow_stack_node": "Projeto Node",
+	"onboarding_flow_stack_python": "Projeto Python",
+	"onboarding_flow_stack_rust": "Projeto Rust",
+	"onboarding_help_settings_checklist_label": "Checklist de primeiros passos",
+	"onboarding_help_settings_help": "Ajuda",
+	"onboarding_help_settings_open_shortcuts": "Abrir guia de atalhos",
+	"onboarding_help_settings_progress": "{done} de {total} primeiros passos concluídos.",
+	"onboarding_help_settings_progress_hidden": "{done} de {total} primeiros passos concluídos. O card está oculto.",
+	"onboarding_help_settings_shortcuts_description": "Todos os atalhos em uma lista pesquisável.",
+	"onboarding_help_settings_shortcuts_label": "Guia de atalhos",
+	"onboarding_help_settings_show_checklist": "Mostrar o card",
+	"onboarding_help_settings_start_over": "Recomeçar",
+	"onboarding_help_settings_tour_description": "Um tour rápido por espaços, cabeçalho, painel lateral e pesquisa.",
+	"onboarding_help_settings_tour_label": "Tour guiado",
+	"onboarding_hero_skip_for_now": "Pular por enquanto",
+	"onboarding_phases_add_a_folder": "Adicionar uma pasta…",
+	"onboarding_phases_add_and_start": [
+		{
+			"declarations": [
+				"input count",
+				"local countExact = count",
+				"local countPlural = count: plural"
+			],
+			"selectors": [
+				"countExact",
+				"countPlural"
+			],
+			"match": {
+				"countExact=0, countPlural=*": "Adicionar projetos e iniciar",
+				"countExact=*, countPlural=one": "Adicionar este projeto e iniciar",
+				"countExact=*, countPlural=*": "Adicionar {count} projetos e iniciar"
+			}
+		}
+	],
+	"onboarding_phases_add_name": "Adicionar {name}",
+	"onboarding_phases_choose_a_project_folder": "Escolher uma pasta de projeto",
+	"onboarding_phases_configs_need_look": [
+		{
+			"declarations": [
+				"input count",
+				"local countExact = count",
+				"local countPlural = count: plural"
+			],
+			"selectors": [
+				"countExact",
+				"countPlural"
+			],
+			"match": {
+				"countExact=0, countPlural=*": "Nenhuma configuração precisa de atenção.",
+				"countExact=*, countPlural=one": "{count} configuração precisa de atenção.",
+				"countExact=*, countPlural=*": "{count} configurações precisam de atenção."
+			}
+		}
+	],
+	"onboarding_phases_detects_how_to_run": "O Atlas detecta como executar cada um. Nada é gravado nas suas pastas.",
+	"onboarding_phases_find_my_projects": "Encontrar meus projetos",
+	"onboarding_phases_found_title": [
+		{
+			"declarations": [
+				"input count",
+				"local countExact = count",
+				"local countPlural = count: plural"
+			],
+			"selectors": [
+				"countExact",
+				"countPlural"
+			],
+			"match": {
+				"countExact=0, countPlural=*": "{number} projetos encontrados",
+				"countExact=*, countPlural=one": "{number} projeto encontrado",
+				"countExact=*, countPlural=*": "{number} projetos encontrados"
+			}
+		}
+	],
+	"onboarding_phases_jump_anywhere": "Pressione {key} para ir a qualquer lugar.",
+	"onboarding_phases_more_projects": "e mais {count}",
+	"onboarding_phases_no_projects_found_yet": "Nenhum projeto encontrado ainda.",
+	"onboarding_phases_point_at_folder": "Aponte o Atlas para qualquer pasta de projeto: ele detecta a stack, sem precisar de arquivo de configuração.",
+	"onboarding_phases_projects_found": "Projetos encontrados",
+	"onboarding_phases_projects_to_add": "Projetos para adicionar",
+	"onboarding_phases_scan_again": "Procurar novamente",
+	"onboarding_phases_scanned_folders": [
+		{
+			"declarations": [
+				"input count",
+				"local countExact = count",
+				"local countPlural = count: plural"
+			],
+			"selectors": [
+				"countExact",
+				"countPlural"
+			],
+			"match": {
+				"countExact=0, countPlural=*": "Nenhuma pasta analisada.",
+				"countExact=*, countPlural=one": "{count} pasta analisada.",
+				"countExact=*, countPlural=*": "{count} pastas analisadas."
+			}
+		}
+	],
+	"onboarding_phases_scanning_progress": [
+		{
+			"declarations": [
+				"input count",
+				"local countExact = count",
+				"local countPlural = count: plural"
+			],
+			"selectors": [
+				"countExact",
+				"countPlural"
+			],
+			"match": {
+				"countExact=0, countPlural=*": "{count} pastas · {seconds} s",
+				"countExact=*, countPlural=one": "{count} pasta · {seconds} s",
+				"countExact=*, countPlural=*": "{count} pastas · {seconds} s"
+			}
+		}
+	],
+	"onboarding_phases_scanning_title": [
+		{
+			"declarations": [
+				"input count",
+				"local countExact = count",
+				"local countPlural = count: plural"
+			],
+			"selectors": [
+				"countExact",
+				"countPlural"
+			],
+			"match": {
+				"countExact=0, countPlural=*": "{number} projetos até agora",
+				"countExact=*, countPlural=one": "{number} projeto até agora",
+				"countExact=*, countPlural=*": "{number} projetos até agora"
+			}
+		}
+	],
+	"onboarding_phases_services": "Serviços",
+	"onboarding_phases_services_ready": [
+		{
+			"declarations": [
+				"input count",
+				"local countExact = count",
+				"local countPlural = count: plural"
+			],
+			"selectors": [
+				"countExact",
+				"countPlural"
+			],
+			"match": {
+				"countExact=0, countPlural=*": "Nenhum serviço pronto para iniciar.",
+				"countExact=*, countPlural=one": "{count} serviço pronto para iniciar.",
+				"countExact=*, countPlural=*": "{count} serviços prontos para iniciar."
+			}
+		}
+	],
+	"onboarding_phases_services_running": [
+		{
+			"declarations": [
+				"input count",
+				"local countExact = count",
+				"local countPlural = count: plural"
+			],
+			"selectors": [
+				"countExact",
+				"countPlural"
+			],
+			"match": {
+				"countExact=0, countPlural=*": "Nenhum serviço em execução.",
+				"countExact=*, countPlural=one": "{count} serviço em execução.",
+				"countExact=*, countPlural=*": "{count} serviços em execução."
+			}
+		}
+	],
+	"onboarding_phases_start_tour": "Dar uma olhada rápida",
+	"onboarding_phases_starting_progress": "{up} de {total} serviços no ar",
+	"onboarding_phases_starting_your_stack": "Iniciando sua stack…",
+	"onboarding_phases_stop": "Parar",
+	"onboarding_phases_welcome_lead": [
+		{
+			"declarations": [
+				"input os"
+			],
+			"selectors": [
+				"os"
+			],
+			"match": {
+				"os=mac": "O Atlas encontra os projetos que já estão no seu Mac e inicia todos juntos.",
+				"os=windows": "O Atlas encontra os projetos que já estão neste PC e inicia todos juntos.",
+				"os=*": "O Atlas encontra os projetos que já estão neste computador e inicia todos juntos."
+			}
+		}
+	],
+	"onboarding_phases_welcome_title_first": "Tudo o que você executa,",
+	"onboarding_phases_welcome_title_second": "em um só lugar.",
+	"onboarding_phases_your_stack_is_up": "Sua stack está no ar.",
+	"onboarding_scene_agents_ready_to_review": "pronto para revisar",
+	"onboarding_scene_agents_shop_2_agents": "shop · 2 agentes",
+	"onboarding_scene_agents_task_coupon": "adicionar um campo de cupom",
+	"onboarding_scene_agents_task_rounding": "corrigir o bug de arredondamento",
+	"onboarding_scene_agents_tests_pass": "testes passando",
+	"onboarding_scene_scan_found": [
+		{
+			"declarations": [
+				"input count",
+				"local countExact = count",
+				"local countPlural = count: plural"
+			],
+			"selectors": [
+				"countExact",
+				"countPlural"
+			],
+			"match": {
+				"countExact=0, countPlural=*": "Nenhum encontrado",
+				"countExact=*, countPlural=one": "{count} encontrado",
+				"countExact=*, countPlural=*": "{count} encontrados"
+			}
+		}
+	],
+	"onboarding_scene_stack_all_up_4_services": "Tudo no ar · 4 serviços",
+	"onboarding_scene_stack_job": "job",
+	"onboarding_scene_stack_shop_detected": "shop · detectado",
+	"onboarding_scene_worktrees_merged": "merge feito",
+	"onboarding_scene_worktrees_shop_worktrees": "shop · worktrees",
+	"onboarding_setup_row_failed": "falhou {when}",
+	"onboarding_setup_row_failed_toast": "{command} falhou: {reason}",
+	"onboarding_setup_row_full_output": "Saída completa",
+	"onboarding_setup_row_hide_output": "Ocultar saída",
+	"onboarding_setup_row_installed": "Dependências instaladas",
+	"onboarding_setup_row_less": "Menos",
+	"onboarding_setup_row_not_run_yet": "ainda não executado",
+	"onboarding_setup_row_nothing_to_run": "Nada para executar",
+	"onboarding_setup_row_origin_config": "Vem do pre_command.",
+	"onboarding_setup_row_origin_detected": "Detectado no seu projeto; não há pre_command no atlas.yaml.",
+	"onboarding_setup_row_ran_ok": "executado {when} · ok",
+	"onboarding_setup_row_run_again": "Executar novamente",
+	"onboarding_setup_row_run_now": "Executar agora",
+	"onboarding_setup_row_running": "executando…",
+	"onboarding_setup_row_runs_always": "Executa sempre antes de iniciar.",
+	"onboarding_setup_row_runs_on_change": "Executa quando o lockfile muda (ou quando falta node_modules).",
+	"onboarding_setup_row_schedule_label": "Quando o setup é executado? {schedule}",
+	"onboarding_setup_row_setup": "Setup",
+	"onboarding_setup_row_unknown_error": "erro desconhecido",
+	"onboarding_setup_row_view_output": "Ver saída",
+	"onboarding_shortcuts_change_hint": "Altere qualquer um deles em Configurações → Atalhos de teclado.",
+	"onboarding_shortcuts_group_go_anywhere": "Ir para qualquer lugar",
+	"onboarding_shortcuts_group_more": "Mais",
+	"onboarding_shortcuts_group_panels": "Painéis",
+	"onboarding_shortcuts_group_project": "Projeto",
+	"onboarding_shortcuts_group_tabs": "Abas e painéis",
+	"onboarding_shortcuts_keyboard_shortcuts": "Atalhos de teclado",
+	"onboarding_shortcuts_no_match": "Nenhum atalho corresponde a \"{query}\".",
+	"onboarding_shortcuts_recent_worktree": "Worktree recente de 1 a 6",
+	"onboarding_shortcuts_search_shortcuts": "Pesquisar atalhos",
+	"onboarding_shortcuts_tab_range": "Aba de 1 a 8 ({key} é a última)",
+	"onboarding_state_settings_unreadable": "Não foi possível ler suas configurações: {error}",
+	"onboarding_tour_breadcrumb_body": "Projeto, worktree e branch sempre à vista. Clique em uma parte para ir a outro lugar.",
+	"onboarding_tour_breadcrumb_title": "Saiba onde você está",
+	"onboarding_tour_next": "Avançar",
+	"onboarding_tour_palette_body": "Vá direto a uma worktree, um terminal, um arquivo ou um comando digitando algumas letras.",
+	"onboarding_tour_palette_title": "Vá a qualquer lugar com uma tecla",
+	"onboarding_tour_panel_kpis_body": "Saúde, serviços e recursos deste projeto. Inicie a stack pelo cabeçalho quando quiser.",
+	"onboarding_tour_panel_kpis_title": "A stack à vista",
+	"onboarding_tour_press_palette": "Pressione {key} quando quiser.",
+	"onboarding_tour_right_toggle_body": "A barra lateral direita guarda o histórico dos agentes e as portas. Oculte-a para uma visão mais limpa; ela volta com uma tecla.",
+	"onboarding_tour_right_toggle_title": "Detalhes quando você quiser",
+	"onboarding_tour_service_card_body": "Estado, CPU e memória atualizam enquanto tudo roda. Clique em um card para abrir os logs ou reiniciar o serviço.",
+	"onboarding_tour_service_card_title": "Cada serviço, ao vivo",
+	"onboarding_tour_sidebar_body": "Cada projeto é um espaço com cor própria. Escolha um para alternar, e as worktrees ficam logo abaixo.",
+	"onboarding_tour_sidebar_title": "Seus projetos ficam aqui",
+	"onboarding_tour_skip": "Pular",
+	"onboarding_tour_skip_tour": "Pular tour",
+	"onboarding_tour_spaces_body": "Cada espaço lembra as abas, os painéis e a stack, então alternar nunca faz você perder o lugar.",
+	"onboarding_tour_spaces_title": "Alterne entre espaços",
+	"onboarding_tour_step_of": "{step} de {total}",
+	"onboarding_welcome_add_folder_title": "Adicionar uma pasta de projeto",
 	"onboarding_welcome_find_file_hint": "Escolha um no painel de arquivos ou pesquise com {key}.",
+	"onboarding_welcome_new_terminal": "Novo terminal",
+	"onboarding_welcome_new_terminal_hint": "Um shell nesta worktree",
 	"onboarding_welcome_nothing_open_here": "Nada aberto aqui",
+	"onboarding_welcome_open_file": "Abrir um arquivo",
+	"onboarding_welcome_open_file_hint": "Pesquisa aproximada nesta worktree",
 	"onboarding_welcome_palette_hint": "{key} para todos os comandos",
 	"onboarding_welcome_pick_a_file": "Escolha um arquivo",
 	"onboarding_welcome_pick_up_where_you_left": "Retome de onde parou ou comece algo novo.",
 	"onboarding_welcome_shortcuts": "Atalhos",
-	"onboarding_welcome_take_the_tour": "Fazer o tour"
+	"onboarding_welcome_start_agent": "Iniciar um agente",
+	"onboarding_welcome_start_agent_hint": "Executar {name} aqui",
+	"onboarding_welcome_start_agent_hint_default": "Executar seu agente padrão aqui",
+	"onboarding_welcome_take_the_tour": "Fazer o tour",
+	"onboarding_welcome_to_atlas": "Boas-vindas ao Atlas"
 }

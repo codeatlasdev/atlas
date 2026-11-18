@@ -1,5 +1,6 @@
 // @ts-nocheck bun test runtime types are not part of the app tsconfig
 import { describe, expect, test } from "bun:test";
+import { m } from "#lib/i18n/m.ts";
 import { ThemeImportError } from "./errors.ts";
 import { exportGhostty } from "./export.ts";
 import { parseGhosttyConfig } from "./ghostty.ts";
@@ -128,9 +129,9 @@ describe("syntax", () => {
 		expect(r.style["terminal.background"]).toBe("#000000");
 		expect(r.style["terminal.foreground"]).toBeUndefined();
 		expect(r.warnings).toEqual([
-			"invalid color for foreground: nonsense",
-			"invalid color for cursor-color: nonsense",
-			"invalid color for selection-background: #12",
+			m.settings_theme_diag_invalid_color({ key: "foreground", value: "nonsense" }),
+			m.settings_theme_diag_invalid_color({ key: "cursor-color", value: "nonsense" }),
+			m.settings_theme_diag_invalid_color({ key: "selection-background", value: "#12" }),
 		]);
 	});
 

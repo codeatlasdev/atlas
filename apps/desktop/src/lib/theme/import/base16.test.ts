@@ -1,5 +1,6 @@
 // @ts-nocheck bun test runtime types are not part of the app tsconfig
 import { describe, expect, test } from "bun:test";
+import { m } from "#lib/i18n/m.ts";
 import { parseBase16 } from "./base16.ts";
 import { ThemeImportError } from "./errors.ts";
 
@@ -72,7 +73,7 @@ describe("parseBase16", () => {
 
 	test("invalid colors warn and fall back; missing base00 throws", () => {
 		const r = parseBase16("base00: 000000\nbase05: ffffff\nbase08: zzz\n");
-		expect(r.warnings).toEqual(["invalid color for base08: zzz"]);
+		expect(r.warnings).toEqual([m.settings_theme_diag_invalid_color({ key: "base08", value: "zzz" })]);
 		expect(r.style["terminal.ansi.red"]).toBe("#ffffff");
 		expect(() => parseBase16("name: x\nbase05: ffffff\n")).toThrow(ThemeImportError);
 		expect(() => parseBase16("- a\n- b\n")).toThrow(ThemeImportError);

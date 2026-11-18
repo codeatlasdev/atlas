@@ -8,6 +8,7 @@ import { api, errText } from "#lib/api.ts";
 import { recent } from "#lib/keymap.svelte.ts";
 import { store } from "#lib/stores/projects.svelte.ts";
 import { ws } from "#lib/stores/workspace.svelte.ts";
+import { m } from "#lib/i18n/m.ts";
 import { firstRunReady, showWelcome, welcomeFinished } from "./flow.ts";
 import { welcome } from "./welcome.svelte.ts";
 import {
@@ -44,7 +45,7 @@ class Onboarding {
 		} catch (e) {
 			// Stay usable: `loaded` never turning true left the app with no overlay, hero or checklist for the session.
 			this.state = stateFromSettings({ error: errText(e) });
-			toast.error(`Could not read your settings: ${errText(e)}`);
+			toast.error(m.onboarding_state_settings_unreadable({ error: errText(e) }));
 		}
 		this.loaded = true;
 	}

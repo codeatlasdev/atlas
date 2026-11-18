@@ -48,6 +48,12 @@ describe("docState: which banner a docs page gets", () => {
 	test("a translation made from an older English file is outdated (banner with the history link)", () => {
 		expect(docState({ source_sha: sha }, changed)).toBe("outdated");
 	});
+	test("a current translation flagged machine is machine (banner until a person reviews it)", () => {
+		expect(docState({ source_sha: sha, translation: "machine" }, sha)).toBe("machine");
+	});
+	test("an outdated machine translation is outdated: that banner wins", () => {
+		expect(docState({ source_sha: sha, translation: "machine" }, changed)).toBe("outdated");
+	});
 	test("an uppercase copy of the sha is a different value, not a match: the checker requires lowercase hex", () => {
 		expect(docState({ source_sha: sha.toUpperCase() }, sha)).toBe("outdated");
 		expect(SOURCE_SHA.test(sha.toUpperCase())).toBe(false);

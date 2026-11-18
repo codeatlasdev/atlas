@@ -108,7 +108,7 @@ test("no phones: the pane says what pairing gives and points at the pair card, w
 test("two phones that both sent 'Atlas Mobile' are told apart; their actions are in the phone's header", async () => {
 	devices = [
 		phone("a3f9c2", { connected: true, scopes: ["read", "act", "approve", "term_read", "term_write"] }),
-		phone("7c1de0", { last_seen: Math.floor(Date.now() / 1000) - 180 }),
+		phone("7c1de0", { last_seen: Math.floor(Date.now() / 1000) - 200 }),
 	];
 	const t = await render(MobileSettings);
 	const rows = [...t.querySelectorAll(".row")].filter((r) => r.querySelector(".label"));

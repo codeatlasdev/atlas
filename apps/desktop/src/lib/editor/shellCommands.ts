@@ -38,10 +38,13 @@ const session = () => {
 	return v ? sessionOf(v) : undefined;
 };
 
+/** Commands are registered once at startup: `label` is a getter, so the palette reads the app's language each time it shows one. */
 export const editorShellCommands = (): Command[] => [
 	...COMMANDS.map(({ id, label }) => ({
 		id,
-		label: label(),
+		get label() {
+			return label();
+		},
 		run: () => {
 			const v = focused();
 			if (v) run(id, v);
@@ -50,7 +53,9 @@ export const editorShellCommands = (): Command[] => [
 	})),
 	{
 		id: "editor::ToggleSoftWrap",
-		label: m.workbench_editor_cmd_toggle_wrap(),
+		get label() {
+			return m.workbench_editor_cmd_toggle_wrap();
+		},
 		run: () => {
 			const s = session();
 			if (s) s.setWrap(!s.wrap);
@@ -59,7 +64,9 @@ export const editorShellCommands = (): Command[] => [
 	},
 	{
 		id: "editor::RevertFile",
-		label: m.workbench_editor_cmd_revert_file(),
+		get label() {
+			return m.workbench_editor_cmd_revert_file();
+		},
 		run: () => void session()?.revert(),
 		when: () => !!session()?.dirty,
 	},

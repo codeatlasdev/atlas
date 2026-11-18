@@ -29,9 +29,12 @@ const focusedEditor = () => {
 	return v && v.dom.contains(document.activeElement) ? v : undefined;
 };
 
-const cmd = (id: string, label: string, fn: (v: EditorView) => unknown): Command => ({
+/** Commands are registered once at startup: `label` is a getter, read each time the palette shows the command. */
+const cmd = (id: string, label: () => string, fn: (v: EditorView) => unknown): Command => ({
 	id,
-	label,
+	get label() {
+		return label();
+	},
 	run: () => {
 		const v = lspView();
 		if (v) void fn(v);
@@ -43,13 +46,17 @@ const cmd = (id: string, label: string, fn: (v: EditorView) => unknown): Command
 const navCommands = (): Command[] => [
 	{
 		id: "editor::GoBack",
-		label: m.workbench_lsp_cmd_go_back(),
+		get label() {
+			return m.workbench_lsp_cmd_go_back();
+		},
 		run: () => void navigator.go(-1),
 		when: () => navigator.canGo(-1),
 	},
 	{
 		id: "editor::GoForward",
-		label: m.workbench_lsp_cmd_go_forward(),
+		get label() {
+			return m.workbench_lsp_cmd_go_forward();
+		},
 		run: () => void navigator.go(1),
 		when: () => navigator.canGo(1),
 	},
@@ -57,29 +64,45 @@ const navCommands = (): Command[] => [
 
 export const lspCommands = (): Command[] => [
 	...navCommands(),
-	cmd("editor::GoToDefinition", m.workbench_lsp_cmd_go_to_definition(), async (v) =>
-		(await actions()).goToDefinition(v),
+	cmd(
+		"editor::GoToDefinition",
+		() => m.workbench_lsp_cmd_go_to_definition(),
+		async (v) => (await actions()).goToDefinition(v),
 	),
-	cmd("editor::GoToTypeDefinition", m.workbench_lsp_cmd_go_to_type_definition(), async (v) =>
-		(await actions()).goToTypeDefinition(v),
+	cmd(
+		"editor::GoToTypeDefinition",
+		() => m.workbench_lsp_cmd_go_to_type_definition(),
+		async (v) => (await actions()).goToTypeDefinition(v),
 	),
-	cmd("editor::GoToImplementation", m.workbench_lsp_cmd_go_to_implementation(), async (v) =>
-		(await actions()).goToImplementation(v),
+	cmd(
+		"editor::GoToImplementation",
+		() => m.workbench_lsp_cmd_go_to_implementation(),
+		async (v) => (await actions()).goToImplementation(v),
 	),
-	cmd("editor::FindAllReferences", m.workbench_lsp_cmd_find_references(), async (v) =>
-		(await actions()).findReferences(v),
+	cmd(
+		"editor::FindAllReferences",
+		() => m.workbench_lsp_cmd_find_references(),
+		async (v) => (await actions()).findReferences(v),
 	),
-	cmd("editor::Rename", m.workbench_lsp_cmd_rename(), async (v) => (await actions()).renameSymbol(v)),
+	cmd(
+		"editor::Rename",
+		() => m.workbench_lsp_cmd_rename(),
+		async (v) => (await actions()).renameSymbol(v),
+	),
 	{
 		id: "editor::Format",
-		label: m.workbench_lsp_cmd_format(),
+		get label() {
+			return m.workbench_lsp_cmd_format();
+		},
 		run: () => {
 			const v = focusedEditor();
 			if (v) void import("#lib/viewers/formatAction.ts").then((mod) => mod.formatActive(v));
 		},
 		when: () => !!focusedEditor(),
 	},
-	cmd("editor::ToggleCodeActions", m.workbench_lsp_cmd_code_actions(), async (v) =>
-		(await import("#lib/lsp/extension.ts")).codeActionMenu(v),
+	cmd(
+		"editor::ToggleCodeActions",
+		() => m.workbench_lsp_cmd_code_actions(),
+		async (v) => (await import("#lib/lsp/extension.ts")).codeActionMenu(v),
 	),
 ];

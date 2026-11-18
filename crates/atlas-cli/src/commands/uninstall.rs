@@ -655,7 +655,12 @@ pub async fn handle(yes: bool, purge: bool, list: bool) -> Result<()> {
         if !std::io::stdin().is_terminal() {
             bail!("{}", t!("cmd_install_uninstall_needs_confirmation"));
         }
-        eprint!("  {} ", t!("cmd_install_uninstall_confirm"));
+        let prompt = if purge {
+            t!("cmd_install_uninstall_confirm_purge")
+        } else {
+            t!("cmd_install_uninstall_confirm")
+        };
+        eprint!("  {prompt} ");
         let mut line = String::new();
         let n = std::io::stdin().lock().read_line(&mut line)?;
         if parse_answer((n > 0).then_some(line.as_str())) == Answer::No {
@@ -1049,18 +1054,23 @@ mod tests {
     fn the_yes_a_prompt_offers_is_the_yes_it_accepts() {
         // The pseudo-locale (en-XA, dev builds) accents every letter: it is a layout aid, not a language to answer in.
         for tag in atlas_i18n::locales().filter(|t| *t != "en-XA") {
-            let prompt = atlas_i18n::t_in!(tag, "cmd_install_uninstall_confirm");
-            let yes = prompt
-                .split_once('[')
-                .and_then(|(_, rest)| rest.split_once('/'))
-                .map(|(yes, _)| yes.to_owned())
-                .unwrap_or_else(|| panic!("{tag}: no [y/N] in {prompt:?}"));
-            assert_eq!(parse_answer(Some(&yes)), Answer::Yes, "{tag}: {prompt}");
-            assert_eq!(
-                parse_answer(Some(&yes.to_lowercase())),
-                Answer::Yes,
-                "{tag}"
-            );
+            let prompts = [
+                atlas_i18n::t_in!(tag, "cmd_install_uninstall_confirm"),
+                atlas_i18n::t_in!(tag, "cmd_install_uninstall_confirm_purge"),
+            ];
+            for prompt in prompts {
+                let yes = prompt
+                    .split_once('[')
+                    .and_then(|(_, rest)| rest.split_once('/'))
+                    .map(|(yes, _)| yes.to_owned())
+                    .unwrap_or_else(|| panic!("{tag}: no [y/N] in {prompt:?}"));
+                assert_eq!(parse_answer(Some(&yes)), Answer::Yes, "{tag}: {prompt}");
+                assert_eq!(
+                    parse_answer(Some(&yes.to_lowercase())),
+                    Answer::Yes,
+                    "{tag}"
+                );
+            }
         }
     }
 

@@ -1,0 +1,11 @@
+{
+	"workbench_loose_editor_keep_my_version": "Keep my version",
+	"workbench_loose_editor_ln_line_col_col": "Ln {line}, Col {col}",
+	"workbench_loose_editor_load_from_disk": "Load from disk",
+	"workbench_loose_editor_this_file_changed_on_disk": "This file changed on disk and you have unsaved edits.",
+	"workbench_loose_editor_this_file_was_deleted_on": "This file was deleted on disk. Saving writes it again.",
+	"workbench_loose_view_open_as_project": "Open as project",
+	"workbench_loose_view_open_files": "Open files",
+	"workbench_loose_view_open_folder": "Open folder",
+	"workbench_markdown_bar_markdown_formatting": "Markdown formatting"
+}

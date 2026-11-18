@@ -13,6 +13,7 @@
 	import { docks } from "#lib/stores/docks.svelte.ts";
 	import { loose } from "#lib/stores/loose.svelte.ts";
 	import LooseEditor from "./LooseEditor.svelte";
+	import { m } from "#lib/i18n/m.ts";
 
 	let busy = $state(false);
 
@@ -29,7 +30,7 @@
 </script>
 
 <header data-tauri-drag-region class:inset={!docks.sidebar}>
-	<div class="tabs" role="tablist" aria-label="Open files">
+	<div class="tabs" role="tablist" aria-label={m.workbench_loose_view_open_files()}>
 		{#each loose.files as f (f)}
 			<div class="tab" class:on={f === loose.active}>
 				<button
@@ -49,9 +50,12 @@
 	{#if loose.active}
 		{@const f = loose.active}
 		<span class="where" title={dirOf(f)}>{tilde(dirOf(f))}</span>
-		<Button variant="ghost" size="sm" disabled={busy} onclick={() => openFolder(f, false)}>Open folder</Button
+		<Button variant="ghost" size="sm" disabled={busy} onclick={() => openFolder(f, false)}
+			>{m.workbench_loose_view_open_folder()}</Button
 		>
-		<Button size="sm" disabled={busy} onclick={() => openFolder(f, true)}>Open as project</Button>
+		<Button size="sm" disabled={busy} onclick={() => openFolder(f, true)}
+			>{m.workbench_loose_view_open_as_project()}</Button
+		>
 	{/if}
 </header>
 <div class="rule"></div>

@@ -1,0 +1,5 @@
+{
+	"cmd_crew_no_reason_given": "Filler in a `crew install` error when the server printed nothing useful about why writing a systemd unit failed. Goes in {why} of the two messages below.",
+	"cmd_crew_unit_masked": "Last line of a failed `atlas crew install` when systemd has the unit masked and Atlas could not unmask it. {unit} is the unit file name (atlas-crew.service), {why} the server's own last message, {command} the exact shell command to run on the server; keep all three as they are.",
+	"cmd_crew_unit_write_failed": "Last line of a failed `atlas crew install` when writing the systemd unit failed for any other reason. {unit} is the unit file name, {why} the server's own last message (English, shown as is)."
+}

@@ -1,0 +1,23 @@
+{
+	"shell_app_page_this_file_hit_an_error": "This file hit an error",
+	"shell_app_page_this_view_hit_an_error": "This view hit an error",
+	"shell_project_header_a_plain_folder_atlas_shows": "A plain folder: Atlas shows its files and nothing else. Use it as a project to run services and see changes.",
+	"shell_project_header_activity_and_actions": "Activity and actions",
+	"shell_project_header_auto_detected": "Auto-detected",
+	"shell_project_header_docks": "Docks",
+	"shell_project_header_folder": "Folder",
+	"shell_project_header_no_atlas_yaml_in_this": "No atlas.yaml in this folder: Atlas detected how to run it. Nothing was written to disk.",
+	"shell_project_header_open_in_external_editor": "Open in external editor",
+	"shell_project_header_pin_to_top": "Pin to top",
+	"shell_project_header_project_menu": "Project menu",
+	"shell_project_header_remove_from_atlas": "Remove from Atlas…",
+	"shell_project_header_save_as_atlas_yaml": "Save as atlas.yaml",
+	"shell_project_header_start": "Start",
+	"shell_project_header_start_with_profile": "Start with profile",
+	"shell_project_header_stop": "Stop",
+	"shell_project_header_unpin": "Unpin",
+	"shell_project_header_use_as_project": "Use as project",
+	"shell_workbench_not_a_git_repository": "Not a git repository",
+	"shell_workbench_this_folder_has_no_version": "This folder has no version control, so there are no changes or pull requests to show.",
+	"shell_workbench_this_panel_hit_an_error": "This panel hit an error"
+}

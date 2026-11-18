@@ -7,6 +7,7 @@
 	import ConfirmAction from "./ConfirmAction.svelte";
 	import NoProject from "./NoProject.svelte";
 	import SpacePager from "./SpacePager.svelte";
+	import { m } from "#lib/i18n/m.ts";
 
 	let spaces = $derived(ws.view === "worktree" && !!store.current);
 </script>
@@ -14,11 +15,19 @@
 <!-- The pager stays mounted under the agents/dashboard view: coming back is a visibility flip, not a remount. -->
 {#if store.current}<div class="host" hidden={!spaces}><SpacePager /></div>{/if}
 {#if ws.view === "file"}
-	<Contain where="Light editor" title="This file hit an error" hint="The rest of Atlas is unaffected.">
+	<Contain
+		where="Light editor"
+		title={m.shell_app_page_this_file_hit_an_error()}
+		hint="The rest of Atlas is unaffected."
+	>
 		<LooseView />
 	</Contain>
 {:else if ws.view !== "worktree"}
-	<Contain where="Agents view" title="This view hit an error" hint="The rest of Atlas is unaffected.">
+	<Contain
+		where="Agents view"
+		title={m.shell_app_page_this_view_hit_an_error()}
+		hint="The rest of Atlas is unaffected."
+	>
 		<AgentsView mode={ws.view} />
 	</Contain>
 {:else if !store.current}

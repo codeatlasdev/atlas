@@ -1,0 +1,11 @@
+{
+	"workbench_loose_editor_keep_my_version": "Manter minha versão",
+	"workbench_loose_editor_ln_line_col_col": "Lin {line}, Col {col}",
+	"workbench_loose_editor_load_from_disk": "Carregar do disco",
+	"workbench_loose_editor_this_file_changed_on_disk": "Este arquivo mudou no disco e você tem edições não salvas.",
+	"workbench_loose_editor_this_file_was_deleted_on": "Este arquivo foi excluído do disco. Salvar grava o arquivo de novo.",
+	"workbench_loose_view_open_as_project": "Abrir como projeto",
+	"workbench_loose_view_open_files": "Abrir arquivos",
+	"workbench_loose_view_open_folder": "Abrir pasta",
+	"workbench_markdown_bar_markdown_formatting": "Formatação Markdown"
+}

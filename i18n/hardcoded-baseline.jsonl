@@ -186,7 +186,7 @@
 {"ratchet":"svelte","file":"apps/desktop/src/lib/components/Editor.svelte","count":9}
 {"ratchet":"svelte","file":"apps/desktop/src/lib/components/EditorSettings.svelte","count":2}
 {"ratchet":"svelte","file":"apps/desktop/src/lib/components/Explorer.svelte","count":11}
-{"ratchet":"svelte","file":"apps/desktop/src/lib/components/GitSettings.svelte","count":4}
+{"ratchet":"svelte","file":"apps/desktop/src/lib/components/GitSettings.svelte","count":0}
 {"ratchet":"svelte","file":"apps/desktop/src/lib/components/GpuTerminal.svelte","count":1}
 {"ratchet":"svelte","file":"apps/desktop/src/lib/components/HostPrompt.svelte","count":4}
 {"ratchet":"svelte","file":"apps/desktop/src/lib/components/IdentityDialog.svelte","count":11}
@@ -209,7 +209,7 @@
 {"ratchet":"svelte","file":"apps/desktop/src/lib/components/SshSettings.svelte","count":20}
 {"ratchet":"svelte","file":"apps/desktop/src/lib/components/Terminal.svelte","count":1}
 {"ratchet":"svelte","file":"apps/desktop/src/lib/components/UpdatedCard.svelte","count":1}
-{"ratchet":"svelte","file":"apps/desktop/src/lib/components/Welcome.svelte","count":5}
+{"ratchet":"svelte","file":"apps/desktop/src/lib/components/Welcome.svelte","count":0}
 {"ratchet":"svelte","file":"apps/desktop/src/lib/components/WhatsNew.svelte","count":26}
 {"ratchet":"svelte","file":"apps/desktop/src/lib/components/WorkspaceSettings.svelte","count":31}
 {"ratchet":"svelte","file":"apps/desktop/src/lib/components/chat/Composer.svelte","count":2}
@@ -386,14 +386,14 @@
 {"ratchet":"svelte","file":"apps/desktop/src/lib/viewers/rich/TsconfigView.svelte","count":13}
 {"ratchet":"svelte","file":"apps/desktop/src/lib/viewers/rich/WorkflowView.svelte","count":0}
 {"ratchet":"svelte","file":"apps/desktop/src/routes/(app)/+layout.svelte","count":7}
-{"ratchet":"svelte","file":"apps/desktop/src/routes/(app)/+page.svelte","count":1}
+{"ratchet":"svelte","file":"apps/desktop/src/routes/(app)/+page.svelte","count":0}
 {"ratchet":"svelte","file":"apps/desktop/src/routes/(app)/ConfirmAction.svelte","count":2}
 {"ratchet":"svelte","file":"apps/desktop/src/routes/(app)/CrewmateView.svelte","count":2}
 {"ratchet":"svelte","file":"apps/desktop/src/routes/(app)/MissingProject.svelte","count":10}
 {"ratchet":"svelte","file":"apps/desktop/src/routes/(app)/NoProject.svelte","count":8}
-{"ratchet":"svelte","file":"apps/desktop/src/routes/(app)/ProjectHeader.svelte","count":14}
+{"ratchet":"svelte","file":"apps/desktop/src/routes/(app)/ProjectHeader.svelte","count":0}
 {"ratchet":"svelte","file":"apps/desktop/src/routes/(app)/SpaceView.svelte","count":4}
-{"ratchet":"svelte","file":"apps/desktop/src/routes/(app)/Workbench.svelte","count":1}
+{"ratchet":"svelte","file":"apps/desktop/src/routes/(app)/Workbench.svelte","count":0}
 {"ratchet":"svelte","file":"apps/desktop/src/routes/crew-demo/+page.svelte","count":1}
 {"ratchet":"svelte","file":"apps/desktop/src/routes/dock/+layout.svelte","count":1}
 {"ratchet":"svelte","file":"apps/desktop/src/routes/dock/+page.svelte","count":19}
@@ -409,7 +409,7 @@
 {"ratchet":"writing","file":"CHANGELOG.md","count":52}
 {"ratchet":"writing","file":"README.md","count":149}
 {"ratchet":"writing","file":"docs/build-perf.md","count":1}
-{"ratchet":"writing","file":"docs/contributing.md","count":2}
+{"ratchet":"writing","file":"docs/contributing.md","count":0}
 {"ratchet":"writing","file":"docs/desktop-settings.md","count":15}
 {"ratchet":"writing","file":"docs/desktop.md","count":16}
 {"ratchet":"writing","file":"docs/introduction.md","count":1}

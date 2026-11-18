@@ -1,5 +1,6 @@
 // @ts-nocheck bun test runtime types are not part of the app tsconfig
 import { beforeEach, describe, expect, mock, test } from "bun:test";
+import { m } from "#lib/i18n/m.ts";
 
 type Call = { cmd: string; args: { host: string; cwd: string; argv: string[]; timeout_ms: number } };
 let calls: Call[] = [];
@@ -121,7 +122,7 @@ describe("probeProvider", () => {
 	test("reports the model count", async () => {
 		expect(await probeProvider(" https://gw ", " k ")).toEqual({
 			ok: true,
-			text: "Connected — 2 models available",
+			text: m.crew_workspace_provider_connected_models({ count: 2 }),
 		});
 	});
 });

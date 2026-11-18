@@ -3,6 +3,7 @@
 	import CrewmateFace from "#lib/crew/CrewmateFace.svelte";
 	import type { CrewmateState } from "#lib/crew/crewmateFace.ts";
 	import type { CrewmateLook } from "#lib/crew/look.ts";
+	import { m } from "#lib/i18n/m.ts";
 
 	const STATES: CrewmateState[] = ["idle", "working", "needs_you", "offline"];
 
@@ -104,7 +105,7 @@
 </script>
 
 <div class="page">
-	<div class="states" role="radiogroup" aria-label="State">
+	<div class="states" role="radiogroup" aria-label={m.crew_workspace_demo_page_state()}>
 		{#each STATES as s (s)}
 			<button
 				role="radio"
@@ -114,7 +115,9 @@
 			>
 		{/each}
 		<button class="build" aria-pressed={building} onclick={() => (building = !building)}>
-			{building ? "Back to the crew" : "Build a crewmate"}
+			{building
+				? m.crew_workspace_demo_page_back_to_the_crew()
+				: m.crew_workspace_demo_page_build_a_crewmate()}
 		</button>
 	</div>
 	{#if building}

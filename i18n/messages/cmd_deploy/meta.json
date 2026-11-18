@@ -1,0 +1,164 @@
+{
+	"cmd_deploy_ctx_bad_app": "Error of `atlas deploy`: the app name becomes a folder and a unit name on the host, so only lowercase letters, digits and dashes are allowed. Lowercase: the CLI puts `error:` before it.",
+	"cmd_deploy_ctx_multiple_targets": "Error of `atlas deploy` when atlas.yaml has several targets and none was named; {known} is the comma-separated list. Lowercase: the CLI puts `error:` before it.",
+	"cmd_deploy_ctx_no_atlas_yaml": "Context of every `atlas deploy` command: --dir (default the current folder) has no atlas.yaml up the tree. Lowercase: the CLI puts `error:` before it.",
+	"cmd_deploy_ctx_no_deploy_section": "Context of `atlas deploy`: atlas.yaml has no `deploy:` key. Lowercase: the CLI puts `error:` before it.",
+	"cmd_deploy_ctx_unknown_target": "Error of `atlas deploy` when the named target is not under deploy.targets; {known} is the comma-separated list of target names. Lowercase: the CLI puts `error:` before it.",
+	"cmd_deploy_dry_driver": "Line of `atlas deploy --dry-run`: where the driver would be written on the host. Padded label.",
+	"cmd_deploy_dry_release": "Line of `atlas deploy --dry-run`: the id the release would get. Padded label.",
+	"cmd_deploy_dry_sha256": "Line of `atlas deploy --dry-run`: the checksum of the archive. Padded label.",
+	"cmd_deploy_dry_target": "Line of `atlas deploy --dry-run`. Padded label so the values align.",
+	"cmd_deploy_guard_announce": "Progress line of `atlas deploy` naming the new release, the one it replaces and how the commits differ; {delta} is one of the guard_delta_* messages.",
+	"cmd_deploy_guard_delta_ahead": "Delta in the announce line: commits this deploy adds over the live release.",
+	"cmd_deploy_guard_delta_diverged": "Delta in the announce line when the histories diverged and the person allowed it; the plural follows {behind}.",
+	"cmd_deploy_guard_delta_downgrade": "Delta in the announce line: commits this deploy drops from the live release (an allowed downgrade).",
+	"cmd_deploy_guard_delta_same": "Delta in the announce line when HEAD is the commit already deployed.",
+	"cmd_deploy_guard_delta_unknown": "Delta in the announce line when the live commit is not in the local repo and the person allowed it.",
+	"cmd_deploy_guard_fetching": "Progress line of `atlas deploy` (stderr, after a ▸): the commit the host serves is not in the local repo, so Atlas tries `git fetch origin <sha>`.",
+	"cmd_deploy_guard_read_host_failed": "Error of `atlas deploy`: the probe that asks the host which release is live failed; {error} is the host's stderr. Lowercase: the CLI puts `error:` before it.",
+	"cmd_deploy_guard_refuse_diverged": "First paragraph of the refusal when HEAD and the deployed commit are on different lines of history. {base} is the 7-character merge-base; the plural follows {behind}.",
+	"cmd_deploy_guard_refuse_diverged_no_base": "Same as the diverged refusal when git finds no merge-base at all; the plural follows {behind}.",
+	"cmd_deploy_guard_refuse_downgrade": "First paragraph of the refusal when HEAD is behind the deployed commit (stale checkout). {head} and {sha} are 7-character shas, {id} the live release id, {count} the commits it would drop.",
+	"cmd_deploy_guard_refuse_dropped": "Heading of the list of commits (up to 10, one per line) a refused deploy would drop. The git command stays as typed.",
+	"cmd_deploy_guard_refuse_override": "Last line of every refusal; {flag} is the override flag for that case (--allow-downgrade, --allow-diverged, --allow-unknown-base).",
+	"cmd_deploy_guard_refuse_shas": "Two aligned lines of the refusal with the full shas: the local HEAD and the commit live on the host. Keep the alignment of the values.",
+	"cmd_deploy_guard_refuse_unknown_base": "First paragraph of the refusal when the live commit is missing locally and `git fetch origin <sha>` did not bring it.",
+	"cmd_deploy_history_finished": "Column header of `atlas deploy history`: when the run ended. Uppercase, padded by the caller.",
+	"cmd_deploy_history_mode": "Column header of `atlas deploy history`: deploy or rollback. Uppercase, padded by the caller.",
+	"cmd_deploy_history_reason": "Column header of `atlas deploy history`: the reason the host recorded. Uppercase.",
+	"cmd_deploy_history_release": "Column header of `atlas deploy history`: the release id. Uppercase, padded by the caller.",
+	"cmd_deploy_history_result": "Column header of `atlas deploy history`: how the run ended. Uppercase, padded by the caller.",
+	"cmd_deploy_history_secs": "Column header of `atlas deploy history`: duration in seconds. Uppercase, padded by the caller.",
+	"cmd_deploy_invalid_release_id": "Error of `atlas deploy rollback --to` and `logs`: the id is not YYYYMMDDHHMMSS-sha7. Lowercase: the CLI puts `error:` before it.",
+	"cmd_deploy_launch_detached": "Printed on stderr after Ctrl-C while following a deploy: the run goes on on the host.",
+	"cmd_deploy_launch_driver_failed": "Error of `atlas deploy`: the command that starts the driver detached failed. Lowercase: the CLI puts `error:` before it.",
+	"cmd_deploy_launch_lost_contact": "Error of `atlas deploy` after five minutes without an answer from the host while following the log. Lowercase: the CLI puts `error:` before it.",
+	"cmd_deploy_launch_mkdir_failed": "Error of `atlas deploy`: the release folder could not be created on the host. Lowercase: the CLI puts `error:` before it.",
+	"cmd_deploy_launch_no_flock": "Error of `atlas deploy`: the host lacks `flock`, which the driver needs for its lock. Lowercase: the CLI puts `error:` before it.",
+	"cmd_deploy_launch_unreachable": "Error of `atlas deploy`, `status`, `rollback`: ssh to the host failed; {error} is ssh's message. Lowercase: the CLI puts `error:` before it.",
+	"cmd_deploy_launch_write_failed": "Error of `atlas deploy`: driver.sh or plan.sh could not be written on the host. Lowercase: the CLI puts `error:` before it.",
+	"cmd_deploy_mode_deploy": {
+		"description": "The kind of a run in `atlas deploy history`: a new release was shipped.",
+		"distinct": "kind of run shown in the history table"
+	},
+	"cmd_deploy_mode_rollback": {
+		"description": "The kind of a run in `atlas deploy history`: `atlas deploy rollback`.",
+		"distinct": "kind of run shown in the history table"
+	},
+	"cmd_deploy_phase_failed": {
+		"description": "A phase (or release status) word of `atlas deploy` shown in status, history and the final verdict. Final: the run or the release failed.",
+		"distinct": "state word shown in a line of the deploy output"
+	},
+	"cmd_deploy_phase_healthy": {
+		"description": "A phase (or release status) word of `atlas deploy` shown in status, history and the final verdict. Final: every service passed its health checks after the swap; also the status of a healthy release.",
+		"distinct": "state word shown in a line of the deploy output"
+	},
+	"cmd_deploy_phase_installing": {
+		"description": "A phase (or release status) word of `atlas deploy` shown in status, history and the final verdict. The `install` command runs in the new release.",
+		"distinct": "state word shown in a line of the deploy output"
+	},
+	"cmd_deploy_phase_locked": {
+		"description": "A phase (or release status) word of `atlas deploy` shown in status, history and the final verdict. Final: another deploy holds the lock on the host.",
+		"distinct": "state word shown in a line of the deploy output"
+	},
+	"cmd_deploy_phase_migrating": {
+		"description": "A phase (or release status) word of `atlas deploy` shown in status, history and the final verdict. The `migrate` command runs in the new release.",
+		"distinct": "state word shown in a line of the deploy output"
+	},
+	"cmd_deploy_phase_noop": {
+		"description": "A phase (or release status) word of `atlas deploy` shown in status, history and the final verdict. Final: the commit was already current and healthy, nothing was swapped.",
+		"distinct": "state word shown in a line of the deploy output"
+	},
+	"cmd_deploy_phase_post_swap": {
+		"description": "A phase (or release status) word of `atlas deploy` shown in status, history and the final verdict. The post_swap hook runs, after `current` moved.",
+		"distinct": "state word shown in a line of the deploy output"
+	},
+	"cmd_deploy_phase_pre_swap": {
+		"description": "A phase (or release status) word of `atlas deploy` shown in status, history and the final verdict. The pre_swap hook runs, before `current` moves.",
+		"distinct": "state word shown in a line of the deploy output"
+	},
+	"cmd_deploy_phase_preflight": {
+		"description": "A phase (or release status) word of `atlas deploy` shown in status, history and the final verdict. The run is checking the host (disk, lock, flock).",
+		"distinct": "state word shown in a line of the deploy output"
+	},
+	"cmd_deploy_phase_restarting": {
+		"description": "A phase (or release status) word of `atlas deploy` shown in status, history and the final verdict. The services restart on the new release and are checked.",
+		"distinct": "state word shown in a line of the deploy output"
+	},
+	"cmd_deploy_phase_rolled_back": {
+		"description": "A phase (or release status) word of `atlas deploy` shown in status, history and the final verdict. Final: the last healthy release serves again.",
+		"distinct": "state word shown in a line of the deploy output"
+	},
+	"cmd_deploy_phase_rolling_back": {
+		"description": "A phase (or release status) word of `atlas deploy` shown in status, history and the final verdict. The new release failed its checks and the last healthy one is coming back.",
+		"distinct": "state word shown in a line of the deploy output"
+	},
+	"cmd_deploy_phase_sealed": {
+		"description": "A phase (or release status) word of `atlas deploy` shown in status, history and the final verdict. The release is unpacked, verified against its sha256 and read-only.",
+		"distinct": "state word shown in a line of the deploy output"
+	},
+	"cmd_deploy_phase_swapped": {
+		"description": "A phase (or release status) word of `atlas deploy` shown in status, history and the final verdict. `current` points at the new release.",
+		"distinct": "state word shown in a line of the deploy output"
+	},
+	"cmd_deploy_phase_unknown": {
+		"description": "A phase (or release status) word of `atlas deploy` shown in status, history and the final verdict. The host reported no phase, or a release with no recorded status.",
+		"distinct": "state word shown in a line of the deploy output"
+	},
+	"cmd_deploy_phase_uploaded": {
+		"description": "A phase (or release status) word of `atlas deploy` shown in status, history and the final verdict. The release archive is on the host.",
+		"distinct": "state word shown in a line of the deploy output"
+	},
+	"cmd_deploy_pkg_artifact_missing": "Error of `atlas deploy`: a path of deploy.artifact does not exist after the build. Lowercase: the CLI puts `error:` before it.",
+	"cmd_deploy_pkg_build_failed": "Error of `atlas deploy`: the project's build command exited non-zero. Lowercase: the CLI puts `error:` before it.",
+	"cmd_deploy_pkg_ctx_build": "Context: the shell could not start the project's `deploy.build` command.",
+	"cmd_deploy_pkg_ctx_compress": "Context: writing or finishing the gzip stream of the archive failed.",
+	"cmd_deploy_pkg_ctx_create_artifact": "Context of a failed file creation or `git archive` while packaging the release archive.",
+	"cmd_deploy_pkg_ctx_git": "Context of a failed `git` call while packaging; the cause follows after `caused by:`.",
+	"cmd_deploy_pkg_ctx_tar": "Context of a failed `tar` start while packaging an `artifact:` list.",
+	"cmd_deploy_pkg_ctx_tar_stderr": "Context: tar started without its stderr pipe.",
+	"cmd_deploy_pkg_ctx_tar_stdout": "Context: tar started without its stdout pipe.",
+	"cmd_deploy_pkg_ctx_tar_wait": "Context: waiting for the tar process failed.",
+	"cmd_deploy_pkg_dirty": "Error of `atlas deploy`: uncommitted changes would ship under a clean-looking sha. Lowercase: the CLI puts `error:` before it.",
+	"cmd_deploy_pkg_failed": "Error while packaging: tar or git archive exited non-zero; {error} is its stderr. Lowercase: the CLI puts `error:` before it.",
+	"cmd_deploy_pkg_git_failed": "Error while packaging: a git command exited non-zero; {args} is the git arguments, {error} its stderr. Lowercase: the CLI puts `error:` before it.",
+	"cmd_deploy_remote_ctx_create_file": "Context: the local file a remote command streams its output into could not be created (it exists, or the folder is not writable).",
+	"cmd_deploy_remote_ctx_ssh": "Context of a failed `ssh` start (not installed, or not on PATH).",
+	"cmd_deploy_remote_upload_failed": "Error of `atlas deploy`: the archive upload failed after retries; {error} is ssh's last message. Lowercase: the CLI puts `error:` before it.",
+	"cmd_deploy_report_critical": "Final verdict, after a ✗, of a run that failed and could not restore the last healthy release.",
+	"cmd_deploy_report_failed": {
+		"description": "Final verdict of a failed or rolled back run, after a ✗; {reason} is what the host's driver recorded, shown as it is.",
+		"distinct": "verdict line after a glyph"
+	},
+	"cmd_deploy_report_locked": "Final verdict, after a ✗, when another deploy holds the host lock.",
+	"cmd_deploy_report_ok": {
+		"description": "Final verdict of a successful run, after a ✓: the phase it ended in (a cmd_deploy_phase_* message) and the release id.",
+		"distinct": "verdict line after a glyph"
+	},
+	"cmd_deploy_status_current": "Line of `atlas deploy status`: the release id `current` points at, or - when none. Padded label.",
+	"cmd_deploy_status_interrupted": "Appended in bold red to the phase line of `atlas deploy status` when the last run stopped before a final phase and no deploy holds the lock.",
+	"cmd_deploy_status_lock": "Line of `atlas deploy status` when a deploy holds the host lock; {holder} is who (user@host). Padded label.",
+	"cmd_deploy_status_lock_free": "Line of `atlas deploy status` when no deploy holds the host lock. Padded label.",
+	"cmd_deploy_status_phase": "Line of `atlas deploy status`: the phase of the last run ({phase} is a cmd_deploy_phase_* message). Padded label.",
+	"cmd_deploy_status_phase_reason": "Same as status_phase when the host recorded a reason; {reason} is text written by the host's driver, shown as it is.",
+	"cmd_deploy_status_releases": {
+		"description": "Heading of the release list in `atlas deploy status` (one row per release id, sha and status).",
+		"distinct": "heading in a terminal listing"
+	},
+	"cmd_deploy_status_service_active": "Row of `atlas deploy status`: a service of the target that runs; {icon} is a colored check or cross for its health.",
+	"cmd_deploy_status_service_inactive": "Row of `atlas deploy status`: a service of the target that does not run; {icon} is a colored check or cross for its health.",
+	"cmd_deploy_status_services": {
+		"description": "Heading of the service list in `atlas deploy status`.",
+		"distinct": "heading in a terminal listing"
+	},
+	"cmd_deploy_status_target": "First line of `atlas deploy status`: the target name, its host and folder. The label is padded so the values of the next lines align.",
+	"cmd_deploy_step_build": {
+		"description": "Progress line of `atlas deploy`: the project's own build command is about to run.",
+		"distinct": "label before a shell command"
+	},
+	"cmd_deploy_step_driver_running": "Last progress line of `atlas deploy --no-follow`: the run id went to stdout and the driver continues on the host.",
+	"cmd_deploy_step_launch": "Progress line of `atlas deploy`: the driver script is started detached on the host.",
+	"cmd_deploy_step_package": "Progress line of `atlas deploy`: the release archive is built from {root}.",
+	"cmd_deploy_step_preflight": "Progress line of `atlas deploy`: the host and folder are checked before uploading.",
+	"cmd_deploy_step_upload": "Progress line of `atlas deploy`: the archive of release {id} is uploaded."
+}

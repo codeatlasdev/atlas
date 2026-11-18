@@ -1,6 +1,6 @@
 // The en-XA pseudo-locale: every variant of every message is transformed, nothing structural is touched.
 import { afterAll, describe, expect, test } from "bun:test";
-import { existsSync } from "node:fs";
+import { existsSync, readFileSync } from "node:fs";
 import { join } from "node:path";
 import { printArea, pseudoCatalog, pseudoText, pseudoValue, writePseudoCatalogs } from "./pseudo.ts";
 import type { ParaglideValue, Variant } from "./shape.ts";
@@ -139,4 +139,11 @@ describe("en-XA files", () => {
 		expect(Object.keys(match).sort()).toEqual(["os=*", "os=windows"]);
 		for (const t of Object.values(match)) expect(bracketed(t)).toBe(true);
 	});
+});
+
+describe("the cases shared with the Rust implementation", () => {
+	// crates/atlas-i18n/src/pseudo.rs derives en-XA in a debug build of the CLI/TUI/hostd/desktop shell and is held to the
+	// same file: the two transforms must agree, or a layout pass in the terminal would not match the one in the app.
+	const cases = JSON.parse(readFileSync(join(import.meta.dir, "../../i18n/pseudo-cases.json"), "utf8")) as { en: string; pseudo: string }[];
+	test.each(cases.map((c) => [c.en, c.pseudo]))("%s", (en, pseudo) => expect(pseudoText(en)).toBe(pseudo));
 });

@@ -3,7 +3,10 @@
  *
  * Adding a new real integration = one entry in CATALOG with status: "real"
  * and wiring its connection logic into IntegrationsCatalog.svelte.
+ *
+ * The words are catalog messages read through getters, so a language switch reaches a catalog built once.
  */
+import { m } from "#lib/i18n/m.ts";
 
 export type IntegrationCategory = "Code" | "Productivity" | "Communication" | "Design" | "Password managers";
 
@@ -37,26 +40,68 @@ export const CATEGORIES = [
 
 export type CatalogCategory = (typeof CATEGORIES)[number];
 
+/** The chip's text for a category (the category ids stay English: they are keys, not words). */
+export function categoryLabel(category: CatalogCategory): string {
+	switch (category) {
+		case "All":
+			return m.crew_workspace_integrations_category_all();
+		case "Code":
+			return m.crew_workspace_integrations_category_code();
+		case "Productivity":
+			return m.crew_workspace_integrations_category_productivity();
+		case "Communication":
+			return m.crew_workspace_integrations_category_communication();
+		case "Design":
+			return m.crew_workspace_integrations_category_design();
+		case "Password managers":
+			return m.crew_workspace_integrations_category_password_managers();
+	}
+}
+
 export const CATALOG: Integration[] = [
 	{
 		id: "github",
 		name: "GitHub",
 		category: "Code",
-		description: "Give the crew access to your private repositories.",
+		get description() {
+			return m.crew_workspace_integrations_github_description();
+		},
 		status: "real",
 		sourceUrl: "https://github.com/codeatlasdev",
 		skills: [
-			{ label: "Clone private repos", available: true },
-			{ label: "Open pull requests", available: false },
-			{ label: "Comment on pull requests", available: false },
-			{ label: "Read CI status", available: false },
+			{
+				get label() {
+					return m.crew_workspace_integrations_github_skill_clone();
+				},
+				available: true,
+			},
+			{
+				get label() {
+					return m.crew_workspace_integrations_github_skill_open_prs();
+				},
+				available: false,
+			},
+			{
+				get label() {
+					return m.crew_workspace_integrations_github_skill_comment_prs();
+				},
+				available: false,
+			},
+			{
+				get label() {
+					return m.crew_workspace_integrations_github_skill_ci_status();
+				},
+				available: false,
+			},
 		],
 	},
 	{
 		id: "linear",
 		name: "Linear",
 		category: "Productivity",
-		description: "Create and update issues from the crew's tasks.",
+		get description() {
+			return m.crew_workspace_integrations_linear_description();
+		},
 		status: "coming-soon",
 		skills: [],
 	},
@@ -64,7 +109,9 @@ export const CATALOG: Integration[] = [
 		id: "notion",
 		name: "Notion",
 		category: "Productivity",
-		description: "Read and write Notion pages as part of crew tasks.",
+		get description() {
+			return m.crew_workspace_integrations_notion_description();
+		},
 		status: "coming-soon",
 		skills: [],
 	},
@@ -72,7 +119,9 @@ export const CATALOG: Integration[] = [
 		id: "slack",
 		name: "Slack",
 		category: "Communication",
-		description: "Send messages and read channel history.",
+		get description() {
+			return m.crew_workspace_integrations_slack_description();
+		},
 		status: "coming-soon",
 		skills: [],
 	},
@@ -80,7 +129,9 @@ export const CATALOG: Integration[] = [
 		id: "figma",
 		name: "Figma",
 		category: "Design",
-		description: "Read design files and export assets.",
+		get description() {
+			return m.crew_workspace_integrations_figma_description();
+		},
 		status: "coming-soon",
 		skills: [],
 	},
@@ -88,7 +139,9 @@ export const CATALOG: Integration[] = [
 		id: "1password",
 		name: "1Password",
 		category: "Password managers",
-		description: "Securely share credentials with the crew.",
+		get description() {
+			return m.crew_workspace_integrations_1password_description();
+		},
 		status: "coming-soon",
 		skills: [],
 	},
@@ -96,7 +149,9 @@ export const CATALOG: Integration[] = [
 		id: "google-docs",
 		name: "Google Docs",
 		category: "Productivity",
-		description: "Read and edit documents in the crew's workspace.",
+		get description() {
+			return m.crew_workspace_integrations_google_docs_description();
+		},
 		status: "coming-soon",
 		skills: [],
 	},

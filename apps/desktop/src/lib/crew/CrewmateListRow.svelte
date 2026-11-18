@@ -8,6 +8,8 @@
 	import { crossfade } from "svelte/transition";
 	import { cubicOut } from "svelte/easing";
 	import { Check, CircleX, Ellipsis, TriangleAlert } from "@lucide/svelte";
+	import { dateTime } from "#lib/i18n/fmt.ts";
+	import { m } from "#lib/i18n/m.ts";
 
 	let {
 		crewmate,
@@ -51,9 +53,9 @@
 		const d = new Date(ts * 1000);
 		const now = new Date();
 		if (d.toDateString() === now.toDateString()) {
-			return d.toLocaleTimeString([], { hour: "2-digit", minute: "2-digit" });
+			return dateTime(d, { hour: "2-digit", minute: "2-digit" });
 		}
-		return d.toLocaleDateString([], { month: "short", day: "numeric" });
+		return dateTime(d, { month: "short", day: "numeric" });
 	}
 
 	function handleContextAction(action: "profile" | "delete") {
@@ -101,7 +103,7 @@
 			</div>
 			<div class="row-bottom">
 				{#if isWorking}
-					<span class="preview crew-shimmer">working…</span>
+					<span class="preview crew-shimmer">{m.crew_workspace_status_working()}</span>
 				{:else}
 					{#if icon}
 						<span class="preview-icon" aria-hidden="true">
@@ -125,9 +127,12 @@
 					>
 				{/if}
 				{#if unread}
-					<span class="unread-badge" aria-label="Unread messages"></span>
+					<span class="unread-badge" aria-label={m.crew_workspace_crewmate_list_row_unread_messages()}></span>
 				{:else if crewmate.state === "needs_you"}
-					<span class="crew-badge needs-badge" aria-label="Needs your attention">!</span>
+					<span
+						class="crew-badge needs-badge"
+						aria-label={m.crew_workspace_crewmate_list_row_needs_your_attention()}>!</span
+					>
 				{/if}
 			</div>
 		</div></button
@@ -138,7 +143,7 @@
 		<div class="menu-wrap">
 			<button
 				class="menu-btn"
-				aria-label="More options for {crewmate.name}"
+				aria-label={m.crew_workspace_crewmate_list_row_more_options_for_name({ name: crewmate.name })}
 				aria-expanded={menuOpen}
 				onclick={(e) => {
 					e.stopPropagation();
@@ -156,14 +161,17 @@
 								onFavorite?.();
 							}}
 						>
-							{isFavorite ? "★ First mate" : "☆ Make first mate"}
+							{isFavorite ? "★" : "☆"}
+							{isFavorite
+								? m.crew_workspace_crewmate_list_row_first_mate()
+								: m.crew_workspace_crewmate_list_row_make_first_mate()}
 						</button>
 					{/if}
 					<button role="menuitem" class="menu-item" onclick={() => handleContextAction("profile")}
-						>Profile</button
+						>{m.crew_workspace_crewmate_list_row_profile()}</button
 					>
 					<button role="menuitem" class="menu-item danger" onclick={() => handleContextAction("delete")}
-						>Delete</button
+						>{m.common_action_delete()}</button
 					>
 				</div>
 			{/if}

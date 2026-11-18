@@ -37,6 +37,8 @@
 	import LogsStatus from "./logs/LogsStatus.svelte";
 	import LogsTools from "./logs/LogsTools.svelte";
 	import LogRow from "./logs/LogRow.svelte";
+	import { formatNumber } from "#lib/i18n/fmt.ts";
+	import { m } from "#lib/i18n/m.ts";
 
 	let { project, worktreeId }: { project: ProjectView; worktreeId?: string } = $props();
 
@@ -152,7 +154,7 @@
 		void eng.rev;
 		untrack(() => {
 			if (range.kind !== "all" && windowHides(win, eng.ring, s.ts, Date.now())) {
-				toast.info(`Cleared "${rangeText}" to show that moment`);
+				toast.info(m.logs_range_cleared({ range: rangeText }));
 				range = ALL_TIME;
 				return;
 			}
@@ -198,7 +200,7 @@
 	function level(dir: 1 | -1, min: Level) {
 		const from = eng.cur >= 0 ? eng.cur : vp.follow ? eng.view.length : Math.max(0, vp.rowAt(vp.scrollTop));
 		const r = jumpLevel(eng.view, eng.ring, from, dir, min);
-		if (r < 0) return toast.info(`No ${min} lines`);
+		if (r < 0) return toast.info(min === "error" ? m.logs_no_error_lines() : m.logs_no_warning_lines());
 		eng.cur = r;
 		vp.scrollToRow(r);
 	}
@@ -248,7 +250,7 @@
 			}
 			const rel = resolvePath(link.target, root, serviceDir[l.name]);
 			if (rel && wtId) openFile(wtId, rel, link.line, link.col);
-			else toast.error(`${link.target} is outside the project`);
+			else toast.error(m.logs_link_outside_project({ path: link.target }));
 		} catch (err) {
 			toast.error(err instanceof Error ? err.message : String(err));
 		}
@@ -260,7 +262,7 @@
 	async function copyVisible() {
 		const lines = eng.viewLines();
 		await navigator.clipboard.writeText(format(lines, vp.showTime));
-		toast.success(`Copied ${lines.length.toLocaleString()} lines`);
+		toast.success(m.logs_copied_lines({ count: lines.length, amount: formatNumber(lines.length) }));
 	}
 
 	/** Last lines of the filtered view with a header that tells a model what it is looking at. */
@@ -269,7 +271,7 @@
 		const scope = only ?? "all services";
 		const head = `Logs of ${project.name} (${scope}${minLevel !== "info" ? `, ${minLevel}+` : ""}${query ? `, matching "${query}"` : ""}), last ${lines.length} lines:`;
 		await navigator.clipboard.writeText(`${head}\n\`\`\`\n${format(lines, vp.showTime)}\n\`\`\``);
-		toast.success(`Copied ${lines.length} lines for AI`);
+		toast.success(m.logs_copied_lines_for_ai({ count: lines.length, amount: formatNumber(lines.length) }));
 	}
 
 	/** Copying a selection keeps the plain `text`, not the decorated DOM (timestamps, labels). */
@@ -340,7 +342,7 @@
 			onscroll={vp.onscroll}
 			tabindex="0"
 			role="log"
-			aria-label="Service logs"
+			aria-label={m.logs_service_logs()}
 			aria-live="off"
 		>
 			<span class="probe" bind:this={probe} aria-hidden="true">{"0".repeat(20)}</span>
@@ -376,7 +378,7 @@
 		{#if vp.unseen > 0 && !vp.follow}
 			<button class="pill" onclick={() => vp.toBottom()}>
 				<ArrowDown size={12} />
-				{vp.unseen > 9999 ? "9999+" : vp.unseen.toLocaleString()} new lines
+				{m.logs_new_lines({ count: vp.unseen, amount: vp.unseen > 9999 ? "9999+" : formatNumber(vp.unseen) })}
 			</button>
 		{/if}
 	</div>

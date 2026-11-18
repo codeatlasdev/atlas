@@ -1,0 +1,23 @@
+{
+  "pt-BR": {
+    "crew_onboarding_install_browsers_detail": "ffdaa0c5bb39",
+    "crew_onboarding_install_browsers_label": "bff18fa6e8f4",
+    "crew_onboarding_install_check_detail": "98c5e2a6bce1",
+    "crew_onboarding_install_check_label": "ae854567a668",
+    "crew_onboarding_install_checklist_idle_detail": "a7d2c8c7840d",
+    "crew_onboarding_install_checklist_idle_title": "2e77521a5921",
+    "crew_onboarding_install_checklist_install_progress": "5514a4669e33",
+    "crew_onboarding_install_done_detail": "e4a353004ba2",
+    "crew_onboarding_install_done_label": "83fb6c3bccaf",
+    "crew_onboarding_install_install_detail": "aaa90d3be9fd",
+    "crew_onboarding_install_install_label": "17ae22f978f2",
+    "crew_onboarding_install_service_detail": "b96fc0415271",
+    "crew_onboarding_install_service_label": "de3e6979df8c",
+    "crew_onboarding_install_signin_detail": "df27143768b4",
+    "crew_onboarding_install_signin_label": "9ab62c008ed6",
+    "crew_onboarding_install_ssh_detail": "846a57a168ec",
+    "crew_onboarding_install_ssh_label": "3c66d19809f0",
+    "crew_onboarding_install_user_detail": "577a760d8ab5",
+    "crew_onboarding_install_user_label": "70f66bc4f823"
+  }
+}

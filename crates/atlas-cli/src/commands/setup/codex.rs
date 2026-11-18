@@ -14,6 +14,7 @@
 use std::path::{Path, PathBuf};
 
 use anyhow::{Context, Result};
+use atlas_i18n::t;
 
 use super::codex_toml;
 use super::hooks_json;
@@ -40,7 +41,7 @@ impl Paths {
         let (base, boundary) = match scope {
             Scope::User => (env.codex_home.clone(), env.codex_home.clone()),
             Scope::Project => {
-                let root = project_root.context("project scope needs an atlas.yaml ancestor")?;
+                let root = project_root.context(t!("cmd_setup_project_root_missing"))?;
                 (root.join(".codex"), root.to_path_buf())
             }
         };
@@ -57,31 +58,42 @@ pub fn plan_install(paths: &Paths, scope: Scope, force: bool, command: &str) -> 
     let mut plan = Plan::default();
 
     let existing = read_opt(&paths.config)?;
-    let merged = codex_toml::merge(existing.as_deref(), command, force)
-        .with_context(|| format!("{} is not a valid Codex config", paths.config.display()))?;
+    let merged = codex_toml::merge(existing.as_deref(), command, force).with_context(|| {
+        t!(
+            "cmd_setup_codex_config_invalid",
+            path = paths.config.display().to_string()
+        )
+    })?;
     plan.items.push(mcp_install_item(
         &paths.config,
         merged,
         "[mcp_servers.atlas]",
         command,
-        " (comments and other settings kept)",
+        &t!("cmd_setup_mcp_note_codex"),
     ));
 
     // Codex reads ~/.agents/skills, which OMP shares: same install, same manifest.
-    plan.items
-        .push(skills_install_item("Skills (shared)", &paths.skills)?);
+    plan.items.push(skills_install_item(
+        t!("cmd_setup_label_skills_shared"),
+        &paths.skills,
+    )?);
     if scope == Scope::Project {
         user_scope_skills_warning(&mut plan, "~/.agents/skills", "Codex");
     }
 
     let existing = read_opt(&paths.hooks)?;
-    let merged = hooks_json::merge(existing.as_deref(), Harness::Codex, command)
-        .with_context(|| format!("{} is not a valid Codex hooks file", paths.hooks.display()))?;
+    let merged =
+        hooks_json::merge(existing.as_deref(), Harness::Codex, command).with_context(|| {
+            t!(
+                "cmd_setup_codex_hooks_invalid",
+                path = paths.hooks.display().to_string()
+            )
+        })?;
     plan.items.push(hooks_install_item(
         &paths.hooks,
         merged,
-        "+ SessionStart (status injection), PreToolUse[Bash] (`atlas dev` guard); trust once in `/hooks`",
-        "~ atlas hooks (your other hooks kept); re-trust the changed hook in `/hooks`",
+        &t!("cmd_setup_hooks_create_codex"),
+        &t!("cmd_setup_hooks_update_codex"),
     ));
     Ok(plan)
 }
@@ -90,8 +102,12 @@ pub fn plan_uninstall(env: &Env, paths: &Paths, force: bool) -> Result<Plan> {
     let mut plan = Plan::default();
 
     let existing = read_opt(&paths.config)?;
-    let removed = codex_toml::remove(existing.as_deref(), force)
-        .with_context(|| format!("{} is not a valid Codex config", paths.config.display()))?;
+    let removed = codex_toml::remove(existing.as_deref(), force).with_context(|| {
+        t!(
+            "cmd_setup_codex_config_invalid",
+            path = paths.config.display().to_string()
+        )
+    })?;
     plan.items.push(mcp_uninstall_item(
         &paths.config,
         removed,
@@ -102,18 +118,22 @@ pub fn plan_uninstall(env: &Env, paths: &Paths, force: bool) -> Result<Plan> {
     // Shared with OMP: only remove when OMP is not still set up.
     let omp_uses_them = super::omp::user_mcp_is_owned(env);
     plan.items.push(skills_uninstall_item(
-        "Skills (shared)",
+        t!("cmd_setup_label_skills_shared"),
         &paths.skills,
-        omp_uses_them.then_some("OMP is still set up and reads ~/.agents/skills"),
+        omp_uses_them.then(|| t!("cmd_setup_skills_kept_reason", label = "OMP")),
     )?);
 
     let existing = read_opt(&paths.hooks)?;
-    let removed = hooks_json::remove(existing.as_deref(), Harness::Codex)
-        .with_context(|| format!("{} is not a valid Codex hooks file", paths.hooks.display()))?;
+    let removed = hooks_json::remove(existing.as_deref(), Harness::Codex).with_context(|| {
+        t!(
+            "cmd_setup_codex_hooks_invalid",
+            path = paths.hooks.display().to_string()
+        )
+    })?;
     plan.items.push(hooks_uninstall_item(
         &paths.hooks,
         removed,
-        "your other hooks",
+        &t!("cmd_setup_hooks_kept_codex"),
         &paths.boundary,
     ));
     Ok(plan)
@@ -258,7 +278,13 @@ mod tests {
 
         // Codex uninstall keeps them: OMP still uses them.
         let un = plan_uninstall(&env, &cpaths, false).unwrap();
-        assert!(un.items[1].detail.starts_with("kept:"), "{:?}", un.items[1]);
+        assert_eq!(
+            un.items[1].detail,
+            t!(
+                "cmd_setup_skills_kept",
+                reason = t!("cmd_setup_skills_kept_reason", label = "OMP")
+            )
+        );
         apply(&un, &cpaths.skills).unwrap();
         assert!(env.home.join(".agents/skills/atlas/SKILL.md").is_file());
 

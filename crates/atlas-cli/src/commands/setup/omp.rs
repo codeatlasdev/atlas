@@ -7,6 +7,7 @@ use std::process::{Command, Stdio};
 use std::time::{Duration, Instant};
 
 use anyhow::{Context, Result};
+use atlas_i18n::t;
 use atlas_skills::embedded;
 
 use super::json_merge;
@@ -75,7 +76,7 @@ impl Paths {
         let (base, boundary) = match scope {
             Scope::User => (env.agent_dir.clone(), env.agent_dir.clone()),
             Scope::Project => {
-                let root = project_root.context("project scope needs an atlas.yaml ancestor")?;
+                let root = project_root.context(t!("cmd_setup_project_root_missing"))?;
                 (root.join(".omp"), root.to_path_buf())
             }
         };
@@ -106,8 +107,8 @@ fn plugin_state(omp: &Path) -> Result<Linked> {
         .stdout(Stdio::piped())
         .stderr(Stdio::null())
         .spawn()
-        .with_context(|| format!("running {} plugin list", omp.display()))?;
-    let mut stdout = child.stdout.take().context("omp plugin list: no stdout")?;
+        .with_context(|| t!("cmd_setup_omp_run_failed", omp = omp.display().to_string()))?;
+    let mut stdout = child.stdout.take().context(t!("cmd_setup_omp_no_stdout"))?;
     let reader = std::thread::spawn(move || {
         let mut buf = String::new();
         let _ = stdout.read_to_string(&mut buf);
@@ -121,16 +122,16 @@ fn plugin_state(omp: &Path) -> Result<Linked> {
         if Instant::now() >= deadline {
             let _ = child.kill();
             let _ = child.wait();
-            anyhow::bail!("`omp plugin list --json` timed out after 5s");
+            anyhow::bail!(t!("cmd_setup_omp_list_timeout"));
         }
         std::thread::sleep(Duration::from_millis(20));
     };
     let text = reader.join().unwrap_or_default();
     if !status.success() {
-        anyhow::bail!("`omp plugin list --json` exited {status}");
+        anyhow::bail!(t!("cmd_setup_omp_list_failed", status = status.to_string()));
     }
     let v: serde_json::Value =
-        serde_json::from_str(&text).context("`omp plugin list --json` printed invalid JSON")?;
+        serde_json::from_str(&text).context(t!("cmd_setup_omp_list_invalid"))?;
     // Linked plugins are listed under `npm`; match by name across every array to stay robust.
     let found = v
         .as_object()
@@ -193,7 +194,7 @@ fn plugin_files(command: &str) -> Vec<(String, String)> {
 
 fn plugin_item(path: PathBuf, desired: String) -> Result<Item> {
     let item = |action, detail: &str, op| Item {
-        label: "Plugin",
+        label: t!("cmd_setup_label_plugin"),
         path: path.clone(),
         action,
         detail: detail.to_string(),
@@ -211,9 +212,7 @@ fn plugin_item(path: PathBuf, desired: String) -> Result<Item> {
 pub fn plan_install(paths: &Paths, scope: Scope, _force: bool, command: &str) -> Result<Plan> {
     let mut plan = Plan::default();
     if scope == Scope::Project {
-        plan.warnings.push(
-            "omp plugins are user-level; project scope only removes legacy project files".into(),
-        );
+        plan.warnings.push(t!("cmd_setup_omp_project_warning"));
     }
 
     // 1. Plugin files
@@ -224,7 +223,7 @@ pub fn plan_install(paths: &Paths, scope: Scope, _force: bool, command: &str) ->
 
     // 2. Link the plugin into omp
     let link = |action, detail: String, op| Item {
-        label: "Plugin link",
+        label: t!("cmd_setup_label_plugin_link"),
         path: paths.plugin_dir.clone(),
         action,
         detail,
@@ -238,7 +237,10 @@ pub fn plan_install(paths: &Paths, scope: Scope, _force: bool, command: &str) ->
     plan.items.push(match &paths.omp_bin {
         None => link(
             Action::Skipped,
-            format!("omp not found on PATH; run: omp plugin link {dir}"),
+            t!(
+                "cmd_setup_omp_link_missing",
+                command = format!("omp plugin link {dir}")
+            ),
             Op::None,
         ),
         Some(omp) => match plugin_state(omp)? {
@@ -255,14 +257,13 @@ pub fn plan_install(paths: &Paths, scope: Scope, _force: bool, command: &str) ->
             Linked::Enabled => link(Action::UpToDate, String::new(), Op::None),
         },
     });
-    plan.warnings.push(
-        "restart omp sessions to load the new hook (/reload-plugins refreshes skills and MCP only)"
-            .into(),
-    );
+    plan.warnings.push(t!("cmd_setup_omp_restart_warning"));
 
     // 3. Shared skills for Claude Code / Codex (omp prefers the plugin copy)
-    plan.items
-        .push(skills_install_item("Skills", &paths.skills)?);
+    plan.items.push(skills_install_item(
+        t!("cmd_setup_label_skills"),
+        &paths.skills,
+    )?);
 
     // 4. Legacy migration: the same hook/MCP entry must not load twice.
     legacy_removals(paths, &mut plan, Legacy::MigrateOwned)?;
@@ -283,7 +284,7 @@ enum Legacy {
 fn legacy_removals(paths: &Paths, plan: &mut Plan, mode: Legacy) -> Result<()> {
     let force = matches!(mode, Legacy::Uninstall { force: true });
     let hook_item = |action, detail: String, op| Item {
-        label: "Legacy hook",
+        label: t!("cmd_setup_label_legacy_hook"),
         path: paths.hook.clone(),
         action,
         detail,
@@ -292,16 +293,14 @@ fn legacy_removals(paths: &Paths, plan: &mut Plan, mode: Legacy) -> Result<()> {
     match read_opt(&paths.hook)? {
         Some(c) if hook_is_owned(&c) || force => plan.items.push(hook_item(
             Action::Remove,
-            "replaced by the plugin hook".into(),
+            t!("cmd_setup_omp_legacy_replaced"),
             Op::RemoveFile {
                 boundary: Some(paths.boundary.clone()),
             },
         )),
         Some(_) if mode != Legacy::MigrateOwned => plan.items.push(hook_item(
             Action::Conflict,
-            format!(
-                "not managed by atlas (no `{HOOK_MARKER}` header) — left alone (use --force to remove)"
-            ),
+            t!("cmd_setup_omp_legacy_foreign", marker = HOOK_MARKER),
             Op::None,
         )),
         _ => {}
@@ -313,7 +312,10 @@ fn legacy_removals(paths: &Paths, plan: &mut Plan, mode: Legacy) -> Result<()> {
         Err(_) if mode == Legacy::MigrateOwned => return Ok(()),
         Err(e) => {
             return Err(e).with_context(|| {
-                format!("{} is not a valid MCP config", paths.mcp_json.display())
+                t!(
+                    "cmd_setup_omp_mcp_invalid",
+                    path = paths.mcp_json.display().to_string()
+                )
             });
         }
     };
@@ -339,7 +341,7 @@ pub fn plan_uninstall(env: &Env, paths: &Paths, force: bool) -> Result<Plan> {
     let mut plan = Plan::default();
 
     let link = |action, op| Item {
-        label: "Plugin link",
+        label: t!("cmd_setup_label_plugin_link"),
         path: paths.plugin_dir.clone(),
         action,
         detail: String::new(),
@@ -357,7 +359,7 @@ pub fn plan_uninstall(env: &Env, paths: &Paths, force: bool) -> Result<Plan> {
     });
 
     plan.items.push(Item {
-        label: "Plugin",
+        label: t!("cmd_setup_label_plugin"),
         path: paths.plugin_dir.clone(),
         action: if paths.plugin_dir.exists() {
             Action::Remove
@@ -375,9 +377,9 @@ pub fn plan_uninstall(env: &Env, paths: &Paths, force: bool) -> Result<Plan> {
     // The skills dir is shared with Codex: keep it while Codex is still set up.
     let codex_uses_them = super::codex::user_mcp_is_owned(env);
     plan.items.push(skills_uninstall_item(
-        "Skills",
+        t!("cmd_setup_label_skills"),
         &paths.skills,
-        codex_uses_them.then_some("Codex is still set up and reads ~/.agents/skills"),
+        codex_uses_them.then(|| t!("cmd_setup_skills_kept_reason", label = "Codex")),
     )?);
 
     // Pre-plugin artifacts: listed only when present.
@@ -454,7 +456,7 @@ mod tests {
         let link = plan
             .items
             .iter()
-            .find(|i| i.label == "Plugin link")
+            .find(|i| i.label == t!("cmd_setup_label_plugin_link"))
             .unwrap();
         assert_eq!(link.action, Action::Skipped);
         assert!(link.detail.contains("omp plugin link"), "{}", link.detail);
@@ -538,7 +540,11 @@ mod tests {
         .unwrap();
         let plan = plan_install(&paths, Scope::User, false, "atlas").unwrap();
         assert!(!plan.has_conflict());
-        assert!(plan.items.iter().all(|i| !i.label.starts_with("Legacy")));
+        assert!(
+            plan.items
+                .iter()
+                .all(|i| i.label != t!("cmd_setup_label_legacy_hook"))
+        );
         apply(&plan, &paths.skills).unwrap();
         assert!(paths.hook.exists());
         assert!(
@@ -570,7 +576,7 @@ mod tests {
         assert!(
             plan.warnings
                 .iter()
-                .any(|w| w.contains("omp plugins are user-level"))
+                .any(|w| *w == t!("cmd_setup_omp_project_warning"))
         );
     }
 

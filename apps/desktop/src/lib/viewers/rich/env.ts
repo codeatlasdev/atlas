@@ -1,4 +1,5 @@
 /** `.env` parser: dotenv semantics (export prefix, quotes, multiline values, inline comments). */
+import { m } from "#lib/i18n/m.ts";
 
 export type EnvEntry =
 	| {
@@ -40,14 +41,19 @@ export function parseEnv(text: string): EnvDoc {
 			entries.push({ kind: "comment", text: trimmed.replace(/^#\s?/, ""), line: i + 1 });
 			continue;
 		}
-		const m = /^(export\s+)?([^=\s]+)\s*=\s?(.*)$/.exec(trimmed);
-		if (!m) {
-			entries.push({ kind: "invalid", raw, line: i + 1, reason: "Expected KEY=value" });
+		const assign = /^(export\s+)?([^=\s]+)\s*=\s?(.*)$/.exec(trimmed);
+		if (!assign) {
+			entries.push({ kind: "invalid", raw, line: i + 1, reason: m.viewers_devops_env_reason_expected() });
 			continue;
 		}
-		const [, exp, key, rest0] = m;
+		const [, exp, key, rest0] = assign;
 		if (!KEY.test(key)) {
-			entries.push({ kind: "invalid", raw, line: i + 1, reason: `“${key}” is not a valid variable name` });
+			entries.push({
+				kind: "invalid",
+				raw,
+				line: i + 1,
+				reason: m.viewers_devops_env_reason_bad_name({ key }),
+			});
 			continue;
 		}
 		let rest = rest0.trimStart();
@@ -63,7 +69,12 @@ export function parseEnv(text: string): EnvDoc {
 				close = findClose(body, q);
 			}
 			if (close < 0) {
-				entries.push({ kind: "invalid", raw, line: i + 1, reason: "Unterminated quoted value" });
+				entries.push({
+					kind: "invalid",
+					raw,
+					line: i + 1,
+					reason: m.viewers_devops_env_reason_unterminated(),
+				});
 				i = end;
 				continue;
 			}

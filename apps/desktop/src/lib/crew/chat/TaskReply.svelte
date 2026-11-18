@@ -13,12 +13,13 @@
 	import type { ChatState } from "./chat.svelte.ts";
 	import { parseAsk } from "./parseAsk.ts";
 	import { collapsedText, expandKey, fmtElapsed, fmtTokens, shouldCollapse } from "./taskView.ts";
+	import { m } from "#lib/i18n/m.ts";
 
 	let { task: t, chat }: { task: CrewmateTask; chat: ChatState } = $props();
 
 	const html = (text: string) => renderMarkdown(text, "", false);
 
-	const raw = $derived(t.result ?? "Done");
+	const raw = $derived(t.result ?? m.crew_chat_task_reply_done());
 	const ask = $derived(parseAsk(t.result));
 	const dismissed = $derived(chat.isDismissed(t.id));
 	const folded = $derived(shouldCollapse(raw) && !chat.expandedResults.has(t.id));
@@ -28,9 +29,9 @@
 {#if t.action?.kind === "add_trigger" && t.answer}
 	<div class="task-note">
 		{#if t.answer === "add"}
-			<Check size={12} aria-hidden="true" /> Automation added
+			<Check size={12} aria-hidden="true" /> {m.crew_chat_task_reply_automation_added()}
 		{:else}
-			Not added
+			{m.crew_chat_task_reply_not_added()}
 		{/if}
 	</div>
 {/if}
@@ -44,12 +45,12 @@
 	{#if t.summarized && !shownFull}
 		<div class="md-result ca-selectable">{@html html(raw)}</div>
 		<button class="show-more" onclick={() => chat.setExpanded(expandKey.full(t.id), true)}
-			>See full reply</button
+			>{m.crew_chat_task_reply_see_full_reply()}</button
 		>
 	{:else if t.summarized && shownFull}
 		<div class="md-result ca-selectable">{@html html(t.reply_full ?? raw)}</div>
 		<button class="show-more" onclick={() => chat.setExpanded(expandKey.full(t.id), false)}
-			>Show summary</button
+			>{m.crew_chat_task_reply_show_summary()}</button
 		>
 	{:else}
 		{@const parts = replyParts(raw)}
@@ -64,7 +65,7 @@
 			</div>
 			{#if shouldCollapse(raw)}
 				<button class="show-more" onclick={() => chat.setExpanded(t.id, folded)}>
-					{folded ? "Show more" : "Show less"}
+					{folded ? m.crew_chat_task_reply_show_more() : m.crew_chat_task_reply_show_less()}
 					{#if folded}<ChevronDown size={12} aria-hidden="true" />{:else}<ChevronUp
 							size={12}
 							aria-hidden="true"
@@ -77,7 +78,12 @@
 {#if t.usage}
 	<div class="usage-footer">
 		{#if t.usage.input_tokens || t.usage.output_tokens}
-			<span>{fmtTokens(t.usage.input_tokens ?? 0)}in · {fmtTokens(t.usage.output_tokens ?? 0)}out</span>
+			<span
+				>{m.crew_chat_task_reply_usage_tokens({
+					input: fmtTokens(t.usage.input_tokens ?? 0),
+					output: fmtTokens(t.usage.output_tokens ?? 0),
+				})}</span
+			>
 		{/if}
 		{#if t.usage.cost_usd}<span>${t.usage.cost_usd.toFixed(4)}</span>{/if}
 		{#if t.usage.duration_ms}<span>{fmtElapsed(t.usage.duration_ms)}</span>{/if}

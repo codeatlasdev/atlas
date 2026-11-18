@@ -5,6 +5,7 @@
 	import type { RichCtx } from "#lib/viewers/rich/ctx.ts";
 	import Copy from "#lib/viewers/rich/Copy.svelte";
 	import "#lib/viewers/rich/rich.css";
+	import { m } from "#lib/i18n/m.ts";
 
 	let { ctx }: { ctx: RichCtx } = $props();
 
@@ -60,35 +61,40 @@
 		<header class="rv-head">
 			<div class="rv-title">
 				<h1>{ctx.path.split("/").pop()}</h1>
-				<span class="rv-ver">{vars.length} variable{vars.length === 1 ? "" : "s"}</span>
+				<span class="rv-ver">{m.viewers_devops_env_view_variables_count({ count: vars.length })}</span>
 			</div>
 			<div class="rv-facts">
-				{#if doc.duplicates.size}<span class="rv-chip warn">{doc.duplicates.size} duplicated</span>{/if}
+				{#if doc.duplicates.size}<span class="rv-chip warn"
+						>{m.viewers_devops_env_view_duplicated({ count: doc.duplicates.size })}</span
+					>{/if}
 				{#if invalid.length}<span class="rv-chip bad"
-						>{invalid.length} invalid line{invalid.length === 1 ? "" : "s"}</span
+						>{m.viewers_devops_env_view_error_lines_count({ count: invalid.length })}</span
 					>{/if}
 				{#if diff && !diff.missing.length && !diff.extra.length}
-					<span class="rv-chip ok">Matches {example?.name}</span>
+					<span class="rv-chip ok">{m.viewers_devops_env_view_matches({ name: example?.name ?? "" })}</span>
 				{/if}
 			</div>
 		</header>
 
 		{#if diff && (diff.missing.length || diff.extra.length)}
 			<section class="rv-sec">
-				<h2><FileDiff size={13} /> Compared with {example?.name}</h2>
+				<h2>
+					<FileDiff size={13} />
+					{m.viewers_devops_env_view_compared_with({ name: example?.name ?? "" })}
+				</h2>
 				<div class="rv-list">
 					{#if diff.missing.length}
 						<div class="rv-row warn">
-							<span class="rv-chip warn">missing</span>
+							<span class="rv-chip warn">{m.viewers_devops_env_view_missing()}</span>
 							<span class="rv-v wrap">{diff.missing.join("  ")}</span>
-							<span class="rv-note">in the example, not here</span>
+							<span class="rv-note">{m.viewers_devops_env_view_only_in_example()}</span>
 						</div>
 					{/if}
 					{#if diff.extra.length}
 						<div class="rv-row">
-							<span class="rv-chip info">extra</span>
+							<span class="rv-chip info">{m.viewers_devops_env_view_extra()}</span>
 							<span class="rv-v wrap">{diff.extra.join("  ")}</span>
-							<span class="rv-note">here, not in the example</span>
+							<span class="rv-note">{m.viewers_devops_env_view_only_here()}</span>
 						</div>
 					{/if}
 				</div>
@@ -97,14 +103,19 @@
 
 		<section class="rv-sec">
 			<h2>
-				Variables
+				{m.viewers_devops_variables()}
 				<span class="sp"></span>
 				<label class="rv-search">
 					<Search size={12} />
-					<input placeholder="Filter" bind:value={q} aria-label="Filter variables" />
+					<input
+						placeholder={m.viewers_devops_filter()}
+						bind:value={q}
+						aria-label={m.viewers_devops_env_view_filter_variables()}
+					/>
 				</label>
 				<button class="rv-btn" class:on={all} onclick={() => (all = !all)} aria-pressed={all}>
-					{#if all}<EyeOff size={12} /> Hide values{:else}<Eye size={12} /> Reveal all{/if}
+					{#if all}<EyeOff size={12} /> {m.viewers_devops_env_view_hide_values()}{:else}<Eye size={12} />
+						{m.viewers_devops_env_view_reveal_all()}{/if}
 				</button>
 			</h2>
 			<div class="rv-list">
@@ -118,39 +129,43 @@
 								class:masked={!shown(e)}
 								title={shown(e) ? e.value : ""}
 							>
-								{#if e.value === ""}<i class="empty">empty</i>{:else if shown(e)}{e.value}{:else}{mask(
-										e.value,
-									)}{/if}
+								{#if e.value === ""}<i class="empty">{m.viewers_devops_env_view_empty()}</i
+									>{:else if shown(e)}{e.value}{:else}{mask(e.value)}{/if}
 							</span>
 							{#if e.comment}<span class="rv-note">{e.comment}</span>{/if}
 							{#if dup(e.key)}
+								{@const others = doc.duplicates.get(e.key)?.filter((l) => l !== e.line) ?? []}
 								<span
 									class="rv-chip warn"
-									title="Also defined on line {doc.duplicates
-										.get(e.key)
-										?.filter((l) => l !== e.line)
-										.join(', ')}">duplicate</span
+									title={m.viewers_devops_env_view_also_defined({
+										count: others.length,
+										lines: others.join(", "),
+									})}>{m.viewers_devops_env_view_duplicate()}</span
 								>
 							{/if}
-							{#if looksSecret(e.key)}<span class="rv-chip">secret</span>{/if}
+							{#if looksSecret(e.key)}<span class="rv-chip">{m.viewers_devops_env_view_secret()}</span>{/if}
 							<button
 								class="rv-btn icon"
-								title="Go to line {e.line}"
-								aria-label="Go to line {e.line}"
+								title={m.viewers_devops_go_to_line({ line: e.line })}
+								aria-label={m.viewers_devops_go_to_line({ line: e.line })}
 								onclick={() => ctx.toSource(e.line)}
 							>
 								<span class="ln">{e.line}</span>
 							</button>
 							<button
 								class="rv-btn icon"
-								title={shown(e) ? "Hide value" : "Reveal value"}
-								aria-label={shown(e) ? "Hide value" : "Reveal value"}
+								title={shown(e)
+									? m.viewers_devops_env_view_hide_value()
+									: m.viewers_devops_env_view_reveal_value()}
+								aria-label={shown(e)
+									? m.viewers_devops_env_view_hide_value()
+									: m.viewers_devops_env_view_reveal_value()}
 								onclick={() => (revealed[e.line] = !revealed[e.line])}
 							>
 								{#if shown(e)}<EyeOff size={12} />{:else}<Eye size={12} />{/if}
 							</button>
-							<Copy text={e.key} label="Copy key" key />
-							<Copy text={e.value} label="Copy value" />
+							<Copy text={e.key} label={m.viewers_devops_env_view_copy_key()} key />
+							<Copy text={e.value} label={m.viewers_devops_env_view_copy_value()} />
 						</div>
 					{:else if e.kind === "comment"}
 						<div class="rv-row cm"><span class="rv-note">{e.text}</span></div>
@@ -159,11 +174,15 @@
 							<TriangleAlert size={13} />
 							<span class="rv-v">{e.raw}</span>
 							<span class="rv-note">{e.reason}</span>
-							<button class="rv-btn" onclick={() => ctx.toSource(e.line)}>Line {e.line}</button>
+							<button class="rv-btn" onclick={() => ctx.toSource(e.line)}
+								>{m.viewers_devops_line({ line: e.line })}</button
+							>
 						</div>
 					{/if}
 				{:else}
-					<div class="rv-empty">{q ? "No variables match" : "No variables yet"}</div>
+					<div class="rv-empty">
+						{q ? m.viewers_devops_env_view_no_match() : m.viewers_devops_env_view_none_yet()}
+					</div>
 				{/each}
 			</div>
 		</section>

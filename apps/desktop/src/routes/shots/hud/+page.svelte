@@ -21,6 +21,8 @@
 		type KeyAction,
 		MIN_TRIM_SECS,
 	} from "#lib/shots/record.ts";
+	import { m } from "#lib/i18n/m.ts";
+	import { kbd } from "#lib/keys.ts";
 
 	let st = $state<HudState>({ phase: "idle", elapsedMs: 0, maxMs: 0, kind: "recording" });
 	let failure = $state<string | null>(null);
@@ -117,18 +119,22 @@
 	});
 </script>
 
-<svelte:head><title>Atlas Recording</title></svelte:head>
+<svelte:head><title>{m.capture_hud_page_atlas_recording()}</title></svelte:head>
 
 <div class="hud" data-phase={st.phase} data-tone={v.tone} data-tauri-drag-region>
 	{#if st.phase === "countdown" && v.digit !== null}
-		<div class="count" aria-live="polite" aria-label="Recording starts in {v.digit}">
+		<div
+			class="count"
+			aria-live="polite"
+			aria-label={m.capture_hud_page_recording_starts_in_digit({ digit: v.digit })}
+		>
 			<span class="digit" aria-hidden="true">{v.digit}</span>
-			<button class="x" aria-label="Cancel recording" onclick={() => act("cancel")}>
+			<button class="x" aria-label={m.capture_hud_page_cancel_recording()} onclick={() => act("cancel")}>
 				<X size={14} aria-hidden="true" />
 			</button>
 		</div>
 	{:else if v.showTrim && st.trim}
-		<div class="trim" role="group" aria-label="Trim the recording">
+		<div class="trim" role="group" aria-label={m.capture_hud_page_trim_the_recording()}>
 			<div
 				class="track"
 				bind:this={track}
@@ -153,7 +159,7 @@
 					class="handle"
 					role="slider"
 					tabindex="0"
-					aria-label="Trim start"
+					aria-label={m.capture_hud_page_trim_start()}
 					aria-valuemin={0}
 					aria-valuemax={Math.max(0, range[1] - MIN_TRIM_SECS)}
 					aria-valuenow={range[0]}
@@ -166,7 +172,7 @@
 					class="handle"
 					role="slider"
 					tabindex="0"
-					aria-label="Trim end"
+					aria-label={m.capture_hud_page_trim_end()}
 					aria-valuemin={range[0] + MIN_TRIM_SECS}
 					aria-valuemax={secs}
 					aria-valuenow={range[1]}
@@ -177,45 +183,67 @@
 				></div>
 			</div>
 			<p class="times" aria-live="polite">
-				{formatSecs(range[0])} – {formatSecs(range[1])} · keeps {formatSecs(range[1] - range[0])}
+				{m.capture_hud_page_trim_range({
+					from: formatSecs(range[0]),
+					to: formatSecs(range[1]),
+					length: formatSecs(range[1] - range[0]),
+				})}
 			</p>
 			{#if failure}<p class="note" role="alert">{failure}</p>{/if}
 			{#each v.notes as note (note)}<p class="note" role="status">{note}</p>{/each}
 			<div class="btns">
-				<button class="b text" onclick={discard}>Discard</button>
-				<button class="b text primary" onclick={() => act("save")}>Save</button>
+				<button class="b text" onclick={discard}>{m.capture_discard()}</button>
+				<button class="b text primary" onclick={() => act("save")}>{m.common_action_save()}</button>
 			</div>
 		</div>
 	{:else if st.phase !== "idle"}
-		<div class="pill" role="group" aria-label="Recording controls" aria-busy={v.progress}>
+		<div
+			class="pill"
+			role="group"
+			aria-label={m.capture_hud_page_recording_controls()}
+			aria-busy={v.progress}
+		>
 			<div class="top">
 				<span class="dot" data-pulse={v.pulse} aria-hidden="true"></span>
 				<span class="timer" aria-label={v.label}>{v.timer}</span>
 			</div>
 			<p class="label" aria-live="polite" title={failure ?? v.label}>{failure ?? v.label}</p>
-			{#if v.estimate}<p class="est" aria-label="Estimated file size">{v.estimate}</p>{/if}
+			{#if v.estimate}<p class="est" aria-label={m.capture_hud_page_estimated_file_size()}>
+					{v.estimate}
+				</p>{/if}
 			{#if v.remaining}<p class="left" role="status">{v.remaining}</p>{/if}
-			{#if v.progress}<div class="bar" role="progressbar" aria-label="Saving"></div>{/if}
+			{#if v.progress}<div class="bar" role="progressbar" aria-label={m.common_state_saving()}></div>{/if}
 			{#if v.encode !== null}
-				<progress class="enc" aria-label="Encoding GIF" max="1" value={v.encode}></progress>
-				<p class="hint">Esc to cancel</p>
+				<progress class="enc" aria-label={m.capture_hud_page_encoding_gif()} max="1" value={v.encode}
+				></progress>
+				<p class="hint">{m.capture_hud_page_key_to_cancel({ key: kbd("escape") })}</p>
 			{/if}
 			{#each v.notes as note (note)}<p class="note" role="status">{note}</p>{/each}
 			<div class="btns">
 				{#if v.showPause}
-					<button class="b" aria-label="Pause recording" disabled={v.disabled} onclick={() => act("pause")}>
+					<button
+						class="b"
+						aria-label={m.capture_hud_page_pause_recording()}
+						disabled={v.disabled}
+						onclick={() => act("pause")}
+					>
 						<Pause size={14} aria-hidden="true" />
 					</button>
 				{/if}
 				{#if v.showResume}
-					<button class="b" aria-label="Resume recording" disabled={v.disabled} onclick={() => act("resume")}>
+					<button
+						class="b"
+						aria-label={m.capture_hud_page_resume_recording()}
+						disabled={v.disabled}
+						onclick={() => act("resume")}
+					>
 						<Play size={14} aria-hidden="true" />
 					</button>
 				{/if}
 				{#if v.showStop}
 					<button
 						class="b stop"
-						aria-label="Stop recording"
+						aria-label={m.capture_hud_page_stop_recording()}
 						disabled={v.disabled}
 						onclick={() => act("stop")}
 					>
@@ -223,15 +251,20 @@
 					</button>
 				{/if}
 				{#if v.showCancel}
-					<button class="b" aria-label="Cancel recording" disabled={v.disabled} onclick={() => act("cancel")}>
+					<button
+						class="b"
+						aria-label={m.capture_hud_page_cancel_recording()}
+						disabled={v.disabled}
+						onclick={() => act("cancel")}
+					>
 						<X size={14} aria-hidden="true" />
 					</button>
 				{/if}
 				{#if v.showOpen}
-					<button class="b text" onclick={() => act("open")}>Open</button>
+					<button class="b text" onclick={() => act("open")}>{m.common_action_open()}</button>
 				{/if}
 				{#if v.showClose}
-					<button class="b text" onclick={() => act("close")}>Close</button>
+					<button class="b text" onclick={() => act("close")}>{m.common_action_close()}</button>
 				{/if}
 			</div>
 		</div>

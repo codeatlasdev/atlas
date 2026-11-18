@@ -6,6 +6,7 @@
 	 */
 	import { Button } from "@codeatlasdev/ui";
 	import { imagesFromClipboard, type PendingImage } from "#lib/crew/attachments.ts";
+	import { m } from "#lib/i18n/m.ts";
 
 	interface Props {
 		images: PendingImage[];
@@ -32,13 +33,17 @@
 	}
 </script>
 
-<div class="action-images" onpaste={pasted} role="group" aria-label="Screenshots for the retry">
+<div class="action-images" onpaste={pasted} role="group" aria-label={m.crew_chat_action_images_group()}>
 	{#if images.length}
 		<ul class="pending">
 			{#each images as im, i (im.name + i)}
 				<li>
 					<span class="name">{im.name}</span>
-					<button class="rm" aria-label={`Remove ${im.name}`} {disabled} onclick={() => onremove(i)}>×</button
+					<button
+						class="rm"
+						aria-label={m.crew_chat_composer_remove_image({ name: im.name })}
+						{disabled}
+						onclick={() => onremove(i)}>×</button
 					>
 				</li>
 			{/each}
@@ -52,7 +57,9 @@
 		hidden
 		onchange={picked}
 	/>
-	<Button variant="ghost" size="sm" {disabled} onclick={() => picker?.click()}>Add a screenshot</Button>
+	<Button variant="ghost" size="sm" {disabled} onclick={() => picker?.click()}
+		>{m.crew_chat_action_images_add_a_screenshot()}</Button
+	>
 </div>
 
 <style>

@@ -1,0 +1,17 @@
+{
+	"crew_onboarding_step_connect_body": "A Linux server you can SSH into, with systemd and sudo. Setup takes about two minutes.",
+	"crew_onboarding_step_connect_headline": "Add a crew server",
+	"crew_onboarding_step_engine_body": "Pick the AI your crewmate will use. Click one to install it on the server and sign in; it takes about a minute and runs on your own subscription or API key.",
+	"crew_onboarding_step_engine_headline": "Choose an engine",
+	"crew_onboarding_step_how_body": "This is what a crewmate does while you're away.",
+	"crew_onboarding_step_how_headline": "One night with your crew",
+	"crew_onboarding_step_how_label": "Step 2 of 2",
+	"crew_onboarding_step_intro_body": "Crewmates are AI agents that work on a server you own.",
+	"crew_onboarding_step_intro_bullet_asks": "Asks you before anything risky.",
+	"crew_onboarding_step_intro_bullet_server": "Runs on your own Linux server. No account.",
+	"crew_onboarding_step_intro_bullet_sleep": "Keeps working while this computer sleeps.",
+	"crew_onboarding_step_intro_headline": "Meet your Atlas Crew",
+	"crew_onboarding_step_intro_label": "Step 1 of 2",
+	"crew_onboarding_step_ready_body": "Open a chat to send your first task. You can add more crewmates and customize them from the workspace.",
+	"crew_onboarding_step_ready_headline": "Your first crewmate is ready"
+}

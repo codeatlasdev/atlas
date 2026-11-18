@@ -43,6 +43,8 @@ impl McpClient {
     /// [`McpClient::spawn_with`] with extra environment (an agent host's session variables).
     fn spawn_with_env(args: &[&str], cwd: Option<&Path>, envs: &[(&str, &str)]) -> Self {
         let mut cmd = Command::new(BIN);
+        // The text of these tests is English whatever language the machine is set to.
+        cmd.env("ATLAS_LANG", "en");
         cmd.args(args)
             .envs(envs.iter().copied())
             .stdin(Stdio::piped())
@@ -204,6 +206,7 @@ impl Headless {
         let out_path = out_dir.path().join("stdout.txt");
         let out = std::fs::File::create(&out_path).unwrap();
         let child = Command::new(BIN)
+            .env("ATLAS_LANG", "en")
             .args(["dev", "--headless", "--dir", root.to_str().unwrap()])
             .stdin(Stdio::null())
             .stdout(out.try_clone().unwrap())
@@ -1413,6 +1416,7 @@ fn second_headless_instance_refuses_and_leaves_first_working() {
     let p = project();
     let (_h, mut c) = start_running(&p, &["web", "ticker"]);
     let out = Command::new(BIN)
+        .env("ATLAS_LANG", "en")
         .args(["dev", "--headless", "--dir", p.root().to_str().unwrap()])
         .stdin(Stdio::null())
         .output()

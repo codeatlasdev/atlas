@@ -2,6 +2,7 @@
 //! scrollbar, follow chip and click targets.
 
 use super::*;
+use atlas_i18n::t;
 
 /// The window of rows a render draws, over an index + cache pair.
 pub struct Source<'a> {
@@ -74,7 +75,7 @@ pub fn render(
         });
         clicks.push(area, Target::Wheel(Wheel::Logs));
         if pane.narrowed {
-            let msg = format!("0 matches in {}", pane.tab);
+            let msg = t!("tui_runtime_widgets_log_no_matches", tab = pane.tab);
             let w = (msg.chars().count() as u16).min(area.width);
             let x = area.x + area.width.saturating_sub(w) / 2;
             let y = area.y + area.height / 2;
@@ -144,7 +145,14 @@ pub fn render(
     // Paused chip on the last row: `↓ N new · G`, clickable → ScrollToBottom.
     if scroll > 0 {
         let label = if pane.new_lines > 0 {
-            format!(" ↓ {} new · G ", pane.new_lines)
+            format!(
+                " {} ",
+                t!(
+                    "tui_runtime_widgets_log_new_lines",
+                    count = pane.new_lines,
+                    key = "G"
+                )
+            )
         } else {
             " ↓ G ".to_string()
         };

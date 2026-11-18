@@ -347,6 +347,7 @@ where
             Ok(Some(())) => {}
             Ok(None) => break,
             Err(e) => {
+                // i18n-ignore: the MCP server's error is read by an agent, never translated
                 result = Err(anyhow::anyhow!(
                     "stdin line exceeds {} bytes or failed to read: {e}",
                     crate::control::MAX_LINE_BYTES

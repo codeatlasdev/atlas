@@ -2,6 +2,7 @@
 //! new-lines-while-paused count and per-tab activity / error badges.
 use crate::runtime::logs::LogLevel;
 use crate::tui::widgets::log_viewer;
+use atlas_i18n::t;
 
 use super::super::{App, LevelFilter, ToastVariant};
 use super::TabBadge;
@@ -36,9 +37,9 @@ impl App {
         self.save_ui_state();
         self.set_toast(
             if self.logs.log_wrap {
-                "Wrap on"
+                t!("tui_runtime_app_toast_wrap_on")
             } else {
-                "Wrap off — ←/→ pan"
+                t!("tui_runtime_app_toast_wrap_off")
             },
             ToastVariant::Info,
         );

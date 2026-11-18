@@ -14,8 +14,9 @@
 //! it with this app (`atlas_host::upgrade::decide`) and acts: live `upgrade`, silent restart
 //! of an empty host, or - when terminals run and features are missing - ask the user. The
 //! result is a [`HostState`], kept in the hub and pushed as `host://status` (camelCase);
-//! `host://prompt {ptys, reason}` asks once per daemon pid, `host://toast {kind, text}` reports
-//! a finished upgrade (`warning`: the event stream lagged and the terminals were resynced). Commands: `host_status`, `host_restart`, `host_postpone`,
+//! `host://prompt {ptys, reason}` asks once per daemon pid, `host://toast {kind, text, code, args}` reports
+//! a finished upgrade (`warning`: the event stream lagged and the terminals were resynced), `host://error` carries
+//! `{message, code?, args?}` (see [`HostFail`]). Commands: `host_status`, `host_restart`, `host_postpone`,
 //! `host_restart_when_idle`.
 
 use std::collections::HashMap;
@@ -23,10 +24,9 @@ use std::path::Path;
 use std::sync::Arc;
 use std::time::Duration;
 
+use atlas_core::progress::Coded;
 use atlas_host::HostClient;
-use atlas_host::upgrade::{
-    Choice, Decision, caps_of, decide, live_ptys, missing_caps, skew_reason,
-};
+use atlas_host::upgrade::{Choice, Decision, caps_of, decide, live_ptys, missing_caps, skew};
 use parking_lot::Mutex;
 use serde::Serialize;
 use serde_json::{Value, json};
@@ -77,8 +77,12 @@ pub struct HostState {
     pub skew: &'static str,
     /// Running terminals only.
     pub ptys: Vec<HostPty>,
-    /// The sentence from `skew_reason`; empty when current.
+    /// The English sentence of [`skew`]; empty when current. Old webviews show it as it is.
     pub reason: String,
+    /// The code of that sentence (`hostd.older`) and the values behind it; both empty when current. A webview
+    /// writes its own sentence from them and falls back to `reason`.
+    pub reason_code: String,
+    pub reason_args: Value,
     /// The user chose "Later" this session.
     pub deferred: bool,
     /// The user chose "Restart when idle"; the host restarts the moment no terminal runs.
@@ -209,20 +213,119 @@ pub struct HostHub {
     fake: Mutex<Option<Fake>>,
 }
 
-/// Prefix of every "the local terminal host cannot be reached" error: the frontend matches it to
-/// collapse them into one toast with a "Restart terminal host" action instead of one per caller.
-pub const UNREACHABLE: &str = "Terminal host not reachable";
+/// The failures and notices of the terminal host that the webview shows, each as a stable `code` plus `args` and an
+/// English `message` (`atlas_core::progress::Coded`): the webview renders its own sentence from its catalog
+/// (`apps/desktop/src/lib/hostText.ts`) and shows `message` for a code it does not know. A new code is added here, to
+/// [`CODES`], to the webview's table and to the fixture test in the same change.
+///
+/// | code | args | where |
+/// |---|---|---|
+/// | `hostd.older` | `version`, `app_version`, `missing` | `host://status` (`reasonCode`, `reasonArgs`) |
+/// | `hostd.unreachable` | `why` (optional, the redacted last error) | `host://error`, a rejected `host_call` |
+/// | `hostd.upgrade_failed` | `error` (the cause, English) | `host://error` |
+/// | `hostd.remote_unreachable` | `host`, `why` | a rejected `host_call` |
+/// | `hostd.remote_connecting` | `host` | a rejected `host_call` |
+/// | `hostd.upgraded`, `hostd.events_dropped` | none | `host://toast` |
+/// | `hostd.closed`, `hostd.disconnected`, `hostd.start_failed`, `hostd.refused`, `hostd.cli_not_found` | see `atlas_host::client::CODES` | `host://error`, a rejected `host_call` |
+pub const UNREACHABLE: &str = "hostd.unreachable";
+pub const UPGRADE_FAILED: &str = "hostd.upgrade_failed";
+pub const REMOTE_UNREACHABLE: &str = "hostd.remote_unreachable";
+pub const REMOTE_CONNECTING: &str = "hostd.remote_connecting";
+pub const UPGRADED: &str = "hostd.upgraded";
+pub const EVENTS_DROPPED: &str = "hostd.events_dropped";
 
-/// What the person reads: what happened and what to do. `why` is the connect loop's last error
+/// Every code of this module, the skew's and the client's: what the webview must have a message for.
+#[cfg(test)]
+const CODES: &[&str] = &[
+    UNREACHABLE,
+    UPGRADE_FAILED,
+    REMOTE_UNREACHABLE,
+    REMOTE_CONNECTING,
+    UPGRADED,
+    EVENTS_DROPPED,
+    atlas_host::upgrade::SKEW_CODE,
+];
+
+/// A call to a terminal host that failed, as the webview receives it from `host_call` and `host_pty_list`: a plain
+/// string for an error of hostd or of the OS (shown as it is, what every rejection was before), an object
+/// `{code, args, message}` for a failure the webview writes its own sentence for.
+#[derive(Debug, Clone, PartialEq)]
+pub enum HostFail {
+    Text(String),
+    Coded(Coded),
+}
+
+impl HostFail {
+    fn coded(code: &'static str, args: Value, message: impl Into<String>) -> Self {
+        Self::Coded(Coded::new(code, args, message))
+    }
+
+    /// The failure behind `e`: the first [`Coded`] of its chain gives code and args, the whole chain the English.
+    fn from_error(e: &atlas_host::client::CallError) -> Self {
+        match e.chain().find_map(|c| c.downcast_ref::<Coded>()) {
+            Some(c) => Self::Coded(Coded {
+                message: format!("{e:#}"),
+                ..c.clone()
+            }),
+            None => Self::Text(format!("{e:#}")),
+        }
+    }
+
+    /// The event payload of `host://error`: always an object, `code` and `args` only when coded.
+    fn payload(&self) -> Value {
+        match self {
+            Self::Text(m) => json!({ "message": m }),
+            Self::Coded(c) => c.wire(),
+        }
+    }
+}
+
+impl std::fmt::Display for HostFail {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        match self {
+            Self::Text(m) => f.write_str(m),
+            Self::Coded(c) => f.write_str(&c.message),
+        }
+    }
+}
+
+impl serde::Serialize for HostFail {
+    fn serialize<S: serde::Serializer>(&self, s: S) -> Result<S::Ok, S::Error> {
+        match self {
+            Self::Text(m) => s.serialize_str(m),
+            Self::Coded(c) => c.wire().serialize(s),
+        }
+    }
+}
+
+impl From<HostFail> for String {
+    fn from(f: HostFail) -> String {
+        f.to_string()
+    }
+}
+
+impl From<String> for HostFail {
+    fn from(m: String) -> Self {
+        Self::Text(m)
+    }
+}
+
+impl From<&str> for HostFail {
+    fn from(m: &str) -> Self {
+        Self::Text(m.to_string())
+    }
+}
+
+/// The local terminal host cannot be reached: what happened and what to do. `why` is the connect loop's last error
 /// (already redacted); the log path stays out of it, "Report" carries the log tail instead.
-fn unreachable_message(why: Option<&str>) -> String {
-    let mut m = format!(
-        "{UNREACHABLE}. Terminals cannot start or reconnect until it is back. Use Restart terminal host, or Report if it keeps happening."
-    );
-    if let Some(w) = why.filter(|w| !w.is_empty()) {
+fn unreachable(why: Option<&str>) -> HostFail {
+    let why = why.filter(|w| !w.is_empty());
+    let mut m = "Terminal host not reachable. Terminals cannot start or reconnect until it is back. Use Restart terminal host, or Report if it keeps happening.".to_string();
+    if let Some(w) = why {
         m.push_str(&format!(" ({w})"));
     }
-    m
+    let args = why.map_or_else(|| json!({}), |w| json!({ "why": w }));
+    HostFail::coded(UNREACHABLE, args, m)
 }
 
 /// Host of the registry entry whose root contains `path` (longest match).
@@ -240,13 +343,26 @@ impl HostHub {
     /// Connected client for `host`; the local one is waited for (startup), remote
     /// ones are connected on demand.
     pub async fn client(&self, host: &str) -> Result<HostClient, String> {
+        self.client_coded(host).await.map_err(String::from)
+    }
+
+    /// [`client`](Self::client) with the failure's code, for the commands whose rejection the webview renders.
+    pub async fn client_coded(&self, host: &str) -> Result<HostClient, HostFail> {
         if host != LOCAL {
             if let Some(c) = self.clients.read().await.get(host).cloned() {
                 return Ok(c);
             }
             return Err(match self.remote_errors.lock().get(host) {
-                Some(why) => format!("{host} is not reachable: {why}"),
-                None => format!("{host} is still connecting; try again in a few seconds"),
+                Some(why) => HostFail::coded(
+                    REMOTE_UNREACHABLE,
+                    json!({"host": host, "why": why}),
+                    format!("{host} is not reachable: {why}"),
+                ),
+                None => HostFail::coded(
+                    REMOTE_CONNECTING,
+                    json!({"host": host}),
+                    format!("{host} is still connecting; try again in a few seconds"),
+                ),
             });
         }
         let deadline = tokio::time::Instant::now() + Duration::from_secs(10);
@@ -261,7 +377,7 @@ impl HostHub {
             }
             if tokio::time::timeout_at(deadline, woken).await.is_err() {
                 let why = self.ctl.lock().last_error.clone();
-                return Err(unreachable_message(why.as_deref()));
+                return Err(unreachable(why.as_deref()));
             }
         }
     }
@@ -307,7 +423,12 @@ impl HostHub {
 
     /// Run a hostd command on the routed host. Local `exec` gets the user's
     /// login-shell env (PATH for git/gh/atlas); remote hosts use their own.
-    pub async fn call(&self, cmd: &str, mut args: Value) -> Result<Value, String> {
+    pub async fn call(&self, cmd: &str, args: Value) -> Result<Value, String> {
+        self.call_coded(cmd, args).await.map_err(String::from)
+    }
+
+    /// [`call`](Self::call) with the failure's code, for `host_call`: the webview renders a coded rejection itself.
+    pub async fn call_coded(&self, cmd: &str, mut args: Value) -> Result<Value, HostFail> {
         let host = self.route(&args);
         if let Some(o) = args.as_object_mut() {
             o.remove("host");
@@ -320,11 +441,11 @@ impl HostHub {
             args["env"] = Value::Object(env);
         }
         let res = self
-            .client(&host)
+            .client_coded(&host)
             .await?
             .call(cmd, args)
             .await
-            .map_err(|e| format!("{e:#}"))?;
+            .map_err(|e| HostFail::from_error(&e))?;
         if cmd == "pty_create"
             && let Some(p) = res["pty"].as_str()
         {
@@ -523,6 +644,35 @@ fn forward(app: &AppHandle, ev: &Value) {
     }
 }
 
+/// The payload of `host://toast`: `kind` (`success` | `warning`), the English `text` (an old webview shows it as it
+/// is), and the `code` and `args` a webview writes its own sentence from.
+fn toast(kind: &str, code: &'static str, text: &str) -> Value {
+    json!({"kind": kind, "text": text, "code": code, "args": {}})
+}
+
+/// The upgrade of the running daemon finished: the terminals are on the new host.
+fn upgraded_toast() -> Value {
+    toast("success", UPGRADED, "Terminal host updated")
+}
+
+/// The event stream of a host lagged and was resynced.
+fn events_dropped_toast() -> Value {
+    toast(
+        "warning",
+        EVENTS_DROPPED,
+        "Terminal events were dropped under load. Terminals were resynced.",
+    )
+}
+
+/// The live upgrade failed; `e` is hostd's answer. The old host keeps running.
+fn upgrade_failed(e: &atlas_host::client::CallError) -> HostFail {
+    HostFail::coded(
+        UPGRADE_FAILED,
+        json!({"error": format!("{e:#}")}),
+        format!("Terminal host upgrade failed ({e:#}). Terminals keep running on the old host."),
+    )
+}
+
 /// A host that is connected but does not answer (or whose events cannot be trusted any more): one incident per
 /// outage, and the webview's "Terminal host not reachable" toast with its restart action. `why` is redacted here.
 fn report_unreachable(app: &AppHandle, hub: &HostHub, host: &str, why: &str) {
@@ -535,7 +685,7 @@ fn report_unreachable(app: &AppHandle, hub: &HostHub, host: &str, why: &str) {
     if first {
         crate::diag::incident("unreachable", &why);
     }
-    let _ = app.emit("host://error", unreachable_message(Some(&why)));
+    let _ = app.emit("host://error", unreachable(Some(&why)).payload());
 }
 
 /// What a (re)connect and a lag of the event stream both do: re-learn what the daemon runs (a `pty_exit` among
@@ -626,10 +776,7 @@ async fn lag_resync(app: &AppHandle, hub: &HostHub, host: &str, c: &HostClient, 
         "events-lagged",
         &format!("host {host}: {lost} events were dropped; terminals were resynced"),
     );
-    let _ = app.emit(
-        "host://toast",
-        json!({"kind": "warning", "text": "Terminal events were dropped under load. Terminals were resynced."}),
-    );
+    let _ = app.emit("host://toast", events_dropped_toast());
     resync(app, hub, host, c, false).await
 }
 
@@ -747,13 +894,14 @@ fn without_upgrade(info: &Value) -> Value {
 /// (the daemon cannot be brought current without ending terminals); `Passive` keeps the
 /// status `current` so nothing nags, but still carries the reason for the calm chip.
 fn state_for(info: &Value, ptys: Vec<HostPty>, decision: Decision, choice: Choice) -> HostState {
-    let (status, skew) = match decision {
+    let (status, drift) = match decision {
         Decision::Current => ("current", "none"),
         Decision::Upgrade => ("upgrading", "upgradable"),
         Decision::RestartNow => ("restarting", "needsRestart"),
         Decision::Passive => ("current", "needsRestart"),
         Decision::Prompt | Decision::WaitIdle | Decision::Deferred => ("outdated", "needsRestart"),
     };
+    let older = skew(info, APP_VERSION);
     HostState {
         status,
         version: info["version"].as_str().map(str::to_string),
@@ -762,9 +910,11 @@ fn state_for(info: &Value, ptys: Vec<HostPty>, decision: Decision, choice: Choic
             .then(|| info["proto"].as_u64().unwrap_or(1)),
         caps: caps_of(info).into_iter().map(str::to_string).collect(),
         app_version: APP_VERSION.to_string(),
-        skew,
+        skew: drift,
         ptys,
-        reason: skew_reason(info, APP_VERSION, &format!("Atlas {APP_VERSION}")).unwrap_or_default(),
+        reason: older.as_ref().map(|c| c.message.clone()).unwrap_or_default(),
+        reason_code: older.as_ref().map(|c| c.code.to_string()).unwrap_or_default(),
+        reason_args: older.map_or_else(|| json!({}), |c| Value::Object(c.args)),
         deferred: choice == Choice::Later && decision == Decision::Deferred,
         idle_armed: decision == Decision::WaitIdle,
         missing: missing_caps(info).into_iter().map(str::to_string).collect(),
@@ -846,10 +996,7 @@ async fn reconcile(app: &AppHandle, hub: &HostHub, c: &HostClient, bin: &Path) -
             Err(e) => {
                 hub.ctl.lock().withdraw_expected_exit();
                 crate::diag::incident("upgrade-failed", &format!("{e:#}"));
-                let _ = app.emit(
-                    "host://error",
-                    format!("Terminal host upgrade failed ({e:#}). Terminals keep running on the old host."),
-                );
+                let _ = app.emit("host://error", upgrade_failed(&e).payload());
                 // The old host keeps running: decide again as for one that cannot hand over.
                 decision = plan(&info, ptys.len(), choice, hub.ctl.lock().attempted);
             }
@@ -918,10 +1065,7 @@ fn verify_upgrade(app: &AppHandle, hub: &HostHub) {
     drop(g);
     if done {
         hub.ctl.lock().attempted = false;
-        let _ = app.emit(
-            "host://toast",
-            json!({"kind": "success", "text": "Terminal host updated"}),
-        );
+        let _ = app.emit("host://toast", upgraded_toast());
     }
 }
 
@@ -1028,15 +1172,16 @@ pub fn start(app: &AppHandle) {
         let mut backoff = Duration::from_secs(1);
         loop {
             // The first call may wait for the login-shell probe (rc files): never on the async executor.
-            let bin = match tauri::async_runtime::spawn_blocking(crate::cmds::atlas_bin)
+            let bin = match tauri::async_runtime::spawn_blocking(crate::cmds::atlas_bin_checked)
                 .await
-                .map_err(|e| e.to_string())
+                .map_err(|e| atlas_host::client::CallError::msg(e.to_string()))
                 .and_then(|r| r)
             {
                 Ok(b) => b,
                 Err(e) => {
-                    crate::diag::incident("start-failed", &e);
-                    let _ = app.emit("host://error", e);
+                    let fail = HostFail::from_error(&e);
+                    crate::diag::incident("start-failed", &fail.to_string());
+                    let _ = app.emit("host://error", fail.payload());
                     tokio::time::sleep(Duration::from_secs(10)).await;
                     continue;
                 }
@@ -1171,8 +1316,8 @@ impl HostState {
 /// asked would read as "every terminal is gone" (1.5.0-alpha.5), so that is an error and the
 /// frontend keeps what it knew. A remote that fails is skipped; its tabs stay as they were.
 fn merge_pty_lists(
-    replies: Vec<(String, Option<Result<Value, String>>)>,
-) -> Result<Vec<Value>, String> {
+    replies: Vec<(String, Option<Result<Value, HostFail>>)>,
+) -> Result<Vec<Value>, HostFail> {
     let mut out = Vec::new();
     let mut local_answered = false;
     for (h, reply) in replies {
@@ -1191,13 +1336,13 @@ fn merge_pty_lists(
     if local_answered {
         Ok(out)
     } else {
-        Err(unreachable_message(None))
+        Err(unreachable(None))
     }
 }
 
 /// `pty_list` of every connected host, merged (`host` added to each item).
 #[tauri::command]
-pub async fn host_pty_list(hub: tauri::State<'_, Arc<HostHub>>) -> Result<Vec<Value>, String> {
+pub async fn host_pty_list(hub: tauri::State<'_, Arc<HostHub>>) -> Result<Vec<Value>, HostFail> {
     let mut hosts: Vec<(String, Option<HostClient>)> = hub
         .clients
         .read()
@@ -1214,7 +1359,7 @@ pub async fn host_pty_list(hub: tauri::State<'_, Arc<HostHub>>) -> Result<Vec<Va
             Some(c) => Some(
                 c.call("pty_list", json!({}))
                     .await
-                    .map_err(|e| format!("{e:#}")),
+                    .map_err(|e| HostFail::from_error(&e)),
             ),
             None => None,
         };
@@ -1334,7 +1479,7 @@ pub async fn host_call(
     hub: tauri::State<'_, Arc<HostHub>>,
     cmd: String,
     args: Option<Value>,
-) -> Result<Value, String> {
+) -> Result<Value, HostFail> {
     if cmd == "shutdown" {
         return Err("shutdown is not allowed from the app".into());
     }
@@ -1342,7 +1487,7 @@ pub async fn host_call(
     let pty = (cmd == "pty_attach")
         .then(|| args["pty"].as_str().map(str::to_owned))
         .flatten();
-    let out = hub.call(&cmd, args).await?;
+    let out = hub.call_coded(&cmd, args).await?;
     if let Some(ev) = pty.and_then(|p| atlas_host::protocol::title_event(&p, &out)) {
         let _ = app.emit("host://event", ev);
     }
@@ -1661,17 +1806,19 @@ mod tests {
         );
         // Local not connected at all.
         let e = merge_pty_lists(vec![]).unwrap_err();
-        assert!(e.contains("not reachable"), "{e}");
+        assert!(e.to_string().contains("not reachable"), "{e}");
+        assert!(matches!(&e, HostFail::Coded(c) if c.code == UNREACHABLE), "{e:?}");
         // Local connected but the call failed.
-        let failed: Option<Result<Value, String>> = Some(Err("hostd disconnected".into()));
+        let failed: Option<Result<Value, HostFail>> =
+            Some(Err(HostFail::Text("hostd disconnected".into())));
         let e = merge_pty_lists(vec![(LOCAL.into(), failed)]).unwrap_err();
-        assert!(e.contains("hostd disconnected"), "{e}");
+        assert!(e.to_string().contains("hostd disconnected"), "{e}");
     }
 
     #[test]
     fn a_remote_that_fails_does_not_hide_the_local_terminals() {
         let local = Some(Ok(json!({"ptys": [{"pty": "a"}]})));
-        let remote: Option<Result<Value, String>> = Some(Err("timeout".into()));
+        let remote: Option<Result<Value, HostFail>> = Some(Err(HostFail::Text("timeout".into())));
         let out = merge_pty_lists(vec![(LOCAL.into(), local), ("ssh:box".into(), remote)]).unwrap();
         assert_eq!(out.len(), 1);
         assert_eq!(out[0]["host"], LOCAL);
@@ -1681,11 +1828,153 @@ mod tests {
     /// The text of the toast: what happened and what to do, never a path to a log.
     #[test]
     fn the_unreachable_message_says_what_to_do_and_names_no_log_path() {
-        let m = unreachable_message(None);
+        let m = unreachable(None).to_string();
         assert!(m.contains("Restart terminal host"), "{m}");
         assert!(!m.contains("hostd.log") && !m.contains('~'), "{m}");
-        let m = unreachable_message(Some("socket in use"));
+        let m = unreachable(Some("socket in use")).to_string();
         assert!(m.contains("socket in use"), "{m}");
+    }
+
+    /// A rejection of `host_call` is a plain string for what every rejection was before (hostd's or the OS's own
+    /// text) and an object `{code, args, message}` only for a failure the webview writes its own sentence for.
+    #[test]
+    fn a_rejection_is_a_string_unless_it_has_a_code() {
+        let text = serde_json::to_value(HostFail::Text("no such file".into())).unwrap();
+        assert_eq!(text, json!("no such file"));
+        let coded = serde_json::to_value(unreachable(Some("socket in use"))).unwrap();
+        assert_eq!(coded["code"], UNREACHABLE);
+        assert_eq!(coded["args"], json!({"why": "socket in use"}));
+        assert!(coded["message"].as_str().unwrap().contains("(socket in use)"));
+        // `?` into a command that returns `String` keeps the English every caller printed.
+        let s: String = unreachable(None).into();
+        assert!(s.starts_with("Terminal host not reachable."), "{s}");
+    }
+
+    /// A client error carries its code through the chain `hub.call` wraps it in; one without a code stays text.
+    #[test]
+    fn a_coded_client_error_keeps_its_code_and_the_whole_english_chain() {
+        let e = atlas_host::client::CallError::new(Coded::new(
+            atlas_host::client::DISCONNECTED,
+            json!({}),
+            "hostd disconnected",
+        ))
+        .context("while listing");
+        let f = HostFail::from_error(&e);
+        assert!(
+            matches!(&f, HostFail::Coded(c) if c.code == "hostd.disconnected"),
+            "{f:?}"
+        );
+        assert_eq!(f.to_string(), "while listing: hostd disconnected");
+        let plain = HostFail::from_error(&atlas_host::client::CallError::msg("boom"));
+        assert_eq!(plain, HostFail::Text("boom".into()));
+    }
+
+    fn older_host() -> Value {
+        json!({"version": "0.6.2"})
+    }
+
+    /// The keys a webview from before the codes reads from `host://status`, `host://toast` and a rejection are all
+    /// still there with the same types: the codes only add keys.
+    #[test]
+    fn the_new_keys_are_additive_to_what_an_older_webview_reads() {
+        let s = state_for(&older_host(), vec![], Decision::Prompt, Choice::Ask);
+        let v = serde_json::to_value(&s).unwrap();
+        let mut keys: Vec<&str> = v.as_object().unwrap().keys().map(String::as_str).collect();
+        keys.sort_unstable();
+        let before = [
+            "appVersion", "caps", "deferred", "idleArmed", "missing", "proto", "ptys", "reason", "skew", "status",
+            "version",
+        ];
+        let mut expected: Vec<&str> = before.to_vec();
+        expected.extend(["reasonArgs", "reasonCode"]);
+        expected.sort_unstable();
+        assert_eq!(keys, expected);
+        assert!(v["reason"].as_str().unwrap().starts_with("Terminal host 0.6.2 is older"));
+        let t = events_dropped_toast();
+        assert!(t["kind"].is_string() && t["text"].is_string());
+    }
+
+    /// Swaps the build's own version for a fixed one, so a release does not change the fixture.
+    fn without_the_build_version(v: &Value) -> Value {
+        serde_json::from_str(&v.to_string().replace(APP_VERSION, "9.9.9")).unwrap()
+    }
+
+    /// Contract with the webview: `apps/desktop/src/lib/__fixtures__/hostd-wire.json` is the REAL payload of every
+    /// event and rejection this module sends that carries a `code` (each built by the function the module uses),
+    /// next to the list of its codes, which `apps/desktop/src/lib/hostText.test.ts` renders from the catalog: one
+    /// message per code, or the test fails. `UPDATE_FIXTURES=1` regenerates it.
+    #[tokio::test]
+    async fn hostd_wire_json_contract() {
+        let full = ["pty_attach_raw", "upgrade", "lsp", "agents"];
+        let status = [
+            state_for(&older_host(), vec![], Decision::Prompt, Choice::Ask),
+            state_for(
+                &json!({"version": "1.0.0", "proto": 2, "caps": full}),
+                vec![],
+                Decision::Passive,
+                Choice::Ask,
+            ),
+            state_for(
+                &json!({"version": APP_VERSION, "proto": 2, "caps": full}),
+                vec![],
+                Decision::Current,
+                Choice::Ask,
+            ),
+        ];
+        let toasts = [upgraded_toast(), events_dropped_toast()];
+        let errors = [
+            unreachable(None).payload(),
+            unreachable(Some("socket in use")).payload(),
+            upgrade_failed(&atlas_host::client::CallError::msg(
+                "takeover failed; the old host keeps running: the new hostd did not connect in time",
+            ))
+            .payload(),
+            HostFail::Text("some other failure".into()).payload(),
+        ];
+        let hub = HostHub::default();
+        hub.set_remote_error("ssh:box", "connection refused");
+        let rejections = [
+            serde_json::to_value(unreachable(Some("socket in use"))).unwrap(),
+            serde_json::to_value(hub.client_coded("ssh:box").await.err().unwrap()).unwrap(),
+            serde_json::to_value(hub.client_coded("ssh:other").await.err().unwrap()).unwrap(),
+            serde_json::to_value(HostFail::Text("no such file".into())).unwrap(),
+        ];
+
+        // Every code this module declares has a sample in the fixture.
+        let seen: Vec<&str> = status
+            .iter()
+            .filter_map(|s| (!s.reason_code.is_empty()).then_some(s.reason_code.as_str()))
+            .chain(toasts.iter().filter_map(|t| t["code"].as_str()))
+            .chain(errors.iter().chain(rejections.iter()).filter_map(|e| e["code"].as_str()))
+            .collect();
+        for c in CODES {
+            assert!(seen.contains(c), "no sample for the code {c}");
+        }
+
+        let value = without_the_build_version(&json!({
+            "codes": CODES,
+            "status": status,
+            "toasts": toasts,
+            "errors": errors,
+            "rejections": rejections,
+        }));
+        let path = std::path::Path::new(env!("CARGO_MANIFEST_DIR"))
+            .join("../../apps/desktop/src/lib/__fixtures__/hostd-wire.json");
+        let mut buf = Vec::new();
+        let mut ser = serde_json::Serializer::with_formatter(
+            &mut buf,
+            serde_json::ser::PrettyFormatter::with_indent(b"\t"),
+        );
+        serde::Serialize::serialize(&value, &mut ser).unwrap();
+        let fresh = String::from_utf8(buf).unwrap() + "\n";
+        if std::env::var_os("UPDATE_FIXTURES").is_some() {
+            std::fs::write(&path, &fresh).unwrap();
+        }
+        let committed: Value = serde_json::from_str(
+            &std::fs::read_to_string(&path).expect("fixture missing: UPDATE_FIXTURES=1"),
+        )
+        .unwrap();
+        assert_eq!(committed, value, "stale fixture: re-run with UPDATE_FIXTURES=1");
     }
 
     /// Incident class: after `serve_client` returned, `start` went straight back to `ensure_local` with no pause and

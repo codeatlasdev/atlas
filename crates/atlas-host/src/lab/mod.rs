@@ -214,6 +214,7 @@ pub async fn connect(main_dir: &Path, lab_dir: &Path) -> Result<(Arc<Lab>, HostC
         _ => a == b,
     };
     if same(main_dir, lab_dir) {
+        // i18n-ignore: developer tool (`atlas hostd --lab`): English like its flags and its tests
         return Err(anyhow!(
             "lab dir must differ from the main hostd dir ({}): the lab never touches main's files",
             main_dir.display()
@@ -222,6 +223,7 @@ pub async fn connect(main_dir: &Path, lab_dir: &Path) -> Result<(Arc<Lab>, HostC
     let client = HostClient::connect_dir(main_dir, "lab")
         .await
         .map_err(|e| {
+            // i18n-ignore: developer tool (`atlas hostd --lab`): English like its flags and its tests
             anyhow!(
                 "no main atlas hostd at {} ({e:#}): start Atlas (or `atlas hostd`) first; the lab \
              follows your real hostd and does not run without it",
@@ -300,6 +302,7 @@ impl Lab {
             match seed(&h, &client).await {
                 Ok(()) => *self.client.lock() = Some(client.clone()),
                 Err(e) => {
+                    // i18n-ignore: log
                     eprintln!("hostd lab: could not seed from main: {e:#}");
                     tokio::time::sleep(pause).await;
                     continue;

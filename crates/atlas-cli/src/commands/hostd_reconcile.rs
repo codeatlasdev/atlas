@@ -111,7 +111,7 @@ fn plural(n: usize) -> String {
 
 /// The `--check` report: `None` when the host is current. Pure, so it is unit-tested.
 pub(crate) fn check_report(s: &Snapshot, bundled: &str, dir_hint: &str) -> Option<String> {
-    let reason = upgrade::skew_reason(&s.info, bundled, &format!("Atlas {bundled}"))?;
+    let reason = upgrade::skew_reason(&s.info, bundled)?;
     let version = s.info["version"].as_str().unwrap_or("unknown");
     let pid = s.info["pid"].as_u64().unwrap_or(0);
     let up = fmt_uptime(s.info["uptime_s"].as_u64().unwrap_or(0));

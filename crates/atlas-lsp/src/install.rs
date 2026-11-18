@@ -69,12 +69,29 @@ impl Launch {
     }
 }
 
+/// Every `code` of a [`Failure`]: the desktop has a message for each (a test of `manager.rs` writes the real
+/// failures to `apps/desktop/src/lib/__fixtures__/lsp-reasons.json`, which the desktop's own test reads).
+pub const CODES: &[&str] = &[
+    "no_go",
+    "no_curl",
+    "offline",
+    "unsupported_platform",
+    "install_failed",
+    "custom_not_found",
+    "crashed",
+];
+
 /// Why a server could not be resolved: machine-readable `code` for the UI, a one-line
 /// `message`, and what to do about it. Travels as the error of [`Installer::resolve`]
-/// (`anyhow::Error::downcast_ref::<Failure>()`).
+/// (`anyhow::Error::downcast_ref::<Failure>()`) and as `reason` in `lsp_open`, `lsp_status` and `lsp_catalog`.
+///
+/// `message` and `hint` are English, for logs and for a client that does not know the code. A client that does
+/// writes its own sentences from `code` and `args` (Atlas Desktop: `apps/desktop/src/lib/hostText.ts`). `args`
+/// is additive: a client from before it ignores the key, and a daemon from before it never sends it, so a client
+/// must fall back to `message` and `hint` when a key it needs is missing.
 #[derive(Debug, Clone, PartialEq, Eq, serde::Serialize)]
 pub struct Failure {
-    /// `no_go` | `no_curl` | `offline` | `unsupported_platform` | `install_failed` | `custom_not_found` | `crashed`
+    /// One of [`CODES`].
     pub code: &'static str,
     pub message: String,
     /// A sentence telling the user what to do.
@@ -83,6 +100,12 @@ pub struct Failure {
     /// A shell command that fixes it, when there is one worth copying.
     #[serde(skip_serializing_if = "Option::is_none")]
     pub command: Option<String>,
+    /// The values behind `message` and `hint`, per code: `no_go`, `no_curl`: `server`; `offline`,
+    /// `unsupported_platform`, `install_failed`: `server` and `detail` (the underlying error, English, shown as
+    /// it is); `custom_not_found`: `program` (the command the user configured); `crashed`: `server`, plus `detail`
+    /// when the server failed to start, or `cause: "repeated"` when it kept crashing. Absent when a code has none.
+    #[serde(skip_serializing_if = "serde_json::Map::is_empty")]
+    pub args: serde_json::Map<String, serde_json::Value>,
 }
 
 impl std::fmt::Display for Failure {
@@ -100,7 +123,12 @@ impl Failure {
             message: message.into(),
             hint: None,
             command: None,
+            args: serde_json::Map::new(),
         }
+    }
+    pub fn with_args(mut self, args: serde_json::Value) -> Failure {
+        self.args = args.as_object().cloned().unwrap_or_default();
+        self
     }
     pub fn hint(mut self, hint: impl Into<String>) -> Failure {
         self.hint = Some(hint.into());
@@ -119,17 +147,24 @@ impl Failure {
         }
         let text = format!("{e:#}");
         let lower = text.to_lowercase();
+        let args = serde_json::json!({"server": server});
         if lower.contains("curl not found") {
             return Failure::new(
                 "no_curl",
                 format!("Could not download {server}: curl is missing"),
             )
+            .with_args(args)
             .hint("Atlas downloads language servers with curl. Install it and open the file again.")
             .command("brew install curl");
         }
+        let args = serde_json::json!({"server": server, "detail": text});
         if lower.contains("no rust-analyzer build for") || lower.contains("no node.js build for") {
-            return Failure::new("unsupported_platform", text)
-                .hint("There is no prebuilt server for this OS/CPU. Install one yourself and set its command in Settings → Editor → Languages.");
+            return Failure::new(
+                "unsupported_platform",
+                format!("No prebuilt {server} for this system: {text}"),
+            )
+            .with_args(args)
+            .hint("There is no prebuilt server for this OS and CPU. Install one yourself and set its command in the language settings.");
         }
         let net = [
             "could not resolve",
@@ -149,13 +184,15 @@ impl Failure {
         .any(|n| lower.contains(n));
         if net {
             Failure::new("offline", format!("Could not download {server}: {text}"))
+                .with_args(args)
                 .hint("Check the internet connection and open the file again.")
         } else {
             Failure::new(
                 "install_failed",
                 format!("Installing {server} failed: {text}"),
             )
-            .hint("The install log is in ~/.atlas/lsp/logs. Retry from Settings → Editor → Languages.")
+            .with_args(args)
+            .hint("The install log is in ~/.atlas/lsp/logs. Retry from the language settings.")
         }
     }
 }
@@ -244,12 +281,13 @@ fn managed(program: PathBuf, args: Vec<String>, prepend: Vec<PathBuf>, s: &Serve
     }
 }
 
-fn no_go() -> Failure {
+pub(crate) fn no_go(server: &str) -> Failure {
     Failure::new(
         "no_go",
-        "gopls is not installed and `go` was not found to build it",
+        format!("{server} is not installed and `go` was not found to compile it"),
     )
-    .hint("Install Go, then open the file again. Atlas builds gopls with it.")
+    .with_args(serde_json::json!({"server": server}))
+    .hint(format!("Install Go, then open the file again. Atlas compiles {server} with it."))
     .command("brew install go")
 }
 
@@ -272,7 +310,7 @@ async fn resolve_uncached(base: &Path, s: &'static Server, p: &dyn Progress) -> 
         Install::GoInstall => {
             let bin = dir.join("bin").join(exe(s.bin));
             if !bin.is_file() {
-                let go = which_in("go", &extra_bin_dirs()).ok_or_else(no_go)?;
+                let go = which_in("go", &extra_bin_dirs()).ok_or_else(|| no_go(s.name))?;
                 p.set(&format!("Installing {} {}", s.name, s.version));
                 go_install(&go, &dir, s).await?;
             }
@@ -338,7 +376,7 @@ pub async fn detect(base: &Path, s: &'static Server) -> Detected {
         };
     }
     let blocked = (s.install == Install::GoInstall && which_in("go", &extra_bin_dirs()).is_none())
-        .then(no_go);
+        .then(|| no_go(s.name));
     Detected {
         source: None,
         path: None,
@@ -959,7 +997,7 @@ mod tests {
         assert_eq!(other.code, "install_failed");
         assert!(other.message.contains("sha256 mismatch"));
         // A typed Failure inside the chain is returned as is.
-        let typed = anyhow::Error::new(no_go()).context("while installing");
+        let typed = anyhow::Error::new(no_go("gopls")).context("while installing");
         let t = Failure::from_install("gopls", &typed);
         assert_eq!(
             (t.code, t.command.as_deref()),

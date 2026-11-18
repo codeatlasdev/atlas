@@ -13,6 +13,7 @@ use super::{Session, bin_path, meta_path, open_append};
 impl Session {
     pub fn write(&self, data: &[u8]) -> Result<()> {
         let mut io = self.io.lock();
+        // i18n-ignore: the text of a failed `pty_write` reply: clients ignore it or show it as the cause, nothing parses it
         let io = io.as_mut().ok_or_else(|| anyhow!("exited"))?;
         io.writer.write_all(data)?;
         io.writer.flush()?;
@@ -40,6 +41,7 @@ impl Session {
             "KILL" => libc::SIGKILL,
             "INT" => libc::SIGINT,
             "HUP" => libc::SIGHUP,
+            // i18n-ignore: the text of a failed `pty_signal` reply: clients ignore it or show it as the cause, nothing parses it
             other => return Err(anyhow!("unknown signal {other}")),
         };
         if self.exited().is_some() {
@@ -49,6 +51,7 @@ impl Session {
         if let Some(iso) = &self.iso {
             return Ok(iso.signal(s)?);
         }
+        // i18n-ignore: the text of a failed `pty_signal` reply: clients ignore it or show it as the cause, nothing parses it
         let pid = self.pid.ok_or_else(|| anyhow!("no pid"))?;
         // SAFETY: plain kill(2) on a positive pid we spawned.
         if unsafe { libc::kill(pid as libc::pid_t, s) } != 0 {
@@ -63,6 +66,7 @@ impl Session {
     #[cfg(windows)]
     pub fn signal(&self, sig: &str) -> Result<()> {
         if !matches!(sig, "TERM" | "KILL" | "INT" | "HUP") {
+            // i18n-ignore: the text of a failed `pty_signal` reply: clients ignore it or show it as the cause, nothing parses it
             return Err(anyhow!("unknown signal {sig}"));
         }
         if self.exited().is_some() {
@@ -71,6 +75,7 @@ impl Session {
         if sig == "INT" {
             return self.write(b"\x03");
         }
+        // i18n-ignore: the text of a failed `pty_signal` reply: clients ignore it or show it as the cause, nothing parses it
         let pid = self.pid.ok_or_else(|| anyhow!("no pid"))?;
         atlas_core::sys::kill_tree(pid);
         Ok(())

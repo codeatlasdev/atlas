@@ -1,0 +1,48 @@
+{
+	"hostd_wire_cli_not_found": [
+		{
+			"declarations": [
+				"input os"
+			],
+			"selectors": [
+				"os"
+			],
+			"match": {
+				"os=windows": "CLI do atlas não encontrada. Instale pelo PowerShell: {command}",
+				"os=*": "CLI do atlas não encontrada. Instale com: {command}"
+			}
+		}
+	],
+	"hostd_wire_closed": "O hostd encerrou a conexão",
+	"hostd_wire_disconnected": "A conexão com o hostd caiu",
+	"hostd_wire_events_dropped": "Alguns eventos dos terminais se perderam sob carga. Os terminais foram ressincronizados.",
+	"hostd_wire_feature_agents": "status dos agentes",
+	"hostd_wire_feature_lsp": "recursos de linguagem",
+	"hostd_wire_feature_pty_attach_raw": "renderização rápida de terminais",
+	"hostd_wire_lsp_crashed_repeated_hint": "Abra o log do servidor na barra de status e depois reinicie o servidor.",
+	"hostd_wire_lsp_crashed_repeated_message": "{server} falhou várias vezes seguidas",
+	"hostd_wire_lsp_crashed_start_hint": "Abra o log do servidor na barra de status ou reinicie o servidor.",
+	"hostd_wire_lsp_crashed_start_message": "{server} não conseguiu iniciar: {detail}",
+	"hostd_wire_lsp_custom_not_found_hint": "Confira o comando nas configurações de linguagem (ou em .atlas/settings.json). Ele precisa ser um executável no PATH ou um caminho absoluto.",
+	"hostd_wire_lsp_custom_not_found_message": "O comando personalizado do servidor de linguagem `{program}` não foi encontrado",
+	"hostd_wire_lsp_install_failed_hint": "O log da instalação está em ~/.atlas/lsp/logs. Tente novamente nas configurações de linguagem.",
+	"hostd_wire_lsp_install_failed_message": "Não foi possível instalar {server}: {detail}",
+	"hostd_wire_lsp_no_curl_hint": "O Atlas baixa servidores de linguagem com o curl. Instale-o e abra o arquivo de novo.",
+	"hostd_wire_lsp_no_curl_message": "Não foi possível baixar {server}: o curl não está instalado",
+	"hostd_wire_lsp_no_go_hint": "Instale o Go e abra o arquivo de novo. O Atlas compila o {server} com ele.",
+	"hostd_wire_lsp_no_go_message": "{server} não está instalado e o `go` não foi encontrado para compilá-lo",
+	"hostd_wire_lsp_offline_hint": "Verifique a conexão com a internet e abra o arquivo de novo.",
+	"hostd_wire_lsp_offline_message": "Não foi possível baixar {server}: {detail}",
+	"hostd_wire_lsp_unsupported_platform_hint": "Não há servidor pré-compilado para este sistema operacional e esta CPU. Instale um por conta própria e defina o comando dele nas configurações de linguagem.",
+	"hostd_wire_lsp_unsupported_platform_message": "Não há {server} pré-compilado para este sistema: {detail}",
+	"hostd_wire_older": "O host de terminais {version} é mais antigo que o Atlas {app_version}.",
+	"hostd_wire_older_features": "O host de terminais {version} é mais antigo que o Atlas {app_version}. Até ele reiniciar, ficam desativados: {features}.",
+	"hostd_wire_refused": "hostd: {why}",
+	"hostd_wire_remote_connecting": "{host} ainda está conectando; tente novamente em alguns segundos",
+	"hostd_wire_remote_unreachable": "{host} está inacessível: {why}",
+	"hostd_wire_start_failed": "O hostd não iniciou",
+	"hostd_wire_unreachable": "Host de terminais inacessível. Os terminais não conseguem iniciar nem reconectar até ele voltar. Use Reiniciar o host de terminais ou reporte o problema se continuar.",
+	"hostd_wire_unreachable_why": "{@hostd_wire_unreachable} ({why})",
+	"hostd_wire_upgrade_failed": "Não foi possível atualizar o host de terminais ({error}). Os terminais continuam no host antigo.",
+	"hostd_wire_upgraded": "Host de terminais atualizado"
+}

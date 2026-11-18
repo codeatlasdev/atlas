@@ -2,6 +2,7 @@ use std::path::PathBuf;
 
 use anyhow::Result;
 use atlas_core::util::expand_tilde;
+use atlas_i18n::t;
 use clap::Subcommand;
 
 #[derive(Debug, Subcommand)]
@@ -106,7 +107,13 @@ impl ConfigCommands {
                     for w in atlas_tui::config::warnings(&config) {
                         eprintln!("{} {w}", crate::chrome::warning());
                     }
-                    println!("OK: {} is valid", root.join("atlas.yaml").display());
+                    println!(
+                        "{}",
+                        t!(
+                            "cmd_misc_config_valid",
+                            path = root.join("atlas.yaml").display().to_string()
+                        )
+                    );
                     if config.port_offset > 0 {
                         let mut ports: Vec<_> = config
                             .services
@@ -114,7 +121,13 @@ impl ConfigCommands {
                             .filter_map(|(n, s)| Some((n, s.port?)))
                             .collect();
                         ports.sort();
-                        println!("ports (+{}):", config.port_offset);
+                        println!(
+                            "{}",
+                            t!(
+                                "cmd_misc_config_ports",
+                                offset = u64::from(config.port_offset)
+                            )
+                        );
                         for (name, port) in ports {
                             println!("  {name}: {port}");
                         }

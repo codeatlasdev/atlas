@@ -1,0 +1,209 @@
+{
+	"cmd_misc_cache_entries": [
+		{
+			"declarations": [
+				"input count",
+				"local countExact = count",
+				"local countPlural = count: plural"
+			],
+			"selectors": [
+				"countExact",
+				"countPlural"
+			],
+			"match": {
+				"countExact=0, countPlural=*": "nenhuma entrada, {size} de {max}",
+				"countExact=*, countPlural=one": "{count} entrada, {size} de {max}",
+				"countExact=*, countPlural=*": "{count} entradas, {size} de {max}"
+			}
+		}
+	],
+	"cmd_misc_cache_freed": "{size} liberados (entradas: {entries}, blobs: {blobs})",
+	"cmd_misc_cache_totals": "hits: {hits}, misses: {misses}, economizado: {saved}",
+	"cmd_misc_config_ports": "portas (+{offset}):",
+	"cmd_misc_config_valid": "OK: {path} é válido",
+	"cmd_misc_dc_app_mismatch": "{path} está na versão {version}, a CLI está na {cli}",
+	"cmd_misc_dc_app_missing": "o Atlas Desktop não está instalado",
+	"cmd_misc_dc_app_none": "não instalado (sem sessão gráfica)",
+	"cmd_misc_dc_app_ok": "{path} ({version})",
+	"cmd_misc_dc_atlas_elsewhere": "o `atlas` aponta para {found}, não para esta instalação",
+	"cmd_misc_dc_atlas_elsewhere_fix": "coloque {dir} no início do PATH ou remova {found}",
+	"cmd_misc_dc_atlas_found": "o `atlas` é {path}",
+	"cmd_misc_dc_atlas_missing": "um novo terminal não encontra o `atlas` ({dir} não está no PATH dele)",
+	"cmd_misc_dc_atlas_missing_fix": "rode o instalador de novo: {command}",
+	"cmd_misc_dc_fix_label": "correção:",
+	"cmd_misc_dc_host_ok": "respondendo",
+	"cmd_misc_dc_host_silent": "não está respondendo ({why}); o Atlas Desktop e o `atlas dev` o iniciam quando precisam",
+	"cmd_misc_dc_name_desktop_app": "app desktop",
+	"cmd_misc_dc_name_new_terminal": "novo terminal",
+	"cmd_misc_dc_name_terminal_host": "host de terminais",
+	"cmd_misc_dc_name_this_terminal": "este terminal",
+	"cmd_misc_dc_path_missing": "{dir} não está no PATH deste shell (um novo terminal pode tê-lo)",
+	"cmd_misc_dc_path_ok": "{dir} está no PATH",
+	"cmd_misc_dc_probe_failed": "não foi possível perguntar o PATH ao seu shell de login ({why})",
+	"cmd_misc_dc_probe_failed_fix": "abra um novo terminal e rode: command -v atlas",
+	"cmd_misc_dc_unknown_error": "erro desconhecido",
+	"cmd_misc_dc_unknown_version": "uma versão desconhecida",
+	"cmd_misc_dc_why_hostd_silent": "sem resposta em {secs} s",
+	"cmd_misc_dc_why_probe_not_run": "a verificação não rodou",
+	"cmd_misc_dc_why_shell_no_path": "{shell} não informou o PATH",
+	"cmd_misc_dc_why_shell_silent": "{shell} não respondeu em {secs} s",
+	"cmd_misc_dc_why_start_failed": "não foi possível iniciar {shell}: {error}",
+	"cmd_misc_dc_why_windows": "ainda não verificado no Windows",
+	"cmd_misc_dev_runner_already": "runner do atlas já está rodando (pid {pid}) · anexar: atlas dev · parar: atlas down",
+	"cmd_misc_dev_runner_started": "runner do atlas iniciado (pid {pid}) · anexar: atlas dev · parar: atlas down",
+	"cmd_misc_doctor_dir_row": "  {path}  {size} / limite {cap}",
+	"cmd_misc_doctor_dir_row_orphaned": "  {path}  {size} / limite {cap}  (sem dono ativo)",
+	"cmd_misc_doctor_dirs_heading": "Pastas temporárias e de cache do Atlas:",
+	"cmd_misc_doctor_disk_heading": "Disco por projeto:",
+	"cmd_misc_doctor_dry_run": [
+		{
+			"declarations": [
+				"input count",
+				"local countPlural = count: plural"
+			],
+			"selectors": [
+				"countPlural"
+			],
+			"match": {
+				"countPlural=one": "Simulação: --fix encerraria {count} processo e liberaria {size} (pastas registradas e logs rotacionados).",
+				"countPlural=*": "Simulação: --fix encerraria {count} processos e liberaria {size} (pastas registradas e logs rotacionados)."
+			}
+		}
+	],
+	"cmd_misc_doctor_dry_run_marker": [
+		{
+			"declarations": [
+				"input count",
+				"local countPlural = count: plural"
+			],
+			"selectors": [
+				"countPlural"
+			],
+			"match": {
+				"countPlural=one": "O --fix também adicionaria um marcador .metadata_never_index a {count} pasta.",
+				"countPlural=*": "O --fix também adicionaria um marcador .metadata_never_index a {count} pastas."
+			}
+		}
+	],
+	"cmd_misc_doctor_dry_run_yours": "target/, node_modules e worktrees são seus: nunca são removidos.",
+	"cmd_misc_doctor_env_unreadable": "  Observação: este sistema não consegue ler o ambiente de outro processo; por isso esta lista traz os\n  processos que o Atlas viu nos terminais, serviços e ações enquanto o dono deles rodava. Um processo que\n  fez fork e se desanexou em cerca de 2 s depois de iniciar nunca foi visto e não aparece aqui.",
+	"cmd_misc_doctor_fixed": [
+		{
+			"declarations": [
+				"input count",
+				"local countExact = count",
+				"local countPlural = count: plural"
+			],
+			"selectors": [
+				"countExact",
+				"countPlural"
+			],
+			"match": {
+				"countExact=0, countPlural=*": "Nenhum processo encerrado, {size} liberados.",
+				"countExact=*, countPlural=one": "{count} processo encerrado, {size} liberados.",
+				"countExact=*, countPlural=*": "{count} processos encerrados, {size} liberados."
+			}
+		}
+	],
+	"cmd_misc_doctor_fixed_marked": [
+		{
+			"declarations": [
+				"input count",
+				"local countPlural = count: plural"
+			],
+			"selectors": [
+				"countPlural"
+			],
+			"match": {
+				"countPlural=one": "Marcador never-index adicionado a {count} pasta.",
+				"countPlural=*": "Marcador never-index adicionado a {count} pastas."
+			}
+		}
+	],
+	"cmd_misc_doctor_indexed_heading": "Indexados pelo Spotlight (reescritos o tempo todo: mdworker/corespotlightd gastam CPU e disco):",
+	"cmd_misc_doctor_no_projects": "  (nenhum projeto registrado no Atlas Desktop)",
+	"cmd_misc_doctor_orphans": [
+		{
+			"declarations": [
+				"input live",
+				"local liveExact = live",
+				"local livePlural = live: plural"
+			],
+			"selectors": [
+				"liveExact",
+				"livePlural"
+			],
+			"match": {
+				"liveExact=0, livePlural=*": "Processos órfãos: {orphans} (nenhum processo de sessões ativas deixado em paz)",
+				"liveExact=*, livePlural=one": "Processos órfãos: {orphans} ({live} processo de sessões ativas deixado em paz)",
+				"liveExact=*, livePlural=*": "Processos órfãos: {orphans} ({live} processos de sessões ativas deixados em paz)"
+			}
+		}
+	],
+	"cmd_misc_doctor_survivors": "Ainda rodando após o SIGKILL: {pids} (presos no kernel; terminam quando ele os soltar).",
+	"cmd_misc_down_not_running": "o atlas não está rodando",
+	"cmd_misc_down_stopped": "atlas parado (pid {pid})",
+	"cmd_misc_down_timeout": "o atlas (pid {pid}) ainda está parando após {secs}s; confira: atlas dev --status",
+	"cmd_misc_heavy_ctx_join": "não foi possível entrar na fila de jobs pesados em {dir}",
+	"cmd_misc_heavy_ctx_spawn": "não foi possível iniciar: {command}",
+	"cmd_misc_heavy_got_slot": "heavy: {label} recebeu uma vaga após {wait}",
+	"cmd_misc_heavy_hold_anyway": "heavy: {why} após {secs}s; executando {label} mesmo assim, testes sensíveis a tempo podem falhar de forma intermitente",
+	"cmd_misc_heavy_hold_load": "carga {load} >= {max}",
+	"cmd_misc_heavy_hold_memory": "apenas {free}% de memória livre (< {min}%)",
+	"cmd_misc_heavy_hold_waiting": "heavy: {why}, aguardando até {secs}s ({label})",
+	"cmd_misc_heavy_interrupted_gates": "heavy: interrompido enquanto aguardava a máquina ({label})",
+	"cmd_misc_heavy_interrupted_queued": "heavy: interrompido na fila ({label})",
+	"cmd_misc_heavy_queued": "heavy: {label} está na fila ({ahead} na frente)",
+	"cmd_misc_heavy_queued_eta": "heavy: {label} está na fila ({ahead} na frente, início em ~{eta})",
+	"cmd_misc_heavy_row_running": "rodando há {age} (previsão {eta})",
+	"cmd_misc_heavy_row_waiting": "na fila há {age} (começa em ~{eta})",
+	"cmd_misc_heavy_running_row": "  rodando: {label} (pid {pid}, {project}, {age})",
+	"cmd_misc_heavy_status_busy": [
+		{
+			"declarations": [
+				"input slots",
+				"local slotsPlural = slots: plural"
+			],
+			"selectors": [
+				"slotsPlural"
+			],
+			"match": {
+				"slotsPlural=one": "{running} de {slots} vaga ocupada",
+				"slotsPlural=*": "{running} de {slots} vagas ocupadas"
+			}
+		}
+	],
+	"cmd_misc_heavy_status_load": "carga {load}",
+	"cmd_misc_heavy_status_memory": "{pct}% de memória livre",
+	"cmd_misc_heavy_status_waiting": "{waiting} na fila",
+	"cmd_misc_init_created": "atlas.yaml criado",
+	"cmd_misc_init_detected": "Detectado: {detail}",
+	"cmd_misc_init_exists": "o atlas.yaml já existe em {dir}",
+	"cmd_misc_init_no_services": "Nenhum serviço detectado automaticamente. Edite o atlas.yaml para adicionar os seus.",
+	"cmd_misc_init_services": "Serviços: {names}",
+	"cmd_misc_mcp_not_dir": "não é uma pasta: {path}",
+	"cmd_misc_release_checksum_mismatch": "o checksum de {name} não confere (esperado {expected}, obtido {actual})",
+	"cmd_misc_release_ctx_missing_asset": "{tag} não tem {asset} (o download falhou ou o arquivo não existe na release)",
+	"cmd_misc_release_no_checksum": "{name} não tem {name}.sha256; a instalação sem verificação foi recusada",
+	"cmd_misc_run_cache_ctx_key": "não foi possível calcular a chave do cache",
+	"cmd_misc_run_cache_hit": [
+		{
+			"declarations": [
+				"input count",
+				"local countPlural = count: plural"
+			],
+			"selectors": [
+				"countPlural"
+			],
+			"match": {
+				"countPlural=one": "atlas cache: hit {key} ({count} arquivo, {ms} ms, {saved} ms economizados)",
+				"countPlural=*": "atlas cache: hit {key} ({count} arquivos, {ms} ms, {saved} ms economizados)"
+			}
+		}
+	],
+	"cmd_misc_run_cache_not_stored_failed": "atlas cache: resultado não salvo (o comando falhou)",
+	"cmd_misc_run_cache_not_stored_too_big": "atlas cache: resultado não salvo (é maior que o limite do cache)",
+	"cmd_misc_run_cache_store_failed": "atlas cache: não foi possível salvar o resultado: {error}",
+	"cmd_misc_run_cache_stored": "atlas cache: resultado salvo em {key}",
+	"cmd_misc_run_cache_unusable": "atlas cache: a entrada {key} não pôde ser usada ({error}); executando o comando"
+}

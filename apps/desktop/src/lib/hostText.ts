@@ -132,11 +132,17 @@ export function hostRejection(e: unknown): unknown {
 	return w?.code ? new HostError({ ...w, code: w.code }) : e;
 }
 
+/** The codes that say the connection to a terminal host is gone: the local host's outage, the one with Restart. */
+const OUTAGE = new Set(["hostd.unreachable", "hostd.closed", "hostd.disconnected", "hostd.start_failed"]);
+
 /**
  * Is `e` a failure of the terminal host itself (one shared toast with Restart and Report) and not an ordinary error?
- * A coded failure says so by its code, in any language; a text is matched the way it always was (`classify`).
+ * A coded failure says so by its code, in any language: the connection to the host is gone (`OUTAGE`), or hostd
+ * refused the token. A remote host that is still connecting or unreachable, a missing CLI and a failed upgrade are
+ * the caller's own errors, as their sentences always were. A text is matched the way it always was (`classify`).
  */
 export function isHostFailure(e: unknown, message = messageOf(e)): boolean {
-	if (e instanceof HostError) return e.code.startsWith("hostd.");
+	if (e instanceof HostError)
+		return OUTAGE.has(e.code) || (e.code === "hostd.refused" && e.args.why === "unauthorized");
 	return classify(message) === "host";
 }

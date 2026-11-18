@@ -125,10 +125,36 @@ describe("a coded failure of the host is a host failure in any language", () => 
 		expect(isHostFailure(err)).toBe(true);
 	});
 
-	test("every code of the host family is a host failure; a plain string is judged by its words", async () => {
-		for (const r of codedWire.filter((w) => w.code.startsWith("hostd.") && w.message)) {
-			expect(isHostFailure(hostRejection(r))).toBe(true);
+	// Regression (this review): `isHostFailure` answered true for every `hostd.*` code, so a remote crew server that
+	// was still connecting ("ssh:box is still connecting") raised the LOCAL outage toast with "Restart terminal host".
+	// Before the codes `classify` read those sentences as ordinary errors, and only the local host's own outage as
+	// a host failure.
+	test("only a failure of the local host's connection is a host failure; a remote or a refusal is the caller's", () => {
+		const outage = ["hostd.unreachable", "hostd.closed", "hostd.disconnected", "hostd.start_failed"];
+		const rest = codedWire.filter(
+			(w) => w.code.startsWith("hostd.") && !outage.includes(w.code) && w.message,
+		);
+		expect(rest.map((w) => w.code)).toContain("hostd.remote_connecting");
+		expect(rest.map((w) => w.code)).toContain("hostd.remote_unreachable");
+		for (const code of outage) {
+			const w = codedWire.find((x) => x.code === code);
+			expect(isHostFailure(hostRejection(w))).toBe(true);
 		}
+		for (const w of rest) {
+			// The English the old `classify` judged, and the coded failure the new code judges, agree.
+			expect(classify(w.message)).toBe("other");
+			expect(isHostFailure(hostRejection(w))).toBe(false);
+		}
+		// hostd refusing the token on a raw attach was a host failure by its words ("hostd: unauthorized") and stays one.
+		expect(
+			isHostFailure(
+				hostRejection({
+					code: "hostd.refused",
+					args: { why: "unauthorized" },
+					message: "hostd: unauthorized",
+				}),
+			),
+		).toBe(true);
 		expect(isHostFailure("Terminal host not reachable. Use Restart terminal host")).toBe(true);
 		expect(isHostFailure("no such file")).toBe(false);
 		// An uncoded rejection stays what it was: the same string.

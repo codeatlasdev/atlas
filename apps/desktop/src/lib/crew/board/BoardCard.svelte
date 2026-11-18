@@ -4,6 +4,7 @@
 	import { workingLabel } from "#lib/crew/stepPhrase.ts";
 	import { actionLabel, elapsed, finishedLabel, queuedLabel } from "#lib/crew/board/boardText.ts";
 	import type { BoardCard, ColumnId } from "#lib/crew/board.ts";
+	import { m } from "#lib/i18n/m.ts";
 
 	let { card, column, now, onopen }: { card: BoardCard; column: ColumnId; now: number; onopen: () => void } =
 		$props();
@@ -28,9 +29,9 @@
 		{#if column === "done"}
 			<span class="card-time">{finishedLabel(card.task.finished_at)}</span>
 			{#if card.failed}
-				<span class="badge badge--error">Failed</span>
+				<span class="badge badge--error">{m.crew_chat_task_message_failed()}</span>
 			{:else if card.cancelled}
-				<span class="badge badge--muted">Cancelled</span>
+				<span class="badge badge--muted">{m.crew_chat_task_message_cancelled()}</span>
 			{/if}
 		{/if}
 	</div>

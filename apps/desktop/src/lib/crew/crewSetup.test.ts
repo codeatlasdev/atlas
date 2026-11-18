@@ -4,6 +4,8 @@
  * Guards step order, option mapping, summary text, and resume logic.
  */
 import { describe, expect, it } from "bun:test";
+import { m } from "#lib/i18n/m.ts";
+import { inLocale } from "../../../test/locale.ts";
 import {
 	CREW_NAMES,
 	STEPS,
@@ -249,5 +251,41 @@ describe("typingDelay", () => {
 
 	it("is deterministic given the same seed", () => {
 		expect(typingDelay(0.5)).toBe(typingDelay(0.5));
+	});
+});
+
+// The summary is one catalog sentence per case: word order belongs to the language, and the bold runs are still the
+// name and the project wherever the sentence puts them.
+describe("summary in another language", () => {
+	it("follows the catalog sentence and still bolds the name and the project", async () => {
+		await inLocale("pt-BR", () => {
+			const role = roleKeyToText("A");
+			const parts = summaryText({ name: "Jorge", roleText: role, project: "atlas", approvalKey: "C" });
+			expect(parts.filter((p) => p.bold).map((p) => p.text)).toEqual(["Jorge", "atlas"]);
+			const plain = parts.map((p) => p.text).join("");
+			expect(plain).not.toContain("\u2063");
+			expect(plain).toBe(
+				m.crew_workspace_setup_summary_project({
+					name: "Jorge",
+					role: role.charAt(0).toLowerCase() + role.slice(1),
+					project: "atlas",
+					approval: approvalDescription("C"),
+				}),
+			);
+		});
+	});
+
+	it("builds the questions and options in the language of the moment", async () => {
+		const english = getQuestion("role").options.map((o) => o.title);
+		const other = await inLocale("pt-BR", () => getQuestion("role").options.map((o) => o.title));
+		expect(other).not.toEqual(english);
+		expect(other).toEqual(
+			await inLocale("pt-BR", () => [
+				m.crew_workspace_setup_role_review_title(),
+				m.crew_workspace_setup_role_ci_title(),
+				m.crew_workspace_setup_role_changelog_title(),
+				m.crew_workspace_setup_something_else(),
+			]),
+		);
 	});
 });

@@ -7,7 +7,11 @@
  *
  * Steps (persisted on the crewmate record as `setup_step`):
  *   "name" → "role" → "project" → "approval" → "summary" → (cleared = done)
+ *
+ * The words are catalog messages, so the question and its options are built by functions that read them when the
+ * conversation renders (the language can change while a setup is open).
  */
+import { m } from "#lib/i18n/m.ts";
 
 export type SetupStep = "name" | "role" | "project" | "approval" | "summary";
 
@@ -52,19 +56,44 @@ export const CREW_NAMES = ["Nami", "Zoro", "Usopp"] as const;
 
 // ─── role options ─────────────────────────────────────────────────────────────
 
-export const ROLE_OPTIONS: SetupOption[] = [
-	{ key: "A", title: "Review every PR", subtitle: "Reads diffs, leaves comments" },
-	{ key: "B", title: "Fix failing CI", subtitle: "Debugs and patches broken builds" },
-	{ key: "C", title: "Write the changelog", subtitle: "Summarises commits into release notes" },
-	{ key: "D", title: "Something else", subtitle: "You describe it", write: true },
+export const roleOptions = (): SetupOption[] => [
+	{
+		key: "A",
+		title: m.crew_workspace_setup_role_review_title(),
+		subtitle: m.crew_workspace_setup_role_review_subtitle(),
+	},
+	{
+		key: "B",
+		title: m.crew_workspace_setup_role_ci_title(),
+		subtitle: m.crew_workspace_setup_role_ci_subtitle(),
+	},
+	{
+		key: "C",
+		title: m.crew_workspace_setup_role_changelog_title(),
+		subtitle: m.crew_workspace_setup_role_changelog_subtitle(),
+	},
+	{
+		key: "D",
+		title: m.crew_workspace_setup_something_else(),
+		subtitle: m.crew_workspace_setup_role_other_subtitle(),
+		write: true,
+	},
 ];
 
 // ─── approval options ─────────────────────────────────────────────────────────
 
-export const APPROVAL_OPTIONS: SetupOption[] = [
-	{ key: "A", title: "Ask before anything risky", subtitle: "Recommended" },
-	{ key: "B", title: "Ask before everything" },
-	{ key: "C", title: "Never ask", subtitle: "Full auto" },
+export const approvalOptions = (): SetupOption[] => [
+	{
+		key: "A",
+		title: m.crew_workspace_setup_approval_risky_title(),
+		subtitle: m.crew_workspace_setup_approval_risky_subtitle(),
+	},
+	{ key: "B", title: m.crew_workspace_setup_approval_everything_title() },
+	{
+		key: "C",
+		title: m.crew_workspace_setup_approval_never_title(),
+		subtitle: m.crew_workspace_setup_approval_never_subtitle(),
+	},
 ];
 
 // ─── mapping helpers ──────────────────────────────────────────────────────────
@@ -73,11 +102,11 @@ export const APPROVAL_OPTIONS: SetupOption[] = [
 export function roleKeyToText(key: string): string {
 	switch (key) {
 		case "A":
-			return "Review every PR";
+			return m.crew_workspace_setup_role_review_title();
 		case "B":
-			return "Fix failing CI";
+			return m.crew_workspace_setup_role_ci_title();
 		case "C":
-			return "Write the changelog";
+			return m.crew_workspace_setup_role_changelog_title();
 		default:
 			return ""; // D = free text, caller supplies text directly
 	}
@@ -93,11 +122,11 @@ export function approvalKeyToMode(key: string): "ask" | "auto" {
 export function approvalDescription(key: string): string {
 	switch (key) {
 		case "A":
-			return "ask before anything risky";
+			return m.crew_workspace_setup_approval_risky_clause();
 		case "B":
-			return "ask before every step";
+			return m.crew_workspace_setup_approval_everything_clause();
 		default:
-			return "work autonomously";
+			return m.crew_workspace_setup_approval_never_clause();
 	}
 }
 
@@ -113,7 +142,7 @@ export function getQuestion(step: SetupStep, ctx: SetupContext = {}): SetupQuest
 			const chips = (ctx.ideProjects?.length ? ctx.ideProjects.slice(0, 3) : [...CREW_NAMES]) as string[];
 			return {
 				step,
-				text: "What should I call myself?",
+				text: m.crew_workspace_setup_ask_name(),
 				allowText: true,
 				nameChips: chips,
 			};
@@ -121,8 +150,8 @@ export function getQuestion(step: SetupStep, ctx: SetupContext = {}): SetupQuest
 		case "role":
 			return {
 				step,
-				text: "What's my job?",
-				options: ROLE_OPTIONS,
+				text: m.crew_workspace_setup_ask_role(),
+				options: roleOptions(),
 				allowText: true,
 			};
 		case "project": {
@@ -132,20 +161,20 @@ export function getQuestion(step: SetupStep, ctx: SetupContext = {}): SetupQuest
 					.map((name, i) => ({ key: String.fromCharCode(65 + i), title: name }));
 				projectOptions.push({
 					key: String.fromCharCode(65 + projectOptions.length),
-					title: "Something else",
-					subtitle: "Paste a git URL or path",
+					title: m.crew_workspace_setup_something_else(),
+					subtitle: m.crew_workspace_setup_project_other_subtitle(),
 					write: true,
 				});
 				return {
 					step,
-					text: "Which project should I work on?",
+					text: m.crew_workspace_setup_ask_project(),
 					options: projectOptions,
 					allowText: true,
 				};
 			}
 			return {
 				step,
-				text: "Which project should I work on?",
+				text: m.crew_workspace_setup_ask_project(),
 				options: undefined,
 				allowText: true,
 			};
@@ -153,8 +182,8 @@ export function getQuestion(step: SetupStep, ctx: SetupContext = {}): SetupQuest
 		case "approval":
 			return {
 				step,
-				text: "How careful should I be?",
-				options: APPROVAL_OPTIONS,
+				text: m.crew_workspace_setup_ask_approval(),
+				options: approvalOptions(),
 				allowText: false,
 			};
 		case "summary":
@@ -162,8 +191,12 @@ export function getQuestion(step: SetupStep, ctx: SetupContext = {}): SetupQuest
 				step,
 				text: "", // caller fills from summaryText()
 				options: [
-					{ key: "A", title: "Looks good, let's go" },
-					{ key: "B", title: "Change something", subtitle: "Start over from the name" },
+					{ key: "A", title: m.crew_workspace_setup_confirm_title() },
+					{
+						key: "B",
+						title: m.crew_workspace_setup_change_title(),
+						subtitle: m.crew_workspace_setup_change_subtitle(),
+					},
 				],
 				allowText: false,
 			};
@@ -200,6 +233,10 @@ export interface SummaryPart {
 	bold?: true;
 }
 
+/** Marks the values the summary shows in bold; the message is one sentence, so word order stays the translator's. */
+const BOLD = "\u2063";
+const bolded = (value: string) => `${BOLD}${value.replaceAll(BOLD, "")}${BOLD}`;
+
 /** The summary bubble shown before confirmation. */
 export function summaryText(s: SummaryState): SummaryPart[] {
 	const approval = approvalDescription(s.approvalKey);
@@ -207,13 +244,18 @@ export function summaryText(s: SummaryState): SummaryPart[] {
 	const role = s.roleText.charAt(0).toLowerCase() + s.roleText.slice(1);
 	// A GitHub URL reads as owner/repo; a name or path stays as given.
 	const project = s.project?.replace(/^https?:\/\/github\.com\/|\.git$/g, "");
-	return [
-		{ text: "I'm " },
-		{ text: s.name, bold: true },
-		{ text: `. I'll ${role}` },
-		...(project ? [{ text: " on " }, { text: project, bold: true as const }] : []),
-		{ text: `, and I'll ${approval}.` },
-	];
+	const text = project
+		? m.crew_workspace_setup_summary_project({
+				name: bolded(s.name),
+				role,
+				project: bolded(project),
+				approval,
+			})
+		: m.crew_workspace_setup_summary({ name: bolded(s.name), role, approval });
+	return text
+		.split(BOLD)
+		.map((part, i): SummaryPart => (i % 2 ? { text: part, bold: true } : { text: part }))
+		.filter((part) => part.text !== "");
 }
 
 // ─── typing delay ─────────────────────────────────────────────────────────────

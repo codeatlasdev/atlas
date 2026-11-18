@@ -355,8 +355,11 @@
 
 	{#if asleep}
 		<g fill="currentColor" font-family="ui-rounded, system-ui" font-weight="700">
+			<!-- i18n-ignore: a drawn z of sleep, not text -->
 			<text class="z z1" x="390" y="40" font-size="70">z</text>
+			<!-- i18n-ignore: a drawn z of sleep, not text -->
 			<text class="z z2" x="440" y="-20" font-size="54">z</text>
+			<!-- i18n-ignore: a drawn z of sleep, not text -->
 			<text class="z z3" x="480" y="-70" font-size="40">z</text>
 		</g>
 	{/if}

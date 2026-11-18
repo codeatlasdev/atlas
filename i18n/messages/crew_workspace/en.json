@@ -1,0 +1,214 @@
+{
+	"crew_workspace_art_how_allowed_from_your_phone": "Allowed from your phone",
+	"crew_workspace_art_how_asleep": "asleep",
+	"crew_workspace_art_how_done": "done",
+	"crew_workspace_art_how_name_needs_you": "{name} needs you",
+	"crew_workspace_art_how_needs_you": "needs you",
+	"crew_workspace_art_how_order": "Review every PR on atlas tonight",
+	"crew_workspace_art_how_pr_115_opened": "PR #115 opened",
+	"crew_workspace_art_how_say_ask": "Hey, one of these needs a push to main. Okay with you?",
+	"crew_workspace_art_how_say_morning": "Good morning! I reviewed 3 PRs and pushed 1 fix.",
+	"crew_workspace_art_how_say_start": "On it! I'll go through them tonight.",
+	"crew_workspace_art_how_say_thanks": "Thanks! Pushing it now.",
+	"crew_workspace_art_how_step_comments": "Left 2 review comments",
+	"crew_workspace_art_how_step_push": "Pushed the fix to main",
+	"crew_workspace_art_how_step_read": "Read PR #115 · 4 files",
+	"crew_workspace_art_how_step_tests": "Ran the tests · 212 passed",
+	"crew_workspace_art_how_your_server": "your server",
+	"crew_workspace_attachment_incomplete": "Couldn't load {name}: the crew server stopped sending it. Try again.",
+	"crew_workspace_board_add_trigger": "Add trigger",
+	"crew_workspace_board_clear_filters": "Clear filters",
+	"crew_workspace_board_column_done": "Done",
+	"crew_workspace_board_column_task_count": [
+		{
+			"declarations": [
+				"input count",
+				"local countExact = count",
+				"local countPlural = count: plural"
+			],
+			"selectors": [
+				"countExact",
+				"countPlural"
+			],
+			"match": {
+				"countExact=0, countPlural=*": "No tasks",
+				"countExact=*, countPlural=one": "{count} task",
+				"countExact=*, countPlural=*": "{count} tasks"
+			}
+		}
+	],
+	"crew_workspace_board_column_tasks": "Tasks: {label}",
+	"crew_workspace_board_connect_github": "Connect GitHub",
+	"crew_workspace_board_crew_board": "Crew board",
+	"crew_workspace_board_needs_input": "Needs input",
+	"crew_workspace_board_no_tasks_match_these_filters": "No tasks match these filters.",
+	"crew_workspace_board_queued": "Queued",
+	"crew_workspace_board_queued_reason": "Queued · {reason}",
+	"crew_workspace_board_queued_server_busy": "Queued · server busy",
+	"crew_workspace_board_toolbar_7_days": "7 days",
+	"crew_workspace_board_toolbar_done_range": "Done range",
+	"crew_workspace_board_toolbar_filter_by_crewmate": "Filter by crewmate",
+	"crew_workspace_board_toolbar_search_tasks": "Search tasks",
+	"crew_workspace_board_toolbar_show_done": "Show done",
+	"crew_workspace_board_toolbar_source_all": "All",
+	"crew_workspace_board_toolbar_source_chats": "Chats",
+	"crew_workspace_board_toolbar_source_filter": "Source filter",
+	"crew_workspace_board_toolbar_today": "Today",
+	"crew_workspace_board_wants_approval": "Wants approval",
+	"crew_workspace_board_work_refused": "Work refused",
+	"crew_workspace_browsers_cost": "Needs Node.js {node}+ on the server and about 500 MB of downloads.",
+	"crew_workspace_close_button_close_integrations": "Close integrations",
+	"crew_workspace_crewmate_editor_color": "Color",
+	"crew_workspace_crewmate_editor_custom_color": "Custom color",
+	"crew_workspace_crewmate_editor_customize_look": "Customize look",
+	"crew_workspace_crewmate_editor_eyes": "Eyes",
+	"crew_workspace_crewmate_editor_face": "Face",
+	"crew_workspace_crewmate_editor_hat": "Hat",
+	"crew_workspace_crewmate_editor_outfit": "Outfit",
+	"crew_workspace_crewmate_editor_preview_state": "Preview state",
+	"crew_workspace_crewmate_editor_randomize": "Randomize",
+	"crew_workspace_crewmate_editor_role_kits": "Role kits",
+	"crew_workspace_crewmate_editor_tool": "Tool",
+	"crew_workspace_crewmate_list_row_first_mate": "First mate",
+	"crew_workspace_crewmate_list_row_make_first_mate": "Make first mate",
+	"crew_workspace_crewmate_list_row_more_options_for_name": "More options for {name}",
+	"crew_workspace_crewmate_list_row_needs_your_attention": "Needs your attention",
+	"crew_workspace_crewmate_list_row_profile": "Profile",
+	"crew_workspace_crewmate_list_row_unread_messages": "Unread messages",
+	"crew_workspace_demo_page_back_to_the_crew": "Back to the crew",
+	"crew_workspace_demo_page_build_a_crewmate": "Build a crewmate",
+	"crew_workspace_demo_page_state": "State",
+	"crew_workspace_empty_choose_a_crewmate_or_recruit": "Choose a crewmate or recruit your first one.",
+	"crew_workspace_empty_no_crew_selected": "No crew selected.",
+	"crew_workspace_empty_recruit_a_crewmate": "Recruit a crewmate",
+	"crew_workspace_github_accounts_disconnect": "Disconnect",
+	"crew_workspace_github_accounts_no_crew_servers_added_yet": "No crew servers added yet. Add a crew server in the Atlas Crew tab to connect GitHub.",
+	"crew_workspace_github_accounts_not_connected": "Not connected",
+	"crew_workspace_github_accounts_title": "GitHub accounts on your crew servers",
+	"crew_workspace_github_device_flow_enter_code_at": "Enter this code at",
+	"crew_workspace_github_device_flow_waiting_for_authorization": "Waiting for authorization…",
+	"crew_workspace_github_sign_in_failed": "GitHub sign-in failed. Try again.",
+	"crew_workspace_hero_favorite_label": "{name} (first mate)",
+	"crew_workspace_integration_detail_back_to_integrations": "Back to integrations",
+	"crew_workspace_integration_detail_integration_skills": "Integration skills",
+	"crew_workspace_integration_detail_skills": "Skills",
+	"crew_workspace_integration_detail_view_source": "View source",
+	"crew_workspace_integration_detail_view_source_for_name": "View source for {name}",
+	"crew_workspace_model_picker_choose": [
+		{
+			"declarations": [
+				"input count",
+				"local countExact = count",
+				"local countPlural = count: plural"
+			],
+			"selectors": [
+				"countExact",
+				"countPlural"
+			],
+			"match": {
+				"countExact=0, countPlural=*": "No models found",
+				"countExact=*, countPlural=one": "Choose the only model",
+				"countExact=*, countPlural=*": "Choose one of {count} models"
+			}
+		}
+	],
+	"crew_workspace_model_picker_fill_first": "Fill the URL and key first",
+	"crew_workspace_model_picker_loading_models": "Loading models…",
+	"crew_workspace_model_picker_no_match": "No match: press {@common_os_enter_key} to use what you typed",
+	"crew_workspace_model_picker_search": "Search models",
+	"crew_workspace_model_picker_type_id": "Type a model id",
+	"crew_workspace_palette_crew_and_commands": "Crew and commands",
+	"crew_workspace_palette_crew_search": "Crew search",
+	"crew_workspace_palette_keyboard_shortcuts": "Keyboard shortcuts",
+	"crew_workspace_palette_no_results_for_query": "No results for \"{query}\"",
+	"crew_workspace_palette_search_crewmates_and_commands": "Search crewmates and commands",
+	"crew_workspace_pause_banner_paused": "Paused. Running tasks were cancelled; queued tasks wait until you resume.",
+	"crew_workspace_pause_banner_paused_server": "Paused: {server}. Running tasks were cancelled; queued tasks wait until you resume.",
+	"crew_workspace_pause_banner_resume": "Resume",
+	"crew_workspace_pause_banner_resuming": "Resuming…",
+	"crew_workspace_provider_connected_models": [
+		{
+			"declarations": [
+				"input count",
+				"local countExact = count",
+				"local countPlural = count: plural"
+			],
+			"selectors": [
+				"countExact",
+				"countPlural"
+			],
+			"match": {
+				"countExact=0, countPlural=*": "Connected: no models listed",
+				"countExact=*, countPlural=one": "Connected: {count} model available",
+				"countExact=*, countPlural=*": "Connected: {count} models available"
+			}
+		}
+	],
+	"crew_workspace_sidebar_cant_reach": "Can't reach {server}",
+	"crew_workspace_sidebar_cant_reach_error": "Can't reach {server}: {error}",
+	"crew_workspace_sidebar_footer_add_a_crew_server": "Add a crew server",
+	"crew_workspace_sidebar_footer_crew_server_settings": "Crew server settings",
+	"crew_workspace_sidebar_footer_help": "Help",
+	"crew_workspace_sidebar_footer_manage": "Manage",
+	"crew_workspace_sidebar_footer_open_integrations": "Open integrations",
+	"crew_workspace_sidebar_footer_pause_all": "Pause all",
+	"crew_workspace_sidebar_footer_paused": "Paused",
+	"crew_workspace_sidebar_footer_resume_all": "Resume all",
+	"crew_workspace_sidebar_footer_user": "User",
+	"crew_workspace_sidebar_header_new_crewmate": "New crewmate",
+	"crew_workspace_sidebar_header_search": "Search ({key})",
+	"crew_workspace_ssh_bad_port": "\"{port}\" is not a port. Use a number from 1 to 65535.",
+	"crew_workspace_ssh_close_ipv6": "Close the IPv6 address with ]. Use user@[::1] or user@[::1]:port.",
+	"crew_workspace_ssh_enter_address": "Enter an SSH address, for example ubuntu@my-server.com",
+	"crew_workspace_ssh_include_host": "Include a hostname or IP address",
+	"crew_workspace_ssh_include_user": "Include a user, for example ubuntu@my-server.com",
+	"crew_workspace_ssh_ipv6_port": "After an IPv6 address, add the port as :port, for example user@[::1]:2222.",
+	"crew_workspace_status_idle": "Idle",
+	"crew_workspace_status_offline": "Offline",
+	"crew_workspace_status_working": "working…",
+	"crew_workspace_task_work_earlier": [
+		{
+			"declarations": [
+				"input count",
+				"local countExact = count",
+				"local countPlural = count: plural"
+			],
+			"selectors": [
+				"countExact",
+				"countPlural"
+			],
+			"match": {
+				"countExact=0, countPlural=*": "None earlier",
+				"countExact=*, countPlural=one": "+{count} earlier",
+				"countExact=*, countPlural=*": "+{count} earlier"
+			}
+		}
+	],
+	"crew_workspace_task_work_steps": [
+		{
+			"declarations": [
+				"input count",
+				"local countExact = count",
+				"local countPlural = count: plural"
+			],
+			"selectors": [
+				"countExact",
+				"countPlural"
+			],
+			"match": {
+				"countExact=0, countPlural=*": "No steps",
+				"countExact=*, countPlural=one": "{count} step",
+				"countExact=*, countPlural=*": "{count} steps"
+			}
+		}
+	],
+	"crew_workspace_task_work_untitled": "Work",
+	"crew_workspace_usage_meter_resets": "resets {time}",
+	"crew_workspace_usage_sparkline_label": "Token usage over 14 days",
+	"crew_workspace_usage_sparkline_tokens": "{tokens} tokens",
+	"crew_workspace_view_bar_board": "Board",
+	"crew_workspace_view_bar_board_view": "Board view",
+	"crew_workspace_view_bar_chat": "Chat",
+	"crew_workspace_view_bar_chat_view": "Chat view",
+	"crew_workspace_view_bar_crew_view_switcher": "Crew view switcher"
+}

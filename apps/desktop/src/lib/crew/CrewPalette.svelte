@@ -10,6 +10,7 @@
 	import { kbd } from "#lib/keys.ts";
 	import { filterRows, cmdKeyIndex, keycapLabel } from "#lib/crew/crewPalette.ts";
 	import type { PaletteRow } from "#lib/crew/crewPalette.ts";
+	import { m } from "#lib/i18n/m.ts";
 
 	interface Props {
 		open: boolean;
@@ -59,11 +60,17 @@
 
 	const commandRows = $derived((): PaletteRow[] => {
 		const rows: PaletteRow[] = [
-			{ kind: "command", id: "new", name: "New crewmate" },
-			{ kind: "command", id: "integrations", name: "Integrations" },
-			{ kind: "command", id: "settings", name: "Crew server settings" },
+			{ kind: "command", id: "new", name: m.crew_workspace_sidebar_header_new_crewmate() },
+			{ kind: "command", id: "integrations", name: m.crew_workspace_integrations_catalog_integrations() },
+			{ kind: "command", id: "settings", name: m.crew_workspace_sidebar_footer_crew_server_settings() },
 		];
-		if (onHelp) rows.push({ kind: "command", id: "help", name: "Keyboard shortcuts", subtitle: "Help" });
+		if (onHelp)
+			rows.push({
+				kind: "command",
+				id: "help",
+				name: m.crew_workspace_palette_keyboard_shortcuts(),
+				subtitle: m.crew_workspace_sidebar_footer_help(),
+			});
 		return rows;
 	});
 
@@ -143,7 +150,7 @@
 	};
 </script>
 
-<Dialog bind:open title="Crew search" chromeless size="md">
+<Dialog bind:open title={m.crew_workspace_palette_crew_search()} chromeless size="md">
 	<!-- Search bar -->
 	<div class="pal-search">
 		<Search size={16} class="pal-search__icon" aria-hidden="true" />
@@ -151,9 +158,9 @@
 			bind:this={inputEl}
 			bind:value={query}
 			type="search"
-			placeholder="Search"
+			placeholder={m.common_action_search()}
 			class="pal-search__input"
-			aria-label="Search crewmates and commands"
+			aria-label={m.crew_workspace_palette_search_crewmates_and_commands()}
 			autocomplete="off"
 			spellcheck={false}
 			onkeydown={handleKeydown}
@@ -163,7 +170,12 @@
 
 	<!-- Row list -->
 	<!-- `closing`: see CrewmateEditor.svelte; endless face animations kept the closed Dialog (and its backdrop) on screen. -->
-	<div class="pal-list" class:closing={!open} role="listbox" aria-label="Crew and commands">
+	<div
+		class="pal-list"
+		class:closing={!open}
+		role="listbox"
+		aria-label={m.crew_workspace_palette_crew_and_commands()}
+	>
 		{#each visible as row, i (row.kind + ":" + row.id)}
 			{@const active = i === selectedIndex}
 			{@const cap = keycapLabel(i)}
@@ -213,7 +225,7 @@
 		{/each}
 
 		{#if visible.length === 0}
-			<p class="pal-empty">No results for "{query}"</p>
+			<p class="pal-empty">{m.crew_workspace_palette_no_results_for_query({ query })}</p>
 		{/if}
 	</div>
 </Dialog>

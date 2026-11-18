@@ -6,6 +6,7 @@
 import { toast } from "@codeatlasdev/ui";
 import { invoke } from "@tauri-apps/api/core";
 import { errText } from "#lib/api.ts";
+import { m } from "#lib/i18n/m.ts";
 import { crew } from "#lib/stores/crew.svelte.ts";
 import type { Crewmate } from "#lib/crew.ts";
 import { projectForServer } from "#lib/crew/projectRef.ts";
@@ -93,7 +94,7 @@ export class SetupFlow {
 			if (s === "name") answer = resumed.name || b.name;
 			// Only what was really saved: an empty role used to replay as the user saying "Something else".
 			else if (s === "role") answer = resumed.roleText;
-			else if (s === "project") answer = resumed.project || "Skip";
+			else if (s === "project") answer = resumed.project || m.crew_workspace_setup_skip();
 			else if (s === "approval")
 				answer = getQuestion("approval").options?.find((o) => o.key === resumed.approvalKey)?.title ?? "";
 			if (answer) replay.push({ kind: "user", text: answer });
@@ -109,7 +110,7 @@ export class SetupFlow {
 			if (step === "summary") {
 				const parts = summaryText({
 					name: resumed.name || b.name,
-					roleText: resumed.roleText || "do tasks",
+					roleText: resumed.roleText || m.crew_workspace_setup_default_role(),
 					project: resumed.project || undefined,
 					approvalKey: resumed.approvalKey,
 				} satisfies SummaryState);

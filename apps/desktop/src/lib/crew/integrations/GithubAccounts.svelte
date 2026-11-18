@@ -9,9 +9,10 @@
 	import { crewServerLabel } from "#lib/crew/sshTarget.ts";
 	import GithubDeviceFlow from "#lib/crew/GithubDeviceFlow.svelte";
 	import IntegrationCard from "#lib/crew/integrations/IntegrationCard.svelte";
+	import { m } from "#lib/i18n/m.ts";
 </script>
 
-<IntegrationCard title="GitHub accounts on your crew servers">
+<IntegrationCard title={m.crew_workspace_github_accounts_title()}>
 	{#each crew.servers.filter((h) => h.key.startsWith("ssh:")) as server (server.key)}
 		{@const status = githubCrew.statuses.get(server.key)}
 		{@const flow = githubCrew.flows.get(server.key)}
@@ -23,21 +24,23 @@
 				<GithubDeviceFlow {flow} {polling} oncancel={() => githubCrew.stopPolling(server.key)} />
 			{:else if status?.login}
 				<!-- Connected -->
-				<span class="server-gh-login">Connected as @{status.login}</span>
+				<span class="server-gh-login"
+					>{m.crew_chat_task_action_card_connected_as_login({ account: `@${status.login}` })}</span
+				>
 				<Button variant="ghost" size="sm" onclick={() => void githubCrew.logout(server.key)}
-					>Disconnect</Button
+					>{m.crew_workspace_github_accounts_disconnect()}</Button
 				>
 			{:else}
 				<!-- Not connected -->
-				<span class="server-gh-status-off">Not connected</span>
+				<span class="server-gh-status-off">{m.crew_workspace_github_accounts_not_connected()}</span>
 				<Button variant="filled" size="sm" onclick={() => void githubCrew.startLogin(server.key)}
-					>Connect</Button
+					>{m.crew_chat_task_action_card_connect()}</Button
 				>
 			{/if}
 		</div>
 	{:else}
 		<p class="no-servers">
-			No crew servers added yet. Add a crew server in the Atlas Crew tab to connect GitHub.
+			{m.crew_workspace_github_accounts_no_crew_servers_added_yet()}
 		</p>
 	{/each}
 </IntegrationCard>

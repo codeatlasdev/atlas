@@ -6,6 +6,7 @@
 import { hostCall } from "#lib/host.ts";
 import { toast } from "@codeatlasdev/ui";
 import { errText } from "#lib/api.ts";
+import { m } from "#lib/i18n/m.ts";
 
 /** Status of GitHub on one crew server. */
 export interface ServerGithubStatus {
@@ -98,7 +99,7 @@ class GitHubCrewStore {
 				const next = new Map(this._flows);
 				next.delete(hostKey);
 				this._flows = next;
-				toast.error(r.error ?? "GitHub sign-in failed. Try again.");
+				toast.error(r.error ?? m.crew_workspace_github_sign_in_failed());
 			}
 			// "pending": keep polling
 		} catch (e) {

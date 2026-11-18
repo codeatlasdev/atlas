@@ -527,6 +527,7 @@ fn a_unit_that_cannot_be_unmasked_fails_with_the_unmask_code_and_writes_nothing(
         r.stderr
     );
     assert!(is_link(&sim, "etc/systemd/system/atlas-crew.service"));
+    atlas_i18n::set_lang("en");
     let err = layout::unit_write_error(
         r.code.unwrap(),
         &r.stderr,
@@ -546,6 +547,7 @@ fn a_unit_that_cannot_be_unmasked_fails_with_the_unmask_code_and_writes_nothing(
 
 #[test]
 fn another_failure_of_the_write_is_reported_as_a_write_failure() {
+    atlas_i18n::set_lang("en");
     let err = layout::unit_write_error(
         1,
         "tee: /etc: Read-only file system\n",

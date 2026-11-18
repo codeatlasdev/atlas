@@ -250,6 +250,7 @@ async fn answer_card(
         }
         AnswerResult::Answer(other) => {
             // An answer this card does not offer: the work stays refused, and so does the task.
+            // i18n-ignore: log
             eprintln!(
                 "atlas crew: crewmate {} task {}: unknown answer {other:?} to a refusal",
                 crewmate.id, task.id

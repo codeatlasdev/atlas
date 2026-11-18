@@ -7,6 +7,7 @@
 <script lang="ts">
 	import { Check, ChevronDown, ChevronRight } from "@lucide/svelte";
 	import type { CrewmateStep } from "#lib/crew.ts";
+	import { m } from "#lib/i18n/m.ts";
 	import { stepGroups, stepPhrase } from "./stepPhrase.ts";
 
 	let { steps, running, title }: { steps: CrewmateStep[]; running: boolean; title?: string } = $props();
@@ -27,8 +28,8 @@
 				{#if g.done}
 					<button class="head" aria-expanded={expanded} onclick={() => (open = { ...open, [gi]: !open[gi] })}>
 						<span class="tick" aria-hidden="true"><Check size={11} /></span>
-						<span class="title">{g.title ?? "Work"}</span>
-						<span class="count">{g.steps.length} {g.steps.length === 1 ? "step" : "steps"}</span>
+						<span class="title">{g.title ?? m.crew_workspace_task_work_untitled()}</span>
+						<span class="count">{m.crew_workspace_task_work_steps({ count: g.steps.length })}</span>
 						{#if expanded}<ChevronDown size={13} aria-hidden="true" />{:else}<ChevronRight
 								size={13}
 								aria-hidden="true"
@@ -39,7 +40,9 @@
 				{/if}
 				{#if expanded}
 					{#if g.steps.length > rows.length}
-						<div class="more">+{g.steps.length - rows.length} earlier</div>
+						<div class="more">
+							{m.crew_workspace_task_work_earlier({ count: g.steps.length - rows.length })}
+						</div>
 					{/if}
 					<ul class="steps">
 						{#each rows as step, si (si + g.steps.length - rows.length)}

@@ -1,4 +1,5 @@
 import { b64bytes, hostCall } from "#lib/host.ts";
+import { m } from "#lib/i18n/m.ts";
 
 const CHUNK = 8 * 1024 * 1024;
 
@@ -23,8 +24,7 @@ export async function readBlob(
 			max: CHUNK,
 			offset,
 		});
-		if (offset > 0 && r.offset !== offset)
-			throw new Error("This host is too old to stream big files; update atlas on it.");
+		if (offset > 0 && r.offset !== offset) throw new Error(m.viewers_files_load_host_too_old());
 		const bytes = b64bytes(r.data) as Uint8Array<ArrayBuffer>;
 		if (!bytes.length) break;
 		parts.push(bytes);

@@ -604,6 +604,7 @@ pub(crate) fn start(hub: &Arc<Hub>) {
         let mobile = hub.mobile.clone();
         tokio::spawn(async move {
             if let Err(e) = mobile.ensure_endpoint().await {
+                // i18n-ignore: log
                 eprintln!("hostd: mobile gateway: {e}");
             }
         });
@@ -714,6 +715,7 @@ impl Mobile {
         if let Some(d) = all.iter_mut().find(|d| d.node_id == node && !d.revoked) {
             d.last_seen = Some(now_s());
             if let Err(e) = self.save(&all) {
+                // i18n-ignore: log
                 eprintln!("hostd: mobile: saving last seen: {e}");
             }
         }

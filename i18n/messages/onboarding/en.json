@@ -1,0 +1,9 @@
+{
+	"onboarding_welcome_find_file_hint": "Choose one in the files panel, or search for it with {key}.",
+	"onboarding_welcome_nothing_open_here": "Nothing open here",
+	"onboarding_welcome_palette_hint": "{key} for every command",
+	"onboarding_welcome_pick_a_file": "Pick a file",
+	"onboarding_welcome_pick_up_where_you_left": "Pick up where you left off, or start something new.",
+	"onboarding_welcome_shortcuts": "Shortcuts",
+	"onboarding_welcome_take_the_tour": "Take the tour"
+}

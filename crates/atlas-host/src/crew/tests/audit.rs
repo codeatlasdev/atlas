@@ -38,7 +38,7 @@ async fn run_task(client: &HostClient, id: &str, prompt: &str) -> String {
         .await
         .unwrap();
     let task = v["task"]["id"].as_str().unwrap().to_string();
-    wait_task_state(client, id, &task, "done", Duration::from_secs(20)).await;
+    wait_task_state(client, id, &task, "done", atlas_core::scaling::HANG).await;
     task
 }
 
@@ -229,7 +229,7 @@ async fn an_approval_is_audited_asked_and_decided_with_who_answered() {
     );
 
     let mut asked = Vec::new();
-    for _ in 0..100 {
+    for _ in 0..1200 {
         asked = audit(&client, &id, Some("approval_decision")).await;
         if !asked.is_empty() {
             break;
@@ -469,7 +469,7 @@ async fn crewmate_audit_fixture_is_real_payload() {
         .await
         .unwrap();
     held.await.unwrap();
-    for _ in 0..100 {
+    for _ in 0..1200 {
         if !audit(&client, &id, Some("approval_decision"))
             .await
             .is_empty()

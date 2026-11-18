@@ -29,6 +29,8 @@ pub mod procs;
 pub mod progress;
 pub mod project_root;
 pub mod redact;
+#[cfg(any(test, feature = "test-fixtures"))]
+pub mod scaling;
 pub mod seed;
 pub mod ssh;
 pub mod ssh_config;

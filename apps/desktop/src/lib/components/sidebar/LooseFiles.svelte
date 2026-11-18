@@ -7,6 +7,7 @@
 	import { baseName } from "#lib/openPath.ts";
 	import { loose } from "#lib/stores/loose.svelte.ts";
 	import { ws } from "#lib/stores/workspace.svelte.ts";
+	import { m } from "#lib/i18n/m.ts";
 
 	/** Rows shown before "Show all". */
 	const SHOWN = 5;
@@ -20,7 +21,7 @@
 	<div class="group" data-loose-group>
 		<button class="head" aria-expanded={open} onclick={() => (open = !open)}>
 			<ChevronRight size={11} class="chev {open ? 'open' : ''}" />
-			<span>Files</span>
+			<span>{m.sidebar_loose_files_files()}</span>
 			<span class="count">{loose.recent.length}</span>
 		</button>
 		{#if open}
@@ -40,14 +41,20 @@
 					<button class="name" onclick={() => loose.open(f)}>
 						<FileText size={13} /><span>{baseName(f)}</span>
 					</button>
-					<button class="x" aria-label="Close {baseName(f)}" onclick={() => loose.close(f)}>
+					<button
+						class="x"
+						aria-label={m.sidebar_loose_files_close_file({ name: baseName(f) })}
+						onclick={() => loose.close(f)}
+					>
 						<X size={11} />
 					</button>
 				</div>
 			{/each}
 			{#if loose.recent.length > SHOWN}
 				<button class="more" onclick={() => (all = !all)}>
-					{all ? "Show fewer" : `Show all (${loose.recent.length})`}
+					{all
+						? m.sidebar_loose_files_show_fewer()
+						: m.sidebar_loose_files_show_all({ count: loose.recent.length })}
 				</button>
 			{/if}
 		{/if}
@@ -111,6 +118,9 @@
 		gap: 7px;
 		padding: 4px 6px 4px 14px;
 		text-align: left;
+	}
+	.name :global(svg) {
+		flex: none;
 	}
 	.name span {
 		overflow: hidden;

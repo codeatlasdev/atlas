@@ -14,6 +14,10 @@
 //! What is NEVER translated, so never goes through `t!`: `--json` output, MCP, logs, exit codes,
 //! the hostd protocol, `step:` lines. `crates/atlas-cli/tests/machine_output.rs` enforces it.
 //!
+//! A debug build also serves the pseudo-locale `en-XA` (`atlas_core::lang::PSEUDO`), built in memory from the English
+//! messages (`pseudo.rs`: accented, padded by 35%, wrapped in `⟦ ⟧`); a release build has no such catalog. Run a
+//! command with `ATLAS_LANG=en-XA` to see what is not in the catalog (plain text) and what truncates (no closing `⟧`).
+//!
 //! The format (`message.rs`): `{name}` variables, `{@key}` references, plural and `os` selects.
 //! pt-BR treats 0 as singular (CLDR), so a plain `one` variant prints "0 arquivo": add an exact
 //! `0` variant (`local countExact = count`, key `countExact=0`) where that reads wrong. Always
@@ -21,6 +25,7 @@
 //! when grouping matters.
 
 mod message;
+mod pseudo;
 mod shortcut;
 pub use shortcut::{shortcut, shortcut_for};
 
@@ -92,12 +97,32 @@ impl Args {
 
 type Map = HashMap<String, Message>;
 
-/// The languages with a catalog, as BCP-47 tags (the names of the locale files).
+/// The languages with a catalog, as BCP-47 tags (the names of the locale files), plus the pseudo-locale in a debug build.
 pub fn locales() -> impl Iterator<Item = &'static str> {
-    CATALOGS.iter().map(|(tag, _)| *tag)
+    CATALOGS
+        .iter()
+        .map(|(tag, _)| *tag)
+        .chain(atlas_core::lang::pseudo_enabled().then_some(atlas_core::lang::PSEUDO))
+}
+
+/// The pseudo-locale: the English catalog with every pattern transformed (`pseudo.rs`). Debug builds only.
+fn pseudo_catalog() -> Option<&'static Map> {
+    static MAP: OnceLock<Map> = OnceLock::new();
+    if !atlas_core::lang::pseudo_enabled() {
+        return None;
+    }
+    Some(MAP.get_or_init(|| {
+        let en = catalog(atlas_core::lang::DEFAULT).expect("the English catalog");
+        en.iter()
+            .map(|(key, msg)| (key.clone(), pseudo::message(msg)))
+            .collect()
+    }))
 }
 
 fn catalog(tag: &str) -> Option<&'static Map> {
+    if tag == atlas_core::lang::PSEUDO {
+        return pseudo_catalog();
+    }
     static MAPS: LazyLock<Vec<OnceLock<Map>>> =
         LazyLock::new(|| CATALOGS.iter().map(|_| OnceLock::new()).collect());
     let i = CATALOGS.iter().position(|(t, _)| *t == tag)?;
@@ -173,12 +198,25 @@ fn find(tag: &str, key: &str) -> Option<(&'static str, &'static Message)> {
     None
 }
 
-fn pattern(parts: &[Part], tag: &str, args: &Args, depth: usize, out: &mut String) -> Option<()> {
+/// A message being rendered: its text, and the prose letters of the pseudo-locale (the padding depends on them).
+#[derive(Default)]
+struct Out {
+    text: String,
+    letters: usize,
+}
+
+fn pattern(parts: &[Part], tag: &str, args: &Args, depth: usize, out: &mut Out) -> Option<()> {
     for part in parts {
         match part {
-            Part::Text(t) => out.push_str(t),
-            Part::Var(name) => out.push_str(&args.get(name)?.text()),
-            Part::Ref(key) => out.push_str(&render(tag, key, args, depth + 1)?),
+            Part::Text(t) => out.text.push_str(t),
+            Part::Var(name) => out.text.push_str(&args.get(name)?.text()),
+            Part::Ref(key) => {
+                // A reference is part of this sentence: its prose counts here, and it is not wrapped on its own.
+                let (text, letters) = render_parts(tag, key, args, depth + 1)?;
+                out.text.push_str(&text);
+                out.letters += letters;
+            }
+            Part::Letters(n) => out.letters += n,
         }
     }
     Some(())
@@ -212,12 +250,13 @@ fn select<'m>(
         .map(|(_, p)| p)
 }
 
-fn render(tag: &str, key: &str, args: &Args, depth: usize) -> Option<String> {
+/// `key` rendered, without the pseudo-locale's padding and brackets, and the prose letters those would count.
+fn render_parts(tag: &str, key: &str, args: &Args, depth: usize) -> Option<(String, usize)> {
     if depth > 8 {
         return None;
     }
     let (name, msg) = find(tag, key)?;
-    let mut out = String::new();
+    let mut out = Out::default();
     match msg {
         Message::Text(p) => pattern(p, name, args, depth, &mut out)?,
         Message::Select {
@@ -231,7 +270,18 @@ fn render(tag: &str, key: &str, args: &Args, depth: usize) -> Option<String> {
             &mut out,
         )?,
     }
-    Some(out)
+    Some((out.text, out.letters))
+}
+
+fn render(tag: &str, key: &str, args: &Args, depth: usize) -> Option<String> {
+    let (text, letters) = render_parts(tag, key, args, depth)?;
+    // Brackets and padding once per message, after its references were inlined (a reference in `en-XA` falls back to
+    // English by itself, hence the tag check on the message that was found).
+    Some(if tag == atlas_core::lang::PSEUDO && depth == 0 {
+        pseudo::wrap(&text, letters)
+    } else {
+        text
+    })
 }
 
 /// `key` in `tag` for an explicit `os` (`mac`, `windows`, `linux`), formatted with `args`; `None`
@@ -326,7 +376,7 @@ mod tests {
         for (n, v) in args {
             a.set(n, v.clone());
         }
-        let mut out = String::new();
+        let mut out = Out::default();
         match &msg {
             Message::Text(p) => pattern(p, tag, &a, 0, &mut out).unwrap(),
             Message::Select {
@@ -341,7 +391,7 @@ mod tests {
             )
             .unwrap(),
         }
-        out
+        out.text
     }
 
     fn files(plural_zero: bool) -> serde_json::Value {
@@ -572,6 +622,96 @@ mod tests {
         }
     }
 
+    // The pseudo-locale (en-XA) is a debug-build tool and is built from the English catalog at run time. `i18n/pseudo-cases.json`
+    // is what `scripts/i18n/pseudo.ts` (the desktop and the site) is held to as well: both implementations of the transform
+    // must give the same text for the same English, or a layout pass in the CLI would not match the one in the app.
+    #[test]
+    fn the_pseudo_transform_matches_the_script_on_the_shared_cases() {
+        let path =
+            std::path::Path::new(env!("CARGO_MANIFEST_DIR")).join("../../i18n/pseudo-cases.json");
+        let cases: Vec<serde_json::Value> =
+            serde_json::from_str(&std::fs::read_to_string(path).unwrap()).unwrap();
+        assert!(cases.len() >= 8);
+        for case in cases {
+            let english = case["en"].as_str().unwrap();
+            let msg = pseudo::message(&message::parse(&json!(english)).unwrap());
+            let mut args = Args::new();
+            // The script keeps `{name}` as written; here it is replaced by its value, which has no letters that count.
+            let mut want = case["pseudo"]
+                .as_str()
+                .unwrap()
+                .replace("\\{", "{")
+                .replace("\\}", "}");
+            for (name, value) in case["vars"].as_object().into_iter().flatten() {
+                args.set(name, value.as_str().unwrap());
+                want = want.replace(&format!("{{{name}}}"), value.as_str().unwrap());
+            }
+            let Message::Text(p) = &msg else {
+                unreachable!()
+            };
+            let mut out = Out::default();
+            pattern(p, "en-XA", &args, 0, &mut out).unwrap();
+            assert_eq!(pseudo::wrap(&out.text, out.letters), want, "{english:?}");
+        }
+    }
+
+    #[test]
+    fn the_locale_list_is_en_and_pt_br_with_en_xa_only_in_a_debug_build() {
+        let tags: Vec<&str> = locales().collect();
+        if cfg!(debug_assertions) {
+            assert_eq!(tags, ["en", "pt-BR", "en-XA"]);
+        } else {
+            assert_eq!(
+                tags,
+                ["en", "pt-BR"],
+                "a release build ships exactly en and pt-BR"
+            );
+            assert_eq!(lookup("en-XA", "cli_chrome_usage", None), None);
+            assert_eq!(translate("en-XA", "cli_chrome_usage", None), "Usage:");
+        }
+        // Whatever the build, the files that ship are the two locales: no en-XA catalog is embedded.
+        assert_eq!(
+            CATALOGS.iter().map(|(t, _)| *t).collect::<Vec<_>>(),
+            ["en", "pt-BR"]
+        );
+    }
+
+    #[test]
+    #[cfg(debug_assertions)]
+    fn en_xa_renders_real_messages_bracketed_with_variants_and_references_kept() {
+        // Plain text.
+        assert_eq!(
+            lookup("en-XA", "cli_chrome_usage", None).as_deref(),
+            Some("⟦Úságé: ~~⟧")
+        );
+        // A plural message: every variant is pseudo-localized and the English rule picks it (1 file, 2 files).
+        let n = |count: i64| {
+            let mut a = Args::new();
+            a.set("count", count);
+            a.set("langs", "en");
+            lookup("en-XA", "config_lang_available", Some(&a)).unwrap()
+        };
+        let (one, many) = (n(1), n(2));
+        assert_ne!(one, many, "the plural rule still selects a variant");
+        for t in [&one, &many] {
+            assert!(t.starts_with('⟦') && t.ends_with('⟧'), "{t}");
+        }
+        // A reference is inlined into the sentence: one pair of brackets, the referenced words accented, no nested pair.
+        let note = lookup("en-XA", "native_notify_no_permission", None).unwrap();
+        assert_eq!(
+            (note.matches('⟦').count(), note.matches('⟧').count()),
+            (1, 1),
+            "{note}"
+        );
+        assert!(
+            note.contains("Sçrééñ Réçórdíñg") && note.contains("éttíñgs"),
+            "{note}"
+        );
+        // Every message of the English catalog exists in en-XA, so a key never falls back to unbracketed English.
+        let (en, xa) = (catalog("en").unwrap(), catalog("en-XA").unwrap());
+        assert_eq!(en.len(), xa.len());
+    }
+
     #[test]
     #[cfg(not(debug_assertions))]
     fn an_unknown_key_is_returned_as_is_in_release() {
@@ -599,6 +739,19 @@ mod tests {
         assert_eq!(t!("cli_chrome_usage"), "Uso:");
         set_lang("fr");
         assert_eq!(lang(), "pt-BR", "an unknown tag keeps the current language");
+        // The pseudo-locale is selectable in a debug build and an unknown tag in a release.
+        set_lang("en-XA");
+        assert_eq!(
+            lang(),
+            if cfg!(debug_assertions) {
+                "en-XA"
+            } else {
+                "pt-BR"
+            }
+        );
+        if cfg!(debug_assertions) {
+            assert_eq!(t!("cli_chrome_usage"), "⟦Úságé: ~~⟧");
+        }
         set_lang("en");
         assert_eq!(t!("cli_chrome_usage"), "Usage:");
     }

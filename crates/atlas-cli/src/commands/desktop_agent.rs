@@ -734,6 +734,7 @@ pub fn stop(name: Option<&str>) -> Result<()> {
 #[cfg(test)]
 mod tests {
     use super::*;
+    use atlas_core::scaling::HANG;
 
     /// Incident (first 1x run): `ATLAS_AGENT_SCALE=1 atlas desktop --agent` still made a retina display, because the
     /// environment is cleared and the variable was not in the forwarded set.
@@ -878,7 +879,7 @@ mod tests {
     fn a_second_start_waits_for_the_first_to_finish_and_says_so() {
         let dir = tempfile::tempdir().unwrap();
         let path = dir.path().join("atlas-agent.lock");
-        let first = StartLock::acquire(&path, Duration::from_secs(1), |_| {}).unwrap();
+        let first = StartLock::acquire(&path, HANG, |_| {}).unwrap();
         // While the first holds it, a second one cannot get it within its patience, and the error says why.
         let waited = std::cell::Cell::new(0);
         let err = StartLock::acquire(&path, Duration::from_millis(300), |_| {
@@ -895,18 +896,16 @@ mod tests {
         assert!(waited.get() >= 1, "it told the caller it was waiting");
         // Once the first lets go, the next start proceeds.
         drop(first);
-        assert!(StartLock::acquire(&path, Duration::from_secs(1), |_| {}).is_ok());
+        assert!(StartLock::acquire(&path, HANG, |_| {}).is_ok());
     }
 
     #[test]
     fn a_waiting_start_proceeds_the_moment_the_holder_releases() {
         let dir = tempfile::tempdir().unwrap();
         let path = dir.path().join("atlas-agent.lock");
-        let first = StartLock::acquire(&path, Duration::from_secs(1), |_| {}).unwrap();
+        let first = StartLock::acquire(&path, HANG, |_| {}).unwrap();
         let p2 = path.clone();
-        let t = std::thread::spawn(move || {
-            StartLock::acquire(&p2, Duration::from_secs(10), |_| {}).map(|_| ())
-        });
+        let t = std::thread::spawn(move || StartLock::acquire(&p2, HANG, |_| {}).map(|_| ()));
         std::thread::sleep(Duration::from_millis(250));
         drop(first);
         assert!(

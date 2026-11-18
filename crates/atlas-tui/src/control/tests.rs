@@ -520,7 +520,7 @@ async fn full_queue(
     // Until every parked request is in the queue the next one would be queued too, not refused. A
     // fixed pause is a race on Windows, where a burst of clients is let in one pipe instance at a
     // time (`ERROR_PIPE_BUSY`, retried every 10 ms): wait for the queue itself to be full.
-    let deadline = std::time::Instant::now() + Duration::from_secs(20);
+    let deadline = std::time::Instant::now() + atlas_core::scaling::HANG;
     while rx.len() < server::REQUEST_QUEUE {
         assert!(
             std::time::Instant::now() < deadline,
@@ -560,7 +560,7 @@ async fn a_request_that_finds_the_queue_full_for_too_long_is_answered_busy() {
 // refuse it: `atlas down` and `atlas dev --detach` read a refusal as "nothing is running".
 #[tokio::test]
 async fn a_request_waits_for_a_briefly_busy_run_loop_instead_of_being_refused() {
-    let (dir, _server, mut rx, _parked) = full_queue(Duration::from_secs(5)).await;
+    let (dir, _server, mut rx, _parked) = full_queue(atlas_core::scaling::HANG).await;
     let root = dir.path().to_path_buf();
     let late =
         tokio::spawn(
@@ -573,7 +573,7 @@ async fn a_request_waits_for_a_briefly_busy_run_loop_instead_of_being_refused() 
             let _ = req.reply.send(ControlResponse::ok(json!({"served": true})));
         }
     });
-    let r = tokio::time::timeout(Duration::from_secs(5), late)
+    let r = tokio::time::timeout(atlas_core::scaling::HANG, late)
         .await
         .expect("the waiting request was never answered")
         .unwrap()
@@ -682,7 +682,10 @@ async fn down_of_a_busy_run_waits_for_its_real_pid_never_pid_zero() {
 #[cfg(unix)]
 #[tokio::test]
 async fn atlas_dev_against_a_busy_run_says_so_at_once_and_does_not_offer_to_kill_it() {
-    let (dir, _server, _rx, _parked) = full_queue(Duration::from_millis(300)).await;
+    // Every "busy" answer takes the whole queue wait, so a loop that retried on it (16 tries) would take
+    // at least 16 x 4 s, past the hang ceiling; answering at once takes one. A lower bound of the wait
+    // counted in calls, not a stopwatch on the answer.
+    let (dir, _server, _rx, _parked) = full_queue(Duration::from_secs(4)).await;
     std::fs::write(
         dir.path().join("atlas.yaml"),
         "name: demo\nservices:\n  api: { command: \"sleep 1\" }\n",
@@ -690,7 +693,7 @@ async fn atlas_dev_against_a_busy_run_says_so_at_once_and_does_not_offer_to_kill
     .unwrap();
     let _runner = fake_runner(dir.path());
     let out = tokio::time::timeout(
-        Duration::from_secs(3),
+        atlas_core::scaling::HANG,
         crate::tui::run(dir.path(), &crate::config::SelectionRequest::default()),
     )
     .await
@@ -721,7 +724,7 @@ async fn a_connection_over_the_limit_is_told_busy_and_closed() {
     }
     // Until the accept loop has registered all of them the next one would be served, not refused. A
     // fixed pause is a race on Windows (one pipe instance is accepted at a time): wait for the count.
-    let deadline = std::time::Instant::now() + Duration::from_secs(20);
+    let deadline = std::time::Instant::now() + atlas_core::scaling::HANG;
     while server.served() < server::MAX_CONNECTIONS {
         assert!(
             std::time::Instant::now() < deadline,
@@ -734,7 +737,7 @@ async fn a_connection_over_the_limit_is_told_busy_and_closed() {
     let over = ipc::connect(&socket_path(dir.path())).await.unwrap();
     let mut line = String::new();
     tokio::time::timeout(
-        Duration::from_secs(5),
+        atlas_core::scaling::HANG,
         tokio::io::BufReader::new(over).read_line(&mut line),
     )
     .await
@@ -748,7 +751,7 @@ async fn a_connection_over_the_limit_is_told_busy_and_closed() {
         .write_all(b"{\"cmd\":\"restart_service\",\"args\":{\"service\":\"api\"}}\n")
         .await
         .unwrap();
-    let req = tokio::time::timeout(Duration::from_secs(5), rx.recv())
+    let req = tokio::time::timeout(atlas_core::scaling::HANG, rx.recv())
         .await
         .unwrap()
         .unwrap();

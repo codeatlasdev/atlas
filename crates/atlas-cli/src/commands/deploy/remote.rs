@@ -7,6 +7,7 @@ use std::process::Stdio;
 use std::time::Duration;
 
 use anyhow::{Context, Result};
+use atlas_i18n::t;
 use tokio::io::AsyncWriteExt;
 use tokio::process::Command;
 
@@ -95,7 +96,9 @@ impl Remote {
         .stdout(Stdio::piped())
         .stderr(Stdio::piped())
         .kill_on_drop(true);
-        let mut child = cmd.spawn().context("spawning ssh")?;
+        let mut child = cmd
+            .spawn()
+            .with_context(|| t!("cmd_deploy_remote_ctx_ssh"))?;
         if let Some(mut pipe) = child.stdin.take() {
             if let Some(data) = stdin {
                 pipe.write_all(data).await?;
@@ -161,7 +164,11 @@ impl Remote {
                 break;
             }
         }
-        anyhow::bail!("upload to {} failed: {}", self.host, last.trim())
+        anyhow::bail!(t!(
+            "cmd_deploy_remote_upload_failed",
+            host = &self.host,
+            error = last.trim()
+        ))
     }
 
     /// Run `script` with its stdout streamed into `dest` (binary-safe, never held in memory). `dest`
@@ -172,7 +179,12 @@ impl Remote {
         opts.write(true).create_new(true);
         let file = atlas_core::sys::owner_only(&mut opts)
             .open(dest)
-            .with_context(|| format!("creating {}", dest.display()))?;
+            .with_context(|| {
+                t!(
+                    "cmd_deploy_remote_ctx_create_file",
+                    path = dest.display().to_string()
+                )
+            })?;
         let mut cmd = self.command(script);
         cmd.stdin(Stdio::null())
             .stdout(Stdio::from(file))
@@ -180,7 +192,7 @@ impl Remote {
             .kill_on_drop(true);
         let out = cmd
             .spawn()
-            .context("spawning ssh")?
+            .with_context(|| t!("cmd_deploy_remote_ctx_ssh"))?
             .wait_with_output()
             .await?;
         let code = out.status.code().unwrap_or(-1);

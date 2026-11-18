@@ -9,17 +9,20 @@
 use std::path::PathBuf;
 use std::process::Command;
 
+use atlas_core::scaling::HANG;
 use serde_json::Value;
 
 const BIN: &str = env!("CARGO_BIN_EXE_atlas");
 
-/// Runs `argv` in a pty. For each `[expect, send]` step: wait (20s) for `expect` in the output
-/// produced since the previous step, then write `send` (if any). Afterwards: SIGTERM if the
-/// process is still alive (the TUI quits gracefully on it), reap, and print
+/// Runs `argv` in a pty. For each `[expect, send]` step: wait for `expect` in the output produced since the
+/// previous step (up to `WAIT_S`, the hang ceiling: it is waiting on the real process), then write `send` (if any).
+/// Afterwards: wait for the process to exit by itself, unless the TUI took the terminal (it only quits on a signal);
+/// SIGTERM if it is still alive (the TUI quits gracefully on it), reap, and print
 /// `{ok, status, out}` as JSON, `out` being the full transcript.
 const DRIVER: &str = r#"
 import json, os, pty, select, signal, sys, time
 
+WAIT = float(os.environ["WAIT_S"])
 steps = json.loads(os.environ["STEPS"])
 argv = json.loads(os.environ["ARGV"])
 pid, fd = pty.fork()
@@ -45,7 +48,7 @@ def pump(timeout):
 
 ok = True
 for expect, send in steps:
-    end = time.time() + 20
+    end = time.time() + WAIT
     needle = expect.encode()
     while needle not in out[cursor:] and time.time() < end:
         if not pump(0.2):
@@ -58,8 +61,10 @@ for expect, send in steps:
         os.write(fd, send.encode())
 
 status = None
-end = time.time() + 8
+end = time.time() + WAIT
 while time.time() < end and status is None:
+    if b"\x1b[?1049h" in out:
+        break  # the TUI is up: it does not exit by itself
     p, st = os.waitpid(pid, os.WNOHANG)
     if p:
         status = os.waitstatus_to_exitcode(st)
@@ -67,7 +72,7 @@ while time.time() < end and status is None:
     pump(0.2)
 if status is None:
     os.kill(pid, signal.SIGTERM)
-    end = time.time() + 8
+    end = time.time() + WAIT
     while time.time() < end and status is None:
         p, st = os.waitpid(pid, os.WNOHANG)
         if p:
@@ -141,9 +146,12 @@ impl Sandbox {
             .arg(DRIVER)
             .env("HOME", self.home.path())
             .env("PATH", path)
+            // The text of these tests is English whatever language the machine is set to.
+            .env("ATLAS_LANG", "en")
             .env("TERM", "xterm-256color")
             // Debug test binaries count as "linked" (hint only) unless forced.
             .env("ATLAS_UPDATE_PROMPT", "force")
+            .env("WAIT_S", HANG.as_secs().to_string())
             .env("ARGV", serde_json::to_string(&argv).unwrap())
             .env("STEPS", serde_json::to_string(steps).unwrap());
         for (k, v) in env {
@@ -279,6 +287,7 @@ fn a_cache_from_another_channel_is_not_the_defaults_offer() {
 fn no_prompt_for_non_interactive_flags() {
     let sb = Sandbox::new(&newer_cache());
     let o = Command::new(BIN)
+        .env("ATLAS_LANG", "en")
         .args(["dev", "--status", "--dir"])
         .arg(sb.project.path())
         .env("HOME", sb.home.path())

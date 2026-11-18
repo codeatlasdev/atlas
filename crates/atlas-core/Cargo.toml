@@ -34,7 +34,7 @@ jiff = { workspace = true }
 jiff-tzdb = { workspace = true }
 
 [features]
-# Fixtures for spawn-path tests in dependent crates (`login_env::fixtures`).
+# Fixtures for tests in dependent crates (`login_env::fixtures`, `scaling`).
 test-fixtures = ["dep:tempfile"]
 
 [target.'cfg(unix)'.dependencies]

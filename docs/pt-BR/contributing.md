@@ -1,7 +1,7 @@
 ---
 title: "Contribuir"
 source: contributing.md
-source_sha: "612fd61004cee917e38e27dc419a24af0efef6cf"
+source_sha: "8ebccad66a89bc92d8f2cab5a1c311b6511a17fd"
 translation: machine
 ---
 
@@ -259,7 +259,7 @@ Os agentes que o Atlas inicia (omp, Claude Code, Codex, OpenCode) estão listado
 - Frontend do Atlas Desktop: `BUILTIN_AGENTS` em `apps/desktop/src/lib/agentRegistry.ts` importa o mesmo arquivo.
 - Atlas Mobile: `apps/mobile/lib/core/protocol/agent_registry_data.dart` é gerado por `bun scripts/gen-agents-dart.ts`; o `bun test scripts` falha quando ele está desatualizado, e o `bun scripts/gen-agents-dart.ts --check --json` avisa isso para um script.
 
-Um agente novo é uma entrada ali, depois o gerador, depois o que é realmente específico de cada agente: um logo (`agentLogos.ts`, `agent_logo.dart`), um harness de `atlas setup`, uma sonda de login (`crew/engine_login.rs`), o script de verificação (`atlas-desktop/src/crew.rs`) e um engine (`crew/engine/`). Os testes nomeiam cada um desses que estiver faltando. O `scripts/agent-list.test.ts` falha quando uma lista de ids de agente é digitada em qualquer outro lugar.
+Um agente novo é uma entrada ali, depois o gerador, depois o que é realmente específico de cada agente: um logo (`agentLogos.ts`, `agent_logo.dart`), um módulo de `atlas setup`, uma sonda de login (`crew/engine_login.rs`), o script de verificação (`atlas-desktop/src/crew.rs`) e um engine (`crew/engine/`). Os testes nomeiam cada um desses que estiver faltando. O `scripts/agent-list.test.ts` falha quando uma lista de ids de agente é digitada em qualquer outro lugar.
 
 ### Regras do runtime que vieram de incidentes reais
 
@@ -354,7 +354,7 @@ Antes de abrir: faça a alteração com os testes e as atualizações de documen
 
 Agentes de IA trabalham neste repositório, então as regras sobre onde eles escrevem e o que podem enviar por push são aplicadas por ferramentas, não por texto. Uma única função de decisão (`scripts/lib/agent-guard/decide.ts`, testada em tabela no `scripts/agent-guard.test.ts`) responde "permitir ou recusar, e o que fazer em vez disso" para todo agente, por quatro pontos de entrada:
 
-| Ferramenta | Ligação (commitada) | Como bloqueia |
+| Agente | Ligação (commitada) | Como bloqueia |
 |---|---|---|
 | Claude Code | `.claude/settings.json`: `PreToolUse` em `Write\|Edit\|MultiEdit\|NotebookEdit\|Bash` roda `bun scripts/agent-guard.ts hook` | saída 2; o motivo no stderr é mostrado ao agente |
 | Codex | `.codex/hooks.json`: `PreToolUse` em `Bash\|apply_patch` (os hooks precisam ser revisados uma vez em `/hooks`; a camada `.codex/` do projeto precisa ser confiável) | igual, saída 2 |
@@ -363,7 +363,7 @@ Agentes de IA trabalham neste repositório, então as regras sobre onde eles esc
 
 O que é recusado (cada mensagem nomeia a correção):
 
-- **Escritas fora da sua worktree.** Uma ferramenta de arquivo ou um redirecionamento de shell (`>`, `>>`, `tee`, `cp`, `mv`, `rm`, `mkdir`, `touch`, `dd of=`, `cd <main checkout>`, `git -C <main> commit`…) cujo alvo realmente cai (symlinks e `..` resolvidos) fora da worktree git do cwd da sessão. Diretórios temporários e o estado próprio dos harnesses (`~/.claude`, `~/.codex`, `~/.omp`, `~/.atlas`, `~/.agents`) são permitidos; o checkout principal, as worktrees de outros agentes e os dados do próprio git (`.git/`) não são. Uma sessão que começa no **checkout principal** pode escrever ali, a menos que um mantenedor tenha optado uma vez por `git config atlas.agentWrites deny` (aí o checkout principal fica fechado para agentes, e o `git worktree add` é a saída).
+- **Escritas fora da sua worktree.** Uma ferramenta de arquivo ou um redirecionamento de shell (`>`, `>>`, `tee`, `cp`, `mv`, `rm`, `mkdir`, `touch`, `dd of=`, `cd <main checkout>`, `git -C <main> commit`…) cujo alvo realmente cai (symlinks e `..` resolvidos) fora da worktree git do cwd da sessão. Diretórios temporários e o estado próprio dos agentes (`~/.claude`, `~/.codex`, `~/.omp`, `~/.atlas`, `~/.agents`) são permitidos; o checkout principal, as worktrees de outros agentes e os dados do próprio git (`.git/`) não são. Uma sessão que começa no **checkout principal** pode escrever ali, a menos que um mantenedor tenha optado uma vez por `git config atlas.agentWrites deny` (aí o checkout principal fica fechado para agentes, e o `git worktree add` é a saída).
 - **`git push` para `main`, `master` ou `release/*`**, `--all`, `--mirror`, `--no-verify`, `-c core.hooksPath=`; um `git push` sem argumentos enquanto estiver no main.
 - **Force push** (`-f`, `--force`, `--force-with-lease`, `+refspec`).
 - **Merge** (`gh pr merge`, a API de merge ou auto-merge, `bun run pr:merge` exceto com `--dry-run`).
@@ -379,7 +379,7 @@ Limites, para ninguém confiar demais: as proteções leem comandos, não os iso
 O CI (`.github/workflows/ci.yml`) roda em todo pull request e em pushes para `main` e `release/**`: macOS, Linux e Windows rodam o gate de Rust (uma action composta, `.github/actions/rust-gate`, para não divergirem), Linux e Windows rodam os scripts do repositório e os testes deles (`bun run release:test`, job "Repo scripts"), além de "Desktop opens (Linux)" (o app aberto em headless, `scripts/linux-launch-check.sh`), as verificações do frontend do desktop, o build do site, o `cargo deny`, o relatório de duplicação e o lint dos workflows. Pull requests de forks o rodam com um token somente leitura e sem segredos. Como ele é ligado:
 
 - **Uma verificação obrigatória.** O último job, `CI`, passa só quando todos os outros passaram, então os jobs podem ser renomeados ou divididos sem mexer no ruleset. O `pr.yml` adiciona `Signed-off-by` (DCO) e `Conventional title` (o título do pull request vira o assunto do commit do squash). Essas três são as verificações obrigatórias.
-- **Sem uma segunda execução de testes depois do merge.** A branch precisa estar atualizada para o merge, então o commit do squash no `main` tem exatamente a árvore que o pull request testou. O `scripts/ci-tested.sh` confere isso (mesma árvore do head do pull request e uma execução verde do CI para ela), e então o push pula os testes e só compila o que mantém o cache aquecido. Uma árvore diferente, um push direto ou qualquer erro de API roda tudo.
+- **Sem uma segunda execução de testes depois do merge.** A branch precisa estar atualizada para o merge, então o commit do squash no `main` tem exatamente a árvore que o pull request testou. O `scripts/ci-tested.sh` confere isso (mesma árvore do head do pull request e uma execução verde do CI para ela), e então o push pula os testes e só compila o que mantém o cache aquecido. Uma árvore diferente, um push direto ou qualquer erro de API roda tudo. A verificação de i18n é a exceção: roda em todo push no `main`, porque dois pull requests que passam sozinhos podem quebrar o baseline juntos e só a árvore do merge mostra isso (cerca de um segundo).
 - **Os caches vêm do `main`.** O cache de um pull request é visível só para aquele pull request ([documentação do GitHub](https://docs.github.com/en/actions/reference/workflows-and-actions/dependency-caching#restrictions-for-accessing-a-cache)) e expulsaria o cache do `main` que todo pull request restaura (10 GB por repositório), então os caches são salvos só a partir do `main` e de `release/*`. As execuções ali nunca são canceladas; um novo push em um pull request cancela a execução mais antiga dele.
 - **Fixado e auditado.** Toda action é fixada em um SHA de commit completo, com a versão exata em um comentário (`# v7.0.1`), atualizada pelo Dependabot depois de uma quarentena de 7 dias. O `scripts/lint-workflows.sh` roda actionlint e zizmor (configuração: `.github/zizmor.yml`, cada exceção com o seu motivo) localmente no `bun run check` e no CI.
 - **Language servers de verdade, fora do gate.** Os quatro testes com `#[ignore]` de `crates/atlas-lsp/tests/real.rs` (rust-analyzer, os servers npm em um Node gerenciado, gopls: eles baixam os seus servers) rodam em `.github/workflows/lsp-real.yml`, um job de matriz por teste: toda semana, à mão (`gh workflow run lsp-real.yml`) e em pull requests que tocam `crates/atlas-lsp/**` ou o workflow. Ele não faz parte do `CI`: uma versão nova de server ou uma queda de download não deve bloquear um merge, então leia a última execução dele quando mexer no crate de LSP. Localmente: `cargo test -p atlas-lsp --test real -- --ignored --nocapture`, com `HOME` e `TMPDIR` apontados para um diretório temporário.

@@ -132,7 +132,7 @@ async fn daemon(dir: &Path, fake: &Fake) -> HostClient {
 }
 
 async fn connect(dir: &Path) -> HostClient {
-    for _ in 0..100 {
+    for _ in 0..1200 {
         if let Ok(c) = HostClient::connect_dir(dir, "test").await {
             return c;
         }
@@ -461,7 +461,7 @@ async fn daemon_that_idles(
 /// and hostd would keep the connection until its idle timeout.
 async fn leave(c: &HostClient, phone: Phone) {
     phone.hang_up();
-    for _ in 0..100 {
+    for _ in 0..1200 {
         if c.call("info", json!({})).await.unwrap()["clients"] == 1 {
             return;
         }
@@ -475,7 +475,9 @@ async fn leave(c: &HostClient, phone: Phone) {
 /// keeps it. Control: the same daemon with the phone revoked does leave, so the wait below is real.
 #[tokio::test]
 async fn a_daemon_with_a_paired_phone_does_not_idle_out_and_one_without_does() {
-    let limit = Duration::from_secs(1);
+    // The idle clock runs from the moment the daemon starts, so the limit must outlast starting it and connecting:
+    // at 1 s a loaded machine let the daemon idle out before the test had connected ("hostd did not start").
+    let limit = Duration::from_secs(3);
 
     let kept = tempfile::tempdir().unwrap();
     let (c, kept_task) = daemon_that_idles(kept.path(), limit).await;
@@ -493,9 +495,9 @@ async fn a_daemon_with_a_paired_phone_does_not_idle_out_and_one_without_does() {
     drop(c);
 
     // The revoked one goes (a few ticks of half the limit); the paired one is still here as long after.
-    let gone = tokio::time::timeout(Duration::from_secs(10), revoked_task).await;
+    let gone = tokio::time::timeout(atlas_core::scaling::HANG, revoked_task).await;
     assert!(gone.is_ok(), "a daemon nobody can reach never exited");
-    tokio::time::sleep(Duration::from_secs(3)).await;
+    tokio::time::sleep(limit * 2).await;
     assert!(
         !kept_task.is_finished(),
         "the daemon left with a phone paired and nothing else running"

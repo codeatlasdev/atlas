@@ -189,6 +189,7 @@ pub(crate) async fn decide(
                     .failed_log(repo, id)
                     .await
                     .inspect_err(|e| {
+                        // i18n-ignore: log
                         eprintln!("atlas crew: github: no failed log for run {id} in {repo}: {e}")
                     })
                     .ok(),

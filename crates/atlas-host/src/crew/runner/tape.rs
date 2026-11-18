@@ -157,6 +157,7 @@ pub(crate) fn observe(hub_w: Weak<Hub>) {
                 Ok(v) => v,
                 Err(RecvError::Lagged(n)) => {
                     // Evidence was dropped; a claim that needed it is removed, never invented.
+                    // i18n-ignore: log
                     eprintln!("atlas crew: command tape: {n} agent events were dropped under load");
                     continue;
                 }

@@ -41,6 +41,8 @@ A value is a string, or one variants object. `{name}` is a variable. `{@common_o
 
 An exact zero is a second selector (`"local countExact = count"`, match `countExact=0, countPlural=*`). `os` is `"input os"`, selector `os`, match `os=mac`, `os=windows`, `os=*`. Markup is `{#link}..{/link}` (Paraglide only). The Rust evaluator and the Paraglide compiler read exactly this; `i18n:check` rejects anything else.
 
+A sentence with an emphasized or linked span is ONE message with markup tags, never pieces around an element. On the desktop it renders with `lib/i18n/Rich.svelte`: `<Rich parts={m.key.parts({ n })} tags={{ em: "em", b: boldSnippet }} />` (a tag is an element name or a snippet that receives the tag's content; define the snippet in the component that owns the scoped CSS). `m.key()` on the same message returns the text with the tags dropped.
+
 ## Where the code calls it
 
 | Surface | Call site | Notes |
@@ -80,15 +82,25 @@ Atlas runs on macOS, Windows and Linux; no message may say "Mac" or spell a shor
 
 ## Where the language comes from
 
-One implementation, `atlas_core::lang` (CLI, TUI, hostd, desktop shell), precedence `ATLAS_LANG`, `~/.atlas/language`, `LANGUAGE`/`LC_ALL`/`LC_MESSAGES`/`LANG` (C/POSIX = English), the OS, English; any `pt*` selects pt-BR. `atlas config lang` shows it and what decided it; `atlas config lang <tag>` and Desktop Settings write `~/.atlas/language`. The desktop receives the resolved tag from Rust (a Tauri command) and never reads `navigator.language`. Mobile follows the phone.
+One implementation, `atlas_core::lang` (CLI, TUI, hostd, desktop shell; a debug build also knows `en-XA`, below), precedence `ATLAS_LANG`, `~/.atlas/language`, `LANGUAGE`/`LC_ALL`/`LC_MESSAGES`/`LANG` (C/POSIX = English), the OS, English; any `pt*` selects pt-BR. `atlas config lang` shows it and what decided it; `atlas config lang <tag>` and Desktop Settings write `~/.atlas/language`. The desktop receives the resolved tag from Rust (a Tauri command) and never reads `navigator.language`. Mobile follows the phone.
+
+## Layout pass in the pseudo-locale (en-XA)
+
+Every migrated screen is looked at in `en-XA` (accented, padded 35%, wrapped in `⟦ ⟧`) and in pt-BR before its PR opens (`i18n/MIGRATION.md` step 6; why and where it exists: `i18n/README.md`, "The pseudo-locale"). It exists in development builds only: a release build, the site and `ATLAS_LANG=en-XA` on a release binary are plain English; never list it anywhere a user sees.
+
+1. `bun run desktop:agent -- --name <you>` (debug build; a build from before en-XA existed needs `bun run desktop:build:app`), `export ATLAS_DEBUG_SOCK=...`. Never the user's app.
+2. Switch: `atlas desktop debug eval 'return await window.__TAURI_INTERNALS__.invoke("locale_set", { tag: "en-XA" })'` (or Settings > General > Display language > "Pseudo (en-XA)"). Back: `{ tag: null }` follows the system, `"pt-BR"` renders Portuguese.
+3. Open each screen of the batch (`debug click`, `debug eval`), `atlas desktop debug shot /tmp/x.png`. Read it: `⟦...⟧` on every string of a migrated screen; a missing `⟧` is a truncation; plain text is not extracted; brackets inside a sentence are glued pieces. Fix overflow in CSS.
+4. Rust: `ATLAS_LANG=en-XA target/debug/atlas <command>` (debug build only), 80 columns.
+5. `bun run i18n:pseudo -- --print <area>` prints one area's pseudo text if you need to read it without an app.
 
 ## The ratchets (text that must not spread)
 
 `i18n:check` also flags hardcoded user-facing text (Svelte, Rust `println!`/`bail!`), spelled shortcuts, ad hoc platform checks and flagged phrases in existing docs. These are **ratchets**: they judge your change, not a snapshot.
 
-- For each file you touch, the offenders at the merge-base are counted with the same detector; only the ones you **add** fail, with `file:line`. Old offenders in a file you edit are fine; moving them is fine; a file you do not touch is never looked at. So **when main adds screens there is nothing to re-snapshot**, and the baseline never needs a hand edit.
+- **The baseline judges every file, in every mode**, touched or not: more offenders than the baseline line allows fails (with `file:line`), and so does a line above the real count (run `bun run i18n:fix`). In a git checkout the files you touch also report what you **added** (the offenders at the merge-base are counted with the same detector). Old offenders at their baseline are fine; moving them is fine; a renamed file is allowed what its old path was (`i18n:fix` moves the line). A new screen must be written with message keys: there is no way to snapshot it.
 - Fix a new finding by using a message key (or `// i18n-ignore` / `<!-- i18n-ignore -->` when it is not for users). Never raise `i18n/hardcoded-baseline.jsonl` to make it pass: a raised count fails (`baseline-grew`). `bun run i18n:fix` only lowers it (a fixed file keeps its line at 0; a local `git merge` of two branches does not conflict on the file because of `merge=union` and the smaller count of a repeated path wins, but GitHub's own merge ignores that; a count above the real one fails the check in every mode: `i18n:fix`).
-- Run `git fetch origin main` before checking locally: the base is `origin/main`'s merge-base (else `main`), or `ATLAS_BASE=<ref>` when set; in CI a pull request is judged against the first parent of its merge ref and a push against the commit it replaced (resolver: `scripts/lib/base.ts`). With no usable base the check compares with the committed baseline instead and says so.
+- Run `git fetch origin main` before checking locally: the base is `origin/main`'s merge-base (else `main`), or `ATLAS_BASE=<ref>` when set; in CI a pull request is judged against the first parent of its merge ref and a push against the commit it replaced (resolver: `scripts/lib/base.ts`). With no usable base the baseline alone judges and the check says so. CI also runs it on every push to `main`.
 
 ## Traps that cost time
 

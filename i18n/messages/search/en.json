@@ -1,0 +1,46 @@
+{
+	"search_form_clear": "Clear",
+	"search_form_files_to_include": "Files to include",
+	"search_form_files_to_include_or_skip": "Files to include or skip",
+	"search_form_files_to_skip": "Files to skip",
+	"search_form_find_in_project": "Find in project",
+	"search_form_include_src_ts": "Include: src/**, *.ts",
+	"search_form_match_case": "Match case",
+	"search_form_regular_expression": "Regular expression",
+	"search_form_search_query": "Search query",
+	"search_form_searching": "Searching…",
+	"search_form_skip_dist_min_js": "Skip: dist, *.min.js",
+	"search_form_status": [
+		{
+			"declarations": [
+				"input matches",
+				"input files",
+				"input matchesLabel",
+				"input filesLabel",
+				"local matchesExact = matches",
+				"local matchesPlural = matches: plural",
+				"local filesPlural = files: plural"
+			],
+			"selectors": [
+				"matchesExact",
+				"matchesPlural",
+				"filesPlural"
+			],
+			"match": {
+				"matchesExact=0, matchesPlural=*, filesPlural=*": "No results",
+				"matchesExact=*, matchesPlural=one, filesPlural=*": "{matchesLabel} result in {filesLabel} file",
+				"matchesExact=*, matchesPlural=*, filesPlural=one": "{matchesLabel} results in {filesLabel} file",
+				"matchesExact=*, matchesPlural=*, filesPlural=*": "{matchesLabel} results in {filesLabel} files"
+			}
+		}
+	],
+	"search_form_took": "{ms} ms · {tool}",
+	"search_form_whole_word": "Whole word",
+	"search_parse_failed": "Search failed (exit {code})",
+	"search_results_nothing_matches_query": "Nothing matches “{query}”.",
+	"search_results_search_every_file_in_this": "Search every file in this worktree.",
+	"search_results_search_results": "Search results",
+	"search_results_showing_the_first_results_narrow": "Showing the first results. Narrow the search to see the rest.",
+	"search_results_try_fewer_words_turn_off": "Try fewer words, turn off whole word, or clear the file filters.",
+	"search_results_type_to_search_use_to": "Type to search. Use {up} and {down} to move, {enter} to open at the line."
+}

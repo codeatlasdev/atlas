@@ -1,6 +1,7 @@
 <script lang="ts">
-	import { formatBytes, hexDump } from "#lib/viewers/kind.ts";
+	import { formatBytes, hexDump, MAX_BYTES } from "#lib/viewers/kind.ts";
 	import ViewerActions from "#lib/viewers/ViewerActions.svelte";
+	import { m } from "#lib/i18n/m.ts";
 
 	/** Large or binary file: what it is, what to do with it, and the first bytes when we have them. */
 	let {
@@ -22,19 +23,28 @@
 
 <div class="fb">
 	<div class="card">
-		<h3>{reason === "large" ? "Too large to edit here" : "Binary file"}</h3>
+		<h3>
+			{reason === "large"
+				? m.viewers_files_fallback_viewer_too_large()
+				: m.viewers_files_fallback_viewer_binary()}
+		</h3>
 		<p>
 			{#if reason === "large"}
-				This file is {formatBytes(size)}. Atlas opens text files up to 32 MB.
+				{m.viewers_files_fallback_viewer_too_large_body({
+					size: formatBytes(size),
+					limit: MAX_BYTES.text / (1024 * 1024),
+				})}
 			{:else}
-				{formatBytes(size)} · no preview for this format.
+				{m.viewers_files_fallback_viewer_binary_body({ size: formatBytes(size) })}
 			{/if}
 		</p>
 		<ViewerActions {onopen} {onreveal} />
 	</div>
 	{#if hex}
 		<div class="hexwrap">
-			<div class="label">First {formatBytes(head!.length)}</div>
+			<div class="label">
+				{m.viewers_files_fallback_viewer_first_bytes({ size: formatBytes(head!.length) })}
+			</div>
 			<pre class="hex ca-selectable">{hex}</pre>
 		</div>
 	{/if}

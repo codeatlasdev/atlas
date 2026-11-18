@@ -24,9 +24,23 @@ export interface LocaleState {
 
 /**
  * Each language under its own name: endonyms, never translated (a person who cannot read the current language must be
- * able to find theirs). `Record<Locale, …>` makes a language added to the catalogs a type error until it is named.
+ * able to find theirs). `Record<…, string>` makes a language added to the catalogs a type error until it is named. The
+ * pseudo-locale is not one of them: it exists in development builds only (`scripts/paraglide.ts`), so it is not part of
+ * the type a release compiles; `localeName` shows it under the one name it has.
  */
-export const LOCALE_NAMES: Record<Locale, string> = { en: "English", "pt-BR": "Português (Brasil)" };
+export const LOCALE_NAMES = { en: "English", "pt-BR": "Português (Brasil)" } as const satisfies Record<
+	string,
+	string
+>;
+
+/**
+ * The name a language is shown under in the language picker. A tag with no entry above is the pseudo-locale (the only
+ * other language a build can compile), named here without its bare tag so that `bun run bundle` can tell a release that
+ * compiled `"en-XA"` into its runtime from one that did not.
+ */
+export function localeName(tag: Locale): string {
+	return (LOCALE_NAMES as Record<string, string>)[tag] ?? "Pseudo (en-XA)";
+}
 
 /** A reply from Rust (or anything else) as a `LocaleState`; `null` when it is not one. */
 export function parseLocaleState(raw: unknown): LocaleState | null {

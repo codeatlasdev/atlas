@@ -347,7 +347,7 @@ async fn a_webhook_task_is_marked_no_auto_unless_the_trigger_allows_auto() {
         let r = post_webhook(&dir, &id, token, body).await;
         assert!(r.contains("204"), "{r}");
     }
-    let deadline = std::time::Instant::now() + Duration::from_secs(5);
+    let deadline = std::time::Instant::now() + atlas_core::scaling::HANG;
     let tasks = loop {
         let v = client
             .call("crewmate_tasks", json!({"id": id, "limit": 10}))
@@ -425,7 +425,7 @@ async fn a_webhook_task_on_an_engine_that_cannot_ask_is_refused_not_run_auto() {
         .await
         .unwrap();
     post_webhook(&dir, &id, "t-oc", "refused-webhook-7f3").await;
-    let deadline = std::time::Instant::now() + Duration::from_secs(10);
+    let deadline = std::time::Instant::now() + atlas_core::scaling::HANG;
     let task = loop {
         let v = client
             .call("crewmate_tasks", json!({"id": id, "limit": 10}))
@@ -463,7 +463,7 @@ async fn a_webhook_task_on_an_engine_that_cannot_ask_is_refused_not_run_auto() {
         .await
         .unwrap();
     post_webhook(&dir, &id, "t-oc", "opted-in-webhook-7f3").await;
-    let deadline = std::time::Instant::now() + Duration::from_secs(10);
+    let deadline = std::time::Instant::now() + atlas_core::scaling::HANG;
     while !ran("opted-in-webhook-7f3") {
         assert!(
             std::time::Instant::now() < deadline,

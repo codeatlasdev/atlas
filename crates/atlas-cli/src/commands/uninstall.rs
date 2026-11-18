@@ -14,6 +14,7 @@ use std::io::{BufRead, IsTerminal, Write};
 use std::path::{Path, PathBuf};
 
 use atlas_core::pkgowner::{self, Package};
+use atlas_i18n::t;
 
 use super::AtlasCommand;
 use super::shellrc::{self, ShellEnv};
@@ -87,9 +88,9 @@ impl Env {
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub(crate) enum Item {
     /// A file or directory, removed whole.
-    Path { path: PathBuf, note: &'static str },
+    Path { path: PathBuf, note: Note },
     /// A symlink (`atlas link`): only the link goes, never what it points at.
-    Link { path: PathBuf, note: &'static str },
+    Link { path: PathBuf, note: Note },
     /// The `# Atlas CLI` block install appended to a shell startup file.
     RcBlock { file: PathBuf, dir: PathBuf },
     /// A startup file all of Atlas's own (fish `conf.d/atlas.fish`, nushell `autoload/atlas.nu`).
@@ -106,21 +107,100 @@ impl Item {
     fn describe(&self) -> String {
         match self {
             Item::Path { path, note } | Item::Link { path, note } => {
-                format!("{}  ({note})", path.display())
+                format!("{}  ({})", path.display(), note.text())
             }
             Item::RcBlock { file, .. } => {
-                format!("{}  (the PATH lines Atlas added)", file.display())
+                t!(
+                    "cmd_install_item_rc_block",
+                    path = file.display().to_string()
+                )
             }
-            Item::ShellFile { file } => format!("{}  (the PATH file Atlas wrote)", file.display()),
+            Item::ShellFile { file } => {
+                t!(
+                    "cmd_install_item_shell_file",
+                    path = file.display().to_string()
+                )
+            }
             Item::FishUniversal { dir, .. } => {
-                format!("{}  (fish universal fish_user_paths entry)", dir.display())
+                t!(
+                    "cmd_install_item_fish_universal",
+                    path = dir.display().to_string()
+                )
             }
-            Item::UserPath { dir } => format!("{}  (user PATH entry)", dir.display()),
-            Item::Package(p) => format!(
-                "{}  (package, removed with: {})",
-                p.name,
-                p.manual_remove_command()
+            Item::UserPath { dir } => {
+                t!(
+                    "cmd_install_item_user_path",
+                    path = dir.display().to_string()
+                )
+            }
+            Item::Package(p) => t!(
+                "cmd_install_item_package",
+                name = p.name.clone(),
+                command = p.manual_remove_command()
             ),
+        }
+    }
+}
+
+/// What a path in the plan is, in words: the `--list` output and the confirmation show it after the path. One
+/// catalog message each (`cmd_install_note_*`).
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub(crate) enum Note {
+    AppLinked,
+    App,
+    LinkOnPath,
+    Everything,
+    Cli,
+    HostSocket,
+    HostToken,
+    HostPid,
+    HostLog,
+    DesktopSocket,
+    DesktopToken,
+    DesktopDebugSocket,
+    UpdateCheck,
+    UpdateLock,
+    RemoteCache,
+    AppBackup,
+    AppVersion,
+    MenuEntry,
+    MenuIcon,
+    PrevApp,
+    StagedApp,
+    WebkitStore,
+    WebkitStoreLegacy,
+    CrashReports,
+    WindowState,
+}
+
+impl Note {
+    fn text(self) -> String {
+        match self {
+            Note::AppLinked => t!("cmd_install_note_app_linked"),
+            Note::App => t!("cmd_install_note_app"),
+            Note::LinkOnPath => t!("cmd_install_note_link_on_path"),
+            Note::Everything => t!("cmd_install_note_everything"),
+            Note::Cli => t!("cmd_install_note_cli"),
+            Note::HostSocket => t!("cmd_install_note_host_socket"),
+            Note::HostToken => t!("cmd_install_note_host_token"),
+            Note::HostPid => t!("cmd_install_note_host_pid"),
+            Note::HostLog => t!("cmd_install_note_host_log"),
+            Note::DesktopSocket => t!("cmd_install_note_desktop_socket"),
+            Note::DesktopToken => t!("cmd_install_note_desktop_token"),
+            Note::DesktopDebugSocket => t!("cmd_install_note_desktop_debug_socket"),
+            Note::UpdateCheck => t!("cmd_install_note_update_check"),
+            Note::UpdateLock => t!("cmd_install_note_update_lock"),
+            Note::RemoteCache => t!("cmd_install_note_remote_cache"),
+            Note::AppBackup => t!("cmd_install_note_app_backup"),
+            Note::AppVersion => t!("cmd_install_note_app_version"),
+            Note::MenuEntry => t!("cmd_install_note_menu_entry"),
+            Note::MenuIcon => t!("cmd_install_note_menu_icon"),
+            Note::PrevApp => t!("cmd_install_note_prev_app"),
+            Note::StagedApp => t!("cmd_install_note_staged_app"),
+            Note::WebkitStore => t!("cmd_install_note_webkit_store"),
+            Note::WebkitStoreLegacy => t!("cmd_install_note_webkit_store_legacy"),
+            Note::CrashReports => t!("cmd_install_note_crash_reports"),
+            Note::WindowState => t!("cmd_install_note_window_state"),
         }
     }
 }
@@ -135,24 +215,21 @@ pub(crate) struct Plan {
 
 /// Runtime and install state under `~/.atlas` that means nothing without the binary: removed on a
 /// plain uninstall. Everything else under `~/.atlas` is the user's.
-const OWNED: &[(&str, &str)] = &[
-    ("bin", "the atlas command and its update backup"),
-    ("hostd.sock", "terminal host socket"),
-    ("hostd.token", "terminal host token"),
-    ("hostd.pid", "terminal host pid"),
-    ("hostd.log", "terminal host log"),
-    ("desktop.sock", "desktop control socket"),
-    ("desktop.token", "desktop control token"),
-    ("desktop-debug.sock", "desktop debug socket"),
-    (".update_check", "update check cache"),
-    (".update.lock", "update lock"),
-    ("remote", "cached remote binaries"),
-    (
-        "desktop/Atlas.app.backup",
-        "app backup from `atlas link --desktop`",
-    ),
-    ("desktop/appimage-version", "recorded app version"),
-    ("desktop/app-version", "recorded app version"),
+const OWNED: &[(&str, Note)] = &[
+    ("bin", Note::Cli),
+    ("hostd.sock", Note::HostSocket),
+    ("hostd.token", Note::HostToken),
+    ("hostd.pid", Note::HostPid),
+    ("hostd.log", Note::HostLog),
+    ("desktop.sock", Note::DesktopSocket),
+    ("desktop.token", Note::DesktopToken),
+    ("desktop-debug.sock", Note::DesktopDebugSocket),
+    (".update_check", Note::UpdateCheck),
+    (".update.lock", Note::UpdateLock),
+    ("remote", Note::RemoteCache),
+    ("desktop/Atlas.app.backup", Note::AppBackup),
+    ("desktop/appimage-version", Note::AppVersion),
+    ("desktop/app-version", Note::AppVersion),
 ];
 
 /// The program a desktop entry's `Exec=` starts: the quoted path `atlas desktop` writes (`"`,
@@ -201,7 +278,7 @@ fn plan_linux(env: &Env, purge: bool, p: &mut Plan) {
         if !ours {
             continue;
         }
-        for (path, note) in [(entry, "desktop menu entry"), (icon, "desktop menu icon")] {
+        for (path, note) in [(entry, Note::MenuEntry), (icon, Note::MenuIcon)] {
             if exists(&path) {
                 p.remove.push(Item::Path { path, note });
             }
@@ -210,14 +287,8 @@ fn plan_linux(env: &Env, purge: bool, p: &mut Plan) {
 
     // What an update killed half way leaves beside the AppImage.
     for (name, note) in [
-        (
-            LINUX_APP_PREV,
-            "previous app, kept by an interrupted update",
-        ),
-        (
-            LINUX_APP_STAGING,
-            "new app, staged by an interrupted update",
-        ),
+        (LINUX_APP_PREV, Note::PrevApp),
+        (LINUX_APP_STAGING, Note::StagedApp),
     ] {
         let path = app.with_file_name(name);
         if exists(&path) {
@@ -233,16 +304,13 @@ fn plan_linux(env: &Env, purge: bool, p: &mut Plan) {
         .clone()
         .unwrap_or_else(|| home.join(".config"));
     for (path, note) in [
-        (
-            env.data_home.join(LINUX_MENU_ID),
-            "the app's WebKit store: UI settings and cache",
-        ),
+        (env.data_home.join(LINUX_MENU_ID), Note::WebkitStore),
         (
             env.data_home.join(LINUX_LEGACY_MENU_ID),
-            "the WebKit store of Atlas before 1.6",
+            Note::WebkitStoreLegacy,
         ),
-        (env.data_home.join("atlas"), "crash reports"),
-        (config.join(LINUX_MENU_ID), "the app's window state"),
+        (env.data_home.join("atlas"), Note::CrashReports),
+        (config.join(LINUX_MENU_ID), Note::WindowState),
     ] {
         if !exists(&path) {
             continue;
@@ -268,12 +336,12 @@ pub(crate) fn plan(env: &Env, purge: bool) -> Plan {
         if super::desktop::is_symlink(app) {
             p.remove.push(Item::Link {
                 path: app.clone(),
-                note: "desktop app, linked to a dev build",
+                note: Note::AppLinked,
             });
         } else {
             p.remove.push(Item::Path {
                 path: app.clone(),
-                note: "Atlas Desktop",
+                note: Note::App,
             });
         }
     }
@@ -317,7 +385,7 @@ pub(crate) fn plan(env: &Env, purge: bool) -> Plan {
     if std::fs::read_link(&link).is_ok_and(|to| to == bin.join(atlas_core::paths::exe("atlas"))) {
         p.remove.push(Item::Link {
             path: link,
-            note: "link on PATH",
+            note: Note::LinkOnPath,
         });
     }
 
@@ -326,11 +394,11 @@ pub(crate) fn plan(env: &Env, purge: bool) -> Plan {
         if exists(&env.atlas_home) {
             p.remove.push(Item::Path {
                 path: env.atlas_home.clone(),
-                note: "settings, projects, worktrees, terminal host state, everything",
+                note: Note::Everything,
             });
         }
     } else {
-        for (rel, note) in OWNED {
+        for &(rel, note) in OWNED {
             let path = env.atlas_home.join(rel);
             if exists(&path) {
                 p.remove.push(Item::Path { path, note });
@@ -366,12 +434,12 @@ impl Plan {
 
     /// Print the plan the way `--list` and the confirmation show it.
     pub(crate) fn print(&self, out: &mut impl Write) -> std::io::Result<()> {
-        writeln!(out, "  This will remove:")?;
+        writeln!(out, "  {}", t!("cmd_install_plan_remove"))?;
         for item in &self.remove {
             writeln!(out, "    {}", item.describe())?;
         }
         if !self.keep.is_empty() {
-            writeln!(out, "  and keep (run with --purge to delete it too):")?;
+            writeln!(out, "  {}", t!("cmd_install_plan_keep"))?;
             for k in &self.keep {
                 writeln!(out, "    {}", k.display())?;
             }
@@ -396,10 +464,16 @@ impl Plan {
             let done = apply_item(item, remove_pkg);
             match done {
                 Ok(()) => {
-                    let _ = writeln!(out, "\x1b[32m✓\x1b[0m Removed  {}", item.describe());
+                    let msg = t!("cmd_install_removed", item = item.describe());
+                    let _ = writeln!(out, "\x1b[32m✓\x1b[0m {msg}");
                 }
                 Err(e) => {
-                    let _ = writeln!(out, "\x1b[31m✗\x1b[0m Failed   {}: {e:#}", item.describe());
+                    let msg = t!(
+                        "cmd_install_failed",
+                        item = item.describe(),
+                        reason = format!("{e:#}")
+                    );
+                    let _ = writeln!(out, "\x1b[31m✗\x1b[0m {msg}");
                     failures.push(format!("{}: {e:#}", item.describe()));
                 }
             }
@@ -414,14 +488,19 @@ fn apply_item(item: &Item, remove_pkg: &mut dyn FnMut(&Package) -> Result<()>) -
         Item::Link { path, .. } => remove_file_if_present(path),
         Item::Package(p) => remove_pkg(p),
         Item::RcBlock { file, dir } => {
-            let text = std::fs::read_to_string(file)
-                .with_context(|| format!("cannot read {}", file.display()))?;
+            let text = std::fs::read_to_string(file).with_context(|| {
+                t!("cmd_install_read_failed", path = file.display().to_string())
+            })?;
             // Re-checked at apply time: the file may have changed since the plan was shown.
             let Some(stripped) = shellrc::strip_block(&text, dir) else {
                 return Ok(());
             };
-            std::fs::write(file, stripped)
-                .with_context(|| format!("cannot write {}", file.display()))
+            std::fs::write(file, stripped).with_context(|| {
+                t!(
+                    "cmd_install_write_failed",
+                    path = file.display().to_string()
+                )
+            })
         }
         Item::ShellFile { file } => remove_file_if_present(file),
         Item::FishUniversal { dir, shell } => {
@@ -488,9 +567,12 @@ fn installed_packages(home: &Path) -> Vec<Package> {
 /// Remove one file; one that vanished between the plan and the apply is already done.
 fn remove_file_if_present(path: &Path) -> Result<()> {
     match std::fs::remove_file(path) {
-        Err(e) if e.kind() != std::io::ErrorKind::NotFound => {
-            Err(e).with_context(|| format!("cannot remove {}", path.display()))
-        }
+        Err(e) if e.kind() != std::io::ErrorKind::NotFound => Err(e).with_context(|| {
+            t!(
+                "cmd_install_remove_failed",
+                path = path.display().to_string()
+            )
+        }),
         _ => Ok(()),
     }
 }
@@ -500,19 +582,21 @@ fn remove_path(path: &Path) -> Result<()> {
     let meta = match path.symlink_metadata() {
         Ok(m) => m,
         Err(e) if e.kind() == std::io::ErrorKind::NotFound => return Ok(()),
-        Err(e) => return Err(e).with_context(|| format!("cannot stat {}", path.display())),
+        Err(e) => {
+            return Err(e).with_context(|| {
+                t!(
+                    "cmd_install_inspect_failed",
+                    path = path.display().to_string()
+                )
+            });
+        }
     };
     let r = if meta.is_dir() {
         std::fs::remove_dir_all(path)
     } else {
         std::fs::remove_file(path)
     };
-    r.with_context(|| {
-        format!(
-            "cannot remove {} (close Atlas Desktop and running `atlas` commands, then retry)",
-            path.display()
-        )
-    })
+    r.with_context(|| t!("cmd_install_remove_busy", path = path.display().to_string()))
 }
 
 /// Windows cannot delete the running executable (this one, or `atlas hostd`), but it can move it
@@ -542,10 +626,10 @@ pub(crate) enum Answer {
     No,
 }
 
-/// `[y/N]`: only an explicit yes; EOF is no.
+/// `[y/N]` (`[s/N]` in pt-BR): only an explicit yes in the language of the prompt or in English; EOF is no.
 pub(crate) fn parse_answer(line: Option<&str>) -> Answer {
-    match line.map(|l| l.trim().to_ascii_lowercase()).as_deref() {
-        Some("y" | "yes") => Answer::Yes,
+    match line.map(|l| l.trim().to_lowercase()).as_deref() {
+        Some("y" | "yes" | "s" | "sim") => Answer::Yes,
         _ => Answer::No,
     }
 }
@@ -554,10 +638,10 @@ pub async fn handle(yes: bool, purge: bool, list: bool) -> Result<()> {
     let env = Env::current()?;
     let plan = plan(&env, purge);
 
-    println!("\x1b[1;31m◆\x1b[0m Atlas uninstaller");
+    println!("\x1b[1;31m◆\x1b[0m {}", t!("cmd_install_uninstall_title"));
     println!();
     if plan.is_empty() {
-        println!("  Nothing to remove — atlas is not installed.");
+        println!("  {}", t!("cmd_install_uninstall_nothing"));
         return Ok(());
     }
     plan.print(&mut std::io::stdout())?;
@@ -569,13 +653,18 @@ pub async fn handle(yes: bool, purge: bool, list: bool) -> Result<()> {
     if !yes {
         // Nobody to ask: refuse instead of treating a closed stdin as consent or as a silent no.
         if !std::io::stdin().is_terminal() {
-            bail!("uninstall needs confirmation: run it in a terminal, or pass --yes");
+            bail!("{}", t!("cmd_install_uninstall_needs_confirmation"));
         }
-        eprint!("  Continue? [y/N] ");
+        let prompt = if purge {
+            t!("cmd_install_uninstall_confirm_purge")
+        } else {
+            t!("cmd_install_uninstall_confirm")
+        };
+        eprint!("  {prompt} ");
         let mut line = String::new();
         let n = std::io::stdin().lock().read_line(&mut line)?;
         if parse_answer((n > 0).then_some(line.as_str())) == Answer::No {
-            println!("  Aborted.");
+            println!("  {}", t!("cmd_install_uninstall_aborted"));
             return Ok(());
         }
         println!();
@@ -588,12 +677,12 @@ pub async fn handle(yes: bool, purge: bool, list: bool) -> Result<()> {
     let failures = plan.apply(&mut std::io::stdout());
     println!();
     if failures.is_empty() {
-        println!("  Atlas has been removed. Restart your shell.");
+        println!("  {}", t!("cmd_install_uninstall_done"));
         Ok(())
     } else {
         bail!(
-            "{} step(s) failed; the rest was removed. Close Atlas Desktop and running `atlas` commands, then run `atlas uninstall` again",
-            failures.len()
+            "{}",
+            t!("cmd_install_uninstall_steps_failed", count = failures.len())
         )
     }
 }
@@ -821,7 +910,7 @@ mod tests {
         p.print(&mut out).unwrap();
         let text = String::from_utf8(out).unwrap();
         assert!(
-            text.contains("This will remove:") && text.contains(".atlas"),
+            text.contains(&t!("cmd_install_plan_remove")) && text.contains(".atlas"),
             "{text}"
         );
         assert_eq!(snapshot(&m.env.shell.home), before);
@@ -952,8 +1041,36 @@ mod tests {
     fn the_confirmation_is_an_explicit_yes_and_eof_is_no() {
         assert_eq!(parse_answer(Some("y\n")), Answer::Yes);
         assert_eq!(parse_answer(Some("YES")), Answer::Yes);
+        assert_eq!(parse_answer(Some("s\n")), Answer::Yes);
+        assert_eq!(parse_answer(Some("Sim")), Answer::Yes);
         for no in [Some(""), Some("\n"), Some("n"), Some("maybe"), None] {
             assert_eq!(parse_answer(no), Answer::No, "{no:?}");
+        }
+    }
+
+    /// The prompt shows `[y/N]` in English and `[s/N]` in pt-BR: the letter it offers as "yes" must be one
+    /// `parse_answer` accepts, in every language, or a translated prompt would refuse its own answer.
+    #[test]
+    fn the_yes_a_prompt_offers_is_the_yes_it_accepts() {
+        // The pseudo-locale (en-XA, dev builds) accents every letter: it is a layout aid, not a language to answer in.
+        for tag in atlas_i18n::locales().filter(|t| *t != "en-XA") {
+            let prompts = [
+                atlas_i18n::t_in!(tag, "cmd_install_uninstall_confirm"),
+                atlas_i18n::t_in!(tag, "cmd_install_uninstall_confirm_purge"),
+            ];
+            for prompt in prompts {
+                let yes = prompt
+                    .split_once('[')
+                    .and_then(|(_, rest)| rest.split_once('/'))
+                    .map(|(yes, _)| yes.to_owned())
+                    .unwrap_or_else(|| panic!("{tag}: no [y/N] in {prompt:?}"));
+                assert_eq!(parse_answer(Some(&yes)), Answer::Yes, "{tag}: {prompt}");
+                assert_eq!(
+                    parse_answer(Some(&yes.to_lowercase())),
+                    Answer::Yes,
+                    "{tag}"
+                );
+            }
         }
     }
 

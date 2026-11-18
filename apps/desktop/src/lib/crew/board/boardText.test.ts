@@ -1,5 +1,9 @@
 // @ts-nocheck
 import { describe, expect, test } from "bun:test";
+import { readFileSync } from "node:fs";
+import { join } from "node:path";
+import { m } from "#lib/i18n/m.ts";
+import { inLocale } from "../../../../test/locale.ts";
 import { actionLabel, elapsed, finishedLabel, queuedLabel } from "./boardText.ts";
 
 describe("elapsed", () => {
@@ -44,5 +48,31 @@ describe("queuedLabel", () => {
 		expect(queuedLabel({})).toBe("Queued");
 		expect(queuedLabel({ waiting_for: undefined })).toBe("Queued");
 		expect(queuedLabel({ waiting_for: "server busy" })).toBe("Queued · server busy");
+	});
+
+	// hostd's `waiting_for` is its own English word, not a message: the one value it sends today (the `BUSY` constant of
+	// crates/atlas-host/src/crew/runner/slots.rs, read here from the real source) must be the catalog's message in the
+	// user's language, and a value this build has never heard of is shown as sent.
+	const slots = readFileSync(
+		join(import.meta.dir, "../../../../../../crates/atlas-host/src/crew/runner/slots.rs"),
+		"utf8",
+	);
+	const busy = /const BUSY: &str = "([^"]+)";/.exec(slots)?.[1];
+
+	test("hostd's busy word is translated, not shown raw", async () => {
+		expect(busy).toBeTruthy();
+		await inLocale("pt-BR", () => {
+			expect(queuedLabel({ waiting_for: busy })).toBe(m.crew_workspace_board_queued_server_busy());
+			expect(queuedLabel({ waiting_for: busy })).not.toContain(busy);
+		});
+	});
+
+	test("a reason it does not know is kept as sent", async () => {
+		await inLocale("pt-BR", () => {
+			expect(queuedLabel({ waiting_for: "disk full" })).toBe(
+				m.crew_workspace_board_queued_reason({ reason: "disk full" }),
+			);
+			expect(queuedLabel({ waiting_for: "disk full" })).toContain("disk full");
+		});
 	});
 });

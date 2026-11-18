@@ -135,7 +135,7 @@ async fn runner_idle(client: &HostClient, crewmate: &str) {
             return;
         }
         assert!(
-            start.elapsed() < Duration::from_secs(15),
+            start.elapsed() < atlas_core::scaling::HANG,
             "the runner never went idle: {me}"
         );
         tokio::time::sleep(Duration::from_millis(50)).await;
@@ -170,7 +170,7 @@ async fn cancel_during_a_stalled_prepare_never_starts_the_agent(engine: Option<&
 
     let task = send(&client, &id, "go").await;
     // Prepare is stalled in git: the task says it is downloading.
-    until("git to start", Duration::from_secs(15), || {
+    until("git to start", atlas_core::scaling::HANG, || {
         !pids(&tmp.path().join("git.pid")).is_empty()
     })
     .await;
@@ -262,7 +262,7 @@ async fn a_hung_git_is_killed_at_the_deadline_and_blocks_no_other_crewmate() {
     let client = daemon(&tmp.path().join("hostd")).await;
     let hung = git_project_crewmate(&client, "Hung", "https://example.invalid/a.git", None).await;
     let hung_task = send(&client, &hung, "go").await;
-    until("git to start", Duration::from_secs(15), || {
+    until("git to start", atlas_core::scaling::HANG, || {
         !pids(&tmp.path().join("git.pid")).is_empty()
     })
     .await;
@@ -275,7 +275,7 @@ async fn a_hung_git_is_killed_at_the_deadline_and_blocks_no_other_crewmate() {
         &other,
         &other_task,
         "done",
-        Duration::from_secs(15),
+        atlas_core::scaling::HANG,
     )
     .await;
 
@@ -287,7 +287,7 @@ async fn a_hung_git_is_killed_at_the_deadline_and_blocks_no_other_crewmate() {
             break t;
         }
         assert!(
-            start.elapsed() < Duration::from_secs(30),
+            start.elapsed() < atlas_core::scaling::HANG,
             "the hung git was never given up on: {t}"
         );
         tokio::time::sleep(Duration::from_millis(100)).await;
@@ -304,7 +304,7 @@ async fn a_hung_git_is_killed_at_the_deadline_and_blocks_no_other_crewmate() {
     );
     until(
         "the killed git tree to be gone",
-        Duration::from_secs(5),
+        atlas_core::scaling::HANG,
         || git.iter().chain(&child).all(|p| !alive(*p)),
     )
     .await;
@@ -337,29 +337,31 @@ async fn two_projects_on_different_repos_prepare_concurrently() {
     let client = daemon(&tmp.path().join("hostd")).await;
     let a = git_project_crewmate(&client, "A", "https://example.invalid/repo-a.git", None).await;
     send(&client, &a, "go").await;
-    until("repo a's git to hang", Duration::from_secs(15), || {
+    until("repo a's git to hang", atlas_core::scaling::HANG, || {
         !pids(&tmp.path().join("git.pid")).is_empty()
     })
     .await;
 
     let b = git_project_crewmate(&client, "B", "https://example.invalid/repo-b.git", None).await;
     let b_task = send(&client, &b, "go").await;
-    wait_task_state(&client, &b, &b_task, "done", Duration::from_secs(20)).await;
+    wait_task_state(&client, &b, &b_task, "done", atlas_core::scaling::HANG).await;
     client.call("shutdown", json!({})).await.ok();
 }
 
 /// An agent that records, while it runs, how many agents run: `<dir>/live/<pid>` exists for its
-/// whole life, and the highest count seen is appended to `<dir>/peak`.
-fn counting_agent(dir: &Path, hold_secs: u32) -> PathBuf {
+/// whole life, and the highest count seen is appended to `<dir>/peak`. It runs until `<dir>/release` exists, so
+/// how long the others queue behind it does not depend on how fast the machine is.
+fn counting_agent(dir: &Path) -> PathBuf {
     let live = dir.join("live");
     std::fs::create_dir_all(&live).unwrap();
     fake_agent(
         dir,
         "claude",
         &Hooks::new().done("ok").script_after(&format!(
-            "touch \"{live}/$$\"\nn=$(ls \"{live}\" | wc -l)\necho $n >> \"{peak}\"\nsleep {hold_secs}\nrm -f \"{live}/$$\"",
+            "touch \"{live}/$$\"\nn=$(ls \"{live}\" | wc -l)\necho $n >> \"{peak}\"\nwhile [ ! -e \"{release}\" ]; do sleep 0.05; done\nrm -f \"{live}/$$\"",
             live = live.display(),
             peak = dir.join("peak").display(),
+            release = dir.join("release").display(),
         )),
     )
 }
@@ -380,7 +382,7 @@ async fn a_limit_of_two_runs_at_most_two_agents_and_the_rest_show_server_busy() 
     let _o = Overrides::new().await;
     let tmp = tempfile::tempdir().unwrap();
     *crate::crew::runner::TEST_MAX_AGENTS.lock() = Some(2);
-    use_agent_bin(&counting_agent(tmp.path(), 3));
+    use_agent_bin(&counting_agent(tmp.path()));
     let client = daemon(&tmp.path().join("hostd")).await;
     let mut tasks = vec![];
     for i in 0..4 {
@@ -403,13 +405,14 @@ async fn a_limit_of_two_runs_at_most_two_agents_and_the_rest_show_server_busy() 
             break;
         }
         assert!(
-            start.elapsed() < Duration::from_secs(10),
+            start.elapsed() < atlas_core::scaling::HANG,
             "two tasks should wait as 'server busy' while two agents run (saw {busy})"
         );
         tokio::time::sleep(Duration::from_millis(100)).await;
     }
+    std::fs::write(tmp.path().join("release"), "").unwrap();
     for (id, t) in &tasks {
-        wait_task_state(&client, id, t, "done", Duration::from_secs(40)).await;
+        wait_task_state(&client, id, t, "done", atlas_core::scaling::HANG).await;
     }
     assert_eq!(peak(tmp.path()), 2, "more than 2 agents ran at once");
     client.call("shutdown", json!({})).await.ok();
@@ -544,13 +547,13 @@ async fn a_task_waiting_for_the_user_does_not_hold_an_agent_slot() {
         &a,
         &a_task,
         "waiting_action",
-        Duration::from_secs(20),
+        atlas_core::scaling::HANG,
     )
     .await;
 
     let b = create_crewmate(&client, "Runner").await;
     let b_task = send(&client, &b, "go").await;
-    wait_task_state(&client, &b, &b_task, "done", Duration::from_secs(20)).await;
+    wait_task_state(&client, &b, &b_task, "done", atlas_core::scaling::HANG).await;
     client.call("shutdown", json!({})).await.ok();
 }
 
@@ -565,16 +568,14 @@ async fn a_hung_gh_is_killed_at_the_deadline_with_its_children() {
     *crate::crew::proc::TEST_GH_PROGRAM.lock() = Some(gh.display().to_string());
     *TEST_CALL_DEADLINE.lock() = Some(Duration::from_secs(1));
 
-    let start = Instant::now();
-    let err = crate::crew::proc::gh_output(&["api", "repos/o/r"], "gh")
-        .await
-        .unwrap_err();
+    let err = tokio::time::timeout(
+        atlas_core::scaling::HANG,
+        crate::crew::proc::gh_output(&["api", "repos/o/r"], "gh"),
+    )
+    .await
+    .expect("the deadline did not end the hung gh: gh_output waited for it")
+    .unwrap_err();
     assert!(err.contains("timed out"), "{err}");
-    assert!(
-        start.elapsed() < Duration::from_secs(10),
-        "{:?}",
-        start.elapsed()
-    );
 
     // The settings row asks `gh --version` first: a hung gh reads as not installed, at once.
     let status = crate::crew::github::status().await.unwrap();
@@ -587,7 +588,7 @@ async fn a_hung_gh_is_killed_at_the_deadline_with_its_children() {
     assert!(!gh.is_empty() && !child.is_empty(), "the fake gh ran");
     until(
         "the killed gh tree to be gone",
-        Duration::from_secs(5),
+        atlas_core::scaling::HANG,
         || gh.iter().chain(&child).all(|p| !alive(*p)),
     )
     .await;

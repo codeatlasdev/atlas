@@ -1,4 +1,6 @@
 <script lang="ts">
+	import { formatNumber } from "#lib/i18n/fmt.ts";
+	import { m } from "#lib/i18n/m.ts";
 	let { data = [] }: { data: number[] } = $props();
 
 	const MAX_BARS = 14;
@@ -11,9 +13,13 @@
 	);
 </script>
 
-<div class="sparkline" role="img" aria-label="Token usage over 14 days">
+<div class="sparkline" role="img" aria-label={m.crew_workspace_usage_sparkline_label()}>
 	{#each bars as bar, i (i)}
-		<div class="spark-bar" style:height="{bar.pct}%" title="{bar.value.toLocaleString()} tokens"></div>
+		<div
+			class="spark-bar"
+			style:height="{bar.pct}%"
+			title={m.crew_workspace_usage_sparkline_tokens({ tokens: formatNumber(bar.value) })}
+		></div>
 	{/each}
 </div>
 

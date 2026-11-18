@@ -5,6 +5,7 @@
 	 * and Cancel. Shared by the integrations catalog and the crewmate chat.
 	 */
 	import { Button, CopyButton } from "@codeatlasdev/ui";
+	import { m } from "#lib/i18n/m.ts";
 
 	interface Props {
 		flow: { verification_uri: string; user_code: string };
@@ -17,18 +18,21 @@
 
 <div class="gh-flow-block">
 	<p class="gh-flow-label">
-		Enter this code at <a href={flow.verification_uri} target="_blank" rel="noreferrer" class="text-link"
+		{m.crew_workspace_github_device_flow_enter_code_at()}
+		<a href={flow.verification_uri} target="_blank" rel="noreferrer" class="text-link"
 			>{flow.verification_uri}</a
 		>
 	</p>
 	<div class="gh-code-row">
 		<code class="gh-code">{flow.user_code}</code>
-		<CopyButton value={flow.user_code} label="Copy" size="sm" />
+		<CopyButton value={flow.user_code} label={m.common_action_copy()} size="sm" />
 	</div>
 	{#if polling}
-		<p class="gh-flow-waiting" role="status" aria-live="polite">Waiting for authorization…</p>
+		<p class="gh-flow-waiting" role="status" aria-live="polite">
+			{m.crew_workspace_github_device_flow_waiting_for_authorization()}
+		</p>
 	{/if}
-	<Button variant="ghost" size="sm" onclick={oncancel}>Cancel</Button>
+	<Button variant="ghost" size="sm" onclick={oncancel}>{m.common_action_cancel()}</Button>
 </div>
 
 <style>

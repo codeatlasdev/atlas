@@ -1,6 +1,7 @@
 //! Session tabs (`session: true` actions) and the device picker.
 
 use super::super::{App, Effect, Layer, Message, ToastVariant};
+use atlas_i18n::t;
 
 impl App {
     /// Handle the sessions messages; anything else is handed back for the next domain.
@@ -28,7 +29,16 @@ impl App {
                     self.active_tab = 0;
                     self.reset_log_view();
                 }
-                self.set_toast(format!("⏹ {label} ended"), ToastVariant::Info);
+                self.set_toast(
+                    format!(
+                        "⏹ {}",
+                        t!(
+                            "tui_runtime_app_toast_session_ended",
+                            label = label.as_str()
+                        )
+                    ),
+                    ToastVariant::Info,
+                );
             }
             Message::SessionInput { label, bytes } => {
                 self.effects

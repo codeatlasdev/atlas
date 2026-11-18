@@ -360,17 +360,21 @@ async fn subscribe_over_the_socket_snapshot_then_ordered_stream() {
     for i in 0..3 {
         r.events.send(log("api", &format!("old-{i}"))).unwrap();
     }
-    // Let the loop apply the three before-events before subscribing.
-    let info = loop {
-        let i = control::info(r.dir.path()).await.unwrap();
-        if i.clients == 0 {
-            break i;
-        }
-    };
-    assert_eq!(info.mode, "runner");
-    tokio::time::sleep(Duration::from_millis(50)).await;
+    assert_eq!(control::info(r.dir.path()).await.unwrap().mode, "runner");
 
-    let mut sub = control::subscribe(r.dir.path()).await.unwrap();
+    // Subscribe once the loop has applied the three before-events (a snapshot taken earlier lacks them).
+    let end = std::time::Instant::now() + atlas_core::scaling::HANG;
+    let mut sub = loop {
+        let sub = control::subscribe(r.dir.path()).await.unwrap();
+        if sub.snapshot["logs"]
+            .as_array()
+            .is_some_and(|l| l.len() == 3)
+            || std::time::Instant::now() > end
+        {
+            break sub;
+        }
+        tokio::time::sleep(Duration::from_millis(20)).await;
+    };
     let backlog: Vec<&str> = sub.snapshot["logs"]
         .as_array()
         .unwrap()
@@ -383,7 +387,7 @@ async fn subscribe_over_the_socket_snapshot_then_ordered_stream() {
         r.events.send(log("api", &format!("new-{i}"))).unwrap();
     }
     for i in 0..50 {
-        let ev = tokio::time::timeout(Duration::from_secs(5), sub.next())
+        let ev = tokio::time::timeout(atlas_core::scaling::HANG, sub.next())
             .await
             .unwrap()
             .unwrap();
@@ -408,20 +412,18 @@ async fn many_clients_and_a_disconnect_do_not_disturb_the_runner() {
     drop(c); // a client vanishes mid-session
     r.events.send(log("api", "after-drop")).unwrap();
     for sub in [&mut a, &mut b] {
-        let ev = tokio::time::timeout(Duration::from_secs(5), sub.next())
+        let ev = tokio::time::timeout(atlas_core::scaling::HANG, sub.next())
             .await
             .unwrap()
             .unwrap();
         assert_eq!(ev["line"], "after-drop");
     }
     // The runner still answers requests, and the dead client is no longer counted.
+    let end = std::time::Instant::now() + atlas_core::scaling::HANG;
     let mut clients = 3;
-    for _ in 0..40 {
+    while clients != 2 && std::time::Instant::now() < end {
         r.events.send(log("api", "poke")).unwrap();
         clients = control::info(r.dir.path()).await.unwrap().clients;
-        if clients == 2 {
-            break;
-        }
         tokio::time::sleep(Duration::from_millis(50)).await;
     }
     assert_eq!(clients, 2);
@@ -437,7 +439,7 @@ async fn shutdown_says_bye_to_clients_and_stops_the_loop() {
         .unwrap();
     assert!(resp.ok);
     r.stopped.await.unwrap();
-    let bye = tokio::time::timeout(Duration::from_secs(5), sub.next())
+    let bye = tokio::time::timeout(atlas_core::scaling::HANG, sub.next())
         .await
         .unwrap()
         .unwrap();
@@ -459,7 +461,7 @@ async fn sending_garbage_on_a_subscription_does_not_break_other_clients() {
         raw.write_all(b"not json at all\n").await.unwrap();
     }
     r.events.send(log("api", "still-fine")).unwrap();
-    let ev = tokio::time::timeout(Duration::from_secs(5), good.next())
+    let ev = tokio::time::timeout(atlas_core::scaling::HANG, good.next())
         .await
         .unwrap()
         .unwrap();

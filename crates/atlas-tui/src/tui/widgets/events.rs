@@ -4,6 +4,7 @@ use ratatui::prelude::*;
 use ratatui::widgets::*;
 
 use crate::theme;
+use atlas_i18n::t;
 
 /// What happened — decides the icon and color.
 #[derive(Debug, Clone, PartialEq, Eq)]
@@ -52,7 +53,11 @@ impl SideEvent {
     /// so no `Failed:` / `Stopped:` prefixes.
     pub fn message(&self) -> String {
         match &self.kind {
-            EventKind::Paused(by) => format!("{} paused by {by}", self.subject),
+            EventKind::Paused(by) => t!(
+                "tui_runtime_widgets_event_paused_by",
+                subject = self.subject.as_str(),
+                by = by.as_str()
+            ),
             _ if self.text.is_empty() => self.subject.clone(),
             _ => format!("{} {}", self.subject, self.text),
         }
@@ -88,13 +93,13 @@ pub fn render(frame: &mut Frame, area: Rect, events: &VecDeque<SideEvent>) {
     let t = theme::current();
 
     let mut lines: Vec<Line> = vec![Line::from(Span::styled(
-        "EVENTS",
+        t!("tui_runtime_widgets_events_title").to_uppercase(),
         Style::default().fg(t.text_dim),
     ))];
 
     if events.is_empty() {
         lines.push(Line::from(Span::styled(
-            "  no events yet",
+            format!("  {}", t!("tui_runtime_widgets_events_empty")),
             Style::default().fg(t.text_dim),
         )));
     } else {

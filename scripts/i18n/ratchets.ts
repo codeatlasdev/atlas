@@ -3,7 +3,7 @@
 // `scanRatchet` what `i18n:fix` uses to shrink the baseline.
 import { existsSync } from "node:fs";
 import { join } from "node:path";
-import { type Found, type Lang, type RatchetText, type Violation, parseBaseline, ratchet, readBaseline, staleEntries } from "./baseline.ts";
+import { type Found, type Lang, type RatchetText, type Violation, parseBaseline, ratchet, readBaseline, renamedFiles } from "./baseline.ts";
 import { showAt } from "../lib/base.ts";
 import { PLATFORM, SHORTCUT, lineViolations, scanLines } from "./hardcoded/lines.ts";
 import { RUST_DIRS, isTestFile, scanRust, scanRustSource } from "./hardcoded/rust.ts";
@@ -170,7 +170,7 @@ function newOffenders(ctx: Ctx, def: RatchetDef, found: Found): Finding[] {
 
 /** The baseline file is the shrinking floor of the ratchet: a change that raises a count is snapshotting offenders
  * instead of fixing them. Skipped when the base had no baseline (or no such section): that is its introduction. */
-function baselineGrowth(ctx: Ctx, lang: Lang): Finding[] {
+function baselineGrowth(ctx: Ctx, lang: Lang, renamedFrom: Map<string, string>): Finding[] {
 	const base = ctx.base;
 	const text = base ? showAt(ctx.root, base.mb, BASELINE_FILE) : undefined;
 	if (!base || text === undefined) return [];
@@ -181,22 +181,31 @@ function baselineGrowth(ctx: Ctx, lang: Lang): Finding[] {
 		return [];
 	}
 	if (!before) return [];
+	const was = (file: string) => before?.[file] ?? before?.[renamedFrom.get(file) ?? ""] ?? 0; // a renamed file starts at its old path's line
 	return Object.entries(readBaseline(ctx.root)[lang] ?? {})
-		.filter(([file, n]) => n > (before?.[file] ?? 0))
+		.filter(([file, n]) => n > was(file))
 		.map(([file, n]) => ({
 			rule: "baseline-grew",
 			severity: "error" as const,
 			file: BASELINE_FILE,
 			key: file,
-			message: `this change raises the ${lang} baseline of ${file} from ${before?.[file] ?? 0} to ${n}; the baseline only shrinks: fix the offenders (or mark them i18n-ignore), do not snapshot them`,
+			message: `this change raises the ${lang} baseline of ${file} from ${was(file)} to ${n}; the baseline only shrinks: fix the offenders (or mark them i18n-ignore), do not snapshot them`,
 		}));
 }
 
-/** Ratchet findings of `def` for the run's `--surface`: against the diff base when there is one, else the baseline. */
+/** Ratchet findings of `def` for the run's `--surface`: the baseline judges every file; with a diff base the findings of the
+ * files the change touches say what the change added. */
 export function runRatchet(ctx: Ctx, def: RatchetDef): Finding[] {
 	const { found, prefixes, unparsable } = scanRatchet(ctx, def, ctx.surface);
 	if (prefixes.length === 0) return [];
 	const unreadable = unparsable.map((u): Finding => ({ rule: def.rule, severity: "error", file: u.file, message: `cannot parse for the ${def.lang} scan: ${u.message}` }));
-	if (!ctx.base) return [...unreadable, ...ratchet(ctx.root, def, found, prefixes)];
-	return [...unreadable, ...newOffenders(ctx, def, found), ...baselineGrowth(ctx, def.lang), ...staleEntries(ctx.root, def, found, prefixes)];
+	// The baseline is the judge of every file in every mode: a file over its allowance fails whether or not the change
+	// touched it (merge skew and a baseline lowered by mistake do not hide), and a baseline above reality fails too.
+	const renamed = renamedFiles(ctx.base?.changed);
+	const consistency = ratchet(ctx.root, def, found, prefixes, renamed);
+	if (!ctx.base) return [...unreadable, ...consistency];
+	// With a base, a file the change touches is reported by what the change ADDED (the line it wrote), not twice.
+	const added = newOffenders(ctx, def, found);
+	const said = new Set(added.map((f) => f.file));
+	return [...unreadable, ...added, ...baselineGrowth(ctx, def.lang, renamed), ...consistency.filter((f) => f.file === BASELINE_FILE || !said.has(f.file))];
 }

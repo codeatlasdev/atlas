@@ -1,11 +1,12 @@
 <script lang="ts">
 	/** CloseButton — the round X in the corner of the integrations dialog (catalog and detail views). */
 	import { X } from "@lucide/svelte";
+	import { m } from "#lib/i18n/m.ts";
 
 	let { onclose }: { onclose: () => void } = $props();
 </script>
 
-<button class="close-btn" onclick={onclose} aria-label="Close integrations">
+<button class="close-btn" onclick={onclose} aria-label={m.crew_workspace_close_button_close_integrations()}>
 	<X size={16} />
 </button>
 

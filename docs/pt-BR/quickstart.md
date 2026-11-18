@@ -73,7 +73,7 @@ Outras formas de rodar o mesmo ambiente:
 
 ## 3. Ajustes por máquina
 
-Crie o `atlas.local.yaml` ao lado do `atlas.yaml` e coloque-o no gitignore. Ele sobrescreve portas, desativa serviços ou pula a instalação de dependências em uma única máquina. Veja [Overrides locais](configuration.md#local-overrides-atlaslocalyaml).
+Crie o `atlas.local.yaml` ao lado do `atlas.yaml` e coloque-o no gitignore. Ele sobrescreve portas, desativa serviços ou pula a instalação de dependências em uma única máquina. Veja [Overrides locais](configuration.md#overrides-locais-atlaslocalyaml).
 
 ## 4. Conectar um agente de IA
 

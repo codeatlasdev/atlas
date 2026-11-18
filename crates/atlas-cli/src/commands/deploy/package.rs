@@ -3,10 +3,13 @@
 use std::io::Read;
 use std::path::{Path, PathBuf};
 use std::process::Command;
+use std::time::SystemTime;
 
 use anyhow::{Context, Result, bail};
 use atlas_tui::config::DeployConfig;
 use sha2::{Digest, Sha256};
+
+use super::ctx::next_release_id;
 
 pub struct Release {
     pub id: String,
@@ -174,6 +177,7 @@ pub fn package(
     sha: &str,
     allow_dirty: bool,
     skip_build: bool,
+    newest: Option<&str>,
 ) -> Result<Release> {
     let sha = sha.to_string();
     let dirty = !git(root, &["status", "--porcelain"])?.is_empty();
@@ -185,7 +189,7 @@ pub fn package(
     } else {
         sha[..7].to_string()
     };
-    let id = format!("{}-{suffix}", atlas_core::time::utc_compact_now());
+    let id = next_release_id(SystemTime::now(), &suffix, newest);
 
     if let Some(build) = cfg.build.as_deref().filter(|_| !skip_build) {
         eprintln!("▸ build: {build}");

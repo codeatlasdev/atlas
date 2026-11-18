@@ -1,46 +1,70 @@
-// A CI job lost to its runner: the pure rules and the GitHub reads shared by scripts/ci-rerun-lost.ts (reruns it, issue
-// #520) and `bun run pr:merge` (tells a maintainer "runner lost, rerun pending" instead of a bare "failure").
-//
-// Hosted Windows runners sometimes die mid-step; GitHub notices ~45 min later, ends the job as `failure` and puts one
-// annotation on it. That annotation is the only mark of the loss (the job has no log), so it is what is read:
-// "The hosted runner lost communication with the server. Anything in your workflow that ...".
+// A CI job that failed by GitHub's infrastructure, not by the commit: the pure rules and the GitHub reads shared by
+// scripts/ci-rerun-lost.ts (reruns it, issue #520) and `bun run pr:merge` (tells a maintainer "rerun pending" instead
+// of a bare "failure"). Each kind is one annotation GitHub puts on the job, and the only mark of it (no log exists):
+//   lost         "The hosted runner lost communication with the server. Anything in your workflow that ..."
+//                (a hosted Windows runner died mid-step; GitHub notices ~45 min later and ends the job as a failure)
+//   unavailable  "The job was not acquired by Runner of type hosted even after multiple attempts"
+//                (no hosted runner took the job, e.g. macOS arm64 capacity; the job ends cancelled, not failure)
 import { ghOut } from "./gh";
 
-export const LOST_RUNNER = /hosted runner lost communication with the server/i;
+export type Infra = "lost" | "unavailable";
+const INFRA: [Infra, RegExp][] = [
+  ["lost", /hosted runner lost communication with the server/i],
+  ["unavailable", /job was not acquired by runner of type hosted even after multiple attempts/i],
+];
+const WORDS: Record<Infra, string> = { lost: "runner lost", unavailable: "no runner was available" };
+
 /** A run is rerun while its attempt number is below this: attempts 1 and 2 are rerun, attempt 3 stays red. */
 export const MAX_ATTEMPTS = 3;
 /** The aggregate job (ci.yml `ci`): red whenever any job it needs is red, so it says nothing of its own. */
 export const AGGREGATE = "CI";
 
 const FAILED: Record<string, true> = { failure: true, timed_out: true, startup_failure: true };
-/** A job conclusion that is a failure (cancelled, skipped, success and a job still running are not). */
+/** A job conclusion that is a failure (skipped, success and a job still running are not; cancelled is its own case). */
 export const failed = (conclusion: string | null): boolean => conclusion !== null && FAILED[conclusion] === true;
 
 export type Job = {
   name: string;
   conclusion: string | null;
-  /** The messages of the job's failure-level annotations (only read for a failed job). */
+  /** The messages of the job's failure-level annotations (only read for a failed or cancelled job). */
   failures: string[];
 };
 
-/** A failed job whose every failure annotation is the lost-runner one (and at least one exists). */
-export const lost = (j: Job): boolean => j.failures.length > 0 && j.failures.every((m) => LOST_RUNNER.test(m));
+/** The infrastructure kinds that ended a job: every failure annotation is one of them (and at least one exists), else none. */
+export function infraKinds(j: Job): Infra[] {
+  const kinds: Infra[] = [];
+  for (const m of j.failures) {
+    const hit = INFRA.find(([, re]) => re.test(m));
+    if (!hit) return [];
+    if (!kinds.includes(hit[0])) kinds.push(hit[0]);
+  }
+  return kinds;
+}
 
-/** The jobs that matter, by why they ended: `lost` runners, `real` failures, `cancelled`. The aggregate job is skipped. */
-export function classify(jobs: Job[]): { lost: string[]; real: string[]; cancelled: string[] } {
-  const out = { lost: [] as string[], real: [] as string[], cancelled: [] as string[] };
+/** "runner lost", "no runner was available" or both, for the kinds seen. */
+export const infraWords = (kinds: Infra[]): string => kinds.map((k) => WORDS[k]).join(" and ");
+
+/**
+ * The jobs that matter, by why they ended: `infra` (names) with the `kinds` seen, `real` failures, `cancelled` (by
+ * hand or by a newer push: no infrastructure annotation). The aggregate job is skipped.
+ */
+export function classify(jobs: Job[]): { infra: string[]; kinds: Infra[]; real: string[]; cancelled: string[] } {
+  const out = { infra: [] as string[], kinds: [] as Infra[], real: [] as string[], cancelled: [] as string[] };
   for (const j of jobs) {
-    if (j.name === AGGREGATE) continue;
-    if (j.conclusion === "cancelled") out.cancelled.push(j.name);
-    else if (failed(j.conclusion)) (lost(j) ? out.lost : out.real).push(j.name);
+    if (j.name === AGGREGATE || !(j.conclusion === "cancelled" || failed(j.conclusion))) continue;
+    const kinds = infraKinds(j);
+    if (kinds.length) {
+      out.infra.push(j.name);
+      for (const k of kinds) if (!out.kinds.includes(k)) out.kinds.push(k);
+    } else (j.conclusion === "cancelled" ? out.cancelled : out.real).push(j.name);
   }
   return out;
 }
 
-/** True when the run is red and every job that failed in it failed by a lost runner, nothing cancelled. */
-export function lostOnly(jobs: Job[]): boolean {
+/** The kinds when the run is red and every job that failed in it ended by infrastructure, nothing else; else null. */
+export function infraOnly(jobs: Job[]): Infra[] | null {
   const c = classify(jobs);
-  return c.lost.length > 0 && c.real.length === 0 && c.cancelled.length === 0;
+  return c.infra.length > 0 && c.real.length === 0 && c.cancelled.length === 0 ? c.kinds : null;
 }
 
 export type RerunFacts = {
@@ -56,13 +80,13 @@ export function decideRerun(f: RerunFacts): { rerun: boolean; why: string } {
   if (f.attempt >= MAX_ATTEMPTS) return { rerun: false, why: `attempt ${f.attempt} of ${MAX_ATTEMPTS}: no more reruns` };
   if (!f.headIsTip) return { rerun: false, why: "the head is no longer the tip of its branch: a newer run supersedes this one" };
   const c = classify(f.jobs);
-  if (c.real.length) return { rerun: false, why: `a real failure, not a lost runner: ${c.real.join(", ")}` };
+  if (c.real.length) return { rerun: false, why: `a real failure, not infrastructure: ${c.real.join(", ")}` };
   if (c.cancelled.length) return { rerun: false, why: `cancelled: ${c.cancelled.join(", ")}` };
-  if (!c.lost.length) return { rerun: false, why: "no job failed by a lost runner" };
-  return { rerun: true, why: `lost runner: ${c.lost.join(", ")}` };
+  if (!c.infra.length) return { rerun: false, why: "no job ended by infrastructure (a lost or unavailable runner)" };
+  return { rerun: true, why: `${infraWords(c.kinds)}: ${c.infra.join(", ")}` };
 }
 
-/** The jobs of one attempt of a run, with the failure annotations of those that failed. */
+/** The jobs of one attempt of a run, with the failure annotations of those that failed or were cancelled. */
 export async function fetchJobs(repo: string, runId: number, attempt: number): Promise<Job[]> {
   const raw = await ghOut(
     "api",
@@ -77,7 +101,7 @@ export async function fetchJobs(repo: string, runId: number, attempt: number): P
     .map((l) => JSON.parse(l));
   return Promise.all(
     jobs.map(async (j) => {
-      const readable = j.name !== AGGREGATE && failed(j.conclusion);
+      const readable = j.name !== AGGREGATE && (j.conclusion === "cancelled" || failed(j.conclusion));
       const failures: string[] = readable
         ? JSON.parse(
             await ghOut(

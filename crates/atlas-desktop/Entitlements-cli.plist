@@ -1,0 +1,22 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
+<!--
+  Entitlements of the `atlas` CLI (TUI, MCP server, `atlas hostd`, `atlas crew`) in the Developer ID build:
+  release.yml signs it with the runtime option, a secure timestamp and this file as entitlements. The hardened runtime needs
+  none of the exceptions for it, so the dictionary is empty ON PURPOSE: passing the file keeps the entitlement set an
+  explicit, reviewed decision (a key added here shows up in a diff) instead of whatever codesign defaults to.
+
+  Why nothing is needed, from the code and from running a hardened build (docs/release.md, "What is signed"):
+  - No JIT, no wasm, no scripting engine, no executable memory tricks: no allow-jit / allow-unsigned-executable-memory.
+  - It links only system libraries and loads no dylib at runtime: no disable-library-validation.
+  - hostd's children (shells, agents, git, the crew helpers) are separate processes. The hardened runtime constrains
+    the signed process only, and DYLD_* is never needed by atlas itself: no allow-dyld-environment-variables.
+  - The phone gateway (iroh/QUIC listener on all interfaces once a phone is paired) is a plain socket: network
+    entitlements belong to the App Sandbox, which the CLI does not use. The Developer ID signature is what makes the
+    application firewall remember "allow incoming connections" across updates.
+  - It never records the screen or the microphone (the app does, through its own entitlement), reads no Contacts,
+    Calendar or Photos, and sends no Apple Events.
+-->
+<plist version="1.0">
+<dict/>
+</plist>

@@ -246,7 +246,8 @@
 		await gitStatus.refresh(worktreeId);
 	}
 
-	const copy = (t: string) => navigator.clipboard.writeText(t).then(() => toast.success(m.capture_quick_page_copied()));
+	const copy = (t: string) =>
+		navigator.clipboard.writeText(t).then(() => toast.success(m.capture_quick_page_copied()));
 
 	/**
 	 * One menu for the `…` button, right-click and Shift+F10 / the menu key: `menuTarget` says what it is about,
@@ -292,7 +293,11 @@
 		const to = join(dir, duplicateName(name, taken));
 		const r = await host.exec(root, ["cp", "-R", "--", `${root}/${rel}`, `${root}/${to}`]).catch((e) => e);
 		if (r instanceof Error || (r as { code?: number }).code) {
-			toast.error(r instanceof Error ? errText(r) : (r as { stderr: string }).stderr || m.workbench_explorer_duplicate_failed({ name }));
+			toast.error(
+				r instanceof Error
+					? errText(r)
+					: (r as { stderr: string }).stderr || m.workbench_explorer_duplicate_failed({ name }),
+			);
 			return;
 		}
 		await load(dir);
@@ -455,14 +460,24 @@
 			</Tip>
 			<Tip label={m.workbench_explorer_new_file()} side="bottom">
 				{#snippet child(props)}
-					<button {...props} class="hbtn" aria-label={m.workbench_explorer_new_file()} onclick={() => newFile("")}>
+					<button
+						{...props}
+						class="hbtn"
+						aria-label={m.workbench_explorer_new_file()}
+						onclick={() => newFile("")}
+					>
 						<FilePlus size={13} />
 					</button>
 				{/snippet}
 			</Tip>
 			<Tip label={m.workbench_explorer_new_folder()} side="bottom">
 				{#snippet child(props)}
-					<button {...props} class="hbtn" aria-label={m.workbench_explorer_new_folder()} onclick={() => newFolder("")}>
+					<button
+						{...props}
+						class="hbtn"
+						aria-label={m.workbench_explorer_new_folder()}
+						onclick={() => newFolder("")}
+					>
 						<FolderPlus size={13} />
 					</button>
 				{/snippet}

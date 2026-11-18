@@ -45,7 +45,9 @@
 			{...props}
 			class="plus"
 			aria-label={m.workbench_new_tab_menu_new_tab()}
-			title={newTabKey ? m.workbench_new_tab_menu_new_tab_key({ key: newTabKey }) : m.workbench_new_tab_menu_new_tab()}><Plus size={14} /></button
+			title={newTabKey
+				? m.workbench_new_tab_menu_new_tab_key({ key: newTabKey })
+				: m.workbench_new_tab_menu_new_tab()}><Plus size={14} /></button
 		>
 	{/snippet}
 	<DropdownMenuItem onclick={() => w && ws.newTerminal(w.id, { groupId })}>
@@ -90,13 +92,16 @@
 		</DropdownMenuItem>
 	{/if}
 	<DropdownMenuItem onclick={() => g?.activeTab && ws.split(groupId, "h", g.activeTab)}
-		>{m.workbench_new_tab_menu_split_right()} <span class="kbd">{shortcutFor("pane::SplitRight") ?? ""}</span></DropdownMenuItem
+		>{m.workbench_new_tab_menu_split_right()}
+		<span class="kbd">{shortcutFor("pane::SplitRight") ?? ""}</span></DropdownMenuItem
 	>
 	<DropdownMenuItem onclick={() => g?.activeTab && ws.split(groupId, "v", g.activeTab)}
-		>{m.workbench_new_tab_menu_split_down()} <span class="kbd">{shortcutFor("pane::SplitDown") ?? ""}</span></DropdownMenuItem
+		>{m.workbench_new_tab_menu_split_down()}
+		<span class="kbd">{shortcutFor("pane::SplitDown") ?? ""}</span></DropdownMenuItem
 	>
 	{#if active}
-		{#if !pinned(active)}<DropdownMenuItem onclick={() => onrename(active.id)}>{m.workbench_new_tab_menu_rename_tab()}</DropdownMenuItem
+		{#if !pinned(active)}<DropdownMenuItem onclick={() => onrename(active.id)}
+				>{m.workbench_new_tab_menu_rename_tab()}</DropdownMenuItem
 			>{/if}
 		{#if hasTermView(active.id)}
 			<DropdownMenuItem onclick={() => void reloadTermView(active.id).catch((e) => toast.error(errText(e)))}
@@ -104,10 +109,12 @@
 			>
 		{/if}
 		<DropdownMenuItem onclick={() => ws.closeMany(groupId, active.id)}>
-			{m.workbench_new_tab_menu_close_others()} <span class="kbd">{shortcutFor("pane::CloseOtherItems") ?? ""}</span>
+			{m.workbench_new_tab_menu_close_others()}
+			<span class="kbd">{shortcutFor("pane::CloseOtherItems") ?? ""}</span>
 		</DropdownMenuItem>
 		<DropdownMenuItem onclick={() => ws.closeMany(groupId)}>
-			{m.workbench_new_tab_menu_close_all()} <span class="kbd">{shortcutFor("pane::CloseAllItems") ?? ""}</span>
+			{m.workbench_new_tab_menu_close_all()}
+			<span class="kbd">{shortcutFor("pane::CloseAllItems") ?? ""}</span>
 		</DropdownMenuItem>
 	{/if}
 </DropdownMenu>

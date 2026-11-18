@@ -2,6 +2,7 @@
 import { expect, test } from "bun:test";
 import { lspUiState, isServing, type UiInput } from "./status.ts";
 import type { ServerStatus } from "./types.ts";
+import { m } from "#lib/i18n/m.ts";
 
 const base = (over: Partial<UiInput> = {}): UiInput => ({
 	prefsEnabled: true,
@@ -86,7 +87,7 @@ test("no language: carries the supported list", () => {
 	);
 	expect(s.kind).toBe("no-language");
 	expect(s.supported).toEqual(["Go", "Rust", "TypeScript"]);
-	expect(s.detail).toBe("Supported: Go, Rust, TypeScript.");
+	expect(s.detail).toBe(m.workbench_lsp_none_supported({ list: "Go, Rust, and TypeScript" }));
 	expect(ids(s)).toEqual(["open-settings-languages", "docs"]);
 });
 

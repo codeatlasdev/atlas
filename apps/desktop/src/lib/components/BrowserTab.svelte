@@ -165,7 +165,9 @@
 <div class="browser">
 	<div class="bar">
 		<button title={m.common_action_back()} onclick={() => nav("back")}><ArrowLeft size={14} /></button>
-		<button title={m.workbench_browser_forward()} onclick={() => nav("forward")}><ArrowRight size={14} /></button>
+		<button title={m.workbench_browser_forward()} onclick={() => nav("forward")}
+			><ArrowRight size={14} /></button
+		>
 		<button title={m.workbench_browser_reload()} onclick={() => nav("reload")}><RotateCw size={13} /></button>
 		<input
 			id="addr-{tab.id}"
@@ -185,7 +187,10 @@
 		<button class:on={picking} title={m.workbench_browser_design_mode()} onclick={pick}>
 			<MousePointerClick size={14} />
 		</button>
-		<button title={m.workbench_browser_open_in_system_browser()} onclick={() => tab.url && api.openUrl(tab.url)}>
+		<button
+			title={m.workbench_browser_open_in_system_browser()}
+			onclick={() => tab.url && api.openUrl(tab.url)}
+		>
 			<ExternalLink size={13} />
 		</button>
 	</div>
@@ -201,7 +206,9 @@
 						>{tabLabel(t, t.pty ? ws.titles[t.pty] : "")}</DropdownMenuItem
 					>
 				{/each}
-				<DropdownMenuItem onclick={() => send(null)}>{m.workbench_new_tab_menu_new_session({ label: agents.defaultAgent })}</DropdownMenuItem>
+				<DropdownMenuItem onclick={() => send(null)}
+					>{m.workbench_new_tab_menu_new_session({ label: agents.defaultAgent })}</DropdownMenuItem
+				>
 			</DropdownMenu>
 			<button onclick={() => (grabbed = null)}>{m.capture_discard()}</button>
 		</div>
@@ -222,7 +229,9 @@
 				<p class="dim url">{failure.url || tab.url}</p>
 				<p class="dim">{failureHint(failure)}</p>
 				<div class="actions">
-					<button class="primary" onclick={() => nav("reload")}><RotateCw size={13} /> {m.common_action_retry()}</button>
+					<button class="primary" onclick={() => nav("reload")}
+						><RotateCw size={13} /> {m.common_action_retry()}</button
+					>
 					<button onclick={() => tab.url && api.openUrl(tab.url)}
 						><ExternalLink size={13} /> {m.workbench_browser_open_in_browser()}</button
 					>

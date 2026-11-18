@@ -107,11 +107,17 @@
 		>
 			{#snippet actions()}
 				{#if filtered}
-					<button class="start" onclick={() => ((repo = "all"), (stateFilter = "all"))}>{m.workbench_agents_clear_filters()}</button>
+					<button class="start" onclick={() => ((repo = "all"), (stateFilter = "all"))}
+						>{m.workbench_agents_clear_filters()}</button
+					>
 				{:else if !store.projects.length}
-					<button class="start" onclick={() => runCommand("atlas::AddProject")}>{m.workbench_agents_add_project()}</button>
+					<button class="start" onclick={() => runCommand("atlas::AddProject")}
+						>{m.workbench_agents_add_project()}</button
+					>
 				{:else if !ws.selected}
-					<button class="start" onclick={() => (ws.view = "worktree")}>{m.workbench_agents_choose_worktree()}</button>
+					<button class="start" onclick={() => (ws.view = "worktree")}
+						>{m.workbench_agents_choose_worktree()}</button
+					>
 				{:else}
 					<button class="start" onclick={() => runCommand("atlas::NewAgentSession")}>
 						{m.workbench_agents_new_session()} <kbd>{shortcutFor("atlas::NewAgentSession") ?? ""}</kbd>
@@ -141,7 +147,9 @@
 								</div>
 								{#if p.st?.prompt}<p class="prompt">{p.st.prompt}</p>{/if}
 								{#if p.st?.last_message}<p class="msg">{p.st.last_message}</p>{/if}
-								<div class="dim">{m.workbench_agents_in_state({ age: age(p.st?.state_started_at ?? p.tab.createdAt) })}</div>
+								<div class="dim">
+									{m.workbench_agents_in_state({ age: age(p.st?.state_started_at ?? p.tab.createdAt) })}
+								</div>
 							</Card>
 						</button>
 					{:else}
@@ -153,7 +161,9 @@
 	{/if}
 {:else if !running.length && !feed.length}
 	{@render none(
-		repo !== "all" || stateFilter !== "all" ? m.workbench_agents_feed_no_match() : m.workbench_agents_feed_none(),
+		repo !== "all" || stateFilter !== "all"
+			? m.workbench_agents_feed_no_match()
+			: m.workbench_agents_feed_none(),
 		repo !== "all" || stateFilter !== "all",
 	)}
 {:else}

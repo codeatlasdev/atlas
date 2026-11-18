@@ -57,14 +57,18 @@ const navCommands = (): Command[] => [
 
 export const lspCommands = (): Command[] => [
 	...navCommands(),
-	cmd("editor::GoToDefinition", m.workbench_lsp_cmd_go_to_definition(), async (v) => (await actions()).goToDefinition(v)),
+	cmd("editor::GoToDefinition", m.workbench_lsp_cmd_go_to_definition(), async (v) =>
+		(await actions()).goToDefinition(v),
+	),
 	cmd("editor::GoToTypeDefinition", m.workbench_lsp_cmd_go_to_type_definition(), async (v) =>
 		(await actions()).goToTypeDefinition(v),
 	),
 	cmd("editor::GoToImplementation", m.workbench_lsp_cmd_go_to_implementation(), async (v) =>
 		(await actions()).goToImplementation(v),
 	),
-	cmd("editor::FindAllReferences", m.workbench_lsp_cmd_find_references(), async (v) => (await actions()).findReferences(v)),
+	cmd("editor::FindAllReferences", m.workbench_lsp_cmd_find_references(), async (v) =>
+		(await actions()).findReferences(v),
+	),
 	cmd("editor::Rename", m.workbench_lsp_cmd_rename(), async (v) => (await actions()).renameSymbol(v)),
 	{
 		id: "editor::Format",

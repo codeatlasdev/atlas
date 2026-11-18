@@ -113,7 +113,8 @@ export function classifyFile(metrics: FileMetrics, t: Partial<Thresholds> = {}):
 	};
 	if (metrics.bytes >= th.largeBytes * th.hugeFactor) raise("huge", `${mb(metrics.bytes)} file`);
 	else if (metrics.bytes >= th.largeBytes) raise("large", `${mb(metrics.bytes)} file`);
-	if (metrics.longestLine > th.hugeLine) raise("huge", `a line has ${formatNumber(metrics.longestLine)} characters`);
+	if (metrics.longestLine > th.hugeLine)
+		raise("huge", `a line has ${formatNumber(metrics.longestLine)} characters`);
 	else if (metrics.longestLine > th.longLine)
 		raise("large", `a line has ${formatNumber(metrics.longestLine)} characters`);
 	return { tier, reasons, disable: { ...DISABLE[tier] } };

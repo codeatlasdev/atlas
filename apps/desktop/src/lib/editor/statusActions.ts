@@ -54,15 +54,24 @@ export function runStatusAction(id: string, ops: StatusOps) {
 				...(["space", "tab"] as const).flatMap((style) =>
 					SIZES.map((size) =>
 						item(
-							style === "space" ? m.workbench_editor_indent_using_spaces() : m.workbench_editor_indent_using_tabs(),
+							style === "space"
+								? m.workbench_editor_indent_using_spaces()
+								: m.workbench_editor_indent_using_tabs(),
 							indentText({ style, size }),
 							() => ops.setIndent(style, size),
-							{ description: cur.style === style && cur.size === size ? m.workbench_editor_current() : undefined },
+							{
+								description:
+									cur.style === style && cur.size === size ? m.workbench_editor_current() : undefined,
+							},
 						),
 					),
 				),
-				item(m.workbench_editor_convert_file(), m.workbench_editor_convert_to_spaces(), () => ops.convertIndent("space")),
-				item(m.workbench_editor_convert_file(), m.workbench_editor_convert_to_tabs(), () => ops.convertIndent("tab")),
+				item(m.workbench_editor_convert_file(), m.workbench_editor_convert_to_spaces(), () =>
+					ops.convertIndent("space"),
+				),
+				item(m.workbench_editor_convert_file(), m.workbench_editor_convert_to_tabs(), () =>
+					ops.convertIndent("tab"),
+				),
 			];
 			return showPicker(m.workbench_editor_select_indentation(), items);
 		}
@@ -71,7 +80,8 @@ export function runStatusAction(id: string, ops: StatusOps) {
 				m.workbench_editor_select_eol(),
 				EOLS.map((e) =>
 					item(m.workbench_editor_line_ending(), e.label, () => ops.setEol(e.id), {
-						description: ops.eol === e.id ? `${e.description} · ${m.workbench_editor_current()}` : e.description,
+						description:
+							ops.eol === e.id ? `${e.description} · ${m.workbench_editor_current()}` : e.description,
 					}),
 				),
 			);

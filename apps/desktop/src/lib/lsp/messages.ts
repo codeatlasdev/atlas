@@ -26,7 +26,9 @@ function why(s: LspUiState): string | undefined {
 		case "starting":
 			return m.workbench_lsp_why_starting();
 		case "installing":
-			return s.progress ? m.workbench_lsp_why_installing_progress({ progress: s.progress }) : m.workbench_lsp_why_installing();
+			return s.progress
+				? m.workbench_lsp_why_installing_progress({ progress: s.progress })
+				: m.workbench_lsp_why_installing();
 		case "host-old":
 			return m.workbench_lsp_why_host_old();
 		case "host-updating":

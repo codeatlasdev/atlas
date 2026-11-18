@@ -31,7 +31,9 @@
 					>
 				</li>
 			{/each}
-			{#if ui.ptys.length > 6}<li class="more">{m.workbench_host_more_terminals({ count: ui.ptys.length - 6 })}</li>{/if}
+			{#if ui.ptys.length > 6}<li class="more">
+					{m.workbench_host_more_terminals({ count: ui.ptys.length - 6 })}
+				</li>{/if}
 		</ul>
 	{/if}
 	{#if ui.kind === "missing-toolchain" && ui.command}

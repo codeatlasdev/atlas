@@ -109,7 +109,9 @@
 		}}>.*</ToggleChip
 	>
 	<span class="count" aria-live="polite">
-		{#if error}{m.logs_search_bar_invalid()}{:else if stat && query}{stat.total ? `${stat.index}/${stat.total}` : "0"}{/if}
+		{#if error}{m.logs_search_bar_invalid()}{:else if stat && query}{stat.total
+				? `${stat.index}/${stat.total}`
+				: "0"}{/if}
 	</span>
 </div>
 

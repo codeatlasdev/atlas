@@ -104,8 +104,12 @@ function fromReason(server: string, label: string, reason: Reason): LspUiState {
 		case "no_go":
 		case "no_curl": {
 			const actions: Action[] = [];
-			if (reason.command) actions.push({ id: "copy-command", label: m.viewers_devops_copy_command(), payload: reason.command });
-			actions.push({ id: "retry", label: m.crew_onboarding_check_again(), primary: !reason.command }, settings());
+			if (reason.command)
+				actions.push({ id: "copy-command", label: m.viewers_devops_copy_command(), payload: reason.command });
+			actions.push(
+				{ id: "retry", label: m.crew_onboarding_check_again(), primary: !reason.command },
+				settings(),
+			);
 			return {
 				kind: "missing-toolchain",
 				server,
@@ -125,7 +129,10 @@ function fromReason(server: string, label: string, reason: Reason): LspUiState {
 				tone: "warn",
 				summary: reason.message,
 				detail,
-				actions: [{ id: "install", label: m.workbench_lsp_action_retry_install(), primary: true }, settings()],
+				actions: [
+					{ id: "install", label: m.workbench_lsp_action_retry_install(), primary: true },
+					settings(),
+				],
 			};
 		case "install_failed":
 		case "unsupported_platform":
@@ -180,7 +187,11 @@ function crashed(server: string, label: string, message: string, tail: string[] 
 		tone: "error",
 		summary: message || m.workbench_lsp_crashed_summary({ label }),
 		tail: tail?.length ? tail : undefined,
-		actions: [{ id: "restart-server", label: m.workbench_lsp_action_restart_server(), primary: true }, log(), settings()],
+		actions: [
+			{ id: "restart-server", label: m.workbench_lsp_action_restart_server(), primary: true },
+			log(),
+			settings(),
+		],
 	};
 }
 
@@ -293,7 +304,10 @@ export function lspUiState(i: UiInput): LspUiState {
 			label: m.workbench_lsp_not_installed({ label }),
 			tone: "warn",
 			summary: srv?.message || m.workbench_lsp_not_installed_summary({ label }),
-			actions: [{ id: "install", label: m.crew_onboarding_engine_status_install(), primary: true }, settings()],
+			actions: [
+				{ id: "install", label: m.crew_onboarding_engine_status_install(), primary: true },
+				settings(),
+			],
 		};
 	}
 

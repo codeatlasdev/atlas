@@ -117,7 +117,9 @@ export function chipFor(s: HostState): Chip | null {
 	if (s.skew === "needsRestart") {
 		return {
 			tone: "info",
-			label: s.version ? m.workbench_host_chip_version({ version: s.version }) : m.workbench_host_chip_older(),
+			label: s.version
+				? m.workbench_host_chip_version({ version: s.version })
+				: m.workbench_host_chip_older(),
 			detail: s.reason,
 		};
 	}

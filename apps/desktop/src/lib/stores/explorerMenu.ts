@@ -67,7 +67,12 @@ export function menuItems(t: MenuTarget): MenuItem[] {
 	if (changed) {
 		items.push({ action: "stage", label: m.workbench_explorer_menu_stage(), group: 3 });
 		if (t.status !== "untracked") {
-			items.push({ action: "discard", label: m.workbench_explorer_menu_discard_changes(), destructive: true, group: 3 });
+			items.push({
+				action: "discard",
+				label: m.workbench_explorer_menu_discard_changes(),
+				destructive: true,
+				group: 3,
+			});
 		}
 	}
 	items.push({ action: "delete", label: m.common_action_delete(), destructive: true, group: 4 });

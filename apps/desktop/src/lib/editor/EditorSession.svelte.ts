@@ -324,7 +324,8 @@ export class EditorSession {
 
 	/** A save was refused because of someone else's change: on close that is the user's last chance to hear it. */
 	#notSaved() {
-		if (this.#closing && this.dirty) toast.error(m.workbench_editor_not_saved_changed({ path: this.relPath }));
+		if (this.#closing && this.dirty)
+			toast.error(m.workbench_editor_not_saved_changed({ path: this.relPath }));
 	}
 
 	/** Discard the buffer and show what is on disk (Revert file). */

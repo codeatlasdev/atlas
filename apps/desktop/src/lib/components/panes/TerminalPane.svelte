@@ -55,8 +55,17 @@
 	</PaneNotice>
 {:else if ended}
 	<PaneNotice>
-		<span>{ended === "gone" ? m.workbench_term_pane_gone() : m.workbench_term_pane_ended({ code: ws.exited[pty] ?? "?" })}</span>
-		<IconButton size="sm" variant="text" aria-label={m.settings_host_action_restart()} onclick={() => ws.restart(t.id)}>
+		<span
+			>{ended === "gone"
+				? m.workbench_term_pane_gone()
+				: m.workbench_term_pane_ended({ code: ws.exited[pty] ?? "?" })}</span
+		>
+		<IconButton
+			size="sm"
+			variant="text"
+			aria-label={m.settings_host_action_restart()}
+			onclick={() => ws.restart(t.id)}
+		>
 			<RotateCw size={13} />
 		</IconButton>
 		<span class="hint">{m.settings_host_action_restart()}</span>

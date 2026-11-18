@@ -160,13 +160,19 @@
 				{#each chat.thinkingLevels as l (l)}<option value={l}>{l}</option>{/each}
 			</select>
 		{/if}
-		{#if chat.contextPercent !== null}<span class="dim">{m.workbench_chat_context({ percent: formatNumber(chat.contextPercent / 100, { style: "percent", maximumFractionDigits: 0 }) })}</span>{/if}
+		{#if chat.contextPercent !== null}<span class="dim"
+				>{m.workbench_chat_context({
+					percent: formatNumber(chat.contextPercent / 100, { style: "percent", maximumFractionDigits: 0 }),
+				})}</span
+			>{/if}
 		{#if chat.status}<span class="dim">{chat.status}</span>{/if}
 		<span class="spacer"></span>
 		<button title={m.workbench_chat_compact_title()} onclick={() => send({ type: "compact", id: "compact" })}
 			>{m.workbench_chat_compact()}</button
 		>
-		<button title={m.workbench_chat_raw_protocol()} onclick={() => (tab.rawView = true)}><SquareTerminal size={13} /></button>
+		<button title={m.workbench_chat_raw_protocol()} onclick={() => (tab.rawView = true)}
+			><SquareTerminal size={13} /></button
+		>
 	</div>
 	{#if searchOpen}
 		<!-- svelte-ignore a11y_autofocus -->

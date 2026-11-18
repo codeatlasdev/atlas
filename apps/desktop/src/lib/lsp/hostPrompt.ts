@@ -21,8 +21,11 @@ export function hostRestartPrompt(ptys: { title: string; cwd: string }[]): HostR
 			confirmLabel: m.workbench_host_prompt_restart_host(),
 			destructive: false,
 		};
-	const listed = ptys.slice(0, MAX_LISTED).map((p) => `• ${p.title || m.crew_chat_header_terminal()} · ${shortCwd(p.cwd)}`);
-	const more = ptys.length > MAX_LISTED ? [m.workbench_host_more_terminals({ count: ptys.length - MAX_LISTED })] : [];
+	const listed = ptys
+		.slice(0, MAX_LISTED)
+		.map((p) => `• ${p.title || m.crew_chat_header_terminal()} · ${shortCwd(p.cwd)}`);
+	const more =
+		ptys.length > MAX_LISTED ? [m.workbench_host_more_terminals({ count: ptys.length - MAX_LISTED })] : [];
 	const n = ptys.length;
 	return {
 		title: m.workbench_host_prompt_title(),

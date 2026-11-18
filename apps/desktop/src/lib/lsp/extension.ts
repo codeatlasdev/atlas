@@ -22,7 +22,9 @@ export async function codeActionMenu(view: EditorView) {
 	if (actions.length === 0) return toast.info(m.workbench_lsp_no_code_actions());
 	const items: PaletteItem[] = actions.map((a, i) => ({
 		id: `${i}`,
-		group: a.kind?.startsWith("quickfix") ? m.workbench_lsp_group_quick_fixes() : m.workbench_lsp_cmd_code_actions(),
+		group: a.kind?.startsWith("quickfix")
+			? m.workbench_lsp_group_quick_fixes()
+			: m.workbench_lsp_cmd_code_actions(),
 		label: a.title,
 		description: a.kind,
 		run: () => void runCodeAction(view, a).then(() => view.focus()),

@@ -37,13 +37,16 @@
 	{#snippet item(it)}
 		{#if it.kind === "user"}
 			<div class="msg user ca-selectable">
-				{it.text}{#if it.images}<span class="dim"> · {m.workbench_chat_images({ count: it.images })}</span>{/if}
+				{it.text}{#if it.images}<span class="dim">
+						· {m.workbench_chat_images({ count: it.images })}</span
+					>{/if}
 			</div>
 		{:else if it.kind === "assistant"}
 			<div class="msg assistant">
 				{#if it.thinking}
 					<button class="fold" onclick={() => (open[`th-${it.id}`] = !open[`th-${it.id}`])}>
-						{#if open[`th-${it.id}`]}<ChevronDown size={12} />{:else}<ChevronRight size={12} />{/if} {m.crew_chat_setup_conversation_thinking()}
+						{#if open[`th-${it.id}`]}<ChevronDown size={12} />{:else}<ChevronRight size={12} />{/if}
+						{m.crew_chat_setup_conversation_thinking()}
 					</button>
 					{#if open[`th-${it.id}`]}<pre class="thinking ca-selectable">{it.thinking}</pre>{/if}
 				{/if}
@@ -94,7 +97,9 @@
 							}}
 						/>
 					{/if}
-					<button class="cancel" onclick={() => onanswer(u, undefined)}>{m.crew_chat_ask_card_dismiss()}</button>
+					<button class="cancel" onclick={() => onanswer(u, undefined)}
+						>{m.crew_chat_ask_card_dismiss()}</button
+					>
 				</div>
 			{/each}
 		</div>

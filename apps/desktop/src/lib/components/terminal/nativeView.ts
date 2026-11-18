@@ -136,8 +136,7 @@ export class NativeView {
 				// A host that predates the raw stream and could not be replaced: xterm.js until it restarts. (The app
 				// normally upgrades it live on connect, see `host.rs`.)
 				if (msg.includes("pty_attach_raw")) {
-					if (!gpu.hostTooOld)
-						toast.info(m.workbench_term_gpu_after_restart());
+					if (!gpu.hostTooOld) toast.info(m.workbench_term_gpu_after_restart());
 					gpu.hostTooOld = true;
 				} else toast.error(msg);
 				return "stop";

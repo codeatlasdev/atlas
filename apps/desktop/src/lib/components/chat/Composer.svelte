@@ -84,7 +84,11 @@
 	{#if images.length}
 		<div class="imgs">
 			{#each images as im, i (i)}
-				<span class="chip">{im.name}<button aria-label={m.crew_chat_composer_remove_image({ name: im.name })} onclick={() => images.splice(i, 1)}><X size={10} /></button></span
+				<span class="chip"
+					>{im.name}<button
+						aria-label={m.crew_chat_composer_remove_image({ name: im.name })}
+						onclick={() => images.splice(i, 1)}><X size={10} /></button
+					></span
 				>
 			{/each}
 		</div>

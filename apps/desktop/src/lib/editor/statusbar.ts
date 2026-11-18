@@ -140,7 +140,10 @@ export function statusItems(i: StatusInput): StatusItem[] {
 	if (errors > 0 || warnings > 0) {
 		items.push({
 			id: "problems",
-			text: list([m.workbench_editor_errors({ count: errors }), m.workbench_editor_warnings({ count: warnings })]),
+			text: list([
+				...(errors > 0 ? [m.workbench_editor_errors({ count: errors })] : []),
+				...(warnings > 0 ? [m.workbench_editor_warnings({ count: warnings })] : []),
+			]),
 			title: m.workbench_editor_show_problems(),
 			kind: errors > 0 ? "error" : "warning",
 		});
@@ -169,8 +172,15 @@ export function statusItems(i: StatusInput): StatusItem[] {
 		title: m.workbench_editor_select_language({ id: i.language.id }),
 		kind: "action",
 	});
-	if (i.lspChip) items.push({ id: "lsp", text: i.lspChip, title: m.workbench_editor_language_server(), kind: "action" });
-	if (i.wrap) items.push({ id: "wrap", text: m.workbench_editor_wrap(), title: m.workbench_editor_wrap_on(), kind: "info" });
+	if (i.lspChip)
+		items.push({ id: "lsp", text: i.lspChip, title: m.workbench_editor_language_server(), kind: "action" });
+	if (i.wrap)
+		items.push({
+			id: "wrap",
+			text: m.workbench_editor_wrap(),
+			title: m.workbench_editor_wrap_on(),
+			kind: "info",
+		});
 	if (i.tier !== "normal") {
 		items.push({
 			id: "tier",

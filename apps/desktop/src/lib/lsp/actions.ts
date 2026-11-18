@@ -103,7 +103,10 @@ export async function renameSymbol(view: EditorView) {
 		const w = view.state.wordAt(view.state.selection.main.head);
 		current = w ? view.state.sliceDoc(w.from, w.to) : "";
 	}
-	const name = await promptDialog(m.workbench_lsp_cmd_rename(), { value: current, confirmLabel: m.common_action_rename() });
+	const name = await promptDialog(m.workbench_lsp_cmd_rename(), {
+		value: current,
+		confirmLabel: m.common_action_rename(),
+	});
 	if (!name || name === current) return;
 	const edit = await env.doc.request<WorkspaceEdit | null>("textDocument/rename", { ...p, newName: name });
 	if (!edit) return toast.info(m.workbench_lsp_rename_no_changes());
@@ -186,7 +189,8 @@ export async function runCodeAction(view: EditorView, action: CodeAction) {
 	}
 	if (a.edit) {
 		const r = await applyWorkspaceEdit(a.edit);
-		if (!r.applied) return void toast.error(m.workbench_lsp_action_failed({ title: a.title, error: r.error }));
+		if (!r.applied)
+			return void toast.error(m.workbench_lsp_action_failed({ title: a.title, error: r.error }));
 	}
 	if (a.command) await env.doc.request("workspace/executeCommand", a.command).catch(() => {});
 }

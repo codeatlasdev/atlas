@@ -321,7 +321,7 @@ Narration is a synthetic voice and the music bed is generated; keep the disclosu
 
 English is the source language and Brazilian Portuguese (pt-BR) is the first translation. Translations are plain files in the repository, reviewed in the pull request like code; there is no account to create anywhere. You do not need to write Rust or Svelte to translate. Before you write or translate any user-facing text, read [`i18n/style/README.md`](https://github.com/codeatlasdev/atlas/blob/main/i18n/style/README.md) (voice, punctuation, no em dashes) and the file for your language.
 
-Where the text lives: **one tree for the CLI, the TUI, the desktop app and the website**, `i18n/messages/<area>/<lang>.json`, one small folder per area (`settings`, `crew_onboarding`, `cli_config`, ...). Each area has `en.json`, one file per language, and `meta.json` (what each message is and where it appears). Words every screen shares (Cancel, Delete, key names, "your Mac" or "this PC") live once in the `common` areas. `i18n/surfaces.json` says which areas each surface uses; the files the apps read are generated (`bun run i18n:generate`), so you never edit them.
+Where the text lives: **one tree for the CLI, the TUI, the desktop app and the website**, `i18n/messages/<area>/<lang>.json`, one small folder per area (`settings`, `crew_onboarding`, `cli_config`, ...). Each area has `en.json`, one file per language, and `meta.json` (what each message is and where it appears). Words every screen shares (Cancel, Delete, key names, "your Mac" or "this PC") live once in the `common` areas. each area's `area.json` says which surface uses it; the files the apps read are generated (`bun run i18n:generate`), so you never edit them.
 
 |What|Where|
 |---|---|

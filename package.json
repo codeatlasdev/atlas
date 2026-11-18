@@ -51,6 +51,7 @@
     "i18n:mv": "bun run i18n:install && bun scripts/i18n/mv.ts",
     "i18n:pseudo": "bun run i18n:install && bun scripts/i18n/pseudo.ts",
     "i18n:add-locale": "bun run i18n:install && bun scripts/i18n/add-locale.ts",
+    "i18n:migrate-registry": "bun run i18n:install && bun scripts/i18n/migrate-registry.ts",
     "release": "bun scripts/sh.ts scripts/release.sh",
     "release:dry": "bun scripts/sh.ts scripts/release.sh --dry-run",
     "release:publish": "bun scripts/sh.ts scripts/release.sh --publish",

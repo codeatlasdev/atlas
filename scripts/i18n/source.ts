@@ -1,7 +1,8 @@
-// The one source tree: i18n/messages/<area>/{en.json,pt-BR.json,meta.json,pt-BR.lock.json}, and i18n/surfaces.json,
-// which says which surface (desktop, site, rust, later mobile) consumes which areas. Everything that reads or
-// generates messages goes through `loadSource`.
-import { existsSync, readdirSync } from "node:fs";
+// The one source tree: i18n/messages/<area>/{en.json,pt-BR.json,meta.json,area.json,lock.json}, and i18n/surfaces.json
+// (per-surface config only). Which surface consumes an area is declared by the area itself, in its own area.json, so
+// two branches that add areas never touch the same line. Everything that reads or generates messages goes through
+// `loadSource`.
+import { existsSync, readdirSync, writeFileSync } from "node:fs";
 import { join } from "node:path";
 import { type Area, type Entry, type MetaEntry, PLATFORMS } from "./model.ts";
 import { type MsgValue, MessageError, inlineRefs } from "./resolve.ts";
@@ -16,7 +17,11 @@ export const AREA_PATTERN = /^[a-z][a-z0-9]*(?:_[a-z0-9]+)*$/;
 export const COMMON_AREAS = ["common", "common_keys", "common_os"];
 export const isCommon = (area: string) => COMMON_AREAS.includes(area);
 
+/** The file in an area's folder that says which surface consumes it (and whether its English is generated). */
+export const AREA_FILE = "area.json";
+
 export interface SurfaceDef {
+	/** The areas whose area.json names this surface (derived by `loadSurfacesConfig`; surfaces.json never lists them). */
 	areas: string[];
 	/** Directory the Paraglide inputs (`<locale>.json`) are generated into (gitignored). */
 	paraglide?: string;
@@ -29,8 +34,15 @@ export interface SurfaceDef {
 export interface SurfacesConfig {
 	budget: { keys: number; bytes: number };
 	surfaces: Record<string, SurfaceDef>;
-	/** Areas whose English side is itself generated: area -> the command that regenerates it. */
+	/** Areas whose English side is itself generated: area -> the command that regenerates it (their area.json `generated`). */
 	generatedAreas: Record<string, string>;
+}
+
+/** The content of `i18n/messages/<area>/area.json`. */
+export interface AreaFile {
+	surface: string;
+	/** Set when the English side of the area is generated: the command that regenerates it. */
+	generated?: string;
 }
 
 export interface Source {
@@ -45,6 +57,9 @@ export interface Source {
 
 const problem = (rule: string, file: string, message: string, key?: string, line?: number): Finding => ({ rule, severity: "error", file, line, key, message });
 
+const OUTPUTS = ["paraglide", "arb", "rust"] as const;
+
+/** surfaces.json (budget and the output of each surface) plus the area.json of every area folder: who consumes what. */
 export function loadSurfacesConfig(root: string): { config: SurfacesConfig; problems: Finding[] } {
 	const config: SurfacesConfig = { budget: { keys: 150, bytes: 24576 }, surfaces: {}, generatedAreas: {} };
 	const problems: Finding[] = [];
@@ -58,7 +73,7 @@ export function loadSurfacesConfig(root: string): { config: SurfacesConfig; prob
 	}
 	const bad = (m: string) => problems.push(problem("config", SURFACES_FILE, m));
 	if (typeof j !== "object" || j === null || !("surfaces" in j) || typeof j.surfaces !== "object" || j.surfaces === null) {
-		bad('expected { "budget": {...}, "surfaces": { "<name>": { "areas": [...], "paraglide" | "arb" | "rust": "<dir>" } } }');
+		bad('expected { "budget": {...}, "surfaces": { "<name>": { "paraglide" | "arb" | "rust": "<dir>" } } }');
 		return { config, problems };
 	}
 	if ("budget" in j && typeof j.budget === "object" && j.budget !== null) {
@@ -66,34 +81,74 @@ export function loadSurfacesConfig(root: string): { config: SurfacesConfig; prob
 		if (typeof b.keys === "number" && typeof b.bytes === "number") config.budget = { keys: b.keys, bytes: b.bytes };
 		else bad("budget needs numbers `keys` and `bytes`");
 	}
-	if ("generatedAreas" in j && typeof j.generatedAreas === "object" && j.generatedAreas !== null) {
-		for (const [area, cmd] of Object.entries(j.generatedAreas)) if (typeof cmd === "string") config.generatedAreas[area] = cmd;
-	}
+	if ("generatedAreas" in j) bad(`"generatedAreas" moved into the area.json of each generated area ({ "surface": "...", "generated": "<command>" }): run bun run i18n:migrate-registry`);
 	for (const [name, def] of Object.entries(j.surfaces)) {
 		const d: Record<string, unknown> = typeof def === "object" && def !== null ? Object.fromEntries(Object.entries(def)) : {};
-		if (!Array.isArray(d.areas) || d.areas.some((a) => typeof a !== "string")) {
-			bad(`surface "${name}" needs \`areas\`: a list of area names`);
-			continue;
-		}
-		const outputs = (["paraglide", "arb", "rust"] as const).filter((k) => typeof d[k] === "string");
+		if ("areas" in d) bad(`surface "${name}" lists areas: the area names moved into i18n/messages/<area>/area.json ({ "surface": "${name}" }); run bun run i18n:migrate-registry`);
+		const outputs = OUTPUTS.filter((k) => typeof d[k] === "string");
 		if (outputs.length !== 1) bad(`surface "${name}" needs exactly one of paraglide, arb, rust (a directory)`);
-		const surface: SurfaceDef = { areas: d.areas.map(String) };
-		for (const k of ["paraglide", "arb", "rust"] as const) if (typeof d[k] === "string") surface[k] = d[k];
+		const surface: SurfaceDef = { areas: [] };
+		for (const k of OUTPUTS) if (typeof d[k] === "string") surface[k] = d[k];
 		config.surfaces[name] = surface;
 	}
+	problems.push(...loadAreaFiles(root, config));
 	return { config, problems };
 }
 
-/** surfaces.json in the layout it is kept in: one line per surface, areas sorted. */
+/** Read every area's area.json into `config` (areas of each surface, generated commands); the problems are an area with
+ * no declaration, an unknown surface, a malformed file, or a common area that declares one. */
+function loadAreaFiles(root: string, config: SurfacesConfig): Finding[] {
+	const out: Finding[] = [];
+	const dir = join(root, MESSAGES_DIR);
+	if (!existsSync(dir)) return out;
+	const names = Object.keys(config.surfaces).sort(cmp).join("|");
+	const fixHint = (area: string) => `write ${MESSAGES_DIR}/${area}/${AREA_FILE} as { "surface": "<${names}>" } (bun run i18n:add --new-area --surface <s> creates it)`;
+	for (const area of readdirSync(dir, { withFileTypes: true }).filter((e) => e.isDirectory()).map((e) => e.name).sort()) {
+		const file = `${MESSAGES_DIR}/${area}/${AREA_FILE}`;
+		const path = join(root, file);
+		if (!existsSync(path)) {
+			if (!isCommon(area)) out.push(problem("area-surface", `${MESSAGES_DIR}/${area}`, `area "${area}" declares no surface, so nothing consumes it: ${fixHint(area)}`));
+			continue;
+		}
+		let j: unknown;
+		try {
+			j = JSON.parse(readText(path));
+		} catch (e) {
+			out.push(problem("area-surface", file, `invalid JSON: ${(e as Error).message}`));
+			continue;
+		}
+		const o: Record<string, unknown> = typeof j === "object" && j !== null && !Array.isArray(j) ? Object.fromEntries(Object.entries(j)) : {};
+		const unknown = Object.keys(o).filter((k) => k !== "surface" && k !== "generated");
+		if (unknown.length) out.push(problem("area-surface", file, `unknown field(s): ${unknown.join(", ")}; an area.json holds "surface" and, for a generated area, "generated"`));
+		if (isCommon(area)) {
+			out.push(problem("area-surface", file, `"${area}" is consumed by every surface already; delete this file`));
+			continue;
+		}
+		const surface = o.surface;
+		if (typeof surface !== "string") out.push(problem("area-surface", file, `area "${area}" needs a string "surface": ${fixHint(area)}`));
+		else if (!config.surfaces[surface]) out.push(problem("area-surface", file, `area "${area}" names surface "${surface}", which i18n/surfaces.json does not define (${names}): ${fixHint(area)}`));
+		else config.surfaces[surface].areas.push(area);
+		if (o.generated !== undefined) {
+			if (typeof o.generated === "string" && o.generated.trim()) config.generatedAreas[area] = o.generated;
+			else out.push(problem("area-surface", file, '"generated" is the command that regenerates the English of this area'));
+		}
+	}
+	return out;
+}
+
+/** Create (or rewrite) the area.json of an area folder. */
+export function writeAreaFile(root: string, area: string, a: AreaFile) {
+	writeFileSync(join(root, MESSAGES_DIR, area, AREA_FILE), canonicalJson({ ...a }));
+}
+
+/** surfaces.json in the layout it is kept in: one line per surface. */
 export function renderSurfaces(c: SurfacesConfig): string {
-	const list = (xs: string[]) => `[${xs.map((x) => JSON.stringify(x)).join(", ")}]`;
-	const generated = Object.entries(c.generatedAreas).sort(([a], [b]) => cmp(a, b)).map(([k, v]) => `${JSON.stringify(k)}: ${JSON.stringify(v)}`);
 	const surfaces = Object.keys(c.surfaces).sort(cmp).map((name) => {
 		const d = c.surfaces[name];
-		const output = (["paraglide", "arb", "rust"] as const).filter((k) => d[k] !== undefined).map((k) => `${JSON.stringify(k)}: ${JSON.stringify(d[k])}`);
-		return `\t\t${JSON.stringify(name)}: { "areas": ${list([...d.areas].sort(cmp))}${output.length ? `, ${output.join(", ")}` : ""} }`;
+		const output = OUTPUTS.filter((k) => d[k] !== undefined).map((k) => `${JSON.stringify(k)}: ${JSON.stringify(d[k])}`);
+		return `\t\t${JSON.stringify(name)}: { ${output.join(", ")} }`;
 	});
-	return `{\n\t"budget": { "keys": ${c.budget.keys}, "bytes": ${c.budget.bytes} },\n\t"generatedAreas": { ${generated.join(", ")} },\n\t"surfaces": {\n${surfaces.join(",\n")}\n\t}\n}\n`;
+	return `{\n\t"budget": { "keys": ${c.budget.keys}, "bytes": ${c.budget.bytes} },\n\t"surfaces": {\n${surfaces.join(",\n")}\n\t}\n}\n`;
 }
 
 /** The areas a surface consumes: the common ones, then its own, without duplicates. */
@@ -226,8 +281,8 @@ export function loadSource(ctx: Ctx): Source {
 		if (!AREA_PATTERN.test(name)) aproblems.push(problem("config", adir, "an area directory is snake_case (lowercase words joined by underscores)"));
 		for (const f of readdirSync(join(dir, name))) {
 			const m = /^(.+)\.json$/.exec(f);
-			if (!m || m[1] === "meta" || m[1] === "lock" || locales.includes(m[1])) continue;
-			aproblems.push(problem("config", `${adir}/${f}`, `not a locale of ${LOCALES_FILE}; an area holds <locale>.json, meta.json and lock.json (add a language with bun run i18n:add-locale <tag>)`));
+			if (!m || m[1] === "meta" || m[1] === "lock" || m[1] === "area" || locales.includes(m[1])) continue;
+			aproblems.push(problem("config", `${adir}/${f}`, `not a locale of ${LOCALES_FILE}; an area holds <locale>.json, meta.json, area.json and lock.json (add a language with bun run i18n:add-locale <tag>)`));
 		}
 		const files = new Map<string, RawFile>();
 		for (const l of locales) {

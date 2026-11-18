@@ -1,7 +1,7 @@
 ---
 title: "Contribuir"
 source: contributing.md
-source_sha: "368d62ae950b4f170c8e9146b7084db26f7d6445"
+source_sha: "612fd61004cee917e38e27dc419a24af0efef6cf"
 translation: machine
 ---
 
@@ -323,7 +323,7 @@ A narração é uma voz sintética e a trilha de fundo é gerada; mantenha corre
 
 O inglês é o idioma de origem e o português do Brasil (pt-BR) é a primeira tradução. As traduções são arquivos comuns no repositório, revisados no pull request como código; não há conta para criar em lugar nenhum. Você não precisa escrever Rust nem Svelte para traduzir. Antes de escrever ou traduzir qualquer texto voltado ao usuário, leia o [`i18n/style/README.md`](https://github.com/codeatlasdev/atlas/blob/main/i18n/style/README.md) (voz, pontuação, sem travessão) e o arquivo do seu idioma.
 
-Onde o texto vive: **uma árvore para a CLI, a TUI, o app desktop e o site**, `i18n/messages/<area>/<lang>.json`, uma pasta pequena por área (`settings`, `crew_onboarding`, `cli_config`, ...). Cada área tem `en.json`, um arquivo por idioma e o `meta.json` (o que cada mensagem é e onde aparece). As palavras que todas as telas compartilham (Cancelar, Excluir, nomes de teclas, "seu Mac" ou "este PC") vivem uma só vez nas áreas `common`. O `i18n/surfaces.json` diz quais áreas cada superfície usa; os arquivos que os apps leem são gerados (`bun run i18n:generate`), então você nunca os edita.
+Onde o texto vive: **uma árvore para a CLI, a TUI, o app desktop e o site**, `i18n/messages/<area>/<lang>.json`, uma pasta pequena por área (`settings`, `crew_onboarding`, `cli_config`, ...). Cada área tem `en.json`, um arquivo por idioma e o `meta.json` (o que cada mensagem é e onde aparece). As palavras que todas as telas compartilham (Cancelar, Excluir, nomes de teclas, "seu Mac" ou "este PC") vivem uma só vez nas áreas `common`. O `area.json` de cada área diz qual superfície a usa; os arquivos que os apps leem são gerados (`bun run i18n:generate`), então você nunca os edita.
 
 |O quê|Onde|
 |---|---|

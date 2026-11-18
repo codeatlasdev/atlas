@@ -5,7 +5,7 @@ import { join } from "node:path";
 import { readBaseline } from "./baseline.ts";
 import { fix } from "./fix.ts";
 import { loadCtx } from "./types.ts";
-import { EN, META, PT, addKey, check, cleanup, editJson, errors, finding, makeRepo, put, read, rulesOf } from "./testkit.ts";
+import { BASELINE, EN, META, PT, addKey, baselineText, check, cleanup, editJson, errors, finding, makeRepo, put, read, rulesOf } from "./testkit.ts";
 import { allowsIn, lintMarkdown, loadRules, markdownProse } from "./writing.ts";
 
 afterAll(cleanup);
@@ -231,7 +231,7 @@ describe("existing prose is ratcheted, not failed", () => {
 	test("hits up to the baseline are tolerated; one more fails; fewer demands a shrink that fix does", async () => {
 		const root = await repo();
 		put(root, RM, "# Atlas\n\nOne \u2014 two.\n\nThree \u2014 four.\n");
-		put(root, "i18n/hardcoded-baseline.json", JSON.stringify({ writing: { [RM]: 2 } }));
+		put(root, BASELINE, baselineText({ writing: { [RM]: 2 } }));
 		expect(errors(await check(root, "writing"))).toEqual([]);
 
 		put(root, RM, "# Atlas\n\nOne \u2014 two.\n\nThree \u2014 four.\n\nFive \u2014 six.\n");
@@ -258,7 +258,7 @@ describe("existing prose is ratcheted, not failed", () => {
 	test("warning-level rules and tolerated hits are info, hidden by default and never failing", async () => {
 		const root = await repo();
 		put(root, RM, "# Atlas\n\nShouting ALLCAPS here.\n\nA \u2014 B\n");
-		put(root, "i18n/hardcoded-baseline.json", JSON.stringify({ writing: { [RM]: 1 } }));
+		put(root, BASELINE, baselineText({ writing: { [RM]: 1 } }));
 		const fs = await check(root, "writing");
 		expect(fs.filter((f) => f.severity !== "info")).toEqual([]);
 		expect(fs.filter((f) => f.severity === "info" && f.file === RM).length).toBe(2);

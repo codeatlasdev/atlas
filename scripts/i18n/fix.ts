@@ -1,19 +1,21 @@
-// bun run i18n:fix [--restamp <key>] [--baseline]
+// bun run i18n:fix [--restamp <key>] [--baseline] [--prune-baseline]
 // The one command that writes derived files: sorts and formats the area files, rewrites the locks, shrinks the
 // ratchet baseline. It is also the conflict-resolution command after merging two branches.
 //   locks      for every translated key: keep the stamp of a key whose English changed (it stays outdated), stamp a key
 //              that has none, drop entries of keys that no longer exist.
 //   --restamp  a typo-only English edit: record the current hash of <key> in every locale without retranslating.
 //   --baseline also start a baseline section that does not exist yet from today's counts (first run); an existing
-//              baseline only ever shrinks.
+//              baseline only ever shrinks. A file whose offenders are gone keeps its line at 0 (a deleted line comes
+//              back in a union merge), a path listed twice (a union merge) collapses to its smaller count.
+//   --prune-baseline  also delete the lines at 0; run it alone, on a branch that does nothing else.
 import { existsSync, writeFileSync } from "node:fs";
 import { join } from "node:path";
-import { type Baseline, readBaseline, shrunk, writeBaseline } from "./baseline.ts";
+import { type Baseline, readBaseline, renderBaseline, shrunk } from "./baseline.ts";
 import { hashOf } from "./engine.ts";
 import type { Area } from "./model.ts";
 import { readLock, writeLock } from "./lock.ts";
 import { RATCHETS, scanRatchet } from "./ratchets.ts";
-import { formatProblem, loadSource } from "./source.ts";
+import { AREA_FILE, formatProblem, loadSource } from "./source.ts";
 import { BASELINE_FILE, type Ctx, loadCtx } from "./types.ts";
 import { canonicalJson, detectIndent, readText } from "./util.ts";
 
@@ -49,6 +51,7 @@ function canonicalizeFile(path: string): boolean {
 export interface FixOptions {
 	restamp?: string[];
 	baseline?: boolean;
+	pruneBaseline?: boolean;
 }
 
 export function fix(ctx: Ctx, opts: FixOptions = {}): string[] {
@@ -58,7 +61,7 @@ export function fix(ctx: Ctx, opts: FixOptions = {}): string[] {
 	const known = new Set<string>();
 	const source = loadSource(ctx);
 	for (const area of source.areas.values()) {
-		for (const f of [...area.locales.map((l) => `${area.name}/${l}.json`), `${area.name}/meta.json`]) {
+		for (const f of [...area.locales.map((l) => `${area.name}/${l}.json`), `${area.name}/meta.json`, `${area.name}/${AREA_FILE}`]) {
 			if (canonicalizeFile(join(root, "i18n/messages", f))) log.push(`formatted i18n/messages/${f}`);
 		}
 		for (const key of restamp) if (area.entries.get(area.base)?.has(key)) known.add(key);
@@ -74,8 +77,11 @@ export function fix(ctx: Ctx, opts: FixOptions = {}): string[] {
 			const { found, prefixes } = scanRatchet({ ...ctx, surface: undefined }, def);
 			if (before[def.lang] || opts.baseline) next[def.lang] = shrunk(before, def.lang, found, opts.baseline === true, prefixes);
 		}
-		writeBaseline(root, next);
-		log.push(`baseline ${JSON.stringify(readBaseline(root)) === JSON.stringify(before) ? "unchanged" : "updated"}`);
+		const prune = opts.pruneBaseline === true;
+		const text = renderBaseline(next, prune);
+		const was = existsSync(join(root, BASELINE_FILE)) ? readText(join(root, BASELINE_FILE)) : "";
+		writeFileSync(join(root, BASELINE_FILE), text);
+		log.push(`baseline ${text === was ? "unchanged" : "updated"}`);
 	}
 	return log;
 }
@@ -84,12 +90,12 @@ if (import.meta.main) {
 	const args = process.argv.slice(2);
 	const restamp = args.flatMap((a, i) => (args[i - 1] === "--restamp" ? [a] : []));
 	if (args.includes("--restamp") && restamp.length === 0) {
-		console.error("usage: bun run i18n:fix [--restamp <key>] [--baseline]");
+		console.error("usage: bun run i18n:fix [--restamp <key>] [--baseline] [--prune-baseline]");
 		process.exit(2);
 	}
 	const root = args.includes("--root") ? args[args.indexOf("--root") + 1] : join(import.meta.dir, "..", "..");
 	try {
-		for (const line of fix(loadCtx(root), { restamp, baseline: args.includes("--baseline") })) console.log(line);
+		for (const line of fix(loadCtx(root), { restamp, baseline: args.includes("--baseline"), pruneBaseline: args.includes("--prune-baseline") })) console.log(line);
 	} catch (e) {
 		console.error(`i18n:fix: ${(e as Error).message}`);
 		process.exit(1);

@@ -1,9 +1,10 @@
 // The ratchets in diff mode: a change is judged on the offenders it adds, against the merge-base, so a baseline that
 // lags main never fails anyone and never needs a re-snapshot. Real temp git repositories, real `git`.
 import { afterAll, describe, expect, setDefaultTimeout, test } from "bun:test";
+import { readBaseline } from "./baseline.ts";
 import { fix } from "./fix.ts";
 import { type Finding, loadCtx } from "./types.ts";
-import { check, cleanup, makeRepo, put, read, rulesOf } from "./testkit.ts";
+import { BASELINE, baselineText, check, cleanup, makeRepo, put, read, rulesOf } from "./testkit.ts";
 
 // Each case builds real git repositories; on a loaded CI runner the default 5 s is too tight (a hook timed out at 11 s).
 setDefaultTimeout(60_000);
@@ -45,7 +46,7 @@ function git(root: string, ...args: string[]) {
 async function baseRepo(files: Record<string, string> = {}, branch = "main") {
 	const root = await makeRepo(files);
 	// makeRepo snapshots a baseline from what it just wrote; the base commit holds exactly the baseline the test gives (or none).
-	put(root, "i18n/hardcoded-baseline.json", files["i18n/hardcoded-baseline.json"] ?? "{}\n");
+	put(root, BASELINE, files[BASELINE] ?? "");
 	git(root, "init", "-q", "-b", branch);
 	git(root, "add", "-A");
 	git(root, "commit", "-q", "-m", "base");
@@ -60,7 +61,7 @@ describe("Svelte ratchet in diff mode", () => {
 		const root = await baseRepo({ [OLD]: oldScreen(100) });
 		put(root, "docs/touched.md", "# Touched\n");
 		expect(offenders(await check(root))).toEqual([]);
-		put(root, "i18n/hardcoded-baseline.json", JSON.stringify({ svelte: { [OLD]: 1 } }));
+		put(root, BASELINE, baselineText({ svelte: { [OLD]: 1 } }));
 		expect(offenders(await check(root))).toEqual([]);
 		expect(offenders(await check(root), "hardcoded-baseline")).toEqual([]);
 	});
@@ -68,7 +69,7 @@ describe("Svelte ratchet in diff mode", () => {
 	test("the same repo without a base ref falls back to the committed baseline", async () => {
 		const root = await baseRepo({ [OLD]: oldScreen(3) }, "trunk");
 		expect(offenders(await check(root))).toHaveLength(3);
-		put(root, "i18n/hardcoded-baseline.json", JSON.stringify({ svelte: { [OLD]: 3 } }));
+		put(root, BASELINE, baselineText({ svelte: { [OLD]: 3 } }));
 		expect(offenders(await check(root))).toEqual([]);
 		put(root, OLD, oldScreen(2));
 		expect(offenders(await check(root), "hardcoded-baseline")).toHaveLength(1);
@@ -149,8 +150,8 @@ describe("Svelte ratchet in diff mode", () => {
 });
 
 describe("the baseline file may not grow", () => {
-	const FILE = "i18n/hardcoded-baseline.json";
-	const seeded = (n: number) => JSON.stringify({ svelte: { [OLD]: n } });
+	const FILE = BASELINE;
+	const seeded = (n: number) => baselineText({ svelte: { [OLD]: n } });
 
 	test("raising a count is an error that says not to snapshot; lowering or keeping it is fine", async () => {
 		const root = await baseRepo({ [OLD]: oldScreen(3), [FILE]: seeded(3) });
@@ -165,13 +166,13 @@ describe("the baseline file may not grow", () => {
 	});
 
 	test("a new entry counts as growth; a baseline or a section that did not exist at the base is its introduction", async () => {
-		const root = await baseRepo({ [FILE]: JSON.stringify({ svelte: { [OLD]: 1 } }) });
-		put(root, FILE, JSON.stringify({ svelte: { [OLD]: 1, "apps/desktop/src/B.svelte": 2 } }));
+		const root = await baseRepo({ [FILE]: baselineText({ svelte: { [OLD]: 1 } }) });
+		put(root, FILE, baselineText({ svelte: { [OLD]: 1, "apps/desktop/src/B.svelte": 2 } }));
 		expect((await check(root)).filter((x) => x.rule === "baseline-grew").map((x) => x.key)).toEqual(["apps/desktop/src/B.svelte"]);
-		put(root, FILE, JSON.stringify({ svelte: { [OLD]: 1 }, rust: { "crates/atlas-cli/src/main.rs": 9 } }));
+		put(root, FILE, baselineText({ svelte: { [OLD]: 1 }, rust: { "crates/atlas-cli/src/main.rs": 9 } }));
 		expect(rulesOf(await check(root))).not.toContain("baseline-grew");
 		const fresh = await baseRepo();
-		put(fresh, FILE, JSON.stringify({ svelte: { [OLD]: 7 } }));
+		put(fresh, FILE, baselineText({ svelte: { [OLD]: 7 } }));
 		expect(rulesOf(await check(fresh))).not.toContain("baseline-grew");
 	});
 
@@ -179,10 +180,10 @@ describe("the baseline file may not grow", () => {
 		const root = await baseRepo({ [OLD]: oldScreen(3), [FILE]: seeded(3) });
 		put(root, OLD, oldScreen(1));
 		fix(loadCtx(root));
-		expect(JSON.parse(read(root, FILE)).svelte).toEqual({ [OLD]: 1 });
+		expect(readBaseline(root).svelte).toEqual({ [OLD]: 1 });
 		put(root, OLD, oldScreen(4));
 		fix(loadCtx(root));
-		expect(JSON.parse(read(root, FILE)).svelte).toEqual({ [OLD]: 1 });
+		expect(readBaseline(root).svelte).toEqual({ [OLD]: 1 });
 	});
 });
 
@@ -221,12 +222,12 @@ describe("the other ratchets share the mechanism", () => {
 	});
 
 	test("the committed-baseline checks (stale entries) are off in diff mode, and on without a base", async () => {
-		const files = { [RS]: 'fn main() { println!("old one"); }\n', "i18n/hardcoded-baseline.json": JSON.stringify({ rust: { [RS]: 5 } }) };
+		const files = { [RS]: 'fn main() { println!("old one"); }\n', [BASELINE]: baselineText({ rust: { [RS]: 5 } }) };
 		const root = await baseRepo(files);
 		put(root, "docs/x.md", "# X\n");
 		expect((await check(root)).filter((f) => f.rule.endsWith("-baseline"))).toEqual([]);
 		const plain = await makeRepo(files);
-		put(plain, "i18n/hardcoded-baseline.json", files["i18n/hardcoded-baseline.json"]);
+		put(plain, BASELINE, files[BASELINE]);
 		expect((await check(plain)).filter((f) => f.rule === "hardcoded-baseline")).toHaveLength(1);
 	});
 });
@@ -279,7 +280,7 @@ describe("a pull request merge ref", () => {
 
 	test("CI without a base (a push of a new branch, a manual run) compares with the committed baseline", async () => {
 		const { root } = await mergeRef();
-		put(root, "i18n/hardcoded-baseline.json", "{}\n");
+		put(root, BASELINE, "");
 		await withEnv({ GITHUB_ACTIONS: "true", GITHUB_EVENT_NAME: "workflow_dispatch" }, async () => {
 			expect(offenders(await check(root)).length).toBeGreaterThan(0);
 		});

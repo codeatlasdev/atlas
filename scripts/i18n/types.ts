@@ -65,7 +65,7 @@ export interface Checker {
 export const LOCALES_FILE = "i18n/locales.json";
 export const MESSAGES_DIR = "i18n/messages";
 export const SURFACES_FILE = "i18n/surfaces.json";
-export const BASELINE_FILE = "i18n/hardcoded-baseline.json";
+export const BASELINE_FILE = "i18n/hardcoded-baseline.jsonl";
 
 /** `i18n/locales.json`; without the file only the default `en` exists. */
 export function loadLocales(root: string): LocalesConfig {

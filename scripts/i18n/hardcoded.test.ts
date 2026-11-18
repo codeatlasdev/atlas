@@ -7,7 +7,7 @@ import { fix } from "./fix.ts";
 import { scanRustSource } from "./hardcoded/rust.ts";
 import { scanSvelteSource } from "./hardcoded/svelte.ts";
 import { type Finding, loadCtx } from "./types.ts";
-import { check, cleanup, finding, makeRepo, put, read, rulesOf } from "./testkit.ts";
+import { BASELINE, baselineText, check, cleanup, finding, makeRepo, put, read, rulesOf } from "./testkit.ts";
 
 afterAll(cleanup);
 
@@ -95,7 +95,7 @@ describe("the baseline only shrinks", () => {
 	test("a file at its baseline is quiet; one more violation fails; one fewer demands a shrink", async () => {
 		const root = await makeRepo();
 		put(root, SVELTE, "<p>One</p>\n<p>Two</p>\n");
-		put(root, "i18n/hardcoded-baseline.json", JSON.stringify({ svelte: { [SVELTE]: 2 } }));
+		put(root, BASELINE, baselineText({ svelte: { [SVELTE]: 2 } }));
 		expect(await check(root)).toEqual(expect.not.arrayContaining([expect.objectContaining({ rule: "hardcoded" })]));
 
 		put(root, SVELTE, "<p>One</p>\n<p>Two</p>\n<p>Three</p>\n");
@@ -111,23 +111,23 @@ describe("the baseline only shrinks", () => {
 		expect(rulesOf(await check(root), "error")).toEqual([]);
 	});
 
-	test("fix never raises a baseline, and drops the entry of a file that is clean or gone", async () => {
+	test("fix never raises a baseline, and keeps the line of a file that is clean or gone at 0", async () => {
 		const root = await makeRepo();
 		put(root, SVELTE, "<p>One</p>\n<p>Two</p>\n<p>Three</p>\n");
-		put(root, "i18n/hardcoded-baseline.json", JSON.stringify({ svelte: { [SVELTE]: 1, "apps/desktop/src/Gone.svelte": 4 } }));
+		put(root, BASELINE, baselineText({ svelte: { [SVELTE]: 1, "apps/desktop/src/Gone.svelte": 4 } }));
 		fix(loadCtx(root));
-		expect(baselineOf(root).svelte).toEqual({ [SVELTE]: 1 });
+		expect(baselineOf(root).svelte).toEqual({ [SVELTE]: 1, "apps/desktop/src/Gone.svelte": 0 });
 	});
 
 	test("--baseline seeds a missing section from today's counts, once; later runs only shrink", async () => {
 		const root = await makeRepo();
 		put(root, SVELTE, "<p>One</p>\n<p>Two</p>\n");
 		put(root, "crates/atlas-cli/src/main.rs", 'fn main() {\n    println!("Hello");\n}\n');
-		rmSync(join(root, "i18n/hardcoded-baseline.json"));
+		rmSync(join(root, BASELINE));
 		fix(loadCtx(root));
-		expect(existsSync(join(root, "i18n/hardcoded-baseline.json"))).toBe(false);
+		expect(existsSync(join(root, BASELINE))).toBe(false);
 		fix(loadCtx(root), { baseline: true });
-		expect(baselineOf(root)).toEqual({ platform: {}, rust: { "crates/atlas-cli/src/main.rs": 1 }, shortcut: {}, svelte: { [SVELTE]: 2 }, writing: {} });
+		expect(baselineOf(root)).toEqual({ rust: { "crates/atlas-cli/src/main.rs": 1 }, svelte: { [SVELTE]: 2 } });
 		expect(rulesOf(await check(root), "error")).toEqual([]);
 		put(root, SVELTE, "<p>One</p>\n<p>Two</p>\n<p>Three</p>\n<p>Four</p>\n");
 		fix(loadCtx(root), { baseline: true });
@@ -143,7 +143,7 @@ describe("the baseline only shrinks", () => {
 		const f = hardcoded(await check(root));
 		expect(f.map((x) => x.file)).toEqual(["crates/atlas-tui/src/lib.rs"]);
 		expect(f[0].line).toBe(1);
-		put(root, "i18n/hardcoded-baseline.json", JSON.stringify({ rust: { "crates/atlas-tui/src/lib.rs": 1 } }));
+		put(root, BASELINE, baselineText({ rust: { "crates/atlas-tui/src/lib.rs": 1 } }));
 		expect(rulesOf(await check(root), "error")).toEqual([]);
 		put(root, "crates/atlas-tui/src/lib.rs", "pub fn a() {}\n");
 		expect(finding(await check(root), "hardcoded-baseline")?.key).toBe("crates/atlas-tui/src/lib.rs");

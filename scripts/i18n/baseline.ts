@@ -1,7 +1,13 @@
-// i18n/hardcoded-baseline.json: today's count of offenders per file, per ratchet (`svelte`, `rust`, `shortcut`,
+// i18n/hardcoded-baseline.jsonl: today's count of offenders per file, per ratchet (`svelte`, `rust`, `shortcut`,
 // `platform`, `writing`). It is a ratchet: a file may never have more than its baseline (a new violation fails),
 // and a baseline that is now higher than reality fails too, so the number only goes down. `bun run i18n:fix`
 // shrinks it; it never grows it.
+//
+// Built so parallel branches never conflict on it (`.gitattributes`: `merge=union`): one self-contained JSON line per
+// (ratchet, file), `{"ratchet":"rust","file":"crates/x.rs","count":3}`. A branch only ever LOWERS a count and never
+// deletes a line (a fixed file keeps its line at 0: a union merge resurrects a deleted line, but keeps both versions of
+// a lowered one). A path that appears twice, which is what a union merge of two branches lowering the same or adjacent
+// lines produces, counts as the smaller number. Lines at 0 are dead weight only until `i18n:fix --prune-baseline`.
 import { existsSync, writeFileSync } from "node:fs";
 import { join } from "node:path";
 import { BASELINE_FILE, type Finding } from "./types.ts";
@@ -33,21 +39,47 @@ export interface RatchetText {
 	hint: string;
 }
 
-export function readBaseline(root: string): Baseline {
-	const p = join(root, BASELINE_FILE);
-	if (!existsSync(p)) return {};
-	const j = JSON.parse(readText(p));
-	if (typeof j !== "object" || j === null || Array.isArray(j)) throw new Error(`${BASELINE_FILE}: expected { "<ratchet>": { file: count } }`);
-	return j;
+/** The baseline of `text`: blank lines skipped, a (ratchet, file) listed twice counts as its smaller number. */
+export function parseBaseline(text: string, source = BASELINE_FILE): Baseline {
+	const out: Baseline = {};
+	text.split("\n").forEach((raw, i) => {
+		if (raw.trim() === "") return;
+		let j: unknown;
+		try {
+			j = JSON.parse(raw);
+		} catch (e) {
+			throw new Error(`${source}:${i + 1}: not JSON (${(e as Error).message}); one {"ratchet","file","count"} object per line`);
+		}
+		const o: Record<string, unknown> = typeof j === "object" && j !== null ? Object.fromEntries(Object.entries(j)) : {};
+		if (typeof o.ratchet !== "string" || typeof o.file !== "string" || typeof o.count !== "number" || !Number.isInteger(o.count) || o.count < 0) {
+			throw new Error(`${source}:${i + 1}: expected {"ratchet": "<name>", "file": "<path>", "count": <integer >= 0>}`);
+		}
+		const lang = o.ratchet as Lang;
+		const section = (out[lang] ??= {});
+		section[o.file] = Math.min(section[o.file] ?? o.count, o.count);
+	});
+	return out;
 }
 
-export function writeBaseline(root: string, b: Baseline) {
-	const out: Baseline = {};
-	for (const lang of Object.keys(b).sort(cmp) as Lang[]) {
-		const section = b[lang] ?? {};
-		out[lang] = Object.fromEntries(Object.entries(section).filter(([, n]) => n > 0).sort(([a], [c]) => cmp(a, c)));
+export function readBaseline(root: string): Baseline {
+	const p = join(root, BASELINE_FILE);
+	return existsSync(p) ? parseBaseline(readText(p)) : {};
+}
+
+/** The file text of `b`, sorted, one line per (ratchet, file). Zero counts are written (see the header) unless `prune`. */
+export function renderBaseline(b: Baseline, prune = false): string {
+	const lines: string[] = [];
+	for (const lang of Object.keys(b).sort(cmp)) {
+		for (const [file, count] of Object.entries(b[lang as Lang] ?? {}).sort(([a], [c]) => cmp(a, c))) {
+			if (prune && count === 0) continue;
+			lines.push(JSON.stringify({ ratchet: lang, file, count }));
+		}
 	}
-	writeFileSync(join(root, BASELINE_FILE), `${JSON.stringify(out, null, "\t")}\n`);
+	return lines.length ? `${lines.join("\n")}\n` : "";
+}
+
+export function writeBaseline(root: string, b: Baseline, prune = false) {
+	writeFileSync(join(root, BASELINE_FILE), renderBaseline(b, prune));
 }
 
 /** A path is under one of the scope entries (a directory, or a file named exactly). */

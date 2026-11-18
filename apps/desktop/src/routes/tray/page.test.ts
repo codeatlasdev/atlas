@@ -45,7 +45,7 @@ test("no big stat cards: the header carries the counts, the host version is a fo
 // Redesign: stopped projects (27 in the screenshot) are one disclosure, not 27 rows; a search opens it.
 test("stopped projects sit behind a disclosure that reports how many rows are inside", () => {
 	expect(page).toMatch(/aria-expanded=\{stoppedShown\}/);
-	expect(page).toMatch(/tray_page_stopped_count\(\{ stoppedCount: lists\.stoppedCount \}\)/);
+	expect(page).toMatch(/tray_page_stopped_count\(\{\s*stoppedCount: lists\.stoppedCount,?\s*\}\)/);
 });
 
 // Redesign: attention first. Agents that need you come before everything else in the scroll region.

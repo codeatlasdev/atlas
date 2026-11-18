@@ -6,6 +6,7 @@ use std::time::{Duration, SystemTime};
 
 use anyhow::{Context, Result, bail};
 use atlas_core::util::expand_tilde;
+use atlas_i18n::t;
 use atlas_tui::config::{DeployConfig, DeployTarget};
 
 use super::remote::Remote;
@@ -24,10 +25,16 @@ pub(super) struct Ctx {
 impl Ctx {
     pub fn load(dir: &str, target: Option<&str>) -> Result<Self> {
         let start = PathBuf::from(expand_tilde(dir));
-        let root = atlas_tui::config::find_root(&start)
-            .with_context(|| format!("no atlas.yaml found in {} or any parent", start.display()))?;
+        let root = atlas_tui::config::find_root(&start).with_context(|| {
+            t!(
+                "cmd_deploy_ctx_no_atlas_yaml",
+                dir = start.display().to_string()
+            )
+        })?;
         let project = atlas_tui::config::load(&root)?;
-        let cfg = project.deploy.context("no deploy: section in atlas.yaml")?;
+        let cfg = project
+            .deploy
+            .with_context(|| t!("cmd_deploy_ctx_no_deploy_section"))?;
         let mut known: Vec<&String> = cfg.targets.keys().collect();
         known.sort();
         let known_s = known
@@ -37,9 +44,13 @@ impl Ctx {
             .join(", ");
         let name = match target {
             Some(t) if cfg.targets.contains_key(t) => t.to_string(),
-            Some(t) => bail!("unknown deploy target '{t}' (known: {known_s})"),
+            Some(t) => bail!(t!(
+                "cmd_deploy_ctx_unknown_target",
+                target = t,
+                known = known_s
+            )),
             None if known.len() == 1 => known[0].clone(),
-            None => bail!("multiple deploy targets ({known_s}): pass one"),
+            None => bail!(t!("cmd_deploy_ctx_multiple_targets", known = known_s)),
         };
         let app = cfg.app.clone().unwrap_or(project.name);
         if app.is_empty()
@@ -47,7 +58,7 @@ impl Ctx {
                 .bytes()
                 .all(|b| b.is_ascii_lowercase() || b.is_ascii_digit() || b == b'-')
         {
-            bail!("project name '{app}' is not [a-z0-9-]+: set deploy.app");
+            bail!(t!("cmd_deploy_ctx_bad_app", app = app));
         }
         let target = cfg.targets[&name].clone();
         let dir = target.dir.clone().unwrap_or_else(|| format!("/opt/{app}"));

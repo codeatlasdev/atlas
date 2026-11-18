@@ -71,6 +71,7 @@ actions:
 
     fn atlas(&self, args: &[&str]) -> std::process::Output {
         Command::new(BIN)
+            .env("ATLAS_LANG", "en")
             .args(args)
             .args(["--dir", self.root().to_str().unwrap()])
             .stdin(Stdio::null())
@@ -104,6 +105,7 @@ impl Drop for Project {
     fn drop(&mut self) {
         // Best effort: `down` is graceful; fall back to SIGKILL of the runner.
         let _ = Command::new(BIN)
+            .env("ATLAS_LANG", "en")
             .args(["down", "--dir", self.root().to_str().unwrap()])
             .output();
         if let Some(pid) = self.runner_pid()
@@ -348,6 +350,7 @@ fn detach_reports_a_bad_config_on_the_terminal_without_spawning() {
     )
     .unwrap();
     let out = Command::new(BIN)
+        .env("ATLAS_LANG", "en")
         .args(["dev", "--detach", "--dir", dir.path().to_str().unwrap()])
         .output()
         .unwrap();
@@ -440,6 +443,7 @@ fn foreground_headless_is_attachable_and_down_stops_it() {
     // so MCP and `atlas dev` attach keep working against it.
     let p = Project::new();
     let mut child = Command::new(BIN)
+        .env("ATLAS_LANG", "en")
         .args(["dev", "--headless", "--dir", p.root().to_str().unwrap()])
         .stdin(Stdio::null())
         .stdout(Stdio::null())

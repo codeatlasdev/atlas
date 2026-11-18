@@ -2,9 +2,12 @@
 	import { PanelRight } from "@lucide/svelte";
 	import Tip from "#lib/components/Tip.svelte";
 	import { docks, peek, toggleDock } from "#lib/stores/docks.svelte.ts";
+	import { m } from "#lib/i18n/m.ts";
 
 	/** Header button that pins or hides the right sidebar (⌘R). Always visible, with its shortcut in the tooltip. */
-	const label = $derived(docks.right ? "Hide right sidebar" : "Show right sidebar");
+	const label = $derived(
+		docks.right ? m.shell_chrome_right_toggle_hide() : m.shell_chrome_right_toggle_show(),
+	);
 </script>
 
 <Tip {label} command="workspace::ToggleRightDock">

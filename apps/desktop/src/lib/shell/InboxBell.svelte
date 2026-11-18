@@ -1,6 +1,7 @@
 <script lang="ts">
 	import { Badge, Popover } from "@codeatlasdev/ui";
 	import { Bell } from "@lucide/svelte";
+	import { m } from "#lib/i18n/m.ts";
 
 	export interface InboxItem {
 		id: string;
@@ -38,7 +39,9 @@
 		<button
 			{...props}
 			class="bell"
-			aria-label={unread > 0 ? `${unread} unread notifications` : "Notifications"}
+			aria-label={unread > 0
+				? m.shell_chrome_inbox_bell_unread({ count: unread })
+				: m.shell_chrome_notifications()}
 		>
 			<Badge count={unread || undefined} color="error"
 				><Bell size={18} stroke-width={1.8} aria-hidden="true" /></Badge
@@ -46,27 +49,29 @@
 		</button>
 	{/snippet}
 	{#snippet children({ close })}
-		<div class="panel" role="dialog" aria-label="Notifications">
+		<div class="panel" role="dialog" aria-label={m.shell_chrome_notifications()}>
 			<div class="head">
-				<b>Notifications</b>
+				<b>{m.shell_chrome_notifications()}</b>
 				<span class="acts">
-					{#if unread > 0}<button class="act" onclick={onReadAll}>Mark all read</button>{/if}
-					{#if items.length}<button class="act" onclick={onClear}>Clear</button>{/if}
+					{#if unread > 0}<button class="act" onclick={onReadAll}
+							>{m.shell_chrome_inbox_bell_mark_all_read()}</button
+						>{/if}
+					{#if items.length}<button class="act" onclick={onClear}>{m.shell_chrome_inbox_bell_clear()}</button
+						>{/if}
 				</span>
 			</div>
 			{#if items.length === 0}
 				<div class="empty">
-					<p class="lead">Nothing needs you right now</p>
+					<p class="lead">{m.shell_chrome_inbox_bell_empty_title()}</p>
 					<p>
-						Agents waiting for your answer, tasks that finished while you were elsewhere and app updates show
-						up here.
+						{m.shell_chrome_inbox_bell_empty_hint()}
 					</p>
 					<button
 						class="act"
 						onclick={() => {
 							close();
 							onSettings();
-						}}>Notification settings</button
+						}}>{m.shell_chrome_inbox_bell_notification_settings()}</button
 					>
 				</div>
 			{:else}
@@ -108,7 +113,10 @@
 		color: var(--ca-text-primary);
 	}
 	.panel {
+		/* The kit's popover pads its content by 16px and caps its width at 320px: cancel the padding so the panel is
+		   exactly the popover (a longer pt-BR "Limpar" was cut at the edge). */
 		width: 320px;
+		margin: -16px;
 		max-height: 440px;
 		display: flex;
 		flex-direction: column;
@@ -118,12 +126,16 @@
 		display: flex;
 		align-items: center;
 		justify-content: space-between;
+		flex-wrap: wrap;
+		gap: 4px 8px;
 		padding: 10px 12px 8px;
 		border-bottom: 0.5px solid var(--ca-outline-subtle);
 	}
 	.acts {
 		display: flex;
-		gap: 6px;
+		flex-wrap: wrap;
+		justify-content: flex-end;
+		gap: 2px 6px;
 	}
 	.act {
 		border: 0;
@@ -133,6 +145,7 @@
 		font-size: 12px;
 		color: var(--ca-brand-text);
 		cursor: pointer;
+		white-space: nowrap;
 	}
 	.act:hover {
 		background: var(--ca-action-hover);

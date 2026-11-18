@@ -3,6 +3,7 @@
  * JSON text box is validated and how an edit becomes a patch of the `lsp` preference.
  * No Svelte, no IPC.
  */
+import { m } from "#lib/i18n/m.ts";
 import type { LspLanguagePref } from "#lib/prefs.ts";
 import type { CatalogEntry, ServerStatus } from "#lib/lsp/types.ts";
 
@@ -40,17 +41,23 @@ export function headline(statuses: readonly ServerStatus[]): ServerStatus | unde
  */
 export function serverView(entry: CatalogEntry, servers: readonly ServerStatus[]): ServerView {
 	const live = headline(statusesOf(entry, servers));
-	if (live?.state === "downloading") return { kind: "downloading", text: live.progress || "Downloading…" };
-	if (live?.state === "starting") return { kind: "starting", text: live.progress || "Starting…" };
+	// A progress line or a reason that came from the host is shown as it arrived (the host writes it, not this page).
+	if (live?.state === "downloading")
+		return { kind: "downloading", text: live.progress || m.settings_editor_view_downloading() };
+	if (live?.state === "starting")
+		return { kind: "starting", text: live.progress || m.settings_editor_view_starting() };
 	if (live?.state === "crashed") {
-		return { kind: "crashed", text: live.reason?.message || live.message || "The server stopped." };
+		return {
+			kind: "crashed",
+			text: live.reason?.message || live.message || m.settings_editor_view_stopped(),
+		};
 	}
-	if (live?.state === "ready") return { kind: "running", text: "Running" };
+	if (live?.state === "ready") return { kind: "running", text: m.settings_editor_view_running() };
 	const { detected } = entry;
-	if (detected.source === "path") return { kind: "path", text: "Installed" };
-	if (detected.source === "managed") return { kind: "managed", text: "Installed" };
+	if (detected.source === "path") return { kind: "path", text: m.settings_editor_view_installed() };
+	if (detected.source === "managed") return { kind: "managed", text: m.settings_editor_view_installed() };
 	if (detected.blocked) return { kind: "blocked", text: detected.blocked.message };
-	return { kind: "missing", text: "Not installed" };
+	return { kind: "missing", text: m.settings_editor_view_not_installed() };
 }
 
 /** Where the executable comes from, for the badge. */
@@ -58,8 +65,8 @@ export function sourceBadge(entry: CatalogEntry, servers: readonly ServerStatus[
 	const live = headline(statusesOf(entry, servers));
 	const source = live?.source ?? entry.detected.source;
 	if (source === "path") return "PATH";
-	if (source === "managed") return "Managed by Atlas";
-	if (source === "custom") return "Custom command";
+	if (source === "managed") return m.settings_editor_badge_managed();
+	if (source === "custom") return m.settings_editor_badge_custom();
 	return null;
 }
 
@@ -89,10 +96,10 @@ export function parseJsonObject(text: string): JsonField {
 		v = JSON.parse(t);
 	} catch (e) {
 		const msg = e instanceof Error ? e.message : String(e);
-		return { ok: false, error: `Not valid JSON: ${msg}` };
+		return { ok: false, error: m.settings_editor_json_not_valid({ message: msg }) };
 	}
 	if (!v || typeof v !== "object" || Array.isArray(v)) {
-		return { ok: false, error: 'Must be a JSON object, like { "key": "value" }.' };
+		return { ok: false, error: m.settings_editor_json_not_object({ example: '{ "key": "value" }' }) };
 	}
 	return { ok: true, value: v as Record<string, unknown> };
 }
@@ -132,7 +139,7 @@ export function commandProblem(command: string): string | null {
 	const c = command.trim();
 	if (c === "") return null;
 	if (/\s/.test(c) && !/^["'\/~]/.test(c)) {
-		return "Put only the program here. Arguments go in the field below.";
+		return m.settings_editor_command_problem();
 	}
 	return null;
 }

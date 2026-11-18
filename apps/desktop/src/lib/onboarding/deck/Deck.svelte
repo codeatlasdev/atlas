@@ -15,6 +15,7 @@
 	import SceneScan from "./SceneScan.svelte";
 	import SceneStack from "./SceneStack.svelte";
 	import SceneWorktrees from "./SceneWorktrees.svelte";
+	import { m } from "#lib/i18n/m.ts";
 
 	let {
 		onfinish,
@@ -28,33 +29,50 @@
 	} = $props();
 
 	interface Slide {
-		title: string;
-		body: string;
+		/** Title and body are read when the slide is drawn (getters), so a language switch shows at once. */
+		readonly title: string;
+		readonly body: string;
 		/** Two sky colours (top-left, bottom-right) behind the slide. */
 		sky: [string, string];
 		scene?: Component;
 	}
 	const SLIDES: Slide[] = [
 		{
-			title: "Welcome to Atlas",
-			body: "One place for everything you run: your stack, your terminals and your coding agents.",
+			get title() {
+				return m.onboarding_welcome_to_atlas();
+			},
+			get body() {
+				return m.onboarding_deck_intro_body();
+			},
 			sky: ["#c9d2ff", "#f3c9e8"],
 		},
 		{
-			title: "Open a folder and Atlas runs it.",
-			body: "Atlas detects your stack, starts every service in order and shows you when each one is up. An atlas.yaml is optional: save one only when you want to tune it.",
+			get title() {
+				return m.onboarding_deck_stack_title();
+			},
+			get body() {
+				return m.onboarding_deck_stack_body();
+			},
 			sky: ["#bfe6d8", "#cfe3ff"],
 			scene: SceneStack,
 		},
 		{
-			title: "Agents that work side by side.",
-			body: "Run Claude Code, Codex or omp in parallel, each in its own terminal, each on its own branch.",
+			get title() {
+				return m.onboarding_deck_agents_title();
+			},
+			get body() {
+				return m.onboarding_deck_agents_body();
+			},
 			sky: ["#ffe0b3", "#ffd0c2"],
 			scene: SceneAgents,
 		},
 		{
-			title: "A worktree for every idea.",
-			body: "Branch, try, review the diff and merge back, without stashing or juggling folders.",
+			get title() {
+				return m.onboarding_deck_worktrees_title();
+			},
+			get body() {
+				return m.onboarding_deck_worktrees_body();
+			},
 			sky: ["#c6dcff", "#d9ccff"],
 			scene: SceneWorktrees,
 		},
@@ -101,7 +119,7 @@
 				<p class="lead">{s.body}</p>
 				<div class="actions">
 					<Button size="lg" onclick={() => go(i + 1)}>
-						{i === 0 ? "Get started" : "Continue"}
+						{i === 0 ? m.onboarding_deck_get_started() : m.common_action_continue()}
 						{#snippet trailing()}<ArrowRight size={15} />{/snippet}
 					</Button>
 				</div>
@@ -114,21 +132,25 @@
 		</section>
 	{/key}
 
-	<nav class="dots" aria-label="Steps">
+	<nav class="dots" aria-label={m.onboarding_deck_steps()}>
 		{#each [...SLIDES, null] as _, k (k)}
 			<button
 				class:on={k === i}
-				aria-label="Step {k + 1} of {LAST + 1}"
+				aria-label={m.onboarding_deck_step_of({ step: k + 1, total: LAST + 1 })}
 				aria-current={k === i ? "step" : undefined}
 				onclick={() => go(k)}
 			></button>
 		{/each}
 	</nav>
 	{#if i > 0 && w.phase === "welcome"}
-		<button class="back" onclick={() => go(i - 1)} aria-label="Back"><ArrowLeft size={15} /></button>
+		<button class="back" onclick={() => go(i - 1)} aria-label={m.common_action_back()}
+			><ArrowLeft size={15} /></button
+		>
 	{/if}
 	{#if w.phase !== "up"}
-		<button class="skip" data-testid={ACTIONS.skip} onclick={onskip}>Skip for now</button>
+		<button class="skip" data-testid={ACTIONS.skip} onclick={onskip}
+			>{m.onboarding_hero_skip_for_now()}</button
+		>
 	{/if}
 </div>
 

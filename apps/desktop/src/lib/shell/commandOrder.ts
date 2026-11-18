@@ -1,3 +1,5 @@
+import { m } from "#lib/i18n/m.ts";
+
 /**
  * Which commands the palette lists under "Recent commands", and in what order. Pure: the registry and the recents are
  * the caller's.
@@ -17,7 +19,7 @@ export function listedRecents(recentIds: readonly string[]): string[] {
 export function groupCommands<T extends { id: string }>(
 	items: readonly T[],
 	recentIds: readonly string[],
-): (T & { group: "Recent commands" | "Commands" })[] {
+): (T & { group: string })[] {
 	const listed = listedRecents(recentIds);
 	const rank = (id: string) => {
 		const i = listed.indexOf(id);
@@ -26,7 +28,10 @@ export function groupCommands<T extends { id: string }>(
 	return items
 		.map((c) => ({
 			...c,
-			group: rank(c.id) === Infinity ? ("Commands" as const) : ("Recent commands" as const),
+			group:
+				rank(c.id) === Infinity
+					? m.shell_commands_group_commands()
+					: m.shell_commands_group_recent_commands(),
 		}))
 		.sort((a, b) => rank(a.id) - rank(b.id));
 }

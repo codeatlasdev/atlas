@@ -6,18 +6,34 @@
 	import { agents } from "#lib/stores/agents.svelte.ts";
 	import { builtinAgent } from "#lib/agentRegistry.ts";
 	import { Beats } from "./beats.svelte.ts";
+	import { m } from "#lib/i18n/m.ts";
 
 	// The user's own agents when Atlas found them installed (the deck speaks about what they will run), else the two
 	// best known. The tasks stay fixed: they are the story, the agent is the actor.
 	const FALLBACK = [builtinAgent("claude")!, builtinAgent("codex")!];
-	const TASKS = [
-		{ branch: "feat/checkout", lines: ["› add a coupon field", "✎ src/checkout.ts", "✓ tests pass"] },
-		{ branch: "fix/cart-total", lines: ["› fix the rounding bug", "✎ src/cart.ts", "✓ ready to review"] },
-	];
+	// The glyph of each line (prompt, edit, check) is drawn here; the catalog holds the words.
+	const TASKS = $derived([
+		{
+			branch: "feat/checkout",
+			lines: [
+				`› ${m.onboarding_scene_agents_task_coupon()}`,
+				"✎ src/checkout.ts",
+				`✓ ${m.onboarding_scene_agents_tests_pass()}`,
+			],
+		},
+		{
+			branch: "fix/cart-total",
+			lines: [
+				`› ${m.onboarding_scene_agents_task_rounding()}`,
+				"✎ src/cart.ts",
+				`✓ ${m.onboarding_scene_agents_ready_to_review()}`,
+			],
+		},
+	]);
 	const mine = $derived(agents.list.filter((x) => x.installed));
 	// Installed agents first, then the fallbacks they don't already cover: two distinct actors.
 	const cast = $derived(
-		[...mine, ...FALLBACK.filter((f) => !mine.some((m) => m.id === f.id))].slice(0, TASKS.length),
+		[...mine, ...FALLBACK.filter((f) => !mine.some((x) => x.id === f.id))].slice(0, TASKS.length),
 	);
 	const PANES = $derived(
 		TASKS.map((t, i) => {
@@ -35,7 +51,7 @@
 	onMount(() => beats.start());
 </script>
 
-<Frame title="shop · 2 agents">
+<Frame title={m.onboarding_scene_agents_shop_2_agents()}>
 	<div class="panes">
 		{#each PANES as p, i (p.branch)}
 			<div class="pane" class:done={beats.n >= i + 4}>

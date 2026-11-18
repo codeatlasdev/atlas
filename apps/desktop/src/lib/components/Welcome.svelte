@@ -20,24 +20,27 @@
 		run: () => void;
 	}
 
+	let defaultAgent = $derived(agents.list.find((a) => a.id === agents.defaultAgent)?.label);
 	let actions = $derived<Action[]>([
 		{
-			label: "New terminal",
-			hint: "A shell in this worktree",
+			label: m.onboarding_welcome_new_terminal(),
+			hint: m.onboarding_welcome_new_terminal_hint(),
 			icon: SquareTerminal,
 			command: "workspace::NewTerminal",
 			run: () => void ws.newTerminal(worktreeId),
 		},
 		{
-			label: "Start an agent",
-			hint: `Run ${agents.list.find((a) => a.id === agents.defaultAgent)?.label ?? "your default agent"} here`,
+			label: m.onboarding_welcome_start_agent(),
+			hint: defaultAgent
+				? m.onboarding_welcome_start_agent_hint({ name: defaultAgent })
+				: m.onboarding_welcome_start_agent_hint_default(),
 			icon: Bot,
 			command: "atlas::NewAgentSession",
 			run: () => void agents.launch(worktreeId),
 		},
 		{
-			label: "Open a file",
-			hint: "Fuzzy-find in this worktree",
+			label: m.onboarding_welcome_open_file(),
+			hint: m.onboarding_welcome_open_file_hint(),
 			icon: FileText,
 			command: "file_finder::Toggle",
 			run: () => runCommand("file_finder::Toggle"),

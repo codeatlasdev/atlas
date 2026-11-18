@@ -22,6 +22,8 @@
 		type DockState,
 	} from "#lib/dock.ts";
 	import { kbd } from "#lib/keys.ts";
+	import { m } from "#lib/i18n/m.ts";
+	import { STATE_LABEL } from "#lib/shell/rightPanel.ts";
 
 	let snap = $state<DockSnapshot>(EMPTY_DOCK_SNAPSHOT);
 	let prefs = $state<DockPrefs>({ enabled: true, summon: "ctrl-alt-space", toggle: "ctrl-alt-d" });
@@ -182,7 +184,7 @@
 	}
 </script>
 
-<svelte:head><title>Atlas Dock</title></svelte:head>
+<svelte:head><title>{m.tray_dock_page_atlas_dock()}</title></svelte:head>
 
 <div
 	class="dock"
@@ -192,22 +194,30 @@
 >
 	{#if st.mode === "pill" || st.mode === "sending"}
 		<div class="pillrow" oncontextmenu={onPillMenu} role="presentation">
-			<button class="pill" onclick={() => dispatch({ type: "summon" })} aria-label="Message an agent">
+			<button
+				class="pill"
+				onclick={() => dispatch({ type: "summon" })}
+				aria-label={m.tray_dock_page_message_an_agent()}
+			>
 				<span class="dot" data-state={busyAgents > 0 ? "working" : "idle"} aria-hidden="true"></span>
 				<span class="who">
-					{#if st.mode === "sending"}Sending…{:else if current}{agentLabel(current)}{:else}No agent running{/if}
+					{#if st.mode === "sending"}{m.tray_dock_page_sending()}{:else if current}{agentLabel(
+							current,
+						)}{:else}{m.tray_dock_page_no_agent_running()}{/if}
 				</span>
 				{#if st.mode === "pill"}<kbd>{hint}</kbd>{/if}
-				{#if st.attention > 0}<span class="badge" aria-label="{st.attention} need you">{st.attention}</span
+				{#if st.attention > 0}<span
+						class="badge"
+						aria-label={m.tray_dock_page_attention_badge({ attention: st.attention })}>{st.attention}</span
 					>{/if}
 			</button>
 			<button
 				class="hide"
 				onclick={hideDock}
-				aria-label="Hide the dock"
+				aria-label={m.tray_dock_page_hide_the_dock()}
 				title={prefs.toggle
-					? `Hide the dock (${kbd(prefs.toggle)} brings it back)`
-					: "Hide the dock (the tray menu brings it back)"}
+					? m.tray_dock_page_hide_with_key({ key: kbd(prefs.toggle) })
+					: m.tray_dock_page_hide_with_menu()}
 			>
 				<EyeOff size={13} aria-hidden="true" />
 			</button>
@@ -216,7 +226,7 @@
 		<div class="card">
 			<div class="to">
 				<Bot size={14} aria-hidden="true" />
-				<label for="dock-to">To</label>
+				<label for="dock-to">{m.tray_dock_page_to()}</label>
 				<select
 					id="dock-to"
 					value={st.chip ?? ""}
@@ -224,38 +234,42 @@
 					disabled={agents.length === 0}
 				>
 					<option value="">
-						{current ? `${agentLabel(current)} (auto)` : "No agent running"}
+						{current
+							? m.tray_dock_page_auto_agent({ agent: agentLabel(current) })
+							: m.tray_dock_page_no_agent_running()}
 					</option>
 					{#each agents as a (a.tabId)}
 						<option value={a.tabId}>{agentLabel(a)}</option>
 					{/each}
 				</select>
-				<button class="x" onclick={() => dispatch({ type: "esc" })} aria-label="Close"><X size={14} /></button
+				<button class="x" onclick={() => dispatch({ type: "esc" })} aria-label={m.common_action_close()}
+					><X size={14} /></button
 				>
 			</div>
 			<textarea
 				bind:this={input}
 				rows="3"
-				placeholder="Tell the agent what to do. Mention one with @name."
+				placeholder={m.tray_dock_page_composer_hint()}
 				value={st.text}
 				oninput={(e) => dispatch({ type: "edit", text: e.currentTarget.value })}></textarea>
 			{#if st.attachments.length > 0}
-				<ul class="chips" aria-label="Attached captures">
+				<ul class="chips" aria-label={m.tray_dock_page_attached_captures()}>
 					{#each st.attachments as a (a.path)}
 						<li>
 							<Paperclip size={12} aria-hidden="true" />
 							<span title={a.path}>{a.path.split("/").pop()}</span>
 							<button
 								onclick={() => dispatch({ type: "detach", path: a.path })}
-								aria-label="Remove {a.path.split('/').pop()}"><X size={12} /></button
+								aria-label={m.tray_dock_page_remove_capture({ name: a.path.split("/").pop() ?? a.path })}
+								><X size={12} /></button
 							>
 						</li>
 					{/each}
 				</ul>
 			{/if}
 			{#if st.mode === "ask"}
-				<div class="ask" role="group" aria-label="Which agent?">
-					<span>Several agents match. Which one?</span>
+				<div class="ask" role="group" aria-label={m.tray_dock_page_which_agent()}>
+					<span>{m.tray_dock_page_ask_hint()}</span>
 					{#each st.candidates as c, i (c.tabId)}
 						<button onclick={() => dispatch({ type: "choose", tabId: c.tabId })}>
 							<kbd>{i + 1}</kbd>
@@ -268,16 +282,19 @@
 				<p class="err" role="alert"><TriangleAlert size={13} aria-hidden="true" /> {st.error}</p>
 			{/if}
 			<div class="foot">
-				<span>Esc closes</span>
+				<span>{m.tray_dock_page_esc_closes({ key: kbd("escape") })}</span>
 				<button
 					class="send"
 					disabled={st.text.trim() === "" && st.attachments.length === 0}
 					onclick={() => dispatch({ type: "send", agents })}
 				>
-					Send <CornerDownLeft size={13} aria-hidden="true" />
+					{m.tray_dock_page_send()}
+					<CornerDownLeft size={13} aria-hidden="true" />
 				</button>
 				{#if agents.length === 0}
-					<button class="link" onclick={() => dispatch({ type: "openInAtlas" })}>Open Atlas</button>
+					<button class="link" onclick={() => dispatch({ type: "openInAtlas" })}
+						>{m.tray_dock_page_open_atlas()}</button
+					>
 				{/if}
 			</div>
 		</div>
@@ -285,22 +302,29 @@
 		<div class="card">
 			<div class="to">
 				<span class="dot" data-state={reply.busy ? "working" : "idle"} aria-hidden="true"></span>
-				<strong>{replying ? agentLabel(replying) : "Agent"}</strong>
-				<span class="state">{reply.busy ? "working" : (replying?.state ?? "")}</span>
+				<strong>{replying ? agentLabel(replying) : m.tray_dock_page_agent()}</strong>
+				<span class="state">{replying ? STATE_LABEL[reply.busy ? "working" : replying.state] : ""}</span>
 				<button class="link" onclick={() => dispatch({ type: "openInAtlas" })}>
-					Open in Atlas <ArrowUpRight size={12} aria-hidden="true" />
+					{m.tray_dock_page_open_in_atlas()}
+					<ArrowUpRight size={12} aria-hidden="true" />
 				</button>
 			</div>
 			<div class="lines" aria-live="polite">
-				{#each reply.lines as l, i (i)}<p>{l}</p>{:else}<p class="dim">Waiting for the agent…</p>{/each}
+				{#each reply.lines as l, i (i)}<p>{l}</p>{:else}<p class="dim">
+						{m.tray_dock_page_waiting_for_the_agent()}
+					</p>{/each}
 			</div>
 		</div>
 	{:else if st.mode === "needsInput"}
 		<div class="card need">
 			<div class="to">
 				<TriangleAlert size={14} aria-hidden="true" />
-				<strong>{asking ? agentLabel(asking) : "An agent"} needs you</strong>
-				<button class="x" onclick={() => dispatch({ type: "esc" })} aria-label="Dismiss"
+				<strong
+					>{asking
+						? m.tray_dock_page_needs_you({ agent: agentLabel(asking) })
+						: m.tray_dock_page_an_agent_needs_you()}</strong
+				>
+				<button class="x" onclick={() => dispatch({ type: "esc" })} aria-label={m.tray_dock_page_dismiss()}
 					><X size={14} /></button
 				>
 			</div>
@@ -310,7 +334,8 @@
 			<div class="foot">
 				<span></span>
 				<button class="send" onclick={() => dispatch({ type: "openInAtlas" })}>
-					Open in Atlas <ArrowUpRight size={13} aria-hidden="true" />
+					{m.tray_dock_page_open_in_atlas()}
+					<ArrowUpRight size={13} aria-hidden="true" />
 				</button>
 			</div>
 		</div>

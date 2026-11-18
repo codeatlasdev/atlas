@@ -3,6 +3,7 @@
  * open state and the item lists each `<Palette>` renders.
  */
 import { PALETTE_LIMIT, type PaletteItem } from "#lib/components/Palette.svelte";
+import { m } from "#lib/i18n/m.ts";
 import { openService, runAction } from "#lib/actions.svelte.ts";
 import { fileIcon } from "#lib/icons.ts";
 import type { FileIndex } from "#lib/quickOpen.ts";
@@ -64,15 +65,18 @@ export function commandItems(): PaletteItem[] {
 	for (const s of store.configs[cur.id]?.services.filter((s) => s.target) ?? [])
 		items.push({
 			id: `svc:${s.name}`,
-			group: "Project",
-			label: s.target!.how === "browser" ? `Open ${s.name}` : `Copy ${s.name} URL`,
+			group: m.shell_commands_group_project(),
+			label:
+				s.target!.how === "browser"
+					? m.shell_commands_open_service({ name: s.name })
+					: m.shell_commands_copy_service_url({ name: s.name }),
 			run: () => void openService(s),
 		});
 	if (cur.running)
 		for (const a of store.configs[cur.id]?.actions.filter((a) => !a.session) ?? [])
 			items.push({
 				id: `action:${a.key}`,
-				group: "Project",
+				group: m.shell_commands_group_project(),
 				label: a.label,
 				run: () => runAction(cur.id, a.key),
 			});
@@ -89,7 +93,7 @@ export function jumpItems(): PaletteItem[] {
 	recentTabs.forEach((t) =>
 		items.push({
 			id: t!.id,
-			group: "Recent chats & terminals",
+			group: m.shell_commands_group_recent_chats(),
 			label: (t!.pty && ws.titles[t!.pty]) || t!.label,
 			description: wtLabel(t!.worktreeId),
 			run: (split) => goTab(t!.id, split),
@@ -98,7 +102,7 @@ export function jumpItems(): PaletteItem[] {
 	for (const w of recentWorktrees().slice(0, 6))
 		items.push({
 			id: w.id,
-			group: "Recent worktrees",
+			group: m.shell_commands_group_recent_worktrees(),
 			project: w.repoId,
 			label: wtLabel(w.id),
 			description: w.path,
@@ -126,8 +130,8 @@ export function createItems(q: string): PaletteItem[] {
 	return [
 		{
 			id: "create",
-			group: "Create",
-			label: `Create worktree "${q}"`,
+			group: m.shell_commands_group_create(),
+			label: m.shell_commands_create_worktree({ name: q }),
 			description: store.projects.find((p) => p.id === repoId)?.name ?? "",
 			run: () => void worktrees.create({ repoId, name: q, agent: agents.defaultAgent }),
 		},
@@ -145,7 +149,7 @@ export function fileItems(q: string): PaletteItem[] {
 		const i = f.lastIndexOf("/");
 		return {
 			id: f,
-			group: "Files",
+			group: m.shell_commands_group_files(),
 			label: f.slice(i + 1),
 			icon: fileIcon(f.slice(i + 1)),
 			description: i > 0 ? f.slice(0, i) : undefined,
@@ -167,13 +171,16 @@ export function symbolItems(): PaletteItem[] {
 	// Language-server symbols (with containers) when the server answered, else the syntax tree's.
 	const symbols =
 		lspSymbols.view === view && lspSymbols.list
-			? lspSymbols.list.map((s) => ({ ...s, kind: s.container ? `${s.kind} in ${s.container}` : s.kind }))
+			? lspSymbols.list.map((s) => ({
+					...s,
+					kind: s.container ? m.shell_commands_symbol_in({ kind: s.kind, container: s.container }) : s.kind,
+				}))
 			: ops.outline(view.state);
 	return symbols.map((s, i) => ({
 		id: `${i}`,
-		group: "Symbols",
+		group: m.shell_commands_group_symbols(),
 		label: s.name,
-		description: `${s.kind} · line ${s.line}`,
+		description: m.shell_commands_symbol_line({ kind: s.kind, line: s.line }),
 		run: () => {
 			ops.reveal(view, s.from);
 			view.focus();

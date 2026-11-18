@@ -7,22 +7,28 @@
 	import type { PreviewModel } from "./preview.ts";
 	import { ACTIVE_LINE, SAMPLE, SELECTED_LINE, TERMINAL_LINES } from "./preview.ts";
 
-	let { m, terminalOnly = false }: { m: PreviewModel; terminalOnly?: boolean } = $props();
+	let { model, terminalOnly = false }: { model: PreviewModel; terminalOnly?: boolean } = $props();
 </script>
 
 <!-- Paints ANOTHER theme (the previewed one) on purpose: the audit skips it; that theme's tokens are tested in theme.test.ts. -->
-<div class="frame" style:background={m.chrome} style:--bd={m.border} aria-hidden="true" data-contrast-ignore>
+<div
+	class="frame"
+	style:background={model.chrome}
+	style:--bd={model.border}
+	aria-hidden="true"
+	data-contrast-ignore
+>
 	{#if !terminalOnly}
-		<div class="editor" style:background={m.editorBg} style:color={m.editorFg}>
+		<div class="editor" style:background={model.editorBg} style:color={model.editorFg}>
 			{#each SAMPLE as line, i (i)}
-				<div class="line" style:background={i === ACTIVE_LINE ? m.activeLine : undefined}>
-					<span class="num" style:color={i === ACTIVE_LINE ? m.gutterActive : m.gutter}>{i + 1}</span>
+				<div class="line" style:background={i === ACTIVE_LINE ? model.activeLine : undefined}>
+					<span class="num" style:color={i === ACTIVE_LINE ? model.gutterActive : model.gutter}>{i + 1}</span>
 					<span class="code">
 						{#each line as tok, j (j)}
-							{@const p = m.syntax[tok.role]}
+							{@const p = model.syntax[tok.role]}
 							<span
 								style:color={p.color}
-								style:background={i === SELECTED_LINE && j === 1 ? m.selection : undefined}
+								style:background={i === SELECTED_LINE && j === 1 ? model.selection : undefined}
 								style:font-style={p.italic ? "italic" : undefined}
 								style:font-weight={p.bold ? 700 : undefined}>{tok.text}</span
 							>
@@ -32,24 +38,28 @@
 			{/each}
 		</div>
 	{/if}
-	<div class="term" style:background={m.termBg} style:color={m.termFg}>
+	<div class="term" style:background={model.termBg} style:color={model.termFg}>
 		{#each TERMINAL_LINES as line, i (i)}
 			<div class="tline">
 				{#each line as c, j (j)}
-					<span style:color={c.ansi === "fg" ? m.termFg : m.ansi[c.ansi]}>{c.text}</span>
+					<span style:color={c.ansi === "fg" ? model.termFg : model.ansi[c.ansi]}>{c.text}</span>
 				{/each}
-				{#if i === TERMINAL_LINES.length - 1}<span class="cur" style:background={m.cursor}></span>{/if}
+				{#if i === TERMINAL_LINES.length - 1}<span class="cur" style:background={model.cursor}></span>{/if}
 			</div>
 		{/each}
 		<div class="ansi">
-			{#each m.ansi as c, i (i)}<span style:background={c}></span>{/each}
+			{#each model.ansi as c, i (i)}<span style:background={c}></span>{/each}
 		</div>
 	</div>
 	<div class="chips">
-		<span class="chip" style:background={m.accent}></span>
-		<span class="chip" style:background={m.surface} style:box-shadow="inset 0 0 0 1px {m.border}"></span>
-		<span class="chip" style:background={m.editorBg} style:box-shadow="inset 0 0 0 1px {m.border}"></span>
-		<span class="label" style:color={m.muted}>Aa</span>
+		<span class="chip" style:background={model.accent}></span>
+		<span class="chip" style:background={model.surface} style:box-shadow="inset 0 0 0 1px {model.border}"
+		></span>
+		<span class="chip" style:background={model.editorBg} style:box-shadow="inset 0 0 0 1px {model.border}"
+		></span>
+		<span class="label" style:color={model.muted}
+			><!-- i18n-ignore: a type specimen (capital and small a), not a word -->Aa</span
+		>
 	</div>
 </div>
 

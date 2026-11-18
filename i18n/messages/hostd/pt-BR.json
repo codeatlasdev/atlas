@@ -41,7 +41,7 @@
 	"hostd_wire_remote_connecting": "{host} ainda está conectando; tente novamente em alguns segundos",
 	"hostd_wire_remote_unreachable": "{host} está inacessível: {why}",
 	"hostd_wire_start_failed": "O hostd não iniciou",
-	"hostd_wire_unreachable": "Host de terminais inacessível. Os terminais não conseguem iniciar nem reconectar até ele voltar. Clique em Reiniciar host de terminais ou, se o problema continuar, em Reportar.",
+	"hostd_wire_unreachable": "Host de terminais inacessível. Os terminais não conseguem iniciar nem reconectar até ele voltar. Clique em Reiniciar o host de terminais ou, se o problema continuar, em Reportar.",
 	"hostd_wire_unreachable_why": "{@hostd_wire_unreachable} ({why})",
 	"hostd_wire_upgrade_failed": "Não foi possível atualizar o host de terminais ({error}). Os terminais continuam no host antigo.",
 	"hostd_wire_upgraded": "Host de terminais atualizado"

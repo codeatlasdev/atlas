@@ -8,12 +8,13 @@
 	import { openFile } from "#lib/stores/files.svelte.ts";
 	import { updates } from "#lib/stores/updates.svelte.ts";
 	import { ws } from "#lib/stores/workspace.svelte.ts";
+	import { m } from "#lib/i18n/m.ts";
 
 	/** Opens settings.json in an editor tab of the current worktree (the editor takes worktree-relative paths). */
 	async function editJson() {
 		const w = ws.selected;
 		if (!w) {
-			toast.info("Open a worktree first, then Atlas can show settings.json in its editor.");
+			toast.info(m.settings_editor_open_worktree_first());
 			return;
 		}
 		try {
@@ -29,7 +30,7 @@
 <CodeTab />
 
 <p class="foot">
-	Advanced: <button class="link" onclick={editJson}>edit settings.json</button>
+	{m.settings_editor_advanced()} <button class="link" onclick={editJson}>{m.settings_editor_edit_settings_json()}</button>
 </p>
 
 <style>

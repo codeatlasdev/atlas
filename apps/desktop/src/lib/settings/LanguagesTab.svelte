@@ -24,6 +24,7 @@
 	import Group from "./Group.svelte";
 	import { openOutsideWorktree } from "./openOutside.ts";
 	import ServerRow from "./ServerRow.svelte";
+	import { m } from "#lib/i18n/m.ts";
 
 	let data = $state<Catalog | null>(null);
 	let loadError = $state("");
@@ -81,9 +82,9 @@
 	const restart = (name: string) => run(name, () => restartServer(name));
 
 	async function uninstall(name: string, label: string) {
-		const ok = await confirmDialog(`Uninstall the ${label} language server?`, {
-			description: "Atlas deletes the copy it downloaded. You can install it again at any time.",
-			confirmLabel: "Uninstall",
+		const ok = await confirmDialog(m.settings_editor_languages_tab_uninstall_title({ label }), {
+			description: m.settings_editor_languages_tab_uninstall_body(),
+			confirmLabel: m.settings_editor_server_row_uninstall(),
 			destructive: true,
 		});
 		if (!ok) return;
@@ -96,7 +97,7 @@
 	async function copy(text: string) {
 		try {
 			await navigator.clipboard.writeText(text);
-			toast.success("Command copied.");
+			toast.success(m.settings_editor_languages_tab_command_copied());
 		} catch (e) {
 			toast.error(errText(e));
 		}
@@ -111,7 +112,7 @@
 	async function openProjectSettings() {
 		const w = ws.selected;
 		if (!w) {
-			toast.info("Open a worktree first, then Atlas can show its .atlas/settings.json.");
+			toast.info(m.settings_editor_languages_tab_open_worktree_first());
 			return;
 		}
 		const file = `${w.path}/.atlas/settings.json`;
@@ -141,28 +142,26 @@
 </script>
 
 {#if !ready}
-	<Group title="Language servers">
+	<Group title={m.settings_editor_code_tab_language_servers()}>
 		<div class="notice" role="status">
-			<strong>Language features need a newer terminal host</strong>
+			<strong>{m.settings_editor_languages_tab_language_features_need_a_newer()}</strong>
 			<span>
-				The running terminal host is from an older Atlas and cannot run language servers. Use the language
-				server item in the editor's status bar to update it; terminals keep running until you choose to
-				restart.
+				{m.settings_editor_languages_tab_the_running_terminal_host_is()}
 			</span>
 		</div>
 	</Group>
 {:else}
 	<div data-setting="lsp-servers">
 		<Group
-			title="Language servers"
-			description="Atlas finds a server on your PATH or downloads one the first time you open a file of that language."
+			title={m.settings_editor_code_tab_language_servers()}
+			description={m.settings_editor_languages_tab_atlas_finds_a_server_on()}
 		>
 			{#if loading && !data}
-				<div class="state"><Spinner size={14} /> Loading language servers…</div>
+				<div class="state"><Spinner size={14} /> {m.settings_editor_languages_tab_loading_language_servers()}</div>
 			{:else if loadError}
 				<div class="state error" role="alert">
-					<span>Could not load the language servers: {loadError}</span>
-					<Button size="sm" variant="outlined" onclick={load}>Try again</Button>
+					<span>{m.settings_editor_languages_tab_could_not_load_the_language({ loadError })}</span>
+					<Button size="sm" variant="outlined" onclick={load}>{m.settings_editor_languages_tab_try_again()}</Button>
 				</div>
 			{:else if data}
 				{#each data.servers as entry, i (entry.name)}
@@ -185,12 +184,15 @@
 	</div>
 
 	<p class="foot" data-setting="lsp-project">
-		Custom servers and options are saved in your <button class="link" onclick={openUserSettings}
-			>settings.json</button
+		<span class="line"
+			>{m.settings_editor_languages_tab_user_file()}
+			<button class="link" onclick={openUserSettings}>settings.json</button></span
 		>
-		under <code>lsp</code>. A project can override them: put the same <code>lsp</code> shape in
-		<button class="link" onclick={openProjectSettings}><code>.atlas/settings.json</code></button>
-		in the project; it wins over your settings.
+		<span class="line"
+			>{m.settings_editor_languages_tab_project_file()}
+			<button class="link" onclick={openProjectSettings}><code>.atlas/settings.json</code></button></span
+		>
+		<span class="line">{m.settings_editor_languages_tab_project_wins()}</span>
 	</p>
 {/if}
 
@@ -217,6 +219,9 @@
 	.state.error {
 		justify-content: space-between;
 		color: var(--ca-semantic-error);
+	}
+	.foot .line {
+		display: block;
 	}
 	.foot {
 		margin: 0;

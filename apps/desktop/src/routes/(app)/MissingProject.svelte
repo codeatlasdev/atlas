@@ -13,15 +13,13 @@
 	import type { Found } from "#lib/components/sidebar/discovery.ts";
 	import { tilde } from "#lib/format.ts";
 	import { store } from "#lib/stores/projects.svelte.ts";
+	import { m } from "#lib/i18n/m.ts";
 
 	let { p }: { p: ProjectView } = $props();
 
 	/** The moved copy Atlas found (same remote or name); `undefined` while looking, `null` = none. */
 	let suggestion = $state<Found | null | undefined>(undefined);
 	let searched = $state("");
-
-	const why =
-		"This folder is no longer on this computer. It may have been deleted, moved or live on a disconnected drive.";
 
 	// Look for a moved copy once per missing project (and again if it is relinked elsewhere).
 	$effect(() => {
@@ -40,34 +38,38 @@
 
 <div class="drag-strip" data-tauri-drag-region></div>
 <div class="wrap">
-	<EmptyState icon={FolderSearch} title="{p.name} was not found" description={why}>
+	<EmptyState
+		icon={FolderSearch}
+		title={m.shell_home_missing_project_title({ name: p.name })}
+		description={m.shell_home_missing_project_why()}
+	>
 		{#snippet actions()}
-			<Button onclick={() => locateProject(p.id)}>Locate…</Button>
-			<Button variant="ghost" onclick={() => refreshProjects()}><RefreshCw size={13} /> Check again</Button>
-			<Button variant="ghost" onclick={() => removeProject(p.id)}>Remove from Atlas</Button>
+			<Button onclick={() => locateProject(p.id)}>{m.shell_home_missing_project_locate()}</Button>
+			<Button variant="ghost" onclick={() => refreshProjects()}><RefreshCw size={13} /> {m.shell_home_missing_project_check_again()}</Button>
+			<Button variant="ghost" onclick={() => removeProject(p.id)}>{m.shell_home_missing_project_remove_from_atlas()}</Button>
 		{/snippet}
 	</EmptyState>
-	<p class="path mono ca-selectable" title="Last known path">{tilde(p.root)}</p>
+	<p class="path mono ca-selectable" title={m.shell_home_missing_project_last_known_path()}>{tilde(p.root)}</p>
 
 	{#if suggestion === undefined}
-		<p class="hint"><Spinner size={12} /> Looking for a moved copy…</p>
+		<p class="hint"><Spinner size={12} /> {m.shell_home_missing_project_searching()}</p>
 	{:else if suggestion}
-		<div class="suggest" role="group" aria-label="Moved copy found">
+		<div class="suggest" role="group" aria-label={m.shell_home_missing_project_suggestion_label()}>
 			<div>
-				<strong>Probably the moved copy of {p.name}</strong>
+				<strong>{m.shell_home_missing_project_suggestion({ name: p.name })}</strong>
 				<span class="mono ca-selectable">{tilde(suggestion.path)}</span>
 				<small>
-					{suggestion.remote ? "Same git remote" : "Same name"}
+					{suggestion.remote ? m.shell_home_missing_project_same_remote() : m.shell_home_missing_project_same_name()}
 					{#if suggestion.branch}· {suggestion.branch}{/if}
 				</small>
 			</div>
-			<Button size="sm" onclick={() => suggestion && relinkProject(p.id, suggestion.path)}>Relink</Button>
+			<Button size="sm" onclick={() => suggestion && relinkProject(p.id, suggestion.path)}>{m.shell_home_missing_project_relink()}</Button>
 		</div>
 	{/if}
 
 	{#if store.missing.length > 1}
 		<Button variant="ghost" size="sm" onclick={() => removeAllMissing()}>
-			Remove all {store.missing.length} missing projects…
+			{m.shell_home_missing_project_remove_all({ count: store.missing.length })}
 		</Button>
 	{/if}
 </div>

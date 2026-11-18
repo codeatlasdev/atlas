@@ -2,6 +2,7 @@
 
 import { api, type ProjectView } from "#lib/api.ts";
 import { revealLabel } from "#lib/keys.ts";
+import { m } from "#lib/i18n/m.ts";
 import type { PointerMenuItem } from "#lib/components/PointerMenu.svelte";
 import { removeProject } from "#lib/components/sidebar/projects.ts";
 import { identities } from "#lib/stores/identity.svelte.ts";
@@ -11,9 +12,9 @@ import { store } from "#lib/stores/projects.svelte.ts";
 export function projectMenuItems(p: ProjectView): PointerMenuItem[] {
 	const items: PointerMenuItem[] = [];
 	if (!p.parent)
-		items.push({ label: "Change icon and color…", group: 0, run: () => (identities.editing = p.id) });
+		items.push({ label: m.shell_commands_project_menu_change_icon(), group: 0, run: () => (identities.editing = p.id) });
 	items.push({
-		label: p.pinned ? "Unpin" : "Pin to top",
+		label: p.pinned ? m.shell_commands_project_menu_unpin() : m.shell_commands_project_menu_pin(),
 		group: 0,
 		run: () => void store.run("pin", () => api.pin(p.id, !p.pinned)),
 	});
@@ -26,7 +27,7 @@ export function projectMenuItems(p: ProjectView): PointerMenuItem[] {
 	}
 	if (!p.parent) {
 		items.push({
-			label: "Remove from Atlas…",
+			label: m.shell_commands_project_menu_remove(),
 			group: 1,
 			destructive: true,
 			run: () => void removeProject(p.id),

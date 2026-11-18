@@ -49,6 +49,8 @@
 		type TrayProject,
 		type TraySnapshot,
 	} from "#lib/tray.ts";
+	import { m } from "#lib/i18n/m.ts";
+	import { stateLabel } from "#lib/panel/stateLabel.ts";
 
 	let snap = $state<TraySnapshot>(EMPTY_SNAPSHOT);
 	const clk = useNow(15_000);
@@ -208,7 +210,7 @@
 			class="main"
 			data-nav
 			onclick={() => send({ kind: "agents", tab: a.tabId })}
-			aria-label="Jump to {a.agent} in {agentWhere(a)}"
+			aria-label={m.tray_page_jump_to_agent({ agent: a.agent, place: agentWhere(a) })}
 		>
 			<span class="glyph {a.state}" aria-hidden="true"><Bot size={13} /></span>
 			<span class="lines">
@@ -217,7 +219,9 @@
 			</span>
 		</button>
 		<span class="side">
-			{#if urgent}<span class="verb">{a.state === "blocked" ? "Approval" : "Reply"}</span>{/if}
+			{#if urgent}<span class="verb"
+					>{a.state === "blocked" ? m.tray_page_verb_approval() : m.tray_page_verb_reply()}</span
+				>{/if}
 			<ChevronRight size={13} />
 		</span>
 	</li>
@@ -234,7 +238,7 @@
 			class="main"
 			data-nav
 			onclick={() => send({ kind: "project", id: p.id })}
-			aria-label="Open {label ? `${p.name}, ${label}` : title}"
+			aria-label={m.tray_page_open_target({ target: label ? `${p.name}, ${label}` : title })}
 		>
 			{#if nested}<i class="dot {tone(p)}" aria-hidden="true"></i>{:else}{@render tile(p.icon)}{/if}
 			<span class="name"
@@ -248,8 +252,10 @@
 				data-nav
 				disabled={busy[p.id]}
 				onclick={() => toggleStack(p.id, p.running)}
-				aria-label="{p.running ? 'Stop' : 'Start'} {label ?? title}"
-				title={p.running ? "Stop" : "Start"}
+				aria-label={p.running
+					? m.tray_page_stop_name({ name: label ?? title })
+					: m.tray_page_start_name({ name: label ?? title })}
+				title={p.running ? m.tray_page_stop() : m.tray_page_start()}
 			>
 				{#if p.running}<Square size={12} />{:else}<Play size={12} />{/if}
 			</button>
@@ -302,8 +308,8 @@
 				class="icon"
 				data-nav
 				onclick={() => send({ kind: "new-agent" })}
-				aria-label="New agent"
-				title="New agent"
+				aria-label={m.tray_page_new_agent()}
+				title={m.tray_page_new_agent()}
 			>
 				<Plus size={15} />
 			</button>
@@ -315,8 +321,8 @@
 					disabled={busy.dock}
 					aria-pressed={dock.enabled}
 					onclick={toggleDock}
-					aria-label="Agent dock"
-					title={dock.enabled ? "Hide the agent dock" : "Show the agent dock"}
+					aria-label={m.tray_page_agent_dock()}
+					title={dock.enabled ? m.tray_page_hide_dock() : m.tray_page_show_dock()}
 				>
 					<PanelBottom size={15} />
 				</button>
@@ -325,8 +331,8 @@
 				class="icon"
 				data-nav
 				onclick={() => send({ kind: "settings" })}
-				aria-label="Settings"
-				title="Settings"
+				aria-label={m.tray_page_settings()}
+				title={m.tray_page_settings()}
 			>
 				<Settings size={15} />
 			</button>
@@ -334,8 +340,8 @@
 				class="icon open"
 				data-nav
 				onclick={() => send({ kind: "open" })}
-				aria-label="Open Atlas"
-				title="Open Atlas"
+				aria-label={m.tray_dock_page_open_atlas()}
+				title={m.tray_dock_page_open_atlas()}
 			>
 				<ExternalLink size={15} />
 			</button>
@@ -348,8 +354,8 @@
 
 	<div class="scroll" bind:this={scroller}>
 		{#if sections.needsYou.length}
-			<section aria-label="Needs you">
-				<h2 class="attn">Needs you</h2>
+			<section aria-label={m.tray_page_needs_you()}>
+				<h2 class="attn">{m.tray_page_needs_you()}</h2>
 				<ul>
 					{#each sections.needsYou as a (a.tabId)}{@render agentRow(a, true)}{/each}
 				</ul>
@@ -357,7 +363,7 @@
 		{/if}
 
 		{#if recShown}
-			<section class="rec {recShown.icon}" aria-label="Recommendation">
+			<section class="rec {recShown.icon}" aria-label={m.tray_page_recommendation()}>
 				<span class="rec-icon">
 					{#if recShown.icon === "update"}<Download size={14} />{:else}<CircleAlert size={14} />{/if}
 				</span>
@@ -370,8 +376,8 @@
 		{/if}
 
 		{#if sections.working.length}
-			<section aria-label="Working">
-				<h2>Working</h2>
+			<section aria-label={m.tray_page_working()}>
+				<h2>{m.tray_page_working()}</h2>
 				<ul>
 					{#each sections.working as a (a.tabId)}{@render agentRow(a, false)}{/each}
 				</ul>
@@ -379,8 +385,8 @@
 		{/if}
 
 		{#if stacks.length}
-			<section aria-label="Running stacks">
-				<h2>Running</h2>
+			<section aria-label={m.tray_page_running_stacks()}>
+				<h2>{m.tray_page_running()}</h2>
 				<ul>
 					{#each stacks as p (p.id)}
 						{@const head = projectHeadline(p)}
@@ -394,7 +400,7 @@
 								class="main"
 								data-nav
 								onclick={() => send({ kind: "project", id: p.id })}
-								aria-label="Open {p.name}{p.branch ? `, ${p.branch}` : ''}"
+								aria-label={m.tray_page_open_target({ target: p.branch ? `${p.name}, ${p.branch}` : p.name })}
 							>
 								{@render tile(p.icon)}
 								<span class="lines">
@@ -405,7 +411,7 @@
 										<span class="bar" aria-hidden="true"
 											>{#each p.services as s (s.name)}<i
 													class="seg {serviceTone(s.state)}"
-													title="{s.name}: {s.state}"
+													title={m.tray_page_service_state({ name: s.name, state: stateLabel(s.state) })}
 												></i>{/each}</span
 										>{head.text}
 									</span>
@@ -418,15 +424,15 @@
 										data-nav
 										disabled={busy[`${p.id}:restart`]}
 										onclick={() => restartFailed(p)}
-										aria-label="Restart failed services of {p.name}"
-										title="Restart failed"><RotateCcw size={12} /></button
+										aria-label={m.tray_page_restart_failed_of({ name: p.name })}
+										title={m.tray_page_restart_failed()}><RotateCcw size={12} /></button
 									>
 									<button
 										class="mini"
 										data-nav
 										onclick={() => send({ kind: "logs", id: p.id, service: failed[0]! })}
-										aria-label="Logs of {failed[0]}"
-										title="Logs"><FileText size={12} /></button
+										aria-label={m.tray_page_logs_of({ name: failed[0]! })}
+										title={m.tray_page_logs()}><FileText size={12} /></button
 									>
 								{/if}
 								<button
@@ -434,8 +440,8 @@
 									data-nav
 									disabled={busy[p.id]}
 									onclick={() => toggleStack(p.id, true)}
-									aria-label="Stop {p.name}"
-									title="Stop"><Square size={12} /></button
+									aria-label={m.tray_page_stop_name({ name: p.name })}
+									title={m.tray_page_stop()}><Square size={12} /></button
 								>
 							</span>
 						</li>
@@ -449,8 +455,8 @@
 				<Search size={13} aria-hidden="true" />
 				<input
 					type="search"
-					placeholder="Find a project or branch"
-					aria-label="Find a project or branch"
+					placeholder={m.tray_page_search()}
+					aria-label={m.tray_page_search()}
 					bind:value={query}
 					autocomplete="off"
 					spellcheck="false"
@@ -459,8 +465,8 @@
 		{/if}
 
 		{#if lists.running.length}
-			<section aria-label="Projects">
-				<h2>Projects</h2>
+			<section aria-label={m.tray_page_projects()}>
+				<h2>{m.tray_page_projects()}</h2>
 				<ul>
 					{#each lists.running as g (g.repo.id)}{@render group(g)}{/each}
 				</ul>
@@ -468,14 +474,14 @@
 		{/if}
 
 		{#if lists.stopped.length}
-			<section aria-label="Stopped projects">
+			<section aria-label={m.tray_page_stopped_projects()}>
 				<button
 					class="disclose"
 					data-nav
 					aria-expanded={stoppedShown}
 					onclick={() => (stoppedOpen = !stoppedOpen)}
 				>
-					<ChevronRight size={12} class={stoppedShown ? "turned" : ""} />Stopped ({lists.stoppedCount})
+					<ChevronRight size={12} class={stoppedShown ? "turned" : ""} />{m.tray_page_stopped_count({ stoppedCount: lists.stoppedCount })}
 				</button>
 				{#if stoppedShown}
 					<ul>
@@ -484,22 +490,21 @@
 				{/if}
 			</section>
 		{:else if query && !stacks.length}
-			<p class="empty">No project matches “{query.trim()}”.</p>
+			<p class="empty">{m.tray_page_no_match({ query: query.trim() })}</p>
 		{/if}
 	</div>
 
 	{#if snap.host.version || snap.dev}
 		<footer>
-			{#if snap.dev}<span class="devchip" title="Dev build: updates are paused">Dev</span>{/if}
+			{#if snap.dev}<span class="devchip" title={m.tray_page_dev_build_hint()}>{m.tray_page_dev()}</span>{/if}
 			{#if snap.host.version}<button
 					class="ver"
 					data-nav
 					onclick={() => send({ kind: "host" })}
-					title="Terminal host"
+					title={m.settings_host_name()}
 				>
-					host {snap.host.version}{#if snap.host.status === "outdated"}<i class="dot warn"></i>outdated{/if}
-					· {snap.terminals.live}
-					{snap.terminals.live === 1 ? "terminal" : "terminals"}
+					{m.tray_page_host_version({ version: snap.host.version })}{#if snap.host.status === "outdated"}<i class="dot warn"></i>{m.tray_page_outdated()}{/if}
+					· {m.tray_page_terminals({ count: snap.terminals.live })}
 				</button>{/if}
 		</footer>
 	{/if}

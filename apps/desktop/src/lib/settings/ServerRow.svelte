@@ -14,6 +14,7 @@
 		versionOf,
 		type ServerView,
 	} from "./languages.ts";
+	import { m } from "#lib/i18n/m.ts";
 
 	let {
 		entry,
@@ -78,16 +79,19 @@
 		</div>
 		<div class="state">
 			{#if view.kind === "downloading" || view.kind === "starting"}<Spinner size={14} />{/if}
-			<StatusChip status={CHIP[view.kind]} label={view.kind === "blocked" ? "Needs setup" : view.text} />
+			<StatusChip
+				status={CHIP[view.kind]}
+				label={view.kind === "blocked" ? m.settings_editor_server_row_needs_setup() : view.text}
+			/>
 		</div>
 	</div>
 
-	<div class="langs" role="group" aria-label="Languages this server handles">
-		<span class="hint">Enabled for</span>
+	<div class="langs" role="group" aria-label={m.settings_editor_server_row_languages_this_server_handles()}>
+		<span class="hint">{m.settings_editor_server_row_enabled_for()}</span>
 		{#each entry.languages as language, i (language)}
 			<label class="lang">
 				<Switch
-					aria-label="{entry.languageLabels[i] ?? language} language server enabled"
+					aria-label={m.settings_editor_server_row_language_enabled({ language: entry.languageLabels[i] ?? language })}
 					checked={enabled(language)}
 					onchange={(v) => onsave(patchLanguage(lsp, language, { disabled: v ? undefined : true }))}
 				/>
@@ -97,7 +101,7 @@
 	</div>
 
 	{#if entry.detected.path}
-		<div class="path"><span class="k">Path</span><code>{entry.detected.path}</code></div>
+		<div class="path"><span class="k">{m.settings_editor_server_row_path()}</span><code>{entry.detected.path}</code></div>
 	{/if}
 
 	{#if blocked}
@@ -110,10 +114,10 @@
 					<Button
 						size="sm"
 						variant="ghost"
-						aria-label="Copy command"
+						aria-label={m.settings_editor_server_row_copy_command()}
 						onclick={() => oncopy(blocked.command ?? "")}
 					>
-						<Copy size={12} /> Copy
+						<Copy size={12} /> {m.common_action_copy()}
 					</Button>
 				</span>
 			{/if}
@@ -130,22 +134,22 @@
 	<div class="actions">
 		{#if installed}
 			{#if canUninstall(entry)}
-				<Button size="sm" variant="outlined" disabled={busy} onclick={oninstall}>Update</Button>
-				<Button size="sm" variant="outlined" disabled={busy} onclick={onuninstall}>Uninstall</Button>
+				<Button size="sm" variant="outlined" disabled={busy} onclick={oninstall}>{m.settings_editor_server_row_update()}</Button>
+				<Button size="sm" variant="outlined" disabled={busy} onclick={onuninstall}>{m.settings_editor_server_row_uninstall()}</Button>
 			{/if}
 		{:else}
 			<Button size="sm" variant="filled" disabled={busy || !!blocked} loading={busy} onclick={oninstall}
-				>Install</Button
+				>{m.settings_editor_server_row_install()}</Button
 			>
 		{/if}
 		{#if running}
-			<Button size="sm" variant="outlined" disabled={busy} onclick={onrestart}>Restart</Button>
+			<Button size="sm" variant="outlined" disabled={busy} onclick={onrestart}>{m.settings_editor_server_row_restart()}</Button>
 		{/if}
-		<Button size="sm" variant="ghost" onclick={onlog}>Open log</Button>
+		<Button size="sm" variant="ghost" onclick={onlog}>{m.settings_editor_server_row_open_log()}</Button>
 		<span class="grow"></span>
 		<Button size="sm" variant="ghost" onclick={() => (customOpen = !customOpen)} aria-expanded={customOpen}>
-			{customOpen ? "Hide custom server" : "Custom server"}
-			{#if !customOpen && entry.languages.some((l) => hasCustom(lsp[l]))}·&nbsp;set{/if}
+			{customOpen ? m.settings_editor_server_row_hide_custom() : m.settings_editor_server_row_custom()}
+			{#if !customOpen && entry.languages.some((l) => hasCustom(lsp[l]))}{m.settings_editor_server_row_set()}{/if}
 		</Button>
 	</div>
 

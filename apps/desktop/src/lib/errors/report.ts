@@ -7,7 +7,14 @@
  * path, no env). Query strings and long hex/base64-looking tokens are dropped from messages.
  */
 
+import { m } from "#lib/i18n/m.ts";
 import { machineLines } from "./machine.ts";
+
+/** `{ locale: "en" }` for text that leaves the machine (an issue, an AI prompt), nothing for the screen. */
+type Lang = { locale: "en" } | undefined;
+
+/** The `where` of the failed restart of the terminal host (`errors.restartHost`): an identifier, never shown as is. */
+export const RESTART_HOST = "restart terminal host";
 
 export type ErrorOrigin = "error" | "rejection" | "command";
 
@@ -214,8 +221,6 @@ export function report(e: unknown, ctx: Pick<ErrorReport, "where"> & Partial<Err
 	};
 }
 
-const CALM = "Atlas is still running. Copy the details or report it if it keeps happening.";
-
 /** What a toast or the details dialog calls an error: the title names what happened, the hint what still works. */
 export function headline(r: Pick<ErrorReport, "kind" | "origin" | "where" | "headline">): {
 	title: string;
@@ -223,23 +228,21 @@ export function headline(r: Pick<ErrorReport, "kind" | "origin" | "where" | "hea
 } {
 	if (r.headline) return r.headline;
 	if (r.kind === "hostd")
-		return {
-			title: "Terminal host not reachable",
-			hint: "Copy the diagnostics (versions, OS, redacted logs) or report it; secrets are removed before anything leaves your machine.",
-		};
+		return { title: m.errors_headline_host_title(), hint: m.errors_headline_host_hint() };
 	if (r.origin === "rejection")
-		return {
-			title: "A background task failed",
-			hint: `Something Atlas started on its own did not complete. ${CALM}`,
-		};
+		return { title: m.errors_headline_rejection_title(), hint: m.errors_headline_rejection_hint() };
 	if (r.origin === "command") {
 		const what = r.where.trim();
-		return {
-			title: what ? `${what[0].toUpperCase()}${what.slice(1)} failed` : "A command failed",
-			hint: `What you asked for did not complete. ${CALM}`,
-		};
+		// The one command that reports (`errors.restartHost`) has its own sentence; any other shows its name as given.
+		const title =
+			what === RESTART_HOST
+				? m.errors_headline_restart_host_title()
+				: what
+					? m.errors_headline_command_title({ what: `${what[0].toUpperCase()}${what.slice(1)}` })
+					: m.errors_headline_command_unnamed_title();
+		return { title, hint: m.errors_headline_command_hint() };
 	}
-	return { title: "Unexpected error", hint: `A script in the window threw and nothing caught it. ${CALM}` };
+	return { title: m.errors_headline_error_title(), hint: m.errors_headline_error_hint() };
 }
 
 /** The text behind "Copy details". */
@@ -323,40 +326,47 @@ function platformOf(r: ErrorReport): Platform | undefined {
 }
 
 /**
- * Where to read the app's logs, as a command that exists on that OS. `atlas desktop debug logs` is not
- * one of them: it is compiled out of release builds. `stderr.log` is written on Linux only.
+ * Where to read the app's logs, per OS. `atlas desktop debug logs` is not an option: it is compiled out of release
+ * builds. `stderr.log` is written on Linux only.
  */
-const LOG_HINT: Record<Platform | "other", string> = {
-	linux:
-		"`tail -n 50 ~/.atlas/desktop/stderr.log` (WebKit prints CSP violations and IPC failures there) and `~/.atlas/desktop/app.log`",
-	macos: "`tail -n 50 ~/.atlas/desktop/app.log`",
-	windows: "`Get-Content $env:USERPROFILE\\.atlas\\desktop\\app.log -Tail 50` in PowerShell",
-	other: "`desktop/app.log` in the Atlas folder (`~/.atlas`)",
-};
+function blockedDetail(platform: Platform | undefined, lang: Lang): string {
+	switch (platform) {
+		case "linux":
+			return m.errors_cause_blocked_detail_linux({}, lang);
+		case "macos":
+			return m.errors_cause_blocked_detail_macos({}, lang);
+		case "windows":
+			return m.errors_cause_blocked_detail_windows({}, lang);
+		default:
+			return m.errors_cause_blocked_detail_other({}, lang);
+	}
+}
 
 /**
  * A best-effort, honest guess at the cause, for the screen and the prompts. Only patterns that are
  * known to happen in this app; anything else returns `null` rather than a confident wrong answer.
+ * The screen reads it in the app's language; a report that leaves the machine passes `"en"`.
  */
-export function causeHint(r: ErrorReport): CauseHint | null {
-	const frame = topFrame(r.stack);
-	const at = frame ? ` Look at ${frame.replace(/^at\s+/, "")}.` : "";
+export function causeHint(r: ErrorReport, locale?: "en"): CauseHint | null {
+	const lang: Lang = locale ? { locale } : undefined;
+	const frame = topFrame(r.stack)?.replace(/^at\s+/, "");
 	const host = r.context?.hostCaps;
 	if (/\blsp_\w+|language server|unknown (command|cmd)/i.test(r.message) && host && !host.includes("lsp"))
 		return {
-			title: "The terminal host is older than this app",
-			detail:
-				"The background terminal host (atlas hostd) predates language-server support. Restart it from the status bar; terminals running in it will end.",
+			title: m.errors_cause_old_host_title({}, lang),
+			detail: m.errors_cause_old_host_detail({}, lang),
 		};
 	if (/undefined is not an object|cannot read propert|is undefined|is not a function/i.test(r.message))
 		return {
-			title: "The app received data in a shape it did not expect",
-			detail: `A field the screen reads is missing, typically a name mismatch between the Rust backend (serde) and the frontend.${at}`,
+			title: m.errors_cause_shape_title({}, lang),
+			detail: frame
+				? m.errors_cause_shape_detail_at({ frame }, lang)
+				: m.errors_cause_shape_detail({}, lang),
 		};
 	if (/failed to fetch|networkerror|load failed|csp|content security/i.test(r.message))
 		return {
-			title: "A request was blocked or the backend did not answer",
-			detail: `Look for a CSP violation or an IPC failure in the log tails of this report; for more, read ${LOG_HINT[platformOf(r) ?? "other"]}.`,
+			title: m.errors_cause_blocked_title({}, lang),
+			detail: blockedDetail(platformOf(r), lang),
 		};
 	return null;
 }
@@ -506,7 +516,7 @@ const crumbLines = (r: ErrorReport): string[] =>
 /** The report as Markdown within `b`. Every section is redacted on its own, before it is fenced, and cut by whole lines. */
 function render(r: ErrorReport, b: Budget): string {
 	const d = r.context?.diagnostics;
-	const hint = b.hint ? causeHint(r) : null;
+	const hint = b.hint ? causeHint(r, "en") : null;
 	const found = d ? findings(d) : [];
 	const stack = redactText(r.stack)
 		.split("\n")

@@ -32,6 +32,7 @@
 		markdownReport,
 		type ErrorReport,
 	} from "./report.ts";
+	import { m } from "#lib/i18n/m.ts";
 
 	let {
 		report,
@@ -39,9 +40,9 @@
 		title,
 		hint,
 		retry,
-		retryLabel = "Retry",
+		retryLabel,
 		close,
-		closeLabel = "Close tab",
+		closeLabel,
 	}: {
 		report: ErrorReport;
 		variant?: "pane" | "fullscreen" | "dialog";
@@ -66,22 +67,22 @@
 		{
 			id: "fix",
 			icon: Wrench,
-			label: "Fix it",
-			hint: "An agent reproduces it with a failing test, then fixes the cause",
+			label: m.errors_panel_fix_it(),
+			hint: m.errors_panel_fix_it_hint(),
 			prompt: () => aiFixPrompt(report),
 		},
 		{
 			id: "issue",
 			icon: Bug,
-			label: "File an issue",
-			hint: "An agent searches duplicates and opens it with gh",
+			label: m.errors_panel_file_issue(),
+			hint: m.errors_panel_file_issue_hint(),
 			prompt: () => aiIssuePrompt(report),
 		},
 		{
 			id: "explain",
 			icon: MessageCircleQuestion,
-			label: "Explain it to me",
-			hint: "Plain language, what to do now; works in any chat AI",
+			label: m.errors_panel_explain(),
+			hint: m.errors_panel_explain_hint(),
 			prompt: () => aiDiagnosePrompt(report),
 		},
 	]);
@@ -108,14 +109,17 @@
 
 	const meta = $derived(
 		[
-			["Where", report.kind ? `${report.where} · ${report.kind}` : report.where],
-			["File", report.file],
+			[
+				m.errors_panel_detail_where(),
+				report.kind ? `${report.where} · ${report.kind}` : report.where,
+			],
+			[m.errors_panel_detail_file(), report.file],
 			["Atlas", report.version],
-			["System", [report.context?.os, report.context?.arch].filter(Boolean).join(" ")],
-			["Terminal host", report.context?.hostVersion],
+			[m.errors_panel_detail_system(), [report.context?.os, report.context?.arch].filter(Boolean).join(" ")],
+			[m.settings_host_name(), report.context?.hostVersion],
 		].filter((r): r is [string, string] => !!r[1]),
 	);
-	const heading = $derived(title ?? "Something went wrong");
+	const heading = $derived(title ?? m.errors_panel_title());
 </script>
 
 <div class="wrap {variant}" role="alert" aria-labelledby="ep-title">
@@ -136,28 +140,28 @@
 			{#if retry}
 				<Button size="sm" variant="filled" onclick={retry}>
 					{#snippet leading()}<RotateCcw size={13} />{/snippet}
-					{retryLabel}
+					{retryLabel ?? m.common_action_retry()}
 				</Button>
 			{/if}
 			{#if close}
 				<Button size="sm" variant={retry ? "glass" : "filled"} onclick={close}>
 					{#snippet leading()}<X size={13} />{/snippet}
-					{closeLabel}
+					{closeLabel ?? m.errors_panel_close_tab()}
 				</Button>
 			{/if}
 			<Button size="sm" variant="ghost" onclick={() => (aiOpen = !aiOpen)} aria-expanded={aiOpen}>
 				{#snippet leading()}<Sparkles size={13} />{/snippet}
-				Ask AI
+				{m.errors_panel_ask_ai()}
 			</Button>
 			<Button size="sm" variant="ghost" onclick={() => copyText("details", detailsText(report))}>
 				{#snippet leading()}{#if copied === "details"}<Check size={13} />{:else}<Copy
 							size={13}
 						/>{/if}{/snippet}
-				{copied === "details" ? "Copied" : "Copy details"}
+				{copied === "details" ? m.errors_panel_copied() : m.errors_panel_copy_details()}
 			</Button>
 			<Button size="sm" variant="ghost" onclick={() => api.openUrl(issueUrl(report))}>
 				{#snippet leading()}<Bug size={13} />{/snippet}
-				Report issue
+				{m.errors_panel_report_issue()}
 			</Button>
 		</div>
 
@@ -172,10 +176,9 @@
 		{/if}
 
 		{#if aiOpen}
-			<div class="ai" role="group" aria-label="Ask AI">
+			<div class="ai" role="group" aria-label={m.errors_panel_ask_ai()}>
 				<p class="ai-note">
-					Each one copies a complete prompt (error, environment, what the app did, stack) and opens an agent
-					with it when a workspace is open. Nothing leaves your machine until you send it.
+					{m.errors_panel_ai_note()}
 				</p>
 				{#each ai as a (a.id)}
 					<button class="ai-row" onclick={() => runAi(a)}>
@@ -192,8 +195,8 @@
 				<button class="ai-row" onclick={() => copyText("md", markdownReport(report))}>
 					<span class="ai-ico" aria-hidden="true"><FileText size={14} /></span>
 					<span class="ai-text">
-						<b>Copy as Markdown</b>
-						<span>The full report, to paste anywhere</span>
+						<b>{m.errors_panel_copy_markdown()}</b>
+						<span>{m.errors_panel_copy_markdown_hint()}</span>
 					</span>
 					<span class="ai-tick"
 						>{#if copied === "md"}<Check size={13} />{:else}<Copy size={12} />{/if}</span
@@ -205,7 +208,7 @@
 		<div class="more">
 			<button class="toggle" aria-expanded={open} aria-controls="ep-details" onclick={() => (open = !open)}>
 				<span class="chev" class:open><ChevronRight size={12} /></span>
-				Details
+				{m.errors_panel_details()}
 			</button>
 			{#if open}
 				<div id="ep-details" class="details ca-selectable">
@@ -217,7 +220,7 @@
 					</dl>
 					{#if report.context?.breadcrumbs.length}
 						<div class="crumbs">
-							<span class="cap">Last things the app did</span>
+							<span class="cap">{m.errors_panel_breadcrumbs()}</span>
 							<ol>
 								{#each report.context.breadcrumbs.slice(-8) as b (b.at + b.text)}
 									<li>{b.text}</li>

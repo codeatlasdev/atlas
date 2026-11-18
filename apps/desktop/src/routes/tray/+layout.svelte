@@ -6,7 +6,8 @@
 	import { onMount, type Snippet } from "svelte";
 	import Contain from "#lib/errors/Contain.svelte";
 	import { startErrorHandler } from "#lib/errors/errors.svelte.ts";
-	import { IS_MAC, appLauncher } from "#lib/keys.ts";
+	import { IS_MAC } from "#lib/keys.ts";
+	import { m } from "#lib/i18n/m.ts";
 
 	let { children }: { children: Snippet } = $props();
 
@@ -16,8 +17,8 @@
 
 <Contain
 	where={IS_MAC ? "Menu bar popover" : "Tray popover"}
-	title="The popover hit an error"
-	hint="Open Atlas from {appLauncher()} to keep working."
+	title={m.tray_layout_error_title()}
+	hint={m.tray_layout_error_hint()}
 >
 	{@render children()}
 </Contain>

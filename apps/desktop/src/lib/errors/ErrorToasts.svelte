@@ -5,12 +5,10 @@
 	import ErrorPanel from "./ErrorPanel.svelte";
 	import { errors } from "./errors.svelte.ts";
 	import { headline } from "./report.ts";
+	import { m } from "#lib/i18n/m.ts";
 
 	/** Longer than the stock toast (4 s): there is something to read and act on. */
 	const LIFETIME_MS = 12_000;
-	/** What happened and what to do; the log tail travels with Report, not as a path here. */
-	const HOST_HELP =
-		"Terminals can't start or reconnect until the host is back. Restart it, or report it if this keeps happening.";
 
 	// Reading `repeats` re-arms the timers when the same error fires again, so a live problem stays visible.
 	$effect(() => {
@@ -24,10 +22,10 @@
 {#each errors.toasts as t (t.id)}
 	{#snippet act()}
 		{#if t.host}
-			<Button size="sm" onclick={() => errors.restartHost(t.id)}>Restart terminal host</Button>
-			<Button size="sm" variant="glass" onclick={() => errors.showHost(t)}>Report</Button>
+			<Button size="sm" onclick={() => errors.restartHost(t.id)}>{m.errors_toasts_restart_host()}</Button>
+			<Button size="sm" variant="glass" onclick={() => errors.showHost(t)}>{m.errors_crash_card_report()}</Button>
 		{:else}
-			<Button size="sm" variant="glass" onclick={() => errors.show(t.report, t.id)}>Details</Button>
+			<Button size="sm" variant="glass" onclick={() => errors.show(t.report, t.id)}>{m.errors_panel_details()}</Button>
 		{/if}
 	{/snippet}
 	<CornerNotice
@@ -35,7 +33,7 @@
 		kind="alert"
 		tone="error"
 		title={headline(t.report).title}
-		body={t.host ? HOST_HELP : t.report.message}
+		body={t.host ? m.errors_toasts_host_help() : t.report.message}
 		count={t.repeats + 1}
 		actions={act}
 		ondismiss={() => errors.dismiss(t.id)}
@@ -45,7 +43,7 @@
 <Dialog
 	open={!!errors.current}
 	onOpenChange={(o) => !o && (errors.current = null)}
-	title="Error details"
+	title={m.errors_toasts_dialog_title()}
 	size="md"
 >
 	{#if errors.current}
@@ -55,7 +53,7 @@
 			title={headline(errors.current).title}
 			hint={headline(errors.current).hint}
 			close={() => (errors.current = null)}
-			closeLabel="Close"
+			closeLabel={m.common_action_close()}
 		/>
 	{/if}
 </Dialog>

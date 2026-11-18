@@ -4,6 +4,7 @@ use super::super::messages::Effect;
 use super::super::{App, Message, Operation, ToastVariant};
 use crate::runtime::logs;
 use crate::runtime::manager::ServiceManager;
+use atlas_i18n::t;
 
 impl App {
     pub(in crate::tui::app) async fn execute_effects(&mut self) {
@@ -21,7 +22,7 @@ impl App {
                         self.manager.restart_service(name).await;
                     }
                     self.set_toast(
-                        format!("Restarted {} services", names.len()),
+                        t!("tui_runtime_app_toast_restarted_n", count = names.len()),
                         ToastVariant::Success,
                     );
                 }
@@ -32,28 +33,41 @@ impl App {
                 }
                 Effect::OpenUrl(url) => {
                     if !crate::runtime::opener::open_url(&url) {
-                        self.set_toast("No browser launcher found", ToastVariant::Error);
+                        self.set_toast(t!("tui_runtime_app_toast_no_browser"), ToastVariant::Error);
                     }
                 }
                 Effect::OpenPath { path, line, col } => {
                     if crate::runtime::opener::open_path(&path, line, col) {
-                        self.set_toast(format!("Opening {path}:{line}"), ToastVariant::Info);
+                        self.set_toast(
+                            t!(
+                                "tui_runtime_app_toast_opening_path",
+                                path = path.as_str(),
+                                line = line
+                            ),
+                            ToastVariant::Info,
+                        );
                     } else {
                         // No GUI editor configured: hand the location to the clipboard.
                         let loc = format!("{path}:{line}");
                         self.copy_text(
                             loc.clone(),
-                            format!("No GUI editor ($VISUAL/$EDITOR/code/zed) — copied {loc}"),
+                            t!("tui_runtime_app_toast_no_editor", location = loc.as_str()),
                         );
                     }
                 }
                 Effect::StopService(name) => {
                     self.manager.stop_service_disabled(&name).await;
-                    self.set_toast(format!("Stopped {name}"), ToastVariant::Success);
+                    self.set_toast(
+                        t!("tui_runtime_app_toast_stopped", name = name.as_str()),
+                        ToastVariant::Success,
+                    );
                 }
                 Effect::RestartService(name) => {
                     self.manager.restart_service(&name).await;
-                    self.set_toast(format!("Restarting {name}"), ToastVariant::Progress);
+                    self.set_toast(
+                        t!("tui_runtime_app_toast_restarting", name = name.as_str()),
+                        ToastVariant::Progress,
+                    );
                 }
                 Effect::RunAction(key) => {
                     // Check if this action has a platform — if so, show device picker first
@@ -86,14 +100,23 @@ impl App {
                         && !a.session
                         && self.manager.action_running(&a.label)
                     {
-                        self.set_toast(format!("{} already running", a.label), ToastVariant::Info);
+                        self.set_toast(
+                            t!(
+                                "tui_runtime_app_toast_action_running",
+                                label = a.label.as_str()
+                            ),
+                            ToastVariant::Info,
+                        );
                         continue;
                     }
                     if let Some(label) = self.manager.run_action(key).await
                         && !self.manager.session_active(&label)
                     {
                         self.operation = Some(Operation::start(label.clone()));
-                        self.set_toast(format!("Running {label}"), ToastVariant::Progress);
+                        self.set_toast(
+                            t!("tui_runtime_app_toast_running", label = label.as_str()),
+                            ToastVariant::Progress,
+                        );
                     }
                 }
                 Effect::StopSession(label) => {
@@ -116,7 +139,10 @@ impl App {
                     if let Some(label) = self.manager.run_session_with_device(key, device_id).await
                         && !self.manager.session_active(&label)
                     {
-                        self.set_toast(format!("Running {label}"), ToastVariant::Progress);
+                        self.set_toast(
+                            t!("tui_runtime_app_toast_running", label = label.as_str()),
+                            ToastVariant::Progress,
+                        );
                     }
                 }
                 Effect::SetMouseCapture(on) => crate::tui::set_mouse_capture(on),
@@ -135,7 +161,10 @@ impl App {
                         .find(|(k, _, _)| *k == key)
                     {
                         ServiceManager::open_url(&self.service_open_url(&name, port));
-                        self.set_toast(format!("Opening {name}…"), ToastVariant::Progress);
+                        self.set_toast(
+                            t!("tui_runtime_app_toast_opening", name = name.as_str()),
+                            ToastVariant::Progress,
+                        );
                     }
                 }
             }

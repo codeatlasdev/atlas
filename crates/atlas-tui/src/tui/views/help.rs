@@ -9,6 +9,7 @@ use crate::tui::app::Message;
 use crate::tui::clicks::ClickMap;
 use crate::tui::keymap::{self, KeyCtx, Section};
 use crate::tui::widgets::modal::Modal;
+use atlas_i18n::t;
 
 /// Width at which help switches to two columns.
 pub const TWO_COL_MIN: u16 = 100;
@@ -19,7 +20,12 @@ pub enum Row {
     Blank,
     Header(String),
     Sub(String),
-    Key { keys: String, label: String },
+    Key {
+        keys: String,
+        label: String,
+    },
+    /// The rest of a label that did not fit the panel, under the label's own column.
+    Cont(String),
 }
 
 /// Build every help row from the keymap table plus project actions / open keys.
@@ -31,23 +37,28 @@ pub fn rows(
 ) -> Vec<Vec<Row>> {
     let mut sections: Vec<Vec<Row>> = Vec::new();
     for sec in Section::ALL {
-        let mut v = vec![Row::Header(sec.title().to_string())];
+        let mut v = vec![Row::Header(sec.title())];
         for b in keymap::help_rows(sec, keys) {
             let ctx = match b.ctx {
-                keymap::Ctx::Service => " (service tab)",
-                keymap::Ctx::All => " (All tab)",
-                keymap::Ctx::Session => " (session tab)",
-                keymap::Ctx::Tunnel | keymap::Ctx::Attached | keymap::Ctx::Any => "",
+                keymap::Ctx::Service => t!("tui_runtime_views_help_ctx_service"),
+                keymap::Ctx::All => t!("tui_runtime_views_help_ctx_all"),
+                keymap::Ctx::Session => t!("tui_runtime_views_help_ctx_session"),
+                keymap::Ctx::Tunnel | keymap::Ctx::Attached | keymap::Ctx::Any => String::new(),
             };
+            let help = (b.help)();
             v.push(Row::Key {
-                keys: b.keys.to_string(),
-                label: format!("{}{ctx}", b.help),
+                keys: b.display(),
+                label: if ctx.is_empty() {
+                    help
+                } else {
+                    format!("{help} ({ctx})")
+                },
             });
         }
         sections.push(v);
     }
     if !open_svcs.is_empty() {
-        let mut v = vec![Row::Header("OPEN".to_string())];
+        let mut v = vec![Row::Header(t!("common_action_open").to_uppercase())];
         for (k, name, port) in open_svcs {
             let label = match port {
                 Some(p) => format!("{name} (:{p})"),
@@ -61,7 +72,9 @@ pub fn rows(
         sections.push(v);
     }
     if !actions.is_empty() {
-        let mut v = vec![Row::Header("PROJECT ACTIONS".to_string())];
+        let mut v = vec![Row::Header(
+            t!("tui_runtime_views_help_actions").to_uppercase(),
+        )];
         for (group, members) in grouped_actions(actions) {
             if let Some(g) = group {
                 v.push(Row::Sub(g.to_string()));
@@ -116,6 +129,10 @@ fn render_row<'a>(row: &Row, key_w: usize) -> Line<'a> {
             format!(" {g}"),
             Style::default().fg(t.text_muted).bold(),
         )),
+        Row::Cont(text) => Line::from(vec![
+            Span::raw(" ".repeat(key_w + 2)),
+            Span::styled(text.clone(), Style::default().fg(t.text)),
+        ]),
         Row::Key { keys, label } => Line::from(vec![
             Span::styled(
                 format!(" {keys:<key_w$} "),
@@ -126,6 +143,75 @@ fn render_row<'a>(row: &Row, key_w: usize) -> Line<'a> {
     }
 }
 
+/// Width of one help column: the widest key, a gap, the widest label and the padding. Translations make labels longer,
+/// so the layout is decided from the rows, not from a constant.
+fn column_width(sections: &[Vec<Row>]) -> u16 {
+    let key_w = sections
+        .iter()
+        .flatten()
+        .filter_map(|r| match r {
+            Row::Key { keys, .. } => Some(keys.chars().count()),
+            _ => None,
+        })
+        .max()
+        .unwrap_or(4)
+        .max(4);
+    let widest_label = sections
+        .iter()
+        .flatten()
+        .filter_map(|r| match r {
+            Row::Key { label, .. } => Some(label.chars().count()),
+            _ => None,
+        })
+        .max()
+        .unwrap_or(10);
+    (key_w + 2 + widest_label + 2) as u16
+}
+
+/// Two columns only when the terminal is wide enough for them and both columns hold the widest row whole;
+/// otherwise one column, which scrolls.
+fn two_columns_fit(sections: &[Vec<Row>], width: u16) -> bool {
+    width >= TWO_COL_MIN && column_width(sections) * 2 + 3 + 4 <= width.saturating_sub(2)
+}
+
+/// Break labels longer than `label_w` columns at word boundaries into continuation rows, so a longer translation
+/// wraps inside the panel instead of being cut at its edge.
+fn wrap_labels(sections: Vec<Vec<Row>>, label_w: usize) -> Vec<Vec<Row>> {
+    sections
+        .into_iter()
+        .map(|rows| {
+            let mut out = Vec::with_capacity(rows.len());
+            for row in rows {
+                match row {
+                    Row::Key { keys, label } if label.chars().count() > label_w => {
+                        let mut lines: Vec<String> = Vec::new();
+                        let mut cur = String::new();
+                        for word in label.split(' ') {
+                            let joined = cur.chars().count() + 1 + word.chars().count();
+                            if !cur.is_empty() && joined > label_w {
+                                lines.push(std::mem::take(&mut cur));
+                            }
+                            if !cur.is_empty() {
+                                cur.push(' ');
+                            }
+                            cur.push_str(word);
+                        }
+                        lines.push(cur);
+                        let mut it = lines.into_iter();
+                        out.push(Row::Key {
+                            keys,
+                            label: it.next().unwrap_or_default(),
+                        });
+                        out.extend(it.map(Row::Cont));
+                    }
+                    other => out.push(other),
+                }
+            }
+            out
+        })
+        .collect()
+}
+
 /// Rows of text `render` would need at `width` (for scroll clamping).
 pub fn content_rows(
     actions: &[ActionConfig],
@@ -134,7 +220,7 @@ pub fn content_rows(
     width: u16,
 ) -> usize {
     let sections = rows(actions, open_svcs, keys);
-    if width >= TWO_COL_MIN {
+    if two_columns_fit(&sections, width) {
         let (a, b) = two_columns(&sections);
         a.len().max(b.len())
     } else {
@@ -156,7 +242,7 @@ pub fn render(
     let area = frame.area();
 
     let sections = rows(actions, open_svcs, keys);
-    let two = area.width >= TWO_COL_MIN;
+    let two = two_columns_fit(&sections, area.width);
     let key_w = sections
         .iter()
         .flatten()
@@ -180,6 +266,13 @@ pub fn render(
     let wanted = if two { col_w * 2 + 3 } else { col_w } + 4;
     let width = wanted.min(area.width.saturating_sub(2)).max(20);
 
+    // Text columns inside the panel: borders and side padding take 4; two columns share the rest with a 1 gap.
+    let text_w = if two {
+        (width.saturating_sub(5)) / 2
+    } else {
+        width.saturating_sub(4)
+    } as usize;
+    let sections = wrap_labels(sections, text_w.saturating_sub(key_w + 2).max(10));
     let (left, right) = if two {
         two_columns(&sections)
     } else {
@@ -198,13 +291,16 @@ pub fn render(
     let clipped = body_rows > view_rows;
     let title = if clipped {
         format!(
-            " Shortcuts · {}-{}/{} ",
-            scroll + 1,
-            (scroll + view_rows).min(body_rows),
-            body_rows
+            " {} ",
+            t!(
+                "tui_runtime_views_help_title_range",
+                from = scroll + 1,
+                to = (scroll + view_rows).min(body_rows),
+                total = body_rows
+            )
         )
     } else {
-        " Shortcuts ".to_string()
+        format!(" {} ", t!("tui_runtime_views_help_title"))
     };
     // The backdrop closes help (like Esc / ?); the body swallows clicks.
     let (_, inner) = Modal::new(&title, Message::HideHelp).frame(frame, width, height, clicks);
@@ -237,12 +333,21 @@ pub fn render(
         frame.render_widget(Paragraph::new(window(&left)), body);
     }
 
+    let close = format!("{} / ?", t!("common_keys_escape").to_lowercase());
     let foot = if clipped {
         let up = if scroll > 0 { "↑" } else { " " };
         let down = if scroll < max { "↓" } else { " " };
-        format!(" {up}{down} j/k scroll · esc / ? close")
+        format!(
+            " {}",
+            t!(
+                "tui_runtime_views_help_foot_scroll",
+                arrows = format!("{up}{down}"),
+                scroll = "j/k",
+                close = close
+            )
+        )
     } else {
-        " esc / ? to close".to_string()
+        format!(" {}", t!("tui_runtime_views_help_foot", close = close))
     };
     frame.render_widget(
         Paragraph::new(Span::styled(foot, Style::default().fg(t.text_dim))),
@@ -329,10 +434,10 @@ mod tests {
         for b in keymap::KEYMAP {
             assert!(
                 flat.iter().any(|r| matches!(r, Row::Key { keys, label }
-                    if keys == b.keys && label.starts_with(b.help))),
+                    if *keys == b.display() && label.starts_with(&(b.help)()))),
                 "help is missing {} / {}",
                 b.keys,
-                b.help
+                (b.help)()
             );
         }
     }

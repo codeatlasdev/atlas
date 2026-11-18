@@ -27,10 +27,10 @@ pub enum SearchMode {
 }
 
 impl SearchMode {
-    pub fn label(self) -> &'static str {
+    pub fn label(self) -> String {
         match self {
-            Self::Find => "find",
-            Self::Filter => "filter",
+            Self::Find => atlas_i18n::t!("tui_runtime_widgets_search_find"),
+            Self::Filter => atlas_i18n::t!("tui_runtime_widgets_search_filter"),
         }
     }
 }

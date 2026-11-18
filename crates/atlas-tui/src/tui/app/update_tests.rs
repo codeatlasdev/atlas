@@ -43,9 +43,12 @@ fn is_update_modal(app: &App, version: &str) -> bool {
             body,
             on_confirm,
         } => {
-            title == "Update available"
+            title == &atlas_i18n::t!("tui_runtime_app_update_title")
                 && body.contains(&format!("v{version}"))
-                && body.contains("update when you quit")
+                && body.contains(&atlas_i18n::t!(
+                    "tui_runtime_app_update_offer",
+                    version = version
+                ))
                 && matches!(&**on_confirm, Message::UpdateOnExit(v) if v == version)
         }
         _ => false,

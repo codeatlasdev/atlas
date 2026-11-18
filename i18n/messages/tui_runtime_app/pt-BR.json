@@ -1,0 +1,125 @@
+{
+	"tui_runtime_app_confirm_pauses": "Serviços pausados: {services}",
+	"tui_runtime_app_event_crashed": "falhou (código {code})",
+	"tui_runtime_app_event_degraded": "degradado",
+	"tui_runtime_app_event_done": "concluído",
+	"tui_runtime_app_event_failed": "falhou",
+	"tui_runtime_app_event_running": "em execução",
+	"tui_runtime_app_event_stopped": "parado",
+	"tui_runtime_app_event_unhealthy": "não saudável",
+	"tui_runtime_app_remote_owner_only": "{label} é uma sessão interativa: só o dono pode usá-la. Rode `{command}` e depois `atlas dev`",
+	"tui_runtime_app_remote_refused": "O runner recusou {command}",
+	"tui_runtime_app_restart_all_body": [
+		{
+			"declarations": [
+				"input count",
+				"local countExact = count",
+				"local countPlural = count: plural"
+			],
+			"selectors": [
+				"countExact",
+				"countPlural"
+			],
+			"match": {
+				"countExact=0, countPlural=*": "Nenhum serviço para reiniciar. Os oneshots concluídos não rodam de novo.",
+				"countExact=*, countPlural=one": "Reiniciar {count} serviço? Os oneshots concluídos não rodam de novo.",
+				"countExact=*, countPlural=*": "Reiniciar {count} serviços? Os oneshots concluídos não rodam de novo."
+			}
+		}
+	],
+	"tui_runtime_app_restart_all_title": "Reiniciar tudo",
+	"tui_runtime_app_strip_starting": "{name} iniciando",
+	"tui_runtime_app_toast_action_failed": "{label} falhou",
+	"tui_runtime_app_toast_action_running": "{label} já está em execução",
+	"tui_runtime_app_toast_ai_copied": "Prompt de IA copiado",
+	"tui_runtime_app_toast_copied": "{text} copiado",
+	"tui_runtime_app_toast_critical": "Crítico: {service}: {message}",
+	"tui_runtime_app_toast_deps_failed": "O `pre_command` falhou: {reason}",
+	"tui_runtime_app_toast_deps_installed": "Dependências instaladas",
+	"tui_runtime_app_toast_detach_hint": "Rode `{command}` para manter os serviços rodando em segundo plano",
+	"tui_runtime_app_toast_device_gone": "Dispositivo desconectado: {device} ({label})",
+	"tui_runtime_app_toast_errors_copied": [
+		{
+			"declarations": [
+				"input count",
+				"local countExact = count",
+				"local countPlural = count: plural"
+			],
+			"selectors": [
+				"countExact",
+				"countPlural"
+			],
+			"match": {
+				"countExact=0, countPlural=*": "Nenhum erro copiado",
+				"countExact=*, countPlural=one": "{count} erro copiado",
+				"countExact=*, countPlural=*": "{count} erros copiados"
+			}
+		}
+	],
+	"tui_runtime_app_toast_logs_cleared": "Logs limpos",
+	"tui_runtime_app_toast_logs_copied": "Logs copiados (3 min)",
+	"tui_runtime_app_toast_mouse_off": "Captura do mouse desligada: selecione o texto livremente",
+	"tui_runtime_app_toast_mouse_on": "Captura do mouse ligada",
+	"tui_runtime_app_toast_no_browser": "Nenhum comando para abrir o navegador foi encontrado",
+	"tui_runtime_app_toast_no_editor": "Nenhum editor gráfico ($VISUAL/$EDITOR/code/zed): {location} copiado",
+	"tui_runtime_app_toast_no_error_lines": "Nenhuma linha de erro",
+	"tui_runtime_app_toast_no_errors": "Nenhum erro encontrado",
+	"tui_runtime_app_toast_no_links": "Nenhum link visível",
+	"tui_runtime_app_toast_no_problem_lines": "Nenhuma linha de aviso ou erro",
+	"tui_runtime_app_toast_nothing_to_restart": "Nada para reiniciar",
+	"tui_runtime_app_toast_opening": "Abrindo {name}",
+	"tui_runtime_app_toast_opening_path": "Abrindo {path}:{line}",
+	"tui_runtime_app_toast_path_missing": "{path} não encontrado: {location} copiado",
+	"tui_runtime_app_toast_restarted_n": [
+		{
+			"declarations": [
+				"input count",
+				"local countExact = count",
+				"local countPlural = count: plural"
+			],
+			"selectors": [
+				"countExact",
+				"countPlural"
+			],
+			"match": {
+				"countExact=0, countPlural=*": "Nenhum serviço reiniciado",
+				"countExact=*, countPlural=one": "{count} serviço reiniciado",
+				"countExact=*, countPlural=*": "{count} serviços reiniciados"
+			}
+		}
+	],
+	"tui_runtime_app_toast_restarting": "Reiniciando {name}",
+	"tui_runtime_app_toast_restarting_n": [
+		{
+			"declarations": [
+				"input count",
+				"local countExact = count",
+				"local countPlural = count: plural"
+			],
+			"selectors": [
+				"countExact",
+				"countPlural"
+			],
+			"match": {
+				"countExact=0, countPlural=*": "Nenhum serviço para reiniciar",
+				"countExact=*, countPlural=one": "Reiniciando {count} serviço",
+				"countExact=*, countPlural=*": "Reiniciando {count} serviços"
+			}
+		}
+	],
+	"tui_runtime_app_toast_running": "Executando {label}",
+	"tui_runtime_app_toast_select_link": "{key} seleciona um link antes",
+	"tui_runtime_app_toast_session_ended": "Sessão {label} encerrada",
+	"tui_runtime_app_toast_starting": "Iniciando {name}",
+	"tui_runtime_app_toast_stopped": "{name} parado",
+	"tui_runtime_app_toast_stopping": "Parando {name}",
+	"tui_runtime_app_toast_tunnel_close": "O túnel fecha ao sair",
+	"tui_runtime_app_toast_tunnel_runner": "O runner controla o túnel: ele fecha quando o runner para",
+	"tui_runtime_app_toast_tunnel_stay": "O túnel continua aberto ao sair",
+	"tui_runtime_app_toast_update_on_exit": "O Atlas atualiza ao sair",
+	"tui_runtime_app_toast_wrap_off": "Quebra de linha desligada: ←/→ rolam",
+	"tui_runtime_app_toast_wrap_on": "Quebra de linha ligada",
+	"tui_runtime_app_update_offer": "O Atlas v{version} está disponível. Atualizar ao sair?",
+	"tui_runtime_app_update_offer_runner": "O Atlas v{version} está disponível. Atualizar ao sair? O runner continua na versão antiga até `{command}`.",
+	"tui_runtime_app_update_title": "Atualização disponível"
+}

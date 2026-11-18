@@ -2,6 +2,7 @@
 //! match, problem jumps (`]e`/`[e`) and the search-mode/regex toggles.
 use super::super::{App, ToastVariant};
 use super::{MatchPos, SearchMode};
+use atlas_i18n::t;
 
 impl App {
     /// Total find hits in the view (0 outside find mode).
@@ -114,9 +115,15 @@ impl App {
         self.sync_logs();
         let from = self.logs.problem_cursor.or_else(|| self.viewport_anchor());
         let target = self.logs.index.borrow().jump_level(from, forward, warn);
-        let what = if warn { "warning/error" } else { "error" };
         let Some(seq) = target else {
-            self.set_toast(format!("No {what} lines"), ToastVariant::Info);
+            self.set_toast(
+                if warn {
+                    t!("tui_runtime_app_toast_no_problem_lines")
+                } else {
+                    t!("tui_runtime_app_toast_no_error_lines")
+                },
+                ToastVariant::Info,
+            );
             return;
         };
         self.logs.problem_cursor = Some(seq);

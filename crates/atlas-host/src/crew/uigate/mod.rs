@@ -134,6 +134,7 @@ fn remember_pass(
     };
     // A cache that cannot write only costs a repeat capture next time.
     if let Err(e) = cache.record(&key, spec, &run) {
+        // i18n-ignore: log
         eprintln!("atlas ui gate: could not store the result: {e}");
     }
 }

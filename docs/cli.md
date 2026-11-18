@@ -352,9 +352,12 @@ atlas desktop --install [--latest]     # (re)install: this CLI's version, or the
 atlas desktop --from <PATH> [--no-open]  # install a local Atlas.app or Atlas-*.app.tar.gz
 atlas desktop --status                 # installed path, version, linked or not
 atlas desktop --dev                    # inside the atlas repo: bun run desktop:dev (hot reload)
+atlas desktop [-y|--yes] [--appimage]  # Linux: install the distro package without asking / the AppImage instead
 ```
 
 Installs into `/Applications/Atlas.app` (or `~/Applications` when `/Applications` is not writable). Downloads `Atlas-<version>-<platform>.app.tar.gz` and its `.sha256` from the public GitHub release (with `curl`, no login) and verifies the checksum. The new bundle is copied next to the old one and swapped in only once complete, so a failed download never breaks the installed app. Refuses while the app is linked (`atlas link --desktop`). Full guide: [Desktop app](desktop.md).
+
+On Linux, a distro that has a release package (Arch, Debian, Ubuntu, Fedora, RHEL, openSUSE; read from `/etc/os-release`, x86_64 only) gets that package instead of the AppImage: `atlas desktop` downloads it, verifies its checksum, shows the root command and asks `[Y/n]` (`sudo` in a terminal, `pkexec` without one), then opens `/usr/bin/atlas-desktop`. `--yes` / `-y` skips the question; `--appimage` installs the AppImage anyway. When nobody can confirm (no terminal, no `--yes`), the answer is no or the package manager fails, the AppImage is installed as before. Details: [Installation › Install Atlas Desktop](installation.md#install-atlas-desktop).
 
 ### `atlas desktop --agent`
 

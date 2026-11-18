@@ -24,14 +24,14 @@
       "deb": {
         "desktopTemplate": "../../packaging/linux/atlas.desktop",
         "section": "devel",
-        "depends": ["git", "gstreamer1.0-plugins-base", "gstreamer1.0-plugins-good"],
+        "depends": ["git", "ripgrep", "gstreamer1.0-plugins-base", "gstreamer1.0-plugins-good"],
         "files": {
           "/usr/bin/atlas": "../../target/release/atlas"
         }
       },
       "rpm": {
         "desktopTemplate": "../../packaging/linux/atlas.desktop",
-        "depends": ["git", "gstreamer1-plugins-base", "gstreamer1-plugins-good"],
+        "depends": ["git", "ripgrep", "gstreamer1-plugins-base", "gstreamer1-plugins-good"],
         "files": {
           "/usr/bin/atlas": "../../target/release/atlas"
         }

@@ -246,6 +246,19 @@ gh run watch                                                  # then download th
 
 Run it before a release whenever Linux or packaging changed, and read the `verify-linux-*` artifacts: each has `screenshot.png`, the app's stderr and its `app.log`; `verify-windows` and `verify-macos` upload their screenshots and the app's `app.log` the same way.
 
+## AUR (`codeatlas-atlas-bin`)
+
+After `publish` succeeds, the `publish-aur` job pushes the release's rendered `PKGBUILD` (the one `build-arch` attached; its source is the release's own `.deb`, so it only exists once the release does) and a `.SRCINFO` made with `makepkg --printsrcinfo` to `ssh://aur@aur.archlinux.org/codeatlas-atlas-bin.git`, branch `master`. A re-run of an unchanged version pushes nothing. `build-arch` already fails when the PKGBUILD cannot describe itself (`makepkg --printsrcinfo`, with `ripgrep` among the dependencies). Alphas and betas go to the AUR too: pacman versions drop the `-` of a prerelease (`1.5.0alpha.26`, see `packaging/arch/render.sh`), and Alpha is the default channel.
+
+The AUR account is the maintainer's, so the job does nothing until this one-time setup is done (without it the job prints a notice and succeeds; it never blocks a release):
+
+1. Register an account on <https://aur.archlinux.org> (the maintainer's: the AUR lists the account as the package's maintainer).
+2. Make a key for CI only, `ssh-keygen -t ed25519 -f aur-ci -C atlas-release-ci`, and paste `aur-ci.pub` under **My Account › SSH Public Key** (several keys are allowed, so it can be revoked alone).
+3. Add the private key as the repository secret `AUR_SSH_PRIVATE_KEY` (Settings › Secrets and variables › Actions).
+4. Nothing else: the first release after that clones the (not yet existing, so empty) `codeatlas-atlas-bin` repository, adds `PKGBUILD` and `.SRCINFO` and pushes, which creates the package under the key's account. If a package of that name already exists and is somebody else's, the push is refused and the job fails; talk to the AUR first.
+
+The workflow pins aur.archlinux.org's Ed25519 host key (`SHA256:RFzBCUItH9LZS0cKB5UE6ceAYhBD5C8GeOBip8Z11+4`, one of the three fingerprints the AUR front page publishes; `scripts/linux-launch.test.ts` checks the pinned line against it) and never uses `ssh-keyscan` or `StrictHostKeyChecking=no`. If the AUR ever rotates its keys, the job fails on the host check; update the line in `release.yml` from <https://aur.archlinux.org/>. AUR rules ask maintainers to review automated updates (a new dependency, a license change): read the commit it pushes after a release that changed the PKGBUILD.
+
 ## Verify a release
 
 None of these use the GitHub API, which is rate limited and which Atlas clients do not call either:

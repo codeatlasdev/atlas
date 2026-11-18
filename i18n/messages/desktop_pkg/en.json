@@ -1,0 +1,9 @@
+{
+	"desktop_pkg_ask": "Install it now? [Y/n]",
+	"desktop_pkg_downloading": "Downloading {asset}...",
+	"desktop_pkg_failed": "Could not install the {manager} package ({error}); installing the AppImage instead.",
+	"desktop_pkg_installed": "Installed {path}",
+	"desktop_pkg_needs_confirmation": "Installing the AppImage: the {manager} package needs your confirmation (run `atlas desktop` in a terminal, or pass --yes).",
+	"desktop_pkg_skipped": "Skipped the package; installing the AppImage.",
+	"desktop_pkg_will_run": "Atlas Desktop v{version} comes as a {manager} package, installed as root:"
+}

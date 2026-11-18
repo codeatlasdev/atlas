@@ -61,6 +61,14 @@ const MACHINE: &[Row] = &[
         live: &[],
         json_rpc: true,
     },
+    // `atlas install` runs the installed binary and reads the first line (`atlas <version>`).
+    Row {
+        name: "version",
+        args: &["version"],
+        stdin: "",
+        live: &[],
+        json_rpc: false,
+    },
 ];
 
 /// Run `atlas` with `lang` as the display language in a throwaway HOME and project.

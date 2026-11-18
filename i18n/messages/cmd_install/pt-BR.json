@@ -1,0 +1,121 @@
+{
+	"cmd_install_add_to_path": "(adicione {dir} ao PATH)",
+	"cmd_install_copied": "Instalado → {path}",
+	"cmd_install_copy_failed": "Não foi possível copiar o binário para {path}",
+	"cmd_install_create_failed": "Não foi possível criar {path}",
+	"cmd_install_done_new_terminal": "Pronto. Abra um novo terminal para usar o `atlas`.",
+	"cmd_install_done_new_terminal_or_here": "Pronto. Abra um novo terminal ou rode isto no atual:",
+	"cmd_install_done_this_shell": "Pronto. O `atlas` já funciona neste shell.",
+	"cmd_install_failed": "Falhou    {item}: {reason}",
+	"cmd_install_get_started": "Primeiros passos:",
+	"cmd_install_hint_dev": "iniciar a TUI",
+	"cmd_install_hint_setup": "conectar o atlas ao omp, Claude Code ou Codex (MCP + skills + hooks)",
+	"cmd_install_hint_update": "manter o atlas atualizado",
+	"cmd_install_inspect_failed": "Não foi possível verificar {path}",
+	"cmd_install_install_failed": "Não foi possível instalar em {path}",
+	"cmd_install_item_fish_universal": "{path}  (entrada de fish_user_paths universal do fish)",
+	"cmd_install_item_package": "{name}  (pacote, removido com: {command})",
+	"cmd_install_item_rc_block": "{path}  (as linhas de PATH que o Atlas adicionou)",
+	"cmd_install_item_shell_file": "{path}  (o arquivo de PATH que o Atlas gravou)",
+	"cmd_install_item_user_path": "{path}  (entrada do PATH do usuário)",
+	"cmd_install_kept_link": "Mantido   {path} (aponta para um build de desenvolvimento; rode `atlas unlink` para voltar)",
+	"cmd_install_kept_newer": "Mantido   {path} (a v{installed} é mais recente que esta v{own}; a instalação nunca volta para uma versão anterior)",
+	"cmd_install_link_failed": "Não foi possível criar o link {path}",
+	"cmd_install_link_taken": "{link} já existe e não é o link do Atlas; nada foi alterado",
+	"cmd_install_linked": "Link criado: {link} → {dest}",
+	"cmd_install_no_exe": "Não foi possível determinar o caminho do binário atlas em execução",
+	"cmd_install_no_home": [
+		{
+			"declarations": [
+				"input os"
+			],
+			"selectors": [
+				"os"
+			],
+			"match": {
+				"os=windows": "Não foi possível encontrar a sua pasta pessoal. Verifique se USERPROFILE está definido e rode o comando de novo.",
+				"os=*": "Não foi possível encontrar a sua pasta pessoal. Verifique se HOME está definido e rode o comando de novo."
+			}
+		}
+	],
+	"cmd_install_no_parent": "{path} não tem pasta pai. Escolha outra pasta de instalação com `--dir`.",
+	"cmd_install_no_powershell": "Não foi possível executar o PowerShell. Verifique se `powershell` está no PATH.",
+	"cmd_install_no_startup_file": "{shell}: não há arquivo de inicialização para alterar. Crie `~/.bash_profile` com esta linha:",
+	"cmd_install_not_ours": "{file} já existe e não é o arquivo que o Atlas grava. Adicione `{line}` nele manualmente.",
+	"cmd_install_note_app": "Atlas Desktop",
+	"cmd_install_note_app_backup": "backup do app criado por `atlas link --desktop`",
+	"cmd_install_note_app_linked": "app desktop apontando para um build de desenvolvimento",
+	"cmd_install_note_app_version": "versão do app registrada",
+	"cmd_install_note_cli": "o comando atlas e o backup da atualização",
+	"cmd_install_note_crash_reports": "relatórios de falha",
+	"cmd_install_note_desktop_debug_socket": "socket de depuração do desktop",
+	"cmd_install_note_desktop_socket": "socket de controle do desktop",
+	"cmd_install_note_desktop_token": "token de controle do desktop",
+	"cmd_install_note_everything": "configurações, projetos, worktrees, estado do host de terminais, tudo",
+	"cmd_install_note_host_log": "log do host de terminais",
+	"cmd_install_note_host_pid": "pid do host de terminais",
+	"cmd_install_note_host_socket": "socket do host de terminais",
+	"cmd_install_note_host_token": "token do host de terminais",
+	"cmd_install_note_link_on_path": "link no PATH",
+	"cmd_install_note_menu_entry": "entrada no menu de aplicativos",
+	"cmd_install_note_menu_icon": "ícone no menu de aplicativos",
+	"cmd_install_note_prev_app": "app anterior, mantido por uma atualização interrompida",
+	"cmd_install_note_remote_cache": "binários remotos em cache",
+	"cmd_install_note_staged_app": "app novo, preparado por uma atualização interrompida",
+	"cmd_install_note_update_check": "cache da verificação de atualização",
+	"cmd_install_note_update_lock": "trava de atualização",
+	"cmd_install_note_webkit_store": "o armazenamento WebKit do app: configurações da interface e cache",
+	"cmd_install_note_webkit_store_legacy": "o armazenamento WebKit do Atlas anterior à 1.6",
+	"cmd_install_note_window_state": "o estado da janela do app",
+	"cmd_install_open_failed": "Não foi possível abrir {path}",
+	"cmd_install_path_added": "Adicionado ao PATH  [{shell}  {file}]",
+	"cmd_install_path_added_win": "Adicionado ao PATH  [ambiente do usuário]",
+	"cmd_install_path_already": "Já está no PATH  [{shell}  {file}]",
+	"cmd_install_path_already_win": "Já está no PATH",
+	"cmd_install_path_manual": "Não foi possível adicionar {dir} ao seu PATH: {reason}. Adicione manualmente.",
+	"cmd_install_plan_keep": "e manter (use `--purge` para excluir estes também):",
+	"cmd_install_plan_remove": "O Atlas vai remover:",
+	"cmd_install_read_failed": "Não foi possível ler {path}",
+	"cmd_install_remove_busy": "Não foi possível remover {path}. Feche o Atlas Desktop e os comandos `atlas` em execução e tente novamente.",
+	"cmd_install_remove_failed": "Não foi possível remover {path}",
+	"cmd_install_removed": "Removido  {item}",
+	"cmd_install_shell_unsupported": "O Atlas não grava o arquivo de inicialização do {shell}. Adicione {dir} ao PATH nele.",
+	"cmd_install_skills": "Instalando skills",
+	"cmd_install_skills_failed": "Não foi possível instalar as skills: {reason}. O Atlas funciona sem elas; rode `atlas skills install` para tentar novamente.",
+	"cmd_install_sudo_own_home": "Rodando com sudo: isto instala em {home} como uid {euid}, não como {user}. Essa é a pasta pessoal de {user} (`sudo -E` ou HOME mantido), então os arquivos gravados lá ficarão com root como dono. Rode o instalador sem sudo.",
+	"cmd_install_sudo_warning": "Rodando com sudo: isto instala em {home} como uid {euid}, não como {user}. Rode o instalador sem sudo.",
+	"cmd_install_target": "Destino:  {dir}",
+	"cmd_install_title": "Instalador do Atlas",
+	"cmd_install_uninstall_aborted": "Cancelado. Nada foi removido.",
+	"cmd_install_uninstall_confirm": "Continuar? [s/N]",
+	"cmd_install_uninstall_done": "Atlas removido. Reinicie o shell.",
+	"cmd_install_uninstall_needs_confirmation": "O `atlas uninstall` precisa da sua confirmação e não há terminal para perguntar. Rode em um terminal ou passe `--yes`.",
+	"cmd_install_uninstall_nothing": "Nada para remover: o atlas não está instalado.",
+	"cmd_install_uninstall_steps_failed": [
+		{
+			"declarations": [
+				"input count",
+				"local countExact = count",
+				"local countPlural = count: plural"
+			],
+			"selectors": [
+				"countExact",
+				"countPlural"
+			],
+			"match": {
+				"countExact=0, countPlural=*": "Nenhuma etapa falhou.",
+				"countExact=*, countPlural=one": "{count} etapa falhou; o restante foi removido. Feche o Atlas Desktop e os comandos `atlas` em execução e rode `atlas uninstall` de novo.",
+				"countExact=*, countPlural=*": "{count} etapas falharam; o restante foi removido. Feche o Atlas Desktop e os comandos `atlas` em execução e rode `atlas uninstall` de novo."
+			}
+		}
+	],
+	"cmd_install_uninstall_title": "Desinstalador do Atlas",
+	"cmd_install_upgrade_absent": "o atlas não está instalado em {path}. Rode `atlas install` antes.",
+	"cmd_install_upgrade_current": "o atlas {version} em {path} já está atualizado",
+	"cmd_install_upgrade_linked": "{path} aponta para um build de desenvolvimento; nada foi alterado",
+	"cmd_install_upgrade_replaced": "atlas {old} → {new} em {path}",
+	"cmd_install_upgrade_self": "o atlas {version} em {path} é este mesmo binário; não há o que copiar",
+	"cmd_install_version": "Versão:   v{version}",
+	"cmd_install_version_unreadable": "(ilegível)",
+	"cmd_install_write_failed": "Não foi possível gravar em {path}"
+}

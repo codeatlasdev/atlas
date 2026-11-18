@@ -1,0 +1,121 @@
+{
+	"cmd_install_add_to_path": "(add {dir} to PATH)",
+	"cmd_install_copied": "Installed → {path}",
+	"cmd_install_copy_failed": "Couldn't copy the binary to {path}",
+	"cmd_install_create_failed": "Couldn't create {path}",
+	"cmd_install_done_new_terminal": "Done. Open a new terminal to use `atlas`.",
+	"cmd_install_done_new_terminal_or_here": "Done. Open a new terminal, or run this in the current one:",
+	"cmd_install_done_this_shell": "Done. `atlas` works in this shell now.",
+	"cmd_install_failed": "Failed   {item}: {reason}",
+	"cmd_install_get_started": "Get started:",
+	"cmd_install_hint_dev": "start the TUI",
+	"cmd_install_hint_setup": "wire atlas into omp, Claude Code or Codex (MCP + skills + hooks)",
+	"cmd_install_hint_update": "keep atlas up to date",
+	"cmd_install_inspect_failed": "Couldn't inspect {path}",
+	"cmd_install_install_failed": "Couldn't install to {path}",
+	"cmd_install_item_fish_universal": "{path}  (fish universal fish_user_paths entry)",
+	"cmd_install_item_package": "{name}  (package, removed with: {command})",
+	"cmd_install_item_rc_block": "{path}  (the PATH lines Atlas added)",
+	"cmd_install_item_shell_file": "{path}  (the PATH file Atlas wrote)",
+	"cmd_install_item_user_path": "{path}  (user PATH entry)",
+	"cmd_install_kept_link": "Kept      {path} (linked to a dev build; run `atlas unlink` to go back)",
+	"cmd_install_kept_newer": "Kept      {path} (v{installed} is newer than this v{own}; install never downgrades)",
+	"cmd_install_link_failed": "Couldn't link {path}",
+	"cmd_install_link_taken": "{link} exists and is not Atlas's link; left alone",
+	"cmd_install_linked": "Linked {link} → {dest}",
+	"cmd_install_no_exe": "Couldn't determine the path of the running atlas binary",
+	"cmd_install_no_home": [
+		{
+			"declarations": [
+				"input os"
+			],
+			"selectors": [
+				"os"
+			],
+			"match": {
+				"os=windows": "Couldn't find your home folder. Check that USERPROFILE is set, then run the command again.",
+				"os=*": "Couldn't find your home folder. Check that HOME is set, then run the command again."
+			}
+		}
+	],
+	"cmd_install_no_parent": "{path} has no parent folder. Choose another install folder with `--dir`.",
+	"cmd_install_no_powershell": "Couldn't run PowerShell. Check that `powershell` is on your PATH.",
+	"cmd_install_no_startup_file": "{shell}: no startup file to add to. Create `~/.bash_profile` with this line:",
+	"cmd_install_not_ours": "{file} exists and isn't the file Atlas writes. Add `{line}` to it yourself.",
+	"cmd_install_note_app": "Atlas Desktop",
+	"cmd_install_note_app_backup": "app backup from `atlas link --desktop`",
+	"cmd_install_note_app_linked": "desktop app, linked to a dev build",
+	"cmd_install_note_app_version": "recorded app version",
+	"cmd_install_note_cli": "the atlas command and its update backup",
+	"cmd_install_note_crash_reports": "crash reports",
+	"cmd_install_note_desktop_debug_socket": "desktop debug socket",
+	"cmd_install_note_desktop_socket": "desktop control socket",
+	"cmd_install_note_desktop_token": "desktop control token",
+	"cmd_install_note_everything": "settings, projects, worktrees, terminal host state, everything",
+	"cmd_install_note_host_log": "terminal host log",
+	"cmd_install_note_host_pid": "terminal host pid",
+	"cmd_install_note_host_socket": "terminal host socket",
+	"cmd_install_note_host_token": "terminal host token",
+	"cmd_install_note_link_on_path": "link on PATH",
+	"cmd_install_note_menu_entry": "desktop menu entry",
+	"cmd_install_note_menu_icon": "desktop menu icon",
+	"cmd_install_note_prev_app": "previous app, kept by an interrupted update",
+	"cmd_install_note_remote_cache": "cached remote binaries",
+	"cmd_install_note_staged_app": "new app, staged by an interrupted update",
+	"cmd_install_note_update_check": "update check cache",
+	"cmd_install_note_update_lock": "update lock",
+	"cmd_install_note_webkit_store": "the app's WebKit store: UI settings and cache",
+	"cmd_install_note_webkit_store_legacy": "the WebKit store of Atlas before 1.6",
+	"cmd_install_note_window_state": "the app's window state",
+	"cmd_install_open_failed": "Couldn't open {path}",
+	"cmd_install_path_added": "Added to PATH  [{shell}  {file}]",
+	"cmd_install_path_added_win": "Added to PATH  [user environment]",
+	"cmd_install_path_already": "Already in PATH  [{shell}  {file}]",
+	"cmd_install_path_already_win": "Already in PATH",
+	"cmd_install_path_manual": "Couldn't add {dir} to your PATH: {reason}. Add it manually.",
+	"cmd_install_plan_keep": "and keep (add `--purge` to delete these too):",
+	"cmd_install_plan_remove": "This will remove:",
+	"cmd_install_read_failed": "Couldn't read {path}",
+	"cmd_install_remove_busy": "Couldn't remove {path}. Close Atlas Desktop and any running `atlas` commands, then try again.",
+	"cmd_install_remove_failed": "Couldn't remove {path}",
+	"cmd_install_removed": "Removed  {item}",
+	"cmd_install_shell_unsupported": "Atlas doesn't write the startup file of {shell}. Add {dir} to PATH there.",
+	"cmd_install_skills": "Installing skills",
+	"cmd_install_skills_failed": "Couldn't install skills: {reason}. Atlas works without them; run `atlas skills install` to try again.",
+	"cmd_install_sudo_own_home": "Running under sudo: this installs into {home} as uid {euid}, not as {user}. That is the home of {user} (`sudo -E` or HOME kept), so the files written there will be owned by root. Run the installer without sudo.",
+	"cmd_install_sudo_warning": "Running under sudo: this installs into {home} as uid {euid}, not as {user}. Run the installer without sudo.",
+	"cmd_install_target": "Target:   {dir}",
+	"cmd_install_title": "Atlas installer",
+	"cmd_install_uninstall_aborted": "Aborted. Nothing was removed.",
+	"cmd_install_uninstall_confirm": "Continue? [y/N]",
+	"cmd_install_uninstall_done": "Atlas removed. Restart your shell.",
+	"cmd_install_uninstall_needs_confirmation": "`atlas uninstall` needs your confirmation and there is no terminal to ask in. Run it in a terminal, or pass `--yes`.",
+	"cmd_install_uninstall_nothing": "Nothing to remove: atlas is not installed.",
+	"cmd_install_uninstall_steps_failed": [
+		{
+			"declarations": [
+				"input count",
+				"local countExact = count",
+				"local countPlural = count: plural"
+			],
+			"selectors": [
+				"countExact",
+				"countPlural"
+			],
+			"match": {
+				"countExact=0, countPlural=*": "No step failed.",
+				"countExact=*, countPlural=one": "{count} step failed; the rest was removed. Close Atlas Desktop and any running `atlas` commands, then run `atlas uninstall` again.",
+				"countExact=*, countPlural=*": "{count} steps failed; the rest was removed. Close Atlas Desktop and any running `atlas` commands, then run `atlas uninstall` again."
+			}
+		}
+	],
+	"cmd_install_uninstall_title": "Atlas uninstaller",
+	"cmd_install_upgrade_absent": "atlas is not installed in {path}. Run `atlas install` first.",
+	"cmd_install_upgrade_current": "atlas {version} in {path} is current",
+	"cmd_install_upgrade_linked": "{path} is linked to a dev build; left alone",
+	"cmd_install_upgrade_replaced": "atlas {old} → {new} in {path}",
+	"cmd_install_upgrade_self": "atlas {version} in {path} is this binary; nothing to copy",
+	"cmd_install_version": "Version:  v{version}",
+	"cmd_install_version_unreadable": "(unreadable)",
+	"cmd_install_write_failed": "Couldn't write {path}"
+}

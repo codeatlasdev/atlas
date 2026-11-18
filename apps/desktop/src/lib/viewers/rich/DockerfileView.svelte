@@ -21,6 +21,7 @@
 	import type { RichCtx } from "#lib/viewers/rich/ctx.ts";
 	import Code from "#lib/viewers/rich/Code.svelte";
 	import "#lib/viewers/rich/rich.css";
+	import { m } from "#lib/i18n/m.ts";
 
 	let { ctx }: { ctx: RichCtx } = $props();
 
@@ -59,34 +60,37 @@
 			<div class="rv-title">
 				<Layers size={18} />
 				<h1>{ctx.path.split("/").pop()}</h1>
-				<span class="rv-ver">{doc.stages.length} stage{doc.stages.length === 1 ? "" : "s"}</span>
+				<span class="rv-ver"
+					>{m.viewers_devops_dockerfile_view_stages_count({ count: doc.stages.length })}</span
+				>
 			</div>
 			<div class="rv-facts">
 				{#each [...new Set(doc.ports.map((p) => p.port))] as p (p)}<span class="rv-chip info mono"
-						>EXPOSE {p}</span
+						>{`EXPOSE ${p}`}</span
 					>{/each}
 				{#if doc.warnings.length}<span class="rv-chip warn"
-						>{doc.warnings.length} warning{doc.warnings.length === 1 ? "" : "s"}</span
+						>{m.viewers_devops_dockerfile_view_warnings_count({ count: doc.warnings.length })}</span
 					>{/if}
 			</div>
 		</header>
 
 		{#if !doc.stages.length}
 			<div class="rv-banner warn">
-				<TriangleAlert size={14} /> No FROM instruction found.
+				<TriangleAlert size={14} />
+				{m.viewers_devops_dockerfile_view_no_from()}
 				<span class="sp"></span>
-				<button class="rv-btn" onclick={() => ctx.toSource()}>Open as source</button>
+				<button class="rv-btn" onclick={() => ctx.toSource()}>{m.viewers_devops_open_as_source()}</button>
 			</div>
 		{:else}
 			{#if doc.globalArgs.length}
 				<div class="rv-facts">
-					{#each doc.globalArgs as a (a.line)}<span class="rv-chip mono">ARG {a.args}</span>{/each}
+					{#each doc.globalArgs as a (a.line)}<span class="rv-chip mono">{`ARG ${a.args}`}</span>{/each}
 				</div>
 			{/if}
 
 			<section class="rv-sec">
-				<h2>Build stages</h2>
-				<div class="timeline" role="tablist" aria-label="Build stages">
+				<h2>{m.viewers_devops_dockerfile_view_build_stages()}</h2>
+				<div class="timeline" role="tablist" aria-label={m.viewers_devops_dockerfile_view_build_stages()}>
 					{#each doc.stages as s (s.index)}
 						{@const ref = img(s.image)}
 						<button
@@ -97,13 +101,18 @@
 							onclick={() => (active = s.index)}
 						>
 							<span class="dot"></span>
-							<span class="nm">{s.name ?? `stage ${s.index}`}</span>
-							<span class="im">{s.image}</span>
-							<span class="rv-note">{s.instructions.length} step{s.instructions.length === 1 ? "" : "s"}</span
+							<span class="nm"
+								>{s.name ?? m.viewers_devops_dockerfile_view_stage_default({ index: s.index })}</span
 							>
-							{#if s.index === doc.stages.length - 1}<span class="rv-chip acc">final</span>{/if}
+							<span class="im">{s.image}</span>
+							<span class="rv-note"
+								>{m.viewers_devops_dockerfile_view_steps_count({ count: s.instructions.length })}</span
+							>
+							{#if s.index === doc.stages.length - 1}<span class="rv-chip acc"
+									>{m.viewers_devops_dockerfile_view_final()}</span
+								>{/if}
 							{#if ref.tag === "latest" || (!ref.tag && !ref.digest && s.image !== "scratch" && !doc.stages.some((o) => o.name === s.image))}<span
-									class="rv-chip warn">unpinned</span
+									class="rv-chip warn">{m.viewers_devops_dockerfile_view_unpinned()}</span
 								>{/if}
 						</button>
 					{/each}
@@ -112,7 +121,7 @@
 
 			<section class="rv-sec">
 				<h2>
-					Base image
+					{m.viewers_devops_dockerfile_view_base_image()}
 					<span class="sp"></span>
 				</h2>
 				<div class="rv-list">
@@ -125,7 +134,7 @@
 						<span class="rv-v"></span>
 						{#if base.url}
 							<button class="rv-btn" onclick={() => api.openUrl(base.url!)}
-								><ExternalLink size={11} /> Registry</button
+								><ExternalLink size={11} /> {m.viewers_devops_dockerfile_view_registry()}</button
 							>
 						{/if}
 					</div>
@@ -133,7 +142,7 @@
 			</section>
 			{#if envs.length}
 				<section class="rv-sec">
-					<h2>Environment <span class="n">{envs.length}</span></h2>
+					<h2>{m.viewers_devops_environment()} <span class="n">{envs.length}</span></h2>
 					<div class="rv-facts">
 						{#each envs as e (e.line)}<span class="rv-chip mono">{e.op} {e.args}</span>{/each}
 					</div>
@@ -141,7 +150,9 @@
 			{/if}
 
 			<section class="rv-sec">
-				<h2>Instructions <span class="n">{stage.instructions.length}</span></h2>
+				<h2>
+					{m.viewers_devops_dockerfile_view_instructions()} <span class="n">{stage.instructions.length}</span>
+				</h2>
 				<div class="rv-list">
 					{#each stage.instructions as ins (ins.line)}
 						{@const Icon = icon(ins.op)}
@@ -149,8 +160,8 @@
 						<div class="ins" class:warn={!!warn}>
 							<button
 								class="gutter"
-								title="Go to line {ins.line}"
-								aria-label="Go to line {ins.line}"
+								title={m.viewers_devops_go_to_line({ line: ins.line })}
+								aria-label={m.viewers_devops_go_to_line({ line: ins.line })}
 								onclick={() => ctx.toSource(ins.line)}
 							>
 								<Icon size={13} />
@@ -176,12 +187,17 @@
 
 			{#if doc.warnings.length}
 				<section class="rv-sec">
-					<h2><TriangleAlert size={13} /> Warnings <span class="n">{doc.warnings.length}</span></h2>
+					<h2>
+						<TriangleAlert size={13} />
+						{m.viewers_devops_dockerfile_view_warnings()} <span class="n">{doc.warnings.length}</span>
+					</h2>
 					<div class="rv-list">
 						{#each doc.warnings as w (w.line + w.message)}
 							<div class="rv-row warn">
 								<span class="rv-v wrap">{w.message}</span>
-								<button class="rv-btn" onclick={() => ctx.toSource(w.line)}>Line {w.line}</button>
+								<button class="rv-btn" onclick={() => ctx.toSource(w.line)}
+									>{m.viewers_devops_line({ line: w.line })}</button
+								>
 							</div>
 						{/each}
 					</div>

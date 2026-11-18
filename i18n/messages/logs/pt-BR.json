@@ -1,0 +1,223 @@
+{
+	"logs_copied_lines": [
+		{
+			"declarations": [
+				"input amount",
+				"input count",
+				"local countExact = count",
+				"local countPlural = count: plural"
+			],
+			"selectors": [
+				"countExact",
+				"countPlural"
+			],
+			"match": {
+				"countExact=0, countPlural=*": "Nenhuma linha para copiar",
+				"countExact=*, countPlural=one": "{amount} linha copiada",
+				"countExact=*, countPlural=*": "{amount} linhas copiadas"
+			}
+		}
+	],
+	"logs_copied_lines_for_ai": [
+		{
+			"declarations": [
+				"input amount",
+				"input count",
+				"local countExact = count",
+				"local countPlural = count: plural"
+			],
+			"selectors": [
+				"countExact",
+				"countPlural"
+			],
+			"match": {
+				"countExact=0, countPlural=*": "Nenhuma linha para copiar",
+				"countExact=*, countPlural=one": "{amount} linha copiada para IA",
+				"countExact=*, countPlural=*": "{amount} linhas copiadas para IA"
+			}
+		}
+	],
+	"logs_empty_clear_search_filters": "Limpe a pesquisa ou os filtros.",
+	"logs_empty_filtering": "Filtrando",
+	"logs_empty_loading_logs": "Carregando logs",
+	"logs_empty_logs_stream_here_once_it": "Os logs aparecem aqui quando a stack rodar.",
+	"logs_empty_no_lines_match": "Nenhuma linha corresponde",
+	"logs_empty_nothing_in_range": "Nada em \"{range}\". Limpe o intervalo, a pesquisa ou os filtros.",
+	"logs_empty_reset_filters": "Redefinir filtros",
+	"logs_empty_stack_is_stopped": "A stack está parada",
+	"logs_empty_waiting_for_output": "Aguardando saída…",
+	"logs_filter_bar_all": "Todos",
+	"logs_filter_bar_all_levels": "todos os níveis",
+	"logs_link_outside_project": "{path} está fora do projeto",
+	"logs_new_lines": [
+		{
+			"declarations": [
+				"input amount",
+				"input count",
+				"local countPlural = count: plural"
+			],
+			"selectors": [
+				"countPlural"
+			],
+			"match": {
+				"countPlural=one": "{amount} nova linha",
+				"countPlural=*": "{amount} novas linhas"
+			}
+		}
+	],
+	"logs_no_error_lines": "Nenhuma linha de erro",
+	"logs_no_warning_lines": "Nenhuma linha de aviso",
+	"logs_range_all_time": "Todo o período",
+	"logs_range_chip_apply": "Aplicar",
+	"logs_range_chip_clear_time_range": "Limpar intervalo de tempo",
+	"logs_range_chip_custom_placeholder": "14:05 ou 14:05-14:20",
+	"logs_range_chip_custom_time_range_today": "Intervalo personalizado (hoje)",
+	"logs_range_chip_since_last_restart": "Desde o último reinício",
+	"logs_range_chip_since_service_restarted": "Desde que {name} reiniciou",
+	"logs_range_chip_time_range": "Intervalo de tempo",
+	"logs_range_chip_time_range_label": "Intervalo de tempo: {label}",
+	"logs_range_cleared": "\"{range}\" removido para mostrar esse momento",
+	"logs_range_error_end_before_start": "O fim vem antes do início",
+	"logs_range_error_not_a_time": "\"{text}\" não é um horário",
+	"logs_range_error_one_range": "Use um intervalo: 14:05-14:20",
+	"logs_range_error_type_time": "Digite um horário: 14:05 ou 14:05-14:20",
+	"logs_range_from": "A partir de {time}",
+	"logs_range_last_hours": [
+		{
+			"declarations": [
+				"input hours",
+				"local hoursPlural = hours: plural"
+			],
+			"selectors": [
+				"hoursPlural"
+			],
+			"match": {
+				"hoursPlural=one": "Última {hours} h",
+				"hoursPlural=*": "Últimas {hours} h"
+			}
+		}
+	],
+	"logs_range_last_minutes": [
+		{
+			"declarations": [
+				"input minutes",
+				"local minutesPlural = minutes: plural"
+			],
+			"selectors": [
+				"minutesPlural"
+			],
+			"match": {
+				"minutesPlural=one": "Último {minutes} min",
+				"minutesPlural=*": "Últimos {minutes} min"
+			}
+		}
+	],
+	"logs_range_since_restart": "Desde o reinício",
+	"logs_range_since_stack_start": "Desde o início da stack",
+	"logs_search_bar_filter": "Filtrar",
+	"logs_search_bar_filtering_hint": "Filtrando: oculta as linhas sem correspondência",
+	"logs_search_bar_find": "Localizar",
+	"logs_search_bar_finding_hint": "Localizando: destaca as correspondências",
+	"logs_search_bar_hide_non_matching_lines": "Ocultar linhas sem correspondência",
+	"logs_search_bar_invalid": "padrão incorreto",
+	"logs_search_bar_match_case": "Diferenciar maiúsculas e minúsculas",
+	"logs_search_bar_next_match": "Próxima correspondência",
+	"logs_search_bar_next_match_tip": "Próxima correspondência ({key})",
+	"logs_search_bar_previous_match": "Correspondência anterior",
+	"logs_search_bar_previous_match_tip": "Correspondência anterior ({key})",
+	"logs_search_bar_regular_expression": "Expressão regular",
+	"logs_search_bar_search_logs": "Pesquisar nos logs",
+	"logs_service_logs": "Logs dos serviços",
+	"logs_status_errors": [
+		{
+			"declarations": [
+				"input amount",
+				"input count",
+				"local countPlural = count: plural"
+			],
+			"selectors": [
+				"countPlural"
+			],
+			"match": {
+				"countPlural=one": "{amount} erro",
+				"countPlural=*": "{amount} erros"
+			}
+		}
+	],
+	"logs_status_filtering": "filtrando…",
+	"logs_status_hint_find": "localizar",
+	"logs_status_hint_jump": "próximo erro / aviso",
+	"logs_status_hint_links": "{key} abre links",
+	"logs_status_hint_logs": "logs",
+	"logs_status_lines": [
+		{
+			"declarations": [
+				"input amount",
+				"input count",
+				"local countExact = count",
+				"local countPlural = count: plural"
+			],
+			"selectors": [
+				"countExact",
+				"countPlural"
+			],
+			"match": {
+				"countExact=0, countPlural=*": "Nenhuma linha",
+				"countExact=*, countPlural=one": "{amount} linha",
+				"countExact=*, countPlural=*": "{amount} linhas"
+			}
+		}
+	],
+	"logs_status_lines_of_total": [
+		{
+			"declarations": [
+				"input total",
+				"input amount",
+				"input count",
+				"local countExact = count",
+				"local countPlural = count: plural"
+			],
+			"selectors": [
+				"countExact",
+				"countPlural"
+			],
+			"match": {
+				"countExact=0, countPlural=*": "Nenhuma linha de {total}",
+				"countExact=*, countPlural=one": "{amount} linha de {total}",
+				"countExact=*, countPlural=*": "{amount} linhas de {total}"
+			}
+		}
+	],
+	"logs_status_warnings": [
+		{
+			"declarations": [
+				"input amount",
+				"input count",
+				"local countPlural = count: plural"
+			],
+			"selectors": [
+				"countPlural"
+			],
+			"match": {
+				"countPlural=one": "{amount} aviso",
+				"countPlural=*": "{amount} avisos"
+			}
+		}
+	],
+	"logs_status_working": "Processando",
+	"logs_tools_copy_filtered_lines": "Copiar linhas filtradas",
+	"logs_tools_copy_for_ai": "Copiar para IA",
+	"logs_tools_copy_last_lines_for_ai": "Copiar as últimas {lines} linhas para IA",
+	"logs_tools_follow": "Acompanhar",
+	"logs_tools_next_error": "Próximo erro",
+	"logs_tools_next_error_tip": "Próximo erro ({key})",
+	"logs_tools_next_warning": "Próximo aviso",
+	"logs_tools_next_warning_tip": "Próximo aviso ({key})",
+	"logs_tools_previous_error": "Erro anterior",
+	"logs_tools_previous_error_tip": "Erro anterior ({key})",
+	"logs_tools_previous_warning": "Aviso anterior",
+	"logs_tools_previous_warning_tip": "Aviso anterior ({key})",
+	"logs_tools_timestamps": "Horários",
+	"logs_tools_timestamps_tip": "Horários ({key})",
+	"logs_tools_wrap_long_lines": "Quebrar linhas longas"
+}

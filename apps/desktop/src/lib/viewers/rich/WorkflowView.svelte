@@ -5,6 +5,7 @@
 	import type { RichCtx } from "#lib/viewers/rich/ctx.ts";
 	import Code from "#lib/viewers/rich/Code.svelte";
 	import "#lib/viewers/rich/rich.css";
+	import { m } from "#lib/i18n/m.ts";
 
 	let { ctx }: { ctx: RichCtx } = $props();
 
@@ -25,16 +26,19 @@
 	<div class="rv-inner">
 		{#if !parsed.ok}
 			<div class="rv-banner bad">
-				<TriangleAlert size={14} /> Cannot parse: {parsed.error}
+				<TriangleAlert size={14} />
+				{m.viewers_devops_cannot_parse({ error: parsed.error })}
 				<span class="sp"></span>
-				<button class="rv-btn" onclick={() => ctx.toSource(parsed.line)}>Open as source</button>
+				<button class="rv-btn" onclick={() => ctx.toSource(parsed.line)}
+					>{m.viewers_devops_open_as_source()}</button
+				>
 			</div>
 		{:else if w}
 			<header class="rv-head">
 				<div class="rv-title">
 					<Rocket size={18} />
 					<h1>{w.name ?? ctx.path.split("/").pop()}</h1>
-					<span class="rv-ver">{w.jobs.length} job{w.jobs.length === 1 ? "" : "s"}</span>
+					<span class="rv-ver">{m.viewers_devops_workflow_view_jobs_count({ count: w.jobs.length })}</span>
 				</div>
 				<div class="rv-facts">
 					{#each w.triggers as t (t.event)}
@@ -47,26 +51,33 @@
 
 			{#each w.unknownNeeds as u (u.job + u.need)}
 				<div class="rv-banner bad">
-					<TriangleAlert size={14} /> Job {u.job} needs {u.need}, which does not exist.
+					<TriangleAlert size={14} />
+					{m.viewers_devops_workflow_view_unknown_need({ job: u.job, need: u.need })}
 				</div>
 			{/each}
 			{#if w.unpinned.length}
 				<div class="rv-banner warn">
 					<TriangleAlert size={14} />
-					{w.unpinned.length} action{w.unpinned.length === 1 ? " is" : "s are"} not pinned to a version or commit
-					SHA.
+					{m.viewers_devops_workflow_view_unpinned_actions({ count: w.unpinned.length })}
 				</div>
 			{/if}
 
 			<section class="rv-sec">
-				<h2>Pipeline</h2>
+				<h2>{m.viewers_devops_workflow_view_pipeline()}</h2>
 				<div class="flow">
 					{#each levels as col, ci (ci)}
 						<div class="col">
 							{#each col as j (j.id)}
-								<div class="jn" title={j.needs.length ? `needs ${j.needs.join(", ")}` : "starts immediately"}>
+								<div
+									class="jn"
+									title={j.needs.length
+										? m.viewers_devops_workflow_view_needs({ needs: j.needs.join(", ") })
+										: m.viewers_devops_workflow_view_starts_immediately()}
+								>
 									<b>{j.name}</b>
-									{#if j.needs.length}<span class="rv-note">after {j.needs.join(", ")}</span>{/if}
+									{#if j.needs.length}<span class="rv-note"
+											>{m.viewers_devops_workflow_view_after({ needs: j.needs.join(", ") })}</span
+										>{/if}
 								</div>
 							{/each}
 						</div>
@@ -76,7 +87,7 @@
 			</section>
 
 			<section class="rv-sec">
-				<h2>Jobs</h2>
+				<h2>{m.viewers_devops_workflow_view_jobs()}</h2>
 				<div class="rv-list">
 					{#each w.jobs as j (j.id)}
 						<div class="job">
@@ -93,10 +104,15 @@
 										class="rv-chip info mono"
 										title={v.join(", ")}>{k} × {v.length}</span
 									>{/each}
-								{#if j.timeout}<span class="rv-chip"><Timer size={10} /> {j.timeout}m</span>{/if}
-								{#if j.cond}<span class="rv-chip warn mono" title={j.cond}>if</span>{/if}
+								{#if j.timeout}<span class="rv-chip"
+										><Timer size={10} />
+										{m.viewers_devops_workflow_view_timeout({ timeout: j.timeout })}</span
+									>{/if}
+								{#if j.cond}<span class="rv-chip warn mono" title={j.cond}><!-- i18n-ignore -->if</span>{/if}
 								<span class="rv-v"></span>
-								<span class="rv-note">{j.steps.length} step{j.steps.length === 1 ? "" : "s"}</span>
+								<span class="rv-note"
+									>{m.viewers_devops_workflow_view_steps_count({ count: j.steps.length })}</span
+								>
 							</button>
 							{#if open[j.id]}
 								<ol class="steps">
@@ -108,7 +124,7 @@
 													>
 												{:else}<Terminal size={12} />{/if}
 												<span class="sn">{s.name}</span>
-												{#if s.cond}<span class="rv-chip mono" title={s.cond}>if {s.cond}</span>{/if}
+												{#if s.cond}<span class="rv-chip mono" title={s.cond}>{`if ${s.cond}`}</span>{/if}
 											</div>
 											{#if s.run && s.run.trim() !== s.name}<Code code={s.run.trim()} lang="shell" />{/if}
 											{#if Object.keys(s.with).length}
@@ -129,7 +145,7 @@
 
 			{#if Object.keys(w.env).length}
 				<section class="rv-sec">
-					<h2>Environment <span class="n">{Object.keys(w.env).length}</span></h2>
+					<h2>{m.viewers_devops_environment()} <span class="n">{Object.keys(w.env).length}</span></h2>
 					<div class="rv-facts">
 						{#each Object.entries(w.env) as [k, v] (k)}<span class="rv-chip mono"><b>{k}</b> {v}</span>{/each}
 					</div>

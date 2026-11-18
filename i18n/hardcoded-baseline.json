@@ -360,12 +360,7 @@
 		"apps/desktop/src/routes/shots/quick/+page.svelte": 24,
 		"apps/desktop/src/routes/tray/+layout.svelte": 1,
 		"apps/desktop/src/routes/tray/+page.svelte": 29,
-		"site/src/components/islands/FilmDialog.svelte": 4,
-		"site/src/components/islands/FilmPlayer.svelte": 35,
-		"site/src/components/islands/ShareLink.svelte": 3,
-		"site/src/components/islands/StackVisualizer.svelte": 9,
-		"site/src/components/islands/TerminalReplay.svelte": 2,
-		"site/src/components/islands/Waitlist.svelte": 2
+		"site/src/components/islands/StackVisualizer.svelte": 1
 	},
 	"writing": {
 		"CHANGELOG.md": 52,

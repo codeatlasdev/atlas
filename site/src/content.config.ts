@@ -1,7 +1,7 @@
 import { defineCollection } from "astro:content";
 import { z } from "astro/zod";
 import { glob } from "astro/loaders";
-import { SOURCE_FILE, SOURCE_SHA } from "./lib/doc-translation";
+import { MACHINE, SOURCE_FILE, SOURCE_SHA } from "./lib/doc-translation";
 
 // Single source of truth: the repository's docs/*.md. Nothing is copied; the
 // loader reads the files in place. README.md is the GitHub index, not a page.
@@ -14,14 +14,15 @@ const docs = defineCollection({
 });
 
 // Portuguese (pt-BR) translations: docs/pt-BR/<slug>.md mirrors docs/<slug>.md. The English pattern above is not recursive, so
-// these never leak into `docs`. Front matter is exactly `title`, `source`, `source_sha` (see lib/doc-translation.ts).
+// these never leak into `docs`. README.md is the GitHub index of the translations, not a page. Front matter is `title`, `source`, `source_sha` and optionally `translation: machine` (see lib/doc-translation.ts).
 const docsPtBr = defineCollection({
-	loader: glob({ pattern: "*.md", base: "../docs/pt-BR" }),
+	loader: glob({ pattern: ["*.md", "!README.md"], base: "../docs/pt-BR" }),
 	schema: z
 		.object({
 			title: z.string().min(1),
 			source: z.string().regex(SOURCE_FILE),
 			source_sha: z.string().regex(SOURCE_SHA),
+			translation: z.literal(MACHINE).optional(),
 		})
 		.strict(),
 });

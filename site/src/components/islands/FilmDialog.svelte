@@ -6,6 +6,8 @@
 	import { onMount, type Snippet } from "svelte";
 	import FilmPlayer from "./FilmPlayer.svelte";
 	import { mobileFilmUi } from "../../data/film";
+	import "../../lib/locale-client";
+	import { m } from "../../lib/paraglide/messages.js";
 
 	let { poster, mp4, webm, captions, thumbs, clock, words, fallback }: { poster: string; mp4: string; webm: string; captions: string; thumbs: string; clock: string; words: string; fallback?: Snippet } = $props();
 
@@ -48,16 +50,16 @@
 
 <button type="button" class="playbtn" onclick={show} disabled={!mounted} aria-haspopup="dialog">
 	<svg width="20" height="20" viewBox="0 0 24 24" fill="currentColor" aria-hidden="true"><path d="M6 3.5v17l15-8.5z" /></svg>
-	<b>Play the film</b>
+	<b>{m.islands_film_dialog_play_the_film()}</b>
 	<small aria-label={words}>{clock}</small>
-	<span class="snd">with sound</span>
+	<span class="snd">{m.islands_film_dialog_with_sound()}</span>
 </button>
 
-<dialog bind:this={dlg} class="filmdlg" aria-label={`Atlas product film, ${words}`} onclose={closed} onclick={onBackdrop}>
+<dialog bind:this={dlg} class="filmdlg" aria-label={m.islands_film_label({ duration: words })} onclose={closed} onclick={onBackdrop}>
 	<div class="in">
-		<button type="button" class="x" onclick={() => dlg.close()} aria-label="Close the film"><svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" aria-hidden="true"><path d="M5 5l14 14M19 5L5 19" /></svg></button>
+		<button type="button" class="x" onclick={() => dlg.close()} aria-label={m.islands_film_dialog_close_the_film()}><svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" aria-hidden="true"><path d="M5 5l14 14M19 5L5 19" /></svg></button>
 		{#if everOpened}<FilmPlayer bind:this={player} {poster} {mp4} {webm} {captions} {thumbs} {words} {autostart} />{/if}
-		{#if hint}<p class="rotate" role="status">Best viewed sideways: rotate your phone, then tap full screen.</p>{/if}
+		{#if hint}<p class="rotate" role="status">{m.islands_film_dialog_rotate_hint()}</p>{/if}
 	</div>
 </dialog>
 

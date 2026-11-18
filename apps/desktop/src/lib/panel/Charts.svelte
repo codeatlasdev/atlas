@@ -3,6 +3,7 @@
 	import { fmtMem } from "#lib/format.ts";
 	import { metrics } from "./metrics.svelte.ts";
 	import { slotLabels } from "./metrics.ts";
+	import { m } from "#lib/i18n/m.ts";
 
 	let { projectId, names }: { projectId: string; names: string[] } = $props();
 
@@ -25,15 +26,15 @@
 		return { categories, mem: pick("mem"), cpu: pick("cpu"), errors: pick("errors") };
 	});
 
-	const TABS = [
-		{ id: "mem", label: "Memory" },
-		{ id: "cpu", label: "CPU" },
-		{ id: "errors", label: "Errors" },
-	] as const;
+	const TABS = $derived([
+		{ id: "mem", label: m.panel_kpis_memory() },
+		{ id: "cpu", label: m.panel_kpis_cpu() },
+		{ id: "errors", label: m.panel_kpis_errors() },
+	] as const);
 </script>
 
 <div class="charts">
-	<div class="seg" role="tablist" aria-label="Metric">
+	<div class="seg" role="tablist" aria-label={m.panel_charts_metric()}>
 		{#each TABS as t (t.id)}
 			<button role="tab" aria-selected={tab === t.id} class:on={tab === t.id} onclick={() => (tab = t.id)}
 				>{t.label}</button
@@ -45,7 +46,7 @@
 			series={model.errors}
 			categories={model.categories}
 			stacked
-			valueFormatter={(v) => `${v} error${v === 1 ? "" : "s"}`}
+			valueFormatter={(v) => m.panel_charts_errors_count({ count: v })}
 			height="190px"
 		/>
 	{:else if tab === "mem"}

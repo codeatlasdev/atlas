@@ -1,0 +1,28 @@
+{
+  "pt-BR": {
+    "panel_activity_action_failed": "b87c926291b6",
+    "panel_activity_action_finished": "babecc5afa54",
+    "panel_activity_action_started": "55d604af3915",
+    "panel_activity_drawer_activity": "8df2926035af",
+    "panel_activity_drawer_filter_activity": "dc8274289641",
+    "panel_activity_drawer_heavy_jobs": "78dbd808eb61",
+    "panel_activity_empty_hint": "43e2afca1b86",
+    "panel_activity_events_over": "aa6b8ff8342d",
+    "panel_activity_filter_all": "663175a9c461",
+    "panel_activity_heavy_busy": "db4805526ded",
+    "panel_activity_heavy_busy_waiting": "010cf1de7158",
+    "panel_activity_heavy_jobs_summary": "eb940914136b",
+    "panel_activity_heavy_running": "7983d305809e",
+    "panel_activity_heavy_running_eta": "6412f403889a",
+    "panel_activity_heavy_waiting": "313794945832",
+    "panel_activity_heavy_waiting_eta": "707b0cfc0df2",
+    "panel_activity_n_times": "7caef8f129fb",
+    "panel_activity_no_activity_yet": "a6adf93dd062",
+    "panel_activity_nothing_matches": "aba33f3e61ea",
+    "panel_activity_now_state": "1dece7f4fa26",
+    "panel_activity_open_service_logs": "283e90229799",
+    "panel_activity_restarted": "71aabe8ccf77",
+    "panel_activity_restarted_n": "500e97be3a6e",
+    "panel_activity_try_another_filter": "af7cc150426a"
+  }
+}

@@ -4,6 +4,7 @@
 	import type { ProjectView } from "#lib/api.ts";
 	import { store } from "#lib/stores/projects.svelte.ts";
 	import { actionOutput } from "./actionOutput.svelte.ts";
+	import { m } from "#lib/i18n/m.ts";
 
 	let { project }: { project: ProjectView } = $props();
 
@@ -45,13 +46,15 @@
 <!-- A failed action needs a look (alert); a finished one is a plain toast. -->
 {#if run && !actionOutput.open && store.current?.id === project.id}
 	{#snippet act()}
-		<Button size="sm" variant="glass" onclick={view}>View output</Button>
+		<Button size="sm" variant="glass" onclick={view}>{m.panel_action_result_toast_view_output()}</Button>
 	{/snippet}
 	<CornerNotice
 		id="action-result"
 		kind={run.status === "failed" ? "alert" : "toast"}
 		tone={run.status === "failed" ? "error" : "success"}
-		title="{run.label} {run.status === 'ok' ? 'finished' : 'failed'}"
+		title={run.status === "ok"
+			? m.panel_action_result_toast_finished({ label: run.label })
+			: m.panel_action_result_toast_failed({ label: run.label })}
 		actions={act}
 		ondismiss={() => dismissed.push(run!.id)}
 	/>

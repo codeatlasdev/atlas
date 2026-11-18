@@ -2,6 +2,7 @@
 	import { Button, Spinner } from "@codeatlasdev/ui";
 	import { Play } from "@lucide/svelte";
 	import { namesLabel } from "./overview.ts";
+	import { m } from "#lib/i18n/m.ts";
 
 	/** "Start the stack" call-to-action shown while the project is stopped. */
 	let {
@@ -23,9 +24,9 @@
 
 <div class="invite">
 	<div class="invite-text">
-		<b>Start the stack</b>
+		<b>{m.panel_start_invite_start_the_stack()}</b>
 		<span>
-			Starts {startable} service{names.length === 1 ? "" : "s"}:
+			{m.panel_start_invite_starts({ count: startable })}
 			<span class="mono">{namesLabel(names)}</span>
 		</span>
 	</div>
@@ -34,7 +35,7 @@
 					size={12}
 					fill="currentColor"
 				/>{/if}{/snippet}
-		Start
+		{m.panel_start_invite_start()}
 	</Button>
 </div>
 

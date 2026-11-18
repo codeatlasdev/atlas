@@ -1,3 +1,5 @@
+import { m } from "#lib/i18n/m.ts";
+
 /** Pure model of the header Actions menu: grouping, availability and the reason when disabled. */
 
 export interface ActionLike {
@@ -26,9 +28,9 @@ export interface ActionGroup {
 
 /** Why `a` cannot run right now, or null. */
 export function unavailable(a: ActionLike, running: boolean, busy: boolean): string | null {
-	if (a.session) return "Interactive session: run it from the terminal UI (atlas dev)";
-	if (!running) return "Start the stack to run actions";
-	if (busy) return "Already running";
+	if (a.session) return m.panel_action_unavailable_session();
+	if (!running) return m.panel_action_unavailable_stopped();
+	if (busy) return m.panel_action_output_drawer_already_running();
 	return null;
 }
 
@@ -62,5 +64,5 @@ export function menuGroups(
 /** What the button itself shows: the running action's label, else the idle caption. */
 export function buttonState(items: ActionItem[]): { busy: ActionItem | null; label: string } {
 	const busy = items.find((i) => i.busy) ?? null;
-	return { busy, label: busy ? busy.label : "Actions" };
+	return { busy, label: busy ? busy.label : m.panel_ops_actions() };
 }

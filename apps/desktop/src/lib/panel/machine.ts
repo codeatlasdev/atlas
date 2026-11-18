@@ -1,3 +1,5 @@
+import { formatNumber } from "#lib/i18n/fmt.ts";
+import { m } from "#lib/i18n/m.ts";
 import { human, type HeavyStatus } from "./heavy.ts";
 
 /**
@@ -102,12 +104,11 @@ export interface Gauge {
 }
 
 const clamp = (n: number) => Math.min(1, Math.max(0, n));
-const NO_READING = "no reading";
 
 export const gauge = {
 	/** The 5-minute load against the cores; the gate (`max_load`) is where a heavy job starts waiting. */
 	load(r: MachineReport): Gauge {
-		if (!r.load) return { value: null, limit: null, over: false, label: NO_READING };
+		if (!r.load) return { value: null, limit: null, over: false, label: m.panel_machine_no_reading() };
 		const { five } = r.load;
 		const max = r.gates.max_load;
 		const cores = Math.max(r.cores, 0);
@@ -115,20 +116,25 @@ export const gauge = {
 			value: cores ? clamp(five / cores) : 1,
 			limit: max != null && cores ? clamp(max / cores) : null,
 			over: max != null && five >= max,
-			label: `${five.toFixed(1)} of ${r.cores} cores`,
+			label: m.panel_machine_load_cores({
+				load: formatNumber(five, { minimumFractionDigits: 1, maximumFractionDigits: 1 }),
+				cores: r.cores,
+			}),
 		};
 	},
 	/** Memory in use, with the free floor (`min_mem_pct`) drawn as the line a heavy job waits at. */
 	memory(r: MachineReport): Gauge {
 		const free = r.mem_available_pct;
-		if (free == null) return { value: null, limit: null, over: false, label: NO_READING };
+		if (free == null) return { value: null, limit: null, over: false, label: m.panel_machine_no_reading() };
 		const floor = r.gates.min_mem_pct;
-		const total = r.mem_total_bytes != null ? ` · ${bytes(r.mem_total_bytes)}` : "";
+		const total = r.mem_total_bytes != null ? bytes(r.mem_total_bytes) : null;
 		return {
 			value: clamp((100 - free) / 100),
 			limit: floor != null ? clamp((100 - floor) / 100) : null,
 			over: floor != null && free < floor,
-			label: `${free}% free${total}`,
+			label: total
+				? m.panel_machine_memory_free_total({ free, total })
+				: m.panel_machine_memory_free({ free }),
 		};
 	},
 };
@@ -149,10 +155,16 @@ export function serviceNote(s: MachineService): Note | null {
 			: null;
 	if (s.memory_leak) return { tone: "warn", text: s.memory_leak };
 	if (s.budget_state === "over")
-		return { tone: "error", text: rate ? `Over max_memory · rising ${rate}` : "Over max_memory" };
+		return {
+			tone: "error",
+			text: rate ? m.panel_machine_over_max_rising({ rate }) : m.panel_memory_over_max(),
+		};
 	if (s.budget_state === "warn")
-		return { tone: "warn", text: rate ? `Over memory_warn · rising ${rate}` : "Over memory_warn" };
-	return rate ? { tone: "warn", text: `Rising ${rate}` } : null;
+		return {
+			tone: "warn",
+			text: rate ? m.panel_machine_over_warn_rising({ rate }) : m.panel_memory_over_warn(),
+		};
+	return rate ? { tone: "warn", text: m.panel_memory_rising({ rate }) } : null;
 }
 
 /** What the app knows about a terminal: its tab, and the agent status the hooks reported for that tab. */
@@ -218,7 +230,24 @@ export function agentRows(
 	});
 }
 
-const plural = (n: number, one: string, many = `${one}s`) => `${n} ${n === 1 ? one : many}`;
+/** The agent states the hooks report (`working` | `idle` | …) as a person reads them; another one shows as sent. */
+export function agentStateLabel(state: string): string {
+	switch (state) {
+		case "working":
+			return m.panel_machine_agent_working();
+		case "idle":
+			return m.panel_machine_agent_idle();
+		case "blocked":
+			return m.panel_machine_agent_blocked();
+		case "waiting":
+			return m.panel_machine_agent_waiting();
+		case "done":
+			return m.panel_machine_agent_done();
+		default:
+			return state;
+	}
+}
+
 const pct = (r: number | null) => (r == null ? "–" : `${r}%`);
 const saved = (ms: number) => human(Math.round(ms / 1000));
 
@@ -253,16 +282,16 @@ export function cacheView(c: MachineCache): CacheViewModel {
 		rate: pct(c.hit_rate),
 		hits:
 			c.hits + c.misses === 0
-				? "No runs yet"
-				: `${plural(c.hits, "hit")} · ${plural(c.misses, "miss", "misses")}`,
+				? m.panel_machine_cache_no_runs()
+				: `${m.panel_machine_hits({ count: c.hits })} · ${m.panel_machine_misses({ count: c.misses })}`,
 		saved: saved(c.saved_ms),
 		savedWeek: saved(c.saved_7d_ms),
-		size: `${bytes(c.bytes)} of ${bytes(c.max_bytes)}`,
+		size: m.panel_machine_cache_size({ used: bytes(c.bytes), max: bytes(c.max_bytes) }),
 		fill,
 		full: c.max_bytes > 0 && c.bytes / c.max_bytes >= CACHE_FULL,
 		projects: c.projects.map((p) => ({
 			name: p.name,
-			detail: `${[pct(p.hit_rate), plural(p.hits, "hit")].join(" · ")}${p.misses ? ` · ${plural(p.misses, "miss", "misses")}` : ""}`,
+			detail: `${[pct(p.hit_rate), m.panel_machine_hits({ count: p.hits })].join(" · ")}${p.misses ? ` · ${m.panel_machine_misses({ count: p.misses })}` : ""}`,
 			saved: saved(p.saved_ms),
 		})),
 	};

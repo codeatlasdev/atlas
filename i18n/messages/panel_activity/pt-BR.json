@@ -1,0 +1,57 @@
+{
+	"panel_activity_action_failed": "{label}: falhou",
+	"panel_activity_action_finished": "{label}: terminou",
+	"panel_activity_action_started": "{label}: iniciou",
+	"panel_activity_drawer_activity": "Atividade",
+	"panel_activity_drawer_filter_activity": "Filtrar atividade",
+	"panel_activity_drawer_heavy_jobs": "Tarefas pesadas",
+	"panel_activity_empty_hint": "Mudanças de estado dos serviços, alertas e ações aparecem aqui.",
+	"panel_activity_events_over": "{count} eventos em {span}",
+	"panel_activity_filter_all": "Todos",
+	"panel_activity_heavy_busy": [
+		{
+			"declarations": [
+				"input slots",
+				"input running",
+				"local slotsPlural = slots: plural"
+			],
+			"selectors": [
+				"slotsPlural"
+			],
+			"match": {
+				"slotsPlural=one": "{running} de {slots} slot ocupado",
+				"slotsPlural=*": "{running} de {slots} slots ocupados"
+			}
+		}
+	],
+	"panel_activity_heavy_busy_waiting": [
+		{
+			"declarations": [
+				"input slots",
+				"input running",
+				"input queued",
+				"local slotsPlural = slots: plural"
+			],
+			"selectors": [
+				"slotsPlural"
+			],
+			"match": {
+				"slotsPlural=one": "{running} de {slots} slot ocupado · {queued} aguardando",
+				"slotsPlural=*": "{running} de {slots} slots ocupados · {queued} aguardando"
+			}
+		}
+	],
+	"panel_activity_heavy_jobs_summary": "Tarefas pesadas · {summary}",
+	"panel_activity_heavy_running": "{project} · em execução há {age}",
+	"panel_activity_heavy_running_eta": "{project} · em execução há {age} · faltam ~{eta}",
+	"panel_activity_heavy_waiting": "{project} · aguardando há {age}",
+	"panel_activity_heavy_waiting_eta": "{project} · aguardando há {age} · começa em ~{eta}",
+	"panel_activity_n_times": "{count} vezes",
+	"panel_activity_no_activity_yet": "Nenhuma atividade ainda",
+	"panel_activity_nothing_matches": "Nada encontrado",
+	"panel_activity_now_state": "agora {state}",
+	"panel_activity_open_service_logs": "Abrir logs de {service} às {time}",
+	"panel_activity_restarted": "{service} reiniciou",
+	"panel_activity_restarted_n": "{service} reiniciou {count}×",
+	"panel_activity_try_another_filter": "Tente outro filtro."
+}

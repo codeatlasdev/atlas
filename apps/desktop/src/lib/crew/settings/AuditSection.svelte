@@ -9,11 +9,14 @@
 	import {
 		AUDIT_GROUPS,
 		auditCopyText,
+		auditGroupLabel,
 		auditKindLabel,
 		auditSummary,
 		filterAudit,
 		type AuditGroup,
 	} from "#lib/crew/settings/audit.ts";
+	import { dateTime } from "#lib/i18n/fmt.ts";
+	import { m } from "#lib/i18n/m.ts";
 
 	let { crewmate, settings }: { crewmate: Crewmate; settings: CrewmateSettings } = $props();
 
@@ -25,34 +28,42 @@
 		void settings.loadAudit();
 	});
 
-	const when = (ts: number) =>
-		new Date(ts * 1000).toLocaleString(undefined, { dateStyle: "short", timeStyle: "medium" });
+	const when = (ts: number) => dateTime(ts * 1000, { dateStyle: "short", timeStyle: "medium" });
 
 	function copy(text: string) {
 		navigator.clipboard.writeText(text).then(
-			() => toast.success("Copied"),
-			() => toast.error("Could not copy"),
+			() => toast.success(m.crew_settings_audit_section_copied()),
+			() => toast.error(m.crew_settings_audit_section_could_not_copy()),
 		);
 	}
 </script>
 
 <section class="card audit-card">
 	<div class="card-head">
-		<span class="row-label">What {crewmate.name} did</span>
+		<span class="row-label">{m.crew_settings_audit_section_what_name_did({ name: crewmate.name })}</span>
 		<span class="head-actions">
-			<select class="field-select compact" bind:value={group} aria-label="Filter by kind">
-				<option value={null}>Everything</option>
-				{#each AUDIT_GROUPS as g (g.id)}
-					<option value={g.id}>{g.label}</option>
+			<select
+				class="field-select compact"
+				bind:value={group}
+				aria-label={m.crew_settings_audit_section_filter_by_kind()}
+			>
+				<option value={null}>{m.crew_settings_audit_section_everything()}</option>
+				{#each AUDIT_GROUPS as g (g)}
+					<option value={g}>{auditGroupLabel(g)}</option>
 				{/each}
 			</select>
-			<button class="icon-btn" aria-label="Refresh" title="Refresh" onclick={() => void settings.loadAudit()}>
+			<button
+				class="icon-btn"
+				aria-label={m.crew_settings_audit_section_refresh()}
+				title={m.crew_settings_audit_section_refresh()}
+				onclick={() => void settings.loadAudit()}
+			>
 				<RefreshCw size={14} />
 			</button>
 			<button
 				class="icon-btn"
-				aria-label="Copy everything shown"
-				title="Copy everything shown"
+				aria-label={m.crew_settings_audit_section_copy_everything_shown()}
+				title={m.crew_settings_audit_section_copy_everything_shown()}
 				disabled={!shown.length}
 				onclick={() => copy(shown.map(auditCopyText).join("\n\n"))}
 			>
@@ -61,17 +72,20 @@
 		</span>
 	</div>
 	<p class="row-hint">
-		Written by the crew server, never by {crewmate.name}, and only ever added to. Secret values are replaced
-		by their name.
+		{m.crew_settings_audit_section_written_by_the_crew_server({ name: crewmate.name })}
 	</p>
 
 	{#if settings.auditLoading && !settings.auditEntries.length}
-		<div class="empty">Loading…</div>
+		<div class="empty">{m.common_state_loading()}</div>
 	{:else if settings.auditError}
-		<div class="empty">Could not read the audit: {settings.auditError}</div>
+		<div class="empty">
+			{m.crew_settings_audit_section_could_not_read_the_audit({ auditError: settings.auditError })}
+		</div>
 	{:else if !shown.length}
 		<div class="empty">
-			{settings.auditEntries.length ? "Nothing of this kind." : "Nothing recorded yet."}
+			{settings.auditEntries.length
+				? m.crew_settings_audit_section_nothing_of_this_kind()
+				: m.crew_settings_audit_section_nothing_recorded_yet()}
 		</div>
 	{:else}
 		<ul class="entries" role="list">
@@ -82,8 +96,8 @@
 					<span class="summary" title={auditSummary(e)}>{auditSummary(e)}</span>
 					<button
 						class="icon-btn"
-						aria-label="Copy this entry"
-						title="Copy this entry"
+						aria-label={m.crew_settings_audit_section_copy_this_entry()}
+						title={m.crew_settings_audit_section_copy_this_entry()}
 						onclick={() => copy(auditCopyText(e))}><Copy size={13} /></button
 					>
 				</li>

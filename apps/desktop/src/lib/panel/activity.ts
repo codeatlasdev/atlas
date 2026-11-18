@@ -4,6 +4,8 @@
  * long ago they happened and filter them. No Svelte, no DOM.
  */
 import { dateTime, relative, upperFirst } from "#lib/i18n/fmt.ts";
+import { m } from "#lib/i18n/m.ts";
+import { stateLabel } from "./stateLabel.ts";
 
 /** Same shape as the store's `TimelineEvent` (kept structural so this file has no store import). */
 export interface RawEvent {
@@ -68,19 +70,19 @@ function stateTone(state: string): Tone {
 /** `"api → running"` → service + state; `"api: boom"` → service + message. */
 export function parse(ev: RawEvent): Entry {
 	if (ev.kind === "state") {
-		const m = /^(.+?) → (\S+)$/.exec(ev.text);
-		if (m) return { ts: ev.ts, service: m[1], kind: "state", state: m[2], message: "", action: false };
+		const hit = /^(.+?) → (\S+)$/.exec(ev.text);
+		if (hit) return { ts: ev.ts, service: hit[1], kind: "state", state: hit[2], message: "", action: false };
 	}
 	if (ev.kind === "tunnel") {
 		return { ts: ev.ts, service: null, kind: "tunnel", state: null, message: ev.text, action: false };
 	}
-	const m = /^([^:]+): (.*)$/s.exec(ev.text);
+	const hit = /^([^:]+): (.*)$/s.exec(ev.text);
 	return {
 		ts: ev.ts,
-		service: m ? m[1] : null,
+		service: hit ? hit[1] : null,
 		kind: ev.kind,
 		state: null,
-		message: m ? m[2] : ev.text,
+		message: hit ? hit[2] : ev.text,
 		action: ev.kind === "action",
 	};
 }
@@ -112,8 +114,9 @@ function stateRow(service: string, chain: Entry[]): Row {
 		return {
 			...base,
 			tone: stateTone(settled),
-			title: n > 1 ? `${service} restarted ${n}×` : `${service} restarted`,
-			detail: settled === "running" ? null : `now ${settled}`,
+			title:
+				n > 1 ? m.panel_activity_restarted_n({ service, count: n }) : m.panel_activity_restarted({ service }),
+			detail: settled === "running" ? null : m.panel_activity_now_state({ state: stateLabel(settled) }),
 			count: chain.length,
 			type: "restart",
 		};
@@ -124,8 +127,8 @@ function stateRow(service: string, chain: Entry[]): Row {
 		return {
 			...base,
 			tone: stateTone(last.state ?? ""),
-			title: `${service} → ${last.state}`,
-			detail: states.join(" → "),
+			title: `${service} → ${stateLabel(last.state ?? "")}`,
+			detail: states.map(stateLabel).join(" → "),
 			count: chain.length,
 			type: failed ? "error" : "state",
 		};
@@ -133,11 +136,25 @@ function stateRow(service: string, chain: Entry[]): Row {
 	return {
 		...base,
 		tone: stateTone(last.state ?? ""),
-		title: `${service} → ${last.state}`,
+		title: `${service} → ${stateLabel(last.state ?? "")}`,
 		detail: null,
 		count: 1,
 		type: last.state === "failed" ? "error" : "state",
 	};
+}
+
+/**
+ * The title of a row that is not a state change. An action's `started` / `finished` / `failed` are the runner's own
+ * words (they decide the tone above), shown translated; any other text (an alert's message) is the runner's, as sent.
+ */
+function rowTitle(e: Entry): string {
+	if (e.action && e.service) {
+		const label = e.service;
+		if (e.message === "started") return m.panel_activity_action_started({ label });
+		if (e.message === "finished") return m.panel_activity_action_finished({ label });
+		if (e.message === "failed") return m.panel_activity_action_failed({ label });
+	}
+	return e.service ? `${e.service}: ${e.message}` : e.message;
 }
 
 /** Fold `events` (oldest first) into display rows, newest first. */
@@ -178,7 +195,7 @@ export function fold(events: RawEvent[], burstMs = BURST_MS): Row[] {
 						: e.kind === "tunnel"
 							? "info"
 							: "warn",
-			title: e.service ? `${e.service}: ${e.message}` : e.message,
+			title: rowTitle(e),
 			detail: null,
 			count: 1,
 			type: e.action ? "action" : isErr ? "error" : "note",
@@ -200,7 +217,7 @@ function mergeRepeats(rows: Row[]): Row[] {
 			p.count += r.count;
 			p.from = Math.min(p.from, r.from);
 			p.entries = [...p.entries, ...r.entries];
-			p.detail = `${p.count} times`;
+			p.detail = m.panel_activity_n_times({ count: p.count });
 		} else out.push({ ...r });
 	}
 	return out;
@@ -250,9 +267,9 @@ export function bucket(ts: number, now: number): string {
 	const age = Math.max(0, now - ts);
 	if (age < 60_000) return upperFirst(relative(0, "second"));
 	if (age < 3_600_000) {
-		const m = Math.floor(age / 60_000);
+		const mins = Math.floor(age / 60_000);
 		// Coarse steps so the headers don't multiply.
-		return upperFirst(relative(-(m < 5 ? 1 : m < 15 ? 5 : m < 30 ? 15 : 30), "minute"));
+		return upperFirst(relative(-(mins < 5 ? 1 : mins < 15 ? 5 : mins < 30 ? 15 : 30), "minute"));
 	}
 	const hour = new Date(ts).setMinutes(0, 0, 0);
 	const hhmm = dateTime(hour, { hour: "2-digit", minute: "2-digit", hourCycle: "h23" });

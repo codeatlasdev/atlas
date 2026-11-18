@@ -3,6 +3,7 @@
  * grouping kinds into the filter, and the one-line summary / copy text of an entry. The entry shape is hostd's
  * (`crates/atlas-host/src/crew/audit`); `audit.test.ts` reads the real reply as a fixture.
  */
+import { m } from "#lib/i18n/m.ts";
 
 export type AuditKind =
 	| "tool_call"
@@ -36,24 +37,32 @@ export interface AuditEntry {
 
 export type AuditGroup = "tools" | "approvals" | "tasks" | "config";
 
-/** Every kind hostd writes for a crewmate: its label and the filter group it sits in. */
-export const AUDIT_KINDS: Array<{ kind: AuditKind; label: string; group: AuditGroup }> = [
-	{ kind: "tool_call", label: "Tool call", group: "tools" },
-	{ kind: "approval_asked", label: "Approval asked", group: "approvals" },
-	{ kind: "approval_decision", label: "Approval decided", group: "approvals" },
-	{ kind: "task_queued", label: "Task queued", group: "tasks" },
-	{ kind: "task_started", label: "Task started", group: "tasks" },
-	{ kind: "task_finished", label: "Task finished", group: "tasks" },
-	{ kind: "config_changed", label: "Setting changed", group: "config" },
-	{ kind: "secret_set", label: "Secret set", group: "config" },
+/** Every kind hostd writes for a crewmate and the filter group it sits in; its label is `auditKindLabel`. */
+export const AUDIT_KINDS: Array<{ kind: AuditKind; group: AuditGroup }> = [
+	{ kind: "tool_call", group: "tools" },
+	{ kind: "approval_asked", group: "approvals" },
+	{ kind: "approval_decision", group: "approvals" },
+	{ kind: "task_queued", group: "tasks" },
+	{ kind: "task_started", group: "tasks" },
+	{ kind: "task_finished", group: "tasks" },
+	{ kind: "config_changed", group: "config" },
+	{ kind: "secret_set", group: "config" },
 ];
 
-export const AUDIT_GROUPS: Array<{ id: AuditGroup; label: string }> = [
-	{ id: "tools", label: "Tool calls" },
-	{ id: "approvals", label: "Approvals" },
-	{ id: "tasks", label: "Tasks" },
-	{ id: "config", label: "Settings" },
-];
+export const AUDIT_GROUPS: AuditGroup[] = ["tools", "approvals", "tasks", "config"];
+
+export function auditGroupLabel(group: AuditGroup): string {
+	switch (group) {
+		case "tools":
+			return m.crew_settings_audit_group_tools();
+		case "approvals":
+			return m.crew_settings_audit_group_approvals();
+		case "tasks":
+			return m.crew_settings_audit_group_tasks();
+		case "config":
+			return m.crew_settings_audit_group_config();
+	}
+}
 
 /** The entries of a `crewmate_audit` reply. A reply without them (an older server) or a malformed row gives none. */
 export function parseAudit(reply: unknown): AuditEntry[] {
@@ -70,7 +79,26 @@ export function parseAudit(reply: unknown): AuditEntry[] {
 }
 
 export function auditKindLabel(kind: string): string {
-	return AUDIT_KINDS.find((k) => k.kind === kind)?.label ?? kind;
+	switch (kind) {
+		case "tool_call":
+			return m.crew_settings_audit_kind_tool_call();
+		case "approval_asked":
+			return m.crew_settings_audit_kind_approval_asked();
+		case "approval_decision":
+			return m.crew_settings_audit_kind_approval_decision();
+		case "task_queued":
+			return m.crew_settings_audit_kind_task_queued();
+		case "task_started":
+			return m.crew_settings_audit_kind_task_started();
+		case "task_finished":
+			return m.crew_settings_audit_kind_task_finished();
+		case "config_changed":
+			return m.crew_settings_audit_kind_config_changed();
+		case "secret_set":
+			return m.crew_settings_audit_kind_secret_set();
+		default:
+			return kind;
+	}
 }
 
 /** Only the entries of one group (`null` = all). */
@@ -96,10 +124,10 @@ function inputText(input: unknown): string {
 
 /** Who answered an approval, readable: `desktop`, `phone:<node>`, `telegram:<chat>`, `none`. */
 function answerer(by: string | undefined): string {
-	if (!by || by === "none") return "nobody answered";
-	if (by.startsWith("phone:")) return `answered by phone ${by.slice(6, 14)}…`;
-	if (by.startsWith("telegram:")) return `answered by Telegram chat ${by.slice(9)}`;
-	return `answered by ${by}`;
+	if (!by || by === "none") return m.crew_settings_audit_answer_nobody();
+	if (by.startsWith("phone:")) return m.crew_settings_audit_answer_phone({ node: by.slice(6, 14) });
+	if (by.startsWith("telegram:")) return m.crew_settings_audit_answer_telegram({ chat: by.slice(9) });
+	return m.crew_settings_audit_answer_by({ by });
 }
 
 /** One line for the list; the full entry is what Copy puts on the clipboard. */
@@ -111,22 +139,49 @@ export function auditSummary(e: AuditEntry): string {
 		}
 		case "approval_asked": {
 			const input = inputText(e.tool_input);
-			return clip(`Asked to run ${e.tool_name ?? "?"}${input ? `: ${input}` : ""}`);
+			const tool = e.tool_name ?? "?";
+			return clip(
+				input
+					? m.crew_settings_audit_asked_to_run_input({ tool, input })
+					: m.crew_settings_audit_asked_to_run({ tool }),
+			);
 		}
 		case "approval_decision": {
-			const verb = { allow: "Allowed", deny: "Denied", timeout: "Timed out" }[e.decision ?? ""] ?? "Decided";
-			return `${verb} ${e.tool_name ?? "a tool"} (${answerer(e.by)})`;
+			const tool = e.tool_name ?? m.crew_settings_audit_a_tool();
+			const answer = answerer(e.by);
+			switch (e.decision) {
+				case "allow":
+					return m.crew_settings_audit_decision_allowed({ tool, answer });
+				case "deny":
+					return m.crew_settings_audit_decision_denied({ tool, answer });
+				case "timeout":
+					return m.crew_settings_audit_decision_timed_out({ tool, answer });
+				default:
+					return m.crew_settings_audit_decision_decided({ tool, answer });
+			}
 		}
 		case "task_queued":
-			return clip(`Task queued (${e.source ?? "?"}): ${e.prompt ?? ""}`);
+			return clip(
+				m.crew_settings_audit_task_queued({ source: String(e.source ?? "?"), prompt: e.prompt ?? "" }),
+			);
 		case "task_started":
-			return clip(`Task started: ${e.prompt ?? ""}`);
-		case "task_finished":
-			return `Task finished: ${e.state ?? "?"}${e.error ? ` (${e.error})` : ""}`;
+			return clip(m.crew_settings_audit_task_started({ prompt: e.prompt ?? "" }));
+		case "task_finished": {
+			const state = e.state ?? "?";
+			return e.error
+				? m.crew_settings_audit_task_finished_error({ state, error: String(e.error) })
+				: m.crew_settings_audit_task_finished({ state });
+		}
 		case "config_changed":
-			return clip(`Changed ${e.field ?? "?"}: ${JSON.stringify(e.from)} → ${JSON.stringify(e.to)}`);
+			return clip(
+				m.crew_settings_audit_changed({
+					field: e.field ?? "?",
+					from: JSON.stringify(e.from),
+					to: JSON.stringify(e.to),
+				}),
+			);
 		case "secret_set":
-			return `Set secret ${e.name ?? "?"}`;
+			return m.crew_settings_audit_secret_set({ name: e.name ?? "?" });
 		default:
 			return e.kind;
 	}

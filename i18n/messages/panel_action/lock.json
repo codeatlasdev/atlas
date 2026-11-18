@@ -1,0 +1,27 @@
+{
+  "pt-BR": {
+    "panel_action_output_drawer_action_gone": "20904c533cb1",
+    "panel_action_output_drawer_action_output": "f606ee0306d7",
+    "panel_action_output_drawer_action_runs": "961717840852",
+    "panel_action_output_drawer_already_running": "e31a800b7c41",
+    "panel_action_output_drawer_copied_lines": "503abef65dae",
+    "panel_action_output_drawer_finished": "90fc64195972",
+    "panel_action_output_drawer_no_action_output_yet": "2a7244bb2b5e",
+    "panel_action_output_drawer_run_again": "2b4ba8b30007",
+    "panel_action_output_drawer_run_an_action_from_the": "ba6ac74a6343",
+    "panel_action_output_drawer_show_action_output": "361489cb27a9",
+    "panel_action_output_drawer_start_stack_first": "c8a1eace8394",
+    "panel_action_output_drawer_started_at": "1a540103e88d",
+    "panel_action_output_log_earlier_lines_dropped": "fe34ad4940e7",
+    "panel_action_output_log_no_output": "e39c2cc6de1f",
+    "panel_action_output_log_open_file": "dbcec03a3e78",
+    "panel_action_output_log_open_link": "7b1cad5163b6",
+    "panel_action_output_log_outside_project": "dcbb343a1aca",
+    "panel_action_output_log_waiting_for_output": "3a352ffa11c5",
+    "panel_action_result_toast_failed": "ba48c8de738c",
+    "panel_action_result_toast_finished": "481f2a07c05e",
+    "panel_action_result_toast_view_output": "6e5cfc3e858d",
+    "panel_action_unavailable_session": "bccc9cc2e352",
+    "panel_action_unavailable_stopped": "680f2bed26b4"
+  }
+}

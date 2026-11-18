@@ -1,0 +1,57 @@
+{
+	"panel_activity_action_failed": "{label}: failed",
+	"panel_activity_action_finished": "{label}: finished",
+	"panel_activity_action_started": "{label}: started",
+	"panel_activity_drawer_activity": "Activity",
+	"panel_activity_drawer_filter_activity": "Filter activity",
+	"panel_activity_drawer_heavy_jobs": "Heavy jobs",
+	"panel_activity_empty_hint": "Service state changes, alerts and actions show up here.",
+	"panel_activity_events_over": "{count} events over {span}",
+	"panel_activity_filter_all": "All",
+	"panel_activity_heavy_busy": [
+		{
+			"declarations": [
+				"input slots",
+				"input running",
+				"local slotsPlural = slots: plural"
+			],
+			"selectors": [
+				"slotsPlural"
+			],
+			"match": {
+				"slotsPlural=one": "{running} of {slots} slot busy",
+				"slotsPlural=*": "{running} of {slots} slots busy"
+			}
+		}
+	],
+	"panel_activity_heavy_busy_waiting": [
+		{
+			"declarations": [
+				"input slots",
+				"input running",
+				"input queued",
+				"local slotsPlural = slots: plural"
+			],
+			"selectors": [
+				"slotsPlural"
+			],
+			"match": {
+				"slotsPlural=one": "{running} of {slots} slot busy · {queued} waiting",
+				"slotsPlural=*": "{running} of {slots} slots busy · {queued} waiting"
+			}
+		}
+	],
+	"panel_activity_heavy_jobs_summary": "Heavy jobs · {summary}",
+	"panel_activity_heavy_running": "{project} · running {age}",
+	"panel_activity_heavy_running_eta": "{project} · running {age} · ~{eta} left",
+	"panel_activity_heavy_waiting": "{project} · waiting {age}",
+	"panel_activity_heavy_waiting_eta": "{project} · waiting {age} · starts in ~{eta}",
+	"panel_activity_n_times": "{count} times",
+	"panel_activity_no_activity_yet": "No activity yet",
+	"panel_activity_nothing_matches": "Nothing matches",
+	"panel_activity_now_state": "now {state}",
+	"panel_activity_open_service_logs": "Open {service} logs at {time}",
+	"panel_activity_restarted": "{service} restarted",
+	"panel_activity_restarted_n": "{service} restarted {count}×",
+	"panel_activity_try_another_filter": "Try another filter."
+}

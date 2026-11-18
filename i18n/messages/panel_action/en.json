@@ -1,0 +1,58 @@
+{
+	"panel_action_output_drawer_action_gone": "This action is no longer in atlas.yaml",
+	"panel_action_output_drawer_action_output": "Action output",
+	"panel_action_output_drawer_action_runs": "Action runs",
+	"panel_action_output_drawer_already_running": "Already running",
+	"panel_action_output_drawer_copied_lines": [
+		{
+			"declarations": [
+				"input count",
+				"input shown",
+				"local countExact = count",
+				"local countPlural = count: plural"
+			],
+			"selectors": [
+				"countExact",
+				"countPlural"
+			],
+			"match": {
+				"countExact=0, countPlural=*": "No lines copied",
+				"countExact=*, countPlural=one": "Copied {shown} line",
+				"countExact=*, countPlural=*": "Copied {shown} lines"
+			}
+		}
+	],
+	"panel_action_output_drawer_finished": "finished",
+	"panel_action_output_drawer_no_action_output_yet": "No action output yet",
+	"panel_action_output_drawer_run_again": "Run again",
+	"panel_action_output_drawer_run_an_action_from_the": "Run an action from the Actions menu; its output shows up here.",
+	"panel_action_output_drawer_show_action_output": "Show action output",
+	"panel_action_output_drawer_start_stack_first": "Start the stack first",
+	"panel_action_output_drawer_started_at": "Started {time}",
+	"panel_action_output_log_earlier_lines_dropped": [
+		{
+			"declarations": [
+				"input count",
+				"input shown",
+				"local countPlural = count: plural"
+			],
+			"selectors": [
+				"countPlural"
+			],
+			"match": {
+				"countPlural=one": "{shown} earlier line was not kept (attached mid-run); full output is in .logs/.",
+				"countPlural=*": "{shown} earlier lines were not kept (attached mid-run); full output is in .logs/."
+			}
+		}
+	],
+	"panel_action_output_log_no_output": "No output.",
+	"panel_action_output_log_open_file": "Open file",
+	"panel_action_output_log_open_link": "Open link ({key} for the browser)",
+	"panel_action_output_log_outside_project": "{target} is outside the project",
+	"panel_action_output_log_waiting_for_output": "Waiting for output…",
+	"panel_action_result_toast_failed": "{label} failed",
+	"panel_action_result_toast_finished": "{label} finished",
+	"panel_action_result_toast_view_output": "View output",
+	"panel_action_unavailable_session": "Interactive session: run it from the terminal UI (atlas dev)",
+	"panel_action_unavailable_stopped": "Start the stack to run actions"
+}

@@ -3,26 +3,29 @@
 	import type { Crewmate } from "#lib/crew.ts";
 	import type { CrewmateSettings } from "#lib/crew/settings/settings.svelte.ts";
 	import SaveStatus from "#lib/crew/settings/SaveStatus.svelte";
+	import { m } from "#lib/i18n/m.ts";
 
 	let { crewmate, settings }: { crewmate: Crewmate; settings: CrewmateSettings } = $props();
 </script>
 
 {#if settings.memoryLoading}
-	<div class="loading">Loading…</div>
+	<div class="loading">{m.common_state_loading()}</div>
 {:else}
 	<section class="card memory-card">
 		<div class="card-head">
-			<span class="row-label">What {crewmate.name} remembers</span>
+			<span class="row-label"
+				>{m.crew_settings_memory_section_what_name_remembers({ name: crewmate.name })}</span
+			>
 			<SaveStatus field={settings.memoryField} />
 		</div>
 		<p class="row-hint">
-			Notes {crewmate.name} writes for itself and reads before every task. Edit or remove anything that is wrong.
+			{m.crew_settings_memory_section_notes_name_writes_for_itself({ name: crewmate.name })}
 		</p>
 		<textarea
 			class="field-textarea memory-textarea"
 			bind:value={settings.memory}
-			placeholder="Nothing yet. It learns as it works."
-			aria-label="Crewmate memory"
+			placeholder={m.crew_settings_memory_section_nothing_yet_it_learns_as()}
+			aria-label={m.crew_settings_memory_section_crewmate_memory()}
 			onblur={() => void settings.saveMemory()}
 			onkeydown={(e) => {
 				if ((e.metaKey || e.ctrlKey) && e.key === "Enter") {

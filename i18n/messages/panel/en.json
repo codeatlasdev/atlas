@@ -1,0 +1,125 @@
+{
+	"panel_atlas_did_not_recognise_a": "Atlas did not recognise a stack in this folder. Add the services you want in the Config tab and Atlas starts, watches and charts them. Nothing is written until you save.",
+	"panel_atlas_recognised_this_folder_but": "Atlas recognised this folder but could not tell what to run. Add the services you want in the Config tab and Atlas starts, watches and charts them. Nothing is written until you save.",
+	"panel_card_actions_logs_tip": "Logs ({key})",
+	"panel_card_actions_restart_tip": "Restart ({key})",
+	"panel_card_actions_stop": "Stop",
+	"panel_card_actions_terminal_in": "Terminal in {dir}",
+	"panel_card_actions_terminal_in_root": "Terminal in project root",
+	"panel_card_head_copy_url": "Copy {url}",
+	"panel_card_head_not_selected": "not selected",
+	"panel_card_head_open_url": "Open {url}",
+	"panel_card_head_paused_by": "paused by {paused_by}",
+	"panel_card_head_restarts_since_the_stack_started": "Restarts since the stack started",
+	"panel_card_spark_cpu": "CPU of the process tree, last {minutes} min",
+	"panel_card_spark_memory": "Memory of the process tree, last {minutes} min",
+	"panel_charts_errors_count": [
+		{
+			"declarations": [
+				"input count",
+				"local countExact = count",
+				"local countPlural = count: plural"
+			],
+			"selectors": [
+				"countExact",
+				"countPlural"
+			],
+			"match": {
+				"countExact=0, countPlural=*": "No errors",
+				"countExact=*, countPlural=one": "{count} error",
+				"countExact=*, countPlural=*": "{count} errors"
+			}
+		}
+	],
+	"panel_charts_metric": "Metric",
+	"panel_edit_atlas_yaml": "Edit atlas.yaml",
+	"panel_header_ports_of_the_services": "Ports of the services",
+	"panel_header_ports_offset": "ports +{offset}",
+	"panel_header_time_since_the_stack_came": "Time since the stack came up",
+	"panel_header_tunnel_state": "Tunnel {state}",
+	"panel_health_over_time": "Health over time",
+	"panel_kpis_cpu": "CPU",
+	"panel_kpis_errors": "Errors",
+	"panel_kpis_hint_all_services": "all services",
+	"panel_kpis_hint_last_5_min": "last 5 min",
+	"panel_kpis_hint_last_hour": "last hour",
+	"panel_kpis_hint_of_one_core": "of one core",
+	"panel_kpis_memory": "Memory",
+	"panel_kpis_restarts": "Restarts",
+	"panel_kpis_services": "Services",
+	"panel_memory_over_max": "Over max_memory",
+	"panel_memory_over_max_title": "Over max_memory: Atlas acts per on_memory_max",
+	"panel_memory_over_warn": "Over memory_warn",
+	"panel_memory_over_warn_title": "Over its memory_warn budget",
+	"panel_memory_rising": "Rising {rate}",
+	"panel_memory_rising_title": "Memory is rising {rate}",
+	"panel_memory_rising_title_size": "Memory is rising {rate} · {size} MB",
+	"panel_no_services_yet": "No services yet",
+	"panel_nothing_to_run_yet": "{stack}: nothing to run yet",
+	"panel_ops_actions": "Actions",
+	"panel_ops_activity_new": [
+		{
+			"declarations": [
+				"input count",
+				"local countPlural = count: plural"
+			],
+			"selectors": [
+				"countPlural"
+			],
+			"match": {
+				"countPlural=one": "Activity, {count} new",
+				"countPlural=*": "Activity, {count} new"
+			}
+		}
+	],
+	"panel_resources": "Resources",
+	"panel_service_card_name_state": "{name}, {state}",
+	"panel_service_card_view_logs": "View logs",
+	"panel_service_card_view_logs_of_name": "View logs of {name}",
+	"panel_service_card_waits_for": "Waits for {names}",
+	"panel_service_grid_restart": "Restart",
+	"panel_service_grid_restart_description": "The service stops and starts again. Connections in flight are dropped.",
+	"panel_service_grid_restart_title": "Restart {name}?",
+	"panel_service_grid_terminal": "Terminal",
+	"panel_set_up_services": "Set up services",
+	"panel_start_invite_start": "Start",
+	"panel_start_invite_start_the_stack": "Start the stack",
+	"panel_start_invite_starts": [
+		{
+			"declarations": [
+				"input count",
+				"local countExact = count",
+				"local countPlural = count: plural"
+			],
+			"selectors": [
+				"countExact",
+				"countPlural"
+			],
+			"match": {
+				"countExact=0, countPlural=*": "Starts no services:",
+				"countExact=*, countPlural=one": "Starts {count} service:",
+				"countExact=*, countPlural=*": "Starts {count} services:"
+			}
+		}
+	],
+	"panel_state_degraded": "degraded",
+	"panel_state_disabled": "disabled",
+	"panel_state_failed": "failed",
+	"panel_state_running": "running",
+	"panel_state_starting": "starting",
+	"panel_state_stopped": "stopped",
+	"panel_state_timeline_label": "Service state over the last {minutes} minutes",
+	"panel_state_timeline_open_logs": "{name}: open logs",
+	"panel_state_unhealthy": "unhealthy",
+	"panel_summary_all_healthy": "All healthy",
+	"panel_summary_failed": "{count} failed",
+	"panel_summary_no_services": "No services",
+	"panel_summary_starting": "{count} starting",
+	"panel_summary_stopped": "Stopped",
+	"panel_summary_up_of": "{up} of {total} up",
+	"panel_tab_config": "Config",
+	"panel_tab_logs": "Logs",
+	"panel_the_atlas_yaml_in_this": "The atlas.yaml in this folder declares no active service. Add one and Atlas starts, watches and charts it.",
+	"panel_uptime_starting": "Starting…",
+	"panel_uptime_up": "Up {time}"
+}

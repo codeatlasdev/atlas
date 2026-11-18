@@ -18,6 +18,7 @@
 	import { metrics } from "./metrics.svelte.ts";
 	import { emptyPanel, lastLines, serviceRows, stackKind } from "./overview.ts";
 	import { isGreen, needsAttention } from "./serviceState.ts";
+	import { m } from "#lib/i18n/m.ts";
 
 	let { project }: { project: ProjectView } = $props();
 
@@ -81,12 +82,12 @@
 	function showLogs(name: string) {
 		store.focusedService = name;
 		const w = space.worktree;
-		if (w) ws.reveal(w.id, (t) => t.kind === "logs", { kind: "logs", label: "Logs" });
+		if (w) ws.reveal(w.id, (t) => t.kind === "logs", { kind: "logs", label: m.panel_tab_logs() });
 	}
 
 	function openConfig() {
 		const w = space.worktree;
-		if (w) ws.reveal(w.id, (t) => t.kind === "config", { kind: "config", label: "Config" });
+		if (w) ws.reveal(w.id, (t) => t.kind === "config", { kind: "config", label: m.panel_tab_config() });
 	}
 
 	// Live rows (a running stack) keep the grid even before the config has loaded.
@@ -109,11 +110,11 @@
 		<div class="hero">
 			<EmptyState
 				icon={FileCog}
-				title="{stackKind(empty.detected)}: nothing to run yet"
-				description="Atlas recognised this folder but could not tell what to run. Add the services you want in the Config tab and Atlas starts, watches and charts them. Nothing is written until you save."
+				title={m.panel_nothing_to_run_yet({ stack: stackKind(empty.detected) })}
+				description={m.panel_atlas_recognised_this_folder_but()}
 			>
 				{#snippet actions()}
-					<Button variant="glass" onclick={openConfig}>Set up services</Button>
+					<Button variant="glass" onclick={openConfig}>{m.panel_set_up_services()}</Button>
 				{/snippet}
 			</EmptyState>
 		</div>
@@ -121,11 +122,11 @@
 		<div class="hero">
 			<EmptyState
 				icon={FileCog}
-				title="No services yet"
-				description="Atlas did not recognise a stack in this folder. Add the services you want in the Config tab and Atlas starts, watches and charts them. Nothing is written until you save."
+				title={m.panel_no_services_yet()}
+				description={m.panel_atlas_did_not_recognise_a()}
 			>
 				{#snippet actions()}
-					<Button variant="glass" onclick={openConfig}>Set up services</Button>
+					<Button variant="glass" onclick={openConfig}>{m.panel_set_up_services()}</Button>
 				{/snippet}
 			</EmptyState>
 		</div>
@@ -133,11 +134,11 @@
 		<div class="hero">
 			<EmptyState
 				icon={FileCog}
-				title="No services yet"
-				description="The atlas.yaml in this folder declares no active service. Add one and Atlas starts, watches and charts it."
+				title={m.panel_no_services_yet()}
+				description={m.panel_the_atlas_yaml_in_this()}
 			>
 				{#snippet actions()}
-					<Button variant="glass" onclick={openConfig}>Edit atlas.yaml</Button>
+					<Button variant="glass" onclick={openConfig}>{m.panel_edit_atlas_yaml()}</Button>
 				{/snippet}
 			</EmptyState>
 		</div>
@@ -172,7 +173,7 @@
 		{/if}
 
 		<section>
-			<h2>Services <span class="n">{services.length}</span></h2>
+			<h2>{m.panel_kpis_services()} <span class="n">{services.length}</span></h2>
 			<ServiceGrid
 				projectId={project.id}
 				{services}
@@ -186,11 +187,11 @@
 		{#if project.running && bands}
 			<div class="cols2">
 				<section>
-					<h2>Resources</h2>
+					<h2>{m.panel_resources()}</h2>
 					<div class="box"><Charts projectId={project.id} {names} /></div>
 				</section>
 				<section>
-					<h2>Health over time</h2>
+					<h2>{m.panel_health_over_time()}</h2>
 					<div class="box">
 						<StateTimeline lanes={timelineData.lanes} end={timelineData.end} onpick={showLogs} />
 					</div>

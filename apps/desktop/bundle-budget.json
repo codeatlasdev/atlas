@@ -1,6 +1,6 @@
 {
-	"jsGzip": 1100800,
-	"cssGzip": 79872,
+	"jsGzip": 1084416,
+	"cssGzip": 73728,
 	"slack": 8192,
 	"forbidden": [
 		"@codemirror/*",

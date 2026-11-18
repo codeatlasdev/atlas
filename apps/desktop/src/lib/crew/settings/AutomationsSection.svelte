@@ -49,7 +49,7 @@
 				class="row automation-row"
 				role="button"
 				tabindex="0"
-				aria-label="Edit automation"
+				aria-label={m.crew_settings_automations_section_edit_automation()}
 				onclick={() => openDialog(trig)}
 				onkeydown={(e) => e.key === "Enter" && openDialog(trig)}
 				in:optionIn={{ index: i }}
@@ -63,7 +63,9 @@
 							>{m.settings_automation_invalid({ reason: trig.invalid })}</span
 						>
 					{:else if trig.next_fire && trig.enabled}
-						<span class="row-hint">Next: {describeNext(trig.next_fire, now)}</span>
+						<span class="row-hint"
+							>{m.crew_settings_automations_section_next({ when: describeNext(trig.next_fire, now) })}</span
+						>
 					{/if}
 				</div>
 				<!-- A switch, not a checkbox: on/off is the one thing to do from the row. -->
@@ -73,7 +75,7 @@
 					type="checkbox"
 					role="switch"
 					checked={trig.enabled}
-					aria-label="Automation on"
+					aria-label={m.crew_settings_automations_section_automation_on()}
 					onclick={(e) => e.stopPropagation()}
 					onchange={(e) =>
 						void settings.toggleTrigger(triggers, trig.id, (e.currentTarget as HTMLInputElement).checked)}
@@ -83,14 +85,16 @@
 	</section>
 {:else}
 	<section class="card empty-card">
-		<span class="row-label">No automations yet</span>
+		<span class="row-label">{m.crew_settings_automations_section_no_automations_yet()}</span>
 		<p class="row-hint">
-			Add one below, or just ask {crewmate.name} in the chat: “every weekday at 9, review the open PRs”.
+			{m.crew_settings_automations_section_add_one_below_or_just({ name: crewmate.name })}
 		</p>
 	</section>
 {/if}
 <div class="pane-actions">
-	<Button size="sm" variant="outlined" onclick={() => openDialog(null)}>Add automation</Button>
+	<Button size="sm" variant="outlined" onclick={() => openDialog(null)}
+		>{m.crew_settings_automations_section_add_automation()}</Button
+	>
 </div>
 
 <AutomationDialog

@@ -6,7 +6,7 @@ import { readBaseline } from "./baseline.ts";
 import { fix } from "./fix.ts";
 import { loadCtx } from "./types.ts";
 import { EN, META, PT, addKey, check, cleanup, editJson, errors, finding, makeRepo, put, read, rulesOf } from "./testkit.ts";
-import { allowsIn, loadRules, markdownProse } from "./writing.ts";
+import { allowsIn, lintMarkdown, loadRules, markdownProse } from "./writing.ts";
 
 afterAll(cleanup);
 
@@ -302,3 +302,35 @@ describe("the shipped rules on real text", () => {
 	});
 });
 
+
+// Incident: the rule's `\s+` crossed line breaks, so every Markdown list bullet after a prose line ("text\n- item")
+// was reported as a spaced hyphen used as an em dash (200 false warnings on docs/*.md). The dash has to sit between
+// two clauses on ONE line.
+describe("ascii-dash-as-em-dash on Markdown", () => {
+	const rules = loadRules(join(import.meta.dir, "..", "..")).rules;
+	const dashes = (md: string, lang = "en") => lintMarkdown(rules, md, lang).hits.filter((h) => h.rule.id === "ascii-dash-as-em-dash").map((h) => h.line);
+
+	test("list bullets, nested bullets and numbered items are not dashes", () => {
+		const md = ["Requirements.", "- one thing", "- another thing", "  - nested thing", "    - deeper thing", "", "Next paragraph (see below)", "- after a paren", "1. first", "- mixed"].join("\n");
+		expect(dashes(md)).toEqual([]);
+	});
+
+	test("table separator rows and cells are not dashes", () => {
+		const md = ["| Command | What |", "|---|---|", "| a | b |", "", "| Command | What |", "| --- | :---: |", "| `x` | y |", "| a | - |"].join("\n");
+		expect(dashes(md)).toEqual([]);
+	});
+
+	test("CLI options and ranges are not dashes", () => {
+		expect(dashes("Run `atlas` with --json or pass --port 3 to it.\nWait 2-5 minutes, or use the build --release flag.\nSee pages 10-20.")).toEqual([]);
+	});
+
+	test("a spaced hyphen or double hyphen between two clauses is still flagged, at its line", () => {
+		const md = ["Intro line.", "- a bullet", "", "Atlas starts fast - then it waits.", "", "It works -- mostly.", "- last bullet"].join("\n");
+		expect(dashes(md)).toEqual([4, 6]);
+		expect(dashes("Atlas starts fast - then waits.", "pt-BR")).toEqual([1]);
+	});
+
+	test("a clause ending a line and a bullet starting the next is not one dash", () => {
+		expect(dashes("It ends here\n- and a bullet follows")).toEqual([]);
+	});
+});

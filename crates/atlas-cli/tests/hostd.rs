@@ -1058,6 +1058,7 @@ fn hostd_cmd(dir: &Path, args: &[&str]) -> std::process::Output {
         .arg("--dir")
         .arg(dir)
         .env_remove("ATLAS_UPDATE_PROGRESS")
+        .env("ATLAS_LANG", "en")
         .stdin(Stdio::null())
         .output()
         .unwrap()
@@ -1787,6 +1788,7 @@ async fn hostd_mobile_pair_prints_the_daemons_live_invite() {
     let down = tokio::process::Command::new(BIN)
         .args(["hostd", "--mobile-pair", "--dir"])
         .arg(dir)
+        .env("ATLAS_LANG", "en")
         .output()
         .await
         .unwrap();

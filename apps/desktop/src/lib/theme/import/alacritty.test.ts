@@ -1,5 +1,6 @@
 // @ts-nocheck bun test runtime types are not part of the app tsconfig
 import { describe, expect, test } from "bun:test";
+import { m } from "#lib/i18n/m.ts";
 import { parseAlacritty } from "./alacritty.ts";
 import { ThemeImportError } from "./errors.ts";
 
@@ -75,7 +76,9 @@ describe("parseAlacritty", () => {
 	test("invalid colors warn instead of throwing", () => {
 		const r = parseAlacritty(`[colors.primary]\nbackground = "#101820"\nforeground = "nope"\n`, "x.toml");
 		expect(r.style["terminal.foreground"]).toBeUndefined();
-		expect(r.warnings).toEqual(["invalid color for colors.primary.foreground: nope"]);
+		expect(r.warnings).toEqual([
+			m.settings_theme_diag_invalid_color({ key: "colors.primary.foreground", value: "nope" }),
+		]);
 	});
 
 	test("garbage throws ThemeImportError", () => {

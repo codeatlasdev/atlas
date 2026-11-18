@@ -10,6 +10,7 @@ use std::path::{Component, Path, PathBuf};
 use std::process::{Command, Stdio};
 use std::time::{Duration, Instant};
 
+use atlas_i18n::t;
 use serde::Serialize;
 use std::collections::HashSet;
 use std::sync::LazyLock;
@@ -62,7 +63,13 @@ fn run_tool(mut cmd: Command, what: &str) -> Result<Vec<u8>, String> {
         .stdout(Stdio::piped())
         .stderr(Stdio::null())
         .spawn()
-        .map_err(|e| format!("could not run {what}: {e}"))?;
+        .map_err(|e| {
+            t!(
+                "native_theme_pack_run_failed",
+                what = what,
+                error = e.to_string()
+            )
+        })?;
     // Drain stdout on a thread so a chatty tool can't block on a full pipe while we poll.
     let mut out = child.stdout.take().expect("stdout is piped");
     let reader = std::thread::spawn(move || {
@@ -77,9 +84,10 @@ fn run_tool(mut cmd: Command, what: &str) -> Result<Vec<u8>, String> {
             None if start.elapsed() > TOOL_TIMEOUT => {
                 let _ = child.kill();
                 let _ = child.wait();
-                return Err(format!(
-                    "{what} took longer than {}s: the archive is too big or damaged",
-                    TOOL_TIMEOUT.as_secs()
+                return Err(t!(
+                    "native_theme_pack_tool_timeout",
+                    what = what,
+                    seconds = TOOL_TIMEOUT.as_secs()
                 ));
             }
             None => std::thread::sleep(Duration::from_millis(20)),
@@ -89,9 +97,7 @@ fn run_tool(mut cmd: Command, what: &str) -> Result<Vec<u8>, String> {
     if status.success() {
         Ok(buf)
     } else {
-        Err(format!(
-            "{what} failed: this does not look like a valid zip archive"
-        ))
+        Err(t!("native_theme_pack_tool_failed", what = what))
     }
 }
 
@@ -146,14 +152,10 @@ fn vet_archive(zip: &Path) -> Result<(), String> {
     for name in list.lines().filter(|l| !l.is_empty()) {
         count += 1;
         if count > MAX_ENTRIES {
-            return Err(format!(
-                "This archive has more than {MAX_ENTRIES} entries: refusing to import it"
-            ));
+            return Err(t!("native_theme_pack_too_many_entries", max = MAX_ENTRIES));
         }
         if unsafe_entry(name) {
-            return Err(format!(
-                "This archive has an entry outside its folder ({name}): refusing to import it"
-            ));
+            return Err(t!("native_theme_pack_entry_outside", name = name));
         }
     }
     if cfg!(windows) {
@@ -175,7 +177,7 @@ fn vet_archive(zip: &Path) -> Result<(), String> {
         .nth(1)
         .and_then(|b| b.parse::<u64>().ok());
     if bytes.is_some_and(|b| b > MAX_BYTES) {
-        return Err("This archive expands to more than 200 MB: refusing to import it".into());
+        return Err(t!("native_theme_pack_too_large"));
     }
     Ok(())
 }
@@ -209,10 +211,7 @@ fn walk(root: &Path, drop_symlinks: bool) -> Result<Vec<PackedFile>, String> {
             } else if ty.is_file() {
                 total += meta.len();
                 if files.len() >= MAX_FILES || total > MAX_BYTES {
-                    return Err(
-                        "This package is too big (over 5000 files or 200 MB): refusing to import it"
-                            .into(),
-                    );
+                    return Err(t!("native_theme_pack_package_too_big"));
                 }
                 let rel = path
                     .strip_prefix(root)
@@ -242,7 +241,13 @@ fn is_zip_like(path: &Path) -> bool {
 
 fn unpack_blocking(path: &str) -> Result<UnpackedPackage, String> {
     let src = PathBuf::from(path);
-    let meta = fs::metadata(&src).map_err(|e| format!("could not open {path}: {e}"))?;
+    let meta = fs::metadata(&src).map_err(|e| {
+        t!(
+            "native_theme_pack_open_failed",
+            path = path,
+            error = e.to_string()
+        )
+    })?;
     if meta.is_dir() {
         let root = fs::canonicalize(&src).map_err(|e| e.to_string())?;
         // Folder import: read-only listing, symlinks are skipped, nothing is deleted.
@@ -255,13 +260,13 @@ fn unpack_blocking(path: &str) -> Result<UnpackedPackage, String> {
         });
     }
     if !is_zip_like(&src) {
-        return Err("Pick a .zip or .vsix archive, or a folder".into());
+        return Err(t!("native_theme_pack_wrong_type"));
     }
     vet_archive(&src)?;
     let tmp = tempfile::Builder::new()
         .prefix(TEMP_PREFIX)
         .tempdir()
-        .map_err(|e| format!("could not create a temp folder: {e}"))?;
+        .map_err(|e| t!("native_theme_pack_temp_failed", error = e.to_string()))?;
     // Until extraction is vetted the TempDir guard removes the dir on every error path.
     let dir = tmp.path().to_path_buf();
     #[cfg(windows)]
@@ -288,10 +293,7 @@ fn unpack_blocking(path: &str) -> Result<UnpackedPackage, String> {
     for f in &files {
         let real = fs::canonicalize(root.join(&f.rel)).map_err(|e| e.to_string())?;
         if !real.starts_with(&root) {
-            return Err(format!(
-                "This archive has an entry outside its folder ({}): refusing to import it",
-                f.rel
-            ));
+            return Err(t!("native_theme_pack_entry_outside", name = f.rel.as_str()));
         }
     }
     let kept = tmp.keep();
@@ -522,8 +524,14 @@ mod tests {
         cleanup(&p.dir).unwrap();
     }
 
+    /// The tests read the English messages; the process language would otherwise be the machine's.
+    fn english() {
+        atlas_i18n::set_lang("en");
+    }
+
     #[test]
     fn traversal_entry_is_rejected() {
+        english();
         if !have_zip() {
             return;
         }
@@ -540,6 +548,7 @@ mod tests {
 
     #[test]
     fn absolute_entry_is_rejected() {
+        english();
         if !have_zip() {
             return;
         }
@@ -580,6 +589,7 @@ mod tests {
 
     #[test]
     fn entry_count_cap() {
+        english();
         if !have_zip() {
             return;
         }

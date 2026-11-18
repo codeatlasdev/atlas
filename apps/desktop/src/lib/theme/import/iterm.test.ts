@@ -1,5 +1,6 @@
 // @ts-nocheck bun test runtime types are not part of the app tsconfig
 import { describe, expect, test } from "bun:test";
+import { m } from "#lib/i18n/m.ts";
 import { ThemeImportError } from "./errors.ts";
 import { parseItermColors } from "./iterm.ts";
 
@@ -47,7 +48,7 @@ describe("parseItermColors", () => {
 		expect(r.style["terminal.cursor_text"]).toBe("#0000ff");
 		expect(r.style["terminal.selection.background"]).toBe("#304050");
 		expect(r.style["terminal.selection.foreground"]).toBe("#ffffff");
-		expect(r.warnings).toEqual(["invalid color for Ansi 2 Color"]);
+		expect(r.warnings).toEqual([m.settings_theme_diag_invalid_color_key({ key: "Ansi 2 Color" })]);
 	});
 
 	test("light background and integer components", () => {

@@ -14,6 +14,8 @@
 		type Box,
 		type TourStep,
 	} from "./tour.ts";
+	import { aroundSlot } from "#lib/i18n/slot.ts";
+	import { m } from "#lib/i18n/m.ts";
 
 	const PAD = 6;
 	const CARD_W = 300;
@@ -121,9 +123,15 @@
 <svelte:window onkeydowncapture={onkeydown} />
 
 {#if step && box && pos}
-	<div class="tour" role="dialog" aria-modal="true" aria-label="Guided tour" data-testid="tour">
+	<div
+		class="tour"
+		role="dialog"
+		aria-modal="true"
+		aria-label={m.onboarding_help_settings_tour_label()}
+		data-testid="tour"
+	>
 		<!-- Clicks outside the spotlight are swallowed so the tour can't be left half-done by accident. -->
-		<button class="scrim" tabindex="-1" aria-label="Skip tour" onclick={skip}></button>
+		<button class="scrim" tabindex="-1" aria-label={m.onboarding_tour_skip_tour()} onclick={skip}></button>
 		<div
 			class="spot"
 			style:left="{box.x - PAD}px"
@@ -139,24 +147,27 @@
 			style:top="{pos.y}px"
 			style:width="{CARD_W}px"
 		>
-			<div class="step" data-testid="tour-step">{index + 1} of {steps.length}</div>
+			<div class="step" data-testid="tour-step">
+				{m.onboarding_tour_step_of({ step: index + 1, total: steps.length })}
+			</div>
 			<h3>{step.title}</h3>
 			<p>{step.body}</p>
 			{#if step.id === "palette"}
+				{@const hint = aroundSlot((key) => m.onboarding_tour_press_palette({ key }))}
 				<p class="hint">
-					Press <Kbd>{shortcutFor("atlas::Jump") ?? kbd("cmd-k")}</Kbd> any time.
+					{hint[0]}<Kbd>{shortcutFor("atlas::Jump") ?? kbd("cmd-k")}</Kbd>{hint[1]}
 				</p>
 			{/if}
 			<div class="foot">
 				<div class="dots" aria-hidden="true">
 					{#each steps as s, i (s.id)}<span class:on={i === index} class:seen={i < index}></span>{/each}
 				</div>
-				<button class="skip" data-testid="tour-skip" onclick={skip}>Skip</button>
+				<button class="skip" data-testid="tour-skip" onclick={skip}>{m.onboarding_tour_skip()}</button>
 				<Button variant="ghost" size="sm" data-testid="tour-back" disabled={index === 0} onclick={back}
-					>Back</Button
+					>{m.common_action_back()}</Button
 				>
 				<Button size="sm" data-testid="tour-next" onclick={next}
-					>{index + 1 === steps.length ? "Done" : "Next"}</Button
+					>{index + 1 === steps.length ? m.common_action_done() : m.onboarding_tour_next()}</Button
 				>
 			</div>
 		</div>

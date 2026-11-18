@@ -7,6 +7,7 @@ import {
 	parseData,
 	type Parsed,
 } from "#lib/viewers/rich/data.ts";
+import { m } from "#lib/i18n/m.ts";
 
 export interface Dep {
 	name: string;
@@ -31,8 +32,10 @@ export interface Manifest {
 	version: string;
 	description: string;
 	license: string;
-	/** Header facts: engines, packageManager, edition, requires-python… */
+	/** Header facts: engines, edition, requires-python… Their labels follow the display language: never look one up by it. */
 	facts: { label: string; value: string }[];
+	/** The `packageManager` field of a package.json (`pnpm@9.1.0`), the one fact code reads. */
+	packageManager?: string;
 	links: { label: string; url: string }[];
 	scripts: Script[];
 	groups: DepGroup[];
@@ -84,28 +87,38 @@ const fact = (label: string, v: unknown): { label: string; value: string }[] =>
 
 export function npmManifest(v: unknown): Manifest {
 	const r = asRecord(v);
-	const m = base("npm", "https://www.npmjs.com/package/");
+	const model = base("npm", "https://www.npmjs.com/package/");
 	const ws = Array.isArray(r.workspaces)
 		? asStringArray(r.workspaces)
 		: asStringArray(asRecord(r.workspaces).packages);
 	const engines = Object.entries(asRecord(r.engines)).map(([k, x]) => `${k} ${String(x)}`);
 	const repo = isRecord(r.repository) ? asString(r.repository.url) : asString(r.repository);
 	return {
-		...m,
+		...model,
 		name: asString(r.name) ?? "",
 		version: asString(r.version) ?? "",
 		description: asString(r.description) ?? "",
 		license: typeof r.license === "string" ? r.license : "",
+		packageManager: typeof r.packageManager === "string" ? r.packageManager : undefined,
 		facts: [
-			...fact("Engines", engines.join(", ")),
-			...fact("Package manager", r.packageManager),
-			...fact("Type", r.type),
-			...fact("Main", r.main ?? r.module),
-			...fact("Private", r.private ? "yes" : ""),
+			...fact(m.viewers_reference_manifest_engines(), engines.join(", ")),
+			...fact(m.viewers_reference_manifest_package_manager(), r.packageManager),
+			...fact(m.viewers_reference_manifest_type(), r.type),
+			...fact(m.viewers_reference_manifest_main(), r.main ?? r.module),
+			...fact(m.viewers_reference_manifest_private(), r.private ? m.viewers_reference_manifest_yes() : ""),
 		],
 		links: [
-			...(asString(r.homepage) ? [{ label: "Homepage", url: asString(r.homepage)! }] : []),
-			...(repo ? [{ label: "Repository", url: repo.replace(/^git\+/, "").replace(/\.git$/, "") }] : []),
+			...(asString(r.homepage)
+				? [{ label: m.viewers_reference_manifest_homepage(), url: asString(r.homepage)! }]
+				: []),
+			...(repo
+				? [
+						{
+							label: m.viewers_reference_manifest_repository(),
+							url: repo.replace(/^git\+/, "").replace(/\.git$/, ""),
+						},
+					]
+				: []),
 		],
 		scripts: Object.entries(asRecord(r.scripts)).map(([name, command]) => ({
 			name,
@@ -129,7 +142,10 @@ export function composerManifest(v: unknown): Manifest {
 		version: asString(r.version) ?? "",
 		description: asString(r.description) ?? "",
 		license: Array.isArray(r.license) ? asStringArray(r.license).join(", ") : (asString(r.license) ?? ""),
-		facts: [...fact("Type", r.type), ...fact("Minimum stability", r["minimum-stability"])],
+		facts: [
+			...fact(m.viewers_reference_manifest_type(), r.type),
+			...fact(m.viewers_reference_manifest_minimum_stability(), r["minimum-stability"]),
+		],
 		scripts: Object.entries(asRecord(r.scripts)).map(([name, c]) => ({
 			name,
 			command: Array.isArray(c) ? c.join(" && ") : String(c),
@@ -152,10 +168,14 @@ export function cargoManifest(v: unknown): Manifest {
 		version: typeof p.version === "string" ? p.version : isRecord(p.version) ? "workspace" : "",
 		description: typeof p.description === "string" ? p.description : "",
 		license: typeof p.license === "string" ? p.license : "",
-		facts: [...fact("Edition", p.edition), ...fact("Rust", p["rust-version"])],
+		facts: [...fact(m.viewers_reference_manifest_edition(), p.edition), ...fact("Rust", p["rust-version"])],
 		links: [
-			...(typeof p.repository === "string" ? [{ label: "Repository", url: p.repository }] : []),
-			...(typeof p.homepage === "string" ? [{ label: "Homepage", url: p.homepage }] : []),
+			...(typeof p.repository === "string"
+				? [{ label: m.viewers_reference_manifest_repository(), url: p.repository }]
+				: []),
+			...(typeof p.homepage === "string"
+				? [{ label: m.viewers_reference_manifest_homepage(), url: p.homepage }]
+				: []),
 		],
 		groups: [
 			...group("dependencies", r.dependencies),
@@ -174,12 +194,12 @@ export function cargoManifest(v: unknown): Manifest {
 
 /** PEP 508 requirement `name[extra]>=1.0; marker` → dependency row. */
 export function pepDep(s: string): Dep {
-	const m = /^\s*([A-Za-z0-9_.-]+)\s*(\[[^\]]*\])?\s*([^;]*)(;.*)?$/.exec(s);
-	if (!m) return { name: s, range: "", note: "" };
+	const req = /^\s*([A-Za-z0-9_.-]+)\s*(\[[^\]]*\])?\s*([^;]*)(;.*)?$/.exec(s);
+	if (!req) return { name: s, range: "", note: "" };
 	return {
-		name: m[1],
-		range: m[3].trim() || "*",
-		note: [m[2]?.slice(1, -1) && `extras: ${m[2].slice(1, -1)}`, m[4]?.slice(1).trim()]
+		name: req[1],
+		range: req[3].trim() || "*",
+		note: [req[2]?.slice(1, -1) && `extras: ${req[2].slice(1, -1)}`, req[4]?.slice(1).trim()]
 			.filter(Boolean)
 			.join(" · "),
 	};
@@ -217,7 +237,7 @@ export function pyprojectManifest(v: unknown): Manifest {
 		license: typeof lic === "string" ? lic : (asString(asRecord(lic).text) ?? asString(poetry.license) ?? ""),
 		facts: [
 			...fact("Python", proj["requires-python"] ?? asRecord(poetry.dependencies).python),
-			...fact("Build backend", asRecord(r["build-system"])["build-backend"]),
+			...fact(m.viewers_reference_manifest_build_backend(), asRecord(r["build-system"])["build-backend"]),
 		],
 		scripts: Object.entries({ ...asRecord(proj.scripts), ...asRecord(poetry.scripts) }).map(
 			([name, command]) => ({ name, command: String(command) }),
@@ -228,7 +248,7 @@ export function pyprojectManifest(v: unknown): Manifest {
 
 /** go.mod is not TOML/JSON: parse the directive blocks. */
 export function goMod(text: string): Manifest {
-	const m = base("go", "https://pkg.go.dev/");
+	const model = base("go", "https://pkg.go.dev/");
 	const groups: DepGroup[] = [
 		{ title: "require", deps: [] },
 		{ title: "indirect", deps: [] },
@@ -253,12 +273,12 @@ export function goMod(text: string): Manifest {
 		}
 		const d = /^(\w+)\s+(.*)$/.exec(l);
 		if (!d) continue;
-		if (d[1] === "module") m.name = d[2];
+		if (d[1] === "module") model.name = d[2];
 		else if (d[1] === "go") facts.push({ label: "Go", value: d[2] });
 		else if (d[1] === "toolchain") facts.push({ label: "Toolchain", value: d[2] });
 		else addGo(d[1], d[2], groups, facts);
 	}
-	return { ...m, facts, groups: groups.filter((g) => g.deps.length) };
+	return { ...model, facts, groups: groups.filter((g) => g.deps.length) };
 }
 
 function addGo(kind: string, l: string, groups: DepGroup[], facts: Manifest["facts"]) {
@@ -269,7 +289,7 @@ function addGo(kind: string, l: string, groups: DepGroup[], facts: Manifest["fac
 			range: p[1] ?? "",
 			note: "",
 		});
-	else if (kind === "replace") facts.push({ label: "Replace", value: l });
+	else if (kind === "replace") facts.push({ label: m.viewers_reference_manifest_replace(), value: l });
 	else if (kind === "exclude" || kind === "retract") facts.push({ label: kind, value: l });
 }
 

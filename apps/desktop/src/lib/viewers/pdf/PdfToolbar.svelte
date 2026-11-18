@@ -16,6 +16,7 @@
 	import Tip from "#lib/components/Tip.svelte";
 	import { parsePage, TOOLBAR_IDLE_MS } from "#lib/viewers/pdf.ts";
 	import type { PdfSearch } from "#lib/viewers/pdf/search.svelte.ts";
+	import { m } from "#lib/i18n/m.ts";
 
 	/** Floating glass pill: sidebar toggle, page box, zoom, find, open/reveal. Fades with idle. */
 	let {
@@ -94,7 +95,7 @@
 	onpointerenter={() => ((hover = true), (visible = true))}
 	onpointerleave={() => ((hover = false), show())}
 	role="toolbar"
-	aria-label="PDF controls"
+	aria-label={m.viewers_files_pdf_toolbar_pdf_controls()}
 	tabindex="-1"
 >
 	{#if search.open}
@@ -104,7 +105,7 @@
 				bind:this={findInput}
 				bind:value={search.query}
 				oninput={() => search.schedule()}
-				placeholder="Find in PDF"
+				placeholder={m.viewers_files_pdf_toolbar_find_in_pdf()}
 				spellcheck="false"
 				onkeydown={(e) => {
 					if (e.key === "Enter") (e.preventDefault(), search.next(e.shiftKey ? -1 : 1));
@@ -117,19 +118,28 @@
 						? `${search.cur + 1} / ${search.matches.length}`
 						: "0"}{/if}
 			</span>
-			<button aria-label="Previous match" disabled={!search.matches.length} onclick={() => search.next(-1)}
-				><ChevronUp size={14} /></button
+			<button
+				aria-label={m.viewers_files_pdf_toolbar_previous_match()}
+				disabled={!search.matches.length}
+				onclick={() => search.next(-1)}><ChevronUp size={14} /></button
 			>
-			<button aria-label="Next match" disabled={!search.matches.length} onclick={() => search.next(1)}
-				><ChevronDown size={14} /></button
+			<button
+				aria-label={m.viewers_files_pdf_toolbar_next_match()}
+				disabled={!search.matches.length}
+				onclick={() => search.next(1)}><ChevronDown size={14} /></button
 			>
-			<button aria-label="Close find" onclick={closeFind}><X size={14} /></button>
+			<button aria-label={m.viewers_files_pdf_toolbar_close_find()} onclick={closeFind}
+				><X size={14} /></button
+			>
 		</div>
 	{:else}
-		<Tip label="Pages & outline" side="top">
+		<Tip label={m.viewers_files_pdf_toolbar_pages_outline()} side="top">
 			{#snippet child(props)}
-				<button {...props} class:on={sidebar} aria-label="Toggle sidebar" onclick={() => (sidebar = !sidebar)}
-					><PanelLeft size={14} /></button
+				<button
+					{...props}
+					class:on={sidebar}
+					aria-label={m.viewers_files_pdf_toolbar_toggle_sidebar()}
+					onclick={() => (sidebar = !sidebar)}><PanelLeft size={14} /></button
 				>
 			{/snippet}
 		</Tip>
@@ -152,40 +162,58 @@
 			{:else}
 				<button
 					class="num"
-					title="Go to page"
+					title={m.viewers_files_pdf_toolbar_go_to_page()}
 					onclick={() => ((pageDraft = String(page + 1)), (editingPage = true))}>{page + 1}</button
 				>
 			{/if}
 			<span class="of">/ {total}</span>
 		</div>
 		<span class="sep"></span>
-		<Tip label="Zoom out" command="" side="top">
+		<Tip label={m.viewers_files_zoom_out()} command="" side="top">
 			{#snippet child(props)}
-				<button {...props} aria-label="Zoom out" onclick={() => zoomStep(-1)}><ZoomOut size={14} /></button>
+				<button {...props} aria-label={m.viewers_files_zoom_out()} onclick={() => zoomStep(-1)}
+					><ZoomOut size={14} /></button
+				>
 			{/snippet}
 		</Tip>
-		<button class="pct mono" title="Fit width" onclick={() => zoomTo("width")}>{pct}%</button>
-		<Tip label="Zoom in" side="top">
+		<button class="pct mono" title={m.viewers_files_pdf_toolbar_fit_width()} onclick={() => zoomTo("width")}
+			>{pct}%</button
+		>
+		<Tip label={m.viewers_files_zoom_in()} side="top">
 			{#snippet child(props)}
-				<button {...props} aria-label="Zoom in" onclick={() => zoomStep(1)}><ZoomIn size={14} /></button>
+				<button {...props} aria-label={m.viewers_files_zoom_in()} onclick={() => zoomStep(1)}
+					><ZoomIn size={14} /></button
+				>
 			{/snippet}
 		</Tip>
-		<Tip label={zoom === "page" ? "Fit width" : "Fit page"} side="top">
+		<Tip
+			label={zoom === "page"
+				? m.viewers_files_pdf_toolbar_fit_width()
+				: m.viewers_files_pdf_toolbar_fit_page()}
+			side="top"
+		>
 			{#snippet child(props)}
-				<button {...props} aria-label="Toggle fit" class:on={typeof zoom === "string"} onclick={toggleFit}
-					><Maximize2 size={14} /></button
+				<button
+					{...props}
+					aria-label={m.viewers_files_pdf_toolbar_toggle_fit()}
+					class:on={typeof zoom === "string"}
+					onclick={toggleFit}><Maximize2 size={14} /></button
 				>
 			{/snippet}
 		</Tip>
 		<span class="sep"></span>
-		<Tip label={`Find  ${kbd("cmd-f")}`} side="top">
+		<Tip label={m.viewers_files_pdf_toolbar_find_tip({ key: kbd("cmd-f") })} side="top">
 			{#snippet child(props)}
-				<button {...props} aria-label="Find" onclick={openFind}><Search size={14} /></button>
+				<button {...props} aria-label={m.viewers_files_pdf_toolbar_find()} onclick={openFind}
+					><Search size={14} /></button
+				>
 			{/snippet}
 		</Tip>
-		<Tip label="Open externally" side="top">
+		<Tip label={m.viewers_files_viewer_actions_open_externally()} side="top">
 			{#snippet child(props)}
-				<button {...props} aria-label="Open externally" onclick={onopen}><ExternalLink size={14} /></button>
+				<button {...props} aria-label={m.viewers_files_viewer_actions_open_externally()} onclick={onopen}
+					><ExternalLink size={14} /></button
+				>
 			{/snippet}
 		</Tip>
 		<Tip label={revealLabel()} side="top">

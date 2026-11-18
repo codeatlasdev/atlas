@@ -1,0 +1,25 @@
+{
+	"search_form_clear": "Accessible name of the button that empties the project search field.",
+	"search_form_files_to_include": "Accessible name of the include glob field of the project search.",
+	"search_form_files_to_include_or_skip": "Button that shows the include and skip glob fields of the project search.",
+	"search_form_files_to_skip": "Accessible name of the skip glob field of the project search.",
+	"search_form_find_in_project": "Placeholder of the project search field.",
+	"search_form_include_src_ts": "Placeholder of the include glob field: an example with two globs.",
+	"search_form_match_case": "Tooltip and accessible name of the case-sensitive toggle of the project search.",
+	"search_form_regular_expression": "Tooltip and accessible name of the regular expression toggle of the project search.",
+	"search_form_search_query": "Accessible name of the project search field.",
+	"search_form_searching": "Status line of the project search while it runs.",
+	"search_form_skip_dist_min_js": "Placeholder of the skip glob field: an example with two globs.",
+	"search_form_status": {
+		"description": "Status line of the project search when it finished. {matches} and {files} are the counts that pick the plural; {matchesLabel} and {filesLabel} are the same numbers formatted, with a plus sign when the search stopped at its limit (100+). Zero matches reads No results."
+	},
+	"search_form_took": "How long the search took and which program ran it. {ms} is milliseconds, {tool} is rg or git.",
+	"search_form_whole_word": "Tooltip and accessible name of the whole-word toggle of the project search.",
+	"search_parse_failed": "Error line of the project search when ripgrep exited with an error and printed nothing. {code} is its exit code.",
+	"search_results_nothing_matches_query": "Empty state of the project search when the query found nothing. {query} is what was typed.",
+	"search_results_search_every_file_in_this": "Empty state of the project search before a query is typed.",
+	"search_results_search_results": "Accessible name of the tree of project search results.",
+	"search_results_showing_the_first_results_narrow": "Footer of the project search results when the search stopped at its limit.",
+	"search_results_try_fewer_words_turn_off": "Advice under the nothing-matches state of the project search. Whole word is the toggle's name.",
+	"search_results_type_to_search_use_to": "Hint under the empty state of the project search. {up}, {down} and {enter} are the key names."
+}

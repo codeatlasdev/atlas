@@ -1,3 +1,5 @@
+import { formatNumber } from "#lib/i18n/fmt.ts";
+
 /** Which viewer a file opens in, decided by extension (pure, for tests). */
 export type ViewerKind = "image" | "svg" | "pdf" | "video" | "audio" | "markdown" | "text";
 
@@ -72,6 +74,7 @@ export const MAX_BYTES: Record<ViewerKind, number> = {
 	audio: 200 * 1024 * 1024,
 };
 
+/** `1.5 KB` (`1,5 KB` in pt-BR): the digits follow the display language, the unit symbols are the same everywhere. */
 export function formatBytes(n: number): string {
 	if (n < 1024) return `${n} B`;
 	const u = ["KB", "MB", "GB"];
@@ -81,7 +84,8 @@ export function formatBytes(n: number): string {
 		v /= 1024;
 		i++;
 	}
-	return `${v >= 100 ? v.toFixed(0) : v.toFixed(1)} ${u[i]}`;
+	const digits = v >= 100 ? 0 : 1;
+	return `${formatNumber(v, { minimumFractionDigits: digits, maximumFractionDigits: digits })} ${u[i]}`;
 }
 
 /** `00000000  48 65 6c 6c 6f …  |Hello|` lines for the first bytes of a binary file. */

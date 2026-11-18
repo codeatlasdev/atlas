@@ -1,5 +1,6 @@
 /** tsconfig: the `extends` chain resolved into effective compiler options, each with its doc line. */
 import { asRecord, asString, asStringArray, parseData } from "#lib/viewers/rich/data.ts";
+import { m } from "#lib/i18n/m.ts";
 
 export interface TsLayer {
 	/** Path relative to the worktree (or the package specifier when it lives in node_modules). */
@@ -19,38 +20,71 @@ export interface TsConfigModel {
 	error: string | null;
 }
 
-/** Short docs for the options people actually look up. */
-export const TS_DOCS: Record<string, string> = {
-	target: "ECMAScript version the output is emitted for",
-	module: "Module system of the emitted code",
-	moduleResolution: "How imports are resolved to files",
-	lib: "Built-in type declarations that are available",
-	jsx: "How JSX is emitted",
-	strict: "Enable all strict type-checking options",
-	noEmit: "Type-check only, write no files",
-	outDir: "Directory emitted files go to",
-	rootDir: "Root of the input files",
-	baseUrl: "Base directory for non-relative imports",
-	paths: "Import aliases mapped to locations",
-	esModuleInterop: "Interop between CommonJS and ES modules",
-	skipLibCheck: "Skip type-checking .d.ts files",
-	declaration: "Emit .d.ts files",
-	sourceMap: "Emit source maps",
-	resolveJsonModule: "Allow importing .json files",
-	isolatedModules: "Require every file to be transpilable on its own",
-	allowJs: "Allow JavaScript files in the program",
-	checkJs: "Report errors in JavaScript files",
-	incremental: "Reuse the previous build's info",
-	composite: "Enable project references",
-	types: "Only these @types packages are included",
-	noUncheckedIndexedAccess: "Index access adds `undefined` to the type",
-	verbatimModuleSyntax: "Keep imports/exports exactly as written",
-	allowImportingTsExtensions: "Allow importing .ts files with their extension",
-	forceConsistentCasingInFileNames: "Error on inconsistent file-name casing",
-	useDefineForClassFields: "Emit class fields with define semantics",
-	experimentalDecorators: "Enable legacy decorators",
-	noImplicitAny: "Error on expressions typed implicitly as any",
-};
+/** Short doc of a compiler option people actually look up, in the display language; empty for any other option. */
+export function tsDoc(option: string): string {
+	switch (option) {
+		case "target":
+			return m.viewers_reference_tsconfig_target();
+		case "module":
+			return m.viewers_reference_tsconfig_module();
+		case "moduleResolution":
+			return m.viewers_reference_tsconfig_module_resolution();
+		case "lib":
+			return m.viewers_reference_tsconfig_lib();
+		case "jsx":
+			return m.viewers_reference_tsconfig_jsx();
+		case "strict":
+			return m.viewers_reference_tsconfig_strict();
+		case "noEmit":
+			return m.viewers_reference_tsconfig_no_emit();
+		case "outDir":
+			return m.viewers_reference_tsconfig_out_dir();
+		case "rootDir":
+			return m.viewers_reference_tsconfig_root_dir();
+		case "baseUrl":
+			return m.viewers_reference_tsconfig_base_url();
+		case "paths":
+			return m.viewers_reference_tsconfig_paths();
+		case "esModuleInterop":
+			return m.viewers_reference_tsconfig_es_module_interop();
+		case "skipLibCheck":
+			return m.viewers_reference_tsconfig_skip_lib_check();
+		case "declaration":
+			return m.viewers_reference_tsconfig_declaration();
+		case "sourceMap":
+			return m.viewers_reference_tsconfig_source_map();
+		case "resolveJsonModule":
+			return m.viewers_reference_tsconfig_resolve_json_module();
+		case "isolatedModules":
+			return m.viewers_reference_tsconfig_isolated_modules();
+		case "allowJs":
+			return m.viewers_reference_tsconfig_allow_js();
+		case "checkJs":
+			return m.viewers_reference_tsconfig_check_js();
+		case "incremental":
+			return m.viewers_reference_tsconfig_incremental();
+		case "composite":
+			return m.viewers_reference_tsconfig_composite();
+		case "types":
+			return m.viewers_reference_tsconfig_types();
+		case "noUncheckedIndexedAccess":
+			return m.viewers_reference_tsconfig_no_unchecked_indexed_access();
+		case "verbatimModuleSyntax":
+			return m.viewers_reference_tsconfig_verbatim_module_syntax();
+		case "allowImportingTsExtensions":
+			return m.viewers_reference_tsconfig_allow_importing_ts_extensions();
+		case "forceConsistentCasingInFileNames":
+			return m.viewers_reference_tsconfig_force_consistent_casing();
+		case "useDefineForClassFields":
+			return m.viewers_reference_tsconfig_use_define_for_class_fields();
+		case "experimentalDecorators":
+			return m.viewers_reference_tsconfig_experimental_decorators();
+		case "noImplicitAny":
+			return m.viewers_reference_tsconfig_no_implicit_any();
+		default:
+			return "";
+	}
+}
 
 /**
  * Resolve the chain starting at `path`. `read` returns a file's text or null; `resolve` turns an `extends`

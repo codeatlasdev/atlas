@@ -156,13 +156,15 @@ fn hostd_exit_detail(old: u64, new: u64, crash: Option<&str>) -> String {
     d
 }
 
-/// The newest `crash-<unix_ms>-<pid>[-n].toml` in `dir` written by `pid` (atlas-core's naming).
+/// The newest `crash-<unix_ms>-<pid>[-n].toml` or `crash-native-<unix_ms>-<pid>[-n].toml` (a SIGSEGV, #318) in `dir`
+/// written by `pid` (atlas-core's naming).
 fn crash_report_of(dir: &Path, pid: u64) -> Option<String> {
     let mut found: Vec<(u128, u32, String)> = std::fs::read_dir(dir)
         .ok()?
         .filter_map(|e| {
             let name = e.ok()?.file_name().into_string().ok()?;
             let rest = name.strip_prefix("crash-")?.strip_suffix(".toml")?;
+            let rest = rest.strip_prefix("native-").unwrap_or(rest);
             let mut parts = rest.splitn(3, '-');
             let ms: u128 = parts.next()?.parse().ok()?;
             (parts.next()?.parse::<u64>().ok()? == pid).then_some(())?;
@@ -1833,6 +1835,24 @@ mod tests {
         );
         assert_eq!(crash_report_of(tmp.path(), 1), None);
         assert_eq!(crash_report_of(&tmp.path().join("missing"), 10), None);
+    }
+
+    /// #318: a hostd that died of SIGSEGV leaves `crash-native-<ms>-<pid>.toml`; the exit incident must name it like
+    /// a panic report (the newest of both wins).
+    #[test]
+    fn a_native_crash_report_of_the_old_daemon_is_found_too() {
+        let tmp = tempfile::tempdir().unwrap();
+        for f in [
+            "crash-100-10.toml",
+            "crash-native-200-10.toml",
+            "crash-native-300-11.toml",
+        ] {
+            std::fs::write(tmp.path().join(f), "").unwrap();
+        }
+        assert_eq!(
+            crash_report_of(tmp.path(), 10).as_deref(),
+            Some("crash-native-200-10.toml")
+        );
     }
 
     /// A real client against a real socket whose daemon is killed mid-session (it vanishes without a goodbye),

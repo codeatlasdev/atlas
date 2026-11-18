@@ -17,7 +17,7 @@
 	"cmd_hostd_check_fix": "Como corrigir:",
 	"cmd_hostd_check_fix_asks": "pergunta antes",
 	"cmd_hostd_check_fix_asks_ends": "pergunta antes; encerra os terminais acima",
-	"cmd_hostd_check_fix_live": "repassa os terminais sem reiniciar, nada se perde",
+	"cmd_hostd_check_fix_live": "repassa os terminais ao novo host sem perder nenhum",
 	"cmd_hostd_check_fix_restart": "reinicia agora (encerra os terminais em execução)",
 	"cmd_hostd_check_not_running": "O host de terminais não está rodando ({dir}).",
 	"cmd_hostd_check_older": [
@@ -50,9 +50,9 @@
 				"countPlural"
 			],
 			"match": {
-				"countExact=0, countPlural=*": "O host de terminais {version} (pid {pid}, ativo há {uptime}, nenhum terminal) é mais antigo que o Atlas {bundled}; desativados até ele reiniciar: {features}.",
-				"countExact=*, countPlural=one": "O host de terminais {version} (pid {pid}, ativo há {uptime}, {count} terminal) é mais antigo que o Atlas {bundled}; desativados até ele reiniciar: {features}.",
-				"countExact=*, countPlural=*": "O host de terminais {version} (pid {pid}, ativo há {uptime}, {count} terminais) é mais antigo que o Atlas {bundled}; desativados até ele reiniciar: {features}."
+				"countExact=0, countPlural=*": "O host de terminais {version} (pid {pid}, ativo há {uptime}, nenhum terminal) é mais antigo que o Atlas {bundled}; ficam desativados até o host reiniciar: {features}.",
+				"countExact=*, countPlural=one": "O host de terminais {version} (pid {pid}, ativo há {uptime}, {count} terminal) é mais antigo que o Atlas {bundled}; ficam desativados até o host reiniciar: {features}.",
+				"countExact=*, countPlural=*": "O host de terminais {version} (pid {pid}, ativo há {uptime}, {count} terminais) é mais antigo que o Atlas {bundled}; ficam desativados até o host reiniciar: {features}."
 			}
 		}
 	],
@@ -61,7 +61,7 @@
 	"cmd_hostd_crew_resumed": "crew retomado",
 	"cmd_hostd_ctx_handoff": "repasse dos terminais",
 	"cmd_hostd_current": "O host de terminais {version} está atualizado.",
-	"cmd_hostd_disconnected": "o hostd desconectou",
+	"cmd_hostd_disconnected": "a conexão com o hostd caiu",
 	"cmd_hostd_exported": [
 		{
 			"declarations": [
@@ -147,7 +147,7 @@
 	"cmd_hostd_stop_timeout": "o host de terminais antigo não parou",
 	"cmd_hostd_stopped": "hostd parado",
 	"cmd_hostd_terminal_untitled": "terminal",
-	"cmd_hostd_upgrade_failed": "Não foi possível atualizar o host de terminais sem encerrar os terminais: {error}",
+	"cmd_hostd_upgrade_failed": "Não foi possível repassar os terminais ao novo host: {error}",
 	"cmd_hostd_upgrade_lost_terminals": "o host de terminais atualizado perdeu terminais ({before} -> {after})",
 	"cmd_hostd_upgrade_no_start": "o host de terminais atualizado não iniciou",
 	"cmd_hostd_upgraded_kept": [

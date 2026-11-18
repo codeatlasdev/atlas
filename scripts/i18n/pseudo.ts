@@ -1,4 +1,4 @@
-// bun run i18n:pseudo [--print <area>] [--root <dir>]
+// bun run i18n:pseudo [--surface <name>] [--print <area>] [--root <dir>]
 // A pseudo-locale, en-XA: every English message accented, padded by 35% and wrapped in ⟦ ⟧, so a screen shows at a
 // glance what is not extracted (plain text), what truncates (the closing bracket is missing) and what is glued
 // together from pieces (brackets in the middle of a sentence). Variables, markup, code spans, URLs, selectors and
@@ -6,9 +6,14 @@
 //
 //   (no args)       writes <paraglide dir>/en-XA.json (apps/desktop/.i18n, site/.i18n) from the generated English
 //                   input. It is gitignored and not a locale of the project (it is not in settings.json), so nothing
-//                   reads it until a dev build lists en-XA.
+//                   reads it unless a DEBUG build lists en-XA: the desktop does (apps/desktop/scripts/paraglide.ts runs
+//                   this with `--surface desktop` as part of its generate step, for `vite dev`/Lab and the debug app, and
+//                   deletes the file in a release build). The site never lists it.
+//   --surface <s>   only that surface.
 //   --print <area>  prints the pseudo-localized messages of one area as JSON to stdout (references kept, as Rust
-//                   evaluates them). The Rust catalogs are embedded in the binary, so nothing is written for them.
+//                   evaluates them). The Rust catalogs have no file: a debug build of the binary derives en-XA from
+//                   the English catalog itself (crates/atlas-i18n/src/pseudo.rs; `ATLAS_LANG=en-XA`), held to the same
+//                   cases as this file (i18n/pseudo-cases.json).
 import { mkdirSync, writeFileSync } from "node:fs";
 import { dirname, join } from "node:path";
 import { outputsFor } from "./generate.ts";
@@ -64,12 +69,12 @@ export function pseudoCatalog(en: Record<string, ParaglideValue>): Record<string
 }
 
 /** Write en-XA.json next to the generated English input of every Paraglide surface; the paths written. */
-export function writePseudoCatalogs(root: string): string[] {
+export function writePseudoCatalogs(root: string, only?: string): string[] {
 	const ctx = loadCtx(root);
 	const source = loadSource(ctx);
 	const written: string[] = [];
 	for (const [name, def] of Object.entries(source.config.surfaces)) {
-		if (!def.paraglide) continue;
+		if (!def.paraglide || (only && name !== only)) continue;
 		const en = outputsFor(source, name).find((o) => o.path === `${def.paraglide}/${ctx.locales.default}.json`);
 		if (!en) continue;
 		const out = join(root, def.paraglide, `${PSEUDO_LOCALE}.json`);
@@ -98,8 +103,9 @@ if (import.meta.main) {
 		if (args.includes("--print") && !area) throw new Error("usage: bun run i18n:pseudo [--print <area>]");
 		if (area) process.stdout.write(printArea(root, area));
 		else {
-			for (const f of writePseudoCatalogs(root)) console.log(`wrote ${f.slice(root.length + 1)}`);
-			console.log("Rust catalogs are embedded: bun run i18n:pseudo -- --print <area> prints one area as JSON");
+			const only = opt("--surface");
+			for (const f of writePseudoCatalogs(root, only)) console.log(`wrote ${f.slice(root.length + 1)}`);
+			console.log("Rust: a debug build derives en-XA itself (ATLAS_LANG=en-XA); --print <area> prints one area as JSON");
 		}
 	} catch (e) {
 		console.error(`i18n:pseudo: ${(e as Error).message}`);

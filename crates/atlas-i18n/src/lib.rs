@@ -467,22 +467,49 @@ mod tests {
         assert_eq!(lookup("fr", "config_lang_unset", None), None);
     }
 
+    /// Every variable a message reads: its own `{name}`s and selectors, and those of the messages it references.
+    fn variables(map: &Map, msg: &Message, out: &mut Vec<String>, depth: usize) {
+        let patterns: Vec<&message::Pattern> = match msg {
+            Message::Text(p) => vec![p],
+            Message::Select {
+                selectors,
+                variants,
+            } => {
+                out.extend(selectors.iter().map(|s| s.var.clone()));
+                variants.iter().map(|(_, p)| p).collect()
+            }
+        };
+        for part in patterns.into_iter().flatten() {
+            match part {
+                Part::Var(name) => out.push(name.clone()),
+                Part::Ref(key) if depth < 8 => {
+                    if let Some(m) = map.get(key) {
+                        variables(map, m, out, depth + 1);
+                    }
+                }
+                _ => {}
+            }
+        }
+    }
+
     // A message the build embedded must format with the arguments its call site passes: every
-    // key of every language renders when given every variable it might use.
+    // key of every language renders when given every variable it reads (a plural selector gets a
+    // number, `source` the word the tests use for it, any other variable a number too).
     #[test]
     fn every_embedded_message_renders_in_every_language() {
-        let mut all = Args::new();
-        for v in [
-            "count", "lang", "langs", "source", "value", "tag", "version", "user", "target",
-        ] {
-            all.set(v, 2);
-        }
-        all.set("source", "env");
         for tag in locales() {
-            for key in catalog(tag).unwrap().keys() {
+            let map = catalog(tag).unwrap();
+            for (key, msg) in map {
+                let mut names = Vec::new();
+                variables(map, msg, &mut names, 0);
+                let mut all = Args::new();
+                for v in names {
+                    all.set(&v, 2);
+                }
+                all.set("source", "env");
                 assert!(
                     lookup(tag, key, Some(&all)).is_some(),
-                    "{key} ({tag}) does not render: a bad reference, or a variable the test does not know"
+                    "{key} ({tag}) does not render: a bad reference, or a variable the message reads that a selector cannot take"
                 );
             }
         }

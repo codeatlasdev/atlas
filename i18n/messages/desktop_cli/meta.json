@@ -1,0 +1,4 @@
+{
+	"desktop_cli_left_alone": "Line of `atlas update` when an installed Atlas Desktop is kept because the release has no build for this platform. {path} is the app file, {platform} a target triple.",
+	"desktop_cli_no_build": "Error of `atlas desktop` on a platform the release has no Atlas Desktop build for (arm64 Linux...). {arch} is a CPU name (aarch64), {system} a system name (Linux), {url} the releases page."
+}

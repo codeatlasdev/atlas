@@ -19,7 +19,7 @@ import {
 } from "#lib/paraglide/runtime.js";
 import { LOCALE_CHANGED, parseLocaleState, type LocaleSource, type LocaleState } from "./state.ts";
 
-export { LOCALE_NAMES } from "./state.ts";
+export { LOCALE_NAMES, localeName } from "./state.ts";
 
 const store = $state<{ locale: Locale; preference: Locale | null; source: LocaleSource }>({
 	locale: baseLocale,

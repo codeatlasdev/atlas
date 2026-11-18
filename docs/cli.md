@@ -460,9 +460,18 @@ Skills are agent instructions compiled into the `atlas` binary, so they always m
 
 ## `atlas version`
 
-Prints `atlas <version>`, OS and architecture.
+Prints `atlas <version>`, the **channel** the build was cut for (`alpha`, `beta`, `stable`), the **commit** it was built from (`unknown` outside git), the **build id** (the linker's identity of the executable: the ELF GNU build id on Linux, the Mach-O UUID on macOS, the PDB signature on Windows, `none` where the executable has none) and the OS and architecture. Put the whole block in a bug report: the build id is what finds the symbols published for that release ([Symbols](release.md#symbols)).
 
-If the CLI panics it writes a crash report (`crash-<unix_ms>-<pid>.toml`, newest 20 kept) to its data directory and prints the issue tracker URL. Reports stay on your machine; tokens in the command line and message are redacted and your home directory is written as `~`, but review one before attaching it to an issue.
+```
+atlas 1.5.0-alpha.25
+  channel: alpha
+  commit:  0123456789ab
+  build:   56d6b439423186b782f314e535b5c103d49f3d15
+  os:      linux
+  arch:    x86_64
+```
+
+If the CLI panics it writes a crash report (`crash-<unix_ms>-<pid>.toml`, newest 20 kept) to its data directory and prints the issue tracker URL. A fault in the process itself (a segmentation fault, bus error, illegal instruction, arithmetic exception or abort; an access violation on Windows) leaves `crash-native-<unix_ms>-<pid>.toml` there too, in the same directory and with the same retention: the signal, the faulting address, the build (version, channel, commit, build id) and the raw stack addresses, and nothing else (no command line, environment or paths, since the handler cannot redact). Both kinds carry the build id and `load_bias`/`frames`, which `scripts/symbols.sh resolve` turns into functions and lines. Reports stay on your machine; tokens in the command line and message are redacted and your home directory is written as `~`, but review one before attaching it to an issue.
 
 ## `atlas uninstall`
 

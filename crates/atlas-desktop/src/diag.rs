@@ -82,6 +82,8 @@ pub fn log_in(base: &Path, line: &str) {
 /// `crashes.atlas` reads). Release Windows builds have no console (`windows_subsystem = "windows"`), so stderr is lost there:
 /// these files are the only record. Chains to the previous hook, so debug-build behavior stays.
 pub fn install_panic_hook() {
+    // Every build, debug included (like the hook below): a native crash of the app leaves a record too (#318).
+    atlas_core::crash_native::install();
     let prev = std::panic::take_hook();
     std::panic::set_hook(Box::new(move |info| {
         let msg = info

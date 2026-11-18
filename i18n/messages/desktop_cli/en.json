@@ -1,0 +1,4 @@
+{
+	"desktop_cli_left_alone": "Atlas Desktop at {path} is left as it is: the release has no Atlas Desktop for {platform}.",
+	"desktop_cli_no_build": "Atlas Desktop is not published for {arch} {system} yet: the release has the CLI only (`atlas`, `atlas crew`). Releases: {url}. To use a build of your own, install it with `atlas desktop --from <file>`."
+}

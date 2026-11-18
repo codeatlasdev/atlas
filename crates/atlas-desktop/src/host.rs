@@ -912,8 +912,14 @@ fn state_for(info: &Value, ptys: Vec<HostPty>, decision: Decision, choice: Choic
         app_version: APP_VERSION.to_string(),
         skew: drift,
         ptys,
-        reason: older.as_ref().map(|c| c.message.clone()).unwrap_or_default(),
-        reason_code: older.as_ref().map(|c| c.code.to_string()).unwrap_or_default(),
+        reason: older
+            .as_ref()
+            .map(|c| c.message.clone())
+            .unwrap_or_default(),
+        reason_code: older
+            .as_ref()
+            .map(|c| c.code.to_string())
+            .unwrap_or_default(),
         reason_args: older.map_or_else(|| json!({}), |c| Value::Object(c.args)),
         deferred: choice == Choice::Later && decision == Decision::Deferred,
         idle_armed: decision == Decision::WaitIdle,
@@ -1807,7 +1813,10 @@ mod tests {
         // Local not connected at all.
         let e = merge_pty_lists(vec![]).unwrap_err();
         assert!(e.to_string().contains("not reachable"), "{e}");
-        assert!(matches!(&e, HostFail::Coded(c) if c.code == UNREACHABLE), "{e:?}");
+        assert!(
+            matches!(&e, HostFail::Coded(c) if c.code == UNREACHABLE),
+            "{e:?}"
+        );
         // Local connected but the call failed.
         let failed: Option<Result<Value, HostFail>> =
             Some(Err(HostFail::Text("hostd disconnected".into())));
@@ -1844,7 +1853,12 @@ mod tests {
         let coded = serde_json::to_value(unreachable(Some("socket in use"))).unwrap();
         assert_eq!(coded["code"], UNREACHABLE);
         assert_eq!(coded["args"], json!({"why": "socket in use"}));
-        assert!(coded["message"].as_str().unwrap().contains("(socket in use)"));
+        assert!(
+            coded["message"]
+                .as_str()
+                .unwrap()
+                .contains("(socket in use)")
+        );
         // `?` into a command that returns `String` keeps the English every caller printed.
         let s: String = unreachable(None).into();
         assert!(s.starts_with("Terminal host not reachable."), "{s}");
@@ -1882,14 +1896,28 @@ mod tests {
         let mut keys: Vec<&str> = v.as_object().unwrap().keys().map(String::as_str).collect();
         keys.sort_unstable();
         let before = [
-            "appVersion", "caps", "deferred", "idleArmed", "missing", "proto", "ptys", "reason", "skew", "status",
+            "appVersion",
+            "caps",
+            "deferred",
+            "idleArmed",
+            "missing",
+            "proto",
+            "ptys",
+            "reason",
+            "skew",
+            "status",
             "version",
         ];
         let mut expected: Vec<&str> = before.to_vec();
         expected.extend(["reasonArgs", "reasonCode"]);
         expected.sort_unstable();
         assert_eq!(keys, expected);
-        assert!(v["reason"].as_str().unwrap().starts_with("Terminal host 0.6.2 is older"));
+        assert!(
+            v["reason"]
+                .as_str()
+                .unwrap()
+                .starts_with("Terminal host 0.6.2 is older")
+        );
         let t = events_dropped_toast();
         assert!(t["kind"].is_string() && t["text"].is_string());
     }
@@ -1945,7 +1973,12 @@ mod tests {
             .iter()
             .filter_map(|s| (!s.reason_code.is_empty()).then_some(s.reason_code.as_str()))
             .chain(toasts.iter().filter_map(|t| t["code"].as_str()))
-            .chain(errors.iter().chain(rejections.iter()).filter_map(|e| e["code"].as_str()))
+            .chain(
+                errors
+                    .iter()
+                    .chain(rejections.iter())
+                    .filter_map(|e| e["code"].as_str()),
+            )
             .collect();
         for c in CODES {
             assert!(seen.contains(c), "no sample for the code {c}");
@@ -1974,7 +2007,10 @@ mod tests {
             &std::fs::read_to_string(&path).expect("fixture missing: UPDATE_FIXTURES=1"),
         )
         .unwrap();
-        assert_eq!(committed, value, "stale fixture: re-run with UPDATE_FIXTURES=1");
+        assert_eq!(
+            committed, value,
+            "stale fixture: re-run with UPDATE_FIXTURES=1"
+        );
     }
 
     /// Incident class: after `serve_client` returned, `start` went straight back to `ensure_local` with no pause and

@@ -366,7 +366,13 @@ async fn a_missing_custom_command_says_so_and_names_the_command() {
     let reason = rep.reason.unwrap();
     assert_eq!(reason.code, "custom_not_found");
     assert!(reason.message.contains("definitely-not-a-real-server-xyz"));
-    assert!(reason.hint.as_deref().unwrap().contains("language settings"));
+    assert!(
+        reason
+            .hint
+            .as_deref()
+            .unwrap()
+            .contains("language settings")
+    );
     assert_eq!(
         reason.arg("program").and_then(|v| v.as_str()),
         Some("definitely-not-a-real-server-xyz")

@@ -291,7 +291,9 @@ pub(crate) fn no_go(server: &str) -> Failure {
         format!("{server} is not installed and `go` was not found to compile it"),
     )
     .with_args(serde_json::json!({"server": server}))
-    .hint(format!("Install Go, then open the file again. Atlas compiles {server} with it."))
+    .hint(format!(
+        "Install Go, then open the file again. Atlas compiles {server} with it."
+    ))
     .command("brew install go")
 }
 

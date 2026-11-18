@@ -1294,9 +1294,18 @@ mod reason_contract_tests {
         let e = |m: &str| anyhow!("{m}");
         let reasons = vec![
             install::no_go("gopls"),
-            Failure::from_install("rust-analyzer", &e("curl not found - install it and try again")),
-            Failure::from_install("rust-analyzer", &e("no rust-analyzer build for freebsd/x86_64")),
-            Failure::from_install("rust-analyzer", &e("curl: (6) Could not resolve host: github.com")),
+            Failure::from_install(
+                "rust-analyzer",
+                &e("curl not found - install it and try again"),
+            ),
+            Failure::from_install(
+                "rust-analyzer",
+                &e("no rust-analyzer build for freebsd/x86_64"),
+            ),
+            Failure::from_install(
+                "rust-analyzer",
+                &e("curl: (6) Could not resolve host: github.com"),
+            ),
             Failure::from_install("rust-analyzer", &e("sha256 mismatch for the download")),
             custom_launch("atlas-no-such-language-server", &[]).unwrap_err(),
             start_failure(
@@ -1311,7 +1320,11 @@ mod reason_contract_tests {
             assert!(codes.contains(c), "no fixture entry for the code {c}");
         }
         for f in &reasons {
-            assert!(install::CODES.contains(&f.code), "{} is not in install::CODES", f.code);
+            assert!(
+                install::CODES.contains(&f.code),
+                "{} is not in install::CODES",
+                f.code
+            );
             // Every code a client renders its own sentence for carries the values it needs.
             assert!(f.args.is_some(), "{}: no args", f.code);
             assert!(f.arg("server").is_some() || f.code == "custom_not_found");
@@ -1333,7 +1346,10 @@ mod reason_contract_tests {
             &std::fs::read_to_string(&path).expect("fixture missing: UPDATE_FIXTURES=1"),
         )
         .unwrap();
-        assert_eq!(committed, value, "stale fixture: re-run with UPDATE_FIXTURES=1");
+        assert_eq!(
+            committed, value,
+            "stale fixture: re-run with UPDATE_FIXTURES=1"
+        );
     }
 
     /// A client from before `args` reads `code`, `message`, `hint` and `command` and ignores any other key: the new

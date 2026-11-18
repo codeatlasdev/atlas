@@ -29,13 +29,7 @@ use crate::paths;
 /// | `hostd.start_failed` | none | `hostd did not start` |
 /// | `hostd.refused` | `why`: the token hostd answered (`unauthorized`, `hostd busy`...) | `hostd: <why>` |
 /// | `hostd.cli_not_found` | `command`: the installer line for this OS | [`NOT_FOUND`] |
-pub const CODES: &[&str] = &[
-    CLOSED,
-    DISCONNECTED,
-    START_FAILED,
-    REFUSED,
-    CLI_NOT_FOUND,
-];
+pub const CODES: &[&str] = &[CLOSED, DISCONNECTED, START_FAILED, REFUSED, CLI_NOT_FOUND];
 pub const CLOSED: &str = "hostd.closed";
 pub const DISCONNECTED: &str = "hostd.disconnected";
 pub const START_FAILED: &str = "hostd.start_failed";
@@ -382,10 +376,7 @@ impl HostClient {
         let hello = crate::protocol::hello_line(token, client);
         let first = tokio::time::timeout(handshake, async {
             w.write_all(format!("{hello}\n").as_bytes()).await?;
-            lines
-                .next_line()
-                .await?
-                .ok_or_else(closed)
+            lines.next_line().await?.ok_or_else(closed)
         })
         .await
         .map_err(|_| {
@@ -610,7 +601,11 @@ pub const NOT_FOUND: &str = if cfg!(windows) {
 };
 
 fn cli_not_found() -> anyhow::Error {
-    coded(CLI_NOT_FOUND, json!({"command": INSTALL_COMMAND}), NOT_FOUND)
+    coded(
+        CLI_NOT_FOUND,
+        json!({"command": INSTALL_COMMAND}),
+        NOT_FOUND,
+    )
 }
 
 /// Connect to the local hostd, starting it (detached, own session) if needed.
@@ -1456,7 +1451,10 @@ mod coded_error_tests {
             &std::fs::read_to_string(&path).expect("fixture missing: UPDATE_FIXTURES=1"),
         )
         .unwrap();
-        assert_eq!(committed, value, "stale fixture: re-run with UPDATE_FIXTURES=1");
+        assert_eq!(
+            committed, value,
+            "stale fixture: re-run with UPDATE_FIXTURES=1"
+        );
     }
 
     /// A code with a context around it (`see <log>`, added by `ensure_in`) is still found, and the text stays the
@@ -1477,6 +1475,10 @@ mod coded_error_tests {
         assert_eq!(disconnected().to_string(), "hostd disconnected");
         assert_eq!(start_failed().to_string(), "hostd did not start");
         assert_eq!(refused("unauthorized").to_string(), "hostd: unauthorized");
-        assert!(cli_not_found().to_string().starts_with("atlas CLI not found. Install it"));
+        assert!(
+            cli_not_found()
+                .to_string()
+                .starts_with("atlas CLI not found. Install it")
+        );
     }
 }

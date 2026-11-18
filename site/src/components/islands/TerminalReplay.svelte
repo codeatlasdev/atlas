@@ -1,7 +1,10 @@
 <script lang="ts">
 	import { onMount } from "svelte";
+	import "../../lib/locale-client";
+	import { m } from "../../lib/paraglide/messages.js";
 
 	type Line = { t: string; cls?: string; delay?: number };
+	// The recorded output of `atlas dev` (the terminal's own text, as the product prints it): not translated.
 	const script: Line[] = [
 		{ t: "$ atlas dev", cls: "cmd", delay: 500 },
 		{ t: "orbit-shop  5 services + infra", cls: "dim", delay: 300 },
@@ -67,9 +70,9 @@
 	});
 </script>
 
-<div class="term" bind:this={root} role="img" aria-label="Replay of atlas dev: infra starts, migrations run, the api becomes healthy, web and worker start, and a crashing worker restarts with backoff.">
+<div class="term" bind:this={root} role="img" aria-label={m.islands_terminal_replay_label()}>
 	<div class="chrome">
-		<i></i><i></i><i></i><span>orbit-shop: atlas dev</span>
+		<i></i><i></i><i></i><!-- i18n-ignore: project name and command, shown as typed in a terminal title --><span>orbit-shop: atlas dev</span>
 	</div>
 	<pre aria-hidden="true">{#each shown as l}<span class={l.cls}>{l.t}
 </span>{/each}<span class="caret">▍</span></pre>

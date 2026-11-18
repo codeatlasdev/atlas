@@ -8,6 +8,7 @@
 	import CrewmateFace from "#lib/crew/CrewmateFace.svelte";
 	import type { CrewmateState as FaceState } from "#lib/crew/crewmateFace.ts";
 	import { fmtElapsed } from "./taskView.ts";
+	import { m } from "#lib/i18n/m.ts";
 
 	interface Props {
 		crewmate: Crewmate;
@@ -42,7 +43,11 @@
 </script>
 
 <div class="header">
-	<button class="header-pill" onclick={onsettings} aria-label="Crewmate settings: {crewmate.name}">
+	<button
+		class="header-pill"
+		onclick={onsettings}
+		aria-label={m.crew_chat_header_crewmate_settings_name({ name: crewmate.name })}
+	>
 		<CrewmateFace seed={crewmate.id} look={crewmate.look} state={faceState} size={30} />
 		<span class="pill-text">
 			<span class="pill-name">{crewmate.name}</span>
@@ -51,9 +56,11 @@
 				{#if crewmate.state === "working"}
 					<!-- Only with a real start: a task waiting for the user has none, and `now - 0` showed the minutes
 					     since 1970 ("29886587m"). -->
-					Working{runningStart ? ` · ${fmtElapsed(now - runningStart)}` : ""}
+					{runningStart
+						? m.crew_chat_header_working_elapsed({ elapsed: fmtElapsed(now - runningStart) })
+						: m.crew_chat_header_working()}
 				{:else if crewmate.state === "needs_you"}
-					Needs you
+					{m.crew_chat_header_needs_you()}
 				{:else}
 					{agentLabel}
 				{/if}
@@ -65,12 +72,14 @@
 	{#if crewmate.running_task}
 		<div class="header-right">
 			{#if crewmate.running_task.pane}
-				<button class="head-btn" onclick={onterminal} title="Watch in a terminal">
-					<Terminal size={14} aria-hidden="true" /> Terminal
+				<button class="head-btn" onclick={onterminal} title={m.crew_chat_header_watch_in_a_terminal()}>
+					<Terminal size={14} aria-hidden="true" />
+					{m.crew_chat_header_terminal()}
 				</button>
 			{/if}
-			<button class="head-btn danger" onclick={onstop} title="Stop the current task">
-				<X size={14} aria-hidden="true" /> Stop
+			<button class="head-btn danger" onclick={onstop} title={m.crew_chat_header_stop_the_current_task()}>
+				<X size={14} aria-hidden="true" />
+				{m.crew_chat_header_stop()}
 			</button>
 		</div>
 	{/if}
@@ -79,7 +88,9 @@
 {#if !hostOnline}
 	<div class="offline-banner" role="alert">
 		<TriangleAlert size={14} aria-hidden="true" />
-		{serverName || "Server"} is offline
+		{serverName
+			? m.crew_chat_header_server_offline({ server: serverName })
+			: m.crew_chat_header_server_offline_unnamed()}
 	</div>
 {/if}
 

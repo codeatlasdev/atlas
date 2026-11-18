@@ -8,6 +8,7 @@
 	import { reducedMotion } from "#lib/crew/motion.ts";
 	import type { CrewmateLook } from "#lib/crew/look.ts";
 	import ServerRack from "./ServerRack.svelte";
+	import { m } from "#lib/i18n/m.ts";
 
 	let { engine, look }: { engine: string; look: CrewmateLook } = $props();
 
@@ -17,17 +18,20 @@
 <div class="ready-hero" class:still={reducedMotion} data-testid="ready-scene">
 	<div class="bubble">
 		<span class="dots"><i></i><i></i><i></i></span>
-		<span class="msg">Hi! What should we work on first?</span>
+		<span class="msg">{m.crew_onboarding_ready_hero_greeting()}</span>
 	</div>
 	<div class="who">
 		<div class="face-wrap">
 			<div class="bob"><CrewmateFace seed="onb-preview" {look} state="idle" size={132} /></div>
 			{#if logo}<span class="engine">{@html logo.dark ?? logo.light}</span>{/if}
-			<span class="online" title="Online"></span>
+			<span class="online" title={m.crew_onboarding_ready_hero_online()}></span>
 		</div>
 		<svg class="rack" viewBox="0 0 150 176" aria-hidden="true"><ServerRack state="ok" /></svg>
 	</div>
-	<p class="cap"><b>My First Crewmate</b> is online on your server.</p>
+	<p class="cap">
+		<b>{m.crew_onboarding_ready_hero_crewmate_name()}</b>
+		{m.crew_onboarding_ready_hero_online_caption()}
+	</p>
 </div>
 
 <style>

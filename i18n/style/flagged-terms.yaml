@@ -59,8 +59,8 @@ rules:
     lang: any
     severity: warn
     word: false
-    pattern: '(?<=[\p{L}\p{N})"''.,])\s+--?\s+(?=[\p{L}\p{N}("''])'
-    why: A spaced hyphen or double hyphen in prose is an em dash in disguise.
+    pattern: '(?<=[\p{L}\p{N})"''.,])[ \t]+--?[ \t]+(?=[\p{L}\p{N}("''])'
+    why: A spaced hyphen or double hyphen in prose is an em dash in disguise. Same line only, a list bullet or a table row starts a line and is not a dash.
     suggest: Restructure as for em-dash.
 
   - id: emoji

@@ -65,6 +65,17 @@ describe("docs/<locale>/<page>.md", () => {
 		expect(rulesOf(await docs(root))).not.toContain("docs-outdated");
 	});
 
+	test("`translation: machine` is accepted and leaves the page fresh; any other value is an error", async () => {
+		const root = await makeRepo();
+		put(root, PT, read(root, PT).replace("source: getting-started.md\n", "source: getting-started.md\ntranslation: machine\n"));
+		expect(await docs(root)).toEqual([]);
+		expect((await runStatus(loadCtx(root))).find((r) => r.surface === "docs")).toMatchObject({ fresh: 1, outdated: 0 });
+		put(root, PT, read(root, PT).replace("translation: machine", "translation: reviewed"));
+		const f = finding(await docs(root), "docs-frontmatter");
+		expect(f?.severity).toBe("error");
+		expect(f?.message).toContain("translation");
+	});
+
 	test("a page without a translation is info only", async () => {
 		const root = await makeRepo();
 		put(root, "docs/crew.md", "# Crew\n");

@@ -6,6 +6,7 @@
 <script lang="ts">
 	import { Check } from "@lucide/svelte";
 	import { installSteps, type InstallPhase } from "#lib/crew/installSteps.ts";
+	import { m } from "#lib/i18n/m.ts";
 
 	let {
 		done,
@@ -25,7 +26,7 @@
 </script>
 
 <div class="install-checklist" data-testid="install-rail">
-	<ol class="stepper" aria-label="Install progress">
+	<ol class="stepper" aria-label={m.crew_onboarding_install_checklist_install_progress()}>
 		{#each steps as s, i (s.phase)}
 			{@const isDone = done.has(s.phase)}
 			{@const isActive = active === s.phase && failed !== s.phase}
@@ -50,8 +51,8 @@
 			<b class:bad={failed !== null}>{now.label}</b>
 			<span>{now.detail}</span>
 		{:else}
-			<b>Ready when you are</b>
-			<span>About two minutes. Nothing on the server changes until its check passes.</span>
+			<b>{m.crew_onboarding_install_checklist_idle_title()}</b>
+			<span>{m.crew_onboarding_install_checklist_idle_detail()}</span>
 		{/if}
 	</p>
 </div>

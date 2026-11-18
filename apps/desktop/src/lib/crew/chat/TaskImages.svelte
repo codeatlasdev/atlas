@@ -8,6 +8,7 @@
 	import type { Attachment } from "#lib/crew/attachments.ts";
 	import { cachedAttachment } from "#lib/crew/attachmentCache.ts";
 	import ImageThumb from "./ImageThumb.svelte";
+	import { m } from "#lib/i18n/m.ts";
 
 	interface Props {
 		attachments: Attachment[];
@@ -39,7 +40,7 @@
 	);
 </script>
 
-<ul class="images" class:start={align === "start"} aria-label="Attached images">
+<ul class="images" class:start={align === "start"} aria-label={m.crew_chat_composer_attached_images()}>
 	{#each loads as { a, load } (a.name)}
 		<li>
 			{#await load}

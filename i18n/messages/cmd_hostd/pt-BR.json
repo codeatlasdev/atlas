@@ -1,0 +1,174 @@
+{
+	"cmd_hostd_ask_restart": [
+		{
+			"declarations": [
+				"input count",
+				"local countPlural = count: plural"
+			],
+			"selectors": [
+				"countPlural"
+			],
+			"match": {
+				"countPlural=one": "Reiniciar agora e encerrar {count} terminal?",
+				"countPlural=*": "Reiniciar agora e encerrar {count} terminais?"
+			}
+		}
+	],
+	"cmd_hostd_check_fix": "Como corrigir:",
+	"cmd_hostd_check_fix_asks": "pergunta antes",
+	"cmd_hostd_check_fix_asks_ends": "pergunta antes; encerra os terminais acima",
+	"cmd_hostd_check_fix_live": "repassa os terminais sem reiniciar, nada se perde",
+	"cmd_hostd_check_fix_restart": "reinicia agora (encerra os terminais em execução)",
+	"cmd_hostd_check_not_running": "O host de terminais não está rodando ({dir}).",
+	"cmd_hostd_check_older": [
+		{
+			"declarations": [
+				"input count",
+				"local countExact = count",
+				"local countPlural = count: plural"
+			],
+			"selectors": [
+				"countExact",
+				"countPlural"
+			],
+			"match": {
+				"countExact=0, countPlural=*": "O host de terminais {version} (pid {pid}, ativo há {uptime}, nenhum terminal) é mais antigo que o Atlas {bundled}.",
+				"countExact=*, countPlural=one": "O host de terminais {version} (pid {pid}, ativo há {uptime}, {count} terminal) é mais antigo que o Atlas {bundled}.",
+				"countExact=*, countPlural=*": "O host de terminais {version} (pid {pid}, ativo há {uptime}, {count} terminais) é mais antigo que o Atlas {bundled}."
+			}
+		}
+	],
+	"cmd_hostd_check_older_features": [
+		{
+			"declarations": [
+				"input count",
+				"local countExact = count",
+				"local countPlural = count: plural"
+			],
+			"selectors": [
+				"countExact",
+				"countPlural"
+			],
+			"match": {
+				"countExact=0, countPlural=*": "O host de terminais {version} (pid {pid}, ativo há {uptime}, nenhum terminal) é mais antigo que o Atlas {bundled}; desativados até ele reiniciar: {features}.",
+				"countExact=*, countPlural=one": "O host de terminais {version} (pid {pid}, ativo há {uptime}, {count} terminal) é mais antigo que o Atlas {bundled}; desativados até ele reiniciar: {features}.",
+				"countExact=*, countPlural=*": "O host de terminais {version} (pid {pid}, ativo há {uptime}, {count} terminais) é mais antigo que o Atlas {bundled}; desativados até ele reiniciar: {features}."
+			}
+		}
+	],
+	"cmd_hostd_check_running_terminals": "Terminais rodando:",
+	"cmd_hostd_crew_paused": "crew pausado",
+	"cmd_hostd_crew_resumed": "crew retomado",
+	"cmd_hostd_ctx_handoff": "repasse dos terminais",
+	"cmd_hostd_current": "O host de terminais {version} está atualizado.",
+	"cmd_hostd_disconnected": "o hostd desconectou",
+	"cmd_hostd_exported": [
+		{
+			"declarations": [
+				"input count",
+				"local countExact = count",
+				"local countPlural = count: plural"
+			],
+			"selectors": [
+				"countExact",
+				"countPlural"
+			],
+			"match": {
+				"countExact=0, countPlural=*": "nenhum crewmate exportado",
+				"countExact=*, countPlural=one": "{count} crewmate exportado",
+				"countExact=*, countPlural=*": "{count} crewmates exportados"
+			}
+		}
+	],
+	"cmd_hostd_feature_agents": "status dos agentes",
+	"cmd_hostd_feature_lsp": "recursos de linguagem",
+	"cmd_hostd_feature_pty_attach_raw": "renderização rápida do terminal",
+	"cmd_hostd_features_list": [
+		{
+			"declarations": [
+				"input count",
+				"local countExact = count"
+			],
+			"selectors": [
+				"countExact"
+			],
+			"match": {
+				"countExact=1": "{first}",
+				"countExact=2": "{first} e {second}",
+				"countExact=*": "{first}, {second} e {third}"
+			}
+		}
+	],
+	"cmd_hostd_imported": "{name} importado ({new_id})",
+	"cmd_hostd_imported_renamed": "{name} importado ({new_id}), era {old_id}",
+	"cmd_hostd_kept": "Mantido como está. Reinicie depois: atlas hostd --restart (ou feche os terminais e rode atlas hostd --reconcile).",
+	"cmd_hostd_login_no_terminal": "o hostd respondeu sem um terminal",
+	"cmd_hostd_not_running": "O host de terminais não está rodando.",
+	"cmd_hostd_not_running_desktop": "o hostd não está rodando; abra o Atlas Desktop",
+	"cmd_hostd_not_running_in": "o hostd não está rodando ({dir})",
+	"cmd_hostd_pair_no_address": "o endpoint de pareamento não tem nenhum endereço que um celular consiga acessar (sem relay e sem endereço na rede local): esta máquina está online?",
+	"cmd_hostd_reconcile_upgraded": [
+		{
+			"declarations": [
+				"input count",
+				"local countExact = count",
+				"local countPlural = count: plural"
+			],
+			"selectors": [
+				"countExact",
+				"countPlural"
+			],
+			"match": {
+				"countExact=0, countPlural=*": "Host de terminais atualizado para {version}; nenhum terminal mantido.",
+				"countExact=*, countPlural=one": "Host de terminais atualizado para {version}; {count} terminal mantido.",
+				"countExact=*, countPlural=*": "Host de terminais atualizado para {version}; {count} terminais mantidos."
+			}
+		}
+	],
+	"cmd_hostd_restarted_ended": [
+		{
+			"declarations": [
+				"input count",
+				"local countExact = count",
+				"local countPlural = count: plural"
+			],
+			"selectors": [
+				"countExact",
+				"countPlural"
+			],
+			"match": {
+				"countExact=0, countPlural=*": "Host de terminais reiniciado ({version}); nenhum terminal encerrado.",
+				"countExact=*, countPlural=one": "Host de terminais reiniciado ({version}); {count} terminal encerrado.",
+				"countExact=*, countPlural=*": "Host de terminais reiniciado ({version}); {count} terminais encerrados."
+			}
+		}
+	],
+	"cmd_hostd_restarted_idle": "Host de terminais reiniciado ({version}); nenhum terminal estava rodando.",
+	"cmd_hostd_stop_timeout": "o host de terminais antigo não parou",
+	"cmd_hostd_stopped": "hostd parado",
+	"cmd_hostd_terminal_untitled": "terminal",
+	"cmd_hostd_upgrade_failed": "Não foi possível atualizar o host de terminais sem encerrar os terminais: {error}",
+	"cmd_hostd_upgrade_lost_terminals": "o host de terminais atualizado perdeu terminais ({before} -> {after})",
+	"cmd_hostd_upgrade_no_start": "o host de terminais atualizado não iniciou",
+	"cmd_hostd_upgraded_kept": [
+		{
+			"declarations": [
+				"input count",
+				"local countExact = count",
+				"local countPlural = count: plural"
+			],
+			"selectors": [
+				"countExact",
+				"countPlural"
+			],
+			"match": {
+				"countExact=0, countPlural=*": "hostd atualizado; nenhum terminal mantido",
+				"countExact=*, countPlural=one": "hostd atualizado; {count} terminal mantido",
+				"countExact=*, countPlural=*": "hostd atualizado; {count} terminais mantidos"
+			}
+		}
+	],
+	"cmd_hostd_version_mismatch": "o novo host de terminais informa {reported} (esperado: {expected})",
+	"cmd_hostd_version_unknown": "desconhecido",
+	"cmd_hostd_yes_no": "[s/N]"
+}

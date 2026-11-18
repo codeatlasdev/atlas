@@ -2,7 +2,7 @@
 	import { Spinner } from "@codeatlasdev/ui";
 	import { Check } from "@lucide/svelte";
 	import type { AgentState } from "#lib/stores/agents.svelte.ts";
-	import { agentStateLabel } from "#lib/panel/machine.ts";
+	import { agentStateLabel } from "#lib/agentState.ts";
 
 	let { state }: { state: AgentState | null } = $props();
 </script>

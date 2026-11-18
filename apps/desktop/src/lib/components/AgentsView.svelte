@@ -9,7 +9,7 @@
 	import { ws } from "#lib/stores/workspace.svelte.ts";
 	import { m } from "#lib/i18n/m.ts";
 	import { dateTime } from "#lib/i18n/fmt.ts";
-	import { agentStateLabel } from "#lib/panel/machine.ts";
+	import { agentStateLabel } from "#lib/agentState.ts";
 
 	let { mode }: { mode: "agents" | "dashboard" } = $props();
 	/** `all` = no filter (the kit Select has no empty value). */

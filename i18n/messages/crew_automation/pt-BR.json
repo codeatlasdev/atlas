@@ -1,4 +1,58 @@
 {
+	"crew_automation_describe_crewmate_done": "Quando {name} terminar",
+	"crew_automation_describe_crewmate_failed": "Quando {name} falhar",
+	"crew_automation_describe_custom_cron": "Personalizado: {cron}",
+	"crew_automation_describe_every_hours": [
+		{
+			"declarations": [
+				"input count",
+				"local countPlural = count: plural"
+			],
+			"selectors": [
+				"countPlural"
+			],
+			"match": {
+				"countPlural=one": "A cada {count} hora",
+				"countPlural=*": "A cada {count} horas"
+			}
+		}
+	],
+	"crew_automation_describe_every_hours_minutes": "A cada {hours}h {minutes}min",
+	"crew_automation_describe_every_minutes": [
+		{
+			"declarations": [
+				"input count",
+				"local countPlural = count: plural"
+			],
+			"selectors": [
+				"countPlural"
+			],
+			"match": {
+				"countPlural=one": "A cada {count} minuto",
+				"countPlural=*": "A cada {count} minutos"
+			}
+		}
+	],
+	"crew_automation_describe_every_seconds": "A cada {seconds}s",
+	"crew_automation_describe_file": "Quando {target} mudar",
+	"crew_automation_describe_github": "Quando {events} em {repo}",
+	"crew_automation_describe_github_ci_failed": "o CI falha",
+	"crew_automation_describe_github_issue_assigned": "uma issue é atribuída a você",
+	"crew_automation_describe_github_issue_opened": "uma issue é aberta",
+	"crew_automation_describe_github_mention": "você é mencionado",
+	"crew_automation_describe_github_pr_opened": "um PR é aberto",
+	"crew_automation_describe_github_release": "uma release é publicada",
+	"crew_automation_describe_github_review_comment": "um PR recebe um comentário de revisão",
+	"crew_automation_describe_github_review_requested": "sua revisão é solicitada",
+	"crew_automation_describe_next_day": "{day} {time}",
+	"crew_automation_describe_next_today": "hoje às {time}",
+	"crew_automation_describe_next_tomorrow": "amanhã às {time}",
+	"crew_automation_describe_schedule": "{days} às {time}",
+	"crew_automation_describe_schedule_tz": "{days} às {time} ({tz})",
+	"crew_automation_describe_service_failed": "Quando {name} falhar",
+	"crew_automation_describe_service_recovered": "Quando {name} voltar a funcionar",
+	"crew_automation_describe_webhook": "Webhook",
+	"crew_automation_describe_weekends": "Fins de semana",
 	"crew_automation_dialog_automation_prompt": "Prompt da automação",
 	"crew_automation_dialog_delete_automation": "Excluir automação",
 	"crew_automation_dialog_kind_crewmate": "Após crewmate",

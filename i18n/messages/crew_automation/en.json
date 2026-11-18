@@ -1,4 +1,58 @@
 {
+	"crew_automation_describe_crewmate_done": "When {name} finishes",
+	"crew_automation_describe_crewmate_failed": "When {name} fails",
+	"crew_automation_describe_custom_cron": "Custom: {cron}",
+	"crew_automation_describe_every_hours": [
+		{
+			"declarations": [
+				"input count",
+				"local countPlural = count: plural"
+			],
+			"selectors": [
+				"countPlural"
+			],
+			"match": {
+				"countPlural=one": "Every {count} hour",
+				"countPlural=*": "Every {count} hours"
+			}
+		}
+	],
+	"crew_automation_describe_every_hours_minutes": "Every {hours}h {minutes}m",
+	"crew_automation_describe_every_minutes": [
+		{
+			"declarations": [
+				"input count",
+				"local countPlural = count: plural"
+			],
+			"selectors": [
+				"countPlural"
+			],
+			"match": {
+				"countPlural=one": "Every {count} minute",
+				"countPlural=*": "Every {count} minutes"
+			}
+		}
+	],
+	"crew_automation_describe_every_seconds": "Every {seconds}s",
+	"crew_automation_describe_file": "When {target} changes",
+	"crew_automation_describe_github": "When {events} in {repo}",
+	"crew_automation_describe_github_ci_failed": "CI fails",
+	"crew_automation_describe_github_issue_assigned": "an issue is assigned to you",
+	"crew_automation_describe_github_issue_opened": "an issue is opened",
+	"crew_automation_describe_github_mention": "you are mentioned",
+	"crew_automation_describe_github_pr_opened": "a PR is opened",
+	"crew_automation_describe_github_release": "a release is published",
+	"crew_automation_describe_github_review_comment": "a PR gets a review comment",
+	"crew_automation_describe_github_review_requested": "your review is requested",
+	"crew_automation_describe_next_day": "{day} {time}",
+	"crew_automation_describe_next_today": "today at {time}",
+	"crew_automation_describe_next_tomorrow": "tomorrow at {time}",
+	"crew_automation_describe_schedule": "{days} at {time}",
+	"crew_automation_describe_schedule_tz": "{days} at {time} ({tz})",
+	"crew_automation_describe_service_failed": "When {name} fails",
+	"crew_automation_describe_service_recovered": "When {name} recovers",
+	"crew_automation_describe_webhook": "Webhook",
+	"crew_automation_describe_weekends": "Weekends",
 	"crew_automation_dialog_automation_prompt": "Automation prompt",
 	"crew_automation_dialog_delete_automation": "Delete automation",
 	"crew_automation_dialog_kind_crewmate": "After crewmate",

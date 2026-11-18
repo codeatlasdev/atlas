@@ -19,6 +19,7 @@
 		CORNER_MARGIN_NARROW,
 		CORNER_WIDTH,
 	} from "./cornerStack.ts";
+	import { m } from "#lib/i18n/m.ts";
 
 	// A new order is a layout jump: glide every card that moved once the DOM has caught up with the plan.
 	$effect(() => {
@@ -38,22 +39,30 @@
 	style:--corner-width="{CORNER_WIDTH}px"
 	style:--corner-bleed="{CORNER_BLEED}px"
 	role="region"
-	aria-label="Notifications"
+	aria-label={m.shell_chrome_notifications()}
 ></div>
 
 <KitToasts />
 
-<CornerCard id={MORE_ID} kind="toast" claim={false} role="group" label="More notifications">
+<CornerCard
+	id={MORE_ID}
+	kind="toast"
+	claim={false}
+	role="group"
+	label={m.shell_chrome_corner_stack_more_notifications()}
+>
 	<button
 		class="more"
 		type="button"
 		aria-expanded={more === "less"}
 		aria-label={more === "less"
-			? "Show fewer notifications"
-			: `Show ${hidden} more notification${hidden === 1 ? "" : "s"}`}
+			? m.shell_chrome_corner_stack_show_fewer()
+			: m.shell_chrome_corner_stack_show_more({ count: hidden })}
 		onclick={() => corner.toggleMore()}
 	>
-		{more === "less" ? "Show less" : `+${hidden} more`}
+		{more === "less"
+			? m.shell_chrome_corner_stack_show_less()
+			: m.shell_chrome_corner_stack_hidden_count({ count: hidden })}
 	</button>
 </CornerCard>
 

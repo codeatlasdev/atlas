@@ -1,5 +1,6 @@
 /** The editor behind the focused pane's active tab (file or atlas.yaml), if it is one. */
 import { toast } from "@codeatlasdev/ui";
+import { m } from "#lib/i18n/m.ts";
 import { ws } from "#lib/stores/workspace.svelte.ts";
 import { editors, saveEditor } from "#lib/symbols.ts";
 
@@ -18,5 +19,5 @@ export function activeEditor() {
 
 /** ⌘S: write the focused editor now (the autosave timer would do it in 0.5 s). */
 export async function saveActive() {
-	if (!(await saveEditor(activeEditorKey()))) toast.info("Nothing to save");
+	if (!(await saveEditor(activeEditorKey()))) toast.info(m.shell_commands_nothing_to_save());
 }

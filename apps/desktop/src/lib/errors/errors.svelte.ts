@@ -12,6 +12,7 @@ import {
 	fingerprint,
 	isBenign,
 	messageOf,
+	RESTART_HOST,
 	report,
 	withContext,
 	type ErrorOrigin,
@@ -174,7 +175,7 @@ class Errors {
 	/** "Restart terminal host": ends its terminals; works when the host answers and when it does not. */
 	async restartHost(toastId?: number) {
 		if (toastId !== undefined) this.dismiss(toastId);
-		await invoke("host_restart_force").catch((e) => this.capture(e, "restart terminal host", "command"));
+		await invoke("host_restart_force").catch((e) => this.capture(e, RESTART_HOST, "command"));
 	}
 
 	/** Open the details dialog with the diagnostics attached (Copy as Markdown / Report read them). */

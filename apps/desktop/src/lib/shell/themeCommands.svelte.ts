@@ -1,7 +1,7 @@
 /** Palette commands for themes (`Theme: <name>`, next/previous, import, Ghostty) and the one-time Ghostty offer. */
 import { toast } from "@codeatlasdev/ui";
-import type { Command } from "#lib/keymap.svelte.ts";
-import { register } from "#lib/keymap.svelte.ts";
+import { named, register, type Command } from "#lib/keymap.svelte.ts";
+import { m } from "#lib/i18n/m.ts";
 import { themes } from "#lib/stores/theme.svelte.ts";
 import { updates } from "#lib/stores/updates.svelte.ts";
 import type { Theme } from "#lib/theme.ts";
@@ -10,36 +10,45 @@ import type { Theme } from "#lib/theme.ts";
 export function useTheme(t: Theme) {
 	const showing = themes.current?.appearance;
 	void themes.setTheme({ [t.appearance]: t.name });
-	if (showing && showing !== t.appearance) toast.info(`Used in ${t.appearance} mode`);
+	if (showing && showing !== t.appearance)
+		toast.info(
+			t.appearance === "dark"
+				? m.shell_commands_theme_used_in_dark()
+				: m.shell_commands_theme_used_in_light(),
+		);
 }
 
 export function themeCommands(): Command[] {
-	return [
+	return named([
 		...themes.list.map((t) => ({
 			id: `theme::Set:${t.name}`,
-			label: `Theme: ${t.name}`,
+			label: () => m.shell_commands_theme_named({ name: t.name }),
 			run: () => useTheme(t),
 		})),
-		{ id: "theme::Next", label: "Theme: Next", run: () => themes.cycle(1) },
-		{ id: "theme::Previous", label: "Theme: Previous", run: () => themes.cycle(-1) },
-		{ id: "theme::Import", label: "Theme: Import…", run: () => updates.show("appearance") },
+		{ id: "theme::Next", label: () => m.shell_commands_theme_next(), run: () => themes.cycle(1) },
+		{ id: "theme::Previous", label: () => m.shell_commands_theme_previous(), run: () => themes.cycle(-1) },
+		{
+			id: "theme::Import",
+			label: () => m.shell_commands_theme_import(),
+			run: () => updates.show("appearance"),
+		},
 		{
 			id: "theme::UseGhostty",
-			label: "Theme: Use Ghostty theme",
+			label: () => m.shell_commands_theme_use_ghostty(),
 			run: () => updates.show("appearance"),
 			when: () => themes.ghostty.available,
 		},
 		{
 			id: "terminal-theme::App",
-			label: "Terminal theme: Same as app",
+			label: () => m.shell_commands_terminal_theme_same_as_app(),
 			run: () => void themes.setTheme({ terminal: "app" }),
 		},
 		...themes.list.map((t) => ({
 			id: `terminal-theme::Set:${t.name}`,
-			label: `Terminal theme: ${t.name}`,
+			label: () => m.shell_commands_terminal_theme_named({ name: t.name }),
 			run: () => void themes.setTheme({ terminal: t.name }),
 		})),
-	];
+	]);
 }
 
 /**

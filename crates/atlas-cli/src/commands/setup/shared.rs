@@ -3,6 +3,7 @@
 use std::path::{Path, PathBuf};
 
 use anyhow::{Context, Result, bail};
+use atlas_i18n::t;
 use atlas_skills::{SkillState, SkillsManifest, embedded};
 
 use super::Env;
@@ -12,7 +13,9 @@ pub fn read_opt(path: &Path) -> Result<Option<String>> {
     match std::fs::read_to_string(path) {
         Ok(s) => Ok(Some(s)),
         Err(e) if e.kind() == std::io::ErrorKind::NotFound => Ok(None),
-        Err(e) => Err(e).with_context(|| format!("reading {}", path.display())),
+        Err(e) => {
+            Err(e).with_context(|| t!("cmd_setup_ctx_reading", path = path.display().to_string()))
+        }
     }
 }
 
@@ -22,14 +25,12 @@ pub fn resolve_command(env: &Env, plan_warnings: &mut Vec<String>) -> Result<Str
     if env.atlas_on_path {
         return Ok("atlas".into());
     }
-    let exe = std::env::current_exe().context("cannot locate the atlas binary")?;
+    let exe = std::env::current_exe().context(t!("cmd_setup_binary_unknown"))?;
     let exe = exe.to_string_lossy().to_string();
     if exe.is_empty() {
-        bail!("cannot locate the atlas binary");
+        bail!(t!("cmd_setup_binary_unknown"));
     }
-    plan_warnings.push(format!(
-        "`atlas` is not on PATH — using the absolute path {exe}. Add ~/.atlas/bin to PATH, or re-run after `atlas install`."
-    ));
+    plan_warnings.push(t!("cmd_setup_command_not_on_path", exe = &exe));
     Ok(exe)
 }
 
@@ -51,7 +52,7 @@ pub fn mcp_install_item(
 ) -> Item {
     let summary = format!("{key} = {{stdio: {command} mcp}}");
     let item = |action, detail: String, op| Item {
-        label: "MCP server",
+        label: t!("cmd_setup_label_mcp"),
         path: path.to_path_buf(),
         action,
         detail,
@@ -61,15 +62,13 @@ pub fn mcp_install_item(
         MergeOutcome::Create(t) => item(Action::Create, format!("+ {summary}"), Op::WriteFile(t)),
         MergeOutcome::Update(t) => item(
             Action::Update,
-            format!("~ {summary}{boundary_note}"),
+            format!("~ {summary} {boundary_note}"),
             Op::WriteFile(t),
         ),
         MergeOutcome::UpToDate => item(Action::UpToDate, String::new(), Op::None),
         MergeOutcome::Conflict(cur) => item(
             Action::Conflict,
-            format!(
-                "an `atlas` entry not created by atlas exists: {cur}\nre-run with --force to replace it"
-            ),
+            t!("cmd_setup_mcp_conflict", current = cur),
             Op::None,
         ),
     }
@@ -84,7 +83,7 @@ pub fn mcp_uninstall_item(
     delete_boundary: Option<PathBuf>,
 ) -> Item {
     let item = |action, detail: String, op| Item {
-        label: "MCP server",
+        label: t!("cmd_setup_label_mcp"),
         path: path.to_path_buf(),
         action,
         detail,
@@ -92,19 +91,15 @@ pub fn mcp_uninstall_item(
     };
     match removed {
         RemoveOutcome::Absent => item(Action::Absent, String::new(), Op::None),
-        RemoveOutcome::Foreign => item(
-            Action::Conflict,
-            "`atlas` entry was not created by atlas — left alone (use --force to remove)".into(),
-            Op::None,
-        ),
+        RemoveOutcome::Foreign => item(Action::Conflict, t!("cmd_setup_mcp_foreign"), Op::None),
         RemoveOutcome::Removed(Some(t)) => item(
             Action::Remove,
-            format!("- {key} (other servers kept)"),
+            t!("cmd_setup_mcp_removed_kept", key = key),
             Op::WriteFile(t),
         ),
         RemoveOutcome::Removed(None) => item(
             Action::Remove,
-            format!("- {key} (file held nothing else → deleted)"),
+            t!("cmd_setup_mcp_removed_file", key = key),
             Op::RemoveFile {
                 boundary: delete_boundary,
             },
@@ -120,7 +115,7 @@ pub fn hooks_install_item(
     update_detail: &str,
 ) -> Item {
     let item = |action, detail: &str, op| Item {
-        label: "Hooks",
+        label: t!("cmd_setup_label_hooks"),
         path: path.to_path_buf(),
         action,
         detail: detail.to_string(),
@@ -143,7 +138,7 @@ pub fn hooks_uninstall_item(
     boundary: &Path,
 ) -> Item {
     let item = |action, detail: String, op| Item {
-        label: "Hooks",
+        label: t!("cmd_setup_label_hooks"),
         path: path.to_path_buf(),
         action,
         detail,
@@ -155,12 +150,12 @@ pub fn hooks_uninstall_item(
         }
         RemoveOutcome::Removed(Some(t)) => item(
             Action::Remove,
-            format!("- atlas hooks ({others_kept} kept)"),
+            t!("cmd_setup_hooks_removed_kept", kept = others_kept),
             Op::WriteFile(t),
         ),
         RemoveOutcome::Removed(None) => item(
             Action::Remove,
-            "- atlas hooks (file held nothing else → deleted)".into(),
+            t!("cmd_setup_hooks_removed_file"),
             Op::RemoveFile {
                 boundary: Some(boundary.to_path_buf()),
             },
@@ -169,7 +164,7 @@ pub fn hooks_uninstall_item(
 }
 
 /// Skills install item for `target`; `label` distinguishes "Skills" from "Skills (shared)".
-pub fn skills_install_item(label: &'static str, target: &SkillsTarget) -> Result<Item> {
+pub fn skills_install_item(label: String, target: &SkillsTarget) -> Result<Item> {
     let skills = embedded::all();
     let missing = skills
         .iter()
@@ -203,9 +198,12 @@ pub fn skills_install_item(label: &'static str, target: &SkillsTarget) -> Result
         } else {
             Action::Update
         },
-        detail: format!(
-            "{names} (v{}: {missing} new, {outdated} changed)",
-            env!("CARGO_PKG_VERSION")
+        detail: t!(
+            "cmd_setup_skills_detail",
+            names = names,
+            version = env!("CARGO_PKG_VERSION"),
+            missing = missing,
+            outdated = outdated
         ),
         op: Op::InstallSkills,
     })
@@ -214,9 +212,9 @@ pub fn skills_install_item(label: &'static str, target: &SkillsTarget) -> Result
 /// Skills uninstall item: only skills recorded in the manifest are removed.
 /// `keep_reason` (e.g. another harness still uses the shared dir) turns it into a no-op note.
 pub fn skills_uninstall_item(
-    label: &'static str,
+    label: String,
     target: &SkillsTarget,
-    keep_reason: Option<&str>,
+    keep_reason: Option<String>,
 ) -> Result<Item> {
     let tracked = SkillsManifest::load_from(&target.manifest)?;
     let owned: Vec<String> = embedded::all()
@@ -226,7 +224,11 @@ pub fn skills_uninstall_item(
         .collect();
     let (action, detail, op) = match (owned.is_empty(), keep_reason) {
         (true, _) => (Action::Absent, String::new(), Op::None),
-        (false, Some(why)) => (Action::Absent, format!("kept: {why}"), Op::None),
+        (false, Some(why)) => (
+            Action::Absent,
+            t!("cmd_setup_skills_kept", reason = why),
+            Op::None,
+        ),
         (false, None) => (Action::Remove, owned.join(", "), Op::UninstallSkills),
     };
     Ok(Item {
@@ -252,7 +254,9 @@ pub fn file_mentions_owned_atlas_mcp_json(path: &Path) -> bool {
 
 /// Plan header warning for scopes where skills cannot follow the project.
 pub fn user_scope_skills_warning(plan: &mut Plan, dir_display: &str, harness: &str) {
-    plan.warnings.push(format!(
-        "skills are always installed at user scope ({dir_display}) — {harness} does not read project-local skill copies from atlas"
+    plan.warnings.push(t!(
+        "cmd_setup_skills_user_warning",
+        dir = dir_display,
+        harness = harness
     ));
 }

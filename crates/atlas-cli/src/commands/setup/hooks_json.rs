@@ -15,6 +15,7 @@
 //! Everything else in the file (other hooks, other keys, key order) is preserved.
 
 use anyhow::{Result, bail};
+use atlas_i18n::t;
 use serde_json::{Map, Value, json};
 
 use super::plan::{MergeOutcome, RemoveOutcome};
@@ -136,7 +137,7 @@ fn parse_root(existing: Option<&str>) -> Result<(Map<String, Value>, bool)> {
         Some(t) if t.trim().is_empty() => Ok((Map::new(), true)),
         Some(t) => match serde_json::from_str::<Value>(t)? {
             Value::Object(m) => Ok((m, false)),
-            _ => bail!("top-level JSON value is not an object"),
+            _ => bail!(t!("cmd_setup_json_not_object")),
         },
     }
 }
@@ -156,14 +157,14 @@ fn event_groups<'a>(
         .entry("hooks")
         .or_insert_with(|| Value::Object(Map::new()));
     let Some(hooks) = hooks.as_object_mut() else {
-        bail!("`hooks` is not an object");
+        bail!(t!("cmd_setup_json_hooks_not_object"));
     };
     let Some(groups) = hooks
         .entry(json_event)
         .or_insert_with(|| Value::Array(Vec::new()))
         .as_array_mut()
     else {
-        bail!("`hooks.{json_event}` is not an array");
+        bail!(t!("cmd_setup_json_event_not_array", event = json_event));
     };
     Ok(groups)
 }

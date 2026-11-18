@@ -14,6 +14,7 @@
 use std::path::{Path, PathBuf};
 
 use anyhow::{Context, Result};
+use atlas_i18n::t;
 
 use super::hooks_json;
 use super::json_merge;
@@ -54,7 +55,7 @@ impl Paths {
                 mcp_boundary: None,
             },
             Scope::Project => {
-                let root = project_root.context("project scope needs an atlas.yaml ancestor")?;
+                let root = project_root.context(t!("cmd_setup_project_root_missing"))?;
                 Self {
                     mcp_json: root.join(".mcp.json"),
                     settings: root.join(".claude").join("settings.json"),
@@ -73,9 +74,9 @@ pub fn plan_install(paths: &Paths, scope: Scope, force: bool, command: &str) -> 
     let existing = read_opt(&paths.mcp_json)?;
     let merged = json_merge::merge(json_merge::CLAUDE, existing.as_deref(), command, force)
         .with_context(|| {
-            format!(
-                "{} is not a valid Claude Code MCP config",
-                paths.mcp_json.display()
+            t!(
+                "cmd_setup_claude_mcp_invalid",
+                path = paths.mcp_json.display().to_string()
             )
         })?;
     plan.items.push(mcp_install_item(
@@ -83,11 +84,13 @@ pub fn plan_install(paths: &Paths, scope: Scope, force: bool, command: &str) -> 
         merged,
         "mcpServers.atlas",
         command,
-        " (other servers and settings kept)",
+        &t!("cmd_setup_mcp_note_claude"),
     ));
 
-    plan.items
-        .push(skills_install_item("Skills", &paths.skills)?);
+    plan.items.push(skills_install_item(
+        t!("cmd_setup_label_skills"),
+        &paths.skills,
+    )?);
     if scope == Scope::Project {
         user_scope_skills_warning(
             &mut plan,
@@ -99,16 +102,16 @@ pub fn plan_install(paths: &Paths, scope: Scope, force: bool, command: &str) -> 
     let existing = read_opt(&paths.settings)?;
     let merged = hooks_json::merge(existing.as_deref(), Harness::ClaudeCode, command)
         .with_context(|| {
-            format!(
-                "{} is not valid Claude Code settings",
-                paths.settings.display()
+            t!(
+                "cmd_setup_claude_settings_invalid",
+                path = paths.settings.display().to_string()
             )
         })?;
     plan.items.push(hooks_install_item(
         &paths.settings,
         merged,
-        "+ hooks.SessionStart (status injection), hooks.PreToolUse[Bash] (`atlas dev` guard)",
-        "~ atlas hooks in hooks.SessionStart / hooks.PreToolUse (your other hooks and settings kept)",
+        &t!("cmd_setup_hooks_create_claude"),
+        &t!("cmd_setup_hooks_update_claude"),
     ));
     Ok(plan)
 }
@@ -118,9 +121,9 @@ pub fn plan_uninstall(paths: &Paths, force: bool) -> Result<Plan> {
 
     let existing = read_opt(&paths.mcp_json)?;
     let removed = json_merge::remove(existing.as_deref(), force).with_context(|| {
-        format!(
-            "{} is not a valid Claude Code MCP config",
-            paths.mcp_json.display()
+        t!(
+            "cmd_setup_claude_mcp_invalid",
+            path = paths.mcp_json.display().to_string()
         )
     })?;
     plan.items.push(mcp_uninstall_item(
@@ -130,21 +133,24 @@ pub fn plan_uninstall(paths: &Paths, force: bool) -> Result<Plan> {
         paths.mcp_boundary.clone(),
     ));
 
-    plan.items
-        .push(skills_uninstall_item("Skills", &paths.skills, None)?);
+    plan.items.push(skills_uninstall_item(
+        t!("cmd_setup_label_skills"),
+        &paths.skills,
+        None,
+    )?);
 
     let existing = read_opt(&paths.settings)?;
     let removed =
         hooks_json::remove(existing.as_deref(), Harness::ClaudeCode).with_context(|| {
-            format!(
-                "{} is not valid Claude Code settings",
-                paths.settings.display()
+            t!(
+                "cmd_setup_claude_settings_invalid",
+                path = paths.settings.display().to_string()
             )
         })?;
     plan.items.push(hooks_uninstall_item(
         &paths.settings,
         removed,
-        "your other hooks and settings",
+        &t!("cmd_setup_hooks_kept_claude"),
         &paths.boundary,
     ));
     Ok(plan)

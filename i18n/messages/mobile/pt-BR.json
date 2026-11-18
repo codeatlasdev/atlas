@@ -1,0 +1,173 @@
+{
+	"mobile_access_custom_detail": "Pode: {scopes}.",
+	"mobile_access_custom_label": "Personalizado: {count} de {total}",
+	"mobile_access_full_detail": "Pode ver este computador, reiniciar serviços, executar ações, acompanhar e digitar nos terminais e responder aos prompts de permissão dos agentes.",
+	"mobile_access_full_label": "Acesso total",
+	"mobile_access_none_detail": "Pareado, mas não pode fazer nada até você permitir algo.",
+	"mobile_access_none_label": "Sem acesso",
+	"mobile_access_view_detail": "Pode ver projetos, logs e agentes. Não pode alterar nada nem acompanhar terminais.",
+	"mobile_access_view_label": "Somente visualização",
+	"mobile_access_view_terminals_detail": "Pode ver projetos, logs, agentes e terminais. Não pode alterar nada.",
+	"mobile_activity_action": "Executou uma ação",
+	"mobile_activity_action_key": "Executou a ação {key}",
+	"mobile_activity_approved": "Permitiu uma chamada de ferramenta de um agente",
+	"mobile_activity_crewmate_answer": "Respondeu a uma pergunta de um crewmate",
+	"mobile_activity_crewmate_cancel": "Cancelou a tarefa de um crewmate",
+	"mobile_activity_crewmate_task": "Enviou uma tarefa a um crewmate",
+	"mobile_activity_denied": "Negou uma chamada de ferramenta de um agente",
+	"mobile_activity_git_commit": "Fez um commit",
+	"mobile_activity_git_push": "Fez push de uma branch",
+	"mobile_activity_git_stage": "Fez stage de arquivos",
+	"mobile_activity_git_unstage": "Desfez o stage de arquivos",
+	"mobile_activity_interrupt": "Interrompeu um agente",
+	"mobile_activity_launch": "Iniciou {name}",
+	"mobile_activity_launch_unnamed": "Iniciou um agente",
+	"mobile_activity_pair": "Pareou com este computador",
+	"mobile_activity_prompt": "Enviou um prompt a um agente",
+	"mobile_activity_prompt_size": [
+		{
+			"declarations": [
+				"input count",
+				"local countExact = count",
+				"local countPlural = count: plural"
+			],
+			"selectors": [
+				"countExact",
+				"countPlural"
+			],
+			"match": {
+				"countExact=0, countPlural=*": "Enviou um prompt vazio a um agente",
+				"countExact=*, countPlural=one": "Enviou um prompt a um agente ({count} caractere)",
+				"countExact=*, countPlural=*": "Enviou um prompt a um agente ({count} caracteres)"
+			}
+		}
+	],
+	"mobile_activity_pull_request": "Abriu um pull request",
+	"mobile_activity_ran_op": "Executou {op}: {target}",
+	"mobile_activity_ran_operation": "Executou uma operação: {target}",
+	"mobile_activity_restarted": "Reiniciou {target}",
+	"mobile_activity_started": "Iniciou {target}",
+	"mobile_activity_stopped": "Parou {target}",
+	"mobile_activity_terminal_open": "Abriu um terminal",
+	"mobile_activity_terminal_signal": "Enviou um sinal a um terminal",
+	"mobile_activity_terminal_write": "Digitou em um terminal",
+	"mobile_activity_terminal_write_size": [
+		{
+			"declarations": [
+				"input count",
+				"local countExact = count",
+				"local countPlural = count: plural"
+			],
+			"selectors": [
+				"countExact",
+				"countPlural"
+			],
+			"match": {
+				"countExact=0, countPlural=*": "Digitou em um terminal (sem dados)",
+				"countExact=*, countPlural=one": "Digitou em um terminal ({count} byte)",
+				"countExact=*, countPlural=*": "Digitou em um terminal ({count} bytes)"
+			}
+		}
+	],
+	"mobile_activity_the_stack": "a stack",
+	"mobile_activity_unknown": "Ação desconhecida",
+	"mobile_activity_worktree_create": "Criou uma worktree",
+	"mobile_activity_worktree_remove": "Removeu uma worktree",
+	"mobile_device_status_connected": "Conectado agora · Pareado em {paired}",
+	"mobile_device_status_never": "Ainda não conectou · Pareado em {paired}",
+	"mobile_device_status_seen": "Visto pela última vez {seen} · Pareado em {paired}",
+	"mobile_device_title": "Celular {id}",
+	"mobile_pair_card_code_expired": "Código expirado",
+	"mobile_pair_card_code_lifetime": "Um código vale por dois minutos.",
+	"mobile_pair_card_code_placeholder": "O código aparece aqui",
+	"mobile_pair_card_copy_link": "Copiar link",
+	"mobile_pair_card_error_body": "{error}. Tente novamente; se continuar falhando, reinicie o Atlas.",
+	"mobile_pair_card_error_title": "Não foi possível gerar o código",
+	"mobile_pair_card_expires_in": "Expira em {time}",
+	"mobile_pair_card_link_copied": "Link de pareamento copiado. No app, toque em Paste link.",
+	"mobile_pair_card_new_code": "Novo código",
+	"mobile_pair_card_one_time_code": "Código de uso único",
+	"mobile_pair_card_pair_another": "Parear outro celular",
+	"mobile_pair_card_paired_body": "Ele já está na lista abaixo.",
+	"mobile_pair_card_paired_title": "Pareamento concluído: {paired}",
+	"mobile_pair_card_show_code": "Mostrar código de pareamento",
+	"mobile_pair_card_step_get": "Obter o Atlas Mobile",
+	"mobile_pair_card_step_get_how": "Como obter o app",
+	"mobile_pair_card_step_get_testing": "Ainda em testes, fora das lojas por enquanto.",
+	"mobile_pair_card_step_open": "Abrir o app",
+	"mobile_pair_card_step_open_hint": "Toque em {#em}Scan pairing code{/em} ou, nas configurações do app, em {#em}Pair another computer{/em}.",
+	"mobile_pair_card_step_scan": "Escanear o código",
+	"mobile_pair_card_step_scan_hint": "O celular aparece em {#em}Celulares pareados{/em}, logo abaixo, assim que se conecta.",
+	"mobile_pair_card_time_left": "Tempo restante deste código",
+	"mobile_pair_card_waiting": "Aguardando o celular…",
+	"mobile_pair_help_addrs": [
+		{
+			"declarations": [
+				"input count",
+				"local countExact = count",
+				"local countPlural = count: plural"
+			],
+			"selectors": [
+				"countExact",
+				"countPlural"
+			],
+			"match": {
+				"countExact=0, countPlural=*": "Este código não tem endereços diretos, então o celular usa o relay.",
+				"countExact=*, countPlural=one": "Este código oferece este endereço:",
+				"countExact=*, countPlural=*": "Este código oferece estes endereços:"
+			}
+		}
+	],
+	"mobile_pair_help_awake": "{#b}Mantenha este computador ativo{/b}, com o Atlas rodando. Um computador suspenso não é alcançado; o celular se conecta de novo quando ele acordar.",
+	"mobile_pair_help_title": "O pareamento não funciona?",
+	"mobile_pair_help_vpn": "{#b}VPN ou Cloudflare WARP ligado?{/b} Pause-o ou deixe a rede Wi-Fi de fora dele e gere um novo código.",
+	"mobile_pair_help_vpn_docs": "O pareamento falha com VPN ou WARP ligado",
+	"mobile_pair_help_wifi": "{#b}O celular não precisa estar neste Wi-Fi.{/b} Ele se conecta por um relay criptografado ou direto a este computador, quando os dois estão na mesma rede.",
+	"mobile_pair_qr_expired": "O código expirou. Gere um novo.",
+	"mobile_pair_qr_expires_in": "Expira em {left} s",
+	"mobile_pair_qr_label": "QR code de pareamento",
+	"mobile_phone_activity_empty": "Nenhuma atividade ainda. Reinícios, prompts e aprovações feitos pelo celular aparecem aqui; apenas navegar não aparece.",
+	"mobile_phone_activity_error": "Não foi possível ler a atividade: {error}",
+	"mobile_phone_activity_footer": [
+		{
+			"declarations": [
+				"input count",
+				"local countPlural = count: plural"
+			],
+			"selectors": [
+				"countPlural"
+			],
+			"match": {
+				"countPlural=one": "A última ação. O texto digitado no celular é registrado só pelo tamanho.",
+				"countPlural=*": "As últimas {count} ações. O texto digitado no celular é registrado só pelo tamanho."
+			}
+		}
+	],
+	"mobile_phone_activity_label": "Atividade recente",
+	"mobile_phone_activity_reading": "Lendo a atividade…",
+	"mobile_phone_activity_try_again": "Tentar novamente",
+	"mobile_phone_row_activity": "Atividade",
+	"mobile_phone_row_connected_now": "Conectado agora",
+	"mobile_phone_row_edit_permissions": "Editar permissões",
+	"mobile_phone_row_name_description": "Só você vê esse nome, aqui. Ele ajuda a distinguir os celulares.",
+	"mobile_phone_row_name_label": "Nome",
+	"mobile_phone_row_name_placeholder": "iPhone do Luan",
+	"mobile_phone_row_name_title": "Dar um nome ao celular",
+	"mobile_phone_row_not_connected": "Não conectado",
+	"mobile_phone_row_unpair": "Desparear",
+	"mobile_phone_row_unpair_body": "Ele é desconectado na hora, não alcança mais este computador e para de receber notificações push. Para usá-lo de novo, escaneie um novo código.",
+	"mobile_phone_row_unpair_title": "Desparear {title}?",
+	"mobile_phone_row_unpaired": "Pareamento de {title} desfeito",
+	"mobile_scope_act_label": "Reiniciar serviços, executar ações, enviar prompts",
+	"mobile_scope_act_risk": "Altera a stack em execução, cria e remove worktrees, faz commits e pushes, atualiza o Atlas e diz aos agentes o que fazer.",
+	"mobile_scope_approve_label": "Responder aos prompts de permissão dos agentes",
+	"mobile_scope_approve_risk": "Pode permitir que um agente execute uma ferramenta ou um comando.",
+	"mobile_scope_group_control": "Controle",
+	"mobile_scope_group_view": "Visualização",
+	"mobile_scope_read_label": "Ver projetos, logs e agentes",
+	"mobile_scope_read_risk": "Lê nomes, status, logs, diffs e conversas dos agentes. Não altera nada.",
+	"mobile_scope_term_read_label": "Acompanhar terminais",
+	"mobile_scope_term_read_risk": "Vê tudo o que um terminal imprime, inclusive segredos.",
+	"mobile_scope_term_write_label": "Digitar nos terminais",
+	"mobile_scope_term_write_risk": "Executa comandos em seu nome, como se você estivesse no teclado."
+}

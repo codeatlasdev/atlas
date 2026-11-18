@@ -3,7 +3,10 @@
 	import { Button, Spinner } from "@codeatlasdev/ui";
 	import { errText } from "#lib/api.ts";
 	import { hostCall } from "#lib/host.ts";
-	import { describeActivity, relativeTime, type Activity } from "#lib/settings/mobile.ts";
+	import type { Activity } from "#lib/settings/mobile.ts";
+	import { describeActivity } from "#lib/settings/mobileText.ts";
+	import { dateTime, relativeTime } from "#lib/i18n/fmt.ts";
+	import { m } from "#lib/i18n/m.ts";
 
 	let { nodeId, now }: { nodeId: string; now: number } = $props();
 
@@ -25,31 +28,28 @@
 	});
 </script>
 
-<div class="activity" aria-label="Recent activity">
+<div class="activity" aria-label={m.mobile_phone_activity_label()}>
 	{#if error}
 		<p class="note">
-			Could not read the activity: {error}
-			<Button size="sm" variant="ghost" onclick={load}>Try again</Button>
+			{m.mobile_phone_activity_error({ error })}
+			<Button size="sm" variant="ghost" onclick={load}>{m.mobile_phone_activity_try_again()}</Button>
 		</p>
 	{:else if entries === null}
-		<p class="note"><Spinner size={11} /> Reading the activity…</p>
+		<p class="note"><Spinner size={11} /> {m.mobile_phone_activity_reading()}</p>
 	{:else if entries.length === 0}
-		<p class="note">
-			Nothing yet. What the phone changes here (a restart, a prompt, an approval) is listed; just looking
-			around is not.
-		</p>
+		<p class="note">{m.mobile_phone_activity_empty()}</p>
 	{:else}
 		<ul>
 			{#each entries as e, i (i)}
 				<li>
 					<span class="what">{describeActivity(e)}</span>
-					<time datetime={new Date(e.ts * 1000).toISOString()} title={new Date(e.ts * 1000).toLocaleString()}>
-						{relativeTime(e.ts, now)}
+					<time datetime={new Date(e.ts * 1000).toISOString()} title={dateTime(e.ts * 1000)}>
+						{relativeTime(e.ts * 1000, now)}
 					</time>
 				</li>
 			{/each}
 		</ul>
-		<p class="foot">The last {entries.length}. Text typed on the phone is recorded by its length only.</p>
+		<p class="foot">{m.mobile_phone_activity_footer({ count: entries.length })}</p>
 	{/if}
 </div>
 

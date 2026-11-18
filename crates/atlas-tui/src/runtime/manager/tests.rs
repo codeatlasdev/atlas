@@ -481,7 +481,7 @@ async fn test_health_url_requires_2xx_not_just_open_port() {
 
     // Flip to 200: the watcher emits Running, and check_health recovers it.
     ok.store(true, Ordering::Release);
-    let running = tokio::time::timeout(Duration::from_secs(5), async {
+    let running = tokio::time::timeout(atlas_core::scaling::HANG, async {
         while let Some(ev) = rx.recv().await {
             if let ManagerEvent::StateChanged { state, .. } = ev
                 && state == ServiceState::Running
@@ -534,26 +534,42 @@ async fn test_stop_service_clears_pid_file() {
 }
 
 /// A child that ignores SIGTERM is SIGKILLed once the grace expires, and a
-/// well-behaved one returns well before the grace does.
+/// well-behaved one returns as soon as it is gone, not when the grace expires.
 // Signal traps: Unix only (Windows ends a process outright).
 #[cfg(unix)]
 #[tokio::test]
 async fn test_kill_gracefully_polls_then_kills() {
+    let dir = tempfile::TempDir::new().unwrap();
+    let trapped = dir.path().join("trapped");
     let mut stubborn = Command::new("sh")
-        .args(["-c", "trap '' TERM; sleep 100"])
+        .args([
+            "-c",
+            &format!("trap '' TERM; echo > '{}'; sleep 100", trapped.display()),
+        ])
         .process_group(0)
         .spawn()
         .unwrap();
-    tokio::time::sleep(Duration::from_millis(200)).await;
+    // The trap is in place once the marker exists: a SIGTERM before it would kill the shell outright.
+    while !trapped.exists() {
+        tokio::time::sleep(Duration::from_millis(10)).await;
+    }
     let t = std::time::Instant::now();
     crate::runtime::process::kill_gracefully(&mut stubborn, Duration::from_millis(600)).await;
+    // A lower bound: sleeping cannot be faster on a loaded machine, so this cannot flake.
     assert!(
         t.elapsed() >= Duration::from_millis(550),
         "waits out the grace"
     );
-    assert!(
-        stubborn.try_wait().unwrap().is_some() || stubborn.wait().await.is_ok(),
-        "leader reaped"
+    // SIGTERM was ignored, so only the SIGKILL after the grace ends it (its own life is 100 s, past the
+    // hang ceiling): the exit is by that signal, not by the child finishing.
+    let status = tokio::time::timeout(atlas_core::scaling::HANG, stubborn.wait())
+        .await
+        .expect("leader reaped: the child was killed, not left running")
+        .unwrap();
+    assert_eq!(
+        std::os::unix::process::ExitStatusExt::signal(&status),
+        Some(libc::SIGKILL),
+        "{status:?}"
     );
 
     let mut polite = Command::new("sh")
@@ -561,13 +577,14 @@ async fn test_kill_gracefully_polls_then_kills() {
         .process_group(0)
         .spawn()
         .unwrap();
-    tokio::time::sleep(Duration::from_millis(100)).await;
-    let t = std::time::Instant::now();
-    crate::runtime::process::kill_gracefully(&mut polite, Duration::from_secs(5)).await;
-    assert!(
-        t.elapsed() < Duration::from_secs(2),
-        "returns once group is gone"
-    );
+    // An hour of grace: returning once the group is gone (SIGTERM ends it at once) is the only way out
+    // before the hang ceiling; a call that waited out its grace would take an hour.
+    tokio::time::timeout(
+        atlas_core::scaling::HANG,
+        crate::runtime::process::kill_gracefully(&mut polite, Duration::from_secs(3600)),
+    )
+    .await
+    .expect("returns once the group is gone, not when the grace expires");
 }
 
 /// The same action label cannot be in flight twice; ending it frees it.
@@ -694,21 +711,22 @@ async fn test_action_streaming_returns_with_background_pipe_holder() {
     let dir = tempfile::TempDir::new().unwrap();
     let (tx, _rx) = mpsc::unbounded_channel();
     let pidfile = dir.path().join("bg.pid");
-    let t = std::time::Instant::now();
-    let ok = run_action_streaming(
-        &format!("sleep 31 & echo $! > {}; echo done", pidfile.display()),
-        dir.path(),
-        &HashMap::new(),
-        &dir.path().join(".logs"),
-        "bg",
-        &tx,
-        None,
+    // The background `sleep 600` holds the output pipe for ten minutes, ten times the hang ceiling: the
+    // action can only return before the ceiling if it does not wait for the pipe holder. (Timing the
+    // return failed on a loaded release run: 5.9 s against a 5 s bound.)
+    let run = tokio::time::timeout(
+        atlas_core::scaling::HANG,
+        run_action_streaming(
+            &format!("sleep 600 & echo $! > {}; echo done", pidfile.display()),
+            dir.path(),
+            &HashMap::new(),
+            &dir.path().join(".logs"),
+            "bg",
+            &tx,
+            None,
+        ),
     )
     .await;
-    assert!(ok);
-    // The point is that it does not wait for the background `sleep 31` holding the pipe. A 5 s
-    // bound failed on a loaded release run (5.9 s); 20 s still proves it.
-    assert!(t.elapsed() < Duration::from_secs(20), "drain is bounded");
     // reap the stray sleep we started (exact pid we recorded)
     if let Ok(p) = std::fs::read_to_string(&pidfile)
         && let Ok(p) = p.trim().parse::<i32>()
@@ -718,6 +736,11 @@ async fn test_action_streaming_returns_with_background_pipe_holder() {
             nix::sys::signal::Signal::SIGKILL,
         );
     }
+    assert_eq!(
+        run,
+        Ok(true),
+        "drain is bounded: the pipe holder is not waited for"
+    );
 }
 
 /// Item 4: action output reaches the log buffer (`action:<label>` LogLine),
@@ -845,7 +868,7 @@ async fn session_host_line(host_mode: &str, svc_env: &[(&str, &str)]) -> Option<
     ];
     let mut mgr = ServiceManager::new(dir.path().to_path_buf(), &cfg, tx);
     mgr.run_session('m').await?;
-    let line = tokio::time::timeout(Duration::from_secs(5), async {
+    let line = tokio::time::timeout(atlas_core::scaling::HANG, async {
         while let Some(ev) = rx.recv().await {
             if let ManagerEvent::LogLine { line, .. } = ev
                 && line.starts_with("TAURI=")
@@ -904,8 +927,13 @@ async fn session_exits_emits_session_ended() {
     mgr.run_session('q').await.unwrap();
     assert!(mgr.session_active("Quick"));
 
-    tokio::time::sleep(Duration::from_millis(300)).await;
-    mgr.check_health().await;
+    // Tick until the health tick reaps it: `true` ends whenever the machine gets to it, not within a
+    // fixed 300 ms.
+    let end = std::time::Instant::now() + atlas_core::scaling::HANG;
+    while mgr.session_active("Quick") && std::time::Instant::now() < end {
+        tokio::time::sleep(Duration::from_millis(20)).await;
+        mgr.check_health().await;
+    }
 
     assert!(!mgr.session_active("Quick"));
     let mut ended = None;
@@ -999,7 +1027,7 @@ async fn a_service_finds_binaries_the_login_shell_put_on_path() {
     let cfg = one_service_cfg("bun dev; sleep 30", None);
     let mut mgr = ServiceManager::new(dir.path().to_path_buf(), &cfg, tx);
     mgr.start_service("svc").await;
-    let line = tokio::time::timeout(Duration::from_secs(5), async {
+    let line = tokio::time::timeout(atlas_core::scaling::HANG, async {
         while let Some(ev) = rx.recv().await {
             if let ManagerEvent::LogLine { line, .. } = ev {
                 return line;
@@ -1029,7 +1057,7 @@ async fn a_session_action_finds_binaries_the_login_shell_put_on_path() {
     ];
     let mut mgr = ServiceManager::new(dir.path().to_path_buf(), &cfg, tx);
     let _ = mgr.run_session('m').await;
-    let line = tokio::time::timeout(Duration::from_secs(5), async {
+    let line = tokio::time::timeout(atlas_core::scaling::HANG, async {
         while let Some(ev) = rx.recv().await {
             if let ManagerEvent::LogLine { line, .. } = ev
                 && line.starts_with("bun-ran")
@@ -1321,7 +1349,7 @@ async fn a_successful_respawn_clears_the_previous_failure_reason() {
 /// (`cmd /d /s /c` on Windows CI saw `Starting` after 300 ms, run 39356068863). tokio caches the
 /// exit status, so `check_health`'s own `try_wait` still sees it afterward.
 pub(super) async fn until_child_exited(m: &mut ServiceManager, name: &str) {
-    let deadline = std::time::Instant::now() + Duration::from_secs(10);
+    let deadline = std::time::Instant::now() + atlas_core::scaling::HANG;
     while std::time::Instant::now() < deadline {
         let running = m
             .services
@@ -1333,7 +1361,7 @@ pub(super) async fn until_child_exited(m: &mut ServiceManager, name: &str) {
         }
         tokio::time::sleep(Duration::from_millis(20)).await;
     }
-    panic!("{name}: child still running after 10 s");
+    panic!("{name}: child still running after the hang ceiling");
 }
 
 // ── Port held by a foreign process (issue #133) ──────────────────────────────────────────────
@@ -1528,7 +1556,7 @@ async fn the_conflict_clears_when_the_holder_exits() {
     assert!(mgr.port_conflict("svc").is_some());
 
     end_holder(holder);
-    let deadline = std::time::Instant::now() + Duration::from_secs(10);
+    let deadline = std::time::Instant::now() + atlas_core::scaling::HANG;
     while mgr.port_conflict("svc").is_some() && std::time::Instant::now() < deadline {
         mgr.refresh_port_conflicts().await;
         tokio::time::sleep(Duration::from_millis(50)).await;

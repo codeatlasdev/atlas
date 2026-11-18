@@ -46,7 +46,7 @@ async fn task_with_fake_agent_ends_done() {
         &crewmate_id,
         &task_id,
         "done",
-        Duration::from_secs(15),
+        atlas_core::scaling::HANG,
     )
     .await;
     assert_eq!(
@@ -101,7 +101,7 @@ async fn an_agent_that_finishes_before_the_runner_looks_still_ends_done() {
         &crewmate_id,
         &task_id,
         "done",
-        Duration::from_secs(15),
+        atlas_core::scaling::HANG,
     )
     .await;
     assert_eq!(task["result"], "fast answer", "{task}");
@@ -159,7 +159,7 @@ async fn pty_agent_starts_inside_the_crewmate_project() {
         &crewmate_id,
         &task_id,
         "failed",
-        Duration::from_secs(15),
+        atlas_core::scaling::HANG,
     )
     .await;
 
@@ -209,7 +209,7 @@ async fn agent_exit_3_yields_failed() {
         &crewmate_id,
         &task_id,
         "failed",
-        Duration::from_secs(15),
+        atlas_core::scaling::HANG,
     )
     .await;
     assert_eq!(task["state"], "failed");
@@ -289,7 +289,7 @@ async fn queued_task_survives_restart() {
         &crewmate_id,
         &task_id,
         "done",
-        Duration::from_secs(20),
+        atlas_core::scaling::HANG,
     )
     .await;
     assert_eq!(done["result"], "persisted", "{done}");
@@ -338,7 +338,7 @@ async fn crewmate_list_state_mapping() {
 
     // Poll until the crewmate reports "working" while the task runs.
     let mut saw_working = false;
-    for _ in 0..40 {
+    for _ in 0..600 {
         let list = client.call("crewmate_list", json!({})).await.unwrap();
         if list["crewmates"][0]["state"] == "working" {
             saw_working = true;
@@ -356,7 +356,7 @@ async fn crewmate_list_state_mapping() {
         &crewmate_id,
         &task_id,
         "done",
-        Duration::from_secs(15),
+        atlas_core::scaling::HANG,
     )
     .await;
     // After done, state is "idle" again.
@@ -416,7 +416,7 @@ async fn crewmate_list_last_and_queued() {
         &crewmate_id,
         &task_id,
         "done",
-        Duration::from_secs(15),
+        atlas_core::scaling::HANG,
     )
     .await;
 
@@ -476,7 +476,7 @@ async fn crewmate_tasks_steps() {
         &crewmate_id,
         &task_id,
         "done",
-        Duration::from_secs(15),
+        atlas_core::scaling::HANG,
     )
     .await;
 
@@ -534,7 +534,7 @@ exit 0"#;
     let task_id = v["task"]["id"].as_str().unwrap().to_string();
 
     // Wait for done or failed.
-    let deadline = std::time::Instant::now() + Duration::from_secs(15);
+    let deadline = std::time::Instant::now() + atlas_core::scaling::HANG;
     loop {
         let tasks = client
             .call("crewmate_tasks", json!({"id": id, "limit": 5}))
@@ -614,7 +614,7 @@ async fn crewmate_tasks_json_contract() {
         &crewmate_id,
         &task_id,
         "done",
-        Duration::from_secs(15),
+        atlas_core::scaling::HANG,
     )
     .await;
 
@@ -932,7 +932,7 @@ async fn a_task_whose_state_cannot_be_stored_fails_with_the_error_instead_of_sta
     client.call("crew_resume", json!({})).await.unwrap();
 
     // The event the clients get for this task must say failed, with a reason that names the store.
-    let failed = tokio::time::timeout(Duration::from_secs(15), async {
+    let failed = tokio::time::timeout(atlas_core::scaling::HANG, async {
         loop {
             let e = events.recv().await.unwrap();
             if e["ev"] == "crewmate_task"

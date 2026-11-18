@@ -47,6 +47,7 @@
 	import { ws } from "#lib/stores/workspace.svelte.ts";
 	import CrewWorkspace from "#lib/crew/CrewWorkspace.svelte";
 	import WorkspaceRail from "#lib/shell/WorkspaceRail.svelte";
+	import { m } from "#lib/i18n/m.ts";
 
 	let { children }: { children: Snippet } = $props();
 	// Windows and Linux: no native title bar (app.html sets the class before first paint).
@@ -82,7 +83,7 @@
 />
 
 {#snippet sidebar()}
-	<Contain where="Sidebar" title="The sidebar hit an error" hint="The workspace to the right still works.">
+	<Contain where="Sidebar" title={m.shell_layout_sidebar_title()} hint={m.shell_layout_sidebar_hint()}>
 		<Sidebar
 			onJump={() => (palettes.jump = true)}
 			onAgent={(id) => {

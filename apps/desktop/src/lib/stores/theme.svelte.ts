@@ -5,6 +5,7 @@ import { listen } from "@tauri-apps/api/event";
 import { colorScheme } from "@codeatlasdev/ui";
 import { api } from "#lib/api.ts";
 import { host, b64decode } from "#lib/host.ts";
+import { m } from "#lib/i18n/m.ts";
 import {
 	cssVars,
 	migrateSelection,
@@ -114,9 +115,9 @@ class Themes {
 			homeDir(),
 		]);
 		this.home = home;
-		const m = migrateSelection(settings.theme);
-		this.selection = m.selection;
-		this.explicit = m.explicit;
+		const migrated = migrateSelection(settings.theme);
+		this.selection = migrated.selection;
+		this.explicit = migrated.explicit;
 		this.load(files);
 		this.ready = true;
 		bootMark("theme:ready");
@@ -199,7 +200,7 @@ class Themes {
 		await host.fsWrite(`${this.userDir}/${slug(r.name)}.json`, text);
 		await this.reload();
 		const theme = this.list.find((t) => t.name === r.name);
-		if (!theme) throw new Error(`Imported "${r.name}" but it did not load; see the theme issues list.`);
+		if (!theme) throw new Error(m.settings_theme_diag_store_not_loaded({ name: r.name }));
 		if (opts.applyFont) await this.applyImportedPrefs(r);
 		if (opts.select) await this.setTheme({ [r.appearance]: r.name, mode: r.appearance, terminal: "app" });
 		return theme;
@@ -217,7 +218,7 @@ class Themes {
 
 	exportTheme(name: string, format: "json" | "ghostty"): string {
 		const t = this.resolve(name);
-		if (!t) throw new Error(`No theme named "${name}"`);
+		if (!t) throw new Error(m.settings_theme_diag_store_no_theme({ name }));
 		const p = prefs.value.terminal;
 		return format === "json"
 			? exportAtlasJson(t)
@@ -233,7 +234,7 @@ class Themes {
 		const t = this.list.find((x) => x.name === name);
 		if (!t?.file || t.source !== "user") return;
 		const others = this.list.filter((x) => x.file === t.file && x.name !== name);
-		if (others.length) throw new Error(`${t.file} holds other themes too; edit the file instead.`);
+		if (others.length) throw new Error(m.settings_theme_diag_store_shared_file({ file: t.file }));
 		await host.fsRemove(t.file);
 		await this.reload();
 	}
@@ -268,7 +269,7 @@ class Themes {
 			}
 		};
 		const text = await read(this.ghosttyConfig);
-		if (text === null) throw new Error("No Ghostty config at ~/.config/ghostty/config");
+		if (text === null) throw new Error(m.settings_theme_diag_store_no_ghostty_config());
 		return parseGhosttyConfig(text, {
 			home: this.home,
 			readFile: read,

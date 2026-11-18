@@ -1,10 +1,40 @@
 use anyhow::{Context, Result, bail};
 use atlas_core::util::expand_tilde;
+use atlas_i18n::t;
 use clap::Args;
 use std::path::{Path, PathBuf};
 
 use super::AtlasCommand;
 const INSTALL_DIR: &str = ".atlas/bin";
+
+const BOLD: &str = "\x1b[1m";
+const DIM: &str = "\x1b[2m";
+const RESET: &str = "\x1b[0m";
+
+/// A finished step: a green check, then the message. Glyph and color are code; the words are the catalog's.
+fn ok(message: &str) -> String {
+    format!("\x1b[32m✓{RESET} {message}")
+}
+
+/// Something the person should look at, that is not an error.
+fn warn(message: &str) -> String {
+    format!("\x1b[33m◆{RESET} {message}")
+}
+
+/// A whole line in dim.
+fn dim(message: &str) -> String {
+    format!("{DIM}{message}{RESET}")
+}
+
+/// A command or path in bold, in a line that is not dim.
+fn bold(text: &str) -> String {
+    format!("{BOLD}{text}{RESET}")
+}
+
+/// A command in bold inside a line that is dim as a whole (the dim comes back after it).
+fn bold_in_dim(text: &str) -> String {
+    format!("{RESET}{BOLD}{text}{RESET}{DIM}")
+}
 
 #[derive(Debug, Args)]
 pub struct LinkArgs {
@@ -39,7 +69,7 @@ impl AtlasCommand for UnlinkArgs {
 // ── helpers ───────────────────────────────────────────────────────────────────
 
 fn install_path() -> Result<PathBuf> {
-    let home = dirs::home_dir().context("no home directory")?;
+    let home = dirs::home_dir().context(t!("cmd_link_no_home"))?;
     Ok(home.join(INSTALL_DIR).join(atlas_core::paths::exe("atlas")))
 }
 
@@ -51,14 +81,14 @@ fn symlink(target: &Path, link: &Path) -> std::io::Result<()> {
     std::os::windows::fs::symlink_file(target, link).map_err(|e| {
         std::io::Error::new(
             e.kind(),
-            format!("{e} (Windows needs Developer Mode on to create symlinks)"),
+            t!("cmd_link_symlink_windows", reason = e.to_string()),
         )
     })
 }
 
 /// Walk up from `cwd` until we find a `Cargo.toml` that contains `[workspace]`.
 pub(crate) fn find_workspace_root() -> Result<PathBuf> {
-    let mut dir = std::env::current_dir().context("cannot read cwd")?;
+    let mut dir = std::env::current_dir().context(t!("cmd_link_no_cwd"))?;
     loop {
         let cargo_toml = dir.join("Cargo.toml");
         if cargo_toml.exists() {
@@ -69,10 +99,7 @@ pub(crate) fn find_workspace_root() -> Result<PathBuf> {
         }
         match dir.parent() {
             Some(p) => dir = p.to_path_buf(),
-            None => bail!(
-                "No Cargo workspace found. Run from inside the atlas repo, \
-                 or pass --dir <workspace-root>."
-            ),
+            None => bail!("{}", t!("cmd_link_no_workspace")),
         }
     }
 }
@@ -92,28 +119,34 @@ pub async fn link(dir: Option<String>, build: bool, desktop: bool) -> Result<()>
         None => find_workspace_root()?,
     };
 
-    println!("\x1b[1;34m◆\x1b[0m atlas link  —  dev mode");
-    println!("  Workspace: {}", workspace.display());
+    println!("\x1b[1;34m◆{RESET} {}", t!("cmd_link_title"));
+    println!(
+        "  {}",
+        t!("cmd_link_workspace", dir = workspace.display().to_string())
+    );
 
     // Optionally build first so the binary is fresh.
     if build {
-        println!("\n\x1b[2m$ cargo build -p atlas-cli\x1b[0m");
+        // The command being run, not text for a person.
+        println!("\n{}", dim("$ cargo build -p atlas-cli"));
         let status = std::process::Command::new("cargo")
             .args(["build", "-p", "atlas-cli"])
             .current_dir(&workspace)
             .status()
-            .context("failed to run cargo")?;
+            .context(t!("cmd_link_no_cargo"))?;
         if !status.success() {
-            bail!("cargo build failed");
+            bail!("{}", t!("cmd_link_build_failed"));
         }
     }
 
     let debug_bin = debug_binary(&workspace);
     if !debug_bin.exists() {
         bail!(
-            "Debug binary not found at {}.\n  Run `cargo build -p atlas-cli` first, \
-             or use --build (default).",
-            debug_bin.display()
+            "{}",
+            t!(
+                "cmd_link_no_debug_binary",
+                path = debug_bin.display().to_string()
+            )
         );
     }
 
@@ -121,20 +154,36 @@ pub async fn link(dir: Option<String>, build: bool, desktop: bool) -> Result<()>
 
     // Back up the release binary (so `atlas unlink` can restore it) and swap the link in.
     if let Some(backup) = link_binary(&installed, &debug_bin)? {
-        println!("\x1b[32m✓\x1b[0m Backed up  → {}", backup.display());
+        println!(
+            "{}",
+            ok(&t!(
+                "cmd_link_backed_up",
+                path = backup.display().to_string()
+            ))
+        );
     }
 
     println!(
-        "\x1b[32m✓\x1b[0m Linked     {} → {}",
-        installed.display(),
-        debug_bin.display()
+        "{}",
+        ok(&t!(
+            "cmd_link_linked",
+            link = installed.display().to_string(),
+            target = debug_bin.display().to_string()
+        ))
     );
     println!();
-    println!("  \x1b[2mThe installed `atlas` now runs your local debug build.\x1b[0m");
+    println!("  {}", dim(&t!("cmd_link_now_runs_debug")));
     println!(
-        "  Rebuild anytime with \x1b[1mcargo build -p atlas-cli\x1b[0m — no reinstall needed."
+        "  {}",
+        t!(
+            "cmd_link_rebuild_anytime",
+            command = bold("cargo build -p atlas-cli")
+        )
     );
-    println!("  Restore the release binary with \x1b[1matlas unlink\x1b[0m.");
+    println!(
+        "  {}",
+        t!("cmd_link_restore_release", command = bold("atlas unlink"))
+    );
 
     if desktop {
         link_desktop(&workspace, build)?;
@@ -152,9 +201,7 @@ fn debug_app(workspace: &Path) -> PathBuf {
 fn link_desktop(workspace: &Path, build: bool) -> Result<()> {
     use super::desktop;
     if cfg!(not(target_os = "macos")) {
-        bail!(
-            "atlas link --desktop links the macOS app bundle; on this OS run the debug app directly"
-        );
+        bail!("{}", t!("cmd_link_desktop_needs_macos"));
     }
     if build {
         let setup = workspace.join("scripts/setup.sh");
@@ -162,12 +209,14 @@ fn link_desktop(workspace: &Path, build: bool) -> Result<()> {
             .arg("--quiet")
             .current_dir(workspace)
             .status()
-            .with_context(|| format!("cannot run {}", setup.display()))?;
+            .with_context(|| t!("cmd_link_run_failed", path = setup.display().to_string()))?;
         if !st.success() {
-            bail!("setup failed");
+            bail!("{}", t!("cmd_link_setup_failed"));
         }
+        // The command being run, not text for a person.
         println!(
-            "\n\x1b[2m$ cargo tauri build --debug --bundles app --config tauri.dev.conf.json\x1b[0m"
+            "\n{}",
+            dim("$ cargo tauri build --debug --bundles app --config tauri.dev.conf.json")
         );
         let st = std::process::Command::new("cargo")
             // tauri.dev.conf.json: the orange Atlas Dev icon and id, so a linked build never looks like a release.
@@ -182,14 +231,17 @@ fn link_desktop(workspace: &Path, build: bool) -> Result<()> {
             ])
             .current_dir(workspace.join("crates/atlas-desktop"))
             .status()
-            .context("failed to run cargo tauri (install: cargo install tauri-cli)")?;
+            .context(t!("cmd_link_no_tauri"))?;
         if !st.success() {
-            bail!("desktop build failed");
+            bail!("{}", t!("cmd_link_desktop_build_failed"));
         }
     }
     let app = debug_app(workspace);
     if !app.is_dir() {
-        bail!("{} not found; drop --no-build", app.display());
+        bail!(
+            "{}",
+            t!("cmd_link_app_missing", path = app.display().to_string())
+        );
     }
 
     let target = desktop::installed_app().unwrap_or_else(desktop::default_location);
@@ -213,13 +265,25 @@ fn link_desktop(workspace: &Path, build: bool) -> Result<()> {
             .status()?;
         if !st.success() {
             let _ = std::fs::remove_dir_all(&staged);
-            bail!("cannot back up {}", target.display());
+            bail!(
+                "{}",
+                t!(
+                    "cmd_link_backup_failed",
+                    path = target.display().to_string()
+                )
+            );
         }
         let _ = std::fs::remove_dir_all(&backup);
         std::fs::rename(&staged, &backup)
-            .with_context(|| format!("cannot save {}", backup.display()))?;
+            .with_context(|| t!("cmd_link_save_failed", path = backup.display().to_string()))?;
         std::fs::remove_dir_all(&target)?;
-        println!("\x1b[32m✓\x1b[0m Backed up  → {}", backup.display());
+        println!(
+            "{}",
+            ok(&t!(
+                "cmd_link_backed_up",
+                path = backup.display().to_string()
+            ))
+        );
         moved_to_backup = Some(backup);
     }
     if let Some(dir) = target.parent() {
@@ -233,15 +297,28 @@ fn link_desktop(workspace: &Path, build: bool) -> Result<()> {
                 .arg(&target)
                 .status();
         }
-        return Err(e).with_context(|| format!("cannot create symlink at {}", target.display()));
+        return Err(e).with_context(|| {
+            t!(
+                "cmd_link_symlink_failed",
+                path = target.display().to_string()
+            )
+        });
     }
     println!(
-        "\x1b[32m✓\x1b[0m Linked     {} → {}",
-        target.display(),
-        app.display()
+        "{}",
+        ok(&t!(
+            "cmd_link_linked",
+            link = target.display().to_string(),
+            target = app.display().to_string()
+        ))
     );
     println!(
-        "  \x1b[2mRebuild with\x1b[0m \x1b[1matlas link --desktop\x1b[0m\x1b[2m, or iterate live with\x1b[0m \x1b[1matlas desktop --dev\x1b[0m\x1b[2m.\x1b[0m"
+        "  {}",
+        dim(&t!(
+            "cmd_link_rebuild_desktop",
+            link = bold_in_dim("atlas link --desktop"),
+            dev = bold_in_dim("atlas desktop --dev")
+        ))
     );
     Ok(())
 }
@@ -263,21 +340,42 @@ fn unlink_desktop() -> Result<()> {
             .status()?;
         if !st.success() {
             let _ = std::fs::remove_dir_all(&staged);
-            bail!("cannot restore {}", backup.display());
+            bail!(
+                "{}",
+                t!(
+                    "cmd_link_restore_failed",
+                    path = backup.display().to_string()
+                )
+            );
         }
         let swapped = std::fs::remove_file(&target)
             .and_then(|()| std::fs::rename(&staged, &target))
-            .with_context(|| format!("cannot replace {}", target.display()));
+            .with_context(|| {
+                t!(
+                    "cmd_link_replace_failed",
+                    path = target.display().to_string()
+                )
+            });
         if let Err(e) = swapped {
             let _ = std::fs::remove_dir_all(&staged);
             return Err(e);
         }
         std::fs::remove_dir_all(&backup)?;
-        println!("\x1b[32m✓\x1b[0m Unlinked — restored {}", target.display());
+        println!(
+            "{}",
+            ok(&t!(
+                "cmd_link_unlinked_app",
+                path = target.display().to_string()
+            ))
+        );
     } else {
         std::fs::remove_file(&target)?;
         println!(
-            "\x1b[33m◆\x1b[0m Desktop link removed; no backup to restore. Install it with \x1b[1matlas desktop\x1b[0m."
+            "{}",
+            warn(&t!(
+                "cmd_link_app_link_removed",
+                command = bold("atlas desktop")
+            ))
         );
     }
     Ok(())
@@ -290,29 +388,39 @@ pub async fn unlink() -> Result<()> {
     let desktop = unlink_desktop();
     let installed = install_path()?;
     match unlink_binary(&installed)? {
-        Unlinked::NotLinked => println!(
-            "\x1b[33m◆\x1b[0m atlas is not currently linked to a dev build — nothing to do."
-        ),
+        Unlinked::NotLinked => println!("{}", warn(&t!("cmd_link_not_linked"))),
         Unlinked::Restored => println!(
-            "\x1b[32m✓\x1b[0m Unlinked — restored release binary at {}",
-            installed.display()
+            "{}",
+            ok(&t!(
+                "cmd_link_unlinked_binary",
+                path = installed.display().to_string()
+            ))
         ),
         Unlinked::KeptAsCopy => {
             println!(
-                "\x1b[33m◆\x1b[0m Unlinked, but there is no release backup at {}.",
-                backup_path(&installed).display()
+                "{}",
+                warn(&t!(
+                    "cmd_link_kept_as_copy",
+                    path = backup_path(&installed).display().to_string()
+                ))
             );
             println!(
-                "  {} is now a plain copy of the dev build, so `atlas` keeps working; run \x1b[1matlas update\x1b[0m to get a release.",
-                installed.display()
+                "  {}",
+                t!(
+                    "cmd_link_kept_as_copy_next",
+                    path = installed.display().to_string(),
+                    command = bold("atlas update")
+                )
             );
         }
         Unlinked::Removed => {
+            println!("{}", warn(&t!("cmd_link_removed_dangling")));
             println!(
-                "\x1b[33m◆\x1b[0m Symlink removed; it pointed at a build that is gone and there is no backup."
-            );
-            println!(
-                "  Reinstall: \x1b[1mcurl -fsSL https://atlas.codeatlas.com.br/install.sh | sh\x1b[0m"
+                "  {}",
+                t!(
+                    "cmd_link_reinstall",
+                    command = bold("curl -fsSL https://atlas.codeatlas.com.br/install.sh | sh")
+                )
             );
         }
     }
@@ -344,23 +452,37 @@ fn sibling_tmp(dest: &Path, tag: &str) -> PathBuf {
 /// A dangling link from a cleaned build is replaced like any other.
 fn link_binary(installed: &Path, debug_bin: &Path) -> Result<Option<PathBuf>> {
     if let Some(dir) = installed.parent() {
-        std::fs::create_dir_all(dir).with_context(|| format!("cannot create {}", dir.display()))?;
+        std::fs::create_dir_all(dir)
+            .with_context(|| t!("cmd_link_create_failed", path = dir.display().to_string()))?;
     }
     let backup = backup_path(installed);
     let backed_up = if installed.exists() && !is_link(installed) {
-        std::fs::copy(installed, &backup)
-            .with_context(|| format!("cannot back up {}", installed.display()))?;
+        std::fs::copy(installed, &backup).with_context(|| {
+            t!(
+                "cmd_link_backup_failed",
+                path = installed.display().to_string()
+            )
+        })?;
         Some(backup)
     } else {
         None
     };
     let tmp = sibling_tmp(installed, "link");
     let _ = std::fs::remove_file(&tmp);
-    symlink(debug_bin, &tmp)
-        .with_context(|| format!("cannot create symlink at {}", installed.display()))?;
+    symlink(debug_bin, &tmp).with_context(|| {
+        t!(
+            "cmd_link_symlink_failed",
+            path = installed.display().to_string()
+        )
+    })?;
     if let Err(e) = std::fs::rename(&tmp, installed) {
         let _ = std::fs::remove_file(&tmp);
-        return Err(e).with_context(|| format!("cannot replace {}", installed.display()));
+        return Err(e).with_context(|| {
+            t!(
+                "cmd_link_replace_failed",
+                path = installed.display().to_string()
+            )
+        });
     }
     Ok(backed_up)
 }
@@ -387,18 +509,31 @@ fn unlink_binary(installed: &Path) -> Result<Unlinked> {
     }
     let backup = backup_path(installed);
     if backup.is_file() {
-        std::fs::rename(&backup, installed)
-            .with_context(|| format!("cannot restore {}", backup.display()))?;
+        std::fs::rename(&backup, installed).with_context(|| {
+            t!(
+                "cmd_link_restore_failed",
+                path = backup.display().to_string()
+            )
+        })?;
         return Ok(Unlinked::Restored);
     }
     if installed.is_file() {
         // `is_file` follows the link: the dev build is still there.
         let tmp = sibling_tmp(installed, "unlink");
         let copied = std::fs::copy(installed, &tmp)
-            .with_context(|| format!("cannot copy {}", installed.display()))
+            .with_context(|| {
+                t!(
+                    "cmd_link_copy_failed",
+                    path = installed.display().to_string()
+                )
+            })
             .and_then(|_| {
-                std::fs::rename(&tmp, installed)
-                    .with_context(|| format!("cannot replace {}", installed.display()))
+                std::fs::rename(&tmp, installed).with_context(|| {
+                    t!(
+                        "cmd_link_replace_failed",
+                        path = installed.display().to_string()
+                    )
+                })
             });
         if copied.is_err() {
             let _ = std::fs::remove_file(&tmp);
@@ -406,8 +541,12 @@ fn unlink_binary(installed: &Path) -> Result<Unlinked> {
         copied?;
         return Ok(Unlinked::KeptAsCopy);
     }
-    std::fs::remove_file(installed)
-        .with_context(|| format!("cannot remove symlink {}", installed.display()))?;
+    std::fs::remove_file(installed).with_context(|| {
+        t!(
+            "cmd_link_remove_link_failed",
+            path = installed.display().to_string()
+        )
+    })?;
     Ok(Unlinked::Removed)
 }
 

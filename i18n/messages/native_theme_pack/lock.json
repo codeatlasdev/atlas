@@ -1,0 +1,14 @@
+{
+  "pt-BR": {
+    "native_theme_pack_entry_outside": "15601ef47180",
+    "native_theme_pack_open_failed": "e92d8b232b70",
+    "native_theme_pack_package_too_big": "d7771c6816fb",
+    "native_theme_pack_run_failed": "88da198414a6",
+    "native_theme_pack_temp_failed": "b6ca93b72bdf",
+    "native_theme_pack_too_large": "4a69133330d3",
+    "native_theme_pack_too_many_entries": "563f08b08293",
+    "native_theme_pack_tool_failed": "b06b4409678e",
+    "native_theme_pack_tool_timeout": "82ec363bd2f1",
+    "native_theme_pack_wrong_type": "c2c4b623b021"
+  }
+}

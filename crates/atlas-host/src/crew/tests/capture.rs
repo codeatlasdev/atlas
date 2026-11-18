@@ -56,7 +56,7 @@ async fn the_capture_tool_round_trip_through_a_real_hostd_attaches_every_shot() 
     let dir = tmp.path().join("hostd");
     use_runner(
         &fake_runner(tmp.path(), &full_report(&[])),
-        Duration::from_secs(20),
+        atlas_core::scaling::HANG,
     );
     let client = super::fixture::daemon(&dir).await;
     let id = super::fixture::create_crewmate(&client, "Cap").await;
@@ -99,7 +99,7 @@ async fn through_hostd_a_missing_combination_and_a_bad_request_are_errors_the_ag
     let dir = tmp.path().join("hostd");
     use_runner(
         &fake_runner(tmp.path(), &full_report(&["webkit-1440-dark"])),
-        Duration::from_secs(20),
+        atlas_core::scaling::HANG,
     );
     let client = super::fixture::daemon(&dir).await;
     let id = super::fixture::create_crewmate(&client, "Cap2").await;
@@ -154,7 +154,7 @@ async fn the_mcp_capture_tool_returns_every_combination_visited_and_the_error_wh
     // A full report: the result text is the JSON listing the cells asked for (2 engines x 1 x 1).
     use_runner(
         &fake_runner(tmp.path(), &full_report(&[])),
-        Duration::from_secs(20),
+        atlas_core::scaling::HANG,
     );
     let ok = crate::crew::mcp::call_for_test(&dir, &id, &pane, "capture", args.clone())
         .await
@@ -176,7 +176,7 @@ async fn the_mcp_capture_tool_returns_every_combination_visited_and_the_error_wh
     // A missing combination: the MCP call is an error whose message names it.
     use_runner(
         &fake_runner(tmp.path(), &full_report(&["webkit-390-dark"])),
-        Duration::from_secs(20),
+        atlas_core::scaling::HANG,
     );
     let err = crate::crew::mcp::call_for_test(&dir, &id, &pane, "capture", args)
         .await
@@ -220,7 +220,7 @@ async fn a_dom_capture_keeps_each_dom_file_next_to_its_png_and_lists_it() {
     let _g = capture::TEST_LOCK.lock().await;
     let tmp = tempfile::tempdir().unwrap();
     let dir = tmp.path().join("hostd");
-    use_runner(&dom_report_runner(tmp.path()), Duration::from_secs(20));
+    use_runner(&dom_report_runner(tmp.path()), atlas_core::scaling::HANG);
     let client = super::fixture::daemon(&dir).await;
     let id = super::fixture::create_crewmate(&client, "CapDom").await;
     // The screenshots become the task's images, so the task must exist.
@@ -248,7 +248,7 @@ async fn a_dom_capture_keeps_each_dom_file_next_to_its_png_and_lists_it() {
     // Without `dom` the answer has no dom entries and the runner is not asked for one.
     use_runner(
         &fake_runner(tmp.path(), &full_report(&[])),
-        Duration::from_secs(20),
+        atlas_core::scaling::HANG,
     );
     let (_, v) = post_capture(
         &dir,
@@ -292,7 +292,7 @@ async fn a_checks_capture_answers_with_the_findings_and_keeps_their_files() {
     let planted = r##"[{"detector":"gutter","severity":"error","message":"4.0 px from the left edge","selector":"#hero p"}]"##;
     use_runner(
         &findings_runner(tmp.path(), planted),
-        Duration::from_secs(20),
+        atlas_core::scaling::HANG,
     );
     let client = super::fixture::daemon(&dir).await;
     let id = super::fixture::create_crewmate(&client, "CapChecks").await;
@@ -319,7 +319,7 @@ async fn a_checks_capture_answers_with_the_findings_and_keeps_their_files() {
     // A findings file that is not a list is shown as an error, never as "no findings".
     use_runner(
         &findings_runner(tmp.path(), r#"{"oops": true}"#),
-        Duration::from_secs(20),
+        atlas_core::scaling::HANG,
     );
     let (_, v) = post_capture(
         &dir,

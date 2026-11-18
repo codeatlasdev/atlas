@@ -62,11 +62,11 @@ async fn audit_fixtures_are_real_payloads() {
         .await
         .unwrap();
     let task = v["task"]["id"].as_str().unwrap().to_string();
-    wait_task_state(&client, &id, &task, "done", Duration::from_secs(20)).await;
+    wait_task_state(&client, &id, &task, "done", atlas_core::scaling::HANG).await;
     client.call("crew_pause", json!({})).await.unwrap();
     client.call("crew_resume", json!({})).await.unwrap();
     // The task is `done` a beat before its `task_finished` entry is written: wait for the entry.
-    for _ in 0..100 {
+    for _ in 0..1200 {
         let a = client
             .call("crewmate_audit", json!({"id": id, "kind": "task_finished"}))
             .await
@@ -239,11 +239,11 @@ async fn ask_user_fixtures_are_real_payloads_and_the_phones_answer_wakes_the_age
     let _bin_lock = lock_agent_bin().await;
     let tmp = tempfile::tempdir().unwrap();
     let dir = tmp.path().join("hostd");
-    use_agent_bin(&fake_agent(tmp.path(), "claude", "sleep 30"));
+    use_agent_bin(&fake_agent(tmp.path(), "claude", "sleep 600"));
     let client = daemon(&dir).await;
     let id = create_crewmate(&client, "Asker").await;
     let task = send(&client, &id, "pick a deploy target", false).await;
-    wait_task_state(&client, &id, &task, "running", Duration::from_secs(20)).await;
+    wait_task_state(&client, &id, &task, "running", atlas_core::scaling::HANG).await;
     let pane = crate::crew::pane::key(&id, &task);
 
     // The agent asks and blocks, as `tool_ask_user` does.
@@ -262,7 +262,7 @@ async fn ask_user_fixtures_are_real_payloads_and_the_phones_answer_wakes_the_age
         .await
     });
     let mut open = Value::Null;
-    for _ in 0..100 {
+    for _ in 0..1200 {
         open = task_of(&client, &id, &task).await;
         if open["ask"].is_object() {
             break;
@@ -291,7 +291,7 @@ async fn ask_user_fixtures_are_real_payloads_and_the_phones_answer_wakes_the_age
         )
         .await
         .unwrap();
-    let (status, reply) = tokio::time::timeout(Duration::from_secs(10), asked)
+    let (status, reply) = tokio::time::timeout(atlas_core::scaling::HANG, asked)
         .await
         .expect("the agent's ask never returned")
         .unwrap();

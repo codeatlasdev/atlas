@@ -6,11 +6,11 @@
 
 	let { result, name }: { result: ImportResult; name: string } = $props();
 
-	let m = $derived(previewModel({ style: result.style, appearance: result.appearance }));
+	let model = $derived(previewModel({ style: result.style, appearance: result.appearance }));
 </script>
 
 <figure class="card">
-	<ThemePreview {m} />
+	<ThemePreview {model} />
 	<figcaption>{name}</figcaption>
 </figure>
 

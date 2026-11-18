@@ -1,5 +1,7 @@
 // @ts-nocheck bun test runtime types are not part of the app tsconfig
 import { describe, expect, test } from "bun:test";
+import { m } from "#lib/i18n/m.ts";
+import { inLocale } from "../../../test/locale.ts";
 import { TOUR_STEPS, nextIndex, placeCard, prevIndex, reanchor, visibleSteps } from "./tour.ts";
 import {
 	CHECKLIST,
@@ -160,7 +162,7 @@ describe("shortcut sheet", () => {
 
 	test("recent worktree rows collapse into one", () => {
 		const rows = buildSheet(cmds, keysOf)[0].rows;
-		expect(rows.filter((r) => r.label === "Recent worktree 1–6")).toHaveLength(1);
+		expect(rows.filter((r) => r.label === m.onboarding_shortcuts_recent_worktree())).toHaveLength(1);
 		expect(rows.some((r) => r.id === "atlas::RecentWorktree2")).toBe(false);
 	});
 
@@ -169,7 +171,25 @@ describe("shortcut sheet", () => {
 		const g = buildSheet(tabs, (id) => [`⌘${id.slice(-1)}`]);
 		expect(g).toHaveLength(1);
 		expect(g[0].title).toBe("Tabs and panes");
-		expect(g[0].rows.map((r) => r.label)).toEqual(["Tab 1–8 (⌘9 last)"]);
+		expect(g[0].rows.map((r) => r.label)).toEqual([m.onboarding_shortcuts_tab_range({ key: "⌘9" })]);
+	});
+
+	// The groups are keyed by id, not by their title: the same commands land in the same groups in any language.
+	test("a language switch retitles the groups without regrouping them", async () => {
+		const ids = (g) => g.map((x) => x.rows.map((r) => r.id));
+		const en = buildSheet(cmds, keysOf);
+		await inLocale("pt-BR", () => {
+			const pt = buildSheet(cmds, keysOf);
+			expect(ids(pt)).toEqual(ids(en));
+			expect(pt.map((x) => x.title)).toEqual([
+				m.onboarding_shortcuts_group_go_anywhere(),
+				m.onboarding_shortcuts_group_panels(),
+				m.onboarding_shortcuts_group_tabs(),
+				m.onboarding_shortcuts_group_project(),
+				m.onboarding_shortcuts_group_more(),
+			]);
+			expect(pt.map((x) => x.title)).not.toEqual(en.map((x) => x.title));
+		});
 	});
 
 	test("search matches label or key and removes empty groups", () => {

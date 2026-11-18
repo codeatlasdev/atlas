@@ -4,6 +4,7 @@
 	import Deck from "./deck/Deck.svelte";
 	import { onboarding } from "./state.svelte.ts";
 	import { welcome } from "./welcome.svelte.ts";
+	import { m } from "#lib/i18n/m.ts";
 
 	// A project showing up through any other path (CLI, the sidebar) ends the welcome and starts the tour, as before.
 	// Paths through the deck itself walk the guided flow and hand off from its last step.
@@ -59,7 +60,7 @@
 
 <svelte:window {onkeydown} />
 
-<div class="first" role="dialog" aria-label="Welcome to Atlas">
+<div class="first" role="dialog" aria-label={m.onboarding_welcome_to_atlas()}>
 	<div class="drag" data-tauri-drag-region></div>
 	<Deck bind:atProjects onfinish={() => void finish()} onskip={skip} />
 </div>

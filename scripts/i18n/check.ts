@@ -67,8 +67,8 @@ async function main() {
 	if (args.includes("--status")) return console.log(args.includes("--json") ? JSON.stringify(await runStatus(ctx)) : formatStatus(await runStatus(ctx)));
 	const findings = await runChecks(ctx);
 	const mode = ctx.base
-		? `ratchets compare with the merge-base ${ctx.base.mb.slice(0, 9)} (${ctx.base.mode}: ${ctx.base.ref}): ${ctx.base.changed.size} changed file(s) checked, the rest not looked at`
-		: "no git base (not a checkout, no origin/main or main, or CI without one; `git fetch origin main` or set ATLAS_BASE): ratchets compare with the committed baseline";
+		? `the baseline judges every file; with the merge-base ${ctx.base.mb.slice(0, 9)} (${ctx.base.mode}: ${ctx.base.ref}) the ${ctx.base.changed.size} changed file(s) also report what the change added`
+		: "no git base (not a checkout, no origin/main or main, or CI without one; `git fetch origin main` or set ATLAS_BASE): the committed baseline judges every file";
 	const count = (s: Finding["severity"]) => findings.filter((f) => f.severity === s).length;
 	const [errors, warnings, info] = [count("error"), count("warn"), count("info")];
 	if (args.includes("--json")) {

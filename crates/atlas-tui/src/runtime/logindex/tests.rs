@@ -499,3 +499,76 @@ fn incremental_window_matches_brute_force_on_random_streams() {
     // Marks/restarts carry the real clock, so straggler rows do occur.
     assert!(total_compactions > 0, "the compaction path was never taken");
 }
+
+// ── cost guards (they replaced the wall-clock budgets of the 1M-line bench) ──────────────────────────
+//
+// "Ingest 1M lines under 15 s" and "an incremental find under 250 ms" measured the machine as much as the
+// code. What a regression changes is how the cost GROWS: `sync` rescanning the whole buffer after an append,
+// or the ring evicting in time proportional to what it holds. Each test compares the cost at two sizes in
+// one process (`atlas_core::scaling::growth`), so the speed of the machine cancels out.
+
+/// A buffer of `lines` lines, one in ten holding the needle.
+fn filled(lines: usize) -> LogBuffer {
+    let mut b = LogBuffer::with_budget(usize::MAX, usize::MAX);
+    for i in 0..lines {
+        let text = if i % 10 == 0 { "needle" } else { "hay" };
+        b.push("a".into(), format!("{text} #{i}"), LogStream::Stdout);
+    }
+    b
+}
+
+/// An append only costs the new lines: syncing 200 appended lines is as cheap on a buffer 8 times larger
+/// (flat, 1x). A `sync` that rescanned the buffer would cost 8x.
+#[test]
+fn a_sync_after_appends_costs_the_new_lines_not_the_history() {
+    let mut k = key();
+    k.find = Some(("needle".into(), false));
+    let (mut small, mut big) = (filled(10_000), filled(80_000));
+    let (mut small_ix, mut big_ix) = (ViewIndex::new(), ViewIndex::new());
+    small_ix.sync(&small, &k);
+    big_ix.sync(&big, &k);
+    let append = |b: &mut LogBuffer, ix: &mut ViewIndex| {
+        for i in 0..200 {
+            b.push("a".into(), format!("needle new #{i}"), LogStream::Stdout);
+        }
+        ix.sync(b, &k);
+    };
+    const RUNS: usize = 15;
+    let ratio = atlas_core::scaling::growth(
+        RUNS,
+        || append(&mut small, &mut small_ix),
+        || append(&mut big, &mut big_ix),
+    );
+    assert!(
+        ratio < 4.0,
+        "an append to a buffer 8x larger cost {ratio:.1}x (flat is 1x, a rescan 8x)"
+    );
+    assert_eq!(
+        big_ix.len(),
+        80_000 + 200 * (RUNS + 1),
+        "the index did follow the appends"
+    );
+}
+
+/// Ingesting a line is constant work, eviction included: 8 times the lines into a ring 8 times bigger
+/// costs about 8x. An eviction that walked the ring (or a push that recounted what it holds) costs 64x.
+#[test]
+fn ingest_with_eviction_costs_a_constant_per_line() {
+    let ingest = |ring: usize, lines: usize| {
+        let mut b = LogBuffer::with_budget(ring, usize::MAX);
+        for i in 0..lines {
+            b.push(
+                "a".into(),
+                format!("GET /api/users/42 200 #{i}"),
+                LogStream::Stdout,
+            );
+        }
+        assert_eq!(b.len(), ring, "the ring evicted down to its capacity");
+    };
+    let ratio = atlas_core::scaling::growth(5, || ingest(1_000, 4_000), || ingest(8_000, 32_000));
+    let bound = atlas_core::scaling::linear_bound(8);
+    assert!(
+        ratio < bound,
+        "8x the lines cost {ratio:.1}x (linear is 8x, quadratic 64x, bound {bound})"
+    );
+}

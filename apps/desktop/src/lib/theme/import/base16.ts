@@ -1,4 +1,5 @@
 import { parse as parseYaml } from "yaml";
+import { m } from "#lib/i18n/m.ts";
 import { ThemeImportError } from "./errors.ts";
 import { ANSI_KEYS, appearanceOf, normalizeColor, putPlayer, putSyntax, type ImportResult } from "./color.ts";
 
@@ -42,10 +43,11 @@ export function parseBase16(yaml: string): ImportResult {
 		// Legacy files write `base01: #34353e` unquoted, which YAML reads as a comment; quote it first.
 		doc = parseYaml(yaml.replace(/^(\s*base[0-9a-f]{2}\s*:\s*)(#[0-9a-fA-F]{3,8})\s*$/gim, '$1"$2"'));
 	} catch (e) {
-		throw new ThemeImportError(`Invalid Base16 YAML: ${e instanceof Error ? e.message : String(e)}`);
+		const detail = e instanceof Error ? e.message : String(e);
+		throw new ThemeImportError(m.settings_theme_diag_base16_invalid({ detail }));
 	}
 	if (typeof doc !== "object" || doc === null || Array.isArray(doc)) {
-		throw new ThemeImportError("Base16 scheme must be a YAML mapping");
+		throw new ThemeImportError(m.settings_theme_diag_base16_not_mapping());
 	}
 	const root = doc as Record<string, unknown>;
 	const source =
@@ -62,10 +64,10 @@ export function parseBase16(yaml: string): ImportResult {
 		const text = typeof raw === "number" ? String(raw).padStart(6, "0") : raw;
 		const c = typeof text === "string" ? normalizeColor(text) : null;
 		if (c) base[key] = c;
-		else warnings.push(`invalid color for ${key}: ${String(raw)}`);
+		else warnings.push(m.settings_theme_diag_invalid_color({ key, value: String(raw) }));
 	}
 	if (!base.base00 || !base.base05) {
-		throw new ThemeImportError("Base16 scheme needs at least base00 and base05");
+		throw new ThemeImportError(m.settings_theme_diag_base16_needs_base());
 	}
 
 	const b = (k: string) => base[k] ?? base.base05;

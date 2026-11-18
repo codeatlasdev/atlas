@@ -13,6 +13,7 @@
 	import { docks } from "#lib/stores/docks.svelte.ts";
 	import { loose } from "#lib/stores/loose.svelte.ts";
 	import LooseEditor from "./LooseEditor.svelte";
+	import { m } from "#lib/i18n/m.ts";
 
 	let busy = $state(false);
 
@@ -29,7 +30,7 @@
 </script>
 
 <header data-tauri-drag-region class:inset={!docks.sidebar}>
-	<div class="tabs" role="tablist" aria-label="Open files">
+	<div class="tabs" role="tablist" aria-label={m.workbench_loose_view_open_files()}>
 		{#each loose.files as f (f)}
 			<div class="tab" class:on={f === loose.active}>
 				<button
@@ -39,7 +40,12 @@
 					title={tilde(f)}
 					onclick={() => loose.open(f)}>{baseName(f)}</button
 				>
-				<button type="button" class="x" aria-label="Close {baseName(f)}" onclick={() => loose.close(f)}>
+				<button
+					type="button"
+					class="x"
+					aria-label={m.workbench_loose_view_close_file({ name: baseName(f) })}
+					onclick={() => loose.close(f)}
+				>
 					<X size={11} />
 				</button>
 			</div>
@@ -49,9 +55,12 @@
 	{#if loose.active}
 		{@const f = loose.active}
 		<span class="where" title={dirOf(f)}>{tilde(dirOf(f))}</span>
-		<Button variant="ghost" size="sm" disabled={busy} onclick={() => openFolder(f, false)}>Open folder</Button
+		<Button variant="ghost" size="sm" disabled={busy} onclick={() => openFolder(f, false)}
+			>{m.workbench_loose_view_open_folder()}</Button
 		>
-		<Button size="sm" disabled={busy} onclick={() => openFolder(f, true)}>Open as project</Button>
+		<Button size="sm" disabled={busy} onclick={() => openFolder(f, true)}
+			>{m.workbench_loose_view_open_as_project()}</Button
+		>
 	{/if}
 </header>
 <div class="rule"></div>
@@ -94,9 +103,12 @@
 		min-width: 0;
 		overflow: hidden;
 	}
+	/* Many or long-named tabs shrink and ellipsize their names; the close button and the right-hand actions never do. */
 	.tab {
 		display: flex;
 		align-items: center;
+		flex: 0 1 auto;
+		min-width: 0;
 		border-radius: 6px;
 		color: var(--ca-text-secondary);
 		font-size: 12.5px;
@@ -112,6 +124,7 @@
 		font: inherit;
 		padding: 3px 8px;
 		max-width: 220px;
+		min-width: 0;
 		overflow: hidden;
 		text-overflow: ellipsis;
 		white-space: nowrap;
@@ -121,6 +134,7 @@
 		padding: 3px;
 		margin-right: 3px;
 		border-radius: 4px;
+		flex: none;
 	}
 	.tab .x:hover {
 		background: var(--ca-action-hover);
@@ -132,5 +146,13 @@
 		text-overflow: ellipsis;
 		white-space: nowrap;
 		max-width: 260px;
+		flex: 0 1 auto;
+		min-width: 0;
+	}
+	header :global(button) {
+		flex: none;
+	}
+	.tab button:first-child {
+		flex: 0 1 auto;
 	}
 </style>

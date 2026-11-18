@@ -5,6 +5,7 @@
  */
 import { color } from "#lib/theme/color.ts";
 import { ANSI_KEYS, EDITOR_TOKENS, SYNTAX_ROLES, TERMINAL_KEYS, UI_TOKENS } from "#lib/theme/tokens.ts";
+import { m } from "#lib/i18n/m.ts";
 
 export type Appearance = "dark" | "light";
 
@@ -86,12 +87,12 @@ const known = (k: string) => k in KNOWN_KEYS;
 
 /** Check one style block; every problem names its JSON path. Nothing is thrown. */
 export function validateStyle(style: unknown, at: string): Issue[] {
-	if (!isObj(style)) return [{ path: at, level: "error", message: "`style` must be an object" }];
+	if (!isObj(style)) return [{ path: at, level: "error", message: m.settings_theme_diag_style_object() }];
 	const out: Issue[] = [];
 	for (const [k, v] of Object.entries(style)) {
 		if (k === "syntax") {
 			if (!isObj(v))
-				out.push({ path: `${at}.syntax`, level: "error", message: "`syntax` must be an object" });
+				out.push({ path: `${at}.syntax`, level: "error", message: m.settings_theme_diag_syntax_object() });
 			else out.push(...validateSyntax(v, `${at}.syntax`));
 		} else if (k === "players") {
 			const p = Array.isArray(v) ? v[0] : undefined;
@@ -99,7 +100,7 @@ export function validateStyle(style: unknown, at: string): Issue[] {
 				out.push({
 					path: `${at}.players`,
 					level: "warn",
-					message: "expected an array with a cursor/selection object",
+					message: m.settings_theme_diag_players_shape(),
 				});
 			else
 				for (const f of ["cursor", "selection"])
@@ -107,17 +108,19 @@ export function validateStyle(style: unknown, at: string): Issue[] {
 						out.push({
 							path: `${at}.players[0].${f}`,
 							level: "warn",
-							message: `"${String(p[f])}" is not #rrggbb or #rrggbbaa`,
+							message: m.settings_theme_diag_not_color({ value: String(p[f]) }),
 						});
 		} else if (typeof v === "string" || v === null) {
 			if (v !== null && !color(v))
 				out.push({
 					path: `${at}.${k}`,
 					level: "warn",
-					message: `"${v}" is not #rrggbb or #rrggbbaa; ignored`,
+					message: m.settings_theme_diag_not_color_ignored({ value: v }),
 				});
-			if (!known(k)) out.push({ path: `${at}.${k}`, level: "warn", message: "unknown key; ignored" });
-		} else if (!known(k)) out.push({ path: `${at}.${k}`, level: "warn", message: "unknown key; ignored" });
+			if (!known(k))
+				out.push({ path: `${at}.${k}`, level: "warn", message: m.settings_theme_diag_unknown_key() });
+		} else if (!known(k))
+			out.push({ path: `${at}.${k}`, level: "warn", message: m.settings_theme_diag_unknown_key() });
 	}
 	return out;
 }
@@ -130,7 +133,7 @@ function validateSyntax(syntax: Record<string, unknown>, at: string): Issue[] {
 			out.push({
 				path: `${at}.${role}`,
 				level: "warn",
-				message: "expected { color, font_style, font_weight }",
+				message: m.settings_theme_diag_syntax_role_shape(),
 			});
 			continue;
 		}
@@ -138,13 +141,13 @@ function validateSyntax(syntax: Record<string, unknown>, at: string): Issue[] {
 			out.push({
 				path: `${at}.${role}.color`,
 				level: "warn",
-				message: `"${String(s.color)}" is not #rrggbb or #rrggbbaa; ignored`,
+				message: m.settings_theme_diag_not_color_ignored({ value: String(s.color) }),
 			});
 		if (s.font_style != null && s.font_style !== "italic" && s.font_style !== "normal")
 			out.push({
 				path: `${at}.${role}.font_style`,
 				level: "warn",
-				message: 'expected "italic", "normal" or null',
+				message: m.settings_theme_diag_font_style(),
 			});
 		if (
 			s.font_weight != null &&
@@ -153,13 +156,13 @@ function validateSyntax(syntax: Record<string, unknown>, at: string): Issue[] {
 			out.push({
 				path: `${at}.${role}.font_weight`,
 				level: "warn",
-				message: "expected a number from 100 to 900",
+				message: m.settings_theme_diag_font_weight(),
 			});
 		if (!(role in roles))
 			out.push({
 				path: `${at}.${role}`,
 				level: "warn",
-				message: "syntax role the editor does not use; ignored",
+				message: m.settings_theme_diag_syntax_role_unused(),
 			});
 	}
 	return out;
@@ -168,14 +171,14 @@ function validateSyntax(syntax: Record<string, unknown>, at: string): Issue[] {
 function parseFont(v: unknown, at: string, issues: Issue[]): ThemeFont | undefined {
 	if (v === undefined) return;
 	if (!isObj(v)) {
-		issues.push({ path: at, level: "warn", message: "`font` must be an object" });
+		issues.push({ path: at, level: "warn", message: m.settings_theme_diag_font_object() });
 		return;
 	}
 	const font: ThemeFont = {};
 	if (typeof v.family === "string" && v.family.trim()) font.family = v.family.trim();
 	if (typeof v.size === "number" && v.size >= 6 && v.size <= 48) font.size = v.size;
 	else if (v.size !== undefined)
-		issues.push({ path: `${at}.size`, level: "warn", message: "expected a number from 6 to 48" });
+		issues.push({ path: `${at}.size`, level: "warn", message: m.settings_theme_diag_font_size() });
 	if (typeof v.thicken === "boolean") font.thicken = v.thicken;
 	return font;
 }
@@ -194,39 +197,43 @@ export function parseFamily(json: unknown): ParsedFamily {
 	if (!isObj(json))
 		return {
 			themes: [],
-			issues: [{ path: "$", level: "error", message: "a theme file must be a JSON object" }],
+			issues: [{ path: "$", level: "error", message: m.settings_theme_diag_file_object() }],
 		};
 	if (!Array.isArray(json.themes))
-		return { themes: [], issues: [{ path: "$.themes", level: "error", message: 'needs a "themes" array' }] };
+		return {
+			themes: [],
+			issues: [{ path: "$.themes", level: "error", message: m.settings_theme_diag_needs_themes() }],
+		};
 	const family = typeof json.name === "string" && json.name ? json.name : "Untitled";
 	const themes: ParsedFamily["themes"] = [];
 	json.themes.forEach((t: unknown, i: number) => {
 		const at = `$.themes[${i}]`;
-		if (!isObj(t)) return issues.push({ path: at, level: "error", message: "theme must be an object" });
+		if (!isObj(t))
+			return issues.push({ path: at, level: "error", message: m.settings_theme_diag_theme_object() });
 		if (typeof t.name !== "string" || !t.name.trim())
 			return issues.push({
 				path: `${at}.name`,
 				level: "error",
-				message: 'needs a non-empty "name"; theme skipped',
+				message: m.settings_theme_diag_name_missing(),
 			});
 		if (t.appearance !== "dark" && t.appearance !== "light")
 			return issues.push({
 				path: `${at}.appearance`,
 				level: "error",
-				message: `"${t.name}": appearance must be "dark" or "light"; theme skipped`,
+				message: m.settings_theme_diag_appearance({ name: t.name }),
 			});
 		if (!isObj(t.style))
 			return issues.push({
 				path: `${at}.style`,
 				level: "error",
-				message: `"${t.name}": needs a "style" object; theme skipped`,
+				message: m.settings_theme_diag_style_missing({ name: t.name }),
 			});
 		const meta = isObj(t.atlas) ? t.atlas : undefined;
 		if (meta && typeof meta.version === "number" && meta.version > THEME_VERSION)
 			issues.push({
 				path: `${at}.atlas.version`,
 				level: "warn",
-				message: `written by a newer Atlas (v${meta.version}); unknown keys are ignored`,
+				message: m.settings_theme_diag_newer_version({ version: meta.version }),
 			});
 		issues.push(...validateStyle(t.style, `${at}.style`));
 		const font = parseFont(meta?.font, `${at}.atlas.font`, issues);

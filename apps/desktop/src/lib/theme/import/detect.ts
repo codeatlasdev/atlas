@@ -1,3 +1,4 @@
+import { m } from "#lib/i18n/m.ts";
 import { parseBase16 } from "./base16.ts";
 import type { ImportResult } from "./color.ts";
 import { ThemeImportError } from "./errors.ts";
@@ -71,6 +72,6 @@ export async function importAny(
 		case "atlas":
 			return { kind };
 		default:
-			throw new ThemeImportError(`Unrecognized theme format: ${base}`);
+			throw new ThemeImportError(m.settings_theme_diag_unrecognized_format({ name: base }));
 	}
 }

@@ -119,18 +119,22 @@ mod tests {
             .await;
         let tmp = tempfile::tempdir().unwrap();
         let gh = tmp.path().join("gh");
-        std::fs::write(&gh, "#!/bin/sh\nsleep 300\n").unwrap();
+        // Sleeps ten times the hang ceiling: only the deadline's kill ends it before that.
+        std::fs::write(&gh, "#!/bin/sh\nsleep 600\n").unwrap();
         std::fs::set_permissions(&gh, std::fs::Permissions::from_mode(0o755)).unwrap();
         *TEST_GH_PROGRAM.lock() = Some(gh.to_string_lossy().into_owned());
         *TEST_CALL_DEADLINE.lock() = Some(Duration::from_secs(1));
         let start = Instant::now();
-        let logged_in = is_github_logged_in().await;
+        let checked = tokio::time::timeout(atlas_core::scaling::HANG, is_github_logged_in()).await;
         *TEST_GH_PROGRAM.lock() = None;
         *TEST_CALL_DEADLINE.lock() = None;
+        let logged_in =
+            checked.expect("the check outlived its deadline: it waited for the hung gh");
         assert!(!logged_in);
+        // The deadline was waited for, not given up at once (a lower bound: load only makes this longer).
         assert!(
-            start.elapsed() < Duration::from_secs(10),
-            "the check outlived its deadline: {:?}",
+            start.elapsed() >= Duration::from_secs(1),
+            "{:?}",
             start.elapsed()
         );
     }

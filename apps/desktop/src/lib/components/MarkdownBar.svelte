@@ -11,6 +11,7 @@
 		toggleItalic,
 		toggleNumbered,
 	} from "#lib/editor/markdownFormat.ts";
+	import { m } from "#lib/i18n/m.ts";
 
 	let {
 		view,
@@ -25,17 +26,17 @@
 	} = $props();
 
 	interface Item {
-		label: string;
+		label: () => string;
 		icon: IconComponent;
 		run: (v: EditorView) => boolean;
 	}
 	const ITEMS: Item[] = [
-		{ label: "Bold", icon: Bold, run: toggleBold },
-		{ label: "Italic", icon: Italic, run: toggleItalic },
-		{ label: "Heading", icon: Heading, run: cycleHeading },
-		{ label: "Bulleted list", icon: List, run: toggleBullets },
-		{ label: "Numbered list", icon: ListOrdered, run: toggleNumbered },
-		{ label: "Link", icon: Link2, run: insertLink },
+		{ label: () => m.workbench_markdown_bar_bold(), icon: Bold, run: toggleBold },
+		{ label: () => m.workbench_markdown_bar_italic(), icon: Italic, run: toggleItalic },
+		{ label: () => m.workbench_markdown_bar_heading(), icon: Heading, run: cycleHeading },
+		{ label: () => m.workbench_markdown_bar_bulleted_list(), icon: List, run: toggleBullets },
+		{ label: () => m.workbench_markdown_bar_numbered_list(), icon: ListOrdered, run: toggleNumbered },
+		{ label: () => m.workbench_markdown_bar_link(), icon: Link2, run: insertLink },
 	];
 
 	function press(item: Item) {
@@ -45,12 +46,12 @@
 	}
 </script>
 
-<div class="mdbar" role="toolbar" aria-label="Markdown formatting">
-	{#each ITEMS as item (item.label)}
+<div class="mdbar" role="toolbar" aria-label={m.workbench_markdown_bar_markdown_formatting()}>
+	{#each ITEMS as item (item.icon)}
 		<button
 			type="button"
-			aria-label={item.label}
-			title={item.label}
+			aria-label={item.label()}
+			title={item.label()}
 			disabled={!view || preview}
 			onclick={() => press(item)}
 		>
@@ -62,8 +63,8 @@
 		type="button"
 		class:on={preview}
 		aria-pressed={preview}
-		aria-label={preview ? "Edit source" : "Preview"}
-		title={preview ? "Edit source" : "Preview"}
+		aria-label={preview ? m.workbench_markdown_bar_edit_source() : m.workbench_markdown_bar_preview()}
+		title={preview ? m.workbench_markdown_bar_edit_source() : m.workbench_markdown_bar_preview()}
 		disabled={!view}
 		onclick={() => onpreview(!preview)}
 	>

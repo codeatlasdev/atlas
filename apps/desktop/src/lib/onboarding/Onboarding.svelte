@@ -2,21 +2,35 @@
 	import { onMount } from "svelte";
 	import { register } from "#lib/keymap.svelte.ts";
 	import { ws } from "#lib/stores/workspace.svelte.ts";
+	import Lazy from "#lib/components/Lazy.svelte";
 	import Checklist from "./Checklist.svelte";
-	import FirstRun from "./FirstRun.svelte";
 	import Shortcuts from "./Shortcuts.svelte";
-	import Tour from "./Tour.svelte";
 	import { onboarding } from "./state.svelte.ts";
+	import { m } from "#lib/i18n/m.ts";
 
 	onMount(() => {
 		void onboarding.init();
 		const stop = onboarding.observe();
 		const unregister = register([
-			{ id: "atlas::Help", label: "Help: keyboard shortcuts", run: () => (onboarding.helpOpen = true) },
-			{ id: "atlas::TakeTour", label: "Take the tour", run: () => onboarding.startTour() },
+			{
+				id: "atlas::Help",
+				get label() {
+					return m.onboarding_commands_help();
+				},
+				run: () => (onboarding.helpOpen = true),
+			},
+			{
+				id: "atlas::TakeTour",
+				get label() {
+					return m.onboarding_welcome_take_the_tour();
+				},
+				run: () => onboarding.startTour(),
+			},
 			{
 				id: "atlas::ShowChecklist",
-				label: "Show getting started checklist",
+				get label() {
+					return m.onboarding_commands_show_checklist();
+				},
 				run: () => void onboarding.showChecklist(),
 			},
 		]);
@@ -43,7 +57,8 @@
 
 <svelte:window {onkeydown} />
 
-{#if onboarding.firstRun}<FirstRun />{/if}
-{#if onboarding.tourOpen}<Tour />{/if}
+<!-- The deck and the tour run once in a person's life: their code and their copy load when they are first shown. -->
+{#if onboarding.firstRun}<Lazy load={() => import("./FirstRun.svelte")} props={{}} />{/if}
+{#if onboarding.tourOpen}<Lazy load={() => import("./Tour.svelte")} props={{}} />{/if}
 <Checklist />
 <Shortcuts />

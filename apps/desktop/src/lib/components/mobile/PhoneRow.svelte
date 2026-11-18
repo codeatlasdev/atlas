@@ -9,16 +9,11 @@
 	import { errText } from "#lib/api.ts";
 	import { hostCall } from "#lib/host.ts";
 	import Row from "#lib/settings/Row.svelte";
-	import {
-		access,
-		deviceStatus,
-		deviceTitle,
-		isGenericName,
-		type Device,
-		type Scope,
-	} from "#lib/settings/mobile.ts";
+	import { deviceTitle, isGenericName, type Device, type Scope } from "#lib/settings/mobile.ts";
+	import { access, deviceStatus } from "#lib/settings/mobileText.ts";
 	import PhoneActivity from "./PhoneActivity.svelte";
 	import PhonePermissions from "./PhonePermissions.svelte";
+	import { m } from "#lib/i18n/m.ts";
 
 	let {
 		device,
@@ -73,7 +68,7 @@
 
 	async function unpair() {
 		unpairing = false;
-		await run(hostCall("mobile_revoke", { node_id: device.node_id }), `${title} unpaired`);
+		await run(hostCall("mobile_revoke", { node_id: device.node_id }), m.mobile_phone_row_unpaired({ title }));
 	}
 
 	const setScopes = (scopes: Scope[]) =>
@@ -85,26 +80,28 @@
 		<span
 			class="icon"
 			class:on={device.connected}
-			title={device.connected ? "Connected now" : "Not connected"}
+			title={device.connected ? m.mobile_phone_row_connected_now() : m.mobile_phone_row_not_connected()}
 		>
 			<Smartphone size={18} />
 		</span>
 	{/snippet}
-	<Button size="sm" variant="ghost" tone="neutral" onclick={openRename}>Rename</Button>
+	<Button size="sm" variant="ghost" tone="neutral" onclick={openRename}>{m.common_action_rename()}</Button>
 	<Button
 		size="sm"
 		variant="ghost"
 		tone="neutral"
 		aria-expanded={showActivity}
-		onclick={() => (showActivity = !showActivity)}>Activity</Button
+		onclick={() => (showActivity = !showActivity)}>{m.mobile_phone_row_activity()}</Button
 	>
-	<Button size="sm" variant="ghost" tone="neutral" onclick={() => (unpairing = true)}>Unpair</Button>
+	<Button size="sm" variant="ghost" tone="neutral" onclick={() => (unpairing = true)}
+		>{m.mobile_phone_row_unpair()}</Button
+	>
 	{#snippet below()}
 		<div class="access">
 			<span class="level" data-kind={level.kind}>{level.label}</span>
 			<span class="detail">{level.detail}</span>
 		</div>
-		<FlatDisclosure title="Edit permissions">
+		<FlatDisclosure title={m.mobile_phone_row_edit_permissions()}>
 			<PhonePermissions scopes={device.scopes} onchange={setScopes} />
 		</FlatDisclosure>
 		{#if showActivity}
@@ -115,8 +112,8 @@
 
 <Dialog
 	bind:open={renaming}
-	title="Name this phone"
-	description="Only you see it, here. It helps tell your phones apart."
+	title={m.mobile_phone_row_name_title()}
+	description={m.mobile_phone_row_name_description()}
 	size="sm"
 >
 	<form
@@ -125,25 +122,30 @@
 			void rename();
 		}}
 	>
-		<TextField label="Name" bind:value={draft} placeholder="Luan's iPhone" maxlength={64} autofocus />
+		<TextField
+			label={m.mobile_phone_row_name_label()}
+			bind:value={draft}
+			placeholder={m.mobile_phone_row_name_placeholder()}
+			maxlength={64}
+			autofocus
+		/>
 		<button type="submit" hidden aria-hidden="true"></button>
 	</form>
 	{#snippet actions()}
-		<Button variant="ghost" onclick={() => (renaming = false)}>Cancel</Button>
-		<Button disabled={busy || draft.trim() === ""} onclick={rename}>Save</Button>
+		<Button variant="ghost" onclick={() => (renaming = false)}>{m.common_action_cancel()}</Button>
+		<Button disabled={busy || draft.trim() === ""} onclick={rename}>{m.common_action_save()}</Button>
 	{/snippet}
 </Dialog>
 
 <!-- A body, not only a description: a kit Dialog with no children puts its text against the footer rule
      (codeatlasdev/ui#1329). -->
-<Dialog bind:open={unpairing} title="Unpair {title}?" size="sm">
+<Dialog bind:open={unpairing} title={m.mobile_phone_row_unpair_title({ title })} size="sm">
 	<p class="consequence">
-		It is disconnected at once and can no longer reach this computer, and its push notifications stop. To use
-		it again, scan a new code.
+		{m.mobile_phone_row_unpair_body()}
 	</p>
 	{#snippet actions()}
-		<Button variant="ghost" onclick={() => (unpairing = false)}>Cancel</Button>
-		<Button variant="destructive" disabled={busy} onclick={unpair}>Unpair</Button>
+		<Button variant="ghost" onclick={() => (unpairing = false)}>{m.common_action_cancel()}</Button>
+		<Button variant="destructive" disabled={busy} onclick={unpair}>{m.mobile_phone_row_unpair()}</Button>
 	{/snippet}
 </Dialog>
 

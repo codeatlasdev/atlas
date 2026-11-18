@@ -1,0 +1,8 @@
+{
+	"settings_general_git_commit_messages": "Tooltip (title attribute) of a <Group> component, in GitSettings (apps/desktop/src/lib/components/GitSettings.svelte). Extracted by i18n:extract: refine this description on review.",
+	"settings_general_git_generate_commit_messages_with": "label prop of a <Row> component, in GitSettings (apps/desktop/src/lib/components/GitSettings.svelte). Extracted by i18n:extract: refine this description on review.",
+	"settings_general_git_none_of_writernames_is_installed": "Paragraph in a <p> element, in GitSettings (apps/desktop/src/lib/components/GitSettings.svelte). {writerNames} is writerNames. Extracted by i18n:extract: refine this description on review.",
+	"settings_general_git_option_automatic": "Option of the commit message agent picker in Settings > Git: use the default agent when it is installed, else the first installed one.",
+	"settings_general_git_option_off": "Option of the commit message agent picker in Settings > Git: turns the feature off and hides the button. The help line under the row names it by reference.",
+	"settings_general_git_the_staged_diff_all_changes": "description prop (help line) of a <Row> component, in GitSettings (apps/desktop/src/lib/components/GitSettings.svelte). Extracted by i18n:extract: refine this description on review."
+}

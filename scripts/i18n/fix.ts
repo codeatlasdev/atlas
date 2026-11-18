@@ -10,7 +10,7 @@
 //   --prune-baseline  also delete the lines at 0; run it alone, on a branch that does nothing else.
 import { existsSync, writeFileSync } from "node:fs";
 import { join } from "node:path";
-import { type Baseline, readBaseline, renderBaseline, shrunk } from "./baseline.ts";
+import { type Baseline, readBaseline, renamedFiles, renderBaseline, shrunk } from "./baseline.ts";
 import { hashOf } from "./engine.ts";
 import type { Area } from "./model.ts";
 import { readLock, writeLock } from "./lock.ts";
@@ -73,9 +73,10 @@ export function fix(ctx: Ctx, opts: FixOptions = {}): string[] {
 	if (existsSync(join(root, BASELINE_FILE)) || opts.baseline) {
 		const before = readBaseline(root);
 		const next: Baseline = {};
+		const renamed = renamedFiles(ctx.base?.changed);
 		for (const def of RATCHETS) {
 			const { found, prefixes } = scanRatchet({ ...ctx, surface: undefined }, def);
-			if (before[def.lang] || opts.baseline) next[def.lang] = shrunk(before, def.lang, found, opts.baseline === true, prefixes);
+			if (before[def.lang] || opts.baseline) next[def.lang] = shrunk(before, def.lang, found, opts.baseline === true, prefixes, renamed);
 		}
 		const prune = opts.pruneBaseline === true;
 		const text = renderBaseline(next, prune);

@@ -77,6 +77,7 @@ impl Reporter {
                 .api
                 .pr_for_branch(&self.origin.repo, b)
                 .await
+                // i18n-ignore: log
                 .inspect_err(|e| eprintln!("atlas crew: github: PR lookup for {b}: {e}"))
                 .ok()
                 .flatten(),
@@ -100,6 +101,7 @@ impl Reporter {
         match self.comment_id {
             Some(id) => {
                 if let Err(e) = api.edit_comment(&repo, id, body).await {
+                    // i18n-ignore: log
                     eprintln!("atlas crew: github: cannot edit comment {id} in {repo}: {e}");
                 }
             }
@@ -110,6 +112,7 @@ impl Reporter {
                 match api.create_comment(&repo, number, body).await {
                     Ok(id) => self.comment_id = Some(id),
                     Err(e) => {
+                        // i18n-ignore: log
                         eprintln!("atlas crew: github: cannot comment on {repo}#{number}: {e}")
                     }
                 }

@@ -158,6 +158,7 @@ pub fn read_json_or_aside<T: serde::de::DeserializeOwned>(p: &Path) -> std::io::
         Ok(v) => Ok(Loaded::Ok(v)),
         Err(e) => {
             let aside = set_aside_corrupt(p)?;
+            // i18n-ignore: log
             eprintln!(
                 "atlas crew: {} is unreadable ({e}); kept as {}",
                 p.display(),

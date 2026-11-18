@@ -25,6 +25,7 @@ pub(crate) fn observe(hub_w: Weak<Hub>) {
                 Ok(v) => v,
                 Err(RecvError::Lagged(n)) => {
                     // Say so in the log instead of leaving a silent gap in an audit.
+                    // i18n-ignore: log
                     eprintln!("atlas crew: audit: {n} agent events were dropped under load");
                     if let Some(h) = hub_w.upgrade() {
                         h.crew

@@ -88,12 +88,15 @@ export function writeBaseline(root: string, b: Baseline, prune = false) {
 /** A path is under one of the scope entries (a directory, or a file named exactly). */
 const within = (file: string, prefixes: string[]) => prefixes.some((p) => file === p || file.startsWith(`${p}/`));
 
-/** Ratchet `found` (the files under `prefixes`) against the baseline section of `def.lang`. */
-export function ratchet(root: string, def: RatchetText, found: Found, prefixes: string[]): Finding[] {
+/** Ratchet `found` (the files under `prefixes`) against the baseline section of `def.lang`, in every mode and for every file:
+ * more offenders than the baseline allows fails, and so does a baseline above the real count. A file the change renamed
+ * (`renamedFrom`: new path to old path) that has no line of its own is allowed what its old path was. */
+export function ratchet(root: string, def: RatchetText, found: Found, prefixes: string[], renamedFrom?: Map<string, string>): Finding[] {
 	const section = readBaseline(root)[def.lang] ?? {};
 	const out: Finding[] = [];
 	for (const [file, violations] of [...found].sort(([a], [b]) => cmp(a, b))) {
-		const allowed = section[file] ?? 0;
+		const from = renamedFrom?.get(file);
+		const allowed = section[file] ?? (from === undefined ? 0 : section[from] ?? 0);
 		if (violations.length <= allowed) continue;
 		for (const v of violations) {
 			out.push({ rule: v.rule ?? def.rule, severity: "error", file, line: v.line, message: `${def.noun} ${v.detail ?? JSON.stringify(v.text)} (${violations.length} in this file, baseline ${allowed}); ${def.hint}` });
@@ -117,9 +120,19 @@ export function staleEntries(root: string, def: RatchetText, found: Found, prefi
 }
 
 /** The baseline section of `lang` after `found`: every existing entry shrunk to what is left; entries are never
- * added or raised. With `seed`, a section that does not exist yet starts from `found` (the first run). */
-export function shrunk(b: Baseline, lang: Lang, found: Found, seed: boolean, prefixes: string[]): Record<string, number> {
+ * added or raised, except that a renamed file takes over the (shrunk) line of its old path. With `seed`, a section that
+ * does not exist yet starts from `found` (the first run). */
+export function shrunk(b: Baseline, lang: Lang, found: Found, seed: boolean, prefixes: string[], renamedFrom?: Map<string, string>): Record<string, number> {
 	const old = b[lang];
 	if (!old) return seed ? Object.fromEntries([...found].map(([f, v]) => [f, v.length])) : {};
-	return Object.fromEntries(Object.entries(old).map(([f, n]) => [f, within(f, prefixes) ? Math.min(n, found.get(f)?.length ?? 0) : n]));
+	const out = Object.fromEntries(Object.entries(old).map(([f, n]) => [f, within(f, prefixes) ? Math.min(n, found.get(f)?.length ?? 0) : n]));
+	for (const [file, from] of renamedFrom ?? []) {
+		if (!(file in old) && (old[from] ?? 0) > 0 && found.has(file)) out[file] = Math.min(old[from], found.get(file)?.length ?? 0);
+	}
+	return out;
+}
+
+/** New path to old path for every file the change under check renamed or copied (git's rename detection at the diff base). */
+export function renamedFiles(changed: Map<string, string | undefined> | undefined): Map<string, string> {
+	return new Map([...(changed ?? [])].filter((e): e is [string, string] => e[1] !== undefined && e[1] !== e[0]));
 }

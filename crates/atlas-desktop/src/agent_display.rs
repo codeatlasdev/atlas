@@ -92,6 +92,7 @@ fn dry_run() -> bool {
 /// Refuse for good: the window stays hidden and the instance ends with the reason, so whoever started it sees an
 /// error instead of an instance whose window may be anywhere.
 fn refuse(app: &AppHandle, why: &str) {
+    // i18n-ignore: log
     eprintln!("atlas-agent: REFUSED to show the window: {why}");
     app.exit(3);
 }
@@ -157,6 +158,7 @@ pub fn park_and_show(app: &AppHandle, win: &tauri::Window) {
         Err(e) => return refuse(app, &e),
     };
     if dry_run() {
+        // i18n-ignore: log
         eprintln!(
             "atlas-agent: DRYRUN decision: would show {:?} on display {display_id} (not ordered in)",
             facts.frame
@@ -223,6 +225,7 @@ fn hide_if_off_our_display(app: &AppHandle) {
             None => Some("no virtual display exists yet".into()),
         };
         let Some(why) = why else { continue };
+        // i18n-ignore: log
         eprintln!("atlas-agent: a window was visible where it must not be ({why}); hiding it");
         // SAFETY: `orderOut:` takes a sender or nil.
         unsafe {

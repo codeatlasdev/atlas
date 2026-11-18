@@ -59,7 +59,7 @@ Os erros de digitação aparecem antes de qualquer coisa iniciar: `services.web.
 atlas dev
 ```
 
-Você ganha um dashboard com uma aba por serviço, logs combinados em **All** e o estado dos serviços na barra lateral. Aperte `?` para ver as teclas, `/` para pesquisar nos logs e `q` para sair (todos os serviços são parados). Veja o [guia do TUI](tui.md).
+Você ganha um dashboard com uma aba por serviço, logs combinados em **All** e o estado dos serviços na barra lateral. Aperte `?` para ver as teclas, `/` para pesquisar nos logs e `q` para sair (todos os serviços são parados). Veja o [guia da TUI](tui.md).
 
 Outras formas de rodar o mesmo ambiente:
 

@@ -8,6 +8,7 @@ import {
 	normalizeEol,
 	trimTrailingWhitespace,
 } from "./detect.ts";
+import { growth, linearBound } from "../../../test/scaling.ts";
 
 const FALLBACK = { style: "space", size: 4 } as const;
 
@@ -106,20 +107,48 @@ test("applySavePolicy combines trim, final newline and eol", () => {
 	expect(applySavePolicy("a\r\nb\n", { trim: false, finalNewline: false, eol: "cr" })).toBe("a\rb\r");
 });
 
-test("a 5 MB minified single line stays fast in every scan", () => {
-	const line = "var a=1;".repeat(625_000); // 5 MB, no newline
-	const t0 = performance.now();
-	expect(detectEol(line)).toBe("lf");
-	expect(detectIndent(line, FALLBACK)).toEqual(FALLBACK);
-	expect(trimTrailingWhitespace(line)).toBe(line);
-	expect(normalizeEol(line, "crlf")).toBe(line);
-	expect(applySavePolicy(line, { trim: true, finalNewline: false, eol: "lf" })).toBe(line);
-	expect(performance.now() - t0).toBeLessThan(500);
-});
+// Incident class (editor core, large files): a scan that backtracks or rebuilds a string per character is fine on a
+// normal file and freezes the editor on a minified one (5 MB, one line). The guard is how the cost GROWS with the one
+// line: CPU time at 8x the size over the cost at 1x (test/scaling.ts), ~8 for a linear pass and ~64 for a quadratic one,
+// whatever the machine or its load. It was `< 500 ms` on 5 MB, which failed under load with nothing regressed; the sizes
+// are small so that a quadratic regression is red in seconds instead of hanging a 5 MB scan.
+const minified = (n: number) => "var a=1;".repeat(n / 8); // no newline, nothing to trim
+const scans: [string, (text: string) => unknown, (text: string, result: unknown) => void][] = [
+	["detectEol", (t) => detectEol(t), (_, r) => expect(r).toBe("lf")],
+	["detectIndent", (t) => detectIndent(t, FALLBACK), (_, r) => expect(r).toEqual(FALLBACK)],
+	["trimTrailingWhitespace", (t) => trimTrailingWhitespace(t), (t, r) => expect(r).toBe(t)],
+	["normalizeEol", (t) => normalizeEol(t, "crlf"), (t, r) => expect(r).toBe(t)],
+	[
+		"applySavePolicy",
+		(t) => applySavePolicy(t, { trim: true, finalNewline: false, eol: "lf" }),
+		(t, r) => expect(r).toBe(t),
+	],
+];
+
+/** The scan of `make(n)` as a timed operation; it also checks the result, so a fast wrong answer is not a pass. */
+const over =
+	(
+		make: (n: number) => string,
+		scan: (text: string) => unknown,
+		check?: (text: string, r: unknown) => void,
+	) =>
+	(n: number) => {
+		const text = make(n);
+		check?.(text, scan(text));
+		return () => scan(text);
+	};
+
+for (const [name, scan, check] of scans)
+	test(`${name} reads a minified single line right and costs linear time in its length`, () => {
+		expect(growth(over(minified, scan, check), 16_384)).toBeLessThan(linearBound());
+	});
 
 test("a long run of trailing spaces does not blow up", () => {
-	const s = "x" + " ".repeat(2_000_000) + "\ny";
-	const t0 = performance.now();
-	expect(trimTrailingWhitespace(s)).toBe("x\ny");
-	expect(performance.now() - t0).toBeLessThan(500);
+	// Quadratic here is the `/\s+$/` backtracking trap: every start of the run rescans to its end.
+	const spaces = over(
+		(n) => "x" + " ".repeat(n) + "\ny",
+		trimTrailingWhitespace,
+		(_, r) => expect(r).toBe("x\ny"),
+	);
+	expect(growth(spaces, 16_384)).toBeLessThan(linearBound());
 });

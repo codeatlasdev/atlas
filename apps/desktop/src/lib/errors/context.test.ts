@@ -26,16 +26,20 @@ test("gathers what answers and silently skips what does not (a crashed app must 
 });
 
 test("a hung backend does not hang the error screen", async () => {
-	const t0 = Date.now();
+	const asked: string[] = [];
 	const ctx = await gatherContext({
-		invoke: () => new Promise(() => {}),
+		invoke: (cmd) => (asked.push(cmd), new Promise(() => {})),
 		nav: { userAgent: "", language: "en" },
 		route: "/",
 		crumbs: [],
 		timeoutMs: 50,
 	});
-	expect(Date.now() - t0).toBeLessThan(500);
+	// Resolving at all is the guard: a call that never answers is given up on. (A `< 500 ms` wall-clock assert failed on a
+	// loaded machine with nothing regressed; a regression here is a test that never finishes, which the suite's per-test
+	// timeout turns into a failure.)
+	expect(asked).toEqual(["host_status", "host_diagnostics"]);
 	expect(ctx.hostVersion).toBeUndefined();
+	expect(ctx.diagnostics).toBeUndefined();
 });
 
 test("the report core's diagnostics ride along when the backend answers, and are skipped when it does not", async () => {

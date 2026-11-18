@@ -7,7 +7,8 @@ import { toast } from "@codeatlasdev/ui";
 import { errText } from "#lib/api.ts";
 import { hostCall } from "#lib/host.ts";
 import { crew } from "#lib/stores/crew.svelte.ts";
-import { UI_USAGE, expandKey, splitUi, withKey } from "./taskView.ts";
+import { expandKey, splitUi, withKey } from "./taskView.ts";
+import { m } from "#lib/i18n/m.ts";
 import { addImages, toSent, type PendingImage } from "#lib/crew/attachments.ts";
 
 /** Host args for a call on the selected crew server ("" is the local hostd). */
@@ -55,7 +56,7 @@ export class ChatState {
 			// A bare `/ui` is not a task (an empty prompt is never useful): say how to use it, send nothing,
 			// and leave what was typed in the box.
 			if (ui && !prompt) {
-				toast.error(UI_USAGE);
+				toast.error(m.crew_chat_composer_ui_usage());
 				return;
 			}
 			await crew.sendTask(prompt, withImages ? this.images : [], ui);
@@ -133,9 +134,9 @@ export class ChatState {
 			const s = { ...this.actionSecrets };
 			delete s[taskId];
 			this.actionSecrets = s;
-			const m = { ...this.actionImages };
-			delete m[taskId];
-			this.actionImages = m;
+			const imgs = { ...this.actionImages };
+			delete imgs[taskId];
+			this.actionImages = imgs;
 		} finally {
 			this.actionSubmitting = withKey(this.actionSubmitting, taskId, false);
 		}

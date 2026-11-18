@@ -33,6 +33,7 @@ pub fn since_release(stage: &'static str, released: Option<Instant>) {
 
 pub fn record(stage: &'static str, ms: f64) {
     if std::env::var_os("ATLAS_SHOTS_PERF").is_some() {
+        // i18n-ignore: log
         eprintln!("shots-perf: {stage} {ms:.1} ms");
     }
     let mut t = table().lock();

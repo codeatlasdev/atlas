@@ -1,0 +1,63 @@
+{
+	"crew_onboarding_api_key_not_recognized": "Error under the API key field when the engine still reports no sign-in after the key was written.",
+	"crew_onboarding_atlas_crew_setup": "Accessible name of the onboarding dialog.",
+	"crew_onboarding_check_again": "Button that repeats a check: for the ssh program, for an engine's sign-in.",
+	"crew_onboarding_connecting": {
+		"description": "Primary button label and sign-in terminal placeholder while Atlas reaches the server.",
+		"maxLength": 22
+	},
+	"crew_onboarding_docs": {
+		"description": "Small link of an onboarding step: opens the docs page that explains it.",
+		"distinct": "the desktop onboarding link; the nav area belongs to the site"
+	},
+	"crew_onboarding_key_label_claude": "Line under the Claude Code engine's name: which key it takes.",
+	"crew_onboarding_key_label_codex": "Line under the Codex engine's name: which key it takes.",
+	"crew_onboarding_key_label_omp": "Line under the omp engine's name: which key it takes.",
+	"crew_onboarding_key_label_opencode": "Line under the OpenCode engine's name: which key it takes.",
+	"crew_onboarding_paste_key_claude": "Title of the key form of the Claude Code engine.",
+	"crew_onboarding_paste_key_codex": "Title of the key form of the Codex engine.",
+	"crew_onboarding_paste_key_default": "Title of the key form of any other engine.",
+	"crew_onboarding_paste_key_omp": "Title of the key form of the omp engine.",
+	"crew_onboarding_paste_key_opencode": "Title of the key form of the OpenCode engine.",
+	"crew_onboarding_pick_key_title": "Title of the operating system file picker opened by Choose another.",
+	"crew_onboarding_primary_add_crew_server": {
+		"description": "Primary footer button of the connect step: starts the install on the server.",
+		"maxLength": 24
+	},
+	"crew_onboarding_primary_back_to_engines": {
+		"description": "Primary footer button while an engine's sign-in panel is open: returns to the engine list.",
+		"maxLength": 24
+	},
+	"crew_onboarding_primary_engine_not_ready": "Hint above the disabled Open chat button when the chosen engine is not ready; {status} is the engine's card badge in lower case.",
+	"crew_onboarding_primary_installing": {
+		"description": "Primary footer button label while the crew server install runs.",
+		"maxLength": 22,
+		"distinct": "the footer button, not an engine badge"
+	},
+	"crew_onboarding_primary_not_checked": "The {status} of the engine hint when the engine was never checked.",
+	"crew_onboarding_primary_open_chat": {
+		"description": "Primary footer button of the last step: opens the first crewmate's chat.",
+		"maxLength": 22
+	},
+	"crew_onboarding_primary_pick_engine_back": "Hint above the disabled Open chat button when no engine was picked.",
+	"crew_onboarding_primary_pick_engine_reason": "Hint above the disabled Continue button of the engine step.",
+	"crew_onboarding_ready_hero_crewmate_name": "Name of the example crewmate in the last step's art; shown in bold before the line that says it is online.",
+	"crew_onboarding_ready_hero_greeting": "First chat bubble of the example crewmate in the last step's art.",
+	"crew_onboarding_ready_hero_online": "Tooltip of the green dot on the example crewmate's face.",
+	"crew_onboarding_ready_hero_online_caption": "Caption of the last step's art, after the bold name of the example crewmate.",
+	"crew_onboarding_skip": "Button of the onboarding top bar: closes the onboarding without finishing it.",
+	"crew_onboarding_ssh_host_picker_connects": "Hint under the picked server; {command} is the ssh command the alias stands for, for example ssh box.",
+	"crew_onboarding_ssh_host_picker_connects_with_key": "Hint under the picked server that has its own key; {command} is the ssh command, {key} the key file path.",
+	"crew_onboarding_ssh_host_picker_empty": "Text shown in the server picker when the search matches nothing.",
+	"crew_onboarding_ssh_host_picker_from_your_ssh_config": "Label of the picker of servers found in the user's ~/.ssh/config.",
+	"crew_onboarding_ssh_host_picker_placeholder": "Placeholder of the picker of servers found in the user's ~/.ssh/config; {count} is how many it lists.",
+	"crew_onboarding_ssh_host_picker_search": "Placeholder of the search field inside the server picker.",
+	"crew_onboarding_story_approval_text": "Third line of the how-it-works story: detail.",
+	"crew_onboarding_story_approval_title": "Third line of the how-it-works story: title.",
+	"crew_onboarding_story_order_text": "First line of the how-it-works story: detail.",
+	"crew_onboarding_story_order_title": "First line of the how-it-works story: title.",
+	"crew_onboarding_story_results_text": "Fourth line of the how-it-works story: detail.",
+	"crew_onboarding_story_results_title": "Fourth line of the how-it-works story: title.",
+	"crew_onboarding_story_server_text": "Second line of the how-it-works story: detail.",
+	"crew_onboarding_story_server_title": "Second line of the how-it-works story: title; it is the crewmate."
+}

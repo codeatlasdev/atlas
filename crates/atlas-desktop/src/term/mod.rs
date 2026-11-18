@@ -226,6 +226,7 @@ fn pty_writer(
                 .call("pty_write", json!({"pty": pty, "data": data}))
                 .await
             {
+                // i18n-ignore: log
                 eprintln!("pty_write {pty}: {e}");
             }
         }
@@ -252,6 +253,7 @@ pub async fn reattach_all() {
                     None => reader.abort(),
                 }
             }
+            // i18n-ignore: log
             Err(e) => eprintln!("reattach terminal {tab} (pty {pty}): {e:#}"),
         }
     }

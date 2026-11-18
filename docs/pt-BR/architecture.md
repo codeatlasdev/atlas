@@ -19,7 +19,7 @@ Sete crates, todos com `publish = false`, em um único workspace do Cargo (`carg
 | `crates/atlas-host` | `atlas-host` | `atlas hostd`: PTYs, exec one-shot, acesso a arquivos e scrollback atrás de um socket unix, mais o cliente e o upgrade ao vivo; o estado dos agentes e o servidor de hooks deles; o gateway do Atlas Mobile (iroh) | `atlas-core`, `atlas-lsp`, `atlas-tui` |
 | `crates/atlas-lsp` | `atlas-lsp` | language servers atrás do hostd: registro de servidores e detecção de raiz, instalador verificado (rust-analyzer, gopls, servidores npm, Node.js gerenciado), cliente JSON-RPC, gerenciador por raiz com desligamento por inatividade e reinício após crash | nenhum |
 | `crates/atlas-term` | `atlas-term` | o terminal na GPU sem o Tauri: estado VT (sobre o `alacritty_terminal`), o renderizador wgpu/Metal, fontes, imagens inline, codificação de teclas | nenhum |
-| `crates/atlas-tui` | `atlas-tui` | uma biblioteca: carregamento e validação da configuração, o runtime (manager, scheduler, health, supervisão de processos, logs), o TUI (ratatui), o runner, o socket de controle e o servidor MCP | `atlas-core` |
+| `crates/atlas-tui` | `atlas-tui` | uma biblioteca: carregamento e validação da configuração, o runtime (manager, scheduler, health, supervisão de processos, logs), a TUI (ratatui), o runner, o socket de controle e o servidor MCP | `atlas-core` |
 | `crates/atlas-skills` | `atlas-skills` | as skills de agente compiladas no binário e o instalador delas | `atlas-core` |
 | `crates/atlas-cli` | `atlas-cli` | o binário `atlas`: parsing de argumentos (clap), todos os subcomandos, autoatualização, configuração de agentes | `atlas-core`, `atlas-host`, `atlas-skills`, `atlas-tui` |
 | `crates/atlas-desktop` | `atlas-desktop` | o Atlas Desktop: o shell Tauri 2, worktrees, o navegador embutido, a bandeja, a ponte de debug | `atlas-core`, `atlas-host`, `atlas-tui` e, só no macOS, `atlas-term` |
@@ -69,7 +69,7 @@ O `atlas-cli` é o único crate que produz o binário `atlas`. Compilar só o `a
 
 | Endpoint | Servido por | Usado por |
 |---|---|---|
-| `<project>/.logs/atlas.sock` (0600) | o runner ou o TUI que controla o projeto | TUIs anexados, Atlas Desktop, `atlas mcp`, `atlas down` |
+| `<project>/.logs/atlas.sock` (0600) | o runner ou a TUI que controla o projeto | TUIs anexadas, Atlas Desktop, `atlas mcp`, `atlas down` |
 | `~/.atlas/hostd.sock` + `hostd.token` | `atlas hostd` | Atlas Desktop, `atlas term` sem o app |
 | `~/.atlas/desktop.sock` | Atlas Desktop | `atlas wt`, `atlas term`, `atlas browser`, `atlas file` |
 | `~/.atlas/desktop-debug.sock` | só builds de debug do Atlas Desktop | `atlas desktop debug …` |
@@ -77,7 +77,7 @@ O `atlas-cli` é o único crate que produz o binário `atlas`. Compilar só o `a
 
 ### O runner
 
-O `atlas-tui/src/runtime/manager` contém o `ServiceManager`: o scheduler (grafo de dependências e condições), o spawner, os health checks, a política de reinício, as ações, o túnel e o gravador de logs em disco. O mesmo manager controla o TUI, o runner em segundo plano (`--detach`), o `--headless` e o `--ci`. Um TUI anexado roda um *espelho* do manager, alimentado pelo fluxo de eventos do runner em vez de iniciar qualquer coisa. O protocolo de comunicação está documentado em [Runtime › Runner e attach](runtime.md#runner-e-attach).
+O `atlas-tui/src/runtime/manager` contém o `ServiceManager`: o scheduler (grafo de dependências e condições), o spawner, os health checks, a política de reinício, as ações, o túnel e o gravador de logs em disco. O mesmo manager controla a TUI, o runner em segundo plano (`--detach`), o `--headless` e o `--ci`. Uma TUI anexada roda um *espelho* do manager, alimentado pelo fluxo de eventos do runner em vez de iniciar qualquer coisa. O protocolo de comunicação está documentado em [Runtime › Runner e anexar](runtime.md#runner-e-anexar).
 
 ### MCP
 
@@ -107,7 +107,7 @@ O `crates/atlas-desktop` é um shell Tauri 2 com webviews filhas (a feature `uns
 
 A saída dos serviços passa por três lugares que precisam concordar sobre o que é uma linha:
 
-1. **Runtime em Rust** (`atlas-tui/src/runtime/logs.rs`, `logindex.rs`, `loglinks.rs`): o ring buffer, `LogLevel::detect` (tokens de palavra inteira `error|err|fatal|panic|warn|warning|trace|debug`, que não vêm depois de `/ . - _`), `strip_ansi`, links, pesquisa e saltos por nível. Alimenta o TUI e os logs em disco.
+1. **Runtime em Rust** (`atlas-tui/src/runtime/logs.rs`, `logindex.rs`, `loglinks.rs`): o ring buffer, `LogLevel::detect` (tokens de palavra inteira `error|err|fatal|panic|warn|warning|trace|debug`, que não vêm depois de `/ . - _`), `strip_ansi`, links, pesquisa e saltos por nível. Alimenta a TUI e os logs em disco.
 2. **IPC do desktop** (`atlas-desktop/src/live.rs`): transmite as entradas, com o nível do runner, para a webview.
 3. **Frontend** (`apps/desktop/src/lib/logs.ts`, `ansi.ts`, `Logs.svelte`): mantém em buffer, filtra e renderiza. O `levelOf` segue a mesma regra de tokens de palavra, usada só quando um runner mais antigo não envia nível.
 
@@ -124,5 +124,5 @@ Elas vêm de incidentes reais e são garantidas por testes; mantenha-as quando m
 - A limpeza de órfãos usa só o `.logs/.pids` e PIDs **exatos**. Ela nunca mata por porta (`lsof`) e nunca usa PIDs negativos (kills de grupo de processos).
 - O Atlas nunca roda `docker compose down` nem reinicia o daemon do docker.
 - Os filhos rodam com `setsid`, `stdin(null)` e `sh -c`.
-- O TUI lê a entrada de um fluxo de eventos, renderiza só quando há mudança e nunca bloqueia a inicialização.
+- A TUI lê a entrada de um fluxo de eventos, renderiza só quando há mudança e nunca bloqueia a inicialização.
 - Nada secreto é carregado no navegador embutido; os resultados do Design Mode são lidos de volta com `eval_with_callback`.

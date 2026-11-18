@@ -50,7 +50,10 @@ export function serverView(entry: CatalogEntry, servers: readonly ServerStatus[]
 	if (live?.state === "crashed") {
 		return {
 			kind: "crashed",
-			text: (live.reason && lspReasonText(live.reason).message) || live.message || m.settings_editor_view_stopped(),
+			text:
+				(live.reason && lspReasonText(live.reason).message) ||
+				live.message ||
+				m.settings_editor_view_stopped(),
 		};
 	}
 	if (live?.state === "ready") return { kind: "running", text: m.settings_editor_view_running() };

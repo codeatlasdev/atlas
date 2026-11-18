@@ -59,14 +59,17 @@
 		{
 			"declarations": [
 				"input count",
+				"local countExact = count",
 				"local countPlural = count: plural"
 			],
 			"selectors": [
+				"countExact",
 				"countPlural"
 			],
 			"match": {
-				"countPlural=one": "Simulação: --fix encerraria {count} processo e liberaria {size} (pastas registradas e logs rotacionados).",
-				"countPlural=*": "Simulação: --fix encerraria {count} processos e liberaria {size} (pastas registradas e logs rotacionados)."
+				"countExact=0, countPlural=*": "Simulação: --fix não encerraria nenhum processo e liberaria {size} (pastas registradas e logs rotacionados).",
+				"countExact=*, countPlural=one": "Simulação: --fix encerraria {count} processo e liberaria {size} (pastas registradas e logs rotacionados).",
+				"countExact=*, countPlural=*": "Simulação: --fix encerraria {count} processos e liberaria {size} (pastas registradas e logs rotacionados)."
 			}
 		}
 	],
@@ -190,14 +193,17 @@
 		{
 			"declarations": [
 				"input count",
+				"local countExact = count",
 				"local countPlural = count: plural"
 			],
 			"selectors": [
+				"countExact",
 				"countPlural"
 			],
 			"match": {
-				"countPlural=one": "atlas cache: hit {key} ({count} arquivo, {ms} ms, {saved} ms economizados)",
-				"countPlural=*": "atlas cache: hit {key} ({count} arquivos, {ms} ms, {saved} ms economizados)"
+				"countExact=0, countPlural=*": "atlas cache: hit {key} (nenhum arquivo, {ms} ms, {saved} ms economizados)",
+				"countExact=*, countPlural=one": "atlas cache: hit {key} ({count} arquivo, {ms} ms, {saved} ms economizados)",
+				"countExact=*, countPlural=*": "atlas cache: hit {key} ({count} arquivos, {ms} ms, {saved} ms economizados)"
 			}
 		}
 	],

@@ -59,14 +59,17 @@
 		{
 			"declarations": [
 				"input count",
+				"local countExact = count",
 				"local countPlural = count: plural"
 			],
 			"selectors": [
+				"countExact",
 				"countPlural"
 			],
 			"match": {
-				"countPlural=one": "Dry run: --fix would end {count} process and free {size} (registered dirs and rotated logs).",
-				"countPlural=*": "Dry run: --fix would end {count} processes and free {size} (registered dirs and rotated logs)."
+				"countExact=0, countPlural=*": "Dry run: --fix would end no processes and free {size} (registered dirs and rotated logs).",
+				"countExact=*, countPlural=one": "Dry run: --fix would end {count} process and free {size} (registered dirs and rotated logs).",
+				"countExact=*, countPlural=*": "Dry run: --fix would end {count} processes and free {size} (registered dirs and rotated logs)."
 			}
 		}
 	],
@@ -190,14 +193,17 @@
 		{
 			"declarations": [
 				"input count",
+				"local countExact = count",
 				"local countPlural = count: plural"
 			],
 			"selectors": [
+				"countExact",
 				"countPlural"
 			],
 			"match": {
-				"countPlural=one": "atlas cache: hit {key} ({count} file, {ms} ms, saved {saved} ms)",
-				"countPlural=*": "atlas cache: hit {key} ({count} files, {ms} ms, saved {saved} ms)"
+				"countExact=0, countPlural=*": "atlas cache: hit {key} (no files, {ms} ms, saved {saved} ms)",
+				"countExact=*, countPlural=one": "atlas cache: hit {key} ({count} file, {ms} ms, saved {saved} ms)",
+				"countExact=*, countPlural=*": "atlas cache: hit {key} ({count} files, {ms} ms, saved {saved} ms)"
 			}
 		}
 	],

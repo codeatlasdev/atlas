@@ -1,5 +1,5 @@
 {
-	"crew_onboarding_api_key_not_recognized": "Key set but agent does not recognize it yet. Try the interactive flow.",
+	"crew_onboarding_api_key_not_recognized": "Key set but the engine does not recognize it yet. Try the interactive flow.",
 	"crew_onboarding_atlas_crew_setup": "Atlas Crew setup",
 	"crew_onboarding_check_again": "Check again",
 	"crew_onboarding_connecting": "Connecting…",

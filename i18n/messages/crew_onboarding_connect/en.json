@@ -1,5 +1,5 @@
 {
-	"crew_onboarding_connect_error_host_key_changed_body": "ssh refused to continue because {host} presents a different host key than the one this computer remembers. If you reinstalled the server this is expected: forget the old one with the command below, then try again. If you did not, someone may be intercepting the connection.",
+	"crew_onboarding_connect_error_host_key_changed_body": "ssh stopped because {host} presents a different host key than the one this computer remembers. If you reinstalled the server this is expected: forget the old key with the command below, then try again. If the server did not change, check with whoever manages it before you continue.",
 	"crew_onboarding_connect_error_host_key_changed_title": "The server's identity changed",
 	"crew_onboarding_connect_error_key_refused_body": "It is not authorized on that server yet. Sign in with the account password once and Atlas adds this key for you, or choose another key. A key with a passphrase has to be loaded in ssh-agent first.",
 	"crew_onboarding_connect_error_key_refused_title": "The server refused the key {key}",

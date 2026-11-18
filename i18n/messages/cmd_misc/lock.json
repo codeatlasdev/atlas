@@ -75,7 +75,7 @@
     "cmd_misc_init_exists": "0e073e4a08d6",
     "cmd_misc_init_no_services": "bb3b8fca72f4",
     "cmd_misc_init_services": "404d198ea8c6",
-    "cmd_misc_mcp_not_dir": "a73443451a21",
+    "cmd_misc_mcp_not_dir": "481ad86b1653",
     "cmd_misc_release_checksum_mismatch": "9662d1b672ce",
     "cmd_misc_release_ctx_missing_asset": "7c2d0c69872e",
     "cmd_misc_release_no_checksum": "285491509ed3",

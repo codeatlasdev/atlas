@@ -184,7 +184,7 @@
 	"cmd_misc_init_exists": "atlas.yaml already exists in {dir}",
 	"cmd_misc_init_no_services": "No services detected automatically. Edit atlas.yaml to add yours.",
 	"cmd_misc_init_services": "Services: {names}",
-	"cmd_misc_mcp_not_dir": "not a directory: {path}",
+	"cmd_misc_mcp_not_dir": "{path} is not a folder. Pass an existing project folder with --dir, or run `atlas mcp` inside the project.",
 	"cmd_misc_release_checksum_mismatch": "checksum mismatch for {name} (expected {expected}, got {actual})",
 	"cmd_misc_release_ctx_missing_asset": "{tag} has no {asset} (download failed or missing asset)",
 	"cmd_misc_release_no_checksum": "{name} has no {name}.sha256; refusing unverified install",

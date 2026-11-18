@@ -184,7 +184,7 @@
 	"cmd_misc_init_exists": "o atlas.yaml já existe em {dir}",
 	"cmd_misc_init_no_services": "Nenhum serviço detectado automaticamente. Edite o atlas.yaml para adicionar os seus.",
 	"cmd_misc_init_services": "Serviços: {names}",
-	"cmd_misc_mcp_not_dir": "não é uma pasta: {path}",
+	"cmd_misc_mcp_not_dir": "{path} não é uma pasta. Passe uma pasta de projeto existente com --dir ou rode `atlas mcp` dentro do projeto.",
 	"cmd_misc_release_checksum_mismatch": "o checksum de {name} não confere (esperado {expected}, obtido {actual})",
 	"cmd_misc_release_ctx_missing_asset": "{tag} não tem {asset} (o download falhou ou o arquivo não existe na release)",
 	"cmd_misc_release_no_checksum": "{name} não tem {name}.sha256; o Atlas não instala sem verificar",

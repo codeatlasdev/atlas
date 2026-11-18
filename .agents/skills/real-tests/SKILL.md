@@ -134,6 +134,7 @@ The policy:
    - await a condition instead of sleeping.
 3. Don't leave the test quarantined for long: fix it or delete it, because it has stopped protecting anything.
 4. Never make a test pass by loosening an assertion or adding a long sleep.
+5. Performance guards never assert a wall-clock budget (`< 500 ms` fails on a loaded machine with nothing regressed). Count operations (spies, proxies, matcher calls, rows rendered), use a virtual clock, await the real event instead of a timer, or bound how the cost grows with the input in the same process (apps/desktop `test/scaling.ts`: CPU time at 8x the size over the cost at 1x). A wall-clock ceiling is only a hang detector (60 s).
 
 ## 9. Reviewer checklist
 - [ ] Bug fix: a test was shown RED before the fix and GREEN after.

@@ -2,6 +2,7 @@
 import "../../../test/setup.ts";
 import { afterEach, beforeEach, expect, mock, test } from "bun:test";
 import { stubLayout } from "../../../test/viewport.ts";
+import { until } from "../../../test/until.ts";
 
 // Regression #308: 2000 matches + 200 file headers were 2200 rows in the DOM, each with an inline file icon.
 // The list now windows its rows (VirtualList); keyboard navigation is by row index and must keep working on rows
@@ -69,11 +70,9 @@ test("arrow-down reaches a row that was not rendered and the list scrolls to it"
 	await tick();
 	flushSync(() => api.enter());
 	for (let i = 0; i < 600; i++) key(list, "ArrowDown");
-	await tick();
-	await tick();
-	const cur = current(target);
-	expect(cur).not.toBeNull();
-	expect(cur.dataset.row).toBe("600");
+	// Row 600 was never in the DOM: the list scrolls to it and renders it (awaited, not a guessed number of ticks).
+	await until(() => current(target), "the list renders the row the cursor reached");
+	expect(current(target).dataset.row).toBe("600");
 	expect(items(target).length).toBeLessThan(150);
 });
 

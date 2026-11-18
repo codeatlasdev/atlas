@@ -8,6 +8,7 @@
 	import { projectForServer } from "#lib/crew/projectRef.ts";
 	import { crew } from "#lib/stores/crew.svelte.ts";
 	import { ws } from "#lib/stores/workspace.svelte.ts";
+	import { m } from "#lib/i18n/m.ts";
 
 	let { crewmate }: { crewmate: Crewmate } = $props();
 
@@ -44,7 +45,7 @@
 			{#if crewmate.project?.kind === "path"}<Folder size={15} />{:else}<GitBranch size={15} />{/if}
 		</span>
 		<div class="row-text auto-text">
-			<span class="row-label">Project</span>
+			<span class="row-label">{m.crew_settings_project_card_project()}</span>
 			{#if crewmate.project}
 				<span class="row-hint auto-prompt" title={crewmate.project.url ?? crewmate.project.path}
 					>{(crewmate.project.url ?? crewmate.project.path ?? crewmate.project.name ?? "").replace(
@@ -53,11 +54,13 @@
 					)}{crewmate.project.branch ? ` · ${crewmate.project.branch}` : ""}</span
 				>
 			{:else}
-				<span class="row-hint">Not linked. Pick one of your projects:</span>
+				<span class="row-hint">{m.crew_settings_project_card_not_linked_pick_one_of()}</span>
 			{/if}
 		</div>
 		{#if crewmate.project}
-			<Button size="sm" variant="ghost" onclick={() => void unlinkProject()}>Unlink</Button>
+			<Button size="sm" variant="ghost" onclick={() => void unlinkProject()}
+				>{m.crew_settings_project_card_unlink()}</Button
+			>
 		{/if}
 	</div>
 	{#if !crewmate.project}
@@ -69,7 +72,7 @@
 					{#if p.branch}<span class="muted">{p.branch}</span>{/if}
 				</button>
 			{:else}
-				<p class="row-hint">No projects open in Atlas yet.</p>
+				<p class="row-hint">{m.crew_settings_project_card_no_projects_open_in_atlas()}</p>
 			{/each}
 		</div>
 	{/if}

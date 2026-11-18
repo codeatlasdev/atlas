@@ -2,9 +2,10 @@
 <script lang="ts">
 	import { Button, Spinner } from "@codeatlasdev/ui";
 	import Row from "#lib/settings/Row.svelte";
-	import { BROWSERS_COST, BROWSERS_WHY, nodeProblem } from "#lib/crew/browsers.ts";
+	import { nodeProblem } from "#lib/crew/browsers.ts";
 	import { CrewBrowsers } from "#lib/crew/browsers.svelte.ts";
 	import { crew } from "#lib/stores/crew.svelte.ts";
+	import { m } from "#lib/i18n/m.ts";
 
 	let { hostKey, cb: given }: { hostKey: string; cb?: CrewBrowsers } = $props();
 
@@ -25,8 +26,8 @@
 
 <Row
 	id="crew-browsers-{hostKey}"
-	label="Screenshots for UI work"
-	description="{BROWSERS_WHY} {BROWSERS_COST}"
+	label={m.crew_settings_browsers_row_screenshots_for_ui_work()}
+	description={`${m.crew_settings_browsers_row_why()} ${m.crew_settings_browsers_row_cost()}`}
 	stack
 >
 	<div class="browsers" data-testid="crew-browsers">
@@ -35,36 +36,41 @@
 				class="input"
 				type="text"
 				placeholder="ubuntu@my-server.com"
-				aria-label="Admin SSH address"
+				aria-label={m.crew_settings_browsers_row_admin_ssh_address()}
 				bind:value={cb.address}
 				disabled={cb.busy}
 				onblur={() => void cb.saveAddress()}
 				onkeydown={(e) => e.key === "Enter" && void cb.check()}
 			/>
 			<Button size="sm" variant="ghost" disabled={!cb.canCheck} onclick={() => void cb.check()}>
-				{view?.phase === "checking" ? "Checking…" : "Check"}
+				{view?.phase === "checking"
+					? m.crew_settings_browsers_row_checking()
+					: m.crew_settings_browsers_row_check()}
 			</Button>
 		</div>
 		<p class="hint">
-			The address you installed with, not the crew user: installing the browsers needs <code>sudo</code> on the
-			server. Atlas keeps this address, nothing else.
+			{m.crew_settings_browsers_row_address_hint()}
 		</p>
 		{#if cb.saveError}
-			<p class="error" role="alert">Could not save the address: {cb.saveError}</p>
+			<p class="error" role="alert">
+				{m.crew_settings_browsers_row_could_not_save_the_address({ saveError: cb.saveError })}
+			</p>
 		{/if}
 
 		{#if view?.phase === "checking"}
-			<span class="state"><Spinner size={12} /> Asking the server…</span>
+			<span class="state"><Spinner size={12} /> {m.crew_settings_browsers_row_asking_the_server()}</span>
 		{:else if view?.phase === "ready"}
-			<span class="state ok" role="status">Installed: Chromium and WebKit are ready.</span>
+			<span class="state ok" role="status"
+				>{m.crew_settings_browsers_row_installed_chromium_and_webkit_are()}</span
+			>
 		{:else if view?.phase === "missing"}
 			{#if nodeLine}
 				<p class="node" role="alert">
-					<b>Node.js 20 or newer is required.</b>
-					{nodeLine}. Install it on the server, then check again.
+					<b>{m.crew_settings_browsers_row_node_required()}</b>
+					{m.crew_settings_browsers_row_node_install({ problem: nodeLine })}
 				</p>
 			{/if}
-			<ul class="problems" aria-label="Missing pieces">
+			<ul class="problems" aria-label={m.crew_settings_browsers_row_missing_pieces()}>
 				{#each view.problems.filter((p) => p.kind !== "node" && p.kind !== "npm") as p (p.text)}
 					<li>{p.text}</li>
 				{/each}
@@ -77,8 +83,8 @@
 			<input
 				class="input"
 				type="password"
-				placeholder="Sudo password"
-				aria-label="Sudo password"
+				placeholder={m.crew_settings_browsers_row_sudo_password()}
+				aria-label={m.crew_settings_browsers_row_sudo_password()}
 				bind:value={cb.password}
 				disabled={cb.busy}
 			/>
@@ -87,7 +93,7 @@
 		{#if view?.phase === "missing" || cb.installing || cb.installError}
 			<div class="line">
 				<Button size="sm" variant="outlined" disabled={!cb.canInstall} onclick={() => void cb.install()}>
-					{cb.installing ? "Installing…" : "Install"}
+					{cb.installing ? m.crew_settings_browsers_row_installing() : m.crew_settings_browsers_row_install()}
 				</Button>
 			</div>
 		{/if}
@@ -96,7 +102,7 @@
 			<p class="error" role="alert">{cb.installError}</p>
 		{/if}
 		{#if cb.log.length > 0}
-			<pre class="log" aria-label="Install log">{cb.log.join("\n")}</pre>
+			<pre class="log" aria-label={m.crew_settings_browsers_row_install_log()}>{cb.log.join("\n")}</pre>
 		{/if}
 	</div>
 </Row>

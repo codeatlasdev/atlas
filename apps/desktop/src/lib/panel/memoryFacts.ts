@@ -5,6 +5,7 @@
  * The keys are the ones the Rust producer (`memory_facts_json`) serializes, pinned by
  * `__fixtures__/service-memory.json`.
  */
+import { m } from "#lib/i18n/m.ts";
 
 export interface MemoryRow {
 	memory_rss?: number | null;
@@ -48,15 +49,26 @@ const rate = (mb: number): string => `${mb > 0 ? "+" : ""}${Math.round(mb)} MB/m
 export function memoryNote(s: MemoryRow): MemoryNote | null {
 	if (s.memory_leak) return { tone: "warn", text: s.memory_leak, title: s.memory_leak };
 	if (s.budget_state === "over")
-		return { tone: "error", text: "Over max_memory", title: "Over max_memory: Atlas acts per on_memory_max" };
+		return {
+			tone: "error",
+			text: m.panel_memory_over_max(),
+			title: m.panel_memory_over_max_title(),
+		};
 	if (s.budget_state === "warn")
-		return { tone: "warn", text: "Over memory_warn", title: "Over its memory_warn budget" };
-	if (s.memory_trend === "rising" && s.memory_trend_mb_min != null) {
-		const size = s.memory_rss != null ? ` · ${(s.memory_rss / MB).toFixed(0)} MB` : "";
 		return {
 			tone: "warn",
-			text: `Rising ${rate(s.memory_trend_mb_min)}`,
-			title: `Memory is rising ${rate(s.memory_trend_mb_min)}${size}`,
+			text: m.panel_memory_over_warn(),
+			title: m.panel_memory_over_warn_title(),
+		};
+	if (s.memory_trend === "rising" && s.memory_trend_mb_min != null) {
+		const trend = rate(s.memory_trend_mb_min);
+		return {
+			tone: "warn",
+			text: m.panel_memory_rising({ rate: trend }),
+			title:
+				s.memory_rss != null
+					? m.panel_memory_rising_title_size({ rate: trend, size: (s.memory_rss / MB).toFixed(0) })
+					: m.panel_memory_rising_title({ rate: trend }),
 		};
 	}
 	return null;

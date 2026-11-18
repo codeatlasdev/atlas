@@ -4,6 +4,7 @@
  * aggregates the KPI row shows. No Svelte, no DOM: the store in `metrics.svelte.ts`
  * feeds it and bumps one revision counter.
  */
+import { m } from "#lib/i18n/m.ts";
 
 /** Resolution of the history: one slot per `STEP_MS`. */
 export const STEP_MS = 3000;
@@ -145,10 +146,10 @@ export function fmtUptime(ms: number | null): string {
 	if (ms == null || ms < 0 || !Number.isFinite(ms)) return "—";
 	const s = Math.floor(ms / 1000);
 	if (s < 60) return `${s}s`;
-	const m = Math.floor(s / 60);
-	if (m < 60) return `${m}m ${s % 60}s`;
-	const h = Math.floor(m / 60);
-	if (h < 24) return `${h}h ${m % 60}m`;
+	const min = Math.floor(s / 60);
+	if (min < 60) return `${min}m ${s % 60}s`;
+	const h = Math.floor(min / 60);
+	if (h < 24) return `${h}h ${min % 60}m`;
 	return `${Math.floor(h / 24)}d ${h % 24}h`;
 }
 
@@ -157,7 +158,9 @@ export function fmtUptime(ms: number | null): string {
  * (`uptime` is null for those first seconds, which printed a bare "Up —").
  */
 export function upLabel(uptime: number | null): string {
-	return uptime == null || !Number.isFinite(uptime) || uptime < 0 ? "Starting…" : `Up ${fmtUptime(uptime)}`;
+	return uptime == null || !Number.isFinite(uptime) || uptime < 0
+		? m.panel_uptime_starting()
+		: m.panel_uptime_up({ time: fmtUptime(uptime) });
 }
 
 /** `HH:MM` labels for the x axis of the last `n` slots ending at `end`. */
@@ -175,8 +178,8 @@ export function slotLabels(n: number, end: number): string[] {
 export type Tone = "ok" | "warn" | "fail" | "off";
 
 export function summarize(states: string[], running: boolean): { tone: Tone; label: string } {
-	if (!running) return { tone: "off", label: "Stopped" };
-	if (!states.length) return { tone: "ok", label: "No services" };
+	if (!running) return { tone: "off", label: m.panel_summary_stopped() };
+	if (!states.length) return { tone: "ok", label: m.panel_summary_no_services() };
 	let up = 0;
 	let starting = 0;
 	let failed = 0;
@@ -185,8 +188,8 @@ export function summarize(states: string[], running: boolean): { tone: Tone; lab
 		else if (s === "starting") starting++;
 		else if (s === "failed") failed++;
 	}
-	if (failed) return { tone: "fail", label: `${failed} failed` };
-	if (starting) return { tone: "warn", label: `${starting} starting` };
-	if (states.length && up === states.length) return { tone: "ok", label: "All healthy" };
-	return { tone: "warn", label: `${up} of ${states.length} up` };
+	if (failed) return { tone: "fail", label: m.panel_summary_failed({ count: failed }) };
+	if (starting) return { tone: "warn", label: m.panel_summary_starting({ count: starting }) };
+	if (states.length && up === states.length) return { tone: "ok", label: m.panel_summary_all_healthy() };
+	return { tone: "warn", label: m.panel_summary_up_of({ up, total: states.length }) };
 }

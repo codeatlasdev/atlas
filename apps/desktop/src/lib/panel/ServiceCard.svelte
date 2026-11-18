@@ -6,6 +6,8 @@
 	import CardActions from "./CardActions.svelte";
 	import CardSpark from "./CardSpark.svelte";
 	import { isAlive, problemText } from "./serviceState.ts";
+	import { m } from "#lib/i18n/m.ts";
+	import { stateLabel } from "./stateLabel.ts";
 
 	let {
 		projectId,
@@ -69,7 +71,7 @@
 	data-service={service.name}
 	role="button"
 	tabindex="0"
-	aria-label="{service.name}, {service.state}"
+	aria-label={m.panel_service_card_name_state({ name: service.name, state: stateLabel(service.state) })}
 	onclick={onfocus}
 	ondblclick={onlogs}
 	onkeydown={press}
@@ -83,11 +85,11 @@
 			<span>{reason}</span>
 			<button
 				class="link"
-				aria-label="View logs of {service.name}"
+				aria-label={m.panel_service_card_view_logs_of_name({ name: service.name })}
 				onclick={(e) => {
 					e.stopPropagation();
 					onlogs();
-				}}>View logs</button
+				}}>{m.panel_service_card_view_logs()}</button
 			>
 		</div>
 		{#if up && service.memory_leak}
@@ -104,7 +106,7 @@
 	{/if}
 
 	{#if def?.depends_on.length}
-		<div class="deps" title="Waits for {def.depends_on.join(', ')}">
+		<div class="deps" title={m.panel_service_card_waits_for({ names: def.depends_on.join(", ") })}>
 			<CornerDownRight size={11} />
 			{#each def.depends_on as d (d)}<span class="chip">{d}</span>{/each}
 		</div>

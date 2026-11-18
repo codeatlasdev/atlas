@@ -10,6 +10,8 @@
 	import { store, type Live } from "#lib/stores/projects.svelte.ts";
 	import { upLabel } from "./metrics.ts";
 	import { portsLabel } from "./overview.ts";
+	import { stateLabel } from "./stateLabel.ts";
+	import { m } from "#lib/i18n/m.ts";
 
 	/** Title, facts line, setup row and the in-flight operation/tunnel strip of the panel. */
 	let {
@@ -36,14 +38,17 @@
 		<h1>{project.parent ? (space.worktree?.name ?? project.name) : project.name}</h1>
 	</div>
 	<div class="facts">
-		{#if project.running}<span title="Time since the stack came up">{upLabel(uptime)}</span>{/if}
+		{#if project.running}<span title={m.panel_header_time_since_the_stack_came()}>{upLabel(uptime)}</span
+			>{/if}
 		{#if project.running && live?.mode}<span>{modeLabel}{live.version ? ` · v${live.version}` : ""}</span
 			>{/if}
 		{#if project.branch}<span class="mono"
-				>{project.branch}{project.port_offset ? ` · ports +${project.port_offset}` : ""}</span
+				>{project.branch}{project.port_offset
+					? ` · ${m.panel_header_ports_offset({ offset: project.port_offset })}`
+					: ""}</span
 			>{/if}
 		{#if ports}
-			<span class="mono" title="Ports of the services">{ports}</span>
+			<span class="mono" title={m.panel_header_ports_of_the_services()}>{ports}</span>
 		{/if}
 		<button
 			class="root mono"
@@ -70,7 +75,7 @@
 		{#if live?.tunnel}
 			<div class="op">
 				<Network size={13} />
-				Tunnel {live.tunnel.state}
+				{m.panel_header_tunnel_state({ state: stateLabel(live.tunnel.state) })}
 				<span class="mono detail"
 					>:{live.tunnel.local_port} → {live.tunnel.ssh_host}{live.tunnel.remote
 						? `:${live.tunnel.remote}`

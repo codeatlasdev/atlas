@@ -21,6 +21,7 @@
 	import ActionResultToast from "./ActionResultToast.svelte";
 	import { fold, unread } from "./activity.ts";
 	import { buttonState, menuGroups } from "./actions.ts";
+	import { m } from "#lib/i18n/m.ts";
 
 	let { project }: { project: ProjectView } = $props();
 
@@ -43,13 +44,13 @@
 	let hasRuns = $derived((live?.runs.rev, !!live?.runs.list.length));
 </script>
 
-<Tip label="Activity" command="atlas::ShowActivity">
+<Tip label={m.panel_activity_drawer_activity()} command="atlas::ShowActivity">
 	{#snippet child(props)}
 		<button
 			{...props}
 			class="ibtn"
 			class:on={activity.open}
-			aria-label="Activity{badge ? `, ${badge} new` : ''}"
+			aria-label={badge ? m.panel_ops_activity_new({ count: badge }) : m.panel_activity_drawer_activity()}
 			onclick={() => (activity.open = !activity.open)}
 		>
 			<Activity size={15} />
@@ -60,13 +61,13 @@
 	{/snippet}
 </Tip>
 
-<Tip label="Machine" command="atlas::ShowMachine">
+<Tip label={m.panel_machine_drawer_machine()} command="atlas::ShowMachine">
 	{#snippet child(props)}
 		<button
 			{...props}
 			class="ibtn"
 			class:on={machine.open}
-			aria-label="Machine"
+			aria-label={m.panel_machine_drawer_machine()}
 			onclick={() => (machine.open = !machine.open)}
 		>
 			<Gauge size={15} />
@@ -84,7 +85,7 @@
 				{...props}
 				class="actions-btn"
 				class:busy={!!ui.busy || !!remote}
-				aria-label="Actions"
+				aria-label={m.panel_ops_actions()}
 				data-tour="panel-actions"
 			>
 				{#if ui.busy || remote}
@@ -92,7 +93,7 @@
 					<!-- svelte-ignore a11y_click_events_have_key_events, a11y_no_static_element_interactions -->
 					<span
 						class="live"
-						title="View output"
+						title={m.panel_action_result_toast_view_output()}
 						onpointerdown={(e) => e.stopPropagation()}
 						onclick={(e) => {
 							e.stopPropagation();
@@ -134,7 +135,7 @@
 			<DropdownMenuItem onclick={() => actionOutput.show(project.id)}>
 				<span class="item">
 					<Terminal size={13} />
-					<span class="name">View output</span>
+					<span class="name">{m.panel_action_result_toast_view_output()}</span>
 				</span>
 			</DropdownMenuItem>
 		{/if}

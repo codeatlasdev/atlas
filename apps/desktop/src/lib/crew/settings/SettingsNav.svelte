@@ -8,6 +8,7 @@
 	import CrewmateFace from "#lib/crew/CrewmateFace.svelte";
 	import type { CrewmateState as FaceState } from "#lib/crew/crewmateFace.ts";
 	import { crewServerLabel } from "#lib/crew/sshTarget.ts";
+	import { m } from "#lib/i18n/m.ts";
 
 	let {
 		crewmate,
@@ -50,10 +51,15 @@
 <!-- `closing`: the kit Dialog leaves the page only when every animation inside it has ended, and the face here
      breathes and blinks forever, so a closed dialog stayed with an invisible backdrop that swallowed every click
      (the same bug CrewmateEditor had). Closing turns the animations off so the exit can finish. -->
-<nav class="settings-nav" class:closing aria-label="Settings sections">
+<nav class="settings-nav" class:closing aria-label={m.crew_settings_nav_settings_sections()}>
 	<div class="nav-top">
 		<!-- The face is the "Customize look" button (a pencil shows on hover); no separate row for it. -->
-		<button class="nav-avatar" aria-label="Customize look" title="Customize look" onclick={oneditlook}>
+		<button
+			class="nav-avatar"
+			aria-label={m.crew_settings_nav_customize_look()}
+			title={m.crew_settings_nav_customize_look()}
+			onclick={oneditlook}
+		>
 			<CrewmateFace seed={crewmate.id} look={crewmate.look} state={faceState} size={64} track />
 			<span class="nav-avatar-edit" aria-hidden="true"><Pencil size={11} /></span>
 		</button>
@@ -81,7 +87,7 @@
 	</ul>
 
 	<div class="nav-bottom">
-		<button class="nav-delete" onclick={ondelete}>Delete crewmate</button>
+		<button class="nav-delete" onclick={ondelete}>{m.crew_settings_nav_delete_crewmate()}</button>
 	</div>
 </nav>
 

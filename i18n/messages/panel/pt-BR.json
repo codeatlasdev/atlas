@@ -1,0 +1,126 @@
+{
+	"panel_atlas_did_not_recognize_a": "O Atlas não reconheceu uma stack nesta pasta. Adicione os serviços que quiser na aba Config e o Atlas os inicia, monitora e mostra em gráficos. Nada é gravado até você salvar.",
+	"panel_atlas_recognized_this_folder_but": "O Atlas reconheceu esta pasta, mas não sabe o que executar. Adicione os serviços que quiser na aba Config e o Atlas os inicia, monitora e mostra em gráficos. Nada é gravado até você salvar.",
+	"panel_card_actions_logs_tip": "Logs ({key})",
+	"panel_card_actions_restart_tip": "Reiniciar ({key})",
+	"panel_card_actions_stop": "Parar",
+	"panel_card_actions_terminal_in": "Terminal em {dir}",
+	"panel_card_actions_terminal_in_root": "Terminal na raiz do projeto",
+	"panel_card_head_copy_url": "Copiar {url}",
+	"panel_card_head_not_selected": "não selecionado",
+	"panel_card_head_open_url": "Abrir {url}",
+	"panel_card_head_paused_by": "pausado por {paused_by}",
+	"panel_card_head_restarts_since_the_stack_started": "Reinícios desde que a stack iniciou",
+	"panel_card_spark_cpu": "CPU da árvore de processos, últimos {minutes} min",
+	"panel_card_spark_memory": "Memória da árvore de processos, últimos {minutes} min",
+	"panel_charts_errors_count": [
+		{
+			"declarations": [
+				"input count",
+				"local countExact = count",
+				"local countPlural = count: plural"
+			],
+			"selectors": [
+				"countExact",
+				"countPlural"
+			],
+			"match": {
+				"countExact=0, countPlural=*": "Nenhum erro",
+				"countExact=*, countPlural=one": "{count} erro",
+				"countExact=*, countPlural=*": "{count} erros"
+			}
+		}
+	],
+	"panel_charts_metric": "Métrica",
+	"panel_edit_atlas_yaml": "Editar atlas.yaml",
+	"panel_header_ports_of_the_services": "Portas dos serviços",
+	"panel_header_ports_offset": "portas +{offset}",
+	"panel_header_time_since_the_stack_came": "Tempo desde que a stack subiu",
+	"panel_header_tunnel_state": "Túnel {state}",
+	"panel_health_over_time": "Saúde ao longo do tempo",
+	"panel_kpis_cpu": "CPU",
+	"panel_kpis_errors": "Erros",
+	"panel_kpis_hint_all_services": "todos os serviços",
+	"panel_kpis_hint_last_5_min": "últimos 5 min",
+	"panel_kpis_hint_last_hour": "última hora",
+	"panel_kpis_hint_of_one_core": "de um núcleo",
+	"panel_kpis_memory": "Memória",
+	"panel_kpis_restarts": "Reinícios",
+	"panel_kpis_services": "Serviços",
+	"panel_memory_over_max": "Acima de max_memory",
+	"panel_memory_over_max_title": "Acima de max_memory: o Atlas age conforme on_memory_max",
+	"panel_memory_over_warn": "Acima de memory_warn",
+	"panel_memory_over_warn_title": "Acima do limite memory_warn",
+	"panel_memory_rising": "Subindo {rate}",
+	"panel_memory_rising_title": "A memória está subindo {rate}",
+	"panel_memory_rising_title_size": "A memória está subindo {rate} · {size} MB",
+	"panel_no_services_yet": "Nenhum serviço ainda",
+	"panel_nothing_to_run_yet": "{stack}: nada para executar ainda",
+	"panel_ops_actions": "Ações",
+	"panel_ops_activity_new": [
+		{
+			"declarations": [
+				"input count",
+				"local countPlural = count: plural"
+			],
+			"selectors": [
+				"countPlural"
+			],
+			"match": {
+				"countPlural=one": "Atividade, {count} nova",
+				"countPlural=*": "Atividade, {count} novas"
+			}
+		}
+	],
+	"panel_resources": "Recursos",
+	"panel_service_card_name_state": "{name}, {state}",
+	"panel_service_card_view_logs": "Ver logs",
+	"panel_service_card_view_logs_of_name": "Ver logs de {name}",
+	"panel_service_card_waits_for": "Aguarda {names}",
+	"panel_service_grid_restart": "Reiniciar",
+	"panel_service_grid_restart_description": "O Atlas encerra o serviço e o inicia de novo. As conexões em andamento são interrompidas.",
+	"panel_service_grid_restart_title": "Reiniciar {name}?",
+	"panel_service_grid_terminal": "Terminal",
+	"panel_set_up_services": "Configurar serviços",
+	"panel_start_invite_start": "Iniciar",
+	"panel_start_invite_start_the_stack": "Iniciar a stack",
+	"panel_start_invite_starts": [
+		{
+			"declarations": [
+				"input count",
+				"local countExact = count",
+				"local countPlural = count: plural"
+			],
+			"selectors": [
+				"countExact",
+				"countPlural"
+			],
+			"match": {
+				"countExact=0, countPlural=*": "Não inicia nenhum serviço:",
+				"countExact=*, countPlural=one": "Inicia {count} serviço:",
+				"countExact=*, countPlural=*": "Inicia {count} serviços:"
+			}
+		}
+	],
+	"panel_state_degraded": "degradado",
+	"panel_state_disabled": "desativado",
+	"panel_state_failed": "com falha",
+	"panel_state_running": "em execução",
+	"panel_state_starting": "iniciando",
+	"panel_state_stopped": "parado",
+	"panel_state_suspended": "pausado",
+	"panel_state_timeline_label": "Estado dos serviços nos últimos {minutes} minutos",
+	"panel_state_timeline_open_logs": "{name}: abrir logs",
+	"panel_state_unhealthy": "não saudável",
+	"panel_summary_all_healthy": "Tudo saudável",
+	"panel_summary_failed": "{count} com falha",
+	"panel_summary_no_services": "Nenhum serviço",
+	"panel_summary_starting": "{count} iniciando",
+	"panel_summary_stopped": "Parado",
+	"panel_summary_up_of": "{up} de {total} ativos",
+	"panel_tab_config": "Config",
+	"panel_tab_logs": "Logs",
+	"panel_the_atlas_yaml_in_this": "O atlas.yaml desta pasta não declara nenhum serviço ativo. Adicione um e o Atlas o inicia, monitora e mostra em gráficos.",
+	"panel_uptime_starting": "Iniciando…",
+	"panel_uptime_up": "Ativo há {time}"
+}

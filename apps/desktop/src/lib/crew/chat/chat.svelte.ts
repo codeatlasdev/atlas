@@ -44,6 +44,8 @@ export class ChatState {
 	/** Images the owner added to a card (a marked screenshot), sent with a retry. */
 	actionImages = $state<Record<string, PendingImage[]>>({});
 	actionSubmitting = $state<Set<string>>(new Set());
+	/** Cards answered in this view while the task still reads `waiting_action` (taskId -> what was answered). */
+	answeredActions = $state<Record<string, string>>({});
 
 	// ─── composer ──────────────────────────────────────────────────────────
 
@@ -128,6 +130,10 @@ export class ChatState {
 				route,
 			);
 			await hostCall("crewmate_action_answer", { ...route, task: taskId, value, attachments });
+			// hostd moves the task off `waiting_action` itself, and an older hostd (alpha.26 and before) leaves it
+			// there for the whole follow-up turn and answers `{}` to a second click it drops: the card of an answered
+			// task is hidden here until the task changes state (`TaskMessage`), so that second click cannot happen.
+			this.answeredActions = { ...this.answeredActions, [taskId]: value };
 			const i = { ...this.actionInputs };
 			delete i[taskId];
 			this.actionInputs = i;
@@ -137,6 +143,9 @@ export class ChatState {
 			const imgs = { ...this.actionImages };
 			delete imgs[taskId];
 			this.actionImages = imgs;
+		} catch (e) {
+			// A refused answer (the task already got one, or ended) is said, not swallowed: the card stays as it was.
+			toast.error(errText(e));
 		} finally {
 			this.actionSubmitting = withKey(this.actionSubmitting, taskId, false);
 		}
@@ -157,7 +166,17 @@ export class ChatState {
 	}
 
 	async cancelAction(taskId: string, crewmateId: string): Promise<void> {
-		await hostCall("crewmate_cancel", { ...hostArgs(), id: crewmateId, task: taskId });
+		await hostCall("crewmate_cancel", { ...hostArgs(), id: crewmateId, task: taskId }).catch((e) =>
+			toast.error(errText(e)),
+		);
+	}
+
+	/** The task is no longer parked: the local note that its card was answered has done its job. */
+	forgetAnswered(taskId: string): void {
+		if (!(taskId in this.answeredActions)) return;
+		const rest = { ...this.answeredActions };
+		delete rest[taskId];
+		this.answeredActions = rest;
 	}
 
 	// ─── scroll ────────────────────────────────────────────────────────────

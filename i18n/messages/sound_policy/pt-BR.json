@@ -1,0 +1,22 @@
+{
+	"sound_policy_agent_done_description": "Um agente terminou a tarefa.",
+	"sound_policy_agent_done_label": "Agente concluiu",
+	"sound_policy_agent_needs_you_description": "Um agente está esperando uma resposta ou aprovação.",
+	"sound_policy_agent_needs_you_label": "Agente precisa de você",
+	"sound_policy_boot_description": "Uma assinatura sonora curta quando o Atlas inicia, no máximo uma vez por hora.",
+	"sound_policy_boot_label": "Abertura do app",
+	"sound_policy_discovery_done_description": "Quando \"Encontrar meus projetos\" termina.",
+	"sound_policy_discovery_done_label": "Projetos encontrados",
+	"sound_policy_error_description": "Um toque suave quando uma ação falha.",
+	"sound_policy_error_label": "Erros",
+	"sound_policy_service_failed_description": "Um serviço caiu ou não conseguiu iniciar.",
+	"sound_policy_service_failed_label": "Falha em um serviço",
+	"sound_policy_stack_up_description": "Quando todos os serviços de uma stack estão saudáveis.",
+	"sound_policy_stack_up_label": "Stack iniciada",
+	"sound_policy_success_description": "Uma confirmação bem discreta.",
+	"sound_policy_success_label": "Copiado e salvo",
+	"sound_policy_toggle_description": "Quando você liga ou desliga um interruptor importante.",
+	"sound_policy_toggle_label": "Interruptores",
+	"sound_policy_update_description": "Há uma nova versão do Atlas disponível.",
+	"sound_policy_update_label": "Atualização pronta"
+}

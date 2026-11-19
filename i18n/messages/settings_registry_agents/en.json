@@ -1,0 +1,30 @@
+{
+	"settings_registry_agents_agent_args_description": "Command-line flags added every time that agent starts.",
+	"settings_registry_agents_agent_args_label": "Extra arguments",
+	"settings_registry_agents_agent_custom_description": "Run any agent CLI (OpenCode, Gemini CLI, Amp…) from the + menu and {key}.",
+	"settings_registry_agents_agent_custom_label": "Add agent",
+	"settings_registry_agents_agent_default_description": "What a new agent tab starts.",
+	"settings_registry_agents_agent_default_label": "Default agent",
+	"settings_registry_agents_agent_permissions_description": "Choose whether agents ask before running tools or run everything on their own.",
+	"settings_registry_agents_agent_permissions_label": "Tool approval",
+	"settings_registry_agents_description": "Which coding agent starts by default, how much it may do on its own, custom agents and quick commands.",
+	"settings_registry_agents_dock_enabled_description": [
+		{
+			"declarations": [
+				"input os"
+			],
+			"selectors": [
+				"os"
+			],
+			"match": {
+				"os=mac": "Keep the pill on screen while Atlas runs. Hide it any time with the hide key, the pill's hide button or right-click menu, or the tray menu; the choice is remembered.",
+				"os=*": "Keep the pill on screen while Atlas runs. Hide it any time with the hide key, the pill's hide button or right-click menu, or the tray menu; the choice is remembered. Off by default."
+			}
+		}
+	],
+	"settings_registry_agents_group_coding_agents": "Coding agents",
+	"settings_registry_agents_group_custom_agents": "Custom agents",
+	"settings_registry_agents_group_quick_commands": "Quick commands",
+	"settings_registry_agents_label": "Agents",
+	"settings_registry_agents_quick_description": "One-click buttons in the tab strip that run a command or send a prompt to the agent."
+}

@@ -1,8 +1,137 @@
 {
+	"settings_general_close_settings": "Fechar configurações",
+	"settings_general_config_edited": "● editado",
+	"settings_general_config_file_changed_on_disk": "O arquivo mudou no disco",
+	"settings_general_config_keep_mine": "Manter a minha versão",
+	"settings_general_config_problems": [
+		{
+			"declarations": [
+				"input count",
+				"local countExact = count",
+				"local countPlural = count: plural"
+			],
+			"selectors": [
+				"countExact",
+				"countPlural"
+			],
+			"match": {
+				"countExact=0, countPlural=*": "Nenhum problema",
+				"countExact=*, countPlural=one": "{count} problema",
+				"countExact=*, countPlural=*": "{count} problemas"
+			}
+		}
+	],
+	"settings_general_config_reload": "Recarregar",
+	"settings_general_config_restart_stack_to_apply": "Reiniciar a stack para aplicar",
+	"settings_general_config_revert": "Reverter",
+	"settings_general_config_review_the_changes": "Revise as alterações.",
+	"settings_general_config_save_atlas_yaml": "Salvar o atlas.yaml?",
+	"settings_general_config_saved": "atlas.yaml salvo",
+	"settings_general_config_the_running_stack_still_uses": "A stack em execução ainda usa a configuração antiga.",
+	"settings_general_config_valid": "válido",
+	"settings_general_config_validating": "validando",
+	"settings_general_config_your_edits_are_unsaved": "Suas edições não foram salvas.",
+	"settings_general_dock_a_small_pill_that_floats": "Uma pílula pequena que flutua sobre os seus outros apps. Pressione a tecla de atalho em qualquer lugar para enviar uma mensagem a um agente; funciona com a janela do Atlas fechada.",
+	"settings_general_dock_agent_dock": "Dock de agentes",
+	"settings_general_dock_clear": "Limpar",
+	"settings_general_dock_hide_or_show_the_dock": "Ocultar ou mostrar o dock",
+	"settings_general_dock_keep_the_pill_on_screen": "Mantém a pílula na tela enquanto o Atlas roda. Para ocultar, use a tecla de ocultar, o botão de ocultar ou o menu de contexto da pílula, ou o menu da bandeja. O Atlas lembra a escolha.",
+	"settings_general_dock_message_an_agent": "Enviar mensagem a um agente",
+	"settings_general_dock_not_set": "Não definido",
+	"settings_general_dock_opens_the_dock_s_composer": "Abre o campo de mensagem do dock a partir de qualquer app. O texto vai para o último agente que você usou, ou para o que você mencionar com @.",
+	"settings_general_dock_press_a_key": "Pressione uma tecla…",
+	"settings_general_dock_show_the_dock": "Mostrar o dock",
+	"settings_general_dock_works_even_while_the_dock": "Funciona mesmo com o dock oculto, então é sempre o caminho de volta. O menu da bandeja também tem Mostrar dock de agentes.",
 	"settings_general_git_commit_messages": "Mensagens de commit",
 	"settings_general_git_generate_commit_messages_with": "Gerar mensagens de commit com",
 	"settings_general_git_none_of_writernames_is_installed": "Nenhum de {writerNames} está instalado neste computador, então ainda não há como gerar mensagens. Instale um e escolha aqui.",
 	"settings_general_git_option_automatic": "Automático",
 	"settings_general_git_option_off": "Desativado",
-	"settings_general_git_the_staged_diff_all_changes": "O diff dos arquivos em stage (todas as alterações, se nada estiver em stage) vai somente para o agente que você escolher aqui, executado neste computador sem ferramentas, junto com os assuntos dos seus últimos commits e as regras de commit do CONTRIBUTING.md e do AGENTS.md. Arquivos que parecem segredos (.env, chaves, certificados) nunca são enviados; lockfiles e binários vão só como nomes. Escolha {@settings_general_git_option_off} para ocultar o botão."
+	"settings_general_git_the_staged_diff_all_changes": "O diff dos arquivos em stage (todas as alterações, se nada estiver em stage) vai somente para o agente que você escolher aqui, executado neste computador sem ferramentas, junto com os assuntos dos seus últimos commits e as regras de commit do CONTRIBUTING.md e do AGENTS.md. Arquivos que parecem segredos (.env, chaves, certificados) nunca são enviados; lockfiles e binários vão só como nomes. Escolha {@settings_general_git_option_off} para ocultar o botão.",
+	"settings_general_links_atlas_browser": "Navegador do Atlas",
+	"settings_general_links_description": "Onde abrem os links de serviços, portas e terminais. Use {key} para abrir um link no outro navegador.",
+	"settings_general_links_links": "Links",
+	"settings_general_links_open_links_in": "Abrir links no",
+	"settings_general_links_system_browser": "Navegador do sistema",
+	"settings_general_load_error_agents": "Não foi possível ler as configurações dos agentes",
+	"settings_general_load_error_git": "Não foi possível ler as configurações do Git",
+	"settings_general_load_error_hygiene": "Não foi possível ler o relatório de higiene",
+	"settings_general_load_error_phones": "Não foi possível ler os celulares pareados",
+	"settings_general_load_error_ssh": "Não foi possível ler os hosts SSH",
+	"settings_general_load_error_workspace": "Não foi possível ler as configurações dos workspaces",
+	"settings_general_nav_dev": "Dev",
+	"settings_general_nav_search_settings": "Pesquisar configurações",
+	"settings_general_nav_settings_sections": "Seções das configurações",
+	"settings_general_nav_update_available": "Atualização disponível",
+	"settings_general_nav_version": "Atlas {version}",
+	"settings_general_notification_a_system_notification_when_an": "Uma notificação do sistema quando um agente termina ou espera uma resposta.",
+	"settings_general_notification_add_a_short_sound_to": "Adiciona um som curto a cada notificação.",
+	"settings_general_notification_atlas_tells_you_when_an": "O Atlas avisa quando um agente termina ou precisa de você.",
+	"settings_general_notification_notifications": "Notificações",
+	"settings_general_notification_play_a_sound": "Tocar um som",
+	"settings_general_notification_show_notifications": "Mostrar notificações",
+	"settings_general_notification_skip_the_notification_when_that": "Não notificar quando essa worktree é a que está na sua tela.",
+	"settings_general_notification_stay_quiet_while_i_m": "Ficar em silêncio enquanto estou olhando",
+	"settings_general_open_outside_no_worktree": "Abra uma worktree primeiro. Depois o Atlas pode mostrar {file} no editor.",
+	"settings_general_search_count": [
+		{
+			"declarations": [
+				"input count",
+				"local countExact = count",
+				"local countPlural = count: plural"
+			],
+			"selectors": [
+				"countExact",
+				"countPlural"
+			],
+			"match": {
+				"countExact=0, countPlural=*": "Nenhuma configuração encontrada",
+				"countExact=*, countPlural=one": "{count} configuração",
+				"countExact=*, countPlural=*": "{count} configurações"
+			}
+		}
+	],
+	"settings_general_search_empty_hint": "Tente uma palavra mais curta, como \"fonte\", \"tema\" ou \"branch\".",
+	"settings_general_search_matching": "Resultados para \"{query}\".",
+	"settings_general_settings": "Configurações",
+	"settings_general_shell_links_services_start_with_the_path": "Os serviços iniciam com o PATH e as variáveis deste shell, como no seu terminal. Escolha outro shell se ferramentas como bun ou node não forem encontradas.",
+	"settings_general_shell_links_shell_for_your_projects": "Shell dos seus projetos",
+	"settings_general_shortcut_add": "Adicionar atalho",
+	"settings_general_shortcut_click_then_press_the_new": "Clique e depois pressione o novo atalho",
+	"settings_general_shortcut_displaced": "{key} agora executa este comando. \"{command}\" perdeu o atalho.",
+	"settings_general_shortcut_if_you_pick_a_shortcut": "Se você escolher um atalho que outro comando já usa, esse comando o perde.",
+	"settings_general_shortcut_needs_modifier": [
+		{
+			"declarations": [
+				"input os"
+			],
+			"selectors": [
+				"os"
+			],
+			"match": {
+				"os=mac": "Inclua Command, Control ou Option para o atalho não conflitar com a digitação",
+				"os=*": "Inclua Ctrl ou Alt para o atalho não conflitar com a digitação"
+			}
+		}
+	],
+	"settings_general_shortcut_no_match": "Nenhum comando corresponde a \"{query}\".",
+	"settings_general_shortcut_none": "Sem atalho",
+	"settings_general_shortcut_press_the_new_shortcut": "Pressione o novo atalho…",
+	"settings_general_shortcut_remove_this_shortcut": "Remover este atalho",
+	"settings_general_shortcut_reset_all_to_defaults": "Restaurar todos os padrões",
+	"settings_general_shortcut_search_commands": "Pesquisar comandos",
+	"settings_general_shortcut_to_cancel": "para cancelar",
+	"settings_general_sound_master_switch_for_every_atlas": "Chave geral de todos os sons do Atlas.",
+	"settings_general_sound_on_top_of_your_system": "Somado ao volume do seu sistema, que sempre prevalece.",
+	"settings_general_sound_only_the_ones_that_need": "Só os que precisam da sua atenção, e mais baixos.",
+	"settings_general_sound_play": "Tocar",
+	"settings_general_sound_play_label": "Tocar {sound}",
+	"settings_general_sound_play_sounds": "Tocar sons",
+	"settings_general_sound_play_user_interface_sound_effects": "\"Reproduzir efeitos sonoros da interface do usuário\" está desativado em Ajustes do Sistema ▸ Som, então o Atlas fica em silêncio. Os botões Tocar abaixo continuam funcionando.",
+	"settings_general_sound_reduce_sounds": "Reduzir sons",
+	"settings_general_sound_short_quiet_cues_for_the": "Sinais curtos e discretos para os momentos que importam: uma stack subindo, um serviço falhando, um agente precisando de você. Nada toca em cliques comuns.",
+	"settings_general_sound_sound_volume": "Volume dos sons",
+	"settings_general_sound_sounds": "Sons",
+	"settings_general_sound_switch_any_of_them_off": "Desative qualquer um deles individualmente.",
+	"settings_general_sound_which_sounds": "Quais sons"
 }

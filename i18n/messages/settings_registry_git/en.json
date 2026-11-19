@@ -1,0 +1,5 @@
+{
+	"settings_registry_git_description": "How Atlas helps with commits. Nothing is committed for you.",
+	"settings_registry_git_git_commit_agent_description": "Which agent writes the commit message from your staged diff, or Off to hide the button. Secrets are never sent.",
+	"settings_registry_git_label": "Git"
+}

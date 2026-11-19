@@ -32,6 +32,8 @@
 	import NewTabMenu from "./NewTabMenu.svelte";
 	import TabStrip from "./TabStrip.svelte";
 	import PaneNotice from "./PaneNotice.svelte";
+	import { m } from "#lib/i18n/m.ts";
+	import { tabLabel } from "#lib/stores/tabLabel.ts";
 
 	let { groupId }: { groupId: string } = $props();
 	const space = useSpace();
@@ -87,13 +89,8 @@
 		browser: Globe,
 	} as const;
 
-	function label(t: Tab) {
-		if (t.customLabel) return t.label;
-		// Tabs saved before the Services tab became the project Panel keep their old stored label.
-		if (t.kind === "services") return "Panel";
-		const title = t.pty ? ws.titles[t.pty] : "";
-		return title || t.label;
-	}
+	const label = (t: Tab) => tabLabel(t, t.pty ? ws.titles[t.pty] : "");
+	const closeKey = $derived(shortcutFor("pane::CloseActiveItem"));
 
 	function onDragOver(e: DragEvent) {
 		if (!e.dataTransfer?.types.includes("atlas/tab")) {
@@ -155,8 +152,8 @@
 						role="tab"
 						tabindex="0"
 						aria-selected={t.id === g.activeTab}
-						aria-label={pinned(t) ? `${label(t)} (always open)` : undefined}
-						title={pinned(t) ? `${label(t)} · always open` : undefined}
+						aria-label={pinned(t) ? m.workbench_tab_always_open({ label: label(t) }) : undefined}
+						title={pinned(t) ? m.workbench_tab_always_open({ label: label(t) }) : undefined}
 						draggable={!pinned(t)}
 						ondragstart={(e) => e.dataTransfer?.setData("atlas/tab", t.id)}
 						onclick={() => ws.activate(t.id)}
@@ -193,8 +190,8 @@
 						{#if !pinned(t)}
 							<button
 								class="x"
-								aria-label="Close tab"
-								title="Close tab {shortcutFor('pane::CloseActiveItem') ?? ''}"
+								aria-label={m.workbench_tab_close()}
+								title={closeKey ? m.workbench_tab_close_key({ key: closeKey }) : m.workbench_tab_close()}
 								onclick={(e) => (e.stopPropagation(), ws.closeTab(t.id))}
 							>
 								<X size={12} />
@@ -221,8 +218,8 @@
 							where="Tab"
 							kind={t.kind}
 							file={t.path?.split("/").pop()}
-							title={`${label(t)} hit an error`}
-							hint="This tab stopped rendering. Your other tabs and terminals are unaffected."
+							title={m.workbench_tab_error_title({ label: label(t) })}
+							hint={m.workbench_tab_error_hint()}
 							close={pinned(t) ? undefined : () => ws.closeTab(t.id)}
 						>
 							<CrashProbe id={t.id} />
@@ -270,7 +267,7 @@
 							{:else if project && t.kind === "config"}
 								<Lazy load={() => import("#lib/components/Config.svelte")} props={{ project }} />
 							{:else}
-								<PaneNotice>Nothing to show</PaneNotice>
+								<PaneNotice>{m.workbench_nothing_to_show()}</PaneNotice>
 							{/if}
 						</Contain>
 					</div>

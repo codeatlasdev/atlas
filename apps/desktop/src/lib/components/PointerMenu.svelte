@@ -16,6 +16,7 @@
 	 */
 	import { tick } from "svelte";
 	import { DropdownMenu, DropdownMenuItem, DropdownMenuSeparator } from "@codeatlasdev/ui";
+	import { m } from "#lib/i18n/m.ts";
 
 	let { items }: { items: PointerMenuItem[] } = $props();
 
@@ -47,7 +48,7 @@
 			bind:this={anchor}
 			type="button"
 			class="pointer-anchor"
-			aria-label="Actions"
+			aria-label={m.panel_ops_actions()}
 			tabindex="-1"
 			style:left="{at.x}px"
 			style:top="{at.y}px"

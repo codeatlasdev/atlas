@@ -14,6 +14,7 @@ pub mod domain;
 pub mod error;
 pub mod filelist;
 pub mod fs;
+pub mod git_path;
 pub mod git_review;
 pub mod github;
 pub mod heavy;

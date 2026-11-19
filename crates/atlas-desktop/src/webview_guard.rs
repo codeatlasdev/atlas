@@ -175,7 +175,7 @@ fn alarm(app: &tauri::AppHandle, what: &str) {
         use tauri::Manager;
         DIALOG.store(false, Ordering::SeqCst);
         if !reopen {
-            a.exit(1);
+            crate::app_exit::exit(&a, 1);
         } else if let Some(v) = a.get_webview("main") {
             note_load();
             let _ = v.reload();
@@ -245,6 +245,10 @@ fn give_up(wv: &webkit2gtk::WebView, what: &str) {
             note_load();
             wv.reload();
         } else {
+            #[allow(
+                clippy::disallowed_methods,
+                reason = "Linux (GTK) only: no agent display exists there to destroy"
+            )]
             std::process::exit(1);
         }
     }

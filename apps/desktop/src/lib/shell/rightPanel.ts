@@ -42,7 +42,7 @@ export const STATE_LABEL: Record<AgentState, string> = {
 		return m.shell_chrome_agent_state_working();
 	},
 	get done() {
-		return m.common_action_done();
+		return m.sidebar_right_state_done();
 	},
 	get idle() {
 		return m.shell_chrome_agent_state_idle();

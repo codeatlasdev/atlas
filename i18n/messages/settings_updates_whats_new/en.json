@@ -1,0 +1,62 @@
+{
+	"settings_updates_whats_new_badge_installed": "Installed",
+	"settings_updates_whats_new_badge_latest": "Latest",
+	"settings_updates_whats_new_badge_new": "New",
+	"settings_updates_whats_new_collapse_aria": "Collapse {version}",
+	"settings_updates_whats_new_dev_note": "This is a dev build; Atlas will not replace it with a release.",
+	"settings_updates_whats_new_download_progress": "{percent}% of {total}",
+	"settings_updates_whats_new_download_unknown": "Downloading…",
+	"settings_updates_whats_new_empty_body": "The changelog has no entry for it yet.",
+	"settings_updates_whats_new_empty_title": "No release notes for {version}",
+	"settings_updates_whats_new_empty_title_unknown": "No release notes for this version",
+	"settings_updates_whats_new_expand_aria": "Expand {version}",
+	"settings_updates_whats_new_fold_less": "Less",
+	"settings_updates_whats_new_fold_more": "More",
+	"settings_updates_whats_new_following": "{#chip}{channel}{/chip} release · following {#b}{followed}{/b}",
+	"settings_updates_whats_new_host_terminals": [
+		{
+			"declarations": [
+				"input count",
+				"local countExact = count",
+				"local countPlural = count: plural"
+			],
+			"selectors": [
+				"countExact",
+				"countPlural"
+			],
+			"match": {
+				"countExact=0, countPlural=*": "No terminals are running.",
+				"countExact=*, countPlural=one": "{count} terminal is still running, so Atlas did not restart it.",
+				"countExact=*, countPlural=*": "{count} terminals are still running, so Atlas did not restart it."
+			}
+		}
+	],
+	"settings_updates_whats_new_install_now": "Install {version} now",
+	"settings_updates_whats_new_kind_added": "Added",
+	"settings_updates_whats_new_kind_changed": "Changed",
+	"settings_updates_whats_new_kind_deprecated": "Deprecated",
+	"settings_updates_whats_new_kind_fixed": "Fixed",
+	"settings_updates_whats_new_kind_removed": "Removed",
+	"settings_updates_whats_new_kind_security": "Security",
+	"settings_updates_whats_new_load_failed": "Couldn't load the release notes",
+	"settings_updates_whats_new_loading_aria": "Loading release notes",
+	"settings_updates_whats_new_managed_or_atlas": "Or let Atlas run it: your system asks for your password.",
+	"settings_updates_whats_new_managed_run": "{title}. Run this in a terminal to update it:",
+	"settings_updates_whats_new_no_changes": "No changes listed for this version.",
+	"settings_updates_whats_new_open_changelog": "Open the full changelog",
+	"settings_updates_whats_new_open_github_aria": "Open {version} on GitHub",
+	"settings_updates_whats_new_pre_rc": "RC",
+	"settings_updates_whats_new_region_aria": "Release notes",
+	"settings_updates_whats_new_relaunch": "Relaunch Atlas",
+	"settings_updates_whats_new_remind_later": "Remind me later",
+	"settings_updates_whats_new_review": "Review",
+	"settings_updates_whats_new_rollback_failed": "The CLI could not be rolled back: run {#code}atlas desktop --install{/code}.",
+	"settings_updates_whats_new_rollback_restored": "Atlas CLI stays on {version}; nothing is half updated.",
+	"settings_updates_whats_new_rollback_restored_unknown": "Atlas CLI stays on its previous version; nothing is half updated.",
+	"settings_updates_whats_new_skip_version": "Skip this version",
+	"settings_updates_whats_new_update_failed": "The update failed.",
+	"settings_updates_whats_new_update_relaunch": "Update to {version} and relaunch",
+	"settings_updates_whats_new_update_relaunch_size": "Update to {version} and relaunch · {size}",
+	"settings_updates_whats_new_versions_aria": "Versions",
+	"settings_updates_whats_new_view_github": "View on GitHub"
+}

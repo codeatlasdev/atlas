@@ -50,7 +50,7 @@
 	"settings_registry_capture_capture_stack_label": "Cards in the stack",
 	"settings_registry_capture_capture_system_audio_description": "The sound your Mac plays goes into the video. Not in GIFs.",
 	"settings_registry_capture_capture_system_audio_label": "Record system sound",
-	"settings_registry_capture_capture_system_keys_description": "macOS answers {screen}, {area}, {toolbar} and {touchBar} before any app, so Atlas can only use them once you turn them off yourself in System Settings ▸ Keyboard ▸ Keyboard Shortcuts ▸ Screenshots. Atlas never changes that setting for you.",
+	"settings_registry_capture_capture_system_keys_description": "macOS answers {screen}, {area}, {toolbar} and {touchBar} before any app, so Atlas can only use them once you turn them off yourself in System Settings > Keyboard > Keyboard Shortcuts > Screenshots. Atlas never changes that setting for you.",
 	"settings_registry_capture_capture_system_keys_label": "macOS screenshot shortcuts",
 	"settings_registry_capture_capture_timer_description": "Wait this long after you pick before a screenshot is taken. Recordings are not delayed.",
 	"settings_registry_capture_capture_timer_label": "Self-timer",

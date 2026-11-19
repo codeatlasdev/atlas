@@ -1166,7 +1166,7 @@ async fn check_reports_a_stale_daemon_with_its_terminals_and_exits_3() {
     );
     assert!(
         out.contains(
-            "language features, fast terminal rendering and agent status are off until it restarts"
+            "language features, fast terminal rendering, and agent status are off until it restarts"
         ),
         "{out}"
     );

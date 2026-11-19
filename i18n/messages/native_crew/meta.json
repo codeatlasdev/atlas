@@ -1,0 +1,14 @@
+{
+	"native_crew_agent_install_failed": "Error of the engine install step of the crew onboarding when the install command exited with a failure. {id} is the agent id (omp, claude, codex), {code} the exit code.",
+	"native_crew_browsers_status_failed": "Error of the browsers row (Crew settings) when the atlas browsers status command failed and printed no reason.",
+	"native_crew_command_failed": "Error of the crew server install and the browsers install when the atlas command failed and wrote nothing. {command} is the command (atlas crew install), kept verbatim, {status} its exit status as the system words it.",
+	"native_crew_no_installer": "Error of the engine install step when the agent id has no installer in the registry. {id} is the agent id.",
+	"native_crew_not_registered": "Error when the admin address of a crew server is saved for a host that is not in the crew server list. {host} is the server key (user@host).",
+	"native_crew_probe_connection": "Error of the model list test of a custom gateway (provider settings) when curl failed to connect (DNS, TLS, timeout). {detail} is curl's own message, shown as it is.",
+	"native_crew_probe_key_refused": "Error of the model list test of a custom gateway when it answered 401 or 403. {status} is the HTTP status code.",
+	"native_crew_probe_not_json": "Error of the model list test of a custom gateway when its answer to the models request was not JSON.",
+	"native_crew_probe_status": "Error of the model list test of a custom gateway when it answered with a status other than 200, 401 and 403. {status} is the HTTP status code.",
+	"native_crew_probe_unreachable": "Error of the model list test of a custom gateway when curl failed without a message. {url} is the models address that was called.",
+	"native_crew_unknown_agent": "Error of the engine check or install on a crew server when the agent id is not in the registry. {id} is the agent id.",
+	"native_crew_wait_failed": "Error when the app lost track of a helper process (atlas or ssh) while waiting for it. {program} is the program name, kept verbatim, {error} the operating system's reason."
+}

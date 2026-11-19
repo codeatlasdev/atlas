@@ -13,6 +13,7 @@ use tauri::{AppHandle, Emitter};
 use tokio::io::{AsyncBufReadExt, AsyncWriteExt as _, BufReader};
 
 use crate::crew_ssh::ConnectError;
+use atlas_i18n::{t, t_in};
 
 /// The SSH address the user installed a crew server with (`ubuntu@host`, plus the port when it is not 22, plus the
 /// private key FILE they picked for it, when they did).
@@ -190,7 +191,7 @@ fn set_admin(
     let e = hosts
         .iter_mut()
         .find(|h| h.host == host)
-        .ok_or_else(|| format!("{host} is not a registered crew server"))?;
+        .ok_or_else(|| t!("native_crew_not_registered", host = host))?;
     e.admin = admin.map(AdminAddress::normalized);
     e.port = e.admin.as_ref().and_then(|a| a.port);
     e.identity = e.admin.as_ref().and_then(|a| a.identity.clone());
@@ -297,7 +298,9 @@ async fn run_streamed(
         .await
         .map_err(ConnectError::other)?
         .spawn()
-        .map_err(|e| ConnectError::other(format!("cannot run atlas: {e}")))?;
+        .map_err(|e| {
+            ConnectError::other(t!("native_updates_cannot_run_atlas", error = e.to_string()))
+        })?;
     // Pipe the sudo password to stdin, then drop it, closing the pipe so the child can proceed.
     if let Some(pw) = sudo_password
         && let Some(mut stdin) = child.stdin.take()
@@ -310,10 +313,13 @@ async fn run_streamed(
         pump_install(stdout, app.clone(), false),
         pump_install(stderr, app.clone(), true),
     );
-    let st = child
-        .wait()
-        .await
-        .map_err(|e| ConnectError::other(e.to_string()))?;
+    let st = child.wait().await.map_err(|e| {
+        ConnectError::other(t!(
+            "native_crew_wait_failed",
+            program = "atlas",
+            error = e.to_string()
+        ))
+    })?;
     if st.success() {
         return Ok(());
     }
@@ -323,7 +329,11 @@ async fn run_streamed(
         err_lines
     };
     if lines.is_empty() {
-        return Err(ConnectError::other(format!("{what} failed ({st})")));
+        return Err(ConnectError::other(t!(
+            "native_crew_command_failed",
+            command = what,
+            status = st.to_string()
+        )));
     }
     Err(ConnectError::from_lines(&lines))
 }
@@ -387,7 +397,7 @@ fn parse_browsers_status(
             let why = lines(stderr)
                 .pop()
                 .or_else(|| lines(stdout).pop())
-                .unwrap_or_else(|| "atlas crew browsers status failed".into());
+                .unwrap_or_else(|| t!("native_crew_browsers_status_failed"));
             Err(why)
         }
     }
@@ -418,7 +428,7 @@ pub async fn crew_browsers_status(
         .await?
         .kill_on_drop(true)
         .spawn()
-        .map_err(|e| format!("cannot run atlas: {e}"))?;
+        .map_err(|e| t!("native_updates_cannot_run_atlas", error = e.to_string()))?;
     if let Some(pw) = sudo_password
         && let Some(mut stdin) = child.stdin.take()
     {
@@ -430,8 +440,14 @@ pub async fn crew_browsers_status(
         child.wait_with_output(),
     )
     .await
-    .map_err(|_| format!("{target} did not answer in 120 s"))?
-    .map_err(|e| e.to_string())?;
+    .map_err(|_| t!("native_remote_no_answer", target = &target, seconds = 120))?
+    .map_err(|e| {
+        t!(
+            "native_crew_wait_failed",
+            program = "atlas",
+            error = e.to_string()
+        )
+    })?;
     parse_browsers_status(
         out.status.code(),
         &atlas_tui::runtime::text::strip_ansi(&String::from_utf8_lossy(&out.stdout)),
@@ -523,8 +539,9 @@ pub async fn crew_agent_check(
     agent_id: String,
 ) -> Result<AgentShipStatus, String> {
     let target = server_ssh(&host_key);
-    target.valid()?;
-    let script = check_script(&agent_id).ok_or_else(|| format!("unknown agent {agent_id:?}"))?;
+    crate::remote::valid_alias(&target.target)?;
+    let script =
+        check_script(&agent_id).ok_or_else(|| t!("native_crew_unknown_agent", id = &agent_id))?;
     let ssh = tokio::process::Command::new("ssh")
         .no_window()
         .args(target.exec_argv(&script))
@@ -534,8 +551,20 @@ pub async fn crew_agent_check(
     // A check that never answers must not leave the row on "Checking…": give up and say so.
     let out = tokio::time::timeout(std::time::Duration::from_secs(45), ssh)
         .await
-        .map_err(|_| format!("{} did not answer in 45 s", target.target))?
-        .map_err(|e| format!("ssh: {e}"))?;
+        .map_err(|_| {
+            t!(
+                "native_remote_no_answer",
+                target = &target.target,
+                seconds = 45
+            )
+        })?
+        .map_err(|e| {
+            t!(
+                "native_remote_spawn_failed",
+                program = "ssh",
+                error = e.to_string()
+            )
+        })?;
     if !out.status.success() && out.stdout.is_empty() {
         return Err(String::from_utf8_lossy(&out.stderr).trim().to_string());
     }
@@ -558,9 +587,9 @@ pub async fn crew_agent_install(
     agent_id: String,
 ) -> Result<(), String> {
     let target = server_ssh(&host_key);
-    target.valid()?;
+    crate::remote::valid_alias(&target.target)?;
     let script =
-        install_script(&agent_id).ok_or_else(|| format!("no installer for {agent_id:?}"))?;
+        install_script(&agent_id).ok_or_else(|| t!("native_crew_no_installer", id = &agent_id))?;
     let full_cmd = install_command(&script);
     let mut child = tokio::process::Command::new("ssh")
         .no_window()
@@ -570,17 +599,30 @@ pub async fn crew_agent_install(
         .stderr(std::process::Stdio::piped())
         .kill_on_drop(true)
         .spawn()
-        .map_err(|e| format!("ssh: {e}"))?;
+        .map_err(|e| {
+            t!(
+                "native_remote_spawn_failed",
+                program = "ssh",
+                error = e.to_string()
+            )
+        })?;
     let stdout = child.stdout.take().expect("piped");
     let stderr = child.stderr.take().expect("piped");
     let app2 = app.clone();
     tokio::spawn(pump_install(stdout, app2, false));
     tokio::spawn(pump_install(stderr, app.clone(), true));
-    let status = child.wait().await.map_err(|e| format!("ssh wait: {e}"))?;
+    let status = child.wait().await.map_err(|e| {
+        t!(
+            "native_crew_wait_failed",
+            program = "ssh",
+            error = e.to_string()
+        )
+    })?;
     if !status.success() {
-        return Err(format!(
-            "agent install exited {}",
-            status.code().unwrap_or(-1)
+        return Err(t!(
+            "native_crew_agent_install_failed",
+            id = &agent_id,
+            code = status.code().unwrap_or(-1)
         ));
     }
     Ok(())
@@ -651,7 +693,7 @@ fn install_script(agent_id: &str) -> Option<String> {
 #[tauri::command]
 pub fn crew_signin_argv(host_key: String, command: String) -> Result<Vec<String>, String> {
     let t = server_ssh(&host_key);
-    t.valid()?;
+    crate::remote::valid_alias(&t.target)?;
     Ok(t.terminal_argv(&command))
 }
 
@@ -680,7 +722,13 @@ pub async fn provider_probe(base_url: String, api_key: String) -> Result<Vec<Str
         .stderr(std::process::Stdio::piped())
         .output()
         .await
-        .map_err(|e| format!("curl: {e}"))?;
+        .map_err(|e| {
+            t!(
+                "native_remote_spawn_failed",
+                program = "curl",
+                error = e.to_string()
+            )
+        })?;
 
     let stdout = String::from_utf8_lossy(&out.stdout);
     let stderr = String::from_utf8_lossy(&out.stderr);
@@ -692,23 +740,23 @@ pub async fn provider_probe(base_url: String, api_key: String) -> Result<Vec<Str
     if status == 0 {
         // curl itself failed (DNS, TLS, timeout …).
         let detail = stderr.trim();
-        return Err(if detail.is_empty() {
-            format!("could not reach {url}")
+        return Err(probe_failure(if detail.is_empty() {
+            ProbeFailure::Unreachable(&url)
         } else {
-            format!("connection error: {detail}")
-        });
+            ProbeFailure::Connection(detail)
+        }));
     }
     if status == 401 || status == 403 {
-        return Err(format!("HTTP {status}: invalid API key"));
+        return Err(probe_failure(ProbeFailure::KeyRefused(status)));
     }
     if status != 200 {
-        return Err(format!("HTTP {status} from gateway"));
+        return Err(probe_failure(ProbeFailure::Status(status)));
     }
 
     // Parse model list.  Supports the OpenAI { data: [{id}] } shape and the
     // Anthropic { models: [{id}] } shape.
     let val: serde_json::Value =
-        serde_json::from_str(body.trim()).map_err(|_| "gateway returned non-JSON".to_string())?;
+        serde_json::from_str(body.trim()).map_err(|_| probe_failure(ProbeFailure::NotJson))?;
 
     let ids: Vec<String> = if let Some(arr) = val.get("data").and_then(|v| v.as_array()) {
         arr.iter()
@@ -723,6 +771,43 @@ pub async fn provider_probe(base_url: String, api_key: String) -> Result<Vec<Str
     };
 
     Ok(ids)
+}
+
+/// Why a gateway test failed, before it is worded.
+enum ProbeFailure<'a> {
+    /// curl failed without a message.
+    Unreachable(&'a str),
+    /// curl failed with one (DNS, TLS, timeout), kept as it is.
+    Connection(&'a str),
+    /// 401 or 403.
+    KeyRefused(u16),
+    /// Any other status than 200.
+    Status(u16),
+    NotJson,
+}
+
+fn probe_failure(f: ProbeFailure<'_>) -> String {
+    probe_failure_in(atlas_i18n::lang(), f)
+}
+
+fn probe_failure_in(lang: &str, f: ProbeFailure<'_>) -> String {
+    match f {
+        ProbeFailure::Unreachable(url) => t_in!(lang, "native_crew_probe_unreachable", url = url),
+        ProbeFailure::Connection(detail) => {
+            t_in!(lang, "native_crew_probe_connection", detail = detail)
+        }
+        ProbeFailure::KeyRefused(status) => {
+            t_in!(
+                lang,
+                "native_crew_probe_key_refused",
+                status = u32::from(status)
+            )
+        }
+        ProbeFailure::Status(status) => {
+            t_in!(lang, "native_crew_probe_status", status = u32::from(status))
+        }
+        ProbeFailure::NotJson => t_in!(lang, "native_crew_probe_not_json"),
+    }
 }
 
 // ─── tests ────────────────────────────────────────────────────────────────────
@@ -1382,5 +1467,95 @@ mod tests {
             .map(|e| e.unwrap().file_name().to_string_lossy().into_owned())
             .collect();
         assert_eq!(names, ["crew-servers.json"]);
+    }
+}
+
+/// The errors the page shows: the sentence is the catalog's in the language asked for, and what another tool
+/// said (curl, ssh, the OS) stays as it was, at the end.
+#[cfg(test)]
+mod error_tests {
+    use super::{ProbeFailure, probe_failure_in, set_admin};
+    use atlas_i18n::t_in;
+
+    const LANGS: [&str; 2] = ["en", "pt-BR"];
+
+    #[test]
+    fn an_unknown_server_is_named_in_the_error_of_every_language() {
+        let mut hosts: Vec<super::CrewServer> = Vec::new();
+        let err = set_admin(&mut hosts, "atlas-crew@nope", None).unwrap_err();
+        assert!(err.contains("atlas-crew@nope"), "{err}");
+        for lang in LANGS {
+            let text = t_in!(lang, "native_crew_not_registered", host = "atlas-crew@nope");
+            assert!(text.contains("atlas-crew@nope"), "{lang}: {text}");
+        }
+        assert_ne!(
+            t_in!("en", "native_crew_not_registered", host = "h"),
+            t_in!("pt-BR", "native_crew_not_registered", host = "h")
+        );
+    }
+
+    #[test]
+    fn a_refused_key_reports_the_status_and_not_the_word_invalid() {
+        for lang in LANGS {
+            for status in [401, 403] {
+                let text = probe_failure_in(lang, ProbeFailure::KeyRefused(status));
+                assert!(text.contains(&status.to_string()), "{lang}: {text}");
+            }
+        }
+        let en = probe_failure_in("en", ProbeFailure::KeyRefused(401));
+        assert!(!en.to_lowercase().contains("invalid"), "{en}");
+    }
+
+    #[test]
+    fn another_status_is_reported_with_its_number() {
+        for lang in LANGS {
+            let text = probe_failure_in(lang, ProbeFailure::Status(502));
+            assert!(text.contains("502"), "{lang}: {text}");
+            assert_ne!(text, probe_failure_in(lang, ProbeFailure::KeyRefused(502)));
+        }
+    }
+
+    #[test]
+    fn a_connection_error_keeps_curls_own_words_at_the_end() {
+        let curl = "curl: (6) Could not resolve host: llm.example";
+        for lang in LANGS {
+            let text = probe_failure_in(lang, ProbeFailure::Connection(curl));
+            assert!(text.ends_with(curl), "{lang}: {text}");
+        }
+    }
+
+    #[test]
+    fn an_unreachable_gateway_names_the_address_it_called() {
+        let url = "https://llm.example/v1/models";
+        for lang in LANGS {
+            let text = probe_failure_in(lang, ProbeFailure::Unreachable(url));
+            assert!(text.contains(url), "{lang}: {text}");
+        }
+    }
+
+    #[test]
+    fn a_failed_command_names_the_command_and_its_status() {
+        for lang in LANGS {
+            let text = t_in!(
+                lang,
+                "native_crew_command_failed",
+                command = "atlas crew install",
+                status = "exit status: 3"
+            );
+            assert!(text.contains("atlas crew install"), "{lang}: {text}");
+            assert!(text.contains("exit status: 3"), "{lang}: {text}");
+        }
+    }
+
+    #[test]
+    fn an_agent_error_names_the_agent_id() {
+        for lang in LANGS {
+            for key in ["native_crew_unknown_agent", "native_crew_no_installer"] {
+                let mut args = atlas_i18n::Args::new();
+                args.set("id", "nope");
+                let text = atlas_i18n::translate(lang, key, Some(&args));
+                assert!(text.contains("nope"), "{lang} {key}: {text}");
+            }
+        }
     }
 }

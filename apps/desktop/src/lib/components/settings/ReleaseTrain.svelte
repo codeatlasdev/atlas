@@ -4,23 +4,24 @@
 	 * feed it (a build is promoted only after it has run in the lane before). Theme-aware: currentColor and
 	 * --ca-* tokens only. Informative, so it carries a title and a description.
 	 */
-	import { laneStates, type Channel } from "#lib/updates.ts";
+	import { channelName, laneStates, type Channel } from "#lib/updates.ts";
+	import { m } from "#lib/i18n/m.ts";
 
 	let { followed, pending = null }: { followed: Channel; pending?: Channel | null } = $props();
 
-	const LANES: { id: Channel; label: string; y: number }[] = [
-		{ id: "alpha", label: "Alpha", y: 14 },
-		{ id: "beta", label: "Beta", y: 40 },
-		{ id: "stable", label: "Stable", y: 66 },
+	const LANES: { id: Channel; y: number }[] = [
+		{ id: "alpha", y: 14 },
+		{ id: "beta", y: 40 },
+		{ id: "stable", y: 66 },
 	];
 	let state = $derived(laneStates(followed, pending));
 	let focus = $derived(pending ?? followed);
 	let description = $derived(
 		focus === "stable"
-			? "Builds are promoted from alpha to beta to stable. You follow stable, the last lane."
+			? m.settings_updates_channel_train_stable()
 			: focus === "beta"
-				? "Builds are promoted from alpha to beta to stable. You follow beta, after alpha and before stable."
-				: "Builds are promoted from alpha to beta to stable. You follow alpha, the first lane.",
+				? m.settings_updates_channel_train_beta()
+				: m.settings_updates_channel_train_alpha(),
 	);
 </script>
 
@@ -31,12 +32,12 @@
 	aria-labelledby="train-title train-desc"
 	xmlns="http://www.w3.org/2000/svg"
 >
-	<title id="train-title">Release train</title>
+	<title id="train-title">{m.settings_updates_channel_train_title()}</title>
 	<desc id="train-desc">{description}</desc>
 	{#each LANES as l, i (l.id)}
 		{@const s = state[l.id]}
 		<g class="lane {s}">
-			<text x="0" y={l.y + 3.5} class="lbl">{l.label}</text>
+			<text x="0" y={l.y + 3.5} class="lbl">{channelName(l.id)}</text>
 			<line x1="46" x2="226" y1={l.y} y2={l.y} class="rail" />
 			<circle cx="46" cy={l.y} r="3.5" class="stop" />
 			<circle cx="226" cy={l.y} r="3.5" class="stop" />

@@ -2,6 +2,7 @@
 //! what a quality preset does to the picture, the size estimate shown while recording, which part a trim keeps, and
 //! what this Mac can record besides the picture.
 
+use atlas_i18n::t;
 use serde::Serialize;
 
 use super::prefs::VideoQuality;
@@ -145,14 +146,14 @@ pub fn capabilities(major: i64, mic: MicAccess) -> Capabilities {
         return Capabilities {
             system_audio: false,
             microphone: false,
-            reason: Some("Recording with sound needs macOS 15 or newer.".into()),
+            reason: Some(t!("native_capture_audio_needs_macos_15")),
         };
     }
     if mic == MicAccess::Refused {
         return Capabilities {
             system_audio: true,
             microphone: false,
-            reason: Some(MIC_OFF.into()),
+            reason: Some(t!("native_capture_mic_off")),
         };
     }
     Capabilities {
@@ -162,8 +163,6 @@ pub fn capabilities(major: i64, mic: MicAccess) -> Capabilities {
     }
 }
 
-/// Why the microphone toggle is off while access is refused.
-pub const MIC_OFF: &str = "Microphone access is off for Atlas. Turn it on in System Settings > Privacy & Security > Microphone.";
 /// The HUD note for a microphone that was on but could not be recorded.
 pub const MIC_SKIPPED: &str = "Microphone skipped: Atlas has no microphone access. Turn it on in System Settings > Privacy & Security > Microphone.";
 /// The HUD note for keystrokes that were on but could not be shown.
@@ -315,6 +314,7 @@ mod tests {
 
     #[test]
     fn capabilities_need_macos_15_for_any_sound() {
+        atlas_i18n::set_lang("en");
         let c = capabilities(14, MicAccess::Granted);
         assert!(!c.system_audio && !c.microphone);
         assert!(c.reason.unwrap().contains("macOS 15"));
@@ -326,6 +326,7 @@ mod tests {
     /// audio (no extra permission) stays available.
     #[test]
     fn a_refused_microphone_turns_only_the_microphone_off() {
+        atlas_i18n::set_lang("en");
         let c = capabilities(26, MicAccess::Refused);
         assert!(c.system_audio && !c.microphone);
         assert!(c.reason.unwrap().contains("System Settings"));

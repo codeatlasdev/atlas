@@ -23,9 +23,13 @@ fn host_hub(app: &AppHandle) -> std::sync::Arc<HostHub> {
 /// the process `PATH`. The same lookup hostd's startup uses ([`atlas_host::client::atlas_bin_with`]), so stacks and
 /// terminals can never disagree about which CLI exists.
 pub(crate) fn atlas_bin() -> Result<PathBuf, String> {
+    atlas_bin_checked().map_err(|e| e.to_string())
+}
+
+/// [`atlas_bin`] with the typed error (`hostd.cli_not_found`): the terminal host's connect loop reports it with its code.
+pub(crate) fn atlas_bin_checked() -> Result<PathBuf, atlas_host::client::CallError> {
     let login = atlas_core::login_env::path_var();
     atlas_host::client::atlas_bin_with(Some(login.as_os_str()).filter(|p| !p.is_empty()))
-        .map_err(|e| e.to_string())
 }
 
 #[tauri::command]

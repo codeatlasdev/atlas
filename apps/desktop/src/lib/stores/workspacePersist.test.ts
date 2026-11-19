@@ -3,6 +3,7 @@
 // file that was not valid JSON (a crash mid-write on an old build, a full disk, a hand edit), `ws.loaded` was never set,
 // the ready gate never opened and the window sat on its loading state for good.
 import { beforeEach, expect, mock, test } from "bun:test";
+import { inLocale } from "../../../test/locale.ts";
 
 const calls: [string, unknown][] = [];
 let handlers: Record<string, (args: unknown) => unknown> = {};
@@ -14,7 +15,10 @@ mock.module("@tauri-apps/api/core", () => ({
 		return h(args);
 	},
 }));
-mock.module("@tauri-apps/api/event", () => ({ listen: async () => () => {} }));
+const listeners: Record<string, (e: { payload: unknown }) => unknown> = {};
+mock.module("@tauri-apps/api/event", () => ({
+	listen: async (ev: string, h: (e: { payload: unknown }) => unknown) => ((listeners[ev] = h), () => {}),
+}));
 const toasts: string[] = [];
 mock.module("@codeatlasdev/ui", () => ({
 	toast: { error: (t: string) => toasts.push(t), info() {}, success() {} },
@@ -142,4 +146,26 @@ test("docShapeError names the first thing that is wrong and accepts what the app
 	expect(docShapeError({ tabs: "x" })).toContain("tabs");
 	expect(docShapeError([])).toContain("object");
 	expect(docShapeError({ closed: { w: "x" } })).toContain("closed");
+});
+
+// The sentence of a coded `host://error` is written from the messages that load on demand: the event waits for them.
+const closed = { code: "hostd.closed", message: "The terminal host closed the connection" };
+const settle = () => new Promise((r) => setTimeout(r, 20));
+
+test("a coded host error is shown in the app's language, not as the English of the wire", async () => {
+	const ws = await boot(load(emptyDoc()));
+	await inLocale("pt-BR", async () => {
+		listeners["host://error"]({ payload: closed });
+		await settle();
+	});
+	expect(ws.hostError).toBeTruthy();
+	expect(ws.hostError).not.toBe(closed.message);
+});
+
+test("a reconnect that lands while an error waits for its messages is not undone by the error", async () => {
+	const ws = await boot(load(emptyDoc()));
+	listeners["host://error"]({ payload: closed });
+	listeners["host://reconnected"]({ payload: { host: "local" } });
+	await settle();
+	expect(ws.hostError).toBeNull();
 });

@@ -19,7 +19,7 @@
     "cmd_hostd_feature_agents": "cfb82570ab0e",
     "cmd_hostd_feature_lsp": "b0925260b262",
     "cmd_hostd_feature_pty_attach_raw": "f8bc60607b0e",
-    "cmd_hostd_features_list": "9ee0bb2b79fe",
+    "cmd_hostd_features_list": "84d6eec39e4e",
     "cmd_hostd_imported": "0cbb2cdb1a31",
     "cmd_hostd_imported_renamed": "536d941d7932",
     "cmd_hostd_kept": "58a25643333b",

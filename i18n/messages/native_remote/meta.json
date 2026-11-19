@@ -1,0 +1,18 @@
+{
+	"native_remote_atlas_missing": "Error under the SSH host row (Settings > SSH hosts) and in the reconnect reason when atlas is missing on the host and there is no local Linux build to upload. {alias} is the SSH host alias, {arch} and {system} what uname reported (aarch64, linux), {path} the local file where a build would be picked up.",
+	"native_remote_dir_failed": "Error when the folder for the SSH tunnel sockets (~/.atlas/remote) cannot be created. {path} is the folder, {error} the operating system's reason.",
+	"native_remote_forward_failed": "Error when the right sidebar opens a remote port of an SSH host and the local forward never came up. {port} is the remote port number, {alias} the SSH host alias.",
+	"native_remote_hostd_unreachable": "Reconnect error of an SSH host (shown in the host's status row) when the ssh tunnel opened but the atlas hostd behind it did not answer. {alias} is the SSH host alias, {detail} the connection error as it was reported.",
+	"native_remote_invalid_alias": "Error when an SSH host or crew server address typed in Settings or the crew onboarding is refused before any connection (it could be read as an ssh option). {alias} is the text typed. ~/.ssh/config and user@host stay verbatim.",
+	"native_remote_lacks_features": "Detail of the Outdated chip of an SSH host (Settings > SSH hosts): connected, but the atlas on the host is older than this app. {features} is the list of capabilities it lacks, as the host names them (mobile, crew), shown as they are.",
+	"native_remote_local_port_failed": "Error when the app cannot bind a free local port to forward a remote port. {error} is the operating system's reason.",
+	"native_remote_no_answer": "Error when an ssh or atlas command against a server (an SSH host, or a crew server check or browsers status) gave no answer before its limit, so the row does not stay on Checking. {target} is the host alias or user@host, {seconds} the limit in seconds.",
+	"native_remote_no_atlas_yaml": "Error of Settings > SSH hosts > Remote project when the folder typed has no atlas.yaml on that host (shown as a toast). {alias} is the SSH host alias and {root} the folder path on it.",
+	"native_remote_no_home": "Reconnect error of an SSH host when the home folder of the account on the host came back empty. {alias} is the SSH host alias.",
+	"native_remote_reason_dns": "Start of the reason shown after \"is not reachable:\" when ssh could not resolve the host name, so it reads as a clause and starts lowercase. {detail} is ssh's own text, kept at the end.",
+	"native_remote_reason_down": "Start of the reason shown after \"is not reachable:\" when the connection was refused, had no route or timed out, so it reads as a clause and starts lowercase. {detail} is ssh's own text, kept at the end.",
+	"native_remote_reason_key": "Start of the reason shown after \"is not reachable:\" when the server rejected this computer's SSH key, so it reads as a clause. {detail} is ssh's own text, kept at the end.",
+	"native_remote_spawn_failed": "Error when the app could not start a helper program (ssh, scp or curl) for an SSH host, a crew server or the gateway test. {program} is the program name, kept verbatim, {error} the operating system's reason.",
+	"native_remote_ssh_failed": "Error when an ssh command on a host exited with a failure. {alias} is the SSH host alias, {detail} ssh's own error text (or the exit status when it printed none), shown as it is.",
+	"native_remote_upload_failed": "Reconnect error of an SSH host when copying the atlas build to the host with scp failed. {alias} is the SSH host alias."
+}

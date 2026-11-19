@@ -2,6 +2,7 @@
 import "../../../test/setup.ts";
 import { createRequire } from "node:module";
 import { afterAll, afterEach, beforeEach, expect, mock, test } from "bun:test";
+import { m } from "#lib/i18n/m.ts";
 
 // Incident #503 (1.5.0-alpha.26): the right panel showed "No sessions yet." and nothing else. Real component, real kit,
 // the real stores; only the Tauri bridge is stubbed (a global, not a module mock, which would outlive this file).
@@ -139,7 +140,7 @@ test("a search with no match says so, and does not tell the user to start an age
 	input.dispatchEvent(new Event("input", { bubbles: true }));
 	input.dispatchEvent(new KeyboardEvent("keydown", { key: "Enter" }));
 	await settle();
-	expect(text()).toContain("No sessions match “zzz”");
+	expect(text()).toContain(m.sidebar_right_no_match({ query: "zzz" }));
 	expect(button(/New agent session/)).toBeUndefined();
 });
 

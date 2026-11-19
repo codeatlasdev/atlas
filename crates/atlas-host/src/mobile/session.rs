@@ -17,6 +17,14 @@ fn scope_name(s: Scope) -> String {
         .unwrap_or_default()
 }
 
+/// Test hook: a pause right after the reply to a successful `pair`, which widens any window in which the phone
+/// already reads "paired" while hostd does not count it as connected yet. Process-wide: under nextest every test is
+/// its own process; under `cargo test` another test pairing meanwhile is only delayed, since the connection is live
+/// before the reply either way.
+#[cfg(test)]
+pub(super) static TEST_PAUSE_AFTER_PAIR_REPLY: std::sync::atomic::AtomicU64 =
+    std::sync::atomic::AtomicU64::new(0);
+
 pub(super) async fn run(hub: Arc<Hub>, conn: Connection) {
     let node = conn.remote_id().to_string();
     let Ok((send, recv)) = conn.accept_bi().await else {
@@ -43,9 +51,8 @@ pub(super) async fn run(hub: Arc<Hub>, conn: Connection) {
         } else {
             Err("not paired".into())
         };
-        let ok = res.is_ok();
-        let _ = tx.force(protocol::reply(id, res));
-        if !ok {
+        if res.is_err() {
+            let _ = tx.force(protocol::reply(id, res));
             drop(tx);
             if let Ok(mut send) = writer.await {
                 let _ = send.finish();
@@ -56,9 +63,20 @@ pub(super) async fn run(hub: Arc<Hub>, conn: Connection) {
             return;
         }
         m.audit(&node, "pair", &json!({}));
+        // Connected BEFORE the phone reads "paired": a permission prompt that arrives right after its pairing is
+        // held for it, instead of answered `null` in the gap between the reply and `track`.
+        m.track(&node, &conn);
+        let _ = tx.force(protocol::reply(id, res));
+        #[cfg(test)]
+        {
+            let ms = TEST_PAUSE_AFTER_PAIR_REPLY.load(std::sync::atomic::Ordering::SeqCst);
+            if ms > 0 {
+                tokio::time::sleep(std::time::Duration::from_millis(ms)).await;
+            }
+        }
+    } else {
+        m.track(&node, &conn);
     }
-
-    m.track(&node, &conn);
     // Pushes (broadcasts, terminal output) pass this phone's scopes as they are now,
     // so a scope taken away on the desktop stops them at once; replies go straight out.
     let (push, mut pushes) = crate::pty::out_channel();

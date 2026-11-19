@@ -8,6 +8,6 @@
 	"native_updates_github_feed": "Não foi possível ler o feed de versões do GitHub: {reason}",
 	"native_updates_github_missing": "O curl não está instalado. Instale-o e verifique de novo.",
 	"native_updates_github_unknown": "Não foi possível verificar se a tag {tag} está publicada: {reason}",
-	"native_updates_install_failed": "O comando atlas {args} falhou ({status})",
+	"native_updates_install_failed": "O comando atlas {args} falhou ({status}) e não informou o motivo. Rode o comando em um terminal para ver o motivo.",
 	"native_updates_not_installed": "O Atlas não está rodando a partir de um app instalado, então não pode se reabrir sozinho. Abra o app instalado."
 }

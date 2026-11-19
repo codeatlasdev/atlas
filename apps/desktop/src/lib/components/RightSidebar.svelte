@@ -19,6 +19,7 @@
 	import { ago } from "#lib/components/sidebar/discovery.ts";
 	import { useNow } from "#lib/clock.svelte.ts";
 	import { runCommand, shortcutFor } from "#lib/keymap.svelte.ts";
+	import { revealLabel } from "#lib/keys.ts";
 	import { docks, peek, toggleDock } from "#lib/stores/docks.svelte.ts";
 	import { liveAgents, portRows, STATE_LABEL } from "#lib/shell/rightPanel.ts";
 	import { api, errText } from "#lib/api.ts";
@@ -243,7 +244,7 @@
 									)}><Copy size={12} /> {m.sidebar_right_copy_command()}</button
 							>
 							<button onclick={() => api.revealPath(s.file).catch((e) => toast.error(errText(e)))}
-								><FolderSearch size={12} /> {m.sidebar_right_reveal()}</button
+								><FolderSearch size={12} /> {revealLabel()}</button
 							>
 						</div>
 					</div>

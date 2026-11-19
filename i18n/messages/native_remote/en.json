@@ -3,7 +3,7 @@
 	"native_remote_dir_failed": "Could not create {path}: {error}",
 	"native_remote_forward_failed": "Could not forward port {port} of {alias}. Check that a program listens on it there.",
 	"native_remote_hostd_unreachable": "The tunnel to {alias} is up, but its hostd does not answer: {detail}",
-	"native_remote_invalid_alias": "\"{alias}\" is not a valid SSH host. Use an alias from ~/.ssh/config or user@host, with only letters, digits and the characters . - _",
+	"native_remote_invalid_alias": "Can't use \"{alias}\" as an SSH host. Use an alias from ~/.ssh/config or user@host, with only letters, digits and the characters . - _",
 	"native_remote_lacks_features": "Its atlas hostd lacks {features}. Update atlas on the host and restart its hostd.",
 	"native_remote_local_port_failed": "Could not reserve a local port: {error}",
 	"native_remote_no_answer": "{target} did not answer in {seconds} s. Check that it is powered on and reachable.",

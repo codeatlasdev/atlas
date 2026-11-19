@@ -1,6 +1,6 @@
 {
   "pt-BR": {
-    "settings_updates_ahead_note": "081613892813",
+    "settings_updates_ahead_note": "4e91e13b035a",
     "settings_updates_auto_aria": "978612089448",
     "settings_updates_auto_hint": "2cff05955a87",
     "settings_updates_auto_label": "d4265c903b50",
@@ -16,7 +16,7 @@
     "settings_updates_dev_link_body": "3f1ba6343a70",
     "settings_updates_dev_link_title": "d80b562bb775",
     "settings_updates_dev_rebuild": "30709574cb03",
-    "settings_updates_downgrade_warning": "40b2b367aa58",
+    "settings_updates_downgrade_warning": "6dbd3cdab805",
     "settings_updates_full_changelog": "560f195e559f",
     "settings_updates_github_unreachable": "aadb3471e7c8",
     "settings_updates_headline_checking": "46aa19dacf72",
@@ -55,9 +55,9 @@
     "settings_updates_unlink_dev": "08be3ee95bac",
     "settings_updates_update_all": "6613a30786b2",
     "settings_updates_updating": "6ccb37333036",
-    "settings_updates_withdrawn_older": "bc9af9b3c5cb",
+    "settings_updates_withdrawn_older": "8338aea3c05f",
     "settings_updates_withdrawn_replacement": "4f7334230fa7",
     "settings_updates_withdrawn_title": "531342de0497",
-    "settings_updates_withdrawn_update": "5a5d98cda43d"
+    "settings_updates_withdrawn_update": "0209d5994bf6"
   }
 }

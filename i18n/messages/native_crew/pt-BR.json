@@ -1,7 +1,7 @@
 {
 	"native_crew_agent_install_failed": "A instalação de {id} no servidor falhou (código de saída {code}). Confira o log da instalação e tente novamente.",
 	"native_crew_browsers_status_failed": "Não foi possível verificar os navegadores no servidor. Tente novamente.",
-	"native_crew_command_failed": "{command} falhou ({status}) e não informou o motivo. Rode no terminal para ver o que aconteceu.",
+	"native_crew_command_failed": "{command} falhou ({status}) e não informou o motivo. Rode o comando em um terminal para ver o motivo.",
 	"native_crew_no_installer": "O Atlas não tem instalador para {id}. Instale-o no servidor por conta própria.",
 	"native_crew_not_registered": "{host} não é um crew server registrado. Adicione-o primeiro e tente novamente.",
 	"native_crew_probe_connection": "Não foi possível conectar ao gateway: {detail}",

@@ -18,7 +18,7 @@
 			}
 		}
 	],
-	"sidebar_added_nothing": "Adicionado: nada para executar foi detectado ainda",
+	"sidebar_added_nothing": "Adicionado, mas o Atlas ainda não detectou nada para executar",
 	"sidebar_clear_filter": "Limpar filtro",
 	"sidebar_command_remove_missing": "Remover projetos ausentes",
 	"sidebar_command_remove_project": "Remover projeto do Atlas…",
@@ -174,9 +174,9 @@
 				"countPlural"
 			],
 			"match": {
-				"countExact=0, countPlural=*": "todas as pastas legíveis",
-				"countExact=*, countPlural=one": "{amount} pasta não legível",
-				"countExact=*, countPlural=*": "{amount} pastas não legíveis"
+				"countExact=0, countPlural=*": "todas as pastas foram lidas",
+				"countExact=*, countPlural=one": "{amount} pasta que não pôde ser lida",
+				"countExact=*, countPlural=*": "{amount} pastas que não puderam ser lidas"
 			}
 		}
 	],
@@ -347,7 +347,7 @@
 	"sidebar_right_no_earlier_here": "Nenhuma sessão anterior aqui ainda.",
 	"sidebar_right_no_earlier_worktree": "Nenhuma sessão anterior nesta worktree ainda.",
 	"sidebar_right_no_match": "Nenhuma sessão corresponde a \"{query}\".",
-	"sidebar_right_no_ports_body": "Um servidor de desenvolvimento ou um serviço iniciado nesta worktree aparece aqui com a porta e um botão para abri-lo. Rode um em um terminal (por exemplo, bun run dev) ou inicie um serviço pelo painel do projeto.",
+	"sidebar_right_no_ports_body": "Um servidor de desenvolvimento ou um serviço iniciado nesta worktree aparece aqui com a porta e um botão para abri-lo. Rode um deles em um terminal (por exemplo, bun run dev) ou inicie um serviço pelo painel do projeto.",
 	"sidebar_right_no_ports_title": "Nenhuma porta escutando",
 	"sidebar_right_open_external": "Abrir no navegador do sistema",
 	"sidebar_right_open_port_external": "Abrir :{port} no navegador do sistema",
@@ -355,7 +355,6 @@
 	"sidebar_right_ports": "Portas",
 	"sidebar_right_resume": "Retomar",
 	"sidebar_right_resume_in_native_chat": "Retomar no chat nativo",
-	"sidebar_right_reveal": "Mostrar na pasta",
 	"sidebar_right_running_here": "Em execução aqui",
 	"sidebar_right_scope_all": "Todos",
 	"sidebar_right_scope_project": "Projeto",

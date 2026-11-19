@@ -8,7 +8,7 @@
 	"settings_updates_whats_new_download_unknown": "Baixando…",
 	"settings_updates_whats_new_empty_body": "O changelog ainda não tem uma entrada para ela.",
 	"settings_updates_whats_new_empty_title": "Nenhuma nota de versão para {version}",
-	"settings_updates_whats_new_empty_title_unknown": "Nenhuma nota de versão para esta versão",
+	"settings_updates_whats_new_empty_title_unknown": "Nenhuma nota para esta versão",
 	"settings_updates_whats_new_expand_aria": "Expandir {version}",
 	"settings_updates_whats_new_fold_less": "Menos",
 	"settings_updates_whats_new_fold_more": "Mais",
@@ -26,8 +26,8 @@
 			],
 			"match": {
 				"countExact=0, countPlural=*": "Nenhum terminal em execução.",
-				"countExact=*, countPlural=one": "{count} terminal ainda está em execução, então o Atlas não reiniciou o host.",
-				"countExact=*, countPlural=*": "{count} terminais ainda estão em execução, então o Atlas não reiniciou o host."
+				"countExact=*, countPlural=one": "{count} terminal ainda está em execução, então o Atlas não reiniciou o host de terminais.",
+				"countExact=*, countPlural=*": "{count} terminais ainda estão em execução, então o Atlas não reiniciou o host de terminais."
 			}
 		}
 	],

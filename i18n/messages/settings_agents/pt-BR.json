@@ -3,17 +3,17 @@
 	"settings_agents_agent_approval_ask": "Perguntar antes",
 	"settings_agents_agent_approval_auto": "Aprovar tudo",
 	"settings_agents_agent_approval_description": "Perguntar antes: o agente espera a sua aprovação antes de executar comandos ou editar arquivos. Aprovar tudo: ele nunca pergunta, então use só em worktrees descartáveis.",
-	"settings_agents_agent_args_description": "Flags adicionadas toda vez que {label} inicia, por exemplo --model opus.",
+	"settings_agents_agent_args_description": "Flags adicionadas sempre que {label} é iniciado, por exemplo --model opus.",
 	"settings_agents_agent_args_label": "Argumentos extras para {label}",
 	"settings_agents_agent_arguments": "Argumentos",
 	"settings_agents_agent_coding_agents": "Agentes de código",
 	"settings_agents_agent_command": "Comando",
 	"settings_agents_agent_custom_agents": "Agentes personalizados",
-	"settings_agents_agent_custom_description": "Qualquer CLI de agente (OpenCode, Gemini CLI, Amp…). Ele inicia pelo menu + e por {key}, como os agentes nativos. Sem os hooks do Atlas, a aba mostra trabalhando enquanto o terminal imprime e ocioso depois de alguns segundos de silêncio; para informar estados reais, ele pode rodar `atlas hook` (veja docs/agents.md).",
+	"settings_agents_agent_custom_description": "Qualquer CLI de agente (OpenCode, Gemini CLI, Amp…). Ele inicia pelo menu + e por {key}, como os agentes integrados. Sem os hooks do Atlas, a aba mostra trabalhando enquanto o terminal imprime e ocioso depois de alguns segundos de silêncio; para informar estados reais, ele pode rodar `atlas hook` (veja docs/agents.md).",
 	"settings_agents_agent_default_agent": "Agente padrão",
 	"settings_agents_agent_default_blank": "Terminal em branco",
 	"settings_agents_agent_default_description": "O que uma nova aba de agente inicia. Terminal em branco abre um shell simples.",
-	"settings_agents_agent_environment": "Ambiente",
+	"settings_agents_agent_environment": "Variáveis de ambiente",
 	"settings_agents_agent_environment_placeholder": "CHAVE=valor, um por linha",
 	"settings_agents_agent_installed": "Instalado",
 	"settings_agents_agent_name": "Nome",
@@ -70,9 +70,9 @@
 	"settings_agents_crew_remove_hint": "Deixa de gerenciar os crewmates deste servidor.",
 	"settings_agents_crew_remove_server": "Remover crew server",
 	"settings_agents_crew_removed": "{name} removido",
-	"settings_agents_crew_replay": "Rever",
+	"settings_agents_crew_replay": "Repetir",
 	"settings_agents_crew_replay_description": "Mostra a introdução do Atlas Crew de novo, desde o primeiro passo.",
-	"settings_agents_crew_replay_onboarding": "Rever o onboarding",
+	"settings_agents_crew_replay_onboarding": "Repetir a introdução",
 	"settings_agents_crew_status": "Status",
 	"settings_agents_crew_status_offline": "Offline",
 	"settings_agents_crew_status_online": "Online",
@@ -89,9 +89,9 @@
 				"os"
 			],
 			"match": {
-				"os=mac": "O Atlas Mobile mostra no seu celular os projetos, logs e agentes do seu Mac, e pode reiniciar serviços ou responder prompts de agentes, dentro do que você permitir. Sem conta: a conexão entre os dois tem criptografia fim a fim.",
-				"os=windows": "O Atlas Mobile mostra no seu celular os projetos, logs e agentes deste PC, e pode reiniciar serviços ou responder prompts de agentes, dentro do que você permitir. Sem conta: a conexão entre os dois tem criptografia fim a fim.",
-				"os=*": "O Atlas Mobile mostra no seu celular os projetos, logs e agentes deste computador, e pode reiniciar serviços ou responder prompts de agentes, dentro do que você permitir. Sem conta: a conexão entre os dois tem criptografia fim a fim."
+				"os=mac": "O Atlas Mobile mostra no seu celular os projetos, logs e agentes do seu Mac. Dentro do que você permitir, ele também pode reiniciar serviços, executar ações, acompanhar e digitar nos terminais e responder aos prompts de permissão dos agentes. Sem conta: a conexão entre os dois tem criptografia fim a fim.",
+				"os=windows": "O Atlas Mobile mostra no seu celular os projetos, logs e agentes deste PC. Dentro do que você permitir, ele também pode reiniciar serviços, executar ações, acompanhar e digitar nos terminais e responder aos prompts de permissão dos agentes. Sem conta: a conexão entre os dois tem criptografia fim a fim.",
+				"os=*": "O Atlas Mobile mostra no seu celular os projetos, logs e agentes deste computador. Dentro do que você permitir, ele também pode reiniciar serviços, executar ações, acompanhar e digitar nos terminais e responder aos prompts de permissão dos agentes. Sem conta: a conexão entre os dois tem criptografia fim a fim."
 			}
 		}
 	],
@@ -104,9 +104,9 @@
 				"os"
 			],
 			"match": {
-				"os=mac": "Um celular pareado pode ver seus projetos, logs e agentes, reiniciar serviços, executar ações e responder prompts de agentes, dentro do que você permitir, de qualquer lugar, enquanto o seu Mac estiver ativo. Clique em {@mobile_pair_card_show_code} acima para adicionar um.",
-				"os=windows": "Um celular pareado pode ver seus projetos, logs e agentes, reiniciar serviços, executar ações e responder prompts de agentes, dentro do que você permitir, de qualquer lugar, enquanto este PC estiver ativo. Clique em {@mobile_pair_card_show_code} acima para adicionar um.",
-				"os=*": "Um celular pareado pode ver seus projetos, logs e agentes, reiniciar serviços, executar ações e responder prompts de agentes, dentro do que você permitir, de qualquer lugar, enquanto este computador estiver ativo. Clique em {@mobile_pair_card_show_code} acima para adicionar um."
+				"os=mac": "Um celular pareado pode ver seus projetos, logs e agentes, reiniciar serviços, executar ações, acompanhar e digitar nos terminais e responder aos prompts de permissão dos agentes, dentro do que você permitir, de qualquer lugar, enquanto o seu Mac estiver ativo. Clique em {@mobile_pair_card_show_code} acima para adicionar um.",
+				"os=windows": "Um celular pareado pode ver seus projetos, logs e agentes, reiniciar serviços, executar ações, acompanhar e digitar nos terminais e responder aos prompts de permissão dos agentes, dentro do que você permitir, de qualquer lugar, enquanto este PC estiver ativo. Clique em {@mobile_pair_card_show_code} acima para adicionar um.",
+				"os=*": "Um celular pareado pode ver seus projetos, logs e agentes, reiniciar serviços, executar ações, acompanhar e digitar nos terminais e responder aos prompts de permissão dos agentes, dentro do que você permitir, de qualquer lugar, enquanto este computador estiver ativo. Clique em {@mobile_pair_card_show_code} acima para adicionar um."
 			}
 		}
 	],

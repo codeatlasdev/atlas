@@ -1,5 +1,5 @@
 {
-	"settings_updates_ahead_note": "You run a newer build than the {channel} channel offers ({version}), so no update is offered. Pick a more adventurous channel to keep moving forward, or install {version} explicitly with the button at the bottom (settings written by the newer build may not be readable).",
+	"settings_updates_ahead_note": "You run a newer build than the {channel} channel offers ({version}), so no update is offered. Pick a channel with newer builds, or install {version} explicitly with the button at the bottom. Settings written by the newer build may not be readable.",
 	"settings_updates_auto_aria": "Check for updates automatically",
 	"settings_updates_auto_hint": "On launch, when you return to the app, and every 6 hours",
 	"settings_updates_auto_label": "Check automatically",
@@ -15,7 +15,7 @@
 	"settings_updates_dev_link_body": "This build runs from your local checkout, so Atlas will not replace it with a release.",
 	"settings_updates_dev_link_title": "Dev link active",
 	"settings_updates_dev_rebuild": "rebuild",
-	"settings_updates_downgrade_warning": "Settings and data written by the newer build may not be readable by this older one. Back up ~/.atlas first if it matters.",
+	"settings_updates_downgrade_warning": "Settings and data written by the newer build may not be readable by this older one. Back up ~/.atlas first if you need that data.",
 	"settings_updates_full_changelog": "Full changelog",
 	"settings_updates_github_unreachable": "Atlas could not reach GitHub. Check your connection and retry.",
 	"settings_updates_headline_checking": "Checking for updates…",
@@ -54,8 +54,8 @@
 	"settings_updates_unlink_dev": "Unlink dev build",
 	"settings_updates_update_all": "Update CLI and app",
 	"settings_updates_updating": "Updating…",
-	"settings_updates_withdrawn_older": "The newest safe release is older: install it with the button at the bottom.",
+	"settings_updates_withdrawn_older": "The newest safe release is older than yours: install it with the button at the bottom.",
 	"settings_updates_withdrawn_replacement": "Use {replacement} instead.",
 	"settings_updates_withdrawn_title": "This version was withdrawn",
-	"settings_updates_withdrawn_update": "Update to leave it."
+	"settings_updates_withdrawn_update": "Update to a safe version."
 }

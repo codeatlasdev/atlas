@@ -117,7 +117,7 @@ test("a withdrawn running version says why and that updating leaves it", () => {
 	expect(text).toContain("This version was withdrawn");
 	expect(text).toContain("Corrupts the workspace file on first launch.");
 	expect(text).toContain("Use 1.4.0-beta.2 instead.");
-	expect(text).toContain("Update to leave it.");
+	expect(text).toContain("Update to a safe version.");
 });
 
 test("a version that was not withdrawn shows no withdrawal notice", () => {

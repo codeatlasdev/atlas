@@ -85,7 +85,6 @@
 	"sidebar_right_ports": "Name of the Ports tab of the right sidebar: ports the worktree's processes listen on.",
 	"sidebar_right_resume": "Button on an expanded agent session that resumes it in a terminal.",
 	"sidebar_right_resume_in_native_chat": "Button on an expanded omp session that resumes it in the app's native chat instead of a terminal.",
-	"sidebar_right_reveal": "Button on an expanded agent session that shows its session file in the file manager.",
 	"sidebar_right_running_here": "Heading of the list of agents running now in this worktree, in the right sidebar.",
 	"sidebar_right_scope_all": "Option of the session scope selector: sessions of every project.",
 	"sidebar_right_scope_project": "Option of the session scope selector: sessions of every worktree of the project.",

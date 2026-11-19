@@ -1,7 +1,14 @@
 // @ts-nocheck bun test runtime types are not part of the app tsconfig
 import { beforeAll, describe, expect, test } from "bun:test";
 import { classify } from "#lib/errors/diagnostics.ts";
-import { hostErrorDetail, hostRejection, hostText, isHostFailure, isProgramMissing, loadHostMessages } from "#lib/hostText.ts";
+import {
+	hostErrorDetail,
+	hostRejection,
+	hostText,
+	isHostFailure,
+	isProgramMissing,
+	loadHostMessages,
+} from "#lib/hostText.ts";
 import { ghAuth } from "#lib/repoState.ts";
 import { HostError, render } from "#lib/hostMessages.ts";
 import { inLocale } from "../../test/locale.ts";
@@ -109,8 +116,16 @@ describe("older and newer peers", () => {
 			{ code: "fs.io", args: { kind: "from_the_future", path: "/w" }, message: "Weird (os error 9)" },
 			{ code: "fs.io", args: { kind: "permission_denied" }, message: "Permission denied (os error 13)" },
 			{ code: "fs.not_found", args: {}, message: "not_found" },
-			{ code: "exec.spawn_failed", args: { reason: "not_found" }, message: "git: No such file or directory (os error 2)" },
-			{ code: "exec.spawn_failed", args: { program: "git", reason: "from_the_future" }, message: "git: Weird (os error 9)" },
+			{
+				code: "exec.spawn_failed",
+				args: { reason: "not_found" },
+				message: "git: No such file or directory (os error 2)",
+			},
+			{
+				code: "exec.spawn_failed",
+				args: { program: "git", reason: "from_the_future" },
+				message: "git: Weird (os error 9)",
+			},
 		]) {
 			expect((await ptError(wire)).message).toBe(wire.message);
 		}
@@ -121,7 +136,9 @@ describe("a missing program is told by its code, in any language", () => {
 	test("exec.spawn_failed not_found is a missing program; other failures and the same OS error for a folder are not", async () => {
 		const missing = await ptError(sample("exec.spawn_failed", { reason: "not_found" }));
 		expect(isProgramMissing(missing)).toBe(true);
-		expect(isProgramMissing(await ptError(sample("exec.spawn_failed", { reason: "permission_denied" })))).toBe(false);
+		expect(
+			isProgramMissing(await ptError(sample("exec.spawn_failed", { reason: "permission_denied" }))),
+		).toBe(false);
 		expect(isProgramMissing(await ptError(sample("exec.spawn_failed", { reason: "other" })))).toBe(false);
 		// `git status` in a folder that is gone: the OS said ENOENT too, and installing git would not help.
 		expect(isProgramMissing(await ptError(sample("fs.not_found", { path: "/work/gone" })))).toBe(false);
@@ -129,7 +146,9 @@ describe("a missing program is told by its code, in any language", () => {
 
 	test("an older hostd's plain text is still read by its words", () => {
 		expect(isProgramMissing("gh: No such file or directory (os error 2)")).toBe(true);
-		expect(isProgramMissing(new Error("gh: The system cannot find the file specified. (os error 2)"))).toBe(true);
+		expect(isProgramMissing(new Error("gh: The system cannot find the file specified. (os error 2)"))).toBe(
+			true,
+		);
 		expect(isProgramMissing("Permission denied (os error 13)")).toBe(false);
 	});
 

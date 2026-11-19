@@ -48,15 +48,18 @@ describe("every code the Rust side declares has a message", () => {
 		},
 	);
 
-	test.each(reworded)("%s has a sentence of its own, and the wire keeps the English it always had", (code) => {
-		const samples = codedWire.filter((w) => w.code === code);
-		expect(samples.length).toBeGreaterThan(0);
-		for (const s of samples) {
-			expect(s.message).toStartWith("hostd: ");
-			expect(render(code, s.args)).toBeDefined();
-			expect(render(code, s.args)).not.toBe(s.message);
-		}
-	});
+	test.each(reworded)(
+		"%s has a sentence of its own, and the wire keeps the English it always had",
+		(code) => {
+			const samples = codedWire.filter((w) => w.code === code);
+			expect(samples.length).toBeGreaterThan(0);
+			for (const s of samples) {
+				expect(s.message).toStartWith("hostd: ");
+				expect(render(code, s.args)).toBeDefined();
+				expect(render(code, s.args)).not.toBe(s.message);
+			}
+		},
+	);
 
 	// `hostd: {why}` is a process name and a protocol word in both languages: the one message that does not change.
 	test.each(allCodes.filter((c) => c !== "hostd.refused"))(

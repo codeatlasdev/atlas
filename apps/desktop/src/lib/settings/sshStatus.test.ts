@@ -3,39 +3,41 @@ import "../../../test/setup.ts";
 import { describe, expect, test } from "bun:test";
 import { m } from "#lib/i18n/m.ts";
 import { inLocale } from "../../../test/locale.ts";
+// The REAL strings the shell sends, one per kind of status: written by `ssh_status_fixture_is_what_rust_sends` in
+// crates/atlas-desktop/src/remote.rs from `SshStatus::wire` (`UPDATE_FIXTURES=1` rewrites it).
+import fixture from "../__fixtures__/ssh-status.json";
 import { LABEL_MAX, sshStatusView } from "./sshStatus.ts";
 
-// The strings `set_status` in crates/atlas-desktop/src/remote.rs writes: an id, or `warning:`/`error:` plus ssh's text.
-const WARNING = "warning: its atlas hostd lacks mobile, crew; update atlas on the host and restart its hostd";
-const ERROR = "error: example-host: tunnel up but hostd unreachable: connection refused";
+/** What the chip must show for each kind the shell can send. A kind missing here is a status the page cannot map. */
+const CHIPS = {
+	connecting: { tone: "warning", label: () => m.settings_agents_ssh_status_connecting() },
+	connected: { tone: "success", label: () => m.settings_agents_ssh_status_connected() },
+	removed: { tone: "neutral", label: () => m.settings_agents_ssh_status_removed() },
+	warning: { tone: "warning", label: () => m.settings_agents_ssh_status_outdated(), detail: true },
+	error: { tone: "error", label: () => m.settings_agents_ssh_status_error(), detail: true },
+};
 
 describe("SSH host status chip", () => {
-	test("each known id gets its own message and color", () => {
-		expect(sshStatusView("connected")).toEqual({
-			tone: "success",
-			label: m.settings_agents_ssh_status_connected(),
-		});
-		expect(sshStatusView("connecting")).toEqual({
-			tone: "warning",
-			label: m.settings_agents_ssh_status_connecting(),
-		});
-		expect(sshStatusView("removed")).toEqual({
-			tone: "neutral",
-			label: m.settings_agents_ssh_status_removed(),
-		});
+	test("the page maps every kind of status the shell sends, and the shell sends every kind the page maps", () => {
+		expect(Object.keys(fixture).sort()).toEqual(Object.keys(CHIPS).sort());
+	});
+
+	test.each(Object.entries(fixture))("the shell's %s status gets its own message and color", (kind, wire) => {
+		const chip = CHIPS[kind];
+		expect(chip).toBeDefined();
+		const view = sshStatusView(wire);
+		expect(view.tone).toBe(chip.tone);
+		expect(view.label).toBe(chip.label());
+		// A warning or an error keeps the shell's own text for the row below; an id has none.
+		expect(view.detail).toBe(chip.detail ? wire : undefined);
+	});
+
+	test("a host the shell has not reported on yet is idle", () => {
 		expect(sshStatusView(undefined)).toEqual({ tone: "neutral", label: m.settings_agents_ssh_status_idle() });
 	});
 
-	test("a warning is connected-but-outdated and keeps the shell's own text for the row below", () => {
-		expect(sshStatusView(WARNING)).toEqual({
-			tone: "warning",
-			label: m.settings_agents_ssh_status_outdated(),
-			detail: WARNING,
-		});
-	});
-
 	test("an error is one word on the chip and the whole reason below, never cut", () => {
-		const long = `${ERROR} ${"x".repeat(200)}`;
+		const long = `${fixture.error} ${"x".repeat(200)}`;
 		const v = sshStatusView(long);
 		expect(v.tone).toBe("error");
 		expect(v.label).toBe(m.settings_agents_ssh_status_error());
@@ -57,8 +59,8 @@ describe("SSH host status chip", () => {
 	});
 
 	test("the label follows the display language when it changes", async () => {
-		const english = sshStatusView("connected").label;
-		const portuguese = await inLocale("pt-BR", () => sshStatusView("connected").label);
+		const english = sshStatusView(fixture.connected).label;
+		const portuguese = await inLocale("pt-BR", () => sshStatusView(fixture.connected).label);
 		expect(portuguese).toBe(await inLocale("pt-BR", () => m.settings_agents_ssh_status_connected()));
 		expect(portuguese).not.toBe(english);
 	});

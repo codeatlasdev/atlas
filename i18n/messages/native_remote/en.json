@@ -1,3 +1,18 @@
 {
-	"native_remote_no_atlas_yaml": "No atlas.yaml in {alias}:{root}. Choose the folder that contains it."
+	"native_remote_atlas_missing": "Atlas is not installed on {alias} ({arch} {system}). Install it there, or put a build at {path}.",
+	"native_remote_dir_failed": "Could not create {path}: {error}",
+	"native_remote_forward_failed": "Could not forward port {port} of {alias}. Check that a program listens on it there.",
+	"native_remote_hostd_unreachable": "The tunnel to {alias} is up, but its hostd does not answer: {detail}",
+	"native_remote_invalid_alias": "\"{alias}\" is not a valid SSH host. Use an alias from ~/.ssh/config or user@host, with only letters, digits and the characters . - _",
+	"native_remote_lacks_features": "Its atlas hostd lacks {features}. Update atlas on the host and restart its hostd.",
+	"native_remote_local_port_failed": "Could not reserve a local port: {error}",
+	"native_remote_no_answer": "{target} did not answer in {seconds} s. Check that it is powered on and reachable.",
+	"native_remote_no_atlas_yaml": "No atlas.yaml in {alias}:{root}. Choose the folder that contains it.",
+	"native_remote_no_home": "Could not read the home folder on {alias}. Check that you can sign in to it with ssh.",
+	"native_remote_reason_dns": "the server name does not resolve. {detail}",
+	"native_remote_reason_down": "the server does not answer. Check that it is powered on. {detail}",
+	"native_remote_reason_key": "SSH refused this computer's key. {detail}",
+	"native_remote_spawn_failed": "Could not run {program}: {error}",
+	"native_remote_ssh_failed": "SSH to {alias} failed: {detail}",
+	"native_remote_upload_failed": "Could not upload atlas to {alias}. Check that scp can reach it."
 }

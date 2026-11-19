@@ -1,8 +1,9 @@
 /**
  * The status chip of an SSH host in Settings > SSH hosts. The desktop shell (`crates/atlas-desktop/src/remote.rs`,
- * `set_status`) reports one string per host: `connecting`, `connected`, `removed`, `warning: <what is missing>` or
- * `error: <why>`; a host it has not reported on yet has none. The id is mapped to a message here; the text after
- * `warning:` and `error:` is ssh's own and shows raw below the row, and a status this module does not know shows raw.
+ * `SshStatus::wire`; fixture `__fixtures__/ssh-status.json`) reports one string per host: `connecting`, `connected`,
+ * `removed`, `warning: <what is missing>` or `error: <why>`; a host it has not reported on yet has none. The id is
+ * mapped to a message here; the text after `warning:` and `error:` is the shell's sentence (ssh's own words inside)
+ * and shows raw below the row, and a status this module does not know shows raw.
  */
 import { m } from "#lib/i18n/m.ts";
 

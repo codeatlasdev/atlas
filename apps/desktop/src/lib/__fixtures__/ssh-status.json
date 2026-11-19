@@ -1,0 +1,7 @@
+{
+	"connected": "connected",
+	"connecting": "connecting",
+	"error": "error: The tunnel to example-host is up, but its hostd does not answer: connection refused",
+	"removed": "removed",
+	"warning": "warning: Its atlas hostd lacks mobile, crew. Update atlas on the host and restart its hostd."
+}

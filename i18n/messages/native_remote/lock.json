@@ -1,5 +1,20 @@
 {
   "pt-BR": {
-    "native_remote_no_atlas_yaml": "9e882241fe6a"
+    "native_remote_atlas_missing": "9446f493eb90",
+    "native_remote_dir_failed": "85fa03b3d03d",
+    "native_remote_forward_failed": "f556297e1985",
+    "native_remote_hostd_unreachable": "0fe7b24bdd81",
+    "native_remote_invalid_alias": "e5bcd4e0d4a4",
+    "native_remote_lacks_features": "41899ce0a53c",
+    "native_remote_local_port_failed": "5d8beb56e025",
+    "native_remote_no_answer": "3ca44eea8157",
+    "native_remote_no_atlas_yaml": "9e882241fe6a",
+    "native_remote_no_home": "fb004ad39644",
+    "native_remote_reason_dns": "fdc88f918f06",
+    "native_remote_reason_down": "e9de10bac22d",
+    "native_remote_reason_key": "6a6a49cc217c",
+    "native_remote_spawn_failed": "bec515b28129",
+    "native_remote_ssh_failed": "c44bbb4c98ab",
+    "native_remote_upload_failed": "093e030908d7"
   }
 }

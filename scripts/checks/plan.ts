@@ -108,6 +108,8 @@ export interface Plan extends Classified {
 }
 
 export interface Opts {
+	/** The workspace packages that have a library target (`workspaceMeta`). Unknown (undefined): assume all do. */
+	libs?: string[];
 	/** Also lint the Windows target through cargo-xwin (a machine catching what only the Windows CI job used to:
 	 * `cfg(windows)` code, dead code there). */
 	windows?: boolean;
@@ -139,16 +141,20 @@ export function plan(files: string[] | undefined, graph: Graph = {}, opts: Opts 
 			: scope(c.hits.rust!, graph)
 		: { workspace: false, crates: [] as string[] };
 	const cargo = workspace ? "--workspace" : crates.map((x) => `-p ${x}`).join(" ");
+	// Only packages with a library have doctests: a `-p` list of bin-only crates would make cargo fail.
+	const libCrates = opts.libs ? crates.filter((x) => opts.libs!.includes(x)) : crates;
+	const cargoLib = workspace ? "--workspace" : libCrates.map((x) => `-p ${x}`).join(" ");
 	const commands: Planned[] = [];
 	for (const k of CHECKS) {
 		if (!k.cmd || !c.areas[k.area]!.on) continue;
+		if (k.cmd.includes("{cargo-lib}") && cargoLib === "") continue;
 		let why = c.everything ? [c.everything] : c.areas[k.area]!.because;
 		if (k.only && c.everything === null) {
 			const hit = (files ?? []).filter((f) => anyMatch(k.only!, f));
 			if (hit.length === 0) continue;
 			why = [`${k.only.join(" | ")} ← ${hit[0]}${hit.length > 1 ? ` (+${hit.length - 1} more)` : ""}`];
 		}
-		commands.push({ id: k.id, area: k.area, cmd: k.cmd.replaceAll("{cargo}", cargo), why });
+		commands.push({ id: k.id, area: k.area, cmd: k.cmd.replaceAll("{cargo-lib}", cargoLib).replaceAll("{cargo}", cargo), why });
 		// Own target dir: a Windows build would otherwise evict the host's from the shared cache.
 		if (k.id === "nextest" && opts.windows) {
 			commands.push({

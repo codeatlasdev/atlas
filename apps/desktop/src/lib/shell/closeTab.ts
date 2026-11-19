@@ -2,6 +2,7 @@
 import { toast } from "@codeatlasdev/ui";
 import { host } from "#lib/host.ts";
 import { confirmDialog } from "#lib/stores/ask.svelte.ts";
+import { m } from "#lib/i18n/m.ts";
 import { pinned } from "#lib/stores/tabs.ts";
 import { ws } from "#lib/stores/workspace.svelte.ts";
 
@@ -13,7 +14,7 @@ export async function closeActive() {
 	if (!t) return;
 	if (pinned(t)) {
 		// The Panel stays open: tell the user once, and move on to a neighbour.
-		toast.info("The Panel stays open");
+		toast.info(m.shell_commands_panel_stays_open());
 		const next = g.order.find((id) => !pinned(ws.tab(id)));
 		if (next) ws.activate(next);
 		return;
@@ -24,9 +25,9 @@ export async function closeActive() {
 		if (
 			info?.fg &&
 			info.fg.name.replace(/^-/, "") !== shell &&
-			!(await confirmDialog(`${info.fg.name} is still running`, {
-				description: "Closing the tab ends it.",
-				confirmLabel: "Close tab",
+			!(await confirmDialog(m.shell_commands_still_running({ name: info.fg.name }), {
+				description: m.shell_commands_closing_ends_it(),
+				confirmLabel: m.shell_commands_close_tab(),
 				destructive: true,
 			}))
 		)

@@ -160,7 +160,9 @@ export const SURFACES: Surface[] = [
 			await d.sleep(600);
 			await d.eval(`await window.__TAURI_INTERNALS__.invoke("action_run", { id: ${ids(main)}, target: "x", confirmed: true }); return 1`);
 			await d.sleep(4000);
-			await d.click('.chip[role="status"] .view');
+			// The result is a corner notice (#457), found by its id, not by its markup: the old `.chip[role="status"] .view`
+			// matched nothing since then, so this surface was never driven.
+			await d.click('[data-corner-card="action-result"] .actions button');
 			await d.sleep(2500);
 			await d.eval(key("escape"));
 			await d.sleep(1500);

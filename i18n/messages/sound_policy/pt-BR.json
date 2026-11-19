@@ -5,7 +5,7 @@
 	"sound_policy_agent_needs_you_label": "Agente precisa de você",
 	"sound_policy_boot_description": "Uma assinatura sonora curta quando o Atlas inicia, no máximo uma vez por hora.",
 	"sound_policy_boot_label": "Abertura do app",
-	"sound_policy_discovery_done_description": "Quando “Encontrar meus projetos” termina.",
+	"sound_policy_discovery_done_description": "Quando \"Encontrar meus projetos\" termina.",
 	"sound_policy_discovery_done_label": "Projetos encontrados",
 	"sound_policy_error_description": "Um toque suave quando uma ação falha.",
 	"sound_policy_error_label": "Erros",

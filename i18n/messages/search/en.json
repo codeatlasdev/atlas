@@ -37,7 +37,7 @@
 	"search_form_took": "{ms} ms · {tool}",
 	"search_form_whole_word": "Whole word",
 	"search_parse_failed": "Search failed (exit {code})",
-	"search_results_nothing_matches_query": "Nothing matches “{query}”.",
+	"search_results_nothing_matches_query": "Nothing matches \"{query}\".",
 	"search_results_search_every_file_in_this": "Search every file in this worktree.",
 	"search_results_search_results": "Search results",
 	"search_results_showing_the_first_results_narrow": "Showing the first results. Narrow the search to see the rest.",

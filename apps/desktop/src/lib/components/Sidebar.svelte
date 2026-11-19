@@ -335,8 +335,9 @@
 	}
 	.missing-bar {
 		display: flex;
+		flex-wrap: wrap;
 		align-items: center;
-		gap: 8px;
+		gap: 4px 8px;
 		margin: 0 8px 4px;
 		padding: 5px 8px;
 		border-radius: 8px;
@@ -344,14 +345,16 @@
 		color: var(--ca-semantic-warning);
 		background: color-mix(in oklab, var(--dot-warn) 12%, transparent);
 	}
+	/* The count keeps its line; a longer language moves the two buttons below it instead of breaking their words. */
 	.missing-bar span {
-		flex: 1;
+		flex: 1 1 auto;
 	}
 	.missing-bar button {
 		border: 0;
 		padding: 0;
 		background: none;
 		font: inherit;
+		white-space: nowrap;
 		color: var(--ca-text-secondary);
 	}
 	.missing-bar button:hover {

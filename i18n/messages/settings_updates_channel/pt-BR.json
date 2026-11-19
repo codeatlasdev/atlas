@@ -1,6 +1,6 @@
 {
 	"settings_updates_channel_about_aria": "Sobre os canais",
-	"settings_updates_channel_alpha_cadence": "Sempre que o mantenedor publica um, muitas vezes várias vezes por semana.",
+	"settings_updates_channel_alpha_cadence": "Sempre que o mantenedor publica um, em geral várias vezes por semana.",
 	"settings_updates_channel_alpha_label": "Alpha",
 	"settings_updates_channel_alpha_promise": "O padrão enquanto o Atlas está em alpha. Builds novos saem direto da branch main, com pouco tempo de teste. Os recursos podem estar incompletos e o comportamento pode mudar entre builds.",
 	"settings_updates_channel_alpha_risk": "Espere imperfeições e mudanças incompatíveis",

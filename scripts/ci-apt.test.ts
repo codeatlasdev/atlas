@@ -14,6 +14,8 @@ afterEach(() => {
 
 const APT_GET = `#!/bin/sh
 echo "apt-get $*" >> "$LOG"
+# The fast mirror is the one that comes with its own sources directory.
+[ -z "$HANG_FAST" ] || case "$*" in *SourceParts=*) exec sleep 60 ;; esac
 [ -z "$FAIL_UPDATE" ] || case "$*" in update*) exit 100 ;; esac
 case "$*" in
 *--download-only*)
@@ -38,6 +40,7 @@ function runner() {
 	const log = join(d, "log");
 	writeFileSync(log, "");
 	writeFileSync(join(archives, "from-the-image_1_amd64.deb"), "");
+	writeFileSync(join(d, "os-release"), "NAME=Ubuntu\nVERSION_CODENAME=resolute\n");
 	const shim = (name: string, body: string) => {
 		writeFileSync(join(bin, name), body);
 		chmodSync(join(bin, name), 0o755);
@@ -53,6 +56,7 @@ function runner() {
 				LOG: log,
 				ARCHIVES: archives,
 				CI_APT_ARCHIVES: archives,
+				CI_APT_MIRROR: "", // only the image's own sources; the fast mirror has its tests below
 				CI_APT_UPDATE_SECS: "30",
 				CI_APT_DOWNLOAD_SECS: "1",
 				CI_APT_INSTALL_SECS: "30",
@@ -61,8 +65,10 @@ function runner() {
 		});
 		return { code: p.exitCode, out: p.stdout.toString() + p.stderr.toString() };
 	};
+	// The fast mirror on: an x86_64 Ubuntu whose os-release names a codename.
+	const fast = { CI_APT_MIRROR: "http://fast.test/ubuntu/", CI_APT_ARCH: "x86_64", CI_APT_OS_RELEASE: join(d, "os-release") };
 	const calls = () => readFileSync(log, "utf8").split("\n").filter(Boolean);
-	return { run, calls, cache, archives };
+	return { run, calls, cache, archives, fast };
 }
 
 describe.skipIf(process.platform === "win32")("ci-apt.sh", () => {
@@ -104,23 +110,53 @@ describe.skipIf(process.platform === "win32")("ci-apt.sh", () => {
 	});
 
 	// Incident (#604): a mirror that crawled held the job for 14 min, then 25+ min. A stalled download is ended and retried once.
-	test("a download that stalls is ended at its limit and retried once, and the retry finishes the job", () => {
+	test("a download that stalls is ended at its limit and tried once more, which finishes the job", () => {
 		const r = runner();
 		const res = r.run({ HANG_DOWNLOADS: "1" });
 		expect(res.code).toBe(0);
 		expect(r.calls().filter((c) => c.includes("--download-only"))).toHaveLength(2);
-		expect(res.out).toContain("the download failed or took longer than 1s (attempt 1 of 2)");
+		expect(res.out).toContain("the download failed or took longer than 1s");
 		expect(existsSync(join(r.cache, "packages.txt"))).toBe(true);
 	});
 
-	test("a mirror that stalls on both attempts fails the step: no third try, no install, nothing cached", () => {
+	test("a mirror that stalls on both rounds fails the step: no third try, no install, nothing cached", () => {
 		const r = runner();
 		const res = r.run({ HANG_DOWNLOADS: "9" });
 		expect(res.code).not.toBe(0);
 		expect(r.calls().filter((c) => c.includes("--download-only"))).toHaveLength(2);
 		expect(r.calls().filter((c) => c.startsWith("apt-get install") && !c.includes("--download-only"))).toEqual([]);
-		expect(res.out).toContain("::error::ci-apt: the apt mirror is too slow or down (the download did not finish in two tries of 1s); rerun the job");
+		expect(res.out).toContain("::error::ci-apt: the apt mirror is too slow or down (two rounds ran out of time); rerun the job");
 		expect(existsSync(join(r.cache, "packages.txt"))).toBe(false);
+	});
+
+	// Incident (#604, 2026-11-19): the image's list picked us-east-2.ec2.archive.ubuntu.com at ~7 kB/s while azure.archive.ubuntu.com
+	// gave 30-85 MB/s from the same runner.
+	test("the fast mirror comes first, with its own sources, and the install reads the same lists", () => {
+		const r = runner();
+		const res = r.run(r.fast);
+		expect(res.code).toBe(0);
+		const calls = r.calls();
+		expect(calls).toHaveLength(3);
+		for (const c of calls) expect(c).toMatch(/Dir::Etc::SourceList=\/dev\/null -o Dir::Etc::SourceParts=\S+/);
+		expect(res.out).toContain("installed from http://fast.test/ubuntu/");
+	});
+
+	test("a fast mirror that stalls is left after its limit for the image's own sources, which finish the job", () => {
+		const r = runner();
+		const res = r.run({ ...r.fast, HANG_FAST: "1", CI_APT_UPDATE_SECS: "1" });
+		expect(res.code).toBe(0);
+		const calls = r.calls();
+		expect(calls[0]).toContain("SourceParts=");
+		expect(calls.slice(1).every((c) => !c.includes("SourceParts="))).toBe(true);
+		expect(calls.filter((c) => c.startsWith("apt-get update"))).toHaveLength(2);
+		expect(res.out).toContain("apt-get update failed or took longer than 1s (http://fast.test/ubuntu/)");
+		expect(res.out).toContain("installed from the image sources");
+	});
+
+	test("an architecture the fast mirror does not serve (arm64 is on ports) never sees it", () => {
+		const r = runner();
+		expect(r.run({ ...r.fast, CI_APT_ARCH: "aarch64" }).code).toBe(0);
+		expect(r.calls().some((c) => c.includes("SourceParts="))).toBe(false);
 	});
 
 	// A package that does not exist fails in a second, twice: the mirror says nothing, and the step must not claim it did.

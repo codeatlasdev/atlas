@@ -105,7 +105,7 @@ jobs:
 
       # ffmpeg: the Linux recorder's tests encode a real file (#282). Cached and bounded (#604): the mirror once held this step for 36 min.
       - name: System libraries (Tauri/WebKitGTK)
-        timeout-minutes: 8
+        timeout-minutes: 10
         uses: ./.github/actions/apt-packages
         with:
           packages: libwebkit2gtk-4.1-dev libayatana-appindicator3-dev librsvg2-dev libxdo-dev libssl-dev fish ffmpeg
@@ -132,7 +132,7 @@ jobs:
 
       # Cached and bounded (#604): the mirror once held this step for 25+ min.
       - name: System libraries (Tauri/WebKitGTK) and the headless display (sway, grim, Mesa llvmpipe)
-        timeout-minutes: 8
+        timeout-minutes: 10
         uses: ./.github/actions/apt-packages
         with:
           packages: libwebkit2gtk-4.1-dev libayatana-appindicator3-dev librsvg2-dev libxdo-dev libssl-dev sway grim dbus libgl1-mesa-dri libegl1 libgles2 xwayland fonts-dejavu-core
@@ -209,7 +209,7 @@ jobs:
           persist-credentials: false
 
       - name: System libraries
-        timeout-minutes: 8
+        timeout-minutes: 10
         uses: ./.github/actions/apt-packages
         with:
           packages: build-essential curl pkg-config libssl-dev
@@ -401,7 +401,7 @@ jobs:
       # ffmpeg: the flicker-sweep judge tests record with it. Cached and bounded (#604): a slow mirror once ate the job's 15 min.
       - name: ffmpeg
         if: runner.os == 'Linux'
-        timeout-minutes: 8
+        timeout-minutes: 10
         uses: ./.github/actions/apt-packages
         with:
           packages: ffmpeg

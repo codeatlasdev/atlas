@@ -1,8 +1,8 @@
 name: Apt packages
 description: >-
   Installs apt packages on a Linux runner from a cache of the .deb files (keyed by runner image version, architecture
-  and package list), and from the mirror, with a time limit and one retry per step, when the cache is cold
-  (scripts/ci-apt.sh, #604). Expects the repository checked out. A composite step cannot have `timeout-minutes`
+  and package list), and, when the cache is cold, from azure.archive.ubuntu.com and then the image's own sources, with a
+  time limit on every call (scripts/ci-apt.sh, #604). Expects the repository checked out. A composite step cannot have `timeout-minutes`
   (actions/runner#1979): the caller puts one on the step that uses this action, and the script bounds each of its
   own steps.
 

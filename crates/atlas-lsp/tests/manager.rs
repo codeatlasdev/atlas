@@ -9,6 +9,7 @@ use std::sync::Arc;
 use std::sync::atomic::{AtomicUsize, Ordering};
 use std::time::{Duration, Instant};
 
+use atlas_core::clock::{Clock, ManualClock};
 use atlas_core::scaling::HANG;
 use atlas_lsp::install::{Launch, Progress};
 use atlas_lsp::manager::{Config, Manager, Push, Resolver, State};
@@ -67,6 +68,7 @@ fn fast() -> Config {
         restart_window: Duration::from_secs(60),
         restart_backoff: Duration::from_millis(30),
         request_timeout: HANG,
+        clock: Clock::default(),
     }
 }
 
@@ -287,13 +289,18 @@ async fn closing_the_last_doc_waits_out_the_idle_grace_before_stopping_the_serve
     assert!(pid_alive(pid));
 }
 
-// Reopening cancels the shutdown the close armed. The grace is 1 s and the reopen follows the close at once
-// (the slack between them is the grace, not 200 ms of a 300 ms one); after two graces the same process still
-// serves.
+// Reopening cancels the shutdown the close armed (#596: with a real 1 s grace, a slow reopen let the grace pass
+// first). The grace runs on a clock this test moves: the reopen follows the close however long that takes, then
+// two graces pass at once and the timer the close armed wakes (awaited as the event, on this test's current-thread
+// runtime it has run its check when we resume) and finds the document open: the same process still serves. Control:
+// the next close arms a timer that does stop it, so the timer above was a live one.
 #[tokio::test]
 async fn reopening_inside_grace_cancels_idle_shutdown() {
+    let grace = Duration::from_secs(1);
+    let manual = ManualClock::new();
     let cfg = Config {
-        idle_shutdown: Duration::from_secs(1),
+        idle_shutdown: grace,
+        clock: manual.clock(),
         ..fast()
     };
     let r = rig_with(cfg, &[], 0, false);
@@ -303,9 +310,18 @@ async fn reopening_inside_grace_cancels_idle_shutdown() {
     r.m.close(&a).await;
     let rep = r.m.open(&a, "rust", "x".into(), 2, None).await;
     assert_eq!(rep.status, "ready");
-    tokio::time::sleep(Duration::from_secs(2)).await;
+    manual.advance(grace * 2);
+    manual.fired_past(0).await;
     assert_eq!(r.m.pids(), vec![pid], "same process kept");
     assert_eq!(r.state(&a).await["open"].as_array().unwrap().len(), 1);
+
+    r.m.close(&a).await;
+    manual.advance(grace);
+    until("idle shutdown after the last close", || {
+        r.m.instance_count() == 0
+    })
+    .await;
+    until("process gone", || !pid_alive(pid)).await;
 }
 
 #[tokio::test]

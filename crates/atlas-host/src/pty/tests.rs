@@ -510,7 +510,7 @@ fn pty_exit_is_delivered_even_to_a_connection_over_its_cap() {
 
 /// Every `pty_title` line a listener got, in order.
 #[cfg(unix)]
-fn titles(rx: &mut super::OutRx) -> Vec<String> {
+fn titles_pushed(rx: &mut super::OutRx) -> Vec<String> {
     let mut got = Vec::new();
     while let Some(l) = rx.try_recv() {
         let v: serde_json::Value = serde_json::from_str(&l).unwrap();
@@ -521,6 +521,50 @@ fn titles(rx: &mut super::OutRx) -> Vec<String> {
     got
 }
 
+/// A program that sets `titles` one after another, and every `pty_title` push a client attached from the start got.
+///
+/// The pty reader folds what arrives within one 8 ms window into a single chunk and a chunk yields only its LAST
+/// title (`TitleParser::feed`), so two titles that land in one window are one push, or none when the last equals the
+/// title already shown. Spacing the program's titles by a `sleep 0.02` only made that rare, and a loaded runner
+/// stretched it (#549: `["x"]` instead of `["x", "y", "x"]`). Here the program does not print title N until the test has
+/// seen chunk N-1 handled: after each title it prints a marker line, the test waits for the marker to show in the
+/// ring (the chunk is then past `set_title`, which runs before the output is stored) and only then lets the next
+/// title out. However slow the machine, every title is alone in its chunk.
+#[cfg(unix)]
+async fn titles_set_one_at_a_time(titles: &[&str]) -> (Vec<String>, String) {
+    let dir = tempfile::tempdir().unwrap();
+    let gate = |i: usize| dir.path().join(format!("gate{i}"));
+    let steps: String = titles
+        .iter()
+        .enumerate()
+        .map(|(i, t)| {
+            format!(
+                "while [ ! -e '{}' ]; do sleep 0.01; done; printf '\\033]0;%s\\007mark{i}\\n' '{t}'; ",
+                gate(i).display()
+            )
+        })
+        .collect();
+    let s = Session::spawn(shell_req(&steps), dir.path()).unwrap();
+    // A title pushed before the client is attached is not replayed: nothing is printed before the first gate.
+    let (tx, mut rx) = super::out_channel();
+    s.attach(1, tx, false, false);
+    for (i, title) in titles.iter().enumerate() {
+        std::fs::write(gate(i), b"").unwrap();
+        let t0 = std::time::Instant::now();
+        while !s.read_text(50).contains(&format!("mark{i}")) {
+            assert!(
+                t0.elapsed() < atlas_core::scaling::HANG,
+                "title {i} ({:?}) never came out of the pty; saw {:?}",
+                title,
+                s.read_text(50)
+            );
+            tokio::time::sleep(Duration::from_millis(5)).await;
+        }
+    }
+    let shown = s.title.lock().clone();
+    (titles_pushed(&mut rx), shown)
+}
+
 // Incident (#110, "terminal freezes with 7+ agents"): omp redraws its title on every spinner frame, usually
 // with the same text as the frame before. Each OSC became a `pty_title` push to every attached client, and
 // each push became a Tauri event for ~4 webview listeners: hundreds of identical events a second across the
@@ -528,26 +572,10 @@ fn titles(rx: &mut super::OutRx) -> Vec<String> {
 #[cfg(unix)]
 #[tokio::test(flavor = "multi_thread")]
 async fn a_title_repeated_by_the_program_is_pushed_once() {
-    let dir = tempfile::tempdir().unwrap();
-    // `sleep 0.02` keeps each OSC in its own 8 ms coalescing window, so the parser sees every one.
-    // The program waits for `go`, created after the attach: a title pushed before the client is
-    // attached is not replayed, so on a loaded CI runner the first one was lost.
-    let go = dir.path().join("go");
-    let script = format!(
-        "while [ ! -e '{}' ]; do sleep 0.01; done; for t in a a a b b a a a; do printf '\\033]0;%s\\007' $t; sleep 0.02; done",
-        go.display()
-    );
-    let s = Session::spawn(shell_req(&script), dir.path()).unwrap();
-    let (tx, mut rx) = super::out_channel();
-    s.attach(1, tx, false, false);
-    std::fs::write(&go, b"").unwrap();
-    until_exited(&s).await;
-    assert_eq!(titles(&mut rx), ["a", "b", "a"], "one push per change");
-    assert_eq!(
-        *s.title.lock(),
-        "a",
-        "the stored title is still the last one"
-    );
+    let (pushed, stored) =
+        titles_set_one_at_a_time(&["a", "a", "a", "b", "b", "a", "a", "a"]).await;
+    assert_eq!(pushed, ["a", "b", "a"], "one push per change");
+    assert_eq!(stored, "a", "the stored title is still the last one");
 }
 
 // Class of the incident above: a title set again to what it already is must not even wake the clients, but one
@@ -555,18 +583,21 @@ async fn a_title_repeated_by_the_program_is_pushed_once() {
 #[cfg(unix)]
 #[tokio::test(flavor = "multi_thread")]
 async fn a_title_that_returns_to_an_earlier_value_is_a_change() {
-    let dir = tempfile::tempdir().unwrap();
-    let go = dir.path().join("go");
-    let script = format!(
-        "while [ ! -e '{}' ]; do sleep 0.01; done; for t in x y x; do printf '\\033]0;%s\\007' $t; sleep 0.02; done",
-        go.display()
+    let (pushed, _) = titles_set_one_at_a_time(&["x", "y", "x"]).await;
+    assert_eq!(pushed, ["x", "y", "x"]);
+}
+
+// The cause of #549, pinned where it lives: titles that reach the parser in one chunk (one coalescing window) are one
+// title, the last. Not a bug (a tab only ever shows the last), and the reason a test must not count on a sleep to
+// keep two titles apart.
+#[test]
+fn titles_in_one_chunk_yield_only_the_last() {
+    let mut p = TitleParser::default();
+    assert_eq!(
+        p.feed(b"\x1b]0;x\x07\x1b]0;y\x07\x1b]0;x\x07").as_deref(),
+        Some("x"),
+        "x, y, x in one window is just x: with x already shown, no push at all"
     );
-    let s = Session::spawn(shell_req(&script), dir.path()).unwrap();
-    let (tx, mut rx) = super::out_channel();
-    s.attach(1, tx, false, false);
-    std::fs::write(&go, b"").unwrap();
-    until_exited(&s).await;
-    assert_eq!(titles(&mut rx), ["x", "y", "x"]);
 }
 
 // Incident (#110, "terminal freezes with many agents"): `pty_list` built every session's `summary()`, and the summary

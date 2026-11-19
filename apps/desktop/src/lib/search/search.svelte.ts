@@ -1,5 +1,6 @@
 import { host } from "#lib/host.ts";
 import { errText } from "#lib/api.ts";
+import { isProgramMissing } from "#lib/hostText.ts";
 import { ws } from "#lib/stores/workspace.svelte.ts";
 import {
 	Results,
@@ -131,7 +132,7 @@ async function runSearch(id: string) {
 	} catch (e) {
 		if (gen !== generation[id]) return;
 		// hostd reports a missing binary as a spawn error rather than exit 127.
-		if (!rgMissing && /No such file|not found|ENOENT|os error 2/i.test(errText(e))) {
+		if (!rgMissing && isProgramMissing(e)) {
 			rgMissing = true;
 			void runSearch(id);
 			return;

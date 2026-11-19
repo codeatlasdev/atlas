@@ -86,14 +86,17 @@
 		{
 			"declarations": [
 				"input hours",
+				"local hoursExact = hours",
 				"local hoursPlural = hours: plural"
 			],
 			"selectors": [
+				"hoursExact",
 				"hoursPlural"
 			],
 			"match": {
-				"hoursPlural=one": "Última {hours} h",
-				"hoursPlural=*": "Últimas {hours} h"
+				"hoursExact=0, hoursPlural=*": "Últimas {hours} h",
+				"hoursExact=*, hoursPlural=one": "Última {hours} h",
+				"hoursExact=*, hoursPlural=*": "Últimas {hours} h"
 			}
 		}
 	],
@@ -101,14 +104,17 @@
 		{
 			"declarations": [
 				"input minutes",
+				"local minutesExact = minutes",
 				"local minutesPlural = minutes: plural"
 			],
 			"selectors": [
+				"minutesExact",
 				"minutesPlural"
 			],
 			"match": {
-				"minutesPlural=one": "Último {minutes} min",
-				"minutesPlural=*": "Últimos {minutes} min"
+				"minutesExact=0, minutesPlural=*": "Últimos {minutes} min",
+				"minutesExact=*, minutesPlural=one": "Último {minutes} min",
+				"minutesExact=*, minutesPlural=*": "Últimos {minutes} min"
 			}
 		}
 	],
@@ -217,7 +223,7 @@
 	"logs_tools_previous_error_tip": "Erro anterior ({key})",
 	"logs_tools_previous_warning": "Aviso anterior",
 	"logs_tools_previous_warning_tip": "Aviso anterior ({key})",
-	"logs_tools_timestamps": "Horários",
+	"logs_tools_timestamps": "Horário das linhas",
 	"logs_tools_timestamps_tip": "Horários ({key})",
 	"logs_tools_wrap_long_lines": "Quebrar linhas longas"
 }

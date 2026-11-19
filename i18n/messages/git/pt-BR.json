@@ -30,14 +30,17 @@
 		{
 			"declarations": [
 				"input count",
+				"local countExact = count",
 				"local countPlural = count: plural"
 			],
 			"selectors": [
+				"countExact",
 				"countPlural"
 			],
 			"match": {
-				"countPlural=one": "Enviar {count} nota ao agente",
-				"countPlural=*": "Enviar {count} notas ao agente"
+				"countExact=0, countPlural=*": "Nenhuma nota para enviar ao agente",
+				"countExact=*, countPlural=one": "Enviar {count} nota ao agente",
+				"countExact=*, countPlural=*": "Enviar {count} notas ao agente"
 			}
 		}
 	],
@@ -45,14 +48,17 @@
 		{
 			"declarations": [
 				"input count",
+				"local countExact = count",
 				"local countPlural = count: plural"
 			],
 			"selectors": [
+				"countExact",
 				"countPlural"
 			],
 			"match": {
-				"countPlural=one": "{count} nota enviada",
-				"countPlural=*": "{count} notas enviadas"
+				"countExact=0, countPlural=*": "Nenhuma nota enviada",
+				"countExact=*, countPlural=one": "{count} nota enviada",
+				"countExact=*, countPlural=*": "{count} notas enviadas"
 			}
 		}
 	],

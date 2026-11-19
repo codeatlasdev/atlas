@@ -56,7 +56,10 @@
 	"panel_start_invite_starts": "Line under Start the stack. {count} is how many services start; the service names follow the colon.",
 	"panel_state_degraded": "Service state word.",
 	"panel_state_disabled": "Service state word: the service is switched off in the config.",
-	"panel_state_failed": "Service state word.",
+	"panel_state_failed": {
+		"description": "Service state word.",
+		"distinct": "a service condition beside 'parado' and 'rodando'; the deploy word reports an outcome"
+	},
 	"panel_state_running": "Service state word; also the hint of the services tile while the stack runs.",
 	"panel_state_starting": "Service state word.",
 	"panel_state_stopped": "Service state word; also the hint of the services tile while the stack is stopped.",

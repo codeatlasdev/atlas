@@ -15,7 +15,10 @@
 	"mobile_activity_crewmate_cancel": "Phone activity entry.",
 	"mobile_activity_crewmate_task": "Phone activity entry.",
 	"mobile_activity_denied": "Phone activity entry: the phone answered an agent permission prompt with deny.",
-	"mobile_activity_git_commit": "Phone activity entry: a git commit.",
+	"mobile_activity_git_commit": {
+		"description": "Phone activity entry: a git commit.",
+		"distinct": "an activity entry (what the phone did); the other is the success toast of a commit"
+	},
 	"mobile_activity_git_push": "Phone activity entry: a git push.",
 	"mobile_activity_git_stage": "Phone activity entry: git stage.",
 	"mobile_activity_git_unstage": "Phone activity entry: git unstage.",

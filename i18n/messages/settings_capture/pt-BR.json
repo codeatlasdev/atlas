@@ -53,7 +53,7 @@
 	"settings_capture_key_record_description": "Escolha uma área e grave um vídeo. Pressione a tecla de novo para parar.",
 	"settings_capture_key_region_description": "Arraste para escolher uma área ou pressione {@common_keys_space} para escolher uma janela.",
 	"settings_capture_key_window_description": "Clique em uma janela para capturá-la.",
-	"settings_capture_keystrokes_description": "Uma pílula com as teclas que você pressiona, na parte de baixo da área gravada. O macOS pede acesso a Monitoração de Entrada na primeira vez.",
+	"settings_capture_keystrokes_description": "Uma pílula com as teclas que você pressiona, na parte de baixo da área gravada. O macOS pede acesso a Monitoramento de Entrada na primeira vez.",
 	"settings_capture_keystrokes_label": "Mostrar teclas digitadas",
 	"settings_capture_microphone_description": "Sua voz entra no vídeo. O macOS pede acesso ao microfone na primeira vez. Não vale para GIFs.",
 	"settings_capture_microphone_label": "Gravar o microfone",

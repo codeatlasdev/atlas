@@ -64,7 +64,10 @@
 	"workbench_markdown_bar_link": "Tooltip and accessible name of the Markdown toolbar button that inserts a link.",
 	"workbench_markdown_bar_markdown_formatting": "Accessible name (aria-label, read by screen readers) of a <div> element, in MarkdownBar (apps/desktop/src/lib/components/MarkdownBar.svelte). Extracted by i18n:extract: refine this description on review.",
 	"workbench_markdown_bar_numbered_list": "Tooltip and accessible name of the Markdown toolbar button that turns lines into a numbered list.",
-	"workbench_markdown_bar_preview": "Tooltip and accessible name of the Markdown toolbar button that shows the rendered Markdown instead of the source.",
+	"workbench_markdown_bar_preview": {
+		"description": "Tooltip and accessible name of the Markdown toolbar button that shows the rendered Markdown instead of the source.",
+		"distinct": "a button (a verb, 'Pré-visualizar'); the other is a row label (a noun)"
+	},
 	"workbench_new_tab_menu_close_all": "Tab menu item that closes every tab of the group",
 	"workbench_new_tab_menu_close_others": "Tab menu item that closes every tab of the group but the active one",
 	"workbench_new_tab_menu_new_omp_chat": "Menu item that opens a chat with omp",

@@ -71,14 +71,14 @@
 				onclick={() => (recording = recording === "summon" ? null : "summon")}
 			>
 				{recording === "summon"
-					? m.settings_general_dock_press_a_key()
+					? m.settings_capture_key_press()
 					: prefs.summon
 						? kbd(prefs.summon)
-						: m.settings_general_dock_not_set()}
+						: m.settings_capture_key_not_set()}
 			</Button>
 			{#if prefs.summon && recording !== "summon"}
 				<Button size="sm" variant="ghost" onclick={() => prefs && save({ ...prefs, summon: "" })}
-					>{m.settings_general_dock_clear()}</Button
+					>{m.settings_capture_key_clear()}</Button
 				>
 			{/if}
 		</Row>
@@ -93,14 +93,14 @@
 				onclick={() => (recording = recording === "toggle" ? null : "toggle")}
 			>
 				{recording === "toggle"
-					? m.settings_general_dock_press_a_key()
+					? m.settings_capture_key_press()
 					: prefs.toggle
 						? kbd(prefs.toggle)
-						: m.settings_general_dock_not_set()}
+						: m.settings_capture_key_not_set()}
 			</Button>
 			{#if prefs.toggle && recording !== "toggle"}
 				<Button size="sm" variant="ghost" onclick={() => prefs && save({ ...prefs, toggle: "" })}
-					>{m.settings_general_dock_clear()}</Button
+					>{m.settings_capture_key_clear()}</Button
 				>
 			{/if}
 		</Row>

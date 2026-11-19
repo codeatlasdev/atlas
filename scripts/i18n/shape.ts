@@ -107,13 +107,30 @@ export interface ShapeIssue {
 
 const diff = (a: string[], b: string[]) => a.filter((x) => !b.includes(x));
 
+const FIX_ZERO = `use a second selector: "local countExact = count", match "countExact=0, countPlural=*"`;
+
+/** A plural selector matches CLDR categories only (the Rust evaluator compares the category name), so an arm keyed by a number never fires there. */
+const numberArms = (s: SelectorShape) => (s.kind === "plural" ? s.values.filter((v) => /^\d+$/.test(v)) : []);
+
+const numberArmIssue = (s: SelectorShape, i: number): ShapeIssue[] =>
+	numberArms(s).length ? [{ rule: "plural", message: `plural selector ${i + 1} has an arm keyed by the number ${numberArms(s).join(", ")}: only categories (one, other) match there, an exact number needs another selector (${FIX_ZERO})` }] : [];
+
+/** Selectors a translation may add to the source's: an exact number (0) on a count the source already pluralizes. The English
+ * says "0 files" fine; pt-BR must say "Nenhum arquivo", so only its message carries `countExact`. */
+function withoutExactExtras(source: Shape, target: Shape): SelectorShape[] {
+	const counts = new Set(source.selectors.filter((s) => s.kind === "plural").map((s) => s.name));
+	const has = (name?: string) => source.selectors.some((s) => s.kind === "select" && s.name === name);
+	return target.selectors.filter((s) => !(s.kind === "select" && counts.has(s.name) && !has(s.name) && s.values.every((v) => v === "*" || /^\d+$/.test(v))));
+}
+
 /** Problems of the source's own selectors: a plural without `one` and `other` cannot be translated correctly. */
 export function sourceIssues(source: Shape, locale: string): ShapeIssue[] {
-	return source.selectors.flatMap((s, i): ShapeIssue[] =>
-		s.kind === "plural" && diff(requiredPlurals(locale), s.values).length
-			? [{ rule: "plural", message: `plural selector ${i + 1} needs ${requiredPlurals(locale).join(" + ")} (has ${s.values.join(", ") || "none"})` }]
-			: [],
-	);
+	return source.selectors.flatMap((s, i): ShapeIssue[] => [
+		...(s.kind === "plural" && diff(requiredPlurals(locale), s.values).length
+			? [{ rule: "plural" as const, message: `plural selector ${i + 1} needs ${requiredPlurals(locale).join(" + ")} (has ${s.values.join(", ") || "none"})` }]
+			: []),
+		...numberArmIssue(s, i),
+	]);
 }
 
 /** Everything a translation must keep from its source, and the plural forms its locale needs. */
@@ -127,12 +144,14 @@ export function compareShapes(source: Shape, target: Shape, locale: string): Sha
 	names("markup", source.markup, target.markup, "placeholder", (x) => `{${x}}`);
 	names("code span", source.code, target.code, "verbatim", (x) => `\`${x}\``);
 	names("URL", source.urls, target.urls, "verbatim");
-	if (source.selectors.length !== target.selectors.length) {
-		out.push({ rule: "plural", message: `source has ${source.selectors.length} plural/select selector(s), the translation ${target.selectors.length}` });
+	target.selectors.forEach((t, i) => out.push(...numberArmIssue(t, i)));
+	const targetSelectors = withoutExactExtras(source, target);
+	if (source.selectors.length !== targetSelectors.length) {
+		out.push({ rule: "plural", message: `source has ${source.selectors.length} plural/select selector(s), the translation ${targetSelectors.length}` });
 		return out;
 	}
 	source.selectors.forEach((s, i) => {
-		const t = target.selectors[i];
+		const t = targetSelectors[i];
 		if (t.kind !== s.kind) {
 			out.push({ rule: "plural", message: `selector ${i + 1} is a ${s.kind} in the source and a ${t.kind} in the translation` });
 		} else if (s.kind === "plural") {

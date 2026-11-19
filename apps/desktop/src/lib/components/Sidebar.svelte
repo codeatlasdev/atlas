@@ -15,7 +15,7 @@
 	import IdentityDialog from "#lib/components/IdentityDialog.svelte";
 	import SearchField from "#lib/components/SearchField.svelte";
 	import Tip from "#lib/components/Tip.svelte";
-	import { register, shortcutFor } from "#lib/keymap.svelte.ts";
+	import { named, register, shortcutFor } from "#lib/keymap.svelte.ts";
 	import { shell } from "#lib/shell/shell.svelte.ts";
 	import { spaceSwipe } from "#lib/shell/gestures.ts";
 	import { swipe } from "#lib/shell/swipe.ts";
@@ -120,45 +120,37 @@
 	});
 
 	onMount(() =>
-		register([
-			{
-				id: "atlas::AddProject",
-				get label() {
-					return m.shell_home_no_project_add_project();
+		register(
+			named([
+				{
+					id: "atlas::AddProject",
+					label: () => m.shell_home_no_project_add_project(),
+					run: () => void addProject(),
 				},
-				run: () => void addProject(),
-			},
-			{
-				id: "atlas::RemoveProject",
-				get label() {
-					return m.sidebar_command_remove_project();
+				{
+					id: "atlas::RemoveProject",
+					label: () => m.sidebar_command_remove_project(),
+					run: () => activeRepo && void removeProject(activeRepo.id),
+					when: () => !!activeRepo,
 				},
-				run: () => activeRepo && void removeProject(activeRepo.id),
-				when: () => !!activeRepo,
-			},
-			{
-				id: "atlas::DiscoverProjects",
-				get label() {
-					return m.shell_home_no_project_discover();
+				{
+					id: "atlas::DiscoverProjects",
+					label: () => m.shell_home_no_project_discover(),
+					run: () => void showDiscover(),
 				},
-				run: () => void showDiscover(),
-			},
-			{
-				id: "atlas::RefreshProjects",
-				get label() {
-					return m.sidebar_refresh_projects();
+				{
+					id: "atlas::RefreshProjects",
+					label: () => m.sidebar_refresh_projects(),
+					run: () => void refresh(),
 				},
-				run: () => void refresh(),
-			},
-			{
-				id: "atlas::RemoveMissingProjects",
-				get label() {
-					return m.sidebar_command_remove_missing();
+				{
+					id: "atlas::RemoveMissingProjects",
+					label: () => m.sidebar_command_remove_missing(),
+					run: () => void removeAllMissing(),
+					when: () => store.missing.length > 0,
 				},
-				run: () => void removeAllMissing(),
-				when: () => store.missing.length > 0,
-			},
-		]),
+			]),
+		),
 	);
 </script>
 

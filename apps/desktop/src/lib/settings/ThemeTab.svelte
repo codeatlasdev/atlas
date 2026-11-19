@@ -30,14 +30,14 @@
 
 <GhosttyBanner />
 
-<Group title={m.settings_theme_tab_color_theme()}>
+<Group title={m.settings_registry_appearance_group_color_theme()}>
 	<Row
 		id="theme-mode"
-		label={m.settings_theme_tab_theme()}
+		label={m.settings_registry_appearance_theme_mode_label()}
 		description={m.settings_theme_tab_theme_description()}
 	>
 		<SegmentedControl
-			aria-label={m.settings_theme_tab_theme()}
+			aria-label={m.settings_registry_appearance_theme_mode_label()}
 			size="sm"
 			value={themes.selection.mode}
 			items={modes}
@@ -48,7 +48,7 @@
 	<ThemeGrid />
 	<Row
 		id="theme-light"
-		label={m.settings_theme_tab_light_theme()}
+		label={m.settings_registry_appearance_theme_light_label()}
 		description={m.settings_theme_tab_light_theme_description()}
 	>
 		<div class="select">
@@ -62,7 +62,7 @@
 	</Row>
 	<Row
 		id="theme-dark"
-		label={m.settings_theme_tab_dark_theme()}
+		label={m.settings_registry_appearance_theme_dark_label()}
 		description={m.settings_theme_tab_dark_theme_description()}
 	>
 		<div class="select">
@@ -76,7 +76,7 @@
 	</Row>
 	<Row
 		id="theme-terminal"
-		label={m.settings_theme_tab_terminal_theme()}
+		label={m.settings_registry_appearance_theme_terminal_label()}
 		description={m.settings_theme_tab_terminal_theme_description()}
 	>
 		<TerminalThemeSelect />
@@ -88,7 +88,7 @@
 	<Row
 		id="theme-import"
 		stack
-		label={m.settings_theme_tab_import_theme()}
+		label={m.settings_registry_appearance_theme_import_label()}
 		description={m.settings_theme_tab_import_description()}
 	>
 		<Button size="sm" variant="outlined" onclick={() => (importing = true)}>
@@ -103,7 +103,7 @@
 	<Row
 		id="theme-export"
 		stack
-		label={m.settings_theme_tab_export_theme()}
+		label={m.settings_registry_appearance_theme_export_label()}
 		description={m.settings_theme_tab_export_description()}
 	>
 		<div class="select">
@@ -141,11 +141,11 @@
 	</Row>
 </Group>
 
-<Group title={m.settings_theme_tab_accent_color()}>
+<Group title={m.settings_registry_appearance_accent_label()}>
 	<Row
 		id="accent"
-		label={m.settings_theme_tab_accent_color()}
-		description={m.settings_theme_tab_accent_description()}
+		label={m.settings_registry_appearance_accent_label()}
+		description={m.settings_registry_appearance_accent_description()}
 	>
 		<div class="swatches">
 			{#each THEME_PRESETS as t (t.id)}

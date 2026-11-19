@@ -1,7 +1,7 @@
 ---
 title: "Configurações do desktop"
 source: desktop-settings.md
-source_sha: "9794329929f390e07dcda75420de932ceef528ad"
+source_sha: "e0b09d96793f0f4243fd87e6fe07693804fc7d34"
 translation: machine
 ---
 
@@ -13,21 +13,23 @@ As preferências de editor, interface e terminal usam os [nomes de configuraçã
 
 ## Onde as coisas ficam em Configurações
 
-As Configurações (⌘,) têm onze seções em três grupos e uma caixa de pesquisa que leva à configuração pelo que ela faz. Cada seção começa com uma linha dizendo para que serve.
+As Configurações (⌘,) têm treze seções em três grupos (doze fora do macOS, onde **Captura** fica oculta) e uma caixa de pesquisa que leva à configuração pelo que ela faz. Cada seção começa com uma linha dizendo para que serve.
 
 | Grupo | Seção | O que tem nela |
 |---|---|---|
-| Atlas | **Geral** | Atualizações: o app, a CLI `atlas` e o terminal host, e o canal de versões que eles seguem |
+| Atlas | **Geral** | Atualizações: o app, a CLI `atlas` e o terminal host, o canal de versões que eles seguem e o idioma de exibição |
 | | **Aparência** | Tema (claro, escuro, terminal), importar e exportar, cor de destaque, zoom, fonte da interface, painel de arquivos, painéis divididos |
 | | **Notificações e sons** | Notificações quando um agente termina ou precisa de você; os sons que o Atlas toca, um interruptor para cada |
+| | **Captura** (só no macOS) | Capturas de tela, gravações de tela e GIFs por atalho: acesso, teclas, onde são salvos, qualidade, a sobreposição, capturas recentes |
 | | **Atalhos de teclado** | Reatribua ou remova a tecla de qualquer comando |
 | | **Ajuda e primeiros passos** | O tour guiado, a folha de atalhos, a lista de primeiros passos |
 | Trabalho | **Workspaces** | Onde as worktrees são criadas, prefixo do nome da branch, limpeza automática, limpeza manual, higiene (processos órfãos e disco) |
 | | **Editor** | Abas **Editor** (fonte do código, edição, exibição) e **Linguagens** (servidores de linguagem) |
 | | **Terminal** | Renderizador, fonte, cursor, margem interna, scrollback, área de transferência |
 | | **Git** | Qual agente escreve as mensagens de commit |
-| | **Agentes** | Agente padrão, aprovação de ferramentas, argumentos extras, agentes personalizados, comandos rápidos |
+| | **Agentes** | Agente padrão, aprovação de ferramentas, argumentos extras, o dock de agentes (interruptor e atalhos), agentes personalizados, comandos rápidos |
 | Conectar | **Integrações** | Abas **Shell e links**, **Hooks dos agentes**, **Hosts SSH** e **Mobile** |
+| | **Atlas Crew** | Conectar um crew server, conectar o GitHub, respostas curtas, ver o onboarding de novo |
 
 Onde ficava antes: *Shell dos seus projetos* e *Abrir links no* (Geral) agora estão em **Integrações › Shell e links**; os interruptores de hooks de agentes (Agentes) estão em **Integrações › Hooks dos agentes**; **Hosts SSH** e **Mobile** eram seções próprias e viraram abas de **Integrações**; notificações e sons (Geral) estão em **Notificações e sons**. Links antigos como `updates.show("ssh")` ou `appearance/terminal` ainda abrem o lugar certo.
 

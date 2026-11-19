@@ -29,17 +29,37 @@ const codedWire = [
 
 const allCodes = [...new Set([...wire.codes, ...client.codes])];
 
+// The two refusals of a loaded host read "hostd: hostd busy" on the wire (a CLI prints it as it always did) but the
+// app says what to do about them: their sentence is checked in `hostReplyText.test.ts`.
+const reworded = ["hostd.busy", "hostd.too_many_clients"];
+
 describe("every code the Rust side declares has a message", () => {
-	test.each(allCodes)("%s renders from the catalog, with the English of the wire in English", (code) => {
-		const samples = codedWire.filter((w) => w.code === code);
-		expect(samples.length).toBeGreaterThan(0);
-		for (const s of samples) {
-			const text = render(code, s.args);
-			expect(text).toBeDefined();
-			// The English a client that does not know the code shows is the English this build shows.
-			expect(text).toBe(s.message);
-		}
-	});
+	test.each(allCodes.filter((c) => !reworded.includes(c)))(
+		"%s renders from the catalog, with the English of the wire in English",
+		(code) => {
+			const samples = codedWire.filter((w) => w.code === code);
+			expect(samples.length).toBeGreaterThan(0);
+			for (const s of samples) {
+				const text = render(code, s.args);
+				expect(text).toBeDefined();
+				// The English a client that does not know the code shows is the English this build shows.
+				expect(text).toBe(s.message);
+			}
+		},
+	);
+
+	test.each(reworded)(
+		"%s has a sentence of its own, and the wire keeps the English it always had",
+		(code) => {
+			const samples = codedWire.filter((w) => w.code === code);
+			expect(samples.length).toBeGreaterThan(0);
+			for (const s of samples) {
+				expect(s.message).toStartWith("hostd: ");
+				expect(render(code, s.args)).toBeDefined();
+				expect(render(code, s.args)).not.toBe(s.message);
+			}
+		},
+	);
 
 	// `hostd: {why}` is a process name and a protocol word in both languages: the one message that does not change.
 	test.each(allCodes.filter((c) => c !== "hostd.refused"))(
@@ -76,7 +96,7 @@ describe("the sentences carry the values of the wire in both languages", () => {
 		expect(pt).toContain("0.6.2");
 		expect(pt).toContain("9.9.9");
 		expect(pt).toContain("recursos de linguagem");
-		expect(pt).toContain("renderização rápida de terminais");
+		expect(pt).toContain("renderização rápida do terminal");
 		expect(pt).toContain("status dos agentes");
 		// Only the version differs: no feature clause.
 		const only = wire.status.find((s) => s.reasonCode && s.reasonArgs.missing.length === 0);
@@ -134,7 +154,14 @@ describe("a coded failure of the host is a host failure in any language", () => 
 	// Before the codes `classify` read those sentences as ordinary errors, and only the local host's own outage as
 	// a host failure.
 	test("only a failure of the local host's connection is a host failure; a remote or a refusal is the caller's", async () => {
-		const outage = ["hostd.unreachable", "hostd.closed", "hostd.disconnected", "hostd.start_failed"];
+		const outage = [
+			"hostd.unreachable",
+			"hostd.closed",
+			"hostd.disconnected",
+			"hostd.start_failed",
+			"hostd.busy",
+			"hostd.too_many_clients",
+		];
 		const rest = codedWire.filter(
 			(w) => w.code.startsWith("hostd.") && !outage.includes(w.code) && w.message,
 		);

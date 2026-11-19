@@ -1,7 +1,7 @@
 ---
 title: "Editor de código"
 source: editor.md
-source_sha: "ae01938c25203a392c9405ed287684b98dcb27cf"
+source_sha: "6d35e816834e1f2f739c0fcac8201ad7c73da685"
 translation: machine
 ---
 
@@ -29,19 +29,22 @@ Acima do editor, a **Trilha de navegação** mostra o caminho e os símbolos em 
 
 O Atlas roda os language servers dentro do `atlas hostd` (um processo por linguagem e projeto, compartilhado por todos os arquivos abertos dela). Linguagens com suporte: TypeScript, JavaScript, Rust, Go, Python, PHP, HTML, CSS (SCSS, Less), JSON, YAML e Shell. Um servidor que esteja no seu `PATH` é usado primeiro; senão, o Atlas baixa um servidor fixado e com checksum verificado para `~/.atlas/lsp` na primeira vez que você abre um arquivo daquela linguagem.
 
-O chip da barra de status sempre aparece em um arquivo de texto e sempre diz o porquê, em um destes estados. Clique nele para ver detalhes e ações:
+O chip da barra de status sempre aparece em um arquivo de texto e sempre diz o porquê. O rótulo dele é o nome e a versão do servidor enquanto ele roda, ou um dos rótulos abaixo, ao lado de um ponto (verde: em execução; âmbar: ocupado ou precisando de atenção; vermelho: falhou; cinza: desligado). Passe o mouse para ler o motivo em uma frase; clique para ver detalhes e ações:
 
-| Estado | O que significa | Ações |
+| Chip | O que significa | Ações |
 |---|---|---|
-| **Pronto** | o nome e a versão do servidor, e se ele vem do `PATH`, do Atlas ou das suas configurações | reiniciar, abrir o log |
-| **Iniciando / Instalando** | o que está acontecendo, com o progresso quando o servidor informa | cancelar |
-| **Sem servidor** | não existe um para esta linguagem; o popover lista as que têm | docs, configurações |
-| **Host antigo** | os recursos de linguagem precisam de um host de terminais mais novo: o `atlas hostd` em execução é anterior aos language servers (veja abaixo) | reiniciar o host de terminais, depois |
-| **Servidores desativados** / **Servidor desativado** | `enable_language_servers` está desligado, ou a linguagem está em `disabled` | ativar, configurações |
-| **Precisa de Go** (gopls) / **Precisa de curl** | falta a toolchain para instalar o servidor | copiar o comando de instalação, tentar novamente |
-| **Sem conexão** / **Falha na instalação** | o download falhou; a mensagem diz o motivo | tentar novamente, abrir o log |
-| **Parou** | o servidor parou; as últimas linhas do log dele aparecem | reiniciar, abrir o log |
-| **Servidor não encontrado** | `lsp.<language>.command` não está no `PATH` | configurações |
+| o nome e a versão do servidor (`rust-analyzer 1.2.3`) | o servidor está em execução e autocompletar, diagnósticos, hover e ir para a definição estão ativos; o popover diz se ele vem do seu `PATH`, foi instalado pelo Atlas ou é o seu comando personalizado. Não existe um rótulo "Pronto" à parte | **Reiniciar servidor**, **Abrir log**, **Configurações de linguagens** |
+| _Iniciando {servidor}…_ / _Instalando {servidor}…_ | o que está acontecendo, com o progresso quando o servidor informa | **Cancelar instalação** (instalando), **Abrir log** |
+| _Sem servidor_ | o Atlas não tem um para esta linguagem; o popover lista os compatíveis | **Configurações de linguagens**, **Como funcionam os servidores de linguagem** |
+| _Host antigo_ / _Atualizando host…_ | o `atlas hostd` em execução é anterior aos language servers (veja abaixo); enquanto ele se atualiza ao vivo, não há ações | **Reiniciar o host de terminais**, **Reiniciar depois** |
+| _Servidores desativados_ / _Servidor desativado_ | `enable_language_servers` está desligado, ou a linguagem está em `disabled` | **Ativar**, **Configurações de linguagens** |
+| _Precisa de Go_ (gopls) / _Precisa de curl_ | falta a toolchain para instalar o servidor | **Copiar comando**, **Verificar novamente**, **Configurações de linguagens** |
+| _Sem conexão_ | o download falhou por falta de conexão | **Tentar instalar de novo**, **Configurações de linguagens** |
+| _Falha na instalação · {servidor}_ | a instalação falhou; a mensagem diz o motivo | **Tentar instalar de novo**, **Abrir log**, **Configurações de linguagens** |
+| _Não instalado · {servidor}_ | o servidor ainda não está instalado | **Instalar**, **Configurações de linguagens** |
+| _Parou · {servidor}_ | o servidor parou; as últimas linhas do log dele aparecem | **Reiniciar servidor**, **Abrir log**, **Configurações de linguagens** |
+| _Servidor não encontrado_ | `lsp.<language>.command` não está no `PATH` | **Configurações de linguagens**, **Verificar novamente** |
+| _Fora de um projeto_ | o arquivo está fora de todas as worktrees abertas, então nenhum servidor o atende | **Como funcionam os servidores de linguagem** |
 
 Apertar F12, F2, ⇧F12 ou ⌘. em um arquivo sem servidor explica o motivo uma vez, com as mesmas ações, em vez de não fazer nada.
 
@@ -50,7 +53,7 @@ Apertar F12, F2, ⇧F12 ou ⌘. em um arquivo sem servidor explica o motivo uma 
 O `atlas hostd` sobrevive às atualizações do app, então depois de uma atualização ele pode ser mais velho que o app. Um host anterior aos language servers não consegue atendê-los. O Atlas compara os dois a cada conexão:
 
 - **Um host que aceita upgrade ao vivo** é trocado automaticamente. Seus terminais continuam rodando e os arquivos se reconectam sozinhos.
-- **Um host mais antigo com terminais rodando** não consegue transferi-los. O Atlas nunca encerra um terminal sem perguntar: o chip diz _Host antigo_ e o popover explica que _Os recursos de linguagem precisam de um host de terminais mais novo_, e oferece **Reiniciar o host de terminais**, que lista os terminais em execução (`title — folder`) e avisa que eles vão terminar, ou **Reiniciar depois** (a pergunta volta na próxima abertura do app).
+- **Um host mais antigo com terminais rodando** não consegue transferi-los. O Atlas nunca encerra um terminal sem perguntar: o chip diz _Host antigo_ (o popover: _Os recursos de linguagem precisam de um host de terminais mais novo_) e oferece **Reiniciar o host de terminais**, que pergunta _Reiniciar o host de terminais?_, lista os terminais em execução (`title · folder`) e avisa que eles vão terminar (**Encerrar os terminais e reiniciar**), ou **Reiniciar depois** (a pergunta volta na próxima abertura do app).
 - **Nenhum terminal rodando**: o host é reiniciado em silêncio.
 
 O ciclo de vida do próprio host de terminais está documentado em [App desktop](desktop.md#manter-o-host-de-terminais-atualizado).

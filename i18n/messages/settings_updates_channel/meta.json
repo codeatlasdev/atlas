@@ -32,7 +32,6 @@
 	"settings_updates_channel_stable_switch_to": "Channel copy mapped by the id `stable`: what switching to the channel means, in the confirmation panel. The English equals `switch_to` of channels.json.",
 	"settings_updates_channel_stage_alpha_note": "Product stage note mapped by the stage id `alpha` and shown above the channel selector. The English equals `stage_note` of channels.json.",
 	"settings_updates_channel_switch_to_aria": "Accessible name of the inline confirmation panel after a channel is picked. {label} is the channel name.",
-	"settings_updates_channel_title": "Title of the update channel group in Settings > General > Updates, also the accessible name of its selector.",
 	"settings_updates_channel_tooltip": "Tooltip of the info icon next to the Update channel title: one sentence per channel.",
 	"settings_updates_channel_train_alpha": "Accessible description of the release train diagram while Alpha is followed. alpha, beta and stable are lane names in lowercase inside a sentence.",
 	"settings_updates_channel_train_beta": "Accessible description of the release train diagram while Beta is followed. alpha, beta and stable are lane names in lowercase inside a sentence.",

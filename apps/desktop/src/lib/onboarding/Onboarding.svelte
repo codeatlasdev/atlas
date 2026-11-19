@@ -1,6 +1,6 @@
 <script lang="ts">
 	import { onMount } from "svelte";
-	import { register } from "#lib/keymap.svelte.ts";
+	import { named, register } from "#lib/keymap.svelte.ts";
 	import { ws } from "#lib/stores/workspace.svelte.ts";
 	import Lazy from "#lib/components/Lazy.svelte";
 	import Checklist from "./Checklist.svelte";
@@ -11,29 +11,25 @@
 	onMount(() => {
 		void onboarding.init();
 		const stop = onboarding.observe();
-		const unregister = register([
-			{
-				id: "atlas::Help",
-				get label() {
-					return m.onboarding_commands_help();
+		const unregister = register(
+			named([
+				{
+					id: "atlas::Help",
+					label: () => m.onboarding_commands_help(),
+					run: () => (onboarding.helpOpen = true),
 				},
-				run: () => (onboarding.helpOpen = true),
-			},
-			{
-				id: "atlas::TakeTour",
-				get label() {
-					return m.onboarding_welcome_take_the_tour();
+				{
+					id: "atlas::TakeTour",
+					label: () => m.onboarding_welcome_take_the_tour(),
+					run: () => onboarding.startTour(),
 				},
-				run: () => onboarding.startTour(),
-			},
-			{
-				id: "atlas::ShowChecklist",
-				get label() {
-					return m.onboarding_commands_show_checklist();
+				{
+					id: "atlas::ShowChecklist",
+					label: () => m.onboarding_commands_show_checklist(),
+					run: () => void onboarding.showChecklist(),
 				},
-				run: () => void onboarding.showChecklist(),
-			},
-		]);
+			]),
+		);
 		return () => {
 			stop();
 			unregister();

@@ -44,9 +44,6 @@
 	"settings_theme_import_dialog_imported": {
 		"description": "Toast after a theme was imported without being selected."
 	},
-	"settings_theme_import_dialog_name": {
-		"description": "Label of the theme name field of the import theme dialog."
-	},
 	"settings_theme_import_dialog_theme_text": {
 		"description": "Label of the text area where a theme is pasted."
 	},
@@ -61,9 +58,6 @@
 	},
 	"settings_theme_import_format_base16": {
 		"description": "Name of the Base16 scheme theme format."
-	},
-	"settings_theme_import_format_ghostty": {
-		"description": "Name of the Ghostty config theme format."
 	},
 	"settings_theme_import_format_iterm": {
 		"description": "Name of the iTerm colors (.itermcolors) theme format."

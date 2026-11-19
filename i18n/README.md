@@ -91,6 +91,7 @@ bun run i18n:find <text|key> [--json]          does it exist? where, in which la
 bun run i18n:add <key> "English" --desc "..." [--pt-BR "..."] [--surface s] [--new-area] [--distinct "why"]
 bun run i18n:extract <path-or-glob> [--area x] [--dry-run] [--json] [--plan]   move hardcoded Svelte text into the catalog (MIGRATION.md)
 bun run i18n:mv <old> <new> [--new-area --surface s]   rename or move, with locks, references and call sites
+bun run i18n:mv <dup> <existing> --into [--take pt-BR=dup]   fold a duplicate with the same English and the same role (dup-value)
 bun run i18n:translate [--locale pt-BR] [--area x] [--surface y] [--dry-run]
 bun run i18n:fix [--restamp <key>] [--baseline]           format files, rewrite locks, shrink the ratchet baseline
 bun run i18n:add-locale <tag> [--owner @user]           a new language everywhere it is listed
@@ -110,11 +111,13 @@ command that fixes it. `warn` is for the reviewer and `info` is hidden unless as
 | `outdated` / `unstamped` | The lock hash differs from the current English hash / the translation has no lock entry (`i18n:fix` stamps it). |
 | `orphan` | A key in a translation that is not in the English of its area. Always an error. |
 | `key`, `key-area`, `dup-key` | Keys are snake_case; start with their area's name (longest prefix owns); are defined once. |
-| `placeholder`, `verbatim`, `plural` | Variables and markup must match; code spans and URLs identical; selectors and plural arms must match, and pt-BR needs `one` and `other` (add an exact zero where "0 arquivo" reads wrong). Compared on the resolved message, so a translation may write its own `os` select where the English references a term. |
+| `placeholder`, `verbatim`, `plural` | Variables and markup must match; code spans and URLs identical; selectors and plural arms must match, and pt-BR needs `one` and `other`. A translation may add an exact-zero selector (`local countExact = count`) the English lacks. A plural selector never takes a number as an arm (`countPlural=0` never fires in Rust, which compares categories): exact numbers are a second selector. Compared on the resolved message, so a translation may write its own `os` select where the English references a term. |
+| `pt-zero` | A pt-BR plural whose `one` variant prints the count (CLDR puts 0 in pt's `one`: "0 arquivo") needs an exact-zero arm (`countExact=0, countPlural=*`: "Nenhum arquivo"), or `i18n-allow pt-zero: <why, and the call site>` in the key's description when the code never calls it with 0. The English may keep "0 files". Error. |
 | `description`, `length` | Every English key has a description in meta.json that is not just the text; meta `maxLength` caps every text. |
 | `dnt`, `glossary`, `pt-pt` | Do-not-translate terms kept verbatim (error), glossary renderings (warning), pt-PT words in pt-BR (error). Waive one hit in the key's description: `i18n-allow dnt:log`. |
 | `shortcut`, `platform-noun` | A glyph or `Cmd+` chord in a value (use `{key}`); `Mac`, `Finder`, `Windows`, `Explorer` in a message with no `os` select, unless meta `platform` says it is about one platform. |
-| `dup-common`, `dup-value`, `common-sentence` | See above. |
+| `dup-common`, `common-sentence` | See above. |
+| `dup-value` | The same English under two non-common keys. Translated the same way in every locale: info only (two screens may say the same word; one shared key would couple them). Translated differently: a warning that shows both texts; align them, fold with `i18n:mv --into`, or mark a different role (a state vs a verb, another gender) with `i18n-distinct: <why>`. |
 | `budget`, `area-surface`, `dangling-ref`, `generate` | Area size; an area with no, an unknown or a malformed surface declaration; a reference that does not resolve, loops or leaves the surfaces; a message a generator cannot express. |
 | `unused`, `undefined-key`, `unconsumed-key` | A key nobody consuming it uses (common*, generated and `cli_*` areas exempt); a reference in a source to a key that is not there, or is in an area the surface does not consume. |
 | `frozen` | A message function called where it runs once (module scope, `<script module>`, a class field, a `+layout.svelte` script, a command passed to `register`) keeps the first language after a live switch. Use a getter, a thunk, `$derived` or the template; waive with `// i18n-allow frozen: <why>`. Desktop and site; every file, no baseline. |

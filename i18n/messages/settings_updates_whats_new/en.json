@@ -5,7 +5,6 @@
 	"settings_updates_whats_new_collapse_aria": "Collapse {version}",
 	"settings_updates_whats_new_dev_note": "This is a dev build; Atlas will not replace it with a release.",
 	"settings_updates_whats_new_download_progress": "{percent}% of {total}",
-	"settings_updates_whats_new_download_unknown": "Downloading…",
 	"settings_updates_whats_new_empty_body": "The changelog has no entry for it yet.",
 	"settings_updates_whats_new_empty_title": "No release notes for {version}",
 	"settings_updates_whats_new_empty_title_unknown": "No release notes for this version",

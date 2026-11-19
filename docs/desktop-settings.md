@@ -11,21 +11,23 @@ Editor, interface and terminal preferences use [Zed's setting names](https://zed
 
 ## Where things are in Settings
 
-Settings (⌘,) has eleven sections in three groups, and a search box that jumps to a setting by what it does. Every section starts with one line saying what it is for.
+Settings (⌘,) has thirteen sections in three groups (twelve off macOS, where **Capture** is hidden), and a search box that jumps to a setting by what it does. Every section starts with one line saying what it is for.
 
 | Group | Section | What is in it |
 |---|---|---|
-| Atlas | **General** | Updates: the app, the `atlas` CLI and the terminal host, and the release channel they follow |
+| Atlas | **General** | Updates: the app, the `atlas` CLI and the terminal host, the release channel they follow, and the display language |
 | | **Appearance** | Theme (light, dark, terminal), import and export, accent color, zoom, interface font, file panel, split panes |
 | | **Notifications & sounds** | Notifications when an agent finishes or needs you; the sounds Atlas plays, one switch each |
+| | **Capture** (macOS only) | Screenshots, screen recordings and GIFs from a hotkey: access, keys, where they are saved, quality, the overlay, recent captures |
 | | **Keyboard shortcuts** | Rebind or remove the key of any command |
 | | **Help & onboarding** | The guided tour, the shortcut cheat sheet, the getting-started checklist |
 | Work | **Workspaces** | Where worktrees are created, branch name prefix, auto clean up, clean up by hand, hygiene (orphaned processes and disk) |
 | | **Editor** | Tabs **Editor** (code font, editing, display) and **Languages** (language servers) |
 | | **Terminal** | Renderer, font, cursor, padding, scrollback, clipboard |
 | | **Git** | Which agent writes commit messages |
-| | **Agents** | Default agent, tool approval, extra arguments, custom agents, quick commands |
+| | **Agents** | Default agent, tool approval, extra arguments, the agent dock (switch and hotkeys), custom agents, quick commands |
 | Connect | **Integrations** | Tabs **Shell & links**, **Agent hooks**, **SSH hosts** and **Mobile** |
+| | **Atlas Crew** | Connect a crew server, connect GitHub, short replies, replay the onboarding |
 
 Where it used to be: *Shell for your projects* and *Open links in* (General) are in **Integrations › Shell & links**; the agent hooks switches (Agents) are in **Integrations › Agent hooks**; **SSH hosts** and **Mobile** were sections of their own and are tabs of **Integrations**; notifications and sounds (General) are in **Notifications & sounds**. Older links such as `updates.show("ssh")` or `appearance/terminal` still open the right place.
 

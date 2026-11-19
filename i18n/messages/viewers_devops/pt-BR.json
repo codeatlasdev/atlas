@@ -39,14 +39,17 @@
 		{
 			"declarations": [
 				"input count",
+				"local countExact = count",
 				"local countPlural = count: plural"
 			],
 			"selectors": [
+				"countExact",
 				"countPlural"
 			],
 			"match": {
-				"countPlural=one": "{count} problema",
-				"countPlural=*": "{count} problemas"
+				"countExact=0, countPlural=*": "nenhum problema",
+				"countExact=*, countPlural=one": "{count} problema",
+				"countExact=*, countPlural=*": "{count} problemas"
 			}
 		}
 	],
@@ -56,14 +59,17 @@
 		{
 			"declarations": [
 				"input count",
+				"local countExact = count",
 				"local countPlural = count: plural"
 			],
 			"selectors": [
+				"countExact",
 				"countPlural"
 			],
 			"match": {
-				"countPlural=one": "{count} reinício",
-				"countPlural=*": "{count} reinícios"
+				"countExact=0, countPlural=*": "nenhum reinício",
+				"countExact=*, countPlural=one": "{count} reinício",
+				"countExact=*, countPlural=*": "{count} reinícios"
 			}
 		}
 	],
@@ -160,14 +166,17 @@
 		{
 			"declarations": [
 				"input count",
+				"local countExact = count",
 				"local countPlural = count: plural"
 			],
 			"selectors": [
+				"countExact",
 				"countPlural"
 			],
 			"match": {
-				"countPlural=one": "{count} aviso",
-				"countPlural=*": "{count} avisos"
+				"countExact=0, countPlural=*": "nenhum aviso",
+				"countExact=*, countPlural=one": "{count} aviso",
+				"countExact=*, countPlural=*": "{count} avisos"
 			}
 		}
 	],
@@ -207,14 +216,17 @@
 		{
 			"declarations": [
 				"input count",
+				"local countExact = count",
 				"local countPlural = count: plural"
 			],
 			"selectors": [
+				"countExact",
 				"countPlural"
 			],
 			"match": {
-				"countPlural=one": "{count} duplicada",
-				"countPlural=*": "{count} duplicadas"
+				"countExact=0, countPlural=*": "nenhuma duplicada",
+				"countExact=*, countPlural=one": "{count} duplicada",
+				"countExact=*, countPlural=*": "{count} duplicadas"
 			}
 		}
 	],
@@ -223,14 +235,17 @@
 		{
 			"declarations": [
 				"input count",
+				"local countExact = count",
 				"local countPlural = count: plural"
 			],
 			"selectors": [
+				"countExact",
 				"countPlural"
 			],
 			"match": {
-				"countPlural=one": "{count} linha com erro",
-				"countPlural=*": "{count} linhas com erro"
+				"countExact=0, countPlural=*": "nenhuma linha com erro",
+				"countExact=*, countPlural=one": "{count} linha com erro",
+				"countExact=*, countPlural=*": "{count} linhas com erro"
 			}
 		}
 	],
@@ -265,14 +280,14 @@
 			}
 		}
 	],
-	"viewers_devops_environment": "Ambiente",
+	"viewers_devops_environment": "Variáveis de ambiente",
 	"viewers_devops_filter": "Filtrar",
 	"viewers_devops_go_to_line": "Ir para a linha {line}",
 	"viewers_devops_line": "Linha {line}",
 	"viewers_devops_make_view_default": "padrão",
 	"viewers_devops_make_view_default_target": "padrão {defaultTarget}",
 	"viewers_devops_make_view_filter_targets": "Filtrar alvos",
-	"viewers_devops_make_view_no_match": "Nenhuma correspondência",
+	"viewers_devops_make_view_no_match": "Nada encontrado",
 	"viewers_devops_make_view_no_targets": "Nenhum alvo encontrado",
 	"viewers_devops_make_view_phony": "phony",
 	"viewers_devops_make_view_recipes": "Receitas",
@@ -385,14 +400,17 @@
 		{
 			"declarations": [
 				"input count",
+				"local countExact = count",
 				"local countPlural = count: plural"
 			],
 			"selectors": [
+				"countExact",
 				"countPlural"
 			],
 			"match": {
-				"countPlural=one": "{count} action não está fixada em uma versão ou SHA de commit.",
-				"countPlural=*": "{count} actions não estão fixadas em uma versão ou SHA de commit."
+				"countExact=0, countPlural=*": "Todas as actions estão fixadas em uma versão ou SHA de commit.",
+				"countExact=*, countPlural=one": "{count} action não está fixada em uma versão ou SHA de commit.",
+				"countExact=*, countPlural=*": "{count} actions não estão fixadas em uma versão ou SHA de commit."
 			}
 		}
 	]

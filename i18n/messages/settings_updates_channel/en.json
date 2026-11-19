@@ -29,7 +29,6 @@
 	"settings_updates_channel_stable_switch_to": "You move to the next Stable release that is newer than the version you run. Atlas never installs an older build by itself.",
 	"settings_updates_channel_stage_alpha_note": "Atlas is in alpha. Every channel, including Stable, can have rough edges and breaking changes until the first release that meets the general availability criteria in the versioning policy.",
 	"settings_updates_channel_switch_to_aria": "Switch to {label}",
-	"settings_updates_channel_title": "Update channel",
 	"settings_updates_channel_tooltip": "Alpha builds are for trying what is coming and can break. Beta is closer to ready. Stable only gets releases that met the bar.",
 	"settings_updates_channel_train_alpha": "Builds are promoted from alpha to beta to stable. You follow alpha, the first lane.",
 	"settings_updates_channel_train_beta": "Builds are promoted from alpha to beta to stable. You follow beta, after alpha and before stable.",

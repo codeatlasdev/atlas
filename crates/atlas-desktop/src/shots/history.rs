@@ -242,50 +242,65 @@ mod tests {
     }
 
     #[test]
-    fn a_path_that_is_not_in_the_history_is_refused_whatever_it_looks_like() {
-        let (h, dir) = on_disk(&[("a.png", Kind::Screenshot)]);
+    fn a_real_file_outside_the_history_is_refused() {
+        let (h, _dir) = on_disk(&[("a.png", Kind::Screenshot)]);
         let outside = tempfile::tempdir().unwrap();
         let secret = outside.path().join("secret.png");
         std::fs::write(&secret, b"x").unwrap();
+        assert!(h.launchable(&secret).is_err());
+        assert!(h.launchable(Path::new("/etc/passwd")).is_err());
+        assert!(
+            h.launchable(Path::new("/Applications/Calculator.app"))
+                .is_err()
+        );
+    }
+
+    #[test]
+    fn a_dot_dot_escape_out_of_the_history_folder_is_refused() {
+        let (h, dir) = on_disk(&[("a.png", Kind::Screenshot)]);
+        let outside = tempfile::tempdir().unwrap();
+        std::fs::write(outside.path().join("secret.png"), b"x").unwrap();
         let escape = dir
             .path()
             .join("../")
             .join(outside.path().file_name().unwrap())
             .join("secret.png");
+        assert!(escape.is_file(), "the escape path really reaches the file");
+        assert!(h.launchable(&escape).is_err());
+        // The listed file reached through `sub/..` is a different spelling, not the entry.
+        assert!(h.launchable(&dir.path().join("sub/../a.png")).is_err());
+    }
+
+    #[test]
+    fn a_file_of_the_folder_that_is_not_listed_is_refused() {
+        let (h, dir) = on_disk(&[("a.png", Kind::Screenshot)]);
         std::fs::write(dir.path().join("untracked.png"), b"x").unwrap();
-        for bad in [
-            secret,
-            escape,
-            dir.path().join("untracked.png"),
-            dir.path().join("sub/../a.png"),
-            "/etc/passwd".into(),
-            "/Applications/Calculator.app".into(),
-            "-a".into(),
-            "--args".into(),
-            "-R".into(),
-            "a.png".into(),
-            "".into(),
-        ] {
-            assert!(h.launchable(&bad).is_err(), "{}", bad.display());
+        assert!(h.launchable(&dir.path().join("untracked.png")).is_err());
+    }
+
+    #[test]
+    fn a_path_that_could_be_an_option_or_is_relative_is_refused() {
+        let (h, _dir) = on_disk(&[("a.png", Kind::Screenshot)]);
+        for bad in ["-a", "--args", "-R", "-a Calculator", "a.png", ""] {
+            assert!(h.launchable(Path::new(bad)).is_err(), "{bad:?}");
         }
     }
 
     #[test]
-    fn an_app_or_a_script_is_refused_by_type_even_when_listed_in_the_history() {
+    fn an_app_bundle_is_refused_by_type_even_when_listed_in_the_history() {
+        let (h, dir) = on_disk(&[("Evil.app", Kind::Screenshot)]);
+        assert!(h.launchable(&dir.path().join("Evil.app")).is_err());
+    }
+
+    #[test]
+    fn a_command_script_is_refused_by_type_even_when_listed_in_the_history() {
         let (h, dir) = on_disk(&[
-            ("Evil.app", Kind::Screenshot),
             ("run.command", Kind::Screenshot),
             ("noext", Kind::Gif),
             ("shot.png.command", Kind::Screenshot),
             ("movie.png", Kind::Recording),
         ]);
-        for n in [
-            "Evil.app",
-            "run.command",
-            "noext",
-            "shot.png.command",
-            "movie.png",
-        ] {
+        for n in ["run.command", "noext", "shot.png.command", "movie.png"] {
             assert!(h.launchable(&dir.path().join(n)).is_err(), "{n}");
         }
     }

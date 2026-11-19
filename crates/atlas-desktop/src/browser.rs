@@ -600,10 +600,8 @@ mod tests {
     // Regression: on Windows the app's own pages are served from `http://tauri.localhost`, which the old
     // http/https/about rule let a browser child webview load (the app's commands in a web page's hands).
     #[test]
-    fn a_child_webview_never_loads_the_apps_own_origin() {
+    fn a_child_webview_never_loads_http_tauri_localhost() {
         for own in [
-            "tauri://localhost/",
-            "tauri://localhost/shots/hud",
             "http://tauri.localhost/",
             "https://tauri.localhost/",
             "http://tauri.localhost:8080/x",
@@ -611,12 +609,40 @@ mod tests {
             "http://sub.tauri.localhost/",
             "http://ipc.localhost/cmd",
             "https://asset.localhost/%2Fetc%2Fpasswd",
+        ] {
+            assert!(!nav_allowed(&u(own), None), "navigation to {own}");
+            assert!(parse_url(own, None).is_err(), "open of {own}");
+        }
+    }
+
+    // macOS/Linux origin. The old scheme rule already refused these (kept as a guard, not a regression of the fix).
+    #[test]
+    fn a_child_webview_never_loads_tauri_localhost() {
+        for own in [
+            "tauri://localhost/",
+            "tauri://localhost/shots/hud",
             "ipc://localhost/cmd",
             "asset://localhost/x",
         ] {
             assert!(!nav_allowed(&u(own), None), "navigation to {own}");
             assert!(parse_url(own, None).is_err(), "open of {own}");
         }
+    }
+
+    // A page cannot bounce a tab into the app: a redirect is one more `on_navigation` call for the target, so the
+    // decision on the hop into the app's origin is the one that matters.
+    #[test]
+    fn a_redirect_from_a_web_page_to_the_apps_origin_is_refused() {
+        let hops = [
+            "https://evil.example/go",
+            "http://tauri.localhost/shots/hud",
+        ];
+        let decisions: Vec<bool> = hops.iter().map(|h| nav_allowed(&u(h), None)).collect();
+        assert_eq!(
+            decisions,
+            [true, false],
+            "the web page may load, the redirect into the app may not"
+        );
     }
 
     #[test]

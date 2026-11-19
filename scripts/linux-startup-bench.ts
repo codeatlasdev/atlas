@@ -24,7 +24,7 @@
 // deadline (`show:deadline`), which the report records as `shownBy`.
 //
 // When a run never reaches `app_ready` (#591) the evidence is kept in `<--out dir>/evidence/run-N/` (uploaded with the report by
-// CI): the raw trace and what the app printed, `app.log` and `stderr.log`, a screenshot of the display, sway's window tree, every
+// CI): the raw trace and what the app printed, `app.log` and `stderr.log`, a screenshot of the display, sway's window tree, coredumps of the app or WebKit since the start, every
 // process the run owns with its state (is the web process alive, was it ever seen), and `evidence.json` with the verdict that
 // `explainMissingReady` draws from the trace (which page stage was the last one reached, a mark lost, unreadable trace lines).
 //
@@ -152,6 +152,32 @@ export function explainMissingReady(marks: Record<string, number>, garbled: stri
 	}
 	if (garbled.length) out.push(`${garbled.length} unreadable trace line(s), e.g. ${JSON.stringify(garbled[0])}`);
 	return out.join("; ");
+}
+
+/** What `collectEvidence` records about a run that never reached app_ready (#591); `evidence.json` is this object plus `why`. */
+export type Evidence = {
+	why: string;
+	exited: number | null;
+	appAlive: boolean;
+	webProcessSeenMs: number | null;
+	webProcessAlive: boolean;
+	webProcessStates: { pid: number; state: string }[];
+	windowMappedMs: number | null;
+	/** coredumpctl lines (the app or a WebKit process) since the run started; empty when none or when the machine keeps none. */
+	coredumps: string[];
+};
+
+/** The one line the CI log gets: what to look at first, with the artifact holding the rest (#591). */
+export function evidenceLine(e: Evidence, dir: string): string {
+	const app = e.exited !== null ? `app exited with status ${e.exited}` : e.appAlive ? "app alive" : "app gone";
+	const web =
+		e.webProcessSeenMs === null
+			? "web process never started"
+			: e.webProcessAlive
+				? `web process started at ${e.webProcessSeenMs} ms, alive (${e.webProcessStates.map((p) => `${p.pid}:${p.state}`).join(" ")})`
+				: `web process started at ${e.webProcessSeenMs} ms and is gone (no exit status: not our child; ${e.coredumps.length ? `${e.coredumps.length} coredump(s)` : "no coredump listed"})`;
+	const win = e.windowMappedMs === null ? "window never mapped" : `window mapped at ${e.windowMappedMs} ms`;
+	return `evidence: ${app}; ${web}; ${win}; kept in ${dir} (app.log, stderr.log, trace, window.png, processes.txt)`;
 }
 
 /** What a process is, from its command name and command line. */
@@ -333,8 +359,17 @@ const stateOf = (pid: number) => {
 	}
 };
 
+/** stdout of a helper that may not exist on this machine (grim, swaymsg, coredumpctl): evidence is best effort and must never hide the failure it documents. */
+function tryRun(cmd: string[], timeout: number): string {
+	try {
+		return spawnSync(cmd, { timeout }).stdout?.toString() ?? "";
+	} catch {
+		return "";
+	}
+}
+
 /** What the next person needs when a run never got `app_ready` (#591), copied while the app is still as it was. */
-function collectEvidence(dir: string, o: { trace: string; tag: string; root: number; why: string; marks: Record<string, number>; webSeenMs: number | null; windowMs: number | null; exited: number | null }) {
+export function collectEvidence(dir: string, o: { trace: string; tag: string; root: number; why: string; marks: Record<string, number>; webSeenMs: number | null; windowMs: number | null; exited: number | null; since: number }): Evidence {
 	mkdirSync(dir, { recursive: true });
 	const keep = (from: string, to: string) => {
 		try {
@@ -359,21 +394,27 @@ function collectEvidence(dir: string, o: { trace: string; tag: string; root: num
 	};
 	writeFileSync(join(dir, "processes.txt"), `${[...mine.map((p) => row(p, true)), ...web.map((p) => row(p, false))].join("\n")}\n`);
 	// A page on screen or a blank one, and where the window is.
-	spawnSync(["grim", join(dir, "window.png")], { timeout: 15_000 });
-	const tree = spawnSync(["swaymsg", "-t", "get_tree"], { timeout: 5_000 }).stdout?.toString() ?? "";
+	tryRun(["grim", join(dir, "window.png")], 15_000);
+	const tree = tryRun(["swaymsg", "-t", "get_tree"], 5_000);
 	writeFileSync(join(dir, "sway-tree.json"), tree);
 	const webAlive = mine.filter((p) => p.comm.startsWith("WebKitWebProces"));
+	// A web process that died leaves no exit status we can read (it is not our child); the machine's dump list is the nearest thing.
+	const dumps = tryRun(["coredumpctl", "list", "--no-pager", "--no-legend", "--since", `@${Math.floor(o.since / 1000)}`], 5_000);
+	const e: Evidence = {
+		why: o.why,
+		exited: o.exited,
+		appAlive: o.exited === null && mine.some((p) => p.pid === o.root),
+		webProcessSeenMs: o.webSeenMs,
+		webProcessAlive: webAlive.length > 0,
+		webProcessStates: webAlive.map((p) => ({ pid: p.pid, state: stateOf(p.pid) })),
+		windowMappedMs: o.windowMs,
+		coredumps: dumps.split("\n").filter((l) => /atlas|WebKit/.test(l)),
+	};
 	writeFileSync(
 		join(dir, "evidence.json"),
 		`${JSON.stringify(
 			{
-				why: o.why,
-				exited: o.exited,
-				appAlive: o.exited === null && mine.some((p) => p.pid === o.root),
-				webProcessSeenMs: o.webSeenMs,
-				webProcessAlive: webAlive.length > 0,
-				webProcessStates: webAlive.map((p) => ({ pid: p.pid, state: stateOf(p.pid) })),
-				windowMappedMs: o.windowMs,
+				...e,
 				marks: o.marks,
 				garbledTraceLines: existsSync(o.trace) ? garbledLines(readFileSync(o.trace, "utf8")) : [],
 				loadAvg: readFileSync("/proc/loadavg", "utf8").trim(),
@@ -382,6 +423,7 @@ function collectEvidence(dir: string, o: { trace: string; tag: string; root: num
 			2,
 		)}\n`,
 	);
+	return e;
 }
 
 async function launch(o: { bin: string; envs: string[]; kind: Run["kind"]; trace: string; tag: string; readyTimeoutS: number; evidenceDir: string }) {
@@ -390,6 +432,7 @@ async function launch(o: { bin: string; envs: string[]; kind: Run["kind"]; trace
 	rmSync(join(home, ".bench-probes"), { force: true });
 	const env: Record<string, string> = { ...(process.env as Record<string, string>), ATLAS_BOOT_TRACE: o.trace, ATLAS_BENCH_TAG: o.tag, APPIMAGE_EXTRACT_AND_RUN: process.env.APPIMAGE_EXTRACT_AND_RUN ?? "1" };
 	for (const e of o.envs) env[e.slice(0, e.indexOf("="))] = e.slice(e.indexOf("=") + 1);
+	const since = Date.now();
 	const t0 = performance.now();
 	const child = Bun.spawn(["setsid", o.bin], { env, stdin: null, stdout: Bun.file(`${o.trace}.out`), stderr: Bun.file(`${o.trace}.out`) });
 	const root = child.pid;
@@ -429,9 +472,9 @@ async function launch(o: { bin: string; envs: string[]; kind: Run["kind"]; trace
 	if (run.readyMs === null) {
 		const garbled = existsSync(o.trace) ? garbledLines(readFileSync(o.trace, "utf8")) : [];
 		const why = explainMissingReady(marks, garbled, exited, o.readyTimeoutS);
-		collectEvidence(o.evidenceDir, { trace: o.trace, tag: o.tag, root, why, marks, webSeenMs: run.spawnToWebProcessMs, windowMs: run.spawnToWindowMs, exited });
+		const ev = collectEvidence(o.evidenceDir, { trace: o.trace, tag: o.tag, root, why, marks, webSeenMs: run.spawnToWebProcessMs, windowMs: run.spawnToWindowMs, exited, since });
 		run.evidence = o.evidenceDir;
-		console.error(`app_ready never arrived: ${why}\nevidence kept in ${o.evidenceDir}; app output:\n${out.slice(-2000)}`);
+		console.error(`app_ready never arrived: ${why}\n${evidenceLine(ev, o.evidenceDir)}\napp output:\n${out.slice(-2000)}`);
 	}
 	return { run, root, child, stop: () => killTagged(o.tag, root) };
 }

@@ -3,6 +3,7 @@
  * called, from the same three settings the app reads. Mirrors `crates/atlas-desktop/src/worktree/create.rs` and
  * `naming.rs` (`slug`); the git user name is only known to git, so it is shown as a placeholder.
  */
+import { m } from "#lib/i18n/m.ts";
 
 const DEFAULT_DIR = "~/.atlas/worktrees";
 const EXAMPLE_REPO = "atlas";
@@ -30,7 +31,12 @@ export function slug(s: string): string {
 
 export function worktreePreview(p: WorktreePrefs): { path: string[]; branch: string } {
 	const dir = p.dir.trim().replace(/\/+$/, "") || DEFAULT_DIR;
-	const prefix = p.prefix === "none" ? "" : p.prefix === "custom" ? slug(p.custom) : "<your-git-name>";
+	const prefix =
+		p.prefix === "none"
+			? ""
+			: p.prefix === "custom"
+				? slug(p.custom)
+				: m.settings_terminal_worktree_preview_git_name();
 	return {
 		path: p.nest ? [dir, EXAMPLE_REPO, EXAMPLE_NAME] : [dir, EXAMPLE_NAME],
 		branch: prefix ? `${prefix}/${EXAMPLE_NAME}` : EXAMPLE_NAME,

@@ -1,0 +1,21 @@
+{
+	"workbench_agents_add_project": "Add project",
+	"workbench_agents_all_projects": "All projects",
+	"workbench_agents_all_states": "All states",
+	"workbench_agents_choose_worktree": "Choose worktree",
+	"workbench_agents_clear_filters": "Clear filters",
+	"workbench_agents_column_done": "Done",
+	"workbench_agents_column_idle": "Idle",
+	"workbench_agents_empty_filtered": "Nothing matches these filters.",
+	"workbench_agents_empty_no_activity_here": "Start an agent in this worktree. Its progress shows up here.",
+	"workbench_agents_empty_no_project": "Add a project first. Agents run inside its worktrees and report back here.",
+	"workbench_agents_empty_no_worktree": "Pick a worktree in the sidebar, then start an agent. Its progress shows up here.",
+	"workbench_agents_feed_no_match": "No activity matches",
+	"workbench_agents_feed_none": "No agent activity yet",
+	"workbench_agents_in_state": "{age} in this state",
+	"workbench_agents_new_session": "New agent session",
+	"workbench_agents_none_title": "No agents yet",
+	"workbench_agents_summary": "{working} working · {total} total",
+	"workbench_agents_title_agents": "Agents",
+	"workbench_agents_title_dashboard": "Dashboard"
+}

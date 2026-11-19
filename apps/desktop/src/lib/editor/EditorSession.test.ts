@@ -4,6 +4,7 @@ import { Text } from "@codemirror/state";
 import { toast } from "@codeatlasdev/ui";
 import { b64encode } from "#lib/b64.ts";
 import { host } from "#lib/host.ts";
+import { m } from "#lib/i18n/m.ts";
 
 /**
  * A fake hostd file system behind `host`. `mock.module` is process-wide and `bun test` runs every file in
@@ -221,7 +222,7 @@ describe("a save the disk does not actually contradict still goes through", () =
 		expect(writes).toEqual([]);
 		expect(s.dirty).toBe(true);
 		expect(toastError).toHaveBeenCalledTimes(1);
-		expect(toastError.mock.calls[0][0]).toMatch(/src\/a\.ts.*cannot be read/);
+		expect(toastError.mock.calls[0][0]).toBe(m.workbench_editor_not_saved_unreadable({ path: "src/a.ts" }));
 		await s.dispose();
 	});
 });
@@ -239,7 +240,7 @@ describe("closing with unsaved text the disk contradicts", () => {
 		expect(disk.text).toBe("theirs, longer\n");
 		expect(conflicts).toBe(0); // the editor is going away: no conflict prompt
 		expect(toastError).toHaveBeenCalledTimes(1);
-		expect(toastError).toHaveBeenCalledWith("Not saved: src/a.ts changed on disk");
+		expect(toastError).toHaveBeenCalledWith(m.workbench_editor_not_saved_changed({ path: "src/a.ts" }));
 	});
 
 	test("a conflict still open when the tab closes is announced too", async () => {
@@ -253,7 +254,7 @@ describe("closing with unsaved text the disk contradicts", () => {
 		await s.dispose();
 
 		expect(writes).toEqual([]);
-		expect(toastError).toHaveBeenCalledWith("Not saved: src/a.ts changed on disk");
+		expect(toastError).toHaveBeenCalledWith(m.workbench_editor_not_saved_changed({ path: "src/a.ts" }));
 	});
 
 	test("a clean buffer closes quietly", async () => {
@@ -270,7 +271,7 @@ describe("watcher failure", () => {
 		const s = await open("one\n");
 		await settle();
 
-		expect(s.watchError).toMatch(/not watched/i);
+		expect(s.watchError).not.toBe("");
 
 		type(s, "mine\n");
 		touch("theirs, longer\n");

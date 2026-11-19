@@ -2,10 +2,10 @@
 // and if it reads the producer's real output (boot.rs's trace format, the rc-file probe log). `--judge` re-judges a saved
 // report without an app; the launch tests run the real script on a private sway when the machine has one.
 import { describe, expect, test } from "bun:test";
-import { chmodSync, mkdtempSync, readFileSync, writeFileSync } from "node:fs";
+import { chmodSync, existsSync, mkdtempSync, readFileSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
-import { BUDGET, countProbes, judge, parseTrace, pct, roleOf, summarize, type Idle, type Report, type Run } from "./linux-startup-bench.ts";
+import { BUDGET, countProbes, explainMissingReady, garbledLines, judge, parseTrace, pct, roleOf, summarize, type Idle, type Report, type Run } from "./linux-startup-bench.ts";
 
 const root = join(import.meta.dir, "..");
 const script = join(import.meta.dir, "linux-startup-bench.ts");
@@ -41,6 +41,43 @@ describe("parseTrace reads what boot.rs writes", () => {
 	const trace = "12.3 main\n40.0 window:created\n880.5 js:ready:gate\n881.0 show:ready\n900.0 page:Started\n950.2 page:Started\n";
 	test("keeps the first time of a mark that repeats", () => {
 		expect(parseTrace(trace)).toEqual({ main: 12.3, "window:created": 40, "js:ready:gate": 880.5, "show:ready": 881, "page:Started": 900 });
+	});
+});
+
+// #591: one warm start in ~300 "never reported app_ready" and the CI log held nothing to tell a page that never booted from
+// a trace mark that was lost. The bench now says which, from the trace alone.
+describe("why app_ready is missing", () => {
+	const trace = (names: string[]) => parseTrace(names.map((n, i) => `${10 + i}.0 ${n}`).join("\n"));
+	const base = ["main", "window:created", "page:Started", "page:Finished", "js:layout:mounted", "js:session:start", "js:theme:init"];
+
+	test("names the last page stage reached and the ones missing: here the workspace never loaded", () => {
+		const why = explainMissingReady(trace([...base, "js:theme:ready", "js:projects:loaded", "show:deadline"]), [], null, 90);
+		expect(why).toContain("no js:ready:gate within 90 s");
+		expect(why).toContain("last page stage reached: projects:loaded");
+		expect(why).toContain("never reached: workspace:loaded, ready:gate");
+		expect(why).toContain("shown by the 1 s deadline");
+	});
+
+	test("a Rust-side show:ready without the page's mark is a lost mark, not a page that never booted", () => {
+		const why = explainMissingReady(trace([...base, "show:ready"]), ["12.3 js:ready:gateshow:ready"], null, 90);
+		expect(why).toContain("Rust did get app_ready");
+		expect(why).toContain("only the page's trace mark is missing");
+		expect(why).toContain("1 unreadable trace line(s)");
+	});
+
+	test("a page that never loaded, a page that loaded and ran nothing, and an app that exited are told apart", () => {
+		expect(explainMissingReady(trace(["main", "window:created"]), [], null, 5)).toContain("never loaded");
+		expect(explainMissingReady(trace(["main", "page:Started", "page:Finished"]), [], null, 5)).toContain("no startup stage");
+		const gone = explainMissingReady(trace(["main"]), [], 134, 5);
+		expect(gone).toContain("exited with status 134");
+		expect(gone).toContain("never shown");
+	});
+
+	// The same bytes boot.rs's `append_mark` once produced when two threads wrote at the same time (its own test pins the writer).
+	test("garbledLines finds interleaved and cut lines and ignores whole ones", () => {
+		const text = "5.0 main\n100.0100.1  js:ready:gateshow:ready\n\n900.0 page:Started\n77.";
+		expect(garbledLines(text)).toEqual(["100.0100.1  js:ready:gateshow:ready", "77."]);
+		expect(garbledLines("5.0 main\n6.5 js:ready:gate\n")).toEqual([]);
 	});
 });
 
@@ -184,6 +221,21 @@ describe("the real script on a private sway", () => {
 		const x = bench(fake("silent", "exec sleep 30"));
 		expect(x.code).toBe(1);
 		expect(x.err).toContain("app_ready never arrived");
+	});
+
+	// #591: the next occurrence has to be diagnosable from the artifact alone.
+	test.skipIf(!hasSway)("an app that never sends app_ready leaves its evidence: trace, output, processes, screenshot, verdict", () => {
+		const app = fake("stuck", `printf '5.0 main\\n40.0 page:Started\\n60.0 js:layout:mounted\\n' >> "$ATLAS_BOOT_TRACE"\necho booted-but-stuck\nexec sleep 30`);
+		const x = bench(app);
+		expect(x.code).toBe(1);
+		expect(x.err).toContain("last page stage reached: layout:mounted");
+		const ev = join(dir, "evidence/run-1");
+		for (const f of ["trace.txt", "app-output.txt", "processes.txt", "evidence.json", "sway-tree.json"]) expect(existsSync(join(ev, f))).toBe(true);
+		expect(readFileSync(join(ev, "app-output.txt"), "utf8")).toContain("booted-but-stuck");
+		const j = JSON.parse(readFileSync(join(ev, "evidence.json"), "utf8"));
+		expect(j).toMatchObject({ appAlive: true, webProcessAlive: false, webProcessSeenMs: null });
+		expect(j.why).toContain("never reached: session:start, theme:ready");
+		expect((JSON.parse(readFileSync(join(dir, "out.json"), "utf8")) as Report).runs[0].evidence).toBe(ev);
 	});
 
 	// The trace is the contract with boot.rs: an app that writes js:ready:gate to ATLAS_BOOT_TRACE has reached app_ready.

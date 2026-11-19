@@ -82,6 +82,10 @@ jobs:
     if: ${{ needs.plan.outputs.rust == 'true' }}
     runs-on: macos-latest
     timeout-minutes: 60
+    # hostd's git test runs a real git under a pt_BR.UTF-8 parent: the runner must have the locale, or that
+    # assertion would pass without running (crates/atlas-host/src/exec.rs). macOS ships pt_BR.UTF-8.
+    env:
+      ATLAS_REQUIRE_LOCALE: "1"
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
@@ -98,10 +102,19 @@ jobs:
     if: ${{ needs.plan.outputs.rust == 'true' }}
     runs-on: ubuntu-latest
     timeout-minutes: 60
+    env:
+      ATLAS_REQUIRE_LOCALE: "1"
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
           persist-credentials: false
+
+      # The `locales` package is in the runner image, so this compiles the locale from its source and downloads
+      # nothing. The listing is here so the log shows the runner has it.
+      - name: Locale pt_BR.UTF-8 (hostd's git test needs it)
+        run: |
+          sudo locale-gen pt_BR.UTF-8
+          locale -a | grep -i '^pt_BR'
 
       - name: System libraries (Tauri/WebKitGTK)
         run: |

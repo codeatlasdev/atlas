@@ -1,0 +1,18 @@
+{
+	"settings_general_agent_form_args_error": "Error under the Add agent form. {error} is the parse error of the arguments field.",
+	"settings_general_agent_form_command_error": "Error under the Add agent form. {error} is the parse error of the command field.",
+	"settings_general_agent_form_command_required": "Error under the Add agent form: the command is empty.",
+	"settings_general_agent_form_env_pair": "Error under the Add agent form: an environment line without an equals sign. {line} is the line.",
+	"settings_general_agent_form_env_reserved": "Error under the Add agent form: the environment line sets a reserved variable. {key} is the variable name.",
+	"settings_general_agent_form_name_letters": "Error under the Add agent form: the name has no letter or digit.",
+	"settings_general_agent_form_name_required": "Error under the Add agent form: the name is empty.",
+	"settings_general_agent_form_resume_error": "Error under the Add agent form. {error} is the parse error of the resume field.",
+	"settings_general_agent_hooks_agent_hooks": "Tooltip (title attribute) of a <Group> component, in AgentHooks (apps/desktop/src/lib/components/settings/AgentHooks.svelte). Extracted by i18n:extract: refine this description on review.",
+	"settings_general_agent_hooks_install_omp_claude_code_or": "description prop (help line) of a <Row> component, in AgentHooks (apps/desktop/src/lib/components/settings/AgentHooks.svelte). Extracted by i18n:extract: refine this description on review.",
+	"settings_general_agent_hooks_no_agents_found": "label prop of a <Row> component, in AgentHooks (apps/desktop/src/lib/components/settings/AgentHooks.svelte). Extracted by i18n:extract: refine this description on review.",
+	"settings_general_agent_hooks_on": "label prop of a <StatusChip> component, in AgentHooks (apps/desktop/src/lib/components/settings/AgentHooks.svelte). Extracted by i18n:extract: refine this description on review.",
+	"settings_general_agent_hooks_state_missing": "Description of an agent row in Agent hooks when its hooks are not installed.",
+	"settings_general_agent_hooks_state_ok": "Description of an agent row in Agent hooks when its hooks are installed.",
+	"settings_general_agent_hooks_state_unknown": "Description of an agent row in Agent hooks when the check failed.",
+	"settings_general_agent_hooks_turn_on": "Button label in the <Button> component, in AgentHooks (apps/desktop/src/lib/components/settings/AgentHooks.svelte). Extracted by i18n:extract: refine this description on review."
+}

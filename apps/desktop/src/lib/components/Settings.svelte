@@ -18,6 +18,7 @@
 	import { PAGE_COMPONENTS, type PageKey } from "./settings/pageComponents.ts";
 	import SearchResults from "./settings/SearchResults.svelte";
 	import SettingsNav from "./settings/SettingsNav.svelte";
+	import { m } from "#lib/i18n/m.ts";
 
 	let results = $derived(searchSettings(u.query));
 	let searching = $derived(u.query.trim() !== "");
@@ -46,13 +47,18 @@
 	});
 </script>
 
-<Dialog bind:open={u.open} size="xl" chromeless title="Settings" class="settings-dialog">
+<Dialog bind:open={u.open} size="xl" chromeless title={m.settings_general_settings()} class="settings-dialog">
 	<div class="wrap">
 		<SettingsNav {searching} />
 
 		<div class="pane" bind:this={paneEl}>
 			<div class="close">
-				<IconButton variant="text" size="sm" aria-label="Close settings" onclick={() => (u.open = false)}>
+				<IconButton
+					variant="text"
+					size="sm"
+					aria-label={m.settings_general_close_settings()}
+					onclick={() => (u.open = false)}
+				>
 					<X size={15} />
 				</IconButton>
 			</div>

@@ -186,9 +186,9 @@ export const editorKeymap: Extension = [
 	EditorView.clickAddsSelectionRange.of((e) => e.altKey && !e.shiftKey),
 ];
 
+/** A palette-only command: what it does. Its name is in `shellCommands.ts`, in the app's language. */
 export interface EditorCommand {
 	id: string;
-	label: string;
 	run: (view: EditorView) => boolean;
 }
 
@@ -197,24 +197,16 @@ export interface EditorCommand {
  * format selection — are not here: the integrator owns those (`Editor.svelte` state), see report.
  */
 export const editorCommands: EditorCommand[] = [
-	{ id: "editor::TrimTrailingWhitespace", label: "Trim trailing whitespace", run: (v) => trimWhitespace(v) },
-	{
-		id: "editor::ConvertIndentationToSpaces",
-		label: "Convert indentation to spaces",
-		run: (v) => convertIndentation("space")(v),
-	},
-	{
-		id: "editor::ConvertIndentationToTabs",
-		label: "Convert indentation to tabs",
-		run: (v) => convertIndentation("tab")(v),
-	},
-	{ id: "editor::FoldAllCommand", label: "Fold all", run: foldAll },
-	{ id: "editor::UnfoldAllCommand", label: "Unfold all", run: unfoldAll },
-	{ id: "editor::SortLinesAscending", label: "Sort lines ascending", run: (v) => sortLines(false)(v) },
-	{ id: "editor::SortLinesDescending", label: "Sort lines descending", run: (v) => sortLines(true)(v) },
-	{ id: "editor::DuplicateLine", label: "Duplicate line", run: copyLineDown },
-	{ id: "editor::ReindentSelectionCommand", label: "Reindent selection", run: (v) => indentSelection(v) },
-	{ id: "editor::TransformToUppercase", label: "Transform to uppercase", run: (v) => uppercase(v) },
-	{ id: "editor::TransformToLowercase", label: "Transform to lowercase", run: (v) => lowercase(v) },
-	{ id: "editor::JoinLinesCommand", label: "Join lines", run: (v) => joinLines(v) },
+	{ id: "editor::TrimTrailingWhitespace", run: (v) => trimWhitespace(v) },
+	{ id: "editor::ConvertIndentationToSpaces", run: (v) => convertIndentation("space")(v) },
+	{ id: "editor::ConvertIndentationToTabs", run: (v) => convertIndentation("tab")(v) },
+	{ id: "editor::FoldAllCommand", run: foldAll },
+	{ id: "editor::UnfoldAllCommand", run: unfoldAll },
+	{ id: "editor::SortLinesAscending", run: (v) => sortLines(false)(v) },
+	{ id: "editor::SortLinesDescending", run: (v) => sortLines(true)(v) },
+	{ id: "editor::DuplicateLine", run: copyLineDown },
+	{ id: "editor::ReindentSelectionCommand", run: (v) => indentSelection(v) },
+	{ id: "editor::TransformToUppercase", run: (v) => uppercase(v) },
+	{ id: "editor::TransformToLowercase", run: (v) => lowercase(v) },
+	{ id: "editor::JoinLinesCommand", run: (v) => joinLines(v) },
 ];

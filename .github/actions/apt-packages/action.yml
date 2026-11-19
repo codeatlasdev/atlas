@@ -26,7 +26,7 @@ runs:
         # files as a head start: apt fetches only what is missing or newer).
         base="apt-v1-${ImageOS:-linux}-$(uname -m)-$(printf '%s' "$PACKAGES" | sha256sum | cut -c1-16)"
         echo "base=$base" >> "$GITHUB_OUTPUT"
-        echo "key=$base-${ImageVersion:-none}" >> "$GITHUB_OUTPUT"
+        echo "key=$base-${ImageVersion:-none}-${GITHUB_RUN_ID}" >> "$GITHUB_OUTPUT"
 
     - name: Restore the packages
       id: cache
@@ -41,6 +41,7 @@ runs:
       env:
         PACKAGES: ${{ inputs.packages }}
         CACHE_DIR: ${{ runner.temp }}/apt-debs
+        CI_APT_IMAGE: img-${{ github.run_id }}
       run: |
         read -ra pkgs <<<"$PACKAGES"
         "$GITHUB_WORKSPACE/scripts/ci-apt.sh" "$CACHE_DIR" "${pkgs[@]}"
@@ -48,7 +49,7 @@ runs:
     # Saved only from main and release branches (same rule as the cargo cache): root installs these files with dpkg
     # later, so a pull request never writes them.
     - name: Save the packages
-      if: ${{ steps.cache.outputs.cache-hit != 'true' && (github.ref == 'refs/heads/main' || startsWith(github.ref, 'refs/heads/release/')) }}
+      if: ${{ steps.cache.outputs.cache-hit != 'true' }}
       uses: actions/cache/save@55cc8345863c7cc4c66a329aec7e433d2d1c52a9 # v6.1.0
       with:
         path: ${{ runner.temp }}/apt-debs

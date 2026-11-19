@@ -9,6 +9,7 @@
 //! | `locate`      | the `locate` tool through a real hostd with a fake runner                 |
 //! | `uigate`      | the `ui_gate` tool through a real hostd: plan, cache hit, regression replay |
 //! | `crewmates`   | create/update, the look, caps, secrets, the `crewmate_list` contract     |
+//! | `crewmate_state` | `crewmate_list`'s `state`: working, needs_you (any card), idle, and the transitions between them |
 //! | `triggers`    | routines, webhooks, crewmate-chain triggers, trigger validation          |
 //! | `automations` | triggers in `crewmate_list`, the `add_trigger` action                    |
 //! | `projects`    | Git/path projects, checkout before the first task                        |
@@ -58,6 +59,8 @@ mod audit;
 mod automations;
 #[cfg(unix)]
 mod capture;
+#[cfg(unix)]
+mod crewmate_state;
 #[cfg(unix)]
 mod crewmates;
 #[cfg(unix)]

@@ -10,7 +10,7 @@ import type { CrewmateLook } from "#lib/crew/look.ts";
 import { hostCall } from "#lib/host.ts";
 import { parseAudit, type AuditEntry } from "#lib/crew/settings/audit.ts";
 import { errText } from "#lib/api.ts";
-import { normalizeTask } from "#lib/crew/wire.ts";
+import { normalizeTask, withParkedTask } from "#lib/crew/wire.ts";
 import { toSent, type PendingImage } from "#lib/crew/attachments.ts";
 import { anyPaused, parseCrewList, pausedFromEvent } from "#lib/crew/pause.ts";
 import { crewmateKey } from "#lib/crew/crewmateKey.ts";
@@ -422,11 +422,13 @@ class CrewStore {
 		if (e) void this.select(e.hostKey, e.crewmateId);
 	}
 
+	/** The open crewmate, with the state of its loaded tasks applied (an older crew server hides a parked task). */
 	get selectedCrewmate(): Crewmate | undefined {
 		if (!this.selected) return undefined;
-		return this.servers
+		const c = this.servers
 			.find((h) => h.key === this.selected!.hostKey)
 			?.crewmates.find((b) => b.id === this.selected!.crewmateId);
+		return c && withParkedTask(c, this.tasks);
 	}
 
 	/** All crewmates across all hosts, flat. */

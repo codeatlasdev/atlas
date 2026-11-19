@@ -878,11 +878,11 @@ Same NDJSON socket as every hostd command (`~/.atlas/hostd.sock`, or the crew se
 }
 ```
 
-- `state`: `idle`, `working` or `needs_you`.
+- `state`: `idle`, `working` (a task is running) or `needs_you` (a tool approval is pending, or a task is parked on a card).
 - `running_task` exists only while a task runs; `pane` is the key to attach a terminal.
 - `last`: the most recent task's result, error or prompt (first 140 characters), final state and time.
-- `pending_approval` exists only in `needs_you`.
-- `waiting_task` (absent unless a task is parked on a card): `{id, action, result, attachments}`, the card the oldest waiting task is on and the images the agent took for it (only the agent's, as records). Atlas Mobile's Captain's call lists a crewmate with a `refused` or `prove_ui` card from it, with Retry and Override in place. It does not change `state`.
+- `pending_approval` exists only in `needs_you`; a task parked on any card (`waiting_task`) is `needs_you` too, though its runner is still held, so `running_task` is present there and Stop works. A server before this (1.5.0-alpha.26 and earlier) said `working`; the desktop corrects that where the reply still shows the card.
+- `waiting_task` (absent unless a task is parked on a card): `{id, action, result, attachments}`, the card the task is on (the one the runner holds, else the newest parked one) and the images the agent took for it (only the agent's, as records). Atlas Mobile's Captain's call lists a crewmate with a `refused` or `prove_ui` card from it, with Retry and Override in place. Its presence makes `state` `needs_you`, whatever the kind of card.
 - `triggers` is always present; `next_fire` is computed by the server.
 
 ### Task object

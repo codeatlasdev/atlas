@@ -266,7 +266,8 @@ fn service_use(project: &str, r: ServiceRow) -> Option<ServiceUse> {
         memory_trend: r.memory.trend.map(|t| t.direction.name().to_string()),
         memory_trend_mb_min: r.memory.trend.map(|t| t.mb_per_min),
         budget_state: r.memory.budget.name().to_string(),
-        memory_leak: r.memory.leak,
+        // A person reads this in the drawer: the engine's sentence in the display language.
+        memory_leak: r.memory.leak.map(|n| n.render()),
         cpu: r.cpu,
     })
 }

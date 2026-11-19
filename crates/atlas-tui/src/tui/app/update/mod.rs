@@ -17,6 +17,7 @@ use std::time::Instant;
 
 use super::messages::Effect;
 use super::{App, Layer, Message, ToastVariant};
+use crate::runtime::note::Note;
 use crate::runtime::service::ServiceState;
 use crate::tui::widgets::events::{EventKind, SideEvent};
 
@@ -94,13 +95,15 @@ impl App {
             ServiceState::Unhealthy => Some((
                 EventKind::Crash,
                 self.manager
-                    .service_note(name)
+                    .service_note_coded(name)
+                    .map(|n| n.render_line())
                     .unwrap_or_else(|| t!("tui_runtime_app_event_unhealthy")),
             )),
             ServiceState::Degraded => Some((
                 EventKind::Alert,
                 self.manager
-                    .service_note(name)
+                    .service_note_coded(name)
+                    .map(|n| n.render_line())
                     .unwrap_or_else(|| t!("tui_runtime_app_event_degraded")),
             )),
             ServiceState::Running => {
@@ -180,18 +183,23 @@ impl App {
     }
 }
 
-/// Map a scheduler note to a sidebar event kind.
-pub(in crate::tui::app) fn classify_note(message: &str) -> EventKind {
-    let m = message.to_lowercase();
-    if m.starts_with("waiting") {
-        EventKind::Waiting
-    } else if m.contains("gave up") || m.contains("crashed") || m.contains("timeout") {
-        EventKind::Crash
-    } else if m.contains("completed") || m.contains("exited cleanly") {
-        EventKind::Done
-    } else if m.contains("restart") {
-        EventKind::Restart
-    } else {
-        EventKind::Info
+/// Map an engine note to a sidebar event kind, by its code, never by its words (the words are in the display
+/// language). The kinds are the ones the English words used to pick: a wait is `Waiting`, a crash, a hang and a
+/// spent restart budget are `Crash`, a service that finished is `Done`, everything about restarting is `Restart`,
+/// the rest is `Info`. A note without a code (an older runner) is `Info`.
+pub(in crate::tui::app) fn classify_note(note: &Note) -> EventKind {
+    match note.code.as_str() {
+        "sched.waiting_dep" => EventKind::Waiting,
+        "sched.gave_up" | "sched.crashed_restart" | "health.hang" | "health.hang_restarting" => {
+            EventKind::Crash
+        }
+        "sched.completed" | "sched.exited_cleanly" => EventKind::Done,
+        "sched.stable"
+        | "sched.restarting"
+        | "sched.exited_restart"
+        | "health.hang_spent"
+        | "memory.restarting"
+        | "memory.stopped" => EventKind::Restart,
+        _ => EventKind::Info,
     }
 }

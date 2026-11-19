@@ -36,9 +36,11 @@ fn deps(pairs: &[(&str, &str)]) -> Option<DependsOn> {
 /// The sentence of one note/alert event, the way every machine consumer reads it.
 fn said(ev: &ManagerEvent) -> Option<(&'static str, String, String)> {
     match ev {
-        ManagerEvent::ServiceNote { name, message } => Some(("note", name.clone(), message.clone())),
-        ManagerEvent::CriticalAlert { service, message } => {
-            Some(("alert", service.clone(), message.clone()))
+        ManagerEvent::ServiceNote { name, note } => {
+            Some(("note", name.clone(), note.message.clone()))
+        }
+        ManagerEvent::CriticalAlert { service, note } => {
+            Some(("alert", service.clone(), note.message.clone()))
         }
         _ => None,
     }
@@ -286,7 +288,7 @@ async fn run_memory_scenario() -> Value {
                 json!({
                     "service_note": m.service_note(n),
                     "probe_error": m.probe_error(n),
-                    "leak": m.memory_facts(n).and_then(|f| f.leak),
+                    "leak": m.memory_facts(n).and_then(|f| f.leak).map(|l| l.message),
                     "fail_reason": m.fail_reason(n),
                 }),
             )

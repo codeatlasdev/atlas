@@ -1,0 +1,87 @@
+{
+	"tui_engine_deps_could_not_run": "could not run: {error}",
+	"tui_engine_deps_exit": "exit {code}: {tail}",
+	"tui_engine_deps_killed": "exit signal: {tail}",
+	"tui_engine_deps_not_found": [
+		{
+			"declarations": [
+				"input os"
+			],
+			"selectors": [
+				"os"
+			],
+			"match": {
+				"os=windows": "exit {code}: {tail}. `{bin}` was not found. PATH used by Atlas: {path}. Add its folder to your user Path (Environment Variables in the System settings) and restart Atlas.",
+				"os=*": "exit {code}: {tail}. `{bin}` was not found. PATH used by Atlas: {path}. Add its directory to PATH in your shell's rc file (~/.bashrc, ~/.zshrc, ~/.config/fish/config.fish) and restart Atlas, or pick the right shell in Settings → Integrations → Shell & links."
+			}
+		}
+	],
+	"tui_engine_docker_compose_failed": "compose up failed ({exit}): {detail}",
+	"tui_engine_docker_compose_missing": "docker compose plugin is missing. Install docker-compose-plugin (Linux) or update Docker",
+	"tui_engine_docker_daemon_down": "docker daemon is not running. Start it (Linux: sudo systemctl start docker; macOS: open OrbStack or Docker Desktop)",
+	"tui_engine_docker_exit_code": "exit {code}",
+	"tui_engine_docker_exit_signal": "killed by a signal",
+	"tui_engine_docker_no_output": "no output",
+	"tui_engine_docker_not_found": "docker not found. Install Docker (https://docs.docker.com/engine/install/) or fix PATH; searched: {path}",
+	"tui_engine_docker_permission": "docker: permission denied on the docker socket. Add your user to the docker group: sudo usermod -aG docker $USER, then log out and in",
+	"tui_engine_docker_permission_run": "docker could not be run: permission denied ({error})",
+	"tui_engine_docker_recovered": "Docker daemon recovered.",
+	"tui_engine_docker_run_failed": "docker could not be run: {error}",
+	"tui_engine_docker_unreachable": "Docker daemon unreachable.",
+	"tui_engine_health_hang": "unhealthy: no answer from the liveness probe ({misses} misses × {timeout}s timeout)",
+	"tui_engine_health_hang_restarting": "unhealthy: no answer from the liveness probe ({misses} misses × {timeout}s timeout), restarting",
+	"tui_engine_health_hang_spent": "unhealthy again after its restarts: left running",
+	"tui_engine_health_unhealthy_for": "unhealthy for {secs}s: {misses} missed probes",
+	"tui_engine_infra_port_closed": "nothing is listening on :{port} after {secs}s: the container did not start, exited, or maps another port (check `docker compose ps` and `docker compose logs`)",
+	"tui_engine_memory_back_under": "memory back under budget",
+	"tui_engine_memory_leak_reloads": "leak suspected: +{growth} over {cycles} reloads",
+	"tui_engine_memory_leak_restarts": "leak suspected: +{growth} over {cycles} restarts",
+	"tui_engine_memory_notify": "using {used} (max_memory {max}), left running (on_memory_max: notify)",
+	"tui_engine_memory_over_max": "using {used}, over max_memory {max}",
+	"tui_engine_memory_over_warn": "using {used}, over memory_warn {warn}",
+	"tui_engine_memory_restarting": "using {used} (max_memory {max}), restarting ({attempt}/{limit})",
+	"tui_engine_memory_stopped": "using {used} (max_memory {max}) after {restarts} restarts, stopped",
+	"tui_engine_note_lines": "{first}\n{second}",
+	"tui_engine_note_pair": "{first} · {second}",
+	"tui_engine_port_held": "port {port} held by PID {pid} ({cmd}): stop it yourself ({stop}) or change the service port",
+	"tui_engine_port_held_cwd": "port {port} held by PID {pid} ({cmd}, cwd {cwd}): stop it yourself ({stop}) or change the service port",
+	"tui_engine_probe_ready_failed": "ready probe failed: {error}",
+	"tui_engine_probe_repeating": "repeating error: {line}",
+	"tui_engine_sched_completed": "completed successfully",
+	"tui_engine_sched_crashed_restart": "crashed; restarting in {secs}s ({attempt}/{limit})",
+	"tui_engine_sched_dependency_failed": "dependency {dep} failed",
+	"tui_engine_sched_done": "done",
+	"tui_engine_sched_exited": "exited",
+	"tui_engine_sched_exited_cleanly": "exited cleanly",
+	"tui_engine_sched_exited_error": "exited with error",
+	"tui_engine_sched_exited_restart": "exited; restarting in {secs}s ({attempt}/{limit})",
+	"tui_engine_sched_gave_up": [
+		{
+			"declarations": [
+				"input attempts",
+				"local attemptsPlural = attempts: plural"
+			],
+			"selectors": [
+				"attemptsPlural"
+			],
+			"match": {
+				"attemptsPlural=one": "gave up after {attempts} restarts",
+				"attemptsPlural=*": "gave up after {attempts} restarts"
+			}
+		}
+	],
+	"tui_engine_sched_restarted": "restarted ×{attempts}",
+	"tui_engine_sched_restarting": "restarting",
+	"tui_engine_sched_restarting_in": "restarting in {secs}s ({attempt}/{limit})",
+	"tui_engine_sched_stable": "stable for {secs}s, restart counter reset",
+	"tui_engine_sched_start_timeout_log": "start timeout: still waiting for ready_log ({secs}s)",
+	"tui_engine_sched_start_timeout_port": "start timeout: still waiting for :{port} ({secs}s)",
+	"tui_engine_sched_still_starting_log": "still starting after {waited}s: waiting for ready_log",
+	"tui_engine_sched_still_starting_port": "still starting after {waited}s: waiting for :{port}",
+	"tui_engine_sched_waiting_dep": "waiting for {dep} ({condition})",
+	"tui_engine_sched_waiting_log": "waiting for ready_log ({secs}s)",
+	"tui_engine_sched_waiting_port": "waiting for :{port} ({secs}s)",
+	"tui_engine_spawn_empty_command": "could not start: the service command is empty",
+	"tui_engine_spawn_failed": "could not start `{command}` in {dir}: {error}",
+	"tui_engine_tunnel_failed": "SSH tunnel to {host} failed: {reason}"
+}

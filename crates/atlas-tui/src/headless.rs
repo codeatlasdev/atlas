@@ -92,15 +92,15 @@ pub async fn run_ci(
                     eprintln!("  {name}: {state:?}");
                     manager.update_state(&name, state);
                 }
-                ManagerEvent::CriticalAlert { message, .. } => {
-                    eprintln!("  [!] {message}");
+                ManagerEvent::CriticalAlert { note, .. } => {
+                    eprintln!("  [!] {}", note.message);
                 }
-                ManagerEvent::ServiceNote { name, message } => {
-                    eprintln!("  {name}: {message}");
+                ManagerEvent::ServiceNote { name, note } => {
+                    eprintln!("  {name}: {}", note.message);
                 }
                 ManagerEvent::InfraFailed { names, reason } => {
                     // i18n-ignore: `--ci` output is read by pipelines and agents, never translated
-                    eprintln!("  infra {}: {reason}", names.join(", "));
+                    eprintln!("  infra {}: {}", names.join(", "), reason.message);
                     manager.record_failure(&names, &reason);
                 }
                 ManagerEvent::LogReady { name } => manager.mark_log_ready(&name),
@@ -209,7 +209,11 @@ mod tests {
         assert_eq!(deps_failure(&DepsOutcome::UpToDate), None);
         assert_eq!(deps_failure(&DepsOutcome::Installed), None);
         assert_eq!(
-            deps_failure(&DepsOutcome::Failed("exit 2: nope".into())).as_deref(),
+            deps_failure(&DepsOutcome::Failed(crate::runtime::note::Note::new(
+                "deps.exit",
+                serde_json::json!({"code": 2, "tail": "nope"})
+            )))
+            .as_deref(),
             Some("pre_command failed: exit 2: nope")
         );
     }

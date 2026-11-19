@@ -7,7 +7,10 @@ use std::collections::{HashMap, VecDeque};
 use std::sync::{Arc, Mutex};
 use std::time::{Duration, Instant};
 
+use serde_json::json;
+
 use crate::config::ReadyProbe;
+use crate::runtime::note::Note;
 use crate::runtime::service::ServiceState;
 
 /// Identical (normalised) error lines in [`REPEAT_WINDOW`] that make a service `degraded`.
@@ -72,24 +75,24 @@ pub struct Inputs<'a> {
     pub ready_error: Option<&'a str>,
     /// Sample line while the same error repeats (≥ [`REPEAT_MIN`] in [`REPEAT_WINDOW`]).
     pub repeated: Option<&'a str>,
-    /// `Some(reason)` while the service is over its `memory_warn` budget.
-    pub memory: Option<&'a str>,
+    /// `Some(reason)` while the service is over its `memory_warn` or `max_memory` budget.
+    pub memory: Option<&'a Note>,
 }
 
 /// The state a service with a live child settles in, and why when it is not `Running`.
-#[derive(Debug, Clone, PartialEq, Eq)]
+#[derive(Debug, Clone, PartialEq)]
 pub struct Verdict {
     pub state: ServiceState,
     /// `degraded`: the failing probe's message, the repeated line or the memory overrun;
     /// `unhealthy`: nothing.
-    pub reason: Option<String>,
+    pub reason: Option<Note>,
 }
 
 /// Precedence: `unhealthy` (liveness lost) beats `degraded`; a failing `ready` probe
 /// beats a repeated log line (it carries the endpoint's own error), which beats a memory
 /// overrun (the least specific finding: the others say what is broken, this says it is big).
 pub fn judge(i: Inputs<'_>) -> Option<Verdict> {
-    let degraded = |reason: String| Verdict {
+    let degraded = |reason: Note| Verdict {
         state: ServiceState::Degraded,
         reason: Some(reason),
     };
@@ -101,9 +104,9 @@ pub fn judge(i: Inputs<'_>) -> Option<Verdict> {
         // Not answering yet / blipping: the caller keeps the current state.
         LiveVerdict::Starting | LiveVerdict::Grace => None,
         LiveVerdict::Healthy => Some(match (i.ready_error, i.repeated, i.memory) {
-            (Some(e), ..) => degraded(format!("ready probe failed: {e}")),
-            (None, Some(line), _) => degraded(format!("repeating error: {line}")),
-            (None, None, Some(mem)) => degraded(mem.to_string()),
+            (Some(e), ..) => degraded(Note::new("probe.ready_failed", json!({"error": e}))),
+            (None, Some(line), _) => degraded(Note::new("probe.repeating", json!({"line": line}))),
+            (None, None, Some(mem)) => degraded(mem.clone()),
             (None, None, None) => Verdict {
                 state: ServiceState::Running,
                 reason: None,
@@ -405,48 +408,61 @@ mod tests {
         }
     }
 
+    /// The memory finding the budget machine hands the verdict: `using 2.1 GB, over memory_warn 1.5 GB`.
+    fn over_warn() -> Note {
+        crate::runtime::memory::warn_reason(2254857830, 3 << 29)
+    }
+
     /// `memory_warn` (#131): a service over its soft budget, otherwise healthy, is `degraded`
     /// with the memory reason, and it never outranks what the probes or the log say.
     #[test]
     fn a_memory_budget_overrun_alone_is_degraded_with_the_memory_reason() {
+        let mem = over_warn();
         let v = judge(Inputs {
-            memory: Some("using 2.1 GB, over memory_warn 1.5 GB"),
+            memory: Some(&mem),
             ..inputs(LiveVerdict::Healthy, None, None)
         })
         .unwrap();
         assert_eq!(v.state, ServiceState::Degraded);
-        assert_eq!(v.reason.unwrap(), "using 2.1 GB, over memory_warn 1.5 GB");
+        assert_eq!(
+            v.reason.unwrap().message,
+            "using 2.1 GB, over memory_warn 1.5 GB"
+        );
     }
 
     #[test]
     fn probe_and_log_findings_outrank_the_memory_reason() {
-        let mem = Some("using 2.1 GB, over memory_warn 1.5 GB");
+        let mem = over_warn();
         let v = judge(Inputs {
-            memory: mem,
+            memory: Some(&mem),
             ..inputs(LiveVerdict::Healthy, Some("boom"), Some("noise"))
         })
         .unwrap();
-        assert!(v.reason.unwrap().contains("boom"));
+        let reason = v.reason.unwrap();
+        assert_eq!(reason.code, "probe.ready_failed");
+        assert!(reason.message.contains("boom"));
         let v = judge(Inputs {
-            memory: mem,
+            memory: Some(&mem),
             ..inputs(LiveVerdict::Healthy, None, Some("noise"))
         })
         .unwrap();
-        assert!(v.reason.unwrap().contains("noise"));
+        let reason = v.reason.unwrap();
+        assert_eq!(reason.code, "probe.repeating");
+        assert!(reason.message.contains("noise"));
     }
 
     #[test]
     fn memory_never_masks_a_hung_service_or_decides_while_starting() {
-        let mem = Some("using 2.1 GB, over memory_warn 1.5 GB");
+        let mem = over_warn();
         let hung = judge(Inputs {
-            memory: mem,
+            memory: Some(&mem),
             ..inputs(LiveVerdict::Unhealthy, None, None)
         })
         .unwrap();
         assert_eq!(hung.state, ServiceState::Unhealthy);
         assert!(
             judge(Inputs {
-                memory: mem,
+                memory: Some(&mem),
                 ..inputs(LiveVerdict::Grace, None, None)
             })
             .is_none()
@@ -465,7 +481,7 @@ mod tests {
     fn ready_failure_with_liveness_passing_is_degraded_with_the_probe_error() {
         let v = judge(inputs(LiveVerdict::Healthy, Some("GET /ready → 500"), None)).unwrap();
         assert_eq!(v.state, ServiceState::Degraded);
-        assert!(v.reason.unwrap().contains("GET /ready → 500"));
+        assert!(v.reason.unwrap().message.contains("GET /ready → 500"));
     }
 
     #[test]
@@ -477,13 +493,13 @@ mod tests {
         ))
         .unwrap();
         assert_eq!(v.state, ServiceState::Degraded);
-        assert!(v.reason.unwrap().contains("db connect timeout"));
+        assert!(v.reason.unwrap().message.contains("db connect timeout"));
     }
 
     #[test]
     fn ready_error_wins_over_a_repeated_line() {
         let v = judge(inputs(LiveVerdict::Healthy, Some("boom"), Some("noise"))).unwrap();
-        assert!(v.reason.unwrap().contains("boom"));
+        assert!(v.reason.unwrap().message.contains("boom"));
     }
 
     #[test]

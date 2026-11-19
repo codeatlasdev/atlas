@@ -528,8 +528,8 @@ async fn start_timeout_warns_and_alerts_critical_once() {
         let (mut notes, mut alerts) = (0, 0);
         while let Ok(ev) = rx.try_recv() {
             match ev {
-                ManagerEvent::ServiceNote { message, .. }
-                    if message.starts_with("still starting after") =>
+                ManagerEvent::ServiceNote { note, .. }
+                    if note.message.starts_with("still starting after") =>
                 {
                     notes += 1;
                 }

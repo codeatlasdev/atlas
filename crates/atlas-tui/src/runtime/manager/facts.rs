@@ -4,12 +4,21 @@
 
 use std::time::Instant;
 
+use serde_json::json;
+
 use super::ServiceManager;
+use crate::runtime::note::Note;
 use crate::runtime::service::ServiceState;
 
 impl ServiceManager {
-    /// Sidebar annotation for `name`: waiting reason, restart countdown, gave-up.
+    /// Sidebar annotation for `name` in English, one line: waiting reason, restart countdown, gave-up. What the
+    /// status file, MCP and `--ci` carry; a person reads [`Self::service_note_coded`].
     pub fn service_note(&self, name: &str) -> Option<String> {
+        self.service_note_coded(name).map(|n| n.line())
+    }
+
+    /// The sidebar annotation as a coded sentence (render it with [`Note::render_line`]).
+    pub fn service_note_coded(&self, name: &str) -> Option<Note> {
         if self.mirror.is_some() {
             return self.mirror_facts(name)?.note.clone();
         }
@@ -24,46 +33,55 @@ impl ServiceManager {
                 0 => "∞".to_string(),
                 m => m.to_string(),
             };
-            return Some(format!(
-                "restarting in {secs}s ({}/{max})",
-                s.sched.tracker.attempts
+            return Some(Note::new(
+                "sched.restarting_in",
+                json!({"secs": secs, "attempt": s.sched.tracker.attempts, "limit": max}),
             ));
         }
         if let Some(w) = &s.sched.waiting {
-            return Some(format!("waiting for {w}"));
+            return Some(w.clone());
         }
         if let Some((port, secs)) = self.start_wait(name) {
-            let what = port.map_or("ready_log".to_string(), |p| format!(":{p}"));
+            let wait = match (port, s.sched.start_warned) {
+                (Some(p), true) => {
+                    Note::new("sched.start_timeout_port", json!({"port": p, "secs": secs}))
+                }
+                (Some(p), false) => {
+                    Note::new("sched.waiting_port", json!({"port": p, "secs": secs}))
+                }
+                (None, true) => Note::new("sched.start_timeout_log", json!({"secs": secs})),
+                (None, false) => Note::new("sched.waiting_log", json!({"secs": secs})),
+            };
             let held = s
                 .sched
                 .port_conflict
                 .as_ref()
                 .zip(port)
-                .map(|(c, p)| format!(" · {}", c.describe(p)))
-                .unwrap_or_default();
-            return Some(if s.sched.start_warned {
-                format!("start timeout: still waiting for {what} ({secs}s){held}")
-            } else {
-                format!("waiting for {what} ({secs}s){held}")
+                .map(|(c, p)| c.note(p));
+            return Some(match held {
+                Some(h) => Note::pair(wait, h),
+                None => wait,
             });
         }
         let base = match s.status.state {
             ServiceState::Failed => match (&s.sched.port_conflict, s.status.port) {
-                (Some(c), Some(p)) => Some(c.describe(p)),
+                (Some(c), Some(p)) => Some(c.note(p)),
                 _ => s.sched.fail_reason.clone(),
             },
             ServiceState::Unhealthy => s.probes.unhealthy.as_ref().map(|u| {
-                format!(
-                    "unhealthy for {}s: {} missed probes",
-                    u.since.elapsed().as_secs(),
-                    u.misses
+                Note::new(
+                    "health.unhealthy_for",
+                    json!({"secs": u.since.elapsed().as_secs(), "misses": u.misses}),
                 )
             }),
             ServiceState::Degraded => s.probes.degraded.clone(),
-            ServiceState::Stopped if s.sched.completed_ok => Some("done".into()),
-            ServiceState::Running if s.sched.tracker.attempts > 0 => {
-                Some(format!("restarted ×{}", s.sched.tracker.attempts))
+            ServiceState::Stopped if s.sched.completed_ok => {
+                Some(Note::new("sched.done", json!({})))
             }
+            ServiceState::Running if s.sched.tracker.attempts > 0 => Some(Note::new(
+                "sched.restarted",
+                json!({"attempts": s.sched.tracker.attempts}),
+            )),
             _ => None,
         };
         // A suspected leak rides along on a live service: the reason it is `degraded` (or the
@@ -72,10 +90,10 @@ impl ServiceManager {
             s.status.state,
             ServiceState::Running | ServiceState::Degraded
         )
-        .then(|| s.mem.leak.suspect().map(|l| l.text()))
+        .then(|| s.mem.leak.suspect().map(|l| l.note()))
         .flatten();
         match (base, leak) {
-            (Some(b), Some(l)) => Some(format!("{b} · {l}")),
+            (Some(b), Some(l)) => Some(Note::pair(b, l)),
             (b, l) => b.or(l),
         }
     }
@@ -155,9 +173,14 @@ impl ServiceManager {
         self.services.get(name).is_some_and(|s| !s.autostart)
     }
 
-    /// Fail-reason for CI output.
+    /// Fail-reason for CI output: English, the first line (what `reason` of `atlas dev --ci` always carried).
     pub fn fail_reason(&self, name: &str) -> Option<String> {
-        self.services.get(name)?.sched.fail_reason.clone()
+        self.services
+            .get(name)?
+            .sched
+            .fail_reason
+            .as_ref()
+            .map(Note::line)
     }
 
     /// The foreign process holding `name`'s port, when its last start found one.

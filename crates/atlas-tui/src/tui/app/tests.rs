@@ -606,7 +606,10 @@ fn test_app_start_waits_for_deps_install() {
         app_names: names.clone(),
     });
     app.apply_manager_event(ManagerEvent::DepsFailed {
-        reason: "exit 1: boom".into(),
+        reason: crate::runtime::note::Note::new(
+            "deps.exit",
+            serde_json::json!({"code": 1, "tail": "boom"}),
+        ),
     });
     assert_eq!(drain(&mut app), vec![names.clone()]);
     assert_eq!(app.toast.as_ref().unwrap().1, ToastVariant::Error);

@@ -1,0 +1,87 @@
+{
+	"tui_engine_deps_could_not_run": "não foi possível executar: {error}",
+	"tui_engine_deps_exit": "saída {code}: {tail}",
+	"tui_engine_deps_killed": "encerrado por sinal: {tail}",
+	"tui_engine_deps_not_found": [
+		{
+			"declarations": [
+				"input os"
+			],
+			"selectors": [
+				"os"
+			],
+			"match": {
+				"os=windows": "saída {code}: {tail}. `{bin}` não foi encontrado. PATH usado pelo Atlas: {path}. Adicione a pasta dele ao Path do seu usuário (Variáveis de Ambiente, nas configurações do sistema) e reinicie o Atlas.",
+				"os=*": "saída {code}: {tail}. `{bin}` não foi encontrado. PATH usado pelo Atlas: {path}. Adicione o diretório dele ao PATH no arquivo rc do seu shell (~/.bashrc, ~/.zshrc, ~/.config/fish/config.fish) e reinicie o Atlas, ou escolha o shell certo em Configurações → Integrações → Shell e links."
+			}
+		}
+	],
+	"tui_engine_docker_compose_failed": "compose up falhou ({exit}): {detail}",
+	"tui_engine_docker_compose_missing": "o plugin docker compose não está instalado. Instale o docker-compose-plugin (Linux) ou atualize o Docker",
+	"tui_engine_docker_daemon_down": "o daemon do docker não está rodando. Inicie-o (Linux: sudo systemctl start docker; macOS: abra o OrbStack ou o Docker Desktop)",
+	"tui_engine_docker_exit_code": "saída {code}",
+	"tui_engine_docker_exit_signal": "encerrado por um sinal",
+	"tui_engine_docker_no_output": "sem saída",
+	"tui_engine_docker_not_found": "docker não encontrado. Instale o Docker (https://docs.docker.com/engine/install/) ou corrija o PATH; procurado em: {path}",
+	"tui_engine_docker_permission": "docker: permissão negada no socket do docker. Adicione seu usuário ao grupo docker: sudo usermod -aG docker $USER, depois saia e entre de novo",
+	"tui_engine_docker_permission_run": "não foi possível executar o docker: permissão negada ({error})",
+	"tui_engine_docker_recovered": "Daemon do Docker recuperado.",
+	"tui_engine_docker_run_failed": "não foi possível executar o docker: {error}",
+	"tui_engine_docker_unreachable": "Daemon do Docker inacessível.",
+	"tui_engine_health_hang": "não saudável: sem resposta da sonda de saúde ({misses} falhas × {timeout}s de limite)",
+	"tui_engine_health_hang_restarting": "não saudável: sem resposta da sonda de saúde ({misses} falhas × {timeout}s de limite), reiniciando",
+	"tui_engine_health_hang_spent": "não saudável de novo depois dos reinícios: mantido em execução",
+	"tui_engine_health_unhealthy_for": "não saudável há {secs}s: {misses} sondas perdidas",
+	"tui_engine_infra_port_closed": "nada escuta em :{port} após {secs}s: o container não iniciou, encerrou ou mapeia outra porta (veja `docker compose ps` e `docker compose logs`)",
+	"tui_engine_memory_back_under": "memória de volta dentro do orçamento",
+	"tui_engine_memory_leak_reloads": "suspeita de vazamento: +{growth} em {cycles} recarregamentos",
+	"tui_engine_memory_leak_restarts": "suspeita de vazamento: +{growth} em {cycles} reinícios",
+	"tui_engine_memory_notify": "usando {used} (max_memory {max}), mantido em execução (on_memory_max: notify)",
+	"tui_engine_memory_over_max": "usando {used}, acima de max_memory {max}",
+	"tui_engine_memory_over_warn": "usando {used}, acima de memory_warn {warn}",
+	"tui_engine_memory_restarting": "usando {used} (max_memory {max}), reiniciando ({attempt}/{limit})",
+	"tui_engine_memory_stopped": "usando {used} (max_memory {max}) após {restarts} reinícios, parado",
+	"tui_engine_note_lines": "{first}\n{second}",
+	"tui_engine_note_pair": "{first} · {second}",
+	"tui_engine_port_held": "porta {port} ocupada pelo PID {pid} ({cmd}): encerre-o você mesmo ({stop}) ou mude a porta do serviço",
+	"tui_engine_port_held_cwd": "porta {port} ocupada pelo PID {pid} ({cmd}, cwd {cwd}): encerre-o você mesmo ({stop}) ou mude a porta do serviço",
+	"tui_engine_probe_ready_failed": "a sonda ready falhou: {error}",
+	"tui_engine_probe_repeating": "erro repetido: {line}",
+	"tui_engine_sched_completed": "concluído com sucesso",
+	"tui_engine_sched_crashed_restart": "falhou; reiniciando em {secs}s ({attempt}/{limit})",
+	"tui_engine_sched_dependency_failed": "a dependência {dep} falhou",
+	"tui_engine_sched_done": "concluído",
+	"tui_engine_sched_exited": "encerrou",
+	"tui_engine_sched_exited_cleanly": "encerrou sem erros",
+	"tui_engine_sched_exited_error": "encerrou com erro",
+	"tui_engine_sched_exited_restart": "encerrou; reiniciando em {secs}s ({attempt}/{limit})",
+	"tui_engine_sched_gave_up": [
+		{
+			"declarations": [
+				"input attempts",
+				"local attemptsPlural = attempts: plural"
+			],
+			"selectors": [
+				"attemptsPlural"
+			],
+			"match": {
+				"attemptsPlural=one": "desistiu após {attempts} reinício",
+				"attemptsPlural=*": "desistiu após {attempts} reinícios"
+			}
+		}
+	],
+	"tui_engine_sched_restarted": "reiniciado ×{attempts}",
+	"tui_engine_sched_restarting": "reiniciando",
+	"tui_engine_sched_restarting_in": "reiniciando em {secs}s ({attempt}/{limit})",
+	"tui_engine_sched_stable": "estável há {secs}s, contador de reinícios zerado",
+	"tui_engine_sched_start_timeout_log": "tempo de início esgotado: ainda aguardando ready_log ({secs}s)",
+	"tui_engine_sched_start_timeout_port": "tempo de início esgotado: ainda aguardando :{port} ({secs}s)",
+	"tui_engine_sched_still_starting_log": "ainda iniciando após {waited}s: aguardando ready_log",
+	"tui_engine_sched_still_starting_port": "ainda iniciando após {waited}s: aguardando :{port}",
+	"tui_engine_sched_waiting_dep": "aguardando {dep} ({condition})",
+	"tui_engine_sched_waiting_log": "aguardando ready_log ({secs}s)",
+	"tui_engine_sched_waiting_port": "aguardando :{port} ({secs}s)",
+	"tui_engine_spawn_empty_command": "não foi possível iniciar: o comando do serviço está vazio",
+	"tui_engine_spawn_failed": "não foi possível iniciar `{command}` em {dir}: {error}",
+	"tui_engine_tunnel_failed": "túnel SSH para {host} falhou: {reason}"
+}

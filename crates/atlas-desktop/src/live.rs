@@ -235,6 +235,15 @@ fn poll_event(s: &status::Snapshot) -> Value {
     });
     json!({"t": "poll", "mode": s.mode, "pid": s.pid, "services": services, "tunnel": tunnel})
 }
+/// The body of a native notification for a runner `alert` event: the engine's sentence written from its `code` and
+/// `args` in the display language; an event from a runner that sends no code shows its English `message`.
+fn alert_body(ev: &Value) -> String {
+    let note = atlas_tui::runtime::note::Note::from_wire(ev);
+    if note.message.is_empty() && note.code.is_empty() {
+        return "alert".to_string();
+    }
+    note.render()
+}
 
 /// Native notification for failures/alerts, only while the window is not focused.
 /// A crash-looping service sends `failed` every few seconds: each (project,
@@ -247,7 +256,7 @@ fn notify_if_needed(app: &AppHandle, root: &Path, ev: &Value) {
                 name = ev["name"].as_str().unwrap_or("service")
             )
         }
-        Some("alert") => ev["message"].as_str().unwrap_or("alert").to_string(),
+        Some("alert") => alert_body(ev),
         _ => return,
     };
     {

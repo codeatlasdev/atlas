@@ -82,7 +82,8 @@ pub async fn setup_run(app: AppHandle, id: String) -> Result<Value, String> {
     .await;
     let _ = app.emit("projects://setup", &id);
     Ok(match outcome {
-        deps::DepsOutcome::Failed(reason) => json!({ "ok": false, "reason": reason }),
+        // The setup strip shows the reason to a person: the engine's sentence in the display language.
+        deps::DepsOutcome::Failed(reason) => json!({ "ok": false, "reason": reason.render() }),
         deps::DepsOutcome::Installed => json!({ "ok": true }),
         deps::DepsOutcome::UpToDate => json!({ "ok": true, "skipped": true }),
     })

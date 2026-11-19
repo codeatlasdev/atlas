@@ -426,8 +426,8 @@ async fn on_unhealthy_restart_respawns_the_hung_process_and_notify_does_not() {
         // Either way the user was told.
         let mut alerted = false;
         while let Ok(ev) = rx.try_recv() {
-            if let ManagerEvent::CriticalAlert { message, .. } = ev {
-                alerted |= message.contains("unhealthy");
+            if let ManagerEvent::CriticalAlert { note, .. } = ev {
+                alerted |= note.message.contains("unhealthy");
             }
         }
         assert!(

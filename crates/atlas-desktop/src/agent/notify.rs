@@ -1,7 +1,7 @@
 //! Agent attention: native notification, optional sound, Dock badge.
 
+use crate::native_ui::{self, Verdict};
 use tauri::{AppHandle, Manager};
-use tauri_plugin_notification::NotificationExt;
 
 #[tauri::command]
 pub fn agent_notify(
@@ -10,12 +10,10 @@ pub fn agent_notify(
     body: String,
     sound: bool,
 ) -> Result<(), String> {
-    app.notification()
-        .builder()
-        .title(title)
-        .body(body)
-        .show()
-        .map_err(|e| e.to_string())?;
+    // An agent instance shows no banner and plays no sound (`native_ui`).
+    if native_ui::notify(&app, title, body)? == Verdict::Suppressed {
+        return Ok(());
+    }
     // `afplay` and the system sound exist on macOS only; elsewhere the toast carries the platform's own sound.
     if sound && cfg!(target_os = "macos") {
         let _ = std::process::Command::new("afplay")

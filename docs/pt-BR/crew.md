@@ -1,7 +1,7 @@
 ---
 title: "Atlas Crew"
 source: crew.md
-source_sha: "6f371d36fc37f5bcb127b08e3f455ebce3eff4f3"
+source_sha: "1191ced0630bacee8333131680579f1bf2ea0f9b"
 translation: machine
 ---
 
@@ -235,6 +235,8 @@ Uma tarefa pode levar até **4 imagens** de no máximo **5 MiB** cada (png, jpeg
 ### Aprovações
 
 Com `approval: ask`, uma chamada de ferramenta pausa a tarefa e espera até 30 minutos por `agent_approve {pane, req, allow}`; a chave do painel é `crew:<crewmate id>:<task id>`. A espera só começa quando alguém pode responder agora: um cliente desktop conectado, um celular conectado ou um chat do Telegram vinculado. Só um token de push registrado não conta (o celular pode estar offline). Caso contrário, o prompt é negado na hora, então configure um deles antes de contar com um crewmate `ask`. Claude Code e Codex: rode `atlas setup claude-code|codex --apply` de novo, uma vez, para o hook deles usar o timeout correspondente de 1805 s.
+
+Só um **allow** explícito executa a ferramenta. Qualquer outro fim a bloqueia e diz qual foi: o dono negou, ninguém respondeu a tempo (o prompt é auditado como `approval_decision` `timeout` / `none`) ou a própria requisição falhou. Um crewmate `claude` headless segue a mesma regra: um prompt que ninguém respondeu é uma negação ("nobody answered the approval request"), nunca um allow. As esperas formam uma cadeia, cada uma durando mais que a de dentro, para que a mais interna diga o que aconteceu: o hostd espera 30 minutos, a extensão de aprovação do omp 60 s a mais, e o omp 60 s a mais que isso. O omp impõe um limite próprio a todo handler `tool_call` de extensão (`extensionHandlers.toolCallTimeoutMs`, 30 s por padrão, e um `fetch` ao hostd não é um dos diálogos que ele desconta), então o overlay `--config` que o Atlas passa ao omp de cada crewmate o aumenta (`omp-crew.yml` no diretório do crewmate, reescrito no próximo turno); antes disso, as aprovações de um crewmate omp respondidas depois de 30 s falhavam com `omp-approval.ts timed out after 30000ms` mesmo quando o dono permitia. Um omp que não conhece a configuração (anterior à linha 18.4, onde ela existe) mantém os 30 s.
 
 ### Pausar e retomar
 

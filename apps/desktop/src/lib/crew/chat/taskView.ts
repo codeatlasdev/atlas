@@ -89,3 +89,26 @@ export function splitUi(prompt: string): { ui: boolean; prompt: string } {
 	const m = /^\/ui(?:\s+([\s\S]*))?$/.exec(prompt);
 	return m ? { ui: true, prompt: (m[1] ?? "").trim() } : { ui: false, prompt };
 }
+
+/**
+ * What the thread shows of a task's card. The server's word is the task's state: a card is live only while the task
+ * is `waiting_action`. `answeredHere` is what this view already sent for it (taskId -> value): an older hostd
+ * leaves the task `waiting_action` for the whole follow-up turn after an answer, so that card must not stay
+ * clickable (a second click was acknowledged and dropped, #524); it goes the moment the task changes state.
+ * `pick` is the owner's choice or typed answer to show as their own message, never a secret or a refusal word.
+ */
+export function cardView(
+	t: { id: string; state: string; action?: { kind: string } | null; answer?: string },
+	answeredHere: Record<string, string>,
+): { live: boolean; pick?: string } {
+	const parked = t.state === "waiting_action";
+	const local = parked ? answeredHere[t.id] : undefined;
+	const speaks = t.action?.kind === "choose" || t.action?.kind === "input";
+	const pick = t.answer ?? (speaks ? local : undefined);
+	// Shown once the task is past its card, or answered from here while it still reads as parked.
+	const answered = !parked || local !== undefined;
+	return {
+		live: parked && !!t.action && local === undefined,
+		pick: answered && pick && t.action?.kind !== "add_trigger" ? pick : undefined,
+	};
+}

@@ -2,6 +2,8 @@
  * Types and pure helpers of the Hygiene panel (Settings > Workspaces). The shapes are the REAL serialization of
  * `atlas_core::hygiene::Report` (`__fixtures__/hygiene-report.json`, written by a Rust test), snake_case included.
  */
+import { formatNumber, list } from "#lib/i18n/fmt.ts";
+import { m } from "#lib/i18n/m.ts";
 
 export type HygieneKind = "terminal" | "service" | "agent" | "browser" | "other";
 
@@ -56,9 +58,9 @@ export interface HygieneFixed {
 	marked: string[];
 }
 
-/** `1.5 GB`, `340 MB`, `12 KB`, `0 B`: binary units, one decimal from MB up. */
+/** `1.5 GB`, `340 MB`, `12 KB`, `0 B`: binary units, one decimal from MB up, the decimal mark of the language. */
 export function bytes(n: number): string {
-	if (n < 1024) return `${n} B`;
+	if (n < 1024) return `${formatNumber(n, { useGrouping: false })} B`;
 	const units = ["KB", "MB", "GB", "TB"];
 	let v = n / 1024;
 	let i = 0;
@@ -66,7 +68,43 @@ export function bytes(n: number): string {
 		v /= 1024;
 		i++;
 	}
-	return i === 0 ? `${Math.round(v)} KB` : `${v.toFixed(1)} ${units[i]}`;
+	return i === 0
+		? `${formatNumber(Math.round(v), { useGrouping: false })} KB`
+		: `${formatNumber(v, { minimumFractionDigits: 1, maximumFractionDigits: 1 })} ${units[i]}`;
+}
+
+/** The kind of an orphaned process, as `atlas_core::hygiene` names it. */
+export function kindText(kind: string): string {
+	switch (kind) {
+		case "terminal":
+			return m.settings_general_hygiene_kind_terminal();
+		case "service":
+			return m.settings_general_hygiene_kind_service();
+		case "agent":
+			return m.settings_general_hygiene_kind_agent();
+		case "browser":
+			return m.settings_general_hygiene_kind_browser();
+		case "other":
+			return m.settings_general_hygiene_kind_other();
+		default:
+			return kind;
+	}
+}
+
+/** The kind of a folder the hygiene report tracks, as `atlas_core::hygiene` names it. */
+export function dirKindText(kind: string): string {
+	switch (kind) {
+		case "temp":
+			return m.settings_general_hygiene_dir_temp();
+		case "browser_profile":
+			return m.settings_general_hygiene_dir_browser_profile();
+		case "cache":
+			return m.settings_general_hygiene_dir_cache();
+		case "instance":
+			return m.settings_general_hygiene_dir_instance();
+		default:
+			return kind;
+	}
 }
 
 /** Disk a project's heavy dirs hold, worktrees included. */
@@ -84,22 +122,25 @@ export function indexedDirs(r: HygieneReport): string[] {
 	return r.projects.flatMap((p) => p.indexed);
 }
 
-/** What Fix would do, in one line; `null` when there is nothing to do. */
+/** What Fix would do, as a list of actions ("end 2 orphaned processes, free 3 MB"); `null` when there is nothing to do. */
 export function fixSummary(r: HygieneReport): string | null {
 	const parts: string[] = [];
-	if (r.orphans.length)
-		parts.push(`end ${r.orphans.length} orphaned process${r.orphans.length === 1 ? "" : "es"}`);
-	if (r.freeable.bytes > 0) parts.push(`free ${bytes(r.freeable.bytes)}`);
+	if (r.orphans.length) parts.push(m.settings_general_hygiene_todo_end({ count: r.orphans.length }));
+	if (r.freeable.bytes > 0)
+		parts.push(m.settings_general_hygiene_todo_free({ size: bytes(r.freeable.bytes) }));
 	const idx = indexedDirs(r).length;
-	if (idx) parts.push(`keep Spotlight out of ${idx} folder${idx === 1 ? "" : "s"}`);
-	return parts.length ? parts.join(", ") : null;
+	if (idx) parts.push(m.settings_general_hygiene_todo_spotlight({ count: idx }));
+	return parts.length ? list(parts) : null;
 }
 
 /** What a Fix did, for the toast. */
 export function fixedText(f: HygieneFixed): string {
-	const parts = [`Ended ${f.reaped} process${f.reaped === 1 ? "" : "es"}`, `freed ${bytes(f.freed.bytes)}`];
-	if (f.marked.length)
-		parts.push(`marked ${f.marked.length} folder${f.marked.length === 1 ? "" : "s"} never-index`);
-	if (f.survivors.length) parts.push(`${f.survivors.length} still running (stuck in the kernel)`);
-	return parts.join(", ");
+	const parts = [
+		m.settings_general_hygiene_done_ended({ count: f.reaped }),
+		m.settings_general_hygiene_done_freed({ size: bytes(f.freed.bytes) }),
+	];
+	if (f.marked.length) parts.push(m.settings_general_hygiene_done_marked({ count: f.marked.length }));
+	if (f.survivors.length)
+		parts.push(m.settings_general_hygiene_done_survivors({ count: f.survivors.length }));
+	return list(parts, "unit");
 }

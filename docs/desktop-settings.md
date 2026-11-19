@@ -209,7 +209,8 @@ The shell is in Settings → Integrations → Shell & links; updates are in Sett
 | File | Content |
 |---|---|
 | `projects.json` | the projects you added |
-| `workspace.json` | tabs, panes and docks per worktree |
+| `workspace.json` | tabs, panes and docks per worktree. A copy that cannot be read (not JSON, empty, not a workspace) never keeps the app from opening: it is moved to `workspace.json.corrupt-<unix ms>`, Atlas starts with an empty workspace and a notice names the saved file |
+| `crew-servers.json` | the crew servers you registered. An unreadable copy is kept as `crew-servers.json.corrupt-<unix ms>` the same way |
 | `themes/` | legacy location of your Zed theme files (still read; new ones go to `~/.atlas/themes/`) |
 | `hook-endpoint.env` | loopback endpoint and token for agent hooks (new token per hostd run) |
 

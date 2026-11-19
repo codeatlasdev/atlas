@@ -85,7 +85,7 @@
 </Group>
 
 {#if loadError}
-	<LoadError what="your paired phones" error={loadError} />
+	<LoadError what="phones" error={loadError} />
 {/if}
 
 <Group title="Paired phones">

@@ -635,12 +635,14 @@ pub async fn shots_overlay_previous(app: AppHandle) {
 
 #[tauri::command]
 pub async fn shots_pick_folder(app: AppHandle) -> Result<Option<String>, String> {
-    use tauri_plugin_dialog::DialogExt;
-    let (tx, rx) = tokio::sync::oneshot::channel();
-    app.dialog().file().pick_folder(move |p| {
-        let _ = tx.send(p.map(|p| p.to_string()));
-    });
-    rx.await.map_err(|e| e.to_string())
+    crate::native_ui::pick_path(
+        app,
+        crate::native_ui::PathDialog {
+            directory: true,
+            ..Default::default()
+        },
+    )
+    .await
 }
 
 #[tauri::command]
@@ -661,23 +663,33 @@ pub fn shots_history_remove(state: State<'_, Shots>, path: String) {
 }
 
 #[tauri::command]
-pub fn shots_history_reveal(path: String) -> Result<(), String> {
+pub fn shots_history_reveal(state: State<'_, Shots>, path: String) -> Result<(), String> {
+    // The page's `path` is untrusted: only a capture of the history, resolved, reaches the OS.
+    let file = state
+        .history
+        .lock()
+        .launchable(std::path::Path::new(&path))?;
     #[cfg(target_os = "macos")]
-    return mac::reveal(std::path::Path::new(&path));
+    return mac::reveal(&file);
     #[cfg(not(target_os = "macos"))]
     {
-        let _ = path;
+        let _ = file;
         unavailable()
     }
 }
 
 #[tauri::command]
-pub fn shots_history_open(path: String) -> Result<(), String> {
+pub fn shots_history_open(state: State<'_, Shots>, path: String) -> Result<(), String> {
+    // As `shots_history_reveal`: the page could otherwise open any app or script on this Mac.
+    let file = state
+        .history
+        .lock()
+        .launchable(std::path::Path::new(&path))?;
     #[cfg(target_os = "macos")]
-    return mac::open(std::path::Path::new(&path));
+    return mac::open(&file);
     #[cfg(not(target_os = "macos"))]
     {
-        let _ = path;
+        let _ = file;
         unavailable()
     }
 }

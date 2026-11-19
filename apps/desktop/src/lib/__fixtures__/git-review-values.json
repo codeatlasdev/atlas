@@ -1,0 +1,4 @@
+{
+	"operations": ["merge", "rebase"],
+	"statuses": ["modified", "added", "deleted", "renamed", "untracked"]
+}

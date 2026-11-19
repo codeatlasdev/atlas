@@ -23,7 +23,6 @@ mock.module(resolve(import.meta.dir, "../components/sidebar/projects.ts"), () =>
 );
 // The standing Hero draws the globe with the theme store, which bun cannot load (Vite-only `import.meta.glob`).
 mock.module(resolve(import.meta.dir, "./Hero.svelte"), () => ({ default: () => {} }));
-mock.module("@tauri-apps/plugin-dialog", () => ({ open: async () => null }));
 await (await import("../../../test/uiKit.ts")).useRealKit("EmptyState", "Button");
 const { flushSync, mount, unmount, tick } = await import("svelte");
 const { store } = await import("#lib/stores/projects.svelte.ts");

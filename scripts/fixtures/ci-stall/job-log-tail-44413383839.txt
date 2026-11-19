@@ -1,0 +1,30 @@
+2026-11-18T23:12:38.6570356Z  4193 expect() calls
+2026-11-18T23:12:38.6570555Z Ran 1322 tests across 63 files. [35.97s]
+2026-11-18T23:12:39.0732336Z .........../home/runner/work/atlas/atlas/scripts/test_generate_manifest.py:93: ResourceWarning: unclosed file <_io.TextIOWrapper name='/home/runner/work/atlas/atlas/scripts/../crates/atlas-cli/src/commands/desktop.rs' mode='r' encoding='UTF-8'>
+2026-11-18T23:12:39.0733587Z   src = open(os.path.join(HERE, "..", "crates/atlas-cli/src/commands/desktop.rs")).read()
+2026-11-18T23:12:39.0734120Z ResourceWarning: Enable tracemalloc to get the object allocation traceback
+2026-11-18T23:12:39.0933099Z ...
+2026-11-18T23:12:39.0933596Z ----------------------------------------------------------------------
+2026-11-18T23:12:39.0934136Z Ran 14 tests in 0.297s
+2026-11-18T23:12:39.0934350Z 
+2026-11-18T23:12:39.0934436Z OK
+2026-11-18T23:12:39.3169392Z bootstrap channel selection: 76 passed, 0 failed
+2026-11-18T23:12:39.3642174Z labels.yml: 37 labels, names unique, colors and descriptions valid
+2026-11-18T23:12:39.4574104Z sync-labels.sh --dry-run: 37 commands, all --force
+2026-11-18T23:12:39.4664228Z ##[error]The operation was canceled.
+2026-11-18T23:12:39.4760625Z Post job cleanup.
+2026-11-18T23:12:39.5384305Z [command]/usr/bin/git version
+2026-11-18T23:12:39.5414884Z git version 2.56.1
+2026-11-18T23:12:39.5439855Z Temporarily overriding HOME='/home/runner/work/_temp/21d251f4-beb4-45e2-bf1a-609a064b8337' before making global git config changes
+2026-11-18T23:12:39.5440715Z Adding repository directory to the temporary git global config as a safe directory
+2026-11-18T23:12:39.5442297Z [command]/usr/bin/git config --global --add safe.directory /home/runner/work/atlas/atlas
+2026-11-18T23:12:39.5464861Z Removing SSH command configuration
+2026-11-18T23:12:39.5469751Z [command]/usr/bin/git config --local --name-only --get-regexp core\.sshCommand
+2026-11-18T23:12:39.5492055Z [command]/usr/bin/git submodule foreach --recursive sh -c "git config --local --name-only --get-regexp 'core\.sshCommand' && git config --local --unset-all 'core.sshCommand' || :"
+2026-11-18T23:12:39.5690499Z Removing HTTP extra header
+2026-11-18T23:12:39.5694132Z [command]/usr/bin/git config --local --name-only --get-regexp http\.https\:\/\/github\.com\/\.extraheader
+2026-11-18T23:12:39.5721622Z [command]/usr/bin/git submodule foreach --recursive sh -c "git config --local --name-only --get-regexp 'http\.https\:\/\/github\.com\/\.extraheader' && git config --local --unset-all 'http.https://github.com/.extraheader' || :"
+2026-11-18T23:12:39.5915563Z Removing includeIf entries pointing to credentials config files
+2026-11-18T23:12:39.5920278Z [command]/usr/bin/git config --local --name-only --get-regexp ^includeIf\.gitdir:
+2026-11-18T23:12:39.5945095Z [command]/usr/bin/git submodule foreach --recursive git config --local --show-origin --name-only --get-regexp remote.origin.url
+2026-11-18T23:12:39.6235260Z Cleaning up orphan processes

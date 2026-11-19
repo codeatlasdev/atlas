@@ -4,6 +4,7 @@ import { afterAll, afterEach, beforeAll, beforeEach, expect, mock, test } from "
 import { mkdirSync, mkdtempSync, readFileSync, rmSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
+import { m } from "#lib/i18n/m.ts";
 
 // Incident (#506): the Pull request tab of a folder that is not a repository said only "No pull request for this
 // branch." with a Create pull request button. The real tab and stores run against REAL git in throwaway folders; the
@@ -305,9 +306,13 @@ test("a pull request shows its title, state, checks, review state and a link to 
 	await open();
 	await until(() => text().includes("#497"), "the PR");
 	expect(text()).toContain("the Signed-off-by check refuses placeholder identities");
-	expect(text()).toContain("merged");
-	expect(text()).toContain("review required");
-	expect(text()).toMatch(/checks (ok|failed|pending)/);
+	expect(text()).toContain(m.git_github_pr_merged());
+	expect(text()).toContain(m.git_github_review_required());
+	expect(text()).toMatch(
+		new RegExp(
+			`(${m.git_github_checks_chip_ok()}|${m.git_github_checks_chip_failed()}|${m.git_github_checks_chip_pending()})`,
+		),
+	);
 	expect(document.body.querySelector('button[title="Open on GitHub"]')).not.toBeNull();
 	expect(text()).toContain("Checks");
 	noCreate();

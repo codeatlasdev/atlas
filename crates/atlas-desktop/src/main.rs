@@ -55,6 +55,7 @@ mod menu_model;
 mod crew;
 mod crew_ssh;
 mod loose_fs;
+mod native_ui;
 mod natives;
 mod open_path;
 mod pty_batch;
@@ -205,6 +206,8 @@ macro_rules! handlers {
             cmds::open_url,
             cmds::reveal,
             cmds::reveal_path,
+            native_ui::pick_path,
+            native_ui::save_path,
             cmds::theme_unpack,
             cmds::theme_unpack_cleanup,
             cmds::theme_read_packed,
@@ -232,6 +235,7 @@ macro_rules! handlers {
             host::host_restart_force,
             host::host_diagnostics,
             workspace::workspace_load,
+            workspace::workspace_set_aside,
             workspace::workspace_save,
             worktree::worktree_create,
             worktree::worktree_remove,
@@ -626,7 +630,6 @@ fn main() {
     };
     let builder = builder
         .plugin(tauri_plugin_dialog::init())
-        .plugin(tauri_plugin_shell::init())
         .plugin(tauri_plugin_notification::init())
         .plugin(tauri_plugin_global_shortcut::Builder::new().build())
         .plugin(

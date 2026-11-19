@@ -7,6 +7,7 @@
 	import SectionTitle from "./SectionTitle.svelte";
 	import { CATEGORIES, SPECS, type Category } from "#lib/sound/policy.ts";
 	import { sound } from "#lib/sound/sound.svelte.ts";
+	import { m } from "#lib/i18n/m.ts";
 
 	let p = $derived(sound.prefs);
 	let off = $derived(!p.enabled);
@@ -15,26 +16,32 @@
 	const setCategory = (c: Category, on: boolean) => set({ categories: { ...p.categories, [c]: on } });
 </script>
 
-<SectionTitle title="Sounds" setting="sounds">
-	Short, quiet cues for the moments that matter: a stack coming up, a service failing, an agent needing you.
-	Nothing plays on ordinary clicks.
+<SectionTitle title={m.settings_general_sound_sounds()} setting="sounds">
+	{m.settings_general_sound_short_quiet_cues_for_the()}
 </SectionTitle>
 
 {#if !sound.systemUiSounds}
 	<Alert severity="info">
-		“Play user interface sound effects” is off in System Settings ▸ Sound, so Atlas stays silent. The Play
-		buttons below still work.
+		{m.settings_general_sound_play_user_interface_sound_effects()}
 	</Alert>
 {/if}
 
 <Group>
-	<Row id="sounds" label="Play sounds" description="Master switch for every Atlas sound.">
-		<Switch aria-label="Play sounds" checked={p.enabled} onchange={(v) => set({ enabled: v })} />
+	<Row
+		id="sounds"
+		label={m.settings_general_sound_play_sounds()}
+		description={m.settings_general_sound_master_switch_for_every_atlas()}
+	>
+		<Switch
+			aria-label={m.settings_general_sound_play_sounds()}
+			checked={p.enabled}
+			onchange={(v) => set({ enabled: v })}
+		/>
 	</Row>
 	<Row
 		id="sound-volume"
-		label="Sound volume"
-		description="On top of your system's volume, which always wins."
+		label={m.settings_general_sound_sound_volume()}
+		description={m.settings_general_sound_on_top_of_your_system()}
 	>
 		<div class="vol">
 			<Slider
@@ -47,17 +54,17 @@
 			/>
 			<Button size="sm" variant="ghost" disabled={off} onclick={() => sound.preview("stack-up")}>
 				{#snippet leading()}<Play size={12} />{/snippet}
-				Play
+				{m.settings_general_sound_play()}
 			</Button>
 		</div>
 	</Row>
 	<Row
 		id="sound-reduce"
-		label="Reduce sounds"
-		description="Only the ones that need your attention, and quieter."
+		label={m.settings_general_sound_reduce_sounds()}
+		description={m.settings_general_sound_only_the_ones_that_need()}
 	>
 		<Switch
-			aria-label="Reduce sounds"
+			aria-label={m.settings_general_sound_reduce_sounds()}
 			checked={p.reduce}
 			disabled={off}
 			onchange={(v) => set({ reduce: v })}
@@ -65,14 +72,17 @@
 	</Row>
 </Group>
 
-<Group title="Which sounds" description="Switch any of them off on its own.">
+<Group
+	title={m.settings_general_sound_which_sounds()}
+	description={m.settings_general_sound_switch_any_of_them_off()}
+>
 	{#each CATEGORIES as c (c)}
 		<Row id="sound-cat-{c}" label={SPECS[c].label} description={SPECS[c].description}>
 			<div class="ctl">
 				<Button
 					size="sm"
 					variant="ghost"
-					aria-label="Play {SPECS[c].label}"
+					aria-label={m.settings_general_sound_play_label({ sound: SPECS[c].label })}
 					disabled={off}
 					onclick={() => sound.preview(c)}
 				>

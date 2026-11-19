@@ -7,6 +7,7 @@
 		type StatusInput,
 		type StatusItem as Item,
 	} from "#lib/editor/statusbar.ts";
+	import { m } from "#lib/i18n/m.ts";
 
 	let {
 		input,
@@ -44,7 +45,7 @@
 	<span class="slot" data-rank={statusRank("lsp")}>{@render lsp?.()}</span>
 {/snippet}
 
-<div class="status" role="status" aria-label="Editor status">
+<div class="status" role="status" aria-label={m.workbench_editor_status_bar()}>
 	<div class="side lead">
 		{#each left as it (it.id)}{@render cell(it)}{/each}
 	</div>

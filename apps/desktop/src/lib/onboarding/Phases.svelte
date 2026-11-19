@@ -12,6 +12,10 @@
 	import { store } from "#lib/stores/projects.svelte.ts";
 	import { ACTIONS, choiceMeta } from "./flow.ts";
 	import { welcome as w } from "./welcome.svelte.ts";
+	import { formatNumber } from "#lib/i18n/fmt.ts";
+	import { aroundSlot } from "#lib/i18n/slot.ts";
+	import { m } from "#lib/i18n/m.ts";
+	import { stateLabel } from "#lib/panel/stateLabel.ts";
 
 	let { onfinish }: { onfinish: () => void } = $props();
 
@@ -23,8 +27,9 @@
 		w.observe();
 	});
 
-	const plural = (n: number, one: string, many = `${one}s`) =>
-		`${n.toLocaleString()} ${n === 1 ? one : many}`;
+	const seconds = $derived(
+		formatNumber(discovery.elapsedMs / 1000, { minimumFractionDigits: 1, maximumFractionDigits: 1 }),
+	);
 </script>
 
 {#if w.phase === "welcome"}
@@ -42,31 +47,33 @@
 {/if}
 
 {#snippet welcome()}
-	<h1>Everything you run,<br />in one place.</h1>
-	<p class="lead">Atlas finds the projects already on this computer and starts them together.</p>
+	<h1>{m.onboarding_phases_welcome_title_first()}<br />{m.onboarding_phases_welcome_title_second()}</h1>
+	<p class="lead">{m.onboarding_phases_welcome_lead()}</p>
 	<div class="actions">
 		<Button size="lg" data-testid={ACTIONS.scan} onclick={() => void w.scan()}>
 			{#snippet leading()}<Sparkles size={15} />{/snippet}
-			Find my projects
+			{m.onboarding_phases_find_my_projects()}
 		</Button>
 		<div class="secondary">
 			<button class="link" data-testid={ACTIONS.addFolder} onclick={() => void w.addFolder()}
-				><FolderPlus size={13} /> Add a folder…</button
+				><FolderPlus size={13} /> {m.onboarding_phases_add_a_folder()}</button
 			>
 		</div>
 	</div>
 {/snippet}
 
 {#snippet scanning()}
+	{@const title = aroundSlot((number) =>
+		m.onboarding_phases_scanning_title({ count: w.choices.length, number }),
+	)}
 	<h1 aria-live="polite">
-		<span class="count">{w.choices.length.toLocaleString()}</span>
-		{w.choices.length === 1 ? "project" : "projects"} so far
+		{title[0]}<span class="count">{formatNumber(w.choices.length)}</span>{title[1]}
 	</h1>
 	<p class="lead">
 		<Spinner size={12} />
-		{discovery.dirs.toLocaleString()} folders · {(discovery.elapsedMs / 1000).toFixed(1)}s
+		{m.onboarding_phases_scanning_progress({ count: discovery.dirs, seconds })}
 	</p>
-	<ul class="live" aria-label="Projects found">
+	<ul class="live" aria-label={m.onboarding_phases_projects_found()}>
 		{#each w.choices.slice(0, 5) as f (f.path)}
 			<li>
 				<span class="dot"></span>
@@ -77,53 +84,58 @@
 	</ul>
 	<p class="cur mono" title={discovery.current}>{tilde(discovery.current)}</p>
 	<div class="actions">
-		<Button variant="ghost" onclick={() => void w.cancelScan()}>Stop</Button>
+		<Button variant="ghost" onclick={() => void w.cancelScan()}>{m.onboarding_phases_stop()}</Button>
 	</div>
 {/snippet}
 
 {#snippet empty()}
-	<h1>No projects found yet.</h1>
+	<h1>{m.onboarding_phases_no_projects_found_yet()}</h1>
 	<p class="lead">
-		Scanned {discovery.done ? discovery.done.dirs.toLocaleString() : 0} folders. Point Atlas at any project folder:
-		it detects the stack, no setup file needed.
+		{`${m.onboarding_phases_scanned_folders({ count: discovery.done?.dirs ?? 0 })} ${m.onboarding_phases_point_at_folder()}`}
 	</p>
 	<div class="actions">
 		<Button size="lg" data-testid={ACTIONS.init} onclick={() => void w.initFolder()}>
 			{#snippet leading()}<Wand2 size={15} />{/snippet}
-			Choose a project folder
+			{m.onboarding_phases_choose_a_project_folder()}
 		</Button>
 		<div class="secondary">
 			<button class="link" data-testid={ACTIONS.addFolder} onclick={() => void w.addFolder()}
-				><FolderPlus size={13} /> Add a folder…</button
+				><FolderPlus size={13} /> {m.onboarding_phases_add_a_folder()}</button
 			>
-			<button class="link" onclick={() => void w.scan()}>Scan again</button>
+			<button class="link" onclick={() => void w.scan()}>{m.onboarding_phases_scan_again()}</button>
 		</div>
 	</div>
 {/snippet}
 
 {#snippet results()}
+	{@const found = aroundSlot((number) =>
+		m.onboarding_phases_found_title({ count: w.choices.length, number }),
+	)}
 	<h1>
-		Found <span class="count">{plural(w.choices.length, "project")}</span>
+		{found[0]}<span class="count">{formatNumber(w.choices.length)}</span>{found[1]}
 	</h1>
 	<p class="lead">
-		{#if w.summary.services}{plural(w.summary.services, "service")} ready to start{w.summary.broken
-				? `, ${plural(w.summary.broken, "config")} need a look`
-				: ""}.{:else}Atlas detects how to run each one. Nothing is written to your folders.{/if}
+		{#if w.summary.services}{m.onboarding_phases_services_ready({
+				count: w.summary.services,
+			})}{:else}{m.onboarding_phases_detects_how_to_run()}{/if}
+		{#if w.summary.broken}{m.onboarding_phases_configs_need_look({ count: w.summary.broken })}{/if}
 	</p>
-	<ul class="pick" aria-label="Projects to add">
+	<ul class="pick" aria-label={m.onboarding_phases_projects_to_add()}>
 		{#each w.choices.slice(0, 7) as f (f.path)}
 			<li>
 				<Checkbox
 					checked={w.picked[f.path] ?? true}
 					onchange={() => w.toggle(f.path)}
-					aria-label="Add {f.name}"
+					aria-label={m.onboarding_phases_add_name({ name: f.name })}
 				/>
 				<span class="name"><b>{f.name}</b><span class="meta mono">{tilde(f.path)}</span></span>
 				<span class="meta">{choiceMeta(f)} · {ago(f.modified)}</span>
 			</li>
 		{/each}
 	</ul>
-	{#if w.choices.length > 7}<p class="more">and {w.choices.length - 7} more</p>{/if}
+	{#if w.choices.length > 7}<p class="more">
+			{m.onboarding_phases_more_projects({ count: w.choices.length - 7 })}
+		</p>{/if}
 	<div class="actions">
 		<Button
 			size="lg"
@@ -131,24 +143,26 @@
 			disabled={!w.chosen.length}
 			onclick={() => void w.addChosen()}
 		>
-			Add {w.chosen.length === 1 ? "this project" : `${w.chosen.length} projects`} and start
+			{m.onboarding_phases_add_and_start({ count: w.chosen.length })}
 			{#snippet trailing()}<ArrowRight size={15} />{/snippet}
 		</Button>
 		<div class="secondary">
-			<button class="link" onclick={() => void w.scan()}>Scan again</button>
+			<button class="link" onclick={() => void w.scan()}>{m.onboarding_phases_scan_again()}</button>
 		</div>
 	</div>
 {/snippet}
 
 {#snippet starting()}
-	<h1>Starting your stack…</h1>
-	<p class="lead tabular">{w.started.up} of {w.started.total || "…"} services up</p>
-	<ul class="services" aria-label="Services">
+	<h1>{m.onboarding_phases_starting_your_stack()}</h1>
+	<p class="lead tabular">
+		{m.onboarding_phases_starting_progress({ up: w.started.up, total: w.started.total || "…" })}
+	</p>
+	<ul class="services" aria-label={m.onboarding_phases_services()}>
 		{#each live.filter((s) => !s.deselected && !s.completed_ok) as s (s.name)}
 			<li class={s.state}>
 				<span class="led" aria-hidden="true"></span>
 				<b>{s.name}</b>
-				<span class="meta">{s.state}</span>
+				<span class="meta">{stateLabel(s.state)}</span>
 			</li>
 		{/each}
 	</ul>
@@ -156,13 +170,15 @@
 
 {#snippet up()}
 	<div class="check" aria-hidden="true"><Check size={26} /></div>
-	<h1>Your stack is up.</h1>
+	<h1>{m.onboarding_phases_your_stack_is_up()}</h1>
+	{@const jump = aroundSlot((key) => m.onboarding_phases_jump_anywhere({ key }))}
 	<p class="lead">
-		{plural(w.started.total, "service")} running. Press <Kbd>{kbd("cmd-k")}</Kbd> to jump anywhere.
+		{m.onboarding_phases_services_running({ count: w.started.total })}
+		{jump[0]}<Kbd>{kbd("cmd-k")}</Kbd>{jump[1]}
 	</p>
 	<div class="actions">
 		<Button size="lg" data-testid={ACTIONS.finish} onclick={onfinish}>
-			Take a 30-second look around
+			{m.onboarding_phases_start_tour()}
 			{#snippet trailing()}<ArrowRight size={15} />{/snippet}
 		</Button>
 	</div>

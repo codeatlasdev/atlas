@@ -1,7 +1,10 @@
 // @ts-nocheck bun test runtime types are not part of the app tsconfig
 import { afterAll, expect, mock, test } from "bun:test";
 
-mock.module("@tauri-apps/api/core", () => ({ invoke: async () => null }));
+// `workspace_load` answers `{ doc, recovered }` (crates/atlas-desktop/src/workspace.rs `WorkspaceLoad`), never null.
+mock.module("@tauri-apps/api/core", () => ({
+	invoke: async (cmd) => (cmd === "workspace_load" ? { doc: null, recovered: null } : null),
+}));
 const listeners = {};
 mock.module("@tauri-apps/api/event", () => ({
 	listen: async (ev, h) => ((listeners[ev] = h), () => delete listeners[ev]),

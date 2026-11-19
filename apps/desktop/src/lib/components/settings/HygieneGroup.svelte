@@ -12,11 +12,14 @@
 	import {
 		byDisk,
 		bytes,
+		dirKindText,
 		fixSummary,
 		fixedText,
+		kindText,
 		projectTotal,
 		type HygieneReport,
 	} from "#lib/settings/hygiene.ts";
+	import { m } from "#lib/i18n/m.ts";
 
 	let report = $state<HygieneReport | null>(null);
 	let busy = $state(false);
@@ -51,48 +54,52 @@
 </script>
 
 {#if error}
-	<LoadError what="the hygiene report" {error} />
+	<LoadError what="hygiene" {error} />
 {/if}
 
 <Group
-	title="Hygiene"
-	description="Agents leave browsers, dev servers and caches behind. Fix ends only processes Atlas tagged whose owner is gone, and frees only folders Atlas registered. target/, node_modules and worktrees are never removed."
+	title={m.settings_general_hygiene_group_hygiene()}
+	description={m.settings_general_hygiene_group_agents_leave_browsers_dev_servers()}
 >
 	<Row
 		id="ws-hygiene"
-		label="Orphans and disk"
+		label={m.settings_general_hygiene_group_orphans_and_disk()}
 		description={report
 			? todo
-				? `Fix would ${todo}.`
-				: "Nothing to clean: no orphans, no registered folder over its cap."
-			: "Scan to list orphaned processes and the disk each project holds."}
+				? m.settings_general_hygiene_fix_would({ todo })
+				: m.settings_general_hygiene_nothing_to_clean()
+			: m.settings_general_hygiene_scan_first()}
 	>
 		{#if busy}<Spinner size={12} />{/if}
-		<Button size="sm" variant="glass" disabled={busy} onclick={scan}>Scan</Button>
-		<Button size="sm" variant="destructive" disabled={busy || !todo} onclick={fix}>Fix</Button>
+		<Button size="sm" variant="glass" disabled={busy} onclick={scan}
+			>{m.settings_general_workspace_scan()}</Button
+		>
+		<Button size="sm" variant="destructive" disabled={busy || !todo} onclick={fix}
+			>{m.settings_general_hygiene_group_fix()}</Button
+		>
 	</Row>
 	{#if report}
 		{#each report.orphans as o (o.pid + ":" + o.start)}
 			<div class="line">
 				<span class="mono">{o.pid}</span>
 				<span class="name">{o.name}</span>
-				<span class="dim">{o.label ?? o.kind ?? ""}</span>
+				<span class="dim">{o.label ?? (o.kind ? kindText(o.kind) : "")}</span>
 				<span class="dim path">{o.project ?? ""}</span>
 			</div>
 		{/each}
 		{#each byDisk(report.projects) as p (p.root)}
 			<div class="line">
 				<span class="name path" title={p.root}>{p.name}</span>
-				<span class="dim">target {bytes(p.target)}</span>
-				<span class="dim">node_modules {bytes(p.node_modules)}</span>
-				<span class="dim">total {bytes(projectTotal(p))}</span>
+				<span class="dim">{m.settings_general_hygiene_target({ size: bytes(p.target) })}</span>
+				<span class="dim">{m.settings_general_hygiene_node_modules({ size: bytes(p.node_modules) })}</span>
+				<span class="dim">{m.settings_general_hygiene_total({ size: bytes(projectTotal(p)) })}</span>
 			</div>
 		{/each}
 		{#each report.dirs as d (d.path)}
 			<div class="line">
 				<span class="name path" title={d.path}>{d.path}</span>
 				<span class="dim">{bytes(d.bytes)} / {bytes(d.cap_bytes)}</span>
-				<span class="dim">{d.orphaned ? "owner gone" : d.kind}</span>
+				<span class="dim">{d.orphaned ? m.settings_general_hygiene_owner_gone() : dirKindText(d.kind)}</span>
 			</div>
 		{/each}
 	{/if}

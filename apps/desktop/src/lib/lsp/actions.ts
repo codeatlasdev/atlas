@@ -3,6 +3,7 @@ import { toast } from "@codeatlasdev/ui";
 import { indentUnit } from "@codemirror/language";
 import type { EditorView } from "@codemirror/view";
 import { promptDialog } from "#lib/stores/ask.svelte.ts";
+import { m } from "#lib/i18n/m.ts";
 import { envOf, posParams, type Location } from "#lib/lsp/context.ts";
 import { applyWorkspaceEdit } from "#lib/lsp/apply.ts";
 import { editsToChanges } from "#lib/lsp/changes.ts";
@@ -26,23 +27,41 @@ const toLocation = (t: Target): Location => ({
 	end: t.end,
 });
 
-async function locate(view: EditorView, method: string, label: string, feature: Feature) {
+async function locate(view: EditorView, method: string, feature: Feature, none: string, title: string) {
 	const env = envOf(view);
 	if (!env || !explainUnserved(view, feature)) return;
 	const res = await env.doc.request<unknown>(method, posParams(view, env));
 	const list = toTargets(res).map(toLocation);
-	if (list.length === 0) return toast.info(`No ${label} found`);
+	if (list.length === 0) return toast.info(none);
 	if (list.length === 1)
 		env.openAt(list[0].path, { line: list[0].line, character: list[0].character }, list[0].end);
-	else env.showLocations(label[0].toUpperCase() + label.slice(1) + "s", list);
+	else env.showLocations(title, list);
 }
 
 export const goToDefinition = (view: EditorView) =>
-	locate(view, "textDocument/definition", "definition", "definition");
+	locate(
+		view,
+		"textDocument/definition",
+		"definition",
+		m.workbench_lsp_none_definition(),
+		m.workbench_lsp_title_definitions(),
+	);
 export const goToTypeDefinition = (view: EditorView) =>
-	locate(view, "textDocument/typeDefinition", "type definition", "type-definition");
+	locate(
+		view,
+		"textDocument/typeDefinition",
+		"type-definition",
+		m.workbench_lsp_none_type_definition(),
+		m.workbench_lsp_title_type_definitions(),
+	);
 export const goToImplementation = (view: EditorView) =>
-	locate(view, "textDocument/implementation", "implementation", "implementation");
+	locate(
+		view,
+		"textDocument/implementation",
+		"implementation",
+		m.workbench_lsp_none_implementation(),
+		m.workbench_lsp_title_implementations(),
+	);
 
 export async function findReferences(view: EditorView) {
 	const env = envOf(view);
@@ -58,8 +77,8 @@ export async function findReferences(view: EditorView) {
 		if (loc.path === env.doc.path && loc.line < doc.lines) loc.preview = doc.line(loc.line + 1).text.trim();
 		return loc;
 	});
-	if (list.length === 0) return toast.info("No references found");
-	env.showLocations(`References (${list.length})`, list);
+	if (list.length === 0) return toast.info(m.workbench_lsp_none_references());
+	env.showLocations(m.workbench_lsp_title_references({ count: list.length }), list);
 }
 
 export async function renameSymbol(view: EditorView) {
@@ -73,7 +92,7 @@ export async function renameSymbol(view: EditorView) {
 			"textDocument/prepareRename",
 			p,
 		);
-		if (!prep) return toast.info("Nothing to rename here");
+		if (!prep) return toast.info(m.workbench_lsp_rename_nothing());
 		const range = "range" in prep ? prep.range : prep;
 		current = "placeholder" in prep && prep.placeholder ? prep.placeholder : "";
 		if (!current) {
@@ -84,13 +103,16 @@ export async function renameSymbol(view: EditorView) {
 		const w = view.state.wordAt(view.state.selection.main.head);
 		current = w ? view.state.sliceDoc(w.from, w.to) : "";
 	}
-	const name = await promptDialog("Rename symbol", { value: current, confirmLabel: "Rename" });
+	const name = await promptDialog(m.workbench_lsp_cmd_rename(), {
+		value: current,
+		confirmLabel: m.common_action_rename(),
+	});
 	if (!name || name === current) return;
 	const edit = await env.doc.request<WorkspaceEdit | null>("textDocument/rename", { ...p, newName: name });
-	if (!edit) return toast.info("The server returned no changes");
+	if (!edit) return toast.info(m.workbench_lsp_rename_no_changes());
 	const r = await applyWorkspaceEdit(edit);
-	if (r.applied) toast.success(`Renamed in ${r.files} file${r.files === 1 ? "" : "s"}`);
-	else toast.error(`Rename failed: ${r.error}`);
+	if (r.applied) toast.success(m.workbench_lsp_renamed({ count: r.files }));
+	else toast.error(m.workbench_lsp_rename_failed({ error: r.error ?? "" }));
 }
 
 /**
@@ -167,7 +189,8 @@ export async function runCodeAction(view: EditorView, action: CodeAction) {
 	}
 	if (a.edit) {
 		const r = await applyWorkspaceEdit(a.edit);
-		if (!r.applied) return void toast.error(`${a.title} failed: ${r.error}`);
+		if (!r.applied)
+			return void toast.error(m.workbench_lsp_action_failed({ title: a.title, error: r.error ?? "" }));
 	}
 	if (a.command) await env.doc.request("workspace/executeCommand", a.command).catch(() => {});
 }

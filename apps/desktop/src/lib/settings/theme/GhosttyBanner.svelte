@@ -7,6 +7,7 @@
 	import type { ImportResult } from "#lib/theme/import/color.ts";
 	import ImportPreview from "./ImportPreview.svelte";
 	import { previewModel } from "./preview.ts";
+	import { m } from "#lib/i18n/m.ts";
 
 	let result = $state<ImportResult | null>(null);
 	let failed = $state<string | null>(null);
@@ -39,7 +40,7 @@
 		try {
 			await themes.importResult(result, { applyFont: true, select: true });
 			await themes.dismissGhosttyOffer();
-			toast.success(`Using ${result.name}`);
+			toast.success(m.settings_theme_toast_using({ name: result.name }));
 		} catch (e) {
 			toast.error(errText(e));
 		} finally {
@@ -49,15 +50,15 @@
 </script>
 
 {#if themes.ghostty.offered && !failed}
-	<section class="banner" aria-label="Ghostty theme">
+	<section class="banner" aria-label={m.settings_theme_ghostty_banner_label()}>
 		<div class="row">
 			<Ghost size={16} aria-hidden="true" />
 			<div class="text">
-				<b>Use your Ghostty theme</b>
+				<b>{m.settings_theme_ghostty_banner_title()}</b>
 				{#if result}
 					<span class="sum">{summary}</span>
 				{:else}
-					<span class="sum"><Spinner size={11} /> Reading your Ghostty config…</span>
+					<span class="sum"><Spinner size={11} /> {m.settings_theme_ghostty_banner_reading()}</span>
 				{/if}
 			</div>
 			{#if strip.length}
@@ -66,7 +67,9 @@
 				</span>
 			{/if}
 			<div class="actions">
-				<Button size="sm" disabled={!result || busy} loading={busy} onclick={use}>Use it</Button>
+				<Button size="sm" disabled={!result || busy} loading={busy} onclick={use}
+					>{m.settings_theme_use_it()}</Button
+				>
 				<Button
 					size="sm"
 					variant="outlined"
@@ -74,11 +77,19 @@
 					aria-expanded={showPreview}
 					onclick={() => (showPreview = !showPreview)}
 				>
-					{showPreview ? "Hide preview" : "Preview"}
+					{showPreview
+						? m.settings_theme_ghostty_banner_hide_preview()
+						: m.settings_theme_ghostty_banner_preview()}
 				</Button>
-				<Button size="sm" variant="ghost" onclick={() => themes.dismissGhosttyOffer()}>Not now</Button>
+				<Button size="sm" variant="ghost" onclick={() => themes.dismissGhosttyOffer()}
+					>{m.settings_theme_ghostty_banner_not_now()}</Button
+				>
 			</div>
-			<button class="x" aria-label="Dismiss" onclick={() => themes.dismissGhosttyOffer()}>
+			<button
+				class="x"
+				aria-label={m.settings_theme_ghostty_banner_dismiss()}
+				onclick={() => themes.dismissGhosttyOffer()}
+			>
 				<X size={13} />
 			</button>
 		</div>

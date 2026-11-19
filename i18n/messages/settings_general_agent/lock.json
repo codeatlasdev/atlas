@@ -1,0 +1,20 @@
+{
+  "pt-BR": {
+    "settings_general_agent_form_args_error": "767cd8201512",
+    "settings_general_agent_form_command_error": "612c653f6d18",
+    "settings_general_agent_form_command_required": "ae4a3bb4dd4e",
+    "settings_general_agent_form_env_pair": "f1ced4337e54",
+    "settings_general_agent_form_env_reserved": "9245ad37b028",
+    "settings_general_agent_form_name_letters": "5741609e2f9c",
+    "settings_general_agent_form_name_required": "71afa7e29e57",
+    "settings_general_agent_form_resume_error": "409e1d7e1179",
+    "settings_general_agent_hooks_agent_hooks": "6c1b2494dabd",
+    "settings_general_agent_hooks_install_omp_claude_code_or": "d2e5b3b7ec38",
+    "settings_general_agent_hooks_no_agents_found": "f6205c032d06",
+    "settings_general_agent_hooks_on": "9cc01faad79c",
+    "settings_general_agent_hooks_state_missing": "e759f7956cf7",
+    "settings_general_agent_hooks_state_ok": "ff6549776b56",
+    "settings_general_agent_hooks_state_unknown": "4f39cbc8f050",
+    "settings_general_agent_hooks_turn_on": "4716744f82ea"
+  }
+}

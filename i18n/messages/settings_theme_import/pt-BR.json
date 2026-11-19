@@ -1,0 +1,166 @@
+{
+	"settings_theme_import_dialog_appearance": "Aparência",
+	"settings_theme_import_dialog_apply_font": "Usar também a fonte e as configurações de cursor do tema",
+	"settings_theme_import_dialog_archive_dropped": "Um arquivo compactado solto aqui não tem caminho para extrair: use \"{@settings_theme_import_package_archive}\" para escolhê-lo.",
+	"settings_theme_import_dialog_choose_file": "Escolher arquivo…",
+	"settings_theme_import_dialog_copy_only": "Detectado: {format} · o arquivo é adicionado aos seus temas como está",
+	"settings_theme_import_dialog_description": "Temas do Ghostty, iTerm, VS Code, Alacritty, Base16, Atlas ou Zed: um arquivo, texto colado ou um zip, vsix ou pasta com vários.",
+	"settings_theme_import_dialog_detected": "Detectado: {format}",
+	"settings_theme_import_dialog_drop_hint": "ou solte um arquivo aqui, ou cole o texto abaixo",
+	"settings_theme_import_dialog_file_added": "Arquivo de tema adicionado",
+	"settings_theme_import_dialog_filter_any": "Qualquer arquivo",
+	"settings_theme_import_dialog_filter_theme": "Tema",
+	"settings_theme_import_dialog_import": "Importar",
+	"settings_theme_import_dialog_import_a_theme": "Importar um tema",
+	"settings_theme_import_dialog_import_warnings": "Avisos da importação",
+	"settings_theme_import_dialog_imported": "{name} importado",
+	"settings_theme_import_dialog_name": "Nome",
+	"settings_theme_import_dialog_theme_text": "Texto do tema",
+	"settings_theme_import_dialog_use_as_dark": "Usar como tema escuro",
+	"settings_theme_import_dialog_use_as_light": "Usar como tema claro",
+	"settings_theme_import_format_atlas": "Arquivo de tema do Atlas",
+	"settings_theme_import_format_base16": "Esquema Base16",
+	"settings_theme_import_format_ghostty": "Configuração do Ghostty",
+	"settings_theme_import_format_iterm": "Cores do iTerm",
+	"settings_theme_import_format_vscode": "Tema do VS Code",
+	"settings_theme_import_format_zed": "Arquivo de tema do Zed",
+	"settings_theme_import_package_archive": "Arquivo compactado (.zip, .vsix)…",
+	"settings_theme_import_package_choose_archive_title": "Escolher um arquivo compactado de temas",
+	"settings_theme_import_package_choose_folder_title": "Escolher uma pasta de temas",
+	"settings_theme_import_package_failed_count": [
+		{
+			"declarations": [
+				"input count",
+				"local countExact = count",
+				"local countPlural = count: plural"
+			],
+			"selectors": [
+				"countExact",
+				"countPlural"
+			],
+			"match": {
+				"countExact=0, countPlural=*": "Nenhum tema deixou de ser importado.",
+				"countExact=*, countPlural=one": "Não foi possível importar {count} tema.",
+				"countExact=*, countPlural=*": "Não foi possível importar {count} temas."
+			}
+		}
+	],
+	"settings_theme_import_package_failures_label": "Temas que não foram importados",
+	"settings_theme_import_package_files": [
+		{
+			"declarations": [
+				"input count",
+				"local countExact = count",
+				"local countPlural = count: plural"
+			],
+			"selectors": [
+				"countExact",
+				"countPlural"
+			],
+			"match": {
+				"countExact=0, countPlural=*": "{count} arquivos",
+				"countExact=*, countPlural=one": "{count} arquivo",
+				"countExact=*, countPlural=*": "{count} arquivos"
+			}
+		}
+	],
+	"settings_theme_import_package_filter_archive": "Arquivo compactado de temas",
+	"settings_theme_import_package_folder": "Pasta…",
+	"settings_theme_import_package_hint": [
+		{
+			"declarations": [
+				"input os"
+			],
+			"selectors": [
+				"os"
+			],
+			"match": {
+				"os=mac": "Os arquivos compactados são extraídos para uma pasta temporária no seu Mac e nada é enviado. Os temas ficam salvos só para você, em {path}. Traga sua própria cópia licenciada: o Atlas não inclui temas pagos.",
+				"os=windows": "Os arquivos compactados são extraídos para uma pasta temporária neste PC e nada é enviado. Os temas ficam salvos só para você, em {path}. Traga sua própria cópia licenciada: o Atlas não inclui temas pagos.",
+				"os=*": "Os arquivos compactados são extraídos para uma pasta temporária neste computador e nada é enviado. Os temas ficam salvos só para você, em {path}. Traga sua própria cópia licenciada: o Atlas não inclui temas pagos."
+			}
+		}
+	],
+	"settings_theme_import_package_import_n": [
+		{
+			"declarations": [
+				"input count",
+				"local countExact = count",
+				"local countPlural = count: plural"
+			],
+			"selectors": [
+				"countExact",
+				"countPlural"
+			],
+			"match": {
+				"countExact=0, countPlural=*": "Importar temas",
+				"countExact=*, countPlural=one": "Importar {count} tema",
+				"countExact=*, countPlural=*": "Importar {count} temas"
+			}
+		}
+	],
+	"settings_theme_import_package_import_name": "Importar {name}",
+	"settings_theme_import_package_imported_one": "{name} importado.",
+	"settings_theme_import_package_none_found": "Nenhum tema encontrado nesse arquivo compactado ou nessa pasta.",
+	"settings_theme_import_package_notes_label": "Avisos e arquivos ignorados",
+	"settings_theme_import_package_preview_name": "Ver prévia de {name}",
+	"settings_theme_import_package_select_all": "Selecionar tudo",
+	"settings_theme_import_package_select_none": "Desmarcar tudo",
+	"settings_theme_import_package_selected": "{selected} de {total} selecionados",
+	"settings_theme_import_package_skipped": "{file} ignorado",
+	"settings_theme_import_package_skipped_count": [
+		{
+			"declarations": [
+				"input count",
+				"local countExact = count",
+				"local countPlural = count: plural"
+			],
+			"selectors": [
+				"countExact",
+				"countPlural"
+			],
+			"match": {
+				"countExact=0, countPlural=*": "Nenhum ignorado",
+				"countExact=*, countPlural=one": "{count} ignorado",
+				"countExact=*, countPlural=*": "{count} ignorados"
+			}
+		}
+	],
+	"settings_theme_import_package_themes_found": "Temas encontrados",
+	"settings_theme_import_package_toast_imported": [
+		{
+			"declarations": [
+				"input count",
+				"local countExact = count",
+				"local countPlural = count: plural"
+			],
+			"selectors": [
+				"countExact",
+				"countPlural"
+			],
+			"match": {
+				"countExact=0, countPlural=*": "Nenhum tema importado para ~/.atlas/themes",
+				"countExact=*, countPlural=one": "{count} tema importado para ~/.atlas/themes",
+				"countExact=*, countPlural=*": "{count} temas importados para ~/.atlas/themes"
+			}
+		}
+	],
+	"settings_theme_import_package_warnings_count": [
+		{
+			"declarations": [
+				"input count",
+				"local countExact = count",
+				"local countPlural = count: plural"
+			],
+			"selectors": [
+				"countExact",
+				"countPlural"
+			],
+			"match": {
+				"countExact=0, countPlural=*": "Nenhum aviso",
+				"countExact=*, countPlural=one": "{count} aviso",
+				"countExact=*, countPlural=*": "{count} avisos"
+			}
+		}
+	]
+}

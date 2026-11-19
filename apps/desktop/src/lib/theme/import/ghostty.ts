@@ -1,3 +1,4 @@
+import { m } from "#lib/i18n/m.ts";
 import { ThemeImportError } from "./errors.ts";
 import { ANSI_KEYS, appearanceOf, normalizeColor, type ImportResult } from "./color.ts";
 
@@ -63,7 +64,7 @@ async function expand(
 	file: string,
 	ctx: GhosttyContext,
 	seen: Set<string>,
-	warn: (m: string) => void,
+	warn: (message: string) => void,
 	depth = 0,
 ): Promise<Entry[]> {
 	const out: Entry[] = [];
@@ -75,16 +76,16 @@ async function expand(
 		const optional = entry[1].startsWith("?");
 		const path = resolvePath(unquote(optional ? entry[1].slice(1) : entry[1]), dirname(file), ctx.home);
 		if (seen.has(path)) {
-			warn(`config-file cycle skipped: ${path}`);
+			warn(m.settings_theme_diag_config_cycle({ path }));
 			continue;
 		}
 		if (depth >= MAX_INCLUDE_DEPTH) {
-			warn(`config-file nesting too deep, skipped: ${path}`);
+			warn(m.settings_theme_diag_config_deep({ path }));
 			continue;
 		}
 		const body = await ctx.readFile(path);
 		if (body === null) {
-			if (!optional) warn(`config-file not found: ${path}`);
+			if (!optional) warn(m.settings_theme_diag_config_missing({ path }));
 			continue;
 		}
 		out.push(...(await expand(body, path, ctx, new Set(seen).add(path), warn, depth + 1)));
@@ -113,22 +114,22 @@ interface Collected {
 }
 
 /** Applies entries in order onto `acc` (later wins; `font-family` / `palette` repeat). */
-function apply(entries: Entry[], acc: Collected, warn: (m: string) => void): void {
+function apply(entries: Entry[], acc: Collected, warn: (message: string) => void): void {
 	for (const [key, value] of entries) {
 		const colorKey = COLOR_KEYS[key];
 		if (colorKey) {
 			const c = normalizeColor(value, true);
 			if (c) acc.colors.set(colorKey, c);
-			else warn(`invalid color for ${key}: ${value}`);
+			else warn(m.settings_theme_diag_invalid_color({ key, value }));
 			continue;
 		}
 		switch (key) {
 			case "palette": {
-				const m = /^(\d+)\s*=\s*(.+)$/.exec(value);
-				const c = m ? normalizeColor(m[2], true) : null;
-				if (!m || !c) warn(`invalid palette entry: ${value}`);
-				else if (Number(m[1]) > 15) warn("palette indexes above 15 are out of range and ignored");
-				else acc.palette.set(Number(m[1]), c);
+				const pair = /^(\d+)\s*=\s*(.+)$/.exec(value);
+				const c = pair ? normalizeColor(pair[2], true) : null;
+				if (!pair || !c) warn(m.settings_theme_diag_palette_entry({ value }));
+				else if (Number(pair[1]) > 15) warn(m.settings_theme_diag_palette_range());
+				else acc.palette.set(Number(pair[1]), c);
 				break;
 			}
 			case "font-family":
@@ -139,18 +140,18 @@ function apply(entries: Entry[], acc: Collected, warn: (m: string) => void): voi
 			case "font-size": {
 				const n = Number(value);
 				if (Number.isFinite(n) && n > 0) acc.fontSize = n;
-				else warn(`invalid font-size: ${value}`);
+				else warn(m.settings_theme_diag_invalid_option({ key, value }));
 				break;
 			}
 			case "font-thicken":
 				if (value === "true" || value === "false") acc.fontThicken = value === "true";
-				else warn(`invalid font-thicken: ${value}`);
+				else warn(m.settings_theme_diag_invalid_option({ key, value }));
 				break;
 			case "cursor-style": {
 				const shape = value === "block_hollow" ? "hollow" : value;
 				if (shape === "block" || shape === "bar" || shape === "underline" || shape === "hollow") {
 					acc.terminal.cursor_shape = shape;
-				} else warn(`invalid cursor-style: ${value}`);
+				} else warn(m.settings_theme_diag_invalid_option({ key, value }));
 				break;
 			}
 			case "cursor-style-blink":
@@ -162,7 +163,7 @@ function apply(entries: Entry[], acc: Collected, warn: (m: string) => void): voi
 				const n = Number(value.split(",")[0]);
 				if (Number.isFinite(n) && n >= 0) {
 					acc.terminal[key === "window-padding-x" ? "padding_x" : "padding_y"] = n;
-				} else warn(`invalid ${key}: ${value}`);
+				} else warn(m.settings_theme_diag_invalid_option({ key, value }));
 				break;
 			}
 			case "copy-on-select":
@@ -185,7 +186,7 @@ function apply(entries: Entry[], acc: Collected, warn: (m: string) => void): voi
 async function loadTheme(
 	name: string,
 	ctx: GhosttyContext,
-	warn: (m: string) => void,
+	warn: (message: string) => void,
 ): Promise<Entry[] | null> {
 	const candidates =
 		name.startsWith("/") || name.startsWith("~")
@@ -195,14 +196,14 @@ async function loadTheme(
 		const body = await ctx.readFile(path);
 		if (body !== null) return expand(body, path, ctx, new Set([path]), warn);
 	}
-	warn(`theme not found: ${name}`);
+	warn(m.settings_theme_diag_theme_not_found({ name }));
 	return null;
 }
 
 export async function parseGhosttyConfig(text: string, ctx: GhosttyContext): Promise<ImportResult> {
 	const warnings: string[] = [];
-	const warn = (m: string) => {
-		if (!warnings.includes(m)) warnings.push(m);
+	const warn = (message: string) => {
+		if (!warnings.includes(message)) warnings.push(message);
 	};
 	const entries = await expand(text, `${ctx.home}/.config/ghostty/config`, ctx, new Set(), warn);
 
@@ -233,7 +234,7 @@ export async function parseGhosttyConfig(text: string, ctx: GhosttyContext): Pro
 
 	const hasTerminal = Object.keys(acc.terminal).length > 0;
 	if (Object.keys(style).length === 0 && !themeName && Object.keys(font).length === 0 && !hasTerminal) {
-		throw new ThemeImportError("No Ghostty settings found");
+		throw new ThemeImportError(m.settings_theme_diag_ghostty_no_settings());
 	}
 	const result: ImportResult = {
 		name,

@@ -1,0 +1,272 @@
+{
+	"settings_theme_accent_amber": {
+		"description": "Name of the amber accent color (tooltip and accessible name of its swatch)."
+	},
+	"settings_theme_accent_crimson": {
+		"description": "Name of the crimson accent color (deep red)."
+	},
+	"settings_theme_accent_cyan": {
+		"description": "Name of the cyan accent color."
+	},
+	"settings_theme_accent_emerald": {
+		"description": "Name of the emerald accent color (green)."
+	},
+	"settings_theme_accent_ocean": {
+		"description": "Name of the ocean accent color (blue)."
+	},
+	"settings_theme_accent_rose": {
+		"description": "Name of the rose accent color (pink)."
+	},
+	"settings_theme_accent_slate": {
+		"description": "Name of the slate accent color (gray blue)."
+	},
+	"settings_theme_accent_violet": {
+		"description": "Name of the violet accent color."
+	},
+	"settings_theme_actions_copied_ghostty": {
+		"description": "Toast after a theme was copied to the clipboard as a Ghostty config."
+	},
+	"settings_theme_actions_copied_json": {
+		"description": "Toast after a theme was copied to the clipboard as JSON."
+	},
+	"settings_theme_actions_filter_atlas": {
+		"description": "Name of the file type filter of the save dialog for the Atlas JSON format."
+	},
+	"settings_theme_actions_filter_ghostty": {
+		"description": "Name of the file type filter of the save dialog for the Ghostty format."
+	},
+	"settings_theme_actions_remove_description": {
+		"description": "Body of the confirmation before a user theme is deleted."
+	},
+	"settings_theme_actions_remove_title": {
+		"description": "Title of the confirmation before a user theme is deleted."
+	},
+	"settings_theme_actions_save_title": {
+		"description": "Title of the system save dialog when a theme is exported."
+	},
+	"settings_theme_actions_saved": {
+		"description": "Toast after a theme was saved to a file. file is the file name."
+	},
+	"settings_theme_card_byline": {
+		"description": "Credit line on the Dracula and Alucard theme cards."
+	},
+	"settings_theme_card_default": {
+		"description": "Badge on the theme card of the default dark or light theme."
+	},
+	"settings_theme_card_options": {
+		"description": "Accessible name of the three-dot menu button of a theme card."
+	},
+	"settings_theme_card_save_as_ghostty_config": {
+		"description": "Menu item of a theme card: save the theme as a Ghostty config file."
+	},
+	"settings_theme_card_save_as_json": {
+		"description": "Menu item of a theme card: save the theme to a JSON file."
+	},
+	"settings_theme_card_yours": {
+		"description": "Badge on the theme card of a theme the user added."
+	},
+	"settings_theme_credit_card_get_pro": {
+		"description": "Button of the credit card: opens the Dracula Pro page in the browser."
+	},
+	"settings_theme_credit_card_label": {
+		"description": "Accessible name of the credit card for the Dracula themes."
+	},
+	"settings_theme_credit_card_license_note": {
+		"description": "Note on the credit card: the themes follow the official spec and are MIT licensed."
+	},
+	"settings_theme_credit_card_title": {
+		"description": "Title of the credit card for the Dracula themes."
+	},
+	"settings_theme_filter_all": {
+		"description": "Option of the theme grid filter: show every theme."
+	},
+	"settings_theme_ghostty_banner_dismiss": {
+		"description": "Accessible name of the X button of the Ghostty banner."
+	},
+	"settings_theme_ghostty_banner_hide_preview": {
+		"description": "Button of the Ghostty banner: hide the theme preview."
+	},
+	"settings_theme_ghostty_banner_label": {
+		"description": "Accessible name of the banner that offers the user's Ghostty theme."
+	},
+	"settings_theme_ghostty_banner_not_now": {
+		"description": "Button of the Ghostty banner: close it for now."
+	},
+	"settings_theme_ghostty_banner_preview": {
+		"description": "Button of the Ghostty banner: show the theme preview."
+	},
+	"settings_theme_ghostty_banner_reading": {
+		"description": "Text of the Ghostty banner while it reads the config."
+	},
+	"settings_theme_ghostty_banner_title": {
+		"description": "Title of the banner that offers the user's Ghostty theme."
+	},
+	"settings_theme_ghostty_offer_body": {
+		"description": "Text of the Ghostty corner suggestion. The path is the Ghostty config file."
+	},
+	"settings_theme_ghostty_offer_title": {
+		"description": "Title of the corner suggestion that offers the user's Ghostty theme."
+	},
+	"settings_theme_ghostty_offer_use_theme": {
+		"description": "Button of the Ghostty corner suggestion: opens Settings to apply the theme."
+	},
+	"settings_theme_grid_count": {
+		"description": "Counter next to the theme grid filter: themes shown."
+	},
+	"settings_theme_grid_show_themes": {
+		"description": "Accessible name of the all, dark, light filter of the theme grid."
+	},
+	"settings_theme_interface_tab_active_pane_border": {
+		"description": "Label of the active pane border row and accessible name of its number field."
+	},
+	"settings_theme_interface_tab_dim_inactive_description": {
+		"description": "Description of the dim inactive panes row; the numbers are the opacity scale."
+	},
+	"settings_theme_interface_tab_dim_inactive_panes": {
+		"description": "Label of the row that dims inactive panes, and accessible name of its number field."
+	},
+	"settings_theme_interface_tab_file_icons": {
+		"description": "Label of the file icons row and accessible name of its switch."
+	},
+	"settings_theme_interface_tab_file_icons_description": {
+		"description": "Description of the file icons row."
+	},
+	"settings_theme_interface_tab_file_panel": {
+		"description": "Title of the file panel group in Settings > Interface."
+	},
+	"settings_theme_interface_tab_file_panel_side": {
+		"description": "Label of the row that picks the side of the file panel, and accessible name of its selector."
+	},
+	"settings_theme_interface_tab_file_panel_side_description": {
+		"description": "Description of the file panel side row."
+	},
+	"settings_theme_interface_tab_folder_icons": {
+		"description": "Label of the folder icons row and accessible name of its switch."
+	},
+	"settings_theme_interface_tab_folder_icons_description": {
+		"description": "Description of the folder icons row."
+	},
+	"settings_theme_interface_tab_folder_indent": {
+		"description": "Label of the folder indent row and accessible name of its number field."
+	},
+	"settings_theme_interface_tab_folder_indent_description": {
+		"description": "Description of the folder indent row."
+	},
+	"settings_theme_interface_tab_font_family_description": {
+		"description": "Description of the interface font family row."
+	},
+	"settings_theme_interface_tab_font_sample": {
+		"description": "Sample sentence drawn in the chosen interface font, under the font rows."
+	},
+	"settings_theme_interface_tab_font_size": {
+		"description": "Label of the interface font size row."
+	},
+	"settings_theme_interface_tab_font_size_description": {
+		"description": "Description of the interface font size row."
+	},
+	"settings_theme_interface_tab_font_title": {
+		"description": "Title of the interface font group and label of its family row."
+	},
+	"settings_theme_interface_tab_left": {
+		"description": "Option of the file panel side selector."
+	},
+	"settings_theme_interface_tab_pane_border_description": {
+		"description": "Description of the active pane border row."
+	},
+	"settings_theme_interface_tab_right": {
+		"description": "Option of the file panel side selector."
+	},
+	"settings_theme_interface_tab_split_panes": {
+		"description": "Title of the split panes group in Settings > Interface."
+	},
+	"settings_theme_interface_tab_zoom": {
+		"description": "Title and label of the zoom row in Settings > Interface."
+	},
+	"settings_theme_interface_tab_zoom_description": {
+		"description": "Description of the zoom row. The three placeholders are shortcuts."
+	},
+	"settings_theme_issues_files": {
+		"description": "Title of the collapsible list of user theme files that did not load fully."
+	},
+	"settings_theme_mode_dark": {
+		"description": "Dark appearance: option of the theme mode selector, filter and appearance choice."
+	},
+	"settings_theme_mode_light": {
+		"description": "Light appearance: option of the theme mode selector, filter and appearance choice."
+	},
+	"settings_theme_mode_system": {
+		"description": "Option of the theme mode selector: follow the operating system."
+	},
+	"settings_theme_tab_accent_color": {
+		"description": "Title of the accent color group and label of its row in Settings > Appearance."
+	},
+	"settings_theme_tab_accent_description": {
+		"description": "Description of the accent color row."
+	},
+	"settings_theme_tab_color_theme": {
+		"description": "Title of the color theme group in Settings > Appearance, and accessible name of the theme grid."
+	},
+	"settings_theme_tab_copy_as_ghostty_config": {
+		"description": "Button and menu item: copy a theme to the clipboard as a Ghostty config."
+	},
+	"settings_theme_tab_copy_as_json": {
+		"description": "Button and menu item: copy a theme to the clipboard as JSON."
+	},
+	"settings_theme_tab_dark_theme": {
+		"description": "Label of the row that picks the theme used in dark mode."
+	},
+	"settings_theme_tab_dark_theme_description": {
+		"description": "Description of the dark theme row."
+	},
+	"settings_theme_tab_export_description": {
+		"description": "Description of the export theme row."
+	},
+	"settings_theme_tab_export_theme": {
+		"description": "Label of the export theme row."
+	},
+	"settings_theme_tab_import": {
+		"description": "Button of the import theme row: opens the import dialog."
+	},
+	"settings_theme_tab_import_and_export": {
+		"description": "Title of the import and export group in Settings > Appearance."
+	},
+	"settings_theme_tab_import_description": {
+		"description": "Description of the import theme row. ~/.atlas/themes is a folder path."
+	},
+	"settings_theme_tab_import_theme": {
+		"description": "Label of the import theme row."
+	},
+	"settings_theme_tab_light_theme": {
+		"description": "Label of the row that picks the theme used in light mode."
+	},
+	"settings_theme_tab_light_theme_description": {
+		"description": "Description of the light theme row."
+	},
+	"settings_theme_tab_reveal_themes_folder": {
+		"description": "Button of the import theme row: opens the themes folder in the file manager."
+	},
+	"settings_theme_tab_save_to_file": {
+		"description": "Button of the export theme row: save the theme to a file."
+	},
+	"settings_theme_tab_terminal_theme": {
+		"description": "Label of the row that picks the theme of terminals and agents."
+	},
+	"settings_theme_tab_terminal_theme_description": {
+		"description": "Description of the terminal theme row. The reference is the option that follows the app theme."
+	},
+	"settings_theme_tab_theme": {
+		"description": "Label of the theme mode row in Settings > Appearance, and accessible name of its mode selector."
+	},
+	"settings_theme_tab_theme_description": {
+		"description": "Description of the theme mode row."
+	},
+	"settings_theme_terminal_same_as_app": {
+		"description": "Option of the terminal theme selector: use the app theme."
+	},
+	"settings_theme_toast_using": {
+		"description": "Toast after a theme was imported and selected."
+	},
+	"settings_theme_use_it": {
+		"description": "Button: use the theme that was just found or imported."
+	}
+}

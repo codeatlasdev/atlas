@@ -1,0 +1,23 @@
+{
+	"shell_toasts_action_started": "Ação iniciada: {action}",
+	"shell_toasts_atlas_yaml_created": "atlas.yaml criado em {name}",
+	"shell_toasts_branch_preserved": "Branch preservada: {branch} (o merge não foi feito)",
+	"shell_toasts_checked_out_elsewhere": "{branch} está em uso em {path}",
+	"shell_toasts_copied_url": "{url} copiado",
+	"shell_toasts_created_and_switched": "Branch {branch} criada e ativada",
+	"shell_toasts_seed_cloned": "clonou {dirs} em {ms} ms",
+	"shell_toasts_seed_failed": "falhou",
+	"shell_toasts_seed_not_relocatable": "{dir} não foi copiado (um virtualenv do Python não funciona em outra pasta: recrie-o)",
+	"shell_toasts_seed_unsupported": "não clonou {dirs} (este sistema de arquivos não consegue clonar)",
+	"shell_toasts_setup_time": "setup {duration}",
+	"shell_toasts_stash_body": "{message}\n\nFazer stash delas (inclusive dos arquivos não rastreados) e trocar? Elas ficam em `git stash`.",
+	"shell_toasts_stash_confirm": "Fazer stash e trocar",
+	"shell_toasts_stash_title": "Alterações locais seriam sobrescritas",
+	"shell_toasts_switched": "Agora em {branch}",
+	"shell_toasts_switched_stashed": "Agora em {branch}; suas alterações estão no stash",
+	"shell_toasts_unknown_worktree": "{name} está em uso em {path}, que o Atlas não conhece",
+	"shell_toasts_workspace_recovered": "Não foi possível ler o arquivo do workspace, então o Atlas abriu um workspace vazio. O arquivo antigo foi salvo como {path}.",
+	"shell_toasts_workspace_unreadable": "Não foi possível ler o arquivo do workspace ({reason}). O Atlas abriu um workspace vazio e não vai salvar alterações nesta sessão, então o arquivo continua como está: {path}",
+	"shell_toasts_worktree_deleted": "Worktree excluída",
+	"shell_toasts_worktree_failed": "Não foi possível criar a worktree"
+}

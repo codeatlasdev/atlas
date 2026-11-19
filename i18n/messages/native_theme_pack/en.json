@@ -1,0 +1,12 @@
+{
+	"native_theme_pack_entry_outside": "This archive has an entry outside its folder ({name}): refusing to import it",
+	"native_theme_pack_open_failed": "Could not open {path}: {error}",
+	"native_theme_pack_package_too_big": "This package is too big (over 5000 files or 200 MB): refusing to import it",
+	"native_theme_pack_run_failed": "Could not run {what}: {error}",
+	"native_theme_pack_temp_failed": "Could not create a temporary folder: {error}",
+	"native_theme_pack_too_large": "This archive expands to more than 200 MB: refusing to import it",
+	"native_theme_pack_too_many_entries": "This archive has more than {max} entries: refusing to import it",
+	"native_theme_pack_tool_failed": "{what} failed: this does not look like a valid zip archive",
+	"native_theme_pack_tool_timeout": "{what} took longer than {seconds} s: the archive is too big or damaged",
+	"native_theme_pack_wrong_type": "Pick a .zip or .vsix archive, or a folder"
+}

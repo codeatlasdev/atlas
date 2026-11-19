@@ -232,6 +232,7 @@ macro_rules! handlers {
             host::host_restart_force,
             host::host_diagnostics,
             workspace::workspace_load,
+            workspace::workspace_set_aside,
             workspace::workspace_save,
             worktree::worktree_create,
             worktree::worktree_remove,

@@ -4,13 +4,14 @@
 	import { TriangleAlert } from "@lucide/svelte";
 	import { tilde } from "#lib/format.ts";
 	import { themes } from "#lib/stores/theme.svelte.ts";
+	import { m } from "#lib/i18n/m.ts";
 
 	let open = $state(false);
 </script>
 
 {#if themes.issues.length}
 	<div class="issues">
-		<Collapsible bind:open title="Theme files with problems ({themes.issues.length})">
+		<Collapsible bind:open title={m.settings_theme_issues_files({ count: themes.issues.length })}>
 			<ul class="files">
 				{#each themes.issues as f (f.file)}
 					<li>
@@ -62,7 +63,8 @@
 	}
 	.files ul li {
 		display: flex;
-		gap: 8px;
+		flex-wrap: wrap;
+		gap: 2px 8px;
 		font-size: 12px;
 		line-height: 1.4;
 		color: var(--ca-text-secondary);
@@ -71,7 +73,12 @@
 		color: var(--ca-semantic-error);
 	}
 	code {
-		flex-shrink: 0;
+		min-width: 0;
 		font-size: 11px;
+		overflow-wrap: anywhere;
+	}
+	li > span {
+		flex: 1 1 18ch;
+		min-width: 0;
 	}
 </style>

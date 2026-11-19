@@ -1,0 +1,11 @@
+{
+	"settings_registry_workspaces_description": "One line under the Workspaces page title in Settings, and the tooltip of its sidebar entry.",
+	"settings_registry_workspaces_label": "Sidebar entry and page title of the Workspaces section in Settings.",
+	"settings_registry_workspaces_ws_autoclean_description": "Help line under the \"Remove worktrees automatically\" row in Settings > Workspaces, also shown in search results.",
+	"settings_registry_workspaces_ws_cleanup_description": "Help line under the \"Clean up worktrees\" row in Settings > Workspaces, also shown in search results.",
+	"settings_registry_workspaces_ws_cleanup_label": "Label of the \"Clean up worktrees\" row in Settings > Workspaces, also its title in search results.",
+	"settings_registry_workspaces_ws_dir_description": "Help line under the \"Worktree folder\" row in Settings > Workspaces, also shown in search results.",
+	"settings_registry_workspaces_ws_hygiene_description": "Help line under the \"Orphans and disk\" row in Settings > Workspaces, also shown in search results.",
+	"settings_registry_workspaces_ws_nest_description": "Help line under the \"Group by repository\" row in Settings > Workspaces, also shown in search results.",
+	"settings_registry_workspaces_ws_prefix_description": "Help line under the \"Branch name prefix\" row in Settings > Workspaces, also shown in search results."
+}

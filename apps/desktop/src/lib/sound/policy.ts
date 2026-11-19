@@ -12,21 +12,10 @@
  *  6. Per-category switch, then a per-category cooldown so bursts collapse into one sound.
  */
 
-/** One earcon family member per meaningful event. Ids are also the asset file names. */
-export const CATEGORIES = [
-	"boot",
-	"discovery-done",
-	"stack-up",
-	"service-failed",
-	"agent-needs-you",
-	"agent-done",
-	"update",
-	"error",
-	"success",
-	"toggle",
-] as const;
+import { m } from "#lib/i18n/m.ts";
+import { CATEGORIES, type Category } from "./categories.ts";
 
-export type Category = (typeof CATEGORIES)[number];
+export { CATEGORIES, type Category };
 
 interface Spec {
 	/** Mix level relative to full scale after the assets were normalised (louder = more urgent). */
@@ -37,9 +26,9 @@ interface Spec {
 	background: boolean;
 	/** Still plays under "Reduce sounds". */
 	attention: boolean;
-	/** Short label for Settings. */
-	label: string;
-	description: string;
+	/** Short label for Settings: a getter over the message catalog, so it follows the display language. */
+	readonly label: string;
+	readonly description: string;
 }
 
 const MIN = 60_000;
@@ -50,80 +39,120 @@ export const SPECS: Record<Category, Spec> = {
 		cooldownMs: 60 * MIN,
 		background: false,
 		attention: false,
-		label: "App opens",
-		description: "A short signature when Atlas starts, at most once an hour.",
+		get label() {
+			return m.sound_policy_boot_label();
+		},
+		get description() {
+			return m.sound_policy_boot_description();
+		},
 	},
 	"discovery-done": {
 		level: 0.8,
 		cooldownMs: 2_000,
 		background: false,
 		attention: false,
-		label: "Projects found",
-		description: "When “Find my projects” finishes.",
+		get label() {
+			return m.sound_policy_discovery_done_label();
+		},
+		get description() {
+			return m.sound_policy_discovery_done_description();
+		},
 	},
 	"stack-up": {
 		level: 0.85,
 		cooldownMs: 3_000,
 		background: false,
 		attention: false,
-		label: "Stack is up",
-		description: "When every service of a stack is healthy.",
+		get label() {
+			return m.sound_policy_stack_up_label();
+		},
+		get description() {
+			return m.sound_policy_stack_up_description();
+		},
 	},
 	"service-failed": {
 		level: 1,
 		cooldownMs: 8_000,
 		background: true,
 		attention: true,
-		label: "Service failed",
-		description: "A service crashed or could not start.",
+		get label() {
+			return m.sound_policy_service_failed_label();
+		},
+		get description() {
+			return m.sound_policy_service_failed_description();
+		},
 	},
 	"agent-needs-you": {
 		level: 0.95,
 		cooldownMs: 4_000,
 		background: true,
 		attention: true,
-		label: "Agent needs you",
-		description: "An agent is waiting for an answer or approval.",
+		get label() {
+			return m.sound_policy_agent_needs_you_label();
+		},
+		get description() {
+			return m.sound_policy_agent_needs_you_description();
+		},
 	},
 	"agent-done": {
 		level: 0.85,
 		cooldownMs: 4_000,
 		background: true,
 		attention: true,
-		label: "Agent is done",
-		description: "An agent finished its task.",
+		get label() {
+			return m.sound_policy_agent_done_label();
+		},
+		get description() {
+			return m.sound_policy_agent_done_description();
+		},
 	},
 	update: {
 		level: 0.8,
 		cooldownMs: 10 * MIN,
 		background: true,
 		attention: true,
-		label: "Update ready",
-		description: "A new Atlas version is available.",
+		get label() {
+			return m.sound_policy_update_label();
+		},
+		get description() {
+			return m.sound_policy_update_description();
+		},
 	},
 	error: {
 		level: 0.7,
 		cooldownMs: 3_000,
 		background: false,
 		attention: false,
-		label: "Errors",
-		description: "A soft tick when an action fails.",
+		get label() {
+			return m.sound_policy_error_label();
+		},
+		get description() {
+			return m.sound_policy_error_description();
+		},
 	},
 	success: {
 		level: 0.55,
 		cooldownMs: 1_500,
 		background: false,
 		attention: false,
-		label: "Copied and saved",
-		description: "A very quiet confirmation.",
+		get label() {
+			return m.sound_policy_success_label();
+		},
+		get description() {
+			return m.sound_policy_success_description();
+		},
 	},
 	toggle: {
 		level: 0.5,
 		cooldownMs: 120,
 		background: false,
 		attention: false,
-		label: "Switches",
-		description: "When you turn a meaningful switch on or off.",
+		get label() {
+			return m.sound_policy_toggle_label();
+		},
+		get description() {
+			return m.sound_policy_toggle_description();
+		},
 	},
 };
 

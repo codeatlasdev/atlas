@@ -1,0 +1,25 @@
+{
+  "pt-BR": {
+    "shell_toasts_action_started": "7af58e9221b6",
+    "shell_toasts_atlas_yaml_created": "427e2ce29893",
+    "shell_toasts_branch_preserved": "953b47e69eae",
+    "shell_toasts_checked_out_elsewhere": "076979b9b7e9",
+    "shell_toasts_copied_url": "81f58c50bc88",
+    "shell_toasts_created_and_switched": "a2cd0086286d",
+    "shell_toasts_seed_cloned": "b29be7e89325",
+    "shell_toasts_seed_failed": "33d04bd775e7",
+    "shell_toasts_seed_not_relocatable": "56bdba403252",
+    "shell_toasts_seed_unsupported": "7f7b7dcaba67",
+    "shell_toasts_setup_time": "4be3843f8b93",
+    "shell_toasts_stash_body": "ca7c02bc2778",
+    "shell_toasts_stash_confirm": "a0005904fd5a",
+    "shell_toasts_stash_title": "602979fb1ac5",
+    "shell_toasts_switched": "b2b6246ce1b1",
+    "shell_toasts_switched_stashed": "0857e5b03954",
+    "shell_toasts_unknown_worktree": "1f414d956aa4",
+    "shell_toasts_workspace_recovered": "d125dfec870e",
+    "shell_toasts_workspace_unreadable": "2fa5bca32c70",
+    "shell_toasts_worktree_deleted": "ba8ec63374f5",
+    "shell_toasts_worktree_failed": "c079134db102"
+  }
+}

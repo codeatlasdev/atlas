@@ -1,0 +1,11 @@
+{
+	"settings_registry_help_checklist_description": "Help line under the \"Getting started checklist\" row in Settings > Help & onboarding, also shown in search results.",
+	"settings_registry_help_checklist_label": "Label of the \"Getting started checklist\" row in Settings > Help & onboarding, also its title in search results.",
+	"settings_registry_help_description": "One line under the Help & onboarding page title in Settings, and the tooltip of its sidebar entry.",
+	"settings_registry_help_group_help": "Title of the \"Help\" card on the Help & onboarding page of Settings, shown above its rows and in the path of search results.",
+	"settings_registry_help_help_keys_description": "Help line under the \"Shortcut cheat sheet\" row in Settings > Help & onboarding, also shown in search results.",
+	"settings_registry_help_help_keys_label": "Label of the \"Shortcut cheat sheet\" row in Settings > Help & onboarding, also its title in search results.",
+	"settings_registry_help_label": "Sidebar entry and page title of the Help & onboarding section in Settings.",
+	"settings_registry_help_tour_description": "Help line under the \"Guided tour\" row in Settings > Help & onboarding, also shown in search results.",
+	"settings_registry_help_tour_label": "Label of the \"Guided tour\" row in Settings > Help & onboarding, also its title in search results."
+}

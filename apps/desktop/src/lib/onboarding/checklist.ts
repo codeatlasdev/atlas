@@ -1,21 +1,60 @@
+import { m } from "#lib/i18n/m.ts";
+
 /** Getting-started checklist: items, persisted state shape and pure transitions. */
 
 export type ChecklistId = "project" | "stack" | "terminal" | "agent" | "palette" | "file";
 
 export interface ChecklistItem {
 	id: ChecklistId;
-	label: string;
+	/** In the display language; read when it is drawn, so a language switch shows at once. */
+	readonly label: string;
 	/** Command that does it (shown with its key and runnable from the card). */
 	command?: string;
 }
 
 export const CHECKLIST: ChecklistItem[] = [
-	{ id: "project", label: "Add a project", command: "atlas::AddProject" },
-	{ id: "stack", label: "Start the stack", command: "atlas::StartStack" },
-	{ id: "terminal", label: "Open a terminal", command: "workspace::NewTerminal" },
-	{ id: "agent", label: "Run an agent", command: "atlas::NewAgentSession" },
-	{ id: "palette", label: "Try the command palette", command: "command_palette::Toggle" },
-	{ id: "file", label: "Search a file", command: "file_finder::Toggle" },
+	{
+		id: "project",
+		get label() {
+			return m.onboarding_checklist_item_project();
+		},
+		command: "atlas::AddProject",
+	},
+	{
+		id: "stack",
+		get label() {
+			return m.onboarding_checklist_item_stack();
+		},
+		command: "atlas::StartStack",
+	},
+	{
+		id: "terminal",
+		get label() {
+			return m.onboarding_checklist_item_terminal();
+		},
+		command: "workspace::NewTerminal",
+	},
+	{
+		id: "agent",
+		get label() {
+			return m.onboarding_checklist_item_agent();
+		},
+		command: "atlas::NewAgentSession",
+	},
+	{
+		id: "palette",
+		get label() {
+			return m.onboarding_checklist_item_palette();
+		},
+		command: "command_palette::Toggle",
+	},
+	{
+		id: "file",
+		get label() {
+			return m.onboarding_checklist_item_file();
+		},
+		command: "file_finder::Toggle",
+	},
 ];
 
 /** What is persisted under `onboarding` in settings.json. */

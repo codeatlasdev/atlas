@@ -242,13 +242,18 @@ export function editJson(root: string, p: string, fn: (o: Record<string, unknown
 	put(root, p, json(o));
 }
 
-/** Add a key (English, pt-BR, description) to the app area, reference it from App.svelte, and re-stamp the locks. */
-export function addKey(root: string, key: string, en: unknown, pt: unknown, description: string) {
-	editJson(root, EN, (o) => void (o[key] = en));
-	editJson(root, PT, (o) => void (o[key] = pt));
-	editJson(root, META, (o) => void (o[key] = description));
-	put(root, "apps/desktop/src/App.svelte", `${read(root, "apps/desktop/src/App.svelte")}<i>{m.${key}()}</i>\n`);
+/** Add keys (key, English, pt-BR, description) to the app area, reference each from App.svelte, and re-stamp the locks once. */
+export function addKeys(root: string, keys: [key: string, en: unknown, pt: unknown, description: string][]) {
+	for (const [key, en, pt, description] of keys) {
+		editJson(root, EN, (o) => void (o[key] = en));
+		editJson(root, PT, (o) => void (o[key] = pt));
+		editJson(root, META, (o) => void (o[key] = description));
+		put(root, "apps/desktop/src/App.svelte", `${read(root, "apps/desktop/src/App.svelte")}<i>{m.${key}()}</i>\n`);
+	}
 	fix(loadCtx(root));
 }
+
+/** Add one key; see `addKeys`. */
+export const addKey = (root: string, key: string, en: unknown, pt: unknown, description: string) => addKeys(root, [[key, en, pt, description]]);
 
 export const finding = (fs: Finding[], rule: string, key?: string) => fs.find((f) => f.rule === rule && (key === undefined || f.key === key));

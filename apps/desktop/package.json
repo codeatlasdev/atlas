@@ -54,7 +54,6 @@
     "@lezer/highlight": "^1.2.5",
     "@lucide/svelte": "^1.55.0",
     "@tauri-apps/api": "^2.12.3",
-    "@tauri-apps/plugin-dialog": "^2.8.2",
     "@xterm/addon-fit": "^0.11.0",
     "@xterm/addon-search": "^0.16.0",
     "@xterm/addon-unicode11": "^0.9.0",

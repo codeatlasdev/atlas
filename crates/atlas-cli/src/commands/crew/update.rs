@@ -6,6 +6,7 @@
 //! that runner for things an old one does not do.
 
 use anyhow::{Result, bail};
+use atlas_i18n::t;
 use clap::Args;
 
 use crate::commands::AtlasCommand;
@@ -58,7 +59,10 @@ pub fn plan(args: &UpdateArgs, cli: &str) -> Result<Plan> {
         .as_deref()
         .map_or(cli, |v| v.strip_prefix('v').unwrap_or(v));
     if semver::Version::parse(version).is_err() {
-        bail!("`{version}` is not a version (use X.Y.Z, e.g. {cli})");
+        bail!(
+            "{}",
+            t!("cmd_crew_bad_version", version = version, example = cli)
+        );
     }
     Ok(Plan::Install {
         version: Some(version.to_owned()),
@@ -70,15 +74,22 @@ fn outcome(code: i32, stderr: &str, target: &str) -> Result<()> {
     match code {
         0 => Ok(()),
         3 => bail!(
-            "the new binary did not bring hostd up within {}s; rolled back to the previous one and it is running. \
-Look at: atlas crew logs {target}",
-            binary::HEALTH_TIMEOUT_S
+            "{}",
+            t!(
+                "cmd_crew_update_rolled_back",
+                secs = binary::HEALTH_TIMEOUT_S,
+                target = target
+            )
         ),
-        4 => bail!(
-            "hostd is down on {target}: the update failed and the rollback did not bring it back either. \
-Look at: atlas crew logs {target}"
+        4 => bail!("{}", t!("cmd_crew_update_down", target = target)),
+        _ => bail!(
+            "{}",
+            t!(
+                "cmd_crew_update_failed",
+                target = target,
+                reason = stderr.trim()
+            )
         ),
-        _ => bail!("update failed on {target}: {}", stderr.trim()),
     }
 }
 
@@ -98,24 +109,47 @@ impl AtlasCommand for UpdateArgs {
         let unit = format!("test -f /etc/systemd/system/{SERVICE}.service");
         if r.exec(&unit).await?.code != 0 {
             bail!(
-                "{host} is not a crew server (no {SERVICE} service): run atlas crew install {} first",
-                self.ssh_target
+                "{}",
+                t!(
+                    "cmd_crew_not_a_crew_server",
+                    host = host,
+                    service = SERVICE,
+                    target = self.ssh_target.as_str()
+                )
             );
         }
 
         let script = match &plan {
             Plan::Rollback => {
-                eprintln!("\x1b[36m▸\x1b[0m restoring the previous binary on {host}");
+                eprintln!(
+                    "\x1b[36m▸\x1b[0m {}",
+                    t!("cmd_crew_update_step_restore", host = host)
+                );
                 binary::rollback_script(binary::HEALTH_TIMEOUT_S)
             }
             Plan::Install { version } => {
                 match (version, &self.binary) {
                     (Some(v), _) => {
-                        eprintln!("\x1b[36m▸\x1b[0m staging atlas {v} ({target}) on {host}");
+                        eprintln!(
+                            "\x1b[36m▸\x1b[0m {}",
+                            t!(
+                                "cmd_crew_update_step_stage",
+                                version = v.as_str(),
+                                triple = target,
+                                host = host
+                            )
+                        );
                         install::stage_release(&p, v, target).await?;
                     }
                     (None, Some(path)) => {
-                        eprintln!("\x1b[36m▸\x1b[0m uploading {} to {host}", path.display());
+                        eprintln!(
+                            "\x1b[36m▸\x1b[0m {}",
+                            t!(
+                                "cmd_crew_update_step_upload",
+                                path = path.display().to_string(),
+                                host = host
+                            )
+                        );
                         install::stage_upload(&p, path).await?;
                     }
                     (None, None) => unreachable!("plan() gives no version only for --binary"),
@@ -123,7 +157,10 @@ impl AtlasCommand for UpdateArgs {
                 binary::swap_script(binary::HEALTH_TIMEOUT_S)
             }
         };
-        eprintln!("\x1b[36m▸\x1b[0m restarting {SERVICE} and waiting for hostd");
+        eprintln!(
+            "\x1b[36m▸\x1b[0m {}",
+            t!("cmd_crew_update_step_restart", service = SERVICE)
+        );
         // `--rollback` flips atlas and atlas.prev: running it twice undoes it, so a dropped ssh link must not
         // retry it (`exec_once`). The swap is guarded against a second run and may be retried.
         let o = match plan {
@@ -142,11 +179,18 @@ impl AtlasCommand for UpdateArgs {
         // A new hostd asks the runner for the UI detectors; an old runner writes no findings and
         // would fail every scenario of the UI gate. A rollback keeps the runner it has.
         if matches!(plan, Plan::Install { .. }) && browsers::refresh(&p, &self.ssh_target).await? {
-            eprintln!("\x1b[36m▸\x1b[0m refreshed the capture runner on {host}");
+            eprintln!(
+                "\x1b[36m▸\x1b[0m {}",
+                t!("cmd_crew_update_step_runner", host = host)
+            );
         }
         println!(
-            "\x1b[32m✓\x1b[0m atlas on {host} updated; the previous binary is kept (atlas crew update {} --rollback).",
-            self.ssh_target
+            "\x1b[32m✓\x1b[0m {}",
+            t!(
+                "cmd_crew_update_done",
+                host = host,
+                target = self.ssh_target.as_str()
+            )
         );
         Ok(())
     }

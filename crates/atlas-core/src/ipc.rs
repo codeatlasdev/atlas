@@ -217,9 +217,23 @@ mod imp {
             cx: &mut Context<'_>,
             buf: &mut ReadBuf<'_>,
         ) -> Poll<io::Result<()>> {
-            match self.get_mut() {
+            let read = match self.get_mut() {
                 Stream::Client(c) => Pin::new(c).poll_read(cx, buf),
                 Stream::Server(s, _) => Pin::new(s).poll_read(cx, buf),
+            };
+            // The other end going away after everything was read is how the stream ends, as for `SyncStream`: Windows
+            // says ERROR_BROKEN_PIPE (109) or, after the server's DisconnectNamedPipe, ERROR_PIPE_NOT_CONNECTED (233),
+            // where Unix reads 0. Seen on CI: a client that had read the whole reply got 233 instead of EOF (#529).
+            match read {
+                Poll::Ready(Err(e))
+                    if matches!(
+                        e.raw_os_error(),
+                        Some(ERROR_BROKEN_PIPE | ERROR_PIPE_NOT_CONNECTED)
+                    ) =>
+                {
+                    Poll::Ready(Ok(()))
+                }
+                other => other,
             }
         }
     }

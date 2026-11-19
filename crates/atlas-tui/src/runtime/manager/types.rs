@@ -14,6 +14,7 @@ use crate::config::{Condition, RestartPolicy};
 
 use super::policy::RestartTracker;
 use crate::runtime::memory::{Budget, BudgetMachine, LeakDetector, Limits, Series};
+use crate::runtime::note::Note;
 
 /// A service's memory bookkeeping: its budget, the RSS series of its process tree and the leak
 /// watch. The rules live in `runtime::memory`; `mem_watch.rs` applies them to a sample.
@@ -121,9 +122,11 @@ pub enum ManagerEvent {
         line: String,
         stream: LogStream,
     },
+    /// An alert about a service (a toast, an event-log row, a native notification). `note.message` is English for
+    /// machines; a person reads `note.render()`.
     CriticalAlert {
         service: String,
-        message: String,
+        note: Note,
     },
     /// A service process was (re)spawned: its log view gets a separator when
     /// the service already printed something.
@@ -154,7 +157,7 @@ pub enum ManagerEvent {
     DepsInstalled,
     /// Fired when ensure_deps ran the install/pre_command and it failed.
     DepsFailed {
-        reason: String,
+        reason: Note,
     },
     /// Infra port waits done; TUI should now start app services.
     InfraReady {
@@ -165,7 +168,7 @@ pub enum ManagerEvent {
     /// Applied by every event loop through `ServiceManager::record_failure`.
     InfraFailed {
         names: Vec<String>,
-        reason: String,
+        reason: Note,
     },
     /// Signal from OS (SIGTERM/SIGHUP) — triggers graceful quit.
     Quit,
@@ -183,7 +186,7 @@ pub enum ManagerEvent {
     /// (`api restarting in 2s (1/5)`, `web waiting for api (healthy)`, …).
     ServiceNote {
         name: String,
-        message: String,
+        note: Note,
     },
     /// A service's `ready_log` regex matched a line.
     LogReady {
@@ -248,7 +251,7 @@ pub(crate) struct Sched {
     /// atlas has spawned a child for this service at least once this run.
     pub(crate) spawned: bool,
     /// Waiting on dependencies — the reason shown in the sidebar.
-    pub(crate) waiting: Option<String>,
+    pub(crate) waiting: Option<Note>,
     /// Queued by `start_app_services`; cleared when the child is spawned or the
     /// service is failed by the scheduler.
     pub(crate) pending_start: bool,
@@ -257,7 +260,7 @@ pub(crate) struct Sched {
     /// Restart budget spent.
     pub(crate) gave_up: bool,
     /// Why the service is Failed when atlas decided it (shown in sidebar/CI JSON).
-    pub(crate) fail_reason: Option<String>,
+    pub(crate) fail_reason: Option<Note>,
     /// The foreign process that held this service's port when it was last started (or
     /// re-checked while the conflict stood): `atlas_status` `port_conflict`, the sidebar note.
     pub(crate) port_conflict: Option<crate::runtime::port_conflict::PortConflict>,
@@ -295,7 +298,7 @@ pub(crate) struct Probes {
     /// When the service turned `unhealthy` (monotonic + epoch seconds) and the log tail then.
     pub(crate) unhealthy: Option<Unhealthy>,
     /// Why the service is `degraded` (the `ready` probe's error, or the repeated line).
-    pub(crate) degraded: Option<String>,
+    pub(crate) degraded: Option<Note>,
     /// Last `ready` probe failure; `None` when it passes or there is no probe.
     pub(crate) ready_error: Option<String>,
     /// Restarts `on_unhealthy: restart` made since the service last stayed up for

@@ -19,6 +19,7 @@ use crate::control::{self, Subscription};
 use crate::runner::parse_state;
 use crate::runtime::logs::LogStream;
 use crate::runtime::manager::{ManagerEvent, MemoryFacts, MirrorFacts, UnhealthyReport};
+use crate::runtime::note::Note;
 use crate::runtime::service::ServiceState;
 use crate::runtime::tunnel::TunnelStatus;
 use crate::tui::widgets::events::EventKind;
@@ -84,13 +85,13 @@ fn facts(v: &Value) -> MirrorFacts {
     MirrorFacts {
         exit_code: v["exit_code"].as_i64().map(|c| c as i32),
         restarts: v["restarts"].as_u64().unwrap_or(0) as u32,
-        note: v["note"].as_str().map(str::to_string),
+        note: Note::from_flat(v, "note"),
         completed_ok: v["completed_ok"].as_bool().unwrap_or(false),
         paused_by: v["paused_by"].as_str().map(str::to_string),
         deselected: v["deselected"].as_bool().unwrap_or(false),
         port_conflict: serde_json::from_value(v["port_conflict"].clone()).ok(),
         ready: v["ready"].as_bool(),
-        probe_error: v["probe_error"].as_str().map(str::to_string),
+        probe_error: Note::from_flat(v, "probe_error"),
         unhealthy: v["unhealthy_since"]
             .as_u64()
             .map(|since_epoch| UnhealthyReport {
@@ -211,20 +212,17 @@ impl App {
                 }
             }
             Some("note") => {
-                let (name, msg) = (
-                    ev["name"].as_str().unwrap_or_default(),
-                    ev["message"].as_str().unwrap_or_default(),
-                );
+                let note = Note::from_wire(ev);
                 self.push_event(
-                    super::update::classify_note(msg),
-                    name.to_string(),
-                    msg.to_string(),
+                    super::update::classify_note(&note),
+                    ev["name"].as_str().unwrap_or_default().to_string(),
+                    note.render(),
                 );
             }
             Some("alert") => self.push_event(
                 EventKind::Alert,
                 ev["service"].as_str().unwrap_or_default().to_string(),
-                ev["message"].as_str().unwrap_or_default().to_string(),
+                Note::from_wire(ev).render(),
             ),
             Some("tunnel") => self.push_event(EventKind::Tunnel, "tunnel".into(), {
                 // The wire carries the state's machine name; show it in words, and an unknown one as it came.
@@ -276,11 +274,11 @@ impl App {
             }
             Some("note") => ManagerEvent::ServiceNote {
                 name: ev["name"].as_str().unwrap_or_default().to_string(),
-                message: ev["message"].as_str().unwrap_or_default().to_string(),
+                note: Note::from_wire(ev),
             },
             Some("alert") => ManagerEvent::CriticalAlert {
                 service: ev["service"].as_str().unwrap_or_default().to_string(),
-                message: ev["message"].as_str().unwrap_or_default().to_string(),
+                note: Note::from_wire(ev),
             },
             Some("tunnel") => {
                 self.manager.mirror_set_tunnel(tunnel_status(&ev["tunnel"]));

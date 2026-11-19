@@ -1333,7 +1333,10 @@ async fn a_successful_respawn_clears_the_previous_failure_reason() {
         &one_service_cfg("sleep 30", None),
         tx,
     );
-    mgr.record_failure(&["svc".to_string()], "old reason");
+    mgr.record_failure(
+        &["svc".to_string()],
+        &crate::runtime::note::Note::plain("old reason"),
+    );
     assert_eq!(mgr.fail_reason("svc").as_deref(), Some("old reason"));
 
     mgr.start_service("svc").await;

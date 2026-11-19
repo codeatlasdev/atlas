@@ -7,6 +7,9 @@ use std::collections::VecDeque;
 use std::sync::LazyLock;
 
 use serde::Serialize;
+use serde_json::json;
+
+use super::note::Note;
 
 const MB: u64 = 1 << 20;
 
@@ -258,12 +261,8 @@ pub fn fmt_size(bytes: u64) -> String {
 }
 
 /// Why a service is `degraded` over its soft budget: `using 2.1 GB, over memory_warn 1.5 GB`.
-pub fn warn_reason(rss: u64, warn: u64) -> String {
-    format!(
-        "using {}, over memory_warn {}",
-        fmt_size(rss),
-        fmt_size(warn)
-    )
+pub fn warn_reason(rss: u64, warn: u64) -> Note {
+    Note::new("memory.over_warn", json!({"used": rss, "warn": warn}))
 }
 
 /// What the cycles of one service say: RSS grew every time it reloaded or restarted.
@@ -278,11 +277,18 @@ pub struct Leak {
 impl Leak {
     /// `leak suspected: +600 MB over 12 reloads`
     pub fn text(&self) -> String {
-        format!(
-            "leak suspected: +{} over {} {}",
-            fmt_size(self.growth_bytes),
-            self.cycles,
-            self.kind
+        self.note().message
+    }
+
+    /// The same sentence as a coded note (`memory.leak_reloads`, `memory.leak_restarts`).
+    pub fn note(&self) -> Note {
+        Note::new(
+            if self.kind == "restarts" {
+                "memory.leak_restarts"
+            } else {
+                "memory.leak_reloads"
+            },
+            json!({"growth": self.growth_bytes, "cycles": self.cycles}),
         )
     }
 }

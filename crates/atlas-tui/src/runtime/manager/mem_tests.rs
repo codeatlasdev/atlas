@@ -62,8 +62,8 @@ async fn feed(m: &mut ServiceManager, t0: u64, mbs: &[u64]) {
 fn alerts(rx: &mut mpsc::UnboundedReceiver<ManagerEvent>) -> Vec<String> {
     let mut out = Vec::new();
     while let Ok(ev) = rx.try_recv() {
-        if let ManagerEvent::CriticalAlert { message, .. } = ev {
-            out.push(message);
+        if let ManagerEvent::CriticalAlert { note, .. } = ev {
+            out.push(note.message);
         }
     }
     out

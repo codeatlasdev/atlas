@@ -11,6 +11,8 @@ use crate::runtime::service::{ServiceState, ServiceStatus};
 mod actions;
 mod devices;
 mod disk_log;
+#[cfg(test)]
+mod engine_text_tests;
 mod facts;
 mod graph;
 mod health_check;

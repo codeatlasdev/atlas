@@ -102,11 +102,19 @@ impl Hub {
                 ev["t"] = "state".into();
                 self.remember(ev);
             }
-            ManagerEvent::ServiceNote { name, message } => {
-                self.remember(json!({ "t": "note", "name": name, "message": message }));
+            // `message` is the English every client always read; `code` and `args` are additive (an attached TUI or
+            // the desktop writes the sentence in its own language, an older client ignores them).
+            ManagerEvent::ServiceNote { name, note } => {
+                self.remember(json!({
+                    "t": "note", "name": name, "message": note.message,
+                    "code": note.code, "args": note.args,
+                }));
             }
-            ManagerEvent::CriticalAlert { service, message } => {
-                self.remember(json!({ "t": "alert", "service": service, "message": message }));
+            ManagerEvent::CriticalAlert { service, note } => {
+                self.remember(json!({
+                    "t": "alert", "service": service, "message": note.message,
+                    "code": note.code, "args": note.args,
+                }));
             }
             ManagerEvent::TunnelState { state } => {
                 self.remember(

@@ -17,6 +17,7 @@ use crate::config::TunnelConfig;
 use crate::runtime::health;
 use crate::runtime::logs::{LogStream, spawn_line_pump};
 use crate::runtime::manager::ManagerEvent;
+use crate::runtime::note::Note;
 use crate::runtime::service::ServiceState;
 
 /// How long a freshly spawned ssh gets to open the local port.
@@ -257,7 +258,10 @@ impl Tunnel {
             self.alerted = true;
             let _ = self.tx.send(ManagerEvent::CriticalAlert {
                 service: ALERT_NAME.into(),
-                message: format!("SSH tunnel to {} failed: {reason}", self.cfg.ssh_host),
+                note: Note::new(
+                    "tunnel.failed",
+                    serde_json::json!({"host": self.cfg.ssh_host, "reason": reason}),
+                ),
             });
         }
     }
@@ -434,9 +438,14 @@ mod tests {
         t.mark_failed("Permission denied (publickey).");
         let mut alerts = 0;
         while let Ok(ev) = rx.try_recv() {
-            if let ManagerEvent::CriticalAlert { service, message } = ev {
+            if let ManagerEvent::CriticalAlert { service, note } = ev {
                 assert_eq!(service, "tunnel");
-                assert!(message.contains("Permission denied"), "{message}");
+                assert_eq!(note.code, "tunnel.failed");
+                assert!(
+                    note.message.contains("Permission denied"),
+                    "{}",
+                    note.message
+                );
                 alerts += 1;
             }
         }

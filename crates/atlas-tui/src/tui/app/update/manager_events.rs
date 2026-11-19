@@ -30,18 +30,19 @@ impl App {
                 self.splash_done = true;
             }
             ManagerEvent::AllStopped => {}
-            ManagerEvent::CriticalAlert { service, message } => {
+            ManagerEvent::CriticalAlert { service, note } => {
+                let text = note.render();
                 if self.toast.is_none() {
                     self.set_toast(
                         t!(
                             "tui_runtime_app_toast_critical",
                             service = service.as_str(),
-                            message = message.as_str()
+                            message = text.as_str()
                         ),
                         ToastVariant::Warning,
                     );
                 }
-                self.push_event(EventKind::Alert, service, message);
+                self.push_event(EventKind::Alert, service, text);
             }
             ManagerEvent::ActionProgress { label, line } => {
                 if let Some(op) = self.operation.as_mut()
@@ -70,9 +71,9 @@ impl App {
                 }
             }
             ManagerEvent::StatusChanged => {}
-            ManagerEvent::ServiceNote { name, message } => {
-                let kind = classify_note(&message);
-                self.push_event(kind, name, message);
+            ManagerEvent::ServiceNote { name, note } => {
+                let kind = classify_note(&note);
+                self.push_event(kind, name, note.render());
             }
             ManagerEvent::LogReady { name } => self.manager.mark_log_ready(&name),
             ManagerEvent::TunnelState { state } => {
@@ -100,7 +101,7 @@ impl App {
                 self.set_toast(
                     t!(
                         "tui_runtime_app_toast_deps_failed",
-                        reason = reason.as_str()
+                        reason = reason.render().as_str()
                     ),
                     ToastVariant::Error,
                 );

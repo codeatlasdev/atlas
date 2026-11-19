@@ -12,7 +12,9 @@ use std::path::Path;
 
 use atlas_core::sys::PortOwner;
 use serde::{Deserialize, Serialize};
+use serde_json::json;
 
+use super::note::Note;
 use super::process::{ProcEntry, descendants};
 
 /// The foreign process on a service's port, as the status file, MCP and the wire carry it
@@ -41,9 +43,27 @@ impl PortConflict {
         }
     }
 
-    /// `port 4321 held by PID 12345 (node, cwd /work/app): stop it yourself (kill 12345) or change the service port`.
+    /// The English sentence: `port 4321 held by PID 12345 (node, cwd /work/app): stop it yourself (kill 12345) or
+    /// change the service port`. Equal to `PortOwner::describe` (a test holds them together).
     pub fn describe(&self, port: u16) -> String {
-        self.owner().describe(port)
+        self.note(port).message
+    }
+
+    /// The same sentence as a coded note (`port.held`, `port.held_cwd`).
+    pub fn note(&self, port: u16) -> Note {
+        let mut args = json!({
+            "port": port,
+            "pid": self.pid,
+            "cmd": if self.cmd.is_empty() { "?" } else { &self.cmd },
+            "stop": self.owner().stop_hint(),
+        });
+        match &self.cwd {
+            Some(cwd) => {
+                args["cwd"] = json!(cwd);
+                Note::new("port.held_cwd", args)
+            }
+            None => Note::new("port.held", args),
+        }
     }
 }
 

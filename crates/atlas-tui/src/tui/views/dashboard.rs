@@ -42,7 +42,10 @@ fn extras(app: &App) -> HashMap<String, SvcExtra> {
             (
                 s.name.clone(),
                 SvcExtra {
-                    note: app.manager.service_note(&s.name),
+                    note: app
+                        .manager
+                        .service_note_coded(&s.name)
+                        .map(|n| n.render_line()),
                     exit_code: app.manager.exit_code(&s.name),
                     restarts: app.manager.restart_count(&s.name),
                     done,

@@ -198,9 +198,10 @@ pub fn memory_parts_in(m: &crate::runtime::manager::MemoryFacts, tag: &str) -> V
             budget = budget
         ));
     }
-    // The engine's own words (a suspected leak): shown as it wrote them until it sends a code.
+    // A suspected leak is the engine's sentence: written from its code in `tag` (English when it came from the
+    // status file, which carries no code).
     if let Some(leak) = &m.leak {
-        parts.push(leak.clone());
+        parts.push(leak.render_in(tag));
     }
     parts
 }

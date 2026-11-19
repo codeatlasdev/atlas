@@ -1,5 +1,6 @@
 use super::ServiceManager;
 use super::types::{INFRA_PORT_WAIT, ManagerEvent, STOP_GRACE};
+use crate::runtime::note::Note;
 use crate::runtime::service::ServiceState;
 
 impl ServiceManager {
@@ -74,7 +75,7 @@ impl ServiceManager {
             {
                 let _ = tx.send(ManagerEvent::CriticalAlert {
                     service: "docker".to_string(),
-                    message: reason.clone(),
+                    note: reason.clone(),
                 });
                 // Reason first (card note + service log), then the Failed state it explains.
                 let names: Vec<String> = infra_checks.iter().map(|(n, _)| n.clone()).collect();
@@ -115,11 +116,9 @@ impl ServiceManager {
                     if !ok {
                         let _ = tx.send(ManagerEvent::InfraFailed {
                             names: vec![name.clone()],
-                            reason: format!(
-                                "nothing is listening on :{port} after {}s: the container did not \
-                                 start, exited, or maps another port (check `docker compose ps` and \
-                                 `docker compose logs`)",
-                                INFRA_PORT_WAIT.as_secs()
+                            reason: Note::new(
+                                "infra.port_closed",
+                                serde_json::json!({"port": port, "secs": INFRA_PORT_WAIT.as_secs()}),
                             ),
                         });
                     }
@@ -139,14 +138,15 @@ impl ServiceManager {
     /// of `reason`), `.logs/<name>.log` (MCP, `atlas logs`) and the live buffer (`LogLine` → View
     /// logs). A service with no process (command-less infra, a spawn that failed) has no output that
     /// could carry the reason, so without this it looked identical to one that never started. Applied
-    /// by every event loop for `ManagerEvent::InfraFailed`, and called directly for a failed spawn.
-    pub fn record_failure(&mut self, names: &[String], reason: &str) {
+    /// by every event loop for `ManagerEvent::InfraFailed`, and called directly for a failed spawn. The
+    /// log lines are English (logs are never translated); the card note keeps the code.
+    pub fn record_failure(&mut self, names: &[String], reason: &Note) {
         for name in names {
             let Some(svc) = self.services.get_mut(name) else {
                 continue;
             };
-            svc.sched.fail_reason = Some(reason.lines().next().unwrap_or(reason).to_string());
-            for line in reason.lines().filter(|l| !l.trim().is_empty()) {
+            svc.sched.fail_reason = Some(reason.clone());
+            for line in reason.message.lines().filter(|l| !l.trim().is_empty()) {
                 self.append_log_mark(name, line);
                 let _ = self.event_tx.send(ManagerEvent::LogLine {
                     name: name.clone(),

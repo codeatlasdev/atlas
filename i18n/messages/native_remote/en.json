@@ -2,7 +2,7 @@
 	"native_remote_atlas_missing": "Atlas is not installed on {alias} ({arch} {system}). Install it there, or put a build at {path}.",
 	"native_remote_dir_failed": "Could not create {path}: {error}",
 	"native_remote_forward_failed": "Could not forward port {port} of {alias}. Check that a program listens on it there.",
-	"native_remote_hostd_unreachable": "The tunnel to {alias} is up, but its hostd does not answer: {detail}",
+	"native_remote_hostd_unreachable": "The tunnel to {alias} is up, but its hostd does not answer: {detail}. Run `atlas hostd --status` on {alias} to see why; Atlas keeps retrying.",
 	"native_remote_invalid_alias": "Can't use \"{alias}\" as an SSH host. Use an alias from ~/.ssh/config or user@host, with only letters, digits and the characters . - _",
 	"native_remote_lacks_features": "Its atlas hostd lacks {features}. Update atlas on the host and restart its hostd.",
 	"native_remote_local_port_failed": "Could not reserve a local port: {error}",

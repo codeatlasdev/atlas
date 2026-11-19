@@ -117,7 +117,7 @@
 			}
 		}
 	],
-	"settings_capture_system_keys_description": "macOS answers {screen}, {area}, {toolbar} and {touchBar} before any app, so Atlas can only use them once you turn them off yourself in System Settings ▸ Keyboard ▸ Keyboard Shortcuts ▸ Screenshots. Atlas never changes that setting for you.",
+	"settings_capture_system_keys_description": "macOS answers {screen}, {area}, {toolbar} and {touchBar} before any app, so Atlas can only use them once you turn them off yourself in System Settings > Keyboard > Keyboard Shortcuts > Screenshots. Atlas never changes that setting for you.",
 	"settings_capture_system_keys_label": "macOS screenshot shortcuts",
 	"settings_capture_system_keys_off_aria": "I turned the macOS screenshot shortcuts off",
 	"settings_capture_system_keys_off_label": "I turned them off",

@@ -14,6 +14,6 @@
 	"native_capture_key_refused": "{action}: {reason}",
 	"native_capture_mic_off": "Microphone access is off for Atlas. Turn it on in System Settings > Privacy & Security > Microphone.",
 	"native_capture_same_key": "\"{first}\" and \"{second}\" use the same key",
-	"native_capture_stack_range": "The quick-access stack holds between {min} and {max} captures",
+	"native_capture_stack_range": "The quick access stack holds between {min} and {max} captures",
 	"native_capture_timer_values": "The timer is off, 3, 5 or 10 seconds"
 }

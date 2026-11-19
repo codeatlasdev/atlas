@@ -126,3 +126,6 @@
 - name: dependencies
   color: 0366d6
   description: Dependency updates (applied by Dependabot)
+- name: "ci: rerun-after-stall"
+  color: fbca04
+  description: CI reran a job after a lost or stalled runner (issue 520); read the comment before trusting green

@@ -25,6 +25,19 @@ pub fn caused_by() -> String {
     t!("cli_chrome_caused_by")
 }
 
+/// How a finished child ended, worded for a sentence ("the app exited with {…}"): its exit code, or on Unix the
+/// signal that ended it. `ExitStatus`'s own `Display` is English; this one is in the display language.
+pub fn exit_text(status: std::process::ExitStatus) -> String {
+    #[cfg(unix)]
+    {
+        use std::os::unix::process::ExitStatusExt;
+        if let Some(signal) = status.signal() {
+            return t!("cli_chrome_exit_signal", signal = signal);
+        }
+    }
+    t!("cli_chrome_exit_code", code = status.code().unwrap_or(-1))
+}
+
 /// The text clap renders for a usage error, with its `error:` and `tip:` words in `tag`. clap prints them in English
 /// and has no hook for them; the first of each is the prefix of the first line and of the suggestion.
 fn localize(rendered: &str, tag: &str) -> String {
@@ -79,5 +92,31 @@ mod tests {
         assert_eq!(t_in!("en", "cli_chrome_warning"), "warning:");
         assert_eq!(t_in!("pt-BR", "cli_chrome_warning"), "aviso:");
         assert_eq!(t_in!("pt-BR", "cli_chrome_caused_by"), "causado por:");
+    }
+
+    /// A real child that exits with a code and one that a signal ends: the words come from the catalog, never from
+    /// `ExitStatus`'s English `Display`. Unknown shapes cannot reach the sentence raw.
+    #[cfg(unix)]
+    #[test]
+    fn a_finished_child_is_worded_by_its_code_or_its_signal() {
+        let code = std::process::Command::new("sh")
+            .args(["-c", "exit 3"])
+            .status()
+            .unwrap();
+        assert_eq!(
+            exit_text(code),
+            t_in!("en", "cli_chrome_exit_code", code = 3)
+        );
+        assert!(!exit_text(code).contains("exit status"), "{code}");
+        let killed = std::process::Command::new("sh")
+            .args(["-c", "kill -9 $$"])
+            .status()
+            .unwrap();
+        assert_eq!(
+            exit_text(killed),
+            t_in!("en", "cli_chrome_exit_signal", signal = 9)
+        );
+        let pt = t_in!("pt-BR", "cli_chrome_exit_signal", signal = 9);
+        assert!(pt.contains('9') && pt != exit_text(killed), "{pt}");
     }
 }

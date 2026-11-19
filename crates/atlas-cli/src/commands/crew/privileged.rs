@@ -7,6 +7,7 @@
 //! [`binary::with_sudo_password`].
 
 use anyhow::{Context, Result};
+use atlas_i18n::t;
 
 use crate::commands::deploy::remote::{Output, Remote};
 
@@ -60,9 +61,10 @@ impl<'a> Priv<'a> {
                 return Err(atlas_core::progress::Coded::new(
                     "sudo.password_required",
                     serde_json::json!({ "target": ssh_target, "command": terminal_cmd }),
-                    format!(
-                        "sudo on {ssh_target} asks for a password — grant passwordless sudo to this user, \
-or run it from a terminal: {terminal_cmd}"
+                    t!(
+                        "cmd_crew_sudo_password_required",
+                        target = ssh_target,
+                        command = terminal_cmd
                     ),
                 )
                 .into());
@@ -74,7 +76,7 @@ or run it from a terminal: {terminal_cmd}"
         tokio::io::BufReader::new(tokio::io::stdin())
             .read_line(&mut pw)
             .await
-            .context("reading sudo password from stdin")?;
+            .with_context(|| t!("cmd_crew_sudo_stdin_failed"))?;
         let pw = pw.trim_end_matches('\n').trim_end_matches('\r').to_owned();
         let p = Self {
             r,
@@ -84,7 +86,7 @@ or run it from a terminal: {terminal_cmd}"
             return Err(atlas_core::progress::Coded::new(
                 "sudo.password_rejected",
                 serde_json::json!({ "target": ssh_target }),
-                "sudo password rejected — check your password and try again",
+                t!("cmd_crew_sudo_password_rejected"),
             )
             .into());
         }

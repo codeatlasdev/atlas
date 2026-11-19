@@ -4,6 +4,7 @@
 //! tested without ssh.
 
 use anyhow::{Result, bail};
+use atlas_i18n::t;
 
 use super::layout::{INSTALL_DIR, SERVICE, WHICH_USER};
 use crate::commands::deploy::remote::shq;
@@ -20,9 +21,7 @@ pub fn target_for_uname(uname: &str) -> Result<&'static str> {
         "Linux x86_64" => Ok(X86_64),
         // Some distros' arm builds report `arm64` for the same CPU.
         "Linux aarch64" | "Linux arm64" => Ok(AARCH64),
-        other => bail!(
-            "atlas crew needs a Linux x86_64 or aarch64 host with systemd and sudo (got: {other})"
-        ),
+        other => bail!("{}", t!("cmd_crew_unsupported_host", uname = other)),
     }
 }
 
@@ -150,10 +149,7 @@ pub fn parse_preflight(stdout: &str) -> Preflight {
 pub fn preflight_error(target: &str, p: &Preflight) -> anyhow::Error {
     let mut lines = Vec::new();
     if !p.systemd {
-        lines.push(
-            "systemd is not running as PID 1 (no /run/systemd/system): a crew server needs a systemd host, not a container or an OpenRC/runit system"
-                .to_owned(),
-        );
+        lines.push(t!("cmd_crew_no_systemd"));
     }
     let pkgs: Vec<&str> = p
         .tools
@@ -165,13 +161,14 @@ pub fn preflight_error(target: &str, p: &Preflight) -> anyhow::Error {
         uniq.sort_unstable();
         uniq.dedup();
         lines.push(format!(
-            "missing on the host: {}\n  Debian/Ubuntu: sudo apt-get install -y {}",
-            p.tools.join(", "),
-            uniq.join(" ")
+            "{}\n  {}",
+            t!("cmd_crew_missing_tools", tools = p.tools.join(", ")),
+            t!("cmd_crew_missing_tools_install", packages = uniq.join(" "))
         ));
     }
     anyhow::anyhow!(
-        "{target} is not ready for a crew server; nothing was changed:\n  {}",
+        "{}\n  {}",
+        t!("cmd_crew_not_ready", target = target),
         lines.join("\n  ")
     )
 }
@@ -246,8 +243,10 @@ pub enum Verdict {
 pub fn verdict(health: &Health, expected: Option<&str>) -> Verdict {
     match (health, expected) {
         (Health::Down, _) => Verdict::RollBack,
-        (Health::Up(got), Some(want)) if got != want => Verdict::KeepWithWarning(format!(
-            "hostd answers as {got}, not {want}: a process from before the update may still hold the socket"
+        (Health::Up(got), Some(want)) if got != want => Verdict::KeepWithWarning(t!(
+            "cmd_crew_hostd_version_mismatch",
+            got = got.as_str(),
+            want = want
         )),
         (Health::Up(_), _) => Verdict::Keep,
     }
@@ -369,12 +368,10 @@ pub fn version_from_status(json: &str) -> Option<String> {
 /// One line for `atlas crew status`.
 pub fn version_line(server: Option<&str>, cli: &str) -> String {
     match (freshness(server, cli), server) {
-        (Freshness::Current, _) => format!("atlas {cli} (up to date)"),
-        (Freshness::Behind, Some(s)) => {
-            format!("atlas {s} (behind this CLI's {cli}: run atlas crew update)")
-        }
-        (Freshness::Ahead, Some(s)) => format!("atlas {s} (ahead of this CLI's {cli})"),
-        _ => "atlas version unknown (is hostd running?)".to_owned(),
+        (Freshness::Current, _) => t!("cmd_crew_version_current", version = cli),
+        (Freshness::Behind, Some(s)) => t!("cmd_crew_version_behind", server = s, cli = cli),
+        (Freshness::Ahead, Some(s)) => t!("cmd_crew_version_ahead", server = s, cli = cli),
+        _ => t!("cmd_crew_version_unknown"),
     }
 }
 

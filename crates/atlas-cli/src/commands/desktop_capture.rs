@@ -8,6 +8,7 @@ use std::process::Command;
 use std::time::Duration;
 
 use anyhow::{Context, Result, bail};
+use atlas_i18n::t;
 use clap::{Args, Subcommand};
 use serde_json::{Value, json};
 
@@ -67,11 +68,11 @@ pub struct RecordArgs {
 pub fn parse_size(s: &str) -> Result<(u32, u32), String> {
     let (w, h) = s
         .split_once(['x', 'X'])
-        .ok_or("expected WIDTHxHEIGHT, e.g. 1280x800")?;
+        .ok_or_else(|| t!("cmd_desktop_size_format"))?;
     let n = |v: &str| {
         v.trim()
             .parse::<u32>()
-            .map_err(|_| format!("{v:?} is not a number"))
+            .map_err(|_| t!("cmd_desktop_not_a_number", value = v))
     };
     Ok((n(w)?, n(h)?))
 }
@@ -81,7 +82,7 @@ fn absolute(p: &Path) -> Result<PathBuf> {
         return Ok(p.to_path_buf());
     }
     Ok(std::env::current_dir()
-        .context("current directory")?
+        .with_context(|| t!("cmd_desktop_no_cwd"))?
         .join(p))
 }
 
@@ -120,9 +121,8 @@ pub fn load_script(path: &Path) -> Result<Value> {
         .and_then(|e| e.to_str())
         .unwrap_or_default();
     let text = match ext {
-        "json" => {
-            std::fs::read_to_string(path).with_context(|| format!("reading {}", path.display()))?
-        }
+        "json" => std::fs::read_to_string(path)
+            .with_context(|| t!("cmd_install_read_failed", path = path.display().to_string()))?,
         "ts" | "js" | "mts" | "mjs" => {
             let abs = absolute(path)?;
             let program = format!(
@@ -133,20 +133,27 @@ pub fn load_script(path: &Path) -> Result<Value> {
                 .envs(atlas_core::login_env::vars())
                 .args(["-e", &program])
                 .output()
-                .context("running `bun` to evaluate the script (is bun installed?)")?;
+                .with_context(|| t!("cmd_desktop_bun_failed"))?;
             if !out.status.success() {
                 bail!(
-                    "evaluating {} failed:\n{}",
-                    path.display(),
-                    String::from_utf8_lossy(&out.stderr)
+                    "{}",
+                    t!(
+                        "cmd_desktop_script_eval_failed",
+                        path = path.display().to_string(),
+                        output = String::from_utf8_lossy(&out.stderr).into_owned()
+                    )
                 );
             }
-            String::from_utf8(out.stdout).context("script output is not UTF-8")?
+            String::from_utf8(out.stdout).with_context(|| t!("cmd_desktop_script_not_utf8"))?
         }
-        other => bail!("script must be .json, .ts or .js, got {other:?}"),
+        other => bail!("{}", t!("cmd_desktop_script_kind", extension = other)),
     };
-    serde_json::from_str(text.trim())
-        .with_context(|| format!("{} is not valid JSON", path.display()))
+    serde_json::from_str(text.trim()).with_context(|| {
+        t!(
+            "cmd_desktop_script_invalid_json",
+            path = path.display().to_string()
+        )
+    })
 }
 
 pub fn record_request(script: Value, out_dir: &Path) -> Result<Value> {
@@ -163,8 +170,12 @@ pub fn record(a: RecordArgs) -> Result<()> {
     let script = load_script(&a.script)?;
     let req = record_request(script, &a.out)?;
     let dir = absolute(&a.out)?;
-    std::fs::create_dir_all(dir.join("shots"))
-        .with_context(|| format!("creating {}", dir.display()))?;
+    std::fs::create_dir_all(dir.join("shots")).with_context(|| {
+        t!(
+            "cmd_install_create_failed",
+            path = dir.display().to_string()
+        )
+    })?;
     let result = call("capture_run", req, Duration::from_secs(RUN_TIMEOUT_S))?;
     let path = dir.join("timeline.json");
     std::fs::write(&path, serde_json::to_string_pretty(&result["timeline"])?)?;
@@ -172,7 +183,9 @@ pub fn record(a: RecordArgs) -> Result<()> {
     if result["ok"] != true {
         bail!(
             "{}",
-            result["error"].as_str().unwrap_or("the script failed")
+            result["error"]
+                .as_str()
+                .map_or_else(|| t!("cmd_desktop_script_failed"), str::to_owned)
         );
     }
     Ok(())
@@ -236,20 +249,16 @@ mod tests {
         assert_eq!(load_script(&ok).unwrap()["version"], 1);
         let bad = d.path().join("b.json");
         std::fs::write(&bad, "{nope").unwrap();
-        assert!(
-            load_script(&bad)
-                .unwrap_err()
-                .to_string()
-                .contains("not valid JSON")
+        let want = atlas_i18n::t_in!(
+            "en",
+            "cmd_desktop_script_invalid_json",
+            path = bad.display().to_string()
         );
+        assert!(load_script(&bad).unwrap_err().to_string().contains(&want));
         let yml = d.path().join("c.yaml");
         std::fs::write(&yml, "a: 1").unwrap();
-        assert!(
-            load_script(&yml)
-                .unwrap_err()
-                .to_string()
-                .contains("must be .json")
-        );
+        let want = atlas_i18n::t_in!("en", "cmd_desktop_script_kind", extension = "yaml");
+        assert!(load_script(&yml).unwrap_err().to_string().contains(&want));
         assert!(load_script(&d.path().join("missing.json")).is_err());
     }
 

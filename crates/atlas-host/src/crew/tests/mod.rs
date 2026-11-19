@@ -16,6 +16,7 @@
 //! | `engine_stop` | pause, cancel and the task timeout end an engine turn and its child process |
 //! | `engine_login`| `crew_engine_login` / `crew_engine_status`: sign an engine in from a phone, expired sign-ins |
 //! | `actions`     | `ATLAS_ACTION` parsing, `waiting_action`, GitHub login                   |
+//! | `answers`     | a card takes one answer: choose, ask_user, a terminal run; the task is running after it |
 //! | `approvals`   | approval prompts of a crewmate's pane                                    |
 //! | `audit`       | the append-only audit: tool calls, approvals, lifecycle, config, restart  |
 //! | `telegram`    | setting Telegram up from a client, the status payload                     |
@@ -49,6 +50,8 @@ mod time_contract;
 
 #[cfg(unix)]
 mod actions;
+#[cfg(unix)]
+mod answers;
 #[cfg(unix)]
 mod approvals;
 #[cfg(unix)]

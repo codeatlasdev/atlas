@@ -12,6 +12,7 @@ use std::process::{Child, Command, Stdio};
 use std::time::{Duration, Instant};
 
 use anyhow::{Context, Result, bail};
+use atlas_i18n::t;
 
 use super::desktop_agent::{Aux, Session};
 
@@ -111,7 +112,8 @@ fn spawn(prog: &str, args: &[&str], env: &[(&str, String)], log: &Path) -> Resul
         .stderr(out)
         .process_group(0);
     atlas_core::sys::no_new_privs(&mut cmd);
-    cmd.spawn().with_context(|| format!("starting {prog}"))
+    cmd.spawn()
+        .with_context(|| t!("cmd_desktop_start_failed", program = prog))
 }
 
 fn wait_for<T>(
@@ -126,20 +128,32 @@ fn wait_for<T>(
             return Ok(v);
         }
         if atlas_core::sys::interrupted() {
-            bail!("interrupted while starting {what}");
+            bail!(
+                "{}",
+                t!("cmd_desktop_agent_interrupted_starting", program = what)
+            );
         }
         if let Some(status) = child.try_wait()? {
             let tail = std::fs::read_to_string(log).unwrap_or_default();
             bail!(
-                "{what} exited ({status}) before it was ready: {}",
-                tail.trim()
+                "{}",
+                t!(
+                    "cmd_desktop_agent_helper_exited",
+                    program = what,
+                    status = crate::chrome::exit_text(status),
+                    output = tail.trim()
+                )
             );
         }
         if t0.elapsed() > STARTUP {
             bail!(
-                "{what} was not ready after {}s; see {}",
-                STARTUP.as_secs(),
-                log.display()
+                "{}",
+                t!(
+                    "cmd_desktop_agent_helper_timeout",
+                    program = what,
+                    secs = STARTUP.as_secs(),
+                    path = log.display().to_string()
+                )
             );
         }
         std::thread::sleep(Duration::from_millis(50));
@@ -150,17 +164,18 @@ fn wait_for<T>(
 pub fn start(s: &Session, scale: u32, path: &str, session: &str) -> Result<Display> {
     for tool in ["sway", "dbus-daemon"] {
         if !on_path(tool) {
-            bail!(
-                "{tool} not found: an agent instance needs a headless Wayland compositor (Arch: `pacman -S sway grim`; Debian/Ubuntu: `apt install sway grim dbus`)"
-            );
+            bail!("{}", t!("cmd_desktop_agent_tool_missing", tool = tool));
         }
     }
     let run = atlas_core::agent_display::run_dir(&s.dir);
     // The caller's own runtime dir is never ours: refuse before anything is created in it.
     if std::env::var_os("XDG_RUNTIME_DIR").is_some_and(|d| Path::new(&d) == run) {
         bail!(
-            "{} is this shell's XDG_RUNTIME_DIR; refusing to run an agent display in it",
-            run.display()
+            "{}",
+            t!(
+                "cmd_desktop_agent_runtime_dir",
+                path = run.display().to_string()
+            )
         );
     }
     std::fs::create_dir_all(&run)?;
@@ -218,7 +233,7 @@ pub fn start(s: &Session, scale: u32, path: &str, session: &str) -> Result<Displ
             Ok(Aux {
                 pid: c.id(),
                 start: atlas_core::procs::start_time(c.id())
-                    .context("the display process vanished")?,
+                    .with_context(|| t!("cmd_desktop_agent_display_gone"))?,
             })
         })
         .collect::<Result<Vec<_>>>()?;

@@ -12,6 +12,7 @@
 //! 6. Append the caller's SSH public key to <home>/.ssh/authorized_keys
 
 use anyhow::{Context, Result, bail};
+use atlas_i18n::t;
 use clap::Args;
 use serde_json::json;
 use std::sync::atomic::{AtomicBool, Ordering};
@@ -73,6 +74,11 @@ impl AtlasCommand for InstallArgs {
     async fn run(self) -> Result<()> {
         let json = self.progress == Progress::Json;
         JSON_EVENTS.store(json, Ordering::Relaxed);
+        if json {
+            // The machine channel is English end to end: the `message` of every event, including the error that
+            // ends it, is the English a client falls back to when it does not know the `code`.
+            atlas_i18n::set_lang(atlas_core::lang::DEFAULT);
+        }
         let result = run_install(self).await;
         // The failure is the last event, with the code of the error, so a client never reads text.
         if let (true, Err(e)) = (json, &result) {
@@ -121,7 +127,10 @@ async fn probe_host(r: &Remote) -> Result<Probe> {
         )
         .await?;
     if out.code != 0 {
-        bail!("probing the host failed: {}", out.stderr.trim());
+        bail!(
+            "{}",
+            t!("cmd_crew_probe_failed", reason = out.stderr.trim())
+        );
     }
     Ok(parse_probe(out.stdout.trim()))
 }
@@ -142,18 +151,28 @@ pub(super) fn swap_outcome(code: i32, stderr: &str, target: &str) -> Result<()> 
     match code {
         0 => Ok(()),
         3 => bail!(
-            "the new binary did not bring hostd up within {}s; the previous binary was restored and is running. \
-Look at: atlas crew logs {target}",
-            binary::HEALTH_TIMEOUT_S
+            "{}",
+            t!(
+                "cmd_crew_swap_rolled_back",
+                secs = binary::HEALTH_TIMEOUT_S,
+                target = target
+            )
         ),
         4 => bail!(
-            "hostd did not come up on {target} within {}s and there was no previous binary to go back to. \
-Look at: atlas crew logs {target}",
-            binary::HEALTH_TIMEOUT_S
+            "{}",
+            t!(
+                "cmd_crew_swap_no_previous",
+                target = target,
+                secs = binary::HEALTH_TIMEOUT_S
+            )
         ),
         _ => bail!(
-            "installing the binary on {target} failed: {}",
-            stderr.trim()
+            "{}",
+            t!(
+                "cmd_crew_install_binary_failed",
+                target = target,
+                reason = stderr.trim()
+            )
         ),
     }
 }
@@ -166,7 +185,10 @@ async fn run_install(args: InstallArgs) -> Result<()> {
 
     // --- Preflight: reads only, names everything that is missing ---
     step_marker("check");
-    step(&format!("preflight {}", args.ssh_target));
+    step(&t!(
+        "cmd_crew_step_preflight",
+        target = args.ssh_target.as_str()
+    ));
     let target = preflight(&r, &args.ssh_target).await?;
 
     // --- Sudo check: with a password, every privileged call sends it itself (tty_tickets) ---
@@ -184,7 +206,7 @@ async fn run_install(args: InstallArgs) -> Result<()> {
 
     // --- Binary: staged only; it goes live in the swap below, after the unit exists ---
     step_marker("install");
-    step("staging atlas binary");
+    step(&t!("cmd_crew_step_staging"));
     let binary = args
         .binary
         .clone()
@@ -199,7 +221,7 @@ async fn run_install(args: InstallArgs) -> Result<()> {
     if let Some(notice) = layout::reuse_notice(&account) {
         step(&notice);
     } else {
-        step(&format!("creating {} user", account.user));
+        step(&t!("cmd_crew_step_creating_user", user = account.user));
     }
     if account.create {
         let add = format!(
@@ -209,7 +231,10 @@ async fn run_install(args: InstallArgs) -> Result<()> {
         );
         let o = p.exec(&add).await?;
         if o.code != 0 {
-            bail!("useradd failed: {}", o.stderr.trim());
+            bail!(
+                "{}",
+                t!("cmd_crew_useradd_failed", reason = o.stderr.trim())
+            );
         }
     }
     // The ssh user to reach this server as: Atlas Desktop reads it (it differs on a migrated server).
@@ -222,6 +247,8 @@ async fn run_install(args: InstallArgs) -> Result<()> {
         );
         println!("{line}");
     } else {
+        // Old clients and people read this line as it is; Atlas Desktop reads the event above.
+        // i18n-ignore: read by old clients
         println!("user: {}", account.user);
     }
 
@@ -236,9 +263,12 @@ async fn run_install(args: InstallArgs) -> Result<()> {
     let o = p.exec(&link).await?;
     if o.code != 0 {
         bail!(
-            "linking atlas for {} failed: {}",
-            account.user,
-            o.stderr.trim()
+            "{}",
+            t!(
+                "cmd_crew_link_failed",
+                user = account.user,
+                reason = o.stderr.trim()
+            )
         );
     }
 
@@ -250,7 +280,10 @@ async fn run_install(args: InstallArgs) -> Result<()> {
     );
     let o = p.exec(&mk_ssh).await?;
     if o.code != 0 {
-        bail!("creating .ssh dir failed: {}", o.stderr.trim());
+        bail!(
+            "{}",
+            t!("cmd_crew_mkdir_ssh_failed", reason = o.stderr.trim())
+        );
     }
 
     // --- Systemd unit ---
@@ -258,15 +291,22 @@ async fn run_install(args: InstallArgs) -> Result<()> {
     // A server installed as "Atlas Bot": stop and remove its unit first (two units must never run one hostd).
     let retire = layout::retire_legacy_service(probe);
     if !retire.is_empty() {
-        step("retiring the old atlas-bot service (data is kept)");
+        step(&t!("cmd_crew_step_retire"));
         for cmd in &retire {
             let o = p.exec(cmd).await?;
             if o.code != 0 {
-                bail!("`{cmd}` failed: {}", o.stderr.trim());
+                bail!(
+                    "{}",
+                    t!(
+                        "cmd_crew_command_failed",
+                        command = cmd.as_str(),
+                        reason = o.stderr.trim()
+                    )
+                );
             }
         }
     }
-    step("writing systemd service");
+    step(&t!("cmd_crew_step_unit"));
     let unit = layout::systemd_unit(&account);
     write_unit(&p, &format!("/etc/systemd/system/{SERVICE}.service"), &unit).await?;
     let o = p
@@ -275,17 +315,14 @@ async fn run_install(args: InstallArgs) -> Result<()> {
         ))
         .await?;
     if o.code != 0 {
-        bail!("enabling the service failed: {}", o.stderr.trim());
+        bail!("{}", t!("cmd_crew_enable_failed", reason = o.stderr.trim()));
     }
 
     // --- One Linux user per crewmate ---
     // The helpers, the engines every crewmate user runs, and a user for each crewmate that already
     // exists. All before hostd is swapped in and restarted: it looks for the helper's socket when it starts.
     let ids = list_crewmates(&p, &account).await?;
-    step(&format!(
-        "setting up one Linux user per crewmate ({} existing)",
-        ids.len()
-    ));
+    step(&t!("cmd_crew_step_isolation", count = ids.len()));
     let engines = isolation_engines();
     for action in isolation::install_actions(
         &account,
@@ -302,9 +339,10 @@ async fn run_install(args: InstallArgs) -> Result<()> {
     }
 
     // --- Swap in, restart and wait for hostd (rolls back to the binary that was there) ---
-    step(&format!(
-        "starting {SERVICE} and waiting for hostd (up to {}s)",
-        binary::HEALTH_TIMEOUT_S
+    step(&t!(
+        "cmd_crew_step_start",
+        service = SERVICE,
+        secs = binary::HEALTH_TIMEOUT_S
     ));
     let o = p
         .exec(&binary::install_script(binary::HEALTH_TIMEOUT_S))
@@ -317,13 +355,16 @@ async fn run_install(args: InstallArgs) -> Result<()> {
         // The old binary dir goes only now: the old unit pointed at it and is gone, the new one is up.
         let o = p.exec(&layout::remove_legacy_install_dir()).await?;
         if o.code != 0 {
-            eprintln!("could not remove the old install dir: {}", o.stderr.trim());
+            eprintln!(
+                "{}",
+                t!("cmd_crew_old_dir_not_removed", reason = o.stderr.trim())
+            );
         }
     }
 
     // --- SSH authorized_keys ---
     step_marker("ssh");
-    step(&format!("configuring SSH access for {}", account.user));
+    step(&t!("cmd_crew_step_ssh", user = account.user));
     add_ssh_key(&p, &account, &pubkey).await?;
 
     if args.browsers {
@@ -332,9 +373,11 @@ async fn run_install(args: InstallArgs) -> Result<()> {
     }
 
     let ready = format!(
-        "\x1b[32m✓\x1b[0m Crew server ready: {user}@{host}. \
-Add it in Atlas Desktop → Crew, then sign the agents in (atlas crew login <agent>).",
-        user = account.user
+        "\x1b[32m✓\x1b[0m {}",
+        t!(
+            "cmd_crew_install_ready",
+            account = format!("{}@{host}", account.user)
+        )
     );
     // With --progress json stdout carries events only.
     if JSON_EVENTS.load(Ordering::Relaxed) {
@@ -365,7 +408,11 @@ pub(super) async fn preflight(r: &Remote, ssh_target: &str) -> Result<&'static s
         return Err(progress::Coded::new(
             code,
             json!({ "target": ssh_target, "detail": stderr }),
-            format!("could not connect to {ssh_target} over SSH: {stderr}"),
+            t!(
+                "cmd_crew_ssh_unreachable",
+                target = ssh_target,
+                reason = stderr
+            ),
         )
         .into());
     }
@@ -390,30 +437,42 @@ pub(super) async fn stage_release(p: &Priv<'_>, version: &str, target: &str) -> 
     }
     let on_host = out.stderr.trim().to_owned();
     eprintln!(
-        "\x1b[33m◆\x1b[0m the host could not download atlas {version} ({}); downloading it here and sending it over ssh",
-        on_host.lines().last().unwrap_or("no reason given")
+        "\x1b[33m◆\x1b[0m {}",
+        t!(
+            "cmd_crew_host_download_failed",
+            version = version,
+            reason = on_host
+                .lines()
+                .last()
+                .map_or_else(|| t!("cmd_crew_no_reason_given"), str::to_owned)
+        )
     );
-    let tmp = tempfile::tempdir().context("creating a temp dir for the download")?;
+    let tmp = tempfile::tempdir().with_context(|| t!("cmd_crew_temp_dir_failed"))?;
     let (v, t, dir) = (version.to_owned(), target.to_owned(), tmp.path().to_owned());
     let here = tokio::task::spawn_blocking(move || download_binary_here(&v, &t, &dir))
         .await
-        .context("download task")?;
+        .with_context(|| t!("cmd_crew_download_task_failed"))?;
     match here {
         Ok(bin) => stage_upload(p, &bin).await,
         Err(e) => {
             let cache = dirs::home_dir()
-                .context("no home directory")?
+                .with_context(|| t!("cmd_desktop_no_home"))?
                 .join(binary::offline_cache_path(target));
             if !cache.exists() {
                 bail!(
-                    "could not get atlas {version} onto the host:\n  on the host: {on_host}\n  on this machine: {e:#}\n  \
-and there is no cached binary at {}.\n  \
-Check this machine's internet access (it honours https_proxy), or give a Linux binary with --binary.",
-                    cache.display()
+                    "{}",
+                    t!(
+                        "cmd_crew_get_binary_failed",
+                        version = version,
+                        on_host = on_host.as_str(),
+                        here = format!("{e:#}"),
+                        path = cache.display().to_string()
+                    )
                 );
             }
             eprintln!(
-                "\x1b[33m◆\x1b[0m could not download here either ({e:#}); uploading the cached binary"
+                "\x1b[33m◆\x1b[0m {}",
+                t!("cmd_crew_download_here_failed", reason = format!("{e:#}"))
             );
             stage_upload(p, &cache).await
         }
@@ -445,18 +504,22 @@ fn download_binary_here(
             return Ok(out);
         }
     }
-    bail!("{asset} has no `atlas` binary inside")
+    bail!("{}", t!("cmd_crew_asset_no_binary", asset = asset.as_str()))
 }
 
 /// Stream a local binary to `<INSTALL_DIR>/atlas.new`.
 pub(super) async fn stage_upload(p: &Priv<'_>, local_bin: &std::path::Path) -> Result<()> {
-    let content =
-        std::fs::read(local_bin).with_context(|| format!("reading {}", local_bin.display()))?;
+    let content = std::fs::read(local_bin).with_context(|| {
+        t!(
+            "cmd_install_read_failed",
+            path = local_bin.display().to_string()
+        )
+    })?;
     let o = p
         .exec_stdin(&binary::stage_upload_script(), Some(&content))
         .await?;
     if o.code != 0 {
-        bail!("binary upload failed: {}", o.stderr.trim());
+        bail!("{}", t!("cmd_crew_upload_failed", reason = o.stderr.trim()));
     }
     Ok(())
 }
@@ -465,7 +528,7 @@ pub(super) async fn stage_upload(p: &Priv<'_>, local_bin: &std::path::Path) -> R
 async fn list_crewmates(p: &Priv<'_>, a: &Account) -> Result<Vec<String>> {
     let o = p.exec(&isolation::list_crewmates_script(a)).await?;
     if o.code != 0 {
-        bail!("listing the crewmates failed: {}", o.stderr.trim());
+        bail!("{}", t!("cmd_crew_list_failed", reason = o.stderr.trim()));
     }
     Ok(o.stdout
         .lines()
@@ -492,9 +555,7 @@ async fn write_unit(p: &Priv<'_>, file: &str, contents: &str) -> Result<()> {
         .exec_stdin(&layout::write_unit_script(file), Some(contents.as_bytes()))
         .await?;
     for unit in layout::unmasked_units(&o.stdout) {
-        step(&format!(
-            "{unit} was masked: unmasked it and wrote the real unit"
-        ));
+        step(&t!("cmd_crew_unit_unmasked", unit = unit.to_string()));
     }
     if o.code != 0 {
         if o.code == layout::UNMASK_FAILED {
@@ -520,8 +581,16 @@ async fn run_action(p: &Priv<'_>, action: &isolation::Action) -> Result<()> {
             if o.code != 0 {
                 let why = o.stderr.lines().rev().find(|l| !l.trim().is_empty());
                 eprintln!(
-                    "\x1b[33m◆\x1b[0m {agent} was not installed on the server ({}). Crewmates that use it cannot run until it is: fix that and run `atlas crew install` again, or install it with the vendor's line, `{line}`.",
-                    why.unwrap_or("the installer failed").trim()
+                    "\x1b[33m◆\x1b[0m {}",
+                    t!(
+                        "cmd_crew_engine_missing",
+                        agent = agent.to_string(),
+                        reason = why.map_or_else(
+                            || t!("cmd_crew_installer_failed"),
+                            |w| w.trim().to_owned()
+                        ),
+                        line = line.as_str()
+                    )
                 );
             }
             return Ok(());
@@ -532,9 +601,12 @@ async fn run_action(p: &Priv<'_>, action: &isolation::Action) -> Result<()> {
     };
     if o.code != 0 {
         bail!(
-            "`{}` failed: {}",
-            what.chars().take(120).collect::<String>(),
-            o.stderr.trim()
+            "{}",
+            t!(
+                "cmd_crew_command_failed",
+                command = what.chars().take(120).collect::<String>(),
+                reason = o.stderr.trim()
+            )
         );
     }
     Ok(())
@@ -550,9 +622,8 @@ fn local_public_key(
 ) -> Result<String> {
     let target = atlas_core::ssh::SshTarget::new(ssh_target, Some(port)).with_identity(identity);
     let key = atlas_core::ssh::find_key(&target).with_context(|| match &target.identity {
-        Some(k) => format!("the SSH key {} does not exist", k.display()),
-        None => "no SSH key found (ssh -G lists none that exists); create one with: ssh-keygen -t ed25519"
-            .to_owned(),
+        Some(k) => t!("cmd_crew_key_missing", path = k.display().to_string()),
+        None => t!("cmd_crew_no_ssh_key"),
     })?;
     key.public_text().map_err(anyhow::Error::msg)
 }
@@ -570,7 +641,10 @@ sudo chown {user}:{user} "$f""#,
     );
     let o = p.exec(&script).await?;
     if o.code != 0 {
-        bail!("adding SSH key failed: {}", o.stderr.trim());
+        bail!(
+            "{}",
+            t!("cmd_crew_add_key_failed", reason = o.stderr.trim())
+        );
     }
     Ok(())
 }

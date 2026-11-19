@@ -15,6 +15,7 @@ use anyhow::{Result, bail};
 use atlas_host::crew::capture::{
     DETECTORS_MJS, PACKAGE_LOCK, PLAYWRIGHT_VERSION, RUNNER_MJS, package_json,
 };
+use atlas_i18n::t;
 use clap::{Args, Subcommand};
 
 use crate::commands::AtlasCommand;
@@ -164,7 +165,14 @@ pub fn capture_present_script() -> String {
 pub async fn refresh(r: &Priv<'_>, target: &str) -> Result<bool> {
     let o = r.exec(&capture_present_script()).await?;
     if o.code == 255 {
-        bail!("cannot reach {target}: {}", o.stderr.trim());
+        bail!(
+            "{}",
+            t!(
+                "cmd_crew_cannot_reach",
+                target = target,
+                reason = o.stderr.trim()
+            )
+        );
     }
     if o.code != 0 {
         return Ok(false);
@@ -174,7 +182,7 @@ pub async fn refresh(r: &Priv<'_>, target: &str) -> Result<bool> {
             .exec_stdin(&write_file_script(file), Some(text.as_bytes()))
             .await?;
         if o.code != 0 {
-            return Err(fail(&format!("writing {file}"), target, &o));
+            return Err(fail(Failed::WriteFile(file), target, &o));
         }
     }
     Ok(true)
@@ -237,13 +245,52 @@ pub fn status_script() -> String {
     )
 }
 
-fn fail(what: &str, target: &str, o: &Output) -> anyhow::Error {
-    let why = if o.stderr.trim().is_empty() {
+/// What failed on the server, one message each (a verb phrase glued to a step name cannot be translated).
+enum Failed<'a> {
+    CaptureDir,
+    WriteFile(&'a str),
+    NpmCi,
+    PlaywrightInstall,
+    InstallDeps,
+    AptInstall,
+}
+
+fn fail(what: Failed, target: &str, o: &Output) -> anyhow::Error {
+    let reason = if o.stderr.trim().is_empty() {
         o.stdout.trim()
     } else {
         o.stderr.trim()
     };
-    anyhow::anyhow!("{what} on {target} failed: {why}")
+    let text = match what {
+        Failed::CaptureDir => t!(
+            "cmd_crew_fail_capture_dir",
+            target = target,
+            reason = reason
+        ),
+        Failed::WriteFile(file) => t!(
+            "cmd_crew_fail_write_file",
+            file = file,
+            target = target,
+            reason = reason
+        ),
+        Failed::NpmCi => t!("cmd_crew_fail_npm_ci", target = target, reason = reason),
+        Failed::PlaywrightInstall => t!(
+            "cmd_crew_fail_playwright_install",
+            target = target,
+            reason = reason
+        ),
+        Failed::InstallDeps => t!(
+            "cmd_crew_fail_install_deps",
+            target = target,
+            reason = reason
+        ),
+        Failed::AptInstall => t!(
+            "cmd_crew_fail_apt_install",
+            target = target,
+            reason = reason
+        ),
+    };
+    anyhow::anyhow!("{text}")
 }
 
 /// Install the capture runtime on the host. Idempotent: run it again to repair or to move to a new
@@ -251,62 +298,61 @@ fn fail(what: &str, target: &str, o: &Output) -> anyhow::Error {
 pub async fn install(r: &Priv<'_>, target: &str) -> Result<()> {
     let step = |m: &str| eprintln!("\x1b[36m▸\x1b[0m {m}");
 
-    step("checking node and npm");
+    step(&t!("cmd_crew_browsers_step_node"));
     let o = r.exec(&node_check_script()).await?;
     if o.code != 0 {
         bail!("{}", o.stdout.trim());
     }
 
-    step("preparing the capture directory (as the crew user)");
+    step(&t!("cmd_crew_browsers_step_dir"));
     let o = r.exec(&mkdir_script()).await?;
     if o.code != 0 {
-        return Err(fail("creating the capture directory", target, &o));
+        return Err(fail(Failed::CaptureDir, target, &o));
     }
     for (file, text) in capture_files() {
         let o = r
             .exec_stdin(&write_file_script(file), Some(text.as_bytes()))
             .await?;
         if o.code != 0 {
-            return Err(fail(&format!("writing {file}"), target, &o));
+            return Err(fail(Failed::WriteFile(file), target, &o));
         }
     }
 
-    step(&format!(
-        "installing playwright {PLAYWRIGHT_VERSION} from the lockfile (npm ci, as the crew user)"
+    step(&t!(
+        "cmd_crew_browsers_step_npm",
+        version = PLAYWRIGHT_VERSION
     ));
     let o = r.exec(&npm_ci_script()).await?;
     if o.code != 0 {
-        return Err(fail("npm ci", target, &o));
+        return Err(fail(Failed::NpmCi, target, &o));
     }
 
-    step("downloading chromium and webkit (as the crew user, a few minutes)");
+    step(&t!("cmd_crew_browsers_step_download"));
     let o = r.exec(&browsers_download_script()).await?;
     if o.code != 0 {
-        return Err(fail("playwright install", target, &o));
+        return Err(fail(Failed::PlaywrightInstall, target, &o));
     }
 
-    step(
-        "checking the system libraries the browsers need (as the crew user, nothing is installed)",
-    );
+    step(&t!("cmd_crew_browsers_step_deps"));
     let o = r.exec(&deps_dry_run_script()).await?;
     if o.code != 0 {
-        return Err(fail("playwright install-deps --dry-run", target, &o));
+        return Err(fail(Failed::InstallDeps, target, &o));
     }
     match apt::parse_dry_run(&o.stdout)? {
-        Deps::Ready => step("system libraries already installed"),
+        Deps::Ready => step(&t!("cmd_crew_browsers_step_deps_ready")),
         Deps::Missing(names) => {
-            step(&format!(
-                "installing {} system libraries with apt-get (sudo; the only step that runs as root)",
-                names.len()
-            ));
+            step(&t!("cmd_crew_browsers_step_apt", count = names.len()));
             let o = r.exec(&apt::root_script(&names)?).await?;
             if o.code != 0 {
-                return Err(fail("apt-get install", target, &o));
+                return Err(fail(Failed::AptInstall, target, &o));
             }
         }
     }
 
-    println!("\x1b[32m✓\x1b[0m Browsers ready on {target}: crewmates can use the capture tool.");
+    println!(
+        "\x1b[32m✓\x1b[0m {}",
+        t!("cmd_crew_browsers_ready", target = target)
+    );
     Ok(())
 }
 
@@ -316,15 +362,20 @@ pub async fn install(r: &Priv<'_>, target: &str) -> Result<()> {
 fn status_report(target: &str, code: Option<i32>, stdout: &str) -> Result<String> {
     let lines = stdout.trim();
     if code == Some(255) {
-        bail!("cannot reach {target}");
+        bail!("{}", t!("cmd_crew_cannot_reach_bare", target = target));
     }
     if lines.is_empty() {
         if code == Some(0) {
             return Ok(format!(
-                "\x1b[32m✓\x1b[0m capture is ready on {target} (playwright {PLAYWRIGHT_VERSION}: chromium, webkit).\n"
+                "\x1b[32m✓\x1b[0m {}\n",
+                t!(
+                    "cmd_crew_browsers_capture_ready",
+                    target = target,
+                    version = PLAYWRIGHT_VERSION
+                )
             ));
         }
-        bail!("checking {target} failed");
+        bail!("{}", t!("cmd_crew_check_failed", target = target));
     }
     Ok(lines
         .lines()
@@ -335,10 +386,24 @@ fn status_report(target: &str, code: Option<i32>, stdout: &str) -> Result<String
 async fn status(r: &Priv<'_>, target: &str) -> Result<()> {
     let o = r.exec(&status_script()).await?;
     if o.code == 255 {
-        bail!("cannot reach {target}: {}", o.stderr.trim());
+        bail!(
+            "{}",
+            t!(
+                "cmd_crew_cannot_reach",
+                target = target,
+                reason = o.stderr.trim()
+            )
+        );
     }
     if o.stdout.trim().is_empty() && o.code != 0 {
-        bail!("checking {target} failed: {}", o.stderr.trim());
+        bail!(
+            "{}",
+            t!(
+                "cmd_crew_check_failed_reason",
+                target = target,
+                reason = o.stderr.trim()
+            )
+        );
     }
     print!("{}", status_report(target, Some(o.code), &o.stdout)?);
     if o.code != 0 {
@@ -825,7 +890,12 @@ mod tests {
         assert!(
             status_report("h", Some(0), "")
                 .unwrap()
-                .contains("capture is ready on h (playwright 1.65.1: chromium, webkit)")
+                .contains(&atlas_i18n::t_in!(
+                    "en",
+                    "cmd_crew_browsers_capture_ready",
+                    target = "h",
+                    version = "1.65.1"
+                ))
         );
         assert!(status_report("h", Some(1), "").is_err());
         assert!(status_report("h", Some(255), "").is_err());

@@ -12,6 +12,7 @@ use std::os::unix::fs::PermissionsExt;
 use std::path::{Path, PathBuf};
 use std::time::Duration;
 
+use atlas_core::clock::ManualClock;
 use serde_json::{Value, json};
 
 use super::tests::{Phone, pair_start};
@@ -436,16 +437,24 @@ async fn an_update_that_cannot_start_here_says_why_and_starts_nothing() {
 
 // ── idle exit ──────────────────────────────────────────────────────────────────
 
-/// A daemon that leaves after `limit` of nothing, and the task that runs it (finished = it exited).
+/// A daemon that leaves after `limit` of nothing on a clock that only the test moves, and the task that runs it
+/// (finished = it exited). Returns once the daemon's first look at idleness is done, so every [`ManualClock::tick`]
+/// after it is a look of its own.
 async fn daemon_that_idles(
     dir: &Path,
     limit: Duration,
-) -> (HostClient, tokio::task::JoinHandle<anyhow::Result<()>>) {
+) -> (
+    HostClient,
+    tokio::task::JoinHandle<anyhow::Result<()>>,
+    ManualClock,
+) {
     let d = dir.to_path_buf();
+    let clock = ManualClock::new();
     let opts = crate::server::ServeOpts {
         no_mobile_relay: true,
         mobile_loopback: true,
         idle: Some(limit),
+        clock: clock.clock(),
         desktop: Some(atlas_core::desktop_ctl::Endpoint {
             token: dir.join("no-desktop.token"),
             socket: dir.join("no-desktop.sock"),
@@ -453,7 +462,26 @@ async fn daemon_that_idles(
         ..Default::default()
     };
     let task = tokio::spawn(async move { crate::server::serve_with(&d, opts).await });
-    (connect(dir).await, task)
+    let c = connect(dir).await;
+    clock.armed_past(1).await;
+    (c, task, clock)
+}
+
+/// Let `limit` pass on the daemon's clock, one look at a time, up to `looks` times; true when it exited meanwhile.
+/// Each look is awaited as the event (the daemon re-arms after handling it), never as a duration.
+async fn idle_for(
+    clock: &ManualClock,
+    task: &mut tokio::task::JoinHandle<anyhow::Result<()>>,
+    limit: Duration,
+    looks: usize,
+) -> bool {
+    for _ in 0..looks {
+        tokio::select! {
+            exited = &mut *task => { exited.unwrap().unwrap(); return true; }
+            () = clock.tick(limit) => {}
+        }
+    }
+    task.is_finished()
 }
 
 /// The phone goes away (the app is killed) and hostd has seen it: only `c`'s own connection is left.
@@ -472,21 +500,21 @@ async fn leave(c: &HostClient, phone: Phone) {
 
 /// Incident: the desktop closed, hostd left 10 minutes later, and the paired phone showed "Can't reach
 /// Mac" until someone opened Atlas Desktop. Nothing runs, nobody is connected: only the pairing
-/// keeps it. Control: the same daemon with the phone revoked does leave, so the wait below is real.
+/// keeps it. Control: the same daemon with the phone revoked does leave, so the idle clock below is real.
+/// Both run on a clock the test moves: no limit to outlast while starting and connecting (#596: at 1 s, then 3 s, a
+/// loaded machine let the daemon idle out before the test had connected), no window to wait for.
 #[tokio::test]
 async fn a_daemon_with_a_paired_phone_does_not_idle_out_and_one_without_does() {
-    // The idle clock runs from the moment the daemon starts, so the limit must outlast starting it and connecting:
-    // at 1 s a loaded machine let the daemon idle out before the test had connected ("hostd did not start").
-    let limit = Duration::from_secs(3);
+    let limit = Duration::from_secs(2);
 
     let kept = tempfile::tempdir().unwrap();
-    let (c, kept_task) = daemon_that_idles(kept.path(), limit).await;
+    let (c, mut kept_task, kept_clock) = daemon_that_idles(kept.path(), limit).await;
     let (phone, _node) = pair(&c).await;
     leave(&c, phone).await;
     drop(c);
 
     let revoked = tempfile::tempdir().unwrap();
-    let (c, revoked_task) = daemon_that_idles(revoked.path(), limit).await;
+    let (c, mut revoked_task, revoked_clock) = daemon_that_idles(revoked.path(), limit).await;
     let (phone, node) = pair(&c).await;
     c.call("mobile_revoke", json!({"node_id": node}))
         .await
@@ -494,12 +522,18 @@ async fn a_daemon_with_a_paired_phone_does_not_idle_out_and_one_without_does() {
     leave(&c, phone).await;
     drop(c);
 
-    // The revoked one goes (a few ticks of half the limit); the paired one is still here as long after.
-    let gone = tokio::time::timeout(atlas_core::scaling::HANG, revoked_task).await;
+    // The revoked one goes once `limit` has passed with nobody connected (its own connection may take a look or
+    // two to be noticed as gone); the same many looks on the paired one, and as many again, leave it up.
+    let mut looks = 0;
+    let gone = tokio::time::timeout(atlas_core::scaling::HANG, async {
+        while !idle_for(&revoked_clock, &mut revoked_task, limit, 1).await {
+            looks += 1;
+        }
+    })
+    .await;
     assert!(gone.is_ok(), "a daemon nobody can reach never exited");
-    tokio::time::sleep(limit * 2).await;
     assert!(
-        !kept_task.is_finished(),
+        !idle_for(&kept_clock, &mut kept_task, limit, 2 * looks + 4).await,
         "the daemon left with a phone paired and nothing else running"
     );
     let c = connect(kept.path()).await;

@@ -11,6 +11,7 @@ use std::path::PathBuf;
 use std::sync::Arc;
 use std::time::{Duration, Instant};
 
+use atlas_core::clock::Clock;
 use atlas_core::scaling::HANG;
 use atlas_lsp::install::{Failure, Launch, Progress, Source};
 use atlas_lsp::manager::{Config, Manager, Overrides, Push, Resolver, State};
@@ -72,6 +73,7 @@ fn cfg() -> Config {
         restart_window: Duration::from_secs(60),
         restart_backoff: Duration::from_millis(30),
         request_timeout: HANG,
+        clock: Clock::default(),
     }
 }
 

@@ -1,6 +1,8 @@
 use serde_json::{Value, json};
 
-use atlas_core::clock::{Clock, ManualClock};
+use atlas_core::clock::Clock;
+#[cfg(unix)]
+use atlas_core::clock::ManualClock;
 use atlas_core::ipc;
 use tokio::io::{AsyncBufReadExt, AsyncWriteExt};
 

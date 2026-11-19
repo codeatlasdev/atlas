@@ -69,7 +69,7 @@ Measure with nothing else compiling (a concurrent `cargo install` turned 49 s in
 | alternative macOS linker (lld, sold, wild) | ld64 is already fast (Bevy, perf-book, Zed); sold is unmaintained; wild has no usable Mach-O |
 | `split-debuginfo = "unpacked"` | already Cargo's macOS default |
 | `[profile.dev] opt-level = 1` | slows the edit loop |
-| `panic = "abort"` | the TUI and the test harness need unwinding |
+| `panic = "abort"` | the TUI and the test setup need unwinding |
 | sccache locally | no gain with incremental; maybe a later CI experiment |
 | cargo-sweep | unmaintained; `bun run sweep` deletes `target/build` instead |
 | per-dep `opt-level = 3` for proc-macros | no measured need; revisit if `--timings` shows macro expansion on the critical path |

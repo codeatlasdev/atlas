@@ -127,11 +127,29 @@ command that fixes it. `warn` is for the reviewer and `info` is hidden unless as
 
 `docs/<locale>/<page>.md` carries front matter with `title`, `source` (the English file in `docs/`) and `source_sha`,
 the **git blob sha** of that file when it was translated (`git hash-object docs/<source>`, quoted: an all-digit sha
-unquoted is a YAML number). A different sha today is a warning (a typo fix must not block a PR); invalid front matter or
-a source that is gone is an error; a page without a translation is `info`; a changed heading count or code block (comments
-aside) is a warning. pt-PT words in prose warn. The optional field `translation: machine` marks a page a model translated and no
-person reviewed; the site shows a banner for it (an outdated page shows the outdated banner instead), and the reviewer
-removes the line. Any other value is an error.
+unquoted is a YAML number). A different sha in a snapshot (no diff base) is a warning, because a page may lag behind main;
+invalid front matter or a source that is gone is an error; a page without a translation is `info`; a changed heading count
+or code block (comments aside) is a warning. pt-PT words in prose warn. The optional field `translation: machine` marks a
+page a model translated and no person reviewed; the site shows a banner for it (an outdated page shows the outdated banner
+instead), and the reviewer removes the line.
+
+**A change owes the translation.** With a diff base (a pull request, a push, a local branch with `origin/main`, see
+Ratchets below), a change that edits `docs/<page>.md` (or adds it) while the translation of a `required` locale is not
+current (`source_sha` is not the blob sha of the English file as it is now) fails: `docs-outdated` is an **error** for the
+edited page, and `docs-missing` is an error for a page the change adds. A page the change does not touch stays a warning,
+so old drift never blocks an unrelated change. A typo fix in English therefore needs its twin restamped (a typo-only
+change needs only a new `source_sha`; anything that changes meaning needs the translation updated first).
+
+The escape, for a translation that cannot ship with the change, is in the twin's front matter:
+
+```yaml
+translation: pending
+issue: https://github.com/codeatlasdev/atlas/issues/700
+```
+
+`pending` needs an `issue` that is a GitHub issue URL (and `issue` is valid only with `pending`). The page stays outdated
+(a warning, and the site shows the outdated notice until `source_sha` matches), the issue is what tracks it. When the
+translation lands, remove both lines; a `pending` flag on a current page warns. Any other `translation` value is an error.
 
 ### Ratchets: nothing above the baseline, anywhere
 

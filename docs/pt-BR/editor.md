@@ -15,15 +15,15 @@ Abaixo de todo editor de texto:
 
 | Item | Clique para |
 |---|---|
-| `Ln 12, Col 5 (3 selections) (24 selected)` | ir para uma linha (⌃G) |
-| `3 errors, 1 warning` | focar o editor no primeiro problema |
-| `Spaces: 2` / `Tab Size: 4` | mudar a indentação, ou converter a indentação do arquivo |
+| `Lin 12, Col 5 (3 seleções) (24 selecionados)` | ir para uma linha (⌃G) |
+| `3 erros e 1 aviso` | focar o editor no primeiro problema |
+| `Espaços: 2` / `Tabulação: 4` | mudar a indentação, ou converter a indentação do arquivo |
 | `UTF-8` | (somente leitura: o Atlas edita texto UTF-8; os outros arquivos abrem como binário) |
-| `LF` / `CRLF` / `Mixed` | escolher o fim de linha gravado ao salvar |
+| `LF` / `CRLF` / `Misto` | escolher o fim de linha gravado ao salvar |
 | nome da linguagem | (o modo de sintaxe segue o nome do arquivo) |
-| chip do language server | veja abaixo |
+| chip do servidor de linguagem | veja abaixo |
 
-Acima do editor, as **breadcrumbs** mostram o caminho e os símbolos em volta do cursor (a partir dos símbolos do documento no language server, ou da árvore de sintaxe quando não há servidor); clique em um símbolo para ir até ele.
+Acima do editor, a **Trilha de navegação** mostra o caminho e os símbolos em volta do cursor (a partir dos símbolos do documento no language server, ou da árvore de sintaxe quando não há servidor); clique em um símbolo para ir até ele.
 
 ## Language servers
 
@@ -35,13 +35,13 @@ O chip da barra de status sempre aparece em um arquivo de texto e sempre diz o p
 |---|---|---|
 | **Pronto** | o nome e a versão do servidor, e se ele vem do `PATH`, do Atlas ou das suas configurações | reiniciar, abrir o log |
 | **Iniciando / Instalando** | o que está acontecendo, com o progresso quando o servidor informa | cancelar |
-| **Sem language server** | não existe um para esta linguagem; o popover lista as que têm | docs, configurações |
-| **Os recursos de linguagem precisam de um host de terminais mais novo** | o `atlas hostd` em execução é anterior aos language servers (veja abaixo) | reiniciar o host de terminais, depois |
-| **Desativado nas configurações** | `enable_language_servers` está desligado, ou a linguagem está em `disabled` | ativar, configurações |
-| **Precisa do Go** (gopls) / **precisa do curl** | falta a toolchain para instalar o servidor | copiar o comando de instalação, tentar novamente |
-| **Offline / falha na instalação** | o download falhou; a mensagem diz o motivo | tentar novamente, abrir o log |
-| **Travou** | o servidor parou; as últimas linhas do log dele aparecem | reiniciar, abrir o log |
-| **Comando personalizado não encontrado** | `lsp.<language>.command` não está no `PATH` | configurações |
+| **Sem servidor** | não existe um para esta linguagem; o popover lista as que têm | docs, configurações |
+| **Host antigo** | os recursos de linguagem precisam de um host de terminais mais novo: o `atlas hostd` em execução é anterior aos language servers (veja abaixo) | reiniciar o host de terminais, depois |
+| **Servidores desativados** / **Servidor desativado** | `enable_language_servers` está desligado, ou a linguagem está em `disabled` | ativar, configurações |
+| **Precisa de Go** (gopls) / **Precisa de curl** | falta a toolchain para instalar o servidor | copiar o comando de instalação, tentar novamente |
+| **Sem conexão** / **Falha na instalação** | o download falhou; a mensagem diz o motivo | tentar novamente, abrir o log |
+| **Parou** | o servidor parou; as últimas linhas do log dele aparecem | reiniciar, abrir o log |
+| **Servidor não encontrado** | `lsp.<language>.command` não está no `PATH` | configurações |
 
 Apertar F12, F2, ⇧F12 ou ⌘. em um arquivo sem servidor explica o motivo uma vez, com as mesmas ações, em vez de não fazer nada.
 
@@ -50,7 +50,7 @@ Apertar F12, F2, ⇧F12 ou ⌘. em um arquivo sem servidor explica o motivo uma 
 O `atlas hostd` sobrevive às atualizações do app, então depois de uma atualização ele pode ser mais velho que o app. Um host anterior aos language servers não consegue atendê-los. O Atlas compara os dois a cada conexão:
 
 - **Um host que aceita upgrade ao vivo** é trocado automaticamente. Seus terminais continuam rodando e os arquivos se reconectam sozinhos.
-- **Um host mais antigo com terminais rodando** não consegue transferi-los. O Atlas nunca encerra um terminal sem perguntar: o chip diz _Os recursos de linguagem precisam de um host de terminais mais novo_ e oferece **Reiniciar o host de terminais**, que lista os terminais em execução (`title — folder`) e avisa que eles vão terminar, ou **Reiniciar depois** (a pergunta volta na próxima abertura do app).
+- **Um host mais antigo com terminais rodando** não consegue transferi-los. O Atlas nunca encerra um terminal sem perguntar: o chip diz _Host antigo_ e o popover explica que _Os recursos de linguagem precisam de um host de terminais mais novo_, e oferece **Reiniciar o host de terminais**, que lista os terminais em execução (`title — folder`) e avisa que eles vão terminar, ou **Reiniciar depois** (a pergunta volta na próxima abertura do app).
 - **Nenhum terminal rodando**: o host é reiniciado em silêncio.
 
 O ciclo de vida do próprio host de terminais está documentado em [App desktop](desktop.md#manter-o-host-de-terminais-atualizado).
@@ -102,7 +102,7 @@ Também vêm de fábrica: indentação inteligente, fechamento automático de co
 
 ### Buscar e substituir
 
-⌘F abre a busca, ⌥⌘F ou ⌘H acrescenta a substituição. Há alternadores para maiúsculas (Aa), palavra inteira e regex, **na seleção** (⌥⌘L), contador `n of m` (limitado a 10.000), anterior / próximo, selecionar todas as ocorrências (⌥Enter), substituir e substituir tudo, e uma prévia do que a ocorrência atual vira (grupos de regex como `$1` já resolvidos).
+⌘F abre a busca, ⌥⌘F ou ⌘H acrescenta a substituição. Há alternadores para maiúsculas (Aa), palavra inteira e regex, **Localizar na seleção** (⌥⌘L), contador `n de m` (limitado a 10.000), anterior / próximo, selecionar todas as ocorrências (⌥Enter), substituir e substituir tudo, e uma prévia do que a ocorrência atual vira (grupos de regex como `$1` já resolvidos).
 
 ### Salvar
 
@@ -110,7 +110,7 @@ O autosave roda 0,5 s depois da última edição (⌘S salva na hora). Ao salvar
 
 ### Mudanças feitas fora do editor
 
-O Atlas observa o arquivo aberto. Se ele muda no disco e você não tem edições não salvas, o editor recarrega (`editor.auto_reload`), mantendo o cursor. Com edições não salvas, ele pergunta: **Carregar do disco** ou **Manter minha versão** (que grava a sua por cima); o autosave pausa nesse meio-tempo para nunca sobrescrever a outra mudança em silêncio. Um arquivo excluído é informado, e salvar o grava de novo. Todo salvamento também confere o arquivo com o que o editor leu ou gravou por último: se alguém o mudou antes, nada é gravado (fechar a aba então mostra o toast "Não salvo: `<file>` mudou no disco"), enquanto o mesmo texto com um horário de modificação mais novo (`touch`, git, um formatador) não conta como mudança.
+O Atlas observa o arquivo aberto. Se ele muda no disco e você não tem edições não salvas, o editor recarrega (`editor.auto_reload`), mantendo o cursor. Com edições não salvas, ele pergunta: **Recarregar do disco** ou **Manter minha versão** (que grava a sua por cima); o autosave pausa nesse meio-tempo para nunca sobrescrever a outra mudança em silêncio. Um arquivo excluído é informado, e salvar o grava de novo. Todo salvamento também confere o arquivo com o que o editor leu ou gravou por último: se alguém o mudou antes, nada é gravado (fechar a aba então mostra o toast "Não salvo: `<file>` mudou no disco"), enquanto o mesmo texto com um horário de modificação mais novo (`touch`, git, um formatador) não conta como mudança.
 
 ## Arquivos grandes
 

@@ -34,11 +34,11 @@ program ─pty─▶ atlas hostd ──pty_attach_raw (raw bytes)──▶ reade
 | Live settings | Theme changes recolor open terminals (`term_recolor`: fg, bg, cursor, cursor text, selection bg/fg, ANSI 16, min contrast). `terminal.font_size`, `terminal.font_family` and `terminal.font_thicken` (the renderer rebuilds its font and atlases, then the grid and pty are re-fitted), `terminal.max_scroll_history_lines`, cursor shape/blink, `terminal.osc52`, `terminal.ligatures` and `terminal.minimum_contrast` (WCAG ratio, 1 = off) apply to open terminals (`term_set_prefs`). `terminal.padding_x` / `terminal.padding_y` move the view's rect |
 | Grapheme clusters | A cell's zero-width characters (combining marks, VS16, ZWJ, skin-tone modifiers) travel with its base char in the snapshot (`GlyphCell::extra`), with `wide` for double-width cells, so the renderer draws the whole cluster. DECRQM `?2027` reports "always set" |
 | Color emoji | RGBA atlas fed by Apple Color Emoji; wide cells fitted into 2 cells; ZWJ, flag, skin-tone, keycap and VS16 clusters shaped to one glyph (swash) |
-| Ligatures and sprites | `calt`/`liga` ligatures for JetBrains Mono, on by default (`terminal.ligatures`; runs are same-style adjacent cells, broken by gaps, sprites, symbols and emoji; `Renderer::set_ligatures`). Procedural sprites so cells tile: box drawing U+2500–257F, block elements U+2580–259F, braille U+2800–28FF, sextants U+1FB00–1FB3B, powerline E0B0–E0B7. A per-row layout cache (content hash) makes a cached frame ~90 µs; a cold reshape of 144×44 is ~0.25 ms plain / ~0.4 ms code-heavy (release; `cargo test -p atlas-term --release -- --ignored --nocapture screen_bench`) |
+| Ligatures and sprites | `calt`/`liga` ligatures for JetBrains Mono, on by default (`terminal.ligatures`; runs are same-style adjacent cells, broken by gaps, sprites, symbols and emoji; `Renderer::set_ligatures`). Procedural sprites so cells tile: box drawing U+2500 to U+257F, block elements U+2580 to U+259F, braille U+2800 to U+28FF, sextants U+1FB00 to U+1FB3B, powerline E0B0 to E0B7. A per-row layout cache (content hash) makes a cached frame ~90 µs; a cold reshape of 144×44 is ~0.25 ms plain / ~0.4 ms code-heavy (release; `cargo test -p atlas-term --release -- --ignored --nocapture screen_bench`) |
 | Shell integration | OSC 133 prompt marks (⌘↑ / ⌘↓ jump between prompts, exit code, command output bounds), OSC 7 cwd (Restart reopens there), OSC 0/2 title, OSC 9 / 777 notifications, bell (flash + Dock attention when unfocused) |
 | Cursor | block, beam, underline (DECSCUSR), blinking, hollow when unfocused |
 | Colors | Foreground, background, cursor, cursor text, selection and the ANSI 16 come from the terminal theme (the app theme, or the one picked under Settings → Appearance → **Terminal theme**: `terminal.cursor`, `terminal.cursor_text`, `terminal.selection.*`, `terminal.ansi.*` of the theme file). A theme that leaves a color out gets one derived from the palette |
-| Font and padding | `terminal.font_family` is a CSS list (`"Fira Code", Menlo, monospace`): quotes and generic keywords (`monospace`, `ui-monospace`, `system-ui`, `sans-serif`, `serif`) are dropped and the first installed family is used. When the first one is missing, Atlas shows a toast once (`Font "Fira Code" is not installed for the fast terminal; using JetBrains Mono.`, event `term://font`). `terminal.padding_x` / `terminal.padding_y` (pt, 0–64, default 10 and 6) inset the terminal inside its pane; the margin is painted with the terminal background (Ghostty `window-padding-color = extend`) |
+| Font and padding | `terminal.font_family` is a CSS list (`"Fira Code", Menlo, monospace`): quotes and generic keywords (`monospace`, `ui-monospace`, `system-ui`, `sans-serif`, `serif`) are dropped and the first installed family is used. When the first one is missing, Atlas shows a toast once (`Font "Fira Code" is not installed for the fast terminal; using JetBrains Mono.`, event `term://font`). `terminal.padding_x` / `terminal.padding_y` (pt, 0 to 64, default 10 and 6) inset the terminal inside its pane; the margin is painted with the terminal background (Ghostty `window-padding-color = extend`) |
 | Keyboard | xterm encoding; Kitty keyboard protocol flags 1 (disambiguate), 8 (all keys as escapes), 16 (associated text). Press events only. macOS line editing and Ghostty's terminal chords: see [Keyboard](#keyboard) |
 | Modes | synchronized output (2026), bracketed paste, application cursor, alternate screen |
 | Images | Kitty graphics: transmit/display/put/delete, RGB/RGBA/PNG, zlib, chunked (`m=1`), direct and file/temp-file media, `I=` numbers, `q=` quiet, `C=1`, `z` above/below text. Sixel with HLS/RGB palettes. `CSI 14 t` reports the text area in pixels. Images scroll with the text; alternate-screen images go away with it |
@@ -129,7 +129,7 @@ A terminal cannot carry a bitmap, so for an image the program reads the clipboar
 
 ## Scrollback
 
-Bounded in lines and in bytes, per terminal. `terminal.max_scroll_history_lines` (default 10 000, 0–100 000) is the line cap; `terminal.scrollback_bytes` (default 64 MiB, clamped to 1 MiB–1 GiB, Settings shows MB; Ghostty's `scrollback-limit` defaults to 50 MB) is the memory cap, counted in bytes of cells (`Vt::history_bytes`). A line costs `columns` cells, so the tighter of the two wins and a very wide terminal keeps fewer lines than the line setting (`vt/history.rs::history_lines`). Both apply live: lowering one frees the surplus rows at once, and a resize recomputes the cap for the new width. `0` bytes never turns history off (it clamps to 1 MiB); set the line cap to 0 for that. ED3, RIS and a smaller cap hand the freed rows back (`scrollback_memory` test, a counting allocator).
+Bounded in lines and in bytes, per terminal. `terminal.max_scroll_history_lines` (default 10 000, 0 to 100 000) is the line cap; `terminal.scrollback_bytes` (default 64 MiB, clamped to 1 MiB to 1 GiB, Settings shows MB; Ghostty's `scrollback-limit` defaults to 50 MB) is the memory cap, counted in bytes of cells (`Vt::history_bytes`). A line costs `columns` cells, so the tighter of the two wins and a very wide terminal keeps fewer lines than the line setting (`vt/history.rs::history_lines`). Both apply live: lowering one frees the surplus rows at once, and a resize recomputes the cap for the new width. `0` bytes never turns history off (it clamps to 1 MiB); set the line cap to 0 for that. ED3, RIS and a smaller cap hand the freed rows back (`scrollback_memory` test, a counting allocator).
 
 ## Terminal identity
 
@@ -180,7 +180,7 @@ Audit against Ghostty's documented features (ghostty.org/docs/config/reference a
 
 - Emoji font only on macOS (Apple Color Emoji, loaded lazily from `/System/Library/Fonts`): no bundled or other-OS fallback, so elsewhere emoji fall back to the monochrome Nerd font or nothing. No system fallback for CJK or other scripts. Only the first glyph of a cluster the emoji font cannot join is drawn.
 - `alacritty_terminal` measures width per code point, so a ZWJ sequence that spans several wide cells in the grid is not one cell wide even though it is drawn as one glyph.
-- Shade blocks U+2591–2593 are flat alpha (no dither).
+- Shade blocks U+2591 to U+2593 are flat alpha (no dither).
 - Search is limited to what alacritty's DFA engine supports: no look-around, back-references or Unicode `\b` (use `(?-u:\b)`); at most 20 000 matches are kept.
 - Kitty graphics shared-memory medium (`t=s`), animation, Unicode placeholders, relative placements; key release events.
 - Prompt marks and images are anchored to scrollback lines; once the 10 000-line history is full they drift with each dropped line.
@@ -204,7 +204,7 @@ Today the native terminal runs on macOS only; Windows and Linux use xterm.js (`t
 
 | Phase | Issue | Delivers |
 |---|---|---|
-| 0 | [#239](https://github.com/codeatlasdev/atlas/issues/239) | benchmark harness, macOS reference and Windows baselines, machine matrix |
+| 0 | [#239](https://github.com/codeatlasdev/atlas/issues/239) | benchmark setup, macOS reference and Windows baselines, machine matrix |
 | 1 | [#240](https://github.com/codeatlasdev/atlas/issues/240) | own ConPTY layer |
 | spike | [#241](https://github.com/codeatlasdev/atlas/issues/241) | child HWND next to WebView2: input, focus, IME, z-order |
 | 2 | [#242](https://github.com/codeatlasdev/atlas/issues/242) | D3D11 backend, `term/win.rs` |
@@ -230,7 +230,7 @@ Preliminary, single runs. M4 Pro, 144×44 grid, 120 Hz. Atlas: `release` profile
 | render work per frame, p50 / p95 / max | 0.22 / 0.29 / 1.6 ms | n/a |
 | frame interval p50 / p95 | 8.33 / 8.45 ms | n/a |
 
-vtebench, `--max-secs 3` (median ms per 1 MiB sample, 97–429 samples per cell; lower is better):
+vtebench, `--max-secs 3` (median ms per 1 MiB sample, 97 to 429 samples per cell; lower is better):
 
 | Benchmark | Atlas | Ghostty |
 |---|---|---|

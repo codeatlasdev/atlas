@@ -10,7 +10,7 @@ Thank you for helping with Atlas. This page is the long version of [CONTRIBUTING
 ## Ways to help
 
 - **Report a bug** or ask for a feature in the [issue tracker](https://github.com/codeatlasdev/atlas/issues). Include `atlas version`, your OS, the steps and the relevant lines of `.logs/<service>.log` (redact secrets).
-- **Improve the docs.** Every page on the website has an *Edit on GitHub* link; the source is `docs/*.md`.
+- **Improve the docs.** Every page on the website has an *Edit this page on GitHub* link; the source is `docs/*.md`.
 - **Send a fix or a feature.** For anything bigger than a small fix, open an issue first so we can agree on the shape before you spend time on it.
 - **Security issues** do not go in public issues. See [SECURITY.md](https://github.com/codeatlasdev/atlas/blob/main/SECURITY.md).
 

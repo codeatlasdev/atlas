@@ -126,35 +126,35 @@ Other modes:
 
 ### stack orchestration (CLI + TUI)
 
-- 🧠 **knows your dependency graph.** `depends_on: { migrate: completed_successfully, api: healthy }`, plus `started` and `log_ready` (regex on a log line). No more `sleep 10 && bun dev`.
-- 🔁 **self-healing.** `restart: on_failure`, exponential backoff 1s → 30s, gives up loudly after `max_restarts`. Crash loops never show a fake green dot.
-- ✅ **typo-proof config.** `services.web.helth: unknown field (did you mean 'health'?)` before your terminal goes raw. JSON Schema for editor autocomplete.
-- 🖱️ **mouse that works everywhere.** tabs, sidebar rows, `⋯` menus, footer hints, modal buttons, palette items, scrollbar drag, all from one render-time click map, so it never drifts.
-- 📱 **mobile dev built in.** device picker for iOS sims / Android devices, build phase tracking, LAN-vs-loopback dev host injected for Tauri.
-- 🔐 **ssh tunnels that behave.** keepalive, reconnect on Wi-Fi switch, verified reuse across runs, never kills by port.
-- 🧼 **leaves no mess.** exact-PID orphan cleanup, singleton lock, terminal always restored (panic, SIGHUP, Ctrl+Z included).
-- 🚢 **deploy.** atomic, health-gated releases with rollback → [docs/deploy.md](docs/deploy.md).
+- **knows your dependency graph.** `depends_on: { migrate: completed_successfully, api: healthy }`, plus `started` and `log_ready` (regex on a log line). No more `sleep 10 && bun dev`.
+- **self-healing.** `restart: on_failure`, exponential backoff 1s → 30s, gives up loudly after `max_restarts`. Crash loops never show a fake green dot.
+- **typo-proof config.** `services.web.helth: unknown field (did you mean 'health'?)` before your terminal goes raw. JSON Schema for editor autocomplete.
+- **mouse that works everywhere.** tabs, sidebar rows, `⋯` menus, footer hints, modal buttons, palette items, scrollbar drag, all from one render-time click map, so it never drifts.
+- **mobile dev built in.** device picker for iOS sims / Android devices, build phase tracking, LAN-vs-loopback dev host injected for Tauri.
+- **ssh tunnels that behave.** keepalive, reconnect on Wi-Fi switch, verified reuse across runs, never kills by port.
+- **leaves no mess.** exact-PID orphan cleanup, singleton lock, terminal always restored (panic, SIGHUP, Ctrl+Z included).
+- **deploy.** atomic, health-gated releases with rollback → [docs/deploy.md](docs/deploy.md).
 
 ### logs
 
-- 🔎 **logs you can actually read.** exact wrap with hanging indent, find with highlight + `n/N`, regex + smartcase, filter vs find, level and time-range filters, JSON (pino/bunyan) compaction, jump between errors, clickable URLs and `path:line`.
-- 🗂️ **per-service buffers** so one chatty service can't nuke the rest, and every line also lands in `.logs/` on disk.
+- **logs you can actually read.** exact wrap with hanging indent, find with highlight + `n/N`, regex + smartcase, filter vs find, level and time-range filters, JSON (pino/bunyan) compaction, jump between errors, clickable URLs and `path:line`.
+- **per-service buffers** so one chatty service can't nuke the rest, and every line also lands in `.logs/` on disk.
 
 ### Atlas Desktop
 
-- 🪟 **one window for many coding agents in parallel.** a project per space, a git worktree per task (with its own port offset, so each worktree runs its own stack), persistent terminals that survive quitting the app.
-- 🔍 **review without leaving.** diff review with notes sent back to the agent, PRs and checks via `gh`, an embedded browser with Design Mode, worktrees on SSH hosts.
-- 🎛️ **yours to shape.** Zed-style docks, command palette, rebindable keys and Zed themes.
-- 🎨 **themes.** Atlas Dark and Light (a blue, Tokyo Night based pair) are the defaults, next to Dracula and Alucard by [Zeno Rocha](https://github.com/zenorocha) and [Luxonauta](https://github.com/luxonauta) (MIT), and One; import Ghostty, iTerm, VS Code, Alacritty or Base16 themes, or your own [Dracula Pro](https://draculatheme.com/pro) purchase from a zip.
+- **one window for many coding agents in parallel.** a project per space, a git worktree per task (with its own port offset, so each worktree runs its own stack), persistent terminals that survive quitting the app.
+- **review without leaving.** diff review with notes sent back to the agent, PRs and checks via `gh`, an embedded browser with Design Mode, worktrees on SSH hosts.
+- **yours to shape.** Zed-style docks, command palette, rebindable keys and Zed themes.
+- **themes.** Atlas Dark and Light (a blue, Tokyo Night based pair) are the defaults, next to Dracula and Alucard by [Zeno Rocha](https://github.com/zenorocha) and [Luxonauta](https://github.com/luxonauta) (MIT), and One; import Ghostty, iTerm, VS Code, Alacritty or Base16 themes, or your own [Dracula Pro](https://draculatheme.com/pro) purchase from a zip.
 
 ### GPU terminal
 
-- ⚡ **a terminal that keeps up.** native Metal renderer (wgpu): 120 Hz, sub-millisecond frames, Kitty graphics + sixel images, color emoji, ligatures, shell integration (jump between prompts, exit codes, cwd), regex search, Kitty keyboard.
+- **a terminal that keeps up.** native Metal renderer (wgpu): 120 Hz, sub-millisecond frames, Kitty graphics + sixel images, color emoji, ligatures, shell integration (jump between prompts, exit codes, cwd), regex search, Kitty keyboard.
 
 ### agents & MCP
 
-- 🤖 **agent-native.** `atlas mcp` is a stdio MCP server: status, logs, log search, restart/stop/start, run actions (with a confirm gate), wait-until-ready. `atlas dev --status` / `--ci` for scripts.
-- 👀 **live agent status.** omp, Claude Code and Codex show "working / needs you / done" in Desktop, with notifications. `atlas wt` / `atlas term` let agents drive the app back.
+- **agent-native.** `atlas mcp` is a stdio MCP server: status, logs, log search, restart/stop/start, run actions (with a confirm gate), wait-until-ready. `atlas dev --status` / `--ci` for scripts.
+- **live agent status.** omp, Claude Code and Codex show "working / needs you / done" in Desktop, with notifications. `atlas wt` / `atlas term` let agents drive the app back.
 
 ## plug your agent in
 
@@ -191,29 +191,29 @@ Full list → [docs/tui.md](docs/tui.md).
 
 ## vs the competition
 
-Honest table. ✅ = built in · 🟡 = partial / via something else · ❌ = no. Based on each project's own docs, checked Oct 2026.
+Honest table. ✓ = built in · partial = partial or via something else · ✗ = no. Based on each project's own docs, checked Oct 2026.
 
 | | **Atlas** | [process-compose](https://github.com/F1bonacc1/process-compose) | [mprocs / dekit](https://github.com/pvolok/mprocs) | [Overmind](https://github.com/DarthSim/overmind) | [Tilt](https://tilt.dev) | [Turborepo TUI](https://turborepo.com) |
 |---|:-:|:-:|:-:|:-:|:-:|:-:|
-| Single YAML for the whole stack | ✅ | ✅ | ✅ | 🟡 Procfile | 🟡 Starlark | 🟡 tasks |
-| Docker compose infra in the same run | ✅ | ❌ | ❌ | ❌ | ✅ | ❌ |
-| Dependency conditions (healthy / completed / log ready) | ✅ | ✅ | 🟡 ready log | ❌ | ✅ | 🟡 task graph |
-| Restart policy + backoff | ✅ | ✅ | ✅ | 🟡 `-r` | ❌ | ❌ |
-| Log find with highlight + `n/N` | ✅ | ✅ | ❌ | ❌ | 🟡 web | ❌ |
-| JSON log pretty-print | ✅ | ✅ | ❌ | ❌ | ❌ | ❌ |
-| Per-tab activity + error badges | ✅ | 🟡 activity | ❌ | ❌ | ✅ web | ❌ |
-| Full mouse support | ✅ | 🟡 | 🟡 | ❌ | ✅ web | 🟡 |
-| Logs persisted to disk w/ rotation | ✅ | ✅ | ❌ | ❌ | ❌ | 🟡 `--log-file` |
-| MCP server for AI agents | ✅ | ✅ | ❌ | ❌ | ❌ | 🟡 AGENTS.md |
-| Config validation w/ "did you mean" | ✅ | ❌ | ❌ | ❌ | ❌ | ❌ |
-| Mobile device picker (iOS/Android) | ✅ | ❌ | ❌ | ❌ | ❌ | ❌ |
-| Managed SSH tunnel | ✅ | ❌ | ❌ | ❌ | ❌ | ❌ |
-| Actions with confirm + pause services | ✅ | ❌ | ❌ | ❌ | 🟡 buttons | ❌ |
-| Detach + reattach later | ✅ `--detach` | ✅ | ✅ dekit | ✅ tmux | ✅ | ❌ |
-| Native desktop app | ✅ macOS, Linux, Windows | ❌ | ❌ | ❌ | ❌ | ❌ |
-| File-watch restart | ❌ | ✅ | ❌ | ❌ | ✅ | ✅ `watch` |
-| Replica scaling | ❌ | ✅ | ❌ | ✅ | ❌ | ❌ |
-| Windows | ✅ | ✅ | ✅ | ❌ | ✅ | ✅ |
+| Single YAML for the whole stack | ✓ | ✓ | ✓ | partial (Procfile) | partial (Starlark) | partial (tasks) |
+| Docker compose infra in the same run | ✓ | ✗ | ✗ | ✗ | ✓ | ✗ |
+| Dependency conditions (healthy / completed / log ready) | ✓ | ✓ | partial (ready log) | ✗ | ✓ | partial (task graph) |
+| Restart policy + backoff | ✓ | ✓ | ✓ | partial (`-r`) | ✗ | ✗ |
+| Log find with highlight + `n/N` | ✓ | ✓ | ✗ | ✗ | partial (web) | ✗ |
+| JSON log pretty-print | ✓ | ✓ | ✗ | ✗ | ✗ | ✗ |
+| Per-tab activity + error badges | ✓ | partial (activity) | ✗ | ✗ | ✓ (web) | ✗ |
+| Full mouse support | ✓ | partial | partial | ✗ | ✓ (web) | partial |
+| Logs persisted to disk w/ rotation | ✓ | ✓ | ✗ | ✗ | ✗ | partial (`--log-file`) |
+| MCP server for AI agents | ✓ | ✓ | ✗ | ✗ | ✗ | partial (AGENTS.md) |
+| Config validation w/ "did you mean" | ✓ | ✗ | ✗ | ✗ | ✗ | ✗ |
+| Mobile device picker (iOS/Android) | ✓ | ✗ | ✗ | ✗ | ✗ | ✗ |
+| Managed SSH tunnel | ✓ | ✗ | ✗ | ✗ | ✗ | ✗ |
+| Actions with confirm + pause services | ✓ | ✗ | ✗ | ✗ | partial (buttons) | ✗ |
+| Detach + reattach later | ✓ (`--detach`) | ✓ | ✓ (dekit) | ✓ (tmux) | ✓ | ✗ |
+| Native desktop app | ✓ (macOS, Linux, Windows) | ✗ | ✗ | ✗ | ✗ | ✗ |
+| File-watch restart | ✗ | ✓ | ✗ | ✗ | ✓ | ✓ (`watch`) |
+| Replica scaling | ✗ | ✓ | ✗ | ✓ | ✗ | ✗ |
+| Windows | ✓ | ✓ | ✓ | ✗ | ✓ | ✓ |
 
 **no cap:** process-compose is the closest all-rounder and still wins on replicas. Tilt owns the k8s world. Atlas goes deepest on a bun/TS monorepo with Docker infra, mobile targets and AI agents in the loop, and is growing from there.
 
@@ -223,21 +223,21 @@ Also published at [atlas.codeatlas.com.br/docs](https://atlas.codeatlas.com.br/d
 
 | | |
 |---|---|
-| 🚀 [Getting started](docs/getting-started.md) | install, first `atlas.yaml`, first run |
-| 📦 [Installation](docs/installation.md) | release, update, build from source, uninstall |
-| 🧩 [Concepts](docs/concepts.md) | projects, spaces, worktrees, services, actions, runner, hostd |
-| ⚙️ [Configuration](docs/configuration.md) | every field, `atlas.local.yaml`, validation, JSON Schema |
-| 🖥️ [TUI](docs/tui.md) | layout, keys, mouse, log viewer, sessions |
-| 🪟 [Desktop](docs/desktop.md) | worktrees, agents, review, browser, SSH hosts, keys |
-| ⚡ [GPU terminal](docs/terminal.md) | renderer, images, shell integration, performance |
-| 📜 [Logs](docs/logs.md) | collection, storage, search, bursts |
-| 🧰 [CLI](docs/cli.md) | commands, flags, exit codes |
-| 🤖 [Agent setup](docs/agents.md) | `atlas setup omp\|claude-code\|codex`: MCP + skills + hooks |
-| 🔌 [MCP](docs/mcp.md) | tool reference + manual client setup |
-| 🧬 [Runtime](docs/runtime.md) | startup order, restarts, shutdown, cleanup, `.logs/` |
-| 🚢 [Deploy](docs/deploy.md) | atomic, health-gated releases with rollback |
-| 🩺 [Troubleshooting](docs/troubleshooting.md) · [FAQ](docs/faq.md) | when something is off |
-| 🏗️ [Architecture](docs/architecture.md) | crates, processes, sockets |
+| [Getting started](docs/getting-started.md) | install, first `atlas.yaml`, first run |
+| [Installation](docs/installation.md) | release, update, build from source, uninstall |
+| [Concepts](docs/concepts.md) | projects, spaces, worktrees, services, actions, runner, hostd |
+| [Configuration](docs/configuration.md) | every field, `atlas.local.yaml`, validation, JSON Schema |
+| [TUI](docs/tui.md) | layout, keys, mouse, log viewer, sessions |
+| [Desktop](docs/desktop.md) | worktrees, agents, review, browser, SSH hosts, keys |
+| [GPU terminal](docs/terminal.md) | renderer, images, shell integration, performance |
+| [Logs](docs/logs.md) | collection, storage, search, bursts |
+| [CLI](docs/cli.md) | commands, flags, exit codes |
+| [Agent setup](docs/agents.md) | `atlas setup omp\|claude-code\|codex`: MCP + skills + hooks |
+| [MCP](docs/mcp.md) | tool reference + manual client setup |
+| [Runtime](docs/runtime.md) | startup order, restarts, shutdown, cleanup, `.logs/` |
+| [Deploy](docs/deploy.md) | atomic, health-gated releases with rollback |
+| [Troubleshooting](docs/troubleshooting.md) · [FAQ](docs/faq.md) | when something is off |
+| [Architecture](docs/architecture.md) | crates, processes, sockets |
 
 ## hacking on Atlas
 

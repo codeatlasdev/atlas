@@ -96,13 +96,13 @@ atlas deploy history  [TARGET] [-n 20] [--json]
 Você pode omitir `TARGET` quando há exatamente um alvo.
 
 - `--dry-run` faz o build e o empacotamento e depois imprime o id da release, o sha256 e o `plan.sh` renderizado. Não muda nada no host (só lê qual release está publicada).
-- Uma árvore de trabalho suja é recusada, a menos que você passe `--allow-dirty`; nesse caso o id termina em `-dirty`.
+- Alterações sem commit são recusadas (`há alterações sem commit: faça commit ou passe --allow-dirty`), a menos que você passe `--allow-dirty`; nesse caso o id termina em `-dirty`.
 - Se o sha do HEAD já é o atual e está saudável, o deploy é um `noop`. Use `--force` para publicar de novo mesmo assim.
 - Um `HEAD` mais antigo que o commit publicado, ou divergente dele, é recusado, a menos que você passe `--allow-downgrade` ou `--allow-diverged`; um commit publicado que este repositório não conhece é recusado, a menos que você passe `--allow-unknown-base`. Veja [Releases nunca voltam por acidente](#releases-nunca-voltam-por-acidente).
 - `--no-follow` imprime o id da release assim que o driver inicia e sai com 0.
-- Ctrl-C durante o acompanhamento imprime `detached; deploy continues on host` e sai com 130. O host segue em frente.
+- Ctrl-C durante o acompanhamento imprime `desanexado; o deploy continua no host. Acompanhe: atlas deploy logs -f TARGET` e sai com 130. O host segue em frente.
 - `rollback` troca para a release saudável mais nova antes de `current`, ou para `--to <id>`, e depois reinicia e passa todos os serviços pelo gate. Uma release marcada como `failed` é recusada.
-- `status` sai com 0 só se a última fase é terminal, o lock está livre e todos os serviços estão saudáveis. Uma fase não terminal com o lock livre mostra `INTERRUPTED`.
+- `status` sai com 0 só se a última fase é terminal, o lock está livre e todos os serviços estão saudáveis. Uma fase não terminal com o lock livre mostra `INTERROMPIDO: o próximo deploy recupera esta release`.
 
 ### Códigos de saída
 
@@ -128,7 +128,7 @@ Antes do build, o `atlas deploy` lê o commit que o host está servindo (`curren
 | `HEAD` em relação ao commit publicado | Comportamento |
 |---|---|
 | mesmo commit | como antes: `noop`, ou uma nova publicação com `--force` |
-| descende dele | segue, imprimindo `deploying <id> (<sha>) over <deployed-id> (<deployed-sha>): +N commits` |
+| descende dele | segue, imprimindo `fazendo deploy de <id> (<sha>) sobre <deployed-id> (<deployed-sha>): +N commits` |
 | mais antigo (um downgrade) | recusado, com os dois shas e `git log --oneline HEAD..deployed`. `--allow-downgrade` o publica. Para voltar de propósito, use `atlas deploy rollback` |
 | divergente | recusado, com o merge-base e a contagem de commits de cada lado. `--allow-diverged` o publica |
 | commit publicado que não está neste repositório | o atlas tenta `git fetch origin <sha>`; se ainda faltar, o deploy é recusado. `--allow-unknown-base` o publica |

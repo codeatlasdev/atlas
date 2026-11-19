@@ -1,7 +1,7 @@
 ---
 title: "Referência da CLI"
 source: cli.md
-source_sha: "8bf1f4659bc1c0d87bec1040247b4e680075745d"
+source_sha: "fe58f715f9ce48105d34bcfafe0fc3fbe11a8379"
 translation: machine
 ---
 
@@ -24,7 +24,7 @@ atlas -- <cmd...>       # roda um comando como serviço da stack desta pasta
 
 `atlas .`, `atlas ~/code/api`, `atlas src/main.rs`. O caminho abre no Atlas Desktop: uma pasta abre como projeto, e um arquivo abre o **projeto do arquivo** (a pasta mais próxima com um `atlas.yaml`, senão a mais próxima com `.git` ou com um `package.json` / `Cargo.toml` / `pyproject.toml` / `go.mod`, senão a própria pasta do arquivo) e depois o arquivo no editor. Uma pasta sem `.git`, `atlas.yaml` ou manifesto abre como [pasta simples](desktop.md#pastas-simples) (explorador e editor, sem serviços). Um arquivo de texto sem projeto acima dele, como `atlas ~/Downloads/notes.md`, abre no [editor leve](desktop.md#abrir-um-arquivo-avulso) do desktop e não adiciona nenhum projeto. Não é preciso ter um `atlas.yaml`. Se o Atlas Desktop está rodando, o caminho vai para ele; senão o app é iniciado com o caminho e o abre na inicialização (instale-o antes com `atlas desktop`).
 
-**Um subcomando sempre vence.** `atlas dev` roda o subcomando mesmo quando existe uma pasta chamada `dev`; abra essa pasta com `atlas ./dev`. Qualquer outra primeira palavra é um caminho só se for `.`, `..`, tiver um separador de caminho ou existir no disco; caso contrário é um erro de digitação e falha como sempre falhou (`atlas devv` → `error: unrecognized subcommand 'devv'` + `tip: a similar subcommand exists: 'dev'`, saída `2`). O `atlas` sozinho imprime a ajuda.
+**Um subcomando sempre vence.** `atlas dev` roda o subcomando mesmo quando existe uma pasta chamada `dev`; abra essa pasta com `atlas ./dev`. Qualquer outra primeira palavra é um caminho só se for `.`, `..`, tiver um separador de caminho ou existir no disco; caso contrário é um erro de digitação e falha como sempre falhou (`atlas devv` → `erro: unrecognized subcommand 'devv'` + `dica: a similar subcommand exists: 'dev'`, saída `2`). O `atlas` sozinho imprime a ajuda.
 
 ### `atlas -- <cmd...>`
 
@@ -58,7 +58,7 @@ Roda o comando como um **serviço ad-hoc** da stack da pasta atual (sua [raiz do
 Em qualquer comando, exceto `update`, `self-update` e `mcp`, o Atlas procura uma nova versão em segundo plano (com `curl`, sem chamadas à API do GitHub; para o [canal de versões](#atlas-update) que você segue; no máximo a cada 6 horas, em cache em `~/.atlas/.update_check` junto com o canal para o qual foi calculado, então trocar de canal descarta o cache; sessões longas do `atlas dev` continuam verificando). Só uma versão *mais nova* é anunciada, nunca um downgrade. Quando existe uma versão mais nova:
 
 - **Antes de a TUI iniciar** (só no `atlas dev`, veja [Prompt de atualização](#prompt-de-atualização-atlas-dev)) o Atlas pergunta se deve atualizar agora;
-- **Dentro de uma TUI em execução** um modal pergunta `Atlas v<new> available — update when you quit?` (Enter = sim, Esc = agora não; uma vez por versão por sessão). Aceitar mostra `⬆ on exit` na linha da marca na barra lateral; depois que a TUI sai, os serviços são parados e o terminal é restaurado, o Atlas roda a atualização e imprime o resultado (ele não reinicia). Conectado a um runner (`atlas dev` contra um `--detach`), o runner mantém a versão antiga até `atlas down && atlas dev --detach`. Um `⬆` verde simples marca uma atualização disponível que você não aceitou;
+- **Dentro de uma TUI em execução** um modal pergunta `O Atlas v<new> está disponível. Atualizar ao sair?` (Enter = sim, Esc = agora não; uma vez por versão por sessão). Aceitar mostra `⬆ ao sair` na linha da marca na barra lateral; depois que a TUI sai, os serviços são parados e o terminal é restaurado, o Atlas roda a atualização e imprime o resultado (ele não reinicia). Conectado a um runner (`atlas dev` contra um `--detach`), o runner mantém a versão antiga até `atlas down && atlas dev --detach`. Um `⬆` verde simples marca uma atualização disponível que você não aceitou;
 - depois que o comando termina (inclusive quando você sai da TUI sem aceitar), se o stderr é um terminal, um banner é impresso:
 
 ```text
@@ -68,7 +68,7 @@ Em qualquer comando, exceto `update`, `self-update` e `mcp`, o Atlas procura uma
 ────────────────────────────────────────────────
 ```
 
-Erros são impressos como `error: <message>` (mais linhas `caused by:`) e saem com `1`.
+Erros são impressos como `erro: <message>` (mais linhas `causado por:`) e saem com `1`.
 
 ## `atlas dev`
 
@@ -82,8 +82,8 @@ atlas dev [SERVICE...] [--profile <NAME>]... [--no-deps] [-d, --dir <DIR>]
 | `SERVICE...` | todos | Inicia só esses serviços mais tudo de que eles dependem de forma transitiva em `depends_on`. Veja [Selecionar serviços](#selecionar-serviços). |
 | `--profile <NAME>` | nenhum | Inicia os serviços de uma entrada de [`profiles:`](configuration.md#profiles) (mais as dependências). Repetível; perfis e `SERVICE`s são unidos. |
 | `--no-deps` | desligado | Com `SERVICE`/`--profile`: inicia exatamente esses, sem puxar as dependências. |
-| `-d, --dir <DIR>` | `.` | Diretório do projeto (`~` é expandido). Ele não precisa de um `atlas.yaml`: sem um, o Atlas [detecta](configuration.md#sem-atlasyaml-config-detectada) os serviços em memória (a partir de `package.json`, `Cargo.toml`, `pyproject.toml`, `go.mod`) e imprime `no atlas.yaml: using detected config (…); save it with 'atlas init'`. Nada é gravado. |
-| `-D, --detach` | desligado | Inicia os serviços em um **runner em segundo plano** e retorna: o runner vira um daemon completo (sessão própria, stdin `/dev/null`, stdout/stderr em `.logs/runner.log`), mantém o lock do projeto e serve o socket de controle e o heartbeat de status como o `--headless`. Imprime `atlas runner started (pid N) · attach: atlas dev · stop: atlas down` e sai com `0` assim que o socket responde. Um `atlas.yaml` ou uma seleção com problema é reportado no seu terminal e nada é iniciado. Funciona com `SERVICE…` / `--profile` / `--no-deps`. Se um runner já está ativo, imprime `atlas runner already running (pid N) …` e sai com `0` (a seleção não é aplicada a ele); se uma TUI é dona do projeto, sai com `1`. Veja [Runtime](runtime.md#runner-e-anexar) (runner e anexar). |
+| `-d, --dir <DIR>` | `.` | Diretório do projeto (`~` é expandido). Ele não precisa de um `atlas.yaml`: sem um, o Atlas [detecta](configuration.md#sem-atlasyaml-config-detectada) os serviços em memória (a partir de `package.json`, `Cargo.toml`, `pyproject.toml`, `go.mod`) e imprime ``sem atlas.yaml: usando a config detectada (…); salve com `atlas init` ``. Nada é gravado. |
+| `-D, --detach` | desligado | Inicia os serviços em um **runner em segundo plano** e retorna: o runner vira um daemon completo (sessão própria, stdin `/dev/null`, stdout/stderr em `.logs/runner.log`), mantém o lock do projeto e serve o socket de controle e o heartbeat de status como o `--headless`. Imprime `runner do atlas iniciado (pid N) · anexar: atlas dev · parar: atlas down` e sai com `0` assim que o socket responde. Um `atlas.yaml` ou uma seleção com problema é reportado no seu terminal e nada é iniciado. Funciona com `SERVICE…` / `--profile` / `--no-deps`. Se um runner já está ativo, imprime `runner do atlas já está rodando (pid N) …` e sai com `0` (a seleção não é aplicada a ele); se uma TUI é dona do projeto, sai com `1`. Veja [Runtime](runtime.md#runner-e-anexar) (runner e anexar). |
 | `--headless` | desligado | Sem TUI. Inicia os serviços, envia `[name ] line` para o stdout e as mudanças de estado para o stderr, e para tudo com Ctrl-C / SIGTERM / SIGHUP. Serve o [socket de controle](mcp.md#como-funciona) para que as ferramentas de controle do MCP funcionem. |
 | `--ci` | desligado | Inicia tudo, espera estabilizar, imprime um relatório JSON no stdout, para tudo e sai. |
 | `--timeout <SECONDS>` | `60` | Espera máxima no modo `--ci`. |
@@ -161,7 +161,7 @@ O `--ci` não serve o socket de controle. Tanto o `--ci` quanto o `--headless` r
 
 ### Uma instância por projeto
 
-`--ci`, `--headless` e `--detach` usam o mesmo lock de instância única da TUI. Se outro `atlas dev` já roda nesse diretório, `--ci` e `--headless` imprimem `atlas dev is already running (pid N); use 'atlas dev --status'` e saem com `1`, sem tocar em nenhum processo. A TUI simples **se conecta** a um runner, e só quando quem detém o lock é outra TUI (à qual não dá para se conectar) ela pergunta `Kill it and restart? [y/N]`; veja [Runtime](runtime.md#singleton-e-o-socket-de-controle) (instância única e socket de controle).
+`--ci`, `--headless` e `--detach` usam o mesmo lock de instância única da TUI. Se outro `atlas dev` já roda nesse diretório, `--ci` e `--headless` imprimem ``O `atlas dev` já está rodando (pid N). Veja o estado com `atlas dev --status`.`` e saem com `1`, sem tocar em nenhum processo. A TUI simples **se conecta** a um runner, e só quando quem detém o lock é outra TUI (à qual não dá para se conectar) ela pergunta `Encerrar o processo e reiniciar? [s/N]`; veja [Runtime](runtime.md#singleton-e-o-socket-de-controle) (instância única e socket de controle).
 
 ### Prompt de atualização (`atlas dev`)
 
@@ -176,7 +176,7 @@ Update now? [Y/n]
 ```
 
 - A versão mais nova vem do cache (`~/.atlas/.update_check`) quando ele tem menos de 6 horas; caso contrário o Atlas consulta ao vivo com um timeout rígido de **2 s** e volta em silêncio para o cache em caso de timeout ou erro. Ele nunca atrasa a inicialização além disso.
-- **Enter / `y`** roda a mesma lógica do [`atlas update`](#atlas-update) e depois reexecuta o novo binário com exatamente os mesmos argumentos, então o `atlas dev …` continua na nova versão. Se a atualização falha, o erro é impresso e o Atlas pergunta `Continue with v<current>? [Y/n]`.
+- **Enter / `s`** roda a mesma lógica do [`atlas update`](#atlas-update) e depois reexecuta o novo binário com exatamente os mesmos argumentos, então o `atlas dev …` continua na nova versão. Se a atualização falha, o erro é impresso e o Atlas pergunta `Continuar com a v<current>? [S/n]`.
 - **`n`** continua com a versão atual e silencia essa versão por **24 horas** (salvo no cache; caches antigos sem o campo ainda carregam).
 - Nunca é perguntado com `--status`, `--ci`, `--headless`, `--detach` ou no runner, quando o stdin/stdout não é um terminal, ou com `ATLAS_NO_UPDATE_PROMPT=1`. Em um build linkado ou de debug (`atlas link`), o Atlas só imprime uma dica de uma linha e nunca substitui o binário.
 
@@ -190,9 +190,9 @@ Para o atlas que é dono do projeto: pede a ele pelo socket de controle que pare
 
 | Saída | Código |
 |---|---|
-| `atlas stopped (pid N)` | `0` |
-| `atlas is not running` | `0` (nada a fazer) |
-| `atlas (pid N) is still stopping after 15s; check: atlas dev --status` | `1` |
+| `atlas parado (pid N)` | `0` |
+| `o atlas não está rodando` | `0` (nada a fazer) |
+| `o atlas (pid N) ainda está parando após 15s; confira: atlas dev --status` | `1` |
 
 ## `atlas doctor`
 
@@ -203,10 +203,10 @@ atlas doctor --hygiene [--dry-run | --fix] [--json]
 
 O `atlas doctor` simples verifica a instalação, cada item com o único comando que o corrige, e sai com 1 quando algo está quebrado:
 
-- **new terminal**: inicia o shell da sua conta do jeito que um terminal faz (Linux: interativo, não login; macOS: login) e pergunta qual `atlas` ele roda. Falha quando não há nenhum (rode o instalador de novo) e avisa quando outro `atlas` vem antes no `PATH` ou quando o shell não responde em 6 s.
-- **this terminal**: se `~/.atlas/bin` está no `PATH` deste shell (imprime a linha `export`).
-- **desktop app**: instalado e na versão da CLI (`atlas update`); ausente em uma sessão gráfica, sugere `atlas desktop`.
-- **terminal host**: se o hostd responde (ele inicia sob demanda, então é só um aviso).
+- **novo terminal**: inicia o shell da sua conta do jeito que um terminal faz (Linux: interativo, não login; macOS: login) e pergunta qual `atlas` ele roda. Falha quando não há nenhum (rode o instalador de novo) e avisa quando outro `atlas` vem antes no `PATH` ou quando o shell não responde em 6 s.
+- **este terminal**: se `~/.atlas/bin` está no `PATH` deste shell (imprime a linha `export`).
+- **app desktop**: instalado e na versão da CLI (`atlas update`); ausente em uma sessão gráfica, sugere `atlas desktop`.
+- **host de terminais**: se o hostd responde (ele inicia sob demanda, então é só um aviso).
 
 O `--hygiene` olha em vez disso o que o Atlas e os agentes que ele roda deixaram para trás, e o disco que ele ocupa. **Só observa por padrão** (`--dry-run`); o `--fix` altera as coisas.
 
@@ -214,8 +214,8 @@ Ele lista:
 
 - **Processos órfãos**: processos de uma sessão cujo dono (terminal, `atlas dev`, hostd) sumiu, com pid, nome, o que os iniciou e o projeto, além de quantos processos de sessões ativas ele deixou em paz. São encontrados pela tag `ATLAS_SESSION` no Linux e pelo que o dono registrou em suas raízes no macOS e no Windows, que não conseguem ler o ambiente de outro processo; nesses sistemas, um processo que fez fork e se desanexou em cerca de 2 s depois de iniciar nunca foi visto e não aparece na lista ([sessões e higiene](runtime.md#sessões-e-higiene));
 - **Disco por projeto** (as pastas do Atlas Desktop): `target/`, `node_modules`, `.logs` e `.atlas/worktrees/*`;
-- **Diretórios temporários e de cache do Atlas** em relação aos limites deles;
-- **No macOS, diretórios pesados que o Spotlight indexa** (`target/` e `node_modules` de um projeto ou de suas worktrees sem um `.metadata_never_index` neles ou acima).
+- **Pastas temporárias e de cache do Atlas** em relação aos limites deles;
+- **Pastas indexadas pelo Spotlight**, no macOS (`target/` e `node_modules` de um projeto ou de suas worktrees sem um `.metadata_never_index` neles ou acima).
 
 O `--fix` encerra os órfãos (SIGTERM, 3 s, SIGKILL, pids exatos, nunca um pid reciclado), exclui os diretórios registrados de sessões mortas e reduz os outros até os limites, descarta os `*.prev.log` rotacionados quando o `.logs` de um projeto passa de 200 MiB (o `<service>.log` ativo fica) e adiciona o marcador `.metadata_never_index` aos diretórios pesados indexados (só um arquivo marcador). **`target/`, `node_modules`, worktrees e qualquer arquivo que o Atlas não criou nunca são removidos**: eles são reportados para você decidir.
 
@@ -264,10 +264,10 @@ atlas cache clear
 Rode um comando pelo **cache de tarefas de toda a máquina** para que um trabalho idêntico nunca rode duas vezes, qualquer que seja a worktree ou o agente que peça. A chave é um sha256 do argv, dos **bytes de cada arquivo de entrada como estão no disco agora** (edições não commitadas incluídas, respeitando o `.gitignore`), dos valores dos nomes `--env` declarados e da `--version` das `--tool`s declaradas. A pasta em que o comando roda não faz parte da chave: duas worktrees com os mesmos bytes compartilham um resultado, e duas com edições diferentes nunca compartilham.
 
 - **Hit:** as saídas salvas são colocadas de volta (clone copy-on-write onde o sistema de arquivos permite, uma cópia caso contrário; uma pasta declarada é esvaziada antes), o log é reproduzido no mesmo stdout/stderr, uma linha `atlas cache: hit <key> (…)` vai para o stderr e o código de saída é `0`. Nada roda; uma entrada pequena leva alguns milissegundos.
-- **Miss:** o comando roda (com `--heavy`, atrás da [fila heavy](#atlas-run---heavy)), a saída dele passa ao vivo, e **só um código de saída 0 é guardado** (`--cache-failures` também guarda uma falha, e um hit reproduz o código de saída dela). Uma execução com falha ainda é reportada ao `atlas_last_result`.
+- **Miss:** o comando roda (com `--heavy`, atrás da [fila heavy](#atlas-run---heavy)), a saída dele passa ao vivo, e **só um código de saída 0 é salvo** (`--cache-failures` também salva uma falha, e um hit reproduz o código de saída dela). Uma execução com falha ainda é reportada ao `atlas_last_result`.
 - **Entradas:** globs de `--input` (repetíveis) escolhem os arquivos que contam; sem nenhum, contam todos os arquivos sob a pasta atual que o git não ignoraria. **Saídas:** caminhos de `--output` (arquivos ou pastas dentro da pasta atual, sem `..`) são o que um hit restaura; sem nenhum, só o log e o código de saída ficam em cache. Um caminho de saída incorreto ou uma `--tool` que não consegue imprimir a versão dela interrompe a execução antes de o comando começar.
-- **Armazenamento:** `~/.atlas/cache/` (`ATLAS_CACHE_DIR` o move). O conteúdo são blobs por sha256 (saídas e logs, guardados uma vez, não importa quantas entradas e worktrees os compartilhem) e entradas por chave. O limite de tamanho é `ATLAS_CACHE_MAX_BYTES`, senão `cache.max_bytes` em `~/.atlas/config.json` (`{"cache": {"max_bytes": 4294967296}}`), senão 2 GiB: as entradas usadas há mais tempo são removidas para que o armazenamento nunca termine uma gravação acima do limite, e uma entrada maior que o limite sozinha não é guardada. As gravações são atômicas e um lock serializa as alterações, então dois agentes colocando a mesma chave em cache ao mesmo tempo deixam uma entrada válida. Um log é mantido até os 8 MiB mais recentes.
-- `atlas cache status` mostra as entradas, o tamanho em relação ao limite e os contadores (hits, misses, tempo economizado: a duração original, uma vez por hit; total e por projeto; `--json` tem o formato do `stats.json`, que o Atlas Desktop lê; inclui `days`, os hits e o tempo economizado por dia UTC nos últimos 30 dias, de onde sai o "economizado nos últimos 7 dias"). `atlas cache gc` descarta os blobs que nenhuma entrada usa e reduz até o limite; `atlas cache clear` esvazia tudo.
+- **Armazenamento:** `~/.atlas/cache/` (`ATLAS_CACHE_DIR` o move). O conteúdo são blobs por sha256 (saídas e logs, salvos uma vez, não importa quantas entradas e worktrees os compartilhem) e entradas por chave. O limite de tamanho é `ATLAS_CACHE_MAX_BYTES`, senão `cache.max_bytes` em `~/.atlas/config.json` (`{"cache": {"max_bytes": 4294967296}}`), senão 2 GiB: as entradas usadas há mais tempo são removidas para que o armazenamento nunca termine uma gravação acima do limite, e uma entrada maior que o limite sozinha não é salva. As gravações são atômicas e um lock serializa as alterações, então dois agentes colocando a mesma chave em cache ao mesmo tempo deixam uma entrada válida. Um log é mantido até os 8 MiB mais recentes.
+- `atlas cache status` mostra as entradas, o tamanho em relação ao limite e os contadores (hits, misses, tempo economizado: a duração original, uma vez por hit; total e por projeto; `--json` tem o formato do `stats.json`, que o Atlas Desktop lê; inclui `days`, os hits e o tempo economizado por dia UTC nos últimos 30 dias, de onde sai o tempo economizado "nos últimos 7 dias" do painel). `atlas cache gc` descarta os blobs que nenhuma entrada usa e reduz até o limite; `atlas cache clear` esvazia tudo.
 - No `atlas.yaml`, uma [ação](configuration.md#actions) com um bloco `cache:` (`inputs`, `outputs`, `env`, `tools`) roda pelo `atlas run --cache`. A ferramenta [`atlas_last_result`](mcp.md#atlas_last_result) do MCP responde o que uma tarefa fez por último: saída, duração, quando, final do log, hit ou miss.
 
 ## `atlas config`
@@ -277,7 +277,7 @@ atlas config check [-d, --dir <DIR>]   # padrão .
 atlas config schema
 ```
 
-- `check` valida o `atlas.yaml` mais o `atlas.local.yaml`. Imprime `OK: <path> is valid` e sai com `0`, ou imprime todos os erros e sai com `1`. Um arquivo ausente ou que não pode ser lido é um `error:` e sai com `1`. Detalhes: [Validação](configuration.md#validação).
+- `check` valida o `atlas.yaml` mais o `atlas.local.yaml`. Imprime `OK: <path> é válido` e sai com `0`, ou imprime todos os erros e sai com `1`. Um arquivo ausente ou que não pode ser lido é um `erro:` e sai com `1`. Detalhes: [Validação](configuration.md#validação).
 - `schema` imprime o JSON Schema (draft-07) do `atlas.yaml` no stdout.
 
 ## `atlas crew`
@@ -332,14 +332,14 @@ Procura a versão mais nova do seu [canal de versões](versioning.md#canais) (co
 
   `action` é `update` (uma versão mais nova é oferecida), `downgrade` (só uma versão mais antiga é oferecida) ou `none`; `offered` e `tag` são `null` quando o canal não tem nada publicado. `atlas update channel --json` imprime `{ "selected", "installed", "channels": [...] }`, uma entrada por canal com o mesmo texto que o comando imprime mais `selected`, `tag`, `offered` e `action`.
 
-**Versões retiradas.** Uma versão listada em `data/yanked.json` (como adicionar uma: `docs/release.md`, "Yanking a bad release") nunca é oferecida por nenhum canal. Quando a versão que *você roda* foi retirada, o `atlas update` imprime o motivo e o que a substitui, o `--check --json` o traz como `"yanked": { "version", "reason", "replacement" }` (`null` caso contrário), e uma versão segura mais antiga é instalada sem `--downgrade` (a confirmação de downgrade ainda vale). Uma lista ilegível é registrada no log e ignorada.
+**Versões retiradas.** Uma versão listada em `data/yanked.json` (como adicionar uma: `docs/release.md`, "Retirar uma versão com defeito") nunca é oferecida por nenhum canal. Quando a versão que *você roda* foi retirada, o `atlas update` imprime o motivo e o que a substitui, o `--check --json` o traz como `"yanked": { "version", "reason", "replacement" }` (`null` caso contrário), e uma versão segura mais antiga é instalada sem `--downgrade` (a confirmação de downgrade ainda vale). Uma lista ilegível é registrada no log e ignorada.
 
-**Downgrades nunca são automáticos.** Quando o canal oferece algo *mais antigo* que o build que você roda (por exemplo, você roda um alpha e troca para o Stable), o `atlas update` não instala nada: ele diz qual versão você roda, qual o canal oferece, que você volta a receber atualizações quando o canal passar do seu build e como voltar. `atlas update --downgrade` instala essa versão mais antiga mesmo assim, depois de um aviso de compatibilidade de dados e de uma confirmação `[y/N]` (padrão Não; `--yes` a pula, e fora de um terminal ela é obrigatória). O download passa pela mesma verificação de checksum, backup e rollback de qualquer atualização. Não está disponível para instalações pelo Homebrew ou por pacote de sistema (o gerenciador de pacotes é dono da versão).
+**Downgrades nunca são automáticos.** Quando o canal oferece algo *mais antigo* que o build que você roda (por exemplo, você roda um alpha e troca para o Stable), o `atlas update` não instala nada: ele diz qual versão você roda, qual o canal oferece, que você volta a receber atualizações quando o canal passar do seu build e como voltar. `atlas update --downgrade` instala essa versão mais antiga mesmo assim, depois de um aviso de compatibilidade de dados e de uma confirmação `[s/N]` (padrão Não; `--yes` a pula, e fora de um terminal ela é obrigatória). O download passa pela mesma verificação de checksum, backup e rollback de qualquer atualização. Não está disponível para instalações pelo Homebrew ou por pacote de sistema (o gerenciador de pacotes é dono da versão).
 
 **Instalações de que outra ferramenta é dona.** Um binário instalado pelo Homebrew, ou por um pacote de sistema do Linux, nunca é sobrescrito pelo próprio `atlas update`.
 
-- *Homebrew:* o `atlas update` imprime `brew upgrade atlas` e sai com 0 (o app desktop vê `@@atlas managed homebrew` e não reporta "up to date").
-- *Pacote de sistema (Arch, Debian/Ubuntu, Fedora/openSUSE):* o dono é encontrado com `pacman -Qo`, `dpkg -S` ou `rpm -qf` (a regra do caminho `/usr/bin` é o plano B). `atlas update --check` reporta a versão atual e a mais recente. `atlas update` baixa o asset correspondente e o `.sha256` dele, verifica **antes de qualquer elevação de privilégio**, imprime o comando, confirma (`--yes` pula; obrigatório sem terminal) e instala via `sudo` (`pkexec` sem terminal; o `sudo` nunca roda sem um), mantendo o `~/.atlas/.update.lock`. Depois atualiza as skills e as configurações de agente com o binário instalado. Veja [Pacotes Linux](installation.md#pacotes-para-linux). Se nenhum gerenciador de pacotes é encontrado, imprime onde obter o pacote e emite `@@atlas managed package`. Sem terminal e sem `--yes` (o Update do app), ou sem `pkexec`, ele não baixa nada: imprime o comando do gerenciador de pacotes e emite `@@atlas managed package <manager> <install|manual> <command…>` (saída 0 sob o app, um erro que cita o comando nos demais casos); o app mostra o comando com um botão Copy e, para `install`, um "Install now" que roda `atlas update --yes`.
+- *Homebrew:* o `atlas update` imprime `brew upgrade atlas` e sai com 0 (o app desktop vê `@@atlas managed homebrew` e não reporta "O Atlas está atualizado").
+- *Pacote de sistema (Arch, Debian/Ubuntu, Fedora/openSUSE):* o dono é encontrado com `pacman -Qo`, `dpkg -S` ou `rpm -qf` (a regra do caminho `/usr/bin` é o plano B). `atlas update --check` reporta a versão atual e a mais recente. `atlas update` baixa o asset correspondente e o `.sha256` dele, verifica **antes de qualquer elevação de privilégio**, imprime o comando, confirma (`--yes` pula; obrigatório sem terminal) e instala via `sudo` (`pkexec` sem terminal; o `sudo` nunca roda sem um), mantendo o `~/.atlas/.update.lock`. Depois atualiza as skills e as configurações de agente com o binário instalado. Veja [Pacotes Linux](installation.md#pacotes-para-linux). Se nenhum gerenciador de pacotes é encontrado, imprime onde obter o pacote e emite `@@atlas managed package`. Sem terminal e sem `--yes` (o Update do app), ou sem `pkexec`, ele não baixa nada: imprime o comando do gerenciador de pacotes e emite `@@atlas managed package <manager> <install|manual> <command…>` (saída 0 sob o app, um erro que cita o comando nos demais casos); o app mostra o comando com um botão "Copiar comando" e, para `install`, um "Instalar agora (pede sua senha)" que roda `atlas update --yes`.
 - `--check --json` acrescenta `"managed": true`, `"manager"` (`pacman`, `apt`, `dnf`, `zypper` ou `null`) e `"command"` (a linha exata, só quando uma atualização é oferecida), e `action` é `package` (pacote Linux) ou `managed` (Homebrew) em vez de `update` quando uma atualização é oferecida; `none` e `downgrade` continuam como são.
 
 **O que ele recusa.** Um build de debug ou um binário alcançado por um symlink de `atlas link` nunca é substituído (a mesma regra que o `atlas dev` usa antes de oferecer uma atualização; `atlas unlink` volta ao build de release). Antes de baixar, ele verifica se o diretório da CLI e o app instalado podem ser gravados e nomeia o artefato que não pode, então nunca substitui a CLI e depois faz rollback dela porque o app é somente leitura. Skills e hooks de agente só são atualizados depois que o app acompanhou; quando o app não consegue, a CLI sofre rollback e o binário anterior os atualiza, então eles nunca são mais novos que a CLI que fica.
@@ -359,7 +359,7 @@ atlas desktop [-y|--yes] [--appimage]  # Linux: instala o pacote da distro sem p
 
 Instala em `/Applications/Atlas.app` (ou em `~/Applications` quando `/Applications` não é gravável). Baixa o `Atlas-<version>-<platform>.app.tar.gz` e o `.sha256` dele da versão pública do GitHub (com `curl`, sem login) e verifica o checksum. O novo bundle é copiado ao lado do antigo e só é trocado quando está completo, então um download que falha nunca quebra o app instalado. Recusa enquanto o app está linkado (`atlas link --desktop`). Guia completo: [App Desktop](desktop.md).
 
-No Linux, uma distro que tem um pacote de versão (Arch, Debian, Ubuntu, Fedora, RHEL, openSUSE; lido de `/etc/os-release`, só x86_64) recebe esse pacote em vez do AppImage: o `atlas desktop` o baixa, verifica o checksum, mostra o comando de root e pergunta `[Y/n]` (`sudo` em um terminal, `pkexec` sem um), e depois abre `/usr/bin/atlas-desktop`. `--yes` / `-y` pula a pergunta; `--appimage` instala o AppImage mesmo assim. Quando ninguém pode confirmar (sem terminal, sem `--yes`), a resposta é não ou o gerenciador de pacotes falha, o AppImage é instalado como antes. Detalhes: [Instalação](installation.md#instalar-o-atlas-desktop), seção sobre instalar o Atlas Desktop.
+No Linux, uma distro que tem um pacote de versão (Arch, Debian, Ubuntu, Fedora, RHEL, openSUSE; lido de `/etc/os-release`, só x86_64) recebe esse pacote em vez do AppImage: o `atlas desktop` o baixa, verifica o checksum, mostra o comando de root e pergunta `[S/n]` (`sudo` em um terminal, `pkexec` sem um), e depois abre `/usr/bin/atlas-desktop`. `--yes` / `-y` pula a pergunta; `--appimage` instala o AppImage mesmo assim. Quando ninguém pode confirmar (sem terminal, sem `--yes`), a resposta é não ou o gerenciador de pacotes falha, o AppImage é instalado como antes. Detalhes: [Instalação](installation.md#instalar-o-atlas-desktop), seção sobre instalar o Atlas Desktop.
 
 ### `atlas desktop --agent`
 
@@ -495,6 +495,6 @@ atlas link [--dir <WORKSPACE>] [--no-build] [--desktop]
 atlas unlink
 ```
 
-O `link` compila o `atlas-cli` (a menos que haja `--no-build`), faz backup do `~/.atlas/bin/atlas` em `atlas.backup` e o substitui por um symlink para `<workspace>/target/debug/atlas`; a troca é um único rename, então um link que não pode ser criado (Windows sem o Modo de Desenvolvedor) deixa o binário de release onde estava, e um link deixado pendente por um `cargo clean` é só substituído. Rode dentro do repositório do Atlas ou passe `--dir`. A TUI mostra um selo `⚡ linked` nesse modo. O `unlink` restaura o backup; sem backup, ele transforma o link em uma cópia simples do build de desenvolvimento, então o `atlas` continua funcionando (rode `atlas update` para uma versão de release). O `atlas install` deixa em paz um `atlas` linkado ou mais novo também.
+O `link` compila o `atlas-cli` (a menos que haja `--no-build`), faz backup do `~/.atlas/bin/atlas` em `atlas.backup` e o substitui por um symlink para `<workspace>/target/debug/atlas`; a troca é um único rename, então um link que não pode ser criado (Windows sem o Modo de Desenvolvedor) deixa o binário de release onde estava, e um link deixado pendente por um `cargo clean` é só substituído. Rode dentro do repositório do Atlas ou passe `--dir`. A TUI mostra um selo `⚡ link dev` nesse modo. O `unlink` restaura o backup; sem backup, ele transforma o link em uma cópia simples do build de desenvolvimento, então o `atlas` continua funcionando (rode `atlas update` para uma versão de release). O `atlas install` deixa em paz um `atlas` linkado ou mais novo também.
 
 `--desktop` também gera um `Atlas.app` de debug (`cargo tauri build --debug`) e faz de `/Applications/Atlas.app` um symlink para ele. Uma instalação real é movida antes para `~/.atlas/desktop/Atlas.app.backup`. O app mostra um selo **Dev build**, e as atualizações dele ficam pausadas. O `unlink` restaura o app também.

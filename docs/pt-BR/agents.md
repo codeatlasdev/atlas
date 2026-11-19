@@ -13,10 +13,10 @@ O `atlas setup` liga o Atlas ao seu agente de código com IA em um comando. Quat
 atlas setup                          # detecta omp / claude / codex no PATH, mostra o status e os comandos para rodar
 atlas setup claude-code              # SIMULAÇÃO: imprime o plano, não muda nada
 atlas setup claude-code --apply      # aplica
-atlas setup claude-code --apply      # de novo: tudo aparece como "up to date"
+atlas setup claude-code --apply      # de novo: tudo aparece como "em dia"
 ```
 
-Troque `claude-code` por `omp` ou `codex`. O padrão é sempre a simulação (dry run). Cada linha do plano mostra o artefato, o caminho, a ação (`create`, `update`, `up to date`, `CONFLICT`, `remove`, `skipped`) e um resumo curto da mudança.
+Troque `claude-code` por `omp` ou `codex`. O padrão é sempre a simulação (dry run). Cada linha do plano mostra o artefato, o caminho, a ação (`criar`, `atualizar`, `em dia`, `CONFLITO`, `remover`, `ignorado`) e um resumo curto da mudança.
 
 | Artefato | OMP | Claude Code | Codex |
 |----------|-----|-------------|-------|
@@ -73,7 +73,7 @@ Tudo para o omp é um plugin só, `~/.atlas/omp-plugin/`, ligado ao omp com `omp
 | Skills | `~/.atlas/omp-plugin/skills/<name>/` e `~/.agents/skills/<name>/` |
 | Link | `omp plugin link ~/.atlas/omp-plugin` (estado em `omp plugin list`) |
 
-**Plugin.** O Atlas é dono do diretório do plugin e o reescreve a cada `--apply` e `atlas update`; nunca edite arquivos dentro dele. A etapa `Plugin link` roda `omp plugin link` quando o plugin não está registrado, `omp plugin enable atlas-omp` quando está registrado mas desativado, e nada quando já está ativado. Se o `omp` não está no `PATH`, a etapa de link fica `skipped`, os arquivos são gravados do mesmo jeito, e o plano imprime o comando para você rodar.
+**Plugin.** O Atlas é dono do diretório do plugin e o reescreve a cada `--apply` e `atlas update`; nunca edite arquivos dentro dele. A etapa `Link do plugin` roda `omp plugin link` quando o plugin não está registrado, `omp plugin enable atlas-omp` quando está registrado mas desativado, e nada quando já está ativado. Se o `omp` não está no `PATH`, a etapa de link fica `ignorado`, os arquivos são gravados do mesmo jeito, e o plano imprime o comando para você rodar.
 
 **Servidor MCP.** O `.mcp.json` declara `{"type":"stdio","command":"atlas","args":["mcp"]}` em `mcpServers.atlas`. Se o `atlas` não está no `PATH`, o caminho absoluto do binário em execução é gravado no lugar, e o plano avisa. Veja [MCP](mcp.md) para as ferramentas, os recursos e os prompts (`/atlas:status`, `/atlas:diagnose <service>`, `/atlas:add-service`).
 
@@ -169,7 +169,7 @@ atlas setup codex [--scope user|project] [--apply] [--force] [--uninstall]
 
 **Servidor MCP.** Adiciona `[mcp_servers.atlas]` com `command = "atlas"` e `args = ["mcp"]` (o que `codex mcp add atlas -- atlas mcp` grava). O `config.toml` é a sua configuração principal do Codex, então ele é editado preservando o formato: comentários, ordem e espaços ficam intactos, a nova tabela entra no fim, e o uninstall restaura o texto original. Uma tabela atlas existente que você ajustou (`startup_timeout_sec`, `enabled`, filtros de ferramentas, …) mantém essas chaves quando só o caminho do comando muda. Outras grafias do mesmo servidor (tabela inline, chaves com ponto, chaves entre aspas) também são reconhecidas. O Atlas usa o crate `toml_edit` para isso: um leitor de linhas escrito à mão não consegue distinguir com segurança o cabeçalho de uma tabela da continuação de uma lista ou string de várias linhas, e esse arquivo guarda configurações próximas das suas credenciais. As camadas `.codex/` no escopo de projeto só carregam para projetos que você marcou como confiáveis no Codex.
 
-**Skills: compartilhadas.** O Codex lê `~/.agents/skills`, o diretório que o OMP usa. O setup garante que as skills embutidas estejam lá (nada acontece se o OMP ou o `atlas skills install` já as colocou), e o `--uninstall` as deixa no lugar enquanto o outro agente (OMP) ainda está configurado, então remover um agente nunca quebra o outro.
+**Skills (compartilhadas).** O Codex lê `~/.agents/skills`, o diretório que o OMP usa. O setup garante que as skills embutidas estejam lá (nada acontece se o OMP ou o `atlas skills install` já as colocou), e o `--uninstall` as deixa no lugar enquanto o outro agente (OMP) ainda está configurado, então remover um agente nunca quebra o outro.
 
 **Hooks.** O `hooks.json`, ao lado da configuração, recebe entradas `SessionStart` e `PreToolUse` (matcher `Bash`) que rodam `atlas hook codex <event>`. **O Codex só roda um hook depois que você o revisa e confia nele**: depois do `--apply`, inicie o Codex e rode `/hooks` uma vez para confiar nos dois hooks do atlas. Quando um `atlas update` posterior muda um hook, o Codex o marca para revisão de novo. Hooks não revisados são ignorados em silêncio, exceto por um aviso na inicialização. Não mantenha hooks do atlas ao mesmo tempo no `hooks.json` e em `[hooks]` inline na mesma camada (o Codex avisa); o Atlas sempre usa o `hooks.json`.
 
@@ -184,12 +184,12 @@ Documentação usada: [MCP](https://developers.openai.com/codex/mcp), [skills](h
 | Sintoma | Correção |
 |---------|-----|
 | `/mcp list` não mostra o `atlas` | Veja se o `omp plugin list` mostra o `atlas-omp` ativado; se não, rode `atlas setup omp --apply` (ou `omp plugin link ~/.atlas/omp-plugin`) e depois `/reload-plugins` ou reinicie o omp. |
-| `CONFLICT … an atlas entry not created by atlas` | Claude Code / Codex: você tem uma entrada de servidor `atlas` própria. Renomeie, ou rode de novo com `--force` para substituí-la. |
+| ``CONFLITO … existe uma entrada `atlas` que não foi criada pelo atlas`` | Claude Code / Codex: você tem uma entrada de servidor `atlas` própria. Renomeie, ou rode de novo com `--force` para substituí-la. |
 | O servidor MCP não inicia | O `atlas` não está no `PATH` do omp. Rode `atlas setup omp --apply` de novo em um shell onde `which atlas` funcione (o `.mcp.json` do plugin passa a receber o caminho absoluto) ou corrija o `PATH` (`~/.atlas/bin`). |
 | O agente ainda roda `atlas dev` | O hook carrega no início da sessão: confira `ls ~/.atlas/omp-plugin/hooks/pre/atlas.ts` e `omp plugin list`, e reinicie o omp. |
-| `skipped  Plugin link  … omp not found on PATH` | Instale o omp e rode o `omp plugin link <dir>` impresso (ou rode `atlas setup omp --apply` de novo). |
+| `ignorado  Link do plugin  … omp não encontrado no PATH` | Instale o omp e rode o `omp plugin link <dir>` impresso (ou rode `atlas setup omp --apply` de novo). |
 | Nenhuma mensagem de status no início da sessão | O hook procura o `atlas.yaml` a partir do diretório de trabalho da sessão, subindo. |
-| `error: --scope project needs an atlas.yaml` | Rode de dentro do projeto. |
+| `erro: --scope project precisa de um atlas.yaml em <dir> ou em uma pasta acima` | Rode de dentro do projeto. |
 | Faltam skills no omp / Codex | `atlas skills status` mostra o que está instalado em `~/.agents/skills`. |
 | Faltam skills no Claude Code | Elas ficam em `~/.claude/skills` (ou `$CLAUDE_CONFIG_DIR/skills`), não em `~/.agents/skills`. |
 | `claude mcp get atlas` não mostra Connected | O `atlas` não está no `PATH` do Claude Code: rode `atlas setup claude-code --apply` de novo em um shell onde `which atlas` funcione. |

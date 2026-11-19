@@ -23,7 +23,7 @@ Chaves desconhecidas são erros em qualquer profundidade (com uma dica "did you 
 | `pyproject.toml` / `requirements.txt`, `Cargo.toml`, `go.mod` | o comando de execução usual da linguagem, quando um é detectado |
 | nada | nenhum serviço: a stack começa vazia, e `atlas -- <cmd>` adiciona [serviços ad hoc](cli.md#atlas----cmd) a ela |
 
-Toda execução com config detectada imprime uma linha, por exemplo `no atlas.yaml: using detected config (services: dev); save it with 'atlas init'`. **Nada é gravado implicitamente**; `atlas init` (ou "Save as atlas.yaml" no Atlas Desktop) grava exatamente o que foi detectado, e a partir daí o arquivo é a fonte da verdade. O `atlas.local.yaml` continua se aplicando por cima de uma config detectada, e um `atlas.yaml` que existe nunca é substituído pela detecção (um arquivo quebrado é um erro, não um fallback). `atlas config check` e `atlas deploy` ainda exigem um arquivo de verdade.
+Toda execução com config detectada imprime uma linha, por exemplo `sem atlas.yaml: usando a config detectada (serviços: dev); salve com atlas init`. **Nada é gravado implicitamente**; `atlas init` (ou "Salvar como atlas.yaml" no Atlas Desktop) grava exatamente o que foi detectado, e a partir daí o arquivo é a fonte da verdade. O `atlas.local.yaml` continua se aplicando por cima de uma config detectada, e um `atlas.yaml` que existe nunca é substituído pela detecção (um arquivo quebrado é um erro, não um fallback). `atlas config check` e `atlas deploy` ainda exigem um arquivo de verdade.
 
 ## Campos de nível superior
 
@@ -47,13 +47,13 @@ Toda execução com config detectada imprime uma linha, por exemplo `no atlas.ya
 
 O Atlas o executa na raiz do projeto (por `sh -c`). Se ele roda numa determinada partida depende de [`pre_command_when`](#pre_command_when) (abaixo). A lógica é a mesma em todos os modos:
 
-- **TUI** (`atlas dev`): em segundo plano enquanto o dashboard abre; os serviços do app esperam ele terminar para começar (a infra sobe enquanto isso). Um toast "Dependencies installed" no sucesso; na falha, um toast de erro `pre_command failed: exit N: <last stderr line>` e os serviços começam mesmo assim (eles falham com os próprios erros se as dependências estiverem mesmo faltando).
-- **`--headless`**: roda **antes** de qualquer serviço começar; o sucesso imprime `dependencies installed`, a falha vai para o log (`pre_command failed: …`) e a inicialização continua.
+- **TUI** (`atlas dev`): em segundo plano enquanto o dashboard abre; os serviços do app esperam ele terminar para começar (a infra sobe enquanto isso). Um toast "Dependências instaladas" no sucesso; na falha, um toast de erro `O pre_command falhou: exit N: <last stderr line>` e os serviços começam mesmo assim (eles falham com os próprios erros se as dependências estiverem mesmo faltando).
+- **`--headless`**: roda **antes** de qualquer serviço começar; o sucesso imprime `dependências instaladas`, a falha vai para o log (`O pre_command falhou: …`) e a inicialização continua.
 - **`--ci`**: roda **antes** de qualquer serviço começar; uma falha aborta a execução com código de saída `1` e o JSON `{"ok": false, "reason": "pre_command failed: exit N: …", "services": []}`.
 
 - **Omitido**: detecção automática, só para projetos JS (precisa existir um `package.json`; projetos Rust e Go nunca o executam). Se `node_modules` não existe, ou um lockfile (`bun.lock`, `pnpm-lock.yaml`, `yarn.lock`, `package-lock.json`) é mais novo que `node_modules/.atlas-installed` (ou que o próprio `node_modules`), o Atlas roda `bun install`, `pnpm install --frozen-lockfile`, `yarn install --frozen-lockfile` ou `npm ci`, escolhido pelo lockfile que existe (bun, pnpm, yarn, senão npm).
 - **String não vazia**: roda esse comando no lugar do detectado automaticamente. Por padrão (`pre_command_when: always`) ele roda em **toda** partida, então `pre_command: bun install` faz o que você espera mesmo com o `node_modules` em dia. Com `pre_command_when: lockfile`, roda só sob a checagem de defasagem acima (o seu comando então precisa criar o `node_modules`, ou roda de novo em toda partida).
-- **`""`** (string vazia): nunca instala. Típico no `atlas.local.yaml` quando você mesmo gerencia as dependências. Nem "Run now" o executa.
+- **`""`** (string vazia): nunca instala. Típico no `atlas.local.yaml` quando você mesmo gerencia as dependências. Nem "Executar agora" o executa.
 
 #### pre_command_when
 
@@ -64,7 +64,7 @@ O Atlas o executa na raiz do projeto (por `sh -c`). Se ele roda numa determinada
 
 #### Saída e "Run now"
 
-Toda execução que de fato roda grava stdout+stderr combinados em `.logs/setup.log` (primeira linha `$ <command>`, última linha `exit status: N`; truncado por execução) e o estado dela em `.logs/setup.json` (`{"state": "running" | "ok" | "failed", "command", "started_at", "finished_at", "reason"}`). Uma execução pulada pela condição deixa os dois arquivos intactos. O Atlas Desktop mostra o comando, o agendamento, o último status e a saída numa seção **Setup** da visão geral do projeto, com um botão **Run now** que roda o comando uma vez, qualquer que seja o `pre_command_when`.
+Toda execução que de fato roda grava stdout+stderr combinados em `.logs/setup.log` (primeira linha `$ <command>`, última linha `exit status: N`; truncado por execução) e o estado dela em `.logs/setup.json` (`{"state": "running" | "ok" | "failed", "command", "started_at", "finished_at", "reason"}`). Uma execução pulada pela condição deixa os dois arquivos intactos. O Atlas Desktop mostra o comando, o agendamento, o último status e a saída numa seção **Setup** da visão geral do projeto, com um botão **Executar agora** que roda o comando uma vez, qualquer que seja o `pre_command_when`.
 
 ## services
 
@@ -98,13 +98,13 @@ services:
 | `oneshot` | bool | `false` | O comando é uma tarefa que termina (migration, seed). Sair com `0` é sucesso (`stopped`, exibido como `done`), não uma falha. Implícito quando algum dependente usa `completed_successfully`. |
 | `start_timeout` | segundos | `60` | Quanto tempo o serviço pode ficar em `starting` (porta, `health` ou `ready_log` não satisfeitos). Depois disso, o Atlas adiciona uma nota de aviso única (`still starting after 60s: waiting for :3001`) e, com `critical: true`, dispara o alerta crítico. O serviço **não** é encerrado. Até lá, a barra lateral mostra `waiting for :3001 (12s)` / `waiting for ready_log (12s)`. `0` desativa o timeout. |
 | `autostart` | bool | `true` | `false` = não inicia no boot; o serviço fica `stopped` até você iniciá-lo pelo menu do serviço (`m`), pela paleta de comandos ou pelo MCP (`atlas_start_service`), ou nomeá-lo na linha de comando (`atlas dev lab`, ou por `--profile`; um serviço lazy puxado só como dependência ainda espera). O início não espera o `depends_on`. `atlas config check` avisa quando um serviço com autostart depende de um que não tem. |
-| `critical` | bool | `false` | Quando o serviço está `Failed`, a barra lateral mostra uma entrada **ISSUES** bloqueante com a última linha de log do serviço. |
+| `critical` | bool | `false` | Quando o serviço está `Failed`, a barra lateral mostra uma entrada **PROBLEMAS** bloqueante com a última linha de log do serviço. |
 | `critical_help` | string | nenhum | Dica mostrada sob esse alerta (só faz sentido com `critical: true`). |
 | `enabled` | bool | `true` | `false` ignora o serviço por completo. Usado sobretudo a partir do `atlas.local.yaml`. |
 | `env` | map string→string | `{}` | Variáveis de ambiente extras só para este serviço. |
 | `open_key` | um caractere | nenhum | Tecla do dashboard que abre o serviço no navegador. |
 | `open_url` | string | `http://localhost:<port>` | URL aberta por `open_key` no lugar da padrão. |
-| `hide_logs` | bool | `false` | Sem aba própria para este serviço, e as linhas dele ficam fora da aba **All**. Use para infra silenciosa, como bancos de dados. Os logs continuam gravados em `.logs/<name>.log`. |
+| `hide_logs` | bool | `false` | Sem aba própria para este serviço, e as linhas dele ficam fora da aba **Tudo**. Use para infra silenciosa, como bancos de dados. Os logs continuam gravados em `.logs/<name>.log`. |
 | `lock_file` | string | nenhum | Caminho (relativo à raiz do projeto) de um arquivo JSON com `{"pid": N}`, por exemplo `apps/ai/.mastra/dev.lock`. O Atlas limpa locks obsoletos antes de o serviço iniciar, veja [lock files](runtime.md#arquivos-de-lock-lock_file). |
 | `max_memory` | tamanho (`512M`, `4G`) | nenhum | Teto rígido de memória para toda a árvore de processos do serviço. O Atlas mede memória e CPU a cada 5 s (no macOS, o physical footprint, com páginas comprimidas incluídas, como no Activity Monitor); acima do teto por duas medições seguidas, `on_memory_max` decide: `restart` (padrão) reinicia com um alerta e, depois de 3 reinícios numa execução, para o serviço e o marca como failed; `notify` só alerta. Uma proteção contra dev servers com vazamento. Veja [Memória](#memória). O uso aparece por serviço no Atlas Desktop e em `atlas_status` (`mem_mb`, `cpu`). |
 | `memory_warn` | tamanho (`512M`, `1.5GB`) | nenhum | Orçamento suave, abaixo de `max_memory`: acima dele por duas medições seguidas, o serviço passa a `degraded` com o motivo (`using 2.1 GB, over memory_warn 1.5 GB`) e nada é encerrado. Veja [Memória](#memória). |
@@ -352,11 +352,11 @@ ssh -N -o ExitOnForwardFailure=yes -o ServerAliveInterval=<keepalive_interval> \
 - A saúde é verificada a cada segundo. Se o ssh morre ou a porta local para de responder, o Atlas reconecta com backoff exponencial: 5 s, 10 s, 20 s, … até o teto de `reconnect_cooldown` segundos. Uma troca do gateway padrão (mudar de Wi-Fi/VPN, no macOS) reconecta na hora.
 - Se o túnel não consegue subir, o Atlas levanta um **alerta crítico** chamado `tunnel`, cuja mensagem termina com a última linha de stderr do ssh (uma vez por episódio de falha, não a cada nova tentativa).
 - Se algo já aceita conexões em `local_port` e o Atlas não o iniciou, o Atlas o usa como está e nunca o encerra. O Atlas nunca encerra por porta.
-- O estado aparece no bloco **TUNNEL** da barra lateral, em `atlas dev --status`, em `.logs/.tui-status.json` e no `atlas_status` do MCP (`tunnel: {state, local_port, ssh_host}`, `null` quando nenhum túnel está rodando). Veja [Runtime](runtime.md#túnel-ssh).
+- O estado aparece no bloco **TÚNEL** da barra lateral, em `atlas dev --status`, em `.logs/.tui-status.json` e no `atlas_status` do MCP (`tunnel: {state, local_port, ssh_host}`, `null` quando nenhum túnel está rodando). Veja [Runtime](runtime.md#túnel-ssh).
 
 Com `enabled: false`, o bloco continua configurado, mas nada inicia no boot; uma ação com [`open_tunnel: true`](#actions) o inicia sob demanda.
 
-Na saída, o túnel é fechado (SIGTERM ao ssh que o Atlas iniciou), a menos que você tenha desligado **Kill tunnel on exit** com `t` na TUI; nesse caso ele continua rodando e fica registrado em `.logs/.tunnel.pid` para a próxima partida reaproveitá-lo. `--headless` e `--ci` sempre o fecham.
+Na saída, o túnel é fechado (SIGTERM ao ssh que o Atlas iniciou), a menos que você tenha desligado **Encerrar o túnel ao sair** com `t` na TUI; nesse caso ele continua rodando e fica registrado em `.logs/.tunnel.pid` para a próxima partida reaproveitá-lo. `--headless` e `--ci` sempre o fecham.
 
 ## actions
 
@@ -398,8 +398,8 @@ actions:
 
 Comportamento de uma ação que não é session:
 
-- Enquanto roda, a barra lateral mostra um bloco **OPERATIONS**: spinner, rótulo, tempo decorrido `mm:ss`, última linha de saída. O sucesso o limpa; a falha mantém `✗` e a última linha até a próxima execução ou por 30 s.
-- Disparar a mesma ação enquanto ela ainda roda é ignorado ("already running").
+- Enquanto roda, a barra lateral mostra um bloco **OPERAÇÕES**: spinner, rótulo, tempo decorrido `mm:ss`, última linha de saída. O sucesso o limpa; a falha mantém `✗` e a última linha até a próxima execução ou por 30 s.
+- Disparar a mesma ação enquanto ela ainda roda é ignorado (`<label> já está em execução`).
 - Quando termina, os serviços pausados são reiniciados (com sucesso ou falha).
 - `atlas dev --headless` pode rodar ações pelo MCP, mas não ações com `platform` (elas precisam do seletor de dispositivo da TUI).
 
@@ -473,7 +473,7 @@ Uma worktree nova começa sem `node_modules` e sem `target/`, então o `setup` r
 - **Como.** Um clone copy-on-write: `clonefile(2)` no macOS (APFS), `FICLONE` por arquivo no Linux (btrfs, XFS com reflink, bcachefs). Os blocos são compartilhados até um dos lados escrever, então leva milissegundos e nenhum disco, e escrever na worktree nunca muda o checkout principal (o Atlas nunca faz hardlink de uma árvore: uma escrita chegaria à origem). No macOS, o `target` e o `node_modules` com seed recebem um arquivo `.metadata_never_index`, para o Spotlight não indexá-los.
 - **Quando não dá para clonar** (outro volume, ext4, tmpfs, Windows: o clone de blocos no ReFS não é tentado), o diretório é **pulado, nunca copiado por inteiro**, e a linha de progresso e o toast de pronto avisam isso. Checkouts remotos (SSH) não recebem seed.
 - **Cargo.** Um `target/` clonado é seguro para compilar e testar. O Cargo mistura o caminho absoluto do workspace no hash do fingerprint e nos nomes de arquivo de cada crate, então os crates da própria worktree e os binários de teste são recompilados com nomes novos (os caminhos `CARGO_BIN_EXE_*` embutidos nos binários de teste do checkout principal ficam em arquivos que ninguém executa), enquanto as dependências do registry, a parte cara, são reaproveitadas. O clone é dono dos próprios blocos, então excluir o checkout principal depois não quebra nada. Por isso, nunca compartilhe um `CARGO_TARGET_DIR` em uso entre worktrees.
-- **Tempo.** A etapa de progresso `seed` traz `cloned … in N ms`; quando o terminal Setup termina, um toast acrescenta `setup N s`. Os mesmos números estão no payload `done` de `worktree://progress` (`seed: {seeded, skipped, ms}`).
+- **Tempo.** A etapa de progresso `seed` traz `clonou … em N ms`; quando o terminal Setup termina, um toast acrescenta `setup N s`. Os mesmos números estão no payload `done` de `worktree://progress` (`seed: {seeded, skipped, ms}`).
 
 ### Etapas em cache no `setup`
 

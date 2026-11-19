@@ -78,7 +78,15 @@ describe("normalizeCrewmate", () => {
 // #524: the report's crew server (hostd alpha.24) listed a crewmate parked on a card as "working". A current hostd says
 // "needs_you" itself and is believed; an older one is corrected where its reply still shows the card.
 describe("a crewmate parked on a card is never shown as working", () => {
-	const base = { id: "c1", name: "Gerente", role: "", agent: "omp", approval: "ask", state: "working", queued: 2 };
+	const base = {
+		id: "c1",
+		name: "Gerente",
+		role: "",
+		agent: "omp",
+		approval: "ask",
+		state: "working",
+		queued: 2,
+	};
 	const choose = { kind: "choose", question: "Which?", options: ["A", "B"] };
 
 	test("what hostd says as `needs_you` is kept, and `working` with no card stays working", () => {
@@ -90,7 +98,9 @@ describe("a crewmate parked on a card is never shown as working", () => {
 		const out = normalizeCrewmate({ ...base, waiting_task: { id: "t1", action: choose } });
 		expect(out.state).toBe("needs_you");
 		const refused = { kind: "refused", reasons: ["a command wrote a file outside the work tree"] };
-		expect(normalizeCrewmate({ ...base, waiting_task: { id: "t1", action: refused } }).state).toBe("needs_you");
+		expect(normalizeCrewmate({ ...base, waiting_task: { id: "t1", action: refused } }).state).toBe(
+			"needs_you",
+		);
 	});
 
 	test("an older hostd with only `last` reads the same when the newest task is the parked one", () => {

@@ -27,7 +27,7 @@ describe("stepPhrase", () => {
 	});
 
 	test("searching", () => {
-		expect(stepPhrase("Grep handleLogin")).toBe("Searching for “handleLogin”");
+		expect(stepPhrase("Grep handleLogin")).toBe('Searching for "handleLogin"');
 		expect(stepPhrase("glob **/*.svelte")).toBe("Looking for files");
 	});
 

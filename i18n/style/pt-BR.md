@@ -29,6 +29,7 @@ O objetivo: o texto deve parecer escrito em português por quem usa a ferramenta
 | Hora | `14:05` (24 h, sem AM/PM) |
 | Relativo | `há 5 minutos`, `ontem` |
 | Lista | `claude, codex e omp` (sem vírgula antes do "e") |
+- **Horas com preposição.** A preposição correta depende da hora: "à 01:00" mas "às 02:00" em diante (incluindo 00:30). Como o código passa um horário formatado — e qualquer hora do dia pode cair no valor 1 — uma mensagem nunca deve colocar "às" ou "à" diretamente antes de um placeholder de horário. Escreva sem preposição: `"reinicia: {time}"`, `"hoje, {time}"`, `"Iniciada: {time}"`, `"Abrir logs de {service} ({time})"`. O `i18n:check` rejeita `às {time}`, `à {time}` e construções similares com um erro `pt-time`.
 
 - **Plural com zero.** No CLDR, o pt-BR trata 0 como singular (`one`), então `{count} arquivo` vira "0 arquivo". Escreva sempre o caso zero por extenso na mensagem: `Nenhum arquivo`.
 - **Aspas**: duplas retas `"assim"`, simples dentro de duplas. Para nomes de comandos e arquivos, formatação de código, não aspas.

@@ -211,7 +211,8 @@ O shell fica em Configurações → Integrações → Shell e links; as atualiza
 | Arquivo | Conteúdo |
 |---|---|
 | `projects.json` | os projetos que você adicionou |
-| `workspace.json` | abas, painéis e docks por worktree |
+| `workspace.json` | abas, painéis e docks por worktree. Uma cópia que não pode ser lida (não é JSON, está vazia, não é um workspace) nunca impede o app de abrir: ela é movida para `workspace.json.corrupt-<ms unix>`, o Atlas começa com um workspace vazio e um aviso diz onde o arquivo foi guardado |
+| `crew-servers.json` | os servidores de crew que você registrou. Uma cópia ilegível é mantida como `crew-servers.json.corrupt-<ms unix>`, do mesmo jeito |
 | `themes/` | local antigo dos seus arquivos de tema do Zed (ainda é lido; os novos vão para `~/.atlas/themes/`) |
 | `hook-endpoint.env` | endpoint de loopback e token dos hooks de agentes (token novo a cada execução do hostd) |
 

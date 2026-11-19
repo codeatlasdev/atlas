@@ -74,23 +74,30 @@ pub fn load() -> Vec<CrewServer> {
     load_from(&path())
 }
 
+/// The registered servers. A file that cannot be parsed is set aside (`crew-servers.json.corrupt-<unix_ms>`, logged)
+/// and reads as no servers: the next "add a server" used to overwrite it, taking the only copy of every server's
+/// name, port and key path with it.
 fn load_from(p: &std::path::Path) -> Vec<CrewServer> {
-    let Ok(data) = std::fs::read_to_string(p) else {
-        return vec![];
-    };
-    serde_json::from_str(&data).unwrap_or_default()
+    use atlas_host::paths::{Loaded, read_json_or_aside};
+    match read_json_or_aside(p) {
+        Ok(Loaded::Ok(hosts)) => hosts,
+        Ok(Loaded::Missing | Loaded::Corrupt(_)) => vec![],
+        Err(e) => {
+            // i18n-ignore: log
+            eprintln!("atlas: cannot read {}: {e}", p.display());
+            vec![]
+        }
+    }
 }
 
 fn save(hosts: &[CrewServer]) -> Result<(), String> {
     save_to(&path(), hosts)
 }
 
+/// Atomic (temp file, flush, rename): a crash or a full disk mid-save leaves the previous registry, not half of one.
 fn save_to(p: &std::path::Path, hosts: &[CrewServer]) -> Result<(), String> {
-    if let Some(parent) = p.parent() {
-        std::fs::create_dir_all(parent).map_err(|e| e.to_string())?;
-    }
     let data = serde_json::to_string_pretty(hosts).map_err(|e| e.to_string())?;
-    std::fs::write(p, data).map_err(|e| e.to_string())
+    crate::registry::write_atomic(p, &data)
 }
 
 /// The registry after registering `host`. An entry that exists keeps its name; a given `admin` replaces its admin
@@ -1333,5 +1340,47 @@ mod tests {
         });
         set_admin(&mut hosts, "atlas-crew@srv", blank).unwrap();
         assert_eq!(hosts[0].identity, None);
+    }
+
+    // Same class as the workspace that bricked the app: a registry that does not parse must not be overwritten by
+    // the next save (the old `std::fs::write` was also not atomic, which is how a file gets half-written).
+    #[test]
+    fn an_unreadable_registry_is_set_aside_and_a_later_save_does_not_lose_it() {
+        let dir = tempfile::tempdir().unwrap();
+        let file = dir.path().join("desktop/crew-servers.json");
+        std::fs::create_dir_all(file.parent().unwrap()).unwrap();
+        let broken = br#"[{"host":"atlas-crew@srv","name":"Sr"#;
+        std::fs::write(&file, broken).unwrap();
+        let mut hosts = load_from(&file);
+        assert!(hosts.is_empty());
+        let aside: Vec<_> = std::fs::read_dir(file.parent().unwrap())
+            .unwrap()
+            .map(|e| e.unwrap().path())
+            .filter(|p| p.to_string_lossy().contains("crew-servers.json.corrupt-"))
+            .collect();
+        assert_eq!(aside.len(), 1, "the bytes are kept beside the original");
+        assert_eq!(std::fs::read(&aside[0]).unwrap(), broken);
+        with_server(&mut hosts, "atlas-crew@new", "New".into(), None);
+        save_to(&file, &hosts).unwrap();
+        assert_eq!(load_from(&file), hosts);
+        assert_eq!(
+            std::fs::read(&aside[0]).unwrap(),
+            broken,
+            "a save never touches the kept copy"
+        );
+    }
+
+    #[test]
+    fn saving_the_registry_leaves_no_temp_file_and_creates_the_folder() {
+        let dir = tempfile::tempdir().unwrap();
+        let file = dir.path().join("fresh/desktop/crew-servers.json");
+        let mut hosts = vec![];
+        with_server(&mut hosts, "atlas-crew@srv", "Srv".into(), None);
+        save_to(&file, &hosts).unwrap();
+        let names: Vec<_> = std::fs::read_dir(file.parent().unwrap())
+            .unwrap()
+            .map(|e| e.unwrap().file_name().to_string_lossy().into_owned())
+            .collect();
+        assert_eq!(names, ["crew-servers.json"]);
     }
 }

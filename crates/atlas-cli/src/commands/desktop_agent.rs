@@ -319,6 +319,10 @@ pub fn start(o: StartOpts) -> Result<()> {
             );
         },
     )?;
+    // macOS: nothing starts while no real display is awake (macOS would defer removing a virtual display made then,
+    // and it would outlive its instance) or while orphan agent displays are listed (a new one only stacks another).
+    #[cfg(target_os = "macos")]
+    atlas_core::agent_display::check_start(Duration::from_secs(3)).map_err(anyhow::Error::msg)?;
     // Linux: Ctrl-C or SIGTERM while the display and the app come up stops what is already running, then exits.
     #[cfg(target_os = "linux")]
     atlas_core::sys::watch_interrupts();
@@ -647,7 +651,9 @@ fn stop_one(s: &Session) -> Result<()> {
 }
 
 /// `--gc`: delete the WebKit stores of agent instances that no longer exist (left by crashes, or by
-/// instances stopped before `--stop` cleaned them up). Live instances and the user's own store are kept.
+/// instances stopped before `--stop` cleaned them up), and (macOS) list the virtual displays of instances that no
+/// longer exist. Live instances and the user's own store are kept. A virtual display cannot be removed by another
+/// process than its creator: the report says what clears the ones left.
 pub fn gc() -> Result<()> {
     let root = temp_root()?;
     let live: Vec<String> = existing(&root)
@@ -666,6 +672,15 @@ pub fn gc() -> Result<()> {
         gone.len(),
         live.len()
     );
+    #[cfg(target_os = "macos")]
+    {
+        let orphans = atlas_core::agent_display::orphan_displays();
+        if orphans.is_empty() {
+            println!("0 orphan agent display(s)");
+        } else {
+            println!("{}", atlas_core::agent_display::orphan_report(&orphans));
+        }
+    }
     Ok(())
 }
 

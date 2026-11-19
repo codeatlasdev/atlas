@@ -803,6 +803,10 @@ fn main() {
             // Quitting with "restart when idle" armed and no terminal left: end the old host now.
             if matches!(ev, tauri::RunEvent::Exit) {
                 host::on_exit(app);
+                // An agent instance's virtual display is destroyed here, before the process ends by whichever
+                // route got us here (`app.exit` ends in `process::exit`, which never drops a static).
+                #[cfg(target_os = "macos")]
+                agent_display::destroy();
             }
         });
 }

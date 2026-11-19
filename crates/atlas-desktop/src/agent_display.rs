@@ -8,13 +8,14 @@ use objc2::runtime::AnyObject;
 use tauri::{AppHandle, Manager};
 
 use crate::agent_mode::{Facts, Rect, ShowGranted, show_decision};
-use crate::display_mac::{Cg, ConfigLock, Display};
+use crate::display_mac::{Cg, ConfigLock, Display, Exit, release};
 
 /// Logical size of the agent display: the app's default window size, so a window fills it.
 const LOGICAL: (u32, u32) = (1280, 820);
 
-/// Kept for the life of the process: the display exists exactly as long as this instance does. A clean exit, a panic
-/// and a SIGKILL all end the process, and the OS removes a virtual display with its owner.
+/// Kept while this instance lives, and destroyed explicitly by every way it ends ([`leave`], [`destroy`]): a static
+/// is never dropped, `app.exit` ends in `process::exit`, and the OS only removes a virtual display with its owner
+/// when it is awake enough to process the removal (see `display_mac.rs`).
 static DISPLAY: LazyLock<parking_lot::Mutex<Option<Display<Cg>>>> =
     LazyLock::new(|| parking_lot::Mutex::new(None));
 
@@ -31,6 +32,61 @@ pub fn ensure() -> Result<(u32, Rect, u32), String> {
     }
     let d = g.as_ref().expect("just created");
     Ok((d.id, d.bounds, scale))
+}
+
+/// End the instance: the display is destroyed first, then the app exits with the route's code. Every exit of this
+/// module comes through here (a source test pins it).
+fn leave(app: &AppHandle, route: Exit) {
+    let code = release(&mut *DISPLAY.lock(), route);
+    app.exit(code);
+}
+
+/// Destroy the display now, for an exit this module does not own (`RunEvent::Exit`: the updater's restart, the
+/// tray's Quit, a webview-guard exit...). Nothing is left to do when it was never created or is already gone.
+pub fn destroy() {
+    release(&mut *DISPLAY.lock(), Exit::Closing);
+}
+
+/// Write end of the pipe the signal handler talks to (-1 until [`watch_signals`] ran).
+static SIGNAL_FD: std::sync::atomic::AtomicI32 = std::sync::atomic::AtomicI32::new(-1);
+
+/// SIGTERM (`atlas desktop --agent --stop`), SIGINT and SIGHUP end the instance through [`leave`]: the display is
+/// destroyed instead of left to the OS. The handler only writes the signal number to a pipe (all it may safely do);
+/// a thread reads it and does the work.
+fn watch_signals(app: AppHandle) {
+    extern "C" fn on_signal(sig: libc::c_int) {
+        let fd = SIGNAL_FD.load(std::sync::atomic::Ordering::Relaxed);
+        let byte = sig as u8;
+        // SAFETY: write(2) is async-signal-safe; `fd` is the pipe's write end or -1 (EBADF, ignored).
+        unsafe { libc::write(fd, (&raw const byte).cast(), 1) };
+    }
+    let mut fds = [0 as libc::c_int; 2];
+    // SAFETY: pipe(2) fills two descriptors.
+    if unsafe { libc::pipe(fds.as_mut_ptr()) } != 0 {
+        eprintln!("atlas-agent: no signal pipe; a signal will not destroy the display first");
+        return;
+    }
+    SIGNAL_FD.store(fds[1], std::sync::atomic::Ordering::Relaxed);
+    for sig in [libc::SIGTERM, libc::SIGINT, libc::SIGHUP] {
+        // SAFETY: installs a handler that only calls write(2).
+        unsafe { libc::signal(sig, on_signal as *const () as libc::sighandler_t) };
+    }
+    std::thread::spawn(move || {
+        let mut byte = 0u8;
+        loop {
+            // SAFETY: reads one byte into a live local from the pipe's read end.
+            let n = unsafe { libc::read(fds[0], (&raw mut byte).cast(), 1) };
+            if n == 1 {
+                eprintln!("atlas-agent: signal {byte}: destroying the virtual display and exiting");
+                leave(&app, Exit::Signal(i32::from(byte)));
+                return;
+            }
+            if n < 0 && std::io::Error::last_os_error().kind() == std::io::ErrorKind::Interrupted {
+                continue;
+            }
+            return;
+        }
+    });
 }
 
 /// The `NSScreen` of display `id`, by its `NSScreenNumber`.
@@ -94,7 +150,7 @@ fn dry_run() -> bool {
 fn refuse(app: &AppHandle, why: &str) {
     // i18n-ignore: log
     eprintln!("atlas-agent: REFUSED to show the window: {why}");
-    app.exit(3);
+    leave(app, Exit::Refused);
 }
 
 /// Move `win` onto the agent display and show it without activating the app, but only if [`show_decision`] says
@@ -163,7 +219,7 @@ pub fn park_and_show(app: &AppHandle, win: &tauri::Window) {
             "atlas-agent: DRYRUN decision: would show {:?} on display {display_id} (not ordered in)",
             facts.frame
         );
-        app.exit(0);
+        leave(app, Exit::DryRun);
         return;
     }
     order_front(w, granted);
@@ -185,6 +241,7 @@ pub fn guard_user_displays(app: &AppHandle) {
     static STARTED: std::sync::Once = std::sync::Once::new();
     let app = app.clone();
     STARTED.call_once(move || {
+        watch_signals(app.clone());
         std::thread::spawn(move || {
             loop {
                 std::thread::sleep(std::time::Duration::from_millis(250));
@@ -289,6 +346,52 @@ mod tests {
         drop(held);
         assert_eq!(r, Ok(Err(())), "the watchdog read blocked on the held lock");
         assert_eq!(super::own_display(), Ok(None));
+    }
+
+    /// Incident 2026-11-19 (five orphan virtual displays): `app.exit` ends in `process::exit`, which never drops the
+    /// static holding the display. No exit of an agent instance may skip destroying it: in this module the only
+    /// `app.exit(` is inside `leave` (which destroys first), the signal thread ends through `leave`, and the app's
+    /// own `RunEvent::Exit` calls `destroy`. Any other exit route must be added here, through `leave`.
+    #[test]
+    fn every_exit_route_of_an_agent_instance_destroys_the_display() {
+        let all = sources();
+        let src = |n: &str| code(&all.iter().find(|(f, _)| f == n).unwrap().1);
+        let me = src("src/agent_display.rs");
+        assert_eq!(
+            me.matches("app.exit(").count(),
+            1,
+            "app.exit( outside `leave`"
+        );
+        let (_, leave_fn) = me.split_once("fn leave(").expect("fn leave");
+        let leave_fn = leave_fn.split_once("\n}\n").unwrap().0;
+        let (destroy_at, exit_at) = (
+            leave_fn.find("release(").expect("leave releases"),
+            leave_fn.find("app.exit(").expect("leave exits"),
+        );
+        assert!(destroy_at < exit_at, "the display goes before the exit");
+        for route in ["Exit::Refused", "Exit::DryRun", "Exit::Signal("] {
+            assert!(
+                me.contains(&format!("leave(app, {route}"))
+                    || me.contains(&format!("leave(&app, {route}")),
+                "{route}"
+            );
+        }
+        assert!(
+            !me.contains("process::exit"),
+            "process::exit skips every destructor"
+        );
+        let main = src("src/main.rs");
+        let (_, exit_arm) = main
+            .split_once("tauri::RunEvent::Exit)")
+            .expect("main's Exit handler");
+        assert!(
+            exit_arm
+                .split_once("});")
+                .unwrap()
+                .0
+                .contains("agent_display::destroy()"),
+            "RunEvent::Exit destroys the display"
+        );
     }
 
     /// Incident (agent window on the user's built-in display for ~25 s): with `ATLAS_AGENT=1` nothing may order a

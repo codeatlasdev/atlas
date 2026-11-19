@@ -681,7 +681,7 @@ pub fn relaunch(app: AppHandle) -> Result<(), String> {
             .stdin(std::process::Stdio::null());
         atlas_core::sys::spawn_detached(&mut cmd).map_err(|e| e.to_string())?;
     }
-    app.exit(0);
+    crate::app_exit::exit(&app, 0);
     Ok(())
 }
 

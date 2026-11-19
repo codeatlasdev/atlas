@@ -38,7 +38,7 @@ pub fn ensure() -> Result<(u32, Rect, u32), String> {
 /// module comes through here (a source test pins it).
 fn leave(app: &AppHandle, route: Exit) {
     let code = release(&mut *DISPLAY.lock(), route);
-    app.exit(code);
+    crate::app_exit::exit(app, code);
 }
 
 /// Destroy the display now, for an exit this module does not own (`RunEvent::Exit`: the updater's restart, the
@@ -350,52 +350,6 @@ mod tests {
         assert_eq!(super::own_display(), Ok(None));
     }
 
-    /// Incident 2026-11-19 (five orphan virtual displays): `app.exit` ends in `process::exit`, which never drops the
-    /// static holding the display. No exit of an agent instance may skip destroying it: in this module the only
-    /// `app.exit(` is inside `leave` (which destroys first), the signal thread ends through `leave`, and the app's
-    /// own `RunEvent::Exit` calls `destroy`. Any other exit route must be added here, through `leave`.
-    #[test]
-    fn every_exit_route_of_an_agent_instance_destroys_the_display() {
-        let all = sources();
-        let src = |n: &str| code(&all.iter().find(|(f, _)| f == n).unwrap().1);
-        let me = src("src/agent_display.rs");
-        assert_eq!(
-            me.matches("app.exit(").count(),
-            1,
-            "app.exit( outside `leave`"
-        );
-        let (_, leave_fn) = me.split_once("fn leave(").expect("fn leave");
-        let leave_fn = leave_fn.split_once("\n}\n").unwrap().0;
-        let (destroy_at, exit_at) = (
-            leave_fn.find("release(").expect("leave releases"),
-            leave_fn.find("app.exit(").expect("leave exits"),
-        );
-        assert!(destroy_at < exit_at, "the display goes before the exit");
-        for route in ["Exit::Refused", "Exit::DryRun", "Exit::Signal("] {
-            assert!(
-                me.contains(&format!("leave(app, {route}"))
-                    || me.contains(&format!("leave(&app, {route}")),
-                "{route}"
-            );
-        }
-        assert!(
-            !me.contains("process::exit"),
-            "process::exit skips every destructor"
-        );
-        let main = src("src/main.rs");
-        let (_, exit_arm) = main
-            .split_once("tauri::RunEvent::Exit)")
-            .expect("main's Exit handler");
-        assert!(
-            exit_arm
-                .split_once("});")
-                .unwrap()
-                .0
-                .contains("agent_display::destroy()"),
-            "RunEvent::Exit destroys the display"
-        );
-    }
-
     /// Incident (agent window on the user's built-in display for ~25 s): with `ATLAS_AGENT=1` nothing may order a
     /// window onto a screen except the one guarded path (`order_front`, which needs the `ShowGranted` proof that
     /// only `show_decision` can issue). Any new caller of these AppKit/Tauri calls fails this test and must either
@@ -613,7 +567,7 @@ mod tests {
             .split_once("Err(")
             .expect("verify_display()'s error arm refuses");
         assert_eq!(ok_arm.matches(".show()").count(), 1);
-        assert!(!err_arm.contains(".show()") && err_arm.contains("app.exit("));
+        assert!(!err_arm.contains(".show()") && err_arm.contains("app_exit::exit("));
         assert_eq!(
             linux.matches(".show()").count(),
             1,

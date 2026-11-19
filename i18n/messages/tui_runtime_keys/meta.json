@@ -25,7 +25,10 @@
 	"tui_runtime_keys_footer_search_active": "Short label of the TUI footer hint for / while a search is active; n/N are the keys, after the key. ",
 	"tui_runtime_keys_footer_start": "Short label of the TUI footer hint for r on a stopped service, after the key. ",
 	"tui_runtime_keys_footer_stop": "Short label of the TUI footer hint for s, after the key. ",
-	"tui_runtime_keys_footer_time": "Short label of the TUI footer hint for V, after the key. ",
+	"tui_runtime_keys_footer_time": {
+		"description": "Short label of the TUI footer hint for V, after the key. ",
+		"distinct": "the key that picks a time range ('Período'); the other is a time of day ('Horário')"
+	},
 	"tui_runtime_keys_footer_zoom": "Short label of the TUI footer hint for z, after the key. ",
 	"tui_runtime_keys_footer_zoom_on": "Short label of the TUI footer hint for z while zoomed; shown yellow, after the key. ",
 	"tui_runtime_keys_help_attach": "Row of the TUI help (?) listing a key, after the key column. Key i on a session tab. {key} is the key that detaches (Ctrl+B).",

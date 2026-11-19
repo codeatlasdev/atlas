@@ -30,7 +30,10 @@
 	"viewers_reference_manifest_edition": "Label of the chip for the Rust edition of a Cargo.toml.",
 	"viewers_reference_manifest_engines": "Label of the engines chip in the header of a package.json view: the Node versions the package supports (the engines field).",
 	"viewers_reference_manifest_homepage": "Link in the header of a package manifest view that opens the homepage the manifest declares.",
-	"viewers_reference_manifest_main": "Label of the chip for the main or module field of a package.json: the entry file.",
+	"viewers_reference_manifest_main": {
+		"description": "Label of the chip for the main or module field of a package.json: the entry file.",
+		"distinct": "the entry file of a package ('Arquivo principal'); the other is the main navigation landmark"
+	},
 	"viewers_reference_manifest_minimum_stability": "Label of the chip for the minimum-stability field of a composer.json.",
 	"viewers_reference_manifest_package_manager": "Label of the chip that names the packageManager field of a package.json.",
 	"viewers_reference_manifest_private": "Label of the chip that tells a package.json is marked private.",

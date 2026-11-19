@@ -76,7 +76,7 @@
 	{/if}
 	<Row
 		id="host-restart"
-		label={m.settings_terminal_tab_terminal_host()}
+		label={m.settings_host_name()}
 		description={m.settings_terminal_tab_the_background_process_that_keeps()}
 	>
 		<Button size="sm" variant="outlined" onclick={restart}
@@ -315,7 +315,7 @@
 					{ value: "both", label: m.settings_terminal_tab_option_both() },
 					{ value: "left", label: m.settings_terminal_tab_option_left() },
 					{ value: "right", label: m.settings_terminal_tab_option_right() },
-					{ value: "none", label: m.settings_general_git_option_off() },
+					{ value: "none", label: m.settings_capture_timer_off() },
 				]}
 				onchange={(v) => save({ option_as_alt: v as Prefs["terminal"]["option_as_alt"] })}
 			/>

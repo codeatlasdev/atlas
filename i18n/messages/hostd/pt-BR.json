@@ -19,7 +19,7 @@
 	"hostd_wire_events_dropped": "Alguns eventos dos terminais se perderam sob carga. Os terminais foram ressincronizados.",
 	"hostd_wire_feature_agents": "status dos agentes",
 	"hostd_wire_feature_lsp": "recursos de linguagem",
-	"hostd_wire_feature_pty_attach_raw": "renderização rápida de terminais",
+	"hostd_wire_feature_pty_attach_raw": "renderização rápida do terminal",
 	"hostd_wire_fs_already_exists": "{path} já existe. Escolha outro nome.",
 	"hostd_wire_fs_is_a_directory": "{path} é uma pasta, não um arquivo. Escolha outro nome.",
 	"hostd_wire_fs_not_a_directory": "Uma parte de {path} é um arquivo, não uma pasta. Escolha outro local.",

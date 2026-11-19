@@ -7,6 +7,7 @@
 	import { openBranchPicker } from "#lib/stores/branch.svelte.ts";
 	import Tip from "#lib/components/Tip.svelte";
 	import ProjectIcon from "#lib/shell/ProjectIcon.svelte";
+	import { m } from "#lib/i18n/m.ts";
 
 	/**
 	 * Where you are: `Space › worktree › tab`, each segment clickable, plus back/forward over
@@ -25,15 +26,18 @@
 	}
 	/** "Back to Logs" / "Forward to main › Terminal": says where the arrow goes. */
 	function where(delta: 1 | -1): string {
+		const bare = delta < 0 ? m.common_action_back() : m.shell_chrome_crumbs_forward();
 		const v = shell.target(delta);
-		const verb = delta < 0 ? "Back" : "Forward";
-		if (!v) return verb;
+		if (!v) return bare;
 		const t = v.tabId ? ws.tab(v.tabId) : undefined;
 		const tl = t ? (t.pty && ws.titles[t.pty]) || t.label : "";
 		const vw = ws.worktree(v.worktreeId);
 		const wn = vw ? (vw.isMain ? "main" : vw.name) : "";
 		const label = v.worktreeId === w?.id ? tl || wn : [wn, tl].filter(Boolean).join(" › ");
-		return label ? `${verb} to ${label}` : verb;
+		if (!label) return bare;
+		return delta < 0
+			? m.shell_chrome_crumbs_back_to({ place: label })
+			: m.shell_chrome_crumbs_forward_to({ place: label });
 	}
 	const hasHistory = $derived(shell.canGo(-1) || shell.canGo(1));
 	function toWorktree() {
@@ -41,7 +45,7 @@
 	}
 </script>
 
-<nav class="crumbs" aria-label="Location" data-tour="breadcrumb">
+<nav class="crumbs" aria-label={m.shell_chrome_crumbs_location()} data-tour="breadcrumb">
 	{#if hasHistory}<span class="nav">
 			<Tip label={where(-1)} command="shell::Back">
 				{#snippet child(props)}
@@ -67,12 +71,12 @@
 		<ChevronRight size={11} class="sep" />
 		<button class="seg wt" class:last={!tab} onclick={toWorktree}><span class="label">{wtName}</span></button>
 		{#if w.branch}
-			<Tip label="Switch branch" command="git::Branch">
+			<Tip label={m.shell_chrome_crumbs_switch_branch()} command="git::Branch">
 				{#snippet child(props)}
 					<button
 						{...props}
 						class="seg branch"
-						aria-label="Branch {w.branch}, switch"
+						aria-label={m.shell_chrome_crumbs_branch_label({ branch: w.branch })}
 						onclick={openBranchPicker}
 					>
 						<GitBranch size={12} /><span class="label mono">{w.branch}</span>

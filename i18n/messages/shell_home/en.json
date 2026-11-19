@@ -1,0 +1,41 @@
+{
+	"shell_home_confirm_action": "Confirm",
+	"shell_home_missing_project_check_again": "Check again",
+	"shell_home_missing_project_last_known_path": "Last known path",
+	"shell_home_missing_project_locate": "Locate…",
+	"shell_home_missing_project_relink": "Relink",
+	"shell_home_missing_project_remove_all": [
+		{
+			"declarations": [
+				"input count",
+				"local countExact = count",
+				"local countPlural = count: plural"
+			],
+			"selectors": [
+				"countExact",
+				"countPlural"
+			],
+			"match": {
+				"countExact=0, countPlural=*": "No missing projects to remove",
+				"countExact=*, countPlural=one": "Remove {count} missing project…",
+				"countExact=*, countPlural=*": "Remove all {count} missing projects…"
+			}
+		}
+	],
+	"shell_home_missing_project_remove_from_atlas": "Remove from Atlas",
+	"shell_home_missing_project_same_name": "Same name",
+	"shell_home_missing_project_same_remote": "Same git remote",
+	"shell_home_missing_project_searching": "Looking for a moved copy…",
+	"shell_home_missing_project_suggestion": "Probably the moved copy of {name}",
+	"shell_home_missing_project_suggestion_label": "Moved copy found",
+	"shell_home_missing_project_title": "{name} was not found",
+	"shell_home_missing_project_why": "This folder is no longer on {@common_os_your_computer}. It may have been deleted, moved or live on a disconnected drive.",
+	"shell_home_no_project_add_project": "Add project…",
+	"shell_home_no_project_discover": "Find projects on this machine",
+	"shell_home_no_project_error_title": "Could not read your projects",
+	"shell_home_no_project_first_hint": "Atlas runs your project's services, terminals and coding agents in one place, and works out how to start it from the folder.",
+	"shell_home_no_project_first_title": "Add your first project",
+	"shell_home_no_project_none_title": "No project selected",
+	"shell_home_no_project_pick_a_worktree": "Pick a worktree in the sidebar, or press {key} to jump.",
+	"shell_home_no_project_retry": "Try again"
+}

@@ -16,7 +16,7 @@
 //! marks here, frontend marks through `boot_mark`); unset = no-ops.
 
 use std::io::Write;
-use std::path::PathBuf;
+use std::path::{Path, PathBuf};
 use std::sync::LazyLock;
 use std::sync::atomic::{AtomicBool, Ordering};
 use std::time::{Duration, Instant};
@@ -47,12 +47,18 @@ pub fn mark(name: &str) {
     let Some(path) = TRACE.as_deref() else {
         return;
     };
+    append_mark(Path::new(path), T0.elapsed().as_secs_f64() * 1000.0, name);
+}
+
+fn append_mark(path: &Path, ms: f64, name: &str) {
     if let Ok(mut f) = std::fs::OpenOptions::new()
         .create(true)
         .append(true)
         .open(path)
     {
-        let _ = writeln!(f, "{:.1} {name}", T0.elapsed().as_secs_f64() * 1000.0);
+        // One `write` for the whole line: `writeln!` on a `File` writes each piece separately, and marks come from several
+        // threads (#591). An `O_APPEND` write of one buffer lands whole.
+        let _ = f.write_all(format!("{ms:.1} {name}\n").as_bytes());
     }
 }
 
@@ -376,5 +382,50 @@ mod tests {
         assert!(c.vars.is_empty());
         assert_eq!(c.scheme, "system");
         assert!(c.dark);
+    }
+
+    // Incident (#591, Linux CI): a warm start "never reported app_ready". The bench reads the page's `js:ready:gate`
+    // mark from this file, and marks come from several threads (`boot_mark` runs on the main thread, `app_ready` and
+    // the deadline on the async runtime, the window setup on others). `writeln!` on an unbuffered `File` is one
+    // `write` per piece of the line, so two marks written at the same moment interleaved into garbage and neither line
+    // could be parsed.
+    #[test]
+    fn marks_written_at_the_same_moment_stay_whole_lines() {
+        let dir = std::env::temp_dir().join(format!("atlas-boot-trace-{}", std::process::id()));
+        std::fs::create_dir_all(&dir).unwrap();
+        let path = dir.join("trace.txt");
+        let _ = std::fs::remove_file(&path);
+        let (threads, per) = (8, 1500);
+        let go = std::sync::Barrier::new(threads);
+        std::thread::scope(|s| {
+            for t in 0..threads {
+                let (path, go) = (&path, &go);
+                s.spawn(move || {
+                    go.wait();
+                    for i in 0..per {
+                        append_mark(path, 1234.5 + i as f64, &format!("js:ready:gate:{t}:{i}"));
+                    }
+                });
+            }
+        });
+        let text = std::fs::read_to_string(&path).unwrap();
+        let _ = std::fs::remove_dir_all(&dir);
+        let bad: Vec<&str> = text
+            .lines()
+            .filter(|l| {
+                let mut p = l.splitn(2, ' ');
+                let (ms, name) = (p.next().unwrap_or(""), p.next().unwrap_or(""));
+                ms.parse::<f64>().is_err()
+                    || !name.starts_with("js:ready:gate:")
+                    || name.contains(' ')
+            })
+            .collect();
+        assert!(
+            bad.is_empty(),
+            "{} garbled lines, first: {:?}",
+            bad.len(),
+            bad.first()
+        );
+        assert_eq!(text.lines().count(), threads * per);
     }
 }

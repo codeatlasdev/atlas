@@ -88,6 +88,65 @@ describe("locally", () => {
 		expect(b.touched).toEqual(["mine.ts"]);
 	});
 
+	// Incident #537: `i18n:check` in the middle of `git merge origin/main` (conflicts resolved, not committed) blamed
+	// main's new code on the branch: HEAD is still the pre-merge tip, so merge-base(origin/main, HEAD) was the old fork.
+	test("an uncommitted merge of origin/main: main's files are not the change, the branch's own are", () => {
+		const { dir } = repo();
+		git(dir, "checkout", "-q", "-b", "work");
+		put(dir, "mine.ts", "1");
+		commit(dir, "mine");
+		git(dir, "checkout", "-q", "main");
+		put(dir, "theirs.ts", "1");
+		put(dir, "a.txt", "main edit\n");
+		const tip = commit(dir, "theirs");
+		git(dir, "update-ref", "refs/remotes/origin/main", tip);
+		git(dir, "checkout", "-q", "work");
+		expect(resolveBase(dir, {})?.touched).toEqual(["mine.ts"]);
+		git(dir, "merge", "--no-commit", "--no-ff", "origin/main");
+		put(dir, "mine-too.ts", "1");
+		const b = resolveBase(dir, {})!;
+		expect(b.mb).toBe(tip);
+		expect(b.touched).toEqual(["mine-too.ts", "mine.ts"]);
+		// What the commit will say, so the answer does not change when the merge is committed.
+		git(dir, "add", "-A");
+		git(dir, "commit", "-q", "-m", "merge main");
+		expect(resolveBase(dir, {})?.touched).toEqual(["mine-too.ts", "mine.ts"]);
+	});
+
+	test("a merge of another branch in progress keeps the fork point: that branch's files are part of the change", () => {
+		const { dir, c0 } = repo();
+		git(dir, "checkout", "-q", "-b", "work");
+		put(dir, "mine.ts", "1");
+		commit(dir, "mine");
+		git(dir, "checkout", "-q", "-b", "side", "main");
+		put(dir, "side.ts", "1");
+		commit(dir, "side");
+		git(dir, "checkout", "-q", "work");
+		git(dir, "merge", "--no-commit", "--no-ff", "side");
+		const b = resolveBase(dir, {})!;
+		expect(b.mb).toBe(c0);
+		expect(b.touched).toEqual(["mine.ts", "side.ts"]);
+	});
+
+	test("a rebase stopped on a conflict already sits on the new base: nothing from main is blamed", () => {
+		const { dir } = repo();
+		git(dir, "checkout", "-q", "-b", "work");
+		put(dir, "a.txt", "mine\n");
+		put(dir, "mine.ts", "1");
+		commit(dir, "mine");
+		git(dir, "checkout", "-q", "main");
+		put(dir, "a.txt", "theirs\n");
+		put(dir, "theirs.ts", "1");
+		const tip = commit(dir, "theirs");
+		git(dir, "update-ref", "refs/remotes/origin/main", tip);
+		git(dir, "checkout", "-q", "work");
+		expect(() => git(dir, "rebase", "origin/main")).toThrow();
+		put(dir, "a.txt", "resolved\n");
+		const b = resolveBase(dir, {})!;
+		expect(b.mb).toBe(tip);
+		expect(b.touched).toEqual(["a.txt", "mine.ts"]);
+	});
+
 	test("no origin/main: falls back to main; a repo with neither shares no history: no base", () => {
 		const { dir } = repo();
 		git(dir, "update-ref", "-d", "refs/remotes/origin/main");

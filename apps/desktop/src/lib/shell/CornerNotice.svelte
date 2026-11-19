@@ -6,6 +6,7 @@
 	 */
 	import { CircleCheck, Info, OctagonAlert, TriangleAlert, X } from "@lucide/svelte";
 	import type { Component, Snippet } from "svelte";
+	import { m } from "#lib/i18n/m.ts";
 	import CornerCard from "./CornerCard.svelte";
 	import type { CardKind } from "./cornerPlan.ts";
 
@@ -23,7 +24,6 @@
 		/** "×3": how many times the same thing happened. */
 		count?: number;
 		ondismiss?: () => void;
-		dismissLabel?: string;
 		onpause?: () => void;
 		onresume?: () => void;
 		children?: Snippet;
@@ -39,7 +39,6 @@
 		icon,
 		count = 1,
 		ondismiss,
-		dismissLabel = "Dismiss",
 		onpause,
 		onresume,
 		children,
@@ -64,7 +63,9 @@
 		</div>
 		{#if count > 1}<span class="count" aria-hidden="true">×{count}</span>{/if}
 		{#if ondismiss}
-			<button class="x" type="button" aria-label={dismissLabel} onclick={ondismiss}><X size={13} /></button>
+			<button class="x" type="button" aria-label={m.shell_chrome_corner_notice_dismiss()} onclick={ondismiss}
+				><X size={13} /></button
+			>
 		{/if}
 	</div>
 </CornerCard>

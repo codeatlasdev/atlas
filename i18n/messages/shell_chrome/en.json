@@ -1,0 +1,93 @@
+{
+	"shell_chrome_agent_state_idle": "Idle",
+	"shell_chrome_agent_state_needs_you": "Needs you",
+	"shell_chrome_agent_state_working": "Working",
+	"shell_chrome_corner_notice_dismiss": "Dismiss",
+	"shell_chrome_corner_stack_hidden_count": "+{count} more",
+	"shell_chrome_corner_stack_more_notifications": "More notifications",
+	"shell_chrome_corner_stack_show_fewer": "Show fewer notifications",
+	"shell_chrome_corner_stack_show_less": "Show less",
+	"shell_chrome_corner_stack_show_more": [
+		{
+			"declarations": [
+				"input count",
+				"local countExact = count",
+				"local countPlural = count: plural"
+			],
+			"selectors": [
+				"countExact",
+				"countPlural"
+			],
+			"match": {
+				"countExact=0, countPlural=*": "No more notifications to show",
+				"countExact=*, countPlural=one": "Show {count} more notification",
+				"countExact=*, countPlural=*": "Show {count} more notifications"
+			}
+		}
+	],
+	"shell_chrome_crumbs_back_to": "Back to {place}",
+	"shell_chrome_crumbs_branch_label": "Branch {branch}, switch",
+	"shell_chrome_crumbs_forward": "Forward",
+	"shell_chrome_crumbs_forward_to": "Forward to {place}",
+	"shell_chrome_crumbs_location": "Location",
+	"shell_chrome_crumbs_switch_branch": "Switch branch",
+	"shell_chrome_inbox_bell_clear": "Clear",
+	"shell_chrome_inbox_bell_empty_hint": "Agents waiting for your answer, tasks that finished while you were elsewhere and app updates show up here.",
+	"shell_chrome_inbox_bell_empty_title": "Nothing needs you right now",
+	"shell_chrome_inbox_bell_mark_all_read": "Mark all read",
+	"shell_chrome_inbox_bell_notification_settings": "Notification settings",
+	"shell_chrome_inbox_bell_unread": [
+		{
+			"declarations": [
+				"input count",
+				"local countExact = count",
+				"local countPlural = count: plural"
+			],
+			"selectors": [
+				"countExact",
+				"countPlural"
+			],
+			"match": {
+				"countExact=0, countPlural=*": "No unread notifications",
+				"countExact=*, countPlural=one": "{count} unread notification",
+				"countExact=*, countPlural=*": "{count} unread notifications"
+			}
+		}
+	],
+	"shell_chrome_notifications": "Notifications",
+	"shell_chrome_right_dock_error_title": "The sidebar hit an error",
+	"shell_chrome_right_dock_right_sidebar": "Right sidebar",
+	"shell_chrome_right_toggle_hide": "Hide right sidebar",
+	"shell_chrome_right_toggle_show": "Show right sidebar",
+	"shell_chrome_space_dots_projects": "Projects",
+	"shell_chrome_tab_switcher_panel": "Panel",
+	"shell_chrome_tab_switcher_recent_tabs": "Recent tabs",
+	"shell_chrome_window_controls_maximize": "Maximize",
+	"shell_chrome_window_controls_minimize": "Minimize",
+	"shell_chrome_window_controls_restore": "Restore",
+	"shell_chrome_window_controls_window": "Window",
+	"shell_chrome_workspace_rail_atlas_crew_shortcut": "Atlas Crew {shortcut}",
+	"shell_chrome_workspace_rail_atlas_crew_workspace": "Atlas Crew workspace",
+	"shell_chrome_workspace_rail_crewmates_need_you": [
+		{
+			"declarations": [
+				"input count",
+				"local countExact = count",
+				"local countPlural = count: plural"
+			],
+			"selectors": [
+				"countExact",
+				"countPlural"
+			],
+			"match": {
+				"countExact=0, countPlural=*": "No crewmates need your attention",
+				"countExact=*, countPlural=one": "{count} crewmate needs your attention",
+				"countExact=*, countPlural=*": "{count} crewmates need your attention"
+			}
+		}
+	],
+	"shell_chrome_workspace_rail_ide_shortcut": "IDE {shortcut}",
+	"shell_chrome_workspace_rail_ide_workspace": "IDE workspace",
+	"shell_chrome_workspace_rail_workspace_switcher": "Workspace switcher",
+	"shell_chrome_workspace_rail_workspaces": "Workspaces"
+}

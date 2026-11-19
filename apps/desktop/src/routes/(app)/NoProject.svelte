@@ -9,6 +9,7 @@
 	import { onboarding } from "#lib/onboarding/state.svelte.ts";
 	import { welcome } from "#lib/onboarding/welcome.svelte.ts";
 	import { store } from "#lib/stores/projects.svelte.ts";
+	import { m } from "#lib/i18n/m.ts";
 
 	// The standing state is a fresh start: after "Skip for now" the flow sits at `done`, which renders no steps,
 	// and the pane showed a bare globe with nothing to click (Windows first-run pass, 1.5.0-alpha.24).
@@ -27,10 +28,12 @@
 		</div>
 	{:else if store.listError}
 		<!-- An unreadable registry is not an empty one: say why, with the path in the message, and offer a re-read. -->
-		<Alert severity="error" title="Could not read your projects">
+		<Alert severity="error" title={m.shell_home_no_project_error_title()}>
 			<div class="err">
 				<span>{store.listError}</span>
-				<Button size="sm" variant="glass" onclick={() => store.refresh()}>Try again</Button>
+				<Button size="sm" variant="glass" onclick={() => store.refresh()}
+					>{m.shell_home_no_project_retry()}</Button
+				>
 			</div>
 		</Alert>
 	{:else if store.projects.length === 0}
@@ -41,24 +44,25 @@
 			<!-- No overlay and no Hero (agent instances, a dismissed welcome): never a blank pane for a new user. -->
 			<EmptyState
 				icon={FolderPlus}
-				title="Add your first project"
-				description="Atlas runs your project's services, terminals and coding agents in one place, and works out how to start it from the folder."
+				title={m.shell_home_no_project_first_title()}
+				description={m.shell_home_no_project_first_hint()}
 			>
 				{#snippet actions()}
-					<Button onclick={addProject}>Add project…</Button>
-					<Button variant="glass" onclick={showDiscover}>Find projects on this machine</Button>
+					<Button onclick={addProject}>{m.shell_home_no_project_add_project()}</Button>
+					<Button variant="glass" onclick={showDiscover}>{m.shell_home_no_project_discover()}</Button>
 				{/snippet}
 			</EmptyState>
 		{/if}
 	{:else}
 		<EmptyState
 			icon={FolderPlus}
-			title="No project selected"
-			description="Pick a worktree in the sidebar, or press {shortcutFor('atlas::Jump') ??
-				kbd('cmd-k')} to jump."
+			title={m.shell_home_no_project_none_title()}
+			description={m.shell_home_no_project_pick_a_worktree({
+				key: shortcutFor("atlas::Jump") ?? kbd("cmd-k"),
+			})}
 		>
 			{#snippet actions()}
-				<Button variant="glass" onclick={addProject}>Add project…</Button>
+				<Button variant="glass" onclick={addProject}>{m.shell_home_no_project_add_project()}</Button>
 			{/snippet}
 		</EmptyState>
 	{/if}

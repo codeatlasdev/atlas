@@ -6,6 +6,7 @@
 use serde::Serialize;
 use serde_json::{Value, json};
 
+use crate::git_path::{diff_header, unquote};
 use crate::sys::CommandExt as _;
 
 // ---------- diff and status parsers ----------
@@ -126,9 +127,8 @@ pub fn parse(diff: &str, staged: bool) -> Vec<FileDiff> {
     let (mut old_no, mut new_no) = (0u32, 0u32);
     for l in diff.lines() {
         if let Some(rest) = l.strip_prefix("diff --git ") {
-            let b = rest.rsplit_once(" b/").map(|(_, b)| b).unwrap_or(rest);
             files.push(FileDiff {
-                path: b.to_string(),
+                path: diff_header(rest).1,
                 old_path: None,
                 status: "modified",
                 staged,
@@ -145,7 +145,7 @@ pub fn parse(diff: &str, staged: bool) -> Vec<FileDiff> {
                 f.status = "deleted";
             } else if let Some(p) = l.strip_prefix("rename from ") {
                 f.status = "renamed";
-                f.old_path = Some(p.to_string());
+                f.old_path = Some(unquote(p));
             } else if l.starts_with("Binary files ") || l == "GIT binary patch" {
                 f.binary = true;
             }
@@ -323,7 +323,7 @@ pub fn split_files(diff: &str) -> Vec<(String, String)> {
     let mut out: Vec<(String, String)> = Vec::new();
     for line in diff.split_inclusive('\n') {
         if let Some(rest) = line.strip_prefix("diff --git ") {
-            out.push((header_path(rest.trim_end()), String::new()));
+            out.push((diff_header(rest.trim_end()).1, String::new()));
         }
         if let Some((_, sec)) = out.last_mut() {
             sec.push_str(line);
@@ -332,28 +332,8 @@ pub fn split_files(diff: &str) -> Vec<(String, String)> {
     out
 }
 
-/// The new path of `a/<old> b/<new>`. Both halves are the same unless renamed; with spaces in the name the
-/// halves are found by their ` b/` marker, taking the one that makes the two sides symmetric first.
-fn header_path(rest: &str) -> String {
-    let body = rest.strip_prefix("a/").unwrap_or(rest);
-    let mut at = 0;
-    while let Some(i) = body[at..].find(" b/") {
-        let split = at + i;
-        let (old, new) = (&body[..split], &body[split + 3..]);
-        if old == new {
-            return new.trim_matches('"').to_string();
-        }
-        at = split + 1;
-    }
-    // A rename: the new path is after the last ` b/`.
-    body.rsplit_once(" b/")
-        .map_or(body, |(_, n)| n)
-        .trim_matches('"')
-        .to_string()
-}
-
 /// The old path of a renamed or copied file section (its lines may be the old file's content as context).
-fn renamed_from(section: &str) -> Option<&str> {
+fn renamed_from(section: &str) -> Option<String> {
     section
         .lines()
         .take_while(|l| !l.starts_with("@@ "))
@@ -361,7 +341,7 @@ fn renamed_from(section: &str) -> Option<&str> {
             l.strip_prefix("rename from ")
                 .or_else(|| l.strip_prefix("copy from "))
         })
-        .map(|p| p.trim_matches('"'))
+        .map(unquote)
 }
 
 /// True for paths whose content must never leave the machine.
@@ -465,7 +445,7 @@ pub fn digest(diff: &str, scope: &'static str) -> Digest {
     };
     let mut shown: Vec<(String, String)> = Vec::new();
     for (path, section) in split_files(diff) {
-        if is_secret(&path) || renamed_from(&section).is_some_and(is_secret) {
+        if is_secret(&path) || renamed_from(&section).is_some_and(|p| is_secret(&p)) {
             d.withheld.push(path);
         } else if is_noise(&path) || is_binary(&section) {
             d.summarized.push(path);

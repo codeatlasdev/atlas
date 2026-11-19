@@ -176,9 +176,12 @@ mod tests {
         .unwrap();
         let mut fresh = fresh;
         if cfg!(windows) {
-            // The committed note is the Unix form (`kill 12345`); Windows advises `taskkill`.
-            committed["note"] = Value::Null;
-            fresh["note"] = Value::Null;
+            // The committed note is the Unix form (`kill 12345`); Windows advises `taskkill`, in the English and in
+            // the `stop` arg the sentence is written from.
+            for v in [&mut committed, &mut fresh] {
+                v["note"] = Value::Null;
+                v["note_args"]["stop"] = Value::Null;
+            }
         }
         assert_eq!(
             committed, fresh,

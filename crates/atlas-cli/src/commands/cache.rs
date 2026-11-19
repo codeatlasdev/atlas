@@ -33,7 +33,9 @@ impl AtlasCommand for CacheCommands {
                     print!("{}", render(&st));
                 }
             }
+            // i18n-ignore: the prefix is the name of the subcommand that ran (`atlas cache gc`), an API word like the flags
             Self::Gc => println!("gc: {}", freed(&cache.gc())),
+            // i18n-ignore: the prefix is the name of the subcommand that ran (`atlas cache clear`)
             Self::Clear => println!("clear: {}", freed(&cache.clear())),
         }
         Ok(())

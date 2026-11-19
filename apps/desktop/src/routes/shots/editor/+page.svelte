@@ -704,6 +704,7 @@
 						onclick={() => pickColor(c)}
 					></button>
 				{/each}
+				<!-- i18n-ignore: hex color notation, not prose -->
 				<input
 					class="hex"
 					class:bad={hexBad}

@@ -9,7 +9,7 @@ use std::sync::atomic::{AtomicBool, Ordering};
 
 use atlas_core::channel::{self, Action, Channel};
 use atlas_core::github::GithubError;
-use atlas_i18n::{t, t_in};
+use atlas_i18n::t;
 use serde::Serialize;
 use tauri::{AppHandle, Emitter};
 use tokio::io::{AsyncBufReadExt, BufReader};
@@ -325,28 +325,6 @@ pub async fn system_info() -> Result<SystemInfo, String> {
     Ok(SystemInfo { app, cli })
 }
 
-/// An update-check failure in the words of `lang` (a language tag). The reason inside is the underlying tool's own
-/// message (curl's, the feed's) and is shown as it is; the sentence around it is the catalog's.
-fn github_error_in(lang: &str, e: GithubError) -> String {
-    match e {
-        GithubError::Missing => t_in!(lang, "native_updates_github_missing"),
-        GithubError::Failed(reason) => t_in!(lang, "native_updates_github_failed", reason = reason),
-        GithubError::Feed(reason) => t_in!(lang, "native_updates_github_feed", reason = reason),
-        GithubError::Unknown { tag, reason } => {
-            t_in!(
-                lang,
-                "native_updates_github_unknown",
-                tag = tag,
-                reason = reason
-            )
-        }
-    }
-}
-
-fn github_error(e: GithubError) -> String {
-    github_error_in(atlas_i18n::lang(), e)
-}
-
 /// Latest published release (public GitHub Releases API).
 #[tauri::command]
 pub async fn latest_release() -> Result<Release, String> {
@@ -360,7 +338,7 @@ pub async fn latest_release() -> Result<Release, String> {
     })
     .await
     .map_err(|e| e.to_string())?
-    .map_err(github_error)?;
+    .map_err(|e| atlas_i18n::github_error(&e))?;
     let cli = match atlas_bin() {
         Ok(bin) => cli_version(&bin).await,
         Err(_) => None,
@@ -419,7 +397,7 @@ pub async fn releases_between(from: String, to: String) -> Result<Vec<ReleaseNot
     const MAX: usize = 10;
     tauri::async_runtime::spawn_blocking(move || {
         let all = atlas_core::github::releases_up_to(REPO, channel::current(), &to)
-            .map_err(github_error)?;
+            .map_err(|e| atlas_i18n::github_error(&e))?;
         Ok(atlas_core::github::in_range(all, &from, &to)
             .into_iter()
             .take(MAX)
@@ -711,7 +689,7 @@ pub fn relaunch(app: AppHandle) -> Result<(), String> {
 
 #[cfg(test)]
 mod tests {
-    use super::{InstallGuard, Progress, github_error_in, parse_progress};
+    use super::{InstallGuard, Progress, parse_progress};
 
     #[test]
     fn progress_lines_parse_and_plain_lines_do_not() {
@@ -989,40 +967,5 @@ mod tests {
             committed, fresh,
             "stale fixture: re-run with UPDATE_FIXTURES=1"
         );
-    }
-
-    /// The update check's failures reach the screen through `u.error` / the What's new sheet. The sentence is the
-    /// catalog's in the language asked for; the reason inside is the underlying tool's message, kept as it is.
-    #[test]
-    fn github_failures_are_worded_in_the_asked_language_and_keep_their_reason() {
-        use atlas_core::github::GithubError;
-        let cases = || {
-            [
-                (
-                    GithubError::Failed("curl: (6) no host".into()),
-                    "curl: (6) no host",
-                ),
-                (GithubError::Feed("bad atom".into()), "bad atom"),
-                (
-                    GithubError::Unknown {
-                        tag: "v1.4.0".into(),
-                        reason: "timed out".into(),
-                    },
-                    "v1.4.0",
-                ),
-                (GithubError::Missing, "curl"),
-            ]
-        };
-        for ((en, kept), (pt, _)) in cases().into_iter().zip(cases()) {
-            let (en, pt) = (github_error_in("en", en), github_error_in("pt-BR", pt));
-            assert!(en.contains(kept) && pt.contains(kept), "{en} / {pt}");
-            assert_ne!(en, pt, "the sentence must follow the language");
-        }
-        // The reason of an unknown release check is kept next to the tag.
-        let unknown = GithubError::Unknown {
-            tag: "v1.4.0".into(),
-            reason: "timed out".into(),
-        };
-        assert!(github_error_in("en", unknown).contains("timed out"));
     }
 }

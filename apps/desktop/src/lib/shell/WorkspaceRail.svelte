@@ -1,6 +1,7 @@
 <script lang="ts">
 	import { ws } from "#lib/stores/workspace.svelte.ts";
 	import { shortcutFor } from "#lib/keymap.svelte.ts";
+	import { kbd } from "#lib/keys.ts";
 	import { SHOW_DELAY_MS, HIDE_DELAY_MS } from "./workspaceRail.ts";
 	import { expireHint, hintPending, markHintSeen } from "./edgeHint.ts";
 	import { crew } from "#lib/stores/crew.svelte.ts";
@@ -21,7 +22,7 @@
 	const RAIL_W = 72;
 	const SLIDE_MS = 180;
 
-	const shortcut = $derived(shortcutFor("atlas::ToggleCrewWorkspace") ?? "Cmd+Shift+B");
+	const shortcut = $derived(shortcutFor("atlas::ToggleCrewWorkspace") ?? kbd("cmd-shift-b"));
 	const needsYouCount = $derived(crew.needsYouCount);
 
 	// "Push everything aside" without reflowing: animating a width relays out the sidebar, the page and every

@@ -24,9 +24,11 @@
 //! keep a `*` arm. Numbers are printed as given; format a number in Rust and pass the string
 //! when grouping matters.
 
+mod github;
 mod message;
 mod pseudo;
 mod shortcut;
+pub use github::{github_error, github_error_in};
 pub use shortcut::{shortcut, shortcut_for};
 
 use std::collections::HashMap;

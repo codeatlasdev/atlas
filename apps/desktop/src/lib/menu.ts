@@ -8,14 +8,17 @@
  */
 import { IS_MAC, bindingsOf } from "#lib/keys.ts";
 
+/** The macOS accelerator of a fixed stroke that always has one (`cmd-z` → `Cmd+Z`), whatever platform this runs on. */
+const macAccelerator = (stroke: string): string => accelerator(stroke, true)!;
+
 /**
  * Edit items: the standard macOS keys, fixed (not part of the remappable keymap, so a
  * user binding can never take ⌘Z away from the editor).
  */
 export const EDIT_ACCELERATORS: Record<string, string> = {
-	"edit::Undo": "Cmd+Z",
-	"edit::Redo": "Shift+Cmd+Z",
-	"edit::SelectAll": "Cmd+A",
+	"edit::Undo": macAccelerator("cmd-z"),
+	"edit::Redo": macAccelerator("shift-cmd-z"),
+	"edit::SelectAll": macAccelerator("cmd-a"),
 };
 
 /** Commands that have a native menu item (ids match `menu.rs`). */
@@ -93,11 +96,11 @@ export function accelerator(stroke: string, mac = IS_MAC): string | null {
  * Jump, Changes and the layout zoom (the menu items, ⇧⌘P and the Go menu still reach all of them).
  */
 const TERMINAL_KEYS: Record<string, string> = {
-	"atlas::Jump": "Cmd+K",
-	"git::Diff": "Shift+Cmd+D",
-	"shell::ZoomIn": "Cmd+=",
-	"shell::ZoomOut": "Cmd+-",
-	"shell::ZoomReset": "Cmd+0",
+	"atlas::Jump": macAccelerator("cmd-k"),
+	"git::Diff": macAccelerator("shift-cmd-d"),
+	"shell::ZoomIn": macAccelerator("cmd-="),
+	"shell::ZoomOut": macAccelerator("cmd--"),
+	"shell::ZoomReset": macAccelerator("cmd-0"),
 };
 
 /**

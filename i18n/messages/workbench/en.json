@@ -16,6 +16,7 @@
 	"workbench_explorer_menu_stage": "Stage",
 	"workbench_explorer_new_file": "New file",
 	"workbench_explorer_new_file_name": "New file name",
+	"workbench_explorer_new_file_placeholder": "name.ext",
 	"workbench_explorer_new_folder": "New folder",
 	"workbench_explorer_new_name": "New name",
 	"workbench_explorer_reveal_active_file": "Reveal active file",

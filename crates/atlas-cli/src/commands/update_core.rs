@@ -47,6 +47,7 @@ pub fn enabled() -> bool {
 /// `@@atlas phase <id>`: the phase `id` has started (the previous one is done).
 pub fn phase(p: Phase) {
     if enabled() {
+        // i18n-ignore: an `@@atlas` progress line, read by Atlas Desktop (updates.ts), never shown
         println!("@@atlas phase {}", p.id());
     }
 }
@@ -56,6 +57,7 @@ pub fn phase(p: Phase) {
 /// terminals, the user decides) or `failed`.
 pub fn host_event(state: &str, live: usize) {
     if enabled() {
+        // i18n-ignore: an `@@atlas` progress line, read by Atlas Desktop (updates.ts), never shown
         println!("@@atlas host {state} {live}");
     }
 }
@@ -63,6 +65,7 @@ pub fn host_event(state: &str, live: usize) {
 /// `@@atlas bytes <done> <total>` (total 0 = unknown) while downloading.
 pub fn bytes(done: u64, total: u64) {
     if enabled() {
+        // i18n-ignore: an `@@atlas` progress line, read by Atlas Desktop (updates.ts), never shown
         println!("@@atlas bytes {done} {total}");
     }
 }
@@ -70,6 +73,7 @@ pub fn bytes(done: u64, total: u64) {
 /// `@@atlas rollback <state>`: what happened to the CLI after the app failed to update.
 pub fn rollback_event(state: &str) {
     if enabled() {
+        // i18n-ignore: an `@@atlas` progress line, read by Atlas Desktop (updates.ts), never shown
         println!("@@atlas rollback {state}");
     }
 }

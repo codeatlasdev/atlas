@@ -26,6 +26,7 @@ Labels without a family:
 | `breaking change` | The change affects `atlas.yaml`, the CLI, MCP tools or settings files. It needs a **Changed** or **Removed** changelog entry that says what to do instead, and follows the [deprecation policy](deprecation.md). |
 | `skip-changelog` | A pull request with no user-visible change, so no `CHANGELOG.md` line is expected. |
 | `dependencies` | Dependency updates, applied by Dependabot. |
+| `ci: rerun-after-stall` | Set by `ci-rerun-lost.yml` when CI reran a job after a lost or stalled runner. A rerun that passes could hide a real hang: read the comment (job, kind, tests running at the last sample) and #520, which collects one line per occurrence, before trusting the green. |
 
 ### Priorities
 

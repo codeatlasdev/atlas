@@ -1,7 +1,7 @@
 ---
 title: "Labels e triagem"
 source: labels.md
-source_sha: "111e3a6f9571af827cd1d83a1cc8607db2279cab"
+source_sha: "05f8ba916e69cbd32ffb9c257e3ea2dc37fabe41"
 translation: machine
 ---
 
@@ -28,6 +28,7 @@ Labels sem família:
 | `breaking change` | A mudança afeta o `atlas.yaml`, a CLI, as ferramentas MCP ou os arquivos de configurações. Precisa de uma entrada **Changed** ou **Removed** no changelog dizendo o que fazer no lugar, e segue a [política de depreciação](deprecation.md). |
 | `skip-changelog` | Um pull request sem mudança visível para o usuário, então nenhuma linha no `CHANGELOG.md` é esperada. |
 | `dependencies` | Atualizações de dependências, aplicada pelo Dependabot. |
+| `ci: rerun-after-stall` | Colocada pelo `ci-rerun-lost.yml` quando o CI rodou de novo um job depois de um runner perdido ou travado. Uma nova execução que passa pode esconder um travamento real: leia o comentário (job, tipo, testes em execução na última amostra) e a #520, que junta uma linha por ocorrência, antes de confiar no verde. |
 
 ### Prioridades
 

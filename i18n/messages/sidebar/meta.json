@@ -86,7 +86,10 @@
 	"sidebar_right_resume": "Button on an expanded agent session that resumes it in a terminal.",
 	"sidebar_right_resume_in_native_chat": "Button on an expanded omp session that resumes it in the app's native chat instead of a terminal.",
 	"sidebar_right_running_here": "Heading of the list of agents running now in this worktree, in the right sidebar.",
-	"sidebar_right_scope_all": "Option of the session scope selector: sessions of every project.",
+	"sidebar_right_scope_all": {
+		"description": "Option of the session scope selector: sessions of every project.",
+		"distinct": "agrees with 'projetos' (masculine); the other filters 'tarefas' (feminine)"
+	},
 	"sidebar_right_scope_project": "Option of the session scope selector: sessions of every worktree of the project.",
 	"sidebar_right_scope_workspace": "Option of the session scope selector: only sessions of the current worktree. Called workspace in English; in Portuguese it says worktree because that is what it filters on.",
 	"sidebar_right_search_sessions": "Placeholder and accessible name of the session search field of the Agents tab.",
@@ -115,7 +118,10 @@
 	"sidebar_worktree_row_main": "Name of the row of a project's main checkout in the worktree list; linked worktrees show their own name.",
 	"sidebar_worktree_row_pr": "Chip of a worktree with a linked pull request whose state is not known yet. {number} is the pull request number.",
 	"sidebar_worktree_row_pr_closed": "Pull request state word in the chip of a worktree row: closed without merge. Value CLOSED of gh.",
-	"sidebar_worktree_row_pr_merged": "Pull request state word in the chip of a worktree row: merged. Value MERGED of gh.",
+	"sidebar_worktree_row_pr_merged": {
+		"description": "Pull request state word in the chip of a worktree row: merged. Value MERGED of gh.",
+		"distinct": "the state chip of a pull request; the other is the success toast of the merge action"
+	},
 	"sidebar_worktree_row_pr_open": {
 		"description": "Pull request state word in the chip of a worktree row: open. Value OPEN of gh.",
 		"distinct": "a lower-case state word inside a chip, not the Open action"

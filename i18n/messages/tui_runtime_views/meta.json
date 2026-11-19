@@ -6,7 +6,10 @@
 	"tui_runtime_views_dash_hint_searching": "Hint in the TUI search bar while typing a search. The placeholders are key names.",
 	"tui_runtime_views_dash_json": "Toggle chip of the TUI search bar: JSON log lines are pretty-printed.",
 	"tui_runtime_views_dash_level": "Chip of the TUI search bar while a level filter is on. {label} is a level label.",
-	"tui_runtime_views_dash_linked": "Brand line of the TUI sidebar when atlas is linked to a dev build (`atlas link`). Short: the sidebar is narrow.",
+	"tui_runtime_views_dash_linked": {
+		"description": "Brand line of the TUI sidebar when atlas is linked to a dev build (`atlas link`). Short: the sidebar is narrow.",
+		"distinct": "the narrow TUI sidebar brand line; the other is a tag on a version tile"
+	},
 	"tui_runtime_views_dash_no_timestamps": "Toggle chip of the TUI search bar: log timestamps are hidden.",
 	"tui_runtime_views_dash_on_exit": "Brand line of the TUI sidebar after the person accepted an update on exit.",
 	"tui_runtime_views_dash_ports": "Brand line of the TUI sidebar when the run uses a port offset (`--offset`); {offset} is the number added to every port.",

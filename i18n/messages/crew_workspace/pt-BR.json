@@ -207,7 +207,7 @@
 		}
 	],
 	"crew_workspace_task_work_untitled": "Trabalho",
-	"crew_workspace_usage_meter_resets": "reinicia às {time}",
+	"crew_workspace_usage_meter_resets": "reinicia: {time}",
 	"crew_workspace_usage_sparkline_label": "Uso de tokens nos últimos 14 dias",
 	"crew_workspace_usage_sparkline_tokens": "{tokens} tokens",
 	"crew_workspace_view_bar_board": "Board",

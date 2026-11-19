@@ -276,7 +276,7 @@
 	"onboarding_shortcuts_group_project": "Project",
 	"onboarding_shortcuts_group_tabs": "Tabs and panes",
 	"onboarding_shortcuts_keyboard_shortcuts": "Keyboard shortcuts",
-	"onboarding_shortcuts_no_match": "No shortcut matches “{query}”.",
+	"onboarding_shortcuts_no_match": "No shortcut matches \"{query}\".",
 	"onboarding_shortcuts_recent_worktree": "Recent worktree 1-6",
 	"onboarding_shortcuts_search_shortcuts": "Search shortcuts",
 	"onboarding_shortcuts_tab_range": "Tab 1-8 ({key} last)",

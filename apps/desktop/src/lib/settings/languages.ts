@@ -58,8 +58,8 @@ export function serverView(entry: CatalogEntry, servers: readonly ServerStatus[]
 	}
 	if (live?.state === "ready") return { kind: "running", text: m.settings_editor_view_running() };
 	const { detected } = entry;
-	if (detected.source === "path") return { kind: "path", text: m.settings_editor_view_installed() };
-	if (detected.source === "managed") return { kind: "managed", text: m.settings_editor_view_installed() };
+	if (detected.source === "path") return { kind: "path", text: m.settings_updates_channel_installed() };
+	if (detected.source === "managed") return { kind: "managed", text: m.settings_updates_channel_installed() };
 	if (detected.blocked) return { kind: "blocked", text: lspReasonText(detected.blocked).message };
 	return { kind: "missing", text: m.settings_editor_view_not_installed() };
 }

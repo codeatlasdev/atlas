@@ -30,6 +30,7 @@ use std::time::{Duration, Instant};
 #[cfg(unix)]
 use anyhow::{Context, Result, anyhow};
 use atlas_core::progress::Coded;
+use atlas_i18n::t_in;
 use serde_json::{Value, json};
 
 #[cfg(unix)]
@@ -437,23 +438,18 @@ pub fn skew(info: &Value, bundled: &str) -> Option<Coded> {
     if missing.is_empty() && at_least(info, bundled) {
         return None;
     }
-    let off: Vec<(&str, &str)> = FEATURES
+    let off: Vec<&str> = FEATURES
         .iter()
-        .filter(|(c, _)| missing.contains(c))
         .copied()
+        .filter(|c| missing.contains(c))
         .collect();
     let mut s = format!("Terminal host {version} is older than Atlas {bundled}");
     if !off.is_empty() {
-        // "a", "a and b", "a, b and c". Every feature name reads as plural or is listed
-        // with a sibling: "are" in every case.
-        let names: Vec<&str> = off.iter().map(|(_, d)| *d).collect();
-        let list = match names.split_last() {
-            // The desktop writes the same list with `Intl.ListFormat`: "a and b", "a, b, and c".
-            Some((last, rest)) if rest.len() == 1 => format!("{} and {last}", rest[0]),
-            Some((last, rest)) if !rest.is_empty() => format!("{}, and {last}", rest.join(", ")),
-            _ => names.join(""),
-        };
-        s.push_str(&format!("; {list} are off until it restarts"));
+        // Every feature name reads as plural or is listed with a sibling: "are" in every case.
+        s.push_str(&format!(
+            "; {} are off until it restarts",
+            features_text("en", &off)
+        ));
     }
     s.push('.');
     Some(Coded::new(
@@ -461,7 +457,7 @@ pub fn skew(info: &Value, bundled: &str) -> Option<Coded> {
         json!({
             "version": version,
             "app_version": bundled,
-            "missing": off.iter().map(|(c, _)| *c).collect::<Vec<_>>(),
+            "missing": off,
         }),
         s,
     ))
@@ -470,13 +466,42 @@ pub fn skew(info: &Value, bundled: &str) -> Option<Coded> {
 /// The code of [`skew`].
 pub const SKEW_CODE: &str = "hostd.older";
 
-/// The capabilities the app needs and what a daemon without each one loses, in the order [`skew`] lists them
-/// (`args.missing` of `hostd.older`; the desktop has a message per name).
-pub const FEATURES: &[(&str, &str)] = &[
-    ("lsp", "language features"),
-    ("pty_attach_raw", "fast terminal rendering"),
-    ("agents", "agent status"),
-];
+/// The capabilities the app needs, in the order a person reads what a daemon without them loses first
+/// (`args.missing` of `hostd.older`, which the desktop has a message for each of).
+pub const FEATURES: &[&str] = &["lsp", "pty_attach_raw", "agents"];
+
+/// What a daemon without capability `cap` cannot offer, in `tag`; an id this build does not know is shown as it is.
+pub fn feature_name(tag: &str, cap: &str) -> String {
+    match cap {
+        "lsp" => t_in!(tag, "cmd_hostd_feature_lsp"),
+        "pty_attach_raw" => t_in!(tag, "cmd_hostd_feature_pty_attach_raw"),
+        "agents" => t_in!(tag, "cmd_hostd_feature_agents"),
+        other => other.to_string(),
+    }
+}
+
+/// The lost features as one list in `tag` ("a", "a and b", "a, b, and c" in English; "a, b e c" in Portuguese): one,
+/// two or three names ([`NEEDED`] has three), in the order of [`FEATURES`] whatever order hostd lists its
+/// capabilities in. The one place the sentence and `atlas hostd --check` get that list from.
+pub fn features_text(tag: &str, caps: &[&str]) -> String {
+    let mut caps = caps.to_vec();
+    caps.sort_by_key(|c| {
+        FEATURES
+            .iter()
+            .position(|f| f == c)
+            .unwrap_or(FEATURES.len())
+    });
+    let names: Vec<String> = caps.iter().map(|c| feature_name(tag, c)).collect();
+    let name = |i: usize| names.get(i).cloned().unwrap_or_default();
+    t_in!(
+        tag,
+        "cmd_hostd_features_list",
+        count = names.len(),
+        first = name(0),
+        second = name(1),
+        third = name(2)
+    )
+}
 
 /// The English sentence of [`skew`]; `None` when the daemon is current.
 pub fn skew_reason(info: &Value, bundled: &str) -> Option<String> {
@@ -690,9 +715,44 @@ mod tests {
     #[test]
     fn every_needed_capability_has_a_feature_name_and_the_other_way_round() {
         let mut needed: Vec<&str> = NEEDED.to_vec();
-        let mut named: Vec<&str> = FEATURES.iter().map(|(c, _)| *c).collect();
+        let mut named: Vec<&str> = FEATURES.to_vec();
         needed.sort_unstable();
         named.sort_unstable();
         assert_eq!(needed, named);
+        // The list message holds three names at most, and every language names every capability.
+        assert!(NEEDED.len() <= 3, "{NEEDED:?}");
+        for tag in atlas_i18n::locales() {
+            for cap in NEEDED {
+                let name = feature_name(tag, cap);
+                assert!(!name.is_empty() && name != *cap, "{tag}: {cap} -> {name}");
+            }
+        }
+    }
+
+    /// One list for the sentence and for `atlas hostd --check`: the serial comma in English (like the desktop's
+    /// `Intl.ListFormat`), "a, b e c" in Portuguese, in the order of `FEATURES` whatever order hostd reports.
+    #[test]
+    fn the_lost_features_read_as_one_list_in_each_language() {
+        let list = |tag: &str, caps: &[&str]| features_text(tag, caps);
+        assert_eq!(list("en", &["lsp"]), "language features");
+        assert_eq!(
+            list("en", &["lsp", "agents"]),
+            "language features and agent status"
+        );
+        assert_eq!(
+            list("en", &["pty_attach_raw", "lsp", "agents"]),
+            "language features, fast terminal rendering, and agent status"
+        );
+        assert_eq!(
+            list("pt-BR", &["pty_attach_raw", "lsp", "agents"]),
+            "recursos de linguagem, renderização rápida do terminal e status dos agentes"
+        );
+        // The sentence uses the same text.
+        let all = skew(&json!({"version": "0.6.2"}), "1.2.1").unwrap().message;
+        assert!(
+            all.contains(&features_text("en", &["lsp", "pty_attach_raw", "agents"])),
+            "{all}"
+        );
+        assert_eq!(feature_name("en", "teleport"), "teleport");
     }
 }

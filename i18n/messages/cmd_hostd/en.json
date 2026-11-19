@@ -95,7 +95,7 @@
 			"match": {
 				"countExact=1": "{first}",
 				"countExact=2": "{first} and {second}",
-				"countExact=*": "{first}, {second} and {third}"
+				"countExact=*": "{first}, {second}, and {third}"
 			}
 		}
 	],

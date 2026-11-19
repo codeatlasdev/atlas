@@ -20,6 +20,7 @@ serde_json = { workspace = true }
 anyhow = { workspace = true }
 dirs = { workspace = true }
 atlas-core = { path = "../atlas-core" }
+atlas-i18n = { path = "../atlas-i18n" }
 parking_lot = { workspace = true }
 portable-pty = "0.9"
 base64 = { workspace = true }

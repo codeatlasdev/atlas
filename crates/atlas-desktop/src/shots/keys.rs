@@ -18,19 +18,17 @@ pub struct Mods {
     pub cmd: bool,
 }
 
+/// The caps in macOS menu order: ⌃ ⌥ ⇧ ⌘.
+// i18n-ignore: the pill records presses of a Mac keyboard (macOS virtual key codes), so it shows the caps a Mac prints on them
+const CAPS: [char; 4] = ['⌃', '⌥', '⇧', '⌘'];
+
 impl Mods {
     /// The symbols in macOS menu order: ⌃ ⌥ ⇧ ⌘.
     fn symbols(self) -> String {
-        // i18n-ignore: the pill records presses of a Mac keyboard (macOS virtual key codes), so it shows the caps a Mac prints on them
-        let caps = [
-            (self.ctrl, '⌃'),
-            (self.alt, '⌥'),
-            (self.shift, '⇧'),
-            (self.cmd, '⌘'),
-        ];
-        caps.into_iter()
-            .filter(|(held, _)| *held)
-            .map(|(_, cap)| cap)
+        let held = [self.ctrl, self.alt, self.shift, self.cmd];
+        CAPS.into_iter()
+            .zip(held)
+            .filter_map(|(cap, held)| held.then_some(cap))
             .collect()
     }
 }

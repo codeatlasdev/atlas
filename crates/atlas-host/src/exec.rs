@@ -274,6 +274,10 @@ mod tests {
         assert_ne!(code, Some(0));
         if pt_br_installed() {
             assert!(err.contains("not a git repository"), "{err}");
+        } else if std::env::var("ATLAS_REQUIRE_LOCALE").is_ok_and(|v| v == "1") {
+            // CI sets it on the runners that must have pt_BR: a missing locale there is a broken runner, and a
+            // silent skip would let the English-error assertion pass without ever running.
+            panic!("ATLAS_REQUIRE_LOCALE=1 but `locale -a` lists no pt_BR.UTF-8");
         } else {
             eprintln!(
                 "skipped: pt_BR locale not installed (the English-error assertion proves nothing here)"

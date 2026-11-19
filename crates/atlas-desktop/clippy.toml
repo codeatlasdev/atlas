@@ -1,7 +1,12 @@
 # Native UI outside the app's window goes through `src/native_ui.rs` (the one gate; see its docs). An agent instance
 # must never raise it: the OS puts it on the user's screen, not on the agent's private display (incident 2026-11-18).
 # `native_ui.rs` is the only file with `#![allow(clippy::disallowed_methods)]`.
+# Ending the app goes through `src/app_exit.rs`, which destroys an agent instance's virtual display first (a static is
+# never dropped and macOS defers removing a display while the Mac sleeps: incident 2026-11-19). The few
+# `process::exit` that run before any display exists carry an `#[allow]` with the reason.
 disallowed-methods = [
+    { path = "tauri::AppHandle::exit", reason = "exit through app_exit::exit, which destroys the agent display first" },
+    { path = "std::process::exit", reason = "exit through app_exit::exit (destroys the agent display first), or allow with the reason nothing needs destroying" },
     { path = "tauri_plugin_dialog::DialogExt::dialog", reason = "message boxes and file panels go through native_ui (agent instances show none)" },
     { path = "tauri_plugin_dialog::FileDialogBuilder::new", reason = "file panels go through native_ui" },
     { path = "tauri_plugin_dialog::MessageDialogBuilder::new", reason = "message boxes go through native_ui" },

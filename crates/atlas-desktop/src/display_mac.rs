@@ -5,7 +5,12 @@
 //!
 //! Verified on macOS 26 with the real API (see docs/desktop.md): creating one leaves the user's display bounds, main
 //! display, menu bar, Dock and Spaces unchanged, does not mirror, and it disappears with the process (the display is
-//! owned by the `CGVirtualDisplay` object; `Drop`, a clean exit and a crash all release it).
+//! owned by the `CGVirtualDisplay` object; `Drop`, a clean exit and a crash all release it). One exception, and it
+//! cost an incident (2026-11-19): while the Mac is in a non-wake state (built-in display asleep, screen locked)
+//! WindowServer postpones the removal ("Deferred hotplugs cannot be processed in a non-wake state"), so a display
+//! created then outlives its process and stays on the desktop, active, until the Mac wakes. Hence `try_create`
+//! creates nothing while no real display is awake or an orphan is listed (`atlas_core::agent_display`), and every
+//! way the instance ends releases the display first ([`Exit`], [`release`]).
 //!
 //! A retina display needs a HiDPI *mode*: the descriptor/mode list carries the pixel size, and the mode whose
 //! logical size is half of it must be selected (`CGConfigureDisplayWithDisplayMode`), otherwise the display is 1x.
@@ -17,7 +22,9 @@ use objc2::runtime::{AnyClass, AnyObject};
 use objc2::{msg_send, sel};
 use objc2_foundation::{NSNumber, NSString};
 
-use crate::agent_mode::{AGENT_VENDOR, ActiveDisplay, ModeSize, Rect, virtual_origin};
+use atlas_core::agent_display::{AGENT_VENDOR, SeenDisplay};
+
+use crate::agent_mode::{ActiveDisplay, ModeSize, Rect, virtual_origin};
 
 /// CoreGraphics registers a virtual display's modes shortly after its first configuration completes (measured: the
 /// list was empty on an agent start right after `place`, populated on others). Ask again, briefly, instead of giving
@@ -70,6 +77,9 @@ pub trait Backend {
     fn real_bounds(&self) -> Vec<Rect>;
     /// Bounds of the virtual displays other agent instances own (active, but never the user's).
     fn sibling_bounds(&self) -> Vec<Rect>;
+    /// Agent displays whose creator no longer runs (see `atlas_core::agent_display::orphans`). Given a moment to
+    /// go: the removal of a display whose instance just ended is asynchronous.
+    fn orphans(&self) -> Vec<SeenDisplay>;
     /// Move display `id` so its top-left is `(x, y)` in global coordinates.
     fn place(&mut self, id: u32, x: f64, y: f64) -> Result<(), String>;
     /// Select the 2x HiDPI mode (logical size = half the pixels). CoreGraphics lists no modes for a virtual display
@@ -119,6 +129,14 @@ impl<B: Backend> Display<B> {
     /// One display, end to end. On any error the display it made is already destroyed.
     fn try_create(backend: &mut B, logical: (u32, u32), scale: u32) -> Result<(u32, Rect), String> {
         let real = backend.real_bounds();
+        // Nothing is created that macOS could not remove again: with no real display awake it defers the removal
+        // of the display (it would outlive this process), and a start on top of orphans only stacks another.
+        let orphans = if real.is_empty() {
+            Vec::new()
+        } else {
+            backend.orphans()
+        };
+        atlas_core::agent_display::start_gate(!real.is_empty(), &orphans)?;
         let pixels = crate::agent_mode::backing_pixels(logical, scale);
         let id = backend.create(pixels, scale == 2)?;
         // Right of everything on screen, other agents' displays included, so instances never share a spot.
@@ -158,6 +176,36 @@ impl<B: Backend> Drop for Display<B> {
     }
 }
 
+/// Every way an agent instance ends.
+#[derive(Debug, Clone, Copy, PartialEq)]
+pub enum Exit {
+    /// The window could not be proven to be on our display (or there is no display): exit code 3.
+    Refused,
+    /// `ATLAS_AGENT_DRYRUN=1`: decided, showed nothing.
+    DryRun,
+    /// SIGTERM (`--stop`), SIGINT or SIGHUP, by number.
+    Signal(i32),
+    /// The app is exiting by a route this module does not own (`RunEvent::Exit`); the code is not ours to set.
+    Closing,
+}
+
+impl Exit {
+    pub fn code(self) -> i32 {
+        match self {
+            Exit::Refused => 3,
+            Exit::DryRun | Exit::Closing => 0,
+            Exit::Signal(s) => 128 + s,
+        }
+    }
+}
+
+/// What every exit route does first: destroy the display held in `slot` (`process::exit`, and so `app.exit`, never
+/// runs the destructor of a static), then say the code to exit with.
+pub fn release<B: Backend>(slot: &mut Option<Display<B>>, route: Exit) -> i32 {
+    drop(slot.take());
+    route.code()
+}
+
 #[cfg(test)]
 mod tests {
     use std::cell::RefCell;
@@ -185,6 +233,8 @@ mod tests {
         fail_retina: bool,
         /// The first N `select_retina` calls fail with "no modes" (the flake), then it works.
         retina_flakes: u32,
+        /// Agent displays left by instances that are gone.
+        orphans: Vec<SeenDisplay>,
     }
 
     impl Backend for Fake {
@@ -209,6 +259,9 @@ mod tests {
         }
         fn sibling_bounds(&self) -> Vec<Rect> {
             self.siblings.clone()
+        }
+        fn orphans(&self) -> Vec<SeenDisplay> {
+            self.orphans.clone()
         }
         fn place(&mut self, id: u32, x: f64, y: f64) -> Result<(), String> {
             if self.fail_place {
@@ -311,6 +364,7 @@ mod tests {
                 fail_place,
                 fail_retina: false,
                 retina_flakes: 0,
+                orphans: vec![],
             },
             log,
         )
@@ -446,6 +500,63 @@ mod tests {
         let (b, log) = fake(None, true);
         assert!(Display::create(b, (1280, 820), 2).is_err());
         assert_eq!(log.borrow().destroyed, [7]);
+    }
+
+    fn orphan(id: u32, pid: u32, x: f64) -> SeenDisplay {
+        SeenDisplay {
+            id,
+            vendor: AGENT_VENDOR,
+            serial: pid,
+            active: true,
+            origin: (x, 0.0),
+            size: (2560.0, 1640.0),
+        }
+    }
+
+    /// Incident 2026-11-19: instances started while the built-in display slept, created their display (placed right
+    /// of the user's panel, which was not even listed as active), failed closed, and macOS deferred the removal until
+    /// the Mac woke: five orphan displays. With no real display awake nothing is created at all.
+    #[test]
+    fn no_display_is_created_while_no_real_display_is_awake() {
+        let (mut b, log) = fake(None, false);
+        b.real = vec![];
+        let e = Display::create(b, (1280, 820), 2).err().expect("refused");
+        assert_eq!(e, atlas_core::agent_display::NO_REAL_DISPLAY);
+        assert!(log.borrow().calls.is_empty(), "nothing touched the OS");
+    }
+
+    /// ...and a start on top of orphans only stacks another one (each new display went right of the last).
+    #[test]
+    fn no_display_is_created_on_top_of_orphans() {
+        let (mut b, log) = fake(None, false);
+        b.orphans = vec![orphan(91, 91889, 1352.0), orphan(92, 94101, 3912.0)];
+        let e = Display::create(b, (1280, 820), 2).err().expect("refused");
+        assert!(e.contains("2 orphan"), "{e}");
+        assert!(log.borrow().calls.is_empty(), "nothing touched the OS");
+    }
+
+    /// `process::exit` (what `app.exit` ends in) never runs the destructor of the static that holds the display, so
+    /// every route out of an agent instance must destroy it first, with the code the route promised.
+    #[test]
+    fn every_exit_route_destroys_the_display_before_the_code_is_returned() {
+        for (route, code) in [
+            (Exit::Refused, 3),
+            (Exit::DryRun, 0),
+            (Exit::Signal(15), 143),
+            (Exit::Signal(2), 130),
+            (Exit::Signal(1), 129),
+            (Exit::Closing, 0),
+        ] {
+            let (b, log) = fake(None, false);
+            let mut slot = Some(Display::create(b, (1280, 820), 2).unwrap());
+            assert!(log.borrow().destroyed.is_empty());
+            assert_eq!(release(&mut slot, route), code, "{route:?}");
+            assert_eq!(log.borrow().destroyed, [7], "{route:?} left the display");
+            assert!(slot.is_none());
+            // a second route (a signal during an exit) finds nothing left to destroy and still answers
+            assert_eq!(release(&mut slot, route), code);
+            assert_eq!(log.borrow().destroyed, [7], "destroyed once, not twice");
+        }
     }
 }
 
@@ -699,6 +810,21 @@ impl Backend for Cg {
 
     fn sibling_bounds(&self) -> Vec<Rect> {
         self.active(true)
+    }
+
+    fn orphans(&self) -> Vec<SeenDisplay> {
+        // The removal of a display whose instance just ended is asynchronous: wait for it, servicing the run loop
+        // the way `select_hidpi_mode` does, before calling it an orphan.
+        poll_until(
+            30,
+            |_| service_run_loop(0.1),
+            || {
+                atlas_core::agent_display::orphan_displays()
+                    .is_empty()
+                    .then_some(())
+            },
+        );
+        atlas_core::agent_display::orphan_displays()
     }
 
     fn place(&mut self, id: u32, x: f64, y: f64) -> Result<(), String> {

@@ -3,6 +3,7 @@
 #![cfg_attr(all(windows, not(debug_assertions)), windows_subsystem = "windows")]
 
 mod agent;
+mod app_exit;
 // Pure, tested decision code driven only by the AppKit side: unused outside macOS, still built so its tests run.
 #[cfg_attr(not(target_os = "macos"), allow(dead_code))]
 mod agent_mode;
@@ -140,7 +141,7 @@ fn show_main(app: &AppHandle) {
         Err(e) => {
             // i18n-ignore: log
             eprintln!("atlas-agent: REFUSED to show the window: {e}");
-            app.exit(3);
+            app_exit::exit(app, 3);
         }
     }
     #[cfg(target_os = "macos")]
@@ -585,6 +586,10 @@ fn main() {
     // Started by `ssh` to ask for the account password of "Add a crew server" (#517): fetch it, print it, exit.
     // Before the window, the logs and the predecessor wait: it must be instant and must touch nothing.
     if let Some(code) = askpass::run_if_helper() {
+        #[allow(
+            clippy::disallowed_methods,
+            reason = "the ssh askpass helper: no window, no display, nothing to destroy"
+        )]
         std::process::exit(code);
     }
     #[cfg(windows)]
@@ -599,6 +604,10 @@ fn main() {
     {
         // i18n-ignore: log
         eprintln!("atlas-agent: REFUSED to show the window: {e}");
+        #[allow(
+            clippy::disallowed_methods,
+            reason = "Linux agent instance refused before any display work: nothing to destroy"
+        )]
         std::process::exit(3);
     }
     #[cfg(target_os = "linux")]
@@ -774,6 +783,10 @@ fn main() {
     #[cfg(not(debug_assertions))]
     let builder = builder.invoke_handler(handlers!());
     boot::mark("builder:configured");
+    #[allow(
+        clippy::disallowed_methods,
+        reason = "the macro's own `process::exit` on an unreadable bundled config, before any window or display exists"
+    )]
     let ctx = tauri::generate_context!();
     boot::mark("context:generated");
     id_migrate::run(&ctx.config().identifier);
@@ -805,6 +818,10 @@ fn main() {
             // Quitting with "restart when idle" armed and no terminal left: end the old host now.
             if matches!(ev, tauri::RunEvent::Exit) {
                 host::on_exit(app);
+                // An agent instance's virtual display is destroyed here, before the process ends by whichever
+                // route got us here (`app.exit` ends in `process::exit`, which never drops a static).
+                #[cfg(target_os = "macos")]
+                agent_display::destroy();
             }
         });
 }

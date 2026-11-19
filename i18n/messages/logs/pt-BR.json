@@ -223,7 +223,7 @@
 	"logs_tools_previous_error_tip": "Erro anterior ({key})",
 	"logs_tools_previous_warning": "Aviso anterior",
 	"logs_tools_previous_warning_tip": "Aviso anterior ({key})",
-	"logs_tools_timestamps": "Horários",
+	"logs_tools_timestamps": "Horário das linhas",
 	"logs_tools_timestamps_tip": "Horários ({key})",
 	"logs_tools_wrap_long_lines": "Quebrar linhas longas"
 }

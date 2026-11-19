@@ -210,7 +210,7 @@
 		{#if !packaged && preview && result}
 			<div class="grid">
 				<div class="fields">
-					<TextField label={m.settings_theme_import_dialog_name()} bind:value={name} />
+					<TextField label={m.settings_agents_agent_name()} bind:value={name} />
 					<Select
 						label={m.settings_theme_import_dialog_appearance()}
 						value={appearance}

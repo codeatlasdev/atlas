@@ -2,7 +2,6 @@
 	"shell_app_page_this_file_hit_an_error": "Tooltip (title attribute) of a <Contain> component, in +page (apps/desktop/src/routes/(app)/+page.svelte). Extracted by i18n:extract: refine this description on review.",
 	"shell_app_page_this_view_hit_an_error": "Tooltip (title attribute) of a <Contain> component, in +page (apps/desktop/src/routes/(app)/+page.svelte). Extracted by i18n:extract: refine this description on review.",
 	"shell_contain_default_hint": "Line under the title of the error card that replaces a crashed part of the window, when the part gave no hint of its own. Reassures that everything else keeps working.",
-	"shell_contain_default_title": "Title of the error card that replaces a part of the window when it crashes, when the part gave no title of its own (Contain).",
 	"shell_layout_sidebar_hint": "Line under the error card of a crashed left sidebar: the workspace beside it keeps working.",
 	"shell_layout_sidebar_title": "Title of the error card that replaces the left sidebar when it crashes.",
 	"shell_project_header_a_plain_folder_atlas_shows": "Tooltip (title attribute) of a <span> element, in ProjectHeader (apps/desktop/src/routes/(app)/ProjectHeader.svelte). Extracted by i18n:extract: refine this description on review.",

@@ -30,7 +30,7 @@
 	"cmd_misc_dc_atlas_found": "o `atlas` é {path}",
 	"cmd_misc_dc_atlas_missing": "um novo terminal não encontra o `atlas` ({dir} não está no PATH dele)",
 	"cmd_misc_dc_atlas_missing_fix": "rode o instalador de novo: {command}",
-	"cmd_misc_dc_fix_label": "correção:",
+	"cmd_misc_dc_fix_label": "como corrigir:",
 	"cmd_misc_dc_host_ok": "respondendo",
 	"cmd_misc_dc_host_silent": "não está respondendo ({why}); o Atlas Desktop e o `atlas dev` o iniciam quando precisam",
 	"cmd_misc_dc_name_desktop_app": "app desktop",

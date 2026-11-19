@@ -123,6 +123,23 @@
   gender:
     pt-BR: m
   note: '"o backoff" of restarts and reconnects'
+- term: first mate
+  dnt: true
+  gender:
+    pt-BR: m
+  note: a crewmate role in the Crew ("o first mate"); stays English in pt-BR
+- term: hover
+  dnt: true
+  note: the LSP hover action; developers say it in English in IDE contexts ("hover e ir para a definição")
+- term: Setup
+  advice:
+    pt-BR: 'The Setup tab label ("Setup"), the worktree.setup key name and onboarding heading ("Atlas Crew setup") stay "Setup" verbatim. Generic prose uses "configuração" or "configurar": "A configuração leva dois minutos." is correct.'
+- term: Dashboard
+  dnt: true
+  note: the Dashboard tab label; stays "Dashboard" verbatim in pt-BR
+- term: health
+  advice:
+    pt-BR: 'Technical compounds stay English: "health check", "health URL", "healthcheck", "healthy". A standalone UI panel heading or prose label translates as "Saúde" ("Saúde ao longo do tempo").'
 - term: release
   advice:
     pt-BR: 'A product version of Atlas is "versão" ("Publicar uma versão", "notas de versão", "pré-lançamento", "versão retirada"). Keep "release" (feminine: "a release") only for a deploy release (`atlas deploy`), the build mode and profile ("build de release"), the GitHub Release and workflow names, "release candidate", and compounds already in the docs ("branch de release", "workflow de release").'

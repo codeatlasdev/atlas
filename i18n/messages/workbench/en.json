@@ -117,7 +117,7 @@
 	"workbench_nothing_to_show": "Nothing to show",
 	"workbench_palette_close": "close",
 	"workbench_palette_navigate": "navigate",
-	"workbench_palette_no_match": "Nothing matches “{query}”",
+	"workbench_palette_no_match": "Nothing matches \"{query}\"",
 	"workbench_palette_open_beside": "open beside",
 	"workbench_palette_select": "select",
 	"workbench_preview_failed": "Couldn't open the preview: {error}",

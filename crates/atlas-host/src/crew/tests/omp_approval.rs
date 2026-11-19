@@ -196,7 +196,7 @@ async fn reply_for_port(port: u16, scale: f64) -> String {
     let overlay = omp::overlay_args(tmp.path());
     let mjs = tmp.path().join("fake_omp.mjs");
     std::fs::write(&mjs, include_str!("fake_omp.mjs")).unwrap();
-    let out = tokio::task::spawn_blocking(move || {
+    tokio::task::spawn_blocking(move || {
         let mut child = Command::new("node")
             .arg(&mjs)
             .args(["--mode", "rpc", "--config", &overlay[1], "--extension"])
@@ -222,8 +222,7 @@ async fn reply_for_port(port: u16, scale: f64) -> String {
         reply
     })
     .await
-    .unwrap();
-    out
+    .unwrap()
 }
 
 // Every way an answer can fail to be an "allow" blocks the tool (fail closed) and tells the agent which it was,

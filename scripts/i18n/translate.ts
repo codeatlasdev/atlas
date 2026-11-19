@@ -47,7 +47,7 @@ const SYSTEM = (locale: string) =>
 		`You translate user interface text of the Atlas developer tool from English into ${locale}.`,
 		"Follow the glossary and the style guide exactly. Keep every {placeholder}, {@reference}, markup tag, `code span`, URL and plural/select structure; translate nothing inside them.",
 		"Use the description of each key to understand what UI element it is. Do not add explanations.",
-		'Answer with ONE JSON object and nothing else: {"<key>": <value>, ...}. A value is a string, or, when the English value is a variants array, the same variants array with every match arm translated and the selectors/declarations unchanged. Plural selectors need the variants the target language requires (pt-BR: one and other).',
+		'Answer with ONE JSON object and nothing else: {"<key>": <value>, ...}. A value is a string, or, when the English value is a variants array, the same variants array with every match arm translated and the selectors/declarations unchanged. Plural selectors need the variants the target language requires (pt-BR: one and other). pt-BR counts 0 as `one`: when the `one` variant prints the count, add a second selector `local countExact = count` (declarations `input count`, `local countExact = count`, `local countPlural = count: plural`; selectors `countExact`, `countPlural`) with the arm `countExact=0, countPlural=*` ("Nenhum arquivo"), keeping `countExact=*, countPlural=one` and `countExact=*, countPlural=*`.',
 	].join("\n");
 
 /** Glossary entries that matter for this batch, as prompt lines: a term that occurs in the English text, or an OS

@@ -58,6 +58,14 @@ test("plural variants: zero is its own sentence in both languages, one and other
 	]);
 });
 
+// Incident (2026-11-18, i18n pt-zero rule): CLDR puts 0 in pt-BR's `one`, so a plain `one` variant read "0 linha".
+// pt-BR alone carries the exact zero (the second selector); English keeps "0 lines", which reads fine.
+test('a count that is zero says "nenhuma linha" in pt-BR only', async () => {
+	const lines = (m) => [0, 1, 2].map((count) => m.capture_quick_text_lines({ count }));
+	expect(await inLocale("en", () => lines(compiled))).toEqual(["0 lines", "1 line", "2 lines"]);
+	expect(await inLocale("pt-BR", () => lines(compiled))).toEqual(["nenhuma linha", "1 linha", "2 linhas"]);
+});
+
 test("every key has an English description that is not the text itself", () => {
 	const described = descriptions();
 	const en = json(".i18n/en.json");

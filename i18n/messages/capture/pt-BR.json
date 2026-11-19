@@ -135,14 +135,17 @@
 		{
 			"declarations": [
 				"input count",
+				"local countExact = count",
 				"local countPlural = count: plural"
 			],
 			"selectors": [
+				"countExact",
 				"countPlural"
 			],
 			"match": {
-				"countPlural=one": "{count} caractere",
-				"countPlural=*": "{count} caracteres"
+				"countExact=0, countPlural=*": "nenhum caractere",
+				"countExact=*, countPlural=one": "{count} caractere",
+				"countExact=*, countPlural=*": "{count} caracteres"
 			}
 		}
 	],
@@ -151,14 +154,17 @@
 		{
 			"declarations": [
 				"input count",
+				"local countExact = count",
 				"local countPlural = count: plural"
 			],
 			"selectors": [
+				"countExact",
 				"countPlural"
 			],
 			"match": {
-				"countPlural=one": "{count} linha",
-				"countPlural=*": "{count} linhas"
+				"countExact=0, countPlural=*": "nenhuma linha",
+				"countExact=*, countPlural=one": "{count} linha",
+				"countExact=*, countPlural=*": "{count} linhas"
 			}
 		}
 	],

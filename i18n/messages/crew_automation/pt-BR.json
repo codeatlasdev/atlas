@@ -6,14 +6,17 @@
 		{
 			"declarations": [
 				"input count",
+				"local countExact = count",
 				"local countPlural = count: plural"
 			],
 			"selectors": [
+				"countExact",
 				"countPlural"
 			],
 			"match": {
-				"countPlural=one": "A cada {count} hora",
-				"countPlural=*": "A cada {count} horas"
+				"countExact=0, countPlural=*": "A cada {count} horas",
+				"countExact=*, countPlural=one": "A cada {count} hora",
+				"countExact=*, countPlural=*": "A cada {count} horas"
 			}
 		}
 	],
@@ -22,14 +25,17 @@
 		{
 			"declarations": [
 				"input count",
+				"local countExact = count",
 				"local countPlural = count: plural"
 			],
 			"selectors": [
+				"countExact",
 				"countPlural"
 			],
 			"match": {
-				"countPlural=one": "A cada {count} minuto",
-				"countPlural=*": "A cada {count} minutos"
+				"countExact=0, countPlural=*": "A cada {count} minutos",
+				"countExact=*, countPlural=one": "A cada {count} minuto",
+				"countExact=*, countPlural=*": "A cada {count} minutos"
 			}
 		}
 	],

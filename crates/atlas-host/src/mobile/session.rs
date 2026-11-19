@@ -169,9 +169,9 @@ pub(super) async fn run(hub: Arc<Hub>, conn: Connection) {
             cmd => {
                 let (hub, tx) = (hub.clone(), tx.clone());
                 tokio::spawn(async move {
-                    let _ = tx.force(protocol::reply(
+                    let _ = tx.force(protocol::reply_failure(
                         id,
-                        crate::server::handle(&hub, cmd, conn_id).await,
+                        crate::server::answer(&hub, cmd, conn_id).await,
                     ));
                 });
             }

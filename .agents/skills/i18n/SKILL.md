@@ -79,7 +79,7 @@ Atlas runs on macOS, Windows and Linux; no message may say "Mac" or spell a shor
 - Glossary terms stay English: Atlas, Crew, crewmate, hostd, worktree, branch, commit, merge, pull request, deploy, prompt, token, log, build. Check `i18n/glossary.yaml` before inventing a rendering.
 - Register: você. Buttons and menu items in the infinitive ("Salvar", "Abrir projeto"). Sentence case. No em dashes. No gerundism ("vou estar enviando"). Errors say what happened, then what to do.
 - Brazilian, never European: tela (not ecrã), usuário, arquivo, configurações, salvar, excluir, baixar. `i18n:check` has a deny-list.
-- **Plurals.** pt-BR needs `one` and `other`; CLDR puts 0 in `one`, so a plain `one` variant prints "0 arquivo". Add an exact zero variant where that reads wrong ("Nenhum arquivo"): a `countExact=0` match (second selector) before `one`. Keep a default (`*[other]`) because engines disagree on large numbers.
+- **Plurals.** pt-BR needs `one` and `other`; CLDR puts 0 in `one`, so a `one` variant that prints the count says "0 arquivo", and `i18n:check` fails it (`pt-zero`). Add an exact zero in pt-BR ("Nenhum arquivo"): a `countExact=0` match (second selector, only in the pt-BR file; English may keep "0 files" but gets one too when it reads badly, e.g. "0 of 0 rows"). Or, when the code provably never calls it with 0, write `i18n-allow pt-zero: <why, and the call site>` in the description. Keep a default (`*[other]`) because engines disagree on large numbers; never key an arm on a number of the plural selector itself.
 - Numbers, dates, lists and relative time come from `Intl` (desktop `fmt`) or are written into the message; never concatenate translated fragments into a sentence.
 
 ## Where the language comes from

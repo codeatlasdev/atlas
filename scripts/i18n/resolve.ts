@@ -127,10 +127,26 @@ function product(domains: string[][]): Record<string, string>[] {
 	return domains.reduce<Record<string, string>[]>((acc, values, i) => acc.flatMap((a) => values.map((v) => ({ ...a, [String(i)]: v }))), [{}]);
 }
 
-/** Drop what changes nothing: a selector whose value never changes the text, an arm equal to its `*` sibling. */
+/** Does `after` give every assignment of `before`'s selectors the same text? Each selector takes each literal an arm
+ * names, and `*` (none of them). The catch-all of an earlier selector can hide a later literal, so a rewrite is
+ * only kept when this holds (an exact-zero arm equal to `*` still decides before the `one` arm). */
+function sameTexts(before: { selectors: string[]; arms: Arm[] }, after: { selectors: string[]; arms: Arm[] }): boolean {
+	const domains = before.selectors.map((s) => [...new Set([...before.arms.map((a) => a.cond[s]).filter((v): v is string => v !== undefined && v !== "*"), "*"])]);
+	if (domains.reduce((n, d) => n * d.length, 1) > MAX_ARMS) return false;
+	return product(domains).every((raw) => {
+		const assign = Object.fromEntries(before.selectors.map((s, i) => [s, raw[String(i)]]));
+		return best(before, before.arms.filter((a) => matches(before, a, assign)))?.text === best(after, after.arms.filter((a) => matches(after, a, assign)))?.text;
+	});
+}
+
+const matches = (m: { selectors: string[] }, arm: Arm, assign: Record<string, string>) => m.selectors.every((s) => (arm.cond[s] ?? "*") === "*" || arm.cond[s] === assign[s]);
+
+/** Drop what changes nothing: a selector whose value never changes the text, an arm equal to its `*` sibling. A step that
+ * would change what any value reads is skipped. */
 export function simplify(m: Msg): Msg {
 	let arms = m.arms;
 	let selectors = m.selectors;
+	const safe = (next: { selectors: string[]; arms: Arm[] }) => sameTexts({ selectors, arms }, next);
 	for (let changed = true; changed; ) {
 		changed = false;
 		for (const s of selectors) {
@@ -141,16 +157,21 @@ export function simplify(m: Msg): Msg {
 			}
 			const uniform = [...groups.values()].every((g) => g.every((a) => a.text === g[0].text));
 			if (uniform) {
-				arms = [...groups.values()].map((g) => ({ cond: Object.fromEntries(Object.entries(g[0].cond).filter(([k]) => k !== s)), text: g[0].text }));
-				selectors = selectors.filter((x) => x !== s);
-				changed = true;
-				break;
+				const next = { selectors: selectors.filter((x) => x !== s), arms: [...groups.values()].map((g) => ({ cond: Object.fromEntries(Object.entries(g[0].cond).filter(([k]) => k !== s)), text: g[0].text })) };
+				if (safe(next)) {
+					arms = next.arms;
+					selectors = next.selectors;
+					changed = true;
+					break;
+				}
 			}
 			const redundant = arms.filter(
 				(a) => (a.cond[s] ?? "*") !== "*" && arms.some((b) => (b.cond[s] ?? "*") === "*" && b.text === a.text && selectors.every((x) => x === s || (a.cond[x] ?? "*") === (b.cond[x] ?? "*"))),
 			);
-			if (redundant.length) {
-				arms = arms.filter((a) => !redundant.includes(a));
+			// one arm at a time: removing two that cover for each other could change a text, so each removal is verified
+			const drop = redundant.find((a) => safe({ selectors, arms: arms.filter((x) => x !== a) }));
+			if (drop) {
+				arms = arms.filter((x) => x !== drop);
 				changed = true;
 				break;
 			}

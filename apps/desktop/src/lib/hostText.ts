@@ -60,19 +60,56 @@ export async function hostRejection(e: unknown): Promise<unknown> {
 	return loaded()?.hostError?.(w) ?? e;
 }
 
-/** The codes that say the connection to a terminal host is gone: the local host's outage, the one with Restart. */
-const OUTAGE = new Set(["hostd.unreachable", "hostd.closed", "hostd.disconnected", "hostd.start_failed"]);
+/**
+ * The codes that say the terminal host itself is unusable: the connection to the local host is gone (the one with
+ * Restart), or a loaded host refused this client (`busy`, `too_many_clients`: the regex never matched these two).
+ */
+const HOST_FAILURES: Record<string, true> = {
+	"hostd.unreachable": true,
+	"hostd.closed": true,
+	"hostd.disconnected": true,
+	"hostd.start_failed": true,
+	"hostd.busy": true,
+	"hostd.too_many_clients": true,
+};
 
 /**
  * Is `e` a failure of the terminal host itself (one shared toast with Restart and Report) and not an ordinary error?
- * A coded failure says so by its code, in any language: the connection to the host is gone (`OUTAGE`), or hostd
- * refused the token. A remote host that is still connecting or unreachable, a missing CLI and a failed upgrade are
- * the caller's own errors, as their sentences always were. A text is matched the way it always was (`classify`).
+ * A coded failure says so by its code, in any language: the connection to the host is gone or the host refused this
+ * client (`HOST_FAILURES`), or hostd refused the token. A remote host that is still connecting or unreachable, a
+ * missing CLI and a failed upgrade are the caller's own errors, as their sentences always were. A text is matched
+ * the way it always was (`classify`).
  */
 export function isHostFailure(e: unknown, message = messageOf(e)): boolean {
 	if (e instanceof Error && e.name === "HostError") {
 		const { code, args } = e as HostError;
-		return OUTAGE.has(code) || (code === "hostd.refused" && args.why === "unauthorized");
+		return HOST_FAILURES[code] === true || (code === "hostd.refused" && args.why === "unauthorized");
 	}
 	return classify(message) === "host";
+}
+
+/** hostd's own words for a program it could not start (an older hostd sends nothing else). */
+const NO_PROGRAM = /os error 2\b|no such file|ENOENT|cannot find the (?:file|path)|program not found/i;
+
+/**
+ * Did an `exec` fail because the program is not installed? A coded failure says so (`exec.spawn_failed`, reason
+ * `not_found`), in any language; the same OS error for a missing working folder is `fs.not_found` and is not this. A
+ * plain text, from a hostd without the codes, is read by its words.
+ */
+export function isProgramMissing(e: unknown, message = messageOf(e)): boolean {
+	if (e instanceof Error && e.name === "HostError") {
+		const { code, args } = e as HostError;
+		return code === "exec.spawn_failed" && args.reason === "not_found";
+	}
+	return NO_PROGRAM.test(message);
+}
+
+/**
+ * The system's own words behind a failed `fs_*` or `exec` request (`fs.io` kind `other`, `exec.spawn_failed` reason
+ * `other`), for a Details button: the sentence says what to do, these say what the system said. Empty when there are
+ * none.
+ */
+export function hostErrorDetail(e: unknown): string {
+	if (e instanceof Error && e.name === "HostError") return str((e as HostError).args.detail) ?? "";
+	return "";
 }

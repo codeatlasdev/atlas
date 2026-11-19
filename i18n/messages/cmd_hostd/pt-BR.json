@@ -3,14 +3,17 @@
 		{
 			"declarations": [
 				"input count",
+				"local countExact = count",
 				"local countPlural = count: plural"
 			],
 			"selectors": [
+				"countExact",
 				"countPlural"
 			],
 			"match": {
-				"countPlural=one": "Reiniciar agora e encerrar {count} terminal?",
-				"countPlural=*": "Reiniciar agora e encerrar {count} terminais?"
+				"countExact=0, countPlural=*": "Reiniciar agora? Nenhum terminal será encerrado.",
+				"countExact=*, countPlural=one": "Reiniciar agora e encerrar {count} terminal?",
+				"countExact=*, countPlural=*": "Reiniciar agora e encerrar {count} terminais?"
 			}
 		}
 	],

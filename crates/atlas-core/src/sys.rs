@@ -886,6 +886,46 @@ pub use imp::{
     start_time_secs, usage,
 };
 
+/// Windows: open `target` (an `http`, `https` or `mailto` URL the caller already checked) with the user's default
+/// handler, through `ShellExecuteW` as a browser link does. The URL is ONE string: nothing parses a command line out
+/// of it, unlike `explorer.exe <string>`, which reads commas and switches (`/select,`).
+#[cfg(windows)]
+pub fn shell_open(target: &str) -> io::Result<()> {
+    use std::os::windows::ffi::OsStrExt;
+    use windows_sys::Win32::UI::Shell::ShellExecuteW;
+    const SW_SHOWNORMAL: i32 = 1;
+    if target.contains('\0') {
+        return Err(io::Error::new(
+            io::ErrorKind::InvalidInput,
+            "a link has no NUL in it",
+        ));
+    }
+    let wide = |s: &str| -> Vec<u16> {
+        std::ffi::OsStr::new(s)
+            .encode_wide()
+            .chain(Some(0))
+            .collect()
+    };
+    let (verb, file) = (wide("open"), wide(target));
+    // SAFETY: both strings are NUL-terminated and outlive the call; the optional arguments are null.
+    let code = unsafe {
+        ShellExecuteW(
+            std::ptr::null_mut(),
+            verb.as_ptr(),
+            file.as_ptr(),
+            std::ptr::null(),
+            std::ptr::null(),
+            SW_SHOWNORMAL,
+        )
+    } as usize;
+    // Values above 32 mean it started; the rest are error codes.
+    if code > 32 {
+        Ok(())
+    } else {
+        Err(io::Error::other(format!("ShellExecuteW returned {code}")))
+    }
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;

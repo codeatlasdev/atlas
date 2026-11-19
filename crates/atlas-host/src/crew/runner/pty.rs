@@ -4,8 +4,8 @@
 use std::collections::BTreeMap;
 
 use super::action::{
-    continuation_prompt, finish_unanswered, park_task, parse_atlas_action, resolve_action,
-    user_answer, visible_reply,
+    answer_accepted, continuation_prompt, finish_unanswered, park_task, parse_atlas_action,
+    resolve_action, visible_reply,
 };
 use super::gate::{Gate, gate_success};
 use super::outcome::{audit_task, broadcast_task, finish_task, persist, wait_for_outcome};
@@ -60,7 +60,7 @@ pub(super) async fn run_one_pty(hub: &Hub, crewmate: &Crewmate, mut task: Task) 
         park_task(hub, crewmate, &mut task, action.clone());
         match resolve_action(&hub_arc, &crewmate.id, &task.id, &action).await {
             Some(answer) => {
-                task.answer = user_answer(&action, &answer);
+                answer_accepted(hub, crewmate, &mut task, &action, &answer);
                 let next = continuation_prompt(&full_prompt, result_text, &answer);
                 let (outcome2, steps2) =
                     run_pty_inner(hub, crewmate, &mut task, &next, &pane_key, &work_dir).await;

@@ -1,8 +1,7 @@
 /** Export, remove and reveal actions for themes, shared by the Appearance tab. */
 import { toast } from "@codeatlasdev/ui";
 import { homeDir } from "@tauri-apps/api/path";
-import { save } from "@tauri-apps/plugin-dialog";
-import { errText } from "#lib/api.ts";
+import { api, errText } from "#lib/api.ts";
 import { host } from "#lib/host.ts";
 import { m } from "#lib/i18n/m.ts";
 import { confirmDialog } from "#lib/stores/ask.svelte.ts";
@@ -39,7 +38,7 @@ export const copyTheme = (name: string, format: ExportFormat) =>
 export const saveTheme = (name: string, format: ExportFormat) =>
 	guard(async () => {
 		const text = themes.exportTheme(name, format);
-		const path = await save({
+		const path = await api.savePath({
 			title: m.settings_theme_actions_save_title({ name }),
 			defaultPath: `${await homeDir()}/Downloads/${slug(name)}.${EXT[format]}`,
 			filters: [

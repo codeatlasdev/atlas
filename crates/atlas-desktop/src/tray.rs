@@ -147,6 +147,13 @@ fn build(app: &AppHandle) -> tauri::Result<WebviewWindow> {
 }
 
 fn show(app: &AppHandle, icon: Option<&Rect>) {
+    // The popover opens at the menu-bar icon, on the user's display. An agent instance has no tray icon; if anything
+    // asks for it anyway it is held back and recorded.
+    if crate::native_ui::gate(crate::native_ui::Kind::Window, "tray popover", "")
+        == crate::native_ui::Verdict::Suppressed
+    {
+        return;
+    }
     let Some(win) = app.get_webview_window(LABEL) else {
         return;
     };

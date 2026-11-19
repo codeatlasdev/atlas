@@ -10,6 +10,7 @@
 //! prints is ever executed. Anything else in the output is an error shown to the user.
 
 use anyhow::{Result, bail};
+use atlas_i18n::t;
 
 /// The most packages accepted. Playwright 1.65 reports about 290 for chromium and webkit on a bare
 /// Debian; a list this much longer is not that.
@@ -56,11 +57,11 @@ fn is_package_name(s: &str) -> bool {
 pub fn parse_dry_run(stdout: &str) -> Result<Deps> {
     let mut lines = stdout.lines().map(str::trim_end).filter(|l| !l.is_empty());
     let Some(first) = lines.next() else {
-        bail!("playwright install-deps --dry-run printed nothing");
+        bail!("{}", t!("cmd_crew_apt_empty"));
     };
     if first == "All system dependencies are installed." {
         if let Some(extra) = lines.next() {
-            bail!("unexpected output after 'All system dependencies are installed.': {extra:?}");
+            bail!("{}", t!("cmd_crew_apt_extra", text = format!("{extra:?}")));
         }
         return Ok(Deps::Ready);
     }
@@ -70,27 +71,27 @@ pub fn parse_dry_run(stdout: &str) -> Result<Deps> {
         .and_then(|n| n.parse::<usize>().ok())
     else {
         bail!(
-            "playwright install-deps --dry-run said something this atlas does not know how to read, so nothing was run as root: {first:?}"
+            "{}",
+            t!("cmd_crew_apt_unreadable", text = format!("{first:?}"))
         );
     };
     if count == 0 || count > MAX_PACKAGES {
-        bail!(
-            "playwright reports {count} missing system dependencies, which is not plausible; nothing was run as root"
-        );
+        bail!("{}", t!("cmd_crew_apt_implausible", count = count));
     }
     let mut names = vec![];
     for line in lines {
         let Some(name) = line.strip_prefix("  ").filter(|n| is_package_name(n)) else {
             bail!(
-                "refusing to run anything as root: {line:?} in the dependency list is not a package name"
+                "{}",
+                t!("cmd_crew_apt_not_package", text = format!("{line:?}"))
             );
         };
         names.push(name.to_string());
     }
     if names.len() != count {
         bail!(
-            "playwright announced {count} missing system dependencies but listed {}; nothing was run as root",
-            names.len()
+            "{}",
+            t!("cmd_crew_apt_mismatch", count = count, listed = names.len())
         );
     }
     names.sort();
@@ -103,10 +104,13 @@ pub fn parse_dry_run(stdout: &str) -> Result<Deps> {
 /// quoting; they are checked again here because this is the line that runs as root.
 pub fn root_script(names: &[String]) -> Result<String> {
     if names.is_empty() || names.len() > MAX_PACKAGES {
-        bail!("{} packages to install", names.len());
+        bail!("{}", t!("cmd_crew_apt_package_count", count = names.len()));
     }
     if let Some(bad) = names.iter().find(|n| !is_package_name(n)) {
-        bail!("refusing to run anything as root: {bad:?} is not a package name");
+        bail!(
+            "{}",
+            t!("cmd_crew_apt_not_package", text = format!("{bad:?}"))
+        );
     }
     Ok(format!(
         "sudo apt-get update && sudo apt-get install -y --no-install-recommends {}",
@@ -222,10 +226,7 @@ mod tests {
             let out = list(1, &[evil]);
             let e = parse_dry_run(&out).expect_err(evil).to_string();
             assert!(e.contains("not a package name"), "{evil}: {e}");
-            assert!(
-                e.contains("nothing") || e.contains("refusing"),
-                "{evil}: {e}"
-            );
+            assert!(e.contains("as root"), "{evil}: {e}");
         }
     }
 
@@ -241,7 +242,7 @@ mod tests {
             "Installing dependencies...",
         ] {
             let e = parse_dry_run(evil).expect_err(evil).to_string();
-            assert!(e.contains("nothing was run as root"), "{evil}: {e}");
+            assert!(e.contains("as root"), "{evil}: {e}");
         }
     }
 

@@ -443,9 +443,9 @@ async fn handle_ask(
         }
     }
 
-    // Register waiter and block until answered or timed out (30 min).
+    // Register waiter and block until answered or timed out ([`CREWMATE_DECISION_WAIT`], 30 min).
     let rx = hub.crew.wait_ask(ask_id.clone());
-    match tokio::time::timeout(std::time::Duration::from_secs(30 * 60), rx).await {
+    match tokio::time::timeout(CREWMATE_DECISION_WAIT, rx).await {
         Ok(Ok(answer)) => {
             let text = match &answer {
                 AskAnswer::Key { value } => value.clone(),

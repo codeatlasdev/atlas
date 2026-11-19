@@ -5,6 +5,7 @@
 //! desktop's QR uses (`atlas_host::mobile`): one code, 120 s, five wrong tries.
 
 use anyhow::{Context, Result, bail};
+use atlas_i18n::t;
 use clap::Args;
 use qrcode::{EcLevel, QrCode};
 use serde_json::Value;
@@ -40,7 +41,7 @@ pub fn invite_from_output(stdout: &str) -> Result<(Value, String)> {
                 .ok()
                 .filter(Value::is_object)
         })
-        .context("the crew server did not answer with a pairing invite")?;
+        .with_context(|| t!("cmd_crew_pair_no_invite"))?;
     let url = atlas_host::mobile::pair_url(&start).map_err(anyhow::Error::msg)?;
     Ok((start, url))
 }
@@ -50,7 +51,7 @@ pub fn invite_from_output(stdout: &str) -> Result<(Value, String)> {
 /// too: a dark module is the black part of the glyph.
 pub fn terminal_qr(text: &str) -> Result<String> {
     let code = QrCode::with_error_correction_level(text, EcLevel::L)
-        .context("the pairing link is too long for a QR code")?;
+        .with_context(|| t!("cmd_crew_pair_too_long"))?;
     let w = code.width();
     let quiet = 2usize;
     let dark = |x: isize, y: isize| {
@@ -95,18 +96,33 @@ impl AtlasCommand for PairArgs {
                 o.stderr.trim()
             };
             bail!(
-                "could not get a pairing invite from {}: {why}\n  (is the crew server installed and running? `atlas crew status {}`)",
-                self.ssh_target,
-                self.ssh_target
+                "{}",
+                t!(
+                    "cmd_crew_pair_failed",
+                    target = self.ssh_target.as_str(),
+                    reason = why
+                )
             );
         }
         let (start, url) = invite_from_output(&o.stdout)?;
         println!("{}", terminal_qr(&url)?);
+        println!("{}", t!("cmd_crew_pair_open"));
         println!(
-            "Open Atlas Mobile → Add a computer → scan this code, or type it.\n  code  {}\n  link  {url}\n\nIt works once and expires in {} seconds. The phone pairs with {} directly: the crew keeps working with your computer off.",
-            start["code"].as_str().unwrap_or_default(),
-            start["expires_in_s"].as_u64().unwrap_or(120),
-            start["hostname"].as_str().unwrap_or(&self.ssh_target),
+            "  {}",
+            t!(
+                "cmd_crew_pair_code",
+                code = start["code"].as_str().unwrap_or_default()
+            )
+        );
+        println!("  {}", t!("cmd_crew_pair_link", url = url.as_str()));
+        println!();
+        println!(
+            "{}",
+            t!(
+                "cmd_crew_pair_expires",
+                secs = start["expires_in_s"].as_u64().unwrap_or(120),
+                host = start["hostname"].as_str().unwrap_or(&self.ssh_target)
+            )
         );
         Ok(())
     }

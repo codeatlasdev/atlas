@@ -3,6 +3,8 @@
 	"cli_chrome_caused_by": "Prefix of each underlying cause listed under a failure line (`  caused by: ...`). Keep the colon.",
 	"cli_chrome_commands": "Section heading for the subcommands in `--help`. No colon: clap adds it.",
 	"cli_chrome_error": "Prefix of a failure line printed by `atlas` for a person, in red. Keep the colon; the message follows after a space.",
+	"cli_chrome_exit_code": "How a finished program's exit code is worded inside a sentence such as \"tar exited with exit code 1\". {code} is the number.",
+	"cli_chrome_exit_signal": "How a program ended by a signal is worded inside a sentence such as \"sway exited with signal 9\". {signal} is the number.",
 	"cli_chrome_help_flag": "Help text of the -h/--help flag.",
 	"cli_chrome_help_subcommand": "Description of the `help` subcommand row in the Commands section.",
 	"cli_chrome_help_subcommand_arg": "Help text of the argument of the `help` subcommand (the name of the command to explain).",

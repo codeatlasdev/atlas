@@ -20,9 +20,9 @@ How `atlas dev` starts, supervises and stops your environment, and what it leave
 7. The **scheduler** spawns each queued service as soon as all its [`depends_on` conditions](configuration.md#depends_on) hold; services without dependencies start immediately and in parallel. A dependency that can never be satisfied fails its dependents.
 8. Atlas writes `.logs/.tui-status.json` and then refreshes it every second.
 
-In parallel with 4–7, when a `tunnel:` block is present and enabled, the [SSH tunnel](#ssh-tunnel) is started on its own background task; services never wait for it.
+In parallel with 4 to 7, when a `tunnel:` block is present and enabled, the [SSH tunnel](#ssh-tunnel) is started on its own background task; services never wait for it.
 
-With no infra to wait for, steps 5–6 collapse and app services start right away.
+With no infra to wait for, steps 5 and 6 collapse and app services start right away.
 
 ## How a service is spawned
 

@@ -65,7 +65,7 @@ The full table is in [Agent setup](agents.md#troubleshooting) and [MCP](mcp.md#t
 | A terminal is blank right after opening | Turn off *Fast terminal (GPU)* in Settings → Terminal to compare with the xterm.js renderer, and file an issue with `atlas desktop debug logs` output. |
 | A worktree was not deleted with its branch | The branch is unmerged, so Atlas keeps it (a toast says so). Delete it with `git branch -D` when you are sure. |
 | `atlas wt` or `atlas term` says the app is not running | They use `~/.atlas/desktop.sock`; open Atlas Desktop first. `atlas term` falls back to the local hostd when the app is closed. |
-| The app and CLI versions differ | `atlas update` brings both to the latest; **Update CLI & app** in the app does the same. Running stacks keep their version until `atlas down && atlas dev --detach`. |
+| The app and CLI versions differ | `atlas update` brings both to the latest; **Update CLI and app** in the app does the same. Running stacks keep their version until `atlas down && atlas dev --detach`. |
 
 ### Linux: lag, freezes or stale frames
 

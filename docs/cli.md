@@ -159,7 +159,7 @@ Starts all selected services (everything unless narrowed by `SERVICE…` / `--pr
 
 ### One instance per project
 
-`--ci`, `--headless` and `--detach` take the same singleton lock as the TUI. If another `atlas dev` already runs for that directory `--ci` and `--headless` print `atlas dev is already running (pid N); use 'atlas dev --status'` and exit `1`, without touching any process. The plain TUI **attaches** to a runner, and only when the lock holder is another TUI (which cannot be attached to) does it ask `Kill it and restart? [y/N]`; see [Runtime › Singleton](runtime.md#singleton-and-the-control-socket).
+`--ci`, `--headless` and `--detach` take the same singleton lock as the TUI. If another `atlas dev` already runs for that directory `--ci` and `--headless` print `` `atlas dev` is already running (pid N). Check it with `atlas dev --status`. `` and exit `1`, without touching any process. The plain TUI **attaches** to a runner, and only when the lock holder is another TUI (which cannot be attached to) does it ask `Kill it and restart? [y/N]`; see [Runtime › Singleton](runtime.md#singleton-and-the-control-socket).
 
 ### Update prompt (`atlas dev`)
 

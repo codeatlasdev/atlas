@@ -133,6 +133,8 @@ export function dynamicUses(text: string, file: string, oldKey: string): { line:
 	if (file.endsWith(".rs")) {
 		if (/\b(?:lookup_on|lookup|translate)\(/.test(text)) {
 			for (const m of text.matchAll(/\bformat!\(\s*"([^"{}\\]+)\{/g)) {
+				// only a key-shaped prefix (an area and `_`) can build a key: `format!("s{n}")` names a service, not a message
+				if (!/^[a-z][a-z0-9]*_[a-z0-9_]*$/.test(m[1])) continue;
 				if (oldKey.startsWith(m[1])) add(m.index ?? 0, `format!("${m[1]}…") builds keys that start like ${oldKey} next to a lookup: annotate it with i18n-keys or rename the generator`);
 			}
 		}
@@ -140,7 +142,8 @@ export function dynamicUses(text: string, file: string, oldKey: string): { line:
 	}
 	const { spaces, named } = messageBindings(text);
 	if (spaces.length === 0 && named.length === 0) return sorted(out);
-	let code = text;
+	// comments explain code (`a switch, never m[code]`): only code can reach a key. A `//` after `:` is a URL, not a comment.
+	let code = blank(text, /\/\*[\s\S]*?\*\/|(?<=^|[^:\\])\/\/[^\n]*/gm);
 	for (const m of text.matchAll(IMPORT)) {
 		if (!MESSAGE_MODULE.test(m[2])) continue;
 		const bare = (/\{([^}]*)\}/.exec(m[1])?.[1] ?? "").split(",").some((p) => p.trim() === oldKey);

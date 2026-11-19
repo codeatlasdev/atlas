@@ -319,6 +319,20 @@ describe("mv", () => {
 		expect(moveKey(loadCtx(rust), "cli_files_count", "app_files_total").dynamic).toEqual([]);
 	});
 
+	test("what cannot build or reach a key is not reported: a format! whose prefix is no key prefix, `m[…]` inside a comment", async () => {
+		const root = await makeRepo();
+		const src = "apps/desktop/src";
+		// a test that names services s0..s19 next to a lookup elsewhere in the file: "s" is no key prefix (no area_)
+		put(root, "crates/atlas-cli/src/names.rs", 'fn f(tag: &str) -> Option<String> { atlas_i18n::lookup(tag, "app_welcome", None) }\nfn g(n: u32) -> String { format!("s{n}") }\n');
+		// a comment that explains why the code never does `m[code]`
+		put(root, `${src}/lib/explained.ts`, 'import { m } from "#lib/i18n/m.ts";\n/** a switch, never `m[code]` */\n// and never m[key] either\nexport const a = m.app_welcome();\n');
+		const r = moveKey(loadCtx(root), "app_welcome", "app_greeting");
+		expect(r.dynamic).toEqual([]);
+		// a real computed access on the same line after code still is
+		put(root, `${src}/lib/real.ts`, 'import { m } from "#lib/i18n/m.ts";\nexport const b = (k: string) => m[k](); // m[k] is computed\n');
+		expect(moveKey(loadCtx(root), "app_greeting", "app_hello").dynamic.map((d) => `${d.file}:${d.line}`)).toEqual([`${src}/lib/real.ts:2`]);
+	});
+
 	test("--into folds a duplicate into the message that already says it: the duplicate and its translation go, its call sites follow, nothing else changes", async () => {
 		const root = await makeRepo();
 		addKey(root, "app_save_again", "Save", "Salvar", "A second Save label");

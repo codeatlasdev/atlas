@@ -601,11 +601,13 @@ pub const NOT_FOUND: &str = if cfg!(windows) {
 };
 
 fn cli_not_found() -> anyhow::Error {
-    coded(
-        CLI_NOT_FOUND,
-        json!({"command": INSTALL_COMMAND}),
-        NOT_FOUND,
-    )
+    cli_not_found_with(INSTALL_COMMAND, NOT_FOUND)
+}
+
+/// `hostd.cli_not_found` for a given installer line: production passes this OS's, the desktop contract test passes
+/// one fixed line so the fixture is the same on every OS (the desktop shows `command` as given).
+fn cli_not_found_with(command: &str, message: &str) -> anyhow::Error {
+    coded(CLI_NOT_FOUND, json!({"command": command}), message)
 }
 
 /// Connect to the local hostd, starting it (detached, own session) if needed.
@@ -1418,7 +1420,11 @@ mod coded_error_tests {
             disconnected(),
             start_failed(),
             refused("hostd busy"),
-            cli_not_found(),
+            // One fixed line, not this OS's: the fixture must be byte-identical on every CI runner.
+            cli_not_found_with(
+                "curl -fsSL https://atlas.codeatlas.com.br/install.sh | bash",
+                "atlas CLI not found. Install it with: curl -fsSL https://atlas.codeatlas.com.br/install.sh | bash",
+            ),
         ];
         let errors: Vec<Value> = samples.iter().map(wire).collect();
         for c in CODES {

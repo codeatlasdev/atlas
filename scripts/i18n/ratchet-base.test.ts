@@ -159,6 +159,27 @@ describe("Svelte ratchet in diff mode", () => {
 		expect(offenders(await check(root))).toEqual([]);
 	});
 
+	// Incident #537: the same check run mid-merge (conflicts resolved, not committed) blamed main's new strings on the branch.
+	test("mid-merge of main, uncommitted: what main brought is not new in this change; the branch's own new text still is", async () => {
+		const root = await baseRepo({ [OLD]: oldScreen(1) });
+		put(root, "docs/branch.md", "# Branch\n");
+		git(root, "add", "-A");
+		git(root, "commit", "-q", "-m", "branch work");
+		git(root, "checkout", "-q", "main");
+		const FROM_MAIN = "apps/desktop/src/FromMain.svelte";
+		put(root, FROM_MAIN, "<p>Main one</p>\n<p>Main two</p>\n");
+		put(root, BASELINE, baselineText({ svelte: { [OLD]: 1, [FROM_MAIN]: 2 } }));
+		git(root, "add", "-A");
+		git(root, "commit", "-q", "-m", "main adds a screen");
+		git(root, "checkout", "-q", "feature");
+		git(root, "merge", "-q", "--no-commit", "--no-ff", "main");
+		expect(offenders(await check(root))).toEqual([]);
+		put(root, OLD, `${oldScreen(1)}<p>Branch text</p>\n`);
+		const fs = offenders(await check(root));
+		expect(fs).toHaveLength(1);
+		expect(fs[0].message).toContain("Branch text");
+	});
+
 	test("the base can be given: ATLAS_BASE judges from that commit", async () => {
 		const root = await baseRepo({ [OLD]: oldScreen(1) });
 		put(root, "apps/desktop/src/Second.svelte", "<p>Second</p>\n");

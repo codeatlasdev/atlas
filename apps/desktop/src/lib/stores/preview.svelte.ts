@@ -6,6 +6,7 @@ import { rememberUrl } from "#lib/stores/browser.svelte.ts";
 import { isHtml, originOf } from "#lib/stores/preview.ts";
 import { ws } from "#lib/stores/workspace.svelte.ts";
 import { saveEditor } from "#lib/symbols.ts";
+import { m } from "#lib/i18n/m.ts";
 
 /** Below the server's 2 min idle limit, so open previews never expire. */
 const TOUCH_MS = 30_000;
@@ -61,6 +62,6 @@ export async function previewHtml(worktreeId: string, relPath: string) {
 		// Keep the editor focused: the preview is a side view of what is being typed.
 		ws.focusGroup(from.id);
 	} catch (e) {
-		toast.error(`Preview failed: ${errText(e)}`);
+		toast.error(m.workbench_preview_failed({ error: errText(e) }));
 	}
 }

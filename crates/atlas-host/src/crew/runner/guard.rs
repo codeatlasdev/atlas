@@ -192,13 +192,21 @@ async fn diff_of(t: Tree<'_>, base: &str) -> Result<String, String> {
 }
 
 async fn untracked_of(t: Tree<'_>) -> Result<Vec<String>, String> {
-    let out = git(t, &["ls-files", "--others", "--exclude-standard"]).await?;
-    Ok(out.lines().map(str::to_string).collect())
+    let out = git(t, &["ls-files", "-z", "--others", "--exclude-standard"]).await?;
+    Ok(nul_separated(&out))
 }
 
 async fn tracked_of(t: Tree<'_>) -> Result<Vec<String>, String> {
-    let out = git(t, &["ls-files"]).await?;
-    Ok(out.lines().map(str::to_string).collect())
+    let out = git(t, &["ls-files", "-z"]).await?;
+    Ok(nul_separated(&out))
+}
+
+/// The paths of `git ls-files -z`: NUL-separated and never quoted, whatever the name has in it.
+fn nul_separated(out: &str) -> Vec<String> {
+    out.split('\0')
+        .filter(|p| !p.is_empty())
+        .map(str::to_string)
+        .collect()
 }
 
 async fn commit_messages(t: Tree<'_>, base: &str) -> String {
@@ -221,14 +229,10 @@ fn parse_diff(diff: &str) -> Vec<FileDiff> {
     let mut files: Vec<FileDiff> = vec![];
     for line in diff.lines() {
         if let Some(rest) = line.strip_prefix("diff --git ") {
-            // `a/<path> b/<path>`: with no renames both are the same path.
-            let path = rest
-                .rsplit_once(" b/")
-                .map(|(_, p)| p)
-                .unwrap_or(rest)
-                .to_string();
+            // `a/<path> b/<path>`, quoted by git when the name has a non-ASCII letter, a quote or a control
+            // character: with no renames both are the same path.
             files.push(FileDiff {
-                path,
+                path: atlas_core::git_path::diff_header(rest).1,
                 deleted: false,
                 removed: vec![],
                 added: vec![],

@@ -1,0 +1,27 @@
+{
+	"workbench_agents_add_project": "Button of the empty Agents view when no project exists yet",
+	"workbench_agents_all_projects": "Agents view filter option: every project",
+	"workbench_agents_all_states": "Agents view filter option: every agent state",
+	"workbench_agents_choose_worktree": "Button of the empty Agents view when no worktree is selected",
+	"workbench_agents_clear_filters": "Button of the empty Agents view when the filters match nothing",
+	"workbench_agents_column_done": {
+		"description": "Dashboard column of agents that finished",
+		"distinct": "an agent state heading, not the Done button"
+	},
+	"workbench_agents_column_idle": {
+		"description": "Dashboard column of agents that wait for work",
+		"distinct": "a column heading in sentence case, not the lowercase state word"
+	},
+	"workbench_agents_empty_filtered": "Empty Agents view description when the filters match nothing",
+	"workbench_agents_empty_no_activity_here": "Empty Agents view description for a selected worktree with no agent activity",
+	"workbench_agents_empty_no_project": "Empty Agents view description when no project exists",
+	"workbench_agents_empty_no_worktree": "Empty Agents view description when no worktree is selected",
+	"workbench_agents_feed_no_match": "Empty feed title when a filter is active",
+	"workbench_agents_feed_none": "Empty feed title with no filter",
+	"workbench_agents_in_state": "Dashboard card: how long the agent has been in its current state (age is like 5m)",
+	"workbench_agents_new_session": "Button of the empty Agents view that starts an agent; a shortcut follows it",
+	"workbench_agents_none_title": "Empty dashboard title",
+	"workbench_agents_summary": "Agents view header: how many agents work out of how many exist",
+	"workbench_agents_title_agents": "Heading of the Agents view",
+	"workbench_agents_title_dashboard": "Heading of the dashboard view"
+}

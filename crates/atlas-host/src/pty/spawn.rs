@@ -86,8 +86,11 @@ fn spawn_pipe(argv: &[String], cwd: &str, env: Vec<(String, String)>) -> Result<
         .stderr(std::process::Stdio::null());
     // Own session, like a PTY child.
     crate::exec::new_session(&mut cmd);
+    // i18n-ignore: context of an error chain (the program being started), read in logs and after the coded message
     let mut child = cmd.spawn().with_context(|| format!("spawn {}", argv[0]))?;
+    // i18n-ignore: context of an error chain (a pipe of the child), read in logs
     let stdout = child.stdout.take().context("stdout")?;
+    // i18n-ignore: context of an error chain (a pipe of the child), read in logs
     let stdin = child.stdin.take().context("stdin")?;
     let pid = Some(child.id());
     Ok(Child {
@@ -160,6 +163,7 @@ fn spawn_pty(
             pixel_width: 0,
             pixel_height: 0,
         })
+        // i18n-ignore: context of an error chain (the syscall that failed), read in logs
         .context("openpty")?;
     let mut cmd = CommandBuilder::new(&argv[0]);
     cmd.args(&argv[1..]);
@@ -177,10 +181,13 @@ fn spawn_pty(
     let mut child = pair
         .slave
         .spawn_command(cmd)
+        // i18n-ignore: context of an error chain (the program being started), read in logs and after the coded message
         .with_context(|| format!("spawn {}", argv[0]))?;
     drop(pair.slave);
     let pid = child.process_id();
+    // i18n-ignore: context of an error chain (the syscall that failed), read in logs
     let reader = pair.master.try_clone_reader().context("pty reader")?;
+    // i18n-ignore: context of an error chain (the syscall that failed), read in logs
     let writer = pair.master.take_writer().context("pty writer")?;
     Ok(Child {
         reader,
@@ -219,13 +226,16 @@ fn spawn_isolated(
     };
     let (sp, fd) = client
         .spawn(&wire)
+        // i18n-ignore: context of an error chain (the program and user being started), read in logs and after the coded message
         .with_context(|| format!("spawn {} as {user}", argv[0]))?;
     let reader = fd
         .try_clone()
+        // i18n-ignore: context of an error chain (the syscall that failed), read in logs
         .context("pty reader")
         .map(std::fs::File::from)?;
     let writer = fd
         .try_clone()
+        // i18n-ignore: context of an error chain (the syscall that failed), read in logs
         .context("pty writer")
         .map(std::fs::File::from)?;
     let iso = Isolation {

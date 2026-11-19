@@ -57,6 +57,9 @@ export function platformIssues(e: Entry, platform: Platform | undefined = e.plat
 	return out;
 }
 
+/** English quotes are straight (style/en.md "Mechanics"): a curly one in a source value is typed by a keyboard layout or a model, never by design. */
+const CURLY = /[\u2018\u2019\u201C\u201D]/;
+
 /** `maxLength` of a key (meta.json): no text of the message, placeholders aside, may be longer. */
 export function lengthIssues(e: Entry, maxLength: number | undefined = e.maxLength): Issue[] {
 	if (!maxLength) return [];
@@ -152,6 +155,8 @@ export function sourceEntryIssues(base: Entry, areaNames: string[]): Issue[] {
 		if (sentence !== undefined) out.push({ rule: "common-sentence", severity: "error", message: `common* areas hold terms (Cancel, Trash), not sentences: "${sentence.slice(0, 50)}" is more than 4 words or ends like a sentence; move it to the area of the screen that owns it, or justify it with meta "sentence": "<reason>"` });
 	}
 	out.push(...platformIssues(base), ...lengthIssues(base));
+	const curly = CURLY.exec(base.texts.join("\n"));
+	if (curly) out.push({ rule: "quotes", severity: "error", message: `English uses straight quotes (" and '), not ${curly[0]}: retype it and, if the translation still fits, bun run i18n:fix --restamp ${base.key}` });
 	if (base.refError) out.push({ rule: "dangling-ref", severity: "error", message: base.refError });
 	return out;
 }

@@ -4,6 +4,7 @@
  * Run with: bun test --conditions browser src/lib/crew/automations.test.ts
  */
 import { describe, expect, test } from "bun:test";
+import { inLocale } from "../../../test/locale.ts";
 import {
 	scheduleFromCron,
 	cronFromSchedule,
@@ -206,6 +207,40 @@ describe("describeNext", () => {
 		expect(result).not.toMatch(/^today/);
 		expect(result).not.toMatch(/^tomorrow/);
 		expect(result.length).toBeGreaterThan(3);
+	});
+});
+
+// "às 13:00" but "à 01:00": a preposition in front of a time is wrong for one hour of the day in pt-BR, so the
+// pt-BR messages put no preposition before the time. Local times, so the test does not depend on the time zone.
+describe("pt-BR times", () => {
+	const HOURS: [number, number, string][] = [
+		[0, 30, "00:30"],
+		[1, 0, "01:00"],
+		[1, 59, "01:59"],
+		[13, 0, "13:00"],
+	];
+	const fire = (day: number, h: number, min: number) =>
+		Math.floor(new Date(2024, 5, day, h, min).getTime() / 1000);
+	const now = new Date(2024, 5, 10, 0, 5).getTime();
+	const noPreposition = (text: string, time: string) => {
+		expect(text).toContain(time);
+		expect(text).not.toMatch(/(^|\s)(às|à)\s/);
+	};
+
+	test.each(HOURS)("describeNext at %i:%i never puts às or à before the time", async (h, min, time) => {
+		await inLocale("pt-BR", () => {
+			noPreposition(describeNext(fire(10, h, min), now), time);
+			noPreposition(describeNext(fire(11, h, min), now), time);
+			noPreposition(describeNext(fire(14, h, min), now), time);
+		});
+	});
+
+	test.each(HOURS)("describeTrigger at %i:%i never puts às or à before the time", async (h, min, time) => {
+		const cron = `${min} ${h} * * 1-5`;
+		await inLocale("pt-BR", () => {
+			noPreposition(describeTrigger({ type: "schedule", cron }), time);
+			noPreposition(describeTrigger({ type: "schedule", cron }, "America/Sao_Paulo"), time);
+		});
 	});
 });
 

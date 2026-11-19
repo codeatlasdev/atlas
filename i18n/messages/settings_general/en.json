@@ -91,14 +91,14 @@
 			}
 		}
 	],
-	"settings_general_search_empty_hint": "Try a shorter word, like “font”, “theme” or “branch”.",
-	"settings_general_search_matching": "Matching “{query}”.",
+	"settings_general_search_empty_hint": "Try a shorter word, like \"font\", \"theme\" or \"branch\".",
+	"settings_general_search_matching": "Matching \"{query}\".",
 	"settings_general_settings": "Settings",
 	"settings_general_shell_links_services_start_with_the_path": "Services start with the PATH and variables of this shell, the same as in your terminal. Pick another shell if tools like bun or node are not found.",
 	"settings_general_shell_links_shell_for_your_projects": "Shell for your projects",
 	"settings_general_shortcut_add": "Add shortcut",
 	"settings_general_shortcut_click_then_press_the_new": "Click, then press the new shortcut",
-	"settings_general_shortcut_displaced": "{key} now runs this command. “{command}” lost it.",
+	"settings_general_shortcut_displaced": "{key} now runs this command. \"{command}\" lost it.",
 	"settings_general_shortcut_if_you_pick_a_shortcut": "If you pick a shortcut that another command already uses, that command loses it.",
 	"settings_general_shortcut_needs_modifier": [
 		{
@@ -114,7 +114,7 @@
 			}
 		}
 	],
-	"settings_general_shortcut_no_match": "No command matches “{query}”.",
+	"settings_general_shortcut_no_match": "No command matches \"{query}\".",
 	"settings_general_shortcut_none": "No shortcut",
 	"settings_general_shortcut_press_the_new_shortcut": "Press the new shortcut…",
 	"settings_general_shortcut_remove_this_shortcut": "Remove this shortcut",
@@ -127,7 +127,7 @@
 	"settings_general_sound_play": "Play",
 	"settings_general_sound_play_label": "Play {sound}",
 	"settings_general_sound_play_sounds": "Play sounds",
-	"settings_general_sound_play_user_interface_sound_effects": "“Play user interface sound effects” is off in System Settings ▸ Sound, so Atlas stays silent. The Play buttons below still work.",
+	"settings_general_sound_play_user_interface_sound_effects": "\"Play user interface sound effects\" is off in System Settings ▸ Sound, so Atlas stays silent. The Play buttons below still work.",
 	"settings_general_sound_reduce_sounds": "Reduce sounds",
 	"settings_general_sound_short_quiet_cues_for_the": "Short, quiet cues for the moments that matter: a stack coming up, a service failing, an agent needing you. Nothing plays on ordinary clicks.",
 	"settings_general_sound_sound_volume": "Sound volume",

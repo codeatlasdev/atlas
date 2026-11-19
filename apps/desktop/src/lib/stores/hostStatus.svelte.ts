@@ -9,7 +9,8 @@ import { invoke } from "@tauri-apps/api/core";
 import { listen, type UnlistenFn } from "@tauri-apps/api/event";
 import { toast } from "@codeatlasdev/ui";
 import { errText } from "#lib/api.ts";
-import { EMPTY_HOST, parseHostState, shouldPrompt, type HostState } from "#lib/hostStatus.ts";
+import { EMPTY_HOST, hostReason, parseHostState, shouldPrompt, type HostState } from "#lib/hostStatus.ts";
+import { hostTextLoaded, loadHostMessages } from "#lib/hostText.ts";
 import { gpu } from "#lib/stores/gpu.svelte.ts";
 
 class Host {
@@ -21,8 +22,10 @@ class Host {
 	skew = $state<HostState["skew"]>(EMPTY_HOST.skew);
 	/** Running terminals only. */
 	ptys = $state<HostState["ptys"]>(EMPTY_HOST.ptys);
-	/** The sentence from `skew_reason`; empty when current. */
+	/** The English sentence from `skew`; empty when current. */
 	reason = $state(EMPTY_HOST.reason);
+	reasonCode = $state(EMPTY_HOST.reasonCode);
+	reasonArgs = $state<HostState["reasonArgs"]>(EMPTY_HOST.reasonArgs);
 	/** The user chose "Later" this session. */
 	deferred = $state(EMPTY_HOST.deferred);
 	idleArmed = $state(EMPTY_HOST.idleArmed);
@@ -31,6 +34,11 @@ class Host {
 	/** The host serves language servers (`lsp_*`). */
 	get lspReady() {
 		return this.caps.includes("lsp");
+	}
+
+	/** Why the host is not current, in the app's language (the English sentence for a code this build lacks). */
+	get reasonText() {
+		return hostReason(this);
 	}
 
 	set(s: HostState) {
@@ -66,6 +74,8 @@ async function takePrompt() {
 	await refresh();
 	const pending = await invoke<boolean>("host_take_prompt").catch(() => false);
 	if (pending && shouldPrompt(hostState)) {
+		// The dialog opens with the reason already written, not with the generic body that the sentence then replaces.
+		await loadHostMessages();
 		acted = false;
 		hostPrompt.open = true;
 	}
@@ -125,17 +135,24 @@ export async function initHostStatus(): Promise<UnlistenFn> {
 	const offs = await Promise.all([
 		listen("host://status", (e) => apply(e.payload)),
 		listen("host://prompt", () => void takePrompt()),
-		listen<{ kind?: string; text?: string }>("host://toast", (e) => {
-			if (!e.payload.text) return;
-			// `warning`: events were dropped and resynced (#299); anything else is a finished upgrade.
-			if (e.payload.kind === "warning") toast.info(e.payload.text);
-			else toast.success(e.payload.text);
-		}),
+		listen<{ kind?: string; text?: string; code?: string; args?: Record<string, unknown> }>(
+			"host://toast",
+			async (e) => {
+				const text = await hostTextLoaded({ ...e.payload, message: e.payload.text });
+				if (!text) return;
+				// `warning`: events were dropped and resynced (#299); anything else is a finished upgrade.
+				if (e.payload.kind === "warning") toast.info(text);
+				else toast.success(text);
+			},
+		),
 		listen("host://reconnected", () => void refresh()),
 		listen<{ kind?: string }>("updates://progress", (e) => {
 			if (e.payload.kind === "host") void refresh();
 		}),
 	]);
+	// Not at startup's expense (the messages are a separate chunk), but before the first toast, error or reason needs
+	// them: a status reason on the chip is written in the app's language as soon as they land, never in English.
+	void loadHostMessages();
 	await takePrompt();
 	return () => offs.forEach((f) => f());
 }

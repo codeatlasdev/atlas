@@ -29,9 +29,9 @@ use std::time::{Duration, Instant};
 
 #[cfg(unix)]
 use anyhow::{Context, Result, anyhow};
-use serde_json::Value;
-#[cfg(any(unix, test))]
-use serde_json::json;
+use atlas_core::progress::Coded;
+use atlas_i18n::t_in;
+use serde_json::{Value, json};
 
 #[cfg(unix)]
 use crate::handoff::{
@@ -92,6 +92,7 @@ pub(crate) async fn run(hub: &Hub, exe: &str) -> Result<Value, String> {
 async fn run_inner(hub: &Hub, exe: &Path) -> Result<Value> {
     let sock = handoff_socket(&hub.dir, std::process::id());
     let _ = std::fs::remove_file(&sock);
+    // i18n-ignore: context of an error chain (the handoff socket being bound), read in logs and in the detail of `hostd.upgrade_failed`
     let listener = UnixListener::bind(&sock).with_context(|| format!("bind {}", sock.display()))?;
     std::fs::set_permissions(&sock, std::os::unix::fs::PermissionsExt::from_mode(0o600))?;
     let _cleanup = scopeguard(sock.clone());
@@ -110,6 +111,7 @@ async fn run_inner(hub: &Hub, exe: &Path) -> Result<Value> {
     crate::exec::new_session(&mut cmd);
     let mut child = cmd
         .spawn()
+        // i18n-ignore: context of an error chain (the program being started), read in logs and in the detail of `hostd.upgrade_failed`
         .with_context(|| format!("spawn {}", exe.display()))?;
     let child_pid = child.id();
 
@@ -118,6 +120,7 @@ async fn run_inner(hub: &Hub, exe: &Path) -> Result<Value> {
         (s, child)
     })
     .await?;
+    // i18n-ignore: the cause of a failed hand-over: the reply of `upgrade`, shown as the detail of the coded `hostd.upgrade_failed` and in logs
     let stream = stream.context("takeover failed; the old host keeps running")?;
     // Reap it when it ends (it outlives us by design after the handoff).
     std::thread::spawn(move || {
@@ -156,6 +159,7 @@ async fn run_inner(hub: &Hub, exe: &Path) -> Result<Value> {
         }
         // SAFETY: the child is ours (spawned above) and never took over; stop it.
         unsafe { libc::kill(child_pid as libc::pid_t, libc::SIGTERM) };
+        // i18n-ignore: the cause of a failed hand-over: the reply of `upgrade`, shown as the detail of the coded `hostd.upgrade_failed` and in logs
         return Err(e.context("takeover failed; the old host keeps running"));
     }
     // Let the reply reach the client, then stop serving without killing the ptys.
@@ -191,9 +195,11 @@ fn accept_timeout(
             }
             Err(e) if e.kind() == std::io::ErrorKind::WouldBlock => {
                 if let Some(st) = child.try_wait()? {
+                    // i18n-ignore: the cause of a failed hand-over: the reply of `upgrade`, shown as the detail of the coded `hostd.upgrade_failed` and in logs
                     return Err(anyhow!("the new hostd exited early ({st})"));
                 }
                 if t0.elapsed() > timeout {
+                    // i18n-ignore: the cause of a failed hand-over: the reply of `upgrade`, shown as the detail of the coded `hostd.upgrade_failed` and in logs
                     return Err(anyhow!("the new hostd did not connect in time"));
                 }
                 std::thread::sleep(Duration::from_millis(20));
@@ -216,8 +222,10 @@ fn send_and_ack(
     s.set_read_timeout(Some(ACK_TIMEOUT))?;
     let mut ack = [0u8; 1];
     s.read_exact(&mut ack)
+        // i18n-ignore: the cause of a failed hand-over: the reply of `upgrade`, shown as the detail of the coded `hostd.upgrade_failed` and in logs
         .context("waiting for the new hostd")?;
     if ack[0] != b'R' {
+        // i18n-ignore: the cause of a failed hand-over: the reply of `upgrade`, shown as the detail of the coded `hostd.upgrade_failed` and in logs
         return Err(anyhow!("the new hostd rejected the handoff"));
     }
     Ok(())
@@ -253,6 +261,7 @@ pub(crate) async fn receive(sock: &Path) -> Result<Takeover> {
 
 #[cfg(unix)]
 fn receive_blocking(sock: &Path) -> Result<Takeover> {
+    // i18n-ignore: context of an error chain (the handoff socket), written to hostd.log by the successor
     let s = UnixStream::connect(sock).with_context(|| format!("connect {}", sock.display()))?;
     s.set_read_timeout(Some(ACK_TIMEOUT))?;
     let mut sessions = Vec::new();
@@ -262,8 +271,10 @@ fn receive_blocking(sock: &Path) -> Result<Takeover> {
     let mut buf = vec![0u8; 256 * 1024];
     let mut chunk_fds: Vec<Option<OwnedFd>> = Vec::new();
     'recv: loop {
+        // i18n-ignore: the successor's side of the hand-over, written to hostd.log
         let (n, fds) = recv_with_fds(s.as_raw_fd(), &mut buf).context("receive handoff")?;
         if n == 0 {
+            // i18n-ignore: the successor's side of the hand-over, written to hostd.log
             return Err(anyhow!("old hostd closed the handoff early"));
         }
         chunk_fds.extend(fds.into_iter().map(Some));
@@ -271,6 +282,7 @@ fn receive_blocking(sock: &Path) -> Result<Takeover> {
         while let Some(nl) = pending.iter().position(|&b| b == b'\n') {
             let line: Vec<u8> = pending.drain(..=nl).collect();
             let b: Bundle =
+                // i18n-ignore: the successor's side of the hand-over, written to hostd.log
                 serde_json::from_slice(&line[..line.len() - 1]).context("bad handoff bundle")?;
             if b.sessions.is_empty() {
                 agents = b.agents;
@@ -288,6 +300,7 @@ fn receive_blocking(sock: &Path) -> Result<Takeover> {
                         chunk_fds
                             .get_mut(i)
                             .and_then(Option::take)
+                            // i18n-ignore: the successor's side of the hand-over, written to hostd.log
                             .ok_or_else(|| anyhow!("pty {} arrived without its fd", st.id))?,
                     ),
                     None => None,
@@ -412,35 +425,87 @@ pub fn decide(info: &Value, live_from_list: usize, bundled: &str, choice: Choice
     }
 }
 
-/// The sentence shown wherever a daemon that is not current is reported; `None` when it is.
-pub fn skew_reason(info: &Value, bundled: &str, app: &str) -> Option<String> {
+/// Why a daemon is not current, for every place that reports it: the sentence in `message` (English, for logs and
+/// the CLI), and `code` plus `args` for a client that writes its own (the desktop renders it from its catalog).
+/// `None` when the daemon is current.
+///
+/// Code [`SKEW_CODE`], args `{version, app_version, missing}`: `version` is what the daemon reports (`unknown`
+/// when it reports none), `app_version` the version of the caller, `missing` the features that are off until a
+/// restart, a subset of [`FEATURES`] in that order (empty when only the version differs).
+pub fn skew(info: &Value, bundled: &str) -> Option<Coded> {
     let version = info["version"].as_str().unwrap_or("unknown");
     let missing = missing_caps(info);
     if missing.is_empty() && at_least(info, bundled) {
         return None;
     }
-    let mut s = format!("Terminal host {version} is older than {app}");
-    if !missing.is_empty() {
-        let lost = [
-            ("lsp", "language features"),
-            ("pty_attach_raw", "fast terminal rendering"),
-            ("agents", "agent status"),
-        ];
-        let off: Vec<&str> = lost
-            .iter()
-            .filter(|(c, _)| missing.contains(c))
-            .map(|(_, d)| *d)
-            .collect();
-        // "a", "a and b", "a, b and c". Every feature name reads as plural or is listed
-        // with a sibling: "are" in every case.
-        let list = match off.split_last() {
-            Some((last, rest)) if !rest.is_empty() => format!("{} and {last}", rest.join(", ")),
-            _ => off.join(""),
-        };
-        s.push_str(&format!("; {list} are off until it restarts"));
+    let off: Vec<&str> = FEATURES
+        .iter()
+        .copied()
+        .filter(|c| missing.contains(c))
+        .collect();
+    let mut s = format!("Terminal host {version} is older than Atlas {bundled}");
+    if !off.is_empty() {
+        // Every feature name reads as plural or is listed with a sibling: "are" in every case.
+        s.push_str(&format!(
+            "; {} are off until it restarts",
+            features_text("en", &off)
+        ));
     }
     s.push('.');
-    Some(s)
+    Some(Coded::new(
+        SKEW_CODE,
+        json!({
+            "version": version,
+            "app_version": bundled,
+            "missing": off,
+        }),
+        s,
+    ))
+}
+
+/// The code of [`skew`].
+pub const SKEW_CODE: &str = "hostd.older";
+
+/// The capabilities the app needs, in the order a person reads what a daemon without them loses first
+/// (`args.missing` of `hostd.older`, which the desktop has a message for each of).
+pub const FEATURES: &[&str] = &["lsp", "pty_attach_raw", "agents"];
+
+/// What a daemon without capability `cap` cannot offer, in `tag`; an id this build does not know is shown as it is.
+pub fn feature_name(tag: &str, cap: &str) -> String {
+    match cap {
+        "lsp" => t_in!(tag, "cmd_hostd_feature_lsp"),
+        "pty_attach_raw" => t_in!(tag, "cmd_hostd_feature_pty_attach_raw"),
+        "agents" => t_in!(tag, "cmd_hostd_feature_agents"),
+        other => other.to_string(),
+    }
+}
+
+/// The lost features as one list in `tag` ("a", "a and b", "a, b, and c" in English; "a, b e c" in Portuguese): one,
+/// two or three names ([`NEEDED`] has three), in the order of [`FEATURES`] whatever order hostd lists its
+/// capabilities in. The one place the sentence and `atlas hostd --check` get that list from.
+pub fn features_text(tag: &str, caps: &[&str]) -> String {
+    let mut caps = caps.to_vec();
+    caps.sort_by_key(|c| {
+        FEATURES
+            .iter()
+            .position(|f| f == c)
+            .unwrap_or(FEATURES.len())
+    });
+    let names: Vec<String> = caps.iter().map(|c| feature_name(tag, c)).collect();
+    let name = |i: usize| names.get(i).cloned().unwrap_or_default();
+    t_in!(
+        tag,
+        "cmd_hostd_features_list",
+        count = names.len(),
+        first = name(0),
+        second = name(1),
+        third = name(2)
+    )
+}
+
+/// The English sentence of [`skew`]; `None` when the daemon is current.
+pub fn skew_reason(info: &Value, bundled: &str) -> Option<String> {
+    skew(info, bundled).map(|c| c.message)
 }
 
 #[cfg(test)]
@@ -484,10 +549,7 @@ mod tests {
             decide(&host, 8, "1.5.0-alpha.25", Choice::Ask),
             Decision::Current
         );
-        assert_eq!(
-            skew_reason(&host, "1.5.0-alpha.25", "Atlas 1.5.0-alpha.25"),
-            None
-        );
+        assert_eq!(skew_reason(&host, "1.5.0-alpha.25"), None);
         // Numeric, not lexical, ordering: alpha.9 is older than alpha.10.
         assert_eq!(
             decide(
@@ -577,7 +639,7 @@ mod tests {
         let old = info("1.5.0-alpha.14", &["pty_attach_raw", "lsp"], Some(2));
         assert_eq!(missing_caps(&old), ["agents"]);
         assert_eq!(decide(&old, 2, "1.5.0", Choice::Ask), Decision::Prompt);
-        let r = skew_reason(&old, "1.5.0", "Atlas 1.5.0").unwrap();
+        let r = skew_reason(&old, "1.5.0").unwrap();
         assert!(r.contains("agent status"), "{r}");
     }
 
@@ -602,15 +664,14 @@ mod tests {
 
     #[test]
     fn reason_names_the_versions_and_what_is_off() {
-        let r = skew_reason(&json!({"version": "0.6.2"}), "1.2.1", "Atlas 1.2.1").unwrap();
+        let r = skew_reason(&json!({"version": "0.6.2"}), "1.2.1").unwrap();
         assert_eq!(
             r,
-            "Terminal host 0.6.2 is older than Atlas 1.2.1; language features, fast terminal rendering and agent status are off until it restarts."
+            "Terminal host 0.6.2 is older than Atlas 1.2.1; language features, fast terminal rendering, and agent status are off until it restarts."
         );
         let r = skew_reason(
             &info("1.1.0", &["pty_attach_raw", "lsp", "agents"], None),
             "1.2.0",
-            "Atlas 1.2.0",
         )
         .unwrap();
         assert_eq!(r, "Terminal host 1.1.0 is older than Atlas 1.2.0.");
@@ -618,16 +679,80 @@ mod tests {
         let r = skew_reason(
             &info("1.1.0", &["pty_attach_raw", "upgrade", "agents"], None),
             "1.2.0",
-            "Atlas 1.2.0",
         )
         .unwrap();
         assert_eq!(
             r,
             "Terminal host 1.1.0 is older than Atlas 1.2.0; language features are off until it restarts."
         );
+        assert_eq!(skew_reason(&info("1.2.0", FULL, None), "1.2.0"), None);
+    }
+
+    /// The code and args behind the sentence are what a client renders its own text from (the desktop's
+    /// `hostd.older` message): the versions as given, the lost features by name and in the order the sentence lists.
+    #[test]
+    fn skew_carries_the_code_and_the_arguments_the_sentence_was_written_from() {
+        let c = skew(&json!({"version": "0.6.2"}), "1.2.1").unwrap();
+        assert_eq!(c.code, "hostd.older");
         assert_eq!(
-            skew_reason(&info("1.2.0", FULL, None), "1.2.0", "Atlas 1.2.0"),
-            None
+            c.wire(),
+            json!({
+                "code": "hostd.older",
+                "args": {"version": "0.6.2", "app_version": "1.2.1", "missing": ["lsp", "pty_attach_raw", "agents"]},
+                "message": skew_reason(&json!({"version": "0.6.2"}), "1.2.1").unwrap(),
+            })
         );
+        // Only the version differs: no feature is lost.
+        let c = skew(&info("1.1.0", FULL, None), "1.2.0").unwrap();
+        assert_eq!(c.args["missing"], json!([]));
+        // A daemon that reports no version is `unknown`, never an empty string in the sentence.
+        let c = skew(&json!({"caps": FULL}), "1.2.0").unwrap();
+        assert_eq!(c.args["version"], "unknown");
+    }
+
+    /// `FEATURES` is what the sentence and the desktop have a name for; `NEEDED` is what the app checks. A
+    /// capability added to one and not the other would be reported as missing with no word for it.
+    #[test]
+    fn every_needed_capability_has_a_feature_name_and_the_other_way_round() {
+        let mut needed: Vec<&str> = NEEDED.to_vec();
+        let mut named: Vec<&str> = FEATURES.to_vec();
+        needed.sort_unstable();
+        named.sort_unstable();
+        assert_eq!(needed, named);
+        // The list message holds three names at most, and every language names every capability.
+        assert!(NEEDED.len() <= 3, "{NEEDED:?}");
+        for tag in atlas_i18n::locales() {
+            for cap in NEEDED {
+                let name = feature_name(tag, cap);
+                assert!(!name.is_empty() && name != *cap, "{tag}: {cap} -> {name}");
+            }
+        }
+    }
+
+    /// One list for the sentence and for `atlas hostd --check`: the serial comma in English (like the desktop's
+    /// `Intl.ListFormat`), "a, b e c" in Portuguese, in the order of `FEATURES` whatever order hostd reports.
+    #[test]
+    fn the_lost_features_read_as_one_list_in_each_language() {
+        let list = |tag: &str, caps: &[&str]| features_text(tag, caps);
+        assert_eq!(list("en", &["lsp"]), "language features");
+        assert_eq!(
+            list("en", &["lsp", "agents"]),
+            "language features and agent status"
+        );
+        assert_eq!(
+            list("en", &["pty_attach_raw", "lsp", "agents"]),
+            "language features, fast terminal rendering, and agent status"
+        );
+        assert_eq!(
+            list("pt-BR", &["pty_attach_raw", "lsp", "agents"]),
+            "recursos de linguagem, renderização rápida do terminal e status dos agentes"
+        );
+        // The sentence uses the same text.
+        let all = skew(&json!({"version": "0.6.2"}), "1.2.1").unwrap().message;
+        assert!(
+            all.contains(&features_text("en", &["lsp", "pty_attach_raw", "agents"])),
+            "{all}"
+        );
+        assert_eq!(feature_name("en", "teleport"), "teleport");
     }
 }

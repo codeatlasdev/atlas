@@ -71,7 +71,7 @@
 	"settings_general_hygiene_node_modules": "node_modules {size}",
 	"settings_general_hygiene_nothing_to_clean": "Nada para limpar: nenhum órfão e nenhuma pasta registrada acima do limite.",
 	"settings_general_hygiene_owner_gone": "dono encerrado",
-	"settings_general_hygiene_scan_first": "Clique em Verificar para listar os processos órfãos e o disco que cada projeto ocupa.",
+	"settings_general_hygiene_scan_first": "Clique em Analisar para listar os processos órfãos e o disco que cada projeto ocupa.",
 	"settings_general_hygiene_target": "target {size}",
 	"settings_general_hygiene_todo_end": [
 		{

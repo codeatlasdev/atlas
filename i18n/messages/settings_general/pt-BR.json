@@ -5,7 +5,7 @@
 	"settings_general_close_settings": "Fechar configurações",
 	"settings_general_config_edited": "● editado",
 	"settings_general_config_file_changed_on_disk": "O arquivo mudou no disco",
-	"settings_general_config_keep_mine": "Manter o meu",
+	"settings_general_config_keep_mine": "Manter a minha versão",
 	"settings_general_config_problems": [
 		{
 			"declarations": [
@@ -25,7 +25,7 @@
 		}
 	],
 	"settings_general_config_reload": "Recarregar",
-	"settings_general_config_restart_stack_to_apply": "Reinicie a stack para aplicar",
+	"settings_general_config_restart_stack_to_apply": "Reiniciar a stack para aplicar",
 	"settings_general_config_revert": "Reverter",
 	"settings_general_config_review_the_changes": "Revise as alterações.",
 	"settings_general_config_save_atlas_yaml": "Salvar o atlas.yaml?",
@@ -38,7 +38,7 @@
 	"settings_general_dock_agent_dock": "Dock de agentes",
 	"settings_general_dock_clear": "Limpar",
 	"settings_general_dock_hide_or_show_the_dock": "Ocultar ou mostrar o dock",
-	"settings_general_dock_keep_the_pill_on_screen": "Mantém a pílula na tela enquanto o Atlas roda. Oculte-a quando quiser com a tecla de ocultar, com o botão de ocultar da pílula, com o menu de clique direito ou com o menu da bandeja; a escolha é lembrada.",
+	"settings_general_dock_keep_the_pill_on_screen": "Mantém a pílula na tela enquanto o Atlas roda. Para ocultar, use a tecla de ocultar, o botão de ocultar ou o menu de contexto da pílula, ou o menu da bandeja. O Atlas lembra a escolha.",
 	"settings_general_dock_message_an_agent": "Enviar mensagem a um agente",
 	"settings_general_dock_not_set": "Não definido",
 	"settings_general_dock_opens_the_dock_s_composer": "Abre o campo de mensagem do dock a partir de qualquer app. O texto vai para o último agente que você usou, ou para o que você mencionar com @.",
@@ -56,12 +56,12 @@
 	"settings_general_links_links": "Links",
 	"settings_general_links_open_links_in": "Abrir links no",
 	"settings_general_links_system_browser": "Navegador do sistema",
-	"settings_general_load_error_agents": "Não foi possível ler as configurações dos seus agentes",
-	"settings_general_load_error_git": "Não foi possível ler as suas configurações do Git",
+	"settings_general_load_error_agents": "Não foi possível ler as configurações dos agentes",
+	"settings_general_load_error_git": "Não foi possível ler as configurações do Git",
 	"settings_general_load_error_hygiene": "Não foi possível ler o relatório de higiene",
-	"settings_general_load_error_phones": "Não foi possível ler os seus celulares pareados",
-	"settings_general_load_error_ssh": "Não foi possível ler os seus hosts SSH",
-	"settings_general_load_error_workspace": "Não foi possível ler as configurações dos seus workspaces",
+	"settings_general_load_error_phones": "Não foi possível ler os celulares pareados",
+	"settings_general_load_error_ssh": "Não foi possível ler os hosts SSH",
+	"settings_general_load_error_workspace": "Não foi possível ler as configurações dos workspaces",
 	"settings_general_nav_dev": "Dev",
 	"settings_general_nav_search_settings": "Pesquisar configurações",
 	"settings_general_nav_settings_sections": "Seções das configurações",
@@ -75,7 +75,7 @@
 	"settings_general_notification_show_notifications": "Mostrar notificações",
 	"settings_general_notification_skip_the_notification_when_that": "Não notificar quando essa worktree é a que está na sua tela.",
 	"settings_general_notification_stay_quiet_while_i_m": "Ficar em silêncio enquanto estou olhando",
-	"settings_general_open_outside_no_worktree": "Abra uma worktree primeiro; então o Atlas pode mostrar {file} no editor dele.",
+	"settings_general_open_outside_no_worktree": "Abra uma worktree primeiro. Depois o Atlas pode mostrar {file} no editor.",
 	"settings_general_search_count": [
 		{
 			"declarations": [
@@ -94,14 +94,14 @@
 			}
 		}
 	],
-	"settings_general_search_empty_hint": "Tente uma palavra mais curta, como “fonte”, “tema” ou “branch”.",
-	"settings_general_search_matching": "Correspondentes a “{query}”.",
+	"settings_general_search_empty_hint": "Tente uma palavra mais curta, como \"fonte\", \"tema\" ou \"branch\".",
+	"settings_general_search_matching": "Resultados para \"{query}\".",
 	"settings_general_settings": "Configurações",
 	"settings_general_shell_links_services_start_with_the_path": "Os serviços iniciam com o PATH e as variáveis deste shell, como no seu terminal. Escolha outro shell se ferramentas como bun ou node não forem encontradas.",
 	"settings_general_shell_links_shell_for_your_projects": "Shell dos seus projetos",
 	"settings_general_shortcut_add": "Adicionar atalho",
 	"settings_general_shortcut_click_then_press_the_new": "Clique e depois pressione o novo atalho",
-	"settings_general_shortcut_displaced": "{key} agora executa este comando. “{command}” perdeu o atalho.",
+	"settings_general_shortcut_displaced": "{key} agora executa este comando. \"{command}\" perdeu o atalho.",
 	"settings_general_shortcut_if_you_pick_a_shortcut": "Se você escolher um atalho que outro comando já usa, esse comando o perde.",
 	"settings_general_shortcut_needs_modifier": [
 		{
@@ -117,7 +117,7 @@
 			}
 		}
 	],
-	"settings_general_shortcut_no_match": "Nenhum comando corresponde a “{query}”.",
+	"settings_general_shortcut_no_match": "Nenhum comando corresponde a \"{query}\".",
 	"settings_general_shortcut_none": "Sem atalho",
 	"settings_general_shortcut_press_the_new_shortcut": "Pressione o novo atalho…",
 	"settings_general_shortcut_remove_this_shortcut": "Remover este atalho",
@@ -130,7 +130,7 @@
 	"settings_general_sound_play": "Tocar",
 	"settings_general_sound_play_label": "Tocar {sound}",
 	"settings_general_sound_play_sounds": "Tocar sons",
-	"settings_general_sound_play_user_interface_sound_effects": "“Tocar efeitos sonoros da interface do usuário” está desativado em Ajustes do Sistema ▸ Som, então o Atlas fica em silêncio. Os botões Tocar abaixo continuam funcionando.",
+	"settings_general_sound_play_user_interface_sound_effects": "\"Reproduzir efeitos sonoros da interface do usuário\" está desativado em Ajustes do Sistema ▸ Som, então o Atlas fica em silêncio. Os botões Tocar abaixo continuam funcionando.",
 	"settings_general_sound_reduce_sounds": "Reduzir sons",
 	"settings_general_sound_short_quiet_cues_for_the": "Sinais curtos e discretos para os momentos que importam: uma stack subindo, um serviço falhando, um agente precisando de você. Nada toca em cliques comuns.",
 	"settings_general_sound_sound_volume": "Volume dos sons",

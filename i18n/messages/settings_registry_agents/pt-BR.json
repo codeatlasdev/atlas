@@ -17,8 +17,8 @@
 				"os"
 			],
 			"match": {
-				"os=mac": "Mantém a pílula na tela enquanto o Atlas roda. Oculte quando quiser com a tecla de ocultar, o botão de ocultar da pílula, o menu de clique direito ou o menu da bandeja; a escolha fica lembrada.",
-				"os=*": "Mantém a pílula na tela enquanto o Atlas roda. Oculte quando quiser com a tecla de ocultar, o botão de ocultar da pílula, o menu de clique direito ou o menu da bandeja; a escolha fica lembrada. Desativado por padrão."
+				"os=mac": "Mantém a pílula na tela enquanto o Atlas roda. Para ocultar, use a tecla de ocultar, o botão de ocultar ou o menu de contexto da pílula, ou o menu da bandeja. O Atlas lembra a escolha.",
+				"os=*": "Mantém a pílula na tela enquanto o Atlas roda. Para ocultar, use a tecla de ocultar, o botão de ocultar ou o menu de contexto da pílula, ou o menu da bandeja. O Atlas lembra a escolha. Desativado por padrão."
 			}
 		}
 	],

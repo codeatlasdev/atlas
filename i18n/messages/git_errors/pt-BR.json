@@ -1,19 +1,19 @@
 {
 	"git_errors_config_failed": "Não foi possível salvar {key} na sua configuração do git.",
 	"git_errors_config_failed_output": "Não foi possível salvar {key} na sua configuração do git: {output}",
-	"git_errors_conflict": "O git parou em um conflito de merge. Resolva os arquivos em conflito, faça stage deles e continue.",
+	"git_errors_conflict": "O Git parou em um conflito de merge. Resolva os arquivos em conflito, faça stage deles e continue.",
 	"git_errors_details": "Detalhes",
 	"git_errors_identity_email": "Informe um e-mail como voce@exemplo.com.",
 	"git_errors_identity_name": "Informe seu nome.",
 	"git_errors_local_changes": "Alterações locais seriam sobrescritas. Faça commit ou stash delas e tente novamente.",
-	"git_errors_locked": "Outro processo do git está usando este repositório, ou parou e deixou um arquivo de lock. Aguarde um instante e tente novamente.",
+	"git_errors_locked": "Outro processo do git está usando este repositório, ou um processo anterior parou e deixou um arquivo de lock. Aguarde um instante e tente novamente.",
 	"git_errors_no_commits": "Este repositório ainda não tem commits. Faça o primeiro commit e tente novamente.",
 	"git_errors_no_remote": "Este repositório não tem remote. Adicione um que aponte para o GitHub e tente novamente.",
-	"git_errors_no_upstream": "Esta branch ainda não recebeu push, então não há com o que comparar no remote.",
+	"git_errors_no_upstream": "Esta branch ainda não recebeu push, então não há nada para comparar no remote.",
 	"git_errors_not_repo": "Esta pasta não é um repositório git.",
 	"git_errors_nothing_to_commit": "Não há nada para fazer commit. Faça stage de alguma alteração antes.",
-	"git_errors_other": "O git não conseguiu concluir esse comando. Veja nos detalhes o que ele imprimiu.",
-	"git_errors_other_line": "O git falhou: {line}",
+	"git_errors_other": "O Git não conseguiu concluir esse comando. Veja nos detalhes o que ele mostrou.",
+	"git_errors_other_line": "O Git falhou: {line}",
 	"git_errors_rejected": "O remote tem commits que você não tem. Faça pull e depois push de novo.",
-	"git_errors_remote_access": "O git não conseguiu acessar o remote nem entrar nele. Confira o endereço e suas credenciais."
+	"git_errors_remote_access": "O Git não conseguiu acessar o remote ou se autenticar nele. Confira o endereço e as credenciais."
 }

@@ -12,7 +12,7 @@
 	"settings_general_agent_hooks_no_agents_found": "Nenhum agente encontrado",
 	"settings_general_agent_hooks_on": "Ativo",
 	"settings_general_agent_hooks_state_missing": "Não conectado: o Atlas e o Atlas Mobile não sabem o que ele está fazendo.",
-	"settings_general_agent_hooks_state_ok": "Informa quando está trabalhando, esperando por você ou concluiu, e pode usar as ferramentas do Atlas.",
-	"settings_general_agent_hooks_state_unknown": "O Atlas não conseguiu saber se os hooks dele estão ativos.",
+	"settings_general_agent_hooks_state_ok": "Informa quando está trabalhando, quando espera você e quando termina, e pode usar as ferramentas do Atlas.",
+	"settings_general_agent_hooks_state_unknown": "O Atlas não conseguiu verificar se os hooks estão ativos.",
 	"settings_general_agent_hooks_turn_on": "Ativar"
 }

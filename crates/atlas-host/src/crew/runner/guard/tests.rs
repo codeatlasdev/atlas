@@ -319,6 +319,59 @@ async fn a_file_written_to_tmp_by_a_command_is_refused_reading_it_is_not() {
     );
 }
 
+// Incident (batch S09): git writes a non-ASCII path as `"tests/a\303\247\303\243o.rs"` in a diff header and in a plain
+// `ls-files`. The guard read that text as the path, so `is_test_path` saw `.rs"` and a weakened or deleted test in a
+// file named in Portuguese or Japanese went unseen.
+#[tokio::test]
+async fn tests_in_files_with_non_ascii_names_are_guarded_like_any_other() {
+    let t = repo();
+    let d = t.path();
+    let two = "#[test]\nfn a() {\n    assert_eq!(1, 1);\n    assert!(true);\n}\n";
+    write(d, "tests/ação.rs", two);
+    write(d, "tests/日本.rs", two);
+    git(d, &["add", "-A"]);
+    git(d, &["commit", "-q", "-m", "tests with names"]);
+    git(d, &["update-ref", "refs/remotes/origin/main", "HEAD"]);
+
+    write(
+        d,
+        "tests/ação.rs",
+        "#[test]\nfn a() {\n    assert_eq!(1, 1);\n}\n",
+    );
+    std::fs::remove_file(d.join("tests/日本.rs")).unwrap();
+    let v = run(d, "Done.", &[]).await;
+    assert!(
+        has(&v, "removes 1 assertion(s) from tests/ação.rs"),
+        "{:?}",
+        v.reasons
+    );
+    assert!(
+        has(&v, "deletes the test file tests/日本.rs"),
+        "{:?}",
+        v.reasons
+    );
+}
+
+// Same incident, the stray-file rule: the new files are listed with `-z`, so a name with a letter outside ASCII
+// (or a newline) is judged by its real name: a note next to the README is fine, a scratch log is not.
+#[tokio::test]
+async fn new_files_with_non_ascii_names_are_judged_by_their_real_name() {
+    let t = repo();
+    let d = t.path();
+    write(d, "ação.md", "notes\n");
+    write(d, "src/configuração.rs", "pub fn c() {}\n");
+    write(d, "rascunho ação.log", "x\n");
+    if cfg!(unix) {
+        write(d, "src/new\nline.rs", "pub fn n() {}\n");
+    }
+    let v = run(d, "Done.", &[]).await;
+    assert_eq!(
+        v.reasons,
+        ["a scratch file was left in the work tree: rascunho ação.log"],
+        "only the scratch log is a stray"
+    );
+}
+
 // ── 3. invented references ───────────────────────────────────────────────────
 
 fn api_with(issues: &[u64]) -> Arc<FakeGithub> {

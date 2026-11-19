@@ -5,7 +5,7 @@ import { describe, expect, test } from "bun:test";
 import { chmodSync, existsSync, mkdtempSync, readFileSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
-import { BUDGET, countProbes, explainMissingReady, garbledLines, judge, parseTrace, pct, roleOf, summarize, type Idle, type Report, type Run } from "./linux-startup-bench.ts";
+import { BUDGET, collectEvidence, countProbes, evidenceLine, explainMissingReady, garbledLines, judge, parseTrace, pct, roleOf, summarize, type Idle, type Report, type Run } from "./linux-startup-bench.ts";
 
 const root = join(import.meta.dir, "..");
 const script = join(import.meta.dir, "linux-startup-bench.ts");
@@ -168,6 +168,57 @@ describe("judge", () => {
 	});
 });
 
+// #591: the log line says, without opening the artifact, whether the web process started and what became of it.
+describe("the one-line evidence summary", () => {
+	const base = { why: "x", exited: null, appAlive: true, webProcessSeenMs: 165, webProcessAlive: true, webProcessStates: [{ pid: 42, state: "S" }], windowMappedMs: 1180, coredumps: [] };
+	test("a page that hung with a live web process", () => {
+		const l = evidenceLine(base, "out/evidence/run-5");
+		expect(l).toContain("app alive; web process started at 165 ms, alive (42:S); window mapped at 1180 ms");
+		expect(l).toContain("kept in out/evidence/run-5");
+	});
+	test("a web process that started and is gone says so, with the dump when the machine kept one", () => {
+		expect(evidenceLine({ ...base, webProcessAlive: false, webProcessStates: [] }, "d")).toContain("and is gone (no exit status: not our child; no coredump listed)");
+		expect(evidenceLine({ ...base, webProcessAlive: false, webProcessStates: [], coredumps: ["Thu 11:00 1000 1000 SIGSEGV present /usr/lib/WebKitWebProcess"] }, "d")).toContain("1 coredump(s)");
+	});
+	test("an app that exited, no web process, no window", () => {
+		const l = evidenceLine({ ...base, exited: 134, appAlive: false, webProcessSeenMs: null, webProcessAlive: false, webProcessStates: [], windowMappedMs: null }, "d");
+		expect(l).toContain("app exited with status 134; web process never started; window never mapped");
+	});
+});
+
+// The collector itself, without sway: it reads /proc, so it runs where CI does. A machine without grim, swaymsg or coredumpctl
+// still gets everything else, and the collector never throws (it would hide the failure it documents).
+describe.skipIf(!existsSync("/proc/self/stat"))("collectEvidence", () => {
+	test("keeps the trace, the app's output and the app log, and reports a live app with no web process", async () => {
+		const home = mkdtempSync(join(tmpdir(), "evidence-home-"));
+		const prev = process.env.ATLAS_HOSTD_DIR;
+		process.env.ATLAS_HOSTD_DIR = home;
+		try {
+			Bun.spawnSync(["mkdir", "-p", join(home, "desktop")]);
+			writeFileSync(join(home, "desktop/app.log"), "1 linux graphics: llvmpipe\n");
+			const trace = join(dir, "ev-trace.txt");
+			writeFileSync(trace, "5.0 main\n40.0 page:Started\n");
+			writeFileSync(`${trace}.out`, "booted-but-stuck\n");
+			const child = Bun.spawn(["sleep", "30"], { env: { ...process.env, ATLAS_BENCH_TAG: "ev-test" } });
+			const evDir = join(dir, "ev-out");
+			try {
+				const e = collectEvidence(evDir, { trace, tag: "ev-test", root: child.pid, why: "no js:ready:gate", marks: { main: 5 }, webSeenMs: null, windowMs: null, exited: null, since: Date.now() - 1000 });
+				expect(e).toMatchObject({ appAlive: true, webProcessAlive: false, webProcessSeenMs: null, exited: null });
+			} finally {
+				child.kill();
+			}
+			expect(readFileSync(join(evDir, "app-output.txt"), "utf8")).toContain("booted-but-stuck");
+			expect(readFileSync(join(evDir, "app.log"), "utf8")).toContain("linux graphics");
+			expect(readFileSync(join(evDir, "trace.txt"), "utf8")).toContain("page:Started");
+			expect(readFileSync(join(evDir, "processes.txt"), "utf8")).toContain("sleep");
+			expect(JSON.parse(readFileSync(join(evDir, "evidence.json"), "utf8"))).toMatchObject({ why: "no js:ready:gate", coredumps: [] });
+		} finally {
+			if (prev === undefined) delete process.env.ATLAS_HOSTD_DIR;
+			else process.env.ATLAS_HOSTD_DIR = prev;
+		}
+	});
+});
+
 describe("--judge on a saved report", () => {
 	const judgeFile = (r: unknown, ...extra: string[]) => {
 		const p = join(dir, "report.json");
@@ -229,6 +280,7 @@ describe("the real script on a private sway", () => {
 		const x = bench(app);
 		expect(x.code).toBe(1);
 		expect(x.err).toContain("last page stage reached: layout:mounted");
+		expect(x.err).toContain("evidence: app alive; web process never started; window");
 		const ev = join(dir, "evidence/run-1");
 		for (const f of ["trace.txt", "app-output.txt", "processes.txt", "evidence.json", "sway-tree.json"]) expect(existsSync(join(ev, f))).toBe(true);
 		expect(readFileSync(join(ev, "app-output.txt"), "utf8")).toContain("booted-but-stuck");
@@ -253,6 +305,18 @@ describe("the real script on a private sway", () => {
 describe("ci.yml", () => {
 	const ci = Bun.YAML.parse(readFileSync(join(root, ".github/workflows/ci.yml"), "utf8")) as any;
 	// #284 acceptance: the bench runs in the job that opens the app, and its failure fails that job (no continue-on-error).
+	// #591: the evidence of a start that never reported app_ready lives next to the report, so the artifact step that uploads the
+	// report's directory carries it, and it runs when the bench step fails.
+	test("the bench's --out directory is uploaded as an artifact even when the bench step fails", () => {
+		const steps: any[] = ci.jobs["desktop-linux"].steps;
+		const bench = steps.find((s) => String(s.run ?? "").includes("linux-startup-bench.ts"));
+		const out = /--out (\S+)\/report\.json/.exec(bench.run)?.[1];
+		expect(out).toBeTruthy();
+		const up = steps.find((s) => String(s.uses ?? "").startsWith("actions/upload-artifact@") && String(s.with?.path ?? "").replace(/\/$/, "") === out);
+		expect(up).toBeDefined();
+		expect(up.if).toContain("!cancelled()");
+	});
+
 	test("the Desktop opens (Linux) job runs the startup bench as a gating step after the launch check", () => {
 		const steps: any[] = ci.jobs["desktop-linux"].steps;
 		const launch = steps.findIndex((s) => String(s.run ?? "").includes("linux-launch-check.sh"));

@@ -1,0 +1,26 @@
+{
+  "pt-BR": {
+    "shell_home_confirm_action": "f66dc4fe259c",
+    "shell_home_missing_project_check_again": "875e8b17daac",
+    "shell_home_missing_project_last_known_path": "5ff5fb9c0b21",
+    "shell_home_missing_project_locate": "faf16584c5cd",
+    "shell_home_missing_project_relink": "6568f46ed606",
+    "shell_home_missing_project_remove_all": "75a67084a5d9",
+    "shell_home_missing_project_remove_from_atlas": "c295eea266f9",
+    "shell_home_missing_project_same_name": "307e7b141c28",
+    "shell_home_missing_project_same_remote": "2b0b7e5a2c7a",
+    "shell_home_missing_project_searching": "606f2fed328d",
+    "shell_home_missing_project_suggestion": "419fabe6a132",
+    "shell_home_missing_project_suggestion_label": "618aa5f8539c",
+    "shell_home_missing_project_title": "a3aabeb31e92",
+    "shell_home_missing_project_why": "f41572c9cd45",
+    "shell_home_no_project_add_project": "4e755d9a0e83",
+    "shell_home_no_project_discover": "5726d2bddfc8",
+    "shell_home_no_project_error_title": "da8912b4b092",
+    "shell_home_no_project_first_hint": "1ed25804817f",
+    "shell_home_no_project_first_title": "31090c07bd46",
+    "shell_home_no_project_none_title": "2174d1b24d65",
+    "shell_home_no_project_pick_a_worktree": "aca58afc4742",
+    "shell_home_no_project_retry": "514c63428de2"
+  }
+}

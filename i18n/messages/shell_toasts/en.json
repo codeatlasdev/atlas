@@ -1,0 +1,21 @@
+{
+	"shell_toasts_action_started": "{action} started",
+	"shell_toasts_atlas_yaml_created": "Created atlas.yaml in {name}",
+	"shell_toasts_branch_preserved": "Branch preserved: {branch} (not merged)",
+	"shell_toasts_checked_out_elsewhere": "{branch} is checked out in {path}",
+	"shell_toasts_copied_url": "Copied {url}",
+	"shell_toasts_created_and_switched": "Created and switched to {branch}",
+	"shell_toasts_seed_cloned": "cloned {dirs} in {ms} ms",
+	"shell_toasts_seed_failed": "failed",
+	"shell_toasts_seed_not_relocatable": "{dir} not seeded (a Python virtualenv is not relocatable: recreate it)",
+	"shell_toasts_seed_unsupported": "{dirs} skipped (this file system cannot clone)",
+	"shell_toasts_setup_time": "setup {duration}",
+	"shell_toasts_stash_body": "{message}\n\nStash them (untracked files too) and switch? They stay in `git stash`.",
+	"shell_toasts_stash_confirm": "Stash and switch",
+	"shell_toasts_stash_title": "Local changes would be overwritten",
+	"shell_toasts_switched": "Switched to {branch}",
+	"shell_toasts_switched_stashed": "Switched to {branch}; your changes are in the stash",
+	"shell_toasts_unknown_worktree": "{name} is checked out in {path}, which Atlas does not know",
+	"shell_toasts_worktree_deleted": "Worktree deleted",
+	"shell_toasts_worktree_failed": "Couldn't create the worktree"
+}

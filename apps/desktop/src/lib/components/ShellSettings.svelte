@@ -1,24 +1,21 @@
 <script lang="ts">
 	import { Alert, Button, Select, Spinner, toast } from "@codeatlasdev/ui";
+	import type { Snippet } from "svelte";
 	import { Check, ChevronRight, RefreshCw, X } from "@lucide/svelte";
 	import { api, errText, type ShellInfo } from "#lib/api.ts";
 	import { tilde } from "#lib/format.ts";
 	import FieldInput from "#lib/settings/FieldInput.svelte";
 	import Group from "#lib/settings/Group.svelte";
 	import Row from "#lib/settings/Row.svelte";
+	import { m } from "#lib/i18n/m.ts";
+	import Rich from "#lib/i18n/Rich.svelte";
+	import { sourceText } from "#lib/settings/shellSource.ts";
 
 	let info = $state<ShellInfo | null>(null);
 	let busy = $state(false);
 	let showPath = $state(false);
 	let custom = $state("");
 	let error = $state<string | null>(null);
-
-	const SOURCE = {
-		settings: "picked in Settings",
-		account: "your account's login shell",
-		$SHELL: "taken from $SHELL",
-		default: "built-in fallback",
-	} as const;
 
 	$effect(() => {
 		api
@@ -36,8 +33,9 @@
 		busy = true;
 		try {
 			info = await api.shellSet(shell);
-			if (info.probe?.error) toast.error(`Atlas could not start ${info.probe.shell}`);
-			else toast.success("Shell reloaded. Stop and start running projects to use it.");
+			if (info.probe?.error)
+				toast.error(m.settings_terminal_shell_could_not_start_toast({ shell: info.probe.shell }));
+			else toast.success(m.settings_terminal_shell_reloaded());
 		} catch (e) {
 			toast.error(errText(e));
 		} finally {
@@ -46,13 +44,18 @@
 	}
 </script>
 
+{#snippet mono(content: Snippet)}<span class="mono">{@render content()}</span>{/snippet}
+
 {#if error}
-	<Alert severity="error" title="Atlas could not read your shell">{error}</Alert>
+	<Alert severity="error" title={m.settings_terminal_shell_atlas_could_not_read_your()}>{error}</Alert>
 {:else if !info}
-	<div class="muted"><Spinner size={12} /> Reading your shell…</div>
+	<div class="muted"><Spinner size={12} /> {m.settings_terminal_shell_reading_your_shell()}</div>
 {:else}
 	<Group>
-		<Row label="Shell" description="Atlas runs this to learn your PATH.">
+		<Row
+			label={m.settings_terminal_shell_shell()}
+			description={m.settings_terminal_shell_atlas_runs_this_to_learn()}
+		>
 			<div class="select">
 				<Select
 					size="sm"
@@ -72,10 +75,13 @@
 			</div>
 			<Button variant="outlined" size="sm" disabled={busy} onclick={() => set(info?.configured ?? null)}>
 				{#snippet leading()}{#if busy}<Spinner size={13} />{:else}<RefreshCw size={13} />{/if}{/snippet}
-				Reload now
+				{m.settings_terminal_shell_reload_now()}
 			</Button>
 		</Row>
-		<Row label="Other shell" description="Full path to a shell not listed.">
+		<Row
+			label={m.settings_terminal_shell_other_shell()}
+			description={m.settings_terminal_shell_full_path_to_a_shell()}
+		>
 			<form
 				class="other"
 				onsubmit={(e) => {
@@ -83,9 +89,10 @@
 					if (custom.trim()) set(custom.trim());
 				}}
 			>
+				<!-- i18n-ignore: an example path, not prose -->
 				<FieldInput
 					class="text mono"
-					aria-label="Other shell"
+					aria-label={m.settings_terminal_shell_other_shell()}
 					placeholder="/usr/local/bin/nu"
 					spellcheck="false"
 					value={custom}
@@ -93,36 +100,54 @@
 					disabled={busy}
 				/>
 				<Button variant="outlined" size="sm" type="submit" disabled={busy || !custom.trim()}
-					>Use this shell</Button
+					>{m.settings_terminal_shell_use_this_shell()}</Button
 				>
 			</form>
 		</Row>
 		<div class="status">
 			{#if info.probe?.error}
 				<span class="st bad"
-					><X size={13} /> Could not start <span class="mono">{info.probe.shell}</span></span
+					><X size={13} />
+					<Rich
+						parts={m.settings_terminal_shell_status_failed.parts({ shell: info.probe.shell })}
+						tags={{ mono }}
+					/></span
 				>
 			{:else if info.probe}
-				<span class="st ok"><Check size={13} /> Using <span class="mono">{info.probe.shell}</span></span>
+				<span class="st ok"
+					><Check size={13} />
+					<Rich
+						parts={m.settings_terminal_shell_status_using.parts({ shell: info.probe.shell })}
+						tags={{ mono }}
+					/></span
+				>
 				<span class="muted"
-					>{SOURCE[info.probe.source]}, <span class="mono">{info.probe.flags}</span>, {info.probe.took_ms} ms</span
+					><Rich
+						parts={m.settings_terminal_shell_status_detail.parts({
+							source: sourceText(info.probe.source),
+							flags: info.probe.flags ?? "",
+							ms: info.probe.took_ms,
+						})}
+						tags={{ mono }}
+					/></span
 				>
 			{/if}
 		</div>
 	</Group>
 
 	{#if info.probe?.error}
-		<Alert severity="error" title="Your projects only see the basic system PATH">
-			Tools such as bun or node may not be found. Pick another shell, or fix the error below in your shell
-			startup files, then reload.
+		<Alert severity="error" title={m.settings_terminal_shell_your_projects_only_see_the()}>
+			{m.settings_terminal_shell_tools_such_as_bun_or()}
 			<div class="mono err">{info.probe.error}</div>
 		</Alert>
 	{/if}
 
 	<Group>
 		<div class="ghead">
-			<span>Tools your projects can find</span>
-			<span class="muted">{found} of {info.tools.length} found on PATH</span>
+			<span>{m.settings_terminal_shell_tools_your_projects_can_find()}</span>
+			<span class="muted"
+				>{m.settings_terminal_shell_found_of_length_found_on({ found, length: info.tools.length })}</span
+			>
 		</div>
 		<div class="tools">
 			{#each info.tools as [tool, path] (tool)}
@@ -131,7 +156,9 @@
 						>{#if path}<Check size={12} />{:else}<X size={12} />{/if}</span
 					>
 					<span class="tname">{tool}</span>
-					<span class="tpath mono" title={path ?? ""}>{path ? tilde(path) : "not found"}</span>
+					<span class="tpath mono" title={path ?? ""}
+						>{path ? tilde(path) : m.settings_terminal_shell_not_found()}</span
+					>
 				</div>
 			{/each}
 		</div>
@@ -141,7 +168,7 @@
 					size={13}
 					style="transform: rotate({showPath ? 90 : 0}deg); transition: transform 150ms"
 				/>
-				Show the full PATH ({info.path.length} folders)
+				{m.settings_terminal_shell_show_the_full_path_length({ length: info.path.length })}
 			</button>
 			{#if showPath}<pre class="mono ca-selectable">{info.path.join("\n")}</pre>{/if}
 		{/if}

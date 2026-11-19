@@ -53,7 +53,7 @@ test("the pill has a hide button and a context menu, and the button is not insid
 	const start = page.indexOf('<button class="pill"');
 	const pill = page.slice(start, page.indexOf("</button>", start));
 	expect(pill).not.toContain('class="hide"');
-	expect(page).toContain('aria-label="Hide the dock"');
+	expect(page).toContain("aria-label={m.tray_dock_page_hide_the_dock()}");
 });
 
 // A capture sent from the quick card while the dock page was not listening must not be lost: Rust queues it, the page

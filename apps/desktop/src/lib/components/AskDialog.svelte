@@ -1,6 +1,7 @@
 <script lang="ts">
 	import { Button, Dialog, TextField } from "@codeatlasdev/ui";
 	import { ask } from "#lib/stores/ask.svelte.ts";
+	import { m } from "#lib/i18n/m.ts";
 
 	let req = $derived(ask.current);
 	let text = $state("");
@@ -39,9 +40,9 @@
 		</form>
 	{/if}
 	{#snippet actions()}
-		<Button variant="ghost" onclick={cancel}>Cancel</Button>
+		<Button variant="ghost" onclick={cancel}>{m.common_action_cancel()}</Button>
 		<Button variant={req?.destructive ? "destructive" : "filled"} onclick={answer}>
-			{req?.confirmLabel ?? "OK"}
+			{req?.confirmLabel ?? m.workbench_ask_confirm()}
 		</Button>
 	{/snippet}
 </Dialog>

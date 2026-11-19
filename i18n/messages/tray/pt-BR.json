@@ -1,0 +1,198 @@
+{
+	"tray_agent_needs_approval": "Precisa de aprovação",
+	"tray_agent_waiting_for_you": "Aguardando você",
+	"tray_dock_key_needs_modifier": "Inclua {modifiers} para que o atalho não tome essa tecla de todos os apps",
+	"tray_dock_layout_error_title": "O dock teve um erro",
+	"tray_dock_no_agent_error": "Nenhum agente em execução. Abra o Atlas para iniciar um.",
+	"tray_dock_page_agent": "Agente",
+	"tray_dock_page_an_agent_needs_you": "Um agente precisa de você",
+	"tray_dock_page_ask_hint": "Vários agentes correspondem. Qual deles?",
+	"tray_dock_page_atlas_dock": "Atlas Dock",
+	"tray_dock_page_attached_captures": "Capturas anexadas",
+	"tray_dock_page_attention_badge": [
+		{
+			"declarations": [
+				"input attention",
+				"local attentionExact = attention",
+				"local attentionPlural = attention: plural"
+			],
+			"selectors": [
+				"attentionExact",
+				"attentionPlural"
+			],
+			"match": {
+				"attentionExact=0, attentionPlural=*": "Nenhum precisa de você",
+				"attentionExact=*, attentionPlural=one": "{attention} precisa de você",
+				"attentionExact=*, attentionPlural=*": "{attention} precisam de você"
+			}
+		}
+	],
+	"tray_dock_page_auto_agent": "{agent} (auto)",
+	"tray_dock_page_composer_hint": "Diga ao agente o que fazer. Mencione um com @nome.",
+	"tray_dock_page_dismiss": "Dispensar",
+	"tray_dock_page_esc_closes": "{key} fecha",
+	"tray_dock_page_hide_the_dock": "Ocultar o dock",
+	"tray_dock_page_hide_with_key": "Ocultar o dock ({key} o traz de volta)",
+	"tray_dock_page_hide_with_menu": "Ocultar o dock (o menu da bandeja o traz de volta)",
+	"tray_dock_page_message_an_agent": "Enviar mensagem a um agente",
+	"tray_dock_page_needs_you": "{agent} precisa de você",
+	"tray_dock_page_no_agent_running": "Nenhum agente em execução",
+	"tray_dock_page_open_atlas": "Abrir o Atlas",
+	"tray_dock_page_open_in_atlas": "Abrir no Atlas",
+	"tray_dock_page_remove_capture": "Remover {name}",
+	"tray_dock_page_send": "Enviar",
+	"tray_dock_page_sending": "Enviando…",
+	"tray_dock_page_to": "Para",
+	"tray_dock_page_waiting_for_the_agent": "Aguardando o agente…",
+	"tray_dock_page_which_agent": "Qual agente?",
+	"tray_headline_all_up": [
+		{
+			"declarations": [
+				"input count",
+				"local countExact = count",
+				"local countPlural = count: plural"
+			],
+			"selectors": [
+				"countExact",
+				"countPlural"
+			],
+			"match": {
+				"countExact=0, countPlural=*": "Nenhum serviço no ar",
+				"countExact=*, countPlural=one": "{count} serviço no ar",
+				"countExact=*, countPlural=*": "Todos os {count} serviços no ar"
+			}
+		}
+	],
+	"tray_headline_failed": [
+		{
+			"declarations": [
+				"input count",
+				"local countPlural = count: plural"
+			],
+			"selectors": [
+				"countPlural"
+			],
+			"match": {
+				"countPlural=one": "{names} falhou",
+				"countPlural=*": "{names} falharam"
+			}
+		}
+	],
+	"tray_headline_no_services": "Nenhum serviço",
+	"tray_headline_starting": "{count} iniciando",
+	"tray_headline_stopped": "Parado",
+	"tray_layout_error_hint": [
+		{
+			"declarations": [
+				"input os"
+			],
+			"selectors": [
+				"os"
+			],
+			"match": {
+				"os=mac": "Abra o Atlas pelo Dock para continuar trabalhando.",
+				"os=windows": "Abra o Atlas pela barra de tarefas para continuar trabalhando.",
+				"os=*": "Abra o Atlas pelo menu de aplicativos para continuar trabalhando."
+			}
+		}
+	],
+	"tray_layout_error_title": "O popover teve um erro",
+	"tray_page_agent_dock": "Dock de agentes",
+	"tray_page_dev": "Dev",
+	"tray_page_dev_build_hint": "Build de desenvolvimento: as atualizações estão pausadas",
+	"tray_page_hide_dock": "Ocultar o dock de agentes",
+	"tray_page_host_version": "host {version}",
+	"tray_page_jump_to_agent": "Ir para {agent} em {place}",
+	"tray_page_logs": "Logs",
+	"tray_page_logs_of": "Logs de {name}",
+	"tray_page_needs_you": "Precisa de você",
+	"tray_page_new_agent": "Novo agente",
+	"tray_page_no_match": "Nenhum projeto corresponde a \"{query}\".",
+	"tray_page_open_target": "Abrir {target}",
+	"tray_page_outdated": "desatualizado",
+	"tray_page_projects": "Projetos",
+	"tray_page_recommendation": "Recomendação",
+	"tray_page_restart_failed": "Reiniciar serviços com falha",
+	"tray_page_restart_failed_of": "Reiniciar serviços com falha de {name}",
+	"tray_page_running": "Em execução",
+	"tray_page_running_stacks": "Stacks em execução",
+	"tray_page_search": "Encontrar um projeto ou branch",
+	"tray_page_service_state": "{name}: {state}",
+	"tray_page_settings": "Configurações",
+	"tray_page_show_dock": "Mostrar o dock de agentes",
+	"tray_page_start": "Iniciar",
+	"tray_page_start_name": "Iniciar {name}",
+	"tray_page_stop": "Parar",
+	"tray_page_stop_name": "Parar {name}",
+	"tray_page_stopped_count": "Parados ({stoppedCount})",
+	"tray_page_stopped_projects": "Projetos parados",
+	"tray_page_terminals": [
+		{
+			"declarations": [
+				"input count",
+				"local countExact = count",
+				"local countPlural = count: plural"
+			],
+			"selectors": [
+				"countExact",
+				"countPlural"
+			],
+			"match": {
+				"countExact=0, countPlural=*": "Nenhum terminal",
+				"countExact=*, countPlural=one": "{count} terminal",
+				"countExact=*, countPlural=*": "{count} terminais"
+			}
+		}
+	],
+	"tray_page_verb_approval": "Aprovação",
+	"tray_page_verb_reply": "Resposta",
+	"tray_page_working": "Trabalhando",
+	"tray_recommend_failed_cta": "Ver logs",
+	"tray_recommend_failed_title": "{service} falhou {when}",
+	"tray_recommend_host_cta": "Revisar",
+	"tray_recommend_host_detail": "Os recursos de linguagem ficam desativados até a reinicialização",
+	"tray_recommend_host_title": "O host de terminais precisa ser reiniciado",
+	"tray_recommend_update_cta": "Atualizar",
+	"tray_recommend_update_detail": "Atualize a CLI e o app juntos",
+	"tray_recommend_update_title": "O Atlas {version} está disponível",
+	"tray_summary_all_quiet": "Tudo calmo",
+	"tray_summary_failed": [
+		{
+			"declarations": [
+				"input count",
+				"local countExact = count",
+				"local countPlural = count: plural"
+			],
+			"selectors": [
+				"countExact",
+				"countPlural"
+			],
+			"match": {
+				"countExact=0, countPlural=*": "Nenhum falhou",
+				"countExact=*, countPlural=one": "{count} falhou",
+				"countExact=*, countPlural=*": "{count} falharam"
+			}
+		}
+	],
+	"tray_summary_needs_you": [
+		{
+			"declarations": [
+				"input count",
+				"local countExact = count",
+				"local countPlural = count: plural"
+			],
+			"selectors": [
+				"countExact",
+				"countPlural"
+			],
+			"match": {
+				"countExact=0, countPlural=*": "Nenhum precisa de você",
+				"countExact=*, countPlural=one": "{count} precisa de você",
+				"countExact=*, countPlural=*": "{count} precisam de você"
+			}
+		}
+	],
+	"tray_summary_up": "{count} no ar",
+	"tray_summary_working": "{count} trabalhando",
+	"tray_up_line": "{up}/{total} no ar"
+}

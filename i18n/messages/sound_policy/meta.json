@@ -1,0 +1,22 @@
+{
+	"sound_policy_agent_done_description": "Help line under the \"Agent is done\" sound row in Settings > Notifications & sounds: when that sound plays.",
+	"sound_policy_agent_done_label": "Name of the \"agent-done\" sound in Settings > Notifications & sounds (row title, and the Play button's accessible name).",
+	"sound_policy_agent_needs_you_description": "Help line under the \"Agent needs you\" sound row in Settings > Notifications & sounds: when that sound plays.",
+	"sound_policy_agent_needs_you_label": "Name of the \"agent-needs-you\" sound in Settings > Notifications & sounds (row title, and the Play button's accessible name).",
+	"sound_policy_boot_description": "Help line under the \"App opens\" sound row in Settings > Notifications & sounds: when that sound plays.",
+	"sound_policy_boot_label": "Name of the \"boot\" sound in Settings > Notifications & sounds (row title, and the Play button's accessible name).",
+	"sound_policy_discovery_done_description": "Help line under the \"Projects found\" sound row in Settings > Notifications & sounds: when that sound plays.",
+	"sound_policy_discovery_done_label": "Name of the \"discovery-done\" sound in Settings > Notifications & sounds (row title, and the Play button's accessible name).",
+	"sound_policy_error_description": "Help line under the \"Errors\" sound row in Settings > Notifications & sounds: when that sound plays.",
+	"sound_policy_error_label": "Name of the \"error\" sound in Settings > Notifications & sounds (row title, and the Play button's accessible name).",
+	"sound_policy_service_failed_description": "Help line under the \"Service failed\" sound row in Settings > Notifications & sounds: when that sound plays.",
+	"sound_policy_service_failed_label": "Name of the \"service-failed\" sound in Settings > Notifications & sounds (row title, and the Play button's accessible name).",
+	"sound_policy_stack_up_description": "Help line under the \"Stack is up\" sound row in Settings > Notifications & sounds: when that sound plays.",
+	"sound_policy_stack_up_label": "Name of the \"stack-up\" sound in Settings > Notifications & sounds (row title, and the Play button's accessible name).",
+	"sound_policy_success_description": "Help line under the \"Copied and saved\" sound row in Settings > Notifications & sounds: when that sound plays.",
+	"sound_policy_success_label": "Name of the \"success\" sound in Settings > Notifications & sounds (row title, and the Play button's accessible name).",
+	"sound_policy_toggle_description": "Help line under the \"Switches\" sound row in Settings > Notifications & sounds: when that sound plays.",
+	"sound_policy_toggle_label": "Name of the \"toggle\" sound in Settings > Notifications & sounds (row title, and the Play button's accessible name).",
+	"sound_policy_update_description": "Help line under the \"Update ready\" sound row in Settings > Notifications & sounds: when that sound plays.",
+	"sound_policy_update_label": "Name of the \"update\" sound in Settings > Notifications & sounds (row title, and the Play button's accessible name)."
+}

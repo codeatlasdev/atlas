@@ -12,6 +12,7 @@
 	import AgentLogo from "#lib/components/AgentLogo.svelte";
 	import { ws } from "#lib/stores/workspace.svelte.ts";
 	import { switcher } from "#lib/shell/switcher.svelte.ts";
+	import { m } from "#lib/i18n/m.ts";
 
 	const ICONS = {
 		terminal: SquareTerminal,
@@ -29,14 +30,18 @@
 			const t = ws.tab(id);
 			if (!t) return [];
 			const title =
-				t.kind === "services" ? "Panel" : t.customLabel ? t.label : (t.pty && ws.titles[t.pty]) || t.label;
+				t.kind === "services"
+					? m.shell_chrome_tab_switcher_panel()
+					: t.customLabel
+						? t.label
+						: (t.pty && ws.titles[t.pty]) || t.label;
 			return [{ id, title, agent: t.agent, Icon: ICONS[t.kind as keyof typeof ICONS] ?? SquareTerminal }];
 		}),
 	);
 </script>
 
 {#if switcher.s}
-	<div class="switcher" role="listbox" aria-label="Recent tabs">
+	<div class="switcher" role="listbox" aria-label={m.shell_chrome_tab_switcher_recent_tabs()}>
 		{#each items as it, i (it.id)}
 			<div class="row" class:on={i === switcher.s.index} role="option" aria-selected={i === switcher.s.index}>
 				{#if it.agent}<AgentLogo agent={it.agent} />{:else}<it.Icon size={14} />{/if}

@@ -1,8 +1,10 @@
 import { listen } from "@tauri-apps/api/event";
 import { toast } from "@codeatlasdev/ui";
 import { git, errText } from "#lib/api.ts";
+import { m } from "#lib/i18n/m.ts";
 import {
 	applyEvent,
+	commitErrorText,
 	idle,
 	parseEvent,
 	startState,
@@ -38,7 +40,7 @@ class CommitMessages {
 		if (this.run(worktreeId).phase === "running") return;
 		await this.loadProvider();
 		if (this.provider.state === "none") {
-			toast.info("Pick an agent for commit messages in Settings → Git");
+			toast.info(m.git_commit_pick_agent());
 			updates.show("git");
 			return;
 		}
@@ -46,12 +48,12 @@ class CommitMessages {
 		try {
 			request = await git.commitMsgGenerate(worktreeId, instruction);
 		} catch (e) {
-			const m = errText(e);
-			if (m === "no_provider") {
+			const reason = errText(e);
+			if (reason === "no_provider") {
 				this.provider = { state: "none" };
-				toast.info("Pick an agent for commit messages in Settings → Git");
+				toast.info(m.git_commit_pick_agent());
 				updates.show("git");
-			} else toast.error(m);
+			} else toast.error(commitErrorText(reason));
 			return;
 		}
 		this.runs[worktreeId] = startState(request);
@@ -66,7 +68,7 @@ class CommitMessages {
 			const next = applyEvent(this.run(worktreeId), ev, request);
 			this.runs[worktreeId] = next;
 			if (ev.kind === "chunk" || ev.kind === "done") this.sinks.get(worktreeId)?.(next.text);
-			if (ev.kind === "error") toast.error(ev.message);
+			if (ev.kind === "error") toast.error(commitErrorText(ev.message));
 			if (next.phase === "idle") off();
 		});
 	}

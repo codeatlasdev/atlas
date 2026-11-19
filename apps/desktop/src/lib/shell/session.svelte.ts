@@ -28,7 +28,6 @@ import { startAutoCleanup } from "#lib/stores/autoCleanup.svelte.ts";
 import { startMenu } from "#lib/menu.svelte.ts";
 import { startModalWatch } from "#lib/modalOpen.ts";
 import { metrics } from "#lib/panel/metrics.svelte.ts";
-import { shellCommands } from "#lib/shell/commands.svelte.ts";
 import { offerGhostty, startThemeCommands } from "#lib/shell/themeCommands.svelte.ts";
 import { shell } from "#lib/shell/shell.svelte.ts";
 import { agents } from "#lib/stores/agents.svelte.ts";
@@ -225,7 +224,13 @@ export function startSession(): () => void {
 	const stopModalWatch = startModalWatch();
 	loadPrefs().catch(() => {});
 	themes.init().then(offerGhostty, fail);
-	const unregister = register(shellCommands());
+	// The shell commands (and their ~100 labels) load right after the first paint: the registry is only read by a key
+	// chord, the palette and the shortcut list, and none of them needs it before the shell shows.
+	let unregister = () => {};
+	let stopped = false;
+	void import("#lib/shell/commands.svelte.ts").then(({ shellCommands }) => {
+		if (!stopped) unregister = register(shellCommands());
+	});
 	const stopThemeCommands = startThemeCommands();
 	hooks.launchAgent = (id, agent, prompt) => agents.launch(id, agent, { prompt });
 	exposeStores();
@@ -260,6 +265,7 @@ export function startSession(): () => void {
 	const stopErrors = startErrorHandler();
 	const stopAutoCleanup = startAutoCleanup();
 	return () => {
+		stopped = true;
 		unregister();
 		stopThemeCommands();
 		void stopMenu.then((f) => f());

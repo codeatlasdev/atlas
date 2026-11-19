@@ -6,8 +6,7 @@
 	import { Button, Checkbox, toast } from "@codeatlasdev/ui";
 	import { Archive, ChevronDown, ChevronRight, FolderOpen, TriangleAlert } from "@lucide/svelte";
 	import { invoke } from "@tauri-apps/api/core";
-	import { open as pickPath } from "@tauri-apps/plugin-dialog";
-	import { errText } from "#lib/api.ts";
+	import { api, errText } from "#lib/api.ts";
 	import { list } from "#lib/i18n/fmt.ts";
 	import { aroundSlot } from "#lib/i18n/slot.ts";
 	import { themes } from "#lib/stores/theme.svelte.ts";
@@ -87,11 +86,10 @@
 	});
 
 	async function choose(kind: "archive" | "folder") {
-		const path = await pickPath(
+		const path = await api.pickPath(
 			kind === "folder"
-				? { directory: true, multiple: false, title: m.settings_theme_import_package_choose_folder_title() }
+				? { directory: true, title: m.settings_theme_import_package_choose_folder_title() }
 				: {
-						multiple: false,
 						title: m.settings_theme_import_package_choose_archive_title(),
 						filters: [
 							{ name: m.settings_theme_import_package_filter_archive(), extensions: ["zip", "vsix"] },

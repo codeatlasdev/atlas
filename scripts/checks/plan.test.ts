@@ -210,6 +210,34 @@ describe("commands", () => {
 	});
 });
 
+// Incident: `bun run check:changed` on a change confined to atlas-desktop (a bin-only crate) failed at `doctests`:
+// `cargo test -p atlas-desktop --doc` says "no library targets found". Only packages with a library target have
+// doctests. (A change that also widened the scope to `--workspace` hid it, which is why it was found late.)
+describe("doctests only for packages with a library", () => {
+	const libs = ["atlas-core", "atlas-lsp", "atlas-tui", "atlas-skills", "atlas-host", "atlas-term"]; // atlas-cli and atlas-desktop are bin-only
+	const doc = (files: string[], opts = {}) => plan(files, graph, { libs, ...opts }).commands.find((c) => c.id === "doctests")?.cmd;
+
+	test("a change confined to a bin-only crate has no doctests step, and the other steps keep their scope", () => {
+		const p = plan(["crates/atlas-desktop/src/workspace.rs"], graph, { libs });
+		expect(p.commands.map((c) => c.id)).toEqual(["fmt", "clippy", "nextest", "i18n", "dup"]);
+		expect(p.commands.find((c) => c.id === "nextest")!.cmd).toBe("cargo nextest run -p atlas-desktop --locked");
+	});
+
+	test("a scoped change runs --doc for the library packages among the crates and their dependents only", () => {
+		expect(doc(["crates/atlas-lsp/src/manager.rs"])).toBe("cargo test -p atlas-host -p atlas-lsp --locked --doc");
+		expect(doc(["crates/atlas-core/src/fs.rs"])).toBe("cargo test -p atlas-core -p atlas-host -p atlas-lsp -p atlas-skills -p atlas-tui --locked --doc");
+	});
+
+	test("the whole workspace (the gate, an unknown path) keeps `--workspace`: cargo skips bin-only members itself", () => {
+		expect(plan(undefined, graph, { libs }).commands.find((c) => c.id === "doctests")!.cmd).toBe("cargo test --workspace --locked --doc");
+		expect(doc(["Cargo.lock"])).toBe("cargo test --workspace --locked --doc");
+	});
+
+	test("without library information every crate is assumed to have one (the planner stays pure)", () => {
+		expect(plan(["crates/atlas-desktop/src/x.rs"], graph).commands.find((c) => c.id === "doctests")!.cmd).toBe("cargo test -p atlas-desktop --locked --doc");
+	});
+});
+
 // A `cfg(windows)` break (a function only Unix calls became dead code there, #326) passed every Linux check and
 // failed only in CI's Windows job. With cargo-xwin, the loop lints the Windows target too.
 describe("windows lane", () => {

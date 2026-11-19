@@ -76,7 +76,7 @@ describe("the sentences carry the values of the wire in both languages", () => {
 		expect(pt).toContain("0.6.2");
 		expect(pt).toContain("9.9.9");
 		expect(pt).toContain("recursos de linguagem");
-		expect(pt).toContain("renderização rápida de terminais");
+		expect(pt).toContain("renderização rápida do terminal");
 		expect(pt).toContain("status dos agentes");
 		// Only the version differs: no feature clause.
 		const only = wire.status.find((s) => s.reasonCode && s.reasonArgs.missing.length === 0);

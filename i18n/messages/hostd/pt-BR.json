@@ -18,7 +18,7 @@
 	"hostd_wire_events_dropped": "Alguns eventos dos terminais se perderam sob carga. Os terminais foram ressincronizados.",
 	"hostd_wire_feature_agents": "status dos agentes",
 	"hostd_wire_feature_lsp": "recursos de linguagem",
-	"hostd_wire_feature_pty_attach_raw": "renderização rápida de terminais",
+	"hostd_wire_feature_pty_attach_raw": "renderização rápida do terminal",
 	"hostd_wire_lsp_crashed_repeated_hint": "Abra o log do servidor na barra de status e depois reinicie o servidor.",
 	"hostd_wire_lsp_crashed_repeated_message": "{server} falhou várias vezes seguidas",
 	"hostd_wire_lsp_crashed_start_hint": "Abra o log do servidor na barra de status ou reinicie o servidor.",

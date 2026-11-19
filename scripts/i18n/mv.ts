@@ -1,4 +1,4 @@
-// bun run i18n:mv <old_key> <new_key> [--new-area --surface s] [--json]
+// bun run i18n:mv <old_key> <new_key> [--new-area --surface s] [--into [--take <locale>=dup]] [--json]
 // Renames a key, moving it to the area its new name belongs to, in every locale: values, meta, lock stamps (a stale
 // translation stays stale: nothing is re-stamped), `{@old}` references in other messages, and the call sites in the
 // sources of every surface:
@@ -15,7 +15,7 @@ import { fix } from "./fix.ts";
 import { hash12 } from "./hash.ts";
 import { readLock, writeLock } from "./lock.ts";
 import { IMPORT, MESSAGE_MODULE, bracketHead, escapeRe, memberHead, messageBindings } from "./messageModule.ts";
-import { areaOfKey, KEY_PATTERN, loadSource, writeAreaFile, type Source } from "./source.ts";
+import { areaOfKey, consumedAreas, consumers, KEY_PATTERN, loadSource, writeAreaFile, type Source } from "./source.ts";
 import { loadCtx, type Ctx } from "./types.ts";
 import { ANNOTATION } from "./unused.ts";
 import { globToRegExp, lineOf, readText, rel, walk } from "./util.ts";
@@ -42,6 +42,10 @@ export interface MoveReport {
 export interface MoveOptions {
 	newArea?: boolean;
 	surface?: string;
+	/** Fold: `newKey` already exists with the same English; `oldKey` is deleted and its uses point at `newKey` (the target keeps its translations; a locale translated differently is refused unless `take` says otherwise). */
+	into?: boolean;
+	/** Fold only: locales where the duplicate's translation replaces the target's (the human decided it is the better one and the role is the same). English is never taken. */
+	take?: Record<string, "dup">;
 }
 
 const WEB = /\.(?:svelte|ts|tsx|js|jsx|mjs|astro)$/;
@@ -129,6 +133,8 @@ export function dynamicUses(text: string, file: string, oldKey: string): { line:
 	if (file.endsWith(".rs")) {
 		if (/\b(?:lookup_on|lookup|translate)\(/.test(text)) {
 			for (const m of text.matchAll(/\bformat!\(\s*"([^"{}\\]+)\{/g)) {
+				// only a key-shaped prefix (an area and `_`) can build a key: `format!("s{n}")` names a service, not a message
+				if (!/^[a-z][a-z0-9]*_[a-z0-9_]*$/.test(m[1])) continue;
 				if (oldKey.startsWith(m[1])) add(m.index ?? 0, `format!("${m[1]}…") builds keys that start like ${oldKey} next to a lookup: annotate it with i18n-keys or rename the generator`);
 			}
 		}
@@ -136,7 +142,8 @@ export function dynamicUses(text: string, file: string, oldKey: string): { line:
 	}
 	const { spaces, named } = messageBindings(text);
 	if (spaces.length === 0 && named.length === 0) return sorted(out);
-	let code = text;
+	// comments explain code (`a switch, never m[code]`): only code can reach a key. A `//` after `:` is a URL, not a comment.
+	let code = blank(text, /\/\*[\s\S]*?\*\/|(?<=^|[^:\\])\/\/[^\n]*/gm);
 	for (const m of text.matchAll(IMPORT)) {
 		if (!MESSAGE_MODULE.test(m[2])) continue;
 		const bare = (/\{([^}]*)\}/.exec(m[1])?.[1] ?? "").split(",").some((p) => p.trim() === oldKey);
@@ -172,6 +179,31 @@ export function dynamicUses(text: string, file: string, oldKey: string): { line:
 
 const sorted = (xs: { line: number; reason: string }[]) => [...new Map(xs.sort((a, b) => a.line - b.line).map((x) => [`${x.line}:${x.reason}`, x])).values()];
 
+/** A fold keeps the target's translations, so it must lose nothing: every locale where the duplicate says something else is refused, unless the human took the duplicate's. Throws before anything is written. */
+function checkFold(from: Area, oldKey: string, to: Area, newKey: string, take: Record<string, "dup">) {
+	const locales = [...new Set([...from.locales, ...to.locales])].filter((l) => l !== from.base);
+	for (const [l, who] of Object.entries(take)) {
+		if (who !== "dup") throw new CommandError(`--take ${l}=${who}: the only choice is ${l}=dup (the target's text is what a fold keeps; to keep the target's, fold without --take)`);
+		if (l === from.base) throw new CommandError(`--take ${l}=dup: the English is the same in both (--into requires it), there is nothing to take`);
+		if (!locales.includes(l)) throw new CommandError(`--take ${l}=dup: ${l} is not a locale (${locales.join(", ")})`);
+	}
+	const say = (a: Area, l: string, key: string) => a.entries.get(l)?.get(key)?.raw;
+	const differing = locales.filter((l) => {
+		const dup = say(from, l, oldKey);
+		return dup !== undefined && dup !== say(to, l, newKey);
+	});
+	for (const l of Object.keys(take)) if (!differing.includes(l)) throw new CommandError(`--take ${l}=dup: ${newKey} already says what ${oldKey} says in ${l} (or ${oldKey} has no ${l} text): there is nothing to take`);
+	const refused = differing.filter((l) => !take[l]);
+	if (!refused.length) return;
+	const lines = refused.map((l) => `  ${l}: ${newKey} ${say(to, l, newKey) ?? "(missing)"} / ${oldKey} ${say(from, l, oldKey)}`);
+	throw new CommandError(
+		`--into refuses: ${oldKey} and ${newKey} have the same English but are translated differently, and a fold keeps only one:\n${lines.join("\n")}\n` +
+			`  different roles (a state vs a verb, another gender, a tab vs a page title): keep both, add \`i18n-distinct: <the two roles>\` to the description.\n` +
+			`  same role and ${oldKey}'s ${refused.join(", ")} is the better one: --take ${refused.map((l) => `${l}=dup`).join(" --take ")}.\n` +
+			`  same role and ${newKey}'s is the better one: give ${oldKey} the same ${refused.join(", ")} text first, then fold.`,
+	);
+}
+
 export function moveKey(ctx: Ctx, oldKey: string, newKey: string, o: MoveOptions = {}): MoveReport {
 	const source = loadSource(ctx);
 	const names = [...source.areas.keys()];
@@ -179,8 +211,17 @@ export function moveKey(ctx: Ctx, oldKey: string, newKey: string, o: MoveOptions
 	if (!from) throw new CommandError(`no message "${oldKey}": find it with bun run i18n:find ${oldKey}`);
 	if (!KEY_PATTERN.test(newKey)) throw new CommandError(`"${newKey}" is not a key: snake_case, an area and a name (settings_display_language)`);
 	const taken = [...source.areas.values()].find((a) => a.entries.get(a.base)?.has(newKey));
-	if (taken) throw new CommandError(`${newKey} already exists in ${taken.dir}/en.json: see it with bun run i18n:find ${newKey}`);
-	let toName = areaOfKey(newKey, names);
+	if (taken && !o.into) throw new CommandError(`${newKey} already exists in ${taken.dir}/en.json: see it with bun run i18n:find ${newKey} (--into folds ${oldKey} into it when both say the same thing)`);
+	if (o.into && !taken) throw new CommandError(`--into folds ${oldKey} into an existing message, and ${newKey} does not exist: drop --into to rename`);
+	if (o.into && oldKey === newKey) throw new CommandError(`--into folds a message into another: ${oldKey} and ${newKey} are the same key`);
+	if (taken && o.into) {
+		const same = JSON.stringify(taken.entries.get(taken.base)?.get(newKey)?.value) === JSON.stringify(from.entries.get(from.base)?.get(oldKey)?.value);
+		if (!same) throw new CommandError(`--into needs the same English in both: ${oldKey} and ${newKey} differ (see them with bun run i18n:find)`);
+		const missing = consumers(source.config, from.name).filter((s) => !consumedAreas(source.config, s).includes(taken.name));
+		if (missing.length) throw new CommandError(`${missing.join(", ")} uses ${oldKey} but does not consume area ${taken.name}: move ${newKey} to a common area first`);
+		checkFold(from, oldKey, taken, newKey, o.take ?? {});
+	} else if (Object.keys(o.take ?? {}).length) throw new CommandError("--take goes with --into: it picks, per locale, which translation a fold keeps");
+	let toName = taken?.name ?? areaOfKey(newKey, names);
 	let createdArea = false;
 	if (!toName) {
 		if (!o.newArea) throw new CommandError(`no area for "${newKey}" (areas: ${names.join(", ")}): start the key with one of them, or create ${newKey.slice(0, newKey.indexOf("_"))} with --new-area --surface <${Object.keys(source.config.surfaces).join("|")}>`);
@@ -190,16 +231,24 @@ export function moveKey(ctx: Ctx, oldKey: string, newKey: string, o: MoveOptions
 	}
 	const report: MoveReport = { from: oldKey, to: newKey, fromArea: from.name, toArea: toName, updated: [], unproven: [], dynamic: [], notes: [] };
 
-	// lock stamps travel with the key
+	// lock stamps travel with the key (a fold drops them: the target keeps its own translation)
 	const stamps = new Map(from.locales.filter((l) => l !== from.base).map((l) => [l, readLock(ctx.root, from.name, l).byKey.get(oldKey)]));
 	for (const file of [...from.locales, "meta"]) {
 		const value = removeKey(ctx.root, from.name, file, oldKey);
-		if (value !== undefined) setKey(ctx.root, toName, file, newKey, value);
+		if (taken) {
+			if (o.take?.[file]) {
+				const was = readObject(ctx.root, areaPath(taken.name, file))[newKey];
+				setKey(ctx.root, taken.name, file, newKey, value);
+				report.notes.push(`${file}: ${newKey} now says ${JSON.stringify(value)} (${oldKey}'s); it said ${JSON.stringify(was)}`);
+			}
+		} else if (value !== undefined) setKey(ctx.root, toName, file, newKey, value);
 	}
 	for (const [l, stamp] of stamps) {
 		if (!stamp) continue;
 		writeLock(ctx.root, from.name, l, Object.fromEntries([...readLock(ctx.root, from.name, l).byKey].filter(([k]) => k !== oldKey)));
-		writeLock(ctx.root, toName, l, { ...Object.fromEntries(readLock(ctx.root, toName, l).byKey), [newKey]: stamp });
+		if (!taken) writeLock(ctx.root, toName, l, { ...Object.fromEntries(readLock(ctx.root, toName, l).byKey), [newKey]: stamp });
+		// the translation that was taken keeps the stamp it had: it is as fresh as it was under its old key
+		else if (o.take?.[l]) writeLock(ctx.root, taken.name, l, { ...Object.fromEntries(readLock(ctx.root, taken.name, l).byKey), [newKey]: stamp });
 	}
 	if (createdArea && o.surface) writeAreaFile(ctx.root, toName, { surface: o.surface });
 	if (!Object.keys(readObject(ctx.root, areaPath(from.name, "en"))).length) report.notes.push(`area ${from.name} is empty now: delete i18n/messages/${from.name}/`);
@@ -257,14 +306,16 @@ if (import.meta.main) {
 	const flag = (n: string) => (args.includes(n) ? args[args.indexOf(n) + 1] : undefined);
 	const json = args.includes("--json");
 	const root = flag("--root") ?? join(import.meta.dir, "..", "..");
-	const positional = args.filter((a, i) => !a.startsWith("--") && !["--surface", "--root"].includes(args[i - 1] ?? ""));
+	const takes = args.flatMap((a, i) => (args[i - 1] === "--take" ? [a] : []));
+	const positional = args.filter((a, i) => !a.startsWith("--") && !["--surface", "--root", "--take"].includes(args[i - 1] ?? ""));
+	const take = Object.fromEntries(takes.map((t) => [t.split("=")[0], t.split("=")[1]])) as Record<string, "dup">;
 	try {
 		const [oldKey, newKey] = positional;
-		if (!oldKey || !newKey) throw new CommandError("usage: bun run i18n:mv <old_key> <new_key> [--new-area --surface s]");
-		const r = moveKey(loadCtx(root), oldKey, newKey, { newArea: args.includes("--new-area"), surface: flag("--surface") });
+		if (!oldKey || !newKey) throw new CommandError("usage: bun run i18n:mv <old_key> <new_key> [--new-area --surface s | --into [--take <locale>=dup]]");
+		const r = moveKey(loadCtx(root), oldKey, newKey, { newArea: args.includes("--new-area"), surface: flag("--surface"), into: args.includes("--into"), take });
 		if (json) console.log(JSON.stringify(r, null, 2));
 		else {
-			console.log(`moved ${r.from} (${r.fromArea}) -> ${r.to} (${r.toArea})`);
+			console.log(`${args.includes("--into") ? "folded" : "moved"} ${r.from} (${r.fromArea}) -> ${r.to} (${r.toArea})`);
 			for (const u of r.updated) console.log(`  updated ${u.file}${u.line ? `:${u.line}` : ""}`);
 			for (const n of r.notes) console.log(`  note: ${n}`);
 		}

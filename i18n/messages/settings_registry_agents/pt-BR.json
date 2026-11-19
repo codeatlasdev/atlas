@@ -2,11 +2,8 @@
 	"settings_registry_agents_agent_args_description": "Flags de linha de comando adicionadas toda vez que esse agente inicia.",
 	"settings_registry_agents_agent_args_label": "Argumentos extras",
 	"settings_registry_agents_agent_custom_description": "Execute qualquer CLI de agente (OpenCode, Gemini CLI, Amp…) pelo menu + e com {key}.",
-	"settings_registry_agents_agent_custom_label": "Adicionar agente",
 	"settings_registry_agents_agent_default_description": "O que uma nova aba de agente inicia.",
-	"settings_registry_agents_agent_default_label": "Agente padrão",
 	"settings_registry_agents_agent_permissions_description": "Escolha se os agentes perguntam antes de executar ferramentas ou executam tudo por conta própria.",
-	"settings_registry_agents_agent_permissions_label": "Aprovação de ferramentas",
 	"settings_registry_agents_description": "Qual agente de código inicia por padrão, quanto ele pode fazer sozinho, agentes personalizados e comandos rápidos.",
 	"settings_registry_agents_dock_enabled_description": [
 		{
@@ -22,9 +19,6 @@
 			}
 		}
 	],
-	"settings_registry_agents_group_coding_agents": "Agentes de código",
-	"settings_registry_agents_group_custom_agents": "Agentes personalizados",
-	"settings_registry_agents_group_quick_commands": "Comandos rápidos",
 	"settings_registry_agents_label": "Agentes",
 	"settings_registry_agents_quick_description": "Botões de um clique na barra de abas que executam um comando ou enviam um prompt ao agente."
 }

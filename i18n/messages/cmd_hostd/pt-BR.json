@@ -15,7 +15,7 @@
 		}
 	],
 	"cmd_hostd_check_fix": "Como corrigir:",
-	"cmd_hostd_check_fix_asks": "pergunta antes",
+	"cmd_hostd_check_fix_asks": "pede confirmação",
 	"cmd_hostd_check_fix_asks_ends": "pergunta antes; encerra os terminais acima",
 	"cmd_hostd_check_fix_live": "repassa os terminais ao novo host sem perder nenhum",
 	"cmd_hostd_check_fix_restart": "reinicia agora (encerra os terminais em execução)",

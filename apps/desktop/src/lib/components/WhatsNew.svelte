@@ -315,7 +315,7 @@
 						</div>
 						<p class="hint">
 							{pct === null
-								? m.settings_updates_whats_new_download_unknown()
+								? m.settings_editor_view_downloading()
 								: m.settings_updates_whats_new_download_progress({
 										percent: pct,
 										total: formatBytes(u.progress.total),

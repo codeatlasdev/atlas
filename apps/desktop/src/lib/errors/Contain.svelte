@@ -15,7 +15,7 @@
 		where,
 		kind,
 		file,
-		title = m.shell_contain_default_title(),
+		title = m.shell_app_page_this_view_hit_an_error(),
 		hint = m.shell_contain_default_hint(),
 		close,
 		closeLabel,

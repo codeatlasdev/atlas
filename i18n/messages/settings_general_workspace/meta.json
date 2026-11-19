@@ -6,7 +6,10 @@
 	"settings_general_workspace_checked_every_15_minutes_pinned": "description prop (help line) of a <Row> component, in WorkspaceSettings (apps/desktop/src/lib/components/WorkspaceSettings.svelte). Extracted by i18n:extract: refine this description on review.",
 	"settings_general_workspace_clean_up": "Tooltip (title attribute) of a <Group> component, in WorkspaceSettings (apps/desktop/src/lib/components/WorkspaceSettings.svelte). Extracted by i18n:extract: refine this description on review.",
 	"settings_general_workspace_cleaned": "Description of a row in the list of worktrees cleaned automatically. {when} is a relative time such as '5 min ago', {branch} the kept branch.",
-	"settings_general_workspace_cleanup_idle": "Option of the automatic worktree cleanup control: remove a worktree nobody has used for a while.",
+	"settings_general_workspace_cleanup_idle": {
+		"description": "Option of the automatic worktree cleanup control: remove a worktree nobody has used for a while.",
+		"distinct": "a worktree nobody used (feminine, 'Inativa'); the other is an agent doing nothing ('Ocioso')"
+	},
 	"settings_general_workspace_cleanup_merged": "Option of the automatic worktree cleanup control: remove a worktree once its pull request is merged.",
 	"settings_general_workspace_custom_prefix": "label prop of a <Row> component, in WorkspaceSettings (apps/desktop/src/lib/components/WorkspaceSettings.svelte). Extracted by i18n:extract: refine this description on review.",
 	"settings_general_workspace_days_without_agent_activity_before": "description prop (help line) of a <Row> component, in WorkspaceSettings (apps/desktop/src/lib/components/WorkspaceSettings.svelte). Extracted by i18n:extract: refine this description on review.",

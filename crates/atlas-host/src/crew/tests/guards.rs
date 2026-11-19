@@ -28,7 +28,7 @@ fn git(dir: &Path, args: &[&str]) {
 }
 
 /// A project with one passing test and `origin/HEAD` on its only commit (the task's base).
-fn project(root: &Path) -> std::path::PathBuf {
+pub(super) fn project(root: &Path) -> std::path::PathBuf {
     let p = root.join("proj");
     std::fs::create_dir_all(p.join("src")).unwrap();
     git(&p, &["init", "-q", "-b", "main"]);
@@ -51,7 +51,7 @@ fn project(root: &Path) -> std::path::PathBuf {
     p
 }
 
-async fn crewmate_on(client: &HostClient, proj: &Path) -> String {
+pub(super) async fn crewmate_on(client: &HostClient, proj: &Path) -> String {
     client
         .call(
             "crewmate_create",
@@ -65,7 +65,7 @@ async fn crewmate_on(client: &HostClient, proj: &Path) -> String {
         .to_string()
 }
 
-async fn send(client: &HostClient, id: &str, prompt: &str) -> String {
+pub(super) async fn send(client: &HostClient, id: &str, prompt: &str) -> String {
     client
         .call(
             "crewmate_task",
@@ -79,7 +79,7 @@ async fn send(client: &HostClient, id: &str, prompt: &str) -> String {
 }
 
 /// The agent weakens the test (drops an assert) and says it is finished and verified.
-fn weakening_agent(root: &Path) -> std::path::PathBuf {
+pub(super) fn weakening_agent(root: &Path) -> std::path::PathBuf {
     let edit = "printf '#[test]\\nfn adds() {\\n    assert_eq!(1 + 1, 2);\\n}\\n' > src/tests.rs\n";
     let script = format!(
         "{edit}{}",
@@ -90,7 +90,7 @@ fn weakening_agent(root: &Path) -> std::path::PathBuf {
     fake_agent(root, "claude", &script)
 }
 
-async fn task_of(client: &HostClient, id: &str, task: &str) -> Value {
+pub(super) async fn task_of(client: &HostClient, id: &str, task: &str) -> Value {
     client
         .call("crewmate_tasks", json!({"id": id, "limit": 20}))
         .await

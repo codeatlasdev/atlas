@@ -16,6 +16,7 @@
 	import { worktrees } from "#lib/stores/worktrees.svelte.ts";
 	import { agents } from "#lib/stores/agents.svelte.ts";
 	import { host } from "#lib/host.ts";
+	import { m } from "#lib/i18n/m.ts";
 
 	const ADD = "__add__";
 	const PR_URL = /^https:\/\/github\.com\/[^/]+\/[^/]+\/pull\/(\d+)/;
@@ -34,7 +35,7 @@
 	let repos = $derived(store.sorted.filter((p) => !p.parent));
 	let agentOptions = $derived([
 		...agents.list.filter((a) => a.installed).map((a) => ({ value: a.id, label: a.label })),
-		{ value: "blank", label: "Blank terminal" },
+		{ value: "blank", label: m.git_new_worktree_dialog_blank_terminal() },
 	]);
 
 	$effect(() => {
@@ -60,7 +61,7 @@
 			repoId = v;
 			return;
 		}
-		const dir = await pickFolder({ directory: true, title: "Add atlas project" });
+		const dir = await pickFolder({ directory: true, title: m.git_new_worktree_dialog_add_project_title() });
 		if (typeof dir !== "string") return;
 		try {
 			const p = await api.add(dir);
@@ -108,7 +109,7 @@
 	}
 </script>
 
-<Dialog bind:open={worktrees.newDialog.open} title="New worktree" size="md">
+<Dialog bind:open={worktrees.newDialog.open} title={m.git_new_worktree_dialog_new_worktree()} size="md">
 	<form
 		class="form"
 		onsubmit={(e) => {
@@ -117,47 +118,63 @@
 		}}
 	>
 		<Combobox
-			label="Project"
+			label={m.git_new_worktree_dialog_project()}
 			value={repoId}
 			options={[
 				...repos.map((r) => ({ value: r.id, label: r.name })),
-				{ value: ADD, label: "Add a new project…" },
+				{ value: ADD, label: m.git_new_worktree_dialog_add_new_project() },
 			]}
 			onchange={(v) => typeof v === "string" && pickRepo(v)}
 		/>
 		<TextField
-			label="Name"
+			label={m.git_new_worktree_dialog_name()}
 			bind:value={name}
-			placeholder="Leave blank for a random name"
-			description="A GitHub PR or issue URL works too."
+			placeholder={m.git_new_worktree_dialog_leave_blank_for_a_random()}
+			description={m.git_new_worktree_dialog_a_github_pr_or_issue()}
 		/>
-		<Select label="Agent" value={agent} options={agentOptions} onchange={(v) => (agent = v)} />
+		<Select
+			label={m.git_new_worktree_dialog_agent()}
+			value={agent}
+			options={agentOptions}
+			onchange={(v) => (agent = v)}
+		/>
 		{#if agent !== "blank"}
 			<TextArea
-				label="Prompt"
+				label={m.git_new_worktree_dialog_prompt()}
 				bind:value={prompt}
-				placeholder="Optional first message to the agent"
+				placeholder={m.git_new_worktree_dialog_optional_first_message_to_the()}
 				rows={3}
 			/>
 		{/if}
-		<Collapsible title="Advanced">
+		<Collapsible title={m.git_new_worktree_dialog_advanced()}>
 			<div class="adv">
-				<TextField label="Branch name" bind:value={branch} placeholder="Derived from the name" />
+				<TextField
+					label={m.git_new_worktree_dialog_branch_name()}
+					bind:value={branch}
+					placeholder={m.git_new_worktree_dialog_derived_from_the_name()}
+				/>
 				<Combobox
-					label="Base ref"
+					label={m.git_new_worktree_dialog_base_ref()}
 					value={base}
-					placeholder="origin/<default branch>"
+					placeholder={m.git_new_worktree_dialog_origin_default_branch()}
 					options={refs.map((r) => ({ value: r, label: r }))}
 					onchange={(v) => typeof v === "string" && (base = v)}
 				/>
-				<Checkbox bind:checked={runSetup} label="Run setup script (worktree.setup)" />
+				<Checkbox
+					bind:checked={runSetup}
+					label={m.git_new_worktree_dialog_run_setup_script_worktree_setup()}
+				/>
 			</div>
 		</Collapsible>
 		<button type="submit" hidden aria-hidden="true"></button>
 	</form>
 	{#snippet actions()}
-		<Button variant="ghost" onclick={() => (worktrees.newDialog.open = false)}>Cancel</Button>
-		<Button disabled={!repoId || repoId === ADD || busy} onclick={create}>Create</Button>
+		<Button variant="ghost" onclick={() => (worktrees.newDialog.open = false)}
+			>{m.common_action_cancel()}</Button
+		>
+		<Button disabled={!repoId || repoId === ADD || busy} onclick={create}
+			>{m.git_create_pr_dialog_create()}</Button
+		>
 	{/snippet}
 </Dialog>
 

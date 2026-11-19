@@ -1,0 +1,8 @@
+{
+	"settings_registry_general_description": "One line under the General page title in Settings, and the tooltip of its sidebar entry.",
+	"settings_registry_general_group_updates": "Title of the \"Updates\" card on the General page of Settings, shown above its rows and in the path of search results.",
+	"settings_registry_general_label": "Sidebar entry and page title of the General section in Settings.",
+	"settings_registry_general_update_channel_description": "Help line under the \"Update channel\" row in Settings > General, also shown in search results.",
+	"settings_registry_general_update_channel_label": "Label of the \"Update channel\" row in Settings > General, also its title in search results.",
+	"settings_registry_general_updates_description": "Help line under the \"Updates\" row in Settings > General, also shown in search results."
+}

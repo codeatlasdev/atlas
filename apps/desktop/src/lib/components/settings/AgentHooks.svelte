@@ -9,6 +9,7 @@
 	import Group from "#lib/settings/Group.svelte";
 	import Row from "#lib/settings/Row.svelte";
 	import { agents } from "#lib/stores/agents.svelte.ts";
+	import { m } from "#lib/i18n/m.ts";
 
 	let busy = $state<string | null>(null);
 
@@ -22,29 +23,31 @@
 	}
 </script>
 
-<Group title="Agent hooks">
+<Group title={m.settings_general_agent_hooks_agent_hooks()}>
 	{#each agents.integrations as a, i (a.id)}
 		<Row
 			id={i === 0 ? "agent-integration" : undefined}
 			label={a.label}
 			description={a.state === "ok"
-				? "Reports when it works, waits for you or is done, and can use Atlas tools."
+				? m.settings_general_agent_hooks_state_ok()
 				: a.state === "missing"
-					? "Not connected: Atlas and Atlas Mobile cannot tell what it is doing."
-					: "Atlas could not tell if its hooks are on."}
+					? m.settings_general_agent_hooks_state_missing()
+					: m.settings_general_agent_hooks_state_unknown()}
 		>
 			{#snippet lead()}<AgentLogo agent={a.id} size={18} />{/snippet}
 			{#if a.state === "ok"}
-				<StatusChip status="success" label="On" />
+				<StatusChip status="success" label={m.settings_general_agent_hooks_on()} />
 			{:else}
-				<Button size="sm" disabled={busy === a.id} onclick={() => turnOn(a.id)}>Turn on</Button>
+				<Button size="sm" disabled={busy === a.id} onclick={() => turnOn(a.id)}
+					>{m.settings_general_agent_hooks_turn_on()}</Button
+				>
 			{/if}
 		</Row>
 	{:else}
 		<Row
 			id="agent-integration"
-			label="No agents found"
-			description="Install omp, Claude Code or Codex and they show up here, ready to connect."
+			label={m.settings_general_agent_hooks_no_agents_found()}
+			description={m.settings_general_agent_hooks_install_omp_claude_code_or()}
 		/>
 	{/each}
 </Group>

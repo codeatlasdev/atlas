@@ -1,0 +1,20 @@
+{
+  "pt-BR": {
+    "workbench_browser_address_placeholder": "5abdc514d812",
+    "workbench_browser_design_mode": "5faf1905bd13",
+    "workbench_browser_empty_hint": "31b9e4cdcf46",
+    "workbench_browser_failure_host": "4223c41763a6",
+    "workbench_browser_failure_offline": "ed41bf5e9318",
+    "workbench_browser_failure_other": "0d5571af32e2",
+    "workbench_browser_failure_refused": "baf5619cdc5e",
+    "workbench_browser_failure_timeout": "5969aa8102bf",
+    "workbench_browser_failure_title": "44ef86179980",
+    "workbench_browser_failure_tls": "31b80f3ad423",
+    "workbench_browser_forward": "990d8d96a43f",
+    "workbench_browser_open_in_browser": "e668a0a8ec79",
+    "workbench_browser_open_in_system_browser": "5ac0b739cd4b",
+    "workbench_browser_pick_hint": "77574ba73e26",
+    "workbench_browser_reload": "854555777b69",
+    "workbench_browser_with_screenshot": "fe9079685744"
+  }
+}

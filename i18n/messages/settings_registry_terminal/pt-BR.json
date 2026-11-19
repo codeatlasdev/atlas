@@ -1,0 +1,19 @@
+{
+	"settings_registry_terminal_click_to_move_description": "Clique na linha do prompt para mover o cursor até lá. Precisa de integração com o shell (só no terminal rápido).",
+	"settings_registry_terminal_clipboard_description": "Permite que comandos como o tmux ou sessões ssh coloquem texto na sua área de transferência.",
+	"settings_registry_terminal_contrast_description": "Clareia ou escurece o texto difícil de ler sobre o fundo (só no terminal rápido). 1 desativa; 4,5 atende às diretrizes de acessibilidade.",
+	"settings_registry_terminal_copy_on_select_description": "Copia o texto selecionado para a área de transferência quando você solta o mouse.",
+	"settings_registry_terminal_cursor_blink_description": "Faz o cursor do terminal piscar.",
+	"settings_registry_terminal_description": "Como os terminais e os agentes de código desenham e se comportam: renderizador, fonte, cursor, margem interna e área de transferência.",
+	"settings_registry_terminal_font_thicken_description": "Desenha o texto do terminal um pouco mais pesado, como o font-thicken do Ghostty. Ajuda fontes finas em fundos escuros.",
+	"settings_registry_terminal_gpu_description": "Desenha os terminais locais no chip gráfico: rolagem mais suave e saída mais rápida.",
+	"settings_registry_terminal_host_restart_description": "Reinicia o processo em segundo plano que mantém os terminais vivos, para usar uma nova versão do Atlas.",
+	"settings_registry_terminal_label": "Terminal",
+	"settings_registry_terminal_ligatures_description": "Junta caracteres como -> e != em símbolos únicos (só no terminal rápido).",
+	"settings_registry_terminal_option_as_alt_description": "Faz {key} enviar Alt em vez de digitar caracteres do macOS (só no terminal rápido).",
+	"settings_registry_terminal_scrollback_memory_description": "Máximo de memória que um terminal gasta com o scrollback, em MB. Um terminal largo guarda menos linhas que o valor acima para ficar dentro do limite (só no terminal rápido).",
+	"settings_registry_terminal_term_font_description": "Famílias de fonte em ordem; vale a primeira instalada, senão JetBrains Mono. Fontes variáveis funcionam.",
+	"settings_registry_terminal_term_padding_x_description": "Espaço à esquerda e à direita do texto do terminal, em pontos. A margem usa o fundo do terminal.",
+	"settings_registry_terminal_term_padding_y_description": "Espaço acima e abaixo do texto do terminal, em pontos. A margem usa o fundo do terminal.",
+	"settings_registry_terminal_term_size_description": "Tamanho do texto nos terminais, em pixels."
+}

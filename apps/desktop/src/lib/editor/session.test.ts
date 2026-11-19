@@ -1,6 +1,8 @@
 // @ts-nocheck bun test runtime types are not part of the app tsconfig
 import { expect, test } from "bun:test";
 import { longestLine, planOpen, planSave, toViewText } from "./session.ts";
+import { largeNotice } from "./largeFile.ts";
+import { m } from "#lib/i18n/m.ts";
 import { DEFAULT_PREFS } from "#lib/prefs.ts";
 import { growth, linearBound } from "../../../test/scaling.ts";
 
@@ -72,7 +74,7 @@ test("a minified one-liner is huge, skips indent sniffing, and opens in linear t
 		const raw = `{"a":${"1,".repeat(n / 2)}0}`;
 		const p = plan(raw, small);
 		expect(p.large.tier).toBe("huge");
-		expect(p.large.notice).toContain("Huge file");
+		expect(largeNotice(p.large.tier)).toBe(m.workbench_editor_notice_huge());
 		expect(p.large.disable.lsp).toBe(true);
 		return () => plan(raw, small);
 	};

@@ -2,6 +2,7 @@
 	/** Settings search results: a list of matches that jump to their section and row. */
 	import { crumb, type SettingEntry } from "#lib/settings/index.ts";
 	import PageHead from "#lib/settings/PageHead.svelte";
+	import { m } from "#lib/i18n/m.ts";
 
 	let {
 		results,
@@ -11,12 +12,10 @@
 </script>
 
 <PageHead
-	title={results.length
-		? `${results.length} ${results.length === 1 ? "setting" : "settings"}`
-		: "No settings found"}
+	title={m.settings_general_search_count({ count: results.length })}
 	description={results.length
-		? `Matching “${query.trim()}”.`
-		: "Try a shorter word, like “font”, “theme” or “branch”."}
+		? m.settings_general_search_matching({ query: query.trim() })
+		: m.settings_general_search_empty_hint()}
 />
 <div class="results">
 	{#each results as r (r.section + (r.tab ?? "") + r.id)}

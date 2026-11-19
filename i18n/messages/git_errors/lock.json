@@ -1,0 +1,21 @@
+{
+  "pt-BR": {
+    "git_errors_config_failed": "fec960acfaf0",
+    "git_errors_config_failed_output": "3b2682d6285b",
+    "git_errors_conflict": "be7b13342c3c",
+    "git_errors_details": "ebc7bf40f12e",
+    "git_errors_identity_email": "c65abf8700c3",
+    "git_errors_identity_name": "3a145ff4cfd6",
+    "git_errors_local_changes": "23c180a9ba63",
+    "git_errors_locked": "2466631feb65",
+    "git_errors_no_commits": "062d7f0f9988",
+    "git_errors_no_remote": "e77fce853207",
+    "git_errors_no_upstream": "0d419d708b97",
+    "git_errors_not_repo": "c06c37772dc2",
+    "git_errors_nothing_to_commit": "f57e6fe402f3",
+    "git_errors_other": "878625082bb1",
+    "git_errors_other_line": "155f9f910cc9",
+    "git_errors_rejected": "e76b9d5acc5e",
+    "git_errors_remote_access": "a5a090aa71f4"
+  }
+}

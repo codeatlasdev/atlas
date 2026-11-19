@@ -56,7 +56,7 @@
 	"settings_terminal_tab_osc52_allow": "Sempre permitir",
 	"settings_terminal_tab_osc52_ask": "Perguntar a cada vez",
 	"settings_terminal_tab_osc52_deny": "Nunca",
-	"settings_terminal_tab_padding": "Margem interna",
+	"settings_terminal_tab_padding": "Espaçamento",
 	"settings_terminal_tab_programs_can_copy_to_your": "Programas podem copiar para a sua área de transferência",
 	"settings_terminal_tab_renderer": "Renderizador",
 	"settings_terminal_tab_restart_host_body": "Os terminais e agentes em execução terminam. As abas continuam; use Reiniciar em cada uma para reabri-las.",

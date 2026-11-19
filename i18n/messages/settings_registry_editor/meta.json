@@ -2,7 +2,10 @@
 	"settings_registry_editor_buffer_line_height_description": "Help line under the \"Line spacing\" row in Settings > Editor, also shown in search results.",
 	"settings_registry_editor_buffer_size_description": "Help line under the \"Code font size\" row in Settings > Editor, also shown in search results.",
 	"settings_registry_editor_description": "One line under the Editor page title in Settings, and the tooltip of its sidebar entry.",
-	"settings_registry_editor_group_editing": "Title of the \"Editing\" card on the Editor page of Settings, shown above its rows and in the path of search results.",
+	"settings_registry_editor_group_editing": {
+		"description": "Title of the \"Editing\" card on the Editor page of Settings, shown above its rows and in the path of search results.",
+		"distinct": "a settings group (a noun, 'Edição'); the other is an agent's working line ('Editando')"
+	},
 	"settings_registry_editor_label": "Sidebar entry and page title of the Editor section in Settings.",
 	"settings_registry_editor_lsp_custom_description": "Help line under the \"Custom language server\" row in Settings > Editor, also shown in search results.",
 	"settings_registry_editor_lsp_custom_label": "Label of the \"Custom language server\" row in Settings > Editor, also its title in search results.",

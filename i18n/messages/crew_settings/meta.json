@@ -45,7 +45,10 @@
 		"description": "Task state shown after \"Task finished:\" in an Audit row; the value hostd wrote.",
 		"distinct": "a lowercase state word inside a sentence, not the Done button"
 	},
-	"crew_settings_audit_task_state_failed": "Task state shown after \"Task finished:\" in an Audit row; the value hostd wrote.",
+	"crew_settings_audit_task_state_failed": {
+		"description": "Task state shown after \"Task finished:\" in an Audit row; the value hostd wrote.",
+		"distinct": "a task state beside running/cancelled (a condition, 'com falha'); the deploy word reports an outcome"
+	},
 	"crew_settings_audit_task_state_queued": "Task state shown after \"Task finished:\" in an Audit row; the value hostd wrote.",
 	"crew_settings_audit_task_state_running": "Task state shown after \"Task finished:\" in an Audit row; the value hostd wrote.",
 	"crew_settings_audit_task_state_waiting_action": "Task state shown after \"Task finished:\" in an Audit row; the value hostd wrote.",

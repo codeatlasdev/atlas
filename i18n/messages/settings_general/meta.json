@@ -73,7 +73,10 @@
 	"settings_general_sound_master_switch_for_every_atlas": "description prop (help line) of a <Row> component, in SoundSettings (apps/desktop/src/lib/components/settings/SoundSettings.svelte). Extracted by i18n:extract: refine this description on review.",
 	"settings_general_sound_on_top_of_your_system": "description prop (help line) of a <Row> component, in SoundSettings (apps/desktop/src/lib/components/settings/SoundSettings.svelte). Extracted by i18n:extract: refine this description on review.",
 	"settings_general_sound_only_the_ones_that_need": "description prop (help line) of a <Row> component, in SoundSettings (apps/desktop/src/lib/components/settings/SoundSettings.svelte). Extracted by i18n:extract: refine this description on review.",
-	"settings_general_sound_play": "Button label in the <Button> component, in SoundSettings (apps/desktop/src/lib/components/settings/SoundSettings.svelte). Extracted by i18n:extract: refine this description on review.",
+	"settings_general_sound_play": {
+		"description": "Button label in the <Button> component, in SoundSettings (apps/desktop/src/lib/components/settings/SoundSettings.svelte). Extracted by i18n:extract: refine this description on review.",
+		"distinct": "plays a sound ('Tocar'); the other plays a video ('Reproduzir')"
+	},
 	"settings_general_sound_play_label": "Accessible name of the preview button of a sound row. {sound} is the sound's name.",
 	"settings_general_sound_play_sounds": "label prop of a <Row> component, in SoundSettings (apps/desktop/src/lib/components/settings/SoundSettings.svelte). Extracted by i18n:extract: refine this description on review.",
 	"settings_general_sound_play_user_interface_sound_effects": "Text in the <Alert> component, in SoundSettings (apps/desktop/src/lib/components/settings/SoundSettings.svelte). Extracted by i18n:extract: refine this description on review. i18n-allow glossary:settings",

@@ -78,7 +78,8 @@
 		"description": "Title of the credit card for the Dracula themes."
 	},
 	"settings_theme_filter_all": {
-		"description": "Option of the theme grid filter: show every theme."
+		"description": "Option of the theme grid filter: show every theme.",
+		"distinct": "agrees with 'temas' (masculine); the other filters 'tarefas' (feminine)"
 	},
 	"settings_theme_ghostty_banner_dismiss": {
 		"description": "Accessible name of the X button of the Ghostty banner."
@@ -93,7 +94,8 @@
 		"description": "Button of the Ghostty banner: close it for now."
 	},
 	"settings_theme_ghostty_banner_preview": {
-		"description": "Button of the Ghostty banner: show the theme preview."
+		"description": "Button of the Ghostty banner: show the theme preview.",
+		"distinct": "a button (a verb, 'Pré-visualizar'); the other is a row label (a noun)"
 	},
 	"settings_theme_ghostty_banner_reading": {
 		"description": "Text of the Ghostty banner while it reads the config."

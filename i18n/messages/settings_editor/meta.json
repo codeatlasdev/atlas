@@ -60,7 +60,10 @@
 	"settings_editor_rows_display": "Tooltip (title attribute) of a <Group> component, in EditorRows (apps/desktop/src/lib/settings/EditorRows.svelte). Extracted by i18n:extract: refine this description on review.",
 	"settings_editor_rows_draw_a_faint_vertical_line": "description prop (help line) of a <Row> component, in EditorRows (apps/desktop/src/lib/settings/EditorRows.svelte). Extracted by i18n:extract: refine this description on review.",
 	"settings_editor_rows_draw_dots_for_spaces_and": "description prop (help line) of a <Row> component, in EditorRows (apps/desktop/src/lib/settings/EditorRows.svelte). Extracted by i18n:extract: refine this description on review.",
-	"settings_editor_rows_editing": "Tooltip (title attribute) of a <Group> component, in EditorRows (apps/desktop/src/lib/settings/EditorRows.svelte). Extracted by i18n:extract: refine this description on review.",
+	"settings_editor_rows_editing": {
+		"description": "Tooltip (title attribute) of a <Group> component, in EditorRows (apps/desktop/src/lib/settings/EditorRows.svelte). Extracted by i18n:extract: refine this description on review.",
+		"distinct": "a settings group (a noun, 'Edição'); the other is an agent's working line ('Editando')"
+	},
 	"settings_editor_rows_end_every_file_with_exactly": "description prop (help line) of a <Row> component, in EditorRows (apps/desktop/src/lib/settings/EditorRows.svelte). Extracted by i18n:extract: refine this description on review.",
 	"settings_editor_rows_files_bigger_than_this_open": "description prop (help line) of a <Row> component, in EditorRows (apps/desktop/src/lib/settings/EditorRows.svelte). Extracted by i18n:extract: refine this description on review.",
 	"settings_editor_rows_give_each_level_of_nested": "description prop (help line) of a <Row> component, in EditorRows (apps/desktop/src/lib/settings/EditorRows.svelte). Extracted by i18n:extract: refine this description on review.",

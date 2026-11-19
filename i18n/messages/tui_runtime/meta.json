@@ -41,7 +41,10 @@
 	"tui_runtime_running_notice": "First line of the prompt shown when another TUI owns the project. {pid} is its pid; tui_runtime_kill_confirm follows on the next line.",
 	"tui_runtime_state_degraded": "State of a service in the TUI service menu and the `atlas dev` console lines: it answers, but its readiness probe fails or the same error repeats.",
 	"tui_runtime_state_disabled": "State of a service in the TUI service menu and the `atlas dev` console lines: stopped by hand or left out of this run.",
-	"tui_runtime_state_failed": "State of a service in the TUI service menu and the `atlas dev` console lines: it exited with an error or gave up restarting.",
+	"tui_runtime_state_failed": {
+		"description": "State of a service in the TUI service menu and the `atlas dev` console lines: it exited with an error or gave up restarting.",
+		"distinct": "a service condition beside 'parado' and 'rodando'; the deploy word reports an outcome"
+	},
 	"tui_runtime_state_running": "State of a service in the TUI service menu and the `atlas dev` console lines: up and answering.",
 	"tui_runtime_state_starting": "State of a service in the TUI service menu and the `atlas dev` console lines: the process was launched and is not up yet.",
 	"tui_runtime_state_stopped": "State of a service in the TUI service menu, the `atlas dev` console lines and the footer: not running, stopped on purpose or finished.",

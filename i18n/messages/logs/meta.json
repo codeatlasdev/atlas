@@ -10,7 +10,10 @@
 	"logs_empty_reset_filters": "label prop of a <Chip> component, in LogsEmpty (apps/desktop/src/lib/components/logs/LogsEmpty.svelte). Extracted by i18n:extract: refine this description on review.",
 	"logs_empty_stack_is_stopped": "Tooltip (title attribute) of a <EmptyState> component, in LogsEmpty (apps/desktop/src/lib/components/logs/LogsEmpty.svelte). Extracted by i18n:extract: refine this description on review.",
 	"logs_empty_waiting_for_output": "Tooltip (title attribute) of a <EmptyState> component, in LogsEmpty (apps/desktop/src/lib/components/logs/LogsEmpty.svelte). Extracted by i18n:extract: refine this description on review.",
-	"logs_filter_bar_all": "Chip that clears the service filter in the logs filter bar: shows the lines of every service.",
+	"logs_filter_bar_all": {
+		"description": "Chip that clears the service filter in the logs filter bar: shows the lines of every service.",
+		"distinct": "agrees with 'serviços' (masculine); the other filters 'tarefas' (feminine)"
+	},
 	"logs_filter_bar_all_levels": "Chip of the log level filter: show every level. The other chips are the level names warn+ and error+.",
 	"logs_link_outside_project": "Toast when a file link clicked in the logs points outside the project folder; {path} is the link target.",
 	"logs_new_lines": "Pill at the bottom of the logs while scrolled up: lines arrived below. {count} picks the plural; {amount} is the formatted number (9999+ past that).",
@@ -64,7 +67,10 @@
 	"logs_status_lines": "Line count in the logs status bar. {count} picks the plural; {amount} is the same number formatted for the language.",
 	"logs_status_lines_of_total": "Line count in the logs status bar while a filter narrows the view: shown lines out of the buffered ones. {total} is already formatted.",
 	"logs_status_warnings": "Warning line count in the logs status bar (shown only when there is one).",
-	"logs_status_working": "label prop of a <Spinner> component, in LogsStatus (apps/desktop/src/lib/components/logs/LogsStatus.svelte). Extracted by i18n:extract: refine this description on review.",
+	"logs_status_working": {
+		"description": "label prop of a <Spinner> component, in LogsStatus (apps/desktop/src/lib/components/logs/LogsStatus.svelte). Extracted by i18n:extract: refine this description on review.",
+		"distinct": "a spinner of a process ('Processando'); the other is an agent at work ('Trabalhando')"
+	},
 	"logs_tools_copy_filtered_lines": "Tooltip (title attribute) of a <button> element, in LogsTools (apps/desktop/src/lib/components/logs/LogsTools.svelte). Extracted by i18n:extract: refine this description on review.",
 	"logs_tools_copy_for_ai": "Accessible name (aria-label, read by screen readers) of a <button> element, in LogsTools (apps/desktop/src/lib/components/logs/LogsTools.svelte). Extracted by i18n:extract: refine this description on review.",
 	"logs_tools_copy_last_lines_for_ai": "Tooltip of the Copy for AI button in the logs toolbar; {lines} is how many lines it copies.",

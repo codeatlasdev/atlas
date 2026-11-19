@@ -4,7 +4,7 @@
 	"cmd_setup_action_create": "criar",
 	"cmd_setup_action_remove": "remover",
 	"cmd_setup_action_skipped": "ignorado",
-	"cmd_setup_action_up_to_date": "em dia",
+	"cmd_setup_action_up_to_date": "atualizado",
 	"cmd_setup_action_update": "atualizar",
 	"cmd_setup_applied_nothing_to_remove": "nada para remover",
 	"cmd_setup_binary_unknown": "não foi possível localizar o binário do atlas",

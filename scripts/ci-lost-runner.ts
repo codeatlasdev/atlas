@@ -39,6 +39,8 @@ const FAILED: Record<string, true> = { failure: true, timed_out: true, startup_f
 export const failed = (conclusion: string | null): boolean => conclusion !== null && FAILED[conclusion] === true;
 
 export type Job = {
+  /** The job's id (set by fetchJobs; the rules do not need it). */
+  id?: number;
   name: string;
   conclusion: string | null;
   /** The messages of the job's failure-level annotations (only read for a failed or cancelled job). */
@@ -130,7 +132,7 @@ export async function fetchJobs(repo: string, runId: number, attempt: number): P
             ),
           )
         : [];
-      return { name: j.name, conclusion: j.conclusion, failures };
+      return { id: j.id, name: j.name, conclusion: j.conclusion, failures };
     }),
   );
 }

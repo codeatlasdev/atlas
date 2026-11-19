@@ -64,7 +64,7 @@
 </script>
 
 {#if loadError}
-	<LoadError what="your agent settings" error={loadError} />
+	<LoadError what="agents" error={loadError} />
 {/if}
 
 <Group title="Coding agents">

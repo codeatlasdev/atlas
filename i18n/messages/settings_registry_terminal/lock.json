@@ -1,0 +1,21 @@
+{
+  "pt-BR": {
+    "settings_registry_terminal_click_to_move_description": "9cf48f66039f",
+    "settings_registry_terminal_clipboard_description": "5c8259e6d5f2",
+    "settings_registry_terminal_contrast_description": "028fe75f3b65",
+    "settings_registry_terminal_copy_on_select_description": "0127393cf299",
+    "settings_registry_terminal_cursor_blink_description": "65a5b2af193e",
+    "settings_registry_terminal_description": "9be5c210c677",
+    "settings_registry_terminal_font_thicken_description": "43ea62b82bf0",
+    "settings_registry_terminal_gpu_description": "f6ca8557d69f",
+    "settings_registry_terminal_host_restart_description": "115b3b5b13a6",
+    "settings_registry_terminal_label": "ccb3afc48bd9",
+    "settings_registry_terminal_ligatures_description": "477519fd1273",
+    "settings_registry_terminal_option_as_alt_description": "384dfb7be5b2",
+    "settings_registry_terminal_scrollback_memory_description": "9643b5d6357e",
+    "settings_registry_terminal_term_font_description": "44585fe2cb53",
+    "settings_registry_terminal_term_padding_x_description": "d5842c309fb3",
+    "settings_registry_terminal_term_padding_y_description": "044d1699436c",
+    "settings_registry_terminal_term_size_description": "f085ad1b840a"
+  }
+}

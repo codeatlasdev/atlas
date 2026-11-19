@@ -1,0 +1,114 @@
+{
+	"settings_general_hygiene_dir_browser_profile": "browser profile",
+	"settings_general_hygiene_dir_cache": "cache",
+	"settings_general_hygiene_dir_instance": "instance",
+	"settings_general_hygiene_dir_temp": "temp",
+	"settings_general_hygiene_done_ended": [
+		{
+			"declarations": [
+				"input count",
+				"local countExact = count",
+				"local countPlural = count: plural"
+			],
+			"selectors": [
+				"countExact",
+				"countPlural"
+			],
+			"match": {
+				"countExact=0, countPlural=*": "Ended no processes",
+				"countExact=*, countPlural=one": "Ended {count} process",
+				"countExact=*, countPlural=*": "Ended {count} processes"
+			}
+		}
+	],
+	"settings_general_hygiene_done_freed": "freed {size}",
+	"settings_general_hygiene_done_marked": [
+		{
+			"declarations": [
+				"input count",
+				"local countExact = count",
+				"local countPlural = count: plural"
+			],
+			"selectors": [
+				"countExact",
+				"countPlural"
+			],
+			"match": {
+				"countExact=0, countPlural=*": "marked no folders never-index",
+				"countExact=*, countPlural=one": "marked {count} folder never-index",
+				"countExact=*, countPlural=*": "marked {count} folders never-index"
+			}
+		}
+	],
+	"settings_general_hygiene_done_survivors": [
+		{
+			"declarations": [
+				"input count",
+				"local countExact = count",
+				"local countPlural = count: plural"
+			],
+			"selectors": [
+				"countExact",
+				"countPlural"
+			],
+			"match": {
+				"countExact=0, countPlural=*": "none still running",
+				"countExact=*, countPlural=one": "{count} still running (stuck in the kernel)",
+				"countExact=*, countPlural=*": "{count} still running (stuck in the kernel)"
+			}
+		}
+	],
+	"settings_general_hygiene_fix_would": "Fix would {todo}.",
+	"settings_general_hygiene_group_agents_leave_browsers_dev_servers": "Agents leave browsers, dev servers and caches behind. Fix ends only processes Atlas tagged whose owner is gone, and frees only folders Atlas registered. target/, node_modules and worktrees are never removed.",
+	"settings_general_hygiene_group_fix": "Fix",
+	"settings_general_hygiene_group_hygiene": "Hygiene",
+	"settings_general_hygiene_group_orphans_and_disk": "Orphans and disk",
+	"settings_general_hygiene_kind_agent": "agent",
+	"settings_general_hygiene_kind_browser": "browser",
+	"settings_general_hygiene_kind_other": "other",
+	"settings_general_hygiene_kind_service": "service",
+	"settings_general_hygiene_kind_terminal": "terminal",
+	"settings_general_hygiene_node_modules": "node_modules {size}",
+	"settings_general_hygiene_nothing_to_clean": "Nothing to clean: no orphans, no registered folder over its cap.",
+	"settings_general_hygiene_owner_gone": "owner gone",
+	"settings_general_hygiene_scan_first": "Scan to list orphaned processes and the disk each project holds.",
+	"settings_general_hygiene_target": "target {size}",
+	"settings_general_hygiene_todo_end": [
+		{
+			"declarations": [
+				"input count",
+				"local countExact = count",
+				"local countPlural = count: plural"
+			],
+			"selectors": [
+				"countExact",
+				"countPlural"
+			],
+			"match": {
+				"countExact=0, countPlural=*": "end no orphaned processes",
+				"countExact=*, countPlural=one": "end {count} orphaned process",
+				"countExact=*, countPlural=*": "end {count} orphaned processes"
+			}
+		}
+	],
+	"settings_general_hygiene_todo_free": "free {size}",
+	"settings_general_hygiene_todo_spotlight": [
+		{
+			"declarations": [
+				"input count",
+				"local countExact = count",
+				"local countPlural = count: plural"
+			],
+			"selectors": [
+				"countExact",
+				"countPlural"
+			],
+			"match": {
+				"countExact=0, countPlural=*": "keep Spotlight out of no folders",
+				"countExact=*, countPlural=one": "keep Spotlight out of {count} folder",
+				"countExact=*, countPlural=*": "keep Spotlight out of {count} folders"
+			}
+		}
+	],
+	"settings_general_hygiene_total": "total {size}"
+}

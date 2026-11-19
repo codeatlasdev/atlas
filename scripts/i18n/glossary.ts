@@ -80,7 +80,7 @@ export function termRegex(term: string): RegExp {
 }
 
 export interface TextIssue {
-	rule: "dnt" | "glossary" | "pt-pt";
+	rule: "dnt" | "glossary" | "pt-pt" | "pt-time";
 	severity: "error" | "warn";
 	message: string;
 }
@@ -120,6 +120,10 @@ export function ptPtHits(text: string): { word: string; use: string }[] {
 	return hits;
 }
 
+/** A preposition glued to a time placeholder: "às {time}", "à {time}", "das {hora}". Which one is right depends on the
+ * hour (à 01:00, às 13:00), and the code passes a formatted string, so no pt-BR message may put one before a time. */
+const PT_TIME = /(?<![\p{L}])(?:às|à|das|da)\s+\{[^{}]*(?:time|hora|hour|clock)[^{}]*\}/iu;
+
 /** Text rules for one translated key: `source` and `target` are the human-readable texts (all variants). */
 export function textIssues(opts: {
 	glossary: Glossary;
@@ -145,6 +149,10 @@ export function textIssues(opts: {
 		}
 	}
 	if (locale === "pt-BR") {
+		const time = PT_TIME.exec(target);
+		if (time) {
+			out.push({ rule: "pt-time", severity: "error", message: `"${time[0]}": à 01:00 but às 13:00, so a preposition before a time is wrong for one hour of the day; write "reinicia: {time}" or "hoje, {time}" (i18n/style/pt-BR.md, "Horas")` });
+		}
 		for (const h of ptPtHits(target)) {
 			if (!allowed(description, "pt-pt", h.word)) {
 				out.push({ rule: "pt-pt", severity: "error", message: `"${h.word}" is pt-PT; pt-BR says ${h.use} (waive with \`i18n-allow pt-pt:${h.word.toLowerCase()}\`)` });

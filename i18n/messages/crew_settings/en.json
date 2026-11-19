@@ -47,7 +47,7 @@
 	"crew_settings_audit_task_state_running": "running",
 	"crew_settings_audit_task_state_waiting_action": "waiting for an action",
 	"crew_settings_automations_section_add_automation": "Add automation",
-	"crew_settings_automations_section_add_one_below_or_just": "Add one below, or just ask {name} in the chat: “every weekday at 9, review the open PRs”.",
+	"crew_settings_automations_section_add_one_below_or_just": "Add one below, or just ask {name} in the chat: \"every weekday at 9, review the open PRs\".",
 	"crew_settings_automations_section_automation_on": "Automation on",
 	"crew_settings_automations_section_edit_automation": "Edit automation",
 	"crew_settings_automations_section_next": "Next: {when}",

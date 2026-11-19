@@ -34,11 +34,16 @@ function sample(fn: () => unknown, reps: number, runs: number): number {
  * How many times more CPU `prepare(n * factor)()` takes than `prepare(n)()`. `prepare` builds the input (not timed)
  * and returns the operation. The operation is repeated enough times that the small size costs at least `minMs` of CPU,
  * so the clock's resolution does not matter.
+ *
+ * The answer is the median ratio of `rounds` rounds. `process.cpuUsage` counts every thread of the process, so a JIT
+ * or GC thread busy during one sample can still inflate a ratio after the minimum of `runs`: a linear pass once
+ * measured 38.6 (bound 24) on a CI runner, 6.8 to 9.5 everywhere else. One stray round no longer decides; a quadratic
+ * regression is ~64 in every round and stays red (`src/lib/scaling.test.ts`).
  */
 export function growth(
 	prepare: (n: number) => () => unknown,
 	n: number,
-	{ factor = 8, runs = 7, minMs = 4 } = {},
+	{ factor = 8, runs = 7, minMs = 4, rounds = 3 } = {},
 ): number {
 	const small = prepare(n);
 	const big = prepare(n * factor);
@@ -46,7 +51,9 @@ export function growth(
 	big(); // warm up: JIT, caches
 	let reps = 1;
 	while (sample(small, reps, 1) < minMs && reps < 1 << 22) reps *= 2;
-	return sample(big, reps, runs) / sample(small, reps, runs);
+	const ratios = Array.from({ length: rounds }, () => sample(big, reps, runs) / sample(small, reps, runs));
+	ratios.sort((a, b) => a - b);
+	return ratios[Math.floor(ratios.length / 2)];
 }
 
 /**

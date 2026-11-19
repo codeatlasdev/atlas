@@ -3,6 +3,7 @@
  * would (single quotes, double quotes, backslash escapes), `formatArgs` is its inverse.
  * Pure; no variable or glob expansion.
  */
+import { m } from "#lib/i18n/m.ts";
 
 export type ParsedArgs = { ok: true; args: string[] } | { ok: false; error: string };
 
@@ -29,7 +30,7 @@ export function parseArgs(text: string): ParsedArgs {
 			quote = c;
 			inWord = true;
 		} else if (c === "\\") {
-			if (i + 1 >= text.length) return { ok: false, error: "A backslash at the end has nothing to escape." };
+			if (i + 1 >= text.length) return { ok: false, error: m.settings_editor_args_trailing_backslash() };
 			cur += text[++i];
 			inWord = true;
 		} else if (/\s/.test(c)) {
@@ -41,7 +42,15 @@ export function parseArgs(text: string): ParsedArgs {
 			inWord = true;
 		}
 	}
-	if (quote) return { ok: false, error: `Missing closing ${quote === '"' ? "double" : "single"} quote.` };
+	if (quote) {
+		return {
+			ok: false,
+			error:
+				quote === '"'
+					? m.settings_editor_args_missing_double_quote()
+					: m.settings_editor_args_missing_single_quote(),
+		};
+	}
 	if (inWord) args.push(cur);
 	return { ok: true, args };
 }

@@ -21,6 +21,7 @@
 	import { NativeView, listenFontFallback, termPrefs } from "./terminal/nativeView.ts";
 	import { Pointer } from "./terminal/pointer.ts";
 	import TermSearchBar from "./terminal/TermSearchBar.svelte";
+	import { m } from "#lib/i18n/m.ts";
 
 	let {
 		tab,
@@ -252,9 +253,9 @@
 			if (e.payload.tab !== tab) return;
 			const t = e.payload.text;
 			const preview = t.length > 80 ? `${t.slice(0, 80)}…` : t;
-			const ok = await confirmDialog("Copy to clipboard?", {
-				description: `A program in this terminal wants to copy ${t.length} characters to the clipboard:\n\n${preview}`,
-				confirmLabel: "Allow",
+			const ok = await confirmDialog(m.workbench_term_clipboard_title(), {
+				description: `${m.workbench_term_clipboard_description({ count: t.length })}\n\n${preview}`,
+				confirmLabel: m.crew_chat_approval_prompt_allow(),
 			});
 			if (ok) void navigator.clipboard.writeText(t);
 		});
@@ -327,7 +328,7 @@
 			bind:this={input}
 			class="sink"
 			data-term-tab={tab}
-			aria-label="Terminal input"
+			aria-label={m.crew_onboarding_engine_sign_in_terminal_input()}
 			autocomplete="off"
 			autocapitalize="off"
 			spellcheck="false"

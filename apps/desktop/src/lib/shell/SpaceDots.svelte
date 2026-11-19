@@ -6,6 +6,7 @@
 	import Tip from "#lib/components/Tip.svelte";
 	import { tick } from "svelte";
 	import { projectMenuItems } from "./projectMenu.ts";
+	import { m } from "#lib/i18n/m.ts";
 
 	/**
 	 * Arc's space strip: one icon per project at the bottom of the sidebar (its emoji, icon, logo
@@ -26,7 +27,7 @@
 </script>
 
 {#if shell.spaces.length > 1}
-	<div class="spaces" role="tablist" aria-label="Projects" data-tour="spaces">
+	<div class="spaces" role="tablist" aria-label={m.shell_chrome_space_dots_projects()} data-tour="spaces">
 		{#each shell.spaces as s, i (s.id)}
 			{@const on = s.id === shell.activeId}
 			<Tip label={s.name} command={i < 9 ? `shell::Space${i + 1}` : undefined} side="top">

@@ -7,40 +7,44 @@ import type { EditorView } from "@codemirror/view";
 import type { Command } from "#lib/keymap.svelte.ts";
 import { activeEditor } from "#lib/shell/editors.ts";
 import { sessionOf } from "#lib/editor/registry.ts";
+import { m } from "#lib/i18n/m.ts";
 
 const focused = () => {
 	const v = activeEditor();
 	return v && v.dom.contains(document.activeElement) ? v : undefined;
 };
 
-/** Palette entries only: ids and labels, the work lives in `editor/keymap.ts` (lazy). */
-const COMMANDS: { id: string; label: string }[] = [
-	{ id: "editor::TrimTrailingWhitespace", label: "Trim trailing whitespace" },
-	{ id: "editor::ConvertIndentationToSpaces", label: "Convert indentation to spaces" },
-	{ id: "editor::ConvertIndentationToTabs", label: "Convert indentation to tabs" },
-	{ id: "editor::FoldAllCommand", label: "Fold all" },
-	{ id: "editor::UnfoldAllCommand", label: "Unfold all" },
-	{ id: "editor::SortLinesAscending", label: "Sort lines ascending" },
-	{ id: "editor::SortLinesDescending", label: "Sort lines descending" },
-	{ id: "editor::DuplicateLine", label: "Duplicate line" },
-	{ id: "editor::ReindentSelectionCommand", label: "Reindent selection" },
-	{ id: "editor::TransformToUppercase", label: "Transform to uppercase" },
-	{ id: "editor::TransformToLowercase", label: "Transform to lowercase" },
-	{ id: "editor::JoinLinesCommand", label: "Join lines" },
+/** Palette entries only: ids and names, the work lives in `editor/keymap.ts` (lazy). A name is a message read when the palette opens. */
+const COMMANDS: { id: string; label: () => string }[] = [
+	{ id: "editor::TrimTrailingWhitespace", label: () => m.workbench_editor_cmd_trim_whitespace() },
+	{ id: "editor::ConvertIndentationToSpaces", label: () => m.workbench_editor_convert_to_spaces() },
+	{ id: "editor::ConvertIndentationToTabs", label: () => m.workbench_editor_convert_to_tabs() },
+	{ id: "editor::FoldAllCommand", label: () => m.workbench_editor_cmd_fold_all() },
+	{ id: "editor::UnfoldAllCommand", label: () => m.workbench_editor_cmd_unfold_all() },
+	{ id: "editor::SortLinesAscending", label: () => m.workbench_editor_cmd_sort_ascending() },
+	{ id: "editor::SortLinesDescending", label: () => m.workbench_editor_cmd_sort_descending() },
+	{ id: "editor::DuplicateLine", label: () => m.workbench_editor_cmd_duplicate_line() },
+	{ id: "editor::ReindentSelectionCommand", label: () => m.workbench_editor_cmd_reindent() },
+	{ id: "editor::TransformToUppercase", label: () => m.workbench_editor_cmd_uppercase() },
+	{ id: "editor::TransformToLowercase", label: () => m.workbench_editor_cmd_lowercase() },
+	{ id: "editor::JoinLinesCommand", label: () => m.workbench_editor_cmd_join_lines() },
 ];
 
 const run = (id: string, v: EditorView) =>
-	void import("#lib/editor/keymap.ts").then((m) => m.editorCommands.find((c) => c.id === id)?.run(v));
+	void import("#lib/editor/keymap.ts").then((mod) => mod.editorCommands.find((c) => c.id === id)?.run(v));
 
 const session = () => {
 	const v = focused();
 	return v ? sessionOf(v) : undefined;
 };
 
+/** Commands are registered once at startup: `label` is a getter, so the palette reads the app's language each time it shows one. */
 export const editorShellCommands = (): Command[] => [
 	...COMMANDS.map(({ id, label }) => ({
 		id,
-		label,
+		get label() {
+			return label();
+		},
 		run: () => {
 			const v = focused();
 			if (v) run(id, v);
@@ -49,7 +53,9 @@ export const editorShellCommands = (): Command[] => [
 	})),
 	{
 		id: "editor::ToggleSoftWrap",
-		label: "Toggle word wrap",
+		get label() {
+			return m.workbench_editor_cmd_toggle_wrap();
+		},
 		run: () => {
 			const s = session();
 			if (s) s.setWrap(!s.wrap);
@@ -58,7 +64,9 @@ export const editorShellCommands = (): Command[] => [
 	},
 	{
 		id: "editor::RevertFile",
-		label: "Revert file",
+		get label() {
+			return m.workbench_editor_cmd_revert_file();
+		},
 		run: () => void session()?.revert(),
 		when: () => !!session()?.dirty,
 	},

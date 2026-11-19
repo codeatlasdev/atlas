@@ -1,0 +1,11 @@
+{
+	"settings_registry_help_checklist_description": "Traz de volta o cartão de primeiros passos ou recomeça.",
+	"settings_registry_help_checklist_label": "Checklist de primeiros passos",
+	"settings_registry_help_description": "Refaça o tour, consulte um atalho ou traga o checklist de volta.",
+	"settings_registry_help_group_help": "Ajuda",
+	"settings_registry_help_help_keys_description": "Todos os atalhos, com pesquisa.",
+	"settings_registry_help_help_keys_label": "Guia rápido de atalhos",
+	"settings_registry_help_label": "Ajuda e primeiros passos",
+	"settings_registry_help_tour_description": "Um tour curto por espaços, cabeçalho, painel e pesquisa.",
+	"settings_registry_help_tour_label": "Tour guiado"
+}

@@ -1,7 +1,8 @@
 import { toast } from "@codeatlasdev/ui";
 import { errText } from "#lib/api.ts";
-import { gitToast } from "#lib/gitToast.ts";
+import { gitToast, ghToast } from "#lib/gitToast.ts";
 import { host } from "#lib/host.ts";
+import { m } from "#lib/i18n/m.ts";
 import {
 	classifyGhView,
 	ghAuth,
@@ -119,16 +120,16 @@ class Prs {
 			timeout_ms: 120_000,
 		});
 		if (r.code !== 0) gitToast(r.stderr || r.stdout);
-		else toast.success(`Pushed ${branch} to ${remote}`);
+		else toast.success(m.git_github_pushed({ branch, remote }));
 		return r.code === 0;
 	}
 
 	/** Asks for the address of the GitHub repository and adds it as a remote. True when one was added. */
 	async addRemote(worktreeId: string, name: string): Promise<boolean> {
-		const url = await promptDialog("Add a remote", {
-			description: "The address of the repository on GitHub, e.g. https://github.com/owner/repo.git",
+		const url = await promptDialog(m.git_github_add_remote(), {
+			description: m.git_github_add_remote_body(),
 			placeholder: "https://github.com/owner/repo.git",
-			confirmLabel: "Add remote",
+			confirmLabel: m.git_github_add_remote_confirm(),
 		});
 		if (!url) return false;
 		const r = await host.exec(this.dir(worktreeId), ["git", "remote", "add", name, url]);
@@ -168,7 +169,7 @@ class Prs {
 	async create(worktreeId: string, a: { title: string; body: string; base: string; draft: boolean }) {
 		const push = await host.exec(this.dir(worktreeId), ["git", "push"], { timeout_ms: 120_000 });
 		if (push.code !== 0) {
-			gitToast(push.stderr || "git push failed");
+			gitToast(push.stderr);
 			return;
 		}
 		const args = ["pr", "create", "--title", a.title, "--body", a.body];
@@ -176,13 +177,13 @@ class Prs {
 		if (a.draft) args.push("--draft");
 		const r = await this.gh(worktreeId, args, 120_000);
 		if (r.code !== 0) {
-			toast.error(r.stderr || "gh pr create failed");
+			ghToast(r.stderr || r.stdout, m.git_github_create_failed());
 			return;
 		}
 		const n = Number(r.stdout.trim().match(/\/pull\/(\d+)/)?.[1]);
 		const w = ws.worktree(worktreeId);
 		if (w && n) w.linkedPr = n;
-		toast.success(`PR #${n} created`);
+		toast.success(m.git_github_created({ number: n }));
 		this.openTab(worktreeId);
 	}
 
@@ -193,11 +194,11 @@ class Prs {
 	async run(worktreeId: string, args: string[], ok: string) {
 		try {
 			const r = await this.gh(worktreeId, args, 120_000);
-			if (r.code !== 0) throw r.stderr || "gh failed";
+			if (r.code !== 0) return ghToast(r.stderr || r.stdout);
 			toast.success(ok);
 			await this.lookup(worktreeId);
 		} catch (e) {
-			toast.error(errText(e));
+			ghToast(errText(e));
 		}
 	}
 }

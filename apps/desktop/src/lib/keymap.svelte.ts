@@ -16,6 +16,19 @@ export interface Command {
 	when?: () => boolean;
 }
 
+/**
+ * Commands named by a message (`label: () => m.some_key()`). `label` becomes a getter, read each time the palette
+ * or the shortcut list shows it, so a language switch reaches commands that were registered at startup.
+ */
+export function named(list: (Omit<Command, "label"> & { label: () => string })[]): Command[] {
+	return list.map((c) => ({
+		...c,
+		get label() {
+			return c.label();
+		},
+	}));
+}
+
 const commands = new Map<string, Command>();
 
 /** Register commands; returns an unregister function. */

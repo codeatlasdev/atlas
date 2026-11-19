@@ -13,6 +13,8 @@
 	import Row from "./Row.svelte";
 	import TextInput from "./TextInput.svelte";
 	import { savePref } from "./savePref.ts";
+	import { m } from "#lib/i18n/m.ts";
+	import { kbd } from "#lib/keys.ts";
 
 	let p = $derived(prefs.value);
 	let t = $derived(p.terminal);
@@ -21,9 +23,9 @@
 
 	/** Ends every terminal: the app reconnects and starts the current host. */
 	async function restart() {
-		const ok = await confirmDialog("Restart the terminal host?", {
-			description: "Running terminals and agents end. Tabs stay; use Restart on each to reopen them.",
-			confirmLabel: "Restart",
+		const ok = await confirmDialog(m.settings_terminal_tab_restart_host_title(), {
+			description: m.settings_terminal_tab_restart_host_body(),
+			confirmLabel: m.settings_host_action_restart(),
 			destructive: true,
 		});
 		if (ok) await restartHost();
@@ -48,21 +50,25 @@
 	const ANSI_SLOTS = [0, 1, 2, 3, 4, 5, 6, 7];
 </script>
 
-<Group title="Renderer">
+<Group title={m.settings_terminal_tab_renderer()}>
 	{#if gpu.supported}
 		<Row
 			id="gpu"
-			label="Fast terminal (GPU)"
-			description="Draws local terminals on the graphics chip for smoother scrolling and faster output. Applies to terminals you open afterwards. SSH terminals always use the classic renderer."
+			label={m.settings_terminal_tab_fast_terminal_gpu()}
+			description={m.settings_terminal_tab_draws_local_terminals_on_the()}
 		>
-			<Switch aria-label="Fast terminal (GPU)" checked={gpu.terminal} onchange={(v) => setGpuTerminal(v)} />
+			<Switch
+				aria-label={m.settings_terminal_tab_fast_terminal_gpu()}
+				checked={gpu.terminal}
+				onchange={(v) => setGpuTerminal(v)}
+			/>
 			{#snippet below()}
 				{#if gpu.terminal && gpu.hostTooOld}
 					<div class="notice">
-						<span
-							>The running terminal host is from an older Atlas, so terminals use the classic renderer.</span
+						<span>{m.settings_terminal_tab_the_running_terminal_host_is()}</span>
+						<Button size="sm" variant="outlined" onclick={restart}
+							>{m.settings_terminal_tab_restart_terminal_host()}</Button
 						>
-						<Button size="sm" variant="outlined" onclick={restart}>Restart terminal host</Button>
 					</div>
 				{/if}
 			{/snippet}
@@ -70,31 +76,37 @@
 	{/if}
 	<Row
 		id="host-restart"
-		label="Terminal host"
-		description="The background process that keeps terminals alive. Restart it to pick up a new Atlas version; running terminals end."
+		label={m.settings_terminal_tab_terminal_host()}
+		description={m.settings_terminal_tab_the_background_process_that_keeps()}
 	>
-		<Button size="sm" variant="outlined" onclick={restart}>Restart terminal host</Button>
+		<Button size="sm" variant="outlined" onclick={restart}
+			>{m.settings_terminal_tab_restart_terminal_host()}</Button
+		>
 	</Row>
 </Group>
 
-<Group title="Text">
+<Group title={m.settings_terminal_tab_text()}>
 	<Row
 		id="term-font"
-		label="Terminal font"
-		description="Font families in order, like a CSS list. The first one installed wins, else JetBrains Mono. Variable fonts work."
+		label={m.settings_terminal_tab_terminal_font()}
+		description={m.settings_terminal_tab_font_families_in_order_like()}
 		stack
 	>
 		<TextInput
 			mono
 			width="100%"
-			label="Terminal font"
+			label={m.settings_terminal_tab_terminal_font()}
 			value={t.font_family}
 			onchange={(v) => save({ font_family: v })}
 		/>
 	</Row>
-	<Row id="term-size" label="Terminal font size" description="Text size in terminals.">
+	<Row
+		id="term-size"
+		label={m.settings_terminal_tab_terminal_font_size()}
+		description={m.settings_terminal_tab_text_size_in_terminals()}
+	>
 		<NumInput
-			label="Terminal font size"
+			label={m.settings_terminal_tab_terminal_font_size()}
 			unit="px"
 			value={t.font_size}
 			onchange={(v) => save({ font_size: v })}
@@ -102,11 +114,11 @@
 	</Row>
 	<Row
 		id="font-thicken"
-		label="Thicken glyphs"
-		description="Draw text slightly heavier. Helps thin fonts on dark backgrounds."
+		label={m.settings_terminal_tab_thicken_glyphs()}
+		description={m.settings_terminal_tab_draw_text_slightly_heavier_helps()}
 	>
 		<Switch
-			aria-label="Thicken glyphs"
+			aria-label={m.settings_terminal_tab_thicken_glyphs()}
 			checked={t.font_thicken}
 			onchange={(v) => save({ font_thicken: v })}
 		/>
@@ -114,18 +126,22 @@
 	{#if gpu.supported}
 		<Row
 			id="ligatures"
-			label="Ligatures"
-			description="Join characters like -> and != into single symbols. Fast terminal only."
+			label={m.settings_terminal_tab_ligatures()}
+			description={m.settings_terminal_tab_join_characters_like_and_into()}
 		>
-			<Switch aria-label="Ligatures" checked={t.ligatures} onchange={(v) => save({ ligatures: v })} />
+			<Switch
+				aria-label={m.settings_terminal_tab_ligatures()}
+				checked={t.ligatures}
+				onchange={(v) => save({ ligatures: v })}
+			/>
 		</Row>
 		<Row
 			id="contrast"
-			label="Minimum contrast"
-			description="Lightens or darkens text that is hard to read on its background. 4.5 (the default) meets WCAG AA; 1 turns it off. Fast terminal only."
+			label={m.settings_terminal_tab_minimum_contrast()}
+			description={m.settings_terminal_tab_lightens_or_darkens_text_that()}
 		>
 			<NumInput
-				label="Minimum contrast"
+				label={m.settings_terminal_tab_minimum_contrast()}
 				value={t.minimum_contrast}
 				onchange={(v) => save({ minimum_contrast: v, minimum_contrast_chosen: true })}
 			/>
@@ -133,26 +149,38 @@
 	{/if}
 </Group>
 
-<Group title="Cursor">
-	<Row id="cursor-shape" label="Cursor shape" description="How the cursor looks in terminals.">
+<Group title={m.settings_terminal_tab_cursor()}>
+	<Row
+		id="cursor-shape"
+		label={m.settings_terminal_tab_cursor_shape()}
+		description={m.settings_terminal_tab_how_the_cursor_looks_in()}
+	>
 		<div class="select">
 			<Select
 				size="sm"
 				value={t.cursor_shape}
 				options={[
-					{ value: "block", label: "Block" },
-					{ value: "bar", label: "Bar" },
-					{ value: "underline", label: "Underline" },
-					{ value: "hollow", label: "Hollow" },
+					{ value: "block", label: m.settings_terminal_tab_cursor_block() },
+					{ value: "bar", label: m.settings_terminal_tab_cursor_bar() },
+					{ value: "underline", label: m.settings_terminal_tab_cursor_underline() },
+					{ value: "hollow", label: m.settings_terminal_tab_cursor_hollow() },
 				]}
 				onchange={(v) => save({ cursor_shape: v as Prefs["terminal"]["cursor_shape"] })}
 			/>
 		</div>
 	</Row>
-	<Row id="cursor-blink" label="Blinking cursor" description="Make the cursor blink.">
-		<Switch aria-label="Blinking cursor" checked={t.blinking} onchange={(v) => save({ blinking: v })} />
+	<Row
+		id="cursor-blink"
+		label={m.settings_terminal_tab_blinking_cursor()}
+		description={m.settings_terminal_tab_make_the_cursor_blink()}
+	>
+		<Switch
+			aria-label={m.settings_terminal_tab_blinking_cursor()}
+			checked={t.blinking}
+			onchange={(v) => save({ blinking: v })}
+		/>
 	</Row>
-	<Row label="Preview">
+	<Row label={m.settings_terminal_font_rows_preview()}>
 		{#snippet below()}
 			<div
 				class="term"
@@ -160,6 +188,7 @@
 					? 500
 					: 400}; padding: {t.padding_y}px {t.padding_x}px"
 			>
+				<!-- i18n-ignore: a sample prompt and command, drawn as the terminal would -->
 				<div>
 					<span style="color: {asText(2)}">~/atlas</span>
 					<span style="color: {asText(4)}">main</span>
@@ -179,14 +208,14 @@
 	</Row>
 </Group>
 
-<Group title="Padding">
+<Group title={m.settings_terminal_tab_padding()}>
 	<Row
 		id="term-padding-x"
-		label="Horizontal padding"
-		description="Space left and right of the text. The margin uses the terminal background."
+		label={m.settings_terminal_tab_horizontal_padding()}
+		description={m.settings_terminal_tab_space_left_and_right_of()}
 	>
 		<NumInput
-			label="Horizontal padding"
+			label={m.settings_terminal_tab_horizontal_padding()}
 			unit="pt"
 			value={t.padding_x}
 			onchange={(v) => save({ padding_x: v })}
@@ -194,11 +223,11 @@
 	</Row>
 	<Row
 		id="term-padding-y"
-		label="Vertical padding"
-		description="Space above and below the text. The margin uses the terminal background."
+		label={m.settings_terminal_tab_vertical_padding()}
+		description={m.settings_terminal_tab_space_above_and_below_the()}
 	>
 		<NumInput
-			label="Vertical padding"
+			label={m.settings_terminal_tab_vertical_padding()}
 			unit="pt"
 			value={t.padding_y}
 			onchange={(v) => save({ padding_y: v })}
@@ -206,14 +235,14 @@
 	</Row>
 </Group>
 
-<Group title="Behavior">
+<Group title={m.settings_terminal_tab_behavior()}>
 	<Row
 		id="scrollback"
-		label="Scrollback"
-		description="Lines of output each terminal remembers. More lines use more memory."
+		label={m.settings_terminal_tab_scrollback()}
+		description={m.settings_terminal_tab_lines_of_output_each_terminal()}
 	>
 		<NumInput
-			label="Scrollback"
+			label={m.settings_terminal_tab_scrollback()}
 			unit="lines"
 			value={t.max_scroll_history_lines}
 			onchange={(v) => save({ max_scroll_history_lines: v })}
@@ -222,11 +251,11 @@
 	{#if gpu.supported}
 		<Row
 			id="scrollback-memory"
-			label="Scrollback memory"
-			description="Most memory one terminal spends on its scrollback. A wide terminal keeps fewer lines than the setting above to stay inside it (fast terminal only)."
+			label={m.settings_terminal_tab_scrollback_memory()}
+			description={m.settings_terminal_tab_most_memory_one_terminal_spends()}
 		>
 			<NumInput
-				label="Scrollback memory"
+				label={m.settings_terminal_tab_scrollback_memory()}
 				unit="MB"
 				value={Math.round(t.scrollback_bytes / MB)}
 				onchange={(v) => save({ scrollback_bytes: v * MB })}
@@ -235,28 +264,28 @@
 	{/if}
 	<Row
 		id="clipboard"
-		label="Programs can copy to your clipboard"
-		description="Lets commands, such as tmux or a remote shell, put text on your clipboard."
+		label={m.settings_terminal_tab_programs_can_copy_to_your()}
+		description={m.settings_terminal_tab_lets_commands_such_as_tmux()}
 	>
 		<SegmentedControl
-			aria-label="Programs can copy to your clipboard"
+			aria-label={m.settings_terminal_tab_programs_can_copy_to_your()}
 			size="sm"
 			value={t.osc52}
 			items={[
-				{ value: "ask", label: "Ask each time" },
-				{ value: "allow", label: "Always allow" },
-				{ value: "deny", label: "Never" },
+				{ value: "ask", label: m.settings_terminal_tab_osc52_ask() },
+				{ value: "allow", label: m.settings_terminal_tab_osc52_allow() },
+				{ value: "deny", label: m.settings_terminal_tab_osc52_deny() },
 			]}
 			onchange={(v) => save({ osc52: v as Prefs["terminal"]["osc52"] })}
 		/>
 	</Row>
 	<Row
 		id="copy-on-select"
-		label="Copy on select"
-		description="Selecting text copies it to the clipboard as soon as you release the mouse."
+		label={m.settings_terminal_tab_copy_on_select()}
+		description={m.settings_terminal_tab_selecting_text_copies_it_to()}
 	>
 		<Switch
-			aria-label="Copy on select"
+			aria-label={m.settings_terminal_tab_copy_on_select()}
 			checked={t.copy_on_select}
 			onchange={(v) => save({ copy_on_select: v })}
 		/>
@@ -264,29 +293,29 @@
 	{#if gpu.supported}
 		<Row
 			id="click-to-move"
-			label="Click to move the cursor"
-			description="Clicking on the prompt line moves the cursor there. Needs shell integration (OSC 133 prompt marks); fast terminal only."
+			label={m.settings_terminal_tab_click_to_move_the_cursor()}
+			description={m.settings_terminal_tab_clicking_on_the_prompt_line()}
 		>
 			<Switch
-				aria-label="Click to move the cursor"
+				aria-label={m.settings_terminal_tab_click_to_move_the_cursor()}
 				checked={t.click_to_move}
 				onchange={(v) => save({ click_to_move: v })}
 			/>
 		</Row>
 		<Row
 			id="option-as-alt"
-			label="Option key as Alt"
-			description="Makes ⌥ send Alt (⌥B jumps back a word) instead of typing a macOS character such as ∫. Fast terminal only."
+			label={m.settings_terminal_tab_option_key_as_alt()}
+			description={m.settings_terminal_tab_option_as_alt_description({ key: kbd("alt-b") })}
 		>
 			<SegmentedControl
-				aria-label="Option key as Alt"
+				aria-label={m.settings_terminal_tab_option_key_as_alt()}
 				size="sm"
 				value={t.option_as_alt}
 				items={[
-					{ value: "both", label: "Both" },
-					{ value: "left", label: "Left" },
-					{ value: "right", label: "Right" },
-					{ value: "none", label: "Off" },
+					{ value: "both", label: m.settings_terminal_tab_option_both() },
+					{ value: "left", label: m.settings_terminal_tab_option_left() },
+					{ value: "right", label: m.settings_terminal_tab_option_right() },
+					{ value: "none", label: m.settings_general_git_option_off() },
 				]}
 				onchange={(v) => save({ option_as_alt: v as Prefs["terminal"]["option_as_alt"] })}
 			/>

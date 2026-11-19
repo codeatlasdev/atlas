@@ -1,0 +1,18 @@
+{
+	"settings_general_agent_form_args_error": "Argumentos: {error}",
+	"settings_general_agent_form_command_error": "Comando: {error}",
+	"settings_general_agent_form_command_required": "Informe o comando que inicia o agente.",
+	"settings_general_agent_form_env_pair": "Ambiente: \"{line}\" não está no formato CHAVE=valor.",
+	"settings_general_agent_form_env_reserved": "Ambiente: {key} é definida pelo Atlas; as variáveis ATLAS_ são reservadas.",
+	"settings_general_agent_form_name_letters": "O nome precisa ter pelo menos uma letra ou um dígito.",
+	"settings_general_agent_form_name_required": "Dê um nome ao agente.",
+	"settings_general_agent_form_resume_error": "Retomar: {error}",
+	"settings_general_agent_hooks_agent_hooks": "Hooks dos agentes",
+	"settings_general_agent_hooks_install_omp_claude_code_or": "Instale omp, Claude Code ou Codex e eles aparecem aqui, prontos para conectar.",
+	"settings_general_agent_hooks_no_agents_found": "Nenhum agente encontrado",
+	"settings_general_agent_hooks_on": "Ativo",
+	"settings_general_agent_hooks_state_missing": "Não conectado: o Atlas e o Atlas Mobile não sabem o que ele está fazendo.",
+	"settings_general_agent_hooks_state_ok": "Informa quando está trabalhando, quando espera você e quando termina, e pode usar as ferramentas do Atlas.",
+	"settings_general_agent_hooks_state_unknown": "O Atlas não conseguiu verificar se os hooks estão ativos.",
+	"settings_general_agent_hooks_turn_on": "Ativar"
+}

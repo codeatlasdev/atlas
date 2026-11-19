@@ -1,0 +1,23 @@
+{
+	"shell_toasts_action_started": "Toast after an atlas.yaml action was started from the palette or a key. {action} is the action's own label from atlas.yaml, shown as is.",
+	"shell_toasts_atlas_yaml_created": "Toast after Atlas wrote an atlas.yaml for a discovered folder. {name} is the project name.",
+	"shell_toasts_branch_preserved": "Toast after deleting a worktree whose branch was kept because it was not merged. {branch} is the branch name.",
+	"shell_toasts_checked_out_elsewhere": "Error toast when git refuses the switch because the branch is checked out in another worktree. {branch} is the branch; {path} the other worktree's folder.",
+	"shell_toasts_copied_url": "Toast after the connection URL of a service (a database, a queue) was copied. {url} is the URL.",
+	"shell_toasts_created_and_switched": "Toast after creating a branch from the branch picker and switching to it. {branch} is the new branch name.",
+	"shell_toasts_seed_cloned": "Part of the toast shown when a new worktree is ready: which folders were cloned from the main checkout. {dirs} is a comma-separated list of folder names; {ms} is milliseconds.",
+	"shell_toasts_seed_failed": "Detail shown after a folder name in the new worktree toast when seeding that folder failed with no reason from the backend.",
+	"shell_toasts_seed_not_relocatable": "Part of the toast shown when a new worktree is ready: a Python virtualenv folder cannot be copied. {dir} is the folder name.",
+	"shell_toasts_seed_unsupported": "Part of the toast shown when a new worktree is ready: folders that were not cloned because the file system cannot. {dirs} is a comma-separated list of folder names.",
+	"shell_toasts_setup_time": "Part of the toast shown when a new worktree is ready: how long its Setup command ran. {duration} is a formatted time such as 1.5 s.",
+	"shell_toasts_stash_body": "Body of the stash confirmation. {message} is git's own explanation, shown as is, then the question.",
+	"shell_toasts_stash_confirm": "Confirm button of the stash confirmation: stashes the local changes and switches branch.",
+	"shell_toasts_stash_title": "Title of the confirmation when a branch switch would overwrite local changes.",
+	"shell_toasts_switched": "Toast after switching the worktree to another branch. {branch} is the branch name.",
+	"shell_toasts_switched_stashed": "Toast after switching branch with the local changes stashed. {branch} is the branch name.",
+	"shell_toasts_unknown_worktree": "Error toast in the branch picker: the branch is checked out in a worktree that is not in the project list. {name} is the branch; {path} the folder.",
+	"shell_toasts_workspace_recovered": "Error toast on launch when workspace.json (tabs, layouts, worktree state) was unreadable and was moved aside. {path} is the full path of the saved copy, shown as is.",
+	"shell_toasts_workspace_unreadable": "Error toast on launch when workspace.json could not be read or moved aside (permissions, I/O). {reason} is the system's error text; {path} is the file, which is left untouched.",
+	"shell_toasts_worktree_deleted": "Toast after a worktree was deleted.",
+	"shell_toasts_worktree_failed": "Error toast when the worktree creation failed and the backend gave no message of its own."
+}

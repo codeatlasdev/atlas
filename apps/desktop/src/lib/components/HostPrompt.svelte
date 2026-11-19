@@ -14,6 +14,7 @@
 		restartHost,
 		restartHostWhenIdle,
 	} from "#lib/stores/hostStatus.svelte.ts";
+	import { m } from "#lib/i18n/m.ts";
 
 	let copy = $derived(promptCopy(hostState));
 </script>
@@ -26,7 +27,7 @@
 	onOpenChange={(o) => !o && dismissHostPrompt()}
 >
 	{#if copy.items.length}
-		<ul class="ptys ca-selectable" aria-label="Running terminals">
+		<ul class="ptys ca-selectable" aria-label={m.workbench_host_prompt_running_terminals()}>
 			{#each copy.items as item, i (i)}
 				<li class="mono">{item}</li>
 			{/each}
@@ -34,9 +35,11 @@
 	{/if}
 	<p class="consequence">{copy.consequence}</p>
 	{#snippet actions()}
-		<Button variant="ghost" onclick={postponeHost}>Later</Button>
-		<Button variant="destructive" onclick={restartHost}>Restart now</Button>
-		<Button variant="filled" onclick={restartHostWhenIdle}>Restart when idle</Button>
+		<Button variant="ghost" onclick={postponeHost}>{m.workbench_host_prompt_later()}</Button>
+		<Button variant="destructive" onclick={restartHost}>{m.workbench_host_prompt_restart_now()}</Button>
+		<Button variant="filled" onclick={restartHostWhenIdle}
+			>{m.workbench_host_prompt_restart_when_idle()}</Button
+		>
 	{/snippet}
 </Dialog>
 

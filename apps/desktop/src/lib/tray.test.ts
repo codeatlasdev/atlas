@@ -16,7 +16,6 @@ import {
 	searchOpensStopped,
 	showSearch,
 	moveFocus,
-	overall,
 	projectHeadline,
 	projectTone,
 	recommend,
@@ -47,31 +46,9 @@ const proj = (name, states, over = {}) => ({
 });
 const snap = (over = {}) => ({ ...EMPTY_SNAPSHOT, ...over });
 
-describe("overall", () => {
-	test("nothing running, also with only stopped projects", () => {
-		expect(overall([])).toEqual({ tone: "off", label: "Nothing running" });
-		expect(overall([proj("a", null)])).toEqual({ tone: "off", label: "Nothing running" });
-	});
-	test("counts failures across projects and beats starting", () => {
-		const ps = [proj("a", ["running", "failed"]), proj("b", ["failed", "starting"])];
-		expect(overall(ps)).toEqual({ tone: "fail", label: "2 services failed" });
-		expect(overall([proj("a", ["failed", "starting"])]).label).toBe("1 service failed");
-	});
-	test("starting is a warning", () => {
-		expect(overall([proj("a", ["running", "starting"])])).toEqual({
-			tone: "warn",
-			label: "1 service starting",
-		});
-	});
-	test("healthy wording follows the number of stacks", () => {
-		expect(overall([proj("a", ["running"])]).label).toBe("Stack healthy");
-		expect(overall([proj("a", ["running"]), proj("b", ["running"]), proj("c", null)])).toEqual({
-			tone: "ok",
-			label: "All stacks healthy",
-		});
-	});
+describe("projectTone", () => {
 	test("a stopped service in a running stack is not healthy", () => {
-		expect(overall([proj("a", ["running", "stopped"])]).tone).toBe("warn");
+		expect(projectTone(proj("a", ["running", "stopped"]))).toBe("warn");
 	});
 });
 

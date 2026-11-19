@@ -1,0 +1,18 @@
+{
+	"settings_general_agent_form_args_error": "Arguments: {error}",
+	"settings_general_agent_form_command_error": "Command: {error}",
+	"settings_general_agent_form_command_required": "Enter the command that starts the agent.",
+	"settings_general_agent_form_env_pair": "Environment: \"{line}\" is not KEY=value.",
+	"settings_general_agent_form_env_reserved": "Environment: {key} is set by Atlas; ATLAS_ variables are reserved.",
+	"settings_general_agent_form_name_letters": "The name needs at least one letter or digit.",
+	"settings_general_agent_form_name_required": "Give the agent a name.",
+	"settings_general_agent_form_resume_error": "Resume: {error}",
+	"settings_general_agent_hooks_agent_hooks": "Agent hooks",
+	"settings_general_agent_hooks_install_omp_claude_code_or": "Install omp, Claude Code or Codex and they show up here, ready to connect.",
+	"settings_general_agent_hooks_no_agents_found": "No agents found",
+	"settings_general_agent_hooks_on": "On",
+	"settings_general_agent_hooks_state_missing": "Not connected: Atlas and Atlas Mobile cannot tell what it is doing.",
+	"settings_general_agent_hooks_state_ok": "Reports when it works, waits for you or is done, and can use Atlas tools.",
+	"settings_general_agent_hooks_state_unknown": "Atlas could not tell if its hooks are on.",
+	"settings_general_agent_hooks_turn_on": "Turn on"
+}

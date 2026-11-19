@@ -1,6 +1,7 @@
 // @ts-nocheck bun test runtime types are not part of the app tsconfig
 import { expect, test } from "bun:test";
-import { classifyFile } from "./largeFile.ts";
+import { m } from "#lib/i18n/m.ts";
+import { classifyFile, largeNotice } from "./largeFile.ts";
 
 const small = { bytes: 1000, lines: 50, longestLine: 80 };
 
@@ -8,7 +9,7 @@ test("small files are normal: nothing disabled, no notice", () => {
 	const c = classifyFile(small);
 	expect(c.tier).toBe("normal");
 	expect(c.reasons).toEqual([]);
-	expect(c.notice).toBeNull();
+	expect(largeNotice(c.tier)).toBeNull();
 	expect(Object.values(c.disable).filter((v) => v === true)).toEqual([]);
 	expect(c.disable.syntax).toBe("full");
 });
@@ -66,9 +67,7 @@ test("large tier: heavy features off, viewport syntax, fold gutter kept", () => 
 		inlayHints: true,
 		selectionMatches: true,
 	});
-	expect(c.notice).toBe(
-		"Large file: word wrap, language features and other heavy extras are off so the editor stays fast.",
-	);
+	expect(largeNotice(c.tier)).toBe(m.workbench_editor_notice_large());
 });
 
 test("huge tier: no syntax, no fold gutter, its own notice", () => {
@@ -76,7 +75,7 @@ test("huge tier: no syntax, no fold gutter, its own notice", () => {
 	expect(c.disable.syntax).toBe("none");
 	expect(c.disable.foldGutter).toBe(true);
 	expect(c.disable.lsp).toBe(true);
-	expect(c.notice).toStartWith("Huge file:");
+	expect(largeNotice(c.tier)).toBe(m.workbench_editor_notice_huge());
 });
 
 test("results do not share mutable state", () => {

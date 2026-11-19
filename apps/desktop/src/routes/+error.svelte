@@ -8,6 +8,7 @@
 	import "../app.css";
 	import { page } from "$app/state";
 	import { onMount } from "svelte";
+	import { m } from "#lib/i18n/m.ts";
 	import { errors } from "#lib/errors/errors.svelte.ts";
 	import ErrorPanel from "#lib/errors/ErrorPanel.svelte";
 	import { report, type ErrorReport } from "#lib/errors/report.ts";
@@ -21,9 +22,12 @@
 	// Unexpected errors arrive with their real message and stack (`hooks.client.ts`); SvelteKit's own
 	// statuses ("Not Found") are not something to show, so say what happened in plain words.
 	const base = $derived<ErrorReport>({
-		...report(notFound ? { message: `No screen at ${page.url.pathname}` } : (page.error ?? "Unknown error"), {
-			where,
-		}),
+		...report(
+			notFound
+				? { message: m.errors_route_no_screen_at({ path: page.url.pathname }) }
+				: (page.error ?? "Unknown error"),
+			{ where },
+		),
 		version,
 	});
 	// Machine facts and what the app did just before: added when ready, the screen never waits for them.
@@ -37,10 +41,8 @@
 <ErrorPanel
 	report={r}
 	variant="fullscreen"
-	title={notFound ? "This screen doesn't exist" : "Atlas hit an error"}
-	hint={notFound
-		? "Reload to go back to your workspace."
-		: "Your terminals and services keep running in the background. Reload to get back to work. If it comes back, use Ask AI to fix it or file an issue with everything already filled in."}
+	title={notFound ? m.errors_route_not_found_title() : m.errors_route_title()}
+	hint={notFound ? m.errors_route_not_found_hint() : m.errors_route_hint()}
 	retry={() => location.replace("/")}
-	retryLabel="Reload app"
+	retryLabel={m.errors_route_reload()}
 />

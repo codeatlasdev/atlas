@@ -7,7 +7,10 @@
 	"tui_runtime_widgets_health_running": "Start of the health summary in the TUI sidebar and status strip: services running of those expected.",
 	"tui_runtime_widgets_health_stopped": "Part of the health summary of the TUI sidebar: services stopped by hand.",
 	"tui_runtime_widgets_health_unhealthy": "Part of the health summary of the TUI sidebar: services alive but not answering their health check.",
-	"tui_runtime_widgets_level_all": "Label of the log level filter in the TUI: every line.",
+	"tui_runtime_widgets_level_all": {
+		"description": "Label of the log level filter in the TUI: every line.",
+		"distinct": "a log level filter: every line ('tudo'); the other filters 'tarefas'"
+	},
 	"tui_runtime_widgets_level_error": "Label of the log level filter in the TUI: errors only.",
 	"tui_runtime_widgets_level_warn": "Label of the log level filter in the TUI: warnings and errors.",
 	"tui_runtime_widgets_log_new_lines": "Chip at the bottom of the TUI log view while paused: lines that arrived since. {key} is the key that jumps to the bottom.",
@@ -24,7 +27,10 @@
 	"tui_runtime_widgets_palette_no_match": "Counter of the TUI command palette when no command matches the query.",
 	"tui_runtime_widgets_phase_detecting": "Badge of a mobile build session in the TUI sidebar: looking for devices.",
 	"tui_runtime_widgets_phase_failed": "Badge of a mobile build session in the TUI sidebar: the build or deploy failed.",
-	"tui_runtime_widgets_phase_install": "Badge of a mobile build session in the TUI sidebar: installing the app on the device.",
+	"tui_runtime_widgets_phase_install": {
+		"description": "Badge of a mobile build session in the TUI sidebar: installing the app on the device.",
+		"distinct": "a phase in progress ('instalando'); the other is a button ('Instalar')"
+	},
 	"tui_runtime_widgets_phase_launch": "Badge of a mobile build session in the TUI sidebar: starting the app.",
 	"tui_runtime_widgets_phase_running": "Badge of a mobile build session in the TUI sidebar and footer: the app runs.",
 	"tui_runtime_widgets_range_all": "Label of the TUI log time range: no limit.",
@@ -44,11 +50,17 @@
 	"tui_runtime_widgets_sidebar_issues": "Heading of the critical failures in the TUI sidebar; shown in capitals after a warning sign. i18n-allow dnt:issue (a list of failures, not GitHub issues)",
 	"tui_runtime_widgets_sidebar_mobile": "Heading of the mobile build sessions in the TUI sidebar; shown in capitals.",
 	"tui_runtime_widgets_sidebar_no_services": "Health line of the TUI sidebar when the project has no services.",
-	"tui_runtime_widgets_sidebar_off": "Tail of a service row in the TUI sidebar: the service was left out of this run (`atlas dev SERVICE`).",
+	"tui_runtime_widgets_sidebar_off": {
+		"description": "Tail of a service row in the TUI sidebar: the service was left out of this run (`atlas dev SERVICE`).",
+		"distinct": "a service left out of this run ('fora'); the other is a setting turned off"
+	},
 	"tui_runtime_widgets_sidebar_operations": "Heading of the running atlas.yaml action in the TUI sidebar; shown in capitals.",
 	"tui_runtime_widgets_sidebar_services": "Heading of the service list in the TUI sidebar; shown in capitals.",
 	"tui_runtime_widgets_sidebar_tunnel": "Heading of the SSH tunnel block of the TUI sidebar; shown in capitals.",
 	"tui_runtime_widgets_sidebar_tunnel_kill": "Checkbox row of the TUI sidebar: whether quitting also closes the tunnel.",
 	"tui_runtime_widgets_sidebar_tunnel_off": "Tunnel row of the TUI sidebar when no tunnel is open.",
-	"tui_runtime_widgets_tab_all": "Name of the first tab of the TUI, which shows every service together."
+	"tui_runtime_widgets_tab_all": {
+		"description": "Name of the first tab of the TUI, which shows every service together.",
+		"distinct": "a tab with every service together ('Tudo'); the other filters 'tarefas'"
+	}
 }

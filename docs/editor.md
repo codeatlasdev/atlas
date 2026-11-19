@@ -27,19 +27,22 @@ Above the editor, **breadcrumbs** show the path and the symbols around the caret
 
 Atlas runs language servers inside `atlas hostd` (one process per language and project, shared by every open file of it). Supported languages: TypeScript, JavaScript, Rust, Go, Python, PHP, HTML, CSS (SCSS, Less), JSON, YAML and Shell. A server on your `PATH` is used first; otherwise Atlas downloads a pinned, checksum-verified one into `~/.atlas/lsp` the first time you open a file of that language.
 
-The status bar chip is always there for a text file and always says why, in one of these states. Click it for details and actions:
+The status bar chip is always there for a text file and always says why. Its label is the server's name and version while it runs, or one of the labels below, next to a dot (green running, amber busy or needing attention, red failed, grey off). Hover for the one-sentence reason; click for details and actions:
 
-| State | What it means | Actions |
+| Chip | What it means | Actions |
 |---|---|---|
-| **Ready** | the server's name and version, and whether it comes from `PATH`, Atlas or your settings | restart, open log |
-| **Starting / Installing** | what is happening, with progress when the server reports it | cancel |
-| **No language server** | there is none for this language; the popover lists the supported ones | docs, settings |
-| **Language features need a newer terminal host** | the running `atlas hostd` predates language servers (see below) | restart terminal host, later |
-| **Off in settings** | `enable_language_servers` is off, or the language is `disabled` | turn on, settings |
-| **Needs Go** (gopls) / **needs curl** | the toolchain to install the server is missing | copy the install command, retry |
-| **Offline / install failed** | the download failed; the message says what | retry, open log |
-| **Crashed** | the server stopped; the last lines of its log are shown | restart, open log |
-| **Custom command not found** | `lsp.<language>.command` is not on `PATH` | settings |
+| the server's name and version (`rust-analyzer 1.2.3`) | the server is running and completion, diagnostics, hover and go to definition are on; the popover says whether it comes from your `PATH`, was installed by Atlas or is your custom command. There is no separate "Ready" label | **Restart server**, **Open log**, **Language settings** |
+| _Starting {server}…_ / _Installing {server}…_ | what is happening, with progress when the server reports it | **Cancel install** (installing), **Open log** |
+| _No server_ | Atlas has none for this language; the popover lists the supported ones | **Language settings**, **How language servers work** |
+| _Host too old_ / _Updating host…_ | the running `atlas hostd` predates language servers (see below); while it upgrades itself live there are no actions | **Restart terminal host**, **Restart later** |
+| _Servers off_ / _Server off_ | `enable_language_servers` is off, or the language is `disabled` | **Turn on**, **Language settings** |
+| _Needs Go_ (gopls) / _Needs curl_ | the toolchain to install the server is missing | **Copy command**, **Check again**, **Language settings** |
+| _Offline_ | the download failed for lack of a connection | **Retry install**, **Language settings** |
+| _Install failed · {server}_ | the install failed; the message says what | **Retry install**, **Open log**, **Language settings** |
+| _Not installed · {server}_ | the server is not installed yet | **Install**, **Language settings** |
+| _Stopped · {server}_ | the server stopped; the last lines of its log are shown | **Restart server**, **Open log**, **Language settings** |
+| _Server not found_ | `lsp.<language>.command` is not on `PATH` | **Language settings**, **Check again** |
+| _Outside a project_ | the file is outside every open worktree, so no server serves it | **How language servers work** |
 
 Pressing F12, F2, ⇧F12 or ⌘. in a file with no server explains why once, with the same actions, instead of doing nothing.
 
@@ -48,7 +51,7 @@ Pressing F12, F2, ⇧F12 or ⌘. in a file with no server explains why once, wit
 `atlas hostd` outlives app updates, so after one it can be older than the app. A host from before language servers cannot serve them. Atlas compares them on every connect:
 
 - **A host that supports live upgrade** is replaced automatically. Your terminals keep running and the files reconnect by themselves.
-- **An older host with terminals running** cannot hand them over. Atlas never ends a terminal without asking: the chip says _Language features need a newer terminal host_ and offers **Restart terminal host**, which lists the running terminals (`title — folder`) and says they will end, or **Restart later** (asked again on the next app start).
+- **An older host with terminals running** cannot hand them over. Atlas never ends a terminal without asking: the chip says _Host too old_ (the popover: _Language features need a newer terminal host_) and offers **Restart terminal host**, which asks _Restart the terminal host?_, lists the running terminals (`title · folder`) and says they will end (**End terminals and restart**), or **Restart later** (asked again on the next app start).
 - **No terminal running**: the host is restarted silently.
 
 The terminal host's own lifecycle is documented in [Desktop app](desktop.md#keeping-the-terminal-host-current).

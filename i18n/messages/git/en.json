@@ -79,7 +79,7 @@
 	"git_identity_dialog_emoji_placeholder": "Type or paste an emoji",
 	"git_identity_dialog_hue_h": "Hue {h}",
 	"git_identity_dialog_icon_source": "Icon source",
-	"git_identity_dialog_no_icon_matches_query": "No icon matches “{query}”.",
+	"git_identity_dialog_no_icon_matches_query": "No icon matches \"{query}\".",
 	"git_identity_dialog_no_logo_found_in_this": "No logo found in this repo (favicon, app icon, assets/logo…).",
 	"git_identity_dialog_reset": "Reset",
 	"git_identity_dialog_search_icons": [

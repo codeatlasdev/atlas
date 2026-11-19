@@ -84,7 +84,7 @@
 
 <div class="custom">
 	<label class="field">
-		<span class="name">{m.settings_editor_custom_command()}</span>
+		<span class="name">{m.settings_agents_agent_command()}</span>
 		<FieldInput
 			class="text mono"
 			style="width: 100%"

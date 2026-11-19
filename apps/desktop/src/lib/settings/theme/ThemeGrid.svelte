@@ -72,7 +72,7 @@
 		<span class="count">{m.settings_theme_grid_count({ count: shown.length })}</span>
 	</div>
 
-	<div class="grid" role="radiogroup" aria-label={m.settings_theme_tab_color_theme()}>
+	<div class="grid" role="radiogroup" aria-label={m.settings_registry_appearance_group_color_theme()}>
 		{#each shown as t, i (t.name)}
 			<!-- svelte-ignore a11y_no_static_element_interactions -->
 			<div role="presentation" onkeydown={(e) => move(e, i)}>

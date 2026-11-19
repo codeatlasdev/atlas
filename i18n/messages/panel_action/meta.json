@@ -4,7 +4,10 @@
 	"panel_action_output_drawer_action_runs": "Accessible name (aria-label, read by screen readers) of a <div> element, in ActionOutputDrawer (apps/desktop/src/lib/panel/ActionOutputDrawer.svelte). Extracted by i18n:extract: refine this description on review.",
 	"panel_action_output_drawer_already_running": "Reason an action cannot start now: the same action is running. Tooltip of Run again and of the Actions menu item.",
 	"panel_action_output_drawer_copied_lines": "Toast after copying the output of an action run. {count} is the line count; {shown} is the same number formatted for the language.",
-	"panel_action_output_drawer_finished": "State word next to the title of an action run: it ended well. Lowercase, after the action name.",
+	"panel_action_output_drawer_finished": {
+		"description": "State word next to the title of an action run: it ended well. Lowercase, after the action name.",
+		"distinct": "a state word after an action name; the other is a column header (when it ended)"
+	},
 	"panel_action_output_drawer_no_action_output_yet": "Tooltip (title attribute) of a <EmptyState> component, in ActionOutputDrawer (apps/desktop/src/lib/panel/ActionOutputDrawer.svelte). Extracted by i18n:extract: refine this description on review.",
 	"panel_action_output_drawer_run_again": "Button label in the <Button> component, in ActionOutputDrawer (apps/desktop/src/lib/panel/ActionOutputDrawer.svelte). Extracted by i18n:extract: refine this description on review.",
 	"panel_action_output_drawer_run_an_action_from_the": "description prop (help line) of a <EmptyState> component, in ActionOutputDrawer (apps/desktop/src/lib/panel/ActionOutputDrawer.svelte). Extracted by i18n:extract: refine this description on review.",

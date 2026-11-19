@@ -1,8 +1,7 @@
 {
 	"shell_app_page_this_file_hit_an_error": "Erro neste arquivo",
-	"shell_app_page_this_view_hit_an_error": "Erro nesta visualização",
+	"shell_app_page_this_view_hit_an_error": "Esta visualização teve um erro",
 	"shell_contain_default_hint": "O resto do Atlas não foi afetado.",
-	"shell_contain_default_title": "Esta visualização teve um erro",
 	"shell_layout_palette_branches": "Trocar de branch ou criar uma",
 	"shell_layout_palette_commands": "Executar um comando",
 	"shell_layout_palette_files": "Ir para o arquivo",

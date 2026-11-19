@@ -116,7 +116,7 @@
 			[m.settings_host_name(), report.context?.hostVersion],
 		].filter((r): r is [string, string] => !!r[1]),
 	);
-	const heading = $derived(title ?? m.shell_contain_default_title());
+	const heading = $derived(title ?? m.shell_app_page_this_view_hit_an_error());
 </script>
 
 <div class="wrap {variant}" role="alert" aria-labelledby="ep-title">

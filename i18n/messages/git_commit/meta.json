@@ -17,7 +17,10 @@
 	"git_commit_group_changes": "Group header in the Source Control file list: tracked files with unstaged changes.",
 	"git_commit_group_conflicts": "Group header in the Source Control file list.",
 	"git_commit_group_staged": "Group header in the Source Control file list.",
-	"git_commit_group_untracked": "Group header in the Source Control file list: files git does not track yet.",
+	"git_commit_group_untracked": {
+		"description": "Group header in the Source Control file list: files git does not track yet.",
+		"distinct": "a group header of many files (plural); the other is one file's status"
+	},
 	"git_commit_message_placeholder": "Placeholder of the commit message box. {key} is the commit shortcut.",
 	"git_commit_notice_all": "Line under the commit box when the AI commit message was written from all changes because nothing was staged.",
 	"git_commit_notice_all_with": "Same line plus what was not sent in full. {omitted} is a list of the parts above.",

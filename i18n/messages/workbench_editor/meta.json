@@ -19,7 +19,10 @@
 	"workbench_editor_cm_replaced_match_on_line": "CodeMirror phrase announced after a replace; $ is the line number",
 	"workbench_editor_cm_replaced_matches": "CodeMirror phrase announced after replace all; $ is the count",
 	"workbench_editor_cm_selection_deleted": "CodeMirror phrase announced to screen readers after deleting a selection",
-	"workbench_editor_cm_to": "CodeMirror phrase: joins two line numbers of a folded range",
+	"workbench_editor_cm_to": {
+		"description": "CodeMirror phrase: joins two line numbers of a folded range",
+		"distinct": "joins two line numbers ('até'); the other names a message recipient ('Para')"
+	},
 	"workbench_editor_cm_unfold": "CodeMirror phrase: accessible name of the fold marker action",
 	"workbench_editor_cmd_duplicate_line": "Command palette entry of the focused editor",
 	"workbench_editor_cmd_fold_all": "Command palette entry of the focused editor",
@@ -53,7 +56,10 @@
 	"workbench_editor_find_no_results": "Find panel counter when nothing matches",
 	"workbench_editor_find_position": "Find panel counter: the current match out of all",
 	"workbench_editor_find_regexp": "Find panel toggle",
-	"workbench_editor_find_replace": "Find panel replace field and button",
+	"workbench_editor_find_replace": {
+		"description": "Find panel replace field and button",
+		"distinct": "a verb (the replace action); the other is a go.mod replace directive (a noun)"
+	},
 	"workbench_editor_find_replace_all": "Find panel button name",
 	"workbench_editor_find_replaces_nothing": "Find panel preview when the replacement text is empty",
 	"workbench_editor_find_select_all": "Find panel button",
@@ -97,6 +103,9 @@
 	"workbench_editor_warnings": "Number of warnings in the file, in the status bar and the language server item",
 	"workbench_editor_watch_failed": "Notice above an editor whose file watcher failed",
 	"workbench_editor_word_wrap_key": "Tooltip of the editor header word wrap button; key is its shortcut",
-	"workbench_editor_wrap": "Status bar item shown while word wrap is on",
+	"workbench_editor_wrap": {
+		"description": "Status bar item shown while word wrap is on",
+		"distinct": "a status bar indicator while wrap is on ('Quebra'); the other is a toggle label"
+	},
 	"workbench_editor_wrap_on": "Tooltip of the word wrap item of the status bar"
 }

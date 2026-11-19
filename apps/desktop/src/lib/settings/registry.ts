@@ -363,7 +363,7 @@ const DEFS = [
 							item(
 								"capture-system-keys",
 								"macOS screenshot shortcuts",
-								"macOS answers ⇧⌘3, ⇧⌘4, ⇧⌘5 and ⇧⌘6 before any app, so Atlas can only use them once you turn them off yourself in System Settings ▸ Keyboard ▸ Keyboard Shortcuts ▸ Screenshots. Atlas never changes that setting for you.",
+								"macOS answers ⇧⌘3, ⇧⌘4, ⇧⌘5 and ⇧⌘6 before any app, so Atlas can only use them once you turn them off yourself in System Settings > Keyboard > Keyboard Shortcuts > Screenshots. Atlas never changes that setting for you.",
 								"capture screenshot macos system shortcuts keyboard shift command 3 4 5 6 disable free",
 							),
 							item(

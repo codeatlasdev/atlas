@@ -1,0 +1,114 @@
+{
+	"codes": [
+		"fs.not_found",
+		"fs.io",
+		"exec.spawn_failed",
+		"hostd.invalid_argument"
+	],
+	"errors": [
+		{
+			"args": {
+				"path": "/work/old-name.txt"
+			},
+			"code": "fs.not_found",
+			"message": "not_found"
+		},
+		{
+			"args": {
+				"kind": "permission_denied",
+				"path": "/work/locked"
+			},
+			"code": "fs.io",
+			"message": "Permission denied (os error 13)"
+		},
+		{
+			"args": {
+				"kind": "not_a_directory",
+				"path": "/work/README.md"
+			},
+			"code": "fs.io",
+			"message": "Not a directory (os error 20)"
+		},
+		{
+			"args": {
+				"kind": "is_a_directory",
+				"path": "/work/src"
+			},
+			"code": "fs.io",
+			"message": "Is a directory (os error 21)"
+		},
+		{
+			"args": {
+				"kind": "already_exists",
+				"path": "/work/src"
+			},
+			"code": "fs.io",
+			"message": "File exists (os error 17)"
+		},
+		{
+			"args": {
+				"detail": "Read-only file system (os error 30)",
+				"kind": "other",
+				"path": "/work/readonly"
+			},
+			"code": "fs.io",
+			"message": "Read-only file system (os error 30)"
+		},
+		{
+			"args": {
+				"program": "git",
+				"reason": "not_found"
+			},
+			"code": "exec.spawn_failed",
+			"message": "git: No such file or directory (os error 2)"
+		},
+		{
+			"args": {
+				"program": "/opt/tools/lint",
+				"reason": "permission_denied"
+			},
+			"code": "exec.spawn_failed",
+			"message": "/opt/tools/lint: Permission denied (os error 13)"
+		},
+		{
+			"args": {
+				"detail": "Exec format error (os error 8)",
+				"program": "sh",
+				"reason": "other"
+			},
+			"code": "exec.spawn_failed",
+			"message": "sh: Exec format error (os error 8)"
+		},
+		{
+			"args": {
+				"path": "/work/gone"
+			},
+			"code": "fs.not_found",
+			"message": "git: No such file or directory (os error 2)"
+		},
+		{
+			"args": {
+				"field": "data",
+				"reason": "bad_base64"
+			},
+			"code": "hostd.invalid_argument",
+			"message": "Invalid symbol 42, offset 0."
+		},
+		{
+			"args": {
+				"field": "path",
+				"reason": "no_parent"
+			},
+			"code": "hostd.invalid_argument",
+			"message": "no parent dir"
+		},
+		{
+			"args": {
+				"field": "argv",
+				"reason": "empty"
+			},
+			"code": "hostd.invalid_argument",
+			"message": "empty argv"
+		}
+	]
+}

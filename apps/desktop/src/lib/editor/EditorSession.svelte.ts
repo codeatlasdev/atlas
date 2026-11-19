@@ -297,7 +297,9 @@ export class EditorSession {
 			// Edits made while the write was in flight keep the buffer dirty.
 			this.#ext.dirty = this.dirty = this.#isDirty(this.view?.state.doc ?? snap.doc);
 		} catch (e) {
-			toast.error(m.workbench_editor_save_failed({ path: this.relPath, error: errText(e) }));
+			// Loaded on demand: the light editor of a loose file shares this class and never needs the toast's dialog.
+			const { hostErrorToast } = await import("#lib/gitToast.ts");
+			hostErrorToast(e, m.workbench_editor_save_failed({ path: this.relPath, error: errText(e) }));
 		}
 	}
 

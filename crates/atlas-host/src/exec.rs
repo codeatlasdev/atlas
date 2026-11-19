@@ -7,8 +7,11 @@ use std::time::Duration;
 use atlas_core::sys::CommandExt;
 use base64::Engine;
 use base64::engine::general_purpose::STANDARD as B64;
+use atlas_core::progress::Coded;
 use serde_json::{Value, json};
 use tokio::io::{AsyncRead, AsyncReadExt, AsyncWriteExt};
+
+use crate::protocol::Failure;
 
 const OUT_CAP: usize = 10 * 1024 * 1024;
 
@@ -72,16 +75,47 @@ async fn read_capped(mut r: impl AsyncRead + Unpin) -> Vec<u8> {
     out
 }
 
+/// Why `bin` could not be started, as `exec.spawn_failed {program, reason}` (see `protocol::REPLY_CODES`); the text
+/// stays `<bin>: <the OS's words>`. A missing working folder fails the spawn with the same OS error as a missing
+/// program, so it is told apart (`fs.not_found {path}`): "install it" would be the wrong advice.
+pub(crate) fn spawn_failed(bin: &str, cwd: &str, e: &std::io::Error) -> Coded {
+    use crate::protocol::{EXEC_SPAWN_FAILED, FS_NOT_FOUND};
+    use std::io::ErrorKind;
+    let message = format!("{bin}: {e}");
+    let reason = match e.kind() {
+        ErrorKind::NotFound if !std::path::Path::new(cwd).is_dir() => {
+            return Coded::new(FS_NOT_FOUND, json!({"path": cwd}), message);
+        }
+        ErrorKind::NotFound => "not_found",
+        ErrorKind::PermissionDenied => "permission_denied",
+        _ => {
+            let args = json!({"program": bin, "reason": "other", "detail": e.to_string()});
+            return Coded::new(EXEC_SPAWN_FAILED, args, message);
+        }
+    };
+    Coded::new(
+        EXEC_SPAWN_FAILED,
+        json!({"program": bin, "reason": reason}),
+        message,
+    )
+}
+
 pub async fn run(
     cwd: &str,
     argv: &[String],
     env: &BTreeMap<String, String>,
     stdin: Option<&str>,
     timeout_ms: u64,
-) -> Result<Value, String> {
-    let (bin, args) = argv.split_first().ok_or("empty argv")?;
+) -> Result<Value, Failure> {
+    let (bin, args) = argv
+        .split_first()
+        .ok_or_else(|| crate::protocol::invalid_argument("argv", "empty", "empty argv"))?;
     let input = stdin
-        .map(|s| B64.decode(s).map_err(|e| format!("stdin: {e}")))
+        .map(|s| {
+            B64.decode(s).map_err(|e| {
+                crate::protocol::invalid_argument("stdin", "bad_base64", format!("stdin: {e}"))
+            })
+        })
         .transpose()?;
     // Windows: a shell-form argv goes to cmd verbatim (its quoting is not MSVC's).
     let mut cmd = match atlas_core::sys::shell_script(argv) {
@@ -95,7 +129,7 @@ pub async fn run(
     // Cold cache = the probe runs here; never on a runtime worker.
     let login = tokio::task::spawn_blocking(atlas_core::login_env::vars)
         .await
-        .map_err(|e| e.to_string())?;
+        .map_err(|e| Failure::Text(e.to_string()))?;
     let mut envs: BTreeMap<String, String> = login.into_iter().collect();
     envs.extend(env.iter().map(|(k, v)| (k.clone(), v.clone())));
     if is_git(bin) {
@@ -115,7 +149,7 @@ pub async fn run(
         .stderr(Stdio::piped())
         .kill_on_drop(true)
         .spawn()
-        .map_err(|e| format!("{bin}: {e}"))?;
+        .map_err(|e| spawn_failed(bin, cwd, &e))?;
     if let (Some(data), Some(mut w)) = (input, child.stdin.take()) {
         tokio::spawn(async move {
             let _ = w.write_all(&data).await;

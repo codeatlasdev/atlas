@@ -971,7 +971,10 @@ async fn conn(hub: Arc<Hub>, stream: ipc::Stream) {
                 let hub = hub.clone();
                 let tx = tx.clone();
                 tokio::spawn(async move {
-                    let _ = tx.force(protocol::reply(id, handle(&hub, cmd, conn_id).await));
+                    let _ = tx.force(protocol::reply_failure(
+                        id,
+                        answer(&hub, cmd, conn_id).await,
+                    ));
                 });
                 continue;
             }
@@ -1120,6 +1123,39 @@ pub(crate) fn hook_env(hub: &Hub, req: &mut crate::protocol::PtyCreate) {
     }
 }
 
+/// [`handle`] for every command, with the code of a failure that has one: the filesystem and `exec` (see
+/// `protocol::REPLY_CODES`). Every other failure is the text it always was.
+pub(crate) async fn answer(
+    hub: &Arc<Hub>,
+    cmd: HostCmd,
+    conn_id: u64,
+) -> Result<Value, crate::protocol::Failure> {
+    use crate::protocol::Failure;
+    match cmd {
+        HostCmd::Exec {
+            cwd,
+            argv,
+            env,
+            stdin,
+            timeout_ms,
+        } => crate::exec::run(&cwd, &argv, &env, stdin.as_deref(), timeout_ms).await,
+        HostCmd::FsList { path } => crate::fs::list(&path).map_err(Failure::from),
+        HostCmd::FsRead { path, max, offset } => {
+            crate::fs::read(&path, max, offset).map_err(Failure::from)
+        }
+        HostCmd::FsWrite { path, data, mode } => {
+            crate::fs::write(&path, &data, mode).map_err(Failure::from)
+        }
+        HostCmd::FsStat { path } => crate::fs::stat(&path).map_err(Failure::from),
+        HostCmd::FsMkdir { path } => crate::fs::mkdir(&path).map_err(Failure::from),
+        HostCmd::FsRename { from, to } => crate::fs::rename(&from, &to).map_err(Failure::from),
+        HostCmd::FsRemove { path, recursive } => {
+            crate::fs::remove(&path, recursive).map_err(Failure::from)
+        }
+        cmd => handle(hub, cmd, conn_id).await.map_err(Failure::Text),
+    }
+}
+
 pub(crate) async fn handle(hub: &Arc<Hub>, cmd: HostCmd, conn_id: u64) -> Result<Value, String> {
     let e = |e: anyhow::Error| format!("{e:#}");
     match cmd {
@@ -1191,20 +1227,15 @@ pub(crate) async fn handle(hub: &Arc<Hub>, cmd: HostCmd, conn_id: u64) -> Result
             hub.get(&pty)?.clear();
             Ok(json!({}))
         }
-        HostCmd::Exec {
-            cwd,
-            argv,
-            env,
-            stdin,
-            timeout_ms,
-        } => crate::exec::run(&cwd, &argv, &env, stdin.as_deref(), timeout_ms).await,
-        HostCmd::FsList { path } => crate::fs::list(&path),
-        HostCmd::FsRead { path, max, offset } => crate::fs::read(&path, max, offset),
-        HostCmd::FsWrite { path, data, mode } => crate::fs::write(&path, &data, mode),
-        HostCmd::FsStat { path } => crate::fs::stat(&path),
-        HostCmd::FsMkdir { path } => crate::fs::mkdir(&path),
-        HostCmd::FsRename { from, to } => crate::fs::rename(&from, &to),
-        HostCmd::FsRemove { path, recursive } => crate::fs::remove(&path, recursive),
+        // Answered by `answer`, which keeps the code of their failures.
+        HostCmd::Exec { .. }
+        | HostCmd::FsList { .. }
+        | HostCmd::FsRead { .. }
+        | HostCmd::FsWrite { .. }
+        | HostCmd::FsStat { .. }
+        | HostCmd::FsMkdir { .. }
+        | HostCmd::FsRename { .. }
+        | HostCmd::FsRemove { .. } => Err("handled by answer".into()),
         HostCmd::Info {} => Ok(hub.info()),
         HostCmd::AtlasUpdateCheck {} => crate::update::check(hub).await,
         HostCmd::AtlasUpdate {} => crate::update::start(hub, &hub.origin_of(conn_id)).await,
@@ -1821,6 +1852,88 @@ mod tests {
             "info.json",
             &json!({"proto": protocol::PROTO, "keys": keys}),
         );
+    }
+
+    /// The `Coded` a failed call carries (its code, args and English text), through a real hostd and a real client.
+    async fn coded_failure(
+        client: &crate::client::HostClient,
+        cmd: &str,
+        args: Value,
+    ) -> (String, Value, String) {
+        let e = client.call(cmd, args).await.unwrap_err();
+        let c = e
+            .downcast_ref::<atlas_core::progress::Coded>()
+            .unwrap_or_else(|| panic!("{cmd}: no code on {e:#}"));
+        (c.code.into(), Value::Object(c.args.clone()), e.to_string())
+    }
+
+    /// Incident: `fs_remove` of a file that was already gone toasted the literal `not_found`, and a folder the user
+    /// may not write to toasted the OS's English. The reply carries the code and the arguments the app writes its own
+    /// sentence from; the text stays what it always was, for the CLI and for a desktop without the codes.
+    #[tokio::test]
+    async fn a_failed_fs_or_exec_request_comes_back_coded_with_the_old_text() {
+        let (tmp, client, _s) = wire().await;
+        let gone = tmp.path().join("gone.txt");
+        let gone = gone.to_str().unwrap();
+
+        for cmd in ["fs_remove", "fs_stat", "fs_list", "fs_read"] {
+            let (code, args, text) = coded_failure(&client, cmd, json!({"path": gone})).await;
+            assert_eq!((code.as_str(), &args["path"], text.as_str()), ("fs.not_found", &json!(gone), "not_found"), "{cmd}");
+        }
+        let (code, args, text) =
+            coded_failure(&client, "fs_rename", json!({"from": gone, "to": format!("{gone}2")})).await;
+        assert_eq!((code.as_str(), &args["path"], text.as_str()), ("fs.not_found", &json!(gone), "not_found"));
+
+        // A path through a file: the OS says "Not a directory" (os error 20).
+        let file = tmp.path().join("file.txt");
+        std::fs::write(&file, "x").unwrap();
+        let inside = file.join("child.txt");
+        let inside = inside.to_str().unwrap();
+        #[cfg(unix)]
+        {
+            let (code, args, text) = coded_failure(&client, "fs_write", json!({"path": inside, "data": ""})).await;
+            assert_eq!(code, "fs.io");
+            assert_eq!(args["kind"], "not_a_directory");
+            assert_eq!(args["path"], file.to_str().unwrap(), "the folder that is no folder");
+            assert!(text.contains("Not a directory"), "{text}");
+            let (code, args, _) = coded_failure(&client, "fs_mkdir", json!({"path": inside})).await;
+            assert_eq!((code.as_str(), &args["kind"]), ("fs.io", &json!("not_a_directory")));
+        }
+        // A file where a folder is wanted.
+        let (code, args, _) = coded_failure(&client, "fs_mkdir", json!({"path": file.to_str().unwrap()})).await;
+        assert_eq!((code.as_str(), &args["kind"]), ("fs.io", &json!("already_exists")));
+
+        let (code, args, text) = coded_failure(
+            &client,
+            "exec",
+            json!({"cwd": tmp.path(), "argv": ["atlas-no-such-program-xyz", "--version"], "env": {}, "timeout_ms": 5000}),
+        )
+        .await;
+        assert_eq!(code, "exec.spawn_failed");
+        assert_eq!(args, json!({"program": "atlas-no-such-program-xyz", "reason": "not_found"}));
+        assert!(text.starts_with("atlas-no-such-program-xyz: "), "{text}");
+
+        // The same OS error for a missing working folder: the advice is not "install it".
+        let (code, args, _) = coded_failure(
+            &client,
+            "exec",
+            json!({"cwd": gone, "argv": ["git", "status"], "env": {}, "timeout_ms": 5000}),
+        )
+        .await;
+        assert_eq!((code.as_str(), &args["path"]), ("fs.not_found", &json!(gone)));
+
+        let (code, args, text) =
+            coded_failure(&client, "exec", json!({"cwd": tmp.path(), "argv": [], "env": {}, "timeout_ms": 5000})).await;
+        assert_eq!((code.as_str(), text.as_str()), ("hostd.invalid_argument", "empty argv"));
+        assert_eq!(args, json!({"field": "argv", "reason": "empty"}));
+        let (code, args, _) =
+            coded_failure(&client, "fs_write", json!({"path": gone, "data": "***"})).await;
+        assert_eq!(code, "hostd.invalid_argument");
+        assert_eq!(args, json!({"field": "data", "reason": "bad_base64"}));
+
+        // A failure with no code is still the text it always was.
+        let e = client.call("pty_info", json!({"pty": "nope"})).await.unwrap_err();
+        assert!(e.downcast_ref::<atlas_core::progress::Coded>().is_none(), "{e:#}");
     }
 
     /// Incident: every request was handled on its own task, so two writes of one connection

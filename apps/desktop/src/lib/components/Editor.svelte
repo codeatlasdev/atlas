@@ -16,6 +16,7 @@
 	} from "@lucide/svelte";
 	import { host } from "#lib/host.ts";
 	import { errText } from "#lib/api.ts";
+	import { hostErrorToast } from "#lib/gitToast.ts";
 	import { ws } from "#lib/stores/workspace.svelte.ts";
 	import DiffView from "#lib/components/DiffView.svelte";
 	import Tip from "#lib/components/Tip.svelte";
@@ -234,8 +235,8 @@
 		session.applyPrefs();
 	});
 
-	const reveal = () => host.exec(root, ["open", "-R", abs]).catch((e) => toast.error(errText(e)));
-	const openExternal = () => host.exec(root, ["open", abs]).catch((e) => toast.error(errText(e)));
+	const reveal = () => host.exec(root, ["open", "-R", abs]).catch(hostErrorToast);
+	const openExternal = () => host.exec(root, ["open", abs]).catch(hostErrorToast);
 
 	function setRich(on: boolean) {
 		rich = on;

@@ -4,36 +4,48 @@
 		"hostd.disconnected",
 		"hostd.start_failed",
 		"hostd.refused",
+		"hostd.busy",
+		"hostd.too_many_clients",
 		"hostd.cli_not_found"
 	],
 	"errors": [
 		{
-			"code": "hostd.closed",
 			"args": {},
+			"code": "hostd.closed",
 			"message": "hostd closed the connection"
 		},
 		{
-			"code": "hostd.disconnected",
 			"args": {},
+			"code": "hostd.disconnected",
 			"message": "hostd disconnected"
 		},
 		{
-			"code": "hostd.start_failed",
 			"args": {},
+			"code": "hostd.start_failed",
 			"message": "hostd did not start"
 		},
 		{
-			"code": "hostd.refused",
 			"args": {
-				"why": "hostd busy"
+				"why": "hello timeout"
 			},
+			"code": "hostd.refused",
+			"message": "hostd: hello timeout"
+		},
+		{
+			"args": {},
+			"code": "hostd.busy",
 			"message": "hostd: hostd busy"
 		},
 		{
-			"code": "hostd.cli_not_found",
+			"args": {},
+			"code": "hostd.too_many_clients",
+			"message": "hostd: too many clients"
+		},
+		{
 			"args": {
 				"command": "curl -fsSL https://atlas.codeatlas.com.br/install.sh | bash"
 			},
+			"code": "hostd.cli_not_found",
 			"message": "atlas CLI not found. Install it with: curl -fsSL https://atlas.codeatlas.com.br/install.sh | bash"
 		}
 	]

@@ -1,4 +1,5 @@
 {
+	"hostd_wire_busy": "O host de terminais está ocupado no momento. Aguarde um instante e tente de novo.",
 	"hostd_wire_cli_not_found": [
 		{
 			"declarations": [
@@ -19,6 +20,15 @@
 	"hostd_wire_feature_agents": "status dos agentes",
 	"hostd_wire_feature_lsp": "recursos de linguagem",
 	"hostd_wire_feature_pty_attach_raw": "renderização rápida de terminais",
+	"hostd_wire_fs_already_exists": "{path} já existe. Escolha outro nome.",
+	"hostd_wire_fs_is_a_directory": "{path} é uma pasta, não um arquivo. Escolha outro nome.",
+	"hostd_wire_fs_not_a_directory": "Uma parte de {path} é um arquivo, não uma pasta. Escolha outro local.",
+	"hostd_wire_fs_not_found": "Não foi possível encontrar {path}. Ele pode ter sido movido ou excluído: atualize a árvore de arquivos e tente de novo.",
+	"hostd_wire_fs_other": "Não foi possível usar {path}. Confira se o disco está disponível e tem espaço livre e tente de novo.",
+	"hostd_wire_fs_permission_denied": "O Atlas não tem permissão para usar {path}. Confira as permissões da pasta e tente de novo.",
+	"hostd_wire_invalid_base64": "O host de terminais não conseguiu ler {field} da requisição: o conteúdo não é base64 válido. Isso é um bug do Atlas, reporte o problema.",
+	"hostd_wire_invalid_empty": "A requisição para executar um comando veio sem comando. Isso é um bug do Atlas, reporte o problema.",
+	"hostd_wire_invalid_no_parent": "Este caminho não tem pasta pai, então não é possível gravar um arquivo nele. Escolha outro local.",
 	"hostd_wire_lsp_crashed_repeated_hint": "Abra o log do servidor na barra de status e depois reinicie o servidor.",
 	"hostd_wire_lsp_crashed_repeated_message": "{server} falhou várias vezes seguidas",
 	"hostd_wire_lsp_crashed_start_hint": "Abra o log do servidor na barra de status ou reinicie o servidor.",
@@ -40,7 +50,11 @@
 	"hostd_wire_refused": "hostd: {why}",
 	"hostd_wire_remote_connecting": "{host} ainda está conectando; tente novamente em alguns segundos",
 	"hostd_wire_remote_unreachable": "{host} está inacessível: {why}",
+	"hostd_wire_spawn_not_found": "Não foi possível encontrar {program}. Instale-o ou confira se ele está no PATH.",
+	"hostd_wire_spawn_other": "Não foi possível iniciar {program}. Confira se ele funciona em um terminal e tente de novo.",
+	"hostd_wire_spawn_permission_denied": "Não foi possível executar {program}: permissão negada. Confira se o arquivo é executável.",
 	"hostd_wire_start_failed": "O hostd não iniciou",
+	"hostd_wire_too_many_clients": "O host de terminais tem conexões demais abertas. Feche outras janelas ou clientes do Atlas e tente de novo.",
 	"hostd_wire_unreachable": "Host de terminais inacessível. Os terminais não conseguem iniciar nem reconectar até ele voltar. Clique em Reiniciar o host de terminais ou, se o problema continuar, em Reportar.",
 	"hostd_wire_unreachable_why": "{@hostd_wire_unreachable} ({why})",
 	"hostd_wire_upgrade_failed": "Não foi possível atualizar o host de terminais ({error}). Os terminais continuam no host antigo.",

@@ -1,0 +1,62 @@
+{
+	"settings_updates_whats_new_badge_installed": "Instalada",
+	"settings_updates_whats_new_badge_latest": "Mais recente",
+	"settings_updates_whats_new_badge_new": "Nova",
+	"settings_updates_whats_new_collapse_aria": "Recolher {version}",
+	"settings_updates_whats_new_dev_note": "Este é um build de desenvolvimento; o Atlas não o substitui por uma versão publicada.",
+	"settings_updates_whats_new_download_progress": "{percent}% de {total}",
+	"settings_updates_whats_new_download_unknown": "Baixando…",
+	"settings_updates_whats_new_empty_body": "O changelog ainda não tem uma entrada para ela.",
+	"settings_updates_whats_new_empty_title": "Nenhuma nota de versão para {version}",
+	"settings_updates_whats_new_empty_title_unknown": "Nenhuma nota para esta versão",
+	"settings_updates_whats_new_expand_aria": "Expandir {version}",
+	"settings_updates_whats_new_fold_less": "Menos",
+	"settings_updates_whats_new_fold_more": "Mais",
+	"settings_updates_whats_new_following": "Versão {#chip}{channel}{/chip} · seguindo {#b}{followed}{/b}",
+	"settings_updates_whats_new_host_terminals": [
+		{
+			"declarations": [
+				"input count",
+				"local countExact = count",
+				"local countPlural = count: plural"
+			],
+			"selectors": [
+				"countExact",
+				"countPlural"
+			],
+			"match": {
+				"countExact=0, countPlural=*": "Nenhum terminal em execução.",
+				"countExact=*, countPlural=one": "{count} terminal ainda está em execução, então o Atlas não reiniciou o host de terminais.",
+				"countExact=*, countPlural=*": "{count} terminais ainda estão em execução, então o Atlas não reiniciou o host de terminais."
+			}
+		}
+	],
+	"settings_updates_whats_new_install_now": "Instalar a versão {version} agora",
+	"settings_updates_whats_new_kind_added": "Adicionado",
+	"settings_updates_whats_new_kind_changed": "Alterado",
+	"settings_updates_whats_new_kind_deprecated": "Depreciado",
+	"settings_updates_whats_new_kind_fixed": "Corrigido",
+	"settings_updates_whats_new_kind_removed": "Removido",
+	"settings_updates_whats_new_kind_security": "Segurança",
+	"settings_updates_whats_new_load_failed": "Não foi possível carregar as notas de versão",
+	"settings_updates_whats_new_loading_aria": "Carregando as notas de versão",
+	"settings_updates_whats_new_managed_or_atlas": "Ou deixe o Atlas rodar: o sistema pede sua senha.",
+	"settings_updates_whats_new_managed_run": "{title}. Rode isto em um terminal para atualizar:",
+	"settings_updates_whats_new_no_changes": "Nenhuma mudança listada para esta versão.",
+	"settings_updates_whats_new_open_changelog": "Abrir o changelog completo",
+	"settings_updates_whats_new_open_github_aria": "Abrir {version} no GitHub",
+	"settings_updates_whats_new_pre_rc": "RC",
+	"settings_updates_whats_new_region_aria": "Notas de versão",
+	"settings_updates_whats_new_relaunch": "Reabrir o Atlas",
+	"settings_updates_whats_new_remind_later": "Lembrar depois",
+	"settings_updates_whats_new_review": "Revisar",
+	"settings_updates_whats_new_rollback_failed": "Não foi possível restaurar a CLI: rode {#code}atlas desktop --install{/code}.",
+	"settings_updates_whats_new_rollback_restored": "A CLI do Atlas continua na versão {version}; nada ficou atualizado pela metade.",
+	"settings_updates_whats_new_rollback_restored_unknown": "A CLI do Atlas continua na versão anterior; nada ficou atualizado pela metade.",
+	"settings_updates_whats_new_skip_version": "Ignorar esta versão",
+	"settings_updates_whats_new_update_failed": "A atualização falhou.",
+	"settings_updates_whats_new_update_relaunch": "Atualizar para a versão {version} e reabrir",
+	"settings_updates_whats_new_update_relaunch_size": "Atualizar para a versão {version} e reabrir · {size}",
+	"settings_updates_whats_new_versions_aria": "Versões",
+	"settings_updates_whats_new_view_github": "Ver no GitHub"
+}

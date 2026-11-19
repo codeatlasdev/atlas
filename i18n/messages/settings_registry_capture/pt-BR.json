@@ -50,7 +50,7 @@
 	"settings_registry_capture_capture_stack_label": "Cartões na pilha",
 	"settings_registry_capture_capture_system_audio_description": "O som que o seu Mac toca entra no vídeo. Não vale para GIFs.",
 	"settings_registry_capture_capture_system_audio_label": "Gravar o som do sistema",
-	"settings_registry_capture_capture_system_keys_description": "O macOS responde a {screen}, {area}, {toolbar} e {touchBar} antes de qualquer app, então o Atlas só pode usá-los depois que você os desativar em Ajustes do Sistema ▸ Teclado ▸ Atalhos de Teclado ▸ Capturas de Tela. O Atlas nunca altera essa configuração por você.",
+	"settings_registry_capture_capture_system_keys_description": "O macOS responde a {screen}, {area}, {toolbar} e {touchBar} antes de qualquer app, então o Atlas só pode usá-los depois que você os desativar em Ajustes do Sistema > Teclado > Atalhos de Teclado > Capturas de Tela. O Atlas nunca altera essa configuração por você.",
 	"settings_registry_capture_capture_system_keys_label": "Atalhos de captura do macOS",
 	"settings_registry_capture_capture_timer_description": "Espera esse tempo depois de você escolher, antes de tirar a captura. As gravações não são atrasadas.",
 	"settings_registry_capture_capture_timer_label": "Temporizador",

@@ -1,0 +1,21 @@
+{
+  "pt-BR": {
+    "native_capture_action_all_in_one": "ed3696f36399",
+    "native_capture_action_ocr": "8810fca11814",
+    "native_capture_action_previous": "291e10ec80bc",
+    "native_capture_action_record": "d1d27af9f28c",
+    "native_capture_action_region": "113e9dfd22f5",
+    "native_capture_action_screen": "7d6975ab4ec6",
+    "native_capture_action_window": "3c0e413a9bb1",
+    "native_capture_audio_needs_macos_15": "7640f7991c10",
+    "native_capture_dock_summon": "9eedcbfb84e3",
+    "native_capture_dock_toggle": "30be1a2c6aef",
+    "native_capture_folder_absolute": "4c1d3e49ece1",
+    "native_capture_history_range": "c3389e61dfb0",
+    "native_capture_key_refused": "8bbd152b2c16",
+    "native_capture_mic_off": "b7042f1043d0",
+    "native_capture_same_key": "7273a8d09e5e",
+    "native_capture_stack_range": "fa86e8ed6689",
+    "native_capture_timer_values": "562258e3f93b"
+  }
+}

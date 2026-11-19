@@ -1,4 +1,6 @@
 import type { Probe, ProjectView } from "#lib/api.ts";
+import { m } from "#lib/i18n/m.ts";
+import { STACK_MESSAGES } from "#lib/onboarding/flow.ts";
 
 /** What the Add flow does with a folder, decided from `project_probe` alone. Nothing is ever written to the folder:
  * a folder without `atlas.yaml` is added with its stack detected in memory (the project header offers to save it). */
@@ -13,6 +15,18 @@ export function addPlan(p: Probe): AddPlan {
 	return { kind: "add", root: p.root, inside: p.root !== p.picked };
 }
 
+/**
+ * The stack named in the "Detected ..." line. `detected` is the label `detection_label` (atlas-core `domain/project.rs`)
+ * builds, `Node project (package.json)`: its kind is a stack id the app words, and a kind it does not know shows as
+ * the label came.
+ */
+function detectedStack(detected: string): string {
+	const kind = /^(\w+) project\b/.exec(detected)?.[1]?.toLowerCase();
+	return kind && Object.hasOwn(STACK_MESSAGES, kind)
+		? STACK_MESSAGES[kind]!()
+		: detected.replace(/ \(.*\)$/, "");
+}
+
 /** The line shown after adding a folder, or null when there is nothing to tell (it has an atlas.yaml, or is broken).
  * `detected` is the label from `project_config` (`Node project (package.json)`). */
 export function addedToast(
@@ -20,21 +34,15 @@ export function addedToast(
 	detected: string | null,
 ) {
 	if (p.config_source !== "detected" || p.error) return null;
-	if (!detected) return "Added: nothing to run was detected yet";
-	const kind = detected.replace(/ \(.*\)$/, "");
-	const n = p.services_total;
-	return `Detected ${kind}: ${n ? `${n} service${n === 1 ? "" : "s"}` : "no services to run yet"}`;
+	if (!detected) return m.sidebar_added_nothing();
+	return m.sidebar_added_detected({ stack: detectedStack(detected), count: p.services_total });
 }
 
 /** What removing a project does, said before it happens: the folder stays; a running stack stops; worktrees go too. */
 export function removeDescription(p: Pick<ProjectView, "root" | "running">, linkedWorktrees: number): string {
-	const lines = [p.root, "Only the Atlas entry is removed: no file or folder on disk is touched."];
-	if (p.running) lines.push("Its running stack is stopped first.");
-	if (linkedWorktrees) {
-		lines.push(
-			`Its ${linkedWorktrees} linked worktree${linkedWorktrees > 1 ? "s are" : " is"} removed from Atlas too.`,
-		);
-	}
+	const lines = [p.root, m.sidebar_remove_note()];
+	if (p.running) lines.push(m.sidebar_remove_stops());
+	if (linkedWorktrees) lines.push(m.sidebar_remove_linked({ count: linkedWorktrees }));
 	return lines.join("\n");
 }
 

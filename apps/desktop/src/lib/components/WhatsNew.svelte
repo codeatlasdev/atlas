@@ -12,24 +12,31 @@
 		WifiOff,
 		Wrench,
 	} from "@lucide/svelte";
-	import type { Component } from "svelte";
+	import type { Component, Snippet } from "svelte";
 	import { api } from "#lib/api.ts";
+	import Rich from "#lib/i18n/Rich.svelte";
 	import { hostState, openHostPrompt } from "#lib/stores/hostStatus.svelte.ts";
 	import { updates as u } from "#lib/stores/updates.svelte.ts";
 	import { renderNote } from "#lib/viewers/markdown.ts";
 	import {
+		badgeLabel,
 		badgesFor,
+		channelName,
+		channelOfVersion,
 		dateOf,
 		formatBytes,
 		isLong,
+		kindLabel,
 		managedView,
-		channelOfVersion,
 		parseNotes,
 		percent,
 		prereleaseBadge,
+		prereleaseLabel,
+		stepLabel,
 		versionAnchor,
 		type GroupKind,
 	} from "#lib/updates.ts";
+	import { m } from "#lib/i18n/m.ts";
 
 	const CHANGELOG_URL = "https://atlas.codeatlas.com.br/changelog";
 	const REPO_URL = "https://github.com/codeatlasdev/atlas";
@@ -87,7 +94,7 @@
 
 	async function copy(text: string) {
 		await navigator.clipboard.writeText(text);
-		toast.success("Copied");
+		toast.success(m.viewers_files_copy_copied());
 	}
 
 	$effect(() => {
@@ -144,7 +151,7 @@
 	bind:open={u.whatsNewOpen}
 	side="right"
 	width="520px"
-	title="What's new"
+	title={m.shell_commands_whats_new()}
 	onOpenChange={(o) => !o && u.dismissUpdated()}
 >
 	<div class="sheet">
@@ -156,33 +163,39 @@
 			{onkeydown}
 			tabindex="0"
 			role="region"
-			aria-label="Release notes"
+			aria-label={m.settings_updates_whats_new_region_aria()}
 		>
 			{#if u.notesLoading}
-				<div class="skeleton" aria-busy="true" aria-label="Loading release notes">
+				<div class="skeleton" aria-busy="true" aria-label={m.settings_updates_whats_new_loading_aria()}>
 					<i style="width: 38%"></i><i style="width: 72%"></i><i style="width: 90%"></i><i style="width: 64%"
 					></i>
 				</div>
-			{:else if u.notesError}
+			{:else if u.notesError !== null}
 				<div class="state" role="alert">
 					<WifiOff size={22} />
-					<b>Couldn't load the release notes</b>
-					<p>{u.notesError}</p>
+					<b>{m.settings_updates_whats_new_load_failed()}</b>
+					<p>{u.notesError || m.settings_updates_github_unreachable()}</p>
 					<Button variant="glass" onclick={() => u.loadNotes()}>
 						{#snippet leading()}<RotateCcw size={14} />{/snippet}
-						Retry
+						{m.common_action_retry()}
 					</Button>
 				</div>
 			{:else if releases.length === 0}
 				<div class="state">
 					<Sparkles size={22} />
-					<b>No release notes for {u.notesFor ?? "this version"}</b>
-					<p>The changelog has no entry for it yet.</p>
-					<Button variant="glass" onclick={() => api.openUrl(CHANGELOG_URL)}>Open the full changelog</Button>
+					<b
+						>{u.notesFor
+							? m.settings_updates_whats_new_empty_title({ version: u.notesFor })
+							: m.settings_updates_whats_new_empty_title_unknown()}</b
+					>
+					<p>{m.settings_updates_whats_new_empty_body()}</p>
+					<Button variant="glass" onclick={() => api.openUrl(CHANGELOG_URL)}
+						>{m.settings_updates_whats_new_open_changelog()}</Button
+					>
 				</div>
 			{:else}
 				{#if multi}
-					<nav class="index" aria-label="Versions">
+					<nav class="index" aria-label={m.settings_updates_whats_new_versions_aria()}>
 						{#each releases as r (r.version)}
 							<button
 								class:on={active === r.version || (!active && r === releases[0])}
@@ -202,18 +215,16 @@
 								<h2 class="num">{r.version}</h2>
 								<div class="meta">
 									{#if r.date}<time>{r.date}</time>{/if}
-									{#if r.pre}<span class="chip" data-channel={r.pre.toLowerCase()}>{r.pre}</span>{/if}
+									{#if r.pre}<span class="chip" data-channel={r.pre}>{prereleaseLabel(r.pre)}</span>{/if}
 									{#each r.badges as b (b)}
-										<span class="chip {b}"
-											>{b === "latest" ? "Latest" : b === "new" ? "New" : "Installed"}</span
-										>
+										<span class="chip {b}">{badgeLabel(b)}</span>
 									{/each}
 								</div>
 							</div>
 							<div class="tools">
 								<button
 									class="icon"
-									aria-label="Open {r.version} on GitHub"
+									aria-label={m.settings_updates_whats_new_open_github_aria({ version: r.version })}
 									onclick={() => api.openUrl(r.url)}
 								>
 									<ExternalLink size={13} />
@@ -223,7 +234,9 @@
 										class="icon fold"
 										class:shut={!open}
 										aria-expanded={open}
-										aria-label="{open ? 'Collapse' : 'Expand'} {r.version}"
+										aria-label={open
+											? m.settings_updates_whats_new_collapse_aria({ version: r.version })
+											: m.settings_updates_whats_new_expand_aria({ version: r.version })}
 										onclick={() => (collapsed[r.version] = open)}
 									>
 										<ChevronDown size={14} />
@@ -239,7 +252,11 @@
 							{#each r.parsed.groups as g, gi (g.heading)}
 								{@const k = KIND[g.kind]}
 								<div class="group" style="--tone: {k.tone}">
-									<h3><k.icon size={13} />{g.heading}<span class="count">{g.items.length}</span></h3>
+									<h3>
+										<k.icon size={13} />{kindLabel(g.kind, g.heading)}<span class="count"
+											>{g.items.length}</span
+										>
+									</h3>
 									<ul>
 										{#each g.items as it, ii (ii)}
 											{@const key = `${r.version}/${gi}/${ii}`}
@@ -253,7 +270,9 @@
 													</div>
 													{#if isLong(it)}
 														<button class="more" aria-expanded={!long} onclick={() => (unfolded[key] = long)}>
-															{long ? "More" : "Less"}
+															{long
+																? m.settings_updates_whats_new_fold_more()
+																: m.settings_updates_whats_new_fold_less()}
 														</button>
 													{/if}
 												{/if}
@@ -262,7 +281,7 @@
 									</ul>
 								</div>
 							{:else}
-								<p class="quiet">No changes listed for this version.</p>
+								<p class="quiet">{m.settings_updates_whats_new_no_changes()}</p>
 							{/each}
 						{/if}
 					</section>
@@ -280,7 +299,7 @@
 					<ol class="steps">
 						{#each u.steps as s (s.id)}
 							<li class={s.state}>
-								<span class="label">{s.label}</span>
+								<span class="label">{stepLabel(s.id)}</span>
 							</li>
 						{/each}
 					</ol>
@@ -295,100 +314,133 @@
 							<i class:indeterminate={pct === null} style:--p={pct === null ? undefined : pct / 100}></i>
 						</div>
 						<p class="hint">
-							{pct === null ? "Downloading…" : `${pct}%`}{u.progress.total
-								? ` of ${formatBytes(u.progress.total)}`
-								: ""}
+							{pct === null
+								? m.settings_updates_whats_new_download_unknown()
+								: m.settings_updates_whats_new_download_progress({
+										percent: pct,
+										total: formatBytes(u.progress.total),
+									})}
 						</p>
 					{/if}
 					{#if u.outcome === "failed"}
 						<p class="fail" role="alert">
-							{u.failure ?? "The update failed."}
-							{#if u.progress.rollback === "restored"}Atlas CLI stays on {u.info?.cli.version ??
-									"its previous version"}; nothing is half updated.{/if}
-							{#if u.progress.rollback === "failed"}The CLI could not be rolled back: run <code
-									>atlas desktop --install</code
-								>.{/if}
+							{u.failure ?? m.settings_updates_whats_new_update_failed()}
+							{#if u.progress.rollback === "restored"}{u.info?.cli.version
+									? m.settings_updates_whats_new_rollback_restored({ version: u.info.cli.version })
+									: m.settings_updates_whats_new_rollback_restored_unknown()}{/if}
+							{#if u.progress.rollback === "failed"}<Rich
+									parts={m.settings_updates_whats_new_rollback_failed.parts()}
+									tags={{ code: mono }}
+								/>{/if}
 						</p>
 					{/if}
 					{#if hostStale}
 						<p class="hint warn">
 							{hostState.reasonText}
 							{hostState.ptys.length > 0
-								? `${hostState.ptys.length} terminal${hostState.ptys.length === 1 ? " is" : "s are"} still running, so Atlas did not restart it.`
+								? m.settings_updates_whats_new_host_terminals({ count: hostState.ptys.length })
 								: ""}
-							<button class="inline" onclick={openHostPrompt}>Review</button>
+							<button class="inline" onclick={openHostPrompt}>{m.settings_updates_whats_new_review()}</button>
 						</p>
 					{/if}
 					<button class="details" onclick={() => (detailsOpen = !detailsOpen)}>
-						<ChevronDown size={12} class={detailsOpen ? "" : "shut"} /> Details
+						<ChevronDown size={12} class={detailsOpen ? "" : "shut"} />
+						{m.crew_onboarding_connect_step_details()}
 					</button>
 					{#if detailsOpen}
-						<pre class="log mono ca-selectable" bind:this={logEl}>{u.log.join("\n") || "starting…"}</pre>
+						<pre class="log mono ca-selectable" bind:this={logEl}>{u.log.join("\n") ||
+								m.settings_updates_log_starting()}</pre>
 					{/if}
 				</div>
 			{/if}
 
 			{#if managed?.command}
 				<div class="managed">
-					<p class="hint">{managed.title}. Run this in a terminal to update it:</p>
+					<p class="hint">{m.settings_updates_whats_new_managed_run({ title: managed.title })}</p>
 					<div class="cmd">
 						<code class="mono ca-selectable">{managed.command}</code>
-						<button class="icon" aria-label="Copy command" onclick={() => copy(managed.command!)}>
+						<button
+							class="icon"
+							aria-label={m.crew_onboarding_connect_step_copy_command()}
+							onclick={() => copy(managed.command!)}
+						>
 							<Copy size={13} />
 						</button>
 					</div>
 					{#if managed.installable}
-						<p class="hint">Or let Atlas run it: your system asks for your password.</p>
+						<p class="hint">{m.settings_updates_whats_new_managed_or_atlas()}</p>
 					{/if}
 				</div>
 			{/if}
 			{#if u.dev && !upToDate}
-				<p class="hint">This is a dev build; Atlas will not replace it with a release.</p>
+				<p class="hint">{m.settings_updates_whats_new_dev_note()}</p>
 			{/if}
 			<div class="actions">
 				{#if u.relaunchNeeded}
 					<Button onclick={u.relaunch}>
 						{#snippet leading()}<RotateCcw size={14} />{/snippet}
-						Relaunch Atlas
+						{m.settings_updates_whats_new_relaunch()}
 					</Button>
 				{:else if upToDate}
-					<Button onclick={close}>Done</Button>
+					<Button onclick={close}>{m.common_action_done()}</Button>
 				{:else if managed?.installable}
 					<Button disabled={busy || u.dev} onclick={u.installPackage}>
 						{#snippet leading()}{#if busy}<Spinner size={14} />{/if}{/snippet}
-						{busy ? "Updating…" : `Install ${latest} now`}
+						{busy
+							? m.settings_updates_updating()
+							: m.settings_updates_whats_new_install_now({ version: latest ?? "" })}
 					</Button>
 				{:else}
 					<Button disabled={busy || u.dev} onclick={u.updateAll}>
 						{#snippet leading()}{#if busy}<Spinner size={14} />{/if}{/snippet}
 						{busy
-							? "Updating…"
+							? m.settings_updates_updating()
 							: u.outcome === "failed"
-								? "Try again"
-								: `Update to ${latest} and relaunch${size ? ` · ${size}` : ""}`}
+								? m.common_action_retry()
+								: size
+									? m.settings_updates_whats_new_update_relaunch_size({ version: latest ?? "", size })
+									: m.settings_updates_whats_new_update_relaunch({ version: latest ?? "" })}
 					</Button>
 				{/if}
 			</div>
 			{#if heroChannel && followed}
 				<p class="hint chan">
-					<span class="chip" data-channel={heroChannel}>{heroChannel}</span>
-					release · following <b>{followed}</b>
+					<Rich
+						parts={m.settings_updates_whats_new_following.parts({
+							channel: channelName(heroChannel),
+							followed: channelName(followed),
+						})}
+						tags={{ chip: chanChip, b: bold }}
+					/>
 				</p>
 			{/if}
 			<div class="links">
 				{#if !upToDate && !u.relaunchNeeded}
-					<button class="icon text" disabled={busy} onclick={close}>Remind me later</button>
-					<button class="icon text" disabled={busy} onclick={u.skipVersion}>Skip this version</button>
+					<button class="icon text" disabled={busy} onclick={close}
+						>{m.settings_updates_whats_new_remind_later()}</button
+					>
+					<button class="icon text" disabled={busy} onclick={u.skipVersion}
+						>{m.settings_updates_whats_new_skip_version()}</button
+					>
 					<span class="grow"></span>
 				{/if}
-				<button class="icon text" onclick={() => api.openUrl(CHANGELOG_URL)}>Full changelog</button>
+				<button class="icon text" onclick={() => api.openUrl(CHANGELOG_URL)}
+					>{m.settings_updates_full_changelog()}</button
+				>
 				<button class="icon text" onclick={() => api.openUrl(hero ? hero.url : REPO_URL)}
-					>View on GitHub</button
+					>{m.settings_updates_whats_new_view_github()}</button
 				>
 			</div>
 		</footer>
 	</div>
 </Drawer>
+
+{#snippet chanChip(content: Snippet)}
+	<span class="chip" data-channel={heroChannel}>{@render content()}</span>
+{/snippet}
+
+{#snippet bold(content: Snippet)}<b>{@render content()}</b>{/snippet}
+{#snippet mono(content: Snippet)}<code>{@render content()}</code>{/snippet}
 
 <style>
 	.managed {
@@ -831,9 +883,9 @@
 		color: var(--ca-semantic-error);
 	}
 	.label {
-		overflow: hidden;
-		text-overflow: ellipsis;
-		white-space: nowrap;
+		/* A translated step name wraps under its bar: truncating it hid the word that says what is happening. */
+		overflow-wrap: anywhere;
+		line-height: 1.25;
 	}
 	.bar {
 		height: 4px;

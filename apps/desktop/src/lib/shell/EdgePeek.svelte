@@ -30,8 +30,17 @@
 		size,
 		label,
 		active = true,
+		accent,
 		children,
-	}: { edge: "left" | "right"; size: number; label: string; active?: boolean; children: Snippet } = $props();
+	}: {
+		edge: "left" | "right";
+		size: number;
+		label: string;
+		active?: boolean;
+		/** The panel glass is tinted with it; it is set on the glass, never inherited (#452). */
+		accent?: string;
+		children: Snippet;
+	} = $props();
 
 	let panel: HTMLElement | undefined;
 	let timer = 0;
@@ -170,7 +179,7 @@
 	inert
 	ontransitionend={(e) => e.target === e.currentTarget && e.propertyName === "transform" && pushZones(true)}
 >
-	<div class="peek-glass" aria-hidden="true"></div>
+	<div class="peek-glass" aria-hidden="true" style:--space-accent={accent}></div>
 	<div class="peek-body">
 		{#if active}{@render children()}{/if}
 	</div>

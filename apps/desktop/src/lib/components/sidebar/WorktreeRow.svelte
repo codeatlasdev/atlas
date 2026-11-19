@@ -30,6 +30,8 @@
 				.map((t) => agents.status[t.id]?.state ?? "idle"),
 		),
 	);
+	/** The selected row paints with its space's accent, which it carries itself: on `.app` it would restyle the chrome (#452). */
+	const active = $derived(ws.view === "worktree" && store.selected === p.id);
 
 	function select(e: MouseEvent) {
 		if (primaryKey(e)) {
@@ -44,7 +46,8 @@
 {#if sidebar.matches(p, w)}
 	<div
 		class="item nested"
-		class:active={ws.view === "worktree" && store.selected === p.id}
+		class:active
+		style:--space-accent={active ? shell.accent(p.parent ?? p.id) : undefined}
 		class:multi={sidebar.multi[p.id]}
 		class:unread={w?.unread}
 		class:main={!p.parent}

@@ -6,6 +6,7 @@ Nested notes, loaded when you work under `crates/atlas-desktop/`. Moved verbatim
 - Never put a secret in content loaded into the embedded browser; Design Mode results are read back through `eval_with_callback`.
 - After HMR, a store listener registered in `onMount` can survive with stale module instances; reload the webview before trusting socket/ctl behavior.
 - Codex runs hooks in its own daemon without the terminal's env: `atlas hook` falls back to the default endpoint and the app matches by agent + cwd.
+- Native UI outside the window (message boxes, file panels, notifications, popped menus, the browser or Finder) goes only through `native_ui.rs`: the OS puts it on the user's active display, not on an agent instance's virtual one (the watchdog's "page did not start" alert covered the maintainer's screen on 2026-11-18), so an agent instance shows none and records it at level error in `debug logs`; `clippy.toml` bans the raw APIs elsewhere.
 
 Local desktop build (macOS only):
 

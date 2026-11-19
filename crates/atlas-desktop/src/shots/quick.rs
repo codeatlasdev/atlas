@@ -329,16 +329,19 @@ pub async fn shots_quick_action(
             return super::unavailable();
         }
         Action::Save => {
-            use tauri_plugin_dialog::DialogExt;
             let name = path
                 .file_name()
                 .map(|n| n.to_string_lossy().into_owned())
                 .unwrap_or_default();
-            let (tx, rx) = tokio::sync::oneshot::channel();
-            app.dialog().file().set_file_name(name).save_file(move |p| {
-                let _ = tx.send(p.map(|p| p.to_string()));
-            });
-            if let Some(dest) = rx.await.map_err(|e| e.to_string())? {
+            let picked = crate::native_ui::save_path(
+                app.clone(),
+                crate::native_ui::PathDialog {
+                    default_path: Some(name),
+                    ..Default::default()
+                },
+            )
+            .await?;
+            if let Some(dest) = picked {
                 std::fs::copy(&path, &dest).map_err(|e| format!("{dest}: {e}"))?;
             }
         }

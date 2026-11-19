@@ -16,22 +16,42 @@ use std::collections::BTreeMap;
 use serde_json::Value;
 use tokio::io::{AsyncBufReadExt, AsyncWriteExt, BufReader};
 
+use crate::agents::hook_server::CREWMATE_DECISION_WAIT;
 use crate::crew::store::{CrewmateSession, UsageRecord};
 
 use super::{TurnCtx, TurnResult, launch, program, turn_timeout};
 
-/// Settings every crewmate's omp runs with, as a `--config` overlay. A crew server is a headless server: omp's sleep
-/// prevention asks systemd-logind over D-Bus, which a server or container often lacks, and every start then waited
-/// 25 s for the D-Bus timeout (seen on atlas-test-ship: first step 33 s in, the reply summary always timed out).
-const CREW_OVERLAY: &str = "power:\n  sleepPrevention: \"off\"\n";
+/// How long the approval extension waits for hostd's answer, and the limit omp puts on the extension's handler: each
+/// one outlives the one inside it (hostd's own wait, then this, then omp's), so a prompt nobody answers ends where
+/// it can say so, with an audit entry, and not as omp's "timed out after Nms" (#524).
+pub(crate) const EXTENSION_WAIT: std::time::Duration =
+    std::time::Duration::from_secs(CREWMATE_DECISION_WAIT.as_secs() + 60);
+pub(crate) const HANDLER_LIMIT: std::time::Duration =
+    std::time::Duration::from_secs(EXTENSION_WAIT.as_secs() + 60);
+
+/// Settings every crewmate's omp runs with, as a `--config` overlay.
+/// - A crew server is headless: omp's sleep prevention asks systemd-logind over D-Bus, which a server or container
+///   often lacks, and every start then waited 25 s for the D-Bus timeout (seen on atlas-test-ship: first step 33 s
+///   in, the reply summary always timed out).
+/// - omp abandons any extension `tool_call` handler after `extensionHandlers.toolCallTimeoutMs` (default 30 s; time
+///   in its own dialogs does not count, a `fetch` to hostd does) and blocks the tool. The approval extension waits
+///   for the owner, so the limit is raised above its own wait ([`HANDLER_LIMIT`]; #524: every approval answered
+///   after 30 s failed with "omp-approval.ts timed out after 30000ms").
+fn crew_overlay() -> String {
+    format!(
+        "power:\n  sleepPrevention: \"off\"\nextensionHandlers:\n  toolCallTimeoutMs: {}\n",
+        HANDLER_LIMIT.as_millis()
+    )
+}
 
 /// `--config <file>` for an omp started by a crewmate; the file sits in the crewmate's dir and is rewritten when it differs.
 pub(crate) fn overlay_args(crewmate_dir: &std::path::Path) -> Vec<String> {
     let path = crewmate_dir.join("omp-crew.yml");
+    let overlay = crew_overlay();
     // tree-access: hostd's own engine files in ctx.crewmate_dir (crew-runtime under isolation, which the crewmate cannot write)
-    if std::fs::read_to_string(&path).ok().as_deref() != Some(CREW_OVERLAY) {
+    if std::fs::read_to_string(&path).ok().as_deref() != Some(overlay.as_str()) {
         // tree-access: hostd's own engine files in ctx.crewmate_dir (crew-runtime under isolation, which the crewmate cannot write)
-        let _ = std::fs::write(&path, CREW_OVERLAY);
+        let _ = std::fs::write(&path, overlay);
     }
     vec!["--config".to_string(), path.to_string_lossy().into_owned()]
 }
@@ -273,7 +293,7 @@ pub(crate) fn write_approval_extension_pub(
 /// Write the TypeScript omp approval extension to `path`.
 /// The extension listens for `tool_call` events via the omp Extension API and
 /// POSTs to hostd's `/hook/omp/decision` endpoint, blocking until the user
-/// allows or denies the tool call (up to 30 minutes).
+/// allows or denies the tool call (hostd waits [`CREWMATE_DECISION_WAIT`], 30 minutes).
 fn write_approval_extension(
     path: &std::path::Path,
     hook_port: u16,
@@ -292,7 +312,8 @@ export default function atlasApproval(pi) {{
     const PANE  = process.env.ATLAS_PANE_KEY   || "{pane}";
 
     pi.on("tool_call", async (event) => {{
-        let decision = null;
+        // Fail-closed: the tool runs only on an explicit "allow"; every other end blocks it and says which.
+        let reason = "the approval request failed";
         try {{
             const resp = await fetch(
                 `http://127.0.0.1:${{PORT}}/hook/omp/decision`,
@@ -306,29 +327,32 @@ export default function atlasApproval(pi) {{
                         pane_key: PANE,
                         payload: {{ tool_name: event.toolName, tool_input: event.input }},
                     }}),
-                    signal: AbortSignal.timeout(1_800_000), // 30 min
+                    // Longer than hostd's own wait, which answers first (and audits it).
+                    signal: AbortSignal.timeout({wait_ms}),
                 }},
             );
-            if (resp.ok) {{
+            if (!resp.ok) {{
+                reason = `the approval request failed: hostd answered ${{resp.status}}`;
+            }} else {{
                 const data = await resp.json();
-                // Only "allow" when we get an explicit allow decision.
-                if (data && data.decision === "allow") {{
-                    decision = "allow";
-                }}
+                if (data && data.decision === "allow") return;
+                reason = data && data.decision === "deny"
+                    ? "the owner denied this tool call"
+                    : "nobody answered the approval request in time";
             }}
-        }} catch {{
-            // Network error, timeout, malformed JSON — fall through to block.
+        }} catch (e) {{
+            reason = e && e.name === "TimeoutError"
+                ? "nobody answered the approval request in time"
+                : `the approval request failed: ${{e && e.message}}`;
         }}
-        // Fail-closed: block unless we received an explicit "allow".
-        if (decision !== "allow") {{
-            return {{ block: true, reason: "no approval received" }};
-        }}
+        return {{ block: true, reason }};
     }});
 }}
 "#,
         port = hook_port,
         token = hook_token,
         pane = pane_key,
+        wait_ms = EXTENSION_WAIT.as_millis(),
     );
     if let Some(parent) = path.parent() {
         // tree-access: hostd's own engine files in ctx.crewmate_dir (crew-runtime under isolation, which the crewmate cannot write)

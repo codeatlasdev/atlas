@@ -1,0 +1,9 @@
+{
+	"git_branch_create_from": "a partir de {branch}",
+	"git_branch_create_from_head": "a partir do commit atual",
+	"git_branch_create_label": "Criar a branch \"{name}\"",
+	"git_branch_group_local": "Branches",
+	"git_branch_group_remote": "Branches remotas",
+	"git_branch_row_checked_out": "em uso em {worktree}",
+	"git_branch_row_current": "atual"
+}

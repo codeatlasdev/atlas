@@ -5,6 +5,16 @@ import type { ProviderState } from "#lib/commitMessage.ts";
 import type { HygieneFixed, HygieneReport } from "#lib/settings/hygiene.ts";
 import { parseBranches, parseSwitched, type Branches, type Switched } from "#lib/branches.ts";
 
+/** What a file panel is asked for. */
+export interface PathDialog {
+	title?: string;
+	/** A folder, not a file (open panel only). */
+	directory?: boolean;
+	/** Where to start; a file path also names the file to save as. */
+	defaultPath?: string;
+	filters?: { name: string; extensions: string[] }[];
+}
+
 export interface DiscoverArgs {
 	/** Extra folders besides the defaults (absolute or `~/…`). */
 	roots?: string[];
@@ -250,6 +260,10 @@ export const api = {
 	openUrl: (url: string) => invoke<void>("open_url", { url }),
 	reveal: (id: string) => invoke<void>("reveal", { id }),
 	revealPath: (path: string) => invoke<void>("reveal_path", { path }),
+	/** The OS open panel for one file or folder (`null` = cancelled). Rust asks the native-UI gate first: an agent instance never shows it. */
+	pickPath: (options: PathDialog = {}) => invoke<string | null>("pick_path", { options }),
+	/** The OS save panel (`null` = cancelled). */
+	savePath: (options: PathDialog = {}) => invoke<string | null>("save_path", { options }),
 	shellInfo: () => invoke<ShellInfo>("shell_info"),
 	shellSet: (shell: string | null) => invoke<ShellInfo>("shell_set", { shell }),
 	settings: () => invoke<Record<string, unknown>>("settings_get"),

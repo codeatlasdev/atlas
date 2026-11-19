@@ -8,6 +8,7 @@
 	import { argsLine } from "./composer.ts";
 	import ChatTextarea from "./ChatTextarea.svelte";
 	import VirtualList from "../VirtualList.svelte";
+	import { m } from "#lib/i18n/m.ts";
 
 	let {
 		chat,
@@ -31,18 +32,21 @@
 
 <VirtualList bind:this={list} class="transcript" {items} key={(it) => it.id} estimate={72} stickBottom>
 	{#snippet header()}
-		{#if !chat.ready}<div class="center"><Spinner /> Starting omp…</div>{/if}
+		{#if !chat.ready}<div class="center"><Spinner /> {m.workbench_chat_starting_omp()}</div>{/if}
 	{/snippet}
 	{#snippet item(it)}
 		{#if it.kind === "user"}
 			<div class="msg user ca-selectable">
-				{it.text}{#if it.images}<span class="dim"> · {it.images} image(s)</span>{/if}
+				{it.text}{#if it.images}<span class="dim">
+						· {m.workbench_chat_images({ count: it.images })}</span
+					>{/if}
 			</div>
 		{:else if it.kind === "assistant"}
 			<div class="msg assistant">
 				{#if it.thinking}
 					<button class="fold" onclick={() => (open[`th-${it.id}`] = !open[`th-${it.id}`])}>
-						{#if open[`th-${it.id}`]}<ChevronDown size={12} />{:else}<ChevronRight size={12} />{/if} Thinking
+						{#if open[`th-${it.id}`]}<ChevronDown size={12} />{:else}<ChevronRight size={12} />{/if}
+						{m.crew_chat_setup_conversation_thinking()}
 					</button>
 					{#if open[`th-${it.id}`]}<pre class="thinking ca-selectable">{it.thinking}</pre>{/if}
 				{/if}
@@ -79,8 +83,8 @@
 						</div>
 					{:else if u.method === "confirm"}
 						<div class="opts">
-							<button onclick={() => onanswer(u, true)}>Yes</button>
-							<button onclick={() => onanswer(u, false)}>No</button>
+							<button onclick={() => onanswer(u, true)}>{m.workbench_chat_answer_yes()}</button>
+							<button onclick={() => onanswer(u, false)}>{m.workbench_chat_answer_no()}</button>
 						</div>
 					{:else}
 						<ChatTextarea
@@ -93,7 +97,9 @@
 							}}
 						/>
 					{/if}
-					<button class="cancel" onclick={() => onanswer(u, undefined)}>Dismiss</button>
+					<button class="cancel" onclick={() => onanswer(u, undefined)}
+						>{m.crew_chat_ask_card_dismiss()}</button
+					>
 				</div>
 			{/each}
 		</div>

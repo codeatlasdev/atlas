@@ -1,0 +1,22 @@
+{
+	"settings_registry_terminal_click_to_move_description": "Help line under the \"Click to move the cursor\" row in Settings > Terminal, also shown in search results.",
+	"settings_registry_terminal_clipboard_description": "Help line under the \"Programs can copy to your clipboard\" row in Settings > Terminal, also shown in search results.",
+	"settings_registry_terminal_contrast_description": "Help line under the \"Minimum contrast\" row in Settings > Terminal, also shown in search results.",
+	"settings_registry_terminal_copy_on_select_description": "Help line under the \"Copy on select\" row in Settings > Terminal, also shown in search results.",
+	"settings_registry_terminal_cursor_blink_description": "Help line under the \"Blinking cursor\" row in Settings > Terminal, also shown in search results.",
+	"settings_registry_terminal_description": "One line under the Terminal page title in Settings, and the tooltip of its sidebar entry.",
+	"settings_registry_terminal_font_thicken_description": "Help line under the \"Thicken glyphs\" row in Settings > Terminal, also shown in search results.",
+	"settings_registry_terminal_gpu_description": "Help line under the \"Fast terminal (GPU)\" row in Settings > Terminal, also shown in search results.",
+	"settings_registry_terminal_host_restart_description": "Help line under the \"Restart terminal host\" row in Settings > Terminal, also shown in search results.",
+	"settings_registry_terminal_label": "Sidebar entry and page title of the Terminal section in Settings.",
+	"settings_registry_terminal_ligatures_description": "Help line under the \"Ligatures\" row in Settings > Terminal, also shown in search results.",
+	"settings_registry_terminal_option_as_alt_description": {
+		"description": "Help line under the \"Option key as Alt\" row in Settings > Terminal, also shown in search results. The {…} placeholders are shortcuts filled in by the app.",
+		"platform": "mac"
+	},
+	"settings_registry_terminal_scrollback_memory_description": "Help line under the \"Scrollback memory\" row in Settings > Terminal, also shown in search results.",
+	"settings_registry_terminal_term_font_description": "Help line under the \"Terminal font\" row in Settings > Terminal, also shown in search results.",
+	"settings_registry_terminal_term_padding_x_description": "Help line under the \"Horizontal padding\" row in Settings > Terminal, also shown in search results.",
+	"settings_registry_terminal_term_padding_y_description": "Help line under the \"Vertical padding\" row in Settings > Terminal, also shown in search results.",
+	"settings_registry_terminal_term_size_description": "Help line under the \"Terminal font size\" row in Settings > Terminal, also shown in search results."
+}

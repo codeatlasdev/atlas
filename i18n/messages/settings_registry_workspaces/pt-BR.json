@@ -1,0 +1,11 @@
+{
+	"settings_registry_workspaces_description": "Onde o Atlas coloca as worktrees, como as branches são nomeadas e a limpeza das que você não usa mais.",
+	"settings_registry_workspaces_label": "Workspaces",
+	"settings_registry_workspaces_ws_autoclean_description": "Remove worktrees vinculadas cujo PR já passou por merge ou que ficaram paradas, nunca as que têm trabalho não salvo ou sem push.",
+	"settings_registry_workspaces_ws_cleanup_description": "Veja o tamanho, o último commit e o estado do git das worktrees vinculadas, e exclua as que você não precisa mais.",
+	"settings_registry_workspaces_ws_cleanup_label": "Limpar worktrees",
+	"settings_registry_workspaces_ws_dir_description": "Onde o Atlas cria os checkouts das novas worktrees.",
+	"settings_registry_workspaces_ws_hygiene_description": "Processos que o Atlas ou um agente deixou rodando depois que o dono saiu, o disco que cada projeto ocupa e o que dá para liberar.",
+	"settings_registry_workspaces_ws_nest_description": "Coloca cada worktree em uma pasta com o nome do repositório.",
+	"settings_registry_workspaces_ws_prefix_description": "Vem antes do nome da branch que o Atlas cria, para distinguir as branches com facilidade."
+}

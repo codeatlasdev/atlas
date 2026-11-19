@@ -1,0 +1,18 @@
+{
+	"workbench_browser_address_placeholder": "Placeholder of the browser tab address field; key is the shortcut that focuses it",
+	"workbench_browser_design_mode": "Tooltip of the browser tab button that picks a page element to send to an agent",
+	"workbench_browser_empty_hint": "Empty browser tab hint; key is the shortcut that focuses the address field",
+	"workbench_browser_failure_host": "Browser tab error: the host name does not resolve",
+	"workbench_browser_failure_offline": "Browser tab error: no network",
+	"workbench_browser_failure_other": "Browser tab error when the engine gave no message",
+	"workbench_browser_failure_refused": "Browser tab error: the connection was refused",
+	"workbench_browser_failure_timeout": "Browser tab error: timeout",
+	"workbench_browser_failure_title": "Heading of the browser tab error screen",
+	"workbench_browser_failure_tls": "Browser tab error: TLS or certificate problem",
+	"workbench_browser_forward": "Tooltip of the browser tab forward button",
+	"workbench_browser_open_in_browser": "Button of the browser tab error screen",
+	"workbench_browser_open_in_system_browser": "Tooltip of the browser tab button that opens the page in the system browser",
+	"workbench_browser_pick_hint": "Banner while picking an element; key is Esc",
+	"workbench_browser_reload": "Tooltip of the browser tab reload button",
+	"workbench_browser_with_screenshot": "Browser tab: the picked element goes to the agent together with a screenshot"
+}

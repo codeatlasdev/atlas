@@ -18,23 +18,18 @@ pub struct Mods {
     pub cmd: bool,
 }
 
+/// The caps in macOS menu order: ⌃ ⌥ ⇧ ⌘.
+// i18n-ignore: the pill records presses of a Mac keyboard (macOS virtual key codes), so it shows the caps a Mac prints on them
+const CAPS: [char; 4] = ['⌃', '⌥', '⇧', '⌘'];
+
 impl Mods {
     /// The symbols in macOS menu order: ⌃ ⌥ ⇧ ⌘.
     fn symbols(self) -> String {
-        let mut s = String::new();
-        if self.ctrl {
-            s.push('⌃');
-        }
-        if self.alt {
-            s.push('⌥');
-        }
-        if self.shift {
-            s.push('⇧');
-        }
-        if self.cmd {
-            s.push('⌘');
-        }
-        s
+        let held = [self.ctrl, self.alt, self.shift, self.cmd];
+        CAPS.into_iter()
+            .zip(held)
+            .filter_map(|(cap, held)| held.then_some(cap))
+            .collect()
     }
 }
 

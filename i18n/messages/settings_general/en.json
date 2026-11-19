@@ -1,8 +1,133 @@
 {
+	"settings_general_close_settings": "Close settings",
+	"settings_general_config_edited": "● edited",
+	"settings_general_config_file_changed_on_disk": "File changed on disk",
+	"settings_general_config_keep_mine": "Keep mine",
+	"settings_general_config_problems": [
+		{
+			"declarations": [
+				"input count",
+				"local countExact = count",
+				"local countPlural = count: plural"
+			],
+			"selectors": [
+				"countExact",
+				"countPlural"
+			],
+			"match": {
+				"countExact=0, countPlural=*": "No problems",
+				"countExact=*, countPlural=one": "{count} problem",
+				"countExact=*, countPlural=*": "{count} problems"
+			}
+		}
+	],
+	"settings_general_config_reload": "Reload",
+	"settings_general_config_restart_stack_to_apply": "Restart stack to apply",
+	"settings_general_config_revert": "Revert",
+	"settings_general_config_review_the_changes": "Review the changes.",
+	"settings_general_config_save_atlas_yaml": "Save atlas.yaml?",
+	"settings_general_config_saved": "atlas.yaml saved",
+	"settings_general_config_the_running_stack_still_uses": "The running stack still uses the old config.",
+	"settings_general_config_valid": "valid",
+	"settings_general_config_validating": "validating",
+	"settings_general_config_your_edits_are_unsaved": "Your edits are unsaved.",
+	"settings_general_dock_a_small_pill_that_floats": "A small pill that floats above your other apps. Press the hotkey from anywhere to message an agent; it works with the Atlas window closed.",
+	"settings_general_dock_agent_dock": "Agent dock",
+	"settings_general_dock_hide_or_show_the_dock": "Hide or show the dock",
+	"settings_general_dock_keep_the_pill_on_screen": "Keep the pill on screen while Atlas runs. Hide it any time with the hide key, the pill's hide button or right-click menu, or the tray menu; the choice is remembered.",
+	"settings_general_dock_message_an_agent": "Message an agent",
+	"settings_general_dock_opens_the_dock_s_composer": "Opens the dock's composer from any app. The text goes to the agent you last used, or the one you @mention.",
+	"settings_general_dock_show_the_dock": "Show the dock",
+	"settings_general_dock_works_even_while_the_dock": "Works even while the dock is hidden, so it is always the way back. The tray menu has Show Agent Dock too.",
 	"settings_general_git_commit_messages": "Commit messages",
 	"settings_general_git_generate_commit_messages_with": "Generate commit messages with",
 	"settings_general_git_none_of_writernames_is_installed": "None of {writerNames} is installed on this computer, so there is nothing to write messages yet. Install one and pick it here.",
 	"settings_general_git_option_automatic": "Automatic",
-	"settings_general_git_option_off": "Off",
-	"settings_general_git_the_staged_diff_all_changes": "The staged diff (all changes when nothing is staged) goes only to the agent you pick here, run on this computer with no tools, plus your recent commit subjects and the commit rules of CONTRIBUTING.md and AGENTS.md. Files that look like secrets (.env, keys, certificates) are never sent; lockfiles and binaries are sent as names only. Choose {@settings_general_git_option_off} to hide the button."
+	"settings_general_git_the_staged_diff_all_changes": "The staged diff (all changes when nothing is staged) goes only to the agent you pick here, run on this computer with no tools, plus your recent commit subjects and the commit rules of CONTRIBUTING.md and AGENTS.md. Files that look like secrets (.env, keys, certificates) are never sent; lockfiles and binaries are sent as names only. Choose {@settings_capture_timer_off} to hide the button.",
+	"settings_general_links_atlas_browser": "Atlas browser",
+	"settings_general_links_description": "Where links from services, ports and terminals open. Use {key} to open a link in the other browser.",
+	"settings_general_links_links": "Links",
+	"settings_general_links_open_links_in": "Open links in",
+	"settings_general_links_system_browser": "System browser",
+	"settings_general_load_error_agents": "Could not read your agent settings",
+	"settings_general_load_error_git": "Could not read your Git settings",
+	"settings_general_load_error_hygiene": "Could not read the hygiene report",
+	"settings_general_load_error_phones": "Could not read your paired phones",
+	"settings_general_load_error_ssh": "Could not read your SSH hosts",
+	"settings_general_load_error_workspace": "Could not read your workspace settings",
+	"settings_general_nav_dev": "Dev",
+	"settings_general_nav_search_settings": "Search settings",
+	"settings_general_nav_settings_sections": "Settings sections",
+	"settings_general_nav_update_available": "Update available",
+	"settings_general_nav_version": "Atlas {version}",
+	"settings_general_notification_a_system_notification_when_an": "A system notification when an agent is done or is waiting for an answer.",
+	"settings_general_notification_add_a_short_sound_to": "Add a short sound to each notification.",
+	"settings_general_notification_atlas_tells_you_when_an": "Atlas tells you when an agent finishes or needs you.",
+	"settings_general_notification_notifications": "Notifications",
+	"settings_general_notification_play_a_sound": "Play a sound",
+	"settings_general_notification_show_notifications": "Show notifications",
+	"settings_general_notification_skip_the_notification_when_that": "Skip the notification when that worktree is the one on your screen.",
+	"settings_general_notification_stay_quiet_while_i_m": "Stay quiet while I'm watching",
+	"settings_general_open_outside_no_worktree": "Open a worktree first, then Atlas can show {file} in its editor.",
+	"settings_general_search_count": [
+		{
+			"declarations": [
+				"input count",
+				"local countExact = count",
+				"local countPlural = count: plural"
+			],
+			"selectors": [
+				"countExact",
+				"countPlural"
+			],
+			"match": {
+				"countExact=0, countPlural=*": "No settings found",
+				"countExact=*, countPlural=one": "{count} setting",
+				"countExact=*, countPlural=*": "{count} settings"
+			}
+		}
+	],
+	"settings_general_search_empty_hint": "Try a shorter word, like \"font\", \"theme\" or \"branch\".",
+	"settings_general_search_matching": "Matching \"{query}\".",
+	"settings_general_settings": "Settings",
+	"settings_general_shell_links_services_start_with_the_path": "Services start with the PATH and variables of this shell, the same as in your terminal. Pick another shell if tools like bun or node are not found.",
+	"settings_general_shell_links_shell_for_your_projects": "Shell for your projects",
+	"settings_general_shortcut_add": "Add shortcut",
+	"settings_general_shortcut_click_then_press_the_new": "Click, then press the new shortcut",
+	"settings_general_shortcut_displaced": "{key} now runs this command. \"{command}\" lost it.",
+	"settings_general_shortcut_if_you_pick_a_shortcut": "If you pick a shortcut that another command already uses, that command loses it.",
+	"settings_general_shortcut_needs_modifier": [
+		{
+			"declarations": [
+				"input os"
+			],
+			"selectors": [
+				"os"
+			],
+			"match": {
+				"os=mac": "Include Command, Control or Option so the shortcut does not clash with typing",
+				"os=*": "Include Ctrl or Alt so the shortcut does not clash with typing"
+			}
+		}
+	],
+	"settings_general_shortcut_no_match": "No command matches \"{query}\".",
+	"settings_general_shortcut_none": "No shortcut",
+	"settings_general_shortcut_press_the_new_shortcut": "Press the new shortcut…",
+	"settings_general_shortcut_remove_this_shortcut": "Remove this shortcut",
+	"settings_general_shortcut_reset_all_to_defaults": "Reset all to defaults",
+	"settings_general_shortcut_search_commands": "Search commands",
+	"settings_general_shortcut_to_cancel": "to cancel",
+	"settings_general_sound_master_switch_for_every_atlas": "Master switch for every Atlas sound.",
+	"settings_general_sound_on_top_of_your_system": "On top of your system's volume, which always wins.",
+	"settings_general_sound_only_the_ones_that_need": "Only the ones that need your attention, and quieter.",
+	"settings_general_sound_play": "Play",
+	"settings_general_sound_play_label": "Play {sound}",
+	"settings_general_sound_play_sounds": "Play sounds",
+	"settings_general_sound_play_user_interface_sound_effects": "\"Play user interface sound effects\" is off in System Settings ▸ Sound, so Atlas stays silent. The Play buttons below still work.",
+	"settings_general_sound_reduce_sounds": "Reduce sounds",
+	"settings_general_sound_short_quiet_cues_for_the": "Short, quiet cues for the moments that matter: a stack coming up, a service failing, an agent needing you. Nothing plays on ordinary clicks.",
+	"settings_general_sound_sound_volume": "Sound volume",
+	"settings_general_sound_sounds": "Sounds",
+	"settings_general_sound_switch_any_of_them_off": "Switch any of them off on its own.",
+	"settings_general_sound_which_sounds": "Which sounds"
 }

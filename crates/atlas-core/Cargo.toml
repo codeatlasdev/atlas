@@ -56,6 +56,10 @@ windows-sys = { version = "0.61", features = [
     "Win32_System_ProcessStatus",
     "Win32_System_SystemInformation",
     "Win32_System_Threading",
+    "Win32_UI_Shell",
+    # ShellExecuteW takes a SHOW_WINDOW_CMD: without this the function is not generated, and atlas-core built alone
+    # (`-p atlas-core`) does not compile on Windows; a workspace build only got it from another crate's features.
+    "Win32_UI_WindowsAndMessaging",
 ] }
 
 [dev-dependencies]

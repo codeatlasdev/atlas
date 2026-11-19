@@ -138,9 +138,12 @@
 							<span class="rv-chip ok"><CircleCheck size={10} /> {m.viewers_devops_atlas_view_valid()}</span>
 						{/if}
 					{/if}
-					{#if model.preCommand}<span class="rv-chip mono" title="pre_command"
+					{#if model.preCommand}
+						<!-- i18n-ignore: the atlas.yaml key name, shown as a tooltip -->
+						<span class="rv-chip mono" title="pre_command"
 							>{m.viewers_devops_atlas_view_pre_command({ preCommand: model.preCommand })}</span
-						>{/if}
+						>
+					{/if}
 				</div>
 			</header>
 

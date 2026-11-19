@@ -46,7 +46,7 @@
 </script>
 
 {#if loadError}
-	<LoadError what="your Git settings" error={loadError} />
+	<LoadError what="git" error={loadError} />
 {/if}
 
 <Group title={m.settings_general_git_commit_messages()}>
@@ -62,7 +62,7 @@
 				options={[
 					{ value: "auto", label: m.settings_general_git_option_automatic() },
 					...writers.map((a) => ({ value: a.id, label: a.label })),
-					{ value: "off", label: m.settings_general_git_option_off() },
+					{ value: "off", label: m.settings_capture_timer_off() },
 				]}
 				onchange={save}
 			/>

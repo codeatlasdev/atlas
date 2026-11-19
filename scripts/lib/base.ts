@@ -13,6 +13,11 @@
 // "everything changed", never "nothing changed". A merge-base is the commit the diff starts at; the diff is that commit
 // against the working tree, so committed, staged, unstaged and untracked changes all count.
 //
+// During an uncommitted merge (MERGE_HEAD exists) HEAD is still the pre-merge tip while the work tree already holds the
+// other side. The base is then taken as git will once the merge commit exists: `merge-base <ref> HEAD MERGE_HEAD` (the
+// merge base of <ref> and a hypothetical merge of both), so what the merge brings from main is not blamed on the branch.
+// A rebase stopped on a conflict needs nothing: its HEAD already sits on the new base.
+//
 // The root is only ever the cwd of git, never compared with a path git printed (Windows 8.3 short names, drive letters
 // and symlinks make those differ for the same directory).
 import { readFileSync } from "node:fs";
@@ -113,8 +118,10 @@ export function resolveBase(
 	// Empty at the top of the work tree, `sub/` inside it, a failure outside: no paths to compare.
 	const prefix = git(root, ["rev-parse", "--show-prefix"]);
 	if (!prefix.ok || prefix.out.trim() !== "") return undefined;
+	const merging = git(root, ["rev-parse", "--verify", "--quiet", "MERGE_HEAD"]);
+	const tips = merging.ok ? ["HEAD", merging.out.trim()] : ["HEAD"];
 	for (const { mode, ref } of candidates(root, env, explicit)) {
-		const mb = git(root, ["merge-base", ref, "HEAD"]);
+		const mb = git(root, ["merge-base", ref, ...tips]);
 		if (!mb.ok) {
 			if (mode === "explicit") throw new Error(`base \`${ref}\` is not a commit that shares history with HEAD (git merge-base failed)`);
 			continue;

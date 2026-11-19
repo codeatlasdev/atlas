@@ -3,9 +3,11 @@ use std::path::{Path, PathBuf};
 use std::process::Stdio;
 use std::time::Duration;
 
+use serde_json::json;
 use tokio::process::Command;
 
 use super::health;
+use super::note::Note;
 use super::service::ServiceState;
 
 #[derive(Clone)]
@@ -30,13 +32,13 @@ impl DockerManager {
 
     /// Run `docker compose up -d`, retrying once. Returns the failure reason on error.
     /// Never prints: callers run inside the TUI's alternate screen.
-    pub async fn start(&mut self, services: &[&str]) -> Result<(), String> {
+    pub async fn start(&mut self, services: &[&str]) -> Result<(), Note> {
         self.state = ServiceState::Starting;
 
         // A slow daemon is not fatal: compose up below reports the real failure.
         wait_for_docker_daemon(Duration::from_secs(15)).await;
 
-        let mut last_err = String::new();
+        let mut last_err = Note::plain("");
         for attempt in 0..2 {
             if attempt > 0 {
                 tokio::time::sleep(Duration::from_secs(2)).await;
@@ -176,49 +178,49 @@ fn docker_command() -> Command {
 }
 
 /// Why `docker compose up -d` failed, in words that name the fix. The raw stderr stays in the message.
-fn diagnose_compose_failure(code: Option<i32>, stderr: &str) -> String {
+fn diagnose_compose_failure(code: Option<i32>, stderr: &str) -> Note {
     let raw = stderr.trim();
     let lower = raw.to_lowercase();
     let hint = if lower.contains("permission denied") && lower.contains("docker.sock") {
-        Some(
-            "docker: permission denied on the docker socket. Add your user to the docker group: \
-             sudo usermod -aG docker $USER, then log out and in",
-        )
+        Some("docker.permission")
     } else if lower.contains("cannot connect to the docker daemon")
         || lower.contains("is the docker daemon running")
     {
-        Some(
-            "docker daemon is not running. Start it (Linux: sudo systemctl start docker; macOS: \
-             open OrbStack or Docker Desktop)",
-        )
+        Some("docker.daemon_down")
     } else if lower.contains("'compose' is not a docker command")
         || lower.contains("unknown shorthand flag: 'f'")
     {
-        Some(
-            "docker compose plugin is missing. Install docker-compose-plugin (Linux) or update Docker",
-        )
+        Some("docker.compose_missing")
     } else {
         None
     };
-    let exit = code.map_or("killed by a signal".to_string(), |c| format!("exit {c}"));
-    let detail = if raw.is_empty() { "no output" } else { raw };
+    let exit = match code {
+        Some(c) => Note::new("docker.exit_code", json!({"code": c})),
+        None => Note::new("docker.exit_signal", json!({})),
+    };
+    let detail = if raw.is_empty() {
+        Note::new("docker.no_output", json!({})).wire()
+    } else {
+        json!(raw)
+    };
+    let failed = Note::new(
+        "docker.compose_failed",
+        json!({"exit": exit.wire(), "detail": detail}),
+    );
     match hint {
-        Some(h) => format!("{h}\ncompose up failed ({exit}): {detail}"),
-        None => format!("compose up failed ({exit}): {detail}"),
+        Some(h) => Note::lines(Note::new(h, json!({})), failed),
+        None => failed,
     }
 }
 
 /// Why `docker` could not even be spawned.
-fn diagnose_spawn_failure(e: &std::io::Error, path: &str) -> String {
+fn diagnose_spawn_failure(e: &std::io::Error, path: &str) -> Note {
     match e.kind() {
-        std::io::ErrorKind::NotFound => format!(
-            "docker not found. Install Docker (https://docs.docker.com/engine/install/) or fix \
-             PATH; searched: {path}"
-        ),
+        std::io::ErrorKind::NotFound => Note::new("docker.not_found", json!({"path": path})),
         std::io::ErrorKind::PermissionDenied => {
-            format!("docker could not be run: permission denied ({e})")
+            Note::new("docker.permission_run", json!({"error": e.to_string()}))
         }
-        _ => format!("docker could not be run: {e}"),
+        _ => Note::new("docker.run_failed", json!({"error": e.to_string()})),
     }
 }
 
@@ -237,13 +239,13 @@ pub async fn watch_daemon(
             was_ok = false;
             let _ = event_tx.send(ManagerEvent::CriticalAlert {
                 service: "docker".into(),
-                message: "Docker daemon unreachable.".into(),
+                note: Note::new("docker.unreachable", json!({})),
             });
         } else if ok && !was_ok {
             was_ok = true;
             let _ = event_tx.send(ManagerEvent::CriticalAlert {
                 service: "docker".into(),
-                message: "Docker daemon recovered.".into(),
+                note: Note::new("docker.recovered", json!({})),
             });
         }
     }
@@ -267,7 +269,7 @@ mod tests {
         let stderr = "permission denied while trying to connect to the Docker daemon socket at \
                       unix:///var/run/docker.sock: Get \"http://%2Fvar%2Frun%2Fdocker.sock/v1.47/\
                       containers/json\": dial unix /var/run/docker.sock: connect: permission denied";
-        let msg = diagnose_compose_failure(Some(1), stderr);
+        let msg = diagnose_compose_failure(Some(1), stderr).message;
         assert!(msg.contains("permission denied"), "{msg}");
         assert!(msg.contains("usermod -aG docker"), "{msg}");
         assert!(msg.contains("log out"), "{msg}");
@@ -281,7 +283,7 @@ mod tests {
     fn a_daemon_that_is_down_says_to_start_it_not_orbstack_only() {
         let stderr = "Cannot connect to the Docker daemon at unix:///var/run/docker.sock. \
                       Is the docker daemon running?";
-        let msg = diagnose_compose_failure(Some(1), stderr);
+        let msg = diagnose_compose_failure(Some(1), stderr).message;
         assert!(msg.contains("daemon is not running"), "{msg}");
         assert!(
             msg.contains(stderr.trim()),
@@ -295,17 +297,17 @@ mod tests {
             "docker: 'compose' is not a docker command.\nSee 'docker --help'",
             "unknown shorthand flag: 'f' in -f",
         ] {
-            let msg = diagnose_compose_failure(Some(125), stderr);
+            let msg = diagnose_compose_failure(Some(125), stderr).message;
             assert!(msg.contains("docker compose plugin"), "{stderr}: {msg}");
         }
     }
 
     #[test]
     fn an_unrecognised_failure_keeps_the_exit_code_and_the_raw_stderr() {
-        let msg = diagnose_compose_failure(Some(17), "port is already allocated");
+        let msg = diagnose_compose_failure(Some(17), "port is already allocated").message;
         assert!(msg.contains("exit 17"), "{msg}");
         assert!(msg.contains("port is already allocated"), "{msg}");
-        let silent = diagnose_compose_failure(Some(1), "   ");
+        let silent = diagnose_compose_failure(Some(1), "   ").message;
         assert!(silent.contains("exit 1"), "{silent}");
         assert!(
             silent.contains("no output"),
@@ -316,7 +318,7 @@ mod tests {
     #[test]
     fn a_missing_docker_binary_says_not_found_and_where_it_looked() {
         let err = std::io::Error::from(std::io::ErrorKind::NotFound);
-        let msg = diagnose_spawn_failure(&err, "/usr/bin:/bin");
+        let msg = diagnose_spawn_failure(&err, "/usr/bin:/bin").message;
         assert!(msg.contains("docker not found"), "{msg}");
         assert!(
             msg.contains("/usr/bin:/bin"),
@@ -327,7 +329,7 @@ mod tests {
     #[test]
     fn a_docker_binary_that_cannot_run_is_not_called_missing() {
         let err = std::io::Error::from(std::io::ErrorKind::PermissionDenied);
-        let msg = diagnose_spawn_failure(&err, "/usr/bin");
+        let msg = diagnose_spawn_failure(&err, "/usr/bin").message;
         assert!(!msg.contains("not found"), "{msg}");
         assert!(msg.contains("permission denied"), "{msg}");
     }

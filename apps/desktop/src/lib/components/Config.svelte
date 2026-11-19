@@ -14,6 +14,7 @@
 	import { store } from "#lib/stores/projects.svelte.ts";
 	import { diff } from "#lib/diff.ts";
 	import { tilde } from "#lib/format.ts";
+	import { m } from "#lib/i18n/m.ts";
 
 	let { project }: { project: ProjectView } = $props();
 
@@ -151,7 +152,7 @@
 		disk = text;
 		externalChange = false;
 		savedOnce = true;
-		toast.success("atlas.yaml saved");
+		toast.success(m.settings_general_config_saved());
 		store.loadConfig(project.id);
 	}
 
@@ -167,34 +168,36 @@
 
 <div class="bar">
 	<span class="path mono">{tilde(path)}</span>
-	{#if dirty}<span class="dirty">● edited</span>{/if}
+	{#if dirty}<span class="dirty">{m.settings_general_config_edited()}</span>{/if}
 	<div class="status">
 		{#if validating}
-			<Spinner size={13} /> validating
+			<Spinner size={13} /> {m.settings_general_config_validating()}
 		{:else if problems.length}
-			<CircleAlert size={14} class="bad" /> {problems.length} problem{problems.length === 1 ? "" : "s"}
+			<CircleAlert size={14} class="bad" /> {m.settings_general_config_problems({ count: problems.length })}
 		{:else}
-			<CircleCheck size={14} class="good" /> valid
+			<CircleCheck size={14} class="good" /> {m.settings_general_config_valid()}
 		{/if}
 	</div>
 	<Button variant="ghost" size="sm" disabled={!dirty} onclick={() => setDoc(disk)}>
 		{#snippet leading()}<RotateCcw size={13} />{/snippet}
-		Revert
+		{m.settings_general_config_revert()}
 	</Button>
 	<Button size="sm" disabled={!dirty || problems.length > 0 || validating || saving} onclick={review}>
 		{#snippet leading()}<Save size={13} />{/snippet}
-		Save
+		{m.common_action_save()}
 		{#snippet trailing()}<Kbd>{kbd("cmd-s")}</Kbd>{/snippet}
 	</Button>
 </div>
 
 {#if externalChange}
 	<div class="banner">
-		<Alert severity="warning" title="File changed on disk">
+		<Alert severity="warning" title={m.settings_general_config_file_changed_on_disk()}>
 			<div class="row">
-				Your edits are unsaved.
-				<Button size="sm" variant="glass" onclick={load}>Reload</Button>
-				<Button size="sm" variant="ghost" onclick={() => (externalChange = false)}>Keep mine</Button>
+				{m.settings_general_config_your_edits_are_unsaved()}
+				<Button size="sm" variant="glass" onclick={load}>{m.settings_general_config_reload()}</Button>
+				<Button size="sm" variant="ghost" onclick={() => (externalChange = false)}
+					>{m.settings_general_config_keep_mine()}</Button
+				>
 			</div>
 		</Alert>
 	</div>
@@ -203,9 +206,9 @@
 	<div class="banner">
 		<Alert severity="info" closable onclose={() => (savedOnce = false)}>
 			<div class="row">
-				The running stack still uses the old config.
+				{m.settings_general_config_the_running_stack_still_uses()}
 				<Button size="sm" variant="glass" disabled={store.busy[`stack:${project.id}`]} onclick={restart}
-					>Restart stack to apply</Button
+					>{m.settings_general_config_restart_stack_to_apply()}</Button
 				>
 			</div>
 		</Alert>
@@ -226,7 +229,12 @@
 	{/if}
 </div>
 
-<Dialog bind:open={diffOpen} title="Save atlas.yaml?" description="Review the changes." size="lg">
+<Dialog
+	bind:open={diffOpen}
+	title={m.settings_general_config_save_atlas_yaml()}
+	description={m.settings_general_config_review_the_changes()}
+	size="lg"
+>
 	<div class="diff ca-selectable">
 		{#each diffRows as r, i (i)}
 			<div class="row-{r.kind}">
@@ -235,8 +243,8 @@
 		{/each}
 	</div>
 	{#snippet actions()}
-		<Button variant="ghost" onclick={() => (diffOpen = false)}>Cancel</Button>
-		<Button onclick={save}>Save</Button>
+		<Button variant="ghost" onclick={() => (diffOpen = false)}>{m.common_action_cancel()}</Button>
+		<Button onclick={save}>{m.common_action_save()}</Button>
 	{/snippet}
 </Dialog>
 

@@ -27,7 +27,8 @@
 				"minutesExact=*, secondsExact=*, minutesPlural=one, secondsPlural=one": "{minutes} minuto e {seconds} segundo",
 				"minutesExact=*, secondsExact=*, minutesPlural=one, secondsPlural=*": "{minutes} minuto e {seconds} segundos",
 				"minutesExact=*, secondsExact=*, minutesPlural=*, secondsPlural=one": "{minutes} minutos e {seconds} segundo",
-				"minutesExact=*, secondsExact=*, minutesPlural=*, secondsPlural=*": "{minutes} minutos e {seconds} segundos"
+				"minutesExact=*, secondsExact=*, minutesPlural=*, secondsPlural=*": "{minutes} minutos e {seconds} segundos",
+				"minutesExact=0, secondsExact=0, minutesPlural=*, secondsPlural=*": "0 segundos"
 			}
 		}
 	],

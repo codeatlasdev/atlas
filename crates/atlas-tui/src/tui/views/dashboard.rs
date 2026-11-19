@@ -42,7 +42,10 @@ fn extras(app: &App) -> HashMap<String, SvcExtra> {
             (
                 s.name.clone(),
                 SvcExtra {
-                    note: app.manager.service_note(&s.name),
+                    note: app
+                        .manager
+                        .service_note_coded(&s.name)
+                        .map(|n| n.render_line()),
                     exit_code: app.manager.exit_code(&s.name),
                     restarts: app.manager.restart_count(&s.name),
                     done,
@@ -473,6 +476,7 @@ fn search_bar_line(app: &App, width: u16) -> Line<'static> {
             ),
             Style::default().fg(t.warning).bold(),
         ));
+        // i18n-ignore: the key that cycles the level filter: a key name the terminal shows as typed
         spans.push(Span::styled("v", dim));
     }
     if !app.logs.time_range.is_all() && app.logs.time_input.is_none() {
@@ -487,6 +491,7 @@ fn search_bar_line(app: &App, width: u16) -> Line<'static> {
             ),
             Style::default().fg(t.warning).bold(),
         ));
+        // i18n-ignore: the key that cycles the time range: a key name the terminal shows as typed
         spans.push(Span::styled("V", dim));
     }
 

@@ -506,40 +506,11 @@ pub struct MenuEntry {
     pub label: String,
 }
 
-/// A stroke of the keymap grammar as the glyphs a Mac menu shows (`ctrl-alt-d` → `⌃⌥D`). Empty stays empty.
-pub fn glyphs(stroke: &str) -> String {
-    let stroke = stroke.trim().to_lowercase();
-    if stroke.is_empty() {
-        return String::new();
-    }
-    let mut parts: Vec<&str> = stroke.split('-').collect();
-    let key = if stroke.ends_with("--") {
-        parts.truncate(parts.len() - 2);
-        "-".to_string()
-    } else {
-        parts.pop().unwrap_or_default().to_string()
-    };
-    let mut out = String::new();
-    for m in ["ctrl", "alt", "shift", "cmd"] {
-        if parts.contains(&m) {
-            out.push(match m {
-                "ctrl" => '⌃',
-                "alt" => '⌥',
-                "shift" => '⇧',
-                _ => '⌘',
-            });
-        }
-    }
-    let mut chars = key.chars();
-    if let Some(c) = chars.next() {
-        out.extend(c.to_uppercase().chain(chars))
-    }
-    out
-}
-
-/// The pill's right-click menu in the language `tag`.
+/// The pill's right-click menu in the language `tag`. The hotkey in the hide label is written for this OS (`⌃⌥D` on
+/// macOS, `Ctrl+Alt+D` elsewhere) in the language's key names.
 pub fn pill_menu(prefs: &DockPrefs, tag: &str) -> Vec<MenuEntry> {
-    let hint = glyphs(&prefs.toggle);
+    let stroke = prefs.toggle.trim().to_lowercase();
+    let hint = atlas_i18n::shortcut_for(&stroke, atlas_i18n::os(), tag);
     vec![
         MenuEntry {
             id: MENU_OPEN,
@@ -560,7 +531,7 @@ pub fn pill_menu(prefs: &DockPrefs, tag: &str) -> Vec<MenuEntry> {
 /// the panel to become key, which the idle pill must never be.
 #[tauri::command]
 pub fn dock_menu(app: AppHandle, state: State<'_, DockState>) -> Result<(), String> {
-    use tauri::menu::{ContextMenu, Menu, MenuItem, PredefinedMenuItem};
+    use tauri::menu::{Menu, MenuItem, PredefinedMenuItem};
     let win = app
         .get_window(LABEL)
         .ok_or_else(|| t!("native_notify_dock_not_built"))?;
@@ -575,7 +546,7 @@ pub fn dock_menu(app: AppHandle, state: State<'_, DockState>) -> Result<(), Stri
             .map_err(|e| e.to_string())?;
         menu.append(&item).map_err(|e| e.to_string())?;
     }
-    menu.popup(win).map_err(|e| e.to_string())
+    crate::native_ui::popup(&menu, win, "dock pill menu").map(|_| ())
 }
 
 /// A pill menu item was chosen (wired once in `main`: `on_menu_event`).
@@ -1042,7 +1013,8 @@ mod tests {
     fn the_pill_menu_can_hide_the_dock_and_shows_its_hotkey() {
         let items = pill_menu(&DockPrefs::default(), "en");
         let hide = items.iter().find(|i| i.id == MENU_HIDE).expect("hide item");
-        assert_eq!(hide.label.to_lowercase(), "hide agent dock  ⌃⌥d");
+        let key = atlas_i18n::shortcut_for("ctrl-alt-d", atlas_i18n::os(), "en").to_lowercase();
+        assert_eq!(hide.label.to_lowercase(), format!("hide agent dock  {key}"));
         let none = DockPrefs {
             toggle: String::new(),
             ..DockPrefs::default()
@@ -1075,19 +1047,36 @@ mod tests {
                 .map(|l| l.to_lowercase())
                 .collect::<Vec<_>>()
         };
-        assert_eq!(lower("en"), ["open atlas", "hide agent dock  ⌃⌥d"]);
+        let key = atlas_i18n::shortcut_for("ctrl-alt-d", atlas_i18n::os(), "en").to_lowercase();
+        assert_eq!(
+            lower("en"),
+            ["open atlas", &format!("hide agent dock  {key}")]
+        );
         assert_eq!(
             lower("pt-BR"),
-            ["abrir o atlas", "ocultar dock de agentes  ⌃⌥d"]
+            ["abrir o atlas", &format!("ocultar dock de agentes  {key}")]
         );
     }
 
+    /// The hotkey in the menu is the OS's spelling of the stroke, not glyphs typed into the code.
     #[test]
-    fn a_stroke_reads_as_mac_glyphs() {
-        assert_eq!(glyphs("ctrl-alt-d"), "⌃⌥D");
-        assert_eq!(glyphs("cmd-shift-s"), "⇧⌘S");
-        assert_eq!(glyphs("ctrl-alt-space"), "⌃⌥Space");
-        assert_eq!(glyphs(""), "");
+    fn the_pill_menu_writes_the_hotkey_for_the_os() {
+        let hide = |toggle: &str| {
+            let prefs = DockPrefs {
+                toggle: toggle.into(),
+                ..DockPrefs::default()
+            };
+            pill_menu(&prefs, "en")
+                .into_iter()
+                .find(|i| i.id == MENU_HIDE)
+                .unwrap()
+                .label
+        };
+        assert!(hide(" Ctrl-Alt-D ").ends_with(&atlas_i18n::shortcut_for(
+            "ctrl-alt-d",
+            atlas_i18n::os(),
+            "en"
+        )));
     }
 
     const SCREEN: (f64, f64, f64, f64) = (0.0, 0.0, 3024.0, 1964.0);

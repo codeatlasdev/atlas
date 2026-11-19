@@ -56,7 +56,7 @@ async fn run_deps(root_dir: &Path, cfg: &ProjectConfig) {
         DepsOutcome::Failed(reason) => {
             eprintln!(
                 "\x1b[31m✗\x1b[0m {}",
-                t!("tui_runtime_deps_failed", reason = reason)
+                t!("tui_runtime_deps_failed", reason = reason.render())
             )
         }
     }
@@ -270,11 +270,11 @@ async fn handle_event(manager: &mut ServiceManager, event: ManagerEvent, foregro
             eprintln!("{icon} {name}: {}", state.label());
             manager.update_state(&name, state);
         }
-        ManagerEvent::CriticalAlert { message, .. } => {
-            eprintln!("  [!] {message}");
+        ManagerEvent::CriticalAlert { note, .. } => {
+            eprintln!("  [!] {}", note.render());
         }
-        ManagerEvent::ServiceNote { name, message } => {
-            eprintln!("\x1b[36m↻\x1b[0m {name}: {message}");
+        ManagerEvent::ServiceNote { name, note } => {
+            eprintln!("\x1b[36m↻\x1b[0m {name}: {}", note.render());
         }
         ManagerEvent::InfraFailed { names, reason } => {
             eprintln!(
@@ -282,7 +282,7 @@ async fn handle_event(manager: &mut ServiceManager, event: ManagerEvent, foregro
                 t!(
                     "tui_runtime_run_infra_failed",
                     names = names.join(", "),
-                    reason = reason.as_str()
+                    reason = reason.render().as_str()
                 )
             );
             manager.record_failure(&names, &reason);

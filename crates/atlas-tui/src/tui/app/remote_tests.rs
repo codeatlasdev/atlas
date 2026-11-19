@@ -342,7 +342,7 @@ async fn an_attached_tui_shows_memory_trend_budget_and_leak_from_the_real_runner
         Some(crate::runtime::memory::Direction::Rising)
     );
     assert_eq!(
-        api.leak.as_deref(),
+        api.leak.as_ref().map(|n| n.message.as_str()),
         Some("leak suspected: +660 MB over 11 reloads")
     );
     let web = app.manager.memory_facts("web").expect("web facts");

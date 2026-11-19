@@ -8,6 +8,8 @@ use std::process::Stdio;
 use std::sync::atomic::{AtomicBool, Ordering};
 
 use atlas_core::channel::{self, Action, Channel};
+use atlas_core::github::GithubError;
+use atlas_i18n::t;
 use serde::Serialize;
 use tauri::{AppHandle, Emitter};
 use tokio::io::{AsyncBufReadExt, BufReader};
@@ -38,7 +40,7 @@ impl InstallGuard {
         INSTALLING
             .compare_exchange(false, true, Ordering::AcqRel, Ordering::Acquire)
             .map(|_| Self)
-            .map_err(|_| "An update is already running".to_string())
+            .map_err(|_| t!("native_updates_already_running"))
     }
 }
 
@@ -306,7 +308,7 @@ pub async fn system_info() -> Result<SystemInfo, String> {
                 path: Some(bin.to_string_lossy().into_owned()),
                 error: version
                     .is_none()
-                    .then(|| "could not read `atlas version`".into()),
+                    .then(|| t!("native_updates_cli_version_unreadable")),
                 version,
             }
         }
@@ -331,15 +333,12 @@ pub async fn latest_release() -> Result<Release, String> {
         let app = app.clone();
         move || {
             let info = atlas_core::github::latest_release(REPO, channel::current())?;
-            Ok::<_, atlas_core::github::GithubError>((
-                info,
-                atlas_core::github::yank_of(REPO, &app),
-            ))
+            Ok::<_, GithubError>((info, atlas_core::github::yank_of(REPO, &app)))
         }
     })
     .await
     .map_err(|e| e.to_string())?
-    .map_err(|e| e.to_string())?;
+    .map_err(|e| atlas_i18n::github_error(&e))?;
     let cli = match atlas_bin() {
         Ok(bin) => cli_version(&bin).await,
         Err(_) => None,
@@ -398,7 +397,7 @@ pub async fn releases_between(from: String, to: String) -> Result<Vec<ReleaseNot
     const MAX: usize = 10;
     tauri::async_runtime::spawn_blocking(move || {
         let all = atlas_core::github::releases_up_to(REPO, channel::current(), &to)
-            .map_err(|e| e.to_string())?;
+            .map_err(|e| atlas_i18n::github_error(&e))?;
         Ok(atlas_core::github::in_range(all, &from, &to)
             .into_iter()
             .take(MAX)
@@ -447,7 +446,7 @@ async fn stream(app: &AppHandle, args: &[&str]) -> Result<(), String> {
         .stdout(Stdio::piped())
         .stderr(Stdio::piped())
         .spawn()
-        .map_err(|e| format!("cannot run atlas: {e}"))?;
+        .map_err(|e| t!("native_updates_cannot_run_atlas", error = e.to_string()))?;
     let out = child.stdout.take().expect("piped");
     let err = child.stderr.take().expect("piped");
     let (_, last_err) = tokio::join!(pump(out, app.clone()), pump(err, app.clone()));
@@ -456,7 +455,11 @@ async fn stream(app: &AppHandle, args: &[&str]) -> Result<(), String> {
         Ok(())
     } else {
         Err(if last_err.is_empty() {
-            format!("atlas {} failed ({st})", args.join(" "))
+            t!(
+                "native_updates_install_failed",
+                args = args.join(" "),
+                status = st.to_string()
+            )
         } else {
             last_err
         })
@@ -529,12 +532,10 @@ pub fn update_channel_get() -> ChannelState {
 fn set_channel_at(file: &Path, name: &str, override_: Option<&str>) -> Result<Channel, String> {
     let wanted: Channel = name.parse()?;
     if override_.is_some_and(|s| s.parse::<Channel>().is_ok()) {
-        return Err(format!(
-            "The update channel is forced by {} in this environment; unset it to change the channel here",
-            channel::ENV
-        ));
+        return Err(t!("native_updates_channel_forced", name = channel::ENV));
     }
-    channel::write_to(file, wanted).map_err(|e| format!("cannot save the update channel: {e}"))?;
+    channel::write_to(file, wanted)
+        .map_err(|e| t!("native_updates_channel_save_failed", error = e.to_string()))?;
     Ok(wanted)
 }
 
@@ -623,6 +624,7 @@ pub async fn update_all(
 ) -> Result<bool, String> {
     #[cfg(debug_assertions)]
     if std::env::var_os("ATLAS_DEBUG_FAKE_VERSION").is_some() {
+        // i18n-ignore: developer text of debug builds, never shown in a release
         return Err("Updates are disabled while ATLAS_DEBUG_FAKE_VERSION is set".into());
     }
     let before = bundle_stamp();
@@ -655,7 +657,7 @@ pub async fn unlink(app: AppHandle) -> Result<(), String> {
 pub fn relaunch(app: AppHandle) -> Result<(), String> {
     let bundle = atlas_core::paths::installed_app()
         .or_else(own_bundle)
-        .ok_or("not running from an installed Atlas.app")?;
+        .ok_or_else(|| t!("native_updates_not_installed"))?;
     // macOS opens the bundle through Launch Services; Linux runs the AppImage/binary in its own session.
     #[cfg(unix)]
     {
@@ -681,7 +683,7 @@ pub fn relaunch(app: AppHandle) -> Result<(), String> {
             .stdin(std::process::Stdio::null());
         atlas_core::sys::spawn_detached(&mut cmd).map_err(|e| e.to_string())?;
     }
-    app.exit(0);
+    crate::app_exit::exit(&app, 0);
     Ok(())
 }
 

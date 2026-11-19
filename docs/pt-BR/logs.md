@@ -19,7 +19,7 @@ Os níveis são inferidos do texto: `error`, `err `, `fatal`, `panic` ou ANSI ve
 
 ## Buffers
 
-Cada serviço mantém o próprio anel na memória: as últimas 50.000 linhas e no máximo 8 MiB, o que vier primeiro. Um serviço muito falante não empurra para fora o histórico de outro. **All** junta os anéis na ordem de chegada. O histórico completo está em disco.
+Cada serviço mantém o próprio anel na memória: as últimas 50.000 linhas e no máximo 8 MiB, o que vier primeiro. Um serviço muito falante não empurra para fora o histórico de outro. **Tudo** junta os anéis na ordem de chegada. O histórico completo está em disco.
 
 ## Em disco
 
@@ -29,7 +29,7 @@ Cada serviço mantém o próprio anel na memória: as últimas 50.000 linhas e n
 
 | Onde | Como |
 |---|---|
-| TUI | `/` busca, `Tab` alterna entre buscar e filtrar, `Ctrl+R` regex, `v` nível, `V` intervalo de tempo, `]e` / `]w` saltam entre erros e avisos, `}` / `{` e `o` para links. Veja [TUI › Visualizador de logs](tui.md#visualizador-de-logs) |
+| TUI | `/` pesquisa, `Tab` alterna entre localizar e filtrar, `Ctrl+R` regex, `v` nível, `V` período, `]e` / `]w` saltam entre erros e avisos, `}` / `{` e `o` para links. Veja [TUI › Visualizador de logs](tui.md#visualizador-de-logs) |
 | Desktop | A aba **Logs**: ⌘F busca com alternância de regex e de maiúsculas, chips de serviço com a contagem de erros, filtro de nível, intervalo de tempo, saltos com `e` / `w`, ⌘-clique em URLs e `path:line`. Veja [Desktop › Logs](desktop.md#painel-do-projeto) |
 | MCP | `atlas_logs` (tail, `level`, `since_minutes`) e `atlas_logs_search` (substring ou `/regex/`); `service: "audit"` mostra quem reiniciou, parou ou iniciou o quê. Veja [MCP](mcp.md#atlas_logs) |
 | Shell | `tail -f .logs/api.log`, ou `atlas dev --headless` para transmitir todos os serviços na saída padrão |
@@ -48,4 +48,4 @@ O runner nunca desconecta um cliente lento. Um cliente que fica para trás pula 
 
 ## Esconder serviços quietos
 
-`hide_logs: true` em um serviço remove a aba dele e mantém as linhas fora de **All**. O arquivo em `.logs/` continua sendo gravado. Use isso em bancos de dados e em outra infraestrutura muito falante.
+`hide_logs: true` em um serviço remove a aba dele e mantém as linhas fora de **Tudo**. O arquivo em `.logs/` continua sendo gravado. Use isso em bancos de dados e em outra infraestrutura muito falante.

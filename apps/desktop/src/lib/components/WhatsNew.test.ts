@@ -1,6 +1,8 @@
 // @ts-nocheck bun test runtime types are not part of the app tsconfig
 import "../../../test/setup.ts";
 import { afterEach, expect, mock, test } from "bun:test";
+import { m } from "#lib/i18n/m.ts";
+import { inLocale } from "../../../test/locale.ts";
 
 // Incident (user screenshot, macOS WKWebView): the What's new sheet showed
 //  - the channel badge ("Alpha") as a tall pill dropped below the date: the chip carried the class `alpha`, which is
@@ -252,4 +254,35 @@ test("opening the sheet when even the running version cannot be read says it cou
 	}, null);
 	expect(body.textContent).toContain("Couldn't load the release notes");
 	expect(body.textContent).toContain("cannot run atlas");
+});
+
+test("the footer is one sentence in the display language: the channel chip and the followed channel are drawn inside it", async () => {
+	await inLocale("pt-BR", async () => {
+		const body = await open([release("1.5.0-beta.2")], "alpha");
+		const foot = body.querySelector(".hint.chan");
+		expect(foot.querySelector(".chip[data-channel]").dataset.channel).toBe("beta");
+		expect(foot.querySelector(".chip").textContent).toBe(m.settings_updates_channel_beta_label());
+		expect(foot.querySelector("b").textContent).toBe(m.settings_updates_channel_alpha_label());
+		// The whole line is the one message, in its own order, not English glued around two elements.
+		expect(foot.textContent.replace(/\s+/g, " ").trim()).toBe(
+			m.settings_updates_whats_new_following({ channel: "Beta", followed: "Alpha" }),
+		);
+	});
+});
+
+test("a change group is headed by the catalog's word for its kind, and by the changelog's own for any other", async () => {
+	await inLocale("pt-BR", async () => {
+		const body = await open([
+			release("1.5.0-alpha.25", "### Changed\n\n- **A.** b\n\n### Experiments\n\n- **C.** d"),
+		]);
+		// The heading is the text node of the `h3`; the kind's icon and the count are elements.
+		const heads = [...body.querySelectorAll(".group h3")].map((h) =>
+			[...h.childNodes]
+				.filter((n) => n.nodeType === 3)
+				.map((n) => n.textContent)
+				.join("")
+				.trim(),
+		);
+		expect(heads).toEqual([m.settings_updates_whats_new_kind_changed(), "Experiments"]);
+	});
 });

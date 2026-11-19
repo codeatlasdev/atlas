@@ -234,6 +234,8 @@ A task can carry up to **4 images** of at most **5 MiB** each (png, jpeg, webp o
 
 With `approval: ask`, a tool call pauses the task and waits up to 30 minutes for `agent_approve {pane, req, allow}`; the pane key is `crew:<crewmate id>:<task id>`. The wait only starts when someone can answer now: a connected desktop client, a connected phone, or a linked Telegram chat. A registered push token alone does not count (that phone may be offline). Otherwise the prompt is denied at once, so set one of them up before relying on an `ask` crewmate. Claude Code and Codex: re-run `atlas setup claude-code|codex --apply` once so their hook uses the matching 1805 s timeout.
 
+Only an explicit **allow** runs the tool. Every other end blocks it and says which: the owner denied it, nobody answered in time (the prompt is audited as `approval_decision` `timeout` / `none`), or the request itself failed. A headless `claude` crewmate gets the same: a prompt nobody answered is a denial ("nobody answered the approval request"), never an allow. The waits are one chain, each outliving the one inside it so the innermost says what happened: hostd waits 30 minutes, the omp approval extension 60 s longer, and omp 60 s longer than that. omp puts its own limit on every extension `tool_call` handler (`extensionHandlers.toolCallTimeoutMs`, 30 s by default, and a `fetch` to hostd is not one of the dialogs it excuses), so the `--config` overlay Atlas passes to each crewmate's omp raises it (`omp-crew.yml` in the crewmate's directory, rewritten at the next turn); before that, an omp crewmate's approvals answered after 30 s failed with `omp-approval.ts timed out after 30000ms` even when the owner allowed them. An omp that does not know the setting (older than the 18.4 line, where it exists) keeps its 30 s.
+
 ### Pause and resume
 
 A crew server has one kill switch. **Pause** (`crew_pause`) cancels every running task (state `cancelled`, error `paused`) and ends its process: a task in a terminal has its terminal killed, and a task with a headless `engine` (`claude`, `codex`, `opencode`, `omp`) has its turn killed together with everything the agent started (its process group, so the tool processes of omp's `bash` calls or a build are gone too). The same holds for cancelling one task and for the 2-hour cap, which fails the task and kills the turn. Pause keeps queued tasks queued, starts nothing new, and skips every automation that would fire (a skipped automation is not queued for later). New tasks still queue while paused. **Resume** (`crew_resume`) starts the queues again.
@@ -284,7 +286,7 @@ The Crew board (below) shows every queued, working, waiting and finished task ac
 
 ## GitHub
 
-Crewmates that clone private repositories or open PRs need `gh` signed in on the crew server. In Atlas Desktop, Atlas Crew → Settings → GitHub starts a device-code login (`crew_github_login_start`, then `crew_github_login_poll`); hostd installs `gh` under the crew user's home if it is missing and configures git to use it. `crew_github_status` reports `{installed, login}`, `crew_github_logout` removes it. A task that needs GitHub waits in a **Connect GitHub** action and resumes when the login completes (`crew_github_connect_resume`).
+Crewmates that clone private repositories or open PRs need `gh` signed in on the crew server. In Atlas Desktop, Settings → Atlas Crew → GitHub starts a device-code login (`crew_github_login_start`, then `crew_github_login_poll`); hostd installs `gh` under the crew user's home if it is missing and configures git to use it. `crew_github_status` reports `{installed, login}`, `crew_github_logout` removes it. A task that needs GitHub waits in a **Connect GitHub** action and resumes when the login completes (`crew_github_connect_resume`).
 
 ### GitHub in and out
 
@@ -878,11 +880,11 @@ Same NDJSON socket as every hostd command (`~/.atlas/hostd.sock`, or the crew se
 }
 ```
 
-- `state`: `idle`, `working` or `needs_you`.
+- `state`: `idle`, `working` (a task is running) or `needs_you` (a tool approval is pending, or a task is parked on a card).
 - `running_task` exists only while a task runs; `pane` is the key to attach a terminal.
 - `last`: the most recent task's result, error or prompt (first 140 characters), final state and time.
-- `pending_approval` exists only in `needs_you`.
-- `waiting_task` (absent unless a task is parked on a card): `{id, action, result, attachments}`, the card the oldest waiting task is on and the images the agent took for it (only the agent's, as records). Atlas Mobile's Captain's call lists a crewmate with a `refused` or `prove_ui` card from it, with Retry and Override in place. It does not change `state`.
+- `pending_approval` exists only in `needs_you`; a task parked on any card (`waiting_task`) is `needs_you` too, though its runner is still held, so `running_task` is present there and Stop works. A server before this (1.5.0-alpha.26 and earlier) said `working`; the desktop corrects that where the reply still shows the card.
+- `waiting_task` (absent unless a task is parked on a card): `{id, action, result, attachments}`, the card the task is on (the one the runner holds, else the newest parked one) and the images the agent took for it (only the agent's, as records). Atlas Mobile's Captain's call lists a crewmate with a `refused` or `prove_ui` card from it, with Retry and Override in place. Its presence makes `state` `needs_you`, whatever the kind of card.
 - `triggers` is always present; `next_fire` is computed by the server.
 
 ### Task object

@@ -6,14 +6,17 @@
 		{
 			"declarations": [
 				"input count",
+				"local countExact = count",
 				"local countPlural = count: plural"
 			],
 			"selectors": [
+				"countExact",
 				"countPlural"
 			],
 			"match": {
-				"countPlural=one": "A cada {count} hora",
-				"countPlural=*": "A cada {count} horas"
+				"countExact=0, countPlural=*": "A cada {count} horas",
+				"countExact=*, countPlural=one": "A cada {count} hora",
+				"countExact=*, countPlural=*": "A cada {count} horas"
 			}
 		}
 	],
@@ -22,14 +25,17 @@
 		{
 			"declarations": [
 				"input count",
+				"local countExact = count",
 				"local countPlural = count: plural"
 			],
 			"selectors": [
+				"countExact",
 				"countPlural"
 			],
 			"match": {
-				"countPlural=one": "A cada {count} minuto",
-				"countPlural=*": "A cada {count} minutos"
+				"countExact=0, countPlural=*": "A cada {count} minutos",
+				"countExact=*, countPlural=one": "A cada {count} minuto",
+				"countExact=*, countPlural=*": "A cada {count} minutos"
 			}
 		}
 	],
@@ -44,11 +50,11 @@
 	"crew_automation_describe_github_release": "uma release é publicada",
 	"crew_automation_describe_github_review_comment": "um PR recebe um comentário de revisão",
 	"crew_automation_describe_github_review_requested": "sua revisão é solicitada",
-	"crew_automation_describe_next_day": "{day} às {time}",
-	"crew_automation_describe_next_today": "hoje às {time}",
-	"crew_automation_describe_next_tomorrow": "amanhã às {time}",
-	"crew_automation_describe_schedule": "{days} às {time}",
-	"crew_automation_describe_schedule_tz": "{days} às {time} ({tz})",
+	"crew_automation_describe_next_day": "{day}, {time}",
+	"crew_automation_describe_next_today": "hoje, {time}",
+	"crew_automation_describe_next_tomorrow": "amanhã, {time}",
+	"crew_automation_describe_schedule": "{days}, {time}",
+	"crew_automation_describe_schedule_tz": "{days}, {time} ({tz})",
 	"crew_automation_describe_service_failed": "Quando {name} falha",
 	"crew_automation_describe_service_recovered": "Quando {name} volta a funcionar",
 	"crew_automation_describe_webhook": "Webhook",

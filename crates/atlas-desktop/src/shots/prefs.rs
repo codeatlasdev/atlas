@@ -3,6 +3,7 @@
 
 use std::path::PathBuf;
 
+use atlas_i18n::t;
 use serde::{Deserialize, Serialize};
 
 use crate::hotkeys;
@@ -52,17 +53,17 @@ impl Hotkey {
         Hotkey::Gif,
     ];
 
-    /// Name used in refusal sentences.
-    pub fn label(self) -> &'static str {
+    /// Name used in refusal sentences, in the display language.
+    pub fn label(self) -> String {
         match self {
-            Hotkey::AllInOne => "All-in-one capture",
-            Hotkey::Region => "Capture region",
-            Hotkey::Previous => "Capture previous area",
-            Hotkey::Window => "Capture window",
-            Hotkey::Fullscreen => "Capture screen",
-            Hotkey::Ocr => "Capture text",
-            Hotkey::Record => "Record screen",
-            Hotkey::Gif => "Record GIF",
+            Hotkey::AllInOne => t!("native_capture_action_all_in_one"),
+            Hotkey::Region => t!("native_capture_action_region"),
+            Hotkey::Previous => t!("native_capture_action_previous"),
+            Hotkey::Window => t!("native_capture_action_window"),
+            Hotkey::Fullscreen => t!("native_capture_action_screen"),
+            Hotkey::Ocr => t!("native_capture_action_ocr"),
+            Hotkey::Record => t!("native_capture_action_record"),
+            Hotkey::Gif => t!("native_menu_capture_gif"),
         }
     }
 }
@@ -137,6 +138,7 @@ pub fn presets() -> Vec<Preset> {
     vec![
         Preset {
             id: "default",
+            // i18n-ignore: English fallback of a wire field; the page renders presetLabel() from the catalog by id
             label: "⌃⌥1–8 (default)",
             keys: Keys::default(),
             note: None,
@@ -144,6 +146,7 @@ pub fn presets() -> Vec<Preset> {
         },
         Preset {
             id: "cleanshot",
+            // i18n-ignore: English fallback of a wire field; the page renders presetLabel() from the catalog by id
             label: "⇧⌘3 / 4 / 5 / 6 (CleanShot)",
             keys: Keys {
                 all_in_one: "cmd-shift-5".into(),
@@ -156,12 +159,14 @@ pub fn presets() -> Vec<Preset> {
                 gif: "cmd-shift-9".into(),
             },
             note: Some(
+                // i18n-ignore: English fallback of a wire field; the page renders presetNote() from the catalog by id
                 "These are macOS's own screenshot keys (⇧⌘3, ⇧⌘4, ⇧⌘5, ⇧⌘6), and macOS answers them before any app. Atlas never changes a system setting for you: open System Settings > Keyboard > Keyboard Shortcuts > Screenshots, untick them, then tick \"I turned them off\" here. Until then this preset stays unavailable.",
             ),
             needs_system_keys: true,
         },
         Preset {
             id: "ctrl-shift",
+            // i18n-ignore: English fallback of a wire field; the page renders presetLabel() from the catalog by id
             label: "⌃⇧3–9 (without ⌘)",
             keys: Keys {
                 all_in_one: "ctrl-shift-5".into(),
@@ -174,18 +179,21 @@ pub fn presets() -> Vec<Preset> {
                 gif: "ctrl-shift-9".into(),
             },
             note: Some(
+                // i18n-ignore: English fallback of a wire field; the page renders presetNote() from the catalog by id
                 "⌃⇧4 is not a macOS key, but a few terminals and editors use ⌃⇧ digits; if one stops responding, pick another preset.",
             ),
             needs_system_keys: false,
         },
         Preset {
             id: "shift-cmd-s",
+            // i18n-ignore: English fallback of a wire field; the page renders presetLabel() from the catalog by id
             label: "⇧⌘S for a region",
             keys: Keys {
                 region: "shift-cmd-s".into(),
                 ..Keys::default()
             },
             note: Some(
+                // i18n-ignore: English fallback of a wire field; the page renders presetNote() from the catalog by id
                 "⇧⌘S is \"Save As\" in most apps. As a global hotkey it wins over the app in front, so Save As stops working everywhere while Atlas runs. macOS keeps ⇧⌘3, ⇧⌘4 and ⇧⌘5 for itself, which is why they are not offered here.",
             ),
             needs_system_keys: false,
@@ -414,35 +422,45 @@ impl CapturePrefs {
     /// (`("Hide the dock", "ctrl-alt-d")` …): a clash with them is as bad as one between two capture keys.
     pub fn validate(&self, others: &[(&str, &str)]) -> Result<(), String> {
         if !(HISTORY_MIN..=HISTORY_MAX).contains(&self.history) {
-            return Err(format!(
-                "History keeps between {HISTORY_MIN} and {HISTORY_MAX} captures"
+            return Err(t!(
+                "native_capture_history_range",
+                min = HISTORY_MIN,
+                max = HISTORY_MAX
             ));
         }
         if !self.folder.trim().is_empty() && !std::path::Path::new(self.folder.trim()).is_absolute()
         {
-            return Err("The folder must be an absolute path".into());
+            return Err(t!("native_capture_folder_absolute"));
         }
         if !TIMER_VALUES.contains(&self.still.timer_secs) {
-            return Err("The timer is off, 3, 5 or 10 seconds".into());
+            return Err(t!("native_capture_timer_values"));
         }
         if !(QUICK_STACK_MIN..=QUICK_STACK_MAX).contains(&self.quick.stack) {
-            return Err(format!(
-                "The quick-access stack holds between {QUICK_STACK_MIN} and {QUICK_STACK_MAX} captures"
+            return Err(t!(
+                "native_capture_stack_range",
+                min = QUICK_STACK_MIN,
+                max = QUICK_STACK_MAX
             ));
         }
-        let mut all: Vec<(&str, &str)> = Hotkey::ALL
+        let labels: Vec<String> = Hotkey::ALL.iter().map(|h| h.label()).collect();
+        let mut all: Vec<(&str, &str)> = labels
             .iter()
-            .map(|h| (h.label(), self.keys.get(*h)))
+            .map(String::as_str)
+            .zip(Hotkey::ALL.iter().map(|h| self.keys.get(*h)))
             .collect();
         for (h, stroke) in self.keys.entries() {
             if let hotkeys::Verdict::Refused(r) = hotkeys::check_with(stroke, self.system_keys_free)
             {
-                return Err(format!("{}: {r}", h.label()));
+                return Err(t!(
+                    "native_capture_key_refused",
+                    action = h.label(),
+                    reason = r
+                ));
             }
         }
         all.extend_from_slice(others);
         if let Some((a, b)) = hotkeys::clash(&all) {
-            return Err(format!("\"{a}\" and \"{b}\" use the same key"));
+            return Err(t!("native_capture_same_key", first = a, second = b));
         }
         Ok(())
     }
@@ -513,6 +531,7 @@ pub fn stroke_symbols(stroke: &str) -> String {
             .unwrap_or_default()
     };
     let mut out = String::new();
+    // i18n-ignore: capture is macOS-only: its menu shows a stroke in the symbols a Mac prints on the keys
     for (on, sym) in mods.iter().zip(["⌃", "⌥", "⇧", "⌘"]) {
         if *on {
             out.push_str(sym);
@@ -534,6 +553,11 @@ pub fn next_timer(current: u32) -> u32 {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    /// The refusal sentences are the display language's: the tests that read them read English.
+    fn english() {
+        atlas_i18n::set_lang("en");
+    }
 
     /// The debug bridge starts a capture by the same names the settings keys use; an unknown name is no action.
     #[test]
@@ -590,6 +614,7 @@ mod tests {
 
     #[test]
     fn two_actions_on_one_key_are_refused_by_name_in_any_modifier_order() {
+        english();
         let mut p = CapturePrefs::default();
         p.keys.gif = "alt-ctrl-4".into();
         let e = p.validate(&[]).unwrap_err();
@@ -601,6 +626,7 @@ mod tests {
 
     #[test]
     fn a_capture_key_that_clashes_with_the_dock_names_the_dock_action() {
+        english();
         let mut p = CapturePrefs::default();
         p.keys.region = "ctrl-alt-d".into();
         let e = p.validate(&[("Hide the dock", "ctrl-alt-d")]).unwrap_err();
@@ -611,6 +637,7 @@ mod tests {
     /// never fire. Settings refuses them with the reason.
     #[test]
     fn macos_screenshot_keys_are_refused_with_the_action_that_asked() {
+        english();
         let mut p = CapturePrefs::default();
         p.keys.fullscreen = "cmd-shift-3".into();
         let e = p.validate(&[]).unwrap_err();
@@ -671,6 +698,7 @@ mod tests {
 
     #[test]
     fn history_and_folder_are_bounded() {
+        english();
         let mut p = CapturePrefs {
             history: 0,
             ..CapturePrefs::default()
@@ -780,6 +808,7 @@ mod tests {
     /// (we never change a system setting ourselves).
     #[test]
     fn the_cleanshot_preset_needs_the_system_keys_freed_first() {
+        english();
         let ps = presets();
         let cs = ps.iter().find(|p| p.id == "cleanshot").expect("cleanshot");
         assert_eq!(cs.keys.fullscreen, "cmd-shift-3");
@@ -818,6 +847,7 @@ mod tests {
 
     #[test]
     fn every_preset_validates_with_the_system_keys_freed_and_conflicts_are_still_found() {
+        english();
         for pr in presets() {
             let p = CapturePrefs {
                 keys: pr.keys.clone(),

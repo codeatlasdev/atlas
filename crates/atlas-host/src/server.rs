@@ -356,6 +356,7 @@ fn recover_orphaned_lock(dir: &Path, _path: &Path) -> Result<std::fs::File> {
 }
 
 fn another_running(dir: &Path) -> anyhow::Error {
+    // i18n-ignore: startup refusal of the daemon: it goes to hostd.log (the daemon is detached), which maintainers and bug reports read in English
     anyhow!("another atlas hostd is running ({})", dir.display())
 }
 
@@ -416,6 +417,8 @@ pub struct ServeOpts {
     pub atlas_exe: Option<PathBuf>,
     /// The quiet period before an idle daemon exits; `None`: `ATLAS_HOSTD_IDLE_SECS`, else the default.
     pub idle: Option<std::time::Duration>,
+    /// Time for the idle exit (`atlas_core::clock`); tests drive it by hand. Real by default.
+    pub clock: atlas_core::clock::Clock,
     /// How long a connection gets to send its hello; `None`: [`HELLO_TIMEOUT`] (tests shorten it).
     pub hello_timeout: Option<Duration>,
 }
@@ -464,6 +467,7 @@ pub async fn serve_with(dir: &Path, opts: ServeOpts) -> Result<()> {
     // that must be there, in a directory that is not its own.
     let lab = match &opts.lab {
         Some(_) if opts.takeover.is_some() => {
+            // i18n-ignore: developer tool (`atlas hostd --lab`): English like its flags and its tests
             return Err(anyhow!(
                 "a lab hostd owns no terminals: it cannot take over a daemon"
             ));
@@ -482,6 +486,7 @@ pub async fn serve_with(dir: &Path, opts: ServeOpts) -> Result<()> {
     };
     #[cfg(windows)]
     let mut takeover: Option<crate::upgrade::Takeover> = match &opts.takeover {
+        // i18n-ignore: startup refusal of the daemon (Windows has no live takeover), written to hostd.log
         Some(_) => return Err(anyhow!("live takeover is not supported on Windows")),
         None => None,
     };
@@ -510,6 +515,7 @@ pub async fn serve_with(dir: &Path, opts: ServeOpts) -> Result<()> {
     let listener = if takeover.is_some() {
         let _ = std::fs::remove_file(&tmp_sock);
         let l = ipc::Listener::bind(&tmp_sock)
+            // i18n-ignore: context of an error chain (the socket being bound), read in logs
             .with_context(|| format!("bind {}", tmp_sock.display()))?;
         std::fs::set_permissions(&tmp_sock, std::fs::Permissions::from_mode(0o600))?;
         std::fs::rename(&tmp_sock, &sock)?;
@@ -517,10 +523,12 @@ pub async fn serve_with(dir: &Path, opts: ServeOpts) -> Result<()> {
     } else {
         if sock.exists() {
             if ipc::connect(&sock).await.is_ok() {
+                // i18n-ignore: startup refusal of the daemon, written to hostd.log
                 return Err(anyhow!("socket {} is in use", sock.display()));
             }
             std::fs::remove_file(&sock)?;
         }
+        // i18n-ignore: context of an error chain (the socket being bound), read in logs
         let l = ipc::Listener::bind(&sock).with_context(|| format!("bind {}", sock.display()))?;
         std::fs::set_permissions(&sock, std::fs::Permissions::from_mode(0o600))?;
         l
@@ -530,6 +538,7 @@ pub async fn serve_with(dir: &Path, opts: ServeOpts) -> Result<()> {
     #[cfg(windows)]
     let listener = {
         let _ = &tmp_sock;
+        // i18n-ignore: context of an error chain (the socket being bound), read in logs
         ipc::Listener::bind(&sock).with_context(|| format!("bind {}", sock.display()))?
     };
 
@@ -557,6 +566,7 @@ pub async fn serve_with(dir: &Path, opts: ServeOpts) -> Result<()> {
                 adopted += 1;
                 sessions.insert(id, s);
             }
+            // i18n-ignore: log
             Err(e) => eprintln!("hostd: could not adopt pty {id}: {e:#}"),
         }
     }
@@ -662,6 +672,7 @@ pub async fn serve_with(dir: &Path, opts: ServeOpts) -> Result<()> {
         )
         .await
     {
+        // i18n-ignore: log
         eprintln!("hostd: agent hook server: {e}");
     }
     // Only now the crew: it starts agents (tasks resumed after a restart, schedules and triggers due at
@@ -689,6 +700,7 @@ pub async fn serve_with(dir: &Path, opts: ServeOpts) -> Result<()> {
         });
     }
     tokio::spawn(crate::lsp::pump(Arc::downgrade(&hub), lsp_rx));
+    // i18n-ignore: log
     eprintln!(
         "atlas hostd {} listening on {} (pid {}{})",
         env!("CARGO_PKG_VERSION"),
@@ -709,8 +721,13 @@ pub async fn serve_with(dir: &Path, opts: ServeOpts) -> Result<()> {
     }
     let mut term = Terminate::new()?;
     let limit = opts.idle.or_else(crate::idle::limit_from_env);
-    let tick_interval = limit.unwrap_or(crate::idle::IDLE_EXIT);
-    let mut ticker = tokio::time::interval(crate::idle::tick(tick_interval));
+    let tick_every = crate::idle::tick(limit.unwrap_or(crate::idle::IDLE_EXIT));
+    // The idle decision runs on the injected clock (tests move it by hand). The first look is at once, then
+    // one every `tick_every`; a late look is followed by the next at once, as `tokio::time::interval` did.
+    let clock = opts.clock.clone();
+    let mut next_look = clock.now();
+    let look = clock.sleep_until(next_look);
+    tokio::pin!(look);
     let mut idle_since: Option<Instant> = None;
     // Orphans of a daemon that died without closing its terminals, and registered dirs over
     // their caps: found when an owner dies (checked every few seconds), at the first tick (a restart after a
@@ -756,6 +773,7 @@ pub async fn serve_with(dir: &Path, opts: ServeOpts) -> Result<()> {
                     let _release = Sweeping(busy);
                     let s = atlas_core::hygiene::sweep(&reg, false);
                     if !s.orphans.is_empty() || s.freed.bytes > 0 {
+                        // i18n-ignore: log
                         eprintln!(
                             "atlas hostd: hygiene reaped {} orphaned process(es), freed {} bytes",
                             s.orphans.len(),
@@ -764,7 +782,7 @@ pub async fn serve_with(dir: &Path, opts: ServeOpts) -> Result<()> {
                     }
                 });
             }
-            _ = ticker.tick() => {
+            _ = &mut look => {
                 let (live, clients, phones) = hub.activity();
                 if crate::idle::busy(live, clients, phones) {
                     idle_since = None;
@@ -772,17 +790,23 @@ pub async fn serve_with(dir: &Path, opts: ServeOpts) -> Result<()> {
                     // A lab has no terminal by design, so "idle" is its resting state between
                     // phone sessions: it stops with `--stop`, never on a timer.
                     if let Some(lim) = limit {
-                        let since = *idle_since.get_or_insert_with(Instant::now);
-                        if crate::idle::idle_expired(live, clients, phones, since.elapsed(), lim) {
+                        let now = clock.now();
+                        let since = *idle_since.get_or_insert(now);
+                        if crate::idle::idle_expired(live, clients, phones, now.saturating_duration_since(since), lim) {
+                            // i18n-ignore: log
                             eprintln!("atlas hostd: idle for {}s, no terminals, no clients and no paired phone: exiting", lim.as_secs());
                             break;
                         }
                     }
                 }
                 if crate::idle::dir_gone(dir) {
+                    // i18n-ignore: log
                     eprintln!("atlas hostd: {} is gone: exiting", dir.display());
                     break;
                 }
+                // Re-armed only after the look is done: a test that waits for the re-arm knows it was handled.
+                next_look += tick_every;
+                look.set(clock.sleep_until(next_look));
             }
             _ = hub.handed_off.notified() => {
                 // The successor owns the ptys now: leave them running. The pid lock and
@@ -958,7 +982,10 @@ async fn conn(hub: Arc<Hub>, stream: ipc::Stream) {
                 let hub = hub.clone();
                 let tx = tx.clone();
                 tokio::spawn(async move {
-                    let _ = tx.force(protocol::reply(id, handle(&hub, cmd, conn_id).await));
+                    let _ = tx.force(protocol::reply_failure(
+                        id,
+                        answer(&hub, cmd, conn_id).await,
+                    ));
                 });
                 continue;
             }
@@ -1107,6 +1134,39 @@ pub(crate) fn hook_env(hub: &Hub, req: &mut crate::protocol::PtyCreate) {
     }
 }
 
+/// [`handle`] for every command, with the code of a failure that has one: the filesystem and `exec` (see
+/// `protocol::REPLY_CODES`). Every other failure is the text it always was.
+pub(crate) async fn answer(
+    hub: &Arc<Hub>,
+    cmd: HostCmd,
+    conn_id: u64,
+) -> Result<Value, crate::protocol::Failure> {
+    use crate::protocol::Failure;
+    match cmd {
+        HostCmd::Exec {
+            cwd,
+            argv,
+            env,
+            stdin,
+            timeout_ms,
+        } => crate::exec::run(&cwd, &argv, &env, stdin.as_deref(), timeout_ms).await,
+        HostCmd::FsList { path } => crate::fs::list(&path).map_err(Failure::from),
+        HostCmd::FsRead { path, max, offset } => {
+            crate::fs::read(&path, max, offset).map_err(Failure::from)
+        }
+        HostCmd::FsWrite { path, data, mode } => {
+            crate::fs::write(&path, &data, mode).map_err(Failure::from)
+        }
+        HostCmd::FsStat { path } => crate::fs::stat(&path).map_err(Failure::from),
+        HostCmd::FsMkdir { path } => crate::fs::mkdir(&path).map_err(Failure::from),
+        HostCmd::FsRename { from, to } => crate::fs::rename(&from, &to).map_err(Failure::from),
+        HostCmd::FsRemove { path, recursive } => {
+            crate::fs::remove(&path, recursive).map_err(Failure::from)
+        }
+        cmd => handle(hub, cmd, conn_id).await.map_err(Failure::Text),
+    }
+}
+
 pub(crate) async fn handle(hub: &Arc<Hub>, cmd: HostCmd, conn_id: u64) -> Result<Value, String> {
     let e = |e: anyhow::Error| format!("{e:#}");
     match cmd {
@@ -1178,20 +1238,15 @@ pub(crate) async fn handle(hub: &Arc<Hub>, cmd: HostCmd, conn_id: u64) -> Result
             hub.get(&pty)?.clear();
             Ok(json!({}))
         }
-        HostCmd::Exec {
-            cwd,
-            argv,
-            env,
-            stdin,
-            timeout_ms,
-        } => crate::exec::run(&cwd, &argv, &env, stdin.as_deref(), timeout_ms).await,
-        HostCmd::FsList { path } => crate::fs::list(&path),
-        HostCmd::FsRead { path, max, offset } => crate::fs::read(&path, max, offset),
-        HostCmd::FsWrite { path, data, mode } => crate::fs::write(&path, &data, mode),
-        HostCmd::FsStat { path } => crate::fs::stat(&path),
-        HostCmd::FsMkdir { path } => crate::fs::mkdir(&path),
-        HostCmd::FsRename { from, to } => crate::fs::rename(&from, &to),
-        HostCmd::FsRemove { path, recursive } => crate::fs::remove(&path, recursive),
+        // Answered by `answer`, which keeps the code of their failures.
+        HostCmd::Exec { .. }
+        | HostCmd::FsList { .. }
+        | HostCmd::FsRead { .. }
+        | HostCmd::FsWrite { .. }
+        | HostCmd::FsStat { .. }
+        | HostCmd::FsMkdir { .. }
+        | HostCmd::FsRename { .. }
+        | HostCmd::FsRemove { .. } => Err("handled by answer".into()),
         HostCmd::Info {} => Ok(hub.info()),
         HostCmd::AtlasUpdateCheck {} => crate::update::check(hub).await,
         HostCmd::AtlasUpdate {} => crate::update::start(hub, &hub.origin_of(conn_id)).await,
@@ -1807,6 +1862,130 @@ mod tests {
         crate::protocol_golden::check_golden(
             "info.json",
             &json!({"proto": protocol::PROTO, "keys": keys}),
+        );
+    }
+
+    /// The `Coded` a failed call carries (its code, args and English text), through a real hostd and a real client.
+    async fn coded_failure(
+        client: &crate::client::HostClient,
+        cmd: &str,
+        args: Value,
+    ) -> (String, Value, String) {
+        let e = client.call(cmd, args).await.unwrap_err();
+        let c = e
+            .downcast_ref::<atlas_core::progress::Coded>()
+            .unwrap_or_else(|| panic!("{cmd}: no code on {e:#}"));
+        (c.code.into(), Value::Object(c.args.clone()), e.to_string())
+    }
+
+    /// Incident: `fs_remove` of a file that was already gone toasted the literal `not_found`, and a folder the user
+    /// may not write to toasted the OS's English. The reply carries the code and the arguments the app writes its own
+    /// sentence from; the text stays what it always was, for the CLI and for a desktop without the codes.
+    #[tokio::test]
+    async fn a_failed_fs_or_exec_request_comes_back_coded_with_the_old_text() {
+        let (tmp, client, _s) = wire().await;
+        let gone = tmp.path().join("gone.txt");
+        let gone = gone.to_str().unwrap();
+
+        for cmd in ["fs_remove", "fs_stat", "fs_list", "fs_read"] {
+            let (code, args, text) = coded_failure(&client, cmd, json!({"path": gone})).await;
+            assert_eq!(
+                (code.as_str(), &args["path"], text.as_str()),
+                ("fs.not_found", &json!(gone), "not_found"),
+                "{cmd}"
+            );
+        }
+        let (code, args, text) = coded_failure(
+            &client,
+            "fs_rename",
+            json!({"from": gone, "to": format!("{gone}2")}),
+        )
+        .await;
+        assert_eq!(
+            (code.as_str(), &args["path"], text.as_str()),
+            ("fs.not_found", &json!(gone), "not_found")
+        );
+
+        // A path through a file: the OS says "Not a directory" (os error 20).
+        let file = tmp.path().join("file.txt");
+        std::fs::write(&file, "x").unwrap();
+        let inside = file.join("child.txt");
+        let inside = inside.to_str().unwrap();
+        #[cfg(unix)]
+        {
+            let (code, args, text) =
+                coded_failure(&client, "fs_write", json!({"path": inside, "data": ""})).await;
+            assert_eq!(code, "fs.io");
+            assert_eq!(args["kind"], "not_a_directory");
+            assert_eq!(
+                args["path"],
+                file.to_str().unwrap(),
+                "the folder that is no folder"
+            );
+            assert!(text.contains("Not a directory"), "{text}");
+            let (code, args, _) = coded_failure(&client, "fs_mkdir", json!({"path": inside})).await;
+            assert_eq!(
+                (code.as_str(), &args["kind"]),
+                ("fs.io", &json!("not_a_directory"))
+            );
+        }
+        // A file where a folder is wanted.
+        let (code, args, _) =
+            coded_failure(&client, "fs_mkdir", json!({"path": file.to_str().unwrap()})).await;
+        assert_eq!(
+            (code.as_str(), &args["kind"]),
+            ("fs.io", &json!("already_exists"))
+        );
+
+        let (code, args, text) = coded_failure(
+            &client,
+            "exec",
+            json!({"cwd": tmp.path(), "argv": ["atlas-no-such-program-xyz", "--version"], "env": {}, "timeout_ms": 5000}),
+        )
+        .await;
+        assert_eq!(code, "exec.spawn_failed");
+        assert_eq!(
+            args,
+            json!({"program": "atlas-no-such-program-xyz", "reason": "not_found"})
+        );
+        assert!(text.starts_with("atlas-no-such-program-xyz: "), "{text}");
+
+        // The same OS error for a missing working folder: the advice is not "install it".
+        let (code, args, _) = coded_failure(
+            &client,
+            "exec",
+            json!({"cwd": gone, "argv": ["git", "status"], "env": {}, "timeout_ms": 5000}),
+        )
+        .await;
+        assert_eq!(
+            (code.as_str(), &args["path"]),
+            ("fs.not_found", &json!(gone))
+        );
+
+        let (code, args, text) = coded_failure(
+            &client,
+            "exec",
+            json!({"cwd": tmp.path(), "argv": [], "env": {}, "timeout_ms": 5000}),
+        )
+        .await;
+        assert_eq!(
+            (code.as_str(), text.as_str()),
+            ("hostd.invalid_argument", "empty argv")
+        );
+        assert_eq!(args, json!({"field": "argv", "reason": "empty"}));
+        let (code, args, _) =
+            coded_failure(&client, "fs_write", json!({"path": gone, "data": "***"})).await;
+        assert_eq!(code, "hostd.invalid_argument");
+        assert_eq!(args, json!({"field": "data", "reason": "bad_base64"}));
+
+        // A failure with no code is still the text it always was.
+        let e = client
+            .call("pty_info", json!({"pty": "nope"}))
+            .await
+            .unwrap_err();
+        assert!(
+            e.downcast_ref::<atlas_core::progress::Coded>().is_none(),
+            "{e:#}"
         );
     }
 

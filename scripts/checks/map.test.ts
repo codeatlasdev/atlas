@@ -49,7 +49,7 @@ function jobLines(name: string): string[] {
 }
 
 /** What a check looks like in CI's job text. */
-const needle = (k: (typeof CHECKS)[number]) => norm(k.ciRun ?? k.cmd!.replaceAll("{cargo}", "--workspace"));
+const needle = (k: (typeof CHECKS)[number]) => norm(k.ciRun ?? k.cmd!.replaceAll("{cargo-lib}", "--workspace").replaceAll("{cargo}", "--workspace"));
 const checksOf = (job: string) => CHECKS.filter((k) => k.ci.includes(job));
 
 describe("ci.yml and the map list the same jobs", () => {

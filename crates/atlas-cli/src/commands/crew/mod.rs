@@ -33,6 +33,7 @@ use std::io::{BufRead as _, IsTerminal as _, Write as _};
 use std::path::PathBuf;
 
 use anyhow::{Context, Result, bail};
+use atlas_i18n::t;
 use clap::{Args, Subcommand};
 
 use super::AtlasCommand;
@@ -127,9 +128,12 @@ impl AtlasCommand for UninstallArgs {
         // What will be deleted is always printed first, whatever the flags.
         let inv = match r.exec(transfer::INVENTORY_SCRIPT).await {
             Ok(o) if o.code == 255 => bail!(
-                "could not connect to {} over SSH: {}",
-                self.ssh_target,
-                o.stderr.trim()
+                "{}",
+                t!(
+                    "cmd_crew_ssh_unreachable",
+                    target = self.ssh_target.as_str(),
+                    reason = o.stderr.trim()
+                )
             ),
             Ok(o) => transfer::parse_inventory(&o.stdout),
             Err(e) => return Err(e),
@@ -138,13 +142,16 @@ impl AtlasCommand for UninstallArgs {
         let interactive = std::io::stdin().is_terminal() && std::io::stderr().is_terminal();
         match transfer::flow(self.yes, interactive) {
             transfer::Flow::Refuse => bail!(
-                "uninstall deletes data and needs a decision: run it in a terminal to confirm, or pass --yes (take a copy first: atlas crew export {})",
-                self.ssh_target
+                "{}",
+                t!(
+                    "cmd_crew_uninstall_needs_decision",
+                    target = self.ssh_target.as_str()
+                )
             ),
             transfer::Flow::Ask => {
                 if inv.home.is_some()
                     && inv.crewmates > 0
-                    && ask_yes_no("Export a copy first? [Y/n] ", true)?
+                    && ask_yes_no(&format!("{} ", t!("cmd_crew_ask_export")), true)?
                 {
                     // A failed export stops the uninstall: never delete after a backup that did not happen.
                     ExportArgs::for_uninstall(&self.ssh_target, self.ssh)
@@ -152,11 +159,14 @@ impl AtlasCommand for UninstallArgs {
                         .await?;
                 }
                 eprint!(
-                    "Type the server name ({}) to delete it: ",
-                    transfer::server_name(&self.ssh_target)
+                    "{} ",
+                    t!(
+                        "cmd_crew_type_server_name",
+                        name = transfer::server_name(&self.ssh_target)
+                    )
                 );
                 if !transfer::confirms_server_name(&self.ssh_target, &read_line()?) {
-                    eprintln!("Not the server name. Nothing was deleted.");
+                    eprintln!("{}", t!("cmd_crew_name_mismatch"));
                     return Ok(());
                 }
             }
@@ -169,15 +179,21 @@ impl AtlasCommand for UninstallArgs {
         // a service stops, so this kills them itself, before the crew user (their group member) goes.
         let o = r.exec(&isolation::uninstall_script()).await?;
         if o.code != 0 {
-            bail!("removing the crewmates' users failed: {}", o.stderr.trim());
+            bail!(
+                "{}",
+                t!("cmd_crew_remove_users_failed", reason = o.stderr.trim())
+            );
         }
         let o = r.exec(&layout::uninstall_script()).await?;
         if o.code != 0 {
-            bail!("uninstall failed: {}", o.stderr.trim());
+            bail!(
+                "{}",
+                t!("cmd_crew_uninstall_failed", reason = o.stderr.trim())
+            );
         }
         println!(
-            "\x1b[32m✓\x1b[0m crew server removed from {}.",
-            self.ssh_target
+            "\x1b[32m✓\x1b[0m {}",
+            t!("cmd_crew_server_removed", target = self.ssh_target.as_str())
         );
         println!("{}", transfer::gone_notice(&self.ssh_target, &inv));
         Ok(())
@@ -190,13 +206,13 @@ fn read_line() -> Result<String> {
     Ok(line)
 }
 
-/// A yes/no question on stderr; an empty answer is `default`.
+/// A yes/no question on stderr; an empty answer is `default`. `y`/`yes`, and `s`/`sim` for the pt-BR `[S/n]`.
 fn ask_yes_no(question: &str, default: bool) -> Result<bool> {
     eprint!("{question}");
     std::io::stderr().flush().ok();
-    Ok(match read_line()?.trim().to_ascii_lowercase().as_str() {
+    Ok(match read_line()?.trim().to_lowercase().as_str() {
         "" => default,
-        a => matches!(a, "y" | "yes"),
+        a => matches!(a, "y" | "yes" | "s" | "sim"),
     })
 }
 
@@ -222,8 +238,8 @@ pub struct ExportArgs {
 impl ExportArgs {
     /// The export an interactive uninstall offers: everything, secrets included only when asked there.
     fn for_uninstall(target: &str, ssh: SshPort) -> Self {
-        let with_secrets = ask_yes_no("Include secrets (API keys, webhook tokens)? [y/N] ", false)
-            .unwrap_or(false);
+        let with_secrets =
+            ask_yes_no(&format!("{} ", t!("cmd_crew_ask_secrets")), false).unwrap_or(false);
         Self {
             ssh_target: target.to_string(),
             ssh,
@@ -263,30 +279,33 @@ impl AtlasCommand for ExportArgs {
         let m =
             atlas_host::crew::archive::read_manifest(std::fs::File::open(&dest)?).map_err(|e| {
                 anyhow::anyhow!(
-                    "the export on {} is unreadable ({e}); {} was kept for inspection",
-                    self.ssh_target,
-                    dest.display()
+                    "{}",
+                    t!(
+                        "cmd_crew_export_unreadable",
+                        target = self.ssh_target.as_str(),
+                        reason = e.to_string(),
+                        path = dest.display().to_string()
+                    )
                 )
             })?;
         println!(
-            "\x1b[32m✓\x1b[0m exported {} crewmate(s) from {} to {}",
-            m.crewmates.len(),
-            self.ssh_target,
-            dest.display()
+            "\x1b[32m✓\x1b[0m {}",
+            t!(
+                "cmd_crew_exported",
+                count = m.crewmates.len(),
+                target = self.ssh_target.as_str(),
+                path = dest.display().to_string()
+            )
         );
         for c in &m.crewmates {
             println!("    {} ({})", c.name, c.id);
         }
         if m.secrets {
-            println!(
-                "\x1b[33m!\x1b[0m this file contains secrets and webhook tokens (mode 0600). Keep it private and delete it when done."
-            );
+            println!("\x1b[33m!\x1b[0m {}", t!("cmd_crew_export_secrets"));
         } else {
-            println!("  secrets and webhook tokens were left out (--with-secrets includes them)");
+            println!("  {}", t!("cmd_crew_export_no_secrets"));
         }
-        println!(
-            "  agent sign-ins and project checkouts are never exported: sign in again with `atlas crew login`"
-        );
+        println!("  {}", t!("cmd_crew_export_not_included"));
         Ok(())
     }
 }
@@ -308,16 +327,35 @@ impl AtlasCommand for ImportArgs {
     async fn run(self) -> Result<()> {
         // Checked here first, so a wrong file or format fails before anything is sent.
         let m = atlas_host::crew::archive::read_manifest(
-            std::fs::File::open(&self.file)
-                .with_context(|| format!("opening {}", self.file.display()))?,
+            std::fs::File::open(&self.file).with_context(|| {
+                t!(
+                    "cmd_install_open_failed",
+                    path = self.file.display().to_string()
+                )
+            })?,
         )?;
-        eprintln!(
-            "{}: {} crewmate(s), written by atlas {}{}",
-            self.file.display(),
-            m.crewmates.len(),
-            m.atlas_version,
-            if m.secrets { ", with secrets" } else { "" }
-        );
+        let file = self.file.display().to_string();
+        if m.secrets {
+            eprintln!(
+                "{}",
+                t!(
+                    "cmd_crew_import_summary_secrets",
+                    file = file,
+                    count = m.crewmates.len(),
+                    version = m.atlas_version.as_str()
+                )
+            );
+        } else {
+            eprintln!(
+                "{}",
+                t!(
+                    "cmd_crew_import_summary",
+                    file = file,
+                    count = m.crewmates.len(),
+                    version = m.atlas_version.as_str()
+                )
+            );
+        }
         let o = self
             .ssh
             .remote(&self.ssh_target)
@@ -333,8 +371,8 @@ impl AtlasCommand for ImportArgs {
         }
         print!("{}", o.stdout);
         println!(
-            "\x1b[32m✓\x1b[0m imported into {}. Sign agents in with `atlas crew login` if this server has none.",
-            self.ssh_target
+            "\x1b[32m✓\x1b[0m {}",
+            t!("cmd_crew_imported", target = self.ssh_target.as_str())
         );
         Ok(())
     }
@@ -371,6 +409,7 @@ impl AtlasCommand for StatusArgs {
             .await?;
         let hostd_out = o2.stdout.trim();
         if !hostd_out.is_empty() {
+            // i18n-ignore: a label that is the program's own name
             println!("\nhostd:");
             println!("{hostd_out}");
         }
@@ -407,16 +446,23 @@ impl PauseArgs {
             } else {
                 o.stderr.trim()
             };
+            let target = self.ssh_target.as_str();
             bail!(
-                "could not {} the crew on {}: {why}",
-                if pause { "pause" } else { "resume" },
-                self.ssh_target
+                "{}",
+                if pause {
+                    t!("cmd_crew_pause_failed", target = target, reason = why)
+                } else {
+                    t!("cmd_crew_resume_failed", target = target, reason = why)
+                }
             );
         }
         println!(
-            "\x1b[32m✓\x1b[0m crew on {} {}.",
-            self.ssh_target,
-            if pause { "paused" } else { "resumed" }
+            "\x1b[32m✓\x1b[0m {}",
+            if pause {
+                t!("cmd_crew_paused", target = self.ssh_target.as_str())
+            } else {
+                t!("cmd_crew_resumed", target = self.ssh_target.as_str())
+            }
         );
         Ok(())
     }
@@ -469,10 +515,10 @@ impl AtlasCommand for LoginArgs {
                 .iter()
                 .map(|a| a.id.as_str())
                 .collect();
-            format!(
-                "unknown agent '{}'; supported: {}",
-                self.agent,
-                ids.join(", ")
+            t!(
+                "cmd_crew_unknown_agent",
+                agent = self.agent.as_str(),
+                supported = ids.join(", ")
             )
         })?;
         let bin = def.bin.as_str();
@@ -493,8 +539,8 @@ impl AtlasCommand for LoginArgs {
             .unwrap_or_else(|| atlas_core::crew::USER.to_owned());
 
         println!(
-            "\x1b[36m◆\x1b[0m Install {} on the crew server first if needed:",
-            self.agent
+            "\x1b[36m◆\x1b[0m {}",
+            t!("cmd_crew_login_install_first", agent = self.agent.as_str())
         );
         println!("    {}", def.install);
         println!();
@@ -504,13 +550,13 @@ impl AtlasCommand for LoginArgs {
         let crew = atlas_core::ssh::SshTarget::new(format!("{user}@{host}"), Some(self.ssh.port));
         let argv = crew.terminal_argv(bin);
         println!(
-            "\x1b[36m▸\x1b[0m Opening sign-in session: {}",
-            argv.join(" ")
+            "\x1b[36m▸\x1b[0m {}",
+            t!("cmd_crew_login_opening", command = argv.join(" "))
         );
         let status = std::process::Command::new(&argv[0])
             .args(&argv[1..])
             .status()
-            .context("could not launch ssh")?;
+            .with_context(|| t!("cmd_crew_ssh_launch_failed"))?;
 
         if !status.success() {
             std::process::exit(status.code().unwrap_or(1));
@@ -526,22 +572,30 @@ impl LoginArgs {
     /// command only carries the terminal (`atlas hostd --crew-login`).
     fn login_as_crewmate(&self, id: &str) -> Result<()> {
         let script = layout::login_script(&self.agent, id).with_context(|| {
-            format!(
-                "'{id}' is not a crewmate id (see `atlas crew status`: 36 characters, lowercase), or '{}' is not an agent",
-                self.agent
+            t!(
+                "cmd_crew_bad_crewmate_id",
+                id = id,
+                agent = self.agent.as_str()
             )
         })?;
         // The same ssh helper as every other crew call: the port, and the quoting of the script.
         let argv = atlas_core::ssh::SshTarget::new(self.ssh_target.clone(), Some(self.ssh.port))
             .terminal_argv(&script);
         println!(
-            "\x1b[36m▸\x1b[0m Opening sign-in session for crewmate {id}: ssh -t {} (atlas hostd --crew-login {})",
-            self.ssh_target, self.agent
+            "\x1b[36m▸\x1b[0m {}",
+            t!(
+                "cmd_crew_login_opening_crewmate",
+                id = id,
+                command = format!(
+                    "ssh -t {} (atlas hostd --crew-login {})",
+                    self.ssh_target, self.agent
+                )
+            )
         );
         let status = std::process::Command::new(&argv[0])
             .args(&argv[1..])
             .status()
-            .context("could not launch ssh")?;
+            .with_context(|| t!("cmd_crew_ssh_launch_failed"))?;
         if !status.success() {
             std::process::exit(status.code().unwrap_or(1));
         }

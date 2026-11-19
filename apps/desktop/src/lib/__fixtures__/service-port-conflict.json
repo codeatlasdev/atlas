@@ -7,11 +7,21 @@
 	"exit_code": null,
 	"mem_mb": null,
 	"memory_leak": null,
+	"memory_leak_args": null,
+	"memory_leak_code": null,
 	"memory_rss": null,
 	"memory_trend": null,
 	"memory_trend_mb_min": null,
 	"name": "web",
 	"note": "port 4321 held by PID 12345 (node, cwd /work/app): stop it yourself (kill 12345) or change the service port",
+	"note_args": {
+		"cmd": "node",
+		"cwd": "/work/app",
+		"pid": 12345,
+		"port": 4321,
+		"stop": "kill 12345"
+	},
+	"note_code": "port.held_cwd",
 	"paused_by": null,
 	"port_conflict": {
 		"cmd": "node",
@@ -19,6 +29,8 @@
 		"pid": 12345
 	},
 	"probe_error": null,
+	"probe_error_args": null,
+	"probe_error_code": null,
 	"ready": null,
 	"restarts": 0,
 	"state": "failed",

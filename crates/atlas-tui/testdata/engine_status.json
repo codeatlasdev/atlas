@@ -1,0 +1,750 @@
+{
+  "memory": {
+    "events": {
+      "leak": [
+        [
+          "alert",
+          "leak suspected: +120 MB over 3 reloads"
+        ],
+        [
+          "note",
+          "leak suspected: +120 MB over 3 reloads"
+        ]
+      ],
+      "notify": [
+        [
+          "alert",
+          "using 2.0 GB (max_memory 1.0 GB), left running (on_memory_max: notify)"
+        ],
+        [
+          "note",
+          "using 2.0 GB (max_memory 1.0 GB), left running (on_memory_max: notify)"
+        ]
+      ],
+      "restart": [
+        [
+          "alert",
+          "using 2.0 GB (max_memory 1.0 GB), restarting (1/3)"
+        ],
+        [
+          "note",
+          "using 2.0 GB (max_memory 1.0 GB), restarting (1/3)"
+        ],
+        [
+          "alert",
+          "using 2.0 GB (max_memory 1.0 GB), restarting (2/3)"
+        ],
+        [
+          "note",
+          "using 2.0 GB (max_memory 1.0 GB), restarting (2/3)"
+        ],
+        [
+          "alert",
+          "using 2.0 GB (max_memory 1.0 GB), restarting (3/3)"
+        ],
+        [
+          "note",
+          "using 2.0 GB (max_memory 1.0 GB), restarting (3/3)"
+        ],
+        [
+          "alert",
+          "using 2.0 GB (max_memory 1.0 GB) after 3 restarts, stopped"
+        ],
+        [
+          "note",
+          "using 2.0 GB (max_memory 1.0 GB) after 3 restarts, stopped"
+        ]
+      ],
+      "warn": [
+        [
+          "note",
+          "using 1.3 GB, over memory_warn 1.0 GB"
+        ],
+        [
+          "note",
+          "memory back under budget"
+        ]
+      ]
+    },
+    "mcp": {
+      "running": true,
+      "services": [
+        {
+          "budget_state": "ok",
+          "exit_code": null,
+          "health": null,
+          "memory_leak": "leak suspected: +200 MB over 5 reloads",
+          "name": "leak",
+          "note": "leak suspected: +200 MB over 5 reloads",
+          "off": false,
+          "port": null,
+          "port_conflict": null,
+          "probe_error": null,
+          "ready": null,
+          "restarts": 0,
+          "state": "running",
+          "unhealthy_lines": [],
+          "unhealthy_misses": null,
+          "unhealthy_since": null
+        },
+        {
+          "budget_state": "over",
+          "exit_code": null,
+          "health": null,
+          "memory_leak": null,
+          "name": "notify",
+          "note": "using 2.0 GB, over max_memory 1.0 GB",
+          "off": false,
+          "port": null,
+          "port_conflict": null,
+          "probe_error": "using 2.0 GB, over max_memory 1.0 GB",
+          "ready": null,
+          "restarts": 0,
+          "state": "degraded",
+          "unhealthy_lines": [],
+          "unhealthy_misses": null,
+          "unhealthy_since": null
+        },
+        {
+          "budget_state": "ok",
+          "exit_code": null,
+          "health": null,
+          "memory_leak": null,
+          "name": "restart",
+          "note": null,
+          "off": false,
+          "port": null,
+          "port_conflict": null,
+          "probe_error": null,
+          "ready": null,
+          "restarts": 0,
+          "state": "failed",
+          "unhealthy_lines": [],
+          "unhealthy_misses": null,
+          "unhealthy_since": null
+        },
+        {
+          "budget_state": "ok",
+          "exit_code": null,
+          "health": null,
+          "memory_leak": null,
+          "name": "warn",
+          "note": null,
+          "off": false,
+          "port": null,
+          "port_conflict": null,
+          "probe_error": null,
+          "ready": null,
+          "restarts": 0,
+          "state": "running",
+          "unhealthy_lines": [],
+          "unhealthy_misses": null,
+          "unhealthy_since": null
+        }
+      ],
+      "setup": null,
+      "tunnel": null
+    },
+    "notes": {
+      "leak": {
+        "fail_reason": null,
+        "leak": "leak suspected: +200 MB over 5 reloads",
+        "probe_error": null,
+        "service_note": "leak suspected: +200 MB over 5 reloads"
+      },
+      "notify": {
+        "fail_reason": null,
+        "leak": null,
+        "probe_error": "using 2.0 GB, over max_memory 1.0 GB",
+        "service_note": "using 2.0 GB, over max_memory 1.0 GB"
+      },
+      "restart": {
+        "fail_reason": null,
+        "leak": null,
+        "probe_error": null,
+        "service_note": null
+      },
+      "warn": {
+        "fail_reason": null,
+        "leak": null,
+        "probe_error": null,
+        "service_note": null
+      }
+    },
+    "probe_errors": {
+      "notify_degraded": "using 2.0 GB, over max_memory 1.0 GB",
+      "warn_degraded": "using 1.3 GB, over memory_warn 1.0 GB"
+    },
+    "status_file": {
+      "log_dir": ".logs",
+      "mode": "tui",
+      "services": {
+        "leak": {
+          "autostart": true,
+          "budget_state": "ok",
+          "deselected": false,
+          "exit_code": null,
+          "health": null,
+          "memory_leak": "leak suspected: +200 MB over 5 reloads",
+          "note": "leak suspected: +200 MB over 5 reloads",
+          "port": null,
+          "port_conflict": null,
+          "probe_error": null,
+          "ready": null,
+          "restarts": 0,
+          "state": "running",
+          "unhealthy_lines": null,
+          "unhealthy_misses": null,
+          "unhealthy_since": null
+        },
+        "notify": {
+          "autostart": true,
+          "budget_state": "over",
+          "deselected": false,
+          "exit_code": null,
+          "health": null,
+          "memory_leak": null,
+          "note": "using 2.0 GB, over max_memory 1.0 GB",
+          "port": null,
+          "port_conflict": null,
+          "probe_error": "using 2.0 GB, over max_memory 1.0 GB",
+          "ready": null,
+          "restarts": 0,
+          "state": "degraded",
+          "unhealthy_lines": null,
+          "unhealthy_misses": null,
+          "unhealthy_since": null
+        },
+        "restart": {
+          "autostart": true,
+          "budget_state": "ok",
+          "deselected": false,
+          "exit_code": null,
+          "health": null,
+          "memory_leak": null,
+          "note": null,
+          "port": null,
+          "port_conflict": null,
+          "probe_error": null,
+          "ready": null,
+          "restarts": 0,
+          "state": "failed",
+          "unhealthy_lines": null,
+          "unhealthy_misses": null,
+          "unhealthy_since": null
+        },
+        "warn": {
+          "autostart": true,
+          "budget_state": "ok",
+          "deselected": false,
+          "exit_code": null,
+          "health": null,
+          "memory_leak": null,
+          "note": null,
+          "port": null,
+          "port_conflict": null,
+          "probe_error": null,
+          "ready": null,
+          "restarts": 0,
+          "state": "running",
+          "unhealthy_lines": null,
+          "unhealthy_misses": null,
+          "unhealthy_since": null
+        }
+      },
+      "tunnel": null
+    }
+  },
+  "scheduler": {
+    "ci": {
+      "bad": {
+        "fail_reason": "exited with error",
+        "service_note": "exited with error"
+      },
+      "clean": {
+        "fail_reason": null,
+        "service_note": "done"
+      },
+      "empty": {
+        "fail_reason": "could not start: the service command is empty",
+        "service_note": "could not start: the service command is empty"
+      },
+      "leaf": {
+        "fail_reason": "dependency mid failed",
+        "service_note": "dependency mid failed"
+      },
+      "loop": {
+        "fail_reason": "gave up after 1 restarts",
+        "service_note": "gave up after 1 restarts"
+      },
+      "mid": {
+        "fail_reason": "dependency bad failed",
+        "service_note": "dependency bad failed"
+      },
+      "once": {
+        "fail_reason": null,
+        "service_note": "done"
+      },
+      "slow": {
+        "fail_reason": null,
+        "service_note": "done"
+      },
+      "waiter": {
+        "fail_reason": null,
+        "service_note": null
+      }
+    },
+    "events": {
+      "clean": [
+        [
+          "note",
+          "exited cleanly"
+        ]
+      ],
+      "leaf": [
+        [
+          "note",
+          "waiting for mid (healthy)"
+        ],
+        [
+          "note",
+          "dependency mid failed"
+        ]
+      ],
+      "loop": [
+        [
+          "note",
+          "crashed; restarting in 1s (1/1)"
+        ],
+        [
+          "note",
+          "restarting"
+        ],
+        [
+          "note",
+          "gave up after 1 restarts"
+        ]
+      ],
+      "mid": [
+        [
+          "note",
+          "waiting for bad (completed_successfully)"
+        ],
+        [
+          "note",
+          "dependency bad failed"
+        ]
+      ],
+      "once": [
+        [
+          "note",
+          "completed successfully"
+        ]
+      ],
+      "slow": [
+        [
+          "note",
+          "completed successfully"
+        ]
+      ],
+      "waiter": [
+        [
+          "note",
+          "waiting for slow (completed_successfully)"
+        ]
+      ]
+    },
+    "mcp": {
+      "running": true,
+      "services": [
+        {
+          "budget_state": "ok",
+          "exit_code": 3,
+          "health": null,
+          "memory_leak": null,
+          "memory_rss": null,
+          "memory_trend": null,
+          "memory_trend_mb_min": null,
+          "name": "bad",
+          "note": "exited with error",
+          "off": false,
+          "port": null,
+          "port_conflict": null,
+          "probe_error": null,
+          "ready": null,
+          "restarts": 0,
+          "state": "failed",
+          "unhealthy_lines": [],
+          "unhealthy_misses": null,
+          "unhealthy_since": null
+        },
+        {
+          "budget_state": "ok",
+          "exit_code": 0,
+          "health": null,
+          "memory_leak": null,
+          "memory_rss": null,
+          "memory_trend": null,
+          "memory_trend_mb_min": null,
+          "name": "clean",
+          "note": "done",
+          "off": false,
+          "port": null,
+          "port_conflict": null,
+          "probe_error": null,
+          "ready": null,
+          "restarts": 0,
+          "state": "stopped",
+          "unhealthy_lines": [],
+          "unhealthy_misses": null,
+          "unhealthy_since": null
+        },
+        {
+          "budget_state": "ok",
+          "exit_code": null,
+          "health": null,
+          "memory_leak": null,
+          "memory_rss": null,
+          "memory_trend": null,
+          "memory_trend_mb_min": null,
+          "name": "empty",
+          "note": "could not start: the service command is empty",
+          "off": false,
+          "port": null,
+          "port_conflict": null,
+          "probe_error": null,
+          "ready": null,
+          "restarts": 0,
+          "state": "failed",
+          "unhealthy_lines": [],
+          "unhealthy_misses": null,
+          "unhealthy_since": null
+        },
+        {
+          "budget_state": "ok",
+          "exit_code": null,
+          "health": null,
+          "memory_leak": null,
+          "memory_rss": null,
+          "memory_trend": null,
+          "memory_trend_mb_min": null,
+          "name": "leaf",
+          "note": "dependency mid failed",
+          "off": false,
+          "port": null,
+          "port_conflict": null,
+          "probe_error": null,
+          "ready": null,
+          "restarts": 0,
+          "state": "failed",
+          "unhealthy_lines": [],
+          "unhealthy_misses": null,
+          "unhealthy_since": null
+        },
+        {
+          "budget_state": "ok",
+          "exit_code": 1,
+          "health": null,
+          "memory_leak": null,
+          "memory_rss": null,
+          "memory_trend": null,
+          "memory_trend_mb_min": null,
+          "name": "loop",
+          "note": "gave up after 1 restarts",
+          "off": false,
+          "port": null,
+          "port_conflict": null,
+          "probe_error": null,
+          "ready": null,
+          "restarts": 1,
+          "state": "failed",
+          "unhealthy_lines": [],
+          "unhealthy_misses": null,
+          "unhealthy_since": null
+        },
+        {
+          "budget_state": "ok",
+          "exit_code": null,
+          "health": null,
+          "memory_leak": null,
+          "memory_rss": null,
+          "memory_trend": null,
+          "memory_trend_mb_min": null,
+          "name": "mid",
+          "note": "dependency bad failed",
+          "off": false,
+          "port": null,
+          "port_conflict": null,
+          "probe_error": null,
+          "ready": null,
+          "restarts": 0,
+          "state": "failed",
+          "unhealthy_lines": [],
+          "unhealthy_misses": null,
+          "unhealthy_since": null
+        },
+        {
+          "budget_state": "ok",
+          "exit_code": 0,
+          "health": null,
+          "memory_leak": null,
+          "memory_rss": null,
+          "memory_trend": null,
+          "memory_trend_mb_min": null,
+          "name": "once",
+          "note": "done",
+          "off": false,
+          "port": null,
+          "port_conflict": null,
+          "probe_error": null,
+          "ready": null,
+          "restarts": 0,
+          "state": "stopped",
+          "unhealthy_lines": [],
+          "unhealthy_misses": null,
+          "unhealthy_since": null
+        },
+        {
+          "budget_state": "ok",
+          "exit_code": 0,
+          "health": null,
+          "memory_leak": null,
+          "memory_rss": null,
+          "memory_trend": null,
+          "memory_trend_mb_min": null,
+          "name": "slow",
+          "note": "done",
+          "off": false,
+          "port": null,
+          "port_conflict": null,
+          "probe_error": null,
+          "ready": null,
+          "restarts": 0,
+          "state": "stopped",
+          "unhealthy_lines": [],
+          "unhealthy_misses": null,
+          "unhealthy_since": null
+        },
+        {
+          "budget_state": "ok",
+          "exit_code": null,
+          "health": null,
+          "memory_leak": null,
+          "memory_rss": null,
+          "memory_trend": null,
+          "memory_trend_mb_min": null,
+          "name": "waiter",
+          "note": null,
+          "off": false,
+          "port": null,
+          "port_conflict": null,
+          "probe_error": null,
+          "ready": null,
+          "restarts": 0,
+          "state": "running",
+          "unhealthy_lines": [],
+          "unhealthy_misses": null,
+          "unhealthy_since": null
+        }
+      ],
+      "setup": null,
+      "tunnel": null
+    },
+    "status_file": {
+      "log_dir": ".logs",
+      "mode": "tui",
+      "services": {
+        "bad": {
+          "autostart": true,
+          "budget_state": "ok",
+          "deselected": false,
+          "exit_code": 3,
+          "health": null,
+          "memory_leak": null,
+          "memory_rss": null,
+          "memory_trend": null,
+          "memory_trend_mb_min": null,
+          "note": "exited with error",
+          "port": null,
+          "port_conflict": null,
+          "probe_error": null,
+          "ready": null,
+          "restarts": 0,
+          "state": "failed",
+          "unhealthy_lines": null,
+          "unhealthy_misses": null,
+          "unhealthy_since": null
+        },
+        "clean": {
+          "autostart": true,
+          "budget_state": "ok",
+          "deselected": false,
+          "exit_code": 0,
+          "health": null,
+          "memory_leak": null,
+          "memory_rss": null,
+          "memory_trend": null,
+          "memory_trend_mb_min": null,
+          "note": "done",
+          "port": null,
+          "port_conflict": null,
+          "probe_error": null,
+          "ready": null,
+          "restarts": 0,
+          "state": "stopped",
+          "unhealthy_lines": null,
+          "unhealthy_misses": null,
+          "unhealthy_since": null
+        },
+        "empty": {
+          "autostart": true,
+          "budget_state": "ok",
+          "deselected": false,
+          "exit_code": null,
+          "health": null,
+          "memory_leak": null,
+          "memory_rss": null,
+          "memory_trend": null,
+          "memory_trend_mb_min": null,
+          "note": "could not start: the service command is empty",
+          "port": null,
+          "port_conflict": null,
+          "probe_error": null,
+          "ready": null,
+          "restarts": 0,
+          "state": "failed",
+          "unhealthy_lines": null,
+          "unhealthy_misses": null,
+          "unhealthy_since": null
+        },
+        "leaf": {
+          "autostart": true,
+          "budget_state": "ok",
+          "deselected": false,
+          "exit_code": null,
+          "health": null,
+          "memory_leak": null,
+          "memory_rss": null,
+          "memory_trend": null,
+          "memory_trend_mb_min": null,
+          "note": "dependency mid failed",
+          "port": null,
+          "port_conflict": null,
+          "probe_error": null,
+          "ready": null,
+          "restarts": 0,
+          "state": "failed",
+          "unhealthy_lines": null,
+          "unhealthy_misses": null,
+          "unhealthy_since": null
+        },
+        "loop": {
+          "autostart": true,
+          "budget_state": "ok",
+          "deselected": false,
+          "exit_code": 1,
+          "health": null,
+          "memory_leak": null,
+          "memory_rss": null,
+          "memory_trend": null,
+          "memory_trend_mb_min": null,
+          "note": "gave up after 1 restarts",
+          "port": null,
+          "port_conflict": null,
+          "probe_error": null,
+          "ready": null,
+          "restarts": 1,
+          "state": "failed",
+          "unhealthy_lines": null,
+          "unhealthy_misses": null,
+          "unhealthy_since": null
+        },
+        "mid": {
+          "autostart": true,
+          "budget_state": "ok",
+          "deselected": false,
+          "exit_code": null,
+          "health": null,
+          "memory_leak": null,
+          "memory_rss": null,
+          "memory_trend": null,
+          "memory_trend_mb_min": null,
+          "note": "dependency bad failed",
+          "port": null,
+          "port_conflict": null,
+          "probe_error": null,
+          "ready": null,
+          "restarts": 0,
+          "state": "failed",
+          "unhealthy_lines": null,
+          "unhealthy_misses": null,
+          "unhealthy_since": null
+        },
+        "once": {
+          "autostart": true,
+          "budget_state": "ok",
+          "deselected": false,
+          "exit_code": 0,
+          "health": null,
+          "memory_leak": null,
+          "memory_rss": null,
+          "memory_trend": null,
+          "memory_trend_mb_min": null,
+          "note": "done",
+          "port": null,
+          "port_conflict": null,
+          "probe_error": null,
+          "ready": null,
+          "restarts": 0,
+          "state": "stopped",
+          "unhealthy_lines": null,
+          "unhealthy_misses": null,
+          "unhealthy_since": null
+        },
+        "slow": {
+          "autostart": true,
+          "budget_state": "ok",
+          "deselected": false,
+          "exit_code": 0,
+          "health": null,
+          "memory_leak": null,
+          "memory_rss": null,
+          "memory_trend": null,
+          "memory_trend_mb_min": null,
+          "note": "done",
+          "port": null,
+          "port_conflict": null,
+          "probe_error": null,
+          "ready": null,
+          "restarts": 0,
+          "state": "stopped",
+          "unhealthy_lines": null,
+          "unhealthy_misses": null,
+          "unhealthy_since": null
+        },
+        "waiter": {
+          "autostart": true,
+          "budget_state": "ok",
+          "deselected": false,
+          "exit_code": null,
+          "health": null,
+          "memory_leak": null,
+          "memory_rss": null,
+          "memory_trend": null,
+          "memory_trend_mb_min": null,
+          "note": null,
+          "port": null,
+          "port_conflict": null,
+          "probe_error": null,
+          "ready": null,
+          "restarts": 0,
+          "state": "running",
+          "unhealthy_lines": null,
+          "unhealthy_misses": null,
+          "unhealthy_since": null
+        }
+      },
+      "tunnel": null
+    }
+  }
+}

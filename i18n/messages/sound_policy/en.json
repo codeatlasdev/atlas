@@ -1,0 +1,22 @@
+{
+	"sound_policy_agent_done_description": "An agent finished its task.",
+	"sound_policy_agent_done_label": "Agent is done",
+	"sound_policy_agent_needs_you_description": "An agent is waiting for an answer or approval.",
+	"sound_policy_agent_needs_you_label": "Agent needs you",
+	"sound_policy_boot_description": "A short signature when Atlas starts, at most once an hour.",
+	"sound_policy_boot_label": "App opens",
+	"sound_policy_discovery_done_description": "When \"Find my projects\" finishes.",
+	"sound_policy_discovery_done_label": "Projects found",
+	"sound_policy_error_description": "A soft tick when an action fails.",
+	"sound_policy_error_label": "Errors",
+	"sound_policy_service_failed_description": "A service crashed or could not start.",
+	"sound_policy_service_failed_label": "Service failed",
+	"sound_policy_stack_up_description": "When every service of a stack is healthy.",
+	"sound_policy_stack_up_label": "Stack is up",
+	"sound_policy_success_description": "A very quiet confirmation.",
+	"sound_policy_success_label": "Copied and saved",
+	"sound_policy_toggle_description": "When you turn a meaningful switch on or off.",
+	"sound_policy_toggle_label": "Switches",
+	"sound_policy_update_description": "A new Atlas version is available.",
+	"sound_policy_update_label": "Update ready"
+}

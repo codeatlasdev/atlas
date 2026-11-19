@@ -4,11 +4,14 @@ use std::collections::BTreeMap;
 use std::process::Stdio;
 use std::time::Duration;
 
+use atlas_core::progress::Coded;
 use atlas_core::sys::CommandExt;
 use base64::Engine;
 use base64::engine::general_purpose::STANDARD as B64;
 use serde_json::{Value, json};
 use tokio::io::{AsyncRead, AsyncReadExt, AsyncWriteExt};
+
+use crate::protocol::Failure;
 
 const OUT_CAP: usize = 10 * 1024 * 1024;
 
@@ -35,6 +38,29 @@ fn program(bin: &str, env: &BTreeMap<String, String>) -> std::path::PathBuf {
     bin.into()
 }
 
+/// The app matches git's own words (`gitErrors.ts` turns them into sentences of the catalog), so `git` is run with
+/// its messages in English, and only its messages: `LC_ALL` also decides `LC_CTYPE` (character handling, non-ASCII
+/// paths), so its value moves to `LC_CTYPE`, `LC_ALL` and `LANGUAGE` (which outranks every `LC_*` for messages) go,
+/// and `LC_MESSAGES` is `C`. `inherited_lc_all` is this process's own `LC_ALL`, which a child gets when `env` does
+/// not say otherwise.
+fn english_messages(env: &mut BTreeMap<String, String>, inherited_lc_all: Option<String>) {
+    let lc_all = env
+        .remove("LC_ALL")
+        .or(inherited_lc_all)
+        .filter(|v| !v.is_empty());
+    if let Some(v) = lc_all {
+        env.insert("LC_CTYPE".into(), v);
+    }
+    env.remove("LANGUAGE");
+    env.insert("LC_MESSAGES".into(), "C".into());
+}
+
+fn is_git(bin: &str) -> bool {
+    std::path::Path::new(bin)
+        .file_stem()
+        .is_some_and(|s| s.eq_ignore_ascii_case("git"))
+}
+
 async fn read_capped(mut r: impl AsyncRead + Unpin) -> Vec<u8> {
     let mut out = Vec::new();
     let mut chunk = [0u8; 16 * 1024];
@@ -49,16 +75,47 @@ async fn read_capped(mut r: impl AsyncRead + Unpin) -> Vec<u8> {
     out
 }
 
+/// Why `bin` could not be started, as `exec.spawn_failed {program, reason}` (see `protocol::REPLY_CODES`); the text
+/// stays `<bin>: <the OS's words>`. A missing working folder fails the spawn with the same OS error as a missing
+/// program, so it is told apart (`fs.not_found {path}`): "install it" would be the wrong advice.
+pub(crate) fn spawn_failed(bin: &str, cwd: &str, e: &std::io::Error) -> Coded {
+    use crate::protocol::{EXEC_SPAWN_FAILED, FS_NOT_FOUND};
+    use std::io::ErrorKind;
+    let message = format!("{bin}: {e}");
+    let reason = match e.kind() {
+        ErrorKind::NotFound if !std::path::Path::new(cwd).is_dir() => {
+            return Coded::new(FS_NOT_FOUND, json!({"path": cwd}), message);
+        }
+        ErrorKind::NotFound => "not_found",
+        ErrorKind::PermissionDenied => "permission_denied",
+        _ => {
+            let args = json!({"program": bin, "reason": "other", "detail": e.to_string()});
+            return Coded::new(EXEC_SPAWN_FAILED, args, message);
+        }
+    };
+    Coded::new(
+        EXEC_SPAWN_FAILED,
+        json!({"program": bin, "reason": reason}),
+        message,
+    )
+}
+
 pub async fn run(
     cwd: &str,
     argv: &[String],
     env: &BTreeMap<String, String>,
     stdin: Option<&str>,
     timeout_ms: u64,
-) -> Result<Value, String> {
-    let (bin, args) = argv.split_first().ok_or("empty argv")?;
+) -> Result<Value, Failure> {
+    let (bin, args) = argv
+        .split_first()
+        .ok_or_else(|| crate::protocol::invalid_argument("argv", "empty", "empty argv"))?;
     let input = stdin
-        .map(|s| B64.decode(s).map_err(|e| format!("stdin: {e}")))
+        .map(|s| {
+            B64.decode(s).map_err(|e| {
+                crate::protocol::invalid_argument("stdin", "bad_base64", format!("stdin: {e}"))
+            })
+        })
         .transpose()?;
     // Windows: a shell-form argv goes to cmd verbatim (its quoting is not MSVC's).
     let mut cmd = match atlas_core::sys::shell_script(argv) {
@@ -72,12 +129,17 @@ pub async fn run(
     // Cold cache = the probe runs here; never on a runtime worker.
     let login = tokio::task::spawn_blocking(atlas_core::login_env::vars)
         .await
-        .map_err(|e| e.to_string())?;
+        .map_err(|e| Failure::Text(e.to_string()))?;
+    let mut envs: BTreeMap<String, String> = login.into_iter().collect();
+    envs.extend(env.iter().map(|(k, v)| (k.clone(), v.clone())));
+    if is_git(bin) {
+        english_messages(&mut envs, std::env::var("LC_ALL").ok());
+        cmd.env_remove("LC_ALL").env_remove("LANGUAGE");
+    }
     let mut child = cmd
         .no_window()
         .current_dir(cwd)
-        .envs(login)
-        .envs(env)
+        .envs(envs)
         .stdin(if input.is_some() {
             Stdio::piped()
         } else {
@@ -87,7 +149,7 @@ pub async fn run(
         .stderr(Stdio::piped())
         .kill_on_drop(true)
         .spawn()
-        .map_err(|e| format!("{bin}: {e}"))?;
+        .map_err(|e| spawn_failed(bin, cwd, &e))?;
     if let (Some(data), Some(mut w)) = (input, child.stdin.take()) {
         tokio::spawn(async move {
             let _ = w.write_all(&data).await;
@@ -111,4 +173,175 @@ pub async fn run(
         "stderr": B64.encode(stderr),
         "timed_out": timed_out,
     }))
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    fn map(pairs: &[(&str, &str)]) -> BTreeMap<String, String> {
+        pairs
+            .iter()
+            .map(|(k, v)| (k.to_string(), v.to_string()))
+            .collect()
+    }
+
+    #[test]
+    fn git_messages_are_english_and_character_handling_is_kept() {
+        let mut env = map(&[
+            ("LC_ALL", "pt_BR.UTF-8"),
+            ("LANGUAGE", "pt_BR"),
+            ("LANG", "pt_BR.UTF-8"),
+            ("PATH", "/bin"),
+        ]);
+        english_messages(&mut env, None);
+        assert_eq!(
+            env.get("LC_CTYPE").map(String::as_str),
+            Some("pt_BR.UTF-8"),
+            "LC_ALL moved to LC_CTYPE"
+        );
+        assert_eq!(env.get("LC_MESSAGES").map(String::as_str), Some("C"));
+        assert!(!env.contains_key("LC_ALL") && !env.contains_key("LANGUAGE"));
+        assert_eq!(
+            env.get("LANG").map(String::as_str),
+            Some("pt_BR.UTF-8"),
+            "the rest is untouched"
+        );
+        // The process's own LC_ALL counts when the request does not set one; an empty one is no setting.
+        let mut env = map(&[]);
+        english_messages(&mut env, Some("C.UTF-8".into()));
+        assert_eq!(env.get("LC_CTYPE").map(String::as_str), Some("C.UTF-8"));
+        let mut env = map(&[]);
+        english_messages(&mut env, Some(String::new()));
+        assert!(!env.contains_key("LC_CTYPE"));
+    }
+
+    #[test]
+    fn only_git_is_touched() {
+        assert!(is_git("git") && is_git("/usr/bin/git") && is_git("git.exe"));
+        assert!(!is_git("gh") && !is_git("gitk") && !is_git("omp"));
+    }
+
+    #[cfg(unix)]
+    async fn git_in(
+        dir: &str,
+        parent: &BTreeMap<String, String>,
+        args: &[&str],
+    ) -> (Option<i64>, String, String) {
+        let mut argv = vec!["git".to_string(), "-C".into(), dir.into()];
+        argv.extend(args.iter().map(|s| s.to_string()));
+        let v = run(dir, &argv, parent, None, 20_000).await.unwrap();
+        let text =
+            |k: &str| String::from_utf8(B64.decode(v[k].as_str().unwrap()).unwrap()).unwrap();
+        (v["code"].as_i64(), text("stdout"), text("stderr"))
+    }
+
+    /// Whether the machine has a pt_BR UTF-8 locale: without it git cannot print Portuguese, so an "its error is
+    /// English" assertion would pass without proving anything.
+    #[cfg(unix)]
+    fn pt_br_installed() -> bool {
+        std::process::Command::new("locale")
+            .arg("-a")
+            .output()
+            .map(|o| {
+                String::from_utf8_lossy(&o.stdout).lines().any(|l| {
+                    l.eq_ignore_ascii_case("pt_BR.utf8") || l.eq_ignore_ascii_case("pt_BR.UTF-8")
+                })
+            })
+            .unwrap_or(false)
+    }
+
+    /// The transform reaches the child, whatever the machine has installed: a program named `git` (it takes the same
+    /// path as git) prints its environment under a pt_BR parent.
+    #[cfg(unix)]
+    #[tokio::test]
+    async fn the_git_child_sees_english_messages_and_keeps_character_handling() {
+        use std::os::unix::fs::PermissionsExt;
+        let d = tempfile::tempdir().unwrap();
+        let bin = d.path().join("git");
+        std::fs::write(&bin, "#!/bin/sh\nenv\n").unwrap();
+        std::fs::set_permissions(&bin, std::fs::Permissions::from_mode(0o755)).unwrap();
+        let parent = map(&[
+            ("LC_ALL", "pt_BR.UTF-8"),
+            ("LANGUAGE", "pt_BR:pt"),
+            ("LANG", "pt_BR.UTF-8"),
+        ]);
+        let argv = vec![bin.to_str().unwrap().to_string()];
+        let v = run(d.path().to_str().unwrap(), &argv, &parent, None, 20_000)
+            .await
+            .unwrap();
+        let out = String::from_utf8(B64.decode(v["stdout"].as_str().unwrap()).unwrap()).unwrap();
+        let has = |line: &str| out.lines().any(|l| l == line);
+        assert!(has("LC_MESSAGES=C"), "{out}");
+        assert!(has("LC_CTYPE=pt_BR.UTF-8"), "{out}");
+        assert!(has("LANG=pt_BR.UTF-8"), "{out}");
+        assert!(
+            !out.lines()
+                .any(|l| l.starts_with("LC_ALL=") || l.starts_with("LANGUAGE=")),
+            "{out}"
+        );
+        // Any other program is left alone.
+        let other = d.path().join("gh");
+        std::fs::write(&other, "#!/bin/sh\nenv\n").unwrap();
+        std::fs::set_permissions(&other, std::fs::Permissions::from_mode(0o755)).unwrap();
+        let argv = vec![other.to_str().unwrap().to_string()];
+        let v = run(d.path().to_str().unwrap(), &argv, &parent, None, 20_000)
+            .await
+            .unwrap();
+        let out = String::from_utf8(B64.decode(v["stdout"].as_str().unwrap()).unwrap()).unwrap();
+        assert!(out.lines().any(|l| l == "LC_ALL=pt_BR.UTF-8"), "{out}");
+    }
+
+    /// A real `git` under a pt_BR.UTF-8 parent: its error is the English one `gitErrors.ts` classifies (checked only
+    /// where a pt_BR locale exists, and said out loud when it does not), and a non-ASCII file name survives `status`
+    /// and `diff`.
+    #[cfg(unix)]
+    #[tokio::test]
+    async fn git_runs_with_english_messages_and_still_reads_non_ascii_paths() {
+        let parent = map(&[
+            ("LC_ALL", "pt_BR.UTF-8"),
+            ("LANGUAGE", "pt_BR"),
+            ("GIT_CONFIG_GLOBAL", "/dev/null"),
+        ]);
+        let outside = tempfile::tempdir().unwrap();
+        let (code, _, err) = git_in(outside.path().to_str().unwrap(), &parent, &["status"]).await;
+        assert_ne!(code, Some(0));
+        if pt_br_installed() {
+            assert!(err.contains("not a git repository"), "{err}");
+        } else if std::env::var("ATLAS_REQUIRE_LOCALE").is_ok_and(|v| v == "1") {
+            // CI sets it on the runners that must have pt_BR: a missing locale there is a broken runner, and a
+            // silent skip would let the English-error assertion pass without ever running.
+            panic!("ATLAS_REQUIRE_LOCALE=1 but `locale -a` lists no pt_BR.UTF-8");
+        } else {
+            eprintln!(
+                "skipped: pt_BR locale not installed (the English-error assertion proves nothing here)"
+            );
+        }
+
+        let d = tempfile::tempdir().unwrap();
+        let dir = d.path().to_str().unwrap();
+        git_in(dir, &parent, &["init", "-q", "."]).await;
+        std::fs::write(d.path().join("ação.txt"), "um\n").unwrap();
+        let (_, status, _) = git_in(
+            dir,
+            &parent,
+            &["status", "--porcelain=v1", "-z", "--untracked-files=all"],
+        )
+        .await;
+        assert!(status.contains("ação.txt"), "{status:?}");
+        git_in(dir, &parent, &["add", "ação.txt"]).await;
+        let (_, diff, _) = git_in(
+            dir,
+            &parent,
+            &[
+                "-c",
+                "core.quotePath=false",
+                "diff",
+                "--cached",
+                "--no-color",
+            ],
+        )
+        .await;
+        assert!(diff.contains("ação.txt"), "{diff:?}");
+    }
 }

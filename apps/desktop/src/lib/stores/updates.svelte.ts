@@ -3,12 +3,13 @@ import { listen, type UnlistenFn } from "@tauri-apps/api/event";
 import { getCurrentWindow } from "@tauri-apps/api/window";
 import { toast } from "@codeatlasdev/ui";
 import { api, errText } from "#lib/api.ts";
+import { m } from "#lib/i18n/m.ts";
 import {
 	resolveSection,
 	type SettingsSection,
 	type SettingsTab,
 	type SettingsTarget,
-} from "#lib/settings/index.ts";
+} from "#lib/settings/targets.ts";
 import { sound } from "#lib/sound/sound.svelte.ts";
 import { agents } from "#lib/stores/agents.svelte.ts";
 import {
@@ -65,7 +66,7 @@ export interface Release {
 	yanked: { version: string; reason: string; replacement: string | null } | null;
 }
 
-export type { SettingsSection, SettingsTab } from "#lib/settings/index.ts";
+export type { SettingsSection, SettingsTab } from "#lib/settings/targets.ts";
 
 type Run = "update" | "reinstall" | "unlink";
 
@@ -108,6 +109,7 @@ class Updates {
 	whatsNewOpen = $state(false);
 	notes = $state<ReleaseNotes[]>([]);
 	notesLoading = $state(false);
+	/** Why the notes could not load: the backend's reason, "" when it gave none (the sheet words that), null while fine. */
 	notesError = $state<string | null>(null);
 	/** The version the sheet asked notes for: the empty state names it. */
 	notesFor = $state<string | null>(null);
@@ -279,8 +281,8 @@ class Updates {
 		await this.#save({ notified: v });
 		sound.play("update");
 		void invoke("agent_notify", {
-			title: `Atlas ${v} is available`,
-			body: "Open Atlas to see what's new and update.",
+			title: m.tray_recommend_update_title({ version: v }),
+			body: m.settings_updates_notify_body(),
 			sound: false,
 		}).catch(() => {});
 	}
@@ -304,7 +306,8 @@ class Updates {
 			this.notes = selectNotes(all, from, to);
 		} catch (e) {
 			this.notes = [];
-			this.notesError = errText(e).trim() || "Atlas could not reach GitHub.";
+			// "" when the backend gave no reason: the sheet words that itself (`settings_updates_github_unreachable`).
+			this.notesError = errText(e).trim();
 		} finally {
 			this.notesLoading = false;
 		}
@@ -337,7 +340,7 @@ class Updates {
 		if (!v) return;
 		await this.#save({ skipped: v });
 		this.whatsNewOpen = false;
-		toast.info(`Skipped ${v}. Atlas will tell you about the next one.`);
+		toast.info(m.settings_updates_toast_skipped({ version: v }));
 	};
 
 	/** Take back "Skip this version": the pill and the notification return. */
@@ -349,10 +352,10 @@ class Updates {
 	checkNow = async () => {
 		await this.check();
 		if (this.error) toast.error(this.error);
-		else if (this.dev) toast.info("Dev build: updates are paused");
-		else if (!this.available) toast.success("Atlas is up to date");
+		else if (this.dev) toast.info(m.tray_page_dev_build_hint());
+		else if (!this.available) toast.success(m.settings_updates_headline_current());
 		else if (this.pill) this.showWhatsNew();
-		else toast.info(`Atlas ${this.release?.version} is available (skipped)`);
+		else toast.info(m.settings_updates_toast_available_skipped({ version: this.release?.version ?? "" }));
 	};
 
 	async #run(kind: Run, cmd: string, args?: Record<string, unknown>) {

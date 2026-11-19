@@ -164,9 +164,10 @@ async fn pty_agent_starts_inside_the_crewmate_project() {
     .await;
 
     let ran_in = std::fs::read_to_string(&mark).expect("agent ran");
+    // Both sides canonical (a temp dir is a symlink on macOS: `/var` is `/private/var`, #597).
     assert_eq!(
-        ran_in.trim(),
-        project.canonicalize().unwrap().to_string_lossy()
+        atlas_core::paths::canonical(std::path::Path::new(ran_in.trim())).unwrap(),
+        atlas_core::paths::canonical(&project).unwrap()
     );
     crate::crew::runner::set_test_agent_bin(None);
     client.call("shutdown", json!({})).await.ok();

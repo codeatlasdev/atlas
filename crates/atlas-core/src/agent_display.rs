@@ -78,6 +78,162 @@ pub fn verify_linux(get: impl Fn(&str) -> Option<String>) -> Result<(), String> 
     Ok(())
 }
 
+// ---------------------------------------------------------------------------------------------------------------
+// macOS: the virtual displays of agent instances that outlived their process (incident 2026-11-19).
+//
+// WindowServer removes a virtual display when the process that created it closes it or dies (verified in its log:
+// `CGXVirtualDisplayDestroy` follows every instance's end, and a destroy is logged even for the instances that
+// failed closed), but it POSTPONES the removal while the machine is in a non-wake state (built-in display asleep,
+// screen locked): "Deferred hotplugs cannot be processed in a non-wake state". An instance that started then and
+// ended left its display listed, active and 2560 points wide, to the right of the user's monitors, with no process
+// to blame. Five of them stacked, because each new start placed itself right of the previous ones.
+//
+// So: no display is created while no real one is awake, none is created on top of orphans, and `--gc` names them.
+
+/// Vendor id every Atlas agent display is created with: how an agent display is told from the user's monitors.
+pub const AGENT_VENDOR: u32 = 0x4147;
+
+/// One display the OS lists, as the start guard and `--gc` see it.
+#[derive(Debug, Clone, Copy, PartialEq)]
+pub struct SeenDisplay {
+    /// `CGDirectDisplayID`.
+    pub id: u32,
+    /// `CGDisplayVendorNumber`.
+    pub vendor: u32,
+    /// `CGDisplaySerialNumber`: for an agent display, the pid of the instance that created it.
+    pub serial: u32,
+    /// In the active list (an asleep display is online but not active).
+    pub active: bool,
+    /// Global top-left origin, in points.
+    pub origin: (f64, f64),
+    /// Size in points.
+    pub size: (f64, f64),
+}
+
+/// The agent displays whose creator no longer runs (`alive` says whether a pid does). Their owner is gone, so nobody
+/// can destroy them from here.
+pub fn orphans(seen: &[SeenDisplay], alive: impl Fn(u32) -> bool) -> Vec<SeenDisplay> {
+    seen.iter()
+        .filter(|d| d.vendor == AGENT_VENDOR && !alive(d.serial))
+        .copied()
+        .collect()
+}
+
+/// Whether one of the user's own displays (anything but an agent display) is awake.
+pub fn real_awake(seen: &[SeenDisplay]) -> bool {
+    seen.iter().any(|d| d.vendor != AGENT_VENDOR && d.active)
+}
+
+/// Why no start may create a display while no real one is awake.
+pub const NO_REAL_DISPLAY: &str = "no real display is awake (the Mac is locked or its screen is asleep): macOS postpones removing a virtual display until the system wakes, so one created now would outlive this process. Unlock the Mac and try again";
+
+/// What `--gc` and the start guard say about orphan displays.
+pub fn orphan_report(orphans: &[SeenDisplay]) -> String {
+    let list: Vec<String> = orphans
+        .iter()
+        .map(|d| {
+            format!(
+                "display {} at x={} ({}x{} points, created by pid {}, gone){}",
+                d.id,
+                d.origin.0,
+                d.size.0,
+                d.size.1,
+                d.serial,
+                if d.active { "" } else { ", not active" }
+            )
+        })
+        .collect();
+    format!(
+        "{} orphan agent display(s) (vendor {AGENT_VENDOR:#x}) of instances that no longer run, extending the desktop \
+         to the right: {}. Another process cannot remove a virtual display (`atlas desktop --agent --gc` lists them). \
+         macOS drops them when it next processes \
+         the removals it deferred (unlock or wake the Mac); if they are still there after that, log out or reboot",
+        orphans.len(),
+        list.join("; ")
+    )
+}
+
+/// The start guard, pure: a real display must be awake and no orphan may be listed.
+pub fn start_gate(real_awake: bool, orphans: &[SeenDisplay]) -> Result<(), String> {
+    if !real_awake {
+        return Err(NO_REAL_DISPLAY.into());
+    }
+    if !orphans.is_empty() {
+        return Err(orphan_report(orphans));
+    }
+    Ok(())
+}
+
+/// Every display the OS lists, active or not.
+#[cfg(target_os = "macos")]
+pub fn seen_displays() -> Vec<SeenDisplay> {
+    #[repr(C)]
+    struct CGPoint {
+        x: f64,
+        y: f64,
+    }
+    #[repr(C)]
+    struct CGSize {
+        width: f64,
+        height: f64,
+    }
+    #[repr(C)]
+    struct CGRect {
+        origin: CGPoint,
+        size: CGSize,
+    }
+    #[link(name = "CoreGraphics", kind = "framework")]
+    unsafe extern "C" {
+        fn CGGetOnlineDisplayList(max: u32, out: *mut u32, count: *mut u32) -> i32;
+        fn CGDisplayBounds(id: u32) -> CGRect;
+        fn CGDisplayVendorNumber(id: u32) -> u32;
+        fn CGDisplaySerialNumber(id: u32) -> u32;
+        fn CGDisplayIsActive(id: u32) -> u32;
+    }
+    let mut n = 0u32;
+    // SAFETY: CoreGraphics C API with correctly sized buffers; the getters take any id from the list.
+    unsafe {
+        CGGetOnlineDisplayList(0, std::ptr::null_mut(), &mut n);
+        let mut ids = vec![0u32; n as usize];
+        CGGetOnlineDisplayList(n, ids.as_mut_ptr(), &mut n);
+        ids.truncate(n as usize);
+        ids.into_iter()
+            .map(|id| {
+                let b = CGDisplayBounds(id);
+                SeenDisplay {
+                    id,
+                    vendor: CGDisplayVendorNumber(id),
+                    serial: CGDisplaySerialNumber(id),
+                    active: CGDisplayIsActive(id) != 0,
+                    origin: (b.origin.x, b.origin.y),
+                    size: (b.size.width, b.size.height),
+                }
+            })
+            .collect()
+    }
+}
+
+/// The orphan agent displays right now.
+#[cfg(target_os = "macos")]
+pub fn orphan_displays() -> Vec<SeenDisplay> {
+    orphans(&seen_displays(), crate::sys::pid_alive)
+}
+
+/// The start guard on the live machine. A display whose instance has just ended is still listed for a moment (its
+/// removal is asynchronous), so an orphan is given `settle` to go before it counts.
+#[cfg(target_os = "macos")]
+pub fn check_start(settle: std::time::Duration) -> Result<(), String> {
+    let t0 = std::time::Instant::now();
+    loop {
+        let seen = seen_displays();
+        let verdict = start_gate(real_awake(&seen), &orphans(&seen, crate::sys::pid_alive));
+        if verdict.is_ok() || t0.elapsed() >= settle {
+            return verdict;
+        }
+        std::thread::sleep(std::time::Duration::from_millis(100));
+    }
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -166,5 +322,78 @@ mod tests {
             m.insert("WAYLAND_DISPLAY".into(), wl.into());
             assert!(check(&m).is_err(), "{wl}");
         }
+    }
+
+    fn display(id: u32, vendor: u32, serial: u32, active: bool, x: f64) -> SeenDisplay {
+        SeenDisplay {
+            id,
+            vendor,
+            serial,
+            active,
+            origin: (x, 0.0),
+            size: (2560.0, 1640.0),
+        }
+    }
+
+    /// Incident 2026-11-19, as `CGGetOnlineDisplayList` listed it: the built-in panel asleep, five agent displays
+    /// (serial = the pid of the instance that made it) stacked to the right, none of those pids alive.
+    fn incident() -> Vec<SeenDisplay> {
+        let mut v = vec![display(1, 0x610, 4_251_086_178, false, 0.0)];
+        for (id, pid, x) in [
+            (91, 91889, 11592.0),
+            (92, 94101, 9032.0),
+            (93, 94595, 6472.0),
+            (94, 95602, 3912.0),
+            (95, 4055, 1352.0),
+        ] {
+            v.push(display(id, AGENT_VENDOR, pid, true, x));
+        }
+        v
+    }
+
+    #[test]
+    fn displays_of_instances_that_are_gone_are_orphans_and_the_users_panel_never_is() {
+        let o = orphans(&incident(), |_| false);
+        assert_eq!(
+            o.iter().map(|d| d.id).collect::<Vec<_>>(),
+            [91, 92, 93, 94, 95]
+        );
+        // a live instance's display, and the panel whose "serial" is not a pid, are not orphans
+        let o = orphans(&incident(), |pid| pid == 94101 || pid == 4_251_086_178);
+        assert_eq!(o.iter().map(|d| d.id).collect::<Vec<_>>(), [91, 93, 94, 95]);
+    }
+
+    #[test]
+    fn no_display_is_created_while_the_only_real_one_sleeps() {
+        let seen = incident();
+        assert!(
+            !real_awake(&seen),
+            "the panel is asleep and the rest are agents'"
+        );
+        assert_eq!(
+            start_gate(real_awake(&seen), &[]),
+            Err(NO_REAL_DISPLAY.into())
+        );
+        let mut awake = seen;
+        awake[0].active = true;
+        assert!(real_awake(&awake));
+    }
+
+    #[test]
+    fn no_display_is_created_on_top_of_orphans_and_the_message_says_how_to_clear_them() {
+        let mut seen = incident();
+        seen[0].active = true; // awake again
+        let o = orphans(&seen, |_| false);
+        let why = start_gate(real_awake(&seen), &o).unwrap_err();
+        for want in [
+            "5 orphan",
+            "x=11592",
+            "pid 4055",
+            "--gc",
+            "log out or reboot",
+        ] {
+            assert!(why.contains(want), "{want} missing from: {why}");
+        }
+        assert_eq!(start_gate(true, &[]), Ok(()));
     }
 }

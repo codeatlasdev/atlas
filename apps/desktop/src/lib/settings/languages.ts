@@ -6,6 +6,7 @@
 import { m } from "#lib/i18n/m.ts";
 import type { LspLanguagePref } from "#lib/prefs.ts";
 import type { CatalogEntry, ServerStatus } from "#lib/lsp/types.ts";
+import { lspReasonText } from "#lib/lsp/reasonText.ts";
 
 export type ServerView =
 	| { kind: "downloading"; text: string }
@@ -49,14 +50,17 @@ export function serverView(entry: CatalogEntry, servers: readonly ServerStatus[]
 	if (live?.state === "crashed") {
 		return {
 			kind: "crashed",
-			text: live.reason?.message || live.message || m.settings_editor_view_stopped(),
+			text:
+				(live.reason && lspReasonText(live.reason).message) ||
+				live.message ||
+				m.settings_editor_view_stopped(),
 		};
 	}
 	if (live?.state === "ready") return { kind: "running", text: m.settings_editor_view_running() };
 	const { detected } = entry;
-	if (detected.source === "path") return { kind: "path", text: m.settings_editor_view_installed() };
-	if (detected.source === "managed") return { kind: "managed", text: m.settings_editor_view_installed() };
-	if (detected.blocked) return { kind: "blocked", text: detected.blocked.message };
+	if (detected.source === "path") return { kind: "path", text: m.settings_updates_channel_installed() };
+	if (detected.source === "managed") return { kind: "managed", text: m.settings_updates_channel_installed() };
+	if (detected.blocked) return { kind: "blocked", text: lspReasonText(detected.blocked).message };
 	return { kind: "missing", text: m.settings_editor_view_not_installed() };
 }
 

@@ -13,7 +13,7 @@
 
 	let busy = $derived(h.status === "upgrading" || h.status === "restarting");
 	let waiting = $derived(h.status === "outdated");
-	/** One line: the full sentence (`h.reason`, written by Rust in English) is on the tile's tooltip and in the prompt. */
+	/** One line: the full sentence (`h.reasonText`, from the catalog) is on the tile's tooltip and in the prompt. */
 	let sub = $derived.by(() => {
 		if (busy)
 			return h.status === "upgrading" ? m.settings_host_sub_updating() : m.settings_host_sub_restarting();
@@ -29,7 +29,7 @@
 	version={h.version ?? "—"}
 	{sub}
 	tone={h.reason ? "warn" : "neutral"}
-	title={h.reason || undefined}
+	title={h.reasonText || undefined}
 >
 	{#snippet badges()}
 		{#if h.idleArmed}<span class="tag info">{m.settings_host_badge_restarts_when_idle()}</span

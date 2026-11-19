@@ -11,6 +11,8 @@
  *
  * Pure: no Svelte, no IPC; the runner is passed in so the tests drive real git and real recorded `gh` output.
  */
+import { isProgramMissing } from "#lib/hostText.ts";
+import { m } from "#lib/i18n/m.ts";
 import type { PrView } from "#lib/stores/pr.svelte.ts";
 
 export interface Out {
@@ -106,16 +108,13 @@ export async function probeRepo(run: Run): Promise<RepoProbe> {
 	};
 }
 
-/** hostd's answer when the program does not exist: `gh: No such file or directory (os error 2)` (Windows: "cannot find the file"). */
-const NO_PROGRAM = /os error 2\b|no such file|cannot find the (?:file|path)|program not found/i;
-
 /** `gh auth status`; a missing binary is a rejection from the runner, not an exit code. Any other rejection (hostd down) is unknown. */
 export async function ghAuth(run: Run): Promise<GhAuth> {
 	try {
 		const r = await run(["gh", "auth", "status"]);
 		return r.code === 0 ? "ok" : "signed-out";
 	} catch (e) {
-		return NO_PROGRAM.test(e instanceof Error ? e.message : String(e)) ? "not-installed" : "unknown";
+		return isProgramMissing(e, e instanceof Error ? e.message : String(e)) ? "not-installed" : "unknown";
 	}
 }
 
@@ -191,60 +190,60 @@ export function describeState(s: Exclude<RepoState, { kind: "pr" } | { kind: "no
 	switch (s.kind) {
 		case "no-commits":
 			return {
-				title: "No commits yet",
-				description:
-					"A pull request is made of commits. Commit your changes in Source Control, then come back.",
+				title: m.git_github_no_commits_title(),
+				description: m.git_github_no_commits_body(),
 				action: null,
 			};
 		case "no-remote":
 			return {
-				title: "This repository has no remote",
-				description: "Add the address of the repository on GitHub, then push your branch to it.",
-				action: { id: "add-remote", label: "Add a remote" },
+				title: m.git_github_no_remote_title(),
+				description: m.git_github_no_remote_body(),
+				action: { id: "add-remote", label: m.git_github_add_remote() },
 			};
 		case "remote-not-github":
 			return {
-				title: "The remote is not on GitHub",
+				title: m.git_github_not_github_title(),
 				description: s.remote
-					? `${s.remote.name} points to ${s.remote.url}. Pull requests here need a GitHub remote.`
-					: "Pull requests here need a GitHub remote.",
-				action: { id: "add-remote", label: "Add a remote" },
+					? m.git_github_not_github_body_remote({ name: s.remote.name, url: s.remote.url })
+					: m.git_github_not_github_body(),
+				action: { id: "add-remote", label: m.git_github_add_remote() },
 			};
 		case "gh-missing":
 			return {
-				title: "GitHub CLI is not installed",
-				description: "Atlas uses the GitHub CLI (gh) to read and create pull requests.",
-				action: { id: "install-gh", label: "Install GitHub CLI" },
+				title: m.git_github_cli_missing_title(),
+				description: m.git_github_cli_missing_body(),
+				action: { id: "install-gh", label: m.git_create_pr_dialog_install_github_cli() },
 			};
 		case "gh-signed-out":
 			return {
-				title: "Sign in to GitHub",
-				description: "The GitHub CLI is not signed in. Sign in once and pull requests show up here.",
-				action: { id: "sign-in", label: "Sign in to GitHub" },
+				title: m.git_github_sign_in(),
+				description: m.git_github_signed_out_body(),
+				action: { id: "sign-in", label: m.git_github_sign_in() },
 			};
 		case "gh-error":
 			return {
-				title: "GitHub did not answer",
+				title: m.git_github_error_title(),
+				// gh's own words: they are the only thing that says what went wrong.
 				description: s.message,
-				action: { id: "retry", label: "Try again" },
+				action: { id: "retry", label: m.git_pr_tab_try_again() },
 			};
 		case "default-branch":
 			return {
-				title: `You are on ${s.branch}, the default branch`,
-				description: "A pull request merges one branch into another. Create a branch for your work first.",
-				action: { id: "create-branch", label: "Create branch" },
+				title: m.git_github_default_branch_title({ branch: s.branch }),
+				description: m.git_github_default_branch_body(),
+				action: { id: "create-branch", label: m.git_github_create_branch() },
 			};
 		case "not-pushed":
 			return {
-				title: `${s.branch} is not pushed yet`,
-				description: `GitHub does not know this branch. Push it to ${s.remote}, then open a pull request.`,
-				action: { id: "push", label: "Push branch" },
+				title: m.git_github_not_pushed_title({ branch: s.branch }),
+				description: m.git_github_not_pushed_body({ remote: s.remote }),
+				action: { id: "push", label: m.git_github_push_branch() },
 			};
 		case "ready":
 			return {
-				title: "No pull request for this branch",
-				description: "Open one to get this branch reviewed and merged.",
-				action: { id: "create-pr", label: "Create pull request" },
+				title: m.git_github_ready_title(),
+				description: m.git_github_ready_body(),
+				action: { id: "create-pr", label: m.git_create_pr_dialog_create_pull_request() },
 			};
 	}
 }

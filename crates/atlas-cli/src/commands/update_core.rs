@@ -7,6 +7,7 @@ use std::io::Write;
 use std::path::{Path, PathBuf};
 
 use anyhow::{Context, Result, bail};
+use atlas_i18n::t;
 
 /// Set by Atlas Desktop (and anything else that wants structured progress): the CLI then
 /// prints `@@atlas …` lines next to its human output.
@@ -46,6 +47,7 @@ pub fn enabled() -> bool {
 /// `@@atlas phase <id>`: the phase `id` has started (the previous one is done).
 pub fn phase(p: Phase) {
     if enabled() {
+        // i18n-ignore: an `@@atlas` progress line, read by Atlas Desktop (updates.ts), never shown
         println!("@@atlas phase {}", p.id());
     }
 }
@@ -55,6 +57,7 @@ pub fn phase(p: Phase) {
 /// terminals, the user decides) or `failed`.
 pub fn host_event(state: &str, live: usize) {
     if enabled() {
+        // i18n-ignore: an `@@atlas` progress line, read by Atlas Desktop (updates.ts), never shown
         println!("@@atlas host {state} {live}");
     }
 }
@@ -62,6 +65,7 @@ pub fn host_event(state: &str, live: usize) {
 /// `@@atlas bytes <done> <total>` (total 0 = unknown) while downloading.
 pub fn bytes(done: u64, total: u64) {
     if enabled() {
+        // i18n-ignore: an `@@atlas` progress line, read by Atlas Desktop (updates.ts), never shown
         println!("@@atlas bytes {done} {total}");
     }
 }
@@ -69,6 +73,7 @@ pub fn bytes(done: u64, total: u64) {
 /// `@@atlas rollback <state>`: what happened to the CLI after the app failed to update.
 pub fn rollback_event(state: &str) {
     if enabled() {
+        // i18n-ignore: an `@@atlas` progress line, read by Atlas Desktop (updates.ts), never shown
         println!("@@atlas rollback {state}");
     }
 }
@@ -137,10 +142,11 @@ pub fn unwritable(artifacts: &[(&str, &Path)]) -> Vec<String> {
         .filter_map(|(label, p)| {
             let dir = p.parent()?;
             (!can_write_dir(dir)).then(|| {
-                format!(
-                    "{label} ({}) needs write access to {}",
-                    p.display(),
-                    dir.display()
+                t!(
+                    "cmd_update_needs_write",
+                    label = *label,
+                    path = p.display().to_string(),
+                    dir = dir.display().to_string()
                 )
             })
         })
@@ -186,9 +192,9 @@ impl UpdateLock {
             .write(true)
             .truncate(false)
             .open(path)
-            .with_context(|| format!("cannot open {}", path.display()))?;
+            .with_context(|| t!("cmd_install_open_failed", path = path.display().to_string()))?;
         if !atlas_core::sys::try_lock(&file)? {
-            bail!("another Atlas update is already running; wait for it to finish");
+            bail!("{}", t!("cmd_update_lock_busy"));
         }
         let _ = file.set_len(0);
         let _ = write!(file, "{}", std::process::id());
@@ -207,8 +213,12 @@ impl CliBackup {
     /// Copy `target` (the installed CLI) to a sibling backup file.
     pub fn save(target: &Path) -> Result<Self> {
         let saved = target.with_file_name(".atlas.prev");
-        std::fs::copy(target, &saved)
-            .with_context(|| format!("cannot back up {}", target.display()))?;
+        std::fs::copy(target, &saved).with_context(|| {
+            t!(
+                "cmd_link_backup_failed",
+                path = target.display().to_string()
+            )
+        })?;
         Ok(Self {
             saved,
             target: target.to_path_buf(),
@@ -217,8 +227,12 @@ impl CliBackup {
 
     /// Put the previous CLI back (atomic rename over the new one).
     pub fn restore(&self) -> Result<()> {
-        std::fs::rename(&self.saved, &self.target)
-            .with_context(|| format!("cannot restore {}", self.target.display()))
+        std::fs::rename(&self.saved, &self.target).with_context(|| {
+            t!(
+                "cmd_link_restore_failed",
+                path = self.target.display().to_string()
+            )
+        })
     }
 
     /// The update stuck: the backup is no longer needed.
@@ -238,15 +252,14 @@ impl CliBackup {
         match self.restore() {
             Ok(()) => {
                 rollback_event("restored");
-                Err(e.context(format!(
-                    "Atlas Desktop could not be updated, so Atlas CLI stays on v{from}"
-                )))
+                Err(e.context(t!("cmd_update_app_failed_cli_stays", version = from)))
             }
             Err(r) => {
                 rollback_event("failed");
-                Err(e.context(format!(
-                    "Atlas Desktop could not be updated and the CLI could not be rolled back ({r}); \
-                     CLI is v{to}, run `atlas desktop --install` to bring the app to it"
+                Err(e.context(t!(
+                    "cmd_update_app_failed_no_rollback",
+                    reason = format!("{r:#}"),
+                    version = to
                 )))
             }
         }

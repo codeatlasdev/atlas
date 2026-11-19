@@ -11,6 +11,7 @@ use std::path::PathBuf;
 use std::sync::Arc;
 use std::time::{Duration, Instant};
 
+use atlas_core::clock::Clock;
 use atlas_core::scaling::HANG;
 use atlas_lsp::install::{Failure, Launch, Progress, Source};
 use atlas_lsp::manager::{Config, Manager, Overrides, Push, Resolver, State};
@@ -72,6 +73,7 @@ fn cfg() -> Config {
         restart_window: Duration::from_secs(60),
         restart_backoff: Duration::from_millis(30),
         request_timeout: HANG,
+        clock: Clock::default(),
     }
 }
 
@@ -366,7 +368,17 @@ async fn a_missing_custom_command_says_so_and_names_the_command() {
     let reason = rep.reason.unwrap();
     assert_eq!(reason.code, "custom_not_found");
     assert!(reason.message.contains("definitely-not-a-real-server-xyz"));
-    assert!(reason.hint.unwrap().contains("Settings"));
+    assert!(
+        reason
+            .hint
+            .as_deref()
+            .unwrap()
+            .contains("language settings")
+    );
+    assert_eq!(
+        reason.arg("program").and_then(|v| v.as_str()),
+        Some("definitely-not-a-real-server-xyz")
+    );
 }
 
 #[tokio::test]

@@ -19,6 +19,7 @@
 			<p class="signin-title">{m.crew_onboarding_engine_sign_in_use_your_own_provider()}</p>
 			<p class="signin-hint">{m.crew_onboarding_engine_sign_in_provider_hint({ agentId })}</p>
 			<label class="field-label" for="prov-url">{m.crew_onboarding_engine_sign_in_base_url()}</label>
+			<!-- i18n-ignore: an example gateway URL, not prose -->
 			<input
 				id="prov-url"
 				class="ssh-input"

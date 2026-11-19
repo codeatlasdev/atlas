@@ -4,8 +4,10 @@ use std::time::SystemTime;
 
 use atlas_core::sys::CommandExt as _;
 use serde::{Deserialize, Serialize};
+use serde_json::json;
 use tracing::info;
 
+use super::note::Note;
 use crate::config::PreCommandWhen;
 
 /// Combined stdout+stderr of the last run, relative to the log dir.
@@ -34,7 +36,7 @@ pub enum DepsOutcome {
     /// The install ran and exited 0.
     Installed,
     /// The install could not start or exited non-zero; carries the reason.
-    Failed(String),
+    Failed(Note),
 }
 
 /// Pure staleness decision: install when `node_modules` is missing, or when a
@@ -186,18 +188,18 @@ pub async fn ensure_deps(
                 let path = atlas_core::login_env::path_var();
                 DepsOutcome::Failed(match exit.code() {
                     Some(c) => explain_failure(c, &tail, &command, &path.to_string_lossy()),
-                    None => format!("exit {code}: {tail}"),
+                    None => Note::new("deps.killed", json!({"tail": tail})),
                 })
             }
             Err(e) => {
-                let reason = format!("could not run: {e}");
-                append_log(&log_path, &reason);
+                let reason = Note::new("deps.could_not_run", json!({"error": e.to_string()}));
+                append_log(&log_path, &reason.message);
                 DepsOutcome::Failed(reason)
             }
         },
         Err(e) => {
-            let reason = format!("could not run: {e}");
-            append_log(&log_path, &reason);
+            let reason = Note::new("deps.could_not_run", json!({"error": e.to_string()}));
+            append_log(&log_path, &reason.message);
             DepsOutcome::Failed(reason)
         }
     };
@@ -206,7 +208,7 @@ pub async fn ensure_deps(
     match &outcome {
         DepsOutcome::Failed(reason) => {
             status.state = "failed".into();
-            status.reason = Some(reason.clone());
+            status.reason = Some(reason.message.clone());
         }
         _ => {
             status.state = "ok".into();
@@ -267,18 +269,15 @@ fn command_not_found(code: i32, command: &str, path: &str) -> bool {
 
 /// `exit <code>: <last output line>`; a command the shell could not find ([`command_not_found`]) also
 /// names the binary, the `PATH` Atlas ran with and what to do about it.
-fn explain_failure(code: i32, tail: &str, command: &str, path: &str) -> String {
-    let base = format!("exit {code}: {tail}");
+fn explain_failure(code: i32, tail: &str, command: &str, path: &str) -> Note {
     if !command_not_found(code, command, path) {
-        return base;
+        return Note::new("deps.exit", json!({"code": code, "tail": tail}));
     }
     let bin = missing_binary(tail, command).unwrap_or_else(|| "a command".into());
-    let fix = if cfg!(windows) {
-        "Add its folder to your user Path (Environment Variables in the System settings) and restart Atlas"
-    } else {
-        "Add its directory to PATH in your shell's rc file (~/.bashrc, ~/.zshrc, ~/.config/fish/config.fish) and restart Atlas, or pick the right shell in Settings → Integrations → Shell & links"
-    };
-    format!("{base}. `{bin}` was not found. PATH used by Atlas: {path}. {fix}.")
+    Note::new(
+        "deps.not_found",
+        json!({"code": code, "tail": tail, "bin": bin, "path": path}),
+    )
 }
 
 fn append_log(path: &Path, line: &str) {
@@ -446,7 +445,10 @@ mod tests {
             false,
         )
         .await;
-        assert_eq!(out, DepsOutcome::Failed("exit 3: boom".into()));
+        assert_eq!(
+            out,
+            DepsOutcome::Failed(Note::new("deps.exit", json!({"code": 3, "tail": "boom"})))
+        );
         assert!(!dir.path().join("node_modules/.atlas-installed").exists());
     }
 
@@ -475,7 +477,10 @@ mod tests {
             false,
         )
         .await;
-        assert_eq!(out, DepsOutcome::Failed("exit 3: boom".into()));
+        assert_eq!(
+            out,
+            DepsOutcome::Failed(Note::new("deps.exit", json!({"code": 3, "tail": "boom"})))
+        );
         let log = fs::read_to_string(logs.join(SETUP_LOG)).unwrap();
         assert!(
             !log.contains("oops"),
@@ -559,7 +564,8 @@ mod tests {
     /// Exit 127 names the missing binary, the PATH Atlas used and what to do about it.
     #[test]
     fn exit_127_names_the_binary_the_path_and_a_hint() {
-        let r = explain_failure(127, "sh: 1: bun: not found", "bun install", "/usr/bin:/bin");
+        let r =
+            explain_failure(127, "sh: 1: bun: not found", "bun install", "/usr/bin:/bin").message;
         assert!(r.starts_with("exit 127: sh: 1: bun: not found"), "{r}");
         assert!(r.contains("`bun` was not found"), "{r}");
         assert!(r.contains("PATH used by Atlas: /usr/bin:/bin"), "{r}");
@@ -575,17 +581,20 @@ mod tests {
             "zsh: command not found: bun",
         ] {
             assert!(
-                explain_failure(127, tail, "bun install", "/p").contains("`bun` was not found"),
+                explain_failure(127, tail, "bun install", "/p")
+                    .message
+                    .contains("`bun` was not found"),
                 "{tail}"
             );
         }
         assert!(
             explain_failure(127, "", "FOO=1 bun install && x", "/p")
+                .message
                 .contains("`bun` was not found")
         );
         // Other failures are untouched (on Windows: of a command that exists, here a cmd builtin).
         assert_eq!(
-            explain_failure(3, "boom", "echo boom", "/p"),
+            explain_failure(3, "boom", "echo boom", "/p").message,
             "exit 3: boom"
         );
     }
@@ -596,18 +605,21 @@ mod tests {
     #[test]
     fn cmd_failures_name_a_program_missing_from_path_but_not_a_builtin_or_one_that_exists() {
         let tail = "'bun' não é reconhecido como um comando interno";
-        let r = explain_failure(1, tail, "bun install", "C:\\nowhere");
+        let r = explain_failure(1, tail, "bun install", "C:\\nowhere").message;
         assert!(r.contains("`bun` was not found"), "{r}");
         let sys = std::env::var("SystemRoot").unwrap() + "\\System32";
         assert_eq!(
-            explain_failure(1, "x", "where nothing-here", &sys),
+            explain_failure(1, "x", "where nothing-here", &sys).message,
             "exit 1: x"
         );
         assert_eq!(
-            explain_failure(1, "x", "mkdir a", "C:\\nowhere"),
+            explain_failure(1, "x", "mkdir a", "C:\\nowhere").message,
             "exit 1: x"
         );
-        assert_eq!(explain_failure(0, "", "bun", "C:\\nowhere"), "exit 0: ");
+        assert_eq!(
+            explain_failure(0, "", "bun", "C:\\nowhere").message,
+            "exit 0: "
+        );
     }
 
     #[tokio::test]
@@ -617,6 +629,7 @@ mod tests {
         let DepsOutcome::Failed(reason) = out else {
             panic!("expected failure");
         };
+        let reason = reason.message;
         let code = if cfg!(windows) { "exit 1" } else { "exit 127" };
         assert!(reason.contains(code), "{reason}");
         assert!(

@@ -13,14 +13,17 @@
 		{
 			"declarations": [
 				"input count",
+				"local countExact = count",
 				"local countPlural = count: plural"
 			],
 			"selectors": [
+				"countExact",
 				"countPlural"
 			],
 			"match": {
-				"countPlural=one": "+{count} commit",
-				"countPlural=*": "+{count} commits"
+				"countExact=0, countPlural=*": "+{count} commits",
+				"countExact=*, countPlural=one": "+{count} commit",
+				"countExact=*, countPlural=*": "+{count} commits"
 			}
 		}
 	],
@@ -28,14 +31,17 @@
 		{
 			"declarations": [
 				"input behind",
+				"local behindExact = behind",
 				"local behindPlural = behind: plural"
 			],
 			"selectors": [
+				"behindExact",
 				"behindPlural"
 			],
 			"match": {
-				"behindPlural=one": "+{ahead} / -{behind} commit (divergiu)",
-				"behindPlural=*": "+{ahead} / -{behind} commits (divergiu)"
+				"behindExact=0, behindPlural=*": "+{ahead} / -{behind} commits (divergiu)",
+				"behindExact=*, behindPlural=one": "+{ahead} / -{behind} commit (divergiu)",
+				"behindExact=*, behindPlural=*": "+{ahead} / -{behind} commits (divergiu)"
 			}
 		}
 	],
@@ -43,14 +49,17 @@
 		{
 			"declarations": [
 				"input count",
+				"local countExact = count",
 				"local countPlural = count: plural"
 			],
 			"selectors": [
+				"countExact",
 				"countPlural"
 			],
 			"match": {
-				"countPlural=one": "-{count} commit",
-				"countPlural=*": "-{count} commits"
+				"countExact=0, countPlural=*": "-{count} commits",
+				"countExact=*, countPlural=one": "-{count} commit",
+				"countExact=*, countPlural=*": "-{count} commits"
 			}
 		}
 	],
@@ -62,14 +71,17 @@
 		{
 			"declarations": [
 				"input behind",
+				"local behindExact = behind",
 				"local behindPlural = behind: plural"
 			],
 			"selectors": [
+				"behindExact",
 				"behindPlural"
 			],
 			"match": {
-				"behindPlural=one": "O HEAD {head} e a release publicada {id} @ {sha} divergiram (merge-base {base}): +{ahead} / -{behind} commit.",
-				"behindPlural=*": "O HEAD {head} e a release publicada {id} @ {sha} divergiram (merge-base {base}): +{ahead} / -{behind} commits."
+				"behindExact=0, behindPlural=*": "O HEAD {head} e a release publicada {id} @ {sha} divergiram (merge-base {base}): +{ahead} / -{behind} commits.",
+				"behindExact=*, behindPlural=one": "O HEAD {head} e a release publicada {id} @ {sha} divergiram (merge-base {base}): +{ahead} / -{behind} commit.",
+				"behindExact=*, behindPlural=*": "O HEAD {head} e a release publicada {id} @ {sha} divergiram (merge-base {base}): +{ahead} / -{behind} commits."
 			}
 		}
 	],
@@ -77,14 +89,17 @@
 		{
 			"declarations": [
 				"input behind",
+				"local behindExact = behind",
 				"local behindPlural = behind: plural"
 			],
 			"selectors": [
+				"behindExact",
 				"behindPlural"
 			],
 			"match": {
-				"behindPlural=one": "O HEAD {head} e a release publicada {id} @ {sha} divergiram (sem ancestral comum): +{ahead} / -{behind} commit.",
-				"behindPlural=*": "O HEAD {head} e a release publicada {id} @ {sha} divergiram (sem ancestral comum): +{ahead} / -{behind} commits."
+				"behindExact=0, behindPlural=*": "O HEAD {head} e a release publicada {id} @ {sha} divergiram (sem ancestral comum): +{ahead} / -{behind} commits.",
+				"behindExact=*, behindPlural=one": "O HEAD {head} e a release publicada {id} @ {sha} divergiram (sem ancestral comum): +{ahead} / -{behind} commit.",
+				"behindExact=*, behindPlural=*": "O HEAD {head} e a release publicada {id} @ {sha} divergiram (sem ancestral comum): +{ahead} / -{behind} commits."
 			}
 		}
 	],
@@ -92,14 +107,17 @@
 		{
 			"declarations": [
 				"input count",
+				"local countExact = count",
 				"local countPlural = count: plural"
 			],
 			"selectors": [
+				"countExact",
 				"countPlural"
 			],
 			"match": {
-				"countPlural=one": "O HEAD {head} é MAIS ANTIGO que o commit publicado ({id} @ {sha}): este deploy faria a produção recuar {count} commit.",
-				"countPlural=*": "O HEAD {head} é MAIS ANTIGO que o commit publicado ({id} @ {sha}): este deploy faria a produção recuar {count} commits."
+				"countExact=0, countPlural=*": "O HEAD {head} é MAIS ANTIGO que o commit publicado ({id} @ {sha}): este deploy faria a produção recuar {count} commits.",
+				"countExact=*, countPlural=one": "O HEAD {head} é MAIS ANTIGO que o commit publicado ({id} @ {sha}): este deploy faria a produção recuar {count} commit.",
+				"countExact=*, countPlural=*": "O HEAD {head} é MAIS ANTIGO que o commit publicado ({id} @ {sha}): este deploy faria a produção recuar {count} commits."
 			}
 		}
 	],

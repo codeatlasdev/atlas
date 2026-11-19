@@ -1,0 +1,19 @@
+{
+	"git_errors_config_failed": "Commit identity form error when `git config` fails without printing anything. {key} is user.name or user.email.",
+	"git_errors_config_failed_output": "Commit identity form error when `git config` fails. {key} is user.name or user.email, {output} is git's own words.",
+	"git_errors_conflict": "Git error sentence: a merge, pull or rebase hit conflicts (kind conflict).",
+	"git_errors_details": "Action of a git error toast: opens a dialog with git's own output.",
+	"git_errors_identity_email": "Validation message under the commit identity form when the e-mail has no valid shape.",
+	"git_errors_identity_name": "Validation message under the commit identity form when the name is empty.",
+	"git_errors_local_changes": "Git error sentence: the command would overwrite uncommitted work (kind local-changes).",
+	"git_errors_locked": "Git error sentence: index.lock or another lock file exists (kind locked).",
+	"git_errors_no_commits": "Git error sentence: the repository has no commit yet (kind no-commits).",
+	"git_errors_no_remote": "Git error sentence: push or pull with no remote configured (kind no-remote).",
+	"git_errors_no_upstream": "Git error sentence: the branch has no upstream (kind no-upstream).",
+	"git_errors_not_repo": "Toast and panel text when a git command ran in a folder that is not a git repository (classifyGitError, kind not-repo).",
+	"git_errors_nothing_to_commit": "Git error sentence: commit with nothing staged (kind nothing-to-commit).",
+	"git_errors_other": "Generic git failure sentence for any error without its own message; git's own output is shown as the details.",
+	"git_errors_other_line": "Git error sentence for an error with no message of its own. {line} is the first line git printed, in git's own words (English); the full output is the details.",
+	"git_errors_rejected": "Git error sentence: a push was rejected as non-fast-forward (kind rejected).",
+	"git_errors_remote_access": "Git error sentence: network, address or authentication failure talking to the remote (kind remote-access)."
+}

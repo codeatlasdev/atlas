@@ -82,6 +82,7 @@
 		<!-- Where: the address and a narrow port on one row. -->
 		<div class="row">
 			<div class="grow" class:shake={ob.fieldShake}>
+				<!-- i18n-ignore: an example user@host, not prose -->
 				<TextField
 					name="ssh-target"
 					label={m.crew_onboarding_connect_step_ssh_address()}

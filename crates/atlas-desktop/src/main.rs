@@ -3,6 +3,7 @@
 #![cfg_attr(all(windows, not(debug_assertions)), windows_subsystem = "windows")]
 
 mod agent;
+mod app_exit;
 // Pure, tested decision code driven only by the AppKit side: unused outside macOS, still built so its tests run.
 #[cfg_attr(not(target_os = "macos"), allow(dead_code))]
 mod agent_mode;
@@ -55,6 +56,7 @@ mod menu_model;
 mod crew;
 mod crew_ssh;
 mod loose_fs;
+mod native_ui;
 mod natives;
 mod open_path;
 mod pty_batch;
@@ -139,7 +141,7 @@ fn show_main(app: &AppHandle) {
         Err(e) => {
             // i18n-ignore: log
             eprintln!("atlas-agent: REFUSED to show the window: {e}");
-            app.exit(3);
+            app_exit::exit(app, 3);
         }
     }
     #[cfg(target_os = "macos")]
@@ -205,6 +207,8 @@ macro_rules! handlers {
             cmds::open_url,
             cmds::reveal,
             cmds::reveal_path,
+            native_ui::pick_path,
+            native_ui::save_path,
             cmds::theme_unpack,
             cmds::theme_unpack_cleanup,
             cmds::theme_read_packed,
@@ -232,6 +236,7 @@ macro_rules! handlers {
             host::host_restart_force,
             host::host_diagnostics,
             workspace::workspace_load,
+            workspace::workspace_set_aside,
             workspace::workspace_save,
             worktree::worktree_create,
             worktree::worktree_remove,
@@ -581,6 +586,10 @@ fn main() {
     // Started by `ssh` to ask for the account password of "Add a crew server" (#517): fetch it, print it, exit.
     // Before the window, the logs and the predecessor wait: it must be instant and must touch nothing.
     if let Some(code) = askpass::run_if_helper() {
+        #[allow(
+            clippy::disallowed_methods,
+            reason = "the ssh askpass helper: no window, no display, nothing to destroy"
+        )]
         std::process::exit(code);
     }
     #[cfg(windows)]
@@ -595,6 +604,10 @@ fn main() {
     {
         // i18n-ignore: log
         eprintln!("atlas-agent: REFUSED to show the window: {e}");
+        #[allow(
+            clippy::disallowed_methods,
+            reason = "Linux agent instance refused before any display work: nothing to destroy"
+        )]
         std::process::exit(3);
     }
     #[cfg(target_os = "linux")]
@@ -626,7 +639,6 @@ fn main() {
     };
     let builder = builder
         .plugin(tauri_plugin_dialog::init())
-        .plugin(tauri_plugin_shell::init())
         .plugin(tauri_plugin_notification::init())
         .plugin(tauri_plugin_global_shortcut::Builder::new().build())
         .plugin(
@@ -771,6 +783,10 @@ fn main() {
     #[cfg(not(debug_assertions))]
     let builder = builder.invoke_handler(handlers!());
     boot::mark("builder:configured");
+    #[allow(
+        clippy::disallowed_methods,
+        reason = "the macro's own `process::exit` on an unreadable bundled config, before any window or display exists"
+    )]
     let ctx = tauri::generate_context!();
     boot::mark("context:generated");
     id_migrate::run(&ctx.config().identifier);
@@ -802,6 +818,10 @@ fn main() {
             // Quitting with "restart when idle" armed and no terminal left: end the old host now.
             if matches!(ev, tauri::RunEvent::Exit) {
                 host::on_exit(app);
+                // An agent instance's virtual display is destroyed here, before the process ends by whichever
+                // route got us here (`app.exit` ends in `process::exit`, which never drops a static).
+                #[cfg(target_os = "macos")]
+                agent_display::destroy();
             }
         });
 }

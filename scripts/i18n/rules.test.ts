@@ -4,7 +4,7 @@ import { afterAll, describe, expect, test } from "bun:test";
 import { rmSync } from "node:fs";
 import { fix } from "./fix.ts";
 import { type Finding, loadCtx } from "./types.ts";
-import { EN, META, PT, addKey, check, cleanup, editJson, errors, finding, json, makeRepo, PLURAL, put, read, rulesOf } from "./testkit.ts";
+import { EN, META, PT, addKey, check, cleanup, editJson, errors, finding, json, makeRepo, PLURAL, PLURAL_ZERO, put, read, rulesOf } from "./testkit.ts";
 
 afterAll(cleanup);
 
@@ -169,7 +169,7 @@ describe("placeholders, plurals, verbatim", () => {
 		expect(finding(await check(root), "plural", "app_files_count")?.message).toContain("missing one");
 		editJson(root, PT, (o) => void (o.app_files_count = "{count} arquivos"));
 		expect(finding(await check(root), "plural", "app_files_count")?.message).toContain("selector");
-		editJson(root, PT, (o) => void (o.app_files_count = PLURAL("{count} arquivo", "{count} arquivos")));
+		editJson(root, PT, (o) => void (o.app_files_count = PLURAL_ZERO("Nenhum arquivo", "{count} arquivo", "{count} arquivos")));
 		expect(errors(await check(root))).toEqual([]);
 	});
 
@@ -177,17 +177,6 @@ describe("placeholders, plurals, verbatim", () => {
 		const root = await makeRepo();
 		editJson(root, EN, (o) => void (o.app_files_count = [{ ...PLURAL("", "")[0], match: { "countPlural=*": "{count} files" } }]));
 		expect(rulesOf(errors(await check(root)))).toContain("plural");
-	});
-
-	test("an explicit zero variant is allowed next to one and other (\"0 arquivo\" reads wrong)", async () => {
-		const root = await makeRepo();
-		editJson(root, PT, (o) => {
-			const v = PLURAL("{count} arquivo", "{count} arquivos");
-			v[0].match["countPlural=0" as "countPlural=one"] = "Nenhum arquivo";
-			o.app_files_count = v;
-		});
-		fix(loadCtx(root));
-		expect(errors(await check(root))).toEqual([]);
 	});
 
 	test("a changed code span or URL is a verbatim error", async () => {
@@ -284,6 +273,33 @@ describe("glossary, do-not-translate, pt-PT", () => {
 		expect(rulesOf(await check(root))).not.toContain("pt-pt");
 	});
 
+	test.each([["reinicia às {time}"], ["Iniciada às {time}"], ["hoje à {time}"], ["{days} às {hora}"], ["Abrir logs das {time}"]])(
+		"%s is an error: às and à before a time are wrong for one hour of the day",
+		async (text) => {
+			const root = await makeRepo();
+			addKey(root, "app_pt_time", "resets at {time}", text.replace("{hora}", "{time}"), "A probe");
+			const hits = (await check(root)).filter((f) => f.rule === "pt-time" && f.key === "app_pt_time");
+			expect(hits).toHaveLength(1);
+			expect(hits[0]).toMatchObject({ severity: "error", file: PT });
+			expect(hits[0].message).toContain("à 01:00");
+		},
+	);
+
+	test("a time after a colon, a comma or parentheses passes; so does à before a name and a fixed hour", async () => {
+		const root = await makeRepo();
+		addKey(root, "app_pt_time_ok", "resets {time}", "reinicia: {time}", "A probe");
+		addKey(root, "app_pt_time_ok_two", "today, {time}", "hoje, {time}", "A probe");
+		addKey(root, "app_pt_time_ok_three", "Ask {name}", "Perguntar à {name}", "A probe");
+		addKey(root, "app_pt_time_ok_four", "Every day at 9", "Todo dia às 9h", "A probe");
+		expect(rulesOf(await check(root))).not.toContain("pt-time");
+	});
+
+	test("the English side is never judged by the pt-BR time rule", async () => {
+		const root = await makeRepo();
+		addKey(root, "app_pt_time_en", "today at {time}", "hoje, {time}", "A probe");
+		expect(rulesOf(await check(root))).not.toContain("pt-time");
+	});
+
 	test("the pt-PT list does not apply to other locales", async () => {
 		const root = await makeRepo();
 		put(root, "i18n/locales.json", json({ default: "en", locales: { en: { tier: "source" }, "pt-BR": { tier: "required" }, "pt-PT": { tier: "community" } } }));
@@ -330,5 +346,28 @@ describe("catalog format", () => {
 		put(root, EN, text);
 		fix(loadCtx(root));
 		expect(read(root, EN)).toBe(`${JSON.stringify(JSON.parse(text), null, 2)}\n`);
+	});
+});
+
+describe("quotes (English source values)", () => {
+	test.each([["Nothing matches “{query}”."], ["Don’t ask again"], ["Say ‘hi’"]])("%s is an error on the English value only", async (text) => {
+		const root = await makeRepo();
+		addKey(root, "app_probe", text, "Nada corresponde a {query}.", "A probe");
+		const f = (await check(root)).filter((x) => x.rule === "quotes" && x.key === "app_probe");
+		expect(f).toHaveLength(1);
+		expect(f[0]).toMatchObject({ severity: "error", file: EN });
+		expect(f[0].message).toContain("straight");
+	});
+
+	test("a curly quote in any variant of a message is flagged", async () => {
+		const root = await makeRepo();
+		addKey(root, "app_probe", PLURAL("{count} match for “x”", "{count} matches for \"x\""), PLURAL("{count} resultado", "{count} resultados"), "A probe");
+		expect(finding(await check(root), "quotes", "app_probe")).toMatchObject({ severity: "error", file: EN });
+	});
+
+	test("straight quotes and apostrophes pass; a translation is not judged by this rule", async () => {
+		const root = await makeRepo();
+		addKey(root, "app_probe", "Nothing matches \"{query}\". Don't retry", "Nada corresponde a “{query}”.", "A probe");
+		expect(rulesOf(await check(root))).not.toContain("quotes");
 	});
 });

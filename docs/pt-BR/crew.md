@@ -1,7 +1,7 @@
 ---
 title: "Atlas Crew"
 source: crew.md
-source_sha: "f42b8d640e7b101516630376c7cfd7dc82cdad68"
+source_sha: "f6e9109ae0a965a6455185be728de76b53989420"
 translation: machine
 ---
 
@@ -43,12 +43,12 @@ Requisitos:
 
 O Atlas Desktop faz o mesmo no macOS, Linux e Windows, a partir de um formulário (endereço e porta, ou um servidor escolhido do `~/.ssh/config`) com o método de login definido logo de início:
 
-- **SSH key** (o padrão quando este computador tem uma). O formulário mostra a chave que o `ssh` vai usar para esse endereço (`ssh -G`: um alias do `~/.ssh/config` tem a sua própria) e **Choose another…** abre um seletor de arquivo para qualquer chave privada; escolher `id_work.pub` significa `id_work`. A chave é passada como `-i … -o IdentitiesOnly=yes` a cada chamada ssh da instalação (`atlas crew install --identity <key>`, também em `atlas crew browsers install|status`), e fica salva em `crew-servers.json` (`identity`, um caminho, nunca a chave) para que o túnel, o relay do mobile e as Configurações usem a mesma depois de um reinício. Uma chave sem o `.pub` funciona: a chave pública é derivada dela (`ssh-keygen -y`).
-- **Password.** Você entra uma vez com a senha da conta, o Atlas adiciona a chave pública deste computador ao `authorized_keys` do servidor (uma chave é criada antes quando não há nenhuma; adicionar duas vezes não empilha cópias) e depois instala com a chave, então as conexões seguintes não pedem senha. A senha nunca aparece em linha de comando, no ambiente nem no disco: o `ssh` roda o próprio executável do Atlas Desktop como seu programa `SSH_ASKPASS` (`SSH_ASKPASS_REQUIRE=force`), e esse processo busca a senha em um endpoint local de uso único (um socket Unix em um diretório privado, um named pipe no Windows) que existe só durante aquela chamada ssh e atende no máximo algumas conexões. Ele responde apenas a um prompt de senha, nunca a uma pergunta de passphrase ou de host key. Um helper `.sh` ou `.cmd` foi rejeitado: ele guardaria a senha em um arquivo e não poderia ser um único programa em todos os sistemas operacionais.
+- **Chave SSH** (o padrão quando este computador tem uma). O formulário mostra a chave que o `ssh` vai usar para esse endereço (`ssh -G`: um alias do `~/.ssh/config` tem a sua própria) e **Escolher outra…** abre um seletor de arquivo para qualquer chave privada; escolher `id_work.pub` significa `id_work`. A chave é passada como `-i … -o IdentitiesOnly=yes` a cada chamada ssh da instalação (`atlas crew install --identity <key>`, também em `atlas crew browsers install|status`), e fica salva em `crew-servers.json` (`identity`, um caminho, nunca a chave) para que o túnel, o relay do mobile e as Configurações usem a mesma depois de um reinício. Uma chave sem o `.pub` funciona: a chave pública é derivada dela (`ssh-keygen -y`).
+- **Senha.** Você entra uma vez com a senha da conta, o Atlas adiciona a chave pública deste computador ao `authorized_keys` do servidor (uma chave é criada antes quando não há nenhuma; adicionar duas vezes não empilha cópias) e depois instala com a chave, então as conexões seguintes não pedem senha. A senha nunca aparece em linha de comando, no ambiente nem no disco: o `ssh` roda o próprio executável do Atlas Desktop como seu programa `SSH_ASKPASS` (`SSH_ASKPASS_REQUIRE=force`), e esse processo busca a senha em um endpoint local de uso único (um socket Unix em um diretório privado, um named pipe no Windows) que existe só durante aquela chamada ssh e atende no máximo algumas conexões. Ele responde apenas a um prompt de senha, nunca a uma pergunta de passphrase ou de host key. Um helper `.sh` ou `.cmd` foi rejeitado: ele guardaria a senha em um arquivo e não poderia ser um único programa em todos os sistemas operacionais.
 
-Antes de instalar qualquer coisa, o formulário faz uma conexão (`first contact`) e confia em uma host key que este computador nunca viu, como `StrictHostKeyChecking=accept-new`; uma chave que **mudou** é recusada, com o comando que esquece a antiga. Toda falha diz o que é e o que fazer: uma chave recusada nomeia a chave e oferece a senha ou outra chave; um servidor fora do ar, mudo ou com o nome errado diz isso; um servidor que aceita só chaves leva você de volta à chave; um sudo que pede senha a pede; uma unit mascarada mostra a linha `hint:` que o CLI imprimiu (`atlas crew install` escreve `hint: …` no stderr quando conhece a correção). A última linha da própria ferramenta fica em **Details**.
+Antes de instalar qualquer coisa, o formulário faz uma conexão (`first contact`) e confia em uma host key que este computador nunca viu, como `StrictHostKeyChecking=accept-new`; uma chave que **mudou** é recusada, com o comando que esquece a antiga. Toda falha diz o que é e o que fazer: uma chave recusada nomeia a chave e oferece a senha ou outra chave; um servidor fora do ar, mudo ou com o nome errado diz isso; um servidor que aceita só chaves leva você de volta à chave; um sudo que pede senha a pede; uma unit mascarada mostra a linha `hint:` que o CLI imprimiu (`atlas crew install` escreve `hint: …` no stderr quando conhece a correção). A última linha da própria ferramenta fica em **Detalhes**.
 
-No Windows, `ssh` e `ssh-keygen` vêm do recurso opcional **OpenSSH Client** (Configurações → Sistema → Recursos opcionais → Adicionar um recurso, ou `Add-WindowsCapability -Online -Name OpenSSH.Client~~~~0.0.1.0` em um PowerShell de administrador). Sem ele, o formulário avisa, com o comando, em vez de falhar mais tarde.
+No Windows, `ssh` e `ssh-keygen` vêm do recurso opcional **Cliente OpenSSH** (Configurações → Sistema → Recursos opcionais → Adicionar um recurso, ou `Add-WindowsCapability -Online -Name OpenSSH.Client~~~~0.0.1.0` em um PowerShell de administrador). Sem ele, o formulário avisa, com o comando, em vez de falhar mais tarde.
 
 ### Em um servidor que já roda crewmates
 
@@ -192,7 +192,7 @@ Um novo crewmate começa com uma conversa curta de configuração (projeto, role
 
 Uma tarefa é um prompt (e, opcionalmente, [imagens](#imagens-nas-tarefas)). Origens: `mobile`, `desktop`, `telegram`, `routine`, `trigger`. Um crewmate roda uma tarefa por vez (em um pty ou como turnos de engine headless); as demais ficam na fila. Uma tarefa espera na fila enquanto o crewmate dela roda outra e também enquanto o servidor já roda `max_agents` agentes (a tarefa mostra `waiting_for: "server busy"` e o chat também); uma tarefa que só espera por você (um login do GitHub, um card de ação) não ocupa vaga de agente. O checkout do projeto faz parte da tarefa: cada chamada `git` tem prazo de 120 s e é encerrada junto com os processos que iniciou, o lock de checkout é por repositório (dois repositórios fazem checkout ao mesmo tempo) e cancelar a tarefa durante o checkout a interrompe e nunca inicia o agente. Uma tarefa termina em `done`, `failed` ou `cancelled`, com limite rígido de 2 horas (o agente e os processos que ele iniciou são encerrados ao passar disso). Os prompts têm de 1 a 20000 caracteres (contados como caracteres, não bytes; os maiores são recusados, inclusive pelo Telegram), e nomes e roles têm o mesmo limite. Enquanto trabalha, os passos que o agente reporta aparecem ao vivo no chat, agrupados sob o título que ele mesmo definiu.
 
-Uma tarefa também pode parar e esperar por **você** (`waiting_action`): conectar o GitHub, fornecer um segredo, responder a uma pergunta, escolher uma opção, fazer o login de um engine, decidir sobre um trabalho que as [proteções](#proteções-contra-o-próprio-agente) recusaram ou mostrar uma [tarefa de UI](#tarefas-de-ui-e-prova) que voltou sem prova. As respostas passam por `crewmate_action_answer`; um segredo é gravado no `secrets.json` do crewmate e nunca fica guardado na tarefa. Um agente propõe uma ação terminando o turno com uma linha `ATLAS_ACTION: {...}`.
+Uma tarefa também pode parar e esperar por **você** (`waiting_action`): conectar o GitHub, fornecer um segredo, responder a uma pergunta, escolher uma opção, fazer o login de um engine, decidir sobre um trabalho que as [proteções](#proteções-contra-o-próprio-agente) recusaram ou mostrar uma [tarefa de UI](#tarefas-de-ui-e-prova) que voltou sem prova. As respostas passam por `crewmate_action_answer`; um segredo é gravado no `secrets.json` do crewmate e nunca fica salvo na tarefa. Um agente propõe uma ação terminando o turno com uma linha `ATLAS_ACTION: {...}`.
 
 ### Proteções contra o próprio agente
 
@@ -218,9 +218,9 @@ Marque uma tarefa como `ui` com `crewmate_task {ui: true}`, com um `/ui ` no com
 O card mostra as capturas do agente (miniaturas que você toca para ampliar) e o motivo, no Atlas Desktop, no Atlas Mobile (o card da tarefa no chat e o Captain's call da aba Crew) e no Telegram (as imagens como um grupo de mídia de no máximo 10, as mais recentes, depois a mensagem com os botões). Responda `crewmate_action_answer` com:
 
 - `"override"`: aceita o trabalho como está; a tarefa termina `done`. Aceitar o card `refused` das proteções não dispensa a prova: uma tarefa `ui` que ainda está sem prova recebe então o card `prove_ui`, e o override desse card é a palavra final. Vale do mesmo jeito para um card que estava esperando quando o hostd reiniciou: depois da reinicialização, `override` é a escolha explícita do dono do crew server (auditada como `refusal_overridden`) e `retry` roda a tarefa de novo e verifica a prova quando ela termina.
-- `"retry"`: a tarefa roda de novo desde o início com o motivo no prompt. Você pode anexar imagens novas a um retry (`attachments`, enviadas como as de uma tarefa, para uma captura de tela com a parte quebrada circulada): elas ficam guardadas na tarefa como suas, copiadas para a pasta de trabalho do agente e citadas no prompt dele. Imagens com um `override`, ou com a resposta a qualquer outro card, são recusadas e o card continua esperando.
+- `"retry"`: a tarefa roda de novo desde o início com o motivo no prompt. Você pode anexar imagens novas a um retry (`attachments`, enviadas como as de uma tarefa, para uma captura de tela com a parte quebrada circulada): elas ficam salvas na tarefa como suas, copiadas para a pasta de trabalho do agente e citadas no prompt dele. Imagens com um `override`, ou com a resposta a qualquer outro card, são recusadas e o card continua esperando.
 
-As capturas do agente são os `attachments` da tarefa com `"source": "agent"` (os seus não têm `source`); são guardadas pelo mesmo código das suas imagens, então valem as mesmas verificações (png, jpeg, webp ou gif pelos bytes). Um agente pode anexar até 32 por tarefa (uma chamada de `capture` gera até 16); o seu limite continua 4. A auditoria registra `task_unproven_ui` (`task_id`, `reason`, `captures`).
+As capturas do agente são os `attachments` da tarefa com `"source": "agent"` (os seus não têm `source`); são salvas pelo mesmo código das suas imagens, então valem as mesmas verificações (png, jpeg, webp ou gif pelos bytes). Um agente pode anexar até 32 por tarefa (uma chamada de `capture` gera até 16); o seu limite continua 4. A auditoria registra `task_unproven_ui` (`task_id`, `reason`, `captures`).
 
 ### Imagens nas tarefas
 
@@ -236,11 +236,13 @@ Uma tarefa pode levar até **4 imagens** de no máximo **5 MiB** cada (png, jpeg
 
 Com `approval: ask`, uma chamada de ferramenta pausa a tarefa e espera até 30 minutos por `agent_approve {pane, req, allow}`; a chave do painel é `crew:<crewmate id>:<task id>`. A espera só começa quando alguém pode responder agora: um cliente desktop conectado, um celular conectado ou um chat do Telegram vinculado. Só um token de push registrado não conta (o celular pode estar offline). Caso contrário, o prompt é negado na hora, então configure um deles antes de contar com um crewmate `ask`. Claude Code e Codex: rode `atlas setup claude-code|codex --apply` de novo, uma vez, para o hook deles usar o timeout correspondente de 1805 s.
 
+Só um **allow** explícito executa a ferramenta. Qualquer outro fim a bloqueia e diz qual foi: o dono negou, ninguém respondeu a tempo (o prompt é auditado como `approval_decision` `timeout` / `none`) ou a própria requisição falhou. Um crewmate `claude` headless segue a mesma regra: um prompt que ninguém respondeu é uma negação ("nobody answered the approval request"), nunca um allow. As esperas formam uma cadeia, cada uma durando mais que a de dentro, para que a mais interna diga o que aconteceu: o hostd espera 30 minutos, a extensão de aprovação do omp 60 s a mais, e o omp 60 s a mais que isso. O omp impõe um limite próprio a todo handler `tool_call` de extensão (`extensionHandlers.toolCallTimeoutMs`, 30 s por padrão, e um `fetch` ao hostd não é um dos diálogos que ele desconta), então o overlay `--config` que o Atlas passa ao omp de cada crewmate o aumenta (`omp-crew.yml` no diretório do crewmate, reescrito no próximo turno); antes disso, as aprovações de um crewmate omp respondidas depois de 30 s falhavam com `omp-approval.ts timed out after 30000ms` mesmo quando o dono permitia. Um omp que não conhece a configuração (anterior à linha 18.4, onde ela existe) mantém os 30 s.
+
 ### Pausar e retomar
 
 Um crew server tem um kill switch. **Pause** (`crew_pause`) cancela todas as tarefas em execução (estado `cancelled`, erro `paused`) e encerra o processo delas: em uma tarefa em terminal, o terminal é encerrado, e em uma tarefa com `engine` headless (`claude`, `codex`, `opencode`, `omp`) o turno é encerrado junto com tudo que o agente iniciou (o grupo de processos dele, então os processos de ferramenta das chamadas `bash` do omp ou de um build também somem). O mesmo vale ao cancelar uma tarefa e para o limite de 2 horas, que falha a tarefa e encerra o turno. O Pause mantém as tarefas da fila na fila, não inicia nada novo e pula toda automação que dispararia (uma automação pulada não vai para a fila para depois). Tarefas novas ainda entram na fila durante a pausa. **Resume** (`crew_resume`) reinicia as filas.
 
-Acione pela CLI (`atlas crew pause|resume <ssh-target>`), pelo Atlas Desktop (menu do rodapé **Pause all** / **Resume all**, e Configurações → Atlas Crew por servidor) ou pelo Atlas Mobile (aba Crew, exige o escopo `act`). O estado é salvo em `<hostd dir>/crew.json` (`"paused": true`), então reiniciar o serviço mantém o crew pausado. Os clientes leem de `crewmate_list.paused` e do evento de push `crew_paused`; um servidor mais antigo que este recurso não envia nenhum dos dois e aparece como rodando.
+Acione pela CLI (`atlas crew pause|resume <ssh-target>`), pelo Atlas Desktop (menu do rodapé **Pausar tudo** / **Retomar tudo**, e Configurações → Atlas Crew por servidor) ou pelo Atlas Mobile (aba Crew, exige o escopo `act`). O estado é salvo em `<hostd dir>/crew.json` (`"paused": true`), então reiniciar o serviço mantém o crew pausado. Os clientes leem de `crewmate_list.paused` e do evento de push `crew_paused`; um servidor mais antigo que este recurso não envia nenhum dos dois e aparece como rodando.
 
 ### O que sobrevive a um reinício
 
@@ -254,7 +256,7 @@ Reiniciar o serviço (uma atualização, um reboot, uma queda) não perde nada q
 | `waiting_action` | continua esperando com o card; a resposta (`crewmate_action_answer`) ainda a continua |
 | segurando uma pergunta `ask_user` | a pergunta é descartada (o agente dela se foi) e um passo avisa |
 
-Uma tarefa retomada leva `resumed: true`, uma contagem `restarts` e um passo "The server restarted; running this task again". Depois de 2 reinícios a tarefa não é retomada de novo: o terceiro a falha com um erro que cita os reinícios, então uma tarefa que derruba o servidor não entra em loop. Um crew pausado não retoma nada até o **Resume**. As aprovações de ferramenta pendentes não sobrevivem: o prompt pertencia ao processo do agente que morreu.
+Uma tarefa retomada leva `resumed: true`, uma contagem `restarts` e um passo "The server restarted; running this task again". Depois de 2 reinícios a tarefa não é retomada de novo: o terceiro a falha com um erro que cita os reinícios, então uma tarefa que derruba o servidor não entra em loop. Um crew pausado não retoma nada até você clicar em **Retomar**. As aprovações de ferramenta pendentes não sobrevivem: o prompt pertencia ao processo do agente que morreu.
 
 ## Automações
 
@@ -267,7 +269,7 @@ As automações (`triggers` no protocolo) iniciam uma tarefa sozinhas. Crie uma 
 | Webhook | `webhook` | `token`, chamado como `POST /crew/<crewmate id>/hook/<token>` no hook server (webhooks configurados antes da renomeação continuam funcionando em `/bots/<crewmate id>/hook/<token>`) |
 | GitHub | `github` | `repo` (`owner/repo`), `events`: `mention`, `issue_assigned`, `pr_review_comment`, `ci_failed`, `pr_opened`, `pr_review_requested`, `issue_opened`, `release`, `authors`: quem pode iniciar uma tarefa, `handle` (para `mention`) e `assignee` (para `issue_assigned`), veja [GitHub: entrada e saída](#github-entrada-e-saída). Consultado a cada 2 minutos com o `gh` |
 | Arquivo | `file` | `path` (observado recursivamente), `glob` opcional (`*.md` corresponde a arquivos Markdown em qualquer profundidade, `docs/*.md` é relativo a `path`; um glob que não é interpretado não corresponde a nada). Uma mudança dentro da própria worktree do crewmate nunca a dispara |
-| Após crewmate | `crewmate` | `from_crewmate` (id), `on`: `done` ou `failed`. Uma tarefa iniciada assim lembra os crewmates que levaram a ela (`chain`); um crewmate que já está nessa cadeia não é iniciado de novo, então dois crewmates que se disparam mutuamente rodam uma rodada e param (auditoria `chain_refused`) |
+| Após o crewmate | `crewmate` | `from_crewmate` (id), `on`: `done` ou `failed`. Uma tarefa iniciada assim lembra os crewmates que levaram a ela (`chain`); um crewmate que já está nessa cadeia não é iniciado de novo, então dois crewmates que se disparam mutuamente rodam uma rodada e param (auditoria `chain_refused`) |
 | Serviço | `service` | `project_dir`, `service`, `on`: `failed` ou `recovered` |
 
 Regras que o servidor aplica:
@@ -279,14 +281,14 @@ Regras que o servidor aplica:
 - **Tarefas de fora pedem aprovação.** Uma tarefa iniciada por uma automação de **GitHub** ou **webhook** roda com `approval: ask` mesmo em um crewmate `auto`, porque o texto dela vem de fora: uma chamada de ferramenta espera a sua resposta. Defina `allow_auto: true` nessa automação (padrão `false`) para manter `auto`, só onde estranhos não conseguem escrever o evento. As automações de agendamento, intervalo, arquivo, após crewmate e serviço mantêm a aprovação do próprio crewmate, então as rotinas sem supervisão continuam rodando. Um crewmate que não consegue perguntar (um engine `codex` ou `opencode`) se recusa a rodar uma tarefa de GitHub ou webhook sem `allow_auto`.
 - **Conteúdo não confiável.** `{{event}}` é texto de fora (um título do GitHub, um corpo de webhook). Antes de chegar ao agente, o hostd o envolve em um bloco de conteúdo não confiável e diz ao agente para não seguir instruções dentro dele. Isso reduz o risco, mas não o elimina, e é por isso que o filtro de autores e o `ask` existem.
 - Um crew pausado ignora as automações ([Pausar e retomar](#pausar-e-retomar)).
-- `crewmate_task` recebe o `tz` de quem chama; ele é guardado na tarefa e carimbado em qualquer automação proposta nela.
-- Um agente propõe uma automação com `ATLAS_ACTION: {"kind":"add_trigger","trigger":{...},"prompt":"...","reason":"..."}`. Uma automação inválida encerra a tarefa com `The automation was invalid: <error>` para o agente tentar de novo. Caso contrário, um card mostra **Add** / **Not now**, respondido com `crewmate_action_answer {id, task, value: "add"|"skip"}`. Os webhooks não são oferecidos aos agentes.
+- `crewmate_task` recebe o `tz` de quem chama; ele é salvo na tarefa e carimbado em qualquer automação proposta nela.
+- Um agente propõe uma automação com `ATLAS_ACTION: {"kind":"add_trigger","trigger":{...},"prompt":"...","reason":"..."}`. Uma automação inválida encerra a tarefa com `The automation was invalid: <error>` para o agente tentar de novo. Caso contrário, um card mostra **Adicionar** / **Agora não** (no Atlas Mobile, **Add** / **Not now**), respondido com `crewmate_action_answer {id, task, value: "add"|"skip"}`. Os webhooks não são oferecidos aos agentes.
 
 O Crew board (abaixo) mostra todas as tarefas na fila, em andamento, em espera e concluídas de todos os crewmates.
 
 ## GitHub
 
-Crewmates que clonam repositórios privados ou abrem PRs precisam do `gh` com login feito no crew server. No Atlas Desktop, Atlas Crew → Configurações → GitHub inicia um login por código de dispositivo (`crew_github_login_start` e depois `crew_github_login_poll`); o hostd instala o `gh` na home do usuário do crew se ele não existir e configura o git para usá-lo. `crew_github_status` retorna `{installed, login}`, `crew_github_logout` o remove. Uma tarefa que precisa do GitHub espera em uma ação **Connect GitHub** e retoma quando o login termina (`crew_github_connect_resume`).
+Crewmates que clonam repositórios privados ou abrem PRs precisam do `gh` com login feito no crew server. No Atlas Desktop, Configurações → Atlas Crew → GitHub inicia um login por código de dispositivo (`crew_github_login_start` e depois `crew_github_login_poll`); o hostd instala o `gh` na home do usuário do crew se ele não existir e configura o git para usá-lo. `crew_github_status` retorna `{installed, login}`, `crew_github_logout` o remove. Uma tarefa que precisa do GitHub espera em uma ação **Conectar o GitHub** e retoma quando o login termina (`crew_github_connect_resume`).
 
 ### GitHub: entrada e saída
 
@@ -334,7 +336,7 @@ Um bot do Telegram por crew server; todo chat vinculado vê todos os crewmates d
 
 1. Crie um bot do Telegram com o [@BotFather](https://t.me/BotFather) e copie o token.
 2. No Atlas Desktop, em **Configurações → Atlas Crew**, no servidor (ele precisa estar online), cole o token em **Telegram** e clique em **Salvar** (`crew_telegram_set`). O token é somente de escrita: a linha mostra só se há um token definido e quantos chats estão vinculados (`crew_telegram_status`).
-3. Clique em **Link chat** para gerar um código de 6 dígitos válido por 10 minutos (`crew_telegram_link`) e envie ao seu bot `/start <code>` no Telegram. Repita para cada chat. **Bloqueio:** o quinto código errado (de qualquer chat) invalida o código ativo, e até o certo passa a ser recusado; clique em **Link chat** de novo para gerar outro. Quatro erros de digitação não bloqueiam.
+3. Clique em **Vincular chat** para gerar um código de 6 dígitos válido por 10 minutos (`crew_telegram_link`) e envie ao seu bot `/start <code>` no Telegram. Repita para cada chat. **Bloqueio:** o quinto código errado (de qualquer chat) invalida o código ativo, e até o certo passa a ser recusado; clique em **Vincular chat** de novo para gerar outro. Quatro erros de digitação não bloqueiam.
 4. **Remover** apaga o token; os chats vinculados deixam de receber mensagens.
 
 Os chats vinculados recebem os resultados das tarefas (truncados em 4000 caracteres) e os pedidos de aprovação como botões Allow / Deny. Comandos:
@@ -364,14 +366,14 @@ Quando uma tarefa termina ou um crewmate precisa da sua aprovação, o crew serv
 
 Abra o workspace do Atlas Crew com **⌘⇧B** (comando *Atlas Crew*, atalho reconfigurável). Duas visões, alternadas com **⌘⇧C** ou pela barra na borda superior:
 
-- **Chat**: a lista de crewmates (pesquisa, ⌘1…⌘9 para alternar, estado do servidor no rodapé) e a conversa do crewmate selecionado: tarefas, passos ao vivo, cards de aprovação e de ação embutidos, e um campo de mensagem que enfileira enquanto outra tarefa roda. Uma janela de configurações (General, Automations, Engine, Memory, Usage, Audit) salva cada campo separadamente. Um servidor pausado mostra um banner **Paused** sobre o workspace com um botão **Resume**; o menu do rodapé tem **Pause all** / **Resume all**.
-- **Board**: colunas Queued, Working, Needs you e Done com todos os crewmates, com filtros por crewmate, origem e texto, um intervalo para Done e um clique que abre o chat naquela tarefa.
+- **Chat**: a lista de crewmates (pesquisa, ⌘1…⌘9 para alternar, estado do servidor no rodapé) e a conversa do crewmate selecionado: tarefas, passos ao vivo, cards de aprovação e de ação embutidos, e um campo de mensagem que enfileira enquanto outra tarefa roda. Uma janela de configurações (Geral, Automações, Engine, Memória, Uso, Auditoria) salva cada campo separadamente. Um servidor pausado mostra um banner (**Crew pausado** ou **Pausado: …** com o nome do servidor) sobre o workspace com um botão **Retomar**; o menu do rodapé tem **Pausar tudo** / **Retomar tudo**.
+- **Board**: colunas Na fila, Trabalhando, Precisa de você e Concluídas com todos os crewmates, com filtros por crewmate, origem e texto, um intervalo para as concluídas e um clique que abre o chat naquela tarefa.
 
 Configurações → Atlas Crew guarda os crew servers (destino SSH + nome, listados em `~/.atlas/desktop/crew-servers.json`). O desktop acessa cada servidor por SSH e por um túnel `ssh -L` até o `hostd.sock` dele. O servidor já precisa ter rodado `atlas crew install`; o Atlas Desktop pode executar a instalação para você e pede a senha do sudo pelo stdin (nunca pelo argv).
 
 **Servidores que você já tem no `~/.ssh/config`.** A tela de instalação lista esses servidores em um seletor pesquisável acima do endereço SSH (alias e depois `user@host:port` como o `ssh -G` resolve, então os padrões de `Host *` e as regras `Match` contam). Ao escolher um, o endereço é preenchido como `user@alias`, junto com a porta. O que vai no endereço é o alias, não o nome do host, então o `IdentityFile`, o `Port` e o `ProxyJump` dessa entrada continuam valendo para toda chamada ssh ao servidor, como em `ssh <alias>`. As linhas `Include` são seguidas (globs, relativos a `~/.ssh`, no máximo 16 níveis); padrões `Host` com curinga ou negados, blocos `Match` e aliases que não podem ser um endereço SSH (um espaço, um `-` no início, um usuário que contém `@`) não aparecem na lista. A lista é lida quando a tela abre e roda fora da thread da UI: no máximo oito `ssh -G` ao mesmo tempo, 5 s cada, e nenhum deles se conecta. Sem `~/.ssh/config`, com um arquivo ilegível ou sem `ssh` no PATH, aparece só o campo de texto livre.
 
-**Screenshots for UI work.** A tela de instalação tem uma opção que você ativa por conta própria, desligada por padrão: *Screenshots for UI work (Chromium + WebKit)*, com o motivo (as ferramentas `capture`, UI gate e `locate` precisam dela) e o custo (Node.js 20+ no servidor, cerca de 500 MB de downloads). Marcá-la executa `atlas crew install … --browsers` e adiciona uma etapa ao checklist da instalação. Em um servidor existente, Configurações → Atlas Crew tem a mesma linha: o endereço SSH **admin** com que você instalou (`ubuntu@host` ou `ubuntu@host:2222`) já está lá: a instalação o salvou como `admin` em `~/.atlas/desktop/crew-servers.json` (`{"target": "ubuntu@host", "port": 2222}`, sem `port` para 22). A instalação dos navegadores roda `sudo -u <crew user>`, que o usuário de serviço do crew com o qual o desktop se conecta não consegue fazer, então ela precisa dessa conta. O campo é editável e uma edição confirmada (sair do campo, Enter ou um Check que funcionou) é salva de volta; um endereço digitado pela metade nunca substitui um bom. Um servidor adicionado antes de esse endereço ser guardado, ou adicionado à mão, começa vazio e guarda o que você digitar depois de um Check que funcionou. O arquivo guarda um endereço como o `Host` de um `~/.ssh/config`, nunca uma senha ou chave. Pressione **Check** (`atlas crew browsers status`: instalado, ou uma linha para cada peça que falta) e **Install** (`atlas crew browsers install`, a saída vai para um log). Um servidor sem Node.js 20 ou mais novo avisa isso claramente e o Install fica desativado até você instalar o Node lá. Quando o sudo pede uma senha, a linha a pede e a envia pelo stdin, como na instalação.
+**Capturas de tela para trabalho de interface.** A tela de instalação tem uma opção que você ativa por conta própria, desligada por padrão: *Capturas de tela para trabalho de interface (Chromium + WebKit)*, com o motivo (as ferramentas `capture`, UI gate e `locate` precisam dela) e o custo (Node.js 20+ no servidor, cerca de 500 MB de downloads). Marcá-la executa `atlas crew install … --browsers` e adiciona uma etapa ao checklist da instalação. Em um servidor existente, Configurações → Atlas Crew tem a mesma linha (*Capturas de tela para trabalho em UI*): o campo **Endereço SSH de administrador** já traz o endereço com que você instalou (`ubuntu@host` ou `ubuntu@host:2222`): a instalação o salvou como `admin` em `~/.atlas/desktop/crew-servers.json` (`{"target": "ubuntu@host", "port": 2222}`, sem `port` para 22). A instalação dos navegadores roda `sudo -u <crew user>`, que o usuário de serviço do crew com o qual o desktop se conecta não consegue fazer, então ela precisa dessa conta. O campo é editável e uma edição confirmada (sair do campo, Enter ou uma verificação que funcionou) é salva de volta; um endereço digitado pela metade nunca substitui um bom. Um servidor adicionado antes de esse endereço ser salvo, ou adicionado à mão, começa vazio e guarda o que você digitar depois de uma verificação que funcionou. O arquivo guarda um endereço como o `Host` de um `~/.ssh/config`, nunca uma senha ou chave. Pressione **Verificar** (`atlas crew browsers status`: instalado, ou uma linha para cada peça que falta) e **Instalar** (`atlas crew browsers install`, a saída vai para um log). Um servidor sem Node.js 20 ou mais novo avisa isso claramente e o **Instalar** fica desativado até você instalar o Node lá. Quando o sudo pede uma senha, a linha a pede e a envia pelo stdin, como na instalação.
 
 ## Atlas Mobile
 
@@ -562,7 +564,7 @@ affected:
 
 **Resultados por tarefa.** O veredito de cada cenário (passou/falhou, nomes das capturas, os problemas encontrados) é salvo em `<crewmate dir>/ui-gate/<task id>/ui-gate.json` depois de cada cenário, então uma reinicialização, ou uma execução interrompida, ainda sabe o que falhou. As capturas ficam ao lado como `<scenario id>-<engine>-<width>-<theme>.png`.
 
-**Cache.** O veredito de um cenário fica no [cache de tarefas](cli.md) (`~/.atlas/cache`, compartilhado com toda worktree e com o `atlas run --cache`), com chave formada pelo id do cenário, pelas verificações registradas e pelos bytes de todo arquivo do projeto que o git não ignora, edições não commitadas incluídas. Um cenário que já passou sobre os mesmos bytes é um **hit**: o runner não inicia e a resposta diz `"source": "cached"`. Só os que passam são guardados, então um cenário que falha é sempre capturado de novo; um hit cujas capturas já não estão na pasta da tarefa conta como miss. O cache não enxerga os dados do app em execução: passe `force: true` quando os dados por trás de uma página mudarem.
+**Cache.** O veredito de um cenário fica no [cache de tarefas](cli.md) (`~/.atlas/cache`, compartilhado com toda worktree e com o `atlas run --cache`), com chave formada pelo id do cenário, pelas verificações registradas e pelos bytes de todo arquivo do projeto que o git não ignora, edições não commitadas incluídas. Um cenário que já passou sobre os mesmos bytes é um **hit**: o runner não inicia e a resposta diz `"source": "cached"`. Só os que passam são salvos, então um cenário que falha é sempre capturado de novo; um hit cujas capturas já não estão na pasta da tarefa conta como miss. O cache não enxerga os dados do app em execução: passe `force: true` quando os dados por trás de uma página mudarem.
 
 **Registro de regressões.** `.atlas/ui-regressions.json` no projeto:
 
@@ -570,7 +572,7 @@ affected:
 { "regressions": [ { "url": "http://localhost:5173/pricing", "widths": [390], "themes": ["dark"], "note": "toggle clipped at 390" } ] }
 ```
 
-`add_regression` grava o arquivo (o mesmo cenário de novo só atualiza a nota). **O crewmate faz commit do arquivo junto com a correção**, e é assim que toda outra worktree e todo outro crewmate repete o bug. Um arquivo que não é JSON válido, tem um campo desconhecido ou uma entrada que o `capture` recusaria é um erro que nomeia o arquivo e o que está errado; o gate nunca trata um registro ilegível como vazio, e o `add_regression` nunca sobrescreve um arquivo que não conseguiu ler. As regressões são guardadas com a URL como foi escrita, então mantenha o `base_url` estável entre execuções (um servidor de desenvolvimento em outra porta é outro cenário).
+`add_regression` grava o arquivo (o mesmo cenário de novo só atualiza a nota). **O crewmate faz commit do arquivo junto com a correção**, e é assim que toda outra worktree e todo outro crewmate repete o bug. Um arquivo que não é JSON válido, tem um campo desconhecido ou uma entrada que o `capture` recusaria é um erro que nomeia o arquivo e o que está errado; o gate nunca trata um registro ilegível como vazio, e o `add_regression` nunca sobrescreve um arquivo que não conseguiu ler. As regressões são salvas com a URL como foi escrita, então mantenha o `base_url` estável entre execuções (um servidor de desenvolvimento em outra porta é outro cenário).
 
 **Critério para passar.** Um cenário passa quando toda combinação pedida foi capturada sem erro e nenhuma verificação registrada encontrou problema. As verificações são o ponto de extensão: implemente `crew::uigate::Check` (`fn name`, `fn run(combo, png) -> Result<Vec<Finding>, String>`) e registre em `uigate::check::registered()`. Há uma registrada, `ui-detectors`: os [detectores de UI](#detectores-de-ui-temporário) rodam em cada página durante a captura e um achado de severidade `error` reprova o cenário, informado por célula como `webkit/390px/dark: empty-band: 554 px of the page … hold no content`, com o seletor do elemento quando há um; um `warn` fica no arquivo de achados e não o reprova. Uma verificação que não consegue rodar reprova o cenário (um gate que não consegue olhar não pode passar: uma célula sem arquivo de achados, ou com um arquivo que não contém uma lista de achados, cai nesse caso), e os nomes das verificações registradas fazem parte da chave do cache, então adicionar um detector captura de novo o que passou sem ele.
 
@@ -620,7 +622,7 @@ Até lá, um limite que precisa mudar muda em `detectors.mjs` e é informado no 
 
 ## Auditoria
 
-O que um crewmate fez e quem decidiu o quê, guardado no crew server em `<crewmate dir>/audit.jsonl` (modo 0600, um objeto JSON por linha: `seq`, `ts`, `kind`, `crewmate_id`, mais os campos do tipo). Eventos do crew inteiro (um crewmate criado ou excluído, o crew pausado ou retomado) vão para `<hostd dir>/crew-audit.jsonl`, que sobrevive a um crewmate excluído.
+O que um crewmate fez e quem decidiu o quê, salvo no crew server em `<crewmate dir>/audit.jsonl` (modo 0600, um objeto JSON por linha: `seq`, `ts`, `kind`, `crewmate_id`, mais os campos do tipo). Eventos do crew inteiro (um crewmate criado ou excluído, o crew pausado ou retomado) vão para `<hostd dir>/crew-audit.jsonl`, que sobrevive a um crewmate excluído.
 
 | `kind` | Escrito quando | Campos |
 |---|---|---|
@@ -630,7 +632,7 @@ O que um crewmate fez e quem decidiu o quê, guardado no crew server em `<crewma
 | `task_queued`, `task_started`, `task_finished` | ciclo de vida da tarefa | `task_id`, `source`, `prompt`; `state` e `error` no fim |
 | `config_changed` | aprovação, engine, projeto, agente, nome, tamanho do role, respostas curtas, triggers, rotinas | `field`, `from`, `to` (os tokens de webhook ficam de fora) |
 | `task_refused` | as proteções recusaram uma tarefa concluída | `task_id`, `reasons` |
-| `chain_refused` | uma automação "após o crewmate" não foi disparada porque o crewmate dela já estava na cadeia | `trigger_id`, `from_crewmate`, `from_task`, `chain` |
+| `chain_refused` | uma automação "Após o crewmate" não foi disparada porque o crewmate dela já estava na cadeia | `trigger_id`, `from_crewmate`, `from_task`, `chain` |
 | `refusal_overridden` | o dono do crew server aceitou o trabalho recusado | `task_id` |
 | `task_unproven_ui` | uma tarefa `ui` terminou sem duas capturas do agente | `task_id`, `reason`, `captures` |
 | `secret_set` | `crewmate_secret_set` | `name` |
@@ -644,7 +646,7 @@ Tipos no nível do crew: `crewmate_created`, `crewmate_deleted`, `paused`, `resu
 
 **Limites.** Um arquivo é rotacionado em 1 MiB (`audit.jsonl.1` … `.4`); o mais antigo de cinco é descartado, então um log nunca passa de cerca de 5 MiB. Uma linha que não pode ser gravada vai para o log (`atlas crew logs`), nunca é ignorada em silêncio. Se o hub de agentes descarta eventos sob carga, uma entrada `audit_gap` avisa.
 
-Leia com `crewmate_audit` e `crew_audit` (escopo `read` do Mobile); o Atlas Desktop mostra o log nas configurações de um crewmate → **Audit** (filtre por chamadas de ferramenta, aprovações, tarefas ou configurações; copie uma entrada ou tudo o que está na tela). O Atlas Mobile não tem tela de auditoria.
+Leia com `crewmate_audit` e `crew_audit` (escopo `read` do Mobile); o Atlas Desktop mostra o log nas configurações de um crewmate → **Auditoria** (filtre por chamadas de ferramenta, aprovações, tarefas ou configurações; copie uma entrada ou tudo o que está na tela). O Atlas Mobile não tem tela de auditoria.
 
 ## Solução de problemas
 
@@ -652,15 +654,15 @@ Leia com `crewmate_audit` e `crew_audit` (escopo `read` do Mobile); o Atlas Desk
 |---|---|
 | Os comandos `crewmate_*` respondem `this computer is not a crew server (atlas crew install)` | O hostd roda sem `ATLAS_CREW_HOST=1`. A unit define essa variável; não rode `atlas hostd` à mão em um crew server |
 | `info.caps` não tem `"crew"` | mesma causa; os clientes verificam isso antes de mostrar a interface do Crew |
-| `atlas crew install` para com `<unit> is masked on the server and Atlas could not unmask it` | A unit é um symlink para `/dev/null` (`systemctl mask`) e o `sudo systemctl unmask` da instalação foi recusado. Rode no servidor o comando que ele exibe (`sudo systemctl unmask <unit>`) e depois rode a instalação de novo. Quando o unmask funciona, a própria instalação o faz e informa `<unit> was masked: unmasked it and wrote the real unit` |
+| `atlas crew install` para com `a unidade <unit> está mascarada no servidor e o Atlas não conseguiu desmascará-la` | A unit é um symlink para `/dev/null` (`systemctl mask`) e o `sudo systemctl unmask` da instalação foi recusado. Rode no servidor o comando que ele exibe (`sudo systemctl unmask <unit>`) e depois rode a instalação de novo. Quando o unmask funciona, a própria instalação o faz e informa `A unidade <unit> estava mascarada: o Atlas a desmascarou e gravou a unidade real` |
 | O prompt de aprovação é negado na hora | ninguém pode responder agora: nenhum cliente desktop ou celular conectado e nenhum chat do Telegram vinculado ([Aprovações](#aprovações)) |
 | Um crewmate `ask` nunca pergunta | confira se a aprovação dele é mesmo `ask` (uma tarefa do GitHub ou de webhook também pergunta, veja [Automações](#automações)) e se alguém pode responder ([Aprovações](#aprovações)). Os engines `codex` e `opencode` não conseguem perguntar, então `ask` é recusado para eles |
-| `could not connect … over SSH` | o próprio SSH falhou (conexão recusada, timeout, chave rejeitada), não o sistema operacional do servidor; corrija o SSH primeiro |
-| `sudo … asks for a password` | conceda sudo sem senha, ou rode a instalação pelo Atlas Desktop (ele envia a senha a cada chamada privilegiada, e assim o cache de sudo por terminal do Ubuntu não a perde) |
+| `Não foi possível conectar a … por SSH` | o próprio SSH falhou (conexão recusada, timeout, chave rejeitada), não o sistema operacional do servidor; corrija o SSH primeiro |
+| `O sudo em … pede senha` | conceda sudo sem senha, ou rode a instalação pelo Atlas Desktop (ele envia a senha a cada chamada privilegiada, e assim o cache de sudo por terminal do Ubuntu não a perde) |
 | A desinstalação diz que um usuário do crew ainda está em uso | a desinstalação verifica antes e não removeu nada: feche o Atlas Desktop e qualquer sessão ssh ou processo rodando como o usuário do crew, e rode de novo |
 | A desinstalação diz que precisa de uma decisão | sem terminal e sem `--yes`: rode em um terminal, ou passe `--yes` depois de `atlas crew export` |
 | A exportação ou a importação diz que o atlas do servidor é antigo demais | `atlas crew install <ssh-target>` atualiza o binário do servidor; depois tente novamente |
-| Uma primeira tarefa mostra `Downloading <repo>…` | o projeto é clonado antes de a tarefa começar; uma pasta inexistente é recusada quando você a define |
+| Uma primeira tarefa mostra `Baixando <repo>…` (no Atlas Mobile, `Downloading <repo>…`) | o projeto é clonado antes de a tarefa começar; uma pasta inexistente é recusada quando você a define |
 | Comando antigo `atlas bot` em um script | continua funcionando; passe para `atlas crew` quando puder |
 
 ### Falha ao adicionar um crew server
@@ -669,35 +671,35 @@ O formulário do Atlas Desktop diz o que falhou e traz um link para cá; as mesm
 
 | O que a tela diz | Causa e solução |
 |---|---|
-| The server **refused the key** `<path>` | o servidor não tem essa chave em `~/.ssh/authorized_keys`. Entre uma vez com **password** (o Atlas adiciona a chave), escolha outra chave ou adicione você mesmo a chave pública. Uma chave com passphrase precisa estar carregada antes no `ssh-agent` |
-| This server **does not accept passwords** | o `sshd` lista só `publickey`. Use o método de chave SSH; alguém com acesso precisa adicionar antes a chave pública deste computador |
-| The server did not accept that password | senha errada (Caps Lock ativado?). A senha é usada uma vez e nunca é armazenada |
-| This user **asks for a password for sudo** | a instalação precisa de sudo. Digite a senha do sudo quando o formulário pedir (ela vale só para esta instalação) ou conceda sudo sem senha |
+| O servidor **recusou a chave** `<path>` | o servidor não tem essa chave em `~/.ssh/authorized_keys`. Entre uma vez com o método **Senha** (o Atlas adiciona a chave), escolha outra chave ou adicione você mesmo a chave pública. Uma chave com passphrase precisa estar carregada antes no `ssh-agent` |
+| Este servidor **não aceita senhas** | o `sshd` lista só `publickey`. Use o método **Chave SSH**; alguém com acesso precisa adicionar antes a chave pública deste computador |
+| O servidor não aceitou essa senha | senha errada (Caps Lock ativado?). A senha é usada uma vez e nunca é armazenada |
+| Este usuário **precisa de senha para o sudo** | a instalação precisa de sudo. Digite a senha do sudo quando o formulário pedir (ela vale só para esta instalação) ou conceda sudo sem senha |
 | `Failed to enable unit … is masked` (#518) | o `atlas-crew.service` está mascarado (um symlink para `/dev/null`). A CLI exibe a correção: `sudo systemctl unmask atlas-crew.service` no servidor, depois tente novamente |
-| No **systemd** (`systemd is not running as PID 1`) | o servidor é um container ou usa OpenRC/runit. Um crew server precisa de um host com systemd |
-| **OpenSSH Client** is not installed (Windows) | Configurações → Sistema → Recursos opcionais → Adicionar um recurso → Cliente OpenSSH, ou `Add-WindowsCapability -Online -Name OpenSSH.Client~~~~0.0.1.0` em um PowerShell como administrador |
-| The server's identity changed (**host key** verification failed) | o servidor foi reinstalado, ou há alguém no meio da conexão. Se era esperado, esqueça a chave antiga: `ssh-keygen -R <host>`, depois tente novamente |
-| Cannot reach the host / did not answer / name does not exist | confira o endereço e a porta, se o `sshd` está rodando, firewalls e VPNs |
+| Sem **systemd** (`O systemd não está rodando como PID 1`) | o servidor é um container ou usa OpenRC/runit. Um crew server precisa de um host com systemd |
+| O **cliente OpenSSH** não está instalado (Windows) | Configurações → Sistema → Recursos opcionais → Adicionar um recurso → Cliente OpenSSH, ou `Add-WindowsCapability -Online -Name OpenSSH.Client~~~~0.0.1.0` em um PowerShell como administrador |
+| A identidade do servidor mudou (verificação da **host key** falhou) | o servidor foi reinstalado, ou há alguém no meio da conexão. Se era esperado, esqueça a chave antiga: `ssh-keygen -R <host>`, depois tente novamente |
+| Não foi possível conectar a `<host>` / `<host>` não respondeu / O endereço `<host>` não existe | confira o endereço e a porta, se o `sshd` está rodando, firewalls e VPNs |
 
 Logs: `atlas crew logs <ssh-target> -f`. Estado: `atlas crew status <ssh-target>`.
 
 ## Aparência do crewmate
 
-Todo crewmate é um personagem animado construído a partir do globo do Atlas: ele pisca, olha ao redor, respira, pula quando precisa de você e cochila quando está offline. Você escolhe a aparência em **Customize look** (diálogo de novo crewmate, ou clique no avatar dele nas configurações). Fonte da verdade: `apps/desktop/src/lib/crew/look.ts`.
+Todo crewmate é um personagem animado construído a partir do globo do Atlas: ele pisca, olha ao redor, respira, pula quando precisa de você e cochila quando está offline. Você escolhe a aparência em **Personalizar visual** (diálogo de novo crewmate, ou clique no avatar dele nas configurações). Fonte da verdade: `apps/desktop/src/lib/crew/look.ts`.
 
-Layout do editor: uma prévia grande ao vivo que dá um pulo a cada escolha, botões de estado da prévia, **Randomize** (todas as linhas de uma vez, animado, sem corte seco), **Role kits** e depois uma linha por parte. Cada linha mostra o rótulo e o nome escolhido; as opções ficam coloridas quando selecionadas; a primeira opção de cada linha é **None**, exceto em Color. Cada escolha entra animada (o chapéu cai com um quique, a roupa surge numa transição, a ferramenta é jogada na mão, os óculos encaixam).
+Layout do editor: uma prévia grande ao vivo que dá um pulo a cada escolha, botões de estado da prévia, **Sortear** (todas as linhas de uma vez, animado, sem corte seco), **Kits de função** e depois uma linha por parte. Cada linha mostra o rótulo e o nome escolhido; as opções ficam coloridas quando selecionadas; a primeira opção de cada linha é **Nenhum** ou **Nenhuma**, exceto em Cor. Cada escolha entra animada (o chapéu cai com um quique, a roupa surge numa transição, a ferramenta é jogada na mão, os óculos encaixam).
 
 | Linha | Opções | Padrão |
 |---|---|---|
-| Color | 9 amostras (azul do Atlas `#3d5bff` primeiro) mais um hex personalizado | escolha estável a partir do id do crewmate |
-| Eyes | Round, Dots, Happy, Visor, Cyclops, Sleepy | Round |
-| Hat | None, Straw hat, Cap, Beanie, Top hat, Crown, Party, Wizard, Headphones, Antenna, Map bicorne, Bandana | Straw hat |
-| Tool (right hand) | None, Compass, Spyglass, Wrench, Quill, Magnifier, Megaphone, Map pin, Lantern | None |
-| Outfit | None, Scarf, Captain coat, Tool apron, Satchel, Tie | None |
-| Eyewear | None, Eyepatch, Monocle, Glasses, Sunglasses, Goggles | None |
+| Cor | 9 amostras (azul do Atlas `#3d5bff` primeiro) mais um hex personalizado | escolha estável a partir do id do crewmate |
+| Olhos | Redondos, Pontos, Felizes, Viseira, Ciclope, Sonolentos | Redondos |
+| Chapéu | Nenhum, Chapéu de palha, Boné, Gorro, Cartola, Coroa, Chapéu de festa, Chapéu de mago, Fones de ouvido, Antena, Bicórnio com mapa, Bandana | Chapéu de palha |
+| Ferramenta (mão direita) | Nenhuma, Bússola, Luneta, Chave inglesa, Pena, Lupa, Megafone, Alfinete de mapa, Lanterna | Nenhuma |
+| Roupa | Nenhuma, Cachecol, Casaco de capitão, Avental de ferramentas, Bolsa a tiracolo, Gravata | Nenhuma |
+| Rosto | Nenhum, Tapa-olho, Monóculo, Óculos, Óculos de sol, Óculos de proteção | Nenhum |
 
-- **Straw hat** (padrão): aba larga e reta, textura trançada, uma faixa na cor de destaque do crewmate (nunca vermelha), um arco fino de meridiano do globo na copa, uma leve inclinação com uma animação secundária de repouso na ponta da aba. Escala de 24 a 140 px.
-- **Role kits** definem chapéu, ferramenta, roupa e óculos com um clique e mantêm a cor e os olhos: Captain, Sales, Reviewer, Lookout, Scribe, Lighthouse keeper.
+- **Chapéu de palha** (padrão): aba larga e reta, textura trançada, uma faixa na cor de destaque do crewmate (nunca vermelha), um arco fino de meridiano do globo na copa, uma leve inclinação com uma animação secundária de repouso na ponta da aba. Escala de 24 a 140 px.
+- **Kits de função** definem chapéu, ferramenta, roupa e óculos com um clique e mantêm a cor e os olhos: Capitão, Vendas, Revisor, Vigia, Escriba, Faroleiro.
 - Ferramentas e roupas são desenhadas a partir de 40 px; os ícones de lista continuam só com o rosto. Os óculos acompanham o olhar em qualquer tamanho. Enquanto trabalha, cada ferramenta tem o próprio gesto (a chave inglesa gira, a pena rabisca, a luneta varre), movido por um sistema de molas (`rig.ts`). Prévia: `/crew-demo` em dev.
 - Aparências salvas e remotas não são confiáveis: o `normalizeLook` mantém cada campo válido e troca cada campo inválido pelo padrão daquele crewmate. O catálogo fica nos clientes, então um id desconhecido aparece como o padrão.
 - O hostd guarda a aparência no crew server e devolve todos os campos em `crewmate_list` (`color` como `#rrggbb`; `eyes`, `hat`, `tool`, `outfit`, `face` como `[a-z0-9_-]`, de 1 a 24 caracteres), então uma aparência escolhida em um cliente aparece em todos eles.
@@ -880,11 +882,11 @@ O mesmo socket NDJSON de todo comando do hostd (`~/.atlas/hostd.sock`, ou o do c
 }
 ```
 
-- `state`: `idle`, `working` ou `needs_you`.
+- `state`: `idle`, `working` (uma tarefa está rodando) ou `needs_you` (uma aprovação de ferramenta está pendente, ou uma tarefa está parada em um card).
 - `running_task` existe só enquanto uma tarefa roda; `pane` é a chave para anexar um terminal.
 - `last`: o resultado, o erro ou o prompt da tarefa mais recente (os primeiros 140 caracteres), o estado final e a hora.
-- `pending_approval` existe só em `needs_you`.
-- `waiting_task` (ausente, a menos que uma tarefa esteja parada em um card): `{id, action, result, attachments}`, o card em que a tarefa em espera mais antiga está e as imagens que o agente tirou para ela (só as do agente, como registros). O Captain's call do Atlas Mobile lista a partir dele um crewmate com um card `refused` ou `prove_ui`, com Retry e Override ali mesmo. Ele não muda `state`.
+- `pending_approval` existe só em `needs_you`; uma tarefa parada em qualquer card (`waiting_task`) também é `needs_you`, embora o runner dela continue ocupado, então `running_task` está presente ali e o Stop funciona. Um servidor anterior a isso (1.5.0-alpha.26 e antes) dizia `working`; o desktop corrige isso onde a resposta ainda mostra o card.
+- `waiting_task` (ausente, a menos que uma tarefa esteja parada em um card): `{id, action, result, attachments}`, o card em que a tarefa está (a que o runner segura, ou a parada mais recente) e as imagens que o agente tirou para ela (só as do agente, como registros). O Captain's call do Atlas Mobile lista a partir dele um crewmate com um card `refused` ou `prove_ui`, com Retry e Override ali mesmo. A presença dele faz `state` ser `needs_you`, seja qual for o tipo de card.
 - `triggers` está sempre presente; `next_fire` é calculado pelo servidor.
 
 ### Objeto de tarefa

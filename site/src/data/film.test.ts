@@ -36,6 +36,16 @@ test("a re-cut changes the copy: lengths around the boundaries", () => {
 	expect(filmWords(181)).toBe("3 minutes 1 second");
 });
 
+// Incident (2026-11-18, i18n pt-zero rule): CLDR puts 0 in pt-BR's `one`, so a length of 0 s (metadata not loaded yet,
+// filmSeconds clamps NaN to 0) was announced as "0 segundo".
+test("pt-BR: a zero length is plural (\"0 segundos\"), never \"0 segundo\"", () => {
+	expect(spoken(0, "pt-BR")).toBe("0 segundos");
+	expect(spoken(Number.NaN, "pt-BR")).toBe("0 segundos");
+	expect(spoken(1, "pt-BR")).toBe("1 segundo");
+	expect(spoken(60, "pt-BR")).toBe("1 minuto");
+	expect(spoken(0, "en")).toBe("0 seconds");
+});
+
 test("invalid durations never print NaN", () => {
 	expect(filmClock(Number.NaN)).toBe("0:00");
 	expect(filmClock(-3)).toBe("0:00");

@@ -326,7 +326,7 @@ fn status_json(root: &Path) -> Value {
                 "memory_trend": r.memory.trend.map(|t| t.direction.name()),
                 "memory_trend_mb_min": r.memory.trend.map(|t| t.mb_per_min),
                 "budget_state": r.memory.budget.name(),
-                "memory_leak": r.memory.leak.as_deref(),
+                "memory_leak": r.memory.leak.as_ref().map(|n| n.message.as_str()),
             })).collect::<Vec<_>>(),
             "tunnel": s.tunnel.as_ref().map(|t| json!({
                 "state": t.state, "local_port": t.local_port, "ssh_host": t.ssh_host,
@@ -972,7 +972,10 @@ mod tests {
         real_status(d.path(), http_ready(), |m| {
             let svc = m.services.get_mut("api").unwrap();
             svc.probes.ready_error = Some("GET /ready → 500".into());
-            svc.probes.degraded = Some("ready probe failed: GET /ready → 500".into());
+            svc.probes.degraded = Some(crate::runtime::note::Note::new(
+                "probe.ready_failed",
+                json!({"error": "GET /ready → 500"}),
+            ));
             m.set_state_if_changed("api", ServiceState::Degraded);
         });
         let out = call(d.path(), "atlas_status", &json!({})).await.unwrap();
@@ -1089,7 +1092,10 @@ mod tests {
         real_status(d.path(), http_ready(), |m| {
             let svc = m.services.get_mut("api").unwrap();
             svc.probes.ready_error = Some("GET /ready → 500".into());
-            svc.probes.degraded = Some("ready probe failed: GET /ready → 500".into());
+            svc.probes.degraded = Some(crate::runtime::note::Note::new(
+                "probe.ready_failed",
+                json!({"error": "GET /ready → 500"}),
+            ));
             m.set_state_if_changed("api", ServiceState::Degraded);
         });
         let err = call(

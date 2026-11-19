@@ -1,4 +1,4 @@
-import { classify } from "#lib/errors/diagnostics.ts";
+import { isHostFailure } from "#lib/hostText.ts";
 import { messageOf } from "#lib/errors/report.ts";
 import type { FsEntry } from "#lib/host.ts";
 
@@ -19,7 +19,7 @@ export async function loadFolder(
 		return { ok: true, entries: (await list()).filter((e) => !HIDDEN[e.name]) };
 	} catch (e) {
 		const m = messageOf(e);
-		if (classify(m) === "host") {
+		if (isHostFailure(e, m)) {
 			on.onHost(m);
 			return { ok: false, retry: true };
 		}

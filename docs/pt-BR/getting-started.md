@@ -59,7 +59,7 @@ O `atlas config check` valida o arquivo e mostra todos os erros de uma vez. Cada
 atlas dev
 ```
 
-Uma aba por serviço, logs combinados em **All** e o estado dos serviços na barra lateral. `?` mostra as teclas, `/` pesquisa nos logs e `q` sai e para tudo. Veja o [guia da TUI](tui.md).
+Uma aba por serviço, logs combinados em **Tudo** e o estado dos serviços na barra lateral. `?` mostra as teclas, `/` pesquisa nos logs e `q` sai e para tudo. Veja o [guia da TUI](tui.md).
 
 Para deixar a stack rodando em segundo plano, use `atlas dev --detach`; depois, `atlas dev` anexa a TUI e `atlas down` para tudo.
 

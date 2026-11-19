@@ -1,0 +1,7 @@
+{
+	"settings_registry_capture_capture_key_region_description": "Help line under the \"Region\" row in Settings > Capture, also shown in search results.",
+	"settings_registry_capture_capture_on_release_description": "Help line under the \"Capture when the mouse is released\" row in Settings > Capture, also shown in search results.",
+	"settings_registry_capture_description": "One line under the Capture page title in Settings, and the tooltip of its sidebar entry.",
+	"settings_registry_capture_group_history": "Title of the \"History\" card on the Capture page of Settings, shown above its rows and in the path of search results.",
+	"settings_registry_capture_label": "Sidebar entry and page title of the Capture section in Settings."
+}

@@ -61,14 +61,17 @@
 		{
 			"declarations": [
 				"input count",
+				"local countExact = count",
 				"local countPlural = count: plural"
 			],
 			"selectors": [
+				"countExact",
 				"countPlural"
 			],
 			"match": {
-				"countPlural=one": "Atividade, {count} nova",
-				"countPlural=*": "Atividade, {count} novas"
+				"countExact=0, countPlural=*": "Atividade, nenhuma nova",
+				"countExact=*, countPlural=one": "Atividade, {count} nova",
+				"countExact=*, countPlural=*": "Atividade, {count} novas"
 			}
 		}
 	],

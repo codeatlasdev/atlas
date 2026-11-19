@@ -81,10 +81,10 @@ export function termAction(e: KeyLike): TermAction | null {
  */
 const KEPT: Record<string, true> = {
 	k: true,
-	"shift+d": true,
+	"shift-d": true,
 	"=": true,
 	"+": true,
-	"shift++": true,
+	"shift-+": true,
 	"-": true,
 	"0": true,
 };
@@ -94,7 +94,7 @@ export function terminalKeeps(e: KeyLike): boolean {
 		e.metaKey &&
 		!e.altKey &&
 		!e.ctrlKey &&
-		KEPT[`${e.shiftKey ? "shift+" : ""}${e.key.toLowerCase()}`] === true
+		KEPT[`${e.shiftKey ? "shift-" : ""}${e.key.toLowerCase()}`] === true
 	);
 }
 

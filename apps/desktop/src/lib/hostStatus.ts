@@ -4,6 +4,8 @@
  * prompt rule. No Svelte, no Tauri: `stores/hostStatus.svelte.ts` holds the state.
  */
 import { tilde } from "#lib/format.ts";
+import { hostText } from "#lib/hostText.ts";
+import { m } from "#lib/i18n/m.ts";
 
 export type HostStatus = "current" | "upgrading" | "upgraded" | "outdated" | "restarting";
 export type HostSkew = "none" | "upgradable" | "needsRestart";
@@ -24,8 +26,11 @@ export interface HostState {
 	skew: HostSkew;
 	/** Running terminals only. */
 	ptys: HostPty[];
-	/** The sentence from `skew_reason`; empty when current. */
+	/** The English sentence from `skew`; empty when current. Shown only for a code this build does not know. */
 	reason: string;
+	/** The code of that sentence (`hostd.older`) and its arguments; empty when current or from an older shell. */
+	reasonCode: string;
+	reasonArgs: Record<string, unknown>;
 	/** The user chose "Later" this session. */
 	deferred: boolean;
 	/** The user chose "Restart when idle". */
@@ -42,6 +47,8 @@ export const EMPTY_HOST: HostState = {
 	skew: "none",
 	ptys: [],
 	reason: "",
+	reasonCode: "",
+	reasonArgs: {},
 	deferred: false,
 	idleArmed: false,
 	missing: [],
@@ -79,6 +86,8 @@ export function parseHostState(raw: unknown): HostState | null {
 		skew: (skew as HostSkew | undefined) ?? "none",
 		ptys: (Array.isArray(o.ptys) ? o.ptys : []).map(parsePty).filter((p) => p !== null),
 		reason: str(o.reason),
+		reasonCode: str(o.reasonCode),
+		reasonArgs: fields(o.reasonArgs) ?? {},
 		deferred: o.deferred === true,
 		idleArmed: o.idleArmed === true,
 		missing: strs(o.missing),
@@ -93,6 +102,11 @@ export interface Chip {
 	detail: string;
 }
 
+/** Why the host is not current, in the app's language; `""` when it is current. Falls back to the shell's English. */
+export function hostReason(s: Pick<HostState, "reason" | "reasonCode" | "reasonArgs">): string {
+	return hostText({ code: s.reasonCode, args: s.reasonArgs, message: s.reason });
+}
+
 /**
  * The sidebar chip: amber when the user has to act (features are off until the restart), calm
  * and neutral when only the version differs, a quiet "updating" while a handoff or restart
@@ -102,19 +116,25 @@ export function chipFor(s: HostState): Chip | null {
 	if (s.status === "upgrading" || s.status === "restarting") {
 		return {
 			tone: "busy",
-			label: s.status === "upgrading" ? "Updating terminal host…" : "Restarting terminal host…",
-			detail: s.status === "upgrading" ? "Terminals stay attached" : "",
+			label: s.status === "upgrading" ? m.workbench_host_chip_updating() : m.workbench_host_chip_restarting(),
+			detail: s.status === "upgrading" ? m.workbench_host_chip_terminals_stay_attached() : "",
 		};
 	}
 	if (s.status === "outdated") {
 		return {
 			tone: "warn",
-			label: s.idleArmed ? "Terminal host restarts when idle" : "Terminal host needs a restart",
-			detail: s.reason,
+			label: s.idleArmed ? m.workbench_host_chip_restarts_when_idle() : m.workbench_host_chip_needs_restart(),
+			detail: hostReason(s),
 		};
 	}
 	if (s.skew === "needsRestart") {
-		return { tone: "info", label: `Terminal host ${s.version ?? "older"}`, detail: s.reason };
+		return {
+			tone: "info",
+			label: s.version
+				? m.workbench_host_chip_version({ version: s.version })
+				: m.workbench_host_chip_older(),
+			detail: hostReason(s),
+		};
 	}
 	return null;
 }
@@ -123,19 +143,19 @@ export interface PromptCopy {
 	title: string;
 	/** Why the host should restart. */
 	body: string;
-	/** `<title|command> — <~/cwd>`, one per running terminal. */
+	/** `<title|command> · <~/cwd>`, one per running terminal. */
 	items: string[];
 	consequence: string;
 }
 
 export function promptCopy(s: HostState): PromptCopy {
 	return {
-		title: "Restart the terminal host?",
-		body: s.reason || "The terminal host is older than this version of Atlas.",
+		title: m.workbench_host_prompt_title(),
+		body: hostReason(s) || m.workbench_host_prompt_body(),
 		items: s.ptys.map(
-			(p) => `${p.title.trim() || p.argv.join(" ").trim() || "shell"} — ${tilde(p.cwd) || "~"}`,
+			(p) => `${p.title.trim() || p.argv.join(" ").trim() || "shell"} · ${tilde(p.cwd) || "~"}`,
 		),
-		consequence: "Restarting ends these terminals.",
+		consequence: m.workbench_host_prompt_consequence({ count: s.ptys.length }),
 	};
 }
 

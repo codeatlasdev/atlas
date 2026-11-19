@@ -23,8 +23,11 @@
 			{m.settings_theme_credit_card_title()}
 		</h3>
 		<p class="links">
+			<!-- i18n-ignore: a site address -->
 			<button class="link" onclick={() => open(SITE)}>draculatheme.com <ExternalLink size={11} /></button>
+			<!-- i18n-ignore: a GitHub handle -->
 			<button class="link" onclick={() => open(ZENO)}>@zenorocha <ExternalLink size={11} /></button>
+			<!-- i18n-ignore: a GitHub handle -->
 			<button class="link" onclick={() => open(LUXONAUTA)}>@luxonauta <ExternalLink size={11} /></button>
 		</p>
 		<p class="note">{m.settings_theme_credit_card_license_note()}</p>

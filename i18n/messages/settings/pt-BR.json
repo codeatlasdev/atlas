@@ -51,9 +51,5 @@
 		}
 	],
 	"settings_host_sub_restarting": "Reiniciando…",
-	"settings_host_sub_updating": "Atualizando, os terminais continuam conectados…",
-	"settings_updates_withdrawn_older": "A versão segura mais recente é mais antiga: instale com o botão no fim da página.",
-	"settings_updates_withdrawn_replacement": "Use a {replacement} no lugar dela.",
-	"settings_updates_withdrawn_title": "Esta versão foi retirada",
-	"settings_updates_withdrawn_update": "Atualize para uma versão segura."
+	"settings_host_sub_updating": "Atualizando, os terminais continuam conectados…"
 }

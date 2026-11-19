@@ -3,7 +3,7 @@
 	import type { ProjectView } from "#lib/api.ts";
 	import Lazy from "#lib/components/Lazy.svelte";
 	import { m } from "#lib/i18n/m.ts";
-	import { register } from "#lib/keymap.svelte.ts";
+	import { named, register } from "#lib/keymap.svelte.ts";
 	import { useSpace } from "#lib/shell/spaceCtx.ts";
 	import { store } from "#lib/stores/projects.svelte.ts";
 	import { actionOutput } from "./actionOutput.svelte.ts";
@@ -21,14 +21,16 @@
 	});
 
 	onMount(() =>
-		register([
-			{
-				id: "atlas::ShowActionOutput",
-				label: m.panel_action_output_drawer_show_action_output(),
-				run: () => actionOutput.show(project.id),
-				when: () => space.current && store.current?.id === project.id,
-			},
-		]),
+		register(
+			named([
+				{
+					id: "atlas::ShowActionOutput",
+					label: () => m.panel_action_output_drawer_show_action_output(),
+					run: () => actionOutput.show(project.id),
+					when: () => space.current && store.current?.id === project.id,
+				},
+			]),
+		),
 	);
 </script>
 

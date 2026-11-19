@@ -1,0 +1,23 @@
+{
+	"settings_registry_integrations_agent_integration_description": "Help line under the \"Agent hooks\" row in Settings > Integrations, also shown in search results.",
+	"settings_registry_integrations_browser_description": "Help line under the \"Open links in\" row in Settings > Integrations, also shown in search results.",
+	"settings_registry_integrations_description": "One line under the Integrations page title in Settings, and the tooltip of its sidebar entry.",
+	"settings_registry_integrations_group_devices": "Title of the \"Devices\" card on the Integrations page of Settings, shown above its rows and in the path of search results.",
+	"settings_registry_integrations_group_hosts": "Title of the \"Hosts\" card on the Integrations page of Settings, shown above its rows and in the path of search results.",
+	"settings_registry_integrations_group_pairing": "Title of the \"Pairing\" card on the Integrations page of Settings, shown above its rows and in the path of search results.",
+	"settings_registry_integrations_group_remote_projects": "Title of the \"Remote projects\" card on the Integrations page of Settings, shown above its rows and in the path of search results.",
+	"settings_registry_integrations_group_shell_environment": "Title of the \"Shell environment\" card on the Integrations page of Settings, shown above its rows and in the path of search results.",
+	"settings_registry_integrations_label": "Sidebar entry and page title of the Integrations section in Settings.",
+	"settings_registry_integrations_mobile_devices_description": "Help line under the \"Paired phones\" row in Settings > Integrations, also shown in search results.",
+	"settings_registry_integrations_mobile_pair_description": "Help line under the \"Pair a phone\" row in Settings > Integrations, also shown in search results.",
+	"settings_registry_integrations_shell_description": "Help line under the \"Shell for your projects\" row in Settings > Integrations, also shown in search results.",
+	"settings_registry_integrations_ssh_hosts_description": "Help line under the \"SSH hosts\" row in Settings > Integrations, also shown in search results.",
+	"settings_registry_integrations_ssh_project_description": "Help line under the \"Remote project\" row in Settings > Integrations, also shown in search results.",
+	"settings_registry_integrations_tab_agents_description": "One line under the tab strip while the \"Agent hooks\" tab of Integrations is open in Settings.",
+	"settings_registry_integrations_tab_mobile_description": "One line under the tab strip while the \"Mobile\" tab of Integrations is open in Settings.",
+	"settings_registry_integrations_tab_mobile_label": "Tab name \"Mobile\" in the Integrations section of Settings.",
+	"settings_registry_integrations_tab_shell_description": "One line under the tab strip while the \"Shell & links\" tab of Integrations is open in Settings.",
+	"settings_registry_integrations_tab_shell_label": "Tab name \"Shell & links\" in the Integrations section of Settings.",
+	"settings_registry_integrations_tab_ssh_description": "One line under the tab strip while the \"SSH hosts\" tab of Integrations is open in Settings.",
+	"settings_registry_integrations_tab_ssh_label": "Tab name \"SSH hosts\" in the Integrations section of Settings."
+}

@@ -24,9 +24,11 @@
 //! keep a `*` arm. Numbers are printed as given; format a number in Rust and pass the string
 //! when grouping matters.
 
+mod github;
 mod message;
 mod pseudo;
 mod shortcut;
+pub use github::{github_error, github_error_in};
 pub use shortcut::{shortcut, shortcut_for};
 
 use std::collections::HashMap;
@@ -430,6 +432,34 @@ mod tests {
         assert_eq!(n("pt-BR", true, 1), "1 arquivo");
         // English treats 0 as plural.
         assert_eq!(n("en", false, 0), "0 arquivos");
+    }
+
+    // CLDR for the languages the catalogs ship: 0 is `one` in pt and pt-BR (i = 0..1), `other` in pt-PT
+    // (n = 1) and en. The desktop (Intl.PluralRules) and Rust must agree, or the same message reads
+    // "0 arquivo" in one and "0 arquivos" in the other; i18n:check's pt-zero rule relies on it.
+    #[test]
+    fn plural_categories_follow_cldr_for_zero_in_every_language_we_ship() {
+        for (tag, zero, one, fraction) in [
+            ("pt-BR", "one", "one", "one"),
+            ("pt", "one", "one", "one"),
+            ("pt-PT", "other", "one", "other"),
+            ("en", "other", "one", "other"),
+        ] {
+            assert_eq!(plural_category(tag, 0.0), zero, "{tag} 0");
+            assert_eq!(plural_category(tag, 1.0), one, "{tag} 1");
+            assert_eq!(plural_category(tag, 1.5), fraction, "{tag} 1.5");
+            assert_eq!(plural_category(tag, 2.0), "other", "{tag} 2");
+        }
+    }
+
+    // Guards the catalog the pt-zero rule fixed (2026-11-18): a real embedded message, not a fixture.
+    #[test]
+    fn a_catalog_plural_says_none_in_pt_br_at_zero_and_keeps_the_count_elsewhere() {
+        let skills = |tag, n: i64| t_in!(tag, "cmd_skills_list_total", count = n, version = "9");
+        assert_eq!(skills("pt-BR", 0), "Nenhuma skill incluída no atlas v9");
+        assert_eq!(skills("pt-BR", 1), "1 skill incluída no atlas v9");
+        assert_eq!(skills("pt-BR", 2), "2 skills incluídas no atlas v9");
+        assert_eq!(skills("en", 0), "0 skills bundled with atlas v9");
     }
 
     #[test]

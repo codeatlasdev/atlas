@@ -11,21 +11,23 @@ Editor, interface and terminal preferences use [Zed's setting names](https://zed
 
 ## Where things are in Settings
 
-Settings (⌘,) has eleven sections in three groups, and a search box that jumps to a setting by what it does. Every section starts with one line saying what it is for.
+Settings (⌘,) has thirteen sections in three groups (twelve off macOS, where **Capture** is hidden), and a search box that jumps to a setting by what it does. Every section starts with one line saying what it is for.
 
 | Group | Section | What is in it |
 |---|---|---|
-| Atlas | **General** | Updates: the app, the `atlas` CLI and the terminal host, and the release channel they follow |
+| Atlas | **General** | Updates: the app, the `atlas` CLI and the terminal host, the release channel they follow, and the display language |
 | | **Appearance** | Theme (light, dark, terminal), import and export, accent color, zoom, interface font, file panel, split panes |
 | | **Notifications & sounds** | Notifications when an agent finishes or needs you; the sounds Atlas plays, one switch each |
+| | **Capture** (macOS only) | Screenshots, screen recordings and GIFs from a hotkey: access, keys, where they are saved, quality, the overlay, recent captures |
 | | **Keyboard shortcuts** | Rebind or remove the key of any command |
 | | **Help & onboarding** | The guided tour, the shortcut cheat sheet, the getting-started checklist |
 | Work | **Workspaces** | Where worktrees are created, branch name prefix, auto clean up, clean up by hand, hygiene (orphaned processes and disk) |
 | | **Editor** | Tabs **Editor** (code font, editing, display) and **Languages** (language servers) |
 | | **Terminal** | Renderer, font, cursor, padding, scrollback, clipboard |
 | | **Git** | Which agent writes commit messages |
-| | **Agents** | Default agent, tool approval, extra arguments, custom agents, quick commands |
+| | **Agents** | Default agent, tool approval, extra arguments, the agent dock (switch and hotkeys), custom agents, quick commands |
 | Connect | **Integrations** | Tabs **Shell & links**, **Agent hooks**, **SSH hosts** and **Mobile** |
+| | **Atlas Crew** | Connect a crew server, connect GitHub, short replies, replay the onboarding |
 
 Where it used to be: *Shell for your projects* and *Open links in* (General) are in **Integrations › Shell & links**; the agent hooks switches (Agents) are in **Integrations › Agent hooks**; **SSH hosts** and **Mobile** were sections of their own and are tabs of **Integrations**; notifications and sounds (General) are in **Notifications & sounds**. Older links such as `updates.show("ssh")` or `appearance/terminal` still open the right place.
 
@@ -55,16 +57,16 @@ To add a section or a tab, add the category (or page) to the registry and its co
 | Key | Default | Notes |
 |---|---|---|
 | `buffer_font_family` | `ui-monospace, "SF Mono", SFMono-Regular, Menlo, "Cascadia Mono", Consolas, monospace` | code editor font |
-| `buffer_font_size` | `12.5` | 6–48 |
-| `buffer_line_height` | `1.55` | 1–3 |
+| `buffer_font_size` | `12.5` | 6 to 48 |
+| `buffer_line_height` | `1.55` | 1 to 3 |
 | `ui_font_family` | `-apple-system, BlinkMacSystemFont, "SF Pro Text", "Segoe UI", system-ui, sans-serif` | interface font |
-| `ui_font_size` | `13` | 9–24 |
+| `ui_font_size` | `13` | 9 to 24 |
 | `project_panel.dock` | `"left"` | `left` or `right`: which side the file panel sits on |
 | `project_panel.file_icons` | `true` | Material Icon Theme file icons |
 | `project_panel.folder_icons` | `true` | |
-| `project_panel.indent_size` | `12` | 4–40 px |
-| `active_pane_modifiers.border_size` | `0` | 0–8 px border around the active pane |
-| `active_pane_modifiers.inactive_opacity` | `1` | 0.2–1; lower dims inactive panes |
+| `project_panel.indent_size` | `12` | 4 to 40 px |
+| `active_pane_modifiers.border_size` | `0` | 0 to 8 px border around the active pane |
+| `active_pane_modifiers.inactive_opacity` | `1` | 0.2 to 1; lower dims inactive panes |
 | `enable_language_servers` | `true` | language servers (completion, diagnostics, hover, go to definition) |
 | `format_on_save` | `false` | format with the language server when saving |
 | `inlay_hints.enabled` | `true` | inferred types and parameter names shown inline |
@@ -75,7 +77,7 @@ Settings → Editor.
 
 | Key | Default | Notes |
 |---|---|---|
-| `editor.tab_size` | `4` | 1–16 columns |
+| `editor.tab_size` | `4` | 1 to 16 columns |
 | `editor.insert_spaces` | `true` | Tab inserts spaces; `false` inserts tab characters |
 | `editor.word_wrap` | `false` | wrap long lines at the edge of the editor |
 | `editor.render_whitespace` | `"none"` | `none`, `selection` or `all` |
@@ -84,11 +86,11 @@ Settings → Editor.
 | `editor.sticky_scroll` | `true` | keeps the enclosing function or class pinned while you scroll its body |
 | `editor.bracket_pair_colorization` | `true` | |
 | `editor.indent_guides` | `true` | |
-| `editor.rulers` | `[]` | columns for vertical lines, whole numbers 1–500, e.g. `[80, 100]`; anything else in the list is dropped |
+| `editor.rulers` | `[]` | columns for vertical lines, whole numbers 1 to 500, e.g. `[80, 100]`; anything else in the list is dropped |
 | `editor.highlight_active_line` | `true` | |
 | `editor.trim_trailing_whitespace_on_save` | `true` | |
 | `editor.insert_final_newline_on_save` | `true` | |
-| `editor.large_file_threshold_bytes` | `2000000` | 100000–100000000; bigger files open in a light mode without language features |
+| `editor.large_file_threshold_bytes` | `2000000` | 100000 to 100000000; bigger files open in a light mode without language features |
 | `editor.scroll_past_end` | `false` | |
 | `editor.smooth_scrolling` | `true` | |
 | `editor.auto_reload` | `true` | reload a file changed on disk when it has no unsaved edits |
@@ -143,20 +145,20 @@ The project file wins over `~/.atlas/desktop/settings.json` field by field for t
 |---|---|---|
 | `terminal.font_family` | `SF Mono, Menlo, Cascadia Mono, Consolas, ui-monospace, monospace` | CSS font list for both terminals. The [GPU terminal](terminal.md) uses the first installed family (variable fonts work), else its bundled JetBrains Mono; applies live |
 | `terminal.font_thicken` | `false` | draw text slightly heavier (Ghostty `font-thicken`; xterm.js uses weights 500/700); applies live |
-| `terminal.font_size` | `12.5` | 6–48; applies live |
+| `terminal.font_size` | `12.5` | 6 to 48; applies live |
 | `terminal.cursor_shape` | `"block"` | `block`, `bar`, `underline` or `hollow` |
 | `terminal.blinking` | `false` | |
-| `terminal.max_scroll_history_lines` | `10000` | 0–100000 |
-| `terminal.scrollback_bytes` | `67108864` | 1 MiB–1 GiB; most memory one [GPU terminal](terminal.md#scrollback) spends on its scrollback (bytes of cells). Settings shows it in MB. The tighter of this and the line cap wins; applies live |
+| `terminal.max_scroll_history_lines` | `10000` | 0 to 100000 |
+| `terminal.scrollback_bytes` | `67108864` | 1 MiB to 1 GiB; most memory one [GPU terminal](terminal.md#scrollback) spends on its scrollback (bytes of cells). Settings shows it in MB. The tighter of this and the line cap wins; applies live |
 | `terminal.osc52` | `"ask"` | what happens when a program writes your clipboard: `allow`, `ask` or `deny`. Reading the clipboard is always denied |
 | `terminal.ligatures` | `true` | GPU terminal |
-| `terminal.minimum_contrast` | `4.5` | 1–21; WCAG ratio a cell's text is lifted to at draw time (the theme's ANSI table is not changed), `1` = off. GPU terminal |
+| `terminal.minimum_contrast` | `4.5` | 1 to 21; WCAG ratio a cell's text is lifted to at draw time (the theme's ANSI table is not changed), `1` = off. GPU terminal |
 | `terminal.minimum_contrast_chosen` | `false` | Written `true` when you set the minimum contrast yourself. A stored `minimum_contrast` of `1` without it is the pre-4.5 default (the Terminal tab used to write it back) and is read as `4.5`; set `1` in the Terminal tab to keep it off |
 | `terminal.copy_on_select` | `true` | GPU terminal |
 | `terminal.option_as_alt` | `"both"` | `both`, `left`, `right` or `none`. GPU terminal |
 | `terminal.click_to_move` | `true` | a click on the prompt moves the cursor (needs shell integration). GPU terminal |
-| `terminal.padding_x` | `10` | 0–64 pt; inset left and right of the terminal. The margin uses the terminal theme's background |
-| `terminal.padding_y` | `6` | 0–64 pt; inset above and below |
+| `terminal.padding_x` | `10` | 0 to 64 pt; inset left and right of the terminal. The margin uses the terminal theme's background |
+| `terminal.padding_y` | `6` | 0 to 64 pt; inset above and below |
 
 The GPU terminal itself is switched with **Settings → Terminal → Fast terminal (GPU)**.
 
@@ -209,7 +211,8 @@ The shell is in Settings → Integrations → Shell & links; updates are in Sett
 | File | Content |
 |---|---|
 | `projects.json` | the projects you added |
-| `workspace.json` | tabs, panes and docks per worktree |
+| `workspace.json` | tabs, panes and docks per worktree. A copy that cannot be read (not JSON, empty, not a workspace) never keeps the app from opening: it is moved to `workspace.json.corrupt-<unix ms>`, Atlas starts with an empty workspace and a notice names the saved file |
+| `crew-servers.json` | the crew servers you registered. An unreadable copy is kept as `crew-servers.json.corrupt-<unix ms>` the same way |
 | `themes/` | legacy location of your Zed theme files (still read; new ones go to `~/.atlas/themes/`) |
 | `hook-endpoint.env` | loopback endpoint and token for agent hooks (new token per hostd run) |
 

@@ -1,5 +1,5 @@
 <script lang="ts">
-	import { gitToast } from "#lib/gitToast.ts";
+	import { gitToast, hostErrorToast } from "#lib/gitToast.ts";
 	import { onMount, tick } from "svelte";
 	import { primaryKey } from "#lib/keys.ts";
 	import { listen } from "@tauri-apps/api/event";
@@ -32,6 +32,7 @@
 		navMove,
 		type TreeRow,
 	} from "#lib/stores/tree.ts";
+	import { m } from "#lib/i18n/m.ts";
 
 	let { worktreeId }: { worktreeId: string } = $props();
 
@@ -66,7 +67,7 @@
 			void host.fsWatch(rel ? `${root}/${rel}` : root, watchIds[rel]).catch((e) => {
 				if (watchFailed) return;
 				watchFailed = true;
-				toast.error(`File tree changes are not watched: ${errText(e)}`);
+				toast.error(m.workbench_explorer_watch_failed({ error: errText(e) }));
 			});
 		}
 	}
@@ -134,19 +135,17 @@
 		const name = e?.value.trim();
 		if (!e || !name || name.includes("/")) return;
 		if (e.mode === "folder") {
-			await host.fsMkdir(`${root}/${join(e.rel, name)}`).catch((err) => toast.error(errText(err)));
+			await host.fsMkdir(`${root}/${join(e.rel, name)}`).catch(hostErrorToast);
 			await load(e.rel);
 			expanded[join(e.rel, name)] = true;
 		} else if (e.mode === "new") {
 			const rel = join(e.rel, name);
-			await host.fsWrite(`${root}/${rel}`, "").catch((err) => toast.error(errText(err)));
+			await host.fsWrite(`${root}/${rel}`, "").catch(hostErrorToast);
 			await load(e.rel);
 			openFile(worktreeId, rel);
 		} else if (name !== e.rel.split("/").pop()) {
 			const dir = parentOf(e.rel);
-			await host
-				.fsRename(`${root}/${e.rel}`, `${root}/${join(dir, name)}`)
-				.catch((err) => toast.error(errText(err)));
+			await host.fsRename(`${root}/${e.rel}`, `${root}/${join(dir, name)}`).catch(hostErrorToast);
 			await load(dir);
 		}
 		focusRow(e.mode === "rename" ? join(parentOf(e.rel), name) : join(e.rel, name));
@@ -228,24 +227,25 @@
 
 	async function remove(rel: string, dir: boolean) {
 		if (
-			!(await confirmDialog(`Delete ${rel.split("/").pop()}?`, {
-				description: dir ? "The folder and everything in it." : rel,
-				confirmLabel: "Delete",
+			!(await confirmDialog(m.workbench_explorer_delete_title({ name: rel.split("/").pop() ?? rel }), {
+				description: dir ? m.workbench_explorer_delete_folder() : rel,
+				confirmLabel: m.common_action_delete(),
 				destructive: true,
 			}))
 		)
 			return;
-		await host.fsRemove(`${root}/${rel}`, dir).catch((e) => toast.error(errText(e)));
+		await host.fsRemove(`${root}/${rel}`, dir).catch(hostErrorToast);
 		await load(parentOf(rel));
 	}
 
 	async function gitDo(args: string[]) {
 		const r = await git.run(worktreeId, args);
-		if (r.code !== 0) gitToast(r.stderr || r.stdout || "git failed");
+		if (r.code !== 0) gitToast(r.stderr || r.stdout || m.workbench_explorer_git_failed());
 		await gitStatus.refresh(worktreeId);
 	}
 
-	const copy = (t: string) => navigator.clipboard.writeText(t).then(() => toast.success("Copied"));
+	const copy = (t: string) =>
+		navigator.clipboard.writeText(t).then(() => toast.success(m.capture_quick_page_copied()));
 
 	/**
 	 * One menu for the `…` button, right-click and Shift+F10 / the menu key: `menuTarget` says what it is about,
@@ -290,8 +290,9 @@
 		const taken = new Set((children[dir] ?? []).map((e) => e.name));
 		const to = join(dir, duplicateName(name, taken));
 		const r = await host.exec(root, ["cp", "-R", "--", `${root}/${rel}`, `${root}/${to}`]).catch((e) => e);
-		if (r instanceof Error || (r as { code?: number }).code) {
-			toast.error(r instanceof Error ? errText(r) : (r as { stderr: string }).stderr || "Duplicate failed");
+		if (r instanceof Error || typeof r === "string") return void hostErrorToast(r);
+		if ((r as { code?: number }).code) {
+			toast.error((r as { stderr: string }).stderr || m.workbench_explorer_duplicate_failed({ name }));
 			return;
 		}
 		await load(dir);
@@ -328,8 +329,8 @@
 				return gitDo(["add", "--", rel]);
 			case "discard":
 				return (
-					(await confirmDialog(`Discard changes to ${rel}?`, {
-						confirmLabel: "Discard",
+					(await confirmDialog(m.workbench_explorer_discard_title({ path: rel }), {
+						confirmLabel: m.workbench_explorer_menu_discard_changes(),
 						destructive: true,
 					})) && gitDo(["checkout", "--", rel])
 				);
@@ -361,9 +362,9 @@
 				bind:value={editing!.value}
 				onkeydown={onEditKey}
 				onblur={commitEdit}
-				placeholder="name.ext"
+				placeholder={m.workbench_explorer_new_file_placeholder()}
 				spellcheck="false"
-				aria-label="New file name"
+				aria-label={m.workbench_explorer_new_file_name()}
 			/>
 		</div>
 	{:else}
@@ -411,7 +412,7 @@
 					onblur={commitEdit}
 					onclick={(ev) => ev.stopPropagation()}
 					spellcheck="false"
-					aria-label="New name"
+					aria-label={m.workbench_explorer_new_name()}
 				/>
 			{:else}
 				<span class="name">{r.name}</span>
@@ -419,7 +420,7 @@
 			<button
 				type="button"
 				class="more"
-				aria-label="More actions"
+				aria-label={m.capture_quick_page_more_actions()}
 				tabindex="-1"
 				onclick={(ev) => {
 					ev.stopPropagation();
@@ -436,15 +437,15 @@
 	<div class="head">
 		<span class="title">
 			{#if repoId}<ProjectIcon id={repoId} size={16} />{/if}
-			<span class="tname">{project?.name ?? "Files"}</span>
+			<span class="tname">{project?.name ?? m.sidebar_loose_files_files()}</span>
 		</span>
 		<span class="hbtns">
-			<Tip label="Reveal active file" side="bottom">
+			<Tip label={m.workbench_explorer_reveal_active_file()} side="bottom">
 				{#snippet child(props)}
 					<button
 						{...props}
 						class="hbtn"
-						aria-label="Reveal active file"
+						aria-label={m.workbench_explorer_reveal_active_file()}
 						disabled={!activePath}
 						onclick={revealActive}
 					>
@@ -452,16 +453,26 @@
 					</button>
 				{/snippet}
 			</Tip>
-			<Tip label="New file" side="bottom">
+			<Tip label={m.workbench_explorer_new_file()} side="bottom">
 				{#snippet child(props)}
-					<button {...props} class="hbtn" aria-label="New file" onclick={() => newFile("")}>
+					<button
+						{...props}
+						class="hbtn"
+						aria-label={m.workbench_explorer_new_file()}
+						onclick={() => newFile("")}
+					>
 						<FilePlus size={13} />
 					</button>
 				{/snippet}
 			</Tip>
-			<Tip label="New folder" side="bottom">
+			<Tip label={m.workbench_explorer_new_folder()} side="bottom">
 				{#snippet child(props)}
-					<button {...props} class="hbtn" aria-label="New folder" onclick={() => newFolder("")}>
+					<button
+						{...props}
+						class="hbtn"
+						aria-label={m.workbench_explorer_new_folder()}
+						onclick={() => newFolder("")}
+					>
 						<FolderPlus size={13} />
 					</button>
 				{/snippet}
@@ -482,7 +493,7 @@
 				{#each [70, 55, 80, 45, 65] as w, i (i)}<Skeleton variant="rounded" height={14} width="{w}%" />{/each}
 			</div>
 		{:else if !children[""].length}
-			<p class="none">This folder is empty.</p>
+			<p class="none">{m.workbench_explorer_this_folder_is_empty()}</p>
 		{:else}
 			<VirtualList bind:this={vl} bind:firstVisible class="vtree" {items} key={(r) => r.rel} estimate={22}>
 				{#snippet item(r)}{@render rowOf(r)}{/snippet}

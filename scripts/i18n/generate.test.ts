@@ -4,7 +4,7 @@ import { existsSync, readFileSync, statSync } from "node:fs";
 import { dirname, join } from "node:path";
 import { arbFile, arbMessage } from "./emit/arb.ts";
 import { generateAll, generateSurface, outputsFor } from "./generate.ts";
-import { type MsgValue, MessageError, type Node, buildTree, inlineRefs, normalize, pick, refsOf, simplify } from "./resolve.ts";
+import { type MsgValue, MessageError, type Node, buildTree, inlineRefs, normalize, pick, refsOf, simplify, toValue } from "./resolve.ts";
 import { loadSource } from "./source.ts";
 import { loadCtx } from "./types.ts";
 import { EN, OS, PLURAL, addKey, area, areaFile, check, cleanup, editJson, finding, makeRepo, put, read } from "./testkit.ts";
@@ -116,6 +116,38 @@ describe("simplify", () => {
 		const m = simplify({ selectors: ["a", "b"], declarations: ["input a", "input b"], arms: [{ cond: { a: "1", b: "x" }, text: "T" }, { cond: { a: "1", b: "*" }, text: "T" }, { cond: { a: "*", b: "*" }, text: "T" }] });
 		expect(m.selectors).toEqual([]);
 		expect(m.arms).toEqual([{ cond: {}, text: "T" }]);
+	});
+
+	// Incident (2026-11-18, found while writing the pt-zero rule): pt-BR's exact-zero arm is often the same text as `other`
+	// ("{count} itens") while `one` differs ("{count} item"). simplify() dropped that zero arm as "equal to its catch-all",
+	// so for a message with a {@ref} the one arm answered 0 again and the text read "0 item".
+	test("an exact-zero arm equal to its `*` sibling stays when a `one` arm that differs would otherwise answer 0", () => {
+		const zero: MsgValue = [
+			{
+				declarations: ["input count", "local countExact = count", "local countPlural = count: plural"],
+				selectors: ["countExact", "countPlural"],
+				match: { "countExact=0, countPlural=*": "{count} items in {@common_os_trash}", "countExact=*, countPlural=one": "{count} item in {@common_os_trash}", "countExact=*, countPlural=*": "{count} items in {@common_os_trash}" },
+			},
+		];
+		const r = inlineRefs(zero, (k) => (k === "common_os_trash" ? "Trash" : undefined));
+		// CLDR gives 0 the category one; the exact arm must still win over `one`
+		expect(textFor(r, { countExact: "0", countPlural: "one" })).toBe("{count} items in Trash");
+		expect(textFor(r, { countExact: "*", countPlural: "one" })).toBe("{count} item in Trash");
+		expect(textFor(r, { countExact: "*", countPlural: "*" })).toBe("{count} items in Trash");
+	});
+
+	test("a selector is dropped only when no other arm reads differently for it (the zero arm decides before `one`)", () => {
+		const m = simplify({
+			selectors: ["countExact", "countPlural"],
+			declarations: ["input count", "local countExact = count", "local countPlural = count: plural"],
+			arms: [
+				{ cond: { countExact: "0", countPlural: "*" }, text: "many" },
+				{ cond: { countExact: "*", countPlural: "one" }, text: "one" },
+				{ cond: { countExact: "*", countPlural: "*" }, text: "many" },
+			],
+		});
+		expect(textFor(toValue(m), { countExact: "0", countPlural: "one" })).toBe("many");
+		expect(textFor(toValue(m), { countExact: "*", countPlural: "one" })).toBe("one");
 	});
 });
 

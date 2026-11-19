@@ -1,0 +1,5 @@
+{
+	"settings_registry_git_description": "One line under the Git page title in Settings, and the tooltip of its sidebar entry.",
+	"settings_registry_git_git_commit_agent_description": "Help line under the \"Generate commit messages with\" row in Settings > Git, also shown in search results.",
+	"settings_registry_git_label": "Sidebar entry and page title of the Git section in Settings."
+}

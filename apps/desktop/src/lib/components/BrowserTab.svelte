@@ -8,12 +8,14 @@
 	import { api, errText } from "#lib/api.ts";
 	import { toUrl, rememberUrl } from "#lib/stores/browser.svelte.ts";
 	import { browserSurface } from "#lib/browserSync.ts";
-	import { idle, step, type LoadEvent } from "#lib/browserLoad.ts";
+	import { failureHint, idle, step, type LoadEvent } from "#lib/browserLoad.ts";
 	import { ws, type Tab } from "#lib/stores/workspace.svelte.ts";
+	import { tabLabel } from "#lib/stores/tabLabel.ts";
 	import { agents } from "#lib/stores/agents.svelte.ts";
 	import { grabPrompt, type Grab } from "#lib/grab.ts";
 	import { nativeRect } from "#lib/zoom.ts";
 	import { watchSlot } from "#lib/native/slot.ts";
+	import { m } from "#lib/i18n/m.ts";
 
 	let { tab, visible }: { tab: Tab; visible: boolean } = $props();
 
@@ -145,7 +147,7 @@
 		if (tabId) await agents.send(tabId, text);
 		else await agents.launch(tab.worktreeId, agents.defaultAgent, { prompt: text });
 		grabbed = null;
-		toast.success("Sent to agent");
+		toast.success(m.capture_quick_page_send_to_agent());
 	}
 
 	function onkeydown(e: KeyboardEvent) {
@@ -162,9 +164,11 @@
 
 <div class="browser">
 	<div class="bar">
-		<button title="Back" onclick={() => nav("back")}><ArrowLeft size={14} /></button>
-		<button title="Forward" onclick={() => nav("forward")}><ArrowRight size={14} /></button>
-		<button title="Reload" onclick={() => nav("reload")}><RotateCw size={13} /></button>
+		<button title={m.common_action_back()} onclick={() => nav("back")}><ArrowLeft size={14} /></button>
+		<button title={m.workbench_browser_forward()} onclick={() => nav("forward")}
+			><ArrowRight size={14} /></button
+		>
+		<button title={m.workbench_browser_reload()} onclick={() => nav("reload")}><RotateCw size={13} /></button>
 		<input
 			id="addr-{tab.id}"
 			list="hist-{tab.id}"
@@ -175,54 +179,61 @@
 			}}
 			onblur={() => (editing = false)}
 			onkeydown={(e) => e.key === "Enter" && go()}
-			placeholder={`Search or enter address (${kbd("cmd-l")})`}
+			placeholder={m.workbench_browser_address_placeholder({ key: kbd("cmd-l") })}
 		/>
 		<datalist id="hist-{tab.id}">
 			{#each ws.doc.urlHistory[tab.worktreeId] ?? [] as u (u)}<option value={u}></option>{/each}
 		</datalist>
-		<button class:on={picking} title="Design Mode: pick an element for the agent" onclick={pick}>
+		<button class:on={picking} title={m.workbench_browser_design_mode()} onclick={pick}>
 			<MousePointerClick size={14} />
 		</button>
-		<button title="Open in system browser" onclick={() => tab.url && api.openUrl(tab.url)}>
+		<button
+			title={m.workbench_browser_open_in_system_browser()}
+			onclick={() => tab.url && api.openUrl(tab.url)}
+		>
 			<ExternalLink size={13} />
 		</button>
 	</div>
 	{#if grabbed}
 		<div class="grabbed">
 			<code>{grabbed.grab.target.selector}</code>
-			{#if grabbed.shot}<span class="dim">+ screenshot</span>{/if}
+			{#if grabbed.shot}<span class="dim">{m.workbench_browser_with_screenshot()}</span>{/if}
 			<span class="spacer"></span>
 			<DropdownMenu align="end">
-				{#snippet trigger()}<span class="send">Send to agent</span>{/snippet}
+				{#snippet trigger()}<span class="send">{m.capture_quick_page_send_to_agent()}</span>{/snippet}
 				{#each agents.tabsIn(tab.worktreeId) as t (t.id)}
 					<DropdownMenuItem onclick={() => send(t.id)}
-						>{(t.pty && ws.titles[t.pty]) || t.label}</DropdownMenuItem
+						>{tabLabel(t, t.pty ? ws.titles[t.pty] : "")}</DropdownMenuItem
 					>
 				{/each}
-				<DropdownMenuItem onclick={() => send(null)}>New {agents.defaultAgent} session</DropdownMenuItem>
+				<DropdownMenuItem onclick={() => send(null)}
+					>{m.workbench_new_tab_menu_new_session({ label: agents.defaultAgent })}</DropdownMenuItem
+				>
 			</DropdownMenu>
-			<button onclick={() => (grabbed = null)}>Discard</button>
+			<button onclick={() => (grabbed = null)}>{m.capture_discard()}</button>
 		</div>
 	{/if}
-	{#if picking}<div class="hint">Click an element in the page · Esc to cancel</div>{/if}
+	{#if picking}<div class="hint">{m.workbench_browser_pick_hint({ key: kbd("escape") })}</div>{/if}
 	<div class="area" bind:this={area}>
 		<!-- The slot's own colour; the core carves the page's hole out of it (never out of the slot). -->
 		<div class="fill" data-native-fill></div>
 		{#if !tab.url}
 			<div class="state">
-				<p class="title">New tab</p>
-				<p class="dim">Type an address or a search above ({kbd("cmd-l")}).</p>
+				<p class="title">{m.workbench_new_tab_menu_new_tab()}</p>
+				<p class="dim">{m.workbench_browser_empty_hint({ key: kbd("cmd-l") })}</p>
 			</div>
 		{:else if failure}
 			<div class="state">
 				<WifiOff size={28} strokeWidth={1.5} />
-				<p class="title">{failure.title}</p>
+				<p class="title">{m.workbench_browser_failure_title()}</p>
 				<p class="dim url">{failure.url || tab.url}</p>
-				<p class="dim">{failure.hint}</p>
+				<p class="dim">{failureHint(failure)}</p>
 				<div class="actions">
-					<button class="primary" onclick={() => nav("reload")}><RotateCw size={13} /> Try again</button>
+					<button class="primary" onclick={() => nav("reload")}
+						><RotateCw size={13} /> {m.common_action_retry()}</button
+					>
 					<button onclick={() => tab.url && api.openUrl(tab.url)}
-						><ExternalLink size={13} /> Open in browser</button
+						><ExternalLink size={13} /> {m.workbench_browser_open_in_browser()}</button
 					>
 				</div>
 			</div>

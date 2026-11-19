@@ -111,7 +111,8 @@ impl App {
         if let Some(s) = failed.first() {
             let why = self
                 .manager
-                .service_note(&s.name)
+                .service_note_coded(&s.name)
+                .map(|n| n.render_line())
                 .or_else(|| {
                     self.manager
                         .exit_code(&s.name)
@@ -138,8 +139,8 @@ impl App {
                 icon: "⠋",
                 text: self
                     .manager
-                    .service_note(&s.name)
-                    .map(|n| format!("{} {n}", s.name))
+                    .service_note_coded(&s.name)
+                    .map(|n| format!("{} {}", s.name, n.render_line()))
                     .unwrap_or_else(|| {
                         t!("tui_runtime_app_strip_starting", name = s.name.as_str())
                     }),

@@ -1,0 +1,7 @@
+{
+	"settings_registry_capture_capture_key_region_description": "Arraste para escolher uma área ou pressione Espaço para escolher uma janela.",
+	"settings_registry_capture_capture_on_release_description": "Tira a captura assim que você solta a seleção; desative para ajustá-la antes e confirmar com Return.",
+	"settings_registry_capture_description": "Capturas de tela e gravações da tela por atalho: onde vão parar, as teclas e o seu histórico.",
+	"settings_registry_capture_group_history": "Histórico",
+	"settings_registry_capture_label": "Captura"
+}

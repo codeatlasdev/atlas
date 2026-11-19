@@ -9,12 +9,92 @@ use std::time::Duration;
 
 use anyhow::{Context, Result, anyhow};
 use atlas_core::ipc;
+use atlas_core::progress::Coded;
 use parking_lot::Mutex;
 use serde_json::{Value, json};
 use tokio::io::{AsyncBufReadExt, AsyncWriteExt, BufReader};
 use tokio::sync::{broadcast, oneshot};
 
 use crate::paths;
+
+/// The failures of this client that a program tells apart by `code` (`atlas_core::progress::Coded`): stable,
+/// never translated, never reworded. Atlas Desktop renders its own sentence from the code and `args`; `message`
+/// is English, for logs, the CLI and a client that does not know the code. A new code is added to [`CODES`] in
+/// the same change as the desktop's message for it (`apps/desktop/src/lib/hostText.ts`).
+///
+/// | code | args | message |
+/// |---|---|---|
+/// | `hostd.closed` | none | `hostd closed the connection` |
+/// | `hostd.disconnected` | none | `hostd disconnected` |
+/// | `hostd.start_failed` | none | `hostd did not start` |
+/// | `hostd.refused` | `why`: what hostd answered (`unauthorized`, `hello timeout`...) | `hostd: <why>` |
+/// | `hostd.busy` | none | `hostd: hostd busy` |
+/// | `hostd.too_many_clients` | none | `hostd: too many clients` |
+/// | `hostd.cli_not_found` | `command`: the installer line for this OS | [`NOT_FOUND`] |
+///
+/// A failed request of a daemon that codes its failures (`protocol::REPLY_CODES`: the filesystem and `exec`) comes
+/// back as a [`Coded`] of that code too (`reply_error`).
+pub const CODES: &[&str] = &[
+    CLOSED,
+    DISCONNECTED,
+    START_FAILED,
+    REFUSED,
+    BUSY,
+    TOO_MANY_CLIENTS,
+    CLI_NOT_FOUND,
+];
+pub const CLOSED: &str = "hostd.closed";
+pub const DISCONNECTED: &str = "hostd.disconnected";
+pub const START_FAILED: &str = "hostd.start_failed";
+pub const REFUSED: &str = "hostd.refused";
+pub const BUSY: &str = "hostd.busy";
+pub const TOO_MANY_CLIENTS: &str = "hostd.too_many_clients";
+pub const CLI_NOT_FOUND: &str = "hostd.cli_not_found";
+
+fn coded(code: &'static str, args: Value, message: impl Into<String>) -> anyhow::Error {
+    Coded::new(code, args, message).into()
+}
+
+fn closed() -> anyhow::Error {
+    coded(CLOSED, json!({}), "hostd closed the connection")
+}
+
+fn disconnected() -> anyhow::Error {
+    coded(DISCONNECTED, json!({}), "hostd disconnected")
+}
+
+fn start_failed() -> anyhow::Error {
+    coded(START_FAILED, json!({}), "hostd did not start")
+}
+
+/// What hostd answers when it refuses a client because it already serves as many as it takes (the daemon's own
+/// answer for a full house, next to [`crate::server::ERR_BUSY`]).
+const ERR_TOO_MANY_CLIENTS: &str = "too many clients";
+
+/// hostd answered a hello or a request with `why` instead of its data. A loaded daemon's two refusals (`hostd busy`,
+/// `too many clients`) have a code of their own: the app tells them from a daemon that is gone by it.
+fn refused(why: &str) -> anyhow::Error {
+    let message = format!("hostd: {why}");
+    match why {
+        crate::server::ERR_BUSY => coded(BUSY, json!({}), message),
+        ERR_TOO_MANY_CLIENTS => coded(TOO_MANY_CLIENTS, json!({}), message),
+        _ => coded(REFUSED, json!({"why": why}), message),
+    }
+}
+
+/// The failure a reply line says (`{"ok":false,"error":..}`): a [`Coded`] when it carries a `code` this build knows
+/// (`protocol::REPLY_CODES`), else the text alone, which is all an older daemon sends and what every caller printed
+/// before the codes. The text is the same either way.
+pub(crate) fn reply_error(v: &Value) -> anyhow::Error {
+    let message = v["error"].as_str().unwrap_or("error");
+    let known = v["code"]
+        .as_str()
+        .and_then(|c| crate::protocol::REPLY_CODES.iter().find(|k| **k == c));
+    match known {
+        Some(code) => coded(code, v["args"].clone(), message),
+        None => anyhow!(message.to_string()),
+    }
+}
 
 /// How long a call waits for hostd's reply unless [`deadline_for`] says it legitimately takes longer (#298).
 pub const CALL_DEADLINE: Duration = Duration::from_secs(10);
@@ -244,11 +324,11 @@ pub fn is_unusable(e: &CallError) -> bool {
 /// A pushed event: `{"ev": "...", ...}`.
 pub type HostEvent = Arc<Value>;
 
-type ReplyRx = oneshot::Receiver<Result<Value, String>>;
+type ReplyRx = oneshot::Receiver<Result<Value>>;
 
 /// How a wait for a reply ended.
 enum Waited {
-    Reply(Result<Value, String>),
+    Reply(Result<Value>),
     /// The connection went away with the call unanswered.
     Dropped,
     /// The liveness probe found the daemon silent.
@@ -287,7 +367,7 @@ fn see_log(log: Option<&Path>) -> String {
 
 /// Calls waiting for their reply. `None` once the connection dropped: the reader closes it as it
 /// exits, so a call can never register after the last moment anyone would answer it (#226).
-type Pending = Arc<Mutex<Option<HashMap<u64, oneshot::Sender<Result<Value, String>>>>>>;
+type Pending = Arc<Mutex<Option<HashMap<u64, oneshot::Sender<Result<Value>>>>>>;
 
 #[derive(Clone)]
 pub struct HostClient {
@@ -335,10 +415,7 @@ impl HostClient {
         let hello = crate::protocol::hello_line(token, client);
         let first = tokio::time::timeout(handshake, async {
             w.write_all(format!("{hello}\n").as_bytes()).await?;
-            lines
-                .next_line()
-                .await?
-                .ok_or_else(|| anyhow!("hostd closed the connection"))
+            lines.next_line().await?.ok_or_else(closed)
         })
         .await
         .map_err(|_| {
@@ -354,7 +431,7 @@ impl HostClient {
             // Only a refused token proves the daemon unusable; any other answer is a daemon that is alive.
             return Err(match why {
                 "unauthorized" => Unusable(format!("hostd: {why}")).into(),
-                _ => anyhow!("hostd: {why}"),
+                _ => refused(why),
             });
         }
         let lab = !v["data"]["lab"].is_null();
@@ -383,7 +460,7 @@ impl HostClient {
                         let res = if v["ok"] == true {
                             Ok(v.get("data").cloned().unwrap_or(Value::Null))
                         } else {
-                            Err(v["error"].as_str().unwrap_or("error").to_string())
+                            Err(reply_error(&v))
                         };
                         let _ = tx.send(res);
                     }
@@ -422,12 +499,12 @@ impl HostClient {
         let (otx, orx) = oneshot::channel();
         match self.pending.lock().as_mut() {
             Some(m) => m.insert(id, otx),
-            None => return Err(anyhow!("hostd disconnected")),
+            None => return Err(disconnected()),
         };
         let slot = Slot { client: self, id };
         let line = json!({"id": id, "cmd": cmd, "args": args}).to_string();
         if self.tx.force(line).is_err() {
-            return Err(anyhow!("hostd disconnected"));
+            return Err(disconnected());
         }
         Ok((slot, orx))
     }
@@ -483,8 +560,8 @@ impl HostClient {
         };
         match tokio::time::timeout(deadline, wait).await {
             Ok(Waited::Reply(Ok(v))) => Ok(v),
-            Ok(Waited::Reply(Err(e))) => Err(anyhow!(e)),
-            Ok(Waited::Dropped) => Err(anyhow!("hostd disconnected")),
+            Ok(Waited::Reply(Err(e))) => Err(e),
+            Ok(Waited::Dropped) => Err(disconnected()),
             Ok(Waited::Silent) => Err(Unanswered(format!(
                 "hostd stopped answering while `{cmd}` was running: no reply to its liveness probes{}",
                 see_log(self.log.as_deref())
@@ -543,16 +620,34 @@ pub fn atlas_bin_with(login_path: Option<&std::ffi::OsStr>) -> Result<PathBuf> {
         login_path,
         std::env::var_os("PATH").as_deref(),
     )
-    .ok_or_else(|| anyhow!(NOT_FOUND))
+    .ok_or_else(cli_not_found)
 }
 
-/// What the user can do when no runnable `atlas` was found (the CLI that `atlas desktop --install` lives in is the
-/// one that is missing, so the message gives the installer itself).
-pub const NOT_FOUND: &str = if cfg!(windows) {
-    "atlas CLI not found — install (PowerShell): irm https://atlas.codeatlas.com.br/install.ps1 | iex"
+/// The line that installs the CLI on this OS (the CLI that `atlas desktop --install` lives in is the one that is
+/// missing, so the message gives the installer itself).
+pub const INSTALL_COMMAND: &str = if cfg!(windows) {
+    "irm https://atlas.codeatlas.com.br/install.ps1 | iex"
 } else {
-    "atlas CLI not found — install: curl -fsSL https://atlas.codeatlas.com.br/install.sh | bash"
+    "curl -fsSL https://atlas.codeatlas.com.br/install.sh | bash"
 };
+
+/// What the user can do when no runnable `atlas` was found: English, for logs and a client that does not know
+/// `hostd.cli_not_found`.
+pub const NOT_FOUND: &str = if cfg!(windows) {
+    "atlas CLI not found. Install it in PowerShell: irm https://atlas.codeatlas.com.br/install.ps1 | iex"
+} else {
+    "atlas CLI not found. Install it with: curl -fsSL https://atlas.codeatlas.com.br/install.sh | bash"
+};
+
+fn cli_not_found() -> anyhow::Error {
+    cli_not_found_with(INSTALL_COMMAND, NOT_FOUND)
+}
+
+/// `hostd.cli_not_found` for a given installer line: production passes this OS's, the desktop contract test passes
+/// one fixed line so the fixture is the same on every OS (the desktop shows `command` as given).
+fn cli_not_found_with(command: &str, message: &str) -> anyhow::Error {
+    coded(CLI_NOT_FOUND, json!({"command": command}), message)
+}
 
 /// Connect to the local hostd, starting it (detached, own session) if needed.
 pub async fn ensure_local(atlas: &Path, client: &str) -> Result<HostClient> {
@@ -601,6 +696,7 @@ async fn ensure_in_within(
         .stderr(log);
     // Detach hostd from our session so it survives the app quitting.
     let mut child = atlas_core::sys::spawn_detached(&mut cmd)
+        // i18n-ignore: context of an error chain (names the program being started), read in logs and after the coded message
         .with_context(|| format!("spawn {}", atlas.display()))?;
     std::thread::spawn(move || child.wait());
     let mut last = None;
@@ -611,7 +707,8 @@ async fn ensure_in_within(
             Err(e) => last = Some(e),
         }
     }
-    Err(last.unwrap_or_else(|| anyhow!("hostd did not start")))
+    Err(last.unwrap_or_else(start_failed))
+        // i18n-ignore: context of an error chain (names the log to read), read in logs and after the coded message
         .with_context(|| format!("see {}", paths::log(dir).display()))
 }
 
@@ -717,7 +814,9 @@ pub struct RawPty {
 
 /// Open a dedicated raw byte stream for `pty` on the hostd at `dir`.
 pub async fn attach_raw(dir: &Path, pty: &str, replay: bool) -> Result<RawPty> {
-    let token = paths::read_token(dir).context("hostd token")?;
+    let token = paths::read_token(dir)
+        // i18n-ignore: context of an error chain (names the file being read), read in logs
+        .context("hostd token")?;
     let stream = ipc::connect(&paths::socket(dir)).await?;
     let (r, mut w) = ipc::split(stream);
     let mut reader = BufReader::new(r);
@@ -744,11 +843,11 @@ async fn reply_line(r: &mut BufReader<ipc::ReadHalf>) -> Result<Value> {
             ))
         })??;
     if n == 0 {
-        return Err(anyhow!("hostd closed the connection"));
+        return Err(closed());
     }
     let v: Value = serde_json::from_str(&line)?;
     if v["ok"] != true {
-        return Err(anyhow!("hostd: {}", v["error"].as_str().unwrap_or("error")));
+        return Err(refused(v["error"].as_str().unwrap_or("error")));
     }
     Ok(v.get("data").cloned().unwrap_or(Value::Null))
 }
@@ -1335,5 +1434,107 @@ mod tests {
             cfg!(windows)
         );
         assert!(!is_hostd_command(r#""C:\Program Files\x\atlas.exe" mcp"#));
+    }
+}
+
+#[cfg(test)]
+mod coded_error_tests {
+    use super::*;
+
+    fn wire(e: &anyhow::Error) -> Value {
+        e.chain()
+            .find_map(|c| c.downcast_ref::<Coded>())
+            .expect("a Coded error")
+            .wire()
+    }
+
+    /// Contract with the desktop: `apps/desktop/src/lib/__fixtures__/hostd-client-errors.json` is the REAL wire
+    /// shape of every coded failure of this client (each built by the function the client uses), next to [`CODES`],
+    /// which `apps/desktop/src/lib/hostText.test.ts` renders from the catalog: one message per code, or the test
+    /// fails. `UPDATE_FIXTURES=1` regenerates it.
+    #[test]
+    fn client_errors_json_contract() {
+        let samples = [
+            closed(),
+            disconnected(),
+            start_failed(),
+            refused("hello timeout"),
+            refused("hostd busy"),
+            refused("too many clients"),
+            // One fixed line, not this OS's: the fixture must be byte-identical on every CI runner.
+            cli_not_found_with(
+                "curl -fsSL https://atlas.codeatlas.com.br/install.sh | bash",
+                "atlas CLI not found. Install it with: curl -fsSL https://atlas.codeatlas.com.br/install.sh | bash",
+            ),
+        ];
+        let errors: Vec<Value> = samples.iter().map(wire).collect();
+        for c in CODES {
+            assert!(
+                errors.iter().any(|e| e["code"] == *c),
+                "no sample for the code {c}"
+            );
+        }
+        for e in &errors {
+            assert!(
+                CODES.contains(&e["code"].as_str().unwrap()),
+                "{e} is not in CODES"
+            );
+        }
+        let value = json!({"codes": CODES, "errors": errors});
+
+        let path = std::path::Path::new(env!("CARGO_MANIFEST_DIR"))
+            .join("../../apps/desktop/src/lib/__fixtures__/hostd-client-errors.json");
+        let mut buf = Vec::new();
+        let mut ser = serde_json::Serializer::with_formatter(
+            &mut buf,
+            serde_json::ser::PrettyFormatter::with_indent(b"\t"),
+        );
+        serde::Serialize::serialize(&value, &mut ser).unwrap();
+        let fresh = String::from_utf8(buf).unwrap() + "\n";
+        if std::env::var_os("UPDATE_FIXTURES").is_some() {
+            std::fs::write(&path, &fresh).unwrap();
+        }
+        let committed: Value = serde_json::from_str(
+            &std::fs::read_to_string(&path).expect("fixture missing: UPDATE_FIXTURES=1"),
+        )
+        .unwrap();
+        assert_eq!(
+            committed, value,
+            "stale fixture: re-run with UPDATE_FIXTURES=1"
+        );
+    }
+
+    /// A code with a context around it (`see <log>`, added by `ensure_in`) is still found, and the text stays the
+    /// one every caller printed before: the English of the whole chain.
+    #[test]
+    fn a_coded_error_survives_the_context_added_around_it() {
+        let e: anyhow::Error = Err::<(), _>(start_failed())
+            .with_context(|| "see /tmp/hostd.log")
+            .unwrap_err();
+        assert_eq!(wire(&e)["code"], START_FAILED);
+        assert_eq!(format!("{e:#}"), "see /tmp/hostd.log: hostd did not start");
+    }
+
+    /// What every caller matched on or printed before the codes: the sentences are unchanged.
+    #[test]
+    fn the_english_of_every_error_is_what_it_always_was() {
+        assert_eq!(closed().to_string(), "hostd closed the connection");
+        assert_eq!(disconnected().to_string(), "hostd disconnected");
+        assert_eq!(start_failed().to_string(), "hostd did not start");
+        assert_eq!(refused("unauthorized").to_string(), "hostd: unauthorized");
+        // The two refusals of a loaded daemon read as before and have a code of their own.
+        assert_eq!(refused("hostd busy").to_string(), "hostd: hostd busy");
+        assert_eq!(
+            refused("too many clients").to_string(),
+            "hostd: too many clients"
+        );
+        assert_eq!(wire(&refused("hostd busy"))["code"], BUSY);
+        assert_eq!(wire(&refused("too many clients"))["code"], TOO_MANY_CLIENTS);
+        assert_eq!(wire(&refused("hello timeout"))["code"], REFUSED);
+        assert!(
+            cli_not_found()
+                .to_string()
+                .starts_with("atlas CLI not found. Install it")
+        );
     }
 }

@@ -49,7 +49,7 @@ and run `atlas dev`. Postgres and Redis come up, the migration runs first, the A
 |---|---|---|
 | Runtime | Dependency conditions (`started`, `healthy`, `completed_successfully`, `log_ready`), restart policy, exact-PID orphan cleanup, SSH tunnel, actions with confirm gates | [Runtime](runtime.md) |
 | TUI | Tabs per service, log search with regex, level and time filters, JSON log compaction, mouse support, command palette | [TUI](tui.md) |
-| Logs | Robust line assembly, bounded buffers, error/warning jumps, clickable URLs and `path:line` | [Logs](logs.md) |
+| Logs | Line assembly that survives bursts, bounded buffers, error/warning jumps, clickable URLs and `path:line` | [Logs](logs.md) |
 | Desktop | Spaces per project, a worktree per task, persistent terminals, agent status and notifications, review, PRs, browser | [Desktop app](desktop.md) |
 | GPU terminal | Metal renderer at 120 Hz, Kitty graphics and sixel, ligatures, shell integration | [GPU terminal](terminal.md) |
 | MCP | Nine tools, three resources, three prompts | [MCP](mcp.md) |

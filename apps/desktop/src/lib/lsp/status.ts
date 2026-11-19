@@ -4,6 +4,9 @@
  * chip label, a sentence, optional detail and the actions that fix it. Rendering and IPC live
  * elsewhere (`LspStatus.svelte`, `client.svelte.ts`).
  */
+import { list } from "#lib/i18n/fmt.ts";
+import { m } from "#lib/i18n/m.ts";
+import { lspReasonText } from "#lib/lsp/reasonText.ts";
 import type { OpenStatus, Reason, ServerStatus } from "#lib/lsp/types.ts";
 
 export type Tone = "ok" | "busy" | "warn" | "error" | "idle";
@@ -88,17 +91,13 @@ export type LspUiState = Base &
 
 export type UiKind = LspUiState["kind"];
 
-const SETTINGS: Action = { id: "open-settings-languages", label: "Language settings" };
-const LOG: Action = { id: "open-log", label: "Open log" };
-const DOCS: Action = { id: "docs", label: "How language servers work" };
-
-/** `typescript` → `TypeScript`-ish fallback when no server label is known. */
-const pretty = (name: string) => (name ? name : "language server");
+// The three actions many states offer: read when a state is built, so they follow the app's language.
+const settings = (): Action => ({ id: "open-settings-languages", label: m.workbench_lsp_action_settings() });
+const log = (): Action => ({ id: "open-log", label: m.workbench_lsp_action_log() });
+const docs = (): Action => ({ id: "docs", label: m.workbench_lsp_action_docs() });
 
 /** Install progress: the server sends free text (`Downloading… 42%`); keep it as is, trimmed. */
 const progressText = (srv: ServerStatus | undefined) => (srv?.progress || srv?.message || "").trim();
-
-const copy = (command: string): Action => ({ id: "copy-command", label: "Copy command", payload: command });
 
 function fromReason(server: string, label: string, reason: Reason): LspUiState {
 	const detail = reason.hint;
@@ -106,13 +105,17 @@ function fromReason(server: string, label: string, reason: Reason): LspUiState {
 		case "no_go":
 		case "no_curl": {
 			const actions: Action[] = [];
-			if (reason.command) actions.push(copy(reason.command));
-			actions.push({ id: "retry", label: "Check again", primary: !reason.command }, SETTINGS);
+			if (reason.command)
+				actions.push({ id: "copy-command", label: m.viewers_devops_copy_command(), payload: reason.command });
+			actions.push(
+				{ id: "retry", label: m.crew_onboarding_check_again(), primary: !reason.command },
+				settings(),
+			);
 			return {
 				kind: "missing-toolchain",
 				server,
 				command: reason.command,
-				label: `${label} needs ${reason.code === "no_go" ? "Go" : "curl"}`,
+				label: m.workbench_lsp_needs_tool({ tool: reason.code === "no_go" ? "Go" : "curl" }),
 				tone: "warn",
 				summary: reason.message,
 				detail,
@@ -123,51 +126,54 @@ function fromReason(server: string, label: string, reason: Reason): LspUiState {
 			return {
 				kind: "offline",
 				server,
-				label: "Offline",
+				label: m.workbench_lsp_offline(),
 				tone: "warn",
 				summary: reason.message,
 				detail,
-				actions: [{ id: "install", label: "Retry install", primary: true }, SETTINGS],
+				actions: [
+					{ id: "install", label: m.workbench_lsp_action_retry_install(), primary: true },
+					settings(),
+				],
 			};
 		case "install_failed":
 		case "unsupported_platform":
 			return {
 				kind: "install-failed",
 				server,
-				label: `${label} install failed`,
+				label: m.workbench_lsp_install_failed({ label }),
 				tone: "error",
 				summary: reason.message,
 				detail,
 				actions: [
 					...(reason.code === "install_failed"
-						? [{ id: "install", label: "Retry install", primary: true } as Action]
+						? [{ id: "install", label: m.workbench_lsp_action_retry_install(), primary: true } as Action]
 						: []),
-					LOG,
-					SETTINGS,
+					log(),
+					settings(),
 				],
 			};
 		case "custom_not_found":
 			return {
 				kind: "custom-not-found",
 				server,
-				label: "Custom server not found",
+				label: m.workbench_lsp_custom_not_found(),
 				tone: "error",
 				summary: reason.message,
 				detail,
 				actions: [
-					{ ...SETTINGS, primary: true },
-					{ id: "retry", label: "Check again" },
+					{ ...settings(), primary: true },
+					{ id: "retry", label: m.crew_onboarding_check_again() },
 				],
 			};
 		case "outside_root":
 			return {
 				kind: "outside-root",
 				server,
-				label: "Outside a project",
+				label: m.workbench_lsp_outside_project(),
 				tone: "idle",
 				summary: reason.message,
 				detail,
-				actions: [DOCS],
+				actions: [docs()],
 			};
 		case "crashed":
 			return crashed(server, label, reason.message, undefined);
@@ -178,11 +184,15 @@ function crashed(server: string, label: string, message: string, tail: string[] 
 	return {
 		kind: "crashed",
 		server,
-		label: `${label} stopped`,
+		label: m.workbench_lsp_crashed({ label }),
 		tone: "error",
-		summary: message || `${label} stopped unexpectedly.`,
+		summary: message || m.workbench_lsp_crashed_summary({ label }),
 		tail: tail?.length ? tail : undefined,
-		actions: [{ id: "restart-server", label: "Restart server", primary: true }, LOG, SETTINGS],
+		actions: [
+			{ id: "restart-server", label: m.workbench_lsp_action_restart_server(), primary: true },
+			log(),
+			settings(),
+		],
 	};
 }
 
@@ -193,25 +203,24 @@ export function lspUiState(i: UiInput): LspUiState {
 		if (host.updating)
 			return {
 				kind: "host-updating",
-				label: "Updating terminal host…",
+				label: m.workbench_lsp_host_updating_label(),
 				tone: "busy",
-				summary:
-					"The terminal host is updating. Your terminals keep running; language features return in a moment.",
+				summary: m.workbench_lsp_host_updating(),
 				actions: [],
 			};
 		const ptys = host.ptys ?? [];
 		return {
 			kind: "host-old",
 			ptys,
-			label: "Language features need a newer terminal host",
+			label: m.workbench_lsp_host_old_label(),
 			tone: "warn",
-			summary: "Language features need a newer terminal host. Restart it from here to turn them on.",
+			summary: m.workbench_lsp_host_old_summary(),
 			detail: ptys.length
-				? `Restarting ends ${ptys.length} running terminal${ptys.length === 1 ? "" : "s"}.`
-				: "No terminals are running, so a restart is safe.",
+				? m.workbench_lsp_host_old_ends({ count: ptys.length })
+				: m.workbench_lsp_host_old_safe(),
 			actions: [
-				{ id: "restart-host", label: "Restart terminal host", primary: true },
-				{ id: "restart-host-later", label: "Restart later" },
+				{ id: "restart-host", label: m.workbench_term_pane_restart_host(), primary: true },
+				{ id: "restart-host-later", label: m.workbench_lsp_action_restart_later() },
 			],
 		};
 	}
@@ -219,31 +228,30 @@ export function lspUiState(i: UiInput): LspUiState {
 	if (!i.prefsEnabled)
 		return {
 			kind: "disabled-setting",
-			label: "Language servers off",
+			label: m.workbench_lsp_off_label(),
 			tone: "idle",
-			summary:
-				"Language servers are turned off in settings, so completion, hover and go to definition are unavailable.",
-			actions: [{ id: "enable-setting", label: "Turn on", primary: true }, SETTINGS],
+			summary: m.workbench_lsp_off_summary(),
+			actions: [{ id: "enable-setting", label: m.workbench_lsp_action_turn_on(), primary: true }, settings()],
 		};
 
 	if (i.languageDisabled)
 		return {
 			kind: "disabled-language",
-			label: "Server off for this language",
+			label: m.workbench_lsp_language_off_label(),
 			tone: "idle",
-			summary: `The ${i.languageId} language server is turned off in your settings.`,
-			actions: [{ ...SETTINGS, primary: true }],
+			summary: m.workbench_lsp_language_off_summary({ language: i.languageId }),
+			actions: [{ ...settings(), primary: true }],
 		};
 
 	if (i.outsideRoot && !srv)
 		return {
 			kind: "outside-root",
 			server: doc?.server ?? "",
-			label: "Outside a project",
+			label: m.workbench_lsp_outside_project(),
 			tone: "idle",
-			summary: "This file is outside every open worktree, so no language server serves it.",
-			detail: "Open the folder as a worktree to get language features.",
-			actions: [DOCS],
+			summary: m.workbench_lsp_outside_summary(),
+			detail: m.workbench_lsp_outside_detail(),
+			actions: [docs()],
 		};
 
 	// `doc` is undefined until hostd answers `lsp_open`. `disabled` is its answer for a language it
@@ -254,17 +262,22 @@ export function lspUiState(i: UiInput): LspUiState {
 		return {
 			kind: "no-language",
 			supported,
-			label: "No language server",
+			label: m.workbench_lsp_none_label(),
 			tone: "idle",
-			summary: `Atlas has no language server for ${i.languageId || "this file type"}.`,
-			detail: supported.length ? `Supported: ${supported.join(", ")}.` : undefined,
-			actions: [{ ...SETTINGS, primary: true }, DOCS],
+			summary: i.languageId
+				? m.workbench_lsp_none_summary({ language: i.languageId })
+				: m.workbench_lsp_none_summary_file_type(),
+			detail: supported.length ? m.workbench_lsp_none_supported({ list: list(supported) }) : undefined,
+			actions: [{ ...settings(), primary: true }, docs()],
 		};
 	}
 
 	const server = srv?.name ?? doc?.server ?? "";
-	const label = srv?.label || pretty(server);
-	const reason = srv?.reason ?? doc?.reason;
+	const label = srv?.label || server || m.workbench_editor_language_server();
+	// The daemon sends English `message` and `hint` plus the `code` and `args` they were written from: show the
+	// catalog's sentences (English when the code or an argument is unknown, as from a daemon older than `args`).
+	const sent = srv?.reason ?? doc?.reason;
+	const reason = sent && { ...sent, ...lspReasonText(sent) };
 
 	if (srv?.state === "downloading") {
 		const progress = progressText(srv);
@@ -272,11 +285,11 @@ export function lspUiState(i: UiInput): LspUiState {
 			kind: "installing",
 			server,
 			progress,
-			label: progress ? `Installing ${label} · ${progress}` : `Installing ${label}…`,
+			label: m.workbench_lsp_installing({ label }),
 			tone: "busy",
-			summary: `Installing ${label}. Language features start as soon as it finishes.`,
+			summary: m.workbench_lsp_installing_summary({ label }),
 			detail: progress || undefined,
-			actions: [{ id: "cancel-install", label: "Cancel install" }, LOG],
+			actions: [{ id: "cancel-install", label: m.workbench_lsp_action_cancel_install() }, log()],
 		};
 	}
 
@@ -290,10 +303,13 @@ export function lspUiState(i: UiInput): LspUiState {
 		return {
 			kind: "missing",
 			server,
-			label: `${label} not installed`,
+			label: m.workbench_lsp_not_installed({ label }),
 			tone: "warn",
-			summary: srv?.message || `${label} is not installed.`,
-			actions: [{ id: "install", label: "Install", primary: true }, SETTINGS],
+			summary: srv?.message || m.workbench_lsp_not_installed_summary({ label }),
+			actions: [
+				{ id: "install", label: m.crew_onboarding_engine_status_install(), primary: true },
+				settings(),
+			],
 		};
 	}
 
@@ -305,21 +321,25 @@ export function lspUiState(i: UiInput): LspUiState {
 			source: srv?.source,
 			label: `${label}${srv?.version ? ` ${srv.version}` : ""}`,
 			tone: "ok",
-			summary: `${label} is running. Completion, diagnostics, hover and go to definition are on.`,
+			summary: m.workbench_lsp_running_summary({ label }),
 			detail: srv?.source
-				? `Source: ${srv.source === "custom" ? "your custom command" : srv.source === "managed" ? "installed by Atlas" : "found on your PATH"}.`
+				? srv.source === "custom"
+					? m.workbench_lsp_source_custom()
+					: srv.source === "managed"
+						? m.workbench_lsp_source_managed()
+						: m.workbench_lsp_source_path()
 				: undefined,
-			actions: [{ id: "restart-server", label: "Restart server" }, LOG, SETTINGS],
+			actions: [{ id: "restart-server", label: m.workbench_lsp_action_restart_server() }, log(), settings()],
 		};
 
 	return {
 		kind: "starting",
 		server,
-		label: server ? `Starting ${label}…` : "Starting language server…",
+		label: server ? m.workbench_lsp_starting({ label }) : m.workbench_lsp_starting_generic(),
 		tone: "busy",
-		summary: `Starting ${label}. Language features start as soon as it is ready.`,
+		summary: m.workbench_lsp_starting_summary({ label }),
 		detail: progressText(srv) || undefined,
-		actions: [LOG],
+		actions: [log()],
 	};
 }
 

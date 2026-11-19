@@ -91,6 +91,7 @@ bun run i18n:find <text|key> [--json]          does it exist? where, in which la
 bun run i18n:add <key> "English" --desc "..." [--pt-BR "..."] [--surface s] [--new-area] [--distinct "why"]
 bun run i18n:extract <path-or-glob> [--area x] [--dry-run] [--json] [--plan]   move hardcoded Svelte text into the catalog (MIGRATION.md)
 bun run i18n:mv <old> <new> [--new-area --surface s]   rename or move, with locks, references and call sites
+bun run i18n:mv <dup> <existing> --into [--take pt-BR=dup]   fold a duplicate with the same English and the same role (dup-value)
 bun run i18n:translate [--locale pt-BR] [--area x] [--surface y] [--dry-run]
 bun run i18n:fix [--restamp <key>] [--baseline]           format files, rewrite locks, shrink the ratchet baseline
 bun run i18n:add-locale <tag> [--owner @user]           a new language everywhere it is listed
@@ -110,13 +111,16 @@ command that fixes it. `warn` is for the reviewer and `info` is hidden unless as
 | `outdated` / `unstamped` | The lock hash differs from the current English hash / the translation has no lock entry (`i18n:fix` stamps it). |
 | `orphan` | A key in a translation that is not in the English of its area. Always an error. |
 | `key`, `key-area`, `dup-key` | Keys are snake_case; start with their area's name (longest prefix owns); are defined once. |
-| `placeholder`, `verbatim`, `plural` | Variables and markup must match; code spans and URLs identical; selectors and plural arms must match, and pt-BR needs `one` and `other` (add an exact zero where "0 arquivo" reads wrong). Compared on the resolved message, so a translation may write its own `os` select where the English references a term. |
+| `placeholder`, `verbatim`, `plural` | Variables and markup must match; code spans and URLs identical; selectors and plural arms must match, and pt-BR needs `one` and `other`. A translation may add an exact-zero selector (`local countExact = count`) the English lacks. A plural selector never takes a number as an arm (`countPlural=0` never fires in Rust, which compares categories): exact numbers are a second selector. Compared on the resolved message, so a translation may write its own `os` select where the English references a term. |
+| `pt-zero` | A pt-BR plural whose `one` variant prints the count (CLDR puts 0 in pt's `one`: "0 arquivo") needs an exact-zero arm (`countExact=0, countPlural=*`: "Nenhum arquivo"), or `i18n-allow pt-zero: <why, and the call site>` in the key's description when the code never calls it with 0. The English may keep "0 files". Error. |
 | `description`, `length` | Every English key has a description in meta.json that is not just the text; meta `maxLength` caps every text. |
 | `dnt`, `glossary`, `pt-pt` | Do-not-translate terms kept verbatim (error), glossary renderings (warning), pt-PT words in pt-BR (error). Waive one hit in the key's description: `i18n-allow dnt:log`. |
 | `shortcut`, `platform-noun` | A glyph or `Cmd+` chord in a value (use `{key}`); `Mac`, `Finder`, `Windows`, `Explorer` in a message with no `os` select, unless meta `platform` says it is about one platform. |
-| `dup-common`, `dup-value`, `common-sentence` | See above. |
+| `dup-common`, `common-sentence` | See above. |
+| `dup-value` | The same English under two non-common keys. Translated the same way in every locale: info only (two screens may say the same word; one shared key would couple them). Translated differently: a warning that shows both texts; align them, fold with `i18n:mv --into`, or mark a different role (a state vs a verb, another gender) with `i18n-distinct: <why>`. |
 | `budget`, `area-surface`, `dangling-ref`, `generate` | Area size; an area with no, an unknown or a malformed surface declaration; a reference that does not resolve, loops or leaves the surfaces; a message a generator cannot express. |
 | `unused`, `undefined-key`, `unconsumed-key` | A key nobody consuming it uses (common*, generated and `cli_*` areas exempt); a reference in a source to a key that is not there, or is in an area the surface does not consume. |
+| `frozen` | A message function called where it runs once (module scope, `<script module>`, a class field, a `+layout.svelte` script, a command passed to `register`) keeps the first language after a live switch. Use a getter, a thunk, `$derived` or the template; waive with `// i18n-allow frozen: <why>`. Desktop and site; every file, no baseline. |
 | `supported-sync` | `i18n/locales.json` equals `SUPPORTED` in `crates/atlas-core/src/lang.rs`, `CFBundleLocalizations` of `crates/atlas-desktop/Info.plist` and the `locales` of each Paraglide project. |
 | `format`, `lock`, `config`, `catalog` | Files sorted, one key per line, LF; locks canonical; unknown locale files and a malformed surfaces.json (or one that still lists areas); unreadable JSON or a malformed variants object. |
 | `hardcoded`, `shortcut`, `platform-check`, `writing-*` | The ratchets below. |
@@ -126,11 +130,29 @@ command that fixes it. `warn` is for the reviewer and `info` is hidden unless as
 
 `docs/<locale>/<page>.md` carries front matter with `title`, `source` (the English file in `docs/`) and `source_sha`,
 the **git blob sha** of that file when it was translated (`git hash-object docs/<source>`, quoted: an all-digit sha
-unquoted is a YAML number). A different sha today is a warning (a typo fix must not block a PR); invalid front matter or
-a source that is gone is an error; a page without a translation is `info`; a changed heading count or code block (comments
-aside) is a warning. pt-PT words in prose warn. The optional field `translation: machine` marks a page a model translated and no
-person reviewed; the site shows a banner for it (an outdated page shows the outdated banner instead), and the reviewer
-removes the line. Any other value is an error.
+unquoted is a YAML number). A different sha in a snapshot (no diff base) is a warning, because a page may lag behind main;
+invalid front matter or a source that is gone is an error; a page without a translation is `info`; a changed heading count
+or code block (comments aside) is a warning. pt-PT words in prose warn. The optional field `translation: machine` marks a
+page a model translated and no person reviewed; the site shows a banner for it (an outdated page shows the outdated banner
+instead), and the reviewer removes the line.
+
+**A change owes the translation.** With a diff base (a pull request, a push, a local branch with `origin/main`, see
+Ratchets below), a change that edits `docs/<page>.md` (or adds it) while the translation of a `required` locale is not
+current (`source_sha` is not the blob sha of the English file as it is now) fails: `docs-outdated` is an **error** for the
+edited page, and `docs-missing` is an error for a page the change adds. A page the change does not touch stays a warning,
+so old drift never blocks an unrelated change. A typo fix in English therefore needs its twin restamped (a typo-only
+change needs only a new `source_sha`; anything that changes meaning needs the translation updated first).
+
+The escape, for a translation that cannot ship with the change, is in the twin's front matter:
+
+```yaml
+translation: pending
+issue: https://github.com/codeatlasdev/atlas/issues/700
+```
+
+`pending` needs an `issue` that is a GitHub issue URL (and `issue` is valid only with `pending`). The page stays outdated
+(a warning, and the site shows the outdated notice until `source_sha` matches), the issue is what tracks it. When the
+translation lands, remove both lines; a `pending` flag on a current page warns. Any other `translation` value is an error.
 
 ### Ratchets: nothing above the baseline, anywhere
 

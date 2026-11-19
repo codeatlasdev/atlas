@@ -1,0 +1,15 @@
+{
+	"settings_registry_editor_buffer_line_height_description": "Espaço entre as linhas de código, como múltiplo do tamanho da fonte.",
+	"settings_registry_editor_buffer_size_description": "Tamanho do texto no editor e nos diffs, em pixels.",
+	"settings_registry_editor_description": "O editor de código e os diffs: fonte, indentação e exibição, e os language servers por trás do autocompletar.",
+	"settings_registry_editor_group_editing": "Edição",
+	"settings_registry_editor_label": "Editor",
+	"settings_registry_editor_lsp_custom_description": "Execute o seu próprio servidor para uma linguagem: comando, argumentos, opções de inicialização e configurações.",
+	"settings_registry_editor_lsp_custom_label": "Language server personalizado",
+	"settings_registry_editor_lsp_project_description": "Substitua servidores em um projeto com um arquivo dentro dele; ele tem prioridade sobre as suas configurações.",
+	"settings_registry_editor_lsp_project_label": "Language servers por projeto",
+	"settings_registry_editor_lsp_servers_description": "Veja quais language servers estão instalados, instale ou atualize e abra os logs deles.",
+	"settings_registry_editor_tab_editor_description": "Fonte, indentação e exibição do editor de código e dos diffs.",
+	"settings_registry_editor_tab_languages_description": "Instale, atualize e substitua o language server de cada linguagem.",
+	"settings_registry_editor_tab_languages_label": "Linguagens"
+}

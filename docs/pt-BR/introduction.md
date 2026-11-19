@@ -1,7 +1,7 @@
 ---
 title: "Introdução"
 source: introduction.md
-source_sha: "a023656cb558dfcbab21d68dad3df221296fc7c5"
+source_sha: "e1a3939448d2eed3c50a324bb5e037400ea64a26"
 translation: machine
 ---
 
@@ -51,7 +51,7 @@ e roda `atlas dev`. O Postgres e o Redis sobem, a migration roda primeiro, a API
 |---|---|---|
 | Runtime | Condições de dependência (`started`, `healthy`, `completed_successfully`, `log_ready`), política de reinício, limpeza de órfãos pelo PID exato, túnel SSH, ações com confirmação | [Runtime](runtime.md) |
 | TUI | Uma aba por serviço, busca nos logs com regex, filtros de nível e de tempo, compactação de logs JSON, suporte a mouse, paleta de comandos | [TUI](tui.md) |
-| Logs | Montagem confiável das linhas, buffers limitados, saltos entre erros e avisos, URLs e `path:line` clicáveis | [Logs](logs.md) |
+| Logs | Montagem de linhas que aguenta rajadas, buffers limitados, saltos entre erros e avisos, URLs e `path:line` clicáveis | [Logs](logs.md) |
 | Desktop | Um space por projeto, uma worktree por tarefa, terminais persistentes, status e notificações dos agentes, revisão, PRs, navegador | [App desktop](desktop.md) |
 | Terminal GPU | Renderizador Metal a 120 Hz, gráficos Kitty e sixel, ligaduras, integração com o shell | [Terminal GPU](terminal.md) |
 | MCP | Nove ferramentas, três recursos, três prompts | [MCP](mcp.md) |

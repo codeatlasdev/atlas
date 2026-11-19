@@ -3,11 +3,11 @@
 	import ShellSettings from "../ShellSettings.svelte";
 	import LinksSettings from "./LinksSettings.svelte";
 	import SectionTitle from "./SectionTitle.svelte";
+	import { m } from "#lib/i18n/m.ts";
 </script>
 
-<SectionTitle title="Shell for your projects" setting="shell" first>
-	Services start with the PATH and variables of this shell, the same as in your terminal. Pick another shell
-	if tools like bun or node are not found.
+<SectionTitle title={m.settings_general_shell_links_shell_for_your_projects()} setting="shell" first>
+	{m.settings_general_shell_links_services_start_with_the_path()}
 </SectionTitle>
 <ShellSettings />
 <LinksSettings />

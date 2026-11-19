@@ -1,14 +1,25 @@
 // Translated docs: the git blob sha that ties a translation to its English source, and the checker around it.
-import { afterAll, describe, expect, test } from "bun:test";
+import { afterAll, describe, expect, setDefaultTimeout, test } from "bun:test";
 import { mkdtempSync, rmSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { gitBlobSha } from "./hash.ts";
-import { check, cleanup, errors, finding, blobSha, makeRepo, put, read, rulesOf } from "./testkit.ts";
+import { check, cleanup, errors, finding, blobSha, makeRepo, must, put, read, rulesOf } from "./testkit.ts";
 import { runStatus } from "./check.ts";
 import { loadCtx } from "./types.ts";
 
-afterAll(cleanup);
+// The diff-mode cases build real git repositories and the base resolver reads the environment: run them with a clean one.
+const AMBIENT = ["ATLAS_BASE", "GITHUB_ACTIONS", "GITHUB_EVENT_NAME", "GITHUB_EVENT_PATH"];
+const saved = Object.fromEntries(AMBIENT.map((k) => [k, process.env[k]]));
+for (const k of AMBIENT) delete process.env[k];
+
+afterAll(() => {
+	for (const k of AMBIENT) {
+		if (saved[k] === undefined) delete process.env[k];
+		else process.env[k] = saved[k];
+	}
+	cleanup();
+});
 
 const EN = "docs/getting-started.md";
 const PT = "docs/pt-BR/getting-started.md";
@@ -143,5 +154,111 @@ describe("docs/<locale>/<page>.md", () => {
 		expect(hits.length).toBeGreaterThan(0);
 		expect(hits.every((f) => f.severity === "warn" && (f.line ?? 0) > 5)).toBe(true);
 		expect(hits.map((f) => f.message).join(" ")).not.toContain("utilizador");
+	});
+});
+
+// Each case builds a real git repository; a loaded CI runner needs more than the default 5 s.
+setDefaultTimeout(60_000);
+
+const ISSUE = "https://github.com/codeatlasdev/atlas/issues/700";
+
+/** `makeRepo` committed on `main` (the base) with a `feature` branch checked out: the change under review. */
+async function feature(over: Record<string, string | null> = {}): Promise<string> {
+	const root = await makeRepo(over);
+	must(root, "init", "-q", "-b", "main");
+	must(root, "add", "-A");
+	must(root, "commit", "-q", "-m", "base");
+	must(root, "checkout", "-q", "-b", "feature");
+	return root;
+}
+
+/** The translation restamped to the English file as it is now. */
+const restamp = async (root: string, extra = "") => put(root, PT, read(root, PT).replace(/source_sha: "[0-9a-f]{40}"/, `source_sha: "${await blobSha(root, EN)}"${extra}`));
+const edit = (root: string) => put(root, EN, `${read(root, EN)}\nOne more paragraph.\n`);
+
+describe("a change that edits an English page owes its translation", () => {
+	test("red: English edited, translation untouched", async () => {
+		const root = await feature();
+		edit(root);
+		const f = finding(await docs(root), "docs-outdated");
+		expect(f).toMatchObject({ severity: "error", file: PT });
+		expect(f?.message).toContain(await blobSha(root, EN));
+		expect(f?.message).toContain("translation: pending");
+		expect(errors(await check(root, "docs"))).toHaveLength(1);
+	});
+
+	test("red: English edited, translation touched but still stamped with the old sha", async () => {
+		const root = await feature();
+		edit(root);
+		put(root, PT, read(root, PT).replace("Instale o Atlas.", "Instale o Atlas agora."));
+		expect(finding(await docs(root), "docs-outdated")).toMatchObject({ severity: "error" });
+	});
+
+	test("green: English edited and the translation brought up to date (source_sha restamped)", async () => {
+		const root = await feature();
+		edit(root);
+		await restamp(root);
+		expect(await docs(root)).toEqual([]);
+	});
+
+	test("green: the escape `translation: pending` with an issue link; the page stays outdated (warning, site notice)", async () => {
+		const root = await feature();
+		edit(root);
+		put(root, PT, read(root, PT).replace("source: getting-started.md\n", `source: getting-started.md\ntranslation: pending\nissue: ${ISSUE}\n`));
+		const fs = await docs(root);
+		expect(errors(fs)).toEqual([]);
+		expect(finding(fs, "docs-outdated")).toMatchObject({ severity: "warn", file: PT });
+		expect((await runStatus(loadCtx(root))).find((r) => r.surface === "docs")).toMatchObject({ fresh: 0, outdated: 1 });
+	});
+
+	test("the escape needs an issue URL, and an issue means nothing without it", async () => {
+		const root = await feature();
+		edit(root);
+		const base = read(root, PT);
+		put(root, PT, base.replace("source: getting-started.md\n", "source: getting-started.md\ntranslation: pending\n"));
+		expect(finding(await docs(root), "docs-frontmatter")?.message).toContain("issue");
+		put(root, PT, base.replace("source: getting-started.md\n", "source: getting-started.md\ntranslation: pending\nissue: soon\n"));
+		expect(finding(await docs(root), "docs-frontmatter")?.message).toContain("issue");
+		put(root, PT, base.replace("source: getting-started.md\n", `source: getting-started.md\nissue: ${ISSUE}\n`));
+		expect(finding(await docs(root), "docs-frontmatter")?.message).toContain("only valid with");
+	});
+
+	test("a pending flag on a translation that is current is a warning to remove it", async () => {
+		const root = await feature();
+		edit(root);
+		await restamp(root, `\ntranslation: pending\nissue: ${ISSUE}`);
+		const fs = await docs(root);
+		expect(errors(fs)).toEqual([]);
+		expect(finding(fs, "docs-frontmatter")).toMatchObject({ severity: "warn" });
+		expect(rulesOf(fs)).not.toContain("docs-outdated");
+	});
+
+	test("an English page the change does not touch stays a warning, even when it already lags behind main", async () => {
+		const root = await makeRepo();
+		edit(root); // the base already lags: English moved on, the translation did not
+		must(root, "init", "-q", "-b", "main");
+		must(root, "add", "-A");
+		must(root, "commit", "-q", "-m", "base");
+		must(root, "checkout", "-q", "-b", "feature");
+		put(root, "docs/crew.md", "# Crew\n");
+		put(root, "docs/pt-BR/crew.md", `---\ntitle: "Crew"\nsource: crew.md\nsource_sha: "${await blobSha(root, "docs/crew.md")}"\n---\n\n# Crew\n`);
+		const fs = await docs(root);
+		expect(finding(fs, "docs-outdated")).toMatchObject({ severity: "warn", file: PT });
+		expect(errors(await check(root, "docs"))).toEqual([]);
+	});
+
+	test("a new English page needs its translation in the same change", async () => {
+		const root = await feature();
+		put(root, "docs/crew.md", "# Crew\n");
+		expect(finding(await docs(root), "docs-missing")).toMatchObject({ severity: "error", file: "docs/pt-BR/crew.md" });
+		put(root, "docs/pt-BR/crew.md", `---\ntitle: "Crew"\nsource: crew.md\nsource_sha: "${await blobSha(root, "docs/crew.md")}"\n---\n\n# Crew\n`);
+		expect(await docs(root)).toEqual([]);
+	});
+
+	test("without a git base (a tarball, a detached CI run) it stays the old warning", async () => {
+		const root = await makeRepo();
+		edit(root);
+		expect(finding(await docs(root), "docs-outdated")).toMatchObject({ severity: "warn" });
+		expect(errors(await check(root, "docs"))).toEqual([]);
 	});
 });

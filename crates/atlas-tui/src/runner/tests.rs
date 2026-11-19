@@ -100,7 +100,7 @@ fn history_is_bounded_and_replayed_to_new_clients() {
             &m,
             &ManagerEvent::ServiceNote {
                 name: "api".into(),
-                message: format!("n{i}"),
+                note: crate::runtime::note::Note::plain(format!("n{i}")),
             },
         );
     }

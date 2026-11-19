@@ -30,6 +30,15 @@ export const PLURAL = (one: string, other: string) => [
 	},
 ];
 
+/** A plural with an exact zero as a second selector: CLDR puts 0 in pt-BR's `one`, so "0 arquivo" needs its own arm. */
+export const PLURAL_ZERO = (zero: string, one: string, other: string) => [
+	{
+		declarations: ["input count", "local countExact = count", "local countPlural = count: plural"],
+		selectors: ["countExact", "countPlural"],
+		match: { "countExact=0, countPlural=*": zero, "countExact=*, countPlural=one": one, "countExact=*, countPlural=*": other },
+	},
+];
+
 /** A select on `os`: mac, windows, and the default. */
 export const OS = (mac: string, windows: string, other: string) => [
 	{ declarations: ["input os"], selectors: ["os"], match: { "os=mac": mac, "os=windows": windows, "os=*": other } },
@@ -75,7 +84,7 @@ const APP_EN = {
 };
 
 const APP_PT = {
-	app_files_count: PLURAL("{count} arquivo", "{count} arquivos"),
+	app_files_count: PLURAL_ZERO("Nenhum arquivo", "{count} arquivo", "{count} arquivos"),
 	app_open_branch: "Abrir branch",
 	app_open_docs: "Leia a {#link}documentação{/link}",
 	app_save_button: "Salvar",
@@ -96,7 +105,7 @@ const CLI_EN_V = {
 };
 
 const CLI_PT_V = {
-	cli_files_count: PLURAL("{count} arquivo", "{count} arquivos"),
+	cli_files_count: PLURAL_ZERO("Nenhum arquivo", "{count} arquivo", "{count} arquivos"),
 	cli_lang_current: "Idioma: {lang}",
 };
 
@@ -233,13 +242,18 @@ export function editJson(root: string, p: string, fn: (o: Record<string, unknown
 	put(root, p, json(o));
 }
 
-/** Add a key (English, pt-BR, description) to the app area, reference it from App.svelte, and re-stamp the locks. */
-export function addKey(root: string, key: string, en: unknown, pt: unknown, description: string) {
-	editJson(root, EN, (o) => void (o[key] = en));
-	editJson(root, PT, (o) => void (o[key] = pt));
-	editJson(root, META, (o) => void (o[key] = description));
-	put(root, "apps/desktop/src/App.svelte", `${read(root, "apps/desktop/src/App.svelte")}<i>{m.${key}()}</i>\n`);
+/** Add keys (key, English, pt-BR, description) to the app area, reference each from App.svelte, and re-stamp the locks once. */
+export function addKeys(root: string, keys: [key: string, en: unknown, pt: unknown, description: string][]) {
+	for (const [key, en, pt, description] of keys) {
+		editJson(root, EN, (o) => void (o[key] = en));
+		editJson(root, PT, (o) => void (o[key] = pt));
+		editJson(root, META, (o) => void (o[key] = description));
+		put(root, "apps/desktop/src/App.svelte", `${read(root, "apps/desktop/src/App.svelte")}<i>{m.${key}()}</i>\n`);
+	}
 	fix(loadCtx(root));
 }
+
+/** Add one key; see `addKeys`. */
+export const addKey = (root: string, key: string, en: unknown, pt: unknown, description: string) => addKeys(root, [[key, en, pt, description]]);
 
 export const finding = (fs: Finding[], rule: string, key?: string) => fs.find((f) => f.rule === rule && (key === undefined || f.key === key));

@@ -5,8 +5,12 @@ import { createHash } from "node:crypto";
 
 export const SOURCE_SHA = /^[0-9a-f]{40}$/;
 export const SOURCE_FILE = /^[a-z0-9-]+\.md$/;
-/** The only value of the optional `translation` front matter field: the page was translated by a model and no person reviewed it. */
+/** `translation: machine`: the page was translated by a model and no person reviewed it. */
 export const MACHINE = "machine";
+/** `translation: pending` (with an `issue` link): the English changed and the translation will follow. The page is outdated until
+ * `source_sha` matches again, so it shows the outdated notice; a pending flag on a current page changes nothing. */
+export const PENDING = "pending";
+export const ISSUE_URL = /^https:\/\/github\.com\/[\w.-]+\/[\w.-]+\/issues\/\d+$/;
 
 /** Equal to `git hash-object --no-filters <file>`: sha1 of "blob <byte length>\0" + bytes. */
 export function gitBlobSha(bytes: Uint8Array): string {
@@ -20,7 +24,7 @@ export function gitBlobSha(bytes: Uint8Array): string {
  */
 export type DocState = "missing" | "ok" | "outdated" | "machine";
 
-export function docState(translation: { source_sha: string; translation?: typeof MACHINE } | undefined, currentSha: string): DocState {
+export function docState(translation: { source_sha: string; translation?: typeof MACHINE | typeof PENDING } | undefined, currentSha: string): DocState {
 	if (!translation) return "missing";
 	if (translation.source_sha !== currentSha) return "outdated";
 	return translation.translation === MACHINE ? "machine" : "ok";

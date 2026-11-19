@@ -18,15 +18,25 @@
 	} from "@lucide/svelte";
 	import { api } from "#lib/api.ts";
 	import { tilde } from "#lib/format.ts";
+	import { dateTime } from "#lib/i18n/fmt.ts";
 	import { m } from "#lib/i18n/m.ts";
 	import { updates as u } from "#lib/stores/updates.svelte.ts";
-	import { DEFAULT_CHANNEL, managedView, updateHeadline, updateStatus } from "#lib/updates.ts";
+	import {
+		DEFAULT_CHANNEL,
+		channelName,
+		managedView,
+		stepLabel,
+		updateHeadline,
+		updateStatus,
+	} from "#lib/updates.ts";
 	import HostStatusRow from "./HostStatusRow.svelte";
 	import SectionTitle from "./SectionTitle.svelte";
 	import Tile from "./Tile.svelte";
 	import UpdateChannel from "./UpdateChannel.svelte";
 
 	const CHANGELOG_URL = "https://github.com/codeatlasdev/atlas/blob/main/CHANGELOG.md";
+	const LINK_CMD = "atlas link --desktop";
+	const DEV_CMD = "atlas desktop --dev";
 
 	let logEl: HTMLPreElement | undefined = $state();
 	let notesOpen = $state(false);
@@ -52,23 +62,23 @@
 
 	let checked = $derived(
 		u.checkedAt
-			? `Checked at ${new Date(u.checkedAt).toLocaleTimeString([], { hour: "2-digit", minute: "2-digit" })}`
+			? m.settings_updates_checked_at({
+					time: dateTime(u.checkedAt, { hour: "2-digit", minute: "2-digit" }),
+				})
 			: "",
 	);
 
-	let channelLabel = $derived(
-		(u.channelState?.channel ?? DEFAULT_CHANNEL).replace(/^./, (c) => c.toUpperCase()),
-	);
+	let channelLabel = $derived(channelName(u.channelState?.channel ?? DEFAULT_CHANNEL));
 
 	let managed = $derived(u.outcome === "managed" && u.available ? managedView(u.progress.managed) : null);
 
 	async function copy(text: string) {
 		await navigator.clipboard.writeText(text);
-		toast.success("Copied");
+		toast.success(m.viewers_files_copy_copied());
 	}
 </script>
 
-<SectionTitle title="Updates" setting="updates" first />
+<SectionTitle title={m.settings_registry_general_group_updates()} setting="updates" first />
 <div
 	class="hero"
 	class:avail={status === "available"}
@@ -85,12 +95,12 @@
 	<div class="htext">
 		<h2>{headline}</h2>
 		<p>
-			{#if status === "checking"}Looking for the newest release…{:else if checked}{checked}{/if}
+			{#if status === "checking"}{m.settings_updates_looking_newest()}{:else if checked}{checked}{/if}
 			<span class="chip mono">{u.info?.app.version ?? "—"}</span>
 			<span class="chip">{channelLabel}</span>
 			{#if u.release}
 				<button class="link" onclick={() => api.openUrl(u.release!.url)}
-					>Release on GitHub <ExternalLink size={11} /></button
+					>{m.settings_updates_release_on_github()} <ExternalLink size={11} /></button
 				>
 			{/if}
 		</p>
@@ -99,59 +109,61 @@
 		{#if u.relaunchNeeded}
 			<Button onclick={u.relaunch}>
 				{#snippet leading()}<RotateCcw size={14} />{/snippet}
-				Restart Atlas
+				{m.settings_updates_restart_atlas()}
 			</Button>
 		{:else if status === "dev"}
 			<Button variant="outlined" disabled={!!u.running} onclick={u.unlink}>
 				{#snippet leading()}{#if u.running === "unlink"}<Spinner size={14} />{:else}<Unlink
 							size={14}
 						/>{/if}{/snippet}
-				Unlink dev build
+				{m.settings_updates_unlink_dev()}
 			</Button>
 		{:else if status === "available" || status === "installing"}
 			<Button disabled={!!u.running} onclick={u.updateAll}>
 				{#snippet leading()}{#if u.running === "update"}<Spinner size={14} />{:else}<Download
 							size={14}
 						/>{/if}{/snippet}
-				{u.running === "update" ? "Updating…" : "Update CLI and app"}
+				{u.running === "update" ? m.settings_updates_updating() : m.settings_updates_update_all()}
 			</Button>
 		{/if}
 		<Button variant="outlined" disabled={u.checking || !!u.running} onclick={() => u.check()}>
 			{#snippet leading()}<RefreshCw size={13} />{/snippet}
-			Check now
+			{m.settings_updates_check_now()}
 		</Button>
 	</div>
 	<div class="hfoot">
-		<label class="auto" title="On launch, when you return to the app, and every 6 hours">
+		<label class="auto" title={m.settings_updates_auto_hint()}>
 			<Switch
 				checked={u.prefs.auto}
-				aria-label="Check for updates automatically"
+				aria-label={m.settings_updates_auto_aria()}
 				onchange={(v) => u.setAuto(v)}
 			/>
-			Check automatically
+			{m.settings_updates_auto_label()}
 		</label>
 		<button class="link" onclick={() => api.openUrl(CHANGELOG_URL)}
-			>Full changelog <ExternalLink size={11} /></button
+			>{m.settings_updates_full_changelog()} <ExternalLink size={11} /></button
 		>
 	</div>
 </div>
 
 {#if managed?.command}
 	<Alert severity="info" title={managed.title}>
-		Run this in a terminal to update it:
+		{m.settings_updates_managed_run()}
 		<code class="mono ca-selectable">{managed.command}</code>
 		<Button variant="outlined" onclick={() => copy(managed.command!)}>
 			{#snippet leading()}<Copy size={13} />{/snippet}
-			Copy command
+			{m.crew_onboarding_connect_step_copy_command()}
 		</Button>
 		{#if managed.installable}
-			<Button disabled={!!u.running} onclick={u.installPackage}>Install now (asks for your password)</Button>
+			<Button disabled={!!u.running} onclick={u.installPackage}
+				>{m.settings_updates_install_now_password()}</Button
+			>
 		{/if}
 	</Alert>
 {/if}
 
 {#if u.error}
-	<Alert severity="error" title="Could not check for updates">{u.error}</Alert>
+	<Alert severity="error" title={m.settings_updates_check_failed()}>{u.error}</Alert>
 {/if}
 
 {#if u.release?.yanked}
@@ -166,8 +178,8 @@
 
 {#if u.available && !u.pill && !u.linked}
 	<p class="skipnote">
-		You skipped {u.release?.version}, so Atlas will not remind you. It will tell you about the next one.
-		<button class="link" onclick={u.unskip}>Stop skipping</button>
+		{m.settings_updates_skipped_note({ version: u.release?.version ?? "" })}
+		<button class="link" onclick={u.unskip}>{m.settings_updates_stop_skipping()}</button>
 	</p>
 {/if}
 
@@ -179,7 +191,9 @@
 		title={u.info?.cli.path ? tilde(u.info.cli.path) : undefined}
 		mono
 	>
-		{#snippet badges()}{#if u.info?.cli.linked_to}<span class="tag info">linked</span>{/if}{/snippet}
+		{#snippet badges()}{#if u.info?.cli.linked_to}<span class="tag info"
+					>{m.settings_updates_tag_linked()}</span
+				>{/if}{/snippet}
 		{#snippet version()}
 			{u.info?.cli.version ?? "—"}
 			{#if u.cliBehind && !u.info?.cli.linked_to}<ArrowRight size={12} /><b>{u.release?.version}</b>{/if}
@@ -193,9 +207,8 @@
 		mono
 	>
 		{#snippet badges()}
-			{#if u.info?.app.dev}<span class="tag warn">Dev</span>{:else if u.info?.app.linked_to}<span
-					class="tag info">linked</span
-				>{/if}
+			{#if u.info?.app.dev}<span class="tag warn">{m.settings_general_nav_dev()}</span
+				>{:else if u.info?.app.linked_to}<span class="tag info">{m.settings_updates_tag_linked()}</span>{/if}
 		{/snippet}
 		{#snippet version()}
 			{u.info?.app.version ?? "—"}
@@ -207,10 +220,10 @@
 
 {#if u.aheadOfChannel && !u.linked}
 	<p class="skipnote">
-		You run a newer build than the {u.channelState?.channel ?? "selected"} channel offers ({u.release
-			?.version}), so no update is offered. Pick a more adventurous channel to keep moving forward, or install
-		{u.release?.version} explicitly with the button at the bottom (settings written by the newer build may not be
-		readable).
+		{m.settings_updates_ahead_note({
+			channel: channelName(u.channelState?.channel ?? DEFAULT_CHANNEL),
+			version: u.release?.version ?? "",
+		})}
 	</p>
 {/if}
 
@@ -218,14 +231,14 @@
 
 {#if u.linked}
 	<div class="devbox">
-		<div class="devtitle"><FlaskConical size={14} /> Dev link active</div>
-		<p>This build runs from your local checkout, so Atlas will not replace it with a release.</p>
+		<div class="devtitle"><FlaskConical size={14} /> {m.settings_updates_dev_link_title()}</div>
+		<p>{m.settings_updates_dev_link_body()}</p>
 		<div class="cmds">
-			<button class="cmd mono" onclick={() => copy("atlas link --desktop")}
-				><Kbd>rebuild</Kbd> atlas link --desktop</button
+			<button class="cmd mono" onclick={() => copy(LINK_CMD)}
+				><Kbd>{m.settings_updates_dev_rebuild()}</Kbd> {LINK_CMD}</button
 			>
-			<button class="cmd mono" onclick={() => copy("atlas desktop --dev")}
-				><Kbd>hot reload</Kbd> atlas desktop --dev</button
+			<button class="cmd mono" onclick={() => copy(DEV_CMD)}
+				><Kbd>{m.settings_updates_dev_hot_reload()}</Kbd> {DEV_CMD}</button
 			>
 		</div>
 	</div>
@@ -238,33 +251,35 @@
 				{#if s.state === "done"}<CheckCircle2 size={13} />{:else if s.state === "active"}<Spinner
 						size={12}
 					/>{:else if s.state === "failed"}<CircleAlert size={13} />{:else}<i></i>{/if}
-				{s.label}
+				{stepLabel(s.id)}
 			</li>
 		{/each}
 	</ol>
-	<button class="link" onclick={() => (notesOpen = !notesOpen)}>{notesOpen ? "Hide" : "Show"} details</button>
+	<button class="link" onclick={() => (notesOpen = !notesOpen)}>
+		{notesOpen ? m.settings_updates_details_hide() : m.settings_updates_details_show()}
+	</button>
 	{#if notesOpen}<pre class="log mono ca-selectable" bind:this={logEl}>{u.log.join("\n") ||
-				"starting…"}</pre>{/if}
+				m.settings_updates_log_starting()}</pre>{/if}
 {/if}
 
 <div class="foot">
 	{#if u.available && !u.linked && !u.relaunchNeeded}
-		<Button variant="ghost" onclick={u.showWhatsNew}>What's new</Button>
+		<Button variant="ghost" onclick={u.showWhatsNew}>{m.shell_commands_whats_new()}</Button>
 	{:else if u.aheadOfChannel && u.info && !u.info.app.dev && !u.relaunchNeeded}
-		<Button variant="ghost" onclick={u.showWhatsNew}>What's new</Button>
+		<Button variant="ghost" onclick={u.showWhatsNew}>{m.shell_commands_whats_new()}</Button>
 		<Button variant="outlined" disabled={!!u.running} onclick={u.downgrade}>
 			{#snippet leading()}{#if u.running === "update"}<Spinner size={14} />{:else}<Download
 						size={14}
 					/>{/if}{/snippet}
-			Install {u.release?.version} now (downgrade)
+			{m.settings_updates_install_downgrade({ version: u.release?.version ?? "" })}
 		</Button>
 	{:else if u.info && !u.info.app.dev && !u.linked && !u.relaunchNeeded}
-		<Button variant="ghost" onclick={u.showWhatsNew}>What's new</Button>
+		<Button variant="ghost" onclick={u.showWhatsNew}>{m.shell_commands_whats_new()}</Button>
 		<Button variant="outlined" disabled={!!u.running} onclick={u.reinstall}>
 			{#snippet leading()}{#if u.running === "reinstall"}<Spinner size={14} />{:else}<Download
 						size={14}
 					/>{/if}{/snippet}
-			Reinstall app
+			{m.settings_updates_reinstall_app()}
 		</Button>
 	{/if}
 </div>

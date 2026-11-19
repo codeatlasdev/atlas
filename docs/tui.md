@@ -24,14 +24,14 @@ description: "The atlas dev dashboard: layout, key bindings, log viewer, palette
 └─────────────────────────────────────────────────────────────────┘
 ```
 
-- **Tabs**: `All` (every service merged) plus one per service and one per open [session](#sessions-and-attach). Each label starts with its jump digit (`0`–`9`) and a service tab shows a state dot. Services with `hide_logs: true` get no tab and are left out of `All`. Tabs are clickable. When they do not all fit, the bar shows whole labels only and `‹ +N` / `› +N` at the edges (N = hidden tabs; clickable).
+- **Tabs**: `All` (every service merged) plus one per service and one per open [session](#sessions-and-attach). Each label starts with its jump digit (`0` to `9`) and a service tab shows a state dot. Services with `hide_logs: true` get no tab and are left out of `All`. Tabs are clickable. When they do not all fit, the bar shows whole labels only and `‹ +N` / `› +N` at the edges (N = hidden tabs; clickable).
 - **Log viewer**: lines are `HH:MM:SS [service] text`, colored per service, with ANSI colors preserved and long lines hard-wrapped. Each service keeps up to 50,000 lines in memory (capped at 8 MiB per service, whichever comes first); the full history is on disk in `.logs/`.
-- **Sidebar** (shown when the terminal is at least 90 columns plus the sidebar width wide; the sidebar is 34–44 columns, growing with the longest service name, so roughly 124–134 columns. Narrower terminals, and `z` (zoom) at any width, give logs the full width and add a one-line **status strip** above the footer: the worst issue first (`✗ api gave up after 3 restarts · 5/7 running`), clickable to jump to that tab, then the health counts and any running operation):
+- **Sidebar** (shown when the terminal is at least 90 columns plus the sidebar width wide; the sidebar is 34 to 44 columns, growing with the longest service name, so roughly 124 to 134 columns. Narrower terminals, and `z` (zoom) at any width, give logs the full width and add a one-line **status strip** above the footer: the worst issue first (`✗ api gave up after 3 restarts · 5/7 running`), clickable to jump to that tab, then the health counts and any running operation):
   - health summary and gauge: `5/5 running · 1 done · 1 stopped`. Completed one-shots and services you stopped, disabled or that an action suspended are left out of the denominator; the dot pulses only while something is failed or starting;
   - **SERVICES**: state icon, name, port, and a `⋯` hint (open the context menu with `m`). A second line `↳ …` shows scheduler notes: `waiting for migrate (completed_successfully)`, `restarting in 4s (2/5)`, `waiting for :3000 (12s)`, `gave up after 5 restarts`, `done`, `restarted ×2`. A service with something to say about [memory](configuration.md#memory) (over a budget, a suspected leak, or a rising trend) gets one more `↳` line per fact: `memory 2.1 GB · rising +42 MB/min`, `budget warn`, `leak suspected: +600 MB over 12 reloads`; a steady service in budget gets none. Over `memory_warn` (or `max_memory` with `on_memory_max: notify`) the icon is `◐` (degraded) and the note carries the reason. Failed rows also show `exit <code>`, and services that restarted show `↻<n>`;
   - **MOBILE**: live build phase of active mobile sessions;
   - **OPERATIONS**: the running non-session action with elapsed time and last output line;
-  - **⚠ ISSUES**: failed `critical` services with the last log line and `critical_help`;
+  - **ISSUES**: failed `critical` services with the last log line and `critical_help`;
   - **TUNNEL** (only when a `tunnel` is configured): state icon, `ssh :<local_port> → <ssh_host>` and a second line `→ <remote_host>:<remote_port>` (`off (opens on demand)` until started), and the **Kill tunnel on exit** checkbox. Its ssh output has its own `tunnel` log tab;
   - **EVENTS**: the last 50 notable events, newest first, one icon/color per kind: `✗` crash (with exit code), `✓` done, `●` started, `○` stopped, `⏸ web paused by Reset DB`, `⧗` waiting, `↻` restart, `⚠` critical alert. The time column shows only when the minute changes.
 
@@ -69,26 +69,26 @@ Dashboard keys (the **All** tab and service tabs). `?` shows the same list in-ap
 | Key / gesture | Action |
 |---|---|
 | `Tab` / `Shift+Tab` | Next / previous tab |
-| `0`–`9` | Jump to tab by index (`0` = All) if it exists |
-| **mouse click — tab chip** | Switch to that tab |
-| **mouse click — `‹` / `›`** | Scroll the tab bar left / right when there are too many to fit |
-| **mouse click — sidebar service row** | Switch to that service's log tab |
-| **mouse click — sidebar `⋯`** | Open the service context menu |
-| **mouse click — footer key hint** | Same as pressing that key (only where the key is active) |
-| **mouse click — search bar** | Start a log search (same as `/`) |
-| **mouse click — command palette item** | Select and run (same as Enter) |
-| **mouse click — device picker item** | Select and confirm (same as Enter) |
-| **mouse click — quit modal buttons** | Cancel or Quit (attached: Detach or Stop everything) |
-| **mouse click — confirm modal buttons** | Cancel (Esc) or Accept (Enter) |
-| **mouse click — service menu item** | Run that action |
-| **mouse click — help modal** | Close (same as `?` / Esc) |
-| **mouse click — toast** | Dismiss the toast |
-| **mouse click — modal backdrop** | Close the modal (same as Esc) |
-| **mouse wheel — logs** | Scroll 3 rows |
-| **mouse wheel — command palette** | Move selection up / down |
-| **mouse wheel — device picker** | Move selection up / down |
-| **log scrollbar — click** | Jump to that position in the log |
-| **log scrollbar — drag** | Continuous scroll |
+| `0` to `9` | Jump to tab by index (`0` = All) if it exists |
+| **mouse click on a tab chip** | Switch to that tab |
+| **mouse click on `‹` / `›`** | Scroll the tab bar left / right when there are too many to fit |
+| **mouse click on a sidebar service row** | Switch to that service's log tab |
+| **mouse click on the sidebar `⋯`** | Open the service context menu |
+| **mouse click on a footer key hint** | Same as pressing that key (only where the key is active) |
+| **mouse click on the search bar** | Start a log search (same as `/`) |
+| **mouse click on a command palette item** | Select and run (same as Enter) |
+| **mouse click on a device picker item** | Select and confirm (same as Enter) |
+| **mouse click on the quit modal buttons** | Cancel or Quit (attached: Detach or Stop everything) |
+| **mouse click on the confirm modal buttons** | Cancel (Esc) or Accept (Enter) |
+| **mouse click on a service menu item** | Run that action |
+| **mouse click on the help modal** | Close (same as `?` / Esc) |
+| **mouse click on a toast** | Dismiss the toast |
+| **mouse click on the modal backdrop** | Close the modal (same as Esc) |
+| **mouse wheel over the logs** | Scroll 3 rows |
+| **mouse wheel over the command palette** | Move selection up / down |
+| **mouse wheel over the device picker** | Move selection up / down |
+| **click on the log scrollbar** | Jump to that position in the log |
+| **drag on the log scrollbar** | Continuous scroll |
 | `M` | Toggle mouse capture. Off lets your terminal select text natively; with it on, hold `⌥` (Option) while dragging. |
 
 ### Scrolling
@@ -150,7 +150,7 @@ Toggles that differ from the default are listed on the search/status line (`wrap
 ### Searching and filtering
 
 - `/` opens the search bar at the bottom and starts **find** mode: every line stays visible, all matches in view are highlighted and the current one is stronger. The bar shows `3/41` (current / total matches in the current tab; the total covers the whole buffer, not just the screen). `n` / `N` jump to the next / previous match (wrapping, scrolling the match into view and pausing follow); they are only active while a find query exists, so they never shadow `open_key`/action keys otherwise.
-- `Tab` inside the bar switches **find ↔ filter**. Filter shows only matching lines (the pre-existing behavior); the bar shows the number of lines kept.
+- `Tab` inside the bar switches between **find** and **filter**. Filter shows only matching lines (the pre-existing behavior); the bar shows the number of lines kept.
 - `Ctrl+R` toggles **regex** (Rust `regex` syntax; an invalid pattern shows `invalid regex` and matches nothing). Matching is **smartcase**: an all-lowercase query is case-insensitive, any uppercase letter makes it case-sensitive.
 - `Enter` keeps the query and returns to normal keys (`n`/`N` keep working); `Esc` clears it. With no matches the pane shows a centered `0 matches in <tab>`.
 - `v` sets the minimum level shown. Levels are inferred from the text: lines containing `error`, `err `, `fatal`, `panic` or red ANSI are *error*; `warn` or yellow are *warn*; `debug`, `trace` or gray are *debug*; the rest are *info*. `warn+` shows warn and error; `error` shows only errors. An active level shows as a badge next to the search bar.

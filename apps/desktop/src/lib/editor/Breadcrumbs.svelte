@@ -13,6 +13,7 @@
 	import { pathToUri, posToOffset } from "#lib/lsp/convert.ts";
 	import { ops } from "#lib/symbols.ts";
 	import type { LspDoc } from "#lib/lsp/client.svelte.ts";
+	import { m } from "#lib/i18n/m.ts";
 
 	let {
 		view,
@@ -72,7 +73,7 @@
 	}
 </script>
 
-<nav class="crumbs" aria-label="Breadcrumbs">
+<nav class="crumbs" aria-label={m.workbench_editor_breadcrumbs()}>
 	{#each files as seg, i (seg.path)}
 		{#if i > 0}<ChevronRight size={11} class="sep" />{/if}
 		{#if seg.kind === "file"}

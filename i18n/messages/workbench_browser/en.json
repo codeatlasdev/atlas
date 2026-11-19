@@ -1,0 +1,18 @@
+{
+	"workbench_browser_address_placeholder": "Search or enter address ({key})",
+	"workbench_browser_design_mode": "Design mode: pick an element for the agent",
+	"workbench_browser_empty_hint": "Type an address or a search above ({key}).",
+	"workbench_browser_failure_host": "Couldn't find that address. Check it for typos.",
+	"workbench_browser_failure_offline": "No internet connection. Check your network and reload.",
+	"workbench_browser_failure_other": "Couldn't load the page. Reload to try again.",
+	"workbench_browser_failure_refused": "Nothing answered at this address. Is the dev server running?",
+	"workbench_browser_failure_timeout": "The server took too long to answer.",
+	"workbench_browser_failure_title": "This page can't be reached",
+	"workbench_browser_failure_tls": "Couldn't make a secure connection: the certificate is missing, expired or not trusted.",
+	"workbench_browser_forward": "Forward",
+	"workbench_browser_open_in_browser": "Open in browser",
+	"workbench_browser_open_in_system_browser": "Open in system browser",
+	"workbench_browser_pick_hint": "Click an element in the page. {key} cancels.",
+	"workbench_browser_reload": "Reload",
+	"workbench_browser_with_screenshot": "+ screenshot"
+}

@@ -28,6 +28,7 @@ import { planOpen, planSave, toViewText, type OpenPlan } from "#lib/editor/sessi
 import { editorPrefs, type EditorPrefs } from "#lib/editor/settings.ts";
 import type { StatusInput } from "#lib/editor/statusbar.ts";
 import { languageLabel } from "#lib/editor/statusbar.ts";
+import { m } from "#lib/i18n/m.ts";
 
 const HEX_BYTES = 4096;
 const SAVE_IDLE_MS = 500;
@@ -75,7 +76,7 @@ export class EditorSession {
 	conflict = $state<{ text: string } | null>(null);
 	/** The file was deleted on disk. */
 	deleted = $state(false);
-	/** Why external changes are not followed live (the watcher failed); empty when they are. */
+	/** Why external changes are not followed live (the watcher failed): the error, shown with `workbench_editor_watch_failed`; empty when they are. */
 	watchError = $state("");
 	cursor = $state({ line: 1, col: 1, count: 1, chars: 0, lines: 1 });
 
@@ -296,7 +297,9 @@ export class EditorSession {
 			// Edits made while the write was in flight keep the buffer dirty.
 			this.#ext.dirty = this.dirty = this.#isDirty(this.view?.state.doc ?? snap.doc);
 		} catch (e) {
-			toast.error(`Save failed: ${errText(e)}`);
+			// Loaded on demand: the light editor of a loose file shares this class and never needs the toast's dialog.
+			const { hostErrorToast } = await import("#lib/gitToast.ts");
+			hostErrorToast(e, m.workbench_editor_save_failed({ path: this.relPath, error: errText(e) }));
 		}
 	}
 
@@ -313,7 +316,7 @@ export class EditorSession {
 		if (!known || !st || (st.mtime === known.mtime && st.size === known.size)) return false;
 		const effect = await this.#diskChanged();
 		if (effect === "unreadable") {
-			toast.error(`Not saved: ${this.relPath} changed on disk and cannot be read`);
+			toast.error(m.workbench_editor_not_saved_unreadable({ path: this.relPath }));
 			return true;
 		}
 		if (effect !== "reload" && effect !== "prompt-conflict") return false;
@@ -323,7 +326,8 @@ export class EditorSession {
 
 	/** A save was refused because of someone else's change: on close that is the user's last chance to hear it. */
 	#notSaved() {
-		if (this.#closing && this.dirty) toast.error(`Not saved: ${this.relPath} changed on disk`);
+		if (this.#closing && this.dirty)
+			toast.error(m.workbench_editor_not_saved_changed({ path: this.relPath }));
 	}
 
 	/** Discard the buffer and show what is on disk (Revert file). */
@@ -412,7 +416,7 @@ export class EditorSession {
 		this.#watchId = `ed:${this.abs}:${Math.random().toString(36).slice(2, 8)}`;
 		this.io.fsWatch(dir, this.#watchId).catch((e) => {
 			// Saves still compare the file with what we last read (`#changedOnDisk`); only live updates are lost.
-			this.watchError = `External changes to this file are not watched: ${errText(e)}`;
+			this.watchError = errText(e);
 		});
 		let timer: number | undefined;
 		this.#off = listen<{ ev: string; id?: string; paths?: string[]; kind?: string }>("host://event", (e) => {

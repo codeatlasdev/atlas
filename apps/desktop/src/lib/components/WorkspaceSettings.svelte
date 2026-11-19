@@ -19,6 +19,7 @@
 	import TextInput from "#lib/settings/TextInput.svelte";
 	import WorktreePreview from "#lib/settings/WorktreePreview.svelte";
 	import HygieneGroup from "./settings/HygieneGroup.svelte";
+	import { m } from "#lib/i18n/m.ts";
 
 	let workspaceDir = $state("");
 	let branchPrefix = $state("git-username");
@@ -83,20 +84,21 @@
 </script>
 
 {#if loadError}
-	<LoadError what="your workspace settings" error={loadError} />
+	<LoadError what="workspace" error={loadError} />
 {/if}
 
-<Group title="New worktrees">
+<Group title={m.settings_general_workspace_new_worktrees()}>
 	<Row
 		id="ws-dir"
-		label="Worktree folder"
-		description="Where Atlas creates checkouts. Leave empty to use ~/.atlas/worktrees."
+		label={m.settings_general_workspace_worktree_folder()}
+		description={m.settings_general_workspace_where_atlas_creates_checkouts_leave()}
 		stack
 	>
+		<!-- i18n-ignore: an example path, not prose -->
 		<TextInput
 			mono
 			width="100%"
-			label="Worktree folder"
+			label={m.settings_general_workspace_worktree_folder()}
 			placeholder="~/.atlas/worktrees"
 			value={workspaceDir}
 			onchange={(v) => {
@@ -112,11 +114,11 @@
 	</Row>
 	<Row
 		id="ws-nest"
-		label="Group by repository"
-		description="Put each worktree in a folder named after its repository, so projects do not mix."
+		label={m.settings_general_workspace_group_by_repository()}
+		description={m.settings_general_workspace_put_each_worktree_in_a()}
 	>
 		<Switch
-			aria-label="Group by repository"
+			aria-label={m.settings_general_workspace_group_by_repository()}
 			checked={nest}
 			onchange={(v) => {
 				nest = v;
@@ -126,17 +128,17 @@
 	</Row>
 	<Row
 		id="ws-prefix"
-		label="Branch name prefix"
-		description="Added in front of every branch Atlas creates, such as your-name/fix-login."
+		label={m.settings_general_workspace_branch_name_prefix()}
+		description={m.settings_general_workspace_added_in_front_of_every()}
 	>
 		<SegmentedControl
-			aria-label="Branch name prefix"
+			aria-label={m.settings_general_workspace_branch_name_prefix()}
 			size="sm"
 			value={branchPrefix}
 			items={[
-				{ value: "git-username", label: "My git name" },
-				{ value: "custom", label: "Custom" },
-				{ value: "none", label: "None" },
+				{ value: "git-username", label: m.settings_general_workspace_prefix_git_name() },
+				{ value: "custom", label: m.settings_general_workspace_prefix_custom() },
+				{ value: "none", label: m.settings_general_workspace_prefix_none() },
 			]}
 			onchange={(v) => {
 				branchPrefix = v;
@@ -145,10 +147,13 @@
 		/>
 	</Row>
 	{#if branchPrefix === "custom"}
-		<Row label="Custom prefix" description="Text to put before each new branch name.">
+		<Row
+			label={m.settings_general_workspace_custom_prefix()}
+			description={m.settings_general_workspace_text_to_put_before_each()}
+		>
 			<TextInput
-				label="Custom prefix"
-				placeholder="team"
+				label={m.settings_general_workspace_custom_prefix()}
+				placeholder={m.settings_general_workspace_team()}
 				value={branchPrefixCustom}
 				onchange={(v) => {
 					branchPrefixCustom = v;
@@ -160,22 +165,22 @@
 </Group>
 
 <Group
-	title="Auto clean up"
-	description="Atlas never removes a worktree with unsaved changes or commits that are not on a remote, and keeps its branch."
+	title={m.settings_general_workspace_auto_clean_up()}
+	description={m.settings_general_workspace_atlas_never_removes_a_worktree()}
 >
 	<Row
 		id="ws-autoclean"
-		label="Remove worktrees automatically"
-		description="Checked every 15 minutes. Pinned worktrees and the one you are viewing are skipped."
+		label={m.settings_general_workspace_remove_worktrees_automatically()}
+		description={m.settings_general_workspace_checked_every_15_minutes_pinned()}
 	>
 		<SegmentedControl
-			aria-label="Remove worktrees automatically"
+			aria-label={m.settings_general_workspace_remove_worktrees_automatically()}
 			size="sm"
 			value={auto.mode}
 			items={[
-				{ value: "off", label: "Off" },
-				{ value: "merged", label: "PR merged" },
-				{ value: "idle", label: "Idle" },
+				{ value: "off", label: m.settings_capture_timer_off() },
+				{ value: "merged", label: m.settings_general_workspace_cleanup_merged() },
+				{ value: "idle", label: m.settings_general_workspace_cleanup_idle() },
 			]}
 			onchange={(v) => {
 				auto.mode = v as CleanupMode;
@@ -184,9 +189,12 @@
 		/>
 	</Row>
 	{#if auto.mode === "idle"}
-		<Row label="Idle for (days)" description="Days without agent activity before a worktree is removed.">
+		<Row
+			label={m.settings_general_workspace_idle_for_days()}
+			description={m.settings_general_workspace_days_without_agent_activity_before()}
+		>
 			<TextInput
-				label="Idle for (days)"
+				label={m.settings_general_workspace_idle_for_days()}
 				value={String(auto.days)}
 				onchange={(v) => {
 					auto = cleanupPrefs({ autoCleanup: auto.mode, autoCleanupDays: v });
@@ -196,27 +204,32 @@
 		</Row>
 	{/if}
 	{#each cleaned as c (c.at + c.name)}
-		<Row label={c.name} description={`Cleaned ${ago(c.at)}; branch ${c.branch} kept.`}>
-			<Button size="sm" variant="glass" onclick={() => restore(c)}>Restore</Button>
+		<Row
+			label={c.name}
+			description={m.settings_general_workspace_cleaned({ when: ago(c.at), branch: c.branch })}
+		>
+			<Button size="sm" variant="glass" onclick={() => restore(c)}
+				>{m.settings_general_workspace_restore()}</Button
+			>
 		</Row>
 	{/each}
 </Group>
 
 <Group
-	title="Clean up"
-	description="Linked worktrees take disk space. Scan to see how big each one is, its last commit and whether it has unsaved work."
+	title={m.settings_general_workspace_clean_up()}
+	description={m.settings_general_workspace_linked_worktrees_take_disk_space()}
 >
 	<Row
 		id="ws-cleanup"
-		label="Linked worktrees"
-		description="Tick the ones you no longer need, then delete them."
+		label={m.settings_general_workspace_linked_worktrees()}
+		description={m.settings_general_workspace_tick_the_ones_you_no()}
 	>
-		<Button size="sm" variant="glass" onclick={scan}>Scan</Button>
+		<Button size="sm" variant="glass" onclick={scan}>{m.settings_general_workspace_scan()}</Button>
 		<Button
 			size="sm"
 			variant="destructive"
 			disabled={!Object.values(picked).some(Boolean)}
-			onclick={deleteSelected}>Delete selected</Button
+			onclick={deleteSelected}>{m.settings_general_workspace_delete_selected()}</Button
 		>
 	</Row>
 	{#each linked as p (p.id)}
@@ -229,13 +242,15 @@
 				<span>{size(s.kb)}</span>
 				<span>{s.last_commit ? ago(s.last_commit * 1000) : "-"}</span>
 				<span>
-					{s.dirty ? "unsaved changes" : "clean"}{#if s.ahead !== null}
+					{s.dirty
+						? m.settings_general_workspace_state_dirty()
+						: m.settings_general_workspace_state_clean()}{#if s.ahead !== null}
 						· ↑{s.ahead} ↓{s.behind}{/if}
 				</span>
 			{/if}
 		</label>
 	{:else}
-		<p class="empty">No linked worktrees yet. Create one from the sidebar and it will show up here.</p>
+		<p class="empty">{m.settings_general_workspace_no_linked_worktrees_yet_create()}</p>
 	{/each}
 </Group>
 

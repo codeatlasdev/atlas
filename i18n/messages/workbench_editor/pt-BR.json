@@ -1,0 +1,178 @@
+{
+	"workbench_editor_breadcrumbs": "Trilha de navegação",
+	"workbench_editor_changes_vs_head": "Alterações em relação ao HEAD",
+	"workbench_editor_cm_close": "fechar",
+	"workbench_editor_cm_completions": "Sugestões",
+	"workbench_editor_cm_control_character": "Caractere de controle",
+	"workbench_editor_cm_current_match": "correspondência atual",
+	"workbench_editor_cm_diagnostics": "Diagnósticos",
+	"workbench_editor_cm_folded_code": "código recolhido",
+	"workbench_editor_cm_go": "ir",
+	"workbench_editor_cm_no_diagnostics": "Nenhum diagnóstico",
+	"workbench_editor_cm_on_line": "na linha",
+	"workbench_editor_cm_replaced_match_on_line": "correspondência substituída na linha $",
+	"workbench_editor_cm_replaced_matches": "$ correspondências substituídas",
+	"workbench_editor_cm_selection_deleted": "Seleção excluída",
+	"workbench_editor_cm_to": "até",
+	"workbench_editor_cm_unfold": "expandir",
+	"workbench_editor_cmd_duplicate_line": "Duplicar linha",
+	"workbench_editor_cmd_fold_all": "Recolher tudo",
+	"workbench_editor_cmd_join_lines": "Juntar linhas",
+	"workbench_editor_cmd_lowercase": "Converter para minúsculas",
+	"workbench_editor_cmd_reindent": "Reindentar seleção",
+	"workbench_editor_cmd_revert_file": "Reverter arquivo",
+	"workbench_editor_cmd_sort_ascending": "Ordenar linhas em ordem crescente",
+	"workbench_editor_cmd_sort_descending": "Ordenar linhas em ordem decrescente",
+	"workbench_editor_cmd_toggle_wrap": "Alternar quebra de linha",
+	"workbench_editor_cmd_trim_whitespace": "Remover espaços no fim das linhas",
+	"workbench_editor_cmd_unfold_all": "Expandir tudo",
+	"workbench_editor_cmd_uppercase": "Converter para maiúsculas",
+	"workbench_editor_convert_file": "Converter arquivo",
+	"workbench_editor_convert_to_spaces": "Converter indentação em espaços",
+	"workbench_editor_convert_to_tabs": "Converter indentação em tabulações",
+	"workbench_editor_could_not_open": "Não foi possível abrir {path}",
+	"workbench_editor_current": "atual",
+	"workbench_editor_encoding_utf8_bom": "UTF-8 com BOM",
+	"workbench_editor_eol_mixed": "Misto",
+	"workbench_editor_eol_mixed_title": "Fim de linha misto: selecione para unificar",
+	"workbench_editor_errors": [
+		{
+			"declarations": [
+				"input count",
+				"local countExact = count",
+				"local countPlural = count: plural"
+			],
+			"selectors": [
+				"countExact",
+				"countPlural"
+			],
+			"match": {
+				"countExact=0, countPlural=*": "Nenhum erro",
+				"countExact=*, countPlural=one": "{count} erro",
+				"countExact=*, countPlural=*": "{count} erros"
+			}
+		}
+	],
+	"workbench_editor_find_all": "Todas",
+	"workbench_editor_find_and_replace": "Localizar e substituir",
+	"workbench_editor_find_found": [
+		{
+			"declarations": [
+				"input count",
+				"local countExact = count",
+				"local countPlural = count: plural"
+			],
+			"selectors": [
+				"countExact",
+				"countPlural"
+			],
+			"match": {
+				"countExact=0, countPlural=*": "Nenhuma encontrada",
+				"countExact=*, countPlural=one": "{count} encontrada",
+				"countExact=*, countPlural=*": "{count} encontradas"
+			}
+		}
+	],
+	"workbench_editor_find_found_capped": "{count}+ encontradas",
+	"workbench_editor_find_in_selection": "Localizar na seleção",
+	"workbench_editor_find_no_results": "Nenhum resultado",
+	"workbench_editor_find_position": "{index} de {total}",
+	"workbench_editor_find_regexp": "Usar expressão regular",
+	"workbench_editor_find_replace": "Substituir",
+	"workbench_editor_find_replace_all": "Substituir tudo",
+	"workbench_editor_find_replaces_nothing": "Substitui por nada",
+	"workbench_editor_find_select_all": "Selecionar todas as correspondências",
+	"workbench_editor_find_toggle_replace": "Alternar substituição",
+	"workbench_editor_find_whole_word": "Palavra inteira",
+	"workbench_editor_goto_line": "Ir para a linha",
+	"workbench_editor_huge_file": "Arquivo enorme",
+	"workbench_editor_indent_detected": "Indentação (detectada no arquivo): selecione para alterar",
+	"workbench_editor_indent_spaces": "Espaços: {size}",
+	"workbench_editor_indent_tab_size": "Tabulação: {size}",
+	"workbench_editor_indent_using_spaces": "Indentar com espaços",
+	"workbench_editor_indent_using_tabs": "Indentar com tabulações",
+	"workbench_editor_label": "Editor",
+	"workbench_editor_lang_jsonc": "JSON com comentários",
+	"workbench_editor_lang_plain_text": "Texto simples",
+	"workbench_editor_lang_shell_script": "Script de shell",
+	"workbench_editor_language_server": "Servidor de linguagem",
+	"workbench_editor_large_file": "Arquivo grande",
+	"workbench_editor_line_ending": "Fim de linha",
+	"workbench_editor_not_saved_changed": "Não salvo: {path} mudou no disco. Recarregue o arquivo e salve de novo.",
+	"workbench_editor_not_saved_unreadable": "Não salvo: {path} mudou no disco e não pode ser lido.",
+	"workbench_editor_notice_huge": "Arquivo enorme: o realce de sintaxe e os recursos de linguagem estão desativados para o editor continuar rápido.",
+	"workbench_editor_notice_large": "Arquivo grande: quebra de linha, recursos de linguagem e outros extras pesados estão desativados para o editor continuar rápido.",
+	"workbench_editor_open_preview_key": "Abrir visualização ({key})",
+	"workbench_editor_rich_view_key": "Visualização rica ({key})",
+	"workbench_editor_save_failed": "Não foi possível salvar {path}: {error}",
+	"workbench_editor_select_encoding": "Selecionar codificação",
+	"workbench_editor_select_eol": "Selecionar sequência de fim de linha",
+	"workbench_editor_select_indentation": "Selecionar indentação",
+	"workbench_editor_select_language": "Selecionar modo de linguagem ({id})",
+	"workbench_editor_selected_chars": [
+		{
+			"declarations": [
+				"input count",
+				"local countExact = count",
+				"local countPlural = count: plural"
+			],
+			"selectors": [
+				"countExact",
+				"countPlural"
+			],
+			"match": {
+				"countExact=0, countPlural=*": "Nenhum selecionado",
+				"countExact=*, countPlural=one": "{count} selecionado",
+				"countExact=*, countPlural=*": "{count} selecionados"
+			}
+		}
+	],
+	"workbench_editor_selections": [
+		{
+			"declarations": [
+				"input count",
+				"local countExact = count",
+				"local countPlural = count: plural"
+			],
+			"selectors": [
+				"countExact",
+				"countPlural"
+			],
+			"match": {
+				"countExact=0, countPlural=*": "Nenhuma seleção",
+				"countExact=*, countPlural=one": "{count} seleção",
+				"countExact=*, countPlural=*": "{count} seleções"
+			}
+		}
+	],
+	"workbench_editor_show_image": "Mostrar imagem",
+	"workbench_editor_show_problems": "Mostrar problemas",
+	"workbench_editor_show_source_key": "Mostrar código-fonte ({key})",
+	"workbench_editor_status_bar": "Status do editor",
+	"workbench_editor_sticky_scopes": "Escopos que contêm a linha",
+	"workbench_editor_tier_title": "Alguns recursos do editor estão desativados para manter este arquivo rápido",
+	"workbench_editor_tip": "{label} ({key})",
+	"workbench_editor_typed_view_key": "Visualização de {type} ({key})",
+	"workbench_editor_warnings": [
+		{
+			"declarations": [
+				"input count",
+				"local countExact = count",
+				"local countPlural = count: plural"
+			],
+			"selectors": [
+				"countExact",
+				"countPlural"
+			],
+			"match": {
+				"countExact=0, countPlural=*": "Nenhum aviso",
+				"countExact=*, countPlural=one": "{count} aviso",
+				"countExact=*, countPlural=*": "{count} avisos"
+			}
+		}
+	],
+	"workbench_editor_watch_failed": "Não foi possível acompanhar as mudanças deste arquivo: {error}. Alterações feitas em outro lugar não aparecerão.",
+	"workbench_editor_word_wrap_key": "Quebra de linha ({key})",
+	"workbench_editor_wrap": "Quebra",
+	"workbench_editor_wrap_on": "Quebra de linha ativada"
+}

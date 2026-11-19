@@ -5,7 +5,7 @@
 	 * section. Driven by the `discovery` store.
 	 */
 	import { Button, Checkbox, Dialog, Spinner, Switch } from "@codeatlasdev/ui";
-	import { open as pickFolder } from "@tauri-apps/plugin-dialog";
+	import { api } from "#lib/api.ts";
 	import { FolderPlus, Search, TriangleAlert, X } from "@lucide/svelte";
 	import { tilde } from "#lib/format.ts";
 	import { formatNumber } from "#lib/i18n/fmt.ts";
@@ -69,7 +69,7 @@
 	}
 
 	async function addRoot() {
-		const dir = await pickFolder({ directory: true, title: m.sidebar_discover_dialog_pick_root() });
+		const dir = await api.pickPath({ directory: true, title: m.sidebar_discover_dialog_pick_root() });
 		if (typeof dir !== "string") return;
 		discovery.addRoot(dir);
 		await discovery.start();

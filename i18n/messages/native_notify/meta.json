@@ -18,5 +18,6 @@
 		"description": "Body of the notification, and error on the capture card, when macOS has not granted Screen Recording to Atlas. The panel names are the ones of macOS.",
 		"platform": "mac"
 	},
+	"native_notify_service_failed": "Body of the system notification shown when a service of a project fails while Atlas is in the background. {name} is the service name.",
 	"native_notify_shell_not_executable": "Error under the shell setting when the chosen file cannot be run. {path} is what the person typed."
 }

@@ -1,7 +1,6 @@
 /** Adding, relinking and cleaning up projects in the sidebar. */
 
 import { toast } from "@codeatlasdev/ui";
-import { open as pickFolder } from "@tauri-apps/plugin-dialog";
 import { api, type ProjectView } from "#lib/api.ts";
 import { list } from "#lib/i18n/fmt.ts";
 import { m } from "#lib/i18n/m.ts";
@@ -12,7 +11,7 @@ import { store } from "#lib/stores/projects.svelte.ts";
 
 /** Pick a folder and add it. */
 export async function addProject() {
-	const dir = await pickFolder({ directory: true, title: m.sidebar_projects_add_title() });
+	const dir = await api.pickPath({ directory: true, title: m.sidebar_projects_add_title() });
 	if (typeof dir === "string") await addFolder(dir);
 }
 
@@ -83,7 +82,7 @@ export async function refreshProjects() {
 
 /** Pick the new folder of a missing project. */
 export async function locateProject(id: string) {
-	const dir = await pickFolder({ directory: true, title: m.sidebar_projects_locate_title() });
+	const dir = await api.pickPath({ directory: true, title: m.sidebar_projects_locate_title() });
 	if (typeof dir === "string") await relinkProject(id, dir);
 }
 

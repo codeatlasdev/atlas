@@ -639,12 +639,14 @@ pub async fn shots_overlay_previous(app: AppHandle) {
 
 #[tauri::command]
 pub async fn shots_pick_folder(app: AppHandle) -> Result<Option<String>, String> {
-    use tauri_plugin_dialog::DialogExt;
-    let (tx, rx) = tokio::sync::oneshot::channel();
-    app.dialog().file().pick_folder(move |p| {
-        let _ = tx.send(p.map(|p| p.to_string()));
-    });
-    rx.await.map_err(|e| e.to_string())
+    crate::native_ui::pick_path(
+        app,
+        crate::native_ui::PathDialog {
+            directory: true,
+            ..Default::default()
+        },
+    )
+    .await
 }
 
 #[tauri::command]

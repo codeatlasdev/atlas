@@ -17,10 +17,10 @@ const cli = async (script: string, args: string[]) => {
 };
 
 describe("checker discovery", () => {
-	test("every file of checks/ is loaded; the shipped ones are docs-md, hardcoded, messages, platform-lint, supported-sync, writing", async () => {
+	test("every file of checks/ is loaded; the shipped ones are docs-md, frozen, hardcoded, messages, platform-lint, supported-sync, writing", async () => {
 		const { checkers, problems } = await loadCheckers();
 		expect(problems).toEqual([]);
-		expect(checkers.map((c) => c.name).sort()).toEqual(["docs-md", "hardcoded", "messages", "platform-lint", "supported-sync", "writing"]);
+		expect(checkers.map((c) => c.name).sort()).toEqual(["docs-md", "frozen", "hardcoded", "messages", "platform-lint", "supported-sync", "writing"]);
 	});
 
 	test("a new checker file in the directory runs with no edit to the runner", async () => {

@@ -1,0 +1,19 @@
+{
+  "pt-BR": {
+    "settings_registry_agents_agent_args_description": "499d8a29fbfd",
+    "settings_registry_agents_agent_args_label": "4bae99222106",
+    "settings_registry_agents_agent_custom_description": "cf70188e1e8d",
+    "settings_registry_agents_agent_custom_label": "deb30ec078d1",
+    "settings_registry_agents_agent_default_description": "229398fb324f",
+    "settings_registry_agents_agent_default_label": "9c9db730bb0b",
+    "settings_registry_agents_agent_permissions_description": "8328119fc707",
+    "settings_registry_agents_agent_permissions_label": "2c59bd798cc7",
+    "settings_registry_agents_description": "d806a68d8a02",
+    "settings_registry_agents_dock_enabled_description": "4b59dfa16594",
+    "settings_registry_agents_group_coding_agents": "e86fb0b53cd6",
+    "settings_registry_agents_group_custom_agents": "0272e5f5f6b3",
+    "settings_registry_agents_group_quick_commands": "62ca0efc5274",
+    "settings_registry_agents_label": "21cf98a292e9",
+    "settings_registry_agents_quick_description": "a7e8ce45e415"
+  }
+}

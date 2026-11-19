@@ -2,6 +2,7 @@
 import { expect, test } from "bun:test";
 import { feedbackFor, firstTime, hintAction, reasonForFeature, resetHints } from "./messages.ts";
 import { lspUiState, type UiInput } from "./status.ts";
+import { m } from "#lib/i18n/m.ts";
 
 const input = (over: Partial<UiInput> = {}): UiInput => ({
 	prefsEnabled: true,
@@ -15,7 +16,7 @@ const input = (over: Partial<UiInput> = {}): UiInput => ({
 test("old host: names the feature and the fix", () => {
 	const s = lspUiState(input({ host: { lsp: false } }));
 	expect(reasonForFeature("definition", s)).toBe(
-		"Go to definition needs a language server. Language features need a newer terminal host — restart it from the status bar.",
+		`${m.workbench_lsp_needs_definition()} ${m.workbench_lsp_why_host_old()}`,
 	);
 });
 

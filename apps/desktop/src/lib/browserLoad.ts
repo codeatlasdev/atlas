@@ -6,6 +6,7 @@
  * page-load event for it, so `fail` (native) is the one real signal. `stall` is the frontend's own timer for a load
  * that neither finishes nor fails.
  */
+import { m } from "#lib/i18n/m.ts";
 
 export type LoadEvent =
 	| { event: "nav"; url?: string }
@@ -16,11 +17,12 @@ export type LoadEvent =
 
 export type FailureKind = "refused" | "host" | "tls" | "offline" | "timeout" | "other";
 
+/** What failed, not how it reads: the words are made at display time (`failureHint`), so a language switch reaches a screen that is already showing. */
 export interface Failure {
 	url: string;
 	kind: FailureKind;
-	title: string;
-	hint: string;
+	/** The engine's own wording, shown only for `other` (nothing in the catalog can say what it did not name). */
+	message: string;
 }
 
 export interface LoadState {
@@ -52,22 +54,22 @@ const KINDS: Record<number, FailureKind> = {
 	[-1206]: "tls", // clientCertificateRequired
 };
 
-const HINTS: Record<Exclude<FailureKind, "other">, string> = {
-	refused: "Nothing answered at this address. Is the dev server running?",
-	host: "The server's address could not be found. Check it for typos.",
-	tls: "A secure connection could not be made: the certificate is missing, expired or not trusted.",
-	offline: "This computer is not connected to the internet.",
-	timeout: "The server took too long to answer.",
+const HINTS: Record<Exclude<FailureKind, "other">, () => string> = {
+	refused: () => m.workbench_browser_failure_refused(),
+	host: () => m.workbench_browser_failure_host(),
+	tls: () => m.workbench_browser_failure_tls(),
+	offline: () => m.workbench_browser_failure_offline(),
+	timeout: () => m.workbench_browser_failure_timeout(),
 };
 
 export function describeFailure(e: { url?: string; code: number; domain: string; message: string }): Failure {
 	const kind = e.domain === URL_ERROR_DOMAIN ? (KINDS[e.code] ?? "other") : "other";
-	return {
-		url: e.url ?? "",
-		kind,
-		title: "This page can't be reached",
-		hint: kind === "other" ? e.message || "The page could not be loaded." : HINTS[kind],
-	};
+	return { url: e.url ?? "", kind, message: e.message };
+}
+
+/** One line on what the person can do about it; an unnamed failure shows the engine's words, or says it did not load. */
+export function failureHint(f: Failure): string {
+	return f.kind === "other" ? f.message || m.workbench_browser_failure_other() : HINTS[f.kind]();
 }
 
 export function step(s: LoadState, e: LoadEvent): LoadState {

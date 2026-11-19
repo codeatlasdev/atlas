@@ -4,6 +4,8 @@
  * one `run` (`git -C <worktree> …` in hostd), so SSH checkouts resolve it on the host that will commit. Pure: no
  * Svelte, no IPC.
  */
+import { m } from "#lib/i18n/m.ts";
+
 export interface GitOut {
 	code: number | null;
 	stdout: string;
@@ -50,8 +52,8 @@ export async function readIdentity(run: GitRun): Promise<Partial<Identity>> {
 
 /** Why `id` cannot be saved, or null. An e-mail is only checked for the shape git needs: something before and after one `@`. */
 export function identityProblem(id: Identity): string | null {
-	if (!id.name.trim()) return "Enter your name.";
-	if (!/^[^\s@<>]+@[^\s@<>]+$/.test(id.email.trim())) return "Enter an e-mail address like you@example.com.";
+	if (!id.name.trim()) return m.git_errors_identity_name();
+	if (!/^[^\s@<>]+@[^\s@<>]+$/.test(id.email.trim())) return m.git_errors_identity_email();
 	return null;
 }
 
@@ -65,6 +67,11 @@ export async function saveIdentity(run: GitRun, id: Identity, scope: IdentitySco
 		["user.email", id.email.trim()],
 	]) {
 		const r = await run(["config", ...flag, key, value]);
-		if (r.code !== 0) throw new Error((r.stderr || r.stdout).trim() || `git config ${key} failed`);
+		if (r.code !== 0) {
+			const output = (r.stderr || r.stdout).trim();
+			throw new Error(
+				output ? m.git_errors_config_failed_output({ key, output }) : m.git_errors_config_failed({ key }),
+			);
+		}
 	}
 }

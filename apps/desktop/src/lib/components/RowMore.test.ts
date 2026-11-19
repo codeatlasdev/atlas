@@ -165,7 +165,7 @@ test("Explorer.svelte: the … opens the shared PointerMenu and the row/tree ign
 	expect(src).not.toMatch(/<DropdownMenu\b/);
 	expect(src).not.toMatch(/\{#snippet trigger\(\)\}/);
 	const more = src.match(/<button[^>]*class="more"[\s\S]*?<\/button\s*>/)?.[0] ?? "";
-	expect(more).toContain('aria-label="More actions"');
+	expect(more).toContain("aria-label={m.capture_quick_page_more_actions()}");
 	expect(more).toContain("ev.stopPropagation()");
 	expect(more).toContain("openMenu(menuOf(rel, isDir)");
 	// row click, row Space key and the tree's key handler all consult it

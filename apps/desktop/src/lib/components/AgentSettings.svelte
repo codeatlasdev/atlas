@@ -63,7 +63,7 @@
 </script>
 
 {#if loadError}
-	<LoadError what="your agent settings" error={loadError} />
+	<LoadError what="agents" error={loadError} />
 {/if}
 
 <Group title={m.settings_agents_agent_coding_agents()}>

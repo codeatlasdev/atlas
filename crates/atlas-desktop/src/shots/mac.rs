@@ -143,6 +143,7 @@ pub fn copy_text(text: &str) -> Result<(), String> {
 
 /// Reveal `path` in Finder (selected), without bringing Atlas forward.
 pub fn reveal(path: &Path) -> Result<(), String> {
+    crate::native_ui::launch("reveal in Finder", &path.to_string_lossy())?;
     std::process::Command::new("open")
         .arg("-R")
         .arg(path)
@@ -153,6 +154,7 @@ pub fn reveal(path: &Path) -> Result<(), String> {
 
 /// Open `path` with its default app.
 pub fn open(path: &Path) -> Result<(), String> {
+    crate::native_ui::launch("open", &path.to_string_lossy())?;
     std::process::Command::new("open")
         .arg(path)
         .spawn()
@@ -162,6 +164,7 @@ pub fn open(path: &Path) -> Result<(), String> {
 
 /// Open a URL (a System Settings pane) with its handler.
 pub fn open_url(url: &str) -> Result<(), String> {
+    crate::native_ui::launch("open", url)?;
     std::process::Command::new("open")
         .arg(url)
         .spawn()

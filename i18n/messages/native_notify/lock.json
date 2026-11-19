@@ -16,6 +16,7 @@
     "native_notify_dock_not_built": "e6c166cdd9c3",
     "native_notify_no_home": "bb8b93902f22",
     "native_notify_no_permission": "7b11654c9963",
+    "native_notify_service_failed": "72144b6ce764",
     "native_notify_shell_not_executable": "442d99cb333c"
   }
 }

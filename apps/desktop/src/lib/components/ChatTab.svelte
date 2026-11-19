@@ -18,6 +18,8 @@
 	import Composer, { type Pasted } from "./chat/Composer.svelte";
 	import { pushHistory } from "./chat/composer.ts";
 	import Transcript from "./chat/Transcript.svelte";
+	import { m } from "#lib/i18n/m.ts";
+	import { formatNumber } from "#lib/i18n/fmt.ts";
 
 	let { tab, focused = false }: { tab: Tab; focused?: boolean } = $props();
 
@@ -158,17 +160,23 @@
 				{#each chat.thinkingLevels as l (l)}<option value={l}>{l}</option>{/each}
 			</select>
 		{/if}
-		{#if chat.contextPercent !== null}<span class="dim">context {Math.round(chat.contextPercent)}%</span>{/if}
+		{#if chat.contextPercent !== null}<span class="dim"
+				>{m.workbench_chat_context({
+					percent: formatNumber(chat.contextPercent / 100, { style: "percent", maximumFractionDigits: 0 }),
+				})}</span
+			>{/if}
 		{#if chat.status}<span class="dim">{chat.status}</span>{/if}
 		<span class="spacer"></span>
-		<button title="Compact the conversation" onclick={() => send({ type: "compact", id: "compact" })}
-			>Compact</button
+		<button title={m.workbench_chat_compact_title()} onclick={() => send({ type: "compact", id: "compact" })}
+			>{m.workbench_chat_compact()}</button
 		>
-		<button title="Raw protocol" onclick={() => (tab.rawView = true)}><SquareTerminal size={13} /></button>
+		<button title={m.workbench_chat_raw_protocol()} onclick={() => (tab.rawView = true)}
+			><SquareTerminal size={13} /></button
+		>
 	</div>
 	{#if searchOpen}
 		<!-- svelte-ignore a11y_autofocus -->
-		<input class="search" autofocus placeholder="Search transcript" bind:value={search} />
+		<input class="search" autofocus placeholder={m.workbench_chat_search_transcript()} bind:value={search} />
 	{/if}
 	<Transcript bind:this={transcript} {chat} items={shown} onanswer={answer} />
 	<Composer

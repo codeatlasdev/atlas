@@ -88,7 +88,7 @@
 </script>
 
 {#if loadError}
-	<LoadError what="your SSH hosts" error={loadError} />
+	<LoadError what="ssh" error={loadError} />
 {/if}
 
 <Group title={m.settings_agents_ssh_your_hosts()}>

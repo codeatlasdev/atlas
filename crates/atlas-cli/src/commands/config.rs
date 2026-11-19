@@ -105,7 +105,7 @@ impl ConfigCommands {
                 let (config, errors) = atlas_tui::config::load_checked(&root)?;
                 if errors.is_empty() {
                     for w in atlas_tui::config::warnings(&config) {
-                        eprintln!("{} {w}", crate::chrome::warning());
+                        eprintln!("{} {}", crate::chrome::warning(), w.render());
                     }
                     println!(
                         "{}",

@@ -1,0 +1,60 @@
+{
+	"tui_config_problems_action_key_duplicate": "a tecla '{key}' já é usada pela ação '{action}'",
+	"tui_config_problems_action_key_open_key": "a tecla '{key}' já é a open_key do serviço '{service}'",
+	"tui_config_problems_affected_bad_glob": "não foi possível interpretar o glob \"{glob}\": {reason}",
+	"tui_config_problems_affected_command_blank": "está em branco: informe um comando ou remova-o",
+	"tui_config_problems_affected_rule_no_match": "precisa de pelo menos um glob (por exemplo, 'crates/**')",
+	"tui_config_problems_affected_task_unknown": "'{task}' não é o rótulo de nenhuma ação",
+	"tui_config_problems_condition_completed": "a condição 'completed_successfully' exige services.{dependency}.command (não há nada para executar até o fim)",
+	"tui_config_problems_condition_log_ready": "a condição 'log_ready' exige services.{dependency}.ready_log",
+	"tui_config_problems_dependency_cycle": "ciclo de dependências: {cycle}",
+	"tui_config_problems_dependency_self": "um serviço não pode depender de si mesmo",
+	"tui_config_problems_deploy_app_pattern": "deve corresponder a ^[a-z0-9-]+$",
+	"tui_config_problems_deploy_compose_file_only_compose": "só vale para o kind 'compose'",
+	"tui_config_problems_deploy_keep_min": "deve ser >= 2 (o rollback precisa de uma release anterior)",
+	"tui_config_problems_deploy_link_key": "a chave deve ser um caminho relativo à release, sem '..'",
+	"tui_config_problems_deploy_link_value": "o valor deve ser um caminho absoluto",
+	"tui_config_problems_deploy_path_absolute": "deve ser um caminho absoluto",
+	"tui_config_problems_deploy_restart_only_command": "só vale para o kind 'command'",
+	"tui_config_problems_deploy_restart_required": "o kind 'command' exige restart",
+	"tui_config_problems_deploy_service_duplicate": "serviço '{name}' duplicado",
+	"tui_config_problems_deploy_services_empty": "informe pelo menos um serviço",
+	"tui_config_problems_deploy_targets_empty": "informe pelo menos um destino (target)",
+	"tui_config_problems_header": [
+		{
+			"declarations": [
+				"input count",
+				"local countExact = count",
+				"local countPlural = count: plural"
+			],
+			"selectors": [
+				"countExact",
+				"countPlural"
+			],
+			"match": {
+				"countExact=0, countPlural=*": "Nenhum erro de configuração:",
+				"countExact=*, countPlural=one": "{count} erro de configuração:",
+				"countExact=*, countPlural=*": "{count} erros de configuração:"
+			}
+		}
+	],
+	"tui_config_problems_key_builtin": "a tecla '{key}' é uma tecla nativa do painel",
+	"tui_config_problems_memory_warn_above_max": "deve ser menor que max_memory ({max_memory})",
+	"tui_config_problems_not_saved": "não foi salvo: {count} problema(s), o primeiro: {path} {message}",
+	"tui_config_problems_open_tunnel_without_tunnel": "a ação '{action}' define open_tunnel: true, mas não há um bloco `tunnel:`",
+	"tui_config_problems_port_duplicate": "a porta {port} também é usada por '{other}'",
+	"tui_config_problems_ready_exclusive": "defina exatamente um entre `http` (caminho ou URL) e `command`",
+	"tui_config_problems_ready_log_regex": "não foi possível interpretar a regex: {detail}",
+	"tui_config_problems_remote_command": "um serviço remoto não executa comando local: remova `command`",
+	"tui_config_problems_remote_host_invalid": "'{host}' não é um nome de host",
+	"tui_config_problems_remote_port_missing": "precisa da `port` local do serviço (onde o Atlas encaminha a conexão)",
+	"tui_config_problems_remote_ssh_invalid": "'{ssh}' não é um destino SSH (um alias de host ou user@host)",
+	"tui_config_problems_size_invalid": "'{value}' não é um tamanho (use, por exemplo, 512M ou 4G)",
+	"tui_config_problems_unknown_key": "campo desconhecido",
+	"tui_config_problems_unknown_key_suggest": "campo desconhecido (você quis dizer '{suggestion}'?)",
+	"tui_config_problems_unknown_service": "serviço '{name}' desconhecido",
+	"tui_config_problems_unknown_service_suggest": "serviço '{name}' desconhecido (você quis dizer '{suggestion}'?)",
+	"tui_config_problems_warn_autostart_false": "'{dependency}' tem autostart: false, então '{service}' espera até que '{dependency}' seja iniciado manualmente",
+	"tui_config_problems_warn_healthy_no_probe": "'healthy' em '{dependency}' só espera que ele continue vivo por 2 s: '{dependency}' não tem port, health nem ready_log",
+	"tui_config_problems_worktree_setup_unknown_action": "menciona a ação '{action}', que não é um rótulo nem uma tecla de ação em `actions`"
+}

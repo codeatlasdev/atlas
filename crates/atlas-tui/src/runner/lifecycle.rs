@@ -210,7 +210,12 @@ pub async fn run(
     adhoc: &[String],
     kind: RunKind,
 ) -> Result<()> {
-    let (mut cfg, source) = config::load_or_detect(root_dir)?;
+    // The detached runner writes to `.logs/runner.log`: English there, the display language on a terminal.
+    let tag = match kind {
+        RunKind::Foreground => atlas_i18n::lang(),
+        RunKind::Background => atlas_core::lang::DEFAULT,
+    };
+    let (mut cfg, source) = config::load_or_detect_in(root_dir, tag)?;
     let adhoc_names = config::adhoc::add_all(&mut cfg, adhoc);
     // An ad-hoc service is always wanted, even when the user narrowed the selection.
     let mut select = select.clone();

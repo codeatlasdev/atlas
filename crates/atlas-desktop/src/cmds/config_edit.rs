@@ -63,10 +63,15 @@ fn validate(root: &Path, text: &str) -> Result<Vec<Problem>, String> {
     })
 }
 
+/// The editor's problem list is for a person: the sentence is the catalog's, in the display language.
 fn problem(e: &ConfigError) -> Problem {
+    problem_in(e, atlas_i18n::lang())
+}
+
+fn problem_in(e: &ConfigError, tag: &str) -> Problem {
     Problem {
         path: e.path.clone(),
-        message: e.message.clone(),
+        message: e.text_in(tag),
     }
 }
 
@@ -84,11 +89,11 @@ pub fn config_write(id: String, text: String) -> Result<(), String> {
 fn write_checked(root: &Path, text: &str) -> Result<(), String> {
     let problems = validate(root, text)?;
     if let Some(p) = problems.first() {
-        return Err(format!(
-            "not saved: {} problem(s), first: {} {}",
-            problems.len(),
-            p.path,
-            p.message
+        return Err(atlas_i18n::t!(
+            "tui_config_problems_not_saved",
+            count = problems.len(),
+            path = p.path.as_str(),
+            message = p.message.as_str()
         ));
     }
     registry::write_atomic(&root.join("atlas.yaml"), text)
@@ -109,6 +114,22 @@ mod tests {
         assert_eq!(probs[0].path, "services.api.depends_on.nope");
         assert!(probs[0].message.contains("unknown service 'nope'"));
         assert!(validate(root.path(), OK).unwrap().is_empty());
+    }
+
+    // The Config tab shows the sentence in the display language, from the real validators' problems; the path is the
+    // author's key path and stays as written.
+    #[test]
+    fn problems_are_worded_in_the_requested_language() {
+        let dir = tempfile::tempdir().unwrap();
+        let bad = format!("{OK}  api: {{ command: \"true\", depends_on: [nope] }}\n");
+        std::fs::write(dir.path().join("atlas.yaml"), bad).unwrap();
+        let (_, errors) = config::load_checked(dir.path()).unwrap();
+        let en = problem_in(&errors[0], "en");
+        let pt = problem_in(&errors[0], "pt-BR");
+        assert_eq!(en.path, "services.api.depends_on.nope");
+        assert_eq!(pt.path, en.path);
+        assert_eq!(en.message, "unknown service 'nope'");
+        assert_eq!(pt.message, "serviço 'nope' desconhecido");
     }
 
     #[test]

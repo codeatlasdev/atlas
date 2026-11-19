@@ -1,0 +1,60 @@
+{
+	"tui_config_problems_action_key_duplicate": "key '{key}' is already used by action '{action}'",
+	"tui_config_problems_action_key_open_key": "key '{key}' is already the open_key of service '{service}'",
+	"tui_config_problems_affected_bad_glob": "bad glob \"{glob}\": {reason}",
+	"tui_config_problems_affected_command_blank": "is blank: give a command or remove it",
+	"tui_config_problems_affected_rule_no_match": "needs at least one glob (e.g. 'crates/**')",
+	"tui_config_problems_affected_task_unknown": "'{task}' is not the label of any action",
+	"tui_config_problems_condition_completed": "condition 'completed_successfully' needs services.{dependency}.command (nothing to run to completion)",
+	"tui_config_problems_condition_log_ready": "condition 'log_ready' requires services.{dependency}.ready_log",
+	"tui_config_problems_dependency_cycle": "dependency cycle: {cycle}",
+	"tui_config_problems_dependency_self": "a service cannot depend on itself",
+	"tui_config_problems_deploy_app_pattern": "must match ^[a-z0-9-]+$",
+	"tui_config_problems_deploy_compose_file_only_compose": "only valid for kind 'compose'",
+	"tui_config_problems_deploy_keep_min": "must be >= 2 (rollback needs a previous release)",
+	"tui_config_problems_deploy_link_key": "key must be a release-relative path without '..'",
+	"tui_config_problems_deploy_link_value": "value must be an absolute path",
+	"tui_config_problems_deploy_path_absolute": "must be an absolute path",
+	"tui_config_problems_deploy_restart_only_command": "only valid for kind 'command'",
+	"tui_config_problems_deploy_restart_required": "kind 'command' requires restart",
+	"tui_config_problems_deploy_service_duplicate": "duplicate service '{name}'",
+	"tui_config_problems_deploy_services_empty": "at least one service is required",
+	"tui_config_problems_deploy_targets_empty": "at least one target is required",
+	"tui_config_problems_header": [
+		{
+			"declarations": [
+				"input count",
+				"local countExact = count",
+				"local countPlural = count: plural"
+			],
+			"selectors": [
+				"countExact",
+				"countPlural"
+			],
+			"match": {
+				"countExact=0, countPlural=*": "{count} config errors:",
+				"countExact=*, countPlural=one": "{count} config error:",
+				"countExact=*, countPlural=*": "{count} config errors:"
+			}
+		}
+	],
+	"tui_config_problems_key_builtin": "key '{key}' is a built-in dashboard key",
+	"tui_config_problems_memory_warn_above_max": "must be below max_memory ({max_memory})",
+	"tui_config_problems_not_saved": "not saved: {count} problem(s), first: {path} {message}",
+	"tui_config_problems_open_tunnel_without_tunnel": "action '{action}' sets open_tunnel: true but there is no `tunnel:` block",
+	"tui_config_problems_port_duplicate": "port {port} is also used by '{other}'",
+	"tui_config_problems_ready_exclusive": "set exactly one of `http` (path or URL) or `command`",
+	"tui_config_problems_ready_log_regex": "invalid regex: {detail}",
+	"tui_config_problems_remote_command": "a remote service runs no local command: remove `command`",
+	"tui_config_problems_remote_host_invalid": "'{host}' is not a host name",
+	"tui_config_problems_remote_port_missing": "needs the service's local `port` (where atlas forwards it)",
+	"tui_config_problems_remote_ssh_invalid": "'{ssh}' is not an SSH destination (a host alias or user@host)",
+	"tui_config_problems_size_invalid": "'{value}' is not a size (use e.g. 512M or 4G)",
+	"tui_config_problems_unknown_key": "unknown field",
+	"tui_config_problems_unknown_key_suggest": "unknown field (did you mean '{suggestion}'?)",
+	"tui_config_problems_unknown_service": "unknown service '{name}'",
+	"tui_config_problems_unknown_service_suggest": "unknown service '{name}' (did you mean '{suggestion}'?)",
+	"tui_config_problems_warn_autostart_false": "'{dependency}' has autostart: false, so '{service}' waits until '{dependency}' is started by hand",
+	"tui_config_problems_warn_healthy_no_probe": "'healthy' on '{dependency}' only waits for it to stay alive for 2s: '{dependency}' has no port, health or ready_log",
+	"tui_config_problems_worktree_setup_unknown_action": "mentions action '{action}', which is not an action label or key in `actions`"
+}

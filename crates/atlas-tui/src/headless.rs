@@ -25,7 +25,8 @@ pub async fn run_ci(
     timeout_secs: u64,
     select: &config::SelectionRequest,
 ) -> Result<()> {
-    let (cfg, source) = config::load_or_detect(root_dir)?;
+    // A pipeline or an agent reads a `--ci` failure: the config's problems are English whatever the display language.
+    let (cfg, source) = config::load_or_detect_in(root_dir, atlas_core::lang::DEFAULT)?;
     if source == config::ConfigSource::Detected {
         eprintln!(
             "{}",

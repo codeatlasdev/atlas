@@ -32,7 +32,7 @@ fn opt_str_list(args: &Value, k: &str) -> Result<Option<Vec<String>>, String> {
 }
 
 fn load(root: &Path) -> Result<ProjectConfig, String> {
-    config::load_or_detect(root)
+    config::load_or_detect_in(root, atlas_core::lang::DEFAULT)
         .map(|(c, _)| c)
         .map_err(|e| format!("{e:#}"))
 }

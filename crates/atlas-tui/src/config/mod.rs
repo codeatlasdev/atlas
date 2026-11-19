@@ -11,7 +11,7 @@ pub use affected::{AffectedConfig, AffectedRule};
 pub use agents::{AgentsPolicy, Mode as AgentMode, POLICY_TOOLS, Verdict};
 pub use loader::{
     ConfigSource, PORT_OFFSET_ENV, affected_of, apply_port_offset, detected_notice,
-    detected_notice_in, find_root, load, load_checked, load_or_detect,
+    detected_notice_in, find_root, load, load_checked, load_or_detect, load_or_detect_in,
 };
 pub use project::{
     ActionConfig, AndroidConfig, Condition, DEFAULT_START_TIMEOUT_SECS, DependsOn, DeployConfig,
@@ -20,7 +20,9 @@ pub use project::{
     RestartPolicy, ServiceDef, SessionPlatform, TunnelConfig, grouped_actions,
 };
 pub use selection::{Selection, SelectionRequest, resolve as resolve_selection};
-pub use validate::{BUILTIN_KEYS, ConfigError, json_schema, render_errors, warnings};
+pub use validate::{
+    BUILTIN_KEYS, ConfigError, json_schema, render_errors, render_errors_in, warnings,
+};
 
 #[cfg(test)]
 mod tests;

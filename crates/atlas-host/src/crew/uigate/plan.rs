@@ -40,7 +40,9 @@ pub fn url_of(base_url: &str, route: &str) -> Result<String, String> {
 pub fn routes_of(tree: &Tree, root: &Path, files: &[String]) -> Result<Vec<String>, String> {
     let (declared, actions) = match tree {
         Tree::Own => {
-            let (cfg, _) = atlas_tui::config::load_or_detect(root).map_err(|e| format!("{e:#}"))?;
+            // The gate's reasons are machine text (stored, sent to the desktop as data): English.
+            let (cfg, _) = atlas_tui::config::load_or_detect_in(root, atlas_core::lang::DEFAULT)
+                .map_err(|e| format!("{e:#}"))?;
             let actions: Vec<ActionInputs> = cfg
                 .actions
                 .iter()

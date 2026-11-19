@@ -1,0 +1,265 @@
+{
+  "00 config.unknown_key": {
+    "display": [
+      "services.web.zzzzqq: unknown field"
+    ],
+    "errors": "1 config error:\n  atlas.yaml: services.web.zzzzqq: unknown field"
+  },
+  "01 config.unknown_key_suggest": {
+    "display": [
+      "services.web.helth: unknown field (did you mean 'health'?)"
+    ],
+    "errors": "1 config error:\n  atlas.yaml: services.web.helth: unknown field (did you mean 'health'?)"
+  },
+  "02 config.remote_command": {
+    "display": [
+      "services.db.remote: a remote service runs no local command: remove `command`"
+    ],
+    "errors": "1 config error:\n  atlas.yaml: services.db.remote: a remote service runs no local command: remove `command`"
+  },
+  "03 config.remote_port_missing": {
+    "display": [
+      "services.db.remote: needs the service's local `port` (where atlas forwards it)"
+    ],
+    "errors": "1 config error:\n  atlas.yaml: services.db.remote: needs the service's local `port` (where atlas forwards it)"
+  },
+  "04 config.remote_ssh_invalid": {
+    "display": [
+      "services.db.remote.ssh: '-oProxyCommand=evil' is not an SSH destination (a host alias or user@host)"
+    ],
+    "errors": "1 config error:\n  atlas.yaml: services.db.remote.ssh: '-oProxyCommand=evil' is not an SSH destination (a host alias or user@host)"
+  },
+  "05 config.remote_host_invalid": {
+    "display": [
+      "services.db.remote.host: 'a b' is not a host name"
+    ],
+    "errors": "1 config error:\n  atlas.yaml: services.db.remote.host: 'a b' is not a host name"
+  },
+  "06 config.dependency_self": {
+    "display": [
+      "services.a.depends_on.a: a service cannot depend on itself",
+      "services.a.depends_on.a: 'healthy' on 'a' only waits for it to stay alive for 2s: 'a' has no port, health or ready_log"
+    ],
+    "errors": "1 config error:\n  atlas.yaml: services.a.depends_on.a: a service cannot depend on itself"
+  },
+  "07 config.unknown_service": {
+    "display": [
+      "services.api.depends_on.qqqqqq: unknown service 'qqqqqq'"
+    ],
+    "errors": "1 config error:\n  atlas.yaml: services.api.depends_on.qqqqqq: unknown service 'qqqqqq'"
+  },
+  "08 config.unknown_service_suggest": {
+    "display": [
+      "services.api.depends_on.dbb: unknown service 'dbb' (did you mean 'db'?)"
+    ],
+    "errors": "1 config error:\n  atlas.yaml: services.api.depends_on.dbb: unknown service 'dbb' (did you mean 'db'?)"
+  },
+  "09 config.unknown_service": {
+    "display": [
+      "profiles.mine[0]: unknown service 'qqqqqq'"
+    ],
+    "errors": "1 config error:\n  atlas.yaml: profiles.mine[0]: unknown service 'qqqqqq'"
+  },
+  "10 config.unknown_service_suggest": {
+    "display": [
+      "profiles.mine[0]: unknown service 'webb' (did you mean 'web'?)"
+    ],
+    "errors": "1 config error:\n  atlas.yaml: profiles.mine[0]: unknown service 'webb' (did you mean 'web'?)"
+  },
+  "11 config.condition_log_ready": {
+    "display": [
+      "services.web.depends_on.api: condition 'log_ready' requires services.api.ready_log"
+    ],
+    "errors": "1 config error:\n  atlas.yaml: services.web.depends_on.api: condition 'log_ready' requires services.api.ready_log"
+  },
+  "12 config.condition_completed": {
+    "display": [
+      "services.web.depends_on.db: condition 'completed_successfully' needs services.db.command (nothing to run to completion)"
+    ],
+    "errors": "1 config error:\n  atlas.yaml: services.web.depends_on.db: condition 'completed_successfully' needs services.db.command (nothing to run to completion)"
+  },
+  "13 config.dependency_cycle": {
+    "display": [
+      "services: dependency cycle: a -> b -> c -> a",
+      "services.a.depends_on.b: 'healthy' on 'b' only waits for it to stay alive for 2s: 'b' has no port, health or ready_log",
+      "services.b.depends_on.c: 'healthy' on 'c' only waits for it to stay alive for 2s: 'c' has no port, health or ready_log",
+      "services.c.depends_on.a: 'healthy' on 'a' only waits for it to stay alive for 2s: 'a' has no port, health or ready_log"
+    ],
+    "errors": "1 config error:\n  atlas.yaml: services: dependency cycle: a -> b -> c -> a"
+  },
+  "14 config.size_invalid": {
+    "display": [
+      "services.a.memory_warn: 'lots' is not a size (use e.g. 512M or 4G)"
+    ],
+    "errors": "1 config error:\n  atlas.yaml: services.a.memory_warn: 'lots' is not a size (use e.g. 512M or 4G)"
+  },
+  "15 config.memory_warn_above_max": {
+    "display": [
+      "services.a.memory_warn: must be below max_memory (2G)"
+    ],
+    "errors": "1 config error:\n  atlas.yaml: services.a.memory_warn: must be below max_memory (2G)"
+  },
+  "16 config.ready_log_regex": {
+    "display": [
+      "services.a.ready_log: invalid regex: error: unclosed group"
+    ],
+    "errors": "1 config error:\n  atlas.yaml: services.a.ready_log: invalid regex: error: unclosed group"
+  },
+  "17 config.ready_exclusive": {
+    "display": [
+      "services.a.ready: set exactly one of `http` (path or URL) or `command`"
+    ],
+    "errors": "1 config error:\n  atlas.yaml: services.a.ready: set exactly one of `http` (path or URL) or `command`"
+  },
+  "18 config.port_duplicate": {
+    "display": [
+      "services.b.port: port 3000 is also used by 'a'"
+    ],
+    "errors": "1 config error:\n  atlas.yaml: services.b.port: port 3000 is also used by 'a'"
+  },
+  "19 config.key_builtin": {
+    "display": [
+      "actions[0].key: key 'q' is a built-in dashboard key"
+    ],
+    "errors": "1 config error:\n  atlas.yaml: actions[0].key: key 'q' is a built-in dashboard key"
+  },
+  "20 config.key_builtin": {
+    "display": [
+      "services.a.open_key: key 'D' is a built-in dashboard key"
+    ],
+    "errors": "1 config error:\n  atlas.yaml: services.a.open_key: key 'D' is a built-in dashboard key"
+  },
+  "21 config.action_key_open_key": {
+    "display": [
+      "actions[0].key: key 'a' is already the open_key of service 'a'"
+    ],
+    "errors": "1 config error:\n  atlas.yaml: actions[0].key: key 'a' is already the open_key of service 'a'"
+  },
+  "22 config.action_key_duplicate": {
+    "display": [
+      "actions[1].key: key 'x' is already used by action 'X1'"
+    ],
+    "errors": "1 config error:\n  atlas.yaml: actions[1].key: key 'x' is already used by action 'X1'"
+  },
+  "23 config.worktree_setup_unknown_action": {
+    "display": [
+      "worktree.setup: mentions action 'nothing-here', which is not an action label or key in `actions`"
+    ],
+    "errors": "1 config error:\n  atlas.yaml: worktree.setup: mentions action 'nothing-here', which is not an action label or key in `actions`"
+  },
+  "24 config.open_tunnel_without_tunnel": {
+    "display": [
+      "actions[0].open_tunnel: action 'Needs tunnel' sets open_tunnel: true but there is no `tunnel:` block"
+    ],
+    "errors": "1 config error:\n  atlas.yaml: actions[0].open_tunnel: action 'Needs tunnel' sets open_tunnel: true but there is no `tunnel:` block"
+  },
+  "25 config.affected_command_blank": {
+    "display": [
+      "affected.command: is blank: give a command or remove it"
+    ],
+    "errors": "1 config error:\n  atlas.yaml: affected.command: is blank: give a command or remove it"
+  },
+  "26 config.affected_rule_no_match": {
+    "display": [
+      "affected.rules[0].match: needs at least one glob (e.g. 'crates/**')"
+    ],
+    "errors": "1 config error:\n  atlas.yaml: affected.rules[0].match: needs at least one glob (e.g. 'crates/**')"
+  },
+  "27 config.affected_bad_glob": {
+    "display": [
+      "affected.rules[0].match: bad glob \"a/[**\": error parsing glob 'a/[**': unclosed character class; missing ']'"
+    ],
+    "errors": "1 config error:\n  atlas.yaml: affected.rules[0].match: bad glob \"a/[**\": error parsing glob 'a/[**': unclosed character class; missing ']'"
+  },
+  "28 config.affected_task_unknown": {
+    "display": [
+      "affected.rules[0].tasks: 'No such action' is not the label of any action"
+    ],
+    "errors": "1 config error:\n  atlas.yaml: affected.rules[0].tasks: 'No such action' is not the label of any action"
+  },
+  "29 config.deploy_app_pattern": {
+    "display": [
+      "deploy.app: must match ^[a-z0-9-]+$"
+    ],
+    "errors": "1 config error:\n  atlas.yaml: deploy.app: must match ^[a-z0-9-]+$"
+  },
+  "30 config.deploy_targets_empty": {
+    "display": [
+      "deploy.targets: at least one target is required"
+    ],
+    "errors": "1 config error:\n  atlas.yaml: deploy.targets: at least one target is required"
+  },
+  "31 config.deploy_services_empty": {
+    "display": [
+      "deploy.targets.prod.services: at least one service is required"
+    ],
+    "errors": "1 config error:\n  atlas.yaml: deploy.targets.prod.services: at least one service is required"
+  },
+  "32 config.deploy_keep_min": {
+    "display": [
+      "deploy.targets.prod.keep: must be >= 2 (rollback needs a previous release)"
+    ],
+    "errors": "1 config error:\n  atlas.yaml: deploy.targets.prod.keep: must be >= 2 (rollback needs a previous release)"
+  },
+  "33 config.deploy_path_absolute": {
+    "display": [
+      "deploy.targets.prod.dir: must be an absolute path"
+    ],
+    "errors": "1 config error:\n  atlas.yaml: deploy.targets.prod.dir: must be an absolute path"
+  },
+  "34 config.deploy_path_absolute": {
+    "display": [
+      "deploy.targets.prod.pause_marker: must be an absolute path"
+    ],
+    "errors": "1 config error:\n  atlas.yaml: deploy.targets.prod.pause_marker: must be an absolute path"
+  },
+  "35 config.deploy_link_key": {
+    "display": [
+      "deploy.targets.prod.link.../x: key must be a release-relative path without '..'"
+    ],
+    "errors": "1 config error:\n  atlas.yaml: deploy.targets.prod.link.../x: key must be a release-relative path without '..'"
+  },
+  "36 config.deploy_link_value": {
+    "display": [
+      "deploy.targets.prod.link..env: value must be an absolute path"
+    ],
+    "errors": "1 config error:\n  atlas.yaml: deploy.targets.prod.link..env: value must be an absolute path"
+  },
+  "37 config.deploy_service_duplicate": {
+    "display": [
+      "deploy.targets.prod.services[1].name: duplicate service 'shop-api'"
+    ],
+    "errors": "1 config error:\n  atlas.yaml: deploy.targets.prod.services[1].name: duplicate service 'shop-api'"
+  },
+  "38 config.deploy_restart_required": {
+    "display": [
+      "deploy.targets.prod.services[2].restart: kind 'command' requires restart"
+    ],
+    "errors": "1 config error:\n  atlas.yaml: deploy.targets.prod.services[2].restart: kind 'command' requires restart"
+  },
+  "39 config.deploy_restart_only_command": {
+    "display": [
+      "deploy.targets.prod.services[0].restart: only valid for kind 'command'"
+    ],
+    "errors": "1 config error:\n  atlas.yaml: deploy.targets.prod.services[0].restart: only valid for kind 'command'"
+  },
+  "40 config.deploy_compose_file_only_compose": {
+    "display": [
+      "deploy.targets.prod.services[0].compose_file: only valid for kind 'compose'"
+    ],
+    "errors": "1 config error:\n  atlas.yaml: deploy.targets.prod.services[0].compose_file: only valid for kind 'compose'"
+  },
+  "41 config.warn_autostart_false": {
+    "display": [
+      "services.web.depends_on.lazy: 'lazy' has autostart: false, so 'web' waits until 'lazy' is started by hand",
+      "services.web.depends_on.lazy: 'healthy' on 'lazy' only waits for it to stay alive for 2s: 'lazy' has no port, health or ready_log"
+    ],
+    "errors": "0 config errors:"
+  },
+  "42 config.warn_healthy_no_probe": {
+    "display": [
+      "services.web.depends_on.worker: 'healthy' on 'worker' only waits for it to stay alive for 2s: 'worker' has no port, health or ready_log"
+    ],
+    "errors": "0 config errors:"
+  }
+}

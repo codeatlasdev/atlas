@@ -1,9 +1,10 @@
 //! Schema-driven unknown-key detection for atlas.yaml / atlas.local.yaml.
 
 use serde_json::Value as Json;
+use serde_json::json;
 use serde_norway::Value as Yaml;
 
-use super::{ConfigError, suggest};
+use super::{ConfigError, code, suggest};
 use crate::config::loader::LocalOverride;
 use crate::config::project::ProjectConfig;
 
@@ -170,13 +171,19 @@ fn unknown<'a>(
     known: impl Iterator<Item = &'a str>,
 ) -> ConfigError {
     let suggestion = suggest(key, known);
-    let message = match suggestion {
-        Some(s) => format!("unknown field (did you mean '{s}'?)"),
-        None => "unknown field".to_string(),
+    let (code, args, message) = match suggestion {
+        Some(s) => (
+            code::UNKNOWN_KEY_SUGGEST,
+            json!({ "key": key, "suggestion": s }),
+            format!("unknown field (did you mean '{s}'?)"),
+        ),
+        None => (
+            code::UNKNOWN_KEY,
+            json!({ "key": key }),
+            "unknown field".to_string(),
+        ),
     };
-    ConfigError {
-        file: file.to_string(),
-        path: path.to_string(),
-        message,
-    }
+    let mut error = ConfigError::new(path, code, args, message);
+    error.file = file.to_string();
+    error
 }

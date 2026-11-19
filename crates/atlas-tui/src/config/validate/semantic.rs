@@ -1,9 +1,12 @@
 //! Cross-field checks on the merged config (dependencies, cycles, ports,
-//! keys, deploy rules) and non-fatal warnings.
+//! keys, deploy rules) and non-fatal warnings. Every problem has a `code`
+//! (`validate::code`) and the `args` behind its English message.
 
 use std::collections::{BTreeMap, BTreeSet, HashMap};
 
-use super::{BUILTIN_KEYS, ConfigError, suggest};
+use serde_json::{Value, json};
+
+use super::{BUILTIN_KEYS, ConfigError, code, suggest};
 use crate::config::project::{Condition, ProjectConfig};
 
 /// Services by name: sorted for deterministic output (`HashMap` iteration
@@ -21,10 +24,8 @@ fn sorted_services(config: &ProjectConfig) -> BTreeMap<&str, &crate::config::pro
 /// uniqueness where a disabled service holds no port.
 pub fn semantic(config: &ProjectConfig) -> Vec<ConfigError> {
     let mut errors = Vec::new();
-    let err = |path: String, message: String| ConfigError {
-        file: String::new(),
-        path,
-        message,
+    let err = |path: String, code: &'static str, args: Value, message: String| {
+        ConfigError::new(path, code, args, message)
     };
     let names: BTreeSet<&str> = config.services.keys().map(String::as_str).collect();
     let sorted = sorted_services(config);
@@ -35,12 +36,16 @@ pub fn semantic(config: &ProjectConfig) -> Vec<ConfigError> {
             if def.command.is_some() {
                 errors.push(err(
                     path.clone(),
+                    code::REMOTE_COMMAND,
+                    json!({ "service": name }),
                     "a remote service runs no local command: remove `command`".into(),
                 ));
             }
             if def.port.is_none() {
                 errors.push(err(
                     path.clone(),
+                    code::REMOTE_PORT_MISSING,
+                    json!({ "service": name }),
                     "needs the service's local `port` (where atlas forwards it)".into(),
                 ));
             }
@@ -54,6 +59,8 @@ pub fn semantic(config: &ProjectConfig) -> Vec<ConfigError> {
             if !word(&r.ssh) {
                 errors.push(err(
                     format!("{path}.ssh"),
+                    code::REMOTE_SSH_INVALID,
+                    json!({ "service": name, "ssh": r.ssh }),
                     format!(
                         "'{}' is not an SSH destination (a host alias or user@host)",
                         r.ssh
@@ -65,6 +72,8 @@ pub fn semantic(config: &ProjectConfig) -> Vec<ConfigError> {
             {
                 errors.push(err(
                     format!("{path}.host"),
+                    code::REMOTE_HOST_INVALID,
+                    json!({ "service": name, "host": h }),
                     format!("'{h}' is not a host name"),
                 ));
             }
@@ -72,23 +81,34 @@ pub fn semantic(config: &ProjectConfig) -> Vec<ConfigError> {
         for (dep, cond) in def.deps() {
             let path = format!("services.{name}.depends_on.{dep}");
             if dep == *name {
-                errors.push(err(path, "a service cannot depend on itself".into()));
+                errors.push(err(
+                    path,
+                    code::DEPENDENCY_SELF,
+                    json!({ "service": name }),
+                    "a service cannot depend on itself".into(),
+                ));
                 continue;
             }
             let Some(target) = sorted.get(dep.as_str()) else {
-                let hint = suggest(&dep, names.iter().copied())
-                    .map(|s| format!(" (did you mean '{s}'?)"))
-                    .unwrap_or_default();
-                errors.push(err(path, format!("unknown service '{dep}'{hint}")));
+                errors.push(unknown_service(
+                    path,
+                    &dep,
+                    json!({ "service": name }),
+                    &names,
+                ));
                 continue;
             };
             match cond {
                 Condition::LogReady if target.ready_log.is_none() => errors.push(err(
                     path,
+                    code::CONDITION_LOG_READY,
+                    json!({ "service": name, "dependency": dep }),
                     format!("condition 'log_ready' requires services.{dep}.ready_log"),
                 )),
                 Condition::CompletedSuccessfully if target.command.is_none() => errors.push(err(
                     path,
+                    code::CONDITION_COMPLETED,
+                    json!({ "service": name, "dependency": dep }),
                     format!("condition 'completed_successfully' needs services.{dep}.command (nothing to run to completion)"),
                 )),
                 _ => {}
@@ -103,6 +123,8 @@ pub fn semantic(config: &ProjectConfig) -> Vec<ConfigError> {
             if let Some((m, None)) = v {
                 errors.push(err(
                     format!("services.{name}.{key}"),
+                    code::SIZE_INVALID,
+                    json!({ "service": name, "key": key, "value": m }),
                     format!("'{m}' is not a size (use e.g. 512M or 4G)"),
                 ));
             }
@@ -113,18 +135,21 @@ pub fn semantic(config: &ProjectConfig) -> Vec<ConfigError> {
         {
             errors.push(err(
                 format!("services.{name}.memory_warn"),
+                code::MEMORY_WARN_ABOVE_MAX,
+                json!({ "service": name, "max_memory": max_text }),
                 format!("must be below max_memory ({max_text})"),
             ));
         }
         if let Some(rx) = &def.ready_log
             && let Err(e) = regex::Regex::new(rx)
         {
+            let detail = e.to_string();
+            let detail = detail.lines().last().unwrap_or("");
             errors.push(err(
                 format!("services.{name}.ready_log"),
-                format!(
-                    "invalid regex: {}",
-                    e.to_string().lines().last().unwrap_or("")
-                ),
+                code::READY_LOG_REGEX,
+                json!({ "service": name, "detail": detail }),
+                format!("invalid regex: {detail}"),
             ));
         }
         if let Some(r) = &def.ready
@@ -132,15 +157,20 @@ pub fn semantic(config: &ProjectConfig) -> Vec<ConfigError> {
         {
             errors.push(err(
                 format!("services.{name}.ready"),
+                code::READY_EXCLUSIVE,
+                json!({ "service": name }),
                 "set exactly one of `http` (path or URL) or `command`".into(),
             ));
         }
     }
 
     if let Some(cycle) = find_cycle(&sorted, &names) {
+        let path = cycle.join(" -> ");
         errors.push(err(
             "services".into(),
-            format!("dependency cycle: {}", cycle.join(" -> ")),
+            code::DEPENDENCY_CYCLE,
+            json!({ "cycle": path, "services": cycle }),
+            format!("dependency cycle: {path}"),
         ));
     }
 
@@ -156,6 +186,8 @@ pub fn semantic(config: &ProjectConfig) -> Vec<ConfigError> {
     for (port, owners) in by_port.iter().filter(|(_, o)| o.len() > 1) {
         errors.push(err(
             format!("services.{}.port", owners[1]),
+            code::PORT_DUPLICATE,
+            json!({ "service": owners[1], "port": port, "other": owners[0] }),
             format!("port {port} is also used by '{}'", owners[0]),
         ));
     }
@@ -166,12 +198,11 @@ pub fn semantic(config: &ProjectConfig) -> Vec<ConfigError> {
             if names.contains(member.as_str()) {
                 continue;
             }
-            let hint = suggest(member, names.iter().copied())
-                .map(|s| format!(" (did you mean '{s}'?)"))
-                .unwrap_or_default();
-            errors.push(err(
+            errors.push(unknown_service(
                 format!("profiles.{profile}[{i}]"),
-                format!("unknown service '{member}'{hint}"),
+                member,
+                json!({ "profile": profile }),
+                &names,
             ));
         }
     }
@@ -187,16 +218,22 @@ pub fn semantic(config: &ProjectConfig) -> Vec<ConfigError> {
         if BUILTIN_KEYS.contains(&a.key) {
             errors.push(err(
                 path,
+                code::KEY_BUILTIN,
+                json!({ "key": a.key.to_string() }),
                 format!("key '{}' is a built-in dashboard key", a.key),
             ));
         } else if let Some(svc) = open_keys.get(&a.key) {
             errors.push(err(
                 path,
+                code::ACTION_KEY_OPEN_KEY,
+                json!({ "key": a.key.to_string(), "service": svc }),
                 format!("key '{}' is already the open_key of service '{svc}'", a.key),
             ));
         } else if let Some(prev) = seen.insert(a.key, &a.label) {
             errors.push(err(
                 path,
+                code::ACTION_KEY_DUPLICATE,
+                json!({ "key": a.key.to_string(), "action": prev }),
                 format!("key '{}' is already used by action '{prev}'", a.key),
             ));
         }
@@ -205,6 +242,8 @@ pub fn semantic(config: &ProjectConfig) -> Vec<ConfigError> {
         if BUILTIN_KEYS.contains(k) {
             errors.push(err(
                 format!("services.{svc}.open_key"),
+                code::KEY_BUILTIN,
+                json!({ "key": k.to_string(), "service": svc }),
                 format!("key '{k}' is a built-in dashboard key"),
             ));
         }
@@ -215,6 +254,8 @@ pub fn semantic(config: &ProjectConfig) -> Vec<ConfigError> {
         for reference in crate::config::worktree_setup::unknown_refs(setup, &config.actions) {
             errors.push(err(
                 "worktree.setup".into(),
+                code::WORKTREE_SETUP_UNKNOWN_ACTION,
+                json!({ "action": reference }),
                 format!(
                     "mentions action '{reference}', which is not an action label or key in `actions`"
                 ),
@@ -228,6 +269,8 @@ pub fn semantic(config: &ProjectConfig) -> Vec<ConfigError> {
             if a.open_tunnel {
                 errors.push(err(
                     format!("actions[{i}].open_tunnel"),
+                    code::OPEN_TUNNEL_WITHOUT_TUNNEL,
+                    json!({ "action": a.label }),
                     format!(
                         "action '{}' sets open_tunnel: true but there is no `tunnel:` block",
                         a.label
@@ -247,6 +290,35 @@ pub fn semantic(config: &ProjectConfig) -> Vec<ConfigError> {
     errors
 }
 
+/// `unknown service 'x' (did you mean 'y'?)` at `path`: a dependency or a profile member. `context` is the
+/// extra args that say where the name was written (`service` or `profile`).
+fn unknown_service(
+    path: String,
+    name: &str,
+    context: Value,
+    names: &BTreeSet<&str>,
+) -> ConfigError {
+    let mut args = context;
+    args["name"] = json!(name);
+    match suggest(name, names.iter().copied()) {
+        Some(s) => {
+            args["suggestion"] = json!(s);
+            ConfigError::new(
+                path,
+                code::UNKNOWN_SERVICE_SUGGEST,
+                args,
+                format!("unknown service '{name}' (did you mean '{s}'?)"),
+            )
+        }
+        None => ConfigError::new(
+            path,
+            code::UNKNOWN_SERVICE,
+            args,
+            format!("unknown service '{name}'"),
+        ),
+    }
+}
+
 /// `affected:` — a rule must say which files it is about, with globs that parse, and may only
 /// name actions that exist (labels match case-insensitively, like MCP).
 fn affected_rules(
@@ -254,16 +326,14 @@ fn affected_rules(
     config: &ProjectConfig,
     errors: &mut Vec<ConfigError>,
 ) {
-    let mut e = |path: String, message: String| {
-        errors.push(ConfigError {
-            file: String::new(),
-            path,
-            message,
-        });
+    let mut e = |path: String, code: &'static str, args: Value, message: String| {
+        errors.push(ConfigError::new(path, code, args, message));
     };
     if a.command.as_deref().is_some_and(|c| c.trim().is_empty()) {
         e(
             "affected.command".into(),
+            code::AFFECTED_COMMAND_BLANK,
+            json!({}),
             "is blank: give a command or remove it".into(),
         );
     }
@@ -272,10 +342,12 @@ fn affected_rules(
         if r.matches.is_empty() {
             e(
                 format!("{path}.match"),
+                code::AFFECTED_RULE_NO_MATCH,
+                json!({ "rule": i }),
                 "needs at least one glob (e.g. 'crates/**')".into(),
             );
-        } else if let Err(m) = atlas_core::affected::check_globs(&r.matches) {
-            e(format!("{path}.match"), m);
+        } else if let Some((code, args, message)) = bad_globs(&r.matches, i) {
+            e(format!("{path}.match"), code, args, message);
         }
         for t in &r.tasks {
             if !config
@@ -285,6 +357,8 @@ fn affected_rules(
             {
                 e(
                     format!("{path}.tasks"),
+                    code::AFFECTED_TASK_UNKNOWN,
+                    json!({ "rule": i, "task": t }),
                     format!("'{t}' is not the label of any action"),
                 );
             }
@@ -292,14 +366,28 @@ fn affected_rules(
     }
 }
 
+/// Why `globs` do not parse, from the core's `check_globs` (the same call and message as before, also read by
+/// MCP): `(code, args, English message)`. The core words a bad glob `bad glob "<glob>": <reason>`. Its other
+/// sentence, `bad glob set [<globs>]: <reason>` (every glob parses alone but the set does not compile), has no
+/// input of its own (60000 globs still compile): it keeps the code and the message and carries the whole list as
+/// `glob`.
+fn bad_globs(globs: &[String], rule: usize) -> Option<(&'static str, Value, String)> {
+    let message = atlas_core::affected::check_globs(globs).err()?;
+    let (glob, reason) = globs
+        .iter()
+        .find_map(|g| {
+            let reason = message.strip_prefix(&format!("bad glob {g:?}: "))?;
+            Some((g.clone(), reason.to_string()))
+        })
+        .unwrap_or_else(|| (globs.join(", "), message.clone()));
+    let args = json!({ "rule": rule, "glob": glob, "reason": reason });
+    Some((code::AFFECTED_BAD_GLOB, args, message))
+}
+
 fn deploy_rules(d: &crate::config::project::DeployConfig, errors: &mut Vec<ConfigError>) {
     use crate::config::project::DeployKind;
-    let mut e = |path: String, message: &str| {
-        errors.push(ConfigError {
-            file: String::new(),
-            path,
-            message: message.into(),
-        })
+    let mut e = |path: String, code: &'static str, args: Value, message: &str| {
+        errors.push(ConfigError::new(path, code, args, message))
     };
     if let Some(app) = &d.app
         && (app.is_empty()
@@ -307,59 +395,113 @@ fn deploy_rules(d: &crate::config::project::DeployConfig, errors: &mut Vec<Confi
                 .bytes()
                 .all(|b| b.is_ascii_lowercase() || b.is_ascii_digit() || b == b'-'))
     {
-        e("deploy.app".into(), "must match ^[a-z0-9-]+$");
+        e(
+            "deploy.app".into(),
+            code::DEPLOY_APP_PATTERN,
+            json!({ "app": app }),
+            "must match ^[a-z0-9-]+$",
+        );
     }
     if d.targets.is_empty() {
-        e("deploy.targets".into(), "at least one target is required");
+        e(
+            "deploy.targets".into(),
+            code::DEPLOY_TARGETS_EMPTY,
+            json!({}),
+            "at least one target is required",
+        );
     }
     let targets: BTreeMap<_, _> = d.targets.iter().collect();
     for (t, tg) in targets {
         let p = |f: &str| format!("deploy.targets.{t}.{f}");
         if tg.services.is_empty() {
-            e(p("services"), "at least one service is required");
+            e(
+                p("services"),
+                code::DEPLOY_SERVICES_EMPTY,
+                json!({ "target": t }),
+                "at least one service is required",
+            );
         }
         if tg.keep.is_some_and(|k| k < 2) {
             e(
                 p("keep"),
+                code::DEPLOY_KEEP_MIN,
+                json!({ "target": t, "keep": tg.keep }),
                 "must be >= 2 (rollback needs a previous release)",
             );
         }
         if tg.dir.as_deref().is_some_and(|s| !s.starts_with('/')) {
-            e(p("dir"), "must be an absolute path");
+            e(
+                p("dir"),
+                code::DEPLOY_PATH_ABSOLUTE,
+                json!({ "target": t, "field": "dir" }),
+                "must be an absolute path",
+            );
         }
         if tg
             .pause_marker
             .as_deref()
             .is_some_and(|s| !s.starts_with('/'))
         {
-            e(p("pause_marker"), "must be an absolute path");
+            e(
+                p("pause_marker"),
+                code::DEPLOY_PATH_ABSOLUTE,
+                json!({ "target": t, "field": "pause_marker" }),
+                "must be an absolute path",
+            );
         }
         let links: BTreeMap<_, _> = tg.link.iter().flatten().collect();
         for (k, v) in links {
             if k.is_empty() || k.starts_with('/') || k.split('/').any(|c| c == "..") {
                 e(
                     p(&format!("link.{k}")),
+                    code::DEPLOY_LINK_KEY,
+                    json!({ "target": t, "link": k }),
                     "key must be a release-relative path without '..'",
                 );
             }
             if !v.starts_with('/') {
-                e(p(&format!("link.{k}")), "value must be an absolute path");
+                e(
+                    p(&format!("link.{k}")),
+                    code::DEPLOY_LINK_VALUE,
+                    json!({ "target": t, "link": k, "value": v }),
+                    "value must be an absolute path",
+                );
             }
         }
         let mut seen = BTreeSet::new();
         for (i, s) in tg.services.iter().enumerate() {
             let sp = |f: &str| p(&format!("services[{i}].{f}"));
             if !seen.insert(s.name.as_str()) {
-                e(sp("name"), &format!("duplicate service '{}'", s.name));
+                e(
+                    sp("name"),
+                    code::DEPLOY_SERVICE_DUPLICATE,
+                    json!({ "target": t, "name": s.name }),
+                    &format!("duplicate service '{}'", s.name),
+                );
             }
             if s.kind == DeployKind::Command && s.restart.is_none() {
-                e(sp("restart"), "kind 'command' requires restart");
+                e(
+                    sp("restart"),
+                    code::DEPLOY_RESTART_REQUIRED,
+                    json!({ "target": t, "name": s.name }),
+                    "kind 'command' requires restart",
+                );
             }
             if s.kind != DeployKind::Command && s.restart.is_some() {
-                e(sp("restart"), "only valid for kind 'command'");
+                e(
+                    sp("restart"),
+                    code::DEPLOY_RESTART_ONLY_COMMAND,
+                    json!({ "target": t, "name": s.name }),
+                    "only valid for kind 'command'",
+                );
             }
             if s.kind != DeployKind::Compose && s.compose_file.is_some() {
-                e(sp("compose_file"), "only valid for kind 'compose'");
+                e(
+                    sp("compose_file"),
+                    code::DEPLOY_COMPOSE_FILE_ONLY_COMPOSE,
+                    json!({ "target": t, "name": s.name }),
+                    "only valid for kind 'compose'",
+                );
             }
         }
     }
@@ -370,10 +512,8 @@ fn deploy_rules(d: &crate::config::project::DeployConfig, errors: &mut Vec<Confi
 pub fn warnings(config: &ProjectConfig) -> Vec<ConfigError> {
     let sorted = sorted_services(config);
     let mut out = Vec::new();
-    let warn = |path: String, message: String| ConfigError {
-        file: String::new(),
-        path,
-        message,
+    let warn = |path: String, code: &'static str, args: Value, message: String| {
+        ConfigError::new(path, code, args, message)
     };
     for (name, def) in &sorted {
         if !def.is_enabled() {
@@ -388,6 +528,8 @@ pub fn warnings(config: &ProjectConfig) -> Vec<ConfigError> {
             if !target.is_autostart() && def.is_autostart() {
                 out.push(warn(
                     path.clone(),
+                    code::WARN_AUTOSTART_FALSE,
+                    json!({ "service": name, "dependency": dep }),
                     format!(
                         "'{dep}' has autostart: false, so '{name}' waits until '{dep}' is started by hand"
                     ),
@@ -398,6 +540,8 @@ pub fn warnings(config: &ProjectConfig) -> Vec<ConfigError> {
             if cond == Condition::Healthy && target.command.is_some() && target.has_no_probe() {
                 out.push(warn(
                     path,
+                    code::WARN_HEALTHY_NO_PROBE,
+                    json!({ "service": name, "dependency": dep }),
                     format!(
                         "'healthy' on '{dep}' only waits for it to stay alive for 2s: \
                          '{dep}' has no port, health or ready_log"

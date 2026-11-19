@@ -525,7 +525,9 @@ fn last_result_in(cache: &atlas_core::taskcache::Cache, args: &Value) -> ToolRes
 }
 
 pub(crate) fn config_tool(root: &Path) -> ToolResult {
-    let (cfg, source) = crate::config::load_or_detect(root).map_err(|e| format!("{e:#}"))?;
+    // MCP is read by a program: a config error is English, whatever the display language.
+    let (cfg, source) = crate::config::load_or_detect_in(root, atlas_core::lang::DEFAULT)
+        .map_err(|e| format!("{e:#}"))?;
     let mut names: Vec<&String> = cfg.services.keys().collect();
     names.sort();
     let services: Vec<Value> = names

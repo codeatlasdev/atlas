@@ -1,0 +1,12 @@
+{
+	"workbench_term_clipboard_description": "Dialog text when a terminal program asks to set the clipboard; the text follows on the next lines",
+	"workbench_term_clipboard_title": "Title of the dialog when a terminal program asks to set the clipboard",
+	"workbench_term_font_fallback": "Toast when the GPU terminal fell back from the font the user chose",
+	"workbench_term_gpu_after_restart": "Toast when the GPU terminal needs a newer terminal host",
+	"workbench_term_pane_ended": "Notice over a terminal whose process ended; code is its exit code",
+	"workbench_term_pane_gone": "Notice over a terminal that no longer exists on the host",
+	"workbench_term_pane_host_unreachable": "Notice when the terminal host does not answer",
+	"workbench_term_pane_raw_protocol_back": "Notice over the raw omp terminal; click returns to the chat view",
+	"workbench_term_pane_restart_host": "Accessible name and hint of the restart button of the host notice",
+	"workbench_term_search_label": "Accessible name of the terminal find field"
+}

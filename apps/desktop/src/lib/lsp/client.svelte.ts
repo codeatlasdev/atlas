@@ -17,6 +17,7 @@ import type { Catalog, LspOverride, Reason, ServerStatus } from "#lib/lsp/types.
 import { isHostTooOld, openPayload } from "#lib/lsp/hostFacts.ts";
 import { startSync } from "#lib/lsp/sync.ts";
 import { prefs } from "#lib/stores/prefs.svelte.ts";
+import { m } from "#lib/i18n/m.ts";
 
 const CHANGE_DEBOUNCE_MS = 40;
 const PULL_DEBOUNCE_MS = 400;
@@ -313,8 +314,8 @@ export class LspDoc {
 			this.status = "missing";
 			this.reason = {
 				code: "crashed",
-				message: "Atlas could not reach the language server host.",
-				hint: "Reopen the file; if it keeps happening, restart the app.",
+				message: m.workbench_lsp_host_unreachable(),
+				hint: m.workbench_lsp_host_unreachable_hint(),
 			};
 			this.replied = true;
 			this.#open = false;

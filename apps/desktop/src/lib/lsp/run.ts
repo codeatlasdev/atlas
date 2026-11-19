@@ -16,6 +16,7 @@ import { uiStateOf } from "#lib/lsp/uiState.svelte.ts";
 import { confirmDialog } from "#lib/stores/ask.svelte.ts";
 import { setPref } from "#lib/stores/prefs.svelte.ts";
 import { updates } from "#lib/stores/updates.svelte.ts";
+import { m } from "#lib/i18n/m.ts";
 
 const DOCS_URL = "https://github.com/codeatlasdev/atlas/blob/main/docs/editor.md#language-servers";
 
@@ -67,7 +68,7 @@ export async function runAction(id: ActionId, path: string, payload?: string): P
 		case "copy-command":
 			if (payload) {
 				await navigator.clipboard.writeText(payload).catch(() => {});
-				toast.success("Command copied");
+				toast.success(m.workbench_lsp_command_copied());
 			}
 			return;
 	}

@@ -1889,11 +1889,22 @@ mod tests {
 
         for cmd in ["fs_remove", "fs_stat", "fs_list", "fs_read"] {
             let (code, args, text) = coded_failure(&client, cmd, json!({"path": gone})).await;
-            assert_eq!((code.as_str(), &args["path"], text.as_str()), ("fs.not_found", &json!(gone), "not_found"), "{cmd}");
+            assert_eq!(
+                (code.as_str(), &args["path"], text.as_str()),
+                ("fs.not_found", &json!(gone), "not_found"),
+                "{cmd}"
+            );
         }
-        let (code, args, text) =
-            coded_failure(&client, "fs_rename", json!({"from": gone, "to": format!("{gone}2")})).await;
-        assert_eq!((code.as_str(), &args["path"], text.as_str()), ("fs.not_found", &json!(gone), "not_found"));
+        let (code, args, text) = coded_failure(
+            &client,
+            "fs_rename",
+            json!({"from": gone, "to": format!("{gone}2")}),
+        )
+        .await;
+        assert_eq!(
+            (code.as_str(), &args["path"], text.as_str()),
+            ("fs.not_found", &json!(gone), "not_found")
+        );
 
         // A path through a file: the OS says "Not a directory" (os error 20).
         let file = tmp.path().join("file.txt");
@@ -1902,17 +1913,29 @@ mod tests {
         let inside = inside.to_str().unwrap();
         #[cfg(unix)]
         {
-            let (code, args, text) = coded_failure(&client, "fs_write", json!({"path": inside, "data": ""})).await;
+            let (code, args, text) =
+                coded_failure(&client, "fs_write", json!({"path": inside, "data": ""})).await;
             assert_eq!(code, "fs.io");
             assert_eq!(args["kind"], "not_a_directory");
-            assert_eq!(args["path"], file.to_str().unwrap(), "the folder that is no folder");
+            assert_eq!(
+                args["path"],
+                file.to_str().unwrap(),
+                "the folder that is no folder"
+            );
             assert!(text.contains("Not a directory"), "{text}");
             let (code, args, _) = coded_failure(&client, "fs_mkdir", json!({"path": inside})).await;
-            assert_eq!((code.as_str(), &args["kind"]), ("fs.io", &json!("not_a_directory")));
+            assert_eq!(
+                (code.as_str(), &args["kind"]),
+                ("fs.io", &json!("not_a_directory"))
+            );
         }
         // A file where a folder is wanted.
-        let (code, args, _) = coded_failure(&client, "fs_mkdir", json!({"path": file.to_str().unwrap()})).await;
-        assert_eq!((code.as_str(), &args["kind"]), ("fs.io", &json!("already_exists")));
+        let (code, args, _) =
+            coded_failure(&client, "fs_mkdir", json!({"path": file.to_str().unwrap()})).await;
+        assert_eq!(
+            (code.as_str(), &args["kind"]),
+            ("fs.io", &json!("already_exists"))
+        );
 
         let (code, args, text) = coded_failure(
             &client,
@@ -1921,7 +1944,10 @@ mod tests {
         )
         .await;
         assert_eq!(code, "exec.spawn_failed");
-        assert_eq!(args, json!({"program": "atlas-no-such-program-xyz", "reason": "not_found"}));
+        assert_eq!(
+            args,
+            json!({"program": "atlas-no-such-program-xyz", "reason": "not_found"})
+        );
         assert!(text.starts_with("atlas-no-such-program-xyz: "), "{text}");
 
         // The same OS error for a missing working folder: the advice is not "install it".
@@ -1931,11 +1957,21 @@ mod tests {
             json!({"cwd": gone, "argv": ["git", "status"], "env": {}, "timeout_ms": 5000}),
         )
         .await;
-        assert_eq!((code.as_str(), &args["path"]), ("fs.not_found", &json!(gone)));
+        assert_eq!(
+            (code.as_str(), &args["path"]),
+            ("fs.not_found", &json!(gone))
+        );
 
-        let (code, args, text) =
-            coded_failure(&client, "exec", json!({"cwd": tmp.path(), "argv": [], "env": {}, "timeout_ms": 5000})).await;
-        assert_eq!((code.as_str(), text.as_str()), ("hostd.invalid_argument", "empty argv"));
+        let (code, args, text) = coded_failure(
+            &client,
+            "exec",
+            json!({"cwd": tmp.path(), "argv": [], "env": {}, "timeout_ms": 5000}),
+        )
+        .await;
+        assert_eq!(
+            (code.as_str(), text.as_str()),
+            ("hostd.invalid_argument", "empty argv")
+        );
         assert_eq!(args, json!({"field": "argv", "reason": "empty"}));
         let (code, args, _) =
             coded_failure(&client, "fs_write", json!({"path": gone, "data": "***"})).await;
@@ -1943,8 +1979,14 @@ mod tests {
         assert_eq!(args, json!({"field": "data", "reason": "bad_base64"}));
 
         // A failure with no code is still the text it always was.
-        let e = client.call("pty_info", json!({"pty": "nope"})).await.unwrap_err();
-        assert!(e.downcast_ref::<atlas_core::progress::Coded>().is_none(), "{e:#}");
+        let e = client
+            .call("pty_info", json!({"pty": "nope"}))
+            .await
+            .unwrap_err();
+        assert!(
+            e.downcast_ref::<atlas_core::progress::Coded>().is_none(),
+            "{e:#}"
+        );
     }
 
     /// Incident: every request was handled on its own task, so two writes of one connection

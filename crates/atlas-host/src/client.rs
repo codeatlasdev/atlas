@@ -1529,10 +1529,7 @@ mod coded_error_tests {
             "hostd: too many clients"
         );
         assert_eq!(wire(&refused("hostd busy"))["code"], BUSY);
-        assert_eq!(
-            wire(&refused("too many clients"))["code"],
-            TOO_MANY_CLIENTS
-        );
+        assert_eq!(wire(&refused("too many clients"))["code"], TOO_MANY_CLIENTS);
         assert_eq!(wire(&refused("hello timeout"))["code"], REFUSED);
         assert!(
             cli_not_found()

@@ -1,10 +1,5 @@
 {
-	"codes": [
-		"fs.not_found",
-		"fs.io",
-		"exec.spawn_failed",
-		"hostd.invalid_argument"
-	],
+	"codes": ["fs.not_found", "fs.io", "exec.spawn_failed", "hostd.invalid_argument"],
 	"errors": [
 		{
 			"args": {

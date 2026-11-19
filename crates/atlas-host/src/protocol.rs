@@ -1017,7 +1017,11 @@ mod tests {
     /// a reply without them (an older daemon) is a plain text error on the client.
     #[test]
     fn a_coded_failure_keeps_the_error_text_and_adds_code_and_args() {
-        let coded = Coded::new("fs.not_found", serde_json::json!({"path": "/w/a"}), "not_found");
+        let coded = Coded::new(
+            "fs.not_found",
+            serde_json::json!({"path": "/w/a"}),
+            "not_found",
+        );
         let v: Value = serde_json::from_str(&reply_failure(4, Err(coded.into()))).unwrap();
         assert_eq!(v["id"], 4);
         assert_eq!(v["ok"], false);
@@ -1026,7 +1030,10 @@ mod tests {
         assert_eq!(v["args"], serde_json::json!({"path": "/w/a"}));
 
         let v: Value = serde_json::from_str(&reply(4, Err("boom".into()))).unwrap();
-        assert_eq!(v, serde_json::json!({"id": 4, "ok": false, "error": "boom"}));
+        assert_eq!(
+            v,
+            serde_json::json!({"id": 4, "ok": false, "error": "boom"})
+        );
         let e = crate::client::reply_error(&v);
         assert!(e.downcast_ref::<Coded>().is_none());
         assert_eq!(e.to_string(), "boom");
@@ -1056,17 +1063,47 @@ mod tests {
             panic!("an empty argv is a coded failure");
         };
         let samples = [
-            crate::fs::coded(&os(K::NotFound, "No such file or directory (os error 2)"), "/work/old-name.txt"),
-            crate::fs::coded(&os(K::PermissionDenied, "Permission denied (os error 13)"), "/work/locked"),
-            crate::fs::coded(&os(K::NotADirectory, "Not a directory (os error 20)"), "/work/README.md"),
-            crate::fs::coded(&os(K::IsADirectory, "Is a directory (os error 21)"), "/work/src"),
-            crate::fs::coded(&os(K::AlreadyExists, "File exists (os error 17)"), "/work/src"),
-            crate::fs::coded(&os(K::Other, "Read-only file system (os error 30)"), "/work/readonly"),
-            crate::exec::spawn_failed("git", cwd, &os(K::NotFound, "No such file or directory (os error 2)")),
-            crate::exec::spawn_failed("/opt/tools/lint", cwd, &os(K::PermissionDenied, "Permission denied (os error 13)")),
+            crate::fs::coded(
+                &os(K::NotFound, "No such file or directory (os error 2)"),
+                "/work/old-name.txt",
+            ),
+            crate::fs::coded(
+                &os(K::PermissionDenied, "Permission denied (os error 13)"),
+                "/work/locked",
+            ),
+            crate::fs::coded(
+                &os(K::NotADirectory, "Not a directory (os error 20)"),
+                "/work/README.md",
+            ),
+            crate::fs::coded(
+                &os(K::IsADirectory, "Is a directory (os error 21)"),
+                "/work/src",
+            ),
+            crate::fs::coded(
+                &os(K::AlreadyExists, "File exists (os error 17)"),
+                "/work/src",
+            ),
+            crate::fs::coded(
+                &os(K::Other, "Read-only file system (os error 30)"),
+                "/work/readonly",
+            ),
+            crate::exec::spawn_failed(
+                "git",
+                cwd,
+                &os(K::NotFound, "No such file or directory (os error 2)"),
+            ),
+            crate::exec::spawn_failed(
+                "/opt/tools/lint",
+                cwd,
+                &os(K::PermissionDenied, "Permission denied (os error 13)"),
+            ),
             crate::exec::spawn_failed("sh", cwd, &os(K::Other, "Exec format error (os error 8)")),
             // The same OS error when the working folder is the missing one.
-            crate::exec::spawn_failed("git", "/work/gone", &os(K::NotFound, "No such file or directory (os error 2)")),
+            crate::exec::spawn_failed(
+                "git",
+                "/work/gone",
+                &os(K::NotFound, "No such file or directory (os error 2)"),
+            ),
             crate::fs::write("/work/a.txt", "***", None).unwrap_err(),
             crate::fs::write("/", "", None).unwrap_err(),
             empty_argv,
@@ -1074,19 +1111,29 @@ mod tests {
         let errors: Vec<Value> = samples
             .iter()
             .map(|c| {
-                let v: Value = serde_json::from_str(&reply_failure(1, Err(c.clone().into()))).unwrap();
+                let v: Value =
+                    serde_json::from_str(&reply_failure(1, Err(c.clone().into()))).unwrap();
                 assert_eq!(v["error"], c.message.as_str(), "the text is the old one");
                 let e = crate::client::reply_error(&v);
-                let got = e.downcast_ref::<Coded>().expect("the client reads the code").wire();
+                let got = e
+                    .downcast_ref::<Coded>()
+                    .expect("the client reads the code")
+                    .wire();
                 assert_eq!(got, c.wire(), "the reply keeps code, args and text");
                 got
             })
             .collect();
         for code in REPLY_CODES {
-            assert!(errors.iter().any(|e| e["code"] == *code), "no sample for {code}");
+            assert!(
+                errors.iter().any(|e| e["code"] == *code),
+                "no sample for {code}"
+            );
         }
         for e in &errors {
-            assert!(REPLY_CODES.contains(&e["code"].as_str().unwrap()), "{e} is not in REPLY_CODES");
+            assert!(
+                REPLY_CODES.contains(&e["code"].as_str().unwrap()),
+                "{e} is not in REPLY_CODES"
+            );
         }
         let value = serde_json::json!({"codes": REPLY_CODES, "errors": errors});
 
@@ -1102,8 +1149,13 @@ mod tests {
         if std::env::var_os("UPDATE_FIXTURES").is_some() {
             std::fs::write(&path, &fresh).unwrap();
         }
-        let committed: Value =
-            serde_json::from_str(&std::fs::read_to_string(&path).expect("fixture missing: UPDATE_FIXTURES=1")).unwrap();
-        assert_eq!(committed, value, "stale fixture: re-run with UPDATE_FIXTURES=1");
+        let committed: Value = serde_json::from_str(
+            &std::fs::read_to_string(&path).expect("fixture missing: UPDATE_FIXTURES=1"),
+        )
+        .unwrap();
+        assert_eq!(
+            committed, value,
+            "stale fixture: re-run with UPDATE_FIXTURES=1"
+        );
     }
 }

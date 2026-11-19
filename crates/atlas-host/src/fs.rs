@@ -4,9 +4,9 @@ use std::io::ErrorKind;
 use std::path::Path;
 use std::time::{Duration, UNIX_EPOCH};
 
+use atlas_core::progress::Coded;
 use base64::Engine;
 use base64::engine::general_purpose::STANDARD as B64;
-use atlas_core::progress::Coded;
 use serde_json::{Value, json};
 
 const READ_DEFAULT: u64 = 4 * 1024 * 1024;
@@ -246,7 +246,10 @@ mod tests {
         let e = write(file.to_str().unwrap(), "", None).unwrap_err();
         assert_eq!(
             code_args(&e),
-            ("fs.io", json!({"kind": "permission_denied", "path": dir.to_str().unwrap()}))
+            (
+                "fs.io",
+                json!({"kind": "permission_denied", "path": dir.to_str().unwrap()})
+            )
         );
         assert!(e.message.contains("Permission denied"), "{}", e.message);
         let e = mkdir(dir.join("sub").to_str().unwrap()).unwrap_err();
@@ -260,13 +263,25 @@ mod tests {
     /// its own sentence; a kind it has a sentence for needs none.
     #[test]
     fn only_other_carries_the_os_text_as_detail() {
-        let other = coded(&std::io::Error::other("Read-only file system (os error 30)"), "/w/x");
+        let other = coded(
+            &std::io::Error::other("Read-only file system (os error 30)"),
+            "/w/x",
+        );
         assert_eq!(
             code_args(&other),
-            ("fs.io", json!({"kind": "other", "path": "/w/x", "detail": "Read-only file system (os error 30)"}))
+            (
+                "fs.io",
+                json!({"kind": "other", "path": "/w/x", "detail": "Read-only file system (os error 30)"})
+            )
         );
-        let known = coded(&std::io::Error::new(ErrorKind::AlreadyExists, "File exists (os error 17)"), "/w/x");
-        assert_eq!(code_args(&known), ("fs.io", json!({"kind": "already_exists", "path": "/w/x"})));
+        let known = coded(
+            &std::io::Error::new(ErrorKind::AlreadyExists, "File exists (os error 17)"),
+            "/w/x",
+        );
+        assert_eq!(
+            code_args(&known),
+            ("fs.io", json!({"kind": "already_exists", "path": "/w/x"}))
+        );
     }
 
     /// Renaming into a folder that does not exist is about that folder; a missing source is about the source.

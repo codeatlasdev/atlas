@@ -1,0 +1,18 @@
+{
+	"workbench_browser_address_placeholder": "Pesquisar ou digitar endereço ({key})",
+	"workbench_browser_design_mode": "Modo design: escolha um elemento para o agente",
+	"workbench_browser_empty_hint": "Digite um endereço ou uma pesquisa acima ({key}).",
+	"workbench_browser_failure_host": "Não foi possível encontrar esse endereço. Confira se há erros de digitação.",
+	"workbench_browser_failure_offline": "Sem conexão com a internet. Verifique a rede e recarregue.",
+	"workbench_browser_failure_other": "Não foi possível carregar a página. Recarregue para tentar de novo.",
+	"workbench_browser_failure_refused": "Nada respondeu neste endereço. O servidor de desenvolvimento está rodando?",
+	"workbench_browser_failure_timeout": "O servidor demorou demais para responder.",
+	"workbench_browser_failure_title": "Não foi possível acessar esta página",
+	"workbench_browser_failure_tls": "Não foi possível criar uma conexão segura: o certificado está ausente, expirou ou não é confiável.",
+	"workbench_browser_forward": "Avançar",
+	"workbench_browser_open_in_browser": "Abrir no navegador",
+	"workbench_browser_open_in_system_browser": "Abrir no navegador do sistema",
+	"workbench_browser_pick_hint": "Clique em um elemento da página. {key} cancela.",
+	"workbench_browser_reload": "Recarregar",
+	"workbench_browser_with_screenshot": "+ captura de tela"
+}

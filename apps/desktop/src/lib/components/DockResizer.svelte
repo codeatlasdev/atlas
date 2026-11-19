@@ -1,6 +1,7 @@
 <script lang="ts">
 	import { clampSize, DOCK_DEFAULTS, type DockSide } from "#lib/docksize.ts";
 	import { docks } from "#lib/stores/docks.svelte.ts";
+	import { m } from "#lib/i18n/m.ts";
 
 	/**
 	 * `side`: which dock's size this handle edits. `edge`: which window edge the dock is
@@ -61,7 +62,7 @@
 	class:dragging
 	role="separator"
 	aria-orientation={horizontal ? "horizontal" : "vertical"}
-	aria-label="Resize {side === 'bottom' ? 'bottom' : 'side'} dock"
+	aria-label={side === "bottom" ? m.workbench_dock_resize_bottom() : m.workbench_dock_resize_side()}
 	aria-valuenow={docks[key]}
 	tabindex="0"
 	onpointerdown={drag}

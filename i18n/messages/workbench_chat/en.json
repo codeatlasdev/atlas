@@ -1,0 +1,32 @@
+{
+	"workbench_chat_answer_no": "No",
+	"workbench_chat_answer_yes": "Yes",
+	"workbench_chat_attach_image": "Attach image",
+	"workbench_chat_compact": "Compact",
+	"workbench_chat_compact_title": "Compact the conversation",
+	"workbench_chat_composer_busy_placeholder": "Queue a follow-up ({key} to stop)",
+	"workbench_chat_composer_placeholder": "Message omp. Type / for commands or @ for files.",
+	"workbench_chat_context": "Context {percent}",
+	"workbench_chat_images": [
+		{
+			"declarations": [
+				"input count",
+				"local countExact = count",
+				"local countPlural = count: plural"
+			],
+			"selectors": [
+				"countExact",
+				"countPlural"
+			],
+			"match": {
+				"countExact=0, countPlural=*": "No images",
+				"countExact=*, countPlural=one": "{count} image",
+				"countExact=*, countPlural=*": "{count} images"
+			}
+		}
+	],
+	"workbench_chat_raw_protocol": "Raw protocol",
+	"workbench_chat_search_transcript": "Search transcript",
+	"workbench_chat_starting_omp": "Starting omp…",
+	"workbench_chat_stop": "Stop ({key})"
+}

@@ -23,6 +23,11 @@
 // real frame (`js:ready:gate`); the window is shown by it (`show:ready`) or, when it is late, by boot.rs's 1 s
 // deadline (`show:deadline`), which the report records as `shownBy`.
 //
+// When a run never reaches `app_ready` (#591) the evidence is kept in `<--out dir>/evidence/run-N/` (uploaded with the report by
+// CI): the raw trace and what the app printed, `app.log` and `stderr.log`, a screenshot of the display, sway's window tree, every
+// process the run owns with its state (is the web process alive, was it ever seen), and `evidence.json` with the verdict that
+// `explainMissingReady` draws from the trace (which page stage was the last one reached, a mark lost, unreadable trace lines).
+//
 // The login shell: the throwaway HOME's bash/zsh/fish rc files log who started them, so `loginShells` counts the
 // interactive login shells the app and hostd run at launch by parent process (#285), without patching either.
 //
@@ -71,6 +76,8 @@ export type Run = {
 	readyMs: number | null;
 	shownBy: string | null;
 	loginShells: Record<string, number>;
+	/** Set when `app_ready` never arrived: the directory holding the evidence of this run. */
+	evidence?: string;
 };
 export type Idle = {
 	settleS: number;
@@ -118,6 +125,33 @@ export function parseTrace(text: string): Record<string, number> {
 		if (m && !(m[2] in out)) out[m[2]] = Number(m[1]);
 	}
 	return out;
+}
+
+/** Lines of a boot trace that are not `<ms> <mark>`: a write cut short or two marks interleaved (#591). */
+export function garbledLines(text: string): string[] {
+	return text.split("\n").map((l) => l.trim()).filter((l) => l && !/^\d+(?:\.\d+)?\s\S+$/.test(l));
+}
+
+/** The page's startup stages in the order they happen (`js:` marks, apps/desktop `session.svelte.ts`, `theme.svelte.ts`, `ready.svelte.ts`).
+ * `ready:gate` needs the theme, the project list and the workspace; the last stage reached says which one is missing. */
+export const PAGE_STAGES = ["js:layout:mounted", "js:session:start", "js:theme:ready", "js:projects:loaded", "js:workspace:loaded", "js:ready:gate"];
+
+/** One sentence on why `app_ready` is missing, from the trace alone. */
+export function explainMissingReady(marks: Record<string, number>, garbled: string[], exited: number | null, timeoutS: number): string {
+	const out: string[] = [];
+	if (exited !== null) out.push(`the app exited with status ${exited}`);
+	else out.push(`no js:ready:gate within ${timeoutS} s`);
+	if ("show:ready" in marks) out.push(`Rust did get app_ready (show:ready at ${marks["show:ready"]} ms): only the page's trace mark is missing`);
+	else if ("show:deadline" in marks) out.push(`the window was shown by the 1 s deadline, app_ready never reached Rust`);
+	else if (!Object.keys(marks).some((k) => k.startsWith("show:"))) out.push("the window was never shown");
+	const reached = PAGE_STAGES.filter((k) => k in marks);
+	const last = reached.at(-1);
+	if (!("js:ready:gate" in marks)) {
+		if (!last) out.push(Object.keys(marks).some((k) => k.startsWith("page:")) ? "the page loaded but ran no startup stage (no js: mark at all)" : "the page never loaded (no page: mark)");
+		else out.push(`last page stage reached: ${last.slice(3)}; never reached: ${PAGE_STAGES.filter((k) => !(k in marks)).map((k) => k.slice(3)).join(", ")}`);
+	}
+	if (garbled.length) out.push(`${garbled.length} unreadable trace line(s), e.g. ${JSON.stringify(garbled[0])}`);
+	return out.join("; ");
 }
 
 /** What a process is, from its command name and command line. */
@@ -289,7 +323,68 @@ const killTagged = async (tag: string, root: number) => {
 	}
 };
 
-async function launch(o: { bin: string; envs: string[]; kind: Run["kind"]; trace: string; tag: string; readyTimeoutS: number }) {
+/** Process state letter of `pid` (R, S, D, Z, T...), `?` when it is gone. */
+const stateOf = (pid: number) => {
+	try {
+		const s = readFileSync(`/proc/${pid}/stat`, "utf8");
+		return s.slice(s.lastIndexOf(")") + 2, s.lastIndexOf(")") + 3);
+	} catch {
+		return "?";
+	}
+};
+
+/** What the next person needs when a run never got `app_ready` (#591), copied while the app is still as it was. */
+function collectEvidence(dir: string, o: { trace: string; tag: string; root: number; why: string; marks: Record<string, number>; webSeenMs: number | null; windowMs: number | null; exited: number | null }) {
+	mkdirSync(dir, { recursive: true });
+	const keep = (from: string, to: string) => {
+		try {
+			if (existsSync(from)) writeFileSync(join(dir, to), readFileSync(from));
+		} catch {}
+	};
+	keep(o.trace, "trace.txt");
+	keep(`${o.trace}.out`, "app-output.txt");
+	const base = process.env.ATLAS_HOSTD_DIR ?? join(process.env.HOME as string, ".atlas");
+	keep(join(base, "desktop/app.log"), "app.log");
+	keep(join(base, "desktop/stderr.log"), "stderr.log");
+	const procs = readProcs();
+	const mine = owned(procs, o.root, o.tag);
+	// Web processes anywhere: one that lost its parent is as telling as one that is missing.
+	const web = [...procs.values()].filter((p) => p.comm.startsWith("WebKit") && !mine.some((m) => m.pid === p.pid));
+	const row = (p: P, own: boolean) => {
+		let cmd = "";
+		try {
+			cmd = readFileSync(`/proc/${p.pid}/cmdline`, "utf8").replaceAll("\0", " ").trim();
+		} catch {}
+		return `${own ? "own  " : "other"} pid ${String(p.pid).padEnd(7)} ppid ${String(p.ppid).padEnd(7)} state ${stateOf(p.pid)} ${p.comm}  ${cmd.slice(0, 200)}`;
+	};
+	writeFileSync(join(dir, "processes.txt"), `${[...mine.map((p) => row(p, true)), ...web.map((p) => row(p, false))].join("\n")}\n`);
+	// A page on screen or a blank one, and where the window is.
+	spawnSync(["grim", join(dir, "window.png")], { timeout: 15_000 });
+	const tree = spawnSync(["swaymsg", "-t", "get_tree"], { timeout: 5_000 }).stdout?.toString() ?? "";
+	writeFileSync(join(dir, "sway-tree.json"), tree);
+	const webAlive = mine.filter((p) => p.comm.startsWith("WebKitWebProces"));
+	writeFileSync(
+		join(dir, "evidence.json"),
+		`${JSON.stringify(
+			{
+				why: o.why,
+				exited: o.exited,
+				appAlive: o.exited === null && mine.some((p) => p.pid === o.root),
+				webProcessSeenMs: o.webSeenMs,
+				webProcessAlive: webAlive.length > 0,
+				webProcessStates: webAlive.map((p) => ({ pid: p.pid, state: stateOf(p.pid) })),
+				windowMappedMs: o.windowMs,
+				marks: o.marks,
+				garbledTraceLines: existsSync(o.trace) ? garbledLines(readFileSync(o.trace, "utf8")) : [],
+				loadAvg: readFileSync("/proc/loadavg", "utf8").trim(),
+			},
+			null,
+			2,
+		)}\n`,
+	);
+}
+
+async function launch(o: { bin: string; envs: string[]; kind: Run["kind"]; trace: string; tag: string; readyTimeoutS: number; evidenceDir: string }) {
 	const home = process.env.HOME as string;
 	rmSync(o.trace, { force: true });
 	rmSync(join(home, ".bench-probes"), { force: true });
@@ -320,6 +415,8 @@ async function launch(o: { bin: string; envs: string[]; kind: Run["kind"]; trace
 		await Bun.sleep(50);
 	}
 	const out = existsSync(`${o.trace}.out`) ? readFileSync(`${o.trace}.out`, "utf8") : "";
+	// One more read: a mark written after the last poll must not make a run that did arrive look like one that did not.
+	if (existsSync(o.trace)) marks = parseTrace(readFileSync(o.trace, "utf8"));
 	const run: Run = {
 		kind: o.kind,
 		marks,
@@ -330,7 +427,11 @@ async function launch(o: { bin: string; envs: string[]; kind: Run["kind"]; trace
 		loginShells: {},
 	};
 	if (run.readyMs === null) {
-		console.error(`app_ready never arrived (${exited !== null ? `the app exited with status ${exited}` : `${o.readyTimeoutS} s`}); app output:\n${out.slice(-2000)}`);
+		const garbled = existsSync(o.trace) ? garbledLines(readFileSync(o.trace, "utf8")) : [];
+		const why = explainMissingReady(marks, garbled, exited, o.readyTimeoutS);
+		collectEvidence(o.evidenceDir, { trace: o.trace, tag: o.tag, root, why, marks, webSeenMs: run.spawnToWebProcessMs, windowMs: run.spawnToWindowMs, exited });
+		run.evidence = o.evidenceDir;
+		console.error(`app_ready never arrived: ${why}\nevidence kept in ${o.evidenceDir}; app output:\n${out.slice(-2000)}`);
 	}
 	return { run, root, child, stop: () => killTagged(o.tag, root) };
 }
@@ -424,7 +525,7 @@ async function inner() {
 	const one = async (kind: Run["kind"], i: number) => {
 		const tag = `${process.pid}-${i}`;
 		const trace = join(tmp, `trace-${i}.txt`);
-		const l = await launch({ bin, envs, kind, trace, tag, readyTimeoutS: readyS });
+		const l = await launch({ bin, envs, kind, trace, tag, readyTimeoutS: readyS, evidenceDir: join(dirname(resolve(out)), "evidence", `run-${i + 1}`) });
 		if (l.run.readyMs !== null) await Bun.sleep(4000); // the hostd spawn and the login-shell probes finish after app_ready
 		l.run.marks = existsSync(trace) ? parseTrace(readFileSync(trace, "utf8")) : l.run.marks;
 		const log = join(process.env.HOME as string, ".bench-probes");
@@ -445,7 +546,7 @@ async function inner() {
 	let idle: Idle | null = null;
 	let mach = machine(null);
 	if (!failed && cpuS > 0) {
-		const l = await launch({ bin, envs, kind: "warm", trace: join(tmp, "trace-idle.txt"), tag: `${process.pid}-idle`, readyTimeoutS: readyS });
+		const l = await launch({ bin, envs, kind: "warm", trace: join(tmp, "trace-idle.txt"), tag: `${process.pid}-idle`, readyTimeoutS: readyS, evidenceDir: join(dirname(resolve(out)), "evidence", "idle") });
 		if (l.run.readyMs === null) failed = true;
 		else {
 			const wp = descendants(readProcs(), l.root).find((p) => p.comm.startsWith("WebKitWebProces"));

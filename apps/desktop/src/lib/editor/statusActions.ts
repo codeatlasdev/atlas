@@ -6,6 +6,8 @@
 import type { PaletteItem } from "#lib/components/Palette.svelte";
 import { showPicker } from "#lib/lsp/picker.svelte.ts";
 import type { Eol } from "#lib/editor/detect.ts";
+import { indentText } from "#lib/editor/statusbar.ts";
+import { m } from "#lib/i18n/m.ts";
 
 export interface StatusOps {
 	indent: { style: "space" | "tab"; size: number };
@@ -19,6 +21,7 @@ export interface StatusOps {
 }
 
 const SIZES = [1, 2, 3, 4, 6, 8];
+// Operating system names are proper names (`Windows`), the same in every language.
 const EOLS: { id: Eol; label: string; description: string }[] = [
 	{ id: "lf", label: "LF", description: "Unix and macOS" },
 	{ id: "crlf", label: "CRLF", description: "Windows" },
@@ -51,24 +54,34 @@ export function runStatusAction(id: string, ops: StatusOps) {
 				...(["space", "tab"] as const).flatMap((style) =>
 					SIZES.map((size) =>
 						item(
-							style === "space" ? "Indent using spaces" : "Indent using tabs",
-							style === "space" ? `Spaces: ${size}` : `Tab Size: ${size}`,
+							style === "space"
+								? m.workbench_editor_indent_using_spaces()
+								: m.workbench_editor_indent_using_tabs(),
+							indentText({ style, size }),
 							() => ops.setIndent(style, size),
-							{ description: cur.style === style && cur.size === size ? "current" : undefined },
+							{
+								description:
+									cur.style === style && cur.size === size ? m.workbench_editor_current() : undefined,
+							},
 						),
 					),
 				),
-				item("Convert file", "Convert indentation to spaces", () => ops.convertIndent("space")),
-				item("Convert file", "Convert indentation to tabs", () => ops.convertIndent("tab")),
+				item(m.workbench_editor_convert_file(), m.workbench_editor_convert_to_spaces(), () =>
+					ops.convertIndent("space"),
+				),
+				item(m.workbench_editor_convert_file(), m.workbench_editor_convert_to_tabs(), () =>
+					ops.convertIndent("tab"),
+				),
 			];
-			return showPicker("Select indentation", items);
+			return showPicker(m.workbench_editor_select_indentation(), items);
 		}
 		case "eol":
 			return showPicker(
-				"Select end of line sequence",
+				m.workbench_editor_select_eol(),
 				EOLS.map((e) =>
-					item("Line ending", e.label, () => ops.setEol(e.id), {
-						description: ops.eol === e.id ? `${e.description} · current` : e.description,
+					item(m.workbench_editor_line_ending(), e.label, () => ops.setEol(e.id), {
+						description:
+							ops.eol === e.id ? `${e.description} · ${m.workbench_editor_current()}` : e.description,
 					}),
 				),
 			);

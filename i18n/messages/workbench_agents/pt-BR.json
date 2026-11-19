@@ -1,0 +1,21 @@
+{
+	"workbench_agents_add_project": "Adicionar projeto",
+	"workbench_agents_all_projects": "Todos os projetos",
+	"workbench_agents_all_states": "Todos os estados",
+	"workbench_agents_choose_worktree": "Escolher worktree",
+	"workbench_agents_clear_filters": "Limpar filtros",
+	"workbench_agents_column_done": "Concluído",
+	"workbench_agents_column_idle": "Ocioso",
+	"workbench_agents_empty_filtered": "Nada corresponde a esses filtros.",
+	"workbench_agents_empty_no_activity_here": "Inicie um agente nesta worktree. O andamento aparece aqui.",
+	"workbench_agents_empty_no_project": "Adicione um projeto primeiro. Os agentes rodam nas worktrees do projeto e mostram o andamento aqui.",
+	"workbench_agents_empty_no_worktree": "Escolha uma worktree na barra lateral e inicie um agente. O andamento aparece aqui.",
+	"workbench_agents_feed_no_match": "Nenhuma atividade corresponde",
+	"workbench_agents_feed_none": "Nenhuma atividade de agente ainda",
+	"workbench_agents_in_state": "{age} neste estado",
+	"workbench_agents_new_session": "Nova sessão de agente",
+	"workbench_agents_none_title": "Nenhum agente ainda",
+	"workbench_agents_summary": "{working} trabalhando · {total} no total",
+	"workbench_agents_title_agents": "Agentes",
+	"workbench_agents_title_dashboard": "Dashboard"
+}

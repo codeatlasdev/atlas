@@ -16,6 +16,8 @@
 	"shell_toasts_switched": "Toast after switching the worktree to another branch. {branch} is the branch name.",
 	"shell_toasts_switched_stashed": "Toast after switching branch with the local changes stashed. {branch} is the branch name.",
 	"shell_toasts_unknown_worktree": "Error toast in the branch picker: the branch is checked out in a worktree that is not in the project list. {name} is the branch; {path} the folder.",
+	"shell_toasts_workspace_recovered": "Error toast on launch when workspace.json (tabs, layouts, worktree state) was unreadable and was moved aside. {path} is the full path of the saved copy, shown as is.",
+	"shell_toasts_workspace_unreadable": "Error toast on launch when workspace.json could not be read or moved aside (permissions, I/O). {reason} is the system's error text; {path} is the file, which is left untouched.",
 	"shell_toasts_worktree_deleted": "Toast after a worktree was deleted.",
 	"shell_toasts_worktree_failed": "Error toast when the worktree creation failed and the backend gave no message of its own."
 }

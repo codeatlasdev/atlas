@@ -33,6 +33,7 @@ import {
 import { bracketColors } from "#lib/editor/bracketColors.ts";
 import { indentGuides, renderWhitespace, rulers } from "#lib/editor/guides.ts";
 import { editorKeymap } from "#lib/editor/keymap.ts";
+import { localizedEditor } from "#lib/editor/phrases.ts";
 import { minimap } from "#lib/editor/minimap.ts";
 import { scrollPastEnd } from "#lib/editor/scrollPastEnd.ts";
 import { findPanel } from "#lib/editor/search.ts";
@@ -71,6 +72,8 @@ export interface EditorCompartments {
 	rulers: Compartment;
 	scrollPastEnd: Compartment;
 	selectionMatches: Compartment;
+	/** The editor's words (CodeMirror's phrases and the accessible name): they follow the app's language. */
+	language: Compartment;
 }
 
 export interface EditorSetup {
@@ -90,7 +93,6 @@ const attributes = EditorView.contentAttributes.of({
 	spellcheck: "false",
 	autocorrect: "off",
 	autocapitalize: "off",
-	"aria-label": "Editor",
 });
 
 /** Indent unit string for the prefs: N spaces or one tab. */
@@ -114,6 +116,7 @@ export function slots({ prefs, features }: EditorSetupOptions): Record<keyof Edi
 		rulers: rulers(prefs.rulers),
 		scrollPastEnd: prefs.scroll_past_end ? scrollPastEnd() : [],
 		selectionMatches: features.selectionMatches ? highlightSelectionMatches() : [],
+		language: localizedEditor(),
 	};
 }
 
@@ -132,6 +135,7 @@ export function editorExtensions(opts: EditorSetupOptions): EditorSetup {
 		rulers: new Compartment(),
 		scrollPastEnd: new Compartment(),
 		selectionMatches: new Compartment(),
+		language: new Compartment(),
 	};
 	const initial = slots(opts);
 	const dynamic = (Object.keys(compartments) as (keyof EditorCompartments)[]).map((k) =>

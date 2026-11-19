@@ -6,7 +6,7 @@
  * (`atlas_core::lang`: `ATLAS_LANG`, the saved choice, the environment, the OS, English): `bootLocale()` asks for it
  * before the first render, `chooseLocale()` saves a new choice, and the page never looks at `navigator.language`.
  *
- * Rules for code that uses it: never call `m.*()` at module top level or keep its result in a plain variable (compute
+ * Rules for code that uses it (`i18n:check` rule `frozen` enforces them): never call `m.*()` at module top level or keep its result in a plain variable (compute
  * it in a template, a `$derived` or a function, so it follows a switch).
  */
 import { invoke } from "@tauri-apps/api/core";

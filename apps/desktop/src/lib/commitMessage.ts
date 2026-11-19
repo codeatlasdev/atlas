@@ -2,6 +2,9 @@
  * AI commit message: the events `commit_msg_generate` streams (`crates/atlas-desktop/src/commit_msg.rs`, whose
  * serialization is the fixture the tests read) and the state the commit box derives from them. Pure: no Svelte, no IPC.
  */
+import { list } from "#lib/i18n/fmt.ts";
+import { m } from "#lib/i18n/m.ts";
+
 export interface DigestInfo {
 	summarized: number;
 	withheld: number;
@@ -22,8 +25,8 @@ export interface CommitRun {
 	scope: "staged" | "all";
 	/** The message so far (whole text, not a delta). */
 	text: string;
-	/** What was not sent in full, or that all changes were used; empty when there is nothing to say. */
-	notice: string;
+	/** What was not sent in full; null before the run starts. The sentence is built when it is shown (`commitNotice`). */
+	digest: DigestInfo | null;
 	error: string;
 	cancelled: boolean;
 }
@@ -76,7 +79,7 @@ export function idle(): CommitRun {
 		agent: "",
 		scope: "staged",
 		text: "",
-		notice: "",
+		digest: null,
 		error: "",
 		cancelled: false,
 	};
@@ -86,15 +89,41 @@ export function startState(request: string): CommitRun {
 	return { ...idle(), phase: "running", request };
 }
 
-/** One line on what the provider did not get in full ("2 files withheld (secrets), 3 cut"). */
-function noticeOf(scope: "staged" | "all", d: DigestInfo): string {
+/** One line on what the provider did not get in full ("2 files withheld (secrets), 3 cut"); empty when it got everything. */
+export function commitNotice(s: Pick<CommitRun, "scope" | "digest">): string {
+	const d = s.digest;
+	if (!d) return "";
 	const parts: string[] = [];
-	if (d.withheld) parts.push(`${d.withheld} file${d.withheld > 1 ? "s" : ""} withheld (may hold secrets)`);
-	if (d.truncated) parts.push(`${d.truncated} cut`);
-	if (d.omitted) parts.push(`${d.omitted} left out (too large)`);
-	if (d.summarized) parts.push(`${d.summarized} named only`);
-	const what = parts.join(", ");
-	return scope === "all" ? `Nothing was staged: used all changes${what ? `. ${what}` : ""}` : what;
+	if (d.withheld) parts.push(m.git_commit_notice_withheld({ count: d.withheld }));
+	if (d.truncated) parts.push(m.git_commit_notice_cut({ count: d.truncated }));
+	if (d.omitted) parts.push(m.git_commit_notice_left_out({ count: d.omitted }));
+	if (d.summarized) parts.push(m.git_commit_notice_named_only({ count: d.summarized }));
+	const omitted = list(parts, "unit");
+	if (s.scope === "all")
+		return omitted ? m.git_commit_notice_all_with({ omitted }) : m.git_commit_notice_all();
+	return omitted;
+}
+
+/**
+ * A failure of `commit_msg_generate` or of the provider run, in words. The Rust side sends a stable code for the
+ * failures it knows (the contract is `__fixtures__/commit-msg-errors.json`); anything else is the agent's own output
+ * and shows as it came.
+ */
+export function commitErrorText(raw: string): string {
+	switch (raw) {
+		case "commit_msg.ssh_host":
+			return m.git_commit_error_ssh();
+		case "commit_msg.provider_off":
+			return m.git_commit_error_off();
+		case "commit_msg.no_changes":
+			return m.git_commit_error_no_changes();
+		case "commit_msg.all_secret":
+			return m.git_commit_error_all_secret();
+		case "commit_msg.empty_message":
+			return m.git_commit_error_empty();
+		default:
+			return raw;
+	}
 }
 
 /** Fold one event into the run. Events of another request (`from` ≠ this run) are not ours. */
@@ -102,7 +131,7 @@ export function applyEvent(s: CommitRun, e: CommitEvent, from = s.request): Comm
 	if (from !== s.request) return s;
 	switch (e.kind) {
 		case "start":
-			return { ...s, agent: e.agent, scope: e.scope, notice: noticeOf(e.scope, e.digest) };
+			return { ...s, agent: e.agent, scope: e.scope, digest: e.digest };
 		case "chunk":
 			return { ...s, text: e.text };
 		case "done":

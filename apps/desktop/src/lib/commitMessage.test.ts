@@ -1,6 +1,7 @@
 // @ts-nocheck bun test runtime types are not part of the app tsconfig
 import { expect, test } from "bun:test";
-import { applyEvent, idle, parseEvent, providerHint, startState } from "./commitMessage.ts";
+import { applyEvent, commitNotice, idle, parseEvent, providerHint, startState } from "./commitMessage.ts";
+import { m } from "#lib/i18n/m.ts";
 import events from "./__fixtures__/commit-msg-events.json";
 
 // The fixture is the REAL serialization of the Rust `Event` enum (written by `commit_msg::tests`), never a hand-made mock.
@@ -49,16 +50,16 @@ test("events of another request never touch this run", () => {
 });
 
 test("the notice says what was not sent, and is empty when everything was", () => {
-	expect(startState("r").notice).toBe("");
+	expect(commitNotice(startState("r"))).toBe("");
 	const s = applyEvent(startState("r"), start);
-	expect(s.notice).toContain("2 files withheld");
-	expect(s.notice).toContain("3 cut");
+	expect(commitNotice(s)).toContain(m.git_commit_notice_withheld({ count: 2 }));
+	expect(commitNotice(s)).toContain(m.git_commit_notice_cut({ count: 3 }));
 	const clean = applyEvent(startState("r"), {
 		...start,
 		digest: { summarized: 0, withheld: 0, truncated: 0, omitted: 0 },
 		scope: "all",
 	});
-	expect(clean.notice).toBe("Nothing was staged: used all changes");
+	expect(commitNotice(clean)).toBe(m.git_commit_notice_all());
 });
 
 test("provider hint: ready shows the button, off hides it, none explains the setup", () => {

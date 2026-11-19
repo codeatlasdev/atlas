@@ -1,0 +1,114 @@
+{
+	"settings_general_hygiene_dir_browser_profile": "perfil de navegador",
+	"settings_general_hygiene_dir_cache": "cache",
+	"settings_general_hygiene_dir_instance": "instância",
+	"settings_general_hygiene_dir_temp": "temporária",
+	"settings_general_hygiene_done_ended": [
+		{
+			"declarations": [
+				"input count",
+				"local countExact = count",
+				"local countPlural = count: plural"
+			],
+			"selectors": [
+				"countExact",
+				"countPlural"
+			],
+			"match": {
+				"countExact=0, countPlural=*": "Nenhum processo encerrado",
+				"countExact=*, countPlural=one": "{count} processo encerrado",
+				"countExact=*, countPlural=*": "{count} processos encerrados"
+			}
+		}
+	],
+	"settings_general_hygiene_done_freed": "{size} liberados",
+	"settings_general_hygiene_done_marked": [
+		{
+			"declarations": [
+				"input count",
+				"local countExact = count",
+				"local countPlural = count: plural"
+			],
+			"selectors": [
+				"countExact",
+				"countPlural"
+			],
+			"match": {
+				"countExact=0, countPlural=*": "nenhuma pasta marcada para não indexar",
+				"countExact=*, countPlural=one": "{count} pasta marcada para não indexar",
+				"countExact=*, countPlural=*": "{count} pastas marcadas para não indexar"
+			}
+		}
+	],
+	"settings_general_hygiene_done_survivors": [
+		{
+			"declarations": [
+				"input count",
+				"local countExact = count",
+				"local countPlural = count: plural"
+			],
+			"selectors": [
+				"countExact",
+				"countPlural"
+			],
+			"match": {
+				"countExact=0, countPlural=*": "nenhum ainda em execução",
+				"countExact=*, countPlural=one": "{count} ainda em execução (preso no kernel)",
+				"countExact=*, countPlural=*": "{count} ainda em execução (presos no kernel)"
+			}
+		}
+	],
+	"settings_general_hygiene_fix_would": "A correção vai {todo}.",
+	"settings_general_hygiene_group_agents_leave_browsers_dev_servers": "Os agentes deixam navegadores, servidores de desenvolvimento e caches para trás. A correção encerra só os processos marcados pelo Atlas cujo dono já saiu e libera só as pastas que o Atlas registrou. target/, node_modules e worktrees nunca são removidos.",
+	"settings_general_hygiene_group_fix": "Corrigir",
+	"settings_general_hygiene_group_hygiene": "Higiene",
+	"settings_general_hygiene_group_orphans_and_disk": "Órfãos e disco",
+	"settings_general_hygiene_kind_agent": "agente",
+	"settings_general_hygiene_kind_browser": "navegador",
+	"settings_general_hygiene_kind_other": "outro",
+	"settings_general_hygiene_kind_service": "serviço",
+	"settings_general_hygiene_kind_terminal": "terminal",
+	"settings_general_hygiene_node_modules": "node_modules {size}",
+	"settings_general_hygiene_nothing_to_clean": "Nada para limpar: nenhum órfão e nenhuma pasta registrada acima do limite.",
+	"settings_general_hygiene_owner_gone": "dono encerrado",
+	"settings_general_hygiene_scan_first": "Clique em Analisar para listar os processos órfãos e o disco que cada projeto ocupa.",
+	"settings_general_hygiene_target": "target {size}",
+	"settings_general_hygiene_todo_end": [
+		{
+			"declarations": [
+				"input count",
+				"local countExact = count",
+				"local countPlural = count: plural"
+			],
+			"selectors": [
+				"countExact",
+				"countPlural"
+			],
+			"match": {
+				"countExact=0, countPlural=*": "não encerrar nenhum processo órfão",
+				"countExact=*, countPlural=one": "encerrar {count} processo órfão",
+				"countExact=*, countPlural=*": "encerrar {count} processos órfãos"
+			}
+		}
+	],
+	"settings_general_hygiene_todo_free": "liberar {size}",
+	"settings_general_hygiene_todo_spotlight": [
+		{
+			"declarations": [
+				"input count",
+				"local countExact = count",
+				"local countPlural = count: plural"
+			],
+			"selectors": [
+				"countExact",
+				"countPlural"
+			],
+			"match": {
+				"countExact=0, countPlural=*": "não manter o Spotlight fora de nenhuma pasta",
+				"countExact=*, countPlural=one": "manter o Spotlight fora de {count} pasta",
+				"countExact=*, countPlural=*": "manter o Spotlight fora de {count} pastas"
+			}
+		}
+	],
+	"settings_general_hygiene_total": "total {size}"
+}

@@ -19,6 +19,7 @@
 	import SearchField from "#lib/components/SearchField.svelte";
 	import { CLUSTERS, SECTIONS, openSection, type SettingsSection } from "#lib/settings/index.ts";
 	import { updates as u } from "#lib/stores/updates.svelte.ts";
+	import { m } from "#lib/i18n/m.ts";
 
 	const ICONS: Record<SettingsSection, typeof Download> = {
 		general: SlidersHorizontal,
@@ -39,10 +40,15 @@
 	let { searching }: { searching: boolean } = $props();
 </script>
 
-<nav aria-label="Settings sections">
-	<div class="navtitle">Settings</div>
+<nav aria-label={m.settings_general_nav_settings_sections()}>
+	<div class="navtitle">{m.settings_general_settings()}</div>
 	<div class="find">
-		<SearchField clearable placeholder="Search settings" aria-label="Search settings" bind:value={u.query} />
+		<SearchField
+			clearable
+			placeholder={m.settings_general_nav_search_settings()}
+			aria-label={m.settings_general_nav_search_settings()}
+			bind:value={u.query}
+		/>
 	</div>
 	{#each CLUSTERS as k (k.id)}
 		<div class="cluster" role="group" aria-labelledby="cluster-{k.id}">
@@ -60,14 +66,16 @@
 					{n.label}
 					{#if n.id === "general" && u.available && !u.linked}<span
 							class="badge-dot"
-							aria-label="Update available"
+							aria-label={m.settings_general_nav_update_available()}
 						></span>{/if}
 				</button>
 			{/each}
 		</div>
 	{/each}
 	<div class="navfoot mono">
-		Atlas {u.info?.app.version ?? ""}{#if u.dev}<span class="devchip">Dev</span>{/if}
+		{m.settings_general_nav_version({ version: u.info?.app.version ?? "" })}{#if u.dev}<span class="devchip"
+				>{m.settings_general_nav_dev()}</span
+			>{/if}
 	</div>
 </nav>
 

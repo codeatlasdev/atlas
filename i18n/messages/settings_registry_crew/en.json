@@ -1,0 +1,12 @@
+{
+	"settings_registry_crew_crew_add_description": "Connect a crew server running `atlas crew install`.",
+	"settings_registry_crew_crew_github_description": "Connect GitHub so your crew can clone private repositories.",
+	"settings_registry_crew_crew_onboarding_description": "Shows the Atlas Crew introduction again from the first step.",
+	"settings_registry_crew_crew_onboarding_label": "Replay onboarding",
+	"settings_registry_crew_description": "Crewmates running on your crew servers: agents working around the clock.",
+	"settings_registry_crew_group_crew_servers": "Crew servers",
+	"settings_registry_crew_group_github": "GitHub",
+	"settings_registry_crew_group_onboarding": "Onboarding",
+	"settings_registry_crew_label": "Atlas Crew",
+	"settings_registry_crew_short_replies_description": "Summarize long crewmate replies with a cheap model before showing them."
+}

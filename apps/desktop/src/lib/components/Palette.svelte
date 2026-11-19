@@ -24,10 +24,11 @@
 	import { CornerDownLeft, ArrowUpDown } from "@lucide/svelte";
 	import { Kbd } from "@codeatlasdev/ui";
 	import ProjectIcon from "#lib/shell/ProjectIcon.svelte";
+	import { m } from "#lib/i18n/m.ts";
 
 	let {
 		open = $bindable(false),
-		placeholder = "Search",
+		placeholder,
 		items,
 		ranked = false,
 		dynamic,
@@ -45,6 +46,7 @@
 		dynamic?: (query: string) => PaletteItem[];
 	} = $props();
 
+	const hint = $derived(placeholder ?? m.common_action_search());
 	let query = $state("");
 	let sel = $state(0);
 	let input: HTMLInputElement | undefined = $state();
@@ -101,8 +103,8 @@
 
 {#if open}
 	<div class="backdrop" role="presentation" onclick={() => (open = false)}></div>
-	<div class="palette" role="dialog" aria-label={placeholder}>
-		<input bind:this={input} bind:value={query} {placeholder} {onkeydown} oninput={() => (sel = 0)} />
+	<div class="palette" role="dialog" aria-label={hint}>
+		<input bind:this={input} bind:value={query} placeholder={hint} {onkeydown} oninput={() => (sel = 0)} />
 		<div class="list" bind:this={list}>
 			{#each results as it, i (it.group + it.id)}
 				{#if i === 0 || results[i - 1].group !== it.group}
@@ -125,15 +127,15 @@
 				</button>
 			{:else}
 				<div class="empty">
-					{q ? `Nothing matches “${q}”` : "Nothing to show"}
+					{q ? m.workbench_palette_no_match({ query: q }) : m.workbench_nothing_to_show()}
 				</div>
 			{/each}
 		</div>
 		<div class="foot">
-			<span><ArrowUpDown size={11} /> navigate</span>
-			<span><CornerDownLeft size={11} /> select</span>
-			<span><Kbd>{kbd("shift-enter")}</Kbd> open beside</span>
-			<span class="end"><Kbd>{kbd("escape")}</Kbd> close</span>
+			<span><ArrowUpDown size={11} /> {m.workbench_palette_navigate()}</span>
+			<span><CornerDownLeft size={11} /> {m.workbench_palette_select()}</span>
+			<span><Kbd>{kbd("shift-enter")}</Kbd> {m.workbench_palette_open_beside()}</span>
+			<span class="end"><Kbd>{kbd("escape")}</Kbd> {m.workbench_palette_close()}</span>
 		</div>
 	</div>
 {/if}

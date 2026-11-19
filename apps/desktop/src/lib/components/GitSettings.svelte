@@ -46,7 +46,7 @@
 </script>
 
 {#if loadError}
-	<LoadError what="your Git settings" error={loadError} />
+	<LoadError what="git" error={loadError} />
 {/if}
 
 <Group title={m.settings_general_git_commit_messages()}>

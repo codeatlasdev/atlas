@@ -9,6 +9,7 @@
 	onMount(() => {
 		const nav = navigator as Navigator & { userAgentData?: { platform?: string; mobile?: boolean } };
 		const mobile = nav.userAgentData?.mobile ?? /Android|iPhone|iPad|iPod|Mobile/i.test(navigator.userAgent);
+		// i18n-ignore: the visitor's OS picks the installer shown (PowerShell on Windows): a download choice on the site, not a key label, and keys.ts is the desktop app's module
 		windows = !mobile && /win/i.test(nav.userAgentData?.platform ?? navigator.platform ?? "");
 	});
 	const shown = $derived(winCmd && windows ? winCmd : cmd);

@@ -94,6 +94,7 @@
 		description={m.settings_general_workspace_where_atlas_creates_checkouts_leave()}
 		stack
 	>
+		<!-- i18n-ignore: an example path, not prose -->
 		<TextInput
 			mono
 			width="100%"

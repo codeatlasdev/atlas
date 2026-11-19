@@ -146,9 +146,9 @@ async fn main() {
     crash::install_panic_hook();
 
     if let Err(e) = run().await {
-        eprintln!("{} {e}", chrome::error());
+        eprintln!("{} {}", chrome::error(), chrome::error_text(&e));
         for cause in e.chain().skip(1) {
-            eprintln!("  {} {cause}", chrome::caused_by());
+            eprintln!("  {} {}", chrome::caused_by(), chrome::cause_text(cause));
         }
         std::process::exit(1);
     }

@@ -188,10 +188,14 @@ where
             eprintln!(
                 "{} {}",
                 crate::chrome::error(),
-                t!("update_failed", error = e.to_string())
+                t!("update_failed", error = crate::chrome::error_text(&e))
             );
             for cause in e.chain().skip(1) {
-                eprintln!("  {} {cause}", crate::chrome::caused_by());
+                eprintln!(
+                    "  {} {}",
+                    crate::chrome::caused_by(),
+                    crate::chrome::cause_text(cause)
+                );
             }
             if ask(
                 &format!("{} ", t!("cmd_update_ask_continue", current = current)),
@@ -300,10 +304,14 @@ pub(crate) async fn run_on_exit_update() {
             eprintln!(
                 "{} {}",
                 crate::chrome::error(),
-                t!("update_failed", error = e.to_string())
+                t!("update_failed", error = crate::chrome::error_text(&e))
             );
             for cause in e.chain().skip(1) {
-                eprintln!("  {} {cause}", crate::chrome::caused_by());
+                eprintln!(
+                    "  {} {}",
+                    crate::chrome::caused_by(),
+                    crate::chrome::cause_text(cause)
+                );
             }
             eprintln!(
                 "  {}",

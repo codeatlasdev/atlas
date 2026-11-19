@@ -31,10 +31,14 @@
 		<circle class="node b" class:on={beats.n >= 3} cx="250" cy="150" r="5" />
 		<circle class="node merge" class:on={beats.n >= 4} cx="360" cy="100" r="7" />
 		<g class="tag" class:on={beats.n >= 1} transform="translate(170 22)">
-			<rect width="104" height="20" rx="10" /><text x="52" y="14">feat/checkout</text>
+			<rect width="104" height="20" rx="10" />
+			<!-- i18n-ignore: a sample branch name, not prose -->
+			<text x="52" y="14">feat/checkout</text>
 		</g>
 		<g class="tag b" class:on={beats.n >= 2} transform="translate(214 168)">
-			<rect width="104" height="20" rx="10" /><text x="52" y="14">fix/cart-total</text>
+			<rect width="104" height="20" rx="10" />
+			<!-- i18n-ignore: a sample branch name, not prose -->
+			<text x="52" y="14">fix/cart-total</text>
 		</g>
 		<g class="tag ok" class:on={beats.n >= 4} transform="translate(318 66)">
 			<rect width={mergedWidth} height="20" rx="10" /><text x={mergedWidth / 2} y="14">{merged}</text>

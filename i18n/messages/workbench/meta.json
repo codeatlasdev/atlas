@@ -19,6 +19,7 @@
 	"workbench_explorer_menu_stage": "File tree menu item that stages the file's changes",
 	"workbench_explorer_new_file": "File tree button and menu item",
 	"workbench_explorer_new_file_name": "Accessible name of the field that names a new file",
+	"workbench_explorer_new_file_placeholder": "Placeholder of the inline box where you type the name of a new file in the file panel: an example file name with an extension.",
 	"workbench_explorer_new_folder": "File tree button and menu item",
 	"workbench_explorer_new_name": "Accessible name of the field that renames a file",
 	"workbench_explorer_reveal_active_file": "File tree header button that selects the open file in the tree",

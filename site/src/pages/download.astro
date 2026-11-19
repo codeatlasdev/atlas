@@ -217,6 +217,7 @@ const reqs: [string, string][] = [
 	const ua = navigator.userAgent;
 	const uad = nav.userAgentData;
 	const mobile = uad?.mobile ?? /Android|iPhone|iPad|iPod|Mobile/i.test(ua);
+	// i18n-ignore: the visitor's OS picks which download card leads: a download choice on the site, not a key label, and keys.ts is the desktop app's module
 	const plat = (uad?.platform ?? navigator.platform ?? "").toLowerCase();
 	const os = mobile ? "mobile" : /mac/.test(plat) || /Macintosh/.test(ua) ? "mac" : /win/.test(plat) ? "windows" : /linux|cros|x11/.test(plat) || /Linux/.test(ua) ? "linux" : "other";
 	const root = document.documentElement;

@@ -60,7 +60,7 @@ O padrão enquanto o Atlas está em alpha. Builds novos, gerados direto do main,
 
 A escolha é uma palavra em `~/.atlas/update-channel`, compartilhada pela CLI e pelo app.
 
-**O Atlas nunca faz downgrade por conta própria.** Se você muda para um canal mais conservador (Alpha → Stable) enquanto roda um build mais novo do que esse canal oferece, nada é instalado. O Atlas avisa, e você espera por uma versão mais nova que o seu build ou escolhe **Instalar X agora** (CLI: `atlas update --downgrade`). Um downgrade pode deixar configurações ou dados gravados pelo build mais novo; tenha isso em mente antes de usá-lo.
+**O Atlas nunca faz downgrade por conta própria.** Se você muda para um canal mais conservador (Alpha → Stable) enquanto roda um build mais novo do que esse canal oferece, nada é instalado. O Atlas avisa, e você espera por uma versão mais nova que o seu build ou escolhe **Instalar a versão X agora** (CLI: `atlas update --downgrade`). Um downgrade pode deixar configurações ou dados gravados pelo build mais novo; tenha isso em mente antes de usá-lo.
 
 ## Números de versão
 

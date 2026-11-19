@@ -1,7 +1,7 @@
 ---
 title: "MCP"
 source: mcp.md
-source_sha: "ee8cb4e61e498f4bedca0d10f96bd83c83192d0d"
+source_sha: "048c87777b195e06bba26ef27f5b6d717b1c84e5"
 translation: machine
 ---
 

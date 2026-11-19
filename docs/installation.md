@@ -140,7 +140,7 @@ Free code signing provided by [SignPath.io](https://about.signpath.io), certific
 
 - **Scope:** `atlas.exe`, `atlas-desktop.exe`, the NSIS installer and `Atlas-Setup.exe` of each release, built by GitHub Actions from the version tag and signed by SignPath after a maintainer approves the request. Signing is **pending the Foundation's approval**; until then these files are unsigned.
 - **Team roles:** Committers and reviewers are the repository maintainers ([GOVERNANCE.md](https://github.com/codeatlasdev/atlas/blob/main/GOVERNANCE.md)). Approvers are the members of the GitHub team [`atlas-maintainers`](https://github.com/orgs/codeatlasdev/teams/atlas-maintainers).
-- **Privacy:** Atlas does not transfer data to other systems unless you ask it to. No telemetry, analytics, crash reporting or accounts. The one request it makes on its own is an update check that reads the public releases of `codeatlasdev/atlas` on GitHub (Atlas Desktop has a *Check for updates automatically* switch in Settings); installing or updating downloads the release from GitHub. Nothing is sent to CodeAtlas or SignPath. The full list is in [PRIVACY.md](https://github.com/codeatlasdev/atlas/blob/main/PRIVACY.md).
+- **Privacy:** Atlas does not transfer data to other systems unless you ask it to. No telemetry, analytics, crash reporting or accounts. The one request it makes on its own is an update check that reads the public releases of `codeatlasdev/atlas` on GitHub (Atlas Desktop has a *Check automatically* switch under Settings → General → Updates); installing or updating downloads the release from GitHub. Nothing is sent to CodeAtlas or SignPath. The full list is in [PRIVACY.md](https://github.com/codeatlasdev/atlas/blob/main/PRIVACY.md).
 
 ## Update
 

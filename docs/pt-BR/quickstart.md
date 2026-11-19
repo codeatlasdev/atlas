@@ -59,13 +59,13 @@ Os erros de digitação aparecem antes de qualquer coisa iniciar: `services.web.
 atlas dev
 ```
 
-Você ganha um dashboard com uma aba por serviço, logs combinados em **All** e o estado dos serviços na barra lateral. Aperte `?` para ver as teclas, `/` para pesquisar nos logs e `q` para sair (todos os serviços são parados). Veja o [guia da TUI](tui.md).
+Você ganha um dashboard com uma aba por serviço, logs combinados em **Tudo** e o estado dos serviços na barra lateral. Aperte `?` para ver as teclas, `/` para pesquisar nos logs e `q` para sair (todos os serviços são parados). Veja o [guia da TUI](tui.md).
 
 Outras formas de rodar o mesmo ambiente:
 
 | Comando | Uso |
 |---|---|
-| `atlas dev web` | inicia o `web` e o que ele tem em `depends_on`; o resto aparece como `off` |
+| `atlas dev web` | inicia o `web` e o que ele tem em `depends_on`; o resto aparece como `fora` |
 | `atlas dev --detach` | inicia em um runner em segundo plano e volta ao prompt; rode `atlas dev` para anexar e `atlas down` para parar |
 | `atlas dev --headless` | sem TUI, logs na saída padrão, ainda controlável por MCP |
 | `atlas dev --ci` | inicia tudo, espera a saúde dos serviços, imprime JSON e sai com `0` ou `1` |

@@ -15,15 +15,15 @@ Abaixo de todo editor de texto:
 
 | Item | Clique para |
 |---|---|
-| `Ln 12, Col 5 (3 selections) (24 selected)` | ir para uma linha (⌃G) |
-| `3 errors, 1 warning` | focar o editor no primeiro problema |
-| `Spaces: 2` / `Tab Size: 4` | mudar a indentação, ou converter a indentação do arquivo |
+| `Lin 12, Col 5 (3 seleções) (24 selecionados)` | ir para uma linha (⌃G) |
+| `3 erros e 1 aviso` | focar o editor no primeiro problema |
+| `Espaços: 2` / `Tabulação: 4` | mudar a indentação, ou converter a indentação do arquivo |
 | `UTF-8` | (somente leitura: o Atlas edita texto UTF-8; os outros arquivos abrem como binário) |
-| `LF` / `CRLF` / `Mixed` | escolher o fim de linha gravado ao salvar |
+| `LF` / `CRLF` / `Misto` | escolher o fim de linha gravado ao salvar |
 | nome da linguagem | (o modo de sintaxe segue o nome do arquivo) |
-| chip do language server | veja abaixo |
+| chip do servidor de linguagem | veja abaixo |
 
-Acima do editor, as **breadcrumbs** mostram o caminho e os símbolos em volta do cursor (a partir dos símbolos do documento no language server, ou da árvore de sintaxe quando não há servidor); clique em um símbolo para ir até ele.
+Acima do editor, a **Trilha de navegação** mostra o caminho e os símbolos em volta do cursor (a partir dos símbolos do documento no language server, ou da árvore de sintaxe quando não há servidor); clique em um símbolo para ir até ele.
 
 ## Language servers
 
@@ -105,7 +105,7 @@ Também vêm de fábrica: indentação inteligente, fechamento automático de co
 
 ### Buscar e substituir
 
-⌘F abre a busca, ⌥⌘F ou ⌘H acrescenta a substituição. Há alternadores para maiúsculas (Aa), palavra inteira e regex, **na seleção** (⌥⌘L), contador `n of m` (limitado a 10.000), anterior / próximo, selecionar todas as ocorrências (⌥Enter), substituir e substituir tudo, e uma prévia do que a ocorrência atual vira (grupos de regex como `$1` já resolvidos).
+⌘F abre a busca, ⌥⌘F ou ⌘H acrescenta a substituição. Há alternadores para maiúsculas (Aa), palavra inteira e regex, **Localizar na seleção** (⌥⌘L), contador `n de m` (limitado a 10.000), anterior / próximo, selecionar todas as ocorrências (⌥Enter), substituir e substituir tudo, e uma prévia do que a ocorrência atual vira (grupos de regex como `$1` já resolvidos).
 
 ### Salvar
 
@@ -113,7 +113,7 @@ O autosave roda 0,5 s depois da última edição (⌘S salva na hora). Ao salvar
 
 ### Mudanças feitas fora do editor
 
-O Atlas observa o arquivo aberto. Se ele muda no disco e você não tem edições não salvas, o editor recarrega (`editor.auto_reload`), mantendo o cursor. Com edições não salvas, ele pergunta: **Carregar do disco** ou **Manter minha versão** (que grava a sua por cima); o autosave pausa nesse meio-tempo para nunca sobrescrever a outra mudança em silêncio. Um arquivo excluído é informado, e salvar o grava de novo. Todo salvamento também confere o arquivo com o que o editor leu ou gravou por último: se alguém o mudou antes, nada é gravado (fechar a aba então mostra o toast "Não salvo: `<file>` mudou no disco"), enquanto o mesmo texto com um horário de modificação mais novo (`touch`, git, um formatador) não conta como mudança.
+O Atlas observa o arquivo aberto. Se ele muda no disco e você não tem edições não salvas, o editor recarrega (`editor.auto_reload`), mantendo o cursor. Com edições não salvas, ele pergunta: **Recarregar do disco** ou **Manter minha versão** (que grava a sua por cima); o autosave pausa nesse meio-tempo para nunca sobrescrever a outra mudança em silêncio. Um arquivo excluído é informado, e salvar o grava de novo. Todo salvamento também confere o arquivo com o que o editor leu ou gravou por último: se alguém o mudou antes, nada é gravado (fechar a aba então mostra o toast "Não salvo: `<file>` mudou no disco"), enquanto o mesmo texto com um horário de modificação mais novo (`touch`, git, um formatador) não conta como mudança.
 
 ## Arquivos grandes
 

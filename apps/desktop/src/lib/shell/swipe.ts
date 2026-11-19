@@ -75,7 +75,7 @@ export function swipe(el: HTMLElement, options: SwipeOptions) {
 
 	function onwheel(e: WheelEvent) {
 		if (zone) return; // AppKit owns this surface's gestures
-		if (e.ctrlKey) return; // pinch-zoom arrives as ctrl+wheel: never a swipe
+		if (e.ctrlKey) return; // pinch-zoom arrives as a wheel event with ctrlKey set: never a swipe
 		const mine = g.active;
 		if (!mine && Math.abs(e.deltaX) <= Math.abs(e.deltaY)) return; // vertical scroll: not ours
 		if (o.respectScrollers && !mine && scrollsHorizontally(e.target, el, e.deltaX)) return;

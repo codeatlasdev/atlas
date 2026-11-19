@@ -57,6 +57,34 @@ pub fn replace_file(from: &Path, to: &Path) -> io::Result<()> {
     imp::replace_file(from, to)
 }
 
+/// What [`replace_file`] does after the POSIX rename failed (Windows).
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+#[cfg_attr(not(any(windows, test)), allow(dead_code))]
+pub(crate) enum RenameStep {
+    /// A refusal that ends on its own (the antivirus or the indexer holds the new file without delete sharing for a
+    /// moment): wait this long, then rename again.
+    Retry(std::time::Duration),
+    /// Not supported, refused for good, or retried long enough: `std::fs::rename`. It can leave the old file in
+    /// delete-pending for a reader, so it is the last resort, never the answer to a passing refusal.
+    Fallback,
+}
+
+/// The step after the POSIX rename's attempt number `attempt` (0-based) failed with Windows error `code`. Waits double
+/// from 1 ms and stop at 50 ms each, 8 retries (about 160 ms in all): long enough to outlast a scan of a new file,
+/// short enough that a write never stalls for long.
+#[cfg_attr(not(any(windows, test)), allow(dead_code))]
+pub(crate) fn after_posix_rename_error(code: Option<i32>, attempt: u32) -> RenameStep {
+    const ERROR_ACCESS_DENIED: i32 = 5;
+    const ERROR_SHARING_VIOLATION: i32 = 32;
+    const RETRIES: u32 = 8;
+    match code {
+        Some(ERROR_ACCESS_DENIED | ERROR_SHARING_VIOLATION) if attempt < RETRIES => {
+            RenameStep::Retry(std::time::Duration::from_millis((1u64 << attempt).min(50)))
+        }
+        _ => RenameStep::Fallback,
+    }
+}
+
 /// Fill `buf` from the OS CSPRNG.
 pub fn random_bytes(buf: &mut [u8]) -> io::Result<()> {
     imp::random_bytes(buf)
@@ -555,12 +583,25 @@ mod imp {
     /// Rename `from` over `to` with POSIX semantics (`FILE_RENAME_FLAG_POSIX_SEMANTICS`): one step in which the
     /// name `to` goes from the old file to the new one, even while readers hold the old one open. `std::fs::rename`
     /// is `MoveFileExW(MOVEFILE_REPLACE_EXISTING)`, which Windows documents without that guarantee: a reader opening
-    /// the name meanwhile can find it missing (`NotFound`, #545). Not supported (an old Windows, a filesystem other
-    /// than NTFS) or refused: falls back to `std::fs::rename`, which has its own readonly handling.
+    /// the name meanwhile can find it missing (`NotFound`) or, the old file being delete-pending, be refused (`Access
+    /// is denied`) (#545). A passing refusal is retried ([`super::after_posix_rename_error`]); not supported (an old
+    /// Windows, a filesystem other than NTFS), a readonly target or a refusal that outlasts the retries falls back to
+    /// `std::fs::rename`, which has its own readonly handling.
     pub fn replace_file(from: &Path, to: &Path) -> io::Result<()> {
-        match posix_rename(from, to) {
-            Ok(()) => Ok(()),
-            Err(_) => std::fs::rename(from, to),
+        let mut attempt = 0;
+        loop {
+            let Err(e) = posix_rename(from, to) else {
+                return Ok(());
+            };
+            // A readonly target refuses with the same "access denied" as a passing scan, and waiting does not help.
+            let readonly = std::fs::metadata(to).is_ok_and(|m| m.permissions().readonly());
+            match super::after_posix_rename_error(e.raw_os_error(), attempt) {
+                super::RenameStep::Retry(wait) if !readonly => {
+                    std::thread::sleep(wait);
+                    attempt += 1;
+                }
+                _ => return std::fs::rename(from, to),
+            }
         }
     }
 
@@ -1005,6 +1046,50 @@ pub fn shell_open(target: &str) -> io::Result<()> {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    /// #545 again, after the POSIX rename landed: `replacing_a_file_never_leaves_its_name_missing_for_a_reader_that_
+    /// opens_it` still failed on a Windows runner, the reader getting "Access is denied". That is the old file in
+    /// delete-pending, which only the `MoveFileExW` fallback leaves behind: the POSIX rename had failed for a moment
+    /// (something such as the antivirus holding the new file without delete sharing) and the fallback ran at once.
+    /// A transient refusal is now retried, a little longer each time and briefly in total; only what will not get
+    /// better by waiting goes straight to the fallback.
+    #[test]
+    fn a_refused_posix_rename_is_retried_briefly_and_only_an_unsupported_one_falls_back_at_once() {
+        const ACCESS_DENIED: i32 = 5;
+        const SHARING_VIOLATION: i32 = 32;
+        for code in [ACCESS_DENIED, SHARING_VIOLATION] {
+            let mut waits = Vec::new();
+            let mut attempt = 0;
+            while let RenameStep::Retry(w) = after_posix_rename_error(Some(code), attempt) {
+                waits.push(w);
+                attempt += 1;
+                assert!(attempt < 100, "never stops retrying");
+            }
+            assert!(
+                waits.len() >= 5,
+                "{code}: too few retries to outlast a scan: {waits:?}"
+            );
+            assert!(
+                waits.windows(2).all(|w| w[0] <= w[1]),
+                "{code}: waits shrink: {waits:?}"
+            );
+            let total: std::time::Duration = waits.iter().sum();
+            assert!(
+                total <= std::time::Duration::from_millis(250),
+                "{code}: a write may stall {total:?}"
+            );
+        }
+        // Not supported (old Windows, not NTFS: invalid function, not supported, invalid parameter), write-protected
+        // media, or no OS code at all: the fallback, without waiting. (A readonly target also says "access denied";
+        // `imp::replace_file` checks the attribute and skips the retries.)
+        for code in [Some(1), Some(50), Some(87), Some(19), None] {
+            assert_eq!(
+                after_posix_rename_error(code, 0),
+                RenameStep::Fallback,
+                "{code:?}"
+            );
+        }
+    }
 
     #[cfg(target_os = "linux")]
     #[test]

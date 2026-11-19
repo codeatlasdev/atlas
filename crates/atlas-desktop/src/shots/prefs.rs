@@ -138,6 +138,7 @@ pub fn presets() -> Vec<Preset> {
     vec![
         Preset {
             id: "default",
+            // i18n-ignore: English fallback of a wire field; the page renders presetLabel() from the catalog by id
             label: "⌃⌥1–8 (default)",
             keys: Keys::default(),
             note: None,
@@ -145,6 +146,7 @@ pub fn presets() -> Vec<Preset> {
         },
         Preset {
             id: "cleanshot",
+            // i18n-ignore: English fallback of a wire field; the page renders presetLabel() from the catalog by id
             label: "⇧⌘3 / 4 / 5 / 6 (CleanShot)",
             keys: Keys {
                 all_in_one: "cmd-shift-5".into(),
@@ -157,12 +159,14 @@ pub fn presets() -> Vec<Preset> {
                 gif: "cmd-shift-9".into(),
             },
             note: Some(
+                // i18n-ignore: English fallback of a wire field; the page renders presetNote() from the catalog by id
                 "These are macOS's own screenshot keys (⇧⌘3, ⇧⌘4, ⇧⌘5, ⇧⌘6), and macOS answers them before any app. Atlas never changes a system setting for you: open System Settings > Keyboard > Keyboard Shortcuts > Screenshots, untick them, then tick \"I turned them off\" here. Until then this preset stays unavailable.",
             ),
             needs_system_keys: true,
         },
         Preset {
             id: "ctrl-shift",
+            // i18n-ignore: English fallback of a wire field; the page renders presetLabel() from the catalog by id
             label: "⌃⇧3–9 (without ⌘)",
             keys: Keys {
                 all_in_one: "ctrl-shift-5".into(),
@@ -175,18 +179,21 @@ pub fn presets() -> Vec<Preset> {
                 gif: "ctrl-shift-9".into(),
             },
             note: Some(
+                // i18n-ignore: English fallback of a wire field; the page renders presetNote() from the catalog by id
                 "⌃⇧4 is not a macOS key, but a few terminals and editors use ⌃⇧ digits; if one stops responding, pick another preset.",
             ),
             needs_system_keys: false,
         },
         Preset {
             id: "shift-cmd-s",
+            // i18n-ignore: English fallback of a wire field; the page renders presetLabel() from the catalog by id
             label: "⇧⌘S for a region",
             keys: Keys {
                 region: "shift-cmd-s".into(),
                 ..Keys::default()
             },
             note: Some(
+                // i18n-ignore: English fallback of a wire field; the page renders presetNote() from the catalog by id
                 "⇧⌘S is \"Save As\" in most apps. As a global hotkey it wins over the app in front, so Save As stops working everywhere while Atlas runs. macOS keeps ⇧⌘3, ⇧⌘4 and ⇧⌘5 for itself, which is why they are not offered here.",
             ),
             needs_system_keys: false,
@@ -524,6 +531,7 @@ pub fn stroke_symbols(stroke: &str) -> String {
             .unwrap_or_default()
     };
     let mut out = String::new();
+    // i18n-ignore: capture is macOS-only: its menu shows a stroke in the symbols a Mac prints on the keys
     for (on, sym) in mods.iter().zip(["⌃", "⌥", "⇧", "⌘"]) {
         if *on {
             out.push_str(sym);

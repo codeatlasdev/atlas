@@ -613,9 +613,46 @@ fn install_on_a_host_missing_tools_lists_them_all_and_changes_nothing() {
     for want in ["curl", "git", "tar", "apt-get install"] {
         assert!(t.contains(want), "{want}: {t}");
     }
-    assert!(t.contains("nothing was changed"), "{t}");
+    assert!(
+        t.contains(&atlas_i18n::t_in!(
+            "en",
+            "cmd_crew_not_ready",
+            target = "me@srv"
+        )),
+        "{t}"
+    );
     assert!(!w.exists("lib/atlas-crew/atlas.new") && !w.exists("lib/atlas-crew/atlas"));
     assert!(!w.exists("log/sudo"), "no privileged step ran");
+}
+
+// The same failure in a person's language: the list names the problems in pt-BR, the step line too, and the
+// tools and the commands in it stay as they are.
+#[test]
+fn install_on_a_host_missing_tools_speaks_the_display_language() {
+    let w = World::new();
+    for t in ["curl", "git", "tar"] {
+        let _ = std::fs::remove_file(w.root().join("bin").join(t));
+    }
+    let bin = w.atlas_file("9.9.9", true);
+    let o = w.atlas_in(
+        "pt-BR",
+        &["install", "me@srv", "--binary", bin.to_str().unwrap()],
+        "",
+    );
+    let t = text(&o);
+    assert!(!o.status.success(), "{t}");
+    for want in [
+        atlas_i18n::t_in!("pt-BR", "cmd_crew_step_preflight", target = "me@srv"),
+        atlas_i18n::t_in!("pt-BR", "cmd_crew_not_ready", target = "me@srv"),
+        atlas_i18n::t_in!(
+            "pt-BR",
+            "cmd_crew_missing_tools_install",
+            packages = "curl git tar"
+        ),
+    ] {
+        assert!(t.contains(&want), "{want}: {t}");
+    }
+    assert!(!w.exists("lib/atlas-crew/atlas.new"));
 }
 
 #[test]
@@ -645,7 +682,7 @@ fn install_over_a_dead_ssh_says_so_not_that_the_host_lacks_tools() {
     );
     let t = text(&o);
     assert!(!o.status.success());
-    assert!(t.contains("could not connect to me@srv over SSH"), "{t}");
+    assert!(t.contains("Couldn't connect to me@srv over SSH"), "{t}");
 }
 
 // Gap 9: password sudo (Atlas Desktop sends it on stdin). Every privileged call must authenticate itself.
@@ -693,7 +730,7 @@ fn a_wrong_sudo_password_stops_the_install_before_any_change() {
     );
     let t = text(&o);
     assert!(!o.status.success(), "{t}");
-    assert!(t.contains("sudo password rejected"), "{t}");
+    assert!(t.contains("Wrong sudo password"), "{t}");
     assert!(!w.exists("lib/atlas-crew/atlas"));
 }
 
@@ -794,7 +831,7 @@ fn install_on_a_server_that_cannot_download_streams_the_release_from_this_machin
     let t = text(&o);
     assert!(o.status.success(), "{t}");
     assert!(
-        t.contains("downloading it here and sending it over ssh"),
+        t.contains("downloading it here and sending it over SSH"),
         "{t}"
     );
     assert!(t.contains("Crew server ready"), "{t}");
@@ -819,7 +856,7 @@ fn a_download_here_with_a_bad_checksum_installs_nothing() {
     let o = w.atlas(&["install", "me@srv"], "");
     let t = text(&o);
     assert!(!o.status.success(), "{t}");
-    assert!(t.contains("on this machine:"), "{t}");
+    assert!(t.contains("On this machine:"), "{t}");
     assert!(t.contains("checksum mismatch"), "{t}");
     assert!(
         !w.exists("lib/atlas-crew/atlas"),
@@ -893,7 +930,7 @@ fn install_without_any_key_stops_before_touching_the_server() {
     );
     let t = text(&o);
     assert!(!o.status.success(), "{t}");
-    assert!(t.contains("no SSH key found"), "{t}");
+    assert!(t.contains("No SSH key found"), "{t}");
     assert!(!w.exists("log/sudo"), "the server was touched: {t}");
 }
 

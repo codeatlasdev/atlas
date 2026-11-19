@@ -51,9 +51,10 @@ pub fn account(p: Probe) -> Account {
 /// A line to tell the person installing that an existing user was reused.
 pub fn reuse_notice(a: &Account) -> Option<String> {
     (a.user == LEGACY_USER).then(|| {
-        format!(
-            "reusing the existing system user {LEGACY_USER} (its home {} holds the crewmates' data)",
-            a.home
+        atlas_i18n::t!(
+            "cmd_crew_reuse_user",
+            user = LEGACY_USER,
+            home = a.home.as_str()
         )
     })
 }

@@ -663,23 +663,33 @@ pub fn shots_history_remove(state: State<'_, Shots>, path: String) {
 }
 
 #[tauri::command]
-pub fn shots_history_reveal(path: String) -> Result<(), String> {
+pub fn shots_history_reveal(state: State<'_, Shots>, path: String) -> Result<(), String> {
+    // The page's `path` is untrusted: only a capture of the history, resolved, reaches the OS.
+    let file = state
+        .history
+        .lock()
+        .launchable(std::path::Path::new(&path))?;
     #[cfg(target_os = "macos")]
-    return mac::reveal(std::path::Path::new(&path));
+    return mac::reveal(&file);
     #[cfg(not(target_os = "macos"))]
     {
-        let _ = path;
+        let _ = file;
         unavailable()
     }
 }
 
 #[tauri::command]
-pub fn shots_history_open(path: String) -> Result<(), String> {
+pub fn shots_history_open(state: State<'_, Shots>, path: String) -> Result<(), String> {
+    // As `shots_history_reveal`: the page could otherwise open any app or script on this Mac.
+    let file = state
+        .history
+        .lock()
+        .launchable(std::path::Path::new(&path))?;
     #[cfg(target_os = "macos")]
-    return mac::open(std::path::Path::new(&path));
+    return mac::open(&file);
     #[cfg(not(target_os = "macos"))]
     {
-        let _ = path;
+        let _ = file;
         unavailable()
     }
 }

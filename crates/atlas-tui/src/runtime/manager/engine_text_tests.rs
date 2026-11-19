@@ -70,6 +70,32 @@ fn without_volatile(v: &mut Value) {
     }
 }
 
+/// The document with its keys in name order and every `services` list sorted by `name`. What this test pins is the
+/// bytes of each sentence, not an order: the status file and MCP list services in start order when serde_json keeps
+/// insertion order (`preserve_order`, which `atlas-cli` turns on, so the real binary and a workspace build) and by name
+/// when it does not (this crate alone). Incident: the pin passed with `-p atlas-tui` and failed on CI's workspace run.
+fn canonical(v: Value) -> Value {
+    match v {
+        Value::Object(o) => {
+            let mut kv: Vec<(String, Value)> = o.into_iter().collect();
+            kv.sort_by(|a, b| a.0.cmp(&b.0));
+            let mut out = serde_json::Map::new();
+            for (k, v) in kv {
+                let mut v = canonical(v);
+                if k == "services"
+                    && let Value::Array(rows) = &mut v
+                {
+                    rows.sort_by(|a, b| a["name"].as_str().cmp(&b["name"].as_str()));
+                }
+                out.insert(k, v);
+            }
+            Value::Object(out)
+        }
+        Value::Array(a) => Value::Array(a.into_iter().map(canonical).collect()),
+        other => other,
+    }
+}
+
 /// Drive a manager through services that exercise every scheduler sentence reachable without a wall clock.
 async fn run_scenario() -> Value {
     let dir = tempfile::tempdir().unwrap();
@@ -332,7 +358,9 @@ async fn run_memory_scenario() -> Value {
 
 #[tokio::test]
 async fn status_file_mcp_ci_and_events_keep_their_english_bytes() {
-    let doc = json!({"scheduler": run_scenario().await, "memory": run_memory_scenario().await});
+    let doc = canonical(
+        json!({"scheduler": run_scenario().await, "memory": run_memory_scenario().await}),
+    );
     let got = serde_json::to_string_pretty(&doc).unwrap() + "\n";
     if std::env::var_os("UPDATE_FIXTURES").is_some() {
         std::fs::create_dir_all(std::path::Path::new(FIXTURE).parent().unwrap()).unwrap();

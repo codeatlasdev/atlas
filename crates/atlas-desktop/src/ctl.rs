@@ -121,7 +121,9 @@ async fn conn(stream: ipc::Stream, app: AppHandle, token: &str) -> std::io::Resu
         Ok(data) => json!({"ok": true, "data": data}),
         Err(e) => json!({"ok": false, "error": e}),
     };
-    w.write_all(format!("{v}\n").as_bytes()).await
+    w.write_all(format!("{v}\n").as_bytes()).await?;
+    // Not a bare drop: on Windows the shutdown waits until the client has read the reply (#529).
+    w.shutdown().await
 }
 
 async fn dispatch(app: &AppHandle, req: Value) -> Result<Value, String> {

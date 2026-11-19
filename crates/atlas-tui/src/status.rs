@@ -73,7 +73,9 @@ pub struct Snapshot {
 /// Returns Err(reason) when nothing is running (missing, dead pid, or stale file).
 pub fn live_snapshot(root_dir: &Path) -> Result<Snapshot, String> {
     let path = crate::runtime::log_dir(root_dir).join(".tui-status.json");
-    let text = std::fs::read_to_string(&path).map_err(|_| "no status file".to_string())?;
+    // The runner replaces this file every second; a plain read on Windows can be refused while it does (#545).
+    let text =
+        atlas_core::fs::read_to_string_replaced(&path).map_err(|_| "no status file".to_string())?;
     let v: Value =
         serde_json::from_str(&text).map_err(|e| format!("unreadable status file: {e}"))?;
 

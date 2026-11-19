@@ -96,7 +96,12 @@ impl Tunnel {
         }
     }
 
+    /// A line about the tunnel: the live buffer AND `.logs/tunnel.log`, which is where MCP `atlas_logs` and
+    /// `atlas logs` look. Only ssh's stderr reached the file, so "already accepting connections; not starting ssh"
+    /// or "tunnel down; reconnecting" never showed there, and a tunnel that adopted someone else's listener left no
+    /// trace of why (#496).
     fn note(&self, line: String) {
+        crate::runtime::manager::append_mark(&self.log_dir, LOG_NAME, &line);
         let _ = self.tx.send(ManagerEvent::LogLine {
             name: LOG_NAME.into(),
             line,

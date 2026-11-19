@@ -26,7 +26,8 @@
 	import { ws } from "#lib/stores/workspace.svelte.ts";
 	import { worktrees } from "#lib/stores/worktrees.svelte.ts";
 	import DeleteDialog from "./sidebar/DeleteDialog.svelte";
-	import DiscoverDialog from "./sidebar/DiscoverDialog.svelte";
+	import Lazy from "./Lazy.svelte";
+	import { discovery } from "#lib/stores/discovery.svelte.ts";
 	import ProjectHead from "./sidebar/ProjectHead.svelte";
 	import SidebarFooter from "./sidebar/SidebarFooter.svelte";
 	import WorktreeRow from "./sidebar/WorktreeRow.svelte";
@@ -59,6 +60,11 @@
 	let activeKids = $derived(activeRepo ? sidebar.visibleKids(activeRepo.id) : []);
 	/** "Other projects" is collapsed by default; a filter opens it so matches are never hidden. */
 	let allOpen = $state(false);
+	/** Find projects is its own chunk (a long dialog the sidebar rarely shows): fetched the first time it opens, then kept mounted so closing animates. */
+	let discoverSeen = $state(false);
+	$effect(() => {
+		if (discovery.open) discoverSeen = true;
+	});
 	let listOpen = $derived(allOpen || filtering);
 	let workingCount = $derived(
 		ws.doc.tabs.filter((t) => t.agent && agents.status[t.id]?.state === "working").length,
@@ -290,7 +296,7 @@
 
 <DeleteDialog />
 <IdentityDialog />
-<DiscoverDialog />
+{#if discoverSeen}<Lazy load={() => import("./sidebar/DiscoverDialog.svelte")} props={{}} />{/if}
 
 <style>
 	.sidebar {

@@ -11,7 +11,7 @@
 import { dirname } from "node:path";
 import { type DiffBase, resolveBase } from "./lib/base.ts";
 import { ciOnly, classify, plan } from "./checks/plan.ts";
-import { run, workspaceGraph } from "./checks/run.ts";
+import { run, workspaceMeta } from "./checks/run.ts";
 
 const root = dirname(import.meta.dir);
 const args = process.argv.slice(2);
@@ -33,10 +33,10 @@ if (flag("--stdin")) {
 
 // Only a change confined to some crates needs the crate graph.
 const c = classify(files);
-const graph = c.areas.rust!.on && c.everything === null ? await workspaceGraph() : {};
+const meta = c.areas.rust!.on && c.everything === null ? await workspaceMeta() : { graph: {}, libs: undefined };
 // cargo-xwin present and not on Windows (which runs the real thing): also lint the Windows target.
 const windows = process.platform !== "win32" && Bun.which("cargo-xwin") !== null && !flag("--no-windows");
-const p = plan(files, graph, { windows });
+const p = plan(files, meta.graph, { windows, libs: meta.libs && [...meta.libs] });
 
 if (flag("--json")) {
 	const rust = p.commands.filter((x) => x.area === "rust");

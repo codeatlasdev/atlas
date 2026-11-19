@@ -117,6 +117,7 @@ command that fixes it. `warn` is for the reviewer and `info` is hidden unless as
 | `dup-common`, `dup-value`, `common-sentence` | See above. |
 | `budget`, `area-surface`, `dangling-ref`, `generate` | Area size; an area with no, an unknown or a malformed surface declaration; a reference that does not resolve, loops or leaves the surfaces; a message a generator cannot express. |
 | `unused`, `undefined-key`, `unconsumed-key` | A key nobody consuming it uses (common*, generated and `cli_*` areas exempt); a reference in a source to a key that is not there, or is in an area the surface does not consume. |
+| `frozen` | A message function called where it runs once (module scope, `<script module>`, a class field, a `+layout.svelte` script, a command passed to `register`) keeps the first language after a live switch. Use a getter, a thunk, `$derived` or the template; waive with `// i18n-allow frozen: <why>`. Desktop and site; every file, no baseline. |
 | `supported-sync` | `i18n/locales.json` equals `SUPPORTED` in `crates/atlas-core/src/lang.rs`, `CFBundleLocalizations` of `crates/atlas-desktop/Info.plist` and the `locales` of each Paraglide project. |
 | `format`, `lock`, `config`, `catalog` | Files sorted, one key per line, LF; locks canonical; unknown locale files and a malformed surfaces.json (or one that still lists areas); unreadable JSON or a malformed variants object. |
 | `hardcoded`, `shortcut`, `platform-check`, `writing-*` | The ratchets below. |

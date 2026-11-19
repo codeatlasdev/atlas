@@ -29,5 +29,6 @@
 	"native_notify_dock_not_built": "The agent dock is not available.",
 	"native_notify_no_home": "Cannot locate the home directory",
 	"native_notify_no_permission": "Atlas needs the Screen Recording permission to capture the screen. Grant it in {@common_os_system_settings} > Privacy & Security > Screen Recording, then restart Atlas.",
+	"native_notify_service_failed": "{name} failed",
 	"native_notify_shell_not_executable": "{path} is not an executable file"
 }

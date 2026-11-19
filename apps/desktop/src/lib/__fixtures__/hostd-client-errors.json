@@ -1,0 +1,40 @@
+{
+	"codes": [
+		"hostd.closed",
+		"hostd.disconnected",
+		"hostd.start_failed",
+		"hostd.refused",
+		"hostd.cli_not_found"
+	],
+	"errors": [
+		{
+			"code": "hostd.closed",
+			"args": {},
+			"message": "hostd closed the connection"
+		},
+		{
+			"code": "hostd.disconnected",
+			"args": {},
+			"message": "hostd disconnected"
+		},
+		{
+			"code": "hostd.start_failed",
+			"args": {},
+			"message": "hostd did not start"
+		},
+		{
+			"code": "hostd.refused",
+			"args": {
+				"why": "hostd busy"
+			},
+			"message": "hostd: hostd busy"
+		},
+		{
+			"code": "hostd.cli_not_found",
+			"args": {
+				"command": "curl -fsSL https://atlas.codeatlas.com.br/install.sh | bash"
+			},
+			"message": "atlas CLI not found. Install it with: curl -fsSL https://atlas.codeatlas.com.br/install.sh | bash"
+		}
+	]
+}

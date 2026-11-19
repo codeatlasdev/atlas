@@ -6,7 +6,8 @@ name: Rerun a lost runner
 # even after multiple attempts". Neither says anything about the commit, so when CI fails ONLY by such jobs this reruns
 # the failed jobs, once per attempt, up to attempt 3. A real failure in the same run, or a job cancelled without one of
 # those annotations, means no rerun. The rules are scripts/ci-lost-runner.ts (decideRerun, tested in
-# ci-lost-runner.test.ts).
+# ci-lost-runner.test.ts). A rerun must not hide a real hang, so each rerun of a lost, stalled or mirror job also leaves
+# a comment and the label `ci: rerun-after-stall` on the pull request and a line in #520 (scripts/ci-stall-report.ts).
 #
 # `workflow_run` runs with the default branch's workflow file and a token that can write, also for a fork's pull
 # request, so: nothing from the pull request is checked out or executed (the checkout is the default branch), and
@@ -30,8 +31,10 @@ jobs:
     timeout-minutes: 5
     permissions:
       actions: write # POST actions/runs/{id}/rerun-failed-jobs
-      checks: read # the failed jobs' annotations
+      checks: read # the failed jobs' annotations and the Windows watchdog's check run
       contents: read # the checkout of the default branch
+      issues: write # the line in #520 and the label (scripts/ci-stall-report.ts)
+      pull-requests: write # the comment on the pull request of the commit
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:

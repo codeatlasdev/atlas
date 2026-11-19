@@ -20,6 +20,7 @@
 
 use std::time::Duration;
 
+use crate::agents::hook_server::CREWMATE_DECISION_WAIT;
 use serde_json::{Value, json};
 use tokio::io::{AsyncBufReadExt, AsyncWriteExt, BufReader};
 
@@ -30,7 +31,9 @@ pub async fn serve(crewmate_id: &str) -> anyhow::Result<()> {
     // Install the ring crypto provider so rustls-no-provider works.
     let _ = rustls::crypto::ring::default_provider().install_default();
     let client = reqwest::Client::builder()
-        .timeout(Duration::from_secs(1800)) // ask_user can take up to 30 min
+        // ask_user and approve wait for the owner up to hostd's own wait; this outlives it, so hostd answers first
+        // (a clear "nobody answered" and an audit entry) and not a bare HTTP timeout.
+        .timeout(CREWMATE_DECISION_WAIT + Duration::from_secs(60))
         .build()?;
 
     let env = Env::from_env(crewmate_id);
@@ -322,11 +325,16 @@ async fn tool_approve(args: Value, client: &reqwest::Client, env: &Env) -> Resul
         .filter(|d| !d.is_null())
         .and_then(|d| d.as_str().map(|s| s.to_string()));
 
+    // Only an explicit allow allows. No decision means nobody answered (no one could, or hostd's wait ran out).
     let result = match decision.as_deref() {
-        Some("allow") | None => json!({ "behavior": "allow" }),
-        _ => json!({
+        Some("allow") => json!({ "behavior": "allow" }),
+        Some(_) => json!({
             "behavior": "deny",
             "message": "Permission denied by the user."
+        }),
+        None => json!({
+            "behavior": "deny",
+            "message": "Permission denied: nobody answered the approval request."
         }),
     };
 
@@ -591,6 +599,42 @@ mod tests {
             .await
             .unwrap_err();
         assert!(err.starts_with("locate: HTTP error: "), "{err}");
+    }
+
+    /// What `atlas:approve` tells Claude Code for hostd's reply to the prompt.
+    async fn approve_behavior(reply: &'static str) -> Value {
+        let _ = rustls::crypto::ring::default_provider().install_default();
+        let env = answering("200 OK", reply).await;
+        let out = tool_approve(
+            json!({"tool_name": "Bash", "input": {"command": "ls"}}),
+            &reqwest::Client::new(),
+            &env,
+        )
+        .await
+        .unwrap();
+        serde_json::from_str(out["content"][0]["text"].as_str().unwrap()).unwrap()
+    }
+
+    // #524 review of the same class: an approval nobody answered (no one could, or the 30 minutes ran out) came
+    // back from hostd as `{"decision":null}` and `atlas:approve` ALLOWED the tool, so a headless Claude crewmate
+    // with `approval: ask` ran every command nobody was there to approve. Only an explicit allow allows.
+    #[tokio::test]
+    async fn only_an_explicit_allow_lets_a_headless_claude_tool_run() {
+        assert_eq!(
+            approve_behavior(r#"{"decision":"allow"}"#).await["behavior"],
+            "allow"
+        );
+        let denied = approve_behavior(r#"{"decision":"deny"}"#).await;
+        assert_eq!(denied["behavior"], "deny");
+        assert_eq!(denied["message"], "Permission denied by the user.");
+        for unanswered in [r#"{"decision":null}"#, "{}"] {
+            let r = approve_behavior(unanswered).await;
+            assert_eq!(r["behavior"], "deny", "{unanswered}: nobody approved it");
+            assert!(
+                r["message"].as_str().unwrap().contains("nobody answered"),
+                "the agent is told it was not the owner's no: {r}"
+            );
+        }
     }
 
     #[test]

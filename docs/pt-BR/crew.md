@@ -1,7 +1,7 @@
 ---
 title: "Atlas Crew"
 source: crew.md
-source_sha: "f42b8d640e7b101516630376c7cfd7dc82cdad68"
+source_sha: "1191ced0630bacee8333131680579f1bf2ea0f9b"
 translation: machine
 ---
 
@@ -235,6 +235,8 @@ Uma tarefa pode levar até **4 imagens** de no máximo **5 MiB** cada (png, jpeg
 ### Aprovações
 
 Com `approval: ask`, uma chamada de ferramenta pausa a tarefa e espera até 30 minutos por `agent_approve {pane, req, allow}`; a chave do painel é `crew:<crewmate id>:<task id>`. A espera só começa quando alguém pode responder agora: um cliente desktop conectado, um celular conectado ou um chat do Telegram vinculado. Só um token de push registrado não conta (o celular pode estar offline). Caso contrário, o prompt é negado na hora, então configure um deles antes de contar com um crewmate `ask`. Claude Code e Codex: rode `atlas setup claude-code|codex --apply` de novo, uma vez, para o hook deles usar o timeout correspondente de 1805 s.
+
+Só um **allow** explícito executa a ferramenta. Qualquer outro fim a bloqueia e diz qual foi: o dono negou, ninguém respondeu a tempo (o prompt é auditado como `approval_decision` `timeout` / `none`) ou a própria requisição falhou. Um crewmate `claude` headless segue a mesma regra: um prompt que ninguém respondeu é uma negação ("nobody answered the approval request"), nunca um allow. As esperas formam uma cadeia, cada uma durando mais que a de dentro, para que a mais interna diga o que aconteceu: o hostd espera 30 minutos, a extensão de aprovação do omp 60 s a mais, e o omp 60 s a mais que isso. O omp impõe um limite próprio a todo handler `tool_call` de extensão (`extensionHandlers.toolCallTimeoutMs`, 30 s por padrão, e um `fetch` ao hostd não é um dos diálogos que ele desconta), então o overlay `--config` que o Atlas passa ao omp de cada crewmate o aumenta (`omp-crew.yml` no diretório do crewmate, reescrito no próximo turno); antes disso, as aprovações de um crewmate omp respondidas depois de 30 s falhavam com `omp-approval.ts timed out after 30000ms` mesmo quando o dono permitia. Um omp que não conhece a configuração (anterior à linha 18.4, onde ela existe) mantém os 30 s.
 
 ### Pausar e retomar
 
@@ -880,11 +882,11 @@ O mesmo socket NDJSON de todo comando do hostd (`~/.atlas/hostd.sock`, ou o do c
 }
 ```
 
-- `state`: `idle`, `working` ou `needs_you`.
+- `state`: `idle`, `working` (uma tarefa está rodando) ou `needs_you` (uma aprovação de ferramenta está pendente, ou uma tarefa está parada em um card).
 - `running_task` existe só enquanto uma tarefa roda; `pane` é a chave para anexar um terminal.
 - `last`: o resultado, o erro ou o prompt da tarefa mais recente (os primeiros 140 caracteres), o estado final e a hora.
-- `pending_approval` existe só em `needs_you`.
-- `waiting_task` (ausente, a menos que uma tarefa esteja parada em um card): `{id, action, result, attachments}`, o card em que a tarefa em espera mais antiga está e as imagens que o agente tirou para ela (só as do agente, como registros). O Captain's call do Atlas Mobile lista a partir dele um crewmate com um card `refused` ou `prove_ui`, com Retry e Override ali mesmo. Ele não muda `state`.
+- `pending_approval` existe só em `needs_you`; uma tarefa parada em qualquer card (`waiting_task`) também é `needs_you`, embora o runner dela continue ocupado, então `running_task` está presente ali e o Stop funciona. Um servidor anterior a isso (1.5.0-alpha.26 e antes) dizia `working`; o desktop corrige isso onde a resposta ainda mostra o card.
+- `waiting_task` (ausente, a menos que uma tarefa esteja parada em um card): `{id, action, result, attachments}`, o card em que a tarefa está (a que o runner segura, ou a parada mais recente) e as imagens que o agente tirou para ela (só as do agente, como registros). O Captain's call do Atlas Mobile lista a partir dele um crewmate com um card `refused` ou `prove_ui`, com Retry e Override ali mesmo. A presença dele faz `state` ser `needs_you`, seja qual for o tipo de card.
 - `triggers` está sempre presente; `next_fire` é calculado pelo servidor.
 
 ### Objeto de tarefa

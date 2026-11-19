@@ -35,6 +35,7 @@ pub mod timer;
 pub mod video;
 pub mod windows;
 
+use atlas_i18n::t;
 use parking_lot::Mutex;
 use serde::Serialize;
 use tauri::{AppHandle, Manager, State};
@@ -193,12 +194,15 @@ impl Shots {
     }
 }
 
-/// The strokes the dock owns, which a capture key must not reuse.
-fn dock_strokes(app: &AppHandle) -> Vec<(&'static str, String)> {
+/// The strokes the dock owns, which a capture key must not reuse, each under the name of its action.
+fn dock_strokes(app: &AppHandle) -> Vec<(String, String)> {
     app.try_state::<crate::dock::DockState>()
         .map(|d| {
             let p = d.prefs();
-            vec![("Message an agent", p.summon), ("Hide the dock", p.toggle)]
+            vec![
+                (t!("native_capture_dock_summon"), p.summon),
+                (t!("native_capture_dock_toggle"), p.toggle),
+            ]
         })
         .unwrap_or_default()
 }
@@ -404,7 +408,7 @@ pub fn shots_presets() -> Vec<prefs::Preset> {
 pub fn shots_prefs_set(app: AppHandle, prefs: CapturePrefs) -> Result<CapturePrefs, String> {
     let state = app.state::<Shots>();
     let dock = dock_strokes(&app);
-    let others: Vec<(&str, &str)> = dock.iter().map(|(n, s)| (*n, s.as_str())).collect();
+    let others: Vec<(&str, &str)> = dock.iter().map(|(n, s)| (n.as_str(), s.as_str())).collect();
     prefs.validate(&others)?;
     let before = state.prefs.lock().clone();
     apply_hotkeys(&app, &prefs).inspect_err(|_| {
@@ -663,23 +667,33 @@ pub fn shots_history_remove(state: State<'_, Shots>, path: String) {
 }
 
 #[tauri::command]
-pub fn shots_history_reveal(path: String) -> Result<(), String> {
+pub fn shots_history_reveal(state: State<'_, Shots>, path: String) -> Result<(), String> {
+    // The page's `path` is untrusted: only a capture of the history, resolved, reaches the OS.
+    let file = state
+        .history
+        .lock()
+        .launchable(std::path::Path::new(&path))?;
     #[cfg(target_os = "macos")]
-    return mac::reveal(std::path::Path::new(&path));
+    return mac::reveal(&file);
     #[cfg(not(target_os = "macos"))]
     {
-        let _ = path;
+        let _ = file;
         unavailable()
     }
 }
 
 #[tauri::command]
-pub fn shots_history_open(path: String) -> Result<(), String> {
+pub fn shots_history_open(state: State<'_, Shots>, path: String) -> Result<(), String> {
+    // As `shots_history_reveal`: the page could otherwise open any app or script on this Mac.
+    let file = state
+        .history
+        .lock()
+        .launchable(std::path::Path::new(&path))?;
     #[cfg(target_os = "macos")]
-    return mac::open(std::path::Path::new(&path));
+    return mac::open(&file);
     #[cfg(not(target_os = "macos"))]
     {
-        let _ = path;
+        let _ = file;
         unavailable()
     }
 }

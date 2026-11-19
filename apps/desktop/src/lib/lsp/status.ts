@@ -6,6 +6,7 @@
  */
 import { list } from "#lib/i18n/fmt.ts";
 import { m } from "#lib/i18n/m.ts";
+import { lspReasonText } from "#lib/lsp/reasonText.ts";
 import type { OpenStatus, Reason, ServerStatus } from "#lib/lsp/types.ts";
 
 export type Tone = "ok" | "busy" | "warn" | "error" | "idle";
@@ -273,7 +274,10 @@ export function lspUiState(i: UiInput): LspUiState {
 
 	const server = srv?.name ?? doc?.server ?? "";
 	const label = srv?.label || server || m.workbench_editor_language_server();
-	const reason = srv?.reason ?? doc?.reason;
+	// The daemon sends English `message` and `hint` plus the `code` and `args` they were written from: show the
+	// catalog's sentences (English when the code or an argument is unknown, as from a daemon older than `args`).
+	const sent = srv?.reason ?? doc?.reason;
+	const reason = sent && { ...sent, ...lspReasonText(sent) };
 
 	if (srv?.state === "downloading") {
 		const progress = progressText(srv);

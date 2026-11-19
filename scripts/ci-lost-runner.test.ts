@@ -5,6 +5,7 @@ import { existsSync, mkdtempSync, readFileSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { type Job, type RerunFacts, classify, decideRerun, infraOnly, infraWords } from "./ci-lost-runner";
+import { LABEL } from "./ci-stall-report";
 
 const LOST_MSG =
   "The hosted runner lost communication with the server. Anything in your workflow that terminates the runner process, starves it for CPU/Memory, or blocks its network access can cause this error.";
@@ -88,8 +89,14 @@ import { join } from "node:path";
 const w = JSON.parse(readFileSync(join(import.meta.dir, "world.json"), "utf8"));
 const a = process.argv.slice(2);
 const out = (s) => { console.log(typeof s === "string" ? s : JSON.stringify(s)); process.exit(0); };
-if (a[0] === "api" && a.includes("--method")) { appendFileSync(join(import.meta.dir, "calls.log"), a.join(" ") + "\\n"); out("{}"); }
+if (a[0] === "api" && a.includes("--method")) { appendFileSync(join(import.meta.dir, "calls.log"), JSON.stringify(a) + "\\n"); if (w.postFails && a[3].endsWith(w.postFails)) { console.error("HTTP 403"); process.exit(1); } out("{}"); }
 const path = a[1];
+// What ci-stall-report.ts reads for a rerun: the pull requests of the commit, a job, the watchdog's check runs, a job's log.
+if (path.endsWith("/pulls")) out((w.pulls ?? []).join("\\n"));
+if (path.includes("/check-runs?")) out(w.checkRuns ?? []);
+const d = path.match(/actions\\/jobs\\/(\\d+)(\\/logs)?$/);
+if (d && d[2]) { const l = (w.logs ?? {})[d[1]]; if (l === undefined) { console.error("HTTP 404"); process.exit(1); } out(l); }
+if (d) out((w.details ?? {})[d[1]] ?? { html_url: "https://github.com/x/y/actions/runs/1/job/" + d[1], started_at: "2026-01-01T00:00:00Z", completed_at: "2026-01-01T01:00:00Z", steps: [] });
 if (path.includes("/git/ref/heads/")) out(w.tip);
 if (path.endsWith("/jobs")) out(w.jobs.map((j) => JSON.stringify({ id: j.id, name: j.name, conclusion: j.conclusion })).join("\\n"));
 const m = path.match(/check-runs\\/(\\d+)\\/annotations/);
@@ -107,10 +114,10 @@ const jobs = (...ids: number[]) =>
     { id: 15, ...mac({ name: "Rust (macOS arm64)" }) },
   ].filter((j) => ids.includes(j.id));
 
-function cli(w: { tip?: string; jobs: object[] }, env: Record<string, string> = {}, args: string[] = []) {
+function cli(w: { tip?: string; jobs: object[]; pulls?: number[]; checkRuns?: object[]; logs?: Record<string, string>; details?: Record<string, object>; postFails?: string }, env: Record<string, string> = {}, args: string[] = []) {
   const dir = mkdtempSync(join(tmpdir(), "rerun-lost-"));
   writeFileSync(join(dir, "gh.mjs"), FAKE_GH);
-  writeFileSync(join(dir, "world.json"), JSON.stringify({ tip: w.tip ?? HEAD, jobs: w.jobs }));
+  writeFileSync(join(dir, "world.json"), JSON.stringify({ ...w, tip: w.tip ?? HEAD }));
   const p = Bun.spawnSync([process.execPath, join(import.meta.dir, "ci-rerun-lost.ts"), ...args], {
     env: {
       ...process.env,
@@ -126,7 +133,7 @@ function cli(w: { tip?: string; jobs: object[] }, env: Record<string, string> = 
     },
   });
   const log = join(dir, "calls.log");
-  return { code: p.exitCode, out: p.stdout.toString(), err: p.stderr.toString(), calls: existsSync(log) ? readFileSync(log, "utf8").trim().split("\n") : [] };
+  return { code: p.exitCode, out: p.stdout.toString(), err: p.stderr.toString(), calls: existsSync(log) ? readFileSync(log, "utf8").trim().split("\n").map((l) => (JSON.parse(l) as string[]).join(" ")) : [], posts: existsSync(log) ? readFileSync(log, "utf8").trim().split("\n").map((l) => JSON.parse(l) as string[]) : [] };
 }
 
 describe("ci-rerun-lost.ts", () => {
@@ -134,7 +141,11 @@ describe("ci-rerun-lost.ts", () => {
     const r = cli({ jobs: jobs(11, 12, 13) });
     expect(r.code).toBe(0);
     expect(r.out).toMatch(/run 4242 attempt 1: rerun: runner lost: Rust \(Windows/);
-    expect(r.calls).toEqual(["api --method POST repos/codeatlasdev/atlas/actions/runs/4242/rerun-failed-jobs"]);
+    // The rerun, then the line for the tracking issue (this commit belongs to no pull request, so nothing to comment on).
+    expect(r.calls.map((c) => c.split(" -f ")[0])).toEqual([
+      "api --method POST repos/codeatlasdev/atlas/actions/runs/4242/rerun-failed-jobs",
+      "api --method POST repos/codeatlasdev/atlas/issues/520/comments",
+    ]);
   });
 
   test("only 'not acquired' (job ended cancelled): POSTs the rerun too", () => {
@@ -193,3 +204,83 @@ describe("ci-rerun-lost.ts", () => {
     expect(r.calls).toEqual([]);
   });
 });
+
+// A rerun must not hide a hang (#520): each rerun of a lost, stalled or mirror job is said on the pull request, labelled, and
+// added to the tracking issue. The inputs are the recorded real ones: the watchdog's check run of run 44366063379 (a Windows
+// runner lost 5 min into the tests; its log is gone) and the log tail of run 44413383839 (a job ended at its time limit).
+describe("ci-rerun-lost.ts makes a rerun visible", () => {
+  const fixture = (f: string) => readFileSync(join(import.meta.dir, "fixtures/ci-stall", f), "utf8");
+  const telemetry = JSON.parse(fixture("telemetry-44366063379.json"));
+  const checkRun = { name: telemetry.name, html_url: telemetry.html_url, started_at: telemetry.started_at, output: { text: telemetry.output.text } };
+  const lostJob = { id: 11, ...win(), conclusion: "failure" };
+  const detail = { html_url: "https://github.com/codeatlasdev/atlas/actions/runs/44366063379/job/135020119440", started_at: "2026-11-18T18:06:55Z", completed_at: "2026-11-18T18:59:55Z", steps: [{ name: "Test", status: "in_progress", conclusion: null }] };
+  const world = { jobs: [lostJob, { id: 13, ...aggregate }], pulls: [602], checkRuns: [checkRun], details: { "11": detail } };
+  const body = (post: string[]) => post[5].replace(/^body=/, "");
+
+  test("a lost Windows runner: a comment with the job, the kind and the tests running at the last sample, the label, one line in #520", () => {
+    const r = cli(world);
+    expect(r.code).toBe(0);
+    expect(r.posts.map((p) => p[3])).toEqual([
+      "repos/codeatlasdev/atlas/actions/runs/4242/rerun-failed-jobs",
+      "repos/codeatlasdev/atlas/issues/602/comments",
+      "repos/codeatlasdev/atlas/issues/602/labels",
+      "repos/codeatlasdev/atlas/issues/520/comments",
+    ]);
+    const comment = body(r.posts[1]);
+    expect(comment).toContain(`[Rust (Windows, full workspace)](${detail.html_url}): the runner was lost (\`lost\`)`);
+    expect(comment).toContain("step when it ended: Test");
+    expect(comment).toContain("(18:15:43 UTC, nextest 2509/3199");
+    expect(comment).toContain("atlas_host crew::telegram::tests::five_wrong_codes_kill_the_link_code_even_for_the_right_one (14s), scrollback_memory a_wide_terminal_stays_inside_the_scrollback_byte_budget (7s)");
+    expect(comment).not.toContain("last log lines"); // the log of a lost runner is gone
+    expect(r.posts[2].slice(4)).toEqual(["-f", `labels[]=${LABEL}`]);
+    const line = body(r.posts[3]);
+    expect(line.split("\n")).toHaveLength(1);
+    expect(line).toContain(`#602, run 4242 attempt 1: [Rust (Windows, full workspace)](${detail.html_url}) \`lost\`, step Test, tests running: atlas_host crew::telegram::tests::five_wrong_codes`);
+  });
+
+  test("a job ended at its time limit: kind stalled, and the tail of its log says where it was", () => {
+    const stalledJob = { id: 11, ...win({ conclusion: "cancelled", failures: ["The job has exceeded the maximum execution time of 30m0s", "The operation was canceled."] }) };
+    const r = cli({ ...world, jobs: [stalledJob, { id: 13, ...aggregate }], logs: { "11": fixture("job-log-tail-44413383839.txt") } });
+    const comment = body(r.posts[1]);
+    expect(comment).toContain("the runner stalled until the job's time limit (`stalled`)");
+    expect(comment).toContain("last log lines: `bootstrap channel selection: 76 passed, 0 failed` / `labels.yml: 37 labels, names unique, colors and descriptions valid` / `sync-labels.sh --dry-run: 37 commands, all --force`");
+  });
+
+  test("the watchdog's check run of another attempt is not this job's", () => {
+    const r = cli({ ...world, checkRuns: [{ ...checkRun, started_at: "2026-11-18T10:00:00Z" }] });
+    expect(body(r.posts[1])).not.toContain("tests running at the last sample");
+    expect(body(r.posts[3])).toContain("tests running: none known");
+  });
+
+  test("a mirror stall on a Linux job is reported too, without a watchdog", () => {
+    const mirrorJob = { id: 11, name: "Rust (Linux)", conclusion: "failure", failures: ["ci-apt: the apt mirror is too slow or down (two rounds ran out of time); rerun the job", "Process completed with exit code 1."] };
+    const r = cli({ ...world, jobs: [mirrorJob, { id: 13, ...aggregate }] });
+    expect(body(r.posts[1])).toContain("the apt mirror stalled (`mirror`)");
+  });
+
+  test("'no runner was available' alone is not a hang: it reruns and says nothing", () => {
+    const r = cli({ jobs: jobs(15, 12, 13), pulls: [602] });
+    expect(r.posts.map((p) => p[3])).toEqual(["repos/codeatlasdev/atlas/actions/runs/4242/rerun-failed-jobs"]);
+  });
+
+  test("no rerun, nothing said", () => {
+    const r = cli({ ...world, jobs: [lostJob, { id: 14, ...realFailure }, { id: 13, ...aggregate }] });
+    expect(r.posts).toEqual([]);
+  });
+
+  test("a comment that cannot be posted never undoes the rerun: it is requested first, the failure is the exit code", () => {
+    const r = cli({ ...world, postFails: "/issues/602/comments" });
+    expect(r.posts[0][3]).toContain("rerun-failed-jobs");
+    expect(r.code).toBe(1);
+    expect(r.err).toContain("could not report the rerun: comment on #602");
+    expect(r.posts.map((p) => p[3])).toContain("repos/codeatlasdev/atlas/issues/520/comments"); // the rest still goes out
+  });
+
+  test("--dry-run prints what it would say and posts nothing", () => {
+    const r = cli(world, {}, ["--dry-run"]);
+    expect(r.posts).toEqual([]);
+    expect(r.out).toContain("--dry-run: comment on #602 and on #520");
+    expect(r.out).toContain("five_wrong_codes");
+  });
+});
+

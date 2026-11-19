@@ -1,6 +1,6 @@
 <script lang="ts">
 	import Contain from "#lib/errors/Contain.svelte";
-	import RightSidebar from "#lib/components/RightSidebar.svelte";
+	import Lazy from "#lib/components/Lazy.svelte";
 	import DockResizer from "#lib/components/DockResizer.svelte";
 	import EdgePeek from "#lib/shell/EdgePeek.svelte";
 	import { docks } from "#lib/stores/docks.svelte.ts";
@@ -16,7 +16,7 @@
 
 {#snippet sidebar()}
 	<Contain where="Right sidebar" title={m.shell_chrome_right_dock_error_title()}>
-		<RightSidebar />
+		<Lazy load={() => import("#lib/components/RightSidebar.svelte")} props={{}} />
 	</Contain>
 {/snippet}
 

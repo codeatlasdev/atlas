@@ -579,11 +579,11 @@ mod tests {
         let on = |tag| lookup_on(tag, "native_notify_no_permission", None, "mac").unwrap();
         assert_eq!(
             on("en"),
-            "Atlas needs the Screen Recording permission to capture the screen. Grant it in System Settings > Privacy & Security > Screen Recording, then restart Atlas."
+            "Atlas needs the Screen Recording permission to capture the screen. Grant it in System Settings > Privacy & Security > Screen & System Audio Recording, then restart Atlas."
         );
         assert_eq!(
             on("pt-BR"),
-            "O Atlas precisa da permissão de Gravação de Tela para capturar a tela. Conceda em Ajustes do Sistema > Privacidade e Segurança > Gravação de Tela e reinicie o Atlas."
+            "O Atlas precisa da permissão de Gravação de Tela para capturar a tela. Conceda em Ajustes do Sistema > Privacidade e Segurança > Gravação do Áudio do Sistema e da Tela e reinicie o Atlas."
         );
     }
 

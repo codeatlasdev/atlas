@@ -1,6 +1,9 @@
 // @ts-nocheck bun test runtime types are not part of the app tsconfig
 import { expect, test } from "bun:test";
-import { childrenOf, matches, strongest } from "./model.ts";
+import { readFileSync } from "node:fs";
+import prViewOpen from "#lib/__fixtures__/gh/pr-view-open.json";
+import { m } from "#lib/i18n/m.ts";
+import { childrenOf, matches, prChip, stepLabel, strongest } from "./model.ts";
 
 const p = (id: string, over: Record<string, unknown> = {}) => ({
 	id,
@@ -37,4 +40,31 @@ test("strongest picks blocked over waiting over working over done over idle", ()
 	expect(strongest(["idle", "done"])).toBe("done");
 	expect(strongest(["working", "waiting", "idle"])).toBe("waiting");
 	expect(strongest(["done", "blocked"])).toBe("blocked");
+});
+
+// `worktree://progress` sends the step as a bare id from `create.rs`; every one of them must read as a phrase, not as the id.
+test("every progress step the worktree creation reports has a label", () => {
+	const src = readFileSync(
+		new URL("../../../../../../crates/atlas-desktop/src/worktree/create.rs", import.meta.url),
+		"utf8",
+	);
+	const steps = [...src.matchAll(/progress\("(\w+)",/g)].map(([, step]) => step);
+	expect(steps).toEqual(expect.arrayContaining(["fetch", "add", "shared", "seed"]));
+	for (const step of new Set(steps)) {
+		if (step === "error") continue;
+		expect(stepLabel(step), step).not.toBe(step);
+	}
+	expect(stepLabel("rebase")).toBe("rebase");
+});
+
+// The state comes from `gh pr view --json state` (the recorded real answer): GitHub's own upper-case value.
+test("the chip words the pull request state gh reports, and shows an unknown one as it came", () => {
+	const view = JSON.parse(prViewOpen.result.stdout);
+	expect(prChip(497, view.state)).toBe(
+		m.sidebar_worktree_row_pr_state({ number: 497, state: m.sidebar_worktree_row_pr_merged() }),
+	);
+	expect(prChip(7, "OPEN")).toBe("PR #7 · open");
+	expect(prChip(7, "CLOSED")).toBe("PR #7 · closed");
+	expect(prChip(7, "QUEUED")).toBe("PR #7 · queued");
+	expect(prChip(7, undefined)).toBe("PR #7");
 });

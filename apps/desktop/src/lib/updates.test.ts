@@ -6,6 +6,7 @@ import {
 	DEFAULT_CHANNEL,
 	EMPTY_PREFS,
 	EMPTY_PROGRESS,
+	badgeLabel,
 	badgesFor,
 	blurbOf,
 	cardState,
@@ -39,7 +40,17 @@ import {
 	updateHeadline,
 	updateStatus,
 	versionAnchor,
+	channelCopy,
+	channelName,
+	channelText,
+	kindLabel,
+	prereleaseLabel,
+	stageNote,
+	stageText,
+	stepLabel,
 } from "./updates.ts";
+import { m } from "#lib/i18n/m.ts";
+import { inLocale } from "../../test/locale.ts";
 import { searchSettings } from "./settings/index.ts";
 import fixture from "./__fixtures__/channel-views.json";
 import managedFixture from "./__fixtures__/managed-progress.json";
@@ -87,13 +98,16 @@ describe("channelOfVersion", () => {
 });
 
 describe("prereleaseBadge", () => {
-	test("Alpha / Beta / RC for prereleases, nothing for a release or unknown label", () => {
-		expect(prereleaseBadge("1.4.0-alpha.3")).toBe("Alpha");
-		expect(prereleaseBadge("1.4.0-beta.2")).toBe("Beta");
-		expect(prereleaseBadge("1.4.0-rc.1")).toBe("RC");
+	test("alpha / beta / rc for prereleases, nothing for a release or unknown label", () => {
+		expect(prereleaseBadge("1.4.0-alpha.3")).toBe("alpha");
+		expect(prereleaseBadge("1.4.0-beta.2")).toBe("beta");
+		expect(prereleaseBadge("1.4.0-rc.1")).toBe("rc");
 		expect(prereleaseBadge("1.4.0")).toBeNull();
 		expect(prereleaseBadge("1.4.0-nightly.1")).toBeNull();
 		expect(prereleaseBadge("junk")).toBeNull();
+	});
+	test("the badge text is the channel's name, and RC for a release candidate", () => {
+		expect(["alpha", "beta", "rc"].map(prereleaseLabel)).toEqual(["Alpha", "Beta", "RC"]);
 	});
 });
 
@@ -666,5 +680,105 @@ describe("updateStatus", () => {
 		const lines = all.map((s) => updateHeadline(s, "1.2.3"));
 		expect(new Set(lines).size).toBe(all.length);
 		expect(updateHeadline("available", "1.2.3")).toBe("Atlas 1.2.3 is available");
+	});
+});
+
+// The channel copy is written once, in English, in `crates/atlas-core/data/channels.json` (the CLI prints it and the
+// website reads it). The desktop shows its own catalog message for each field, picked by the stable channel id, so the
+// catalog has to say exactly what the producer says. The fixture is the REAL serialization of `ChannelView` and
+// `ChannelState` (the Rust test `channel_views_fixture_is_the_real_serialization`).
+describe("channel copy contract", () => {
+	const FIELDS = ["label", "promise", "risk_label", "cadence", "switch_to", "alpha_era_note"];
+	// Strings of a `ChannelView` that are not copy (ids, enums, versions) and `audience`, which no screen shows.
+	const NOT_MAPPED = { channel: true, risk: true, tag: true, offered: true, action: true, audience: true };
+	const everyView = [...fixture.views, ...fixture.ahead, ...fixture.offline];
+
+	test("every channel the producer sends has a catalog message, in English equal to the producer's, for every text field", () => {
+		expect(new Set(everyView.map((v) => v.channel))).toEqual(new Set(CHANNELS));
+		for (const v of everyView) {
+			for (const f of FIELDS) {
+				if (v[f] === null) continue; // only Stable has an alpha-era note
+				expect(channelText(v.channel, f), `${v.channel}.${f}`).toBe(v[f]);
+			}
+		}
+	});
+
+	test("a text field the producer adds is noticed, not silently shown in English", () => {
+		for (const v of everyView) {
+			for (const [k, value] of Object.entries(v)) {
+				if (typeof value !== "string" || k in NOT_MAPPED) continue;
+				expect(FIELDS, `the producer sent a new text field "${k}": map it in channelText`).toContain(k);
+			}
+		}
+	});
+
+	test("the stage note is mapped by the stage id", () => {
+		for (const s of [fixture.state, fixture.state_default, fixture.state_override]) {
+			expect(stageText(s.stage), s.stage).toBe(s.stage_note);
+			expect(stageNote(s)).toBe(s.stage_note);
+		}
+	});
+
+	test("a channel, field or stage the catalog does not know shows the producer's own text", () => {
+		const [stable, beta] = parseChannelViews(fixture.views);
+		const nightly = { ...stable, channel: "nightly", promise: "Built every night.", label: "Nightly" };
+		expect(channelText("nightly", "promise")).toBeNull();
+		expect(channelCopy(nightly, "promise")).toBe("Built every night.");
+		expect(channelCopy(nightly, "label")).toBe("Nightly");
+		// A note the producer adds to a channel the catalog has no note for is shown as sent; none stays none.
+		expect(channelCopy({ ...beta, alpha_era_note: "A new note." }, "alpha_era_note")).toBe("A new note.");
+		expect(channelCopy(beta, "alpha_era_note")).toBeNull();
+		expect(stageText("ga")).toBeNull();
+		expect(stageNote({ stage: "ga", stage_note: "Stable is out." })).toBe("Stable is out.");
+	});
+
+	test("the mapped copy is read when it is drawn, so a language switch changes it and never the producer's text", async () => {
+		const [stable] = parseChannelViews(fixture.views);
+		const english = channelCopy(stable, "promise");
+		const portuguese = await inLocale("pt-BR", () => channelCopy(stable, "promise"));
+		expect(portuguese).not.toBe(english);
+		expect(portuguese).toBe(await inLocale("pt-BR", () => m.settings_updates_channel_stable_promise()));
+		expect(stable.promise).toBe(english);
+		expect(channelName("stable")).toBe(stable.label);
+	});
+});
+
+describe("copy that depends on the language", () => {
+	test("every install step has its own label", () => {
+		const ids = ["download", "verify", "install-cli", "update-app", "terminal-host", "relaunch"];
+		const labels = ids.map(stepLabel);
+		expect(labels.every((l) => l.length > 0)).toBe(true);
+		expect(new Set(labels).size).toBe(ids.length);
+		// The terminal host step is named like the Settings row of the same thing.
+		expect(stepLabel("terminal-host")).toBe(m.settings_host_name());
+	});
+
+	test("a known kind of change has the catalog's heading, another keeps the changelog's own", () => {
+		expect(kindLabel("fixed", "Fixed")).toBe(m.settings_updates_whats_new_kind_fixed());
+		// "New" and "Improved" are aliases the parser maps to a kind: the heading shown is the kind's, not the alias.
+		const { groups } = parseNotes("### New\n- a\n### Improved\n- b\n### Experiments\n- c");
+		expect(groups.map((g) => kindLabel(g.kind, g.heading))).toEqual([
+			m.settings_updates_whats_new_kind_added(),
+			m.settings_updates_whats_new_kind_changed(),
+			"Experiments",
+		]);
+		expect(badgeLabel("latest")).not.toBe(badgeLabel("new"));
+	});
+
+	test("the terminals still running are counted with their own plural, zero included", () => {
+		const text = (count) => m.settings_updates_whats_new_host_terminals({ count });
+		expect(text(1)).toContain("1 terminal is still running");
+		expect(text(2)).toContain("2 terminals are still running");
+		expect(text(0)).not.toMatch(/\b0\b/);
+	});
+
+	test("sizes and dates are written the way the display language writes them", async () => {
+		const size = 12.4 * 1024 * 1024;
+		const date = { year: "numeric", month: "short", day: "numeric" };
+		const [bytes, day] = await inLocale("pt-BR", () => [formatBytes(size), dateOf("2026-10-12")]);
+		const digits = { minimumFractionDigits: 1, maximumFractionDigits: 1 };
+		expect(bytes).toBe(`${new Intl.NumberFormat("pt-BR", digits).format(12.4)} MB`);
+		expect(day).toBe(new Date(2026, 9, 12).toLocaleDateString("pt-BR", date));
+		expect(bytes).not.toBe(formatBytes(size));
 	});
 });

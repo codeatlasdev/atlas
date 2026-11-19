@@ -1,0 +1,173 @@
+{
+	"settings_capture_clash_dock": "Line under the hotkey rows of Settings > Capture when a capture key equals one of the agent dock's keys. {action} is the capture action's name (\"Region\"), {key} the shared key as the keyboard prints it (\"⌃⌥4\").",
+	"settings_capture_clash_same_key": "Line under the hotkey rows of Settings > Capture when two capture actions use the same key. {first} and {second} are the two actions' names, {key} the shared key as the keyboard prints it (\"⌃⌥4\").",
+	"settings_capture_clicks_description": "Help line of the \"Show clicks\" row in Settings > Capture.",
+	"settings_capture_clicks_label": "Label and accessible name of the switch that draws a ring on each click in recordings and GIFs, in Settings > Capture > Recording.",
+	"settings_capture_copy_description": "Help line of the \"Copy to clipboard\" row in Settings > Capture > After a capture.",
+	"settings_capture_corner_bottom_left": "Option of the overlay corner picker in Settings > Capture > After a capture: the bottom left corner of the display.",
+	"settings_capture_corner_bottom_right": "Option of the overlay corner picker in Settings > Capture > After a capture: the bottom right corner of the display.",
+	"settings_capture_corner_description": "Help line of the \"Overlay corner\" row in Settings > Capture > After a capture.",
+	"settings_capture_corner_label": "Label and accessible name of the corner picker for the quick access cards in Settings > Capture > After a capture.",
+	"settings_capture_corner_top_left": "Option of the overlay corner picker in Settings > Capture > After a capture: the top left corner of the display.",
+	"settings_capture_corner_top_right": "Option of the overlay corner picker in Settings > Capture > After a capture: the top right corner of the display.",
+	"settings_capture_dismiss_description": "Help line of the \"Auto-dismiss the overlay\" row in Settings > Capture > After a capture. The number input beside it takes 0 to 60 seconds.",
+	"settings_capture_dismiss_label": "Label of the row that sets how long a quick access card stays on screen, in Settings > Capture > After a capture.",
+	"settings_capture_dismiss_seconds_label": "Accessible name of the number input (seconds) of the \"Auto-dismiss the overlay\" row.",
+	"settings_capture_enabled_description": "Help line of the \"Capture hotkeys\" row in Settings > Capture.",
+	"settings_capture_enabled_label": "Label and accessible name of the master switch for the capture hotkeys, in Settings > Capture.",
+	"settings_capture_folder_choose": "Button of the \"Save to\" row in Settings > Capture that opens the folder picker. Opens a dialog, hence the ellipsis.",
+	"settings_capture_folder_default": "What the \"Save to\" row shows while no folder is chosen. {folder} is the default folder path as typed (\"~/Pictures/Atlas Captures\"), never translated.",
+	"settings_capture_folder_description": "Help line of the \"Save to\" row in Settings > Capture.",
+	"settings_capture_folder_label": "Label of the row that shows and changes the folder captures are saved in, in Settings > Capture.",
+	"settings_capture_folder_reset": "Button of the \"Save to\" row in Settings > Capture that goes back to the default folder; only shown when a folder was chosen.",
+	"settings_capture_group_after": "Title of the card in Settings > Capture with what happens after a capture (clipboard, overlay, sound).",
+	"settings_capture_group_capture_description": "Description under the title of the first card of Settings > Capture (permission, hotkeys on or off, folder).",
+	"settings_capture_group_earlier": "Heading of the oldest group of the recent captures list in Settings > Capture: everything before the last seven days.",
+	"settings_capture_group_history": "Title of the card in Settings > Capture with the history of recent captures.",
+	"settings_capture_group_history_description": "Description under the History card title in Settings > Capture. Must say that removing an entry never deletes the file.",
+	"settings_capture_group_hotkeys": "Title of the card in Settings > Capture with the key set and one hotkey per capture action.",
+	"settings_capture_group_hotkeys_description": "Description under the Hotkeys card title in Settings > Capture. {modifiers} is a list of the modifier keys one of which a hotkey must include, as the keyboard prints them (\"⌘, ⌃ or ⌥\"); the Escape key name comes from the shared keys.",
+	"settings_capture_group_screenshots": "Title of the card in Settings > Capture with the options that apply to screenshots (timer, resolution, window shadow).",
+	"settings_capture_group_this_week": "Heading of a group of the recent captures list in Settings > Capture: the seven days before yesterday.",
+	"settings_capture_group_today": {
+		"description": "Heading of the first group of the recent captures list in Settings > Capture: captures taken today.",
+		"distinct": "a list heading of this screen; the wording of other screens' Today filters may diverge"
+	},
+	"settings_capture_group_yesterday": "Heading of a group of the recent captures list in Settings > Capture: captures taken yesterday.",
+	"settings_capture_hide_icons_description": "Help line of the \"Hide desktop icons\" row in Settings > Capture > Screenshots.",
+	"settings_capture_hide_icons_label": "Label and accessible name of the switch that hides the desktop icons while capturing, in Settings > Capture > Screenshots.",
+	"settings_capture_highlight_description": "Help line of the \"Highlight the cursor and clicks\" row in Settings > Capture > After a capture.",
+	"settings_capture_highlight_label": "Label and accessible name of the switch that highlights the pointer and clicks, in Settings > Capture > After a capture.",
+	"settings_capture_history_size_description": "Help line of the \"History size\" row in Settings > Capture > History. The number input beside it takes 1 to 500.",
+	"settings_capture_history_size_label": "Label and accessible name of the number input that sets how many captures the history keeps, in Settings > Capture > History.",
+	"settings_capture_history_unit": "Unit text after the number input of the \"History size\" row in Settings > Capture. Plural noun, no number inside.",
+	"settings_capture_key_all_in_one": "Name of the capture action that opens one toolbar over the screen (region, window, screen, record, GIF, text). Label of its hotkey row in Settings > Capture and part of the sentences that name the action.",
+	"settings_capture_key_all_in_one_description": "Help line of the All-in-One hotkey row in Settings > Capture.",
+	"settings_capture_key_aria": "Accessible name of a hotkey button in Settings > Capture. {action} is the capture action's name (\"Region\"), {key} the current key as the keyboard prints it (\"⌃⌥4\") or \"Not set\".",
+	"settings_capture_key_clear": {
+		"description": "Button beside a hotkey in Settings > Capture that removes the key (leaves it unset).",
+		"distinct": "removes a hotkey; the project search field's Clear is another action"
+	},
+	"settings_capture_key_clear_aria": "Accessible name of the button that removes a hotkey in Settings > Capture. {action} is the capture action's name (\"Region\").",
+	"settings_capture_key_fullscreen_description": "Help line of the Screen hotkey row in Settings > Capture.",
+	"settings_capture_key_gif": "GIF, the file kind and the name of the capture action that records an animated GIF. Label of its hotkey row in Settings > Capture and of the GIF entries in the history.",
+	"settings_capture_key_gif_description": "Help line of the GIF hotkey row in Settings > Capture.",
+	"settings_capture_key_not_set": "Text of a hotkey button in Settings > Capture when the action has no key.",
+	"settings_capture_key_ocr_description": {
+		"description": "Help line of the Text hotkey row in Settings > Capture. The text is read on the device, on a Mac.",
+		"platform": "mac"
+	},
+	"settings_capture_key_press": "Text of a hotkey button in Settings > Capture while it waits for the new key to be pressed. Ends with an ellipsis: a prompt that waits.",
+	"settings_capture_key_previous_description": "Help line of the Previous area hotkey row in Settings > Capture.",
+	"settings_capture_key_record_description": "Help line of the Record hotkey row in Settings > Capture.",
+	"settings_capture_key_region_description": "Help line of the Region hotkey row in Settings > Capture. The Space key name comes from the shared keys.",
+	"settings_capture_key_window_description": "Help line of the Window hotkey row in Settings > Capture.",
+	"settings_capture_keystrokes_description": {
+		"description": "Help line of the \"Show keystrokes\" row in Settings > Capture > Recording. Input Monitoring is the name of the macOS privacy pane; use the system's own name.",
+		"platform": "mac"
+	},
+	"settings_capture_keystrokes_label": "Label and accessible name of the switch that shows the pressed keys in recordings, in Settings > Capture > Recording.",
+	"settings_capture_microphone_description": {
+		"description": "Help line of the \"Record the microphone\" row in Settings > Capture > Recording. macOS asks for microphone access the first time.",
+		"platform": "mac"
+	},
+	"settings_capture_microphone_label": "Label and accessible name of the switch that records the microphone, in Settings > Capture > Recording.",
+	"settings_capture_on_release_description": "Help line of the \"Capture when the mouse is released\" row in Settings > Capture > Screenshots. The Enter key name comes from the shared OS keys (Return on a Mac).",
+	"settings_capture_on_release_label": "Label and accessible name of the switch that takes a region screenshot as soon as the mouse is released, in Settings > Capture > Screenshots.",
+	"settings_capture_permission_checking": {
+		"description": "Status text of the Screen Recording row in Settings > Capture while the permission is being read. Ends with an ellipsis: a state in progress.",
+		"distinct": "a permission status of this screen, not the engine card's badge"
+	},
+	"settings_capture_permission_description": {
+		"description": "Help line of the Screen Recording permission row in Settings > Capture. Says what the permission is for and that macOS asks to restart Atlas after granting it.",
+		"platform": "mac"
+	},
+	"settings_capture_permission_grant": "Button of the Screen Recording row in Settings > Capture that asks the system for the permission; hidden once granted.",
+	"settings_capture_permission_granted": "Status text of the Screen Recording row in Settings > Capture: Atlas has the permission.",
+	"settings_capture_permission_label": "Label of the row that shows the macOS Screen Recording permission in Settings > Capture. Use the name macOS gives the permission in the language.",
+	"settings_capture_permission_not_granted": "Status text of the Screen Recording row in Settings > Capture: Atlas does not have the permission.",
+	"settings_capture_permission_open_settings": "Button of the Screen Recording row in Settings > Capture that opens the macOS privacy settings pane. i18n-allow glossary:settings (System Settings is the name of the macOS app).",
+	"settings_capture_preset_apply": "Button under the key set picker in Settings > Capture that saves the picked preset's keys; shown only while a preset is picked and not applied.",
+	"settings_capture_preset_apply_blocked": {
+		"description": "Tooltip of the disabled \"Apply these keys\" button when the picked preset uses macOS's own screenshot keys and the person has not said they turned them off. \"(below)\" points at the macOS screenshot shortcuts row.",
+		"platform": "mac"
+	},
+	"settings_capture_preset_cleanshot_label": "Name of the CleanShot preset in the key set picker in Settings > Capture. Rust sends it as `cleanshot`. {first} is the first of the four keys as the keyboard prints it (\"⇧⌘3\"); the digits that follow are part of the name. Must equal Rust's English label (checked by a test over capture-prefs.json).",
+	"settings_capture_preset_cleanshot_note": {
+		"description": "Note shown under the key set picker while the CleanShot preset is picked. {screen}, {area}, {toolbar}, {touchBar} are macOS's four screenshot keys as the keyboard prints them (\"⇧⌘3\" to \"⇧⌘6\"). The quoted label is the \"I turned them off\" switch's own text. Must equal Rust's English note (checked by a test over capture-prefs.json). i18n-allow glossary:settings (System Settings is the name of the macOS app).",
+		"platform": "mac"
+	},
+	"settings_capture_preset_ctrl_shift_label": "Name of the ⌃⇧ digits preset in the key set picker in Settings > Capture. Rust sends it as `ctrl-shift`. {keys} is the key range as the keyboard prints it (\"⌃⇧3–9\"), {cmd} the Command key symbol (\"⌘\"). Must equal Rust's English label.",
+	"settings_capture_preset_ctrl_shift_note": {
+		"description": "Note shown under the key set picker while the ⌃⇧ digits preset is picked. {example} is one key of the preset (\"⌃⇧4\"), {modifiers} its modifier keys (\"⌃⇧\"). Must equal Rust's English note.",
+		"platform": "mac"
+	},
+	"settings_capture_preset_custom": "Entry of the key set picker in Settings > Capture for a set of keys that matches no preset (the person changed a key).",
+	"settings_capture_preset_default_label": "Name of the default preset in the key set picker in Settings > Capture. Rust sends it as `default`. {keys} is the key range as the keyboard prints it (\"⌃⌥1–8\"). Must equal Rust's English label.",
+	"settings_capture_preset_description": "Help line of the \"Key set\" row in Settings > Capture > Hotkeys.",
+	"settings_capture_preset_label": "Label and accessible name of the picker for a ready-made set of capture keys, in Settings > Capture > Hotkeys.",
+	"settings_capture_preset_shift_cmd_s_label": "Name of the preset that puts the region capture on one key, in the key set picker in Settings > Capture. Rust sends it as `shift-cmd-s`. {key} is the key as the keyboard prints it (\"⇧⌘S\"). Must equal Rust's English label.",
+	"settings_capture_preset_shift_cmd_s_note": {
+		"description": "Note shown under the key set picker while the ⇧⌘S preset is picked: Save As stops working while Atlas runs. {key} is that key (\"⇧⌘S\"); {screen}, {area}, {toolbar} are macOS's own screenshot keys (\"⇧⌘3\", \"⇧⌘4\", \"⇧⌘5\"). \"Save As\" is the menu command's name in other apps. Must equal Rust's English note.",
+		"platform": "mac"
+	},
+	"settings_capture_quality_description": "Help line of the \"Video quality\" row in Settings > Capture > Recording.",
+	"settings_capture_quality_high": "Option of the video quality picker in Settings > Capture > Recording: full resolution of the display.",
+	"settings_capture_quality_label": "Label and accessible name of the video quality picker in Settings > Capture > Recording.",
+	"settings_capture_quality_low": "Option of the video quality picker in Settings > Capture > Recording: capped at 1280 px and 24 frames per second.",
+	"settings_capture_quality_medium": "Option of the video quality picker in Settings > Capture > Recording: capped at 1920 px.",
+	"settings_capture_quick_access_description": "Help line of the \"Show the quick access overlay\" row in Settings > Capture > After a capture. The card is the small thumbnail with actions that appears in a corner.",
+	"settings_capture_quick_access_label": "Label and accessible name of the switch that shows the quick access card after a capture, in Settings > Capture > After a capture.",
+	"settings_capture_recent_description": {
+		"description": "Help line of the \"Recent captures\" row in Settings > Capture > History. Must say that removing never deletes the file.",
+		"platform": "mac"
+	},
+	"settings_capture_recent_empty": "Text of the recent captures list in Settings > Capture when the history has no entry.",
+	"settings_capture_recent_forget": "Tooltip of the button that removes a capture from the history in Settings > Capture. Must say the file stays on the disk.",
+	"settings_capture_recent_label": "Label of the row that lists the recent captures in Settings > Capture > History.",
+	"settings_capture_recent_remove": "Button of a recent capture row in Settings > Capture that removes it from the history list without deleting the file.",
+	"settings_capture_scale_description": "Help line of the \"Resolution\" row in Settings > Capture > Screenshots. Retina is the display technology's name and stays as is.",
+	"settings_capture_scale_label": "Label and accessible name of the screenshot resolution picker in Settings > Capture > Screenshots.",
+	"settings_capture_scale_retina": "Option of the screenshot resolution picker in Settings > Capture > Screenshots: native pixels, 2x on a Retina display.",
+	"settings_capture_scale_standard": "Option of the screenshot resolution picker in Settings > Capture > Screenshots: one pixel per point.",
+	"settings_capture_sound_description": "Help line of the \"Play sound\" row in Settings > Capture > After a capture.",
+	"settings_capture_sound_label": "Label and accessible name of the switch that plays a shutter sound after a screenshot, in Settings > Capture > After a capture.",
+	"settings_capture_stack_description": "Help line of the \"Cards in the stack\" row in Settings > Capture > After a capture. The number input beside it takes 1 to 8.",
+	"settings_capture_stack_label": "Label and accessible name of the number input that sets how many quick access cards stack in the corner, in Settings > Capture > After a capture.",
+	"settings_capture_stack_unit": "Unit text after the number input of the \"Cards in the stack\" row in Settings > Capture. Plural noun, no number inside.",
+	"settings_capture_system_audio_description": {
+		"description": "Help line of the \"Record system sound\" row in Settings > Capture > Recording.",
+		"platform": "mac"
+	},
+	"settings_capture_system_audio_label": "Label and accessible name of the switch that records the sound the Mac plays, in Settings > Capture > Recording.",
+	"settings_capture_system_keys_accepted": {
+		"description": "Note under the macOS screenshot shortcuts row in Settings > Capture once the person ticked that they turned macOS's own keys off. {range} is the four keys as a range as the keyboard prints them (\"⇧⌘3–6\").",
+		"platform": "mac"
+	},
+	"settings_capture_system_keys_clash": {
+		"description": "Warning under the macOS screenshot shortcuts row in Settings > Capture while the person's keys use some of macOS's own screenshot keys and the box is not ticked. {keys} is the list of those keys (\"⇧⌘3 and ⇧⌘4\"); count is how many there are, only to choose singular or plural. i18n-allow glossary:settings (System Settings is the name of the macOS app).",
+		"platform": "mac"
+	},
+	"settings_capture_system_keys_description": {
+		"description": "Help line of the macOS screenshot shortcuts row in Settings > Capture. {screen}, {area}, {toolbar}, {touchBar} are macOS's four screenshot keys as the keyboard prints them (\"⇧⌘3\" to \"⇧⌘6\"). The path names macOS's own settings panes: use the exact names the system shows. i18n-allow glossary:settings (System Settings is the name of the macOS app).",
+		"platform": "mac"
+	},
+	"settings_capture_system_keys_label": {
+		"description": "Label of the row in Settings > Capture > Hotkeys about macOS's own screenshot shortcuts (⇧⌘3 to ⇧⌘6).",
+		"platform": "mac"
+	},
+	"settings_capture_system_keys_off_aria": {
+		"description": "Accessible name of the switch beside \"I turned them off\" in Settings > Capture > Hotkeys. Names macOS.",
+		"platform": "mac"
+	},
+	"settings_capture_system_keys_off_label": "Text beside the switch with which the person says they turned macOS's own screenshot shortcuts off. Quoted inside the CleanShot preset note, so keep it short.",
+	"settings_capture_system_keys_open": "Button of the macOS screenshot shortcuts row in Settings > Capture that opens the macOS keyboard shortcuts pane.",
+	"settings_capture_timer_description": "Help line of the \"Self-timer\" row in Settings > Capture > Screenshots.",
+	"settings_capture_timer_label": "Label and accessible name of the screenshot self-timer picker in Settings > Capture > Screenshots.",
+	"settings_capture_timer_off": "Option of the screenshot self-timer picker in Settings > Capture > Screenshots: no delay.",
+	"settings_capture_timer_seconds": "Option of the screenshot self-timer picker in Settings > Capture > Screenshots. {seconds} is 3, 5 or 10.",
+	"settings_capture_window_background_description": "Help line of the \"Window background\" row in Settings > Capture > Screenshots.",
+	"settings_capture_window_background_label": "Label and accessible name of the switch that puts a window capture on a padded background, in Settings > Capture > Screenshots.",
+	"settings_capture_window_shadow_description": "Help line of the \"Window shadow\" row in Settings > Capture > Screenshots.",
+	"settings_capture_window_shadow_label": "Label and accessible name of the switch that keeps a window's drop shadow in a window capture, in Settings > Capture > Screenshots."
+}

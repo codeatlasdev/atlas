@@ -40,7 +40,7 @@ pub use system::*;
 pub use theme_pack::*;
 pub use ui_sounds::*;
 
-pub(crate) use stack::atlas_bin;
+pub(crate) use stack::{atlas_bin, atlas_bin_checked};
 
 fn find(id: &str) -> Result<Entry, String> {
     registry::load()?

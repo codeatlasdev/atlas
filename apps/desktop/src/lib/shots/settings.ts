@@ -3,43 +3,92 @@
  * checks only give instant feedback before the round trip.
  */
 import { dockKeyFrom, type KeyRecording } from "#lib/dockKey.ts";
+import { formatNumber, list } from "#lib/i18n/fmt.ts";
+import { m } from "#lib/i18n/m.ts";
 import { IS_MAC, kbd, normalize } from "#lib/keys.ts";
 import type { CapturePrefs, Entry, Keys, Preset, Verdict } from "./types.ts";
 
-/** Every capture action with a hotkey, in the order the page lists them (and `clashes` reports the first duplicate). */
-export const KEY_FIELDS: readonly { field: keyof Keys; label: string; description: string }[] = [
+/**
+ * Every capture action with a hotkey, in the order the page lists them (and `clashes` reports the first duplicate).
+ * `label` and `description` are getters: a read gives the text in the language of the moment.
+ */
+export const KEY_FIELDS: readonly {
+	readonly field: keyof Keys;
+	readonly label: string;
+	readonly description: string;
+}[] = [
 	{
 		field: "allInOne",
-		label: "All-in-One",
-		description: "One toolbar over the screen: pick region, window, screen, record, GIF or text.",
+		get label() {
+			return m.settings_capture_key_all_in_one();
+		},
+		get description() {
+			return m.settings_capture_key_all_in_one_description();
+		},
 	},
 	{
 		field: "region",
-		label: "Region",
-		description: "Drag to pick an area, or press Space to switch to picking a window.",
+		get label() {
+			return m.capture_overlay_page_mode_region();
+		},
+		get description() {
+			return m.settings_capture_key_region_description();
+		},
 	},
 	{
 		field: "previous",
-		label: "Previous area",
-		description: "Capture the same area as your last region capture, right now.",
+		get label() {
+			return m.capture_overlay_page_previous_area();
+		},
+		get description() {
+			return m.settings_capture_key_previous_description();
+		},
 	},
-	{ field: "window", label: "Window", description: "Click a window to capture it." },
+	{
+		field: "window",
+		get label() {
+			return m.capture_overlay_page_mode_window();
+		},
+		get description() {
+			return m.settings_capture_key_window_description();
+		},
+	},
 	{
 		field: "fullscreen",
-		label: "Screen",
-		description: "Capture the whole screen under the pointer.",
+		get label() {
+			return m.capture_overlay_page_mode_screen();
+		},
+		get description() {
+			return m.settings_capture_key_fullscreen_description();
+		},
 	},
 	{
 		field: "ocr",
-		label: "Text",
-		description: "Drag over text on screen and copy it, read on this Mac.",
+		get label() {
+			return m.capture_quick_page_ocr();
+		},
+		get description() {
+			return m.settings_capture_key_ocr_description();
+		},
 	},
 	{
 		field: "record",
-		label: "Record",
-		description: "Pick an area and record a video. Press the key again to stop.",
+		get label() {
+			return m.capture_overlay_page_mode_record();
+		},
+		get description() {
+			return m.settings_capture_key_record_description();
+		},
 	},
-	{ field: "gif", label: "GIF", description: "Pick an area and record an animated GIF." },
+	{
+		field: "gif",
+		get label() {
+			return m.settings_capture_key_gif();
+		},
+		get description() {
+			return m.settings_capture_key_gif_description();
+		},
+	},
 ];
 
 /** A key press while a row is recording: a stroke Rust accepts, a cancel, a wait, or a refusal with the reason. */
@@ -49,7 +98,7 @@ export function recordingResult(e: KeyboardEvent, mac: boolean): KeyRecording {
 
 /** `⇧⌘S` (macOS) or `Ctrl+Shift+S`; an empty stroke reads "Not set". */
 export function keyLabel(stroke: string, mac = IS_MAC): string {
-	return stroke.trim() ? kbd(stroke.trim(), mac) : "Not set";
+	return stroke.trim() ? kbd(stroke.trim(), mac) : m.settings_capture_key_not_set();
 }
 
 /**
@@ -64,45 +113,100 @@ export function sameStroke(a: string, b: string): boolean {
 }
 
 /** The self-timer choices; Rust accepts exactly these seconds (`prefs::TIMER_VALUES`). */
-export const TIMER_OPTIONS = [
-	{ value: "0", label: "Off" },
-	{ value: "3", label: "3 seconds" },
-	{ value: "5", label: "5 seconds" },
-	{ value: "10", label: "10 seconds" },
-] as const;
-
-export const SCALE_OPTIONS = [
-	{ value: "native", label: "Retina (2x on a Retina display)" },
-	{ value: "1x", label: "Standard (1x)" },
-] as const;
-
-export const CORNER_OPTIONS = [
-	{ value: "bottomRight", label: "Bottom right" },
-	{ value: "bottomLeft", label: "Bottom left" },
-	{ value: "topRight", label: "Top right" },
-	{ value: "topLeft", label: "Top left" },
-] as const;
-
-/** Recording quality: Rust's `VideoQuality` words (`prefs.rs`). Low and Medium cap the pixels, Low also the frame rate. */
-export const QUALITY_OPTIONS = [
-	{ value: "high", label: "High (the display's own pixels)" },
-	{ value: "medium", label: "Medium (up to 1920 px)" },
-	{ value: "low", label: "Low (up to 1280 px, 24 fps)" },
-] as const;
-
-/** The four strokes macOS keeps for its own screenshots, as the page shows them. */
-const SYSTEM_STROKES: readonly [string, string][] = [
-	["cmd-shift-3", "⇧⌘3"],
-	["cmd-shift-4", "⇧⌘4"],
-	["cmd-shift-5", "⇧⌘5"],
-	["cmd-shift-6", "⇧⌘6"],
+export const timerOptions = () => [
+	{ value: "0", label: m.settings_capture_timer_off() },
+	{ value: "3", label: m.settings_capture_timer_seconds({ seconds: 3 }) },
+	{ value: "5", label: m.settings_capture_timer_seconds({ seconds: 5 }) },
+	{ value: "10", label: m.settings_capture_timer_seconds({ seconds: 10 }) },
 ];
 
-/** Which of macOS's own screenshot keys (⇧⌘3–6) `keys` uses, as symbols. */
-export function systemKeysUsed(keys: Keys): string[] {
-	return SYSTEM_STROKES.filter(([stroke]) =>
+export const scaleOptions = () => [
+	{ value: "native", label: m.settings_capture_scale_retina() },
+	{ value: "1x", label: m.settings_capture_scale_standard() },
+];
+
+export const cornerOptions = () => [
+	{ value: "bottomRight", label: m.settings_capture_corner_bottom_right() },
+	{ value: "bottomLeft", label: m.settings_capture_corner_bottom_left() },
+	{ value: "topRight", label: m.settings_capture_corner_top_right() },
+	{ value: "topLeft", label: m.settings_capture_corner_top_left() },
+];
+
+/** Recording quality: Rust's `VideoQuality` words (`prefs.rs`). Low and Medium cap the pixels, Low also the frame rate. */
+export const qualityOptions = () => [
+	{ value: "high", label: m.settings_capture_quality_high() },
+	{ value: "medium", label: m.settings_capture_quality_medium() },
+	{ value: "low", label: m.settings_capture_quality_low() },
+];
+
+/** The four strokes macOS keeps for its own screenshots. */
+const SYSTEM_STROKES = ["cmd-shift-3", "cmd-shift-4", "cmd-shift-5", "cmd-shift-6"] as const;
+
+/** Which of macOS's own screenshot keys (the four of `SYSTEM_STROKES`) `keys` uses, as the keyboard prints them. */
+export function systemKeysUsed(keys: Keys, mac = IS_MAC): string[] {
+	return SYSTEM_STROKES.filter((stroke) =>
 		KEY_FIELDS.some(({ field }) => sameStroke(keys[field], stroke)),
-	).map(([, label]) => label);
+	).map((stroke) => kbd(stroke, mac));
+}
+
+/** macOS's four screenshot keys and their range, as the messages that name them take them (`{screen}`, `{range}`). */
+export function systemKeyArgs(mac = IS_MAC) {
+	const [screen, area, toolbar, touchBar] = SYSTEM_STROKES.map((stroke) => kbd(stroke, mac));
+	return { screen, area, toolbar, touchBar, range: `${screen}–6` };
+}
+
+/** The warning for the macOS screenshot keys a key set uses, naming them in the language's list style. */
+export function systemKeysClash(used: readonly string[]): string {
+	return m.settings_capture_system_keys_clash({ count: used.length, keys: list(used) });
+}
+
+/**
+ * The name of a preset. Rust sends its own English `label`; the page shows the message for the preset's stable `id`
+ * and, for an id it does not know (a newer Rust), Rust's label as sent. `capture-prefs.json` (written by Rust) is the
+ * contract: `settings.test.ts` fails when a real preset has no message or Rust's English moved.
+ */
+export function presetLabel(preset: Pick<Preset, "id" | "label">, mac = IS_MAC): string {
+	switch (preset.id) {
+		case "default":
+			return m.settings_capture_preset_default_label({ keys: `${kbd("ctrl-alt-1", mac)}–8` });
+		case "cleanshot":
+			return m.settings_capture_preset_cleanshot_label({ first: kbd("cmd-shift-3", mac) });
+		case "ctrl-shift":
+			return m.settings_capture_preset_ctrl_shift_label({
+				keys: `${kbd("ctrl-shift-3", mac)}–9`,
+				cmd: kbd("cmd", mac),
+			});
+		case "shift-cmd-s":
+			return m.settings_capture_preset_shift_cmd_s_label({ key: kbd("shift-cmd-s", mac) });
+		default:
+			return preset.label;
+	}
+}
+
+/** The note under a picked preset (`null`: nothing to say), by the same rule as [`presetLabel`]. */
+export function presetNote(preset: Pick<Preset, "id" | "note">, mac = IS_MAC): string | null {
+	switch (preset.id) {
+		case "default":
+			return null;
+		case "cleanshot":
+			return m.settings_capture_preset_cleanshot_note(systemKeyArgs(mac));
+		case "ctrl-shift":
+			return m.settings_capture_preset_ctrl_shift_note({
+				example: kbd("ctrl-shift-4", mac),
+				modifiers: kbd("ctrl-shift", mac),
+			});
+		case "shift-cmd-s": {
+			const { screen, area, toolbar } = systemKeyArgs(mac);
+			return m.settings_capture_preset_shift_cmd_s_note({
+				key: kbd("shift-cmd-s", mac),
+				screen,
+				area,
+				toolbar,
+			});
+		}
+		default:
+			return preset.note;
+	}
 }
 
 /**
@@ -143,15 +247,20 @@ export function clashes(keys: Keys, dockKeys: readonly string[]): string | null 
 	for (const [i, a] of KEY_FIELDS.entries()) {
 		for (const b of KEY_FIELDS.slice(i + 1))
 			if (sameStroke(keys[a.field], keys[b.field]))
-				return `${a.label} and ${b.label} use the same key (${keyLabel(keys[a.field])}). Give one of them another.`;
+				return m.settings_capture_clash_same_key({
+					first: a.label,
+					second: b.label,
+					key: keyLabel(keys[a.field]),
+				});
 		if (dockKeys.some((d) => sameStroke(keys[a.field], d)))
-			return `${a.label} uses ${keyLabel(keys[a.field])}, which the agent dock already uses. Pick another key for one of them.`;
+			return m.settings_capture_clash_dock({ action: a.label, key: keyLabel(keys[a.field]) });
 	}
 	return null;
 }
 
 export interface HistoryGroup {
-	title: "Today" | "Yesterday" | "This week" | "Earlier";
+	/** "Today", "Yesterday", "This week" or "Earlier", in the display language. */
+	title: string;
 	entries: Entry[];
 }
 
@@ -166,10 +275,10 @@ export function historyGroups(entries: readonly Entry[], now: number): HistoryGr
 	const day = (back: number) => new Date(d.getFullYear(), d.getMonth(), d.getDate() - back).getTime();
 	const [today, yesterday, week] = [day(0), day(1), day(7)];
 	const groups: HistoryGroup[] = [
-		{ title: "Today", entries: [] },
-		{ title: "Yesterday", entries: [] },
-		{ title: "This week", entries: [] },
-		{ title: "Earlier", entries: [] },
+		{ title: m.settings_capture_group_today(), entries: [] },
+		{ title: m.settings_capture_group_yesterday(), entries: [] },
+		{ title: m.settings_capture_group_this_week(), entries: [] },
+		{ title: m.settings_capture_group_earlier(), entries: [] },
 	];
 	for (const e of [...entries].sort((a, b) => b.at - a.at)) {
 		const i = !(e.at < today) ? 0 : e.at >= yesterday ? 1 : e.at >= week ? 2 : 3;
@@ -178,16 +287,22 @@ export function historyGroups(entries: readonly Entry[], now: number): HistoryGr
 	return groups.filter((g) => g.entries.length);
 }
 
-const KIND_LABEL: Record<Entry["kind"], string> = {
-	screenshot: "Screenshot",
-	recording: "Recording",
-	gif: "GIF",
-};
+function kindLabel(kind: Entry["kind"]): string {
+	switch (kind) {
+		case "screenshot":
+			return m.capture_editor_page_screenshot();
+		case "recording":
+			return m.capture_quick_title_recording();
+		case "gif":
+			return m.settings_capture_key_gif();
+	}
+}
 
+/** `512 B`, `20 KB`, `2.4 MB`: the unit symbols are the same in every language, the decimal mark is not. */
 function sizeText(bytes: number): string {
 	if (bytes < 1024) return `${bytes} B`;
 	if (bytes < 1024 * 1024) return `${Math.round(bytes / 1024)} KB`;
-	return `${(bytes / 1024 / 1024).toFixed(1)} MB`;
+	return `${formatNumber(bytes / 1024 / 1024, { minimumFractionDigits: 1, maximumFractionDigits: 1 })} MB`;
 }
 
 function durationText(secs: number): string {
@@ -200,7 +315,7 @@ export function historyLabel(e: Entry): { name: string; kind: string; size: stri
 	const size = sizeText(e.bytes);
 	return {
 		name: e.path.split(/[\\/]/).pop() ?? e.path,
-		kind: KIND_LABEL[e.kind],
+		kind: kindLabel(e.kind),
 		size,
 		detail: [`${e.width} × ${e.height}`, e.secs === null ? null : durationText(e.secs), size]
 			.filter(Boolean)

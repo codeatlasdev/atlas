@@ -315,7 +315,7 @@
 						</div>
 						<p class="hint">
 							{pct === null
-								? m.settings_updates_whats_new_download_unknown()
+								? m.settings_editor_view_downloading()
 								: m.settings_updates_whats_new_download_progress({
 										percent: pct,
 										total: formatBytes(u.progress.total),
@@ -336,7 +336,7 @@
 					{/if}
 					{#if hostStale}
 						<p class="hint warn">
-							{hostState.reason}
+							{hostState.reasonText}
 							{hostState.ptys.length > 0
 								? m.settings_updates_whats_new_host_terminals({ count: hostState.ptys.length })
 								: ""}

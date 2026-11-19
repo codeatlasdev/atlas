@@ -356,8 +356,24 @@ fn custom_launch(cmd: &str, args: &[String]) -> std::result::Result<Launch, Fail
             "custom_not_found",
             format!("The custom language server command `{cmd}` was not found"),
         )
-        .hint("Check the command in Settings → Editor → Languages (or .atlas/settings.json); it must be an executable on PATH or an absolute path.")),
+        .with_args(json!({"program": cmd}))
+        .hint("Check the command in the language settings (or .atlas/settings.json). It must be an executable on PATH or an absolute path.")),
     }
+}
+
+/// The server could not be started (`e`: the spawn or the initialize handshake failed). `crashed`, `detail` is the
+/// underlying error as it is.
+fn start_failure(server: &str, e: &anyhow::Error) -> Failure {
+    Failure::new("crashed", format!("{server} failed to start: {e:#}"))
+        .with_args(json!({"server": server, "detail": format!("{e:#}")}))
+        .hint("Open the server log from the status bar, or restart the server.")
+}
+
+/// The server kept crashing and the restart budget is spent.
+fn crash_loop(server: &str) -> Failure {
+    Failure::new("crashed", format!("{server} crashed repeatedly"))
+        .with_args(json!({"server": server, "cause": "repeated"}))
+        .hint("Open the server log from the status bar, then restart the server.")
 }
 
 /// Stderr lines kept in a status for a dead server.
@@ -1098,10 +1114,7 @@ impl Inner {
                 self.notify_status();
             }
             Err(e) => {
-                inst.set_phase(Phase::Crashed(
-                    Failure::new("crashed", format!("{e:#}"))
-                        .hint("Open the server log from the status bar, or restart the server."),
-                ));
+                inst.set_phase(Phase::Crashed(start_failure(inst.server.name, &e)));
                 self.notify_status();
             }
         }
@@ -1219,13 +1232,7 @@ impl Inner {
             tokio::time::sleep(backoff).await;
             self.bring_up(inst).await;
         } else {
-            inst.set_phase(Phase::Crashed(
-                Failure::new(
-                    "crashed",
-                    format!("{} crashed repeatedly", inst.server.name),
-                )
-                .hint("Open the server log from the status bar, then restart the server."),
-            ));
+            inst.set_phase(Phase::Crashed(crash_loop(inst.server.name)));
             self.notify_status();
         }
     }
@@ -1278,5 +1285,92 @@ async fn event_loop(inner: std::sync::Weak<Inner>, mut rx: mpsc::Receiver<(u64, 
                 }
             }
         }
+    }
+}
+
+#[cfg(test)]
+mod reason_contract_tests {
+    use super::*;
+
+    /// Contract with the desktop: `apps/desktop/src/lib/__fixtures__/lsp-reasons.json` is the REAL serialization of
+    /// every [`Failure`] the daemon can send as `reason` (each built by the function that builds it in production),
+    /// which `apps/desktop/src/lib/hostText.test.ts` renders from the catalog. `UPDATE_FIXTURES=1` regenerates it.
+    /// A new code goes in `install::CODES`, here, and in the desktop's table in the same change.
+    #[test]
+    fn lsp_reasons_json_contract() {
+        let e = |m: &str| anyhow!("{m}");
+        let reasons = vec![
+            install::no_go("gopls"),
+            Failure::from_install(
+                "rust-analyzer",
+                &e("curl not found - install it and try again"),
+            ),
+            Failure::from_install(
+                "rust-analyzer",
+                &e("no rust-analyzer build for freebsd/x86_64"),
+            ),
+            Failure::from_install(
+                "rust-analyzer",
+                &e("curl: (6) Could not resolve host: github.com"),
+            ),
+            Failure::from_install("rust-analyzer", &e("sha256 mismatch for the download")),
+            custom_launch("atlas-no-such-language-server", &[]).unwrap_err(),
+            start_failure(
+                "typescript-language-server",
+                &e("spawn failed: No such file or directory (os error 2)"),
+            ),
+            crash_loop("rust-analyzer"),
+        ];
+        let value = json!({ "reasons": reasons });
+        let codes: Vec<&str> = reasons.iter().map(|f| f.code).collect();
+        for c in install::CODES {
+            assert!(codes.contains(c), "no fixture entry for the code {c}");
+        }
+        for f in &reasons {
+            assert!(
+                install::CODES.contains(&f.code),
+                "{} is not in install::CODES",
+                f.code
+            );
+            // Every code a client renders its own sentence for carries the values it needs.
+            assert!(f.args.is_some(), "{}: no args", f.code);
+            assert!(f.arg("server").is_some() || f.code == "custom_not_found");
+        }
+
+        let path = std::path::Path::new(env!("CARGO_MANIFEST_DIR"))
+            .join("../../apps/desktop/src/lib/__fixtures__/lsp-reasons.json");
+        let mut buf = Vec::new();
+        let mut ser = serde_json::Serializer::with_formatter(
+            &mut buf,
+            serde_json::ser::PrettyFormatter::with_indent(b"\t"),
+        );
+        serde::Serialize::serialize(&value, &mut ser).unwrap();
+        let fresh = String::from_utf8(buf).unwrap() + "\n";
+        if std::env::var_os("UPDATE_FIXTURES").is_some() {
+            std::fs::write(&path, &fresh).unwrap();
+        }
+        let committed: Value = serde_json::from_str(
+            &std::fs::read_to_string(&path).expect("fixture missing: UPDATE_FIXTURES=1"),
+        )
+        .unwrap();
+        assert_eq!(
+            committed, value,
+            "stale fixture: re-run with UPDATE_FIXTURES=1"
+        );
+    }
+
+    /// A client from before `args` reads `code`, `message`, `hint` and `command` and ignores any other key: the new
+    /// field must be the only addition, and the old four keys keep their types.
+    #[test]
+    fn args_is_the_only_key_added_to_a_failure() {
+        let f = install::no_go("gopls");
+        let v = serde_json::to_value(&f).unwrap();
+        let mut keys: Vec<&str> = v.as_object().unwrap().keys().map(String::as_str).collect();
+        keys.sort_unstable();
+        assert_eq!(keys, ["args", "code", "command", "hint", "message"]);
+        assert!(v["message"].is_string() && v["hint"].is_string() && v["command"].is_string());
+        // Without args (a code that has none) the key is absent, exactly the shape of before.
+        let bare = serde_json::to_value(Failure::new("crashed", "idle")).unwrap();
+        assert_eq!(bare, json!({"code": "crashed", "message": "idle"}));
     }
 }

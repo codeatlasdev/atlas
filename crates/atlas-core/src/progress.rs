@@ -60,7 +60,7 @@ pub fn event_line(kind: Kind, code: &str, args: Value, message: &str) -> String 
 
 /// An error that carries its stable code, so the machine channel never has to guess from text.
 /// Wrap the English message at the place the failure is created.
-#[derive(Debug, Clone)]
+#[derive(Debug, Clone, PartialEq)]
 pub struct Coded {
     pub code: &'static str,
     pub args: Map<String, Value>,
@@ -74,6 +74,14 @@ impl Coded {
             args: args.as_object().cloned().unwrap_or_default(),
             message: message.into(),
         }
+    }
+
+    /// `{"code","args","message"}`: the three keys of a coded text wherever it travels as JSON (a `--progress json`
+    /// event adds `v` and `kind` around them; the desktop's `host://toast` and `host://error` carry them as they
+    /// are). A client renders its own sentence from `code` and `args`; `message` is for logs and for a client that
+    /// does not know the code.
+    pub fn wire(&self) -> Value {
+        json!({"code": self.code, "args": self.args, "message": self.message})
     }
 }
 

@@ -78,7 +78,7 @@
 	}
 </script>
 
-<SectionTitle title={m.settings_updates_title()} setting="updates" first />
+<SectionTitle title={m.settings_registry_general_group_updates()} setting="updates" first />
 <div
 	class="hero"
 	class:avail={status === "available"}
@@ -207,7 +207,7 @@
 		mono
 	>
 		{#snippet badges()}
-			{#if u.info?.app.dev}<span class="tag warn">{m.settings_updates_tag_dev()}</span
+			{#if u.info?.app.dev}<span class="tag warn">{m.settings_general_nav_dev()}</span
 				>{:else if u.info?.app.linked_to}<span class="tag info">{m.settings_updates_tag_linked()}</span>{/if}
 		{/snippet}
 		{#snippet version()}

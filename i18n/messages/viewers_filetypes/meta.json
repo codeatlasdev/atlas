@@ -2,7 +2,10 @@
 	"viewers_filetypes_bash": "Name of the .bash file type, shown in the tooltip of the rich view button of the editor and in the header of the tree viewer.",
 	"viewers_filetypes_c_header": "Name of the .h file type, shown in the tooltip of the rich view button of the editor and in the header of the tree viewer.",
 	"viewers_filetypes_compose": "Name of the Docker Compose (docker-compose.yml, compose.yaml) file type, shown in the tooltip of the rich view button of the editor and in the header of the tree viewer.",
-	"viewers_filetypes_config": "Name of the .cfg and .conf file type, shown in the tooltip of the rich view button of the editor and in the header of the tree viewer.",
+	"viewers_filetypes_config": {
+		"description": "Name of the .cfg and .conf file type, shown in the tooltip of the rich view button of the editor and in the header of the tree viewer.",
+		"distinct": "the name of a file type ('Configuração'); the other is a menu item for atlas.yaml ('Config')"
+	},
 	"viewers_filetypes_cpp_header": "Name of the .hpp file type, shown in the tooltip of the rich view button of the editor and in the header of the tree viewer.",
 	"viewers_filetypes_diff": "Name of the .diff file type, shown in the tooltip of the rich view button of the editor and in the header of the tree viewer.",
 	"viewers_filetypes_elixir_script": "Name of the .exs file type, shown in the tooltip of the rich view button of the editor and in the header of the tree viewer.",

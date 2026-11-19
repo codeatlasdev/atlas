@@ -24,7 +24,7 @@
 	<Row
 		id="ui-zoom"
 		label={m.settings_theme_interface_tab_zoom()}
-		description={m.settings_theme_interface_tab_zoom_description({
+		description={m.settings_registry_appearance_ui_zoom_description({
 			zoomIn: kbd("cmd-="),
 			zoomOut: kbd("cmd--"),
 			reset: kbd("cmd-0"),
@@ -41,12 +41,12 @@
 	</Row>
 </Group>
 
-<Group title={m.settings_theme_interface_tab_font_title()}>
+<Group title={m.settings_registry_appearance_group_interface_font()}>
 	<FontRows
 		idPrefix="ui"
-		familyLabel={m.settings_theme_interface_tab_font_title()}
-		familyDescription={m.settings_theme_interface_tab_font_family_description()}
-		sizeLabel={m.settings_theme_interface_tab_font_size()}
+		familyLabel={m.settings_registry_appearance_group_interface_font()}
+		familyDescription={m.settings_registry_appearance_ui_font_description()}
+		sizeLabel={m.settings_registry_appearance_ui_size_label()}
 		sizeDescription={m.settings_theme_interface_tab_font_size_description()}
 		family={p.ui_font_family}
 		size={p.ui_font_size}
@@ -61,14 +61,14 @@
 	</FontRows>
 </Group>
 
-<Group title={m.settings_theme_interface_tab_file_panel()}>
+<Group title={m.settings_registry_appearance_group_file_panel()}>
 	<Row
 		id="panel-dock"
-		label={m.settings_theme_interface_tab_file_panel_side()}
-		description={m.settings_theme_interface_tab_file_panel_side_description()}
+		label={m.settings_registry_appearance_panel_dock_label()}
+		description={m.settings_registry_appearance_panel_dock_description()}
 	>
 		<SegmentedControl
-			aria-label={m.settings_theme_interface_tab_file_panel_side()}
+			aria-label={m.settings_registry_appearance_panel_dock_label()}
 			size="sm"
 			value={p.project_panel.dock}
 			items={[
@@ -80,11 +80,11 @@
 	</Row>
 	<Row
 		id="panel-indent"
-		label={m.settings_theme_interface_tab_folder_indent()}
+		label={m.settings_registry_appearance_panel_indent_label()}
 		description={m.settings_theme_interface_tab_folder_indent_description()}
 	>
 		<NumInput
-			label={m.settings_theme_interface_tab_folder_indent()}
+			label={m.settings_registry_appearance_panel_indent_label()}
 			unit="px"
 			value={p.project_panel.indent_size}
 			onchange={(v) => savePref("project_panel", { ...p.project_panel, indent_size: v })}
@@ -92,36 +92,36 @@
 	</Row>
 	<Row
 		id="panel-file-icons"
-		label={m.settings_theme_interface_tab_file_icons()}
-		description={m.settings_theme_interface_tab_file_icons_description()}
+		label={m.settings_registry_appearance_panel_file_icons_label()}
+		description={m.settings_registry_appearance_panel_file_icons_description()}
 	>
 		<Switch
-			aria-label={m.settings_theme_interface_tab_file_icons()}
+			aria-label={m.settings_registry_appearance_panel_file_icons_label()}
 			checked={p.project_panel.file_icons}
 			onchange={(v) => savePref("project_panel", { ...p.project_panel, file_icons: v })}
 		/>
 	</Row>
 	<Row
 		id="panel-folder-icons"
-		label={m.settings_theme_interface_tab_folder_icons()}
-		description={m.settings_theme_interface_tab_folder_icons_description()}
+		label={m.settings_registry_appearance_panel_folder_icons_label()}
+		description={m.settings_registry_appearance_panel_folder_icons_description()}
 	>
 		<Switch
-			aria-label={m.settings_theme_interface_tab_folder_icons()}
+			aria-label={m.settings_registry_appearance_panel_folder_icons_label()}
 			checked={p.project_panel.folder_icons}
 			onchange={(v) => savePref("project_panel", { ...p.project_panel, folder_icons: v })}
 		/>
 	</Row>
 </Group>
 
-<Group title={m.settings_theme_interface_tab_split_panes()}>
+<Group title={m.settings_registry_appearance_group_split_panes()}>
 	<Row
 		id="pane-border"
-		label={m.settings_theme_interface_tab_active_pane_border()}
+		label={m.settings_registry_appearance_pane_border_label()}
 		description={m.settings_theme_interface_tab_pane_border_description()}
 	>
 		<NumInput
-			label={m.settings_theme_interface_tab_active_pane_border()}
+			label={m.settings_registry_appearance_pane_border_label()}
 			unit="px"
 			value={p.active_pane_modifiers.border_size}
 			onchange={(v) => savePref("active_pane_modifiers", { ...p.active_pane_modifiers, border_size: v })}
@@ -129,11 +129,11 @@
 	</Row>
 	<Row
 		id="pane-opacity"
-		label={m.settings_theme_interface_tab_dim_inactive_panes()}
+		label={m.settings_registry_appearance_pane_opacity_label()}
 		description={m.settings_theme_interface_tab_dim_inactive_description()}
 	>
 		<NumInput
-			label={m.settings_theme_interface_tab_dim_inactive_panes()}
+			label={m.settings_registry_appearance_pane_opacity_label()}
 			value={p.active_pane_modifiers.inactive_opacity}
 			onchange={(v) => savePref("active_pane_modifiers", { ...p.active_pane_modifiers, inactive_opacity: v })}
 		/>

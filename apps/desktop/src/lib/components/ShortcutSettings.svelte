@@ -3,7 +3,7 @@
 	import { Undo2, X } from "@lucide/svelte";
 	import SearchField from "./SearchField.svelte";
 	import { errText } from "#lib/api.ts";
-	import { DEFAULT_KEYMAP, IS_MAC, kbd, label, strokeOf } from "#lib/keys.ts";
+	import { DEFAULT_KEYMAP, kbd, label, strokeOf } from "#lib/keys.ts";
 	import { highlight, fuzzy } from "#lib/fuzzy.ts";
 	import {
 		bindKey,
@@ -13,6 +13,7 @@
 		resetKeymap,
 		unbindKey,
 	} from "#lib/keymap.svelte.ts";
+	import { m } from "#lib/i18n/m.ts";
 
 	let query = $state("");
 	/** Command id waiting for its new keystroke. */
@@ -46,9 +47,7 @@
 		if (!stroke) return;
 		// A bare or shift-only key would steal typing everywhere; require ⌘, ⌃ or ⌥ (or an F-key).
 		if (!/(^|-)(ctrl|alt|cmd)-|^f\d+$/.test(stroke)) {
-			toast.info(
-				`Include ${IS_MAC ? "⌘, ⌃ or ⌥" : "Ctrl or Alt"} so the shortcut does not clash with typing`,
-			);
+			toast.info(m.settings_general_shortcut_needs_modifier());
 			return;
 		}
 		recording = null;
@@ -56,7 +55,7 @@
 			.then((r) => {
 				if (r?.displaced) {
 					const other = registeredCommands().find((c) => c.id === r.displaced)?.label ?? r.displaced;
-					toast.info(`${label(stroke)} now runs this command. “${other}” lost it.`);
+					toast.info(m.settings_general_shortcut_displaced({ key: label(stroke), command: other }));
 				}
 			})
 			.catch((err) => toast.error(errText(err)));
@@ -71,10 +70,14 @@
 
 <div class="shortcuts">
 	<div class="bar">
-		<SearchField placeholder="Search commands" aria-label="Search commands" bind:value={query} />
+		<SearchField
+			placeholder={m.settings_general_shortcut_search_commands()}
+			aria-label={m.settings_general_shortcut_search_commands()}
+			bind:value={query}
+		/>
 		<Button variant="ghost" size="sm" disabled={!customized} onclick={() => resetKeymap()}>
 			{#snippet leading()}<Undo2 size={13} />{/snippet}
-			Reset all to defaults
+			{m.settings_general_shortcut_reset_all_to_defaults()}
 		</Button>
 	</div>
 
@@ -90,30 +93,38 @@
 				</div>
 				<div class="keys">
 					{#if recording === c.id}
-						<span class="prompt">Press the new shortcut… <Kbd>{kbd("escape")}</Kbd> to cancel</span>
+						<span class="prompt"
+							>{m.settings_general_shortcut_press_the_new_shortcut()}
+							<Kbd>{kbd("escape")}</Kbd>
+							{m.settings_general_shortcut_to_cancel()}</span
+						>
 					{:else}
 						<button
 							class="keybtn"
-							title="Click, then press the new shortcut"
+							title={m.settings_general_shortcut_click_then_press_the_new()}
 							onclick={() => (recording = c.id)}
 						>
 							{#if keys.length}{#each keys as k (k)}<Kbd>{k}</Kbd>{/each}{:else}<span class="none"
-									>{isDefault(c.id) ? "No shortcut" : "Add shortcut"}</span
+									>{isDefault(c.id)
+										? m.settings_general_shortcut_none()
+										: m.settings_general_shortcut_add()}</span
 								>{/if}
 						</button>
 						{#if keys.length}
-							<button class="x" aria-label="Remove this shortcut" onclick={() => clear(c.id)}
-								><X size={12} /></button
+							<button
+								class="x"
+								aria-label={m.settings_general_shortcut_remove_this_shortcut()}
+								onclick={() => clear(c.id)}><X size={12} /></button
 							>
 						{/if}
 					{/if}
 				</div>
 			</div>
 		{:else}
-			<p class="empty">No command matches “{query.trim()}”.</p>
+			<p class="empty">{m.settings_general_shortcut_no_match({ query: query.trim() })}</p>
 		{/each}
 	</div>
-	<p class="hint">If you pick a shortcut that another command already uses, that command loses it.</p>
+	<p class="hint">{m.settings_general_shortcut_if_you_pick_a_shortcut()}</p>
 </div>
 
 <style>

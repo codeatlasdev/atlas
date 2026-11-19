@@ -1,0 +1,13 @@
+{
+  "pt-BR": {
+    "settings_registry_workspaces_description": "cf1984dc9210",
+    "settings_registry_workspaces_label": "b62bd97d8cd8",
+    "settings_registry_workspaces_ws_autoclean_description": "bf230e9829ad",
+    "settings_registry_workspaces_ws_cleanup_description": "1b25716229c1",
+    "settings_registry_workspaces_ws_cleanup_label": "92fbe263276f",
+    "settings_registry_workspaces_ws_dir_description": "267892c25ac0",
+    "settings_registry_workspaces_ws_hygiene_description": "49a9f6ab4a39",
+    "settings_registry_workspaces_ws_nest_description": "14a3f95a1e34",
+    "settings_registry_workspaces_ws_prefix_description": "a6398827c2d3"
+  }
+}

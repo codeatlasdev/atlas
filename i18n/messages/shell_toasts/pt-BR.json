@@ -16,6 +16,8 @@
 	"shell_toasts_switched": "Agora em {branch}",
 	"shell_toasts_switched_stashed": "Agora em {branch}; suas alterações estão no stash",
 	"shell_toasts_unknown_worktree": "{name} está em uso em {path}, que o Atlas não conhece",
+	"shell_toasts_workspace_recovered": "Não foi possível ler o arquivo do workspace, então o Atlas abriu um workspace vazio. O arquivo antigo foi salvo como {path}.",
+	"shell_toasts_workspace_unreadable": "Não foi possível ler o arquivo do workspace ({reason}). O Atlas abriu um workspace vazio e não vai salvar alterações nesta sessão, então o arquivo continua como está: {path}",
 	"shell_toasts_worktree_deleted": "Worktree excluída",
 	"shell_toasts_worktree_failed": "Não foi possível criar a worktree"
 }

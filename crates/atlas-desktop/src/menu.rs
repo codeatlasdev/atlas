@@ -135,12 +135,13 @@ pub fn relabel_all(app: &AppHandle, keys: &crate::shots::prefs::Keys) {
 }
 
 /// The display language changed (Settings → Language): put its text on every native menu without a restart. The menu
-/// bar (macOS), the tray menu and the agent dock's title follow it; the dock's right-click menu is built on demand,
+/// bar (macOS), the tray menu, the agent dock's title and the titles of the capture windows follow it; the dock's right-click menu is built on demand,
 /// so it is in the new language the next time it opens.
 pub fn language_changed(app: &AppHandle, tag: &str) {
     atlas_i18n::set_lang(tag);
     relabel_all(app, &crate::tray::capture_keys(app));
     crate::dock::retitle(app, atlas_i18n::lang());
+    crate::shots::surface::retitle(app, atlas_i18n::lang());
 }
 
 /// The native text of the app as it is now, for the debug bridge (`atlas desktop debug eval` ... `menu_dump`): the

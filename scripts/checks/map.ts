@@ -109,7 +109,9 @@ export interface Check {
 	/** The area whose files make it run. */
 	area: string;
 	/** The command, run by `bash -c` at the repo root. `{cargo}` is `--workspace`, or `-p a -p b` for the crates a
-	 * change touches and their dependents. No `cmd`: CI runs it, a dev machine cannot (`why` says why). */
+	 * change touches and their dependents; `{cargo-lib}` is the same limited to packages with a library target (the
+	 * only ones with doctests: `cargo test -p <bin-only crate> --doc` is an error), and a command whose `{cargo-lib}`
+	 * is empty is skipped. No `cmd`: CI runs it, a dev machine cannot (`why` says why). */
 	cmd?: string;
 	/** check:changed only: run it just when one of these globs matches a changed file (`check` always runs it). */
 	only?: string[];
@@ -135,7 +137,7 @@ export const CHECKS: Check[] = [
 		cmd: "cargo nextest run {cargo} --locked",
 		ci: ["rust-macos", "rust-linux", "rust-windows"],
 	},
-	{ id: "doctests", area: "rust", cmd: "cargo test {cargo} --locked --doc", ci: ["rust-macos", "rust-linux", "rust-windows"] },
+	{ id: "doctests", area: "rust", cmd: "cargo test {cargo-lib} --locked --doc", ci: ["rust-macos", "rust-linux", "rust-windows"] },
 	{
 		id: "deny",
 		area: "rust",

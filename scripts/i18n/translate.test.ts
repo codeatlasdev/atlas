@@ -5,7 +5,7 @@ import { join } from "node:path";
 import { type Complete, buildPrompt, parseAnswer, pending, providerFromEnv, translateArea } from "./translate.ts";
 import { loadSource } from "./source.ts";
 import { loadCtx } from "./types.ts";
-import { EN, META, OS, PLURAL, PT, addKey, check, cleanup, editJson, errors, makeRepo, put, read } from "./testkit.ts";
+import { EN, META, OS, PLURAL, PT, addKey, addKeys, check, cleanup, editJson, errors, makeRepo, put, read } from "./testkit.ts";
 
 afterAll(cleanup);
 
@@ -118,7 +118,7 @@ describe("the prompt", () => {
 
 	test("includes at most 20 existing pairs of the same area, never the keys being translated", async () => {
 		const root = await dirtyRepo();
-		for (let i = 0; i < 25; i++) addKey(root, `app_extra_${String(i).padStart(2, "0")}`, `Extra ${i}`, `Extra ${i} pt`, `Extra number ${i}`);
+		addKeys(root, Array.from({ length: 25 }, (_, i) => [`app_extra_${String(i).padStart(2, "0")}`, `Extra ${i}`, `Extra ${i} pt`, `Extra number ${i}`]));
 		editJson(root, EN, (o) => void (o.app_new_thing = "New thing for {name}"));
 		const { ctx, area } = app(root);
 		const batch = pending(ctx, area, "pt-BR");

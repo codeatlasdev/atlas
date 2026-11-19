@@ -24,7 +24,10 @@
 		register([
 			{
 				id: "atlas::ShowActionOutput",
-				label: m.panel_action_output_drawer_show_action_output(),
+				// A getter: the palette reads the label when it lists, so the command follows a language switch.
+				get label() {
+					return m.panel_action_output_drawer_show_action_output();
+				},
 				run: () => actionOutput.show(project.id),
 				when: () => space.current && store.current?.id === project.id,
 			},

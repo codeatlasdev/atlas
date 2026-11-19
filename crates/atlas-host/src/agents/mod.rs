@@ -381,11 +381,6 @@ impl AgentHub {
         if !someone_can_answer && !crewmate_can {
             return None;
         }
-        let wait = if is_crewmate {
-            std::time::Duration::from_secs(30 * 60) // CREWMATE_DECISION_WAIT
-        } else {
-            wait
-        };
         let req = crate::paths::random_hex(6).ok()?;
         let (otx, orx) = oneshot::channel();
         let event = json!({

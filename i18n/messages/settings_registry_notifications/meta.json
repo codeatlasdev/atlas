@@ -1,0 +1,8 @@
+{
+	"settings_registry_notifications_description": "One line under the Notifications & sounds page title in Settings, and the tooltip of its sidebar entry.",
+	"settings_registry_notifications_label": "Sidebar entry and page title of the Notifications & sounds section in Settings.",
+	"settings_registry_notifications_notify_description": "Help line under the \"Notifications\" row in Settings > Notifications & sounds, also shown in search results.",
+	"settings_registry_notifications_sound_reduce_description": "Help line under the \"Reduce sounds\" row in Settings > Notifications & sounds, also shown in search results.",
+	"settings_registry_notifications_sound_volume_description": "Help line under the \"Sound volume\" row in Settings > Notifications & sounds, also shown in search results.",
+	"settings_registry_notifications_sounds_description": "Help line under the \"Sounds\" row in Settings > Notifications & sounds, also shown in search results."
+}

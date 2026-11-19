@@ -13,7 +13,6 @@ mock.module("@tauri-apps/api/window", () => ({
 	getCurrentWindow: () => ({ onFocusChanged: async () => () => {} }),
 }));
 let picked: string | null = null;
-mock.module("@tauri-apps/plugin-dialog", () => ({ open: async () => picked }));
 
 const calls: { cmd: string; args: Record<string, unknown> }[] = [];
 /** What each command answers; a function may throw to reject like a failing Rust command. */
@@ -24,6 +23,7 @@ mock.module("@tauri-apps/api/core", () => ({
 		if (answers[cmd]) return answers[cmd](args);
 		if (cmd === "crew_servers_list" || cmd === "ssh_hosts_list") return [];
 		if (cmd === "ssh_key_resolve") return keyFixture.found;
+		if (cmd === "pick_path") return picked;
 		return {};
 	},
 }));

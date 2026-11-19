@@ -6,6 +6,7 @@
 	import LspPopover from "#lib/lsp/LspPopover.svelte";
 	import StatusItem from "#lib/editor/StatusItem.svelte";
 	import { uiStateOf } from "#lib/lsp/uiState.svelte.ts";
+	import { m } from "#lib/i18n/m.ts";
 
 	let { doc, errors = 0, warnings = 0 }: { doc: LspDoc; errors?: number; warnings?: number } = $props();
 
@@ -20,7 +21,7 @@
 			{#if mine.action}
 				<button class="act" onclick={runHintAction}>{mine.action.label}</button>
 			{/if}
-			<button class="x" aria-label="Dismiss" onclick={dismissHint}>×</button>
+			<button class="x" aria-label={m.crew_chat_ask_card_dismiss()} onclick={dismissHint}>×</button>
 		</span>
 	{/if}
 	<Popover side="top" align="end" sideOffset={6}>
@@ -28,7 +29,7 @@
 			<StatusItem
 				button
 				{...props}
-				aria-label="Language server: {ui.label}"
+				aria-label={m.workbench_lsp_status_language_server_label({ label: ui.label })}
 				title={ui.summary}
 				data-kind={ui.kind}
 				style="max-width: 280px"
@@ -41,12 +42,12 @@
 		<LspPopover {doc} {ui} />
 	</Popover>
 	{#if errors > 0}
-		<span class="count err" title="{errors} error{errors === 1 ? '' : 's'}"
+		<span class="count err" title={m.workbench_editor_errors({ count: errors })}
 			><CircleAlert size={12} />{errors}</span
 		>
 	{/if}
 	{#if warnings > 0}
-		<span class="count warn" title="{warnings} warning{warnings === 1 ? '' : 's'}"
+		<span class="count warn" title={m.workbench_editor_warnings({ count: warnings })}
 			><TriangleAlert size={12} />{warnings}</span
 		>
 	{/if}

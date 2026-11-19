@@ -3,6 +3,7 @@ import { expect, test } from "bun:test";
 import { SearchQuery } from "@codemirror/search";
 import { EditorState } from "@codemirror/state";
 import { MATCH_CAP, counterLabel, countMatches, replacementPreview } from "./search.ts";
+import { m } from "#lib/i18n/m.ts";
 
 const st = (doc: string) => EditorState.create({ doc });
 
@@ -30,7 +31,7 @@ test("the scan stops at the cap", () => {
 	const s = st("x ".repeat(MATCH_CAP + 500));
 	const c = countMatches(new SearchQuery({ search: "x" }), s);
 	expect(c).toMatchObject({ total: MATCH_CAP, capped: true });
-	expect(counterLabel(c, true, true)).toBe("10000+ found");
+	expect(counterLabel(c, true, true)).toBe(m.workbench_editor_find_found_capped({ count: MATCH_CAP }));
 });
 
 test("in-selection scope limits the scan", () => {
@@ -39,10 +40,16 @@ test("in-selection scope limits the scan", () => {
 });
 
 test("counterLabel", () => {
-	expect(counterLabel({ total: 3, capped: false, index: 2 }, true, true)).toBe("2 of 3");
-	expect(counterLabel({ total: 3, capped: false, index: 0 }, true, true)).toBe("3 found");
-	expect(counterLabel({ total: 0, capped: false, index: 0 }, true, true)).toBe("No results");
-	expect(counterLabel({ total: 0, capped: false, index: 0 }, false, true)).toBe("Invalid regex");
+	expect(counterLabel({ total: 3, capped: false, index: 2 }, true, true)).toBe(
+		m.workbench_editor_find_position({ index: "2", total: "3" }),
+	);
+	expect(counterLabel({ total: 3, capped: false, index: 0 }, true, true)).toBe(
+		m.workbench_editor_find_found({ count: 3 }),
+	);
+	expect(counterLabel({ total: 0, capped: false, index: 0 }, true, true)).toBe(
+		m.workbench_editor_find_no_results(),
+	);
+	expect(counterLabel({ total: 0, capped: false, index: 0 }, false, true)).toBe(m.logs_search_bar_invalid());
 	expect(counterLabel({ total: 0, capped: false, index: 0 }, true, false)).toBe("");
 });
 

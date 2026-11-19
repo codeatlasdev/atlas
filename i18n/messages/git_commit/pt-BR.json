@@ -1,0 +1,128 @@
+{
+	"git_commit_amended": "Commit corrigido",
+	"git_commit_committed": "Commit feito",
+	"git_commit_conflicted_files": [
+		{
+			"declarations": [
+				"input count",
+				"local countExact = count",
+				"local countPlural = count: plural"
+			],
+			"selectors": [
+				"countExact",
+				"countPlural"
+			],
+			"match": {
+				"countExact=0, countPlural=*": "Nenhum arquivo em conflito",
+				"countExact=*, countPlural=one": "{count} arquivo em conflito",
+				"countExact=*, countPlural=*": "{count} arquivos em conflito"
+			}
+		}
+	],
+	"git_commit_discard_title": "Descartar as alterações de {path}?",
+	"git_commit_discard_tracked": "Não é possível desfazer.",
+	"git_commit_discard_untracked": "O arquivo não rastreado é excluído.",
+	"git_commit_error_all_secret": "Todos os arquivos alterados parecem conter segredos, então nenhum foi enviado. Escreva a mensagem manualmente.",
+	"git_commit_error_empty": "O agente não devolveu nenhuma mensagem. Tente novamente ou escreva a mensagem manualmente.",
+	"git_commit_error_no_changes": "Não há nada para descrever: nenhuma alteração em stage ou pendente de commit.",
+	"git_commit_error_off": "As mensagens de commit com IA estão desativadas. Escolha um agente em Configurações → Git para ativá-las.",
+	"git_commit_error_ssh": "O Atlas ainda não consegue gerar a mensagem de commit de uma pasta em um host SSH, porque o agente precisaria rodar lá.",
+	"git_commit_force_push_body": "Sobrescreve a branch remota, a menos que outra pessoa tenha feito push nela.",
+	"git_commit_force_push_confirm": "Fazer force push",
+	"git_commit_force_push_title": "Fazer force push com lease?",
+	"git_commit_generate": "Gerar",
+	"git_commit_group_changes": "Alterações",
+	"git_commit_group_conflicts": "Conflitos",
+	"git_commit_group_staged": "Em stage",
+	"git_commit_group_untracked": "Não rastreados",
+	"git_commit_message_placeholder": "Mensagem de commit ({key} para fazer commit)",
+	"git_commit_notice_all": "Nada estava em stage: todas as alterações foram usadas",
+	"git_commit_notice_all_with": "Nada estava em stage: todas as alterações foram usadas. {omitted}",
+	"git_commit_notice_cut": [
+		{
+			"declarations": [
+				"input count",
+				"local countExact = count",
+				"local countPlural = count: plural"
+			],
+			"selectors": [
+				"countExact",
+				"countPlural"
+			],
+			"match": {
+				"countExact=0, countPlural=*": "Nenhum truncado",
+				"countExact=*, countPlural=one": "{count} truncado",
+				"countExact=*, countPlural=*": "{count} truncados"
+			}
+		}
+	],
+	"git_commit_notice_left_out": [
+		{
+			"declarations": [
+				"input count",
+				"local countExact = count",
+				"local countPlural = count: plural"
+			],
+			"selectors": [
+				"countExact",
+				"countPlural"
+			],
+			"match": {
+				"countExact=0, countPlural=*": "Nenhum ficou de fora",
+				"countExact=*, countPlural=one": "{count} ficou de fora (grande demais)",
+				"countExact=*, countPlural=*": "{count} ficaram de fora (grandes demais)"
+			}
+		}
+	],
+	"git_commit_notice_named_only": [
+		{
+			"declarations": [
+				"input count",
+				"local countExact = count",
+				"local countPlural = count: plural"
+			],
+			"selectors": [
+				"countExact",
+				"countPlural"
+			],
+			"match": {
+				"countExact=0, countPlural=*": "Nenhum só pelo nome",
+				"countExact=*, countPlural=one": "{count} só pelo nome",
+				"countExact=*, countPlural=*": "{count} só pelo nome"
+			}
+		}
+	],
+	"git_commit_notice_withheld": [
+		{
+			"declarations": [
+				"input count",
+				"local countExact = count",
+				"local countPlural = count: plural"
+			],
+			"selectors": [
+				"countExact",
+				"countPlural"
+			],
+			"match": {
+				"countExact=0, countPlural=*": "Nenhum arquivo retido",
+				"countExact=*, countPlural=one": "{count} arquivo retido (pode ter segredos)",
+				"countExact=*, countPlural=*": "{count} arquivos retidos (podem ter segredos)"
+			}
+		}
+	],
+	"git_commit_operation_merge": "Merge em andamento",
+	"git_commit_operation_rebase": "Rebase em andamento",
+	"git_commit_pick_agent": "Escolha um agente para as mensagens de commit em Configurações → Git",
+	"git_commit_primary_commit": "Fazer commit",
+	"git_commit_primary_pull": "Fazer pull ({count})",
+	"git_commit_primary_push_count": "Fazer push ({count})",
+	"git_commit_primary_up_to_date": "Atualizado",
+	"git_commit_regenerate": "Gerar de novo",
+	"git_commit_save_amend": "Salvar e corrigir o commit",
+	"git_commit_save_commit": "Salvar e fazer commit",
+	"git_commit_write_from_all": "Gerar a mensagem a partir de todas as alterações",
+	"git_commit_write_from_staged": "Gerar a mensagem a partir do diff em stage",
+	"git_commit_write_message": "Escreva uma mensagem de commit",
+	"git_commit_writing": "Escrevendo com o agente…",
+	"git_commit_writing_with": "Escrevendo com {agent}…"
+}

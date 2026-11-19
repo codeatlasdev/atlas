@@ -4,6 +4,7 @@
 	import DiffNotes from "./DiffNotes.svelte";
 	import type { DiffHunk } from "#lib/api.ts";
 	import type { DiffComment } from "#lib/stores/workspace.svelte.ts";
+	import { m } from "#lib/i18n/m.ts";
 
 	export interface Draft {
 		path: string;
@@ -45,7 +46,7 @@
 					{#if no !== undefined}
 						<button
 							class="add-note"
-							title="Comment (c)"
+							title={m.git_diff_table_comment_c()}
 							onclick={() => (draft = { path, line: no, side, text: "" })}
 						>
 							<MessageSquarePlus size={11} />

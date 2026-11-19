@@ -21,6 +21,7 @@
 	import { xtermKey } from "#lib/termKeys.ts";
 	import { ptyStream, type PtyEvent } from "#lib/ptyStream.ts";
 	import { hostEvents } from "#lib/hostEventsApp.ts";
+	import { m } from "#lib/i18n/m.ts";
 
 	let {
 		pty,
@@ -272,7 +273,7 @@
 			<!-- svelte-ignore a11y_autofocus -->
 			<FindInput
 				autofocus
-				placeholder="Find"
+				placeholder={m.logs_search_bar_find()}
 				bind:value={query}
 				oninput={() => find(1)}
 				onkeydown={(e) => {

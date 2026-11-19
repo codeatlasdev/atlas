@@ -3,6 +3,7 @@
 	import NumInput from "./NumInput.svelte";
 	import Row from "./Row.svelte";
 	import TextInput from "./TextInput.svelte";
+	import { m } from "#lib/i18n/m.ts";
 
 	/** Font family + size rows (and a preview) shared by the code and interface font groups. */
 	let {
@@ -43,6 +44,6 @@
 	<NumInput label={sizeLabel} unit="px" value={size} onchange={onsize} />
 </Row>
 {@render extra?.()}
-<Row label="Preview">
+<Row label={m.settings_terminal_font_rows_preview()}>
 	{#snippet below()}{@render preview()}{/snippet}
 </Row>

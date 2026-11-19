@@ -1,0 +1,31 @@
+{
+  "pt-BR": {
+    "settings_general_hygiene_dir_browser_profile": "426c19f5de6d",
+    "settings_general_hygiene_dir_cache": "c87a83e09642",
+    "settings_general_hygiene_dir_instance": "bd1496cecb90",
+    "settings_general_hygiene_dir_temp": "d38db0fa2109",
+    "settings_general_hygiene_done_ended": "c63ffc8281cc",
+    "settings_general_hygiene_done_freed": "ec162aa1721e",
+    "settings_general_hygiene_done_marked": "778ed6b3b348",
+    "settings_general_hygiene_done_survivors": "dfdcd83a4ae3",
+    "settings_general_hygiene_fix_would": "411af973b197",
+    "settings_general_hygiene_group_agents_leave_browsers_dev_servers": "4b378636cb9e",
+    "settings_general_hygiene_group_fix": "a02e24d5a48e",
+    "settings_general_hygiene_group_hygiene": "c9147a1393ef",
+    "settings_general_hygiene_group_orphans_and_disk": "206355ff0d87",
+    "settings_general_hygiene_kind_agent": "7649b444a37e",
+    "settings_general_hygiene_kind_browser": "1f045eb0c103",
+    "settings_general_hygiene_kind_other": "d448c0e0f65d",
+    "settings_general_hygiene_kind_service": "3e9b10a44317",
+    "settings_general_hygiene_kind_terminal": "c34e20c40cc2",
+    "settings_general_hygiene_node_modules": "adb73b8cedc3",
+    "settings_general_hygiene_nothing_to_clean": "34bf4ae818f3",
+    "settings_general_hygiene_owner_gone": "ea4e1230e583",
+    "settings_general_hygiene_scan_first": "2300e67c10fc",
+    "settings_general_hygiene_target": "de8a2d1b8dab",
+    "settings_general_hygiene_todo_end": "a5c4f42d8b4f",
+    "settings_general_hygiene_todo_free": "1a2a243f2d1e",
+    "settings_general_hygiene_todo_spotlight": "824e20a3b48b",
+    "settings_general_hygiene_total": "93b90787085b"
+  }
+}

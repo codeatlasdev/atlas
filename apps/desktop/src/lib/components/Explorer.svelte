@@ -1,5 +1,5 @@
 <script lang="ts">
-	import { gitToast } from "#lib/gitToast.ts";
+	import { gitToast, hostErrorToast } from "#lib/gitToast.ts";
 	import { onMount, tick } from "svelte";
 	import { primaryKey } from "#lib/keys.ts";
 	import { listen } from "@tauri-apps/api/event";
@@ -135,19 +135,17 @@
 		const name = e?.value.trim();
 		if (!e || !name || name.includes("/")) return;
 		if (e.mode === "folder") {
-			await host.fsMkdir(`${root}/${join(e.rel, name)}`).catch((err) => toast.error(errText(err)));
+			await host.fsMkdir(`${root}/${join(e.rel, name)}`).catch(hostErrorToast);
 			await load(e.rel);
 			expanded[join(e.rel, name)] = true;
 		} else if (e.mode === "new") {
 			const rel = join(e.rel, name);
-			await host.fsWrite(`${root}/${rel}`, "").catch((err) => toast.error(errText(err)));
+			await host.fsWrite(`${root}/${rel}`, "").catch(hostErrorToast);
 			await load(e.rel);
 			openFile(worktreeId, rel);
 		} else if (name !== e.rel.split("/").pop()) {
 			const dir = parentOf(e.rel);
-			await host
-				.fsRename(`${root}/${e.rel}`, `${root}/${join(dir, name)}`)
-				.catch((err) => toast.error(errText(err)));
+			await host.fsRename(`${root}/${e.rel}`, `${root}/${join(dir, name)}`).catch(hostErrorToast);
 			await load(dir);
 		}
 		focusRow(e.mode === "rename" ? join(parentOf(e.rel), name) : join(e.rel, name));
@@ -236,7 +234,7 @@
 			}))
 		)
 			return;
-		await host.fsRemove(`${root}/${rel}`, dir).catch((e) => toast.error(errText(e)));
+		await host.fsRemove(`${root}/${rel}`, dir).catch(hostErrorToast);
 		await load(parentOf(rel));
 	}
 
@@ -292,12 +290,9 @@
 		const taken = new Set((children[dir] ?? []).map((e) => e.name));
 		const to = join(dir, duplicateName(name, taken));
 		const r = await host.exec(root, ["cp", "-R", "--", `${root}/${rel}`, `${root}/${to}`]).catch((e) => e);
-		if (r instanceof Error || (r as { code?: number }).code) {
-			toast.error(
-				r instanceof Error
-					? errText(r)
-					: (r as { stderr: string }).stderr || m.workbench_explorer_duplicate_failed({ name }),
-			);
+		if (r instanceof Error || typeof r === "string") return void hostErrorToast(r);
+		if ((r as { code?: number }).code) {
+			toast.error((r as { stderr: string }).stderr || m.workbench_explorer_duplicate_failed({ name }));
 			return;
 		}
 		await load(dir);

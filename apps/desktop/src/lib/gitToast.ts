@@ -1,5 +1,7 @@
 import { toast } from "@codeatlasdev/ui";
+import { errText } from "#lib/api.ts";
 import { classifyGitError } from "#lib/gitErrors.ts";
+import { hostErrorDetail } from "#lib/hostText.ts";
 import { m } from "#lib/i18n/m.ts";
 import { confirmDialog } from "#lib/stores/ask.svelte.ts";
 
@@ -21,6 +23,15 @@ export function errorToast(message: string, details: string): void {
 				}),
 		},
 	});
+}
+
+/**
+ * An error toast for a failed `fs_*` or `exec` request of the terminal host: its sentence (already in the app's
+ * language when hostd coded the failure), and the system's own words behind a Details button when the sentence has
+ * none of its own (`hostErrorDetail`). `message` replaces the sentence when the screen words the failure itself.
+ */
+export function hostErrorToast(e: unknown, message = errText(e)): void {
+	errorToast(message, hostErrorDetail(e));
 }
 
 /** An error toast for a failed git command: one sentence, and git's own output behind a Details button (#505). */

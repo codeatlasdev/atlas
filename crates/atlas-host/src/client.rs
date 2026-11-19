@@ -27,13 +27,28 @@ use crate::paths;
 /// | `hostd.closed` | none | `hostd closed the connection` |
 /// | `hostd.disconnected` | none | `hostd disconnected` |
 /// | `hostd.start_failed` | none | `hostd did not start` |
-/// | `hostd.refused` | `why`: the token hostd answered (`unauthorized`, `hostd busy`...) | `hostd: <why>` |
+/// | `hostd.refused` | `why`: what hostd answered (`unauthorized`, `hello timeout`...) | `hostd: <why>` |
+/// | `hostd.busy` | none | `hostd: hostd busy` |
+/// | `hostd.too_many_clients` | none | `hostd: too many clients` |
 /// | `hostd.cli_not_found` | `command`: the installer line for this OS | [`NOT_FOUND`] |
-pub const CODES: &[&str] = &[CLOSED, DISCONNECTED, START_FAILED, REFUSED, CLI_NOT_FOUND];
+///
+/// A failed request of a daemon that codes its failures (`protocol::REPLY_CODES`: the filesystem and `exec`) comes
+/// back as a [`Coded`] of that code too (`reply_error`).
+pub const CODES: &[&str] = &[
+    CLOSED,
+    DISCONNECTED,
+    START_FAILED,
+    REFUSED,
+    BUSY,
+    TOO_MANY_CLIENTS,
+    CLI_NOT_FOUND,
+];
 pub const CLOSED: &str = "hostd.closed";
 pub const DISCONNECTED: &str = "hostd.disconnected";
 pub const START_FAILED: &str = "hostd.start_failed";
 pub const REFUSED: &str = "hostd.refused";
+pub const BUSY: &str = "hostd.busy";
+pub const TOO_MANY_CLIENTS: &str = "hostd.too_many_clients";
 pub const CLI_NOT_FOUND: &str = "hostd.cli_not_found";
 
 fn coded(code: &'static str, args: Value, message: impl Into<String>) -> anyhow::Error {
@@ -52,9 +67,33 @@ fn start_failed() -> anyhow::Error {
     coded(START_FAILED, json!({}), "hostd did not start")
 }
 
-/// hostd answered a hello or a request with `why` instead of its data.
+/// What hostd answers when it refuses a client because it already serves as many as it takes (the daemon's own
+/// answer for a full house, next to [`crate::server::ERR_BUSY`]).
+const ERR_TOO_MANY_CLIENTS: &str = "too many clients";
+
+/// hostd answered a hello or a request with `why` instead of its data. A loaded daemon's two refusals (`hostd busy`,
+/// `too many clients`) have a code of their own: the app tells them from a daemon that is gone by it.
 fn refused(why: &str) -> anyhow::Error {
-    coded(REFUSED, json!({"why": why}), format!("hostd: {why}"))
+    let message = format!("hostd: {why}");
+    match why {
+        crate::server::ERR_BUSY => coded(BUSY, json!({}), message),
+        ERR_TOO_MANY_CLIENTS => coded(TOO_MANY_CLIENTS, json!({}), message),
+        _ => coded(REFUSED, json!({"why": why}), message),
+    }
+}
+
+/// The failure a reply line says (`{"ok":false,"error":..}`): a [`Coded`] when it carries a `code` this build knows
+/// (`protocol::REPLY_CODES`), else the text alone, which is all an older daemon sends and what every caller printed
+/// before the codes. The text is the same either way.
+pub(crate) fn reply_error(v: &Value) -> anyhow::Error {
+    let message = v["error"].as_str().unwrap_or("error");
+    let known = v["code"]
+        .as_str()
+        .and_then(|c| crate::protocol::REPLY_CODES.iter().find(|k| **k == c));
+    match known {
+        Some(code) => coded(code, v["args"].clone(), message),
+        None => anyhow!(message.to_string()),
+    }
 }
 
 /// How long a call waits for hostd's reply unless [`deadline_for`] says it legitimately takes longer (#298).
@@ -285,11 +324,11 @@ pub fn is_unusable(e: &CallError) -> bool {
 /// A pushed event: `{"ev": "...", ...}`.
 pub type HostEvent = Arc<Value>;
 
-type ReplyRx = oneshot::Receiver<Result<Value, String>>;
+type ReplyRx = oneshot::Receiver<Result<Value>>;
 
 /// How a wait for a reply ended.
 enum Waited {
-    Reply(Result<Value, String>),
+    Reply(Result<Value>),
     /// The connection went away with the call unanswered.
     Dropped,
     /// The liveness probe found the daemon silent.
@@ -328,7 +367,7 @@ fn see_log(log: Option<&Path>) -> String {
 
 /// Calls waiting for their reply. `None` once the connection dropped: the reader closes it as it
 /// exits, so a call can never register after the last moment anyone would answer it (#226).
-type Pending = Arc<Mutex<Option<HashMap<u64, oneshot::Sender<Result<Value, String>>>>>>;
+type Pending = Arc<Mutex<Option<HashMap<u64, oneshot::Sender<Result<Value>>>>>>;
 
 #[derive(Clone)]
 pub struct HostClient {
@@ -421,7 +460,7 @@ impl HostClient {
                         let res = if v["ok"] == true {
                             Ok(v.get("data").cloned().unwrap_or(Value::Null))
                         } else {
-                            Err(v["error"].as_str().unwrap_or("error").to_string())
+                            Err(reply_error(&v))
                         };
                         let _ = tx.send(res);
                     }
@@ -521,7 +560,7 @@ impl HostClient {
         };
         match tokio::time::timeout(deadline, wait).await {
             Ok(Waited::Reply(Ok(v))) => Ok(v),
-            Ok(Waited::Reply(Err(e))) => Err(anyhow!(e)),
+            Ok(Waited::Reply(Err(e))) => Err(e),
             Ok(Waited::Dropped) => Err(disconnected()),
             Ok(Waited::Silent) => Err(Unanswered(format!(
                 "hostd stopped answering while `{cmd}` was running: no reply to its liveness probes{}",
@@ -1419,7 +1458,9 @@ mod coded_error_tests {
             closed(),
             disconnected(),
             start_failed(),
+            refused("hello timeout"),
             refused("hostd busy"),
+            refused("too many clients"),
             // One fixed line, not this OS's: the fixture must be byte-identical on every CI runner.
             cli_not_found_with(
                 "curl -fsSL https://atlas.codeatlas.com.br/install.sh | bash",
@@ -1481,6 +1522,15 @@ mod coded_error_tests {
         assert_eq!(disconnected().to_string(), "hostd disconnected");
         assert_eq!(start_failed().to_string(), "hostd did not start");
         assert_eq!(refused("unauthorized").to_string(), "hostd: unauthorized");
+        // The two refusals of a loaded daemon read as before and have a code of their own.
+        assert_eq!(refused("hostd busy").to_string(), "hostd: hostd busy");
+        assert_eq!(
+            refused("too many clients").to_string(),
+            "hostd: too many clients"
+        );
+        assert_eq!(wire(&refused("hostd busy"))["code"], BUSY);
+        assert_eq!(wire(&refused("too many clients"))["code"], TOO_MANY_CLIENTS);
+        assert_eq!(wire(&refused("hello timeout"))["code"], REFUSED);
         assert!(
             cli_not_found()
                 .to_string()

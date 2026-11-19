@@ -11,6 +11,7 @@
  *
  * Pure: no Svelte, no IPC; the runner is passed in so the tests drive real git and real recorded `gh` output.
  */
+import { isProgramMissing } from "#lib/hostText.ts";
 import { m } from "#lib/i18n/m.ts";
 import type { PrView } from "#lib/stores/pr.svelte.ts";
 
@@ -107,16 +108,13 @@ export async function probeRepo(run: Run): Promise<RepoProbe> {
 	};
 }
 
-/** hostd's answer when the program does not exist: `gh: No such file or directory (os error 2)` (Windows: "cannot find the file"). */
-const NO_PROGRAM = /os error 2\b|no such file|cannot find the (?:file|path)|program not found/i;
-
 /** `gh auth status`; a missing binary is a rejection from the runner, not an exit code. Any other rejection (hostd down) is unknown. */
 export async function ghAuth(run: Run): Promise<GhAuth> {
 	try {
 		const r = await run(["gh", "auth", "status"]);
 		return r.code === 0 ? "ok" : "signed-out";
 	} catch (e) {
-		return NO_PROGRAM.test(e instanceof Error ? e.message : String(e)) ? "not-installed" : "unknown";
+		return isProgramMissing(e, e instanceof Error ? e.message : String(e)) ? "not-installed" : "unknown";
 	}
 }
 

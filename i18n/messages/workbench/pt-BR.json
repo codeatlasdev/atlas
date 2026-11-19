@@ -16,6 +16,7 @@
 	"workbench_explorer_menu_stage": "Fazer stage",
 	"workbench_explorer_new_file": "Novo arquivo",
 	"workbench_explorer_new_file_name": "Nome do novo arquivo",
+	"workbench_explorer_new_file_placeholder": "nome.ext",
 	"workbench_explorer_new_folder": "Nova pasta",
 	"workbench_explorer_new_name": "Novo nome",
 	"workbench_explorer_reveal_active_file": "Mostrar arquivo ativo",

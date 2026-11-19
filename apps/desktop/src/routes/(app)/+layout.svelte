@@ -113,7 +113,9 @@
 		<div class="sidebar-slot" class:hidden={!docks.sidebar} inert={!docks.sidebar}>
 			<div class="sidebar-panel">{@render sidebar()}</div>
 		</div>
-		<EdgePeek edge="left" size={260} label="Sidebar" active={!docks.sidebar}>{@render sidebar()}</EdgePeek>
+		<EdgePeek edge="left" size={260} label={m.shell_layout_sidebar_label()} active={!docks.sidebar}
+			>{@render sidebar()}</EdgePeek
+		>
 		<main class="content" class:full={!docks.sidebar} use:swipe={historySwipe()}>
 			<div class="space-edge" aria-hidden="true"></div>
 			<div class="nav-chip nav-chip-prev" aria-hidden="true"><ChevronLeft size={18} /></div>
@@ -128,21 +130,21 @@
 
 <Palette
 	bind:open={palettes.jump}
-	placeholder="Jump to worktree, terminal or command"
+	placeholder={m.shell_layout_palette_jump()}
 	items={jumpItems}
 	dynamic={createItems}
 />
-<Palette bind:open={palettes.commands} placeholder="Run a command" items={commandItems} />
+<Palette bind:open={palettes.commands} placeholder={m.shell_layout_palette_commands()} items={commandItems} />
 <LazyOpen when={worktrees.newDialog.open} load={() => import("#lib/components/NewWorktreeDialog.svelte")} />
 <LazyOpen when={!!pr.createFor} load={() => import("#lib/components/CreatePrDialog.svelte")} />
-<Palette bind:open={palettes.files} placeholder="Go to file" items={fileItems} ranked />
+<Palette bind:open={palettes.files} placeholder={m.shell_layout_palette_files()} items={fileItems} ranked />
 <Palette
 	bind:open={branchPicker.open}
-	placeholder="Switch branch or create one"
+	placeholder={m.shell_layout_palette_branches()}
 	items={branchItems}
 	dynamic={createBranchItems}
 />
-<Palette bind:open={palettes.symbols} placeholder="Go to symbol in file" items={symbolItems} />
+<Palette bind:open={palettes.symbols} placeholder={m.shell_layout_palette_symbols()} items={symbolItems} />
 <LspPicker />
 <LazyOpen when={updates.open} load={() => import("#lib/components/Settings.svelte")} />
 <LazyOpen when={updates.whatsNewOpen} load={() => import("#lib/components/WhatsNew.svelte")} />

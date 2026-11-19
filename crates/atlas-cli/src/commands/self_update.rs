@@ -678,7 +678,7 @@ pub(crate) async fn run_update(req: Request) -> Result<UpdateOutcome> {
     match &method {
         InstallMethod::Homebrew => {
             println!("{}", step(&t!("cmd_update_brew_title")));
-            // The command to run, not text for a person.
+            // i18n-ignore: the command to run, not text for a person
             println!("  brew upgrade atlas");
             println!(
                 "  {}",

@@ -35,6 +35,7 @@
 	<p class="row-hint">{m.crew_settings_engine_section_optional_route_this_engine_through()}</p>
 	<div class="form-grid">
 		<label for="bsd-prov-url">{m.crew_settings_engine_section_base_url()}</label>
+		<!-- i18n-ignore: an example gateway URL, not prose -->
 		<input
 			id="bsd-prov-url"
 			class="field-input"
@@ -50,6 +51,7 @@
 			</select>
 		{/if}
 		<label for="bsd-prov-key">{m.crew_settings_engine_section_api_key()}</label>
+		<!-- i18n-ignore: the prefix of an API key, not prose -->
 		<input
 			id="bsd-prov-key"
 			class="field-input"

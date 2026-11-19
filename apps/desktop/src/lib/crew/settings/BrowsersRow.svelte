@@ -32,6 +32,7 @@
 >
 	<div class="browsers" data-testid="crew-browsers">
 		<div class="line">
+			<!-- i18n-ignore: an example user@host, not prose -->
 			<input
 				class="input"
 				type="text"

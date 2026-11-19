@@ -82,7 +82,10 @@
 
 <div class="viz">
 	<div class="sheet">
-		<div class="bar"><span>atlas.yaml</span><span class="hint">{m.islands_stack_visualizer_editor_hint()}</span></div>
+		<div class="bar">
+			<!-- i18n-ignore: a file name -->
+			<span>atlas.yaml</span><span class="hint">{m.islands_stack_visualizer_editor_hint()}</span>
+		</div>
 		<textarea bind:value={src} spellcheck="false" autocapitalize="none" autocorrect="off" wrap="off" aria-label={m.islands_stack_visualizer_editor_label()}></textarea>
 	</div>
 	<div class="out">

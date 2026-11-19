@@ -353,6 +353,55 @@ describe("mv", () => {
 		expect(Object.keys(JSON.parse(read(root, CLI_EN)))).not.toContain("cli_stop");
 	});
 
+	test("--into refuses when any locale's value of the duplicate differs from the target's: it lists the locales and both values and writes nothing", async () => {
+		const root = await makeRepo();
+		addKey(root, "app_save_again", "Save", "Gravar", "A second Save label");
+		const before = snapshot(root);
+		let message = "";
+		try {
+			moveKey(loadCtx(root), "app_save_again", "app_save_button", { into: true });
+		} catch (e) {
+			message = (e as Error).message;
+		}
+		expect(message).toContain("pt-BR");
+		expect(message).toContain('"Gravar"');
+		expect(message).toContain('"Salvar"');
+		expect(message).toContain("--take pt-BR=dup");
+		expect(snapshot(root)).toBe(before);
+		const viaCli = await cli("mv.ts", root, ["app_save_again", "app_save_button", "--into"]);
+		expect(viaCli.code).toBe(1);
+		expect(viaCli.err).toContain("pt-BR");
+		expect(snapshot(root)).toBe(before);
+	});
+
+	test("--into --take pt-BR=dup replaces the target's translation in that locale (stamped) and drops the duplicate; it refuses a take that changes nothing, or the English", async () => {
+		const root = await makeRepo();
+		addKey(root, "app_save_again", "Save", "Gravar", "A second Save label");
+		const before = snapshot(root);
+		expect(() => moveKey(loadCtx(root), "app_save_again", "app_save_button", { into: true, take: { en: "dup" } })).toThrow("English");
+		expect(() => moveKey(loadCtx(root), "app_save_again", "app_save_button", { into: true, take: { "pt-BR": "target" as "dup" } })).toThrow("=dup");
+		expect(() => moveKey(loadCtx(root), "app_save_again", "app_save_button", { into: true, take: { fr: "dup" } })).toThrow("fr");
+		expect(() => moveKey(loadCtx(root), "app_save_again", "app_save_button", { take: { "pt-BR": "dup" } })).toThrow("--into");
+		expect(snapshot(root)).toBe(before);
+		const r = moveKey(loadCtx(root), "app_save_again", "app_save_button", { into: true, take: { "pt-BR": "dup" } });
+		expect(r.notes.join("\n")).toContain("pt-BR");
+		expect(JSON.parse(read(root, PT)).app_save_button).toBe("Gravar");
+		expect(Object.keys(JSON.parse(read(root, PT)))).not.toContain("app_save_again");
+		expect(JSON.parse(read(root, EN)).app_save_button).toBe("Save");
+		expect(read(root, "apps/desktop/src/App.svelte")).not.toContain("app_save_again");
+		expect(errors(await check(root))).toEqual([]);
+		// a take where both already say the same thing is a mistake, not a no-op
+		const same = await makeRepo();
+		addKey(same, "app_save_again", "Save", "Salvar", "A second Save label");
+		expect(() => moveKey(loadCtx(same), "app_save_again", "app_save_button", { into: true, take: { "pt-BR": "dup" } })).toThrow("already says");
+		const viaCli = await makeRepo();
+		addKey(viaCli, "app_save_again", "Save", "Gravar", "A second Save label");
+		const ok = await cli("mv.ts", viaCli, ["app_save_again", "app_save_button", "--into", "--take", "pt-BR=dup"]);
+		expect(ok.code).toBe(0);
+		expect(ok.out).toContain("folded app_save_again");
+		expect(JSON.parse(read(viaCli, PT)).app_save_button).toBe("Gravar");
+	});
+
 	test("the CLI exits 1 and prints file:line for every leftover (after moving what it could), 0 when nothing is left", async () => {
 		const root = await makeRepo();
 		put(root, "apps/desktop/src/lib/computed.ts", 'import { m } from "#lib/i18n/m.ts";\nexport const a = (k: string) => m[k]();\nexport const b = m.app_welcome({ name: "x" });\n');

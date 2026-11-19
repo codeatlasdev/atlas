@@ -73,7 +73,7 @@ function duplicateFindings(areas: Area[]): Finding[] {
 				continue;
 			}
 			const first = seen.get(v);
-			if (first && !e.distinct) out.push({ rule: "dup-value", severity: "warn", file: e.file, line: e.line, key: e.key, message: `the same English text as ${first.key}: same meaning: fold it with bun run i18n:mv ${e.key} ${first.key} --into; different meaning: add \`i18n-distinct: <why>\` to its description` });
+			if (first && !e.distinct) out.push({ rule: "dup-value", severity: "warn", file: e.file, line: e.line, key: e.key, message: `the same English text as ${first.key}: same role: fold it with bun run i18n:mv ${e.key} ${first.key} --into (it refuses a locale translated differently: --take <locale>=dup keeps the duplicate's); different role (a state vs a verb, another gender): add \`i18n-distinct: <why>\` to its description` });
 			else seen.set(v, e);
 		}
 	}

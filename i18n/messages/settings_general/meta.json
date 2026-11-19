@@ -1,7 +1,4 @@
 {
-	"settings_general_args_backslash": "Error under a command line field (Add agent, custom language server): the text ends with a backslash.",
-	"settings_general_args_quote_double": "Error under a command line field: a double quote was opened and never closed.",
-	"settings_general_args_quote_single": "Error under a command line field: a single quote was opened and never closed.",
 	"settings_general_close_settings": "Accessible name (aria-label, read by screen readers) of a <IconButton> component, in Settings (apps/desktop/src/lib/components/Settings.svelte). Extracted by i18n:extract: refine this description on review.",
 	"settings_general_config_edited": "Text in a <span> element, in Config (apps/desktop/src/lib/components/Config.svelte). Extracted by i18n:extract: refine this description on review.",
 	"settings_general_config_file_changed_on_disk": "Tooltip (title attribute) of a <Alert> component, in Config (apps/desktop/src/lib/components/Config.svelte). Extracted by i18n:extract: refine this description on review.",

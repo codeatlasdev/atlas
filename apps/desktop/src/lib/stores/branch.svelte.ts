@@ -1,12 +1,12 @@
 import { toast } from "@codeatlasdev/ui";
 import { git, errText } from "#lib/api.ts";
 import { gitToast } from "#lib/gitToast.ts";
-import { m } from "#lib/i18n/m.ts";
 import { branchRows, createRow, type BranchRow, type Branches } from "#lib/branches.ts";
 import { goWorktree } from "#lib/shell/navigate.ts";
 import { confirmDialog } from "#lib/stores/ask.svelte.ts";
 import { store } from "#lib/stores/projects.svelte.ts";
 import { ws } from "#lib/stores/workspace.svelte.ts";
+import { m } from "#lib/i18n/m.ts";
 
 /** The branch picker: open flag, the branches of the worktree it was opened for, and the actions it runs. */
 export const branchPicker = $state<{ open: boolean; worktreeId: string; data: Branches | null }>({
@@ -45,15 +45,7 @@ export function createBranchItems(q: string) {
 	const data = branchPicker.data;
 	const r = data && createRow(data, q, data.current);
 	return r
-		? [
-				{
-					id: r.id,
-					group: m.git_branch_group_create(),
-					label: r.label,
-					description: r.description,
-					run: () => void pick(r),
-				},
-			]
+		? [{ id: r.id, group: m.shell_commands_group_create(), label: r.label, description: r.description, run: () => void pick(r) }]
 		: [];
 }
 
@@ -68,7 +60,7 @@ async function pick(r: BranchRow) {
 	if (r.jump) {
 		const target = worktreeAt(r.jump);
 		if (target) return goWorktree(target.id);
-		return void toast.error(m.git_branch_unknown_checkout({ branch: r.name, path: r.jump }));
+		return void toast.error(m.shell_toasts_unknown_worktree({ name: r.name, path: r.jump }));
 	}
 	if (r.current) return;
 	await run(id, r.name, { create: r.kind === "create" });
@@ -80,20 +72,19 @@ async function run(id: string, branch: string, opts: { create?: boolean; stash?:
 		if (out.status === "ok") {
 			toast.success(
 				out.stashed
-					? m.git_branch_switched_stashed({ branch: out.branch })
+					? m.shell_toasts_switched_stashed({ branch: out.branch })
 					: opts.create
-						? m.git_branch_created({ branch: out.branch })
-						: m.git_branch_switched({ branch: out.branch }),
+						? m.shell_toasts_created_and_switched({ branch: out.branch })
+						: m.shell_toasts_switched({ branch: out.branch }),
 			);
 		} else if (out.status === "worktree") {
 			const target = worktreeAt(out.path);
 			if (target) goWorktree(target.id);
-			else toast.error(m.git_branch_checked_out_in({ branch, path: out.path }));
+			else toast.error(m.shell_toasts_checked_out_elsewhere({ branch, path: out.path }));
 		} else if (
-			await confirmDialog(m.git_branch_stash_title(), {
-				// git's own words (which files are in the way), then the question.
-				description: `${out.message}\n\n${m.git_branch_stash_question()}`,
-				confirmLabel: m.git_branch_stash_confirm(),
+			await confirmDialog(m.shell_toasts_stash_title(), {
+				description: m.shell_toasts_stash_body({ message: out.message }),
+				confirmLabel: m.shell_toasts_stash_confirm(),
 			})
 		) {
 			await run(id, branch, { ...opts, stash: true });

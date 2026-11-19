@@ -3,6 +3,7 @@ import { openPreview } from "#lib/stores/browser.svelte.ts";
 import { toast } from "@codeatlasdev/ui";
 import { api, type ServiceDef } from "#lib/api.ts";
 import { store } from "#lib/stores/projects.svelte.ts";
+import { m } from "#lib/i18n/m.ts";
 
 /** Pending `confirm:` gate, rendered by ConfirmSheet. */
 export const pending = $state<{ value: { id: string; target: string; label: string; text: string } | null }>({
@@ -15,7 +16,7 @@ export async function runAction(id: string, target: string, confirmed = false) {
 	if (res.needs_confirm) {
 		pending.value = { id, target, label: res.label ?? target, text: res.needs_confirm };
 	} else {
-		toast.info(`${res.action ?? target} started`);
+		toast.info(m.shell_toasts_action_started({ action: res.action ?? target }));
 	}
 }
 
@@ -28,7 +29,7 @@ export async function openService(svc: Pick<ServiceDef, "name" | "target">) {
 		await store.run("url", () => (w ? openPreview(w.id, t.url) : api.openUrl(t.url)));
 	} else {
 		await navigator.clipboard.writeText(t.url);
-		toast.success(`Copied ${t.url}`);
+		toast.success(m.shell_toasts_copied_url({ url: t.url }));
 	}
 }
 

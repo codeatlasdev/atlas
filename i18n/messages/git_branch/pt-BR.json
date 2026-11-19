@@ -1,18 +1,9 @@
 {
-	"git_branch_checked_out_in": "{branch} está em uso em {path}",
 	"git_branch_create_from": "a partir de {branch}",
 	"git_branch_create_from_head": "a partir do commit atual",
 	"git_branch_create_label": "Criar a branch \"{name}\"",
-	"git_branch_created": "Branch {branch} criada e em uso",
-	"git_branch_group_create": "Criar",
 	"git_branch_group_local": "Branches",
 	"git_branch_group_remote": "Branches remotas",
 	"git_branch_row_checked_out": "em uso em {worktree}",
-	"git_branch_row_current": "atual",
-	"git_branch_stash_confirm": "Fazer stash e trocar",
-	"git_branch_stash_question": "Fazer stash delas (inclusive dos arquivos não rastreados) e trocar? Elas ficam em `git stash`.",
-	"git_branch_stash_title": "Alterações locais seriam sobrescritas",
-	"git_branch_switched": "Agora em {branch}",
-	"git_branch_switched_stashed": "Agora em {branch}; suas alterações estão no stash",
-	"git_branch_unknown_checkout": "{branch} está em uso em {path}, que o Atlas não conhece"
+	"git_branch_row_current": "atual"
 }

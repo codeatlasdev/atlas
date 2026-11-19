@@ -1,7 +1,4 @@
 {
-	"settings_general_args_backslash": "Uma barra invertida no fim não tem nada para escapar.",
-	"settings_general_args_quote_double": "Falta fechar as aspas duplas.",
-	"settings_general_args_quote_single": "Falta fechar as aspas simples.",
 	"settings_general_close_settings": "Fechar configurações",
 	"settings_general_config_edited": "● editado",
 	"settings_general_config_file_changed_on_disk": "O arquivo mudou no disco",

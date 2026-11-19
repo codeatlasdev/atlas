@@ -1,0 +1,55 @@
+{
+	"shell_home_confirm_action": "Confirmar",
+	"shell_home_missing_project_check_again": "Verificar novamente",
+	"shell_home_missing_project_last_known_path": "Último caminho conhecido",
+	"shell_home_missing_project_locate": "Localizar…",
+	"shell_home_missing_project_relink": "Vincular",
+	"shell_home_missing_project_remove_all": [
+		{
+			"declarations": [
+				"input count",
+				"local countExact = count",
+				"local countPlural = count: plural"
+			],
+			"selectors": [
+				"countExact",
+				"countPlural"
+			],
+			"match": {
+				"countExact=0, countPlural=*": "Nenhum projeto ausente para remover",
+				"countExact=*, countPlural=one": "Remover {count} projeto ausente…",
+				"countExact=*, countPlural=*": "Remover todos os {count} projetos ausentes…"
+			}
+		}
+	],
+	"shell_home_missing_project_remove_from_atlas": "Remover do Atlas",
+	"shell_home_missing_project_same_name": "Mesmo nome",
+	"shell_home_missing_project_same_remote": "Mesmo remote do git",
+	"shell_home_missing_project_searching": "Procurando uma cópia movida…",
+	"shell_home_missing_project_suggestion": "Provavelmente a cópia movida de {name}",
+	"shell_home_missing_project_suggestion_label": "Cópia movida encontrada",
+	"shell_home_missing_project_title": "{name} não foi encontrado",
+	"shell_home_missing_project_why": [
+		{
+			"declarations": [
+				"input os"
+			],
+			"selectors": [
+				"os"
+			],
+			"match": {
+				"os=mac": "Esta pasta não está mais no seu Mac. Ela pode ter sido excluída, movida ou estar em um disco desconectado.",
+				"os=windows": "Esta pasta não está mais neste PC. Ela pode ter sido excluída, movida ou estar em um disco desconectado.",
+				"os=*": "Esta pasta não está mais neste computador. Ela pode ter sido excluída, movida ou estar em um disco desconectado."
+			}
+		}
+	],
+	"shell_home_no_project_add_project": "Adicionar projeto…",
+	"shell_home_no_project_discover": "Encontrar projetos nesta máquina",
+	"shell_home_no_project_error_title": "Não foi possível ler seus projetos",
+	"shell_home_no_project_first_hint": "O Atlas executa os serviços, terminais e agentes de código do seu projeto em um só lugar e descobre como iniciá-lo a partir da pasta.",
+	"shell_home_no_project_first_title": "Adicione seu primeiro projeto",
+	"shell_home_no_project_none_title": "Nenhum projeto selecionado",
+	"shell_home_no_project_pick_a_worktree": "Escolha uma worktree na barra lateral ou pressione {key} para ir até uma.",
+	"shell_home_no_project_retry": "Tentar novamente"
+}

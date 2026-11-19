@@ -1,7 +1,4 @@
 {
-	"settings_general_args_backslash": "A backslash at the end has nothing to escape.",
-	"settings_general_args_quote_double": "Missing closing double quote.",
-	"settings_general_args_quote_single": "Missing closing single quote.",
 	"settings_general_close_settings": "Close settings",
 	"settings_general_config_edited": "● edited",
 	"settings_general_config_file_changed_on_disk": "File changed on disk",

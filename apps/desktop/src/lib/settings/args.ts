@@ -30,7 +30,7 @@ export function parseArgs(text: string): ParsedArgs {
 			quote = c;
 			inWord = true;
 		} else if (c === "\\") {
-			if (i + 1 >= text.length) return { ok: false, error: m.settings_general_args_backslash() };
+			if (i + 1 >= text.length) return { ok: false, error: m.settings_editor_args_trailing_backslash() };
 			cur += text[++i];
 			inWord = true;
 		} else if (/\s/.test(c)) {
@@ -42,11 +42,15 @@ export function parseArgs(text: string): ParsedArgs {
 			inWord = true;
 		}
 	}
-	if (quote)
+	if (quote) {
 		return {
 			ok: false,
-			error: quote === '"' ? m.settings_general_args_quote_double() : m.settings_general_args_quote_single(),
+			error:
+				quote === '"'
+					? m.settings_editor_args_missing_double_quote()
+					: m.settings_editor_args_missing_single_quote(),
 		};
+	}
 	if (inWord) args.push(cur);
 	return { ok: true, args };
 }

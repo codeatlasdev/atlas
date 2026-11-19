@@ -1,18 +1,9 @@
 {
-	"git_branch_checked_out_in": "Error toast when switching to a branch another worktree has checked out.",
 	"git_branch_create_from": "Description of the Create branch row: the branch it starts from.",
 	"git_branch_create_from_head": "Description of the Create branch row when HEAD is detached.",
 	"git_branch_create_label": "Row of the branch picker that creates a branch from the typed name.",
-	"git_branch_created": "Success toast after creating a branch from the picker.",
-	"git_branch_group_create": "Group title of the Create branch row in the branch picker.",
 	"git_branch_group_local": "Group title in the branch picker.",
 	"git_branch_group_remote": "Group title in the branch picker.",
 	"git_branch_row_checked_out": "Part of a branch row's description: another worktree has it checked out. {worktree} is that worktree's folder name.",
-	"git_branch_row_current": "Part of a branch row's description in the picker: this is the checked out branch.",
-	"git_branch_stash_confirm": "Confirm button when switching branches with uncommitted work in the way.",
-	"git_branch_stash_question": "Confirm dialog body, after git's own message about the files in the way.",
-	"git_branch_stash_title": "Confirm dialog title when switching branches with uncommitted work in the way.",
-	"git_branch_switched": "Success toast after switching branches.",
-	"git_branch_switched_stashed": "Success toast after switching branches with the changes stashed.",
-	"git_branch_unknown_checkout": "Error toast when picking a branch another worktree has checked out and Atlas has no project at that path."
+	"git_branch_row_current": "Part of a branch row's description in the picker: this is the checked out branch."
 }

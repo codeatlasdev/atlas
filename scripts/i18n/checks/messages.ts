@@ -4,7 +4,7 @@
 //   dup-key          the same key in two areas (Paraglide silently keeps the last one)
 //   budget           an area file over the keys or bytes of surfaces.json: split it
 //   dup-common       an English value equal to a common one (use common_action_cancel) unless meta says `distinct`
-//   dup-value        the same English value under two non-common keys (warning)
+//   dup-value        the same English value under two non-common keys: warning when translated differently, info when not
 //   dangling-ref     `{@key}` that does not exist, a cycle, or a target some consuming surface does not have
 //   unused           a key none of the surfaces consuming it references (common*, generated and cli_* areas are exempt: their ids are computed)
 //   undefined-key    `t!("x")` / `m.x(` in a source whose key is not in the tree; unconsumed-key: it is, in an area the surface lacks
@@ -62,7 +62,9 @@ function duplicateFindings(areas: Area[]): Finding[] {
 	const out: Finding[] = [];
 	const common = new Map<string, Entry>();
 	for (const a of areas.filter((x) => isCommon(x.name))) for (const e of a.entries.get(a.base)?.values() ?? []) common.set(plainValue(e) ?? "\u0000", e);
-	const seen = new Map<string, Entry>();
+	// Same English on two screens is fine by itself (one shared key would couple unrelated screens). The defect a user
+	// sees is the same English translated two ways: that is the warning; a consistent pair is info only.
+	const seen = new Map<string, { e: Entry; area: Area }>();
 	for (const a of areas.filter((x) => !isCommon(x.name))) {
 		for (const e of a.entries.get(a.base)?.values() ?? []) {
 			const v = plainValue(e);
@@ -73,8 +75,24 @@ function duplicateFindings(areas: Area[]): Finding[] {
 				continue;
 			}
 			const first = seen.get(v);
-			if (first && !e.distinct) out.push({ rule: "dup-value", severity: "warn", file: e.file, line: e.line, key: e.key, message: `the same English text as ${first.key}: same role: fold it with bun run i18n:mv ${e.key} ${first.key} --into (it refuses a locale translated differently: --take <locale>=dup keeps the duplicate's); different role (a state vs a verb, another gender): add \`i18n-distinct: <why>\` to its description` });
-			else seen.set(v, e);
+			if (!first) {
+				seen.set(v, { e, area: a });
+				continue;
+			}
+			if (e.distinct) continue;
+			const differ = a.locales
+				.filter((l) => l !== a.base)
+				.flatMap((l) => {
+					const mine = a.entries.get(l)?.get(e.key);
+					const theirs = first.area.entries.get(l)?.get(first.e.key);
+					if (!mine || !theirs) return [];
+					// compared like the English (case and a trailing period or ellipsis do not count), shown as written
+					const same = (plainValue(mine) ?? JSON.stringify(mine.value)) === (plainValue(theirs) ?? JSON.stringify(theirs.value));
+					return same ? [] : [`${l} ${JSON.stringify(mine.value)} vs ${JSON.stringify(theirs.value)}`];
+				});
+			const fold = `fold it with bun run i18n:mv ${e.key} ${first.e.key} --into`;
+			if (differ.length === 0) out.push({ rule: "dup-value", severity: "info", file: e.file, line: e.line, key: e.key, message: `the same English text as ${first.e.key}, translated the same way: if it is the same role on the same screen, ${fold}` });
+			else out.push({ rule: "dup-value", severity: "warn", file: e.file, line: e.line, key: e.key, message: `the same English text as ${first.e.key}, translated differently (${differ.join("; ")}): same role, align the translations (or ${fold} --take <locale>=dup); different role (a state vs a verb, another gender), add \`i18n-distinct: <why>\` to its description` });
 		}
 	}
 	return out;

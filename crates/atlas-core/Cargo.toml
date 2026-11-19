@@ -57,6 +57,9 @@ windows-sys = { version = "0.61", features = [
     "Win32_System_SystemInformation",
     "Win32_System_Threading",
     "Win32_UI_Shell",
+    # ShellExecuteW (sys::shell_open) is gated on it; without it atlas-core only builds when another crate of the
+    # workspace happens to turn it on.
+    "Win32_UI_WindowsAndMessaging",
 ] }
 
 [dev-dependencies]

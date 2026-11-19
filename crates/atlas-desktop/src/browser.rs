@@ -175,12 +175,51 @@ fn live_labels(app: &AppHandle) -> Vec<String> {
         .collect()
 }
 
-pub fn parse_url(raw: &str) -> Result<Url, String> {
-    let u = Url::parse(raw).map_err(|e| format!("{raw}: {e}"))?;
-    if matches!(u.scheme(), "http" | "https") {
-        Ok(u)
+/// The dev server the app itself is loaded from (`tauri dev` only: a release build serves the bundled pages).
+fn dev_origin(app: &AppHandle) -> Option<Url> {
+    if tauri::is_dev() {
+        app.config().build.dev_url.clone()
     } else {
+        None
+    }
+}
+
+/// Is `u` where the app's own privileged pages are served? A child webview must never load those: its page is
+/// arbitrary web content, and the app's origin has the app's commands. `tauri://localhost` (macOS, Linux),
+/// `http(s)://tauri.localhost` (Windows), the `ipc`/`asset` custom-protocol hosts and the `tauri dev` server.
+fn is_app_origin(u: &Url, dev: Option<&Url>) -> bool {
+    if matches!(u.scheme(), "tauri" | "ipc" | "asset" | "asset-protocol") {
+        return true;
+    }
+    if let Some(host) = u.host_str() {
+        let host = host.trim_end_matches('.');
+        let own = |n: &str| host == n || host.ends_with(&format!(".{n}"));
+        if own("tauri.localhost") || own("ipc.localhost") || own("asset.localhost") {
+            return true;
+        }
+    }
+    dev.is_some_and(|d| {
+        u.scheme() == d.scheme()
+            && u.host_str() == d.host_str()
+            && u.port_or_known_default() == d.port_or_known_default()
+    })
+}
+
+/// What a child webview may navigate to: web pages (and `about:`), never the app's own origin.
+fn nav_allowed(u: &Url, dev: Option<&Url>) -> bool {
+    matches!(u.scheme(), "http" | "https" | "about") && !is_app_origin(u, dev)
+}
+
+pub fn parse_url(raw: &str, dev: Option<&Url>) -> Result<Url, String> {
+    let u = Url::parse(raw).map_err(|e| format!("{raw}: {e}"))?;
+    if !matches!(u.scheme(), "http" | "https") {
         Err(format!("only http(s) URLs: {raw}"))
+    } else if is_app_origin(&u, dev) {
+        Err(format!(
+            "that is Atlas's own address, not a web page: {raw}"
+        ))
+    } else {
+        Ok(u)
     }
 }
 
@@ -211,7 +250,8 @@ pub async fn browser_open(
     {
         return apply(&v, at, last);
     }
-    let u = parse_url(&url)?;
+    let dev = dev_origin(&app);
+    let u = parse_url(&url, dev.as_ref())?;
     let window = app.get_window(MAIN).ok_or("no main window")?;
     let (a1, a2, a3, t1, t2, t3) = (
         app.clone(),
@@ -235,7 +275,7 @@ pub async fn browser_open(
     let builder = builder
         .initialization_script(GRAB_JS)
         .on_navigation(move |u| {
-            let ok = matches!(u.scheme(), "http" | "https" | "about");
+            let ok = nav_allowed(u, dev.as_ref());
             if ok {
                 let _ = a1.emit(
                     &format!("browser://{t1}"),
@@ -349,7 +389,7 @@ pub fn browser_list(app: AppHandle) -> Vec<String> {
 #[tauri::command]
 pub fn browser_navigate(app: AppHandle, tab: String, url: String) -> Result<(), String> {
     webview(&app, &tab)?
-        .navigate(parse_url(&url)?)
+        .navigate(parse_url(&url, dev_origin(&app).as_ref())?)
         .map_err(|e| e.to_string())
 }
 
@@ -545,12 +585,72 @@ mod tests {
         h: 600.0,
     };
 
+    fn u(s: &str) -> Url {
+        Url::parse(s).unwrap()
+    }
+
     #[test]
     fn only_http_urls() {
-        assert!(parse_url("http://localhost:3000/x").is_ok());
-        assert!(parse_url("https://example.com").is_ok());
-        assert!(parse_url("file:///etc/passwd").is_err());
-        assert!(parse_url("javascript:alert(1)").is_err());
+        assert!(parse_url("http://localhost:3000/x", None).is_ok());
+        assert!(parse_url("https://example.com", None).is_ok());
+        assert!(parse_url("file:///etc/passwd", None).is_err());
+        assert!(parse_url("javascript:alert(1)", None).is_err());
+    }
+
+    // Regression: on Windows the app's own pages are served from `http://tauri.localhost`, which the old
+    // http/https/about rule let a browser child webview load (the app's commands in a web page's hands).
+    #[test]
+    fn a_child_webview_never_loads_the_apps_own_origin() {
+        for own in [
+            "tauri://localhost/",
+            "tauri://localhost/shots/hud",
+            "http://tauri.localhost/",
+            "https://tauri.localhost/",
+            "http://tauri.localhost:8080/x",
+            "http://TAURI.localhost./",
+            "http://sub.tauri.localhost/",
+            "http://ipc.localhost/cmd",
+            "https://asset.localhost/%2Fetc%2Fpasswd",
+            "ipc://localhost/cmd",
+            "asset://localhost/x",
+        ] {
+            assert!(!nav_allowed(&u(own), None), "navigation to {own}");
+            assert!(parse_url(own, None).is_err(), "open of {own}");
+        }
+    }
+
+    #[test]
+    fn the_dev_server_is_the_apps_origin_only_while_developing() {
+        let dev = u("http://localhost:1420");
+        assert!(!nav_allowed(
+            &u("http://localhost:1420/shots/hud"),
+            Some(&dev)
+        ));
+        assert!(parse_url("http://localhost:1420/", Some(&dev)).is_err());
+        // Another port, another host and a release build (no dev server) are the user's own pages.
+        assert!(nav_allowed(&u("http://localhost:3000/"), Some(&dev)));
+        assert!(nav_allowed(&u("http://127.0.0.1:1420/"), Some(&dev)));
+        assert!(nav_allowed(&u("http://localhost:1420/"), None));
+    }
+
+    #[test]
+    fn web_pages_and_about_still_navigate() {
+        for ok in [
+            "https://example.com/",
+            "http://localhost:3000/",
+            "http://my-app.localhost/",
+            "http://tauri.localhost.evil.com/",
+            "about:blank",
+        ] {
+            assert!(nav_allowed(&u(ok), None), "{ok}");
+        }
+        for bad in [
+            "file:///etc/passwd",
+            "javascript:alert(1)",
+            "data:text/html,x",
+        ] {
+            assert!(!nav_allowed(&u(bad), None), "{bad}");
+        }
     }
 
     #[test]

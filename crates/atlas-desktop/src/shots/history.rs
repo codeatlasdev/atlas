@@ -64,6 +64,40 @@ impl History {
     pub fn parse(text: &str) -> Self {
         serde_json::from_str(text).unwrap_or_default()
     }
+
+    /// The capture file `path` names, resolved and safe to hand to the OS opener, or why not. The page is a
+    /// webview and its `path` is untrusted: it must be an entry of this history (so a `../` escape, a path
+    /// outside the capture folders or one starting with `-` is no entry), absolute (so it can never be read as a
+    /// command-line option), of the extension its capture kind produces (never an `.app` or `.command`), and a
+    /// regular file that is itself in the folder it is listed in (a symlink that leaves it is refused). Returns the
+    /// resolved path.
+    pub fn launchable(&self, path: &Path) -> Result<PathBuf, String> {
+        let entry = self
+            .entries
+            .iter()
+            .find(|e| e.path == path)
+            .ok_or("That file is not one of Atlas's captures.")?;
+        let name = path.file_name().filter(|_| path.is_absolute());
+        let ext_ok = path
+            .extension()
+            .is_some_and(|x| x.eq_ignore_ascii_case(entry.kind.extension()));
+        let (Some(name), true) = (name, ext_ok) else {
+            return Err("That is not a capture file.".into());
+        };
+        let gone = |e: std::io::Error| format!("{}: {e}", path.display());
+        let resolved = std::fs::canonicalize(path).map_err(gone)?;
+        let folder =
+            std::fs::canonicalize(path.parent().unwrap_or(Path::new("/"))).map_err(gone)?;
+        let stays = resolved.parent() == Some(folder.as_path())
+            && resolved
+                .file_name()
+                .is_some_and(|n| n.eq_ignore_ascii_case(name));
+        if stays && resolved.is_file() {
+            Ok(resolved)
+        } else {
+            Err("That capture is not a plain file in its folder.".into())
+        }
+    }
 }
 
 #[cfg(test)]
@@ -168,5 +202,153 @@ mod tests {
         assert_eq!(first["width"], 100);
         assert!(first["secs"].is_null());
         assert_eq!(History::parse(&v.to_string()), h);
+    }
+
+    /// A history over real files in a temp folder: `(history, folder)`, one entry per `(name, kind)`.
+    fn on_disk(files: &[(&str, Kind)]) -> (History, tempfile::TempDir) {
+        let dir = tempfile::tempdir().unwrap();
+        let mut h = History::default();
+        for (i, (name, kind)) in files.iter().enumerate() {
+            let path = dir.path().join(name);
+            std::fs::create_dir_all(path.parent().unwrap()).unwrap();
+            if !path.exists() {
+                std::fs::write(&path, b"x").unwrap();
+            }
+            h.push(
+                Entry {
+                    path,
+                    kind: *kind,
+                    ..e("x", i as u64)
+                },
+                50,
+            );
+        }
+        (h, dir)
+    }
+
+    // Regression: `shots_history_open` ran `open <any path>` for any local page: any app, any `.command`, any option.
+    #[test]
+    fn a_real_capture_of_the_history_is_launchable_for_each_kind() {
+        let (h, dir) = on_disk(&[
+            ("a.png", Kind::Screenshot),
+            ("b.mp4", Kind::Recording),
+            ("c.GIF", Kind::Gif),
+        ]);
+        for n in ["a.png", "b.mp4", "c.GIF"] {
+            let got = h.launchable(&dir.path().join(n)).unwrap();
+            assert!(got.is_absolute() && got.is_file(), "{n}");
+            assert_eq!(got.file_name().unwrap(), n);
+        }
+    }
+
+    #[test]
+    fn a_path_that_is_not_in_the_history_is_refused_whatever_it_looks_like() {
+        let (h, dir) = on_disk(&[("a.png", Kind::Screenshot)]);
+        let outside = tempfile::tempdir().unwrap();
+        let secret = outside.path().join("secret.png");
+        std::fs::write(&secret, b"x").unwrap();
+        let escape = dir
+            .path()
+            .join("../")
+            .join(outside.path().file_name().unwrap())
+            .join("secret.png");
+        std::fs::write(dir.path().join("untracked.png"), b"x").unwrap();
+        for bad in [
+            secret,
+            escape,
+            dir.path().join("untracked.png"),
+            dir.path().join("sub/../a.png"),
+            "/etc/passwd".into(),
+            "/Applications/Calculator.app".into(),
+            "-a".into(),
+            "--args".into(),
+            "-R".into(),
+            "a.png".into(),
+            "".into(),
+        ] {
+            assert!(h.launchable(&bad).is_err(), "{}", bad.display());
+        }
+    }
+
+    #[test]
+    fn an_app_or_a_script_is_refused_by_type_even_when_listed_in_the_history() {
+        let (h, dir) = on_disk(&[
+            ("Evil.app", Kind::Screenshot),
+            ("run.command", Kind::Screenshot),
+            ("noext", Kind::Gif),
+            ("shot.png.command", Kind::Screenshot),
+            ("movie.png", Kind::Recording),
+        ]);
+        for n in [
+            "Evil.app",
+            "run.command",
+            "noext",
+            "shot.png.command",
+            "movie.png",
+        ] {
+            assert!(h.launchable(&dir.path().join(n)).is_err(), "{n}");
+        }
+    }
+
+    #[test]
+    fn a_folder_named_like_a_capture_is_refused() {
+        let (h, dir) = on_disk(&[("dir.png", Kind::Screenshot)]);
+        std::fs::remove_file(dir.path().join("dir.png")).unwrap();
+        std::fs::create_dir(dir.path().join("dir.png")).unwrap();
+        assert!(h.launchable(&dir.path().join("dir.png")).is_err());
+    }
+
+    #[test]
+    fn a_vanished_capture_is_an_error_not_a_launch() {
+        let (h, dir) = on_disk(&[("a.png", Kind::Screenshot)]);
+        std::fs::remove_file(dir.path().join("a.png")).unwrap();
+        assert!(h.launchable(&dir.path().join("a.png")).is_err());
+    }
+
+    #[cfg(unix)]
+    #[test]
+    fn a_symlink_that_leaves_the_capture_folder_or_changes_the_type_is_refused() {
+        use std::os::unix::fs::symlink;
+        let (h, dir) = on_disk(&[
+            ("link.png", Kind::Screenshot),
+            ("scripty.png", Kind::Screenshot),
+            ("dirlink.png", Kind::Screenshot),
+            ("ok.png", Kind::Screenshot),
+        ]);
+        let outside = tempfile::tempdir().unwrap();
+        let target = outside.path().join("secret.png");
+        std::fs::write(&target, b"x").unwrap();
+        std::fs::write(dir.path().join("run.command"), b"#!/bin/sh").unwrap();
+        for (link, to) in [
+            ("link.png", target),
+            ("scripty.png", dir.path().join("run.command")),
+            ("dirlink.png", outside.path().to_path_buf()),
+        ] {
+            let at = dir.path().join(link);
+            std::fs::remove_file(&at).unwrap();
+            symlink(to, &at).unwrap();
+            assert!(h.launchable(&at).is_err(), "{link}");
+        }
+        assert!(h.launchable(&dir.path().join("ok.png")).is_ok());
+    }
+
+    // The history folder itself reached through a symlink (macOS: /var -> /private/var) is not an escape.
+    #[cfg(unix)]
+    #[test]
+    fn a_folder_reached_through_a_symlink_is_still_launchable() {
+        use std::os::unix::fs::symlink;
+        let (_, dir) = on_disk(&[("a.png", Kind::Screenshot)]);
+        let via = tempfile::tempdir().unwrap();
+        let alias = via.path().join("alias");
+        symlink(dir.path(), &alias).unwrap();
+        let mut h = History::default();
+        h.push(
+            Entry {
+                path: alias.join("a.png"),
+                ..e("a.png", 1)
+            },
+            10,
+        );
+        assert!(h.launchable(&alias.join("a.png")).is_ok());
     }
 }

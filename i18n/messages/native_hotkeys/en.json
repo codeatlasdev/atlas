@@ -1,0 +1,22 @@
+{
+	"native_hotkeys_apps_taken": "{owner}. A global hotkey wins over the app in front, so that command stops working everywhere while Atlas runs",
+	"native_hotkeys_needs_modifier": "A global hotkey needs a modifier ({ctrl}, {alt}, {shift} or {cmd})",
+	"native_hotkeys_no_key": "\"{stroke}\" has no key",
+	"native_hotkeys_owner_app_command": "A standard app command",
+	"native_hotkeys_owner_app_switcher": "The app switcher ({key})",
+	"native_hotkeys_owner_editing": "A standard editing command",
+	"native_hotkeys_owner_finder_search": "Finder search ({key})",
+	"native_hotkeys_owner_hide": "Hide ({key})",
+	"native_hotkeys_owner_minimize": "Minimize ({key})",
+	"native_hotkeys_owner_quit": "Quit ({key})",
+	"native_hotkeys_owner_save_as": "Save As in most apps ({key})",
+	"native_hotkeys_owner_screenshot_area": "macOS area screenshot ({key})",
+	"native_hotkeys_owner_screenshot_screen": "macOS full-screen screenshot ({key})",
+	"native_hotkeys_owner_screenshot_toolbar": "macOS screenshot and recording toolbar ({key})",
+	"native_hotkeys_owner_screenshot_touch_bar": "macOS Touch Bar screenshot ({key})",
+	"native_hotkeys_owner_spotlight": "Spotlight ({key})",
+	"native_hotkeys_system_taken": "{owner} already uses this key: macOS takes it before Atlas can",
+	"native_hotkeys_taken": "{stroke} is taken by another app or the system ({reason})",
+	"native_hotkeys_unknown_modifier": "unknown modifier \"{modifier}\" in \"{stroke}\"",
+	"native_hotkeys_unlistenable": "\"{stroke}\" is not a key the system can listen for ({reason})"
+}

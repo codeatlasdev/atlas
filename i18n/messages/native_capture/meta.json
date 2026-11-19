@@ -1,0 +1,25 @@
+{
+	"native_capture_action_all_in_one": "Name of the all-in-one capture action (one toolbar over the screen) inside the sentences Settings shows when a capture key is refused. Same action as the Settings > Capture row and the capture menu.",
+	"native_capture_action_ocr": "Name of the capture text (OCR) action inside the sentences Settings shows when a capture key is refused.",
+	"native_capture_action_previous": "Name of the capture previous area action inside the sentences Settings shows when a capture key is refused.",
+	"native_capture_action_record": "Name of the record screen (video) action inside the sentences Settings shows when a capture key is refused.",
+	"native_capture_action_region": "Name of the capture region action inside the sentences Settings shows when a capture key is refused.",
+	"native_capture_action_screen": "Name of the capture whole screen action inside the sentences Settings shows when a capture key is refused.",
+	"native_capture_action_window": "Name of the capture window action inside the sentences Settings shows when a capture key is refused.",
+	"native_capture_audio_needs_macos_15": {
+		"description": "Reason shown under the sound switches in Settings > Capture > Recording when the Mac is older than macOS 15: recording with sound is not possible.",
+		"platform": "mac"
+	},
+	"native_capture_dock_summon": "Name of the agent dock's summon action (the key that opens its composer) inside the sentence Settings shows when a capture key equals a dock key. Same action as the dock's Settings row.",
+	"native_capture_dock_toggle": "Name of the agent dock's hide or show action inside the sentence Settings shows when a capture key equals a dock key. Same action as the dock's Settings row.",
+	"native_capture_folder_absolute": "Error toast when the capture folder is not an absolute path.",
+	"native_capture_history_range": "Error toast when the history size is outside the allowed range. {min} and {max} are whole numbers.",
+	"native_capture_key_refused": "Error toast naming the capture action whose key was refused. {action} is one of the native_capture_action_* names, {reason} the sentence saying why the key is refused.",
+	"native_capture_mic_off": {
+		"description": "Reason shown under the microphone switch in Settings > Capture > Recording when macOS refused the microphone to Atlas. Names the macOS settings path: use the exact names the system shows. i18n-allow glossary:settings (System Settings is the name of the macOS app).",
+		"platform": "mac"
+	},
+	"native_capture_same_key": "Error toast when two actions use the same key. {first} and {second} are the two actions' names (a capture action, or one of the agent dock's), shown in quotes.",
+	"native_capture_stack_range": "Error toast when the number of quick access cards is outside the allowed range. {min} and {max} are whole numbers.",
+	"native_capture_timer_values": "Error toast when the self-timer is not one of the accepted values (off, 3, 5 or 10 seconds)."
+}

@@ -13,8 +13,7 @@
 	import LoadError from "#lib/settings/LoadError.svelte";
 	import TextInput from "#lib/settings/TextInput.svelte";
 	import { customAgentEntry, type CustomAgentEntry } from "#lib/settings/customAgents.ts";
-
-	const customDescription = `Any agent CLI (OpenCode, Gemini CLI, Amp…). It starts from the + menu and ${kbd("cmd-shift-a")} like the built-in ones. Without Atlas hooks its tab shows working while the terminal prints and idle after a few quiet seconds; to report real states it can run \`atlas hook\` (see docs/agents.md).`;
+	import { m } from "#lib/i18n/m.ts";
 
 	let permissions = $state("manual");
 	let args = $state<Record<string, string>>({});
@@ -67,17 +66,19 @@
 	<LoadError what="agents" error={loadError} />
 {/if}
 
-<Group title="Coding agents">
+<Group title={m.settings_agents_agent_coding_agents()}>
 	{#each agents.list as a (a.id)}
 		<Row
 			label={a.label}
-			description={a.installed ? (a.version ?? a.path ?? "Installed") : "Not installed on this computer"}
+			description={a.installed
+				? (a.version ?? a.path ?? m.settings_agents_agent_installed())
+				: m.settings_agents_agent_not_installed()}
 		/>
 	{/each}
 	<Row
 		id="agent-default"
-		label="Default agent"
-		description="What a new agent tab starts. Blank terminal opens a plain shell."
+		label={m.settings_agents_agent_default_agent()}
+		description={m.settings_agents_agent_default_description()}
 	>
 		<div class="select">
 			<Select
@@ -85,7 +86,7 @@
 				value={agents.defaultAgent}
 				options={[
 					...agents.list.filter((a) => a.installed).map((a) => ({ value: a.id, label: a.label })),
-					{ value: "blank", label: "Blank terminal" },
+					{ value: "blank", label: m.settings_agents_agent_default_blank() },
 				]}
 				onchange={(v) => agents.setDefault(v)}
 			/>
@@ -93,16 +94,16 @@
 	</Row>
 	<Row
 		id="agent-permissions"
-		label="Tool approval"
-		description="Ask first: the agent waits for your OK before running commands or editing files. Auto-approve: it never asks, so use it only in worktrees you can throw away."
+		label={m.settings_agents_agent_tool_approval()}
+		description={m.settings_agents_agent_approval_description()}
 	>
 		<SegmentedControl
-			aria-label="Tool approval"
+			aria-label={m.settings_agents_agent_tool_approval()}
 			size="sm"
 			value={permissions}
 			items={[
-				{ value: "manual", label: "Ask first" },
-				{ value: "yolo", label: "Auto-approve" },
+				{ value: "manual", label: m.settings_agents_agent_approval_ask() },
+				{ value: "yolo", label: m.settings_agents_agent_approval_auto() },
 			]}
 			onchange={(v) => {
 				permissions = v;
@@ -113,12 +114,13 @@
 	{#each agents.list.filter((a) => a.installed) as a (a.id)}
 		<Row
 			id={a.id === agents.list.find((x) => x.installed)?.id ? "agent-args" : undefined}
-			label="Extra arguments for {a.label}"
-			description="Flags added every time {a.label} starts, for example --model opus."
+			label={m.settings_agents_agent_args_label({ label: a.label })}
+			description={m.settings_agents_agent_args_description({ label: a.label })}
 		>
+			<!-- i18n-ignore: a flag example, not prose -->
 			<TextInput
 				mono
-				label="Extra arguments for {a.label}"
+				label={m.settings_agents_agent_args_label({ label: a.label })}
 				placeholder="--model opus"
 				value={args[a.id] ?? ""}
 				onchange={(v) => {
@@ -132,45 +134,69 @@
 
 <DockSettings />
 
-<Group title="Custom agents" description={customDescription}>
+<Group
+	title={m.settings_agents_agent_custom_agents()}
+	description={m.settings_agents_agent_custom_description({ key: kbd("cmd-shift-a") })}
+>
 	{#each custom as c (c.id)}
 		<Row label={c.label} description={[c.command, ...c.args].join(" ")}>
 			<button
 				class="rm"
-				aria-label="Remove {c.label}"
+				aria-label={m.settings_agents_agent_remove_label({ label: c.label })}
 				onclick={() => saveCustom(custom.filter((x) => x !== c))}><Trash2 size={14} /></button
 			>
 		</Row>
 	{/each}
 	<div data-setting="agent-custom" class="custom">
-		<TextField label="Name" placeholder="OpenCode" bind:value={form.name} />
-		<TextField label="Command" placeholder="opencode" bind:value={form.command} />
-		<TextField label="Arguments" placeholder="--model gpt-5" bind:value={form.args} />
-		<TextField label="Resume arguments" placeholder="--session {'{session}'}" bind:value={form.resume} />
-		<TextArea label="Environment" placeholder="KEY=value, one per line" rows={2} bind:value={form.env} />
+		<!-- i18n-ignore: a product name used as an example -->
+		<TextField label={m.settings_agents_agent_name()} placeholder="OpenCode" bind:value={form.name} />
+		<!-- i18n-ignore: a command name used as an example -->
+		<TextField label={m.settings_agents_agent_command()} placeholder="opencode" bind:value={form.command} />
+		<!-- i18n-ignore: a flag example, not prose -->
+		<TextField
+			label={m.settings_agents_agent_arguments()}
+			placeholder="--model gpt-5"
+			bind:value={form.args}
+		/>
+		<!-- i18n-ignore: a flag with a placeholder, not prose -->
+		<TextField
+			label={m.settings_agents_agent_resume_arguments()}
+			placeholder="--session {'{session}'}"
+			bind:value={form.resume}
+		/>
+		<TextArea
+			label={m.settings_agents_agent_environment()}
+			placeholder={m.settings_agents_agent_environment_placeholder()}
+			rows={2}
+			bind:value={form.env}
+		/>
 		{#if formError}<p class="err" role="alert">{formError}</p>{/if}
-		<div><Button size="sm" onclick={addCustom}><Plus size={14} /> Add agent</Button></div>
+		<div>
+			<Button size="sm" onclick={addCustom}><Plus size={14} /> {m.settings_agents_agent_add_agent()}</Button>
+		</div>
 	</div>
 </Group>
 
 <Group
-	title="Quick commands"
-	description="One-click buttons in the tab strip. Each one runs a command in a terminal, or sends a prompt to the agent."
+	title={m.settings_agents_agent_quick_commands()}
+	description={m.settings_agents_agent_quick_description()}
 >
 	{#each quick.list as q (q.id)}
 		<div class="quick" data-setting={q === quick.list[0] ? "quick" : undefined}>
-			<TextField label="Button name" bind:value={q.label} onchange={saveQuick} />
+			<TextField label={m.settings_agents_agent_quick_name()} bind:value={q.label} onchange={saveQuick} />
 			<TextField
-				label={q.kind === "prompt" ? "Prompt to send" : "Command to run"}
+				label={q.kind === "prompt"
+					? m.settings_agents_agent_quick_prompt()
+					: m.settings_agents_agent_quick_command()}
 				bind:value={q.command}
 				onchange={saveQuick}
 			/>
 			<Select
-				label="What it does"
+				label={m.settings_agents_agent_quick_kind()}
 				value={q.kind}
 				options={[
-					{ value: "terminal", label: "Run in terminal" },
-					{ value: "prompt", label: "Send to agent" },
+					{ value: "terminal", label: m.settings_agents_agent_quick_kind_terminal() },
+					{ value: "prompt", label: m.capture_quick_page_send_to_agent() },
 				]}
 				onchange={(v) => {
 					q.kind = v as typeof q.kind;
@@ -178,10 +204,10 @@
 				}}
 			/>
 			<Select
-				label="Show in"
+				label={m.settings_agents_agent_quick_scope()}
 				value={q.scope}
 				options={[
-					{ value: "global", label: "All projects" },
+					{ value: "global", label: m.settings_agents_agent_quick_scope_all() },
 					...store.projects.filter((p) => !p.parent).map((p) => ({ value: p.id, label: p.name })),
 				]}
 				onchange={(v) => {
@@ -191,7 +217,7 @@
 			/>
 			<button
 				class="rm"
-				aria-label="Remove quick command"
+				aria-label={m.settings_agents_agent_quick_remove()}
 				onclick={() => {
 					quick.list = quick.list.filter((x) => x.id !== q.id);
 					saveQuick();
@@ -201,8 +227,8 @@
 	{/each}
 	<Row
 		id={quick.list.length ? undefined : "quick"}
-		label="Add a quick command"
-		description={quick.list.length ? undefined : "Example: Run tests, or Review my changes."}
+		label={m.settings_agents_agent_quick_add_label()}
+		description={quick.list.length ? undefined : m.settings_agents_agent_quick_add_hint()}
 	>
 		<Button
 			size="sm"
@@ -213,7 +239,7 @@
 			}}
 		>
 			{#snippet leading()}<Plus size={13} />{/snippet}
-			Add command
+			{m.settings_agents_agent_quick_add_button()}
 		</Button>
 	</Row>
 </Group>

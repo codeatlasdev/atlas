@@ -4,6 +4,10 @@
  * derived from the CLI's output, and the persisted state. `stores/updates.svelte.ts` wires it up.
  */
 
+import { formatNumber } from "#lib/i18n/fmt.ts";
+import { appLocale } from "#lib/i18n/locale.svelte.ts";
+import { m } from "#lib/i18n/m.ts";
+
 export interface ReleaseNotes {
 	version: string;
 	url: string;
@@ -139,19 +143,29 @@ export type StepId = "download" | "verify" | "install-cli" | "update-app" | "ter
 type StepState = "pending" | "active" | "done" | "failed";
 export interface Step {
 	id: StepId;
-	label: string;
 	state: StepState;
 }
 
-const STEPS: { id: StepId; label: string }[] = [
-	{ id: "download", label: "Download" },
-	{ id: "verify", label: "Verify" },
-	{ id: "install-cli", label: "Install CLI" },
-	{ id: "update-app", label: "Update app" },
-	{ id: "terminal-host", label: "Terminal host" },
-	{ id: "relaunch", label: "Relaunch" },
-];
-const ORDER = STEPS.map((s) => s.id);
+const STEP_IDS: StepId[] = ["download", "verify", "install-cli", "update-app", "terminal-host", "relaunch"];
+const ORDER = STEP_IDS;
+
+/** What a step is called, in the display language. Read it where it is drawn (a template), so it follows a language switch. */
+export function stepLabel(id: StepId): string {
+	switch (id) {
+		case "download":
+			return m.settings_updates_step_download();
+		case "verify":
+			return m.settings_updates_step_verify();
+		case "install-cli":
+			return m.settings_updates_step_install_cli();
+		case "update-app":
+			return m.settings_updates_step_update_app();
+		case "terminal-host":
+			return m.settings_host_name();
+		case "relaunch":
+			return m.settings_updates_step_relaunch();
+	}
+}
 
 /** `updates://progress` payloads (parsed from the CLI's `@@atlas` lines in Rust). */
 export type ProgressEvent =
@@ -222,8 +236,10 @@ export function reduceProgress(p: Progress, e: ProgressEvent): Progress {
 /**
  * Phases from the lines an older CLI prints (it has no `@@atlas` protocol and announces its
  * work with `◆ Downloading…`, `◆ Installing…`, `Updating Atlas Desktop…`).
+ * The current CLI reports phases structurally (`ProgressEvent`), so this fallback only ever sees English.
  */
 export function phaseFromLog(line: string): ProgressEvent | null {
+	// i18n-ignore: parsed from the updater's output (an older CLI's English lines), never shown
 	if (/Downloading Atlas-|Updating Atlas Desktop/i.test(line)) return { kind: "phase", id: "update-app" };
 	if (/Installing\b/i.test(line)) return { kind: "phase", id: "install-cli" };
 	if (/Downloading\b/i.test(line)) return { kind: "phase", id: "download" };
@@ -243,17 +259,17 @@ export type InstallOutcome = "running" | "done" | "failed" | "managed";
  * `managed` leaves every step pending: nothing was installed.
  */
 export function stepsFrom(p: Progress, outcome: InstallOutcome, relaunchNeeded = false): Step[] {
-	return STEPS.map((s, i) => {
+	return STEP_IDS.map((id, i): Step => {
 		let state: StepState;
-		if (outcome === "managed") return { ...s, state: "pending" };
-		if (s.id === "relaunch") state = outcome === "done" && relaunchNeeded ? "active" : "pending";
+		if (outcome === "managed") return { id, state: "pending" };
+		if (id === "relaunch") state = outcome === "done" && relaunchNeeded ? "active" : "pending";
 		else if (outcome === "done") state = "done";
 		else if (i < p.at) state = "done";
 		else if (i === p.at) state = outcome === "failed" ? "failed" : "active";
 		else state = "pending";
 		// Before anything is reported, "Download" is what is happening.
 		if (p.at === -1 && i === 0 && outcome !== "done") state = outcome === "failed" ? "failed" : "active";
-		return { ...s, state };
+		return { id, state };
 	});
 }
 
@@ -263,18 +279,26 @@ export function finishOutcome(p: Progress): "done" | "managed" {
 }
 
 /** What the sheet shows for a managed install: who manages it, the command to run, whether the app can run it. */
-export function managedView(m: Managed | null): {
+export function managedView(managed: Managed | null): {
 	title: string;
 	command: string | null;
 	installable: boolean;
 } {
-	if (m?.how === "homebrew") {
-		return { title: "Atlas is managed by Homebrew", command: "brew upgrade atlas", installable: false };
+	if (managed?.how === "homebrew") {
+		// Homebrew is a product name, so it is the same in every language.
+		return {
+			title: m.settings_updates_managed_by({ manager: "Homebrew" }),
+			command: "brew upgrade atlas",
+			installable: false,
+		};
 	}
 	return {
-		title: m?.manager ? `Atlas is managed by ${m.manager}` : "Atlas is managed by your package manager",
-		command: m?.command ?? null,
-		installable: !!m?.command && !!m.installable,
+		// `manager` is the package manager's own name (apt, pacman...), shown as the CLI reports it.
+		title: managed?.manager
+			? m.settings_updates_managed_by({ manager: managed.manager })
+			: m.settings_updates_managed_by_package(),
+		command: managed?.command ?? null,
+		installable: !!managed?.command && !!managed.installable,
 	};
 }
 
@@ -285,15 +309,18 @@ export function finishToast(
 	managed: Managed | null,
 ): { level: "success" | "info"; text: string } {
 	if (outcome === "managed") {
-		const { command } = managedView(managed);
+		const { command, title } = managedView(managed);
 		return {
 			level: "info",
 			text: command
-				? `${managedView(managed).title}: run \`${command}\` to update it`
-				: "Atlas is managed by your package manager: update it there (or run `atlas update` in a terminal)",
+				? m.settings_updates_toast_managed_command({ title, command })
+				: m.settings_updates_toast_managed_package(),
 		};
 	}
-	return { level: "success", text: kind === "unlink" ? "Back on the release build" : "Atlas is up to date" };
+	return {
+		level: "success",
+		text: kind === "unlink" ? m.settings_updates_toast_unlinked() : m.settings_updates_headline_current(),
+	};
 }
 
 /** `42%` of a known download; null while the size is unknown. */
@@ -304,8 +331,12 @@ export function percent(p: Progress): number | null {
 /** `12.4 MB` / `860 KB`; empty for an unknown size. */
 export function formatBytes(n: number): string {
 	if (!Number.isFinite(n) || n <= 0) return "";
-	if (n >= 1024 * 1024) return `${(n / 1024 / 1024).toFixed(n >= 100 * 1024 * 1024 ? 0 : 1)} MB`;
-	return `${Math.max(1, Math.round(n / 1024))} KB`;
+	const MB = 1024 * 1024;
+	if (n >= MB) {
+		const digits = n >= 100 * MB ? 0 : 1;
+		return `${formatNumber(n / MB, { minimumFractionDigits: digits, maximumFractionDigits: digits })} MB`;
+	}
+	return `${formatNumber(Math.max(1, Math.round(n / 1024)))} KB`;
 }
 
 /**
@@ -314,7 +345,7 @@ export function formatBytes(n: number): string {
  * midnight and shows the previous day west of Greenwich. Full timestamps are parsed normally.
  * Unparseable input gives "".
  */
-export function dateOf(iso: string, locale?: string): string {
+export function dateOf(iso: string, locale: string = appLocale()): string {
 	const opts: Intl.DateTimeFormatOptions = { year: "numeric", month: "short", day: "numeric" };
 	const m = /^\s*(\d{4})-(\d{2})-(\d{2})\s*$/.exec(iso);
 	if (m) {
@@ -370,6 +401,26 @@ const KINDS: Record<string, GroupKind> = {
 
 /** Keep a Changelog heading → kind; unknown headings are `other`. */
 export const kindOf = (heading: string): GroupKind => KINDS[heading.trim().toLowerCase()] ?? "other";
+
+/** A group heading of the notes: the catalog's word for a known kind, the changelog's own heading for `other`. */
+export function kindLabel(kind: GroupKind, heading: string): string {
+	switch (kind) {
+		case "added":
+			return m.settings_updates_whats_new_kind_added();
+		case "changed":
+			return m.settings_updates_whats_new_kind_changed();
+		case "fixed":
+			return m.settings_updates_whats_new_kind_fixed();
+		case "security":
+			return m.settings_updates_whats_new_kind_security();
+		case "removed":
+			return m.settings_updates_whats_new_kind_removed();
+		case "deprecated":
+			return m.settings_updates_whats_new_kind_deprecated();
+		case "other":
+			return heading;
+	}
+}
 
 const ALPHA = /\balpha\b/i;
 
@@ -455,6 +506,18 @@ export function badgesFor(
 	if (justInstalled && running === version) tags.push("new");
 	else if (running === version) tags.push("installed");
 	return tags;
+}
+
+/** The text of a release badge, in the display language. */
+export function badgeLabel(tag: ReleaseTag): string {
+	switch (tag) {
+		case "latest":
+			return m.settings_updates_whats_new_badge_latest();
+		case "new":
+			return m.settings_updates_whats_new_badge_new();
+		case "installed":
+			return m.settings_updates_whats_new_badge_installed();
+	}
 }
 
 /** DOM id of a version's block (`1.2.1` → `v-1-2-1`), for the sticky index. */
@@ -590,19 +653,99 @@ export function channelOfVersion(version: string): Channel | null {
 	return m[1] === "beta" || m[1] === "rc" ? "beta" : null;
 }
 
-/** `Alpha` / `Beta` / `RC` for a prerelease section; `null` for a release or an unknown label. */
-export function prereleaseBadge(version: string): "Alpha" | "Beta" | "RC" | null {
+/** The text fields of a channel that the backend sends as English copy (`atlas_core::channel`, `data/channels.json`). */
+export type ChannelTextField =
+	"label" | "promise" | "risk_label" | "cadence" | "switch_to" | "alpha_era_note";
+
+/**
+ * The catalog's message for a producer text field of channel `id`, `null` when there is none. The copy of a channel
+ * is written once in `channels.json` (English, also printed by the CLI and read by the website); the desktop shows
+ * its own translation of it, picked by the stable channel id and never by matching the English. A contract test
+ * (`updates.test.ts`) holds every message equal to the producer's English, so the two cannot drift.
+ */
+export function channelText(id: string, field: ChannelTextField): string | null {
+	switch (`${id}.${field}`) {
+		case "stable.label":
+			return m.settings_updates_channel_stable_label();
+		case "stable.promise":
+			return m.settings_updates_channel_stable_promise();
+		case "stable.risk_label":
+			return m.settings_updates_channel_stable_risk();
+		case "stable.cadence":
+			return m.settings_updates_channel_stable_cadence();
+		case "stable.switch_to":
+			return m.settings_updates_channel_stable_switch_to();
+		case "stable.alpha_era_note":
+			return m.settings_updates_channel_stable_alpha_era_note();
+		case "beta.label":
+			return m.settings_updates_channel_beta_label();
+		case "beta.promise":
+			return m.settings_updates_channel_beta_promise();
+		case "beta.risk_label":
+			return m.settings_updates_channel_beta_risk();
+		case "beta.cadence":
+			return m.settings_updates_channel_beta_cadence();
+		case "beta.switch_to":
+			return m.settings_updates_channel_beta_switch_to();
+		case "alpha.label":
+			return m.settings_updates_channel_alpha_label();
+		case "alpha.promise":
+			return m.settings_updates_channel_alpha_promise();
+		case "alpha.risk_label":
+			return m.settings_updates_channel_alpha_risk();
+		case "alpha.cadence":
+			return m.settings_updates_channel_alpha_cadence();
+		case "alpha.switch_to":
+			return m.settings_updates_channel_alpha_switch_to();
+		default:
+			return null;
+	}
+}
+
+/** `field` of a channel in the display language; the producer's own text for an id or field the catalog does not know. */
+export function channelCopy(v: ChannelView, field: Exclude<ChannelTextField, "alpha_era_note">): string;
+export function channelCopy(v: ChannelView, field: "alpha_era_note"): string | null;
+export function channelCopy(v: ChannelView, field: ChannelTextField): string | null {
+	const raw = v[field];
+	return raw === null ? null : (channelText(v.channel, field) ?? raw);
+}
+
+/** A channel's name (Stable, Beta, Alpha) in the display language. */
+export function channelName(id: Channel): string {
+	return channelText(id, "label") ?? id;
+}
+
+/** The catalog's message for the product stage note (`stage`: `alpha` today), `null` for a stage it does not know. */
+export function stageText(stage: string): string | null {
+	return stage === "alpha" ? m.settings_updates_channel_stage_alpha_note() : null;
+}
+
+/** The note above the channel selector: the catalog's message for the stage, else the producer's text. */
+export function stageNote(s: Pick<ChannelState, "stage" | "stage_note">): string {
+	return stageText(s.stage) ?? s.stage_note;
+}
+
+/** A prerelease section of the changelog: `alpha`, `beta` or a release candidate. */
+export type Prerelease = "alpha" | "beta" | "rc";
+
+/** `alpha` / `beta` / `rc` for a prerelease section; `null` for a release or an unknown label. */
+export function prereleaseBadge(version: string): Prerelease | null {
 	if (channelOfVersion(version) === null) return null;
-	const m = /-(alpha|beta|rc)\b/.exec(version);
-	return m ? (m[1] === "rc" ? "RC" : m[1] === "beta" ? "Beta" : "Alpha") : null;
+	const label = /-(alpha|beta|rc)\b/.exec(version)?.[1];
+	return label === "alpha" || label === "beta" || label === "rc" ? label : null;
+}
+
+/** The text of a prerelease badge (Alpha, Beta, RC), in the display language. */
+export function prereleaseLabel(p: Prerelease): string {
+	return p === "rc" ? m.settings_updates_whats_new_pre_rc() : channelName(p);
 }
 
 /** The live offer of a card ("Offers 1.4.0-beta.2" / "Nothing newer than what you run" / …). */
 export function offerLine(v: Pick<ChannelView, "action" | "offered">): string {
-	if (!v.offered) return "Offer unknown";
-	if (v.action === "update") return `Offers ${v.offered}`;
-	if (v.action === "downgrade") return `Offers ${v.offered}, older than yours`;
-	return "Nothing newer than what you run";
+	if (!v.offered) return m.settings_updates_channel_offer_unknown();
+	if (v.action === "update") return m.settings_updates_channel_offers({ offered: v.offered });
+	if (v.action === "downgrade") return m.settings_updates_channel_offers_older({ offered: v.offered });
+	return m.settings_updates_channel_offer_none();
 }
 
 export type Tone = "success" | "warn" | "error";
@@ -642,13 +785,12 @@ export function confirmCopy(v: ChannelView): Confirm {
 	const down =
 		v.action === "downgrade" && v.offered
 			? {
-					label: `Install ${v.offered} now (downgrade)`,
+					label: m.settings_updates_install_downgrade({ version: v.offered }),
 					version: v.offered,
-					warning:
-						"Settings and data written by the newer build may not be readable by this older one. Back up ~/.atlas first if it matters.",
+					warning: m.settings_updates_downgrade_warning(),
 				}
 			: null;
-	return { text: v.switch_to, downgrade: down };
+	return { text: channelCopy(v, "switch_to"), downgrade: down };
 }
 
 export type Lane = "followed" | "pending" | "feeds" | "idle";
@@ -707,18 +849,20 @@ export function updateStatus(s: {
 export function updateHeadline(status: UpdateStatus, version: string | null | undefined): string {
 	switch (status) {
 		case "restart":
-			return "Restart to finish updating";
+			return m.settings_updates_headline_restart();
 		case "dev":
-			return "Running a dev build";
+			return m.settings_updates_headline_dev();
 		case "checking":
-			return "Checking for updates…";
+			return m.settings_updates_headline_checking();
 		case "available":
-			return `Atlas ${version} is available`;
+			return m.tray_recommend_update_title({ version: version ?? "" });
 		case "current":
-			return "Atlas is up to date";
+			return m.settings_updates_headline_current();
 		case "installing":
-			return version ? `Updating to ${version}…` : "Updating Atlas…";
+			return version
+				? m.settings_updates_headline_installing_to({ version })
+				: m.settings_updates_headline_installing();
 		case "unknown":
-			return "Atlas versions";
+			return m.settings_updates_headline_unknown();
 	}
 }

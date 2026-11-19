@@ -1,0 +1,142 @@
+{
+	"settings_agents_agent_add_agent": "Adicionar agente",
+	"settings_agents_agent_approval_ask": "Perguntar antes",
+	"settings_agents_agent_approval_auto": "Aprovar tudo",
+	"settings_agents_agent_approval_description": "Perguntar antes: o agente espera a sua aprovação antes de executar comandos ou editar arquivos. Aprovar tudo: ele nunca pergunta, então use só em worktrees descartáveis.",
+	"settings_agents_agent_args_description": "Flags adicionadas sempre que {label} é iniciado, por exemplo --model opus.",
+	"settings_agents_agent_args_label": "Argumentos extras para {label}",
+	"settings_agents_agent_arguments": "Argumentos",
+	"settings_agents_agent_coding_agents": "Agentes de código",
+	"settings_agents_agent_command": "Comando",
+	"settings_agents_agent_custom_agents": "Agentes personalizados",
+	"settings_agents_agent_custom_description": "Qualquer CLI de agente (OpenCode, Gemini CLI, Amp…). Ele inicia pelo menu + e por {key}, como os agentes integrados. Sem os hooks do Atlas, a aba mostra trabalhando enquanto o terminal imprime e ocioso depois de alguns segundos de silêncio; para informar estados reais, ele pode rodar `atlas hook` (veja docs/agents.md).",
+	"settings_agents_agent_default_agent": "Agente padrão",
+	"settings_agents_agent_default_blank": "Terminal em branco",
+	"settings_agents_agent_default_description": "O que uma nova aba de agente inicia. Terminal em branco abre um shell simples.",
+	"settings_agents_agent_environment": "Variáveis de ambiente",
+	"settings_agents_agent_environment_placeholder": "CHAVE=valor, um por linha",
+	"settings_agents_agent_installed": "Instalado",
+	"settings_agents_agent_name": "Nome",
+	"settings_agents_agent_not_installed": [
+		{
+			"declarations": [
+				"input os"
+			],
+			"selectors": [
+				"os"
+			],
+			"match": {
+				"os=mac": "Não instalado no seu Mac",
+				"os=windows": "Não instalado neste PC",
+				"os=*": "Não instalado neste computador"
+			}
+		}
+	],
+	"settings_agents_agent_quick_add_button": "Adicionar comando",
+	"settings_agents_agent_quick_add_hint": "Exemplos: Executar testes, Revisar minhas alterações.",
+	"settings_agents_agent_quick_add_label": "Adicionar um comando rápido",
+	"settings_agents_agent_quick_command": "Comando a executar",
+	"settings_agents_agent_quick_commands": "Comandos rápidos",
+	"settings_agents_agent_quick_description": "Botões de um clique na barra de abas. Cada um executa um comando em um terminal ou envia um prompt ao agente.",
+	"settings_agents_agent_quick_kind": "O que ele faz",
+	"settings_agents_agent_quick_kind_terminal": "Executar no terminal",
+	"settings_agents_agent_quick_name": "Nome do botão",
+	"settings_agents_agent_quick_prompt": "Prompt a enviar",
+	"settings_agents_agent_quick_remove": "Remover comando rápido",
+	"settings_agents_agent_quick_scope": "Mostrar em",
+	"settings_agents_agent_quick_scope_all": "Todos os projetos",
+	"settings_agents_agent_remove_label": "Remover {label}",
+	"settings_agents_agent_resume_arguments": "Argumentos de retomada",
+	"settings_agents_agent_tool_approval": "Aprovação de ferramentas",
+	"settings_agents_crew_add_server": "Adicionar crew server",
+	"settings_agents_crew_added": "{name} adicionado",
+	"settings_agents_crew_adding": "Adicionando…",
+	"settings_agents_crew_agent_signed_in": "{label}: sessão iniciada",
+	"settings_agents_crew_agent_signed_out": "{label}: sem sessão iniciada",
+	"settings_agents_crew_agents": "Agentes",
+	"settings_agents_crew_description": "Crew servers rodam crewmates 24 h por dia no seu próprio servidor. Adicione um crew server depois de rodar `atlas crew install user@host`.",
+	"settings_agents_crew_display_name": "Nome de exibição",
+	"settings_agents_crew_display_name_optional": "Nome de exibição (opcional)",
+	"settings_agents_crew_enabled": "Ativado",
+	"settings_agents_crew_github_description": "Conecte o GitHub para o crew clonar repositórios privados. Configure no rodapé do workspace do crew.",
+	"settings_agents_crew_model_placeholder": "ID do modelo, por exemplo cc/claude-haiku-5-5",
+	"settings_agents_crew_onboarding": "Onboarding",
+	"settings_agents_crew_open_workspace": "Abrir workspace do crew",
+	"settings_agents_crew_pause_hint_paused": "Nada roda neste servidor: as tarefas da fila esperam e as automações são ignoradas.",
+	"settings_agents_crew_pause_hint_running": "Cancela todas as tarefas em execução e segura as filas até você retomar.",
+	"settings_agents_crew_pause_label": "Pausar o crew",
+	"settings_agents_crew_phones_empty": "Nenhum ainda",
+	"settings_agents_crew_remove_confirm": "Remover \"{name}\"? Os crewmates deste servidor deixam de ser gerenciados daqui.",
+	"settings_agents_crew_remove_hint": "Deixa de gerenciar os crewmates deste servidor.",
+	"settings_agents_crew_remove_server": "Remover crew server",
+	"settings_agents_crew_removed": "{name} removido",
+	"settings_agents_crew_replay": "Repetir",
+	"settings_agents_crew_replay_description": "Mostra a introdução do Atlas Crew de novo, desde o primeiro passo.",
+	"settings_agents_crew_replay_onboarding": "Repetir a introdução",
+	"settings_agents_crew_status": "Status",
+	"settings_agents_crew_status_offline": "Offline",
+	"settings_agents_crew_status_online": "Online",
+	"settings_agents_crew_summary_model": "Modelo de resumo",
+	"settings_agents_crew_target": "Destino SSH",
+	"settings_agents_crew_target_description": "Rode `atlas crew install user@host` primeiro e depois adicione o servidor aqui.",
+	"settings_agents_crew_title": "Atlas Crew",
+	"settings_agents_mobile_description": [
+		{
+			"declarations": [
+				"input os"
+			],
+			"selectors": [
+				"os"
+			],
+			"match": {
+				"os=mac": "O Atlas Mobile mostra no seu celular os projetos, logs e agentes do seu Mac. Dentro do que você permitir, ele também pode reiniciar serviços, executar ações, acompanhar e digitar nos terminais e responder aos prompts de permissão dos agentes. Sem conta: a conexão entre os dois tem criptografia fim a fim.",
+				"os=windows": "O Atlas Mobile mostra no seu celular os projetos, logs e agentes deste PC. Dentro do que você permitir, ele também pode reiniciar serviços, executar ações, acompanhar e digitar nos terminais e responder aos prompts de permissão dos agentes. Sem conta: a conexão entre os dois tem criptografia fim a fim.",
+				"os=*": "O Atlas Mobile mostra no seu celular os projetos, logs e agentes deste computador. Dentro do que você permitir, ele também pode reiniciar serviços, executar ações, acompanhar e digitar nos terminais e responder aos prompts de permissão dos agentes. Sem conta: a conexão entre os dois tem criptografia fim a fim."
+			}
+		}
+	],
+	"settings_agents_mobile_empty_body": [
+		{
+			"declarations": [
+				"input os"
+			],
+			"selectors": [
+				"os"
+			],
+			"match": {
+				"os=mac": "Um celular pareado pode ver seus projetos, logs e agentes, reiniciar serviços, executar ações, acompanhar e digitar nos terminais e responder aos prompts de permissão dos agentes, dentro do que você permitir, de qualquer lugar, enquanto o seu Mac estiver ativo. Clique em {@mobile_pair_card_show_code} acima para adicionar um.",
+				"os=windows": "Um celular pareado pode ver seus projetos, logs e agentes, reiniciar serviços, executar ações, acompanhar e digitar nos terminais e responder aos prompts de permissão dos agentes, dentro do que você permitir, de qualquer lugar, enquanto este PC estiver ativo. Clique em {@mobile_pair_card_show_code} acima para adicionar um.",
+				"os=*": "Um celular pareado pode ver seus projetos, logs e agentes, reiniciar serviços, executar ações, acompanhar e digitar nos terminais e responder aos prompts de permissão dos agentes, dentro do que você permitir, de qualquer lugar, enquanto este computador estiver ativo. Clique em {@mobile_pair_card_show_code} acima para adicionar um."
+			}
+		}
+	],
+	"settings_agents_mobile_empty_loading": "Procurando celulares pareados…",
+	"settings_agents_mobile_empty_title": "Nenhum celular pareado ainda",
+	"settings_agents_mobile_title": "Parear um celular",
+	"settings_agents_paired_phones": "Celulares pareados",
+	"settings_agents_ssh_add_host": "Adicionar host",
+	"settings_agents_ssh_add_host_description": "Escolha um dos hosts já definidos na configuração do SSH.",
+	"settings_agents_ssh_add_host_label": "Adicionar um host",
+	"settings_agents_ssh_add_project": "Adicionar projeto",
+	"settings_agents_ssh_add_project_description": "O projeto aparece na barra lateral.",
+	"settings_agents_ssh_add_project_label": "Adicionar",
+	"settings_agents_ssh_host": "Host",
+	"settings_agents_ssh_host_description": "Em qual máquina o projeto está.",
+	"settings_agents_ssh_no_hosts": "Nenhum host ainda",
+	"settings_agents_ssh_no_hosts_description": "Escolha abaixo um host da sua configuração do SSH. O Atlas nunca altera esse arquivo.",
+	"settings_agents_ssh_pick_placeholder": "Escolher um host",
+	"settings_agents_ssh_project_added": "Projeto remoto adicionado",
+	"settings_agents_ssh_project_folder": "Pasta do projeto",
+	"settings_agents_ssh_project_folder_description": "Caminho completo nessa máquina.",
+	"settings_agents_ssh_remote_project": "Projeto remoto",
+	"settings_agents_ssh_remote_project_description": "Adicione um projeto que está em um dos seus hosts. A pasta precisa ter um atlas.yaml.",
+	"settings_agents_ssh_status_connected": "Conectado",
+	"settings_agents_ssh_status_connecting": "Conectando",
+	"settings_agents_ssh_status_error": "Erro",
+	"settings_agents_ssh_status_idle": "Inativo",
+	"settings_agents_ssh_status_outdated": "Conectado, desatualizado",
+	"settings_agents_ssh_status_removed": "Removido",
+	"settings_agents_ssh_test_atlas_missing": "{system} {arch} · Atlas não instalado",
+	"settings_agents_ssh_test_result": "{system} {arch} · {atlas}",
+	"settings_agents_ssh_your_hosts": "Seus hosts"
+}

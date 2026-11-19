@@ -3,6 +3,8 @@
 	"cli_chrome_caused_by": "causado por:",
 	"cli_chrome_commands": "Comandos",
 	"cli_chrome_error": "erro:",
+	"cli_chrome_exit_code": "código de saída {code}",
+	"cli_chrome_exit_signal": "sinal {signal}",
 	"cli_chrome_help_flag": "Mostra a ajuda",
 	"cli_chrome_help_subcommand": "Mostra esta mensagem ou a ajuda do subcomando informado",
 	"cli_chrome_help_subcommand_arg": "Mostra a ajuda do subcomando",

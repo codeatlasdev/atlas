@@ -54,6 +54,7 @@ afterEach(() => {
 		running: null,
 		relaunchNeeded: false,
 		checkedAt: null,
+		channelState: null,
 	});
 });
 
@@ -116,10 +117,27 @@ test("a withdrawn running version says why and that updating leaves it", () => {
 	expect(text).toContain("This version was withdrawn");
 	expect(text).toContain("Corrupts the workspace file on first launch.");
 	expect(text).toContain("Use 1.4.0-beta.2 instead.");
-	expect(text).toContain("Update to leave it.");
+	expect(text).toContain("Update to a safe version.");
 });
 
 test("a version that was not withdrawn shows no withdrawal notice", () => {
 	card({ release: fixtureViews.release.update, checkedAt: Date.now() });
 	expect(document.body.textContent).not.toContain("withdrawn");
+});
+
+// The channel and the version in the "newer build than the channel offers" note come from two sources (the followed
+// channel's display name and the real `latest_release` serialization), both interpolated into one message.
+test("a build newer than the followed channel offers says which channel and which version", () => {
+	card({
+		release: fixtureViews.release.downgrade,
+		checkedAt: Date.now(),
+		channelState: { channel: "stable" },
+	});
+	const note = document.body.querySelector(".skipnote").textContent.replace(/\s+/g, " ");
+	expect(note).toContain("newer build than the Stable channel offers (1.3.0)");
+});
+
+test("a finished check says when it finished", () => {
+	const c = card({ release: release(), checkedAt: Date.now() });
+	expect(c.hero).toContain("Checked at");
 });

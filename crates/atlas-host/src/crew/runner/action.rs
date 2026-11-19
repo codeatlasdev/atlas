@@ -118,6 +118,29 @@ pub(super) fn park_task(hub: &Hub, crewmate: &Crewmate, task: &mut Task, action:
     broadcast_task(hub, &crewmate.id, task);
 }
 
+/// The owner's answer to the card was taken: the task is running again, stored and broadcast, so every client
+/// stops showing a live card the moment the answer is accepted and not when the follow-up turn ends (#524: the card
+/// stayed live for the whole turn and the next click was dropped). The card stays on the task, with `answer`, so
+/// the chat can show what was asked and what was picked.
+pub(super) fn answer_accepted(
+    hub: &Hub,
+    crewmate: &Crewmate,
+    task: &mut Task,
+    action: &TaskAction,
+    resolved: &str,
+) {
+    task.answer = user_answer(action, resolved);
+    running_again(hub, crewmate, task);
+}
+
+/// Store and broadcast `task` as running (again, after a card, or after waiting for a slot that said "server busy").
+pub(super) fn running_again(hub: &Hub, crewmate: &Crewmate, task: &mut Task) {
+    task.state = TaskState::Running;
+    task.waiting_for = None;
+    let _ = persist(hub, &crewmate.id, task);
+    broadcast_task(hub, &crewmate.id, task);
+}
+
 /// The action got no answer (it was cancelled, or timed out): a cancelled task stays cancelled, any
 /// other ends failed. Both runners end an unanswered action here.
 pub(super) fn finish_unanswered(hub: &Hub, crewmate: &Crewmate, task: &mut Task) {

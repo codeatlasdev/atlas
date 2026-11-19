@@ -1,0 +1,13 @@
+{
+	"native_updates_already_running": "Já existe uma atualização em andamento. Aguarde até ela terminar.",
+	"native_updates_cannot_run_atlas": "Não foi possível executar o atlas: {error}",
+	"native_updates_channel_forced": "O canal de atualização está fixado por {name} neste ambiente. Remova a variável para mudar o canal aqui.",
+	"native_updates_channel_save_failed": "Não foi possível salvar o canal de atualização: {error}",
+	"native_updates_cli_version_unreadable": "Não foi possível ler a versão do comando atlas",
+	"native_updates_github_failed": "A requisição ao GitHub falhou: {reason}",
+	"native_updates_github_feed": "Não foi possível ler o feed de versões do GitHub: {reason}",
+	"native_updates_github_missing": "O curl não está instalado. Instale-o e verifique de novo.",
+	"native_updates_github_unknown": "Não foi possível verificar se a tag {tag} está publicada: {reason}",
+	"native_updates_install_failed": "O comando atlas {args} falhou ({status}) e não informou o motivo. Rode o comando em um terminal para ver o motivo.",
+	"native_updates_not_installed": "O Atlas não está rodando a partir de um app instalado, então não pode se reabrir sozinho. Abra o app instalado."
+}

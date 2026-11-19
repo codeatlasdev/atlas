@@ -20,6 +20,9 @@ const mac = (o: Partial<Job> = {}): Job => ({ name: "Rust (macOS)", conclusion: 
 // when only the job's own limit fires the runner stopped running the steps (#520: a frozen VM, no step timeout ever fires).
 const TIMEOUT_MSGS = ["The job has exceeded the maximum execution time of 30m0s", "The operation was canceled."];
 const stalled = (o: Partial<Job> = {}): Job => ({ name: "Rust (Windows, full workspace)", conclusion: "cancelled", failures: TIMEOUT_MSGS, ...o });
+// What ci-apt.sh leaves when its mirror stalled twice (run 44425249926, "Rust (Linux)"): its own annotation, and GitHub's for the exit code.
+const MIRROR_MSGS = ["ci-apt: the apt mirror is too slow or down (the download did not finish in two tries of 150s); rerun the job", "Process completed with exit code 1."];
+const mirror = (o: Partial<Job> = {}): Job => ({ name: "Rust (Linux)", conclusion: "failure", failures: MIRROR_MSGS, ...o });
 const base: RerunFacts = { conclusion: "failure", attempt: 1, headIsTip: true, jobs: [green, win(), aggregate] };
 
 describe("decideRerun", () => {
@@ -44,6 +47,10 @@ describe("decideRerun", () => {
     ["another job that ran into its time limit is a hang or a slow mirror, not the platform -> none", { jobs: [stalled({ name: "Repo scripts (ubuntu-latest)" }), aggregate] }, false, /cancelled: Repo scripts/],
     ["the Windows job timed out next to a real failure -> none", { jobs: [stalled(), realFailure, aggregate] }, false, /real failure/],
     ["a time limit message next to a failure of the job's own -> none", { jobs: [stalled({ failures: [...TIMEOUT_MSGS, "Process completed with exit code 1."] }), aggregate] }, false, /cancelled|real failure/],
+    ["a job whose apt mirror stalled twice (any job, its exit code annotation aside) -> rerun", { jobs: [mirror(), aggregate] }, true, /apt mirror too slow: Rust \(Linux\)/],
+    ["the same job with a failure of its own as well -> none", { jobs: [mirror({ failures: [...MIRROR_MSGS, "error: could not compile `atlas-core`"] }), aggregate] }, false, /real failure/],
+    ["an exit code annotation alone is a real failure -> none", { jobs: [mirror({ failures: [MIRROR_MSGS[1]] }), aggregate] }, false, /real failure/],
+    ["a stalled mirror next to a real failure elsewhere -> none", { jobs: [mirror(), realFailure, aggregate] }, false, /real failure.*Rust \(macOS\)/],
     ["a newer push superseded the run -> none", { headIsTip: false }, false, /no longer the tip/],
     ["red with no infrastructure annotation (a bare failure) -> none", { jobs: [{ name: "Site build", conclusion: "failure", failures: [] }, aggregate] }, false, /real failure/],
     ["only the aggregate job is red -> none", { jobs: [green, aggregate] }, false, /no job ended by infrastructure/],

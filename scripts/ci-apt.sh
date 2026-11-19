@@ -46,15 +46,20 @@ bounded() {
   return "$status"
 }
 
-# attempt <seconds> <what> <command>...: bounded, and once more when it fails or runs out of time.
+# attempt <seconds> <what> <command>...: bounded, and once more when it fails or runs out of time. When both tries ran out
+# of time the step says so in an annotation that scripts/ci-lost-runner.ts reads (kind `mirror`): the job is rerun, not debugged.
+# A command that fails by itself (an unknown package) is a real failure and says nothing of the mirror.
 attempt() {
-  local secs=$1 what=$2 n
+  local secs=$1 what=$2 n status stalled=0
   shift 2
   for n in 1 2; do
-    if bounded "$secs" "$@"; then return 0; fi
+    status=0
+    bounded "$secs" "$@" || status=$?
+    if [[ $status == 0 ]]; then return 0; fi
+    if [[ $status == 143 ]]; then stalled=$((stalled + 1)); fi # SIGTERM from `bounded`
     log "$what failed or took longer than ${secs}s (attempt $n of 2)"
   done
-  log "$what did not finish: the mirror is too slow or down; rerun the job"
+  if [[ $stalled == 2 ]]; then echo "::error::ci-apt: the apt mirror is too slow or down ($what did not finish in two tries of ${secs}s); rerun the job"; fi
   return 1
 }
 

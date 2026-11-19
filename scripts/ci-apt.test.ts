@@ -14,6 +14,7 @@ afterEach(() => {
 
 const APT_GET = `#!/bin/sh
 echo "apt-get $*" >> "$LOG"
+[ -z "$FAIL_UPDATE" ] || case "$*" in update*) exit 100 ;; esac
 case "$*" in
 *--download-only*)
   # The Nth download call hangs while N <= HANG_DOWNLOADS: a mirror that gives a few bytes a minute.
@@ -118,8 +119,17 @@ describe.skipIf(process.platform === "win32")("ci-apt.sh", () => {
 		expect(res.code).not.toBe(0);
 		expect(r.calls().filter((c) => c.includes("--download-only"))).toHaveLength(2);
 		expect(r.calls().filter((c) => c.startsWith("apt-get install") && !c.includes("--download-only"))).toEqual([]);
-		expect(res.out).toContain("the mirror is too slow or down; rerun the job");
+		expect(res.out).toContain("::error::ci-apt: the apt mirror is too slow or down (the download did not finish in two tries of 1s); rerun the job");
 		expect(existsSync(join(r.cache, "packages.txt"))).toBe(false);
+	});
+
+	// A package that does not exist fails in a second, twice: the mirror says nothing, and the step must not claim it did.
+	test("a command that fails by itself is not blamed on the mirror", () => {
+		const r = runner();
+		const res = r.run({ FAIL_UPDATE: "1" });
+		expect(res.code).not.toBe(0);
+		expect(res.out).toContain("apt-get update failed or took longer");
+		expect(res.out).not.toContain("::error::");
 	});
 
 	test("no packages is a usage error, not an install of nothing", () => {

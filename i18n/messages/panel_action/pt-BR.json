@@ -28,7 +28,7 @@
 	"panel_action_output_drawer_run_an_action_from_the": "Execute uma ação no menu Ações; a saída dela aparece aqui.",
 	"panel_action_output_drawer_show_action_output": "Mostrar saída da ação",
 	"panel_action_output_drawer_start_stack_first": "Inicie a stack primeiro",
-	"panel_action_output_drawer_started_at": "Iniciada às {time}",
+	"panel_action_output_drawer_started_at": "Iniciada: {time}",
 	"panel_action_output_log_earlier_lines_dropped": [
 		{
 			"declarations": [

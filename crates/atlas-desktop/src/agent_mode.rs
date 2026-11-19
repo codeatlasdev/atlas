@@ -9,6 +9,8 @@
 //!
 //! This module is the pure part: the decision, and where a window goes on the virtual display.
 
+use atlas_core::agent_display::AGENT_VENDOR;
+
 /// Environment variable that switches the mode on.
 pub const ENV: &str = "ATLAS_AGENT";
 
@@ -157,9 +159,6 @@ pub fn fit_size(size: (f64, f64), display: Rect) -> (f64, f64) {
 
 /// Clear space kept between an agent window and every edge of its display (and so every other display).
 pub const SAFE_MARGIN: f64 = 4.0;
-
-/// Vendor id every Atlas agent display is created with: how a sibling agent display is told from the user's panel.
-pub const AGENT_VENDOR: u32 = 0x4147;
 
 /// One active display as the OS reports it right now.
 #[derive(Debug, Clone, Copy, PartialEq)]

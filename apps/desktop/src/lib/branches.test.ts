@@ -82,7 +82,7 @@ test("relDate renders the last commit age in the shared relative format and surv
 });
 
 test("createRow offers a new branch only for a valid name that does not exist yet", () => {
-	expect(createRow(real, "feature/login", "main")?.label).toBe("Create branch “feature/login”");
+	expect(createRow(real, "feature/login", "main")?.label).toBe('Create branch "feature/login"');
 	expect(createRow(real, "feature/login", "main")?.description).toBe("from main");
 	expect(createRow(real, "feat", "main")).toBeNull(); // exists locally
 	expect(createRow(real, "origin/feat", "main")).toBeNull(); // exists as remote

@@ -11,9 +11,10 @@
 	import { store } from "#lib/stores/projects.svelte.ts";
 	import { ws } from "#lib/stores/workspace.svelte.ts";
 	import RowMenu from "./RowMenu.svelte";
-	import { strongest } from "./model.ts";
+	import { prChip, strongest } from "./model.ts";
 	import { sidebar } from "./state.svelte.ts";
 	import type { ProjectView } from "#lib/api.ts";
+	import { m } from "#lib/i18n/m.ts";
 
 	let { p, onAgent }: { p: ProjectView; onAgent?: (worktreeId: string) => void } = $props();
 
@@ -48,7 +49,7 @@
 		class:unread={w?.unread}
 		class:main={!p.parent}
 		class:missing={!!p.missing}
-		title={p.missing ? `Not found: ${p.root}` : undefined}
+		title={p.missing ? m.sidebar_not_found_at({ root: p.root }) : undefined}
 		role="button"
 		tabindex="0"
 		onmouseenter={() => (sidebar.hovered = p.id)}
@@ -59,22 +60,22 @@
 	>
 		{#if glyph}<AgentGlyph state={glyph} />{:else}<span class="glyph"><GitBranch size={11} /></span>{/if}
 		<span class="name">
-			{p.parent ? (w?.name ?? p.root.split("/").pop()) : "main"}
+			{p.parent ? (w?.name ?? p.root.split("/").pop()) : m.sidebar_worktree_row_main()}
 			{#if p.branch}<small class="branch">{p.branch}</small>{/if}
 		</span>
 		{#if w?.linkedPr}
 			{@const v = pr.views[p.id]}
 			<span class="chip" class:bad={v && rollup(v) === "failed"}>
-				PR #{w.linkedPr}{v ? ` · ${v.state.toLowerCase()}` : ""}
+				{prChip(w.linkedPr, v?.state)}
 			</span>
 		{/if}
-		{#if p.missing}<span class="chip warn">Not found</span>{/if}
+		{#if p.missing}<span class="chip warn">{m.sidebar_not_found()}</span>{/if}
 		{#if p.port_offset}<span class="chip">+{p.port_offset}</span>{/if}
 		{#if p.parent && p.pinned}<Pin size={11} class="pin" />{/if}
 		<span class="meta">
 			{#if p.running}<span class="count">{up}/{live?.services.length || p.services_total}</span>{/if}
 		</span>
-		<RowMore label="Worktree menu" class="hover-btn">
+		<RowMore label={m.sidebar_worktree_row_worktree_menu()} class="hover-btn">
 			{#snippet icon()}<Ellipsis size={13} />{/snippet}
 			<RowMenu {p} {w} {onAgent} />
 		</RowMore>

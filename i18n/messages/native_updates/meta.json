@@ -1,0 +1,13 @@
+{
+	"native_updates_already_running": "Error of the update commands of the desktop app when another install already runs in this process (any window, the tray). Shown in the What's new sheet or a toast.",
+	"native_updates_cannot_run_atlas": "Error when the app could not start the atlas command it uses to install an update. {error} is the operating system's reason.",
+	"native_updates_channel_forced": "Error when the user changes the update channel while ATLAS_UPDATE_CHANNEL fixes it. {name} is the variable name, kept verbatim. The Settings screen locks the selector, so this is a safety net.",
+	"native_updates_channel_save_failed": "Error when writing the update channel file (~/.atlas/update-channel) failed. {error} is the operating system's reason.",
+	"native_updates_cli_version_unreadable": "Shown under the Atlas CLI tile of Settings > General > Updates when `atlas version` printed nothing usable.",
+	"native_updates_github_failed": "Error of the update check when a GitHub request failed. {reason} is curl's own message, shown as it is.",
+	"native_updates_github_feed": "Error of the update check when the GitHub release feed (needed to know the newest beta or alpha) could not be read. {reason} is the underlying message.",
+	"native_updates_github_missing": "Error of the update check when the curl program is not on this computer. curl stays verbatim.",
+	"native_updates_github_unknown": "Error of the update check when it could not tell whether a release tag is published. {tag} is the git tag (v1.4.0), {reason} the underlying message.",
+	"native_updates_install_failed": "Error when the atlas command that installs an update exited with a failure and printed no reason. {args} are its arguments (update --downgrade), {status} its exit status as the system words it.",
+	"native_updates_not_installed": "Error of the Restart Atlas button when no installed app bundle exists (a dev build), so the app cannot reopen itself."
+}

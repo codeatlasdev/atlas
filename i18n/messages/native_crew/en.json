@@ -1,0 +1,14 @@
+{
+	"native_crew_agent_install_failed": "Installing {id} on the server failed (exit code {code}). Check the install log and try again.",
+	"native_crew_browsers_status_failed": "Could not check the browsers on the server. Try again.",
+	"native_crew_command_failed": "{command} failed ({status}) and printed no reason. Run it in a terminal to see why.",
+	"native_crew_no_installer": "Atlas has no installer for {id}. Install it on the server yourself.",
+	"native_crew_not_registered": "{host} is not a registered crew server. Add it first and try again.",
+	"native_crew_probe_connection": "Could not connect to the gateway: {detail}",
+	"native_crew_probe_key_refused": "The gateway refused the API key (HTTP {status}). Check the key and try again.",
+	"native_crew_probe_not_json": "The gateway did not answer with JSON. Check that the base URL points to its API.",
+	"native_crew_probe_status": "The gateway answered with HTTP {status}. Check the base URL and try again.",
+	"native_crew_probe_unreachable": "Could not reach {url}. Check the address and your connection.",
+	"native_crew_unknown_agent": "Atlas does not know an agent called {id}. Pick one from the list.",
+	"native_crew_wait_failed": "Could not wait for {program} to finish: {error}"
+}

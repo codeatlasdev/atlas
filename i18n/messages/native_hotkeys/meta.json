@@ -1,0 +1,52 @@
+{
+	"native_hotkeys_apps_taken": "Warning under a capture or dock hotkey in Settings when the key is a standard command of the apps in front (Save As): works, but steals that command everywhere. {owner} is the command's description, one of the native_hotkeys_owner_* messages.",
+	"native_hotkeys_needs_modifier": "Reason a recorded hotkey is refused in Settings: it has no modifier key and would take a plain key from every app. {ctrl}, {alt}, {shift} and {cmd} are the four modifier keys as the keyboard prints them.",
+	"native_hotkeys_no_key": "Reason a hotkey is refused in Settings: the stroke names modifiers but no key. {stroke} is the stroke as typed (\"ctrl-alt-\"), never translated.",
+	"native_hotkeys_owner_app_command": "Description of a key that ordinary apps use for one of their standard commands (open, new, close, print, find). Starts a sentence, so capitalized.",
+	"native_hotkeys_owner_app_switcher": {
+		"description": "Description of the macOS command a key already belongs to: the application switcher. {key} is the key as the keyboard prints it. Starts a sentence, so capitalized.",
+		"platform": "mac"
+	},
+	"native_hotkeys_owner_editing": "Description of a key that ordinary apps use for a standard editing command (copy, paste, cut, undo, select all). Starts a sentence, so capitalized.",
+	"native_hotkeys_owner_finder_search": {
+		"description": "Description of the macOS command a key already belongs to: searching in Finder. {key} is the key as the keyboard prints it. Starts a sentence, so capitalized.",
+		"platform": "mac"
+	},
+	"native_hotkeys_owner_hide": {
+		"description": "Description of the macOS command a key already belongs to: hide the frontmost app. Use the menu item's own name. {key} is the key as the keyboard prints it.",
+		"platform": "mac"
+	},
+	"native_hotkeys_owner_minimize": {
+		"description": "Description of the macOS command a key already belongs to: minimize the window. Use the menu item's own name. {key} is the key as the keyboard prints it.",
+		"platform": "mac"
+	},
+	"native_hotkeys_owner_quit": {
+		"description": "Description of the macOS command a key already belongs to: quit the app. Use the menu item's own name. {key} is the key as the keyboard prints it.",
+		"platform": "mac"
+	},
+	"native_hotkeys_owner_save_as": "Description of the key that apps use for Save As (the menu command's own name in the language). {key} is the key as the keyboard prints it. Starts a sentence, so capitalized.",
+	"native_hotkeys_owner_screenshot_area": {
+		"description": "Description of the macOS command a key already belongs to: macOS's own area screenshot. {key} is the key as the keyboard prints it. Starts a sentence, so capitalized.",
+		"platform": "mac"
+	},
+	"native_hotkeys_owner_screenshot_screen": {
+		"description": "Description of the macOS command a key already belongs to: macOS's own full-screen screenshot. {key} is the key as the keyboard prints it. Starts a sentence, so capitalized.",
+		"platform": "mac"
+	},
+	"native_hotkeys_owner_screenshot_toolbar": {
+		"description": "Description of the macOS command a key already belongs to: macOS's screenshot and recording toolbar. {key} is the key as the keyboard prints it. Starts a sentence, so capitalized.",
+		"platform": "mac"
+	},
+	"native_hotkeys_owner_screenshot_touch_bar": {
+		"description": "Description of the macOS command a key already belongs to: macOS's Touch Bar screenshot. {key} is the key as the keyboard prints it. Starts a sentence, so capitalized.",
+		"platform": "mac"
+	},
+	"native_hotkeys_owner_spotlight": "Description of the system command a key already belongs to: Spotlight search (a product name). {key} is the key as the keyboard prints it.",
+	"native_hotkeys_system_taken": {
+		"description": "Reason a hotkey is refused in Settings: macOS itself handles the key before any app. {owner} is the command's description, one of the native_hotkeys_owner_* messages, and starts the sentence.",
+		"platform": "mac"
+	},
+	"native_hotkeys_taken": "Error when a hotkey cannot be registered because another app or the system holds it. {stroke} is the stroke as typed (\"ctrl-alt-d\"), {reason} the system's own error text.",
+	"native_hotkeys_unknown_modifier": "Reason a hotkey is refused in Settings: a part of the stroke before the key is not ctrl, alt, shift or cmd. {modifier} and {stroke} are the stroke's parts as typed, never translated.",
+	"native_hotkeys_unlistenable": "Reason a hotkey is refused in Settings: the system's shortcut library does not know the key. {stroke} is the stroke as typed, {reason} the library's own error text."
+}

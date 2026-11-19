@@ -7,7 +7,7 @@
 //! status arrives as `agent_status` pushes over this connection.
 //! Reconnects with backoff while the host stays in `settings.sshHosts`.
 
-use atlas_core::ssh::valid_target as valid_alias;
+use atlas_core::ssh::valid_target;
 use atlas_core::sys::CommandExt as _;
 use std::path::PathBuf;
 use std::process::Stdio;
@@ -15,6 +15,7 @@ use std::sync::Arc;
 use std::time::Duration;
 
 use atlas_host::HostClient;
+use atlas_i18n::{t, t_in};
 use parking_lot::Mutex;
 use serde_json::{Value, json};
 use tauri::{AppHandle, Emitter, Manager};
@@ -33,6 +34,46 @@ pub fn host_id(alias: &str) -> String {
     format!("ssh:{alias}")
 }
 
+/// [`valid_target`] with the refusal in the display language: it is shown in Settings and the crew onboarding.
+pub fn valid_alias(alias: &str) -> Result<(), String> {
+    valid_target(alias).map_err(|_| t!("native_remote_invalid_alias", alias = alias))
+}
+
+/// What the page shows for one host (`ssh_status`, the `remote://status` event). The wire form is one string:
+/// an id, or `warning:` / `error:` followed by the sentence. `apps/desktop/src/lib/settings/sshStatus.ts` maps it
+/// to a chip; the fixture `__fixtures__/ssh-status.json` is written from here, so a new status fails a test on
+/// both sides until the page maps it.
+#[derive(Debug, Clone, PartialEq, Eq)]
+enum SshStatus {
+    Connecting,
+    Connected,
+    Removed,
+    /// Connected, but something is wrong with the host's atlas (the sentence is in the display language).
+    Warning(String),
+    /// Not connected, and why (the sentence is in the display language, ssh's own text inside).
+    Error(String),
+}
+
+impl SshStatus {
+    fn kind(&self) -> &'static str {
+        match self {
+            Self::Connecting => "connecting",
+            Self::Connected => "connected",
+            Self::Removed => "removed",
+            Self::Warning(_) => "warning",
+            Self::Error(_) => "error",
+        }
+    }
+
+    fn wire(&self) -> String {
+        match self {
+            Self::Connecting | Self::Connected | Self::Removed => self.kind().to_string(),
+            // i18n-ignore: wire prefix that sshStatus.ts matches, followed by the translated sentence
+            Self::Warning(why) | Self::Error(why) => format!("{}: {why}", self.kind()),
+        }
+    }
+}
+
 async fn ssh(alias: &str, script: &str, timeout: Duration) -> Result<String, String> {
     let fut = Command::new("ssh")
         .no_window()
@@ -41,14 +82,32 @@ async fn ssh(alias: &str, script: &str, timeout: Duration) -> Result<String, Str
         .output();
     let out = tokio::time::timeout(timeout, fut)
         .await
-        .map_err(|_| format!("ssh {alias}: timed out"))?
-        .map_err(|e| format!("ssh: {e}"))?;
+        .map_err(|_| {
+            t!(
+                "native_remote_no_answer",
+                target = alias,
+                seconds = timeout.as_secs()
+            )
+        })?
+        .map_err(|e| {
+            t!(
+                "native_remote_spawn_failed",
+                program = "ssh",
+                error = e.to_string()
+            )
+        })?;
     if out.status.success() {
         Ok(String::from_utf8_lossy(&out.stdout).into_owned())
     } else {
-        Err(format!(
-            "ssh {alias}: {}",
-            String::from_utf8_lossy(&out.stderr).trim()
+        let stderr = String::from_utf8_lossy(&out.stderr);
+        let detail = match stderr.trim() {
+            "" => out.status.to_string(),
+            s => s.to_string(),
+        };
+        Err(t!(
+            "native_remote_ssh_failed",
+            alias = alias,
+            detail = detail
         ))
     }
 }
@@ -87,14 +146,17 @@ async fn prepare(alias: &str) -> Result<(String, String), String> {
         l.next() == Some("yes"),
     );
     if home.is_empty() {
-        return Err(format!("{alias}: could not read $HOME"));
+        return Err(t!("native_remote_no_home", alias = alias));
     }
     if !has {
         let bin = local_dir().join(format!("atlas-{arch}-{os}"));
         if !bin.is_file() {
-            return Err(format!(
-                "atlas is not installed on {alias} ({arch} {os}); put a build at {} or install it there",
-                bin.display()
+            return Err(t!(
+                "native_remote_atlas_missing",
+                alias = alias,
+                arch = arch,
+                system = &os,
+                path = bin.display().to_string()
             ));
         }
         ssh(alias, "mkdir -p ~/.atlas/bin", Duration::from_secs(15)).await?;
@@ -103,9 +165,15 @@ async fn prepare(alias: &str) -> Result<(String, String), String> {
             .args(crate::crew::server_ssh(alias).scp_argv(&bin, ".atlas/bin/atlas"))
             .status()
             .await
-            .map_err(|e| e.to_string())?;
+            .map_err(|e| {
+                t!(
+                    "native_remote_spawn_failed",
+                    program = "scp",
+                    error = e.to_string()
+                )
+            })?;
         if !st.success() {
-            return Err(format!("upload to {alias} failed"));
+            return Err(t!("native_remote_upload_failed", alias = alias));
         }
         ssh(
             alias,
@@ -127,7 +195,13 @@ async fn prepare(alias: &str) -> Result<(String, String), String> {
 async fn connect_once(app: &AppHandle, alias: &str) -> Result<HostClient, String> {
     let (home, token) = prepare(alias).await?;
     let dir = local_dir();
-    std::fs::create_dir_all(&dir).map_err(|e| e.to_string())?;
+    std::fs::create_dir_all(&dir).map_err(|e| {
+        t!(
+            "native_remote_dir_failed",
+            path = dir.display().to_string(),
+            error = e.to_string()
+        )
+    })?;
     let sock = dir.join(format!("{alias}.sock"));
     let _ = std::fs::remove_file(&sock);
     let child = Command::new("ssh")
@@ -141,7 +215,13 @@ async fn connect_once(app: &AppHandle, alias: &str) -> Result<HostClient, String
         .stderr(Stdio::null())
         .kill_on_drop(true)
         .spawn()
-        .map_err(|e| format!("ssh tunnel: {e}"))?;
+        .map_err(|e| {
+            t!(
+                "native_remote_spawn_failed",
+                program = "ssh",
+                error = e.to_string()
+            )
+        })?;
     app.state::<Arc<Remotes>>()
         .tunnels
         .lock()
@@ -154,32 +234,47 @@ async fn connect_once(app: &AppHandle, alias: &str) -> Result<HostClient, String
             Err(e) => last = format!("{e:#}"),
         }
     }
-    Err(format!("{alias}: tunnel up but hostd unreachable: {last}"))
+    Err(t!(
+        "native_remote_hostd_unreachable",
+        alias = alias,
+        detail = last
+    ))
 }
 
 /// The reconnect error in words a user can act on; ssh's own text stays at the end for detail.
 fn plain_reason(e: &str) -> String {
-    let hint = if e.contains("Connection refused")
-        || e.contains("No route to host")
-        || e.contains("timed out")
-    {
-        "the server does not answer (is it powered on?)"
-    } else if e.contains("Permission denied") {
-        "SSH refused this computer's key"
-    } else if e.contains("Could not resolve hostname") {
-        "the server name does not resolve"
-    } else {
-        return e.to_string();
-    };
-    format!("{hint}. {e}")
+    plain_reason_in(atlas_i18n::lang(), e)
 }
 
-fn set_status(app: &AppHandle, alias: &str, s: &str) {
+fn plain_reason_in(lang: &str, e: &str) -> String {
+    if e.contains("Connection refused") || e.contains("No route to host") || e.contains("timed out")
+    {
+        t_in!(lang, "native_remote_reason_down", detail = e)
+    } else if e.contains("Permission denied") {
+        t_in!(lang, "native_remote_reason_key", detail = e)
+    } else if e.contains("Could not resolve hostname") {
+        t_in!(lang, "native_remote_reason_dns", detail = e)
+    } else {
+        e.to_string()
+    }
+}
+
+/// The warning of a host whose atlas hostd is older than this app: what it lacks and what to do.
+fn lacks_in(lang: &str, missing: &[&str]) -> String {
+    t_in!(
+        lang,
+        "native_remote_lacks_features",
+        features = missing.join(", ")
+    )
+}
+
+fn set_status(app: &AppHandle, alias: &str, s: &SshStatus) {
+    let wire = s.wire();
     app.state::<Arc<Remotes>>()
         .status
         .lock()
-        .insert(alias.to_string(), s.to_string());
-    let _ = app.emit("remote://status", json!({"alias": alias, "status": s}));
+        .insert(alias.to_string(), wire.clone());
+    let _ = app.emit("remote://status", json!({"alias": alias, "status": wire}));
 }
 
 fn configured() -> Vec<String> {
@@ -201,7 +296,7 @@ pub fn keep(app: &AppHandle, alias: String) {
     tauri::async_runtime::spawn(async move {
         let mut backoff = Duration::from_secs(2);
         while configured().contains(&alias) {
-            set_status(&app, &alias, "connecting");
+            set_status(&app, &alias, &SshStatus::Connecting);
             match connect_once(&app, &alias).await {
                 Ok(c) => {
                     backoff = Duration::from_secs(2);
@@ -212,21 +307,15 @@ pub fn keep(app: &AppHandle, alias: String) {
                         Err(_) => Vec::new(),
                     };
                     if missing.is_empty() {
-                        set_status(&app, &alias, "connected");
+                        set_status(&app, &alias, &SshStatus::Connected);
                     } else {
-                        set_status(
-                            &app,
-                            &alias,
-                            &format!(
-                                "warning: its atlas hostd lacks {}; update atlas on the host and restart its hostd",
-                                missing.join(", ")
-                            ),
-                        );
+                        let why = lacks_in(atlas_i18n::lang(), &missing);
+                        set_status(&app, &alias, &SshStatus::Warning(why));
                     }
                     crate::host::serve_client(&app, &host_id(&alias), c).await;
                 }
                 Err(e) => {
-                    set_status(&app, &alias, &format!("error: {e}"));
+                    set_status(&app, &alias, &SshStatus::Error(e.clone()));
                     app.state::<Arc<crate::host::HostHub>>()
                         .set_remote_error(&host_id(&alias), &plain_reason(&e));
                 }
@@ -237,7 +326,7 @@ pub fn keep(app: &AppHandle, alias: String) {
             tokio::time::sleep(backoff).await;
             backoff = (backoff * 2).min(Duration::from_secs(60));
         }
-        set_status(&app, &alias, "removed");
+        set_status(&app, &alias, &SshStatus::Removed);
     });
 }
 
@@ -320,7 +409,11 @@ pub async fn projects_add_remote(
     let host = host_id(&alias);
     let root = root.trim_end_matches('/').to_string();
     if !hub.exists(&host, &format!("{root}/atlas.yaml")).await {
-        return Err(format!("no atlas.yaml in {alias}:{root}"));
+        return Err(atlas_i18n::t!(
+            "native_remote_no_atlas_yaml",
+            alias = &alias,
+            root = &root
+        ));
     }
     let id = crate::registry::id_for_host(Some(&host), std::path::Path::new(&root));
     let fresh = crate::registry::edit(|entries| {
@@ -365,7 +458,7 @@ pub async fn ssh_forward(
     }
     let local = std::net::TcpListener::bind("127.0.0.1:0")
         .and_then(|l| l.local_addr())
-        .map_err(|e| e.to_string())?
+        .map_err(|e| t!("native_remote_local_port_failed", error = e.to_string()))?
         .port();
     let child = Command::new("ssh")
         .no_window()
@@ -378,7 +471,13 @@ pub async fn ssh_forward(
         .stderr(Stdio::null())
         .kill_on_drop(true)
         .spawn()
-        .map_err(|e| e.to_string())?;
+        .map_err(|e| {
+            t!(
+                "native_remote_spawn_failed",
+                program = "ssh",
+                error = e.to_string()
+            )
+        })?;
     for _ in 0..30 {
         tokio::time::sleep(Duration::from_millis(200)).await;
         if std::net::TcpStream::connect(("127.0.0.1", local)).is_ok() {
@@ -386,7 +485,11 @@ pub async fn ssh_forward(
             return Ok(local);
         }
     }
-    Err(format!("forward {alias}:{port} did not come up"))
+    Err(t!(
+        "native_remote_forward_failed",
+        port = port.to_string(),
+        alias = &alias
+    ))
 }
 
 #[tauri::command]
@@ -401,31 +504,179 @@ pub fn ssh_forwards(state: tauri::State<'_, Arc<Remotes>>) -> Vec<Value> {
 
 #[cfg(test)]
 mod reason_tests {
-    use super::plain_reason;
+    use super::{SshStatus, lacks_in, plain_reason_in};
+    use atlas_i18n::t_in;
+
+    const LANGS: [&str; 2] = ["en", "pt-BR"];
+
+    /// The sentence a reason starts with: the message with its `{detail}` left empty.
+    fn lead(lang: &str, key: &str) -> String {
+        let text = atlas_i18n::translate(lang, key, Some(&detail_args("")));
+        text.trim_end().to_string()
+    }
+
+    fn detail_args(detail: &str) -> atlas_i18n::Args {
+        let mut a = atlas_i18n::Args::new();
+        a.set("detail", detail);
+        a
+    }
 
     // Incident: the test ship's container was stopped and the app said "not connected (Settings → Integrations →
     // SSH hosts)", which sent the user to settings that were fine. The reason must say what is actually wrong.
     #[test]
     fn a_server_that_is_down_is_named_as_down() {
-        let r = plain_reason("ssh: connect to host 127.0.0.1 port 2222: Connection refused");
-        assert!(r.starts_with("the server does not answer"), "{r}");
-        assert!(
-            r.contains("Connection refused"),
-            "ssh's own words stay for detail"
-        );
+        let ssh = "ssh: connect to host 127.0.0.1 port 2222: Connection refused";
+        for lang in LANGS {
+            let r = plain_reason_in(lang, ssh);
+            assert!(
+                r.starts_with(&lead(lang, "native_remote_reason_down")),
+                "{lang}: {r}"
+            );
+            assert!(
+                r.ends_with(ssh),
+                "{lang}: ssh's own words stay at the end: {r}"
+            );
+        }
     }
 
     #[test]
     fn a_rejected_key_is_not_called_a_dead_server() {
-        let r = plain_reason("atlas-bot@h: Permission denied (publickey).");
-        assert!(r.starts_with("SSH refused this computer's key"), "{r}");
+        let ssh = "atlas-bot@h: Permission denied (publickey).";
+        for lang in LANGS {
+            let r = plain_reason_in(lang, ssh);
+            assert!(
+                r.starts_with(&lead(lang, "native_remote_reason_key")),
+                "{lang}: {r}"
+            );
+            assert!(r.ends_with(ssh), "{lang}: {r}");
+        }
+    }
+
+    #[test]
+    fn a_name_that_does_not_resolve_is_named() {
+        let ssh = "ssh: Could not resolve hostname nope: Name or service not known";
+        for lang in LANGS {
+            let r = plain_reason_in(lang, ssh);
+            assert!(
+                r.starts_with(&lead(lang, "native_remote_reason_dns")),
+                "{lang}: {r}"
+            );
+            assert!(r.ends_with(ssh), "{lang}: {r}");
+        }
+    }
+
+    #[test]
+    fn the_three_hints_are_three_different_sentences() {
+        let hints: Vec<String> = [
+            "native_remote_reason_down",
+            "native_remote_reason_key",
+            "native_remote_reason_dns",
+        ]
+        .iter()
+        .flat_map(|k| LANGS.map(|l| lead(l, k)))
+        .collect();
+        let mut unique = hints.clone();
+        unique.sort();
+        unique.dedup();
+        assert_eq!(unique.len(), hints.len(), "{hints:?}");
     }
 
     #[test]
     fn anything_else_is_passed_through_unchanged() {
+        for lang in LANGS {
+            assert_eq!(
+                plain_reason_in(lang, "tunnel up but hostd unreachable: x"),
+                "tunnel up but hostd unreachable: x"
+            );
+        }
+    }
+
+    // The classification reads ssh's own English text, never the app's translated sentences: our own "did not
+    // answer" already says it, and must not get a second hint put in front of it in any language.
+    #[test]
+    fn the_apps_own_timeout_is_not_classified_again() {
+        for lang in LANGS {
+            let ours = t_in!(
+                lang,
+                "native_remote_no_answer",
+                target = "box",
+                seconds = 20
+            );
+            assert_eq!(plain_reason_in(lang, &ours), ours, "{lang}");
+        }
+    }
+
+    #[test]
+    fn the_outdated_warning_names_what_the_host_lacks() {
+        let missing = vec!["mobile", "crew"];
+        for lang in LANGS {
+            let w = lacks_in(lang, &missing);
+            assert!(w.contains("mobile, crew"), "{lang}: {w}");
+        }
+        assert_ne!(lacks_in("en", &missing), lacks_in("pt-BR", &missing));
+    }
+
+    /// One status of each kind, as the producer builds them (English, so the fixture is stable).
+    fn samples() -> Vec<SshStatus> {
+        let missing = vec!["mobile", "crew"];
+        vec![
+            SshStatus::Connecting,
+            SshStatus::Connected,
+            SshStatus::Removed,
+            SshStatus::Warning(lacks_in("en", &missing)),
+            SshStatus::Error(t_in!(
+                "en",
+                "native_remote_hostd_unreachable",
+                alias = "example-host",
+                detail = "connection refused"
+            )),
+        ]
+    }
+
+    #[test]
+    fn the_wire_form_is_an_id_or_a_prefix_and_the_sentence() {
+        assert_eq!(SshStatus::Connecting.wire(), "connecting");
+        assert_eq!(SshStatus::Connected.wire(), "connected");
+        assert_eq!(SshStatus::Removed.wire(), "removed");
+        assert_eq!(SshStatus::Warning("w".into()).wire(), "warning: w");
+        assert_eq!(SshStatus::Error("e: x".into()).wire(), "error: e: x");
+    }
+
+    fn fixture_path() -> std::path::PathBuf {
+        std::path::Path::new(env!("CARGO_MANIFEST_DIR"))
+            .join("../../apps/desktop/src/lib/__fixtures__/ssh-status.json")
+    }
+
+    /// Contract with Settings > SSH hosts: `__fixtures__/ssh-status.json` maps each kind of status to the REAL
+    /// string the producer sends (`SshStatus::wire`). `sshStatus.test.ts` runs the page's mapping over it, so a
+    /// status added or reworded here is a red test there until the page maps it.
+    /// `UPDATE_FIXTURES=1 cargo test -p atlas-desktop ssh_status_fixture` rewrites it.
+    #[test]
+    fn ssh_status_fixture_is_what_rust_sends() {
+        let wires: serde_json::Map<String, serde_json::Value> = samples()
+            .iter()
+            .map(|s| (s.kind().to_string(), serde_json::Value::String(s.wire())))
+            .collect();
+        assert_eq!(wires.len(), samples().len(), "one sample per kind");
+        // Tab-indented, as `prettier --check src` (useTabs) wants the committed file.
+        let mut buf = Vec::new();
+        let mut ser = serde_json::Serializer::with_formatter(
+            &mut buf,
+            serde_json::ser::PrettyFormatter::with_indent(b"\t"),
+        );
+        serde::Serialize::serialize(&serde_json::Value::Object(wires.clone()), &mut ser).unwrap();
+        let fresh = String::from_utf8(buf).unwrap() + "\n";
+        if std::env::var_os("UPDATE_FIXTURES").is_some() {
+            std::fs::write(fixture_path(), &fresh).unwrap();
+        }
+        let committed = std::fs::read_to_string(fixture_path())
+            .expect("ssh-status.json (UPDATE_FIXTURES=1 writes it)");
+        // Values, not bytes: key order depends on serde_json's `preserve_order` in the build.
+        let committed: serde_json::Value = serde_json::from_str(&committed).unwrap();
         assert_eq!(
-            plain_reason("tunnel up but hostd unreachable: x"),
-            "tunnel up but hostd unreachable: x"
+            committed,
+            serde_json::Value::Object(wires),
+            "stale fixture: re-run with UPDATE_FIXTURES=1"
         );
     }
 }

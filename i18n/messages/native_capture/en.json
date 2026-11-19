@@ -1,0 +1,19 @@
+{
+	"native_capture_action_all_in_one": "All-in-one capture",
+	"native_capture_action_ocr": "Capture text",
+	"native_capture_action_previous": "Capture previous area",
+	"native_capture_action_record": "Record screen",
+	"native_capture_action_region": "Capture region",
+	"native_capture_action_screen": "Capture screen",
+	"native_capture_action_window": "Capture window",
+	"native_capture_audio_needs_macos_15": "Recording with sound needs macOS 15 or newer.",
+	"native_capture_dock_summon": "Message an agent",
+	"native_capture_dock_toggle": "Hide the dock",
+	"native_capture_folder_absolute": "The folder must be an absolute path",
+	"native_capture_history_range": "History keeps between {min} and {max} captures",
+	"native_capture_key_refused": "{action}: {reason}",
+	"native_capture_mic_off": "Microphone access is off for Atlas. Turn it on in System Settings > Privacy & Security > Microphone.",
+	"native_capture_same_key": "\"{first}\" and \"{second}\" use the same key",
+	"native_capture_stack_range": "The quick access stack holds between {min} and {max} captures",
+	"native_capture_timer_values": "The timer is off, 3, 5 or 10 seconds"
+}

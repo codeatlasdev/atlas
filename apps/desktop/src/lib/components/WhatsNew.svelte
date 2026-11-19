@@ -336,7 +336,7 @@
 					{/if}
 					{#if hostStale}
 						<p class="hint warn">
-							{hostState.reason}
+							{hostState.reasonText}
 							{hostState.ptys.length > 0
 								? m.settings_updates_whats_new_host_terminals({ count: hostState.ptys.length })
 								: ""}

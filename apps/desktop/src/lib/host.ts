@@ -1,20 +1,29 @@
 import { invoke } from "@tauri-apps/api/core";
 import { crumbs } from "#lib/errors/breadcrumbs.ts";
-import { classify } from "#lib/errors/diagnostics.ts";
 import { errors } from "#lib/errors/errors.svelte.ts";
 import { messageOf } from "#lib/errors/report.ts";
+import { hostRejection, isHostFailure } from "#lib/hostText.ts";
 
+const rejected = async (e: unknown): Promise<never> => {
+	throw await hostRejection(e);
+};
+
+/** `host_call` with a coded rejection turned into a `HostError` (in the app's language); no outage toast. */
+export const invokeHost = <T = unknown>(cmd: string, args: Record<string, unknown> = {}) =>
+	invoke<T>("host_call", { cmd, args }).catch(rejected);
 /** Raw passthrough to `atlas hostd` (see crates/atlas-host/src/protocol.rs). */
 export const hostCall = <T = unknown>(cmd: string, args: Record<string, unknown> = {}) => {
 	// Command name only: arguments can hold file contents and paths.
 	if (!/^(fs_read|pty_write)/.test(cmd)) crumbs.add(`host ${cmd}`);
-	return invoke<T>("host_call", { cmd, args }).catch((e) => {
+	return invokeHost<T>(cmd, args).catch((err) => {
 		crumbs.add(`host ${cmd} failed`);
 		// An outage joins the one shared toast (with its Restart / Report actions); the caller still gets
-		// the rejection. Ordinary errors (a missing file) stay the caller's.
-		const m = messageOf(e);
-		if (classify(m) === "host") errors.captureHost(m);
-		throw e;
+		// the rejection. Ordinary errors (a missing file) stay the caller's. A coded rejection is rendered in
+		// the app's language by `invokeHost` and recognized by its code, so the language never decides what an
+		// outage is.
+		const m = messageOf(err);
+		if (isHostFailure(err, m)) errors.captureHost(m);
+		throw err;
 	});
 };
 
@@ -87,7 +96,7 @@ export const host = {
 	ptyResize: (pty: string, cols: number, rows: number) => hostCall("pty_resize", { pty, cols, rows }),
 	ptyKill: (pty: string) => hostCall("pty_kill", { pty }),
 	/** Terminals of every connected host (local + SSH). */
-	ptyList: () => invoke<PtySummary[]>("host_pty_list"),
+	ptyList: () => invoke<PtySummary[]>("host_pty_list").catch(rejected),
 	/** `fg` (the foreground program) is only in `pty_info`: `pty_list` no longer forks `ps` per session. */
 	ptyInfo: (pty: string) =>
 		hostCall<PtySummary & { cwd_now: string | null; fg: { pid: number; name: string } | null }>("pty_info", {

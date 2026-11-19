@@ -356,6 +356,7 @@ fn recover_orphaned_lock(dir: &Path, _path: &Path) -> Result<std::fs::File> {
 }
 
 fn another_running(dir: &Path) -> anyhow::Error {
+    // i18n-ignore: startup refusal of the daemon: it goes to hostd.log (the daemon is detached), which maintainers and bug reports read in English
     anyhow!("another atlas hostd is running ({})", dir.display())
 }
 
@@ -464,6 +465,7 @@ pub async fn serve_with(dir: &Path, opts: ServeOpts) -> Result<()> {
     // that must be there, in a directory that is not its own.
     let lab = match &opts.lab {
         Some(_) if opts.takeover.is_some() => {
+            // i18n-ignore: developer tool (`atlas hostd --lab`): English like its flags and its tests
             return Err(anyhow!(
                 "a lab hostd owns no terminals: it cannot take over a daemon"
             ));
@@ -482,6 +484,7 @@ pub async fn serve_with(dir: &Path, opts: ServeOpts) -> Result<()> {
     };
     #[cfg(windows)]
     let mut takeover: Option<crate::upgrade::Takeover> = match &opts.takeover {
+        // i18n-ignore: startup refusal of the daemon (Windows has no live takeover), written to hostd.log
         Some(_) => return Err(anyhow!("live takeover is not supported on Windows")),
         None => None,
     };
@@ -510,6 +513,7 @@ pub async fn serve_with(dir: &Path, opts: ServeOpts) -> Result<()> {
     let listener = if takeover.is_some() {
         let _ = std::fs::remove_file(&tmp_sock);
         let l = ipc::Listener::bind(&tmp_sock)
+            // i18n-ignore: context of an error chain (the socket being bound), read in logs
             .with_context(|| format!("bind {}", tmp_sock.display()))?;
         std::fs::set_permissions(&tmp_sock, std::fs::Permissions::from_mode(0o600))?;
         std::fs::rename(&tmp_sock, &sock)?;
@@ -517,10 +521,12 @@ pub async fn serve_with(dir: &Path, opts: ServeOpts) -> Result<()> {
     } else {
         if sock.exists() {
             if ipc::connect(&sock).await.is_ok() {
+                // i18n-ignore: startup refusal of the daemon, written to hostd.log
                 return Err(anyhow!("socket {} is in use", sock.display()));
             }
             std::fs::remove_file(&sock)?;
         }
+        // i18n-ignore: context of an error chain (the socket being bound), read in logs
         let l = ipc::Listener::bind(&sock).with_context(|| format!("bind {}", sock.display()))?;
         std::fs::set_permissions(&sock, std::fs::Permissions::from_mode(0o600))?;
         l
@@ -530,6 +536,7 @@ pub async fn serve_with(dir: &Path, opts: ServeOpts) -> Result<()> {
     #[cfg(windows)]
     let listener = {
         let _ = &tmp_sock;
+        // i18n-ignore: context of an error chain (the socket being bound), read in logs
         ipc::Listener::bind(&sock).with_context(|| format!("bind {}", sock.display()))?
     };
 
@@ -557,6 +564,7 @@ pub async fn serve_with(dir: &Path, opts: ServeOpts) -> Result<()> {
                 adopted += 1;
                 sessions.insert(id, s);
             }
+            // i18n-ignore: log
             Err(e) => eprintln!("hostd: could not adopt pty {id}: {e:#}"),
         }
     }
@@ -662,6 +670,7 @@ pub async fn serve_with(dir: &Path, opts: ServeOpts) -> Result<()> {
         )
         .await
     {
+        // i18n-ignore: log
         eprintln!("hostd: agent hook server: {e}");
     }
     // Only now the crew: it starts agents (tasks resumed after a restart, schedules and triggers due at
@@ -689,6 +698,7 @@ pub async fn serve_with(dir: &Path, opts: ServeOpts) -> Result<()> {
         });
     }
     tokio::spawn(crate::lsp::pump(Arc::downgrade(&hub), lsp_rx));
+    // i18n-ignore: log
     eprintln!(
         "atlas hostd {} listening on {} (pid {}{})",
         env!("CARGO_PKG_VERSION"),
@@ -756,6 +766,7 @@ pub async fn serve_with(dir: &Path, opts: ServeOpts) -> Result<()> {
                     let _release = Sweeping(busy);
                     let s = atlas_core::hygiene::sweep(&reg, false);
                     if !s.orphans.is_empty() || s.freed.bytes > 0 {
+                        // i18n-ignore: log
                         eprintln!(
                             "atlas hostd: hygiene reaped {} orphaned process(es), freed {} bytes",
                             s.orphans.len(),
@@ -774,12 +785,14 @@ pub async fn serve_with(dir: &Path, opts: ServeOpts) -> Result<()> {
                     if let Some(lim) = limit {
                         let since = *idle_since.get_or_insert_with(Instant::now);
                         if crate::idle::idle_expired(live, clients, phones, since.elapsed(), lim) {
+                            // i18n-ignore: log
                             eprintln!("atlas hostd: idle for {}s, no terminals, no clients and no paired phone: exiting", lim.as_secs());
                             break;
                         }
                     }
                 }
                 if crate::idle::dir_gone(dir) {
+                    // i18n-ignore: log
                     eprintln!("atlas hostd: {} is gone: exiting", dir.display());
                     break;
                 }

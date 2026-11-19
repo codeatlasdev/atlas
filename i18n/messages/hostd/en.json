@@ -1,0 +1,48 @@
+{
+	"hostd_wire_cli_not_found": [
+		{
+			"declarations": [
+				"input os"
+			],
+			"selectors": [
+				"os"
+			],
+			"match": {
+				"os=windows": "atlas CLI not found. Install it in PowerShell: {command}",
+				"os=*": "atlas CLI not found. Install it with: {command}"
+			}
+		}
+	],
+	"hostd_wire_closed": "hostd closed the connection",
+	"hostd_wire_disconnected": "hostd disconnected",
+	"hostd_wire_events_dropped": "Terminal events were dropped under load. Terminals were resynced.",
+	"hostd_wire_feature_agents": "agent status",
+	"hostd_wire_feature_lsp": "language features",
+	"hostd_wire_feature_pty_attach_raw": "fast terminal rendering",
+	"hostd_wire_lsp_crashed_repeated_hint": "Open the server log from the status bar, then restart the server.",
+	"hostd_wire_lsp_crashed_repeated_message": "{server} crashed repeatedly",
+	"hostd_wire_lsp_crashed_start_hint": "Open the server log from the status bar, or restart the server.",
+	"hostd_wire_lsp_crashed_start_message": "{server} failed to start: {detail}",
+	"hostd_wire_lsp_custom_not_found_hint": "Check the command in the language settings (or .atlas/settings.json). It must be an executable on PATH or an absolute path.",
+	"hostd_wire_lsp_custom_not_found_message": "The custom language server command `{program}` was not found",
+	"hostd_wire_lsp_install_failed_hint": "The install log is in ~/.atlas/lsp/logs. Retry from the language settings.",
+	"hostd_wire_lsp_install_failed_message": "Installing {server} failed: {detail}",
+	"hostd_wire_lsp_no_curl_hint": "Atlas downloads language servers with curl. Install it and open the file again.",
+	"hostd_wire_lsp_no_curl_message": "Could not download {server}: curl is missing",
+	"hostd_wire_lsp_no_go_hint": "Install Go, then open the file again. Atlas compiles {server} with it.",
+	"hostd_wire_lsp_no_go_message": "{server} is not installed and `go` was not found to compile it",
+	"hostd_wire_lsp_offline_hint": "Check the internet connection and open the file again.",
+	"hostd_wire_lsp_offline_message": "Could not download {server}: {detail}",
+	"hostd_wire_lsp_unsupported_platform_hint": "There is no prebuilt server for this OS and CPU. Install one yourself and set its command in the language settings.",
+	"hostd_wire_lsp_unsupported_platform_message": "No prebuilt {server} for this system: {detail}",
+	"hostd_wire_older": "Terminal host {version} is older than Atlas {app_version}.",
+	"hostd_wire_older_features": "Terminal host {version} is older than Atlas {app_version}; {features} are off until it restarts.",
+	"hostd_wire_refused": "hostd: {why}",
+	"hostd_wire_remote_connecting": "{host} is still connecting; try again in a few seconds",
+	"hostd_wire_remote_unreachable": "{host} is not reachable: {why}",
+	"hostd_wire_start_failed": "hostd did not start",
+	"hostd_wire_unreachable": "Terminal host not reachable. Terminals cannot start or reconnect until it is back. Use Restart terminal host, or Report if it keeps happening.",
+	"hostd_wire_unreachable_why": "{@hostd_wire_unreachable} ({why})",
+	"hostd_wire_upgrade_failed": "Terminal host upgrade failed ({error}). Terminals keep running on the old host.",
+	"hostd_wire_upgraded": "Terminal host updated"
+}

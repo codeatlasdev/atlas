@@ -5,6 +5,7 @@ import { listen, type UnlistenFn } from "@tauri-apps/api/event";
 import { toast } from "@codeatlasdev/ui";
 import { errText } from "#lib/api.ts";
 import { errors } from "#lib/errors/errors.svelte.ts";
+import { hostTextLoaded, parseWire } from "#lib/hostText.ts";
 import { m } from "#lib/i18n/m.ts";
 import { docShapeError, emptyDoc, type Doc } from "#lib/stores/workspaceTypes.ts";
 import { tabTitle } from "#lib/title.ts";
@@ -50,6 +51,8 @@ export class WorkspacePersist {
 		// The saved doc and the listeners are independent IPCs: wait for them together. Each
 		// handle is kept as it resolves, so `dispose()` sees it even if the load fails.
 		const track = (p: Promise<UnlistenFn>) => p.then((u) => void this.#unlisten.push(u));
+		// Bumped by every reconnect: an error still waiting for its messages when that happens is stale and dropped.
+		let reconnects = 0;
 		const [{ doc: raw, recovered }] = await Promise.all([
 			this.#read(),
 			track(
@@ -60,14 +63,19 @@ export class WorkspacePersist {
 				}),
 			),
 			track(
-				listen<string>("host://error", (e) => {
-					ws.hostError = e.payload;
+				// A payload is `{code, args, message}` (or a bare string from an older shell).
+				listen<unknown>("host://error", async (e) => {
+					const seen = reconnects;
+					const text = await hostTextLoaded(parseWire(e.payload) ?? {});
+					if (seen !== reconnects) return;
+					ws.hostError = text;
 					// The connect loop retries every few seconds: one toast with a count, not one per retry.
-					void errors.captureHost(e.payload);
+					void errors.captureHost(text);
 				}),
 			),
 			track(
 				listen("host://reconnected", () => {
+					reconnects++;
 					ws.hostError = null;
 					errors.hostReachable();
 					void ws.syncPtys();

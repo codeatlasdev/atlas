@@ -1,0 +1,19 @@
+name: probe
+on: push
+permissions:
+  contents: read
+jobs:
+  probe:
+    runs-on: ubuntu-latest
+    strategy:
+      matrix:
+        n: [1, 2, 3]
+    steps:
+      - run: |
+          echo "image: ${ImageOS} ${ImageVersion}"
+          cat /etc/apt/apt-mirrors.txt 2>&1 | head
+          ls /etc/apt/sources.list.d; cat /etc/apt/sources.list.d/ubuntu.sources 2>&1 | head -20
+          for h in us-east-2.ec2.archive.ubuntu.com azure.archive.ubuntu.com archive.ubuntu.com; do
+            echo "== $h"
+            curl -4 -sS -o /dev/null -m 30 -w "%{http_code} %{size_download}B %{time_total}s %{speed_download}B/s\n" "http://$h/ubuntu/dists/resolute-updates/main/binary-amd64/Packages.xz" || true
+          done

@@ -828,12 +828,23 @@ async fn the_lab_mirrors_main_s_approvals_and_answers_them_through_main() {
         let d = r.main_dir();
         move || decision(&d)
     });
-    let req = loop {
-        let p = lab_phone.pushes(500).await;
-        if let Some(e) = p.iter().find(|e| e["ev"] == "agent_approval") {
-            break e["req"].as_str().unwrap().to_string();
+    // Bounded: a prompt main did not hold (answered at once) never reaches the lab phone, and an unbounded wait hung
+    // the run for 190 s with no reason given (2026-11-19, see `a_phone_that_reads_paired_is_already_connected`).
+    let req = tokio::time::timeout(atlas_core::scaling::HANG, async {
+        loop {
+            let p = lab_phone.pushes(500).await;
+            if let Some(e) = p.iter().find(|e| e["ev"] == "agent_approval") {
+                break e["req"].as_str().unwrap().to_string();
+            }
         }
-    };
+    })
+    .await
+    .unwrap_or_else(|_| {
+        panic!(
+            "the lab phone never saw main's prompt (main answered without holding it: {})",
+            asked.is_finished()
+        )
+    });
     // The mirrored prompt is also listed for a phone that connects after the push.
     let listed = r.lab.call("agent_status_all", json!({})).await.unwrap();
     assert_eq!(listed["pending_approvals"][0]["req"], req, "{listed}");

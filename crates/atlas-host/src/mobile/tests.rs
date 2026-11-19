@@ -376,6 +376,29 @@ async fn paired_on(c: HostClient) -> (HostClient, Phone, String) {
     (c, phone, node)
 }
 
+// A phone that has read "paired" is a connected phone: a permission prompt that arrives right after its pairing is
+// held for it. Incident (CI, 2026-11-19, #617): `lab::tests::the_lab_mirrors_main_s_approvals_and_answers_them_through_main`
+// hung 190 s on macOS. The session replied to `pair` before it counted the connection as live, so a prompt in that
+// window was answered `null` at once, no `agent_approval` was ever pushed, and the test waited for one forever.
+#[tokio::test]
+async fn a_phone_that_reads_paired_is_already_connected() {
+    use std::sync::atomic::Ordering;
+    let tmp = tempfile::tempdir().unwrap();
+    let c = daemon(tmp.path()).await;
+    let info = pair_start(&c).await;
+    let mut phone = Phone::dial(&info).await;
+    // Widen whatever window follows the reply, so the test does not depend on the scheduler to find it.
+    super::session::TEST_PAUSE_AFTER_PAIR_REPLY.store(800, Ordering::SeqCst);
+    let r = phone
+        .call("pair", json!({"code": info["code"], "name": "iPhone"}))
+        .await
+        .unwrap();
+    let devices = c.call("mobile_devices", json!({})).await.unwrap();
+    super::session::TEST_PAUSE_AFTER_PAIR_REPLY.store(0, Ordering::SeqCst);
+    assert_eq!(r["ok"], true, "{r}");
+    assert_eq!(devices["devices"][0]["connected"], true, "{devices}");
+}
+
 // Guards scopes on pushes: they were checked on requests only, so every phone got
 // every broadcast (approval prompts with their command, editor diagnostics), and
 // taking `term_read` away left an attached terminal streaming.

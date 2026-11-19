@@ -74,7 +74,7 @@ html.custom-chrome.tiling-wm {
 	--dur: 200ms;
 	--dur-slow: 260ms;
 
-	/* Space accent; the shell overrides these on the content root per space. */
+	/* Space accent defaults; each layer overrides them (SpaceLayer) and the few leaves outside a layer carry their own (+layout.svelte). */
 	--space-accent: var(--ca-brand-main);
 	--space-tint: transparent;
 	--dot-ok: var(--atlas-state-success, var(--ca-semantic-success));
@@ -251,21 +251,21 @@ html.custom-chrome.tiling-wm {
 html.ground-holes .content {
 	background: transparent;
 }
-html.ground-holes .content::before {
+html.ground-holes .space-wash {
 	display: none;
 }
 /* With the sidebar hidden the content owns the whole window. */
 .content.full {
 	margin-left: var(--window-pad);
 }
-/* A wash of the space's hue behind everything, so each space feels like its own place. */
-.content::before {
-	content: "";
+/* A wash of the space's hue behind everything, so each space feels like its own place. A leaf of its own that carries
+   `--space-tint` (+layout.svelte): on `.content` or `.app` the custom property would restyle everything below it. */
+.space-wash {
 	position: absolute;
 	z-index: -1;
 	inset: 0;
 	pointer-events: none;
-	background: radial-gradient(120% 60% at 0% 0%, var(--space-tint), transparent 70%);
+	background: radial-gradient(120% 60% at 0% 0%, var(--space-tint, transparent), transparent 70%);
 	transition: background var(--dur-slow) var(--ease);
 }
 

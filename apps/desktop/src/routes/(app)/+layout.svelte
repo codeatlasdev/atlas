@@ -54,6 +54,9 @@
 	const customChrome = document.documentElement.classList.contains("custom-chrome");
 	// A tiling WM (Hyprland, Sway, i3) owns move, resize and close: no caption buttons there (#269).
 	const captionButtons = customChrome && !document.documentElement.classList.contains("tiling-wm");
+	/** The selected space's hue for the chrome outside a layer (see the comment above `.app`). */
+	const accent = $derived(shell.active ? shell.accent(shell.active.id) : undefined);
+	const tint = $derived(shell.active ? shell.tint(shell.active.id) : undefined);
 
 	// The crash card only exists on the launch after a crash: its store, text and view load only when Rust says there is one.
 	let crashPending = $state(false);
@@ -96,15 +99,13 @@
 {/snippet}
 
 <!--
-	Only what the shell chrome outside a layer reads (sidebar rows, the edge peek, the `.content` wash, the nav chips):
-	`--space-accent` and `--space-tint`. `--space-accent-text` and `--space-on-accent` are read only below a layer
-	(panel, project header, editor, viewers), and every layer carries all four itself (`shell.layerVars`, SpacePager).
+	Nothing here sets `--space-accent` or `--space-tint` on `.app`. A custom property inherits, so writing it on the root
+	restyled every node of the chrome on each selection (~2 ms of the main thread, #452). The leaves that read the
+	selection's hue carry it themselves: the `.content` wash and the nav chips below, the edge peek's glass (EdgePeek)
+	and the selected worktree row (WorktreeRow). `--space-accent-text` and `--space-on-accent` are read only below a
+	layer, and every layer carries all four itself (`shell.layerVars`, SpacePager).
 -->
-<div
-	class="app"
-	style:--space-accent={shell.active ? shell.accent(shell.active.id) : undefined}
-	style:--space-tint={shell.active ? shell.tint(shell.active.id) : undefined}
->
+<div class="app">
 	<WorkspaceRail />
 	{#if ws.appMode === "crew"}
 		<CrewWorkspace />
@@ -113,11 +114,18 @@
 		<div class="sidebar-slot" class:hidden={!docks.sidebar} inert={!docks.sidebar}>
 			<div class="sidebar-panel">{@render sidebar()}</div>
 		</div>
-		<EdgePeek edge="left" size={260} label="Sidebar" active={!docks.sidebar}>{@render sidebar()}</EdgePeek>
+		<EdgePeek edge="left" size={260} label="Sidebar" active={!docks.sidebar} {accent}
+			>{@render sidebar()}</EdgePeek
+		>
 		<main class="content" class:full={!docks.sidebar} use:swipe={historySwipe()}>
+			<div class="space-wash" aria-hidden="true" style:--space-tint={tint}></div>
 			<div class="space-edge" aria-hidden="true"></div>
-			<div class="nav-chip nav-chip-prev" aria-hidden="true"><ChevronLeft size={18} /></div>
-			<div class="nav-chip nav-chip-next" aria-hidden="true"><ChevronRight size={18} /></div>
+			<div class="nav-chip nav-chip-prev" aria-hidden="true" style:--space-accent={accent}>
+				<ChevronLeft size={18} />
+			</div>
+			<div class="nav-chip nav-chip-next" aria-hidden="true" style:--space-accent={accent}>
+				<ChevronRight size={18} />
+			</div>
 			<div class="space-view">
 				<CrashProbe id="app" />
 				{@render children()}

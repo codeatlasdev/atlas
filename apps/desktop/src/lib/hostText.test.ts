@@ -1,13 +1,17 @@
 // @ts-nocheck bun test runtime types are not part of the app tsconfig
-import { describe, expect, test } from "bun:test";
+import { beforeAll, describe, expect, test } from "bun:test";
 import { classify } from "#lib/errors/diagnostics.ts";
 import { hostReason, parseHostState } from "#lib/hostStatus.ts";
-import { HostError, hostRejection, hostText, isHostFailure, parseWire, render } from "#lib/hostText.ts";
+import { hostRejection, hostText, isHostFailure, loadHostMessages, parseWire } from "#lib/hostText.ts";
+import { HostError, render } from "#lib/hostMessages.ts";
 import { lspReasonText } from "#lib/lsp/reasonText.ts";
 import { inLocale } from "../../test/locale.ts";
 import client from "./__fixtures__/hostd-client-errors.json";
 import wire from "./__fixtures__/hostd-wire.json";
 import lsp from "./__fixtures__/lsp-reasons.json";
+
+// The messages load on demand in the app; the tests that render them load them first.
+beforeAll(loadHostMessages);
 
 // The fixtures are the REAL output of the Rust producers (`UPDATE_FIXTURES=1 cargo test -p atlas-lsp -p atlas-host
 // -p atlas-desktop`): the status of `state_for`, the toasts and errors of `host.rs`, the coded errors of `client.rs`,
@@ -129,7 +133,7 @@ describe("a coded failure of the host is a host failure in any language", () => 
 	// was still connecting ("ssh:box is still connecting") raised the LOCAL outage toast with "Restart terminal host".
 	// Before the codes `classify` read those sentences as ordinary errors, and only the local host's own outage as
 	// a host failure.
-	test("only a failure of the local host's connection is a host failure; a remote or a refusal is the caller's", () => {
+	test("only a failure of the local host's connection is a host failure; a remote or a refusal is the caller's", async () => {
 		const outage = ["hostd.unreachable", "hostd.closed", "hostd.disconnected", "hostd.start_failed"];
 		const rest = codedWire.filter(
 			(w) => w.code.startsWith("hostd.") && !outage.includes(w.code) && w.message,
@@ -138,17 +142,17 @@ describe("a coded failure of the host is a host failure in any language", () => 
 		expect(rest.map((w) => w.code)).toContain("hostd.remote_unreachable");
 		for (const code of outage) {
 			const w = codedWire.find((x) => x.code === code);
-			expect(isHostFailure(hostRejection(w))).toBe(true);
+			expect(isHostFailure(await hostRejection(w))).toBe(true);
 		}
 		for (const w of rest) {
 			// The English the old `classify` judged, and the coded failure the new code judges, agree.
 			expect(classify(w.message)).toBe("other");
-			expect(isHostFailure(hostRejection(w))).toBe(false);
+			expect(isHostFailure(await hostRejection(w))).toBe(false);
 		}
 		// hostd refusing the token on a raw attach was a host failure by its words ("hostd: unauthorized") and stays one.
 		expect(
 			isHostFailure(
-				hostRejection({
+				await hostRejection({
 					code: "hostd.refused",
 					args: { why: "unauthorized" },
 					message: "hostd: unauthorized",
@@ -159,7 +163,7 @@ describe("a coded failure of the host is a host failure in any language", () => 
 		expect(isHostFailure("no such file")).toBe(false);
 		// An uncoded rejection stays what it was: the same string.
 		const text = wire.rejections.find((r) => typeof r === "string");
-		expect(hostRejection(text)).toBe(text);
+		expect(await hostRejection(text)).toBe(text);
 	});
 
 	test("a payload of host://error is an object, or a bare string from an older shell", () => {

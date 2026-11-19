@@ -10,7 +10,7 @@ import { listen, type UnlistenFn } from "@tauri-apps/api/event";
 import { toast } from "@codeatlasdev/ui";
 import { errText } from "#lib/api.ts";
 import { EMPTY_HOST, hostReason, parseHostState, shouldPrompt, type HostState } from "#lib/hostStatus.ts";
-import { hostText } from "#lib/hostText.ts";
+import { hostTextLoaded, loadHostMessages } from "#lib/hostText.ts";
 import { gpu } from "#lib/stores/gpu.svelte.ts";
 
 class Host {
@@ -74,6 +74,8 @@ async function takePrompt() {
 	await refresh();
 	const pending = await invoke<boolean>("host_take_prompt").catch(() => false);
 	if (pending && shouldPrompt(hostState)) {
+		// The dialog opens with the reason already written, not with the generic body that the sentence then replaces.
+		await loadHostMessages();
 		acted = false;
 		hostPrompt.open = true;
 	}
@@ -135,8 +137,8 @@ export async function initHostStatus(): Promise<UnlistenFn> {
 		listen("host://prompt", () => void takePrompt()),
 		listen<{ kind?: string; text?: string; code?: string; args?: Record<string, unknown> }>(
 			"host://toast",
-			(e) => {
-				const text = hostText({ code: e.payload.code, args: e.payload.args, message: e.payload.text });
+			async (e) => {
+				const text = await hostTextLoaded({ ...e.payload, message: e.payload.text });
 				if (!text) return;
 				// `warning`: events were dropped and resynced (#299); anything else is a finished upgrade.
 				if (e.payload.kind === "warning") toast.info(text);
@@ -148,6 +150,9 @@ export async function initHostStatus(): Promise<UnlistenFn> {
 			if (e.payload.kind === "host") void refresh();
 		}),
 	]);
+	// Not at startup's expense (the messages are a separate chunk), but before the first toast, error or reason needs
+	// them: a status reason on the chip is written in the app's language as soon as they land, never in English.
+	void loadHostMessages();
 	await takePrompt();
 	return () => offs.forEach((f) => f());
 }

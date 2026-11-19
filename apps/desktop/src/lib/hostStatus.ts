@@ -104,7 +104,7 @@ export interface Chip {
 
 /** Why the host is not current, in the app's language; `""` when it is current. Falls back to the shell's English. */
 export function hostReason(s: Pick<HostState, "reason" | "reasonCode" | "reasonArgs">): string {
-	return s.reasonCode ? hostText({ code: s.reasonCode, args: s.reasonArgs, message: s.reason }) : s.reason;
+	return hostText({ code: s.reasonCode, args: s.reasonArgs, message: s.reason });
 }
 
 /**

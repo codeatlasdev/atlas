@@ -57,7 +57,7 @@ test("a remote host that is still connecting is the folder's own error, not a lo
 	const seen = { host: [], other: [] };
 	const r = await loadFolder(
 		async () => {
-			throw hostRejection({
+			throw await hostRejection({
 				code: "hostd.remote_connecting",
 				args: { host: "ssh:box" },
 				message: "ssh:box is still connecting; try again in a few seconds",

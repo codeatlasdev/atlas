@@ -676,6 +676,7 @@ pub fn gc() -> Result<()> {
     {
         let orphans = atlas_core::agent_display::orphan_displays();
         if orphans.is_empty() {
+            // i18n-ignore: developer command output, like the lines above
             println!("0 orphan agent display(s)");
         } else {
             println!("{}", atlas_core::agent_display::orphan_report(&orphans));

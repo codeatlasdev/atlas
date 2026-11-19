@@ -63,6 +63,7 @@ fn watch_signals(app: AppHandle) {
     let mut fds = [0 as libc::c_int; 2];
     // SAFETY: pipe(2) fills two descriptors.
     if unsafe { libc::pipe(fds.as_mut_ptr()) } != 0 {
+        // i18n-ignore: log
         eprintln!("atlas-agent: no signal pipe; a signal will not destroy the display first");
         return;
     }
@@ -77,6 +78,7 @@ fn watch_signals(app: AppHandle) {
             // SAFETY: reads one byte into a live local from the pipe's read end.
             let n = unsafe { libc::read(fds[0], (&raw mut byte).cast(), 1) };
             if n == 1 {
+                // i18n-ignore: log
                 eprintln!("atlas-agent: signal {byte}: destroying the virtual display and exiting");
                 leave(&app, Exit::Signal(i32::from(byte)));
                 return;

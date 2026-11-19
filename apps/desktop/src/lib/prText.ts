@@ -47,7 +47,7 @@ export function reviewStateText(state: string): string {
 		case "DISMISSED":
 			return m.git_github_review_dismissed();
 		case "PENDING":
-			return m.git_github_review_pending();
+			return m.git_github_check_pending();
 		default:
 			return reviewDecisionText(state);
 	}

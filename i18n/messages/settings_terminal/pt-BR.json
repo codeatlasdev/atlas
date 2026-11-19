@@ -69,7 +69,6 @@
 	"settings_terminal_tab_space_left_and_right_of": "Espaço à esquerda e à direita do texto. A margem usa o fundo do terminal.",
 	"settings_terminal_tab_terminal_font": "Fonte do terminal",
 	"settings_terminal_tab_terminal_font_size": "Tamanho da fonte do terminal",
-	"settings_terminal_tab_terminal_host": "Host de terminais",
 	"settings_terminal_tab_text": "Texto",
 	"settings_terminal_tab_text_size_in_terminals": "Tamanho do texto nos terminais.",
 	"settings_terminal_tab_the_background_process_that_keeps": "O processo em segundo plano que mantém os terminais vivos. Reinicie para usar uma nova versão do Atlas; os terminais em execução terminam.",

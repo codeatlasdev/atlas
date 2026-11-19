@@ -5,7 +5,6 @@
 	"settings_updates_whats_new_collapse_aria": "Recolher {version}",
 	"settings_updates_whats_new_dev_note": "Este é um build de desenvolvimento; o Atlas não o substitui por uma versão publicada.",
 	"settings_updates_whats_new_download_progress": "{percent}% de {total}",
-	"settings_updates_whats_new_download_unknown": "Baixando…",
 	"settings_updates_whats_new_empty_body": "O changelog ainda não tem uma entrada para ela.",
 	"settings_updates_whats_new_empty_title": "Nenhuma nota de versão para {version}",
 	"settings_updates_whats_new_empty_title_unknown": "Nenhuma nota para esta versão",

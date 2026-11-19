@@ -33,7 +33,7 @@ export function accentLabel(preset: { id: string; label: string }): string {
 
 /** What the import dialog calls the format it detected (a descriptive name: "Ghostty config", not just "Ghostty"). */
 export const FORMAT_MESSAGES: Record<ThemeFormat, () => string> = {
-	ghostty: () => m.settings_theme_import_format_ghostty(),
+	ghostty: () => m.settings_theme_actions_filter_ghostty(),
 	iterm: () => m.settings_theme_import_format_iterm(),
 	vscode: () => m.settings_theme_import_format_vscode(),
 	base16: () => m.settings_theme_import_format_base16(),

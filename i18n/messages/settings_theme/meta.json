@@ -116,56 +116,17 @@
 	"settings_theme_grid_show_themes": {
 		"description": "Accessible name of the all, dark, light filter of the theme grid."
 	},
-	"settings_theme_interface_tab_active_pane_border": {
-		"description": "Label of the active pane border row and accessible name of its number field."
-	},
 	"settings_theme_interface_tab_dim_inactive_description": {
 		"description": "Description of the dim inactive panes row; the numbers are the opacity scale."
-	},
-	"settings_theme_interface_tab_dim_inactive_panes": {
-		"description": "Label of the row that dims inactive panes, and accessible name of its number field."
-	},
-	"settings_theme_interface_tab_file_icons": {
-		"description": "Label of the file icons row and accessible name of its switch."
-	},
-	"settings_theme_interface_tab_file_icons_description": {
-		"description": "Description of the file icons row."
-	},
-	"settings_theme_interface_tab_file_panel": {
-		"description": "Title of the file panel group in Settings > Interface."
-	},
-	"settings_theme_interface_tab_file_panel_side": {
-		"description": "Label of the row that picks the side of the file panel, and accessible name of its selector."
-	},
-	"settings_theme_interface_tab_file_panel_side_description": {
-		"description": "Description of the file panel side row."
-	},
-	"settings_theme_interface_tab_folder_icons": {
-		"description": "Label of the folder icons row and accessible name of its switch."
-	},
-	"settings_theme_interface_tab_folder_icons_description": {
-		"description": "Description of the folder icons row."
-	},
-	"settings_theme_interface_tab_folder_indent": {
-		"description": "Label of the folder indent row and accessible name of its number field."
 	},
 	"settings_theme_interface_tab_folder_indent_description": {
 		"description": "Description of the folder indent row."
 	},
-	"settings_theme_interface_tab_font_family_description": {
-		"description": "Description of the interface font family row."
-	},
 	"settings_theme_interface_tab_font_sample": {
 		"description": "Sample sentence drawn in the chosen interface font, under the font rows."
 	},
-	"settings_theme_interface_tab_font_size": {
-		"description": "Label of the interface font size row."
-	},
 	"settings_theme_interface_tab_font_size_description": {
 		"description": "Description of the interface font size row."
-	},
-	"settings_theme_interface_tab_font_title": {
-		"description": "Title of the interface font group and label of its family row."
 	},
 	"settings_theme_interface_tab_left": {
 		"description": "Option of the file panel side selector."
@@ -176,14 +137,8 @@
 	"settings_theme_interface_tab_right": {
 		"description": "Option of the file panel side selector."
 	},
-	"settings_theme_interface_tab_split_panes": {
-		"description": "Title of the split panes group in Settings > Interface."
-	},
 	"settings_theme_interface_tab_zoom": {
 		"description": "Title and label of the zoom row in Settings > Interface."
-	},
-	"settings_theme_interface_tab_zoom_description": {
-		"description": "Description of the zoom row. The three placeholders are shortcuts."
 	},
 	"settings_theme_issues_files": {
 		"description": "Title of the collapsible list of user theme files that did not load fully."
@@ -197,32 +152,17 @@
 	"settings_theme_mode_system": {
 		"description": "Option of the theme mode selector: follow the operating system."
 	},
-	"settings_theme_tab_accent_color": {
-		"description": "Title of the accent color group and label of its row in Settings > Appearance."
-	},
-	"settings_theme_tab_accent_description": {
-		"description": "Description of the accent color row."
-	},
-	"settings_theme_tab_color_theme": {
-		"description": "Title of the color theme group in Settings > Appearance, and accessible name of the theme grid."
-	},
 	"settings_theme_tab_copy_as_ghostty_config": {
 		"description": "Button and menu item: copy a theme to the clipboard as a Ghostty config."
 	},
 	"settings_theme_tab_copy_as_json": {
 		"description": "Button and menu item: copy a theme to the clipboard as JSON."
 	},
-	"settings_theme_tab_dark_theme": {
-		"description": "Label of the row that picks the theme used in dark mode."
-	},
 	"settings_theme_tab_dark_theme_description": {
 		"description": "Description of the dark theme row."
 	},
 	"settings_theme_tab_export_description": {
 		"description": "Description of the export theme row."
-	},
-	"settings_theme_tab_export_theme": {
-		"description": "Label of the export theme row."
 	},
 	"settings_theme_tab_import": {
 		"description": "Button of the import theme row: opens the import dialog."
@@ -233,12 +173,6 @@
 	"settings_theme_tab_import_description": {
 		"description": "Description of the import theme row. ~/.atlas/themes is a folder path."
 	},
-	"settings_theme_tab_import_theme": {
-		"description": "Label of the import theme row."
-	},
-	"settings_theme_tab_light_theme": {
-		"description": "Label of the row that picks the theme used in light mode."
-	},
 	"settings_theme_tab_light_theme_description": {
 		"description": "Description of the light theme row."
 	},
@@ -248,14 +182,8 @@
 	"settings_theme_tab_save_to_file": {
 		"description": "Button of the export theme row: save the theme to a file."
 	},
-	"settings_theme_tab_terminal_theme": {
-		"description": "Label of the row that picks the theme of terminals and agents."
-	},
 	"settings_theme_tab_terminal_theme_description": {
 		"description": "Description of the terminal theme row. The reference is the option that follows the app theme."
-	},
-	"settings_theme_tab_theme": {
-		"description": "Label of the theme mode row in Settings > Appearance, and accessible name of its mode selector."
 	},
 	"settings_theme_tab_theme_description": {
 		"description": "Description of the theme mode row."

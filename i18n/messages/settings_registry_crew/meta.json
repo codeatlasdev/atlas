@@ -1,12 +1,9 @@
 {
 	"settings_registry_crew_crew_add_description": "Help line under the \"Add crew server\" row in Settings > Atlas Crew, also shown in search results.",
 	"settings_registry_crew_crew_github_description": "Help line under the \"GitHub\" row in Settings > Atlas Crew, also shown in search results.",
-	"settings_registry_crew_crew_onboarding_description": "Help line under the \"Replay onboarding\" row in Settings > Atlas Crew, also shown in search results.",
-	"settings_registry_crew_crew_onboarding_label": "Label of the \"Replay onboarding\" row in Settings > Atlas Crew, also its title in search results.",
 	"settings_registry_crew_description": "One line under the Atlas Crew page title in Settings, and the tooltip of its sidebar entry.",
 	"settings_registry_crew_group_crew_servers": "Title of the \"Crew servers\" card on the Atlas Crew page of Settings, shown above its rows and in the path of search results.",
 	"settings_registry_crew_group_github": "Title of the \"GitHub\" card on the Atlas Crew page of Settings, shown above its rows and in the path of search results.",
-	"settings_registry_crew_group_onboarding": "Title of the \"Onboarding\" card on the Atlas Crew page of Settings, shown above its rows and in the path of search results.",
 	"settings_registry_crew_label": "Sidebar entry and page title of the Atlas Crew section in Settings.",
 	"settings_registry_crew_short_replies_description": "Help line under the \"Short replies\" row in Settings > Atlas Crew, also shown in search results."
 }

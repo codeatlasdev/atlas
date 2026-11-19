@@ -56,7 +56,6 @@
 	"git_github_review_changes": "Chip of a pull request review decision. Raw value CHANGES_REQUESTED of gh.",
 	"git_github_review_commented": "Tag of a review in the pull request timeline. Raw value COMMENTED of gh.",
 	"git_github_review_dismissed": "Tag of a review in the pull request timeline. Raw value DISMISSED of gh.",
-	"git_github_review_pending": "Tag of a review in the pull request timeline. Raw value PENDING of gh.",
 	"git_github_review_required": "Chip of a pull request review decision. Raw value REVIEW_REQUIRED of gh.",
 	"git_github_rollup_failed": "Word next to the Checks heading: at least one check failed.",
 	"git_github_rollup_ok": "Word next to the Checks heading: all checks passed.",

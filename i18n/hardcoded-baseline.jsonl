@@ -174,7 +174,6 @@
 {"ratchet":"shortcut","file":"crates/atlas-tui/src/tui/keymap.rs","count":0}
 {"ratchet":"shortcut","file":"crates/atlas-tui/src/tui/views/footer.rs","count":0}
 {"ratchet":"shortcut","file":"site/src/pages/index.astro","count":1}
-{"ratchet":"svelte","file":"apps/desktop/src/lib/components/AgentSettings.svelte","count":26}
 {"ratchet":"svelte","file":"apps/desktop/src/lib/components/AgentSettings.svelte","count":0}
 {"ratchet":"svelte","file":"apps/desktop/src/lib/components/AgentsView.svelte","count":0}
 {"ratchet":"svelte","file":"apps/desktop/src/lib/components/AskDialog.svelte","count":0}
@@ -182,7 +181,6 @@
 {"ratchet":"svelte","file":"apps/desktop/src/lib/components/ChatTab.svelte","count":0}
 {"ratchet":"svelte","file":"apps/desktop/src/lib/components/Config.svelte","count":0}
 {"ratchet":"svelte","file":"apps/desktop/src/lib/components/CreatePrDialog.svelte","count":0}
-{"ratchet":"svelte","file":"apps/desktop/src/lib/components/CrewSettings.svelte","count":29}
 {"ratchet":"svelte","file":"apps/desktop/src/lib/components/CrewSettings.svelte","count":0}
 {"ratchet":"svelte","file":"apps/desktop/src/lib/components/DiffView.svelte","count":0}
 {"ratchet":"svelte","file":"apps/desktop/src/lib/components/Editor.svelte","count":0}
@@ -201,7 +199,6 @@
 {"ratchet":"svelte","file":"apps/desktop/src/lib/components/Palette.svelte","count":0}
 {"ratchet":"svelte","file":"apps/desktop/src/lib/components/PointerMenu.svelte","count":0}
 {"ratchet":"svelte","file":"apps/desktop/src/lib/components/PrTab.svelte","count":0}
-{"ratchet":"svelte","file":"apps/desktop/src/lib/components/RightSidebar.svelte","count":20}
 {"ratchet":"svelte","file":"apps/desktop/src/lib/components/RightSidebar.svelte","count":0}
 {"ratchet":"svelte","file":"apps/desktop/src/lib/components/Settings.svelte","count":0}
 {"ratchet":"svelte","file":"apps/desktop/src/lib/components/SetupRow.svelte","count":0}
@@ -234,7 +231,6 @@
 {"ratchet":"svelte","file":"apps/desktop/src/lib/components/panes/TabGroupView.svelte","count":0}
 {"ratchet":"svelte","file":"apps/desktop/src/lib/components/panes/TerminalPane.svelte","count":0}
 {"ratchet":"svelte","file":"apps/desktop/src/lib/components/settings/AgentHooks.svelte","count":0}
-{"ratchet":"svelte","file":"apps/desktop/src/lib/components/settings/CaptureSettings.svelte","count":97}
 {"ratchet":"svelte","file":"apps/desktop/src/lib/components/settings/CaptureSettings.svelte","count":0}
 {"ratchet":"svelte","file":"apps/desktop/src/lib/components/settings/DockSettings.svelte","count":0}
 {"ratchet":"svelte","file":"apps/desktop/src/lib/components/settings/HygieneGroup.svelte","count":0}

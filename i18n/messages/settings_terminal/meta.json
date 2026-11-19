@@ -72,7 +72,6 @@
 	"settings_terminal_tab_space_left_and_right_of": "description prop (help line) of a <Row> component, in TerminalTab (apps/desktop/src/lib/settings/TerminalTab.svelte). Extracted by i18n:extract: refine this description on review.",
 	"settings_terminal_tab_terminal_font": "label prop of a <Row> component, in TerminalTab (apps/desktop/src/lib/settings/TerminalTab.svelte). Extracted by i18n:extract: refine this description on review.",
 	"settings_terminal_tab_terminal_font_size": "label prop of a <Row> component, in TerminalTab (apps/desktop/src/lib/settings/TerminalTab.svelte). Extracted by i18n:extract: refine this description on review.",
-	"settings_terminal_tab_terminal_host": "label prop of a <Row> component, in TerminalTab (apps/desktop/src/lib/settings/TerminalTab.svelte). Extracted by i18n:extract: refine this description on review.",
 	"settings_terminal_tab_text": "Tooltip (title attribute) of a <Group> component, in TerminalTab (apps/desktop/src/lib/settings/TerminalTab.svelte). Extracted by i18n:extract: refine this description on review.",
 	"settings_terminal_tab_text_size_in_terminals": "description prop (help line) of a <Row> component, in TerminalTab (apps/desktop/src/lib/settings/TerminalTab.svelte). Extracted by i18n:extract: refine this description on review.",
 	"settings_terminal_tab_the_background_process_that_keeps": "description prop (help line) of a <Row> component, in TerminalTab (apps/desktop/src/lib/settings/TerminalTab.svelte). Extracted by i18n:extract: refine this description on review.",

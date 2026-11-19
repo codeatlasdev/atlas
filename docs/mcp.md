@@ -182,7 +182,7 @@ Tail logs from `.logs/`. ANSI is already stripped. Each returned line is `[servi
 | Argument | Type | Default | Notes |
 |---|---|---|---|
 | `service` | string | all merged by timestamp | Must have a log file; otherwise the error lists services that do. Project [action](runtime.md#actions) output: `action:<label>` (e.g. `action:Run checks`) or the file name `action-run-checks`. `audit`: the [audit trail](#agent-permissions-and-audit) of control calls (`HH:MM:SS agent omp/14.1 restart_service api -> denied: …`); it is never merged into the all-services tail, and `level` / `since_minutes` do not apply to it. |
-| `lines` | integer 1–2000 | 100 | Trailing lines to return. |
+| `lines` | integer 1 to 2000 | 100 | Trailing lines to return. |
 | `since_minutes` | integer ≥ 0 | none | Only lines from the last N minutes (by the `HH:MM:SS` prefix, local time, capped at 24 h). Lines without a timestamp (stack-trace continuations) are kept. |
 | `level` | `error` \| `warn` | none | `error` = errors only; `warn` = warnings and errors. Detected from text (`error`, `fatal`, `panic`, `warn`, color codes). |
 
@@ -201,7 +201,7 @@ Search logs. `query` is a literal substring, or a regex when wrapped in slashes 
 |---|---|---|---|
 | `query` | string | **required** | Non-empty. Invalid regex is an error. |
 | `service` | string | all | Restrict to one service. Errors with the list of known services if it has neither a current nor a previous log. |
-| `limit` | integer 1–500 | 50 | The **most recent** `limit` matches are returned. |
+| `limit` | integer 1 to 500 | 50 | The **most recent** `limit` matches are returned. |
 | `include_previous` | boolean | `false` | Also search the previous run's logs (`<service>.prev.log`); those lines are tagged `(prev run)`. |
 
 Empty result: `(no matches)`.
@@ -270,7 +270,7 @@ Block until a service (or every service) is `running`, polling the live status t
 | Argument | Type | Default | Notes |
 |---|---|---|---|
 | `service` | string | all | When omitted, `disabled` and `suspended` services are not waited for. A targeted service that is disabled keeps waiting. |
-| `timeout_s` | integer 1–**600** | 60 | Values above 600 are clamped. |
+| `timeout_s` | integer 1 to **600** | 60 | Values above 600 are clamped. |
 
 Results:
 

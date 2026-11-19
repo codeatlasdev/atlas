@@ -1,13 +1,13 @@
 ---
 title: "Terminal GPU"
 source: terminal.md
-source_sha: "ac74dce97c1a5b54bf360f1b0382100623a8220a"
+source_sha: "614dda9de9fceef17a3b3a0a0a7f87a7d15e4a57"
 translation: machine
 ---
 
 # Terminal GPU
 
-O Atlas Desktop desenha os terminais locais de forma nativa, em vez de usar o xterm.js (ativado por padrão; Configurações → Terminal → **Fast terminal (GPU)**, salvo em `atlas.gpuTerminal`, `"0"` desativa; vale para os terminais abertos depois). Cobre os terminais das worktrees locais do hostd (macOS); os terminais das worktrees de hosts SSH continuam no xterm.js.
+O Atlas Desktop desenha os terminais locais de forma nativa, em vez de usar o xterm.js (ativado por padrão; Configurações → Terminal → **Terminal rápido (GPU)**, salvo em `atlas.gpuTerminal`, `"0"` desativa; vale para os terminais abertos depois). Cobre os terminais das worktrees locais do hostd (macOS); os terminais das worktrees de hosts SSH continuam no xterm.js.
 
 ## Arquitetura
 
@@ -19,7 +19,7 @@ program ─pty─▶ atlas hostd ──pty_attach_raw (raw bytes)──▶ reade
 
 - **`crates/atlas-term`**: sem Tauri. `vt.rs` envolve o `alacritty_terminal` (o parser e a grade que o Alacritty e o Zed também usam) atrás de um único lock; `render.rs` desenha um snapshot `Frame` com pipelines instanciados (fundos das células, imagens abaixo do texto, glifos de um atlas swash, imagens acima do texto, decorações, cursor, barra de rolagem); `graphics.rs` decodifica imagens inline; `input.rs` codifica as teclas.
 - **`crates/atlas-desktop/src/term.rs`**: uma `NSView` por aba sobre o retângulo do painel, uma task de leitura por terminal e uma thread de renderização que dorme até chegarem novos bytes, um redimensionamento, o piscar do cursor ou o flash do bell.
-- **Recuperação** (`term/watchdog.rs`, `render_loop.rs`, `system.rs`): um frame devido a uma aba (bytes, entrada, redimensionamento, retomada) e que o `render` não apresentou (sem textura após a suspensão ou uma troca de monitor) é desenhado de novo a cada 250 ms, sem esperar novos bytes; após 2 s a view da aba e o `Renderer` são substituídos (a tela e o scrollback ficam no `Vt` e sobrevivem), no máximo uma vez a cada 2 s. A mesma reconstrução roda para todos os terminais em `NSWorkspaceDidWakeNotification` e `NSApplicationDidChangeScreenParametersNotification` (tampa, suspensão, conexão de um monitor), e manualmente por **Reload terminal** (⌘⇧P, ou o menu `+` de uma aba de terminal). Uma aba cuja thread de renderização terminou responde `term_bounds` com `terminal view dropped` e a página a abre de novo. Cada reconstrução é um incidente (`terminal-rebuild`, `terminal-recovered`, `terminal-system-event`, `terminal-dropped`) no relatório de diagnóstico. Uma view estacionada (aba em segundo plano, diálogo aberto) não é desenhada a cada rajada de bytes: ela desenha uma vez quando é exibida e nunca conta como travada.
+- **Recuperação** (`term/watchdog.rs`, `render_loop.rs`, `system.rs`): um frame devido a uma aba (bytes, entrada, redimensionamento, retomada) e que o `render` não apresentou (sem textura após a suspensão ou uma troca de monitor) é desenhado de novo a cada 250 ms, sem esperar novos bytes; após 2 s a view da aba e o `Renderer` são substituídos (a tela e o scrollback ficam no `Vt` e sobrevivem), no máximo uma vez a cada 2 s. A mesma reconstrução roda para todos os terminais em `NSWorkspaceDidWakeNotification` e `NSApplicationDidChangeScreenParametersNotification` (tampa, suspensão, conexão de um monitor), e manualmente por **Recarregar terminal** (⌘⇧P, ou o menu `+` de uma aba de terminal). Uma aba cuja thread de renderização terminou responde `term_bounds` com `terminal view dropped` e a página a abre de novo. Cada reconstrução é um incidente (`terminal-rebuild`, `terminal-recovered`, `terminal-system-event`, `terminal-dropped`) no relatório de diagnóstico. Uma view estacionada (aba em segundo plano, diálogo aberto) não é desenhada a cada rajada de bytes: ela desenha uma vez quando é exibida e nunca conta como travada.
 - **Locks**: o registro `TERMS` nunca é tomado em uma thread de renderização. Comandos, o leitor e os observadores do sistema o seguram só o tempo de clonar o `Arc<Shared>` de um terminal; uma thread de renderização toca apenas o próprio `Shared` e os hooks que recebeu. Um renderer que bloqueia (espera de vsync, uma layer travada) trava, portanto, só a própria aba.
 - **Caminho raw do hostd**: um socket por terminal que leva os bytes do pty sem JSON nem base64. É limitado: quando o terminal fica para trás, o programa bloqueia no próprio pty, como em um terminal nativo, e a memória do hostd fica estável. Um leitor que não aceita nada por 2 s é descartado, para que um cliente travado não congele o programa.
 - **Versão do host**: o stream raw exige a capability `pty_attach_raw` (`info.caps`). O app atualiza um daemon mais antigo ao vivo na conexão (veja [Desktop](desktop.md): os terminais continuam rodando); um daemon de protocolo 1 com terminais rodando não pode ser substituído, então esses terminais usam o xterm.js até ele reiniciar, e as Configurações mostram um aviso.
@@ -37,13 +37,13 @@ program ─pty─▶ atlas hostd ──pty_attach_raw (raw bytes)──▶ reade
 | Clusters de grafemas | Os caracteres de largura zero de uma célula (marcas combinantes, VS16, ZWJ, modificadores de tom de pele) viajam com o caractere base no snapshot (`GlyphCell::extra`), com `wide` para células de largura dupla, de modo que o renderer desenha o cluster inteiro. O DECRQM `?2027` informa "always set" (sempre ativo) |
 | Emoji colorido | Atlas RGBA alimentado pelo Apple Color Emoji; células largas ajustadas a 2 células; clusters ZWJ, de bandeira, de tom de pele, keycap e VS16 montados em um único glifo (swash) |
 | Ligaduras e sprites | Ligaduras `calt`/`liga` para o JetBrains Mono, ativadas por padrão (`terminal.ligatures`; as sequências são células adjacentes de mesmo estilo, interrompidas por lacunas, sprites, símbolos e emoji; `Renderer::set_ligatures`). Sprites procedurais para as células se encaixarem: box drawing U+2500 a U+257F, block elements U+2580 a U+259F, braille U+2800 a U+28FF, sextantes U+1FB00 a U+1FB3B, powerline E0B0 a E0B7. Um cache de layout por linha (hash do conteúdo) faz um frame em cache custar ~90 µs; um reshape a frio de 144×44 leva ~0,25 ms em texto simples / ~0,4 ms com muito código (release; `cargo test -p atlas-term --release -- --ignored --nocapture screen_bench`) |
-| Integração com o shell | Marcas de prompt OSC 133 (⌘↑ / ⌘↓ pulam entre prompts, código de saída, limites da saída do comando), cwd por OSC 7 (Restart reabre ali), título OSC 0/2, notificações OSC 9 / 777, bell (flash + atenção no Dock quando sem foco) |
+| Integração com o shell | Marcas de prompt OSC 133 (⌘↑ / ⌘↓ pulam entre prompts, código de saída, limites da saída do comando), cwd por OSC 7 (Reiniciar reabre ali), título OSC 0/2, notificações OSC 9 / 777, bell (flash + atenção no Dock quando sem foco) |
 | Cursor | bloco, barra, sublinhado (DECSCUSR), piscando, vazado quando sem foco |
-| Cores | Primeiro plano, fundo, cursor, texto do cursor, seleção e os ANSI 16 vêm do tema do terminal (o tema do app, ou o escolhido em Configurações → Aparência → **Terminal theme**: `terminal.cursor`, `terminal.cursor_text`, `terminal.selection.*`, `terminal.ansi.*` do arquivo de tema). Um tema que omite uma cor recebe uma derivada da paleta |
-| Fonte e padding | `terminal.font_family` é uma lista CSS (`"Fira Code", Menlo, monospace`): aspas e palavras-chave genéricas (`monospace`, `ui-monospace`, `system-ui`, `sans-serif`, `serif`) são descartadas e a primeira família instalada é usada. Quando a primeira não existe, o Atlas mostra um toast uma vez (`Font "Fira Code" is not installed for the fast terminal; using JetBrains Mono.`, evento `term://font`). `terminal.padding_x` / `terminal.padding_y` (pt, 0 a 64, padrão 10 e 6) afastam o terminal das bordas do painel; a margem é pintada com o fundo do terminal (Ghostty `window-padding-color = extend`) |
+| Cores | Primeiro plano, fundo, cursor, texto do cursor, seleção e os ANSI 16 vêm do tema do terminal (o tema do app, ou o escolhido em Configurações → Aparência → **Tema do terminal**: `terminal.cursor`, `terminal.cursor_text`, `terminal.selection.*`, `terminal.ansi.*` do arquivo de tema). Um tema que omite uma cor recebe uma derivada da paleta |
+| Fonte e padding | `terminal.font_family` é uma lista CSS (`"Fira Code", Menlo, monospace`): aspas e palavras-chave genéricas (`monospace`, `ui-monospace`, `system-ui`, `sans-serif`, `serif`) são descartadas e a primeira família instalada é usada. Quando a primeira não existe, o Atlas mostra um toast uma vez (`A fonte Fira Code não está instalada, então o terminal GPU usa JetBrains Mono.`, evento `term://font`). `terminal.padding_x` / `terminal.padding_y` (pt, 0 a 64, padrão 10 e 6) afastam o terminal das bordas do painel; a margem é pintada com o fundo do terminal (Ghostty `window-padding-color = extend`) |
 | Teclado | Codificação xterm; flags 1 (disambiguate), 8 (all keys as escapes) e 16 (associated text) do protocolo Kitty keyboard. Só eventos de pressionar. Edição de linha do macOS e atalhos de terminal do Ghostty: veja [Teclado](#teclado) |
 | Modos | saída sincronizada (2026), bracketed paste, application cursor, tela alternativa |
-| Imagens | Kitty graphics: transmit/display/put/delete, RGB/RGBA/PNG, zlib, em blocos (`m=1`), mídia direta e de arquivo/arquivo temporário, números `I=`, `q=` quiet, `C=1`, `z` acima/abaixo do texto. Sixel com paletas HLS/RGB. `CSI 14 t` informa a área de texto em pixels. As imagens rolam com o texto; imagens da tela alternativa somem com ela |
+| Imagens | Kitty graphics: transmit/display/put/`delete`, RGB/RGBA/PNG, zlib, em blocos (`m=1`), mídia direta e de arquivo/arquivo temporário, números `I=`, `q=` quiet, `C=1`, `z` acima/abaixo do texto. Sixel com paletas HLS/RGB. `CSI 14 t` informa a área de texto em pixels. As imagens rolam com o texto; imagens da tela alternativa somem com ela |
 
 ## Teclado
 
@@ -57,9 +57,9 @@ Modelado nos padrões do Ghostty no macOS (`ghostty +list-keybinds --default`) e
 | ⌘← / ⌘→ | `^A` / `^E` | `^A` / `^E` | início / fim da linha |
 | ⌥⌫ | `ESC DEL` | `CSI 127;3u` | apaga a palavra anterior |
 | ⌥← / ⌥→ | `ESC b` / `ESC f` | `ESC b` / `ESC f` | palavra anterior / seguinte |
-| ⌥Delete | `ESC d` | `CSI 3;3~` | apaga a palavra seguinte |
+| `⌥Delete` | `ESC d` | `CSI 3;3~` | apaga a palavra seguinte |
 
-⌘⌫, ⌘← ⌘→ e ⌥← ⌥→ são bindings, como no Ghostty (`super+backspace=text:\x15`, `alt+left=esc:b`, …): os mesmos bytes, qualquer que seja o protocolo de teclado que o programa ativou. Enviá-los como teclas Kitty (`CSI 127;9u`) chegava sem binding no fish 4, então ⌘⌫ não fazia nada. ⌥⌫ e ⌥Delete são teclas: com o protocolo Kitty ativado, o programa recebe a tecla e os modificadores reais e faz o binding por conta própria. ⇧ ou ⌃ com essas teclas mantêm os parâmetros de modificador xterm simples.
+⌘⌫, ⌘← ⌘→ e ⌥← ⌥→ são bindings, como no Ghostty (`super+backspace=text:\x15`, `alt+left=esc:b`, …): os mesmos bytes, qualquer que seja o protocolo de teclado que o programa ativou. Enviá-los como teclas Kitty (`CSI 127;9u`) chegava sem binding no fish 4, então ⌘⌫ não fazia nada. ⌥⌫ e `⌥Delete` são teclas: com o protocolo Kitty ativado, o programa recebe a tecla e os modificadores reais e faz o binding por conta própria. ⇧ ou ⌃ com essas teclas mantêm os parâmetros de modificador xterm simples.
 
 **Ações do terminal** (tratadas pelo Atlas):
 
@@ -77,9 +77,9 @@ Modelado nos padrões do Ghostty no macOS (`ghostty +list-keybinds --default`) e
 | ⌘G / ⌘⇧G | próxima / anterior ocorrência da barra de pesquisa aberta (abre a barra quando está fechada) | `navigate_search` |
 | ⌘⇧Y | seleciona (e copia) a saída do último comando, de novo = a do anterior | nenhuma (Atlas) |
 
-⌘K e ⌘⇧D seguem o Ghostty só enquanto um terminal tem o foco do teclado: em qualquer outro lugar ⌘K é a paleta Jump (também acessível por ⌘⇧P e pelo menu Go) e ⌘⇧D é Changes. O menu nativo e o handler de teclas da janela (`terminalKeeps`) passam a tecla ao terminal enquanto um está em foco; antes da 1.5.0 o handler de teclas ainda enviava ⌘K à paleta Jump.
+⌘K e ⌘⇧D seguem o Ghostty só enquanto um terminal tem o foco do teclado: em qualquer outro lugar ⌘K é a paleta Ir para worktree ou terminal (também acessível por ⌘⇧P e pelo menu Ir) e ⌘⇧D é Alterações. O menu nativo e o handler de teclas da janela (`terminalKeeps`) passam a tecla ao terminal enquanto um está em foco; antes da 1.5.0 o handler de teclas ainda enviava ⌘K à paleta Ir para worktree ou terminal.
 
-**Configurações** (`settings.json`, Configurações → Terminal): `terminal.copy_on_select` (padrão true, Ghostty `copy-on-select`), `terminal.click_to_move` (true, `cursor-click-to-move`), `terminal.option_as_alt` (`both` | `left` | `right` | `none`, padrão `both`, `macos-option-as-alt`). Com ⌥ como Alt, ⌥B envia `ESC b`; com `none` digita o caractere do macOS (∫). ⌥ com setas, ⌫ e Delete é sempre Alt: essas teclas não têm caractere no macOS.
+**Configurações** (`settings.json`, Configurações → Terminal): `terminal.copy_on_select` (padrão true, Ghostty `copy-on-select`), `terminal.click_to_move` (true, `cursor-click-to-move`), `terminal.option_as_alt` (`both` | `left` | `right` | `none`, padrão `both`, `macos-option-as-alt`). Com ⌥ como Alt, ⌥B envia `ESC b`; com `none` digita o caractere do macOS (∫). ⌥ com setas, ⌫ e `Delete` é sempre Alt: essas teclas não têm caractere no macOS.
 
 **Clicar para mover.** Um clique simples (sem arrastar, sem modificador) no prompt em edição envia setas que movem o cursor do shell até ali, como o `cursor-click-to-move` do Ghostty. Exige OSC 133 (o shell marca o início do prompt `A` e o início do comando `C`/fim `D`), então um comando em execução, a tela alternativa e uma viewport rolada para cima nunca recebem setas. Só contam as linhas do próprio prompt (da primeira linha até a linha do cursor).
 
@@ -112,7 +112,7 @@ A seleção fica ancorada ao texto, não à tela: a saída em fluxo a move para 
 
 **Selecionar a saída de um comando.** ⇧⌘Y seleciona a saída do último comando terminado (entre OSC 133 `C` e `D`, nunca o prompt nem a linha de comando) e a copia; pressionar de novo volta ao comando anterior. Um comando que não imprimiu nada é pulado, assim como um que ainda está rodando. Não funciona na tela alternativa.
 
-**Menu Edit.** ⌘C e ⌘V vêm do menu Edit nativo: o AppKit envia `copy:` / `paste:`, e a web view dispara um evento `copy` / `paste` no campo de entrada do terminal, então cada um roda uma vez. ⌘Z e ⇧⌘Z não fazem nada em um terminal e nunca chegam ao shell.
+**Menu Editar.** ⌘C e ⌘V vêm do menu Editar nativo: o AppKit envia `copy:` / `paste:`, e a web view dispara um evento `copy` / `paste` no campo de entrada do terminal, então cada um roda uma vez. ⌘Z e ⇧⌘Z não fazem nada em um terminal e nunca chegam ao shell.
 
 ### Colar
 
@@ -125,9 +125,9 @@ O evento `paste` da web view só expõe texto, então ⌘V é um gatilho e o hos
 | Imagem, sem texto (ferramentas de captura, "Copy Image") | bracketed paste ativado: um bracketed paste vazio (`ESC[200~ ESC[201~`, o que o iTerm2 e o Terminal.app enviam; o omp lê a imagem por conta própria nesse caso). Desativado: Ctrl+V (`0x16`, ou `CSI 118;5u` sob o protocolo Kitty keyboard), a tecla que omp, Claude Code e Codex associam a "colar imagem" |
 | Vazia | nada |
 
-Um terminal não carrega um bitmap, então, para uma imagem, o programa lê a área de transferência por conta própria; o Atlas só manda que ele leia. Soltar um arquivo no terminal continua colando o caminho entre aspas. Terminais que usam xterm.js (hosts SSH, ou com Fast terminal desativado) colam só texto.
+Um terminal não carrega um bitmap, então, para uma imagem, o programa lê a área de transferência por conta própria; o Atlas só manda que ele leia. Soltar um arquivo no terminal continua colando o caminho entre aspas. Terminais que usam xterm.js (hosts SSH, ou com Terminal rápido (GPU) desativado) colam só texto.
 
-**Teclas da área de transferência em terminais xterm.js (Linux, hosts SSH).** Ctrl+Shift+C copia a seleção e Ctrl+Shift+V a cola (bracketed); Ctrl+C só copia enquanto há texto selecionado e, fora disso, continua sendo SIGINT. Com `terminal.copy_on_select` (ativado), selecionar também copia. A seleção PRIMARY (colar com o botão do meio) não é preenchida. O macOS mantém ⌘C/⌘V pelo menu Edit.
+**Teclas da área de transferência em terminais xterm.js (Linux, hosts SSH).** Ctrl+Shift+C copia a seleção e Ctrl+Shift+V a cola (bracketed); Ctrl+C só copia enquanto há texto selecionado e, fora disso, continua sendo SIGINT. Com `terminal.copy_on_select` (ativado), selecionar também copia. A seleção PRIMARY (colar com o botão do meio) não é preenchida. O macOS mantém ⌘C/⌘V pelo menu Editar.
 
 ## Scrollback
 

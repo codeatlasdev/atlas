@@ -1,7 +1,7 @@
 ---
 title: "Desempenho do build"
 source: build-perf.md
-source_sha: "61acde51e9782685ba40f20106f973a5a66f7a67"
+source_sha: "c94deac40bccb97ec3e0b5bb739fff438af8fe56"
 translation: machine
 ---
 
@@ -71,7 +71,7 @@ Meça com nada mais compilando (um `cargo install` simultâneo transformou 49 s 
 | linker alternativo no macOS (lld, sold, wild) | o ld64 já é rápido (Bevy, perf-book, Zed); o sold não tem manutenção; o wild não tem Mach-O utilizável |
 | `split-debuginfo = "unpacked"` | já é o padrão do Cargo no macOS |
 | `[profile.dev] opt-level = 1` | deixa o ciclo de edição mais lento |
-| `panic = "abort"` | a TUI e o harness de testes precisam de unwinding |
+| `panic = "abort"` | a TUI e a configuração de testes precisam de unwinding |
 | sccache localmente | sem ganho com build incremental; talvez um experimento futuro no CI |
 | cargo-sweep | sem manutenção; o `bun run sweep` apaga o `target/build` no lugar dele |
 | `opt-level = 3` por dependência para proc-macros | sem necessidade medida; reveja se o `--timings` mostrar a expansão de macros no caminho crítico |

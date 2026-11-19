@@ -1,7 +1,7 @@
 ---
 title: "Configurações do desktop"
 source: desktop-settings.md
-source_sha: "b2c31fc5698695fd47a887ac318fd309781d148c"
+source_sha: "e0b09d96793f0f4243fd87e6fe07693804fc7d34"
 translation: machine
 ---
 
@@ -28,10 +28,10 @@ As Configurações (⌘,) têm treze seções em três grupos (doze fora do macO
 | | **Terminal** | Renderizador, fonte, cursor, margem interna, scrollback, área de transferência |
 | | **Git** | Qual agente escreve as mensagens de commit |
 | | **Agentes** | Agente padrão, aprovação de ferramentas, argumentos extras, o dock de agentes (interruptor e atalhos), agentes personalizados, comandos rápidos |
-| Conectar | **Integrações** | Abas **Shell e links**, **Hooks de agentes**, **Hosts SSH** e **Mobile** |
+| Conectar | **Integrações** | Abas **Shell e links**, **Hooks dos agentes**, **Hosts SSH** e **Mobile** |
 | | **Atlas Crew** | Conectar um crew server, conectar o GitHub, respostas curtas, ver o onboarding de novo |
 
-Onde ficava antes: *Shell dos seus projetos* e *Abrir links em* (Geral) agora estão em **Integrações › Shell e links**; os interruptores de hooks de agentes (Agentes) estão em **Integrações › Hooks de agentes**; **Hosts SSH** e **Mobile** eram seções próprias e viraram abas de **Integrações**; notificações e sons (Geral) estão em **Notificações e sons**. Links antigos como `updates.show("ssh")` ou `appearance/terminal` ainda abrem o lugar certo.
+Onde ficava antes: *Shell dos seus projetos* e *Abrir links no* (Geral) agora estão em **Integrações › Shell e links**; os interruptores de hooks de agentes (Agentes) estão em **Integrações › Hooks dos agentes**; **Hosts SSH** e **Mobile** eram seções próprias e viraram abas de **Integrações**; notificações e sons (Geral) estão em **Notificações e sons**. Links antigos como `updates.show("ssh")` ou `appearance/terminal` ainda abrem o lugar certo.
 
 ### O registro
 
@@ -213,7 +213,7 @@ O shell fica em Configurações → Integrações → Shell e links; as atualiza
 | Arquivo | Conteúdo |
 |---|---|
 | `projects.json` | os projetos que você adicionou |
-| `workspace.json` | abas, painéis e docks por worktree. Uma cópia que não pode ser lida (não é JSON, está vazia, não é um workspace) nunca impede o app de abrir: ela é movida para `workspace.json.corrupt-<ms unix>`, o Atlas começa com um workspace vazio e um aviso diz onde o arquivo foi guardado |
+| `workspace.json` | abas, painéis e docks por worktree. Uma cópia que não pode ser lida (não é JSON, está vazia, não é um workspace) nunca impede o app de abrir: ela é movida para `workspace.json.corrupt-<ms unix>`, o Atlas começa com um workspace vazio e um aviso diz onde o arquivo foi salvo |
 | `crew-servers.json` | os servidores de crew que você registrou. Uma cópia ilegível é mantida como `crew-servers.json.corrupt-<ms unix>`, do mesmo jeito |
 | `themes/` | local antigo dos seus arquivos de tema do Zed (ainda é lido; os novos vão para `~/.atlas/themes/`) |
 | `hook-endpoint.env` | endpoint de loopback e token dos hooks de agentes (token novo a cada execução do hostd) |

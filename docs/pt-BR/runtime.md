@@ -1,7 +1,7 @@
 ---
 title: "Runtime"
 source: runtime.md
-source_sha: "82b1852a4f384b0e363095314f82970ddae317ff"
+source_sha: "026727becce61c35923129e59e6c01522fe5287c"
 translation: machine
 ---
 
@@ -43,7 +43,7 @@ Sem infra para esperar, os passos 5 e 6 se reduzem a nada e os serviços de app 
 | `unhealthy` | processo vivo mas sem responder mais ao probe de liveness (travado), depois de `failure_threshold` falhas seguidas. Não é `failed`: nada encerrou |
 | `failed` | encerrou de forma anormal, um probe falhou antes de o serviço ficar saudável, uma dependência falhou ou o limite de reinícios acabou |
 | `stopped` | parado; também um one-shot concluído (`done`) |
-| `disabled` | parado por você (`s`, stop pelo MCP) ou deixado fora desta execução por `SERVICE…` / `--profile` (mostrado como `off`); ignorado pelos health checks e nunca reiniciado automaticamente |
+| `disabled` | parado por você (`s`, stop pelo MCP) ou deixado fora desta execução por `SERVICE…` / `--profile` (mostrado como `fora` na barra lateral); ignorado pelos health checks e nunca reiniciado automaticamente |
 | `suspended` | pausado pelo `pause_services` de uma ação |
 
 Prontidão e saúde, por serviço:
@@ -91,11 +91,11 @@ Para cada serviço o Atlas registra o último **exit code** (nenhum enquanto rod
 
 ### Execuções com seleção (`SERVICE…`, `--profile`)
 
-`atlas dev web` / `--profile backend` iniciam a seleção e os seus `depends_on` transitivos (veja [Selecionar serviços](cli.md#selecionar-serviços)). Todo o resto é rastreado desde o início como `disabled` com `deselected: true` em `.logs/.tui-status.json` (`off` no `atlas dev --status`, na barra lateral e nas linhas do MCP; `"off": true` no JSON do `--ci`): nunca é iniciado no boot nem em *restart all*, é ignorado pelos health checks e pelo veredito do `--ci`, e nunca bloqueia um dependente (com `--no-deps`, um serviço selecionado inicia sem esperar as suas dependências não selecionadas). Iniciar um à mão (menu do serviço, paleta, `atlas_start_service`) remove a marca e, a partir daí, ele se comporta como qualquer outro serviço. Infra: um serviço sem `command` de que nenhum serviço selecionado depende não é consultado, e quando algo está desmarcado e o `atlas.yaml` modela a infra como serviços, o `docker compose up -d` só roda se um serviço selecionado precisar de um; um projeto que não modela os seus serviços do compose como serviços do Atlas continua rodando o compose como antes.
+`atlas dev web` / `--profile backend` iniciam a seleção e os seus `depends_on` transitivos (veja [Selecionar serviços](cli.md#selecionar-serviços)). Todo o resto é rastreado desde o início como `disabled` com `deselected: true` em `.logs/.tui-status.json` (`off` no `atlas dev --status` e nas linhas do MCP, `fora` na barra lateral; `"off": true` no JSON do `--ci`): nunca é iniciado no boot nem em *Reiniciar tudo*, é ignorado pelos health checks e pelo veredito do `--ci`, e nunca bloqueia um dependente (com `--no-deps`, um serviço selecionado inicia sem esperar as suas dependências não selecionadas). Iniciar um à mão (menu do serviço, paleta, `atlas_start_service`) remove a marca e, a partir daí, ele se comporta como qualquer outro serviço. Infra: um serviço sem `command` de que nenhum serviço selecionado depende não é consultado, e quando algo está desmarcado e o `atlas.yaml` modela a infra como serviços, o `docker compose up -d` só roda se um serviço selecionado precisar de um; um projeto que não modela os seus serviços do compose como serviços do Atlas continua rodando o compose como antes.
 
 ### Início sob demanda (`autostart: false`)
 
-Um serviço assim é pulado quando a stack sobe (e em *restart all*) e fica `stopped` até ser iniciado pelo menu do serviço, pela paleta de comandos ou por `atlas_start_service`.
+Um serviço assim é pulado quando a stack sobe (e em *Reiniciar tudo*) e fica `stopped` até ser iniciado pelo menu do serviço, pela paleta de comandos ou por `atlas_start_service`.
 
 ## Reinícios
 
@@ -103,7 +103,7 @@ Veja [Política de reinício](configuration.md#política-de-reinício) para a co
 
 ## Ações
 
-As ações sem sessão rodam `sh -c` na raiz do projeto, uma de cada vez por ação. O stdout/stderr delas é **persistido**: gravado em `.logs/action-<slug>.log` (`<slug>` = o rótulo em minúsculas, com os caracteres não alfanuméricos colapsados em `-`, por exemplo `Run checks` → `action-run-checks.log`; a execução anterior é rotacionada para `.prev.log`) e enviado ao buffer de logs com o nome de serviço `action:<label>`, então as linhas aparecem na aba **All** e sobrevivem ao desaparecimento da linha de operação. O `atlas_logs` / `atlas_logs_search` do MCP lê esses logs com `service: "action:Run checks"` (ou `action-run-checks`) e, sem `service`, eles são mesclados aos logs dos serviços. Com `--headless`, a saída da ação é impressa como `[action <label>] <line>` e a conclusão como `✓ action <label>: done` / `✗ … failed` no stderr. Os `pause_services` que estão `running` ou `starting` são parados primeiro (estado `suspended`, sem reinício automático) e exatamente esses são reiniciados quando o comando termina, mesmo que ele tenha falhado; um serviço listado que já estava parado, com falha ou desabilitado não é tocado e continua assim. Uma ação `open_tunnel` que precisou abrir o túnel por conta própria o fecha de novo quando termina (veja [Túnel SSH](#túnel-ssh)). As ações de sessão ainda esperam até 5 s para as portas dos serviços pausados ficarem livres antes do spawn. As sessões e os seus filhos são parados ao sair. As ações de sessão com `platform` também recebem `TAURI_DEV_HOST` / `ATLAS_DEV_HOST` no ambiente, resolvidos a partir de [`host_mode`](configuration.md#host_mode) fora do runtime assíncrono (sem nunca sobrescrever um valor que você definiu).
+As ações sem sessão rodam `sh -c` na raiz do projeto, uma de cada vez por ação. O stdout/stderr delas é **persistido**: gravado em `.logs/action-<slug>.log` (`<slug>` = o rótulo em minúsculas, com os caracteres não alfanuméricos colapsados em `-`, por exemplo `Run checks` → `action-run-checks.log`; a execução anterior é rotacionada para `.prev.log`) e enviado ao buffer de logs com o nome de serviço `action:<label>`, então as linhas aparecem na aba **Tudo** e sobrevivem ao desaparecimento da linha de operação. O `atlas_logs` / `atlas_logs_search` do MCP lê esses logs com `service: "action:Run checks"` (ou `action-run-checks`) e, sem `service`, eles são mesclados aos logs dos serviços. Com `--headless`, a saída da ação é impressa como `[ação <label>] <line>` e a conclusão como `✓ ação <label>: concluída` / `✗ ação <label>: falhou` no stderr. Os `pause_services` que estão `running` ou `starting` são parados primeiro (estado `suspended`, sem reinício automático) e exatamente esses são reiniciados quando o comando termina, mesmo que ele tenha falhado; um serviço listado que já estava parado, com falha ou desabilitado não é tocado e continua assim. Uma ação `open_tunnel` que precisou abrir o túnel por conta própria o fecha de novo quando termina (veja [Túnel SSH](#túnel-ssh)). As ações de sessão ainda esperam até 5 s para as portas dos serviços pausados ficarem livres antes do spawn. As sessões e os seus filhos são parados ao sair. As ações de sessão com `platform` também recebem `TAURI_DEV_HOST` / `ATLAS_DEV_HOST` no ambiente, resolvidos a partir de [`host_mode`](configuration.md#host_mode) fora do runtime assíncrono (sem nunca sobrescrever um valor que você definiu).
 
 ## Túnel SSH
 
@@ -111,7 +111,7 @@ Configurado por [`tunnel:`](configuration.md#tunnel). Um filho `ssh -N -L local:
 
 | Situação | Comportamento |
 |---|---|
-| `enabled` (padrão) | iniciado no boot; o **TUNNEL** da barra lateral mostra `starting` → `running` |
+| `enabled` (padrão) | iniciado no boot; o **TÚNEL** da barra lateral mostra `starting` → `running` |
 | `enabled: false` | não é iniciado; uma ação com `open_tunnel: true` o inicia sob demanda (o estado aparece do mesmo jeito) e espera até 15 s antes de rodar o comando. Quando essa ação termina, com sucesso ou falha, o túnel é **fechado de novo** (SIGTERM no ssh do próprio Atlas, nenhum `.tunnel.pid` fica). Se várias ações `open_tunnel` se sobrepõem, elas compartilham o túnel e a última a terminar o fecha. Um túnel que já estava no ar (habilitado no boot, ou aberto antes e ainda em uso por outra ação em execução) nunca é fechado por uma ação |
 | o ssh sai ou a porta para de responder | estado `failed`, reconexão com backoff de 5 s, 10 s, 20 s … limitado a `reconnect_cooldown`; zera depois de um sucesso |
 | o gateway padrão muda (macOS) | reconexão imediata, ignorando o backoff |
@@ -130,9 +130,9 @@ O Atlas só envia sinal a um pid que ele mesmo iniciou, ou a um pid de `.logs/.t
 
 | Gatilho | O que acontece |
 |---|---|
-| `s` / stop pelo MCP / **Stop** no menu | SIGTERM em toda a [árvore de tarefas](#service-processes) daquele serviço, verificada a cada 50 ms; SIGKILL após 2 s se algo sobrar. O estado vira `disabled`. O histórico de reinícios é zerado. |
+| `s` / stop pelo MCP / **Parar** no menu | SIGTERM em toda a [árvore de tarefas](#service-processes) daquele serviço, verificada a cada 50 ms; SIGKILL após 2 s se algo sobrar. O estado vira `disabled`. O histórico de reinícios é zerado. |
 | restart (`S`, `r` em uma aba, restart/start pelo MCP) | stop (como acima, estado `stopped`), depois spawn de novo. |
-| `r` em **All** | para tudo e depois roda a sequência de inicialização inteira de novo (limpeza de órfãos, infra, scheduler). |
+| `r` em **Tudo** | para tudo e depois roda a sequência de inicialização inteira de novo (limpeza de órfãos, infra, scheduler). |
 | quit (`q` + confirmação, `Ctrl+C`, SIGTERM, SIGHUP; `--headless`: Ctrl-C/SIGTERM/SIGHUP) | as sessões abertas são paradas; todos os reinícios e inícios na fila são cancelados; toda a [árvore de tarefas](#service-processes) de cada serviço recebe SIGTERM de uma vez, um período de tolerância compartilhado de 800 ms e depois SIGKILL nos sobreviventes; o `.logs/.pids` é removido. Então vale a política de saída do [túnel](#túnel-ssh). O socket de controle é removido ao sair. |
 
 Sair **nunca roda `docker compose down`** (e nunca reinicia o daemon do docker): os containers de infra continuam rodando, e isso é intencional (containers `restart: unless-stopped` sobrevivem entre sessões). Pare-os você mesmo com `docker compose down` quando quiser que eles sumam.
@@ -185,9 +185,9 @@ Um `atlas dev` por diretório de projeto, garantido por um `flock` exclusivo em 
 | Modo | Outra instância está rodando |
 |---|---|
 | TUI, a outra instância é um **runner** (`--detach`, `--headless`) | se **anexa** a ela, veja [Runner e anexar](#runner-e-anexar); nada é encerrado |
-| TUI, a outra instância é uma **TUI** | pergunta `atlas dev already running (PID N). Kill it and restart? [y/N]` *antes* de entrar no modo raw. `y`: SIGTERM, até 3 s, depois SIGKILL, e assume. Qualquer outra resposta: sai, mantendo a existente. O PID só é morto se for mesmo um executável `atlas`. |
-| `--headless`, `--ci` | imprimem `atlas dev is already running (pid N); use 'atlas dev --status'` e saem com `1`; nada é iniciado e nada é encerrado |
-| `--detach` | runner já no ar: imprime `atlas runner already running (pid N) …`, saída `0`. Se uma TUI é dona do projeto: saída `1` |
+| TUI, a outra instância é uma **TUI** | pergunta `Encerrar o processo e reiniciar? [s/N]` (depois de avisar que o `atlas dev` já está rodando, com o pid) *antes* de entrar no modo raw. `s`: SIGTERM, até 3 s, depois SIGKILL, e assume. Qualquer outra resposta: sai, mantendo a existente. O PID só é morto se for mesmo um executável `atlas`. |
+| `--headless`, `--ci` | imprimem `O atlas dev já está rodando (pid N). Veja o estado com atlas dev --status.` e saem com `1`; nada é iniciado e nada é encerrado |
+| `--detach` | runner já no ar: imprime `runner do atlas já está rodando (pid N) …`, saída `0`. Se uma TUI é dona do projeto: saída `1` |
 
 O lock também é o que torna a limpeza de órfãos segura: só quem tem o lock a executa, então uma segunda execução (CI, headless) nunca pode matar os serviços de uma instância viva.
 
@@ -207,11 +207,11 @@ atlas dev              ...reattach any time, from any terminal
 atlas down             stop everything gracefully         (waits up to 15 s)
 ```
 
-**Início.** O `--detach` carrega e valida o `atlas.yaml` e a seleção em primeiro plano (os erros são impressos no seu terminal e nada inicia), depois executa de novo `atlas dev --runner` numa sessão nova (`setsid`: sem terminal de controle, então fechar o seu shell nunca pode enviar SIGHUP a ele nem pará-lo com SIGTTIN/SIGTTOU) com o stdin em `/dev/null` e o stdout/stderr em `.logs/runner.log` (truncado a cada início; ele guarda mensagens de ciclo de vida como `● api: Running`, não a saída dos serviços, que fica nos logs em disco de cada serviço). O `--detach` retorna quando o runner responde no socket, depois que o lock é obtido e antes de a instalação de dependências e a infra terminarem (elas seguem no runner). Se o runner sai durante a inicialização, as últimas linhas do `runner.log` são impressas e a saída é `1`. O `--detach` nunca passa pelo caminho de kill da instância anterior: ele é recusado ou não faz nada quando já existe uma instância.
+**Início.** O `--detach` carrega e valida o `atlas.yaml` e a seleção em primeiro plano (os erros são impressos no seu terminal e nada inicia), depois executa de novo `atlas dev --runner` numa sessão nova (`setsid`: sem terminal de controle, então fechar o seu shell nunca pode enviar SIGHUP a ele nem pará-lo com SIGTTIN/SIGTTOU) com o stdin em `/dev/null` e o stdout/stderr em `.logs/runner.log` (truncado a cada início; ele guarda mensagens de ciclo de vida como `● api: Em execução`, não a saída dos serviços, que fica nos logs em disco de cada serviço). O `--detach` retorna quando o runner responde no socket, depois que o lock é obtido e antes de a instalação de dependências e a infra terminarem (elas seguem no runner). Se o runner sai durante a inicialização, as últimas linhas do `runner.log` são impressas e a saída é `1`. O `--detach` nunca passa pelo caminho de kill da instância anterior: ele é recusado ou não faz nada quando já existe uma instância.
 
 **Quem é um runner.** O `--detach` e uma execução `--headless` em primeiro plano são o mesmo engine; os dois informam `mode: runner` no arquivo de status e em `info`, e em ambos é possível anexar-se e parar com `atlas down`. A única diferença é o stdout: o `--headless` ecoa a saída dos serviços, o daemon não. Uma TUI dona informa `mode: tui` e recusa `subscribe`.
 
-**Anexar.** O `atlas dev` simples primeiro pergunta a quem tem o lock quem ele é (`info`). Um runner aceita clientes anexados: o cliente mantém o próprio terminal, nunca obtém o lock, nunca roda `kill_orphans`, nunca grava o arquivo de status nem o `.pids`, nunca para os serviços quando sai e não carrega serviço nenhum por conta própria. Uma TUI dona mantém a pergunta de matar/manter. O cliente abre uma conexão `subscribe` (stream somente leitura) e envia as suas ações (`restart_service`, `stop_service`, `run_action` com `confirmed: true` depois do próprio modal de confirmação) em conexões curtas separadas, as mesmas requisições que o MCP usa, então toda proteção (`already running`, retomada de `pause_services` pelo runner) vale.
+**Anexar.** O `atlas dev` simples primeiro pergunta a quem tem o lock quem ele é (`info`). Um runner aceita clientes anexados: o cliente mantém o próprio terminal, nunca obtém o lock, nunca roda `kill_orphans`, nunca grava o arquivo de status nem o `.pids`, nunca para os serviços quando sai e não carrega serviço nenhum por conta própria. Uma TUI dona mantém a pergunta de matar/manter. O cliente abre uma conexão `subscribe` (stream somente leitura) e envia as suas ações (`restart_service`, `stop_service`, `run_action` com `confirmed: true` depois do próprio modal de confirmação) em conexões curtas separadas, as mesmas requisições que o MCP usa, então toda proteção (`já está em execução`, retomada de `pause_services` pelo runner) vale.
 
 **Protocolo (`subscribe`).** A resposta é `{ok: true, data: <snapshot>}`; depois dela a conexão envia uma linha JSON por evento até um dos lados fechar. O runner monta o snapshot e registra o stream no mesmo turno do loop, então nenhum evento se perde nem se repete entre os dois, e os eventos mantêm a ordem de chegada.
 
@@ -221,7 +221,7 @@ atlas down             stop everything gracefully         (waits up to 15 s)
 | `services` | uma linha por serviço: `name`, `state`, `exit_code`, `restarts`, `note`, `completed_ok`, `paused_by`, `deselected` |
 | `tunnel` | objeto do túnel ou `null` |
 | `logs` | o tail em memória do runner, até 1000 linhas **por serviço**, da mais antiga para a mais nova (`name`, `line`, `stream`, `ts`) |
-| `events` | os últimos 50 eventos laterais (linhas `state`, `note`, `alert`, `tunnel` como abaixo), reenviados para reconstruir o bloco EVENTS |
+| `events` | os últimos 50 eventos laterais (linhas `state`, `note`, `alert`, `tunnel` como abaixo), reenviados para reconstruir o bloco EVENTOS |
 | `operation` | a ação em andamento, se houver |
 
 | Evento (`t`) | Conteúdo |
@@ -239,7 +239,7 @@ Um cliente que desconecta (de forma limpa ou não) é descartado na próxima esc
 
 **Limites.** As sessões interativas (`session: true`) e o seletor de dispositivo móvel só funcionam no dono (o runner as recusa com um erro claro; a TUI mostra um toast). O runner sempre encerra o túnel ao sair. Uma TUI que é dona dos seus serviços não consegue passá-los a um runner enquanto roda: inicie o runner primeiro (`atlas dev --detach`).
 
-**Encerramento.** `atlas down`, a opção **Stop everything** de uma TUI anexada, e SIGTERM/SIGHUP no runner (e Ctrl-C de um `--headless` em primeiro plano) executam a [sequência de encerramento](#encerramento) normal; os clientes recebem `bye`.
+**Encerramento.** `atlas down`, a opção **Parar tudo** de uma TUI anexada, e SIGTERM/SIGHUP no runner (e Ctrl-C de um `--headless` em primeiro plano) executam a [sequência de encerramento](#encerramento) normal; os clientes recebem `bye`.
 
 ## Arquivos em `.logs/`
 

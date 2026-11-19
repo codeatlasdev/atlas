@@ -125,4 +125,4 @@ Elas vêm de incidentes reais e são garantidas por testes; mantenha-as quando m
 - O Atlas nunca roda `docker compose down` nem reinicia o daemon do docker.
 - Os filhos rodam com `setsid`, `stdin(null)` e `sh -c`.
 - A TUI lê a entrada de um fluxo de eventos, renderiza só quando há mudança e nunca bloqueia a inicialização.
-- Nada secreto é carregado no navegador embutido; os resultados do Design Mode são lidos de volta com `eval_with_callback`.
+- Nada secreto é carregado no navegador embutido; os resultados do Modo design são lidos de volta com `eval_with_callback`.

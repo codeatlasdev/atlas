@@ -1,7 +1,7 @@
 ---
 title: "Solução de problemas"
 source: troubleshooting.md
-source_sha: "6bfd0bf8284957478233ecb30a6deb48020ff960"
+source_sha: "bef3215d8ae58a06e159d9203f11ef8790a183d7"
 translation: machine
 ---
 
@@ -24,7 +24,7 @@ Comece com `atlas dev --status` (o que está rodando e em que estado) e `atlas v
 | Sintoma | Causa e correção |
 |---|---|
 | `atlas dev needs an interactive terminal` (saída 2) | O stdin ou o stdout não é um TTY. Em scripts e agentes, use `atlas dev --status`, `--ci`, `--headless` ou `--detach`. |
-| `atlas dev is already running (pid N)` | Uma instância por diretório de projeto. Conecte-se com `atlas dev`, confira com `atlas dev --status` e pare com `atlas down`. |
+| ``O `atlas dev` já está rodando (pid N)`` | Uma instância por diretório de projeto. Conecte-se com `atlas dev`, confira com `atlas dev --status` e pare com `atlas down`. |
 | `atlas.yaml: services.web.helth: unknown field` | Um erro de digitação. Chaves desconhecidas são erros em qualquer profundidade; a mensagem sugere o nome certo. Rode `atlas config check`. |
 | Um serviço fica em `starting` para sempre | Ele espera pela `port`, pela URL de `health` ou pelo `ready_log`. A nota na barra lateral diz qual (`waiting for :3001 (12s)`). Depois de `start_timeout` (padrão 60 s), um aviso é registrado; o serviço continua tentando. Corrija a verificação ou a porta. |
 | Um serviço está `failed` com `dependency X failed` | Uma dependência falhou, saiu com código diferente de zero ou desistiu de reiniciar. Corrija o `X` primeiro; os serviços que dependem dele iniciam sozinhos quando as condições valem, ou reinicie-os. |
@@ -39,7 +39,7 @@ Comece com `atlas dev --status` (o que está rodando e em que estado) e `atlas v
 | Navegadores, servidores de desenvolvimento ou caches ficaram rodando ou em disco depois de uma execução de agente, ou o Mac fica lento indexando worktrees | `atlas doctor --hygiene` lista os processos órfãos que o Atlas iniciou, o disco por projeto e as pastas pesadas que o Spotlight indexa; `--fix` encerra os órfãos e libera o que o Atlas possui (nunca `target/`, `node_modules` ou worktrees). O mesmo está em Configurações > Workspaces > Higiene. Veja [sessões e higiene](runtime.md#sessões-e-higiene). |
 | O `docker compose` falhou e aparece um alerta de `docker` | O daemon não respondeu em 15 s. Inicie o Docker ou o OrbStack; os serviços do app iniciam mesmo assim. |
 | Sair deixa contêineres rodando | É de propósito: o Atlas nunca roda `docker compose down`. Pare-os com `docker compose down`. |
-| Toast `pre_command failed` | A instalação das dependências falhou; os serviços iniciam mesmo assim. Leia `.logs/setup.log`. |
+| Toast ``O `pre_command` falhou`` | A instalação das dependências falhou; os serviços iniciam mesmo assim. Leia `.logs/setup.log`. |
 | `.logs/atlas.sock` velho depois de uma falha | Inofensivo; a próxima execução o substitui. |
 | As cores estão erradas ou o texto não pode ser selecionado | `M` solta o mouse para o seu terminal poder selecionar; senão, segure ⌥ ao arrastar. |
 
@@ -53,7 +53,7 @@ Comece com `atlas dev --status` (o que está rodando e em que estado) e `atlas v
 | `atlas_wait_ready` é cortado depois de 30 s | O timeout do cliente é menor que `timeout_s`. Mantenha `timeout_s` ≤ 25 ou aumente o timeout do cliente. |
 | O agente ainda roda `atlas dev` | O hook do omp carrega no início da sessão: reinicie o omp e confira `omp plugin list`. O `/reload-plugins` atualiza só skills e MCP. |
 | O Codex ignora os hooks | Confie neles uma vez com `/hooks` no Codex. |
-| `CONFLICT … an atlas entry not created by atlas` | Você tem uma entrada de servidor `atlas` própria. Renomeie, ou rode de novo com `--force`. |
+| ``CONFLITO … existe uma entrada `atlas` que não foi criada pelo atlas`` | Você tem uma entrada de servidor `atlas` própria. Renomeie, ou rode de novo com `--force`. |
 
 A tabela completa está em [Configuração dos agentes](agents.md#solução-de-problemas) e em [MCP](mcp.md#solução-de-problemas).
 
@@ -62,8 +62,8 @@ A tabela completa está em [Configuração dos agentes](agents.md#solução-de-p
 | Sintoma | Causa e correção |
 |---|---|
 | O `atlas desktop` não consegue baixar o app | Confira a conexão e se a versão para a sua versão da CLI existe. `atlas desktop --status` mostra o que está instalado; `atlas desktop --install --latest` reinstala. |
-| `bun` ou `node` não encontrado dentro do app (`exit 127: sh: 1: bun: not found` na configuração da stack) | Um app aberto pelo Finder, pelo Dock ou por uma entrada de menu do Linux recebe um ambiente vazio. O Atlas lê o ambiente do seu shell de login na inicialização (como shell de login interativo, então `~/.bashrc`, `~/.zshrc` e `~/.config/fish/config.fish` valem); o erro de configuração mostra o `PATH` que o Atlas usou; Configurações → Integrações → Shell e links → *Shell dos seus projetos* mostra o que ele encontrou e tem **Recarregar**. Reinicie uma stack em execução depois de mudar. |
-| Os terminais usam o renderizador clássico com a GPU ligada, e as Configurações dizem que o terminal host é de um Atlas mais antigo | O daemon é anterior ao app e não pôde ser substituído ao vivo. Clique em **Reiniciar terminal host** em Configurações → Terminal quando nenhum terminal estiver ocupado. |
+| `bun` ou `node` não encontrado dentro do app (`exit 127: sh: 1: bun: not found` na configuração da stack) | Um app aberto pelo Finder, pelo Dock ou por uma entrada de menu do Linux recebe um ambiente vazio. O Atlas lê o ambiente do seu shell de login na inicialização (como shell de login interativo, então `~/.bashrc`, `~/.zshrc` e `~/.config/fish/config.fish` valem); o erro de configuração mostra o `PATH` que o Atlas usou; Configurações → Integrações → Shell e links → *Shell dos seus projetos* mostra o que ele encontrou e tem **Recarregar agora**. Reinicie uma stack em execução depois de mudar. |
+| Os terminais usam o renderizador clássico com a GPU ligada, e as Configurações dizem que o host de terminais em execução é de uma versão mais antiga do Atlas | O daemon é anterior ao app e não pôde ser substituído ao vivo. Clique em **Reiniciar o host de terminais** em Configurações → Terminal quando nenhum terminal estiver ocupado. |
 | Um terminal fica em branco logo depois de abrir | Desligue *Terminal rápido (GPU)* em Configurações → Terminal para comparar com o renderizador xterm.js e abra uma issue com a saída de `atlas desktop debug logs`. |
 | Uma worktree não foi apagada junto com a branch | A branch não passou por merge, então o Atlas a mantém (um toast avisa). Apague com `git branch -D` quando tiver certeza. |
 | `atlas wt` ou `atlas term` diz que o app não está rodando | Eles usam o `~/.atlas/desktop.sock`; abra o Atlas Desktop primeiro. O `atlas term` recorre ao hostd local quando o app está fechado. |
@@ -105,6 +105,6 @@ atlas desktop debug shot /tmp/x.png
 
 Se a CLI entra em pânico, ela imprime um caminho como `crash-<unix_ms>-<pid>.toml` (os 20 mais novos são mantidos) em `~/Library/Application Support/atlas/crashes/` (`$XDG_DATA_HOME/atlas/crashes` no Linux). Uma falha do próprio processo (uma falha de segmentação dentro do WebKit, de um driver gráfico ou do Atlas) grava `crash-native-<unix_ms>-<pid>.toml` no mesmo diretório, então não depende mais de o `coredumpctl` estar presente. Os relatórios de falha ficam na sua máquina e nunca são enviados. Tokens são ocultados e o seu diretório home aparece como `~`, mas revise um antes de anexá-lo.
 
-O Atlas Desktop avisa na próxima inicialização: se um relatório de falha (ou o terminal host morrendo sozinho) é mais novo que o último que você dispensou, um cartão no canto inferior direito diz **O Atlas fechou inesperadamente da última vez**, com **Relatar** (a tela de relatório de sempre, com dados ocultados, e nada é enviado até você apertar *Relatar problema*) e **Dispensar**. Dispensar guarda o horário em `~/.atlas/desktop/crash-ack`, então o cartão não volta para essa falha; a primeira execução só olha os últimos 7 dias.
+O Atlas Desktop avisa na próxima inicialização: se um relatório de falha (ou o host de terminais morrendo sozinho) é mais novo que o último que você dispensou, um cartão no canto inferior direito diz **O Atlas fechou inesperadamente na última vez**, com **Reportar** (a tela de relatório de sempre, com dados ocultados, e nada é enviado até você apertar *Reportar issue*) e **Dispensar**. Dispensar guarda o horário em `~/.atlas/desktop/crash-ack`, então o cartão não volta para essa falha; a primeira execução só olha os últimos 7 dias.
 
 Abra uma issue em [github.com/codeatlasdev/atlas/issues](https://github.com/codeatlasdev/atlas/issues) com a saída completa de `atlas version` (ela nomeia o build exato), o seu SO, o que você rodou e as linhas relevantes de `.logs/<service>.log` (oculte os secrets). Problemas de segurança vão pelo [SECURITY.md](https://github.com/codeatlasdev/atlas/blob/main/SECURITY.md), não por issues públicas.

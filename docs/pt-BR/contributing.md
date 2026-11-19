@@ -1,7 +1,7 @@
 ---
 title: "Contribuir"
 source: contributing.md
-source_sha: "c2292b553a9ffbe5a6c2e7847bcd525fef6898ed"
+source_sha: "53577707d65ae0bd02e3cd54da7fa267b30ced75"
 translation: machine
 ---
 
@@ -12,7 +12,7 @@ Obrigado por ajudar o Atlas. Esta página é a versão longa do [CONTRIBUTING.md
 ## Formas de ajudar
 
 - **Relate um bug** ou peça uma funcionalidade no [issue tracker](https://github.com/codeatlasdev/atlas/issues). Inclua `atlas version`, o seu sistema operacional, os passos e as linhas relevantes de `.logs/<service>.log` (oculte segredos).
-- **Melhore a documentação.** Toda página do site tem um link *Editar no GitHub*; o código-fonte está em `docs/*.md`.
+- **Melhore a documentação.** Toda página do site tem um link *Edit this page on GitHub*; o código-fonte está em `docs/*.md`.
 - **Envie uma correção ou uma funcionalidade.** Para qualquer coisa maior que uma correção pequena, abra uma issue antes, para combinarmos o formato antes de você gastar tempo nela.
 - **Problemas de segurança** não vão em issues públicas. Veja [SECURITY.md](https://github.com/codeatlasdev/atlas/blob/main/SECURITY.md).
 

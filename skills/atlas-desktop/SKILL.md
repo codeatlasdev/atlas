@@ -11,7 +11,7 @@ Atlas Desktop exposes worktree management, terminals, browser and file navigatio
 
 ## Rules
 
-- **Never kill a pty of another agent's session** — check `atlas term ls` first; tabs with an `agent` column belong to a running agent.
+- **Never kill a pty of another agent's session**: check `atlas term ls` first; tabs with an `agent` column belong to a running agent.
 - `atlas wt create` is long (up to 15 min for setup scripts); always pass `--json` and poll, or use `atlas term wait <pty> --for idle` once the terminal starts.
 - `browser snapshot` → `browser click @eN` → `browser snapshot` is the safe loop; refs expire after each snapshot.
 - Verify changes by reading the file (`atlas file open`) or the terminal output, not by re-running the command.
@@ -90,7 +90,7 @@ atlas file diff --worktree /path/to/checkout
 
 ## Settings read by the CLI
 
-- `agentPermissions`: `manual` (default) or `yolo` — whether agents auto-approve tool calls.
+- `agentPermissions`: `manual` (default) or `yolo`, whether agents auto-approve tool calls.
 - `branchPrefix`: `git-username` (default), `custom`, `none`.
 - `workspaceDir`: where new worktrees are created (default `~/.atlas/worktrees`).
 

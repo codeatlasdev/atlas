@@ -1,4 +1,5 @@
 {
+	"hostd_wire_busy": "The terminal host is busy right now. Wait a moment and try again.",
 	"hostd_wire_cli_not_found": [
 		{
 			"declarations": [
@@ -19,6 +20,15 @@
 	"hostd_wire_feature_agents": "agent status",
 	"hostd_wire_feature_lsp": "language features",
 	"hostd_wire_feature_pty_attach_raw": "fast terminal rendering",
+	"hostd_wire_fs_already_exists": "{path} already exists. Choose another name.",
+	"hostd_wire_fs_is_a_directory": "{path} is a folder, not a file. Choose another name.",
+	"hostd_wire_fs_not_a_directory": "A part of {path} is a file, not a folder. Choose another location.",
+	"hostd_wire_fs_not_found": "{path} was not found. It may have been moved or deleted: refresh the file tree and try again.",
+	"hostd_wire_fs_other": "Could not use {path}. Check that the disk is available and has free space, then try again.",
+	"hostd_wire_fs_permission_denied": "Atlas has no permission to use {path}. Check the permissions of the folder and try again.",
+	"hostd_wire_invalid_base64": "The terminal host could not read the {field} of the request: it is not valid base64. This is a bug in Atlas, please report it.",
+	"hostd_wire_invalid_empty": "The request to run a command had no command in it. This is a bug in Atlas, please report it.",
+	"hostd_wire_invalid_no_parent": "This path has no parent folder, so a file cannot be written there. Choose another location.",
 	"hostd_wire_lsp_crashed_repeated_hint": "Open the server log from the status bar, then restart the server.",
 	"hostd_wire_lsp_crashed_repeated_message": "{server} crashed repeatedly",
 	"hostd_wire_lsp_crashed_start_hint": "Open the server log from the status bar, or restart the server.",
@@ -40,7 +50,11 @@
 	"hostd_wire_refused": "hostd: {why}",
 	"hostd_wire_remote_connecting": "{host} is still connecting; try again in a few seconds",
 	"hostd_wire_remote_unreachable": "{host} is not reachable: {why}",
+	"hostd_wire_spawn_not_found": "{program} was not found. Install it or check that it is on your PATH.",
+	"hostd_wire_spawn_other": "{program} could not be started. Check that it works in a terminal and try again.",
+	"hostd_wire_spawn_permission_denied": "{program} cannot be run: permission denied. Check that the file is executable.",
 	"hostd_wire_start_failed": "hostd did not start",
+	"hostd_wire_too_many_clients": "The terminal host has too many connections open. Close other Atlas windows or clients and try again.",
 	"hostd_wire_unreachable": "Terminal host not reachable. Terminals cannot start or reconnect until it is back. Use Restart terminal host, or Report if it keeps happening.",
 	"hostd_wire_unreachable_why": "{@hostd_wire_unreachable} ({why})",
 	"hostd_wire_upgrade_failed": "Terminal host upgrade failed ({error}). Terminals keep running on the old host.",

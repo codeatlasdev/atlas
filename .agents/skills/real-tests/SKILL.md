@@ -128,7 +128,7 @@ Common causes (Google, *Flaky Tests at Google and How We Mitigate Them*):
 The policy:
 1. A flaky test is a bug. **Quarantine it immediately**: skip it with an issue link and an owner. Never "just retry".
 2. Fix the root cause:
-   - inject a clock;
+   - inject a clock (Rust: a timer takes an `atlas_core::clock::Clock`, a test gives it a `ManualClock` and `advance`s it; `armed_past`/`fired_past` wait for the timer itself instead of a duration: hostd's idle exit, the LSP idle grace, the control socket's queue wait);
    - seed the RNG;
    - use port 0 or a temp dir per test;
    - await a condition instead of sleeping.

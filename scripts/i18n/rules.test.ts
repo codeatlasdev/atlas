@@ -4,7 +4,7 @@ import { afterAll, describe, expect, test } from "bun:test";
 import { rmSync } from "node:fs";
 import { fix } from "./fix.ts";
 import { type Finding, loadCtx } from "./types.ts";
-import { EN, META, PT, addKey, check, cleanup, editJson, errors, finding, json, makeRepo, PLURAL, put, read, rulesOf } from "./testkit.ts";
+import { EN, META, PT, addKey, check, cleanup, editJson, errors, finding, json, makeRepo, PLURAL, PLURAL_ZERO, put, read, rulesOf } from "./testkit.ts";
 
 afterAll(cleanup);
 
@@ -169,7 +169,7 @@ describe("placeholders, plurals, verbatim", () => {
 		expect(finding(await check(root), "plural", "app_files_count")?.message).toContain("missing one");
 		editJson(root, PT, (o) => void (o.app_files_count = "{count} arquivos"));
 		expect(finding(await check(root), "plural", "app_files_count")?.message).toContain("selector");
-		editJson(root, PT, (o) => void (o.app_files_count = PLURAL("{count} arquivo", "{count} arquivos")));
+		editJson(root, PT, (o) => void (o.app_files_count = PLURAL_ZERO("Nenhum arquivo", "{count} arquivo", "{count} arquivos")));
 		expect(errors(await check(root))).toEqual([]);
 	});
 
@@ -177,17 +177,6 @@ describe("placeholders, plurals, verbatim", () => {
 		const root = await makeRepo();
 		editJson(root, EN, (o) => void (o.app_files_count = [{ ...PLURAL("", "")[0], match: { "countPlural=*": "{count} files" } }]));
 		expect(rulesOf(errors(await check(root)))).toContain("plural");
-	});
-
-	test("an explicit zero variant is allowed next to one and other (\"0 arquivo\" reads wrong)", async () => {
-		const root = await makeRepo();
-		editJson(root, PT, (o) => {
-			const v = PLURAL("{count} arquivo", "{count} arquivos");
-			v[0].match["countPlural=0" as "countPlural=one"] = "Nenhum arquivo";
-			o.app_files_count = v;
-		});
-		fix(loadCtx(root));
-		expect(errors(await check(root))).toEqual([]);
 	});
 
 	test("a changed code span or URL is a verbatim error", async () => {

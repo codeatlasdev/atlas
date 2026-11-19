@@ -4,10 +4,11 @@
  * (`code` plus `args`). Loaded on demand (`loadHostMessages`), never at startup: these messages are only needed
  * when a host failure, a host toast or a host status reason is shown.
  *
- * Producers: `crates/atlas-host/src/client.rs` (`CODES`), `crates/atlas-host/src/upgrade.rs` (`hostd.older`),
- * `crates/atlas-desktop/src/host.rs`. A code added there is added to the switch below in the same change:
- * `hostText.test.ts` renders every code of the fixtures those crates write. `m.key` stays static (a switch, never
- * `m[code]`) so messages tree-shake.
+ * Producers: `crates/atlas-host/src/client.rs` (`CODES`), `crates/atlas-host/src/protocol.rs` (`REPLY_CODES`: a failed
+ * `fs_*` or `exec` request), `crates/atlas-host/src/upgrade.rs` (`hostd.older`), `crates/atlas-desktop/src/host.rs`.
+ * A code added there is added to the switch below in the same change: `hostText.test.ts` and `hostReplyText.test.ts`
+ * render every code of the fixtures those crates write. `m.key` stays static (a switch, never `m[code]`) so messages
+ * tree-shake.
  */
 import type { Wire } from "#lib/hostText.ts";
 import { appLocale } from "#lib/i18n/locale.svelte.ts";
@@ -82,6 +83,59 @@ export function render(code: string, args: Record<string, unknown> = {}): string
 			const command = s("command");
 			return command === undefined ? undefined : m.hostd_wire_cli_not_found({ command });
 		}
+		case "hostd.busy":
+			return m.hostd_wire_busy();
+		case "hostd.too_many_clients":
+			return m.hostd_wire_too_many_clients();
+		case "fs.not_found": {
+			const path = s("path");
+			return path === undefined ? undefined : m.hostd_wire_fs_not_found({ path });
+		}
+		case "fs.io": {
+			const path = s("path");
+			if (path === undefined) return undefined;
+			switch (s("kind")) {
+				case "permission_denied":
+					return m.hostd_wire_fs_permission_denied({ path });
+				case "not_a_directory":
+					return m.hostd_wire_fs_not_a_directory({ path });
+				case "is_a_directory":
+					return m.hostd_wire_fs_is_a_directory({ path });
+				case "already_exists":
+					return m.hostd_wire_fs_already_exists({ path });
+				case "other":
+					return m.hostd_wire_fs_other({ path });
+				default:
+					return undefined;
+			}
+		}
+		case "exec.spawn_failed": {
+			const program = s("program");
+			if (program === undefined) return undefined;
+			switch (s("reason")) {
+				case "not_found":
+					return m.hostd_wire_spawn_not_found({ program });
+				case "permission_denied":
+					return m.hostd_wire_spawn_permission_denied({ program });
+				case "other":
+					return m.hostd_wire_spawn_other({ program });
+				default:
+					return undefined;
+			}
+		}
+		case "hostd.invalid_argument":
+			switch (s("reason")) {
+				case "bad_base64": {
+					const field = s("field");
+					return field === undefined ? undefined : m.hostd_wire_invalid_base64({ field });
+				}
+				case "empty":
+					return m.hostd_wire_invalid_empty();
+				case "no_parent":
+					return m.hostd_wire_invalid_no_parent();
+				default:
+					return undefined;
+			}
 		default:
 			return undefined;
 	}

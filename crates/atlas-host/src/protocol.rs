@@ -3,7 +3,9 @@
 //! - First client line: `{"hello":{"token":"<hex>","client":"desktop|cli|test","proto":2}}`;
 //!   reply `{"ok":true,"data":{..info}}` or `{"ok":false,"error":"unauthorized"}` + close.
 //! - Request `{"id":n,"cmd":"..","args":{..}}` → `{"id":n,"ok":true,"data":{..}}` |
-//!   `{"id":n,"ok":false,"error":".."}`.
+//!   `{"id":n,"ok":false,"error":".."}`. A failure a client tells apart carries two more keys (additive; `error`
+//!   stays the English every client has always shown): `{"id":n,"ok":false,"error":"..","code":"..","args":{..}}`,
+//!   see [`Failure`] and [`REPLY_CODES`].
 //! - Push (no `id`): `{"ev":"pty_output"|"pty_replay"|"pty_title"|"pty_activity"|"pty_exit"|"pty_dropped"|"fs_event",..}`.
 //!   `pty_activity {pty}` goes to every attached connection (listeners too) at most once a second while the
 //!   program prints; an older daemon simply never sends it.
@@ -51,6 +53,7 @@
 
 use std::collections::BTreeMap;
 
+use atlas_core::progress::Coded;
 use serde::{Deserialize, Serialize};
 use serde_json::Value;
 
@@ -821,11 +824,82 @@ impl HostCmd {
 
 /// Build a response line.
 pub fn reply(id: u64, res: Result<Value, String>) -> String {
+    reply_failure(id, res.map_err(Failure::Text))
+}
+
+/// [`reply`] for a request whose failure may carry a code.
+pub fn reply_failure(id: u64, res: Result<Value, Failure>) -> String {
     let v = match res {
         Ok(data) => serde_json::json!({"id": id, "ok": true, "data": data}),
-        Err(e) => serde_json::json!({"id": id, "ok": false, "error": e}),
+        Err(Failure::Text(e)) => serde_json::json!({"id": id, "ok": false, "error": e}),
+        Err(Failure::Coded(c)) => {
+            serde_json::json!({"id": id, "ok": false, "error": c.message, "code": c.code, "args": c.args})
+        }
     };
     v.to_string()
+}
+
+/// Why a request failed: a text (what every failure was), or a text with the stable `code` and `args` a client
+/// writes its own sentence from (`atlas_core::progress::Coded`). `error` on the wire is the text in both cases, so a
+/// client that has never heard of the code shows what it always showed.
+#[derive(Debug, Clone, PartialEq)]
+pub enum Failure {
+    Text(String),
+    Coded(Coded),
+}
+
+impl From<String> for Failure {
+    fn from(s: String) -> Self {
+        Self::Text(s)
+    }
+}
+
+impl From<&str> for Failure {
+    fn from(s: &str) -> Self {
+        Self::Text(s.into())
+    }
+}
+
+impl From<Coded> for Failure {
+    fn from(c: Coded) -> Self {
+        Self::Coded(c)
+    }
+}
+
+impl From<Failure> for String {
+    /// The text a caller that does not read codes prints: what the failure always was.
+    fn from(f: Failure) -> Self {
+        match f {
+            Failure::Text(s) => s,
+            Failure::Coded(c) => c.message,
+        }
+    }
+}
+
+/// The codes a request's failure can carry, with their `args` and `error` (English, as always):
+///
+/// | code | args | `error` |
+/// |---|---|---|
+/// | `fs.not_found` | `path` | `not_found` |
+/// | `fs.io` | `kind` (`permission_denied` \| `not_a_directory` \| `is_a_directory` \| `already_exists` \| `other`), `path`, `detail` (the OS's own text, `other` only) | the OS's text, e.g. `Permission denied (os error 13)` |
+/// | `exec.spawn_failed` | `program`, `reason` (`not_found` \| `permission_denied` \| `other`), `detail` (the OS's own text, `other` only) | `<program>: <the OS's text>` |
+/// | `hostd.invalid_argument` | `field`, `reason` (`bad_base64` \| `empty` \| `no_parent`) | what it always said |
+///
+/// A client reads the code only when it knows it (`client::reply_error`), else it has the text. A new code is added
+/// here, to the desktop's catalog (`apps/desktop/src/lib/hostMessages.ts`) and to its fixture test in one change.
+pub const REPLY_CODES: &[&str] = &[FS_NOT_FOUND, FS_IO, EXEC_SPAWN_FAILED, INVALID_ARGUMENT];
+pub const FS_NOT_FOUND: &str = "fs.not_found";
+pub const FS_IO: &str = "fs.io";
+pub const EXEC_SPAWN_FAILED: &str = "exec.spawn_failed";
+pub const INVALID_ARGUMENT: &str = "hostd.invalid_argument";
+
+/// A request argument hostd cannot use: `field` is the argument, `reason` why (see [`REPLY_CODES`]).
+pub(crate) fn invalid_argument(field: &str, reason: &str, message: impl Into<String>) -> Coded {
+    Coded::new(
+        INVALID_ARGUMENT,
+        serde_json::json!({"field": field, "reason": reason}),
+        message,
+    )
 }
 
 /// The `pty_title` push for the title a `pty_attach` answer carries, or `None` when it has none. A
@@ -937,5 +1011,151 @@ mod tests {
             HostCmd::LspOpen { root, .. } => assert!(root.is_none()),
             other => panic!("{other:?}"),
         }
+    }
+
+    /// A failed reply keeps `error`, the English text every client has always read, and adds `code` and `args`;
+    /// a reply without them (an older daemon) is a plain text error on the client.
+    #[test]
+    fn a_coded_failure_keeps_the_error_text_and_adds_code_and_args() {
+        let coded = Coded::new(
+            "fs.not_found",
+            serde_json::json!({"path": "/w/a"}),
+            "not_found",
+        );
+        let v: Value = serde_json::from_str(&reply_failure(4, Err(coded.into()))).unwrap();
+        assert_eq!(v["id"], 4);
+        assert_eq!(v["ok"], false);
+        assert_eq!(v["error"], "not_found");
+        assert_eq!(v["code"], "fs.not_found");
+        assert_eq!(v["args"], serde_json::json!({"path": "/w/a"}));
+
+        let v: Value = serde_json::from_str(&reply(4, Err("boom".into()))).unwrap();
+        assert_eq!(
+            v,
+            serde_json::json!({"id": 4, "ok": false, "error": "boom"})
+        );
+        let e = crate::client::reply_error(&v);
+        assert!(e.downcast_ref::<Coded>().is_none());
+        assert_eq!(e.to_string(), "boom");
+
+        // A code this build has never heard of is the text alone, never a half-known failure.
+        let future = serde_json::json!({"ok": false, "error": "no way", "code": "fs.from_the_future", "args": {}});
+        let e = crate::client::reply_error(&future);
+        assert!(e.downcast_ref::<Coded>().is_none());
+        assert_eq!(e.to_string(), "no way");
+    }
+
+    /// Contract with the desktop: `apps/desktop/src/lib/__fixtures__/hostd-reply-errors.json` is the REAL wire shape
+    /// of every coded failure of a request: each sample is built by the function hostd uses, written as the reply
+    /// line, read back by the client, and the `{code, args, message}` the desktop receives is what is stored, next to
+    /// [`REPLY_CODES`], which `apps/desktop/src/lib/hostReplyText.test.ts` renders from the catalog. `UPDATE_FIXTURES=1`
+    /// regenerates it.
+    #[tokio::test]
+    async fn reply_errors_json_contract() {
+        use std::io::{Error, ErrorKind as K};
+        // The OS's own words, fixed: the fixture is the same on every runner.
+        let os = |kind, text: &str| Error::new(kind, text.to_string());
+        let cwd = std::env::temp_dir();
+        let cwd = cwd.to_str().unwrap();
+        let Err(crate::protocol::Failure::Coded(empty_argv)) =
+            crate::exec::run("/", &[], &BTreeMap::new(), None, 1000).await
+        else {
+            panic!("an empty argv is a coded failure");
+        };
+        let samples = [
+            crate::fs::coded(
+                &os(K::NotFound, "No such file or directory (os error 2)"),
+                "/work/old-name.txt",
+            ),
+            crate::fs::coded(
+                &os(K::PermissionDenied, "Permission denied (os error 13)"),
+                "/work/locked",
+            ),
+            crate::fs::coded(
+                &os(K::NotADirectory, "Not a directory (os error 20)"),
+                "/work/README.md",
+            ),
+            crate::fs::coded(
+                &os(K::IsADirectory, "Is a directory (os error 21)"),
+                "/work/src",
+            ),
+            crate::fs::coded(
+                &os(K::AlreadyExists, "File exists (os error 17)"),
+                "/work/src",
+            ),
+            crate::fs::coded(
+                &os(K::Other, "Read-only file system (os error 30)"),
+                "/work/readonly",
+            ),
+            crate::exec::spawn_failed(
+                "git",
+                cwd,
+                &os(K::NotFound, "No such file or directory (os error 2)"),
+            ),
+            crate::exec::spawn_failed(
+                "/opt/tools/lint",
+                cwd,
+                &os(K::PermissionDenied, "Permission denied (os error 13)"),
+            ),
+            crate::exec::spawn_failed("sh", cwd, &os(K::Other, "Exec format error (os error 8)")),
+            // The same OS error when the working folder is the missing one.
+            crate::exec::spawn_failed(
+                "git",
+                "/work/gone",
+                &os(K::NotFound, "No such file or directory (os error 2)"),
+            ),
+            crate::fs::write("/work/a.txt", "***", None).unwrap_err(),
+            crate::fs::write("/", "", None).unwrap_err(),
+            empty_argv,
+        ];
+        let errors: Vec<Value> = samples
+            .iter()
+            .map(|c| {
+                let v: Value =
+                    serde_json::from_str(&reply_failure(1, Err(c.clone().into()))).unwrap();
+                assert_eq!(v["error"], c.message.as_str(), "the text is the old one");
+                let e = crate::client::reply_error(&v);
+                let got = e
+                    .downcast_ref::<Coded>()
+                    .expect("the client reads the code")
+                    .wire();
+                assert_eq!(got, c.wire(), "the reply keeps code, args and text");
+                got
+            })
+            .collect();
+        for code in REPLY_CODES {
+            assert!(
+                errors.iter().any(|e| e["code"] == *code),
+                "no sample for {code}"
+            );
+        }
+        for e in &errors {
+            assert!(
+                REPLY_CODES.contains(&e["code"].as_str().unwrap()),
+                "{e} is not in REPLY_CODES"
+            );
+        }
+        let value = serde_json::json!({"codes": REPLY_CODES, "errors": errors});
+
+        let path = std::path::Path::new(env!("CARGO_MANIFEST_DIR"))
+            .join("../../apps/desktop/src/lib/__fixtures__/hostd-reply-errors.json");
+        let mut buf = Vec::new();
+        let mut ser = serde_json::Serializer::with_formatter(
+            &mut buf,
+            serde_json::ser::PrettyFormatter::with_indent(b"\t"),
+        );
+        serde::Serialize::serialize(&value, &mut ser).unwrap();
+        let fresh = String::from_utf8(buf).unwrap() + "\n";
+        if std::env::var_os("UPDATE_FIXTURES").is_some() {
+            std::fs::write(&path, &fresh).unwrap();
+        }
+        let committed: Value = serde_json::from_str(
+            &std::fs::read_to_string(&path).expect("fixture missing: UPDATE_FIXTURES=1"),
+        )
+        .unwrap();
+        assert_eq!(
+            committed, value,
+            "stale fixture: re-run with UPDATE_FIXTURES=1"
+        );
     }
 }

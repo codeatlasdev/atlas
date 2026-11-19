@@ -1,0 +1,19 @@
+{
+	"git_errors_config_failed": "Could not save {key} in your git config.",
+	"git_errors_config_failed_output": "Could not save {key} in your git config: {output}",
+	"git_errors_conflict": "Git stopped on a merge conflict. Resolve the conflicted files, stage them and continue.",
+	"git_errors_details": "Details",
+	"git_errors_identity_email": "Enter an e-mail address like you@example.com.",
+	"git_errors_identity_name": "Enter your name.",
+	"git_errors_local_changes": "Local changes would be overwritten. Commit or stash them, then try again.",
+	"git_errors_locked": "Another git process is using this repository, or it stopped and left a lock file. Wait a moment, then try again.",
+	"git_errors_no_commits": "This repository has no commits yet. Make a first commit, then try again.",
+	"git_errors_no_remote": "This repository has no remote. Add one that points to GitHub, then try again.",
+	"git_errors_no_upstream": "This branch has not been pushed yet, so it has nothing to compare with on the remote.",
+	"git_errors_not_repo": "This folder is not a git repository.",
+	"git_errors_nothing_to_commit": "Nothing to commit. Stage some changes first.",
+	"git_errors_other": "Git could not finish that command. See the details for what it printed.",
+	"git_errors_other_line": "Git failed: {line}",
+	"git_errors_rejected": "The remote has commits you don't have. Pull, then push again.",
+	"git_errors_remote_access": "Git could not reach the remote or sign in to it. Check the address and your credentials."
+}

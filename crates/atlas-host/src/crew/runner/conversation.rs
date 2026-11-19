@@ -5,7 +5,8 @@
 use std::collections::BTreeMap;
 
 use super::action::{
-    finish_unanswered, park_task, parse_atlas_action, resolve_action, user_answer,
+    answer_accepted, finish_unanswered, park_task, parse_atlas_action, resolve_action,
+    running_again,
 };
 use super::gate::{Gate, gate_success};
 use super::isolation::Ctx;
@@ -267,15 +268,19 @@ async fn answer_action_turn(
     };
     match resolve_action(&hub_arc, &crewmate.id, &task.id, action).await {
         Some(follow_up) => {
-            // The action stays on the task (cards only show while waiting): with `answer` it lets the
-            // chat show what was asked and what the user picked.
-            task.answer = user_answer(action, &follow_up);
+            // The action stays on the task: with `answer` it lets the chat show what was asked and what the user
+            // picked. The task is running from this moment, for every client (#524).
+            answer_accepted(hub, crewmate, task, action, &follow_up);
             // The env is read again: it may include secrets written while waiting. The answer starts an agent
             // again, so it needs a slot again (the wait for the person held none).
             let Some(_slot) = super::slots::take(hub, crewmate, task).await else {
                 finish_unanswered(hub, crewmate, task);
                 return;
             };
+            // A wait for a slot showed "server busy" meanwhile.
+            if task.state != TaskState::Running {
+                running_again(hub, crewmate, task);
+            }
             match turn.run(&follow_up).await {
                 Ok((reply2, usage2, env2)) => settle_reply(turn, task, reply2, usage2, &env2).await,
                 Err(e) => finish_task(hub, crewmate, task, Err(e), vec![]),

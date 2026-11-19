@@ -230,24 +230,6 @@ export function agentRows(
 	});
 }
 
-/** The agent states the hooks report (`working` | `idle` | …) as a person reads them; another one shows as sent. */
-export function agentStateLabel(state: string): string {
-	switch (state) {
-		case "working":
-			return m.panel_machine_agent_working();
-		case "idle":
-			return m.panel_machine_agent_idle();
-		case "blocked":
-			return m.panel_machine_agent_blocked();
-		case "waiting":
-			return m.panel_machine_agent_waiting();
-		case "done":
-			return m.panel_machine_agent_done();
-		default:
-			return state;
-	}
-}
-
 const pct = (r: number | null) => (r == null ? "–" : `${r}%`);
 const saved = (ms: number) => human(Math.round(ms / 1000));
 

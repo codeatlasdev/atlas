@@ -34,7 +34,7 @@ export function branchItems(q: string) {
 	if (!data) return [];
 	return branchRows(data, q).map((r) => ({
 		id: r.id,
-		group: r.kind === "remote" ? "Remote branches" : "Branches",
+		group: r.kind === "remote" ? m.git_branch_group_remote() : m.git_branch_group_local(),
 		label: r.label,
 		description: r.description,
 		run: () => void pick(r),
@@ -45,7 +45,15 @@ export function createBranchItems(q: string) {
 	const data = branchPicker.data;
 	const r = data && createRow(data, q, data.current);
 	return r
-		? [{ id: r.id, group: "Create", label: r.label, description: r.description, run: () => void pick(r) }]
+		? [
+				{
+					id: r.id,
+					group: m.shell_commands_group_create(),
+					label: r.label,
+					description: r.description,
+					run: () => void pick(r),
+				},
+			]
 		: [];
 }
 

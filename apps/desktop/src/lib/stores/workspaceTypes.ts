@@ -124,3 +124,58 @@ export function emptyDoc(): Doc {
 		closed: {},
 	};
 }
+
+const isRecord = (v: unknown): v is Record<string, unknown> =>
+	typeof v === "object" && v !== null && !Array.isArray(v);
+
+/** Top-level keys that hold a list of objects (each with a string `id`, when `id`), a list of strings, a record of
+ * objects, of strings or of lists. Enough to tell a workspace from any other JSON; the rest is read leniently. */
+const LISTS_OF_OBJECTS = { worktrees: true, tabs: true, groups: true, feed: false } as const;
+const LISTS_OF_STRINGS = ["recentWorktrees"] as const;
+const RECORDS_OF = {
+	layouts: "object",
+	focusedGroup: "string",
+	bottomGroup: "string",
+	recentTabs: "list",
+	diffComments: "list",
+	urlHistory: "list",
+	closed: "list",
+} as const;
+
+/**
+ * Why `raw` (the parsed workspace.json) is not a workspace, or null when it can be used. `null`/absent is "no
+ * document". Valid JSON of the wrong shape (a hand edit, another tool's file, a newer schema) otherwise loads as a
+ * half-document and crashes the first screen that reads a tab list; the caller sets the file aside instead.
+ */
+export function docShapeError(raw: unknown): string | null {
+	if (raw === null || raw === undefined) return null;
+	if (!isRecord(raw)) return "expected a JSON object";
+	if ("version" in raw && typeof raw.version !== "number") return "version: expected a number";
+	if ("selected" in raw && raw.selected !== null && typeof raw.selected !== "string")
+		return "selected: expected a string or null";
+	for (const [key, needsId] of Object.entries(LISTS_OF_OBJECTS)) {
+		if (!(key in raw)) continue;
+		const v = raw[key];
+		if (!Array.isArray(v)) return `${key}: expected a list`;
+		if (v.some((x) => !isRecord(x) || (needsId && typeof x.id !== "string")))
+			return `${key}: expected a list of objects${needsId ? " with an id" : ""}`;
+	}
+	for (const key of LISTS_OF_STRINGS) {
+		if (
+			key in raw &&
+			(!Array.isArray(raw[key]) || (raw[key] as unknown[]).some((x) => typeof x !== "string"))
+		)
+			return `${key}: expected a list of strings`;
+	}
+	for (const [key, of] of Object.entries(RECORDS_OF)) {
+		if (!(key in raw)) continue;
+		const v = raw[key];
+		if (!isRecord(v)) return `${key}: expected an object`;
+		const bad = Object.values(v).some((x) =>
+			of === "list" ? !Array.isArray(x) : of === "string" ? typeof x !== "string" : !isRecord(x),
+		);
+		if (bad)
+			return `${key}: expected an object of ${of === "list" ? "lists" : of === "string" ? "strings" : "objects"}`;
+	}
+	return null;
+}

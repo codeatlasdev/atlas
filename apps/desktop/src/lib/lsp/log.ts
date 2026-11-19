@@ -3,6 +3,7 @@ import { toast } from "@codeatlasdev/ui";
 import { serverLog } from "#lib/lsp/client.svelte.ts";
 import { locate } from "#lib/lsp/workspace.ts";
 import { openFile } from "#lib/stores/files.svelte.ts";
+import { m } from "#lib/i18n/m.ts";
 
 /**
  * Logs normally sit under `~/.atlas`, outside every worktree, so the editor cannot open them: the
@@ -17,10 +18,10 @@ export async function openLog(name: string): Promise<{ path: string; text: strin
 			return log;
 		}
 		await navigator.clipboard.writeText(log.path).catch(() => {});
-		toast.info(`Log path copied: ${log.path}`);
+		toast.info(m.workbench_lsp_log_path_copied({ path: log.path }));
 		return log;
 	} catch {
-		toast.error("Could not read the language server log. Restart the terminal host and try again.");
+		toast.error(m.workbench_lsp_log_unreadable());
 		return undefined;
 	}
 }

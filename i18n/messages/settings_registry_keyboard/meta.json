@@ -1,0 +1,5 @@
+{
+	"settings_registry_keyboard_description": "One line under the Keyboard shortcuts page title in Settings, and the tooltip of its sidebar entry.",
+	"settings_registry_keyboard_group_shortcuts": "Title of the \"Shortcuts\" card on the Keyboard shortcuts page of Settings, shown above its rows and in the path of search results.",
+	"settings_registry_keyboard_label": "Sidebar entry and page title of the Keyboard shortcuts section in Settings."
+}

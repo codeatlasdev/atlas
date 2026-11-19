@@ -1,0 +1,11 @@
+{
+	"settings_registry_help_checklist_description": "Bring back the first steps card, or start over.",
+	"settings_registry_help_checklist_label": "Getting started checklist",
+	"settings_registry_help_description": "Take the tour again, look up a shortcut, or bring the checklist back.",
+	"settings_registry_help_group_help": "Help",
+	"settings_registry_help_help_keys_description": "Every key, searchable.",
+	"settings_registry_help_help_keys_label": "Shortcut cheat sheet",
+	"settings_registry_help_label": "Help & onboarding",
+	"settings_registry_help_tour_description": "A short walk through spaces, the header, the panel and search.",
+	"settings_registry_help_tour_label": "Guided tour"
+}

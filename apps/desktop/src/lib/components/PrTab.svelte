@@ -37,6 +37,16 @@
 		type RepoProbe,
 	} from "#lib/repoState.ts";
 	import NotRepoState from "./NotRepoState.svelte";
+	import { m } from "#lib/i18n/m.ts";
+	import { dateTime } from "#lib/i18n/fmt.ts";
+	import {
+		checkStateText,
+		checksChipText,
+		prStateText,
+		reviewDecisionText,
+		reviewStateText,
+		rollupText,
+	} from "#lib/prText.ts";
 
 	let { worktreeId, focused = false }: { worktreeId: string; focused?: boolean } = $props();
 
@@ -122,10 +132,10 @@
 		else if (id === "retry") await refresh();
 	}
 
-	const REVIEW: Record<string, [string, "success" | "error" | "warning"]> = {
-		APPROVED: ["approved", "success"],
-		CHANGES_REQUESTED: ["changes requested", "error"],
-		REVIEW_REQUIRED: ["review required", "warning"],
+	const REVIEW: Record<string, "success" | "error" | "warning"> = {
+		APPROVED: "success",
+		CHANGES_REQUESTED: "error",
+		REVIEW_REQUIRED: "warning",
 	};
 	const CHECKS = { ok: "success", failed: "error", pending: "warning", none: "neutral" } as const;
 
@@ -137,12 +147,13 @@
 	);
 
 	async function showLog(c: Check) {
-		log = { name: c.name, text: "Loading…" };
+		log = { name: c.name, text: m.common_state_loading() };
 		log = { name: c.name, text: await pr.failedLog(worktreeId, c) };
 	}
 
 	async function fix() {
 		const failed = checks.filter((c) => c.state === "FAILURE");
+		// i18n-ignore: the prompt an agent reads
 		let text = `CI checks failed on PR #${v?.number}. Fix them.\n`;
 		for (const c of failed.slice(0, 3))
 			text += `\n## ${c.name}\n${(await pr.failedLog(worktreeId, c)).slice(-8000)}\n`;
@@ -165,8 +176,14 @@
 	{#if !v}
 		<div class="pad">
 			{#if failed}
-				<EmptyState icon={CircleAlert} title="Could not read the repository" description={failed} bare>
-					{#snippet actions()}<Button size="sm" onclick={refresh}>Try again</Button>{/snippet}
+				<EmptyState
+					icon={CircleAlert}
+					title={m.git_pr_tab_could_not_read_the_repository()}
+					description={failed}
+					bare
+				>
+					{#snippet actions()}<Button size="sm" onclick={refresh}>{m.git_pr_tab_try_again()}</Button
+						>{/snippet}
 				</EmptyState>
 			{:else if !repo || repo.kind === "pr"}
 				{#if loading}<Spinner />{/if}
@@ -189,18 +206,19 @@
 			<h2>#{v.number} {v.title}</h2>
 			<StatusChip
 				status={v.state === "MERGED" ? "info" : v.state === "OPEN" ? "success" : "neutral"}
-				label={v.isDraft ? "draft" : v.state.toLowerCase()}
+				label={prStateText(v.state, v.isDraft)}
 			/>
 			{#if REVIEW[v.reviewDecision]}
-				<StatusChip status={REVIEW[v.reviewDecision][1]} label={REVIEW[v.reviewDecision][0]} />
+				<StatusChip status={REVIEW[v.reviewDecision]} label={reviewDecisionText(v.reviewDecision)} />
 			{/if}
 			{#if rollup(v) !== "none"}
-				<StatusChip status={CHECKS[rollup(v)]} label="checks {rollup(v)}" />
+				<StatusChip status={CHECKS[rollup(v)]} label={checksChipText(rollup(v))} />
 			{/if}
 			<span class="dim">{v.headRefName} → {v.baseRefName} · {v.author.login}</span>
 			<span class="spacer"></span>
-			<button class="icon" title="Refresh" onclick={refresh}><RefreshCw size={13} /></button>
-			<button class="icon" title="Open on GitHub" onclick={() => api.openUrl(v!.url)}
+			<button class="icon" title={m.git_diff_view_refresh()} onclick={refresh}><RefreshCw size={13} /></button
+			>
+			<button class="icon" title={m.git_pr_tab_open_on_github()} onclick={() => api.openUrl(v!.url)}
 				><ExternalLink size={13} /></button
 			>
 			{#if v.state === "OPEN"}
@@ -208,15 +226,17 @@
 					<Button
 						size="sm"
 						variant="ghost"
-						onclick={() => pr.run(worktreeId, ["pr", "ready", String(v!.number)], "Marked ready")}
-						>Mark ready</Button
+						onclick={() =>
+							pr.run(worktreeId, ["pr", "ready", String(v!.number)], m.git_github_marked_ready())}
+						>{m.git_pr_tab_mark_ready()}</Button
 					>
 				{/if}
 				<DropdownMenu align="end">
-					{#snippet trigger()}<span class="merge">Merge…</span>{/snippet}
-					{#each [["--squash", "Squash and merge"], ["--merge", "Create a merge commit"], ["--rebase", "Rebase and merge"]] as [flag, label] (flag)}
+					{#snippet trigger()}<span class="merge">{m.git_pr_tab_merge()}</span>{/snippet}
+					{#each [["--squash", m.git_github_merge_squash()], ["--merge", m.git_github_merge_commit()], ["--rebase", m.git_github_merge_rebase()]] as [flag, label] (flag)}
 						<DropdownMenuItem
-							onclick={() => pr.run(worktreeId, ["pr", "merge", String(v!.number), flag], "Merged")}
+							onclick={() =>
+								pr.run(worktreeId, ["pr", "merge", String(v!.number), flag], m.git_github_merged())}
 							>{label}</DropdownMenuItem
 						>
 					{/each}
@@ -225,10 +245,10 @@
 							pr.run(
 								worktreeId,
 								["pr", "merge", String(v!.number), "--squash", "--auto"],
-								"Auto-merge enabled",
+								m.git_github_auto_merge_enabled(),
 							)}
 					>
-						Enable auto-merge (squash)
+						{m.git_pr_tab_enable_auto_merge_squash()}
 					</DropdownMenuItem>
 				</DropdownMenu>
 			{/if}
@@ -241,37 +261,41 @@
 					</article>{/if}
 				{#each [...v.reviews.map( (r) => ({ who: r.author.login, at: r.submittedAt, text: r.body, tag: r.state }) ), ...v.comments.map( (c) => ({ who: c.author.login, at: c.createdAt, text: c.body, tag: "" }) )].sort( (a, b) => a.at.localeCompare(b.at) ) as e, i (i)}
 					<article>
-						<b>{e.who}</b>{#if e.tag}<span class="dim"> · {e.tag.toLowerCase()}</span>{/if}
-						<span class="dim"> · {new Date(e.at).toLocaleString()}</span>
+						<b>{e.who}</b>{#if e.tag}<span class="dim"> · {reviewStateText(e.tag)}</span>{/if}
+						<span class="dim"> · {dateTime(new Date(e.at))}</span>
 						{#if e.text}<p class="ca-selectable">{e.text}</p>{/if}
 					</article>
 				{/each}
 				<div class="reply">
-					<TextArea bind:value={reply} placeholder="Comment" rows={3} />
+					<TextArea bind:value={reply} placeholder={m.git_pr_tab_comment()} rows={3} />
 					<Button
 						size="sm"
 						disabled={!reply.trim()}
 						onclick={async () => {
-							await pr.run(worktreeId, ["pr", "comment", String(v!.number), "--body", reply], "Commented");
+							await pr.run(
+								worktreeId,
+								["pr", "comment", String(v!.number), "--body", reply],
+								m.git_github_commented(),
+							);
 							reply = "";
-						}}>Comment</Button
+						}}>{m.git_pr_tab_comment()}</Button
 					>
 				</div>
 			</section>
 			<section class="checks">
-				<h3>Checks <span class="dim">{rollup(v)}</span></h3>
+				<h3>{m.git_github_checks_title()} <span class="dim">{rollupText(rollup(v))}</span></h3>
 				{#each checks as c (c.name + c.link)}
 					<button class="check" onclick={() => c.state === "FAILURE" && showLog(c)}>
-						<StatusChip status={chip(c.state)} label={c.state.toLowerCase()} />
+						<StatusChip status={chip(c.state)} label={checkStateText(c.state)} />
 						<span class="name">{c.workflow ? `${c.workflow} / ` : ""}{c.name}</span>
 					</button>
 				{:else}
-					<p class="dim">No checks.</p>
+					<p class="dim">{m.git_pr_tab_no_checks()}</p>
 				{/each}
 				{#if checks.some((c) => c.state === "FAILURE")}
 					<Button size="sm" onclick={fix}>
 						{#snippet leading()}<Wrench size={12} />{/snippet}
-						Fix broken checks
+						{m.git_pr_tab_fix_broken_checks()}
 					</Button>
 				{/if}
 				{#if log}

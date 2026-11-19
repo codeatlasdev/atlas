@@ -89,6 +89,36 @@ pub fn write_atomic(path: &Path, data: &[u8], mode: Mode) -> io::Result<()> {
     Ok(())
 }
 
+/// Read a file that another process replaces with [`write_atomic`] (`.tui-status.json` every second, the metrics and
+/// history files). On Unix a plain read. On Windows, an open that races the replace can be refused with "Access is
+/// denied": the open had already found the old file when the rename marked it for deletion (`STATUS_DELETE_PENDING`),
+/// a window the writer cannot close (#545, seen on CI after the POSIX rename and its retries landed). That refusal is
+/// retried briefly (1, 2, 4, 8, 16 ms); the next open finds the new file. `NotFound` is not retried: a file that does
+/// not exist is the common answer (no run) and must stay fast.
+pub fn read_replaced(path: &Path) -> io::Result<Vec<u8>> {
+    let mut attempt = 0;
+    loop {
+        match fs::read(path) {
+            Err(e) if attempt < 5 && replaced_meanwhile(&e) => {
+                std::thread::sleep(std::time::Duration::from_millis(1 << attempt));
+                attempt += 1;
+            }
+            r => return r,
+        }
+    }
+}
+
+/// [`read_replaced`] as UTF-8 text.
+pub fn read_to_string_replaced(path: &Path) -> io::Result<String> {
+    String::from_utf8(read_replaced(path)?)
+        .map_err(|e| io::Error::new(io::ErrorKind::InvalidData, e))
+}
+
+/// The refusal an open gets while the file it found is being replaced (Windows `ERROR_ACCESS_DENIED`).
+fn replaced_meanwhile(e: &io::Error) -> bool {
+    cfg!(windows) && e.raw_os_error() == Some(5)
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -207,8 +237,10 @@ mod tests {
 
     /// #545 (`status_write_is_atomic_under_concurrent_reads`, Windows): a reader opening the target while it is
     /// replaced found it missing (`NotFound`) now and then, because `std::fs::rename` is `MoveFileExW`, which does not
-    /// promise that the name never disappears. The reader here only opens the name, as often as it can: the old file
-    /// or the new one, never `NotFound`. (Unix never had the window; the Windows runner is where this can fail.)
+    /// promise that the name never disappears. The contract is for a reader that reads with [`read_replaced`]: the old
+    /// file or the new one, never an error, as often as it can open it. A plain `fs::read` can still be refused
+    /// ("Access is denied", the old file delete-pending under an open in flight): seen on the Windows runner after
+    /// 35494 opens with the POSIX rename and its retries. (Unix never had the window.)
     #[test]
     fn replacing_a_file_never_leaves_its_name_missing_for_a_reader_that_opens_it() {
         let dir = tempfile::tempdir().unwrap();
@@ -220,7 +252,7 @@ mod tests {
             std::thread::spawn(move || {
                 let mut opens = 0u32;
                 while !done.load(Ordering::Relaxed) {
-                    let got = fs::read_to_string(&path).unwrap_or_else(|e| {
+                    let got = read_to_string_replaced(&path).unwrap_or_else(|e| {
                         panic!("the name was missing for a reader after {opens} opens: {e}")
                     });
                     assert!(got.parse::<u32>().is_ok(), "{got:?}");

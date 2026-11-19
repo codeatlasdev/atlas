@@ -1314,3 +1314,54 @@ fn a_daemon_registry_never_recreates_its_removed_base() {
         "a plain registry creates its base"
     );
 }
+
+// Contract with the desktop (Settings > Workspaces > Hygiene words each kind: `kindText`, `dirKindText`): every
+// variant of `Kind` and `DirKind`, serialized as the report does, is the fixture `__fixtures__/hygiene-kinds.json`.
+// The `match`es make a new variant a compile error here, so the fixture and the desktop messages cannot miss it.
+#[test]
+fn kinds_match_the_frontend_fixture() {
+    let kinds = [
+        Kind::Terminal,
+        Kind::Service,
+        Kind::Agent,
+        Kind::Browser,
+        Kind::Other,
+    ];
+    for k in kinds {
+        match k {
+            Kind::Terminal | Kind::Service | Kind::Agent | Kind::Browser | Kind::Other => {}
+        }
+    }
+    let dir_kinds = [
+        DirKind::Temp,
+        DirKind::BrowserProfile,
+        DirKind::Cache,
+        DirKind::Instance,
+    ];
+    for k in dir_kinds {
+        match k {
+            DirKind::Temp | DirKind::BrowserProfile | DirKind::Cache | DirKind::Instance => {}
+        }
+    }
+    let value = serde_json::json!({"kinds": kinds, "dir_kinds": dir_kinds});
+    let path = std::path::Path::new(env!("CARGO_MANIFEST_DIR"))
+        .join("../../apps/desktop/src/lib/__fixtures__/hygiene-kinds.json");
+    let mut buf = Vec::new();
+    let mut ser = serde_json::Serializer::with_formatter(
+        &mut buf,
+        serde_json::ser::PrettyFormatter::with_indent(b"\t"),
+    );
+    serde::Serialize::serialize(&value, &mut ser).unwrap();
+    let fresh = String::from_utf8(buf).unwrap() + "\n";
+    if std::env::var_os("UPDATE_FIXTURES").is_some() {
+        std::fs::write(&path, &fresh).unwrap();
+    }
+    let committed: serde_json::Value = serde_json::from_str(
+        &std::fs::read_to_string(&path).expect("fixture missing: UPDATE_FIXTURES=1"),
+    )
+    .unwrap();
+    assert_eq!(
+        committed, value,
+        "stale fixture: re-run with UPDATE_FIXTURES=1"
+    );
+}

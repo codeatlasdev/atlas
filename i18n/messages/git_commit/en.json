@@ -1,0 +1,128 @@
+{
+	"git_commit_amended": "Amended",
+	"git_commit_committed": "Committed",
+	"git_commit_conflicted_files": [
+		{
+			"declarations": [
+				"input count",
+				"local countExact = count",
+				"local countPlural = count: plural"
+			],
+			"selectors": [
+				"countExact",
+				"countPlural"
+			],
+			"match": {
+				"countExact=0, countPlural=*": "No conflicted files",
+				"countExact=*, countPlural=one": "{count} conflicted file",
+				"countExact=*, countPlural=*": "{count} conflicted files"
+			}
+		}
+	],
+	"git_commit_discard_title": "Discard changes to {path}?",
+	"git_commit_discard_tracked": "This cannot be undone.",
+	"git_commit_discard_untracked": "The untracked file is deleted.",
+	"git_commit_error_all_secret": "Every changed file looks like a secret, so none was sent. Write the message yourself.",
+	"git_commit_error_empty": "The agent returned no message. Try again, or write the message yourself.",
+	"git_commit_error_no_changes": "There is nothing to describe: no staged or uncommitted changes.",
+	"git_commit_error_off": "AI commit messages are turned off. Pick an agent in Settings → Git to turn them on.",
+	"git_commit_error_ssh": "Atlas cannot write a commit message for a folder on an SSH host yet, because the agent would have to run there.",
+	"git_commit_force_push_body": "Overwrites the remote branch if nobody else pushed to it.",
+	"git_commit_force_push_confirm": "Force push",
+	"git_commit_force_push_title": "Force push with lease?",
+	"git_commit_generate": "Generate",
+	"git_commit_group_changes": "Changes",
+	"git_commit_group_conflicts": "Conflicts",
+	"git_commit_group_staged": "Staged",
+	"git_commit_group_untracked": "Untracked",
+	"git_commit_message_placeholder": "Commit message ({key} to commit)",
+	"git_commit_notice_all": "Nothing was staged: used all changes",
+	"git_commit_notice_all_with": "Nothing was staged: used all changes. {omitted}",
+	"git_commit_notice_cut": [
+		{
+			"declarations": [
+				"input count",
+				"local countExact = count",
+				"local countPlural = count: plural"
+			],
+			"selectors": [
+				"countExact",
+				"countPlural"
+			],
+			"match": {
+				"countExact=0, countPlural=*": "Nothing cut",
+				"countExact=*, countPlural=one": "{count} cut",
+				"countExact=*, countPlural=*": "{count} cut"
+			}
+		}
+	],
+	"git_commit_notice_left_out": [
+		{
+			"declarations": [
+				"input count",
+				"local countExact = count",
+				"local countPlural = count: plural"
+			],
+			"selectors": [
+				"countExact",
+				"countPlural"
+			],
+			"match": {
+				"countExact=0, countPlural=*": "Nothing left out",
+				"countExact=*, countPlural=one": "{count} left out (too large)",
+				"countExact=*, countPlural=*": "{count} left out (too large)"
+			}
+		}
+	],
+	"git_commit_notice_named_only": [
+		{
+			"declarations": [
+				"input count",
+				"local countExact = count",
+				"local countPlural = count: plural"
+			],
+			"selectors": [
+				"countExact",
+				"countPlural"
+			],
+			"match": {
+				"countExact=0, countPlural=*": "None named only",
+				"countExact=*, countPlural=one": "{count} named only",
+				"countExact=*, countPlural=*": "{count} named only"
+			}
+		}
+	],
+	"git_commit_notice_withheld": [
+		{
+			"declarations": [
+				"input count",
+				"local countExact = count",
+				"local countPlural = count: plural"
+			],
+			"selectors": [
+				"countExact",
+				"countPlural"
+			],
+			"match": {
+				"countExact=0, countPlural=*": "No files withheld",
+				"countExact=*, countPlural=one": "{count} file withheld (may hold secrets)",
+				"countExact=*, countPlural=*": "{count} files withheld (may hold secrets)"
+			}
+		}
+	],
+	"git_commit_operation_merge": "Merge in progress",
+	"git_commit_operation_rebase": "Rebase in progress",
+	"git_commit_pick_agent": "Pick an agent for commit messages in Settings → Git",
+	"git_commit_primary_commit": "Commit",
+	"git_commit_primary_pull": "Pull ({count})",
+	"git_commit_primary_push_count": "Push ({count})",
+	"git_commit_primary_up_to_date": "Up to date",
+	"git_commit_regenerate": "Regenerate",
+	"git_commit_save_amend": "Save & amend",
+	"git_commit_save_commit": "Save & commit",
+	"git_commit_write_from_all": "Write the message from all changes",
+	"git_commit_write_from_staged": "Write the message from the staged diff",
+	"git_commit_write_message": "Write a commit message",
+	"git_commit_writing": "Writing with the agent…",
+	"git_commit_writing_with": "Writing with {agent}…"
+}

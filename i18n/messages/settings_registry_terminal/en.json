@@ -1,0 +1,19 @@
+{
+	"settings_registry_terminal_click_to_move_description": "Click the prompt line to move the cursor there. Needs shell integration (fast terminal only).",
+	"settings_registry_terminal_clipboard_description": "Lets commands such as tmux or ssh sessions put text on your clipboard.",
+	"settings_registry_terminal_contrast_description": "Brighten or darken text that is hard to read against its background (fast terminal only). 1 turns it off, 4.5 meets accessibility guidance.",
+	"settings_registry_terminal_copy_on_select_description": "Copy selected text to the clipboard when you release the mouse.",
+	"settings_registry_terminal_cursor_blink_description": "Make the terminal cursor blink.",
+	"settings_registry_terminal_description": "How terminals and coding agents draw and behave: renderer, font, cursor, padding and clipboard.",
+	"settings_registry_terminal_font_thicken_description": "Draw terminal text slightly heavier, like Ghostty's font-thicken. Helps thin fonts on dark backgrounds.",
+	"settings_registry_terminal_gpu_description": "Draws local terminals on the graphics chip: smoother scrolling and faster output.",
+	"settings_registry_terminal_host_restart_description": "Restart the background process that keeps terminals alive, to pick up a new Atlas version.",
+	"settings_registry_terminal_label": "Terminal",
+	"settings_registry_terminal_ligatures_description": "Join characters like -> and != into single symbols (fast terminal only).",
+	"settings_registry_terminal_option_as_alt_description": "Make {key} send Alt instead of typing macOS characters (fast terminal only).",
+	"settings_registry_terminal_scrollback_memory_description": "Most memory one terminal spends on its scrollback, in MB. A wide terminal keeps fewer lines than the setting above to stay inside it (fast terminal only).",
+	"settings_registry_terminal_term_font_description": "Font families in order; the first one installed wins, else JetBrains Mono. Variable fonts work.",
+	"settings_registry_terminal_term_padding_x_description": "Space left and right of the terminal text, in points. The margin uses the terminal background.",
+	"settings_registry_terminal_term_padding_y_description": "Space above and below the terminal text, in points. The margin uses the terminal background.",
+	"settings_registry_terminal_term_size_description": "Text size in terminals, in pixels."
+}

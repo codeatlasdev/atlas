@@ -12,7 +12,7 @@ use serde_json::{Value, json};
 use tauri::{AppHandle, Emitter, Manager, State};
 
 use atlas_core::git_review::{
-    ALL_CHANGES, Event, Provider, STAGED_CHANGES, build_prompt, commit_rules, digest,
+    ALL_CHANGES, Event, Provider, STAGED_CHANGES, build_prompt, commit_error, commit_rules, digest,
     new_file_args, provider_argv, provider_ids, resolve_provider, run_provider,
 };
 
@@ -127,24 +127,21 @@ pub async fn commit_msg_generate(
         .find(|e| e.id == id)
         .ok_or_else(|| format!("unknown worktree {id}"))?;
     if entry.is_remote() {
-        return Err("Generating a commit message is not available on SSH hosts yet: the agent would have to run there.".into());
+        return Err(commit_error::SSH_HOST.into());
     }
     let agent = match provider_now() {
         Provider::Agent(a) => a,
-        Provider::Off => return Err("AI commit messages are turned off in Settings → Git".into()),
+        Provider::Off => return Err(commit_error::PROVIDER_OFF.into()),
         Provider::None => return Err("no_provider".into()),
     };
     let dir = PathBuf::from(&entry.root);
     let (diff, scope) = collect_diff(&hub, &dir).await?;
     if diff.trim().is_empty() {
-        return Err("Nothing to describe: no staged or uncommitted changes".into());
+        return Err(commit_error::NO_CHANGES.into());
     }
     let d = digest(&diff, scope);
     if d.text.trim().is_empty() && d.summarized.is_empty() {
-        return Err(
-            "Every changed file looks like a secret, so none was sent. Write the message yourself."
-                .into(),
-        );
+        return Err(commit_error::ALL_SECRET.into());
     }
     let docs: Vec<(&str, String)> = ["CONTRIBUTING.md", "AGENTS.md"]
         .into_iter()

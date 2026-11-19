@@ -1,0 +1,8 @@
+{
+	"settings_registry_notifications_description": "When Atlas tells you something: a system notification when an agent needs you, and short sounds.",
+	"settings_registry_notifications_label": "Notifications & sounds",
+	"settings_registry_notifications_notify_description": "Get told when an agent finishes or needs you.",
+	"settings_registry_notifications_sound_reduce_description": "Only play the ones that need your attention, and quieter.",
+	"settings_registry_notifications_sound_volume_description": "How loud Atlas sounds are, on top of your system's volume.",
+	"settings_registry_notifications_sounds_description": "Short, quiet cues for the moments that matter. Off with one switch."
+}

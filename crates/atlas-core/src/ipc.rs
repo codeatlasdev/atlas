@@ -107,7 +107,7 @@ mod imp {
     /// One end of a connection: the client that dialled or the server instance that accepted.
     pub enum Stream {
         Client(NamedPipeClient),
-        Server(NamedPipeServer),
+        Server(NamedPipeServer, Drain),
     }
 
     pub type ReadHalf = tokio::io::ReadHalf<Stream>;
@@ -217,9 +217,23 @@ mod imp {
             cx: &mut Context<'_>,
             buf: &mut ReadBuf<'_>,
         ) -> Poll<io::Result<()>> {
-            match self.get_mut() {
+            let read = match self.get_mut() {
                 Stream::Client(c) => Pin::new(c).poll_read(cx, buf),
-                Stream::Server(s) => Pin::new(s).poll_read(cx, buf),
+                Stream::Server(s, _) => Pin::new(s).poll_read(cx, buf),
+            };
+            // The other end going away after everything was read is how the stream ends, as for `SyncStream`: Windows
+            // says ERROR_BROKEN_PIPE (109) or, after the server's DisconnectNamedPipe, ERROR_PIPE_NOT_CONNECTED (233),
+            // where Unix reads 0. Seen on CI: a client that had read the whole reply got 233 instead of EOF (#529).
+            match read {
+                Poll::Ready(Err(e))
+                    if matches!(
+                        e.raw_os_error(),
+                        Some(ERROR_BROKEN_PIPE | ERROR_PIPE_NOT_CONNECTED)
+                    ) =>
+                {
+                    Poll::Ready(Ok(()))
+                }
+                other => other,
             }
         }
     }
@@ -232,30 +246,71 @@ mod imp {
         ) -> Poll<io::Result<usize>> {
             match self.get_mut() {
                 Stream::Client(c) => Pin::new(c).poll_write(cx, buf),
-                Stream::Server(s) => Pin::new(s).poll_write(cx, buf),
+                Stream::Server(s, _) => Pin::new(s).poll_write(cx, buf),
             }
         }
 
         fn poll_flush(self: Pin<&mut Self>, cx: &mut Context<'_>) -> Poll<io::Result<()>> {
             match self.get_mut() {
                 Stream::Client(c) => Pin::new(c).poll_flush(cx),
-                Stream::Server(s) => Pin::new(s).poll_flush(cx),
+                Stream::Server(s, _) => Pin::new(s).poll_flush(cx),
             }
         }
 
         fn poll_shutdown(self: Pin<&mut Self>, cx: &mut Context<'_>) -> Poll<io::Result<()>> {
             match self.get_mut() {
                 Stream::Client(c) => Pin::new(c).poll_shutdown(cx),
-                // A server end has no half-close: disconnecting tells the client EOF. WARNING: `DisconnectNamedPipe`
-                // DISCARDS whatever the client has not read yet (Win32 documents `FlushFileBuffers` first, which
-                // blocks until the client reads). A server that writes a reply and then shuts down can therefore lose
-                // the reply on Windows: wait for the client to close its end first (see `atlas-desktop`'s askpass).
-                Stream::Server(s) => {
+                // A server end has no half-close: disconnecting tells the client EOF. But `DisconnectNamedPipe`
+                // DISCARDS whatever the client has not read yet, including writes still queued behind a full pipe
+                // buffer (#529). So wait first (bounded) until the client has read everything we wrote.
+                Stream::Server(s, drain) => {
+                    if matches!(drain, Drain::Idle) {
+                        *drain = Drain::Waiting(drain_pipe(s));
+                    }
+                    if let Drain::Waiting(wait) = drain {
+                        std::task::ready!(wait.as_mut().poll(cx));
+                        *drain = Drain::Done;
+                    }
+                    // Past the bound the flush may still be blocked on its own handle; the disconnect ends the pipe
+                    // instance for the client either way.
                     let _ = s.disconnect();
                     Pin::new(s).poll_shutdown(cx)
                 }
             }
         }
+    }
+
+    /// How long a shutdown waits for the client to read what is still in the pipe before it gives up and
+    /// disconnects anyway: a stuck client must not hang the server's teardown.
+    const DRAIN_BOUND: Duration = if cfg!(test) {
+        Duration::from_secs(2)
+    } else {
+        Duration::from_secs(5)
+    };
+
+    /// Waits until the client has read every byte written to `s` (`FlushFileBuffers` blocks until then), or the
+    /// client is gone, or [`DRAIN_BOUND`] passes. The blocking call runs on a duplicate of the handle on the blocking
+    /// pool, so a cancelled shutdown never leaves it a dangling handle.
+    fn drain_pipe(s: &NamedPipeServer) -> Pin<Box<dyn Future<Output = ()> + Send>> {
+        use std::os::windows::io::{AsRawHandle, BorrowedHandle};
+        use windows_sys::Win32::Storage::FileSystem::FlushFileBuffers;
+        // SAFETY: the raw handle is owned by `s`, which outlives this call.
+        let dup = unsafe { BorrowedHandle::borrow_raw(s.as_raw_handle()) }.try_clone_to_owned();
+        Box::pin(async move {
+            let Ok(handle) = dup else { return };
+            // SAFETY: `handle` is a valid pipe handle owned by the closure.
+            let flush = tokio::task::spawn_blocking(move || unsafe {
+                FlushFileBuffers(handle.as_raw_handle());
+            });
+            let _ = tokio::time::timeout(DRAIN_BOUND, flush).await;
+        })
+    }
+
+    /// Progress of draining a server end before it disconnects.
+    pub enum Drain {
+        Idle,
+        Waiting(Pin<Box<dyn Future<Output = ()> + Send>>),
+        Done,
     }
 
     /// All instances busy: the server is between `accept`s. Retry for up to ~2 s.
@@ -332,7 +387,10 @@ mod imp {
             let fresh = ServerOptions::new()
                 .reject_remote_clients(true)
                 .create(&self.name)?;
-            Ok(Stream::Server(std::mem::replace(&mut *next, fresh)))
+            Ok(Stream::Server(
+                std::mem::replace(&mut *next, fresh),
+                Drain::Idle,
+            ))
         }
     }
 }
@@ -491,5 +549,88 @@ mod tests {
     async fn connecting_to_a_path_nobody_serves_fails() {
         let d = tempfile::tempdir().unwrap();
         assert!(connect(&d.path().join("none.sock")).await.is_err());
+    }
+
+    /// A payload larger than any pipe buffer, with a position-dependent pattern so a lost or reordered chunk shows.
+    fn payload() -> Vec<u8> {
+        (0..1 << 20).map(|i: usize| (i % 251) as u8).collect()
+    }
+
+    // #529: on Windows `DisconnectNamedPipe` discards what the client has not read. A server that writes more than
+    // the pipe holds and shuts down at once (the raw-terminal attach loop when the PTY ends) must still deliver every
+    // byte to a client that is slow to read, and only then EOF.
+    #[tokio::test]
+    async fn a_shutdown_straight_after_a_big_write_still_delivers_every_byte_to_a_slow_client() {
+        use tokio::io::AsyncReadExt;
+        let d = tempfile::tempdir().unwrap();
+        let p = d.path().join("big.sock");
+        let l = Listener::bind(&p).unwrap();
+        let want = payload();
+        let sent = want.clone();
+        let server = tokio::spawn(async move {
+            let mut s = l.accept().await.unwrap();
+            s.write_all(&sent).await.unwrap();
+            s.shutdown().await.unwrap();
+        });
+        let mut c = connect(&p).await.unwrap();
+        tokio::time::sleep(Duration::from_millis(300)).await; // the server has shut down before we read a byte
+        let mut got = Vec::new();
+        tokio::time::timeout(crate::scaling::HANG, c.read_to_end(&mut got))
+            .await
+            .expect("the read hung")
+            .unwrap();
+        server.await.unwrap();
+        assert_eq!(got.len(), want.len());
+        assert!(got == want, "the bytes differ");
+    }
+
+    // #529: dropping a server stream without a shutdown (`atlas-desktop`'s ctl/debug replies) must not lose the
+    // reply either.
+    #[tokio::test]
+    async fn dropping_the_server_stream_after_a_big_write_still_delivers_every_byte() {
+        use tokio::io::AsyncReadExt;
+        let d = tempfile::tempdir().unwrap();
+        let p = d.path().join("drop.sock");
+        let l = Listener::bind(&p).unwrap();
+        let want = payload();
+        let sent = want.clone();
+        let server = tokio::spawn(async move {
+            let mut s = l.accept().await.unwrap();
+            s.write_all(&sent).await.unwrap();
+            drop(s);
+        });
+        let mut c = connect(&p).await.unwrap();
+        tokio::time::sleep(Duration::from_millis(300)).await;
+        let mut got = Vec::new();
+        tokio::time::timeout(crate::scaling::HANG, c.read_to_end(&mut got))
+            .await
+            .expect("the read hung")
+            .unwrap();
+        server.await.unwrap();
+        assert_eq!(got.len(), want.len());
+        assert!(got == want, "the bytes differ");
+    }
+
+    // #529: the wait for the client is bounded. A client that connects and never reads must not hang the server's
+    // shutdown. Windows only: a Unix socket's write blocks on its own when the client does not read. The payload fits
+    // the pipe's 64 KiB buffer, so the write completes and what is tested is the shutdown's wait (a write bigger than
+    // the buffer would block in `write_all` itself, which is not what this guards).
+    #[cfg(windows)]
+    #[tokio::test]
+    async fn a_shutdown_does_not_hang_on_a_client_that_never_reads() {
+        let d = tempfile::tempdir().unwrap();
+        let p = d.path().join("stuck.sock");
+        let l = Listener::bind(&p).unwrap();
+        let sent = vec![7u8; 16 * 1024];
+        let server = tokio::spawn(async move {
+            let mut s = l.accept().await.unwrap();
+            s.write_all(&sent).await.unwrap();
+            s.shutdown().await.unwrap();
+        });
+        let _stuck = connect(&p).await.unwrap(); // held open, never read
+        tokio::time::timeout(crate::scaling::HANG, server)
+            .await
+            .expect("the shutdown hung on a client that never reads")
+            .unwrap();
     }
 }

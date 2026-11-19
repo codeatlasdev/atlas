@@ -211,6 +211,7 @@ pub fn export(
     crewmates.sort_by(|a, b| (a.created_at, &a.id).cmp(&(b.created_at, &b.id)));
     if !ids.is_empty() {
         if let Some(missing) = ids.iter().find(|i| !crewmates.iter().any(|c| &c.id == *i)) {
+            // i18n-ignore: the answer of `hostd --crew-export` on the crew server (another machine, maybe another language), relayed by `atlas crew export`
             bail!("no crewmate with id {missing} on this server");
         }
         crewmates.retain(|c| ids.contains(&c.id));
@@ -290,6 +291,7 @@ pub fn export(
                     file == "secrets.json",
                 )?,
                 Err(e) if e.kind() == std::io::ErrorKind::NotFound => {}
+                // i18n-ignore: context of an error chain (the archive member being read), read in logs
                 Err(e) => return Err(e).with_context(|| format!("reading {id}/{file}")),
             }
         }

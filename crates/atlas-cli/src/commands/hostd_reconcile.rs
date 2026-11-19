@@ -114,34 +114,6 @@ pub(crate) fn fmt_uptime(secs: u64) -> String {
     }
 }
 
-/// What a stale host cannot offer, by the capability it lacks; an id this build does not know is shown as it is.
-fn feature_name(tag: &str, cap: &str) -> String {
-    match cap {
-        "lsp" => t_in!(tag, "cmd_hostd_feature_lsp"),
-        "pty_attach_raw" => t_in!(tag, "cmd_hostd_feature_pty_attach_raw"),
-        "agents" => t_in!(tag, "cmd_hostd_feature_agents"),
-        other => other.to_string(),
-    }
-}
-
-/// The lost features as one list: one, two or three names (`upgrade::NEEDED` has three), always in the
-/// order a person reads them (what the editor loses first), whatever order hostd lists its capabilities in.
-fn features_list(tag: &str, caps: &[&str]) -> String {
-    const ORDER: [&str; 3] = ["lsp", "pty_attach_raw", "agents"];
-    let mut caps = caps.to_vec();
-    caps.sort_by_key(|c| ORDER.iter().position(|o| o == c).unwrap_or(ORDER.len()));
-    let names: Vec<String> = caps.iter().map(|c| feature_name(tag, c)).collect();
-    let name = |i: usize| names.get(i).cloned().unwrap_or_default();
-    t_in!(
-        tag,
-        "cmd_hostd_features_list",
-        count = names.len(),
-        first = name(0),
-        second = name(1),
-        third = name(2)
-    )
-}
-
 /// The `--check` report in the display language: `None` when the host is current.
 pub(crate) fn check_report(s: &Snapshot, bundled: &str, dir_hint: &str) -> Option<String> {
     check_report_in(atlas_i18n::lang(), s, bundled, dir_hint)
@@ -156,7 +128,7 @@ pub(crate) fn check_report_in(
 ) -> Option<String> {
     // `skew_reason` only decides whether the host is current; its English sentence is the app's (and the
     // logs'), the report is written from the catalog.
-    upgrade::skew_reason(&s.info, bundled, "")?;
+    upgrade::skew_reason(&s.info, bundled)?;
     let version = s.info["version"]
         .as_str()
         .map_or_else(|| t_in!(tag, "cmd_hostd_version_unknown"), str::to_string);
@@ -183,7 +155,7 @@ pub(crate) fn check_report_in(
             uptime = up,
             count = live,
             bundled = bundled,
-            features = features_list(tag, &lost)
+            features = upgrade::features_text(tag, &lost)
         )
     };
     if live > 0 {
@@ -476,40 +448,21 @@ mod tests {
         assert!(r.contains("hands the terminals over live"), "{r}");
     }
 
+    /// The report names the lost features with the list `atlas_host::upgrade` writes (one source, with its own
+    /// tests for the English and the Portuguese), in the language of the report.
     #[test]
-    fn every_capability_a_host_can_lack_has_a_name_in_every_language() {
-        // The list message holds three names at most.
-        assert!(upgrade::NEEDED.len() <= 3, "{:?}", upgrade::NEEDED);
-        for tag in atlas_i18n::locales() {
-            for cap in upgrade::NEEDED {
-                let name = feature_name(tag, cap);
-                assert!(!name.is_empty() && name != *cap, "{tag}: {cap} -> {name}");
-            }
+    fn the_report_names_the_lost_features_as_the_shared_list_does() {
+        let s = snap("0.6.2", &["lsp"], 1);
+        for tag in ["en", "pt-BR"] {
+            let r = check_report_in(tag, &s, "1.2.1", "").unwrap();
+            let lost = upgrade::features_text(tag, &["pty_attach_raw", "agents"]);
+            assert!(r.contains(&lost), "{tag}: {r}");
         }
     }
 
     #[test]
-    fn the_lost_features_read_as_a_list() {
-        let list = |caps: &[&str]| features_list("en", caps);
-        assert_eq!(list(&["lsp"]), "language features");
-        assert_eq!(
-            list(&["lsp", "agents"]),
-            "language features and agent status"
-        );
-        assert_eq!(
-            list(&["lsp", "pty_attach_raw", "agents"]),
-            "language features, fast terminal rendering and agent status"
-        );
-        // hostd lists `NEEDED` in its own order (`pty_attach_raw` first): the sentence keeps one.
-        assert_eq!(
-            list(&["pty_attach_raw", "lsp", "agents"]),
-            "language features, fast terminal rendering and agent status"
-        );
-    }
-
-    #[test]
     fn an_unknown_version_and_an_unknown_capability_show_as_they_are() {
-        assert_eq!(feature_name("en", "teleport"), "teleport");
+        assert_eq!(upgrade::feature_name("en", "teleport"), "teleport");
         let s = Snapshot {
             info: json!({"proto": 1, "caps": ["pty_attach_raw", "lsp", "agents"], "pid": 7}),
             terminals: vec![],

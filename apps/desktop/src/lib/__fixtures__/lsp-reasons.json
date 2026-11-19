@@ -1,0 +1,75 @@
+{
+	"reasons": [
+		{
+			"args": {
+				"server": "gopls"
+			},
+			"code": "no_go",
+			"command": "brew install go",
+			"hint": "Install Go, then open the file again. Atlas compiles gopls with it.",
+			"message": "gopls is not installed and `go` was not found to compile it"
+		},
+		{
+			"args": {
+				"server": "rust-analyzer"
+			},
+			"code": "no_curl",
+			"command": "brew install curl",
+			"hint": "Atlas downloads language servers with curl. Install it and open the file again.",
+			"message": "Could not download rust-analyzer: curl is missing"
+		},
+		{
+			"args": {
+				"detail": "no rust-analyzer build for freebsd/x86_64",
+				"server": "rust-analyzer"
+			},
+			"code": "unsupported_platform",
+			"hint": "There is no prebuilt server for this OS and CPU. Install one yourself and set its command in the language settings.",
+			"message": "No prebuilt rust-analyzer for this system: no rust-analyzer build for freebsd/x86_64"
+		},
+		{
+			"args": {
+				"detail": "curl: (6) Could not resolve host: github.com",
+				"server": "rust-analyzer"
+			},
+			"code": "offline",
+			"hint": "Check the internet connection and open the file again.",
+			"message": "Could not download rust-analyzer: curl: (6) Could not resolve host: github.com"
+		},
+		{
+			"args": {
+				"detail": "sha256 mismatch for the download",
+				"server": "rust-analyzer"
+			},
+			"code": "install_failed",
+			"hint": "The install log is in ~/.atlas/lsp/logs. Retry from the language settings.",
+			"message": "Installing rust-analyzer failed: sha256 mismatch for the download"
+		},
+		{
+			"args": {
+				"program": "atlas-no-such-language-server"
+			},
+			"code": "custom_not_found",
+			"hint": "Check the command in the language settings (or .atlas/settings.json). It must be an executable on PATH or an absolute path.",
+			"message": "The custom language server command `atlas-no-such-language-server` was not found"
+		},
+		{
+			"args": {
+				"detail": "spawn failed: No such file or directory (os error 2)",
+				"server": "typescript-language-server"
+			},
+			"code": "crashed",
+			"hint": "Open the server log from the status bar, or restart the server.",
+			"message": "typescript-language-server failed to start: spawn failed: No such file or directory (os error 2)"
+		},
+		{
+			"args": {
+				"cause": "repeated",
+				"server": "rust-analyzer"
+			},
+			"code": "crashed",
+			"hint": "Open the server log from the status bar, then restart the server.",
+			"message": "rust-analyzer crashed repeatedly"
+		}
+	]
+}

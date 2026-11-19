@@ -8,6 +8,7 @@
  * for servers that kept the older `atlas-bot` user alike.
  */
 import { invoke } from "@tauri-apps/api/core";
+import { invokeHost } from "#lib/host.ts";
 import { builtinAgent } from "#lib/agentRegistry.ts";
 import { m } from "#lib/i18n/m.ts";
 import {
@@ -39,14 +40,11 @@ export function runOnServer(
 	script: string,
 	opts: { cwd?: string; timeoutMs?: number } = {},
 ): Promise<unknown> {
-	return invoke("host_call", {
-		cmd: "exec",
-		args: {
-			host: hostKey,
-			cwd: opts.cwd ?? "/",
-			argv: ["sh", "-c", script],
-			timeout_ms: opts.timeoutMs ?? 30000,
-		},
+	return invokeHost("exec", {
+		host: hostKey,
+		cwd: opts.cwd ?? "/",
+		argv: ["sh", "-c", script],
+		timeout_ms: opts.timeoutMs ?? 30000,
 	});
 }
 

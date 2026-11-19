@@ -37,7 +37,9 @@
 //!   `lsp_apply_edit_result {id, applied}`. `lsp_open` also takes `root` (the worktree that opened it) and `overrides` (the user's
 //!   `lsp.<language>` settings: `command`, `args`, `initialization_options`, `settings`,
 //!   `disabled`) and replies with `reason` (why `missing`/`crashed`: `{code, message, hint?,
-//!   command?}`) and, for `disabled`, `supported` (languages that have a server).
+//!   command?, args?}`; `message` and `hint` are English, `args` (additive) holds the values they were written
+//!   from so a client can write its own sentence for `code`, see `atlas_lsp::install::Failure`) and, for
+//!   `disabled`, `supported` (languages that have a server).
 //!   `lsp_catalog` (servers + what is installed), `lsp_install {name}`, `lsp_uninstall
 //!   {name}`, `lsp_restart {name, root?}` and `lsp_log {name, lines?}` serve Settings →
 //!   Languages and the status bar. Each status entry carries `label`, `version`, `source`

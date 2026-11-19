@@ -95,10 +95,12 @@ impl Session {
         if let (Some(fd), false) = (fd, st.exited) {
             let reader = fd
                 .try_clone()
+                // i18n-ignore: context of an error chain (the syscall that failed), read in logs
                 .context("dup pty master")
                 .map(std::fs::File::from)?;
             let writer = fd
                 .try_clone()
+                // i18n-ignore: context of an error chain (the syscall that failed), read in logs
                 .context("dup pty master")
                 .map(std::fs::File::from)?;
             buf.file = open_append(&bin_path(scroll_dir, &st.id));

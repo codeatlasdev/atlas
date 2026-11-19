@@ -16,6 +16,8 @@
 	"shell_toasts_switched": "Switched to {branch}",
 	"shell_toasts_switched_stashed": "Switched to {branch}; your changes are in the stash",
 	"shell_toasts_unknown_worktree": "{name} is checked out in {path}, which Atlas does not know",
+	"shell_toasts_workspace_recovered": "Couldn't read your workspace file, so Atlas opened an empty workspace. The old file is saved as {path}.",
+	"shell_toasts_workspace_unreadable": "Couldn't read your workspace file ({reason}). Atlas opened an empty workspace and won't save changes this session, so the file stays as it is: {path}",
 	"shell_toasts_worktree_deleted": "Worktree deleted",
 	"shell_toasts_worktree_failed": "Couldn't create the worktree"
 }

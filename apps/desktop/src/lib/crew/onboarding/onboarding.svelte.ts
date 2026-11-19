@@ -7,8 +7,7 @@
 import { invoke } from "@tauri-apps/api/core";
 import { listen } from "@tauri-apps/api/event";
 import { toast } from "@codeatlasdev/ui";
-import { open as pickFile } from "@tauri-apps/plugin-dialog";
-import { errText } from "#lib/api.ts";
+import { api, errText } from "#lib/api.ts";
 import { crew } from "#lib/stores/crew.svelte.ts";
 import { agents } from "#lib/stores/agents.svelte.ts";
 import { builtinAgent, isBuiltinAgent } from "#lib/agentRegistry.ts";
@@ -323,10 +322,8 @@ export class Onboarding {
 
 	/** "Choose another key": the OS file picker, opened in the folder of the key shown. */
 	async pickKeyFile() {
-		const picked = await pickFile({
+		const picked = await api.pickPath({
 			title: m.crew_onboarding_pick_key_title(),
-			multiple: false,
-			directory: false,
 			defaultPath: folderOf(this.key?.identity ?? ""),
 		});
 		if (typeof picked !== "string") return;

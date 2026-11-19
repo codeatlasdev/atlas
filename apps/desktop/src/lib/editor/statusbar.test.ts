@@ -1,6 +1,7 @@
 // @ts-nocheck bun test runtime types are not part of the app tsconfig
 import "../../../test/setup.ts";
 import { expect, test } from "bun:test";
+import { m } from "#lib/i18n/m.ts";
 
 // Dynamic on purpose: the Svelte loader registered by test/setup.ts must exist before the component loads.
 const { flushSync, mount, unmount } = await import("svelte");
@@ -52,7 +53,9 @@ test("problems and a large-file tier show as warnings; mixed endings are flagged
 		onaction: () => {},
 	});
 	const text = target.textContent;
-	expect(text).toContain("2 errors, 1 warning");
+	expect(text).toContain(
+		`${m.workbench_editor_errors({ count: 2 })} and ${m.workbench_editor_warnings({ count: 1 })}`,
+	);
 	expect(text).toContain("Large file");
 	expect(text).toContain("Mixed");
 	expect(target.querySelector("[data-tone=error]")?.textContent).toContain("2 errors");
@@ -64,11 +67,13 @@ test("a selection count and size show next to the position", () => {
 		input: input({ selections: { count: 3, chars: 24, lines: 2 } }),
 		onaction: () => {},
 	});
-	expect(target.textContent).toContain("Ln 12, Col 5 (3 selections) (24 selected)");
+	expect(target.textContent).toContain(
+		`Ln 12, Col 5 (${m.workbench_editor_selections({ count: 3 })}) (${m.workbench_editor_selected_chars({ count: 24 })})`,
+	);
 	done();
 });
 
-// Regression: 1.5.0-alpha.26, in a ~450px pane "2 errors, 0 warnings" printed over "Spaces: 4". The bar hides items
+// Regression: 1.5.0-alpha.26, in a ~450px pane "2 errors" printed over "Spaces: 4". The bar hides items
 // by rank as it narrows (CSS container queries, which the real WebKit proof covers); the contract tested here is the
 // order: what the person acts on (caret, problems) never ranks as droppable, encoding and line endings go first.
 test("the bar ranks what to drop first: encoding and EOL, then indent, then language; caret and problems never", () => {
@@ -99,7 +104,7 @@ test("every rendered cell carries its rank so the narrow rules can reach it", ()
 			e.getAttribute("data-rank"),
 		]),
 	);
-	expect(ranks["2 errors, 0 warnings"]).toBe("0");
+	expect(ranks["2 errors"]).toBe("0");
 	expect(ranks["Ln 12, Col 5"]).toBe("0");
 	expect(ranks["UTF-8"]).toBe("3");
 	expect(ranks["Spaces: 2"]).toBe("2");

@@ -1,0 +1,29 @@
+{
+	"workbench_term_clipboard_description": [
+		{
+			"declarations": [
+				"input count",
+				"local countExact = count",
+				"local countPlural = count: plural"
+			],
+			"selectors": [
+				"countExact",
+				"countPlural"
+			],
+			"match": {
+				"countExact=0, countPlural=*": "Um programa neste terminal quer copiar um texto vazio para a área de transferência:",
+				"countExact=*, countPlural=one": "Um programa neste terminal quer copiar {count} caractere para a área de transferência:",
+				"countExact=*, countPlural=*": "Um programa neste terminal quer copiar {count} caracteres para a área de transferência:"
+			}
+		}
+	],
+	"workbench_term_clipboard_title": "Copiar para a área de transferência?",
+	"workbench_term_font_fallback": "A fonte {font} não está instalada, então o terminal GPU usa {resolved}.",
+	"workbench_term_gpu_after_restart": "O terminal GPU é ativado depois que o host de terminais reiniciar (Configurações → Terminal).",
+	"workbench_term_pane_ended": "Processo encerrado ({code})",
+	"workbench_term_pane_gone": "O terminal não existe mais",
+	"workbench_term_pane_host_unreachable": "Host de terminais inacessível",
+	"workbench_term_pane_raw_protocol_back": "Protocolo bruto do omp · voltar ao chat",
+	"workbench_term_pane_restart_host": "Reiniciar o host de terminais",
+	"workbench_term_search_label": "Localizar no terminal"
+}

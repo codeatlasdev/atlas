@@ -1,0 +1,32 @@
+{
+	"workbench_chat_answer_no": "Não",
+	"workbench_chat_answer_yes": "Sim",
+	"workbench_chat_attach_image": "Anexar imagem",
+	"workbench_chat_compact": "Compactar",
+	"workbench_chat_compact_title": "Compactar a conversa",
+	"workbench_chat_composer_busy_placeholder": "Enfileire uma mensagem ({key} para parar)",
+	"workbench_chat_composer_placeholder": "Mensagem para o omp. / para comandos, @ para arquivos.",
+	"workbench_chat_context": "Contexto {percent}",
+	"workbench_chat_images": [
+		{
+			"declarations": [
+				"input count",
+				"local countExact = count",
+				"local countPlural = count: plural"
+			],
+			"selectors": [
+				"countExact",
+				"countPlural"
+			],
+			"match": {
+				"countExact=0, countPlural=*": "Nenhuma imagem",
+				"countExact=*, countPlural=one": "{count} imagem",
+				"countExact=*, countPlural=*": "{count} imagens"
+			}
+		}
+	],
+	"workbench_chat_raw_protocol": "Protocolo bruto",
+	"workbench_chat_search_transcript": "Pesquisar na transcrição",
+	"workbench_chat_starting_omp": "Iniciando o omp…",
+	"workbench_chat_stop": "Parar ({key})"
+}

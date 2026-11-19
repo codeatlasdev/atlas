@@ -9,6 +9,7 @@
 	import DiffNotes from "./DiffNotes.svelte";
 	import type { Draft } from "./DiffTable.svelte";
 	import { changedSpan, splitRows, type Cell } from "./splitRows.ts";
+	import { m } from "#lib/i18n/m.ts";
 
 	let {
 		path,
@@ -63,7 +64,7 @@
 							{@const no = s.cell.no}
 							<button
 								class="add-note"
-								title="Comment (c)"
+								title={m.git_diff_table_comment_c()}
 								onclick={() => (draft = { path, line: no, side, text: "" })}
 							>
 								<MessageSquarePlus size={11} />

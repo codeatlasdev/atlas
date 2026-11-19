@@ -1,0 +1,23 @@
+{
+  "pt-BR": {
+    "workbench_agents_add_project": "6f2bd2461135",
+    "workbench_agents_all_projects": "2ee62be78ba7",
+    "workbench_agents_all_states": "090bdee5792b",
+    "workbench_agents_choose_worktree": "a12bfae84e32",
+    "workbench_agents_clear_filters": "cac110655a27",
+    "workbench_agents_column_done": "16552c2580bb",
+    "workbench_agents_column_idle": "713fb8989d85",
+    "workbench_agents_empty_filtered": "2a7ce13372f0",
+    "workbench_agents_empty_no_activity_here": "4d821b6b0131",
+    "workbench_agents_empty_no_project": "fd192066c835",
+    "workbench_agents_empty_no_worktree": "b0bd2cfb270f",
+    "workbench_agents_feed_no_match": "702ea4fcbba2",
+    "workbench_agents_feed_none": "bd966f30b4f3",
+    "workbench_agents_in_state": "10c81e109a0f",
+    "workbench_agents_new_session": "5cf739b32501",
+    "workbench_agents_none_title": "e4cb23e756b2",
+    "workbench_agents_summary": "db327fd8a0ad",
+    "workbench_agents_title_agents": "21cf98a292e9",
+    "workbench_agents_title_dashboard": "a8d82d0a2e61"
+  }
+}

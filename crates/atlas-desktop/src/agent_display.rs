@@ -324,7 +324,7 @@ mod tests {
                     "src/main.rs",
                     "src/tray.rs",
                     "src/shots/surface.rs",
-                    // the capture overlay's windows (a capture the user started; the pre-existing entry)
+                    // the capture overlay's windows (user branch only: `order_in` asks the native-UI gate first, agent instances never build it)
                     "src/shots/runner.rs",
                     // the notification and message-box builders (gated: `Mode::native_ui_allowed`), not a window
                     "src/native_ui.rs",

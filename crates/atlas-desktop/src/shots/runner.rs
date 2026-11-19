@@ -279,6 +279,13 @@ fn freeze_session(
 /// under the pointer the key one (Esc, Space) without activating the app. The wait for the main thread is bounded:
 /// the freeze must not queue behind a busy event loop for long.
 fn order_in(app: &AppHandle, order: Vec<(tauri::Window, Rect)>, key: Option<String>) {
+    // Defence in depth: an agent instance never builds the overlay (`show_overlay`, `surface::build`), and these
+    // windows are placed on the real displays, so if one is ever asked for here it is held back and recorded.
+    if crate::native_ui::gate(crate::native_ui::Kind::Window, "capture overlay", "")
+        == crate::native_ui::Verdict::Suppressed
+    {
+        return;
+    }
     let h = crate::display_mac::primary_height();
     let a = app.clone();
     let (tx, rx) = std::sync::mpsc::channel();

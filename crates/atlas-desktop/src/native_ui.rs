@@ -41,6 +41,9 @@ pub enum Kind {
     Menu,
     /// Another app started for the user: the browser, the file manager, an editor, System Settings.
     Launch,
+    /// A window that would sit on a real display: the capture overlay, the tray popover. An agent instance's windows
+    /// go through `agent_display::park_and_show` only.
+    Window,
 }
 
 impl Kind {
@@ -51,6 +54,7 @@ impl Kind {
             Kind::Notification => "notification",
             Kind::Menu => "menu",
             Kind::Launch => "launch",
+            Kind::Window => "window",
         }
     }
 }
@@ -386,6 +390,7 @@ mod tests {
             Kind::Notification,
             Kind::Menu,
             Kind::Launch,
+            Kind::Window,
         ] {
             assert_eq!(
                 recorded(Mode::User, kind, "t", "x"),
@@ -402,6 +407,7 @@ mod tests {
             Kind::Notification,
             Kind::Menu,
             Kind::Launch,
+            Kind::Window,
         ] {
             let (v, lines) = recorded(Mode::Agent, kind, "Page failed", "no app_ready after 30 s");
             assert_eq!(v, Verdict::Suppressed, "{kind:?}");

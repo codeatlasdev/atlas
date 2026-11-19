@@ -41,6 +41,33 @@ fn win(p: &Path) -> String {
     p.to_string_lossy().replace('/', "\\")
 }
 
+/// May `path` (already absolute) be shown in the file manager? Windows refuses a UNC path in any spelling, `\\?\UNC\`
+/// and `//server` included: Explorer would contact the host, which hands it the user's NTLM hash. The one `\\?\`
+/// form let through is a drive (`\\?\C:\`).
+fn reveal_target(os: Os, path: &str) -> Result<(), String> {
+    if os != Os::Windows {
+        return Ok(());
+    }
+    let refuse = || {
+        Err(format!(
+            "refusing to reveal {path}: a network path would contact its server"
+        ))
+    };
+    let p = path.replace('/', "\\");
+    // The NT namespace spelling (`\??\UNC\...`) reaches a share the same way.
+    if p.starts_with("\\??\\") {
+        return refuse();
+    }
+    let Some(rest) = p.strip_prefix("\\\\") else {
+        return Ok(());
+    };
+    let drive = rest.strip_prefix("?\\").is_some_and(|r| {
+        let mut c = r.chars();
+        matches!((c.next(), c.next(), c.next()), (Some(l), Some(':'), Some('\\')) if l.is_ascii_alphabetic())
+    });
+    if drive { Ok(()) } else { refuse() }
+}
+
 /// What a link is handed to the OS as. Windows never gets a command line: Explorer parses commas (`/select,`) and
 /// other switches out of whatever string follows it, so a link would be able to open a second object.
 #[derive(Debug, PartialEq)]
@@ -429,6 +456,7 @@ pub async fn reveal_path(path: String) -> Result<(), String> {
     if crate::host::host_for_path(&path) != crate::host::LOCAL {
         return Err(REMOTE_UNSUPPORTED.into());
     }
+    reveal_target(Os::current(), &path)?;
     crate::native_ui::launch("reveal in the file manager", &path)?;
     blocking(move || {
         if !p.exists() {
@@ -567,6 +595,41 @@ mod tests {
                 assert!(e.contains("refusing to open"), "{bad}: {e}");
                 assert!(url_launch(os, bad).is_err(), "{os:?} {bad}");
             }
+        }
+    }
+
+    // Explorer asked to select a file on `\\server\share` contacts the server and offers it the user's NTLM
+    // credentials: a path from a page or a link must never reach it. Windows refuses every spelling; a path that is
+    // valid and local on another OS (`//x/y` on Linux) is untouched.
+    #[test]
+    fn windows_refuses_unc_paths_in_every_spelling_and_keeps_local_ones() {
+        for unc in [
+            "\\\\server\\share\\x.txt",
+            "//server/share/x.txt",
+            "\\/server\\share",
+            "/\\server/share",
+            "\\\\?\\UNC\\server\\share\\x.txt",
+            "\\\\?\\unc\\server\\share",
+            "//?/UNC/server/share/x.txt",
+            "\\\\.\\UNC\\server\\share",
+            "\\\\server@SSL\\share\\x.txt",
+            "\\\\192.168.0.1\\c$\\x",
+            "\\\\?\\GLOBALROOT\\Device\\Mup\\server\\share",
+            "\\??\\UNC\\server\\share\\x.txt",
+        ] {
+            let e = reveal_target(Os::Windows, unc).unwrap_err();
+            assert!(e.contains("network path"), "{unc}: {e}");
+        }
+        for local in [
+            "C:\\Users\\me\\x.txt",
+            "c:/Users/me/x.txt",
+            "D:\\a b\\c,d\\x.txt",
+            "\\\\?\\C:\\Users\\me\\x.txt",
+        ] {
+            assert_eq!(reveal_target(Os::Windows, local), Ok(()), "{local}");
+        }
+        for os in [Os::Mac, Os::Linux] {
+            assert_eq!(reveal_target(os, "//server/share/x"), Ok(()), "{os:?}");
         }
     }
 

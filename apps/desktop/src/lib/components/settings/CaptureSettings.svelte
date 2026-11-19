@@ -228,6 +228,7 @@
 			id="capture-permission"
 			label={m.settings_capture_permission_label()}
 			description={m.settings_capture_permission_description()}
+			stack
 		>
 			<span class="state" class:ok={granted === true} role="status">
 				{granted === null
@@ -772,10 +773,12 @@
 		margin: 0;
 		padding: 0;
 	}
+	/* A translated "Open / Show in Finder / Remove from list" can outgrow the row: the buttons drop under the text. */
 	li {
 		display: flex;
+		flex-wrap: wrap;
 		align-items: center;
-		gap: 10px;
+		gap: 4px 10px;
 		padding: 6px 0;
 		min-width: 0;
 	}
@@ -788,7 +791,7 @@
 	.meta {
 		display: flex;
 		flex-direction: column;
-		flex: 1;
+		flex: 1 1 220px;
 		min-width: 0;
 	}
 	.name {

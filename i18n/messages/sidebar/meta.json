@@ -92,6 +92,10 @@
 	"sidebar_right_scope_workspace": "Option of the session scope selector: only sessions of the current worktree. Called workspace in English; in Portuguese it says worktree because that is what it filters on.",
 	"sidebar_right_search_sessions": "Placeholder and accessible name of the session search field of the Agents tab.",
 	"sidebar_right_show_sessions_of": "Accessible name of the scope selector of the Agents tab; its options (workspace, project, all) complete the phrase.",
+	"sidebar_right_state_done": {
+		"description": "State word of an agent that finished its work, next to its name in the Running here list of the right sidebar and in the dock reply bar. A state, not a button.",
+		"distinct": "a state word (Concluído), not the Done button (Concluir): Portuguese tells them apart"
+	},
 	"sidebar_row_menu_archive": "Menu item of a worktree that hides it from the list until Show archived is ticked.",
 	"sidebar_row_menu_create_crewmate": "Menu item of a project or worktree that opens Crew with this project linked to a new crewmate.",
 	"sidebar_row_menu_delete": {

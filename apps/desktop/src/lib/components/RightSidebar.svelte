@@ -362,10 +362,18 @@
 		gap: 6px;
 		padding: 8px 10px;
 	}
-	/* The kit select is `width: 100%`, which in this row left the search field a few pixels: an empty square. */
+	/* The kit select is `width: 100%`, which in this row left the search field a few pixels: an empty square. It sizes to
+	   its label (a translated "Workspace" is longer than 104px) but never takes more than half the row. */
 	.controls :global(.scope) {
 		flex: none;
-		width: 104px;
+		width: auto;
+		min-width: 104px;
+		max-width: 50%;
+	}
+	/* A long word in a translated empty state breaks instead of overflowing the panel. */
+	.list :global(.ca-empty__description),
+	.list :global(.ca-empty__title) {
+		overflow-wrap: anywhere;
 	}
 	.controls input {
 		flex: 1;

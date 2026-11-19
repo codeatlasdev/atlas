@@ -883,9 +883,9 @@
 		color: var(--ca-semantic-error);
 	}
 	.label {
-		overflow: hidden;
-		text-overflow: ellipsis;
-		white-space: nowrap;
+		/* A translated step name wraps under its bar: truncating it hid the word that says what is happening. */
+		overflow-wrap: anywhere;
+		line-height: 1.25;
 	}
 	.bar {
 		height: 4px;

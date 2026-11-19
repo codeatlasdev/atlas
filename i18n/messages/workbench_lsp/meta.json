@@ -59,7 +59,10 @@
 	"workbench_lsp_not_installed_summary": "Summary of a language server that is not installed",
 	"workbench_lsp_off_label": "Chip label of the language server item in the status bar: a short state word (the sentence is in its popover). Language servers are turned off in settings.",
 	"workbench_lsp_off_summary": "Summary when language servers are turned off in settings",
-	"workbench_lsp_offline": "Chip label when a server cannot install because the computer is offline",
+	"workbench_lsp_offline": {
+		"description": "Chip label when a server cannot install because the computer is offline",
+		"distinct": "this computer has no internet ('Sem conexão'); the other is an unreachable crew server"
+	},
 	"workbench_lsp_outside_detail": "Detail when the file is outside every worktree",
 	"workbench_lsp_outside_project": "Chip label when the file is outside every worktree",
 	"workbench_lsp_outside_summary": "Summary when the file is outside every worktree",

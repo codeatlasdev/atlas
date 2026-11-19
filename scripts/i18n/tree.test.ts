@@ -43,15 +43,29 @@ describe("dup-common: an English text equal to a common message", () => {
 });
 
 describe("dup-value: the same English text under two non-common keys", () => {
-	test("is a warning that names the first key; marking one distinct silences it", async () => {
+	// Same English on two screens is not a defect by itself: sharing one key would couple unrelated screens, and some
+	// pairs differ in role or gender. What the user sees inconsistent is the same English translated two ways.
+	test("translated the same way: info only (no warning); translated differently: a warning that shows both", async () => {
 		const root = await makeRepo();
 		addKey(root, "app_first_label", "Project name", "Nome do projeto", "Label of the name field");
 		addKey(root, "app_second_label", "Project name", "Nome do projeto", "Label of the name field in the dialog");
-		const f = finding(await check(root), "dup-value", "app_second_label");
-		expect(f?.severity).toBe("warn");
-		expect(f?.message).toContain("app_first_label");
+		const same = finding(await check(root), "dup-value", "app_second_label");
+		expect(same?.severity).toBe("info");
+		addKey(root, "app_third_label", "Project name", "Nome do repositório", "Label of the name field in the sidebar");
+		const differs = finding(await check(root), "dup-value", "app_third_label");
+		expect(differs?.severity).toBe("warn");
+		expect(differs?.message).toContain("app_first_label");
+		expect(differs?.message).toContain('"Nome do projeto"');
+		expect(differs?.message).toContain('"Nome do repositório"');
 		expect(errors(await check(root))).toEqual([]);
-		editJson(root, META, (o) => void (o.app_second_label = { description: "Label in the dialog", distinct: "a different field" }));
+	});
+
+	test("marking one distinct silences it, whatever the translations", async () => {
+		const root = await makeRepo();
+		addKey(root, "app_first_label", "Open", "Aberto", "State of a pull request");
+		addKey(root, "app_second_label", "Open", "Abrir", "Button that opens the file");
+		expect(finding(await check(root), "dup-value", "app_second_label")?.severity).toBe("warn");
+		editJson(root, META, (o) => void (o.app_second_label = { description: "Button that opens the file", distinct: "a verb, the other is a state" }));
 		expect(rulesOf(await check(root))).not.toContain("dup-value");
 	});
 });

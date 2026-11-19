@@ -62,7 +62,7 @@
 	"settings_general_hygiene_group_agents_leave_browsers_dev_servers": "Os agentes deixam navegadores, servidores de desenvolvimento e caches para trás. A correção encerra só os processos marcados pelo Atlas cujo dono já saiu e libera só as pastas que o Atlas registrou. target/, node_modules e worktrees nunca são removidos.",
 	"settings_general_hygiene_group_fix": "Corrigir",
 	"settings_general_hygiene_group_hygiene": "Higiene",
-	"settings_general_hygiene_group_orphans_and_disk": "Órfãos e disco",
+	"settings_general_hygiene_group_orphans_and_disk": "Processos órfãos e disco",
 	"settings_general_hygiene_kind_agent": "agente",
 	"settings_general_hygiene_kind_browser": "navegador",
 	"settings_general_hygiene_kind_other": "outro",

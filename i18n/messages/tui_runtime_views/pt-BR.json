@@ -16,7 +16,7 @@
 	"tui_runtime_views_dash_size_current": "Atual: {width}x{height}",
 	"tui_runtime_views_dash_size_minimum": "Mínimo: {width}x{height}",
 	"tui_runtime_views_dash_time_hint": "14:05 ou 14:05-14:20 (hoje) · {enter} aplicar · {esc} todo o período",
-	"tui_runtime_views_dash_time_prompt": "hora",
+	"tui_runtime_views_dash_time_prompt": "horário",
 	"tui_runtime_views_dash_too_small": "Terminal pequeno demais",
 	"tui_runtime_views_dash_wrap_off": "sem quebra",
 	"tui_runtime_views_dash_wrap_off_pan": "sem quebra ← +{offset}",

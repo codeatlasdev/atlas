@@ -114,10 +114,10 @@ export const GROUP_TITLE: Readonly<Record<string, () => string>> = {
 	"notifications#0#0": () => m.settings_general_notification_notifications(),
 	"notifications#0#1": () => m.settings_general_sound_sounds(),
 	"capture#0#0": () => m.capture_quick_page_capture(),
-	"capture#0#1": () => m.settings_registry_capture_group_hotkeys(),
-	"capture#0#2": () => m.settings_registry_capture_group_screenshots(),
+	"capture#0#1": () => m.settings_capture_group_hotkeys(),
+	"capture#0#2": () => m.settings_capture_group_screenshots(),
 	"capture#0#3": () => m.capture_quick_title_recording(),
-	"capture#0#4": () => m.settings_registry_capture_group_after_a_capture(),
+	"capture#0#4": () => m.settings_capture_group_after(),
 	"capture#0#5": () => m.settings_registry_capture_group_history(),
 	"keyboard#0#0": () => m.settings_registry_keyboard_group_shortcuts(),
 	"help#0#0": () => m.settings_registry_help_group_help(),
@@ -125,21 +125,21 @@ export const GROUP_TITLE: Readonly<Record<string, () => string>> = {
 	"workspaces#0#1": () => m.settings_general_workspace_auto_clean_up(),
 	"workspaces#0#2": () => m.settings_general_workspace_clean_up(),
 	"workspaces#0#3": () => m.settings_general_hygiene_group_hygiene(),
-	"editor#0#0": () => m.settings_registry_editor_group_code_font(),
-	"editor#0#1": () => m.settings_registry_editor_group_language_servers(),
+	"editor#0#0": () => m.settings_editor_code_tab_code_font(),
+	"editor#0#1": () => m.settings_editor_code_tab_language_servers(),
 	"editor#0#2": () => m.settings_registry_editor_group_editing(),
-	"editor#0#3": () => m.settings_registry_editor_group_display(),
-	"editor#1#0": () => m.settings_registry_editor_group_language_servers(),
+	"editor#0#3": () => m.settings_editor_rows_display(),
+	"editor#1#0": () => m.settings_editor_code_tab_language_servers(),
 	"terminal#0#0": () => m.settings_terminal_tab_renderer(),
 	"terminal#0#1": () => m.settings_terminal_tab_text(),
 	"terminal#0#2": () => m.settings_terminal_tab_cursor(),
 	"terminal#0#3": () => m.settings_terminal_tab_padding(),
 	"terminal#0#4": () => m.settings_terminal_tab_behavior(),
 	"git#0#0": () => m.settings_general_git_commit_messages(),
-	"agents#0#0": () => m.settings_registry_agents_group_coding_agents(),
+	"agents#0#0": () => m.settings_agents_agent_coding_agents(),
 	"agents#0#1": () => m.settings_general_dock_agent_dock(),
-	"agents#0#2": () => m.settings_registry_agents_group_custom_agents(),
-	"agents#0#3": () => m.settings_registry_agents_group_quick_commands(),
+	"agents#0#2": () => m.settings_agents_agent_custom_agents(),
+	"agents#0#3": () => m.settings_agents_agent_quick_commands(),
 	"integrations#0#0": () => m.settings_registry_integrations_group_shell_environment(),
 	"integrations#0#1": () => m.settings_general_links_links(),
 	"integrations#1#0": () => m.settings_general_agent_hooks_agent_hooks(),
@@ -150,7 +150,7 @@ export const GROUP_TITLE: Readonly<Record<string, () => string>> = {
 	"crew#0#0": () => m.settings_registry_crew_group_crew_servers(),
 	"crew#0#1": () => m.settings_registry_crew_group_github(),
 	"crew#0#2": () => m.crew_settings_behaviour_card_short_replies(),
-	"crew#0#3": () => m.settings_registry_crew_group_onboarding(),
+	"crew#0#3": () => m.settings_agents_crew_onboarding(),
 };
 
 /** Row text by row id. */
@@ -281,33 +281,33 @@ export const ITEM_TEXT: Readonly<Record<string, ItemText>> = {
 		keywords: "quiet minimal less fewer silencioso discreto menos sons",
 	},
 	"capture-permission": {
-		label: m.settings_registry_capture_capture_permission_label,
-		description: m.settings_registry_capture_capture_permission_description,
+		label: m.settings_capture_permission_label,
+		description: m.settings_capture_permission_description,
 		keywords:
 			"capture screenshot screen recording permission privacy grant system settings captura print tela gravação permissão privacidade acesso",
 	},
 	"capture-enabled": {
-		label: m.settings_registry_capture_capture_enabled_label,
-		description: m.settings_registry_capture_capture_enabled_description,
+		label: m.settings_capture_enabled_label,
+		description: m.settings_capture_enabled_description,
 		keywords:
 			"capture screenshot screen recording gif hotkey enable disable captura print tela gravação atalho ativar desativar",
 	},
 	"capture-folder": {
-		label: m.settings_registry_capture_capture_folder_label,
-		description: m.settings_registry_capture_capture_folder_description,
+		label: m.settings_capture_folder_label,
+		description: m.settings_capture_folder_description,
 		keywords:
 			"capture screenshot screen recording gif folder directory pictures path captura print tela gravação pasta diretório imagens caminho salvar",
 	},
 	"capture-preset": {
-		label: m.settings_registry_capture_capture_preset_label,
-		description: m.settings_registry_capture_capture_preset_description,
+		label: m.settings_capture_preset_label,
+		description: m.settings_capture_preset_description,
 		keywords:
 			"capture screenshot hotkey preset macos cleanshot shortcuts keys captura print tela gravação atalhos teclas conjunto predefinição",
 	},
 	"capture-system-keys": {
-		label: m.settings_registry_capture_capture_system_keys_label,
+		label: m.settings_capture_system_keys_label,
 		description: () =>
-			m.settings_registry_capture_capture_system_keys_description({
+			m.settings_capture_system_keys_description({
 				screen: kbd("cmd-shift-3"),
 				area: kbd("cmd-shift-4"),
 				toolbar: kbd("cmd-shift-5"),
@@ -317,8 +317,8 @@ export const ITEM_TEXT: Readonly<Record<string, ItemText>> = {
 			"capture screenshot macos system shortcuts keyboard shift command 3 4 5 6 disable free captura print tela gravação atalhos teclado sistema desativar liberar",
 	},
 	"capture-key-all-in-one": {
-		label: m.settings_registry_capture_capture_key_all_in_one_label,
-		description: m.settings_registry_capture_capture_key_all_in_one_description,
+		label: m.settings_capture_key_all_in_one,
+		description: m.settings_capture_key_all_in_one_description,
 		keywords:
 			"capture screenshot all in one toolbar menu hotkey shortcut captura print tela gravação tudo em um barra de ferramentas atalho",
 	},
@@ -330,154 +330,154 @@ export const ITEM_TEXT: Readonly<Record<string, ItemText>> = {
 	},
 	"capture-key-previous": {
 		label: m.capture_overlay_page_previous_area,
-		description: m.settings_registry_capture_capture_key_previous_description,
+		description: m.settings_capture_key_previous_description,
 		keywords:
 			"capture screenshot previous last area repeat region hotkey shortcut captura print tela gravação última anterior repetir região atalho",
 	},
 	"capture-key-window": {
 		label: m.capture_overlay_page_mode_window,
-		description: m.settings_registry_capture_capture_key_window_description,
+		description: m.settings_capture_key_window_description,
 		keywords: "capture screenshot window hotkey shortcut captura print tela gravação janela atalho",
 	},
 	"capture-key-fullscreen": {
 		label: m.capture_overlay_page_mode_screen,
-		description: m.settings_registry_capture_capture_key_fullscreen_description,
+		description: m.settings_capture_key_fullscreen_description,
 		keywords:
 			"capture screenshot fullscreen full screen display hotkey shortcut captura print tela gravação inteira cheia atalho",
 	},
 	"capture-key-ocr": {
 		label: m.capture_quick_page_ocr,
-		description: m.settings_registry_capture_capture_key_ocr_description,
+		description: m.settings_capture_key_ocr_description,
 		keywords:
 			"capture screenshot text ocr recognize copy hotkey shortcut captura print tela gravação texto reconhecer ler copiar atalho",
 	},
 	"capture-key-record": {
 		label: m.capture_overlay_page_mode_record,
-		description: m.settings_registry_capture_capture_key_record_description,
+		description: m.settings_capture_key_record_description,
 		keywords:
 			"capture screen recording video record hotkey shortcut captura print tela gravação vídeo gravar atalho",
 	},
 	"capture-key-gif": {
-		label: m.settings_registry_capture_capture_key_gif_label,
-		description: m.settings_registry_capture_capture_key_gif_description,
+		label: m.settings_capture_key_gif,
+		description: m.settings_capture_key_gif_description,
 		keywords:
 			"capture screen recording gif animated hotkey shortcut captura print tela gravação animado atalho",
 	},
 	"capture-on-release": {
-		label: m.settings_registry_capture_capture_on_release_label,
+		label: m.settings_capture_on_release_label,
 		description: m.settings_registry_capture_capture_on_release_description,
 		keywords:
 			"capture screenshot region release mouse instant enter return confirm adjust captura print tela gravação região soltar instantâneo confirmar ajustar",
 	},
 	"capture-timer": {
-		label: m.settings_registry_capture_capture_timer_label,
-		description: m.settings_registry_capture_capture_timer_description,
+		label: m.settings_capture_timer_label,
+		description: m.settings_capture_timer_description,
 		keywords:
 			"capture screenshot timer delay countdown seconds captura print tela gravação temporizador atraso contagem regressiva segundos",
 	},
 	"capture-scale": {
-		label: m.settings_registry_capture_capture_scale_label,
-		description: m.settings_registry_capture_capture_scale_description,
+		label: m.settings_capture_scale_label,
+		description: m.settings_capture_scale_description,
 		keywords:
 			"capture screenshot resolution retina scale 1x 2x pixels size captura print tela gravação resolução escala tamanho",
 	},
 	"capture-hide-icons": {
-		label: m.settings_registry_capture_capture_hide_icons_label,
-		description: m.settings_registry_capture_capture_hide_icons_description,
+		label: m.settings_capture_hide_icons_label,
+		description: m.settings_capture_hide_icons_description,
 		keywords:
 			"capture screenshot screen recording desktop icons hide clean captura print tela gravação ícones área de trabalho ocultar limpa",
 	},
 	"capture-window-shadow": {
-		label: m.settings_registry_capture_capture_window_shadow_label,
-		description: m.settings_registry_capture_capture_window_shadow_description,
+		label: m.settings_capture_window_shadow_label,
+		description: m.settings_capture_window_shadow_description,
 		keywords:
 			"capture screenshot window shadow transparent captura print tela gravação janela sombra transparente",
 	},
 	"capture-window-padding": {
-		label: m.settings_registry_capture_capture_window_padding_label,
-		description: m.settings_registry_capture_capture_window_padding_description,
+		label: m.settings_capture_window_background_label,
+		description: m.settings_capture_window_background_description,
 		keywords:
 			"capture screenshot window background padding backdrop captura print tela gravação janela fundo margem",
 	},
 	"capture-quality": {
-		label: m.settings_registry_capture_capture_quality_label,
-		description: m.settings_registry_capture_capture_quality_description,
+		label: m.settings_capture_quality_label,
+		description: m.settings_capture_quality_description,
 		keywords:
 			"capture screen recording video quality high medium low size bitrate captura print tela gravação vídeo qualidade alta média baixa tamanho",
 	},
 	"capture-clicks": {
-		label: m.settings_registry_capture_capture_clicks_label,
-		description: m.settings_registry_capture_capture_clicks_description,
+		label: m.settings_capture_clicks_label,
+		description: m.settings_capture_clicks_description,
 		keywords:
 			"capture screen recording gif click ring mouse highlight captura print tela gravação cliques anel destaque",
 	},
 	"capture-keystrokes": {
-		label: m.settings_registry_capture_capture_keystrokes_label,
-		description: m.settings_registry_capture_capture_keystrokes_description,
+		label: m.settings_capture_keystrokes_label,
+		description: m.settings_capture_keystrokes_description,
 		keywords:
 			"capture screen recording keystrokes keys keyboard pressed input monitoring captura print tela gravação teclas digitadas teclado pressionadas",
 	},
 	"capture-system-audio": {
-		label: m.settings_registry_capture_capture_system_audio_label,
-		description: m.settings_registry_capture_capture_system_audio_description,
+		label: m.settings_capture_system_audio_label,
+		description: m.settings_capture_system_audio_description,
 		keywords:
 			"capture screen recording system sound audio computer captura print tela gravação áudio som sistema computador",
 	},
 	"capture-microphone": {
-		label: m.settings_registry_capture_capture_microphone_label,
-		description: m.settings_registry_capture_capture_microphone_description,
+		label: m.settings_capture_microphone_label,
+		description: m.settings_capture_microphone_description,
 		keywords:
 			"capture screen recording microphone mic voice audio narration captura print tela gravação microfone voz áudio narração",
 	},
 	"capture-copy": {
 		label: m.capture_editor_page_copy_to_clipboard,
-		description: m.settings_registry_capture_capture_copy_description,
+		description: m.settings_capture_copy_description,
 		keywords: "capture screenshot clipboard copy captura print tela gravação copiar área de transferência",
 	},
 	"capture-quick-access": {
-		label: m.settings_registry_capture_capture_quick_access_label,
-		description: m.settings_registry_capture_capture_quick_access_description,
+		label: m.settings_capture_quick_access_label,
+		description: m.settings_capture_quick_access_description,
 		keywords:
 			"capture screenshot quick access overlay thumbnail card annotate captura print tela gravação acesso rápido sobreposição miniatura cartão anotar",
 	},
 	"capture-dismiss": {
-		label: m.settings_registry_capture_capture_dismiss_label,
-		description: m.settings_registry_capture_capture_dismiss_description,
+		label: m.settings_capture_dismiss_label,
+		description: m.settings_capture_dismiss_description,
 		keywords:
 			"capture screenshot quick access overlay seconds timer never captura print tela gravação acesso rápido sobreposição segundos fechar nunca",
 	},
 	"capture-corner": {
-		label: m.settings_registry_capture_capture_corner_label,
-		description: m.settings_registry_capture_capture_corner_description,
+		label: m.settings_capture_corner_label,
+		description: m.settings_capture_corner_description,
 		keywords:
 			"capture screenshot quick access overlay corner position bottom top left right captura print tela gravação acesso rápido sobreposição canto posição",
 	},
 	"capture-stack": {
-		label: m.settings_registry_capture_capture_stack_label,
-		description: m.settings_registry_capture_capture_stack_description,
+		label: m.settings_capture_stack_label,
+		description: m.settings_capture_stack_description,
 		keywords:
 			"capture screenshot quick access overlay stack cards number limit captura print tela gravação acesso rápido sobreposição pilha cartões limite",
 	},
 	"capture-sound": {
-		label: m.settings_registry_capture_capture_sound_label,
-		description: m.settings_registry_capture_capture_sound_description,
+		label: m.settings_capture_sound_label,
+		description: m.settings_capture_sound_description,
 		keywords: "capture screenshot sound shutter audio captura print tela gravação som obturador áudio",
 	},
 	"capture-highlight": {
-		label: m.settings_registry_capture_capture_highlight_label,
-		description: m.settings_registry_capture_capture_highlight_description,
+		label: m.settings_capture_highlight_label,
+		description: m.settings_capture_highlight_description,
 		keywords:
 			"capture screen recording gif cursor pointer click highlight captura print tela gravação ponteiro clique destaque",
 	},
 	"capture-history-size": {
-		label: m.settings_registry_capture_capture_history_size_label,
-		description: m.settings_registry_capture_capture_history_size_description,
+		label: m.settings_capture_history_size_label,
+		description: m.settings_capture_history_size_description,
 		keywords:
 			"capture screenshot screen recording gif history size limit keep captura print tela gravação histórico tamanho limite guardar",
 	},
 	"capture-history": {
-		label: m.settings_registry_capture_capture_history_label,
-		description: m.settings_registry_capture_capture_history_description,
+		label: m.settings_capture_recent_label,
+		description: m.settings_capture_recent_description,
 		keywords:
 			"capture screenshot screen recording gif history list recent quick access folder captura print tela gravação histórico lista recentes acesso rápido pasta",
 	},
@@ -534,130 +534,130 @@ export const ITEM_TEXT: Readonly<Record<string, ItemText>> = {
 			"orphan zombie leftover browser chromium vite process kill disk space cache temp spotlight index mdworker cleanup órfão zumbi processos sobra navegador disco espaço temporário limpeza",
 	},
 	"buffer-font": {
-		label: m.settings_registry_editor_group_code_font,
-		description: m.settings_registry_editor_buffer_font_description,
+		label: m.settings_editor_code_tab_code_font,
+		description: m.settings_editor_code_tab_code_font_hint,
 		keywords: "buffer_font_family monospace typeface fonte código letra monoespaçada tipografia",
 	},
 	"buffer-size": {
-		label: m.settings_registry_editor_buffer_size_label,
+		label: m.settings_editor_code_tab_code_font_size,
 		description: m.settings_registry_editor_buffer_size_description,
 		keywords: "buffer_font_size tamanho fonte código letra",
 	},
 	"buffer-line-height": {
-		label: m.settings_registry_editor_buffer_line_height_label,
+		label: m.settings_editor_code_tab_line_spacing,
 		description: m.settings_registry_editor_buffer_line_height_description,
 		keywords: "buffer_line_height leading espaçamento altura linha",
 	},
 	"lsp-enable": {
-		label: m.settings_registry_editor_group_language_servers,
-		description: m.settings_registry_editor_lsp_enable_description,
+		label: m.settings_editor_code_tab_language_servers,
+		description: m.settings_editor_code_tab_completion_diagnostics_hover_and_go,
 		keywords:
 			"lsp enable_language_servers rust-analyzer gopls typescript intellisense autocomplete linguagem servidor autocompletar sugestões",
 	},
 	"lsp-format-on-save": {
-		label: m.settings_registry_editor_lsp_format_on_save_label,
-		description: m.settings_registry_editor_lsp_format_on_save_description,
+		label: m.settings_editor_code_tab_format_on_save,
+		description: m.settings_editor_code_tab_format_the_file_with_its,
 		keywords: "format_on_save formatter prettier rustfmt formatar salvar formatador",
 	},
 	"lsp-inlay-hints": {
-		label: m.settings_registry_editor_lsp_inlay_hints_label,
-		description: m.settings_registry_editor_lsp_inlay_hints_description,
+		label: m.settings_editor_code_tab_inlay_hints,
+		description: m.settings_editor_code_tab_show_inferred_types_and_parameter,
 		keywords: "inlay_hints types parameters dicas tipos parâmetros",
 	},
 	"lsp-manage": {
-		label: m.settings_registry_editor_lsp_manage_label,
-		description: m.settings_registry_editor_lsp_manage_description,
+		label: m.settings_editor_code_tab_manage_language_servers,
+		description: m.settings_editor_code_tab_install_update_or_replace_the,
 		keywords:
 			"languages custom command lsp gopls rust-analyzer typescript server install uninstall linguagens servidor instalar desinstalar personalizado comando",
 	},
 	"editor-tab-size": {
-		label: m.settings_registry_editor_editor_tab_size_label,
-		description: m.settings_registry_editor_editor_tab_size_description,
+		label: m.settings_editor_rows_tab_size,
+		description: m.settings_editor_rows_columns_a_tab_or_one,
 		keywords: "tab_size indent indentation width tabulação indentação largura espaços",
 	},
 	"editor-insert-spaces": {
-		label: m.settings_registry_editor_editor_insert_spaces_label,
-		description: m.settings_registry_editor_editor_insert_spaces_description,
+		label: m.settings_editor_rows_indent_with_spaces,
+		description: m.settings_editor_rows_pressing_tab_inserts_spaces_turn,
 		keywords: "insert_spaces tabs spaces indentation tabulação espaços indentação",
 	},
 	"editor-trim-whitespace": {
-		label: m.settings_registry_editor_editor_trim_whitespace_label,
-		description: m.settings_registry_editor_editor_trim_whitespace_description,
+		label: m.settings_editor_rows_trim_trailing_whitespace_on_save,
+		description: m.settings_editor_rows_remove_spaces_and_tabs_at,
 		keywords: "trim_trailing_whitespace_on_save strip espaços fim linha remover salvar",
 	},
 	"editor-final-newline": {
-		label: m.settings_registry_editor_editor_final_newline_label,
-		description: m.settings_registry_editor_editor_final_newline_description,
+		label: m.settings_editor_rows_add_a_final_newline_on,
+		description: m.settings_editor_rows_end_every_file_with_exactly,
 		keywords: "insert_final_newline_on_save eof end of file quebra de linha final fim arquivo",
 	},
 	"editor-auto-reload": {
-		label: m.settings_registry_editor_editor_auto_reload_label,
-		description: m.settings_registry_editor_editor_auto_reload_description,
+		label: m.settings_editor_rows_reload_files_changed_on_disk,
+		description: m.settings_editor_rows_update_an_open_file_when,
 		keywords: "auto_reload external changes refresh watch recarregar atualizar alterações externas disco",
 	},
 	"editor-large-file": {
-		label: m.settings_registry_editor_editor_large_file_label,
-		description: m.settings_registry_editor_editor_large_file_description,
+		label: m.settings_editor_rows_large_file_limit,
+		description: m.settings_editor_rows_files_bigger_than_this_open,
 		keywords:
 			"large_file_threshold_bytes performance slow big huge arquivo grande limite desempenho lento pesado",
 	},
 	"editor-word-wrap": {
-		label: m.settings_registry_editor_editor_word_wrap_label,
-		description: m.settings_registry_editor_editor_word_wrap_description,
+		label: m.settings_editor_rows_word_wrap,
+		description: m.settings_editor_rows_wrap_long_lines_at_the,
 		keywords: "word_wrap soft wrap long lines quebra automática linha longas",
 	},
 	"editor-line-numbers": {
-		label: m.settings_registry_editor_editor_line_numbers_label,
-		description: m.settings_registry_editor_editor_line_numbers_description,
+		label: m.settings_editor_rows_line_numbers,
+		description: m.settings_editor_rows_show_line_numbers_in_the,
 		keywords: "line_numbers gutter números linha margem",
 	},
 	"editor-highlight-line": {
-		label: m.settings_registry_editor_editor_highlight_line_label,
-		description: m.settings_registry_editor_editor_highlight_line_description,
+		label: m.settings_editor_rows_highlight_the_current_line,
+		description: m.settings_editor_rows_tint_the_line_the_cursor,
 		keywords: "highlight_active_line cursor line destacar linha atual",
 	},
 	"editor-whitespace": {
-		label: m.settings_registry_editor_editor_whitespace_label,
-		description: m.settings_registry_editor_editor_whitespace_description,
+		label: m.settings_editor_rows_show_whitespace,
+		description: m.settings_editor_rows_draw_dots_for_spaces_and,
 		keywords: "render_whitespace invisible characters espaços em branco invisíveis caracteres",
 	},
 	"editor-indent-guides": {
-		label: m.settings_registry_editor_editor_indent_guides_label,
-		description: m.settings_registry_editor_editor_indent_guides_description,
+		label: m.settings_editor_rows_indent_guides,
+		description: m.settings_editor_rows_draw_a_faint_vertical_line,
 		keywords: "indent_guides guias indentação",
 	},
 	"editor-bracket-colors": {
-		label: m.settings_registry_editor_editor_bracket_colors_label,
-		description: m.settings_registry_editor_editor_bracket_colors_description,
+		label: m.settings_editor_rows_color_matching_brackets,
+		description: m.settings_editor_rows_give_each_level_of_nested,
 		keywords: "bracket_pair_colorization rainbow brackets colchetes cores arco-íris parênteses",
 	},
 	"editor-sticky-scroll": {
-		label: m.settings_registry_editor_editor_sticky_scroll_label,
-		description: m.settings_registry_editor_editor_sticky_scroll_description,
+		label: m.settings_editor_rows_sticky_scroll,
+		description: m.settings_editor_rows_keep_the_enclosing_function_or,
 		keywords: "sticky_scroll scope header rolagem fixa cabeçalho escopo",
 	},
 	"editor-minimap": {
-		label: m.settings_registry_editor_editor_minimap_label,
-		description: m.settings_registry_editor_editor_minimap_description,
+		label: m.settings_editor_rows_minimap,
+		description: m.settings_editor_rows_show_a_small_overview_of,
 		keywords: "overview minimapa visão geral",
 	},
 	"editor-rulers": {
-		label: m.settings_registry_editor_editor_rulers_label,
-		description: m.settings_registry_editor_editor_rulers_description,
+		label: m.settings_editor_rows_rulers,
+		description: m.settings_editor_rows_columns_where_a_vertical_line,
 		keywords: "column guide line length 80 100 120 réguas coluna guia tamanho linha",
 	},
 	"editor-scroll-past-end": {
-		label: m.settings_registry_editor_editor_scroll_past_end_label,
-		description: m.settings_registry_editor_editor_scroll_past_end_description,
+		label: m.settings_editor_rows_scroll_past_the_last_line,
+		description: m.settings_editor_rows_let_the_last_line_scroll,
 		keywords: "scroll_past_end rolar além última linha fim",
 	},
 	"editor-smooth-scroll": {
-		label: m.settings_registry_editor_editor_smooth_scroll_label,
-		description: m.settings_registry_editor_editor_smooth_scroll_description,
+		label: m.settings_editor_rows_smooth_scrolling,
+		description: m.settings_editor_rows_animate_scrolling_when_you_jump,
 		keywords: "smooth_scrolling animation rolagem suave animação",
 	},
 	"lsp-servers": {
-		label: m.settings_registry_editor_group_language_servers,
+		label: m.settings_editor_code_tab_language_servers,
 		description: m.settings_registry_editor_lsp_servers_description,
 		keywords:
 			"language server typescript gopls rust-analyzer pyright clangd install uninstall update restart log path managed servidores linguagem instalar desinstalar atualizar reiniciar caminho",
@@ -766,12 +766,12 @@ export const ITEM_TEXT: Readonly<Record<string, ItemText>> = {
 			"ai commit message sparkle generate omp claude codex privacy diff staged mensagem ia agente gerar privacidade stage",
 	},
 	"agent-default": {
-		label: m.settings_registry_agents_agent_default_label,
+		label: m.settings_agents_agent_default_agent,
 		description: m.settings_registry_agents_agent_default_description,
 		keywords: "omp claude codex blank agente padrão em branco terminal",
 	},
 	"agent-permissions": {
-		label: m.settings_registry_agents_agent_permissions_label,
+		label: m.settings_agents_agent_tool_approval,
 		description: m.settings_registry_agents_agent_permissions_description,
 		keywords: "permissions yolo manual auto approve permissões aprovação automático aprovar ferramentas",
 	},
@@ -798,12 +798,12 @@ export const ITEM_TEXT: Readonly<Record<string, ItemText>> = {
 			"hotkey shortcut hide show toggle global keybinding tray atalho tecla ocultar mostrar alternar bandeja",
 	},
 	"agent-custom": {
-		label: m.settings_registry_agents_agent_custom_label,
+		label: m.settings_agents_agent_add_agent,
 		description: () => m.settings_registry_agents_agent_custom_description({ key: kbd("cmd-shift-a") }),
 		keywords: "custom opencode gemini amp aider cli preset add agente personalizado adicionar executar",
 	},
 	quick: {
-		label: m.settings_registry_agents_group_quick_commands,
+		label: m.settings_agents_agent_quick_commands,
 		description: m.settings_registry_agents_quick_description,
 		keywords: "shortcuts prompt buttons comandos rápidos botões atalhos",
 	},
@@ -829,18 +829,18 @@ export const ITEM_TEXT: Readonly<Record<string, ItemText>> = {
 		keywords: "remote server hostd tunnel ssh remoto servidor túnel máquina",
 	},
 	"ssh-project": {
-		label: m.settings_registry_integrations_ssh_project_label,
+		label: m.settings_agents_ssh_remote_project,
 		description: m.settings_registry_integrations_ssh_project_description,
 		keywords: "atlas.yaml path remote projeto remoto ssh caminho",
 	},
 	"mobile-pair": {
-		label: m.settings_registry_integrations_mobile_pair_label,
+		label: m.settings_agents_mobile_title,
 		description: m.settings_registry_integrations_mobile_pair_description,
 		keywords:
 			"iphone android qr phone remote p2p app store testflight vpn warp wifi celular parear pareamento código",
 	},
 	"mobile-devices": {
-		label: m.settings_registry_integrations_mobile_devices_label,
+		label: m.settings_agents_paired_phones,
 		description: m.settings_registry_integrations_mobile_devices_description,
 		keywords:
 			"revoke unpair rename activity last seen permissions scopes terminal approve celulares pareados revogar desparear renomear atividade permissões",
@@ -861,8 +861,8 @@ export const ITEM_TEXT: Readonly<Record<string, ItemText>> = {
 		keywords: "summary compact ai model cheap resumo respostas curtas modelo barato",
 	},
 	"crew-onboarding": {
-		label: m.settings_registry_crew_crew_onboarding_label,
-		description: m.settings_registry_crew_crew_onboarding_description,
+		label: m.settings_agents_crew_replay_onboarding,
+		description: m.settings_agents_crew_replay_description,
 		keywords: "onboarding intro tour crew atlas crew introdução rever repetir",
 	},
 	...Object.fromEntries(

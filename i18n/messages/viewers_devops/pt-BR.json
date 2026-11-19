@@ -265,14 +265,14 @@
 			}
 		}
 	],
-	"viewers_devops_environment": "Ambiente",
+	"viewers_devops_environment": "Variáveis de ambiente",
 	"viewers_devops_filter": "Filtrar",
 	"viewers_devops_go_to_line": "Ir para a linha {line}",
 	"viewers_devops_line": "Linha {line}",
 	"viewers_devops_make_view_default": "padrão",
 	"viewers_devops_make_view_default_target": "padrão {defaultTarget}",
 	"viewers_devops_make_view_filter_targets": "Filtrar alvos",
-	"viewers_devops_make_view_no_match": "Nenhuma correspondência",
+	"viewers_devops_make_view_no_match": "Nada encontrado",
 	"viewers_devops_make_view_no_targets": "Nenhum alvo encontrado",
 	"viewers_devops_make_view_phony": "phony",
 	"viewers_devops_make_view_recipes": "Receitas",

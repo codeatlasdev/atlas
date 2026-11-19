@@ -53,7 +53,6 @@
 	"git_github_review_changes": "changes requested",
 	"git_github_review_commented": "commented",
 	"git_github_review_dismissed": "dismissed",
-	"git_github_review_pending": "pending",
 	"git_github_review_required": "review required",
 	"git_github_rollup_failed": "failed",
 	"git_github_rollup_ok": "passing",

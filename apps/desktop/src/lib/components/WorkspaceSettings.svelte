@@ -177,7 +177,7 @@
 			size="sm"
 			value={auto.mode}
 			items={[
-				{ value: "off", label: m.settings_general_git_option_off() },
+				{ value: "off", label: m.settings_capture_timer_off() },
 				{ value: "merged", label: m.settings_general_workspace_cleanup_merged() },
 				{ value: "idle", label: m.settings_general_workspace_cleanup_idle() },
 			]}

@@ -6,11 +6,13 @@
 				try {
 					var h = document.documentElement;
 					h.classList.add("ca-init");
+					// i18n-ignore: runs inline before any module loads (first paint, no flash), so keys.ts cannot be imported; it is the same test keys.ts OS uses
+					var mac = /Mac/.test(navigator.platform);
 					// Only macOS has a see-through window (vibrancy); elsewhere the page paints its own backdrop.
-					if (!/Mac/.test(navigator.platform)) h.classList.add("opaque-window");
+					if (!mac) h.classList.add("opaque-window");
 					// Windows and Linux: no native title bar or menu; the page draws one title row (#269). Caption
 					// buttons (WindowControls.svelte) except on a Linux tiling WM, which owns the window.
-					if (!/Mac/.test(navigator.platform)) h.classList.add("custom-chrome");
+					if (!mac) h.classList.add("custom-chrome");
 					if (window.__ATLAS_TILING__) h.classList.add("tiling-wm");
 					var s = localStorage.getItem("ca-scheme");
 					var p = localStorage.getItem("ca-preset");

@@ -143,6 +143,7 @@
 	{:else if form.kind === "github"}
 		<div class="field-row">
 			<label class="field-label" for="gh-repo">{m.crew_automation_fields_repo()}</label>
+			<!-- i18n-ignore: an example owner/repo name, not prose -->
 			<input
 				id="gh-repo"
 				class="text-input"
@@ -170,6 +171,7 @@
 	{:else if form.kind === "file"}
 		<div class="field-row">
 			<label class="field-label" for="file-glob">{m.crew_automation_fields_glob()}</label>
+			<!-- i18n-ignore: an example glob pattern, not prose -->
 			<input
 				id="file-glob"
 				class="text-input"
@@ -180,6 +182,7 @@
 		</div>
 		<div class="field-row">
 			<label class="field-label" for="file-path">{m.crew_automation_fields_path()}</label>
+			<!-- i18n-ignore: an example path, not prose -->
 			<input
 				id="file-path"
 				class="text-input"
@@ -224,6 +227,7 @@
 		</div>
 		<div class="field-row">
 			<label class="field-label" for="svc-dir">{m.crew_automation_fields_project_dir()}</label>
+			<!-- i18n-ignore: an example path, not prose -->
 			<input
 				id="svc-dir"
 				class="text-input"

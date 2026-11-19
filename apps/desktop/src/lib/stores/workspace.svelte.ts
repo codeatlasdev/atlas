@@ -3,6 +3,7 @@ import { toast } from "@codeatlasdev/ui";
 import { errText } from "#lib/api.ts";
 import { errors } from "#lib/errors/errors.svelte.ts";
 import { isHostFailure } from "#lib/hostText.ts";
+import { m } from "#lib/i18n/m.ts";
 import { host, type PtySummary } from "#lib/host.ts";
 import {
 	closable,
@@ -486,7 +487,7 @@ class Workspace {
 		if (!t || t.kind !== "terminal") return;
 		// A Restart on a host that is down can only fail the same way: say so once, change nothing.
 		if (this.hostDown) {
-			void errors.captureHost(this.hostError ?? "Terminal host not reachable.");
+			void errors.captureHost(this.hostError ?? m.errors_headline_host_title());
 			return;
 		}
 		try {

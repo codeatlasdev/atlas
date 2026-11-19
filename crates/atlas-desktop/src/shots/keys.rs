@@ -21,20 +21,17 @@ pub struct Mods {
 impl Mods {
     /// The symbols in macOS menu order: ⌃ ⌥ ⇧ ⌘.
     fn symbols(self) -> String {
-        let mut s = String::new();
-        if self.ctrl {
-            s.push('⌃');
-        }
-        if self.alt {
-            s.push('⌥');
-        }
-        if self.shift {
-            s.push('⇧');
-        }
-        if self.cmd {
-            s.push('⌘');
-        }
-        s
+        // i18n-ignore: the pill records presses of a Mac keyboard (macOS virtual key codes), so it shows the caps a Mac prints on them
+        let caps = [
+            (self.ctrl, '⌃'),
+            (self.alt, '⌥'),
+            (self.shift, '⇧'),
+            (self.cmd, '⌘'),
+        ];
+        caps.into_iter()
+            .filter(|(held, _)| *held)
+            .map(|(_, cap)| cap)
+            .collect()
     }
 }
 

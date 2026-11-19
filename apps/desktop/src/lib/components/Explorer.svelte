@@ -367,7 +367,7 @@
 				bind:value={editing!.value}
 				onkeydown={onEditKey}
 				onblur={commitEdit}
-				placeholder="name.ext"
+				placeholder={m.workbench_explorer_new_file_placeholder()}
 				spellcheck="false"
 				aria-label={m.workbench_explorer_new_file_name()}
 			/>

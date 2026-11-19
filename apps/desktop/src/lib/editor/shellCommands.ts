@@ -4,7 +4,7 @@
  * runs: the shell must not load the editor stack at startup (same rule as `lsp/commands.ts`).
  */
 import type { EditorView } from "@codemirror/view";
-import type { Command } from "#lib/keymap.svelte.ts";
+import { named, type Command } from "#lib/keymap.svelte.ts";
 import { activeEditor } from "#lib/shell/editors.ts";
 import { sessionOf } from "#lib/editor/registry.ts";
 import { m } from "#lib/i18n/m.ts";
@@ -38,36 +38,31 @@ const session = () => {
 	return v ? sessionOf(v) : undefined;
 };
 
-/** Commands are registered once at startup: `label` is a getter, so the palette reads the app's language each time it shows one. */
-export const editorShellCommands = (): Command[] => [
-	...COMMANDS.map(({ id, label }) => ({
-		id,
-		get label() {
-			return label();
+/** Commands are registered once at startup: `named` makes `label` a getter, so the palette reads the app's language each time it shows one. */
+export const editorShellCommands = (): Command[] =>
+	named([
+		...COMMANDS.map(({ id, label }) => ({
+			id,
+			label,
+			run: () => {
+				const v = focused();
+				if (v) run(id, v);
+			},
+			when: () => !!focused(),
+		})),
+		{
+			id: "editor::ToggleSoftWrap",
+			label: () => m.workbench_editor_cmd_toggle_wrap(),
+			run: () => {
+				const s = session();
+				if (s) s.setWrap(!s.wrap);
+			},
+			when: () => !!session(),
 		},
-		run: () => {
-			const v = focused();
-			if (v) run(id, v);
+		{
+			id: "editor::RevertFile",
+			label: () => m.workbench_editor_cmd_revert_file(),
+			run: () => void session()?.revert(),
+			when: () => !!session()?.dirty,
 		},
-		when: () => !!focused(),
-	})),
-	{
-		id: "editor::ToggleSoftWrap",
-		get label() {
-			return m.workbench_editor_cmd_toggle_wrap();
-		},
-		run: () => {
-			const s = session();
-			if (s) s.setWrap(!s.wrap);
-		},
-		when: () => !!session(),
-	},
-	{
-		id: "editor::RevertFile",
-		get label() {
-			return m.workbench_editor_cmd_revert_file();
-		},
-		run: () => void session()?.revert(),
-		when: () => !!session()?.dirty,
-	},
-];
+	]);

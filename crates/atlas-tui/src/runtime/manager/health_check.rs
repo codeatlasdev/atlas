@@ -663,7 +663,7 @@ mod tests {
         let reader = std::thread::spawn(move || {
             let mut reads = 0u32;
             while !stop_r.load(std::sync::atomic::Ordering::Relaxed) {
-                let text = std::fs::read_to_string(&reader_path).unwrap();
+                let text = atlas_core::fs::read_to_string_replaced(&reader_path).unwrap();
                 serde_json::from_str::<serde_json::Value>(&text)
                     .expect("reader must never see a partial file");
                 reads += 1;

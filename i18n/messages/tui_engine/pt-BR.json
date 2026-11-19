@@ -59,14 +59,17 @@
 		{
 			"declarations": [
 				"input attempts",
+				"local attemptsExact = attempts",
 				"local attemptsPlural = attempts: plural"
 			],
 			"selectors": [
+				"attemptsExact",
 				"attemptsPlural"
 			],
 			"match": {
-				"attemptsPlural=one": "desistiu após {attempts} reinício",
-				"attemptsPlural=*": "desistiu após {attempts} reinícios"
+				"attemptsExact=0, attemptsPlural=*": "desistiu sem reiniciar",
+				"attemptsExact=*, attemptsPlural=one": "desistiu após {attempts} reinício",
+				"attemptsExact=*, attemptsPlural=*": "desistiu após {attempts} reinícios"
 			}
 		}
 	],

@@ -342,6 +342,10 @@ fn restarts_agree_in_number_in_portuguese_and_keep_the_english_words() {
     assert_eq!(one.render_in("pt-BR"), "desistiu após 1 reinício");
     let many = note("sched.gave_up", &json!({"attempts": 5}));
     assert_eq!(many.render_in("pt-BR"), "desistiu após 5 reinícios");
+    // `max_restarts: 0` gives up at once: never "após 0 reinício" (#589's pt-zero rule).
+    let none = note("sched.gave_up", &json!({"attempts": 0}));
+    assert_eq!(none.message, "gave up after 0 restarts");
+    assert_eq!(none.render_in("pt-BR"), "desistiu sem reiniciar");
 }
 
 /// Nested notes render in the language of the outer one, not in the English they carry.

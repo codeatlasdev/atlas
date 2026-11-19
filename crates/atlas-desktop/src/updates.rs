@@ -333,7 +333,12 @@ fn github_error_in(lang: &str, e: GithubError) -> String {
         GithubError::Failed(reason) => t_in!(lang, "native_updates_github_failed", reason = reason),
         GithubError::Feed(reason) => t_in!(lang, "native_updates_github_feed", reason = reason),
         GithubError::Unknown { tag, reason } => {
-            t_in!(lang, "native_updates_github_unknown", tag = tag, reason = reason)
+            t_in!(
+                lang,
+                "native_updates_github_unknown",
+                tag = tag,
+                reason = reason
+            )
         }
     }
 }
@@ -472,7 +477,11 @@ async fn stream(app: &AppHandle, args: &[&str]) -> Result<(), String> {
         Ok(())
     } else {
         Err(if last_err.is_empty() {
-            t!("native_updates_install_failed", args = args.join(" "), status = st.to_string())
+            t!(
+                "native_updates_install_failed",
+                args = args.join(" "),
+                status = st.to_string()
+            )
         } else {
             last_err
         })
@@ -989,7 +998,10 @@ mod tests {
         use atlas_core::github::GithubError;
         let cases = || {
             [
-                (GithubError::Failed("curl: (6) no host".into()), "curl: (6) no host"),
+                (
+                    GithubError::Failed("curl: (6) no host".into()),
+                    "curl: (6) no host",
+                ),
                 (GithubError::Feed("bad atom".into()), "bad atom"),
                 (
                     GithubError::Unknown {

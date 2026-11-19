@@ -131,10 +131,7 @@
 	}
 </script>
 
-<PageHead
-	title={m.settings_agents_crew_title()}
-	description={m.settings_agents_crew_description()}
-/>
+<PageHead title={m.settings_agents_crew_title()} description={m.settings_agents_crew_description()} />
 
 {#each remoteServers as h (h.key)}
 	{@const online = crew.serverOk(h.key)}
@@ -248,7 +245,9 @@
 			label={m.settings_agents_crew_remove_server()}
 			description={m.settings_agents_crew_remove_hint()}
 		>
-			<Button size="sm" variant="ghost" onclick={() => doRemoveServer(h.key, h.name)}>{m.common_action_remove()}</Button>
+			<Button size="sm" variant="ghost" onclick={() => doRemoveServer(h.key, h.name)}
+				>{m.common_action_remove()}</Button
+			>
 		</Row>
 	</Group>
 {/each}
@@ -288,11 +287,7 @@
 <!-- i18n-ignore: a product name -->
 <Group title="GitHub">
 	<!-- i18n-ignore: a product name -->
-	<Row
-		id="crew-github"
-		label="GitHub"
-		description={m.settings_agents_crew_github_description()}
-	>
+	<Row id="crew-github" label="GitHub" description={m.settings_agents_crew_github_description()}>
 		<Button
 			size="sm"
 			variant="ghost"

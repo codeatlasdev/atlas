@@ -86,8 +86,8 @@ test("folders without atlas.yaml can be ticked, but only valid configs are ticke
 test("the empty line never says 'no projects' above a list of candidates", () => {
 	expect(noProjectsLine("", 3)).toBe(m.sidebar_discover_dialog_no_config());
 	expect(noProjectsLine("", 0)).toBe(m.sidebar_discover_dialog_none());
-	expect(noProjectsLine("api", 3)).toBe(m.sidebar_discover_dialog_no_match({ query: "api" }));
-	expect(m.sidebar_discover_dialog_no_match({ query: "api" })).toContain("api");
+	expect(noProjectsLine("api", 3)).toBe(m.tray_page_no_match({ query: "api" }));
+	expect(m.tray_page_no_match({ query: "api" })).toContain("api");
 });
 
 // PR #158 review (S6): Spotlight is macOS only. The message selects on the OS, the dialog passes nothing.

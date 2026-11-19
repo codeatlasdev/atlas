@@ -1,6 +1,5 @@
 {
 	"native_capture_action_all_in_one": "Name of the all-in-one capture action (one toolbar over the screen) inside the sentences Settings shows when a capture key is refused. Same action as the Settings > Capture row and the capture menu.",
-	"native_capture_action_gif": "Name of the record GIF action inside the sentences Settings shows when a capture key is refused.",
 	"native_capture_action_ocr": "Name of the capture text (OCR) action inside the sentences Settings shows when a capture key is refused.",
 	"native_capture_action_previous": "Name of the capture previous area action inside the sentences Settings shows when a capture key is refused.",
 	"native_capture_action_record": "Name of the record screen (video) action inside the sentences Settings shows when a capture key is refused.",

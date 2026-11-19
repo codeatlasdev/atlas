@@ -151,7 +151,7 @@
 	bind:open={u.whatsNewOpen}
 	side="right"
 	width="520px"
-	title={m.settings_updates_whats_new_title()}
+	title={m.shell_commands_whats_new()}
 	onOpenChange={(o) => !o && u.dismissUpdated()}
 >
 	<div class="sheet">
@@ -189,7 +189,9 @@
 							: m.settings_updates_whats_new_empty_title_unknown()}</b
 					>
 					<p>{m.settings_updates_whats_new_empty_body()}</p>
-					<Button variant="glass" onclick={() => api.openUrl(CHANGELOG_URL)}>{m.settings_updates_whats_new_open_changelog()}</Button>
+					<Button variant="glass" onclick={() => api.openUrl(CHANGELOG_URL)}
+						>{m.settings_updates_whats_new_open_changelog()}</Button
+					>
 				</div>
 			{:else}
 				{#if multi}
@@ -250,7 +252,11 @@
 							{#each r.parsed.groups as g, gi (g.heading)}
 								{@const k = KIND[g.kind]}
 								<div class="group" style="--tone: {k.tone}">
-									<h3><k.icon size={13} />{kindLabel(g.kind, g.heading)}<span class="count">{g.items.length}</span></h3>
+									<h3>
+										<k.icon size={13} />{kindLabel(g.kind, g.heading)}<span class="count"
+											>{g.items.length}</span
+										>
+									</h3>
 									<ul>
 										{#each g.items as it, ii (ii)}
 											{@const key = `${r.version}/${gi}/${ii}`}
@@ -264,7 +270,9 @@
 													</div>
 													{#if isLong(it)}
 														<button class="more" aria-expanded={!long} onclick={() => (unfolded[key] = long)}>
-															{long ? m.settings_updates_whats_new_fold_more() : m.settings_updates_whats_new_fold_less()}
+															{long
+																? m.settings_updates_whats_new_fold_more()
+																: m.settings_updates_whats_new_fold_less()}
 														</button>
 													{/if}
 												{/if}
@@ -322,7 +330,7 @@
 									: m.settings_updates_whats_new_rollback_restored_unknown()}{/if}
 							{#if u.progress.rollback === "failed"}<Rich
 									parts={m.settings_updates_whats_new_rollback_failed.parts()}
-									tags={{ code: "code" }}
+									tags={{ code: mono }}
 								/>{/if}
 						</p>
 					{/if}
@@ -336,10 +344,12 @@
 						</p>
 					{/if}
 					<button class="details" onclick={() => (detailsOpen = !detailsOpen)}>
-						<ChevronDown size={12} class={detailsOpen ? "" : "shut"} /> {m.crew_onboarding_connect_step_details()}
+						<ChevronDown size={12} class={detailsOpen ? "" : "shut"} />
+						{m.crew_onboarding_connect_step_details()}
 					</button>
 					{#if detailsOpen}
-						<pre class="log mono ca-selectable" bind:this={logEl}>{u.log.join("\n") || m.settings_updates_log_starting()}</pre>
+						<pre class="log mono ca-selectable" bind:this={logEl}>{u.log.join("\n") ||
+								m.settings_updates_log_starting()}</pre>
 					{/if}
 				</div>
 			{/if}
@@ -349,7 +359,11 @@
 					<p class="hint">{m.settings_updates_whats_new_managed_run({ title: managed.title })}</p>
 					<div class="cmd">
 						<code class="mono ca-selectable">{managed.command}</code>
-						<button class="icon" aria-label={m.crew_onboarding_connect_step_copy_command()} onclick={() => copy(managed.command!)}>
+						<button
+							class="icon"
+							aria-label={m.crew_onboarding_connect_step_copy_command()}
+							onclick={() => copy(managed.command!)}
+						>
 							<Copy size={13} />
 						</button>
 					</div>
@@ -372,7 +386,9 @@
 				{:else if managed?.installable}
 					<Button disabled={busy || u.dev} onclick={u.installPackage}>
 						{#snippet leading()}{#if busy}<Spinner size={14} />{/if}{/snippet}
-						{busy ? m.settings_updates_updating() : m.settings_updates_whats_new_install_now({ version: latest ?? "" })}
+						{busy
+							? m.settings_updates_updating()
+							: m.settings_updates_whats_new_install_now({ version: latest ?? "" })}
 					</Button>
 				{:else}
 					<Button disabled={busy || u.dev} onclick={u.updateAll}>
@@ -394,17 +410,23 @@
 							channel: channelName(heroChannel),
 							followed: channelName(followed),
 						})}
-						tags={{ chip: chanChip, b: "b" }}
+						tags={{ chip: chanChip, b: bold }}
 					/>
 				</p>
 			{/if}
 			<div class="links">
 				{#if !upToDate && !u.relaunchNeeded}
-					<button class="icon text" disabled={busy} onclick={close}>{m.settings_updates_whats_new_remind_later()}</button>
-					<button class="icon text" disabled={busy} onclick={u.skipVersion}>{m.settings_updates_whats_new_skip_version()}</button>
+					<button class="icon text" disabled={busy} onclick={close}
+						>{m.settings_updates_whats_new_remind_later()}</button
+					>
+					<button class="icon text" disabled={busy} onclick={u.skipVersion}
+						>{m.settings_updates_whats_new_skip_version()}</button
+					>
 					<span class="grow"></span>
 				{/if}
-				<button class="icon text" onclick={() => api.openUrl(CHANGELOG_URL)}>{m.settings_updates_full_changelog()}</button>
+				<button class="icon text" onclick={() => api.openUrl(CHANGELOG_URL)}
+					>{m.settings_updates_full_changelog()}</button
+				>
 				<button class="icon text" onclick={() => api.openUrl(hero ? hero.url : REPO_URL)}
 					>{m.settings_updates_whats_new_view_github()}</button
 				>
@@ -416,6 +438,9 @@
 {#snippet chanChip(content: Snippet)}
 	<span class="chip" data-channel={heroChannel}>{@render content()}</span>
 {/snippet}
+
+{#snippet bold(content: Snippet)}<b>{@render content()}</b>{/snippet}
+{#snippet mono(content: Snippet)}<code>{@render content()}</code>{/snippet}
 
 <style>
 	.managed {

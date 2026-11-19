@@ -54,7 +54,6 @@
 	"settings_updates_whats_new_rollback_restored": "Atlas CLI stays on {version}; nothing is half updated.",
 	"settings_updates_whats_new_rollback_restored_unknown": "Atlas CLI stays on its previous version; nothing is half updated.",
 	"settings_updates_whats_new_skip_version": "Skip this version",
-	"settings_updates_whats_new_title": "What's new",
 	"settings_updates_whats_new_update_failed": "The update failed.",
 	"settings_updates_whats_new_update_relaunch": "Update to {version} and relaunch",
 	"settings_updates_whats_new_update_relaunch_size": "Update to {version} and relaunch · {size}",

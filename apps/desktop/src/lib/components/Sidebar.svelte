@@ -122,7 +122,7 @@
 			{
 				id: "atlas::AddProject",
 				get label() {
-					return m.sidebar_add_project();
+					return m.shell_home_no_project_add_project();
 				},
 				run: () => void addProject(),
 			},
@@ -137,7 +137,7 @@
 			{
 				id: "atlas::DiscoverProjects",
 				get label() {
-					return m.sidebar_command_discover();
+					return m.shell_home_no_project_discover();
 				},
 				run: () => void showDiscover(),
 			},
@@ -203,13 +203,13 @@
 			bind:value={sidebar.filter}
 			onkeydown={(e) => e.key === "Escape" && ((sidebar.filter = ""), e.currentTarget.blur())}
 		/>
-		<Tip label={m.sidebar_jump()} command="atlas::Jump" side="bottom">
+		<Tip label={m.shell_commands_jump()} command="atlas::Jump" side="bottom">
 			{#snippet child(props)}
 				<button
 					{...props}
 					class="jump"
 					data-tour="palette"
-					aria-label={m.sidebar_jump()}
+					aria-label={m.shell_commands_jump()}
 					onclick={() => onJump?.()}
 				>
 					<Kbd>{shortcutFor("atlas::Jump") ?? kbd("cmd-k")}</Kbd>
@@ -227,11 +227,11 @@
 	{/if}
 	<nav class="list">
 		<button class="item fixed" class:active={ws.view === "agents"} onclick={() => (ws.view = "agents")}>
-			<Bot size={13} /><span class="name">{m.sidebar_agents()}</span>
+			<Bot size={13} /><span class="name">{m.shell_commands_agents()}</span>
 			{#if workingCount}<span class="count">{workingCount}</span>{/if}
 		</button>
 		<button class="item fixed" class:active={ws.view === "dashboard"} onclick={() => (ws.view = "dashboard")}>
-			<LayoutDashboard size={13} /><span class="name">{m.sidebar_dashboard()}</span>
+			<LayoutDashboard size={13} /><span class="name">{m.shell_commands_dashboard()}</span>
 		</button>
 		<LooseFiles />
 		{#if activeRepo}
@@ -244,7 +244,7 @@
 		{#if others.length}
 			<button class="section" aria-expanded={listOpen} onclick={() => (allOpen = !allOpen)}>
 				<ChevronRight size={11} class="chev {listOpen ? 'open' : ''}" />
-				<span>{activeRepo ? m.sidebar_other_projects() : m.sidebar_projects()}</span>
+				<span>{activeRepo ? m.sidebar_other_projects() : m.shell_chrome_space_dots_projects()}</span>
 				<span class="count">{others.length}</span>
 			</button>
 			{#if listOpen}
@@ -272,7 +272,8 @@
 		{/if}
 	</nav>
 	{#if hasArchived}
-		<label class="archived"><input type="checkbox" bind:checked={sidebar.showArchived} /> {m.sidebar_show_archived()}</label
+		<label class="archived"
+			><input type="checkbox" bind:checked={sidebar.showArchived} /> {m.sidebar_show_archived()}</label
 		>
 	{/if}
 	<SidebarFooter onDiscover={showDiscover} />

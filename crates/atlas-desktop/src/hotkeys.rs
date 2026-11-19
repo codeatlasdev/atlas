@@ -78,15 +78,13 @@ pub fn accelerator(stroke: &str) -> Result<Option<String>, String> {
         k => k.to_string(),
     };
     let accel = format!("{}+{key}", out.join("+"));
-    accel
-        .parse::<Shortcut>()
-        .map_err(|e| {
-            t!(
-                "native_hotkeys_unlistenable",
-                stroke = &stroke,
-                reason = e.to_string()
-            )
-        })?;
+    accel.parse::<Shortcut>().map_err(|e| {
+        t!(
+            "native_hotkeys_unlistenable",
+            stroke = &stroke,
+            reason = e.to_string()
+        )
+    })?;
     Ok(Some(accel))
 }
 
@@ -149,7 +147,7 @@ pub enum Command {
     Minimize,
     SaveAs,
     Editing,
-    AppCommand,
+    StandardApp,
 }
 
 impl Command {
@@ -177,13 +175,16 @@ impl Command {
                 "native_hotkeys_owner_finder_search",
                 key = mac_key("alt-cmd-space")
             ),
-            Command::AppSwitcher => t!("native_hotkeys_owner_app_switcher", key = mac_key("cmd-tab")),
+            Command::AppSwitcher => t!(
+                "native_hotkeys_owner_app_switcher",
+                key = mac_key("cmd-tab")
+            ),
             Command::Quit => t!("native_hotkeys_owner_quit", key = mac_key("cmd-q")),
             Command::Hide => t!("native_hotkeys_owner_hide", key = mac_key("cmd-h")),
             Command::Minimize => t!("native_hotkeys_owner_minimize", key = mac_key("cmd-m")),
             Command::SaveAs => t!("native_hotkeys_owner_save_as", key = mac_key("shift-cmd-s")),
             Command::Editing => t!("native_hotkeys_owner_editing"),
-            Command::AppCommand => t!("native_hotkeys_owner_app_command"),
+            Command::StandardApp => t!("native_hotkeys_owner_app_command"),
         }
     }
 }
@@ -217,7 +218,7 @@ pub fn reserved(stroke: &str) -> Option<Owner> {
             Owner::Apps(Command::Editing)
         }
         "cmd-s" | "cmd-o" | "cmd-n" | "cmd-w" | "cmd-p" | "cmd-f" | "cmd-t" => {
-            Owner::Apps(Command::AppCommand)
+            Owner::Apps(Command::StandardApp)
         }
         _ => return None,
     })
@@ -309,7 +310,9 @@ pub fn check_with(stroke: &str, screenshot_keys_free: bool) -> Verdict {
         Some(Owner::System(c)) => {
             Verdict::Refused(t!("native_hotkeys_system_taken", owner = c.describe()))
         }
-        Some(Owner::Apps(c)) => Verdict::Warn(t!("native_hotkeys_apps_taken", owner = c.describe())),
+        Some(Owner::Apps(c)) => {
+            Verdict::Warn(t!("native_hotkeys_apps_taken", owner = c.describe()))
+        }
         None => Verdict::Ok,
     }
 }

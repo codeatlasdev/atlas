@@ -22,7 +22,9 @@ export function addPlan(p: Probe): AddPlan {
  */
 function detectedStack(detected: string): string {
 	const kind = /^(\w+) project\b/.exec(detected)?.[1]?.toLowerCase();
-	return kind && Object.hasOwn(STACK_MESSAGES, kind) ? STACK_MESSAGES[kind]!() : detected.replace(/ \(.*\)$/, "");
+	return kind && Object.hasOwn(STACK_MESSAGES, kind)
+		? STACK_MESSAGES[kind]!()
+		: detected.replace(/ \(.*\)$/, "");
 }
 
 /** The line shown after adding a folder, or null when there is nothing to tell (it has an atlas.yaml, or is broken).

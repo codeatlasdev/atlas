@@ -20,6 +20,7 @@
 	import ReleaseTrain from "./ReleaseTrain.svelte";
 	import { m } from "#lib/i18n/m.ts";
 	import Rich from "#lib/i18n/Rich.svelte";
+	import type { Snippet } from "svelte";
 
 	let cards = $derived(
 		cardState(u.channels, u.info?.app.version, u.channelState?.channel ?? DEFAULT_CHANNEL),
@@ -80,13 +81,12 @@
 <section class="chan" aria-labelledby="chan-title" data-setting="update-channel">
 	<div class="head">
 		<h3 id="chan-title">{m.settings_updates_channel_title()}</h3>
-		<Tooltip
-			content={m.settings_updates_channel_tooltip()}
-			side="top"
-		>
+		<Tooltip content={m.settings_updates_channel_tooltip()} side="top">
 			<Info size={13} aria-label={m.settings_updates_channel_about_aria()} />
 		</Tooltip>
-		{#if u.channelsLoading}<span class="busy"><Spinner size={11} /> {m.crew_settings_browsers_row_checking()}</span>{/if}
+		{#if u.channelsLoading}<span class="busy"
+				><Spinner size={11} /> {m.crew_settings_browsers_row_checking()}</span
+			>{/if}
 	</div>
 
 	{#if stage}<p class="stage">{stage}</p>{/if}
@@ -95,7 +95,7 @@
 		<p class="note" role="status">
 			<Rich
 				parts={m.settings_updates_channel_env_forced.parts({ channel: channelName(u.channelState.channel) })}
-				tags={{ b: "b", code: "code" }}
+				tags={{ b: bold, code: mono }}
 			/>
 		</p>
 	{/if}
@@ -134,7 +134,8 @@
 				{#if shownCard}
 					<p class="promise" id="chan-desc">
 						<span class="tag tone-{shownCard.tone}">{channelCopy(shownCard.view, "risk_label")}</span>
-						{#if shownCard.installed}<span class="tag plain">{m.settings_updates_channel_installed()}</span>{/if}
+						{#if shownCard.installed}<span class="tag plain">{m.settings_updates_channel_installed()}</span
+							>{/if}
 						{channelCopy(shownCard.view, "promise")}
 					</p>
 					<p
@@ -146,7 +147,9 @@
 						{shownCard.offer}
 						<span class="cad">· {channelCopy(shownCard.view, "cadence")}</span>
 					</p>
-					{#if shownCard.view.alpha_era_note}<p class="era">{channelCopy(shownCard.view, "alpha_era_note")}</p>{/if}
+					{#if shownCard.view.alpha_era_note}<p class="era">
+							{channelCopy(shownCard.view, "alpha_era_note")}
+						</p>{/if}
 				{/if}
 			</div>
 			<div class="art"><ReleaseTrain {followed} {pending} /></div>
@@ -155,7 +158,12 @@
 
 	{#if pendingCard && confirm}
 		<!-- svelte-ignore a11y_no_noninteractive_element_interactions -->
-		<div class="confirm" role="group" aria-label={m.settings_updates_channel_switch_to_aria({ label: pendingLabel })} onkeydown={onkey}>
+		<div
+			class="confirm"
+			role="group"
+			aria-label={m.settings_updates_channel_switch_to_aria({ label: pendingLabel })}
+			onkeydown={onkey}
+		>
 			<p class="ctext">{confirm.text}</p>
 			{#if confirm.downgrade}
 				<Alert severity="warning" title={m.settings_updates_channel_older_title({ label: pendingLabel })}>
@@ -164,7 +172,9 @@
 				</Alert>
 			{/if}
 			<div class="actions">
-				<Button variant="ghost" size="sm" disabled={saving} onclick={() => (pending = null)}>{m.common_action_cancel()}</Button>
+				<Button variant="ghost" size="sm" disabled={saving} onclick={() => (pending = null)}
+					>{m.common_action_cancel()}</Button
+				>
 				{#if confirm.downgrade}
 					<Button variant="glass" size="sm" disabled={saving || !!u.running} onclick={downgrade}>
 						{#snippet leading()}<TriangleAlert size={13} />{/snippet}
@@ -179,6 +189,9 @@
 		</div>
 	{/if}
 </section>
+
+{#snippet bold(content: Snippet)}<b>{@render content()}</b>{/snippet}
+{#snippet mono(content: Snippet)}<code>{@render content()}</code>{/snippet}
 
 <style>
 	.chan {

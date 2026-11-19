@@ -11,9 +11,18 @@ const ERROR = "error: example-host: tunnel up but hostd unreachable: connection 
 
 describe("SSH host status chip", () => {
 	test("each known id gets its own message and color", () => {
-		expect(sshStatusView("connected")).toEqual({ tone: "success", label: m.settings_agents_ssh_status_connected() });
-		expect(sshStatusView("connecting")).toEqual({ tone: "warning", label: m.settings_agents_ssh_status_connecting() });
-		expect(sshStatusView("removed")).toEqual({ tone: "neutral", label: m.settings_agents_ssh_status_removed() });
+		expect(sshStatusView("connected")).toEqual({
+			tone: "success",
+			label: m.settings_agents_ssh_status_connected(),
+		});
+		expect(sshStatusView("connecting")).toEqual({
+			tone: "warning",
+			label: m.settings_agents_ssh_status_connecting(),
+		});
+		expect(sshStatusView("removed")).toEqual({
+			tone: "neutral",
+			label: m.settings_agents_ssh_status_removed(),
+		});
 		expect(sshStatusView(undefined)).toEqual({ tone: "neutral", label: m.settings_agents_ssh_status_idle() });
 	});
 

@@ -654,7 +654,8 @@ export function channelOfVersion(version: string): Channel | null {
 }
 
 /** The text fields of a channel that the backend sends as English copy (`atlas_core::channel`, `data/channels.json`). */
-export type ChannelTextField = "label" | "promise" | "risk_label" | "cadence" | "switch_to" | "alpha_era_note";
+export type ChannelTextField =
+	"label" | "promise" | "risk_label" | "cadence" | "switch_to" | "alpha_era_note";
 
 /**
  * The catalog's message for a producer text field of channel `id`, `null` when there is none. The copy of a channel
@@ -854,7 +855,7 @@ export function updateHeadline(status: UpdateStatus, version: string | null | un
 		case "checking":
 			return m.settings_updates_headline_checking();
 		case "available":
-			return m.settings_updates_headline_available({ version: version ?? "" });
+			return m.tray_recommend_update_title({ version: version ?? "" });
 		case "current":
 			return m.settings_updates_headline_current();
 		case "installing":

@@ -20,9 +20,13 @@
 
 <footer>
 	{#if updates.pill}
-		<button class="pill" onclick={updates.showWhatsNew} aria-label={m.sidebar_footer_update({ version: updates.release?.version })}>
+		<button
+			class="pill"
+			onclick={updates.showWhatsNew}
+			aria-label={m.shell_commands_update_to({ version: updates.release?.version ?? "" })}
+		>
 			<Sparkles size={13} />
-			<span>{m.sidebar_footer_update({ version: updates.release?.version })}</span>
+			<span>{m.shell_commands_update_to({ version: updates.release?.version ?? "" })}</span>
 		</button>
 	{/if}
 	{#if chip}
@@ -42,18 +46,30 @@
 		</Tip>
 	{/if}
 	<SpaceDots />
-	<button class="add" onclick={addProject}><Plus size={14} /> {m.sidebar_add_project()}</button>
+	<button class="add" onclick={addProject}><Plus size={14} /> {m.shell_home_no_project_add_project()}</button>
 	<div class="tools">
 		<Tip label={m.sidebar_discover_dialog_find_projects()} side="top">
 			{#snippet child(props)}
-				<IconButton {...props} variant="text" size="sm" aria-label={m.sidebar_discover_dialog_find_projects()} onclick={onDiscover}>
+				<IconButton
+					{...props}
+					variant="text"
+					size="sm"
+					aria-label={m.sidebar_discover_dialog_find_projects()}
+					onclick={onDiscover}
+				>
 					<Search size={14} />
 				</IconButton>
 			{/snippet}
 		</Tip>
 		<Tip label={m.sidebar_footer_settings()} command="zed::OpenSettings" side="top">
 			{#snippet child(props)}
-				<IconButton {...props} variant="text" size="sm" aria-label={m.sidebar_footer_settings()} onclick={() => updates.show()}>
+				<IconButton
+					{...props}
+					variant="text"
+					size="sm"
+					aria-label={m.sidebar_footer_settings()}
+					onclick={() => updates.show()}
+				>
 					<Settings size={14} />
 				</IconButton>
 			{/snippet}

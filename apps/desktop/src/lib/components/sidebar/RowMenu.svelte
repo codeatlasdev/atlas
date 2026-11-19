@@ -26,7 +26,11 @@
 	async function rename(id: string) {
 		const w = ws.worktree(id);
 		const v =
-			w && (await promptDialog(m.sidebar_row_menu_rename_title(), { value: w.name, confirmLabel: m.common_action_rename() }));
+			w &&
+			(await promptDialog(m.sidebar_row_menu_rename_title(), {
+				value: w.name,
+				confirmLabel: m.common_action_rename(),
+			}));
 		if (w && v) w.name = v;
 	}
 
@@ -46,12 +50,14 @@
 </script>
 
 {#if p.missing}
-	<DropdownMenuItem onclick={() => locateProject(p.id)}>{m.sidebar_row_menu_locate()}</DropdownMenuItem>
+	<DropdownMenuItem onclick={() => locateProject(p.id)}
+		>{m.shell_home_missing_project_locate()}</DropdownMenuItem
+	>
 {:else}
 	<DropdownMenuItem onclick={() => openTerminal(p.id)}>{m.sidebar_row_menu_new_terminal()}</DropdownMenuItem>
-	<DropdownMenuItem onclick={() => onAgent?.(p.id)}>{m.sidebar_row_menu_new_agent()}</DropdownMenuItem>
+	<DropdownMenuItem onclick={() => onAgent?.(p.id)}>{m.tray_page_new_agent()}</DropdownMenuItem>
 	<DropdownMenuItem onclick={toggleStack}>
-		{p.running ? m.sidebar_row_menu_stop_stack() : m.sidebar_row_menu_start_stack()}
+		{p.running ? m.shell_commands_stop_stack() : m.shell_commands_start_stack()}
 	</DropdownMenuItem>
 	<DropdownMenuItem onclick={() => store.run("ed", () => api.openEditor(p.id))}
 		>{m.sidebar_row_menu_open_in_editor()}</DropdownMenuItem
@@ -59,13 +65,17 @@
 	<DropdownMenuItem onclick={() => store.run("reveal", () => api.reveal(p.id))}
 		>{revealLabel()}</DropdownMenuItem
 	>
-	<DropdownMenuItem onclick={createCrewmateForProject}>{m.sidebar_row_menu_create_crewmate()}</DropdownMenuItem>
+	<DropdownMenuItem onclick={createCrewmateForProject}
+		>{m.sidebar_row_menu_create_crewmate()}</DropdownMenuItem
+	>
 {/if}
 <DropdownMenuItem onclick={() => store.run("pin", () => api.pin(p.id, !p.pinned))}>
 	{p.pinned ? m.shell_project_header_unpin() : m.shell_project_header_pin_to_top()}
 </DropdownMenuItem>
 {#if !p.parent}
-	<DropdownMenuItem onclick={() => (identities.editing = p.id)}>{m.sidebar_row_menu_change_icon_and_color()}</DropdownMenuItem>
+	<DropdownMenuItem onclick={() => (identities.editing = p.id)}
+		>{m.shell_commands_project_menu_change_icon()}</DropdownMenuItem
+	>
 	<DropdownMenuItem variant="destructive" onclick={() => removeProject(p.id)}
 		>{m.shell_project_header_remove_from_atlas()}</DropdownMenuItem
 	>
@@ -80,5 +90,7 @@
 	<DropdownMenuItem onclick={() => (w.archived = !w.archived)}>
 		{w.archived ? m.sidebar_row_menu_unarchive() : m.sidebar_row_menu_archive()}
 	</DropdownMenuItem>
-	<DropdownMenuItem variant="destructive" onclick={() => sidebar.askDelete([p.id])}>{m.sidebar_row_menu_delete()}</DropdownMenuItem>
+	<DropdownMenuItem variant="destructive" onclick={() => sidebar.askDelete([p.id])}
+		>{m.sidebar_row_menu_delete()}</DropdownMenuItem
+	>
 {/if}

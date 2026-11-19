@@ -162,9 +162,7 @@ describe("registry <-> component", () => {
 
 	test("every row's label and description in the registry is what the screen shows", () => {
 		const items = Object.fromEntries(section.pages[0].groups.flatMap((g) => g.items).map((i) => [i.id, i]));
-		const rows = [
-			...page.matchAll(/<Row\s+id="([a-z-]+)"\s+label=\{([^{}]+)\}\s+description=\{([^{}]+)\}/g),
-		];
+		const rows = [...page.matchAll(/<Row\s+id="([a-z-]+)"\s+label=\{([^{}]+)\}\s+description=\{([^{}]+)\}/g)];
 		// Every row that states both texts as messages (the keys rows read KEY_FIELDS, the history row has its own).
 		expect(rows.length).toBeGreaterThan(25);
 		for (const [, id, label, description] of rows) {

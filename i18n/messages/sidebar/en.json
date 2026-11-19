@@ -1,5 +1,4 @@
 {
-	"sidebar_add_project": "Add project…",
 	"sidebar_added_detected": [
 		{
 			"declarations": [
@@ -20,12 +19,9 @@
 		}
 	],
 	"sidebar_added_nothing": "Added: nothing to run was detected yet",
-	"sidebar_agents": "Agents",
 	"sidebar_clear_filter": "Clear filter",
-	"sidebar_command_discover": "Find projects on this machine",
 	"sidebar_command_remove_missing": "Remove missing projects",
 	"sidebar_command_remove_project": "Remove project from Atlas…",
-	"sidebar_dashboard": "Dashboard",
 	"sidebar_delete_dialog_body": "Removes the checkout and its terminals. Unmerged branches are kept unless forced.",
 	"sidebar_delete_dialog_force": "Force (discard changes, delete unmerged branch)",
 	"sidebar_delete_dialog_title": [
@@ -120,10 +116,8 @@
 	],
 	"sidebar_discover_dialog_moved_copy": "Probably the moved copy of {#b}{name}{/b}",
 	"sidebar_discover_dialog_no_config": "No folder with an atlas.yaml yet. Add one from the list below.",
-	"sidebar_discover_dialog_no_match": "No project matches \"{query}\".",
 	"sidebar_discover_dialog_none": "No projects found in the scanned folders.",
 	"sidebar_discover_dialog_pick_root": "Folder to scan for projects",
-	"sidebar_discover_dialog_relink": "Relink",
 	"sidebar_discover_dialog_scanned": [
 		{
 			"declarations": [
@@ -188,9 +182,7 @@
 	],
 	"sidebar_filter_worktrees": "Filter worktrees",
 	"sidebar_footer_settings": "Settings",
-	"sidebar_footer_update": "Update to {version}",
 	"sidebar_hide_sidebar": "Hide sidebar",
-	"sidebar_jump": "Jump to worktree or terminal",
 	"sidebar_loose_files_close_file": "Close {name}",
 	"sidebar_loose_files_files": "Files",
 	"sidebar_loose_files_show_all": "Show all ({count})",
@@ -242,7 +234,6 @@
 			}
 		}
 	],
-	"sidebar_projects": "Projects",
 	"sidebar_projects_add_title": "Add project",
 	"sidebar_projects_all_found": "All projects are where Atlas expects them",
 	"sidebar_projects_already_added": "{name} is already in Atlas",
@@ -352,9 +343,7 @@
 	"sidebar_right_empty_body": "Sessions of agents you run in this worktree show up here, with what each one last did, so you can resume them later.",
 	"sidebar_right_empty_body_hint": "Sessions of agents you run in this worktree show up here, with what each one last did, so you can resume them later. Choose Project or All to see sessions from other worktrees.",
 	"sidebar_right_empty_title": "No agent sessions yet",
-	"sidebar_right_hide": "Hide right sidebar",
 	"sidebar_right_history": "History",
-	"sidebar_right_new_session": "New agent session",
 	"sidebar_right_no_earlier_here": "No earlier sessions here yet.",
 	"sidebar_right_no_earlier_worktree": "No earlier sessions in this worktree yet.",
 	"sidebar_right_no_match": "No sessions match \"{query}\".",
@@ -374,18 +363,13 @@
 	"sidebar_right_search_sessions": "Search sessions",
 	"sidebar_right_show_sessions_of": "Show sessions of",
 	"sidebar_row_menu_archive": "Archive",
-	"sidebar_row_menu_change_icon_and_color": "Change icon and color…",
 	"sidebar_row_menu_create_crewmate": "Create crewmate for this project",
 	"sidebar_row_menu_delete": "Delete…",
-	"sidebar_row_menu_locate": "Locate…",
 	"sidebar_row_menu_mark_read": "Mark as read",
 	"sidebar_row_menu_mark_unread": "Mark as unread",
-	"sidebar_row_menu_new_agent": "New agent",
 	"sidebar_row_menu_new_terminal": "New terminal",
 	"sidebar_row_menu_open_in_editor": "Open in editor",
 	"sidebar_row_menu_rename_title": "Rename worktree",
-	"sidebar_row_menu_start_stack": "Start stack",
-	"sidebar_row_menu_stop_stack": "Stop stack",
 	"sidebar_row_menu_unarchive": "Unarchive",
 	"sidebar_show_archived": "Show archived",
 	"sidebar_step_add": "Creating the checkout",

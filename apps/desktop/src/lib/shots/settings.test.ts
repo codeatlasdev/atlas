@@ -481,8 +481,14 @@ describe("option lists", () => {
 			expect(new Set(labels).size, labels.join()).toBe(labels.length);
 			for (const l of labels) expect(l.trim(), l).not.toBe("");
 		}
-		const english = lists().flat().map((o) => o.label);
-		const portuguese = await inLocale("pt-BR", () => lists().flat().map((o) => o.label));
+		const english = lists()
+			.flat()
+			.map((o) => o.label);
+		const portuguese = await inLocale("pt-BR", () =>
+			lists()
+				.flat()
+				.map((o) => o.label),
+		);
 		for (const [i, en] of english.entries()) expect(portuguese[i], en).not.toBe(en);
 	});
 });

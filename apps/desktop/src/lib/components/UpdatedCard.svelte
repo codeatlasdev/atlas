@@ -20,7 +20,9 @@
 <!-- Good news, not urgent: a suggestion, so it waits behind anything that needs attention. -->
 {#if v && !updates.whatsNewOpen}
 	{#snippet act()}
-		<Button size="sm" variant="glass" onclick={updates.showWhatsNew}>{m.settings_updates_card_see_whats_new()}</Button>
+		<Button size="sm" variant="glass" onclick={updates.showWhatsNew}
+			>{m.settings_updates_card_see_whats_new()}</Button
+		>
 	{/snippet}
 	<CornerNotice
 		id="updated"

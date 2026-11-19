@@ -136,7 +136,7 @@
 	"settings_agents_ssh_status_idle": "Inativo",
 	"settings_agents_ssh_status_outdated": "Conectado, desatualizado",
 	"settings_agents_ssh_status_removed": "Removido",
-	"settings_agents_ssh_test_atlas_missing": "{os} {arch} · Atlas não instalado",
-	"settings_agents_ssh_test_result": "{os} {arch} · {atlas}",
+	"settings_agents_ssh_test_atlas_missing": "{system} {arch} · Atlas não instalado",
+	"settings_agents_ssh_test_result": "{system} {arch} · {atlas}",
 	"settings_agents_ssh_your_hosts": "Seus hosts"
 }

@@ -59,8 +59,8 @@
 				alias,
 			});
 			tests[alias] = r.atlas
-				? m.settings_agents_ssh_test_result({ os: r.os, arch: r.arch, atlas: r.atlas })
-				: m.settings_agents_ssh_test_atlas_missing({ os: r.os, arch: r.arch });
+				? m.settings_agents_ssh_test_result({ system: r.os, arch: r.arch, atlas: r.atlas })
+				: m.settings_agents_ssh_test_atlas_missing({ system: r.os, arch: r.arch });
 		} catch (e) {
 			tests[alias] = errText(e);
 		}
@@ -97,7 +97,9 @@
 		<Row label={h} description={tests[h] ?? undefined}>
 			<StatusChip status={view.tone} label={view.label} />
 			{#if status[h] === "connecting"}<Spinner size={11} />{/if}
-			<Button size="sm" variant="outlined" onclick={() => test(h)}>{m.crew_settings_engine_section_test_connection()}</Button>
+			<Button size="sm" variant="outlined" onclick={() => test(h)}
+				>{m.crew_settings_engine_section_test_connection()}</Button
+			>
 			<Button size="sm" variant="ghost" onclick={() => remove(h)}>{m.common_action_remove()}</Button>
 			{#snippet below()}
 				{#if view.detail}<div class="err ca-selectable">
@@ -135,7 +137,11 @@
 		title={m.settings_agents_ssh_remote_project()}
 		description={m.settings_agents_ssh_remote_project_description()}
 	>
-		<Row id="ssh-project" label={m.settings_agents_ssh_host()} description={m.settings_agents_ssh_host_description()}>
+		<Row
+			id="ssh-project"
+			label={m.settings_agents_ssh_host()}
+			description={m.settings_agents_ssh_host_description()}
+		>
 			<div class="select">
 				<Select
 					size="sm"
@@ -145,7 +151,11 @@
 				/>
 			</div>
 		</Row>
-		<Row label={m.settings_agents_ssh_project_folder()} description={m.settings_agents_ssh_project_folder_description()} stack>
+		<Row
+			label={m.settings_agents_ssh_project_folder()}
+			description={m.settings_agents_ssh_project_folder_description()}
+			stack
+		>
 			<!-- i18n-ignore: an example path, not prose -->
 			<TextInput
 				mono
@@ -156,8 +166,13 @@
 				onchange={(v) => (addPath = v)}
 			/>
 		</Row>
-		<Row label={m.settings_agents_ssh_add_project_label()} description={m.settings_agents_ssh_add_project_description()}>
-			<Button size="sm" disabled={adding || !addPath.trim()} onclick={addProject}>{m.settings_agents_ssh_add_project()}</Button>
+		<Row
+			label={m.settings_agents_ssh_add_project_label()}
+			description={m.settings_agents_ssh_add_project_description()}
+		>
+			<Button size="sm" disabled={adding || !addPath.trim()} onclick={addProject}
+				>{m.settings_agents_ssh_add_project()}</Button
+			>
 		</Row>
 	</Group>
 {/if}

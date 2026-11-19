@@ -94,7 +94,7 @@
 	"settings_agents_ssh_status_idle": "Chip text of an SSH host the desktop shell has not reported on yet, in Settings > SSH hosts. i18n-distinct: crew_workspace_status_idle is the state of a crewmate.",
 	"settings_agents_ssh_status_outdated": "Chip text of an SSH host connected through an Atlas older than the desktop needs, in Settings > SSH hosts. Mapped from a status that starts with `warning`; the raw detail shows below the row.",
 	"settings_agents_ssh_status_removed": "Chip text of an SSH host that was just removed, in Settings > SSH hosts. Mapped from the status id `removed`. i18n-distinct: cmd_setup_done_removed is a CLI result word.",
-	"settings_agents_ssh_test_atlas_missing": "Result line of Test connection in Settings > SSH hosts when atlas is not installed on the host. {os} and {arch} are the host's uname values (Linux, x86_64).",
-	"settings_agents_ssh_test_result": "Result line of Test connection in Settings > SSH hosts. {os} and {arch} are the host's uname values and {atlas} is the first line printed by `atlas version` there.",
+	"settings_agents_ssh_test_atlas_missing": "Result line of Test connection in Settings > SSH hosts when atlas is not installed on the host. {system} and {arch} are the host's uname values (Linux, x86_64).",
+	"settings_agents_ssh_test_result": "Result line of Test connection in Settings > SSH hosts. {system} and {arch} are the host's uname values and {atlas} is the first line printed by `atlas version` there.",
 	"settings_agents_ssh_your_hosts": "Title of the first group of Settings > SSH hosts: the hosts already added."
 }

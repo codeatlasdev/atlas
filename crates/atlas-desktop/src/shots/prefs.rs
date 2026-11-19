@@ -63,7 +63,7 @@ impl Hotkey {
             Hotkey::Fullscreen => t!("native_capture_action_screen"),
             Hotkey::Ocr => t!("native_capture_action_ocr"),
             Hotkey::Record => t!("native_capture_action_record"),
-            Hotkey::Gif => t!("native_capture_action_gif"),
+            Hotkey::Gif => t!("native_menu_capture_gif"),
         }
     }
 }
@@ -444,7 +444,11 @@ impl CapturePrefs {
         for (h, stroke) in self.keys.entries() {
             if let hotkeys::Verdict::Refused(r) = hotkeys::check_with(stroke, self.system_keys_free)
             {
-                return Err(t!("native_capture_key_refused", action = h.label(), reason = r));
+                return Err(t!(
+                    "native_capture_key_refused",
+                    action = h.label(),
+                    reason = r
+                ));
             }
         }
         all.extend_from_slice(others);

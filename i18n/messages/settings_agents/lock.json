@@ -95,8 +95,8 @@
     "settings_agents_ssh_status_idle": "713fb8989d85",
     "settings_agents_ssh_status_outdated": "a6e9b455a0bd",
     "settings_agents_ssh_status_removed": "647e98cce469",
-    "settings_agents_ssh_test_atlas_missing": "15bf427bcbff",
-    "settings_agents_ssh_test_result": "5065e4714b1e",
+    "settings_agents_ssh_test_atlas_missing": "de361f26cbe6",
+    "settings_agents_ssh_test_result": "ec77d1712b80",
     "settings_agents_ssh_your_hosts": "38e3804203b4"
   }
 }

@@ -156,12 +156,12 @@
 	let rows = $derived(
 		w ? portRows(ports, store.configs[w.id]?.services ?? [], store.live[w.id]?.services ?? []) : [],
 	);
-	let dockLabel = $derived(docks.right ? m.sidebar_right_hide() : m.sidebar_right_pin());
+	let dockLabel = $derived(docks.right ? m.shell_chrome_right_toggle_hide() : m.sidebar_right_pin());
 </script>
 
 <aside class="right">
 	<div class="tabs" data-tauri-drag-region>
-		<button class:on={tab === "agents"} onclick={() => (tab = "agents")}>{m.sidebar_agents()}</button>
+		<button class:on={tab === "agents"} onclick={() => (tab = "agents")}>{m.shell_commands_agents()}</button>
 		<button class:on={tab === "ports"} onclick={() => (tab = "ports")}>{m.sidebar_right_ports()}</button>
 		<button
 			class="icon"
@@ -170,17 +170,9 @@
 		>
 			<RefreshCw size={12} />
 		</button>
-		<Tip
-			label={dockLabel}
-			command="workspace::ToggleRightDock"
-		>
+		<Tip label={dockLabel} command="workspace::ToggleRightDock">
 			{#snippet child(props)}
-				<button
-					{...props}
-					class="hide"
-					aria-label={dockLabel}
-					onclick={() => toggleDock("right")}
-				>
+				<button {...props} class="hide" aria-label={dockLabel} onclick={() => toggleDock("right")}>
 					{#if docks.right}<PanelRightClose size={13} />{:else}<Pin size={12} />{/if}
 				</button>
 			{/snippet}
@@ -265,17 +257,22 @@
 					<p class="empty">{m.sidebar_right_no_match({ query })}</p>
 				{:else if live.length}
 					<p class="empty">
-						{scope === "workspace" ? m.sidebar_right_no_earlier_worktree() : m.sidebar_right_no_earlier_here()}
+						{scope === "workspace"
+							? m.sidebar_right_no_earlier_worktree()
+							: m.sidebar_right_no_earlier_here()}
 					</p>
 				{:else}
 					<EmptyState
 						icon={Bot}
 						title={m.sidebar_right_empty_title()}
-						description={scope === "workspace" ? m.sidebar_right_empty_body_hint() : m.sidebar_right_empty_body()}
+						description={scope === "workspace"
+							? m.sidebar_right_empty_body_hint()
+							: m.sidebar_right_empty_body()}
 					>
 						{#snippet actions()}
 							<button class="start" onclick={() => runCommand("atlas::NewAgentSession")}>
-								{m.sidebar_right_new_session()} <kbd>{shortcutFor("atlas::NewAgentSession") ?? ""}</kbd>
+								{m.shell_commands_new_agent_session()}
+								<kbd>{shortcutFor("atlas::NewAgentSession") ?? ""}</kbd>
 							</button>
 						{/snippet}
 					</EmptyState>

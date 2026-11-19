@@ -54,7 +54,6 @@
 	"settings_updates_whats_new_rollback_restored": "A CLI do Atlas continua na versão {version}; nada ficou atualizado pela metade.",
 	"settings_updates_whats_new_rollback_restored_unknown": "A CLI do Atlas continua na versão anterior; nada ficou atualizado pela metade.",
 	"settings_updates_whats_new_skip_version": "Ignorar esta versão",
-	"settings_updates_whats_new_title": "Novidades",
 	"settings_updates_whats_new_update_failed": "A atualização falhou.",
 	"settings_updates_whats_new_update_relaunch": "Atualizar para a versão {version} e reabrir",
 	"settings_updates_whats_new_update_relaunch_size": "Atualizar para a versão {version} e reabrir · {size}",

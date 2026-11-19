@@ -52,7 +52,6 @@
 	"settings_updates_whats_new_rollback_restored": "Failed-update message when the CLI was put back after the app could not be updated. {version} is the CLI version it stays on.",
 	"settings_updates_whats_new_rollback_restored_unknown": "Failed-update message when the CLI was put back and its version could not be read.",
 	"settings_updates_whats_new_skip_version": "Link in the What's new footer: Atlas will not remind about this version again.",
-	"settings_updates_whats_new_title": "Title of the What's new sheet (release notes between the installed and the newest version) and its buttons in Settings and on the updated card.",
 	"settings_updates_whats_new_update_failed": "Failed-update message in the install footer when the CLI gave no reason.",
 	"settings_updates_whats_new_update_relaunch": "Primary button of the What's new sheet that installs the update and reopens the app. {version} is the release version.",
 	"settings_updates_whats_new_update_relaunch_size": "Same button as the update and relaunch one when the download size is known. {version} is the release version, {size} the size as text (12.4 MB).",

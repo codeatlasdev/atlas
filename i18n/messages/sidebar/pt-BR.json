@@ -1,5 +1,4 @@
 {
-	"sidebar_add_project": "Adicionar projeto…",
 	"sidebar_added_detected": [
 		{
 			"declarations": [
@@ -20,12 +19,9 @@
 		}
 	],
 	"sidebar_added_nothing": "Adicionado: nada para executar foi detectado ainda",
-	"sidebar_agents": "Agentes",
 	"sidebar_clear_filter": "Limpar filtro",
-	"sidebar_command_discover": "Encontrar projetos neste computador",
 	"sidebar_command_remove_missing": "Remover projetos ausentes",
 	"sidebar_command_remove_project": "Remover projeto do Atlas…",
-	"sidebar_dashboard": "Dashboard",
 	"sidebar_delete_dialog_body": "Remove o checkout e seus terminais. Branches sem merge são mantidas, a menos que você use Forçar.",
 	"sidebar_delete_dialog_force": "Forçar (descartar alterações, excluir branch sem merge)",
 	"sidebar_delete_dialog_title": [
@@ -120,10 +116,8 @@
 	],
 	"sidebar_discover_dialog_moved_copy": "Provavelmente a cópia movida de {#b}{name}{/b}",
 	"sidebar_discover_dialog_no_config": "Nenhuma pasta com atlas.yaml ainda. Adicione uma da lista abaixo.",
-	"sidebar_discover_dialog_no_match": "Nenhum projeto corresponde a \"{query}\".",
 	"sidebar_discover_dialog_none": "Nenhum projeto encontrado nas pastas analisadas.",
 	"sidebar_discover_dialog_pick_root": "Pasta para procurar projetos",
-	"sidebar_discover_dialog_relink": "Revincular",
 	"sidebar_discover_dialog_scanned": [
 		{
 			"declarations": [
@@ -188,9 +182,7 @@
 	],
 	"sidebar_filter_worktrees": "Filtrar worktrees",
 	"sidebar_footer_settings": "Configurações",
-	"sidebar_footer_update": "Atualizar para {version}",
 	"sidebar_hide_sidebar": "Ocultar barra lateral",
-	"sidebar_jump": "Ir para worktree ou terminal",
 	"sidebar_loose_files_close_file": "Fechar {name}",
 	"sidebar_loose_files_files": "Arquivos",
 	"sidebar_loose_files_show_all": "Mostrar todos ({count})",
@@ -242,7 +234,6 @@
 			}
 		}
 	],
-	"sidebar_projects": "Projetos",
 	"sidebar_projects_add_title": "Adicionar projeto",
 	"sidebar_projects_all_found": "Todos os projetos estão onde o Atlas espera",
 	"sidebar_projects_already_added": "{name} já está no Atlas",
@@ -352,9 +343,7 @@
 	"sidebar_right_empty_body": "As sessões dos agentes que você executa nesta worktree aparecem aqui, com o que cada uma fez por último, para você retomá-las depois.",
 	"sidebar_right_empty_body_hint": "As sessões dos agentes que você executa nesta worktree aparecem aqui, com o que cada uma fez por último, para você retomá-las depois. Escolha Projeto ou Todos para ver sessões de outras worktrees.",
 	"sidebar_right_empty_title": "Nenhuma sessão de agente ainda",
-	"sidebar_right_hide": "Ocultar barra lateral direita",
 	"sidebar_right_history": "Histórico",
-	"sidebar_right_new_session": "Nova sessão de agente",
 	"sidebar_right_no_earlier_here": "Nenhuma sessão anterior aqui ainda.",
 	"sidebar_right_no_earlier_worktree": "Nenhuma sessão anterior nesta worktree ainda.",
 	"sidebar_right_no_match": "Nenhuma sessão corresponde a \"{query}\".",
@@ -374,18 +363,13 @@
 	"sidebar_right_search_sessions": "Pesquisar sessões",
 	"sidebar_right_show_sessions_of": "Mostrar sessões de",
 	"sidebar_row_menu_archive": "Arquivar",
-	"sidebar_row_menu_change_icon_and_color": "Alterar ícone e cor…",
 	"sidebar_row_menu_create_crewmate": "Criar crewmate para este projeto",
 	"sidebar_row_menu_delete": "Excluir…",
-	"sidebar_row_menu_locate": "Localizar…",
 	"sidebar_row_menu_mark_read": "Marcar como lido",
 	"sidebar_row_menu_mark_unread": "Marcar como não lido",
-	"sidebar_row_menu_new_agent": "Novo agente",
 	"sidebar_row_menu_new_terminal": "Novo terminal",
 	"sidebar_row_menu_open_in_editor": "Abrir no editor",
 	"sidebar_row_menu_rename_title": "Renomear worktree",
-	"sidebar_row_menu_start_stack": "Iniciar a stack",
-	"sidebar_row_menu_stop_stack": "Parar a stack",
 	"sidebar_row_menu_unarchive": "Desarquivar",
 	"sidebar_show_archived": "Mostrar arquivadas",
 	"sidebar_step_add": "Criando o checkout",

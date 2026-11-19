@@ -272,7 +272,9 @@ test("the footer is one sentence in the display language: the channel chip and t
 
 test("a change group is headed by the catalog's word for its kind, and by the changelog's own for any other", async () => {
 	await inLocale("pt-BR", async () => {
-		const body = await open([release("1.5.0-alpha.25", "### Changed\n\n- **A.** b\n\n### Experiments\n\n- **C.** d")]);
+		const body = await open([
+			release("1.5.0-alpha.25", "### Changed\n\n- **A.** b\n\n### Experiments\n\n- **C.** d"),
+		]);
 		// The heading is the text node of the `h3`; the kind's icon and the count are elements.
 		const heads = [...body.querySelectorAll(".group h3")].map((h) =>
 			[...h.childNodes]

@@ -1,6 +1,5 @@
 {
 	"native_capture_action_all_in_one": "All-in-one capture",
-	"native_capture_action_gif": "Record GIF",
 	"native_capture_action_ocr": "Capture text",
 	"native_capture_action_previous": "Capture previous area",
 	"native_capture_action_record": "Record screen",

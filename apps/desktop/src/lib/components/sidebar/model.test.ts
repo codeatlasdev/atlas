@@ -60,7 +60,9 @@ test("every progress step the worktree creation reports has a label", () => {
 // The state comes from `gh pr view --json state` (the recorded real answer): GitHub's own upper-case value.
 test("the chip words the pull request state gh reports, and shows an unknown one as it came", () => {
 	const view = JSON.parse(prViewOpen.result.stdout);
-	expect(prChip(497, view.state)).toBe(m.sidebar_worktree_row_pr_state({ number: 497, state: m.sidebar_worktree_row_pr_merged() }));
+	expect(prChip(497, view.state)).toBe(
+		m.sidebar_worktree_row_pr_state({ number: 497, state: m.sidebar_worktree_row_pr_merged() }),
+	);
 	expect(prChip(7, "OPEN")).toBe("PR #7 · open");
 	expect(prChip(7, "CLOSED")).toBe("PR #7 · closed");
 	expect(prChip(7, "QUEUED")).toBe("PR #7 · queued");

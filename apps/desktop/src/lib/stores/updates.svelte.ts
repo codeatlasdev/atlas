@@ -281,7 +281,7 @@ class Updates {
 		await this.#save({ notified: v });
 		sound.play("update");
 		void invoke("agent_notify", {
-			title: m.settings_updates_headline_available({ version: v }),
+			title: m.tray_recommend_update_title({ version: v }),
 			body: m.settings_updates_notify_body(),
 			sound: false,
 		}).catch(() => {});
@@ -352,7 +352,7 @@ class Updates {
 	checkNow = async () => {
 		await this.check();
 		if (this.error) toast.error(this.error);
-		else if (this.dev) toast.info(m.settings_updates_toast_dev());
+		else if (this.dev) toast.info(m.tray_page_dev_build_hint());
 		else if (!this.available) toast.success(m.settings_updates_headline_current());
 		else if (this.pill) this.showWhatsNew();
 		else toast.info(m.settings_updates_toast_available_skipped({ version: this.release?.version ?? "" }));

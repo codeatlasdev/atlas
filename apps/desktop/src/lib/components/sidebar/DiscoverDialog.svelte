@@ -151,7 +151,9 @@
 						amount: formatNumber(discovery.done.unreadable),
 					})}{/if}
 			</span>
-			<Button size="sm" variant="ghost" onclick={() => discovery.start()}>{m.onboarding_phases_scan_again()}</Button>
+			<Button size="sm" variant="ghost" onclick={() => discovery.start()}
+				>{m.onboarding_phases_scan_again()}</Button
+			>
 		{/if}
 	</div>
 
@@ -178,7 +180,9 @@
 	</div>
 
 	{#snippet actions()}
-		<Button variant="ghost" onclick={addRoot}><FolderPlus size={13} /> {m.sidebar_discover_dialog_add_root()}</Button>
+		<Button variant="ghost" onclick={addRoot}
+			><FolderPlus size={13} /> {m.sidebar_discover_dialog_add_root()}</Button
+		>
 		<span class="spacer"></span>
 		<Button variant="ghost" onclick={() => discovery.close()}>{m.common_action_close()}</Button>
 		<Button disabled={!picked.length} onclick={addSelected}>
@@ -219,12 +223,20 @@
 					<div class="path mono ca-selectable" title={f.path}>{tilde(f.path)}</div>
 					{#if f.remote}<div class="path mono">{f.remote}</div>{/if}
 					{#if f.error}
-						<div class="err" title={f.error}><TriangleAlert size={11} /> {m.shell_space_view_config_problems()}</div>
+						<div class="err" title={f.error}>
+							<TriangleAlert size={11} />
+							{m.shell_space_view_config_problems()}
+						</div>
 					{/if}
 					{#if move}
 						<div class="move">
-							<span><Rich parts={m.sidebar_discover_dialog_moved_copy.parts({ name: move.name })} tags={{ b: "strong" }} /></span>
-							<Button size="sm" onclick={() => relink(f)}>{m.sidebar_discover_dialog_relink()}</Button>
+							<span
+								><Rich
+									parts={m.sidebar_discover_dialog_moved_copy.parts({ name: move.name })}
+									tags={{ b: "strong" }}
+								/></span
+							>
+							<Button size="sm" onclick={() => relink(f)}>{m.shell_home_missing_project_relink()}</Button>
 						</div>
 					{/if}
 				</div>

@@ -77,10 +77,7 @@
 	const active = $derived(sortDevices(devices.filter((d) => !d.revoked)));
 </script>
 
-<Group
-	title={m.settings_agents_mobile_title()}
-	description={m.settings_agents_mobile_description()}
->
+<Group title={m.settings_agents_mobile_title()} description={m.settings_agents_mobile_description()}>
 	<PairCard {pairing} now={clk.now} busy={starting} error={startError} paired={justPaired} onstart={pair} />
 	<PairHelp pairing={pairing && left > 0 ? pairing.p : null} />
 </Group>

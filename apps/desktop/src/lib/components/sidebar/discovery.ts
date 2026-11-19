@@ -80,12 +80,13 @@ export const tickedByDefault = (f: Found): boolean => f.has_config && !f.error;
  * "Could use Atlas" list: say what is true instead.
  */
 export function noProjectsLine(query: string, candidates: number): string {
-	if (query) return m.sidebar_discover_dialog_no_match({ query });
+	if (query) return m.tray_page_no_match({ query });
 	return candidates ? m.sidebar_discover_dialog_no_config() : m.sidebar_discover_dialog_none();
 }
 
 /** A scan's time in seconds with one decimal, in the digits of the language. */
-const seconds = (ms: number) => formatNumber(ms / 1000, { minimumFractionDigits: 1, maximumFractionDigits: 1 });
+const seconds = (ms: number) =>
+	formatNumber(ms / 1000, { minimumFractionDigits: 1, maximumFractionDigits: 1 });
 
 /** The status line while the scan runs. */
 export function scanningLine(dirs: number, elapsedMs: number, found: number): string {
@@ -100,7 +101,9 @@ export function scanningLine(dirs: number, elapsedMs: number, found: number): st
 /** The status line of a finished (or cancelled) scan, without the unreadable count. */
 export function scannedLine(done: Pick<DiscoverDone, "dirs" | "elapsed_ms" | "cancelled">): string {
 	const inputs = { count: done.dirs, amount: formatNumber(done.dirs), seconds: seconds(done.elapsed_ms) };
-	return done.cancelled ? m.sidebar_discover_dialog_cancelled(inputs) : m.sidebar_discover_dialog_scanned(inputs);
+	return done.cancelled
+		? m.sidebar_discover_dialog_cancelled(inputs)
+		: m.sidebar_discover_dialog_scanned(inputs);
 }
 
 /** The tag of a found folder's stack: the label of the id `stack_of` sent, or the id itself when this app does not know it. */

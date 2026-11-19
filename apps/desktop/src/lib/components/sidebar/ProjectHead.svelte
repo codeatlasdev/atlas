@@ -86,7 +86,9 @@
 	{#if r.pinned}<Pin size={10} class="pin" />{/if}
 	<span class="meta">
 		{#if r.running}<span class="count">{up}/{live?.services.length || r.services_total}</span>{/if}
-		{#if !active && kids.length}<span class="count">{m.sidebar_project_head_worktrees({ count: kids.length + 1 })}</span>{/if}
+		{#if !active && kids.length}<span class="count"
+				>{m.sidebar_project_head_worktrees({ count: kids.length + 1 })}</span
+			>{/if}
 	</span>
 	{#if !r.missing && r.kind !== "folder"}
 		<button

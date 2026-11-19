@@ -83,7 +83,10 @@ test("every stack the Rust detection can name has a label of its own in the toas
 		new URL("../../../../../../crates/atlas-core/src/domain/project.rs", import.meta.url),
 		"utf8",
 	);
-	const body = src.slice(src.indexOf("pub fn detection_label("), src.indexOf("/// The port a dev command announces"));
+	const body = src.slice(
+		src.indexOf("pub fn detection_label("),
+		src.indexOf("/// The port a dev command announces"),
+	);
 	const kinds = [...body.matchAll(/=>\s*\(\s*"(\w+)"/g)].map(([, kind]) => kind);
 	expect(kinds).toEqual(expect.arrayContaining(["Rust", "Node", "Go", "Python"]));
 	const p = { config_source: "detected", services_total: 1, error: null };
@@ -100,6 +103,10 @@ test("a stack this app has no label for is named as the detection label came", (
 });
 
 test("the remove confirmation counts linked worktrees with a plural of its own", () => {
-	expect(removeDescription({ root: "/p/a", running: false }, 3)).toContain(m.sidebar_remove_linked({ count: 3 }));
-	expect(removeDescription({ root: "/p/a", running: false }, 3)).not.toContain(m.sidebar_remove_linked({ count: 1 }));
+	expect(removeDescription({ root: "/p/a", running: false }, 3)).toContain(
+		m.sidebar_remove_linked({ count: 3 }),
+	);
+	expect(removeDescription({ root: "/p/a", running: false }, 3)).not.toContain(
+		m.sidebar_remove_linked({ count: 1 }),
+	);
 });

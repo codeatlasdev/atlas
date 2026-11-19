@@ -155,7 +155,9 @@
 			{m.crew_onboarding_connect_step_copy_command()}
 		</Button>
 		{#if managed.installable}
-			<Button disabled={!!u.running} onclick={u.installPackage}>{m.settings_updates_install_now_password()}</Button>
+			<Button disabled={!!u.running} onclick={u.installPackage}
+				>{m.settings_updates_install_now_password()}</Button
+			>
 		{/if}
 	</Alert>
 {/if}
@@ -189,7 +191,9 @@
 		title={u.info?.cli.path ? tilde(u.info.cli.path) : undefined}
 		mono
 	>
-		{#snippet badges()}{#if u.info?.cli.linked_to}<span class="tag info">{m.settings_updates_tag_linked()}</span>{/if}{/snippet}
+		{#snippet badges()}{#if u.info?.cli.linked_to}<span class="tag info"
+					>{m.settings_updates_tag_linked()}</span
+				>{/if}{/snippet}
 		{#snippet version()}
 			{u.info?.cli.version ?? "—"}
 			{#if u.cliBehind && !u.info?.cli.linked_to}<ArrowRight size={12} /><b>{u.release?.version}</b>{/if}
@@ -203,9 +207,8 @@
 		mono
 	>
 		{#snippet badges()}
-			{#if u.info?.app.dev}<span class="tag warn">{m.settings_updates_tag_dev()}</span>{:else if u.info?.app.linked_to}<span
-					class="tag info">{m.settings_updates_tag_linked()}</span
-				>{/if}
+			{#if u.info?.app.dev}<span class="tag warn">{m.settings_updates_tag_dev()}</span
+				>{:else if u.info?.app.linked_to}<span class="tag info">{m.settings_updates_tag_linked()}</span>{/if}
 		{/snippet}
 		{#snippet version()}
 			{u.info?.app.version ?? "—"}
@@ -261,9 +264,9 @@
 
 <div class="foot">
 	{#if u.available && !u.linked && !u.relaunchNeeded}
-		<Button variant="ghost" onclick={u.showWhatsNew}>{m.settings_updates_whats_new_title()}</Button>
+		<Button variant="ghost" onclick={u.showWhatsNew}>{m.shell_commands_whats_new()}</Button>
 	{:else if u.aheadOfChannel && u.info && !u.info.app.dev && !u.relaunchNeeded}
-		<Button variant="ghost" onclick={u.showWhatsNew}>{m.settings_updates_whats_new_title()}</Button>
+		<Button variant="ghost" onclick={u.showWhatsNew}>{m.shell_commands_whats_new()}</Button>
 		<Button variant="outlined" disabled={!!u.running} onclick={u.downgrade}>
 			{#snippet leading()}{#if u.running === "update"}<Spinner size={14} />{:else}<Download
 						size={14}
@@ -271,7 +274,7 @@
 			{m.settings_updates_install_downgrade({ version: u.release?.version ?? "" })}
 		</Button>
 	{:else if u.info && !u.info.app.dev && !u.linked && !u.relaunchNeeded}
-		<Button variant="ghost" onclick={u.showWhatsNew}>{m.settings_updates_whats_new_title()}</Button>
+		<Button variant="ghost" onclick={u.showWhatsNew}>{m.shell_commands_whats_new()}</Button>
 		<Button variant="outlined" disabled={!!u.running} onclick={u.reinstall}>
 			{#snippet leading()}{#if u.running === "reinstall"}<Spinner size={14} />{:else}<Download
 						size={14}

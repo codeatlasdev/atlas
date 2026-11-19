@@ -291,7 +291,9 @@
 					aria-label={m.settings_capture_preset_label()}
 					value={shownId}
 					options={[
-						...(activeId === CUSTOM || picked ? [{ value: CUSTOM, label: m.settings_capture_preset_custom() }] : []),
+						...(activeId === CUSTOM || picked
+							? [{ value: CUSTOM, label: m.settings_capture_preset_custom() }]
+							: []),
 						...presets.map((p) => ({ value: p.id, label: presetLabel(p) })),
 					]}
 					onchange={(v) => (picked = v === activeId || v === CUSTOM ? null : v)}
@@ -313,7 +315,9 @@
 							title={pickedAvailable ? undefined : m.settings_capture_preset_apply_blocked()}
 							onclick={applyPicked}>{m.settings_capture_preset_apply()}</Button
 						>
-						<Button size="sm" variant="ghost" onclick={() => (picked = null)}>{m.common_action_cancel()}</Button>
+						<Button size="sm" variant="ghost" onclick={() => (picked = null)}
+							>{m.common_action_cancel()}</Button
+						>
 					</div>
 				{/if}
 			{/snippet}
@@ -628,7 +632,10 @@
 		</Row>
 	</Group>
 
-	<Group title={m.settings_capture_group_history()} description={m.settings_capture_group_history_description()}>
+	<Group
+		title={m.settings_capture_group_history()}
+		description={m.settings_capture_group_history_description()}
+	>
 		<Row
 			id="capture-history-size"
 			label={m.settings_capture_history_size_label()}

@@ -128,7 +128,11 @@ test("a version that was not withdrawn shows no withdrawal notice", () => {
 // The channel and the version in the "newer build than the channel offers" note come from two sources (the followed
 // channel's display name and the real `latest_release` serialization), both interpolated into one message.
 test("a build newer than the followed channel offers says which channel and which version", () => {
-	card({ release: fixtureViews.release.downgrade, checkedAt: Date.now(), channelState: { channel: "stable" } });
+	card({
+		release: fixtureViews.release.downgrade,
+		checkedAt: Date.now(),
+		channelState: { channel: "stable" },
+	});
 	const note = document.body.querySelector(".skipnote").textContent.replace(/\s+/g, " ");
 	expect(note).toContain("newer build than the Stable channel offers (1.3.0)");
 });

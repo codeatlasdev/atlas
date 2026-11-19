@@ -153,12 +153,27 @@
 		<!-- i18n-ignore: a command name used as an example -->
 		<TextField label={m.settings_agents_agent_command()} placeholder="opencode" bind:value={form.command} />
 		<!-- i18n-ignore: a flag example, not prose -->
-		<TextField label={m.settings_agents_agent_arguments()} placeholder="--model gpt-5" bind:value={form.args} />
+		<TextField
+			label={m.settings_agents_agent_arguments()}
+			placeholder="--model gpt-5"
+			bind:value={form.args}
+		/>
 		<!-- i18n-ignore: a flag with a placeholder, not prose -->
-		<TextField label={m.settings_agents_agent_resume_arguments()} placeholder="--session {'{session}'}" bind:value={form.resume} />
-		<TextArea label={m.settings_agents_agent_environment()} placeholder={m.settings_agents_agent_environment_placeholder()} rows={2} bind:value={form.env} />
+		<TextField
+			label={m.settings_agents_agent_resume_arguments()}
+			placeholder="--session {'{session}'}"
+			bind:value={form.resume}
+		/>
+		<TextArea
+			label={m.settings_agents_agent_environment()}
+			placeholder={m.settings_agents_agent_environment_placeholder()}
+			rows={2}
+			bind:value={form.env}
+		/>
 		{#if formError}<p class="err" role="alert">{formError}</p>{/if}
-		<div><Button size="sm" onclick={addCustom}><Plus size={14} /> {m.settings_agents_agent_add_agent()}</Button></div>
+		<div>
+			<Button size="sm" onclick={addCustom}><Plus size={14} /> {m.settings_agents_agent_add_agent()}</Button>
+		</div>
 	</div>
 </Group>
 
@@ -170,7 +185,9 @@
 		<div class="quick" data-setting={q === quick.list[0] ? "quick" : undefined}>
 			<TextField label={m.settings_agents_agent_quick_name()} bind:value={q.label} onchange={saveQuick} />
 			<TextField
-				label={q.kind === "prompt" ? m.settings_agents_agent_quick_prompt() : m.settings_agents_agent_quick_command()}
+				label={q.kind === "prompt"
+					? m.settings_agents_agent_quick_prompt()
+					: m.settings_agents_agent_quick_command()}
 				bind:value={q.command}
 				onchange={saveQuick}
 			/>

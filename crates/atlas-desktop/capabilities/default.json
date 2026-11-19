@@ -17,9 +17,7 @@
     "core:window:allow-close",
     "core:window:allow-set-fullscreen",
     "core:window:allow-is-fullscreen",
-    "dialog:default",
-    "shell:allow-open",
     "window-state:default",
-    "notification:default"
+    "notification:allow-is-permission-granted"
   ]
 }

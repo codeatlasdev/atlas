@@ -363,13 +363,7 @@ if [ -d {crew_dir}/work ]; then sudo mv -T {crew_dir}/work {crew_dir}/work.pre-i
 
 /// The line `atlas crew install` prints after a migration, naming what changed for each crewmate.
 pub fn migration_notice(migrated: usize) -> Option<String> {
-    (migrated > 0).then(|| {
-        format!(
-            "{migrated} crewmate(s) now run as their own Linux user. Their agent sign-ins were shared \
-and are not copied: sign each agent in again with `atlas crew login <server> <agent> --crewmate <id>`. \
-A project checkout is made again by the next task; the old one is kept as work.pre-isolation next to it."
-        )
-    })
+    (migrated > 0).then(|| atlas_i18n::t!("cmd_crew_migration_notice", count = migrated))
 }
 
 /// One thing the installer does for isolation, in the order it must happen.
@@ -1106,7 +1100,7 @@ mod tests {
     fn the_migration_notice_names_the_sign_in_command_and_only_appears_when_something_moved() {
         assert_eq!(migration_notice(0), None);
         let n = migration_notice(3).unwrap();
-        assert!(n.starts_with("3 crewmate(s)"));
+        assert!(n.starts_with("3 crewmates now run"));
         assert!(n.contains("atlas crew login <server> <agent> --crewmate <id>"));
         assert!(n.contains("work.pre-isolation"));
     }

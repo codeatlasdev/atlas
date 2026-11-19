@@ -6,6 +6,7 @@
 //! tar.gz, so an archive moves between x86_64 and arm64 servers.
 
 use anyhow::{Result, bail};
+use atlas_i18n::t;
 
 use super::layout::{INSTALL_DIR, WHICH_USER};
 use crate::commands::deploy::remote::shq;
@@ -71,34 +72,41 @@ pub fn parse_inventory(out: &str) -> Inventory {
 /// What uninstall tells the person before it deletes anything. Printed for `--yes` too: a script that
 /// passes `--yes` still leaves a record of where the data was and that it is gone.
 pub fn uninstall_notice(target: &str, inv: &Inventory) -> String {
-    let home = inv.home.as_deref().unwrap_or("(no crew user found)");
-    let mut s = format!("Uninstalling the crew server on {target} deletes:\n");
-    s.push_str("  - the atlas-crew service and /usr/local/lib/atlas-crew\n");
-    s.push_str(&format!("  - the crew user and its home {home}"));
-    if inv.home.is_some() {
-        s.push_str(&format!(
-            " ({} crewmate(s){}): their definitions, memory, task history, secrets and checkouts\n",
-            inv.crewmates,
-            inv.size
-                .as_deref()
-                .map(|z| format!(", {z}"))
-                .unwrap_or_default()
-        ));
-    } else {
-        s.push('\n');
-    }
-    s.push_str("  - agent sign-ins stored in that home\n");
+    let home = inv
+        .home
+        .clone()
+        .unwrap_or_else(|| t!("cmd_crew_no_crew_user"));
+    let mut s = format!("{}\n", t!("cmd_crew_uninstall_title", target = target));
+    s.push_str(&format!("  - {}\n", t!("cmd_crew_uninstall_service")));
+    let user = match (&inv.home, inv.size.as_deref()) {
+        (None, _) => t!("cmd_crew_uninstall_no_user", home = home),
+        (Some(_), None) => t!(
+            "cmd_crew_uninstall_user_crewmates",
+            home = home,
+            count = inv.crewmates
+        ),
+        (Some(_), Some(size)) => t!(
+            "cmd_crew_uninstall_user_crewmates_size",
+            home = home,
+            count = inv.crewmates,
+            size = size
+        ),
+    };
+    s.push_str(&format!("  - {user}\n"));
+    s.push_str(&format!("  - {}\n", t!("cmd_crew_uninstall_signins")));
     s
 }
 
 /// What `--yes` prints after the delete: where the data was, and that it cannot be recovered.
 pub fn gone_notice(target: &str, inv: &Inventory) -> String {
     match &inv.home {
-        Some(h) => format!(
-            "Deleted {h} on {target} ({} crewmate(s)). It is gone; to keep a copy, run `atlas crew export {target}` before uninstalling.",
-            inv.crewmates
+        Some(h) => t!(
+            "cmd_crew_gone",
+            home = h.as_str(),
+            target = target,
+            count = inv.crewmates
         ),
-        None => format!("No crew data was found on {target}."),
+        None => t!("cmd_crew_gone_none", target = target),
     }
 }
 
@@ -133,20 +141,29 @@ pub fn default_export_name(target: &str, now: std::time::SystemTime) -> String {
 /// answers with clap's unknown-argument error; the fix is to reinstall (which updates the binary).
 pub fn explain_failure(target: &str, what: &str, code: i32, stderr: &str) -> String {
     let why = stderr.trim();
+    let export = what == "export";
     if code == 255 {
-        return format!("could not connect to {target} over SSH: {why}");
+        return t!("cmd_crew_ssh_unreachable", target = target, reason = why);
     }
     if why.contains(UNKNOWN_FLAG) {
-        return format!(
-            "the atlas on {target} is too old to {what}; run `atlas crew install {target}` to update it, then try again"
-        );
+        return if export {
+            t!("cmd_crew_too_old_export", target = target)
+        } else {
+            t!("cmd_crew_too_old_import", target = target)
+        };
     }
     if why.contains("a password is required") {
-        return format!(
-            "sudo on {target} asks for a password: grant the SSH user passwordless sudo to {what}"
-        );
+        return if export {
+            t!("cmd_crew_sudo_needed_export", target = target)
+        } else {
+            t!("cmd_crew_sudo_needed_import", target = target)
+        };
     }
-    format!("could not {what} on {target}: {why}")
+    if export {
+        t!("cmd_crew_export_failed", target = target, reason = why)
+    } else {
+        t!("cmd_crew_import_failed", target = target, reason = why)
+    }
 }
 
 /// How an uninstall proceeds, decided from the flags and the terminal alone.
@@ -172,8 +189,8 @@ pub fn flow(yes: bool, interactive: bool) -> Flow {
 pub fn check_output_free(path: &std::path::Path) -> Result<()> {
     if path.exists() {
         bail!(
-            "{} already exists; choose another file with -o (an export never overwrites)",
-            path.display()
+            "{}",
+            t!("cmd_crew_export_exists", path = path.display().to_string())
         );
     }
     Ok(())
@@ -271,7 +288,7 @@ mod tests {
         for needle in [
             "me@box",
             "/var/lib/atlas-crew",
-            "2 crewmate(s)",
+            "2 crewmates",
             "1.2G",
             "memory",
             "secrets",
@@ -371,7 +388,7 @@ mod tests {
             "crewmate id(s) already on this server: abc",
         );
         assert!(
-            other.contains("could not import on me@box") && other.contains("abc"),
+            other.contains("Couldn't import on me@box") && other.contains("abc"),
             "{other}"
         );
     }

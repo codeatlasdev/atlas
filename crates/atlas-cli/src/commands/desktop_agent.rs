@@ -15,6 +15,7 @@ use std::time::{Duration, Instant};
 use super::desktop_agent_linux as linux;
 use anyhow::{Context, Result, bail};
 use atlas_core::hygiene::Registry;
+use atlas_i18n::t;
 use serde::{Deserialize, Serialize};
 
 /// Longest a unix socket path may be on macOS (`sun_path` is 104 bytes including the NUL).
@@ -70,13 +71,13 @@ pub struct Record {
 /// A name is a short directory component: letters, digits, `-`, `_`.
 pub fn valid_name(n: &str) -> Result<(), String> {
     if n.is_empty() || n.len() > 24 {
-        return Err("name must be 1..=24 characters".into());
+        return Err(t!("cmd_desktop_name_length"));
     }
     if !n
         .chars()
         .all(|c| c.is_ascii_alphanumeric() || c == '-' || c == '_')
     {
-        return Err("name may only contain letters, digits, - and _".into());
+        return Err(t!("cmd_desktop_name_chars"));
     }
     Ok(())
 }
@@ -91,9 +92,13 @@ pub fn session_in(root: &Path, name: &str) -> Result<Session> {
     let sock = s.socket();
     if sock.as_os_str().len() > MAX_SOCKET_PATH {
         bail!(
-            "the socket path {} is {} bytes; macOS allows {MAX_SOCKET_PATH}. Use a shorter name",
-            sock.display(),
-            sock.as_os_str().len()
+            "{}",
+            t!(
+                "cmd_desktop_socket_too_long",
+                path = sock.display().to_string(),
+                length = sock.as_os_str().len(),
+                max = MAX_SOCKET_PATH
+            )
         );
     }
     Ok(s)
@@ -186,9 +191,9 @@ pub fn find_app(repo: &Path) -> Result<PathBuf> {
         .find(|p| p.is_file())
         .cloned()
         .with_context(|| {
-            format!(
-                "no debug build of Atlas Desktop under {}/target/debug; build it: `cargo build -p atlas-cli -p atlas-desktop` (the frontend is served by `bun run desktop:agent` through Vite) or `bun run desktop:build:app`",
-                repo.display()
+            t!(
+                "cmd_desktop_no_debug_build",
+                path = repo.display().to_string()
             )
         })
 }
@@ -266,7 +271,7 @@ impl StartLock {
             .truncate(false)
             .write(true)
             .open(path)
-            .with_context(|| format!("opening {}", path.display()))?;
+            .with_context(|| t!("cmd_install_open_failed", path = path.display().to_string()))?;
         let t0 = Instant::now();
         let mut told = None::<Instant>;
         loop {
@@ -280,9 +285,12 @@ impl StartLock {
             }
             if t0.elapsed() >= patience {
                 bail!(
-                    "another agent instance is starting (it holds {}); waited {}s. If none is starting, delete the file",
-                    path.display(),
-                    patience.as_secs()
+                    "{}",
+                    t!(
+                        "cmd_desktop_lock_timeout",
+                        path = path.display().to_string(),
+                        secs = patience.as_secs()
+                    )
                 );
             }
             std::thread::sleep(Duration::from_millis(100));
@@ -314,8 +322,8 @@ pub fn start(o: StartOpts) -> Result<()> {
         start_patience(std::env::var("ATLAS_AGENT_START_WAIT").ok().as_deref()),
         |p| {
             eprintln!(
-                "atlas-agent: another instance is starting (lock {}); waiting for its turn",
-                p.display()
+                "{}",
+                t!("cmd_desktop_lock_waiting", path = p.display().to_string())
             );
         },
     )?;
@@ -333,17 +341,24 @@ pub fn start(o: StartOpts) -> Result<()> {
     create_private_dir(&s.dir).map_err(|e| {
         if e.kind() == std::io::ErrorKind::AlreadyExists {
             anyhow::anyhow!(
-                "agent instance {name:?} already exists ({}); `atlas desktop --agent --stop {name}` first, or pick another --name",
-                s.dir.display()
+                "{}",
+                t!(
+                    "cmd_desktop_instance_exists",
+                    name = name.as_str(),
+                    path = s.dir.display().to_string()
+                )
             )
         } else {
-            anyhow::Error::new(e).context(format!("creating {}", s.dir.display()))
+            anyhow::Error::new(e).context(t!(
+                "cmd_install_create_failed",
+                path = s.dir.display().to_string()
+            ))
         }
     })?;
     std::fs::create_dir_all(s.home().join(".atlas/desktop"))?;
     std::fs::create_dir_all(s.hostd())?;
     if o.scratch {
-        let user_home = dirs::home_dir().context("no home directory")?;
+        let user_home = dirs::home_dir().with_context(|| t!("cmd_desktop_no_home"))?;
         seed_scratch(&user_home, &s)?;
     }
     let log = std::fs::File::create(s.log())?;
@@ -403,7 +418,8 @@ pub fn start(o: StartOpts) -> Result<()> {
         if let Err(e) = atlas_core::agent_display::verify_linux(env_of) {
             let _ = stop_one(&s);
             bail!(
-                "refusing to start: the instance's environment does not point at its private display ({e})"
+                "{}",
+                t!("cmd_desktop_display_mismatch", reason = e.to_string())
             );
         }
     }
@@ -411,7 +427,12 @@ pub fn start(o: StartOpts) -> Result<()> {
         Ok(c) => c,
         Err(e) => {
             let _ = stop_one(&s);
-            return Err(e).with_context(|| format!("starting {}", app.display()));
+            return Err(e).with_context(|| {
+                t!(
+                    "cmd_desktop_start_failed",
+                    program = app.display().to_string()
+                )
+            });
         }
     };
     let pid = child.id();
@@ -438,9 +459,7 @@ pub fn start(o: StartOpts) -> Result<()> {
                 Readiness::Ready => break,
                 Readiness::NotAgent => {
                     let _ = stop_one(&s);
-                    bail!(
-                        "the app started but is not in agent mode (is this a release build?): refusing to leave it running"
-                    );
+                    bail!("{}", t!("cmd_desktop_not_agent_mode"));
                 }
                 Readiness::Waiting => {}
             }
@@ -452,30 +471,44 @@ pub fn start(o: StartOpts) -> Result<()> {
             let line = |tag: &str| log.lines().find(|l| l.contains(tag)).map(str::to_owned);
             let _ = stop_one(&s);
             if let Some(l) = line("REFUSED to show the window") {
-                bail!("the app refused to show its window and exited ({status}): {l}");
+                bail!(
+                    "{}",
+                    t!(
+                        "cmd_desktop_window_refused",
+                        status = crate::chrome::exit_text(status),
+                        line = l
+                    )
+                );
             }
             if dry && status.success() {
-                let l = line("DRYRUN decision")
-                    .context("the dry run exited without logging its decision")?;
+                let l =
+                    line("DRYRUN decision").with_context(|| t!("cmd_desktop_dry_run_silent"))?;
                 println!("{l}");
                 return Ok(());
             }
             bail!(
-                "the app exited ({status}) before it was ready; see {}",
-                s.log().display()
+                "{}",
+                t!(
+                    "cmd_desktop_exited_early",
+                    status = crate::chrome::exit_text(status),
+                    path = s.log().display().to_string()
+                )
             );
         }
         #[cfg(target_os = "linux")]
         if atlas_core::sys::interrupted() {
             let _ = stop_one(&s);
-            bail!("interrupted before the instance was ready; stopped it");
+            bail!("{}", t!("cmd_desktop_interrupted"));
         }
         if t0.elapsed() > READY_TIMEOUT {
             let _ = stop_one(&s);
             bail!(
-                "the window was not shown after {}s; see {}",
-                READY_TIMEOUT.as_secs(),
-                s.log().display()
+                "{}",
+                t!(
+                    "cmd_desktop_window_timeout",
+                    secs = READY_TIMEOUT.as_secs(),
+                    path = s.log().display().to_string()
+                )
             );
         }
         std::thread::sleep(Duration::from_millis(100));
@@ -490,7 +523,7 @@ pub fn start(o: StartOpts) -> Result<()> {
     let interrupted = false;
     if interrupted || child.try_wait()?.is_some() {
         let _ = stop_one(&s);
-        bail!("the instance ended while it was settling (interrupted or crashed); stopped it");
+        bail!("{}", t!("cmd_desktop_ended_settling"));
     }
     println!("{}", ready_line(&s, pid));
     Ok(())
@@ -612,7 +645,8 @@ fn zombie(pid: u32) -> bool {
 /// Stop one instance: its recorded pid (only if that pid still runs the recorded executable), its hostd, its files.
 fn stop_one(s: &Session) -> Result<()> {
     if let Ok(raw) = std::fs::read_to_string(s.record()) {
-        let rec: Record = serde_json::from_str(&raw).context("agent.json is corrupt")?;
+        let rec: Record =
+            serde_json::from_str(&raw).with_context(|| t!("cmd_desktop_agent_json_corrupt"))?;
         terminate(rec.pid, || {
             running_exe(rec.pid).is_some_and(|e| exe_matches(&e, &rec.exe))
         });
@@ -655,16 +689,26 @@ pub fn gc() -> Result<()> {
         .filter_map(|n| session_in(&root, n).ok())
         .map(|s| s.socket().to_string_lossy().into_owned())
         .collect();
-    let home = dirs::home_dir().context("no home directory")?;
+    let home = dirs::home_dir().with_context(|| t!("cmd_desktop_no_home"))?;
     let gone = atlas_core::agent_store::orphans(&home, &live);
     for p in &gone {
-        std::fs::remove_dir_all(p).with_context(|| format!("remove {}", p.display()))?;
-        println!("removed {}", p.display());
+        std::fs::remove_dir_all(p)
+            .with_context(|| t!("cmd_install_remove_failed", path = p.display().to_string()))?;
+        println!(
+            "{}",
+            t!(
+                "cmd_desktop_gc_removed_path",
+                path = p.display().to_string()
+            )
+        );
     }
     println!(
-        "{} leftover agent store(s) removed; {} live instance(s) kept",
-        gone.len(),
-        live.len()
+        "{}",
+        t!("cmd_desktop_gc_stores_removed", count = gone.len())
+    );
+    println!(
+        "{}",
+        t!("cmd_desktop_gc_instances_kept", count = live.len())
     );
     Ok(())
 }
@@ -712,21 +756,24 @@ pub fn stop(name: Option<&str>) -> Result<()> {
         None => existing(&root),
     };
     if names.is_empty() {
-        println!("no agent instances");
+        println!("{}", t!("cmd_desktop_no_instances"));
     }
     for n in names {
         let s = session_in(&root, &n)?;
         if !s.dir.exists() {
-            bail!("no agent instance {n:?}");
+            bail!("{}", t!("cmd_desktop_no_such_instance", name = n.as_str()));
         }
         if !is_ours(&s.dir, my_uid()) {
             bail!(
-                "{} is not a directory of yours; refusing to stop what it names",
-                s.dir.display()
+                "{}",
+                t!(
+                    "cmd_desktop_not_your_dir",
+                    path = s.dir.display().to_string()
+                )
             );
         }
         stop_one(&s)?;
-        println!("stopped {n}");
+        println!("{}", t!("cmd_desktop_stopped", name = n.as_str()));
     }
     Ok(())
 }
@@ -888,7 +935,13 @@ mod tests {
         .err()
         .expect("the lock is held")
         .to_string();
-        assert!(err.contains("another agent instance is starting"), "{err}");
+        let want = atlas_i18n::t_in!(
+            "en",
+            "cmd_desktop_lock_timeout",
+            path = path.display().to_string(),
+            secs = 0
+        );
+        assert_eq!(err, want);
         assert!(
             err.contains("atlas-agent.lock"),
             "names the lock file: {err}"

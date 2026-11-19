@@ -16,6 +16,7 @@
 //! | `engine_stop` | pause, cancel and the task timeout end an engine turn and its child process |
 //! | `engine_login`| `crew_engine_login` / `crew_engine_status`: sign an engine in from a phone, expired sign-ins |
 //! | `actions`     | `ATLAS_ACTION` parsing, `waiting_action`, GitHub login                   |
+//! | `answers`     | a card takes one answer: choose, ask_user, a terminal run; the task is running after it |
 //! | `approvals`   | approval prompts of a crewmate's pane                                    |
 //! | `audit`       | the append-only audit: tool calls, approvals, lifecycle, config, restart  |
 //! | `telegram`    | setting Telegram up from a client, the status payload                     |
@@ -37,6 +38,7 @@
 //! | `structure`   | a grep guard: code that touches an isolated crewmate's tree says how it is safe |
 //! | `time_contract` | cron and time zone semantics (DST included) pinned across the date-time crate swap |
 //! | `old_crons`   | crons croner 2 accepted and croner 4 refuses: load, list as invalid, never fire, edits of the rest |
+//! | `omp_approval` | omp's `ask` through the real approval extension, under omp's own handler limit and a virtual clock |
 //! | `prove_ui`    | a `ui` task needs two agent captures to be done: the card, override/retry, Telegram |
 
 pub(crate) mod github_fake;
@@ -48,6 +50,8 @@ mod time_contract;
 
 #[cfg(unix)]
 mod actions;
+#[cfg(unix)]
+mod answers;
 #[cfg(unix)]
 mod approvals;
 #[cfg(unix)]
@@ -84,6 +88,8 @@ mod locate;
 mod mobile_payloads;
 #[cfg(unix)]
 mod old_crons;
+#[cfg(unix)]
+mod omp_approval;
 #[cfg(unix)]
 mod pause;
 #[cfg(unix)]

@@ -5,14 +5,29 @@
 //                (a hosted Windows runner died mid-step; GitHub notices ~45 min later and ends the job as a failure)
 //   unavailable  "The job was not acquired by Runner of type hosted even after multiple attempts"
 //                (no hosted runner took the job, e.g. macOS arm64 capacity; the job ends cancelled, not failure)
+//   stalled      "The job has exceeded the maximum execution time of 30m0s" + "The operation was canceled.", on the
+//                Windows Rust job only: it has a timeout on every step, so only its own limit can end it when the VM
+//                froze and the runner stopped running steps (GitHub would only notice ~45 min later, as `lost`)
+//   mirror       "ci-apt: the apt mirror is too slow or down ..." (scripts/ci-apt.sh gave up after two timed-out tries, #604)
 import { ghOut } from "./gh";
 
-export type Infra = "lost" | "unavailable";
-const INFRA: [Infra, RegExp][] = [
-  ["lost", /hosted runner lost communication with the server/i],
-  ["unavailable", /job was not acquired by runner of type hosted even after multiple attempts/i],
+export type Infra = "lost" | "unavailable" | "stalled" | "mirror";
+/** One kind: the annotation that marks it, the jobs it counts for (all when absent) and the annotations GitHub adds next to it. */
+type Rule = { kind: Infra; re: RegExp; job?: RegExp; also?: RegExp };
+const RULES: Rule[] = [
+  { kind: "lost", re: /hosted runner lost communication with the server/i },
+  { kind: "unavailable", re: /job was not acquired by runner of type hosted even after multiple attempts/i },
+  // ci.yml `rust-windows` has a timeout on each step, so only its own limit can end it when the VM froze: it cannot be a hang.
+  { kind: "stalled", re: /the job has exceeded the maximum execution time/i, job: /^Rust \(Windows\b/, also: /^the operation was canceled\.?$/i },
+  // scripts/ci-apt.sh, when both tries of a download ran out of time; GitHub adds the exit code of the step.
+  { kind: "mirror", re: /ci-apt: the apt mirror is too slow or down/i, also: /^process completed with exit code \d+\.?$/i },
 ];
-const WORDS: Record<Infra, string> = { lost: "runner lost", unavailable: "no runner was available" };
+const WORDS: Record<Infra, string> = {
+  lost: "runner lost",
+  unavailable: "no runner was available",
+  stalled: "runner stalled until the job's time limit",
+  mirror: "apt mirror too slow",
+};
 
 /** A run is rerun while its attempt number is below this: attempts 1 and 2 are rerun, attempt 3 stays red. */
 export const MAX_ATTEMPTS = 3;
@@ -24,6 +39,8 @@ const FAILED: Record<string, true> = { failure: true, timed_out: true, startup_f
 export const failed = (conclusion: string | null): boolean => conclusion !== null && FAILED[conclusion] === true;
 
 export type Job = {
+  /** The job's id (set by fetchJobs; the rules do not need it). */
+  id?: number;
   name: string;
   conclusion: string | null;
   /** The messages of the job's failure-level annotations (only read for a failed or cancelled job). */
@@ -32,11 +49,14 @@ export type Job = {
 
 /** The infrastructure kinds that ended a job: every failure annotation is one of them (and at least one exists), else none. */
 export function infraKinds(j: Job): Infra[] {
+  const rules = RULES.filter((r) => !r.job || r.job.test(j.name));
+  const marked = rules.filter((r) => j.failures.some((m) => r.re.test(m)));
   const kinds: Infra[] = [];
   for (const m of j.failures) {
-    const hit = INFRA.find(([, re]) => re.test(m));
+    if (marked.some((r) => r.also?.test(m))) continue;
+    const hit = rules.find((r) => r.re.test(m));
     if (!hit) return [];
-    if (!kinds.includes(hit[0])) kinds.push(hit[0]);
+    if (!kinds.includes(hit.kind)) kinds.push(hit.kind);
   }
   return kinds;
 }
@@ -112,7 +132,7 @@ export async function fetchJobs(repo: string, runId: number, attempt: number): P
             ),
           )
         : [];
-      return { name: j.name, conclusion: j.conclusion, failures };
+      return { id: j.id, name: j.name, conclusion: j.conclusion, failures };
     }),
   );
 }

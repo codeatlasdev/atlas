@@ -8,6 +8,7 @@ use std::path::{Path, PathBuf};
 use std::process::Command;
 
 use anyhow::{Context, Result, bail};
+use atlas_i18n::t;
 use clap::Args;
 
 use super::AtlasCommand;
@@ -157,8 +158,11 @@ impl AtlasCommand for DesktopArgs {
         if self.install || self.from.is_some() || installed.is_none() {
             if is_symlink(&target) {
                 bail!(
-                    "{} is linked to a dev build (atlas link --desktop); run atlas unlink first",
-                    target.display()
+                    "{}",
+                    t!(
+                        "cmd_desktop_linked_to_dev",
+                        path = target.display().to_string()
+                    )
                 );
             }
             // Keeps the downloaded tarball alive until the install is done.
@@ -180,12 +184,16 @@ impl AtlasCommand for DesktopArgs {
                 }
             };
             install_app(&source, &target, version.as_deref())?;
-            let version = app_version(&target).map(|v| format!(" ({v})"));
-            println!(
-                "\x1b[32m✓\x1b[0m Installed {}{}",
-                target.display(),
-                version.unwrap_or_default()
-            );
+            let path = target.display().to_string();
+            let line = match app_version(&target) {
+                Some(version) => t!(
+                    "cmd_desktop_installed_version",
+                    path = path,
+                    version = version
+                ),
+                None => t!("desktop_pkg_installed", path = path),
+            };
+            println!("\x1b[32m✓\x1b[0m {line}");
         }
         if !self.no_open {
             open(&target, &[])?;
@@ -313,22 +321,34 @@ fn status(installed: Option<&Path>) -> Result<()> {
     match installed {
         None => match atlas_core::paths::packaged_app() {
             Some(pkg) => println!(
-                "Atlas Desktop: {} (from a distro package; update it with your package manager)",
-                pkg.display()
+                "{}",
+                t!(
+                    "cmd_desktop_status_packaged",
+                    path = pkg.display().to_string()
+                )
             ),
-            None => println!("Atlas Desktop: not installed (run: atlas desktop)"),
+            None => println!("{}", t!("cmd_desktop_status_missing")),
         },
         Some(app) => {
             let version = app_version(app).unwrap_or_else(|| "?".into());
-            println!("Atlas Desktop {version}");
-            println!("  path: {}", app.display());
+            println!("{}", t!("cmd_desktop_status_version", version = version));
+            println!(
+                "  {}",
+                t!("cmd_desktop_status_path", path = app.display().to_string())
+            );
             if is_symlink(app) {
                 let to = std::fs::read_link(app).unwrap_or_default();
-                println!("  linked → {} (atlas unlink to restore)", to.display());
+                println!(
+                    "  {}",
+                    t!("cmd_desktop_status_linked", path = to.display().to_string())
+                );
             }
         }
     }
-    println!("  cli:  {}", current_version());
+    println!(
+        "  {}",
+        t!("cmd_desktop_status_cli", version = current_version())
+    );
     Ok(())
 }
 
@@ -346,8 +366,11 @@ async fn sync(installed: Option<&Path>) -> Result<()> {
 /// The one line `atlas update` prints when the app is a dev-build link it will not replace.
 fn linked_notice(app: &Path) -> String {
     format!(
-        "\x1b[2m◆ Atlas Desktop is linked to a dev build ({}); left alone. Run atlas unlink to update it.\x1b[0m",
-        app.display()
+        "\x1b[2m◆ {}\x1b[0m",
+        t!(
+            "cmd_desktop_linked_notice",
+            path = app.display().to_string()
+        )
     )
 }
 
@@ -379,10 +402,16 @@ fn sync_app_for(platform: &str, installed: Option<&Path>) -> Result<()> {
         return Ok(());
     }
     update_core::phase(update_core::Phase::UpdateApp);
-    println!("\x1b[1;34m◆\x1b[0m Updating Atlas Desktop to v{want}...");
+    println!(
+        "\x1b[1;34m◆\x1b[0m {}",
+        t!("cmd_desktop_updating", version = want)
+    );
     let (_dir, src) = download(want)?;
     install_app(&src, app, Some(want))?;
-    println!("\x1b[32m✓\x1b[0m Atlas Desktop v{want}");
+    println!(
+        "\x1b[32m✓\x1b[0m {}",
+        t!("cmd_desktop_updated", version = want)
+    );
     Ok(())
 }
 
@@ -401,7 +430,10 @@ fn download(version: &str) -> Result<(tempfile::TempDir, PathBuf)> {
     let dir = tempfile::Builder::new()
         .prefix(&format!("atlas-desktop-{version}-"))
         .tempdir()?;
-    println!("\x1b[1;34m◆\x1b[0m Downloading {asset}...");
+    println!(
+        "\x1b[1;34m◆\x1b[0m {}",
+        t!("desktop_pkg_downloading", asset = asset.as_str())
+    );
     let tarball = download_verified(
         &format!("v{version}"),
         &asset,
@@ -430,9 +462,18 @@ fn install_app(source: &Path, target: &Path, version: Option<&str>) -> Result<()
 /// a bundle [`recover`] puts back, never no app at all. Staging dirs are removed on every path.
 #[cfg(target_os = "macos")]
 pub(crate) fn install(source: &Path, target: &Path) -> Result<()> {
-    let parent = target.parent().context("bad install path")?;
-    std::fs::create_dir_all(parent)
-        .with_context(|| format!("cannot create {}", parent.display()))?;
+    let parent = target.parent().with_context(|| {
+        t!(
+            "cmd_desktop_bad_install_path",
+            path = target.display().to_string()
+        )
+    })?;
+    std::fs::create_dir_all(parent).with_context(|| {
+        t!(
+            "cmd_install_create_failed",
+            path = parent.display().to_string()
+        )
+    })?;
     recover(target);
     let staging = Staging(parent.join(".Atlas.app.new"));
     let extract = Staging(parent.join(".Atlas.app.extract"));
@@ -451,7 +492,14 @@ pub(crate) fn install(source: &Path, target: &Path) -> Result<()> {
             .arg(&extract.0))?;
         let app = extract.0.join(APP);
         if !app.is_dir() {
-            bail!("{} does not contain {APP}", source.display());
+            bail!(
+                "{}",
+                t!(
+                    "cmd_desktop_no_app_in_source",
+                    path = source.display().to_string(),
+                    app = APP
+                )
+            );
         }
         app
     };
@@ -500,14 +548,23 @@ fn swap(staging: &Path, target: &Path) -> Result<()> {
     let _ = remove(&old);
     let had_old = target.symlink_metadata().is_ok();
     if had_old {
-        std::fs::rename(target, &old)
-            .with_context(|| format!("cannot move {}", target.display()))?;
+        std::fs::rename(target, &old).with_context(|| {
+            t!(
+                "cmd_desktop_move_failed",
+                path = target.display().to_string()
+            )
+        })?;
     }
     if let Err(e) = std::fs::rename(staging, target) {
         if had_old {
             let _ = std::fs::rename(&old, target);
         }
-        return Err(e).with_context(|| format!("cannot install {}", target.display()));
+        return Err(e).with_context(|| {
+            t!(
+                "cmd_desktop_install_failed",
+                path = target.display().to_string()
+            )
+        });
     }
     let _ = remove(&old);
     Ok(())
@@ -536,8 +593,11 @@ fn recover_interrupted_swap() {
     for dir in [PathBuf::from("/Applications"), home.join("Applications")] {
         if recover(&dir.join(APP)) {
             eprintln!(
-                "\x1b[33m◆\x1b[0m Restored {} from an interrupted update",
-                dir.join(APP).display()
+                "\x1b[33m◆\x1b[0m {}",
+                t!(
+                    "cmd_desktop_restored",
+                    path = dir.join(APP).display().to_string()
+                )
             );
         }
     }
@@ -556,11 +616,15 @@ fn remove(p: &Path) -> std::io::Result<()> {
 fn run(cmd: &mut Command) -> Result<()> {
     let out = cmd
         .output()
-        .with_context(|| format!("cannot run {cmd:?}"))?;
+        .with_context(|| t!("cmd_desktop_run_failed", command = format!("{cmd:?}")))?;
     if !out.status.success() {
         bail!(
-            "{cmd:?} failed: {}",
-            String::from_utf8_lossy(&out.stderr).trim()
+            "{}",
+            t!(
+                "cmd_desktop_command_failed",
+                command = format!("{cmd:?}"),
+                reason = String::from_utf8_lossy(&out.stderr).trim().to_string()
+            )
         );
     }
     Ok(())
@@ -592,7 +656,7 @@ pub(crate) fn open(app: &Path, args: &[std::ffi::OsString]) -> Result<()> {
 /// Agent instances live on a private macOS virtual display; there is no equivalent here.
 #[cfg(windows)]
 fn agent(_stop: bool, _gc: bool, _name: Option<String>, _scratch: bool) -> Result<()> {
-    bail!("agent instances (atlas desktop --agent) need macOS")
+    bail!("{}", t!("cmd_desktop_agent_not_on_windows"))
 }
 
 /// `atlas desktop --agent [--name N] [--scratch] [--stop]`: see `desktop_agent.rs`.
@@ -622,15 +686,27 @@ fn agent(stop: bool, gc: bool, name: Option<String>, scratch: bool) -> Result<()
 fn dev() -> Result<()> {
     let ws = super::link::find_workspace_root()?;
     if !ws.join("apps/desktop/package.json").is_file() {
-        bail!("{} is not the atlas repo (no apps/desktop)", ws.display());
+        bail!(
+            "{}",
+            t!(
+                "cmd_desktop_not_atlas_repo",
+                path = ws.display().to_string()
+            )
+        );
     }
     let st = Command::new("bun")
         .args(["run", "desktop:dev"])
         .current_dir(&ws)
         .status()
-        .context("bun not found")?;
+        .with_context(|| t!("cmd_desktop_no_bun"))?;
     if !st.success() {
-        bail!("desktop:dev exited with {st}");
+        bail!(
+            "{}",
+            t!(
+                "cmd_desktop_dev_exited",
+                status = crate::chrome::exit_text(st)
+            )
+        );
     }
     Ok(())
 }

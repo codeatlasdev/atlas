@@ -1,0 +1,16 @@
+# Native UI outside the app's window goes through `src/native_ui.rs` (the one gate; see its docs). An agent instance
+# must never raise it: the OS puts it on the user's screen, not on the agent's private display (incident 2026-11-18).
+# `native_ui.rs` is the only file with `#![allow(clippy::disallowed_methods)]`.
+disallowed-methods = [
+    { path = "tauri_plugin_dialog::DialogExt::dialog", reason = "message boxes and file panels go through native_ui (agent instances show none)" },
+    { path = "tauri_plugin_dialog::FileDialogBuilder::new", reason = "file panels go through native_ui" },
+    { path = "tauri_plugin_dialog::MessageDialogBuilder::new", reason = "message boxes go through native_ui" },
+    { path = "tauri_plugin_notification::NotificationExt::notification", reason = "notifications go through native_ui (agent instances show none)" },
+    { path = "tauri::menu::ContextMenu::popup", reason = "a menu popped at the cursor goes through native_ui" },
+    { path = "tauri::menu::ContextMenu::popup_at", reason = "a menu popped at the cursor goes through native_ui" },
+    # GTK is a Linux-only dependency: on other targets these paths do not resolve.
+    { path = "gtk::MessageDialog::new", reason = "message boxes go through native_ui", allow-invalid = true },
+    { path = "gtk::MessageDialog::with_markup", reason = "message boxes go through native_ui", allow-invalid = true },
+    { path = "gtk::FileChooserDialog::new", reason = "file panels go through native_ui", allow-invalid = true },
+    { path = "gtk::FileChooserNative::new", reason = "file panels go through native_ui", allow-invalid = true },
+]

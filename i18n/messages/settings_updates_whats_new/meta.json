@@ -11,7 +11,6 @@
 	"settings_updates_whats_new_collapse_aria": "Accessible name of the button that folds one release's notes in the What's new sheet. {version} is the release version.",
 	"settings_updates_whats_new_dev_note": "Hint in the footer of the What's new sheet when the app is a dev build and an update is on offer.",
 	"settings_updates_whats_new_download_progress": "Progress line under the download bar of the install footer. {percent} is a whole number 0 to 100, {total} the size of the download as text (12.4 MB).",
-	"settings_updates_whats_new_download_unknown": "Progress line under the download bar of the install footer while the download size is not known yet.",
 	"settings_updates_whats_new_empty_body": "Body of the empty state of the What's new sheet: the changelog has no section for the version named in the title.",
 	"settings_updates_whats_new_empty_title": "Title of the empty state of the What's new sheet. {version} is the version the sheet asked notes for.",
 	"settings_updates_whats_new_empty_title_unknown": "Title of the empty state of the What's new sheet when the version asked for is not known.",

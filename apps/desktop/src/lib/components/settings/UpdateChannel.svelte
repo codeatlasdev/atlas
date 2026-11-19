@@ -80,7 +80,7 @@
 
 <section class="chan" aria-labelledby="chan-title" data-setting="update-channel">
 	<div class="head">
-		<h3 id="chan-title">{m.settings_updates_channel_title()}</h3>
+		<h3 id="chan-title">{m.settings_registry_general_update_channel_label()}</h3>
 		<Tooltip content={m.settings_updates_channel_tooltip()} side="top">
 			<Info size={13} aria-label={m.settings_updates_channel_about_aria()} />
 		</Tooltip>
@@ -123,7 +123,7 @@
 				<!-- svelte-ignore a11y_no_static_element_interactions -->
 				<div class="seg" aria-disabled={locked} onkeydown={onkey}>
 					<SegmentedControl
-						aria-label={m.settings_updates_channel_title()}
+						aria-label={m.settings_registry_general_update_channel_label()}
 						size="sm"
 						disabled={locked}
 						value={shown}

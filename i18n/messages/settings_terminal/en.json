@@ -69,7 +69,6 @@
 	"settings_terminal_tab_space_left_and_right_of": "Space left and right of the text. The margin uses the terminal background.",
 	"settings_terminal_tab_terminal_font": "Terminal font",
 	"settings_terminal_tab_terminal_font_size": "Terminal font size",
-	"settings_terminal_tab_terminal_host": "Terminal host",
 	"settings_terminal_tab_text": "Text",
 	"settings_terminal_tab_text_size_in_terminals": "Text size in terminals.",
 	"settings_terminal_tab_the_background_process_that_keeps": "The background process that keeps terminals alive. Restart it to pick up a new Atlas version; running terminals end.",

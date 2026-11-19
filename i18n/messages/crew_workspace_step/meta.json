@@ -13,7 +13,10 @@
 	"crew_workspace_step_reading": "Working line of a crewmate that reads without a file name.",
 	"crew_workspace_step_reading_file": "Working line of a crewmate that reads a file; {file} is the file's name.",
 	"crew_workspace_step_running_command": "Working line of a crewmate that runs a shell command with no name to show.",
-	"crew_workspace_step_running_program": "Working line of a crewmate that runs a program; {program} is its name.",
+	"crew_workspace_step_running_program": {
+		"description": "Working line of a crewmate that runs a program; {program} is its name.",
+		"distinct": "a working line ('Rodando X'); the other is an error context ('ao rodar X')"
+	},
 	"crew_workspace_step_running_tests": "Working line of a crewmate: its shell command runs a test suite.",
 	"crew_workspace_step_searching": "Working line of a crewmate that searches without a pattern.",
 	"crew_workspace_step_searching_for": "Working line of a crewmate that greps; {query} is the pattern it looks for.",

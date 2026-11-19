@@ -38,11 +38,17 @@
 	"native_menu_go_search": "Go menu item that opens the search across the project's files.",
 	"native_menu_go_switch_branch": "Go menu item that opens the branch switcher.",
 	"native_menu_help_shortcuts": "Help menu item that opens the list of keyboard shortcuts.",
-	"native_menu_title_capture": "Title of the Capture menu in the menu bar and of the Capture submenu of the tray menu: screenshots and recordings.",
+	"native_menu_title_capture": {
+		"description": "Title of the Capture menu in the menu bar and of the Capture submenu of the tray menu: screenshots and recordings.",
+		"distinct": "a menu title (an action, like Editar); the other names one capture (a noun)"
+	},
 	"native_menu_title_file": "Title of the File menu in the menu bar.",
 	"native_menu_title_go": "Title of the Go menu (jump to a worktree, file, tab or screen) in the menu bar.",
 	"native_menu_title_help": "Title of the Help menu in the menu bar.",
-	"native_menu_title_view": "Title of the View menu in the menu bar.",
+	"native_menu_title_view": {
+		"description": "Title of the View menu in the menu bar.",
+		"distinct": "the View menu title, by the platform convention 'Visualizar'; the other is a group of permissions (a noun)"
+	},
 	"native_menu_title_window": "Title of the Window menu in the menu bar.",
 	"native_menu_view_actual_size": "View menu item that resets the interface zoom.",
 	"native_menu_view_enter_full_screen": "View menu item that makes the window full screen (macOS).",

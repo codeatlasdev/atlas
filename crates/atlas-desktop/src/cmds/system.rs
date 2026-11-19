@@ -333,6 +333,7 @@ fn user_env(name: &str) -> Option<String> {
 #[tauri::command]
 pub async fn open_in_editor(id: String) -> Result<(), String> {
     let root = root_of(&id)?;
+    crate::native_ui::launch("open in the editor", &root.to_string_lossy())?;
     blocking(move || {
         let argvs = editor_argvs(
             Os::current(),
@@ -349,6 +350,7 @@ pub async fn open_in_editor(id: String) -> Result<(), String> {
 #[tauri::command]
 pub async fn open_url(url: String) -> Result<(), String> {
     let argv = url_argv(Os::current(), &url)?;
+    crate::native_ui::launch("open URL", &url)?;
     blocking(move || run(&argv)).await
 }
 
@@ -356,6 +358,7 @@ pub async fn open_url(url: String) -> Result<(), String> {
 #[tauri::command]
 pub async fn reveal(id: String) -> Result<(), String> {
     let root = root_of(&id)?;
+    crate::native_ui::launch("reveal in the file manager", &root.to_string_lossy())?;
     blocking(move || {
         let file = root.join("atlas.yaml");
         reveal_local(if cfg!(target_os = "linux") && !file.exists() {
@@ -378,6 +381,7 @@ pub async fn reveal_path(path: String) -> Result<(), String> {
     if crate::host::host_for_path(&path) != crate::host::LOCAL {
         return Err(REMOTE_UNSUPPORTED.into());
     }
+    crate::native_ui::launch("reveal in the file manager", &path)?;
     blocking(move || {
         if !p.exists() {
             return Err(format!("{} does not exist", p.display()));

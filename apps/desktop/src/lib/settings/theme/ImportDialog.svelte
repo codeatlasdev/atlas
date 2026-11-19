@@ -7,8 +7,7 @@
 	import { Button, Checkbox, Dialog, Select, TextArea, TextField, toast } from "@codeatlasdev/ui";
 	import { TriangleAlert, Upload } from "@lucide/svelte";
 	import { homeDir } from "@tauri-apps/api/path";
-	import { open as pickFile } from "@tauri-apps/plugin-dialog";
-	import { errText } from "#lib/api.ts";
+	import { api, errText } from "#lib/api.ts";
 	import { b64decode, host } from "#lib/host.ts";
 	import { aroundSlot } from "#lib/i18n/slot.ts";
 	import { themes } from "#lib/stores/theme.svelte.ts";
@@ -102,9 +101,8 @@
 	}
 
 	async function choose() {
-		const path = await pickFile({
+		const path = await api.pickPath({
 			title: m.settings_theme_import_dialog_import_a_theme(),
-			multiple: false,
 			filters: [
 				{
 					name: m.settings_theme_import_dialog_filter_theme(),

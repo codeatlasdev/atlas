@@ -57,13 +57,7 @@ pub enum Then {
 fn notify_error(app: &AppHandle, message: &str) {
     let _ = app.emit("shots://error", message);
     // A failed capture with the permission missing is the common case: a system notification says how to fix it.
-    use tauri_plugin_notification::NotificationExt;
-    let _ = app
-        .notification()
-        .builder()
-        .title(t!("native_notify_capture_failed"))
-        .body(message)
-        .show();
+    let _ = crate::native_ui::notify(app, t!("native_notify_capture_failed"), message);
 }
 
 // ───────────────────────────── overlay ─────────────────────────────

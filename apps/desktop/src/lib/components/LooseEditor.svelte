@@ -131,7 +131,7 @@
 		<MarkdownBar {view} {preview} onpreview={(on) => (preview = on)} />
 	{/if}
 	{#if session.watchError}
-		<p class="notice" role="status">{session.watchError}</p>
+		<p class="notice" role="status">{m.workbench_editor_watch_failed({ error: session.watchError })}</p>
 	{/if}
 	{#if session.conflict}
 		<div class="banner" role="alert">

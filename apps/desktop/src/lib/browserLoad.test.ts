@@ -1,6 +1,7 @@
 // @ts-nocheck bun test runtime types are not part of the app tsconfig
 import { expect, test } from "bun:test";
-import { describeFailure, idle, step, type LoadEvent } from "./browserLoad.ts";
+import { describeFailure, failureHint, idle, step, type LoadEvent } from "./browserLoad.ts";
+import { m } from "#lib/i18n/m.ts";
 
 // Incident (2026-10-26): http://localhost:1 left a blank white rectangle. WKWebView reports a refused connection only
 // as didFailProvisionalNavigation (no `load`, no wry page-load event), so the tab must treat `fail` as the signal.
@@ -22,12 +23,8 @@ test("nav starts loading, load ends it", () => {
 test("a refused connection fails the load with friendly text", () => {
 	const s = run({ event: "nav", url: "http://localhost:1/" }, fail(-1004));
 	expect(s.loading).toBe(false);
-	expect(s.failure).toMatchObject({
-		url: "http://localhost:1/",
-		kind: "refused",
-		title: "This page can't be reached",
-	});
-	expect(s.failure.hint).toContain("Is the dev server running");
+	expect(s.failure).toMatchObject({ url: "http://localhost:1/", kind: "refused" });
+	expect(failureHint(s.failure)).toBe(m.workbench_browser_failure_refused());
 });
 
 test("every common NSURLError maps to a kind", () => {
@@ -50,7 +47,8 @@ test("a code from another domain is never read as a URL error", () => {
 test("the unknown case still names the failure instead of hiding it", () => {
 	const d = describeFailure({ ...fail(-1100), message: "The requested URL was not found" });
 	expect(d.kind).toBe("other");
-	expect(d.hint).toContain("The requested URL was not found");
+	expect(failureHint(d)).toContain("The requested URL was not found");
+	expect(failureHint({ ...d, message: "" })).toBe(m.workbench_browser_failure_other());
 });
 
 test("a cancelled navigation (-999: superseded, redirected) is not a failure", () => {

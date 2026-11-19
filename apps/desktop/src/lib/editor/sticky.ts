@@ -7,6 +7,7 @@
 import { syntaxTree } from "@codemirror/language";
 import type { EditorState, Extension } from "@codemirror/state";
 import { EditorView, ViewPlugin, type ViewUpdate } from "@codemirror/view";
+import { m } from "#lib/i18n/m.ts";
 
 export const MAX_STICKY = 3;
 
@@ -87,7 +88,7 @@ class StickyScroll {
 		this.dom = document.createElement("div");
 		this.dom.className = "cm-sticky";
 		this.dom.setAttribute("role", "navigation");
-		this.dom.setAttribute("aria-label", "Enclosing scopes");
+		this.dom.setAttribute("aria-label", m.workbench_editor_sticky_scopes());
 		this.dom.hidden = true;
 		// Mousedown (not click) so the editor keeps focus and the selection is not moved.
 		this.dom.addEventListener("mousedown", (e) => this.onPress(e));
@@ -140,7 +141,7 @@ class StickyScroll {
 				const row = document.createElement("div");
 				row.className = "cm-sticky-row";
 				row.dataset.pos = String(c.from);
-				row.title = `Line ${c.line}`;
+				row.title = m.viewers_devops_line({ line: c.line });
 				row.textContent = c.text;
 				return row;
 			}),

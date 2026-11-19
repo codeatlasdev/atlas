@@ -11,9 +11,9 @@
 	import DrawerShell from "./DrawerShell.svelte";
 	import type { DotTone } from "./StatusDot.svelte";
 	import { describe, human, summary } from "./heavy.ts";
+	import { agentStateLabel } from "#lib/agentState.ts";
 	import {
 		agentRows,
-		agentStateLabel,
 		bytes,
 		cacheView,
 		gauge,

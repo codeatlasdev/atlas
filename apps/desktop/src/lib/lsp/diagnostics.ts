@@ -9,6 +9,7 @@ import type { EditorView } from "@codemirror/view";
 import { rangeToOffsets } from "#lib/lsp/convert.ts";
 import type { LspDiagnostic } from "#lib/lsp/client.svelte.ts";
 import { codeActionsAt, runCodeAction, type CodeAction } from "#lib/lsp/actions.ts";
+import { m } from "#lib/i18n/m.ts";
 
 const SEVERITY: Record<number, Diagnostic["severity"]> = { 1: "error", 2: "warning", 3: "info", 4: "hint" };
 
@@ -16,7 +17,7 @@ const SEVERITY: Record<number, Diagnostic["severity"]> = { 1: "error", 2: "warni
 function quickFixActions(view: EditorView, d: LspDiagnostic, from: number, to: number): Action[] {
 	return [
 		{
-			name: "Quick fix…",
+			name: m.workbench_lsp_quick_fix(),
 			apply: () => void openQuickFixes(view, d, from, to),
 		},
 	];

@@ -1,6 +1,386 @@
 {
+	"sidebar_added_detected": [
+		{
+			"declarations": [
+				"input count",
+				"input stack",
+				"local countExact = count",
+				"local countPlural = count: plural"
+			],
+			"selectors": [
+				"countExact",
+				"countPlural"
+			],
+			"match": {
+				"countExact=0, countPlural=*": "{stack} detectado: nenhum serviço para executar ainda",
+				"countExact=*, countPlural=one": "{stack} detectado: {count} serviço",
+				"countExact=*, countPlural=*": "{stack} detectado: {count} serviços"
+			}
+		}
+	],
+	"sidebar_added_nothing": "Adicionado, mas o Atlas ainda não detectou nada para executar",
+	"sidebar_clear_filter": "Limpar filtro",
+	"sidebar_command_remove_missing": "Remover projetos ausentes",
+	"sidebar_command_remove_project": "Remover projeto do Atlas…",
+	"sidebar_delete_dialog_body": "Remove o checkout e seus terminais. Branches sem merge são mantidas, a menos que você use Forçar.",
+	"sidebar_delete_dialog_force": "Forçar (descartar alterações, excluir branch sem merge)",
+	"sidebar_delete_dialog_title": [
+		{
+			"declarations": [
+				"input count",
+				"local countPlural = count: plural"
+			],
+			"selectors": [
+				"countPlural"
+			],
+			"match": {
+				"countPlural=one": "Excluir worktree?",
+				"countPlural=*": "Excluir {count} worktrees?"
+			}
+		}
+	],
+	"sidebar_discover_dialog_add_root": "Adicionar pasta para procurar…",
+	"sidebar_discover_dialog_add_selected": [
+		{
+			"declarations": [
+				"input count",
+				"local countExact = count",
+				"local countPlural = count: plural"
+			],
+			"selectors": [
+				"countExact",
+				"countPlural"
+			],
+			"match": {
+				"countExact=0, countPlural=*": "Adicionar selecionados",
+				"countExact=*, countPlural=one": "Adicionar selecionados ({count})",
+				"countExact=*, countPlural=*": "Adicionar selecionados ({count})"
+			}
+		}
+	],
+	"sidebar_discover_dialog_cancelled": [
+		{
+			"declarations": [
+				"input amount",
+				"input count",
+				"input seconds",
+				"local countExact = count",
+				"local countPlural = count: plural"
+			],
+			"selectors": [
+				"countExact",
+				"countPlural"
+			],
+			"match": {
+				"countExact=0, countPlural=*": "Cancelado após {seconds} s, nenhuma pasta analisada",
+				"countExact=*, countPlural=one": "Cancelado após {amount} pasta em {seconds} s",
+				"countExact=*, countPlural=*": "Cancelado após {amount} pastas em {seconds} s"
+			}
+		}
+	],
+	"sidebar_discover_dialog_candidates_note": "Repositórios Git com um arquivo de projeto. O Atlas detecta como executá-los; o atlas.yaml é opcional.",
+	"sidebar_discover_dialog_candidates_switch": "Incluir pastas sem atlas.yaml",
+	"sidebar_discover_dialog_could_use_atlas": "Poderiam usar o Atlas",
+	"sidebar_discover_dialog_create_atlas_yaml": "Criar atlas.yaml",
+	"sidebar_discover_dialog_elsewhere": [
+		{
+			"declarations": [
+				"input os"
+			],
+			"selectors": [
+				"os"
+			],
+			"match": {
+				"os=mac": "Outros locais (encontrados pelo Spotlight)",
+				"os=*": "Outros locais"
+			}
+		}
+	],
+	"sidebar_discover_dialog_filter_placeholder": "Filtrar por nome, caminho, branch ou remote",
+	"sidebar_discover_dialog_filter_results": "Filtrar resultados",
+	"sidebar_discover_dialog_find_projects": "Encontrar projetos",
+	"sidebar_discover_dialog_init_title": "Criar um atlas.yaml nesta pasta",
+	"sidebar_discover_dialog_lead": [
+		{
+			"declarations": [
+				"input os"
+			],
+			"selectors": [
+				"os"
+			],
+			"match": {
+				"os=mac": "Procura pastas de projeto nas pastas mais comuns e com o Spotlight. O atlas.yaml é opcional: o Atlas detecta a stack.",
+				"os=*": "Procura pastas de projeto nas pastas mais comuns. O atlas.yaml é opcional: o Atlas detecta a stack."
+			}
+		}
+	],
+	"sidebar_discover_dialog_moved_copy": "Provavelmente a cópia movida de {#b}{name}{/b}",
+	"sidebar_discover_dialog_no_config": "Nenhuma pasta com atlas.yaml ainda. Adicione uma da lista abaixo.",
+	"sidebar_discover_dialog_none": "Nenhum projeto encontrado nas pastas analisadas.",
+	"sidebar_discover_dialog_pick_root": "Pasta para procurar projetos",
+	"sidebar_discover_dialog_scanned": [
+		{
+			"declarations": [
+				"input amount",
+				"input count",
+				"input seconds",
+				"local countExact = count",
+				"local countPlural = count: plural"
+			],
+			"selectors": [
+				"countExact",
+				"countPlural"
+			],
+			"match": {
+				"countExact=0, countPlural=*": "Nenhuma pasta analisada em {seconds} s",
+				"countExact=*, countPlural=one": "{amount} pasta analisada em {seconds} s",
+				"countExact=*, countPlural=*": "{amount} pastas analisadas em {seconds} s"
+			}
+		}
+	],
+	"sidebar_discover_dialog_scanning": [
+		{
+			"declarations": [
+				"input amount",
+				"input count",
+				"input found",
+				"input seconds",
+				"local countExact = count",
+				"local countPlural = count: plural"
+			],
+			"selectors": [
+				"countExact",
+				"countPlural"
+			],
+			"match": {
+				"countExact=0, countPlural=*": "Procurando: nenhuma pasta ainda · {seconds} s · encontrados: {found}",
+				"countExact=*, countPlural=one": "Procurando: {amount} pasta · {seconds} s · encontrados: {found}",
+				"countExact=*, countPlural=*": "Procurando: {amount} pastas · {seconds} s · encontrados: {found}"
+			}
+		}
+	],
+	"sidebar_discover_dialog_tag_in_atlas": "No Atlas",
+	"sidebar_discover_dialog_tag_package": "pacote",
+	"sidebar_discover_dialog_unreadable": [
+		{
+			"declarations": [
+				"input amount",
+				"input count",
+				"local countExact = count",
+				"local countPlural = count: plural"
+			],
+			"selectors": [
+				"countExact",
+				"countPlural"
+			],
+			"match": {
+				"countExact=0, countPlural=*": "todas as pastas foram lidas",
+				"countExact=*, countPlural=one": "{amount} pasta que não pôde ser lida",
+				"countExact=*, countPlural=*": "{amount} pastas que não puderam ser lidas"
+			}
+		}
+	],
+	"sidebar_filter_worktrees": "Filtrar worktrees",
+	"sidebar_footer_settings": "Configurações",
+	"sidebar_hide_sidebar": "Ocultar barra lateral",
 	"sidebar_loose_files_close_file": "Fechar {name}",
 	"sidebar_loose_files_files": "Arquivos",
 	"sidebar_loose_files_show_all": "Mostrar todos ({count})",
-	"sidebar_loose_files_show_fewer": "Mostrar menos"
+	"sidebar_loose_files_show_fewer": "Mostrar menos",
+	"sidebar_missing_count": [
+		{
+			"declarations": [
+				"input count",
+				"local countExact = count",
+				"local countPlural = count: plural"
+			],
+			"selectors": [
+				"countExact",
+				"countPlural"
+			],
+			"match": {
+				"countExact=0, countPlural=*": "Nenhum projeto ausente",
+				"countExact=*, countPlural=one": "{count} não encontrado",
+				"countExact=*, countPlural=*": "{count} não encontrados"
+			}
+		}
+	],
+	"sidebar_no_match": "Nenhuma worktree corresponde a \"{filter}\".",
+	"sidebar_no_projects": "Nenhum projeto ainda. Adicione qualquer pasta de projeto: o Atlas descobre como rodá-lo.",
+	"sidebar_not_found": "Não encontrado",
+	"sidebar_not_found_at": "Não encontrado: {root}",
+	"sidebar_other_projects": "Outros projetos",
+	"sidebar_project_head_hide_worktrees": "Ocultar worktrees de {name}",
+	"sidebar_project_head_new_worktree": "Nova worktree",
+	"sidebar_project_head_open": "Abrir projeto {name}",
+	"sidebar_project_head_running": "Em execução",
+	"sidebar_project_head_show_worktrees": "Mostrar worktrees de {name}",
+	"sidebar_project_head_stopped": "Parado",
+	"sidebar_project_head_worktrees": [
+		{
+			"declarations": [
+				"input count",
+				"local countExact = count",
+				"local countPlural = count: plural"
+			],
+			"selectors": [
+				"countExact",
+				"countPlural"
+			],
+			"match": {
+				"countExact=0, countPlural=*": "Nenhuma worktree",
+				"countExact=*, countPlural=one": "{count} worktree",
+				"countExact=*, countPlural=*": "{count} worktrees"
+			}
+		}
+	],
+	"sidebar_projects_add_title": "Adicionar projeto",
+	"sidebar_projects_all_found": "Todos os projetos estão onde o Atlas espera",
+	"sidebar_projects_already_added": "{name} já está no Atlas",
+	"sidebar_projects_found_again": [
+		{
+			"declarations": [
+				"input count",
+				"local countExact = count",
+				"local countPlural = count: plural"
+			],
+			"selectors": [
+				"countExact",
+				"countPlural"
+			],
+			"match": {
+				"countExact=0, countPlural=*": "Nenhum projeto encontrado de novo",
+				"countExact=*, countPlural=one": "{count} projeto encontrado de novo",
+				"countExact=*, countPlural=*": "{count} projetos encontrados de novo"
+			}
+		}
+	],
+	"sidebar_projects_inside_body": "{picked} está dentro do projeto em {root}. O Atlas adiciona esse projeto.",
+	"sidebar_projects_inside_title": "Adicionar {name}?",
+	"sidebar_projects_locate_title": "Localizar a pasta do projeto",
+	"sidebar_projects_not_found": [
+		{
+			"declarations": [
+				"input count",
+				"local countExact = count",
+				"local countPlural = count: plural"
+			],
+			"selectors": [
+				"countExact",
+				"countPlural"
+			],
+			"match": {
+				"countExact=0, countPlural=*": "Nenhum projeto ausente",
+				"countExact=*, countPlural=one": "{count} projeto não encontrado",
+				"countExact=*, countPlural=*": "{count} projetos não encontrados"
+			}
+		}
+	],
+	"sidebar_projects_relinked": "{name} agora aponta para {dir}",
+	"sidebar_projects_remove_missing_note": "Só as entradas do Atlas são removidas; nada no disco é alterado.",
+	"sidebar_projects_remove_missing_title": [
+		{
+			"declarations": [
+				"input count",
+				"local countExact = count",
+				"local countPlural = count: plural"
+			],
+			"selectors": [
+				"countExact",
+				"countPlural"
+			],
+			"match": {
+				"countExact=0, countPlural=*": "Nenhum projeto ausente para remover",
+				"countExact=*, countPlural=one": "Remover {count} projeto ausente?",
+				"countExact=*, countPlural=*": "Remover {count} projetos ausentes?"
+			}
+		}
+	],
+	"sidebar_projects_remove_title": "Remover {name} do Atlas?",
+	"sidebar_projects_removed_missing": [
+		{
+			"declarations": [
+				"input count",
+				"local countExact = count",
+				"local countPlural = count: plural"
+			],
+			"selectors": [
+				"countExact",
+				"countPlural"
+			],
+			"match": {
+				"countExact=0, countPlural=*": "Nenhum projeto ausente removido",
+				"countExact=*, countPlural=one": "{count} projeto ausente removido",
+				"countExact=*, countPlural=*": "{count} projetos ausentes removidos"
+			}
+		}
+	],
+	"sidebar_refresh": "Atualizar",
+	"sidebar_refresh_projects": "Atualizar projetos",
+	"sidebar_remove_all": "Remover todos",
+	"sidebar_remove_linked": [
+		{
+			"declarations": [
+				"input count",
+				"local countExact = count",
+				"local countPlural = count: plural"
+			],
+			"selectors": [
+				"countExact",
+				"countPlural"
+			],
+			"match": {
+				"countExact=0, countPlural=*": "Não há worktrees vinculadas.",
+				"countExact=*, countPlural=one": "A worktree vinculada também é removida do Atlas.",
+				"countExact=*, countPlural=*": "As {count} worktrees vinculadas também são removidas do Atlas."
+			}
+		}
+	],
+	"sidebar_remove_note": "Só a entrada do Atlas é removida: nenhum arquivo ou pasta no disco é alterado.",
+	"sidebar_remove_stops": "A stack em execução é parada antes.",
+	"sidebar_right_copied": "Copiado",
+	"sidebar_right_copy_command": "Copiar comando",
+	"sidebar_right_empty_body": "As sessões dos agentes que você executa nesta worktree aparecem aqui, com o que cada uma fez por último, para você retomá-las depois.",
+	"sidebar_right_empty_body_hint": "As sessões dos agentes que você executa nesta worktree aparecem aqui, com o que cada uma fez por último, para você retomá-las depois. Escolha Projeto ou Todos para ver sessões de outras worktrees.",
+	"sidebar_right_empty_title": "Nenhuma sessão de agente ainda",
+	"sidebar_right_history": "Histórico",
+	"sidebar_right_no_earlier_here": "Nenhuma sessão anterior aqui ainda.",
+	"sidebar_right_no_earlier_worktree": "Nenhuma sessão anterior nesta worktree ainda.",
+	"sidebar_right_no_match": "Nenhuma sessão corresponde a \"{query}\".",
+	"sidebar_right_no_ports_body": "Um servidor de desenvolvimento ou um serviço iniciado nesta worktree aparece aqui com a porta e um botão para abri-lo. Rode um deles em um terminal (por exemplo, bun run dev) ou inicie um serviço pelo painel do projeto.",
+	"sidebar_right_no_ports_title": "Nenhuma porta escutando",
+	"sidebar_right_open_external": "Abrir no navegador do sistema",
+	"sidebar_right_open_port_external": "Abrir :{port} no navegador do sistema",
+	"sidebar_right_pin": "Fixar barra lateral direita",
+	"sidebar_right_ports": "Portas",
+	"sidebar_right_resume": "Retomar",
+	"sidebar_right_resume_in_native_chat": "Retomar no chat nativo",
+	"sidebar_right_running_here": "Em execução aqui",
+	"sidebar_right_scope_all": "Todos",
+	"sidebar_right_scope_project": "Projeto",
+	"sidebar_right_scope_workspace": "Worktree",
+	"sidebar_right_search_sessions": "Pesquisar sessões",
+	"sidebar_right_show_sessions_of": "Mostrar sessões de",
+	"sidebar_right_state_done": "Concluído",
+	"sidebar_row_menu_archive": "Arquivar",
+	"sidebar_row_menu_create_crewmate": "Criar crewmate para este projeto",
+	"sidebar_row_menu_delete": "Excluir…",
+	"sidebar_row_menu_mark_read": "Marcar como lido",
+	"sidebar_row_menu_mark_unread": "Marcar como não lido",
+	"sidebar_row_menu_new_terminal": "Novo terminal",
+	"sidebar_row_menu_open_in_editor": "Abrir no editor",
+	"sidebar_row_menu_rename_title": "Renomear worktree",
+	"sidebar_row_menu_unarchive": "Desarquivar",
+	"sidebar_show_archived": "Mostrar arquivadas",
+	"sidebar_step_add": "Criando o checkout",
+	"sidebar_step_fetch": "Buscando",
+	"sidebar_step_seed": "Copiando dependências",
+	"sidebar_step_shared": "Vinculando arquivos compartilhados",
+	"sidebar_worktree_row_main": "principal",
+	"sidebar_worktree_row_pr": "PR #{number}",
+	"sidebar_worktree_row_pr_closed": "fechado",
+	"sidebar_worktree_row_pr_merged": "com merge",
+	"sidebar_worktree_row_pr_open": "aberto",
+	"sidebar_worktree_row_pr_state": "PR #{number} · {state}",
+	"sidebar_worktree_row_worktree_menu": "Menu da worktree"
 }

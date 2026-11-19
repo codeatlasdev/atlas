@@ -16,6 +16,7 @@
 		type Device,
 		type PairStart,
 	} from "#lib/settings/mobile.ts";
+	import { m } from "#lib/i18n/m.ts";
 
 	let devices = $state<Device[]>([]);
 	let loaded = $state(false);
@@ -76,10 +77,7 @@
 	const active = $derived(sortDevices(devices.filter((d) => !d.revoked)));
 </script>
 
-<Group
-	title="Pair a phone"
-	description="Atlas Mobile shows this computer's projects, logs and agents on your phone, and can restart services or answer agent prompts, as far as you allow. No account: the link between them is end-to-end encrypted."
->
+<Group title={m.settings_agents_mobile_title()} description={m.settings_agents_mobile_description()}>
 	<PairCard {pairing} now={clk.now} busy={starting} error={startError} paired={justPaired} onstart={pair} />
 	<PairHelp pairing={pairing && left > 0 ? pairing.p : null} />
 </Group>
@@ -88,24 +86,22 @@
 	<LoadError what="phones" error={loadError} />
 {/if}
 
-<Group title="Paired phones">
+<Group title={m.settings_agents_paired_phones()}>
 	{#each active as d, i (d.node_id)}
 		<PhoneRow
 			device={d}
 			now={clk.now}
 			anchor={i === 0 ? "mobile-devices" : undefined}
 			onchange={load}
-			onerror={(m) => toast.error(m)}
-			ondone={(m) => toast.success(m)}
+			onerror={(text) => toast.error(text)}
+			ondone={(text) => toast.success(text)}
 		/>
 	{:else}
 		<div data-setting="mobile-devices">
 			<EmptyState
 				icon={Smartphone}
-				title={loaded ? "No phones paired yet" : "Looking for paired phones…"}
-				description={loaded
-					? "A paired phone can see your projects, logs and agents, restart services, run actions and answer agent prompts, as far as you allow, from anywhere, while this computer is awake. Press Show pairing code above to add one."
-					: undefined}
+				title={loaded ? m.settings_agents_mobile_empty_title() : m.settings_agents_mobile_empty_loading()}
+				description={loaded ? m.settings_agents_mobile_empty_body() : undefined}
 			/>
 		</div>
 	{/each}

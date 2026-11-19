@@ -1,0 +1,60 @@
+{
+	"settings_updates_whats_new_badge_installed": {
+		"description": "Badge on the release header of the What's new sheet: this is the version that runs now. The subject is a release (feminine in Portuguese), unlike the channel tag of Settings.",
+		"distinct": "A release badge (feminine in Portuguese); the channel selector tag with the same English word is a different key."
+	},
+	"settings_updates_whats_new_badge_latest": "Badge on the release header of the What's new sheet: this is the newest release the channel offers.",
+	"settings_updates_whats_new_badge_new": {
+		"description": "Badge on the release header of the What's new sheet right after an update: this is the version just installed.",
+		"distinct": "A release badge (feminine in Portuguese, Nova); the chat divider with the same English word is another thing."
+	},
+	"settings_updates_whats_new_collapse_aria": "Accessible name of the button that folds one release's notes in the What's new sheet. {version} is the release version.",
+	"settings_updates_whats_new_dev_note": "Hint in the footer of the What's new sheet when the app is a dev build and an update is on offer.",
+	"settings_updates_whats_new_download_progress": "Progress line under the download bar of the install footer. {percent} is a whole number 0 to 100, {total} the size of the download as text (12.4 MB).",
+	"settings_updates_whats_new_download_unknown": "Progress line under the download bar of the install footer while the download size is not known yet.",
+	"settings_updates_whats_new_empty_body": "Body of the empty state of the What's new sheet: the changelog has no section for the version named in the title.",
+	"settings_updates_whats_new_empty_title": "Title of the empty state of the What's new sheet. {version} is the version the sheet asked notes for.",
+	"settings_updates_whats_new_empty_title_unknown": "Title of the empty state of the What's new sheet when the version asked for is not known.",
+	"settings_updates_whats_new_expand_aria": "Accessible name of the button that unfolds one release's notes in the What's new sheet. {version} is the release version.",
+	"settings_updates_whats_new_fold_less": {
+		"description": "Button that folds a long change description back, in the What's new sheet.",
+		"distinct": "Folds one change entry of a release note; the other Less keys are setup output and shortcut groups."
+	},
+	"settings_updates_whats_new_fold_more": {
+		"description": "Button that unfolds a long change description, in the What's new sheet.",
+		"distinct": "Unfolds one change entry of a release note; the shortcut group named More is another thing."
+	},
+	"settings_updates_whats_new_following": "Footer line of the What's new sheet: the channel the shown release was cut for, then the channel the app follows. {#chip} wraps {channel} (a styled badge) and {#b} wraps {followed}; both are channel display names (Stable, Beta, Alpha).",
+	"settings_updates_whats_new_host_terminals": "Sentence in the failed-update footer when the terminal host is stale and terminals still run, so it was not restarted. {count} is the number of running terminals; zero is not shown but required.",
+	"settings_updates_whats_new_install_now": "Primary button of the What's new sheet for a package-managed install the app may run. {version} is the release version.",
+	"settings_updates_whats_new_kind_added": "Group heading of release notes for the kind `added` (Keep a Changelog: Added, also New).",
+	"settings_updates_whats_new_kind_changed": "Group heading of release notes for the kind `changed` (Keep a Changelog: Changed, also Improved).",
+	"settings_updates_whats_new_kind_deprecated": "Group heading of release notes for the kind `deprecated`.",
+	"settings_updates_whats_new_kind_fixed": "Group heading of release notes for the kind `fixed`.",
+	"settings_updates_whats_new_kind_removed": {
+		"description": "Group heading of release notes for the kind `removed`.",
+		"distinct": "A changelog group heading (Removido); the SSH host status with the same English word is another thing."
+	},
+	"settings_updates_whats_new_kind_security": "Group heading of release notes for the kind `security`.",
+	"settings_updates_whats_new_load_failed": "Title of the error state of the What's new sheet when the release notes could not be loaded; the reason and a Retry button follow.",
+	"settings_updates_whats_new_loading_aria": "Accessible name of the loading placeholder of the What's new sheet.",
+	"settings_updates_whats_new_managed_or_atlas": "Hint under the command of a package-managed install when the app can run it: the system asks for the user's password.",
+	"settings_updates_whats_new_managed_run": "Hint above the command of a package-managed install. {title} is the translated managed-by title; the command follows in its own box.",
+	"settings_updates_whats_new_no_changes": "Shown under a release header whose notes list no changes.",
+	"settings_updates_whats_new_open_changelog": "Button of the empty state of the What's new sheet that opens the website's changelog.",
+	"settings_updates_whats_new_open_github_aria": "Accessible name of the icon button that opens one release's GitHub page. {version} is the release version.",
+	"settings_updates_whats_new_pre_rc": "Badge on a release header for a release candidate. RC stays as is in every language.",
+	"settings_updates_whats_new_region_aria": "Accessible name of the scrolling list of release notes in the What's new sheet.",
+	"settings_updates_whats_new_relaunch": "Button of the What's new sheet after an install: quits and reopens the app on the new version.",
+	"settings_updates_whats_new_remind_later": "Link in the What's new footer that closes the sheet and keeps the update on offer.",
+	"settings_updates_whats_new_review": "Button next to the stale terminal host warning of the install footer; opens the restart prompt.",
+	"settings_updates_whats_new_rollback_failed": "Failed-update message when the CLI could not be put back. {#code} wraps the command to run, kept verbatim.",
+	"settings_updates_whats_new_rollback_restored": "Failed-update message when the CLI was put back after the app could not be updated. {version} is the CLI version it stays on.",
+	"settings_updates_whats_new_rollback_restored_unknown": "Failed-update message when the CLI was put back and its version could not be read.",
+	"settings_updates_whats_new_skip_version": "Link in the What's new footer: Atlas will not remind about this version again.",
+	"settings_updates_whats_new_update_failed": "Failed-update message in the install footer when the CLI gave no reason.",
+	"settings_updates_whats_new_update_relaunch": "Primary button of the What's new sheet that installs the update and reopens the app. {version} is the release version.",
+	"settings_updates_whats_new_update_relaunch_size": "Same button as the update and relaunch one when the download size is known. {version} is the release version, {size} the size as text (12.4 MB).",
+	"settings_updates_whats_new_versions_aria": "Accessible name of the sticky version index at the top of the What's new sheet.",
+	"settings_updates_whats_new_view_github": "Link in the What's new footer to the GitHub page of the shown release."
+}

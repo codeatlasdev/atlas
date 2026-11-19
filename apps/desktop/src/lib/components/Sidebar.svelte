@@ -25,6 +25,7 @@
 	import { store } from "#lib/stores/projects.svelte.ts";
 	import { ws } from "#lib/stores/workspace.svelte.ts";
 	import { worktrees } from "#lib/stores/worktrees.svelte.ts";
+	import DeleteDialog from "./sidebar/DeleteDialog.svelte";
 	import LazyOpen from "./LazyOpen.svelte";
 	import { discovery } from "#lib/stores/discovery.svelte.ts";
 	import ProjectHead from "./sidebar/ProjectHead.svelte";
@@ -289,7 +290,7 @@
 	{/each}
 {/snippet}
 
-<LazyOpen when={sidebar.deleteIds.length > 0} load={() => import("./sidebar/DeleteDialog.svelte")} />
+<DeleteDialog />
 <IdentityDialog />
 <LazyOpen when={discovery.open} load={() => import("./sidebar/DiscoverDialog.svelte")} />
 

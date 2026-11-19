@@ -416,6 +416,8 @@ pub struct ServeOpts {
     pub atlas_exe: Option<PathBuf>,
     /// The quiet period before an idle daemon exits; `None`: `ATLAS_HOSTD_IDLE_SECS`, else the default.
     pub idle: Option<std::time::Duration>,
+    /// Time for the idle exit (`atlas_core::clock`); tests drive it by hand. Real by default.
+    pub clock: atlas_core::clock::Clock,
     /// How long a connection gets to send its hello; `None`: [`HELLO_TIMEOUT`] (tests shorten it).
     pub hello_timeout: Option<Duration>,
 }
@@ -709,8 +711,13 @@ pub async fn serve_with(dir: &Path, opts: ServeOpts) -> Result<()> {
     }
     let mut term = Terminate::new()?;
     let limit = opts.idle.or_else(crate::idle::limit_from_env);
-    let tick_interval = limit.unwrap_or(crate::idle::IDLE_EXIT);
-    let mut ticker = tokio::time::interval(crate::idle::tick(tick_interval));
+    let tick_every = crate::idle::tick(limit.unwrap_or(crate::idle::IDLE_EXIT));
+    // The idle decision runs on the injected clock (tests move it by hand). The first look is at once, then
+    // one every `tick_every`; a late look is followed by the next at once, as `tokio::time::interval` did.
+    let clock = opts.clock.clone();
+    let mut next_look = clock.now();
+    let look = clock.sleep_until(next_look);
+    tokio::pin!(look);
     let mut idle_since: Option<Instant> = None;
     // Orphans of a daemon that died without closing its terminals, and registered dirs over
     // their caps: found when an owner dies (checked every few seconds), at the first tick (a restart after a
@@ -764,7 +771,7 @@ pub async fn serve_with(dir: &Path, opts: ServeOpts) -> Result<()> {
                     }
                 });
             }
-            _ = ticker.tick() => {
+            _ = &mut look => {
                 let (live, clients, phones) = hub.activity();
                 if crate::idle::busy(live, clients, phones) {
                     idle_since = None;
@@ -772,8 +779,9 @@ pub async fn serve_with(dir: &Path, opts: ServeOpts) -> Result<()> {
                     // A lab has no terminal by design, so "idle" is its resting state between
                     // phone sessions: it stops with `--stop`, never on a timer.
                     if let Some(lim) = limit {
-                        let since = *idle_since.get_or_insert_with(Instant::now);
-                        if crate::idle::idle_expired(live, clients, phones, since.elapsed(), lim) {
+                        let now = clock.now();
+                        let since = *idle_since.get_or_insert(now);
+                        if crate::idle::idle_expired(live, clients, phones, now.saturating_duration_since(since), lim) {
                             eprintln!("atlas hostd: idle for {}s, no terminals, no clients and no paired phone: exiting", lim.as_secs());
                             break;
                         }
@@ -783,6 +791,9 @@ pub async fn serve_with(dir: &Path, opts: ServeOpts) -> Result<()> {
                     eprintln!("atlas hostd: {} is gone: exiting", dir.display());
                     break;
                 }
+                // Re-armed only after the look is done: a test that waits for the re-arm knows it was handled.
+                next_look += tick_every;
+                look.set(clock.sleep_until(next_look));
             }
             _ = hub.handed_off.notified() => {
                 // The successor owns the ptys now: leave them running. The pid lock and

@@ -15,6 +15,8 @@ use parking_lot::Mutex;
 use serde_json::{Value, json};
 use tokio::sync::{mpsc, oneshot};
 
+use atlas_core::clock::Clock;
+
 use crate::caps;
 use crate::install::{self, Failure, Installer, Launch, Source};
 use crate::registry::{self, Server};
@@ -103,6 +105,8 @@ pub struct Config {
     pub restart_backoff: Duration,
     /// Per-request timeout; a hung server must not hold a client call forever.
     pub request_timeout: Duration,
+    /// What `idle_shutdown` is measured on; tests move it by hand.
+    pub clock: Clock,
 }
 
 impl Default for Config {
@@ -114,6 +118,7 @@ impl Default for Config {
             restart_window: Duration::from_secs(60),
             restart_backoff: Duration::from_millis(500),
             request_timeout: Duration::from_secs(60),
+            clock: Clock::default(),
         }
     }
 }
@@ -1136,8 +1141,10 @@ impl Inner {
             st.idle_gen
         };
         let me = self.clone();
+        // The deadline is set here, by the close, not when the spawned task first runs.
+        let grace = self.cfg.clock.sleep(self.cfg.idle_shutdown);
         tokio::spawn(async move {
-            tokio::time::sleep(me.cfg.idle_shutdown).await;
+            grace.await;
             let still_idle = {
                 let st = inst.st.lock();
                 st.idle_gen == gen_at && st.docs.is_empty()

@@ -18,7 +18,7 @@ Also in this version:
 - **Agent guards:** AI agents can no longer write outside their worktree, push to `main` or force-push.
 - **Atlas Crew:** approvals and cards are fixed.
 - **Security:** a capture page could open any app on your Mac, a headless Claude crewmate ran tools nobody approved, and links now open only as `http`, `https` and `mailto`.
-- **Windows:** a terminal's last output is no longer lost, the status file is never briefly missing, and `install.ps1` works in Windows PowerShell 5.1.
+- **Windows:** a terminal's last output is no longer lost; `atlas dev --status`, the MCP status tools and the desktop no longer report a running stack as stopped for an instant; and `install.ps1` works in Windows PowerShell 5.1.
 
 ### Added
 

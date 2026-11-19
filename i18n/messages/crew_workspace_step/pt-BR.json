@@ -16,7 +16,7 @@
 	"crew_workspace_step_running_program": "Rodando {program}",
 	"crew_workspace_step_running_tests": "Rodando os testes",
 	"crew_workspace_step_searching": "Pesquisando",
-	"crew_workspace_step_searching_for": "Pesquisando “{query}”",
+	"crew_workspace_step_searching_for": "Pesquisando \"{query}\"",
 	"crew_workspace_step_using_tool": "Usando {tool}",
 	"crew_workspace_step_writing": "Escrevendo",
 	"crew_workspace_step_writing_file": "Escrevendo {file}"

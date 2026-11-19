@@ -1,4 +1,4 @@
-// bun run i18n:mv <old_key> <new_key> [--new-area --surface s] [--json]
+// bun run i18n:mv <old_key> <new_key> [--new-area --surface s] [--into] [--json]
 // Renames a key, moving it to the area its new name belongs to, in every locale: values, meta, lock stamps (a stale
 // translation stays stale: nothing is re-stamped), `{@old}` references in other messages, and the call sites in the
 // sources of every surface:
@@ -15,7 +15,7 @@ import { fix } from "./fix.ts";
 import { hash12 } from "./hash.ts";
 import { readLock, writeLock } from "./lock.ts";
 import { IMPORT, MESSAGE_MODULE, bracketHead, escapeRe, memberHead, messageBindings } from "./messageModule.ts";
-import { areaOfKey, KEY_PATTERN, loadSource, writeAreaFile, type Source } from "./source.ts";
+import { areaOfKey, consumedAreas, consumers, KEY_PATTERN, loadSource, writeAreaFile, type Source } from "./source.ts";
 import { loadCtx, type Ctx } from "./types.ts";
 import { ANNOTATION } from "./unused.ts";
 import { globToRegExp, lineOf, readText, rel, walk } from "./util.ts";
@@ -42,6 +42,8 @@ export interface MoveReport {
 export interface MoveOptions {
 	newArea?: boolean;
 	surface?: string;
+	/** Fold: `newKey` already exists with the same English; `oldKey` is deleted and its uses point at `newKey` (its translation is dropped). */
+	into?: boolean;
 }
 
 const WEB = /\.(?:svelte|ts|tsx|js|jsx|mjs|astro)$/;
@@ -179,8 +181,16 @@ export function moveKey(ctx: Ctx, oldKey: string, newKey: string, o: MoveOptions
 	if (!from) throw new CommandError(`no message "${oldKey}": find it with bun run i18n:find ${oldKey}`);
 	if (!KEY_PATTERN.test(newKey)) throw new CommandError(`"${newKey}" is not a key: snake_case, an area and a name (settings_display_language)`);
 	const taken = [...source.areas.values()].find((a) => a.entries.get(a.base)?.has(newKey));
-	if (taken) throw new CommandError(`${newKey} already exists in ${taken.dir}/en.json: see it with bun run i18n:find ${newKey}`);
-	let toName = areaOfKey(newKey, names);
+	if (taken && !o.into) throw new CommandError(`${newKey} already exists in ${taken.dir}/en.json: see it with bun run i18n:find ${newKey} (--into folds ${oldKey} into it when both say the same thing)`);
+	if (o.into && !taken) throw new CommandError(`--into folds ${oldKey} into an existing message, and ${newKey} does not exist: drop --into to rename`);
+	if (o.into && oldKey === newKey) throw new CommandError(`--into folds a message into another: ${oldKey} and ${newKey} are the same key`);
+	if (taken && o.into) {
+		const same = JSON.stringify(taken.entries.get(taken.base)?.get(newKey)?.value) === JSON.stringify(from.entries.get(from.base)?.get(oldKey)?.value);
+		if (!same) throw new CommandError(`--into needs the same English in both: ${oldKey} and ${newKey} differ (see them with bun run i18n:find)`);
+		const missing = consumers(source.config, from.name).filter((s) => !consumedAreas(source.config, s).includes(taken.name));
+		if (missing.length) throw new CommandError(`${missing.join(", ")} uses ${oldKey} but does not consume area ${taken.name}: move ${newKey} to a common area first`);
+	}
+	let toName = taken?.name ?? areaOfKey(newKey, names);
 	let createdArea = false;
 	if (!toName) {
 		if (!o.newArea) throw new CommandError(`no area for "${newKey}" (areas: ${names.join(", ")}): start the key with one of them, or create ${newKey.slice(0, newKey.indexOf("_"))} with --new-area --surface <${Object.keys(source.config.surfaces).join("|")}>`);
@@ -190,16 +200,19 @@ export function moveKey(ctx: Ctx, oldKey: string, newKey: string, o: MoveOptions
 	}
 	const report: MoveReport = { from: oldKey, to: newKey, fromArea: from.name, toArea: toName, updated: [], unproven: [], dynamic: [], notes: [] };
 
-	// lock stamps travel with the key
+	// lock stamps travel with the key (a fold drops them: the target keeps its own translation)
 	const stamps = new Map(from.locales.filter((l) => l !== from.base).map((l) => [l, readLock(ctx.root, from.name, l).byKey.get(oldKey)]));
 	for (const file of [...from.locales, "meta"]) {
 		const value = removeKey(ctx.root, from.name, file, oldKey);
-		if (value !== undefined) setKey(ctx.root, toName, file, newKey, value);
+		if (taken) {
+			const kept = readObject(ctx.root, areaPath(taken.name, file))[newKey];
+			if (file !== "meta" && file !== from.base && value !== undefined && JSON.stringify(value) !== JSON.stringify(kept)) report.notes.push(`${file}: ${newKey} says ${JSON.stringify(kept)}, ${oldKey} said ${JSON.stringify(value)}; the first is kept`);
+		} else if (value !== undefined) setKey(ctx.root, toName, file, newKey, value);
 	}
 	for (const [l, stamp] of stamps) {
 		if (!stamp) continue;
 		writeLock(ctx.root, from.name, l, Object.fromEntries([...readLock(ctx.root, from.name, l).byKey].filter(([k]) => k !== oldKey)));
-		writeLock(ctx.root, toName, l, { ...Object.fromEntries(readLock(ctx.root, toName, l).byKey), [newKey]: stamp });
+		if (!taken) writeLock(ctx.root, toName, l, { ...Object.fromEntries(readLock(ctx.root, toName, l).byKey), [newKey]: stamp });
 	}
 	if (createdArea && o.surface) writeAreaFile(ctx.root, toName, { surface: o.surface });
 	if (!Object.keys(readObject(ctx.root, areaPath(from.name, "en"))).length) report.notes.push(`area ${from.name} is empty now: delete i18n/messages/${from.name}/`);
@@ -260,11 +273,11 @@ if (import.meta.main) {
 	const positional = args.filter((a, i) => !a.startsWith("--") && !["--surface", "--root"].includes(args[i - 1] ?? ""));
 	try {
 		const [oldKey, newKey] = positional;
-		if (!oldKey || !newKey) throw new CommandError("usage: bun run i18n:mv <old_key> <new_key> [--new-area --surface s]");
-		const r = moveKey(loadCtx(root), oldKey, newKey, { newArea: args.includes("--new-area"), surface: flag("--surface") });
+		if (!oldKey || !newKey) throw new CommandError("usage: bun run i18n:mv <old_key> <new_key> [--new-area --surface s | --into]");
+		const r = moveKey(loadCtx(root), oldKey, newKey, { newArea: args.includes("--new-area"), surface: flag("--surface"), into: args.includes("--into") });
 		if (json) console.log(JSON.stringify(r, null, 2));
 		else {
-			console.log(`moved ${r.from} (${r.fromArea}) -> ${r.to} (${r.toArea})`);
+			console.log(`${args.includes("--into") ? "folded" : "moved"} ${r.from} (${r.fromArea}) -> ${r.to} (${r.toArea})`);
 			for (const u of r.updated) console.log(`  updated ${u.file}${u.line ? `:${u.line}` : ""}`);
 			for (const n of r.notes) console.log(`  note: ${n}`);
 		}

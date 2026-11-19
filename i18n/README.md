@@ -91,6 +91,7 @@ bun run i18n:find <text|key> [--json]          does it exist? where, in which la
 bun run i18n:add <key> "English" --desc "..." [--pt-BR "..."] [--surface s] [--new-area] [--distinct "why"]
 bun run i18n:extract <path-or-glob> [--area x] [--dry-run] [--json] [--plan]   move hardcoded Svelte text into the catalog (MIGRATION.md)
 bun run i18n:mv <old> <new> [--new-area --surface s]   rename or move, with locks, references and call sites
+bun run i18n:mv <dup> <existing> --into                 fold a duplicate into the message with the same English (dup-value)
 bun run i18n:translate [--locale pt-BR] [--area x] [--surface y] [--dry-run]
 bun run i18n:fix [--restamp <key>] [--baseline]           format files, rewrite locks, shrink the ratchet baseline
 bun run i18n:add-locale <tag> [--owner @user]           a new language everywhere it is listed

@@ -73,7 +73,7 @@ function duplicateFindings(areas: Area[]): Finding[] {
 				continue;
 			}
 			const first = seen.get(v);
-			if (first && !e.distinct) out.push({ rule: "dup-value", severity: "warn", file: e.file, line: e.line, key: e.key, message: `the same English text as ${first.key}: one of them could be a shared message (or mark it distinct)` });
+			if (first && !e.distinct) out.push({ rule: "dup-value", severity: "warn", file: e.file, line: e.line, key: e.key, message: `the same English text as ${first.key}: same meaning: fold it with bun run i18n:mv ${e.key} ${first.key} --into; different meaning: add \`i18n-distinct: <why>\` to its description` });
 			else seen.set(v, e);
 		}
 	}

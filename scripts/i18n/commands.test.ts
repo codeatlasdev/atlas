@@ -319,6 +319,40 @@ describe("mv", () => {
 		expect(moveKey(loadCtx(rust), "cli_files_count", "app_files_total").dynamic).toEqual([]);
 	});
 
+	test("--into folds a duplicate into the message that already says it: the duplicate and its translation go, its call sites follow, nothing else changes", async () => {
+		const root = await makeRepo();
+		addKey(root, "app_save_again", "Save", "Salvar", "A second Save label");
+		const r = moveKey(loadCtx(root), "app_save_again", "app_save_button", { into: true });
+		expect(r).toMatchObject({ fromArea: "app", toArea: "app" });
+		expect(Object.keys(JSON.parse(read(root, EN)))).not.toContain("app_save_again");
+		expect(Object.keys(JSON.parse(read(root, PT)))).not.toContain("app_save_again");
+		expect(JSON.parse(read(root, META)).app_save_again).toBeUndefined();
+		expect(JSON.parse(read(root, LOCK))["pt-BR"].app_save_again).toBeUndefined();
+		expect(JSON.parse(read(root, EN)).app_save_button).toBe("Save");
+		expect(read(root, "apps/desktop/src/App.svelte")).toContain("<i>{m.app_save_button()}</i>");
+		expect(read(root, "apps/desktop/src/App.svelte")).not.toContain("app_save_again");
+		expect(errors(await check(root))).toEqual([]);
+	});
+
+	test("--into into a common message works across surfaces; it refuses another English, an unknown target, and a target a surface of the duplicate does not consume", async () => {
+		const root = await makeRepo();
+		editJson(root, CLI_EN, (o) => void (o.cli_stop = "Cancel"));
+		editJson(root, "i18n/messages/cli/pt-BR.json", (o) => void (o.cli_stop = "Cancelar"));
+		editJson(root, CLI_META, (o) => void (o.cli_stop = "i18n-distinct: a CLI word"));
+		put(root, "crates/atlas-cli/src/stop.rs", 'fn f() { t!("cli_stop"); }\n');
+		expect(() => moveKey(loadCtx(root), "cli_stop", "app_save_button", { into: true })).toThrow("same English");
+		expect(() => moveKey(loadCtx(root), "cli_stop", "app_nothing", { into: true })).toThrow("does not exist");
+		expect(() => moveKey(loadCtx(root), "app_save_button", "app_save_button", { into: true })).toThrow("same key");
+		expect(() => moveKey(loadCtx(root), "cli_lang_current", "app_open_docs", { into: true })).toThrow("same English");
+		editJson(root, EN, (o) => void (o.app_cancel = "Language: {lang}"));
+		editJson(root, PT, (o) => void (o.app_cancel = "Idioma: {lang}"));
+		editJson(root, META, (o) => void (o.app_cancel = "A label"));
+		expect(() => moveKey(loadCtx(root), "cli_lang_current", "app_cancel", { into: true })).toThrow("does not consume area app");
+		moveKey(loadCtx(root), "cli_stop", "common_action_cancel", { into: true });
+		expect(read(root, "crates/atlas-cli/src/stop.rs")).toContain('t!("common_action_cancel")');
+		expect(Object.keys(JSON.parse(read(root, CLI_EN)))).not.toContain("cli_stop");
+	});
+
 	test("the CLI exits 1 and prints file:line for every leftover (after moving what it could), 0 when nothing is left", async () => {
 		const root = await makeRepo();
 		put(root, "apps/desktop/src/lib/computed.ts", 'import { m } from "#lib/i18n/m.ts";\nexport const a = (k: string) => m[k]();\nexport const b = m.app_welcome({ name: "x" });\n');

@@ -2,6 +2,7 @@
 import { describe, expect, test } from "bun:test";
 import {
 	COLLAPSE_LINES,
+	cardView,
 	collapsedText,
 	expandKey,
 	fmtDate,
@@ -128,5 +129,42 @@ describe("splitUi", () => {
 	test("a bare /ui is a UI mark with no message, which the composer does not send", () => {
 		expect(splitUi("/ui")).toEqual({ ui: true, prompt: "" });
 		expect(splitUi("/ui   ")).toEqual({ ui: true, prompt: "" });
+	});
+});
+
+// #524: after the owner picked an option the card stayed clickable and the next click was dropped (hostd kept the task
+// `waiting_action` for the whole follow-up turn, and an older one still does).
+describe("cardView: one card, one answer", () => {
+	const choose = { kind: "choose", question: "Which?", options: ["A", "B"] };
+	const parked = { id: "t1", state: "waiting_action", action: choose };
+
+	test("a parked task with no answer has a live card and no pick", () => {
+		expect(cardView(parked, {})).toEqual({ live: true, pick: undefined });
+	});
+
+	test("answered from here while hostd still says parked: the card goes, the pick shows", () => {
+		expect(cardView(parked, { t1: "A" })).toEqual({ live: false, pick: "A" });
+	});
+
+	test("an answer to another task does not touch this card", () => {
+		expect(cardView(parked, { other: "A" }).live).toBe(true);
+	});
+
+	test("hostd's own word wins: a running task has no card, with its stored answer as the pick", () => {
+		expect(cardView({ ...parked, state: "running", answer: "A" }, {})).toEqual({ live: false, pick: "A" });
+		// A stale local note on a task that moved on changes nothing (and is forgotten by the thread).
+		expect(cardView({ ...parked, state: "running", answer: "A" }, { t1: "B" }).pick).toBe("A");
+	});
+
+	test("a secret or a refusal word is never shown as something the owner said", () => {
+		const secret = { id: "t2", state: "waiting_action", action: { kind: "provide_secret" } };
+		expect(cardView(secret, { t2: "s3cret" })).toEqual({ live: false, pick: undefined });
+		const refused = { id: "t3", state: "waiting_action", action: { kind: "refused" } };
+		expect(cardView(refused, { t3: "retry" })).toEqual({ live: false, pick: undefined });
+	});
+
+	test("an automation answer is not a message either", () => {
+		const add = { id: "t4", state: "running", answer: "add", action: { kind: "add_trigger" } };
+		expect(cardView(add, {}).pick).toBeUndefined();
 	});
 });

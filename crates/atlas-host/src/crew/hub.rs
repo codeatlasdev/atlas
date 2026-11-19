@@ -201,14 +201,20 @@ impl CrewHub {
         self.hub_ref.get()?.upgrade()
     }
 
-    /// Wake a blocked ask_user call with its answer. Returns true if someone was waiting.
+    /// Whether an `ask_user` call is blocked on this question right now.
+    pub(crate) fn ask_waiting(&self, ask_id: &str) -> bool {
+        self.ask_waiters
+            .lock()
+            .get(ask_id)
+            .is_some_and(|tx| !tx.is_closed())
+    }
+
+    /// Wake a blocked ask_user call with its answer. Returns true only if the call took it.
     pub(crate) fn answer_ask(&self, ask_id: &str, answer: store::AskAnswer) -> bool {
-        if let Some(tx) = self.ask_waiters.lock().remove(ask_id) {
-            let _ = tx.send(answer);
-            true
-        } else {
-            false
-        }
+        self.ask_waiters
+            .lock()
+            .remove(ask_id)
+            .is_some_and(|tx| tx.send(answer).is_ok())
     }
 
     /// Register a waiter for an ask_user call; returns a receiver to await.
@@ -236,14 +242,20 @@ impl CrewHub {
         rx
     }
 
-    /// Deliver an answer to a waiting user-input action. Returns true if someone waited.
+    /// Whether a runner is waiting for an answer to this task's action right now (so an answer would be read).
+    pub(crate) fn action_waiting(&self, task_id: &str) -> bool {
+        self.action_waiters
+            .lock()
+            .get(task_id)
+            .is_some_and(|tx| !tx.is_closed())
+    }
+
+    /// Deliver an answer to a waiting user-input action. Returns true only if a runner took it.
     pub(crate) fn answer_action(&self, task_id: &str, value: String) -> bool {
-        if let Some(tx) = self.action_waiters.lock().remove(task_id) {
-            let _ = tx.send(value);
-            true
-        } else {
-            false
-        }
+        self.action_waiters
+            .lock()
+            .remove(task_id)
+            .is_some_and(|tx| tx.send(value).is_ok())
     }
 
     /// Cancel a waiting user-input action (drops the sender → receiver gets Err).

@@ -116,11 +116,12 @@ jobs:
           sudo locale-gen pt_BR.UTF-8
           locale -a | grep -i '^pt_BR'
 
+      # ffmpeg: the Linux recorder's tests encode a real file (#282). Cached and bounded (#604): the mirror once held this step for 36 min.
       - name: System libraries (Tauri/WebKitGTK)
-        run: |
-          SUDO=$(command -v sudo || true)
-          $SUDO apt-get update
-          $SUDO apt-get install -y --no-install-recommends libwebkit2gtk-4.1-dev libayatana-appindicator3-dev librsvg2-dev libxdo-dev libssl-dev fish ffmpeg # ffmpeg: the Linux recorder's tests encode a real file (#282)
+        timeout-minutes: 10
+        uses: ./.github/actions/apt-packages
+        with:
+          packages: libwebkit2gtk-4.1-dev libayatana-appindicator3-dev librsvg2-dev libxdo-dev libssl-dev fish ffmpeg
 
       - uses: ./.github/actions/rust-gate
         with:
@@ -142,12 +143,12 @@ jobs:
         with:
           persist-credentials: false
 
+      # Cached and bounded (#604): the mirror once held this step for 25+ min.
       - name: System libraries (Tauri/WebKitGTK) and the headless display (sway, grim, Mesa llvmpipe)
-        run: |
-          SUDO=$(command -v sudo || true)
-          $SUDO apt-get update
-          $SUDO apt-get install -y --no-install-recommends libwebkit2gtk-4.1-dev libayatana-appindicator3-dev librsvg2-dev libxdo-dev libssl-dev \
-            sway grim dbus libgl1-mesa-dri libegl1 libgles2 xwayland fonts-dejavu-core
+        timeout-minutes: 10
+        uses: ./.github/actions/apt-packages
+        with:
+          packages: libwebkit2gtk-4.1-dev libayatana-appindicator3-dev librsvg2-dev libxdo-dev libssl-dev sway grim dbus libgl1-mesa-dri libegl1 libgles2 xwayland fonts-dejavu-core
 
       - name: Install Rust
         run: rustup show active-toolchain || rustup toolchain install
@@ -221,10 +222,10 @@ jobs:
           persist-credentials: false
 
       - name: System libraries
-        run: |
-          SUDO=$(command -v sudo || true)
-          $SUDO apt-get update
-          $SUDO apt-get install -y --no-install-recommends build-essential curl pkg-config libssl-dev
+        timeout-minutes: 10
+        uses: ./.github/actions/apt-packages
+        with:
+          packages: build-essential curl pkg-config libssl-dev
 
       # Same steps as the release job (release.yml, build-linux-arm64): the arm64 image may lack rustup.
       - name: Install Rust
@@ -243,7 +244,13 @@ jobs:
     needs: plan
     if: ${{ needs.plan.outputs.tested != 'true' && needs.plan.outputs.rust == 'true' }}
     runs-on: windows-latest
-    timeout-minutes: 60
+    # A normal run takes 5-12 min (Test step 3-6, Doctests under 1). A runner that froze mid-step never runs a step timeout
+    # (#520) and GitHub only notices ~45-50 min later. The job's own limit is kept by the service (a frozen job "runs to the
+    # job cap", actions/runner-images#14938) and is above the sum of the step limits (gate ~4 + Test 15 + Doctests 5), so a
+    # job that ends by it is a stalled runner, which ci-rerun-lost (scripts/ci-lost-runner.ts, `stalled`) reruns after 30 min
+    # instead of ~50. The next loss shows whether the service ends it: "exceeded the maximum execution time of 30m0s" in
+    # place of "lost communication".
+    timeout-minutes: 30
     # `checks: write` only for the watchdog's check run (scripts/ci-watchdog.ps1, issue #520). A fork's pull request
     # gets a read-only token whatever is declared here: the watchdog then keeps to the log.
     permissions:
@@ -262,9 +269,9 @@ jobs:
           defer-tests: "true"
 
       # Issue #520: this job lost its runner 10 times since 2026-11-15 ("The hosted runner lost communication with
-      # the server" after exactly 50 min), twice in this step with its 25 min timeout never firing, so the runner
+      # the server" after exactly 50 min), 4 times in this step with its step timeout never firing, so the runner
       # itself died or froze; the job's live log is not kept either. The tests take 3-4 min. What this step leaves:
-      # - a hang in the tests fails the step after 25 min with its log (nextest ends a single test after 3 min,
+      # - a hang in the tests fails the step after 15 min with its log (nextest ends a single test after 3 min,
       #   `.config/nextest.toml`), instead of taking the runner with it; the log is a file as well, to upload below;
       # - scripts/ci-watchdog.ps1 samples memory, commit charge, page file, handles, disk queue and free space, the
       #   top processes and the tests running now every 15 s, to the live log, to `watchdog.log` and, off the runner,
@@ -274,7 +281,7 @@ jobs:
       #   tests start.
       - name: Test
         if: ${{ needs.plan.outputs.tested != 'true' }}
-        timeout-minutes: 25
+        timeout-minutes: 15
         shell: bash
         env:
           WATCHDOG_TOKEN: ${{ github.token }}
@@ -290,7 +297,7 @@ jobs:
 
       - name: Doctests
         if: ${{ needs.plan.outputs.tested != 'true' }}
-        timeout-minutes: 10
+        timeout-minutes: 5
         shell: bash
         run: cargo test --workspace --locked --doc
 
@@ -404,9 +411,13 @@ jobs:
         with:
           no-cache: true
 
-      - name: ffmpeg (the flicker-sweep judge tests record with it)
+      # ffmpeg: the flicker-sweep judge tests record with it. Cached and bounded (#604): a slow mirror once ate the job's 15 min.
+      - name: ffmpeg
         if: runner.os == 'Linux'
-        run: sudo apt-get update -q && sudo apt-get install -y --no-install-recommends ffmpeg
+        timeout-minutes: 10
+        uses: ./.github/actions/apt-packages
+        with:
+          packages: ffmpeg
 
       - name: PyYAML (scripts/test-labels.sh)
         shell: bash

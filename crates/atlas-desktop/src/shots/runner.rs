@@ -57,13 +57,7 @@ pub enum Then {
 fn notify_error(app: &AppHandle, message: &str) {
     let _ = app.emit("shots://error", message);
     // A failed capture with the permission missing is the common case: a system notification says how to fix it.
-    use tauri_plugin_notification::NotificationExt;
-    let _ = app
-        .notification()
-        .builder()
-        .title(t!("native_notify_capture_failed"))
-        .body(message)
-        .show();
+    let _ = crate::native_ui::notify(app, t!("native_notify_capture_failed"), message);
 }
 
 // ───────────────────────────── overlay ─────────────────────────────
@@ -285,6 +279,13 @@ fn freeze_session(
 /// under the pointer the key one (Esc, Space) without activating the app. The wait for the main thread is bounded:
 /// the freeze must not queue behind a busy event loop for long.
 fn order_in(app: &AppHandle, order: Vec<(tauri::Window, Rect)>, key: Option<String>) {
+    // Defence in depth: an agent instance never builds the overlay (`show_overlay`, `surface::build`), and these
+    // windows are placed on the real displays, so if one is ever asked for here it is held back and recorded.
+    if crate::native_ui::gate(crate::native_ui::Kind::Window, "capture overlay", "")
+        == crate::native_ui::Verdict::Suppressed
+    {
+        return;
+    }
     let h = crate::display_mac::primary_height();
     let a = app.clone();
     let (tx, rx) = std::sync::mpsc::channel();

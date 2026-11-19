@@ -560,7 +560,7 @@ pub fn pill_menu(prefs: &DockPrefs, tag: &str) -> Vec<MenuEntry> {
 /// the panel to become key, which the idle pill must never be.
 #[tauri::command]
 pub fn dock_menu(app: AppHandle, state: State<'_, DockState>) -> Result<(), String> {
-    use tauri::menu::{ContextMenu, Menu, MenuItem, PredefinedMenuItem};
+    use tauri::menu::{Menu, MenuItem, PredefinedMenuItem};
     let win = app
         .get_window(LABEL)
         .ok_or_else(|| t!("native_notify_dock_not_built"))?;
@@ -575,7 +575,7 @@ pub fn dock_menu(app: AppHandle, state: State<'_, DockState>) -> Result<(), Stri
             .map_err(|e| e.to_string())?;
         menu.append(&item).map_err(|e| e.to_string())?;
     }
-    menu.popup(win).map_err(|e| e.to_string())
+    crate::native_ui::popup(&menu, win, "dock pill menu").map(|_| ())
 }
 
 /// A pill menu item was chosen (wired once in `main`: `on_menu_event`).

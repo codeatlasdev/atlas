@@ -44,6 +44,7 @@ impl AtlasCommand for CrewSpawnArgs {
 
         // SAFETY: plain getter.
         if unsafe { libc::geteuid() } != 0 {
+            // i18n-ignore: output of a systemd unit, read in the journal by an administrator
             bail!(
                 "atlas crew-spawn runs as root (it is started by systemd: atlas-crew-spawn.service)"
             );
@@ -64,6 +65,7 @@ impl AtlasCommand for CrewSpawnArgs {
             }
             _ => {
                 let l = server::listener_from_systemd().ok_or_else(|| {
+                    // i18n-ignore: output of a systemd unit, read in the journal by an administrator
                     anyhow::anyhow!(
                         "no socket from systemd (LISTEN_FDS): start atlas-crew-spawn.socket, or pass --socket and --crew-user"
                     )
@@ -72,6 +74,7 @@ impl AtlasCommand for CrewSpawnArgs {
                 (l, user, uid)
             }
         };
+        // i18n-ignore: log line of a systemd unit, read in the journal
         eprintln!(
             "atlas crew-spawn{}: serving {user} (uid {uid})",
             if self.provision { " --provision" } else { "" }
@@ -92,6 +95,7 @@ impl AtlasCommand for CrewSpawnArgs {
     #[cfg(not(unix))]
     async fn run(self) -> Result<()> {
         let _ = self;
+        // i18n-ignore: output of a systemd unit, read in the journal by an administrator
         bail!("atlas crew-spawn needs Linux")
     }
 }

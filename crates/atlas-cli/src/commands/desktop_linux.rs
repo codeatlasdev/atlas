@@ -13,6 +13,7 @@ use std::process::{Command, Stdio};
 
 use anyhow::{Context, Result, bail};
 use atlas_core::pkgowner::PackageManager;
+use atlas_i18n::t;
 
 use super::update_pkg;
 
@@ -49,8 +50,12 @@ pub(super) fn install(source: &Path, target: &Path, version: Option<&str>) -> Re
         && let Err(e) = write_menu_entry(&home, target)
     {
         eprintln!(
-            "\x1b[33m◆\x1b[0m No menu entry ({e:#}); start it with: {}",
-            target.display()
+            "\x1b[33m◆\x1b[0m {}",
+            t!(
+                "cmd_desktop_no_menu_entry",
+                reason = format!("{e:#}"),
+                path = target.display().to_string()
+            )
         );
     }
     Ok(())
@@ -104,8 +109,12 @@ fn record_version(vf: &Path, version: Option<&str>) -> Result<()> {
             if let Some(dir) = vf.parent() {
                 std::fs::create_dir_all(dir)?;
             }
-            std::fs::write(vf, v)
-                .with_context(|| format!("cannot record version in {}", vf.display()))
+            std::fs::write(vf, v).with_context(|| {
+                t!(
+                    "cmd_desktop_version_record_failed",
+                    path = vf.display().to_string()
+                )
+            })
         }
         None => {
             let _ = std::fs::remove_file(vf);
@@ -120,28 +129,49 @@ fn record_version(vf: &Path, version: Option<&str>) -> Result<()> {
 fn install_file(source: &Path, target: &Path, prev: &Path) -> Result<()> {
     if !is_elf(source) {
         bail!(
-            "{} is not an AppImage (expected an executable ELF file)",
-            source.display()
+            "{}",
+            t!(
+                "cmd_desktop_not_appimage",
+                path = source.display().to_string()
+            )
         );
     }
-    let parent = target.parent().context("bad install path")?;
-    std::fs::create_dir_all(parent)
-        .with_context(|| format!("cannot create {}", parent.display()))?;
+    let parent = target.parent().with_context(|| {
+        t!(
+            "cmd_desktop_bad_install_path",
+            path = target.display().to_string()
+        )
+    })?;
+    std::fs::create_dir_all(parent).with_context(|| {
+        t!(
+            "cmd_install_create_failed",
+            path = parent.display().to_string()
+        )
+    })?;
     let staging = Staging(parent.join(LINUX_APP_STAGING));
     std::fs::copy(source, &staging.0)
-        .with_context(|| format!("cannot copy {}", source.display()))?;
+        .with_context(|| t!("cmd_link_copy_failed", path = source.display().to_string()))?;
     std::fs::set_permissions(&staging.0, std::fs::Permissions::from_mode(0o755))?;
     let had_old = target.symlink_metadata().is_ok();
     if had_old {
-        std::fs::rename(target, prev)
-            .with_context(|| format!("cannot move {}", target.display()))?;
+        std::fs::rename(target, prev).with_context(|| {
+            t!(
+                "cmd_desktop_move_failed",
+                path = target.display().to_string()
+            )
+        })?;
     }
     // rename(2) replaces atomically; a running instance keeps its (unlinked) inode.
     if let Err(e) = std::fs::rename(&staging.0, target) {
         if had_old {
             let _ = std::fs::rename(prev, target);
         }
-        return Err(e).with_context(|| format!("cannot install {}", target.display()));
+        return Err(e).with_context(|| {
+            t!(
+                "cmd_desktop_install_failed",
+                path = target.display().to_string()
+            )
+        });
     }
     Ok(())
 }
@@ -290,7 +320,7 @@ fn try_install_package(pm: PackageManager, version: &str, yes: bool) -> Result<O
     update_pkg::run_install(&argv)?;
     atlas_core::paths::packaged_app()
         .map(Some)
-        .context("the package installed but /usr/bin/atlas-desktop is not there")
+        .with_context(|| t!("cmd_desktop_pkg_missing_binary"))
 }
 
 /// `[Y/n]` (`[S/n]` in pt-BR): an empty answer (just Enter) is yes; only an explicit no (or anything else) is not.
@@ -318,8 +348,12 @@ pub(super) fn open(app: &Path, args: &[std::ffi::OsString]) -> Result<()> {
             Ok(())
         });
     }
-    cmd.spawn()
-        .with_context(|| format!("cannot start {}", app.display()))?;
+    cmd.spawn().with_context(|| {
+        t!(
+            "cmd_desktop_start_failed",
+            program = app.display().to_string()
+        )
+    })?;
     Ok(())
 }
 

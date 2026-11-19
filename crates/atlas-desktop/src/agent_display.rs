@@ -428,11 +428,11 @@ mod tests {
                     "src/dock.rs",
                     "src/main.rs",
                     "src/tray.rs",
-                    "src/agent/notify.rs",
-                    "src/live.rs",
                     "src/shots/surface.rs",
-                    // a system notification (`NotificationExt`), not a window
+                    // the capture overlay's windows (user branch only: `order_in` asks the native-UI gate first, agent instances never build it)
                     "src/shots/runner.rs",
+                    // the notification and message-box builders (gated: `Mode::native_ui_allowed`), not a window
+                    "src/native_ui.rs",
                 ][..],
             ),
             (".set_focus()", &["src/main.rs", "src/tray.rs"][..]),

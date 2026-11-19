@@ -14,7 +14,6 @@ use notify::{RecursiveMode, Watcher};
 use serde_json::{Value, json};
 use tauri::async_runtime::JoinHandle;
 use tauri::{AppHandle, Emitter, Manager};
-use tauri_plugin_notification::NotificationExt;
 
 const POLL: Duration = Duration::from_secs(2);
 const NOTIFY_EVERY: Duration = Duration::from_secs(300);
@@ -243,7 +242,10 @@ fn poll_event(s: &status::Snapshot) -> Value {
 fn notify_if_needed(app: &AppHandle, root: &Path, ev: &Value) {
     let body = match ev["t"].as_str() {
         Some("state") if ev["state"] == "failed" => {
-            format!("{} failed", ev["name"].as_str().unwrap_or("service"))
+            atlas_i18n::t!(
+                "native_notify_service_failed",
+                name = ev["name"].as_str().unwrap_or("service")
+            )
         }
         Some("alert") => ev["message"].as_str().unwrap_or("alert").to_string(),
         _ => return,
@@ -273,7 +275,7 @@ fn notify_if_needed(app: &AppHandle, root: &Path, ev: &Value) {
         .file_name()
         .map(|n| n.to_string_lossy().into_owned())
         .unwrap_or_else(|| "Atlas".into());
-    let _ = app.notification().builder().title(title).body(body).show();
+    let _ = crate::native_ui::notify(app, title, body);
 }
 
 #[cfg(test)]

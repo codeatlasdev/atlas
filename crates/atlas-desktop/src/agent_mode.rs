@@ -55,6 +55,13 @@ impl Mode {
         self == Mode::User
     }
 
+    /// Native UI outside the app's window (message boxes, pickers, notifications, popped menus, launched apps): the OS
+    /// places it on the user's active display, not on the agent's virtual one, so an agent instance never raises it
+    /// (`native_ui.rs` is the one gate that asks).
+    pub fn native_ui_allowed(self) -> bool {
+        self == Mode::User
+    }
+
     /// Whether this process registers the single-instance guard of its app id (D-Bus name on Linux, a mutex on
     /// Windows): a second launch of the user's app hands off to the first and exits. An agent instance is meant to run
     /// beside the user's app and beside other agents; with the guard it would be absorbed by his window (#281).
@@ -869,6 +876,8 @@ mod tests {
     fn an_agent_instance_has_no_dock_icon_no_tray_and_cannot_be_frontmost() {
         assert_eq!(Mode::Agent.policy(), Policy::Prohibited);
         assert!(!Mode::Agent.tray_allowed());
+        assert!(!Mode::Agent.native_ui_allowed());
+        assert!(Mode::User.native_ui_allowed());
         assert_eq!(Mode::User.policy(), Policy::Regular);
         assert!(Mode::User.tray_allowed());
     }

@@ -10,7 +10,6 @@
 		TextArea,
 		toast,
 	} from "@codeatlasdev/ui";
-	import { open as pickFolder } from "@tauri-apps/plugin-dialog";
 	import { api, errText } from "#lib/api.ts";
 	import { store } from "#lib/stores/projects.svelte.ts";
 	import { worktrees } from "#lib/stores/worktrees.svelte.ts";
@@ -61,7 +60,7 @@
 			repoId = v;
 			return;
 		}
-		const dir = await pickFolder({ directory: true, title: m.git_new_worktree_dialog_add_project_title() });
+		const dir = await api.pickPath({ directory: true, title: m.git_new_worktree_dialog_add_project_title() });
 		if (typeof dir !== "string") return;
 		try {
 			const p = await api.add(dir);

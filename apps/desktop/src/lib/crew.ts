@@ -165,6 +165,8 @@ export interface Crewmate {
 	last?: CrewmateLast;
 	running_task?: { id: string; pane?: string };
 	pending_approval?: PendingApproval;
+	/** The task parked on a card (any kind), when there is one; hostd 1.5.0-alpha.26 and later send it. */
+	waiting_task?: { id: string; action: TaskAction; result?: string };
 	/** Unvalidated wire value; render through `normalizeLook`. */
 	look?: unknown;
 	/** Engine config (set by the onboarding conversation). */

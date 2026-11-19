@@ -1,7 +1,7 @@
 ---
 title: "Atlas Crew"
 source: crew.md
-source_sha: "ab6d8f569a1e3dcf3630bb720a7f32394b4d9e83"
+source_sha: "f6e9109ae0a965a6455185be728de76b53989420"
 translation: machine
 ---
 
@@ -882,11 +882,11 @@ O mesmo socket NDJSON de todo comando do hostd (`~/.atlas/hostd.sock`, ou o do c
 }
 ```
 
-- `state`: `idle`, `working` ou `needs_you`.
+- `state`: `idle`, `working` (uma tarefa está rodando) ou `needs_you` (uma aprovação de ferramenta está pendente, ou uma tarefa está parada em um card).
 - `running_task` existe só enquanto uma tarefa roda; `pane` é a chave para anexar um terminal.
 - `last`: o resultado, o erro ou o prompt da tarefa mais recente (os primeiros 140 caracteres), o estado final e a hora.
-- `pending_approval` existe só em `needs_you`.
-- `waiting_task` (ausente, a menos que uma tarefa esteja parada em um card): `{id, action, result, attachments}`, o card em que a tarefa em espera mais antiga está e as imagens que o agente tirou para ela (só as do agente, como registros). O Captain's call do Atlas Mobile lista a partir dele um crewmate com um card `refused` ou `prove_ui`, com Retry e Override ali mesmo. Ele não muda `state`.
+- `pending_approval` existe só em `needs_you`; uma tarefa parada em qualquer card (`waiting_task`) também é `needs_you`, embora o runner dela continue ocupado, então `running_task` está presente ali e o Stop funciona. Um servidor anterior a isso (1.5.0-alpha.26 e antes) dizia `working`; o desktop corrige isso onde a resposta ainda mostra o card.
+- `waiting_task` (ausente, a menos que uma tarefa esteja parada em um card): `{id, action, result, attachments}`, o card em que a tarefa está (a que o runner segura, ou a parada mais recente) e as imagens que o agente tirou para ela (só as do agente, como registros). O Captain's call do Atlas Mobile lista a partir dele um crewmate com um card `refused` ou `prove_ui`, com Retry e Override ali mesmo. A presença dele faz `state` ser `needs_you`, seja qual for o tipo de card.
 - `triggers` está sempre presente; `next_fire` é calculado pelo servidor.
 
 ### Objeto de tarefa

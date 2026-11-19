@@ -54,6 +54,29 @@ fn parse_approval(approval: &str, engine_kind: Option<&str>) -> Result<Approval,
     Ok(approval_enum)
 }
 
+/// A task parked on a card of any kind (`waiting_action` with its action).
+fn parked(t: &crate::crew::store::Task) -> bool {
+    t.state == crate::crew::store::TaskState::WaitingAction && t.action.is_some()
+}
+
+/// What a crewmate is doing, for every client: `needs_you` when it waits for the owner (a tool approval, or a task
+/// parked on any card: a choice, a question, a secret, a refusal, a sign-in), else `working` while its runner holds
+/// a task, else `idle`. A parked task keeps the runner held, so "working" without this check showed a crewmate that
+/// waits for its owner as busy (#524: Gerente "working…" on a refused card, nothing told the owner).
+pub(crate) fn crewmate_state(
+    pending_approval: bool,
+    parked_task: bool,
+    running: bool,
+) -> &'static str {
+    if pending_approval || parked_task {
+        "needs_you"
+    } else if running {
+        "working"
+    } else {
+        "idle"
+    }
+}
+
 /// `CrewmateList`
 pub(crate) fn list(hub: &Hub) -> Result<Value, String> {
     let crewmates = hub.crew.store.list_crewmates();
@@ -67,13 +90,25 @@ pub(crate) fn list(hub: &Hub) -> Result<Value, String> {
                     .map(|pk| pane::is_pane_of(pk, &b.id))
                     .unwrap_or(false)
             });
-            let state = if pending_approval.is_some() {
-                "needs_you"
-            } else if running_task.is_some() {
-                "working"
-            } else {
-                "idle"
-            };
+            // The card a task is parked on (a guard refused it, a UI task owes captures, a question, a secret, a
+            // sign-in): the task whose runner is held, else the newest parked one.
+            let waiting = running_task
+                .as_deref()
+                .and_then(|id| hub.crew.store.task(&b.id, id))
+                .filter(parked)
+                .or_else(|| {
+                    hub.crew
+                        .store
+                        .read_tasks(&b.id, 20)
+                        .into_iter()
+                        .rev()
+                        .find(parked)
+                });
+            let state = crewmate_state(
+                pending_approval.is_some(),
+                waiting.is_some(),
+                running_task.is_some(),
+            );
             let queued = hub.crew.runners.queue_len(&b.id);
             let last: Option<Value> = {
                 let tasks = hub.crew.store.read_tasks(&b.id, 1);
@@ -118,16 +153,7 @@ pub(crate) fn list(hub: &Hub) -> Result<Value, String> {
             // A task parked on a card (a guard refused it, a UI task owes captures, a question): the
             // phone's "Captain's call" shows it with the agent's captures. Only the agent's images are
             // listed (the owner's own are under their prompt), as records: the bytes are fetched.
-            if let Some(t) = hub
-                .crew
-                .store
-                .read_tasks(&b.id, 20)
-                .into_iter()
-                .rev()
-                .find(|t| {
-                    t.state == crate::crew::store::TaskState::WaitingAction && t.action.is_some()
-                })
-            {
+            if let Some(t) = &waiting {
                 let agent: Vec<_> = t
                     .attachments
                     .iter()

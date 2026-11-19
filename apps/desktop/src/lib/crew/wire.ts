@@ -17,7 +17,23 @@ export function normalizeTask(t: CrewmateTask): CrewmateTask {
 	};
 }
 
-/** A crewmate with `last.ts` in milliseconds. */
+/**
+ * A crewmate with `last.ts` in milliseconds, and its `state` as it really is.
+ *
+ * hostd's `state` is the one answer ("needs_you" for a tool approval or a task parked on any card), and is used as
+ * sent. A crew server before #524 (the report ran 1.5.0-alpha.24) says "working" for a crewmate that is parked on a
+ * card, because its runner is held: its `waiting_task` (alpha.26 and later) or a `last` task that is itself
+ * `waiting_action` still tell it. Older servers that send neither (and whose parked task is hidden behind newer
+ * queued ones) cannot be told from here: the chat of the selected crewmate reads its tasks (`withParkedTask`).
+ */
 export function normalizeCrewmate(c: Crewmate): Crewmate {
-	return c.last ? { ...c, last: { ...c.last, ts: c.last.ts * 1000 } } : c;
+	const parked = c.waiting_task != null || c.last?.state === "waiting_action";
+	const fixed: Crewmate = c.state === "working" && parked ? { ...c, state: "needs_you" } : c;
+	return fixed.last ? { ...fixed, last: { ...fixed.last, ts: fixed.last.ts * 1000 } } : fixed;
+}
+
+/** `c` as `needs_you` when one of its `tasks` (already loaded for the open chat) is parked on a card. */
+export function withParkedTask(c: Crewmate, tasks: CrewmateTask[]): Crewmate {
+	const parked = tasks.some((t) => t.state === "waiting_action" && t.action);
+	return c.state === "working" && parked ? { ...c, state: "needs_you" } : c;
 }

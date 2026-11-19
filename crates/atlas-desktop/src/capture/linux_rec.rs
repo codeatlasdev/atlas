@@ -365,29 +365,44 @@ mod tests {
         );
     }
 
+    /// The contract: the recording ends with a frame grabbed AFTER the stop was asked, so whatever ended it (`--until`
+    /// showing) is in the file. Each grab records whether the stop had been asked by then; the last one must have
+    /// seen it. Incident (Linux CI, PR #638): this asserted exactly one grab at 1 fps, assuming `start` (which spawns
+    /// ffmpeg) and `stop` happen within the first second; on a loaded runner a periodic grab came first (2 vs 1).
     #[test]
     fn the_last_frame_is_grabbed_after_the_stop_so_what_ended_the_recording_is_in_it() {
         if !tool("ffmpeg") {
             return;
         }
         let dir = tempfile::tempdir().unwrap();
-        let grabs = Arc::new(std::sync::atomic::AtomicU32::new(0));
-        let count = grabs.clone();
-        // 1 fps: the loop is asleep for a second after the start frame, so stopping now is a stop seen before any
-        // periodic grab; the one grab that still happens is the final one.
+        let asked = Arc::new(AtomicBool::new(false));
+        let seen = Arc::new(std::sync::Mutex::new(Vec::new()));
+        let (asked_g, seen_g) = (asked.clone(), seen.clone());
         let rec = Recorder::start(
             ppm(64, 64, 0),
             move || {
-                count.fetch_add(1, Ordering::SeqCst);
+                seen_g.lock().unwrap().push(asked_g.load(Ordering::SeqCst));
                 Ok(ppm(64, 64, 9))
             },
-            1,
+            30,
             &dir.path().join("x.mp4"),
         )
         .unwrap();
+        asked.store(true, Ordering::SeqCst);
         let tally = rec.stop().unwrap();
-        assert_eq!(grabs.load(Ordering::SeqCst), 1, "one grab after the stop");
-        assert_eq!(tally.frames, 2, "the start frame and the final one");
+        let seen = seen.lock().unwrap();
+        // The last grab is the one after the stop. (How many grabs came before it depends on how long `start` took,
+        // which is the machine's business, not the recorder's.)
+        assert_eq!(
+            seen.last(),
+            Some(&true),
+            "the final grab came after the stop: {seen:?}"
+        );
+        assert_eq!(
+            tally.frames,
+            seen.len() as u64 + 1,
+            "the start frame and every grab are in the file"
+        );
     }
 
     #[test]

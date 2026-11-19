@@ -37,6 +37,7 @@
 //! | `structure`   | a grep guard: code that touches an isolated crewmate's tree says how it is safe |
 //! | `time_contract` | cron and time zone semantics (DST included) pinned across the date-time crate swap |
 //! | `old_crons`   | crons croner 2 accepted and croner 4 refuses: load, list as invalid, never fire, edits of the rest |
+//! | `omp_approval` | omp's `ask` through the real approval extension, under omp's own handler limit and a virtual clock |
 //! | `prove_ui`    | a `ui` task needs two agent captures to be done: the card, override/retry, Telegram |
 
 pub(crate) mod github_fake;
@@ -84,6 +85,8 @@ mod locate;
 mod mobile_payloads;
 #[cfg(unix)]
 mod old_crons;
+#[cfg(unix)]
+mod omp_approval;
 #[cfg(unix)]
 mod pause;
 #[cfg(unix)]

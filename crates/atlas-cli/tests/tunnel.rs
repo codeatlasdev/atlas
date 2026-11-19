@@ -256,11 +256,13 @@ fn enabled_tunnel_starts_at_boot_with_expected_ssh_args_and_stops_on_exit() {
     assert_eq!(st["tunnel"]["local_port"], f.local_port);
     assert_eq!(st["tunnel"]["ssh_host"], "fake-host");
     assert_eq!(st["tunnel"]["remote"], "db.internal:5432");
+    // Our own ssh was started (a foreign listener adopted instead would leave this empty, #496)...
+    let inv = f.invocations();
+    assert_eq!(inv.len(), 1, "{}", f.diagnose(&h));
+    // ...so the fake ssh holds the port for as long as atlas runs.
     assert!(port_open(f.local_port), "{}", f.diagnose(&h));
 
     // Exact ssh invocation (BatchMode, keepalive from config, -N, -L).
-    let inv = f.invocations();
-    assert_eq!(inv.len(), 1, "{inv:?}");
     assert_eq!(
         inv[0],
         format!(
@@ -283,6 +285,46 @@ fn enabled_tunnel_starts_at_boot_with_expected_ssh_args_and_stops_on_exit() {
     });
     assert!(!port_open(f.local_port));
     assert!(!f.logs().join(".tunnel.pid").exists());
+}
+
+/// Guards #496 (`enabled_tunnel_starts_at_boot…` saw the status say `running` and then a refused connection on
+/// Linux CI). The race, made deterministic: a listener that is not atlas's holds the tunnel's local port when atlas
+/// starts, and goes away later. Contract (docs/runtime.md, SSH tunnel): the foreign listener is used as is and atlas
+/// starts no ssh, since a tunnel opened by hand is a legitimate setup; when it stops answering, the next health pass
+/// starts atlas's own ssh. The old test read the port once and failed whenever the foreign listener died between
+/// the status turning `running` and that read.
+#[test]
+fn a_foreign_listener_on_the_port_is_used_then_replaced_by_atlas_own_ssh_when_it_goes() {
+    require_python!();
+    let f = Fixture::new(true);
+    let foreign =
+        std::net::TcpListener::bind(("127.0.0.1", f.local_port)).expect("the leased port is free");
+    let mut h = f.spawn_headless();
+    f.wait_tunnel("running", HANG);
+    assert!(
+        f.invocations().is_empty(),
+        "atlas must not start ssh over a live foreign listener: {}",
+        f.diagnose(&h)
+    );
+    wait_for("foreign listener noted in tunnel.log", HANG, || {
+        std::fs::read_to_string(f.logs().join("tunnel.log"))
+            .ok()
+            .filter(|t| t.contains("already accepting connections; not starting ssh"))
+    });
+
+    // The foreign listener goes away: atlas notices on its next pass and brings up its own forward.
+    drop(foreign);
+    wait_for("atlas's own ssh took over the port", HANG, || {
+        (f.invocations().len() == 1 && fake_ssh_pids(&f).len() == 1 && port_open(f.local_port))
+            .then_some(())
+    });
+    f.wait_tunnel("running", HANG);
+    assert_eq!(f.invocations().len(), 1, "{}", f.diagnose(&h));
+
+    h.stop();
+    wait_for("ssh gone", HANG, || {
+        fake_ssh_pids(&f).is_empty().then_some(())
+    });
 }
 
 #[test]

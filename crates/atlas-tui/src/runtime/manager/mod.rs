@@ -41,7 +41,7 @@ mod types;
 #[cfg(test)]
 mod tests;
 
-pub(crate) use disk_log::{log_file_stem, open_stream_log, rotate_stream_log};
+pub(crate) use disk_log::{append_mark, log_file_stem, open_stream_log, rotate_stream_log};
 
 pub(crate) use devices::{parse_devicectl_json, parse_simctl_json};
 pub use mem_watch::MemoryFacts;

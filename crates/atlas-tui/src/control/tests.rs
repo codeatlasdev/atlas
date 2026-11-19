@@ -1,5 +1,8 @@
 use serde_json::{Value, json};
 
+use atlas_core::clock::Clock;
+#[cfg(unix)]
+use atlas_core::clock::ManualClock;
 use atlas_core::ipc;
 use tokio::io::{AsyncBufReadExt, AsyncWriteExt};
 
@@ -498,17 +501,27 @@ fn audit_ts_is_local_rfc3339_with_millis_and_render_shows_its_clock() {
 
 /// A served project whose run loop is stuck: `REQUEST_QUEUE` requests are parked in the queue and
 /// nobody reads it, so the next one finds it full. `rx` is the run loop's end.
-async fn full_queue(
-    queue_wait: Duration,
-) -> (
+async fn full_queue(queue_wait: Duration) -> FullQueue {
+    full_queue_on(queue_wait, Clock::default()).await
+}
+
+type FullQueue = (
     tempfile::TempDir,
     ControlServer,
     tokio::sync::mpsc::Receiver<ControlRequest>,
     Vec<tokio::task::JoinHandle<Result<ControlResponse, String>>>,
-) {
+);
+
+/// [`full_queue`] with the queue wait measured on `clock`.
+async fn full_queue_on(queue_wait: Duration, clock: Clock) -> FullQueue {
     let dir = tempfile::TempDir::new().unwrap();
-    let (server, rx) =
-        ControlServer::bind_with(dir.path(), Guard::new(&cfg(), dir.path()), queue_wait).unwrap();
+    let (server, rx) = ControlServer::bind_with(
+        dir.path(),
+        Guard::new(&cfg(), dir.path()),
+        queue_wait,
+        clock,
+    )
+    .unwrap();
     let parked = (0..server::REQUEST_QUEUE)
         .map(|_| {
             let root = dir.path().to_path_buf();
@@ -650,10 +663,21 @@ async fn info_of_a_busy_atlas_names_the_pid_in_its_lock() {
 #[cfg(unix)]
 #[tokio::test]
 async fn down_of_a_busy_run_waits_for_its_real_pid_never_pid_zero() {
-    let (dir, _server, mut rx, _parked) = full_queue(Duration::from_millis(300)).await;
+    // The queue wait runs on a clock this test moves (#596): "busy" is answered when the test says the wait is over,
+    // and `down()`'s shutdown is accepted because the run loop frees up while it waits, not because a 450 ms sleep
+    // happened to land inside a 300 ms window.
+    let wait = Duration::from_millis(300);
+    let manual = ManualClock::new();
+    let (dir, _server, mut rx, _parked) = full_queue_on(wait, manual.clock()).await;
     // No pid to be found for the busy run: down() cannot tell when it is gone, so it does not claim to.
-    let err = crate::runner::down(dir.path(), Duration::from_secs(1))
+    let root = dir.path().to_path_buf();
+    let unknown =
+        tokio::spawn(async move { crate::runner::down(&root, Duration::from_secs(1)).await });
+    manual.armed_past(0).await; // its `info` waits for a slot
+    manual.advance(wait);
+    let err = unknown
         .await
+        .unwrap()
         .expect_err("down() claimed an outcome for a run whose pid it does not know");
     assert!(err.contains("busy"), "{err}");
 
@@ -661,8 +685,10 @@ async fn down_of_a_busy_run_waits_for_its_real_pid_never_pid_zero() {
     let runner = fake_runner(dir.path());
     let root = dir.path().to_path_buf();
     let down =
-        tokio::spawn(async move { crate::runner::down(&root, Duration::from_secs(1)).await });
-    tokio::time::sleep(Duration::from_millis(450)).await;
+        tokio::spawn(async move { crate::runner::down(&root, Duration::from_millis(300)).await });
+    manual.armed_past(1).await; // `info` waits for a slot, answered busy with the pid from the lock once `wait` has passed
+    manual.advance(wait);
+    manual.armed_past(2).await; // the shutdown waits for a slot, its wait not over
     tokio::spawn(async move {
         while let Some(req) = rx.recv().await {
             let _ = req.reply.send(ControlResponse::ok(json!({})));

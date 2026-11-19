@@ -15,7 +15,7 @@ use atlas_core::scaling::HANG;
 use serde_json::Value;
 
 mod common;
-use common::{free_port, libc_kill, wait_for};
+use common::{libc_kill, reserve_port, wait_for};
 
 const BIN: &str = env!("CARGO_BIN_EXE_atlas");
 
@@ -53,6 +53,8 @@ struct Fixture {
     fake: PathBuf,
     ssh_log: PathBuf,
     fail_file: PathBuf,
+    /// The claim on `local_port` (see [`common::reserve_port`]), released with the fixture.
+    _lease: common::PortLease,
 }
 
 impl Fixture {
@@ -60,7 +62,8 @@ impl Fixture {
     /// `open_tunnel: true` action `t` writing `ran.txt`.
     fn new(tunnel_enabled: bool) -> Self {
         let dir = tempfile::TempDir::new().unwrap();
-        let local_port = free_port();
+        let lease = reserve_port();
+        let local_port = lease.port();
         let fake = dir.path().join("fake-ssh");
         std::fs::write(&fake, FAKE_SSH).unwrap();
         std::fs::set_permissions(&fake, std::fs::Permissions::from_mode(0o755)).unwrap();
@@ -93,7 +96,8 @@ actions:
         let fail_file = dir.path().join("fail-msg");
         Self {
             dir,
-            local_port,
+            local_port: lease.port(),
+            _lease: lease,
             fake,
             ssh_log,
             fail_file,
@@ -194,6 +198,23 @@ impl Headless {
     }
 }
 
+impl Fixture {
+    /// Why a probe of the port failed: the tunnel's own log (it says "already accepting connections; not starting
+    /// ssh" when atlas took someone else's listener), what the fake ssh was asked, which fake ssh still runs, and what
+    /// atlas printed. A one-line "assertion failed" on a CI runner explained nothing (#496).
+    fn diagnose(&self, h: &Headless) -> String {
+        let log = std::fs::read_to_string(self.logs().join("tunnel.log")).unwrap_or_default();
+        format!(
+            "127.0.0.1:{} refused a connection while atlas reports the tunnel up\n-- status tunnel: {}\n-- ssh invocations: {:?}\n-- fake ssh pids: {:?}\n-- .logs/tunnel.log:\n{log}\n-- atlas stdout:\n{}\n-- atlas stderr:\n{}",
+            self.local_port,
+            self.status()["tunnel"],
+            self.invocations(),
+            fake_ssh_pids(self),
+            h.stdout(),
+            h.stderr()
+        )
+    }
+}
 impl Drop for Headless {
     fn drop(&mut self) {
         self.stop();
@@ -235,7 +256,7 @@ fn enabled_tunnel_starts_at_boot_with_expected_ssh_args_and_stops_on_exit() {
     assert_eq!(st["tunnel"]["local_port"], f.local_port);
     assert_eq!(st["tunnel"]["ssh_host"], "fake-host");
     assert_eq!(st["tunnel"]["remote"], "db.internal:5432");
-    assert!(port_open(f.local_port));
+    assert!(port_open(f.local_port), "{}", f.diagnose(&h));
 
     // Exact ssh invocation (BatchMode, keepalive from config, -N, -L).
     let inv = f.invocations();
@@ -574,7 +595,8 @@ fn a_remote_service_is_forwarded_like_a_local_one_and_comes_back_after_a_drop() 
     require_python!();
     let dir = tempfile::TempDir::new().unwrap();
     let (remote_port, _echo) = echo_server();
-    let local_port = free_port();
+    let lease = reserve_port();
+    let local_port = lease.port();
     let fake = dir.path().join("fake-ssh");
     std::fs::write(&fake, FORWARDING_SSH).unwrap();
     std::fs::set_permissions(&fake, std::fs::Permissions::from_mode(0o755)).unwrap();

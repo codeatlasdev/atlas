@@ -70,8 +70,9 @@ pub fn write_atomic(path: &Path, data: &[u8], mode: Mode) -> io::Result<()> {
         f.write_all(data)?;
         f.sync_all()?;
         drop(f);
-        // Replaces an existing target on every platform (MoveFileEx on Windows).
-        fs::rename(&tmp, path)
+        // Replaces an existing target on every platform, and on Windows without a moment in which a reader opening
+        // the target finds it missing (#545).
+        crate::sys::replace_file(&tmp, path)
     })();
     if let Err(e) = written {
         let _ = fs::remove_file(&tmp);
@@ -202,5 +203,55 @@ mod tests {
         let path = dir.path().join("a/b/f");
         write_atomic(&path, b"x", Mode::Default).unwrap();
         assert_eq!(fs::read(&path).unwrap(), b"x");
+    }
+
+    /// #545 (`status_write_is_atomic_under_concurrent_reads`, Windows): a reader opening the target while it is
+    /// replaced found it missing (`NotFound`) now and then, because `std::fs::rename` is `MoveFileExW`, which does not
+    /// promise that the name never disappears. The reader here only opens the name, as often as it can: the old file
+    /// or the new one, never `NotFound`. (Unix never had the window; the Windows runner is where this can fail.)
+    #[test]
+    fn replacing_a_file_never_leaves_its_name_missing_for_a_reader_that_opens_it() {
+        let dir = tempfile::tempdir().unwrap();
+        let path = dir.path().join("status.json");
+        fs::write(&path, "0").unwrap();
+        let done = Arc::new(AtomicBool::new(false));
+        let reader = {
+            let (path, done) = (path.clone(), done.clone());
+            std::thread::spawn(move || {
+                let mut opens = 0u32;
+                while !done.load(Ordering::Relaxed) {
+                    let got = fs::read_to_string(&path).unwrap_or_else(|e| {
+                        panic!("the name was missing for a reader after {opens} opens: {e}")
+                    });
+                    assert!(got.parse::<u32>().is_ok(), "{got:?}");
+                    opens += 1;
+                }
+                opens
+            })
+        };
+        for n in 1..2000 {
+            let tmp = dir.path().join(format!("status.json.tmp-{n}"));
+            fs::write(&tmp, n.to_string()).unwrap();
+            crate::sys::replace_file(&tmp, &path).unwrap();
+        }
+        done.store(true, Ordering::Relaxed);
+        assert!(reader.join().unwrap() > 0);
+        assert_eq!(fs::read_to_string(&path).unwrap(), "1999");
+        assert_eq!(leftovers(dir.path()), Vec::<String>::new());
+    }
+
+    /// The old file lives on for whoever already holds it open (on every OS), and the name goes to the new one.
+    #[test]
+    fn a_reader_that_already_holds_the_old_file_keeps_reading_it_after_the_replace() {
+        use std::io::Read;
+        let dir = tempfile::tempdir().unwrap();
+        let path = dir.path().join("f");
+        fs::write(&path, "old content").unwrap();
+        let mut held = fs::File::open(&path).unwrap();
+        write_atomic(&path, b"new", Mode::Default).unwrap();
+        let mut seen = String::new();
+        held.read_to_string(&mut seen).unwrap();
+        assert_eq!(seen, "old content");
+        assert_eq!(fs::read_to_string(&path).unwrap(), "new");
     }
 }

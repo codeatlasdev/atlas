@@ -10,6 +10,13 @@ use tokio::io::{AsyncBufReadExt, BufReader};
 
 use crate::HostClient;
 
+/// A path the way a daemon names it, symlinks resolved: macOS keeps `/var` as a link to `/private/var`, so a temp dir
+/// and the same folder read back from hostd (a `pwd`, a `cwd`, an audit line) differ without it. Both sides of every
+/// comparison of a temp path go through this (#597), never `assert_eq!(tmp_path, daemon_path)`.
+fn canon(p: impl AsRef<Path>) -> std::path::PathBuf {
+    atlas_core::paths::canonical(p.as_ref()).unwrap()
+}
+
 /// Tests listen on loopback only: any other bound address makes the macOS firewall ask, for every new
 /// test binary, "Do you want the application to accept incoming network connections?".
 fn assert_all_loopback(socks: &[std::net::SocketAddr]) {
@@ -1254,7 +1261,7 @@ async fn a_phone_manages_worktrees_and_launches_an_agent_in_one_with_the_desktop
     let _bin = crate::agents::LAUNCH_TEST_BIN_LOCK.lock().await;
     use std::process::Command;
     let tmp = tempfile::tempdir().unwrap();
-    let root = tmp.path().canonicalize().unwrap();
+    let root = canon(tmp.path());
     let hostd = root.join("hostd");
     let repo = root.join("shop");
     let git = |dir: &Path, args: &[&str]| {
@@ -1392,8 +1399,8 @@ async fn a_phone_manages_worktrees_and_launches_an_agent_in_one_with_the_desktop
         tokio::time::sleep(Duration::from_millis(50)).await;
     }
     assert_eq!(
-        std::fs::read_to_string(&record).unwrap().trim(),
-        wt_path.canonicalize().unwrap().to_string_lossy()
+        canon(std::fs::read_to_string(&record).unwrap().trim()),
+        canon(&wt_path)
     );
     let ptys = c.call("pty_list", json!({})).await.unwrap();
     assert!(
@@ -1537,7 +1544,7 @@ async fn project_with_worktree(hostd: &Path, repo: &Path) -> (String, String, st
 async fn with_the_desktop_running_agent_launch_opens_its_tab_and_hostd_spawns_nothing() {
     let _bin = crate::agents::LAUNCH_TEST_BIN_LOCK.lock().await;
     let tmp = tempfile::tempdir().unwrap();
-    let root = tmp.path().canonicalize().unwrap();
+    let root = canon(tmp.path());
     let hostd = root.join("hostd");
     std::fs::create_dir_all(&hostd).unwrap();
     let (id, wt_id, wt_path) = project_with_worktree(&hostd, &root.join("shop")).await;
@@ -1579,8 +1586,8 @@ async fn with_the_desktop_running_agent_launch_opens_its_tab_and_hostd_spawns_no
     assert_eq!(reqs[0]["args"]["agent"], "claude");
     assert_eq!(reqs[0]["args"]["prompt"], "hi");
     assert_eq!(
-        reqs[0]["args"]["worktree"].as_str().unwrap(),
-        wt_path.to_string_lossy(),
+        canon(reqs[0]["args"]["worktree"].as_str().unwrap()),
+        canon(&wt_path),
         "the resolved worktree folder, not the project root"
     );
     tokio::time::sleep(Duration::from_millis(500)).await;
@@ -1602,7 +1609,7 @@ async fn with_the_desktop_running_agent_launch_opens_its_tab_and_hostd_spawns_no
 async fn a_desktop_error_is_returned_and_never_falls_back_to_a_hostd_spawn() {
     let _bin = crate::agents::LAUNCH_TEST_BIN_LOCK.lock().await;
     let tmp = tempfile::tempdir().unwrap();
-    let root = tmp.path().canonicalize().unwrap();
+    let root = canon(tmp.path());
     let hostd = root.join("hostd");
     std::fs::create_dir_all(&hostd).unwrap();
     let (id, wt_id, _) = project_with_worktree(&hostd, &root.join("shop")).await;
@@ -1649,7 +1656,7 @@ async fn a_desktop_error_is_returned_and_never_falls_back_to_a_hostd_spawn() {
 async fn a_stale_desktop_socket_file_still_means_not_running() {
     let _bin = crate::agents::LAUNCH_TEST_BIN_LOCK.lock().await;
     let tmp = tempfile::tempdir().unwrap();
-    let root = tmp.path().canonicalize().unwrap();
+    let root = canon(tmp.path());
     let hostd = root.join("hostd");
     std::fs::create_dir_all(&hostd).unwrap();
     let (id, wt_id, wt_path) = project_with_worktree(&hostd, &root.join("shop")).await;
@@ -1690,8 +1697,8 @@ async fn a_stale_desktop_socket_file_still_means_not_running() {
         tokio::time::sleep(Duration::from_millis(50)).await;
     }
     assert_eq!(
-        std::fs::read_to_string(&record).unwrap().trim(),
-        wt_path.canonicalize().unwrap().to_string_lossy()
+        canon(std::fs::read_to_string(&record).unwrap().trim()),
+        canon(&wt_path)
     );
     for p in c.call("pty_list", json!({})).await.unwrap()["ptys"]
         .as_array()
@@ -2203,7 +2210,7 @@ fn audit_lines(hostd: &Path) -> Vec<Value> {
 #[tokio::test(flavor = "multi_thread")]
 async fn a_phone_opens_a_shell_only_in_a_registered_project_or_worktree() {
     let tmp = tempfile::tempdir().unwrap();
-    let root = tmp.path().canonicalize().unwrap();
+    let root = canon(tmp.path());
     let hostd = root.join("hostd");
     std::fs::create_dir_all(&hostd).unwrap();
     let (id, wt_id, wt_path) = project_with_worktree(&hostd, &root.join("shop")).await;
@@ -2287,11 +2294,7 @@ async fn a_phone_opens_a_shell_only_in_a_registered_project_or_worktree() {
         reply["pty"] = json!("pty-fixture");
         fixture("pty_open.json", &reply);
         let info = c.call("pty_info", json!({"pty": pty})).await.unwrap();
-        assert_eq!(
-            std::path::PathBuf::from(info["cwd"].as_str().unwrap()),
-            want,
-            "{info}"
-        );
+        assert_eq!(canon(info["cwd"].as_str().unwrap()), canon(&want), "{info}");
         assert_eq!(
             info["scope"]["pane_key"],
             Value::Null,
@@ -2318,12 +2321,12 @@ async fn a_phone_opens_a_shell_only_in_a_registered_project_or_worktree() {
     assert_eq!(created[0]["node_id"], node.as_str());
     assert_eq!(created[0]["args"]["project"], id.as_str());
     assert_eq!(
-        created[0]["args"]["cwd"],
-        root.join("shop").to_string_lossy().as_ref()
+        canon(created[0]["args"]["cwd"].as_str().unwrap()),
+        canon(root.join("shop"))
     );
     assert_eq!(
-        created[1]["args"]["cwd"],
-        wt_path.to_string_lossy().as_ref()
+        canon(created[1]["args"]["cwd"].as_str().unwrap()),
+        canon(&wt_path)
     );
     c.call("shutdown", json!({})).await.ok();
 }
@@ -2333,9 +2336,10 @@ async fn a_phone_opens_a_shell_only_in_a_registered_project_or_worktree() {
 #[tokio::test(flavor = "multi_thread")]
 async fn on_a_crew_server_a_phone_opens_a_shell_in_the_crew_home_or_a_crewmate_work_tree() {
     let tmp = tempfile::tempdir().unwrap();
-    let hostd = tmp.path().canonicalize().unwrap().join("hostd");
+    let hostd = canon(tmp.path()).join("hostd");
     std::fs::create_dir_all(&hostd).unwrap();
-    // The crew user's own home, the folder hostd's sign-in terminal already starts in.
+    // The crew user's own home, the folder hostd's sign-in terminal already starts in. `$HOME` can name it through a
+    // symlink (a sandbox's home under `/tmp`, a temp dir): the daemon canonicalizes the folder, so both sides do (#597).
     let home = atlas_core::paths::home_dir();
     let (c, mut phone, node) = paired(&hostd).await;
     let made = c
@@ -2359,11 +2363,7 @@ async fn on_a_crew_server_a_phone_opens_a_shell_in_the_crew_home_or_a_crewmate_w
     assert_eq!(r["ok"], true, "{r}");
     let pty = r["data"]["pty"].as_str().unwrap().to_string();
     let info = c.call("pty_info", json!({"pty": pty})).await.unwrap();
-    assert_eq!(
-        std::path::PathBuf::from(info["cwd"].as_str().unwrap()),
-        home,
-        "{info}"
-    );
+    assert_eq!(canon(info["cwd"].as_str().unwrap()), canon(&home), "{info}");
     c.call("pty_kill", json!({"pty": pty})).await.unwrap();
 
     // A crewmate that has not run a task has no work tree yet: refused, with the reason.
@@ -2382,11 +2382,7 @@ async fn on_a_crew_server_a_phone_opens_a_shell_in_the_crew_home_or_a_crewmate_w
     assert_eq!(r["ok"], true, "{r}");
     let pty = r["data"]["pty"].as_str().unwrap().to_string();
     let info = c.call("pty_info", json!({"pty": pty})).await.unwrap();
-    assert_eq!(
-        std::path::PathBuf::from(info["cwd"].as_str().unwrap()),
-        work,
-        "{info}"
-    );
+    assert_eq!(canon(info["cwd"].as_str().unwrap()), canon(&work), "{info}");
     c.call("pty_kill", json!({"pty": pty})).await.unwrap();
 
     // Never another folder, never an id that escapes the crew store, never a project id here.

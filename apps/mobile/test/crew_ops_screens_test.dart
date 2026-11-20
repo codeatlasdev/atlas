@@ -343,10 +343,16 @@ void main() {
       );
       await settle(t);
       expect(find.text('Crew settings'), findsOneWidget);
-      expect(t.widget<Switch>(find.byKey(const Key('crew-short-replies'))).value, isTrue);
+      expect(
+        t.widget<Switch>(find.byKey(const Key('crew-short-replies'))).value,
+        isTrue,
+      );
       await t.tap(find.byKey(const Key('crew-short-replies')));
       await settle(t);
-      expect(t.widget<Switch>(find.byKey(const Key('crew-short-replies'))).value, isFalse);
+      expect(
+        t.widget<Switch>(find.byKey(const Key('crew-short-replies'))).value,
+        isFalse,
+      );
       await end(t);
 
       // A new screen reads what the server kept (the demo computer is a fresh one per connection, so

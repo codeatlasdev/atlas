@@ -14,6 +14,7 @@ import 'package:atlas_mobile/core/voice/dictation.dart';
 import 'package:atlas_mobile/core/voice/dictation_controller.dart';
 import 'package:atlas_mobile/core/voice/platform_dictation.dart';
 import 'package:atlas_mobile/core/voice/platform_speech.dart';
+import 'package:atlas_mobile/core/voice/speech.dart';
 import 'package:atlas_mobile/features/crew/chat/attachments.dart';
 import 'package:atlas_mobile/features/crew/chat/dictation_bar.dart';
 import 'package:atlas_mobile/features/crew/chat/dictation_flow.dart';
@@ -61,6 +62,9 @@ class _ChatComposerState extends ConsumerState<ChatComposer>
   );
   StreamSubscription<DictationNote>? _notes;
 
+  /// The app's voice, kept: `ref` must not be read once the widget is going away.
+  late final SpeechController _speech;
+
   /// The message as it was when dictation started: the words are drawn into it, and the X puts it back.
   TextEditingValue _draft = TextEditingValue.empty;
 
@@ -81,6 +85,7 @@ class _ChatComposerState extends ConsumerState<ChatComposer>
   @override
   void initState() {
     super.initState();
+    _speech = ref.read(speechControllerProvider);
     WidgetsBinding.instance.addObserver(this);
     _dictation.addListener(_onDictation);
     _notes = _dictation.notes.listen(_onNote);
@@ -105,7 +110,7 @@ class _ChatComposerState extends ConsumerState<ChatComposer>
     _notes?.cancel();
     _dictation.removeListener(_onDictation);
     _dictation.dispose();
-    ref.read(speechControllerProvider).releaseMic(this);
+    _speech.releaseMic(this);
     super.dispose();
   }
 
@@ -150,7 +155,7 @@ class _ChatComposerState extends ConsumerState<ChatComposer>
     _shownNothing = nothing;
     // The microphone is closed for good: the voice may read again.
     if (!_dictation.active && !_preparing) {
-      ref.read(speechControllerProvider).releaseMic(this);
+      _speech.releaseMic(this);
     }
     if (mounted) setState(() {});
   }
@@ -188,7 +193,7 @@ class _ChatComposerState extends ConsumerState<ChatComposer>
   /// voice that reads replies goes quiet at once, on the tap, and stays quiet while the microphone is open.
   Future<void> _dictate() async {
     if (_preparing || _dictation.active || widget.sending) return;
-    final speech = ref.read(speechControllerProvider);
+    final speech = _speech;
     if (!speech.claimMic(this)) return;
     _preparing = true;
     try {

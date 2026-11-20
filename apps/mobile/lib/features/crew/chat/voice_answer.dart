@@ -22,6 +22,7 @@ import 'package:atlas_mobile/core/ui/l10n.dart';
 import 'package:atlas_mobile/core/voice/dictation_controller.dart';
 import 'package:atlas_mobile/core/voice/platform_dictation.dart';
 import 'package:atlas_mobile/core/voice/platform_speech.dart';
+import 'package:atlas_mobile/core/voice/speech.dart';
 import 'package:atlas_mobile/features/crew/chat/dictation_bar.dart';
 import 'package:atlas_mobile/features/crew/chat/dictation_flow.dart';
 import 'package:atlas_mobile/features/crew/permissions/mode_text.dart';
@@ -61,12 +62,16 @@ class _VoiceAnswerState extends ConsumerState<VoiceAnswer>
   bool _preparing = false;
   bool _sending = false;
 
+  /// The app's voice, kept: `ref` must not be read once the widget is going away.
+  late final SpeechController _speech;
+
   /// One line under the button: what hostd said, or why nothing happened.
   String? _note;
 
   @override
   void initState() {
     super.initState();
+    _speech = ref.read(speechControllerProvider);
     WidgetsBinding.instance.addObserver(this);
     _dictation.addListener(_onDictation);
   }
@@ -76,7 +81,7 @@ class _VoiceAnswerState extends ConsumerState<VoiceAnswer>
     WidgetsBinding.instance.removeObserver(this);
     _dictation.removeListener(_onDictation);
     _dictation.dispose();
-    ref.read(speechControllerProvider).releaseMic(this);
+    _speech.releaseMic(this);
     super.dispose();
   }
 
@@ -97,14 +102,14 @@ class _VoiceAnswerState extends ConsumerState<VoiceAnswer>
       _note = dictationFailureText(l, failure);
     }
     if (!_dictation.active && !_preparing && !_sending) {
-      ref.read(speechControllerProvider).releaseMic(this);
+      _speech.releaseMic(this);
     }
     if (mounted) setState(() {});
   }
 
   Future<void> _start() async {
     if (_preparing || _dictation.active || _sending) return;
-    final speech = ref.read(speechControllerProvider);
+    final speech = _speech;
     if (!speech.claimMic(this)) {
       setState(() => _note = context.l10n.mobile_voice_answer_busy);
       return;
@@ -155,7 +160,7 @@ class _VoiceAnswerState extends ConsumerState<VoiceAnswer>
     } finally {
       if (mounted) {
         setState(() => _sending = false);
-        ref.read(speechControllerProvider).releaseMic(this);
+        _speech.releaseMic(this);
       }
     }
   }
@@ -232,6 +237,7 @@ class _VoiceAnswerState extends ConsumerState<VoiceAnswer>
       mainAxisSize: MainAxisSize.min,
       children: [
         Semantics(
+          container: true,
           button: true,
           label: l.mobile_voice_answer_button,
           hint: widget.kind == VoiceCardKind.approval

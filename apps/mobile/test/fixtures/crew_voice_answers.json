@@ -1,0 +1,81 @@
+{
+  "approve": {
+    "allow": {
+      "verdict": "allow"
+    },
+    "deny": {
+      "verdict": "deny"
+    },
+    "comment": {
+      "verdict": "comment",
+      "comment": "allow but only this file"
+    },
+    "unclear": {
+      "verdict": "unclear"
+    },
+    "needs_tap_bypass": {
+      "verdict": "needs_tap",
+      "reason": "bypass"
+    },
+    "needs_tap_rail": {
+      "verdict": "needs_tap",
+      "reason": "rail"
+    },
+    "needs_tap_destructive": {
+      "verdict": "needs_tap",
+      "reason": "destructive"
+    },
+    "needs_tap_untrusted": {
+      "verdict": "needs_tap",
+      "reason": "untrusted"
+    }
+  },
+  "answer": {
+    "choice": {
+      "verdict": "choice",
+      "choice": "use main"
+    },
+    "unclear": {
+      "verdict": "unclear"
+    },
+    "needs_tap_card": {
+      "verdict": "needs_tap",
+      "reason": null
+    }
+  },
+  "crewmate": {
+    "agent": "claude",
+    "approval": "ask",
+    "id": "cm-1",
+    "mode": "ask",
+    "name": "Reviewer",
+    "queued": 0,
+    "role": "Reviews PRs",
+    "routines": [],
+    "spoken_replies": true,
+    "state": "idle",
+    "triggers": []
+  },
+  "task_agent_line": [
+    {
+      "id": "t1",
+      "ts": 1700000000,
+      "source": "mobile",
+      "prompt": "p",
+      "state": "done",
+      "result": "long reply",
+      "spoken": "Fixed the bug in two files."
+    }
+  ],
+  "task_first_sentences": [
+    {
+      "id": "t2",
+      "ts": 1700000010,
+      "source": "mobile",
+      "prompt": "p",
+      "state": "done",
+      "result": "Renamed it. More.",
+      "spoken": "Renamed it."
+    }
+  ]
+}

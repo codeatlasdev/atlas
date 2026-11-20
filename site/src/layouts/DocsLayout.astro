@@ -6,6 +6,7 @@ import DocsNotice from "../components/DocsNotice.astro";
 import type { NavGroup } from "../lib/docs";
 import type { DocState } from "../lib/doc-translation";
 import { m } from "../lib/paraglide/messages.js";
+import { docsGroupTitle } from "../lib/docs-chrome";
 import { docPath, localeOfAstro, type Locale } from "../lib/i18n";
 
 interface Props {
@@ -41,23 +42,23 @@ const toc = headings.filter((h) => h.depth === 2 || h.depth === 3);
 		<div class="docbar" data-docbar>
 			<button type="button" class="dbtn" aria-expanded="false" aria-controls="docs-drawer" data-drawer-open>
 				<svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="square" aria-hidden="true"><path d="M4 7h16M4 12h16M4 17h10" /></svg>
-				<span class="dcur"><small>Docs</small><b>{title}</b></span>
+				<span class="dcur"><small>{m.nav_docs()}</small><b>{title}</b></span>
 				<svg class="chev" width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" aria-hidden="true"><path d="m6 9 6 6 6-6" /></svg>
 			</button>
 		</div>
 		<div class="scrim" data-scrim hidden></div>
-		<aside class="side" id="docs-drawer" aria-label="Documentation" data-drawer>
+		<aside class="side" id="docs-drawer" aria-label={m.docs_chrome_documentation()} data-drawer>
 			<div class="drawer-head">
-				<b>Documentation</b>
-				<button type="button" class="dclose" aria-label="Close documentation menu" data-drawer-close>
+				<b>{m.docs_chrome_documentation()}</b>
+				<button type="button" class="dclose" aria-label={m.docs_chrome_close_menu()} data-drawer-close>
 					<svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="square" aria-hidden="true"><path d="M5 5l14 14M19 5 5 19" /></svg>
 				</button>
 			</div>
-			<div class="search"><Search className="pagefind-ui" searchboxOptions={{ placeholder: "Search the docs" }} /></div>
+			<div class="search"><Search className="pagefind-ui" searchboxOptions={{ placeholder: m.docs_chrome_search_placeholder() }} /></div>
 			<nav>
 				{groups.map((g) => (
 					<section>
-						<h2>{g.title}</h2>
+						<h2>{docsGroupTitle(g.title)}</h2>
 						<ul>
 							{g.items.map((p) => (
 								<li><a href={docPath(p.slug, locale)} aria-current={p.slug === slug ? "page" : undefined}>{p.title}</a></li>
@@ -72,19 +73,20 @@ const toc = headings.filter((h) => h.depth === 2 || h.depth === 3);
 			{state && state !== "ok" && <DocsNotice state={state} slug={slug} />}
 			<h1 class="display">{title}</h1>
 			<div class="prose"><slot /></div>
-			<footer class="foot">
-				<a class="edit" href={editUrl} rel="noopener">Edit this page on GitHub</a>
+			<!-- The article may be English text under /pt-br/ (a fallback page); the links at its end are the page's own language -->
+			<footer class="foot" lang={contentLang ? locale : undefined}>
+				<a class="edit" href={editUrl} rel="noopener">{m.docs_chrome_edit()}</a>
 				<div class="pn">
-					{prev ? <a href={docPath(prev.slug, locale)} rel="prev"><span>Previous</span>{prev.title}</a> : <span />}
-					{next ? <a href={docPath(next.slug, locale)} rel="next"><span>Next</span>{next.title}</a> : <span />}
+					{prev ? <a href={docPath(prev.slug, locale)} rel="prev"><span>{m.docs_chrome_previous()}</span>{prev.title}</a> : <span />}
+					{next ? <a href={docPath(next.slug, locale)} rel="next"><span>{m.docs_chrome_next()}</span>{next.title}</a> : <span />}
 				</div>
 			</footer>
 		</article>
 
 		{toc.length > 1 && (
-			<aside class="toc" aria-label="On this page" data-pagefind-ignore>
+			<aside class="toc" aria-label={m.docs_chrome_on_this_page()} data-pagefind-ignore>
 				<details class="tocd" data-toc>
-					<summary><h2>On this page</h2></summary>
+					<summary><h2>{m.docs_chrome_on_this_page()}</h2></summary>
 					<ul>
 						{toc.map((h) => (
 							<li class={h.depth === 3 ? "sub" : undefined}><a href={`#${h.slug}`}>{h.text.replace(/#$/, "")}</a></li>

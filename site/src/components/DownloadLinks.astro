@@ -2,9 +2,12 @@
 // The two primary calls to action, shared by the hero and the closing section. Both go to /download, which resolves
 // the current release and the visitor's platform; an installer is never offered straight to a phone.
 import { SITE } from "../data/site";
+import { m } from "../lib/paraglide/messages.js";
+import { localeOfAstro, localizePath } from "../lib/i18n";
+const locale = localeOfAstro(Astro.currentLocale);
 ---
-<a class="btn solid" href="/download/"><span class="d-full">Download Atlas</span><span class="d-short">Get Atlas</span></a>
-<a class="btn" href={SITE.github} rel="noopener">Star on GitHub</a>
+<a class="btn solid" href={localizePath("/download/", locale)}><span class="d-full">{m.nav_download_atlas()}</span><span class="d-short">{m.page_download_links_get()}</span></a>
+<a class="btn" href={SITE.github} rel="noopener">{m.page_download_links_star()}</a>
 <style>
 	.d-short { display: none; }
 	@media (max-width: 720px) { .d-full { display: none; } .d-short { display: inline; } }

@@ -16,7 +16,7 @@ const locale = localeOfAstro(Astro.currentLocale);
 <aside class="notice" role="note" lang={locale} data-state={state} data-pagefind-ignore>
 	<p>{state === "outdated" ? m.docs_banner_outdated() : state === "machine" ? m.docs_banner_machine() : m.docs_banner_untranslated()}</p>
 	<p class="acts">
-		<a href={docPath(slug, "en")} lang="en" hreflang="en">{m.docs_banner_read_english()}</a>
+		<a href={docPath(slug, "en")} hreflang="en">{m.docs_banner_read_english()}</a>
 		{state === "outdated" && <a href={sourceHistoryUrl(slug)} rel="noopener">{m.docs_banner_see_changes()}</a>}
 	</p>
 </aside>

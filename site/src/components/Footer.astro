@@ -1,12 +1,13 @@
 ---
 import { SITE } from "../data/site";
 import { m } from "../lib/paraglide/messages.js";
-import { docPath, localeOfAstro } from "../lib/i18n";
+import { docPath, localeOfAstro, localizePath } from "../lib/i18n";
 const locale = localeOfAstro(Astro.currentLocale);
-// Docs links follow the page's language (every docs page exists under /pt-br/); the other pages are English only.
+// Every link to a page that exists in the page's language (docs, download, changelog, legal pages) follows it.
 const doc = (slug: string) => docPath(slug, locale);
+const page = (path: string) => localizePath(path, locale);
 const cols = [
-	{ h: m.footer_product(), l: [[m.nav_download(), "/download/"], [m.nav_getting_started(), doc("getting-started")], [m.nav_changelog(), "/changelog/"], [m.footer_releases(), SITE.releases]] },
+	{ h: m.footer_product(), l: [[m.nav_download(), page("/download/")], [m.nav_getting_started(), doc("getting-started")], [m.nav_changelog(), page("/changelog/")], [m.footer_releases(), SITE.releases]] },
 	{ h: m.nav_docs(), l: [[m.footer_config_reference(), doc("configuration")], [m.footer_desktop(), doc("desktop")], ["CLI", doc("cli")], ["MCP", doc("mcp")], [m.footer_troubleshooting(), doc("troubleshooting")]] },
 	{ h: m.footer_elsewhere(), l: [["GitHub", SITE.github], ["CodeAtlas", SITE.codeatlas], ["llms.txt", "/llms.txt"]] },
 ];
@@ -25,8 +26,8 @@ const cols = [
 	</div>
 	<div class="wrap legal">
 		<span>{m.footer_license()}</span>
-		<a class="ln" href="/code-signing-policy/">{m.footer_code_signing()}</a>
-		<a class="ln" href="/privacy/">{m.footer_privacy()}</a>
+		<a class="ln" href={page("/code-signing-policy/")}>{m.footer_code_signing()}</a>
+		<a class="ln" href={page("/privacy/")}>{m.footer_privacy()}</a>
 	</div>
 </footer>
 <style>

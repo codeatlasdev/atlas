@@ -59,6 +59,8 @@ pub(crate) struct CrewHub {
     pub(crate) engine_auth: super::engine_login::EngineAuth,
     /// The last `signed_in` / `needs_signin` / ... answer per engine, for `crew_engine_status` without refresh.
     pub(crate) engine_auth_seen: Mutex<std::collections::HashMap<String, String>>,
+    /// Task grants, what each agent was told about its mode, and the wake-up of waiting calls (`approval`).
+    pub(crate) approvals: super::approval::State,
 }
 
 impl CrewHub {
@@ -97,6 +99,7 @@ impl CrewHub {
             agent_slots: runner::AgentSlots::new(max_agents),
             engine_auth: Default::default(),
             engine_auth_seen: Mutex::new(std::collections::HashMap::new()),
+            approvals: Default::default(),
         })
     }
 

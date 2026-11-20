@@ -57,7 +57,7 @@ pub(crate) fn constant_time_eq(a: &[u8], b: &[u8]) -> bool {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::crew::store::{Approval, Crewmate};
+    use crate::crew::store::{Crewmate, Mode};
 
     fn crewmate(id: &str) -> Crewmate {
         Crewmate {
@@ -66,7 +66,7 @@ mod tests {
             role: String::new(),
             agent: "omp".into(),
             workdir: None,
-            approval: Approval::Auto,
+            mode: Mode::Bypass,
             routines: vec![],
             triggers: vec![],
             look: None,

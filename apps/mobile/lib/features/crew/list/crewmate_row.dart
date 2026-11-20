@@ -9,6 +9,7 @@ import 'package:atlas_mobile/features/crew/avatar/crewmate_avatar.dart';
 import 'package:atlas_mobile/features/crew/avatar/crewmate_look.dart';
 import 'package:atlas_mobile/features/crew/crew_provider.dart';
 import 'package:atlas_mobile/features/crew/crew_text.dart';
+import 'package:atlas_mobile/features/crew/permissions/mode_badge.dart';
 
 class CrewmateRow extends StatelessWidget {
   const CrewmateRow({
@@ -107,15 +108,26 @@ class CrewmateRow extends StatelessWidget {
             ],
           ],
         ),
-        if (showServer && entry.hostName.isNotEmpty)
-          Padding(
-            padding: const EdgeInsets.only(top: 2),
-            child: Text(
-              entry.hostName,
-              style: Theme.of(context).textTheme.bodySmall!
-                  .copyWith(color: c.muted),
-            ),
+        // The mode wherever the crewmate appears: amber for Bypass only, the server beside it when there are several.
+        Padding(
+          padding: const EdgeInsets.only(top: 2),
+          child: Wrap(
+            crossAxisAlignment: WrapCrossAlignment.center,
+            spacing: Space.md,
+            children: [
+              ModeBadge(
+                mode: crewmate.mode,
+                fixed: !crewmate.approvalSupported,
+              ),
+              if (showServer && entry.hostName.isNotEmpty)
+                Text(
+                  entry.hostName,
+                  style: Theme.of(context).textTheme.bodySmall!
+                      .copyWith(color: c.muted),
+                ),
+            ],
           ),
+        ),
       ],
     );
   }

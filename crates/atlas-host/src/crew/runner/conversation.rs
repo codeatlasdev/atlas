@@ -43,15 +43,26 @@ pub(super) async fn run_one_conversational(
     }
     let (hook_port, hook_token) = ctx.hook_endpoint(hub, &crewmate.id);
 
-    // A stranger's text (GitHub, webhook) never runs with the bypass flags unless its trigger said
-    // `allow_auto`. An engine that cannot ask has no other mode, so such a task is refused.
-    let yolo = triggers::yolo_for(crewmate.approval, &task);
-    if task.no_auto && !engine::can_ask(&engine_cfg.kind) {
-        let msg = format!(
+    // The engines that can ask (claude, omp) are always launched in ask mode, with no bypass flag, and hostd decides
+    // each call from the crewmate's current mode (`crew::approval`). An engine that cannot ask (codex, opencode) has
+    // no such channel: it always runs unattended, so a task from a stranger's text (GitHub, webhook; unless its
+    // trigger said `allow_auto`) is refused, and so is any task when the crew does not allow Bypass.
+    let can_ask = engine::can_ask(&engine_cfg.kind);
+    let refusal = if task.no_auto && !can_ask {
+        Some(format!(
             "{} cannot ask for approval, and this task came from text anyone can write (a GitHub event or a webhook); \
              set allow_auto on the trigger to run it without approval",
             engine_cfg.kind
-        );
+        ))
+    } else if !can_ask && !hub.crew.store.load_crew_settings().allow_bypass {
+        Some(format!(
+            "{} has no approval channel: it always runs unattended, and this crew does not allow Bypass",
+            engine_cfg.kind
+        ))
+    } else {
+        None
+    };
+    if let Some(msg) = refusal {
         finish_task(hub, crewmate, &mut task, Err(msg), vec![]);
         triggers::on_task_finished(hub, &crewmate.id, &task.id, task.state);
         return;
@@ -93,9 +104,10 @@ pub(super) async fn run_one_conversational(
         }
     }
 
-    // For omp with approval==ask: write the extension file before engine::run_turn
-    // (even if TEST_ENGINE_BIN bypasses the real omp, the file must exist for the test).
-    if engine_cfg.kind == "omp" && !yolo {
+    // For omp: write the approval extension before engine::run_turn, whatever the mode (hostd decides every call,
+    // so omp never gets `--auto-approve`); even if TEST_ENGINE_BIN bypasses the real omp, the file must exist for
+    // the test.
+    if engine_cfg.kind == "omp" {
         let ext_path = ctx.runtime_dir(hub, &crewmate.id).join("omp-approval.ts");
         let _ =
             engine::omp::write_approval_extension_pub(&ext_path, hook_port, &hook_token, &pane_key);
@@ -108,7 +120,6 @@ pub(super) async fn run_one_conversational(
         work_dir: &work_dir,
         pane_key: &pane_key,
         hook: (hook_port, &hook_token),
-        yolo,
         ctx: &ctx,
     };
     // A task parked on an action when hostd stopped goes straight back to waiting for the answer;
@@ -160,7 +171,6 @@ struct Turn<'a> {
     work_dir: &'a str,
     pane_key: &'a str,
     hook: (u16, &'a str),
-    yolo: bool,
     ctx: &'a Ctx,
 }
 
@@ -217,10 +227,16 @@ impl Turn<'_> {
         // Where the agent reads what the engine writes for it, and who runs the process: one answer per task.
         let crewmate_dir = self.ctx.runtime_dir(hub, &crewmate.id);
         let exec = self.ctx.exec();
+        // What the agent is told about its permissions goes before the prompt: the fragment when it was not told
+        // its current mode yet (a first turn, a resumed task, a mode changed since), and what the owner said.
+        let prompt = format!(
+            "{}{prompt}",
+            crate::crew::approval::prelude(hub, &crewmate.id, self.pane_key)
+        );
         let turn = engine::run_turn(engine::TurnCtx {
             engine: self.engine_cfg,
             session,
-            prompt,
+            prompt: &prompt,
             crewmate_dir: &crewmate_dir,
             crewmate_id: &crewmate.id,
             hook_port: self.hook.0,
@@ -228,7 +244,6 @@ impl Turn<'_> {
             pane_key: self.pane_key,
             extra_env: &env,
             work_dir: self.work_dir,
-            yolo: self.yolo,
             tools: Some(&tools),
             cancel: &cancel,
             exec: &exec,

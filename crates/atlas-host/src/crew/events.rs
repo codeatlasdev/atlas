@@ -26,3 +26,10 @@ pub(crate) fn crewmate_updated(crewmate_id: &str) -> String {
 pub(crate) fn crew_paused(paused: bool) -> String {
     json!({"ev": "crew_paused", "paused": paused}).to_string()
 }
+
+/// `{"ev":"crewmate_approval_unanswered","crewmate_id":…,"task_id":…,"tool_name":…}`: a tool call nobody answered
+/// in time was denied (`approval::decide`).
+pub(crate) fn approval_unanswered(crewmate_id: &str, task_id: &str, tool: &str) -> String {
+    json!({"ev": "crewmate_approval_unanswered", "crewmate_id": crewmate_id, "task_id": task_id, "tool_name": tool})
+        .to_string()
+}

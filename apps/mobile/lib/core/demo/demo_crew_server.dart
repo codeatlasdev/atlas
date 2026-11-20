@@ -201,21 +201,132 @@ class DemoCrewServer {
     });
   }
 
-  /// `agent_approve` on a crewmate pane (`crew:<crewmateId>:<taskId>`).
-  String? approve(String pane, String? req) {
+  /// `agent_approve` on a crewmate pane (`crew:<crewmateId>:<taskId>`). The decision goes to the audit as hostd's
+  /// does (`source: person`, the phone as `device`, the person's comment), and an Allow for the task is kept so
+  /// the same kind of call is not asked again.
+  String? approve(
+    String pane,
+    String? req, {
+    bool allow = true,
+    String? scope,
+    String? comment,
+  }) {
     final parts = pane.split(':');
     if (parts.length < 2) return 'invalid crewmate pane';
     final crewmateId = parts[1];
     final crewmate = _crewmates[crewmateId];
-    if (crewmate == null ||
-        req == null ||
-        crewmate.pendingApproval?['req'] != req) {
+    final pending = crewmate?.pendingApproval;
+    if (crewmate == null || req == null || pending?['req'] != req) {
       return 'no such pending request';
     }
+    final held = pending?['rail'] != null;
+    _ops.record(crewmate.id, 'approval_decision', {
+      'task_id': parts.length > 2 ? parts[2] : null,
+      'req': req,
+      'tool': pending?['tool_name'],
+      'tool_input': pending?['tool_input'],
+      'decision': allow ? 'allow' : 'deny',
+      'source': 'person',
+      'device': 'phone:demo0000phone',
+      'wait_ms': 0,
+      if (held) 'rail': pending?['rail'],
+      if (allow && scope == 'task' && !held) 'scope': 'task',
+      if (comment != null && comment.trim().isNotEmpty) 'comment': comment.trim(),
+    });
     crewmate.pendingApproval = null;
     crewmate.state = 'idle';
     bus.emit({'ev': 'agent_approval_done', 'req': req, 'pane_key': pane});
     return null;
+  }
+
+  DemoReply _refuse(String code, Map<String, Object?> args, String english) =>
+      DemoReply(error: english, code: code, args: args);
+
+  /// A mode change as hostd does it (`crew/approval.rs`): refused with its coded errors, a no-op when the
+  /// mode is the same, otherwise audited, broadcast, and a call waiting that the new mode already allows is
+  /// answered at once. `device` is who asked.
+  DemoReply _setMode(
+    DemoCrewmate? crewmate,
+    String? id,
+    String mode, {
+    String device = 'phone:demo0000phone',
+  }) {
+    if (crewmate == null) return DemoReply(error: 'crewmate $id not found');
+    if (!const ['ask', 'edits', 'bypass', 'auto'].contains(mode)) {
+      return DemoReply(error: 'unknown mode "$mode"');
+    }
+    final to = mode == 'auto' ? 'bypass' : mode;
+    if (!crewmate.approvalSupported && to != 'bypass') {
+      return _refuse(
+        'crew.approval.unsupported_engine',
+        {'engine': crewmate.agent, 'mode': to},
+        '${crewmate.agent} has no approval channel: it always runs unattended',
+      );
+    }
+    if (to == 'bypass' && !_ops.allowBypass && crewmate.mode != 'bypass') {
+      return _refuse(
+        'crew.approval.bypass_disabled',
+        const {},
+        'bypass is not allowed on this crew',
+      );
+    }
+    if (crewmate.mode != to) {
+      _ops.record(crewmate.id, 'approval_mode_changed', {
+        'from': crewmate.mode,
+        'to': to,
+        'device': device,
+      });
+      crewmate.mode = to;
+      _redecidePending(crewmate);
+      bus.emit({'ev': 'crewmate_updated', 'crewmate_id': crewmate.id});
+    }
+    return DemoReply(data: crewmate.toListEntry());
+  }
+
+  /// A call waiting when the mode changes is decided again at once: Bypass allows everything a rail does not
+  /// hold, Accept edits the edit tools.
+  void _redecidePending(DemoCrewmate crewmate) {
+    final pending = crewmate.pendingApproval;
+    if (pending == null || pending['rail'] != null) return;
+    final tool = pending['tool_name'];
+    final allowed =
+        crewmate.mode == 'bypass' ||
+        (crewmate.mode == 'edits' && (tool == 'Edit' || tool == 'Write'));
+    if (!allowed) return;
+    _ops.record(crewmate.id, 'approval_decision', {
+      'req': pending['req'],
+      'tool': tool,
+      'tool_input': pending['tool_input'],
+      'decision': 'allow',
+      'source': 'mode',
+      'wait_ms': 0,
+    });
+    crewmate.pendingApproval = null;
+    crewmate.state = 'idle';
+    bus.emit({
+      'ev': 'agent_approval_done',
+      'req': pending['req'],
+      'pane_key': pending['pane_key'],
+    });
+  }
+
+  /// `crew_settings_set`: the policy fields (both optional, like hostd's). Turning Bypass off takes every
+  /// crewmate that can ask out of it (to Ask, audited as the owner's) and the default falls back to Ask.
+  void _setCrewSettings(Map<String, dynamic> args) {
+    _ops.shortReplies = args['short_replies'] as bool? ?? true;
+    _ops.shortRepliesModel = args['short_replies_model'] as String?;
+    final allow = args['allow_bypass'] as bool?;
+    final fallback = args['default_approval'] as String?;
+    if (allow != null) _ops.allowBypass = allow;
+    if (fallback != null) _ops.defaultApproval = fallback;
+    if (!_ops.allowBypass) {
+      if (_ops.defaultApproval == 'bypass') _ops.defaultApproval = 'ask';
+      for (final c in _crewmates.values) {
+        if (c.approvalSupported && c.mode == 'bypass') {
+          _setMode(c, c.id, 'ask', device: 'owner');
+        }
+      }
+    }
   }
 
   /// The reply to `cmd`, or null when it is not one of this part's commands.
@@ -315,6 +426,8 @@ class DemoCrewServer {
         data = {
           'short_replies': _ops.shortReplies,
           'short_replies_model': _ops.shortRepliesModel,
+          'default_approval': _ops.defaultApproval,
+          'allow_bypass': _ops.allowBypass,
         };
       case 'crew_engine_status':
         data = {
@@ -333,18 +446,49 @@ class DemoCrewServer {
           data = {'engine': engine, 'pty': 'pty-signin-$engine'};
         }
       case 'crew_settings_set':
-        _ops.shortReplies = args['short_replies'] as bool? ?? true;
-        _ops.shortRepliesModel = args['short_replies_model'] as String?;
-        data = <String, Object?>{};
+        _setCrewSettings(args);
+        data = {
+          'default_approval': _ops.defaultApproval,
+          'allow_bypass': _ops.allowBypass,
+        };
+      case 'crewmate_set_approval':
+        return _setMode(
+          _crewmates[args['id'] as String?],
+          args['id'] as String?,
+          args['mode'] as String? ?? '',
+        );
       case 'crewmate_create':
         final newId = 'crewmate-${_crewmates.length + 1}';
+        // `mode` wins over `approval` (which also takes `auto`); neither: the crew's default.
+        final asked = args['mode'] ?? args['approval'] ?? _ops.defaultApproval;
+        final mode = asked == 'auto' ? 'bypass' : asked as String;
+        if (mode == 'bypass' &&
+            !_ops.allowBypass &&
+            DemoCrewmate.supportsApproval(args['agent'] as String? ?? 'claude')) {
+          return _refuse(
+            'crew.approval.bypass_disabled',
+            const {},
+            'bypass is not allowed on this crew',
+          );
+        }
         _crewmates[newId] = DemoCrewmate(
           newId,
           args['name'] as String? ?? 'Crewmate',
           args['agent'] as String? ?? 'claude',
           args['role'] as String? ?? '',
+          mode: mode,
         );
+        bus.emit({'ev': 'crewmate_updated', 'crewmate_id': newId});
         data = _crewmates[newId]!.toListEntry();
+      case 'crewmate_update':
+        // Only `approval` and `role` are edited on the demo; `approval` takes any of the four values.
+        final crewmate = _crewmates[args['id'] as String?];
+        final approval = args['approval'] as String?;
+        if (approval != null) {
+          final r = _setMode(crewmate, args['id'] as String?, approval);
+          if (r.error != null) return r;
+        }
+        data = crewmate?.toListEntry() ?? <String, Object?>{};
       case 'crewmate_delete':
         _crewmates.remove(args['id'] as String?);
         data = <String, Object?>{};
@@ -370,6 +514,6 @@ class DemoCrewServer {
       default:
         return null;
     }
-    return (data: data, error: error);
+    return DemoReply(data: data, error: error);
   }
 }

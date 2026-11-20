@@ -1,5 +1,8 @@
 {
   "pt-BR": {
+    "hostd_wire_approval_bypass_disabled": "da201ae99ae2",
+    "hostd_wire_approval_forbidden": "74cfd42f26da",
+    "hostd_wire_approval_unsupported_engine": "080c28fca28a",
     "hostd_wire_busy": "6543c1cf9099",
     "hostd_wire_cli_not_found": "82db0e86538a",
     "hostd_wire_closed": "9c77acba29da",

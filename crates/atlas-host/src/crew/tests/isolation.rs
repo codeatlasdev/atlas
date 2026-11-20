@@ -370,7 +370,7 @@ async fn a_crewmate_without_a_user_is_provisioned_by_its_first_task_and_keeps_it
             role: "r".into(),
             agent: "claude".into(),
             workdir: None,
-            approval: crate::crew::store::Approval::Auto,
+            mode: crate::crew::store::Mode::Bypass,
             routines: vec![],
             triggers: vec![],
             look: None,

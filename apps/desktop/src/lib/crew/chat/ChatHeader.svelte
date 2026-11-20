@@ -7,6 +7,8 @@
 	import type { Crewmate } from "#lib/crew.ts";
 	import CrewmateFace from "#lib/crew/CrewmateFace.svelte";
 	import type { CrewmateState as FaceState } from "#lib/crew/crewmateFace.ts";
+	import ModeBadge from "./ModeBadge.svelte";
+	import { modeOf } from "#lib/crew/permissionMode.ts";
 	import { fmtElapsed } from "./taskView.ts";
 	import { m } from "#lib/i18n/m.ts";
 
@@ -64,6 +66,7 @@
 				{:else}
 					{agentLabel}
 				{/if}
+				<ModeBadge mode={modeOf(crewmate)} size={11} />
 			</span>
 		</span>
 		<ChevronDown size={14} class="pill-chevron" aria-hidden="true" />
@@ -140,6 +143,11 @@
 		gap: 5px;
 		font-size: 11.5px;
 		color: var(--ca-text-secondary);
+	}
+	.pill-status :global(.mode-badge) {
+		margin-left: 6px;
+		padding-left: 8px;
+		border-left: 0.5px solid var(--ca-outline-subtle);
 	}
 	.pill-dot {
 		width: 6px;

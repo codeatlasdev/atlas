@@ -375,6 +375,9 @@ try {
 		"--dart-define=ATLAS_ALWAYS_ONBOARD=false",
 	];
 	if (watch) defines.push("--dart-define=E2E_SLOW=true");
+	// The translations are not committed: the ARB files come from the catalog, `flutter pub get` writes the class.
+	await $`bun ${join(root, "scripts/i18n/generate.ts")} --surface mobile`.quiet();
+	await $`flutter pub get`.cwd(join(root, "apps/mobile")).quiet();
 	const test = Bun.spawn(
 		// A stuck test fails with a message instead of running on (the build is not counted).
 		[

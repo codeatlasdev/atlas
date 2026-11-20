@@ -15,6 +15,7 @@ import {
 } from "./agentRegistry.ts";
 
 const KEYS: (keyof BuiltinAgent)[] = [
+	"ask_args",
 	"bin",
 	"can_ask",
 	"id",

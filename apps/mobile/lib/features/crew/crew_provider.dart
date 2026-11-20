@@ -9,6 +9,7 @@ import 'package:atlas_mobile/core/demo/demo_computer.dart';
 import 'package:atlas_mobile/core/protocol/crew_models.dart';
 import 'package:atlas_mobile/core/protocol/crew_task.dart';
 import 'package:atlas_mobile/core/protocol/models.dart';
+import 'package:atlas_mobile/core/protocol/permission_mode.dart';
 import 'package:atlas_mobile/core/providers/push_events_provider.dart';
 import 'package:atlas_mobile/features/crew/chat/attachments.dart';
 
@@ -39,6 +40,7 @@ bool isCrewListPush(Map<String, dynamic> e) {
   final ev = e['ev'] as String? ?? '';
   return ev == 'crewmate_task' ||
       ev == 'crewmate_updated' ||
+      ev == 'crewmate_approval_unanswered' ||
       ev == 'crew_paused' ||
       ev.startsWith('agent_status');
 }
@@ -62,20 +64,50 @@ typedef CrewEntry = ({
   bool online,
 });
 
-/// Answers a pending tool approval of a crewmate (`agent_approve` on its pane). Throws [DeviceUnavailable] when the
-/// computer cannot be reached: the approval stays pending and the caller says so.
+/// Answers a pending tool approval of a crewmate (`agent_approve` on its pane): [allow] with a [scope] (this call,
+/// or the same kind of call for the rest of the task) or a deny, and an optional [comment] that reaches the agent.
+/// Throws [DeviceUnavailable] when the computer cannot be reached and a [HostRefusal] when hostd refuses (a phone
+/// paired without the approve scope, a request already answered): the approval stays pending and the caller says so.
 Future<void> answerApproval(
   WidgetRef ref,
   MacDevice device,
   CrewmatePendingApproval approval,
-  bool allow,
+  bool allow, {
+  ApprovalScope scope = ApprovalScope.once,
+  String? comment,
+}) async {
+  final mux = await requireMuxOf(ref, device);
+  final resp = await mux.call(
+    'agent_approve',
+    approvalAnswerArgs(
+      pane: approval.paneKey,
+      req: approval.req,
+      allow: allow,
+      scope: scope,
+      rail: approval.rail,
+      comment: comment,
+    ),
+  );
+  if (resp['ok'] != true) throw HostRefusal.fromReply(resp);
+}
+
+/// Switches a crewmate's permission mode (`crewmate_set_approval`, `approve` scope). Returns the crewmate as hostd
+/// now shows it. Throws [DeviceUnavailable] when the computer cannot be reached and a [HostRefusal] (coded:
+/// `crew.approval.*`) when hostd refuses. Every client sees the change at once through `crewmate_updated`.
+Future<CrewmateEntry> setCrewmateMode(
+  WidgetRef ref,
+  MacDevice device,
+  String crewmateId,
+  PermissionMode mode,
 ) async {
   final mux = await requireMuxOf(ref, device);
-  await mux.call('agent_approve', {
-    'pane': approval.paneKey,
-    'req': approval.req,
-    'allow': allow,
+  final resp = await mux.call('crewmate_set_approval', {
+    'id': crewmateId,
+    'mode': mode.wire,
   });
+  if (resp['ok'] != true) throw HostRefusal.fromReply(resp);
+  ref.invalidate(crewProvider(device));
+  return CrewmateEntry.fromJson((resp['data'] as Map).cast<String, dynamic>());
 }
 
 /// Answers the card a task is parked on (`refused` / `prove_ui`: `retry` or `override`) from the list; the list

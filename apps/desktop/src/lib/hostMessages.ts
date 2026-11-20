@@ -152,6 +152,14 @@ export function render(code: string, args: Record<string, unknown> = {}): string
 			return m.hostd_wire_github_app_none();
 		case "crew.github_app.forbidden":
 			return m.hostd_wire_github_app_forbidden();
+		case "crew.approval.bypass_disabled":
+			return m.hostd_wire_approval_bypass_disabled();
+		case "crew.approval.unsupported_engine": {
+			const engine = s("engine");
+			return engine === undefined ? undefined : m.hostd_wire_approval_unsupported_engine({ engine });
+		}
+		case "crew.approval.forbidden":
+			return m.hostd_wire_approval_forbidden();
 		default:
 			return undefined;
 	}

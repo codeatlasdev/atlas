@@ -14,6 +14,7 @@ import 'package:atlas_mobile/core/protocol/models.dart';
 import 'package:atlas_mobile/core/ui/async_view.dart';
 import 'package:atlas_mobile/core/ui/atlas_theme.dart';
 import 'package:atlas_mobile/core/ui/components.dart';
+import 'package:atlas_mobile/core/ui/l10n.dart';
 import 'package:atlas_mobile/features/crew/ops/crew_ops_provider.dart';
 
 class CrewAuditScreen extends ConsumerStatefulWidget {
@@ -172,13 +173,13 @@ class _EntryRow extends StatelessWidget {
         crossAxisAlignment: CrossAxisAlignment.start,
         children: [
           Text(
-            entry.summary,
+            entry.summaryIn(context.l10n),
             style: Theme.of(context).textTheme.bodyLarge!
                 .copyWith(color: c.text, height: 1.35),
           ),
           const SizedBox(height: Space.xs),
           Text(
-            '${_time(entry.ts)} · ${auditKindLabel(entry.kind)}',
+            '${_time(entry.ts)} · ${auditKindLabelIn(context.l10n, entry.kind)}',
             style: Theme.of(context).textTheme.bodySmall!
                 .copyWith(color: c.muted),
           ),
@@ -202,7 +203,7 @@ class _EntrySheet extends StatelessWidget {
         crossAxisAlignment: CrossAxisAlignment.start,
         children: [
           Text(
-            auditKindLabel(entry.kind),
+            auditKindLabelIn(context.l10n, entry.kind),
             style: Theme.of(context).textTheme.titleMedium,
           ),
           const SizedBox(height: 2),

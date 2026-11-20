@@ -9,10 +9,13 @@ import 'package:material_ui/material_ui.dart';
 import 'package:atlas_mobile/core/protocol/crew_models.dart';
 import 'package:atlas_mobile/core/ui/atlas_theme.dart';
 import 'package:atlas_mobile/core/ui/attention_card.dart';
+import 'package:atlas_mobile/core/ui/l10n.dart';
 import 'package:atlas_mobile/features/crew/avatar/crewmate_avatar.dart';
 import 'package:atlas_mobile/features/crew/avatar/crewmate_look.dart';
 import 'package:atlas_mobile/features/crew/chat/task_images.dart';
 import 'package:atlas_mobile/features/crew/crew_provider.dart';
+import 'package:atlas_mobile/features/crew/permissions/approval_actions.dart';
+import 'package:atlas_mobile/features/crew/permissions/mode_badge.dart';
 import 'package:atlas_mobile/features/crew/widgets/approval_parts.dart';
 import 'package:atlas_mobile/features/crew/widgets/pill_buttons.dart';
 
@@ -31,7 +34,7 @@ class NeedsYouCard extends StatelessWidget {
   });
 
   final CrewEntry entry;
-  final void Function(bool allow) onAnswer;
+  final ApprovalAnswerer onAnswer;
 
   /// Retry or Override (`retry` / `override`) for the waiting task's card.
   final void Function(String value) onAnswerTask;
@@ -46,8 +49,9 @@ class NeedsYouCard extends StatelessWidget {
 
     // One button for the whole card, named for what it asks; Deny / Allow / Retry stay their own buttons
     // inside it. The InkWell's own tap node is dropped so the card is not announced twice.
+    final l = context.l10n;
     final label = pa != null
-        ? '${entry.crewmate.name} wants to run ${pa.toolName ?? 'a tool'}'
+        ? '${entry.crewmate.name}: ${pa.toolName == null ? l.mobile_crew_approval_wants_to_run_unknown : l.mobile_crew_approval_wants_to_run(pa.toolName!)}'
         : '${entry.crewmate.name} needs you';
     return Semantics(
       container: true,
@@ -79,6 +83,13 @@ class NeedsYouCard extends StatelessWidget {
                           .copyWith(fontWeight: FontWeight.w700, color: c.text),
                     ),
                   ),
+                  if (pa != null) ...[
+                    const SizedBox(width: Space.sm),
+                    ModeBadge(
+                      mode: entry.crewmate.mode,
+                      fixed: !entry.crewmate.approvalSupported,
+                    ),
+                  ],
                 ],
               ),
               const SizedBox(height: Space.sm),
@@ -92,8 +103,19 @@ class NeedsYouCard extends StatelessWidget {
                   const SizedBox(height: Space.sm),
                   ApprovalCommandPreview(cmd),
                 ],
+                if (pa.rail != null) ...[
+                  const SizedBox(height: Space.sm),
+                  ApprovalRailNote(pa.rail!),
+                ],
                 const SizedBox(height: Space.md),
-                ApprovalButtons(onAnswer: onAnswer, hPad: 16, vPad: 6, gap: 8),
+                ApprovalActions(
+                  approval: pa,
+                  crewmateName: entry.crewmate.name,
+                  onAnswer: onAnswer,
+                  hPad: 16,
+                  vPad: 6,
+                  gap: 8,
+                ),
               ] else if (task != null && task.retryable)
                 ..._waiting(context, c, task),
             ],

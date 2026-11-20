@@ -1,0 +1,16 @@
+{
+	"mobile_crew_audit_a_tool": "Stands for the tool name in an approval line of the audit when the entry has none.",
+	"mobile_crew_audit_answer_by": "Who answered an approval in the audit: {by} is a device name from the audit entry.",
+	"mobile_crew_audit_answer_grant": "An approval decided by Allow for this task, in the audit.",
+	"mobile_crew_audit_answer_mode": "An approval decided by the crewmate's permission mode, in the audit.",
+	"mobile_crew_audit_answer_nobody": "An approval nobody answered (it timed out, or nobody could), in the audit.",
+	"mobile_crew_audit_answer_phone": "An approval answered from a phone: {node} is the start of the phone's id.",
+	"mobile_crew_audit_answer_rail": "An approval a rail held (protected path, task that never auto-runs) when nobody could be asked, in the audit.",
+	"mobile_crew_audit_answer_telegram": "An approval answered from Telegram: {chat} is the chat id.",
+	"mobile_crew_audit_decision_allowed": "One line of the audit: a tool call was allowed. {answer} says who or what decided.",
+	"mobile_crew_audit_decision_decided": "One line of the audit: a tool call was decided in a way this app does not know. {answer} says who or what decided.",
+	"mobile_crew_audit_decision_denied": "One line of the audit: a tool call was denied. {answer} says who or what decided.",
+	"mobile_crew_audit_decision_timed_out": "One line of the audit: a tool call was denied because nobody answered in time.",
+	"mobile_crew_audit_kind_mode_changed": "Name of the audit entry kind for a permission mode change (the filter and the entry's title).",
+	"mobile_crew_audit_mode_changed": "One line of the audit: a crewmate's permission mode changed. {from} and {to} are mode names, {answer} who changed it."
+}

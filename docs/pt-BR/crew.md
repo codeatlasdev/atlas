@@ -1,7 +1,7 @@
 ---
 title: "Atlas Crew"
 source: crew.md
-source_sha: "a02fa17bd0cb7cd356ac59f9bec64fa9a7f12ec7"
+source_sha: "8cf4dd454ada1dfdde8a0fe6fc4ce41134c0c268"
 translation: machine
 ---
 
@@ -178,13 +178,13 @@ Você gerencia crewmates pelo Atlas Desktop, pelo Atlas Mobile, pelo Telegram ou
 - **name**: de 1 a 40 caracteres.
 - **role**: até 2000 caracteres, adicionado antes de cada tarefa como contexto.
 - **agent**: `omp`, `claude`, `codex` ou `opencode`, com modelo e provedor opcionais.
-- **approval**: `ask` (segura cada chamada de ferramenta até você responder) ou `auto` (permite tudo sem perguntar). Onde o `ask` funciona depende de como o crewmate roda. Em um terminal (sem `engine` definido), o Claude Code e o Codex perguntam pelo hook deles, e o omp por uma extensão de aprovação que o Atlas grava na pasta do crewmate (nega por padrão: um erro ou timeout nega a chamada). Com um `engine` headless, só `claude` e `omp` conseguem perguntar; os engines `codex` e `opencode` rodam sem supervisão, então o servidor recusa `ask` para eles (`approval_supported: false` em `crewmate_list`).
+- **mode** (`approval` em versões antigas): `ask`, `edits` ou `bypass`; veja [Modos de permissão](#modos-de-permissão). Onde funciona depende de como o crewmate roda. Em um terminal (sem `engine` definido), o Claude Code e o Codex perguntam pelo hook deles, e o omp por uma extensão de aprovação que o Atlas grava na pasta do crewmate (nega por padrão: um erro ou timeout nega a chamada). Com um `engine` headless, só `claude` e `omp` conseguem perguntar; os engines `codex` e `opencode` rodam sem supervisão, então o servidor aceita só `bypass` para eles (`approval_supported: false` em `crewmate_list`).
 - **project**: uma URL Git (clonada uma vez por servidor e baixada com checkout como uma worktree por crewmate) ou um caminho no servidor. Pasta de trabalho padrão: `<crewmate dir>/work`.
 - **memory**: um arquivo markdown (até 64 KiB) que o agente lê e edita entre tarefas.
 - **look**: veja [Aparência do crewmate](#aparência-do-crewmate).
 - **automations**: veja [Automações](#automações). As rotinas agendadas antigas (cron de 5 campos) continuam rodando.
 
-Configurações do crew (`crew_settings_get` / `crew_settings_set`): `short_replies` (ativado por padrão) resume respostas longas, opcionalmente com `short_replies_model`; `max_agents` (padrão 4, no mínimo 1) é quantos agentes o servidor roda ao mesmo tempo; `agent_memory_max` (em bytes, no mínimo 64 MiB, `0` volta ao padrão) é a memória que um agente pode usar ([abaixo](#um-usuário-linux-por-crewmate)). `crew_settings_get` também retorna `memory_cap`: `{available: true, bytes}` ou `{available: false, reason}`. Ficam salvas em `<hostd dir>/crew.json`.
+Configurações do crew (`crew_settings_get` / `crew_settings_set`): `short_replies` (ativado por padrão) resume respostas longas, opcionalmente com `short_replies_model`; `max_agents` (padrão 4, no mínimo 1) é quantos agentes o servidor roda ao mesmo tempo; `agent_memory_max` (em bytes, no mínimo 64 MiB, `0` volta ao padrão) é a memória que um agente pode usar ([abaixo](#um-usuário-linux-por-crewmate)); `default_approval` e `allow_bypass` ([Modos de permissão](#modos-de-permissão)). `crew_settings_get` também retorna `memory_cap`: `{available: true, bytes}` ou `{available: false, reason}`. Ficam salvas em `<hostd dir>/crew.json`.
 
 Um novo crewmate começa com uma conversa curta de configuração (projeto, role, login do engine) no chat dele.
 
@@ -236,7 +236,27 @@ Uma tarefa pode levar até **4 imagens** de no máximo **5 MiB** cada (png, jpeg
 
 Com `approval: ask`, uma chamada de ferramenta pausa a tarefa e espera até 30 minutos por `agent_approve {pane, req, allow}`; a chave do painel é `crew:<crewmate id>:<task id>`. A espera só começa quando alguém pode responder agora: um cliente desktop conectado, um celular conectado ou um chat do Telegram vinculado. Só um token de push registrado não conta (o celular pode estar offline). Caso contrário, o prompt é negado na hora, então configure um deles antes de contar com um crewmate `ask`. Claude Code e Codex: rode `atlas setup claude-code|codex --apply` de novo, uma vez, para o hook deles usar o timeout correspondente de 1805 s.
 
-Só um **allow** explícito executa a ferramenta. Qualquer outro fim a bloqueia e diz qual foi: o dono negou, ninguém respondeu a tempo (o prompt é auditado como `approval_decision` `timeout` / `none`) ou a própria requisição falhou. Um crewmate `claude` headless segue a mesma regra: um prompt que ninguém respondeu é uma negação ("nobody answered the approval request"), nunca um allow. As esperas formam uma cadeia, cada uma durando mais que a de dentro, para que a mais interna diga o que aconteceu: o hostd espera 30 minutos, a extensão de aprovação do omp 60 s a mais, e o omp 60 s a mais que isso. O omp impõe um limite próprio a todo handler `tool_call` de extensão (`extensionHandlers.toolCallTimeoutMs`, 30 s por padrão, e um `fetch` ao hostd não é um dos diálogos que ele desconta), então o overlay `--config` que o Atlas passa ao omp de cada crewmate o aumenta (`omp-crew.yml` no diretório do crewmate, reescrito no próximo turno); antes disso, as aprovações de um crewmate omp respondidas depois de 30 s falhavam com `omp-approval.ts timed out after 30000ms` mesmo quando o dono permitia. Um omp que não conhece a configuração (anterior à linha 18.4, onde ela existe) mantém os 30 s.
+Só um **allow** explícito executa a ferramenta. Qualquer outro fim a bloqueia e diz qual foi: o dono negou, ninguém respondeu a tempo (auditado como `approval_decision` com `decision: deny` e `source: timeout`, e o dono é avisado) ou a própria requisição falhou. Um crewmate `claude` headless segue a mesma regra: um prompt que ninguém respondeu é uma negação ("nobody answered the approval request"), nunca um allow. As esperas formam uma cadeia, cada uma durando mais que a de dentro, para que a mais interna diga o que aconteceu: o hostd espera 30 minutos, a extensão de aprovação do omp 60 s a mais, e o omp 60 s a mais que isso. O omp impõe um limite próprio a todo handler `tool_call` de extensão (`extensionHandlers.toolCallTimeoutMs`, 30 s por padrão, e um `fetch` ao hostd não é um dos diálogos que ele desconta), então o overlay `--config` que o Atlas passa ao omp de cada crewmate o aumenta (`omp-crew.yml` no diretório do crewmate, reescrito no próximo turno); antes disso, as aprovações de um crewmate omp respondidas depois de 30 s falhavam com `omp-approval.ts timed out after 30000ms` mesmo quando o dono permitia. Um omp que não conhece a configuração (anterior à linha 18.4, onde ela existe) mantém os 30 s.
+
+### Modos de permissão
+
+O **modo** de um crewmate é o que o agente dele pode fazer sem perguntar a você, e você o troca enquanto ele trabalha (Atlas Desktop, Atlas Mobile, `/mode` no Telegram ou `crewmate_set_approval {id, mode}`):
+
+| Modo | O que roda sem perguntar |
+|---|---|
+| `ask` | nada |
+| `edits` (Aceitar edições) | edições de arquivo dentro da árvore de trabalho do crewmate |
+| `bypass` | toda chamada de ferramenta, exceto as barreiras abaixo |
+
+A troca vale a partir da **próxima chamada de ferramenta**, e uma chamada que já espera é decidida de novo na hora (a auditoria mostra `source: mode` e quem trocou). Só um cliente do dono troca: Desktop, Mobile (escopo `approve`) e o chat do Telegram vinculado do dono; o processo do próprio crewmate (um `atlas` rodando dentro do agente se identifica como `crewmate:<id>`) é recusado com `crew.approval.forbidden`, e as rotas de hook que um token de crewmate abre não têm esse comando. O `crew_settings` tem `default_approval` (o modo em que um novo crewmate começa, padrão `ask`) e `allow_bypass` (padrão `true`): desligado, o Bypass é recusado em todo lugar e todo crewmate nele volta para `ask`. O antigo `approval: ask|auto` ainda é lido (`auto` é `bypass`) e o `crewmate_list` ainda o envia (`auto` exatamente quando `mode` é `bypass`).
+
+**O hostd decide cada chamada.** Um engine que consegue perguntar (`claude`, `omp`) sempre é iniciado em modo ask, de forma explícita, e nunca com flag de bypass: o claude com `--permission-mode default --permission-prompt-tool atlas:approve`, o omp com a extensão de aprovação e nunca `--auto-approve`, então nenhum dotfile o amplia e toda chamada que precisa de decisão chega ao hostd. Para cada chamada o hostd aplica, nesta ordem: as **barreiras**; o **modo atual** do crewmate; as **permissões da tarefa**; senão retém a chamada para uma pessoa, que pode **Permitir uma vez** (a resposta principal), **Permitir nesta tarefa** (`scope: task`: o mesmo tipo de chamada, só nessa tarefa, nunca na próxima; edições de arquivo na árvore contam como um tipo, um comando é o comando exato) ou **Negar**, com um `comment` opcional que é entregue ao agente. Não existe "sempre". Se ninguém responde em 30 minutos, a chamada é negada e o dono é avisado (um push `crewmate_approval_unanswered` e o Telegram); uma chamada sobre a qual ninguém pode ser consultado é negada na hora. Um agente de terminal sem `engine` também não é iniciado com flags de bypass; o hook dele é respondido pela mesma decisão.
+
+**Barreiras que nenhum modo remove** (a chamada fica retida no `bypass` também, e o prompt diz qual barreira): caminhos protegidos (internos do `.git`, `.claude/`, `.omp/`, `.codex/`, `.mcp.json`, arquivos rc de shell, `.env*`, arquivos de chave como `*.pem`, `id_*`, `.ssh/`), verificados no caminho que a ferramenta nomeia e em cada palavra de um comando; e tarefas iniciadas pelo GitHub ou por um webhook (`no_auto`), a menos que a automação defina `allow_auto`. Um caminho está dentro da árvore depois de resolver `..` e links; uma URL ou um caminho `~` nunca está.
+
+**O que o agente recebe.** Um fragmento curto (o modo, o que roda sem perguntar, as barreiras, "se negado, ache um caminho mais seguro ou pergunte ao usuário") vai antes do prompt de todo turno cujo agente não foi avisado do modo atual: o primeiro turno de uma tarefa e de novo quando o modo mudou. O omp também o recebe na hora, como mensagem de direcionamento que a extensão de aprovação injeta com a próxima decisão; o claude, cuja ferramenta de permissão não tem esse canal, recebe no turno seguinte, ou no motivo da próxima negação. Uma negação sempre leva o motivo e o comentário da pessoa (o `message` do claude, o motivo do bloqueio do omp). O comentário de um **allow** chega ao omp como mensagem de direcionamento e ao claude no turno seguinte. Engines que não conseguem perguntar (`codex`, `opencode`) rodam sem perguntar, como antes: `approval_supported` é `false`, só `bypass` é aceito, e as tarefas deles são recusadas quando o crew não permite Bypass.
+
+**Agentes de terminal** (um crewmate sem `engine`) são iniciados do mesmo jeito: um agente que consegue perguntar nunca recebe as flags de bypass, e o modo ask dele é dito de forma explícita pelo `ask_args` em `crates/atlas-core/data/agents.json` (`claude --permission-mode default`), então um `defaultMode` nas configurações do próprio Claude do usuário não amplia o que ele pode fazer sem perguntar. O hook dele é respondido pela mesma decisão de um engine.
 
 ### Pausar e retomar
 
@@ -375,6 +395,7 @@ Os chats vinculados recebem os resultados das tarefas (truncados em 4000 caracte
 | Comando | O que faz |
 |---|---|
 | `/crew` | lista os crewmates e seus agentes |
+| `/mode` | lista o [modo de permissão](#modos-de-permissão) de cada crewmate; `/mode [<nome do crewmate>] <ask\|edits\|bypass>` troca o de um (o único crewmate, quando nenhum é nomeado). Só chats vinculados recebem resposta, e a troca é auditada com `telegram:<chat id>` como dispositivo |
 | `/task <crewmate name> <text>` | enfileira uma tarefa |
 | `/ui <message>` | a mesma mensagem para uma [tarefa de UI](#tarefas-de-ui-e-prova): `/ui /task <name> <text>`, ou `/ui <text>` para um único crewmate; também vale no início da legenda de uma foto |
 | texto simples | vai para o único crewmate quando existe exatamente um |
@@ -658,10 +679,11 @@ O que um crewmate fez e quem decidiu o quê, salvo no crew server em `<crewmate 
 | `kind` | Escrito quando | Campos |
 |---|---|---|
 | `tool_call` | o agente informa uma chamada de ferramenta (agentes de terminal e engines headless igualmente) | `task_id`, `tool_name`, `tool_input` |
-| `approval_asked` | um crewmate `ask` precisa de uma decisão | `task_id`, `req`, `tool_name`, `tool_input` |
-| `approval_decision` | o prompt terminou | `task_id`, `req`, `tool_name`, `decision` (`allow`/`deny`/`timeout`), `by` |
+| `approval_asked` | uma chamada fica retida para uma pessoa | `task_id`, `req`, `tool_name`, `tool_input`, `rail` (o que forçou a pergunta, se foi uma barreira) |
+| `approval_decision` | **toda** decisão sobre uma chamada de um crewmate que consegue perguntar, quem quer que a tome | `task_id`, `req` (chamadas retidas), `tool`, `tool_input`, `decision` (`allow`/`deny`), `source` (`mode`, `grant`, `person`, `rail`, `timeout`), `device`, `wait_ms`, `rail`, `comment` |
+| `approval_mode_changed` | o modo de um crewmate foi trocado (ou o Bypass foi retirado do crew) | `from`, `to`, `device` |
 | `task_queued`, `task_started`, `task_finished` | ciclo de vida da tarefa | `task_id`, `source`, `prompt`; `state` e `error` no fim |
-| `config_changed` | aprovação, engine, projeto, agente, nome, tamanho do role, respostas curtas, triggers, rotinas | `field`, `from`, `to` (os tokens de webhook ficam de fora) |
+| `config_changed` | modo, engine, projeto, agente, nome, tamanho do role, respostas curtas, triggers, rotinas | `field`, `from`, `to` (os tokens de webhook ficam de fora) |
 | `task_refused` | as proteções recusaram uma tarefa concluída | `task_id`, `reasons` |
 | `chain_refused` | uma automação "Após o crewmate" não foi disparada porque o crewmate dela já estava na cadeia | `trigger_id`, `from_crewmate`, `from_task`, `chain` |
 | `refusal_overridden` | o dono do crew server aceitou o trabalho recusado | `task_id` |
@@ -671,7 +693,7 @@ O que um crewmate fez e quem decidiu o quê, salvo no crew server em `<crewmate 
 
 Tipos no nível do crew: `crewmate_created`, `crewmate_deleted`, `paused`, `resumed`, `audit_gap`.
 
-**Quem respondeu.** `desktop` é qualquer cliente no socket do servidor, o que inclui a CLI e, para um crew server, o relay do Mac: uma aprovação que um celular envia pelo relay a um crew server aparece como `desktop` lá. Um celular conectado direto a um hostd é `phone:<node id>`; o Telegram é `telegram:<chat id>`; um prompt que ninguém respondeu em 30 minutos é `timeout` / `none`.
+**Quem respondeu.** `device` é `desktop` para qualquer cliente no socket do servidor, o que inclui a CLI e, para um crew server, o relay do Mac: uma aprovação que um celular envia pelo relay a um crew server aparece como `desktop` lá. Um celular conectado direto a um hostd é `phone:<node id>`; o Telegram é `telegram:<chat id>`. Uma chamada que um modo ou uma permissão da tarefa liberou não tem `device` (a troca de modo que decidiu uma chamada em espera nomeia quem trocou).
 
 **Remoção de segredos.** Os valores dos segredos do crewmate e o token do hook são trocados por `[secret:NAME]` / `[secret:hook_token]` antes de qualquer gravação (os segredos são lidos a cada gravação, então um definido há um minuto também é coberto; valores com menos de 4 caracteres não são tratados como segredos). Uma string com mais de 8 KiB é cortada com um marcador que diz quantos bytes havia.
 
@@ -864,8 +886,10 @@ O mesmo socket NDJSON de todo comando do hostd (`~/.atlas/hostd.sock`, ou o do c
 |---|---|---|
 | `crewmate_list` | `{}` | `{crewmates:[…], paused}` |
 | `crew_pause`, `crew_resume` | `{}` | `{}`; veja [Pausar e retomar](#pausar-e-retomar). Emite o push `{"ev":"crew_paused","paused":bool}` (escopo `act` do Mobile) |
-| `crewmate_create` | `{name, role, agent, approval, workdir?, look?, engine?, project?}` | o crewmate |
+| `crewmate_create` | `{name, role, agent, approval?, mode?, workdir?, look?, engine?, project?}` | o crewmate; sem `mode` (nem o legado `approval`) começa no `default_approval` do crew (`bypass` para um engine que não consegue perguntar) |
 | `crewmate_update` | `{id, name?, role?, agent?, approval?, look?, …}` | o crewmate |
+| `crewmate_set_approval` | `{id, mode}` (`ask`, `edits`, `bypass`) | o crewmate; só clientes do dono (escopo `approve` no Mobile); recusas codificadas `crew.approval.bypass_disabled`, `crew.approval.unsupported_engine`, `crew.approval.forbidden`; veja [Modos de permissão](#modos-de-permissão) |
+| `agent_approve` | `{pane, req, allow, scope?, comment?}` | `{}`; `scope` é `once` (padrão) ou `task`; `comment` chega ao agente |
 | `crewmate_delete` | `{id}` | `{}`; cancela as tarefas em execução e na fila e espera o turno em execução terminar, remove a worktree do Git e as branches `atlas/<id>/…` do clone compartilhado, e depois a pasta do crewmate. Um turno que ainda grave depois disso é recusado, então a pasta não é recriada |
 | `crewmate_task` | `{id, prompt, source, tz?, attachments?, ui?}` | `{task}`; `ui: true` a torna uma [tarefa de UI](#tarefas-de-ui-e-prova); `attachments` são até 4 imagens, `[{name, data_b64}]` ou `[{name, upload}]`, veja [Imagens nas tarefas](#imagens-nas-tarefas) |
 | `crewmate_attachment_put` | `{id, upload, seq, data_b64, last?}` | `{staged, last}`; um pedaço (no máximo 512 KiB brutos) de uma imagem grande demais para uma linha do protocolo, com os pedaços em ordem a partir de `seq` 0. Escopo `act` do Mobile |
@@ -898,6 +922,7 @@ O mesmo socket NDJSON de todo comando do hostd (`~/.atlas/hostd.sock`, ou o do c
   "role": "Review PRs and leave inline comments.",
   "agent": "claude",
   "approval": "ask",
+  "mode": "ask",
   "state": "idle",
   "queued": 0,
   "running_task": { "id": "e5f6a7b8", "pane": "crew:a1b2c3d4:e5f6a7b8" },

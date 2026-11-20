@@ -1,0 +1,8 @@
+{
+	"mobile_crew_settings_allow_bypass_detail": "Desligado, esconde o Bypass e volta para Perguntar todo crewmate que sabe perguntar. Caminhos protegidos perguntam em todos os modos.",
+	"mobile_crew_settings_allow_bypass_title": "Permitir Bypass neste crew",
+	"mobile_crew_settings_allow_bypass_unattended": "Crewmates em engines sem canal de aprovação (Codex, OpenCode) sempre rodam sem perguntar, então as tarefas deles são recusadas enquanto o Bypass estiver desligado.",
+	"mobile_crew_settings_default_mode_detail": "Um novo crewmate começa neste modo. Os crewmates que você já tem mantêm o deles.",
+	"mobile_crew_settings_default_mode_title": "Modo padrão para novos crewmates",
+	"mobile_crew_settings_permissions_title": "Permissões"
+}

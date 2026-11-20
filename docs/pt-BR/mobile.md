@@ -1,7 +1,7 @@
 ---
 title: "Atlas Mobile"
 source: mobile.md
-source_sha: "98b6706d0efc7a36f98aa2a4d0731e62e1793b3c"
+source_sha: "9341b054c2bae82409c66f6dee490003d5e2b7da"
 translation: machine
 ---
 
@@ -68,6 +68,12 @@ A página de um projeto tem **Review changes**: os arquivos alterados (com stage
 ## Aprovações
 
 O Claude Code e o Codex rodam `atlas hook … permission-request` antes de mostrar o próprio prompt. Com um celular conectado, o hostd mostra o prompt no celular e espera até 55 s por Allow ou Deny. Sem celular conectado, ele não responde nada na hora, e o agente pergunta no terminal como de costume. Rode `atlas setup claude-code --apply` e `atlas setup codex --apply` de novo, uma vez, para o hook ser registrado com o timeout de 60 s. As aprovações do omp aparecem como "needs you", mas são respondidas no computador.
+
+### Modos de permissão de um crewmate
+
+Um crewmate tem um modo de permissão, **Ask**, **Accept edits** ou **Bypass**, que o hostd aplica a cada chamada de ferramenta ([Atlas Crew](crew.md)). O celular mostra o modo em todo lugar onde o crewmate aparece e o troca (`crewmate_set_approval`, escopo `approve`: um celular pareado sem ele avisa). O modo é uma pílula embaixo do cabeçalho do chat (cadeado, lápis ou escudo; âmbar só no Bypass), uma linha em cada item da aba Crew e uma linha no perfil; um toque abre uma folha com os três modos, e uma troca enquanto o crewmate trabalha diz que vale a partir da próxima chamada de ferramenta. Ele acompanha o `crewmate_updated`, então uma mudança feita no desktop ou no Telegram aparece na hora. Um crewmate num engine sem canal de aprovação (Codex, OpenCode) mostra o modo fixo, com o motivo. O Bypass some de toda escolha quando o crew não o permite (Crew settings → Permissões: o modo padrão dos novos crewmates e **Permitir Bypass neste crew**), e as recusas com código do hostd (`crew.approval.bypass_disabled`, `unsupported_engine`, `forbidden`) aparecem no idioma do app.
+
+Um prompt de ferramenta se responde com um toque: **Permitir uma vez** (o principal), **Permitir nesta tarefa** (o mesmo tipo de chamada até a tarefa terminar) ou **Negar**; *Comentar ou mais opções* abre uma folha com um comentário que o agente recebe junto com a resposta. Uma chamada que uma trava segurou (caminhos protegidos, tarefas que nunca rodam sozinhas) aparece com o motivo e só pode ser permitida uma vez. Não existe "sempre".
 
 ## Agentes no celular
 
@@ -138,7 +144,7 @@ O que o desktop guarda nas configurações de um crewmate também está no celul
 | Aba Crew → opções → **Crew audit** | crewmates criados ou removidos, crew pausada ou retomada | `crew_audit` | read |
 | Perfil do crewmate → **Usage** | tokens de hoje / 7 dias / 30 dias, um gráfico de 30 dias, o custo que um engine informou e o que as CLIs dos engines expõem sobre os limites deles (hoje não expõem nenhum, e o hostd diz isso) | `crewmate_usage`, `engine_limits` | read |
 | Perfil do crewmate → **Routines** | adicionar, editar, desligar ou remover uma rotina cron (um prompt que ele roda num horário); a lista inteira é salva de uma vez e o parser de cron do hostd tem a palavra final, a mensagem dele aparece quando ele recusa | `crewmate_routine_set` (lista: `crewmate_list`) | act |
-| Aba Crew → opções → **Crew settings** | se as respostas longas são resumidas e por qual modelo; um celular só com `read` as vê, e precisa de `act` para alterá-las | `crew_settings_get` / `crew_settings_set` | read / act |
+| Aba Crew → opções → **Crew settings** | se as respostas longas são resumidas e por qual modelo, o modo de permissão padrão dos novos crewmates e se o Bypass é permitido no crew; um celular só com `read` as vê, e precisa de `act` para alterá-las | `crew_settings_get` / `crew_settings_set` | read / act |
 | Crew settings → **Engine sign-in**; o botão *Sign in here* de um card "Sign in to …" | se claude, codex, omp e opencode estão autenticados no crew server (conferido sempre que a tela abre), e **Sign in**: um terminal no servidor que roda só o comando de login daquele engine, aberto na tela de terminal (digitar continua atrás do Face ID) | `crew_engine_status`, `crew_engine_login` | read / act |
 
 Todos funcionam também para um crew server atrás do Mac (`crew_call` exige o mesmo escopo do comando de dentro). O audit nunca contém o valor de um segredo, só o nome, e o celular não tem editor de segredos (`crewmate_secret_set` continua recusado). **Um segredo que um crewmate pede pode ser liberado pelo celular**: o card `provide_secret` o envia com `crewmate_action_answer` (`act`), depois do Face ID (ou da senha do aparelho; um aparelho que não consegue perguntar não envia nada e diz por quê). O audit log do celular guarda o comando e o tamanho do segredo, nunca o valor, em qualquer profundidade (um `crew_call` repassado o leva dentro de `args`), e o audit do crew server guarda só o nome. `crewmate_list` agora traz as `routines` de cada crewmate, para o editor partir do que está armazenado.
@@ -268,7 +274,9 @@ Em `~/.atlas/mobile/` (`$ATLAS_HOSTD_DIR/mobile/`): `key` (a identidade iroh do 
 
 ## Compilar o app
 
-Precisa da versão do Flutter fixada em `apps/mobile/pubspec.yaml` (`environment.flutter`, sempre a stable mais nova; o gate falha com `flutter upgrade` quando a sua é mais antiga, veja `apps/mobile/AGENTS.md`) e de uma toolchain Rust (o transporte é o crate `apps/mobile/native`, ligado por flutter_rust_bridge). `scripts/mobile-check.sh` (parte do `bun run check`) roda `flutter analyze` e `flutter test`. Ele é pulado, com um aviso, quando o Flutter não está instalado.
+Precisa da versão do Flutter fixada em `apps/mobile/pubspec.yaml` (`environment.flutter`, sempre a stable mais nova; o gate falha com `flutter upgrade` quando a sua é mais antiga, veja `apps/mobile/AGENTS.md`) e de uma toolchain Rust (o transporte é o crate `apps/mobile/native`, ligado por flutter_rust_bridge). `scripts/mobile-check.sh` (parte do `bun run check`) escreve as traduções e depois roda `flutter analyze` e `flutter test`. Ele é pulado, com um aviso, quando o Flutter não está instalado.
+
+**Traduções.** O app fala inglês e português do Brasil, a partir do catálogo único em `i18n/messages` (áreas cujo `area.json` diz `"surface": "mobile"`; procedimento: a skill `i18n`, `.agents/skills/i18n/SKILL.md`). Nada do que é gerado entra no commit: `bun scripts/i18n/generate.ts --surface mobile` escreve `lib/l10n/app_en.arb` e `app_pt.arb` (só o idioma: o gen_l10n exige um arquivo base, e o Atlas tem um só português), e `flutter pub get` os transforma em `AppLocalizations` (`generate: true`). O `mobile-check.sh`, os scripts da lab e do e2e e os builds da loja do fastlane fazem os dois; depois de adicionar uma mensagem, rode os dois comandos uma vez. Uma tela lê `context.l10n.some_key` (`core/ui/l10n.dart`). O texto que ainda não foi para o catálogo continua em inglês no código; uma tela nova usa chaves.
 
 `flutter run` e `flutter build` geram o app **Atlas Dev** (veja [Apps dev e da loja](#apps-dev-e-da-loja)); um build da loja diz `--flavor prod`. Tamanhos de release e para que serve cada configuração de build: [Configurações do build](#configurações-do-build-tamanho-e-velocidade).
 

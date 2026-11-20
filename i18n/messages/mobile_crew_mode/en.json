@@ -1,0 +1,21 @@
+{
+	"mobile_crew_mode_applies_next": "A change applies from the next tool call, including one that is waiting now.",
+	"mobile_crew_mode_ask": "Ask",
+	"mobile_crew_mode_ask_detail": "Asks you before every tool call.",
+	"mobile_crew_mode_bypass": "Bypass",
+	"mobile_crew_mode_bypass_detail": "Every tool call runs without asking. Protected paths still ask.",
+	"mobile_crew_mode_change": "Change permission mode",
+	"mobile_crew_mode_changed": "{name} is now in {mode} mode. It applies from the next tool call.",
+	"mobile_crew_mode_edits": "Accept edits",
+	"mobile_crew_mode_edits_detail": "File edits in its worktree run without asking. Everything else asks.",
+	"mobile_crew_mode_error_bypass_disabled": "Bypass is turned off for this crew. Turn it on in the crew settings to use it.",
+	"mobile_crew_mode_error_forbidden": "Only you can change a permission mode, from Atlas Desktop, Atlas Mobile or your linked Telegram chat.",
+	"mobile_crew_mode_error_generic": "Couldn't change the mode: {reason}",
+	"mobile_crew_mode_error_no_access": "This phone isn't allowed to answer approvals or change modes. Allow it in this phone's access settings in Atlas on your computer.",
+	"mobile_crew_mode_error_unsupported_engine": "{engine} has no approval channel, so it always runs without asking. Only Bypass applies to it.",
+	"mobile_crew_mode_label": "Permission mode",
+	"mobile_crew_mode_locked_semantics": "Permission mode: {mode}. It can't be changed.",
+	"mobile_crew_mode_no_channel": "This engine has no approval channel.",
+	"mobile_crew_mode_semantics": "Permission mode: {mode}",
+	"mobile_crew_mode_sheet_title": "Permission mode for {name}"
+}

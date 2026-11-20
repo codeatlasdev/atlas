@@ -4,6 +4,7 @@
 	 * picker; a pasted image is taken too), the pending images and the queue hint. The chat uses the images; the
 	 * setup conversation reuses the box without them.
 	 */
+	import type { Snippet } from "svelte";
 	import { ArrowUp, Plus, X } from "@lucide/svelte";
 	import { MAX_ATTACHMENTS, imagesFromClipboard, type PendingImage } from "#lib/crew/attachments.ts";
 	import ImageThumb from "./ImageThumb.svelte";
@@ -25,6 +26,8 @@
 		onremoveimage?: (index: number) => void;
 		/** Tasks waiting behind the running one; a hint under the pill when above zero. */
 		queued?: number;
+		/** Controls under the box, on the left (the chat's permission-mode picker). */
+		footer?: Snippet;
 		onsend: () => void;
 	}
 
@@ -38,6 +41,7 @@
 		images = [],
 		onremoveimage,
 		queued = 0,
+		footer,
 		onsend,
 	}: Props = $props();
 
@@ -125,8 +129,13 @@
 			onclick={onsend}><ArrowUp size={15} /></button
 		>
 	</div>
-	{#if queued > 0}
-		<div class="queue-hint">{m.crew_chat_composer_queued_tasks({ count: queued })}</div>
+	{#if footer || queued > 0}
+		<div class="foot">
+			{@render footer?.()}
+			{#if queued > 0}
+				<div class="queue-hint">{m.crew_chat_composer_queued_tasks({ count: queued })}</div>
+			{/if}
+		</div>
 	{/if}
 </div>
 
@@ -259,10 +268,19 @@
 	.pill-send:disabled:not(.active) {
 		opacity: 0.5;
 	}
+	.foot {
+		display: flex;
+		align-items: center;
+		justify-content: space-between;
+		gap: 12px;
+		margin-top: 6px;
+		padding: 0 6px;
+		font-size: 11.5px;
+	}
 	.queue-hint {
+		margin-left: auto;
 		font-size: 11px;
 		color: var(--ca-text-secondary);
-		text-align: center;
-		margin-top: 6px;
+		text-align: right;
 	}
 </style>

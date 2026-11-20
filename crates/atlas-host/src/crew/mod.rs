@@ -24,6 +24,7 @@
 //! | `mcp`       | the MCP server an engine's agent talks to (`atlas mcp --crewmate <id>`)     |
 //! | `relay`     | the Mac's relay to crew servers, for Atlas Mobile (runs on the Mac)         |
 
+pub(crate) mod approval;
 pub(crate) mod attachments;
 pub(crate) mod audit;
 pub mod capture;
@@ -100,13 +101,23 @@ pub(crate) async fn handle(hub: &Hub, cmd: HostCmd) -> Result<Value, String> {
             role,
             agent,
             approval,
+            mode,
             workdir,
             look,
             engine,
             project,
             setup_step,
         } => c::create(
-            hub, name, role, agent, approval, workdir, look, engine, project, setup_step,
+            hub,
+            name,
+            role,
+            agent,
+            mode.or(approval),
+            workdir,
+            look,
+            engine,
+            project,
+            setup_step,
         ),
         HostCmd::CrewmateUpdate {
             id,
@@ -193,6 +204,8 @@ pub(crate) async fn handle(hub: &Hub, cmd: HostCmd) -> Result<Value, String> {
             short_replies_model,
             max_agents,
             agent_memory_max,
+            default_approval,
+            allow_bypass,
         } => s::set(
             hub,
             s::SettingsIn {
@@ -200,6 +213,8 @@ pub(crate) async fn handle(hub: &Hub, cmd: HostCmd) -> Result<Value, String> {
                 short_replies_model,
                 max_agents,
                 agent_memory_max,
+                default_approval,
+                allow_bypass,
             },
         ),
         HostCmd::CrewPause {} => hub.crew.set_paused(hub, true).map(|()| json!({})),

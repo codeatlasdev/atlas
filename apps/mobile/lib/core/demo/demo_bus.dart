@@ -3,8 +3,15 @@ import 'dart:convert';
 
 int demoNow() => DateTime.now().millisecondsSinceEpoch;
 
-/// A reply to a command: its data, or the refusal.
-typedef DemoReply = ({Object? data, String? error});
+/// A reply to a command: its data, or the refusal. A refusal hostd codes (`protocol::REPLY_CODES`) carries its
+/// stable `code` and `args` as well as the English `error`.
+class DemoReply {
+  const DemoReply({this.data, this.error, this.code, this.args = const {}});
+  final Object? data;
+  final String? error;
+  final String? code;
+  final Map<String, Object?> args;
+}
 
 /// What every part of the demo computer shares: the line to the app, timers that stop
 /// with it, and the counter that names new things (terminals, tasks).

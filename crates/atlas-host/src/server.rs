@@ -875,13 +875,19 @@ async fn conn(hub: Arc<Hub>, stream: ipc::Stream) {
     hub.pending.leave(conn_id);
     // Why a connection is refused is told apart: a client retries after a timeout or "busy" (the
     // daemon is alive and loaded) but must not after "unauthorized" (a token mismatch).
+    let mut client_name = String::new();
     let refusal = match hello {
         Ok(Some(l)) => {
-            let authed = serde_json::from_str::<Value>(&l)
+            let hello = serde_json::from_str::<Value>(&l)
                 .ok()
-                .and_then(|v| serde_json::from_value::<Hello>(v.get("hello")?.clone()).ok())
-                .is_some_and(|h| h.token == hub.token);
-            (!authed).then_some("unauthorized")
+                .and_then(|v| serde_json::from_value::<Hello>(v.get("hello")?.clone()).ok());
+            match hello {
+                Some(h) if h.token == hub.token => {
+                    client_name = h.client;
+                    None
+                }
+                _ => Some("unauthorized"),
+            }
         }
         Ok(None) => Some("unauthorized"),
         Err(why) => Some(why),
@@ -891,6 +897,11 @@ async fn conn(hub: Arc<Hub>, stream: ipc::Stream) {
         drop(tx);
         let _ = writer.await;
         return;
+    }
+    // An atlas process a crewmate's agent runs names itself `crewmate:<id>` (`HostClient`, from the env hostd
+    // gives the agent). It can only lower what the connection may do: `crewmate_set_approval` refuses it.
+    if let Some(id) = client_name.strip_prefix("crewmate:") {
+        hub.set_origin(conn_id, format!("crewmate:{id}"));
     }
     let _ = tx.force(json!({"ok": true, "data": hub.info()}).to_string());
     hub.subscribers.lock().insert(conn_id, tx.clone());
@@ -1171,6 +1182,9 @@ pub(crate) async fn answer(
             let origin = hub.origin_of(conn_id);
             crate::crew::github::app::handle(hub, cmd, &origin).await
         }
+        HostCmd::CrewmateSetApproval { id, mode } => {
+            crate::crew::approval::set_approval(hub, &id, &mode, &hub.origin_of(conn_id))
+        }
         cmd => handle(hub, cmd, conn_id).await.map_err(Failure::Text),
     }
 }
@@ -1408,9 +1422,23 @@ pub(crate) async fn handle(hub: &Arc<Hub>, cmd: HostCmd, conn_id: u64) -> Result
             hub.crew.unregister_token(&token);
             Ok(json!({}))
         }
-        HostCmd::AgentApprove { pane, req, allow } => hub
+        HostCmd::AgentApprove {
+            pane,
+            req,
+            allow,
+            scope,
+            comment,
+        } => hub
             .agents
-            .approve_as(&pane, &req, allow, &hub.origin_of(conn_id))
+            .answer(
+                &pane,
+                &req,
+                crate::agents::Answer {
+                    scope,
+                    comment,
+                    ..crate::agents::Answer::person(allow, &hub.origin_of(conn_id))
+                },
+            )
             .map(|()| json!({})),
         HostCmd::AgentStatusAll {} => Ok(json!({
             "panes": hub.agents.all(),
@@ -1419,6 +1447,10 @@ pub(crate) async fn handle(hub: &Arc<Hub>, cmd: HostCmd, conn_id: u64) -> Result
         })),
         HostCmd::AgentIntegrations {} => Ok(crate::agents::integrations::all().await),
         HostCmd::Upgrade { exe } => crate::upgrade::run(hub, &exe).await,
+        HostCmd::CrewmateSetApproval { id, mode } => {
+            crate::crew::approval::set_approval(hub, &id, &mode, &hub.origin_of(conn_id))
+                .map_err(String::from)
+        }
         crewmate @ (HostCmd::CrewmateList {}
         | HostCmd::CrewmateCreate { .. }
         | HostCmd::CrewmateUpdate { .. }

@@ -1,5 +1,7 @@
 {
   "agent_memory_max": null,
+  "allow_bypass": true,
+  "default_approval": "ask",
   "max_agents": 4,
   "memory_cap": {
     "available": false,

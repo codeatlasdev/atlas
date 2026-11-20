@@ -110,7 +110,14 @@ async fn serve(
     r.read_line(&mut line).await?;
     let mut parts = line.split_whitespace();
     let method = parts.next().unwrap_or("").to_string();
-    let path = parts.next().unwrap_or("").to_string();
+    // A query string names nothing here (the pane is in the body): the route is the path.
+    let path = parts
+        .next()
+        .unwrap_or("")
+        .split('?')
+        .next()
+        .unwrap_or("")
+        .to_string();
     let (mut len, mut tok) = (0usize, String::new());
     loop {
         line.clear();
@@ -159,7 +166,10 @@ async fn serve(
                     if let Some(c) = &caller {
                         scrub(c, &mut v);
                     }
-                    route(hub, mobile.can_approve(), &path, &v).await
+                    match crew_decision(crew_hub.as_ref(), &path, &v, mobile.can_approve()).await {
+                        Some(reply) => reply,
+                        None => route(hub, mobile.can_approve(), &path, &v).await,
+                    }
                 }
             }
         }
@@ -187,6 +197,27 @@ fn caller_of(
         .store
         .crewmate_of_hook_token(presented)
         .map(Caller::Crewmate)
+}
+
+/// A crewmate pane's permission prompt (`POST /hook/<agent>/decision`): decided by hostd, not held for any
+/// phone that happens to be there: the rails, the crewmate's mode and the task's grants first, a person after
+/// (`crew::approval`). `None` for every other request, which `route` answers.
+async fn crew_decision(
+    crew_hub: Option<&std::sync::Weak<crate::server::Hub>>,
+    path: &str,
+    v: &Value,
+    can_approve: bool,
+) -> Option<(&'static str, String)> {
+    let agent = path.strip_prefix("/hook/")?.strip_suffix("/decision")?;
+    if agent.is_empty() || agent.contains('/') {
+        return None;
+    }
+    let pane = v["pane_key"]
+        .as_str()
+        .filter(|p| crate::crew::pane::is_crewmate_pane(p))?;
+    let hub = crew_hub?.upgrade()?;
+    let reply = crate::crew::approval::decide(&hub, agent, pane, &v["payload"], can_approve).await;
+    Some(("200 OK", reply.body()))
 }
 
 async fn route(hub: &AgentHub, can_approve: bool, path: &str, v: &Value) -> (&'static str, String) {

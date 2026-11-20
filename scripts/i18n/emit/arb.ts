@@ -1,5 +1,4 @@
-// Flutter ARB output (the future mobile surface): ICU plural/select messages and `@key.description`. Nothing declares
-// an `arb` surface yet; the generator and its tests exist so the mobile PR is a surfaces.json entry.
+// Flutter ARB output (the mobile surface): ICU plural/select messages and `@key.description`.
 import { type Node, buildTree, normalize, type MsgValue } from "../resolve.ts";
 
 /** ICU quoting: a literal apostrophe is doubled, an escaped brace is quoted. */
@@ -37,8 +36,15 @@ export function arbMessage(key: string, value: MsgValue, description?: string): 
 	return { [key]: icu(tree), ...(Object.keys(meta).length ? { [`@${key}`]: meta } : {}) };
 }
 
-/** A whole `app_<locale>.arb`: `@@locale` (underscore form, as Flutter wants), then the messages by key. */
+/**
+ * The locale an ARB file is named and tagged with: the language alone (`pt-BR` is `pt`). gen_l10n refuses a regional
+ * locale (`pt_BR`) with no base-language file, and Atlas ships one Portuguese, Brazilian, for every `pt*` device (the
+ * rule of `atlas_core::lang`), so the base file is the translation. Two locales of one language would collide.
+ */
+export const arbLocale = (locale: string) => locale.split("-")[0];
+
+/** A whole `app_<arbLocale>.arb`: `@@locale`, then the messages by key. */
 export function arbFile(locale: string, messages: { key: string; value: MsgValue; description?: string }[]): string {
 	const entries = [...messages].sort((a, b) => (a.key < b.key ? -1 : 1)).flatMap((m) => Object.entries(arbMessage(m.key, m.value, m.description)));
-	return `${JSON.stringify({ "@@locale": locale.replace("-", "_"), ...Object.fromEntries(entries) }, null, "\t")}\n`;
+	return `${JSON.stringify({ "@@locale": arbLocale(locale), ...Object.fromEntries(entries) }, null, "\t")}\n`;
 }

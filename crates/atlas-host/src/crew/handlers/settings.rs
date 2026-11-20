@@ -3,7 +3,7 @@
 
 use serde_json::{Value, json};
 
-use super::super::store::{Routine, Trigger, TriggerKind};
+use super::super::store::{Mode, Routine, Trigger, TriggerKind};
 use super::super::{events, now_s, schedule, triggers};
 use crate::server::Hub;
 
@@ -182,6 +182,8 @@ pub(crate) fn get(hub: &Hub) -> Result<Value, String> {
         "short_replies_model": settings.short_replies_model,
         "max_agents": settings.max_agents,
         "agent_memory_max": settings.agent_memory_max,
+        "default_approval": settings.default_approval,
+        "allow_bypass": settings.allow_bypass,
         // What agents run under now, or why there is no cap: asked of the helper, never assumed.
         "memory_cap": super::super::memory_cap::report(hub),
     }))
@@ -193,6 +195,8 @@ pub(crate) struct SettingsIn {
     pub short_replies_model: Option<String>,
     pub max_agents: Option<usize>,
     pub agent_memory_max: Option<u64>,
+    pub default_approval: Option<String>,
+    pub allow_bypass: Option<bool>,
 }
 
 /// `CrewSettingsSet`
@@ -202,6 +206,8 @@ pub(crate) fn set(hub: &Hub, input: SettingsIn) -> Result<Value, String> {
         short_replies_model,
         max_agents,
         agent_memory_max,
+        default_approval,
+        allow_bypass,
     } = input;
     if max_agents == Some(0) {
         return Err("max_agents must be at least 1: 0 would stop every task".into());
@@ -219,14 +225,34 @@ pub(crate) fn set(hub: &Hub, input: SettingsIn) -> Result<Value, String> {
     if let Some(m) = memory_max {
         settings.agent_memory_max = m;
     }
+    if let Some(allow) = allow_bypass {
+        settings.allow_bypass = allow;
+    }
+    if let Some(m) = default_approval.as_deref().map(Mode::parse).transpose()? {
+        if m == Mode::Bypass && !settings.allow_bypass {
+            return Err("bypass is not allowed on this crew (allow_bypass is off)".into());
+        }
+        settings.default_approval = m;
+    }
+    // Taking Bypass off the crew also takes it off the default a new crewmate would start in.
+    if !settings.allow_bypass && settings.default_approval == Mode::Bypass {
+        settings.default_approval = Mode::Ask;
+    }
     hub.crew
         .store
         .save_crew_settings(&settings)
         .map_err(|e| format!("save_crew_settings: {e}"))?;
+    if !settings.allow_bypass {
+        super::super::approval::revoke_bypass(hub, "owner");
+    }
     hub.crew.agent_slots.set_limit(settings.max_agents);
     // The cap depends on both numbers: the helper rewrites memory.max of the agents that run.
     let cap = super::super::memory_cap::apply(hub);
-    Ok(json!({ "memory_cap": cap }))
+    Ok(json!({
+        "memory_cap": cap,
+        "default_approval": settings.default_approval,
+        "allow_bypass": settings.allow_bypass,
+    }))
 }
 
 /// `EngineLimits`

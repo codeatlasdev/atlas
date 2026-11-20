@@ -1,12 +1,14 @@
 /// The pieces every "this crewmate wants to run a tool" surface shares (the chat bubble and
-/// the Crew tab's needs-you card): the tool line, the command preview and Deny / Allow.
+/// the Crew tab's needs-you card): the tool line, the command preview and the rail note. The answer buttons are
+/// `permissions/approval_actions.dart`.
 library;
 
 import 'package:material_ui/material_ui.dart';
 
 import 'package:atlas_mobile/core/protocol/crew_models.dart';
+import 'package:atlas_mobile/core/protocol/permission_mode.dart';
 import 'package:atlas_mobile/core/ui/atlas_theme.dart';
-import 'package:atlas_mobile/features/crew/widgets/pill_buttons.dart';
+import 'package:atlas_mobile/core/ui/l10n.dart';
 
 /// The shell command the tool wants to run, when its input has one.
 String? approvalCommand(CrewmatePendingApproval? approval) {
@@ -34,8 +36,12 @@ class ApprovalToolLine extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     final c = AtlasColors.of(context);
+    final l = context.l10n;
+    final tool = approval?.toolName;
     final text = Text(
-      'Wants to run ${approval?.toolName ?? 'a tool'}',
+      tool == null
+          ? l.mobile_crew_approval_wants_to_run_unknown
+          : l.mobile_crew_approval_wants_to_run(tool),
       style: Theme.of(context).textTheme.bodyMedium!
           .copyWith(color: c.warning, fontWeight: weight),
     );
@@ -79,41 +85,33 @@ class ApprovalCommandPreview extends StatelessWidget {
   }
 }
 
-/// Deny and Allow, right-aligned.
-class ApprovalButtons extends StatelessWidget {
-  const ApprovalButtons({
-    super.key,
-    required this.onAnswer,
-    this.hPad = 14,
-    this.vPad = 5,
-    this.gap = 6,
-  });
-
-  final void Function(bool allow) onAnswer;
-  final double hPad;
-  final double vPad;
-  final double gap;
+/// Why a mode did not decide this call, when a rail held it: protected paths and tasks that never auto-run ask in
+/// every mode, and can only be allowed once.
+class ApprovalRailNote extends StatelessWidget {
+  const ApprovalRailNote(this.rail, {super.key});
+  final ApprovalRail rail;
 
   @override
-  Widget build(BuildContext context) => Wrap(
-    alignment: WrapAlignment.end,
-    crossAxisAlignment: WrapCrossAlignment.center,
-    spacing: gap,
-    runSpacing: 4,
-    children: [
-      OutlinePillButton(
-        label: 'Deny',
-        danger: true,
-        hPad: hPad,
-        vPad: vPad,
-        onPressed: () => onAnswer(false),
-      ),
-      WarnPillButton(
-        label: 'Allow',
-        hPad: hPad,
-        vPad: vPad,
-        onPressed: () => onAnswer(true),
-      ),
-    ],
-  );
+  Widget build(BuildContext context) {
+    final c = AtlasColors.of(context);
+    final l = context.l10n;
+    return Row(
+      crossAxisAlignment: CrossAxisAlignment.start,
+      children: [
+        Icon(Icons.gpp_maybe_outlined, size: 14, color: c.muted),
+        const SizedBox(width: Space.xs),
+        Expanded(
+          child: Text(
+            switch (rail) {
+              ApprovalRail.protectedPath =>
+                l.mobile_crew_approval_rail_protected_path,
+              ApprovalRail.noAuto => l.mobile_crew_approval_rail_no_auto,
+            },
+            style: Theme.of(context).textTheme.bodySmall!
+                .copyWith(color: c.muted, height: 1.35),
+          ),
+        ),
+      ],
+    );
+  }
 }

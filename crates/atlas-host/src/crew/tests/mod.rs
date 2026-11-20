@@ -41,6 +41,7 @@
 //! | `time_contract` | cron and time zone semantics (DST included) pinned across the date-time crate swap |
 //! | `old_crons`   | crons croner 2 accepted and croner 4 refuses: load, list as invalid, never fire, edits of the rest |
 //! | `omp_approval` | omp's `ask` through the real approval extension, under omp's own handler limit and a virtual clock |
+//! | `permissions` | permission modes (#642): the rails, each mode on claude and omp, switching, scopes, comments, the AX, Telegram `/mode`, the contract fixtures |
 //! | `prove_ui`    | a `ui` task needs two agent captures to be done: the card, override/retry, Telegram |
 
 pub(crate) mod github_fake;
@@ -98,6 +99,8 @@ mod old_crons;
 mod omp_approval;
 #[cfg(unix)]
 mod pause;
+#[cfg(unix)]
+mod permissions;
 #[cfg(unix)]
 mod prepare;
 #[cfg(unix)]

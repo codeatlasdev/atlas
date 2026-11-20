@@ -9,8 +9,10 @@ import {
 	parseManifest,
 	parseStatus,
 	permissionList,
+	publicUrl,
 	secondsUntil,
 	validOrgLogin,
+	webhookState,
 } from "./githubApp.ts";
 
 // `crew-github-app.json` is what a real hostd answered (written by `crew::tests::github_app`), so a renamed field on
@@ -55,6 +57,51 @@ describe("parseStatus of the real replies", () => {
 		expect(user.postUrl).toBe("https://github.com/settings/apps/new");
 		expect(user.manifest.default_permissions.workflows).toBeUndefined();
 		expect(parseManifest({ manifest: {} })).toBeNull();
+	});
+});
+
+describe("the webhook (#645)", () => {
+	test("the status carries the webhook as hostd sends it", () => {
+		expect(parseStatus(fixture.status).webhook).toEqual({
+			url: null,
+			synced: false,
+			verifiedInstallations: 0,
+			failing: false,
+		});
+	});
+
+	test("an older hostd without the webhook reads as off", () => {
+		const { webhook: _gone, ...older } = fixture.status.app;
+		expect(parseStatus({ app: older }).webhook).toEqual({
+			url: null,
+			synced: false,
+			verifiedInstallations: 0,
+			failing: false,
+		});
+	});
+
+	test("the address follows hostd's own rules (crew::store::normalize_public_url)", () => {
+		expect(publicUrl("  ")).toEqual({ ok: true, url: null });
+		expect(publicUrl(" https://crew.example.com/ ")).toEqual({ ok: true, url: "https://crew.example.com" });
+		expect(publicUrl("https://crew.example.com/atlas/")).toEqual({
+			ok: true,
+			url: "https://crew.example.com/atlas",
+		});
+		expect(publicUrl("http://crew.example.com")).toEqual({ ok: false, reason: "https" });
+		expect(publicUrl("crew.example.com")).toEqual({ ok: false, reason: "url" });
+		expect(publicUrl("https://me:pw@crew.example.com")).toEqual({ ok: false, reason: "url" });
+		expect(publicUrl("https://crew.example.com/?a=1")).toEqual({ ok: false, reason: "url" });
+		expect(publicUrl("https://crew.example.com/#x")).toEqual({ ok: false, reason: "url" });
+		expect(publicUrl(`https://crew.example.com/${"a".repeat(200)}`)).toEqual({ ok: false, reason: "long" });
+	});
+
+	test("what the card says follows the order hostd decides in", () => {
+		const w = { url: "https://x.dev", synced: true, verifiedInstallations: 1, failing: false };
+		expect(webhookState({ ...w, url: null })).toBe("off");
+		expect(webhookState({ ...w, synced: false })).toBe("unsynced");
+		expect(webhookState({ ...w, verifiedInstallations: 0 })).toBe("pending");
+		expect(webhookState(w)).toBe("live");
+		expect(webhookState({ ...w, failing: true })).toBe("failing");
 	});
 });
 

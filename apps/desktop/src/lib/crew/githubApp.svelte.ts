@@ -24,6 +24,7 @@ import {
 	manifestArgs,
 	parseManifest,
 	parseStatus,
+	publicUrl,
 	secondsUntil,
 } from "./githubApp.ts";
 
@@ -84,6 +85,13 @@ export class CrewGithubApp {
 	org = $state("");
 	workflows = $state(false);
 
+	/** The webhook's public address as typed; follows the server's until the user edits it. */
+	publicUrl = $state("");
+	urlError = $state("");
+	savingUrl = $state(false);
+	/** The address the server last reported: the field follows it while it still shows it. */
+	private savedUrl = "";
+
 	/** The form's choices as hostd takes them; `null` while they are not valid (an organization without a login). */
 	readonly args = $derived(manifestArgs(this.owner, this.org, this.workflows));
 	readonly busy = $derived(
@@ -114,6 +122,9 @@ export class CrewGithubApp {
 	async load(): Promise<void> {
 		try {
 			this.app = parseStatus(await hostCall("crew_github_app_status", { host: this.host }));
+			const url = this.app?.webhook.url ?? "";
+			if (this.publicUrl === this.savedUrl) this.publicUrl = url;
+			this.savedUrl = url;
 			if (this.phase === "loading" || this.phase === "none" || this.phase === "ready") {
 				this.phase = this.app ? "ready" : "none";
 			}
@@ -263,6 +274,39 @@ export class CrewGithubApp {
 			if ((e as { code?: string }).code !== "crew.github_app.none") this.error = errText(e);
 		}
 		await this.load();
+	}
+
+	/** Save the webhook's public address (`crew_settings_set {public_url}`, alone: the other crew settings stay as
+	 * they are). Blank turns the webhook off. An address hostd would refuse is never sent; a GitHub that could not be
+	 * told is said, and the address stays saved (hostd keeps trying). */
+	async savePublicUrl(): Promise<void> {
+		if (this.savingUrl) return;
+		const checked = publicUrl(this.publicUrl);
+		if (!checked.ok) {
+			this.urlError =
+				checked.reason === "https"
+					? m.crew_github_app_webhook_bad_https()
+					: checked.reason === "long"
+						? m.crew_github_app_webhook_too_long()
+						: m.crew_github_app_webhook_bad_url();
+			return;
+		}
+		this.savingUrl = true;
+		this.urlError = "";
+		try {
+			const r = await hostCall<{ webhook_error?: string | null }>("crew_settings_set", {
+				host: this.host,
+				public_url: checked.url ?? "",
+			});
+			this.publicUrl = checked.url ?? "";
+			this.savedUrl = this.publicUrl;
+			if (r?.webhook_error) this.urlError = r.webhook_error;
+			await this.load();
+		} catch (e) {
+			this.urlError = errText(e);
+		} finally {
+			this.savingUrl = false;
+		}
 	}
 
 	/** The card left the page: close the listener and stop watching. */

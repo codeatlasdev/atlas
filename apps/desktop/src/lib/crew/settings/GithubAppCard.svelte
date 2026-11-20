@@ -169,6 +169,7 @@
 						/>
 					</div>
 					{#if flow.owner === "org"}
+						<!-- i18n-ignore: an organization login used as an example, not prose -->
 						<TextField
 							size="sm"
 							label={m.crew_github_app_org_label()}

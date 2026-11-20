@@ -91,6 +91,15 @@ export interface Failure {
 	action: "none" | "settings" | "retry";
 }
 
+/** Refusals of hostd that the same recording will meet again: the person must change something first. */
+const SETTLED: Record<string, true> = {
+	"crew.voice.off": true,
+	"crew.voice.not_installed": true,
+	"crew.voice.forbidden": true,
+	"crew.voice.too_long": true,
+	"crew.voice.bad_audio": true,
+};
+
 export class Dictation {
 	phase = $state<Phase>("idle");
 	/** 0..1, the input level (20 a second). */
@@ -275,7 +284,10 @@ export class Dictation {
 				this.error = { text: m.crew_voice_busy(), action: "none" };
 				break;
 			default:
-				this.error = { text: m.crew_voice_failed({ detail: f.detail ?? this.deps.errorText(e) }), action: "none" };
+				this.error = {
+					text: m.crew_voice_failed({ detail: f.detail ?? this.deps.errorText(e) }),
+					action: "none",
+				};
 		}
 	}
 
@@ -301,7 +313,9 @@ export class Dictation {
 	private stopAnnouncement(reason: Reason): string {
 		switch (reason) {
 			case "cap":
-				return m.crew_voice_announce_cap({ minutes: Math.round((this.deps.status()?.maxSeconds ?? 300) / 60) });
+				return m.crew_voice_announce_cap({
+					minutes: Math.round((this.deps.status()?.maxSeconds ?? 300) / 60),
+				});
 			case "background":
 				return m.crew_voice_announce_background();
 			case "device_lost":
@@ -324,8 +338,17 @@ export class Dictation {
 		} catch (e) {
 			if (run !== this.run) return;
 			this.phase = "error";
-			this.error = { text: this.deps.errorText(e), action: "retry" };
+			this.error = this.failure(e);
 		}
+	}
+
+	/** A failed upload or transcription as the person sees it: Try again unless the same recording would be refused again. */
+	private failure(e: unknown): Failure {
+		const code = (e as { code?: unknown } | null)?.code;
+		return {
+			text: this.deps.errorText(e),
+			action: typeof code === "string" && SETTLED[code] ? "none" : "retry",
+		};
 	}
 
 	/** Another try with the audio the shell still holds: a new upload, the whole recording. */
@@ -351,7 +374,12 @@ export class Dictation {
 		}
 		const cur = target.read();
 		const edit = insertDictation(cur.value, cur.start, cur.end, text);
-		this.undo = { before: cur.value, after: edit.value, cursor: Math.min(cur.start, cur.end), dictated: this.dictated };
+		this.undo = {
+			before: cur.value,
+			after: edit.value,
+			cursor: Math.min(cur.start, cur.end),
+			dictated: this.dictated,
+		};
 		target.write(edit.value, edit.cursor);
 		this.dictated = true;
 		this.announce = m.crew_voice_announce_inserted();
@@ -416,7 +444,7 @@ export class Dictation {
 			this.cancelTick?.();
 			this.cancelTick = null;
 			this.phase = "error";
-			this.error = { text: this.deps.errorText(e), action: "retry" };
+			this.error = this.failure(e);
 		}
 	}
 
@@ -462,4 +490,3 @@ export class Dictation {
 		this.error = null;
 	}
 }
-

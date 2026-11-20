@@ -3,6 +3,8 @@ import "../../../../test/setup.ts";
 import { describe, expect, test } from "bun:test";
 import { b64bytes } from "#lib/b64.ts";
 import { CHUNK } from "#lib/crew/attachments.ts";
+import fixture from "../../__fixtures__/crew-voice.json" with { type: "json" };
+import { parseVoiceStatus } from "./wire.ts";
 
 // The dictation session against fakes of everything outside it: a microphone that holds a WAV, a crew server that
 // answers `crewmate_voice_put` / `crewmate_transcribe`, a clock the test turns by hand. What is asserted is what the
@@ -11,11 +13,7 @@ import { CHUNK } from "#lib/crew/attachments.ts";
 // static import is hoisted above it and cannot compile a `.svelte.ts` file).
 const { Dictation, LATCH_MS, PARTIAL_EVERY_MS } = await import("./dictation.svelte.ts");
 
-const STATUS = {
-	enabled: true,
-	engine: { kind: "whisper_cpp", label: "whisper.cpp (small)", model: "small", ready: true, detail: null },
-	maxSeconds: 300,
-};
+const STATUS = parseVoiceStatus(fixture.status_on);
 
 /** A WAV-shaped byte string: distinguishable bytes, so a lost or repeated piece shows. */
 const audio = (n: number) => Uint8Array.from({ length: n }, (_, i) => (i * 7 + 3) % 251);
@@ -91,10 +89,22 @@ function rig(opts = {}) {
 			if (cmd === "crewmate_transcribe") {
 				if (args.partial) {
 					if (server.failPartial) throw server.failPartial;
-					return { text: server.partialText, raw: server.partialText, engine: { kind: "whisper_cpp", label: "whisper.cpp (small)" }, partial: true };
+					return {
+						text: server.partialText,
+						raw: server.partialText,
+						engine: { kind: "whisper_cpp", label: "whisper.cpp (small)" },
+						partial: true,
+					};
 				}
 				if (server.failFinal) throw server.failFinal;
-				return { text: server.finalText, raw: server.finalText, engine: { kind: "whisper_cpp", label: "whisper.cpp (small)" }, language: "en", duration_ms: 3000, partial: false };
+				return {
+					text: server.finalText,
+					raw: server.finalText,
+					engine: { kind: "whisper_cpp", label: "whisper.cpp (small)" },
+					language: "en",
+					duration_ms: 3000,
+					partial: false,
+				};
 			}
 			throw new Error(`unexpected ${cmd}`);
 		},
@@ -118,7 +128,13 @@ function rig(opts = {}) {
 		await settle();
 	};
 	return {
-		d, native, server, calls, target, writes, advance,
+		d,
+		native,
+		server,
+		calls,
+		target,
+		writes,
+		advance,
 		/** The microphone opens only when the test says so (the system's permission prompt is up). */
 		gateStart() {
 			const gate = Promise.withResolvers<void>();
@@ -130,9 +146,7 @@ function rig(opts = {}) {
 			const gate = Promise.withResolvers<unknown>();
 			const call = deps.call;
 			deps.call = (cmd, args) =>
-				cmd === "crewmate_transcribe" && !args.partial
-					? gate.promise.then(() => reply)
-					: call(cmd, args);
+				cmd === "crewmate_transcribe" && !args.partial ? gate.promise.then(() => reply) : call(cmd, args);
 			return gate;
 		},
 		setDraft: (value: string, start = value.length, end = start) => (draft = { value, start, end }),
@@ -331,7 +345,9 @@ describe("the upload", () => {
 		await holdAndSay(r);
 		expect(r.draft().value).not.toBe("");
 		expect(r.calls.map((c) => c.cmd).filter((c) => c.startsWith("crewmate_task"))).toEqual([]);
-		expect(new Set(r.calls.map((c) => c.cmd))).toEqual(new Set(["crewmate_voice_put", "crewmate_transcribe"]));
+		expect(new Set(r.calls.map((c) => c.cmd))).toEqual(
+			new Set(["crewmate_voice_put", "crewmate_transcribe"]),
+		);
 	});
 });
 
@@ -542,7 +558,12 @@ describe("refusals and failures: the engine is named, nothing falls back", () =>
 
 	test("no microphone, a busy recorder and a failed device each have their own message", async () => {
 		const texts = new Set();
-		for (const startError of [{ code: "no_device" }, { code: "busy" }, { code: "unavailable" }, { code: "failed", detail: "stream: x" }]) {
+		for (const startError of [
+			{ code: "no_device" },
+			{ code: "busy" },
+			{ code: "unavailable" },
+			{ code: "failed", detail: "stream: x" },
+		]) {
 			const r = rig();
 			r.native.startError = startError;
 			r.d.press(r.target);

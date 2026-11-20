@@ -23,8 +23,6 @@
 	"crew_voice_key_tap": "Option: one press starts the recording and the next one stops it.",
 	"crew_voice_mic_live": "Indicator shown the whole time the microphone is recording.",
 	"crew_voice_no_device": "Shown when the system has no input device.",
-	"crew_voice_open_settings": "Button of the microphone-denied message: opens the system privacy page for the microphone.",
-	"crew_voice_retry": "Button next to a failed transcription: sends the same recording again.",
 	"crew_voice_settings_status": "Label of the row that shows one crew server's speech engine and state.",
 	"crew_voice_settings_status_hint": "Description of the voice status row in Settings > Atlas Crew.",
 	"crew_voice_settings_title": "Title of the Dictation group in Settings > Atlas Crew.",

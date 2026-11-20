@@ -27,7 +27,8 @@ export interface VoiceStatus {
 /** A crew server that predates dictation (or answered nothing usable): voice is off. */
 export const VOICE_OFF: VoiceStatus = { enabled: false, engine: null, maxSeconds: 300 };
 
-const isObject = (v: unknown): v is Record<string, unknown> => !!v && typeof v === "object" && !Array.isArray(v);
+const isObject = (v: unknown): v is Record<string, unknown> =>
+	!!v && typeof v === "object" && !Array.isArray(v);
 
 /** The `crew_voice_status` reply (also `crew_voice_set`'s). */
 export function parseVoiceStatus(raw: unknown): VoiceStatus {

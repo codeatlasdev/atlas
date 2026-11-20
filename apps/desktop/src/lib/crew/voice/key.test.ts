@@ -2,7 +2,14 @@
 import { describe, expect, test } from "bun:test";
 import { clock, endsDictationHold, isDictationKey } from "./key.ts";
 
-const down = (over = {}) => ({ code: "KeyM", shiftKey: true, metaKey: false, ctrlKey: false, altKey: false, ...over });
+const down = (over = {}) => ({
+	code: "KeyM",
+	shiftKey: true,
+	metaKey: false,
+	ctrlKey: false,
+	altKey: false,
+	...over,
+});
 
 describe("the microphone chord", () => {
 	test("⌘⇧M on a Mac, Ctrl+Shift+M elsewhere, each only with its own modifier", () => {
@@ -23,7 +30,12 @@ describe("the microphone chord", () => {
 	});
 
 	test("any key of the chord coming up ends a hold; other keys do not", () => {
-		for (const [code, key] of [["KeyM", "m"], ["ShiftLeft", "Shift"], ["MetaLeft", "Meta"], ["ControlLeft", "Control"]]) {
+		for (const [code, key] of [
+			["KeyM", "m"],
+			["ShiftLeft", "Shift"],
+			["MetaLeft", "Meta"],
+			["ControlLeft", "Control"],
+		]) {
 			expect(endsDictationHold({ code, key })).toBe(true);
 		}
 		expect(endsDictationHold({ code: "KeyA", key: "a" })).toBe(false);

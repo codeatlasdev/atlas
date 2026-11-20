@@ -120,7 +120,10 @@ mod tests {
         assert_eq!(u32_at(b, 40), 10, "data size");
         assert_eq!(b.len(), HEADER + 10);
         // Little endian, in the order pushed.
-        assert_eq!(&b[HEADER..], &[0, 0, 1, 0, 0xFF, 0xFF, 0xFF, 0x7F, 0x00, 0x80]);
+        assert_eq!(
+            &b[HEADER..],
+            &[0, 0, 1, 0, 0xFF, 0xFF, 0xFF, 0x7F, 0x00, 0x80]
+        );
     }
 
     #[test]
@@ -154,12 +157,18 @@ mod tests {
     fn a_file_stopped_at_the_cap_keeps_every_sample_and_its_size_matches_the_contract() {
         let mut w = Wav::new();
         // A ramp: every sample is distinguishable, so a dropped or duplicated one shows.
-        let all: Vec<i16> = (0..MAX_SAMPLES + 5_000).map(|i| (i % 30_000) as i16).collect();
+        let all: Vec<i16> = (0..MAX_SAMPLES + 5_000)
+            .map(|i| (i % 30_000) as i16)
+            .collect();
         let taken = w.push(&all);
         assert_eq!(taken, MAX_SAMPLES);
         w.finish();
         let b = w.slice(0, usize::MAX);
-        assert_eq!(b.len(), HEADER + 300 * 32_000, "300 s of s16le mono at 16 kHz");
+        assert_eq!(
+            b.len(),
+            HEADER + 300 * 32_000,
+            "300 s of s16le mono at 16 kHz"
+        );
         assert_eq!(u32_at(b, 40) as usize, 300 * 32_000);
         for (i, want) in all[..MAX_SAMPLES].iter().enumerate().step_by(997) {
             let at = HEADER + i * 2;
@@ -191,7 +200,13 @@ mod tests {
         }
         assert_eq!(got, whole);
         assert!(w.slice(w.byte_len(), 10).is_empty());
-        assert!(w.slice(w.byte_len() + 99, 10).is_empty(), "past the end is empty, never a panic");
-        assert!(w.slice(5, usize::MAX).len() == whole.len() - 5, "a huge max does not overflow");
+        assert!(
+            w.slice(w.byte_len() + 99, 10).is_empty(),
+            "past the end is empty, never a panic"
+        );
+        assert!(
+            w.slice(5, usize::MAX).len() == whole.len() - 5,
+            "a huge max does not overflow"
+        );
     }
 }

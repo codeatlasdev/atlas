@@ -11,9 +11,31 @@ export interface Edit {
 }
 
 /** A character after which the next word is glued on: an opening bracket, a quote, a path or mention start. */
-const OPENERS: Record<string, true> = { "(": true, "[": true, "{": true, '"': true, "'": true, "`": true, "/": true, "\\": true, "@": true, "#": true };
+const OPENERS: Record<string, true> = {
+	"(": true,
+	"[": true,
+	"{": true,
+	'"': true,
+	"'": true,
+	"`": true,
+	"/": true,
+	"\\": true,
+	"@": true,
+	"#": true,
+};
 /** A text that starts with one of these belongs to what comes before it: no space in front. */
-const CLOSERS: Record<string, true> = { ".": true, ",": true, ";": true, ":": true, "!": true, "?": true, ")": true, "]": true, "}": true, "%": true };
+const CLOSERS: Record<string, true> = {
+	".": true,
+	",": true,
+	";": true,
+	":": true,
+	"!": true,
+	"?": true,
+	")": true,
+	"]": true,
+	"}": true,
+	"%": true,
+};
 
 /**
  * `text` put into `value` over `[start, end)` (a caret when they are equal). Returns the new draft and where the caret

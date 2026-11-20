@@ -31,11 +31,19 @@
 	}
 </script>
 
-<Row id="crew-voice-{hostKey}" label={m.crew_voice_settings_status()} description={m.crew_voice_settings_status_hint()}>
+<Row
+	id="crew-voice-{hostKey}"
+	label={m.crew_voice_settings_status()}
+	description={m.crew_voice_settings_status_hint()}
+>
 	<span class="state" data-voice-status>{voiceStatusText(status)}</span>
 </Row>
 {#if status}
-	<Row id="crew-voice-switch-{hostKey}" label={m.crew_voice_switch()} description={m.crew_voice_switch_hint()}>
+	<Row
+		id="crew-voice-switch-{hostKey}"
+		label={m.crew_voice_switch()}
+		description={m.crew_voice_switch_hint()}
+	>
 		<Switch
 			aria-label={m.crew_voice_switch()}
 			checked={status.enabled}

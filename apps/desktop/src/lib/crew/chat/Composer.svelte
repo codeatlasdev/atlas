@@ -161,7 +161,9 @@
 			{#if dictation.busy}
 				<div class="dictation-row">
 					{#if dictation.listening}
-						<span class="mic-live" data-mic-live><span class="dot" aria-hidden="true"></span>{m.crew_voice_mic_live()}</span>
+						<span class="mic-live" data-mic-live
+							><span class="dot" aria-hidden="true"></span>{m.crew_voice_mic_live()}</span
+						>
 						<span class="elapsed">{clock(dictation.elapsedMs)}</span>
 						<span class="meter" aria-hidden="true"><i style:transform="scaleX({dictation.level})"></i></span>
 					{:else if dictation.phase === "starting"}
@@ -169,23 +171,32 @@
 					{:else}
 						<span>{m.crew_voice_transcribing()}</span>
 					{/if}
-					<span class="engine" data-dictation-engine>{m.crew_voice_engine({ engine: dictation.engine })}</span>
+					<span class="engine" data-dictation-engine>{m.crew_voice_engine({ engine: dictation.engine })}</span
+					>
 				</div>
 				{#if dictation.partial}
 					<p class="preview" data-dictation-preview aria-hidden="true">{dictation.partial}</p>
 				{/if}
 				{#if dictation.listening}
-					<p class="hint">{dictationKey.mode === "hold" ? m.crew_voice_hint_hold() : m.crew_voice_hint_tap()}</p>
+					<p class="hint">
+						{dictationKey.mode === "hold" ? m.crew_voice_hint_hold() : m.crew_voice_hint_tap()}
+					</p>
 				{/if}
 			{:else if dictation.error}
 				<div class="dictation-error" role="alert">
 					<span>{dictation.error.text}</span>
 					{#if dictation.error.action === "settings"}
-						<button class="link" onclick={() => dictation.openSettings()}>{m.crew_voice_open_settings()}</button>
+						<button class="link" onclick={() => dictation.openSettings()}
+							>{m.settings_capture_permission_open_settings()}</button
+						>
 					{:else if dictation.error.action === "retry"}
-						<button class="link" onclick={() => dictation.retry()}>{m.crew_voice_retry()}</button>
+						<button class="link" onclick={() => dictation.retry()}
+							>{m.crew_onboarding_connect_step_action_retry()}</button
+						>
 					{/if}
-					<button class="link" aria-label={m.crew_voice_dismiss()} onclick={() => dictation.clearError()}><X size={11} /></button>
+					<button class="link" aria-label={m.crew_voice_dismiss()} onclick={() => dictation.clearError()}
+						><X size={11} /></button
+					>
 				</div>
 			{/if}
 		</div>

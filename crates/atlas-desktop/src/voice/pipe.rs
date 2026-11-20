@@ -114,7 +114,11 @@ mod tests {
         let src = vec![0.25f32; 48_000];
         let got = convert(48_000, 1, &src);
         assert_eq!(got.len(), 16_000);
-        assert!(got.iter().all(|s| *s == 8192), "a constant stays constant: {:?}", &got[..4]);
+        assert!(
+            got.iter().all(|s| *s == 8192),
+            "a constant stays constant: {:?}",
+            &got[..4]
+        );
         // Three different samples become their mean.
         let got = convert(48_000, 1, &[0.0, 0.3, 0.6]);
         assert_eq!(got, vec![(0.3f64 * 32767.0).round() as i16]);

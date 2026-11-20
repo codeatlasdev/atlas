@@ -290,7 +290,11 @@ mod tests {
         assert_eq!(r.start(), Err(StartError::Busy));
         assert_eq!(*fake.opened.lock(), 1, "the device was not opened twice");
         let t = r.stop(Reason::Requested).unwrap();
-        assert_eq!(t.bytes, HEADER + 32_000, "the first second survived the refused start");
+        assert_eq!(
+            t.bytes,
+            HEADER + 32_000,
+            "the first second survived the refused start"
+        );
     }
 
     #[test]
@@ -301,7 +305,11 @@ mod tests {
         let late = fake.feed.lock().clone().unwrap();
         assert!(r.stop(Reason::Requested).is_some());
         assert!(!fake.is_open(), "the device is released at stop");
-        assert_eq!(r.stop(Reason::Background), None, "already over: no second take");
+        assert_eq!(
+            r.stop(Reason::Background),
+            None,
+            "already over: no second take"
+        );
         assert_eq!(*fake.closed.lock(), 1);
         // A callback already in flight when the device closed is not recorded.
         late.push(&vec![0.5f32; 16_000], 1, 16_000);
@@ -390,7 +398,11 @@ mod tests {
         let done = r.read(0, usize::MAX);
         assert!(!done.live);
         assert_eq!(done.total, HEADER + 64_000);
-        assert_eq!(&done.data[40..44], &64_000u32.to_le_bytes(), "the real size after the stop");
+        assert_eq!(
+            &done.data[40..44],
+            &64_000u32.to_le_bytes(),
+            "the real size after the stop"
+        );
     }
 
     #[test]
@@ -400,9 +412,17 @@ mod tests {
         fake.say(3);
         r.cancel();
         assert!(!fake.is_open());
-        assert_eq!(r.read(0, usize::MAX).total, 0, "nothing of the cancelled take is readable");
+        assert_eq!(
+            r.read(0, usize::MAX).total,
+            0,
+            "nothing of the cancelled take is readable"
+        );
         r.start().unwrap();
-        assert_eq!(r.read(0, usize::MAX).total, HEADER, "a new take starts at zero, not after the old audio");
+        assert_eq!(
+            r.read(0, usize::MAX).total,
+            HEADER,
+            "a new take starts at zero, not after the old audio"
+        );
         // Cancel with nothing live is harmless.
         r.stop(Reason::Requested).unwrap();
         r.cancel();

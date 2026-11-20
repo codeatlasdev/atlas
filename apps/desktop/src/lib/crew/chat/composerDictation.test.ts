@@ -1,6 +1,8 @@
 // @ts-nocheck bun test runtime types are not part of the app tsconfig
 import "../../../../test/setup.ts";
 import { afterEach, describe, expect, test } from "bun:test";
+import fixture from "../../__fixtures__/crew-voice.json" with { type: "json" };
+import { parseVoiceStatus } from "../voice/wire.ts";
 
 // The message box with a microphone, against the real component and the real `Dictation`; only the shell's
 // microphone and the crew server are fakes. What is asserted is what a person (or a screen reader) meets: the
@@ -14,11 +16,7 @@ const { default: Composer } = await import("./Composer.svelte");
 const { Dictation } = await import("../voice/dictation.svelte.ts");
 const { IS_MAC } = await import("#lib/keys.ts");
 
-const STATUS = {
-	enabled: true,
-	engine: { kind: "whisper_cpp", label: "whisper.cpp (small)", model: "small", ready: true, detail: null },
-	maxSeconds: 300,
-};
+const STATUS = parseVoiceStatus(fixture.status_on);
 
 // The clock of the session, turned by the test: a hold longer than a tap is a number, not a wait.
 let clock = 1000;
@@ -76,7 +74,8 @@ function setup({ text = "", status = STATUS, mode = "hold", unsupported = false 
 		later: () => () => {},
 		async call(cmd, args) {
 			if (cmd === "crewmate_voice_put") return { upload: "u1", bytes: 0 };
-			if (cmd === "crewmate_transcribe") return { text: "open src slash main", engine: { label: "whisper.cpp (small)" } };
+			if (cmd === "crewmate_transcribe")
+				return { text: "open src slash main", engine: { label: "whisper.cpp (small)" } };
 			throw new Error(cmd);
 		},
 	});
@@ -115,7 +114,9 @@ const chord = (el, type = "keydown") =>
 		}),
 	);
 const esc = (el) =>
-	el.dispatchEvent(new KeyboardEvent("keydown", { key: "Escape", code: "Escape", bubbles: true, cancelable: true }));
+	el.dispatchEvent(
+		new KeyboardEvent("keydown", { key: "Escape", code: "Escape", bubbles: true, cancelable: true }),
+	);
 
 describe("the microphone button", () => {
 	test("is named for what it does, and says why it is off on a crew server that cannot transcribe", async () => {

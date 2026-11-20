@@ -17,7 +17,9 @@ interface Down {
 
 /** The chord went down: M with Shift and the platform's main modifier, nothing else (Alt types symbols on a Mac). */
 export function isDictationKey(e: Down, mac: boolean): boolean {
-	return e.code === "KeyM" && e.shiftKey && !e.altKey && (mac ? e.metaKey && !e.ctrlKey : e.ctrlKey && !e.metaKey);
+	return (
+		e.code === "KeyM" && e.shiftKey && !e.altKey && (mac ? e.metaKey && !e.ctrlKey : e.ctrlKey && !e.metaKey)
+	);
 }
 
 /** A key came up that was part of the chord. */

@@ -23,8 +23,6 @@
 	"crew_voice_key_tap": "Press to start, press to stop",
 	"crew_voice_mic_live": "Microphone is on",
 	"crew_voice_no_device": "No microphone found. Connect one and try again.",
-	"crew_voice_open_settings": "Open system settings",
-	"crew_voice_retry": "Try again",
 	"crew_voice_settings_status": "Voice",
 	"crew_voice_settings_status_hint": "Dictation sends the audio to this crew server, which recognizes it and deletes it right after.",
 	"crew_voice_settings_title": "Dictation",

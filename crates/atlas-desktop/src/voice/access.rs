@@ -8,7 +8,10 @@
 use serde::Serialize;
 
 /// The microphone permission of this app.
-#[allow(dead_code, reason = "each platform builds only some of these: Linux only `Unknown`, macOS has `NotAsked`")]
+#[allow(
+    dead_code,
+    reason = "each platform builds only some of these: Linux only `Unknown`, macOS has `NotAsked`"
+)]
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize)]
 #[serde(rename_all = "snake_case")]
 pub enum Access {
@@ -142,7 +145,11 @@ mod tests {
     fn one_switch_saying_deny_is_enough_and_a_missing_key_is_not_a_denial() {
         let allow = reg("Allow");
         let deny = reg("Deny");
-        assert!(!any_denied([allow.as_str(), allow.as_str(), allow.as_str()]));
+        assert!(!any_denied([
+            allow.as_str(),
+            allow.as_str(),
+            allow.as_str()
+        ]));
         assert!(any_denied([allow.as_str(), allow.as_str(), deny.as_str()]));
         assert!(any_denied([deny.as_str(), "", ""]));
         assert!(!any_denied(["", "", ""]), "no keys: nothing denies it");

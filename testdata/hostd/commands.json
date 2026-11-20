@@ -179,11 +179,10 @@
         "allow_bypass",
         "default_approval",
         "max_agents",
+        "short_replies",
         "short_replies_model"
       ],
-      "required": [
-        "short_replies"
-      ]
+      "required": []
     },
     "crew_telegram_link": {
       "optional": [],

@@ -80,10 +80,9 @@ impl TelegramBridge {
         };
         // The crewmate: named in the caption (`/task <name>`), else the only one.
         let caption = msg["caption"].as_str().unwrap_or("").trim();
-        let name = match caption.strip_prefix("/task ") {
-            Some(rest) => Some(rest.split_whitespace().next().unwrap_or("").to_string()),
-            None => None,
-        };
+        let name = caption
+            .strip_prefix("/task ")
+            .map(|rest| rest.split_whitespace().next().unwrap_or("").to_string());
         let crewmates = hub.crew.store.list_crewmates();
         let crewmate = match &name {
             Some(n) => crewmates.iter().find(|c| c.name.eq_ignore_ascii_case(n)),
@@ -160,7 +159,7 @@ impl TelegramBridge {
             crewmate = crewmate.name.as_str()
         );
         if longer {
-            echo.push_str("\n");
+            echo.push('\n');
             echo.push_str(&t!(
                 "cmd_hostd_telegram_voice_truncated",
                 seconds = audio::MAX_SECONDS.to_string()

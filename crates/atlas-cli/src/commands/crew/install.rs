@@ -54,6 +54,14 @@ pub struct InstallArgs {
     /// Needs Node.js on the server and sudo for the apt libraries; the same as `atlas crew browsers install`.
     #[arg(long)]
     pub browsers: bool,
+    /// Also build the pinned whisper.cpp and fetch its model, so dictation (Desktop, Telegram voice notes)
+    /// recognises speech on this server and the audio never leaves your machines. Needs sudo for `apt-get install`
+    /// of cmake, a compiler and ffmpeg; the same as `atlas crew voice install`. Turning voice on is the owner's switch.
+    #[arg(long)]
+    pub voice: bool,
+    /// The model `--voice` fetches: `small` (about 470 MB, the default) or `base` (about 140 MB, faster).
+    #[arg(long, default_value = atlas_host::crew::voice::DEFAULT_MODEL, value_parser = super::voice::model_name)]
+    pub voice_model: String,
     /// What stdout carries: `text` (`step: <key>` markers, for people and old clients) or `json` (one
     /// event per line: kind, code, args, message; never translated). Atlas Desktop reads only `json`.
     #[arg(long, value_enum, default_value_t = Progress::Text)]
@@ -106,6 +114,7 @@ fn step_marker(key: &str) {
             "service" => "writing the systemd service",
             "ssh" => "configuring SSH access",
             "browsers" => "installing browsers",
+            "voice" => "installing the speech engine",
             _ => "done",
         };
         println!(
@@ -370,6 +379,11 @@ async fn run_install(args: InstallArgs) -> Result<()> {
     if args.browsers {
         step_marker("browsers");
         super::browsers::install(&p, &args.ssh_target).await?;
+    }
+
+    if args.voice {
+        step_marker("voice");
+        super::voice::install(&p, &args.ssh_target, &args.voice_model).await?;
     }
 
     let ready = format!(
@@ -695,7 +709,7 @@ mod tests {
         // step_marker writes to stdout; capture by asserting the format we produce.
         // The frontend's parseInstallLine depends on this exact format.
         for key in [
-            "check", "install", "user", "service", "ssh", "browsers", "done",
+            "check", "install", "user", "service", "ssh", "browsers", "voice", "done",
         ] {
             // Verify the function compiles and the key is a valid str literal
             let expected = format!("step: {key}");
@@ -736,6 +750,8 @@ mod tests {
             sudo_password_stdin: true,
             binary: None,
             browsers: false,
+            voice: false,
+            voice_model: "small".into(),
             progress: Progress::Text,
         };
     }

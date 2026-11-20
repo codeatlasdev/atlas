@@ -15,6 +15,7 @@ import 'package:atlas_mobile/core/voice/platform_dictation.dart';
 import 'package:atlas_mobile/core/voice/platform_speech.dart';
 import 'package:atlas_mobile/core/voice/read_aloud.dart';
 import 'package:atlas_mobile/features/crew/chat/crewmate_chat_screen.dart';
+import 'package:atlas_mobile/features/crew/chat/voice_answer.dart';
 
 import 'support/demo_harness.dart';
 import 'support/fake_dictation.dart';
@@ -238,7 +239,7 @@ void main() {
         );
         await rig.pump();
         for (final key in ['task_agent_line', 'task_first_sentences']) {
-          final row = (voiceAnswers[key] as List).first as Map<String, dynamic>;
+          final row = (voiceAnswers[key] as Map).cast<String, dynamic>();
           rig.host.thread.insert(0, {...row, 'id': key});
           rig.host.pushTask(key);
           await settle(t);
@@ -499,7 +500,13 @@ void main() {
           await rig.pump();
           await rig.answerByVoice('allow');
 
-          expect(find.textContaining(fragment), findsOneWidget);
+          expect(
+            find.descendant(
+              of: find.byType(VoiceAnswer),
+              matching: find.textContaining(fragment),
+            ),
+            findsOneWidget,
+          );
           expect(
             host.sent('agent_approve'),
             isEmpty,
@@ -609,7 +616,12 @@ void main() {
           'transcript': 'the first one',
           'lang': 'en',
         });
-        expect(find.text('Chose "use main" by voice.'), findsOneWidget);
+        expect(
+          find.text(
+            'Chose "${voiceVerdict('answer', 'choice')['choice']}" by voice.',
+          ),
+          findsOneWidget,
+        );
         expect(host.sent('crewmate_action_answer'), isEmpty);
         await rig.end();
       },

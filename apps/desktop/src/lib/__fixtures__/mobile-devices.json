@@ -1,11 +1,14 @@
 [
-	{
-		"connected": false,
-		"last_seen": 1700000500,
-		"name": "Atlas Mobile",
-		"node_id": "n1",
-		"paired_at": 1700000000,
-		"revoked": false,
-		"scopes": ["read", "term_read"]
-	}
+  {
+    "connected": false,
+    "last_seen": 1700000500,
+    "name": "Atlas Mobile",
+    "node_id": "n1",
+    "paired_at": 1700000000,
+    "revoked": false,
+    "scopes": [
+      "read",
+      "term_read"
+    ]
+  }
 ]

@@ -54,7 +54,11 @@
 		"app": "1.5.0-alpha.5",
 		"cli": "1.5.0-alpha.5",
 		"hostd": "1.5.0-alpha.4",
-		"hostdCaps": ["pty_attach_raw", "upgrade", "lsp"],
+		"hostdCaps": [
+			"pty_attach_raw",
+			"upgrade",
+			"lsp"
+		],
 		"hostdPid": 8664
 	}
 }

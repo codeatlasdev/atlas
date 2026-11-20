@@ -39,6 +39,7 @@
     "queued": 0,
     "role": "r",
     "routines": [],
+    "spoken_replies": false,
     "state": "idle",
     "triggers": []
   },
@@ -55,6 +56,7 @@
     "queued": 0,
     "role": "r",
     "routines": [],
+    "spoken_replies": false,
     "state": "idle",
     "triggers": []
   },
@@ -71,6 +73,7 @@
     "queued": 0,
     "role": "r",
     "routines": [],
+    "spoken_replies": false,
     "state": "idle",
     "triggers": []
   },
@@ -103,6 +106,7 @@
     "queued": 0,
     "role": "r",
     "routines": [],
+    "spoken_replies": false,
     "state": "idle",
     "triggers": []
   },

@@ -68,10 +68,7 @@
 	"task_agent_line": {
 		"action": {
 			"kind": "choose",
-			"options": [
-				"Use main",
-				"Create a branch"
-			],
+			"options": ["Use main", "Create a branch"],
 			"question": "Which base?"
 		},
 		"answer": "Create a branch",

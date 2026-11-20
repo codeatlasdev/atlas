@@ -143,6 +143,7 @@ impl CrewHub {
         // Uploads abandoned before this start (an app killed mid-send) are thrown away now, not at the next
         // upload of their crewmate, which may never come.
         super::attachments::sweep_stale_uploads(&self.store);
+        super::voice::sweep_at_start(&self.dir);
         self.telegram.set_hub(hub.clone());
         self.telegram.clone().start();
         schedule::start(hub.clone());

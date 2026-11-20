@@ -135,6 +135,12 @@ async fn run_pty_inner(
     let Some(_slot) = super::slots::take(hub, crewmate, task).await else {
         return (Err("cancelled before the agent started".into()), vec![]);
     };
+    // The agent is told its permission mode first (`crew::approval::fragment`); a terminal agent has no other
+    // channel than its prompt, so a mode changed later reaches it with the next task.
+    let prompt = format!(
+        "{}{full_prompt}",
+        crate::crew::approval::prelude(hub, &crewmate.id, pane_key)
+    );
     // In tests a fake binary can be injected; production always uses the agent def.
     #[cfg(test)]
     let argv = match TEST_AGENT_BIN
@@ -145,15 +151,15 @@ async fn run_pty_inner(
         // An isolated agent is an engine by name, found by the helper in its own directories.
         Some(bin) => vec![bin],
         None => agent_def.argv(
-            triggers::yolo_for(crewmate.approval, task),
-            Some(full_prompt),
+            triggers::yolo_for(crewmate.mode, task, agent_def.can_ask),
+            Some(&prompt),
         ),
     };
     #[cfg(not(test))]
     let argv = {
         let mut argv = agent_def.argv(
-            triggers::yolo_for(crewmate.approval, task),
-            Some(full_prompt),
+            triggers::yolo_for(crewmate.mode, task, agent_def.can_ask),
+            Some(&prompt),
         );
         if crewmate.agent == "omp" {
             let overlay =

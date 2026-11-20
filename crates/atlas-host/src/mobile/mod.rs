@@ -462,6 +462,8 @@ pub fn push_scope(ev: &str) -> Option<Scope> {
         "agent_approval" | "agent_approval_done" => Scope::Approve,
         "agent_status" => Scope::Read,
         "crewmate_task" => Scope::Read,
+        // A crewmate's definition changed (its permission mode included): the phone reads it again.
+        "crewmate_updated" | "crewmate_approval_unanswered" => Scope::Read,
         "atlas_update" => Scope::Read,
         "computer_invite" => Scope::Read,
         _ => return None,
@@ -539,6 +541,9 @@ pub fn required_scope(cmd: &HostCmd) -> Result<Scope, &'static str> {
         C::CrewmateTask { .. } | C::CrewmateAttachmentPut { .. } | C::CrewmateCancel { .. } => {
             Scope::Act
         }
+        // Switching the permission mode is what answering a prompt amounts to (a phone that may allow a call may
+        // allow the next ones): it needs the same grant. The phone's own connection names it in the audit.
+        C::CrewmateSetApproval { .. } => Scope::Approve,
         C::CrewmateCreate { .. }
         | C::CrewmateUpdate { .. }
         | C::CrewmateDelete { .. }

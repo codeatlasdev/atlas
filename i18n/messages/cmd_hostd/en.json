@@ -1,4 +1,5 @@
 {
+	"cmd_hostd_approval_unanswered": "{crewmate} waited for approval to run {tool}, but nobody answered. The call was denied.",
 	"cmd_hostd_ask_restart": [
 		{
 			"declarations": [
@@ -103,6 +104,9 @@
 	"cmd_hostd_imported_renamed": "imported {name} ({new_id}), was {old_id}",
 	"cmd_hostd_kept": "Kept as is. Restart it later: atlas hostd --restart (or quit the terminals and run atlas hostd --reconcile).",
 	"cmd_hostd_login_no_terminal": "hostd answered without a terminal",
+	"cmd_hostd_mode_ask": "Ask",
+	"cmd_hostd_mode_bypass": "Bypass",
+	"cmd_hostd_mode_edits": "Accept edits",
 	"cmd_hostd_not_running": "Terminal host is not running.",
 	"cmd_hostd_not_running_desktop": "atlas hostd is not running; open Atlas Desktop",
 	"cmd_hostd_not_running_in": "atlas hostd is not running ({dir})",
@@ -146,6 +150,12 @@
 	"cmd_hostd_restarted_idle": "Terminal host restarted ({version}); no terminal was running.",
 	"cmd_hostd_stop_timeout": "the old terminal host did not stop",
 	"cmd_hostd_stopped": "atlas hostd stopped",
+	"cmd_hostd_telegram_mode_line": "{name}: {mode}",
+	"cmd_hostd_telegram_mode_none": "No crewmates configured.",
+	"cmd_hostd_telegram_mode_not_found": "Crewmate '{name}' not found.",
+	"cmd_hostd_telegram_mode_refused": "Not changed: {why}",
+	"cmd_hostd_telegram_mode_set": "{name} is now in {mode} mode. It applies from the next tool call.",
+	"cmd_hostd_telegram_mode_usage": "Usage: /mode lists every crewmate's mode; /mode <crewmate> <ask|edits|bypass> changes one.",
 	"cmd_hostd_terminal_untitled": "terminal",
 	"cmd_hostd_upgrade_failed": "Live upgrade of the terminal host failed: {error}",
 	"cmd_hostd_upgrade_lost_terminals": "the upgraded terminal host lost terminals ({before} -> {after})",

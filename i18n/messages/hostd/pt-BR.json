@@ -1,4 +1,7 @@
 {
+	"hostd_wire_approval_bypass_disabled": "O Bypass está desativado neste crew. Ative nas configurações do crew para usá-lo.",
+	"hostd_wire_approval_forbidden": "Só você pode mudar um modo de permissão, pelo Atlas Desktop, pelo Atlas Mobile ou pelo seu chat do Telegram vinculado.",
+	"hostd_wire_approval_unsupported_engine": "O {engine} não tem canal de aprovação, então sempre roda sem perguntar. Só o Bypass vale para ele.",
 	"hostd_wire_busy": "O host de terminais está ocupado no momento. Aguarde um instante e tente de novo.",
 	"hostd_wire_cli_not_found": [
 		{

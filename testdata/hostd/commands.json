@@ -1,7 +1,10 @@
 {
   "commands": {
     "agent_approve": {
-      "optional": [],
+      "optional": [
+        "comment",
+        "scope"
+      ],
       "required": [
         "allow",
         "pane",
@@ -149,6 +152,8 @@
     "crew_settings_set": {
       "optional": [
         "agent_memory_max",
+        "allow_bypass",
+        "default_approval",
         "max_agents",
         "short_replies_model"
       ],
@@ -231,15 +236,16 @@
     },
     "crewmate_create": {
       "optional": [
+        "approval",
         "engine",
         "look",
+        "mode",
         "project",
         "setup_step",
         "workdir"
       ],
       "required": [
         "agent",
-        "approval",
         "name",
         "role"
       ]
@@ -280,6 +286,13 @@
         "id",
         "key",
         "value"
+      ]
+    },
+    "crewmate_set_approval": {
+      "optional": [],
+      "required": [
+        "id",
+        "mode"
       ]
     },
     "crewmate_task": {

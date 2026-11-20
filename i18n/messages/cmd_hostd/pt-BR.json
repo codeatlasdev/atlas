@@ -1,4 +1,5 @@
 {
+	"cmd_hostd_approval_unanswered": "{crewmate} aguardou aprovação para executar {tool}, mas ninguém respondeu. A chamada foi negada.",
 	"cmd_hostd_ask_restart": [
 		{
 			"declarations": [
@@ -106,6 +107,9 @@
 	"cmd_hostd_imported_renamed": "{name} importado ({new_id}), era {old_id}",
 	"cmd_hostd_kept": "Mantido como está. Reinicie depois: atlas hostd --restart (ou feche os terminais e rode atlas hostd --reconcile).",
 	"cmd_hostd_login_no_terminal": "o hostd respondeu sem um terminal",
+	"cmd_hostd_mode_ask": "Perguntar",
+	"cmd_hostd_mode_bypass": "Bypass",
+	"cmd_hostd_mode_edits": "Aceitar edições",
 	"cmd_hostd_not_running": "O host de terminais não está rodando.",
 	"cmd_hostd_not_running_desktop": "o hostd não está rodando; abra o Atlas Desktop",
 	"cmd_hostd_not_running_in": "o hostd não está rodando ({dir})",
@@ -149,6 +153,12 @@
 	"cmd_hostd_restarted_idle": "Host de terminais reiniciado ({version}); nenhum terminal estava rodando.",
 	"cmd_hostd_stop_timeout": "o host de terminais antigo não parou",
 	"cmd_hostd_stopped": "hostd parado",
+	"cmd_hostd_telegram_mode_line": "{name}: {mode}",
+	"cmd_hostd_telegram_mode_none": "Nenhum crewmate configurado.",
+	"cmd_hostd_telegram_mode_not_found": "Crewmate '{name}' não encontrado.",
+	"cmd_hostd_telegram_mode_refused": "Não alterado: {why}",
+	"cmd_hostd_telegram_mode_set": "{name} agora está no modo {mode}. Vale a partir da próxima chamada de ferramenta.",
+	"cmd_hostd_telegram_mode_usage": "Uso: /mode lista o modo de cada crewmate; /mode <crewmate> <ask|edits|bypass> muda um.",
 	"cmd_hostd_terminal_untitled": "terminal",
 	"cmd_hostd_upgrade_failed": "Não foi possível repassar os terminais ao novo host: {error}",
 	"cmd_hostd_upgrade_lost_terminals": "o host de terminais atualizado perdeu terminais ({before} -> {after})",

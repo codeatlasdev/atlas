@@ -1,5 +1,13 @@
 {
-	"codes": ["fs.not_found", "fs.io", "exec.spawn_failed", "hostd.invalid_argument"],
+	"codes": [
+		"fs.not_found",
+		"fs.io",
+		"exec.spawn_failed",
+		"hostd.invalid_argument",
+		"crew.approval.bypass_disabled",
+		"crew.approval.unsupported_engine",
+		"crew.approval.forbidden"
+	],
 	"errors": [
 		{
 			"args": {
@@ -104,6 +112,24 @@
 			},
 			"code": "hostd.invalid_argument",
 			"message": "empty argv"
+		},
+		{
+			"args": {},
+			"code": "crew.approval.bypass_disabled",
+			"message": "bypass is not allowed on this crew"
+		},
+		{
+			"args": {
+				"engine": "codex",
+				"mode": "ask"
+			},
+			"code": "crew.approval.unsupported_engine",
+			"message": "codex has no approval channel: it always runs unattended"
+		},
+		{
+			"args": {},
+			"code": "crew.approval.forbidden",
+			"message": "only the owner can change a permission mode"
 		}
 	]
 }

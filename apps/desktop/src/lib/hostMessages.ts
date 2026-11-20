@@ -136,6 +136,14 @@ export function render(code: string, args: Record<string, unknown> = {}): string
 				default:
 					return undefined;
 			}
+		case "crew.approval.bypass_disabled":
+			return m.hostd_wire_approval_bypass_disabled();
+		case "crew.approval.unsupported_engine": {
+			const engine = s("engine");
+			return engine === undefined ? undefined : m.hostd_wire_approval_unsupported_engine({ engine });
+		}
+		case "crew.approval.forbidden":
+			return m.hostd_wire_approval_forbidden();
 		default:
 			return undefined;
 	}

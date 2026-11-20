@@ -611,6 +611,14 @@ impl TelegramBridge {
             return;
         }
 
+        // /mode: every crewmate's permission mode; `/mode [<crewmate>] <ask|edits|bypass>` changes one. Only a linked
+        // chat gets here (the one above returns for any other), and that chat is the owner's.
+        if text == "/mode" || text.starts_with("/mode ") {
+            self.handle_mode(chat_id, text["/mode".len()..].trim())
+                .await;
+            return;
+        }
+
         // /crewmates
         if text == "/crew" {
             if let Some(hub) = self.hub() {
@@ -654,6 +662,76 @@ impl TelegramBridge {
                     .await;
             }
         }
+    }
+
+    /// `/mode` (no arguments): each crewmate and its permission mode. `/mode [<crewmate>] <ask|edits|bypass>`:
+    /// change one (the only crewmate when none is named), through the same command the apps use, so it is audited
+    /// with this chat as the device, broadcast, and a call that waits is decided again at once.
+    async fn handle_mode(&self, chat_id: i64, args: &str) {
+        use crate::crew::store::Mode;
+        use atlas_i18n::t;
+        let Some(hub) = self.hub() else {
+            return;
+        };
+        let label = |m: Mode| match m {
+            Mode::Ask => t!("cmd_hostd_mode_ask"),
+            Mode::Edits => t!("cmd_hostd_mode_edits"),
+            Mode::Bypass => t!("cmd_hostd_mode_bypass"),
+        };
+        let crewmates = hub.crew.store.list_crewmates();
+        if args.is_empty() {
+            let text = if crewmates.is_empty() {
+                t!("cmd_hostd_telegram_mode_none")
+            } else {
+                crewmates
+                    .iter()
+                    .map(|c| {
+                        t!(
+                            "cmd_hostd_telegram_mode_line",
+                            name = c.name.as_str(),
+                            mode = label(c.mode)
+                        )
+                    })
+                    .collect::<Vec<_>>()
+                    .join("\n")
+            };
+            self.reply(chat_id, &text).await;
+            return;
+        }
+        // The last word is the mode; what comes before it names the crewmate.
+        let (name, word) = match args.rsplit_once(char::is_whitespace) {
+            Some((n, w)) => (n.trim(), w),
+            None => ("", args),
+        };
+        let Ok(mode) = Mode::parse(word) else {
+            self.reply(chat_id, &t!("cmd_hostd_telegram_mode_usage"))
+                .await;
+            return;
+        };
+        let target = if name.is_empty() {
+            (crewmates.len() == 1).then(|| &crewmates[0])
+        } else {
+            crewmates.iter().find(|c| c.name.eq_ignore_ascii_case(name))
+        };
+        let Some(c) = target else {
+            let text = if name.is_empty() {
+                t!("cmd_hostd_telegram_mode_usage")
+            } else {
+                t!("cmd_hostd_telegram_mode_not_found", name = name)
+            };
+            self.reply(chat_id, &text).await;
+            return;
+        };
+        let device = format!("telegram:{chat_id}");
+        let text = match crate::crew::approval::set_approval(&hub, &c.id, mode.as_str(), &device) {
+            Ok(_) => t!(
+                "cmd_hostd_telegram_mode_set",
+                name = c.name.as_str(),
+                mode = label(mode)
+            ),
+            Err(why) => t!("cmd_hostd_telegram_mode_refused", why = String::from(why)),
+        };
+        self.reply(chat_id, &text).await;
     }
 
     /// A photo message: the largest size Telegram made of it becomes the image of a task whose prompt is the

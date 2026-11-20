@@ -148,7 +148,10 @@ async fn the_lab_sees_an_agent_hooked_into_main_and_follows_its_changes() {
     assert_eq!(st["last_message"], "done!");
 }
 
-/// A lab started after the agents already exist must still list them (seeded, not only followed).
+/// A lab started after the agents already exist must still list them (seeded, not only followed), from the very first
+/// call: `lab::connect` promises a lab never answers empty. It once bound its socket and accepted clients while the seed
+/// still ran in the background, so a client that connected at once read no agents (flaky under a loaded test run). The
+/// seed is held open here so that race is the rule, not the exception.
 #[tokio::test(flavor = "multi_thread")]
 async fn a_lab_started_later_is_seeded_with_the_existing_agents() {
     let tmp = tempfile::tempdir().unwrap();
@@ -162,8 +165,10 @@ async fn a_lab_started_later_is_seeded_with_the_existing_agents() {
     .await;
     drop(until_hook);
     hook(&main_dir, "old", json!({"event": "agent_start"}));
+    *crate::lab::TEST_SEED_PAUSE.lock() = Some((main_dir.clone(), Duration::from_millis(400)));
     let lab = lab_daemon(&tmp.path().join("lab"), &main_dir).await;
     let v = lab.call("agent_status_all", json!({})).await.unwrap();
+    *crate::lab::TEST_SEED_PAUSE.lock() = None;
     assert_eq!(v["panes"]["old"]["state"], "working", "{v}");
 }
 

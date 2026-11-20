@@ -21,6 +21,7 @@
       "pane": "crew:crewmate-fixture:task-asking",
       "prompt": "pick a deploy target",
       "source": "test",
+      "spoken": "",
       "started_at": 1700000005,
       "state": "running",
       "steps": [],

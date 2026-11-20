@@ -30,6 +30,7 @@
       "id": "task-img-1",
       "prompt": "the header is cut off on this screen",
       "source": "mobile",
+      "spoken": "",
       "state": "queued",
       "summarized": false,
       "ts": 1700000000
@@ -55,6 +56,7 @@
     "id": "task-img-1",
     "prompt": "the header is cut off on this screen",
     "source": "mobile",
+    "spoken": "",
     "state": "queued",
     "summarized": false,
     "ts": 1700000000

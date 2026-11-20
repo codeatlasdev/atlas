@@ -2,10 +2,11 @@
 import "../../../../test/setup.ts";
 import { afterEach, beforeEach, describe, expect, mock, test } from "bun:test";
 import voiceFixture from "../../__fixtures__/crew-voice.json" with { type: "json" };
+import fx from "../../__fixtures__/crew-voice-answers.json" with { type: "json" };
 
 // Voice answers on the real cards (#648). Rule under test: the card only sends the TRANSCRIPT (`agent_approve_voice`,
 // `crewmate_action_answer_voice`); it never calls `agent_approve` / `crewmate_action_answer` on its own from words, and
-// it closes only on a verdict that hostd says is decided. The verdict is whatever the fake hostd answers.
+// it closes only on a verdict that hostd says is decided. The verdicts are the real replies hostd serialized (`crew-voice-answers.json`).
 const calls: { cmd: string; args: Record<string, unknown> }[] = [];
 let verdict: unknown = { verdict: "unclear" };
 let live = false;
@@ -74,7 +75,11 @@ function card(kind: "approval" | "choose") {
 				kind === "approval"
 					? { approval, name: "Ana", chat, hostKey: "", answered: undefined, onanswer: () => {} }
 					: {
-							action: { kind: "choose", question: "Which?", options: ["use main", "use dev"] },
+							action: {
+								kind: "choose",
+								question: fx.task_agent_line.action.question,
+								options: fx.task_agent_line.action.options,
+							},
 							taskId: "t2",
 							crewmateId: "c1",
 							crewmateName: "Ana",
@@ -99,7 +104,7 @@ const sent = (cmd: string) => calls.filter((c) => c.cmd === cmd);
 
 describe("an approval card", () => {
 	test("sends the transcript only, and never an allow of its own, whatever was said", async () => {
-		verdict = { verdict: "comment", comment: "allow it please" };
+		verdict = fx.approve.comment;
 		const { target } = card("approval");
 		await settle();
 		await speak(target);
@@ -115,17 +120,17 @@ describe("an approval card", () => {
 	});
 
 	test("a comment verdict fills the note and decides nothing", async () => {
-		verdict = { verdict: "comment", comment: "allow but only this file" };
+		verdict = fx.approve.comment;
 		const { target, chat } = card("approval");
 		await settle();
 		await speak(target);
-		expect(target.querySelector(".approval-note").value).toBe("allow but only this file");
+		expect(target.querySelector(".approval-note").value).toBe(fx.approve.comment.comment);
 		expect(chat.answeredReqs.r1).toBeUndefined();
 		expect(target.querySelector("[data-voice-message]").textContent).toContain("Tap Allow or Deny");
 	});
 
 	test("a decided verdict closes the card as a tap would; allow is once, never for the task", async () => {
-		verdict = { verdict: "allow" };
+		verdict = fx.approve.allow;
 		const { target, chat } = card("approval");
 		await settle();
 		await speak(target);
@@ -133,7 +138,7 @@ describe("an approval card", () => {
 	});
 
 	test("deny closes it as denied", async () => {
-		verdict = { verdict: "deny" };
+		verdict = fx.approve.deny;
 		const { chat, target } = card("approval");
 		await settle();
 		await speak(target);
@@ -147,7 +152,7 @@ describe("an approval card", () => {
 		["untrusted", "did not come from you"],
 	]) {
 		test(`needs_tap (${reason}) says why and decides nothing`, async () => {
-			verdict = { verdict: "needs_tap", reason };
+			verdict = fx.approve[`needs_tap_${reason}`];
 			const { target, chat } = card("approval");
 			await settle();
 			await speak(target);
@@ -157,7 +162,7 @@ describe("an approval card", () => {
 	}
 
 	test("unclear says so, echoes what was heard and decides nothing", async () => {
-		verdict = { verdict: "unclear" };
+		verdict = fx.approve.unclear;
 		const { target, chat } = card("approval");
 		await settle();
 		await speak(target);
@@ -208,11 +213,11 @@ describe("a choice card", () => {
 	});
 
 	test("a choice verdict settles the card with that option", async () => {
-		verdict = { verdict: "choice", choice: "use main" };
+		verdict = fx.answer.choice;
 		const { target, chat } = card("choose");
 		await settle();
 		await speak(target);
-		expect(chat.answeredActions.t2).toBe("use main");
+		expect(chat.answeredActions.t2).toBe("Create a branch");
 		expect(sent("crewmate_action_answer")).toHaveLength(0);
 	});
 
@@ -226,7 +231,7 @@ describe("a choice card", () => {
 	});
 
 	test("needs_tap without a reason says the card needs a tap", async () => {
-		verdict = { verdict: "needs_tap", reason: null };
+		verdict = fx.answer.needs_tap_card;
 		const { target } = card("choose");
 		await settle();
 		await speak(target);
@@ -234,7 +239,7 @@ describe("a choice card", () => {
 	});
 
 	test("an approval-only verdict on a choice card (allow) closes nothing", async () => {
-		verdict = { verdict: "allow" };
+		verdict = fx.approve.allow;
 		const { target, chat } = card("choose");
 		await settle();
 		await speak(target);

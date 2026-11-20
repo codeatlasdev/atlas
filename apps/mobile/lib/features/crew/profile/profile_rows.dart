@@ -1,5 +1,5 @@
 /// The inset-list vocabulary of the profile: group, row, section, and the segmented pickers
-/// (approval, short replies) that sit in rows.
+/// (short replies) that sit in rows.
 library;
 
 import 'package:material_ui/material_ui.dart';
@@ -108,10 +108,13 @@ class ProfileRow extends StatelessWidget {
             ),
           ),
           if (trailingText != null)
-            Text(
-              trailingText!,
-              style: Theme.of(context).textTheme.bodyLarge!
-                  .copyWith(color: c.accent),
+            Flexible(
+              child: Text(
+                trailingText!,
+                textAlign: TextAlign.end,
+                style: Theme.of(context).textTheme.bodyLarge!
+                    .copyWith(color: c.accent),
+              ),
             ),
           if (onTap != null && !danger) ...[
             const SizedBox(width: Space.xs),
@@ -130,12 +133,19 @@ class ProfileRow extends StatelessWidget {
     }
     return InkWell(
       onTap: onTap,
-      child: Padding(
-        padding: const EdgeInsets.symmetric(
-          horizontal: Space.md,
-          vertical: Space.md,
+      child: ConstrainedBox(
+        // A row you can tap is at least the 48 dp a thumb needs.
+        constraints: BoxConstraints(minHeight: onTap == null ? 0 : 48),
+        child: Align(
+          alignment: Alignment.centerLeft,
+          child: Padding(
+            padding: const EdgeInsets.symmetric(
+              horizontal: Space.md,
+              vertical: Space.md,
+            ),
+            child: body,
+          ),
         ),
-        child: body,
       ),
     );
   }
@@ -151,41 +161,6 @@ class ProfileSection extends StatelessWidget {
     return Column(
       crossAxisAlignment: CrossAxisAlignment.start,
       children: [SectionHeader(title), child],
-    );
-  }
-}
-
-class ApprovalPicker extends StatelessWidget {
-  const ApprovalPicker({
-    super.key,
-    required this.value,
-    required this.onChanged,
-    this.enabled = true,
-  });
-  final String value;
-  final void Function(String) onChanged;
-  final bool enabled;
-
-  @override
-  Widget build(BuildContext context) {
-    final c = AtlasColors.of(context);
-    return Column(
-      crossAxisAlignment: CrossAxisAlignment.start,
-      children: [
-        SegmentedChoice(
-          options: const [('ask', 'Ask first'), ('auto', 'Auto-approve')],
-          value: value,
-          onChanged: enabled ? onChanged : null,
-        ),
-        if (!enabled) ...[
-          const SizedBox(height: Space.sm),
-          Text(
-            'OpenCode crewmates run without approval prompts.',
-            style: Theme.of(context).textTheme.bodySmall!
-                .copyWith(color: c.muted),
-          ),
-        ],
-      ],
     );
   }
 }

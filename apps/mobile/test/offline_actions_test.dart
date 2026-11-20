@@ -261,14 +261,14 @@ void main() {
     ) async {
       // The demo's Nightly crewmate is parked on a tool approval.
       final link = await _pump(t, chat(id: 'crewmate-2'));
-      expect(find.text('Allow'), findsOneWidget);
+      expect(find.text('Allow once'), findsOneWidget);
       await link.goOffline(t);
 
-      await t.tap(find.text('Allow'));
+      await t.tap(find.text('Allow once'));
       await settle(t);
 
       expect(find.text(_offline), findsOneWidget);
-      expect(find.text('Allow'), findsOneWidget, reason: 'still pending');
+      expect(find.text('Allow once'), findsOneWidget, reason: 'still pending');
       expect(link.calls('agent_approve'), isEmpty);
       await _unmount(t);
     });

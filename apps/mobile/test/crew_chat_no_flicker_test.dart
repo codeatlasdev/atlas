@@ -595,8 +595,9 @@ void main() {
           reason: 'the background must start at the top of the screen',
         );
         expect(r.width, 393);
-        // It covers the status bar and the whole header row (back button, pill: 64 dp).
-        expect(r.bottom, greaterThanOrEqualTo(_statusBar + 64));
+        // It covers the status bar and the whole header: the row (back button, pill: 64 dp) and the mode row
+        // under it (48 dp).
+        expect(r.bottom, greaterThanOrEqualTo(_statusBar + 64 + 48));
         // Message text really is in the zone under the header (so the test means something).
         final under = [
           for (var n = 39; n >= 0; n--)

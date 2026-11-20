@@ -20,6 +20,7 @@ class DictationBar extends StatelessWidget {
     required this.draft,
     required this.onInsert,
     required this.onDiscard,
+    this.insertLabel,
   });
 
   final DictationController controller;
@@ -28,6 +29,10 @@ class DictationBar extends StatelessWidget {
   final TextEditingValue draft;
   final VoidCallback onInsert;
   final VoidCallback onDiscard;
+
+  /// What the check is called for a screen reader; the composer's "Insert dictated text" unless a voice answer
+  /// says "Send answer".
+  final String? insertLabel;
 
   static const double dot = 46;
 
@@ -126,7 +131,7 @@ class DictationBar extends StatelessWidget {
           child: Semantics(
             button: true,
             enabled: canInsert,
-            label: l.mobile_voice_insert,
+            label: insertLabel ?? l.mobile_voice_insert,
             child: Pressable(
               onTap: canInsert
                   ? () {

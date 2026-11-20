@@ -13,6 +13,7 @@ import 'package:atlas_mobile/core/ui/l10n.dart';
 import 'package:atlas_mobile/features/crew/avatar/crewmate_avatar.dart';
 import 'package:atlas_mobile/features/crew/avatar/crewmate_look.dart';
 import 'package:atlas_mobile/features/crew/chat/task_images.dart';
+import 'package:atlas_mobile/features/crew/chat/voice_answer.dart';
 import 'package:atlas_mobile/features/crew/crew_provider.dart';
 import 'package:atlas_mobile/features/crew/permissions/approval_actions.dart';
 import 'package:atlas_mobile/features/crew/permissions/mode_badge.dart';
@@ -31,6 +32,7 @@ class NeedsYouCard extends StatelessWidget {
     required this.onAnswer,
     required this.onAnswerTask,
     required this.onTap,
+    this.voiceAnswer,
   });
 
   final CrewEntry entry;
@@ -39,6 +41,9 @@ class NeedsYouCard extends StatelessWidget {
   /// Retry or Override (`retry` / `override`) for the waiting task's card.
   final void Function(String value) onAnswerTask;
   final VoidCallback onTap;
+
+  /// Voice answer to the pending approval (hostd decides what the words mean); null when the crew has voice off.
+  final VoiceAnswerer? voiceAnswer;
 
   @override
   Widget build(BuildContext context) {
@@ -112,6 +117,7 @@ class NeedsYouCard extends StatelessWidget {
                   approval: pa,
                   crewmateName: entry.crewmate.name,
                   onAnswer: onAnswer,
+                  voiceAnswer: voiceAnswer,
                   hPad: 16,
                   vPad: 6,
                   gap: 8,

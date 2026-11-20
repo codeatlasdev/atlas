@@ -136,6 +136,7 @@ class CrewmateEntry {
     this.triggers = const [],
     this.routines = const [],
     this.shortReplies,
+    this.spokenReplies = false,
     this.look,
   });
   final String id;
@@ -166,6 +167,9 @@ class CrewmateEntry {
   /// Cron routines (`crewmate_list.routines`); `crewmate_routine_set` replaces the whole list.
   final List<Routine> routines;
   final bool? shortReplies;
+
+  /// hostd asks this crewmate's agent to end each reply with a short line for listening (`spoken_replies`).
+  final bool spokenReplies;
   factory CrewmateEntry.fromJson(Map<String, dynamic> j) => CrewmateEntry(
     id: j['id'] as String? ?? '',
     name: j['name'] as String? ?? '',
@@ -198,6 +202,7 @@ class CrewmateEntry {
         Routine.fromJson((r as Map).cast()),
     ],
     shortReplies: j['short_replies'] as bool?,
+    spokenReplies: j['spoken_replies'] == true,
     look: (j['look'] as Map?)?.cast<String, dynamic>(),
   );
 }

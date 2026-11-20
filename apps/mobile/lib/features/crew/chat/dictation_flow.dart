@@ -11,6 +11,7 @@ import 'package:atlas_mobile/core/permissions/permissions.dart';
 import 'package:atlas_mobile/core/ui/atlas_theme.dart';
 import 'package:atlas_mobile/core/ui/l10n.dart';
 import 'package:atlas_mobile/core/voice/dictation.dart';
+import 'package:atlas_mobile/core/voice/platform_dictation.dart';
 
 /// The name of an engine as the composer shows it, all the time a session runs.
 String dictationEngineLabel(AppLocalizations l, DictationEngine e) =>
@@ -29,6 +30,38 @@ String dictationFailureText(AppLocalizations l, DictationFailure f) =>
       DictationFailure.language => l.mobile_voice_error_language,
       DictationFailure.failed => l.mobile_voice_error_failed,
     };
+
+/// What a session will run on: the speech language and the engine.
+typedef DictationPlan = ({String tag, DictationEngine engine});
+
+/// Everything between a tap on a mic and the first word, for the composer and for a voice answer alike: what this
+/// phone can do for the app's language, the labelled opt-in when it has no on-device recognizer, and the
+/// permissions. Null: nothing starts (the person said not now, or a refusal was explained).
+Future<DictationPlan?> prepareDictation(
+  BuildContext context,
+  WidgetRef ref,
+) async {
+  final tag = dictationLocaleTag(Localizations.localeOf(context));
+  final support = await ref.read(dictationProvider).support(tag);
+  if (!context.mounted) return null;
+  var engine = support.onDevice;
+  if (engine == null) {
+    // Never a silent fallback to a network recognizer: it is the person's decision, with its label.
+    if (!await askOnlineRecognizer(context, support) || !context.mounted) {
+      return null;
+    }
+    engine = DictationEngine.online;
+  }
+  if (!await ensureDictationPermissions(
+        context,
+        ref,
+        speech: support.needsSpeechPermission,
+      ) ||
+      !context.mounted) {
+    return null;
+  }
+  return (tag: tag, engine: engine);
+}
 
 /// The microphone, then (iOS recognizers other than `SpeechAnalyzer`) speech recognition. `true`: both are
 /// allowed, start. Otherwise nothing starts: a "not now" or a refusal says nothing more; a refusal that stays

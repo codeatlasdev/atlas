@@ -16,9 +16,12 @@ import 'package:atlas_mobile/features/crew/chat/crewmate_chat_screen.dart';
 import 'package:atlas_mobile/features/crew/list/crew_screen.dart';
 import 'package:atlas_mobile/features/crew/profile/crewmate_profile_screen.dart';
 import 'package:atlas_mobile/features/home/home_screen.dart';
+import 'package:atlas_mobile/core/voice/platform_speech.dart';
+import 'package:atlas_mobile/core/voice/read_aloud.dart';
 import 'package:atlas_mobile/main.dart';
 
 import 'support/demo_harness.dart';
+import 'support/fake_speech.dart';
 import 'support/frame_probe.dart';
 
 // Regression (screen recording 2026-11-12: chat_open_fade_50s, send_jump_36s, statusbar_overlap_49s): the crewmate
@@ -229,6 +232,8 @@ Future<_Rig> _launch(WidgetTester t, _Server server) async {
         macStorageProvider.overrideWithValue(_Storage([_mac])),
         transportFactoryProvider.overrideWithValue((_, _) async => server),
         onboardingSeenProvider.overrideWith((_) => true),
+        readAloudStoreProvider.overrideWithValue(MemoryReadAloudStore()),
+        speechSynthesizerProvider.overrideWithValue(FakeSpeech()),
       ],
       child: MaterialApp.router(
         theme: atlasTheme().copyWith(platform: TargetPlatform.iOS),

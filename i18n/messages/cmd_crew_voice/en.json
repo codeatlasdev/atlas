@@ -1,0 +1,17 @@
+{
+	"cmd_crew_voice_fail_build": "Building whisper.cpp on {target} failed: {reason}",
+	"cmd_crew_voice_fail_checksum": "{what} on {target} does not match its pinned checksum and was deleted: {reason}",
+	"cmd_crew_voice_fail_dir": "Creating the voice directory on {target} failed: {reason}",
+	"cmd_crew_voice_fail_download": "Downloading {what} on {target} failed: {reason}",
+	"cmd_crew_voice_no_apt": "{target} has no apt-get. Install {tools} yourself, then run this again.",
+	"cmd_crew_voice_ready": "Voice is installed on {target}. Turn it on in the crew's settings.",
+	"cmd_crew_voice_status_ready": "Voice is ready on {target} (whisper.cpp {version}).",
+	"cmd_crew_voice_step_apt": "Installing the missing packages with apt-get ({count})",
+	"cmd_crew_voice_step_build": "Building whisper.cpp (a few minutes)",
+	"cmd_crew_voice_step_built": "whisper.cpp {version} is already built",
+	"cmd_crew_voice_step_model": "Downloading and checking the {model} model",
+	"cmd_crew_voice_step_model_present": "The {model} model is already installed",
+	"cmd_crew_voice_step_source": "Downloading and checking whisper.cpp {version}",
+	"cmd_crew_voice_step_tools": "Checking cmake, a C++ compiler, make and ffmpeg",
+	"cmd_crew_voice_unknown_model": "Unknown voice model {model}. Use small or base."
+}

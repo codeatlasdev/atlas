@@ -155,7 +155,15 @@ pub(crate) async fn handle(hub: &Hub, cmd: HostCmd) -> Result<Value, String> {
             attachments,
             ui,
             dictated,
-        } => t::send_task(hub, id, prompt, source, tz, attachments, ui, dictated),
+        } => t::send_task(
+            hub,
+            id,
+            prompt,
+            source,
+            tz,
+            attachments,
+            t::Marks { ui, dictated },
+        ),
         HostCmd::CrewmateAttachmentPut {
             id,
             upload,

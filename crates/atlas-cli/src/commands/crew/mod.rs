@@ -10,6 +10,7 @@
 //! - `logs`      stream journalctl output
 //! - `pause`     stop every crewmate's work and hold the queues; `resume` starts them again
 //! - `login`     open an interactive agent sign-in session as the crew user
+//! - `voice`     install the speech engine behind dictation (whisper.cpp, pinned and verified)
 //! - `pair`      pair a phone directly with a crew server (QR + code, no desktop or Mac needed)
 //!
 //! `layout` has the names on the server and the migration of one installed as "Atlas Bot".
@@ -28,6 +29,7 @@ mod privileged;
 mod server_sim;
 mod transfer;
 mod update;
+mod voice;
 
 use std::io::{BufRead as _, IsTerminal as _, Write as _};
 use std::path::PathBuf;
@@ -72,6 +74,8 @@ pub enum CrewCommands {
     Pair(pair::PairArgs),
     /// Install or check the browsers behind the crewmates' `capture` tool (Playwright chromium + webkit)
     Browsers(browsers::BrowsersArgs),
+    /// Install or check dictation's speech engine (pinned whisper.cpp built on the server, and its model)
+    Voice(voice::VoiceArgs),
     /// The git credential helper of a crewmate: asks hostd for an installation token of the GitHub App
     #[command(hide = true, name = "git-credential")]
     GitCredential(GitCredentialArgs),
@@ -106,6 +110,7 @@ impl AtlasCommand for CrewArgs {
             CrewCommands::Login(a) => a.run().await,
             CrewCommands::Pair(a) => a.run().await,
             CrewCommands::Browsers(a) => a.run().await,
+            CrewCommands::Voice(a) => a.run().await,
             CrewCommands::GitCredential(a) => a.run().await,
         }
     }

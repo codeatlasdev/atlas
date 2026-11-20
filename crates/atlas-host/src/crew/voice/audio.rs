@@ -210,6 +210,7 @@ pub(crate) fn put_piece(
         let have = std::fs::metadata(dir.join("data"))
             .map(|m| m.len())
             .map_err(|_| other("unknown upload (it expired or was never opened)"))?;
+        // tree-access: the upload's own dir under hostd's voice store, never a crewmate's tree
         if dir.join("last").exists() {
             return Err(other("the upload is already complete"));
         }
@@ -279,6 +280,7 @@ impl Recording {
             return Err("unknown upload (it expired or was never opened)".into());
         }
         Ok(Self {
+            // tree-access: the upload's own dir under hostd's voice store, never a crewmate's tree
             complete: dir.join("last").exists(),
             dir,
             armed: false,

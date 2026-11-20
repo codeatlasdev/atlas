@@ -8,8 +8,15 @@ use super::record::Identity;
 
 /// The environment variables of one crewmate's agent. `exe` is the `atlas` binary that answers as the helper;
 /// `gh_fallback` keeps `gh` as the second helper (a crewmate that is not its own Linux user, whose `gh` login is the
-/// crew user's: the setup that worked before the app).
-pub(crate) fn git_env(exe: &str, who: &Identity, gh_fallback: bool) -> Vec<(String, String)> {
+/// crew user's: the setup that worked before the app). `hooks` is the hook dispatcher directory (`hooks`), and
+/// `co_author` (`Name <email>`) is whom its `commit-msg` hook credits.
+pub(crate) fn git_env(
+    exe: &str,
+    who: &Identity,
+    gh_fallback: bool,
+    hooks: Option<&str>,
+    co_author: Option<&str>,
+) -> Vec<(String, String)> {
     let github = "credential.https://github.com";
     let mut cfg = vec![
         // Reset: whatever helper the machine had (`gh auth setup-git`) no longer answers first.
@@ -26,6 +33,9 @@ pub(crate) fn git_env(exe: &str, who: &Identity, gh_fallback: bool) -> Vec<(Stri
             "!gh auth git-credential".to_string(),
         ));
     }
+    if let Some(dir) = hooks {
+        cfg.push(("core.hooksPath".to_string(), dir.to_string()));
+    }
     let mut env = vec![("GIT_CONFIG_COUNT".to_string(), cfg.len().to_string())];
     for (i, (k, v)) in cfg.into_iter().enumerate() {
         env.push((format!("GIT_CONFIG_KEY_{i}"), k));
@@ -35,13 +45,16 @@ pub(crate) fn git_env(exe: &str, who: &Identity, gh_fallback: bool) -> Vec<(Stri
         env.push((format!("GIT_{who_is}_NAME"), who.name.clone()));
         env.push((format!("GIT_{who_is}_EMAIL"), who.email.clone()));
     }
+    if let Some(c) = co_author {
+        env.push(("ATLAS_CO_AUTHOR".to_string(), c.to_string()));
+    }
     env
 }
 
-/// The `Co-authored-by:` trailer for the person who asked for the work, with the noreply email GitHub links to
-/// their profile.
+/// `Name <email>` of the person who asked for the work, with the noreply email GitHub links to their profile: what
+/// follows `Co-authored-by: ` in the trailer the `commit-msg` hook adds.
 pub(crate) fn co_author(login: &str, id: u64) -> String {
-    format!("Co-authored-by: {login} <{id}+{login}@users.noreply.github.com>")
+    format!("{login} <{id}+{login}@users.noreply.github.com>")
 }
 
 fn sh_quote(s: &str) -> String {
@@ -66,7 +79,7 @@ mod tests {
     // The helper list git ends up with: reset, then the app's helper (asking hostd), then, only when allowed, `gh`.
     #[test]
     fn the_environment_names_the_helper_and_the_bot_and_holds_no_password() {
-        let env = git_env("/opt/at las/atlas", &who(), false);
+        let env = git_env("/opt/at las/atlas", &who(), false, None, None);
         assert_eq!(get(&env, "GIT_CONFIG_COUNT"), Some("3"));
         assert_eq!(get(&env, "GIT_CONFIG_KEY_0"), Some("credential.helper"));
         assert_eq!(get(&env, "GIT_CONFIG_VALUE_0"), Some(""));
@@ -105,19 +118,25 @@ mod tests {
 
     #[test]
     fn gh_is_the_second_helper_only_for_a_crewmate_that_may_use_the_crew_users_login() {
-        let env = git_env("atlas", &who(), true);
+        let env = git_env("atlas", &who(), true, None, None);
         assert_eq!(get(&env, "GIT_CONFIG_COUNT"), Some("4"));
         assert_eq!(
             get(&env, "GIT_CONFIG_VALUE_3"),
             Some("!gh auth git-credential")
         );
-        assert!(get(&git_env("atlas", &who(), false), "GIT_CONFIG_KEY_3").is_none());
+        assert!(
+            get(
+                &git_env("atlas", &who(), false, None, None),
+                "GIT_CONFIG_KEY_3"
+            )
+            .is_none()
+        );
     }
 
     // A quote in the path must not end the quoting: it would run the rest as a command.
     #[test]
     fn a_quote_in_the_binary_path_stays_inside_the_quoting() {
-        let env = git_env("/tmp/it's/atlas", &who(), false);
+        let env = git_env("/tmp/it's/atlas", &who(), false, None, None);
         assert_eq!(
             get(&env, "GIT_CONFIG_VALUE_2"),
             Some(r"!'/tmp/it'\''s/atlas' crew git-credential")
@@ -128,7 +147,29 @@ mod tests {
     fn the_trailer_uses_the_noreply_email_with_the_user_id() {
         assert_eq!(
             co_author("octocat", 583231),
-            "Co-authored-by: octocat <583231+octocat@users.noreply.github.com>"
+            "octocat <583231+octocat@users.noreply.github.com>"
         );
+    }
+
+    // The hooks directory is the last config entry (the helper's indexes do not move) and the requester is plain env.
+    #[test]
+    fn the_hooks_directory_and_the_requester_are_added_when_there_are_any() {
+        let env = git_env(
+            "atlas",
+            &who(),
+            true,
+            Some("/run/hooks"),
+            Some("octocat <1+octocat@users.noreply.github.com>"),
+        );
+        assert_eq!(get(&env, "GIT_CONFIG_COUNT"), Some("5"));
+        assert_eq!(get(&env, "GIT_CONFIG_KEY_4"), Some("core.hooksPath"));
+        assert_eq!(get(&env, "GIT_CONFIG_VALUE_4"), Some("/run/hooks"));
+        assert_eq!(
+            get(&env, "ATLAS_CO_AUTHOR"),
+            Some("octocat <1+octocat@users.noreply.github.com>")
+        );
+        let none = git_env("atlas", &who(), false, None, None);
+        assert!(get(&none, "ATLAS_CO_AUTHOR").is_none());
+        assert!(none.iter().all(|(_, v)| v != "core.hooksPath"));
     }
 }

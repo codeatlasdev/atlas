@@ -74,15 +74,11 @@ pub(super) async fn prepare_task(
         task,
         std::path::Path::new(&work_dir),
     );
-    // With the GitHub App, say which identity commits and who is credited (the identity itself is in the env).
-    let commits = if crate::crew::github::app::agent_env(hub, &crewmate.id)
-        .await
-        .is_empty()
-    {
-        String::new()
+    // With the GitHub App, say which identity commits (it is in the env; the requester's trailer is a hook's).
+    let commits = if crate::crew::github::app::uses_app(hub, &crewmate.id) {
+        crate::crew::github::app::commit_note()
     } else {
-        let who = task.origin.as_ref().and_then(|o| o.requester.as_ref());
-        crate::crew::github::app::commit_note(who.map(|u| (u.login.as_str(), u.id)))
+        String::new()
     };
     let prompt = task_prompt(
         crewmate,

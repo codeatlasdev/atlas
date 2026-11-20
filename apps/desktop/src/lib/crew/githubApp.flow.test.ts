@@ -55,7 +55,8 @@ beforeEach(() => {
 	now = 1_000_000;
 	waitFor = new Promise((r) => (codeArrives = r));
 	hostd = {
-		crew_github_app_manifest: (a) => (a.owner_kind === "org" ? fixture.manifest_org_with_workflows : fixture.manifest_user),
+		crew_github_app_manifest: (a) =>
+			a.owner_kind === "org" ? fixture.manifest_org_with_workflows : fixture.manifest_user,
 		crew_github_app_convert: () => fixture.status,
 		crew_github_app_status: () => fixture.status_without_app,
 		crew_github_app_remove: () => ({}),
@@ -66,7 +67,9 @@ async function waiting(app) {
 	const run = app.create();
 	await settle();
 	expect(app.phase).toBe("waiting");
-	return run;
+	// Wrapped: an async function returning the promise itself would make `await waiting()` wait for the whole flow,
+	// whose code only arrives after the test calls `codeArrives`.
+	return { run };
 }
 
 describe("create", () => {
@@ -74,7 +77,7 @@ describe("create", () => {
 		const app = new CrewGithubApp("ssh:crew@box", deps());
 		await app.load();
 		expect(app.phase).toBe("none");
-		const run = await waiting(app);
+		const { run } = await waiting(app);
 		codeArrives({ status: "code", code: "c0de" });
 		await run;
 
@@ -105,10 +108,10 @@ describe("create", () => {
 	test("an organization with Workflows asks hostd for both, and the deadline is the listener's window", async () => {
 		const app = new CrewGithubApp("h", deps());
 		app.phase = "none";
-		app.owner = { kind: "org" };
+		app.owner = "org";
 		app.org = "acme";
 		app.workflows = true;
-		const run = await waiting(app);
+		const { run } = await waiting(app);
 		expect(calls[0].args).toEqual({ host: "h", owner_kind: "org", org: "acme", workflows: true });
 		expect(calls[1].args.postUrl).toBe("https://github.com/organizations/acme/settings/apps/new");
 		expect(app.secondsLeft(now + 100_000)).toBe(500);
@@ -121,7 +124,7 @@ describe("create", () => {
 	test("an organization without a valid login starts nothing", async () => {
 		const app = new CrewGithubApp("h", deps());
 		app.phase = "none";
-		app.owner = { kind: "org" };
+		app.owner = "org";
 		app.org = "not a login";
 		await app.create();
 		expect(calls).toEqual([]);
@@ -131,7 +134,7 @@ describe("create", () => {
 	test("a second click while the flow runs does not open a second listener", async () => {
 		const app = new CrewGithubApp("h", deps());
 		app.phase = "none";
-		const run = await waiting(app);
+		const { run } = await waiting(app);
 		await app.create();
 		expect(names().filter((n) => n === "github_app_listen_start")).toHaveLength(1);
 		codeArrives({ status: "cancelled" });
@@ -141,7 +144,7 @@ describe("create", () => {
 	test("a code spent after the card left the page is not converted", async () => {
 		const app = new CrewGithubApp("h", deps());
 		app.phase = "none";
-		const run = await waiting(app);
+		const { run } = await waiting(app);
 		app.destroy();
 		codeArrives({ status: "code", code: "late" });
 		await run;
@@ -152,7 +155,7 @@ describe("create", () => {
 	test("Cancel closes the listener and returns to the form", async () => {
 		const app = new CrewGithubApp("h", deps());
 		app.phase = "none";
-		const run = await waiting(app);
+		const { run } = await waiting(app);
 		app.cancel();
 		expect(calls.find((c) => c.cmd === "github_app_listen_cancel")?.args).toEqual({ id: "L1" });
 		expect(app.phase).toBe("none");
@@ -165,7 +168,7 @@ describe("create", () => {
 	test("the listener giving up says nothing was created", async () => {
 		const app = new CrewGithubApp("h", deps());
 		app.phase = "none";
-		const run = await waiting(app);
+		const { run } = await waiting(app);
 		codeArrives({ status: "timed_out" });
 		await run;
 		expect(app.phase).toBe("none");
@@ -192,7 +195,7 @@ describe("coded failures read through the hostd catalog", () => {
 		};
 		const app = new CrewGithubApp("h", deps());
 		app.phase = "none";
-		const run = await waiting(app);
+		const { run } = await waiting(app);
 		codeArrives({ status: "code", code: "old" });
 		await run;
 		expect(app.phase).toBe("none");
@@ -207,7 +210,7 @@ describe("coded failures read through the hostd catalog", () => {
 		};
 		const app = new CrewGithubApp("h", deps());
 		app.phase = "none";
-		const run = await waiting(app);
+		const { run } = await waiting(app);
 		hostd.crew_github_app_status = () => fixture.status;
 		codeArrives({ status: "code", code: "c" });
 		await run;
@@ -223,7 +226,7 @@ describe("coded failures read through the hostd catalog", () => {
 		};
 		const app = new CrewGithubApp("h", deps());
 		app.phase = "none";
-		const run = await waiting(app);
+		const { run } = await waiting(app);
 		codeArrives({ status: "code", code: "c" });
 		await run;
 		expect(app.error).toBe(m.hostd_wire_github_app_conversion_failed({ status: "422" }));
@@ -301,7 +304,9 @@ describe("refresh and remove", () => {
 		hostd.crew_github_app_status = () => fixture.status;
 		const app = new CrewGithubApp("h", deps());
 		await app.load();
-		hostd.crew_github_app_status = () => ({ app: { ...fixture.status.app, installations: [], installations_error: "GitHub answered 502" } });
+		hostd.crew_github_app_status = () => ({
+			app: { ...fixture.status.app, installations: [], installations_error: "GitHub answered 502" },
+		});
 		await app.refresh();
 		expect(app.app.installationsError).toBe("GitHub answered 502");
 	});

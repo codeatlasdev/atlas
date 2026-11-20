@@ -60,14 +60,14 @@ describe("parseStatus of the real replies", () => {
 
 describe("the form's choices", () => {
 	test("my account needs nothing else; an organization needs a login hostd accepts", () => {
-		expect(manifestArgs({ kind: "user" }, "ignored", true)).toEqual({ owner_kind: "user", workflows: true });
-		expect(manifestArgs({ kind: "org" }, "  acme ", false)).toEqual({
+		expect(manifestArgs("user", "ignored", true)).toEqual({ owner_kind: "user", workflows: true });
+		expect(manifestArgs("org", "  acme ", false)).toEqual({
 			owner_kind: "org",
 			org: "acme",
 			workflows: false,
 		});
-		expect(manifestArgs({ kind: "org" }, "", false)).toBeNull();
-		expect(manifestArgs({ kind: "org" }, "a/b", false)).toBeNull();
+		expect(manifestArgs("org", "", false)).toBeNull();
+		expect(manifestArgs("org", "a/b", false)).toBeNull();
 	});
 
 	test("a GitHub login is 1 to 39 letters, digits and hyphens", () => {

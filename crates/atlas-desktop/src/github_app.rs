@@ -56,7 +56,6 @@ pub struct Started {
 }
 
 struct Session {
-    port: u16,
     form_url: String,
     cancel: Arc<Notify>,
     done: oneshot::Receiver<Outcome>,
@@ -133,8 +132,8 @@ async fn start_flow(
     post_url: &str,
     window: Duration,
 ) -> Result<Session, String> {
-    let mut action =
-        github_target(post_url).ok_or_else(|| t!("native_crew_github_app_bad_target", url = post_url))?;
+    let mut action = github_target(post_url)
+        .ok_or_else(|| t!("native_crew_github_app_bad_target", url = post_url))?;
     let Some(fields) = manifest.as_object_mut() else {
         return Err(t!("native_crew_github_app_bad_manifest"));
     };
@@ -166,7 +165,6 @@ async fn start_flow(
         let _ = done_tx.send(serve(listener, ctx, rx, window, stop).await);
     });
     Ok(Session {
-        port,
         form_url: format!("http://127.0.0.1:{port}/start/{token}"),
         cancel,
         done,
@@ -266,12 +264,11 @@ fn parse_request(head: &str) -> Option<Request> {
         return None;
     }
     let url = url::Url::parse(&format!("http://x{target}")).ok()?;
-    let host = lines
-        .take_while(|l| !l.is_empty())
-        .find_map(|l| {
-            let (name, value) = l.split_once(':')?;
-            name.eq_ignore_ascii_case("host").then(|| value.trim().to_string())
-        });
+    let host = lines.take_while(|l| !l.is_empty()).find_map(|l| {
+        let (name, value) = l.split_once(':')?;
+        name.eq_ignore_ascii_case("host")
+            .then(|| value.trim().to_string())
+    });
     Some(Request {
         method: method.to_string(),
         path: url.path().to_string(),
@@ -325,7 +322,8 @@ fn route(ctx: &Ctx, req: &Request) -> Reply {
 fn is_code(s: &str) -> bool {
     !s.is_empty()
         && s.len() <= MAX_CODE
-        && s.bytes().all(|b| b.is_ascii_alphanumeric() || b == b'-' || b == b'_')
+        && s.bytes()
+            .all(|b| b.is_ascii_alphanumeric() || b == b'-' || b == b'_')
 }
 
 /// Equality that does not stop at the first different byte.
@@ -333,8 +331,7 @@ fn same(a: &str, b: &str) -> bool {
     a.len() == b.len() && a.bytes().zip(b.bytes()).fold(0u8, |d, (x, y)| d | (x ^ y)) == 0
 }
 
-const PAGE_CSP: &str =
-    "Content-Security-Policy: default-src 'none'; style-src 'unsafe-inline'; script-src 'unsafe-inline'\r\n";
+const PAGE_CSP: &str = "Content-Security-Policy: default-src 'none'; style-src 'unsafe-inline'; script-src 'unsafe-inline'\r\n";
 /// The form may submit to GitHub only.
 const FORM_CSP: &str = "Content-Security-Policy: default-src 'none'; style-src 'unsafe-inline'; \
                         script-src 'unsafe-inline'; form-action https://github.com\r\n";
@@ -414,6 +411,13 @@ mod tests {
     use super::*;
     use serde_json::json;
 
+    impl Session {
+        /// The listener's port, read from its form URL (the one place the session keeps it).
+        fn port(&self) -> u16 {
+            url::Url::parse(&self.form_url).unwrap().port().unwrap()
+        }
+    }
+
     const POST: &str = "https://github.com/organizations/acme/settings/apps/new";
 
     fn manifest() -> Value {
@@ -461,8 +465,10 @@ mod tests {
     }
 
     async fn started() -> (Session, String) {
-        let s = start_flow(manifest(), POST, Duration::from_secs(30)).await.unwrap();
-        let (_, html) = get(s.port, &path_of(&s.form_url), None).await;
+        let s = start_flow(manifest(), POST, Duration::from_secs(30))
+            .await
+            .unwrap();
+        let (_, html) = get(s.port(), &path_of(&s.form_url), None).await;
         (s, html)
     }
 
@@ -486,31 +492,46 @@ mod tests {
         assert_eq!(manifest["description"], "a \"quoted\" <b>box</b> & co");
         assert_eq!(
             manifest["redirect_url"],
-            format!("http://127.0.0.1:{}/callback", s.port)
+            format!("http://127.0.0.1:{}/callback", s.port())
         );
         assert!(html.contains("submit()"), "the page submits itself");
     }
 
     #[tokio::test]
     async fn the_form_page_is_served_once_and_only_to_its_token() {
-        let s = start_flow(manifest(), POST, Duration::from_secs(30)).await.unwrap();
+        let s = start_flow(manifest(), POST, Duration::from_secs(30))
+            .await
+            .unwrap();
         let path = path_of(&s.form_url);
-        assert_eq!(get(s.port, "/start/not-the-token", None).await.0, 404);
-        assert_eq!(get(s.port, "/", None).await.0, 404);
-        assert_eq!(get(s.port, &path, None).await.0, 200);
-        assert_eq!(get(s.port, &path, None).await.0, 404, "a second fetch would leak the state");
+        assert_eq!(get(s.port(), "/start/not-the-token", None).await.0, 404);
+        assert_eq!(get(s.port(), "/", None).await.0, 404);
+        assert_eq!(get(s.port(), &path, None).await.0, 200);
+        assert_eq!(
+            get(s.port(), &path, None).await.0,
+            404,
+            "a second fetch would leak the state"
+        );
     }
 
     #[tokio::test]
     async fn the_code_comes_back_and_the_listener_closes() {
         let (s, html) = started().await;
         let state = state_of(&form_of(&html).0);
-        let (status, body) = get(s.port, &format!("/callback?code=abc123&state={state}"), None).await;
+        let port = s.port();
+        let (status, body) = get(port, &format!("/callback?code=abc123&state={state}"), None).await;
         assert_eq!(status, 200);
-        assert!(body.contains("replaceState"), "the code leaves the address bar");
-        assert_eq!(s.done.await.unwrap(), Outcome::Code { code: "abc123".into() });
         assert!(
-            TcpStream::connect(("127.0.0.1", s.port)).await.is_err(),
+            body.contains("replaceState"),
+            "the code leaves the address bar"
+        );
+        assert_eq!(
+            s.done.await.unwrap(),
+            Outcome::Code {
+                code: "abc123".into()
+            }
+        );
+        assert!(
+            TcpStream::connect(("127.0.0.1", port)).await.is_err(),
             "a closed listener refuses connections"
         );
     }
@@ -519,12 +540,41 @@ mod tests {
     async fn a_wrong_state_is_refused_and_the_listener_keeps_waiting_for_the_right_one() {
         let (s, html) = started().await;
         let state = state_of(&form_of(&html).0);
-        assert_eq!(get(s.port, "/callback?code=stolen&state=wrong", None).await.0, 400);
-        assert_eq!(get(s.port, "/callback?code=stolen", None).await.0, 400);
-        assert_eq!(get(s.port, &format!("/callback?state={state}"), None).await.0, 400);
-        assert_eq!(get(s.port, &format!("/callback?code=a%20b&state={state}"), None).await.0, 400);
-        get(s.port, &format!("/callback?code=real&state={state}"), None).await;
-        assert_eq!(s.done.await.unwrap(), Outcome::Code { code: "real".into() });
+        assert_eq!(
+            get(s.port(), "/callback?code=stolen&state=wrong", None)
+                .await
+                .0,
+            400
+        );
+        assert_eq!(get(s.port(), "/callback?code=stolen", None).await.0, 400);
+        assert_eq!(
+            get(s.port(), &format!("/callback?state={state}"), None)
+                .await
+                .0,
+            400
+        );
+        assert_eq!(
+            get(
+                s.port(),
+                &format!("/callback?code=a%20b&state={state}"),
+                None
+            )
+            .await
+            .0,
+            400
+        );
+        get(
+            s.port(),
+            &format!("/callback?code=real&state={state}"),
+            None,
+        )
+        .await;
+        assert_eq!(
+            s.done.await.unwrap(),
+            Outcome::Code {
+                code: "real".into()
+            }
+        );
     }
 
     #[test]
@@ -556,20 +606,25 @@ mod tests {
         let (s, html) = started().await;
         let state = state_of(&form_of(&html).0);
         let target = format!("/callback?code=x&state={state}");
-        assert_eq!(get(s.port, &target, Some("evil.example")).await.0, 400);
-        assert_eq!(get(s.port, &target, Some("localhost:1")).await.0, 400);
+        assert_eq!(get(s.port(), &target, Some("evil.example")).await.0, 400);
+        assert_eq!(get(s.port(), &target, Some("localhost:1")).await.0, 400);
     }
 
     #[tokio::test]
     async fn it_closes_by_itself_after_the_window() {
-        let s = start_flow(manifest(), POST, Duration::from_millis(80)).await.unwrap();
+        let s = start_flow(manifest(), POST, Duration::from_millis(80))
+            .await
+            .unwrap();
+        let port = s.port();
         assert_eq!(s.done.await.unwrap(), Outcome::TimedOut);
-        assert!(TcpStream::connect(("127.0.0.1", s.port)).await.is_err());
+        assert!(TcpStream::connect(("127.0.0.1", port)).await.is_err());
     }
 
     #[tokio::test]
     async fn cancel_closes_it() {
-        let s = start_flow(manifest(), POST, Duration::from_secs(30)).await.unwrap();
+        let s = start_flow(manifest(), POST, Duration::from_secs(30))
+            .await
+            .unwrap();
         s.cancel.notify_one();
         assert_eq!(s.done.await.unwrap(), Outcome::Cancelled);
     }
@@ -579,8 +634,8 @@ mod tests {
         // Browsers open speculative connections that never send a byte.
         let (s, html) = started().await;
         let state = state_of(&form_of(&html).0);
-        let _idle = TcpStream::connect(("127.0.0.1", s.port)).await.unwrap();
-        get(s.port, &format!("/callback?code=ok&state={state}"), None).await;
+        let _idle = TcpStream::connect(("127.0.0.1", s.port())).await.unwrap();
+        get(s.port(), &format!("/callback?code=ok&state={state}"), None).await;
         assert_eq!(s.done.await.unwrap(), Outcome::Code { code: "ok".into() });
     }
 
@@ -597,22 +652,35 @@ mod tests {
             "javascript:alert(1)",
             "",
         ] {
-            let refused = start_flow(manifest(), bad, Duration::from_secs(1)).await.is_err();
+            let refused = start_flow(manifest(), bad, Duration::from_secs(1))
+                .await
+                .is_err();
             assert!(refused, "{bad} was accepted");
         }
         for ok in [POST, "https://github.com/settings/apps/new"] {
-            assert!(start_flow(manifest(), ok, Duration::from_millis(1)).await.is_ok(), "{ok}");
+            assert!(
+                start_flow(manifest(), ok, Duration::from_millis(1))
+                    .await
+                    .is_ok(),
+                "{ok}"
+            );
         }
     }
 
     #[tokio::test]
     async fn a_manifest_that_is_not_an_object_is_refused() {
-        assert!(start_flow(json!([1]), POST, Duration::from_secs(1)).await.is_err());
+        assert!(
+            start_flow(json!([1]), POST, Duration::from_secs(1))
+                .await
+                .is_err()
+        );
     }
 
     #[tokio::test]
     async fn start_wait_and_cancel_work_through_the_commands() {
-        let started = github_app_listen_start(manifest(), POST.into()).await.unwrap();
+        let started = github_app_listen_start(manifest(), POST.into())
+            .await
+            .unwrap();
         assert_eq!(started.expires_in_secs, 600);
         let port = url::Url::parse(&started.url).unwrap().port().unwrap();
         let (_, html) = get(port, &path_of(&started.url), None).await;
@@ -621,18 +689,34 @@ mod tests {
         let id = started.id.clone();
         let waiting = tokio::spawn(github_app_listen_wait(id.clone()));
         get(port, &format!("/callback?code=c0de&state={state}"), None).await;
-        assert_eq!(waiting.await.unwrap().unwrap(), Outcome::Code { code: "c0de".into() });
-        assert!(github_app_listen_wait(id).await.is_err(), "a listener answers once");
+        assert_eq!(
+            waiting.await.unwrap().unwrap(),
+            Outcome::Code {
+                code: "c0de".into()
+            }
+        );
+        assert!(
+            github_app_listen_wait(id).await.is_err(),
+            "a listener answers once"
+        );
 
         // A newer start closes the older listener; cancel ends a wait in progress.
-        let first = github_app_listen_start(manifest(), POST.into()).await.unwrap();
+        let first = github_app_listen_start(manifest(), POST.into())
+            .await
+            .unwrap();
         let waiting = tokio::spawn(github_app_listen_wait(first.id.clone()));
-        while FLOWS.lock().get(&first.id).is_some_and(|f| f.done.is_some()) {
+        while FLOWS
+            .lock()
+            .get(&first.id)
+            .is_some_and(|f| f.done.is_some())
+        {
             tokio::task::yield_now().await; // until the wait has taken the receiver
         }
         github_app_listen_cancel(first.id);
         assert_eq!(waiting.await.unwrap().unwrap(), Outcome::Cancelled);
-        let second = github_app_listen_start(manifest(), POST.into()).await.unwrap();
+        let second = github_app_listen_start(manifest(), POST.into())
+            .await
+            .unwrap();
         github_app_listen_cancel(second.id);
     }
 }

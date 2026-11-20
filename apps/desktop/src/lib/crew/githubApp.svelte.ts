@@ -18,7 +18,7 @@ import { hostCall } from "#lib/host.ts";
 import { m } from "#lib/i18n/m.ts";
 import {
 	type GithubApp,
-	type OwnerChoice,
+	type OwnerKind,
 	installationsSignature,
 	installUrl,
 	manifestArgs,
@@ -80,7 +80,7 @@ export class CrewGithubApp {
 	watching = $state(false);
 	refreshing = $state(false);
 
-	owner = $state<OwnerChoice>({ kind: "user" });
+	owner = $state<OwnerKind>("user");
 	org = $state("");
 	workflows = $state(false);
 

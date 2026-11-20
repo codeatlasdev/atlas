@@ -72,8 +72,8 @@ export function parseManifest(raw: unknown): ManifestReply | null {
 	return { manifest: raw.manifest, postUrl: str(raw.post_url) };
 }
 
-/** Who owns the new app. */
-export type OwnerChoice = { kind: "user" } | { kind: "org"; org: string };
+/** Who owns the new app; an organization's login is typed separately. */
+export type OwnerKind = "user" | "org";
 
 /** A GitHub login as hostd accepts it for an organization: letters, digits and hyphens, 1 to 39. */
 export function validOrgLogin(s: string): boolean {
@@ -82,11 +82,11 @@ export function validOrgLogin(s: string): boolean {
 
 /** `crew_github_app_manifest`'s arguments for the form's choices; `null` while an organization is chosen without a valid login. */
 export function manifestArgs(
-	owner: OwnerChoice,
+	owner: OwnerKind,
 	orgInput: string,
 	workflows: boolean,
 ): { owner_kind: "user" | "org"; org?: string; workflows: boolean } | null {
-	if (owner.kind === "user") return { owner_kind: "user", workflows };
+	if (owner === "user") return { owner_kind: "user", workflows };
 	const org = orgInput.trim();
 	return validOrgLogin(org) ? { owner_kind: "org", org, workflows } : null;
 }

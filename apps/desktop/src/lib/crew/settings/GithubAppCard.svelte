@@ -23,7 +23,7 @@
 
 	let now = $state(Date.now());
 	const left = $derived(flow.secondsLeft(now));
-	const orgBad = $derived(flow.owner.kind === "org" && flow.org.trim() !== "" && !validOrgLogin(flow.org.trim()));
+	const orgBad = $derived(flow.owner === "org" && flow.org.trim() !== "" && !validOrgLogin(flow.org.trim()));
 	const permissions = $derived(flow.app ? permissionList(flow.app.permissions) : []);
 
 	onMount(() => {
@@ -159,15 +159,15 @@
 						<SegmentedControl
 							aria-label={m.crew_github_app_owner_label()}
 							size="sm"
-							value={flow.owner.kind}
+							value={flow.owner}
 							items={[
 								{ value: "user", label: m.crew_github_app_owner_user() },
 								{ value: "org", label: m.crew_github_app_owner_org() },
 							]}
-							onchange={(v) => (flow.owner = v === "org" ? { kind: "org" } : { kind: "user" })}
+							onchange={(v) => (flow.owner = v === "org" ? "org" : "user")}
 						/>
 					</div>
-					{#if flow.owner.kind === "org"}
+					{#if flow.owner === "org"}
 						<TextField
 							size="sm"
 							label={m.crew_github_app_org_label()}

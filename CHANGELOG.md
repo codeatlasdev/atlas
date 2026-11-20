@@ -6,6 +6,10 @@ All notable changes to Atlas (CLI, TUI, MCP server and Atlas Desktop). Versions 
 
 ## [Unreleased]
 
+### Changed
+
+- **The website speaks Brazilian Portuguese and says what Atlas is for.** Every page of atlas.codeatlas.com.br now exists at `/` and `/pt-br/` (home, download, changelog, privacy, code signing, docs chrome), with a language switch in the bar. A visitor in a Portuguese-speaking country, or whose browser prefers Portuguese, lands on the pt-BR page; a choice made with the switch (or `?lang=en|pt-BR`) is remembered in the `atlas_lang` cookie and wins over both, and crawlers are never redirected (`site/functions/_lib/locale.ts`). The home page is rewritten around agents doing real work with a person keeping the final say: the map, ships, crew and captain picture, Atlas Crew, agents in worktrees, projects, context through MCP, the quality treated as the floor (the GPU terminal is one of them, not the headline) and where Atlas is going (Grand Line). The changelog page opens each version with what changed for you, with illustrated release stories in both languages for 1.5.0-alpha.24 to alpha.27, and keeps the full technical list one click away under the same anchors.
+
 ## [1.5.0-alpha.27] - 2026-11-20
 
 Atlas is in **alpha**: expect bugs and breaking changes. Please [report what breaks](https://github.com/codeatlasdev/atlas/issues/new).

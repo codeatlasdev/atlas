@@ -53,6 +53,8 @@ impl Sim {
             "tee",
             "mktemp",
             "tar",
+            // GNU tar runs `gzip` for `z` (bsdtar on macOS has it built in): every Linux server has it.
+            "gzip",
             "sha256sum",
             "shasum",
             "awk",

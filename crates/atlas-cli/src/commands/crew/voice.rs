@@ -190,7 +190,7 @@ pub fn build_script() -> String {
         "{p}as sh -c 'cd \"$1/src\" && rm -rf \"whisper.cpp-$2\" && tar xzf \"whisper.cpp-$2.tar.gz\" && \
          cd \"whisper.cpp-$2\" && \
          cmake -B build -DCMAKE_BUILD_TYPE=Release -DWHISPER_BUILD_TESTS=OFF -DWHISPER_BUILD_SERVER=OFF -DBUILD_SHARED_LIBS=OFF >&2 && \
-         n=$(nproc); [ \"$n\" -gt 4 ] && n=4; \
+         n=$(nproc) && if [ \"$n\" -gt 4 ]; then n=4; fi && \
          cmake --build build -j\"$n\" --target whisper-cli >&2 && \
          cp build/bin/whisper-cli \"$1/bin/whisper-cli.new\" && chmod 0755 \"$1/bin/whisper-cli.new\" && \
          mv \"$1/bin/whisper-cli.new\" \"$1/bin/whisper-cli\" && \
@@ -767,6 +767,28 @@ mod sim_tests {
             Some(1),
             "an older build is rebuilt"
         );
+    }
+
+    // Any failing step stops the build: an unpack that fails (here `tar` is missing) never reaches `cmake --build`,
+    // nothing is swapped in, and the script says it failed. The `nproc` step once sat behind a `;`, so a failed
+    // unpack or configure still ran `cmake --build -j` with an empty job count in the sources dir (#658's Linux CI:
+    // GNU tar needs `gzip`, which the sim did not have, and the test only saw the build line).
+    #[test]
+    fn a_failing_unpack_or_configure_never_reaches_the_build() {
+        let s = sim();
+        let bytes = tarball(&s, &format!("v{WHISPER_VERSION}.tar.gz"));
+        let fetch = fetch_script(WHISPER_SOURCE_URL, &sha(&bytes), "$d/src", &tar_name());
+        assert_eq!(s.run(&fetch, b"").code, Some(0));
+        s.remove_fake("tar");
+        let run = s.run(&format!("{} && {}", mkdir_script(), build_script()), b"");
+        assert_ne!(run.code, Some(0), "{}\n{}", run.stdout, run.stderr);
+        assert_eq!(
+            s.read("log/cmake"),
+            "",
+            "nothing may be configured or built"
+        );
+        assert!(!s.exists(&format!("{VERSION_DIR}/bin/whisper-cli")));
+        assert!(!s.exists(&format!("{VERSION_DIR}/VERSION")));
     }
 
     /// A model of this test's own bytes, so its pin can be matched.

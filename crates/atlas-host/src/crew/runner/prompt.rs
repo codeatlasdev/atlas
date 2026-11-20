@@ -85,9 +85,10 @@ pub(super) async fn prepare_task(
         &work_dir,
         &memory,
         &format!(
-            "{}{commits}{}{}",
+            "{}{commits}{}{}{}",
             attachments::prompt_block(&staged),
             crate::crew::voice::prompt_note(task),
+            super::spoken::instruction(crewmate),
             with_branch_instruction(task)
         ),
         task.tz.as_deref(),

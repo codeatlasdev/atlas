@@ -3,6 +3,7 @@ import 'package:material_ui/material_ui.dart';
 import 'package:atlas_mobile/core/protocol/crew_task.dart';
 import 'package:atlas_mobile/core/ui/atlas_theme.dart';
 import 'package:atlas_mobile/features/crew/chat/action/action_parts.dart';
+import 'package:atlas_mobile/features/crew/chat/voice_answer.dart';
 import 'package:atlas_mobile/features/crew/widgets/pill_buttons.dart';
 
 /// `choose`: one lettered button per option, then Cancel task.
@@ -13,12 +14,17 @@ class ChooseAction extends StatelessWidget {
     required this.busy,
     required this.onPick,
     required this.onCancel,
+    this.voiceAnswer,
   });
 
   final TaskAction action;
   final bool busy;
   final void Function(String option) onPick;
   final VoidCallback onCancel;
+
+  /// Sends what was said to hostd, which matches it to an option (number, ordinal or the option's name) and
+  /// answers the card itself. Null: no "Answer by voice".
+  final VoiceAnswerer? voiceAnswer;
 
   @override
   Widget build(BuildContext context) {
@@ -75,6 +81,14 @@ class ChooseAction extends StatelessWidget {
           ),
           if (i < action.options.length - 1) const SizedBox(height: Space.xs),
         ],
+        if (voiceAnswer != null && !busy)
+          Align(
+            alignment: Alignment.centerRight,
+            child: VoiceAnswer(
+              kind: VoiceCardKind.choice,
+              answer: voiceAnswer!,
+            ),
+          ),
         const SizedBox(height: Space.sm),
         OutlinePillButton(
           label: 'Cancel task',

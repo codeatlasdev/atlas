@@ -325,7 +325,9 @@ async fn settle_reply(
         },
         None => reply,
     };
-    task.reply = Some(reply.clone());
+    // The agent's `spoken:` line is for listening: it is not part of the reply, and survives the summary.
+    task.spoken = super::spoken::agent_line(&reply).unwrap_or_default();
+    task.reply = Some(super::spoken::without_line(&reply));
     let (final_outcome, reply_full, was_summarized) =
         maybe_summarize(hub, crewmate, Ok(reply), env).await;
     task.reply_full = reply_full;

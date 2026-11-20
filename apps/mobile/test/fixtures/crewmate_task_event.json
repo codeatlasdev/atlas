@@ -6,6 +6,7 @@
     "pane": "crew:crewmate-working:task-event-1",
     "prompt": "review the PR",
     "source": "desktop",
+    "spoken": "",
     "started_at": 1700000005,
     "state": "running",
     "summarized": false,

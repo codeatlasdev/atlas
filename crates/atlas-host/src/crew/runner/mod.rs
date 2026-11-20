@@ -32,6 +32,7 @@ mod pty;
 mod recover;
 mod reporting;
 mod slots;
+pub(crate) mod spoken;
 pub(crate) use reporting::Live as ReportingLive;
 #[cfg(test)]
 pub(crate) use reporting::branch_to_report;

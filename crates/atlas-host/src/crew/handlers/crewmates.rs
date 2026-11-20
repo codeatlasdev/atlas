@@ -66,6 +66,7 @@ fn parse_mode(hub: &Hub, mode: Option<&str>, engine_kind: Option<&str>) -> Resul
 fn crewmate_value(c: &Crewmate) -> Result<Value, String> {
     let mut v = serde_json::to_value(c).map_err(|e| e.to_string())?;
     v["approval"] = json!(c.mode.legacy());
+    v["spoken_replies"] = json!(c.spoken_replies);
     Ok(v)
 }
 
@@ -161,6 +162,7 @@ pub(crate) fn crewmate_json(hub: &Hub, b: Crewmate) -> Value {
             // exactly when `mode` is `bypass`.
             "mode": b.mode,
             "approval": b.mode.legacy(),
+            "spoken_replies": b.spoken_replies,
             "state": state,
             "queued": queued,
         });
@@ -293,6 +295,7 @@ pub(crate) fn create(
         project,
         setup_step,
         short_replies: None,
+        spoken_replies: false,
         created_at: now_s(),
     };
     if let Err(e) = hub.crew.store.save_crewmate(&crewmate) {
@@ -327,6 +330,7 @@ pub(crate) fn update(
     project: Option<ProjectRef>,
     setup_step: Option<Option<String>>,
     short_replies: Option<Option<bool>>,
+    spoken_replies: Option<bool>,
 ) -> Result<Value, String> {
     let mut crewmate = hub
         .crew
@@ -374,6 +378,9 @@ pub(crate) fn update(
     }
     if let Some(sr) = short_replies {
         crewmate.short_replies = sr;
+    }
+    if let Some(sp) = spoken_replies {
+        crewmate.spoken_replies = sp;
     }
     hub.crew
         .store
@@ -512,6 +519,11 @@ fn audit_changes(hub: &Hub, before: &Crewmate, after: &Crewmate) {
         "short_replies",
         json!(before.short_replies),
         json!(after.short_replies),
+    );
+    audit(
+        "spoken_replies",
+        json!(before.spoken_replies),
+        json!(after.spoken_replies),
     );
 }
 

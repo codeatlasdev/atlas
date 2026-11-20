@@ -51,10 +51,11 @@ pub(crate) fn parse_atlas_action(text: &str) -> Option<TaskAction> {
     })
 }
 
-/// The reply as people should read it: without the `ATLAS_ACTION:` line, which is for Atlas (it becomes the card).
+/// The reply as people should read it: without the `ATLAS_ACTION:` line, which is for Atlas (it becomes the card),
+/// and without the `spoken:` line, which is for listening (`Task::spoken`).
 pub(crate) fn visible_reply(text: &str) -> String {
     text.lines()
-        .filter(|l| !l.trim().starts_with(ATLAS_ACTION_PREFIX))
+        .filter(|l| !l.trim().starts_with(ATLAS_ACTION_PREFIX) && !super::spoken::is_line(l))
         .collect::<Vec<_>>()
         .join("\n")
         .trim()

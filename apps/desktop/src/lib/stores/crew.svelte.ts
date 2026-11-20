@@ -202,6 +202,8 @@ class CrewStore {
 			approval: string;
 			look: CrewmateLook;
 			project: CrewmateProject | null;
+			/** The agent writes a `spoken:` line for the chat's "Read replies aloud". */
+			spoken_replies: boolean;
 			/** Pass `null` to clear the setup step (mark setup complete). */
 			setup_step: string | null;
 		}>,
@@ -460,6 +462,23 @@ class CrewStore {
 			...approveArgs(paneKey, req, answer),
 		});
 		this.scheduleRefresh(this.selected.hostKey, 500);
+	}
+
+	/**
+	 * An approval answered by voice: only the transcript goes to hostd, whose rules decide (`agent_approve_voice`).
+	 * The reply is its verdict; this store never turns words into an `allow`.
+	 */
+	async approveVoice(paneKey: string, req: string, transcript: string, lang: "en" | "pt"): Promise<unknown> {
+		if (!this.selected) return { verdict: "unclear" };
+		const reply = await hostCall("agent_approve_voice", {
+			...hostArgs(this.selected.hostKey),
+			pane: paneKey,
+			req,
+			transcript,
+			lang,
+		});
+		this.scheduleRefresh(this.selected.hostKey, 500);
+		return reply;
 	}
 
 	// ─── selection ────────────────────────────────────────────────────────────

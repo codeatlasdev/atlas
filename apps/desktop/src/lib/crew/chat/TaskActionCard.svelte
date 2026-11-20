@@ -13,6 +13,8 @@
 	import type { ChatState } from "./chat.svelte.ts";
 	import type { Attachment } from "#lib/crew/attachments.ts";
 	import ActionImages from "./ActionImages.svelte";
+	import VoiceMic from "./VoiceMic.svelte";
+	import { voiceStatus } from "#lib/crew/voice/status.svelte.ts";
 	import TaskImages from "./TaskImages.svelte";
 	import { m } from "#lib/i18n/m.ts";
 
@@ -43,6 +45,19 @@
 
 	const answer = (value: string) => void chat.answerAction(taskId, crewmateId, value);
 	const cancel = () => void chat.cancelAction(taskId, crewmateId);
+
+	/**
+	 * The microphone of a choice card: the transcript goes to hostd, which matches it to one option (or says it could
+	 * not). The card never picks an option from words itself; it closes only when hostd answered the action.
+	 */
+	// svelte-ignore state_referenced_locally (the chat of a card never changes; the ids are read at each use)
+	const voice = chat.voiceAnswer(
+		"choice",
+		(transcript) => chat.actionVoice(taskId, crewmateId, transcript),
+		(_, view) => {
+			if (view.decided && "choice" in view.decided) chat.settleAction(taskId, view.decided.choice);
+		},
+	);
 
 	function setInput(value: string) {
 		chat.actionInputs = { ...chat.actionInputs, [taskId]: value };
@@ -112,6 +127,11 @@
 				</button>
 			{/each}
 		</div>
+		<VoiceMic
+			session={voice}
+			disabled={submitting}
+			unsupported={!!voiceStatus.loaded[hostKey] && !voiceStatus.of(hostKey)}
+		/>
 	{:else if action.kind === "sign_in_engine"}
 		<div class="action-title">
 			{m.crew_chat_task_action_card_sign_in_to_engine({ engine: action.engine })}

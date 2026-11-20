@@ -288,6 +288,9 @@ pub struct Crewmate {
     pub setup_step: Option<String>,
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub short_replies: Option<bool>,
+    /// The agent ends each reply with a `spoken:` line for listening (`runner::spoken`, #648). Off by default.
+    #[serde(default, skip_serializing_if = "std::ops::Not::not")]
+    pub spoken_replies: bool,
     pub created_at: u64,
 }
 
@@ -381,6 +384,10 @@ pub struct Task {
     pub reply_full: Option<String>,
     #[serde(default)]
     pub summarized: bool,
+    /// What a client reads aloud of the finished reply (#648): the agent's `spoken:` line, else the first
+    /// sentences of the visible reply (`runner::spoken`). "" for a task with nothing to say, or not finished.
+    #[serde(default)]
+    pub spoken: String,
     /// What the user picked or typed for this task's `choose`/`input` action, shown in the chat as their message
     /// (it was sent to the agent but never recorded, so the choice vanished from the conversation).
     #[serde(default, skip_serializing_if = "Option::is_none")]
@@ -460,6 +467,7 @@ impl Task {
             reply: None,
             reply_full: None,
             summarized: false,
+            spoken: String::new(),
             answer: None,
             title: None,
             preparing: None,

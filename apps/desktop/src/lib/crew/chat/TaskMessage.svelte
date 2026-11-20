@@ -119,6 +119,8 @@
 						{approval}
 						answered={chat.answeredReqs[approval.req]}
 						name={crewmate.name}
+						{chat}
+						{hostKey}
 						onanswer={(pane, req, answer) => void chat.approval(pane, req, answer)}
 					/>
 				{/if}

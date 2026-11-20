@@ -18,6 +18,7 @@
         "id": "task-working",
         "pane": "crew:crewmate-working:task-working"
       },
+      "spoken_replies": false,
       "state": "working",
       "triggers": []
     },
@@ -43,6 +44,7 @@
           "prompt": "Run the nightly checks"
         }
       ],
+      "spoken_replies": false,
       "state": "idle",
       "triggers": [
         {
@@ -81,6 +83,7 @@
       "queued": 0,
       "role": "Deploys releases",
       "routines": [],
+      "spoken_replies": false,
       "state": "idle",
       "triggers": []
     }

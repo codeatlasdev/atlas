@@ -17,6 +17,7 @@ use serde_json::{Value, json};
 
 use super::{TelegramBridge, api_url};
 use crate::crew::voice::{self, audio};
+use crate::crew::voice_card as card;
 
 /// What Telegram's `getFile` serves: 20 MB.
 pub(super) const MAX_BYTES: u64 = 20 * 1024 * 1024;
@@ -84,9 +85,20 @@ impl TelegramBridge {
             .strip_prefix("/task ")
             .map(|rest| rest.split_whitespace().next().unwrap_or("").to_string());
         let crewmates = hub.crew.store.list_crewmates();
+        // No name and several crewmates: the one with a prompt or a card waiting, when only one has.
+        let waiting_one = || {
+            let mut with = crewmates
+                .iter()
+                .filter(|c| !matches!(card::waiting(&hub, &c.id), card::Waiting::Nothing));
+            match (with.next(), with.next()) {
+                (Some(c), None) => Some(c),
+                _ => None,
+            }
+        };
         let crewmate = match &name {
             Some(n) => crewmates.iter().find(|c| c.name.eq_ignore_ascii_case(n)),
-            None => (crewmates.len() == 1).then(|| &crewmates[0]),
+            None if crewmates.len() == 1 => Some(&crewmates[0]),
+            None => waiting_one(),
         };
         let Some(crewmate) = crewmate else {
             let text = match &name {
@@ -165,8 +177,41 @@ impl TelegramBridge {
                 seconds = audio::MAX_SECONDS.to_string()
             ));
         }
+        // A prompt or a choice card of this crewmate waits: the words answer it (or are refused), through the same
+        // functions the apps use, and never become a task.
+        if let Some(text) = self.answer_waiting(&hub, chat_id, &crewmate.id, &transcript.text) {
+            self.reply(chat_id, &text).await;
+            return;
+        }
         self.offer(chat_id, &crewmate.id, transcript.text, echo)
             .await;
+    }
+
+    /// What the chat is told when `transcript` met a prompt or card of `crewmate_id`; `None` when nothing waits
+    /// for it (the note is a dictation). The chat is the owner's: [`super::TelegramBridge::handle_message`] only
+    /// lets linked chats get here, and `voice_card` checks it again.
+    fn answer_waiting(
+        &self,
+        hub: &crate::server::Hub,
+        chat_id: i64,
+        crewmate_id: &str,
+        transcript: &str,
+    ) -> Option<String> {
+        let origin = format!("telegram:{chat_id}");
+        let verdict = match card::waiting(hub, crewmate_id) {
+            card::Waiting::Nothing => return None,
+            card::Waiting::Several => return Some(t!("cmd_hostd_telegram_voice_answer_several")),
+            card::Waiting::Approval { pane, req } => {
+                card::approve(hub, &pane, &req, transcript, None, &origin)
+            }
+            card::Waiting::Choice { task } => {
+                card::answer_action(hub, crewmate_id, &task, transcript, &origin)
+            }
+        };
+        Some(match verdict {
+            Ok(v) => verdict_text(&v, transcript),
+            Err(e) => e,
+        })
     }
 
     /// Echo `text` with the three buttons and remember it until one is tapped.
@@ -307,6 +352,31 @@ impl TelegramBridge {
                 .send()
                 .await;
         }
+    }
+}
+
+/// What the chat is told of a verdict (`voice_card`): what was decided, or why nothing was.
+fn verdict_text(v: &Value, transcript: &str) -> String {
+    match v["verdict"].as_str().unwrap_or_default() {
+        "allow" => t!("cmd_hostd_telegram_voice_answer_allowed"),
+        "deny" => t!("cmd_hostd_telegram_voice_answer_denied"),
+        "choice" => t!(
+            "cmd_hostd_telegram_voice_answer_choice",
+            choice = v["choice"].as_str().unwrap_or_default()
+        ),
+        "comment" => t!(
+            "cmd_hostd_telegram_voice_answer_comment",
+            text = transcript.trim()
+        ),
+        "needs_tap" => match v["reason"].as_str() {
+            Some("bypass") => t!("cmd_hostd_telegram_voice_answer_tap_bypass"),
+            Some("rail") => t!("cmd_hostd_telegram_voice_answer_tap_rail"),
+            Some("destructive") => t!("cmd_hostd_telegram_voice_answer_tap_destructive"),
+            // `untrusted` never gets here (only a linked chat does); if it did, nothing was decided either.
+            Some(_) => t!("cmd_hostd_telegram_voice_answer_unclear"),
+            None => t!("cmd_hostd_telegram_voice_answer_tap_card"),
+        },
+        _ => t!("cmd_hostd_telegram_voice_answer_unclear"),
     }
 }
 

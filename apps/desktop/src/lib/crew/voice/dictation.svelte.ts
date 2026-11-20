@@ -81,6 +81,8 @@ export interface Deps {
 	now(): number;
 	/** Runs `fn` after `ms`; the returned function cancels it. */
 	later(fn: () => void, ms: number): () => void;
+	/** A session is starting: the microphone is about to open (a reply being read aloud must stop first). */
+	onBegin?(): void;
 }
 
 export type Phase = "idle" | "starting" | "listening" | "transcribing" | "error";
@@ -223,6 +225,7 @@ export class Dictation {
 
 	private async begin(): Promise<void> {
 		const run = ++this.run;
+		this.deps.onBegin?.();
 		this.error = null;
 		this.partial = "";
 		this.level = 0;

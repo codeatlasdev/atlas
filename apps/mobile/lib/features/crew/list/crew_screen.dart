@@ -23,6 +23,7 @@ import 'package:atlas_mobile/core/ui/floating_tab_bar.dart';
 import 'package:atlas_mobile/core/ui/l10n.dart';
 import 'package:atlas_mobile/core/ui/protocol_banner.dart';
 import 'package:atlas_mobile/features/crew/crew_provider.dart';
+import 'package:atlas_mobile/features/crew/ops/crew_ops_provider.dart';
 import 'package:atlas_mobile/features/crew/invite_sheet.dart';
 import 'package:atlas_mobile/features/crew/list/crew_skeleton.dart';
 import 'package:atlas_mobile/features/crew/list/crew_deck.dart';
@@ -381,6 +382,24 @@ class _CrewScreenState extends ConsumerState<CrewScreen> {
                             for (final e in needsYou)
                               NeedsYouCard(
                                 entry: e,
+                                voiceAnswer:
+                                    e.crewmate.pendingApproval == null ||
+                                        !(ref
+                                                .watch(
+                                                  crewVoiceProvider(e.device),
+                                                )
+                                                .value
+                                                ?.enabled ??
+                                            false)
+                                    ? null
+                                    : (transcript, lang) =>
+                                          answerApprovalByVoice(
+                                            ref,
+                                            e.device,
+                                            e.crewmate.pendingApproval!,
+                                            transcript,
+                                            lang,
+                                          ),
                                 onAnswer: (d) =>
                                     answerApproval(
                                       ref,

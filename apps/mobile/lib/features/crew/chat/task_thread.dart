@@ -15,6 +15,7 @@ import 'package:atlas_mobile/features/crew/chat/approval_bubble.dart';
 import 'package:atlas_mobile/features/crew/permissions/approval_actions.dart';
 import 'package:atlas_mobile/features/crew/chat/ask_card.dart';
 import 'package:atlas_mobile/features/crew/chat/step_views.dart';
+import 'package:atlas_mobile/features/crew/chat/voice_answer.dart';
 import 'package:atlas_mobile/features/crew/chat/task_images.dart';
 import 'package:atlas_mobile/features/crew/chat_motion.dart';
 import 'package:atlas_mobile/features/crew/steps.dart';
@@ -38,6 +39,7 @@ class CrewmateTaskPair extends StatelessWidget {
     required this.onToggle,
     this.pendingApproval,
     this.onAnswer,
+    this.voiceAnswer,
     this.crewmateName = '',
   });
 
@@ -56,6 +58,9 @@ class CrewmateTaskPair extends StatelessWidget {
   final VoidCallback onToggle;
   final CrewmatePendingApproval? pendingApproval;
   final ApprovalAnswerer? onAnswer;
+
+  /// Voice answer to [pendingApproval], null when the crew has voice off.
+  final VoiceAnswerer? voiceAnswer;
   final String crewmateName;
 
   @override
@@ -108,6 +113,7 @@ class CrewmateTaskPair extends StatelessWidget {
             approval: pendingApproval!,
             crewmateName: crewmateName,
             onAnswer: onAnswer ?? (_) async {},
+            voiceAnswer: voiceAnswer,
           ),
         ],
 

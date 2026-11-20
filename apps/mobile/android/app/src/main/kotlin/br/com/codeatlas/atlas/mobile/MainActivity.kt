@@ -8,5 +8,7 @@ class MainActivity : FlutterFragmentActivity() {
         super.configureFlutterEngine(flutterEngine)
         // Dictation (lib/core/voice/): the phone's own on-device recognizer, see DictationPlugin.
         flutterEngine.plugins.add(DictationPlugin())
+        // Reading replies aloud (lib/core/voice/speech.dart): the phone's own text-to-speech, see SpeechPlugin.
+        flutterEngine.plugins.add(SpeechPlugin())
     }
 }

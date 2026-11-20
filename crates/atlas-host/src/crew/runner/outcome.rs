@@ -177,6 +177,11 @@ pub(super) fn finish_task(
                 task.state = TaskState::Done;
                 // Every path ends here, so the machine line never reaches what people read (desktop, phone, Telegram).
                 task.result = Some(visible_reply(&result));
+                // Without a `spoken:` line of the agent's own, a client reads the first sentences.
+                if task.spoken.is_empty() {
+                    task.spoken =
+                        super::spoken::first_sentences(task.result.as_deref().unwrap_or_default());
+                }
             }
             Err(e) => {
                 // Don't overwrite Cancelled state.

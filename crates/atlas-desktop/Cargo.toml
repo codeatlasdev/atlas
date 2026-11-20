@@ -70,6 +70,8 @@ objc2-web-kit = { version = "0.3", default-features = false, features = ["std", 
 objc2-quartz-core = { version = "0.3", default-features = false, features = ["std", "CADisplayLink", "CALayer", "CATransaction", "CAAnimation", "CAMediaTiming", "CAShapeLayer", "objc2-core-graphics"] }
 objc2-core-foundation = { version = "0.3", default-features = false, features = ["std", "CFCGTypes", "CFData"] }
 dispatch2 = "0.3"
+# Reading replies aloud (speech/mac.rs); already in the graph through cpal, same version.
+objc2-avf-audio = { version = "0.3", default-features = false, features = ["std", "AVSpeechSynthesis"] }
 atlas-term = { path = "../atlas-term" }
 
 [target.'cfg(target_os = "linux")'.dependencies]
@@ -89,7 +91,7 @@ tauri-plugin-single-instance = "2"
 # browser_keys_win.rs (accelerator keys of the embedded browser, modifier state through GetKeyState).
 webview2-com = "0.39"
 windows-core = "0.62"
-windows = { version = "0.62", features = ["Win32_UI_Input_KeyboardAndMouse"] }
+windows = { version = "0.62", features = ["Win32_UI_Input_KeyboardAndMouse", "Win32_Media_Speech", "Win32_System_Com"] }
 
 [dev-dependencies]
 # `tauri::test`: the pin wall is tested through the real IPC pipeline on the mock runtime (shots/pin.rs).

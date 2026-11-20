@@ -13,6 +13,8 @@ import 'package:atlas_mobile/core/ui/l10n.dart';
 import 'package:atlas_mobile/core/voice/dictation.dart';
 import 'package:atlas_mobile/core/voice/dictation_controller.dart';
 import 'package:atlas_mobile/core/voice/platform_dictation.dart';
+import 'package:atlas_mobile/core/voice/platform_speech.dart';
+import 'package:atlas_mobile/core/voice/speech.dart';
 import 'package:atlas_mobile/features/crew/chat/attachments.dart';
 import 'package:atlas_mobile/features/crew/chat/dictation_bar.dart';
 import 'package:atlas_mobile/features/crew/chat/dictation_flow.dart';
@@ -60,6 +62,9 @@ class _ChatComposerState extends ConsumerState<ChatComposer>
   );
   StreamSubscription<DictationNote>? _notes;
 
+  /// The app's voice, kept: `ref` must not be read once the widget is going away.
+  late final SpeechController _speech;
+
   /// The message as it was when dictation started: the words are drawn into it, and the X puts it back.
   TextEditingValue _draft = TextEditingValue.empty;
 
@@ -80,6 +85,7 @@ class _ChatComposerState extends ConsumerState<ChatComposer>
   @override
   void initState() {
     super.initState();
+    _speech = ref.read(speechControllerProvider);
     WidgetsBinding.instance.addObserver(this);
     _dictation.addListener(_onDictation);
     _notes = _dictation.notes.listen(_onNote);
@@ -104,6 +110,7 @@ class _ChatComposerState extends ConsumerState<ChatComposer>
     _notes?.cancel();
     _dictation.removeListener(_onDictation);
     _dictation.dispose();
+    _speech.releaseMic(this);
     super.dispose();
   }
 
@@ -146,6 +153,10 @@ class _ChatComposerState extends ConsumerState<ChatComposer>
     }
     _shownFailure = failure;
     _shownNothing = nothing;
+    // The microphone is closed for good: the voice may read again.
+    if (!_dictation.active && !_preparing) {
+      _speech.releaseMic(this);
+    }
     if (mounted) setState(() {});
   }
 
@@ -178,33 +189,22 @@ class _ChatComposerState extends ConsumerState<ChatComposer>
     }
   }
 
-  /// The mic: what this phone can do for the app's language, the permissions in context, then the session.
+  /// The mic: what this phone can do for the app's language, the permissions in context, then the session. The
+  /// voice that reads replies goes quiet at once, on the tap, and stays quiet while the microphone is open.
   Future<void> _dictate() async {
     if (_preparing || _dictation.active || widget.sending) return;
+    final speech = _speech;
+    if (!speech.claimMic(this)) return;
     _preparing = true;
     try {
-      final tag = dictationLocaleTag(Localizations.localeOf(context));
-      final support = await ref.read(dictationProvider).support(tag);
-      if (!mounted) return;
-      var engine = support.onDevice;
-      if (engine == null) {
-        // Never a silent fallback to a network recognizer: it is the person's decision, with its label.
-        if (!await askOnlineRecognizer(context, support) || !mounted) return;
-        engine = DictationEngine.online;
-      }
-      if (!await ensureDictationPermissions(
-            context,
-            ref,
-            speech: support.needsSpeechPermission,
-          ) ||
-          !mounted) {
-        return;
-      }
+      final plan = await prepareDictation(context, ref);
+      if (plan == null || !mounted) return;
       setState(() => _error = null);
       _draft = controller.value;
-      await _dictation.begin(localeTag: tag, engine: engine);
+      await _dictation.begin(localeTag: plan.tag, engine: plan.engine);
     } finally {
       _preparing = false;
+      if (!_dictation.active) speech.releaseMic(this);
     }
   }
 

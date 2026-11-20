@@ -124,6 +124,7 @@ const LONG_CALL_DEADLINE: Duration = Duration::from_secs(3600);
 #[cfg(test)]
 const QUICK: &[&str] = &[
     "agent_approve",
+    "agent_approve_voice",
     "agent_bind",
     "agent_interrupt",
     "agent_pane_exited",
@@ -143,6 +144,7 @@ const QUICK: &[&str] = &[
     "crew_voice_set",
     "crew_voice_status",
     "crewmate_action_answer",
+    "crewmate_action_answer_voice",
     "crewmate_answer",
     "crewmate_attachment",
     "crewmate_attachment_put",

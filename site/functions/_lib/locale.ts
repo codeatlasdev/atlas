@@ -59,7 +59,7 @@ export interface Visitor {
 export function preferredLocale(v: Visitor): SiteLocale {
 	const chosen = parseLocale(v.query) ?? parseLocale(cookieValue(v.cookie, LANG_COOKIE));
 	if (chosen) return chosen;
-	if (v.country && LUSOPHONE[v.country.toUpperCase()] === true) return "pt-BR";
+	if (v.country && Object.hasOwn(LUSOPHONE, v.country.toUpperCase())) return "pt-BR";
 	return fromAcceptLanguage(v.acceptLanguage) ?? "en";
 }
 

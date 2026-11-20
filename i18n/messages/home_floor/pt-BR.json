@@ -1,0 +1,19 @@
+{
+	"home_floor_app": "Um app de verdade em todo computador",
+	"home_floor_app_text": "Um app para {platforms}, com projetos, terminais, agentes, revisão de código e navegador numa janela só.",
+	"home_floor_cli": "Sem desktop? O mesmo motor no terminal",
+	"home_floor_cli_text": "O {#code}atlas dev{/code} roda o mesmo motor como painel no terminal, e com {#code}--headless{/code} ou {#code}--ci{/code} em scripts e CI.",
+	"home_floor_lang": "No seu idioma",
+	"home_floor_lang_text": "O app, a linha de comando e este site falam inglês e português do Brasil, e escolhem o seu sozinhos.",
+	"home_floor_lead": "Não contamos isto como recurso. É o mínimo que uma ferramenta usada o dia inteiro deveria fazer.",
+	"home_floor_local": "Local primeiro, sem telemetria",
+	"home_floor_local_text": "Sem conta, sem analytics, sem relatório de erro enviado escondido. Os logs ficam no seu projeto, e o app só fala com o GitHub para procurar atualizações.",
+	"home_floor_numbers": "Ver os números do terminal",
+	"home_floor_open": "Código aberto",
+	"home_floor_open_text": "MIT ou Apache-2.0, à sua escolha. Leia, confira, mude.",
+	"home_floor_survive": "Nada para quando o app fecha",
+	"home_floor_survive_text": "Terminais, projetos e agentes vivem num serviço em segundo plano, e fechar, travar ou atualizar o app não os interrompe.",
+	"home_floor_term": "Um terminal que acompanha",
+	"home_floor_term_text": "No macOS, cada terminal é desenhado pela GPU a até 120 quadros por segundo, com imagens, ligaduras e emoji. Publicamos nossos números ao lado dos do Ghostty, inclusive onde o Ghostty ganha.",
+	"home_floor_title": "O básico, bem feito."
+}

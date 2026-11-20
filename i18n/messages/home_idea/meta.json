@@ -1,0 +1,12 @@
+{
+	"home_idea_captain": "Title of the fourth station: the captain (the person responsible).",
+	"home_idea_captain_text": "Text of the captain station.",
+	"home_idea_crew": "Title of the third station: the crew (the AI agents).",
+	"home_idea_crew_text": "Text of the crew station; the agent names are products and stay as is.",
+	"home_idea_lead": "Paragraph under the heading of the sailing-image chapter.",
+	"home_idea_map": "Title of the first station of the illustration: the map (the description of how a project works).",
+	"home_idea_map_text": "Text of the map station.",
+	"home_idea_ships": "Title of the second station: the ships (your computers and servers).",
+	"home_idea_ships_text": "Text of the ships station.",
+	"home_idea_title": "Heading of the chapter that explains Atlas with a sailing image (map, ships, crew, captain)."
+}

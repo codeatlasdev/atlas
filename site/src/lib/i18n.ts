@@ -7,6 +7,24 @@ export type Locale = (typeof LOCALES)[number];
 export const BASE_LOCALE: Locale = "en";
 export const URL_SEGMENT: Record<Locale, string> = { en: "", "pt-BR": "pt-br" };
 
+/**
+ * Pages (besides the docs) that exist in every locale: `/x/` and `/pt-br/x/` are translations of each other. The sitemap lists their
+ * pt-BR twins, and each one has a Pages Function (functions/<path>) that sends a visitor who wants Portuguese to the twin
+ * (functions/_lib/locale.ts; a test pins that every page here has its route).
+ */
+export const LOCALIZED_PAGES = ["/", "/download/", "/changelog/", "/privacy/", "/code-signing-policy/"] as const;
+
+/** `{ en: "/x/", "pt-BR": "/pt-br/x/" }`: the `alternates` of a page that exists in every locale. */
+export const alternatesOf = (path: string): Record<Locale, string> => ({ en: path, "pt-BR": localizePath(path, "pt-BR") });
+
+/** The operating systems Atlas runs on, as a list in the language of the page ("macOS, Windows and Linux" / "macOS, Windows e Linux"). */
+export const platformList = (locale: Locale) => new Intl.ListFormat(locale, { type: "conjunction" }).format(["macOS", "Windows", "Linux"]);
+
+/** Cookie that remembers a visitor's language choice (set by the nav's language switch, read at the edge by functions/_lib/locale.ts). */
+export const LANG_COOKIE = "atlas_lang";
+/** One year; the switch rewrites it on every change. */
+export const LANG_COOKIE_MAX_AGE = 31_536_000;
+
 /** `Astro.currentLocale` ("pt-br", "pt-BR", "pt", "en", undefined) to a canonical locale. Anything unknown is English. */
 export function localeOfAstro(current: string | undefined): Locale {
 	return current?.toLowerCase().startsWith("pt") ? "pt-BR" : BASE_LOCALE;
@@ -64,12 +82,13 @@ export function switchTarget(locale: Locale, alternates: Partial<Record<Locale, 
 }
 
 /**
- * Whether a built page belongs in sitemap.xml. English pages always do. Under /pt-br/ only translated docs pages do: a fallback page
- * repeats the English body (duplicate content, canonical to English) and Astro's own fallbacks are redirects.
+ * Whether a built page belongs in sitemap.xml. English pages always do. Under /pt-br/: the twins of LOCALIZED_PAGES and translated docs
+ * pages. A fallback docs page repeats the English body (duplicate content, canonical to English) and Astro's own fallbacks are redirects.
  */
 export function inSitemap(pathname: string, translatedSlugs: ReadonlySet<string>): boolean {
 	const { locale, path } = delocalizePath(pathname);
 	if (locale === BASE_LOCALE) return true;
+	if ((LOCALIZED_PAGES as readonly string[]).includes(path)) return true;
 	const slug = path.match(/^\/docs\/([^/]+)\/$/)?.[1];
 	return slug !== undefined && translatedSlugs.has(slug);
 }

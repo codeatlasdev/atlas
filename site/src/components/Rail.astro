@@ -2,19 +2,19 @@
 // Page navigation: one icon per chapter (Lucide-style 24px / 1.75 stroke, same set as the rest of the site chrome).
 // The label is a tooltip on hover and focus and the accessible name; the active chapter is filled, and a thin
 // track shows how far through the page you are. Hidden on narrow screens (phones use the menu sheet).
+import { m } from "../lib/paraglide/messages.js";
 const items: [id: string, label: string, icon: string][] = [
-	["yaml", "One file", `<path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"/><path d="M14 2v6h6"/><path d="M8 13h8M8 17h5"/>`],
-	["terminal", "Terminal", `<path d="m4 17 6-6-6-6"/><path d="M12 19h8"/>`],
-	["spaces", "Spaces", `<rect x="3" y="3" width="18" height="18" rx="2"/><path d="M9 3v18"/>`],
-	["panel", "Panel", `<rect x="3" y="3" width="7" height="9" rx="1"/><rect x="14" y="3" width="7" height="5" rx="1"/><rect x="14" y="12" width="7" height="9" rx="1"/><rect x="3" y="16" width="7" height="5" rx="1"/>`],
-	["logs", "Logs", `<path d="M3 6h18M3 12h14M3 18h9"/>`],
-	["agents", "Agents", `<circle cx="6" cy="5" r="2.2"/><circle cx="6" cy="19" r="2.2"/><circle cx="18" cy="8" r="2.2"/><path d="M6 7.2v9.6"/><path d="M18 10.2c0 4-6 3-12 6.2"/>`],
-	["mcp", "MCP", `<path d="M12 22v-5"/><path d="M9 8V2M15 8V2"/><path d="M18 8v5a4 4 0 0 1-4 4h-4a4 4 0 0 1-4-4V8z"/>`],
-	["tui", "TUI", `<rect x="2" y="4" width="20" height="16" rx="2"/><path d="m7 10 3 2-3 2M13 15h4"/>`],
-	["faq", "FAQ", `<circle cx="12" cy="12" r="10"/><path d="M9.1 9a3 3 0 0 1 5.8 1c0 2-3 3-3 3"/><path d="M12 17h.01"/>`],
+	["idea", m.home_rail_idea(), `<path d="m3 6 6-3 6 3 6-3v15l-6 3-6-3-6 3z"/><path d="M9 3v15M15 6v15"/>`],
+	["crew", m.home_rail_crew(), `<circle cx="9" cy="7" r="3"/><path d="M3 21v-1a6 6 0 0 1 12 0v1"/><path d="M16 4.1a3 3 0 0 1 0 5.8M21 21v-1a6 6 0 0 0-4-5.6"/>`],
+	["agents", m.home_rail_agents(), `<circle cx="6" cy="5" r="2.2"/><circle cx="6" cy="19" r="2.2"/><circle cx="18" cy="8" r="2.2"/><path d="M6 7.2v9.6"/><path d="M18 10.2c0 4-6 3-12 6.2"/>`],
+	["stack", m.home_rail_stack(), `<path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"/><path d="M14 2v6h6"/><path d="M8 13h8M8 17h5"/>`],
+	["mcp", m.home_rail_mcp(), `<path d="M12 22v-5"/><path d="M9 8V2M15 8V2"/><path d="M18 8v5a4 4 0 0 1-4 4h-4a4 4 0 0 1-4-4V8z"/>`],
+	["floor", m.home_rail_floor(), `<path d="M20 6 9 17l-5-5"/>`],
+	["grand", m.home_rail_grand(), `<circle cx="12" cy="12" r="10"/><path d="m16.2 7.8-2.1 6.3-6.3 2.1 2.1-6.3z"/>`],
+	["faq", m.home_rail_faq(), `<circle cx="12" cy="12" r="10"/><path d="M9.1 9a3 3 0 0 1 5.8 1c0 2-3 3-3 3"/><path d="M12 17h.01"/>`],
 ];
 ---
-<nav class="rail" aria-label="On this page" data-rail-nav>
+<nav class="rail" aria-label={m.home_rail_label()} data-rail-nav>
 	<ul>
 		{items.map(([id, label, icon]) => (
 			<li>

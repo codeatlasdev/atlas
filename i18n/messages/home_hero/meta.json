@@ -1,0 +1,11 @@
+{
+	"home_hero_alpha": "Warning under the download buttons that Atlas is alpha software; the link opens a new GitHub issue.",
+	"home_hero_clip_alt": "Alt text of the product video beside the h1 (the agents dashboard).",
+	"home_hero_fine": "Small print under the download buttons. {platforms} is the list of operating systems formatted for the language (macOS, Windows and Linux).",
+	"home_hero_lead": "Paragraph under the h1 on wide screens: what Atlas is and what it does, in plain words for people who are not specialists.",
+	"home_hero_lead_short": "Shorter line under the h1 on phones (replaces the long paragraph).",
+	"home_hero_meta_description": "Meta description of the home page (search results and link previews), about 160 characters.",
+	"home_hero_meta_title": "<title> and og:title of the home page.",
+	"home_hero_play_film": "Label of the button that opens the product film, shown before JavaScript loads; the film's length follows it.",
+	"home_hero_title": "The h1 of the home page: the whole promise of Atlas in one line. Two short sentences."
+}

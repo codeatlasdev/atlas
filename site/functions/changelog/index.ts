@@ -5,6 +5,7 @@ import { DEFAULT_CHANNEL } from "../_lib/channels";
 import { renderChangelog } from "../_lib/changelog";
 import { loadChangelog, resolveChannel } from "../_lib/edge";
 import { changelogBody } from "../_lib/page";
+import { localeRedirect } from "../_lib/locale";
 import { edgeHeaders, wantedChannel, wantsFresh } from "../_lib/respond";
 
 const OPEN = "<!--CHANGELOG-->";
@@ -12,6 +13,9 @@ const CLOSE = "<!--/CHANGELOG-->";
 const HTML = { "content-type": "text/html; charset=utf-8" };
 
 export const onRequestGet: PagesFunction = async ({ request, next }) => {
+	// A visitor who wants Portuguese gets /pt-br/changelog/ (see _lib/locale.ts).
+	const redirect = localeRedirect(request);
+	if (redirect) return redirect;
 	// `next()` serves the static asset for this path: the shell, and the offline fallback body between the markers.
 	const html = await (await next()).text();
 	const a = html.indexOf(OPEN);

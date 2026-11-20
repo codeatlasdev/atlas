@@ -1,0 +1,12 @@
+{
+	"home_idea_captain": "The captain",
+	"home_idea_captain_text": "You. Agents ask before anything risky, and every step is written down so you can check it.",
+	"home_idea_crew": "The crew",
+	"home_idea_crew_text": "The agents you already use, Claude Code, Codex, omp or OpenCode, each with a name, a role and its own place to work.",
+	"home_idea_lead": "AI agents already write code, answer customers and sort tasks, and they are fast. Fast is not the same as arriving. Atlas gives them what sailors always needed, and keeps a person at the helm.",
+	"home_idea_map": "The map",
+	"home_idea_map_text": "How each project works, written once in a file that people and agents both read: what to start, in what order, where the logs are.",
+	"home_idea_ships": "The ships",
+	"home_idea_ships_text": "Your computers and servers: Atlas Desktop on your computer, a crew server on a Linux machine you own, and your phone.",
+	"home_idea_title": "Crossing an ocean takes a map, a ship and a crew."
+}

@@ -13,18 +13,20 @@ interface Props {
 const { alternates, canonicalPath } = Astro.props;
 const locale = localeOfAstro(Astro.currentLocale);
 const { path } = delocalizePath(Astro.url.pathname);
-// Only the docs have pt-BR pages (/pt-br/docs/...); every other page is English, so its links stay unprefixed.
+// The language switch exists when this page has a real twin (or is a pt-BR fallback of an English page). Clicking it stores the choice in
+// the `atlas_lang` cookie (script below), which the edge reads before country and browser language (functions/_lib/locale.ts).
 const to = switchTarget(locale, alternates, canonicalPath);
+const home = localizePath("/", locale);
 const links = [
 	{ href: localizePath(SITE.docs, locale), label: m.nav_docs(), active: path.startsWith("/docs") },
-	{ href: "/changelog/", label: m.nav_changelog(), active: path.startsWith("/changelog") },
+	{ href: localizePath("/changelog/", locale), label: m.nav_changelog(), active: path.startsWith("/changelog") },
 	{ href: SITE.github, label: "GitHub" },
 	...(to ? [{ href: to.path, label: m.nav_language_switch(), lang: to.locale }] : []),
 ];
 ---
 <header class="nav" data-nav>
 	<div class="bar">
-		<a class="brand" href="/" aria-label={m.nav_home_label()}>
+		<a class="brand" href={home} aria-label={m.nav_home_label()}>
 			<span class="mark" aria-hidden="true"><img src="/favicon.svg" alt="" width="26" height="26" decoding="async" /></span>
 			<span class="word">Atlas</span>
 		</a>
@@ -33,7 +35,7 @@ const links = [
 				<NavLinks links={links} />
 			</ul>
 		</nav>
-		<a class="btn solid sm cta-bar" href="/download/">{m.nav_download()}</a>
+		<a class="btn solid sm cta-bar" href={localizePath("/download/", locale)}>{m.nav_download()}</a>
 		<button type="button" class="burger" aria-expanded="false" aria-controls="menu-sheet" aria-label={m.nav_menu_open()} data-burger>
 			<svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="square" aria-hidden="true"><path class="l1" d="M4 8h16" /><path class="l2" d="M4 16h16" /></svg>
 		</button>
@@ -41,17 +43,24 @@ const links = [
 	<div class="sheet" id="menu-sheet" hidden data-sheet>
 		<nav aria-label={m.nav_menu_label()}>
 			<ul>
-				<li><a href="/#yaml">{m.nav_idea()}</a></li>
+				<li><a href={`${home}#idea`}>{m.nav_idea()}</a></li>
 				<NavLinks links={links} />
 				<li><a href={localizePath("/docs/getting-started/", locale)}>{m.nav_getting_started()}</a></li>
 			</ul>
 		</nav>
-		<a class="btn solid wide" href="/download/" data-close>{m.nav_download_atlas()}</a>
+		<a class="btn solid wide" href={localizePath("/download/", locale)} data-close>{m.nav_download_atlas()}</a>
 	</div>
 </header>
 <script>
 	import "../lib/locale-client";
 	import { m } from "../lib/paraglide/messages.js";
+	import { LANG_COOKIE, LANG_COOKIE_MAX_AGE } from "../lib/i18n";
+	// The language switch remembers the choice for a year, so the edge stops guessing (country, browser language) for this visitor.
+	for (const a of document.querySelectorAll<HTMLAnchorElement>("a[hreflang]")) {
+		a.addEventListener("click", () => {
+			document.cookie = `${LANG_COOKIE}=${a.hreflang}; Path=/; Max-Age=${LANG_COOKIE_MAX_AGE}; SameSite=Lax${location.protocol === "https:" ? "; Secure" : ""}`;
+		});
+	}
 	// Menu sheet: toggled by the burger, closed by Escape, a link tap, or leaving the phone breakpoint.
 	// Body scroll is locked while it is open (position-free, so iOS keeps the scroll offset).
 	const nav = document.querySelector<HTMLElement>("[data-nav]");

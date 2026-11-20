@@ -1,0 +1,17 @@
+{
+	"home_crew_auto": "Automations",
+	"home_crew_auto_text": "Tasks that start by themselves: on a schedule, on a GitHub event, from a webhook, or when another crewmate finishes.",
+	"home_crew_lead": "Atlas Crew keeps agents working on a Linux server you own, so your laptop can sleep. Each crewmate has a name, a role, a task queue and its own memory. They run on your own subscription or API key; Atlas itself never calls a model.",
+	"home_crew_modes": "Permission modes",
+	"home_crew_modes_text": "Ask, Accept edits or Bypass, switchable while it works. Some rails no mode removes: protected files, destructive commands, tasks that came from outside.",
+	"home_crew_more": "How Atlas Crew works",
+	"home_crew_night": "An example night",
+	"home_crew_step_approve": "You read the result and the diff, and answer: allow once, allow for this task, or deny with a note.",
+	"home_crew_step_ask": "It wants to run something risky. It stops and asks, and the question waits for you.",
+	"home_crew_step_ask_badge": "Waiting for you",
+	"home_crew_step_leave": "You leave a task, by text or by voice, in Atlas Desktop or in Telegram.",
+	"home_crew_step_work": "A crewmate reproduces the bug, writes a test that fails, then fixes it.",
+	"home_crew_title": "Leave a task at night. Wake up to the work, and the proof.",
+	"home_crew_yours": "Your machine, your keys",
+	"home_crew_yours_text": "The server is yours, set up with one command over SSH. GitHub access goes through the crew's own GitHub App, with short-lived tokens."
+}

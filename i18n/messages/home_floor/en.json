@@ -1,0 +1,19 @@
+{
+	"home_floor_app": "A real app on every computer",
+	"home_floor_app_text": "A desktop app for {platforms}, with projects, terminals, agents, code review and a browser in one window.",
+	"home_floor_cli": "No desktop? The same engine in a terminal",
+	"home_floor_cli_text": "{#code}atlas dev{/code} runs the same engine as a dashboard in your terminal, and with {#code}--headless{/code} or {#code}--ci{/code} in scripts and CI.",
+	"home_floor_lang": "In your language",
+	"home_floor_lang_text": "The app, the command line and this site speak English and Brazilian Portuguese, and pick yours by themselves.",
+	"home_floor_lead": "We don't count these as features. They are what a tool you live in all day should do anyway.",
+	"home_floor_local": "Local first, no telemetry",
+	"home_floor_local_text": "No account, no analytics, no hidden crash reports. Logs stay in your project, and the app only contacts GitHub to check for updates.",
+	"home_floor_numbers": "See the terminal numbers",
+	"home_floor_open": "Open source",
+	"home_floor_open_text": "MIT or Apache-2.0, at your choice. Read it, check it, change it.",
+	"home_floor_survive": "Nothing stops when the app closes",
+	"home_floor_survive_text": "Terminals, projects and agents live in a background service, so quitting, crashing or updating the app does not stop them.",
+	"home_floor_term": "A terminal that keeps up",
+	"home_floor_term_text": "On macOS each terminal is drawn by the GPU at up to 120 frames per second, with images, ligatures and emoji. We publish our numbers next to Ghostty's, including where Ghostty wins.",
+	"home_floor_title": "The basics, done properly."
+}

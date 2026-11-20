@@ -1,0 +1,20 @@
+{
+	"home_work_agents_lead": "Paragraph of the agents chapter; worktree and branch stay English (git terms).",
+	"home_work_agents_more": "Small print of the agents chapter; the link opens the agent setup docs.",
+	"home_work_agents_shot_alt": "Alt text of the screenshot in the agents chapter.",
+	"home_work_agents_title": "Heading of the chapter about running several coding agents at once.",
+	"home_work_branches_alt": "Accessible description of the branch drawing.",
+	"home_work_mcp_lead": "Paragraph of the MCP chapter.",
+	"home_work_mcp_more": "Small print of the MCP chapter; MCP is a protocol name; the link opens the MCP docs.",
+	"home_work_mcp_title": "Heading of the chapter about agents reading the running project through MCP.",
+	"home_work_ports": "Label in the branch drawing: how far a worktree's ports are shifted so they do not clash ({n} is 100, 200 or 300).",
+	"home_work_stack_lead": "Paragraph of the project chapter. atlas.yaml and atlas dev are a file name and a command.",
+	"home_work_stack_more": "Small print of the project chapter; the link opens the configuration reference.",
+	"home_work_stack_title": "Heading of the chapter about starting a project (database, API, web app...) with atlas dev.",
+	"home_work_tx_agent": "Speaker label of the AI agent in the example chat (lowercase).",
+	"home_work_tx_answer": "The agent's diagnosis in the example chat. Stripe is a payment service; worker is the name of a service.",
+	"home_work_tx_caption": "Caption of the example chat between a person and an agent using Atlas tools.",
+	"home_work_tx_offer": "The agent's offer at the end of the example chat; {file} is a file path and line.",
+	"home_work_tx_question": "The person's question in the example chat (casual, lowercase); checkout is the name of a page of the example shop.",
+	"home_work_tx_you": "Speaker label of the person in the example chat (lowercase, like a chat transcript)."
+}

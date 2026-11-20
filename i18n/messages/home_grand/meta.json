@@ -1,0 +1,16 @@
+{
+	"home_grand_close": "Closing line of the Grand Line chapter, set large.",
+	"home_grand_lead": "Paragraph of the Grand Line chapter.",
+	"home_grand_next": "Heading of the list of plans (not shipped yet).",
+	"home_grand_next_company": "Item of the plans list.",
+	"home_grand_next_phone": "Item of the plans list; the phone app exists but is not in the stores yet.",
+	"home_grand_next_teach": "Item of the plans list.",
+	"home_grand_next_trust": "Item of the plans list.",
+	"home_grand_note": "Note under the plans list; the link opens the repository.",
+	"home_grand_now": "Heading of the list of things that exist today.",
+	"home_grand_now_agents": "Item of the exists-today list.",
+	"home_grand_now_approve": "Item of the exists-today list.",
+	"home_grand_now_crew": "Item of the exists-today list.",
+	"home_grand_now_map": "Item of the exists-today list.",
+	"home_grand_title": "Heading of the chapter about Grand Line, the direction Atlas is going. Grand Line is a name and stays as is."
+}

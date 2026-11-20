@@ -1,0 +1,22 @@
+{
+	"home_floor_app": "Title of a basics item: the desktop app.",
+	"home_floor_app_text": "Text of the desktop app item. {platforms} is the list of operating systems formatted for the language.",
+	"home_floor_cli": "Title of a basics item: the terminal dashboard and command line.",
+	"home_floor_cli_text": "Text of the command-line item; the code spans are a command and its flags.",
+	"home_floor_lang": "Title of a basics item: languages.",
+	"home_floor_lang_text": "Text of the language item.",
+	"home_floor_lead": "Paragraph under the heading of the basics chapter.",
+	"home_floor_local": "Title of a basics item: privacy.",
+	"home_floor_local_text": "Text of the privacy item.",
+	"home_floor_numbers": "Link from the terminal item to the performance table in the docs.",
+	"home_floor_open": "Title of a basics item: the license.",
+	"home_floor_open_text": "Text of the open source item; MIT and Apache-2.0 are license names.",
+	"home_floor_survive": "Title of a basics item: work survives quitting the app.",
+	"home_floor_survive_text": "Text of the survives-quitting item.",
+	"home_floor_term": "Title of a basics item: the terminal.",
+	"home_floor_term_text": {
+		"description": "Text of the terminal item; the GPU terminal exists on macOS only (Windows and Linux use another terminal). Ghostty is another terminal app.",
+		"platform": "mac"
+	},
+	"home_floor_title": "Heading of the chapter listing what Atlas treats as the minimum quality, not as features."
+}

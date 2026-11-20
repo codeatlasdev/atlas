@@ -1,0 +1,17 @@
+{
+	"home_crew_auto": "Title of a fact under the timeline: tasks that start by themselves.",
+	"home_crew_auto_text": "Text of the automations fact.",
+	"home_crew_lead": "Paragraph of the Atlas Crew chapter. crewmate is a product term (an agent of the Crew) and stays English.",
+	"home_crew_modes": "Title of a fact under the timeline: a crewmate's permission mode.",
+	"home_crew_modes_text": "Text of the permission modes fact; Ask, Accept edits and Bypass are the names of the modes in the app (pt-BR: Perguntar, Aceitar edições, Bypass).",
+	"home_crew_more": "Link to the Atlas Crew docs page at the end of the chapter.",
+	"home_crew_night": "Caption of the timeline illustration (a night of a crewmate's work, from evening to morning).",
+	"home_crew_step_approve": "Timeline step in the morning: the person reviews and answers; the three answers match the app's buttons.",
+	"home_crew_step_ask": "Timeline step in the small hours: the crewmate asks for approval and waits.",
+	"home_crew_step_ask_badge": "Small status badge on the timeline step where the crewmate waits for approval.",
+	"home_crew_step_leave": "Timeline step at night: the person gives a crewmate a task.",
+	"home_crew_step_work": "Timeline step after midnight: the crewmate works on the task.",
+	"home_crew_title": "Heading of the Atlas Crew chapter.",
+	"home_crew_yours": "Title of a fact under the timeline: the server and the credentials belong to the user.",
+	"home_crew_yours_text": "Text of the your-machine fact."
+}

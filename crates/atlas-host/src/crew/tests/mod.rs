@@ -44,6 +44,7 @@
 //! | `old_crons`   | crons croner 2 accepted and croner 4 refuses: load, list as invalid, never fire, edits of the rest |
 //! | `omp_approval` | omp's `ask` through the real approval extension, under omp's own handler limit and a virtual clock |
 //! | `permissions` | permission modes (#642): the rails, each mode on claude and omp, switching, scopes, comments, the AX, Telegram `/mode`, the contract fixtures |
+//! | `voice`       | dictation (#647): the engines, hints and replacements, the audio's lifetime, Telegram voice notes, the fixtures |
 //! | `prove_ui`    | a `ui` task needs two agent captures to be done: the card, override/retry, Telegram |
 
 pub(crate) mod github_fake;
@@ -126,3 +127,5 @@ mod triggers;
 mod uigate;
 #[cfg(unix)]
 mod untrusted;
+#[cfg(unix)]
+mod voice;

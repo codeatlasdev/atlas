@@ -11,7 +11,13 @@
 		"crew.github_app.code_expired",
 		"crew.github_app.conversion_failed",
 		"crew.github_app.none",
-		"crew.github_app.forbidden"
+		"crew.github_app.forbidden",
+		"crew.voice.off",
+		"crew.voice.not_installed",
+		"crew.voice.engine_failed",
+		"crew.voice.too_long",
+		"crew.voice.bad_audio",
+		"crew.voice.forbidden"
 	],
 	"errors": [
 		{
@@ -170,6 +176,41 @@
 			"args": {},
 			"code": "crew.github_app.forbidden",
 			"message": "only the owner sets up the GitHub App"
+		},
+		{
+			"args": {},
+			"code": "crew.voice.off",
+			"message": "voice is turned off on this crew"
+		},
+		{
+			"args": {},
+			"code": "crew.voice.not_installed",
+			"message": "no voice engine is installed on this crew server (atlas crew voice install)"
+		},
+		{
+			"args": {
+				"detail": "whisper-cli exited with status 1",
+				"engine": "whisper.cpp (small)"
+			},
+			"code": "crew.voice.engine_failed",
+			"message": "whisper.cpp (small) failed: whisper-cli exited with status 1"
+		},
+		{
+			"args": {
+				"max_seconds": 300
+			},
+			"code": "crew.voice.too_long",
+			"message": "dictation is capped at 300 seconds"
+		},
+		{
+			"args": {},
+			"code": "crew.voice.bad_audio",
+			"message": "the audio is not 16 kHz mono 16-bit PCM WAV"
+		},
+		{
+			"args": {},
+			"code": "crew.voice.forbidden",
+			"message": "only the owner can change the voice settings"
 		}
 	]
 }

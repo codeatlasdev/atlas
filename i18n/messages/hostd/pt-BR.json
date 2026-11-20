@@ -67,5 +67,11 @@
 	"hostd_wire_unreachable": "Host de terminais inacessível. Os terminais não conseguem iniciar nem reconectar até ele voltar. Clique em Reiniciar o host de terminais ou, se o problema continuar, em Reportar.",
 	"hostd_wire_unreachable_why": "{@hostd_wire_unreachable} ({why})",
 	"hostd_wire_upgrade_failed": "Não foi possível atualizar o host de terminais ({error}). Os terminais continuam no host antigo.",
-	"hostd_wire_upgraded": "Host de terminais atualizado"
+	"hostd_wire_upgraded": "Host de terminais atualizado",
+	"hostd_wire_voice_bad_audio": "A gravação não está em um formato que o crew server lê (WAV de 16 kHz, mono, 16 bits).",
+	"hostd_wire_voice_engine_failed": "{engine} não conseguiu transcrever isso. Nenhum outro engine foi tentado.",
+	"hostd_wire_voice_forbidden": "Só você pode mudar as configurações de voz, pelo Atlas Desktop.",
+	"hostd_wire_voice_not_installed": "Nenhum engine de voz está instalado neste crew server. Rode atlas crew voice install.",
+	"hostd_wire_voice_off": "A voz está desligada neste crew. Ligue nas configurações do crew.",
+	"hostd_wire_voice_too_long": "O ditado é limitado a {max_seconds} segundos."
 }

@@ -590,6 +590,24 @@ pub fn shots_permission_request() -> Result<Permission, String> {
     unavailable()
 }
 
+/// The microphone grant of this app as macOS reports it (dictation reads the same state as the recorder).
+#[cfg(target_os = "macos")]
+pub fn microphone_access() -> recopts::MicAccess {
+    record_mac::mic_access()
+}
+
+/// Ask for the microphone (the system prompt, once per install) and wait for the answer.
+#[cfg(target_os = "macos")]
+pub fn microphone_request() -> bool {
+    record_mac::request_mic()
+}
+
+/// Open System Settings on Privacy & Security > Microphone.
+#[cfg(target_os = "macos")]
+pub fn open_microphone_settings() -> Result<(), String> {
+    mac::open_url("x-apple.systempreferences:com.apple.preference.security?Privacy_Microphone")
+}
+
 #[tauri::command]
 pub fn shots_open_settings() -> Result<(), String> {
     #[cfg(target_os = "macos")]

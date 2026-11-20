@@ -60,18 +60,18 @@ pub struct TargetArgs {
 }
 
 impl TargetArgs {
-    fn remote(&self) -> Remote {
+    pub(super) fn remote(&self) -> Remote {
         Remote::crew(&self.ssh_target, self.port).with_identity(self.identity.clone())
     }
 
     /// `sudo -u <crew user>` runs in `install` and `status`: make sudo work before either, with the
     /// password on every call when Atlas Desktop sent one.
-    async fn privileged<'a>(&self, r: &'a Remote, verb: &str) -> Result<Priv<'a>> {
+    pub(super) async fn privileged<'a>(&self, r: &'a Remote, command: &str) -> Result<Priv<'a>> {
         Priv::prepare(
             r,
             &self.ssh_target,
             self.sudo_password_stdin,
-            &format!("atlas crew browsers {verb} {}", self.ssh_target),
+            &format!("{command} {}", self.ssh_target),
         )
         .await
     }
@@ -82,12 +82,12 @@ impl AtlasCommand for BrowsersArgs {
         match self.command {
             BrowsersCommands::Install(a) => {
                 let r = a.remote();
-                let p = a.privileged(&r, "install").await?;
+                let p = a.privileged(&r, "atlas crew browsers install").await?;
                 install(&p, &a.ssh_target).await
             }
             BrowsersCommands::Status(a) => {
                 let r = a.remote();
-                let p = a.privileged(&r, "status").await?;
+                let p = a.privileged(&r, "atlas crew browsers status").await?;
                 status(&p, &a.ssh_target).await
             }
         }

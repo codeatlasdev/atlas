@@ -160,6 +160,22 @@ export function render(code: string, args: Record<string, unknown> = {}): string
 		}
 		case "crew.approval.forbidden":
 			return m.hostd_wire_approval_forbidden();
+		case "crew.voice.off":
+			return m.hostd_wire_voice_off();
+		case "crew.voice.not_installed":
+			return m.hostd_wire_voice_not_installed();
+		case "crew.voice.engine_failed": {
+			const engine = s("engine");
+			return engine === undefined ? undefined : m.hostd_wire_voice_engine_failed({ engine });
+		}
+		case "crew.voice.too_long": {
+			const max = typeof args.max_seconds === "number" ? String(args.max_seconds) : undefined;
+			return max === undefined ? undefined : m.hostd_wire_voice_too_long({ max_seconds: max });
+		}
+		case "crew.voice.bad_audio":
+			return m.hostd_wire_voice_bad_audio();
+		case "crew.voice.forbidden":
+			return m.hostd_wire_voice_forbidden();
 		default:
 			return undefined;
 	}

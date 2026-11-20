@@ -140,6 +140,8 @@ const QUICK: &[&str] = &[
     "crew_telegram_link",
     "crew_telegram_set",
     "crew_telegram_status",
+    "crew_voice_set",
+    "crew_voice_status",
     "crewmate_action_answer",
     "crewmate_answer",
     "crewmate_attachment",
@@ -158,6 +160,8 @@ const QUICK: &[&str] = &[
     "crewmate_triggers_set",
     "crewmate_update",
     "crewmate_usage",
+    // One piece (at most 512 KiB) appended to a file.
+    "crewmate_voice_put",
     "engine_limits",
     "fs_list",
     "fs_mkdir",
@@ -219,6 +223,8 @@ const LONG: &[&str] = &[
     "crew_engine_status",
     "crew_engine_login",
     "crewmate_delete",
+    // Runs the speech engine over up to five minutes of audio, or waits for a hosted endpoint.
+    "crewmate_transcribe",
     "fs_read",
     "fs_write",
     "fs_remove",

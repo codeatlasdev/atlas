@@ -1,0 +1,3 @@
+/* The system prompts of dictation (the app's own words are in i18n/messages/mobile_voice). */
+"NSMicrophoneUsageDescription" = "O Atlas usa o microfone para transformar o que você diz em texto na sua mensagem para um crewmate. A fala é reconhecida no seu iPhone: o áudio nunca é gravado, salvo nem enviado ao seu computador.";
+"NSSpeechRecognitionUsageDescription" = "O Atlas pede ao iOS que reconheça a sua fala neste iPhone para você ditar uma mensagem. Se você escolher o reconhecedor online do sistema, a Apple pode receber o áudio.";

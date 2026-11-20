@@ -428,6 +428,10 @@ pub struct Task {
     /// `/ui` prefix on Telegram) or by the agent (`set_ui`).
     #[serde(default, skip_serializing_if = "std::ops::Not::not")]
     pub ui: bool,
+    /// The prompt was (partly) dictated by voice: the agent is told to expect homophones in identifiers and file
+    /// names (`voice::NOTE`). Never shown as user text.
+    #[serde(default, skip_serializing_if = "std::ops::Not::not")]
+    pub dictated: bool,
     /// The crewmates whose finished tasks led to this one through `Crewmate` triggers, oldest first
     /// (empty for a task nobody chained). A chain trigger refuses to start a crewmate already in it,
     /// so two crewmates triggering each other on `done` run one round and stop.
@@ -471,6 +475,7 @@ impl Task {
             resumed: false,
             attachments: vec![],
             ui: false,
+            dictated: false,
             chain: vec![],
         }
     }
@@ -503,6 +508,9 @@ pub struct CrewSettings {
     /// goes back to Ask.
     #[serde(default = "default_true")]
     pub allow_bypass: bool,
+    /// Dictation (`crew::voice`): off until the owner turns it on.
+    #[serde(default)]
+    pub voice: super::voice::VoiceSettings,
     /// The public base URL GitHub reaches this server at (the operator's reverse proxy or tunnel, never Atlas
     /// itself), normalized by [`normalize_public_url`]. Set: the GitHub App's webhook posts to
     /// `<url>/github/webhook`. Unset: GitHub events come from the poll alone.
@@ -573,6 +581,7 @@ impl Default for CrewSettings {
             agent_memory_max: None,
             default_approval: Mode::Ask,
             allow_bypass: true,
+            voice: Default::default(),
             public_url: None,
         }
     }

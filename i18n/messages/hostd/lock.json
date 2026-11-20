@@ -55,6 +55,12 @@
     "hostd_wire_unreachable": "9264a1f169c5",
     "hostd_wire_unreachable_why": "c594517dd16f",
     "hostd_wire_upgrade_failed": "e6039350d8e5",
-    "hostd_wire_upgraded": "20b10c2bd802"
+    "hostd_wire_upgraded": "20b10c2bd802",
+    "hostd_wire_voice_bad_audio": "994233f785f0",
+    "hostd_wire_voice_engine_failed": "faa1c8bb9df4",
+    "hostd_wire_voice_forbidden": "b154f8be3fa8",
+    "hostd_wire_voice_not_installed": "6cba72462831",
+    "hostd_wire_voice_off": "ca7db5a42fd9",
+    "hostd_wire_voice_too_long": "7f5b2d1b3066"
   }
 }

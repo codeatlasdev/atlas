@@ -1,0 +1,3 @@
+/* The system prompts of dictation (the app's own words are in i18n/messages/mobile_voice). */
+"NSMicrophoneUsageDescription" = "Atlas uses the microphone to turn what you say into text for your message to a crewmate. Speech is recognised on your iPhone: audio is never recorded, saved or sent to your computer.";
+"NSSpeechRecognitionUsageDescription" = "Atlas asks iOS to recognise your speech on this iPhone so you can dictate a message. If you choose the online system recognizer, Apple may receive the audio.";

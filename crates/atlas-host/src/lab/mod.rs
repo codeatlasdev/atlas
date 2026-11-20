@@ -158,6 +158,10 @@ pub fn route(cmd: &HostCmd) -> Route {
         | C::CrewAudit { .. }
         | C::CrewTelegramSet { .. }
         | C::CrewTelegramLink {}
+        | C::CrewVoiceStatus {}
+        | C::CrewVoiceSet { .. }
+        | C::CrewmateVoicePut { .. }
+        | C::CrewmateTranscribe { .. }
         | C::CrewTelegramStatus {}
         | C::PushRegister { .. }
         | C::PushUnregister { .. }

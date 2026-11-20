@@ -347,7 +347,7 @@ jobs:
 
       - uses: ./.github/actions/release-toolchain
         with:
-          apt: libwebkit2gtk-4.1-dev libayatana-appindicator3-dev librsvg2-dev libxdo-dev libssl-dev
+          apt: libwebkit2gtk-4.1-dev libayatana-appindicator3-dev librsvg2-dev libxdo-dev libasound2-dev libssl-dev
 
       - name: Install Bun
         uses: oven-sh/setup-bun@0c5077e51419868618aeaa5fe8019c62421857d6 # v2.2.0

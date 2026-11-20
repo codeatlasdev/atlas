@@ -34,6 +34,7 @@ import 'package:atlas_mobile/features/crew/chat/working_row.dart';
 import 'package:atlas_mobile/features/crew/chat_motion.dart';
 import 'package:atlas_mobile/features/crew/crew_provider.dart';
 import 'package:atlas_mobile/features/crew/crew_text.dart';
+import 'package:atlas_mobile/features/crew/ops/crew_ops_provider.dart';
 import 'package:atlas_mobile/features/crew/permissions/approval_actions.dart';
 import 'package:atlas_mobile/features/crew/permissions/crewmate_mode_control.dart';
 import 'package:atlas_mobile/features/crew/permissions/mode_button.dart';
@@ -140,9 +141,10 @@ class _CrewmateChatScreenState extends ConsumerState<CrewmateChatScreen> {
     );
   }
 
-  /// Sends the composer's text with its [images]. `true` when the crew server took the task (the composer then
-  /// lets the images go); `false` keeps text and images for another try, with the server's reason on screen.
-  Future<bool> _send(List<PendingImage> images) async {
+  /// Sends the composer's text with its [images]. [dictated]: some of the text was spoken, so hostd tells the agent
+  /// to expect homophones. `true` when the crew server took the task (the composer then lets the images go);
+  /// `false` keeps text and images for another try, with the server's reason on screen.
+  Future<bool> _send(List<PendingImage> images, bool dictated) async {
     final text = _msg.text.trim();
     if (text.isEmpty) return false;
     setState(() => _sending = true);
@@ -159,6 +161,7 @@ class _CrewmateChatScreenState extends ConsumerState<CrewmateChatScreen> {
         'id': widget.crewmateId,
         'prompt': text,
         'source': 'mobile',
+        if (dictated) 'dictated': true,
         if (attachments.isNotEmpty) 'attachments': attachments,
       });
       if (resp['ok'] != true) {
@@ -577,6 +580,12 @@ class _CrewmateChatScreenState extends ConsumerState<CrewmateChatScreen> {
                       sending: _sending,
                       online: online,
                       queued: queued,
+                      voice:
+                          ref
+                              .watch(crewVoiceProvider(widget.device))
+                              .value
+                              ?.enabled ??
+                          false,
                       onSend: _send,
                     ),
                   ],

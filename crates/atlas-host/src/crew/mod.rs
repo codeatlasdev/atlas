@@ -23,6 +23,7 @@
 //! | `telegram`, `push` | delivery channels                                                    |
 //! | `mcp`       | the MCP server an engine's agent talks to (`atlas mcp --crewmate <id>`)     |
 //! | `relay`     | the Mac's relay to crew servers, for Atlas Mobile (runs on the Mac)         |
+//! | `voice`     | dictation: whisper.cpp or a hosted endpoint, hints, replacements, audio rules |
 
 pub(crate) mod approval;
 pub(crate) mod attachments;
@@ -53,6 +54,7 @@ pub(crate) mod telegram;
 mod tests;
 pub(crate) mod triggers;
 pub mod uigate;
+pub mod voice;
 
 use serde_json::{Value, json};
 
@@ -152,7 +154,16 @@ pub(crate) async fn handle(hub: &Hub, cmd: HostCmd) -> Result<Value, String> {
             tz,
             attachments,
             ui,
-        } => t::send_task(hub, id, prompt, source, tz, attachments, ui),
+            dictated,
+        } => t::send_task(
+            hub,
+            id,
+            prompt,
+            source,
+            tz,
+            attachments,
+            t::Marks { ui, dictated },
+        ),
         HostCmd::CrewmateAttachmentPut {
             id,
             upload,

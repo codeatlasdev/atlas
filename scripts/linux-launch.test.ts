@@ -60,6 +60,13 @@ describe("the .deb and .rpm", () => {
 		expect(conf.bundle.linux.deb.depends).toContain("git");
 		expect(conf.bundle.linux.rpm.depends).toContain("git");
 	});
+	// Dictation (#647) records through cpal, which links ALSA's libasound: without it the app does not start at all.
+	test("both depend on ALSA's runtime library (dictation links it)", () => {
+		expect(conf.bundle.linux.deb.depends).toContain("libasound2t64 | libasound2");
+		expect(conf.bundle.linux.rpm.depends).toContain("alsa-lib");
+		const arch = read("packaging/arch/PKGBUILD.in").match(/^depends=\((.*)\)$/m)?.[1] ?? "";
+		expect(arch).toContain("'alsa-lib'");
+	});
 	test("verify-linux checks, after the install, that the plugins are on disk", () => {
 		const steps = release.jobs["verify-linux"].steps.map((s: any) => s.run ?? "").join("\n");
 		expect(steps).toContain("libgstogg.so");

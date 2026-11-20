@@ -1,7 +1,7 @@
 ---
 title: "Instalação"
 source: installation.md
-source_sha: "4ba679a5bffe54737f967ed9dd30de9ce8ad8db9"
+source_sha: "5ce543a5c06987a160f905561c4e8bd35afc094c"
 translation: machine
 ---
 
@@ -170,8 +170,8 @@ Você precisa de:
 
   ```bash
   sudo pacman -S --needed webkit2gtk-4.1 base-devel curl wget file openssl appmenu-gtk-module libappindicator-gtk3 librsvg xdotool   # Arch
-  sudo apt install libwebkit2gtk-4.1-dev build-essential curl wget file libxdo-dev libssl-dev libayatana-appindicator3-dev librsvg2-dev   # Debian/Ubuntu
-  sudo dnf install webkit2gtk4.1-devel openssl-devel curl wget file libappindicator-gtk3-devel librsvg2-devel libxdo-devel   # Fedora
+  sudo apt install libwebkit2gtk-4.1-dev build-essential curl wget file libxdo-dev libasound2-dev libssl-dev libayatana-appindicator3-dev librsvg2-dev   # Debian/Ubuntu
+  sudo dnf install webkit2gtk4.1-devel openssl-devel curl wget file libappindicator-gtk3-devel librsvg2-devel libxdo-devel alsa-lib-devel   # Fedora
   ```
 
   A CLI sozinha não precisa de nenhuma delas (`cargo build --release -p atlas-cli`).

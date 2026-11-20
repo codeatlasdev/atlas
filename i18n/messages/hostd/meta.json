@@ -54,5 +54,11 @@
 	"hostd_wire_unreachable": "The local terminal host (hostd) does not answer (code hostd.unreachable). Shown in the one toast that folds every failed call, which has a Restart terminal host button and a Report button next to it.",
 	"hostd_wire_unreachable_why": "hostd_wire_unreachable plus the last error of the connect loop, redacted and in English, in parentheses ({why}).",
 	"hostd_wire_upgrade_failed": "The live upgrade of the running terminal host failed (code hostd.upgrade_failed); the terminals stay on the old host. {error} is hostd's answer, English, shown as is.",
-	"hostd_wire_upgraded": "Toast after the running terminal host was replaced by the version of this app without ending any terminal (code hostd.upgraded)."
+	"hostd_wire_upgraded": "Toast after the running terminal host was replaced by the version of this app without ending any terminal (code hostd.upgraded).",
+	"hostd_wire_voice_bad_audio": "Error (code crew.voice.bad_audio): the uploaded audio is not the declared format. i18n-allow dnt:crew server",
+	"hostd_wire_voice_engine_failed": "Error (code crew.voice.engine_failed): the speech engine ran and failed. {engine} is its label (for example 'whisper.cpp (small)'), shown as is; the engine's own words are shown apart as the detail. Never retried on another engine.",
+	"hostd_wire_voice_forbidden": "Error (code crew.voice.forbidden): something other than the owner tried to change the crew's voice settings.",
+	"hostd_wire_voice_not_installed": "Error (code crew.voice.not_installed): no speech engine is configured or installed on the crew server. The command is literal. i18n-allow dnt:engine, dnt:crew server",
+	"hostd_wire_voice_off": "Error (code crew.voice.off): a dictation was refused because the crew-wide voice switch is off.",
+	"hostd_wire_voice_too_long": "Error (code crew.voice.too_long): the recording is over the cap. {max_seconds} is the cap in seconds."
 }

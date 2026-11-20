@@ -1,0 +1,444 @@
+{
+	"errors": {
+		"bad_audio": {
+			"args": {},
+			"code": "crew.voice.bad_audio",
+			"message": "the audio is not 16 kHz mono 16-bit PCM WAV"
+		},
+		"engine_failed": {
+			"args": {
+				"detail": "ggml_backend_alloc failed: out of memory",
+				"engine": "whisper.cpp (small)"
+			},
+			"code": "crew.voice.engine_failed",
+			"message": "whisper.cpp (small) failed: ggml_backend_alloc failed: out of memory"
+		},
+		"forbidden": {
+			"args": {},
+			"code": "crew.voice.forbidden",
+			"message": "only the owner can change the voice settings"
+		},
+		"not_installed": {
+			"args": {},
+			"code": "crew.voice.not_installed",
+			"message": "no voice engine is installed on this crew server (atlas crew voice install)"
+		},
+		"off": {
+			"args": {},
+			"code": "crew.voice.off",
+			"message": "voice is turned off on this crew"
+		},
+		"too_long": {
+			"args": {
+				"max_seconds": 300
+			},
+			"code": "crew.voice.too_long",
+			"message": "dictation is capped at 300 seconds"
+		}
+	},
+	"put_last": {
+		"bytes": 2240044,
+		"upload": "0123456789abcdef0123456789abcdef"
+	},
+	"put_open": {
+		"bytes": 1280044,
+		"upload": "0123456789abcdef0123456789abcdef"
+	},
+	"status_enabled_no_engine": {
+		"audio": {
+			"channels": 1,
+			"format": "wav_pcm_s16le",
+			"sample_rate": 16000
+		},
+		"enabled": true,
+		"engine": null,
+		"languages": ["en", "pt"],
+		"max_seconds": 300,
+		"replacements": [
+			{
+				"lang": "en",
+				"say": "slash",
+				"write": "/"
+			},
+			{
+				"lang": "en",
+				"say": "forward slash",
+				"write": "/"
+			},
+			{
+				"lang": "en",
+				"say": "backslash",
+				"write": "\\"
+			},
+			{
+				"lang": "en",
+				"say": "back slash",
+				"write": "\\"
+			},
+			{
+				"lang": "en",
+				"say": "dot",
+				"write": "."
+			},
+			{
+				"lang": "en",
+				"say": "underscore",
+				"write": "_"
+			},
+			{
+				"lang": "en",
+				"say": "dash",
+				"write": "-"
+			},
+			{
+				"lang": "en",
+				"say": "hyphen",
+				"write": "-"
+			},
+			{
+				"lang": "en",
+				"say": "colon",
+				"write": ":"
+			},
+			{
+				"lang": "en",
+				"say": "double colon",
+				"write": "::"
+			},
+			{
+				"lang": "en",
+				"say": "semicolon",
+				"write": ";"
+			},
+			{
+				"lang": "en",
+				"say": "at sign",
+				"write": "@"
+			},
+			{
+				"lang": "pt",
+				"say": "barra",
+				"write": "/"
+			},
+			{
+				"lang": "pt",
+				"say": "barra invertida",
+				"write": "\\"
+			},
+			{
+				"lang": "pt",
+				"say": "ponto",
+				"write": "."
+			},
+			{
+				"lang": "pt",
+				"say": "underline",
+				"write": "_"
+			},
+			{
+				"lang": "pt",
+				"say": "sublinhado",
+				"write": "_"
+			},
+			{
+				"lang": "pt",
+				"say": "traço",
+				"write": "-"
+			},
+			{
+				"lang": "pt",
+				"say": "hífen",
+				"write": "-"
+			},
+			{
+				"lang": "pt",
+				"say": "dois pontos",
+				"write": ":"
+			},
+			{
+				"lang": "pt",
+				"say": "ponto e vírgula",
+				"write": ";"
+			},
+			{
+				"lang": "pt",
+				"say": "arroba",
+				"write": "@"
+			}
+		]
+	},
+	"status_off": {
+		"audio": {
+			"channels": 1,
+			"format": "wav_pcm_s16le",
+			"sample_rate": 16000
+		},
+		"enabled": false,
+		"engine": null,
+		"languages": ["en", "pt"],
+		"max_seconds": 300,
+		"replacements": [
+			{
+				"lang": "en",
+				"say": "slash",
+				"write": "/"
+			},
+			{
+				"lang": "en",
+				"say": "forward slash",
+				"write": "/"
+			},
+			{
+				"lang": "en",
+				"say": "backslash",
+				"write": "\\"
+			},
+			{
+				"lang": "en",
+				"say": "back slash",
+				"write": "\\"
+			},
+			{
+				"lang": "en",
+				"say": "dot",
+				"write": "."
+			},
+			{
+				"lang": "en",
+				"say": "underscore",
+				"write": "_"
+			},
+			{
+				"lang": "en",
+				"say": "dash",
+				"write": "-"
+			},
+			{
+				"lang": "en",
+				"say": "hyphen",
+				"write": "-"
+			},
+			{
+				"lang": "en",
+				"say": "colon",
+				"write": ":"
+			},
+			{
+				"lang": "en",
+				"say": "double colon",
+				"write": "::"
+			},
+			{
+				"lang": "en",
+				"say": "semicolon",
+				"write": ";"
+			},
+			{
+				"lang": "en",
+				"say": "at sign",
+				"write": "@"
+			},
+			{
+				"lang": "pt",
+				"say": "barra",
+				"write": "/"
+			},
+			{
+				"lang": "pt",
+				"say": "barra invertida",
+				"write": "\\"
+			},
+			{
+				"lang": "pt",
+				"say": "ponto",
+				"write": "."
+			},
+			{
+				"lang": "pt",
+				"say": "underline",
+				"write": "_"
+			},
+			{
+				"lang": "pt",
+				"say": "sublinhado",
+				"write": "_"
+			},
+			{
+				"lang": "pt",
+				"say": "traço",
+				"write": "-"
+			},
+			{
+				"lang": "pt",
+				"say": "hífen",
+				"write": "-"
+			},
+			{
+				"lang": "pt",
+				"say": "dois pontos",
+				"write": ":"
+			},
+			{
+				"lang": "pt",
+				"say": "ponto e vírgula",
+				"write": ";"
+			},
+			{
+				"lang": "pt",
+				"say": "arroba",
+				"write": "@"
+			}
+		]
+	},
+	"status_on": {
+		"audio": {
+			"channels": 1,
+			"format": "wav_pcm_s16le",
+			"sample_rate": 16000
+		},
+		"enabled": true,
+		"engine": {
+			"detail": null,
+			"kind": "whisper_cpp",
+			"label": "whisper.cpp (small)",
+			"model": "small",
+			"ready": true
+		},
+		"languages": ["en", "pt"],
+		"max_seconds": 300,
+		"replacements": [
+			{
+				"lang": "en",
+				"say": "slash",
+				"write": "/"
+			},
+			{
+				"lang": "en",
+				"say": "forward slash",
+				"write": "/"
+			},
+			{
+				"lang": "en",
+				"say": "backslash",
+				"write": "\\"
+			},
+			{
+				"lang": "en",
+				"say": "back slash",
+				"write": "\\"
+			},
+			{
+				"lang": "en",
+				"say": "dot",
+				"write": "."
+			},
+			{
+				"lang": "en",
+				"say": "underscore",
+				"write": "_"
+			},
+			{
+				"lang": "en",
+				"say": "dash",
+				"write": "-"
+			},
+			{
+				"lang": "en",
+				"say": "hyphen",
+				"write": "-"
+			},
+			{
+				"lang": "en",
+				"say": "colon",
+				"write": ":"
+			},
+			{
+				"lang": "en",
+				"say": "double colon",
+				"write": "::"
+			},
+			{
+				"lang": "en",
+				"say": "semicolon",
+				"write": ";"
+			},
+			{
+				"lang": "en",
+				"say": "at sign",
+				"write": "@"
+			},
+			{
+				"lang": "pt",
+				"say": "barra",
+				"write": "/"
+			},
+			{
+				"lang": "pt",
+				"say": "barra invertida",
+				"write": "\\"
+			},
+			{
+				"lang": "pt",
+				"say": "ponto",
+				"write": "."
+			},
+			{
+				"lang": "pt",
+				"say": "underline",
+				"write": "_"
+			},
+			{
+				"lang": "pt",
+				"say": "sublinhado",
+				"write": "_"
+			},
+			{
+				"lang": "pt",
+				"say": "traço",
+				"write": "-"
+			},
+			{
+				"lang": "pt",
+				"say": "hífen",
+				"write": "-"
+			},
+			{
+				"lang": "pt",
+				"say": "dois pontos",
+				"write": ":"
+			},
+			{
+				"lang": "pt",
+				"say": "ponto e vírgula",
+				"write": ";"
+			},
+			{
+				"lang": "pt",
+				"say": "arroba",
+				"write": "@"
+			}
+		]
+	},
+	"transcript": {
+		"duration_ms": 70000,
+		"engine": {
+			"kind": "whisper_cpp",
+			"label": "whisper.cpp (small)"
+		},
+		"language": "en",
+		"partial": false,
+		"raw": "open src slash main dot rs and rename foo underscore bar",
+		"text": "open src/main.rs and rename foo_bar"
+	},
+	"transcript_partial": {
+		"duration_ms": 30000,
+		"engine": {
+			"kind": "whisper_cpp",
+			"label": "whisper.cpp (small)"
+		},
+		"language": "en",
+		"partial": true,
+		"raw": "open src slash main dot rs and rename foo underscore bar",
+		"text": "open src/main.rs and rename foo_bar"
+	}
+}

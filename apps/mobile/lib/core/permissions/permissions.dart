@@ -1,4 +1,4 @@
-/// What the phone lets Atlas do (camera, notifications, the device lock, the local network), in one place:
+/// What the phone lets Atlas do (camera, notifications, the device lock, the local network, the microphone and speech recognition), in one place:
 /// each permission's state, asking for it, and opening the app's page in the system Settings.
 ///
 /// Nothing here shows UI and nothing is asked on its own: screens ask through `askPermission`
@@ -23,6 +23,13 @@ enum AtlasPermission {
 
   /// iOS only: reaching the computer directly on the same Wi-Fi.
   localNetwork,
+
+  /// Dictation: the microphone, to turn speech into text on the phone.
+  microphone,
+
+  /// iOS only: the Speech Recognition permission, which every recognizer except `SpeechAnalyzer` (iOS 26) needs
+  /// on top of the microphone.
+  speech,
 }
 
 /// Where a permission stands, from the point of view of what the screen should show.

@@ -519,6 +519,52 @@ pub struct CrewSettings {
     /// Dictation (`crew::voice`): off until the owner turns it on.
     #[serde(default)]
     pub voice: super::voice::VoiceSettings,
+    /// The public base URL GitHub reaches this server at (the operator's reverse proxy or tunnel, never Atlas
+    /// itself), normalized by [`normalize_public_url`]. Set: the GitHub App's webhook posts to
+    /// `<url>/github/webhook`. Unset: GitHub events come from the poll alone.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub public_url: Option<String>,
+}
+
+/// The path of the verified GitHub webhook on the hook server, under the operator's public URL.
+pub const GITHUB_WEBHOOK_PATH: &str = "/github/webhook";
+
+impl CrewSettings {
+    /// Where GitHub posts deliveries: the public URL plus [`GITHUB_WEBHOOK_PATH`]. `None` without a public URL.
+    pub fn webhook_url(&self) -> Option<String> {
+        self.public_url
+            .as_deref()
+            .map(|u| format!("{u}{GITHUB_WEBHOOK_PATH}"))
+    }
+}
+
+/// The public URL as the setting keeps it: `Ok(None)` for blank (webhooks off), else an `https` URL with a host
+/// and no credentials, query or fragment, without a trailing slash. Anything else is an error that says why:
+/// GitHub sends the payloads to it, so a plain-http or credentialed URL would expose them.
+pub fn normalize_public_url(raw: &str) -> Result<Option<String>, String> {
+    let raw = raw.trim();
+    if raw.is_empty() {
+        return Ok(None);
+    }
+    if raw.len() > 200 {
+        return Err("public_url is longer than 200 characters".into());
+    }
+    let url = url::Url::parse(raw).map_err(|e| format!("public_url is not a URL: {e}"))?;
+    if url.scheme() != "https" {
+        return Err(
+            "public_url must be an https:// URL: GitHub's payloads cross the internet".into(),
+        );
+    }
+    if url.host_str().is_none_or(str::is_empty) {
+        return Err("public_url has no host".into());
+    }
+    if !url.username().is_empty() || url.password().is_some() {
+        return Err("public_url must not carry a user name or password".into());
+    }
+    if url.query().is_some() || url.fragment().is_some() {
+        return Err("public_url must not have a query or a fragment".into());
+    }
+    Ok(Some(url.as_str().trim_end_matches('/').to_string()))
 }
 
 /// Agents at once when `crew.json` says nothing: a handful, so one busy server is not swamped by every crewmate
@@ -544,6 +590,7 @@ impl Default for CrewSettings {
             default_approval: Mode::Ask,
             allow_bypass: true,
             voice: Default::default(),
+            public_url: None,
         }
     }
 }

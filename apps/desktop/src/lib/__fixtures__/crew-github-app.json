@@ -97,7 +97,13 @@
 				"metadata": "read",
 				"pull_requests": "write"
 			},
-			"slug": "atlas-crew-box"
+			"slug": "atlas-crew-box",
+			"webhook": {
+				"failing": false,
+				"synced": false,
+				"url": null,
+				"verified_installations": 0
+			}
 		}
 	},
 	"status_without_app": {

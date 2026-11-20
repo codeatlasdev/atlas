@@ -371,6 +371,64 @@ async fn a_call_from_a_task_of_github_or_a_webhook_still_asks_in_bypass() {
     assert_eq!(call.await.unwrap(), json!({"behavior": "allow"}));
 }
 
+/// `crew_settings_set` with only the field a control changes, as the clients send it: Atlas Desktop's permission policy
+/// sends `{default_approval}` or `{allow_bypass}` alone (`crew.svelte.ts` `setPolicy`). It was refused ("missing field
+/// `short_replies`"), and a call that did carry `short_replies` cleared the summary model it did not mention. Each field
+/// is now left as it is when absent; `short_replies_model: null` (what Atlas Mobile sends for "default") clears it.
+#[tokio::test(flavor = "multi_thread")]
+async fn a_settings_change_touches_only_the_fields_it_carries() {
+    let rig = rig("claude", "ask").await;
+    let set = |args: Value| {
+        let c = rig.client.clone();
+        async move { c.call("crew_settings_set", args).await }
+    };
+    let get = || {
+        let c = rig.client.clone();
+        async move { c.call("crew_settings_get", json!({})).await.unwrap() }
+    };
+    set(json!({"short_replies": true, "short_replies_model": "haiku"}))
+        .await
+        .unwrap();
+
+    // The desktop's policy controls, one field each.
+    set(json!({"default_approval": "edits"})).await.unwrap();
+    set(json!({"allow_bypass": false})).await.unwrap();
+    let s = get().await;
+    assert_eq!(
+        (
+            &s["default_approval"],
+            &s["allow_bypass"],
+            &s["short_replies"],
+            &s["short_replies_model"]
+        ),
+        (
+            &json!("edits"),
+            &json!(false),
+            &json!(true),
+            &json!("haiku")
+        ),
+        "{s}"
+    );
+
+    // The short-replies switch alone keeps the model; `null` clears it, as the phone sends it.
+    set(json!({"short_replies": false})).await.unwrap();
+    assert_eq!(get().await["short_replies_model"], "haiku");
+    set(json!({"short_replies": true, "short_replies_model": null}))
+        .await
+        .unwrap();
+    let s = get().await;
+    assert_eq!(
+        (&s["short_replies"], &s["short_replies_model"]),
+        (&json!(true), &Value::Null),
+        "{s}"
+    );
+    // And none of it moved the policy.
+    assert_eq!(
+        (&s["default_approval"], &s["allow_bypass"]),
+        (&json!("edits"), &json!(false))
+    );
+}
+
 #[tokio::test(flavor = "multi_thread")]
 async fn without_bypass_on_the_crew_bypass_is_refused_and_crewmates_in_it_go_back_to_ask() {
     let rig = rig("claude", "bypass").await;

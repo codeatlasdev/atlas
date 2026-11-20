@@ -1,7 +1,7 @@
 ---
 title: "Atlas Crew"
 source: crew.md
-source_sha: "156e3c866d430172b08adc22a22b3c614b606b42"
+source_sha: "ec0b3ad11e88e1fac4d5383ac548d90d47020f5a"
 translation: machine
 ---
 
@@ -322,12 +322,12 @@ Em vez do login do `gh`, um crew server pode ter o seu próprio **GitHub App**. 
 |---|---|
 | `crew_github_app_manifest {owner_kind: "user" \| "org", org?, workflows?, server_name?}` | o manifesto a enviar ao GitHub e para onde: `{manifest, post_url, server_name}`. O desktop acrescenta `redirect_url` e `state`, porque o listener local dele é o dono desses dois |
 | `crew_github_app_convert {code}` | `POST /app-manifests/{code}/conversions`; guarda a chave; responde com o status abaixo |
-| `crew_github_app_status` | `{app: null}`, ou `{app: {id, slug, name, owner, permissions, created_at, identity: {name, email}, installations: [{id, account, repository_selection}], installations_error?}}`. Nunca traz a chave nem o segredo do webhook. As instalações são lidas do GitHub com o JWT do app, então uma consulta repetida mostra a instalação assim que ela acontece |
+| `crew_github_app_status` | `{app: null}`, ou `{app: {id, slug, name, owner, permissions, created_at, identity: {name, email}, installations: [{id, account, repository_selection}], installations_error?, webhook: {url, synced, verified_installations, failing}}}`. Nunca traz a chave nem o segredo do webhook. As instalações são lidas do GitHub com o JWT do app, então uma consulta repetida mostra a instalação assim que ela acontece |
 | `crew_github_app_remove` | apaga a chave guardada |
 
 As falhas trazem um código: `crew.github_app.exists` (já existe um app; checado antes de gastar o código), `crew.github_app.code_expired` (usado, ou passou de uma hora), `crew.github_app.conversion_failed {status}`, `crew.github_app.none`, `crew.github_app.forbidden` (um celular ou qualquer não dono; o celular também é recusado pelo escopo). Um `org` ou `code` inválido é `hostd.invalid_argument` com `reason: "invalid"`. Fixtures: `apps/desktop/src/lib/__fixtures__/crew-github-app.json`, escrito por um hostd real (`UPDATE_FIXTURES=1 cargo test -p atlas-host crew::tests::github_app`).
 
-**O manifesto** pede o mínimo que o crew usa: Contents, Pull requests e Issues com escrita; Checks, Actions e Metadata só leitura. Eventos: comentários de issue, issues, pull requests, comentários de revisão, check runs, workflow runs e releases. `public: false` (o app pertence a este servidor), e o webhook fica `active: false` com a página do projeto como URL obrigatória. **Workflows é opcional** (`workflows: true` acrescenta `workflows: write`): editar `.github/workflows` exige essa permissão à parte.
+**O manifesto** pede o mínimo que o crew usa: Contents, Pull requests e Issues com escrita; Checks, Actions e Metadata só leitura. Eventos: comentários de issue, issues, pull requests, comentários de revisão, check runs, workflow runs e releases. `public: false` (o app pertence a este servidor). O webhook fica desligado (`active: false`, com a página do projeto como URL obrigatória), a menos que o crew tenha uma URL pública ([Webhooks](#webhooks)); aí ele fica ligado e envia para `<public_url>/github/webhook`. **Workflows é opcional** (`workflows: true` acrescenta `workflows: write`): editar `.github/workflows` exige essa permissão à parte.
 
 **Onde a chave fica.** `<crew dir>/github-app.json`, só do dono (0600), gravado de forma atômica pelo hostd: id do app, client id, slug, chave privada e segredo do webhook. Nunca o `secrets.json` (que é do crewmate), nunca uma variável de ambiente, nunca uma resposta, nunca o log de auditoria. O desktop só carrega o código de uso único. O client secret do GitHub não é guardado.
 
@@ -342,6 +342,27 @@ As falhas trazem um código: `crew.github_app.exists` (já existe um app; checad
 **Autoria.** Uma tarefa iniciada por um evento do GitHub registra quem o provocou (`origin.requester`). O ambiente do agente passa então a levar `ATLAS_CO_AUTHOR` (`<login> <id>+<login>@users.noreply.github.com`, que não é segredo) e `core.hooksPath` apontando para um diretório que o hostd grava (`<crewmate dir>/githooks`, ou `crew-runtime/githooks` quando isolado; o agente não consegue alterá-lo). O hook `commit-msg` dele acrescenta `Co-authored-by: <requester>` a uma mensagem de commit que não o tenha e depois roda o hook do próprio repositório com esse nome; todos os outros hooks do lado do cliente são um despachante que roda os do repositório (em `.git/hooks`, ou no `core.hooksPath` que o repositório define, como o husky faz). `git commit --no-verify` o ignora, como ignora todo hook de commit. O prompt da tarefa só diz que a identidade já está definida e que um hook acrescenta o trailer.
 
 **Limites.** O checkout e o fetch de um crewmate isolado usam um token de instalação só naquele processo do git (no ambiente limpo do spawn helper), e uma tarefa dessas não espera pelo login do `gh` quando o app cobre o projeto. Um crewmate que não é isolado tem o checkout feito pelo git do próprio hostd, que ainda usa o login do `gh` para clonar. O link do `gh` no diretório de engines é o que um crewmate isolado executa; um servidor instalado antes dele precisa de `atlas crew install` de novo.
+
+### Webhooks
+
+Por padrão, uma automação do GitHub consulta o repositório a cada 2 minutos. Quando o GitHub consegue alcançar o servidor do crew, o webhook do App entrega cada evento na hora. A consulta continua sendo o padrão: os webhooks só ligam quando você dá ao crew uma **URL pública**.
+
+**A URL pública é sua, não do Atlas.** O servidor de hooks escuta só em loopback, e o Atlas nunca o expõe. Coloque a sua própria frente HTTPS na frente dele e encaminhe `POST <public_url>/github/webhook` para `http://127.0.0.1:47631/github/webhook` no servidor (a porta de hooks, veja o [Modelo de segurança](#modelo-de-segurança)): um proxy reverso que você já usa (Caddy, nginx), um Cloudflare Tunnel ou o Tailscale Funnel. Depois configure, como dono: `crew_settings_set {public_url: "https://crew.example.com"}` (vazio desliga os webhooks). Ela precisa ser `https://`, com host e sem credenciais, query ou fragmento, com até 200 caracteres: os payloads do GitHub atravessam a internet. Em seguida o hostd aponta o webhook do App para ela (`PATCH /app/hook/config`, com um segredo que ele cria quando o app não tem um) e `crew_github_app_status` mostra `webhook.synced`.
+
+**Não use em produção:** smee.io (um terceiro vê cada payload) e `gh webhook forward` (uma ferramenta de desenvolvimento, presa ao seu login).
+
+**O que uma entrega atravessa**, cada passo antes do próximo:
+1. A assinatura: `X-Hub-Signature-256` precisa ser `sha256=` + o HMAC-SHA256 em hex do corpo **cru** com o segredo do webhook, comparado em tempo constante. Nada é lido, registrado ou consultado antes de ela passar. Uma entrega sem assinatura ou com assinatura errada recebe `401` e uma linha de auditoria `github_webhook_refused {reason, count}` (no máximo uma por motivo a cada minuto, com a contagem desde a anterior). Sem app ou sem segredo, a rota responde `404`.
+2. O id da entrega (`X-GitHub-Delivery`) é registrado em `<crew dir>/github-deliveries.jsonl` (os últimos 1000, no disco antes de qualquer trabalho, para um restart não esquecê-los). Uma repetição recebe `200` e não faz nada (`github_webhook_duplicate`).
+3. O hostd responde `202` na hora e faz o trabalho numa tarefa própria: o GitHub conta como falha uma resposta que demora mais de 10 s e não a reenvia. Com o crew pausado ele responde `503` e não registra nada, para o GitHub mostrar a falha.
+
+**Mesmo evento, mesma tarefa.** Uma entrega passa por `decide`, a mesma função da consulta, então ela inicia exatamente a tarefa que a consulta iniciaria. O `author_association` do payload responde à checagem de autor (sem consulta REST); autores sem permissão de escrita são ignorados, a menos que a automação permita, como na consulta.
+
+**A consulta passa o bastão por repositório.** Um repositório só deixa de ser consultado quando o webhook o cobre: uma instalação cobre o repositório e já entregou pelo menos um evento com assinatura correta. Os outros repositórios continuam sendo consultados. Se as entregas falharem por 30 minutos, o hook é marcado como falhando e todos os repositórios voltam a ser consultados até chegar uma entrega assinada; a consulta que assume pula o que o webhook já tratou. Estado: `<crew dir>/github-webhook.json` (sem nenhum segredo).
+
+**Entregas perdidas** são reconciliadas a cada 5 minutos: o hostd lê `GET /app/hook/deliveries` e reenvia as que falharam nos últimos 3 dias (no máximo 20 por passada, 5 tentativas cada, com espera a partir de 5 minutos). Uma entrega que falhou num período que a consulta cobriu não é reenviada, então nada dispara duas vezes.
+
+O segredo do webhook fica em `github-app.json`, junto da chave privada (0600), e em nenhum outro lugar: nunca numa resposta, numa linha de log ou numa entrada de auditoria.
 
 ### GitHub: entrada e saída
 

@@ -299,6 +299,89 @@ describe("watching the install page", () => {
 	});
 });
 
+describe("the webhook address", () => {
+	test("Save sends only the address (the other crew settings stay as they are) and shows hostd's answer", async () => {
+		hostd.crew_github_app_status = () => fixture.status;
+		const app = new CrewGithubApp("h", deps());
+		await app.load();
+		expect(app.publicUrl).toBe("");
+		hostd.crew_settings_set = () => ({ public_url: "https://crew.example.com", webhook_error: null });
+		hostd.crew_github_app_status = () => ({
+			app: {
+				...fixture.status.app,
+				webhook: { ...fixture.status.app.webhook, url: "https://crew.example.com", synced: true },
+			},
+		});
+		app.publicUrl = " https://crew.example.com/ ";
+		calls = [];
+		await app.savePublicUrl();
+		expect(calls.map((c) => c.cmd)).toEqual(["crew_settings_set", "crew_github_app_status"]);
+		expect(calls[0].args).toEqual({ host: "h", public_url: "https://crew.example.com" });
+		expect(app.app.webhook.synced).toBe(true);
+		expect(app.publicUrl).toBe("https://crew.example.com");
+		expect(app.urlError).toBe("");
+	});
+
+	test("an address hostd would refuse is never sent, and the card says why", async () => {
+		hostd.crew_github_app_status = () => fixture.status;
+		const app = new CrewGithubApp("h", deps());
+		await app.load();
+		app.publicUrl = "http://crew.example.com";
+		calls = [];
+		await app.savePublicUrl();
+		expect(calls).toEqual([]);
+		expect(app.urlError).toBe(m.crew_github_app_webhook_bad_https());
+	});
+
+	test("an empty address turns the webhook off", async () => {
+		hostd.crew_github_app_status = () => fixture.status;
+		hostd.crew_settings_set = () => ({ public_url: null, webhook_error: null });
+		const app = new CrewGithubApp("h", deps());
+		await app.load();
+		app.publicUrl = "  ";
+		calls = [];
+		await app.savePublicUrl();
+		expect(calls[0].args).toEqual({ host: "h", public_url: "" });
+	});
+
+	test("GitHub not reached when the address was saved: the address is kept and the error is shown", async () => {
+		hostd.crew_github_app_status = () => fixture.status;
+		hostd.crew_settings_set = () => ({
+			public_url: "https://crew.example.com",
+			webhook_error: "GitHub answered 502",
+		});
+		const app = new CrewGithubApp("h", deps());
+		await app.load();
+		// Saved, but GitHub was not told: the status has the URL, not synced (hostd keeps trying).
+		hostd.crew_github_app_status = () => ({
+			app: {
+				...fixture.status.app,
+				webhook: { ...fixture.status.app.webhook, url: "https://crew.example.com" },
+			},
+		});
+		app.publicUrl = "https://crew.example.com";
+		await app.savePublicUrl();
+		expect(app.urlError).toBe("GitHub answered 502");
+		expect(app.publicUrl).toBe("https://crew.example.com");
+		expect(app.app.webhook).toMatchObject({ url: "https://crew.example.com", synced: false });
+	});
+
+	test("the field follows the server's address until the user edits it", async () => {
+		hostd.crew_github_app_status = () => fixture.status;
+		const app = new CrewGithubApp("h", deps());
+		await app.load();
+		app.publicUrl = "https://typing.example";
+		hostd.crew_github_app_status = () => ({
+			app: {
+				...fixture.status.app,
+				webhook: { ...fixture.status.app.webhook, url: "https://other.example" },
+			},
+		});
+		await app.refresh();
+		expect(app.publicUrl).toBe("https://typing.example");
+	});
+});
+
 describe("refresh and remove", () => {
 	test("Refresh asks again and shows what changed", async () => {
 		hostd.crew_github_app_status = () => fixture.status;

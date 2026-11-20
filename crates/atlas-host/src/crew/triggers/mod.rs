@@ -18,6 +18,7 @@
 mod file_watch;
 mod github;
 pub(crate) mod github_events;
+pub(crate) mod github_hook;
 mod service;
 pub(crate) mod webhook;
 
@@ -362,7 +363,8 @@ pub(crate) fn on_task_finished(
 ///
 /// Spawns:
 /// - A 30 s ticker for `Schedule` / `Interval` triggers.
-/// - A 2 min poller for `Github` triggers.
+/// - A 2 min poller for `Github` triggers (it stands down for repos the App's webhook covers).
+/// - A 5 min reconciliation of the App's webhook deliveries (`github_hook::reconcile_loop`).
 /// - A file-watcher task per `File` trigger (rescans every 2 min).
 /// - A 30 s poller for `Service` triggers.
 pub(crate) fn start(hub_weak: Weak<Hub>) {
@@ -383,6 +385,11 @@ pub(crate) fn start(hub_weak: Weak<Hub>) {
     {
         let w = hub_weak.clone();
         tokio::spawn(github::run(w));
+    }
+    // ── Github webhook reconciliation ────────────────────────────────────────
+    {
+        let w = hub_weak.clone();
+        tokio::spawn(github_hook::reconcile_loop(w));
     }
     // ── File ─────────────────────────────────────────────────────────────────
     {

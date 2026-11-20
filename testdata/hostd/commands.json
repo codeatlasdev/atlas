@@ -11,6 +11,16 @@
         "req"
       ]
     },
+    "agent_approve_voice": {
+      "optional": [
+        "lang"
+      ],
+      "required": [
+        "pane",
+        "req",
+        "transcript"
+      ]
+    },
     "agent_bind": {
       "optional": [],
       "required": [
@@ -221,6 +231,16 @@
         "value"
       ]
     },
+    "crewmate_action_answer_voice": {
+      "optional": [
+        "lang"
+      ],
+      "required": [
+        "id",
+        "task",
+        "transcript"
+      ]
+    },
     "crewmate_answer": {
       "optional": [
         "key",
@@ -379,7 +399,8 @@
         "project",
         "role",
         "setup_step",
-        "short_replies"
+        "short_replies",
+        "spoken_replies"
       ],
       "required": [
         "id"

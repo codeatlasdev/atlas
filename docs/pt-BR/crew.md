@@ -1,7 +1,7 @@
 ---
 title: "Atlas Crew"
 source: crew.md
-source_sha: "affae76473b7cd93954a51c35b1e3db3265b4adb"
+source_sha: "ec0b3ad11e88e1fac4d5383ac548d90d47020f5a"
 translation: machine
 ---
 
@@ -17,7 +17,7 @@ O Atlas Crew roda agentes de IA 24 horas por dia em um servidor Linux seu, sem d
 | **tarefa** | um prompt em que um crewmate trabalha, uma de cada vez por crewmate |
 | **automação** | algo que inicia uma tarefa sozinho: um agendamento, um intervalo, um webhook, um evento do GitHub, uma mudança em arquivo, outro crewmate ou um serviço (`triggers` no protocolo) |
 
-Seções: [Instalar um crew server](#instalar-um-crew-server) · [Fazer backup e mover crewmates](#fazer-backup-e-mover-crewmates) · [Autenticar os agentes](#autenticar-os-agentes) · [Crewmates](#crewmates) · [Tarefas e aprovações](#tarefas-e-aprovações) · [Automações](#automações) · [GitHub](#github) · [Telegram](#telegram) · [Ditado](#ditado) · [Notificações push](#notificações-push) · [Desktop](#atlas-desktop) · [Mobile](#atlas-mobile) · [Ferramentas MCP](#ferramentas-mcp-para-o-agente) · [Modelo de segurança](#modelo-de-segurança) · [Solução de problemas](#solução-de-problemas) · [Aparência do crewmate](#aparência-do-crewmate) · [Teste end-to-end](#teste-end-to-end-em-systemd-real) · [Mapa do código](#mapa-do-código) · [Referência](#referência)
+Seções: [Instalar um crew server](#instalar-um-crew-server) · [Fazer backup e mover crewmates](#fazer-backup-e-mover-crewmates) · [Autenticar os agentes](#autenticar-os-agentes) · [Crewmates](#crewmates) · [Tarefas e aprovações](#tarefas-e-aprovações) · [Automações](#automações) · [GitHub](#github) · [Telegram](#telegram) · [Ditado](#ditado) · [Respostas faladas e respostas por voz](#respostas-faladas-e-respostas-por-voz) · [Notificações push](#notificações-push) · [Desktop](#atlas-desktop) · [Mobile](#atlas-mobile) · [Ferramentas MCP](#ferramentas-mcp-para-o-agente) · [Modelo de segurança](#modelo-de-segurança) · [Solução de problemas](#solução-de-problemas) · [Aparência do crewmate](#aparência-do-crewmate) · [Teste end-to-end](#teste-end-to-end-em-systemd-real) · [Mapa do código](#mapa-do-código) · [Referência](#referência)
 
 ## Instalar um crew server
 
@@ -423,7 +423,7 @@ Os chats vinculados recebem os resultados das tarefas (truncados em 4000 caracte
 | `/ui <message>` | a mesma mensagem para uma [tarefa de UI](#tarefas-de-ui-e-prova): `/ui /task <name> <text>`, ou `/ui <text>` para um único crewmate; também vale no início da legenda de uma foto |
 | texto simples | vai para o único crewmate quando existe exatamente um |
 | uma foto | vira uma tarefa com a imagem: a legenda é o prompt (`/task <name> <text>` escolhe o crewmate; sem isso, o único crewmate assume a tarefa; sem legenda: "Look at the attached image."). O maior tamanho da foto no Telegram é baixado pela Bot API (`getFile`), um arquivo acima de 5 MiB é recusado sem ser baixado, e o chat recebe o motivo da recusa. Veja [Imagens nas tarefas](#imagens-nas-tarefas) |
-| uma mensagem de voz | só de um chat vinculado: transcrita no crew server e devolvida com os botões **Send as task**, **Edit** e **Cancel**; nada entra na fila antes de Send. Veja [Ditado](#ditado) |
+| uma mensagem de voz | só de um chat vinculado: transcrita no crew server e devolvida com os botões **Send as task**, **Edit** e **Cancel**; nada entra na fila antes de Send. Veja [Ditado](#ditado). Enquanto um pedido de permissão ou um card de escolha desse crewmate espera, a mensagem o responde, pelas [regras de resposta por voz](#respostas-por-voz-aos-cards) |
 
 O Telegram vê o token do seu bot e as mensagens acima. Nada vai para a CodeAtlas.
 
@@ -486,6 +486,37 @@ Uma mensagem de voz de um chat vinculado é transcrita pelo engine do crew e dev
 ### Privacidade
 
 Com o whisper.cpp o áudio vai do seu dispositivo para o **seu crew server** e é apagado lá assim que o texto existe; nada vai para a CodeAtlas nem para terceiros. Com um endpoint hospedado ele vai para esse host, sob os termos desse provedor: os apps mostram o rótulo ao lado do microfone e o `crew_voice_status` o nomeia. No Telegram, a própria mensagem de voz passa pelos servidores do Telegram antes de chegar ao crew server, como qualquer mensagem que você envia lá.
+
+## Respostas faladas e respostas por voz
+
+Uso de mãos livres, pelo celular: ouvir a resposta curta de um crewmate e responder aos cards dele por voz onde isso é seguro. A leitura em voz alta acontece **no aparelho** (a voz e a velocidade do sistema, no idioma da resposta); reconhecer o que você diz é o [ditado](#ditado). O hostd é dono das regras que decidem o que uma resposta falada pode fazer, uma vez só, então nenhum cliente consegue enfraquecê-las.
+
+### Respostas faladas
+
+Desligadas por padrão. Um botão por aparelho, no chat de um crewmate, liga a leitura em voz alta das respostas dele; ligar também define `spoken_replies: true` nesse crewmate (`crewmate_update {id, spoken_replies}`, visível em `crewmate_list`), para que o agente dele escreva resumos. Desligar em um aparelho não limpa a flag: ela fica até você desligar nas configurações do crewmate.
+
+- **Enquanto a flag está ligada**, o hostd acrescenta uma linha às instruções do turno: terminar a resposta com `spoken: <uma ou duas frases curtas para ouvir, sem código, sem caminhos, sem markdown>`.
+- **Toda tarefa concluída tem `spoken`** (uma string, em `crewmate_tasks` e nos pushes de tarefa), calculada pelo hostd. A última linha `spoken:` do agente (em qualquer caixa, no início de uma linha, com no máximo 300 caracteres) é o resumo, e ela é **removida de toda cópia visível** da resposta: `result`, `reply`, `reply_full`, o Telegram e o comentário do GitHub. Sem ela, `spoken` são as primeiras frases da resposta visível, até 300 caracteres, sem blocos de código, código inline, URLs, marcas de markdown e caminhos de arquivo. Uma resposta que é só código dá `""`: nada é lido.
+- A resposta completa sempre continua como texto.
+
+### Respostas por voz aos cards
+
+`agent_approve_voice {pane, req, transcript, lang?}` responde a um pedido de permissão e `crewmate_action_answer_voice {id, task, transcript, lang?}` a um card de escolha. O cliente envia **só o que foi ouvido** (`lang` é `en`, `pt` ou ausente para as duas tabelas); o hostd decide o que isso significa e responde `{verdict, choice?, comment?, reason?}`:
+
+| `verdict` | Significado |
+|---|---|
+| `allow`, `deny` | decidido, como um toque decidiria (um allow vale **uma vez**, nunca para a tarefa) |
+| `choice` | o card foi respondido com `choice`, o texto da opção como o card o tem |
+| `comment` | nada foi decidido; `comment` é a transcrição, para o cliente oferecer como comentário a confirmar com um toque |
+| `needs_tap` | nada foi decidido; `reason` é `bypass`, `rail`, `destructive`, `untrusted`, ou `null` para um card que não é de escolha |
+| `unclear` | nada a ouvir, ou nenhuma opção bateu |
+
+- **Aprovações só aceitam frases exatas.** Depois de tirar espaços, passar para minúsculas, desconsiderar acentos e remover a pontuação final: `allow`, `approve`, `yes allow` / `deny`, `reject`, `no deny`; em português `permitir`, `permite`, `aprovar`, `aprova` / `negar`, `nega`, `recusar`, `recusa`. Qualquer outra coisa, mesmo que contenha uma dessas palavras (`allow but only this file`, `don't allow`, `allow allow`, `não permitir`, `permitir nesta tarefa`), é um `comment`. "Allow, but only once" não é uma aprovação: é oferecida como comentário, e só um toque decide.
+- **Algumas aprovações sempre precisam de um toque na tela**, porque são as que você precisa ver: qualquer pedido de um crewmate em **Bypass**; um pedido retido por um **rail** (um caminho protegido, ou uma tarefa iniciada pelo GitHub ou por um webhook); um comando **destrutivo** (`approval::destructive`, baseado em palavras como os rails: `rm -r`/`-rf`, `git push --force`/`-f`/`--force-with-lease`, `git reset --hard`, `git clean -f`, `git branch -D`, `DROP TABLE|DATABASE`, `TRUNCATE`, `mkfs`, `dd of=`, `chmod -R 777`, um redirecionamento para `/dev/sd*`; ele também lê cada string da chamada e um comando dado como lista). Cada recusa é auditada como `approval_voice_refused {reason, transcript, device}`. **Negar por voz é sempre permitido** (negar é seguro), exceto de uma fonte não confiável.
+- **Cards de escolha** são respondidos por uma palavra de número ou dígito (`1`, `one`, `um`, `first`, `primeira`), um ordinal (`the second`, `a segunda`) ou o rótulo da opção (sem diferenciar caixa e acentos, o rótulo inteiro ou um prefixo único de pelo menos 3 caracteres). Palavras ambíguas (um rótulo que também é o número de outra opção, dois rótulos com o mesmo prefixo, dois números) são `unclear`: o hostd nunca adivinha. Segredos, logins, recusas, provas e automações são `needs_tap`.
+- **Fontes não confiáveis não respondem nada.** Uma transcrição de um chat do Telegram que não é o chat vinculado do dono, ou do processo de um crewmate, é `needs_tap` com `untrusted`. Os clientes do dono (Desktop, um celular com o escopo `approve` para pedidos e `act` para cards) são confiáveis.
+- Uma resposta por voz decidida é auditada como um toque, mais `via: "voice"` e a transcrição (no máximo 200 caracteres): `approval_decision` para um pedido, `card_answered` para uma escolha.
+- **Telegram:** uma mensagem de voz do chat do dono, enquanto um pedido ou um card de escolha desse crewmate espera, passa pelas mesmas funções e nunca vira tarefa; o chat é informado do que foi decidido, ou do motivo de nada ter sido. Com vários crewmates, ele escolhe o que está esperando (uma legenda `/task <nome>` nomeia um); com mais de uma coisa esperando, pede que você responda no card.
 
 ## Notificações push
 
@@ -972,9 +1003,11 @@ O mesmo socket NDJSON de todo comando do hostd (`~/.atlas/hostd.sock`, ou o do c
 | `crewmate_list` | `{}` | `{crewmates:[…], paused}` |
 | `crew_pause`, `crew_resume` | `{}` | `{}`; veja [Pausar e retomar](#pausar-e-retomar). Emite o push `{"ev":"crew_paused","paused":bool}` (escopo `act` do Mobile) |
 | `crewmate_create` | `{name, role, agent, approval?, mode?, workdir?, look?, engine?, project?}` | o crewmate; sem `mode` (nem o legado `approval`) começa no `default_approval` do crew (`bypass` para um engine que não consegue perguntar) |
-| `crewmate_update` | `{id, name?, role?, agent?, approval?, look?, …}` | o crewmate |
+| `crewmate_update` | `{id, name?, role?, agent?, approval?, look?, spoken_replies?, …}` | o crewmate; `spoken_replies` pede ao agente dele uma linha `spoken:` ([Respostas faladas](#respostas-faladas)) |
 | `crewmate_set_approval` | `{id, mode}` (`ask`, `edits`, `bypass`) | o crewmate; só clientes do dono (escopo `approve` no Mobile); recusas codificadas `crew.approval.bypass_disabled`, `crew.approval.unsupported_engine`, `crew.approval.forbidden`; veja [Modos de permissão](#modos-de-permissão) |
 | `agent_approve` | `{pane, req, allow, scope?, comment?}` | `{}`; `scope` é `once` (padrão) ou `task`; `comment` chega ao agente |
+| `agent_approve_voice` | `{pane, req, transcript, lang?}` | `{verdict, comment?, reason?}`; escopo Mobile `approve`. Veja [Respostas por voz aos cards](#respostas-por-voz-aos-cards) |
+| `crewmate_action_answer_voice` | `{id, task, transcript, lang?}` | `{verdict, choice?, reason?}`; escopo Mobile `act` |
 | `crewmate_delete` | `{id}` | `{}`; cancela as tarefas em execução e na fila e espera o turno em execução terminar, remove a worktree do Git e as branches `atlas/<id>/…` do clone compartilhado, e depois a pasta do crewmate. Um turno que ainda grave depois disso é recusado, então a pasta não é recriada |
 | `crewmate_task` | `{id, prompt, source, tz?, attachments?, ui?, dictated?}` | `{task}`; `ui: true` a torna uma [tarefa de UI](#tarefas-de-ui-e-prova); `dictated: true` avisa o agente de que o prompt foi ditado ([Ditado](#ditado)); `attachments` são até 4 imagens, `[{name, data_b64}]` ou `[{name, upload}]`, veja [Imagens nas tarefas](#imagens-nas-tarefas) |
 | `crewmate_attachment_put` | `{id, upload, seq, data_b64, last?}` | `{staged, last}`; um pedaço (no máximo 512 KiB brutos) de uma imagem grande demais para uma linha do protocolo, com os pedaços em ordem a partir de `seq` 0. Escopo `act` do Mobile |
@@ -1032,6 +1065,7 @@ O mesmo socket NDJSON de todo comando do hostd (`~/.atlas/hostd.sock`, ou o do c
 - `last`: o resultado, o erro ou o prompt da tarefa mais recente (os primeiros 140 caracteres), o estado final e a hora.
 - `pending_approval` existe só em `needs_you`; uma tarefa parada em qualquer card (`waiting_task`) também é `needs_you`, embora o runner dela continue ocupado, então `running_task` está presente ali e o Stop funciona. Um servidor anterior a isso (1.5.0-alpha.26 e antes) dizia `working`; o desktop corrige isso onde a resposta ainda mostra o card.
 - `waiting_task` (ausente, a menos que uma tarefa esteja parada em um card): `{id, action, result, attachments}`, o card em que a tarefa está (a que o runner segura, ou a parada mais recente) e as imagens que o agente tirou para ela (só as do agente, como registros). O Captain's call do Atlas Mobile lista a partir dele um crewmate com um card `refused` ou `prove_ui`, com Retry e Override ali mesmo. A presença dele faz `state` ser `needs_you`, seja qual for o tipo de card.
+- `spoken_replies` (bool, sempre presente): o agente é instruído a terminar as respostas com uma linha `spoken:`.
 - `triggers` está sempre presente; `next_fire` é calculado pelo servidor.
 
 ### Objeto de tarefa
@@ -1056,4 +1090,5 @@ O mesmo socket NDJSON de todo comando do hostd (`~/.atlas/hostd.sock`, ou o do c
 - `state`: `queued`, `running`, `waiting_action`, `done`, `failed` ou `cancelled`.
 - `steps` pode estar vazio; `started_at` e `finished_at` ficam ausentes até serem atingidos. Outros campos opcionais: `reply`, `reply_full`, `summarized`, `title`, `preparing`, `ask`, `action`, `answer`, `usage`, `trigger_id`, `tz`, `resumed` (um reinício a interrompeu e ela começou de novo) e `restarts` (quantos).
 - `attachments` (ausente sem imagens): as imagens enviadas com o prompt, `[{name, mime, bytes_len, sha256, path, source?}]`. `name` é um nome de arquivo seguro e único dentro da tarefa, `mime` vem dos bytes do próprio arquivo, `path` é onde o agente a encontra na pasta de trabalho dele (`.atlas/attachments/<task id>/<name>`). Os bytes nunca fazem parte de uma tarefa: busque-os com `crewmate_attachment`. Veja [Imagens nas tarefas](#imagens-nas-tarefas). `source` é `"agent"` para uma captura que o crewmate fez e fica ausente para o que você enviou.
+- `spoken` (string, sempre presente, `""` até a tarefa terminar ou quando não há nada a ler): o que um cliente lê em voz alta ([Respostas faladas](#respostas-faladas)).
 - `ui` (ausente, a menos que seja true): a tarefa é uma [tarefa de UI](#tarefas-de-ui-e-prova).

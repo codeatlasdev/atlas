@@ -323,7 +323,7 @@ async fn the_crews_replacements_extend_the_table_and_bad_rows_are_refused() {
 
 // ── a dictation, end to end, and the fixtures ────────────────────────────────
 
-fn fixture(path: &Path, live: &Value, tabs: bool) {
+pub(super) fn fixture(path: &Path, live: &Value, tabs: bool) {
     if std::env::var_os("UPDATE_FIXTURES").is_some() {
         let text = if tabs {
             let mut buf = Vec::new();
@@ -969,7 +969,7 @@ async fn a_dictated_task_appends_the_note_for_the_agent_and_never_to_the_prompt(
 
 // ── Telegram voice notes ─────────────────────────────────────────────────────
 
-type Calls = Arc<Mutex<Vec<(String, Value)>>>;
+pub(super) type Calls = Arc<Mutex<Vec<(String, Value)>>>;
 
 /// A live fake Telegram Bot API: `getUpdates` hands over whatever the test queued since the last poll, `getFile`
 /// names a path, `/file/bot…` serves `file`, and every other method is recorded with its JSON body.
@@ -1067,12 +1067,12 @@ fn install_ffmpeg(dir: &Path, fail: bool) {
     std::fs::set_permissions(&bin, std::fs::Permissions::from_mode(0o755)).unwrap();
 }
 
-struct Rig {
-    dir: std::path::PathBuf,
-    client: HostClient,
+pub(super) struct Rig {
+    pub(super) dir: std::path::PathBuf,
+    pub(super) client: HostClient,
     queue: Arc<Mutex<Vec<Value>>>,
-    calls: Calls,
-    crewmate: String,
+    pub(super) calls: Calls,
+    pub(super) crewmate: String,
     next_update: i64,
     _tmp: tempfile::TempDir,
 }
@@ -1080,7 +1080,7 @@ struct Rig {
 impl Rig {
     /// A crew server with crewmate Eyes, voice on, a fake whisper.cpp and ffmpeg, and chat 42 linked to a
     /// fake Telegram.
-    async fn new(transcript: &str, whisper_fails: bool, voice_on: bool) -> Self {
+    pub(super) async fn new(transcript: &str, whisper_fails: bool, voice_on: bool) -> Self {
         let tmp = tempfile::tempdir().unwrap();
         let dir = tmp.path().join("hostd");
         let first = daemon(&dir).await;
@@ -1121,7 +1121,7 @@ impl Rig {
     }
 
     /// A voice note of `size` bytes from `chat`.
-    fn note(&mut self, chat: i64, size: u64, caption: Option<&str>) {
+    pub(super) fn note(&mut self, chat: i64, size: u64, caption: Option<&str>) {
         let mut msg = json!({"message_id": 7, "chat": {"id": chat},
                              "voice": {"file_id": "v1", "file_size": size, "duration": 3, "mime_type": "audio/ogg"}});
         if let Some(c) = caption {
@@ -1130,7 +1130,7 @@ impl Rig {
         self.push(json!({"message": msg}));
     }
 
-    fn text(&mut self, chat: i64, text: &str) {
+    pub(super) fn text(&mut self, chat: i64, text: &str) {
         self.push(json!({"message": {"message_id": 8, "chat": {"id": chat}, "text": text}}));
     }
 
@@ -1139,7 +1139,7 @@ impl Rig {
     }
 
     /// Wait for the `n`th call of `method` (1-based) and return its body.
-    async fn nth(&self, method: &str, n: usize) -> Value {
+    pub(super) async fn nth(&self, method: &str, n: usize) -> Value {
         let m = method.to_string();
         wait_for(&format!("{method} #{n}"), || {
             self.calls
@@ -1152,7 +1152,7 @@ impl Rig {
         .await
     }
 
-    fn count(&self, method: &str) -> usize {
+    pub(super) fn count(&self, method: &str) -> usize {
         self.calls
             .lock()
             .iter()
@@ -1161,7 +1161,7 @@ impl Rig {
     }
 
     /// The callback data of the button called `label` in `echo`.
-    fn button(echo: &Value, label: &str) -> String {
+    pub(super) fn button(echo: &Value, label: &str) -> String {
         echo["reply_markup"]["inline_keyboard"][0]
             .as_array()
             .unwrap()
@@ -1174,7 +1174,7 @@ impl Rig {
     }
 
     /// The tasks of the crewmate: the log is append-only (a task has a record per change), so the last of each id.
-    fn tasks(&self) -> Vec<Value> {
+    pub(super) fn tasks(&self) -> Vec<Value> {
         let all: Vec<Value> =
             std::fs::read_to_string(self.dir.join(format!("crew/{}/tasks.jsonl", self.crewmate)))
                 .map(|t| {
@@ -1193,7 +1193,7 @@ impl Rig {
         out
     }
 
-    async fn done(self) {
+    pub(super) async fn done(self) {
         self.client.call("shutdown", json!({})).await.ok();
     }
 }

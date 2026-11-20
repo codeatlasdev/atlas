@@ -349,7 +349,7 @@ Tapping the icon shows one colour, the app's ground (`AtlasColors.dark.ground`, 
 
 ## Goldens
 
-Screenshot tests compare against `apps/mobile/test/goldens/<os>/`: Flutter draws text a few pixels differently on macOS and Linux, so each platform has its own recording and is compared exactly against it (`test/flutter_test_config.dart`). After a visual change, record both: `flutter test --update-goldens` on a Mac writes `macos/`; for `linux/`, push and take the images from the failed CI run's `mobile-golden-failures` artifact (each `<name>_testImage.png` becomes `linux/<name>.png`), or run `--update-goldens` on Linux. Check that the two sets show the same thing.
+Screenshot tests compare against `apps/mobile/test/goldens/<os>/`: Flutter draws text a few pixels differently on macOS and Linux, so each platform has its own recording and is compared exactly against it (`test/support/per_platform_goldens.dart`). After a visual change, record both: `flutter test --update-goldens` on a Mac writes `macos/`; for `linux/`, push and take the images from the failed CI run's `mobile-golden-failures` artifact (each `<name>_testImage.png` becomes `linux/<name>.png`), or run `--update-goldens` on Linux. A new golden works the same way: a golden missing for the OS the test runs on also leaves the image the run drew in `test/failures/` and fails saying where to copy it. Check that the two sets show the same thing.
 
 ## End-to-end test (iOS Simulator, Android emulator)
 

@@ -1,7 +1,7 @@
 ---
 title: "Atlas Mobile"
 source: mobile.md
-source_sha: "a2a7f883774d44ac59002118b503993e9c5a5466"
+source_sha: "928aa4b370f7a3efc819c2b5b877110889facbfb"
 translation: machine
 ---
 
@@ -351,7 +351,7 @@ Tocar no ícone mostra uma cor só, o fundo do app (`AtlasColors.dark.ground`, `
 
 ## Goldens
 
-Os testes de screenshot comparam com `apps/mobile/test/goldens/<os>/`: o Flutter desenha o texto com alguns pixels de diferença no macOS e no Linux, então cada plataforma tem a própria gravação e é comparada exatamente com ela (`test/flutter_test_config.dart`). Depois de uma mudança visual, grave as duas: `flutter test --update-goldens` num Mac grava `macos/`; para `linux/`, faça push e pegue as imagens do artifact `mobile-golden-failures` da execução de CI que falhou (cada `<name>_testImage.png` vira `linux/<name>.png`), ou rode `--update-goldens` no Linux. Confira que os dois conjuntos mostram a mesma coisa.
+Os testes de screenshot comparam com `apps/mobile/test/goldens/<os>/`: o Flutter desenha o texto com alguns pixels de diferença no macOS e no Linux, então cada plataforma tem a própria gravação e é comparada exatamente com ela (`test/support/per_platform_goldens.dart`). Depois de uma mudança visual, grave as duas: `flutter test --update-goldens` num Mac grava `macos/`; para `linux/`, faça push e pegue as imagens do artifact `mobile-golden-failures` da execução de CI que falhou (cada `<name>_testImage.png` vira `linux/<name>.png`), ou rode `--update-goldens` no Linux. Um golden novo segue o mesmo caminho: um golden que falta para o sistema em que o teste roda também deixa em `test/failures/` a imagem que a execução desenhou e falha dizendo para onde copiá-la. Confira que os dois conjuntos mostram a mesma coisa.
 
 ## Teste fim a fim (iOS Simulator, emulador Android)
 

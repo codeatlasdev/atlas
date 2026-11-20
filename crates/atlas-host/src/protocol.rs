@@ -397,6 +397,16 @@ pub enum HostCmd {
         #[serde(default)]
         comment: Option<String>,
     },
+    /// Answer a pending permission prompt with what was heard (#648). hostd decides what the words mean
+    /// (`crew::voice_card`): `{verdict: allow|deny|comment|needs_tap|unclear, comment?, reason?}`. An allow is
+    /// once, and never for Bypass, a rail, a destructive call or an untrusted source.
+    AgentApproveVoice {
+        pane: String,
+        req: String,
+        transcript: String,
+        #[serde(default)]
+        lang: Option<String>,
+    },
     /// Type `text` into the pane's terminal, then Enter, only while the agent is idle/done.
     /// With `steer` and an omp agent it is also allowed while the agent works: omp queues
     /// what is typed mid-turn as steering for the running turn.
@@ -603,6 +613,9 @@ pub enum HostCmd {
         /// `None` = don't touch; `Some(None)` = clear (use crew default); `Some(Some(true/false))` = set.
         #[serde(default, deserialize_with = "present")]
         short_replies: Option<Option<bool>>,
+        /// `Some(true)`: the agent ends each reply with a `spoken:` line for listening (#648).
+        #[serde(default)]
+        spoken_replies: Option<bool>,
     },
     CrewmateDelete {
         id: String,
@@ -810,6 +823,15 @@ pub enum HostCmd {
         /// screenshot), uploaded like a task's (`crewmate_attachment_put`). Any other answer refuses them.
         #[serde(default)]
         attachments: Vec<crate::crew::attachments::Sent>,
+    },
+    /// Answer a waiting `choose` card with what was heard (#648): `{verdict: choice|needs_tap|unclear, choice?}`.
+    #[serde(rename = "crewmate_action_answer_voice")]
+    CrewmateActionAnswerVoice {
+        id: String,
+        task: String,
+        transcript: String,
+        #[serde(default)]
+        lang: Option<String>,
     },
     /// If gh is already logged in, wake any connect_github waiters immediately.
     #[serde(rename = "crew_github_connect_resume")]

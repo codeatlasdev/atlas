@@ -251,6 +251,11 @@ impl TelegramBridge {
         status
     }
 
+    /// Whether `chat_id` is one of the owner's linked chats.
+    pub(crate) fn is_linked(&self, chat_id: i64) -> bool {
+        self.config.lock().chats.contains(&chat_id)
+    }
+
     /// True if at least one chat is linked.
     pub(crate) fn has_linked_chat(&self) -> bool {
         !self.config.lock().chats.is_empty()

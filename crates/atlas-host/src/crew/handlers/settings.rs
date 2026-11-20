@@ -189,10 +189,11 @@ pub(crate) fn get(hub: &Hub) -> Result<Value, String> {
     }))
 }
 
-/// What `crew_settings_set` carries.
+/// What `crew_settings_set` carries. Every field is optional: an absent one is left as it is.
 pub(crate) struct SettingsIn {
-    pub short_replies: bool,
-    pub short_replies_model: Option<String>,
+    pub short_replies: Option<bool>,
+    /// `Some(None)` clears it (the default model).
+    pub short_replies_model: Option<Option<String>>,
     pub max_agents: Option<usize>,
     pub agent_memory_max: Option<u64>,
     pub default_approval: Option<String>,
@@ -217,8 +218,12 @@ pub(crate) fn set(hub: &Hub, input: SettingsIn) -> Result<Value, String> {
         .transpose()?;
     // Load, change, save: the file also holds `paused`, which this command must never reset.
     let mut settings = hub.crew.store.load_crew_settings();
-    settings.short_replies = short_replies;
-    settings.short_replies_model = short_replies_model;
+    if let Some(on) = short_replies {
+        settings.short_replies = on;
+    }
+    if let Some(model) = short_replies_model {
+        settings.short_replies_model = model.filter(|m| !m.trim().is_empty());
+    }
     if let Some(n) = max_agents {
         settings.max_agents = n;
     }

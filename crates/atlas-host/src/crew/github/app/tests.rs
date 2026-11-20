@@ -710,7 +710,7 @@ fn a_repo_is_read_from_the_path_git_sends() {
 
 // ── #644: `gh` through the app (the shim) ────────────────────────────────────
 
-use std::path::{Path, PathBuf};
+use std::path::Path;
 
 fn args(a: &[&str]) -> Vec<String> {
     a.iter().map(|s| s.to_string()).collect()
@@ -813,8 +813,11 @@ fn the_repo_a_gh_command_targets_is_read_from_its_flags_its_api_path_or_the_chec
     assert_eq!(t(&["api", "repos/../x/issues"], Path::new("/")), None);
 }
 
-/// A `gh` that reports how it was called: its arguments and the `GH_TOKEN` it got.
-fn fake_gh(dir: &Path) -> PathBuf {
+/// A `gh` that reports how it was called: its arguments and the `GH_TOKEN` it got. A `sh` script, so the tests that
+/// run it are Unix-only (the crew server is Linux; Windows cannot execute it: os error 193).
+#[cfg(unix)]
+fn fake_gh(dir: &Path) -> std::path::PathBuf {
+    use std::os::unix::fs::PermissionsExt;
     std::fs::create_dir_all(dir).unwrap();
     let p = dir.join("gh");
     std::fs::write(
@@ -822,14 +825,11 @@ fn fake_gh(dir: &Path) -> PathBuf {
         "#!/bin/sh\nprintf 'args=%s token=%s\\n' \"$*\" \"${GH_TOKEN:-none}\"\n",
     )
     .unwrap();
-    #[cfg(unix)]
-    {
-        use std::os::unix::fs::PermissionsExt;
-        std::fs::set_permissions(&p, std::fs::Permissions::from_mode(0o755)).unwrap();
-    }
+    std::fs::set_permissions(&p, std::fs::Permissions::from_mode(0o755)).unwrap();
     p
 }
 
+#[cfg(unix)]
 fn run_launch(l: &gh_shim::Launch) -> String {
     let mut c = std::process::Command::new(&l.program);
     c.args(&l.args).env_remove("GH_TOKEN");
@@ -839,6 +839,7 @@ fn run_launch(l: &gh_shim::Launch) -> String {
     String::from_utf8(c.output().unwrap().stdout).unwrap()
 }
 
+#[cfg(unix)]
 #[tokio::test(flavor = "multi_thread")]
 async fn gh_gets_a_token_only_for_the_repo_the_app_covers_and_is_otherwise_untouched() {
     let hook = fake::serve(|r: &Req| {
@@ -967,6 +968,7 @@ fn the_shim_is_recognised_by_the_name_it_was_started_under() {
 mod hooks_with_real_git {
     use super::super::hooks;
     use super::*;
+    use std::path::PathBuf;
 
     const WHO: &str = "octocat <583231+octocat@users.noreply.github.com>";
     const TRAILER: &str = "Co-authored-by: octocat <583231+octocat@users.noreply.github.com>";

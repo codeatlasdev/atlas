@@ -83,6 +83,14 @@ end
 lane :ios_beta do |options|
   need("ASC_KEY_ID", "ASC_ISSUER_ID", "ASC_KEY_P8", "APPLE_TEAM_ID")
   n = options[:build_number] || build_number
+  # Internal groups only: external testers need Apple's beta review (and a way to try the
+  # app without a computer running Atlas).
+  groups = ENV.fetch("TESTFLIGHT_GROUPS", "").split(",").map(&:strip).reject(&:empty?)
+  # Handing a build to a group needs the app's beta information (description AND feedback email):
+  # without the email fastlane reports it "set" but creates no localization, and App Store Connect
+  # refuses the distribution after a 25-minute build ("Beta App Description is missing"). Checked here,
+  # before anything is built.
+  need("BETA_FEEDBACK_EMAIL") unless groups.empty?
   key = app_store_connect_api_key(
     key_id: ENV["ASC_KEY_ID"],
     issuer_id: ENV["ASC_ISSUER_ID"],
@@ -114,9 +122,6 @@ lane :ios_beta do |options|
     xcargs: "#{auth} DEVELOPMENT_TEAM=#{ENV['APPLE_TEAM_ID']}",
     export_options: { signingStyle: "automatic", teamID: ENV["APPLE_TEAM_ID"] },
   )
-  # Internal groups only: external testers need Apple's beta review (and a way to try the
-  # app without a computer running Atlas).
-  groups = ENV.fetch("TESTFLIGHT_GROUPS", "").split(",").map(&:strip).reject(&:empty?)
   upload_to_testflight(
     api_key: key,
     ipa: ipa,

@@ -8,6 +8,10 @@ All notable changes to Atlas (CLI, TUI, MCP server and Atlas Desktop). Versions 
 
 ### Fixed
 
+- **Atlas Mobile releases hand the TestFlight build to the testers instead of failing after the upload.** The workflow never passed `BETA_FEEDBACK_EMAIL` to fastlane, so the app's TestFlight information was never created and App Store Connect refused the distribution ("Beta App Description is missing") 25 minutes into the first `mobile-v1.0.0` run, which also held back its store step. The `mobile-beta` variable is passed now, and `ios_beta` refuses to start without it when there are groups to hand the build to.
+
+### Fixed
+
 - **Atlas Mobile's release workflow can actually publish, and every pull request that touches it rehearses the store builds.** The `Mobile release` workflow had never run: its Ruby step had no version to install (there was no `.ruby-version`), so the first `mobile-v*` tag would have stopped before building. `apps/mobile/.ruby-version` pins Ruby 3.4, and one composite action (`.github/actions/mobile-store-setup`) prepares every store job. A pull request that touches the release path now runs `fastlane ios_rehearse` and `android_rehearse`: the exact store builds, unsigned and never uploaded, with no secret. The App Store submission no longer fails on precheck's in-app purchase check (impossible through an API key) and declares export compliance, and the first Play production release of a never-published app is created as a draft to send for review once in Play Console instead of failing (docs/mobile.md, "Releases").
 
 ## [1.5.0-alpha.27] - 2026-11-20

@@ -84,11 +84,9 @@ async fn rig_polling(
     let client = daemon(&dir).await;
     let id = create_crewmate(&client, "Nami").await;
     if let Some(u) = public_url {
+        // Alone, as Atlas Desktop's webhook field sends it (#659: absent settings stay as they are).
         client
-            .call(
-                "crew_settings_set",
-                json!({"short_replies": true, "public_url": u}),
-            )
+            .call("crew_settings_set", json!({"public_url": u}))
             .await
             .unwrap();
     }
@@ -576,10 +574,8 @@ async fn a_strangers_comment_starts_no_task_unless_the_automation_opts_in() {
 async fn the_public_url_setting_is_validated_told_to_github_and_hides_the_secret() {
     let (rig, _) = rig(None, &[], json!({})).await;
     let set = |url: &str| {
-        rig.client.call(
-            "crew_settings_set",
-            json!({"short_replies": true, "public_url": url}),
-        )
+        rig.client
+            .call("crew_settings_set", json!({"public_url": url}))
     };
     for bad in [
         "http://crew.example.com",

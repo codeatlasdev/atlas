@@ -15,6 +15,8 @@ export interface BuiltinAgent {
 	/** `atlas setup <setup>` installs the hooks that report the agent's state. */
 	setup: string;
 	yolo_args: string[];
+	/** Passed when the agent is not launched with `yolo_args`: its ask mode said explicitly (crew terminal agents). */
+	ask_args: string[];
 	/** Resume argv; `{session}` is the session id (omp: its session file). */
 	resume: string[];
 	prompt_flag: string | null;

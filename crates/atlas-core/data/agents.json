@@ -5,6 +5,7 @@
     "bin": "omp",
     "setup": "omp",
     "yolo_args": ["--auto-approve"],
+    "ask_args": [],
     "resume": ["--resume", "{session}"],
     "prompt_flag": null,
     "one_shot": [
@@ -29,6 +30,7 @@
     "bin": "claude",
     "setup": "claude-code",
     "yolo_args": ["--dangerously-skip-permissions"],
+    "ask_args": ["--permission-mode", "default"],
     "resume": ["--resume", "{session}"],
     "prompt_flag": null,
     "one_shot": ["claude", "-p", "--no-session-persistence", "--tools", ""],
@@ -43,6 +45,7 @@
     "bin": "codex",
     "setup": "codex",
     "yolo_args": ["--dangerously-bypass-approvals-and-sandbox"],
+    "ask_args": [],
     "resume": ["resume", "{session}"],
     "prompt_flag": null,
     "one_shot": [
@@ -67,6 +70,7 @@
     "bin": "opencode",
     "setup": "opencode",
     "yolo_args": ["--auto"],
+    "ask_args": [],
     "resume": ["--session", "{session}"],
     "prompt_flag": "--prompt",
     "one_shot": null,

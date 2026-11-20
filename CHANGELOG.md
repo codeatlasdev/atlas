@@ -6,19 +6,20 @@ All notable changes to Atlas (CLI, TUI, MCP server and Atlas Desktop). Versions 
 
 ## [Unreleased]
 
-## [1.5.0-alpha.27] — 2026-11-19
+## [1.5.0-alpha.27] - 2026-11-20
 
 Atlas is in **alpha**: expect bugs and breaking changes. Please [report what breaks](https://github.com/codeatlasdev/atlas/issues/new).
 
-**The Brazilian Portuguese release.** Atlas Desktop speaks Brazilian Portuguese on every screen, and so do its native menus, dialogs and tray, the CLI's errors, the terminal host's errors and the dev engine's notes about your services. Pick the language in Settings › General; it switches live, with no restart. The docs have pt-BR pages that name the interface the way the app does, and a change to an English page now has to bring its translation along.
+**Atlas Crew grows up, and Atlas speaks Brazilian Portuguese.** A crewmate has a permission mode (Ask, Accept edits, Bypass) that hostd decides at every tool call and you switch while it works, with rails no mode removes. A crew server gets its own GitHub App, created in one click, so crewmates reach GitHub as a bot with short-lived tokens; with a public URL, GitHub events arrive at once through its verified webhook. You can dictate a task by voice on Desktop, on the phone (recognised on the phone) and in Telegram, hear a crewmate's short reply, and answer its cards by voice where that is safe: a prompt in Bypass, on a protected path or with a destructive command still needs a tap. Atlas Desktop, its native menus and the CLI speak Brazilian Portuguese, switched live in Settings › General.
 
 Also in this version:
 - **Linux:** `atlas desktop` installs the distro package, and the Arch package is on the AUR. A startup baseline is gated in CI.
 - **macOS:** builds are Developer ID signed and notarized, so the firewall stops asking after every update.
 - **Agent guards:** AI agents can no longer write outside their worktree, push to `main` or force-push.
-- **Atlas Crew:** approvals and cards are fixed.
 - **Security:** a capture page could open any app on your Mac, a headless Claude crewmate ran tools nobody approved, and links now open only as `http`, `https` and `mailto`.
 - **Windows:** a terminal's last output is no longer lost; `atlas dev --status`, the MCP status tools and the desktop no longer report a running stack as stopped for an instant; and `install.ps1` works in Windows PowerShell 5.1.
+
+**Updating a crew server:** run `atlas crew install <server>` again after updating, so isolated crewmates get the `gh` link of the GitHub App; `atlas crew voice install <server>` (or `--voice`) sets up dictation.
 
 ### Added
 

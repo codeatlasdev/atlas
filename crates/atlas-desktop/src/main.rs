@@ -42,6 +42,7 @@ mod dock;
 mod dock_mac;
 mod git;
 mod git_branch;
+mod github_app;
 mod github_auth;
 mod host;
 mod hotkeys;
@@ -279,6 +280,9 @@ macro_rules! handlers {
             crew::crew_agent_install,
             crew::crew_signin_argv,
             crew::provider_probe,
+            github_app::github_app_listen_start,
+            github_app::github_app_listen_wait,
+            github_app::github_app_listen_cancel,
             github_auth::project_git_info,
             menu::menu_sync,
             menu::menu_dump,

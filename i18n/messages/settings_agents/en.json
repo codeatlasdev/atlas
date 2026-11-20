@@ -44,7 +44,6 @@
 	"settings_agents_crew_display_name": "Display name",
 	"settings_agents_crew_display_name_optional": "Display name (optional)",
 	"settings_agents_crew_enabled": "Enabled",
-	"settings_agents_crew_github_description": "Connect GitHub so the crew can clone private repositories. Configure in the crew workspace footer.",
 	"settings_agents_crew_model_placeholder": "Model ID, for example cc/claude-haiku-5-5",
 	"settings_agents_crew_onboarding": "Onboarding",
 	"settings_agents_crew_open_workspace": "Open crew workspace",

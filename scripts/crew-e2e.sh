@@ -24,6 +24,8 @@ set -euo pipefail
 cd "$(dirname "$0")/.."
 ROOT=$PWD
 
+# The checks below read the CLI's English catalog (i18n/messages/cmd_crew/en.json), whatever the machine's locale.
+export ATLAS_LANG=en
 ATLAS=${ATLAS:-$ROOT/target/debug/atlas}
 PORT=${CREW_E2E_PORT:-2222}
 NAME=atlas-crew-e2e
@@ -686,8 +688,8 @@ grep -q 'needs a decision' "$OUT/uninstall-refused.log" || fail "the refusal doe
 srv id atlas-crew >/dev/null || fail "a refused uninstall removed the crew user"
 
 atlas crew uninstall "$TARGET" --port "$PORT" --yes 2>&1 | tee "$OUT/uninstall.log"
-grep -q 'crew server removed' "$OUT/uninstall.log" || fail "uninstall did not say it removed the crew server"
-grep -q "Deleted $HOME_DIR on $TARGET (2 crewmate(s))" "$OUT/uninstall.log" || fail "uninstall did not report what it deleted"
+grep -q 'Crew server removed from' "$OUT/uninstall.log" || fail "uninstall did not say it removed the crew server"
+grep -q "Deleted $HOME_DIR on $TARGET (2 crewmates)" "$OUT/uninstall.log" || fail "uninstall did not report what it deleted"
 
 say "7b. nothing of the crew server is left"
 left=$(srv_sh "

@@ -1,0 +1,19 @@
+{
+  "pt-BR": {
+    "cmd_crew_voice_fail_build": "a02657e97dab",
+    "cmd_crew_voice_fail_checksum": "ac6f99ee4ffc",
+    "cmd_crew_voice_fail_dir": "8839e8fd931e",
+    "cmd_crew_voice_fail_download": "69105b483c77",
+    "cmd_crew_voice_no_apt": "24c2e3e3506d",
+    "cmd_crew_voice_ready": "9b8f8373c95d",
+    "cmd_crew_voice_status_ready": "bc2ecc491414",
+    "cmd_crew_voice_step_apt": "2d8900e84bf1",
+    "cmd_crew_voice_step_build": "c6b80f4692c7",
+    "cmd_crew_voice_step_built": "5397efaf0903",
+    "cmd_crew_voice_step_model": "369952ee07fd",
+    "cmd_crew_voice_step_model_present": "fc8c98130a73",
+    "cmd_crew_voice_step_source": "46b38dbc7d20",
+    "cmd_crew_voice_step_tools": "e4110098eaa9",
+    "cmd_crew_voice_unknown_model": "a6915aef1ea9"
+  }
+}

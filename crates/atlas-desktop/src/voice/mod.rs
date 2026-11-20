@@ -89,6 +89,8 @@ pub fn voice_open_settings() -> Result<(), String> {
 /// Open the microphone. The first time on macOS this shows the system prompt and waits for the answer.
 #[tauri::command]
 pub async fn voice_start(app: AppHandle) -> Result<(), StartError> {
+    // The recording must never hear a reply being read aloud.
+    crate::speech::stop(&app);
     tauri::async_runtime::spawn_blocking(move || {
         match access::current() {
             Access::Denied => return Err(StartError::Denied),

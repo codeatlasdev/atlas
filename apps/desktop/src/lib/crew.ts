@@ -198,6 +198,8 @@ export interface Crewmate {
 	setup_step?: string;
 	/** Per-crewmate short replies toggle. Absent = use crew default (on). */
 	short_replies?: boolean;
+	/** The agent ends each reply with a `spoken:` line for listening (the chat's "Read replies aloud" turned it on). */
+	spoken_replies?: boolean;
 }
 
 /** Where a task from GitHub came from and where its reply goes (hostd's `GithubOrigin`). */
@@ -242,6 +244,8 @@ export interface CrewmateTask {
 	};
 	/** Crew action blocking task progress; present when state is "waiting_action". */
 	action?: TaskAction;
+	/** What to read aloud for this finished task (hostd's, at most 300 characters); empty or absent: nothing to say. */
+	spoken?: string;
 	/** Original full reply before summarization; present only when summarized is true. */
 	reply_full?: string;
 	/** True when result is a summary and reply_full holds the original. */

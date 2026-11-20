@@ -71,6 +71,7 @@ mod stderr_log;
 #[cfg(target_os = "macos")]
 mod swipe_clock;
 // Pure, tested decision code driven only by the AppKit side: unused outside macOS, still built so its tests run.
+mod speech;
 #[cfg_attr(not(target_os = "macos"), allow(dead_code))]
 mod swipe_engine;
 #[cfg(target_os = "macos")]
@@ -426,6 +427,9 @@ macro_rules! handlers {
             voice::voice_stop,
             voice::voice_cancel,
             voice::voice_read,
+            speech::speech_available,
+            speech::speech_speak,
+            speech::speech_stop,
             shots::record::shots_record_save,
             shots::record::shots_record_discard,
             shots::editor::shots_editor_load,
@@ -701,6 +705,7 @@ fn main() {
             app.manage(agent::send::Sends::default());
             app.manage(open_path::Pending::default());
             app.manage(voice::Voice::new(&handle));
+            app.manage(speech::Speech::new(&handle));
             // `atlas-desktop <path>` on a cold start: the page opens it once its stores are loaded.
             open_path::open(
                 &handle,

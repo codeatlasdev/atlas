@@ -21,6 +21,7 @@
 	import Lazy from "#lib/components/Lazy.svelte";
 	import Composer from "#lib/crew/chat/Composer.svelte";
 	import ModePicker from "#lib/crew/chat/ModePicker.svelte";
+	import ReadAloudToggle from "#lib/crew/chat/ReadAloudToggle.svelte";
 	import SetupConversation from "#lib/crew/chat/SetupConversation.svelte";
 	import { ChatState } from "#lib/crew/chat/chat.svelte.ts";
 	import { voiceStatus } from "#lib/crew/voice/status.svelte.ts";
@@ -73,7 +74,24 @@
 		void crew.selected;
 		chat.resetApprovals();
 		// Untracked: `cancel` reads the session's state, which must not re-run (and cancel) this effect.
-		untrack(() => chat.dictation.cancel());
+		untrack(() => {
+			chat.dictation.cancel();
+			// A reply being read belongs to the chat it came from.
+			chat.speech.stop();
+		});
+	});
+
+	// A reply that finishes while this chat is open is read aloud, when this device reads this crewmate's replies.
+	$effect(() => {
+		const list = crew.tasks;
+		const loading = crew.tasksLoading;
+		untrack(() => chat.onTasks(list, loading));
+	});
+
+	// The synthesizer and "any key or click stops it" belong to the chat's life.
+	$effect(() => {
+		void chat.speech.attach(window);
+		return () => chat.speech.dispose();
 	});
 
 	// What the selected crew server can do with a voice: the microphone's state in the composer.
@@ -190,7 +208,9 @@
 					queued={queuedCount}
 					onsend={() => void chat.send()}
 				>
-					{#snippet footer()}<ModePicker {crewmate} {hostKey} />{/snippet}
+					{#snippet footer()}
+						<span class="foot-controls"><ModePicker {crewmate} {hostKey} /><ReadAloudToggle {chat} /></span>
+					{/snippet}
 				</Composer>
 			{/if}
 		</div>
@@ -217,6 +237,13 @@
 		justify-content: center;
 		color: var(--ca-text-secondary);
 		font-size: 14px;
+	}
+
+	.foot-controls {
+		display: inline-flex;
+		align-items: center;
+		flex-wrap: wrap;
+		gap: 12px;
 	}
 
 	.thread-pending {

@@ -7,23 +7,70 @@ name: Mobile release
 #      Store review (released on approval) and to Play production (every user at once).
 # Not approved, it stays with testers. Both stores share one build number (the run's start, in
 # minutes), and the version comes from the tag. Secrets: docs/mobile.md, "Releases".
+#
+# A pull request that touches this release path runs only the rehearsal: both store builds made
+# exactly as a release makes them, unsigned, never uploaded, with no secret and no environment.
 on:
   push:
     tags: ["mobile-v*"]
   workflow_dispatch:
+  pull_request:
+    paths:
+      - .github/workflows/mobile-release.yml
+      - .github/actions/mobile-store-setup/**
+      - apps/mobile/fastlane/**
+      - apps/mobile/Gemfile
+      - apps/mobile/Gemfile.lock
+      - apps/mobile/.ruby-version
+      - apps/mobile/ios/**
+      - apps/mobile/android/**
+      - apps/mobile/pubspec.yaml
+      - apps/mobile/pubspec.lock
 
 permissions:
   contents: read
 
 concurrency:
-  group: mobile-release
-  cancel-in-progress: false
+  # Publishing runs queue behind each other; a pull request's rehearsal is replaced by its next push.
+  group: ${{ github.event_name == 'pull_request' && format('mobile-rehearsal-{0}', github.event.pull_request.number) || 'mobile-release' }}
+  cancel-in-progress: ${{ github.event_name == 'pull_request' }}
 
 jobs:
   # Nothing reaches testers or the stores from a commit CI did not pass (#311), the same gate as
   # release.yml. `github.sha` is the tagged commit on a tag push and the chosen ref on a dispatch.
+  rehearsal:
+    name: Rehearsal (${{ matrix.platform }})
+    if: github.event_name == 'pull_request'
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - platform: ios
+            os: macos-latest
+            targets: aarch64-apple-ios
+          - platform: android
+            os: ubuntu-latest
+            targets: aarch64-linux-android armv7-linux-androideabi x86_64-linux-android i686-linux-android
+    runs-on: ${{ matrix.os }}
+    timeout-minutes: 60
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+
+      - uses: ./.github/actions/mobile-store-setup
+        with:
+          targets: ${{ matrix.targets }}
+
+      - name: Store build, unsigned
+        working-directory: apps/mobile
+        env:
+          LANE: ${{ matrix.platform }}_rehearse
+        run: bundle exec fastlane "$LANE"
+
   gate:
     name: CI gate
+    if: github.event_name != 'pull_request'
     runs-on: ubuntu-latest
     timeout-minutes: 130
     permissions:
@@ -73,28 +120,9 @@ jobs:
         with:
           persist-credentials: false
 
-      - uses: subosito/flutter-action@1a449444c387b1966244ae4d4f8c696479add0b2 # v2.23.0
+      - uses: ./.github/actions/mobile-store-setup
         with:
-          flutter-version-file: apps/mobile/pubspec.yaml
-          channel: stable
-
-      # The translations are written from the catalog (i18n/messages) by the lanes' own step; that needs bun.
-      - name: Install Bun
-        uses: oven-sh/setup-bun@0c5077e51419868618aeaa5fe8019c62421857d6 # v2.2.0
-        with:
-          no-cache: true
-
-      - name: Rust targets for the native crate
-        run: rustup target add aarch64-apple-ios
-
-      - uses: ruby/setup-ruby@b3aaceaef7e0ee231b499e7b5f49c03fc1d32199 # v1.338.0
-        with:
-          working-directory: apps/mobile
-
-      # No cache: a publishing run must not restore what another run could have written.
-      - name: fastlane
-        working-directory: apps/mobile
-        run: bundle install
+          targets: aarch64-apple-ios
 
       - name: Build and upload
         working-directory: apps/mobile
@@ -128,28 +156,9 @@ jobs:
         with:
           persist-credentials: false
 
-      - uses: subosito/flutter-action@1a449444c387b1966244ae4d4f8c696479add0b2 # v2.23.0
+      - uses: ./.github/actions/mobile-store-setup
         with:
-          flutter-version-file: apps/mobile/pubspec.yaml
-          channel: stable
-
-      # The translations are written from the catalog (i18n/messages) by the lanes' own step; that needs bun.
-      - name: Install Bun
-        uses: oven-sh/setup-bun@0c5077e51419868618aeaa5fe8019c62421857d6 # v2.2.0
-        with:
-          no-cache: true
-
-      - name: Rust targets for the native crate
-        run: rustup target add aarch64-linux-android armv7-linux-androideabi x86_64-linux-android i686-linux-android
-
-      - uses: ruby/setup-ruby@b3aaceaef7e0ee231b499e7b5f49c03fc1d32199 # v1.338.0
-        with:
-          working-directory: apps/mobile
-
-      # No cache: a publishing run must not restore what another run could have written.
-      - name: fastlane
-        working-directory: apps/mobile
-        run: bundle install
+          targets: aarch64-linux-android armv7-linux-androideabi x86_64-linux-android i686-linux-android
 
       - name: Build and upload
         working-directory: apps/mobile

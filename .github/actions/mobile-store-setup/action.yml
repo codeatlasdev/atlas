@@ -1,0 +1,43 @@
+name: Mobile store build setup
+description: >-
+  What every store build of Atlas Mobile (mobile-release.yml) starts with, in one place, so the rehearsal on a pull
+  request builds with exactly what a release uses: Flutter (the one pin in apps/mobile/pubspec.yaml), bun (the
+  lanes write the translations from the catalog), the Rust targets of the native crate, and Ruby with fastlane
+  (apps/mobile/.ruby-version and Gemfile.lock). No cache: a publishing run must not restore what another run
+  could have written. Expects the repository checked out.
+
+inputs:
+  targets:
+    description: Rust targets of the native crate for this platform (space separated).
+    required: true
+
+runs:
+  using: composite
+  steps:
+    - uses: subosito/flutter-action@1a449444c387b1966244ae4d4f8c696479add0b2 # v2.23.0
+      with:
+        flutter-version-file: apps/mobile/pubspec.yaml
+        channel: stable
+
+    - name: Install Bun
+      uses: oven-sh/setup-bun@0c5077e51419868618aeaa5fe8019c62421857d6 # v2.2.0
+      with:
+        no-cache: true
+
+    - name: Rust targets for the native crate
+      shell: bash
+      env:
+        TARGETS: ${{ inputs.targets }}
+      run: |
+        # shellcheck disable=SC2086 # the list is words on purpose
+        rustup target add $TARGETS
+
+    # The version is apps/mobile/.ruby-version: without it setup-ruby has nothing to install and fails.
+    - uses: ruby/setup-ruby@b3aaceaef7e0ee231b499e7b5f49c03fc1d32199 # v1.338.0
+      with:
+        working-directory: apps/mobile
+
+    - name: fastlane
+      shell: bash
+      working-directory: apps/mobile
+      run: bundle install

@@ -10,6 +10,8 @@
 #   fastlane release          promote BUILD_NUMBER (already tested) to both stores
 #   fastlane ios_release      submit that TestFlight build to App Store review
 #   fastlane android_release  promote that internal build to Play production
+#   fastlane ios_rehearse     the iOS store build, unsigned, never uploaded (pull requests)
+#   fastlane android_rehearse the Android store bundle, debug-signed, never uploaded (pull requests)
 
 default_platform(:ios)
 
@@ -184,27 +186,75 @@ lane :ios_release do
     skip_screenshots: true,
     submit_for_review: true,
     automatic_release: true,
+    # precheck cannot read in-app purchases through an API key and fails the whole submission on it
+    # (the app has none).
+    precheck_include_in_app_purchases: false,
+    # Export compliance: the app's Info.plist already says ITSAppUsesNonExemptEncryption = NO.
+    submission_information: { export_compliance_uses_encryption: false },
     force: true,
   )
 end
 
 # Move the internal-testing build BUILD_NUMBER to production, to every user at once.
+#
+# An app that was never published is a "draft app" for Play, and the API refuses to roll anything out
+# on it ("Only releases with status draft may be created on draft app"). Its first production release
+# is therefore created as a draft and sent to review from Play Console (Publishing overview → Send for
+# review); every later release goes out completed from here.
 lane :android_release do
   need("PLAY_SERVICE_ACCOUNT_JSON", "BUILD_NUMBER")
-  upload_to_play_store(
-    package_name: ANDROID_PACKAGE,
-    json_key_data: ENV["PLAY_SERVICE_ACCOUNT_JSON"],
-    track: "internal",
-    track_promote_to: "production",
-    version_code: ENV["BUILD_NUMBER"].to_i,
-    track_promote_release_status: "completed",
-    skip_upload_apk: true,
-    skip_upload_aab: true,
-    skip_upload_metadata: true,
-    skip_upload_changelogs: true,
-    skip_upload_images: true,
-    skip_upload_screenshots: true,
+  promote = lambda do |status|
+    upload_to_play_store(
+      package_name: ANDROID_PACKAGE,
+      json_key_data: ENV["PLAY_SERVICE_ACCOUNT_JSON"],
+      track: "internal",
+      track_promote_to: "production",
+      version_code: ENV["BUILD_NUMBER"].to_i,
+      track_promote_release_status: status,
+      skip_upload_apk: true,
+      skip_upload_aab: true,
+      skip_upload_metadata: true,
+      skip_upload_changelogs: true,
+      skip_upload_images: true,
+      skip_upload_screenshots: true,
+    )
+  end
+  begin
+    promote.call("completed")
+  rescue StandardError => e
+    raise unless e.message =~ /draft app/i
+    promote.call("draft")
+    UI.important("Play: first production release created as a DRAFT (the app was never published). " \
+                 "Finish it once in Play Console: Publishing overview → Send for review.")
+  end
+end
+
+# Rehearsal (pull requests that touch the release path, `.github/workflows/mobile-release.yml`): the
+# store builds exactly as a release makes them (same flavor, flags and symbols), but unsigned and never
+# uploaded, with no secret at all. A break in the store build shows up on the PR, not on a release tag.
+lane :ios_rehearse do
+  Dir.chdir(APP) do
+    write_translations
+    flutter("build", "ios", "--no-codesign", *store_build_args("ios", build_number))
+  end
+  build_app(
+    workspace: File.join(APP, "ios/Runner.xcworkspace"),
+    scheme: "prod",
+    skip_codesigning: true,
+    skip_package_ipa: true,
+    archive_path: File.join(APP, "build/fastlane/Runner.xcarchive"),
+    xcargs: "CODE_SIGNING_ALLOWED=NO",
   )
+end
+
+lane :android_rehearse do
+  Dir.chdir(APP) do
+    write_translations
+    # No key.properties: build.gradle.kts signs with the debug key, which is enough to prove the bundle builds.
+    flutter("build", "appbundle", *store_build_args("android", build_number))
+  end
+  aab = File.join(APP, "build/app/outputs/bundle/prodRelease/app-prod-release.aab")
+  UI.user_error!("no bundle at #{aab}") unless File.exist?(aab)
 end
 
 # Hand an already uploaded iOS build to the TestFlight groups (e.g. after fixing what blocked

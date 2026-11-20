@@ -1,7 +1,7 @@
 ---
 title: "Atlas Mobile"
 source: mobile.md
-source_sha: "928aa4b370f7a3efc819c2b5b877110889facbfb"
+source_sha: "741183b806a5eb243c5b9015819a58e4af30355b"
 translation: machine
 ---
 
@@ -399,6 +399,10 @@ Configuração única no GitHub: o environment `mobile-store` com **Required rev
 | `GOOGLE_SERVICE_INFO_PLIST` | `GoogleService-Info.plist` para as notificações push do Firebase no iOS, gravado pelo build iOS só enquanto ele roda. Definido por `scripts/firebase-mobile-config.sh`. Sem ele, o app compila sem push. |
 
 Uma vez por loja, à mão: crie o registro do app (`br.com.codeatlas.atlas.mobile` nas duas; `br.com.codeatlas.atlas` é o app desktop) e envie o primeiro bundle Android pelo Play Console (a API não consegue criar a primeira versão de um app). Testers: um grupo interno do TestFlight (até 100 membros do time, sem revisão) e a lista do Play internal testing (até 100 e-mails); cada tester recebe um link de convite.
+
+**Ensaio em todo pull request que mexe no caminho de release** (o workflow, `.github/actions/mobile-store-setup`, `apps/mobile/fastlane`, `ios/`, `android/`, o pubspec e os arquivos de Ruby): o mesmo workflow roda só os jobs `rehearsal`, `fastlane ios_rehearse` (macOS: `flutter build ios` e um archive do Xcode do scheme `prod`, sem assinatura) e `fastlane android_rehearse` (Linux: o app bundle `prod`, assinado com a chave de debug). Mesmo flavor, flags, versão do Flutter e Ruby de um release, sem segredo, sem environment e sem upload, então uma build de loja quebrada aparece no pull request e não numa tag de release. Todo job de loja começa pela mesma composite action, `.github/actions/mobile-store-setup` (Flutter pelo pubspec, bun, os targets de Rust, Ruby pelo `apps/mobile/.ruby-version`, `bundle install`).
+
+**Estado das lojas do qual o pipeline depende** (configurado uma vez; conferido em 2026-11-20): o App Store Connect tem a versão 1.0.0 com descrição, palavras-chave, capturas de tela (iPhone de 6,9 polegadas), contato e notas para a revisão, privacidade do app (ID do dispositivo para funcionalidade, não vinculado), classificação etária 4+, direitos de conteúdo (sem conteúdo de terceiros) e preço gratuito em todos os territórios. O `ios_release` envia pela chave de API com `precheck_include_in_app_purchases: false` (o precheck não consegue ler compras dentro do app por uma chave) e declara que não usa criptografia não isenta (o Info.plist também diz isso). O Play tem todas as tarefas de Conteúdo do app concluídas e as configurações da loja (categoria Ferramentas, contato `contato@codeatlas.com.br`, site). **A primeira versão de produção no Play é um passo manual, uma vez só:** um app nunca publicado é um "app de rascunho" e a API se recusa a lançar qualquer coisa nele, então o `android_release` cria essa primeira versão de produção como rascunho e avisa; termine no Play Console (Visão geral da publicação → Enviar para revisão). Todo release seguinte sai pelo workflow.
 
 ### Painéis das lojas a partir de um agente (opcional)
 

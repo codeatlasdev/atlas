@@ -77,12 +77,12 @@ async fn send(client: &HostClient, id: &str) -> String {
     v["task"]["id"].as_str().unwrap().to_string()
 }
 
-struct Engine {
+pub(super) struct Engine {
     _lock: tokio::sync::MutexGuard<'static, ()>,
 }
 
 impl Engine {
-    async fn omp(bin: &Path) -> Self {
+    pub(super) async fn omp(bin: &Path) -> Self {
         let lock = lock_agent_bin().await;
         *crate::crew::engine::TEST_ENGINE_PROGRAM.lock() =
             Some(("omp".into(), bin.to_string_lossy().into_owned()));

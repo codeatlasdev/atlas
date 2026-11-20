@@ -66,6 +66,7 @@ pub fn route(cmd: &HostCmd) -> Route {
         | C::AgentSend { .. }
         | C::AgentInterrupt { .. }
         | C::AgentApprove { .. }
+        | C::AgentApproveVoice { .. }
         | C::AgentLaunch { .. }
         | C::PtyOpen { .. }
         | C::WorktreeCreate { .. }
@@ -179,6 +180,7 @@ pub fn route(cmd: &HostCmd) -> Route {
         | C::CrewGithubAppStatus {}
         | C::CrewGithubAppRemove {}
         | C::CrewmateActionAnswer { .. }
+        | C::CrewmateActionAnswerVoice { .. }
         | C::CrewGithubConnectResume {}
         | C::CrewPause {}
         | C::CrewResume {}

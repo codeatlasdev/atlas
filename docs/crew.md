@@ -15,7 +15,7 @@ Atlas Crew runs AI agents around the clock on a Linux server you own, without yo
 | **task** | one prompt a crewmate works on, one at a time per crewmate |
 | **automation** | something that starts a task by itself: a schedule, an interval, a webhook, a GitHub event, a file change, another crewmate or a service (`triggers` on the wire) |
 
-Sections: [Install a crew server](#install-a-crew-server) · [Back up and move crewmates](#back-up-and-move-crewmates) · [Sign agents in](#sign-agents-in) · [Crewmates](#crewmates) · [Tasks and approvals](#tasks-and-approvals) · [Automations](#automations) · [GitHub](#github) · [Telegram](#telegram) · [Dictation](#dictation) · [Push notifications](#push-notifications) · [Desktop](#atlas-desktop) · [Mobile](#atlas-mobile) · [MCP tools](#mcp-tools-for-the-agent) · [Security model](#security-model) · [Troubleshooting](#troubleshooting) · [Crewmate look](#crewmate-look) · [End-to-end test](#end-to-end-test-on-real-systemd) · [Code map](#code-map) · [Reference](#reference)
+Sections: [Install a crew server](#install-a-crew-server) · [Back up and move crewmates](#back-up-and-move-crewmates) · [Sign agents in](#sign-agents-in) · [Crewmates](#crewmates) · [Tasks and approvals](#tasks-and-approvals) · [Automations](#automations) · [GitHub](#github) · [Telegram](#telegram) · [Dictation](#dictation) · [Spoken replies and voice answers](#spoken-replies-and-voice-answers) · [Push notifications](#push-notifications) · [Desktop](#atlas-desktop) · [Mobile](#atlas-mobile) · [MCP tools](#mcp-tools-for-the-agent) · [Security model](#security-model) · [Troubleshooting](#troubleshooting) · [Crewmate look](#crewmate-look) · [End-to-end test](#end-to-end-test-on-real-systemd) · [Code map](#code-map) · [Reference](#reference)
 
 ## Install a crew server
 
@@ -400,7 +400,7 @@ Linked chats receive task results (truncated to 4000 characters) and approval pr
 | `/ui <message>` | the same message for a [UI task](#ui-tasks-and-proof): `/ui /task <name> <text>`, or `/ui <text>` for a single crewmate; also at the start of a photo's caption |
 | plain text | goes to the only crewmate when exactly one exists |
 | a photo | becomes a task with the image: the caption is the prompt (`/task <name> <text>` picks the crewmate, otherwise the only crewmate takes it; no caption: "Look at the attached image."). Telegram's largest size is downloaded through the Bot API (`getFile`), a file over 5 MiB is refused without being fetched, and the chat is told why when it is refused. See [Images on tasks](#images-on-tasks) |
-| a voice note | from a linked chat only: transcribed on the crew server and echoed with **Send as task**, **Edit** and **Cancel**; nothing is queued until Send. See [Dictation](#dictation) |
+| a voice note | from a linked chat only: transcribed on the crew server and echoed with **Send as task**, **Edit** and **Cancel**; nothing is queued until Send. See [Dictation](#dictation). While a permission prompt or a choice card of that crewmate waits, the note answers it instead, by the [voice answer rules](#voice-answers-to-cards) |
 
 Telegram sees your bot token and the messages above. Nothing goes to CodeAtlas.
 
@@ -464,6 +464,37 @@ A voice note from a linked chat is transcribed by the crew's engine and echoed b
 ### Privacy
 
 With whisper.cpp the audio goes from your device to **your crew server** and is deleted there as soon as the text exists; nothing goes to CodeAtlas or any third party. With a hosted endpoint it goes to that host, under that provider's own terms: the apps show its label next to the mic and `crew_voice_status` names it. On Telegram the voice note itself passes through Telegram's servers before it reaches the crew server, like any message you send there.
+
+## Spoken replies and voice answers
+
+Hands-free use from the phone: hear a crewmate's short reply, and answer its cards by voice where that is safe. Reading aloud runs **on the device** (the system voice and rate, the language of the reply); recognising what you say is [dictation](#dictation). hostd owns the rules that decide what a spoken answer may do, once, so no client can weaken them.
+
+### Spoken replies
+
+Off by default. A per-device toggle in a crewmate's chat turns on reading its replies aloud; turning it on also sets `spoken_replies: true` on that crewmate (`crewmate_update {id, spoken_replies}`, shown in `crewmate_list`), so its agent writes summaries. Turning it off on a device does not clear the flag: it stays until you turn it off in the crewmate's settings.
+
+- **While the flag is on**, hostd adds one line to the turn's instructions: end the reply with `spoken: <one or two short sentences for listening, no code, no paths, no markdown>`.
+- **Every finished task has `spoken`** (a string, in `crewmate_tasks` and in the task pushes), computed by hostd. The agent's last `spoken:` line (any case, at the start of a line, at most 300 characters) is the summary, and it is **removed from every visible copy** of the reply: `result`, `reply`, `reply_full`, Telegram and the GitHub comment. Without one, `spoken` is the first sentences of the visible reply up to 300 characters, with code blocks, inline code, URLs, markdown marks and file paths removed. A reply that is only code gives `""`: nothing is read.
+- The full reply always stays as text.
+
+### Voice answers to cards
+
+`agent_approve_voice {pane, req, transcript, lang?}` answers a permission prompt and `crewmate_action_answer_voice {id, task, transcript, lang?}` a choice card. A client sends **only what was heard** (`lang` is `en`, `pt` or absent for both); hostd decides what it means and answers `{verdict, choice?, comment?, reason?}`:
+
+| `verdict` | Meaning |
+|---|---|
+| `allow`, `deny` | decided, as a tap would (an allow is **once**, never for the task) |
+| `choice` | the card was answered with `choice`, the option text as the card has it |
+| `comment` | nothing was decided; `comment` is the transcript, for the client to offer as a comment to confirm by tap |
+| `needs_tap` | nothing was decided; `reason` is `bypass`, `rail`, `destructive`, `untrusted`, or `null` for a card that is not a choice |
+| `unclear` | nothing to hear, or no option matched |
+
+- **Approvals take exact phrases only.** After trimming, lowercasing, folding accents and removing final punctuation: `allow`, `approve`, `yes allow` / `deny`, `reject`, `no deny`; in Portuguese `permitir`, `permite`, `aprovar`, `aprova` / `negar`, `nega`, `recusar`, `recusa`. Anything else, even if it contains one of those words (`allow but only this file`, `don't allow`, `allow allow`, `não permitir`, `permitir nesta tarefa`), is a `comment`. "Allow, but only once" is not an approval: it is offered as a comment, and only a tap decides.
+- **Some approvals always need a tap on screen**, because they are the ones you must see: any prompt of a crewmate in **Bypass**; a prompt held by a **rail** (a protected path, or a task started from GitHub or a webhook); a **destructive** command (`approval::destructive`, word-based like the rails: `rm -r`/`-rf`, `git push --force`/`-f`/`--force-with-lease`, `git reset --hard`, `git clean -f`, `git branch -D`, `DROP TABLE|DATABASE`, `TRUNCATE`, `mkfs`, `dd of=`, `chmod -R 777`, a redirect into `/dev/sd*`; it also reads every string of the call and a command given as a list). Each refusal is audited as `approval_voice_refused {reason, transcript, device}`. **Denying by voice is always allowed** (denying is safe), except from an untrusted source.
+- **Choice cards** are answered by a number word or digit (`1`, `one`, `um`, `first`, `primeira`), an ordinal (`the second`, `a segunda`) or the option's label (case and accent insensitive, the whole label or a unique prefix of at least 3 characters). Ambiguous words (a label that is also another option's number, two labels sharing the prefix, two numbers) are `unclear`: hostd never guesses. Secrets, sign-ins, refusals, proofs and automations are `needs_tap`.
+- **Untrusted sources answer nothing.** A transcript from a Telegram chat that is not the owner's linked chat, or from a crewmate's own process, is `needs_tap` with `untrusted`. Owner clients (Desktop, a phone with the `approve` scope for prompts and `act` for cards) are trusted.
+- A decided voice answer is audited like a tap, plus `via: "voice"` and the transcript (at most 200 characters): `approval_decision` for a prompt, `card_answered` for a choice.
+- **Telegram:** a voice note from the owner's chat while a prompt or a choice card of that crewmate waits goes through the same functions and never becomes a task; the chat is told what was decided, or why nothing was. With several crewmates it picks the one that waits (a caption `/task <name>` names one); with more than one thing waiting it asks you to answer on the card.
 
 ## Push notifications
 
@@ -950,9 +981,11 @@ Same NDJSON socket as every hostd command (`~/.atlas/hostd.sock`, or the crew se
 | `crewmate_list` | `{}` | `{crewmates:[…], paused}` |
 | `crew_pause`, `crew_resume` | `{}` | `{}`; see [Pause and resume](#pause-and-resume). Pushes `{"ev":"crew_paused","paused":bool}` (Mobile scope `act`) |
 | `crewmate_create` | `{name, role, agent, approval?, mode?, workdir?, look?, engine?, project?}` | the crewmate; without `mode` (or the legacy `approval`) it starts in the crew's `default_approval` (`bypass` for an engine that cannot ask) |
-| `crewmate_update` | `{id, name?, role?, agent?, approval?, look?, …}` | the crewmate |
+| `crewmate_update` | `{id, name?, role?, agent?, approval?, look?, spoken_replies?, …}` | the crewmate; `spoken_replies` asks its agent for a `spoken:` line ([Spoken replies](#spoken-replies)) |
 | `crewmate_set_approval` | `{id, mode}` (`ask`, `edits`, `bypass`) | the crewmate; owner clients only (Mobile scope `approve`); coded refusals `crew.approval.bypass_disabled`, `crew.approval.unsupported_engine`, `crew.approval.forbidden`; see [Permission modes](#permission-modes) |
 | `agent_approve` | `{pane, req, allow, scope?, comment?}` | `{}`; `scope` is `once` (default) or `task`; `comment` reaches the agent |
+| `agent_approve_voice` | `{pane, req, transcript, lang?}` | `{verdict, comment?, reason?}`; Mobile scope `approve`. See [Voice answers to cards](#voice-answers-to-cards) |
+| `crewmate_action_answer_voice` | `{id, task, transcript, lang?}` | `{verdict, choice?, reason?}`; Mobile scope `act` |
 | `crewmate_delete` | `{id}` | `{}`; cancels running and queued tasks and waits for the running turn to end, removes the Git worktree and the `atlas/<id>/…` branches from the shared clone, then the crewmate's directory. A turn that still writes afterwards is refused, so the directory is not recreated |
 | `crewmate_task` | `{id, prompt, source, tz?, attachments?, ui?, dictated?}` | `{task}`; `ui: true` makes it a [UI task](#ui-tasks-and-proof); `dictated: true` tells the agent the prompt was dictated ([Dictation](#dictation)); `attachments` is up to 4 images, `[{name, data_b64}]` or `[{name, upload}]`, see [Images on tasks](#images-on-tasks) |
 | `crewmate_attachment_put` | `{id, upload, seq, data_b64, last?}` | `{staged, last}`; one piece (at most 512 KiB raw) of an image too big for a protocol line, pieces in order from `seq` 0. Mobile scope `act` |
@@ -1010,6 +1043,7 @@ Same NDJSON socket as every hostd command (`~/.atlas/hostd.sock`, or the crew se
 - `last`: the most recent task's result, error or prompt (first 140 characters), final state and time.
 - `pending_approval` exists only in `needs_you`; a task parked on any card (`waiting_task`) is `needs_you` too, though its runner is still held, so `running_task` is present there and Stop works. A server before this (1.5.0-alpha.26 and earlier) said `working`; the desktop corrects that where the reply still shows the card.
 - `waiting_task` (absent unless a task is parked on a card): `{id, action, result, attachments}`, the card the task is on (the one the runner holds, else the newest parked one) and the images the agent took for it (only the agent's, as records). Atlas Mobile's Captain's call lists a crewmate with a `refused` or `prove_ui` card from it, with Retry and Override in place. Its presence makes `state` `needs_you`, whatever the kind of card.
+- `spoken_replies` (bool, always present): the agent is asked to end its replies with a `spoken:` line.
 - `triggers` is always present; `next_fire` is computed by the server.
 
 ### Task object
@@ -1034,4 +1068,5 @@ Same NDJSON socket as every hostd command (`~/.atlas/hostd.sock`, or the crew se
 - `state`: `queued`, `running`, `waiting_action`, `done`, `failed` or `cancelled`.
 - `steps` may be empty; `started_at` and `finished_at` are absent until reached. Other optional fields: `reply`, `reply_full`, `summarized`, `title`, `preparing`, `ask`, `action`, `answer`, `usage`, `trigger_id`, `tz`, `resumed` (a restart interrupted it and it started again) and `restarts` (how many).
 - `attachments` (absent without images): the images sent with the prompt, `[{name, mime, bytes_len, sha256, path, source?}]`. `name` is one safe file name unique within the task, `mime` comes from the file's own bytes, `path` is where the agent finds it in its work dir (`.atlas/attachments/<task id>/<name>`). The bytes are never part of a task: fetch them with `crewmate_attachment`. See [Images on tasks](#images-on-tasks). `source` is `"agent"` for a capture the crewmate took and absent for what you sent.
+- `spoken` (string, always present, `""` until the task finishes or when there is nothing to read): what a client reads aloud ([Spoken replies](#spoken-replies)).
 - `ui` (absent unless true): the task is a [UI task](#ui-tasks-and-proof).

@@ -26,15 +26,15 @@ fn have_node() -> bool {
 }
 
 /// A hostd with one crewmate of `agent` (the engine of the same name) in `mode`, working in `work`.
-struct Rig {
+pub(super) struct Rig {
     _tmp: tempfile::TempDir,
-    dir: PathBuf,
-    work: PathBuf,
-    client: HostClient,
-    id: String,
+    pub(super) dir: PathBuf,
+    pub(super) work: PathBuf,
+    pub(super) client: HostClient,
+    pub(super) id: String,
 }
 
-async fn rig(agent: &str, mode: &str) -> Rig {
+pub(super) async fn rig(agent: &str, mode: &str) -> Rig {
     let tmp = tempfile::tempdir().unwrap();
     let dir = tmp.path().join("hostd");
     let work = tmp.path().join("work");
@@ -59,17 +59,22 @@ async fn rig(agent: &str, mode: &str) -> Rig {
 }
 
 impl Rig {
-    fn pane(&self, task: &str) -> String {
+    pub(super) fn pane(&self, task: &str) -> String {
         format!("crew:{}:{task}", self.id)
     }
 
     /// A path inside the crewmate's work tree.
-    fn tree(&self, rel: &str) -> String {
+    pub(super) fn tree(&self, rel: &str) -> String {
         self.work.join(rel).to_string_lossy().into_owned()
     }
 
     /// What claude's `atlas:approve` tool says for this call: `{"behavior": "allow"}` or a deny with its message.
-    fn approve(&self, task: &str, tool: &str, input: Value) -> tokio::task::JoinHandle<Value> {
+    pub(super) fn approve(
+        &self,
+        task: &str,
+        tool: &str,
+        input: Value,
+    ) -> tokio::task::JoinHandle<Value> {
         let (dir, id, pane) = (self.dir.clone(), self.id.clone(), self.pane(task));
         let args = json!({"tool_name": tool, "tool_input": input});
         tokio::spawn(async move {
@@ -81,7 +86,7 @@ impl Rig {
     }
 
     /// The call is decided at once (allowed by the mode or a grant), not held.
-    async fn decided(&self, task: &str, tool: &str, input: Value) -> Value {
+    pub(super) async fn decided(&self, task: &str, tool: &str, input: Value) -> Value {
         tokio::time::timeout(Duration::from_secs(10), self.approve(task, tool, input))
             .await
             .expect("the call was held for a person")
@@ -89,7 +94,7 @@ impl Rig {
     }
 
     /// The call is held: it is still waiting after a moment, and is listed as a pending approval.
-    async fn held(
+    pub(super) async fn held(
         &self,
         task: &str,
         tool: &str,
@@ -120,7 +125,7 @@ impl Rig {
         (h, ev)
     }
 
-    async fn pending(&self) -> Vec<Value> {
+    pub(super) async fn pending(&self) -> Vec<Value> {
         let st = self
             .client
             .call("agent_status_all", json!({}))
@@ -129,7 +134,7 @@ impl Rig {
         st["pending_approvals"].as_array().unwrap().clone()
     }
 
-    async fn wait_pending(&self) -> Value {
+    pub(super) async fn wait_pending(&self) -> Value {
         let start = std::time::Instant::now();
         loop {
             if let Some(p) = self.pending().await.into_iter().next() {
@@ -141,7 +146,13 @@ impl Rig {
     }
 
     /// Answer a prompt as a person does (`agent_approve`).
-    async fn answer(&self, ev: &Value, allow: bool, scope: Option<&str>, comment: Option<&str>) {
+    pub(super) async fn answer(
+        &self,
+        ev: &Value,
+        allow: bool,
+        scope: Option<&str>,
+        comment: Option<&str>,
+    ) {
         let mut args = json!({"pane": ev["pane_key"], "req": ev["req"], "allow": allow});
         if let Some(s) = scope {
             args["scope"] = json!(s);
@@ -152,7 +163,7 @@ impl Rig {
         self.client.call("agent_approve", args).await.unwrap();
     }
 
-    async fn set_mode(&self, mode: &str) -> anyhow::Result<Value> {
+    pub(super) async fn set_mode(&self, mode: &str) -> anyhow::Result<Value> {
         self.client
             .call(
                 "crewmate_set_approval",
@@ -162,7 +173,7 @@ impl Rig {
     }
 
     /// The crewmate's audit entries of `kind`, newest first.
-    async fn audit(&self, kind: &str) -> Vec<Value> {
+    pub(super) async fn audit(&self, kind: &str) -> Vec<Value> {
         let v = self
             .client
             .call(
@@ -174,7 +185,7 @@ impl Rig {
         v["entries"].as_array().unwrap().clone()
     }
 
-    async fn listed(&self) -> Value {
+    pub(super) async fn listed(&self) -> Value {
         let v = self.client.call("crewmate_list", json!({})).await.unwrap();
         v["crewmates"]
             .as_array()

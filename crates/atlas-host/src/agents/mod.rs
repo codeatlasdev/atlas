@@ -86,6 +86,9 @@ pub enum ApproveScope {
     Task,
 }
 
+/// The longest transcript an audit entry keeps (characters).
+pub const MAX_TRANSCRIPT: usize = 200;
+
 /// The answer to a prompt: who gave it and what it says.
 #[derive(Debug, Clone)]
 pub struct Answer {
@@ -97,6 +100,8 @@ pub struct Answer {
     pub comment: Option<String>,
     /// What decided: `person`, or `mode` / `grant` when hostd re-decided a waiting call itself.
     pub source: &'static str,
+    /// The transcript this answer was spoken as (`via: voice` in the audit), at most [`MAX_TRANSCRIPT`] characters.
+    pub voice: Option<String>,
 }
 
 impl Answer {
@@ -108,6 +113,7 @@ impl Answer {
             scope: ApproveScope::Once,
             comment: None,
             source: "person",
+            voice: None,
         }
     }
 }

@@ -289,6 +289,7 @@ fn retry(hub: &Hub, crewmate: &Crewmate, task: &mut Task, card: &Card) {
     task.reply = None;
     task.reply_full = None;
     task.summarized = false;
+    task.spoken = String::new();
     task.finished_at = None;
     task.started_at = None;
     task.answer = None;

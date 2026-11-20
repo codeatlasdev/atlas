@@ -55,6 +55,8 @@ mod tests;
 pub(crate) mod triggers;
 pub mod uigate;
 pub mod voice;
+pub(crate) mod voice_answer;
+pub(crate) mod voice_card;
 
 use serde_json::{Value, json};
 
@@ -132,6 +134,7 @@ pub(crate) async fn handle(hub: &Hub, cmd: HostCmd) -> Result<Value, String> {
             project,
             setup_step,
             short_replies,
+            spoken_replies,
         } => c::update(
             hub,
             id,
@@ -144,6 +147,7 @@ pub(crate) async fn handle(hub: &Hub, cmd: HostCmd) -> Result<Value, String> {
             project,
             setup_step,
             short_replies,
+            spoken_replies,
         ),
         HostCmd::CrewmateDelete { id } => c::delete(hub, id).await,
 

@@ -383,6 +383,7 @@ async fn a_crewmate_without_a_user_is_provisioned_by_its_first_task_and_keeps_it
             project: None,
             setup_step: None,
             short_replies: None,
+            spoken_replies: false,
             created_at: 1,
         })
         .unwrap();

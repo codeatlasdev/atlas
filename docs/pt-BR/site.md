@@ -1,7 +1,7 @@
 ---
 title: "O site"
 source: site.md
-source_sha: "ff021a471ba3f5ce52acb3e920874d006084039d"
+source_sha: "771c51e5a3bf6e21c1e2c326a886a8482847b63b"
 translation: machine
 ---
 
@@ -22,6 +22,14 @@ bun run build                          # site estático em site/dist
 O filme, os loops e as imagens estáticas maiores (`site/public/media/*.mp4`, `*.webm` e `demo.gif`) somam cerca de 28 MB e existem só no site publicado. O `scripts/fetch-media.sh` baixa do site no ar o que estiver faltando para `site/public/media/`; ele é idempotente e pula os arquivos que você já tem. Os pôsteres e as imagens estáticas ficam no git (todos com cerca de 330 KB ou menos). A mídia é gerada a partir de código pelo studio em `studio/` (`bun studio render` / `publish`; veja [Contribuir](contributing.md#fazer-vídeos)).
 
 Rode o `scripts/fetch-media.sh` antes de `bun run build` ou `bun run site:deploy` em qualquer máquina que nunca tenha compilado o site, senão o site publicado iria sem o filme.
+
+## Idiomas
+
+Toda página existe em inglês em `/` e em português do Brasil em `/pt-br/`: a home, o download, o changelog, privacidade e política de assinatura de código (`LOCALIZED_PAGES` em `site/src/lib/i18n.ts`) e todas as páginas da documentação. Os textos são mensagens do catálogo em `i18n/messages/`, como no resto do Atlas; estrutura e regras estão no [site/README.md](https://github.com/codeatlasdev/atlas/blob/main/site/README.md#languages-en-pt-br).
+
+O idioma de quem visita é decidido na borda (`site/functions/_lib/locale.ts`), numa URL em inglês que tem versão em português: `?lang=en|pt-BR` (fica salvo), depois o cookie `atlas_lang` que o seletor de idioma grava, depois o país da requisição (países de língua portuguesa recebem pt-BR, mesmo com o navegador em inglês), depois o `Accept-Language`, depois inglês. Querer português é um `302` para a versão em `/pt-br/`; robôs de busca e prévias de link nunca são redirecionados, e uma URL `/pt-br/` sempre é servida como pedida.
+
+**Histórias das versões.** O `/changelog/` abre cada versão com uma história em linguagem simples quando ela existe (`site/src/content/releases/<locale>/<id>.yaml`, ilustrações em `site/src/components/changelog/art/`) e mantém a lista técnica completa do `CHANGELOG.md` atrás de um botão de expandir, com as mesmas âncoras. A página publicada carrega os próprios textos e histórias, então o handler da borda que troca o changelog pelo da versão mais nova serve tanto `/changelog/` quanto `/pt-br/changelog/`. Uma versão sem história mostra o resumo e a lista. Como escrever uma ao lançar uma versão: site/README.md, "Release stories".
 
 ## Restrições de design
 

@@ -21,6 +21,14 @@ The film, loops and larger stills (`site/public/media/*.mp4`, `*.webm`, and `dem
 
 Run `scripts/fetch-media.sh` before `bun run build` or `bun run site:deploy` on any machine that has not built the site before, otherwise the deployed site would ship without the film.
 
+## Languages
+
+Every page exists in English at `/` and in Brazilian Portuguese at `/pt-br/`: the home, download, changelog, privacy and code signing pages (`LOCALIZED_PAGES` in `site/src/lib/i18n.ts`) and every docs page. Words are catalog messages in `i18n/messages/` like the rest of Atlas; layout and rules are in [site/README.md](https://github.com/codeatlasdev/atlas/blob/main/site/README.md#languages-en-pt-br).
+
+Which language a visitor gets is decided at the edge (`site/functions/_lib/locale.ts`) on an English URL that has a twin: `?lang=en|pt-BR` (stored), then the `atlas_lang` cookie the language switch writes, then the request's country (Portuguese-speaking countries get pt-BR, even with an English browser), then `Accept-Language`, then English. Wanting Portuguese is a `302` to the `/pt-br/` twin; crawlers and link previews are never redirected, and a `/pt-br/` URL is always served as asked.
+
+**Release stories.** `/changelog/` opens each version with a plain-language story when one exists (`site/src/content/releases/<locale>/<id>.yaml`, illustrations in `site/src/components/changelog/art/`), and keeps the full technical list from `CHANGELOG.md` behind a disclosure under the same anchors. The built page carries its own words and stories, so the edge handler that swaps in the newest release's changelog serves both `/changelog/` and `/pt-br/changelog/`. A version without a story shows its summary and the list. How to write one when cutting a release: site/README.md, "Release stories".
+
 ## Design constraints
 
 - The Content-Security-Policy in `site/public/_headers` allows only same-origin resources: no external fonts, scripts, analytics or embeds. Keep everything self-hosted.

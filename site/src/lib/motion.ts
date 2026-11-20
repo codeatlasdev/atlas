@@ -34,7 +34,6 @@ export function stopScroll() {
 	tick = undefined;
 }
 
-export const scroller = () => lenis;
 
 /** Splits a heading into words for the rise reveal. The unsplit text stays as the accessible name. */
 export function splitWords(el: HTMLElement): HTMLElement[] {

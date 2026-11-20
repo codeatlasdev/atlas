@@ -9,6 +9,7 @@
 	import PairQr from "#lib/components/PairQr.svelte";
 	import BrowsersRow from "#lib/crew/settings/BrowsersRow.svelte";
 	import TelegramRow from "#lib/crew/settings/TelegramRow.svelte";
+	import GithubAppCard from "#lib/crew/settings/GithubAppCard.svelte";
 	import { secondsLeft, type PairStart } from "#lib/settings/mobile.ts";
 	import { crew } from "#lib/stores/crew.svelte.ts";
 	import {
@@ -250,6 +251,10 @@
 			>
 		</Row>
 	</Group>
+
+	{#if online}
+		<GithubAppCard hostKey={h.key} serverName={h.name} />
+	{/if}
 {/each}
 
 <Group title={m.settings_agents_crew_add_server()}>
@@ -286,8 +291,11 @@
 
 <!-- i18n-ignore: a product name -->
 <Group title="GitHub">
-	<!-- i18n-ignore: a product name -->
-	<Row id="crew-github" label="GitHub" description={m.settings_agents_crew_github_description()}>
+	<Row
+		id="crew-github"
+		label={m.crew_github_app_simple_title()}
+		description={m.crew_github_app_simple_description()}
+	>
 		<Button
 			size="sm"
 			variant="ghost"

@@ -44,7 +44,6 @@
 	"settings_agents_crew_display_name": "Accessible name of the display name field of the add crew server form.",
 	"settings_agents_crew_display_name_optional": "Placeholder of the display name field of the add crew server form.",
 	"settings_agents_crew_enabled": "Label of the checkbox that turns short replies on for one crew server.",
-	"settings_agents_crew_github_description": "Help line of the GitHub row in Settings > Atlas Crew. The product name GitHub never changes.",
 	"settings_agents_crew_model_placeholder": "Placeholder of the field that holds the summary model of short replies in Settings > Atlas Crew. The model id in the example is literal.",
 	"settings_agents_crew_onboarding": "Title of the last group of Settings > Atlas Crew, the one that replays the introduction. Same word as settings_registry_crew_group_onboarding.",
 	"settings_agents_crew_open_workspace": "Button of the GitHub row in Settings > Atlas Crew: closes Settings and shows the crew workspace, where the GitHub accounts are connected.",

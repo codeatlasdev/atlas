@@ -9,6 +9,7 @@ use std::time::{SystemTime, UNIX_EPOCH};
 
 use serde::{Deserialize, Serialize};
 
+mod mode;
 use crate::paths::{self, Loaded};
 
 pub(crate) mod jsonl;
@@ -43,12 +44,7 @@ pub(crate) fn now_s() -> u64 {
         .as_secs()
 }
 
-#[derive(Debug, Clone, Copy, PartialEq, Serialize, Deserialize)]
-#[serde(rename_all = "snake_case")]
-pub enum Approval {
-    Ask,
-    Auto,
-}
+pub use mode::Mode;
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct Routine {
@@ -273,7 +269,10 @@ pub struct Crewmate {
     pub agent: String,
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub workdir: Option<String>,
-    pub approval: Approval,
+    /// What the agent may do without asking (`ask`, `edits`, `bypass`). Files from before the modes say
+    /// `approval: ask|auto`, read through the alias; hostd's JSON keeps sending that legacy field too.
+    #[serde(alias = "approval")]
+    pub mode: Mode,
     #[serde(default, skip_serializing_if = "Vec::is_empty")]
     pub routines: Vec<Routine>,
     #[serde(default, skip_serializing_if = "Option::is_none")]
@@ -497,6 +496,13 @@ pub struct CrewSettings {
     /// 75 % of the machine's memory shared by `max_agents`, at least 1 GiB (`spawn::cgroup::compute_cap`).
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub agent_memory_max: Option<u64>,
+    /// The mode a new crewmate starts in (`crewmate_create` without `mode`).
+    #[serde(default = "default_mode")]
+    pub default_approval: Mode,
+    /// Whether the owner lets any crewmate use Bypass. Off: Bypass is refused everywhere and a crewmate in it
+    /// goes back to Ask.
+    #[serde(default = "default_true")]
+    pub allow_bypass: bool,
 }
 
 /// Agents at once when `crew.json` says nothing: a handful, so one busy server is not swamped by every crewmate
@@ -507,6 +513,10 @@ fn default_max_agents() -> usize {
     DEFAULT_MAX_AGENTS
 }
 
+fn default_mode() -> Mode {
+    Mode::Ask
+}
+
 impl Default for CrewSettings {
     fn default() -> Self {
         Self {
@@ -515,6 +525,8 @@ impl Default for CrewSettings {
             paused: false,
             max_agents: DEFAULT_MAX_AGENTS,
             agent_memory_max: None,
+            default_approval: Mode::Ask,
+            allow_bypass: true,
         }
     }
 }

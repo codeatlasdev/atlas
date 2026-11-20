@@ -228,7 +228,7 @@ describe("buildTree: nested selects", () => {
 	});
 });
 
-describe("ARB (the future mobile surface)", () => {
+describe("ARB (the mobile surface)", () => {
 	test("plural, exact zero and select become ICU with nested arms", () => {
 		const plural = arbMessage("files_count", [{ declarations: ["input count", "local countExact = count", "local countPlural = count: plural"], selectors: ["countExact", "countPlural"], match: { "countExact=0, countPlural=*": "No files", "countExact=*, countPlural=one": "{count} file", "countExact=*, countPlural=*": "{count} files" } }], "Count of files");
 		expect(plural.files_count).toBe("{count, plural, =0{No files} one{{count} file} other{{count} files}}");
@@ -242,10 +242,10 @@ describe("ARB (the future mobile surface)", () => {
 		expect(arbMessage("a", "Don't {name} \\{x\\}").a).toBe("Don''t {name} '{'x'}'");
 	});
 
-	test("a file has @@locale in Flutter's underscore form, then the messages by key", () => {
+	test("a file has @@locale as the language alone (gen_l10n wants a base file for a regional one), then the messages by key", () => {
 		const f = JSON.parse(arbFile("pt-BR", [{ key: "b_two", value: "Dois" }, { key: "a_one", value: "Um", description: "First" }]));
 		expect(Object.keys(f)).toEqual(["@@locale", "a_one", "@a_one", "b_two"]);
-		expect(f["@@locale"]).toBe("pt_BR");
+		expect(f["@@locale"]).toBe("pt");
 	});
 });
 
@@ -301,17 +301,16 @@ describe("the Paraglide generator", () => {
 		expect(existsSync(join(root, "crates/atlas-i18n/locales"))).toBe(false);
 	});
 
-	test("an arb surface writes app_<locale>.arb with ICU messages; nothing declares one in the repo yet", async () => {
+	test("an arb surface writes app_<language>.arb with ICU messages", async () => {
 		const root = await makeRepo();
 		put(root, "i18n/surfaces.json", read(root, "i18n/surfaces.json").replace('"rust": {', '"mobile": { "arb": "apps/mobile/lib/l10n" },\n\t\t"rust": {'));
 		put(root, area("cli", "area"), areaFile("mobile"));
 		const outs = outputsFor(loadSource(loadCtx(root)), "mobile");
-		expect(outs.map((o) => o.path)).toEqual(["apps/mobile/lib/l10n/app_en.arb", "apps/mobile/lib/l10n/app_pt_BR.arb"]);
+		expect(outs.map((o) => o.path)).toEqual(["apps/mobile/lib/l10n/app_en.arb", "apps/mobile/lib/l10n/app_pt.arb"]);
 		const en = JSON.parse(outs[0].content);
 		expect(en["@@locale"]).toBe("en");
 		expect(en.cli_files_count).toBe("{count, plural, one{{count} file} other{{count} files}}");
 		expect(en["@cli_files_count"].description).toContain("atlas files");
-		expect(JSON.parse(readFileSync(join(import.meta.dir, "..", "..", "i18n/surfaces.json"), "utf8")).surfaces.mobile).toBeUndefined();
 	});
 
 	test("a shape a target cannot express is a `generate` finding naming the key, not a crash", async () => {

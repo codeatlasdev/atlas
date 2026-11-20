@@ -47,10 +47,10 @@ void main() {
         find.text('Denied Bash (answered by phone demo0000…)'),
         findsOneWidget,
       );
-      expect(find.text('Changed approval: "auto" → "ask"'), findsOneWidget);
+      expect(find.text('Changed mode: "bypass" → "ask"'), findsOneWidget);
       // Newest on top: the setting change (latest) sits above the first queued task.
       expect(
-        t.getTopLeft(find.text('Changed approval: "auto" → "ask"')).dy,
+        t.getTopLeft(find.text('Changed mode: "bypass" → "ask"')).dy,
         lessThan(t.getTopLeft(find.textContaining('Task queued (desktop)')).dy),
       );
       await end(t);
@@ -83,7 +83,7 @@ void main() {
         await t.ensureVisible(find.text('Settings'));
         await t.tap(find.text('Settings'));
         await settle(t);
-        expect(find.text('Changed approval: "auto" → "ask"'), findsOneWidget);
+        expect(find.text('Changed mode: "bypass" → "ask"'), findsOneWidget);
         expect(find.textContaining('Asked to run Bash'), findsNothing);
         await t.ensureVisible(find.text('All'));
         await t.tap(find.text('All'));
@@ -343,10 +343,10 @@ void main() {
       );
       await settle(t);
       expect(find.text('Crew settings'), findsOneWidget);
-      expect(t.widget<Switch>(find.byType(Switch)).value, isTrue);
-      await t.tap(find.byType(Switch));
+      expect(t.widget<Switch>(find.byKey(const Key('crew-short-replies'))).value, isTrue);
+      await t.tap(find.byKey(const Key('crew-short-replies')));
       await settle(t);
-      expect(t.widget<Switch>(find.byType(Switch)).value, isFalse);
+      expect(t.widget<Switch>(find.byKey(const Key('crew-short-replies'))).value, isFalse);
       await end(t);
 
       // A new screen reads what the server kept (the demo computer is a fresh one per connection, so
@@ -362,6 +362,12 @@ void main() {
       );
       await settle(t);
       await t.enterText(find.byKey(const Key('crew-model')), 'haiku');
+      // The permissions card sits between the model and Save: scroll down to it.
+      await t.scrollUntilVisible(
+        find.text('Save'),
+        200,
+        scrollable: find.byType(Scrollable).first,
+      );
       await t.tap(find.text('Save'));
       await settle(t);
       expect(find.text('Saved'), findsOneWidget);

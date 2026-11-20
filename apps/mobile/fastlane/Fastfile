@@ -45,6 +45,13 @@ def flutter(*args)
   sh("flutter", *args, log: true) # sh runs from fastlane/; Flutter needs the app dir
 end
 
+# The translations are not committed: the ARB files come from the one catalog (i18n/messages, the `mobile` surface)
+# and `flutter pub get` turns them into lib/l10n/app_localizations.dart. Every store build starts here.
+def write_translations
+  sh("bun", File.join(APP, "../../scripts/i18n/generate.ts"), "--surface", "mobile", log: true)
+  flutter("pub", "get")
+end
+
 # What every store build passes to `flutter build`. The pubspec's default flavor is the Atlas Dev app, so the
 # store app is always asked for by name (`prod`: br.com.codeatlas.atlas.mobile). The Dart symbols go to a
 # directory instead of the binary (smaller App.framework / libapp.so); CI keeps that directory as an artifact
@@ -84,6 +91,7 @@ lane :ios_beta do |options|
   File.write(p8, ENV["ASC_KEY_P8"])
   plist = write_firebase_config("ios/GoogleService-Info.plist", "GOOGLE_SERVICE_INFO_PLIST")
   Dir.chdir(APP) do
+    write_translations
     flutter("build", "ios", "--no-codesign", *store_build_args("ios", n))
   end
   # Archive and export both sign through the API key (role Admin: creating the cloud-managed
@@ -136,6 +144,7 @@ lane :android_beta do |options|
   PROPS
   gservices = write_firebase_config("android/app/google-services.json", "GOOGLE_SERVICES_JSON")
   Dir.chdir(APP) do
+    write_translations
     flutter("build", "appbundle", *store_build_args("android", n))
   end
   upload_to_play_store(

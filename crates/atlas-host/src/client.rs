@@ -152,6 +152,7 @@ const QUICK: &[&str] = &[
     "crewmate_memory_set",
     "crewmate_routine_set",
     "crewmate_secret_set",
+    "crewmate_set_approval",
     "crewmate_task",
     "crewmate_tasks",
     "crewmate_triggers_set",
@@ -417,7 +418,13 @@ impl HostClient {
         })?;
         let (r, mut w) = ipc::split(stream);
         let mut lines = BufReader::new(r).lines();
-        let hello = crate::protocol::hello_line(token, client);
+        // Inside a crewmate's agent (hostd gives it ATLAS_CREWMATE_ID) every client says so, and hostd then
+        // refuses what only the owner may do (`crewmate_set_approval`).
+        let who = match std::env::var("ATLAS_CREWMATE_ID") {
+            Ok(id) if !id.is_empty() => format!("crewmate:{id}"),
+            _ => client.to_string(),
+        };
+        let hello = crate::protocol::hello_line(token, &who);
         let first = tokio::time::timeout(handshake, async {
             w.write_all(format!("{hello}\n").as_bytes()).await?;
             lines.next_line().await?.ok_or_else(closed)

@@ -45,7 +45,7 @@
 	import { updates } from "#lib/stores/updates.svelte.ts";
 	import { worktrees } from "#lib/stores/worktrees.svelte.ts";
 	import { ws } from "#lib/stores/workspace.svelte.ts";
-	import CrewWorkspace from "#lib/crew/CrewWorkspace.svelte";
+	import Lazy from "#lib/components/Lazy.svelte";
 	import WorkspaceRail from "#lib/shell/WorkspaceRail.svelte";
 	import { m } from "#lib/i18n/m.ts";
 
@@ -108,7 +108,11 @@
 <div class="app">
 	<WorkspaceRail />
 	{#if ws.appMode === "crew"}
-		<CrewWorkspace />
+		<!-- The crew workspace loads when it is first opened, not at startup (bundle-budget.json): until it arrives,
+		     an empty box of its size and ground holds its place, so the rail does not shift and nothing flashes. -->
+		<Lazy load={() => import("#lib/crew/CrewWorkspace.svelte")} props={{}}>
+			{#snippet pending()}<div class="crew-pending" aria-hidden="true"></div>{/snippet}
+		</Lazy>
 	{:else}
 		<div class="window-ground" aria-hidden="true"></div>
 		<div class="sidebar-slot" class:hidden={!docks.sidebar} inert={!docks.sidebar}>

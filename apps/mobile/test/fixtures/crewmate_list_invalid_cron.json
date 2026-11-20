@@ -4,6 +4,7 @@
       "agent": "claude",
       "approval": "auto",
       "id": "crewmate-oldcrons",
+      "mode": "bypass",
       "name": "OldCrons",
       "queued": 0,
       "role": "r",

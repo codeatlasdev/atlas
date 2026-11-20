@@ -3,12 +3,15 @@
  * grouping kinds into the filter, and the one-line summary / copy text of an entry. The entry shape is hostd's
  * (`crates/atlas-host/src/crew/audit`); `audit.test.ts` reads the real reply as a fixture.
  */
+import type { PermissionMode } from "#lib/crew.ts";
+import { PERMISSION_MODES, modeLabel } from "#lib/crew/permissionMode.ts";
 import { m } from "#lib/i18n/m.ts";
 
 export type AuditKind =
 	| "tool_call"
 	| "approval_asked"
 	| "approval_decision"
+	| "approval_mode_changed"
 	| "task_queued"
 	| "task_started"
 	| "task_finished"
@@ -23,9 +26,17 @@ export interface AuditEntry {
 	crewmate_id?: string;
 	task_id?: string;
 	tool_name?: string;
+	/** `approval_decision` names the tool in `tool` (the other kinds in `tool_name`). */
+	tool?: string;
 	tool_input?: unknown;
 	decision?: string;
+	/** `approval_decision`: `mode`, `grant`, `person`, `rail` or `timeout`. */
+	source?: string;
+	/** Who switched or answered: `desktop`, `phone:<node>`, `telegram:<chat>`, `owner`; absent when a mode or grant decided. */
+	device?: string;
+	/** Before hostd 1.5.0-alpha.28 the answerer was `by`. */
 	by?: string;
+	comment?: string;
 	field?: string;
 	from?: unknown;
 	to?: unknown;
@@ -42,6 +53,7 @@ export const AUDIT_KINDS: Array<{ kind: AuditKind; group: AuditGroup }> = [
 	{ kind: "tool_call", group: "tools" },
 	{ kind: "approval_asked", group: "approvals" },
 	{ kind: "approval_decision", group: "approvals" },
+	{ kind: "approval_mode_changed", group: "approvals" },
 	{ kind: "task_queued", group: "tasks" },
 	{ kind: "task_started", group: "tasks" },
 	{ kind: "task_finished", group: "tasks" },
@@ -86,6 +98,8 @@ export function auditKindLabel(kind: string): string {
 			return m.crew_settings_audit_kind_approval_asked();
 		case "approval_decision":
 			return m.crew_settings_audit_kind_approval_decision();
+		case "approval_mode_changed":
+			return m.crew_settings_audit_kind_mode_changed();
 		case "task_queued":
 			return m.crew_settings_audit_kind_task_queued();
 		case "task_started":
@@ -165,8 +179,19 @@ export function auditSummary(e: AuditEntry): string {
 			);
 		}
 		case "approval_decision": {
-			const tool = e.tool_name ?? m.crew_settings_audit_a_tool();
-			const answer = answerer(e.by);
+			const tool = e.tool ?? e.tool_name ?? m.crew_settings_audit_a_tool();
+			// `source` says what decided; a person's answer (or an older server's `by`) names the device.
+			const answer =
+				e.source === "mode"
+					? m.crew_settings_audit_answer_mode()
+					: e.source === "grant"
+						? m.crew_settings_audit_answer_grant()
+						: e.source === "rail"
+							? m.crew_settings_audit_answer_rail()
+							: e.source === "timeout"
+								? answerer("none")
+								: answerer(e.device ?? e.by);
+			if (e.source === "timeout") return m.crew_settings_audit_decision_timed_out({ tool, answer });
 			switch (e.decision) {
 				case "allow":
 					return m.crew_settings_audit_decision_allowed({ tool, answer });
@@ -177,6 +202,15 @@ export function auditSummary(e: AuditEntry): string {
 				default:
 					return m.crew_settings_audit_decision_decided({ tool, answer });
 			}
+		}
+		case "approval_mode_changed": {
+			const mode = (v: unknown) =>
+				PERMISSION_MODES.includes(v as PermissionMode) ? modeLabel(v as PermissionMode) : String(v ?? "?");
+			return m.crew_settings_audit_mode_changed({
+				from: mode(e.from),
+				to: mode(e.to),
+				answer: answerer(e.device),
+			});
 		}
 		case "task_queued":
 			return clip(

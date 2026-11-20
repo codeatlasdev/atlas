@@ -1,0 +1,7 @@
+arb-dir: lib/l10n
+template-arb-file: app_en.arb
+output-localization-file: app_localizations.dart
+output-class: AppLocalizations
+nullable-getter: false
+# The generator (scripts/i18n/emit/arb.ts) writes ICU quoting: a literal apostrophe is doubled, a brace is quoted.
+use-escaping: true

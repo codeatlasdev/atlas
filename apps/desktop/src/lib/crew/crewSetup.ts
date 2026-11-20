@@ -6,14 +6,25 @@
  * back to crewmate_update calls.
  *
  * Steps (persisted on the crewmate record as `setup_step`):
- *   "name" → "role" → "project" → "approval" → "summary" → (cleared = done)
+ *   "name" → "role" → "project" → "summary" → (cleared = done)
+ *
+ * There is no approval step: the crewmate starts in the crew's default permission mode (a crew setting) and the
+ * person switches it from the message box. A crewmate saved at the old "approval" step resumes at "summary".
  *
  * The words are catalog messages, so the question and its options are built by functions that read them when the
  * conversation renders (the language can change while a setup is open).
  */
+import type { PermissionMode } from "#lib/crew.ts";
+import { modeLabel } from "#lib/crew/permissionMode.ts";
 import { m } from "#lib/i18n/m.ts";
 
-export type SetupStep = "name" | "role" | "project" | "approval" | "summary";
+export type SetupStep = "name" | "role" | "project" | "summary";
+
+/** The step a saved `setup_step` means: the removed "approval" step resumes at the summary; anything unknown is no step. */
+export function normalizeStep(step: string | undefined): SetupStep | undefined {
+	if (step === "approval") return "summary";
+	return step === "name" || step === "role" || step === "project" || step === "summary" ? step : undefined;
+}
 
 export interface SetupOption {
 	key: string;
@@ -80,22 +91,6 @@ export const roleOptions = (): SetupOption[] => [
 	},
 ];
 
-// ─── approval options ─────────────────────────────────────────────────────────
-
-export const approvalOptions = (): SetupOption[] => [
-	{
-		key: "A",
-		title: m.crew_workspace_setup_approval_risky_title(),
-		subtitle: m.crew_workspace_setup_approval_risky_subtitle(),
-	},
-	{ key: "B", title: m.crew_workspace_setup_approval_everything_title() },
-	{
-		key: "C",
-		title: m.crew_workspace_setup_approval_never_title(),
-		subtitle: m.crew_workspace_setup_approval_never_subtitle(),
-	},
-];
-
 // ─── mapping helpers ──────────────────────────────────────────────────────────
 
 /** Map role option key to a role string to store on the crewmate. */
@@ -109,24 +104,6 @@ export function roleKeyToText(key: string): string {
 			return m.crew_workspace_setup_role_changelog_title();
 		default:
 			return ""; // D = free text, caller supplies text directly
-	}
-}
-
-/** Map approval option key to the crewmate's approval mode. */
-export function approvalKeyToMode(key: string): "ask" | "auto" {
-	// A = ask before risky → "ask"; B = ask before everything → "ask"; C = never → "auto"
-	return key === "C" ? "auto" : "ask";
-}
-
-/** Human-readable description of the chosen approval mode for the summary bubble. */
-export function approvalDescription(key: string): string {
-	switch (key) {
-		case "A":
-			return m.crew_workspace_setup_approval_risky_clause();
-		case "B":
-			return m.crew_workspace_setup_approval_everything_clause();
-		default:
-			return m.crew_workspace_setup_approval_never_clause();
 	}
 }
 
@@ -179,13 +156,6 @@ export function getQuestion(step: SetupStep, ctx: SetupContext = {}): SetupQuest
 				allowText: true,
 			};
 		}
-		case "approval":
-			return {
-				step,
-				text: m.crew_workspace_setup_ask_approval(),
-				options: approvalOptions(),
-				allowText: false,
-			};
 		case "summary":
 			return {
 				step,
@@ -206,7 +176,7 @@ export function getQuestion(step: SetupStep, ctx: SetupContext = {}): SetupQuest
 // ─── step sequencing ──────────────────────────────────────────────────────────
 
 /** The ordered step list. */
-export const STEPS: SetupStep[] = ["name", "role", "project", "approval", "summary"];
+export const STEPS: SetupStep[] = ["name", "role", "project", "summary"];
 
 /** Next step after `current`, or `"done"` when setup is complete. */
 export function nextStep(current: SetupStep): SetupStep | "done" {
@@ -224,7 +194,8 @@ export interface SummaryState {
 	name: string;
 	roleText: string;
 	project?: string;
-	approvalKey: string;
+	/** The mode the crewmate starts in (the crew's default); the summary names it. */
+	mode: PermissionMode;
 }
 
 /** A run of the summary bubble; the chat renders `bold` runs in bold (never markdown, which printed its stars). */
@@ -239,7 +210,7 @@ const bolded = (value: string) => `${BOLD}${value.replaceAll(BOLD, "")}${BOLD}`;
 
 /** The summary bubble shown before confirmation. */
 export function summaryText(s: SummaryState): SummaryPart[] {
-	const approval = approvalDescription(s.approvalKey);
+	const mode = modeLabel(s.mode);
 	// Only the first letter drops to lower case: "Review every PR" reads "review every PR", not "every pr".
 	const role = s.roleText.charAt(0).toLowerCase() + s.roleText.slice(1);
 	// A GitHub URL reads as owner/repo; a name or path stays as given.
@@ -249,9 +220,9 @@ export function summaryText(s: SummaryState): SummaryPart[] {
 				name: bolded(s.name),
 				role,
 				project: bolded(project),
-				approval,
+				mode: bolded(mode),
 			})
-		: m.crew_workspace_setup_summary({ name: bolded(s.name), role, approval });
+		: m.crew_workspace_setup_summary({ name: bolded(s.name), role, mode: bolded(mode) });
 	return text
 		.split(BOLD)
 		.map((part, i): SummaryPart => (i % 2 ? { text: part, bold: true } : { text: part }))

@@ -1,14 +1,5 @@
 {
   "pt-BR": {
-    "crew_workspace_setup_approval_everything_clause": "50e73187d1d7",
-    "crew_workspace_setup_approval_everything_title": "3406ec6a4c91",
-    "crew_workspace_setup_approval_never_clause": "32364ee9e70e",
-    "crew_workspace_setup_approval_never_subtitle": "6ea1801dd812",
-    "crew_workspace_setup_approval_never_title": "f26484c07692",
-    "crew_workspace_setup_approval_risky_clause": "08632950e73c",
-    "crew_workspace_setup_approval_risky_subtitle": "c15bc779fb22",
-    "crew_workspace_setup_approval_risky_title": "3318c369ea81",
-    "crew_workspace_setup_ask_approval": "276340c9792b",
     "crew_workspace_setup_ask_name": "f5938eee8c93",
     "crew_workspace_setup_ask_project": "3b6b1e24469e",
     "crew_workspace_setup_ask_role": "91da50df0db2",
@@ -26,7 +17,7 @@
     "crew_workspace_setup_role_review_title": "d1e6dca85aef",
     "crew_workspace_setup_skip": "9d5e4440db18",
     "crew_workspace_setup_something_else": "aa44308356e4",
-    "crew_workspace_setup_summary": "a55f255d783e",
-    "crew_workspace_setup_summary_project": "c22507613000"
+    "crew_workspace_setup_summary": "7081913b22e7",
+    "crew_workspace_setup_summary_project": "7fd400172d09"
   }
 }

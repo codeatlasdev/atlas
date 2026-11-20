@@ -127,6 +127,13 @@ html.custom-chrome.tiling-wm {
 	overflow: hidden;
 }
 
+/* Holds the crew workspace's place (same box and ground as `.crewmates-workspace`) while its module loads. */
+.crew-pending {
+	width: 100%;
+	height: 100%;
+	background: var(--ca-surface-base);
+}
+
 /* The pinned sidebar takes its width from the flex row; hiding animates it to 0 so the
    content glides to full width. The panel inside keeps its width and slides (transform),
    so its text never reflows mid-animation. */

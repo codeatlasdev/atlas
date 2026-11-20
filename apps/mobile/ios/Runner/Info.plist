@@ -9,6 +9,11 @@
 	<true/>
 	<key>CFBundleDevelopmentRegion</key>
 	<string>$(DEVELOPMENT_LANGUAGE)</string>
+	<key>CFBundleLocalizations</key>
+	<array>
+		<string>en</string>
+		<string>pt</string>
+	</array>
 	<key>CFBundleDisplayName</key>
 	<string>$(ATLAS_DISPLAY_NAME)</string>
 	<key>CFBundleExecutable</key>

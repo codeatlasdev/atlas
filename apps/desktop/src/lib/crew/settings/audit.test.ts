@@ -48,14 +48,44 @@ describe("auditSummary: one line per entry, from the keys hostd really sends", (
 	});
 
 	test("an approval nobody answered says so", () => {
-		const e = { ...by("approval_decision"), decision: "timeout", by: "none" };
+		const e = { ...by("approval_decision"), decision: "deny", source: "timeout", device: undefined };
 		expect(auditSummary(e)).toBe("Timed out Bash (nobody answered)");
 	});
 
+	test("a call a mode or a task grant decided says so, with no device", () => {
+		const e = { ...by("approval_decision"), device: undefined };
+		expect(auditSummary({ ...e, source: "mode" })).toBe("Allowed Bash (by the mode)");
+		expect(auditSummary({ ...e, source: "grant" })).toBe("Allowed Bash (by a task grant)");
+		expect(auditSummary({ ...e, source: "rail", decision: "deny" })).toBe(
+			"Denied Bash (held, nobody could answer)",
+		);
+	});
+
+	test("a mode switch names both modes and who switched", () => {
+		expect(auditSummary(by("approval_mode_changed"))).toBe(
+			"Mode changed from Bypass to Ask (answered by owner)",
+		);
+	});
+
+	test("an older server's decision (`by`, `tool_name`, `timeout` as the decision) still reads", () => {
+		const e = {
+			seq: 1,
+			ts: 1,
+			kind: "approval_decision",
+			tool_name: "Bash",
+			decision: "timeout",
+			by: "none",
+		};
+		expect(auditSummary(e)).toBe("Timed out Bash (nobody answered)");
+		expect(auditSummary({ ...e, decision: "allow", by: "desktop" })).toBe(
+			"Allowed Bash (answered by desktop)",
+		);
+	});
+
 	test("phone and telegram answerers are named readably", () => {
-		const e = { ...by("approval_decision"), decision: "deny", by: "phone:abcdef1234567890" };
+		const e = { ...by("approval_decision"), decision: "deny", device: "phone:abcdef1234567890" };
 		expect(auditSummary(e)).toBe("Denied Bash (answered by phone abcdef12…)");
-		expect(auditSummary({ ...e, by: "telegram:42" })).toBe("Denied Bash (answered by Telegram chat 42)");
+		expect(auditSummary({ ...e, device: "telegram:42" })).toBe("Denied Bash (answered by Telegram chat 42)");
 	});
 
 	test("a config change shows field, before and after", () => {

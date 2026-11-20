@@ -385,11 +385,17 @@ pub enum HostCmd {
     /// `{agents: [{id, label, setup, state: ok|missing|unknown}]}`: installed agents and whether
     /// their hooks report to Atlas (`atlas setup <agent> --check`).
     AgentIntegrations {},
-    /// Answer a pending permission prompt (`agent_approval` push) by its `req`.
+    /// Answer a pending permission prompt (`agent_approval` push) by its `req`. `scope` says how far an allow
+    /// reaches (`once`, the default, or `task`: the same kind of call for the rest of that task); `comment` is
+    /// delivered to the agent with the decision (`crew::approval`).
     AgentApprove {
         pane: String,
         req: String,
         allow: bool,
+        #[serde(default)]
+        scope: crate::agents::ApproveScope,
+        #[serde(default)]
+        comment: Option<String>,
     },
     /// Type `text` into the pane's terminal, then Enter, only while the agent is idle/done.
     /// With `steer` and an omp agent it is also allowed while the agent works: omp queues
@@ -554,7 +560,13 @@ pub enum HostCmd {
         name: String,
         role: String,
         agent: String,
-        approval: String,
+        /// The permission mode: `ask`, `edits`, `bypass`, or the legacy `auto` (= `bypass`). Without it (and
+        /// without `mode`) the crew's `default_approval`.
+        #[serde(default)]
+        approval: Option<String>,
+        /// The same, named `mode`; wins over `approval` when both are sent.
+        #[serde(default)]
+        mode: Option<String>,
         #[serde(default)]
         workdir: Option<String>,
         #[serde(default)]
@@ -594,6 +606,14 @@ pub enum HostCmd {
     },
     CrewmateDelete {
         id: String,
+    },
+    /// Switch a crewmate's permission mode (owner clients only: Desktop, Mobile, the owner's Telegram chat).
+    /// Applies from the next tool call, calls already waiting are re-decided at once. Replies with the
+    /// crewmate as `crewmate_list` shows it; a refusal is coded (`crew.approval.*`, see [`REPLY_CODES`]).
+    CrewmateSetApproval {
+        id: String,
+        /// `ask`, `edits` or `bypass`.
+        mode: String,
     },
     CrewmateTask {
         id: String,
@@ -806,6 +826,13 @@ pub enum HostCmd {
         /// is, `0` goes back to the computed default.
         #[serde(default)]
         agent_memory_max: Option<u64>,
+        /// The mode new crewmates start in (`ask`, `edits`, `bypass`); absent leaves it as it is.
+        #[serde(default)]
+        default_approval: Option<String>,
+        /// Whether any crewmate may use Bypass; absent leaves it as it is. Turning it off takes every
+        /// crewmate out of Bypass (back to Ask).
+        #[serde(default)]
+        allow_bypass: Option<bool>,
     },
     /// A terminal that runs only `engine`'s login command as the crew user (`crew::engine_login`); the reply is
     /// `{engine, pty}` and the phone attaches with its terminal screen. `engine` is one of `claude`, `codex`,
@@ -910,6 +937,9 @@ impl From<Failure> for String {
 /// | `fs.io` | `kind` (`permission_denied` \| `not_a_directory` \| `is_a_directory` \| `already_exists` \| `other`), `path`, `detail` (the OS's own text, `other` only) | the OS's text, e.g. `Permission denied (os error 13)` |
 /// | `exec.spawn_failed` | `program`, `reason` (`not_found` \| `permission_denied` \| `other`), `detail` (the OS's own text, `other` only) | `<program>: <the OS's text>` |
 /// | `hostd.invalid_argument` | `field`, `reason` (`bad_base64` \| `empty` \| `no_parent` \| `invalid`) | what it always said |
+/// | `crew.approval.bypass_disabled` | none | `bypass is not allowed on this crew` |
+/// | `crew.approval.unsupported_engine` | `engine`, `mode` | `<engine> has no approval channel: it always runs unattended` |
+/// | `crew.approval.forbidden` | none | `only the owner can change a permission mode` |
 /// | `crew.github_app.exists` | none | an app is already set up |
 /// | `crew.github_app.code_expired` | none | the manifest code is used or past its hour |
 /// | `crew.github_app.conversion_failed` | `status` (GitHub's HTTP status, 0 when it was not reached) | GitHub refused the conversion |
@@ -923,6 +953,9 @@ pub const REPLY_CODES: &[&str] = &[
     FS_IO,
     EXEC_SPAWN_FAILED,
     INVALID_ARGUMENT,
+    APPROVAL_BYPASS_DISABLED,
+    APPROVAL_UNSUPPORTED_ENGINE,
+    APPROVAL_FORBIDDEN,
     crate::crew::github::app::EXISTS,
     crate::crew::github::app::CODE_EXPIRED,
     crate::crew::github::app::CONVERSION_FAILED,
@@ -933,6 +966,9 @@ pub const FS_NOT_FOUND: &str = "fs.not_found";
 pub const FS_IO: &str = "fs.io";
 pub const EXEC_SPAWN_FAILED: &str = "exec.spawn_failed";
 pub const INVALID_ARGUMENT: &str = "hostd.invalid_argument";
+pub const APPROVAL_BYPASS_DISABLED: &str = "crew.approval.bypass_disabled";
+pub const APPROVAL_UNSUPPORTED_ENGINE: &str = "crew.approval.unsupported_engine";
+pub const APPROVAL_FORBIDDEN: &str = "crew.approval.forbidden";
 
 /// A request argument hostd cannot use: `field` is the argument, `reason` why (see [`REPLY_CODES`]).
 pub(crate) fn invalid_argument(field: &str, reason: &str, message: impl Into<String>) -> Coded {
@@ -1149,6 +1185,9 @@ mod tests {
             crate::fs::write("/", "", None).unwrap_err(),
             empty_argv,
             invalid_argument("org", "invalid", "org: not a GitHub login"),
+            crate::crew::approval::bypass_disabled(),
+            crate::crew::approval::unsupported_engine("codex", crate::crew::store::Mode::Ask),
+            crate::crew::approval::forbidden(),
             crate::crew::github::app::exists(),
             crate::crew::github::app::code_expired(),
             crate::crew::github::app::conversion_failed(503, "GitHub refused the conversion: down"),

@@ -1,13 +1,4 @@
 {
-	"crew_workspace_setup_approval_everything_clause": "perguntar antes de cada passo",
-	"crew_workspace_setup_approval_everything_title": "Perguntar antes de tudo",
-	"crew_workspace_setup_approval_never_clause": "trabalhar de forma autônoma",
-	"crew_workspace_setup_approval_never_subtitle": "Totalmente automático",
-	"crew_workspace_setup_approval_never_title": "Nunca perguntar",
-	"crew_workspace_setup_approval_risky_clause": "perguntar antes de algo arriscado",
-	"crew_workspace_setup_approval_risky_subtitle": "Recomendado",
-	"crew_workspace_setup_approval_risky_title": "Perguntar antes de algo arriscado",
-	"crew_workspace_setup_ask_approval": "Com que cuidado devo agir?",
 	"crew_workspace_setup_ask_name": "Como devo me chamar?",
 	"crew_workspace_setup_ask_project": "Em qual projeto devo trabalhar?",
 	"crew_workspace_setup_ask_role": "Qual é a minha função?",
@@ -25,6 +16,6 @@
 	"crew_workspace_setup_role_review_title": "Revisar todos os PRs",
 	"crew_workspace_setup_skip": "Pular",
 	"crew_workspace_setup_something_else": "Outra coisa",
-	"crew_workspace_setup_summary": "Sou {name}. Vou {role} e {approval}.",
-	"crew_workspace_setup_summary_project": "Sou {name}. Vou {role} em {project} e {approval}."
+	"crew_workspace_setup_summary": "Sou {name}. Vou {role} e começo no modo {mode}.",
+	"crew_workspace_setup_summary_project": "Sou {name}. Vou {role} em {project} e começo no modo {mode}."
 }

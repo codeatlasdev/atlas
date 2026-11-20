@@ -14,6 +14,13 @@ import { normalizeTask, withParkedTask } from "#lib/crew/wire.ts";
 import { toSent, type PendingImage } from "#lib/crew/attachments.ts";
 import { anyPaused, parseCrewList, pausedFromEvent } from "#lib/crew/pause.ts";
 import { crewmateKey } from "#lib/crew/crewmateKey.ts";
+import {
+	DEFAULT_POLICY,
+	approveArgs,
+	parsePolicy,
+	type ApprovalAnswer,
+	type CrewPolicy,
+} from "#lib/crew/permissionMode.ts";
 import { isUnread, loadSeen, saveSeen } from "#lib/crew/unread.ts";
 import { pairUrl, type PairStart } from "#lib/settings/mobile.ts";
 import type { AgentIntegration } from "#lib/stores/agentIntegration.ts";
@@ -25,6 +32,7 @@ import type {
 	CrewmateSelection,
 	CrewmateTask,
 	CrewmateUsageRecord,
+	PermissionMode,
 	Routine,
 	Trigger,
 } from "#lib/crew.ts";
@@ -50,6 +58,8 @@ interface ServerEntry {
 	crewmates: Crewmate[];
 	/** The crew server is paused (`crewmate_list.paused`, `crew_paused`): nothing runs, queues are held. */
 	paused?: boolean;
+	/** The crew's permission policy (`crew_settings_get`); absent until the first read. */
+	policy?: CrewPolicy;
 	/** Whether the last `crewmate_list` call succeeded. */
 	ok: boolean;
 	/** Why the last `crewmate_list` failed (shown in the sidebar with Retry). */
@@ -170,7 +180,8 @@ class CrewStore {
 			name: string;
 			role: string;
 			agent: string;
-			approval: string;
+			/** Absent: the crew's default mode (`default_approval`) decides. */
+			approval?: string;
 			look?: CrewmateLook;
 			setup_step?: string;
 		},
@@ -197,6 +208,45 @@ class CrewStore {
 	): Promise<void> {
 		await hostCall("crewmate_update", { ...hostArgs(hostKey), id, ...patch });
 		await this.refreshHost(hostKey);
+	}
+
+	/** Switch a crewmate's permission mode (`crewmate_set_approval`); a refusal rejects with hostd's coded error, read in the catalog. */
+	async setMode(hostKey: string, id: string, mode: PermissionMode): Promise<void> {
+		await hostCall("crewmate_set_approval", { ...hostArgs(hostKey), id, mode });
+		await this.refreshHost(hostKey);
+	}
+
+	/** The crew policy of a server, or the defaults while it is not read yet (or its hostd predates modes). */
+	policyOf(hostKey: string): CrewPolicy {
+		return this.servers.find((h) => h.key === hostKey)?.policy ?? DEFAULT_POLICY;
+	}
+
+	/** Read a server's crew policy again (`crew_settings_get`); a failure keeps the last one. */
+	async loadPolicy(hostKey: string): Promise<void> {
+		try {
+			const policy = parsePolicy(
+				await hostCall<Record<string, unknown>>("crew_settings_get", hostArgs(hostKey)),
+			);
+			this.#setPolicy(hostKey, policy);
+		} catch {
+			/* the crewmate list says whether the server is reachable */
+		}
+	}
+
+	/** Change the crew policy (`crew_settings_set`); the reply is the new one. */
+	async setPolicy(hostKey: string, patch: Partial<CrewPolicy>): Promise<void> {
+		const r = await hostCall<Record<string, unknown>>("crew_settings_set", {
+			...hostArgs(hostKey),
+			...patch,
+		});
+		this.#setPolicy(hostKey, parsePolicy(r));
+		// Taking Bypass off the crew moves its crewmates to Ask: the list says which.
+		await this.refreshHost(hostKey);
+	}
+
+	#setPolicy(hostKey: string, policy: CrewPolicy) {
+		const idx = this.servers.findIndex((h) => h.key === hostKey);
+		if (idx >= 0) this.servers[idx] = { ...this.servers[idx], policy };
 	}
 
 	async deleteCrewmate(hostKey: string, id: string): Promise<void> {
@@ -401,9 +451,12 @@ class CrewStore {
 
 	// ─── approvals ────────────────────────────────────────────────────────────
 
-	async approve(paneKey: string, req: string, allow: boolean): Promise<void> {
+	async approve(paneKey: string, req: string, answer: ApprovalAnswer): Promise<void> {
 		if (!this.selected) return;
-		await hostCall("agent_approve", { ...hostArgs(this.selected.hostKey), pane: paneKey, req, allow });
+		await hostCall("agent_approve", {
+			...hostArgs(this.selected.hostKey),
+			...approveArgs(paneKey, req, answer),
+		});
 		this.scheduleRefresh(this.selected.hostKey, 500);
 	}
 
@@ -481,6 +534,7 @@ class CrewStore {
 				await hostCall<{ crewmates: Crewmate[]; paused?: boolean }>("crewmate_list", hostArgs(key)),
 			);
 			this.servers[idx] = { ...this.servers[idx], crewmates, paused, ok: true, error: undefined };
+			if (!this.servers[idx].policy) void this.loadPolicy(key);
 		} catch (e) {
 			// Keep the crewmates we last saw: a crew server that restarted (redeploy, reboot) must not make the crew vanish
 			// from the sidebar; say why instead, and the next refresh brings it back.
@@ -536,9 +590,12 @@ class CrewStore {
 		}
 
 		if (payload.ev === "crewmate_updated") {
-			// Crewmate self-updated via set_profile (e.g. engine onboarding changed name/look).
+			// Crewmate self-updated via set_profile (e.g. engine onboarding changed name/look), or its permission mode was
+			// switched from a phone, Telegram or here: the list carries the new `mode`.
 			const ownerKey = this.allCrewmates.find((b) => b.crewmate.id === payload.crewmate_id)?.hostKey ?? "";
 			this.scheduleRefresh(ownerKey, 100);
+			// Taking Bypass off the crew updates its crewmates too: the policy that says so is read again.
+			void this.loadPolicy(ownerKey);
 			if (this.selected?.crewmateId === payload.crewmate_id) void this.loadTasks();
 			return;
 		}

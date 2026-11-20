@@ -33,7 +33,6 @@ class Recruit {
 				name: pending ? `${pending.name} Crewmate` : "New crewmate",
 				role: "",
 				agent,
-				approval: "ask",
 				look: randomLook(),
 				setup_step: "name",
 			});

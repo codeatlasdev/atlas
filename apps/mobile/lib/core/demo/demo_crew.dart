@@ -2,6 +2,8 @@
 /// approval) with a seeded task history, in the shape `crewmate_list` / `crewmate_tasks` return.
 library;
 
+import 'package:atlas_mobile/core/protocol/agent_registry_data.dart';
+
 int demoNowSeconds() => DateTime.now().millisecondsSinceEpoch ~/ 1000;
 
 /// Whether the demo accepts [cron] the way hostd's parser does for the cases a phone can send: five
@@ -25,11 +27,21 @@ bool demoCronOk(String cron) {
 }
 
 class DemoCrewmate {
-  DemoCrewmate(this.id, this.name, this.agent, this.role);
+  DemoCrewmate(this.id, this.name, this.agent, this.role, {String? mode})
+    : mode = supportsApproval(agent) ? (mode ?? 'ask') : 'bypass';
   final String id;
   final String name;
   final String agent;
   final String role;
+
+  /// `ask` | `edits` | `bypass`, as hostd's `crewmate_list` shows it.
+  String mode;
+
+  /// Whether the engine has an approval channel; one that has none (codex, opencode) runs unattended, always in
+  /// Bypass.
+  static bool supportsApproval(String agent) =>
+      builtinAgents.any((a) => a.id == agent && a.canAsk);
+  bool get approvalSupported => supportsApproval(agent);
   String state = 'idle'; // idle | working | needs_you
   final List<Map<String, dynamic>> tasks = [];
   int queued = 0;
@@ -48,7 +60,9 @@ class DemoCrewmate {
     'name': name,
     'role': role,
     'agent': agent,
-    'approval': 'ask',
+    'approval': mode == 'bypass' ? 'auto' : 'ask',
+    'mode': mode,
+    'approval_supported': approvalSupported,
     'state': state,
     'running_task': null,
     'queued': queued,
@@ -111,8 +125,8 @@ class DemoCrewOps {
       'task_id': 'task-r2',
     });
     _log(now - 500, 'crewmate-1', 'config_changed', {
-      'field': 'approval',
-      'from': 'auto',
+      'field': 'mode',
+      'from': 'bypass',
       'to': 'ask',
     });
     _crewLog(now - 900, 'crewmate_created', {
@@ -123,7 +137,7 @@ class DemoCrewOps {
     _crewLog(now - 880, 'crewmate_created', {
       'id': 'crewmate-2',
       'name': 'Nightly',
-      'agent': 'codex',
+      'agent': 'omp',
     });
   }
 
@@ -131,9 +145,11 @@ class DemoCrewOps {
   int _seq = 0;
   final _entries = <Map<String, dynamic>>[];
 
-  /// Crew-wide settings (`crew_settings_get`): short replies on, no model chosen.
+  /// Crew-wide settings (`crew_settings_get`): short replies on, no model chosen, new crewmates ask, Bypass allowed.
   bool shortReplies = true;
   String? shortRepliesModel;
+  String defaultApproval = 'ask';
+  bool allowBypass = true;
 
   void _log(int ts, String? crewmate, String kind, Map<String, dynamic> extra) {
     _entries.add({
@@ -226,7 +242,7 @@ Map<String, DemoCrewmate> seedDemoCrew() {
   crew['crewmate-2'] = DemoCrewmate(
     'crewmate-2',
     'Nightly',
-    'codex',
+    'omp',
     'Runs nightly checks and tests',
   );
   // Set Nightly to needs_you for demo

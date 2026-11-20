@@ -1,13 +1,4 @@
 {
-	"crew_workspace_setup_approval_everything_clause": "ask before every step",
-	"crew_workspace_setup_approval_everything_title": "Ask before everything",
-	"crew_workspace_setup_approval_never_clause": "work autonomously",
-	"crew_workspace_setup_approval_never_subtitle": "Full auto",
-	"crew_workspace_setup_approval_never_title": "Never ask",
-	"crew_workspace_setup_approval_risky_clause": "ask before anything risky",
-	"crew_workspace_setup_approval_risky_subtitle": "Recommended",
-	"crew_workspace_setup_approval_risky_title": "Ask before anything risky",
-	"crew_workspace_setup_ask_approval": "How careful should I be?",
 	"crew_workspace_setup_ask_name": "What should I call myself?",
 	"crew_workspace_setup_ask_project": "Which project should I work on?",
 	"crew_workspace_setup_ask_role": "What's my job?",
@@ -25,6 +16,6 @@
 	"crew_workspace_setup_role_review_title": "Review every PR",
 	"crew_workspace_setup_skip": "Skip",
 	"crew_workspace_setup_something_else": "Something else",
-	"crew_workspace_setup_summary": "I'm {name}. I'll {role}, and I'll {approval}.",
-	"crew_workspace_setup_summary_project": "I'm {name}. I'll {role} on {project}, and I'll {approval}."
+	"crew_workspace_setup_summary": "I'm {name}. I'll {role}, and I'll start in {mode} mode.",
+	"crew_workspace_setup_summary_project": "I'm {name}. I'll {role} on {project}, and I'll start in {mode} mode."
 }

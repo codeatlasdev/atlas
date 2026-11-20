@@ -1,0 +1,21 @@
+{
+	"mobile_crew_mode_applies_next": "A mudança vale a partir da próxima chamada de ferramenta, inclusive uma que está esperando agora.",
+	"mobile_crew_mode_ask": "Perguntar",
+	"mobile_crew_mode_ask_detail": "Pergunta a você antes de cada chamada de ferramenta.",
+	"mobile_crew_mode_bypass": "Bypass",
+	"mobile_crew_mode_bypass_detail": "Toda chamada de ferramenta roda sem perguntar. Caminhos protegidos ainda perguntam.",
+	"mobile_crew_mode_change": "Mudar o modo de permissão",
+	"mobile_crew_mode_changed": "{name} agora está no modo {mode}. Vale a partir da próxima chamada de ferramenta.",
+	"mobile_crew_mode_edits": "Aceitar edições",
+	"mobile_crew_mode_edits_detail": "Edições de arquivo na worktree dele rodam sem perguntar. O resto pergunta.",
+	"mobile_crew_mode_error_bypass_disabled": "O Bypass está desativado neste crew. Ative nas configurações do crew para usá-lo.",
+	"mobile_crew_mode_error_forbidden": "Só você pode mudar um modo de permissão, pelo Atlas Desktop, pelo Atlas Mobile ou pelo seu chat do Telegram vinculado.",
+	"mobile_crew_mode_error_generic": "Não foi possível mudar o modo: {reason}",
+	"mobile_crew_mode_error_no_access": "Este celular não tem permissão para responder a aprovações nem mudar modos. Permita nas configurações de acesso deste celular no Atlas, no seu computador.",
+	"mobile_crew_mode_error_unsupported_engine": "O {engine} não tem canal de aprovação, então sempre roda sem perguntar. Só o Bypass vale para ele.",
+	"mobile_crew_mode_label": "Modo de permissão",
+	"mobile_crew_mode_locked_semantics": "Modo de permissão: {mode}. Não pode ser mudado.",
+	"mobile_crew_mode_no_channel": "Este engine não tem canal de aprovação.",
+	"mobile_crew_mode_semantics": "Modo de permissão: {mode}",
+	"mobile_crew_mode_sheet_title": "Modo de permissão de {name}"
+}

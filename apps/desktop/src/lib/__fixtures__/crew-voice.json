@@ -52,7 +52,10 @@
 		},
 		"enabled": true,
 		"engine": null,
-		"languages": ["en", "pt"],
+		"languages": [
+			"en",
+			"pt"
+		],
 		"max_seconds": 300,
 		"replacements": [
 			{
@@ -175,7 +178,10 @@
 		},
 		"enabled": false,
 		"engine": null,
-		"languages": ["en", "pt"],
+		"languages": [
+			"en",
+			"pt"
+		],
 		"max_seconds": 300,
 		"replacements": [
 			{
@@ -304,7 +310,10 @@
 			"model": "small",
 			"ready": true
 		},
-		"languages": ["en", "pt"],
+		"languages": [
+			"en",
+			"pt"
+		],
 		"max_seconds": 300,
 		"replacements": [
 			{

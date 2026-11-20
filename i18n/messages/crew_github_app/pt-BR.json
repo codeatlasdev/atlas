@@ -38,6 +38,17 @@
 	"crew_github_app_title": "Criar um GitHub App",
 	"crew_github_app_waiting_body": "Confirme o app no GitHub, no navegador. O Atlas recebe a resposta do GitHub só neste computador.",
 	"crew_github_app_waiting_title": "Aguardando o GitHub",
+	"crew_github_app_webhook_bad_https": "Use um endereço https:// porque os eventos do GitHub atravessam a internet.",
+	"crew_github_app_webhook_bad_url": "Use um endereço web com host e nada depois do caminho: sem usuário, senha, query nem #.",
+	"crew_github_app_webhook_failing": "As entregas estão falhando, então o crew voltou a consultar até o GitHub alcançar este endereço.",
+	"crew_github_app_webhook_hint": "Por padrão, o crew pergunta ao GitHub por eventos novos a cada 2 minutos. Com um endereço HTTPS público que encaminha para este servidor, o GitHub entrega cada um na hora. O Atlas nunca abre o servidor para a internet: coloque na frente dele o seu próprio proxy reverso, Cloudflare Tunnel ou Tailscale Funnel.",
+	"crew_github_app_webhook_live": "Ligado: o GitHub entrega os eventos na hora.",
+	"crew_github_app_webhook_off": "Desligado: os eventos do GitHub chegam em até 2 minutos.",
+	"crew_github_app_webhook_pending": "Esperando a primeira entrega assinada do GitHub. Até lá, o crew continua consultando.",
+	"crew_github_app_webhook_title": "Webhook",
+	"crew_github_app_webhook_too_long": "Use um endereço de no máximo 200 caracteres.",
+	"crew_github_app_webhook_unsynced": "O GitHub ainda não recebeu este endereço. O crew server continua tentando.",
+	"crew_github_app_webhook_url_label": "Endereço público",
 	"crew_github_app_workflows_label": "Permitir editar workflows",
 	"crew_github_app_workflows_reason": "Alterar .github/workflows exige a permissão Workflows do GitHub, que é separada. Deixe desligada, a menos que o crew deva editar arquivos de CI."
 }

@@ -217,17 +217,22 @@ pub(crate) async fn handle(hub: &Hub, cmd: HostCmd) -> Result<Value, String> {
             agent_memory_max,
             default_approval,
             allow_bypass,
-        } => s::set(
-            hub,
-            s::SettingsIn {
-                short_replies,
-                short_replies_model,
-                max_agents,
-                agent_memory_max,
-                default_approval,
-                allow_bypass,
-            },
-        ),
+            public_url,
+        } => {
+            s::set(
+                hub,
+                s::SettingsIn {
+                    short_replies,
+                    short_replies_model,
+                    max_agents,
+                    agent_memory_max,
+                    default_approval,
+                    allow_bypass,
+                    public_url,
+                },
+            )
+            .await
+        }
         HostCmd::CrewPause {} => hub.crew.set_paused(hub, true).map(|()| json!({})),
         HostCmd::CrewResume {} => hub.crew.set_paused(hub, false).map(|()| json!({})),
         HostCmd::EngineLimits {} => s::engine_limits(),

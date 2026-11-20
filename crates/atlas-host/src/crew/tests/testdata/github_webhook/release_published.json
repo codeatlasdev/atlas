@@ -1,0 +1,35 @@
+{
+  "action": "published",
+  "release": {
+    "id": 88,
+    "tag_name": "v1.2.0",
+    "name": "Version 1.2.0",
+    "draft": false,
+    "prerelease": false,
+    "author": {
+      "login": "dev",
+      "id": 5001
+    }
+  },
+  "repository": {
+    "id": 1296269,
+    "full_name": "o/r",
+    "name": "r",
+    "private": true,
+    "owner": {
+      "login": "o",
+      "id": 583231,
+      "type": "Organization"
+    }
+  },
+  "sender": {
+    "login": "dev",
+    "id": 5001,
+    "type": "User",
+    "site_admin": false
+  },
+  "installation": {
+    "id": 7,
+    "node_id": "MDIzOkludGVncmF0aW9uSW5zdGFsbGF0aW9uNw=="
+  }
+}

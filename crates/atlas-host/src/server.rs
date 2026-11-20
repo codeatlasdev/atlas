@@ -1504,7 +1504,23 @@ pub(crate) async fn handle(hub: &Arc<Hub>, cmd: HostCmd, conn_id: u64) -> Result
         | HostCmd::CrewResume {}
         | HostCmd::CrewSettingsGet {}
         | HostCmd::CrewEngineStatus { .. }
-        | HostCmd::CrewSettingsSet { .. }) => crate::crew::handle(hub, crewmate).await,
+        | HostCmd::CrewSettingsSet { .. }) => {
+            // Where GitHub sends the App's payloads (private repos' issues and comments) is the owner's to choose at
+            // the computer: a phone's scope does not reach it, like the App's own setup.
+            if matches!(
+                crewmate,
+                HostCmd::CrewSettingsSet {
+                    public_url: Some(_),
+                    ..
+                }
+            ) && hub.origin_of(conn_id).starts_with("phone:")
+            {
+                return Err(
+                    "the public webhook URL is set on the computer, not from a phone".into(),
+                );
+            }
+            crate::crew::handle(hub, crewmate).await
+        }
         HostCmd::CrewEngineLogin { engine, crewmate } => {
             if !hub.crew_host {
                 return Err("this computer is not a crew server (atlas crew install)".into());

@@ -51,7 +51,7 @@ Future<_Picker> _pump(WidgetTester t, FakePermissions perms) async {
               sending: false,
               online: true,
               queued: 0,
-              onSend: (_) async => true,
+              onSend: (_, _) async => true,
             ),
           ),
         ),

@@ -6,6 +6,7 @@ library;
 import 'package:material_ui/material_ui.dart';
 
 import 'package:atlas_mobile/core/permissions/permissions.dart';
+import 'package:atlas_mobile/l10n/app_localizations.dart';
 
 class PermissionCopy {
   const PermissionCopy({
@@ -45,7 +46,11 @@ class PermissionCopy {
   final String unavailableHint;
 }
 
-PermissionCopy permissionCopy(AtlasPermission p) => switch (p) {
+/// The words of [p]. The permissions added with the catalog (the microphone, speech recognition) read [l10n]
+/// (English without it); the older ones are still English in code, like the screens that show them.
+PermissionCopy permissionCopy(AtlasPermission p, [AppLocalizations? l10n]) {
+  final l = l10n ?? lookupAppLocalizations(const Locale('en'));
+  return switch (p) {
   AtlasPermission.camera => const PermissionCopy(
     icon: Icons.photo_camera_outlined,
     title: 'Allow the camera',
@@ -98,4 +103,29 @@ PermissionCopy permissionCopy(AtlasPermission p) => switch (p) {
     unavailableTitle: 'Direct connection is not available',
     unavailableHint: 'Atlas reaches your computer through the relay.',
   ),
-};
+  AtlasPermission.microphone => PermissionCopy(
+    icon: Icons.mic_none_rounded,
+    title: l.mobile_voice_perm_mic_title,
+    why: l.mobile_voice_perm_mic_why,
+    private: l.mobile_voice_perm_mic_private,
+    offTitle: l.mobile_voice_perm_mic_off_title,
+    offWhat: l.mobile_voice_perm_mic_off_what,
+    offHint: l.mobile_voice_perm_mic_off_hint,
+    restrictedHint: l.mobile_voice_perm_mic_restricted,
+    unavailableTitle: l.mobile_voice_perm_mic_unavailable_title,
+    unavailableHint: l.mobile_voice_perm_mic_unavailable_hint,
+  ),
+  AtlasPermission.speech => PermissionCopy(
+    icon: Icons.graphic_eq_rounded,
+    title: l.mobile_voice_perm_speech_title,
+    why: l.mobile_voice_perm_speech_why,
+    private: l.mobile_voice_perm_speech_private,
+    offTitle: l.mobile_voice_perm_speech_off_title,
+    offWhat: l.mobile_voice_perm_speech_off_what,
+    offHint: l.mobile_voice_perm_speech_off_hint,
+    restrictedHint: l.mobile_voice_perm_speech_restricted,
+    unavailableTitle: l.mobile_voice_perm_speech_unavailable_title,
+    unavailableHint: l.mobile_voice_perm_speech_unavailable_hint,
+  ),
+  };
+}

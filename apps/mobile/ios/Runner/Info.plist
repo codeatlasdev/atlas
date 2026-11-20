@@ -75,6 +75,10 @@
 	<string>Atlas lets you pick screenshots and photos to send to a crewmate. Only the pictures you choose are used.</string>
 	<key>NSFaceIDUsageDescription</key>
 	<string>Atlas uses Face ID to confirm it is you before typing into your computer's terminal or sending a secret. Your face data never leaves your iPhone.</string>
+	<key>NSMicrophoneUsageDescription</key>
+	<string>Atlas uses the microphone to turn what you say into text for your message to a crewmate. Speech is recognised on your iPhone: audio is never recorded, saved or sent to your computer.</string>
+	<key>NSSpeechRecognitionUsageDescription</key>
+	<string>Atlas asks iOS to recognise your speech on this iPhone so you can dictate a message. If you choose the online system recognizer, Apple may receive the audio.</string>
 	<key>ITSAppUsesNonExemptEncryption</key>
 	<false/>
 </dict>

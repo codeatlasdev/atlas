@@ -1,0 +1,13 @@
+{
+	"name": "Atlas",
+	"short_name": "Atlas",
+	"description": "A free, open-source workspace for working with AI agents.",
+	"start_url": "/",
+	"display": "browser",
+	"background_color": "#1b33f0",
+	"theme_color": "#1b33f0",
+	"icons": [
+		{ "src": "/favicon.svg", "sizes": "any", "type": "image/svg+xml", "purpose": "any" },
+		{ "src": "/apple-touch-icon.png", "sizes": "180x180", "type": "image/png" }
+	]
+}

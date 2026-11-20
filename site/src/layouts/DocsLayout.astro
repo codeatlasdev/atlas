@@ -6,8 +6,12 @@ import DocsNotice from "../components/DocsNotice.astro";
 import type { NavGroup } from "../lib/docs";
 import type { DocState } from "../lib/doc-translation";
 import { m } from "../lib/paraglide/messages.js";
+import { docModified } from "../lib/docs";
 import { docsGroupTitle } from "../lib/docs-chrome";
-import { docPath, localeOfAstro, type Locale } from "../lib/i18n";
+import { markdownPath } from "../lib/llms";
+import { ogPathOf } from "../lib/og";
+import { breadcrumbLd, techArticleLd } from "../lib/seo";
+import { docPath, localeOfAstro, localizePath, type Locale } from "../lib/i18n";
 
 interface Props {
 	title: string;
@@ -34,9 +38,22 @@ const flat = groups.flatMap((g) => g.items);
 const i = flat.findIndex((p) => p.slug === slug);
 const prev = i > 0 ? flat[i - 1] : undefined;
 const next = i >= 0 && i < flat.length - 1 ? flat[i + 1] : undefined;
+// Structured data: where the page sits, and the article itself. `dateModified` is the date of the last commit of the file shown.
+const pagePath = Astro.url.pathname;
+const pageDescription = description ?? m.docs_meta_description({ title }, { locale: bodyLocale });
+const shownFile = locale !== "en" && state !== "missing" ? `pt-BR/${slug}.md` : `${slug}.md`;
+const jsonLd = [
+	breadcrumbLd([
+		{ name: "Atlas", path: localizePath("/", locale) },
+		{ name: m.nav_docs(), path: docPath(groups[0]?.items[0]?.slug ?? slug, locale) },
+		{ name: title, path: pagePath },
+	]),
+	techArticleLd({ headline: title, description: pageDescription, locale: bodyLocale, path: pagePath, image: ogPathOf(canonicalPath ?? pagePath), dateModified: docModified(shownFile) }),
+];
 const toc = headings.filter((h) => h.depth === 2 || h.depth === 3);
 ---
-<Base ground="paper" title={m.docs_page_title({ title }, { locale: bodyLocale })} description={description ?? m.docs_meta_description({ title }, { locale: bodyLocale })} alternates={alternates} canonicalPath={canonicalPath}>
+<Base ground="paper" title={m.docs_page_title({ title }, { locale: bodyLocale })} description={pageDescription} alternates={alternates} canonicalPath={canonicalPath} jsonLd={jsonLd} ogType="article">
+	<link slot="head" rel="alternate" type="text/markdown" href={markdownPath(slug, locale)} title={title} />
 	<div class="docs wrap">
 		<!-- Phones: a sticky sub-bar opens the section drawer (replaces the always-open sidebar) -->
 		<div class="docbar" data-docbar>

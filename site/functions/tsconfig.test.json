@@ -20,6 +20,8 @@
     "./_lib/edge.ts",
     "./_lib/edge.test.ts",
     "./_lib/respond.ts",
+    "./_lib/negotiate.ts",
+    "./_lib/negotiate.test.ts",
     "./release.test.ts"
   ],
   "exclude": []

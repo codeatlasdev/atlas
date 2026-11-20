@@ -4,14 +4,17 @@ import Nav from "../components/Nav.astro";
 import Footer from "../components/Footer.astro";
 import { SITE } from "../data/site";
 import { m } from "../lib/paraglide/messages.js";
-import { hreflangLinks, localeOfAstro, type Locale } from "../lib/i18n";
+import { hreflangLinks, LOCALES, localeOfAstro, type Locale } from "../lib/i18n";
+import { ogPathOf } from "../lib/og";
+import { siteGraph } from "../lib/seo";
 
 interface Props {
 	title?: string;
 	description?: string;
 	image?: string;
 	noindex?: boolean;
-	jsonLd?: Record<string, unknown>;
+	/** Structured data of the page (one object, or several). The site-wide Organization and WebSite graph is always added by this layout. */
+	jsonLd?: Record<string, unknown> | Record<string, unknown>[];
 	/** "cobalt" (default) or "paper": the ground the page starts on, so the nav and overscroll match. */
 	ground?: "cobalt" | "paper";
 	/**
@@ -21,12 +24,21 @@ interface Props {
 	alternates?: Partial<Record<Locale, string>>;
 	/** Path the canonical link points to when it is not this URL: a fallback page canonicalizes to its English original. */
 	canonicalPath?: string;
+	/** `og:type`: "website" (default) or "article" for a docs page. */
+	ogType?: "website" | "article";
 }
-const { title = SITE.title, description = SITE.description, image = "/og.png", noindex = false, jsonLd, ground = "cobalt", alternates, canonicalPath } = Astro.props;
+// og:locale values are language_TERRITORY
+const OG_LOCALE: Record<Locale, string> = { en: "en_US", "pt-BR": "pt_BR" };
+const { title = SITE.title, description = SITE.description, image, noindex = false, jsonLd, ground = "cobalt", alternates, canonicalPath, ogType = "website" } = Astro.props;
 const locale = localeOfAstro(Astro.currentLocale);
 const canonical = new URL(canonicalPath ?? Astro.url.pathname, SITE.url).href;
 const hreflang = hreflangLinks(alternates ?? {}, SITE.url);
-const ogImage = new URL(image, SITE.url).href;
+// Every page has its own share image (src/pages/og/): by default the one of its canonical page, so a fallback page shares the English image.
+const ogImage = new URL(image ?? ogPathOf(canonicalPath ?? Astro.url.pathname), SITE.url).href;
+const ogAlternates = LOCALES.filter((l) => l !== locale && alternates?.[l] !== undefined);
+// `<` is escaped so no string in the data can close the script element
+const ld = (data: unknown) => JSON.stringify(data).replace(/</g, "\\u003c");
+const pageLd = jsonLd === undefined ? [] : Array.isArray(jsonLd) ? jsonLd : [jsonLd];
 ---
 <!doctype html>
 <html lang={locale} class="no-js">
@@ -38,21 +50,24 @@ const ogImage = new URL(image, SITE.url).href;
 		<meta name="theme-color" content={ground === "paper" ? "#eef0f8" : "#1b33f0"} />
 		<meta name="color-scheme" content={ground === "paper" ? "light" : "dark"} />
 		<meta name="robots" content={noindex ? "noindex, nofollow" : "index, follow, max-image-preview:large"} />
-		<link rel="canonical" href={canonical} />
+		{!noindex && <link rel="canonical" href={canonical} />}
 		{hreflang.map((l) => <link rel="alternate" hreflang={l.hreflang} href={l.href} />)}
+		<link rel="manifest" href="/site.webmanifest" />
 		<link rel="icon" href="/favicon.svg" type="image/svg+xml" />
 		<link rel="icon" href="/favicon.ico" sizes="32x32" />
 		<link rel="apple-touch-icon" href="/apple-touch-icon.png" />
 		<link rel="sitemap" href="/sitemap-index.xml" />
-		<link rel="alternate" type="text/plain" href="/llms.txt" title="llms.txt" />
+		<link rel="alternate" type="text/plain" href={locale === "en" ? "/llms.txt" : "/pt-br/llms.txt"} title="llms.txt" />
 		<link rel="preload" href="/fonts/archivo-var.woff2" as="font" type="font/woff2" crossorigin />
 		<meta property="og:site_name" content="Atlas" />
-		<meta property="og:type" content="website" />
-		<meta property="og:locale" content={locale.replace("-", "_")} />
+		<meta property="og:type" content={ogType} />
+		<meta property="og:locale" content={OG_LOCALE[locale]} />
+		{ogAlternates.map((l) => <meta property="og:locale:alternate" content={OG_LOCALE[l]} />)}
 		<meta property="og:title" content={title} />
 		<meta property="og:description" content={description} />
 		<meta property="og:url" content={canonical} />
 		<meta property="og:image" content={ogImage} />
+		<meta property="og:image:type" content="image/png" />
 		<meta property="og:image:width" content="1200" />
 		<meta property="og:image:height" content="630" />
 		<meta property="og:image:alt" content={title} />
@@ -60,7 +75,9 @@ const ogImage = new URL(image, SITE.url).href;
 		<meta name="twitter:title" content={title} />
 		<meta name="twitter:description" content={description} />
 		<meta name="twitter:image" content={ogImage} />
-		{jsonLd && <script type="application/ld+json" set:html={JSON.stringify(jsonLd)} />}
+		<meta name="twitter:image:alt" content={title} />
+		<script type="application/ld+json" set:html={ld(siteGraph(locale))} />
+		{pageLd.map((data) => <script type="application/ld+json" set:html={ld(data)} />)}
 		<script is:inline>
 			var d = document.documentElement;
 			d.classList.replace("no-js", "js");

@@ -1,7 +1,7 @@
 ---
 title: "O site"
 source: site.md
-source_sha: "ff021a471ba3f5ce52acb3e920874d006084039d"
+source_sha: "b27e157f7ef49cb78152596306f63fe9de09404b"
 translation: machine
 ---
 
@@ -28,6 +28,15 @@ Rode o `scripts/fetch-media.sh` antes de `bun run build` ou `bun run site:deploy
 - A Content-Security-Policy em `site/public/_headers` só permite recursos de mesma origem: sem fontes, scripts, analytics ou embeds externos. Mantenha tudo hospedado por nós.
 - O Cloudflare Pages concatena as regras `_headers` que casam, então um header definido em `/*` não pode ser sobrescrito em um subcaminho; defina `Cache-Control` só em caminhos específicos.
 - `prefers-reduced-motion`: sem rolagem suave, sem ScrollTrigger, sem autoplay de vídeo. Sem JavaScript, a página é HTML estático completo.
+
+## Busca, imagens de compartilhamento e agentes (SEO, OG, AX)
+
+Tudo aqui é gerado no build a partir dos docs e do catálogo de mensagens; nada é listado à mão.
+
+- **Imagens de compartilhamento.** Toda página tem uma imagem Open Graph (PNG 1200x630) por idioma em `/og/<en|pt-br>/<chave>.png` (`home`, `download`, `changelog`, `privacy`, `code-signing-policy`, `docs/<slug>`): o título, um subtítulo de uma linha, o logo, o endereço e as palavras do idioma. `site/src/pages/og/[locale]/[...key].png.ts` renderiza com satori (layout) e sharp (PNG), a partir dos TTFs estáticos do Archivo em `site/src/assets/fonts/`; não há navegador nem captura de tela. As palavras são as mensagens `seo_og_*` mais os títulos das páginas; o card de um doc usa a `description` do doc (inglês) e o título da tradução (pt-BR, só páginas traduzidas). O `Base.astro` aponta cada página para a própria imagem (`og:image`, `twitter:image`, alt = título); uma página que é cópia (uma página de `/pt-br/docs/` sem tradução) usa a imagem da sua página canônica. Para mudar o visual, edite `site/src/lib/og.ts`. Depois de mudar a fonte variável, rode `site/scripts/og-fonts.sh` para refazer os TTFs (precisa de `pip install fonttools brotli`).
+- **Head e dados estruturados.** O `Base.astro` escreve o canonical, o hreflang (nos dois sentidos mais `x-default`, a partir de `alternates`), `og:*` com `og:locale` e `og:locale:alternate`, `twitter:card`, o web manifest e, em toda página, JSON-LD `Organization` + `WebSite` (`inLanguage`). As páginas acrescentam o seu pela prop `jsonLd`: `SoftwareApplication` na home e no download, `BreadcrumbList` + `TechArticle` nos docs (`dateModified` é a data do último commit git do arquivo mostrado, omitida quando o git não tem histórico). Construtores: `site/src/lib/seo.ts`. A 404 é `noindex` e não tem canonical. O `robots.txt` permite tudo, inclusive crawlers de IA, de propósito; o sitemap lista toda tradução real com alternativas `xhtml:link`.
+- **Markdown para agentes.** Todo doc também é markdown puro em `/docs/<slug>.md` e `/pt-br/docs/<slug>.md` (a tradução, quando existe), com os links relativos tornados absolutos (`site/src/lib/markdown.ts`) e anunciado por `<link rel="alternate" type="text/markdown">`. No edge, `GET /docs/<slug>/` com `Accept: text/markdown` (citado, e acima de `text/html` ou antes dele) responde com o mesmo markdown e `Vary: Accept` (`site/functions/_lib/negotiate.ts`, `site/functions/docs/[[path]].ts`); navegadores e `*/*` continuam recebendo HTML. O redirecionamento de idioma nunca vale para um pedido de markdown.
+- **`llms.txt`.** `/llms.txt` (índice com o posicionamento e o link `.md` de cada página), `/llms-full.txt` (todos os docs em inglês num arquivo só) e `/pt-br/llms.txt` (as páginas traduzidas) são gerados a partir de `docs/_nav.json` por `site/src/lib/llms.ts`. Ficam em inglês por política (são para máquinas). O `_headers` define os content types.
 
 ## Deploy (mantenedores)
 

@@ -285,6 +285,7 @@ fn fired(
             comment_id,
             branch,
             reply_comment_id: None,
+            requester: None,
         }),
     }
 }

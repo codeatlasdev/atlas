@@ -82,6 +82,8 @@ pub fn import_archive(
     archive::import(&store::CrewStore::new(dir), input, rename)
 }
 
+pub use github::app::gh_shim;
+pub use github::app::helper as git_credential;
 pub(crate) use hub::CrewHub;
 pub(crate) use push::PushToken;
 pub(crate) use store::{Crewmate, Task, now_s};

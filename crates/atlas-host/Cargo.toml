@@ -35,6 +35,8 @@ hex = "0.4"
 tar = "0.4"
 flate2 = { workspace = true }
 rustls = { version = "0.23", default-features = false, features = ["ring", "std", "tls12", "logging"] }
+# RS256 for the GitHub App JWT (already in the tree through rustls).
+ring = "0.17"
 croner = { version = "4", default-features = false, features = ["jiff"] }
 jiff = { workspace = true }
 sha1_smol = "1"

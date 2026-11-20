@@ -261,6 +261,7 @@ async fn route(hub: &AgentHub, can_approve: bool, path: &str, v: &Value) -> (&'s
 /// - `POST /crew/<id>/locate`        — the locate tool: route, component and selector of a screenshot region
 /// - `POST /crew/<id>/ui_gate`       — the ui_gate tool: plan per change, rerun failures, regressions
 /// - `POST /crew/<id>/set_ui`        — the agent marks its task as a UI task (needs captures to be done)
+/// - `POST /crew/<id>/git_credential` — the git credential helper: an installation token for one git operation
 async fn route_crew(
     hub: &Arc<crate::server::Hub>,
     path: &str,
@@ -285,6 +286,9 @@ async fn route_crew(
         "locate" => handle_locate(hub, crewmate_id, &v()).await,
         "ui_gate" => handle_ui_gate(hub, crewmate_id, &v()).await,
         "set_ui" => handle_set_ui(hub, crewmate_id, &v()),
+        "git_credential" => {
+            crate::crew::github::app::credential_reply(hub, crewmate_id, &v()).await
+        }
         _ => ("404 Not Found", String::new()),
     }
 }

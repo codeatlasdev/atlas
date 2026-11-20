@@ -92,6 +92,10 @@ const STORE_ONLY: &[(&str, &str)] = &[
 /// through the helper for an isolated crewmate, or hostd's own tool with hostd's own arguments (relative to `src/`).
 const PROGRAMS: &[(&str, &str)] = &[
     (
+        "crew/github/app/gh_shim.rs",
+        "the crewmate's own `gh`, started by the process that is the crewmate (never by hostd), with a token for that call",
+    ),
+    (
         "agents/integrations.rs",
         "hostd's own binary, to install the user's agent hooks",
     ),
@@ -319,7 +323,12 @@ fn git_is_started_only_by_the_code_that_decides_who_runs_it() {
     let mut bad = vec![];
     for (rel, src) in scanned() {
         // `github/mod.rs`: `git config --global` of the crew user's own sign-in (no cwd, no tree).
-        if rel == "crew/gitrun.rs" || rel == "crew/github/mod.rs" || rel.starts_with("crew/mirror/")
+        // `github/app/gh_shim.rs`: runs as the crewmate itself (`gh` is a link to atlas on its PATH), asking its own git
+        // which repo its checkout is.
+        if rel == "crew/gitrun.rs"
+            || rel == "crew/github/mod.rs"
+            || rel == "crew/github/app/gh_shim.rs"
+            || rel.starts_with("crew/mirror/")
         {
             continue;
         }

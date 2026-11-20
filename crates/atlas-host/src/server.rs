@@ -1187,6 +1187,14 @@ pub(crate) async fn answer(
         HostCmd::FsRemove { path, recursive } => {
             crate::fs::remove(&path, recursive).map_err(Failure::from)
         }
+        // The GitHub App's commands fail with codes a client writes its own sentence from (`crew.github_app.*`).
+        cmd @ (HostCmd::CrewGithubAppManifest { .. }
+        | HostCmd::CrewGithubAppConvert { .. }
+        | HostCmd::CrewGithubAppStatus {}
+        | HostCmd::CrewGithubAppRemove {}) => {
+            let origin = hub.origin_of(conn_id);
+            crate::crew::github::app::handle(hub, cmd, &origin).await
+        }
         HostCmd::CrewmateSetApproval { id, mode } => {
             crate::crew::approval::set_approval(hub, &id, &mode, &hub.origin_of(conn_id))
         }
@@ -1531,7 +1539,11 @@ pub(crate) async fn handle(hub: &Arc<Hub>, cmd: HostCmd, conn_id: u64) -> Result
         | HostCmd::PtyAttachRaw { .. }
         | HostCmd::FsWatch { .. }
         | HostCmd::FsUnwatch { .. }
-        | HostCmd::Shutdown {} => Err("handled by connection".into()),
+        | HostCmd::Shutdown {}
+        | HostCmd::CrewGithubAppManifest { .. }
+        | HostCmd::CrewGithubAppConvert { .. }
+        | HostCmd::CrewGithubAppStatus {}
+        | HostCmd::CrewGithubAppRemove {} => Err("handled by connection".into()),
     }
 }
 

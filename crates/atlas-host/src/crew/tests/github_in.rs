@@ -511,6 +511,7 @@ fn the_pr_branch_reaches_the_instructions_only_when_it_is_a_plain_ref_name() {
         comment_id: None,
         branch: branch.map(String::from),
         reply_comment_id: None,
+        requester: None,
     };
     for kind in [
         GithubOriginKind::CiFailed,

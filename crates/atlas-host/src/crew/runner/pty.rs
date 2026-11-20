@@ -21,6 +21,25 @@ use crate::protocol::{Mode, PtyCreate, Scope};
 use crate::pty::Session;
 use crate::server::Hub;
 
+/// What a terminal agent is started with. An agent that can ask (claude, omp) never gets its bypass flags: hostd
+/// decides each call through its hook (`crew::approval`) from the crewmate's mode, and the agent's own ask mode
+/// is said explicitly (`ask_args`, `claude --permission-mode default`), so a user's settings file cannot widen it.
+/// An agent that cannot ask (codex, opencode) gets its bypass flags only in `bypass`, for a task that is not a
+/// stranger's text (`triggers::yolo_for`).
+pub(crate) fn launch_argv(
+    def: &atlas_core::agents::AgentDef,
+    mode: crate::crew::store::Mode,
+    task: &Task,
+    prompt: &str,
+) -> Vec<String> {
+    let yolo = triggers::yolo_for(mode, task, def.can_ask);
+    let mut argv = def.argv(yolo, Some(prompt));
+    if !yolo {
+        argv.splice(1..1, def.ask_args.iter().cloned());
+    }
+    argv
+}
+
 pub(super) async fn run_one_pty(hub: &Hub, crewmate: &Crewmate, mut task: Task) {
     let pane_key = pane::key(&crewmate.id, &task.id);
     let Some(Prepared {
@@ -150,17 +169,11 @@ async fn run_pty_inner(
     {
         // An isolated agent is an engine by name, found by the helper in its own directories.
         Some(bin) => vec![bin],
-        None => agent_def.argv(
-            triggers::yolo_for(crewmate.mode, task, agent_def.can_ask),
-            Some(&prompt),
-        ),
+        None => launch_argv(agent_def, crewmate.mode, task, &prompt),
     };
     #[cfg(not(test))]
     let argv = {
-        let mut argv = agent_def.argv(
-            triggers::yolo_for(crewmate.mode, task, agent_def.can_ask),
-            Some(&prompt),
-        );
+        let mut argv = launch_argv(agent_def, crewmate.mode, task, &prompt);
         if crewmate.agent == "omp" {
             let overlay =
                 crate::crew::engine::omp::overlay_args(&ctx.runtime_dir(hub, &crewmate.id));

@@ -817,7 +817,7 @@ async fn crewmate_tasks_json_contract() {
 /// Guards against a rename breaking the TS types that read this field.
 #[test]
 fn crewmate_setup_step_serializes_as_snake_case() {
-    use crate::crew::store::{Approval, Crewmate};
+    use crate::crew::store::{Crewmate, Mode};
 
     let crewmate_with_step = Crewmate {
         id: "test-id".into(),
@@ -825,7 +825,7 @@ fn crewmate_setup_step_serializes_as_snake_case() {
         role: String::new(),
         agent: "omp".into(),
         workdir: None,
-        approval: Approval::Auto,
+        mode: Mode::Bypass,
         routines: vec![],
         triggers: vec![],
         look: None,
@@ -833,6 +833,7 @@ fn crewmate_setup_step_serializes_as_snake_case() {
         project: None,
         setup_step: Some("name".into()),
         short_replies: None,
+        spoken_replies: false,
         created_at: 0,
     };
     let v = serde_json::to_value(&crewmate_with_step).unwrap();

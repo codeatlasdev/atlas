@@ -327,7 +327,9 @@ async fn a_running_conversational_task_resumes_its_session_after_a_restart() {
 
     assert_eq!(done["resumed"], true, "{done}");
     let turns = std::fs::read_to_string(&log).unwrap();
-    let turn = turns.lines().next().expect("the engine ran once");
+    // The prompt starts with the permissions fragment, which has several lines: the whole log is the one turn.
+    let turn = turns.trim_end();
+    assert!(!turn.is_empty(), "the engine ran once");
     assert!(
         turn.starts_with("--resume ses-keep "),
         "the stored session id is passed to the engine: {turn}"
@@ -439,7 +441,9 @@ async fn a_waiting_action_conversational_task_continues_its_session_when_answere
 
     assert_eq!(done["answer"], "develop", "{done}");
     let turns = std::fs::read_to_string(&log).unwrap();
-    let turn = turns.lines().next().expect("one turn ran");
+    // The prompt starts with the permissions fragment, which has several lines: the whole log is the one turn.
+    let turn = turns.trim_end();
+    assert!(!turn.is_empty(), "one turn ran");
     assert!(turn.starts_with("--resume ses-keep "), "{turn}");
     assert!(turn.ends_with("develop"), "the answer is the turn: {turn}");
     crate::crew::engine::set_test_engine_bin(None);

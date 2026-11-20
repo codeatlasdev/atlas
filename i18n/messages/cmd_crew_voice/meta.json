@@ -1,0 +1,17 @@
+{
+  "cmd_crew_voice_fail_build": "Error of atlas crew voice install when cmake failed. {target} is the ssh target, {reason} the last lines of the build.",
+  "cmd_crew_voice_fail_checksum": "Error of atlas crew voice install when sha256sum refused a download. {what} names the file, {target} the ssh target, {reason} the checksum tool's words.",
+  "cmd_crew_voice_fail_dir": "Error of atlas crew voice install. {target} is the ssh target, {reason} the server's own words.",
+  "cmd_crew_voice_fail_download": "Error of atlas crew voice install. {what} names the file (whisper.cpp 1.9.5, the small model), {target} the ssh target, {reason} the server's own words.",
+  "cmd_crew_voice_no_apt": "Error of atlas crew voice install on a server without apt-get. {target} is the ssh target, {tools} the missing command names, comma separated; both shown as is.",
+  "cmd_crew_voice_ready": "Last line of atlas crew voice install. {target} is the ssh target.",
+  "cmd_crew_voice_status_ready": "Line of atlas crew voice status when nothing is missing. {target} is the ssh target, {version} the whisper.cpp version.",
+  "cmd_crew_voice_step_apt": "Progress line of atlas crew voice install before the single root command (apt-get install). {count} is how many packages are missing.",
+  "cmd_crew_voice_step_build": "Progress line of atlas crew voice install while cmake builds whisper.cpp on the server.",
+  "cmd_crew_voice_step_built": "Progress line of atlas crew voice install when the pinned binary is already on the server. {version} is the whisper.cpp version.",
+  "cmd_crew_voice_step_model": "Progress line of atlas crew voice install: downloading the pinned model and verifying its sha256. {model} is small or base.",
+  "cmd_crew_voice_step_model_present": "Progress line of atlas crew voice install when the model file is there with the right checksum. {model} is small or base.",
+  "cmd_crew_voice_step_source": "Progress line of atlas crew voice install: downloading the pinned source and verifying its sha256. {version} is the version.",
+  "cmd_crew_voice_step_tools": "Progress line of atlas crew voice install: looking for the build tools and ffmpeg on the server.",
+  "cmd_crew_voice_unknown_model": "Error of atlas crew voice install when the model is not one of the pinned ones. {model} is what was typed; small and base are literal."
+}

@@ -7,6 +7,7 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 
 import 'package:atlas_mobile/core/connection/require_mux.dart';
 import 'package:atlas_mobile/core/protocol/crew_ops_models.dart';
+import 'package:atlas_mobile/core/protocol/crew_voice.dart';
 import 'package:atlas_mobile/core/protocol/models.dart';
 import 'package:atlas_mobile/features/crew/crew_provider.dart';
 
@@ -73,6 +74,21 @@ final crewSettingsProvider = FutureProvider.autoDispose
       );
     });
 
+/// Whether the crew allows dictation (`crew_voice_status.enabled`). Off when the server is an older hostd that has
+/// no voice, refuses, or cannot be reached: the mic never shows on a guess.
+final crewVoiceProvider = FutureProvider.autoDispose
+    .family<CrewVoice, MacDevice>((ref, device) async {
+      try {
+        return CrewVoice.fromJson(
+          await callCrew(ref, device, 'crew_voice_status'),
+        );
+      } on StateError {
+        return CrewVoice.off;
+      } on DeviceUnavailable {
+        return CrewVoice.off;
+      }
+    });
+
 /// Saves [settings] (`crew_settings_set`, `Act` scope) and re-reads them.
 Future<void> saveCrewSettings(
   WidgetRef ref,
@@ -85,6 +101,8 @@ Future<void> saveCrewSettings(
     throw StateError(resp['error'] as String? ?? 'the server refused');
   }
   ref.invalidate(crewSettingsProvider(device));
+  // Bypass off moves crewmates out of it: their rows are read again.
+  ref.invalidate(crewProvider(device));
 }
 
 /// Whether each engine of [device] is signed in (`crew_engine_status` with `refresh`: hostd runs each engine's

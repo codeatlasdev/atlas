@@ -11,6 +11,15 @@ use crate::server::Hub;
 /// The longest prompt a task takes (docs/crew.md): characters, not bytes.
 pub(crate) const MAX_PROMPT_CHARS: usize = 20_000;
 
+/// What marks a task as more than its words: `crewmate_task`'s `ui` and `dictated`.
+#[derive(Clone, Copy, Default)]
+pub(crate) struct Marks {
+    /// A UI task: it needs the agent's own captures to be `done`.
+    pub ui: bool,
+    /// The prompt was (partly) dictated: the agent is told to expect homophones (`voice::NOTE`).
+    pub dictated: bool,
+}
+
 /// `CrewmateTask`
 pub(crate) fn send_task(
     hub: &Hub,
@@ -19,7 +28,7 @@ pub(crate) fn send_task(
     source: String,
     tz: Option<String>,
     images: Vec<Sent>,
-    ui: bool,
+    marks: Marks,
 ) -> Result<Value, String> {
     let store = &hub.crew.store;
     // Whatever refuses the task also drops the pieces its images were uploaded in.
@@ -42,7 +51,8 @@ pub(crate) fn send_task(
     }
     let mut task = Task::new(source, prompt);
     task.tz = tz;
-    task.ui = ui;
+    task.ui = marks.ui;
+    task.dictated = marks.dictated;
     let incoming = match attachments::resolve(store, &id, &images) {
         Ok(v) => v,
         Err(e) => return refuse(e),

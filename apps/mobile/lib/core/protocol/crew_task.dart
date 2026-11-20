@@ -124,6 +124,10 @@ class CrewmateTask {
   /// The question the agent is blocked on (`ask_user`), while the task runs.
   final AskRequest? ask;
 
+  /// What is read aloud when the task finishes (hostd's `spoken`, at most 300 characters, no code or paths).
+  /// Empty: nothing is said. An older hostd sends nothing, which is the same.
+  final String spoken;
+
   const CrewmateTask({
     required this.id,
     required this.ts,
@@ -149,6 +153,7 @@ class CrewmateTask {
     this.attachments = const [],
     this.ui = false,
     this.ask,
+    this.spoken = '',
   });
 
   /// The line of a queued task: a bare "Queued", or why it is not starting ("Queued · server busy").
@@ -204,6 +209,7 @@ class CrewmateTask {
     ask: j['ask'] == null
         ? null
         : AskRequest.fromJson((j['ask'] as Map).cast<String, dynamic>()),
+    spoken: j['spoken'] as String? ?? '',
   );
 }
 

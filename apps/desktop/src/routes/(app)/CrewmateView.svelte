@@ -4,7 +4,7 @@
 	 * crewmate) or the task thread and composer. The parts live in lib/crew/chat; this wires them to the stores.
 	 * Approval is inline in the thread; Telegram and Pair phone live in the settings dialog.
 	 */
-	import { onMount } from "svelte";
+	import { onMount, untrack } from "svelte";
 	import { toast } from "@codeatlasdev/ui";
 	import { errText } from "#lib/api.ts";
 	import { hostCall } from "#lib/host.ts";
@@ -15,13 +15,16 @@
 	import { normalizeLook } from "#lib/crew/look.ts";
 	import { firstUnreadIndex } from "#lib/crew/crewLogic.ts";
 	import { githubCrew } from "#lib/crew/githubCrew.svelte.ts";
-	import type { SetupStep } from "#lib/crew/crewSetup.ts";
+	import { normalizeStep } from "#lib/crew/crewSetup.ts";
 	import CrewmateSettingsDialog from "#lib/crew/settings/CrewmateSettingsDialog.svelte";
 	import ChatHeader from "#lib/crew/chat/ChatHeader.svelte";
 	import Lazy from "#lib/components/Lazy.svelte";
 	import Composer from "#lib/crew/chat/Composer.svelte";
+	import ModePicker from "#lib/crew/chat/ModePicker.svelte";
+	import ReadAloudToggle from "#lib/crew/chat/ReadAloudToggle.svelte";
 	import SetupConversation from "#lib/crew/chat/SetupConversation.svelte";
 	import { ChatState } from "#lib/crew/chat/chat.svelte.ts";
+	import { voiceStatus } from "#lib/crew/voice/status.svelte.ts";
 	import { parseAsk } from "#lib/crew/chat/parseAsk.ts";
 	import { m } from "#lib/i18n/m.ts";
 
@@ -42,7 +45,7 @@
 	const queuedCount = $derived(tasks.filter((t) => t.state === "queued").length);
 	/** True when the most recent task has an unanswered ask card. */
 	const hasPendingAsk = $derived(
-		tasks.length > 0 && parseAsk(tasks[0].result) !== null && !chat.approvedReqs.has(tasks[0].id),
+		tasks.length > 0 && parseAsk(tasks[0].result) !== null && !(tasks[0].id in chat.answeredReqs),
 	);
 	const orderedTasks = $derived([...tasks].reverse()); // oldest first
 	const unreadIdx = $derived(firstUnreadIndex(orderedTasks, crew.selectedLastSeen));
@@ -63,12 +66,38 @@
 	const ideProjects = $derived(
 		ws.doc.worktrees.map((w) => ({ id: w.id, name: w.name, path: w.path, branch: w.branch ?? "" })),
 	);
-	const setupStep = $derived(crewmate?.setup_step as SetupStep | undefined);
+	const setupStep = $derived(normalizeStep(crewmate?.setup_step));
 
-	// Reset approvedReqs when the selected crewmate changes
+	// Reset approvedReqs when the selected crewmate changes; a dictation in flight belongs to the one it started
+	// in (its audio goes to that crewmate's server), so it ends here and the microphone is released.
 	$effect(() => {
 		void crew.selected;
 		chat.resetApprovals();
+		// Untracked: `cancel` reads the session's state, which must not re-run (and cancel) this effect.
+		untrack(() => {
+			chat.dictation.cancel();
+			// A reply being read belongs to the chat it came from.
+			chat.speech.stop();
+		});
+	});
+
+	// A reply that finishes while this chat is open is read aloud, when this device reads this crewmate's replies.
+	$effect(() => {
+		const list = crew.tasks;
+		const loading = crew.tasksLoading;
+		untrack(() => chat.onTasks(list, loading));
+	});
+
+	// The synthesizer and "any key or click stops it" belong to the chat's life.
+	$effect(() => {
+		void chat.speech.attach(window);
+		return () => chat.speech.dispose();
+	});
+
+	// What the selected crew server can do with a voice: the microphone's state in the composer.
+	$effect(() => {
+		const key = hostKey;
+		untrack(() => void voiceStatus.load(key));
 	});
 
 	// Fetch actual hostname for local host so header shows e.g. "Mac" not "This computer"
@@ -172,11 +201,17 @@
 					label={m.crew_workspace_crewmate_view_task_prompt_label()}
 					busy={chat.sending}
 					onfiles={(files) => void chat.attach(files)}
+					dictation={chat.dictation}
+					dictationUnsupported={!!voiceStatus.loaded[hostKey] && !voiceStatus.of(hostKey)}
 					images={chat.images}
 					onremoveimage={(i) => chat.removeImage(i)}
 					queued={queuedCount}
 					onsend={() => void chat.send()}
-				/>
+				>
+					{#snippet footer()}
+						<span class="foot-controls"><ModePicker {crewmate} {hostKey} /><ReadAloudToggle {chat} /></span>
+					{/snippet}
+				</Composer>
 			{/if}
 		</div>
 
@@ -202,6 +237,13 @@
 		justify-content: center;
 		color: var(--ca-text-secondary);
 		font-size: 14px;
+	}
+
+	.foot-controls {
+		display: inline-flex;
+		align-items: center;
+		flex-wrap: wrap;
+		gap: 12px;
 	}
 
 	.thread-pending {

@@ -1,0 +1,37 @@
+{
+  "action": "completed",
+  "check_run": {
+    "id": 1100,
+    "name": "unit tests",
+    "status": "completed",
+    "conclusion": "failure",
+    "html_url": "https://github.com/o/r/actions/runs/77/job/1100",
+    "head_sha": "6dcb09b5b57875f334f61aebed695e2e4193db5e",
+    "check_suite": {
+      "id": 5,
+      "head_branch": "fix/crash",
+      "head_sha": "6dcb09b5b57875f334f61aebed695e2e4193db5e"
+    }
+  },
+  "repository": {
+    "id": 1296269,
+    "full_name": "o/r",
+    "name": "r",
+    "private": true,
+    "owner": {
+      "login": "o",
+      "id": 583231,
+      "type": "Organization"
+    }
+  },
+  "sender": {
+    "login": "dev",
+    "id": 5001,
+    "type": "User",
+    "site_admin": false
+  },
+  "installation": {
+    "id": 7,
+    "node_id": "MDIzOkludGVncmF0aW9uSW5zdGFsbGF0aW9uNw=="
+  }
+}

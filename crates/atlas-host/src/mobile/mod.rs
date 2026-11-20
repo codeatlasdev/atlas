@@ -462,6 +462,8 @@ pub fn push_scope(ev: &str) -> Option<Scope> {
         "agent_approval" | "agent_approval_done" => Scope::Approve,
         "agent_status" => Scope::Read,
         "crewmate_task" => Scope::Read,
+        // A crewmate's definition changed (its permission mode included): the phone reads it again.
+        "crewmate_updated" | "crewmate_approval_unanswered" => Scope::Read,
         "atlas_update" => Scope::Read,
         "computer_invite" => Scope::Read,
         _ => return None,
@@ -526,7 +528,8 @@ pub fn required_scope(cmd: &HostCmd) -> Result<Scope, &'static str> {
         | C::GitCommitMessage { .. }
         | C::GitPush { .. }
         | C::GitPrCreate { .. } => Scope::Act,
-        C::AgentApprove { .. } => Scope::Approve,
+        // Answering by voice is answering: the same grant, and hostd still refuses what needs a tap.
+        C::AgentApprove { .. } | C::AgentApproveVoice { .. } => Scope::Approve,
         // pty_read returns the scrollback text: reading a terminal, not listing it.
         C::PtyAttach { .. } | C::PtyDetach { .. } | C::PtyRead { .. } => Scope::TermRead,
         C::PtyWrite { .. } | C::PtySignal { .. } => Scope::TermWrite,
@@ -539,6 +542,9 @@ pub fn required_scope(cmd: &HostCmd) -> Result<Scope, &'static str> {
         C::CrewmateTask { .. } | C::CrewmateAttachmentPut { .. } | C::CrewmateCancel { .. } => {
             Scope::Act
         }
+        // Switching the permission mode is what answering a prompt amounts to (a phone that may allow a call may
+        // allow the next ones): it needs the same grant. The phone's own connection names it in the audit.
+        C::CrewmateSetApproval { .. } => Scope::Approve,
         C::CrewmateCreate { .. }
         | C::CrewmateUpdate { .. }
         | C::CrewmateDelete { .. }
@@ -546,6 +552,12 @@ pub fn required_scope(cmd: &HostCmd) -> Result<Scope, &'static str> {
         | C::CrewmateRoutineSet { .. } => Scope::Act,
         C::PushRegister { .. } | C::PushUnregister { .. } => Scope::Read,
         C::CrewTelegramSet { .. } | C::CrewTelegramLink {} | C::CrewTelegramStatus {} => {
+            return Err("not available on mobile");
+        }
+        // The phone recognises speech on the phone and never sends audio to hostd; it only reads whether voice is on
+        // and the replacement table. Switching voice is the owner's, from the desktop.
+        C::CrewVoiceStatus {} => Scope::Read,
+        C::CrewVoiceSet { .. } | C::CrewmateVoicePut { .. } | C::CrewmateTranscribe { .. } => {
             return Err("not available on mobile");
         }
         C::CrewmateTriggersSet { .. } => Scope::Act,
@@ -556,9 +568,17 @@ pub fn required_scope(cmd: &HostCmd) -> Result<Scope, &'static str> {
         C::MobileInvite { .. } => return Err("not available on mobile"),
         C::MobileInvites {} => Scope::Read,
         C::MobileInviteDismiss { .. } => Scope::Act,
+        // The crew server's GitHub App is the owner's to set up: its key never leaves the server, and a phone
+        // neither creates nor removes it (nor reads which repositories it reaches).
+        C::CrewGithubAppManifest { .. }
+        | C::CrewGithubAppConvert { .. }
+        | C::CrewGithubAppStatus {}
+        | C::CrewGithubAppRemove {} => return Err("not available on mobile"),
         C::CrewGithubStatus {} | C::CrewGithubLoginPoll {} => Scope::Read,
         C::CrewGithubLoginStart {} | C::CrewGithubLogout {} => Scope::Act,
-        C::CrewmateActionAnswer { .. } | C::CrewGithubConnectResume {} => Scope::Act,
+        C::CrewmateActionAnswer { .. }
+        | C::CrewmateActionAnswerVoice { .. }
+        | C::CrewGithubConnectResume {} => Scope::Act,
         C::CrewPause {} | C::CrewResume {} => Scope::Act,
         C::CrewSettingsGet {} => Scope::Read,
         C::CrewSettingsSet { .. } => Scope::Act,

@@ -14,6 +14,7 @@ import 'package:atlas_mobile/core/protocol/models.dart';
 import 'package:atlas_mobile/core/protocol/multiplexer.dart';
 import 'package:atlas_mobile/core/ui/async_view.dart';
 import 'package:atlas_mobile/core/ui/atlas_theme.dart';
+import 'package:atlas_mobile/core/ui/l10n.dart';
 import 'package:atlas_mobile/core/ui/route_page.dart';
 import 'package:atlas_mobile/features/crew/automation_editor_sheet.dart';
 import 'package:atlas_mobile/features/crew/automations.dart';
@@ -24,6 +25,8 @@ import 'package:atlas_mobile/features/crew/ops/crew_audit_screen.dart';
 import 'package:atlas_mobile/features/crew/ops/crew_ops_provider.dart';
 import 'package:atlas_mobile/features/crew/ops/crewmate_usage_screen.dart';
 import 'package:atlas_mobile/features/crew/ops/routines_section.dart';
+import 'package:atlas_mobile/features/crew/permissions/crewmate_mode_control.dart';
+import 'package:atlas_mobile/features/crew/permissions/mode_badge.dart';
 import 'package:atlas_mobile/features/crew/profile/automations_section.dart';
 import 'package:atlas_mobile/features/crew/profile/github_card.dart';
 import 'package:atlas_mobile/features/crew/profile/profile_dialogs.dart';
@@ -375,20 +378,30 @@ class _CrewmateProfileScreenState extends ConsumerState<CrewmateProfileScreen> {
                     ProfileGroup(
                       title: 'How it works',
                       children: [
+                        // The mode is one line here; the sheet (the chat's too) switches it.
                         ProfileRow(
-                          label: 'Approval',
-                          child: ApprovalPicker(
-                            value: crewmate.approval,
-                            enabled: crewmate.approvalSupported,
-                            onChanged: (val) async {
-                              final mux = await _mux();
-                              if (mux == null) return;
-                              await mux.call('crewmate_update', {
-                                'id': widget.crewmateId,
-                                'approval': val,
-                              });
-                              ref.invalidate(crewProvider(widget.device));
-                            },
+                          onTap: () => showModeSheet(
+                            context,
+                            device: widget.device,
+                            crewmateId: widget.crewmateId,
+                          ),
+                          child: Row(
+                            children: [
+                              Expanded(
+                                child: Text(
+                                  context.l10n.mobile_crew_mode_label,
+                                  style: Theme.of(context).textTheme.bodyLarge!
+                                      .copyWith(
+                                        fontWeight: FontWeight.w600,
+                                        color: c.text,
+                                      ),
+                                ),
+                              ),
+                              ModeBadge(
+                                mode: crewmate.mode,
+                                fixed: !crewmate.approvalSupported,
+                              ),
+                            ],
                           ),
                         ),
                         ProfileRow(

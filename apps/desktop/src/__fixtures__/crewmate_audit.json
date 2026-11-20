@@ -1,14 +1,28 @@
 {
   "entries": [
     {
-      "by": "desktop",
       "crewmate_id": "crewmate-fixture",
       "decision": "allow",
+      "device": "desktop",
       "kind": "approval_decision",
       "req": "req-fixture",
-      "seq": 8,
+      "seq": 9,
+      "source": "person",
       "task_id": "task-fixture",
-      "tool_name": "Bash",
+      "tool": "Bash",
+      "tool_input": {
+        "command": "ls"
+      },
+      "ts": 1700000009,
+      "wait_ms": 0
+    },
+    {
+      "crewmate_id": "crewmate-fixture",
+      "device": "owner",
+      "from": "bypass",
+      "kind": "approval_mode_changed",
+      "seq": 8,
+      "to": "ask",
       "ts": 1700000008
     },
     {
@@ -23,8 +37,8 @@
     },
     {
       "crewmate_id": "crewmate-fixture",
-      "field": "approval",
-      "from": "auto",
+      "field": "mode",
+      "from": "bypass",
       "kind": "config_changed",
       "seq": 6,
       "to": "ask",
@@ -33,6 +47,7 @@
     {
       "crewmate_id": "crewmate-fixture",
       "kind": "approval_asked",
+      "rail": null,
       "req": "req-fixture",
       "seq": 5,
       "task_id": "task-fixture",

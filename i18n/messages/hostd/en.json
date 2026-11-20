@@ -1,4 +1,7 @@
 {
+	"hostd_wire_approval_bypass_disabled": "Bypass is turned off for this crew. Turn it on in the crew settings to use it.",
+	"hostd_wire_approval_forbidden": "Only you can change a permission mode, from Atlas Desktop, Atlas Mobile or your linked Telegram chat.",
+	"hostd_wire_approval_unsupported_engine": "{engine} has no approval channel, so it always runs without asking. Only Bypass applies to it.",
 	"hostd_wire_busy": "The terminal host is busy right now. Wait a moment and try again.",
 	"hostd_wire_cli_not_found": [
 		{
@@ -26,9 +29,15 @@
 	"hostd_wire_fs_not_found": "{path} was not found. It may have been moved or deleted: refresh the file tree and try again.",
 	"hostd_wire_fs_other": "Could not use {path}. Check that the disk is available and has free space, then try again.",
 	"hostd_wire_fs_permission_denied": "Atlas has no permission to use {path}. Check the permissions of the folder and try again.",
+	"hostd_wire_github_app_code_expired": "GitHub's code was already used or is older than an hour. Start creating the GitHub App again.",
+	"hostd_wire_github_app_conversion_failed": "GitHub did not accept the app setup (status {status}). Start again, and check that GitHub is reachable from the crew server.",
+	"hostd_wire_github_app_exists": "A GitHub App is already set up on this crew server. Remove it first to create another.",
+	"hostd_wire_github_app_forbidden": "Only the owner of the crew server can set up its GitHub App.",
+	"hostd_wire_github_app_none": "This crew server has no GitHub App yet.",
 	"hostd_wire_invalid_base64": "The terminal host could not read the {field} of the request: it is not valid base64. This is a bug in Atlas, please report it.",
 	"hostd_wire_invalid_empty": "The request to run a command had no command in it. This is a bug in Atlas, please report it.",
 	"hostd_wire_invalid_no_parent": "This path has no parent folder, so a file cannot be written there. Choose another location.",
+	"hostd_wire_invalid_value": "{field} is not a valid value. Check it and try again.",
 	"hostd_wire_lsp_crashed_repeated_hint": "Open the server log from the status bar, then restart the server.",
 	"hostd_wire_lsp_crashed_repeated_message": "{server} crashed repeatedly",
 	"hostd_wire_lsp_crashed_start_hint": "Open the server log from the status bar, or restart the server.",
@@ -58,5 +67,11 @@
 	"hostd_wire_unreachable": "Terminal host not reachable. Terminals cannot start or reconnect until it is back. Use Restart terminal host, or Report if it keeps happening.",
 	"hostd_wire_unreachable_why": "{@hostd_wire_unreachable} ({why})",
 	"hostd_wire_upgrade_failed": "Terminal host upgrade failed ({error}). Terminals keep running on the old host.",
-	"hostd_wire_upgraded": "Terminal host updated"
+	"hostd_wire_upgraded": "Terminal host updated",
+	"hostd_wire_voice_bad_audio": "The recording is not in a format the crew server reads (16 kHz mono 16-bit WAV).",
+	"hostd_wire_voice_engine_failed": "{engine} could not transcribe this. No other engine was tried.",
+	"hostd_wire_voice_forbidden": "Only you can change the voice settings, from Atlas Desktop.",
+	"hostd_wire_voice_not_installed": "No voice engine is installed on this crew server. Run atlas crew voice install.",
+	"hostd_wire_voice_off": "Voice is turned off on this crew. Turn it on in the crew's settings.",
+	"hostd_wire_voice_too_long": "Dictation is limited to {max_seconds} seconds."
 }

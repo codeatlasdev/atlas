@@ -35,14 +35,21 @@
 //! | `github_out`  | the progress comment: created, edited (throttled), finished, failed      |
 //! | `github_fake` | the `GithubApi` fake both of those run against                           |
 //! | `github_e2e`  | a real hostd polling the fake: mention -> task -> reply -> PR link       |
+//! | `github_hook_events` | GitHub webhook deliveries to tasks: the same task the poll makes, authors, the actions the poll never sees |
+//! | `github_webhook` | `POST /github/webhook` through a real hostd: signature, replays, audit, polling handover, the public URL setting |
+//! | `github_app`  | the GitHub App commands, the desktop fixture, the agent's git env and credential helper |
 //! | `attachments` | images on tasks: stored, staged, refused, fetched, from Telegram, scopes |
 //! | `structure`   | a grep guard: code that touches an isolated crewmate's tree says how it is safe |
 //! | `time_contract` | cron and time zone semantics (DST included) pinned across the date-time crate swap |
 //! | `old_crons`   | crons croner 2 accepted and croner 4 refuses: load, list as invalid, never fire, edits of the rest |
 //! | `omp_approval` | omp's `ask` through the real approval extension, under omp's own handler limit and a virtual clock |
+//! | `permissions` | permission modes (#642): the rails, each mode on claude and omp, switching, scopes, comments, the AX, Telegram `/mode`, the contract fixtures |
+//! | `voice`       | dictation (#647): the engines, hints and replacements, the audio's lifetime, Telegram voice notes, the fixtures |
+//! | `voice_answers` | spoken replies and voice answers (#648): what needs a tap, exact phrases, choice cards, `spoken`, the fixtures |
 //! | `prove_ui`    | a `ui` task needs two agent captures to be done: the card, override/retry, Telegram |
 
 pub(crate) mod github_fake;
+mod github_hook_events;
 mod github_in;
 mod github_out;
 mod payloads;
@@ -76,7 +83,11 @@ mod engines;
 #[cfg(unix)]
 mod fixture;
 #[cfg(unix)]
+mod github_app;
+#[cfg(unix)]
 mod github_e2e;
+#[cfg(unix)]
+mod github_webhook;
 #[cfg(unix)]
 mod guards;
 #[cfg(unix)]
@@ -95,6 +106,8 @@ mod old_crons;
 mod omp_approval;
 #[cfg(unix)]
 mod pause;
+#[cfg(unix)]
+mod permissions;
 #[cfg(unix)]
 mod prepare;
 #[cfg(unix)]
@@ -115,3 +128,7 @@ mod triggers;
 mod uigate;
 #[cfg(unix)]
 mod untrusted;
+#[cfg(unix)]
+mod voice;
+#[cfg(unix)]
+mod voice_answers;

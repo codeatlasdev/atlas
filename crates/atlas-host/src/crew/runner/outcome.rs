@@ -156,6 +156,10 @@ pub(super) fn finish_task(
     task.finished_at = Some(now_s());
     // Every ending lands here: the commands of this run are no evidence for any other.
     hub.crew.tape.forget(&task.id);
+    // Its grants end with it: the next task asks again.
+    hub.crew
+        .approvals
+        .forget(&crate::crew::pane::key(&crewmate.id, &task.id));
     // A caller with no steps of its own (a conversational turn) keeps the ones the task has.
     if !steps.is_empty() {
         task.steps = steps;
@@ -173,6 +177,11 @@ pub(super) fn finish_task(
                 task.state = TaskState::Done;
                 // Every path ends here, so the machine line never reaches what people read (desktop, phone, Telegram).
                 task.result = Some(visible_reply(&result));
+                // Without a `spoken:` line of the agent's own, a client reads the first sentences.
+                if task.spoken.is_empty() {
+                    task.spoken =
+                        super::spoken::first_sentences(task.result.as_deref().unwrap_or_default());
+                }
             }
             Err(e) => {
                 // Don't overwrite Cancelled state.

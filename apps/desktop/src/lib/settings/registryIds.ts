@@ -454,6 +454,9 @@ export const IDS = [
 						items: [{ id: "short-replies" }],
 					},
 					{
+						items: [{ id: "crew-dictation-key" }],
+					},
+					{
 						items: [{ id: "crew-onboarding" }],
 					},
 				],

@@ -6,10 +6,30 @@
 import { toast } from "@codeatlasdev/ui";
 import { errText } from "#lib/api.ts";
 import { hostCall } from "#lib/host.ts";
+import { hostTextLoaded } from "#lib/hostText.ts";
 import { crew } from "#lib/stores/crew.svelte.ts";
 import { expandKey, splitUi, withKey } from "./taskView.ts";
 import { m } from "#lib/i18n/m.ts";
 import { addImages, toSent, type PendingImage } from "#lib/crew/attachments.ts";
+import type { CrewmateTask } from "#lib/crew.ts";
+import type { ApprovalAnswer } from "#lib/crew/permissionMode.ts";
+import { crewmateKey } from "#lib/crew/crewmateKey.ts";
+import { appLocale } from "#lib/i18n/locale.svelte.ts";
+import { VoiceAnswer } from "#lib/crew/voice/answerSession.svelte.ts";
+import { voiceLang, type CardKind, type VerdictView, type VoiceVerdict } from "#lib/crew/voice/answers.ts";
+import { Dictation, type Deps as DictationDeps } from "#lib/crew/voice/dictation.svelte.ts";
+import { readAloud } from "#lib/crew/voice/readAloud.svelte.ts";
+import { Speech } from "#lib/crew/voice/speech.svelte.ts";
+import { nativeSpeech } from "#lib/crew/voice/speechNative.ts";
+import { newWatch, nextSpoken } from "#lib/crew/voice/spokenTasks.ts";
+import { dictationKey } from "#lib/crew/voice/mode.svelte.ts";
+import { nativeMic } from "#lib/crew/voice/native.ts";
+import { voiceStatus } from "#lib/crew/voice/status.svelte.ts";
+
+/** An approval answered in this view: what was answered and when (ms), so the thread keeps saying it. */
+export interface AnsweredApproval extends ApprovalAnswer {
+	at: number;
+}
 
 /** Host args for a call on the selected crew server ("" is the local hostd). */
 function hostArgs(): { host?: string } {
@@ -24,9 +44,16 @@ export class ChatState {
 	composerFocused = $state(false);
 	/** Images waiting to go with the next prompt. */
 	images = $state<PendingImage[]>([]);
+	/** The microphone of the message box: dictation fills `prompt`, never sends it. */
+	readonly dictation = new Dictation(this.voiceDeps());
+	/** The reply being read aloud (the shell's synthesizer), and the "Speaking" indicator. */
+	readonly speech = new Speech({ native: nativeSpeech, lang: () => appLocale(), errorText: errText });
+	/** Finished tasks already looked at, so only a reply that finishes while this chat is open is read. */
+	private watch = newWatch();
+	private watchKey = "";
 
-	// approvals answered in this view (req ids); reset when the selected crewmate changes
-	approvedReqs = $state<Set<string>>(new Set());
+	// approvals answered in this view (req id -> answer); reset when the selected crewmate changes
+	answeredReqs = $state<Record<string, AnsweredApproval>>({});
 
 	// folded / full / dismissed flags of replies, see expandKey
 	expandedResults = $state<Set<string>>(new Set());
@@ -47,10 +74,77 @@ export class ChatState {
 	/** Cards answered in this view while the task still reads `waiting_action` (taskId -> what was answered). */
 	answeredActions = $state<Record<string, string>>({});
 
+	/** What every microphone of the chat (the message box, the cards) needs: routed to the selected crewmate at call time. */
+	private voiceDeps(): DictationDeps {
+		return {
+			native: nativeMic,
+			call: (cmd, args) => hostCall(cmd, { ...hostArgs(), id: crew.selected?.crewmateId, ...args }),
+			status: () => voiceStatus.of(crew.selected?.hostKey ?? ""),
+			coded: (code, args) => hostTextLoaded({ code, args, message: code }),
+			errorText: errText,
+			mode: () => dictationKey.mode,
+			now: () => Date.now(),
+			later: (fn, ms) => {
+				const t = setTimeout(fn, ms);
+				return () => clearTimeout(t);
+			},
+			// The microphone never hears a reply being read aloud.
+			onBegin: () => this.speech.stop(),
+		};
+	}
+
+	// ─── reading replies aloud ─────────────────────────────────────────────
+
+	/** This device reads this crewmate's replies aloud (off unless the person turned it on here). */
+	readsAloud(): boolean {
+		const sel = crew.selected;
+		return !!sel && readAloud.isOn(crewmateKey(sel.hostKey, sel.crewmateId));
+	}
+
+	/**
+	 * The toggle. On: also ask the crewmate to write a `spoken:` line (`spoken_replies`), unless it already does;
+	 * when that is refused the toggle goes back off and says why (reading with no summaries would be a lie).
+	 * Off: only this device goes quiet; the crewmate's own flag stays until its settings change it.
+	 */
+	async setReadAloud(on: boolean): Promise<void> {
+		const sel = crew.selected;
+		if (!sel) return;
+		const key = crewmateKey(sel.hostKey, sel.crewmateId);
+		if (!on) {
+			readAloud.set(key, false);
+			this.speech.stop();
+			return;
+		}
+		readAloud.set(key, true);
+		if (crew.selectedCrewmate?.spoken_replies) return;
+		try {
+			await crew.updateCrewmate(sel.hostKey, sel.crewmateId, { spoken_replies: true });
+		} catch (e) {
+			readAloud.set(key, false);
+			toast.error(errText(e));
+		}
+	}
+
+	/**
+	 * The thread changed: read what just finished (`task.spoken`; empty means nothing). `loading` lists are skipped:
+	 * while a crewmate's tasks load, `tasks` may still be the previous crewmate's.
+	 */
+	onTasks(tasks: CrewmateTask[], loading: boolean): void {
+		const sel = crew.selected;
+		if (!sel || loading) return;
+		const key = crewmateKey(sel.hostKey, sel.crewmateId);
+		if (key !== this.watchKey) {
+			this.watchKey = key;
+			this.watch = newWatch();
+		}
+		const text = nextSpoken(this.watch, tasks);
+		if (text && readAloud.isOn(key)) void this.speech.speak(text);
+	}
+
 	// ─── composer ──────────────────────────────────────────────────────────
 
 	/** Send the composer's prompt, with its pending images unless `withImages` is false. A failure keeps both. */
-	async send(withImages = true): Promise<void> {
+	async send(withImages = true, dictated = this.dictation.dictated): Promise<void> {
 		if (!this.prompt.trim() || this.sending) return;
 		this.sending = true;
 		try {
@@ -61,8 +155,9 @@ export class ChatState {
 				toast.error(m.crew_chat_composer_ui_usage());
 				return;
 			}
-			await crew.sendTask(prompt, withImages ? this.images : [], ui);
+			await crew.sendTask(prompt, withImages ? this.images : [], ui, dictated);
 			this.prompt = "";
+			this.dictation.draftChanged("");
 			if (withImages) this.images = [];
 		} catch (e) {
 			toast.error(errText(e));
@@ -86,22 +181,42 @@ export class ChatState {
 	 *  Images pending for something the user is still typing are not part of an answer or a retry: they stay. */
 	sendText(text: string): Promise<void> {
 		this.prompt = text;
-		return this.send(false);
+		// A button's answer or a retry is not what was dictated into the box.
+		return this.send(false, false);
 	}
 
 	// ─── approvals ─────────────────────────────────────────────────────────
 
 	resetApprovals(): void {
-		this.approvedReqs = new Set();
+		this.answeredReqs = {};
 	}
 
-	async approval(paneKey: string, req: string, allow: boolean): Promise<void> {
+	async approval(paneKey: string, req: string, answer: ApprovalAnswer): Promise<void> {
 		await crew
-			.approve(paneKey, req, allow)
+			.approve(paneKey, req, answer)
 			.then(() => {
-				this.approvedReqs = withKey(this.approvedReqs, req, true);
+				this.answeredReqs = { ...this.answeredReqs, [req]: { ...answer, at: Date.now() } };
 			})
 			.catch((e) => toast.error(errText(e)));
+	}
+
+	/** A microphone for a card of this chat: records, transcribes, and hands the transcript to `submit` (hostd decides). */
+	voiceAnswer(
+		kind: CardKind,
+		submit: (transcript: string) => Promise<unknown>,
+		onview: (v: VoiceVerdict, view: VerdictView) => void,
+	): VoiceAnswer {
+		return new VoiceAnswer(this.voiceDeps(), kind, submit, onview);
+	}
+
+	/** The transcript of an approval, as heard: hostd's rules decide (`agent_approve_voice`); the reply is its verdict. */
+	approvalVoice(paneKey: string, req: string, transcript: string): Promise<unknown> {
+		return crew.approveVoice(paneKey, req, transcript, voiceLang());
+	}
+
+	/** hostd decided an approval from a voice answer: the card leaves its one line, as for a tap. */
+	approvedByVoice(req: string, allow: boolean): void {
+		this.answeredReqs = { ...this.answeredReqs, [req]: { allow, scope: "once", at: Date.now() } };
 	}
 
 	// ─── replies: fold, full text, dismissed ask ────────────────────────────
@@ -130,25 +245,41 @@ export class ChatState {
 				route,
 			);
 			await hostCall("crewmate_action_answer", { ...route, task: taskId, value, attachments });
-			// hostd moves the task off `waiting_action` itself, and an older hostd (alpha.26 and before) leaves it
-			// there for the whole follow-up turn and answers `{}` to a second click it drops: the card of an answered
-			// task is hidden here until the task changes state (`TaskMessage`), so that second click cannot happen.
-			this.answeredActions = { ...this.answeredActions, [taskId]: value };
-			const i = { ...this.actionInputs };
-			delete i[taskId];
-			this.actionInputs = i;
-			const s = { ...this.actionSecrets };
-			delete s[taskId];
-			this.actionSecrets = s;
-			const imgs = { ...this.actionImages };
-			delete imgs[taskId];
-			this.actionImages = imgs;
+			this.settleAction(taskId, value);
 		} catch (e) {
 			// A refused answer (the task already got one, or ended) is said, not swallowed: the card stays as it was.
 			toast.error(errText(e));
 		} finally {
 			this.actionSubmitting = withKey(this.actionSubmitting, taskId, false);
 		}
+	}
+
+	/** The transcript of a choice card, as heard (`crewmate_action_answer_voice`); the reply is hostd's verdict. */
+	actionVoice(taskId: string, crewmateId: string, transcript: string): Promise<unknown> {
+		return hostCall("crewmate_action_answer_voice", {
+			...hostArgs(),
+			id: crewmateId,
+			task: taskId,
+			transcript,
+			lang: voiceLang(),
+		});
+	}
+
+	/** The card of `taskId` was answered with `value`: remember it and drop what was typed for it. */
+	settleAction(taskId: string, value: string): void {
+		// hostd moves the task off `waiting_action` itself, and an older hostd (alpha.26 and before) leaves it
+		// there for the whole follow-up turn and answers `{}` to a second click it drops: the card of an answered
+		// task is hidden here until the task changes state (`TaskMessage`), so that second click cannot happen.
+		this.answeredActions = { ...this.answeredActions, [taskId]: value };
+		const i = { ...this.actionInputs };
+		delete i[taskId];
+		this.actionInputs = i;
+		const s = { ...this.actionSecrets };
+		delete s[taskId];
+		this.actionSecrets = s;
+		const imgs = { ...this.actionImages };
+		delete imgs[taskId];
+		this.actionImages = imgs;
 	}
 
 	/** Images from the picker or a paste join the ones waiting on this task's card; each refusal is a toast. */

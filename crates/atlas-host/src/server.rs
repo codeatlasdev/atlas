@@ -634,6 +634,19 @@ pub async fn serve_with(dir: &Path, opts: ServeOpts) -> Result<()> {
         )),
         lab: lab.as_ref().map(|(l, _)| l.clone()),
     });
+    // A lab is seeded from main before anything can ask it (the phone link below, the socket's accept loop), so its
+    // first answer is never an empty list of agents. A failed seed is retried by `follow`, as after any drop.
+    let lab_first = match &lab {
+        Some((l, first)) => match l.seed_on(&hub, first.clone()).await {
+            Ok(s) => Some(s),
+            Err(e) => {
+                // i18n-ignore: log
+                eprintln!("hostd lab: could not seed from main: {e:#}");
+                None
+            }
+        },
+        None => None,
+    };
     crate::mobile::start(&hub);
     hub.crew_relay.start(&hub);
     // Plain agents push to the phones' tokens (not on a lab: it mirrors the real hostd's agents,
@@ -680,8 +693,8 @@ pub async fn serve_with(dir: &Path, opts: ServeOpts) -> Result<()> {
     // bound and rewritten it, a resumed agent posted its `done` to the previous daemon's dead port and the
     // task ended `failed: agent exited (code 0)`.
     hub.crew.start(Arc::downgrade(&hub));
-    if let Some((l, first)) = lab {
-        tokio::spawn(l.follow(Arc::downgrade(&hub), first));
+    if let Some((l, _)) = lab {
+        tokio::spawn(l.follow(Arc::downgrade(&hub), lab_first));
     }
     {
         let mut rx = hub.agents.subscribe();
@@ -875,13 +888,19 @@ async fn conn(hub: Arc<Hub>, stream: ipc::Stream) {
     hub.pending.leave(conn_id);
     // Why a connection is refused is told apart: a client retries after a timeout or "busy" (the
     // daemon is alive and loaded) but must not after "unauthorized" (a token mismatch).
+    let mut client_name = String::new();
     let refusal = match hello {
         Ok(Some(l)) => {
-            let authed = serde_json::from_str::<Value>(&l)
+            let hello = serde_json::from_str::<Value>(&l)
                 .ok()
-                .and_then(|v| serde_json::from_value::<Hello>(v.get("hello")?.clone()).ok())
-                .is_some_and(|h| h.token == hub.token);
-            (!authed).then_some("unauthorized")
+                .and_then(|v| serde_json::from_value::<Hello>(v.get("hello")?.clone()).ok());
+            match hello {
+                Some(h) if h.token == hub.token => {
+                    client_name = h.client;
+                    None
+                }
+                _ => Some("unauthorized"),
+            }
         }
         Ok(None) => Some("unauthorized"),
         Err(why) => Some(why),
@@ -891,6 +910,11 @@ async fn conn(hub: Arc<Hub>, stream: ipc::Stream) {
         drop(tx);
         let _ = writer.await;
         return;
+    }
+    // An atlas process a crewmate's agent runs names itself `crewmate:<id>` (`HostClient`, from the env hostd
+    // gives the agent). It can only lower what the connection may do: `crewmate_set_approval` refuses it.
+    if let Some(id) = client_name.strip_prefix("crewmate:") {
+        hub.set_origin(conn_id, format!("crewmate:{id}"));
     }
     let _ = tx.force(json!({"ok": true, "data": hub.info()}).to_string());
     hub.subscribers.lock().insert(conn_id, tx.clone());
@@ -1163,6 +1187,25 @@ pub(crate) async fn answer(
         HostCmd::FsRemove { path, recursive } => {
             crate::fs::remove(&path, recursive).map_err(Failure::from)
         }
+        // The GitHub App's commands fail with codes a client writes its own sentence from (`crew.github_app.*`).
+        cmd @ (HostCmd::CrewGithubAppManifest { .. }
+        | HostCmd::CrewGithubAppConvert { .. }
+        | HostCmd::CrewGithubAppStatus {}
+        | HostCmd::CrewGithubAppRemove {}) => {
+            let origin = hub.origin_of(conn_id);
+            crate::crew::github::app::handle(hub, cmd, &origin).await
+        }
+        HostCmd::CrewmateSetApproval { id, mode } => {
+            crate::crew::approval::set_approval(hub, &id, &mode, &hub.origin_of(conn_id))
+        }
+        // Dictation fails with codes a client writes its own sentence from (`crew.voice.*`).
+        cmd @ (HostCmd::CrewVoiceStatus {}
+        | HostCmd::CrewVoiceSet { .. }
+        | HostCmd::CrewmateVoicePut { .. }
+        | HostCmd::CrewmateTranscribe { .. }) => {
+            let origin = hub.origin_of(conn_id);
+            crate::crew::voice::handle(hub, cmd, &origin).await
+        }
         cmd => handle(hub, cmd, conn_id).await.map_err(Failure::Text),
     }
 }
@@ -1400,10 +1443,54 @@ pub(crate) async fn handle(hub: &Arc<Hub>, cmd: HostCmd, conn_id: u64) -> Result
             hub.crew.unregister_token(&token);
             Ok(json!({}))
         }
-        HostCmd::AgentApprove { pane, req, allow } => hub
+        HostCmd::AgentApprove {
+            pane,
+            req,
+            allow,
+            scope,
+            comment,
+        } => hub
             .agents
-            .approve_as(&pane, &req, allow, &hub.origin_of(conn_id))
+            .answer(
+                &pane,
+                &req,
+                crate::agents::Answer {
+                    scope,
+                    comment,
+                    ..crate::agents::Answer::person(allow, &hub.origin_of(conn_id))
+                },
+            )
             .map(|()| json!({})),
+        HostCmd::AgentApproveVoice {
+            pane,
+            req,
+            transcript,
+            lang,
+        } => crate::crew::voice_card::approve(
+            hub,
+            &pane,
+            &req,
+            &transcript,
+            lang.as_deref(),
+            &hub.origin_of(conn_id),
+        ),
+        HostCmd::CrewmateActionAnswerVoice {
+            id,
+            task,
+            transcript,
+            lang: _,
+        } => {
+            if !hub.crew_host {
+                return Err("this computer is not a crew server (atlas crew install)".into());
+            }
+            crate::crew::voice_card::answer_action(
+                hub,
+                &id,
+                &task,
+                &transcript,
+                &hub.origin_of(conn_id),
+            )
+        }
         HostCmd::AgentStatusAll {} => Ok(json!({
             "panes": hub.agents.all(),
             "hook_port": *hub.agents.port.lock(),
@@ -1411,6 +1498,10 @@ pub(crate) async fn handle(hub: &Arc<Hub>, cmd: HostCmd, conn_id: u64) -> Result
         })),
         HostCmd::AgentIntegrations {} => Ok(crate::agents::integrations::all().await),
         HostCmd::Upgrade { exe } => crate::upgrade::run(hub, &exe).await,
+        HostCmd::CrewmateSetApproval { id, mode } => {
+            crate::crew::approval::set_approval(hub, &id, &mode, &hub.origin_of(conn_id))
+                .map_err(String::from)
+        }
         crewmate @ (HostCmd::CrewmateList {}
         | HostCmd::CrewmateCreate { .. }
         | HostCmd::CrewmateUpdate { .. }
@@ -1443,7 +1534,23 @@ pub(crate) async fn handle(hub: &Arc<Hub>, cmd: HostCmd, conn_id: u64) -> Result
         | HostCmd::CrewResume {}
         | HostCmd::CrewSettingsGet {}
         | HostCmd::CrewEngineStatus { .. }
-        | HostCmd::CrewSettingsSet { .. }) => crate::crew::handle(hub, crewmate).await,
+        | HostCmd::CrewSettingsSet { .. }) => {
+            // Where GitHub sends the App's payloads (private repos' issues and comments) is the owner's to choose at
+            // the computer: a phone's scope does not reach it, like the App's own setup.
+            if matches!(
+                crewmate,
+                HostCmd::CrewSettingsSet {
+                    public_url: Some(_),
+                    ..
+                }
+            ) && hub.origin_of(conn_id).starts_with("phone:")
+            {
+                return Err(
+                    "the public webhook URL is set on the computer, not from a phone".into(),
+                );
+            }
+            crate::crew::handle(hub, crewmate).await
+        }
         HostCmd::CrewEngineLogin { engine, crewmate } => {
             if !hub.crew_host {
                 return Err("this computer is not a crew server (atlas crew install)".into());
@@ -1486,7 +1593,15 @@ pub(crate) async fn handle(hub: &Arc<Hub>, cmd: HostCmd, conn_id: u64) -> Result
         | HostCmd::PtyAttachRaw { .. }
         | HostCmd::FsWatch { .. }
         | HostCmd::FsUnwatch { .. }
-        | HostCmd::Shutdown {} => Err("handled by connection".into()),
+        | HostCmd::Shutdown {}
+        | HostCmd::CrewGithubAppManifest { .. }
+        | HostCmd::CrewGithubAppConvert { .. }
+        | HostCmd::CrewGithubAppStatus {}
+        | HostCmd::CrewGithubAppRemove {}
+        | HostCmd::CrewVoiceStatus {}
+        | HostCmd::CrewVoiceSet { .. }
+        | HostCmd::CrewmateVoicePut { .. }
+        | HostCmd::CrewmateTranscribe { .. } => Err("handled by connection".into()),
     }
 }
 

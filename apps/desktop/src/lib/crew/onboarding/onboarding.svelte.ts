@@ -679,7 +679,6 @@ export class Onboarding {
 						name: "New crewmate",
 						role: "",
 						agent: this.selectedEngine,
-						approval: "auto",
 						look: this.previewLook,
 						setup_step: "name",
 					}));

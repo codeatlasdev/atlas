@@ -23,7 +23,9 @@
 //! | `telegram`, `push` | delivery channels                                                    |
 //! | `mcp`       | the MCP server an engine's agent talks to (`atlas mcp --crewmate <id>`)     |
 //! | `relay`     | the Mac's relay to crew servers, for Atlas Mobile (runs on the Mac)         |
+//! | `voice`     | dictation: whisper.cpp or a hosted endpoint, hints, replacements, audio rules |
 
+pub(crate) mod approval;
 pub(crate) mod attachments;
 pub(crate) mod audit;
 pub mod capture;
@@ -52,6 +54,9 @@ pub(crate) mod telegram;
 mod tests;
 pub(crate) mod triggers;
 pub mod uigate;
+pub mod voice;
+pub(crate) mod voice_answer;
+pub(crate) mod voice_card;
 
 use serde_json::{Value, json};
 
@@ -81,6 +86,8 @@ pub fn import_archive(
     archive::import(&store::CrewStore::new(dir), input, rename)
 }
 
+pub use github::app::gh_shim;
+pub use github::app::helper as git_credential;
 pub(crate) use hub::CrewHub;
 pub(crate) use push::PushToken;
 pub(crate) use store::{Crewmate, Task, now_s};
@@ -98,13 +105,23 @@ pub(crate) async fn handle(hub: &Hub, cmd: HostCmd) -> Result<Value, String> {
             role,
             agent,
             approval,
+            mode,
             workdir,
             look,
             engine,
             project,
             setup_step,
         } => c::create(
-            hub, name, role, agent, approval, workdir, look, engine, project, setup_step,
+            hub,
+            name,
+            role,
+            agent,
+            mode.or(approval),
+            workdir,
+            look,
+            engine,
+            project,
+            setup_step,
         ),
         HostCmd::CrewmateUpdate {
             id,
@@ -117,6 +134,7 @@ pub(crate) async fn handle(hub: &Hub, cmd: HostCmd) -> Result<Value, String> {
             project,
             setup_step,
             short_replies,
+            spoken_replies,
         } => c::update(
             hub,
             id,
@@ -129,6 +147,7 @@ pub(crate) async fn handle(hub: &Hub, cmd: HostCmd) -> Result<Value, String> {
             project,
             setup_step,
             short_replies,
+            spoken_replies,
         ),
         HostCmd::CrewmateDelete { id } => c::delete(hub, id).await,
 
@@ -139,7 +158,16 @@ pub(crate) async fn handle(hub: &Hub, cmd: HostCmd) -> Result<Value, String> {
             tz,
             attachments,
             ui,
-        } => t::send_task(hub, id, prompt, source, tz, attachments, ui),
+            dictated,
+        } => t::send_task(
+            hub,
+            id,
+            prompt,
+            source,
+            tz,
+            attachments,
+            t::Marks { ui, dictated },
+        ),
         HostCmd::CrewmateAttachmentPut {
             id,
             upload,
@@ -191,15 +219,24 @@ pub(crate) async fn handle(hub: &Hub, cmd: HostCmd) -> Result<Value, String> {
             short_replies_model,
             max_agents,
             agent_memory_max,
-        } => s::set(
-            hub,
-            s::SettingsIn {
-                short_replies,
-                short_replies_model,
-                max_agents,
-                agent_memory_max,
-            },
-        ),
+            default_approval,
+            allow_bypass,
+            public_url,
+        } => {
+            s::set(
+                hub,
+                s::SettingsIn {
+                    short_replies,
+                    short_replies_model,
+                    max_agents,
+                    agent_memory_max,
+                    default_approval,
+                    allow_bypass,
+                    public_url,
+                },
+            )
+            .await
+        }
         HostCmd::CrewPause {} => hub.crew.set_paused(hub, true).map(|()| json!({})),
         HostCmd::CrewResume {} => hub.crew.set_paused(hub, false).map(|()| json!({})),
         HostCmd::EngineLimits {} => s::engine_limits(),

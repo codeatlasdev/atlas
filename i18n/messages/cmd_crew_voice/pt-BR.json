@@ -1,0 +1,17 @@
+{
+	"cmd_crew_voice_fail_build": "Não foi possível compilar o whisper.cpp em {target}: {reason}",
+	"cmd_crew_voice_fail_checksum": "{what} em {target} não confere com o checksum fixado e foi apagado: {reason}",
+	"cmd_crew_voice_fail_dir": "Não foi possível criar o diretório de voz em {target}: {reason}",
+	"cmd_crew_voice_fail_download": "Não foi possível baixar {what} em {target}: {reason}",
+	"cmd_crew_voice_no_apt": "{target} não tem apt-get. Instale {tools} por conta própria e rode isso de novo.",
+	"cmd_crew_voice_ready": "A voz está instalada em {target}. Ligue nas configurações do crew.",
+	"cmd_crew_voice_status_ready": "A voz está pronta em {target} (whisper.cpp {version}).",
+	"cmd_crew_voice_step_apt": "Instalando os pacotes ausentes com apt-get ({count})",
+	"cmd_crew_voice_step_build": "Compilando o whisper.cpp (alguns minutos)",
+	"cmd_crew_voice_step_built": "whisper.cpp {version} já está compilado",
+	"cmd_crew_voice_step_model": "Baixando e verificando o modelo {model}",
+	"cmd_crew_voice_step_model_present": "O modelo {model} já está instalado",
+	"cmd_crew_voice_step_source": "Baixando e verificando o whisper.cpp {version}",
+	"cmd_crew_voice_step_tools": "Verificando cmake, um compilador C++, make e ffmpeg",
+	"cmd_crew_voice_unknown_model": "Modelo de voz desconhecido: {model}. Use small ou base."
+}

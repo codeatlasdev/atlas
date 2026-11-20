@@ -1,0 +1,16 @@
+{
+	"mobile_crew_audit_a_tool": "a tool",
+	"mobile_crew_audit_answer_by": "answered by {by}",
+	"mobile_crew_audit_answer_grant": "by a task grant",
+	"mobile_crew_audit_answer_mode": "by the mode",
+	"mobile_crew_audit_answer_nobody": "nobody answered",
+	"mobile_crew_audit_answer_phone": "answered by phone {node}…",
+	"mobile_crew_audit_answer_rail": "held, nobody could answer",
+	"mobile_crew_audit_answer_telegram": "answered by Telegram chat {chat}",
+	"mobile_crew_audit_decision_allowed": "Allowed {tool} ({answer})",
+	"mobile_crew_audit_decision_decided": "Decided {tool} ({answer})",
+	"mobile_crew_audit_decision_denied": "Denied {tool} ({answer})",
+	"mobile_crew_audit_decision_timed_out": "Timed out {tool} ({answer})",
+	"mobile_crew_audit_kind_mode_changed": "Mode changed",
+	"mobile_crew_audit_mode_changed": "Mode changed from {from} to {to} ({answer})"
+}

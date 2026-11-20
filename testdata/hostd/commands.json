@@ -1,11 +1,24 @@
 {
   "commands": {
     "agent_approve": {
-      "optional": [],
+      "optional": [
+        "comment",
+        "scope"
+      ],
       "required": [
         "allow",
         "pane",
         "req"
+      ]
+    },
+    "agent_approve_voice": {
+      "optional": [
+        "lang"
+      ],
+      "required": [
+        "pane",
+        "req",
+        "transcript"
       ]
     },
     "agent_bind": {
@@ -110,6 +123,30 @@
       ],
       "required": []
     },
+    "crew_github_app_convert": {
+      "optional": [],
+      "required": [
+        "code"
+      ]
+    },
+    "crew_github_app_manifest": {
+      "optional": [
+        "org",
+        "server_name",
+        "workflows"
+      ],
+      "required": [
+        "owner_kind"
+      ]
+    },
+    "crew_github_app_remove": {
+      "optional": [],
+      "required": []
+    },
+    "crew_github_app_status": {
+      "optional": [],
+      "required": []
+    },
     "crew_github_connect_resume": {
       "optional": [],
       "required": []
@@ -149,12 +186,14 @@
     "crew_settings_set": {
       "optional": [
         "agent_memory_max",
+        "allow_bypass",
+        "default_approval",
         "max_agents",
+        "public_url",
+        "short_replies",
         "short_replies_model"
       ],
-      "required": [
-        "short_replies"
-      ]
+      "required": []
     },
     "crew_telegram_link": {
       "optional": [],
@@ -170,6 +209,18 @@
       "optional": [],
       "required": []
     },
+    "crew_voice_set": {
+      "optional": [
+        "enabled",
+        "engine",
+        "replacements"
+      ],
+      "required": []
+    },
+    "crew_voice_status": {
+      "optional": [],
+      "required": []
+    },
     "crewmate_action_answer": {
       "optional": [
         "attachments"
@@ -178,6 +229,16 @@
         "id",
         "task",
         "value"
+      ]
+    },
+    "crewmate_action_answer_voice": {
+      "optional": [
+        "lang"
+      ],
+      "required": [
+        "id",
+        "task",
+        "transcript"
       ]
     },
     "crewmate_answer": {
@@ -231,15 +292,16 @@
     },
     "crewmate_create": {
       "optional": [
+        "approval",
         "engine",
         "look",
+        "mode",
         "project",
         "setup_step",
         "workdir"
       ],
       "required": [
         "agent",
-        "approval",
         "name",
         "role"
       ]
@@ -282,9 +344,17 @@
         "value"
       ]
     },
+    "crewmate_set_approval": {
+      "optional": [],
+      "required": [
+        "id",
+        "mode"
+      ]
+    },
     "crewmate_task": {
       "optional": [
         "attachments",
+        "dictated",
         "tz",
         "ui"
       ],
@@ -300,6 +370,16 @@
       ],
       "required": [
         "id"
+      ]
+    },
+    "crewmate_transcribe": {
+      "optional": [
+        "language",
+        "partial"
+      ],
+      "required": [
+        "id",
+        "upload"
       ]
     },
     "crewmate_triggers_set": {
@@ -319,7 +399,8 @@
         "project",
         "role",
         "setup_step",
-        "short_replies"
+        "short_replies",
+        "spoken_replies"
       ],
       "required": [
         "id"
@@ -331,6 +412,15 @@
         "since"
       ],
       "required": []
+    },
+    "crewmate_voice_put": {
+      "optional": [
+        "last",
+        "upload"
+      ],
+      "required": [
+        "piece_b64"
+      ]
     },
     "engine_limits": {
       "optional": [],

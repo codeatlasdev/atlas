@@ -121,7 +121,7 @@ jobs:
         timeout-minutes: 10
         uses: ./.github/actions/apt-packages
         with:
-          packages: libwebkit2gtk-4.1-dev libayatana-appindicator3-dev librsvg2-dev libxdo-dev libssl-dev fish ffmpeg
+          packages: libwebkit2gtk-4.1-dev libayatana-appindicator3-dev librsvg2-dev libxdo-dev libasound2-dev libssl-dev fish ffmpeg
 
       - uses: ./.github/actions/rust-gate
         with:
@@ -148,7 +148,7 @@ jobs:
         timeout-minutes: 10
         uses: ./.github/actions/apt-packages
         with:
-          packages: libwebkit2gtk-4.1-dev libayatana-appindicator3-dev librsvg2-dev libxdo-dev libssl-dev sway grim dbus libgl1-mesa-dri libegl1 libgles2 xwayland fonts-dejavu-core
+          packages: libwebkit2gtk-4.1-dev libayatana-appindicator3-dev librsvg2-dev libxdo-dev libasound2-dev libssl-dev sway grim dbus libgl1-mesa-dri libegl1 libgles2 xwayland fonts-dejavu-core
 
       - name: Install Rust
         run: rustup show active-toolchain || rustup toolchain install
@@ -465,6 +465,12 @@ jobs:
         with:
           flutter-version-file: apps/mobile/pubspec.yaml
           channel: stable
+
+      # scripts/mobile-check.sh writes the translations (ARB) from the catalog with bun.
+      - name: Install Bun
+        uses: oven-sh/setup-bun@0c5077e51419868618aeaa5fe8019c62421857d6 # v2.2.0
+        with:
+          no-cache: true
 
       - name: Native crate builds
         run: cargo build --locked --manifest-path apps/mobile/native/Cargo.toml

@@ -150,7 +150,8 @@ export const GROUP_TITLE: Readonly<Record<string, () => string>> = {
 	"crew#0#0": () => m.settings_registry_crew_group_crew_servers(),
 	"crew#0#1": () => m.settings_registry_crew_group_github(),
 	"crew#0#2": () => m.crew_settings_behaviour_card_short_replies(),
-	"crew#0#3": () => m.settings_agents_crew_onboarding(),
+	"crew#0#3": () => m.crew_voice_settings_title(),
+	"crew#0#4": () => m.settings_agents_crew_onboarding(),
 };
 
 /** Row text by row id. */
@@ -859,6 +860,12 @@ export const ITEM_TEXT: Readonly<Record<string, ItemText>> = {
 		label: m.crew_settings_behaviour_card_short_replies,
 		description: m.settings_registry_crew_short_replies_description,
 		keywords: "summary compact ai model cheap resumo respostas curtas modelo barato",
+	},
+	"crew-dictation-key": {
+		label: m.crew_voice_key,
+		description: m.settings_registry_crew_dictation_key_description,
+		keywords:
+			"voice dictate dictation microphone mic speech talk hold tap shortcut ditar ditado microfone voz fala segurar atalho",
 	},
 	"crew-onboarding": {
 		label: m.settings_agents_crew_replay_onboarding,

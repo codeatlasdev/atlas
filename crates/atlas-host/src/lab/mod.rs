@@ -66,6 +66,7 @@ pub fn route(cmd: &HostCmd) -> Route {
         | C::AgentSend { .. }
         | C::AgentInterrupt { .. }
         | C::AgentApprove { .. }
+        | C::AgentApproveVoice { .. }
         | C::AgentLaunch { .. }
         | C::PtyOpen { .. }
         | C::WorktreeCreate { .. }
@@ -141,6 +142,7 @@ pub fn route(cmd: &HostCmd) -> Route {
         | C::CrewmateCreate { .. }
         | C::CrewmateUpdate { .. }
         | C::CrewmateDelete { .. }
+        | C::CrewmateSetApproval { .. }
         | C::CrewmateTask { .. }
         | C::CrewmateAttachmentPut { .. }
         | C::CrewmateAttachment { .. }
@@ -157,6 +159,10 @@ pub fn route(cmd: &HostCmd) -> Route {
         | C::CrewAudit { .. }
         | C::CrewTelegramSet { .. }
         | C::CrewTelegramLink {}
+        | C::CrewVoiceStatus {}
+        | C::CrewVoiceSet { .. }
+        | C::CrewmateVoicePut { .. }
+        | C::CrewmateTranscribe { .. }
         | C::CrewTelegramStatus {}
         | C::PushRegister { .. }
         | C::PushUnregister { .. }
@@ -169,7 +175,12 @@ pub fn route(cmd: &HostCmd) -> Route {
         | C::CrewGithubLoginStart {}
         | C::CrewGithubLoginPoll {}
         | C::CrewGithubLogout {}
+        | C::CrewGithubAppManifest { .. }
+        | C::CrewGithubAppConvert { .. }
+        | C::CrewGithubAppStatus {}
+        | C::CrewGithubAppRemove {}
         | C::CrewmateActionAnswer { .. }
+        | C::CrewmateActionAnswerVoice { .. }
         | C::CrewGithubConnectResume {}
         | C::CrewPause {}
         | C::CrewResume {}
@@ -203,11 +214,18 @@ pub struct Lab {
     client: Mutex<Option<HostClient>>,
 }
 
+/// A connection to main whose snapshot is already in the lab's hub, with its pushes buffered since before it.
+pub(crate) struct Seeded {
+    client: HostClient,
+    events: tokio::sync::broadcast::Receiver<crate::client::HostEvent>,
+}
+
 /// Why a forwarded call could not reach main.
 const MAIN_DOWN: &str = "the main atlas hostd is not reachable (restarting?); the lab keeps trying";
 
 /// What `serve_with` needs before it binds anything: a reachable main hostd and a lab dir that is
-/// not main's. The first connection is returned seeded, so a lab never starts empty by accident.
+/// not main's. `serve_with` seeds the returned connection (`Lab::seed_on`) before it accepts a client,
+/// so a lab never answers empty.
 pub async fn connect(main_dir: &Path, lab_dir: &Path) -> Result<(Arc<Lab>, HostClient)> {
     let same = |a: &Path, b: &Path| match (a.canonicalize(), b.canonicalize()) {
         (Ok(a), Ok(b)) => a == b,
@@ -275,47 +293,52 @@ impl Lab {
             .collect()
     }
 
-    /// Seed from `agent_status_all` and follow main's pushes until its connection drops, then
-    /// reconnect with a growing pause. `first` is the connection made at startup.
-    pub(crate) async fn follow(self: Arc<Self>, hub: std::sync::Weak<Hub>, first: HostClient) {
-        let mut next = Some(first);
+    /// One connection to main, subscribed to its pushes BEFORE the snapshot (what happens meanwhile is buffered, not
+    /// lost), then seeded into the lab's hub and made the one `call` forwards through.
+    pub(crate) async fn seed_on(&self, hub: &Hub, client: HostClient) -> Result<Seeded> {
+        let events = client.events();
+        seed(&self.main_dir, hub, &client).await?;
+        *self.client.lock() = Some(client.clone());
+        Ok(Seeded { client, events })
+    }
+
+    /// Follow main's pushes on `first` (already seeded by `serve_with` before it accepted a client, or `None` when that
+    /// failed) until the connection drops, then reconnect with a growing pause and seed again.
+    pub(crate) async fn follow(self: Arc<Self>, hub: std::sync::Weak<Hub>, first: Option<Seeded>) {
+        let mut next = first;
         let mut pause = Duration::from_millis(250);
         loop {
-            let client = match next.take() {
-                Some(c) => c,
-                None => match HostClient::connect_dir(&self.main_dir, "lab").await {
-                    Ok(c) => c,
-                    Err(_) => {
+            let Seeded { client, mut events } = match next.take() {
+                Some(s) => s,
+                None => {
+                    let Ok(c) = HostClient::connect_dir(&self.main_dir, "lab").await else {
                         tokio::time::sleep(pause).await;
                         pause = (pause * 2).min(Duration::from_secs(5));
                         if hub.strong_count() == 0 {
                             return;
                         }
                         continue;
+                    };
+                    let Some(h) = hub.upgrade() else { return };
+                    match self.seed_on(&h, c).await {
+                        Ok(s) => s,
+                        Err(e) => {
+                            // i18n-ignore: log
+                            eprintln!("hostd lab: could not seed from main: {e:#}");
+                            tokio::time::sleep(pause).await;
+                            continue;
+                        }
                     }
-                },
+                }
             };
             pause = Duration::from_millis(250);
-            // Subscribe BEFORE the snapshot: what happens meanwhile is buffered, not lost.
-            let mut events = client.events();
-            let Some(h) = hub.upgrade() else { return };
-            match seed(&h, &client).await {
-                Ok(()) => *self.client.lock() = Some(client.clone()),
-                Err(e) => {
-                    // i18n-ignore: log
-                    eprintln!("hostd lab: could not seed from main: {e:#}");
-                    tokio::time::sleep(pause).await;
-                    continue;
-                }
-            }
-            drop(h);
             loop {
                 let ev = match events.recv().await {
                     Ok(ev) => ev,
                     Err(tokio::sync::broadcast::error::RecvError::Lagged(_)) => {
                         // Missed pushes: the snapshot is the truth again.
                         let Some(h) = hub.upgrade() else { return };
-                        let _ = seed(&h, &client).await;
+                        let _ = seed(&self.main_dir, &h, &client).await;
                         continue;
                     }
                     Err(_) => break,
@@ -344,8 +367,25 @@ impl Lab {
     }
 }
 
+/// Test-only: a pause before the seed of the lab that follows this main dir, so a test can hold the seed open and
+/// prove no client is answered meanwhile. Keyed by main dir: other labs in the same test process are not slowed.
+#[cfg(test)]
+pub(crate) static TEST_SEED_PAUSE: Mutex<Option<(PathBuf, Duration)>> = Mutex::new(None);
+
 /// One `agent_status_all` from main into the lab's own hub.
-async fn seed(hub: &Hub, client: &HostClient) -> Result<()> {
+async fn seed(main_dir: &Path, hub: &Hub, client: &HostClient) -> Result<()> {
+    #[cfg(test)]
+    {
+        let pause = TEST_SEED_PAUSE
+            .lock()
+            .clone()
+            .filter(|(dir, _)| dir == main_dir);
+        if let Some((_, d)) = pause {
+            tokio::time::sleep(d).await;
+        }
+    }
+    #[cfg(not(test))]
+    let _ = main_dir;
     let all = client.call("agent_status_all", json!({})).await?;
     let panes: HashMap<String, AgentStatus> =
         serde_json::from_value(all["panes"].clone()).unwrap_or_default();

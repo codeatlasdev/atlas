@@ -9,7 +9,8 @@ use parking_lot::Mutex;
 use serde_json::json;
 
 use super::audit::{self, Audit};
-use super::github::{GhCli, GithubApi, GithubLoginHandle};
+use super::github::app::{AppService, Routed};
+use super::github::{GithubApi, GithubLoginHandle};
 use super::store::{self, CrewStore};
 use super::telegram::TelegramBridge;
 use super::{PushToken, pane, push, runner, schedule, triggers};
@@ -18,7 +19,7 @@ use crate::server::Hub;
 pub(crate) struct CrewHub {
     pub(crate) store: CrewStore,
     /// The append-only audit (`audit::Audit`): the one writer of every `audit.jsonl`.
-    pub(crate) audit: Audit,
+    pub(crate) audit: Arc<Audit>,
     pub(crate) dir: std::path::PathBuf,
     /// Live push tokens.
     pub(crate) push_tokens: Mutex<Vec<PushToken>>,
@@ -31,6 +32,10 @@ pub(crate) struct CrewHub {
     pub(crate) ask_waiters: parking_lot::Mutex<
         std::collections::HashMap<String, tokio::sync::oneshot::Sender<store::AskAnswer>>,
     >,
+    /// The server's GitHub App: its key, its installation tokens (`github::app`).
+    pub(crate) github_app: Arc<AppService>,
+    /// The `GithubApi` the crew uses: the app for a repo it covers, `gh` for any other.
+    github_api: Arc<Routed>,
     /// In-progress device-flow login, if any.
     pub(crate) github_login: tokio::sync::Mutex<Option<GithubLoginHandle>>,
     /// Senders that wake when GitHub gets connected (connect_github action kind).
@@ -54,6 +59,8 @@ pub(crate) struct CrewHub {
     pub(crate) engine_auth: super::engine_login::EngineAuth,
     /// The last `signed_in` / `needs_signin` / ... answer per engine, for `crew_engine_status` without refresh.
     pub(crate) engine_auth_seen: Mutex<std::collections::HashMap<String, String>>,
+    /// Task grants, what each agent was told about its mode, and the wake-up of waiting calls (`approval`).
+    pub(crate) approvals: super::approval::State,
 }
 
 impl CrewHub {
@@ -69,9 +76,13 @@ impl CrewHub {
         let settings = store.load_crew_settings();
         let (paused, max_agents) = (settings.paused, settings.max_agents);
         let telegram = Arc::new(TelegramBridge::new(dir.to_path_buf()));
+        let audit = Arc::new(Audit::new(dir));
+        let github_app = Arc::new(AppService::new(dir, audit.clone()));
         Arc::new(Self {
             store,
-            audit: Audit::new(dir),
+            github_api: Arc::new(Routed::new(github_app.clone(), audit.clone())),
+            github_app,
+            audit,
             dir: dir.to_path_buf(),
             push_tokens: Mutex::new(push_tokens),
             telegram,
@@ -88,6 +99,7 @@ impl CrewHub {
             agent_slots: runner::AgentSlots::new(max_agents),
             engine_auth: Default::default(),
             engine_auth_seen: Mutex::new(std::collections::HashMap::new()),
+            approvals: Default::default(),
         })
     }
 
@@ -131,6 +143,7 @@ impl CrewHub {
         // Uploads abandoned before this start (an app killed mid-send) are thrown away now, not at the next
         // upload of their crewmate, which may never come.
         super::attachments::sweep_stale_uploads(&self.store);
+        super::voice::sweep_at_start(&self.dir);
         self.telegram.set_hub(hub.clone());
         self.telegram.clone().start();
         schedule::start(hub.clone());
@@ -143,13 +156,14 @@ impl CrewHub {
         }
     }
 
-    /// The GitHub API the crew uses (the `gh` CLI as the crew user; a fake under test).
+    /// The GitHub API the crew uses: the one place that chooses between the GitHub App (a repo an installation
+    /// covers) and the `gh` CLI as the crew user (everything else, and every server without an app). A fake under test.
     pub(crate) fn github(&self) -> Arc<dyn GithubApi> {
         #[cfg(test)]
         if let Some(api) = super::github::TEST_GITHUB_API.lock().clone() {
             return api;
         }
-        Arc::new(GhCli)
+        self.github_api.clone()
     }
 
     /// Whether anyone can answer a crewmate's tool prompt right now: a linked Telegram chat, a

@@ -64,7 +64,7 @@ export const AREAS: Record<string, string[]> = {
 		"apps/desktop/src/lib/debug/selectionBench.ts",
 		"crates/atlas-core/data/agents.json",
 	],
-	mobile: ["apps/mobile/**", "scripts/mobile-check.sh", "crates/atlas-core/data/agents.json"],
+	mobile: ["apps/mobile/**", "scripts/mobile-check.sh", "crates/atlas-core/data/agents.json", "i18n/surfaces.json", "i18n/messages/mobile*/**", "i18n/messages/common*/**", "scripts/i18n/generate.ts", "scripts/i18n/emit/arb.ts"],
 	relay: ["services/push-relay/**", "scripts/push-relay-check.sh"],
 	// docs/ is rendered by the site.
 	site: ["site/**", "docs/**"],

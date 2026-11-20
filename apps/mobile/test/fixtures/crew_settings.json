@@ -1,10 +1,13 @@
 {
   "agent_memory_max": null,
+  "allow_bypass": true,
+  "default_approval": "ask",
   "max_agents": 4,
   "memory_cap": {
     "available": false,
     "reason": "crewmates do not run as their own users here (no spawn helper)"
   },
+  "public_url": null,
   "short_replies": true,
   "short_replies_model": null
 }

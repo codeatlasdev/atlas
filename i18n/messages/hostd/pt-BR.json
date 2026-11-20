@@ -1,4 +1,7 @@
 {
+	"hostd_wire_approval_bypass_disabled": "O Bypass está desativado neste crew. Ative nas configurações do crew para usá-lo.",
+	"hostd_wire_approval_forbidden": "Só você pode mudar um modo de permissão, pelo Atlas Desktop, pelo Atlas Mobile ou pelo seu chat do Telegram vinculado.",
+	"hostd_wire_approval_unsupported_engine": "O {engine} não tem canal de aprovação, então sempre roda sem perguntar. Só o Bypass vale para ele.",
 	"hostd_wire_busy": "O host de terminais está ocupado no momento. Aguarde um instante e tente de novo.",
 	"hostd_wire_cli_not_found": [
 		{
@@ -26,9 +29,15 @@
 	"hostd_wire_fs_not_found": "Não foi possível encontrar {path}. Ele pode ter sido movido ou excluído: atualize a árvore de arquivos e tente de novo.",
 	"hostd_wire_fs_other": "Não foi possível usar {path}. Confira se o disco está disponível e tem espaço livre e tente de novo.",
 	"hostd_wire_fs_permission_denied": "O Atlas não tem permissão para usar {path}. Confira as permissões da pasta e tente de novo.",
+	"hostd_wire_github_app_code_expired": "O código do GitHub já foi usado ou tem mais de uma hora. Comece a criar o GitHub App de novo.",
+	"hostd_wire_github_app_conversion_failed": "O GitHub não aceitou a criação do app (status {status}). Comece de novo e confira se o crew server alcança o GitHub.",
+	"hostd_wire_github_app_exists": "Este crew server já tem um GitHub App. Remova-o antes de criar outro.",
+	"hostd_wire_github_app_forbidden": "Só o dono do crew server pode configurar o GitHub App dele.",
+	"hostd_wire_github_app_none": "Este crew server ainda não tem um GitHub App.",
 	"hostd_wire_invalid_base64": "O host de terminais não conseguiu ler {field} da requisição: o conteúdo não é base64 válido. Isso é um bug do Atlas, reporte o problema.",
 	"hostd_wire_invalid_empty": "A requisição para executar um comando veio sem comando. Isso é um bug do Atlas, reporte o problema.",
 	"hostd_wire_invalid_no_parent": "Este caminho não tem pasta pai, então não é possível gravar um arquivo nele. Escolha outro local.",
+	"hostd_wire_invalid_value": "{field} não é um valor válido. Confira e tente de novo.",
 	"hostd_wire_lsp_crashed_repeated_hint": "Abra o log do servidor na barra de status e depois reinicie o servidor.",
 	"hostd_wire_lsp_crashed_repeated_message": "{server} falhou várias vezes seguidas",
 	"hostd_wire_lsp_crashed_start_hint": "Abra o log do servidor na barra de status ou reinicie o servidor.",
@@ -58,5 +67,11 @@
 	"hostd_wire_unreachable": "Host de terminais inacessível. Os terminais não conseguem iniciar nem reconectar até ele voltar. Clique em Reiniciar o host de terminais ou, se o problema continuar, em Reportar.",
 	"hostd_wire_unreachable_why": "{@hostd_wire_unreachable} ({why})",
 	"hostd_wire_upgrade_failed": "Não foi possível atualizar o host de terminais ({error}). Os terminais continuam no host antigo.",
-	"hostd_wire_upgraded": "Host de terminais atualizado"
+	"hostd_wire_upgraded": "Host de terminais atualizado",
+	"hostd_wire_voice_bad_audio": "A gravação não está em um formato que o crew server lê (WAV de 16 kHz, mono, 16 bits).",
+	"hostd_wire_voice_engine_failed": "{engine} não conseguiu transcrever isso. Nenhum outro engine foi tentado.",
+	"hostd_wire_voice_forbidden": "Só você pode mudar as configurações de voz, pelo Atlas Desktop.",
+	"hostd_wire_voice_not_installed": "Nenhum engine de voz está instalado neste crew server. Rode atlas crew voice install.",
+	"hostd_wire_voice_off": "A voz está desligada neste crew. Ligue nas configurações do crew.",
+	"hostd_wire_voice_too_long": "O ditado é limitado a {max_seconds} segundos."
 }

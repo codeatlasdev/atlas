@@ -2,10 +2,10 @@
   "entries": [
     {
       "agent": "claude",
-      "approval": "auto",
       "engine": null,
       "id": "crewmate-fixture",
       "kind": "crewmate_created",
+      "mode": "bypass",
       "name": "Fixture",
       "project": null,
       "seq": 3,

@@ -311,7 +311,7 @@ void main() {
               body: SingleChildScrollView(
                 child: NeedsYouCard(
                   entry: e,
-                  onAnswer: (_) {},
+                  onAnswer: (_) async {},
                   onAnswerTask: answers.add,
                   onTap: () {},
                 ),

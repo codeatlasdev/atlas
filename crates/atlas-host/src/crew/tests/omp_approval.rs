@@ -129,8 +129,12 @@ async fn an_approval_answered_after_31_seconds_still_lets_the_tool_run() {
     );
     assert_eq!(audit.len(), 1, "{audit:?}");
     assert_eq!(
-        (audit[0]["decision"].as_str(), audit[0]["by"].as_str()),
-        (Some("allow"), Some("desktop"))
+        (
+            audit[0]["decision"].as_str(),
+            audit[0]["source"].as_str(),
+            audit[0]["device"].as_str()
+        ),
+        (Some("allow"), Some("person"), Some("desktop"))
     );
 }
 
@@ -151,9 +155,14 @@ async fn a_late_denial_blocks_the_tool_and_says_the_owner_denied_it() {
         return;
     }
     let (task, audit) = answered_after(31.0, false).await;
-    assert_eq!(
-        task["result"], "blocked: the owner denied this tool call",
+    let reply = task["result"].as_str().unwrap();
+    assert!(
+        reply.starts_with("blocked: the owner denied this tool call"),
         "{task}"
+    );
+    assert!(
+        reply.contains("safer path"),
+        "the block says what to do: {reply}"
     );
     assert_eq!(audit[0]["decision"], "deny");
 }

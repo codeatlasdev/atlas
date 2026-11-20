@@ -117,8 +117,11 @@
 				{#if approval}
 					<ApprovalPrompt
 						{approval}
-						answered={chat.approvedReqs.has(approval.req)}
-						onanswer={(pane, req, allow) => void chat.approval(pane, req, allow)}
+						answered={chat.answeredReqs[approval.req]}
+						name={crewmate.name}
+						{chat}
+						{hostKey}
+						onanswer={(pane, req, answer) => void chat.approval(pane, req, answer)}
 					/>
 				{/if}
 			</div>

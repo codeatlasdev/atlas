@@ -385,11 +385,27 @@ pub enum HostCmd {
     /// `{agents: [{id, label, setup, state: ok|missing|unknown}]}`: installed agents and whether
     /// their hooks report to Atlas (`atlas setup <agent> --check`).
     AgentIntegrations {},
-    /// Answer a pending permission prompt (`agent_approval` push) by its `req`.
+    /// Answer a pending permission prompt (`agent_approval` push) by its `req`. `scope` says how far an allow
+    /// reaches (`once`, the default, or `task`: the same kind of call for the rest of that task); `comment` is
+    /// delivered to the agent with the decision (`crew::approval`).
     AgentApprove {
         pane: String,
         req: String,
         allow: bool,
+        #[serde(default)]
+        scope: crate::agents::ApproveScope,
+        #[serde(default)]
+        comment: Option<String>,
+    },
+    /// Answer a pending permission prompt with what was heard (#648). hostd decides what the words mean
+    /// (`crew::voice_card`): `{verdict: allow|deny|comment|needs_tap|unclear, comment?, reason?}`. An allow is
+    /// once, and never for Bypass, a rail, a destructive call or an untrusted source.
+    AgentApproveVoice {
+        pane: String,
+        req: String,
+        transcript: String,
+        #[serde(default)]
+        lang: Option<String>,
     },
     /// Type `text` into the pane's terminal, then Enter, only while the agent is idle/done.
     /// With `steer` and an omp agent it is also allowed while the agent works: omp queues
@@ -554,7 +570,13 @@ pub enum HostCmd {
         name: String,
         role: String,
         agent: String,
-        approval: String,
+        /// The permission mode: `ask`, `edits`, `bypass`, or the legacy `auto` (= `bypass`). Without it (and
+        /// without `mode`) the crew's `default_approval`.
+        #[serde(default)]
+        approval: Option<String>,
+        /// The same, named `mode`; wins over `approval` when both are sent.
+        #[serde(default)]
+        mode: Option<String>,
         #[serde(default)]
         workdir: Option<String>,
         #[serde(default)]
@@ -591,9 +613,20 @@ pub enum HostCmd {
         /// `None` = don't touch; `Some(None)` = clear (use crew default); `Some(Some(true/false))` = set.
         #[serde(default, deserialize_with = "present")]
         short_replies: Option<Option<bool>>,
+        /// `Some(true)`: the agent ends each reply with a `spoken:` line for listening (#648).
+        #[serde(default)]
+        spoken_replies: Option<bool>,
     },
     CrewmateDelete {
         id: String,
+    },
+    /// Switch a crewmate's permission mode (owner clients only: Desktop, Mobile, the owner's Telegram chat).
+    /// Applies from the next tool call, calls already waiting are re-decided at once. Replies with the
+    /// crewmate as `crewmate_list` shows it; a refusal is coded (`crew.approval.*`, see [`REPLY_CODES`]).
+    CrewmateSetApproval {
+        id: String,
+        /// `ask`, `edits` or `bypass`.
+        mode: String,
     },
     CrewmateTask {
         id: String,
@@ -607,6 +640,9 @@ pub enum HostCmd {
         /// The task changes what people see: it needs the agent's own captures to be `done` (`prove_ui`).
         #[serde(default)]
         ui: bool,
+        /// The prompt was (partly) dictated: the agent is told so (`crew::voice`), never shown as user text.
+        #[serde(default)]
+        dictated: bool,
     },
     /// One piece of an image too big for a protocol line, staged for the next `crewmate_task`
     /// that names `upload`. The last piece (`last: true`) completes it.
@@ -675,6 +711,39 @@ pub enum HostCmd {
         token: Option<String>,
     },
     CrewTelegramLink {},
+    /// Dictation on this crew server: whether it is on, the engine in use, the cap, the effective replacements
+    /// (`crew::voice`).
+    CrewVoiceStatus {},
+    /// Turn voice on or off, choose the engine, set the crew's own replacements. Owner only
+    /// (`crew.voice.forbidden`). Replies like `crew_voice_status`.
+    CrewVoiceSet {
+        #[serde(default)]
+        enabled: Option<bool>,
+        #[serde(default)]
+        engine: Option<crate::crew::voice::EngineSetting>,
+        #[serde(default)]
+        replacements: Option<Vec<crate::crew::voice::Replacement>>,
+    },
+    /// One piece of a dictation's WAV (16 kHz mono s16le), at most `crew::attachments::CHUNK` raw bytes. `upload`
+    /// empty opens one; the reply names it. `last` completes it. Audio is deleted after the transcription, and
+    /// after 10 minutes without a piece.
+    CrewmateVoicePut {
+        #[serde(default)]
+        upload: String,
+        piece_b64: String,
+        #[serde(default)]
+        last: bool,
+    },
+    /// Transcribe an upload for crewmate `id` (its hints; the engine of the crew). `partial` listens to the last
+    /// 30 s so far and leaves the upload open; a final one needs the last piece and deletes the audio.
+    CrewmateTranscribe {
+        id: String,
+        upload: String,
+        #[serde(default)]
+        language: Option<String>,
+        #[serde(default)]
+        partial: bool,
+    },
     /// Whether Telegram is configured and how many chats are linked. Never returns the token.
     CrewTelegramStatus {},
     MobileInvite {
@@ -755,9 +824,44 @@ pub enum HostCmd {
         #[serde(default)]
         attachments: Vec<crate::crew::attachments::Sent>,
     },
+    /// Answer a waiting `choose` card with what was heard (#648): `{verdict: choice|needs_tap|unclear, choice?}`.
+    #[serde(rename = "crewmate_action_answer_voice")]
+    CrewmateActionAnswerVoice {
+        id: String,
+        task: String,
+        transcript: String,
+        #[serde(default)]
+        lang: Option<String>,
+    },
     /// If gh is already logged in, wake any connect_github waiters immediately.
     #[serde(rename = "crew_github_connect_resume")]
     CrewGithubConnectResume {},
+    /// The manifest to POST to GitHub to create this crew server's GitHub App, and where to POST it (owner only).
+    #[serde(rename = "crew_github_app_manifest")]
+    CrewGithubAppManifest {
+        /// `user` or `org`.
+        owner_kind: String,
+        /// The organization's login, for `owner_kind: "org"`.
+        #[serde(default)]
+        org: Option<String>,
+        /// Also ask for the Workflows permission (edit `.github/workflows`). Off by default.
+        #[serde(default)]
+        workflows: bool,
+        /// The server's name, for the app's name (`atlas-crew-<server>`); this machine's host name when absent.
+        #[serde(default)]
+        server_name: Option<String>,
+    },
+    /// Exchange the one-time `code` GitHub redirected back with for the app's credentials, kept on this server only.
+    #[serde(rename = "crew_github_app_convert")]
+    CrewGithubAppConvert {
+        code: String,
+    },
+    /// The app (never its key) and the installations that can reach it, or `{app: null}`.
+    #[serde(rename = "crew_github_app_status")]
+    CrewGithubAppStatus {},
+    /// Delete the stored app key.
+    #[serde(rename = "crew_github_app_remove")]
+    CrewGithubAppRemove {},
     /// The kill switch: cancel every running crewmate task, hold every queue, stop automations.
     #[serde(rename = "crew_pause")]
     CrewPause {},
@@ -770,9 +874,12 @@ pub enum HostCmd {
     /// Write crew-level reply-summary settings.
     #[serde(rename = "crew_settings_set")]
     CrewSettingsSet {
-        short_replies: bool,
+        /// Absent leaves it as it is: a client that changes one control sends only that field.
         #[serde(default)]
-        short_replies_model: Option<String>,
+        short_replies: Option<bool>,
+        /// `None` = absent, left as it is; `Some(None)` (`null`) or `""` = clear (the default model); `Some(Some(m))` = set.
+        #[serde(default, deserialize_with = "present")]
+        short_replies_model: Option<Option<String>>,
         /// Agents the server runs at once (at least 1); absent leaves it as it is.
         #[serde(default)]
         max_agents: Option<usize>,
@@ -780,6 +887,18 @@ pub enum HostCmd {
         /// is, `0` goes back to the computed default.
         #[serde(default)]
         agent_memory_max: Option<u64>,
+        /// The mode new crewmates start in (`ask`, `edits`, `bypass`); absent leaves it as it is.
+        #[serde(default)]
+        default_approval: Option<String>,
+        /// Whether any crewmate may use Bypass; absent leaves it as it is. Turning it off takes every
+        /// crewmate out of Bypass (back to Ask).
+        #[serde(default)]
+        allow_bypass: Option<bool>,
+        /// The public `https://` URL GitHub reaches this server at (your reverse proxy or tunnel to the hook server;
+        /// Atlas never exposes it itself): the GitHub App's webhook posts to `<url>/github/webhook`. Absent leaves
+        /// it as it is, an empty string turns webhooks off.
+        #[serde(default)]
+        public_url: Option<String>,
     },
     /// A terminal that runs only `engine`'s login command as the crew user (`crew::engine_login`); the reply is
     /// `{engine, pty}` and the phone attaches with its terminal screen. `engine` is one of `claude`, `codex`,
@@ -883,15 +1002,51 @@ impl From<Failure> for String {
 /// | `fs.not_found` | `path` | `not_found` |
 /// | `fs.io` | `kind` (`permission_denied` \| `not_a_directory` \| `is_a_directory` \| `already_exists` \| `other`), `path`, `detail` (the OS's own text, `other` only) | the OS's text, e.g. `Permission denied (os error 13)` |
 /// | `exec.spawn_failed` | `program`, `reason` (`not_found` \| `permission_denied` \| `other`), `detail` (the OS's own text, `other` only) | `<program>: <the OS's text>` |
-/// | `hostd.invalid_argument` | `field`, `reason` (`bad_base64` \| `empty` \| `no_parent`) | what it always said |
+/// | `hostd.invalid_argument` | `field`, `reason` (`bad_base64` \| `empty` \| `no_parent` \| `invalid`) | what it always said |
+/// | `crew.approval.bypass_disabled` | none | `bypass is not allowed on this crew` |
+/// | `crew.approval.unsupported_engine` | `engine`, `mode` | `<engine> has no approval channel: it always runs unattended` |
+/// | `crew.approval.forbidden` | none | `only the owner can change a permission mode` |
+/// | `crew.github_app.exists` | none | an app is already set up |
+/// | `crew.github_app.code_expired` | none | the manifest code is used or past its hour |
+/// | `crew.github_app.conversion_failed` | `status` (GitHub's HTTP status, 0 when it was not reached) | GitHub refused the conversion |
+/// | `crew.github_app.none` | none | no app is set up |
+/// | `crew.github_app.forbidden` | none | the caller is not the owner |
+/// | `crew.voice.off` | none | voice is turned off on this crew |
+/// | `crew.voice.not_installed` | none | no voice engine is configured or installed |
+/// | `crew.voice.engine_failed` | `engine` (its label), `detail` | `<engine> failed: <detail>` (never retried on another engine) |
+/// | `crew.voice.too_long` | `max_seconds` | the dictation is over the cap |
+/// | `crew.voice.bad_audio` | none | the audio is not 16 kHz mono 16-bit PCM WAV |
+/// | `crew.voice.forbidden` | none | a non-owner changed the voice settings |
 ///
 /// A client reads the code only when it knows it (`client::reply_error`), else it has the text. A new code is added
 /// here, to the desktop's catalog (`apps/desktop/src/lib/hostMessages.ts`) and to its fixture test in one change.
-pub const REPLY_CODES: &[&str] = &[FS_NOT_FOUND, FS_IO, EXEC_SPAWN_FAILED, INVALID_ARGUMENT];
+pub const REPLY_CODES: &[&str] = &[
+    FS_NOT_FOUND,
+    FS_IO,
+    EXEC_SPAWN_FAILED,
+    INVALID_ARGUMENT,
+    APPROVAL_BYPASS_DISABLED,
+    APPROVAL_UNSUPPORTED_ENGINE,
+    APPROVAL_FORBIDDEN,
+    crate::crew::github::app::EXISTS,
+    crate::crew::github::app::CODE_EXPIRED,
+    crate::crew::github::app::CONVERSION_FAILED,
+    crate::crew::github::app::NONE,
+    crate::crew::github::app::FORBIDDEN,
+    crate::crew::voice::OFF,
+    crate::crew::voice::NOT_INSTALLED,
+    crate::crew::voice::ENGINE_FAILED,
+    crate::crew::voice::TOO_LONG,
+    crate::crew::voice::BAD_AUDIO,
+    crate::crew::voice::FORBIDDEN,
+];
 pub const FS_NOT_FOUND: &str = "fs.not_found";
 pub const FS_IO: &str = "fs.io";
 pub const EXEC_SPAWN_FAILED: &str = "exec.spawn_failed";
 pub const INVALID_ARGUMENT: &str = "hostd.invalid_argument";
+pub const APPROVAL_BYPASS_DISABLED: &str = "crew.approval.bypass_disabled";
+pub const APPROVAL_UNSUPPORTED_ENGINE: &str = "crew.approval.unsupported_engine";
+pub const APPROVAL_FORBIDDEN: &str = "crew.approval.forbidden";
 
 /// A request argument hostd cannot use: `field` is the argument, `reason` why (see [`REPLY_CODES`]).
 pub(crate) fn invalid_argument(field: &str, reason: &str, message: impl Into<String>) -> Coded {
@@ -1107,6 +1262,24 @@ mod tests {
             crate::fs::write("/work/a.txt", "***", None).unwrap_err(),
             crate::fs::write("/", "", None).unwrap_err(),
             empty_argv,
+            invalid_argument("org", "invalid", "org: not a GitHub login"),
+            crate::crew::approval::bypass_disabled(),
+            crate::crew::approval::unsupported_engine("codex", crate::crew::store::Mode::Ask),
+            crate::crew::approval::forbidden(),
+            crate::crew::github::app::exists(),
+            crate::crew::github::app::code_expired(),
+            crate::crew::github::app::conversion_failed(503, "GitHub refused the conversion: down"),
+            crate::crew::github::app::none(),
+            crate::crew::github::app::forbidden(),
+            crate::crew::voice::off(),
+            crate::crew::voice::not_installed(),
+            crate::crew::voice::engine_failed(
+                "whisper.cpp (small)",
+                "whisper-cli exited with status 1",
+            ),
+            crate::crew::voice::too_long(),
+            crate::crew::voice::bad_audio(),
+            crate::crew::voice::forbidden(),
         ];
         let errors: Vec<Value> = samples
             .iter()

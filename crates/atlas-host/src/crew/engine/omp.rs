@@ -1,10 +1,10 @@
 //! omp engine — RPC mode.
 //!
 //! Protocol (per-turn):
-//! 1. Spawn `omp --mode rpc [--auto-approve | --extension <path>] [--resume <session.jsonl>]`
-//!    with piped stdin/stdout.  When `yolo` (approval == Auto) we pass `--auto-approve`.
-//!    When `!yolo` (approval == Ask) we write a TypeScript extension to `<crewmate_dir>/omp-approval.ts`
-//!    and load it with `--extension`; it blocks tool_call events via hostd's /decision endpoint.
+//! 1. Spawn `omp --mode rpc --extension <path> [--resume <session.jsonl>]` with piped stdin/stdout. Never
+//!    `--auto-approve`: we write a TypeScript extension to `<crewmate_dir>/omp-approval.ts` and load it with
+//!    `--extension`; it blocks tool_call events via hostd's /decision endpoint, where the crewmate's mode, the
+//!    rails and the task's grants decide (`crew::approval`).
 //! 2. Send `{"id":"r1","type":"prompt","message":"<prompt>"}` on stdin.
 //! 3. Read stdout lines until `prompt_result` for id `r1` arrives.
 //!    Collect `agent_end` reply text and `message_end` usage along the way.
@@ -83,14 +83,12 @@ pub(super) async fn run(ctx: TurnCtx<'_>) -> Result<TurnResult, String> {
         .arg("rpc")
         .args(overlay_args(ctx.crewmate_dir));
 
-    if ctx.yolo {
-        cmd.arg("--auto-approve");
-    } else {
-        // Write the approval extension and load it; it reaches hostd through the ATLAS_* env.
-        let ext_path = ctx.crewmate_dir.join("omp-approval.ts");
-        write_approval_extension(&ext_path, ctx.hook_port, ctx.hook_token, ctx.pane_key)?;
-        cmd.arg("--extension").arg(&ext_path);
-    }
+    // Always the approval extension, never `--auto-approve`: hostd decides every call (`crew::approval`) from the
+    // crewmate's current mode, so a switch applies to the next call and no flag widens what omp may do.
+    // The extension reaches hostd through the ATLAS_* env.
+    let ext_path = ctx.crewmate_dir.join("omp-approval.ts");
+    write_approval_extension(&ext_path, ctx.hook_port, ctx.hook_token, ctx.pane_key)?;
+    cmd.arg("--extension").arg(&ext_path);
 
     if let Some(session_file) = &ctx.session.session_file {
         cmd.arg("--resume").arg(session_file);
@@ -335,10 +333,18 @@ export default function atlasApproval(pi) {{
                 reason = `the approval request failed: hostd answered ${{resp.status}}`;
             }} else {{
                 const data = await resp.json();
+                // What hostd wants the agent to read as a message of its own (a mode change, an allowed call's
+                // comment): a steering message, delivered whatever the decision.
+                if (data && typeof data.steer === "string" && data.steer) {{
+                    try {{ pi.sendUserMessage(data.steer, {{ deliverAs: "steer" }}); }} catch (_) {{}}
+                }}
                 if (data && data.decision === "allow") return;
-                reason = data && data.decision === "deny"
-                    ? "the owner denied this tool call"
-                    : "nobody answered the approval request in time";
+                // The reason hostd gives (the owner's comment, a rail, nobody answered) comes back to the agent as is.
+                reason = data && typeof data.message === "string" && data.message
+                    ? data.message
+                    : data && data.decision === "deny"
+                        ? "the owner denied this tool call"
+                        : "nobody answered the approval request in time";
             }}
         }} catch (e) {{
             reason = e && e.name === "TimeoutError"
@@ -550,7 +556,6 @@ mod kill_tests {
                     pane_key: "",
                     extra_env: &env,
                     work_dir: dir.to_str().unwrap(),
-                    yolo: true,
                     tools: None,
                     cancel: &cancel,
                     exec: &crate::crew::engine::Exec::local(),

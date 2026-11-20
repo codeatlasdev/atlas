@@ -259,7 +259,7 @@ fn source(
 }
 
 /// The microphone as the system reports it for this process.
-fn mic_access() -> MicAccess {
+pub(super) fn mic_access() -> MicAccess {
     // SAFETY: plain class method with the audio media type constant.
     let status = unsafe {
         let Some(audio) = objc2_av_foundation::AVMediaTypeAudio else {
@@ -276,7 +276,7 @@ fn mic_access() -> MicAccess {
 
 /// Ask for the microphone (the system prompt, once) and wait for the answer. Called only when a recording starts
 /// with the microphone on, never at launch.
-fn request_mic() -> bool {
+pub(super) fn request_mic() -> bool {
     let (tx, rx) = std::sync::mpsc::channel();
     let block = block2::RcBlock::new(move |ok: objc2::runtime::Bool| {
         let _ = tx.send(ok.as_bool());

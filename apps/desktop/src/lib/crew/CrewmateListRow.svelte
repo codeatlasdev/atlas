@@ -8,6 +8,8 @@
 	import { crossfade } from "svelte/transition";
 	import { cubicOut } from "svelte/easing";
 	import { Check, CircleX, Ellipsis, TriangleAlert } from "@lucide/svelte";
+	import ModeBadge from "#lib/crew/chat/ModeBadge.svelte";
+	import { modeOf } from "#lib/crew/permissionMode.ts";
 	import { dateTime } from "#lib/i18n/fmt.ts";
 	import { m } from "#lib/i18n/m.ts";
 
@@ -126,6 +128,7 @@
 								: "")}</span
 					>
 				{/if}
+				<ModeBadge mode={modeOf(crewmate)} showLabel={false} size={11} />
 				{#if unread}
 					<span class="unread-badge" aria-label={m.crew_workspace_crewmate_list_row_unread_messages()}></span>
 				{:else if crewmate.state === "needs_you"}
@@ -330,6 +333,9 @@
 		display: flex;
 		align-items: center;
 		gap: 3px;
+	}
+	.row-bottom :global(.mode-badge) {
+		margin-left: 4px;
 	}
 
 	.preview-icon {

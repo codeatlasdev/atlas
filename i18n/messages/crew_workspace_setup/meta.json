@@ -1,13 +1,4 @@
 {
-	"crew_workspace_setup_approval_everything_clause": "Verb phrase for the summary sentence after 'I'll' (infinitive in pt-BR).",
-	"crew_workspace_setup_approval_everything_title": "Approval option of the setup chat.",
-	"crew_workspace_setup_approval_never_clause": "Verb phrase for the summary sentence after 'I'll' (infinitive in pt-BR).",
-	"crew_workspace_setup_approval_never_subtitle": "Subtitle of the never-ask approval option.",
-	"crew_workspace_setup_approval_never_title": "Approval option of the setup chat: the crewmate never asks.",
-	"crew_workspace_setup_approval_risky_clause": "Verb phrase for the summary sentence after 'I'll' (infinitive in pt-BR).",
-	"crew_workspace_setup_approval_risky_subtitle": "Subtitle of the first approval option.",
-	"crew_workspace_setup_approval_risky_title": "Approval option of the setup chat (the recommended one).",
-	"crew_workspace_setup_ask_approval": "Fourth question of the setup chat: how often the crewmate asks before acting.",
 	"crew_workspace_setup_ask_name": "First question of a new crewmate's setup chat. The crewmate speaks in the first person.",
 	"crew_workspace_setup_ask_project": "Third question of the setup chat; the user's projects follow as options.",
 	"crew_workspace_setup_ask_role": "Second question of the setup chat; options follow.",
@@ -25,6 +16,6 @@
 	"crew_workspace_setup_role_review_title": "Role option of the setup chat. The text becomes the crewmate's saved role, and the summary sentence reads 'I'll review every PR': start it with a verb in the infinitive.",
 	"crew_workspace_setup_skip": "The user's replayed answer in the setup chat when the project step was skipped.",
 	"crew_workspace_setup_something_else": "Option that lets the user type their own answer, in the role and project questions of the setup chat.",
-	"crew_workspace_setup_summary": "Summary bubble of the setup chat without a project. {name} is shown in bold; {role} starts lowercase and is a verb phrase; {approval} is a verb phrase.",
-	"crew_workspace_setup_summary_project": "Summary bubble of the setup chat with a project. {name} and {project} are shown in bold; {role} and {approval} are verb phrases."
+	"crew_workspace_setup_summary": "Summary bubble of the setup chat without a project. {name} is shown in bold; {role} starts lowercase and is a verb phrase; {mode} is the name of the permission mode, shown in bold.",
+	"crew_workspace_setup_summary_project": "Summary bubble of the setup chat with a project. {name} and {project} are shown in bold; {role} is a verb phrase; {mode} is the name of the permission mode, shown in bold."
 }

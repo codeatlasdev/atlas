@@ -15,7 +15,7 @@ use std::collections::{HashMap, HashSet};
 use std::sync::{Arc, Weak};
 use std::time::{Duration, Instant};
 
-use super::github_events::{Cfg, decide, handle_for};
+use super::github_events::{Cfg, decide};
 use crate::crew::github::GithubApi;
 use crate::crew::store::{Crewmate, Trigger, TriggerKind};
 use crate::server::Hub;
@@ -80,27 +80,34 @@ async fn poll_all(hub: &Arc<Hub>) {
 }
 
 async fn poll_trigger(hub: &Arc<Hub>, api: &dyn GithubApi, crewmate: &Crewmate, trigger: &Trigger) {
-    let TriggerKind::Github {
-        repo,
-        events,
-        handle,
-        assignee,
-        authors,
-        ..
-    } = &trigger.kind
-    else {
+    let TriggerKind::Github { repo, .. } = &trigger.kind else {
         return;
     };
     let key = format!("{}:{}", crewmate.id, trigger.id);
     if held(&key) {
         return;
     }
-    let seen_path = hub
-        .crew
-        .store
-        .crewmate_dir(&crewmate.id)
-        .join(format!("{}_seen.jsonl", trigger.id));
-    let is_new = !seen_path.exists();
+    let dir = hub.crew.store.crewmate_dir(&crewmate.id);
+    let seen_path = dir.join(format!("{}_seen.jsonl", trigger.id));
+    // Marks a trigger whose repo the webhook covers: the poll is off for it, and when it comes back it must not
+    // answer what the webhook already did (see `hook_cutoff`).
+    let hooked = dir.join(format!("{}_seen.hooked", trigger.id));
+    if hub.crew.store.load_crew_settings().public_url.is_some()
+        && hub.crew.github_app.webhook_covers(repo).await
+    {
+        if !hooked.exists()
+            && let Err(e) = std::fs::write(&hooked, b"")
+        {
+            // i18n-ignore: log
+            eprintln!(
+                "triggers/github: {repo}: cannot mark trigger {} as covered by the webhook: {e}",
+                trigger.id
+            );
+        }
+        return;
+    }
+    let resuming = hooked.exists();
+    let is_new = !seen_path.exists() && !resuming;
     let mut seen = load_seen(&seen_path);
 
     let feed = match api.events(repo).await {
@@ -121,12 +128,8 @@ async fn poll_trigger(hub: &Arc<Hub>, api: &dyn GithubApi, crewmate: &Crewmate, 
             return;
         }
     };
-    let cfg = Cfg {
-        events: events.clone(),
-        authors: authors.clone(),
-        handle: handle_for(handle.as_deref(), &crewmate.name),
-        assignee: assignee.clone(),
-        own_login,
+    let Some((_, cfg)) = Cfg::for_trigger(crewmate, trigger, own_login) else {
+        return;
     };
 
     // A new trigger starts at the head of the feed: what is already there is history.
@@ -148,6 +151,14 @@ async fn poll_trigger(hub: &Arc<Hub>, api: &dyn GithubApi, crewmate: &Crewmate, 
         return;
     }
 
+    // The poll takes over from a webhook that stopped covering the repo: what happened up to the webhook's last
+    // good delivery it already handled.
+    let cutoff = if resuming {
+        hub.crew.github_app.hook_state().last_ok
+    } else {
+        0
+    };
+    let mut undecided = false;
     // Oldest first, so tasks start in the order things happened.
     for ev in feed.iter().rev() {
         let Some(id) = ev["id"].as_str().filter(|s| !s.is_empty()) else {
@@ -156,17 +167,22 @@ async fn poll_trigger(hub: &Arc<Hub>, api: &dyn GithubApi, crewmate: &Crewmate, 
         if seen.contains(id) {
             continue;
         }
-        let fired = match decide(api, repo, ev, &cfg).await {
-            Ok(f) => f,
-            // Could not tell who wrote it (or what it says): not decided, so not seen. Asked again.
-            Err(e) => {
-                // i18n-ignore: log
-                eprintln!(
-                    "triggers/github: {} {id} in {repo} for crewmate {}: {e}; will retry",
-                    ev["type"].as_str().unwrap_or("?"),
-                    crewmate.id
-                );
-                continue;
+        let fired = if created_at(ev).is_some_and(|t| t <= cutoff) {
+            None
+        } else {
+            match decide(api, repo, ev, &cfg).await {
+                Ok(f) => f,
+                // Could not tell who wrote it (or what it says): not decided, so not seen. Asked again.
+                Err(e) => {
+                    // i18n-ignore: log
+                    eprintln!(
+                        "triggers/github: {} {id} in {repo} for crewmate {}: {e}; will retry",
+                        ev["type"].as_str().unwrap_or("?"),
+                        crewmate.id
+                    );
+                    undecided = true;
+                    continue;
+                }
             }
         };
         // Seen first, whether it matched or not: a task is only made for an event that cannot come
@@ -182,7 +198,10 @@ async fn poll_trigger(hub: &Arc<Hub>, api: &dyn GithubApi, crewmate: &Crewmate, 
             return;
         }
         seen.insert(id.to_string());
-        if let Some(fired) = fired {
+        if let Some(mut fired) = fired {
+            if let Some(origin) = &mut fired.origin {
+                origin.requester = actor_of(ev);
+            }
             super::fire(
                 hub,
                 &crewmate.id,
@@ -195,6 +214,32 @@ async fn poll_trigger(hub: &Arc<Hub>, api: &dyn GithubApi, crewmate: &Crewmate, 
             );
         }
     }
+    // Back to normal polling once the whole feed was dealt with.
+    if resuming && !undecided {
+        let _ = std::fs::remove_file(&hooked);
+    }
+}
+
+/// When a feed event happened, in unix seconds.
+fn created_at(ev: &serde_json::Value) -> Option<i64> {
+    Some(
+        ev["created_at"]
+            .as_str()?
+            .parse::<jiff::Timestamp>()
+            .ok()?
+            .as_second(),
+    )
+}
+
+/// The account that set an event off: the feed's `actor`.
+pub(super) fn actor_of(ev: &serde_json::Value) -> Option<crate::crew::store::GithubUser> {
+    Some(crate::crew::store::GithubUser {
+        login: ev["actor"]["login"]
+            .as_str()
+            .filter(|l| !l.is_empty())?
+            .to_string(),
+        id: ev["actor"]["id"].as_u64()?,
+    })
 }
 
 fn load_seen(path: &std::path::Path) -> HashSet<String> {

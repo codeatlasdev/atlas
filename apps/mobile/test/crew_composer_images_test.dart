@@ -66,7 +66,7 @@ Widget _composer(
           sending: false,
           online: true,
           queued: 0,
-          onSend: (images) async {
+          onSend: (images, _) async {
             sent.add(('send', images));
             return true;
           },

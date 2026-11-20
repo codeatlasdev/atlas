@@ -308,33 +308,30 @@ async fn tool_set_ui(client: &reqwest::Client, env: &Env) -> Result<Value, Strin
 // ─── approve ──────────────────────────────────────────────────────────────────
 
 async fn tool_approve(args: Value, client: &reqwest::Client, env: &Env) -> Result<Value, String> {
-    let path = format!(
-        "/hook/claude/decision?pane_key={}",
-        urlencoded(&env.pane_key)
-    );
+    // The pane is in the body, as the route reads it.
+    let path = "/hook/claude/decision";
     let body = json!({
         "pane_key": env.pane_key,
         "payload": args,
     });
-    let text = post_hook(client, env, "approve", &path, &body).await?;
+    let text = post_hook(client, env, "approve", path, &body).await?;
 
-    // Parse {"decision": "allow"|"deny"|null}
-    let decision: Option<String> = serde_json::from_str::<Value>(&text)
-        .ok()
-        .and_then(|v| v.get("decision").cloned())
-        .filter(|d| !d.is_null())
-        .and_then(|d| d.as_str().map(|s| s.to_string()));
+    // Parse {"decision": "allow"|"deny"|null, "message"?}
+    let reply: Value = serde_json::from_str(&text).unwrap_or_default();
+    let decision = reply["decision"].as_str();
+    let message = reply["message"].as_str().filter(|m| !m.is_empty());
 
     // Only an explicit allow allows. No decision means nobody answered (no one could, or hostd's wait ran out).
-    let result = match decision.as_deref() {
+    // A deny carries what hostd says (why, and the person's comment): it is the message claude shows the model.
+    let result = match decision {
         Some("allow") => json!({ "behavior": "allow" }),
         Some(_) => json!({
             "behavior": "deny",
-            "message": "Permission denied by the user."
+            "message": message.unwrap_or("Permission denied by the user.")
         }),
         None => json!({
             "behavior": "deny",
-            "message": "Permission denied: nobody answered the approval request."
+            "message": message.unwrap_or("Permission denied: nobody answered the approval request.")
         }),
     };
 
@@ -501,24 +498,6 @@ pub(crate) async fn call_for_test(
 
 // ─── Helpers ──────────────────────────────────────────────────────────────────
 
-/// Percent-encode a string for use in a URL query parameter value.
-fn urlencoded(s: &str) -> String {
-    let mut out = String::with_capacity(s.len());
-    for b in s.bytes() {
-        match b {
-            b'A'..=b'Z' | b'a'..=b'z' | b'0'..=b'9' | b'-' | b'_' | b'.' | b'~' => {
-                out.push(b as char)
-            }
-            _ => {
-                out.push('%');
-                out.push(char::from_digit((b >> 4) as u32, 16).unwrap_or('0'));
-                out.push(char::from_digit((b & 0xf) as u32, 16).unwrap_or('0'));
-            }
-        }
-    }
-    out
-}
-
 async fn write_line(
     out: &mut tokio::io::BufWriter<tokio::io::Stdout>,
     v: &Value,
@@ -635,19 +614,6 @@ mod tests {
                 "the agent is told it was not the owner's no: {r}"
             );
         }
-    }
-
-    #[test]
-    fn urlencoded_safe_chars() {
-        assert_eq!(urlencoded("abc-123"), "abc-123");
-    }
-
-    #[test]
-    fn urlencoded_encodes_special() {
-        let encoded = urlencoded("foo bar/baz");
-        assert!(!encoded.contains(' '));
-        assert!(!encoded.contains('/'));
-        assert!(encoded.contains('%'));
     }
 
     #[test]

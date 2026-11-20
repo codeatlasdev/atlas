@@ -18,6 +18,7 @@
 mod file_watch;
 mod github;
 pub(crate) mod github_events;
+pub(crate) mod github_hook;
 mod service;
 pub(crate) mod webhook;
 
@@ -162,10 +163,12 @@ pub(crate) fn author_allowed(authors: &[String], association: Option<&str>) -> b
     authors.iter().any(|a| a == "anyone" || *a == assoc)
 }
 
-/// Whether a task runs with the agent's bypass flags: the crewmate is `auto` and the task is not one
-/// started by a stranger's text from a trigger that did not opt in (`allow_auto`).
-pub(crate) fn yolo_for(approval: crate::crew::store::Approval, task: &Task) -> bool {
-    approval == crate::crew::store::Approval::Auto && !task.no_auto
+/// Whether a task is launched with its agent's bypass flags. Only an engine that cannot ask (codex, opencode:
+/// `can_ask` false) ever is: the crewmate is in `bypass` and the task is not one started by a stranger's text from
+/// a trigger that did not opt in (`allow_auto`). An engine that can ask is always launched in ask mode and hostd
+/// decides each call (`crew::approval`), so no dotfile or flag can escalate it behind hostd's back.
+pub(crate) fn yolo_for(mode: crate::crew::store::Mode, task: &Task, can_ask: bool) -> bool {
+    mode == crate::crew::store::Mode::Bypass && !task.no_auto && !can_ask
 }
 
 /// Tick `Schedule` and `Interval` triggers. Call every ~30 s from a background
@@ -360,7 +363,8 @@ pub(crate) fn on_task_finished(
 ///
 /// Spawns:
 /// - A 30 s ticker for `Schedule` / `Interval` triggers.
-/// - A 2 min poller for `Github` triggers.
+/// - A 2 min poller for `Github` triggers (it stands down for repos the App's webhook covers).
+/// - A 5 min reconciliation of the App's webhook deliveries (`github_hook::reconcile_loop`).
 /// - A file-watcher task per `File` trigger (rescans every 2 min).
 /// - A 30 s poller for `Service` triggers.
 pub(crate) fn start(hub_weak: Weak<Hub>) {
@@ -381,6 +385,11 @@ pub(crate) fn start(hub_weak: Weak<Hub>) {
     {
         let w = hub_weak.clone();
         tokio::spawn(github::run(w));
+    }
+    // ── Github webhook reconciliation ────────────────────────────────────────
+    {
+        let w = hub_weak.clone();
+        tokio::spawn(github_hook::reconcile_loop(w));
     }
     // ── File ─────────────────────────────────────────────────────────────────
     {

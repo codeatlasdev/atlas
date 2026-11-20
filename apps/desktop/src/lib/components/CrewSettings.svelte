@@ -1,6 +1,6 @@
 <script lang="ts">
 	import { onMount } from "svelte";
-	import { Button, toast } from "@codeatlasdev/ui";
+	import { Button, Switch, toast } from "@codeatlasdev/ui";
 	import { errText } from "#lib/api.ts";
 	import { hostCall } from "#lib/host.ts";
 	import Group from "#lib/settings/Group.svelte";
@@ -9,6 +9,12 @@
 	import PairQr from "#lib/components/PairQr.svelte";
 	import BrowsersRow from "#lib/crew/settings/BrowsersRow.svelte";
 	import TelegramRow from "#lib/crew/settings/TelegramRow.svelte";
+	import VoiceRows from "#lib/crew/settings/VoiceRows.svelte";
+	import { DICTATION_STROKE } from "#lib/crew/voice/key.ts";
+	import { dictationKey, setMode } from "#lib/crew/voice/mode.svelte.ts";
+	import type { KeyMode } from "#lib/crew/voice/dictation.svelte.ts";
+	import { IS_MAC, label as keyLabel } from "#lib/keys.ts";
+	import GithubAppCard from "#lib/crew/settings/GithubAppCard.svelte";
 	import { secondsLeft, type PairStart } from "#lib/settings/mobile.ts";
 	import { crew } from "#lib/stores/crew.svelte.ts";
 	import {
@@ -16,6 +22,8 @@
 		saveCrewSettings,
 		type CrewServerSettings,
 	} from "#lib/crew/settings/crewSettings.ts";
+	import { modeLabel, selectableModes } from "#lib/crew/permissionMode.ts";
+	import type { CrewPolicy } from "#lib/crew/permissionMode.ts";
 	import { replayCrewOnboarding } from "#lib/crew/crewOnboarding.svelte.ts";
 	import { updates } from "#lib/stores/updates.svelte.ts";
 	import type { AgentIntegration } from "#lib/stores/agentIntegration.ts";
@@ -115,6 +123,14 @@
 			toast.error(errText(e));
 		} finally {
 			pausing = { ...pausing, [key]: false };
+		}
+	}
+
+	async function savePolicy(key: string, patch: Partial<CrewPolicy>) {
+		try {
+			await crew.setPolicy(key, patch);
+		} catch (e) {
+			toast.error(errText(e));
 		}
 	}
 
@@ -236,8 +252,41 @@
 		{/if}
 
 		{#if online}
+			{@const policy = crew.policyOf(h.key)}
+			<Row
+				id="crew-default-mode-{h.key}"
+				label={m.crew_permission_default_label()}
+				description={m.crew_permission_default_hint()}
+			>
+				<select
+					class="input mode-select"
+					value={policy.default_approval}
+					aria-label={m.crew_permission_default_label()}
+					onchange={(e) =>
+						void savePolicy(h.key, {
+							default_approval: (e.currentTarget as HTMLSelectElement)
+								.value as CrewPolicy["default_approval"],
+						})}
+				>
+					{#each selectableModes(policy) as mode (mode)}
+						<option value={mode}>{modeLabel(mode)}</option>
+					{/each}
+				</select>
+			</Row>
+			<Row
+				id="crew-allow-bypass-{h.key}"
+				label={m.crew_permission_allow_bypass_label()}
+				description={m.crew_permission_allow_bypass_hint()}
+			>
+				<Switch
+					aria-label={m.crew_permission_allow_bypass_label()}
+					checked={policy.allow_bypass}
+					onchange={(v) => void savePolicy(h.key, { allow_bypass: v })}
+				/>
+			</Row>
 			<BrowsersRow hostKey={h.key} />
 			<TelegramRow hostKey={h.key} />
+			<VoiceRows hostKey={h.key} />
 		{/if}
 
 		<Row
@@ -250,6 +299,10 @@
 			>
 		</Row>
 	</Group>
+
+	{#if online}
+		<GithubAppCard hostKey={h.key} serverName={h.name} />
+	{/if}
 {/each}
 
 <Group title={m.settings_agents_crew_add_server()}>
@@ -286,8 +339,11 @@
 
 <!-- i18n-ignore: a product name -->
 <Group title="GitHub">
-	<!-- i18n-ignore: a product name -->
-	<Row id="crew-github" label="GitHub" description={m.settings_agents_crew_github_description()}>
+	<Row
+		id="crew-github"
+		label={m.crew_github_app_simple_title()}
+		description={m.crew_github_app_simple_description()}
+	>
 		<Button
 			size="sm"
 			variant="ghost"
@@ -295,6 +351,24 @@
 				updates.open = false;
 			}}>{m.settings_agents_crew_open_workspace()}</Button
 		>
+	</Row>
+</Group>
+
+<Group title={m.crew_voice_settings_title()}>
+	<Row
+		id="crew-dictation-key"
+		label={m.crew_voice_key()}
+		description={m.crew_voice_key_hint({ shortcut: keyLabel(DICTATION_STROKE, IS_MAC) })}
+	>
+		<select
+			class="input mode-select"
+			value={dictationKey.mode}
+			aria-label={m.crew_voice_key()}
+			onchange={(e) => setMode((e.currentTarget as HTMLSelectElement).value as KeyMode)}
+		>
+			<option value="hold">{m.crew_voice_key_hold()}</option>
+			<option value="tap">{m.crew_voice_key_tap()}</option>
+		</select>
 	</Row>
 </Group>
 
@@ -374,6 +448,10 @@
 	}
 	.input::placeholder {
 		color: var(--ca-text-tertiary, var(--ca-text-secondary));
+	}
+	.mode-select {
+		flex: none;
+		min-width: 0;
 	}
 	.short-replies-form {
 		display: flex;

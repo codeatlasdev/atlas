@@ -2,6 +2,15 @@
   "entries": [
     {
       "crewmate_id": "crewmate-fixture",
+      "device": "owner",
+      "from": "bypass",
+      "kind": "approval_mode_changed",
+      "seq": 7,
+      "to": "ask",
+      "ts": 1700000007
+    },
+    {
+      "crewmate_id": "crewmate-fixture",
       "error": null,
       "kind": "task_finished",
       "seq": 6,
@@ -12,8 +21,8 @@
     },
     {
       "crewmate_id": "crewmate-fixture",
-      "field": "approval",
-      "from": "auto",
+      "field": "mode",
+      "from": "bypass",
       "kind": "config_changed",
       "seq": 5,
       "to": "ask",

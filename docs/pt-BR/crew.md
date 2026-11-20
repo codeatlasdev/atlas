@@ -1,7 +1,7 @@
 ---
 title: "Atlas Crew"
 source: crew.md
-source_sha: "f6e9109ae0a965a6455185be728de76b53989420"
+source_sha: "ec0b3ad11e88e1fac4d5383ac548d90d47020f5a"
 translation: machine
 ---
 
@@ -17,7 +17,7 @@ O Atlas Crew roda agentes de IA 24 horas por dia em um servidor Linux seu, sem d
 | **tarefa** | um prompt em que um crewmate trabalha, uma de cada vez por crewmate |
 | **automação** | algo que inicia uma tarefa sozinho: um agendamento, um intervalo, um webhook, um evento do GitHub, uma mudança em arquivo, outro crewmate ou um serviço (`triggers` no protocolo) |
 
-Seções: [Instalar um crew server](#instalar-um-crew-server) · [Fazer backup e mover crewmates](#fazer-backup-e-mover-crewmates) · [Autenticar os agentes](#autenticar-os-agentes) · [Crewmates](#crewmates) · [Tarefas e aprovações](#tarefas-e-aprovações) · [Automações](#automações) · [GitHub](#github) · [Telegram](#telegram) · [Notificações push](#notificações-push) · [Desktop](#atlas-desktop) · [Mobile](#atlas-mobile) · [Ferramentas MCP](#ferramentas-mcp-para-o-agente) · [Modelo de segurança](#modelo-de-segurança) · [Solução de problemas](#solução-de-problemas) · [Aparência do crewmate](#aparência-do-crewmate) · [Teste end-to-end](#teste-end-to-end-em-systemd-real) · [Mapa do código](#mapa-do-código) · [Referência](#referência)
+Seções: [Instalar um crew server](#instalar-um-crew-server) · [Fazer backup e mover crewmates](#fazer-backup-e-mover-crewmates) · [Autenticar os agentes](#autenticar-os-agentes) · [Crewmates](#crewmates) · [Tarefas e aprovações](#tarefas-e-aprovações) · [Automações](#automações) · [GitHub](#github) · [Telegram](#telegram) · [Ditado](#ditado) · [Respostas faladas e respostas por voz](#respostas-faladas-e-respostas-por-voz) · [Notificações push](#notificações-push) · [Desktop](#atlas-desktop) · [Mobile](#atlas-mobile) · [Ferramentas MCP](#ferramentas-mcp-para-o-agente) · [Modelo de segurança](#modelo-de-segurança) · [Solução de problemas](#solução-de-problemas) · [Aparência do crewmate](#aparência-do-crewmate) · [Teste end-to-end](#teste-end-to-end-em-systemd-real) · [Mapa do código](#mapa-do-código) · [Referência](#referência)
 
 ## Instalar um crew server
 
@@ -65,7 +65,7 @@ Rode `atlas crew status <ssh-target>` depois para conferir.
 
 | Comando | O que faz |
 |---|---|
-| `atlas crew install <ssh-target> [--yes] [--port N] [--identity KEY] [--binary PATH] [--browsers]` | instala ou migra um crew server (acima), x86_64 ou aarch64. `--port` para uma porta SSH fora do padrão; `--identity` entra com essa chave privada (`ssh -i`) e instala a chave pública dela para o usuário crew; `--binary` envia esse `atlas` Linux (da arquitetura do servidor) em vez de baixar a versão publicada correspondente a esta (também lido de `ATLAS_CREW_BINARY`); `--browsers` instala também os navegadores de captura ([Capturas](#capturas)) |
+| `atlas crew install <ssh-target> [--yes] [--port N] [--identity KEY] [--binary PATH] [--browsers] [--voice] [--voice-model small\|base]` | instala ou migra um crew server (acima), x86_64 ou aarch64. `--port` para uma porta SSH fora do padrão; `--identity` entra com essa chave privada (`ssh -i`) e instala a chave pública dela para o usuário crew; `--binary` envia esse `atlas` Linux (da arquitetura do servidor) em vez de baixar a versão publicada correspondente a esta (também lido de `ATLAS_CREW_BINARY`); `--browsers` instala também os navegadores de captura ([Capturas](#capturas)) |
 | `atlas crew update <ssh-target> [--version X] [--rollback] [--port N] [--binary PATH]` | coloca uma versão (padrão: a deste CLI) em um crew server, guarda o binário antigo como `atlas.prev`, reinicia, espera o hostd e volta atrás sozinho quando ele não responde; `--rollback` restaura o `atlas.prev` ([Atualizar um crew server](#atualizar-um-crew-server)) |
 | `atlas crew uninstall <ssh-target> [--yes] [--port N]` | lista o que vai excluir (a home do crew, o número de crewmates e o tamanho), para e remove o serviço, o usuário crew (e o diretório home dele, ou seja, os seus crewmates) e `/usr/local/lib/atlas-crew`. Em um terminal, oferece uma exportação antes e pede para você digitar o nome do servidor; `--yes` pula as perguntas, mas ainda imprime o que foi excluído e confirma que sumiu; sem terminal e sem `--yes`, recusa. Recusa enquanto o usuário ainda tiver uma sessão de login; nunca encerra processos |
 | `atlas crew export <ssh-target> [-o FILE] [--crewmate ID]… [--with-secrets] [--port N]` | grava um arquivo compactado com os crewmates ([Fazer backup e mover crewmates](#fazer-backup-e-mover-crewmates)) |
@@ -78,6 +78,8 @@ Rode `atlas crew status <ssh-target>` depois para conferir.
 | `atlas crew pair <ssh-target> [--port N]` | pareia um celular direto com este crew server, de qualquer máquina que acesse o servidor por SSH: imprime um QR code, um código de 6 dígitos e o link (`atlas hostd --mobile-pair` como usuário crew; um código, 120 s). O celular guarda o servidor na lista de computadores, então o crew funciona com o seu computador desligado ([Atlas Mobile](mobile.md#parear-um-crew-server-sem-nenhum-computador-no-meio)) |
 | `atlas crew browsers install <ssh-target> [--port N] [--identity KEY]` | instala o chromium e o webkit do Playwright para a ferramenta `capture` ([Capturas](#capturas)); idempotente. Nada do npm roda como root: o sudo é usado só em um `apt-get install` que o atlas monta sozinho |
 | `atlas crew browsers status <ssh-target> [--port N] [--identity KEY]` | uma linha por item que falta (node anterior à versão 20 ou ausente, npm, runner, pacote ou versão do Playwright, cada navegador, um navegador que não inicia por falta de bibliotecas); diz que está pronto e sai com 0 quando nada falta, sai com 1 caso contrário |
+| `atlas crew voice install <ssh-target> [--model small\|base] [--port N] [--identity KEY]` | compila o whisper.cpp fixado e baixa o modelo dele para o [ditado](#ditado); idempotente. Cada download é conferido contra um sha256 fixado antes de ser usado; o sudo só é usado para um `apt-get install` de cmake, um compilador C++, make e ffmpeg, quando faltam. `atlas crew install --voice` faz o mesmo |
+| `atlas crew voice status <ssh-target> [--port N] [--identity KEY]` | uma linha por item que falta (binário, a versão dele, nenhum modelo, ffmpeg, um binário que não inicia); diz que está pronto e sai com 0 quando nada falta |
 
 ### Um só caminho SSH
 
@@ -178,13 +180,13 @@ Você gerencia crewmates pelo Atlas Desktop, pelo Atlas Mobile, pelo Telegram ou
 - **name**: de 1 a 40 caracteres.
 - **role**: até 2000 caracteres, adicionado antes de cada tarefa como contexto.
 - **agent**: `omp`, `claude`, `codex` ou `opencode`, com modelo e provedor opcionais.
-- **approval**: `ask` (segura cada chamada de ferramenta até você responder) ou `auto` (permite tudo sem perguntar). Onde o `ask` funciona depende de como o crewmate roda. Em um terminal (sem `engine` definido), o Claude Code e o Codex perguntam pelo hook deles, e o omp por uma extensão de aprovação que o Atlas grava na pasta do crewmate (nega por padrão: um erro ou timeout nega a chamada). Com um `engine` headless, só `claude` e `omp` conseguem perguntar; os engines `codex` e `opencode` rodam sem supervisão, então o servidor recusa `ask` para eles (`approval_supported: false` em `crewmate_list`).
+- **mode** (`approval` em versões antigas): `ask`, `edits` ou `bypass`; veja [Modos de permissão](#modos-de-permissão). Onde funciona depende de como o crewmate roda. Em um terminal (sem `engine` definido), o Claude Code e o Codex perguntam pelo hook deles, e o omp por uma extensão de aprovação que o Atlas grava na pasta do crewmate (nega por padrão: um erro ou timeout nega a chamada). Com um `engine` headless, só `claude` e `omp` conseguem perguntar; os engines `codex` e `opencode` rodam sem supervisão, então o servidor aceita só `bypass` para eles (`approval_supported: false` em `crewmate_list`).
 - **project**: uma URL Git (clonada uma vez por servidor e baixada com checkout como uma worktree por crewmate) ou um caminho no servidor. Pasta de trabalho padrão: `<crewmate dir>/work`.
 - **memory**: um arquivo markdown (até 64 KiB) que o agente lê e edita entre tarefas.
 - **look**: veja [Aparência do crewmate](#aparência-do-crewmate).
 - **automations**: veja [Automações](#automações). As rotinas agendadas antigas (cron de 5 campos) continuam rodando.
 
-Configurações do crew (`crew_settings_get` / `crew_settings_set`): `short_replies` (ativado por padrão) resume respostas longas, opcionalmente com `short_replies_model`; `max_agents` (padrão 4, no mínimo 1) é quantos agentes o servidor roda ao mesmo tempo; `agent_memory_max` (em bytes, no mínimo 64 MiB, `0` volta ao padrão) é a memória que um agente pode usar ([abaixo](#um-usuário-linux-por-crewmate)). `crew_settings_get` também retorna `memory_cap`: `{available: true, bytes}` ou `{available: false, reason}`. Ficam salvas em `<hostd dir>/crew.json`.
+Configurações do crew (`crew_settings_get` / `crew_settings_set`): `short_replies` (ativado por padrão) resume respostas longas, opcionalmente com `short_replies_model`; `max_agents` (padrão 4, no mínimo 1) é quantos agentes o servidor roda ao mesmo tempo; `agent_memory_max` (em bytes, no mínimo 64 MiB, `0` volta ao padrão) é a memória que um agente pode usar ([abaixo](#um-usuário-linux-por-crewmate)); `default_approval` e `allow_bypass` ([Modos de permissão](#modos-de-permissão)). `crew_settings_get` também retorna `memory_cap`: `{available: true, bytes}` ou `{available: false, reason}`. Ficam salvas em `<hostd dir>/crew.json`.
 
 Um novo crewmate começa com uma conversa curta de configuração (projeto, role, login do engine) no chat dele.
 
@@ -236,7 +238,27 @@ Uma tarefa pode levar até **4 imagens** de no máximo **5 MiB** cada (png, jpeg
 
 Com `approval: ask`, uma chamada de ferramenta pausa a tarefa e espera até 30 minutos por `agent_approve {pane, req, allow}`; a chave do painel é `crew:<crewmate id>:<task id>`. A espera só começa quando alguém pode responder agora: um cliente desktop conectado, um celular conectado ou um chat do Telegram vinculado. Só um token de push registrado não conta (o celular pode estar offline). Caso contrário, o prompt é negado na hora, então configure um deles antes de contar com um crewmate `ask`. Claude Code e Codex: rode `atlas setup claude-code|codex --apply` de novo, uma vez, para o hook deles usar o timeout correspondente de 1805 s.
 
-Só um **allow** explícito executa a ferramenta. Qualquer outro fim a bloqueia e diz qual foi: o dono negou, ninguém respondeu a tempo (o prompt é auditado como `approval_decision` `timeout` / `none`) ou a própria requisição falhou. Um crewmate `claude` headless segue a mesma regra: um prompt que ninguém respondeu é uma negação ("nobody answered the approval request"), nunca um allow. As esperas formam uma cadeia, cada uma durando mais que a de dentro, para que a mais interna diga o que aconteceu: o hostd espera 30 minutos, a extensão de aprovação do omp 60 s a mais, e o omp 60 s a mais que isso. O omp impõe um limite próprio a todo handler `tool_call` de extensão (`extensionHandlers.toolCallTimeoutMs`, 30 s por padrão, e um `fetch` ao hostd não é um dos diálogos que ele desconta), então o overlay `--config` que o Atlas passa ao omp de cada crewmate o aumenta (`omp-crew.yml` no diretório do crewmate, reescrito no próximo turno); antes disso, as aprovações de um crewmate omp respondidas depois de 30 s falhavam com `omp-approval.ts timed out after 30000ms` mesmo quando o dono permitia. Um omp que não conhece a configuração (anterior à linha 18.4, onde ela existe) mantém os 30 s.
+Só um **allow** explícito executa a ferramenta. Qualquer outro fim a bloqueia e diz qual foi: o dono negou, ninguém respondeu a tempo (auditado como `approval_decision` com `decision: deny` e `source: timeout`, e o dono é avisado) ou a própria requisição falhou. Um crewmate `claude` headless segue a mesma regra: um prompt que ninguém respondeu é uma negação ("nobody answered the approval request"), nunca um allow. As esperas formam uma cadeia, cada uma durando mais que a de dentro, para que a mais interna diga o que aconteceu: o hostd espera 30 minutos, a extensão de aprovação do omp 60 s a mais, e o omp 60 s a mais que isso. O omp impõe um limite próprio a todo handler `tool_call` de extensão (`extensionHandlers.toolCallTimeoutMs`, 30 s por padrão, e um `fetch` ao hostd não é um dos diálogos que ele desconta), então o overlay `--config` que o Atlas passa ao omp de cada crewmate o aumenta (`omp-crew.yml` no diretório do crewmate, reescrito no próximo turno); antes disso, as aprovações de um crewmate omp respondidas depois de 30 s falhavam com `omp-approval.ts timed out after 30000ms` mesmo quando o dono permitia. Um omp que não conhece a configuração (anterior à linha 18.4, onde ela existe) mantém os 30 s.
+
+### Modos de permissão
+
+O **modo** de um crewmate é o que o agente dele pode fazer sem perguntar a você, e você o troca enquanto ele trabalha (Atlas Desktop, Atlas Mobile, `/mode` no Telegram ou `crewmate_set_approval {id, mode}`):
+
+| Modo | O que roda sem perguntar |
+|---|---|
+| `ask` | nada |
+| `edits` (Aceitar edições) | edições de arquivo dentro da árvore de trabalho do crewmate |
+| `bypass` | toda chamada de ferramenta, exceto as barreiras abaixo |
+
+A troca vale a partir da **próxima chamada de ferramenta**, e uma chamada que já espera é decidida de novo na hora (a auditoria mostra `source: mode` e quem trocou). Só um cliente do dono troca: Desktop, Mobile (escopo `approve`) e o chat do Telegram vinculado do dono; o processo do próprio crewmate (um `atlas` rodando dentro do agente se identifica como `crewmate:<id>`) é recusado com `crew.approval.forbidden`, e as rotas de hook que um token de crewmate abre não têm esse comando. O `crew_settings` tem `default_approval` (o modo em que um novo crewmate começa, padrão `ask`) e `allow_bypass` (padrão `true`): desligado, o Bypass é recusado em todo lugar e todo crewmate nele volta para `ask`. O antigo `approval: ask|auto` ainda é lido (`auto` é `bypass`) e o `crewmate_list` ainda o envia (`auto` exatamente quando `mode` é `bypass`).
+
+**O hostd decide cada chamada.** Um engine que consegue perguntar (`claude`, `omp`) sempre é iniciado em modo ask, de forma explícita, e nunca com flag de bypass: o claude com `--permission-mode default --permission-prompt-tool atlas:approve`, o omp com a extensão de aprovação e nunca `--auto-approve`, então nenhum dotfile o amplia e toda chamada que precisa de decisão chega ao hostd. Para cada chamada o hostd aplica, nesta ordem: as **barreiras**; o **modo atual** do crewmate; as **permissões da tarefa**; senão retém a chamada para uma pessoa, que pode **Permitir uma vez** (a resposta principal), **Permitir nesta tarefa** (`scope: task`: o mesmo tipo de chamada, só nessa tarefa, nunca na próxima; edições de arquivo na árvore contam como um tipo, um comando é o comando exato) ou **Negar**, com um `comment` opcional que é entregue ao agente. Não existe "sempre". Se ninguém responde em 30 minutos, a chamada é negada e o dono é avisado (um push `crewmate_approval_unanswered` e o Telegram); uma chamada sobre a qual ninguém pode ser consultado é negada na hora. Um agente de terminal sem `engine` também não é iniciado com flags de bypass; o hook dele é respondido pela mesma decisão.
+
+**Barreiras que nenhum modo remove** (a chamada fica retida no `bypass` também, e o prompt diz qual barreira): caminhos protegidos (internos do `.git`, `.claude/`, `.omp/`, `.codex/`, `.mcp.json`, arquivos rc de shell, `.env*`, arquivos de chave como `*.pem`, `id_*`, `.ssh/`), verificados no caminho que a ferramenta nomeia e em cada palavra de um comando; e tarefas iniciadas pelo GitHub ou por um webhook (`no_auto`), a menos que a automação defina `allow_auto`. Um caminho está dentro da árvore depois de resolver `..` e links; uma URL ou um caminho `~` nunca está.
+
+**O que o agente recebe.** Um fragmento curto (o modo, o que roda sem perguntar, as barreiras, "se negado, ache um caminho mais seguro ou pergunte ao usuário") vai antes do prompt de todo turno cujo agente não foi avisado do modo atual: o primeiro turno de uma tarefa e de novo quando o modo mudou. O omp também o recebe na hora, como mensagem de direcionamento que a extensão de aprovação injeta com a próxima decisão; o claude, cuja ferramenta de permissão não tem esse canal, recebe no turno seguinte, ou no motivo da próxima negação. Uma negação sempre leva o motivo e o comentário da pessoa (o `message` do claude, o motivo do bloqueio do omp). O comentário de um **allow** chega ao omp como mensagem de direcionamento e ao claude no turno seguinte. Engines que não conseguem perguntar (`codex`, `opencode`) rodam sem perguntar, como antes: `approval_supported` é `false`, só `bypass` é aceito, e as tarefas deles são recusadas quando o crew não permite Bypass.
+
+**Agentes de terminal** (um crewmate sem `engine`) são iniciados do mesmo jeito: um agente que consegue perguntar nunca recebe as flags de bypass, e o modo ask dele é dito de forma explícita pelo `ask_args` em `crates/atlas-core/data/agents.json` (`claude --permission-mode default`), então um `defaultMode` nas configurações do próprio Claude do usuário não amplia o que ele pode fazer sem perguntar. O hook dele é respondido pela mesma decisão de um engine.
 
 ### Pausar e retomar
 
@@ -290,9 +312,61 @@ O Crew board (abaixo) mostra todas as tarefas na fila, em andamento, em espera e
 
 Crewmates que clonam repositórios privados ou abrem PRs precisam do `gh` com login feito no crew server. No Atlas Desktop, Configurações → Atlas Crew → GitHub inicia um login por código de dispositivo (`crew_github_login_start` e depois `crew_github_login_poll`); o hostd instala o `gh` na home do usuário do crew se ele não existir e configura o git para usá-lo. `crew_github_status` retorna `{installed, login}`, `crew_github_logout` o remove. Uma tarefa que precisa do GitHub espera em uma ação **Conectar o GitHub** e retoma quando o login termina (`crew_github_connect_resume`).
 
+### GitHub App
+
+Em vez do login do `gh`, um crew server pode ter o seu próprio **GitHub App**. Crewmates e o hostd passam então a falar com o GitHub como `<slug>[bot]`, com tokens de instalação de vida curta, limitados aos repositórios que você escolheu, e nenhum login pessoal é compartilhado. O `gh` continua sendo a opção simples: um repositório fora de todas as instalações ainda o usa.
+
+**Criar** (Atlas Desktop, Configurações → Atlas Crew → GitHub → Criar GitHub App; o desktop usa os comandos abaixo). Você escolhe sua conta ou uma organização, o GitHub mostra o app já preenchido, você confirma e depois escolhe os repositórios na página de instalação (`https://github.com/apps/<slug>/installations/new`). O código que o GitHub devolve vale uma hora e funciona uma única vez.
+
+| Comando (só o dono) | O que faz |
+|---|---|
+| `crew_github_app_manifest {owner_kind: "user" \| "org", org?, workflows?, server_name?}` | o manifesto a enviar ao GitHub e para onde: `{manifest, post_url, server_name}`. O desktop acrescenta `redirect_url` e `state`, porque o listener local dele é o dono desses dois |
+| `crew_github_app_convert {code}` | `POST /app-manifests/{code}/conversions`; guarda a chave; responde com o status abaixo |
+| `crew_github_app_status` | `{app: null}`, ou `{app: {id, slug, name, owner, permissions, created_at, identity: {name, email}, installations: [{id, account, repository_selection}], installations_error?, webhook: {url, synced, verified_installations, failing}}}`. Nunca traz a chave nem o segredo do webhook. As instalações são lidas do GitHub com o JWT do app, então uma consulta repetida mostra a instalação assim que ela acontece |
+| `crew_github_app_remove` | apaga a chave guardada |
+
+As falhas trazem um código: `crew.github_app.exists` (já existe um app; checado antes de gastar o código), `crew.github_app.code_expired` (usado, ou passou de uma hora), `crew.github_app.conversion_failed {status}`, `crew.github_app.none`, `crew.github_app.forbidden` (um celular ou qualquer não dono; o celular também é recusado pelo escopo). Um `org` ou `code` inválido é `hostd.invalid_argument` com `reason: "invalid"`. Fixtures: `apps/desktop/src/lib/__fixtures__/crew-github-app.json`, escrito por um hostd real (`UPDATE_FIXTURES=1 cargo test -p atlas-host crew::tests::github_app`).
+
+**O manifesto** pede o mínimo que o crew usa: Contents, Pull requests e Issues com escrita; Checks, Actions e Metadata só leitura. Eventos: comentários de issue, issues, pull requests, comentários de revisão, check runs, workflow runs e releases. `public: false` (o app pertence a este servidor). O webhook fica desligado (`active: false`, com a página do projeto como URL obrigatória), a menos que o crew tenha uma URL pública ([Webhooks](#webhooks)); aí ele fica ligado e envia para `<public_url>/github/webhook`. **Workflows é opcional** (`workflows: true` acrescenta `workflows: write`): editar `.github/workflows` exige essa permissão à parte.
+
+**Onde a chave fica.** `<crew dir>/github-app.json`, só do dono (0600), gravado de forma atômica pelo hostd: id do app, client id, slug, chave privada e segredo do webhook. Nunca o `secrets.json` (que é do crewmate), nunca uma variável de ambiente, nunca uma resposta, nunca o log de auditoria. O desktop só carrega o código de uso único. O client secret do GitHub não é guardado.
+
+**Tokens.** O hostd assina o JWT do app (RS256 com `ring`; `iss` é o **client id**, `iat` 60 s no passado, `exp` 9 minutos à frente) e acha a instalação de um repositório (`GET /repos/{owner}/{repo}/installation`; um acerto vale por 10 minutos, uma falha por um). Ele gera um token de instalação por repositório (`repositories: [repo]`, só as permissões mínimas que o app tem) e o mantém só na memória até **5 minutos antes de expirar**. Tokens nunca vão para o disco; a auditoria registra `github_token_minted {repo, expires_at}`, `github_app_created {slug, owner}`, `github_app_removed` e `github_app_fallback {repo, via: "gh"}` uma vez por repositório que nenhuma instalação cobre.
+
+**Quem responde.** Os gatilhos do GitHub, o comentário de progresso, a busca do PR e as guardas passam todos por uma única `GithubApi` (`crew/github/app/api.rs`): um repositório que uma instalação cobre é respondido com o token dela (o login do próprio crew passa a ser `<slug>[bot]`, então os comentários dele nunca iniciam uma tarefa), qualquer outro cai para o `gh`, e um repositório fora de todas as instalações sem login do `gh` falha com a mensagem do próprio `gh`. Se não der para pedir um token ao GitHub, a chamada falha: a identidade nunca é trocada em silêncio para o login do `gh`.
+
+**Git de um crewmate.** O ambiente do agente não leva token. Leva entradas `GIT_CONFIG_*` que fazem o git consultar um credential helper, `atlas crew git-credential`, e `GIT_AUTHOR_*` / `GIT_COMMITTER_*` com o bot (`<slug>[bot]`, `<id>+<slug>[bot]@users.noreply.github.com`). A cada operação que precisa de senha para `https://github.com` o helper pergunta ao hostd pelo endpoint de hook do próprio crewmate (`POST /crew/<id>/git_credential`, aberto só ao token daquele crewmate e só a partir de uma tarefa dele), e o hostd responde `username=x-access-token` com um token do repositório que o git citou. O helper não guarda nada, então um crewmate nunca segura um token além de uma operação, e um push uma hora depois do início da tarefa continua funcionando. Ele só responde `github.com` por https. Um crewmate com um segredo `GITHUB_TOKEN` próprio fica com ele. Um crewmate que é seu próprio usuário Linux nunca recebe o login do `gh` do usuário do crew como segundo helper.
+
+**`gh` em um crewmate.** Um `gh` fica em primeiro no `PATH` do crewmate: um link para o binário `atlas` (`<crew dir>/shims/gh`, colocado no começo do `PATH` de um crewmate que não é o próprio usuário Linux; o `atlas crew install` cria o link no diretório de engines do spawn helper para os demais, então rode-o de novo em um servidor existente). Executado como `gh`, o `atlas` descobre o repositório que o comando usa (`-R`/`--repo`, `GH_REPO`, o `repos/<owner>/<repo>` de um caminho de `gh api`, ou o `origin` do diretório atual nos comandos que agem sobre um repositório), pede ao hostd um token para ele pela mesma rota de hook do helper do git, e roda o `gh` de verdade com `GH_TOKEN` definido só naquele processo filho. O token não fica no ambiente do crewmate nem em disco. Ele roda o `gh` de verdade sem mexer em nada quando não há app, quando nenhuma instalação cobre o repositório, para um comando que não nomeia repositório (`gh auth status`, `gh api user`, `gh api graphql`), para outro host (`GH_HOST`) e quando o crewmate já tem um `GH_TOKEN` ou `GITHUB_TOKEN` próprio.
+
+**Autoria.** Uma tarefa iniciada por um evento do GitHub registra quem o provocou (`origin.requester`). O ambiente do agente passa então a levar `ATLAS_CO_AUTHOR` (`<login> <id>+<login>@users.noreply.github.com`, que não é segredo) e `core.hooksPath` apontando para um diretório que o hostd grava (`<crewmate dir>/githooks`, ou `crew-runtime/githooks` quando isolado; o agente não consegue alterá-lo). O hook `commit-msg` dele acrescenta `Co-authored-by: <requester>` a uma mensagem de commit que não o tenha e depois roda o hook do próprio repositório com esse nome; todos os outros hooks do lado do cliente são um despachante que roda os do repositório (em `.git/hooks`, ou no `core.hooksPath` que o repositório define, como o husky faz). `git commit --no-verify` o ignora, como ignora todo hook de commit. O prompt da tarefa só diz que a identidade já está definida e que um hook acrescenta o trailer.
+
+**Limites.** O checkout e o fetch de um crewmate isolado usam um token de instalação só naquele processo do git (no ambiente limpo do spawn helper), e uma tarefa dessas não espera pelo login do `gh` quando o app cobre o projeto. Um crewmate que não é isolado tem o checkout feito pelo git do próprio hostd, que ainda usa o login do `gh` para clonar. O link do `gh` no diretório de engines é o que um crewmate isolado executa; um servidor instalado antes dele precisa de `atlas crew install` de novo.
+
+### Webhooks
+
+Por padrão, uma automação do GitHub consulta o repositório a cada 2 minutos. Quando o GitHub consegue alcançar o servidor do crew, o webhook do App entrega cada evento na hora. A consulta continua sendo o padrão: os webhooks só ligam quando você dá ao crew uma **URL pública**.
+
+**A URL pública é sua, não do Atlas.** O servidor de hooks escuta só em loopback, e o Atlas nunca o expõe. Coloque a sua própria frente HTTPS na frente dele e encaminhe `POST <public_url>/github/webhook` para `http://127.0.0.1:47631/github/webhook` no servidor (a porta de hooks, veja o [Modelo de segurança](#modelo-de-segurança)): um proxy reverso que você já usa (Caddy, nginx), um Cloudflare Tunnel ou o Tailscale Funnel. Depois configure, como dono: `crew_settings_set {public_url: "https://crew.example.com"}` (vazio desliga os webhooks). Ela precisa ser `https://`, com host e sem credenciais, query ou fragmento, com até 200 caracteres: os payloads do GitHub atravessam a internet. Em seguida o hostd aponta o webhook do App para ela (`PATCH /app/hook/config`, com um segredo que ele cria quando o app não tem um) e `crew_github_app_status` mostra `webhook.synced`.
+
+**Não use em produção:** smee.io (um terceiro vê cada payload) e `gh webhook forward` (uma ferramenta de desenvolvimento, presa ao seu login).
+
+**O que uma entrega atravessa**, cada passo antes do próximo:
+1. A assinatura: `X-Hub-Signature-256` precisa ser `sha256=` + o HMAC-SHA256 em hex do corpo **cru** com o segredo do webhook, comparado em tempo constante. Nada é lido, registrado ou consultado antes de ela passar. Uma entrega sem assinatura ou com assinatura errada recebe `401` e uma linha de auditoria `github_webhook_refused {reason, count}` (no máximo uma por motivo a cada minuto, com a contagem desde a anterior). Sem app ou sem segredo, a rota responde `404`.
+2. O id da entrega (`X-GitHub-Delivery`) é registrado em `<crew dir>/github-deliveries.jsonl` (os últimos 1000, no disco antes de qualquer trabalho, para um restart não esquecê-los). Uma repetição recebe `200` e não faz nada (`github_webhook_duplicate`).
+3. O hostd responde `202` na hora e faz o trabalho numa tarefa própria: o GitHub conta como falha uma resposta que demora mais de 10 s e não a reenvia. Com o crew pausado ele responde `503` e não registra nada, para o GitHub mostrar a falha.
+
+**Mesmo evento, mesma tarefa.** Uma entrega passa por `decide`, a mesma função da consulta, então ela inicia exatamente a tarefa que a consulta iniciaria. O `author_association` do payload responde à checagem de autor (sem consulta REST); autores sem permissão de escrita são ignorados, a menos que a automação permita, como na consulta.
+
+**A consulta passa o bastão por repositório.** Um repositório só deixa de ser consultado quando o webhook o cobre: uma instalação cobre o repositório e já entregou pelo menos um evento com assinatura correta. Os outros repositórios continuam sendo consultados. Se as entregas falharem por 30 minutos, o hook é marcado como falhando e todos os repositórios voltam a ser consultados até chegar uma entrega assinada; a consulta que assume pula o que o webhook já tratou. Estado: `<crew dir>/github-webhook.json` (sem nenhum segredo).
+
+**Entregas perdidas** são reconciliadas a cada 5 minutos: o hostd lê `GET /app/hook/deliveries` e reenvia as que falharam nos últimos 3 dias (no máximo 20 por passada, 5 tentativas cada, com espera a partir de 5 minutos). Uma entrega que falhou num período que a consulta cobriu não é reenviada, então nada dispara duas vezes.
+
+O segredo do webhook fica em `github-app.json`, junto da chave privada (0600), e em nenhum outro lugar: nunca numa resposta, numa linha de log ou numa entrada de auditoria.
+
 ### GitHub: entrada e saída
 
-Um crewmate pode receber trabalho do GitHub e responder lá, como o app do Claude no GitHub faz, a partir do seu próprio servidor. Tudo passa pelo `gh` como o usuário do crew, com o login acima; nada é enviado à CodeAtlas.
+Um crewmate pode receber trabalho do GitHub e responder lá, como o app do Claude no GitHub faz, a partir do seu próprio servidor. Tudo passa pelo `gh` como o usuário do crew, com o login acima, ou pelo [GitHub App](#github-app) nos repositórios que ele cobre; nada é enviado à CodeAtlas.
 
 **Como configurar.** Faça o login do `gh` (acima), depois adicione uma automação de GitHub ao crewmate (Configurações → Automações → GitHub, ou `crewmate_triggers_set`) com o repositório e os eventos que você quer:
 
@@ -344,12 +418,105 @@ Os chats vinculados recebem os resultados das tarefas (truncados em 4000 caracte
 | Comando | O que faz |
 |---|---|
 | `/crew` | lista os crewmates e seus agentes |
+| `/mode` | lista o [modo de permissão](#modos-de-permissão) de cada crewmate; `/mode [<nome do crewmate>] <ask\|edits\|bypass>` troca o de um (o único crewmate, quando nenhum é nomeado). Só chats vinculados recebem resposta, e a troca é auditada com `telegram:<chat id>` como dispositivo |
 | `/task <crewmate name> <text>` | enfileira uma tarefa |
 | `/ui <message>` | a mesma mensagem para uma [tarefa de UI](#tarefas-de-ui-e-prova): `/ui /task <name> <text>`, ou `/ui <text>` para um único crewmate; também vale no início da legenda de uma foto |
 | texto simples | vai para o único crewmate quando existe exatamente um |
 | uma foto | vira uma tarefa com a imagem: a legenda é o prompt (`/task <name> <text>` escolhe o crewmate; sem isso, o único crewmate assume a tarefa; sem legenda: "Look at the attached image."). O maior tamanho da foto no Telegram é baixado pela Bot API (`getFile`), um arquivo acima de 5 MiB é recusado sem ser baixado, e o chat recebe o motivo da recusa. Veja [Imagens nas tarefas](#imagens-nas-tarefas) |
+| uma mensagem de voz | só de um chat vinculado: transcrita no crew server e devolvida com os botões **Send as task**, **Edit** e **Cancel**; nada entra na fila antes de Send. Veja [Ditado](#ditado). Enquanto um pedido de permissão ou um card de escolha desse crewmate espera, a mensagem o responde, pelas [regras de resposta por voz](#respostas-por-voz-aos-cards) |
 
 O Telegram vê o token do seu bot e as mensagens acima. Nada vai para a CodeAtlas.
+
+## Ditado
+
+Fale com um crewmate em vez de digitar. Um microfone no campo de mensagem do Atlas Desktop e do Atlas Mobile, e mensagens de voz no Telegram, colocam o que você disse **no campo de mensagem** (ou, no Telegram, em uma mensagem com botões). **Nada chega a um agente até você apertar Enviar**: o ditado só preenche o rascunho, e Esc (Desktop) ou o X (Mobile) restaura o que você tinha. Uma tarefa ditada avisa o agente uma vez: "This request was dictated by voice; expect homophones in identifiers and file names." (`crewmate_task {dictated: true}`); essa linha nunca aparece como palavras suas.
+
+### Onde a fala é reconhecida
+
+| Onde | Engine | Áudio |
+|---|---|---|
+| Atlas Desktop e Telegram | **whisper.cpp no crew server**, como usuário crew | vai para o seu crew server e para mais nenhum lugar; apagado quando o texto é gerado |
+| Atlas Mobile | o reconhecedor do próprio celular, no aparelho | nunca é enviado ao hostd. O reconhecedor do sistema, que pode enviar áudio a um servidor, só é usado se você optar, e aparece identificado como tal |
+| Opcional | **seu próprio endpoint compatível com OpenAI** (`POST <base_url>/audio/transcriptions`) com uma chave dos segredos do crew | vai para o host que você nomeou, e os apps avisam: o rótulo do engine sempre o nomeia |
+
+A Web Speech API não é usada (o WebKitGTK não tem, a do WebView2 usa uma nuvem da Microsoft, a do WKWebView é parcial); por isso o desktop captura o áudio nativamente e o crew server reconhece.
+
+**O engine em uso é sempre mostrado** ao lado do microfone (`crew_voice_status` dá o `label`, por exemplo `whisper.cpp (small)`), e cada transcrição diz qual engine a fez. **Um engine que falha é um erro, nunca uma troca silenciosa**: o hostd responde `crew.voice.engine_failed` com o nome do engine e as palavras dele, e não tenta o outro engine, porque quem escolheu "nas minhas máquinas" nunca deve descobrir que o áudio foi para uma nuvem.
+
+### Ligar
+
+A voz fica **desligada** até o dono ligá-la. São duas coisas: o engine no servidor e a chave geral do crew.
+
+```bash
+# o engine: compila o whisper.cpp no servidor (alguns minutos) e baixa o modelo
+atlas crew voice install me@my-server            # modelo small (padrão); --model base é menor e mais rápido
+# ou ao instalar um servidor
+atlas crew install me@my-server --voice
+```
+
+Depois ligue a chave no Atlas Desktop (**Configurações → Atlas Crew**, no servidor) ou com `crew_voice_set {enabled: true}` (só o dono: Desktop, a CLI e o chat do Telegram vinculado do dono; um celular ou o processo de um crewmate recebe `crew.voice.forbidden`). Com a chave desligada toda transcrição é recusada com `crew.voice.off`; sem engine, `crew.voice.not_installed`. `crew_voice_set {engine}` escolhe `{"kind": "whisper_cpp", "model": "base"|"small"}` ou `{"kind": "openai_compatible", "base_url": "https://…", "model": "whisper-1", "key_secret": "<nome do segredo>"}`. A chave é lida pelo nome nos segredos do crew (`crewmate_secret_set`); ela nunca aparece em uma resposta, no `crew.json` nem na auditoria, e o texto de erro do provedor nunca é mostrado (ele pode repetir a chave). `http://` só é aceito para `127.0.0.1`, `localhost` ou `::1`, então a chave nunca atravessa uma rede em texto claro.
+
+### Como o whisper.cpp é instalado
+
+O whisper.cpp não publica binários para Linux, e `curl | sh` não é opção; então `atlas crew voice install` **compila no seu servidor a versão fixada do código-fonte**. As alternativas eram um binário pronto de terceiros (sem nada contra o que verificá-lo) e um pacote da distro (antigo e ausente em várias); compilar de um tarball conferido por hash é o único caminho em que cada byte é verificável e o resultado combina com a CPU do servidor.
+
+- **Fixado e verificado.** O código-fonte (`WHISPER_SOURCE_URL`, versão 1.9.5) e cada modelo (`ggml-small.bin`, `ggml-base.bin`, baixados em um commit fixo de `ggerganov/whisper.cpp` no Hugging Face) têm um sha256 compilado no atlas (`atlas_host::crew::voice`). O `sha256sum -c` roda antes de qualquer coisa ser descompactada, movida ou executada; uma divergência apaga o arquivo e interrompe a instalação. Os downloads são só https (também nos redirecionamentos, TLS 1.2 ou mais novo). Mudar de versão é editar essas constantes.
+- **O usuário crew faz tudo, menos um comando.** Download, descompactação, build com `cmake` (estático, só o `whisper-cli`, no máximo 4 jobs) e o download do modelo rodam como usuário crew; o código do whisper.cpp nunca roda como root. O root roda só `apt-get install -y --no-install-recommends` de nomes de uma lista fixa (`cmake`, `g++`, `make`, `ffmpeg`), e só para o que falta. Um host sem `apt-get` recebe a lista das ferramentas a instalar à mão.
+- **Layout.** No diretório do hostd, `<crew home>/.atlas/voice/`: `bin/whisper-cli`, `models/ggml-<nome>.bin`, `VERSION` (a versão de que o binário foi compilado). A instalação é idempotente: um binário da versão fixada e um modelo cujo checksum confere são mantidos; uma versão nova recompila.
+- **Multilíngue.** Os dois modelos são os multilíngues, então inglês e português funcionam (`language`: `en`, `pt` ou `auto`). `small` (cerca de 470 MB em disco) é o padrão; `base` (cerca de 140 MB) é mais rápido e mais impreciso. Uma transcrição roda por vez, com prazo de 15 minutos.
+- **ffmpeg** só serve para transformar uma mensagem de voz do Telegram (Opus em Ogg) no áudio de 16 kHz que o engine lê.
+
+### O áudio e o limite de 5 minutos
+
+O formato é fixo: um arquivo WAV de **16 kHz, mono, PCM de 16 bits com sinal**, enviado em partes de até 512 KiB (`crewmate_voice_put`), a primeira com um cabeçalho canônico de 44 bytes. Um gravador que ainda grava escreve `0xFFFFFFFF` nos tamanhos; o hostd mede o áudio pelos bytes que recebeu, nunca pelo cabeçalho.
+
+- **No máximo 300 segundos** nesse formato (9.600.000 bytes de PCM). Uma parte que passaria do limite é recusada com `crew.voice.too_long` e o envio mantém o que já tem, então **chegar ao limite ainda transcreve o que foi dito e não descarta nada**. Qualquer coisa fora do formato declarado é `crew.voice.bad_audio` e é removida.
+- **Apagado após o uso.** Uma transcrição final apaga o áudio aconteça o que acontecer: o texto, uma falha do engine ou um cliente que sumiu. Um envio que ninguém terminou é apagado após **10 minutos** sem uma parte, e cada início do crew server remove o que uma queda deixou. No máximo 4 ditados inacabados por vez. O áudio nunca é copiado para o diretório de um crewmate, nunca vai para log, nunca vai para a auditoria.
+- **Texto parcial.** `crewmate_transcribe {partial: true}` transcreve os últimos 30 segundos até agora, para a prévia esmaecida ao vivo, e deixa o envio aberto; é no melhor esforço e é pulado enquanto o engine está ocupado. Sem `partial` o envio precisa estar completo (`last: true`) e é consumido.
+
+### Vocabulário de código
+
+- **Dicas** vão ao engine como o prompt inicial dele, são automáticas e curtas (no máximo 400 caracteres): o nome do repositório e a branch do projeto, os nomes dos crewmates, e os arquivos e símbolos da tarefa mais recente **deste crewmate**. O texto de tarefa de outro crewmate nunca é usado: só o nome dele, que você fala em voz alta, é uma dica.
+- **Substituições** são uma tabela aplicada depois da transcrição, determinística e só por palavras inteiras, nunca dentro de uma URL: "src slash main dot rs" vira `src/main.rs`, "foo underscore bar" vira `foo_bar`. Os padrões cobrem inglês (slash, backslash, dot, underscore, dash, hyphen, colon, double colon, semicolon, at sign) e português (barra, barra invertida, ponto, underline, sublinhado, traço, hífen, dois pontos, ponto e vírgula, arroba); a frase mais longa vence. `crew_voice_set {replacements: [{say, write, lang}]}` acrescenta linhas suas (`lang` é `en`, `pt` ou `any`; uma linha com as mesmas palavras e o mesmo idioma substitui a padrão) e `crew_voice_status` devolve a tabela efetiva. `raw` em uma resposta é o texto antes da tabela, `text` depois dela.
+
+### Mensagens de voz no Telegram
+
+Uma mensagem de voz de um chat vinculado é transcrita pelo engine do crew e devolvida como texto, com o nome do engine e três botões. **Send as task** enfileira uma tarefa (marcada como ditada), **Edit** pede o texto corrigido na sua próxima mensagem e o devolve de novo (ele nunca é enviado sozinho), **Cancel** descarta. Uma mensagem de qualquer outro chat é ignorada como qualquer outra; uma de mais de 20 MB (o limite do `getFile` da Bot API) é recusada sem ser baixada; uma de mais de 5 minutos é transcrita até o limite e o eco avisa. Com vários crewmates, coloque a legenda `/task <nome>` na mensagem. O eco espera na memória por uma hora; um toque depois de um reinício diz que ele não espera mais. O arquivo de áudio é apagado antes de o eco ser enviado.
+
+### Privacidade
+
+Com o whisper.cpp o áudio vai do seu dispositivo para o **seu crew server** e é apagado lá assim que o texto existe; nada vai para a CodeAtlas nem para terceiros. Com um endpoint hospedado ele vai para esse host, sob os termos desse provedor: os apps mostram o rótulo ao lado do microfone e o `crew_voice_status` o nomeia. No Telegram, a própria mensagem de voz passa pelos servidores do Telegram antes de chegar ao crew server, como qualquer mensagem que você envia lá.
+
+## Respostas faladas e respostas por voz
+
+Uso de mãos livres, pelo celular: ouvir a resposta curta de um crewmate e responder aos cards dele por voz onde isso é seguro. A leitura em voz alta acontece **no aparelho** (a voz e a velocidade do sistema, no idioma da resposta); reconhecer o que você diz é o [ditado](#ditado). O hostd é dono das regras que decidem o que uma resposta falada pode fazer, uma vez só, então nenhum cliente consegue enfraquecê-las.
+
+### Respostas faladas
+
+Desligadas por padrão. Um botão por aparelho, no chat de um crewmate, liga a leitura em voz alta das respostas dele; ligar também define `spoken_replies: true` nesse crewmate (`crewmate_update {id, spoken_replies}`, visível em `crewmate_list`), para que o agente dele escreva resumos. Desligar em um aparelho não limpa a flag: ela fica até você desligar nas configurações do crewmate.
+
+- **Enquanto a flag está ligada**, o hostd acrescenta uma linha às instruções do turno: terminar a resposta com `spoken: <uma ou duas frases curtas para ouvir, sem código, sem caminhos, sem markdown>`.
+- **Toda tarefa concluída tem `spoken`** (uma string, em `crewmate_tasks` e nos pushes de tarefa), calculada pelo hostd. A última linha `spoken:` do agente (em qualquer caixa, no início de uma linha, com no máximo 300 caracteres) é o resumo, e ela é **removida de toda cópia visível** da resposta: `result`, `reply`, `reply_full`, o Telegram e o comentário do GitHub. Sem ela, `spoken` são as primeiras frases da resposta visível, até 300 caracteres, sem blocos de código, código inline, URLs, marcas de markdown e caminhos de arquivo. Uma resposta que é só código dá `""`: nada é lido.
+- A resposta completa sempre continua como texto.
+
+### Respostas por voz aos cards
+
+`agent_approve_voice {pane, req, transcript, lang?}` responde a um pedido de permissão e `crewmate_action_answer_voice {id, task, transcript, lang?}` a um card de escolha. O cliente envia **só o que foi ouvido** (`lang` é `en`, `pt` ou ausente para as duas tabelas); o hostd decide o que isso significa e responde `{verdict, choice?, comment?, reason?}`:
+
+| `verdict` | Significado |
+|---|---|
+| `allow`, `deny` | decidido, como um toque decidiria (um allow vale **uma vez**, nunca para a tarefa) |
+| `choice` | o card foi respondido com `choice`, o texto da opção como o card o tem |
+| `comment` | nada foi decidido; `comment` é a transcrição, para o cliente oferecer como comentário a confirmar com um toque |
+| `needs_tap` | nada foi decidido; `reason` é `bypass`, `rail`, `destructive`, `untrusted`, ou `null` para um card que não é de escolha |
+| `unclear` | nada a ouvir, ou nenhuma opção bateu |
+
+- **Aprovações só aceitam frases exatas.** Depois de tirar espaços, passar para minúsculas, desconsiderar acentos e remover a pontuação final: `allow`, `approve`, `yes allow` / `deny`, `reject`, `no deny`; em português `permitir`, `permite`, `aprovar`, `aprova` / `negar`, `nega`, `recusar`, `recusa`. Qualquer outra coisa, mesmo que contenha uma dessas palavras (`allow but only this file`, `don't allow`, `allow allow`, `não permitir`, `permitir nesta tarefa`), é um `comment`. "Allow, but only once" não é uma aprovação: é oferecida como comentário, e só um toque decide.
+- **Algumas aprovações sempre precisam de um toque na tela**, porque são as que você precisa ver: qualquer pedido de um crewmate em **Bypass**; um pedido retido por um **rail** (um caminho protegido, ou uma tarefa iniciada pelo GitHub ou por um webhook); um comando **destrutivo** (`approval::destructive`, baseado em palavras como os rails: `rm -r`/`-rf`, `git push --force`/`-f`/`--force-with-lease`, `git reset --hard`, `git clean -f`, `git branch -D`, `DROP TABLE|DATABASE`, `TRUNCATE`, `mkfs`, `dd of=`, `chmod -R 777`, um redirecionamento para `/dev/sd*`; ele também lê cada string da chamada e um comando dado como lista). Cada recusa é auditada como `approval_voice_refused {reason, transcript, device}`. **Negar por voz é sempre permitido** (negar é seguro), exceto de uma fonte não confiável.
+- **Cards de escolha** são respondidos por uma palavra de número ou dígito (`1`, `one`, `um`, `first`, `primeira`), um ordinal (`the second`, `a segunda`) ou o rótulo da opção (sem diferenciar caixa e acentos, o rótulo inteiro ou um prefixo único de pelo menos 3 caracteres). Palavras ambíguas (um rótulo que também é o número de outra opção, dois rótulos com o mesmo prefixo, dois números) são `unclear`: o hostd nunca adivinha. Segredos, logins, recusas, provas e automações são `needs_tap`.
+- **Fontes não confiáveis não respondem nada.** Uma transcrição de um chat do Telegram que não é o chat vinculado do dono, ou do processo de um crewmate, é `needs_tap` com `untrusted`. Os clientes do dono (Desktop, um celular com o escopo `approve` para pedidos e `act` para cards) são confiáveis.
+- Uma resposta por voz decidida é auditada como um toque, mais `via: "voice"` e a transcrição (no máximo 200 caracteres): `approval_decision` para um pedido, `card_answered` para uma escolha.
+- **Telegram:** uma mensagem de voz do chat do dono, enquanto um pedido ou um card de escolha desse crewmate espera, passa pelas mesmas funções e nunca vira tarefa; o chat é informado do que foi decidido, ou do motivo de nada ter sido. Com vários crewmates, ele escolhe o que está esperando (uma legenda `/task <nome>` nomeia um); com mais de uma coisa esperando, pede que você responda no card.
 
 ## Notificações push
 
@@ -618,6 +785,7 @@ Até lá, um limite que precisa mudar muda em `detectors.mjs` e é informado no 
 - **Nenhum código npm como root.** O `atlas crew browsers install` roda o `npm ci` (de um lock embutido no atlas, com integridade verificada), o download dos navegadores e o relatório de dependências do Playwright como o usuário do crew. Só um comando roda como root: `apt-get install -y --no-install-recommends <names>`, que o atlas monta sozinho a partir de nomes de pacote que casaram com `^[a-z0-9][a-z0-9.+-]*$` no relatório; qualquer outra coisa no relatório é um erro e nada roda como root. Veja [Capturas](#capturas).
 - **Segredos.** Os segredos de cada crewmate ficam em `<crewmate dir>/secrets.json` (modo 0600), são injetados como variáveis de ambiente só no agente desse crewmate e nunca são devolvidos em nenhuma resposta. Terminais e segredos nunca são repassados a um celular.
 - **Auditoria.** Todo crewmate tem um log só de acréscimo, escrito pelo hostd e nunca pelo agente: cada chamada de ferramenta que o agente informa (nome completo da ferramenta e entrada, não o passo de 80 caracteres), cada aprovação pedida e como terminou (`allow`, `deny` ou `timeout`, e quem respondeu: `desktop`, `phone:<node id>`, `telegram:<chat id>` ou `none`), o ciclo de vida da tarefa e as mudanças no modo de aprovação, nos triggers, no projeto, no engine e nos segredos (o nome de um segredo, nunca o valor). Veja [Auditoria](#auditoria).
+- **A voz fica nas suas máquinas.** O [ditado](#ditado) reconhece a fala com um whisper.cpp fixado e conferido por hash, compilado no crew server; o áudio é apagado quando o texto é gerado (e após 10 minutos se um envio for abandonado), a chave de um engine hospedado opcional nunca sai dos segredos do crew, e um engine que falha nunca é repetido em outro.
 - **Nenhum servidor da CodeAtlas.** A única chamada de saída opcional é o relay de push (só o tipo). Detalhes: [PRIVACY.md](https://github.com/codeatlasdev/atlas/blob/main/PRIVACY.md).
 
 ## Auditoria
@@ -627,10 +795,11 @@ O que um crewmate fez e quem decidiu o quê, salvo no crew server em `<crewmate 
 | `kind` | Escrito quando | Campos |
 |---|---|---|
 | `tool_call` | o agente informa uma chamada de ferramenta (agentes de terminal e engines headless igualmente) | `task_id`, `tool_name`, `tool_input` |
-| `approval_asked` | um crewmate `ask` precisa de uma decisão | `task_id`, `req`, `tool_name`, `tool_input` |
-| `approval_decision` | o prompt terminou | `task_id`, `req`, `tool_name`, `decision` (`allow`/`deny`/`timeout`), `by` |
+| `approval_asked` | uma chamada fica retida para uma pessoa | `task_id`, `req`, `tool_name`, `tool_input`, `rail` (o que forçou a pergunta, se foi uma barreira) |
+| `approval_decision` | **toda** decisão sobre uma chamada de um crewmate que consegue perguntar, quem quer que a tome | `task_id`, `req` (chamadas retidas), `tool`, `tool_input`, `decision` (`allow`/`deny`), `source` (`mode`, `grant`, `person`, `rail`, `timeout`), `device`, `wait_ms`, `rail`, `comment` |
+| `approval_mode_changed` | o modo de um crewmate foi trocado (ou o Bypass foi retirado do crew) | `from`, `to`, `device` |
 | `task_queued`, `task_started`, `task_finished` | ciclo de vida da tarefa | `task_id`, `source`, `prompt`; `state` e `error` no fim |
-| `config_changed` | aprovação, engine, projeto, agente, nome, tamanho do role, respostas curtas, triggers, rotinas | `field`, `from`, `to` (os tokens de webhook ficam de fora) |
+| `config_changed` | modo, engine, projeto, agente, nome, tamanho do role, respostas curtas, triggers, rotinas | `field`, `from`, `to` (os tokens de webhook ficam de fora) |
 | `task_refused` | as proteções recusaram uma tarefa concluída | `task_id`, `reasons` |
 | `chain_refused` | uma automação "Após o crewmate" não foi disparada porque o crewmate dela já estava na cadeia | `trigger_id`, `from_crewmate`, `from_task`, `chain` |
 | `refusal_overridden` | o dono do crew server aceitou o trabalho recusado | `task_id` |
@@ -640,7 +809,7 @@ O que um crewmate fez e quem decidiu o quê, salvo no crew server em `<crewmate 
 
 Tipos no nível do crew: `crewmate_created`, `crewmate_deleted`, `paused`, `resumed`, `audit_gap`.
 
-**Quem respondeu.** `desktop` é qualquer cliente no socket do servidor, o que inclui a CLI e, para um crew server, o relay do Mac: uma aprovação que um celular envia pelo relay a um crew server aparece como `desktop` lá. Um celular conectado direto a um hostd é `phone:<node id>`; o Telegram é `telegram:<chat id>`; um prompt que ninguém respondeu em 30 minutos é `timeout` / `none`.
+**Quem respondeu.** `device` é `desktop` para qualquer cliente no socket do servidor, o que inclui a CLI e, para um crew server, o relay do Mac: uma aprovação que um celular envia pelo relay a um crew server aparece como `desktop` lá. Um celular conectado direto a um hostd é `phone:<node id>`; o Telegram é `telegram:<chat id>`. Uma chamada que um modo ou uma permissão da tarefa liberou não tem `device` (a troca de modo que decidiu uma chamada em espera nomeia quem trocou).
 
 **Remoção de segredos.** Os valores dos segredos do crewmate e o token do hook são trocados por `[secret:NAME]` / `[secret:hook_token]` antes de qualquer gravação (os segredos são lidos a cada gravação, então um definido há um minuto também é coberto; valores com menos de 4 caracteres não são tratados como segredos). Uma string com mais de 8 KiB é cortada com um marcador que diz quantos bytes havia.
 
@@ -728,9 +897,9 @@ Para quem contribui. Um conceito por arquivo; o comentário de documentação do
 
 | Camada | Onde | Cobre |
 |---|---|---|
-| hostd (crew server e Mac) | `crates/atlas-host/src/crew/` | roteamento de comandos (`mod.rs`) para `handlers/` (crewmates, tarefas, configurações); `hub.rs` (o hub do crew); `store/` (tipos em disco, a migração do layout antigo, `archive.rs`: o arquivo de exportação e importação); `attachments.rs` (imagens em uma tarefa: limites, a verificação de tipo pelos bytes, nomes seguros, armazenamento, a cópia do agente, envio e busca em pedaços); `runner/` (uma tarefa: fila, `pty`, `conversation`, `prompt`, `action`, `outcome`, `summary`, `recover` para tarefas que um reinício interrompeu, `guard`/`gate`/`tape` para as proteções contra o agente); `events.rs` (todo evento push, um builder para cada); `pane.rs` (a chave de painel `crew:`); `engine/` (omp, claude, codex, opencode); `triggers/` e `schedule.rs` (automações); `github/`; `telegram.rs`; `push.rs`; `project.rs` (checkout); `mcp.rs` (`atlas-crew-mcp`); `locate/` (a ferramenta `locate`: `route.rs` caminho da URL para arquivos de rota por framework, `rank.rs` as caixas de elementos da página e seu ranking, `mod.rs` a requisição, a captura com `dom: true` e o mapeamento para o código-fonte); `capture/` (a ferramenta `capture`: `spec.rs` regras de requisição e de relatório, `detectors.mjs` + `detectors.rs` + `fixtures/` os detectores de UI temporários, `runner.mjs` o script embutido do Playwright, `package-lock.json` o lock do qual o `npm ci` instala); `uigate/` (a ferramenta `ui_gate`: plano por mudança, nova execução do que falhou, regressões); `relay/` (do celular para o crew server); `tests/` (testes de integração por área, helpers compartilhados em `tests/fixture.rs`) |
+| hostd (crew server e Mac) | `crates/atlas-host/src/crew/` | roteamento de comandos (`mod.rs`) para `handlers/` (crewmates, tarefas, configurações); `hub.rs` (o hub do crew); `store/` (tipos em disco, a migração do layout antigo, `archive.rs`: o arquivo de exportação e importação); `attachments.rs` (imagens em uma tarefa: limites, a verificação de tipo pelos bytes, nomes seguros, armazenamento, a cópia do agente, envio e busca em pedaços); `voice/` (ditado: `audio` o envio, o limite de 300 s e a exclusão, `engine` o whisper.cpp e o endpoint hospedado, `vocab` dicas e substituições; o lado do Telegram é `telegram/voice_notes.rs`); `runner/` (uma tarefa: fila, `pty`, `conversation`, `prompt`, `action`, `outcome`, `summary`, `recover` para tarefas que um reinício interrompeu, `guard`/`gate`/`tape` para as proteções contra o agente); `events.rs` (todo evento push, um builder para cada); `pane.rs` (a chave de painel `crew:`); `engine/` (omp, claude, codex, opencode); `triggers/` e `schedule.rs` (automações); `github/` (login e API do `gh`; `github/app/`: o GitHub App, veja [GitHub App](#github-app)); `telegram.rs`; `push.rs`; `project.rs` (checkout); `mcp.rs` (`atlas-crew-mcp`); `locate/` (a ferramenta `locate`: `route.rs` caminho da URL para arquivos de rota por framework, `rank.rs` as caixas de elementos da página e seu ranking, `mod.rs` a requisição, a captura com `dom: true` e o mapeamento para o código-fonte); `capture/` (a ferramenta `capture`: `spec.rs` regras de requisição e de relatório, `detectors.mjs` + `detectors.rs` + `fixtures/` os detectores de UI temporários, `runner.mjs` o script embutido do Playwright, `package-lock.json` o lock do qual o `npm ci` instala); `uigate/` (a ferramenta `ui_gate`: plano por mudança, nova execução do que falhou, regressões); `relay/` (do celular para o crew server); `tests/` (testes de integração por área, helpers compartilhados em `tests/fixture.rs`) |
 | rotas de hook | `crates/atlas-host/src/agents/hook_server.rs` | `/crew/<id>/ask`, `/crew/<id>/set_profile`, `/crew/<id>/capture`, `/crew/<id>/locate`, `/crew/<id>/ui_gate`, `/crew/<id>/set_ui`, `/crew/<id>/hook/<token>` |
-| CLI | `crates/atlas-cli/src/commands/crew/` | `atlas crew install\|update\|uninstall\|export\|import\|status\|logs\|login\|pause\|resume\|pair\|browsers`; o texto da unit, o plano de migração, o asset da release por arquitetura, os scripts de atualização e rollback e a decisão de saúde (`binary.rs`), os scripts e decisões de exportação, importação e desinstalação (`transfer.rs`), os scripts de instalação e status dos browsers do capture (`browsers.rs`) e o leitor do relatório de dependências do Playwright que monta o único `apt-get` de root (`apt.rs`) são funções puras com testes |
+| CLI | `crates/atlas-cli/src/commands/crew/` | `atlas crew install\|update\|uninstall\|export\|import\|status\|logs\|login\|pause\|resume\|pair\|browsers\|voice`; o texto da unit, o plano de migração, o asset da release por arquitetura, os scripts de atualização e rollback e a decisão de saúde (`binary.rs`), os scripts e decisões de exportação, importação e desinstalação (`transfer.rs`), os scripts de instalação e status dos browsers do capture (`browsers.rs`) e o leitor do relatório de dependências do Playwright que monta o único `apt-get` de root (`apt.rs`) são funções puras com testes |
 | Backend do Desktop | `crates/atlas-desktop/src/crew.rs` | o registro de servidores (`crew-servers.json`), os comandos Tauri `crew_servers_*` (`crew_servers_set_admin` guarda o endereço de administrador), `crew_server_install`, `crew_browsers_status`, `crew_browsers_install`, `crew_agent_*` |
 | Interface do Desktop | `apps/desktop/src/lib/crew/` e `apps/desktop/src/lib/stores/crew.svelte.ts` | workspace, quadro, editor, configurações, onboarding, automações, o catálogo de aparências |
 | Mobile | `apps/mobile/lib/features/crew/` | aba do crew, chat, perfil, automações, transporte do relay |
@@ -833,10 +1002,14 @@ O mesmo socket NDJSON de todo comando do hostd (`~/.atlas/hostd.sock`, ou o do c
 |---|---|---|
 | `crewmate_list` | `{}` | `{crewmates:[…], paused}` |
 | `crew_pause`, `crew_resume` | `{}` | `{}`; veja [Pausar e retomar](#pausar-e-retomar). Emite o push `{"ev":"crew_paused","paused":bool}` (escopo `act` do Mobile) |
-| `crewmate_create` | `{name, role, agent, approval, workdir?, look?, engine?, project?}` | o crewmate |
-| `crewmate_update` | `{id, name?, role?, agent?, approval?, look?, …}` | o crewmate |
+| `crewmate_create` | `{name, role, agent, approval?, mode?, workdir?, look?, engine?, project?}` | o crewmate; sem `mode` (nem o legado `approval`) começa no `default_approval` do crew (`bypass` para um engine que não consegue perguntar) |
+| `crewmate_update` | `{id, name?, role?, agent?, approval?, look?, spoken_replies?, …}` | o crewmate; `spoken_replies` pede ao agente dele uma linha `spoken:` ([Respostas faladas](#respostas-faladas)) |
+| `crewmate_set_approval` | `{id, mode}` (`ask`, `edits`, `bypass`) | o crewmate; só clientes do dono (escopo `approve` no Mobile); recusas codificadas `crew.approval.bypass_disabled`, `crew.approval.unsupported_engine`, `crew.approval.forbidden`; veja [Modos de permissão](#modos-de-permissão) |
+| `agent_approve` | `{pane, req, allow, scope?, comment?}` | `{}`; `scope` é `once` (padrão) ou `task`; `comment` chega ao agente |
+| `agent_approve_voice` | `{pane, req, transcript, lang?}` | `{verdict, comment?, reason?}`; escopo Mobile `approve`. Veja [Respostas por voz aos cards](#respostas-por-voz-aos-cards) |
+| `crewmate_action_answer_voice` | `{id, task, transcript, lang?}` | `{verdict, choice?, reason?}`; escopo Mobile `act` |
 | `crewmate_delete` | `{id}` | `{}`; cancela as tarefas em execução e na fila e espera o turno em execução terminar, remove a worktree do Git e as branches `atlas/<id>/…` do clone compartilhado, e depois a pasta do crewmate. Um turno que ainda grave depois disso é recusado, então a pasta não é recriada |
-| `crewmate_task` | `{id, prompt, source, tz?, attachments?, ui?}` | `{task}`; `ui: true` a torna uma [tarefa de UI](#tarefas-de-ui-e-prova); `attachments` são até 4 imagens, `[{name, data_b64}]` ou `[{name, upload}]`, veja [Imagens nas tarefas](#imagens-nas-tarefas) |
+| `crewmate_task` | `{id, prompt, source, tz?, attachments?, ui?, dictated?}` | `{task}`; `ui: true` a torna uma [tarefa de UI](#tarefas-de-ui-e-prova); `dictated: true` avisa o agente de que o prompt foi ditado ([Ditado](#ditado)); `attachments` são até 4 imagens, `[{name, data_b64}]` ou `[{name, upload}]`, veja [Imagens nas tarefas](#imagens-nas-tarefas) |
 | `crewmate_attachment_put` | `{id, upload, seq, data_b64, last?}` | `{staged, last}`; um pedaço (no máximo 512 KiB brutos) de uma imagem grande demais para uma linha do protocolo, com os pedaços em ordem a partir de `seq` 0. Escopo `act` do Mobile |
 | `crewmate_attachment` | `{id, task, name, offset?, limit?}` | `{name, mime, bytes_len, offset, data_b64, last}`; um pedaço (no máximo 512 KiB brutos) de uma imagem armazenada, sendo `name` um dos `attachments` da tarefa. Escopo `read` do Mobile |
 | `crewmate_tasks` | `{id, limit?}` | `{tasks:[…]}` da mais nova para a mais antiga, padrão 50 |
@@ -851,6 +1024,10 @@ O mesmo socket NDJSON de todo comando do hostd (`~/.atlas/hostd.sock`, ou o do c
 | `crewmate_audit` | `{id, since?, limit?, kind?}` | `{entries:[…]}` da mais nova para a mais antiga, padrão 200; `since` em segundos unix. Escopo `read` do Mobile |
 | `crew_audit` | `{since?, limit?, kind?}` | o log de todo o crew, no mesmo formato |
 | `crew_telegram_status`, `crew_telegram_set`, `crew_telegram_link` | `{}`, `{token?}`, `{}` | `{configured, chats}`, `{}`, `{code}` (só no desktop; o token nunca é devolvido) |
+| `crew_voice_status` | `{}` | `{enabled, engine:{kind, label, model, ready, detail}\|null, max_seconds, audio, languages, replacements}`; escopo `read` no Mobile |
+| `crew_voice_set` | `{enabled?, engine?, replacements?}` | o mesmo de `crew_voice_status`; só o dono (`crew.voice.forbidden`), recusado para celulares. Veja [Ditado](#ditado) |
+| `crewmate_voice_put` | `{upload, piece_b64, last?}` | `{upload, bytes}`; `upload: ""` abre um (o id é do hostd), partes de até 512 KiB de um WAV PCM mono de 16 kHz; recusado para celulares. Falhas `crew.voice.too_long`, `crew.voice.bad_audio` |
+| `crewmate_transcribe` | `{id, upload, language?, partial?}` | `{text, raw, engine:{kind, label}, language, duration_ms, partial}`; falhas `crew.voice.off`, `crew.voice.not_installed`, `crew.voice.engine_failed` |
 | `crew_settings_get`, `crew_settings_set` | `{short_replies, short_replies_model?}` | configurações do crew |
 | `crew_engine_status`, `crew_engine_login` | `{refresh?}`, `{engine}` | `{engines:[{engine, state, reason?}]}` com `state` `signed_in` / `needs_signin` / `not_installed` / `unknown`; `{engine, pty}` (um terminal que roda só o login daquele engine; `unknown engine` para qualquer nome fora da lista de permitidos). Escopo `read` / `act` do Mobile; o login nunca passa pelo relay. Push `{"ev":"crew_engine_auth","engine","state"}`. Veja [Entrar pelo celular](#entrar-pelo-celular) |
 | `crew_github_status`, `_login_start`, `_login_poll`, `_logout`, `_connect_resume` | `{}` | veja [GitHub](#github) |
@@ -867,6 +1044,7 @@ O mesmo socket NDJSON de todo comando do hostd (`~/.atlas/hostd.sock`, ou o do c
   "role": "Review PRs and leave inline comments.",
   "agent": "claude",
   "approval": "ask",
+  "mode": "ask",
   "state": "idle",
   "queued": 0,
   "running_task": { "id": "e5f6a7b8", "pane": "crew:a1b2c3d4:e5f6a7b8" },
@@ -887,6 +1065,7 @@ O mesmo socket NDJSON de todo comando do hostd (`~/.atlas/hostd.sock`, ou o do c
 - `last`: o resultado, o erro ou o prompt da tarefa mais recente (os primeiros 140 caracteres), o estado final e a hora.
 - `pending_approval` existe só em `needs_you`; uma tarefa parada em qualquer card (`waiting_task`) também é `needs_you`, embora o runner dela continue ocupado, então `running_task` está presente ali e o Stop funciona. Um servidor anterior a isso (1.5.0-alpha.26 e antes) dizia `working`; o desktop corrige isso onde a resposta ainda mostra o card.
 - `waiting_task` (ausente, a menos que uma tarefa esteja parada em um card): `{id, action, result, attachments}`, o card em que a tarefa está (a que o runner segura, ou a parada mais recente) e as imagens que o agente tirou para ela (só as do agente, como registros). O Captain's call do Atlas Mobile lista a partir dele um crewmate com um card `refused` ou `prove_ui`, com Retry e Override ali mesmo. A presença dele faz `state` ser `needs_you`, seja qual for o tipo de card.
+- `spoken_replies` (bool, sempre presente): o agente é instruído a terminar as respostas com uma linha `spoken:`.
 - `triggers` está sempre presente; `next_fire` é calculado pelo servidor.
 
 ### Objeto de tarefa
@@ -911,4 +1090,5 @@ O mesmo socket NDJSON de todo comando do hostd (`~/.atlas/hostd.sock`, ou o do c
 - `state`: `queued`, `running`, `waiting_action`, `done`, `failed` ou `cancelled`.
 - `steps` pode estar vazio; `started_at` e `finished_at` ficam ausentes até serem atingidos. Outros campos opcionais: `reply`, `reply_full`, `summarized`, `title`, `preparing`, `ask`, `action`, `answer`, `usage`, `trigger_id`, `tz`, `resumed` (um reinício a interrompeu e ela começou de novo) e `restarts` (quantos).
 - `attachments` (ausente sem imagens): as imagens enviadas com o prompt, `[{name, mime, bytes_len, sha256, path, source?}]`. `name` é um nome de arquivo seguro e único dentro da tarefa, `mime` vem dos bytes do próprio arquivo, `path` é onde o agente a encontra na pasta de trabalho dele (`.atlas/attachments/<task id>/<name>`). Os bytes nunca fazem parte de uma tarefa: busque-os com `crewmate_attachment`. Veja [Imagens nas tarefas](#imagens-nas-tarefas). `source` é `"agent"` para uma captura que o crewmate fez e fica ausente para o que você enviou.
+- `spoken` (string, sempre presente, `""` até a tarefa terminar ou quando não há nada a ler): o que um cliente lê em voz alta ([Respostas faladas](#respostas-faladas)).
 - `ui` (ausente, a menos que seja true): a tarefa é uma [tarefa de UI](#tarefas-de-ui-e-prova).

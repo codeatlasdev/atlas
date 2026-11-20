@@ -4,9 +4,7 @@ use serde_json::{Value, json};
 
 #[cfg(unix)]
 use super::super::spawn::provision::ProvClient;
-use super::super::store::{
-    Approval, CrewmateLook, EngineConfig, ProjectRef, TaskState, TriggerKind,
-};
+use super::super::store::{CrewmateLook, EngineConfig, Mode, ProjectRef, TaskState, TriggerKind};
 use super::super::{Crewmate, events, now_s, pane, project, runner, schedule, triggers};
 use crate::paths;
 use crate::server::Hub;
@@ -36,22 +34,40 @@ fn check_agent(agent: &str) -> Result<(), String> {
     Ok(())
 }
 
-/// The approval mode named on the wire. A crewmate with an `engine` runs it headless, and `ask`
-/// is refused for an engine with no way to ask (`engine::can_ask`: `codex exec` and `opencode run`
-/// run unattended), so the setting never promises a pause that cannot happen (#206). Without an
-/// engine the agent runs in a terminal and asks through its hooks.
-fn parse_approval(approval: &str, engine_kind: Option<&str>) -> Result<Approval, String> {
-    let approval_enum: Approval = serde_json::from_value(json!(approval))
-        .map_err(|_| format!("invalid approval: {approval}"))?;
+/// The permission mode named on the wire (`ask`, `edits`, `bypass`, or the legacy `auto`), or the one a crewmate
+/// starts in when none is named: the crew's `default_approval`, or `bypass` for an engine that cannot ask. A
+/// crewmate with an `engine` runs it headless, and `ask`/`edits` are refused for an engine with no way to ask
+/// (`engine::can_ask`: `codex exec` and `opencode run` run unattended), so the setting never promises a pause
+/// that cannot happen (#206). Without an engine the agent runs in a terminal and asks through its hooks.
+/// `bypass` is refused when the crew does not allow it (`allow_bypass`): that includes the engines that always
+/// run unattended, whose tasks the crew would then have to refuse.
+fn parse_mode(hub: &Hub, mode: Option<&str>, engine_kind: Option<&str>) -> Result<Mode, String> {
+    let cannot_ask = engine_kind.is_some_and(|k| !crate::crew::engine::can_ask(k));
+    let mode = match mode {
+        Some(m) => Mode::parse(m).map_err(|_| format!("invalid approval: {m}"))?,
+        None if cannot_ask => Mode::Bypass,
+        None => hub.crew.store.load_crew_settings().default_approval,
+    };
     if let Some(engine_kind) = engine_kind
-        && approval_enum == Approval::Ask
-        && !crate::crew::engine::can_ask(engine_kind)
+        && cannot_ask
+        && mode != Mode::Bypass
     {
         return Err(format!(
             "{engine_kind} crewmates cannot ask before a tool call; they run unattended (approval must be auto)"
         ));
     }
-    Ok(approval_enum)
+    if mode == Mode::Bypass && !hub.crew.store.load_crew_settings().allow_bypass {
+        return Err("bypass is not allowed on this crew".into());
+    }
+    Ok(mode)
+}
+
+/// A crewmate definition as JSON for a client: the stored fields plus the legacy `approval`.
+fn crewmate_value(c: &Crewmate) -> Result<Value, String> {
+    let mut v = serde_json::to_value(c).map_err(|e| e.to_string())?;
+    v["approval"] = json!(c.mode.legacy());
+    v["spoken_replies"] = json!(c.spoken_replies);
+    Ok(v)
 }
 
 /// A task parked on a card of any kind (`waiting_action` with its action).
@@ -79,150 +95,157 @@ pub(crate) fn crewmate_state(
 
 /// `CrewmateList`
 pub(crate) fn list(hub: &Hub) -> Result<Value, String> {
-    let crewmates = hub.crew.store.list_crewmates();
-    let list: Vec<Value> = crewmates
+    let list: Vec<Value> = hub
+        .crew
+        .store
+        .list_crewmates()
         .into_iter()
-        .map(|b| {
-            let running_task = hub.crew.runners.running_task(&b.id);
-            let pending_approval = hub.agents.pending_approvals().into_iter().find(|v| {
-                v["pane_key"]
-                    .as_str()
-                    .map(|pk| pane::is_pane_of(pk, &b.id))
-                    .unwrap_or(false)
-            });
-            // The card a task is parked on (a guard refused it, a UI task owes captures, a question, a secret, a
-            // sign-in): the task whose runner is held, else the newest parked one.
-            let waiting = running_task
-                .as_deref()
-                .and_then(|id| hub.crew.store.task(&b.id, id))
-                .filter(parked)
-                .or_else(|| {
-                    hub.crew
-                        .store
-                        .read_tasks(&b.id, 20)
-                        .into_iter()
-                        .rev()
-                        .find(parked)
-                });
-            let state = crewmate_state(
-                pending_approval.is_some(),
-                waiting.is_some(),
-                running_task.is_some(),
-            );
-            let queued = hub.crew.runners.queue_len(&b.id);
-            let last: Option<Value> = {
-                let tasks = hub.crew.store.read_tasks(&b.id, 1);
-                tasks.first().map(|t| {
-                    let text: String = t
-                        .result
-                        .as_deref()
-                        .or(t.error.as_deref())
-                        .unwrap_or(&t.prompt)
-                        .chars()
-                        .take(140)
-                        .collect();
-                    json!({
-                        "text": text,
-                        "state": t.state,
-                        "ts": t.ts,
-                    })
-                })
-            };
-            let mut v = json!({
-                "id": b.id,
-                "name": b.name,
-                "role": b.role,
-                "agent": b.agent,
-                "approval": b.approval,
-                "state": state,
-                "queued": queued,
-            });
-            if let Some(task_id) = running_task {
-                let pane_key = pane::key(&b.id, &task_id);
-                v["running_task"] = json!({ "id": task_id, "pane": pane_key });
-            }
-            if let Some(pa) = pending_approval {
-                v["pending_approval"] = pa;
-            }
-            if let Some(look) = &b.look {
-                v["look"] = json!(look);
-            }
-            if let Some(l) = last {
-                v["last"] = l;
-            }
-            // A task parked on a card (a guard refused it, a UI task owes captures, a question): the
-            // phone's "Captain's call" shows it with the agent's captures. Only the agent's images are
-            // listed (the owner's own are under their prompt), as records: the bytes are fetched.
-            if let Some(t) = &waiting {
-                let agent: Vec<_> = t
-                    .attachments
-                    .iter()
-                    .filter(|a| a.source == crate::crew::attachments::SOURCE_AGENT)
-                    .collect();
-                v["waiting_task"] = json!({
-                    "id": t.id,
-                    "action": t.action,
-                    "result": t.result,
-                    "attachments": agent,
-                });
-            }
-            if let Some(engine) = &b.engine {
-                let approval_supported = crate::crew::engine::can_ask(&engine.kind);
-                v["engine"] = json!({"kind": engine.kind});
-                v["approval_supported"] = json!(approval_supported);
-            }
-            if let Some(project) = &b.project {
-                v["project"] = json!(project);
-            }
-            if let Some(step) = &b.setup_step {
-                v["setup_step"] = json!(step);
-            }
-            // Include triggers with computed next_fire.
-            if !b.triggers.is_empty() {
-                let now = now_s();
-                let triggers: Vec<Value> = b
-                    .triggers
-                    .iter()
-                    .map(|t| {
-                        let next = triggers::compute_next_fire(
-                            &t.kind,
-                            t.last_fired,
-                            t.tz.as_deref(),
-                            now,
-                        );
-                        let mut tv = serde_json::to_value(t).unwrap_or_default();
-                        tv["next_fire"] = json!(next);
-                        // A cron the parser refuses (one saved under an older parser): kept as saved, never
-                        // fired, and said so here for the client to show. Absent when the cron is fine.
-                        if let TriggerKind::Schedule { cron } = &t.kind
-                            && let Err(why) = schedule::validate_cron(cron)
-                        {
-                            tv["invalid"] = json!(why);
-                        }
-                        tv
-                    })
-                    .collect();
-                v["triggers"] = json!(triggers);
-            } else {
-                v["triggers"] = json!([]);
-            }
-            // The cron routines, so a client can edit them (`crewmate_routine_set` replaces the whole list).
-            v["routines"] = b
-                .routines
-                .iter()
-                .map(|r| {
-                    let mut rv = json!(r);
-                    if let Err(why) = schedule::validate_cron(&r.cron) {
-                        rv["invalid"] = json!(why);
-                    }
-                    rv
-                })
-                .collect::<Vec<_>>()
-                .into();
-            v
-        })
+        .map(|b| crewmate_json(hub, b))
         .collect();
     Ok(json!({ "crewmates": list, "paused": hub.crew.is_paused() }))
+}
+
+/// One crewmate as every client reads it (`crewmate_list`, and the reply of `crewmate_set_approval`).
+pub(crate) fn crewmate_json(hub: &Hub, b: Crewmate) -> Value {
+    {
+        let running_task = hub.crew.runners.running_task(&b.id);
+        let pending_approval = hub.agents.pending_approvals().into_iter().find(|v| {
+            v["pane_key"]
+                .as_str()
+                .map(|pk| pane::is_pane_of(pk, &b.id))
+                .unwrap_or(false)
+        });
+        // The card a task is parked on (a guard refused it, a UI task owes captures, a question, a secret, a
+        // sign-in): the task whose runner is held, else the newest parked one.
+        let waiting = running_task
+            .as_deref()
+            .and_then(|id| hub.crew.store.task(&b.id, id))
+            .filter(parked)
+            .or_else(|| {
+                hub.crew
+                    .store
+                    .read_tasks(&b.id, 20)
+                    .into_iter()
+                    .rev()
+                    .find(parked)
+            });
+        let state = crewmate_state(
+            pending_approval.is_some(),
+            waiting.is_some(),
+            running_task.is_some(),
+        );
+        let queued = hub.crew.runners.queue_len(&b.id);
+        let last: Option<Value> = {
+            let tasks = hub.crew.store.read_tasks(&b.id, 1);
+            tasks.first().map(|t| {
+                let text: String = t
+                    .result
+                    .as_deref()
+                    .or(t.error.as_deref())
+                    .unwrap_or(&t.prompt)
+                    .chars()
+                    .take(140)
+                    .collect();
+                json!({
+                    "text": text,
+                    "state": t.state,
+                    "ts": t.ts,
+                })
+            })
+        };
+        let mut v = json!({
+            "id": b.id,
+            "name": b.name,
+            "role": b.role,
+            "agent": b.agent,
+            // `mode` is the permission mode; `approval` stays for clients from before the modes: `auto`
+            // exactly when `mode` is `bypass`.
+            "mode": b.mode,
+            "approval": b.mode.legacy(),
+            "spoken_replies": b.spoken_replies,
+            "state": state,
+            "queued": queued,
+        });
+        if let Some(task_id) = running_task {
+            let pane_key = pane::key(&b.id, &task_id);
+            v["running_task"] = json!({ "id": task_id, "pane": pane_key });
+        }
+        if let Some(pa) = pending_approval {
+            v["pending_approval"] = pa;
+        }
+        if let Some(look) = &b.look {
+            v["look"] = json!(look);
+        }
+        if let Some(l) = last {
+            v["last"] = l;
+        }
+        // A task parked on a card (a guard refused it, a UI task owes captures, a question): the
+        // phone's "Captain's call" shows it with the agent's captures. Only the agent's images are
+        // listed (the owner's own are under their prompt), as records: the bytes are fetched.
+        if let Some(t) = &waiting {
+            let agent: Vec<_> = t
+                .attachments
+                .iter()
+                .filter(|a| a.source == crate::crew::attachments::SOURCE_AGENT)
+                .collect();
+            v["waiting_task"] = json!({
+                "id": t.id,
+                "action": t.action,
+                "result": t.result,
+                "attachments": agent,
+            });
+        }
+        if let Some(engine) = &b.engine {
+            let approval_supported = crate::crew::engine::can_ask(&engine.kind);
+            v["engine"] = json!({"kind": engine.kind});
+            v["approval_supported"] = json!(approval_supported);
+        }
+        if let Some(project) = &b.project {
+            v["project"] = json!(project);
+        }
+        if let Some(step) = &b.setup_step {
+            v["setup_step"] = json!(step);
+        }
+        // Include triggers with computed next_fire.
+        if !b.triggers.is_empty() {
+            let now = now_s();
+            let triggers: Vec<Value> = b
+                .triggers
+                .iter()
+                .map(|t| {
+                    let next =
+                        triggers::compute_next_fire(&t.kind, t.last_fired, t.tz.as_deref(), now);
+                    let mut tv = serde_json::to_value(t).unwrap_or_default();
+                    tv["next_fire"] = json!(next);
+                    // A cron the parser refuses (one saved under an older parser): kept as saved, never
+                    // fired, and said so here for the client to show. Absent when the cron is fine.
+                    if let TriggerKind::Schedule { cron } = &t.kind
+                        && let Err(why) = schedule::validate_cron(cron)
+                    {
+                        tv["invalid"] = json!(why);
+                    }
+                    tv
+                })
+                .collect();
+            v["triggers"] = json!(triggers);
+        } else {
+            v["triggers"] = json!([]);
+        }
+        // The cron routines, so a client can edit them (`crewmate_routine_set` replaces the whole list).
+        v["routines"] = b
+            .routines
+            .iter()
+            .map(|r| {
+                let mut rv = json!(r);
+                if let Err(why) = schedule::validate_cron(&r.cron) {
+                    rv["invalid"] = json!(why);
+                }
+                rv
+            })
+            .collect::<Vec<_>>()
+            .into();
+        v
+    }
 }
 
 /// `CrewmateCreate`
@@ -232,7 +255,7 @@ pub(crate) fn create(
     name: String,
     role: String,
     agent: String,
-    approval: String,
+    approval: Option<String>,
     workdir: Option<String>,
     look: Option<CrewmateLook>,
     engine: Option<EngineConfig>,
@@ -241,7 +264,11 @@ pub(crate) fn create(
 ) -> Result<Value, String> {
     let name = valid_name(&name)?;
     check_role(&role)?;
-    let approval_enum = parse_approval(&approval, engine.as_ref().map(|e| e.kind.as_str()))?;
+    let mode = parse_mode(
+        hub,
+        approval.as_deref(),
+        engine.as_ref().map(|e| e.kind.as_str()),
+    )?;
     check_agent(&agent)?;
     if let Some(l) = &look {
         l.validate()?;
@@ -260,7 +287,7 @@ pub(crate) fn create(
         role,
         agent,
         workdir,
-        approval: approval_enum,
+        mode,
         routines: vec![],
         triggers: vec![],
         look,
@@ -268,6 +295,7 @@ pub(crate) fn create(
         project,
         setup_step,
         short_replies: None,
+        spoken_replies: false,
         created_at: now_s(),
     };
     if let Err(e) = hub.crew.store.save_crewmate(&crewmate) {
@@ -280,12 +308,12 @@ pub(crate) fn create(
         None,
         "crewmate_created",
         json!({
-            "id": id, "name": crewmate.name, "agent": crewmate.agent, "approval": crewmate.approval,
+            "id": id, "name": crewmate.name, "agent": crewmate.agent, "mode": crewmate.mode,
             "engine": crewmate.engine, "project": crewmate.project,
         }),
     );
     warm_checkout(hub, &crewmate);
-    serde_json::to_value(&crewmate).map_err(|e| e.to_string())
+    crewmate_value(&crewmate)
 }
 
 /// `CrewmateUpdate`
@@ -302,6 +330,7 @@ pub(crate) fn update(
     project: Option<ProjectRef>,
     setup_step: Option<Option<String>>,
     short_replies: Option<Option<bool>>,
+    spoken_replies: Option<bool>,
 ) -> Result<Value, String> {
     let mut crewmate = hub
         .crew
@@ -326,7 +355,7 @@ pub(crate) fn update(
             .as_ref()
             .map(|e| e.kind.as_str())
             .or_else(|| crewmate.engine.as_ref().map(|e| e.kind.as_str()));
-        crewmate.approval = parse_approval(&ap, effective_kind)?;
+        crewmate.mode = parse_mode(hub, Some(&ap), effective_kind)?;
     }
     if let Some(l) = look {
         l.validate()?;
@@ -350,15 +379,21 @@ pub(crate) fn update(
     if let Some(sr) = short_replies {
         crewmate.short_replies = sr;
     }
+    if let Some(sp) = spoken_replies {
+        crewmate.spoken_replies = sp;
+    }
     hub.crew
         .store
         .save_crewmate(&crewmate)
         .map_err(|e| format!("save_crewmate: {e}"))?;
     audit_changes(hub, &before, &crewmate);
+    if before.mode != crewmate.mode {
+        super::super::approval::mode_changed(hub, &crewmate, before.mode, "owner");
+    }
     // Notify connected clients that the crewmate changed.
     hub.broadcast(events::crewmate_updated(&crewmate.id));
     warm_checkout(hub, &crewmate);
-    serde_json::to_value(&crewmate).map_err(|e| e.to_string())
+    crewmate_value(&crewmate)
 }
 
 /// How long delete waits for a cancelled turn to end before it removes the files anyway (the
@@ -472,7 +507,7 @@ fn audit_changes(hub: &Hub, before: &Crewmate, after: &Crewmate) {
     };
     audit("name", json!(before.name), json!(after.name));
     audit("agent", json!(before.agent), json!(after.agent));
-    audit("approval", json!(before.approval), json!(after.approval));
+    audit("mode", json!(before.mode), json!(after.mode));
     audit("engine", json!(before.engine), json!(after.engine));
     audit("project", json!(before.project), json!(after.project));
     audit(
@@ -484,6 +519,11 @@ fn audit_changes(hub: &Hub, before: &Crewmate, after: &Crewmate) {
         "short_replies",
         json!(before.short_replies),
         json!(after.short_replies),
+    );
+    audit(
+        "spoken_replies",
+        json!(before.spoken_replies),
+        json!(after.spoken_replies),
     );
 }
 

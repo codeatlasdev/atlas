@@ -124,12 +124,14 @@ const LONG_CALL_DEADLINE: Duration = Duration::from_secs(3600);
 #[cfg(test)]
 const QUICK: &[&str] = &[
     "agent_approve",
+    "agent_approve_voice",
     "agent_bind",
     "agent_interrupt",
     "agent_pane_exited",
     "agent_send",
     "agent_status_all",
     "crew_audit",
+    "crew_github_app_manifest",
     "crew_github_connect_resume",
     "crew_pause",
     "crew_resume",
@@ -139,7 +141,10 @@ const QUICK: &[&str] = &[
     "crew_telegram_link",
     "crew_telegram_set",
     "crew_telegram_status",
+    "crew_voice_set",
+    "crew_voice_status",
     "crewmate_action_answer",
+    "crewmate_action_answer_voice",
     "crewmate_answer",
     "crewmate_attachment",
     "crewmate_attachment_put",
@@ -151,11 +156,14 @@ const QUICK: &[&str] = &[
     "crewmate_memory_set",
     "crewmate_routine_set",
     "crewmate_secret_set",
+    "crewmate_set_approval",
     "crewmate_task",
     "crewmate_tasks",
     "crewmate_triggers_set",
     "crewmate_update",
     "crewmate_usage",
+    // One piece (at most 512 KiB) appended to a file.
+    "crewmate_voice_put",
     "engine_limits",
     "fs_list",
     "fs_mkdir",
@@ -206,6 +214,10 @@ const LONG: &[&str] = &[
     "agent_tree",
     "agent_integrations",
     "agent_launch",
+    // Talk to GitHub (a conversion, the installations of the app, revoking its tokens), and read or write the key file.
+    "crew_github_app_convert",
+    "crew_github_app_status",
+    "crew_github_app_remove",
     "crew_github_status",
     "crew_github_login_start",
     "crew_github_login_poll",
@@ -213,6 +225,8 @@ const LONG: &[&str] = &[
     "crew_engine_status",
     "crew_engine_login",
     "crewmate_delete",
+    // Runs the speech engine over up to five minutes of audio, or waits for a hosted endpoint.
+    "crewmate_transcribe",
     "fs_read",
     "fs_write",
     "fs_remove",
@@ -412,7 +426,13 @@ impl HostClient {
         })?;
         let (r, mut w) = ipc::split(stream);
         let mut lines = BufReader::new(r).lines();
-        let hello = crate::protocol::hello_line(token, client);
+        // Inside a crewmate's agent (hostd gives it ATLAS_CREWMATE_ID) every client says so, and hostd then
+        // refuses what only the owner may do (`crewmate_set_approval`).
+        let who = match std::env::var("ATLAS_CREWMATE_ID") {
+            Ok(id) if !id.is_empty() => format!("crewmate:{id}"),
+            _ => client.to_string(),
+        };
+        let hello = crate::protocol::hello_line(token, &who);
         let first = tokio::time::timeout(handshake, async {
             w.write_all(format!("{hello}\n").as_bytes()).await?;
             lines.next_line().await?.ok_or_else(closed)

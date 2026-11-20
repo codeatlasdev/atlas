@@ -1,28 +1,28 @@
 [
-	{
-		"args": {
-			"allow": true,
-			"pane": "a1",
-			"req": "r1"
-		},
-		"cmd": "agent_approve",
-		"ts": 1700000500
-	},
-	{
-		"args": {
-			"data": "<4 bytes base64>",
-			"pty": "t1"
-		},
-		"cmd": "pty_write",
-		"ts": 1700000440
-	},
-	{
-		"args": {
-			"id": "p1",
-			"op": "restart",
-			"service": "web"
-		},
-		"cmd": "project_service",
-		"ts": 1700000380
-	}
+  {
+    "args": {
+      "allow": true,
+      "pane": "a1",
+      "req": "r1"
+    },
+    "cmd": "agent_approve",
+    "ts": 1700000500
+  },
+  {
+    "args": {
+      "data": "<4 bytes base64>",
+      "pty": "t1"
+    },
+    "cmd": "pty_write",
+    "ts": 1700000440
+  },
+  {
+    "args": {
+      "id": "p1",
+      "op": "restart",
+      "service": "web"
+    },
+    "cmd": "project_service",
+    "ts": 1700000380
+  }
 ]

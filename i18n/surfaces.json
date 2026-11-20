@@ -2,6 +2,7 @@
 	"budget": { "keys": 150, "bytes": 24576 },
 	"surfaces": {
 		"desktop": { "paraglide": "apps/desktop/.i18n" },
+		"mobile": { "arb": "apps/mobile/lib/l10n" },
 		"rust": { "rust": "crates" },
 		"site": { "paraglide": "site/.i18n" }
 	}

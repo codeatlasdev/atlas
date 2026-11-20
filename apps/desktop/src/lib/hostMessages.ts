@@ -133,9 +133,49 @@ export function render(code: string, args: Record<string, unknown> = {}): string
 					return m.hostd_wire_invalid_empty();
 				case "no_parent":
 					return m.hostd_wire_invalid_no_parent();
+				case "invalid": {
+					const field = s("field");
+					return field === undefined ? undefined : m.hostd_wire_invalid_value({ field });
+				}
 				default:
 					return undefined;
 			}
+		case "crew.github_app.exists":
+			return m.hostd_wire_github_app_exists();
+		case "crew.github_app.code_expired":
+			return m.hostd_wire_github_app_code_expired();
+		case "crew.github_app.conversion_failed": {
+			const status = typeof args.status === "number" ? String(args.status) : undefined;
+			return status === undefined ? undefined : m.hostd_wire_github_app_conversion_failed({ status });
+		}
+		case "crew.github_app.none":
+			return m.hostd_wire_github_app_none();
+		case "crew.github_app.forbidden":
+			return m.hostd_wire_github_app_forbidden();
+		case "crew.approval.bypass_disabled":
+			return m.hostd_wire_approval_bypass_disabled();
+		case "crew.approval.unsupported_engine": {
+			const engine = s("engine");
+			return engine === undefined ? undefined : m.hostd_wire_approval_unsupported_engine({ engine });
+		}
+		case "crew.approval.forbidden":
+			return m.hostd_wire_approval_forbidden();
+		case "crew.voice.off":
+			return m.hostd_wire_voice_off();
+		case "crew.voice.not_installed":
+			return m.hostd_wire_voice_not_installed();
+		case "crew.voice.engine_failed": {
+			const engine = s("engine");
+			return engine === undefined ? undefined : m.hostd_wire_voice_engine_failed({ engine });
+		}
+		case "crew.voice.too_long": {
+			const max = typeof args.max_seconds === "number" ? String(args.max_seconds) : undefined;
+			return max === undefined ? undefined : m.hostd_wire_voice_too_long({ max_seconds: max });
+		}
+		case "crew.voice.bad_audio":
+			return m.hostd_wire_voice_bad_audio();
+		case "crew.voice.forbidden":
+			return m.hostd_wire_voice_forbidden();
 		default:
 			return undefined;
 	}

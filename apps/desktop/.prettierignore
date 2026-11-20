@@ -1,2 +1,5 @@
 src/lib/shell/__fixtures__/traces
 src/__fixtures__
+# Written by Rust tests from the real serializer (`UPDATE_FIXTURES=1`), compared by value there: their format is the
+# writer's. Prettier would only make a regenerated file fail the gate (it inlines short arrays the writer expands).
+src/lib/__fixtures__/*.json

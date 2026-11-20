@@ -7,6 +7,11 @@
     <uses-feature android:name="android.hardware.camera.autofocus" android:required="false"/>
     <!-- Face ID / fingerprint before typing into a terminal or sending a secret (the device passcode works too). -->
     <uses-permission android:name="android.permission.USE_BIOMETRIC"/>
+    <!-- Dictation: the microphone, asked in the composer after an explanation, never at launch. Speech is
+         recognised on the phone (`createOnDeviceSpeechRecognizer`); audio is never recorded or sent to hostd. -->
+    <uses-permission android:name="android.permission.RECORD_AUDIO"/>
+    <!-- Not required: without a microphone the app works and the mic button says so. -->
+    <uses-feature android:name="android.hardware.microphone" android:required="false"/>
     <uses-permission android:name="android.permission.INTERNET"/>
     <!-- Android 13+: approvals and finished agents while the app is closed. Asked after the first pairing or
          from Settings → This phone, never at launch. Photos need no media permission: the system Photo Picker
@@ -50,6 +55,14 @@
 
          In particular, this is used by the Flutter engine in io.flutter.plugin.text.ProcessTextPlugin. -->
     <queries>
+        <!-- Android 11+: lets the app see whether the phone has a speech recognizer (dictation). -->
+        <intent>
+            <action android:name="android.speech.RecognitionService"/>
+        </intent>
+        <!-- Android 11+: lets the app see whether the phone has a text-to-speech engine (reading replies aloud). -->
+        <intent>
+            <action android:name="android.intent.action.TTS_SERVICE"/>
+        </intent>
         <intent>
             <action android:name="android.intent.action.PROCESS_TEXT"/>
             <data android:mimeType="text/plain"/>

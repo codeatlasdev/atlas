@@ -42,6 +42,7 @@ mod dock;
 mod dock_mac;
 mod git;
 mod git_branch;
+mod github_app;
 mod github_auth;
 mod host;
 mod hotkeys;
@@ -70,6 +71,7 @@ mod stderr_log;
 #[cfg(target_os = "macos")]
 mod swipe_clock;
 // Pure, tested decision code driven only by the AppKit side: unused outside macOS, still built so its tests run.
+mod speech;
 #[cfg_attr(not(target_os = "macos"), allow(dead_code))]
 mod swipe_engine;
 #[cfg(target_os = "macos")]
@@ -86,6 +88,7 @@ mod term;
 mod term;
 mod tray;
 mod updates;
+mod voice;
 // The ready watch runs everywhere; the reload/give-up decision only on Linux so far (#350).
 #[cfg_attr(not(target_os = "linux"), allow(dead_code))]
 mod webview_guard;
@@ -279,6 +282,9 @@ macro_rules! handlers {
             crew::crew_agent_install,
             crew::crew_signin_argv,
             crew::provider_probe,
+            github_app::github_app_listen_start,
+            github_app::github_app_listen_wait,
+            github_app::github_app_listen_cancel,
             github_auth::project_git_info,
             menu::menu_sync,
             menu::menu_dump,
@@ -415,6 +421,15 @@ macro_rules! handlers {
             shots::record::shots_gif_export,
             shots::record::shots_gif_cancel,
             shots::record::shots_record_capabilities,
+            voice::voice_access,
+            voice::voice_open_settings,
+            voice::voice_start,
+            voice::voice_stop,
+            voice::voice_cancel,
+            voice::voice_read,
+            speech::speech_available,
+            speech::speech_speak,
+            speech::speech_stop,
             shots::record::shots_record_save,
             shots::record::shots_record_discard,
             shots::editor::shots_editor_load,
@@ -689,6 +704,8 @@ fn main() {
             app.manage(std::sync::Arc::new(ctl::Ctl::default()));
             app.manage(agent::send::Sends::default());
             app.manage(open_path::Pending::default());
+            app.manage(voice::Voice::new(&handle));
+            app.manage(speech::Speech::new(&handle));
             // `atlas-desktop <path>` on a cold start: the page opens it once its stores are loaded.
             open_path::open(
                 &handle,
@@ -749,6 +766,10 @@ fn main() {
                     #[cfg(windows)]
                     webview_win::sync(win.app_handle());
                 }
+            }
+            // Dictation gives the microphone back the moment the window is no longer the one in front.
+            WindowEvent::Focused(false) if win.label() == "main" => {
+                voice::release_in_background(win.app_handle());
             }
             // Minimize and restore arrive as a resize (0x0 while minimized).
             #[cfg(windows)]

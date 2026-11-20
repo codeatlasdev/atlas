@@ -58,6 +58,9 @@
 - name: "area: ci"
   color: 1d76db
   description: Workflows and release tooling
+- name: "area: crew"
+  color: 1d76db
+  description: Atlas Crew (crewmates, crew servers, hostd crew runtime, crew clients)
 
 # priority: how urgent (set by a maintainer during triage; at most one)
 - name: "priority: 0 data loss or security"
